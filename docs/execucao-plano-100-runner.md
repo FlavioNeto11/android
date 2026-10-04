@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-436 de 482 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+436 de 500 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -287,6 +287,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.29 | pendente | — | — | — |  |  |
 | 28.30 | pendente | — | — | — |  |  |
 | 28.31 | pendente | — | — | — |  |  |
+| 28.32 | pendente | — | — | — |  |  |
+| 28.33 | pendente | — | — | — |  |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -359,6 +361,12 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.74 | implemented | real | claude-fable-5-1 | — | Real 04/10, máquina central, deploy 30 (1b3568a7, PR #281 na suíte 30). Antes do deploy, o relatório de falhas tinha o grupo fk-d0f1c2ed23 ('tentativa interrompida' no QA Messenger, 65 ocorrências), que misturava a espe… | None |
 | 29.75 | partial | real | claude-fable-5-1 | — | Real 04/10: PUT /api/settings às 17:58:07Z (ai_max_calls_per_objective 60 -> 90, objective_timeout_s 900 -> 1800) e, pela orquestradora, rede.espera_tun_s 180 -> 120 no config (vale desde a subida do deploy 31, 19:52:36… | Releitura das contagens em 7 dias (11/10): orçamento do pedido, limite de chamadas, tempo do objetivo, prazo da etapa, device.network 'excedeu', 'túnel não sub… |
 | 29.76 | partial | real | claude-fable-5-1 | — | a/b no ar em 0ede1860 (PR #302, suíte 31): scripts/candidatos-do-portal.py com o denominador da amostra contando todo exemplo com run_id ('1 de 3', não rebaixa), Bearer só para 127.0.0.1/localhost/::1 e 'ultima' sem fus… | PR #303 na suíte 32, com o ajuste da revisão (no 4409 a tarefa religa o agente: esperar ~10 min antes de sair ou dizer no log; o aviso de contradição lê o log… |
+| 29.77 | pendente | — | — | — |  |  |
+| 29.78 | pendente | — | — | — |  |  |
+| 29.79 | pendente | — | — | — |  |  |
+| 29.80 | pendente | — | — | — |  |  |
+| 29.81 | pendente | — | — | — |  |  |
+| 29.82 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -428,6 +436,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.64 | pendente | — | — | — |  |  |
 | 30.65 | pendente | — | — | — |  |  |
 | 30.66 | pendente | — | — | — |  |  |
+| 30.67 | pendente | — | — | — |  |  |
+| 30.68 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
 | 31.3 | implemented | not_run | sessao | — | Item de decisao (texto do ADR): ADR-069 escrito e aprovado pelo dono (02/10/2026 ~21:35Z, 'sim para todos' no chat da orquestradora), PR #102, merge fd59fbd7. Emenda o ADR-063; D-J1 (porta unica, constantes fechadas, Te… |  |
@@ -480,6 +490,14 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.50 | pendente | — | — | — |  |  |
 | 31.51 | pendente | — | — | — |  |  |
 | 31.52 | pendente | — | — | — |  |  |
+| 31.53 | pendente | — | — | — |  |  |
+| 31.54 | pendente | — | — | — |  |  |
+| 31.55 | pendente | — | — | — |  |  |
+| 31.56 | pendente | — | — | — |  |  |
+| 31.57 | pendente | — | — | — |  |  |
+| 31.58 | pendente | — | — | — |  |  |
+| 31.59 | pendente | — | — | — |  |  |
+| 31.60 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -489,7 +507,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (46): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.29, 28.30, 28.31, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.41, 29.68, 29.75, 29.76, 30.34, 30.52, 30.61, 30.62, 30.64, 30.65, 30.66, 31.11, 31.12, 31.13, 31.35, 31.40, 31.45, 31.47, 31.48, 31.49, 31.50, 31.51, 31.52, T.2
+Pendentes (64): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.29, 28.30, 28.31, 28.32, 28.33, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.41, 29.68, 29.75, 29.76, 29.77, 29.78, 29.79, 29.80, 29.81, 29.82, 30.34, 30.52, 30.61, 30.62, 30.64, 30.65, 30.66, 30.67, 30.68, 31.11, 31.12, 31.13, 31.35, 31.40, 31.45, 31.47, 31.48, 31.49, 31.50, 31.51, 31.52, 31.53, 31.54, 31.55, 31.56, 31.57, 31.58, 31.59, 31.60, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
