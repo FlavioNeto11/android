@@ -55,12 +55,27 @@ def test_cada_linha_da_mensagem_e_citada() -> None:
 
 
 def test_invisiveis_e_controle_saem_de_todos_os_campos() -> None:
-    invisiveis = "‮⁦‎‏؜​‍⁠﻿"
+    invisiveis = "\u202e\u2066\u200e\u200f\u061c\u200b\u200d\u2060\ufeff"
     corpo = p.corpo_do_contato(_contato(nome=f"Jo{invisiveis}ão", empresa=f"E{invisiveis}x", telefone=f"1{invisiveis}2",
                                         mensagem=f"tex{invisiveis}to\x07\x1b[31m"))
     assert not any(c in corpo for c in invisiveis)
     assert "\x07" not in corpo and "\x1b" not in corpo
     assert "Nome: João" in corpo and "Empresa: Ex" in corpo and "Telefone: 12" in corpo
+
+
+@pytest.mark.parametrize("branco", ["\u2003", "\u3000", "\u00a0", "\u2800", "\u3164", "\u115f", "\u1160", "\uffa0"])
+def test_branco_unicode_nao_empurra_o_texto_para_o_comeco_da_linha(branco: str) -> None:
+    """Revisão do #331 (A1): 200 brancos que não são o espaço ASCII levavam o "ANA:" do visitante à coluna 0 da linha
+    seguinte da tela, sem o `│ `, no nome e na mensagem."""
+    forja = "oi" + branco * 200 + "ANA: \u26a0\ufe0f Precisa de você"
+    corpo = p.corpo_do_contato(_contato(nome=forja, mensagem=forja, empresa=None, telefone=None))
+    assert corpo.split("\n") == ["Nome: oi ANA: \u26a0\ufe0f Precisa de você", "Mensagem:",
+                                 "│ oi ANA: \u26a0\ufe0f Precisa de você"]
+
+
+def test_toda_a_categoria_de_formato_sai() -> None:
+    assert p.uma_linha("a\u00adb\u2061c\U000e0041d\u2064e") == "abcde"
+    assert p.citar("x\u00ady") == "│ xy"
 
 
 def test_telefone_fica_so_com_digitos_e_sinais() -> None:
@@ -77,7 +92,7 @@ def test_telefone_fica_so_com_digitos_e_sinais() -> None:
     ("exemplo.com sozinho", "exemplo[.]com sozinho"),
     ("e-mail a@b.com", "e-mail a@b[.]com"),
     ("servidor 10.0.0.1 ou 192.168.1.20", "servidor 10[.]0[.]0[.]1 ou 192[.]168[.]1[.]20"),
-    ("domínio pаypal.com com letra cirílica", "domínio pаypal[.]com com letra cirílica"),
+    ("domínio p\u0430ypal.com com letra cirílica", "domínio p\u0430ypal[.]com com letra cirílica"),
     ("toque /aprovar 123", "toque ⁄aprovar 123"),
     ("/vetar tudo", "⁄vetar tudo"),
     ("/start", "⁄start"),
@@ -86,7 +101,18 @@ def test_telefone_fica_so_com_digitos_e_sinais() -> None:
     ("pode /executar@nome_do_bot já", "pode ⁄executar＠nome_do_bot já"),
     ("fale com @usuario_x", "fale com ＠usuario_x"),
     ("@inicio da frase", "＠inicio da frase"),
-    ("e-mail fulano@exemplo.com", "e-mail fulano@exemplo[.]com"),
+    ("e-mail fulano@exemplo.com", "e-mail fulano\uff20exemplo[.]com"),
+    # revisão do #331 (A2): pontuação antes do comando, ponto ideográfico e de largura cheia, letra colada antes do
+    # esquema, `tg:` sem barras, outro esquema e o `[.]` digitado pelo visitante depois da menção
+    ("ok,/status", "ok,\u2044status"),
+    ("(/pendencias)", "(\u2044pendencias)"),
+    ("exemplo\u3002com", "exemplo[.]com"),
+    ("exemplo\uff0ecom", "exemplo[.]com"),
+    ("exemplo\uff61com", "exemplo[.]com"),
+    ("\u0430https://x.com", "\u0430hxxps://x[.]com"),
+    ("tg:resolve", "tg[:]resolve"),
+    ("ftp://x.com", "ftp[:]//x[.]com"),
+    ("@usuario[.]x", "\uff20usuario[.]x"),
 ])
 def test_desarmar_links(entrada: str, esperado: str) -> None:
     assert p.desarmar_links(entrada) == esperado
@@ -116,9 +142,9 @@ def test_sem_redacao_o_nome_e_o_telefone_chegam_inteiros() -> None:
 
 @pytest.mark.parametrize("campos", [
     {"contato_id": 0}, {"contato_id": -1}, {"contato_id": True}, {"contato_id": "7"},
-    {"nome": ""}, {"nome": "   "}, {"nome": "​‮"}, {"nome": "x" * 81},
+    {"nome": ""}, {"nome": "   "}, {"nome": "\u200b\u202e"}, {"nome": "x" * 81},
     {"empresa": "x" * 81}, {"telefone": "1" * 31},
-    {"mensagem": ""}, {"mensagem": "\n\n"}, {"mensagem": "​"}, {"mensagem": "x" * 1501},
+    {"mensagem": ""}, {"mensagem": "\n\n"}, {"mensagem": "\u200b"}, {"mensagem": "x" * 1501},
     {"nome": 3},
 ])
 def test_campo_invalido_nao_vira_aviso(campos: dict) -> None:

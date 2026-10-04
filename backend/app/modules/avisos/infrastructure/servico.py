@@ -49,6 +49,8 @@ KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_
                               "learning.needs_person", "pendencia.vence_em"})
 #: De quanto em quanto tempo o laço varre incertos, vencidos e purga (a entrega roda a cada volta).
 FAXINA_S = 3600.0
+#: De quanto em quanto tempo, com o canal desligado, vencem os contatos do site pendentes (28.32).
+PESSOAIS_S = 300.0
 
 
 class ServicoDeAvisos:
@@ -71,6 +73,7 @@ class ServicoDeAvisos:
         self._lider = lider or self._tomar
         self._esperar_ate = 0.0
         self._faxina_em = 0.0
+        self._pessoais_em = 0.0
         #: A faxina das tabelas de canal (28.16). Roda no mesmo laço, mas NÃO depende do Telegram pronto: o Trello pode
         #: estar ligado sem ele, e o que já foi gravado precisa sair no prazo mesmo com o canal desligado depois.
         self._faxina_canais = faxina_canais
@@ -241,7 +244,10 @@ class ServicoDeAvisos:
     async def entregar_uma_vez(self) -> Resultado | None:
         """Uma volta de entrega, só no líder e com canal pronto. `None` quando pulou."""
         canal = self.canal()
-        if canal is None or time.monotonic() < self._esperar_ate:
+        if canal is None:
+            self._vencer_pessoais()
+            return None
+        if time.monotonic() < self._esperar_ate:
             return None
         token = self._lider(AVISOS)
         if token is None:
@@ -267,6 +273,20 @@ class ServicoDeAvisos:
         if resultado.falharam:
             log.warning("avisos: %d aviso(s) falharam de vez nesta volta", resultado.falharam)
         return resultado
+
+    def _vencer_pessoais(self) -> None:
+        """Canal desligado: a faxina da entrega não roda, mas o corpo do contato do site (28.32) vence do mesmo jeito. No
+        máximo uma vez por `PESSOAIS_S`."""
+        if time.monotonic() < self._pessoais_em:
+            return
+        self._pessoais_em = time.monotonic() + PESSOAIS_S
+        try:
+            vencidos = self.fila.vencer_pessoais(validade_h=self.cfg.file.avisos.validade_h)
+        except Exception as exc:  # noqa: BLE001 - a faxina nunca derruba o laço; tenta de novo na próxima volta
+            log.error("avisos: vencer os contatos pendentes com o canal desligado: %s", type(exc).__name__)
+            return
+        if vencidos:
+            log.info("avisos: %d contato(s) do site vencido(s) com o canal desligado; corpo apagado", vencidos)
 
     def _faxina(self, cerca: Callable[[], object]) -> None:
         if time.monotonic() < self._faxina_em:

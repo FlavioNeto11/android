@@ -484,19 +484,24 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - O aviso é do tipo `portal.contato`, nível 1, e sai na hora, na ordem da fila, sem passar à frente de uma aprovação.
     Sai um a um, sem rajada (`SEM_AGRUPAR`), só para o chat do dono. Nunca vai ao Trello: não tem rótulo em `ROTULOS`,
     e o espelho não lê a fila.
-  - A chave é `portal:<contato_id>`. Chamar de novo com o mesmo id não gera segunda mensagem.
+  - A chave é `portal:<contato_id>`. Chamar de novo com o mesmo id não gera segunda mensagem. `enfileirado=True` quer
+    dizer "na fila", não "entregue": a página do Portal não promete entrega ao visitante.
   - O título é fixo: "ANA: 🌐 Mensagem de visitante do site (não verificada)". O corpo tem as linhas rotuladas `Nome:`,
     `Empresa:` e `Telefone:` (as duas últimas só quando houver) e `Mensagem:`.
-  - Higiene: nome e empresa numa linha só; nenhum caractere de direção (bidi) nem de largura zero; o telefone só com
-    dígitos e `+ ( ) -`; cada linha da mensagem com `│ ` na frente, para um "ANA:" escrito pelo visitante aparecer como
-    citação.
-  - Nada do visitante fica tocável no chat: `https://` vira `hxxps://`, outro `esquema://` vira `esquema[:]//`, o ponto
-    de domínio e de IP vira `[.]`, `/comando` vira `⁄comando` (um toque do dono seria uma ordem DELE à Central) e
-    `@usuario` vira `＠usuario`.
+  - Higiene: NFKC; nome e empresa numa linha só; nenhum caractere de formato (Cf: direção, largura zero, hífen suave,
+    tags); todo branco Unicode (Zs, braille em branco, preenchedores do hangul) vira espaço ASCII e se junta; o telefone
+    só com dígitos e `+ ( ) -`; cada linha da mensagem com `│ ` na frente. Assim um "ANA:" escrito pelo visitante
+    aparece como citação e nunca no começo de uma linha da tela (revisão do #331).
+  - Nada do visitante fica tocável no chat:
+    - `https://` vira `hxxps://`, mesmo com letra colada antes; todo outro `://` vira `[:]//`, e `tg:` vira `tg[:]`;
+    - o ponto de domínio e de IP vira `[.]`, inclusive o ideográfico e o de largura cheia;
+    - `/comando` vira `⁄comando`, também depois de pontuação: um toque do dono seria uma ordem DELE à Central;
+    - `@usuario` vira `＠usuario`, inclusive o de e-mail.
   - Exceção do ADR-075: o contato não passa por `texto_seguro` nem pelo redator. O nome e o telefone do visitante
     chegam inteiros, porque o contato serve para o dono responder.
   - No estado final (`enviado`, `falhou`, `incerto`, `descartado`), o corpo da linha é apagado. Ficam a chave, o tipo,
-    o estado e as horas. O `canal_enviadas` guarda só a chave do fato.
+    o estado e as horas. O `canal_enviadas` guarda só a chave do fato. Com o canal desligado, o `pendente` vence do
+    mesmo jeito em `avisos.validade_h`. O resumo de hora em hora (`resumo_laco.py`) não lê a fila de avisos.
   - A resposta do dono a essa mensagem só informa: nunca vira pedido, execução, cartão, aprovação nem chamada de IA, e
     não vai ao visitante.
   - O log leva só o id do contato e o motivo, nunca o texto.

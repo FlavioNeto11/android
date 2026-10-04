@@ -37,6 +37,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `backend/tests/test_avisos_portal_contato.py` e `backend/tests/test_avisos_portal_servico.py`: 65 passed;
   - os arquivos `test_avisos_*` e `test_canais_*`: 443 passed, em série e em Idle, sobre a junção da suíte 32
     (`e910916b`).
+- Revisão independente do #331 (Reload plugins, `C:/claude-ferramentas/revisao-28-32.md`):
+  - A1, forja visual de uma linha da casa: a higiene faz NFKC e tira toda a categoria Cf. Os brancos Unicode (Zs,
+    braille em branco, preenchedores do hangul) viram espaço ASCII e se juntam.
+  - A2, desarmados:
+    - o `/comando` depois de pontuação;
+    - o ponto ideográfico e o de largura cheia;
+    - `https://` com letra colada antes, todo `://` e o `tg:`;
+    - a `@menção` antes do domínio.
+  - B1: o adaptador corta em unidades UTF-16 (`corte_utf16`).
+  - F: o contato pendente vence com o canal desligado (`FilaDeAvisos.vencer_pessoais`).
+  - O contrato diz que `enfileirado=True` é "na fila", não "entregue".
+  - Testes: 132 passed nos arquivos tocados (`test_avisos_portal_*`, `test_avisos_telegram`, `test_avisos_servico`,
+    `test_avisos_fila`), em série e em Idle.
 - `not_run`: envio real e a rota do Portal.
 
 ## 2026-10-04 — 28.31 F3: a rotina do resumo sai no máximo uma vez por hora; "Precisa de você" que muda sai já (branch canais/28-31-piso-da-rotina)

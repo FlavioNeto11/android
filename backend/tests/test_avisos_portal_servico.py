@@ -106,6 +106,29 @@ class _Nada:
         return None
 
 
+def test_canal_desligado_depois_vence_o_contato_e_apaga_o_corpo(tmp_path: Path) -> None:
+    """Revisão do #331 (F): com o canal desligado, a entrega (e a faxina dentro dela) não roda; o corpo do contato vence
+    do mesmo jeito. O aviso de outro tipo não é tocado."""
+    cfg, relogio = _cfg(tmp_path), Relogio()
+    servico, db, _ = _backend(cfg, "a", relogio, canal=CanalFalso())
+    assert servico.avisar_contato_do_portal(_contato()).enfileirado
+    assert servico.enfileirar_evento("run.updated", {"run": {"id": "r1", "status": "needs_input"}}, 10)
+    cfg.file.avisos.enabled = False
+    relogio.avancar(cfg.file.avisos.validade_h * 3600 + 60)
+    assert _volta(servico) is None
+    estados = {linha["tipo"]: (linha["estado"], linha["corpo"] != "") for linha in _linhas(db)}
+    assert estados == {"portal.contato": ("descartado", False), "run.needs_input": ("pendente", True)}
+
+
+def test_corte_do_adaptador_por_unidade_utf16() -> None:
+    """Revisão do #331 (B1): o Telegram conta o limite em UTF-16; emoji ocupa duas unidades."""
+    from app.modules.avisos.adapters.telegram import TEXTO_MAX, corte_utf16
+    cortado = corte_utf16("😀" * 3000, TEXTO_MAX)
+    assert len(cortado.encode("utf-16-le")) // 2 == TEXTO_MAX and cortado == "😀" * (TEXTO_MAX // 2)
+    assert corte_utf16("a" + "😀" * 2000, TEXTO_MAX) == "a" + "😀" * 1999        # nunca parte o par
+    assert corte_utf16("curto", TEXTO_MAX) == "curto"
+
+
 def test_outro_tipo_mantem_o_corpo(tmp_path: Path) -> None:
     servico, db, _ = _backend(_cfg(tmp_path), "a", Relogio(), canal=CanalFalso())
     assert servico.enfileirar_evento("run.updated", {"run": {"id": "r1", "status": "needs_input"}}, 10)

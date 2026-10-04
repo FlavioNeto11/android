@@ -56,31 +56,49 @@ class ContatoAvisado:
     motivo: str | None = None
 
 
-#: Direção (U+202A–202E, U+2066–2069, U+200E, U+200F, U+061C) e largura zero (U+200B–200D, U+2060, U+FEFF).
-_INVISIVEIS = re.compile("[‪-‮⁦-⁩‎‏؜​-‍⁠﻿]")
+#: Direção (U+202A–202E, U+2066–2069, U+200E, U+200F, U+061C) e largura zero (U+200B–200D, U+2060, U+FEFF). O resto
+#: da categoria Cf (U+00AD, U+2061–2064, as tags U+E0000…) sai pela categoria, em `_sem_controle`.
+_INVISIVEIS = re.compile("[\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c\u200b-\u200d\u2060\ufeff]")
 #: Quebras que o Unicode conhece além do `\n`: viram `\n` na mensagem e espaço nos campos de uma linha.
-_QUEBRAS = re.compile("\r\n|[\r  \u0085\x0b\x0c]")
+_QUEBRAS = re.compile("\r\n|[\r\u2028\u2029\u0085\x0b\x0c]")
+#: "Brancos" fora da categoria Zs que ocupam espaço na tela: braille em branco e os preenchedores do hangul.
+_PREENCHEDORES = frozenset("\u2800\u3164\u115f\u1160\uffa0")
+#: O ponto ideográfico (o de largura cheia e o de meia largura o NFKC já troca): um domínio com ele também vira link.
+_PONTOS = str.maketrans({"\u3002": "."})
 _TELEFONE_PERMITIDO = re.compile(r"[^0-9+()\- ]")
 _ESPACOS = re.compile(r"[ \t]+")
 
-#: `http(s)://` vira `hxxp(s)://`; outro esquema (`tg://`, `ftp://`) perde o `:`.
-_HTTP = re.compile(r"(?i)\bh(tt)(ps?)://")
-_ESQUEMA = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*)://")
+#: `http(s)://` vira `hxxp(s)://`, mesmo com letra colada antes (uma cirílica, p. ex.); todo outro `://` vira `[:]//`.
+_HTTP = re.compile(r"(?i)h(tt)(ps?)://")
+_ESQUEMA = re.compile(r"(?<!hxxp)(?<!hxxps)://")
+#: o `tg:` sem `//` também abre o Telegram
+_TG = re.compile(r"(?i)(?<![a-z0-9])tg:")
 #: domínio solto (letras de qualquer alfabeto: um domínio com letra cirílica também vira link), com o TLD só de letras
 _DOMINIO = re.compile(r"(?<![^\W_])((?:[^\W_](?:[^\W_]|-)*\.)+[^\W\d_]{2,})(?![^\W_]|-)")
 _IP = re.compile(r"(?<![\d.])(\d{1,3}(?:\.\d{1,3}){3})(?![\d.])")
-#: comando de bot no começo de palavra: `/aprovar` vira `⁄aprovar` (barra de fração), que o Telegram não toca
-_COMANDO = re.compile(r"(?<!\S)/(?=[A-Za-z])")
-#: menção `@usuario` (e o `@bot` de `/cmd@bot`) vira `＠usuario` (arroba de largura cheia); o `@` de um e-mail, já com o
-#: domínio desarmado (`a@exemplo[.]com`), fica
-_MENCAO = re.compile(r"@(?=[A-Za-z0-9_]{3,})(?![A-Za-z0-9_-]*\[\.\])")
+#: comando de bot: `/aprovar` vira `⁄aprovar` (barra de fração), que o Telegram não toca. Vale depois de pontuação
+#: (`ok,/status`, `(/pendencias)`); não vale no meio de palavra (`e/ou`, `50/50`) nem na barra dupla.
+_COMANDO = re.compile(r"(?<![\w/])/(?=\w)")
+#: menção `@usuario` (e o `@bot` de `/cmd@bot`) vira `＠usuario` (arroba de largura cheia). Desarmada ANTES do domínio:
+#: o `@` de um e-mail também vira `＠`, e um `[.]` digitado pelo visitante não protege a menção.
+_MENCAO = re.compile(r"@(?=[A-Za-z0-9_]{3,})")
 
 
 def _sem_controle(texto: str, *, quebra: str) -> str:
-    """Tira os invisíveis, troca as quebras por `quebra` e os demais caracteres de controle por espaço."""
-    texto = _QUEBRAS.sub("\n", _INVISIVEIS.sub("", texto))
-    return "".join(c if c == "\n" and quebra == "\n" else (" " if c == "\n" or unicodedata.category(c) == "Cc" else c)
-                   for c in texto)
+    """NFKC (o espaço e o ponto de largura cheia viram ASCII), sem invisíveis nem formato (Cf); as quebras viram
+    `quebra`, e todo espaço da categoria Zs, preenchedor e controle vira espaço ASCII. Assim nenhum texto do visitante
+    é empurrado para o começo de uma linha da tela sem o `│ ` (revisão do #331, A1)."""
+    texto = _QUEBRAS.sub("\n", unicodedata.normalize("NFKC", _INVISIVEIS.sub("", texto)).translate(_PONTOS))
+    saida: list[str] = []
+    for c in texto:
+        if c == "\n":
+            saida.append("\n" if quebra == "\n" else " ")
+            continue
+        categoria = unicodedata.category(c)
+        if categoria == "Cf":
+            continue
+        saida.append(" " if categoria in ("Zs", "Cc") or c in _PREENCHEDORES else c)
+    return "".join(saida)
 
 
 def uma_linha(valor: str | None) -> str:
@@ -95,15 +113,17 @@ def telefone_limpo(valor: str | None) -> str:
 
 def desarmar_links(texto: str) -> str:
     """Nada do visitante fica tocável no chat do dono: `https://` → `hxxps://`, outro `esquema://` → `esquema[:]//`,
-    o ponto de domínio e de IP → `[.]` (o `www.` e o `t.me/` caem aí), `/comando` → `⁄comando` e `@usuario` →
-    `＠usuario`. Desarmar a mais é o lado seguro: "fim.Depois" sem espaço vira "fim[.]Depois"."""
+    `tg:` → `tg[:]`, o ponto de domínio e de IP → `[.]` (o `www.` e o `t.me/` caem aí; o ponto ideográfico e o de largura
+    cheia também), `/comando` → `⁄comando` e `@usuario` → `＠usuario`. Desarmar a mais é o lado seguro: "fim.Depois" sem
+    espaço vira "fim[.]Depois"."""
+    texto = unicodedata.normalize("NFKC", texto).translate(_PONTOS)
     texto = _HTTP.sub(lambda m: f"hxx{m.group(2).lower()}://", texto)
-    texto = _ESQUEMA.sub(lambda m: m.group(1) + "[:]//" if not m.group(1).lower().startswith("hxxp") else m.group(0),
-                         texto)
+    texto = _ESQUEMA.sub("[:]//", texto)
+    texto = _TG.sub(lambda m: m.group(0)[:-1] + "[:]", texto)
+    texto = _MENCAO.sub("\uff20", texto)
     texto = _DOMINIO.sub(lambda m: m.group(1).replace(".", "[.]"), texto)
     texto = _IP.sub(lambda m: m.group(1).replace(".", "[.]"), texto)
-    texto = _MENCAO.sub("＠", texto)
-    return _COMANDO.sub("⁄", texto)
+    return _COMANDO.sub("\u2044", texto)
 
 
 def citar(mensagem: str) -> str:

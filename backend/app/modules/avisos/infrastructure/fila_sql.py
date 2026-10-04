@@ -228,6 +228,17 @@ class FilaDeAvisos:
                 (f"venceu: ficou mais de {validade_h:g} h sem sair", CORPO_PESSOAL_LIKE, limite))
         return int(cur.rowcount or 0)
 
+    def vencer_pessoais(self, *, validade_h: float) -> int:
+        """O `vencer` só das linhas com dado pessoal (`portal.%`), para quando o canal está DESLIGADO e a entrega (com a
+        faxina dentro) não roda: o corpo do contato não fica sem prazo. Sem cerca: o UPDATE é idempotente, e dois backends
+        fazendo a mesma coisa dão no mesmo."""
+        limite = to_iso(self.relogio() - timedelta(hours=validade_h))
+        cur = self.db.execute(
+            "UPDATE avisos_entregas SET estado='descartado', ultimo_erro=?, corpo=''"
+            " WHERE estado='pendente' AND tipo LIKE ? AND criado_em < ?",
+            (f"venceu: ficou mais de {validade_h:g} h sem sair", CORPO_PESSOAL_LIKE, limite))
+        return int(cur.rowcount or 0)
+
     def purgar(self, *, cerca: Cerca, retencao_dias: float) -> int:
         limite = to_iso(self.relogio() - timedelta(days=retencao_dias))
         marcas = ",".join("?" * len(ESTADOS_FINAIS))
