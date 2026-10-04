@@ -1331,8 +1331,8 @@ class Repository:
 
     # ================================================================== DTOs e eventos
     def run_summaries(self, rows: Sequence[Row]) -> list[RunSummary]:
-        """Os resumos de uma LISTA. 31.50: a entrada em `needs_input` de todas sai numa consulta só (o `vence_em`),
-        em vez de uma por execução."""
+        """Os resumos de uma LISTA. 31.50: a entrada em `needs_input` de todas (o `vence_em`) e a contagem dos
+        objetivos saem numa consulta cada, em vez de uma por execução."""
         perguntas = [str(r["id"]) for r in rows if r["status"] == RunStatus.needs_input.value]
         entradas: dict[str, str] = {}
         if perguntas and self.prazo_do_vencimento is not None:
@@ -1340,13 +1340,21 @@ class Repository:
             entradas = {str(x["run_id"]): str(x["t"]) for x in self.db.query(
                 f"SELECT run_id, MAX(ts) AS t FROM events WHERE kind='run.updated' AND run_id IN ({marcas}) "
                 "GROUP BY run_id", tuple(perguntas))}
+        # A contagem dos objetivos de todas numa consulta só (antes, uma por execução da lista).
+        contagens: dict[str, RunCounts] = {str(r["id"]): RunCounts() for r in rows}
+        if contagens:
+            marcas = ",".join("?" for _ in contagens)
+            for x in self.db.query(f"SELECT run_id, status, COUNT(*) n FROM objectives WHERE run_id IN ({marcas}) "
+                                   "GROUP BY run_id, status", tuple(contagens)):
+                setattr(contagens[str(x["run_id"])], x["status"], x["n"])
         return [self.run_summary(r, entrada_da_pergunta=entradas.get(str(r["id"]), r["created_at"])
-                                 if str(r["id"]) in perguntas else None) for r in rows]
+                                 if str(r["id"]) in perguntas else None, contagens=contagens[str(r["id"])])
+                for r in rows]
 
     def run_summary(self, row: Row, *, deduplicated: bool | None = None,
-                    entrada_da_pergunta: str | None = None) -> RunSummary:
+                    entrada_da_pergunta: str | None = None, contagens: RunCounts | None = None) -> RunSummary:
         ids = loads(row["instance_ids"], [])
-        counts = self._counts(row["id"])
+        counts = contagens if contagens is not None else self._counts(row["id"])
         total = sum(counts.model_dump().values())
         origem, origem_ref = origem_da_execucao(_col(row, "prova_fluxo_id"), _col(row, "idempotency_key"))
         return RunSummary(
