@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.26 (opção A): a prova local `sent_text` dispensa o primeiro julgamento do envio (branch feat/31-26a-sent-text-dispensa-juiz, sem migração)
+
+- Na etapa com nível `sent` cuja ação declara `sent_text` (SEND_MESSAGE do Instagram), a prova confirmada na árvore
+  substitui o julgamento barato. O rejulgamento do 17.10 (`sim_com_efeito`) continua e decide. Chave
+  `ai.sent_text_dispensa_primeiro_juiz` (true). Ganho estimado: 2 a 4 s e menos de 1 centavo por envio (inferido).
+- Prova:
+  - `simulated`: `backend/tests/test_sent_text_dispensa_juiz.py` (6 testes) e `test_dm_verificador.py`;
+  - `not_run` a real: DM entre contas nossas segue barrada até ~02/11 (ADR-055).
+
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 
 - O parecer lr-1cfb91a981c5f21f citou `against` da versão antiga do fluxo reaprendido e pediu uma reprodução que já

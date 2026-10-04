@@ -674,6 +674,10 @@ class AiCfg(BaseModel):
     # UMA vez pelo modelo de escalonamento, e quem vale é o mais forte (discordou → não conta como prova). Só age quando o
     # modelo do verificador é DIFERENTE do de escalonamento (senão seria a mesma pergunta ao mesmo modelo).
     rejudge_yes_on_side_effect: bool = True
+    # Item 31.26 (opção A): na etapa com nível de entrega `sent` cuja ação declara a prova local `sent_text` (a SEND_MESSAGE
+    # do Instagram: o texto numa mensagem do fio e fora do campo), essa prova substitui o PRIMEIRO julgamento (o barato).
+    # O rejulgamento do "sim" com efeito (17.10) continua e é quem vale; sem ele (desligado ou mesmo modelo), nada muda.
+    sent_text_dispensa_primeiro_juiz: bool = True
     verify_max_model_calls: int = Field(2, ge=1, le=5)
     # Depois de um "sim" numa etapa com efeito já disparado, quanto esperar antes de RECONFERIR a tela em busca
     # de marca de falha. Existe porque app de mensagem tem UI otimista: o balão aparece e o campo limpa antes de

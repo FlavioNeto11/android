@@ -3090,11 +3090,24 @@ class StepExecutor:
                     screen, _ = self._screen(obs, with_image=quer_imagem, protect=tuple(step.commit_guard), ai=ai_cfg)
                     # `t_end` é o orçamento DESTA verificação (nunca além do prazo da etapa): a chamada de
                     # verificação passa a ter limite próprio, que era o que faltava (achado #96).
-                    verdict = await self._ai(run_id, objective_id,
-                                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
-                                                                                        facts=list(facts or []))),
-                                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
-                                             marca=MarcaDaChamada(motivo=proposito, image_reason=motivo_imagem))
+                    if await self._sent_text_dispensa_o_juiz(step, capability, obs, need=need, local_proof=local_proof,
+                                                             ja_julgou=judged_polls > 0, escalou=escalou):
+                        # 31.26 (A): a prova local `sent_text` já comprovou o envio desta execução na árvore (o app não
+                        # mostra "Entregue"). Ela substitui SÓ o julgamento barato: o "sim" daqui segue para o
+                        # rejulgamento do 17.10 logo abaixo, que é quem decide.
+                        verdict = Verdict(satisfied="yes", delivery_level=DeliveryLevel.sent,
+                                          evidence=f"prova local ({local_proof}) na árvore: o primeiro julgamento foi "
+                                                   "dispensado; o rejulgamento confere")
+                        metricas.contar("verificacao.primeiro_juiz_dispensado", prova=str(local_proof))
+                        self.repo.decision(f"{rt.id} · {step.title}: envio comprovado pela árvore local (sent_text); o "
+                                           "primeiro julgamento foi dispensado e o rejulgamento confere",
+                                           run_id=run_id, instance_id=rt.id, step_id=step.id)
+                    else:
+                        verdict = await self._ai(run_id, objective_id,
+                                                 lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
+                                                                                            facts=list(facts or []))),
+                                                 step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
+                                                 marca=MarcaDaChamada(motivo=proposito, image_reason=motivo_imagem))
                     judged_polls += 1
                     judged_sig = sig
                     level = verdict.delivery_level
@@ -3256,7 +3269,25 @@ class StepExecutor:
         cap = capability_of(capability.app, capability.key) if capability is not None else None
         return tuple(m for m in cap.pending_marks if m) if cap is not None else ()
 
-    async def _prova_local(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation) -> bool:
+    async def _sent_text_dispensa_o_juiz(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation, *,
+                                         need: DeliveryLevel | None, local_proof: str | None, ja_julgou: bool,
+                                         escalou: bool) -> bool:
+        """31.26 (opção A): o primeiro julgamento desta verificação pode ser dispensado? Só quando TUDO vale: nível exigido
+        `sent` (nunca entregue/lida, que a árvore não prova), a ação declara a prova local `sent_text` e ela confirma
+        nesta tela, é o primeiro julgamento (nenhum "não" antes), e o rejulgamento do 17.10 vai acontecer (ligado e com
+        modelo diferente). Sem o rejulgamento, a prova local sozinha fecharia o efeito, e isso o desenho não aceita."""
+        ai = self.cfg.file.ai
+        if not (ai.sent_text_dispensa_primeiro_juiz and need == DeliveryLevel.sent and local_proof
+                and local_proof.startswith("sent_text") and not ja_julgou and not escalou
+                and ai.rejudge_yes_on_side_effect
+                and self.cfg.ai_role("verify").model != self.cfg.ai_role("escalation").model):
+            return False
+        # A porta não afirma nível de entrega (`catalog_provider`: "exige o verificador"), e está certa: aqui a pergunta
+        # é só se o TEXTO saiu (`sent_text`). O nível `sent` já foi conferido acima, e o rejulgamento confere a tela.
+        return await self._prova_local(step, capability, obs, sem_nivel=True)
+
+    async def _prova_local(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation, *,
+                           sem_nivel: bool = False) -> bool:
         """A prova local pela porta `CapabilityProvider.verify` (fase G). `proved` é o atalho de sempre.
 
         `not_proved` (marca de falha visível na tela) também cai para o caminho de sempre, e não reprova aqui: quem
@@ -3270,7 +3301,8 @@ class StepExecutor:
                          bindings=tuple((k, str(v)) for k, v in (step.bindings or {}).items() if v is not None),
                          band_guard=tuple(step.band_guard or ()),
                          required_delivery_level=(step.postcondition.required_delivery_level.value
-                                                  if step.postcondition.required_delivery_level else None))
+                                                  if step.postcondition.required_delivery_level and not sem_nivel
+                                                  else None))
         veredito = await self.capabilities.verify(vista, Leitura(obs.tree, obs.package))
         return veredito.outcome is VerifyOutcome.proved
 
