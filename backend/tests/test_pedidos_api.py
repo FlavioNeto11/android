@@ -107,7 +107,7 @@ async def test_previa_recusa_credencial_no_objetivo_sem_eco(h: Harness) -> None:
 
 async def test_corpo_malformado_e_campo_extra_sao_422(h: Harness) -> None:
     c = _cliente(h)
-    for extra in ({"estado": "ativo"}, {"pai_id": "x"}, {"criado_por": "eu"}):
+    for extra in ({"estado": "ativo"}, {"dono_id": "x"}, {"criado_por": "eu"}):
         assert c.post("/api/pedidos/previa", json=_corpo(**extra)).status_code == 422
     assert c.post("/api/pedidos/previa", json=_corpo(gatilhos=[])).status_code == 422
 

@@ -43,6 +43,9 @@ PEDIDO_PERMITIDAS: dict[tuple[str, str], set[str]] = {
     ("ativo", "concluido"): {"sistema"},
     ("ativo", "encerrado"): {"sistema"},
     ("pausado", "encerrado"): {"sistema"},
+    # 28.10 F1: só a cascata do pai encerrado (`AcoesDePedidos.encerrar_filhos`, motivo `pai`)
+    ("rascunho", "encerrado"): {"sistema"},
+    ("aguardando_pessoa", "encerrado"): {"sistema"},
     ("rascunho", "cancelado"): {"pessoa"},
     ("ativo", "cancelado"): {"pessoa"},
     ("pausado", "cancelado"): {"pessoa"},

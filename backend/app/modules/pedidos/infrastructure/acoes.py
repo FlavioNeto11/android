@@ -11,7 +11,8 @@ acorda o laço. Uma queda no meio não deixa estado impossível: o laço (`_fech
   (`pausado: retomado daqui`) e põe o cursor em agora; `recuperar` só zera `proxima_em` e deixa o laço aplicar janela
   e coalescência normalmente.
 * **Cancelar** (pessoa): `prevista`/`devida` → `cancelada`; cada aberta recebe `RunService.cancel` e fecha pela
-  varredura como `cancelada` (ou `incerta`).
+  varredura como `cancelada` (ou `incerta`). Os descendentes ainda vivos (28.10, F1) vão junto, na mesma transação.
+* **Encerrar os filhos** (sistema, pai `encerrado`): ver `encerrar_filhos`.
 * **Editar** (`versao + 1`, D5/A6): campos do pedido mudam e as `prevista`/`devida` passam à versão nova NA MESMA LINHA
   (nunca cancelar e recriar: a chave não tem versão e o `ON CONFLICT DO NOTHING` engoliria a nova). Mudar a
   recorrência ou o horário NÃO edita a `spec`: desativa o gatilho (as `prevista`/`devida` dele → `cancelada`, motivo
@@ -29,6 +30,7 @@ from app.db import Row, loads
 from app.modules.pedidos.infrastructure.relatorios import ServicoDeRelatorios
 from app.modules.pedidos.infrastructure.repositorio import RepositorioDePedidos, novo_id
 from app.modules.pedidos.domain import gatilhos
+from app.modules.pedidos.domain.colaboracao import ESTADOS_TERMINAIS
 from app.modules.pedidos.domain.chave import chave_da_ocorrencia, formatar_instante
 from app.modules.pedidos.domain.estados import ATOR_PESSOA, ATOR_SISTEMA, transicionar_ocorrencia, transicionar_pedido
 from app.modules.pedidos.domain.materializar import truncar
@@ -120,10 +122,13 @@ class AcoesDePedidos:
         self.repo.avancar_cursor(g["id"], formatar_instante(agora))
 
     # ------------------------------------------------------------------ cancelar
-    def cancelar(self, pedido_id: str, *, por: str | None = None) -> None:
+    def cancelar(self, pedido_id: str, *, por: str | None = None) -> list[str]:
+        """Cancela o pedido e, junto, os descendentes que ainda não terminaram (28.10 F1, §9: "o pai encerra os filhos
+        quando encerra"), tudo na MESMA transação. Devolve os ids dos descendentes cancelados."""
         p = self._pedido(pedido_id)
         transicionar_pedido(p["estado"], "cancelado", ator=ATOR_PESSOA)
         em = to_iso(self.relogio())
+        cancelados: list[str] = []
         with self.repo.db.tx():
             if not self.repo.mudar_estado_do_pedido(pedido_id, p["estado"], "cancelado", em, pessoa=True):
                 raise AcaoInvalida(f"pedido {pedido_id} mudou de estado no meio")
@@ -131,13 +136,58 @@ class AcoesDePedidos:
                 transicionar_ocorrencia(linha["estado"], "cancelada", motivo="pedido cancelado")
                 self.repo.mover(linha["id"], linha["estado"], "cancelada", motivo="pedido cancelado", terminada_em=em)
             abertas = self.repo.execucoes_abertas(pedido_id)
-        self._relatorio_final(pedido_id)
+            for f in self.repo.descendentes(pedido_id):
+                if f["estado"] in ESTADOS_TERMINAIS:
+                    continue
+                # a cascata é efeito da decisão da pessoa sobre o pai: mesma aresta (`→ cancelado`) e mesmo ator
+                transicionar_pedido(f["estado"], "cancelado", ator=ATOR_PESSOA)
+                if not self.repo.mudar_estado_do_pedido(f["id"], f["estado"], "cancelado", em, pessoa=True):
+                    continue                    # o filho mudou no meio; a varredura do laço fecha o que sobrar
+                self._cancelar_ocorrencias(f["id"], "o pedido pai foi cancelado", em)
+                abertas += self.repo.execucoes_abertas(f["id"])
+                cancelados.append(f["id"])
+        for ident in (pedido_id, *cancelados):
+            self._relatorio_final(ident)
         for run_id in abertas:          # fora da transação: `cancel` abre a própria; a varredura fecha a ocorrência
             try:
                 self.runs.cancel(run_id, por=por)
             except Exception as e:  # noqa: BLE001 - já terminou, ou outra aba cancelou: a varredura fecha como estiver
                 log.info("pedidos: execução %s não pôde ser cancelada com o pedido (%s)", run_id, e)
         self.acordar()
+        return cancelados
+
+    def _cancelar_ocorrencias(self, pedido_id: str, motivo: str, em: str) -> None:
+        for linha in self.repo.ids_prevista_devida(pedido_id):
+            transicionar_ocorrencia(linha["estado"], "cancelada", motivo=motivo)
+            self.repo.mover(linha["id"], linha["estado"], "cancelada", motivo=motivo, terminada_em=em)
+
+    # ------------------------------------------------------------------ pai encerrado (28.10 F1)
+    def encerrar_filhos(self, pai_id: str) -> list[str]:
+        """O pai está `encerrado` (prazo, contagem, orçamento ou abandono: o sistema o encerrou): cada descendente que ainda
+        vive vai a `encerrado` com o motivo `pai`, e as `prevista`/`devida` dele viram `cancelada` ("o pedido pai foi
+        encerrado"). Idempotente (o que já terminou fica como está) e devolve os ids encerrados.
+
+        **Encerrar não é cancelar:** a execução que já está rodando num filho termina sozinha e fecha pela varredura do
+        laço, como a de qualquer pedido encerrado; nada novo é despachado. Quem chama é `PedidosApi.publicar`, DEPOIS do
+        commit do pai (o laço, que encerra por prazo e contagem, não muda na F1); uma queda entre os dois deixa filhos
+        vivos até a próxima marca do pai ou a próxima chamada, e a repetição conserta."""
+        pai = self._pedido(pai_id)
+        if pai["estado"] != "encerrado":
+            return []
+        em = to_iso(self.relogio())
+        encerrados: list[str] = []
+        with self.repo.db.tx():
+            for f in self.repo.descendentes(pai_id):
+                if f["estado"] in ESTADOS_TERMINAIS:
+                    continue
+                transicionar_pedido(f["estado"], "encerrado", ator=ATOR_SISTEMA, motivo="pai")
+                if not self.repo.mudar_estado_do_pedido(f["id"], f["estado"], "encerrado", em, encerrado_motivo="pai"):
+                    continue
+                self._cancelar_ocorrencias(f["id"], "o pedido pai foi encerrado", em)
+                encerrados.append(f["id"])
+        if encerrados:
+            self.acordar()
+        return encerrados
 
     def _relatorio_final(self, pedido_id: str) -> None:
         """Cancelar também encerra (§6.5): o relatório final sai logo depois do cancelamento, já com as ocorrências

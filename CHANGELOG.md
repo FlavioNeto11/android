@@ -27,6 +27,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   decisão do dono e o histórico de quem falou com o bot, que ele pediu para guardar. Apagado, o convidado autorizado
   voltaria a ser pessoa nova.
 - Teste: `test_canais_faxina.py::test_os_eventos_do_contato_vencem_e_o_registro_do_contato_fica`. Prova simulada.
+## 2026-10-04 — 28.10 F1: colaboração entre pedidos, só a estrutura (branch canais/28-10-f1-colaboracao, migração 096)
+
+- Migração `096_pedido_dependencias`: tabela `pedido_dependencias(de, para, tipo)` (`para` depende de `de`), `pedidos.papel`
+  e índice por `pai_id`. Sem FK nem CHECK; as regras são de `modules/pedidos/domain/colaboracao.py` (puro).
+- Config `pedidos.colaboracao` (`enabled: false`, `max_profundidade: 2`, `max_filhos: 5`). Desligada, a API recusa `pai_id`,
+  `papel` e `dependencias` com 422 `colaboracao_desligada`. Ligada, valida na criação e na prévia (profundidade, filhos,
+  pai existente e não terminal, ciclo, linhagem, família da dependência, um só porta-voz e orçamento reservado do pai).
+- `PedidoView.papel`; o detalhe traz `filhos` e `dependencias`. Cancelar o pai cancela os filhos vivos na mesma transação;
+  o pai encerrado pelo sistema encerra os filhos (motivo `pai`, via `PedidosApi.publicar`). O laço não muda.
+- Prova `simulated`: `test_pedidos_colaboracao_dominio.py` e `test_pedidos_colaboracao_api.py`. `not_run`: PostgreSQL e o central.
 
 ## 2026-10-04 — 28.16: faxina das tabelas de canal por prazo de retenção (branch canais/28-16-faxina-canais, sem migração)
 

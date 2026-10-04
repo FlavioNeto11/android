@@ -5320,3 +5320,31 @@ evidência" do curador geraria, e o despachante P4 faz o resto com o teto de sem
     como C) e o modo `off`.
 - **503:** a validação não foi composta.
 
+## Adendo v1.16 (04/10/2026; número da orquestradora; item 28.10 F1) — colaboração entre pedidos, só a estrutura
+
+Aditivo ao v0.45 (pedidos). Uma migração (096) e nenhuma rota nova. Desligado de fábrica: com
+`pedidos.colaboracao.enabled: false` tudo se comporta como antes.
+
+- **Corpo de `POST /api/pedidos/previa` e `POST /api/pedidos`** ganha três campos opcionais: `pai_id` (o pedido pai),
+  `papel` (`pesquisador`, `checador`, `redator` ou `porta_voz`) e `dependencias: [{de, tipo}]` com `tipo` em
+  `precisa_de_resultado` ou `depois_de`. O pedido novo é sempre o que depende (`para`) de cada `de`. A estrutura nasce com
+  o pedido: o `PATCH` continua sem aceitar os três, e repetir a `idempotency_key` com outra estrutura é 409
+  `idempotency_conflict`.
+- **Desligada**, qualquer um dos três é 422 `colaboracao_desligada` na criação e um `bloqueio` na prévia.
+- **Ligada**, a prévia e a criação conferem o mesmo (a prévia não grava) e recusam com 422 `{code, message, campo}`:
+  `pai_inexistente`, `pai_terminal`, `profundidade_excedida` (padrão 2: o neto), `filhos_demais` (padrão 5),
+  `porta_voz_duplicado` (um por família), `dependencia_fora_da_familia` (só o pai ou um irmão), `ciclo`, `linhagem`,
+  `orcamento_do_pai`, `papel_invalido`, `tipo_de_dependencia_invalido` e `dependencia_duplicada`. O filho DECLARA o
+  `orcamento_total_usd` dele, reservado do pai: gasto do pai + totais dos filhos não passam do total do pai. `ciclo` e
+  `linhagem` quase só se alcançam no domínio na F1 (o `pai_id` é imutável e um pedido novo não tem quem aponte para ele).
+- **`PedidoView`** ganha `papel` (`null` = pedido comum). **`GET /api/pedidos/{id}`** ganha `filhos: [{id, titulo, estado,
+  papel}]` e `dependencias: [{de, para, tipo}]` (as do pedido e as dos filhos dele).
+- **`POST /api/pedidos/{id}/cancelar`**: os descendentes ainda vivos são cancelados junto, na mesma transação; a confirmação
+  (`execucoes_em_curso`, `ocorrencias_futuras`) já os conta e a resposta ganha `filhos_cancelados`.
+- **Pai encerrado pelo sistema** (prazo, contagem, orçamento, abandono): os filhos vivos vão a `encerrado` com o novo
+  `encerrado_motivo: "pai"`, depois do commit do pai, com os eventos `pedido.updated` de sempre. O laço não muda e nada
+  disto segura ou limita uma ocorrência (dependência no laço é a F2; papel limitando a autonomia, a F3).
+
+Prova:
+- `simulated`: `backend/tests/test_pedidos_colaboracao_dominio.py` e `test_pedidos_colaboracao_api.py`.
+- `not_run`: PostgreSQL e o central depois do deploy.

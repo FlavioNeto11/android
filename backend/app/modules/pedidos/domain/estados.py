@@ -19,7 +19,8 @@ Uma transição de um estado para ele mesmo nunca é permitida (`pode(x, x)` é 
 
 Lacunas conhecidas da tabela do PEDIDO, todas deixadas como o §6.2 as escreve (quem precisar abre a aresta e testa):
 `aguardando_pessoa` só sai para `ativo` ou `cancelado`, então um `fim_em` que passa com o pedido esperando a pessoa
-não o encerra sozinho (28.4/28.5 decidem se o encerramento por prazo vale também aí); e `pausado` não vai para
+não o encerra sozinho (28.4/28.5 decidem se o encerramento por prazo vale também aí; a 28.10 F1 abriu a aresta
+`aguardando_pessoa → encerrado`, e a `rascunho → encerrado`, SÓ para a cascata do pai encerrado: o laço não as percorre); e `pausado` não vai para
 `aguardando_pessoa` (a pergunta só nasce de uma ocorrência em curso, e pausado não materializa).
 
 Puro: stdlib e `app.modules.execution.domain.states` (a classe da tabela). Sem banco, sem `app.models`.
@@ -49,7 +50,9 @@ ATORES: frozenset[str] = frozenset({ATOR_PESSOA, ATOR_SISTEMA})
 
 #: Motivo do `encerrado` (§6.5). `concluido` e `cancelado` já dizem o motivo pelo próprio estado (critério
 #: comprovado; gesto da pessoa); `abandonado` é o pausado há mais de `abandono_dias` sem gesto.
-MOTIVOS_DE_ENCERRAMENTO: tuple[str, ...] = ("prazo", "contagem", "orcamento", "abandonado")
+#: `pai` (28.10, F1): o pedido pai terminou (`encerrado`) e leva os filhos com ele (§9: "o pai encerra os filhos quando
+#: encerra"). O texto "o pedido pai foi encerrado" vai no motivo das ocorrências canceladas.
+MOTIVOS_DE_ENCERRAMENTO: tuple[str, ...] = ("prazo", "contagem", "orcamento", "abandonado", "pai")
 
 
 class TransicaoInvalida(ValueError):
@@ -82,6 +85,11 @@ PEDIDO_ATORES: Mapping[tuple[str, str], frozenset[str]] = MappingProxyType({
     # `fim_em` passou, `max_ocorrencias` atingido, orçamento total gasto, ou abandono (§6.5).
     ("ativo", "encerrado"): _S,
     ("pausado", "encerrado"): _S,
+    # 28.10 F1: SÓ a cascata do pai encerrado (`acoes.encerrar_filhos`, motivo `pai`). Um filho em rascunho ou esperando a
+    # pessoa precisa de um caminho para o mesmo destino do pai; sem estas duas arestas ele ficaria vivo sob um pai morto.
+    # Nenhuma outra parte do sistema as percorre.
+    ("rascunho", "encerrado"): _S,
+    ("aguardando_pessoa", "encerrado"): _S,
     # A execução em curso recebe o cancelamento de sempre (`RunService.cancel`).
     ("rascunho", "cancelado"): _P,
     ("ativo", "cancelado"): _P,

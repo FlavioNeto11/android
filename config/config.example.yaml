@@ -674,6 +674,11 @@ pedidos:                          # pedidos persistentes (28.4): o objetivo que 
   retentativa_teto_s: 900         # ... no máximo isto (o laço pode levar até tick_s a mais)
   piso_observar_s: 900           # menor intervalo entre ocorrências de pedido `observar` ou `preparar` (28.9): 15 min
   piso_agir_s: 3600               # idem para `agir` (efeito externo): 1 h
+  colaboracao:                    # colaboração entre pedidos (28.10, F1): pai, filhos, dependências e papéis; só a ESTRUTURA
+    enabled: false                #   DESLIGADA de fábrica: a API recusa `pai_id`, `papel` e `dependencias` (422 `colaboracao_desligada`).
+                                  #   Ligada, valida e grava; o laço ainda não olha para isso (dependência no laço é a F2)
+    max_profundidade: 2           #   níveis contando o pai: 2 = pai → filhos (2 a 4)
+    max_filhos: 5                 #   filhos diretos de um mesmo pai (1 a 20)
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço

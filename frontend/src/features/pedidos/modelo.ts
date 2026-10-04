@@ -74,7 +74,7 @@ export const ROTULO_DA_SOBREPOSICAO: Record<Sobreposicao, string> = {
 
 export const ROTULO_DO_ENCERRAMENTO: Record<MotivoDeEncerramento, string> = {
   prazo: 'Chegou ao prazo', contagem: 'Chegou ao número de ocorrências', orcamento: 'Gastou o orçamento',
-  abandonado: 'Ficou abandonado',
+  abandonado: 'Ficou abandonado', pai: 'O pedido pai terminou',
 };
 
 /** Os avisos informativos (a caixa de avisos) e, entre parênteses no contrato, os que vão para as Pendências. */

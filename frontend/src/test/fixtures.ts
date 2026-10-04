@@ -289,7 +289,7 @@ export function makePedido(over: Partial<PedidoView> = {}): PedidoView {
     alvos: null, autonomia: 'observar', fuso: 'America/Sao_Paulo', inicio_em: null, fim_em: null, max_ocorrencias: null,
     orcamento_total_usd: null, orcamento_ocorrencia_usd: null, sobreposicao: 'pular', janela_recuperacao_s: null, coalescer: true,
     max_tentativas: 2, pausa_por_falha: 3, estado: 'ativo', versao: 1, proxima_em: '2026-10-03T11:00:00Z', criado_por: 'ana',
-    pausado_motivo: null, encerrado_motivo: null, pai_id: null, criado_em: '2026-10-01T10:00:00Z', atualizado_em: '2026-10-02T10:00:00Z',
+    pausado_motivo: null, encerrado_motivo: null, pai_id: null, papel: null, criado_em: '2026-10-01T10:00:00Z', atualizado_em: '2026-10-02T10:00:00Z',
     gatilhos_resumo: [{ tipo: 'recorrencia', descricao: 'Todo dia às 08:00 (America/Sao_Paulo)' }],
     personas: [{ profile_id: 'p1', nome: 'Ana Lima' }], proxima_local: '2026-10-03 08:00 -03:00', ultima_ocorrencia: null,
     ocorrencias_por_estado: {}, gasto_usd: 0, orcamento_usado: null, avisos_nao_lidos: 0,

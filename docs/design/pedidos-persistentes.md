@@ -456,6 +456,41 @@ o espaçamento e os limites são código; a IA entra no plano e na leitura de ca
     nunca se citam como terceiros, nunca aparecem como vozes distintas na mesma conversa. É o comportamento
     inautêntico coordenado da política da Meta e a campanha coordenada que o ADR-050 já recusa.
 
+### 9.1 Fatia F1 (28.10, 04/10/2026): só a estrutura
+
+Entregue, desligada de fábrica (`pedidos.colaboracao.enabled: false`) e SEM efeito no laço (`laco.py` não muda):
+
+- **Forma:** migração 096. `pedido_dependencias(de, para, tipo, criado_em)`, chave `(de, para)`, índice por `para`;
+  **`para` depende de `de`**. `pedidos.papel` (`pesquisador`, `checador`, `redator`, `porta_voz`; NULL = comum) e índice
+  sobre `pai_id` (da 067). Sem FK e sem CHECK: as regras são do domínio (`domain/colaboracao.py`, puro).
+- **Limites na config** (`pedidos.colaboracao`): `max_profundidade: 2` (pai → filhos; o neto é recusado) e `max_filhos: 5`.
+- **Recusas na criação e na prévia** (422, o mesmo caminho do `_montar`): `colaboracao_desligada`, `pai_inexistente`,
+  `pai_terminal` (`concluido`, `encerrado`, `cancelado`), `profundidade_excedida`, `filhos_demais`, `porta_voz_duplicado` (um
+  por família), `dependencia_fora_da_familia` (só o pai ou um irmão), `ciclo`, `linhagem` e `orcamento_do_pai`. Também
+  `papel_invalido`, `tipo_de_dependencia_invalido` e `dependencia_duplicada`. A conferência roda de novo dentro da
+  transação da criação, com o banco travado (dois filhos juntos não passam do limite).
+- **Orçamento:** o `orcamento_total_usd` do filho é RESERVADO do pai e nunca soma: gasto do próprio pai + totais dos filhos
+  não passam do total do pai. O filho DECLARA o seu (sem declarar, `orcamento_do_pai`), com ou sem total no pai. Só a
+  criação reserva: o orçamento em tempo de execução do pai (`laco._situacao_do_orcamento`) ainda não desconta a reserva
+  dos filhos (F2).
+- **Leitura:** `PedidoView.papel`; o detalhe ganha `filhos: [{id, titulo, estado, papel}]` e `dependencias: [{de, para,
+  tipo}]`. A estrutura nasce com o pedido: o `PATCH` não muda `pai_id`, `papel` nem dependências. Repetir a
+  `idempotency_key` com outra estrutura é `idempotency_conflict`.
+- **O pai leva os filhos:** cancelar o pai (pessoa) cancela, na MESMA transação, os descendentes que ainda vivem (as
+  `prevista`/`devida` deles viram `cancelada`, "o pedido pai foi cancelado"; a confirmação e a resposta contam os filhos). O
+  pai ENCERRADO pelo sistema (prazo, contagem, orçamento, abandono) leva os filhos a `encerrado` com o motivo novo `pai`
+  ("o pedido pai foi encerrado"). Como o `laco.py` não muda, a cascata roda no funil de publicação
+  (`PedidosApi.publicar`), DEPOIS do commit do pai: idempotente, e a próxima marca do pai repete se uma queda deixar filhos
+  vivos. A execução que já roda num filho termina sozinha. Duas arestas novas na tabela do pedido, só para isto:
+  `rascunho → encerrado` e `aguardando_pessoa → encerrado` (ator `sistema`); o laço não as percorre.
+- **Sem tela:** o painel só ganhou os tipos (`papel`, `filhos`, `dependencias`) e o rótulo do motivo `pai`.
+
+Fica para as próximas fatias: **F2** (a ocorrência do filho só fica `devida` com a dependência comprovada, e o laço
+desconta a reserva dos filhos do orçamento do pai), **F3** (o papel limita as capacidades e a autonomia no plano da
+ocorrência e a escolha de persona), **F4** (consolidação: o pai lê observações e memória dos filhos, e o conflito vai ao
+relatório) e **F5** (as regras para fora: uma conta por alvo no pedido inteiro, `approval_required` para pessoa real e a
+proibição de apoio simulado).
+
 ## 10. Recursos e custo (26.6)
 
 | Recurso | Regra proposta | Existe hoje |
