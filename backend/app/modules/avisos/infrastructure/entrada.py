@@ -1225,7 +1225,15 @@ class ConversaDoCanal:
     # ------------------------------------------------------------------ a porta do plano (28.27)
     async def _ver_planos(self, saida: SaidaDaConversa) -> None:
         """O vigia das execuções que o Executar criou só de plano. Pronto o plano, lê a porta; a execução que seguiu ou
-        parou sem ela (pergunta, falha, cancelada por fora) vai ao desfecho de sempre."""
+        parou sem ela (pergunta, falha, cancelada por fora) vai ao desfecho de sempre. O gesto de iniciar é do dono (foi
+        o Executar dele): o operador do canal vale aqui como em `_tratar`."""
+        token = OPERADOR.set(self.operador)
+        try:
+            await self._ver_planos_como_dono(saida)
+        finally:
+            OPERADOR.reset(token)
+
+    async def _ver_planos_como_dono(self, saida: SaidaDaConversa) -> None:
         for linha in self.repo.planejando():
             previa = _json(linha.get("previa"))
             if previa.get("fase") != FASE_PLANEJANDO:

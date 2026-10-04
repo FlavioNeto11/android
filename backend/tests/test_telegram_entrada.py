@@ -26,6 +26,7 @@ from app.modules.avisos.infrastructure.entrada import (
     RESPOSTA_CREDENCIAL,
     RESPOSTA_CREDENCIAL_SEM_APAGAR,
     Pendencia,
+    PlanoMudou,
     Previa,
     Recebida,
     RecusaDaCentral,
@@ -115,6 +116,13 @@ class PortasFalsas:
         self.sensivel_quebra = False
         self.recusar_previa: str | None = None      # 28.28: o texto da recusa da prévia (o "sem destino" do extrator)
         self.personas: list[str] = []               # 28.28: os nomes que a conversa tira do que manda
+        # 28.27: a execução do Executar nasce só de plano; o vigia lê o estado e a prévia da porta.
+        self.estados: dict[str, str | None] = {}    # run_id → status (sem entrada: `running`)
+        self.previa_da_porta: dict[str, object] = {"itens": [], "total": False, "parcial": False}
+        self.porta_quebra = False
+        self.mudou: list[dict[str, object]] | None = None     # o próximo `aprovar_plano` dá 409 `plano_mudou`
+        self.recusar_aprovar: str | None = None
+        self.imagens: dict[str, tuple[bytes, str]] = {}
 
     def nomes_de_persona(self) -> list[str]:
         return list(self.personas)
@@ -159,11 +167,44 @@ class PortasFalsas:
                           comando=texto)
         return Previa(alvos=list(self.alvos), perguntas=list(self.perguntas), comando=texto)
 
-    def criar(self, texto: str, alvos: list[dict[str, object]], chave: str) -> tuple[str, str]:
+    def criar(self, texto: str, alvos: list[dict[str, object]], chave: str, modo: str = "execute") -> tuple[str, str]:
         self._anota("criar", texto, chave)
+        self.modo_criado = modo
         if self.recusar_criar:
             raise RecusaDaCentral("Nenhum aparelho apto no pré-voo.")
+        self.estados["r-20261003180000-abc123"] = "planned" if modo == "plan" else "running"
         return "r-20261003180000-abc123", "abc123"
+
+    def estado_da_execucao(self, run_id: str) -> str | None:
+        return self.estados.get(run_id, "running")
+
+    def porta(self, run_id: str) -> dict[str, object]:
+        self._anota("porta", run_id)
+        if self.porta_quebra:
+            raise RecusaDaCentral("sem plano")
+        return dict(self.previa_da_porta)
+
+    def aprovar_plano(self, run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+        self._anota("aprovar_plano", run_id, tuple(aprovar))
+        if self.mudou is not None:
+            mudaram, self.mudou = self.mudou, None
+            raise PlanoMudou("mudou", dict(self.previa_da_porta), mudaram)
+        if self.recusar_aprovar:
+            raise RecusaDaCentral(self.recusar_aprovar, "invalid_state")
+        self.estados[run_id] = "running"
+        return {"run": {"id": run_id}, "aprovacoes": [f"apr-{i}" for i, _ in enumerate(aprovar)], "tiradas": [],
+                "validade_ate": "2026-10-05T22:40:00Z"}
+
+    def iniciar(self, run_id: str) -> None:
+        self._anota("iniciar", run_id)
+        self.estados[run_id] = "running"
+
+    def cancelar(self, run_id: str) -> None:
+        self._anota("cancelar", run_id)
+        self.estados[run_id] = "cancelled"
+
+    def imagem_da_etapa(self, run_id: str, step_id: str) -> tuple[bytes, str] | None:
+        return self.imagens.get(step_id)
 
     def online(self) -> list[str]:
         return ["android-09", "android-10"]
@@ -316,12 +357,15 @@ async def test_para_mostra_previa_com_botoes_e_executar_cria_uma_vez(c: Cenario)
     assert previa["reply_parameters"] == {"message_id": 50, "allow_sending_without_reply": True}
     mid_previa = c.bot.mid
     await c.volta(botao(6, f"x:{linha['id']}", mid=mid_previa))
-    nome, args, operador = c.portas.chamadas[-1]
+    nome, args, operador = next(x for x in c.portas.chamadas if x[0] == "criar")
     assert (nome, args, operador) == ("criar", ("abrir o QA Messenger no android-09", "telegram:5"),
                                       OPERADOR_DO_TELEGRAM)
+    assert c.portas.modo_criado == "plan"
+    # 28.27: nada pede o sim do dono no plano (N = 0): o vigia inicia com `aprovar=[]` na mesma volta, uma linha só.
+    assert c.portas.chamadas[-1] == ("aprovar_plano", ("r-20261003180000-abc123", ()), OPERADOR_DO_TELEGRAM)
     linha = c.linha(5)
     assert (linha["estado"], linha["run_id"]) == ("feita", "r-20261003180000-abc123")
-    assert any("Execução abc123 criada" in t for t in c.bot.textos())
+    assert any(t.startswith("Execução abc123 iniciada: o plano não tem aprovação pendente.") for t in c.bot.textos())
     assert c.bot.chamou("answerCallbackQuery") == 1 and c.bot.chamou("editMessageReplyMarkup") == 1
     # O segundo toque no mesmo botão não cria de novo.
     await c.volta(botao(7, f"x:{linha['id']}", mid=mid_previa))
