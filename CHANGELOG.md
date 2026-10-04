@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.70: no modo Automático, a tarefa só de app sem conta vai para aparelho sem conta (branch fix/29-70-qa-no-automatico)
+
+- Visto no central: "No QA Messenger, abra a lista de conversas e leia o nome do primeiro contato" sugeriu a persona
+  de conta real do android-01. `_app_do_comando` deixa de fora o app sem conta citado sozinho; com os apps vazios,
+  toda persona com aparelho apto virava candidata e a IA escolhia pelo perfil.
+- Agora o modo Automático usa os apps citados quando `_app_do_comando` vem vazio. Ninguém tem conta no app de QA,
+  então a tarefa vai por `previa_sem_conta`: aparelhos com o app (principal ou sabidamente pronto: no central o QA
+  está pronto em todos e não é principal de nenhum), e o de conta real logada só entra se nenhum sem conta estiver
+  apto. A prévia diz isso nos dois sentidos. App de conta e app sem conta no mesmo pedido seguem por persona.
+- Prova `simulated`: `test_automatico_app_sem_conta.py` (4, mutação conferida: sem o conserto, 2 falham), mais
+  `test_orquestracao.py`, `test_roteamento_por_conjunto_de_apps.py` e os de distribuição. Sem DDL. Real: `not_run`.
+
 ## 2026-10-04 — 30.48: a prova de fluxo com `for_each` roda uma amostra (branch feat/30-48-prova-por-amostra)
 
 - O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 (lv-5cf7389f13e4e0f0 fechou
