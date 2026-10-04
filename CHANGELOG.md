@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.46: o curador do Livro vai sem ponto de cache (branch feat/30-46-cache-curador)
+
+- Medido no central de 03/10 12:00Z a 04/10 08:07Z: 45 pareceres, 45 gravações de cache (77 221 tokens) e 0 leitura.
+  O esquema da saída entra no prefixo e leva os citáveis e os alvos de cada item, então o prefixo nunca se repete.
+- `review_knowledge` passa `cachear=False`: a mesma entrada sai a 1x, no lugar de 1,25x. As outras chamadas não mudam.
+  Reler exigiria trocar o esquema (`curador-v1`), e isso fica para decisão à parte.
+- Prova `simulated`: `test_curador_do_hub.py`, 1 teste novo com mutação conferida; 35 testes do provedor e do curador
+  aprovados.
+
 ## 2026-10-04 — 31.30: o prefixo do plano fica 1 h no cache (branch feat/31-30-cache-1h-do-plano, sem migração)
 
 - Leitura (ai_calls do central, somente leitura): o planejador é ~2,8 s fixos mais ~3,6 ms por token de saída, e a

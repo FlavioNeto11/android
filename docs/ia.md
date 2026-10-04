@@ -142,6 +142,20 @@ só compensaria acima de ~4096 tokens e o Haiku sem cache ainda sai mais barato 
 
 Conclusão `real`: **o cache do verificador funciona** (`cache_read > 0` na 2ª chamada) em Sonnet 5 e Opus 5.5 e é **inerte só no Haiku 4.5**, cujo mínimo (4096) é maior que o prefixo (~1 290). As 49 verificações de 25/09 com `cache_read=0` eram Haiku. Mesmo assim o Haiku sem cache (US$ 0,0016 por verificação) custa menos que o Sonnet com cache (US$ 0,0020 a partir da 2ª): trocar o modelo do verificador só para cachear não compensa neste tamanho; a medição não muda o padrão. Os ids das requisições não são expostos pelo caminho `verify` (só o uso de tokens).
 
+**Curador do Livro sem ponto de cache (30.46, 04/10).**
+- A medida, no central, de 03/10 12:00Z a 04/10 08:07Z:
+  - 45 pareceres, 45 gravações de cache (1678 a 1803 tokens, 24 tamanhos distintos) e nenhuma leitura, mesmo com
+    pareceres a 4 s um do outro;
+  - o plano da execução, de esquema fixo, releu em 22 de 31 chamadas no mesmo período.
+- A causa: o esquema da saída entra no prefixo cacheado (system + esquema), e o do curador leva os citáveis e os alvos
+  DO ITEM (`esquema_do_parecer`). O prefixo muda a cada parecer.
+- O conserto barato: o curador vai sem `cache_control` (`cachear=False`). Paga 1x a entrada no lugar de 1,25x pela
+  gravação inútil, com o mesmo template e o mesmo esquema.
+- Para RELER, seria preciso tirar os enums do item do esquema, deixando a validação do aprendizado recusar o id
+  inventado. Isso muda o template (`curador-v1`) e a base da avaliação da Jev, então não entrou.
+- Prova `simulated`: `backend/tests/test_curador_do_hub.py::test_anthropic_curador_vai_sem_ponto_de_cache_30_46`.
+  A prova `real` é o próximo parecer com `cache_write = 0`.
+
 ## 6. Limites
 
 | Limite | Onde | Nível |
