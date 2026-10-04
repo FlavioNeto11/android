@@ -168,7 +168,7 @@ class AnthropicProvider:
         # subcontava os tokens: o ator dava 706 pela conta contra um prefixo real de 6 091 tokens, e o Sonnet 5
         # (mínimo 1024) e o Haiku 4.5 (4096) saíam sem `cache_control` — medido em 24/09: 46 decisões com
         # cache_read = cache_write = 0 e o dobro de tokens de entrada por decisão.
-        cache: dict[str, Any] = {"type": "ephemeral"}
+        cache: dict[str, str] = {"type": "ephemeral"}
         if cache_ttl and cache_ttl != "5m":
             cache["ttl"] = cache_ttl
         bloco: dict[str, Any] = {"type": "text", "text": system, "cache_control": cache}
