@@ -3465,6 +3465,9 @@ async def put_server_limits(request: Request, worker_id: str, body: ServerLimits
             raise err(400, exc.code, exc.message) from exc
         # Aplica na hora no agente conectado; desconectado, recebe na próxima conexão (primeira batida).
         await s.workers.enviar_limites(worker_id)
+        # As vagas efetivas estão no `WorkerDTO` (29.82): sem o evento, o painel seguia com as antigas até a próxima
+        # mudança observável daquela máquina.
+        s._publish_worker(worker_id)
     s.scheduler.wake()
     return next(x for x in _limites_dos_servidores(s) if x.worker_id == worker_id)
 

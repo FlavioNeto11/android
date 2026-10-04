@@ -13,6 +13,7 @@ O que estes testes travam:
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -222,8 +223,17 @@ async def test_api_lista_e_muda_limites_do_host_e_do_worker(tmp_path: Path) -> N
             assert r.json()["effective"]["max_slots"] == 8 and r.json()["effective"]["max_working"] == 2
             assert any(m["type"] == "limits" and m["max_slots"] == 8 for m in agente.enviados)
 
+            # 29.82: o WorkerDTO traz as vagas que valem (o decidido) ao lado do declarado, e a mudança vira evento.
+            dto = next(w for w in (await c.get("/api/workers")).json() if w["id"] == WORKER)
+            assert (dto["max_slots"], dto["effective_max_slots"]) == (6, 8)
+            do_worker = [d["worker"] for d in (json.loads(r["data"]) for r in h.state.db.query(
+                "SELECT data FROM events WHERE kind='worker.updated' ORDER BY id")) if d["worker"]["id"] == WORKER]
+            assert do_worker and do_worker[-1]["effective_max_slots"] == 8
+
             r = await c.put(f"/api/servers/{WORKER}/limits", json={"max_slots": None})
             assert r.json()["effective"]["max_slots"] == 6 and r.json()["decided"]["max_slots"] is None
+            dto = next(w for w in (await c.get("/api/workers")).json() if w["id"] == WORKER)
+            assert (dto["max_slots"], dto["effective_max_slots"]) == (6, 6)
 
             r = await c.put(f"/api/servers/{host}/limits", json={"max_slots": 5, "boot_parallelism": 3,
                                                                   "max_working": 4})

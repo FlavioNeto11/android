@@ -1461,7 +1461,12 @@ class WorkerDTO(BaseModel):
     accel: str | None = None
     appium_mode: str = "central"
     appium_url: str | None = None
+    #: O que a máquina DECLAROU no `hello` (o `worker.yaml` dela).
     max_slots: int = 1
+    #: 29.82: as vagas que valem — o que o dono decidiu no painel (`worker_limits`), ou o declarado sem decisão. É o
+    #: mesmo teto do agendador (`WorkerRegistry.capacidade`); comparar a ocupação com `max_slots` acusava "9 ligados
+    #: para 6 vagas" numa máquina com 9 decididas. `None` = backend de antes do 29.82.
+    effective_max_slots: int | None = None
     verbs: list[str] = []
     state: str                                  # online | offline | degraded | maintenance
     observed_state: str

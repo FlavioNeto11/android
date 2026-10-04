@@ -24,7 +24,8 @@ import type { Destino } from './ui';
  * - **selecionados**: ids selecionados que ainda são aparelhos de tarefa, de `total`.
  * - **vagas**: por servidor, nunca somadas no parque (a soma escondia um servidor acima da capacidade atrás da folga
  *   de outro). Ocupa vaga o que come RAM: `online`, `booting`, `stopping` (a loja também, se ligada). A vaga do
- *   central é `max_online_devices`; a de cada worker, `max_slots`.
+ *   central é `max_online_devices`; a de cada worker, `effective_max_slots` (o decidido no painel, senão o
+ *   `max_slots` declarado).
  * - **aguardando você**: NÃO mora aqui. É o total da caixa de Pendências (`features/pendencias/usePendencias`, decisão
  *   D1 da revisão de UX): aprovações do Aprendizado e de persona, intervenções em sessão e execuções em `needs_input`.
  *   O chip do topo, o semáforo e o selo do menu leem o mesmo `usePendencias().total`.
@@ -145,7 +146,8 @@ export interface Ocupacao {
 }
 
 export function ocupacaoDoServidor(instancias: readonly Instance[], worker: Worker | null): Ocupacao {
-  const vagas = worker?.max_slots ?? instancias.length;
+  // As vagas que valem (29.82): o decidido no painel ganha do declarado no `worker.yaml`.
+  const vagas = worker?.effective_max_slots ?? worker?.max_slots ?? instancias.length;
   if (worker && !worker.local && !worker.connected) return { ocupadas: null, vagas, acima: false };
   const ocupadas = vagasOcupadas(instancias, worker?.devices);
   return { ocupadas, vagas, acima: vagas > 0 && ocupadas > vagas };

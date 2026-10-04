@@ -946,6 +946,9 @@ class WorkerRegistry:
             agent_outdated=self._defasado(row), accel=self.aceleracao.get(row["id"]),
             appium_mode=row["appium_mode"], appium_url=row["appium_url"],
             max_slots=row["max_slots"], verbs=loads(row["verbs"]) or [],
+            # A mesma regra de `capacidade`: o decidido manda, senão o declarado.
+            effective_max_slots=max(1, int(self.limites_definidos(row["id"]).get("max_slots")
+                                           or row["max_slots"] or 1)),
             # `maintenance` ganha do estado observado na EXIBIÇÃO, mas os dois ficam no DTO: um worker em
             # manutenção continua online, e esconder isso atrapalharia quem está diagnosticando.
             state="maintenance" if row["maintenance"] else row["state"],

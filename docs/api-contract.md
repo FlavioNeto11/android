@@ -5871,3 +5871,16 @@ Sem migração. Muda a v1.26 e a rota `POST .../trello`.
   `pode_ir_ao_cartao` passa a exigir também um mime da lista `avisos.entrada.anexos.tipos`.
 - `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
   `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.
+
+## Adendo (04/10/2026; número a definir pela orquestradora; item 29.82) — o worker traz as vagas que valem
+
+Sem migração. Muda o `Worker` da v0.8 (`GET /api/workers`, `GET /api/workers/{id}`, snapshot e `worker.updated`).
+- `effective_max_slots: number | null`: as vagas que valem naquela máquina, a mesma regra do agendador
+  (`WorkerRegistry.capacidade`): o `max_slots` decidido no painel (`worker_limits`), ou o declarado sem decisão.
+  `max_slots` segue sendo o que a máquina declarou no `hello`. Ausente = backend de antes do 29.82.
+- `PUT /api/servers/{worker_id}/limits` num worker remoto passa a emitir `worker.updated` com o DTO novo, para o painel
+  trocar as vagas sem esperar outra mudança daquela máquina.
+- O painel compara a ocupação com `effective_max_slots ?? max_slots` (`frontend/src/store/metricas.ts`).
+- **Prova:** `simulated` (`backend/tests/test_limites_por_servidor.py::test_api_lista_e_muda_limites_do_host_e_do_worker`,
+  `frontend/src/store/metricas.test.ts`, caso 29.82). `not_run`: o topo e a Infraestrutura do central com o notebook em
+  9 ligados, 9 decididas e 6 declaradas, depois do deploy.

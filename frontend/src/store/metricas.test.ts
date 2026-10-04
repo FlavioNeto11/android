@@ -128,6 +128,16 @@ describe('vagas por servidor', () => {
     expect(lan).toMatchObject({ ocupadas: null, vagas: 6, acima: false });
   });
 
+  it('29.82: as vagas são as decididas no painel, não as declaradas — 9 ligados, 9 decididas, 6 declaradas', () => {
+    const nove = Array.from({ length: 9 }, (_, k) =>
+      makeInstance(20 + k, { state: 'online', worker_id: LAN, kind: 'external' }));
+    const lan = ocupacoesDoParque(nove, workers({ max_slots: 6, effective_max_slots: 9 })).find((o) => o.id === LAN);
+    expect(lan).toMatchObject({ ocupadas: 9, vagas: 9, acima: false });
+    // Backend de antes do 29.82 (sem `effective_max_slots`): segue o declarado, como antes.
+    const antigo = ocupacoesDoParque(nove, workers({ max_slots: 6 })).find((o) => o.id === LAN);
+    expect(antigo).toMatchObject({ ocupadas: 9, vagas: 6, acima: true });
+  });
+
   it('as vagas nunca se somam no parque: cada servidor com a sua', () => {
     const o = ocupacoesDoParque(parque(), workers());
     expect(o.map((x) => [x.nome, x.ocupadas, x.vagas])).toEqual([
