@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.24 F3: a IA lê a imagem que o dono mandou (branch canais/28-24-f3-ler-imagem, PR #286)
+
+- `/ler` (ou "leia", "o que tem nessa imagem") em reply a uma foto do dono no Telegram, e `POST /api/canais/anexos/{id}/ler`
+  com confirmação: a IA descreve a imagem, só anexo de entrada do dono e só imagem, uma chamada por imagem (a descrição fica
+  em `canal_anexos`, migração 103; a segunda leitura custa 0), estimativa de custo ANTES da chamada com teto de US$ 0,05
+  (`avisos.entrada.anexos.leitura.teto_usd`), modelo mais barato com visão (Haiku, ~US$ 0,003 por 720x1280), descrição pelo
+  redator de credencial, custo em `ai_calls` com `origem='canais'` (tokens x `ai.prices`). Adendo v1.25.
+- `.claude/canais/telegram_status.py` grava a mensagem que manda ao dono em `canal_enviadas` (`origem='ana'`), pelo repositório
+  do produto; se a gravação falha, o envio segue. A nota do achado (b) (endurecer o "sim" em reply a aviso antigo) entrou em
+  C-04 como "não adotado".
+- Prova `simulated`: `backend/tests/test_canais_leitura_anexo.py` (17), `test_canais_script_status.py` (3), e os testes de
+  anexos, conversa, entrada, provider e origem sem regressão. A chamada paga real ao provedor é `not_run` (a Canais valida depois do deploy).
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão

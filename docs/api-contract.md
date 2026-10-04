@@ -5410,6 +5410,26 @@ Prova:
 - `simulated`: `backend/tests/test_teto_de_autonomia.py` (os três níveis e o nulo).
 - `not_run`: PostgreSQL e o central depois do deploy.
 
+## Adendo v1.25 (04/10/2026; número da orquestradora; item 28.24, F3) — a IA lê a imagem que o dono mandou
+
+Migração `103_canal_anexos_descricao` (só `ADD COLUMN` em `canal_anexos`: `descricao`, `lida_em`, `modelo_leitura`, `custo_usd`,
+`tokens_entrada`, `tokens_saida`). Os metadados do `GET /api/canais/anexos/{id}` NÃO mudam (as chaves fixas da v1.21 seguem; a
+descrição sai pela rota nova).
+
+- `POST /api/canais/anexos/{id}/ler` com `{"confirmar": true}`: a IA descreve a imagem. Atrás do mesmo login das outras rotas de
+  `/api/canais`. **200** `{anexo_id, descricao, custo_usd, do_cache, modelo}`; com a descrição já gravada, `do_cache: true`,
+  `custo_usd: 0` e nenhuma chamada ao provedor. Erros (`detail.code`): **400** `confirmacao_necessaria` (sem `confirmar: true`);
+  **404** `anexo_desconhecido`; **409** `anexo_nao_permitido` (convidado, saída ou mensagem que não é do dono), `anexo_sem_arquivo`,
+  `leitura_acima_do_teto` (a estimativa passa de `teto_usd`; nada foi enviado), `gasto_barrado` (teto do dia ou saldo da conta) ou
+  `gasto_nao_conferido`; **422** `anexo_nao_imagem` ou `imagem_grande_demais` (acima de 5 MB, o máximo do provedor); **502**
+  `ia_falhou` (nada é gravado como lido); **503** `leitura_desligada`, `sem_modelo_de_visao` ou `not_ready`.
+- Só imagem JPEG, PNG ou WEBP: o GIF não está na lista de tipos guardados (a animação é recusada no download), então não chega aqui.
+- Telegram, sem rota HTTP: `/ler`, "leia" ou "o que tem nessa imagem" em reply a uma foto do dono (intenção `ler_anexo`, fato
+  `anexo:<id>`); sem reply a um anexo, a resposta explica o formato. A resposta é a descrição mais uma linha com o modelo e o custo.
+- Config: `avisos.entrada.anexos.leitura` (`enabled`, `teto_usd` 0,05, `modelo` vazio = o mais barato com visão de `ai.prices`,
+  `max_tokens` 400). A descrição passa pelo redator de credencial dos textos do canal. O custo entra em `ai_calls` com
+  `origem='canais'` (o vocabulário de origem ganhou `canais`), por tokens x `ai.prices`.
+
 ## Adendo v1.21 (04/10/2026; número da orquestradora; item 28.24, F1) — anexos nos canais
 
 O Telegram passa a receber e a devolver arquivos (regra do dono em `docs/dominios/canais.md`, C-22). Migração `101_canal_anexos`.
@@ -5437,7 +5457,7 @@ Comportamento da conversa (sem rota nova):
   `sendDocument` para o resto; o nome no envio é `anexo-<sha>.<ext>`. A porta `SaidaComAnexos` é do canal: o Trello, que não a cumpre, recusa
   o anexo com o motivo.
 - A faxina por retenção (28.16) apaga o arquivo e a linha dos anexos vencidos, sem seguir link nem sair de `data/anexos`.
-- Config: `avisos.entrada.anexos` (`enabled`, `max_bytes`, `tipos`). A leitura da imagem pela IA não existe ainda.
+- Config: `avisos.entrada.anexos` (`enabled`, `max_bytes`, `tipos`). A leitura da imagem pela IA veio na F3 (v1.25).
 
 Complemento (F2, mesmo item):
 - **Download que falha:** a mensagem do dono e os anexos a baixar entram juntos, na mesma transação (`estado = 'pendente'`, com

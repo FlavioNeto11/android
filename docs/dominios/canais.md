@@ -60,6 +60,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 **C-04 · Ao dono, só pergunta de sim ou não.**
 - **Origem:** dono, 03/10 18:15Z.
 - **Regra:** ao dono vai só pergunta de sim ou não, e só do que é dele. Uma pergunta por mensagem ou por comentário.
+- **Endurecimento possível, não adotado (o dono pediu menos atrito):** pedir uma confirmação a mais quando o "sim" é reply a um
+  aviso de aprovação ANTIGO, ou quando já saiu outro aviso da mesma aprovação (o "sim" poderia valer para a versão
+  anterior). Hoje o "sim" em reply a qualquer aviso da aprovação a decide. Fica anotado para o caso de um "sim" decidir o que
+  não devia (achado (b) da orquestradora, 04/10).
 
 **C-05 · Nunca parada.**
 - **Origem:** dono, 03/10 18:15Z.
@@ -303,13 +307,21 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     em português simples para reenviar e a linha fica com o motivo: nenhuma falha de anexo fica calada.
   - O TEXTO de mensagem e de cartão que acompanha o anexo segue sem nome de persona, conta, e-mail, telefone ou IP. As
     exceções são só do arquivo, e só ao chat do dono (a) e ao cartão que o dono pediu (b).
-  - A leitura do conteúdo da imagem pela IA é chamada paga: só quando o dono pede, com teto por mensagem e custo
-    registrado (F2; a F1 só guarda e referencia).
+  - **A IA lê a imagem do dono (F3, 04/10):** é chamada paga, então só quando o dono pede: `/ler` (ou "leia", "o que tem nessa
+    imagem") em reply à foto dele no Telegram, ou `POST /api/canais/anexos/{id}/ler` com confirmação. Só anexo de ENTRADA do
+    dono e só imagem (JPEG, PNG, WEBP; o GIF nem é guardado). O custo é estimado ANTES (imagem no teto de tokens da API, preço
+    do modelo e `max_tokens` inteiro) e acima de `avisos.entrada.anexos.leitura.teto_usd` (US$ 0,05 por imagem) nada é
+    enviado. O modelo é o mais barato com visão de `ai.prices` (hoje o Haiku; uma imagem 720x1280 custa ~US$ 0,003). A
+    descrição fica na linha do anexo (migração 103): a segunda leitura devolve o texto sem custo e sem chamada. A descrição
+    passa pelo MESMO redator de credencial dos avisos e da conversa, ao gravar e ao devolver; o custo (tokens x `ai.prices`)
+    entra em `ai_calls` com `origem='canais'` e o gasto é conferido no hub antes. Falha da IA vira uma frase ao dono e nada é
+    gravado como lido. Não pede Executar: a resposta é só texto, nada é executado.
 - **Hoje:** nada na operação provisória.
 - **No produto:** item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, `anexos_trello.py`, o
   adaptador do Telegram, `GET /api/canais/anexos/{id}`, `POST /api/canais/anexos/{id}/trello`, `devices/captura_pontual.py`,
-  migração 101). Falta: a leitura pela IA (teto por imagem) e a tela do painel.
-- **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`, `test_canais_anexos_trello.py`, `test_canais_captura.py`);
+  migrações 101 e 103, `infrastructure/anexos_leitura.py`, `POST /api/canais/anexos/{id}/ler`). Falta: a tela do painel e a
+  prova `real` da leitura (uma chamada paga, `not_run`).
+- **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`, `test_canais_anexos_trello.py`, `test_canais_captura.py`, `test_canais_leitura_anexo.py`, `test_canais_script_status.py`);
   `not_run` com o bot, o Trello, o aparelho e o disco reais.
 
 ## 7. Arquivos locais (fora do Git) e o que guardam
