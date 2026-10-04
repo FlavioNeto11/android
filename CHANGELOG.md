@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 32.4: link do cartão do espelho sem texto derivado do pedido (branch `canais/32-4-link-sem-slug`)
+
+### Código
+- `modules/avisos/application/espelho.py`: o link do painel nos cartões do espelho leva só o id.
+  - O id de fluxo pode ser o slug do objetivo (`fluxo:ler-sem-abrir-conversas-nem-enviar-nada-`), e o quadro tem
+    convidados. Um identificador com duas ou mais palavras de 3+ letras é texto: o link abre só a tela (Aprendizado,
+    Pendências ou Pedidos), sem o item.
+  - Visto no 1º cartão do espelho, no deploy 18.
+- Prova `simulated`: `test_trello_espelho.py::test_link_do_cartao_leva_so_id_e_nunca_texto_derivado_do_pedido` e
+  105 testes de espelho, leitor e webhook.
+
 ## 2026-10-04 — Suíte 18 na main e deploy 18 no central (f1651ec8; sem migração; Trello na etapa 3)
 
 - **Integrado e implantado** (FF 02:05Z; deploy 02:06:05–02:06:41Z): #186 (29.63, esquema-modelo no harness de PG),

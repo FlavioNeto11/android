@@ -597,3 +597,26 @@ async def test_o_nome_da_ia_vem_do_contrato() -> None:
     from app.contracts.identidade import APRESENTACAO_DA_IA
 
     assert NOME_DA_IA == "ANA" and APRESENTACAO_DA_IA == "ANA, a IA Gerente de Operações da Central"
+
+
+async def test_link_do_cartao_leva_so_id_e_nunca_texto_derivado_do_pedido() -> None:
+    """32.4: o id de fluxo pode ser o slug do objetivo; o quadro tem convidados, então texto livre não vai no link."""
+    from app.modules.avisos.application.espelho import fato_de_pedido, fato_de_pendencia, fato_de_validacao
+
+    slug = "fluxo:ler-sem-abrir-conversas-nem-enviar-nada-"
+    texto = fato_de_validacao("lv-32fded52ec729464", slug, "pendente", PAINEL)
+    assert texto is not None
+    assert f"{PAINEL}/#/aprendizado?aba=aprendido" in texto.descricao
+    for palavra in ("ler", "abrir", "conversas", "enviar", "nada", "item="):
+        assert palavra not in texto.descricao, palavra
+    # id de verdade segue no link
+    for ref, esperado in (("receita:87", "item=receita:87"), ("fluxo:f1", "item=fluxo:f1"),
+                          ("fluxo:9a1c2e7b", "item=fluxo:9a1c2e7b")):
+        fato = fato_de_validacao("lv-1", ref, "pendente", PAINEL)
+        assert fato is not None and esperado in fato.descricao, ref
+    # o mesmo cuidado na pergunta e no pedido: id de execução passa, texto não
+    run = fato_de_pendencia("pergunta", "r-20261004003742-e8e49e", PAINEL)
+    assert run is not None and f"{PAINEL}/#/execucoes/r-20261004003742-e8e49e" in run.descricao
+    pedido_texto = fato_de_pedido("comentar-no-post-da-marca", "ativo", PAINEL)
+    assert pedido_texto is not None and f"{PAINEL}/#/pedidos" in pedido_texto.descricao
+    assert "#/pedidos/" not in pedido_texto.descricao
