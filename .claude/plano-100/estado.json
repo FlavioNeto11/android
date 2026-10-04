@@ -2193,16 +2193,16 @@
   },
   "12.3": {
    "id": "12.3",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Leitura real de remetente e assunto no Outlook, so leitura (sem abrir mensagem, sem Conectar), central d37043df, uma execucao por vez, chave lote:aprendizado:12.3-<ap>. android-01: r-20261004094557-d62546, 09:45:57Z a 09:46:57Z, completed; step_outputs remetente e assunto preenchidos (origem visual, leitor gemini/gemini-3.1-flash-lite, captura 0660ace5), conferidos por mim contra o recorte da evidencia 2445 (data/evidence/r-20261004094557-d62546/android-01/): iguais. US$ 0,1437. android-03: r-20261004094808-e7df7c, 09:48:08Z a 09:50:28Z, completed; remetente e assunto preenchidos (visual, mesmo leitor), conferidos contra os recortes 095012340Z e 095018574Z: iguais. US$ 0,1155. (A ebfa90 das 08:59Z no android-01 so pedia o assunto.)",
-   "blocker": "android-06: r-20261004095106-d75ef4 ficou 8 min em 'verificando a sessao em Outlook' (convidado sob pressao de CPU, load 27-37 em 2 vCPU; 'Outlook nao chegou ao primeiro plano em 60 s'; WebDriver sem AccessibilityNodeInfo); cancelada por mim as 09:59Z, US$ 0,0001. Repetir no 06 com o convidado saudavel.",
-   "grupo": "deploy22-provas",
+   "evidence": "Leitura real de remetente e assunto no Outlook, so leitura (sem abrir mensagem, sem Conectar), central d37043df, uma execucao por vez, chave lote:aprendizado:12.3-<ap>. android-01: r-20261004094557-d62546, 09:45:57Z a 09:46:57Z, completed; step_outputs remetente e assunto preenchidos (origem visual, leitor gemini/gemini-3.1-flash-lite, captura 0660ace5), conferidos por mim contra o recorte da evidencia 2445 (data/evidence/r-20261004094557-d62546/android-01/): iguais. US$ 0,1437. android-03: r-20261004094808-e7df7c, 09:48:08Z a 09:50:28Z, completed; remetente e assunto preenchidos (visual, mesmo leitor), conferidos contra os recortes 095012340Z e 095018574Z: iguais. US$ 0,1155. (A ebfa90 das 08:59Z no android-01 so pedia o assunto.) android-06: r-20261004102136-401c4c, 10:21:36Z a 10:22:36Z (central 9add9fb2, deploy 23), completed; remetente e assunto preenchidos (visual, gemini/gemini-3.1-flash-lite), conferidos por mim contra os recortes 102217568Z e 102224875Z: iguais. US$ 0,1841. Load do convidado antes 3,45 -> 3,23 (caindo), depois 1,46. A d75ef4 (09:51Z) tinha sido cancelada com o convidado sem CPU. Leitura real nos 3 aparelhos de conta (01, 03, 06).",
+   "blocker": "",
+   "grupo": "deploy22-23-provas",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T10:21:22+00:00"
+   "quando": "2026-10-04T11:09:24+00:00"
   },
   "13.1": {
    "id": "13.1",
@@ -6166,12 +6166,12 @@
    "proof": "real",
    "evidence": "Portao 1 do ensaio (PR #203 no ar pelo deploy 22, d37043df). Execucao r-20261004094430-a3b72b, chave ensaio:qa-enviar-01, android-10 (worker-lan-01, tunel 127.0.0.1:15557), 04/10 09:44:30Z a 09:45:10Z (40 s), comando 'No QA Messenger, envie para o contato QA-001 a mensagem: Ensaio portao 1 {run_id}'. Fechou cancelled com a decisao 'Ensaio so de leitura: parou antes da etapa 5 (send_message), que tem efeito fora do aparelho. Nada foi enviado.' Etapas: 1 open_app, 2 check_account, 3 open_conversation, 4 fill_message succeeded; 5 send_message (side_effect) e 6 verify_sent skipped. Provedor do QA (content query content://com.pocqa.messenger.provider/messages): 20 linhas as 09:44:21Z e 20 as 09:45:15Z, nenhuma com a3b72b. Custo US$ 0,0662 (planning.costs.spent_usd). Achado: o texto ficou DIGITADO no message_input (lido as 09:45:35Z); limpo as 09:47Z (force-stop e reabertura do app de QA) e conferido vazio as 09:47:23Z (so a dica 'Mensagem').",
    "blocker": "Ensaio para antes do commit, nao antes do preenchimento: deixa texto digitado na caixa. Ajuste pedido pela orquestradora (parar antes da primeira etapa que digita texto do efeito, com teste de campo vazio), PR para a suite 24; o ensaio do Instagram so depois do deploy 24, repetindo o portao 1. A conferencia do QA na validacao (fatia 2) ainda sem execucao de validacao real: vem pelos pedidos do #218 depois do deploy 23.",
-   "grupo": "deploy22-provas",
+   "grupo": "deploy22-23-provas",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T10:21:22+00:00"
+   "quando": "2026-10-04T11:09:24+00:00"
   },
   "30.32": {
    "id": "30.32",
@@ -6292,12 +6292,12 @@
    "proof": "real",
    "evidence": "Rastro da volta (PR #204 no ar pelo deploy 22, d37043df). O backend novo registrou a primeira linha as 09:41:03Z; a primeira volta da sombra saiu as 09:42:45.787Z, com a linha de log 'aprendizado: autopublicacao em shadow: 0 fluxo(s) avaliado(s), 0 publicaria(m), 0 caso(s) novo(s)' (data/logs/backend.log) e GET /api/aprendizado/metricas -> curador.autopublicacao.ultima_volta = {em 2026-10-04T09:42:45.787Z, modo shadow, avaliados 0, publicaria 0, marcados 0}, lido as 09:43:24Z. Sem o #204 a primeira volta esperava o intervalo inteiro.",
    "blocker": "O modo on (fatia B, #210) vai na suite 23; a liberacao segue dependendo de >= 30 casos fechados com >= 90% sem regressao.",
-   "grupo": "deploy22-provas",
+   "grupo": "deploy22-23-provas",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T10:21:22+00:00"
+   "quando": "2026-10-04T11:09:24+00:00"
   },
   "30.35": {
    "id": "30.35",
@@ -7145,54 +7145,54 @@
   "28.20": {
    "id": "28.20",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #216 (canais/28-20-orcamento-sem-efeito): parada no teto de orçamento sem commit fecha falhou; suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z). Prova real pendente com a Canais (bloco 28.12).",
+   "proof": "real",
+   "evidence": "PR #216 (canais/28-20-orcamento-sem-efeito @ 95be2ea9), suíte 23, deploy 23 em 9add9fb2. Real em 04/10/2026 no central (WIN-7S2UASNLFOP): pedido ped_bdH23ZWKXDSkln9MstvhfA (lote:canais:28.12-03, só leitura, android-10), ocorrência o05061e58d202254a, run r-20261004103500-ba5ebc. As tentativas pararam no teto (attempts.error_kind='budget'); as ações (open_url, tap, scroll, observe_screen, press_back) não tinham side_effect. A ocorrência fechou às 10:38:54Z como FALHOU, com o motivo 'sem nova tentativa: orçamento total esgotado (gastou US$ 0.3055 de US$ 0.3000)', sem 'efeito externo possível'. O pedido não foi para aguardando_pessoa (ficou encerrado, pelo max_ocorrencias=1). Antes do deploy, o mesmo caso fechava incerta: runs r-20261004090000-bbfe54 e r-20261004100000-f8722d. Simulado: test_pedidos_retentativa.py (3 testes novos).",
    "blocker": null,
-   "grupo": "orquestradora-deploy23",
-   "modelo": "fable",
-   "esforco": "high",
+   "grupo": "canais",
+   "modelo": "sessao",
+   "esforco": "P",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T10:21:51+00:00"
+   "quando": "2026-10-04T11:09:24+00:00"
   },
   "28.21": {
    "id": "28.21",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #220 (canais/28-21-resolver-incerta), migração 095_ocorrencia_resolvida; suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z). Prova real pendente com a Canais (resolver a ocorrência incerta do 28.12-02).",
+   "proof": "real",
+   "evidence": "PR #220 (canais/28-21-resolver-incerta @ 6104332e, migração 095, adendo v1.15), suíte 23, deploy 23 em 9add9fb2 (migração 095_ocorrencia_resolvida). Real em 04/10/2026 no central: o pedido ped_O_tLG52eXcmZNGB0THvIkA (lote:canais:28.12-02) estava preso em aguardando_pessoa pela ocorrência incerta oefcffa51b961548c (run r-20261004100000-f8722d). Às 10:21:07Z: POST .../ocorrencias/oefcffa51b961548c/resolver deu 200, com a ocorrência AINDA incerta e resolvida_em/resolvida_por/nota gravados; as pendências ficaram vazias; o PATCH do objetivo com selo deu 200 (versão 2); retomar deu 200, o pedido ficou ativo e a próxima ocorrência foi para 11:00Z. No painel (Chrome, ~10:24Z), a guia Ocorrências mostra 'Resolvida por panel, 07:21' com a nota. Simulado: test_pedidos_resolver_incerta.py (12) e o vitest de pedidos (66).",
    "blocker": null,
-   "grupo": "orquestradora-deploy23",
-   "modelo": "fable",
-   "esforco": "high",
+   "grupo": "canais",
+   "modelo": "sessao",
+   "esforco": "M",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T10:21:51+00:00"
+   "quando": "2026-10-04T11:09:23+00:00"
   },
   "32.5": {
    "id": "32.5",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #215 (canais/32-5-tela-canais): rota GET /api/canais/estado e tela Canais só leitura; suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z). Caminhada real da tela pendente com a Canais.",
+   "proof": "real",
+   "evidence": "PR #215 (canais/32-5-tela-canais @ a278ccb7, adendo v1.13), suíte 23, deploy 23 em 9add9fb2. Real em 04/10/2026 ~10:23Z no central (WIN-7S2UASNLFOP), no Chrome: #/canais carrega os três cartões com dado vivo e só números, horas e códigos (aviso pelo Telegram ligado, 30 enviados, sem falha; conversa desligada; Trello ligado, 7 cartões ativos e 2 arquivados, webhook e cadastro ligados, 152 entradas). Item 'Canais' no menu lateral, console sem erro. Simulado: test_canais_estado.py (19, inclusive 401 sem sessão e 405 na escrita), vitest de canais/topbar/rotas/app.integration (74).",
    "blocker": null,
-   "grupo": "orquestradora-deploy23",
-   "modelo": "fable",
-   "esforco": "high",
+   "grupo": "canais",
+   "modelo": "sessao",
+   "esforco": "M",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T10:21:51+00:00"
+   "quando": "2026-10-04T11:09:23+00:00"
   },
   "30.47": {
    "id": "30.47",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #218 (feat/30-47-pedir-validacao): rota para pedir a validação de um fluxo candidato; suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z). Prova real pendente com a Aprendizado (3 candidatos de QA, um primeiro).",
-   "blocker": null,
-   "grupo": "orquestradora-deploy23",
-   "modelo": "fable",
+   "proof": "real",
+   "evidence": "PR #218 no ar pelo deploy 23 (9add9fb2, migracao 095). POST /api/aprendizado/fluxo/no-qa-messenger-levantar-todos-os-contat/validacao em 04/10 10:23:04Z -> HTTP 201 com o pedido lv-5cf7389f13e4e0f0 (estado pendente, grupo qa, app com.pocqa.messenger, run_origem r-20261002204836-dcb516, teto US$ 0,15, review_id pedido:panel; log 'aprendizado: panel pediu a validacao de fluxo:...'). O despachante P4 leva o pedido na volta (10 min) quando o ambiente esta livre (nenhuma execucao em curso).",
+   "blocker": "A execucao da prova que o pedido gera ainda nao rodou (ambiente_ocupado); o desfecho vai no proximo resultado.",
+   "grupo": "deploy22-23-provas",
+   "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T10:21:51+00:00"
+   "quando": "2026-10-04T11:09:24+00:00"
   },
   "28.16": {
    "id": "28.16",
@@ -7223,28 +7223,158 @@
   "30.46": {
    "id": "30.46",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "curador sem cache_control (paga 1x no lugar de 1,25x); suíte 22 e deploy 22 (d37043df, 09:42Z de 04/10, migração 092; PG 189 arquivos verdes). A medida real é a queda de cache_write do curador no ai_calls, pendente com a Aprendizado.",
-   "blocker": null,
-   "grupo": "orquestradora-deploy23",
-   "modelo": "fable",
+   "proof": "real",
+   "evidence": "Curador sem cache_control (PR #206, no ar desde o deploy 22; central 9add9fb2 do deploy 23). Leitura so de ai_calls (role plan sem run_id = parecer do curador): a volta de 04/10 10:21:15Z a 10:21:43Z fez 8 chamadas claude-sonnet-5-5, todas com cache_write 0 e cache_read 0 (input 3475 a 5470 tokens). Antes, na volta de 09:06:31Z a 09:06:50Z, 6 chamadas gravavam 1678 a 1704 tokens de cache cada uma, que nenhuma chamada relia (cache_read 0).",
+   "blocker": "",
+   "grupo": "deploy22-23-provas",
+   "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T10:21:51+00:00"
+   "quando": "2026-10-04T11:09:24+00:00"
   },
   "31.34": {
    "id": "31.34",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #222 (feat/31-34-grade-cede-a-vez): a prévia da grade cede a vez à leitura da árvore; suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z). Falta o PR #228 (janela inteira da leitura, suíte 24) e o A/B real no android-04 com a Jev.",
-   "blocker": "Falta o PR #228 na suíte 24 e a medida real (A/B com e sem o Painel aberto).",
-   "grupo": "orquestradora-deploy23",
+   "evidence": "PR #222 (suíte 23) e PR #228 (a grade cede a vez durante toda a leitura da árvore); suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z). Medida real pendente: A/B no android-04 com e sem o Painel aberto.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy24",
    "modelo": "fable",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T10:21:51+00:00"
+   "quando": "2026-10-04T11:09:24+00:00"
+  },
+  "28.17": {
+   "id": "28.17",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #202 (canais/28-17-canais-como-ana @ d0139897), merge na suíte 21, deploy 21 em 32cbcd6d. Prova real em 04/10/2026 no central (WIN-7S2UASNLFOP): avisos_entregas id 28 (pedido.ocorrencia_incerta), enviado em 2026-10-04T09:01:27.567Z com o título 'ANA: Uma ocorrência de pedido terminou incerta'. O aviso anterior (id 27, 00:38:36Z, antes do deploy) ainda saía como 'Central de Aparelhos: …'. Simulado: test_telegram_roteador.py, test_telegram_entrada.py, test_trello_leitor.py, test_identidade_da_ia.py e os títulos em test_avisos_*.",
+   "blocker": null,
+   "grupo": "canais",
+   "modelo": "sessao",
+   "esforco": "M",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T11:09:24+00:00"
+  },
+  "31.33": {
+   "id": "31.33",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #219 (feat/31-33-recusa-fora-do-catalogo): pedido fora do catálogo vira recusa, não pergunta; suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z). Prova real pendente com a Jev (5 leituras só de plano).",
+   "blocker": null,
+   "grupo": "orquestradora-deploy24",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T11:09:24+00:00"
+  },
+  "31.36": {
+   "id": "31.36",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #232 (etapa de limpeza opcional), migração 098; tests/test_etapa_opcional.py (3 testes, 1 ponta a ponta); suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z). Prova real pendente: ocorrências do 28.12 depois do deploy 24.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy24",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T11:09:24+00:00"
+  },
+  "31.37": {
+   "id": "31.37",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #233 (feat/31-37-imagem-na-leitura): imagem na 1ª decisão da etapa com saidas; observe_screen e read_value fora da contagem de ciclo; suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z). Prova real pendente com a Jev (uma leitura em aparelho de QA).",
+   "blocker": null,
+   "grupo": "orquestradora-deploy24",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T11:09:24+00:00"
+  },
+  "31.35": {
+   "id": "31.35",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #224 (parte A: medida do prompt do ator e poda da barra do navegador, migração 097) e PR #226 (parte B: ações encadeadas e espera após open_url, entregue DESLIGADA); suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z).",
+   "blocker": "Falta o A/B real do ai.acoes_por_decisao (teto US$ 1,00; adota com sucesso igual e 30 % menos decisões) e a comparação de custo nas ocorrências do 28.12.",
+   "grupo": "orquestradora-deploy24",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T11:09:24+00:00"
+  },
+  "28.10": {
+   "id": "28.10",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #227 (canais/28-10-f1-colaboracao): colaboração entre pedidos, só a estrutura (F1), migração 096; suíte 24 (integ/suite-24 @ 2c7ab99e: SQLite 9377 passed em -n 6, PG dirigido 3485 passed em 170 arquivos com 2 falhas tratadas, uma correção só de teste e um intermitente verde ao repetir; front 1491) e deploy 24 no ar em 04/10 (saúde ok às 11:08:36Z, migração 098_etapa_opcional, prova de fora ok às 11:08:43Z).",
+   "blocker": "Faltam as fatias F2 a F5, uma por vez.",
+   "grupo": "orquestradora-deploy24",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T11:09:24+00:00"
+  },
+  "14.13": {
+   "id": "14.13",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #229 (feat/14-13-telemetria-fora-da-auditoria @ 7f3b735f), migração 094 (índices de events e measurements por ts e kind, IF NOT EXISTS), suíte 24. A publicação de instância que só muda telemetria volátil (resources, frame, connectivity.checked_at, stream.frame_age_s/last_frame_at, repair_pause.remaining_s) sai como instance.progress, efêmero (EPHEMERAL_KINDS), sem linha em events. Persiste instance.updated quando há mensagem, nível diferente de info, mudança na assinatura material ou controle não anunciado. O painel trata instance.progress como instance.updated (reducer.ts, live.ts). simulated: backend/tests/test_telemetria_fora_da_auditoria.py (4), test_revisao_previa.py, frontend reducer.test.ts. Real not_run: contar linhas instance.updated por hora antes e depois do deploy 24. Deploy 24: 2c7ab99e, backend no ar às 11:08:37Z, migração 098, agente 0.1.0+2c7ab99 nos dois workers.",
+   "blocker": null,
+   "grupo": "android-suite24",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T11:09:46+00:00"
+  },
+  "29.66": {
+   "id": "29.66",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #231 (fix/29-66-fontes-que-alternam @ aa85dcb1, sobre o #229), suíte 24. Causa medida no central: 1108 de 1114 alternâncias de capacidades coincidem com reinício do backend ou reconexão do worker. Fontes: abilist do ADB contra a declaração do worker, e verbos/renderer nulos de 'sem worker' antes do hello. registrar_capacidades só troca abis não vazios com observado=True (ler_capacidades); na janela do seed antes do hello, publish compara verbos e renderer com o último instance.updated gravado (lido uma vez do banco). simulated: backend/tests/test_fontes_que_alternam.py (4). Real not_run: contar alternâncias depois do deploy 24 e de um reinício do farm-central. Deploy 24: 2c7ab99e, backend no ar às 11:08:37Z, migração 098, agente 0.1.0+2c7ab99 nos dois workers.",
+   "blocker": null,
+   "grupo": "android-suite24",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T11:09:46+00:00"
+  },
+  "29.37": {
+   "id": "29.37",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "04/10/2026 10:22:11Z, máquina central, main 9add9fb2: data/avd/android-09.avd/.ini e android-10.avd/.ini (órfãos: os aparelhos 09/10 rodam no worker) movidos para data/backups/20261004-102211-avd-orfaos/ com LEIA-ME (nada apagado). data/avd de 70 GB para 61 GB; a pasta nova tem 9,8 GB. GET /api/instances dos 09/10 igual antes e depois (instantâneos inst2937-antes/depois.json); os dois seguem online no worker; /api/health ok.",
+   "blocker": "Apagar de vez a pasta movida fica com o dono (ou com a poda do 29.38, que depende do sim dele).",
+   "grupo": "android-suite24",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T11:09:46+00:00"
+  },
+  "29.67": {
+   "id": "29.67",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Diagnóstico real (leitura, 04/10, 30 h de sondas): o android-06 não tem defeito próprio, igual ao 03 em AVD e taxa de interrupções; convidado de 2 vCPU tem ~2x o irq do de 4 vCPU e sobe com a carga do host (0,04-0,07 calmo, acima de 0,10 sob suíte, 0,50 no 06 com SQLite -n 8). Correção no PR #234 (fix/29-67-irq-com-host-saturado), que entra na suíte 25: amostra de IRQ com a CPU do host acima de max_cpu_percent_before_boot não sobe nem zera irq_strikes; measurements(kind='irq') ganha host_cpu e ignorada; contador irq.amostra_ignorada. simulated: backend/tests/test_saude_do_convidado.py (2 novos). Medida de -n 6 contra -n 8 (06 ocioso): load1 mediano 1,29 contra 3,88, máximo 2,83 contra 12,29, +22 s de SQLite; regra no banco.md (commit 4ef33d7f no #234).",
+   "blocker": "A correção (PR #234) ainda não está na main: entra com a suíte 25.",
+   "grupo": "android-suite24",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T11:09:46+00:00"
   }
  },
  "rodadas": [
@@ -9204,6 +9334,73 @@
    ],
    "grupos": [
     "orquestradora-deploy23"
+   ]
+  },
+  {
+   "quando": "2026-10-04T11:09:23+00:00",
+   "itens": [
+    "32.5",
+    "28.21"
+   ],
+   "grupos": [
+    "canais"
+   ]
+  },
+  {
+   "quando": "2026-10-04T11:09:24+00:00",
+   "itens": [
+    "28.17"
+   ],
+   "grupos": [
+    "canais"
+   ]
+  },
+  {
+   "quando": "2026-10-04T11:09:24+00:00",
+   "itens": [
+    "28.20"
+   ],
+   "grupos": [
+    "canais"
+   ]
+  },
+  {
+   "quando": "2026-10-04T11:09:24+00:00",
+   "itens": [
+    "30.31",
+    "30.34",
+    "12.3",
+    "30.47",
+    "30.46"
+   ],
+   "grupos": [
+    "deploy22-23-provas"
+   ]
+  },
+  {
+   "quando": "2026-10-04T11:09:24+00:00",
+   "itens": [
+    "31.33",
+    "31.36",
+    "31.37",
+    "31.34",
+    "31.35",
+    "28.10"
+   ],
+   "grupos": [
+    "orquestradora-deploy24"
+   ]
+  },
+  {
+   "quando": "2026-10-04T11:09:46+00:00",
+   "itens": [
+    "14.13",
+    "29.66",
+    "29.37",
+    "29.67"
+   ],
+   "grupos": [
+    "android-suite24"
    ]
   }
  ]
