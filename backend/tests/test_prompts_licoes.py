@@ -53,8 +53,10 @@ SISTEMAS = {
     # Item 24.8: o exemplo vedado (código lido no Outlook) virou um exemplo permitido, e a regra de código/senha/
     # token nunca atravessar etapas entrou no texto — o hash muda de propósito, não é enfraquecimento do teste.
     # Item 24.3: a regra de `saidas` e `{{saida:<nome>}}` (valor lido numa etapa e usado nas seguintes).
-    "PLANNER_SYSTEM": "88a256ad33066ececafc6d5f0bbf11dd4129cfaa113e06565094ad6011c536fb",
-    "PLANNER_CAPABILITY_SYSTEM": "41bec0c6cc8a591ddf23bcfa28e9e6ba91074c6f05b0bbf1e7d7e1a9030c25cd",
+    # Item 29.57: os planejadores levam a regra de identidade (ANA, quando falam com a pessoa) — o hash muda de
+    # propósito; o ator e o verificador não a levam e ficam iguais.
+    "PLANNER_SYSTEM": "a0426974079c7874db7bfc23a41f4d28465c366d5167ac4b1879aa29c46dd68c",
+    "PLANNER_CAPABILITY_SYSTEM": "934ff137e14363d860716da67345518c26b1bc7e2043db629636f1d3b2754e12",
     # Item 29.58 (C): o verificador passa a contar as cópias do efeito desta execução (`copias`) — o hash muda de
     # propósito, não é enfraquecimento do teste.
     "VERIFIER_SYSTEM": "5da999c9734dcf67e15274124d1fd17486162fe44963b115c30677e8f941f7cb",

@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.57: o painel e as falas da IA à pessoa usam o nome ANA (branch feat/29-57-nome-ana, sem migração)
+
+- `contracts/identidade.py`: `REGRA_DE_IDENTIDADE`. Quando fala com a pessoa (pergunta, recusa, aviso), a IA é ANA:
+  usa o nome só quando precisa se identificar e, se perguntarem, diz que é uma IA. Não assina nem se apresenta como
+  ANA em texto que uma persona publica ou envia. Entra nos três planejadores (`IDENTITY_RULE`) e no assistente do
+  comando (`refine_system`); o ator, o verificador e o escritor social ficam como estavam (hashes iguais).
+- Painel: `lib/identidade.ts` (`NOME_DA_IA`, espelho do contrato, com teste de igualdade) em "ANA está montando o
+  plano…", "ANA precisa de mais informações…", "ANA não sabe quem deve fazer isto", "ANA está lendo o comando…" e
+  na recusa da prévia da persona ("ANA recusou escrever esta resposta: …"). Os demais rótulos "IA" ficam.
+- Prova `simulated`: `test_identidade_da_ia.py` (a regra nos quatro prompts que falam com a pessoa; nem regra, nem
+  nome, nem apresentação no escritor social, no ator e no verificador; `app/social/` não importa a identidade; o
+  painel usa o mesmo nome), `test_prompts_licoes.py` (hashes dos planejadores atualizados de propósito) e
+  `ProfileDetail.test.tsx` (recusa com o nome). Real `not_run`: nenhuma chamada paga.
+
 ## 2026-10-04 — Suíte 18 na main e deploy 18 no central (f1651ec8; sem migração; Trello na etapa 3)
 
 - **Integrado e implantado** (FF 02:05Z; deploy 02:06:05–02:06:41Z): #186 (29.63, esquema-modelo no harness de PG),

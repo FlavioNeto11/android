@@ -77,8 +77,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **Hoje:** o título do resumo (`resumo_laco.py`), a pergunta do nome (`telegram_inbox.py::PERGUNTA_DO_NOME`) e o
   prefixo dos comentários (C-07).
 - **No produto:** `backend/app/contracts/identidade.py` (`NOME_DA_IA`, `APRESENTACAO_DA_IA`); item 28.17 nos textos
-  dos canais, com um teste de que o nome não entra em prompt de conteúdo de persona; item 29.57 no painel.
-- **Prova:** `simulated` (testes do 32.2); `not_run` no painel.
+  dos canais, com um teste de que o nome não entra em prompt de conteúdo de persona; item 29.57 no painel e nas falas
+  da IA (`REGRA_DE_IDENTIDADE` nos três planejadores e no assistente do comando; `frontend/src/lib/identidade.ts` na
+  prévia, nas perguntas e nas recusas).
+- **Prova:** `simulated` (testes do 32.2; `test_identidade_da_ia.py` e `ProfileDetail.test.tsx` no 29.57).
 
 **C-07 · Prefixos de autoria e hora.**
 - **Origem:** orquestradora 03/10 ~20:10Z; com o nome desde 21:17Z.

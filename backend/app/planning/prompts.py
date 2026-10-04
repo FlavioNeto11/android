@@ -2,6 +2,7 @@
 tudo o que vem das telas é dado não confiável do aplicativo."""
 from __future__ import annotations
 
+from ..contracts.identidade import REGRA_DE_IDENTIDADE
 from ..modules.identity.domain.available_data import AvailableDatum
 from ..modules.learning.domain.licoes import bloco_de_licoes
 from ..util import sem_marcacao
@@ -18,6 +19,10 @@ CONDUCT_RULE = (
     "Conduza o pedido da pessoa até o fim. Limites de conduta: não produza desinformação nem notícia falsa, e não "
     "ofenda ninguém de forma explícita (pode ser direto e duro, nunca ofensivo ou discriminatório)."
 )
+
+#: Quem fala com a pessoa se identifica como ANA (item 29.57). Só nos planejadores, que perguntam o que falta e
+#: recusam: o ator, o verificador e o escritor social não falam com a pessoa, e o escritor fala PELA persona.
+IDENTITY_RULE = REGRA_DE_IDENTIDADE
 
 PLANNER_SYSTEM = f"""Você é o planejador de um sistema que automatiza aplicativos Android pela interface.
 Recebe um comando em português e produz UMA receita de alto nível, reutilizável em cada aparelho selecionado.
@@ -92,7 +97,8 @@ Regras do plano:
   Salvar um formulário é efeito externo.
 
 {UNTRUSTED_RULE}
-{CONDUCT_RULE}"""
+{CONDUCT_RULE}
+{IDENTITY_RULE}"""
 
 PLANNER_CAPABILITY_SYSTEM = f"""Você é o planejador de um sistema que automatiza um aplicativo Android pela interface.
 Este aplicativo tem um CATÁLOGO DE AÇÕES: você não escreve etapas livres, apenas ESCOLHE ações do catálogo e
@@ -135,7 +141,8 @@ Regras:
   NÃO entra aqui: ele é de cada perfil, não da execução.
 
 {UNTRUSTED_RULE}
-{CONDUCT_RULE}"""
+{CONDUCT_RULE}
+{IDENTITY_RULE}"""
 
 
 def _trecho(texto: str, de: str, ate: str) -> str:
@@ -186,7 +193,8 @@ Regras das AÇÕES DO CATÁLOGO:
 {_REGRAS_DO_CATALOGO}
 
 {UNTRUSTED_RULE}
-{CONDUCT_RULE}"""
+{CONDUCT_RULE}
+{IDENTITY_RULE}"""
 
 
 def _trocar(texto: str, de: str, para: str) -> str:

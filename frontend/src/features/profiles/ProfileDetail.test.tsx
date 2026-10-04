@@ -870,6 +870,23 @@ it('testar persona mostra o rascunho e não publica nada', async () => {
   expect(backend.callsTo('POST', /interactions/)).toHaveLength(0);
 });
 
+it('29.57: a recusa da prévia se identifica como ANA, e o rascunho não aparece', async () => {
+  backend.on('GET', /\/personas\/ig-1$/, () => json({
+    id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
+    traits: { tone: 'calmo' }, profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
+  }));
+  backend.on('POST', /preview/, () => json({
+    content: '', rationale: '', refused: true, refusal_reason: 'pede dado pessoal de terceiro', memory_candidates: [],
+  }));
+  await abrir();
+  await irParaGuia(/Persona/i);
+  await waitFor(() => text().includes('Testar persona'));
+  await click(byRole('button', /Testar persona/i));
+  await waitFor(() => text().includes('ANA recusou escrever esta resposta: pede dado pessoal de terceiro'));
+  expect(backend.callsTo('POST', /interactions/)).toHaveLength(0);
+});
+
 // ---------------------------------------------------------------- item 11.6: persona como montagem
 it('a persona marca o valor certo nas réguas e mostra Diz × Nunca diz e os exemplos como balões', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => json({
