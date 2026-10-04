@@ -32,7 +32,7 @@ from typing import Any, Callable
 
 from ..db import loads
 from ..models import InteractionStatus, InteractionType
-from ..planning.capabilities import Capability, capability_of, normalizar_alvo
+from ..planning.capabilities import Capability, capability_of, normalizar_alvo, objeto_da_acao
 from ..planning.catalog import pacote_ancora
 from ..util import now, parse_iso, to_iso
 from .contas_nossas import eh_conta_nossa, foi_retirada
@@ -431,9 +431,61 @@ class PolicyEngine:
                     "respostas (30.56) — recusado antes da aprovação", "Decida o pedido que já está em Pendências.")
         return None
 
+    def _repetido(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None, agora: datetime,
+                  app_id: str | None, step_id: str | None) -> tuple[bool, str, str] | None:
+        """30.64: o MESMO perfil já fez, ou tem pedido em aberto de outra etapa (outra execução, inclusive), desta ação
+        sobre o MESMO objeto (`objeto_alvo` do catálogo: o post, o comentário, a conversa, a mídia)? `None` segue;
+        senão `(recusa, motivo, dica)`. Mensagem direta não se recusa (conversa continua): `recusa=False` e a etapa
+        passa por aprovação. O resto (seguir, curtir o mesmo post, comentar de novo, publicar a mesma imagem) faria o
+        efeito duas vezes, ou o desfaria num toque que alterna: recusa.
+
+        Sem objeto (ação sem declaração, argumento por resolver) não há o que comparar, e a aprovação de sempre vale.
+        Uma saída sem etapa conhecida só conta quando o objeto é a própria pessoa (DM, seguir): de uma curtida antiga
+        sem etapa não se sabe QUAL post foi, e contá-la recusaria o próximo post da mesma pessoa."""
+        if cap.key in UMA_VEZ_POR_ALVO or not cap.side_effect or not cap.interaction_type or self._settings is None:
+            return None
+        objeto = objeto_da_acao(cap, bindings)
+        if objeto is None:
+            return None
+        so_a_pessoa = tuple(cap.objeto_alvo) == (cap.counterparty,)
+
+        def do_registro(argumentos: Mapping[str, object] | None, quem: str | None) -> dict[str, str] | None:
+            if argumentos is not None:
+                return objeto_da_acao(cap, argumentos)
+            return {str(cap.counterparty): normalizar_alvo(quem) or ""} if so_a_pessoa else None
+
+        dias = max(1, int(getattr(self._settings(), "fleet_target_window_days", 30) or 30))
+        since = to_iso(agora - timedelta(days=dias))
+        conversa = cap.limit_bucket == "dms" or cap.interaction_type == InteractionType.dm_sent.value
+        qual = ", ".join(f"{k} {v}" for k, v in objeto.items() if v) or "o mesmo objeto"
+        for interacao, quando, quem, argumentos in self.repo.saidas_da_acao(
+                profile_id, cap.key, types=(cap.interaction_type,), statuses=CONTAM, since=since, app_id=app_id,
+                exclude_step_id=step_id):
+            if do_registro(argumentos, quem) != objeto:
+                continue
+            if conversa:
+                return (False, f"esta conta já mandou mensagem a {qual} em {_data(quando)} ({interacao}): a nova passa "
+                               "por aprovação (30.64)", "")
+            return (True, f"esta conta já fez {cap.key} sobre {qual} em {_data(quando)} ({interacao}); repetir faria o "
+                          f"efeito duas vezes, ou o desfaria num toque que alterna (30.64) — recusado antes da aprovação",
+                    "Se for mesmo outro item, diga no comando o que o distingue (a legenda do post, por exemplo) e refaça "
+                    "o plano.")
+        for pedido, quando, quem, argumentos in self.repo.pedidos_da_acao(profile_id, cap.key, since=since,
+                                                                           exclude_step_id=step_id):
+            if do_registro(argumentos, quem) != objeto:
+                continue
+            if conversa:
+                return (False, f"já há mensagem a {qual} pedida ou aprovada em {_data(quando)} ({pedido}), noutra etapa: "
+                               "esta passa por aprovação (30.64)", "")
+            return (True, f"esta conta já tem um pedido de {cap.key} sobre {qual} em aberto ({pedido}), noutra etapa; um "
+                          "segundo faria o efeito duas vezes (30.64) — recusado antes da aprovação",
+                    "Decida o pedido que já está em Pendências.")
+        return None
+
     def check(self, profile_id: str, cap: Capability, *, run_id: str | None = None,
               counterparty: str | None = None, app_id: str | None = None, package: str | None = None,
-              step_id: str | None = None, pedido: ContextoDoPedido | None = None) -> Verdict:
+              step_id: str | None = None, pedido: ContextoDoPedido | None = None,
+              bindings: Mapping[str, object] | None = None) -> Verdict:
         politica = self.policy_for(profile_id, cap, package)
         if politica == "disabled":
             return Verdict(allowed=False, policy=politica,
@@ -476,6 +528,13 @@ class PolicyEngine:
         # Recusa antes dos tetos: estes só ADIAM (`retry_at`), e o repetido não sai nem depois.
         if (feito := self._ja_feito(profile_id, cap, counterparty, agora, app_id, step_id)) is not None:
             return Verdict(allowed=False, policy=politica, reason=feito[0], hint=feito[1])
+        if (repetido := self._repetido(profile_id, cap, bindings, agora, app_id, step_id)) is not None:
+            recusa, motivo, dica = repetido
+            if recusa:
+                return Verdict(allowed=False, policy=politica, reason=motivo, hint=dica)
+            if politica == "autonomous":
+                politica = "approval_required"
+            nota = "; ".join(t for t in (nota, motivo) if t)
         if pedido is not None and (da_familia := self._um_so_da_familia(profile_id, counterparty, agora, app_id,
                                                                          pedido)) is not None:
             return Verdict(allowed=False, policy=politica, reason=da_familia[0], hint=da_familia[1])

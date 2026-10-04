@@ -1570,6 +1570,55 @@ class SocialRepository:
              *((exclude_step_id,) if exclude_step_id else ())))
         return str(linha["id"]) if linha else None
 
+    def saidas_da_acao(self, profile_id: str, capability: str, *, types: tuple[str, ...], statuses: tuple[str, ...],
+                       since: str, app_id: str | None = None,
+                       exclude_step_id: str | None = None) -> list[tuple[str, str, str | None, dict[str, Any] | None]]:
+        """30.64: as interações de SAÍDA deste perfil, destes tipos e estados, desde `since`, com o que se sabe do objeto:
+        `(id, occurred_at, counterparty, argumentos da etapa que a gravou | None)`, a mais recente primeiro. A de etapa
+        de OUTRA ação não entra (comentar e responder gravam o mesmo tipo); a sem etapa conhecida entra com argumentos
+        `None` e quem pergunta decide o que dá para dizer dela. A da etapa `exclude_step_id` não conta."""
+        if not types or not statuses:
+            return []
+        t, s = ",".join("?" * len(types)), ",".join("?" * len(statuses))
+        por_app = " AND (i.app_id=? OR i.app_id IS NULL)" if app_id else ""
+        sem_a_etapa = " AND (i.step_id IS NULL OR i.step_id<>?)" if exclude_step_id else ""
+        linhas = self.db.query(
+            f"SELECT i.id, i.occurred_at, i.counterparty, e.bindings, e.capability AS acao FROM social_interactions i"
+            f" LEFT JOIN steps e ON e.id=i.step_id WHERE i.profile_id=? AND i.direction='outbound' AND i.occurred_at>=?"
+            f" AND i.type IN ({t}) AND i.status IN ({s}){por_app}{sem_a_etapa}"
+            f" AND (e.id IS NULL OR e.capability=?) ORDER BY i.occurred_at DESC, i.seq DESC LIMIT 200",
+            (profile_id, since, *types, *statuses, *((app_id,) if app_id else ()),
+             *((exclude_step_id,) if exclude_step_id else ()), capability))
+        saida = []
+        for r in linhas:
+            argumentos = loads(r["bindings"], None) if r["acao"] is not None else None
+            saida.append((str(r["id"]), str(r["occurred_at"]), r["counterparty"],
+                          argumentos if isinstance(argumentos, dict) else None))
+        return saida
+
+    def pedidos_da_acao(self, profile_id: str, capability: str, *, since: str,
+                        exclude_step_id: str | None = None) -> list[tuple[str, str, str | None, dict[str, Any] | None]]:
+        """30.64: os pedidos de aprovação deste perfil e desta ação ainda sem interação (pendente, ou aprovado e não
+        executado, de objetivo vivo), desde `since`: `(id, created_at, target, argumentos da etapa | None)`, o mais
+        recente primeiro. O da etapa `exclude_step_id` não conta (a porta roda de novo na retomada), nem o das versões
+        anteriores DELA no mesmo objetivo (mesma chave de etapa): esse é o que `acompanhar_revisao` leva para a etapa
+        revisada, e não um segundo pedido."""
+        sem_a_etapa = (" AND (a.step_id IS NULL OR (a.step_id<>? AND NOT EXISTS (SELECT 1 FROM steps x WHERE x.id=?"
+                       " AND x.objective_id=a.objective_id AND x.key=e.key)))") if exclude_step_id else ""
+        linhas = self.db.query(
+            "SELECT a.id, a.created_at, a.target, e.bindings FROM pending_approvals a LEFT JOIN steps e ON e.id=a.step_id"
+            " WHERE a.profile_id=? AND a.capability=? AND a.status IN ('pending','approved','edited')"
+            " AND a.interaction_id IS NULL AND a.created_at>=? AND (a.objective_id IS NULL OR NOT EXISTS (SELECT 1"
+            " FROM objectives o WHERE o.id=a.objective_id AND o.status IN ('succeeded','failed','cancelled')))"
+            f"{sem_a_etapa} ORDER BY a.created_at DESC, a.id DESC LIMIT 200",
+            (profile_id, capability, since, *((exclude_step_id, exclude_step_id) if exclude_step_id else ())))
+        saida = []
+        for r in linhas:
+            argumentos = loads(r["bindings"], None)
+            saida.append((str(r["id"]), str(r["created_at"]), r["target"],
+                          argumentos if isinstance(argumentos, dict) else None))
+        return saida
+
     def pedidos_em_aberto_desde(self, profile_id: str, since: str, *,
                                 exclude_step_id: str | None = None) -> list[tuple[str, str]]:
         """`(capability, created_at)` dos pedidos de aprovação deste perfil ainda sem interação (pendente, ou aprovado e

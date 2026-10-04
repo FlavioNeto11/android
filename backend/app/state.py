@@ -2130,7 +2130,8 @@ class AppState:
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
                                        app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
                                        step_id=srow["id"],
-                                       pedido=contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None)
+                                       pedido=contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None,
+                                       bindings=loads(srow["bindings"], {}) or {})
         if not veredito.allowed:
             return veredito
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —
