@@ -3138,7 +3138,7 @@
   "28.22": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2453828cded0c7b872c62",
    "url": "https://trello.com/c/2eUKGr9M",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "28.22 — Pedido encerrado por orçamento ganha relatório; cancelamento guarda o motivo"
   },
@@ -3180,7 +3180,7 @@
   "28.23": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2472fe6257eae6a2d3159",
    "url": "https://trello.com/c/Hy9MtBmn",
-   "lista": "em_execucao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "28.23 — O limite de autonomia do pedido chega à execução"
   },
@@ -3222,10 +3222,16 @@
    "url": "https://trello.com/c/2IBRqLk5",
    "lista": "em_execucao",
    "lote": null
+  },
+  "28.24": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac26ddcc30b2b7d0b45bf81",
+   "url": "https://trello.com/c/mjYDdaJi",
+   "lista": "em_execucao",
+   "lote": null
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T15:13:00Z",
+ "atualizado_em": "2026-10-04T15:18:00Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
