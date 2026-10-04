@@ -475,6 +475,7 @@ async def _parque(tmp_path: Path, legenda: str | None, ator: AtorDePublicacoes |
                                                                         **tela))  # type: ignore[arg-type]
     h.ai = CountingProvider(ator or AtorDePublicacoes(legenda))
     await h.boot()
+    await h.medir_a_internet()   # T.2: a sonda do monitor agora; o Instagram não espera os 6 s da 1ª volta
     s = _estado(h)
     s.db.execute("UPDATE instances SET app_id='instagram' WHERE id=?", (IID,))
     s.devices.get(IID).app_id = "instagram"
