@@ -2055,7 +2055,7 @@
   "28.12": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1431886b2725bbfddbf1d",
    "url": "https://trello.com/c/LeIITp2g",
-   "lista": "proximas",
+   "lista": "em_execucao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "28.13": {
@@ -2677,7 +2677,7 @@
   "28.16": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1500d34bbb1bb5f9b8ac3",
    "url": "https://trello.com/c/DiOgjU7L",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais"
   },
   "31.22": {
@@ -2802,7 +2802,7 @@
   "28.17": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac170e3d399a256f48a3cf3",
    "url": "https://trello.com/c/vMpRwu4h",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "28.17 · Os canais se identificam como ANA (Telegram e Trello)"
   },
@@ -2858,7 +2858,7 @@
   "28.18": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac17a13adc57edc3c97a98e",
    "url": "https://trello.com/c/ij2QiYYZ",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "canais",
    "nome": "28.18 · Convidado no Telegram, com o nome primeiro"
   },
@@ -3008,10 +3008,31 @@
    "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "Suíte 20 → deploy 20: correção do 29.61"
+  },
+  "32.5": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac21880b77a01c7a4de99de",
+   "url": "https://trello.com/c/7lcz0Se8",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "32.5 — Tela Canais no painel (só leitura)"
+  },
+  "28.20": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac21883e4f335afbbf948ea",
+   "url": "https://trello.com/c/tOEz2afL",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "28.20 — Parada no teto de orçamento vira falha por orçamento"
+  },
+  "28.21": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2188523a58945315dfd0d",
+   "url": "https://trello.com/c/5Yeh7nxP",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "28.21 — Resolver ocorrência incerta destrava o pedido"
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T08:15:17Z",
+ "atualizado_em": "2026-10-04T08:44:06Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
