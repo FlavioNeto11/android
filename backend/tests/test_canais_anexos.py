@@ -779,6 +779,57 @@ async def test_se_o_arquivo_nao_se_apaga_a_linha_fica_para_a_proxima_volta(f: Ce
     assert f.faxinar().anexos == 1 and f.estados() == {}
 
 
+async def test_anexo_novo_de_mesmo_conteudo_entre_a_conferencia_e_o_unlink_nao_perde_o_arquivo(
+        f: CenaFaxina, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Achado 9 da revisão: a faxina conferia o uso e depois apagava; um anexo igual que chegasse no meio ficava sem arquivo."""
+    velho = f.guardar(JPEG)
+    f.avancar(31)
+    original = FaxinaDosCanais._em_uso
+    chamadas: list[int] = []
+
+    def chega_no_meio(self: FaxinaDosCanais, sha_: str, canal: str, limite: str) -> bool:
+        chamadas.append(1)
+        achou = original(self, sha_, canal, limite)
+        if len(chamadas) == 1:                                       # depois da 1ª conferência (ninguém usa) chega o igual
+            assert achou is False
+            f.guardar(JPEG)                                          # o arquivo ainda está lá: só a linha é gravada
+        return achou
+
+    monkeypatch.setattr(FaxinaDosCanais, "_em_uso", chega_no_meio)
+    f.faxinar()
+    [(novo, estado)] = [(i, e) for i, e in f.estados().items() if i != velho]
+    assert estado == "guardado" and len(list(f.pasta.rglob("*.jpg"))) == 1             # o arquivo do novo está no disco
+    assert not list(f.pasta.rglob("*.apagando")) and f.arm.abrir(novo) is not None
+
+
+async def test_guardar_regrava_o_arquivo_que_a_faxina_tirou_depois_da_conferencia(f: CenaFaxina,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.modules.avisos.infrastructure import anexos as modulo
+    f.guardar(JPEG)
+    real = modulo._gravar_atomico
+    chamadas: list[int] = []
+
+    def faxina_tira_no_meio(destino: Path, conteudo: bytes) -> bool:
+        chamadas.append(1)
+        if len(chamadas) == 1:                                       # a conferência "já existe" e a faxina leva o arquivo
+            achou = real(destino, conteudo)
+            destino.unlink()
+            return achou
+        return real(destino, conteudo)
+
+    monkeypatch.setattr(modulo, "_gravar_atomico", faxina_tira_no_meio)
+    novo = f.guardar(JPEG)
+    assert f.arm.abrir(novo) is not None and len(list(f.pasta.rglob("*.jpg"))) == 1
+
+
+async def test_referencia_fora_do_armazem_nao_e_dona_de_arquivo_e_a_linha_vence(f: CenaFaxina) -> None:
+    """Achado 9 (1ª parte), refutado: sem `continue` de propósito. Sem caminho dentro do armazém não há arquivo a apagar."""
+    id_ = f.guardar(JPEG)
+    f.db.execute("UPDATE canal_anexos SET sha256='nao-e-sha' WHERE id=?", (id_,))
+    f.avancar(31)
+    assert f.faxinar().anexos == 1 and f.estados() == {}
+
+
 # ---------------------------------------------------------------- a rota de leitura
 def _cliente(h: Harness) -> httpx.AsyncClient:
     app = create_app(h.cfg, state=h.state)

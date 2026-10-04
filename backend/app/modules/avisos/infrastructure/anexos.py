@@ -172,8 +172,16 @@ class ArmazemDeAnexos:
             raise AnexoRecusado("Não consegui guardar o arquivo na Central (erro de disco).") from None
         if not novo:
             log.info("anexos: conteúdo repetido; o arquivo existente é reaproveitado")
-        return self._inserir(entrada_id=entrada_id, direcao=direcao, estado="guardado", sha=sha, mime=detectado,
-                             tamanho=len(conteudo), motivo=None, linha_id=linha_id)
+        linha = self._inserir(entrada_id=entrada_id, direcao=direcao, estado="guardado", sha=sha, mime=detectado,
+                              tamanho=len(conteudo), motivo=None, linha_id=linha_id)
+        if not novo:
+            # O arquivo existia quando olhei, mas a faxina (28.16) pode tê-lo tirado do lugar entre aquela conferência e a
+            # gravação desta linha. Com a linha já gravada ela o deixaria; se ele não está lá, grava de novo.
+            try:
+                _gravar_atomico(destino, conteudo)
+            except OSError as exc:
+                log.error("anexos: a linha %s ficou sem arquivo (%s)", linha.get("id"), type(exc).__name__)
+        return linha
 
     # ------------------------------------------------------------------ leitura
     def linha(self, ident: int) -> Linha | None:
