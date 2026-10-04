@@ -955,6 +955,9 @@ class PersonaImageDTO(BaseModel):
     error: str | None = None
     created_at: str
     url: str
+    #: 29.81: o dono disse se o upload foi feito por IA (`None` = não informado; só o upload usa).
+    feita_por_ia: bool | None = None
+
 
 
 class PersonaDTO(PersonaVoiceDTO):

@@ -488,6 +488,21 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   no texto que a pessoa escreveu e que a conversa já mostrava.
 - `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
 
+## 2026-10-04 — 29.81: o dono diz se a foto que enviou foi feita por IA (branch feat/29-81-upload-feito-por-ia)
+
+- Migração 108: `persona_images.feita_por_ia` (nula). As linhas antigas ficam "não informado", e o rótulo de cada uma é o
+  de antes da migração (upload sem, gerada e importada com).
+- O rótulo de IA da publicação (29.79) segue a resposta. O upload marcado "feita por IA" sai com o rótulo; "foto real" e
+  "não informado" saem sem. A gerada e a importada saem sempre com o rótulo, e só o upload se marca (409 `nao_e_upload`).
+- Envio: `POST /personas/{id}/images?feita_por_ia=true|false` (sem o parâmetro: não informado; outro valor: 422).
+  Correção: `PUT /personas/{id}/images/{image_id}/feita-por-ia` `{feita_por_ia: true|false|null}`. As etapas abertas
+  que publicam a imagem regravam o `rotulo_ia`, a chave da aprovação muda, e o sim dado antes deixa de cobrir a
+  publicação.
+- Painel, na guia Imagens: "Esta foto foi feita por IA?" no envio, o selo "com/sem rótulo de IA" em cada foto e a
+  correção na própria foto enviada.
+- Prova: `simulated` (`backend/tests/test_upload_feito_por_ia.py`, `GuiaImagens.test.tsx`). `not_run`: o envio pelo
+  painel no navegador e a publicação real.
+
 ## 2026-10-04 — 29.79: a foto realista de IA sai SEMPRE com o rótulo de IA do Instagram (branch feat/29-79-rotulo-ia)
 
 - A central grava `rotulo_ia` na etapa que publica imagem pela origem dela (gerada ou importada: "true"; enviada pelo

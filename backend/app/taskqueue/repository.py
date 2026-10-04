@@ -354,6 +354,25 @@ class Repository:
         rotulo = rotulo_ia_da_imagem(self.db, imagem) if "{" not in imagem else None
         return {**sem, ARGUMENTO_DO_ROTULO_IA: rotulo} if rotulo is not None else sem
 
+    def ressincronizar_rotulo_ia(self, image_id: str) -> int:
+        """29.81: o dono corrigiu se o upload foi feito por IA. As etapas que ainda vão publicar essa imagem (abertas e
+        fora de execução) regravam `rotulo_ia`: a chave da aprovação muda com ele, então o sim dado antes não cobre mais
+        o item e a porta pergunta de novo. Devolve quantas etapas mudaram."""
+        mudaram = 0
+        abertas = (StepStatus.pending.value, StepStatus.ready.value, StepStatus.retry_wait.value,
+                   StepStatus.waiting_user.value)
+        marcadores = ",".join("?" for _ in abertas)
+        for linha in self.db.query(f"SELECT id, bindings FROM steps WHERE status IN ({marcadores})"  # noqa: S608
+                                   " AND bindings LIKE ?", (*abertas, f"%{image_id}%")):
+            antes = loads(linha["bindings"], {}) or {}
+            if not isinstance(antes, dict) or str(antes.get(ARGUMENTO_DA_IMAGEM) or "").strip() != image_id:
+                continue
+            depois = self._com_rotulo_ia({k: str(v) for k, v in antes.items()})
+            if depois != antes:
+                self.db.execute("UPDATE steps SET bindings=? WHERE id=?", (dumps(depois), linha["id"]))
+                mudaram += 1
+        return mudaram
+
     def _insert_steps(self, run_id: str, oid: str, iid: str, version: int, steps: list[PlanStep],
                       variables: dict[str, str], reason: str) -> None:
         resolved: list[PlanStep] = []

@@ -46,6 +46,26 @@ const ORIGEM: Record<string, string> = {
   imported_legacy: 'avatar antigo',
 };
 
+/** 29.81: a resposta "esta foto foi feita por IA?" no `<select>` (o valor vazio é "não informado"). */
+const FEITA_POR_IA: { valor: '' | 'true' | 'false'; rotulo: string }[] = [
+  { valor: '', rotulo: 'Não informado (sai sem rótulo de IA)' },
+  { valor: 'true', rotulo: 'Sim, feita por IA (sai com rótulo de IA)' },
+  { valor: 'false', rotulo: 'Não, é foto real (sai sem rótulo de IA)' },
+];
+
+function paraResposta(valor: string): boolean | null {
+  return valor === 'true' ? true : valor === 'false' ? false : null;
+}
+
+function daResposta(v: boolean | null | undefined): '' | 'true' | 'false' {
+  return v === true ? 'true' : v === false ? 'false' : '';
+}
+
+/** O rótulo de IA com que a foto sai numa publicação (29.79): gerada e importada sempre com; a enviada, pelo dono. */
+export function saiComRotulo(i: Pick<PersonaImage, 'source' | 'feita_por_ia'>): boolean {
+  return i.source !== 'upload' || i.feita_por_ia === true;
+}
+
 const TITULO_DO_ERRO: Record<string, string> = {
   image_not_configured: 'Gerador de imagem sem chave',
   persona_minor: 'Persona menor de idade',
@@ -71,6 +91,7 @@ export function AbaImagens({ profile, onChanged }: { profile: Pessoa; onChanged:
   const [erroGerar, setErroGerar] = useState<{ code: string; message: string } | null>(null);
   const [erroUpload, setErroUpload] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
+  const [feitaPorIa, setFeitaPorIa] = useState<'' | 'true' | 'false'>('');
   const [busy, setBusy] = useState<string | null>(null);
   const token = useRef(0);
   const nome = nomeDe(profile);
@@ -138,8 +159,9 @@ export function AbaImagens({ profile, onChanged }: { profile: Pessoa; onChanged:
     }
     setEnviando(true);
     try {
-      await api.uploadPersonaImage(profile.id, arquivo);
-      toast({ tone: 'success', title: 'Foto enviada' });
+      await api.uploadPersonaImage(profile.id, arquivo, paraResposta(feitaPorIa));
+      toast({ tone: 'success', title: 'Foto enviada',
+              message: feitaPorIa === 'true' ? 'Ela sai com o rótulo de IA nas publicações.' : 'Ela sai sem o rótulo de IA nas publicações.' });
       await carregar();
       await onChanged();
     } catch (e) {
@@ -158,6 +180,21 @@ export function AbaImagens({ profile, onChanged }: { profile: Pessoa; onChanged:
       await onChanged();
     } catch (e) {
       toastError('Não foi possível trocar a foto principal', e);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function corrigirFeitaPorIa(i: PersonaImage, valor: string) {
+    setBusy(i.id);
+    try {
+      await api.setPersonaImageFeitaPorIa(profile.id, i.id, paraResposta(valor));
+      toast({ tone: 'success', title: valor === 'true' ? 'Marcada como feita por IA' : 'Marcada sem rótulo de IA',
+              message: 'As publicações ainda por fazer com esta foto seguem a resposta nova; o que você aprovou antes '
+                       + 'para elas volta a pedir o seu aval.' });
+      await carregar();
+    } catch (e) {
+      toastError('Não foi possível corrigir a foto', e);
     } finally {
       setBusy(null);
     }
@@ -211,6 +248,15 @@ export function AbaImagens({ profile, onChanged }: { profile: Pessoa; onChanged:
                     onClick={() => void gerar()}>
               Gerar mais
             </Button>
+            <Field label="Esta foto foi feita por IA?"
+                   hint="Foto realista feita por IA sai com o rótulo de IA do Instagram. Dá para corrigir depois, na foto.">
+              {({ id, describedBy }) => (
+                <Select id={id} aria-describedby={describedBy} value={feitaPorIa} disabled={enviando}
+                        onChange={(e) => setFeitaPorIa(e.target.value as '' | 'true' | 'false')}>
+                  {FEITA_POR_IA.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
+                </Select>
+              )}
+            </Field>
             <Field label="Enviar foto" hint="JPEG ou PNG, até 10 MB.">
               {({ id, describedBy }) => (
                 <input id={id} aria-describedby={describedBy} type="file" accept="image/jpeg,image/png"
@@ -258,7 +304,8 @@ export function AbaImagens({ profile, onChanged }: { profile: Pessoa; onChanged:
             <AutoGrid min="200px">
               {imagens.map((i, k) => (
                 <Foto key={i.id} imagem={i} alt={`Foto ${k + 1} de ${nome}`} busy={busy === i.id}
-                      onPrincipal={() => void tornarPrincipal(i)} onApagar={() => void apagar(i)} />
+                      onPrincipal={() => void tornarPrincipal(i)} onApagar={() => void apagar(i)}
+                      onFeitaPorIa={(v) => void corrigirFeitaPorIa(i, v)} />
               ))}
             </AutoGrid>
           )}
@@ -276,14 +323,16 @@ export function AbaImagens({ profile, onChanged }: { profile: Pessoa; onChanged:
   );
 }
 
-function Foto({ imagem: i, alt, busy, onPrincipal, onApagar }: {
+function Foto({ imagem: i, alt, busy, onPrincipal, onApagar, onFeitaPorIa }: {
   imagem: PersonaImage;
   alt: string;
   busy: boolean;
   onPrincipal: () => void;
   onApagar: () => void;
+  onFeitaPorIa: (valor: string) => void;
 }) {
   const estado = ESTADO[i.status];
+  const rotulo = saiComRotulo(i);
   return (
     <figure className={styles.imageCard} data-primary={i.is_primary || undefined}>
       {i.status === 'ready' ? (
@@ -297,7 +346,18 @@ function Foto({ imagem: i, alt, busy, onPrincipal, onApagar }: {
           {estado ? <Badge size="sm" tone={estado.tone}>{estado.label}</Badge> : null}
           {i.provider === 'simulated' ? <Badge size="sm" tone="warning">simulado</Badge> : null}
           <Badge size="sm" tone="neutral">{ORIGEM[i.source] ?? i.source}</Badge>
+          <Badge size="sm" tone={rotulo ? 'info' : 'neutral'}>{rotulo ? 'com rótulo de IA' : 'sem rótulo de IA'}</Badge>
         </div>
+        {i.source === 'upload' ? (
+          <Field label="Feita por IA?">
+            {({ id }) => (
+              <Select id={id} value={daResposta(i.feita_por_ia)} disabled={busy}
+                      onChange={(e) => onFeitaPorIa(e.target.value)}>
+                {FEITA_POR_IA.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
+              </Select>
+            )}
+          </Field>
+        ) : null}
         {i.provider || i.model ? (
           <span className={styles.muted}>{[i.provider, i.model].filter(Boolean).join(' · ')}</span>
         ) : null}

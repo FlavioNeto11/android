@@ -673,10 +673,17 @@ export const api = {
   /** 202: gera em segundo plano; cada imagem chega por `persona.image.updated`. */
   generatePersonaImages: (id: string, count: number) =>
     request<PersonaImagesAccepted>('POST', `/personas/${enc(id)}/images`, { body: { count } }),
-  /** Upload: o corpo é a própria imagem (`image/jpeg` ou `image/png`), não JSON. */
-  uploadPersonaImage: (id: string, file: File) =>
-    requestBinary<PersonaImage>(`/personas/${enc(id)}/images`, file, {},
+  /** Upload: o corpo é a própria imagem (`image/jpeg` ou `image/png`), não JSON. 29.81: `feitaPorIa` é a resposta do
+   *  dono ("feita por IA?"); `null` = não informado (o parâmetro não vai). */
+  uploadPersonaImage: (id: string, file: File, feitaPorIa: boolean | null = null) =>
+    requestBinary<PersonaImage>(`/personas/${enc(id)}/images`, file,
+      feitaPorIa === null ? {} : { feita_por_ia: String(feitaPorIa) },
       file.type === 'image/png' ? 'image/png' : 'image/jpeg'),
+  /** 29.81: corrige se a foto enviada foi feita por IA (`null` volta a "não informado"). As publicações ainda por
+   *  fazer com ela passam a pedir (ou dispensar) o rótulo, e o sim dado antes deixa de cobri-las. */
+  setPersonaImageFeitaPorIa: (id: string, imageId: string, feitaPorIa: boolean | null) =>
+    request<PersonaImage>('PUT', `/personas/${enc(id)}/images/${enc(imageId)}/feita-por-ia`,
+      { body: { feita_por_ia: feitaPorIa } }),
   setPrimaryPersonaImage: (id: string, imageId: string) =>
     request<PersonaDTO>('PUT', `/personas/${enc(id)}/images/${enc(imageId)}/primary`),
   deletePersonaImage: (id: string, imageId: string) =>

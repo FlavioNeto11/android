@@ -888,6 +888,10 @@ export interface PersonaImage {
   error: string | null;
   created_at: string;
   url: string;
+  /** 29.81 (migração 108): o dono disse se a foto ENVIADA foi feita por IA. `true` = sai com o rótulo de IA do
+   *  Instagram; `false` = foto real; `null`/ausente = não informado (sai sem rótulo). Só o upload usa: a gerada e a
+   *  importada saem sempre com o rótulo. */
+  feita_por_ia?: boolean | null;
 }
 
 /** `POST /personas` (e o rascunho de `POST /personas/generate`, que tem este formato e não é gravado). */
