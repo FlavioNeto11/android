@@ -46,6 +46,7 @@ from ..modules.identity.application.available_data import (account_hosts, availa
                                                             typable_secret_for)
 from ..modules.identity.domain.available_data import ResolvedSecret, SecretResolution
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
+from ..modules.learning.infrastructure.segredo import TriagemDeCredencial
 from ..planning.capabilities import (CONHECIMENTO_DE_APPS, Capability, capability_of, contraparte, guardas_do_cartao,
                                      load_catalog)
 from ..planning.catalog import session_provider_of
@@ -243,6 +244,15 @@ class StepOutcome:
     #: 29.58 (C): o resultado a gravar na etapa quando o desfecho NÃO é sucesso (hoje: `uncertain` por efeito repetido,
     #: com `efeito_repetido`). O sucesso grava o dele no próprio executor.
     result: StepResult | None = None
+    #: 29.35 (RA-9): o ator relatou `missing_info` e a falta NÃO é credencial (senha, código, 2FA ficam com a pessoa,
+    #: ADR-009). O scheduler tenta UMA revisão determinística do plano (a mesma da recuperação automática, com o motivo
+    #: "defeito de plano") antes de parar o objetivo em `waiting_user`: "o campo X não existe" quase sempre é o plano
+    #: na tela errada, não informação que a pessoa precise dar.
+    falta_de_informacao: bool = False
+
+
+#: A mesma triagem que decide se uma pergunta pede credencial (29.52): uma só, para a falta de informação também.
+_TRIAGEM_DE_CREDENCIAL = TriagemDeCredencial()
 
 
 # kinds de AIError que são problema de CONTA (crédito ou credencial), não da etapa: nenhuma tentativa nova
@@ -2235,7 +2245,12 @@ class StepExecutor:
                     # A IA viu login ou conta errada na tela. O perfil para de afirmar "Conectado": `wrong_account`
                     # e desafio dependem de pessoa; `auth_required` volta a ser trabalho do autenticador.
                     self._sessao_desmentida(iid, app.package, args.kind, razao)
-                if args.needs_user or args.kind in ("auth_required", "wrong_account", "missing_info"):
+                if args.kind == "missing_info":
+                    # 29.35: a falta que não é credencial ganha uma revisão do plano antes de chegar à pessoa.
+                    sensivel = _TRIAGEM_DE_CREDENCIAL.pergunta_sensivel(razao) is not None
+                    return StepOutcome(Outcome.waiting_user, razao, needs=_needs_for(args.kind),
+                                       falta_de_informacao=not sensivel)
+                if args.needs_user or args.kind in ("auth_required", "wrong_account"):
                     return StepOutcome(Outcome.waiting_user, razao, needs=_needs_for(args.kind))
                 return await fail_or_retry(razao)
 
@@ -3156,7 +3171,8 @@ def _needs_for(kind: str) -> str:
         "auth_required": "Assuma o controle, conclua a autenticação no app e devolva o controle à IA.",
         "challenge": _NECESSIDADE_DA_TRAVA[SUBTIPO_VERIFICACAO],
         "wrong_account": "Conecte a conta esperada neste aparelho (ou ajuste o rótulo da conta) e retome o item.",
-        "missing_info": "Revise o comando/configuração com a informação que falta e retome o item.",
+        "missing_info": ("Revise o comando/configuração com a informação que falta e retome o item (o plano já foi "
+                         "revisado uma vez automaticamente quando a falta não era credencial)."),
         "app_incompatible": "O app não expõe uma tela automatizável neste emulador; veja as evidências.",
     }.get(kind, "Verifique o aparelho e decida: retomar, confirmar ou abandonar o item.")
 

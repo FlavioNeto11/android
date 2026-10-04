@@ -119,8 +119,11 @@ async def test_lider_que_falha_solta_os_demais_na_hora(harness: Harness) -> None
     portao = asyncio.Event()
 
     def bloqueia(req: Any) -> tuple[Decision, Usage]:
+        # Falta de CREDENCIAL (o código de verificação): fica com a pessoa sem revisão do plano (29.35, ADR-009). Uma
+        # falta comum ganharia antes uma revisão determinística, e o líder concluiria em vez de parar.
         return Decision(tool="step_blocked", args={"rationale": "teste", "kind": "missing_info",
-                                                   "reason": "falta um dado para seguir", "needs_user": True}), Usage()
+                                                   "reason": "falta o código de verificação para seguir",
+                                                   "needs_user": True}), Usage()
 
     _segura(harness, "android-01", portao, depois=bloqueia)
     run = harness.run(["android-01", "android-02"])
