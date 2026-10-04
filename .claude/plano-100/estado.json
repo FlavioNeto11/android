@@ -2195,16 +2195,14 @@
    "id": "12.3",
    "status": "partial",
    "proof": "real",
-   "arquivos": [],
-   "testes": "",
-   "evidence": "App escolhido pelo dono em 29/09: Outlook (ADR-057), executado pela Fase 23. Real, central 081d696, 29/09 ~22:26Z: SecretStore.clonar usado nas 3 contas Outlook das personas ativas (23.9) e as 3 contas cadastradas e vinculadas com o endereço conferido pelo dono (23.11, consentimento pendente). Simulado: conhecimento mínimo do Outlook sem âncora (23.3, tests/test_pacote_declarado.py::test_outlook_embutido_entra_pelo_caminho_livre_sem_ser_ancora), sessão por conta, formulário em etapas e painel por app (23.4 a 23.6, 23.10). Registro anterior estava em `pending`, fora do vocabulário do aplicar: era trabalho feito, não decisão em aberto. REAL 02/10/2026 no central c11f8217 (android-01, conta Outlook do lucas): verify so de leitura c-20261002204249-081af1 levou a sessao de unknown a session_ready (verified_at 20:43:32Z), sem senha nem Conectar; execucao r-20261002204347-8c3f6e (OPEN_MAIL_INBOX, side_effect=false) navegou ate a caixa de entrada e foi comprovada (US$ 0,2045). Leitura de remetente e assunto NAO extraida (result.items=[]): defeito geral virou o 12.4.",
-   "blocker": "Leitura real de remetente e assunto not_run: depende do 12.4 (etapa com saidas so comprovada com elas preenchidas). Depois de implantado: repetir a leitura no 01 e, provada, no 03 e no 06 (autorizado pelo dono 02/10 ~21:00Z, so leitura, verify antes, nunca Conectar).",
-   "grupo": "12-3-outlook-leitura",
-   "modelo": "",
-   "esforco": "",
+   "evidence": "Leitura real de remetente e assunto no Outlook, so leitura (sem abrir mensagem, sem Conectar), central d37043df, uma execucao por vez, chave lote:aprendizado:12.3-<ap>. android-01: r-20261004094557-d62546, 09:45:57Z a 09:46:57Z, completed; step_outputs remetente e assunto preenchidos (origem visual, leitor gemini/gemini-3.1-flash-lite, captura 0660ace5), conferidos por mim contra o recorte da evidencia 2445 (data/evidence/r-20261004094557-d62546/android-01/): iguais. US$ 0,1437. android-03: r-20261004094808-e7df7c, 09:48:08Z a 09:50:28Z, completed; remetente e assunto preenchidos (visual, mesmo leitor), conferidos contra os recortes 095012340Z e 095018574Z: iguais. US$ 0,1155. (A ebfa90 das 08:59Z no android-01 so pedia o assunto.)",
+   "blocker": "android-06: r-20261004095106-d75ef4 ficou 8 min em 'verificando a sessao em Outlook' (convidado sob pressao de CPU, load 27-37 em 2 vCPU; 'Outlook nao chegou ao primeiro plano em 60 s'; WebDriver sem AccessibilityNodeInfo); cancelada por mim as 09:59Z, US$ 0,0001. Repetir no 06 com o convidado saudavel.",
+   "grupo": "deploy22-provas",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-02T21:53:18+00:00"
+   "quando": "2026-10-04T10:21:22+00:00"
   },
   "13.1": {
    "id": "13.1",
@@ -6165,14 +6163,15 @@
   "30.31": {
    "id": "30.31",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "PR #149 (feat/30-31-validacao @ 3a662764, migração 082) mais a correção df0bf82d (ai_calls.tier inteiro no teste, achada pela PG da suíte 10), na main pela suíte 10 (16fd1127) e no central pelo deploy 10 (2432046f; migração 082 aplicada; aprendizado.validacao.modo off). Entraram o item 0 (devolver à prova, adendo v0.91) e a fatia 1: o pedido a partir do parecer pedir_evidencia, o despachante sob a trava, o fechamento no digest e o gatilho evidencia_chegou. simulated: 1868 testes afetados no PR; PG direcionada (test_learning_validacao_sql e test_learning_validacao) 13 passed depois do df0bf82d; suíte 10 inteira como no 29.40. Falta: a fatia 2 (o ensaio só de leitura do Instagram em perfil de terceiro; a conferência pelo ContentProvider) e o real. O P4 (semeadura de 23 pedidos do QA pelo ao_parecer implantado, extra_usd 2,5) está preparado e espera o 'vai' da orquestradora; ensaio numa cópia às 13:45Z, sem custo.",
-   "grupo": "aprendizado-suite-10",
-   "modelo": "claude-opus-5-5",
-   "esforco": "medio",
+   "proof": "real",
+   "evidence": "Portao 1 do ensaio (PR #203 no ar pelo deploy 22, d37043df). Execucao r-20261004094430-a3b72b, chave ensaio:qa-enviar-01, android-10 (worker-lan-01, tunel 127.0.0.1:15557), 04/10 09:44:30Z a 09:45:10Z (40 s), comando 'No QA Messenger, envie para o contato QA-001 a mensagem: Ensaio portao 1 {run_id}'. Fechou cancelled com a decisao 'Ensaio so de leitura: parou antes da etapa 5 (send_message), que tem efeito fora do aparelho. Nada foi enviado.' Etapas: 1 open_app, 2 check_account, 3 open_conversation, 4 fill_message succeeded; 5 send_message (side_effect) e 6 verify_sent skipped. Provedor do QA (content query content://com.pocqa.messenger.provider/messages): 20 linhas as 09:44:21Z e 20 as 09:45:15Z, nenhuma com a3b72b. Custo US$ 0,0662 (planning.costs.spent_usd). Achado: o texto ficou DIGITADO no message_input (lido as 09:45:35Z); limpo as 09:47Z (force-stop e reabertura do app de QA) e conferido vazio as 09:47:23Z (so a dica 'Mensagem').",
+   "blocker": "Ensaio para antes do commit, nao antes do preenchimento: deixa texto digitado na caixa. Ajuste pedido pela orquestradora (parar antes da primeira etapa que digita texto do efeito, com teste de campo vazio), PR para a suite 24; o ensaio do Instagram so depois do deploy 24, repetindo o portao 1. A conferencia do QA na validacao (fatia 2) ainda sem execucao de validacao real: vem pelos pedidos do #218 depois do deploy 23.",
+   "grupo": "deploy22-provas",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T15:02:10+00:00"
+   "quando": "2026-10-04T10:21:22+00:00"
   },
   "30.32": {
    "id": "30.32",
@@ -6291,14 +6290,14 @@
    "id": "30.34",
    "status": "partial",
    "proof": "real",
-   "evidence": "Relatorio da sombra (leitura real, so leitura, 04/10 08:28:53Z a 08:30:51Z, central WIN-7S2UASNLFOP em 051fc3e0 = deploy 20, migration 088_latencia_por_etapa). Sombra ligada desde o deploy 11 (c8304e85, restart ~15:30Z de 03/10, aprendizado.autopublicacao.modo shadow). Balanco (GET /api/aprendizado/metricas, curador.autopublicacao): modo shadow, casos 0, abertos 0, limpos 0, regrediram 0, taxa_sem_regressao null, libera false; limiares 30 casos fechados, 0.9, 7 dias. Fila (GET /api/aprendizado?kind=fluxo&rotulo=todos): 48 fluxos (published 22, candidate 20, disabled 6) e NENHUM em validated, entao a regra nao teve candidato. Os alimentadores possiveis: 5 candidatos com efeito externo (3 do QA Messenger, 2 do Instagram), todos com evidencia 0 a favor e 0 contra; os 2 do Instagram de comentar ou abrir perfil sao C desde a 30.32 e nao entram. Ponto cego: a volta so loga quando marca, e o backend.log nao tem nenhuma linha de autopublicacao (nem erro), entao nao da para separar 'avaliou 0 candidatos' de 'a volta nao rodou desde o restart'; com 0 em validated o resultado e o mesmo.",
-   "blocker": "Fatia B (o on pela trava da D1) fica atras da trava e desligada, por decisao da orquestradora: so com >= 30 casos fechados e >= 90% sem regressao; 0 casos em 04/10 08:28:53Z. Nenhum fluxo chega a validated sem evidencia real; o alimentador realista e o P4 (validacoes do QA, 30.31).",
-   "grupo": "30.34",
+   "evidence": "Rastro da volta (PR #204 no ar pelo deploy 22, d37043df). O backend novo registrou a primeira linha as 09:41:03Z; a primeira volta da sombra saiu as 09:42:45.787Z, com a linha de log 'aprendizado: autopublicacao em shadow: 0 fluxo(s) avaliado(s), 0 publicaria(m), 0 caso(s) novo(s)' (data/logs/backend.log) e GET /api/aprendizado/metricas -> curador.autopublicacao.ultima_volta = {em 2026-10-04T09:42:45.787Z, modo shadow, avaliados 0, publicaria 0, marcados 0}, lido as 09:43:24Z. Sem o #204 a primeira volta esperava o intervalo inteiro.",
+   "blocker": "O modo on (fatia B, #210) vai na suite 23; a liberacao segue dependendo de >= 30 casos fechados com >= 90% sem regressao.",
+   "grupo": "deploy22-provas",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T08:57:23+00:00"
+   "quando": "2026-10-04T10:21:22+00:00"
   },
   "30.35": {
    "id": "30.35",
@@ -7051,26 +7050,22 @@
   "31.31": {
    "id": "31.31",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #211 (52abc22e), na suíte 22: migração 092 (ai_calls.cache_write_1h), Usage.cache_write_1h_tokens, extra_1h a 2x a entrada em costs/saldos/api /usage/projecao. Testes: backend/tests/test_cache_de_1h_no_custo.py (6) e scripts/tests (544 passed). A prova real vem depois do deploy 22: o próximo plano com gravação de 1 h deve ter cache_write_1h > 0.",
-   "blocker": "not_run real até o deploy 22",
+   "proof": "real",
+   "evidence": "04/10/2026, WIN-7S2UASNLFOP, deploy 22 (d37043df, migração 092). Plano frio r-20261004100246-7bc942 (mode=plan, android-12, só Instagram, prefixo de catálogo sem uso desde 09:02:25Z, chave lote:jev:31.31-02) às 10:02:48.921Z: cache_write=2723 e cache_write_1h=2723 gravados em ai_calls, sem erro; cache_read=0. A 1ª leitura (r-20261004094328-a0b504, lote:jev:31.31-01) só leu o prefixo de 6829, renovado a cada uso, e não serviu de prova. Custo das duas ~US$ 0,022 (a gravação de 1 h a 2x a entrada).",
+   "blocker": null,
    "arquivos": [
     "backend/migrations/092_cache_de_1h.sql",
-    "backend/app/costs.py",
-    "backend/app/saldos.py",
-    "backend/app/api.py",
-    "backend/app/projecao.py",
-    "docs/banco.md"
+    "backend/app/planning/costs.py"
    ],
    "testes": [
     "backend/tests/test_cache_de_1h_no_custo.py"
    ],
-   "grupo": "jev-31-28-31-30-31-31-31-32",
+   "grupo": "jev-31-31-real",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T09:43:24+00:00"
+   "quando": "2026-10-04T10:21:22+00:00"
   },
   "31.32": {
    "id": "31.32",
@@ -7120,6 +7115,136 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T09:43:30+00:00"
+  },
+  "25.11": {
+   "id": "25.11",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #217 (fix/25-11-teto-de-reinicios-persistido @ 7243c46f), migração 093 (device_network.restart_rev e restarts_requested, só ADD COLUMN), suíte 23 e deploy 23 (9add9fb2, 10:20:39Z, migração 095 no ar, 093 aplicada). A conta de reinícios pedidos da revisão em curso é gravada a cada pedido e volta à memória quando a convergência abre o aparelho; fecha no túnel de pé, na desistência e na invalidação. simulated: backend/tests/test_rede_aplicacao.py::test_reiniciar_o_backend_nao_zera_o_teto_de_reinicios; 305 passed em test_rede*/test_migra*/test_arquitetura; scripts/tests 544. Real not_run: contar reinícios pedidos pela rede em 7 dias depois do deploy (eram 88).",
+   "blocker": null,
+   "grupo": "android-suite23",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T10:21:51+00:00"
+  },
+  "29.38": {
+   "id": "29.38",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #223 (feat/29-38-backup-diario @ 7f999472), suíte 23 e deploy 23 (9add9fb2, 10:20:39Z). backup.ps1 -Origem/-Teto/-Podar, manifesto com origem e commit; deploy.ps1 passa -Teto 10 e aceita -PularBackup só até 60 min depois de um -Ensaio no mesmo commit (recusa antes do stop); -Instalar registra farm-backup. A poda nasce em ENSAIO (lista e não apaga) até data/backups/PODAR-LIGADO ou -Podar. simulated: backend/tests/test_backup.py (8 passed; teto em ensaio e ligado, ensaio recente, recusa antes do stop).",
+   "blocker": "Depende do sim do dono no chat para apagar as ~150 cópias antigas (22 GB; incluem as sem manifesto e sem origem) e para registrar a tarefa farm-backup. Até lá a poda só lista.",
+   "grupo": "android-suite23",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T10:21:51+00:00"
+  },
+  "28.20": {
+   "id": "28.20",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #216 (canais/28-20-orcamento-sem-efeito): parada no teto de orçamento sem commit fecha falhou; suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z). Prova real pendente com a Canais (bloco 28.12).",
+   "blocker": null,
+   "grupo": "orquestradora-deploy23",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T10:21:51+00:00"
+  },
+  "28.21": {
+   "id": "28.21",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #220 (canais/28-21-resolver-incerta), migração 095_ocorrencia_resolvida; suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z). Prova real pendente com a Canais (resolver a ocorrência incerta do 28.12-02).",
+   "blocker": null,
+   "grupo": "orquestradora-deploy23",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T10:21:51+00:00"
+  },
+  "32.5": {
+   "id": "32.5",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #215 (canais/32-5-tela-canais): rota GET /api/canais/estado e tela Canais só leitura; suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z). Caminhada real da tela pendente com a Canais.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy23",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T10:21:51+00:00"
+  },
+  "30.47": {
+   "id": "30.47",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #218 (feat/30-47-pedir-validacao): rota para pedir a validação de um fluxo candidato; suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z). Prova real pendente com a Aprendizado (3 candidatos de QA, um primeiro).",
+   "blocker": null,
+   "grupo": "orquestradora-deploy23",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T10:21:51+00:00"
+  },
+  "28.16": {
+   "id": "28.16",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #208 na suíte 22 e deploy 22 (d37043df, 09:42Z de 04/10, migração 092; PG 189 arquivos verdes) e PR #225 (faxina leva os eventos dos contatos do Telegram) na suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z).",
+   "blocker": null,
+   "grupo": "orquestradora-deploy23",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T10:21:51+00:00"
+  },
+  "28.18": {
+   "id": "28.18",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR canais/28-18-convidado-telegram, migração 090, na suíte 22 e deploy 22 (d37043df, 09:42Z de 04/10, migração 092; PG 189 arquivos verdes); complemento da faxina no PR #225, suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z).",
+   "blocker": null,
+   "grupo": "orquestradora-deploy23",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T10:21:51+00:00"
+  },
+  "30.46": {
+   "id": "30.46",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "curador sem cache_control (paga 1x no lugar de 1,25x); suíte 22 e deploy 22 (d37043df, 09:42Z de 04/10, migração 092; PG 189 arquivos verdes). A medida real é a queda de cache_write do curador no ai_calls, pendente com a Aprendizado.",
+   "blocker": null,
+   "grupo": "orquestradora-deploy23",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T10:21:51+00:00"
+  },
+  "31.34": {
+   "id": "31.34",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #222 (feat/31-34-grade-cede-a-vez): a prévia da grade cede a vez à leitura da árvore; suíte 23 (integ/suite-23 @ 9add9fb2: SQLite 9316 passed, PG dirigido 3037 passed em 194 arquivos, front 1490) e deploy 23 no ar às 10:20:39Z de 04/10 (saúde ok, migração 095, prova de fora ok às 10:20:41Z). Falta o PR #228 (janela inteira da leitura, suíte 24) e o A/B real no android-04 com a Jev.",
+   "blocker": "Falta o PR #228 na suíte 24 e a medida real (A/B com e sem o Painel aberto).",
+   "grupo": "orquestradora-deploy23",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T10:21:51+00:00"
   }
  },
  "rodadas": [
@@ -9033,6 +9158,52 @@
    ],
    "grupos": [
     "android-suite22"
+   ]
+  },
+  {
+   "quando": "2026-10-04T10:21:22+00:00",
+   "itens": [
+    "31.31"
+   ],
+   "grupos": [
+    "jev-31-31-real"
+   ]
+  },
+  {
+   "quando": "2026-10-04T10:21:22+00:00",
+   "itens": [
+    "30.31",
+    "30.34",
+    "12.3"
+   ],
+   "grupos": [
+    "deploy22-provas"
+   ]
+  },
+  {
+   "quando": "2026-10-04T10:21:51+00:00",
+   "itens": [
+    "25.11",
+    "29.38"
+   ],
+   "grupos": [
+    "android-suite23"
+   ]
+  },
+  {
+   "quando": "2026-10-04T10:21:51+00:00",
+   "itens": [
+    "28.20",
+    "28.21",
+    "32.5",
+    "30.47",
+    "28.16",
+    "28.18",
+    "30.46",
+    "31.34"
+   ],
+   "grupos": [
+    "orquestradora-deploy23"
    ]
   }
  ]
