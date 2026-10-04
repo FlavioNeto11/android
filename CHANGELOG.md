@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.76 (a, b): amostra de lote com o denominador inteiro e o token só para o central local (branch fix/29-76-candidatos-e-reconexao)
+
+- Revisão independente do deploy 30: em `scripts/candidatos-do-portal.py` o denominador da amostra só contava os
+  `run_id` achados no banco; com 2 exemplos ausentes e 1 de lote saía "1 de 1" e o grupo ia para o fim. Agora o
+  denominador é todo exemplo com `run_id` ("1 de 3", não rebaixa); nenhum achado segue `null`.
+- O `Authorization: Bearer` só vai para `127.0.0.1`, `localhost` ou `::1`; um `--base` de fora segue sem o token e
+  com aviso no stderr. `ultima` sem fuso vale como UTC (antes derrubava a subtração com `TypeError`).
+- Prova `simulated`: `scripts/tests/test_candidatos_do_portal.py` (3 testes novos; o "1 de 2" do teste antigo vira
+  "1 de 3"). Real: `not_run` até rodar o script contra o central depois do merge.
+
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 
 - Deploy 28: o central fechou o canal com 1012 (service restart) às 15:59:17Z e voltou às 16:00:33Z; a escada do
