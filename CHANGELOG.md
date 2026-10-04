@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.66: referência com o worker falando e a janela do seed marcada no evento (branch fix/29-66-referencia-com-worker)
+
+- A validação real depois do deploy 26 achou 6 trocas de verbos e 10 de renderizador às 13:15Z: o seed grava, por ter
+  mensagem, o DTO provisório, e o processo novo o lia como referência. Agora a referência é o último `instance.updated`
+  com `renderer.configured` conhecido (entre as 20 linhas mais recentes), e o evento da janela leva `janela_do_seed`.
+  O DTO publicado segue o real. Critério: zero trocas fora da janela.
+- Prova `simulated`: `backend/tests/test_fontes_que_alternam.py` (1 novo). Real: no próximo reinício do backend.
+
 ## 2026-10-04 — 30.48: a prova de fluxo com `for_each` roda uma amostra (branch feat/30-48-prova-por-amostra)
 
 - O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 (lv-5cf7389f13e4e0f0 fechou
