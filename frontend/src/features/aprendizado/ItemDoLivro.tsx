@@ -120,10 +120,15 @@ interface ItemDoLivroProps {
   uso?: { rotulo: string; porque?: string | null };
   /** O título já sem repetição na lista (`titulosDaLista`); sem ele, o do item (`tituloDoItem`). */
   titulo?: string;
+  /**
+   * 30.66: o motivo de "publicado antes da regra de aprovação" que o cabeçalho da lista já disse uma vez (em Revisar,
+   * "tem efeito externo"). O item com esse mesmo motivo não repete a frase; o que tiver outro motivo segue com a dele.
+   */
+  avisoNoCabecalho?: string | null;
 }
 
 /** Uma linha do livro: o que é, em que estado, por que espera o dono e o que a pessoa pode fazer. */
-export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso, titulo: tituloDaLista }: ItemDoLivroProps) {
+export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMudou, extra, abrirDetalhe, ocultarApp, uso, titulo: tituloDaLista, avisoNoCabecalho = null }: ItemDoLivroProps) {
   const [aberta, setAberta] = useState<AcaoDoItem | null>(null);
   const titulo = tituloDaLista ?? tituloDoItem(e);
   const porQue = porQueOSistemaNaoPublica(e);
@@ -131,7 +136,8 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
   // Já decidido por uma pessoa (confirmou que fica, religou: `em_revisar` falso, 30.24), o aviso sai.
   const publicadoAntes = e.state === 'published' && !!e.por_que_nao_publica?.espera_o_dono;
   const anterior = publicadoAntes && e.em_revisar !== false;
-  const espera = e.por_que_nao_publica?.espera_o_dono && !(publicadoAntes && e.em_revisar === false) ? porQue : null;
+  const esperaDoItem = e.por_que_nao_publica?.espera_o_dono && !(publicadoAntes && e.em_revisar === false) ? porQue : null;
+  const espera = anterior && esperaDoItem !== null && esperaDoItem === avisoNoCabecalho ? null : esperaDoItem;
   const naoPublica = e.por_que_nao_publica?.espera_o_dono ? null : porQue;
   const detalhe = rotuloDoDetalhe(e.detail);
   const memoria = e.kind === 'memoria';

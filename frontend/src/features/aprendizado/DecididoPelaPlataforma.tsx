@@ -10,7 +10,7 @@ import { formatDateTime, formatQuando } from '../../lib/time';
 import { toast } from '../../store/toasts';
 import { apiAprendizado } from './api';
 import {
-  type DecisaoDaPlataforma, type RelatorioDaAprovacao, ROTULO_DO_GESTO, fatosDoMotivo,
+  type DecisaoDaPlataforma, type RelatorioDaAprovacao, ROTULO_DO_GESTO, fatosDoMotivo, rotuloDaRegra, tituloDaDecisao,
 } from './aprovacaoAutomatica';
 import { DecisaoInline } from './DecisaoInline';
 import styles from './Aprendizado.module.css';
@@ -25,9 +25,12 @@ function textoDesfeitas(decididos: DecisaoDaPlataforma[]): string {
 const VISIVEIS = 5;
 
 /** Uma decisão da plataforma, com o Desligar (o desfazer, ADR-054 emenda do 30.55) enquanto o item segue vivo. */
-function LinhaDaDecisao({ d, onMudou }: { d: DecisaoDaPlataforma; onMudou: () => void }) {
+function LinhaDaDecisao({ d, tituloDe, onMudou }: {
+  d: DecisaoDaPlataforma; tituloDe: (itemRef: string) => string; onMudou: () => void;
+}) {
   const [abrindo, setAbrindo] = useState(false);
-  const titulo = d.titulo ?? d.item_ref;
+  // 30.66: sem chave interna nem lacuna crua no título; o título cru fica no `title`, para quem desenvolve.
+  const titulo = tituloDaDecisao(d, tituloDe(d.item_ref));
   const vivo = d.estado === 'published' && d.kind !== null;
   const desligar = async (motivo: string): Promise<string | null> => {
     if (!d.kind) return 'Item sem tipo conhecido: decida pelo detalhe.';
@@ -45,13 +48,13 @@ function LinhaDaDecisao({ d, onMudou }: { d: DecisaoDaPlataforma; onMudou: () =>
   return (
     <li className={styles.item} data-decisao-da-plataforma={d.item_ref}>
       <div className={styles.itemHead}>
-        <span className={styles.itemTitulo}>{titulo}</span>
+        <span className={styles.itemTitulo} title={d.titulo ?? undefined}>{titulo}</span>
         <Badge tone={d.gesto === 'publicar' ? 'success' : 'info'} size="sm">{ROTULO_DO_GESTO[d.gesto]}</Badge>
         {d.estado === 'disabled' ? <Badge tone="muted" size="sm">Desligado depois</Badge> : null}
       </div>
       <div className={styles.itemMeta}>
         <span title={formatDateTime(d.em)}>{formatQuando(d.em)}</span>
-        {d.regra ? <span>regra <strong>{d.regra}</strong></span> : null}
+        {d.regra ? <span title={d.regra}>{rotuloDaRegra(d.regra)}</span> : null}
       </div>
       <p className={styles.secaoLead}><strong>Por quê:</strong> {fatosDoMotivo(d.motivo)}</p>
       {vivo && !abrindo ? (
@@ -139,7 +142,7 @@ export function DecididoPelaPlataforma({ relatorio, erro = null, tituloDe, onMud
       ) : null}
       {relatorio.decididos.length > 0 ? (
         <ul className={styles.lista} aria-label="Decisões da plataforma">
-          {visiveis.map((d) => <LinhaDaDecisao key={`${d.item_ref}@${d.em}`} d={d} onMudou={onMudou} />)}
+          {visiveis.map((d) => <LinhaDaDecisao key={`${d.item_ref}@${d.em}`} d={d} tituloDe={tituloDe} onMudou={onMudou} />)}
         </ul>
       ) : null}
       {relatorio.decididos.length > VISIVEIS ? (
