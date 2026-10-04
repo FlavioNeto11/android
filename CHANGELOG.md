@@ -368,6 +368,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - 422 `reacao_repetida`: dois pedidos de efeito da mesma família com o mesmo objetivo e personas diferentes. Adendo v1.28.
 - Prova: `simulated` (`backend/tests/test_pedidos_colaboracao_para_fora.py`). `not_run`: pedido real. Regras 1 e 2 ficam na porta de
   política (30.62).
+- Provedor `contexto_do_pedido(db, run_id)` (`modules/pedidos/infrastructure/contexto.py`): `raiz`, `familia` e `porta_voz` da
+  execução, para a porta de política (30.62). NÃO ligado ao `state.py`. `simulated`: `tests/test_pedidos_contexto_da_execucao.py`.
 
 ## 2026-10-04 — 28.10 F4: o pai consolida observações e memória dos filhos (branch canais/28-10-f4-consolidacao, sem migração)
 
