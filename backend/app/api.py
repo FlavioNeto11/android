@@ -74,7 +74,8 @@ from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
 from .planning import conciliacao, costs, saldos
-from .porta_do_plano import AprovarPlanoBody, PortaIndisponivel, aprovar_plano, previa_da_porta, renovar_plano
+from .porta_do_plano import (AprovarPlanoBody, PortaIndisponivel, PreviaDoItemBody, aprovar_plano, previa_da_porta,
+                             previa_do_item, renovar_plano)
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
@@ -3135,6 +3136,16 @@ async def run_aprovar_plano(request: Request, run_id: str, body: AprovarPlanoBod
         raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
     except RunError as exc:
         raise _run_error(exc) from exc
+
+
+@router.post("/runs/{run_id}/porta/item")
+async def run_porta_item(request: Request, run_id: str, body: PreviaDoItemBody) -> dict[str, object]:
+    """30.68: a prévia de UM item com o texto proposto no cartão (selo, motivo e chave). Só leitura: não grava e não
+    chama IA. 409 `plano_mudou` se a etapa saiu do plano; 422 para o texto vazio, longo ou com variável."""
+    try:
+        return previa_do_item(st(request), run_id, body)
+    except PortaIndisponivel as exc:
+        raise err(exc.status, exc.codigo, exc.mensagem, **exc.extra) from exc
 
 
 @router.post("/runs/{run_id}/porta/renovar")

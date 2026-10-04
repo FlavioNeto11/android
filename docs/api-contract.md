@@ -5884,3 +5884,34 @@ Sem migração. Muda a v1.26 e a rota `POST .../trello`.
   `pode_ir_ao_cartao` passa a exigir também um mime da lista `avisos.entrada.anexos.tipos`.
 - `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
   `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.
+
+## Adendo v1.38 (04/10/2026; número da orquestradora; item 30.68) — a prévia do texto editado antes do sim
+
+O v1.32 conferia a chave do texto DA PRÉVIA e recalculava no servidor a do texto editado: o dono aprovava sem ver o que
+a porta fazia com o texto novo (a DM repetida passa a dizer "esta conta já mandou ESTA mensagem"), e um texto que tirava
+o item do 🔒 só aparecia num 409 depois do clique.
+
+- **`POST /api/runs/{id}/porta/item`** (200), corpo `{step_id, texto}` (`texto` até 20 000 no corpo; o limite real é o
+  de baixo): o item da prévia recalculado com o texto proposto no lugar do da etapa. Resposta
+  `{step_id, texto, item}`: `texto` já sem espaço nas pontas; `item` é o `ItemDaPorta` do v1.32 (selo, motivo, dica,
+  chave), ou `null` se a etapa não fecha mais um item. Só leitura: não grava, não chama IA; a mesma conta (`_item`) da
+  `GET …/porta`, sobre uma cópia da etapa, DENTRO do laço do plano (a regra do mesmo efeito duas vezes no plano vale
+  igual). 404 execução inexistente; 409 `invalid_state` fora de `planned`; 409 `plano_mudou` se a etapa saiu do plano
+  ou se ela não é 🔒 com chave na prévia inteira (a 2ª DM ao mesmo alvo, o 2º comentário no mesmo objeto); 422
+  `invalid_body` (texto vazio, com marcador de modelo, ou ação que não escreve) e `texto_longo` (acima de 2200
+  caracteres), as mesmas recusas do gesto.
+- **Gesto (`POST …/aprovar-plano`):** só o item que é 🔒 com chave na prévia inteira aceita `texto` (senão 409
+  `plano_mudou`). No item com `texto` editado (diferente do da prévia), `chave` passa a ser a da
+  prévia DESSE texto (a que a rota acima devolveu). O servidor a confere antes de gravar (selo 🔒 e chave iguais à do
+  texto editado; senão 409 `plano_mudou` com "com o texto editado: …") e de novo na etapa relida depois do `apply_edit`
+  (diferente: 409 e a edição desfeita). A chave gravada é, portanto, a que o dono viu.
+- **Imagem no cartão:** o `ItemDaPorta` ganha `image_id` (a imagem da publicação, só a de sha256 conhecido, a mesma
+  da chave); o cartão do plano mostra a imagem que vai ao feed, não só "com imagem" (29.30).
+- **Painel:** ao sair do campo, ou depois de 500 ms sem digitar, o painel pede a prévia do texto editado; o "Aprovar"
+  fica travado ("Conferindo na porta o texto editado…") até ela voltar para o texto atual (resposta de texto antigo não
+  vale). Junto do item: "Com este texto: pede seu aval — <motivo>", ou, se o item deixou de ser 🔒, "Com este texto, a
+  ação não pede mais o seu aval aqui (<selo>): <motivo>", com o "Aprovar" travado até o dono voltar ao texto da prévia
+  ou tirar a ação. Falha ao conferir trava com o motivo; sair do campo tenta de novo.
+- **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`: a rota, o só-leitura e a DM repetida com a regra
+  real; `frontend/src/features/runs/PortaDoPlano.test.tsx`). Nenhuma regra real tira hoje um item do 🔒 só pela edição
+  do texto; o teste desse caminho é com selo forçado. `not_run`: o percurso no navegador e qualquer execução real.
