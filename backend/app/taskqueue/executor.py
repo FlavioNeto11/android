@@ -100,6 +100,8 @@ ATALHO_ANTES_DO_ATOR = True
 #: veredito (~4,5 s com `judge_wait_s` de 1,5). Medido em 7 d: as "NÃO comprovada" pagavam o orçamento inteiro (mediana
 #: 16,9 s, p90 55,9 s) sem nenhuma 2ª chamada — a tela não mudou e o juiz não é consultado de novo na mesma tela.
 SONDAGENS_DA_TELA_PARADA = 3
+#: 31.27: o intervalo entre duas leituras da árvore na espera adaptativa do juiz (`judge_wait_estavel_s`).
+PASSO_DA_ESPERA_DO_JUIZ_S = 0.3
 #: LT-6 (caminho rápido 2): a etapa `app_foreground` abre o app pelo executor antes de consultar o ator. Existe para os
 #: testes cujo gancho é a decisão do ator numa etapa dessas (como `ATALHO_ANTES_DO_ATOR`): eles desligam isto.
 OPEN_APP_SEM_IA = True
@@ -2751,16 +2753,20 @@ class StepExecutor:
         # "Sending…" declarado (ADR-055) e o nível que depende do outro lado (entregue/lida chega sem a árvore mudar antes).
         sai_cedo = not (patient and marcas_pendentes) and (need is None
                                                            or DELIVERY_ORDER[need] <= DELIVERY_ORDER[DeliveryLevel.sent])
+        pronta: Observation | None = None          # 31.27: a última leitura da espera adaptativa vira a 1ª do laço
         if patient and (post.kind == "model_judged" or need is not None):
             # o app costuma levar ~1–2 s para sair de "enviando": evita pagar 2 julgamentos
-            await self._esperar_o_juiz(attempt_id)
+            pronta = await self._esperar_o_juiz(attempt_id, rt=rt, call_timeout=call_timeout, marcas=marcas_pendentes)
         lado_max = ai_cfg.screenshot_max_side
         while True:
             # Só a árvore: a maioria das conferências é determinística. A imagem vem logo antes do julgamento que a
             # usa (`completar_imagem`), e a evidência final adquire a sua se a observação não tiver (C1). UI ocupada
             # relê dentro do orçamento desta verificação: logo depois do efeito é quando o convidado mais pena.
-            obs = await reler_se_ocupada(lambda: self.devices.observe(rt, timeout=call_timeout, imagem=False),
-                                         prazo=t_end, quem=rt.id)
+            if pronta is not None:
+                obs, pronta = pronta, None
+            else:
+                obs = await reler_se_ocupada(lambda: self.devices.observe(rt, timeout=call_timeout, imagem=False),
+                                             prazo=t_end, quem=rt.id)
             ok, text = self._deterministic(step, obs)
             # Nível de entrega (enviada/entregue/lida) não é comprovável por texto/seletor — o texto já aparece no
             # campo ANTES do envio. Sempre que o plano exigir um nível, o verificador julga a tela também.
@@ -2943,15 +2949,49 @@ class StepExecutor:
                 return ok, text, level, obs, False
             await self._esperar_o_juiz(attempt_id)
 
-    async def _esperar_o_juiz(self, attempt_id: str | None) -> None:
+    async def _esperar_o_juiz(self, attempt_id: str | None, *, rt: DeviceRuntime | None = None,
+                              call_timeout: float = 0.0, marcas: tuple[str, ...] = ()) -> Observation | None:
         """A espera deliberada do verificador (`judge_wait_s`), somada na tentativa (31.24, C-4:
-        `attempts.juiz_espera_ms`)."""
+        `attempts.juiz_espera_ms`).
+
+        31.27: com `rt` (a espera ANTES do primeiro julgamento) e `judge_wait_estavel_s` > 0, ela é adaptativa: lê a
+        árvore e sai quando a tela fica igual por `judge_wait_estavel_s`, sem marca pendente do catálogo, nunca além de
+        `judge_wait_s`. Devolve a última leitura, que o verificador usa como a sua primeira (não lê de novo). Tela que
+        ainda muda espera até o teto, como antes; leitura que falha cai na espera fixa. Sem `rt` (a espera entre duas
+        sondagens, que espera a tela MUDAR) ou com 0, é a espera fixa de sempre."""
         inicio = time.monotonic()
+        ai = self.cfg.file.ai
+        teto, estavel = float(ai.judge_wait_s), float(ai.judge_wait_estavel_s)
         try:
-            await asyncio.sleep(float(self.cfg.file.ai.judge_wait_s))
+            if rt is None or estavel <= 0 or teto <= 0:
+                await asyncio.sleep(teto)
+                return None
+            return await self._esperar_a_tela_parar(rt, inicio + teto, estavel, call_timeout, marcas)
         finally:
             if (tempos := self._tempos(attempt_id)) is not None:
                 tempos.juiz_espera_ms += ms_desde(inicio)
+
+    async def _esperar_a_tela_parar(self, rt: DeviceRuntime, fim: float, estavel: float, call_timeout: float,
+                                    marcas: tuple[str, ...]) -> Observation | None:
+        """A espera adaptativa do 31.27: a última leitura quando a assinatura da árvore ficou igual por `estavel` sem
+        marca pendente, ou quando o teto (`fim`, relógio monotônico) chegou. Marca pendente na tela recomeça a contagem:
+        "Enviando…" parado não é tela assentada."""
+        assinatura: str | None = None
+        desde = 0.0
+        while True:
+            try:
+                obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
+            except (DriverBusy, FalhaDeLeitura, DriverError, DriverTimeout):
+                # A leitura da espera não decide nada: falhou, espera o resto do teto e o verificador lê como sempre.
+                await asyncio.sleep(max(0.0, fim - time.monotonic()))
+                return None
+            agora = time.monotonic()
+            atual = obs.tree.signature()
+            if atual != assinatura or marcas_pendentes_na_tela(marcas, obs.tree):
+                assinatura, desde = atual, agora
+            if agora - desde >= estavel or agora >= fim:
+                return obs
+            await asyncio.sleep(min(PASSO_DA_ESPERA_DO_JUIZ_S, max(0.0, fim - agora)))
 
     @staticmethod
     def _marcas_pendentes(capability: CapabilityRef | None) -> tuple[str, ...]:

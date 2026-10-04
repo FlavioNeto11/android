@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.27: espera do juiz adaptativa (branch feat/31-27-juiz-adaptativo)
+
+- A espera antes do primeiro julgamento deixa de ser um sono fixo de 1,5 s. Ela lê a árvore e sai quando a tela fica
+  igual por `ai.judge_wait_estavel_s` (0,6 s, novo), sem marca pendente. O teto segue sendo `judge_wait_s`, e a última
+  leitura vira a primeira do verificador.
+- A espera entre sondagens (LT-5) não muda. `judge_wait_estavel_s: 0` volta ao antigo.
+- Medida de partida:
+  - linha de base de 04/10: 4 esperas e 6 s em 233 s de parede;
+  - "depois" do deploy 16: 6 esperas e 9 s em 149 s.
+- Prova: `simulated` (`tests/test_juiz_espera_adaptativa.py`); o real é `not_run` até o deploy. Doc:
+  `docs/dominios/execution.md`.
+
 ## 2026-10-03/04 — Suíte 16 na main e deploy 16 no central (3b5355ce; migrações 087 e 088; config sem mudança)
 
 - Integrados em `integ/suite-16`, nesta ordem: #174, #178 (30.42, com a correção do `for_each` e o 30.41 pelo
