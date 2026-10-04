@@ -678,11 +678,17 @@ class ConversaDoCanal:
         enviada = await saida.enviar_anexo(conteudo, mime, self._redigir(legenda),  # type: ignore[attr-defined]
                                            responde_a=responde_a)
         self.repo.registrar_enviada(enviada, "anexo", entrada_id=entrada_id)
-        if sha is None:
-            # O conteúdo que o produto gerou ainda não está no armazém: guarda agora, já enviado (a linha é `saida`).
-            armazem.guardar(conteudo, tipos=(mime,), max_bytes=len(conteudo), entrada_id=entrada_id, direcao="saida")
-        else:
-            armazem.registrar_saida(sha, mime, len(conteudo), entrada_id=entrada_id)
+        # Daqui em diante o arquivo JÁ está no chat do dono: uma falha ao guardar o rastro (erro de disco, banco) não pode
+        # virar "não enviei" para quem chamou. Registra o que deu, diz a verdade no log e devolve o envio.
+        try:
+            if sha is None:
+                # O conteúdo que o produto gerou ainda não está no armazém: guarda agora, já enviado (a linha é `saida`).
+                armazem.guardar(conteudo, tipos=(mime,), max_bytes=len(conteudo), entrada_id=entrada_id, direcao="saida")
+            else:
+                armazem.registrar_saida(sha, mime, len(conteudo), entrada_id=entrada_id)
+        except Exception as erro:  # noqa: BLE001 - o envio já aconteceu; o rastro é o que falhou
+            motivo = erro.motivo if isinstance(erro, AnexoRecusado) else type(erro).__name__
+            log.error("anexos: enviei o arquivo (mensagem %s), mas não consegui guardar o rastro dele (%s)", enviada, motivo)
         return enviada
 
     async def _recusar_credencial(self, saida: SaidaDaConversa | None, r: Recebida, motivo: str, ok: str,

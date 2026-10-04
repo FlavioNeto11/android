@@ -15,6 +15,7 @@ import pytest
 
 from app.devices.captura_pontual import capturar_para_o_dono
 from app.models import InstanceState
+from app.modules.avisos.infrastructure.anexos import AnexoRecusado
 from app.modules.avisos.application.entrada import rotear
 from app.modules.avisos.infrastructure.entrada import Captura, Recebida
 
@@ -81,6 +82,20 @@ async def test_o_dono_pede_e_a_tela_volta_so_a_ele_com_legenda_so_do_aparelho(c:
     e = c.entrada(5)
     assert (e["estado"], e["intencao"], e["resposta"]) == ("feita", "captura", "captura enviada")
     assert len(c.bot.mensagens()) == 0                                                # nada de texto extra: só a imagem
+
+
+async def test_erro_de_disco_depois_do_envio_nao_vira_nao_enviei(c: CenarioAnexos, caplog: pytest.LogCaptureFixture) -> None:
+    """Achado 8 da revisão: a imagem já estava no chat do dono e ele ouvia "Não enviei a captura"."""
+    def disco_cheio(*_a: object, **_k: object) -> None:
+        raise AnexoRecusado("Não consegui guardar o arquivo na Central (erro de disco).")
+
+    c.armazem.guardar = disco_cheio                                                  # type: ignore[method-assign]
+    with caplog.at_level("ERROR", logger="poc.avisos.entrada"):
+        await c.volta(msg(5, "captura do android-12"))
+    assert [e["metodo"] for e in c.bot.envios] == ["sendPhoto"] and c.bot.mensagens() == []   # só a imagem: nada de "não enviei"
+    e = c.entrada(5)
+    assert (e["estado"], e["resposta"]) == ("feita", "captura enviada")
+    assert any("não consegui guardar o rastro" in r.getMessage() for r in caplog.records)
 
 
 async def test_sem_captura_o_motivo_vai_ao_dono_como_texto(c: CenarioAnexos) -> None:
