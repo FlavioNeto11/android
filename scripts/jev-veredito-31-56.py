@@ -59,7 +59,9 @@ CRITERIO: Final = {
     "minimo_de_pares_completos": 3,
     "cancelada": "execução cancelada (à mão ou pelo teto de US$ 0,25 por execução) conta como insucesso do braço dela",
     "inconclusivo": "menos pares completos que o mínimo, execução de par completo ainda rodando, ou braço sem etapa que"
-                    " rodou",
+                    " rodou com o sucesso do ligado igual ou maior",
+    "ordem": "o sucesso decide primeiro: ligado com menos sucesso que o desligado é nao_liga, com ou sem etapa; só"
+             " depois o braço sem etapa dá inconclusivo (os dois sem etapa também); por fim, as decisões por etapa",
     "chave_repetida": "a chave é única: repetir o disparo devolve a execução original e não cria outra; cada par precisa"
                       " de NN novo, e quem dispara confere que cada chave criou uma execução nova",
     "pre_registrado": "2026-10-04 22:49Z (orquestradora), antes de qualquer execução do 31.56; bordas V1 a V3 da revisão"
@@ -171,9 +173,14 @@ def veredito(linhas: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
                 "porque": f"{len(completos)} par(es) completo(s); o mínimo é {CRITERIO['minimo_de_pares_completos']}"}
     if not all(ln["terminou"] for ln in dentro):
         return {**resumo, "veredito": "inconclusivo", "porque": "execução de par completo ainda não terminada"}
+    sucesso_ok = Fraction(on["sucessos"], on["execucoes"]) >= Fraction(off["sucessos"], off["execucoes"])
+    if not sucesso_ok:
+        # N1 da revisão: o sucesso decide antes da contagem de decisões. O ligado que falha sempre antes da 1ª etapa
+        # já perdeu pelo sucesso; "sem etapa" não o salva para `inconclusivo`.
+        return {**resumo, "veredito": "nao_liga",
+                "porque": {"sucesso_igual_ou_maior": False, "decisoes_dentro_do_limite": None}}
     if not off["etapas"] or not on["etapas"]:
         return {**resumo, "veredito": "inconclusivo", "porque": "braço sem etapa que rodou"}
-    sucesso_ok = Fraction(on["sucessos"], on["execucoes"]) >= Fraction(off["sucessos"], off["execucoes"])
     taxa_off = Fraction(off["decisoes"], off["etapas"])
     taxa_on = Fraction(on["decisoes"], on["etapas"])
     if taxa_off == 0:

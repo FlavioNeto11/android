@@ -163,6 +163,22 @@ def test_cancelada_conta_como_insucesso_do_braco(banco: _Banco, tmp_path: Path,
     assert r["porque"]["sucesso_igual_ou_maior"] is False
 
 
+def test_n1_ligado_que_falha_antes_da_etapa_perde_pelo_sucesso(banco: _Banco, tmp_path: Path,
+                                                              capsys: pytest.CaptureFixture[str]) -> None:
+    """N1: o sucesso decide antes de "braço sem etapa"; os dois braços sem etapa seguem inconclusivos."""
+    banco.pares(3, on={"status": "failed", "etapas": 0, "decisoes": 0})
+    r = banco.rodar(tmp_path, capsys)
+    assert r["veredito"] == "nao_liga" and r["porque"]["sucesso_igual_ou_maior"] is False
+    assert "ordem" in ver.CRITERIO
+
+
+def test_n1_os_dois_bracos_sem_etapa_sao_inconclusivos(banco: _Banco, tmp_path: Path,
+                                                       capsys: pytest.CaptureFixture[str]) -> None:
+    banco.pares(3, off={"status": "failed", "etapas": 0, "decisoes": 0},
+                on={"status": "failed", "etapas": 0, "decisoes": 0})
+    assert banco.rodar(tmp_path, capsys)["veredito"] == "inconclusivo"
+
+
 def test_menos_de_tres_pares_ou_execucao_rodando_e_inconclusivo(banco: _Banco, tmp_path: Path,
                                                                 capsys: pytest.CaptureFixture[str]) -> None:
     banco.pares(2)
