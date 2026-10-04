@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.61 (correção): o aviso de rota desconhecida aparece de verdade (branch fix/29-61-aviso-some, só painel)
+
+- Causa: `aoMudarHash` limpava o aviso olhando o hash DEPOIS de `aplicarHash`, que reescreve o endereço errado para a
+  rota atual (válida). O aviso era gravado e apagado na mesma troca; e o navegador dispara `popstate` e `hashchange`
+  juntos, o segundo já com o hash reescrito. O teste do 29.61 chamava `aplicarHash` direto e não passava por ali.
+- Correção: `aplicarHash` devolve o que fez (`rota` | `desconhecida` | `nada`), e o aviso sai só quando uma rota NOVA
+  foi aplicada.
+- Prova `simulated`: `frontend/src/app.integration.test.tsx` monta o `App`, troca o hash com `popstate` + `hashchange`
+  e confere o `role=alert`, o Dispensar e a saída ao ir a um endereço que existe (os dois casos falhavam antes da
+  correção); front 1477 passed. Real: na próxima validação no navegador do central.
+
 ## 2026-10-04 — Suíte 19 na main e deploy 19 no central (c683ab0e; sem migração)
 
 - **Integrado e implantado** (push 03:04:27Z; deploy 03:05Z): #194 (29.61, rota desconhecida e Execuções sem id),

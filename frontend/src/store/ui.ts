@@ -383,10 +383,13 @@ function aplicarRota(r: Rota): string | null {
  * Lê o hash atual e aplica ao store. Idempotente. Canoniza sem empilhar: nome antigo (`#/perfis`), hash desconhecido
  * (volta à rota atual) e `#/execucoes` sem id quando há execução selecionada.
  */
-export function aplicarHash(forcar = false): void {
-  if (!temJanela) return;
+/** O que `aplicarHash` fez: aplicou uma rota, achou um endereço que não existe, ou nada (o hash já era o aplicado). */
+export type HashAplicado = 'rota' | 'desconhecida' | 'nada';
+
+export function aplicarHash(forcar = false): HashAplicado {
+  if (!temJanela) return 'nada';
   const hash = window.location.hash;
-  if (hash === ultimoAplicado && !forcar) return;
+  if (hash === ultimoAplicado && !forcar) return 'nada';
   const lida = parseHash(hash);
   if (!lida) {
     // 29.61: link antigo ou digitado errado (`#/runs`) avisa, em vez de cair calado na tela atual.
@@ -395,7 +398,7 @@ export function aplicarHash(forcar = false): void {
     const atual = hashDaRota(useUiStore.getState().rota);
     ultimoAplicado = atual;
     window.history.replaceState(window.history.state, '', atual);
-    return;
+    return 'desconhecida';
   }
   const r = semLegado(lida);
   if (lida.legado) window.history.replaceState(window.history.state, '', hashDaRota(r));
@@ -408,6 +411,7 @@ export function aplicarHash(forcar = false): void {
     useUiStore.setState({ rota: { ...r, segmentos: [run] } });
   }
   ultimoAplicado = window.location.hash;
+  return 'rota';
 }
 
 /** Liga o hash da URL ao store (Voltar/Avançar, link colado, `<a href>`). Devolve a função de limpeza. */
@@ -428,9 +432,11 @@ export function bindHashRouting(): () => void {
 
 /** Ouvinte estável (o evento não pode cair no parâmetro `forcar`). */
 function aoMudarHash(): void {
-  aplicarHash();
-  // A pessoa foi a outro endereço que existe: o aviso do endereço errado de antes sai.
-  if (parseHash(window.location.hash) && useUiStore.getState().rotaDesconhecida) {
+  // A pessoa foi a outro endereço que existe: o aviso do endereço errado de antes sai. Só quando uma rota NOVA foi
+  // aplicada — olhar o hash depois não serve: o endereço errado é reescrito para a rota atual (válida) dentro de
+  // `aplicarHash`, e o navegador dispara `popstate` e `hashchange` na mesma troca; o segundo evento chegava com o
+  // hash já reescrito e apagava o aviso que o primeiro acabara de mostrar (achado da validação do deploy 19).
+  if (aplicarHash() === 'rota' && useUiStore.getState().rotaDesconhecida) {
     useUiStore.setState({ rotaDesconhecida: null });
   }
 }

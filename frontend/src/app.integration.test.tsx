@@ -742,6 +742,32 @@ describe('Central de Aparelhos — rotas por objeto e menu', () => {
     expect(window.location.hash).toBe('#/infraestrutura');
   });
 
+  it('29.61: endereço que não existe mostra o aviso (hashchange e popstate, como no navegador) e Dispensar tira', async () => {
+    await goTo('#/painel');
+    await act(async () => {
+      window.location.hash = '#/rota-que-nao-existe';
+      // O navegador dispara os dois ao trocar o hash na barra; o segundo chega com o hash já reescrito.
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+    await flush();
+    const aviso = await waitFor(() => byRole('alert', /Este endereço não existe no painel/));
+    expect(text(aviso)).toContain('#/rota-que-nao-existe');
+    expect(window.location.hash).toBe('#/painel');
+    expect(atual()).toEqual(['Painel']);
+    await click(byRole('button', 'Dispensar', aviso));
+    await waitFor(() => expect(allByRole('alert', /Este endereço não existe no painel/)).toHaveLength(0));
+  });
+
+  it('29.61: o aviso sai quando a pessoa vai a um endereço que existe', async () => {
+    await goTo('#/naoexiste');
+    await waitFor(() => byRole('alert', /Este endereço não existe no painel/));
+    await goTo('#/personas');
+    await waitFor(() => expect(allByRole('alert', /Este endereço não existe no painel/)).toHaveLength(0));
+    expect(atual()).toEqual(['Personas']);
+    await goTo('#/painel');
+  });
+
   it('Execuções: o link nomeia a execução e a guia; colar o link reabre a mesma guia', async () => {
     await goTo('#/execucoes');
     await waitFor(() => expect(window.location.hash).toBe(`#/execucoes/${RUN_ID}`));
