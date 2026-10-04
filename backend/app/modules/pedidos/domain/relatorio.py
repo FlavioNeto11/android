@@ -50,7 +50,7 @@ class EntradaDoRelatorio:
     pendencias: Sequence[str] = ()     # os valores das pendências ABERTAS da memória (§8.1)
     #: 28.10 F4: os filhos diretos do pedido (`domain/consolidacao.FilhoVisto`). Vazio = nada de `consolidacao` no relatório,
     #: que sai idêntico ao de antes. `consolidacao_falhou` diz que os filhos existem mas a leitura deles falhou.
-    filhos: Sequence[object] = ()
+    filhos: Sequence[dominio_consolidacao.FilhoVisto] = ()
     consolidacao_falhou: bool = False
 
 
@@ -108,7 +108,7 @@ def montar(entrada: EntradaDoRelatorio) -> dict[str, object]:
     _lacunas(no_periodo, itens, entrada)
     consolidacao = None
     if entrada.filhos:
-        consolidacao = dominio_consolidacao.consolidar(entrada.filhos)        # type: ignore[arg-type]
+        consolidacao = dominio_consolidacao.consolidar(entrada.filhos)
         itens.nao_coberto.extend(dominio_consolidacao.itens_nao_cobertos(consolidacao))
     elif entrada.consolidacao_falhou:
         itens.nao_coberto.append({"tipo": "consolidacao_indisponivel",
