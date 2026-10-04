@@ -356,7 +356,9 @@ segurança e `--ensaio`; `scripts/portal-gerar-senha.ps1`, também do dono, grav
 **Conferências de ida ao ar** (de FORA da LAN, por exemplo no 4G; marque o resultado como `real`, com data e máquina).
 `bash scripts/portal-prova-de-fora.sh depois` faz todas, menos o login, sem credencial e sem chamar a rota de login com
 senha; `antes` confere o estado seguro (403) antes do passo 7. A linha do 429 prova a regra de limite de taxa da
-Cloudflare desta instalação: sem a regra, rode com `SEM_LIMITE_DE_TAXA=1`.
+Cloudflare desta instalação: sem a regra, rode com `SEM_LIMITE_DE_TAXA=1`. Com a Etapa 2 do Trello no ar (`trello.webhook.enabled: true`), rode com
+`WEBHOOK_DO_TRELLO=ligado`: o webhook passa a responder 200 ao HEAD e 401 ao GET e ao POST sem assinatura (a rodada manda um
+POST ruim só; cinco recusas em 10 min acendem `trello_webhook_assinatura_invalida`).
 | Pedido | Esperado |
 |---|---|
 | `https://dev.nvit.com.br/central/` | 200, tela de login |

@@ -11,6 +11,9 @@
 #             SEM_LIMITE_DE_TAXA=1              pula a conferencia do 429 no login. Essa linha prova a regra de limite
 #                                               de taxa criada NA CLOUDFLARE desta instalacao (docs/operacao.md), nao o
 #                                               codigo: numa instalacao sem a regra ela falha, e o resto continua valendo.
+#             WEBHOOK_DO_TRELLO=ligado          a Etapa 2 do 32.2 esta no ar (`trello.webhook.enabled: true`): o webhook
+#                                               responde 200 ao HEAD e 401 ao GET e ao POST sem assinatura. Sem a
+#                                               variavel, o esperado e o webhook fechado (401 ou 404).
 #
 # Regra de ouro: /api/instances NUNCA pode dar 200 de fora. Se der: Stop-Service Cloudflared e investigue antes de religar.
 set -u
@@ -70,7 +73,16 @@ else
         -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ=="
     # Webhook do Trello (32.2, PR #177): unica excecao sem credencial em /api/ no publico, so HEAD e POST.
     # Antes do 32.2 implantado: 401 (rota comum de /api/). Implantado e desligado: 404. Ligado: HEAD 200.
-    confere /api/canais/trello/webhook "401 404" "webhook do Trello: fechado (401 antes do 32.2, 404 desligado)" -I
+    if [[ "${WEBHOOK_DO_TRELLO:-}" == "ligado" ]]; then
+        # Etapa 2 do 32.2 no ar: HEAD 200; GET e POST sem assinatura valida 401. So 1 POST ruim por rodada: 5 recusas
+        # em 10 min acendem `trello_webhook_assinatura_invalida` na saude.
+        confere /api/canais/trello/webhook "200" "webhook do Trello ligado: HEAD 200" -I
+        confere /api/canais/trello/webhook "401" "webhook do Trello ligado: GET recusado"
+        confere /api/canais/trello/webhook "401" "webhook do Trello ligado: POST sem assinatura recusado" \
+            -X POST -H "Content-Type: application/json" -d "{}"
+    else
+        confere /api/canais/trello/webhook "401 404" "webhook do Trello: fechado (401 antes do 32.2, 404 desligado)" -I
+    fi
     # Limite de taxa da Cloudflare na rota de login (so GET, que da 405 na origem e nao conta como tentativa):
     # a 2a chamada em 10 s tem de voltar 429.
     if [[ "${SEM_LIMITE_DE_TAXA:-0}" == "1" ]]; then
