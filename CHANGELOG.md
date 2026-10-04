@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.40 b: a limpeza da sobreposição age e se comprova (branch feat/31-40b-limpeza-comprovada, sem migração)
+
+- Achado real 95d10f: a limpeza entrou, mas o ator deu `step_done` sem tocar, e a etapa opcional (só com prova local)
+  nunca se comprovava. Agora:
+  - o juiz cita o elemento que cobre (`Verdict.cobre`, hash novo do `VERIFIER_SYSTEM`), ou a árvore o acha por pista;
+  - o elemento vai à limpeza em `steps.variables`, e o ator o recebe no objetivo;
+  - a árvore comprova a limpeza sem IA quando ele sai; sem o elemento, a limpeza tem no máximo UM julgamento;
+  - `step_done` sem gesto numa limpeza ainda coberta é recusado;
+  - a receita fica desligada na etapa opcional.
+- Prova `simulated`: `backend/tests/test_sobreposicao.py`. A prova real (repetir a 3894c1) é `not_run` até o deploy.
+
 ## 2026-10-04 — 30.48: a prova de fluxo com `for_each` roda uma amostra (branch feat/30-48-prova-por-amostra)
 
 - O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 (lv-5cf7389f13e4e0f0 fechou

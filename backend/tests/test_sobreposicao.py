@@ -126,3 +126,146 @@ async def test_orcamento_da_acao_numa_leitura_e_dado_ausente(harness: Harness, m
         assert harness.state.db.scalar("SELECT status FROM objectives WHERE run_id=?", (run.id,)) == "failed"  # type: ignore[union-attr]
     finally:
         unregister(QA)
+
+
+# ---------------------------------------------------------------- 31.40 b: a limpeza que age e se comprova
+# Achado real (95d10f, android-09, 04/10 13:20Z): a limpeza entrou, mas o ator deu step_done sem tocar em nada e ela só
+# tinha a prova local (sem juiz), então nunca se comprovava. Agora: (i) com o elemento que cobria conhecido, a árvore
+# decide sem IA; sem ele, UM julgamento por limpeza; (ii) o ator recebe o elemento; (iii) step_done sem toque não vale.
+
+def _juiz_com_ref(inner: Any, chave: str, *, cobertas: int) -> dict[str, int]:
+    """Como `_juiz`, citando em `cobre` o 1º elemento da tela; conta as chamadas de verificação por etapa."""
+    verify0 = inner.verify
+    chamadas: dict[str, int] = {}
+
+    async def verify(req: Any) -> Any:
+        chamadas[req.ctx.step_key] = chamadas.get(req.ctx.step_key, 0) + 1
+        if req.ctx.step_key == chave and chamadas[chave] <= cobertas:
+            ref = req.screen.tree.elements[0].id if req.screen.tree is not None and req.screen.tree.elements else None
+            return Verdict(satisfied="no", evidence="[simulado] um aviso cobre a lista", sobreposicao=True,
+                           cobre=ref), Usage()
+        return await verify0(req)
+
+    inner.verify = verify
+    return chamadas
+
+
+def _ator_que_fecha(inner: Any) -> None:
+    """O ator da limpeza toca (no "X", aqui um ponto inócuo do aparelho falso) e depois declara a etapa feita."""
+    from app.planning.provider import Decision
+    decide0 = inner.decide
+    vezes: dict[str, int] = {}
+
+    async def decide(req: Any) -> Any:
+        if not req.ctx.step_key.startswith("limpar_antes_"):
+            return await decide0(req)
+        vezes[req.ctx.step_key] = vezes.get(req.ctx.step_key, 0) + 1
+        if vezes[req.ctx.step_key] == 1:
+            return Decision(tool="tap", args={"x": 1, "y": 1, "is_commit_action": False,
+                                              "rationale": "[simulado] fecha o aviso"}), Usage()
+        return Decision(tool="step_done", args={"evidence": "[simulado] o aviso saiu",
+                                                "rationale": "[simulado] fechado"}), Usage()
+
+    inner.decide = decide
+
+
+def _limpeza(h: Harness, run_id: str) -> Any:
+    return h.state.db.one("SELECT id, status, status_detail, goal, variables FROM steps WHERE run_id=? AND key LIKE "  # type: ignore[union-attr]
+                          "'limpar_antes_%' ORDER BY plan_version DESC, seq LIMIT 1", (run_id,))
+
+
+async def test_o_elemento_que_cobre_vai_a_limpeza_e_a_arvore_decide_sem_juiz(harness: Harness) -> None:
+    import json
+    harness.pular_o_tempo()
+    harness.encurtar_verificacao(1.5)
+    chamadas = _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    limpeza = _limpeza(harness, run.id)
+    variaveis = json.loads(limpeza["variables"])
+    assert {"cobre_id", "cobre_texto", "cobre_bounds"} <= set(variaveis)           # (ii) o elemento viaja na etapa
+    assert "na área" in limpeza["goal"]                                               # e o ator o recebe no objetivo
+    assert chamadas.get("limpar_antes_verify_sent", 0) == 0                           # (i) a árvore decide: nenhum juiz
+    # o elemento do aparelho falso não sai da tela: a limpeza não se comprova e fica pulada, sem travar o objetivo
+    assert limpeza["status"] == "skipped"
+    assert harness.state.db.scalar("SELECT status FROM steps WHERE run_id=? AND key='verify_sent' "  # type: ignore[union-attr]
+                                   "ORDER BY plan_version DESC LIMIT 1", (run.id,)) == "succeeded"
+
+
+async def test_elemento_que_saiu_da_arvore_comprova_a_limpeza_sem_ia(harness: Harness, monkeypatch: Any) -> None:
+    from app.taskqueue import executor as modulo
+    harness.pular_o_tempo()
+    harness.encurtar_verificacao(1.5)
+    monkeypatch.setattr(modulo, "ainda_cobre", lambda c, tree: False)                # o diálogo fechou
+    chamadas = _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    _ator_que_fecha(harness.ai.inner)
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    limpeza = _limpeza(harness, run.id)
+    assert limpeza["status"] == "succeeded"
+    assert chamadas.get("limpar_antes_verify_sent", 0) == 0
+    assert harness.state.repo.run_row(run.id)["status"] == "completed"                  # type: ignore[union-attr]
+
+
+async def test_sem_o_elemento_a_limpeza_tem_no_maximo_um_juiz(harness: Harness, monkeypatch: Any) -> None:
+    from app.taskqueue import executor as modulo
+    harness.pular_o_tempo()
+    harness.encurtar_verificacao(1.5)
+    monkeypatch.setattr(modulo, "cobertura_na_arvore", lambda tree, ref: None)       # nem id do juiz nem pista
+    chamadas = _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    limpeza = _limpeza(harness, run.id)
+    assert limpeza["variables"] in (None, "{}")
+    assert chamadas.get("limpar_antes_verify_sent", 0) <= 1
+
+
+async def test_step_done_sem_toque_na_limpeza_e_recusado(harness: Harness, monkeypatch: Any) -> None:
+    from app.taskqueue import executor as modulo
+    harness.pular_o_tempo()
+    harness.encurtar_verificacao(1.5)
+    _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    inner = harness.ai.inner
+    decide0 = inner.decide
+
+    async def decide(req: Any) -> Any:
+        if req.ctx.step_key.startswith(modulo.PREFIXO_LIMPEZA):
+            from app.planning.provider import Decision
+            return Decision(tool="step_done", args={"evidence": "[simulado] nada a fechar",
+                                                    "rationale": "[simulado] só olhou"}), Usage()
+        return await decide0(req)
+
+    inner.decide = decide
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    limpeza = _limpeza(harness, run.id)
+    recusadas = harness.state.db.scalar(                                             # type: ignore[union-attr]
+        "SELECT COUNT(*) FROM actions a JOIN attempts t ON t.id=a.attempt_id WHERE t.step_id=? AND a.tool='step_done' "
+        "AND a.status='rejected' AND a.error='limpeza sem toque'", (limpeza["id"],))
+    assert recusadas >= 1
+    assert limpeza["status"] == "skipped"                                             # (iii) não conta como feita
+
+
+def test_ainda_cobre_pela_identidade_e_pela_area() -> None:
+    from app.automation.hierarchy import UiElement, UiTree
+    from app.taskqueue.executor import Cobertura, ainda_cobre, cobertura_na_arvore
+
+    def el(i: int, rid: str, texto: str, b: tuple[int, int, int, int], cls: str = "android.view.View") -> UiElement:
+        return UiElement(id=f"e{i}", text=texto, desc="", resource_id=rid, class_name=cls, package="p", bounds=b,
+                         clickable=True, enabled=True, focused=False, scrollable=False, editable=False, checked=False,
+                         password=False)
+
+    dialogo = el(2, "site:id/modal", "Abra o app", (100, 800, 980, 1600), "android.app.Dialog")
+    lista = el(1, "site:id/lista", "", (0, 200, 1080, 2200))
+    tela = UiTree(elements=[lista, dialogo], packages=["p"], sensitive=False)
+    c = cobertura_na_arvore(tela, "e2")
+    assert c == Cobertura("site:id/modal", "Abra o app", (100, 800, 980, 1600))
+    assert cobertura_na_arvore(tela, None) == c                                       # sem id: a pista "Dialog"/"modal"
+    assert cobertura_na_arvore(UiTree(elements=[lista], packages=["p"], sensitive=False), None) is None
+    assert ainda_cobre(c, tela)
+    assert not ainda_cobre(c, UiTree(elements=[lista], packages=["p"], sensitive=False))        # saiu da árvore
+    fora = el(2, "site:id/modal", "Abra o app", (0, 2300, 1080, 2400))
+    assert not ainda_cobre(Cobertura("site:id/modal", "Abra o app", (100, 800, 980, 1600)),
+                           UiTree(elements=[lista, fora], packages=["p"], sensitive=False))     # deixou a área
+    assert Cobertura.das_variaveis(c.variaveis()) == c
+    assert Cobertura.das_variaveis({}) is None

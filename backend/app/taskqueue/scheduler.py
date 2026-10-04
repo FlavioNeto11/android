@@ -29,7 +29,8 @@ from ..planning.provider import AIError, AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .ai_slots import VagasDeIA
 from .balanceamento import Candidato, Servidor
-from .executor import Outcome, StepExecutor, StepOutcome, saidas_exigidas, tela_da_falha
+from .executor import (PREFIXO_LIMPEZA, Cobertura, Outcome, StepExecutor, StepOutcome, saidas_exigidas,
+                       tela_da_falha)
 from .flows import FlowStore
 from .foreach import expand
 from .oraculo_qa import (PACOTE_DO_QA, URI_DAS_MENSAGENS, conferencia_se_aplica,
@@ -1760,7 +1761,7 @@ class Scheduler:
         # failed
         repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha, error_kind=kind)
         repo.transition_step(step.id, StepStatus.failed, detail=detail, level="error", error_kind=kind)
-        if out.sobreposicao and self._limpar_antes(obj, step, detail or "sobreposição"):
+        if out.sobreposicao and self._limpar_antes(obj, step, detail or "sobreposição", out.cobertura):
             return True                      # 31.40: segue da tela atual, com a limpeza antes da etapa
         if out.dado_ausente:                 # 31.38: UM plano revisado por objetivo, com a evidência; a segunda vez é final
             ja_revisou = int(self.repo.db.scalar(
@@ -2132,11 +2133,14 @@ class Scheduler:
                 db.execute("UPDATE steps SET bindings=?, commit_guard=?, draft_meta=? WHERE id=?",
                            (dumps(bindings) if bindings else None, dumps(guardas), rascunho, nova["id"]))
 
-    def _limpar_antes(self, obj: Row, step: StepDTO, detail: str) -> bool:
+    def _limpar_antes(self, obj: Row, step: StepDTO, detail: str, cobertura: Cobertura | None = None) -> bool:
         """31.40: o juiz recusou a etapa SEM efeito porque algo cobre o alvo. Em vez de repeti-la (a mesma tela coberta),
         o plano revisado põe ANTES dela uma etapa `opcional` de limpeza (31.36: até 3 decisões, sem juiz, pulada como
         aviso se não se comprovar) e retoma da tela atual. Uma vez por objetivo e dentro do teto de recuperação; fora
-        disso, `False` e vale o caminho de sempre."""
+        disso, `False` e vale o caminho de sempre.
+
+        31.40 b: com o elemento que cobre (`cobertura`, do id do juiz ou da árvore), a limpeza o nomeia ao ator e o leva
+        em `variables` (`cobre_*`): ela se comprova pela árvore quando ele sai, sem IA. Sem ele, UM julgamento decide."""
         run = self.repo.run_row(obj["run_id"])
         if run is None or run["prova_fluxo_id"] or not self._pode_recuperar(obj["id"], step.id, step.side_effect):
             return False
@@ -2147,12 +2151,19 @@ class Scheduler:
         alvo = next((s for s in steps if s.key == step.key), None)
         if alvo is None:
             return False
-        chave = f"limpar_antes_{step.key}"
-        limpar = PlanStep(key=chave, title=f"Fechar o que cobre '{step.title}'",
-                          goal=(f"Feche o diálogo, banner, aviso ou pedido de cookies que cobre a tela de '{step.title}'. "
-                                "Não toque em mais nada; se não fechar, siga sem ele."),
+        chave = f"{PREFIXO_LIMPEZA}{step.key}"
+        if cobertura is not None:
+            nome = " ".join(p for p in (f"“{cobertura.texto}”" if cobertura.texto else "",
+                                        f"({cobertura.resource_id})" if cobertura.resource_id else "") if p)
+            quem = (f"o elemento {nome} " if nome else "o elemento ") + f"na área {list(cobertura.bounds)}"
+            goal = (f"Feche {quem}, que cobre a tela de '{step.title}': toque no X, em “Fechar”, “Agora não” ou "
+                    "“Continuar no site”, ou use press_back. Não toque em mais nada; se não fechar, siga sem ele.")
+        else:
+            goal = (f"Feche o diálogo, banner, aviso ou pedido de cookies que cobre a tela de '{step.title}'. "
+                    "Não toque em mais nada; se não fechar, siga sem ele.")
+        limpar = PlanStep(key=chave, title=f"Fechar o que cobre '{step.title}'", goal=goal,
                           depends_on=list(alvo.depends_on), app_id=alvo.app_id, max_attempts=1, timeout_s=60,
-                          opcional=True,
+                          opcional=True, variables=cobertura.variaveis() if cobertura is not None else {},
                           postcondition=Postcondition(kind="model_judged", value="nada cobre a tela",
                                                       description="Nenhum diálogo, banner ou aviso cobre a tela."))
         novos: list[PlanStep] = []

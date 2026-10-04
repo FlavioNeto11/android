@@ -274,6 +274,9 @@ class Verdict(BaseModel):
     #: Item 31.40: o "não"/"incerto" é porque um diálogo, banner, aviso ou cookies COBRE o alvo da pós-condição. Só vale
     #: em etapa sem efeito: a recuperação insere uma limpeza opcional antes dela, uma vez por objetivo. O juiz não afrouxa.
     sobreposicao: bool | None = Field(default=None, exclude_if=lambda v: v is None)
+    #: Item 31.40 b: com `sobreposicao`, o id (`eN` da lista da tela) do elemento que COBRE — o diálogo, o banner ou o
+    #: botão de fechar dele. A limpeza o recebe e se comprova pela árvore quando ele sai; sem id, a árvore procura.
+    cobre: str | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 @dataclass(slots=True)
