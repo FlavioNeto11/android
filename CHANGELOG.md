@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.24 F4: a tela Anexos dos canais (branch canais/28-24-f4-tela-anexos, PR #284)
+
+- Backend: `GET /api/canais/anexos` (lista paginada; filtros de canal, sentido, dono, estado e período; sem caminho, `sha256` nem
+  remetente) e `ArmazemDeAnexos.listar`. O conteúdo ganha `Cache-Control: no-store` e passa a recusar o texto (415) e o anexo de
+  convidado (404). Adendo v1.26; sem migração.
+- Painel: aba "Anexos" em Canais (`AnexosTab`, `AnexarAoCartao`): miniatura ou ícone, prévia no próprio item, filtros, "Carregar
+  mais" e "Anexar ao cartão" com o campo e a confirmação em linha (padrão do `DecisaoInline`). O botão "Ler" e a descrição da IA ficam
+  para depois da fatia 3.
+- Prova `simulated`: `backend/tests/test_canais_anexos_lista.py` (18 casos), `frontend/src/features/canais/AnexosTab.test.tsx`
+  (13 casos). `real`: `not_run` (o passeio no navegador, depois do deploy).
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
