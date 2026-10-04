@@ -1,5 +1,6 @@
 """As rotas dos anexos dos canais (item 28.24): `GET /api/canais/anexos/{id}` e `.../conteudo` (só leitura, F1) e
-`POST /api/canais/anexos/{id}/trello` (F2: anexa ao cartão do Trello a imagem que o dono mandou, com confirmação).
+`POST /api/canais/anexos/{id}/trello` (F2: anexa ao cartão do Trello a imagem que o dono mandou, com confirmação) e
+`POST /api/canais/anexos/{id}/ler` (F3: a IA descreve a imagem que o dono mandou, uma vez só e com teto em dólar).
 
 Passam pelo mesmo portão de toda rota `/api/` do painel (`main.guarda`: sessão ou credencial; sem elas, 401), como a
 `/api/canais/estado`. Os metadados nunca trazem caminho de disco nem o nome que o remetente deu (o produto nunca o
@@ -16,6 +17,7 @@ from pydantic import BaseModel
 from app.modules.avisos.adapters.trello import FalhaDoTrello
 from app.modules.avisos.domain.anexos import EXTENSAO
 from app.modules.avisos.infrastructure.anexos import ArmazemDeAnexos
+from app.modules.avisos.infrastructure.anexos_leitura import LeituraRecusada
 from app.modules.avisos.infrastructure.anexos_trello import AnexoNaoPodeIrAoCartao, anexar_ao_cartao
 
 router = APIRouter(prefix="/api/canais/anexos")
@@ -33,6 +35,10 @@ def _armazem(request: Request) -> ArmazemDeAnexos:
 
 class AnexarAoCartao(BaseModel):
     card: str
+    confirmar: bool = False
+
+
+class LerAnexo(BaseModel):
     confirmar: bool = False
 
 
@@ -84,3 +90,21 @@ async def anexar_ao_cartao_do_trello(ident: int, corpo: AnexarAoCartao, request:
         raise HTTPException(recusa.status, detail={"code": recusa.codigo, "message": recusa.motivo}) from None
     except FalhaDoTrello as falha:
         raise HTTPException(502, detail={"code": "trello_falhou", "message": falha.motivo}) from None
+
+
+@router.post("/{ident}/ler")
+async def ler_anexo(ident: int, corpo: LerAnexo, request: Request) -> dict[str, object]:
+    """A IA descreve a imagem que o DONO mandou (F3). Gasta dinheiro (pouco, com teto por imagem), então pede
+    `confirmar: true`. A descrição fica gravada: a segunda chamada devolve o texto com `do_cache: true` e custo 0."""
+    if not corpo.confirmar:
+        raise HTTPException(400, detail={"code": "confirmacao_necessaria",
+                                         "message": "Ler a imagem pela IA gasta uma chamada paga: peça com confirmar: true."})
+    leitor = getattr(getattr(request.app.state, "poc", None), "leitor_de_anexos", None)
+    if leitor is None:
+        raise HTTPException(503, detail={"code": "not_ready", "message": "A leitura de anexos ainda não foi composta."})
+    try:
+        leitura = await leitor.ler(ident)
+    except LeituraRecusada as recusa:
+        raise HTTPException(recusa.status, detail={"code": recusa.codigo, "message": recusa.motivo}) from None
+    return {"anexo_id": leitura.anexo_id, "descricao": leitura.descricao, "custo_usd": leitura.custo_usd,
+            "do_cache": leitura.do_cache, "modelo": leitura.modelo}

@@ -232,3 +232,105 @@ async def test_gramatica_do_ler(tmp_path: Path) -> None:
     # /ler sem reply a anexo explica o formato; sem o fato, "leia" é texto livre
     assert rotear("/ler").tipo == "desconhecida" and "Responda (reply)" in (rotear("/ler").motivo or "")
     assert rotear("leia").tipo == "livre"
+
+
+# ---------------------------------------------------------------- o Telegram: /ler em reply
+from .test_canais_anexos import CenarioAnexos, documento, foto  # noqa: E402
+from .test_telegram_entrada import msg  # noqa: E402
+
+
+@pytest.fixture
+def c(tmp_path: Path) -> CenarioAnexos:
+    return CenarioAnexos(tmp_path)
+
+
+def _portas_com_leitura(c: CenarioAnexos) -> list[int]:
+    lidas: list[int] = []
+
+    async def ler_anexo(anexo_id: int) -> str:
+        lidas.append(anexo_id)
+        return "Um print de tela.\n\nLi com claude-haiku-4-5; custo US$ 0,0019."
+
+    c.portas.ler_anexo = ler_anexo                                                          # type: ignore[attr-defined]
+    return lidas
+
+
+async def test_ler_em_reply_a_foto_do_dono_responde_a_descricao(c: CenarioAnexos) -> None:
+    lidas = _portas_com_leitura(c)
+    c.bot.arquivos["foto-g"] = JPEG
+    await c.volta(foto(5, "foto-g"))
+    [linha] = c.linhas()
+    await c.volta(msg(6, "/ler", reply_to=50))
+    assert lidas == [linha["id"]] and "Um print de tela" in c.ultima()
+    assert c.entrada(6)["estado"] == "feita" and c.entrada(6)["intencao"] == "ler_anexo"
+    await c.volta(msg(7, "leia", reply_to=50), msg(8, "o que tem nessa imagem?", reply_to=50))
+    assert lidas == [linha["id"]] * 3
+
+
+async def test_ler_sem_reply_explica_o_formato_e_outras_respostas_a_foto_nao_leem(c: CenarioAnexos) -> None:
+    lidas = _portas_com_leitura(c)
+    c.bot.arquivos["foto-g"] = JPEG
+    c.bot.arquivos["doc-1"] = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<<>>\nendobj\n"
+    await c.volta(foto(5, "foto-g"), documento(6, "doc-1", mime="application/pdf"))
+    await c.volta(msg(7, "/ler"))
+    assert "Responda (reply)" in c.ultima() and lidas == []
+    await c.volta(msg(8, "sim", reply_to=50))                                            # não é sequestrado pela foto
+    assert lidas == [] and c.entrada(8)["intencao"] != "ler_anexo"
+    await c.volta(msg(9, "/ler", reply_to=60))                                           # reply a um PDF: não há imagem
+    assert lidas == [] and "Responda (reply)" in c.ultima()
+
+
+async def test_recusa_da_leitura_vira_frase_ao_dono(c: CenarioAnexos) -> None:
+    from app.modules.avisos.infrastructure.entrada import RecusaDaCentral
+    c.bot.arquivos["foto-g"] = JPEG
+
+    async def ler_anexo(_i: int) -> str:
+        raise RecusaDaCentral("A leitura custaria até US$ 0,2000, acima do teto de US$ 0,05 por imagem: não enviei.")
+
+    c.portas.ler_anexo = ler_anexo                                                          # type: ignore[attr-defined]
+    await c.volta(foto(5, "foto-g"))
+    await c.volta(msg(6, "/ler", reply_to=50))
+    assert "acima do teto" in c.ultima() and c.entrada(6)["estado"] == "feita"
+
+
+# ---------------------------------------------------------------- a rota
+async def test_rota_ler_confirma_valida_e_nao_paga_duas_vezes(harness) -> None:                # type: ignore[no-untyped-def]
+    import httpx
+
+    from app.main import create_app
+    arm = harness.state.anexos_canal
+    harness.state.db.execute(
+        "INSERT INTO canal_entradas(canal, id_externo, tipo, do_dono, ref_mensagem, tamanho, estado, recebida_em)"
+        " VALUES ('telegram', 'r1', 'mensagem', 1, 'r1', 0, 'ignorada', '2026-10-04T00:00:00Z'),"
+        " ('telegram', 'r2', 'mensagem', 0, 'r2', 0, 'ignorada', '2026-10-04T00:00:00Z')")
+    e1 = harness.state.db.one("SELECT id FROM canal_entradas WHERE id_externo='r1'")["id"]
+    e2 = harness.state.db.one("SELECT id FROM canal_entradas WHERE id_externo='r2'")["id"]
+    dono = int(arm.guardar(JPEG, tipos=TIPOS, max_bytes=10_000, entrada_id=e1)["id"])
+    convidado = int(arm.guardar(JPEG + b"x", tipos=TIPOS, max_bytes=10_000, entrada_id=e2)["id"])
+    pdf = int(arm.guardar(PDF, tipos=TIPOS, max_bytes=10_000, entrada_id=e1)["id"])
+    # o provedor falso e o hub de verdade: o custo tem de entrar em ai_calls
+    falso = DescritorFalso()
+    leitor = harness.state.leitor_de_anexos
+    leitor._simulado = lambda: False
+    leitor._conferir_gasto = lambda: None                      # o hub simulado do harness não tem `conferir_gasto`
+    leitor._descritor = lambda: falso
+    app = create_app(harness.cfg, state=harness.state)
+    app.state.poc = harness.state
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 123)),
+                                 base_url="http://localhost") as cli:
+        sem = await cli.post(f"/api/canais/anexos/{dono}/ler", json={})
+        assert sem.status_code == 400 and sem.json()["detail"]["code"] == "confirmacao_necessaria" and falso.chamadas == 0
+        ok = await cli.post(f"/api/canais/anexos/{dono}/ler", json={"confirmar": True})
+        assert ok.status_code == 200, ok.text
+        corpo = ok.json()
+        assert corpo["do_cache"] is False and corpo["custo_usd"] == pytest.approx(0.0019) and "Entrar" in corpo["descricao"]
+        de_novo = (await cli.post(f"/api/canais/anexos/{dono}/ler", json={"confirmar": True})).json()
+        assert de_novo["do_cache"] is True and de_novo["custo_usd"] == 0 and falso.chamadas == 1
+        for ident, codigo, status in ((convidado, "anexo_nao_permitido", 409), (pdf, "anexo_nao_imagem", 422),
+                                      (9999, "anexo_desconhecido", 404)):
+            r = await cli.post(f"/api/canais/anexos/{ident}/ler", json={"confirmar": True})
+            assert (r.status_code, r.json()["detail"]["code"]) == (status, codigo)
+    assert falso.chamadas == 1
+    [uso] = harness.state.db.query("SELECT origem, ref, role, model, input_tokens, output_tokens, with_image FROM ai_calls")
+    assert (uso["origem"], uso["ref"], uso["role"], uso["model"], uso["input_tokens"], uso["output_tokens"],
+            uso["with_image"]) == ("canais", f"anexo:{dono}", "canais", "claude-haiku-4-5", 1300, 120, 1)
