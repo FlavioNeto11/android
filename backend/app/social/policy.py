@@ -25,6 +25,7 @@ sem chamar modelo. O tempo parado é descontado do prazo do objetivo — esperar
 from __future__ import annotations
 
 import random
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -32,7 +33,8 @@ from typing import Any, Callable
 
 from ..db import loads
 from ..models import InteractionStatus, InteractionType
-from ..planning.capabilities import Capability, capability_of, normalizar_alvo, objeto_da_acao
+from ..planning.capabilities import (ARGUMENTOS_DE_TEXTO, Capability, capability_of, normalizar_alvo,
+                                     objeto_da_acao)
 from ..planning.catalog import pacote_ancora
 from ..util import now, parse_iso, to_iso
 from .contas_nossas import eh_conta_nossa, foi_retirada
@@ -96,6 +98,9 @@ _ROTULO_DO_BALDE = {"follows": "seguir", "dms": "mensagem direta", "comments": "
 #: em vários posts da mesma pessoa segue valendo — o histórico separa as duas pela etapa que gravou a interação.
 #: Seguir fica de fora: o segundo FOLLOW é alternância (deixar de seguir), não duplicata.
 UMA_VEZ_POR_ALVO: frozenset[str] = frozenset({"REPLY_COMMENT"})
+#: 31.53: o motivo, SEM o @ citado nem o texto (viaja para decisão, evento, aviso e resumo).
+MOTIVO_CITA_A_FAMILIA = ("o texto cita outra conta nossa do mesmo pedido entre personas: passa por aprovação "
+                         "(31.53)")
 
 def _balde(acao: str, package: str | None) -> str | None:
     """O balde de limite de uma ação pelo catálogo do app (`None` = o âncora); `None` se o catálogo não a tem."""
@@ -460,6 +465,50 @@ class PolicyEngine:
                     "O alvo fica com a persona do pedido que já mexeu com ele.")
         return None
 
+    def _mesmo_objeto_na_familia(self, profile_id: str, cap: Capability, counterparty: str | None,
+                                 bindings: Mapping[str, object] | None, agora: datetime, app_id: str | None,
+                                 step_id: str | None, pedido: ContextoDoPedido) -> tuple[bool, str, str] | None:
+        """31.53 (lado Jev do 28.10 F5): a regra da família (`_um_so_da_familia`) compara pela PESSOA e não vê o efeito
+        sem pessoa como alvo; no catálogo de hoje é o `CREATE_POST` (`objeto_alvo: [image_id]`). Aqui o objeto do
+        catálogo (30.64) é comparado com as saídas e os pedidos em aberto das OUTRAS personas do pedido, na janela da
+        frota. A escada é a do 30.64 com a palavra do 30.62:
+
+        - objeto inequívoco igual (a mesma imagem): RECUSA, não adia — a família conta como uma conta só, e a segunda
+          publicação faria o efeito duas vezes;
+        - objeto ambíguo (argumento declarado vazio): pode ser o mesmo, passa por aprovação.
+
+        Com pessoa como alvo, a regra por pessoa já é mais estrita (uma conta por alvo em todos os baldes) e decide.
+        `None` segue; senão `(recusa, motivo, dica)`."""
+        if normalizar_alvo(counterparty) is not None or not cap.side_effect or not cap.objeto_alvo \
+                or not cap.interaction_type or self._settings is None:
+            return None
+        outras = sorted(pedido.familia - {profile_id})
+        if not outras:
+            return None
+        objeto = objeto_da_acao(cap, bindings)
+        if objeto is None:
+            return None                      # argumento por resolver: a porta roda de novo com ele
+        ambiguo = any(not v for v in objeto.values())
+        qual = ", ".join(f"{k} {v}" for k, v in objeto.items() if v) or "o mesmo objeto"
+        dias = max(1, int(getattr(self._settings(), "fleet_target_window_days", 30) or 30))
+        since = to_iso(agora - timedelta(days=dias))
+        for outra in outras:
+            achou = [quando for _i, quando, _q, argumentos, _t in self.repo.saidas_da_acao(
+                outra, cap.key, types=(cap.interaction_type,), statuses=CONTAM, since=since, app_id=app_id,
+                exclude_step_id=step_id) if argumentos is not None and objeto_da_acao(cap, argumentos) == objeto]
+            achou += [quando for _p, quando, _q, argumentos, _s, _t in self.repo.pedidos_da_acao(
+                outra, cap.key, since=since, app_id=app_id, exclude_step_id=step_id)
+                if argumentos is not None and objeto_da_acao(cap, argumentos) == objeto]
+            if not achou:
+                continue
+            if ambiguo:
+                return (False, f"{cap.key} sobre {qual} sem dizer QUAL, e outra persona deste pedido já fez ou pediu "
+                               "isso: pode ser o mesmo, passa por aprovação (31.53)", "")
+            return (True, f"outra persona deste pedido já fez ou tem pedido de {cap.key} sobre {qual}: no pedido inteiro "
+                          "a família conta como uma conta só (31.53, 30.62) — recusado, não adiado",
+                    "Deixe o efeito com a persona do pedido que já o fez.")
+        return None
+
     # ------------------------------------------------------------------ decisão
     def _ja_feito(self, profile_id: str, cap: Capability, counterparty: str | None, agora: datetime,
                   app_id: str | None, step_id: str | None) -> tuple[str, str] | None:
@@ -574,6 +623,31 @@ class PolicyEngine:
                     "Decida o pedido que já está em Pendências.")
         return None
 
+    def cita_a_familia(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None,
+                       pedido: ContextoDoPedido | None) -> str | None:
+        """31.53 (lado Jev do 28.10 F5): o texto desta etapa (o rascunho já escrito, ou o literal do plano) cita o @ de
+        OUTRA persona do mesmo pedido entre personas? Então passa por aprovação: citar pode ser legítimo, mas uma conta
+        nossa apontando outra conta nossa do mesmo pedido é o que parece coordenação, e quem decide é a pessoa. Não é
+        recusa (não há efeito em dobro). O motivo NÃO leva o @ nem o texto: ele viaja para decisão, evento, aviso e
+        resumo, e o dono vê o @ no próprio texto do item que aprova. Sem pedido, nada. Só lê.
+
+        O @ vem de `instagram_profiles.username` das personas da família; casa com ou sem `@`, inteiro (não dentro de
+        outro nome)."""
+        if pedido is None or not cap.side_effect:
+            return None
+        outras = sorted(pedido.familia - {profile_id})
+        textos = [str(v) for k, v in (bindings or {}).items() if k in ARGUMENTOS_DE_TEXTO and v]
+        if not outras or not textos:
+            return None
+        marcas = ",".join("?" * len(outras))
+        nomes = [str(r["username"]).strip().lstrip("@") for r in self.repo.db.query(
+            f"SELECT username FROM instagram_profiles WHERE id IN ({marcas}) AND username <> ''", tuple(outras))]
+        texto = " ".join(textos)
+        for nome in (n for n in nomes if n):
+            if re.search(rf"(?<![\w.])@?{re.escape(nome)}(?![\w])", texto, flags=re.IGNORECASE):
+                return MOTIVO_CITA_A_FAMILIA
+        return None
+
     def mensagem_repetida(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None, *,
                           app_id: str | None = None, step_id: str | None = None,
                           desde: datetime | None = None) -> str | None:
@@ -644,6 +718,14 @@ class PolicyEngine:
         if pedido is not None and (da_familia := self._um_so_da_familia(profile_id, counterparty, agora, app_id,
                                                                          pedido)) is not None:
             return Verdict(allowed=False, policy=politica, reason=da_familia[0], hint=da_familia[1])
+        if pedido is not None and (mesmo := self._mesmo_objeto_na_familia(profile_id, cap, counterparty, bindings, agora,
+                                                                          app_id, step_id, pedido)) is not None:
+            recusa, motivo, dica = mesmo
+            if recusa:
+                return Verdict(allowed=False, policy=politica, reason=motivo, hint=dica)
+            if politica == "autonomous":
+                politica = "approval_required"
+            nota = "; ".join(t for t in (nota, motivo) if t)
         limites = self.limits_for(profile_id)
         tipos = BUCKET_TYPES.get(cap.limit_bucket, ())
         aquecendo = self._aquecendo(profile_id, limites, agora)
