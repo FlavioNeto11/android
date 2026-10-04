@@ -1005,7 +1005,9 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
   nesta fatia.
 - **O despachante** (`LacoDaValidacao`, sob a trava de líder; `intervalo_s` 600). Expira os pedidos velhos: pendente há
   mais de 72 h, rodando há mais de 6 h. Só despacha com o central saudável (`/api/health` sem problemas) e NENHUMA
-  execução em curso, porque restart, suíte e deploy seguram ou derrubam execuções. Também precisa de fôlego na janela:
+  execução em curso, porque restart, suíte e deploy seguram ou derrubam execuções. O `planned` só conta como em curso
+  no modo `execute`: na execução só de plano ele é o estado final (30.49; em 04/10, três delas seguraram o P4 por mais
+  de 30 min). Também precisa de fôlego na janela:
   β = 5% do gasto de IA da operação em 7 dias (o mesmo G_W do curador), mais a verba única `extra_usd` até `extra_ate`;
   e do ritmo, ≤4 por hora. Uma execução por volta: o comando de origem, em OUTRO aparelho (o de origem fica de fora),
   ligado, ocioso, com o app `ready` e SEM conta real logada. Nesta fatia nem a leitura vai a conta real: a regra do

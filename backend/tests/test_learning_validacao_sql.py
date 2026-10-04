@@ -308,3 +308,26 @@ def test_o_parque_so_oferece_aparelho_com_todos_os_apps_prontos(tmp_path: Path) 
     assert [a.id for a in despacho.aparelhos((QA,))] == ["android-09", "android-10"]
     assert despacho.aparelhos(()) == [] and despacho.aparelhos(("",)) == []
     db.close()
+
+
+def test_execucao_so_de_plano_parada_em_planned_nao_segura_o_p4(tmp_path: Path) -> None:
+    """30.49: em 04/10 três execuções só de plano (`mode='plan'`), paradas em `planned` (o estado FINAL desse modo),
+    seguraram o P4 em `ambiente_ocupado` por mais de 30 min. O `planned` de execução de verdade (`mode='execute'`)
+    continua segurando, e as outras marcas de em curso também."""
+    db = banco_migrado(tmp_path, "ambiente.sqlite3")
+    despacho = DespachoDoParque(db, None, None, saudavel=lambda: True)  # type: ignore[arg-type]
+
+    def execucao(rid: str, mode: str, status: str) -> None:
+        db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+                   " VALUES (?,?,'cmd',?,?,0,'[\"android-12\"]',?)", (rid, f"k-{rid}", mode, status,
+                                                                      to_iso(datetime.now(UTC))))
+
+    for i in range(3):
+        execucao(f"r-plano-{i}", "plan", "planned")
+    execucao("r-feita", "execute", "completed")
+    assert despacho.ambiente() == Ambiente(saudavel=True, execucoes_em_curso=0)
+    execucao("r-planejada", "execute", "planned")                  # a de verdade, ainda por rodar: segura
+    assert despacho.ambiente().execucoes_em_curso == 1
+    execucao("r-planejando", "plan", "planning")                   # o plano em voo também segura
+    assert despacho.ambiente().execucoes_em_curso == 2
+    db.close()
