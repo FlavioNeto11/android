@@ -18,6 +18,7 @@ por causa disso troca uma resposta útil por um erro.
 """
 from __future__ import annotations
 
+import hashlib
 from functools import lru_cache
 from pathlib import Path
 
@@ -110,3 +111,61 @@ def agent_version(pacote: Path | None = None) -> str:
     if (sha := commit_em_execucao(base.parent.parent)) is not None:
         return f"{VERSION}+{sha[:7]}"
     return DESCONHECIDO
+
+
+#: O manifesto do pacote do agente, ao lado de `app/` num checkout (`backend/worker-manifest.txt`). Na máquina do
+#: worker ele não existe: lá `app/` JÁ É o pacote, montado pelo instalador exatamente com estas entradas.
+ARQUIVO_DO_MANIFESTO = "worker-manifest.txt"
+
+
+def entradas_do_manifesto(caminho: Path) -> list[str]:
+    """As entradas, na ordem do arquivo: a mesma leitura dos dois instaladores (`#` comenta, linha vazia some)."""
+    entradas: list[str] = []
+    for linha in caminho.read_text(encoding="utf-8").splitlines():
+        if entrada := linha.split("#", 1)[0].strip():
+            entradas.append(entrada)
+    return entradas
+
+
+def _fica_fora(relativo: Path) -> bool:
+    """O que não é código do pacote: o selo de build (muda a cada cópia sem o código mudar) e o cache do Python."""
+    return relativo.as_posix() == ARQUIVO_DE_BUILD or "__pycache__" in relativo.parts or relativo.suffix == ".pyc"
+
+
+def _arquivos_do_pacote(pacote: Path) -> list[str]:
+    """Os arquivos do pacote do agente, relativos a `app/`, com barra normal e em ordem."""
+    manifesto = pacote.parent / ARQUIVO_DO_MANIFESTO
+    if manifesto.is_file():
+        raizes = [pacote / e.rstrip("/") for e in entradas_do_manifesto(manifesto)]
+    else:
+        raizes = [pacote]
+    vistos: set[str] = set()
+    for raiz in raizes:
+        candidatos = raiz.rglob("*") if raiz.is_dir() else [raiz]
+        for p in candidatos:
+            if p.is_file() and not _fica_fora(rel := p.relative_to(pacote)):
+                vistos.add(rel.as_posix())
+    return sorted(vistos)
+
+
+@lru_cache(maxsize=4)
+def codigo_do_agente(pacote: Path | None = None) -> str | None:
+    """Impressão (sha256, 16 hex) do CÓDIGO que o agente roda: o conteúdo do pacote, não o commit da árvore.
+
+    Existe porque a versão (`0.1.0+<sha7>`) muda a cada commit, inclusive os que só mexem em docs ou no plano: todo
+    reinício do central depois de um commit assim acendia `agente defasado` com o mesmo código dos dois lados
+    (item 29.59). As duas pontas chegam ao mesmo conjunto de arquivos por caminhos diferentes: no checkout, pelo
+    manifesto; no worker, varrendo `app/`, que o instalador montou só com o manifesto. `BUILD_VERSION` e
+    `__pycache__` ficam fora, e `\\r\\n` vira `\\n` antes do hash, para um checkout com fim de linha do Windows não
+    parecer outro código. `None` quando não há o que ler: quem compara cai na regra antiga, pela versão.
+    """
+    base = pacote or Path(__file__).resolve().parent
+    h = hashlib.sha256()
+    try:
+        arquivos = _arquivos_do_pacote(base)
+        for rel in arquivos:
+            h.update(rel.encode("utf-8") + b"\0")
+            h.update((base / rel).read_bytes().replace(b"\r\n", b"\n") + b"\0")
+    except OSError:
+        return None
+    return h.hexdigest()[:16] if arquivos else None

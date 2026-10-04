@@ -27,7 +27,7 @@ from .captura import CapturaNaOrigem, ErroDeCaptura
 from .portao import PortaoDoWorker
 from .protocol import (FEATURE_OBSERVACAO_LOCAL, FEATURE_RESERVA_DE_BOOT, PROTOCOL_MIN, PROTOCOL_VERSION, Dispatch,
                        Heartbeat, Hello, Limits, Result, WorkerDevice, WorkerResources, Welcome)
-from ..version import DESCONHECIDO, agent_version
+from ..version import DESCONHECIDO, agent_version, codigo_do_agente
 
 log = logging.getLogger("poc.workers")
 
@@ -277,6 +277,9 @@ class WorkerRegistry:
         #: Aceleração de virtualização declarada no `Hello` (`kvm`, `kvm-inacessivel`, `kvm-ausente`, ou ausente
         #: no Windows). Em memória pelo mesmo motivo do acima: é o estado da máquina dele agora.
         self.aceleracao: dict[str, str] = {}
+        #: Impressão do código que cada agente declarou no `hello` (item 29.59). Em memória, como a aceleração: só
+        #: vale para quem conectou desde o último reinício, e worker sem ela cai na comparação de versão.
+        self.codigo_do_agente: dict[str, str] = {}
         #: A maior cerca que cada worker declarou ter executado, por aparelho (`Hello.fences`). Em memória pelo
         #: mesmo motivo: o agente a repete a cada (re)conexão, e só se despacha para worker conectado — então
         #: todo despacho acontece depois de um `hello` que a trouxe. É o piso da cerca depois de um banco
@@ -357,6 +360,10 @@ class WorkerRegistry:
             self.aceleracao[hello.worker_id] = hello.accel
         else:
             self.aceleracao.pop(hello.worker_id, None)
+        if hello.agent_code:
+            self.codigo_do_agente[hello.worker_id] = hello.agent_code
+        else:
+            self.codigo_do_agente.pop(hello.worker_id, None)
         self.cercas[hello.worker_id] = {k: int(v) for k, v in hello.fences.items() if int(v) > 0}
         self.anunciadas[hello.worker_id] = frozenset(str(f) for f in hello.features)
         self.db.execute(
@@ -890,9 +897,17 @@ class WorkerRegistry:
         Três casos devolvem `False` de propósito: o próprio central (comparar-se consigo mesmo não informa nada),
         worker sem versão registrada (linha antiga: "não se sabe" não é "defasado") e servidor que não descobriu
         a versão dele mesmo — acusar defasagem apoiado num `+desconhecido` seria alarme sem fato.
+
+        Quando as duas pontas têm a impressão do código do pacote do agente, é ela que decide, e não a versão: a
+        versão carrega o commit da árvore, e um commit só de docs ou de plano mudava o texto sem mudar uma linha do
+        que o agente roda (item 29.59: todo reinício do central depois de um commit assim acendia o selo). Agente
+        antigo, que não manda a impressão, segue pela regra da versão.
         """
         if row["id"] == self.local_worker_id:
             return False
+        dele_codigo, nosso_codigo = self.codigo_do_agente.get(row["id"]), codigo_do_agente()
+        if dele_codigo and nosso_codigo:
+            return dele_codigo != nosso_codigo
         esperada, dele = agent_version(), row["agent_version"]
         if not dele or esperada == DESCONHECIDO:
             return False

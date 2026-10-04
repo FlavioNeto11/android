@@ -688,6 +688,41 @@ def test_o_proprio_central_nunca_aparece_defasado(tmp_path: Path) -> None:
     assert reg.dto(reg.db.one("SELECT * FROM workers WHERE id=?", ("worker-lan-01",))).agent_outdated is False
 
 
+def test_mesmo_codigo_com_versao_diferente_nao_e_defasado(tmp_path: Path) -> None:
+    """Item 29.59: um commit só de docs muda a versão (`0.1.0+<sha7>`) e não o código do agente. Com a impressão
+    do código nas duas pontas, é ela que decide — antes, todo reinício depois de um commit assim acendia o selo."""
+    from app.version import codigo_do_agente
+
+    reg = _registro(tmp_path)
+    token = reg.criar_inscricao()
+    reg.autenticar(_hello(agent_version="0.1.0+docs000", agent_code=codigo_do_agente()), token=None,
+                   enrollment=token)
+    assert next(d for d in reg.dtos() if d.id == "worker-lan-01").agent_outdated is False
+
+
+def test_codigo_diferente_e_defasado_mesmo_com_a_mesma_versao(tmp_path: Path) -> None:
+    from app.version import agent_version
+
+    reg = _registro(tmp_path)
+    token = reg.criar_inscricao()
+    reg.autenticar(_hello(agent_version=agent_version(), agent_code="0" * 16), token=None, enrollment=token)
+    assert next(d for d in reg.dtos() if d.id == "worker-lan-01").agent_outdated is True
+
+
+def test_agente_que_deixa_de_mandar_o_codigo_volta_a_regra_da_versao(tmp_path: Path) -> None:
+    """Agente antigo (sem `agent_code`) depois de um novo, no mesmo worker: a impressão guardada não pode valer
+    pelo código que agora roda lá."""
+    from app.version import codigo_do_agente
+
+    reg = _registro(tmp_path)
+    token = reg.criar_inscricao()
+    cred = reg.autenticar(_hello(agent_version="0.1.0+velho00", agent_code=codigo_do_agente()), token=None,
+                          enrollment=token)
+    assert next(d for d in reg.dtos() if d.id == "worker-lan-01").agent_outdated is False
+    reg.autenticar(_hello(agent_version="0.1.0+velho00"), token=cred, enrollment=None)
+    assert next(d for d in reg.dtos() if d.id == "worker-lan-01").agent_outdated is True
+
+
 def test_a_aceleracao_declarada_no_hello_chega_ao_painel(tmp_path: Path) -> None:
     """Achado #180: sem KVM utilizável o emulador não sobe em tempo útil, e isso só aparecia como comando
     estourando prazo do outro lado da rede."""

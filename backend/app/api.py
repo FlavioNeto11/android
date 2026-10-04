@@ -3750,8 +3750,8 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
     s.bus.emit("log", f"Worker {hello.name} conectou ({hello.os}, agente {hello.agent_version}, "
                       f"{hello.max_slots} vaga(s), Appium {hello.appium_mode}).")
     if s.workers.dto(s.db.one("SELECT * FROM workers WHERE id=?", (worker_id,))).agent_outdated:
-        s.bus.emit("log", f"Worker {hello.name}: o agente roda {hello.agent_version} e este servidor roda "
-                          f"{agent_version()}. Atualize o agente (scripts/worker-install.ps1 ou "
+        s.bus.emit("log", f"Worker {hello.name}: o código do agente difere do deste servidor (agente "
+                          f"{hello.agent_version}, servidor {agent_version()}). Atualize o agente (scripts/worker-install.ps1 ou "
                           "worker-install.sh) — código diferente dos dois lados é defeito que só aparece "
                           "no meio de uma execução.", level="warn")
     # A reconciliação do estado desejado NÃO cabe aqui: o `hello` declara todo aparelho como `unknown` (o agente
