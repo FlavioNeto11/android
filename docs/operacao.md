@@ -199,7 +199,7 @@ estado antigo, nunca uma edição retroativa.
 - **`scripts/backup.ps1`** — roda com o backend **no ar**, sem parar nada. Copia o banco pela API de backup
   online do SQLite (não `Copy-Item`: o banco roda em WAL; copiar só o `.sqlite3` perde as últimas transações),
   mais `config/` e a chave do cofre. Tarefa diária `farm-backup` (03:00, `-Instalar`); o deploy guarda as 10
-  cópias de deploy mais novas e aceita `-PularBackup` até 60 min depois de um `-Ensaio` no mesmo commit
+  cópias de deploy mais novas (poda em ensaio até o arquivo `PODAR-LIGADO`, depois do sim do dono) e aceita `-PularBackup` até 60 min depois de um `-Ensaio` no mesmo commit
   ([`banco.md`](banco.md), 29.38).
 - **`scripts/restore.ps1`** — por omissão é **ensaio**: copia para uma pasta limpa, abre, confere integridade,
   imprime o conteúdo, sem tocar `data/`. Restauração de verdade exige `-De <pasta> -Confirmar`, com o **backend

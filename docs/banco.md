@@ -736,6 +736,11 @@ a tarefa diária nunca tinha sido registrada no ambiente central. As cópias di�
 dias. Uma pasta com nome escolhido à mão (`20261003-120818-antes-ra20b`, `config-antes-*.yaml`) nunca é apagada
 por regra automática. As regras ficam em `scripts/lib/copias-de-backup.ps1`.
 
+**A poda nasce em ensaio.** Apagar cópias não tem volta, e a primeira poda no ambiente central leva ~150 cópias
+(22 GB). Por isso, por omissão, o teto **lista** o que apagaria (`apagaria (teto …)`) e não apaga nada. A poda só
+se liga com `backup.ps1 -Podar` ou com o arquivo `data\backups\PODAR-LIGADO`, que se cria depois do sim do dono
+no chat. A tarefa `farm-backup` também só é registrada (`-Instalar`) depois desse sim.
+
 **`deploy.ps1 -PularBackup` logo depois de um `-Ensaio`.** O ensaio já fez a cópia do que está no ar. Por isso
 uma subida até 60 min depois dele, **no mesmo commit**, pode pular a sua própria cópia. Sem uma cópia de ensaio
 assim, o deploy recusa o `-PularBackup` antes de parar qualquer coisa. Um ensaio de outro commit não vale, porque a

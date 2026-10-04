@@ -13,6 +13,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -177,17 +178,31 @@ def test_teto_mantem_dez_copias_de_deploy_e_nao_toca_nas_outras(tmp_path: Path) 
     banco = tmp_path / "poc.sqlite3"
     _banco_com_wal_vivo(banco).close()
 
-    r = subprocess.run(["pwsh", "-NoProfile", "-File", str(raiz / "scripts" / "backup.ps1"), "-Banco", str(banco),
-                        "-Destino", str(destino), "-Reter", "0", "-Origem", "deploy", "-Teto", "10"],
-                       capture_output=True, text=True, timeout=180, cwd=str(raiz))
-    assert r.returncode == 0, r.stdout + r.stderr
+    def rodar() -> str:
+        r = subprocess.run(["pwsh", "-NoProfile", "-File", str(raiz / "scripts" / "backup.ps1"), "-Banco", str(banco),
+                            "-Destino", str(destino), "-Reter", "0", "-Origem", "deploy", "-Teto", "10"],
+                           capture_output=True, text=True, timeout=180, cwd=str(raiz))
+        assert r.returncode == 0, r.stdout + r.stderr
+        return r.stdout
 
+    # 1) Sem a chave, a poda é ENSAIO: lista as 4 que apagaria (2 antigas + 11 + a nova = 14) e não apaga nada.
+    saida = rodar()
+    assert saida.count("apagaria (teto") == 4
+    assert "NADA apagado" in saida
     ficaram = sorted(p.name for p in destino.iterdir())
+    assert len(ficaram) == 2 + 11 + 3 + 1
     nova = ficaram[-1]
     assert json.loads((destino / nova / "manifesto.json").read_text(encoding="utf-8-sig"))["origem"] == "deploy"
-    # 2 antigas + 11 + a nova = 14 contadas; saem as 4 mais velhas (as 2 antigas e as 2 primeiras de deploy).
+
+    # 2) Com `PODAR-LIGADO` no destino (criado depois do sim do dono), apaga: 15 contadas, saem as 5 mais velhas.
+    (destino / "PODAR-LIGADO").write_text("sim do dono\n", encoding="utf-8")
+    time.sleep(1.1)                                         # o carimbo da pasta é por segundo
+    saida = rodar()
+    assert saida.count("removido (teto") == 5
+    ficaram = sorted(p.name for p in destino.iterdir() if p.is_dir())
     contadas = [n for n in ficaram if n.startswith("2026100")]
-    assert contadas == [f"20261001-0000{i:02d}" for i in range(3, 12)] + [nova]
+    assert len(contadas) == 10
+    assert contadas[:8] == [f"20261001-0000{i:02d}" for i in range(4, 12)] and nova in contadas
     assert "20260901-000001" not in ficaram and "20260901-000002" not in ficaram
     assert {"20260801-000000", "20260802-000000", "20260803-000000-antes-ra20b"} <= set(ficaram)
 

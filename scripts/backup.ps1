@@ -44,7 +44,11 @@
 
 .PARAMETER Teto
   Quantas cópias de deploy e de ensaio ficam (0 = sem teto). O `deploy.ps1` passa 10. Cópia diária e manual não
-  contam; cópia antiga sem `origem` conta como de deploy.
+  contam; cópia antiga sem `origem` conta como de deploy. Em ensaio por omissão: lista o que apagaria e não apaga.
+
+.PARAMETER Podar
+  Liga a poda do teto nesta corrida. O mesmo efeito, para toda corrida, vem do arquivo `PODAR-LIGADO` no destino
+  (`data\backups\PODAR-LIGADO`), que só se cria depois do sim do dono.
 
 .PARAMETER Banco
   Caminho do SQLite a copiar. Por omissão, `data\poc.sqlite3` da raiz do projeto.
@@ -69,6 +73,7 @@ param(
   [switch]$IncluirSegredos,
   [ValidateSet('manual', 'deploy', 'ensaio', 'diario')][string]$Origem = 'manual',
   [int]$Teto = 0,
+  [switch]$Podar,
   [switch]$Instalar
 )
 $ErrorActionPreference = 'Stop'
@@ -207,10 +212,21 @@ if ($Reter -gt 0) {
 
 # ------------------------------------------------------------------ teto das cópias de deploy (29.38)
 # Só depois da cópia nova conferida: o teto nunca deixa o destino com uma cópia a menos que o pedido.
-foreach ($v in @(Get-CopiasAlemDoTeto $Destino $Teto $pasta)) {
-  if (-not (Test-Path $v.FullName)) { continue }   # a retenção acima já levou
-  Remove-Item $v.FullName -Recurse -Force -Confirm:$false
-  Write-Host "removido (teto de $Teto cópias de deploy): $($v.Name)"
+# EM ENSAIO por omissão: apagar cópias não tem volta, e a primeira poda no ambiente central leva ~150 cópias (22 GB).
+# Só apaga com `-Podar` ou com o arquivo `PODAR-LIGADO` no destino, que se cria depois do sim do dono; até lá, lista.
+$podar = $Podar -or (Test-Path (Join-Path $Destino 'PODAR-LIGADO'))
+$alem = @(Get-CopiasAlemDoTeto $Destino $Teto $pasta | Where-Object { Test-Path $_.FullName })  # a retenção pode ter levado
+foreach ($v in $alem) {
+  if ($podar) {
+    Remove-Item $v.FullName -Recurse -Force -Confirm:$false
+    Write-Host "removido (teto de $Teto cópias de deploy): $($v.Name)"
+  } else {
+    Write-Host "apagaria (teto de $Teto cópias de deploy, poda em ensaio): $($v.Name)"
+  }
+}
+if ($alem.Count -and -not $podar) {
+  Write-Host ("teto: $($alem.Count) cópia(s) além de $Teto, NADA apagado (poda em ensaio). Para ligar: criar " +
+              "$(Join-Path $Destino 'PODAR-LIGADO') ou passar -Podar.")
 }
 
 Write-Host "pronto: $pasta"

@@ -26,10 +26,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   nunca tinha sido registrada no ambiente central.
 - O `deploy.ps1` guarda as 10 cópias de deploy e de ensaio mais novas (eram 161 cópias e 23 GB em
   `data/backups`). Cópia antiga sem `origem` conta como de deploy; as cópias diária e manual e as pastas com nome
-  escolhido à mão ficam.
+  escolhido à mão ficam. A poda nasce em ensaio: lista o que apagaria e não apaga até `-Podar` ou o arquivo
+  `data/backups/PODAR-LIGADO`, que se cria depois do sim do dono; a tarefa também só se registra depois dele.
 - `deploy.ps1 -PularBackup` numa subida de verdade só vale até 60 min depois de um `-Ensaio` no mesmo commit. Sem
   esse ensaio, o deploy recusa antes de parar qualquer coisa (`scripts/lib/copias-de-backup.ps1`).
-- Prova `simulated`: `backend/tests/test_backup.py`, com 3 testes novos (teto com cópias falsas de cada origem;
+- Prova `simulated`: `backend/tests/test_backup.py`, com 3 testes novos (teto em ensaio e depois ligado, com cópias falsas de cada origem;
   ensaio recente do mesmo commit; recusa antes do `stop.ps1`). Real: `not_run` até o deploy com a cópia nova e o
   registro da tarefa.
 
