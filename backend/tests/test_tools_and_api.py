@@ -78,6 +78,7 @@ def test_templates_so_resolvem_variaveis_conhecidas() -> None:
 
 
 async def test_api_dedup_validacao_e_reconexao_por_snapshot(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     app = create_app(harness.cfg, state=harness.state)
     app.state.poc = harness.state
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:

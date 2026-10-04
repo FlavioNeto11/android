@@ -85,6 +85,7 @@ def test_motivo_do_retorno_e_vocabulario_fechado() -> None:
 async def test_execucao_real_do_harness_passa_pelo_funil(harness: Harness) -> None:
     """Aparelho 1 aprende (consultas ausentes), aparelho 2 repete (encontradas, reproduções ok) — medido pelo
     caminho que o executor já chama, sem instrumentar o executor."""
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     harness.cfg.file.ai.recipes = "replay"
     metricas.limpar()
     assert (await harness.wait_run(harness.run(["android-01"]).id)).status == "completed"

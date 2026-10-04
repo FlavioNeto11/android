@@ -60,6 +60,7 @@ def test_plano_invalido_com_for_each_mal_formado() -> None:
 
 
 async def test_mensagem_para_todos_os_contatos_uma_por_contato_e_receita_compartilhada(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     harness.cfg.file.ai.recipes = "replay"
     run = harness.run(["android-01"], command=ALL)
     assert (await harness.wait_run(run.id, timeout=90)).status == "completed"

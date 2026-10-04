@@ -321,6 +321,7 @@ def _driven(h: Harness, run_id: str) -> dict[str, Any]:
 
 
 async def test_candidata_so_age_depois_de_concordar_com_a_ia_em_execucoes_seguidas(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     harness.cfg.file.ai.recipes = "replay"
     harness.cfg.file.ai.recipes_promote_after = 2
     metricas.limpar()
@@ -391,6 +392,7 @@ async def test_candidata_so_age_depois_de_concordar_com_a_ia_em_execucoes_seguid
 
 
 async def test_candidata_que_diverge_e_substituida_pelo_caminho_que_a_ia_comprovou(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     harness.cfg.file.ai.recipes = "replay"
     harness.cfg.file.ai.recipes_promote_after = 2
     assert (await harness.wait_run(harness.run(["android-01"]).id)).status == "completed"
@@ -415,6 +417,7 @@ async def test_candidata_que_diverge_e_substituida_pelo_caminho_que_a_ia_comprov
 
 
 async def test_com_promocao_ligada_as_ativas_de_antes_seguem_reproduzindo(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     harness.cfg.file.ai.recipes = "replay"
     harness.cfg.file.ai.recipes_promote_after = 0                           # como antes: aprendida já nasce ativa
     assert (await harness.wait_run(harness.run(["android-01"]).id)).status == "completed"
@@ -465,6 +468,7 @@ async def test_candidata_com_rolagem_e_promovida_quando_a_ia_rola_a_lista(tmp_pa
     h = Harness(tmp_path, 4, factory=lambda rt: _CaixaQueRola(account=f"qa-user-{rt.index:02d}"))
     h.ai = CountingProvider(_IaQueRolaALista())
     await h.boot()
+    h.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     try:
         h.cfg.file.ai.recipes = "replay"
         h.cfg.file.ai.recipes_promote_after = 2

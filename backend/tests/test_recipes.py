@@ -203,6 +203,7 @@ def test_nada_sensivel_ou_fragil_vira_receita() -> None:
 
 
 async def test_api_de_custo_fluxos_e_receitas(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     import httpx
 
     from app.main import create_app
@@ -237,6 +238,7 @@ async def test_api_de_custo_fluxos_e_receitas(harness: Harness) -> None:
 async def test_app_travado_recupera_com_o_app_encerrado_e_nao_poe_receita_em_quarentena(harness: Harness) -> None:
     """Visto em emulador real: aparelho recém-ligado, app com a tela preta aceitando toques sem reagir. A
     recuperação automática encerra o app antes de refazer o plano; a receita (boa nos outros aparelhos) sobrevive."""
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     _replay(harness)
     assert (await harness.wait_run(harness.run(["android-01"]).id)).status == "completed"
     fake = harness._factory(type("RT", (), {"id": "android-03", "index": 3})())
