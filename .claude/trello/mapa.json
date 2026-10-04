@@ -3390,6 +3390,12 @@
    "url": "https://trello.com/c/28ujx5ws",
    "lista": "em_validacao",
    "lote": null
+  },
+  "28.29": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2a024eb744ad5a631cd97",
+   "url": "https://trello.com/c/y4VXCPG9",
+   "lista": "em_execucao",
+   "lote": null
   }
  },
  "falhas": [],
