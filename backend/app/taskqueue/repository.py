@@ -28,6 +28,7 @@ from ..modules.learning.domain.falhas import classificar_falha
 from ..modules.pedidos.domain.orcamento import teto_da_execucao
 from ..planning.catalog import session_provider_of
 from ..planning.provider import Usage
+from ..security.enderecos import enderecos_limpos
 from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, parse_iso, to_iso, truncate
@@ -750,7 +751,10 @@ class Repository:
         nome do vocabulário declarado, nunca texto da tela.
 
         `error_kind` (RA-22): o `AIError.kind` que encerrou a tentativa (`StepOutcome.ai_error_kind`). Vai para
-        `attempts.error_kind` e decide o tipo antes do texto; sem ele (nenhum erro de IA), a coluna fica nula."""
+        `attempts.error_kind` e decide o tipo antes do texto; sem ele (nenhum erro de IA), a coluna fica nula.
+
+        `observed` (31.54): cada endereço passa por `enderecos_limpos` antes de gravar. O resultado observado é escrito
+        pela IA a partir da tela e volta no DTO e no painel; uma URL com `?code=` ou token no caminho não fica no banco."""
         atual = self.db.one("SELECT status, error, recovery FROM attempts WHERE id=?", (attempt_id,))
         anterior = atual["status"] if atual else None
         erro = truncate(error, 800)
@@ -768,7 +772,8 @@ class Repository:
             " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=?, error_kind=? WHERE id=?"
             " AND EXISTS (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR"
             " s.claimed_by=?))",
-            (status.value, now_iso(), erro, truncate(recovery, 800), truncate(observed, 800),
+            (status.value, now_iso(), erro, truncate(recovery, 800),
+             truncate(enderecos_limpos(observed) if observed else observed, 800),
              tipo.value if tipo is not None else None, tela, truncate(error_kind, 40), attempt_id, self.owner_id))
         if (cur.rowcount or 0) != 1:
             linha = self.db.one("SELECT s.id, s.claimed_by FROM steps s JOIN attempts a ON a.step_id=s.id"

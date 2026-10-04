@@ -249,6 +249,7 @@ ai:
   max_decisoes_leitura: 12      # 31.38: teto de decisões por tentativa em etapa de leitura (p95 medido 8 + folga; 0 desliga)
   podar_ui_do_navegador: true    # 31.35: a barra do Chrome não vai à árvore do prompt do ator (a url_bar fica, 31.52)
   diagnostico_arvore_aparelhos: []   # 31.52: aparelhos DE TESTE que gravam a árvore antes da poda (vazio = desligado). Só aparelho SEM vínculo ativo de persona: o vinculado é recusado na hora de gravar
+  tapar_barra_de_endereco: false   # 31.54: retângulo opaco sobre a barra do Chrome na imagem do ator e do juiz; liga só depois do A/B offline
   acoes_por_decisao: 1          # 31.35: até 3 ações por decisão em etapa sem efeito (1 = desligado; liga após A/B)
   espera_apos_open_url: false   # 31.35: depois do open_url o executor espera a tela parar, sem decisão da IA
   strong_model_for_side_effect: by_risk   # true = todo efeito externo decide no modelo caro (39 % das decisões iam ao

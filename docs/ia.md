@@ -1692,7 +1692,16 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   - A mesma limpeza vale no histórico do ator: a URL do `open_url` (`_brief`, `_brief_result`) e os endereços no erro
     do driver (`enderecos_limpos`).
   - A árvore local segue crua: é por ela que o `type_secret` confere o site.
-  - A imagem da tela, quando vai, ainda mostra a barra (fora desta limpeza; medida pedida pela orquestradora).
+  - A imagem da tela, quando vai, ainda mostra a barra. O 31.54 põe um retângulo opaco sobre ela atrás da chave
+    `ai.tapar_barra_de_endereco`, **desligada por padrão**: tapar pode tirar do ator e do juiz uma evidência que eles
+    usam, e o risco medido foi baixo (7 dias até 04/10: nenhum `code`, `token` ou e-mail nas URLs abertas, só busca).
+    Liga só depois de um A/B offline nas capturas que já existem, sem chamada paga. O retângulo segue os bounds da
+    `url_bar` na árvore; sem eles, a imagem vai como está e a métrica `executor.barra_tapada` conta `sem_bounds`.
+  - 31.54: o `observed_result` grava cada endereço já limpo (`Repository.finish_attempt`); ele não vai a prompt, mas
+    volta no DTO e no painel. O valor lido (`read_value`) que é URL vai limpo ao histórico do ator
+    (`linha_do_valor_lido`); a saída da etapa guarda o valor como foi lido. O texto que o ator digita (`type_text`)
+    fica cru: é o que ele mesmo escolheu, e mascará-lo quebraria a conferência dele. A limpeza mora em
+    `app/security/enderecos.py`, porque o repositório também a usa.
   - **Limite aceito:** o perfil no 1º pedaço do caminho (o handle de rede social, como `site/fulano_silva`) continua
     indo ao prompt, porque não tem forma de token. Do 2º pedaço em diante, nada do caminho vai.
   - A porta (`:dígitos` seguido de `/`, `?`, `#` ou do fim) nunca é lida como senha: o host não é trocado pelo que
