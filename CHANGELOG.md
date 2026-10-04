@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.13: fechamento da Fase 28 (branch canais/28-13-fechamento-fase-28, só docs)
+
+- `docs/relatorio-validacao.md` §30: os itens 28.1 a 28.21 com real × simulado × não executado, a fase cláusula por
+  cláusula (hoje não fecha: falta a prova 2 do 28.12 e a prova real do pedido condicional), o que falta por quem decide
+  e a validação. Rascunho: os resultados da prova 2 do 28.12 levam o marcador `PENDENTE-28.12-02`.
+- `docs/decisoes.md`: ADR-074 (proposto). O ADR-059 passa de proposto a aceito; a fase fecha por cláusula; as emendas
+  do 28.5 vindas do dado real (28.20 e 28.21); o 28.10 em fatias F1 a F5 com regras de liberação; o custo do ator da
+  prova 1 registrado para a frente de latência e custo.
+- Prova real 1 do 28.12 (04/10, deploy 21): a ocorrência das 09:00Z parou no teto de US$ 0,10 com US$ 0,107 gastos.
+- Sem código, sem migração, sem teste de produto.
+
 ## 2026-10-04 — 29.67: a sonda de interrupção não conta a amostra com o host saturado (branch fix/29-67-irq-com-host-saturado)
 
 - Causa medida (central, leitura só): o android-06 não tem defeito próprio. Convidado de 2 vCPU tem ~2x a fração de

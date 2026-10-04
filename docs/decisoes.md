@@ -70,7 +70,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-056](#adr-056--rede-por-aparelho-vpn-dentro-do-android-com-proxy-encadeado-saída-medida-e-revisão-da-cláusula-de-rede-do-adr-055) | Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida; revisa a cláusula de rede do ADR-055 | vigente (decisão do dono); Fase 25 a implementar; substitui em parte o ADR-055 | 29/09 |
 | [ADR-057](#adr-057--outlook-como-primeiro-app-novo-conta-por-app-sessão-por-conta-e-credencial-clonada-no-cofre) | Outlook como primeiro app novo: conta por app, sessão por conta e credencial clonada no cofre | vigente (decisão do dono); Fase 23 a implementar | 29/09 |
 | [ADR-058](#adr-058--comando-entre-aplicativos-catálogo-pelo-app-da-etapa-e-valor-lido-entre-etapas) | Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas | vigente; Fase 24 implementada (24.1–24.9); o §3 (valor lido entre etapas) é completado pelo [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) para ação de catálogo | 29/09 |
-| [ADR-059](#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução) | Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução | proposto (Fase 26) | 29/09 |
+| [ADR-059](#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução) | Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução | aceito (04/10, ADR-074; era proposto na Fase 26) | 29/09 |
 | [ADR-064](#adr-064--trava-de-líder-dos-laços-periódicos-cas-no-relógio-do-banco-cerca-por-token-e-renovação-no-appstate) | Trava de líder dos laços periódicos: CAS no relógio do banco, cerca por token e renovação no `AppState` | aceito (Fase 28, 28.1) | 02/10 |
 | [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) | Ação de catálogo entrega valor lido a outra etapa: `saidas` declaradas no `catalogo.yaml` | vigente (12.3) | 02/10 |
 | [ADR-066](#adr-066--laço-de-pedidos-desligado-por-padrão-origem-interna-na-criação-da-execução-e-edição-por-gatilho-novo) | Laço de pedidos: desligado por padrão, origem interna na criação da execução e edição por gatilho novo | aceito (Fase 28, 28.4) | 02/10 |
@@ -81,6 +81,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-071](#adr-071--a-conversa-de-volta-pelo-telegram-o-dono-fala-com-a-central-como-no-painel) | A conversa de volta pelo Telegram: o dono fala com a Central como no painel (item 28.15) | vigente (orquestradora, 03/10; entrada desligada) | 03/10 |
 | [ADR-072](#adr-072--o-trello-do-dono-como-espelho-e-canal-de-comandos-só-o-dono-comanda-aprovar-pelo-trello-nunca-aprova-e-o-webhook-é-um-aviso) | O Trello do dono como espelho e canal de comandos: só o dono comanda, aprovar pelo Trello nunca aprova, o webhook é um aviso (item 32.2) | vigente (dono e orquestradora, 03/10; entrada e cadastro desligados) | 03/10 |
 | [ADR-073](#adr-073--portal-na-internet-por-túnel-de-saída-da-cloudflare-o-host-separa-o-público-do-local-o-painel-mora-em-central) | Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central` (item 29.54) | aceito (dono, 03/10; túnel `real` desde 03/10 21:47Z) | 03/10 |
+| [ADR-074](#adr-074--fechamento-da-fase-28-pedidos-persistentes-aceitos-a-fase-fecha-por-cláusula-as-emendas-do-dado-real-e-a-colaboração-em-fatias) | Fechamento da Fase 28: pedidos persistentes aceitos, a fase fecha por cláusula, as emendas do dado real e a colaboração em fatias (item 28.13) | proposto (Canais, 04/10) | 04/10 |
 
 ---
 
@@ -3753,7 +3754,7 @@ livre sem catálogo (descartado: a porta recusa efeito, com razão).
 
 ## ADR-059 — Pedidos persistentes pertencem ao produto: pedido, ocorrência e execução
 
-**Data:** 29/09/2026 · **Estado:** proposto (a Fase 26 pesquisa e decide) · **Decisão técnica** sobre o pedido do
+**Data:** 29/09/2026 · **Estado:** aceito em 04/10/2026 (proposto na Fase 26; nota do ADR-074, item 28.13: o modelo está implementado e o laço foi provado no central; ver [ADR-074](#adr-074--fechamento-da-fase-28-pedidos-persistentes-aceitos-a-fase-fecha-por-cláusula-as-emendas-do-dado-real-e-a-colaboração-em-fatias)) · **Decisão técnica** sobre o pedido do
 dono de 29/09.
 
 **Contexto.** O dono quer pedidos que continuem ativos: agendados, recorrentes, por evento ou condição, e acompanhados
@@ -5221,3 +5222,74 @@ Cloudflare Access ficou de fora por decisão dele.
 v1.05; `backend/app/main.py` (`PREFIXO_DO_PAINEL`, `guarda`), `backend/app/security/access.py`,
 `backend/app/state.py::_problema_de_exposicao_publica`, `frontend/vite.config.ts`;
 `backend/tests/test_portal_publico_central.py`, `backend/tests/test_painel_estatico.py`.
+
+---
+
+## ADR-074 — Fechamento da Fase 28: pedidos persistentes aceitos, a fase fecha por cláusula, as emendas do dado real e a colaboração em fatias
+
+**Data:** 04/10/2026 · **Estado:** proposto (item 28.13, frente Canais; a orquestradora e o dono aceitam). Decisão
+técnica de fechamento. O registro item a item está em [relatorio-validacao.md](relatorio-validacao.md) §30.
+
+**Contexto.** A Fase 28 implementou o pedido persistente do [ADR-059](#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução):
+trava de líder (28.1), modelo (28.2), recorrência (28.3), laço (28.4), tentativas (28.5), orçamento (28.6), memória e
+relatório (28.7), gatilhos (28.8), API e tela (28.9) e os avisos (28.11, 28.14 a 28.19). A prova real 1 do 28.12,
+em 04/10, ligou o laço no central pela primeira vez e achou duas lacunas: a parada por orçamento virava `incerta`, e
+a pessoa não tinha como sair de `aguardando_pessoa` além de cancelar. A prova real 2 ainda corre, e a colaboração
+(28.10) não foi feita. O ADR-059 seguia "proposto" mesmo com o modelo no ar.
+
+**Decisão.**
+
+1. **O ADR-059 passa de "proposto" a "aceito".** O modelo (pedido, ocorrência, execução), o estado no backend com
+   continuidade entre reinícios e o laço desligado de fábrica (ADR-066) estão implementados e, no laço, provados no
+   central. Só a linha de estado do ADR-059 muda, com uma nota datada; o texto dele não se reescreve.
+2. **A fase fecha por cláusula, não por item.** Vale o "Fecha quando" da §13 de
+   [design/pedidos-persistentes.md](design/pedidos-persistentes.md), lido uma cláusula por vez, cada uma com sim,
+   não ou pendente, e o nível da prova (`real`, `simulated`, `not_run`). A fase só se declara fechada quando as
+   cláusulas de leitura estiverem `real`; o que exige autorização do dono fica `not_run` com a dependência exata.
+   - Hoje: **não fecha**. Faltam a prova 2 do 28.12 (⏳ PENDENTE-28.12-02) e uma prova real de pedido condicional,
+     ou a decisão de aceitar o condicional como `simulated`.
+   - A colaboração (28.10) a §13 já permite deixar para depois sem bloquear. Este ADR confirma isso.
+3. **Emendas do 28.5 vindas do dado real.** Valem junto da regra do 28.5 (§7.6 do desenho):
+   - **28.20:** quando alguma tentativa tem `error_kind` de orçamento e nenhuma ação tem `side_effect`, a falha é
+     definitiva com o motivo do orçamento. Não há nova tentativa, o pedido segue ativo e a ocorrência conta em
+     `falhas_para_pausar`. Com ação de efeito, segue `incerta`. A incerta continua sendo a resposta para efeito
+     possível; só a parada por orçamento sem efeito deixa de ser incerta (PR #216).
+   - **28.21:** a pessoa resolve a ocorrência incerta pela rota `POST /api/pedidos/{id}/ocorrencias/{oid}/resolver`,
+     com nota obrigatória (migração 095, `resolvida_em` e `resolvida_por`; adendo v1.15). A ocorrência continua
+     `incerta`, nada reexecuta e `pendencias()` a ignora; o pedido retoma quando não houver outra pendência (PR #220).
+4. **O 28.10 sai em fatias F1 a F5, e a liberação tem regras.**
+   - **F1 (estrutura):** migração 096 e adendo v1.16, PR #227, na suíte 24, **desligada de fábrica**.
+   - **F2 a F4:** as fatias intermediárias do desenho da §9. Cada uma só começa com o ok da orquestradora, **uma de
+     cada vez**, e nasce desligada de fábrica.
+   - **F5 (regras para fora):** porta-voz, uma conta por alvo no pedido inteiro, `approval_required` e a proibição de
+     simular apoio (§9, ADR-050, ADR-055). Fica só com prova `simulated` até o dono autorizar.
+   - Nenhuma fatia liga sozinha: ligar é decisão à parte.
+5. **O custo do ator é dado para a frente de latência e custo; aqui é só registro.** Na ocorrência das 09:00Z da
+   prova 1: o ator (`decide`) no claude-sonnet-5 fez 11 chamadas (4 com imagem), 28 mil tokens novos e 86 mil lidos
+   do cache; o plano foi 1 chamada no Sonnet 5.5 e o juiz 1 no Haiku. O total passou de US$ 0,107, acima do teto de
+   US$ 0,10 da ocorrência. Este ADR não muda modelo, teto nem política. A frente de latência e custo decide o que
+   fazer com isso.
+
+**Consequências.**
+- O ADR-059 deixa de ser a referência "em pesquisa" e passa a ser a base citada pelo ADR-062, 064, 066 e este.
+- A fase pode ficar aberta por dias sem bloquear o resto: cada pendência tem dono e ação exata na §30.3 do relatório.
+- A parada por orçamento sem efeito passa a contar como falha e entra na pausa por falhas seguidas. A incerteza segue
+  valendo para o pedido que tem ação de efeito.
+- A resolução da incerta não apaga o histórico: a nota e quem resolveu ficam no banco.
+- Nada mais de código nem de migração neste item.
+
+**Prova.**
+- `real`: 04/10/2026, central, deploy 21 (`32cbcd6d`), pedido `ped_3Ypk6VjEVUGQC4ziIiNtvQ`
+  (`lote:canais:28.12-01`), android-09, run `r-20261004090000-bbfe54`: parada no teto de US$ 0,10 por ocorrência com
+  US$ 0,107 gastos; fechou `incerta`; pedido preso em `aguardando_pessoa`; cancelado às 09:11:53Z.
+- `real` pendente: pedido `ped_O_tLG52eXcmZNGB0THvIkA` (`lote:canais:28.12-02`), três ocorrências, reinício no meio.
+  ⏳ PENDENTE-28.12-02.
+- `simulated`: as decisões 3 e 4 têm teste nos PRs #216, #220 e #227; ver o relatório §30.1 para o arquivo de cada
+  item.
+- `not_run`: pedido condicional no central; pedido de leitura (políticos) com relatório determinístico; 28.10 F2 a F5.
+
+**Relação.** [ADR-059](#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução) (muda de
+estado), ADR-062 (Pendências), ADR-064 (trava), ADR-066 (laço), ADR-071 (Telegram; 28.15 e 28.18), ADR-072 (Trello),
+ADR-050, ADR-055 e ADR-009 (colaboração e conta por alvo), ADR-051 (saldo);
+[design/pedidos-persistentes.md](design/pedidos-persistentes.md) §9 e §13, [relatorio-validacao.md](relatorio-validacao.md)
+§30, [api-contract.md](api-contract.md) adendos v1.15 e v1.16.

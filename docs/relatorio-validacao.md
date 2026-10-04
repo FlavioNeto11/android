@@ -2389,3 +2389,106 @@ Desfecho: não concluído; prova `real` da falha, com custo pelo `/api/usage?run
   12:27Z; a segunda tentativa está acima).
 - No QA Messenger, a pós-condição comprovou a lista de conversas por seletor, mas o nome do primeiro contato não está
   no texto da evidência. A leitura do valor não ficou registrada.
+
+## 30. Fechamento da Fase 28: pedidos persistentes, real × simulado × não executado (04/10/2026)
+
+Item 28.13. Só leitura e documentação: nenhum código de produto, nenhum teste de produto, nenhuma ação em aparelho,
+conta ou IA paga. A fonte de cada linha é o registro do `aplicar` (`.claude/plano-100/estado.json`), o "Fecha quando"
+da §13 de [design/pedidos-persistentes.md](design/pedidos-persistentes.md), as linhas 28.1 a 28.21 do
+[plano-100](plano-100.md) e os fatos da prova real do 28.12 de 04/10. Onde esta seção ficou mais nova que o registro,
+a linha diz de onde veio. Base lida: `origin/main` `1a5415cf`. Runtime do central: o que o
+`GET /api/health` responder (`commit`, `migration`): **conferir no fechamento**. Os fatos de 04/10 apontam o deploy 23
+como o mais novo e o 22 (`d37043df`, 09:42Z) como o das faxinas e do convidado. Horas em UTC.
+
+**Rascunho.** A prova real 2 do 28.12 ainda não terminou. O que depende dela leva o marcador
+`⏳ PENDENTE-28.12-02`, com o que falta medir. Quem fecha preenche e tira o marcador.
+
+### 30.1 Os itens
+
+Três níveis que não se misturam: `real` (data, máquina, commit e ids), `simulated` (`arquivo::teste`) e `not_run`.
+Nos itens com dois níveis, cada um vem separado. Máquina é o central, salvo onde a linha diz outra.
+
+| Item | Estado | Prova | O que há (e, se não fechou, a ação exata) |
+|---|---|---|---|
+| 28.1 Trava de líder | feito | `simulated` | PR #56 via #61 (migração 066, ADR-064): dois `AppState` no mesmo banco, um só líder, outro assume depois de 120 s. `not_run`: a prova com dois backends no central. |
+| 28.2 Modelo do pedido | feito | `simulated` | PR #55 via #61 (migração 067): tabela de transições, chave determinística. O uso real dos dados veio com o laço ligado (28.12). |
+| 28.3 Recorrência e fuso | feito | `simulated` | PR #54, `backend/tests/test_pedidos_recorrencia.py` (79 casos, incluindo horário de verão). |
+| 28.4 Laço de pedidos | feito | `simulated` + `real` parcial | Desenho PR #59, código PR #73, ADR-066 (D1 a D7), laço desligado de fábrica. `real`: o laço ligado despachou ocorrências no central na prova do 28.12 (04/10, deploy 21). PostgreSQL: `not_run`. O reinício no meio: ⏳ PENDENTE-28.12-02. |
+| 28.5 Tentativas e efeito | feito | `simulated` + `real` parcial | PR #90: nova tentativa só sem efeito possível, `incerta` para o pedido em `aguardando_pessoa`. `real`: a ocorrência das 09:00Z da prova 1 fechou `incerta` e o pedido ficou em `aguardando_pessoa`; isso gerou as emendas 28.20 e 28.21. |
+| 28.6 Orçamento e prioridade | feito | `simulated` + `real` | PR #85. `real`: em 04/10, a ocorrência das 09:00Z (run `r-20261004090000-bbfe54`) parou no teto de US$ 0,10 por ocorrência com US$ 0,107 gastos: a trava por ocorrência funciona. Teto por pedido e adiamento por saldo: `simulated`. |
+| 28.7 Memória e relatório | feito | `simulated` | PR #85 (migração 070): relatório determinístico, incerteza e falha nunca viram conclusão. O relatório de uma ocorrência real: ⏳ PENDENTE-28.12-02. |
+| 28.8 Gatilhos de evento, condição e persona | feito | `simulated` | Suíte 5 (contrato v0.67): cursor com detecção de buraco da retenção. Um pedido condicional rodando no central: `not_run` (ver 30.2). |
+| 28.9 API e tela Pedidos | feito | `simulated` | PR #106 (migração 072, ADR-062 emendado): API, criação pelo Comando com prévia, caixa de avisos. Navegador contra backend simulado a 1366 e 375 px. Tela com pedido real: ⏳ PENDENTE-28.12-02. |
+| 28.10 Colaboração | **não feito** | `not_run` | Só o desenho (§9 de pedidos-persistentes). Dividido em F1 a F5 (ADR-074). F1 (estrutura, migração 096, adendo v1.16) é o PR #227, para a suíte 24, desligada de fábrica. F2 a F4 esperam o ok da orquestradora, uma por vez. F5 (regras para fora) fica só `simulated` até o dono autorizar. A §13 permite deixar para depois da prova sem bloquear. |
+| 28.11 Aviso fora do painel | feito | `real` | Telegram, PR #73 (migração 068). 02/10 ~20:02Z, `a1fa730`: `scripts/avisos-telegram.py testar` saiu com 0 e o dono confirmou o recebimento. |
+| 28.12 Prova real | **parcial** | `real` parcial | Prova 1 e prova 2 abaixo. Falta fechar a prova 2 e o pedido só de leitura. |
+| 28.13 Fechamento | em andamento | n/a | Este rascunho. O estado pelo mecanismo é com a orquestradora. |
+| 28.14 `learning.needs_person` no aviso | feito | `simulated` | PR #100: chave de deduplicação comum aos quatro eventos de aviso. A entrega real ao dono dessa classe de aviso: `not_run`. |
+| 28.15 Conversa pelo Telegram | feito | `simulated` | PR #166 (migração 085, ADR-071), `7fd72929` e `e657b4c8`, deploy 14, entrada desligada (`avisos.entrada.enabled=false`). `not_run`: a conversa real; liga com o sim do dono. Registrado pela orquestradora como implemented/simulated. |
+| 28.16 Faxina das tabelas de canal | feito | `simulated` | PR #208, no ar desde o deploy 22 (`d37043df`, 09:42Z). Teste com relógio falso. A faxina da 090 está no PR #225, na suíte 23. |
+| 28.17 Canais como ANA | feito | `real` | PR #202, suíte 21, deploy 21. `real`: aviso `avisos_entregas` id 28, 09:01:27Z, título "ANA: …". |
+| 28.18 Convidado no Telegram | feito | `simulated` | PR #205 (migração 090, emenda do ADR-071), no ar desde o deploy 22. Desligado de fábrica; a prova real vem com o primeiro contato depois de a entrada ser ligada. |
+| 28.19 Lote não avisa um por um | feito | `simulated` | PR #187, deploy 18 (`f1651ec8`): rajada de 11 sai como 2 mensagens. |
+| 28.20 Parada por orçamento sem efeito | feito | `simulated` | PR #216, suíte 23. A parada no teto sem ação de commit fecha `falhou` pelo orçamento. Nasceu do dado real do 28.12. |
+| 28.21 A pessoa resolve a incerta | feito | `simulated` | PR #220, suíte 23, migração 095, adendo v1.15: rota `/resolver` com nota obrigatória. Nasceu do dado real do 28.12. A resolução num pedido real: ⏳ PENDENTE-28.12-02. |
+
+**Registro no mecanismo.** Os itens 28.15 a 28.18 não tinham entrada no `estado.json` (o 28.15 já foi aplicado por
+`resultado-28-15.json`). Os 28.10, 28.13, 28.20 e 28.21 também estão sem entrada na leitura de 04/10. A orquestradora aplica o resto pelo `scripts/claude-plan-100.py aplicar`.
+
+**28.12, prova real 1 (04/10).** Pedido `ped_3Ypk6VjEVUGQC4ziIiNtvQ` (`lote:canais:28.12-01`), android-09, deploy 21
+(`32cbcd6d`).
+- A ocorrência das 09:00Z parou no teto de US$ 0,10 por ocorrência, com US$ 0,107 gastos. Fechou `incerta`
+  ("efeito externo possível") e o pedido ficou preso em `aguardando_pessoa`. Cancelado às 09:11:53Z.
+- Custo: o ator (`decide`) no claude-sonnet-5, 11 chamadas (4 com imagem), 28 mil tokens novos e 86 mil lidos do
+  cache. O plano foi no Sonnet 5.5 (1 chamada) e o juiz no Haiku (1).
+- O que provou: o laço ligado despacha, a trava de orçamento por ocorrência funciona, a incerta para o pedido, e o
+  cancelamento fecha. O que mostrou: duas lacunas, tratadas pelo 28.20 e pelo 28.21.
+
+**28.12, prova real 2.** Pedido `ped_O_tLG52eXcmZNGB0THvIkA` (`lote:canais:28.12-02`): US$ 0,30 por ocorrência e
+US$ 0,90 no total, ocorrências às 10:00Z, 11:00Z e 12:00Z, com o reinício do deploy 23 entre a 1ª e a 2ª.
+⏳ PENDENTE-28.12-02: faltam medir as 3 ocorrências, o reinício sem duplicar nem perder, o custo por ocorrência, a
+ocorrência perdida de propósito e o relatório.
+
+**28.12, pedido só de leitura** (políticos, relatório determinístico): `not_run` até aqui.
+⏳ PENDENTE-28.12-02: rodar e registrar o relatório.
+
+### 30.2 A fase fecha?
+
+Cláusula por cláusula do "Fecha quando" da §13: "um pedido recorrente e um condicional rodam no central por pelo
+menos três ocorrências cada, atravessando um reinício do backend sem ocorrência duplicada nem perdida em silêncio,
+com custo por ocorrência gravado, relatório com observado × conclusão e a tela Pedidos mostrando histórico e
+próximas execuções".
+
+| Cláusula | Resposta | Por quê |
+|---|---|---|
+| Pedido recorrente com 3 ocorrências no central | **Pendente** | Prova 1 teve uma ocorrência e parou no teto. Prova 2 tem as 3 ocorrências marcadas (10:00Z a 12:00Z). ⏳ PENDENTE-28.12-02: falta ver as 3 fechadas. |
+| Pedido condicional com 3 ocorrências no central | **Não** | Nenhuma prova real usou gatilho de condição. A condição (28.8) é `simulated`. Ação exata: criar um pedido de condição, ou o dono aceitar fechar só com o recorrente e registrar o condicional como `simulated`. |
+| Atravessar um reinício sem duplicar nem perder | **Pendente** | O reinício do deploy 23 caiu entre a 1ª e a 2ª ocorrência da prova 2. ⏳ PENDENTE-28.12-02: conferir uma execução por ocorrência e nenhuma sumida. Antes disso, só `simulated` (28.4). |
+| Custo por ocorrência gravado | **Pendente** (parcial real) | Real na prova 1: US$ 0,107 gravado na ocorrência das 09:00Z. ⏳ PENDENTE-28.12-02: o custo das 3 ocorrências da prova 2. |
+| Relatório com observado × conclusão | **Pendente** | Determinístico e `simulated` (28.7). ⏳ PENDENTE-28.12-02: o relatório de uma ocorrência real e o do pedido de políticos, só de leitura. |
+| Tela Pedidos com histórico e próximas execuções | **Pendente** | `simulated` contra backend simulado (28.9). ⏳ PENDENTE-28.12-02: percorrer o detalhe de um pedido real, no navegador, só leitura. |
+| Prova `real` para leitura, `simulated` para colaboração e efeito, `not_run` com a dependência exata para o que exige autorização | **Parcial** | Leitura: ver as linhas acima. Colaboração: `not_run` (28.10 não feito), que a §13 deixa para depois sem bloquear. Efeito: nenhuma ação com efeito externo foi feita; a reputação com resposta publicada segue `not_run` e depende do dono. |
+
+**Em resumo.** A fase **não fecha ainda**. Falta fechar a prova 2 do 28.12, e o pedido condicional não tem prova
+real. A colaboração (28.10) a §13 permite deixar para depois, e a fase não depende dela. O que está sólido: o laço
+liga, despacha, respeita o teto de orçamento e para na incerteza; o aviso por Telegram (28.11) e a identidade da ANA
+(28.17) têm prova `real`.
+
+### 30.3 O que falta, por quem decide
+
+| Quem | O quê | Itens |
+|---|---|---|
+| Dono | Sim para ligar a entrada do Telegram (`avisos.entrada.enabled`) e trocar a caixa provisória; só então a conversa real | 28.15 |
+| Dono | Autorizar as regras para fora da colaboração (F5) e a reputação com resposta publicada | 28.10, 28.12 |
+| Dono ou orquestradora | Aceitar fechar a fase com o condicional `simulated`, ou pedir uma prova real de condição | 28.8, 28.12 |
+| Orquestradora | Ok para cada fatia F2 a F4 do 28.10, uma por vez; o merge do PR #227 (F1) na suíte 24 | 28.10 |
+| Orquestradora | Aplicar o registro no mecanismo: 28.10, 28.13 e 28.16 a 28.21 | 28.13 |
+| Frente (Canais) | Preencher os marcadores `PENDENTE-28.12-02` com o resultado da prova 2 e do pedido só de leitura | 28.12 |
+| Frente de latência e custo | Olhar o custo do ator `decide` medido na prova 1 (ADR-074, item 5); só registro | 28.6, 28.12 |
+| Execução, sem pedir | PostgreSQL da trava de líder e do laço; prova com dois backends no central | 28.1, 28.4 |
+
+### 30.4 Validação
+
+`python scripts/docs-check.py` e `python scripts/claude-plan-100.py check` rodados no worktree
+`canais-28-13`. Resultado: ⏳ PENDENTE-28.12-02 (este rascunho roda os comandos; o resultado final fica para quem
+fechar). Nenhum teste de produto foi rodado, de propósito: o item é documental.
