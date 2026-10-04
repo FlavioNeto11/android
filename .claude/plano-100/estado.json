@@ -6817,15 +6817,15 @@
   "30.45": {
    "id": "30.45",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #188 (head 43895322) na main pela suite 18 (f1651ec8) e no ar no deploy 18 (02:06:41Z de 04/10). GET /api/aprendizado/validacoes manda invalida_depois em cada pedido; o Resumo da execucao diz 'inválida (…)' e o historico do item diz 'Rodou; depois: inválida — …'. No mesmo PR, da validacao do deploy 17: a evidencia com titulo mostra 'etapa N — Título', e a chave snake_case fica no title. Simulado: backend/tests/test_validacoes_listagem.py (2 testes novos: a invalida chegada depois e a de outra execucao, e o detalhe sem motivo lendo sem_evidencia) e frontend ValidacaoTab.test.tsx, model.test.ts e DetalheRico.test.tsx (vitest 333 em aprendizado e runs; typecheck limpo); suite 18 SQLite 9158 passed e PG dos afetados 4306 passed. Navegador em 04/10, 01:31-01:33Z, servidor proprio (8765/5188, copia do banco do central de 01:31Z): o Resumo da 5f2de5 diz 'Veredito da validação: inválida (O efeito saiu mais de uma vez…)', a ef5c86 segue 'a favor', o historico do fluxo diz 'Rodou; depois: inválida — …' e nao ha rolagem horizontal a 375 px. Real: not_run, a conferir no painel do central (Resumo da 5f2de5) depois do deploy 20.",
+   "proof": "real",
+   "evidence": "Real, 04/10, central em 051fc3e0 (deploy 20), painel na porta 8000 lido as 08:16-08:17Z. O Resumo da execucao r-20261003205026-5f2de5 mostra 'Veredito da validação: inválida (O efeito saiu mais de uma vez na execução: ela não vale como evidência.)'; antes do 30.45 dizia 'a favor'. O historico do fluxo enviar-a-mensagem-entrega-poc-instance-i mostra 'Feita · Rodou; depois: inválida — O efeito saiu mais de uma vez…' ao lado de 'Não rodou: Pedia outro aparelho…'. A API GET /api/aprendizado/validacoes?run=r-20261003205026-5f2de5 devolve, para o pedido lv-8232c6a4751635f4 (feita), invalida_depois {motivo: efeito_repetido}. PR #188 na main pela suite 18 (f1651ec8) e no ar desde o deploy 18. Simulado: test_validacoes_listagem.py (2 testes novos) e os testes do frontend (ValidacaoTab, model, DetalheRico).",
    "blocker": "",
-   "grupo": "29.63-30.45",
+   "grupo": "30.45",
    "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T08:14:29+00:00"
+   "quando": "2026-10-04T08:17:26+00:00"
   },
   "31.21": {
    "id": "31.21",
@@ -8690,6 +8690,15 @@
    ],
    "grupos": [
     "orquestradora-deploy20"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:17:26+00:00",
+   "itens": [
+    "30.45"
+   ],
+   "grupos": [
+    "30.45"
    ]
   }
  ]
