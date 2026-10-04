@@ -742,14 +742,15 @@ class Repository:
 
         `error_kind` (RA-22): o `AIError.kind` que encerrou a tentativa (`StepOutcome.ai_error_kind`). Vai para
         `attempts.error_kind` e decide o tipo antes do texto; sem ele (nenhum erro de IA), a coluna fica nula."""
-        atual = self.db.one("SELECT status, error FROM attempts WHERE id=?", (attempt_id,))
+        atual = self.db.one("SELECT status, error, recovery FROM attempts WHERE id=?", (attempt_id,))
         anterior = atual["status"] if atual else None
         erro = truncate(error, 800)
         # A falha classificada (ADR-054): o tipo do erro FINAL, o mesmo que o COALESCE abaixo deixa gravado — o texto
         # novo ou, sem ele, o que `note_attempt` já anotou nesta tentativa. Mesmo classificador puro da leitura do
-        # legado: o gravado e o retroativo nunca discordam.
+        # legado: o gravado e o retroativo nunca discordam. O `recovery` separa a interrompida que esperou a pessoa
+        # (29.74) da reconciliação, da pausa e da tomada.
         tipo = classificar_falha(erro if erro is not None else (atual["error"] if atual else None), status.value,
-                                 error_kind)
+                                 error_kind, recovery if recovery is not None else (atual["recovery"] if atual else None))
         # A tela só acompanha um tipo de falha: tentativa comprovada ou cancelada não tem "onde falhou", e a tela
         # sem tipo seria um grupo do backlog sem falha nenhuma.
         tela = (screen or None) if tipo is not None else None

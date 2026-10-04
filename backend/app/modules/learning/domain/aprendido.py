@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, SkillState
-from app.modules.learning.domain.falhas import classificar_falha
+from app.modules.learning.domain.falhas import tipo_da_tentativa
 from app.modules.learning.domain.prova import ROTULO_DO_MOTIVO, motivo_da_invalida
 from app.modules.learning.domain.vocabulario import KINDS_DE_ITEM, KINDS_NATIVOS, Braco, LivroKind, Papel, Posicao
 from app.modules.learning.domain.voto import veio_do_voto
@@ -95,6 +95,7 @@ class TentativaDaExecucao:
     failure_kind: str | None
     status: str | None
     erro: str | None
+    recovery: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,12 +286,10 @@ def _falhas(tentativas: Iterable[TentativaDaExecucao]) -> list[ItemAprendido]:
     total: dict[str, int] = {}
     retroativas: dict[str, int] = {}
     for t in tentativas:
-        tipo = t.failure_kind
-        if not tipo:
-            classificada = classificar_falha(t.erro, t.status)
-            if classificada is None:
-                continue
-            tipo = classificada.value
+        tipo = tipo_da_tentativa(t.failure_kind, t.erro, t.status, recovery=t.recovery)
+        if tipo is None:
+            continue
+        if tipo != t.failure_kind:
             retroativas[tipo] = retroativas.get(tipo, 0) + 1
         total[tipo] = total.get(tipo, 0) + 1
     saida: list[ItemAprendido] = []

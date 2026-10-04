@@ -29,7 +29,7 @@ from app.modules.learning.domain.backlog import (SEM_CONDUCAO, AcaoLivre, Chamad
                                                  LinhaDoBacklog, Ocorrencia, SaudeDasExecucoes, TipoDeVerificacao,
                                                  chave_do_grupo)
 from app.modules.learning.domain.ciclo import ConflitoDeEstado
-from app.modules.learning.domain.falhas import classificar_falha, classificar_pelo_tipo_da_ia
+from app.modules.learning.domain.falhas import classificar_pelo_tipo_da_ia, tipo_da_tentativa
 from app.modules.learning.domain.vocabulario import (SINAIS_DE_INTERVENCAO, CategoriaDoBacklog, EstadoDoBacklog,
                                                      SignalKind)
 from app.modules.learning.domain.diagnostico import ContextoDaTentativa, EstatisticaDaLicao
@@ -118,7 +118,7 @@ class FontesDeFalhaSql:
         marcas = ",".join("?" for _ in _FALHAS)
         tentativas = self._db.query(
             "SELECT a.id, a.step_id, a.number, a.status, a.error, a.failure_kind, a.failure_screen, a.error_kind,"
-            " a.started_at,"
+            " a.recovery, a.started_at,"
             " a.finished_at, s.capability, s.app_id, s.status AS step_status, s.run_id, s.instance_id, r.app_ids,"
             " r.simulated, (SELECT MAX(x.number) FROM attempts x WHERE x.step_id = a.step_id) AS ultima"
             " FROM attempts a JOIN steps s ON s.id = a.step_id JOIN runs r ON r.id = s.run_id"
@@ -130,10 +130,13 @@ class FontesDeFalhaSql:
             gravado = linhas.texto_ou_nulo(t, "failure_kind")
             if gravado is None and not retroativo:
                 continue
-            tipo = gravado or classificar_falha(linhas.texto_ou_nulo(t, "error"), linhas.texto_ou_nulo(t, "status"),
-                                                linhas.texto_ou_nulo(t, "error_kind"))
+            # 29.74: no retroativo, o `interrompida` gravado de quem esperou a pessoa é relido pelo texto (e conta como
+            # retroativo); sem ele, só o que a execução gravou.
+            tipo = gravado if not retroativo else tipo_da_tentativa(
+                gravado, linhas.texto_ou_nulo(t, "error"), linhas.texto_ou_nulo(t, "status"),
+                linhas.texto_ou_nulo(t, "error_kind"), linhas.texto_ou_nulo(t, "recovery"))
             if tipo:
-                escolhidas.append((t, str(tipo), gravado is None))
+                escolhidas.append((t, str(tipo), tipo != gravado))
         recentes = [t for t, _, _ in escolhidas if _inicio(t) >= corte]
         custos, erros_de_ia = self._custos(recentes, corte, ate)
         diario = self._diario(desde[:10], corte[:10]) if len(recentes) < len(escolhidas) else {}
