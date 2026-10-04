@@ -10,6 +10,7 @@ perder a ocorrência, a prioridade no `dispatchable_objectives` e o teto da ocor
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -310,6 +311,54 @@ async def test_limite_conhecido_o_excesso_do_orcamento_e_no_maximo_o_custo_de_um
     r.avancar(4 * 3600)
     laco.uma_volta()
     assert len(_runs(db)) == 1, "e nada mais é despachado depois"
+
+
+async def test_encerrar_por_orcamento_grava_o_relatorio_final_uma_vez(h: Harness) -> None:
+    """28.22 (achado real do 28.12): o §6.5 lista o orçamento entre os motivos de encerrar, e encerrar grava o relatório
+    final. Antes só a contagem, o prazo e o cancelamento gravavam; o pedido encerrado por orçamento ficava sem nenhum."""
+    r = Relogio()
+    laco, db = _pedido_horario(h, r)
+    _orcamento(db, total=1.0)
+    laco.uma_volta()
+    [run] = _runs(db)
+    _chamada(db, run["id"], 1.20)
+    _assentar(db, run["id"], "failed")
+    assert laco.uma_volta().encerrados == 1
+    assert db.scalar("SELECT encerrado_motivo FROM pedidos WHERE id='ped1'") == "orcamento"
+    [linha] = db.query("SELECT * FROM pedido_relatorios WHERE pedido_id='ped1'")
+    assert (linha["gatilho"], linha["sequencia"], linha["gerado_por"]) == ("encerramento", 1, "deterministico")
+    conteudo = json.loads(linha["conteudo"])
+    assert conteudo["conclusao"]["situacao"] == "sem_conclusao", "a falha nunca vira conclusão"
+    assert conteudo["custo_usd"] == pytest.approx(1.20), "o custo total vai no relatório, antes de qualquer purga"
+    r.avancar(4 * 3600)
+    laco.uma_volta()
+    assert db.scalar("SELECT COUNT(*) FROM pedido_relatorios WHERE pedido_id='ped1'") == 1, "as voltas seguintes não repetem"
+
+
+async def test_encerrar_por_orcamento_sem_nada_despachado_tambem_grava_o_relatorio(h: Harness) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _laco(h, r)
+    _agora(db, "ped1", r)
+    _orcamento(db, total=0.50)
+    _fechada(db, "antiga", 0.60)
+    assert laco.uma_volta().encerrados == 1
+    assert db.scalar("SELECT gatilho FROM pedido_relatorios WHERE pedido_id='ped1'") == "encerramento"
+
+
+async def test_relatorio_quebrado_nao_impede_o_encerramento_por_orcamento(h: Harness, monkeypatch) -> None:
+    r = Relogio()
+    db = h.state.db
+    laco = _laco(h, r)
+    monkeypatch.setattr(laco.relatorios, "preparar_relatorio",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("quebrou")))
+    _agora(db, "ped1", r)
+    _orcamento(db, total=0.50)
+    _fechada(db, "antiga", 0.60)
+    res = laco.uma_volta()
+    assert (res.encerrados, res.erros) == (1, 0)
+    assert db.scalar("SELECT encerrado_motivo FROM pedidos WHERE id='ped1'") == "orcamento"
+    assert db.scalar("SELECT COUNT(*) FROM pedido_relatorios") == 0, "sem relatório; sai depois, sob demanda"
 
 
 async def test_a_estimativa_limita_quantas_ocorrencias_saem_numa_volta(h: Harness) -> None:

@@ -441,7 +441,7 @@ class PedidosApi:
         if not confirmar:
             raise ErroDeApi(409, "confirmacao_necessaria", "Cancelar não desfaz o que já foi feito. Confirme.",
                             execucoes_em_curso=em_curso, ocorrencias_futuras=futuras)
-        self._rodar(lambda: self.acoes.cancelar(pedido_id, por=operador), p)
+        self._rodar(lambda: self.acoes.cancelar(pedido_id, por=operador, motivo=motivo), p)
         return {"pedido": self.view(self._pedido(pedido_id)), "sem_mudanca": False,
                 "execucoes_em_curso": [{"run_id": r} for r in em_curso], "ocorrencias_canceladas": futuras,
                 "filhos_cancelados": len(vivos)}
@@ -701,6 +701,8 @@ class PedidosApi:
                                  " ORDER BY r.created_at", (pedido_id,))
         filhos = self.repo.filhos(pedido_id)
         v.update({
+            # texto livre de pessoa (28.22): só aqui, nunca no `view()`, que vai inteiro no evento `pedido.updated`
+            "cancelado_motivo": p["cancelado_motivo"],
             "filhos": [{"id": f["id"], "titulo": f["titulo"], "estado": f["estado"], "papel": f["papel"]} for f in filhos],
             "dependencias": [{"de": d["de"], "para": d["para"], "tipo": d["tipo"]}
                              for d in self.repo.dependencias_entre([pedido_id, *(f["id"] for f in filhos)])],

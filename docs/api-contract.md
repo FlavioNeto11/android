@@ -5349,3 +5349,24 @@ Aditivo ao v0.45 (pedidos). Uma migração (096) e nenhuma rota nova. Desligado 
 Prova:
 - `simulated`: `backend/tests/test_pedidos_colaboracao_dominio.py` e `test_pedidos_colaboracao_api.py`.
 - `not_run`: PostgreSQL e o central depois do deploy.
+
+## Adendo v1.17 (04/10/2026; número da orquestradora; item 28.22) — relatório no encerramento por orçamento e motivo do cancelamento
+
+Aditivo ao v1.16. Uma migração (099) e nenhuma rota nova. Os dois achados vêm da prova real do 28.12 (04/10).
+
+- **Encerramento por orçamento:** o pedido que o laço encerra com `encerrado_motivo: "orcamento"` agora grava o
+  relatório final de encerramento (`gatilho: "encerramento"`), como já faziam a contagem, o prazo e o cancelamento
+  (§6.5 de `design/pedidos-persistentes.md`). Com ele vem o aviso `relatorio_pronto` de sempre. Se o relatório
+  quebrar, o pedido encerra mesmo assim e o relatório sai depois, sob demanda.
+- **`POST /api/pedidos/{id}/cancelar`:** o `motivo` do corpo (até 200, aparado; só espaços conta como sem motivo)
+  passa a ser gravado em `cancelado_motivo`. Vale só para o pedido cancelado pela pessoa: os descendentes cancelados
+  em cascata ficam sem motivo. Repetir o cancelamento (`sem_mudanca: true`) não troca o motivo gravado.
+- **`GET /api/pedidos/{id}`** ganha `cancelado_motivo: string | null`. O campo **não** entra no `PedidoView`: a lista,
+  a resposta das ações e o evento `pedido.updated` não o trazem. É texto livre de pessoa, então também não vai para
+  aviso, Telegram ou Trello. O painel o mostra no detalhe, em Comportamento, como "Cancelado porque".
+
+Prova:
+- `simulated`: `backend/tests/test_pedidos_orcamento.py` (3 testes novos, com contraprova) e
+  `test_pedidos_api.py::test_cancelar_grava_o_motivo_so_no_detalhe_e_nunca_no_evento_nem_no_aviso`; vitest
+  `PedidosPage.test.tsx` (2 novos).
+- `not_run`: PostgreSQL e o central depois do deploy.

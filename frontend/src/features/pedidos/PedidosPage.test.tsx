@@ -206,6 +206,26 @@ describe('detalhe e navegação por hash', () => {
     for (const nome of ['Custos e limites', 'Comportamento', 'Autoria']) expect(container.querySelector(`section[aria-label="${nome}"]`)).not.toBeNull();
   });
 
+  it('28.22: o pedido cancelado mostra o motivo da pessoa em Comportamento; sem motivo, nenhuma linha', async () => {
+    backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, {
+      estado: 'cancelado', acoes_permitidas: [], cancelado_motivo: 'teto do bloco atingido',
+    })));
+    await irPara({ tela: 'pedidos', segmentos: ['ped_a1'] });
+    await montar();
+    await waitFor(() => expect(container.querySelector('section[aria-label="Comportamento"]')).not.toBeNull());
+    const comportamento = text(container.querySelector('section[aria-label="Comportamento"]') as HTMLElement);
+    expect(comportamento).toContain('Cancelado porque');
+    expect(comportamento).toContain('teto do bloco atingido');
+  });
+
+  it('28.22: sem cancelado_motivo (legado ou cancelado sem motivo) a linha não aparece', async () => {
+    backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, { estado: 'cancelado', acoes_permitidas: [] })));
+    await irPara({ tela: 'pedidos', segmentos: ['ped_a1'] });
+    await montar();
+    await waitFor(() => expect(container.querySelector('section[aria-label="Comportamento"]')).not.toBeNull());
+    expect(text(container.querySelector('section[aria-label="Comportamento"]') as HTMLElement)).not.toContain('Cancelado porque');
+  });
+
   it('o título que a pessoa deu aparece inteiro no cabeçalho, mesmo acima de 90 caracteres (o backend limita a 120)', async () => {
     const titulo = 'Conferência diária das conversas não lidas no QA Messenger com resumo e lista de remetentes urgentes';
     backend.on('GET', /^\/api\/pedidos\/ped_a1$/, () => json(detalhe(ATIVO, { titulo })));

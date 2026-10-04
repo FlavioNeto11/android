@@ -41,6 +41,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   desligados, porta 55434), aprovado pela orquestradora pela medida da suíte 25: conexão aceita em 3,1 s contra
   ~6 min do `farm-pg`, e ~10 % mais testes por segundo. O `farm-pg` fica para a suíte inteira em PG. Regras em
   `docs/banco.md`, `docs/operacao.md` e `.claude/rules/testes.md`. Só documentação.
+## 2026-10-04 — 28.22: relatório no encerramento por orçamento e motivo do cancelamento (branch canais/28-22-encerramento-e-motivo, migração 099, adendo v1.17)
+
+- `laco._conferir_orcamento`: encerrar por orçamento grava o relatório final, na mesma cerca, como a contagem e o
+  prazo (§6.5). Achado real do 28.12: os pedidos -02 e -03 encerraram por orçamento sem relatório.
+- `POST /api/pedidos/{id}/cancelar` grava o `motivo` em `pedidos.cancelado_motivo` (migração 099). Só o detalhe o
+  devolve, fora do `view()` e do evento; o painel mostra "Cancelado porque". Achado real: o -04 cancelado às 12:07:24Z
+  ficou sem motivo.
+- Prova `simulated`: `test_pedidos_orcamento.py` (3 novos, com contraprova), `test_pedidos_api.py` (1 novo), vitest
+  `PedidosPage.test.tsx` (2 novos). Real: `not_run` até o deploy.
+
 ## 2026-10-04 — 28.13: fechamento da Fase 28 (branch canais/28-13-fechamento-fase-28, só docs)
 
 - `docs/relatorio-validacao.md` §30: os itens 28.1 a 28.21 com real × simulado × não executado, a fase cláusula por

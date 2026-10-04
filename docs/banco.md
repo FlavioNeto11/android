@@ -32,7 +32,7 @@ Erros de driver também são neutros: `INTEGRITY_ERRORS` e `OPERATIONAL_ERRORS` 
 Importa porque a **idempotência** do projeto é chave `UNIQUE` + captura da violação — capturar a exceção errada
 transformaria "já existe, devolva o original" em erro 500.
 
-## Migrações (001–076, 078 a 083, 086, 088, 090, 092 a 098)
+## Migrações (001–076, 078 a 083, 086, 088, 090, 092 a 099)
 
 Cada migração é um arquivo em `backend/migrations/`, aplicado uma vez e nunca editado depois
 (`app/db.py::migrate`): quem precisa mudar o que uma migração já aplicada fez cria a PRÓXIMA migração. A tabela
@@ -134,6 +134,7 @@ chamadas para não custar a cada `/api/health`.
 | 096 | pedido_dependencias | Item 28.10, fatia F1 (colaboração entre pedidos, só a estrutura; número reservado pela orquestradora, a lacuna 089 a 095 é esperada; desenho em `design/pedidos-persistentes.md` §9). Tabela `pedido_dependencias(de, para, tipo, criado_em)` com `PRIMARY KEY (de, para)` e índice por `para`: **`para` depende de `de`** (a seta vai de quem vem antes para quem espera); `tipo` é `precisa_de_resultado` ou `depois_de`. `pedidos` ganha `papel TEXT` (`pesquisador`, `checador`, `redator`, `porta_voz`; NULL = pedido comum) e o índice `ix_pedidos_pai` sobre `pai_id` (da 067, que ninguém lia). Padrão da 067/085: sem FK e sem CHECK (profundidade, filhos, ciclo, linhagem, porta-voz único e orçamento reservado são do domínio, `modules/pedidos/domain/colaboracao.py`, e os limites vêm de `pedidos.colaboracao` na config), tempo em texto ISO. A F1 só grava e valida: o laço (`laco.py`) não lê nada disto. Simulado em `tests/test_pedidos_colaboracao_api.py`; PostgreSQL pela mesma fábrica quando `TEST_DATABASE_URL` existe |
 | 097 | tamanho_do_prompt_do_ator | Item 31.35 (Fase 31; número reservado em `.claude/reservas.md`, 04/10; as 089 a 096 são de outros itens). Só mede: `ai_calls.prompt_arvore_chars`, `prompt_historico_chars` (caracteres da árvore e do histórico que foram ao ator) e `prompt_podados` (elementos da barra do navegador tirados do prompt), NULOS fora da decisão do ator. Só `ADD COLUMN`. Simulado em `tests/test_tamanho_do_prompt_do_ator.py` |
 | 098 | etapa_opcional | Item 31.36 (Fase 31; número dado pela orquestradora em 04/10). `steps.opcional INTEGER`: 1 = etapa de limpeza opcional (sem efeito, sem saídas, sem for_each, sem commit_guard; o parsing garante); falhar a leva a `skipped` e o objetivo segue, e a dependência e o progresso a contam como resolvida. NULO = a etapa de sempre. Só `ADD COLUMN`. Simulado em `tests/test_etapa_opcional.py` |
+| 099 | pedido_cancelado_motivo | Item 28.22 (Fase 28; número dado pela orquestradora em 04/10). `pedidos.cancelado_motivo TEXT`: o motivo que a pessoa deu em `POST /api/pedidos/{id}/cancelar` (até 200), antes aceito e descartado. Texto livre de pessoa: só o `GET /api/pedidos/{id}` o devolve, fora do `view()` e do evento `pedido.updated`. Nulo sem motivo, no legado e nos descendentes cancelados em cascata. Só `ADD COLUMN`. Simulado em `tests/test_pedidos_api.py` |
 
 As oito tabelas novas de 031–039 estão em quatro migrações: `panel_sessions` (035), `policy_groups` (036),
 `profile_accounts` e `account_credentials` (037), `training_sessions`, `training_inputs` e `flow_scope` (038),

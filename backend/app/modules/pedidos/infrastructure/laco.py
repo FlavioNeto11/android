@@ -485,10 +485,15 @@ class LacoDePedidos:
             self._pular([(linha["id"], f"orçamento: {motivo}")], token, agora, r, de=linha["estado"])
         if self.repo.quantas_em_aberto(p["id"]) == 0:
             transicionar_pedido("ativo", "encerrado", ator="sistema", motivo="orcamento")
+            # o orçamento é um dos motivos do §6.5: encerrar por ele também grava o relatório final, como a contagem e o
+            # prazo (28.22; achado real do 28.12, onde os dois pedidos encerrados por orçamento ficaram sem relatório)
+            relatorio = self._relatorio_final(p)
             with self.lideranca.cercada(PEDIDOS, token):
                 if self.repo.mudar_estado_do_pedido(p["id"], "ativo", "encerrado", to_iso(agora), versao=p["versao"],
                                                     encerrado_motivo="orcamento"):
                     r.encerrados += 1
+                    if relatorio is not None:
+                        self.relatorios.gravar_relatorio(relatorio)
         return True
 
     def _avisar_orcamento_80(self, p: Row, total: float, gasto: float, agora: datetime) -> None:
