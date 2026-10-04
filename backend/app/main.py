@@ -58,6 +58,7 @@ from .modules.learning.presentation.router import router as learning_router
 from .modules.pedidos.presentation.router import router as pedidos_router
 from .modules.portal.presentation.contato import METODOS_DO_CONTATO, ROTA_DO_CONTATO
 from .modules.portal.presentation.contato import router as portal_contato_router
+from .modules.portal.presentation.exclusao import router as portal_exclusao_router
 from .modules.portal.presentation.site import SitePublico
 from .modules.skills.presentation.router import router as skills_router
 from .security.access import CABECALHO_DO_IP_NA_BORDA, CLIENTE_LOCAL, avaliar, cliente_de, publicos_de
@@ -337,6 +338,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         app.include_router(canais_anexos_router)       # `/api/canais/anexos/{id}` (28.24): só leitura, atrás do login
         app.include_router(decisoes_automaticas_router)   # `/api/decisoes-automaticas` (28.25): listar e desfazer, atrás do login
         app.include_router(portal_contato_router)      # `POST /api/portal/contato` (29.77): fora do login; 404 desligado
+        app.include_router(portal_exclusao_router)     # busca e exclusão a pedido do titular (29.83): só pessoa na sessão
     app.include_router(worker_router)      # o canal do worker também atende na porta principal (modo (b))
     dist = cfg.root / "frontend" / "dist"
     if cfg.serve_api and dist.exists():

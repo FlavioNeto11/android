@@ -152,6 +152,15 @@ else
         confere /api/portal/contato "202" "contato do site: POST com a isca (nao grava, nao avisa)" \
             -X POST -H "Content-Type: application/json" -H "Origin: https://$H" \
             -d '{"nome":"prova","telefone":"00000000","mensagem":"prova","consentimento":true,"site":"isca","token":""}'
+        # A isca de novo, agora lendo os cabecalhos: a resposta do contato tambem nao poe cookie (ADR-075).
+        cab_isca="$(curl -s -o /dev/null -D - -m 20 -X POST -H "Content-Type: application/json" -H "Origin: https://$H" \
+            -d '{"nome":"prova","telefone":"00000000","mensagem":"prova","consentimento":true,"site":"isca","token":""}' \
+            "https://$H/api/portal/contato" | tr -d '\r')"
+        if grep -qi '^set-cookie:' <<< "$cab_isca"; then
+            printf 'FALHOU %-28s      a resposta pos cookie; a pagina promete que nao usa\n' "POST isca (sem cookie)"; FALHAS=$((FALHAS + 1))
+        else
+            printf 'ok     %-28s      (nenhum Set-Cookie)\n' "POST isca (sem cookie)"
+        fi
         confere /api/portal/contato "415" "contato do site: tipo errado recusado antes de ler o corpo" \
             -X POST -H "Content-Type: text/plain" -H "Origin: https://$H" -d 'site=isca'
         grande="$(printf '%*s' 9000 '' | tr ' ' 'a')"
@@ -161,6 +170,12 @@ else
         confere /api/portal/contato "401 404" "contato do site: fechado (401 antes do 29.77, 404 desligado)" \
             -X POST -H "Content-Type: application/json" -H "Origin: https://$H" -d '{"site":"isca"}'
     fi
+    # Exclusao a pedido do titular (29.83): so uma pessoa na sessao; de fora, sem credencial, 401. O corpo e de
+    # proposito INVALIDO (ids vazio, telefone curto): se o portao falhasse, a rota responderia 422 e nada seria apagado.
+    confere /api/portal/contatos/busca   "401" "exclusao (29.83): busca so com sessao" \
+        -X POST -H "Content-Type: application/json" -H "Origin: https://$H" -d '{"telefone":"0"}'
+    confere /api/portal/contatos/excluir "401" "exclusao (29.83): excluir so com sessao" \
+        -X POST -H "Content-Type: application/json" -H "Origin: https://$H" -d '{"ids":[],"pedido_por":""}'
 fi
 
 # Host forjado: a borda da Cloudflare nao entrega, e o central nunca ve "localhost" vindo de fora.

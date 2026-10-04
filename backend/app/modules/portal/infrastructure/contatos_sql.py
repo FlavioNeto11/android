@@ -6,6 +6,7 @@ ordenam como texto nos dois bancos.
 from __future__ import annotations
 
 import secrets
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -29,6 +30,15 @@ class ContatoGuardado:
     mensagem: str
     estado: str
     tentativas: int
+
+
+@dataclass(frozen=True, slots=True)
+class ContatoAchado:
+    """O que a busca da exclusão (29.83) lê: o telefone só para comparar, nunca para mostrar."""
+    id: int
+    criado_em: str
+    estado: str
+    telefone: str
 
 
 class ContatosSql:
@@ -123,3 +133,33 @@ class ContatosSql:
         cursor = self.db.execute("DELETE FROM portal_contatos WHERE criado_em<?",
                                  (to_iso(agora - timedelta(days=RETENCAO_DIAS)),))
         return int(getattr(cursor, "rowcount", 0) or 0)
+
+    # ------------------------------------------------------------------ exclusão a pedido do titular (29.83)
+    def com_telefone(self) -> list[ContatoAchado]:
+        """Os contatos que ainda têm telefone (o descarte apaga). A comparação dígito a dígito é da aplicação: a tabela
+        é pequena (180 dias, teto de 500 por dia) e o telefone é texto livre do visitante, sem forma canônica."""
+        linhas = self.db.query(
+            "SELECT id, criado_em, estado, telefone FROM portal_contatos WHERE telefone<>'' ORDER BY id")
+        return [ContatoAchado(int(r["id"]), str(r["criado_em"]), str(r["estado"]), str(r["telefone"])) for r in linhas]
+
+    def estados(self, ids: Sequence[int]) -> dict[int, str]:
+        if not ids:
+            return {}
+        marcas = ",".join("?" * len(ids))
+        linhas = self.db.query(f"SELECT id, estado FROM portal_contatos WHERE id IN ({marcas})",  # noqa: S608
+                               tuple(ids))
+        return {int(r["id"]): str(r["estado"]) for r in linhas}
+
+    def excluir(self, *, ids: Sequence[int], mantidos: Sequence[tuple[int, str]], pedido_por: str,
+                executado_por: str, mensagens_apagadas: int, mensagens_a_mao: int, agora: datetime) -> int:
+        """O `DELETE` das linhas e o registro da exclusão, juntos: ou os dois ficam, ou nenhum. O registro só leva ids,
+        motivos e contagens; nada do titular. Devolve o id do registro."""
+        with self.db.tx():
+            if ids:
+                marcas = ",".join("?" * len(ids))
+                self.db.execute(f"DELETE FROM portal_contatos WHERE id IN ({marcas})", tuple(ids))  # noqa: S608
+            return int(self.db.inserted_id(
+                "INSERT INTO portal_exclusoes(executado_em, executado_por, pedido_por, ids, mantidos, "
+                "mensagens_apagadas, mensagens_a_mao) VALUES (?,?,?,?,?,?,?)",
+                (to_iso(agora), executado_por, pedido_por, dumps(list(ids)),
+                 dumps([{"id": i, "motivo": m} for i, m in mantidos]), mensagens_apagadas, mensagens_a_mao)))

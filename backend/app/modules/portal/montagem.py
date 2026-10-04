@@ -15,6 +15,7 @@ from collections.abc import Callable
 from app.config import Config
 from app.db import Database
 from app.modules.portal.application.contato import Avisar, AvisarResumo, ServicoDeContato, TipoDoContato
+from app.modules.portal.application.exclusao import ApagarNoCanal, ServicoDeExclusao
 from app.modules.portal.application.protecao import emitir_token
 from app.modules.portal.infrastructure.contatos_sql import ContatosSql
 from app.security.access import publicos_de
@@ -51,8 +52,15 @@ class Portal:
             funcao = getattr(avisos, "avisar_resumo_do_portal", None)
             return funcao if callable(funcao) else None
 
+        def apagar_no_canal() -> ApagarNoCanal | None:
+            funcao = getattr(avisos, "apagar_avisos_do_portal", None)      # 28.34; ausente antes dele
+            return funcao if callable(funcao) else None
+
         self.contatos = ServicoDeContato(self.repo, limites=lambda: cfg.file.portal.limites, avisar=avisar,
                                          tipo_do_contato=_tipo_da_canais, avisar_resumo=avisar_resumo)
+        # A exclusão a pedido (29.83) vale com o contato ligado ou não: a promessa da página continua depois de desligar.
+        self.exclusao = ServicoDeExclusao(self.repo, apagar_no_canal=apagar_no_canal,
+                                          canal_presente=lambda: avisar() is not None)
         for _codigo, mensagem, _dica in self.problemas(com_contagens=False):   # o banco ainda não migrou aqui
             log.warning("portal: %s", mensagem)
 

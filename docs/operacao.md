@@ -462,10 +462,15 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
   cerca de 195 dias;
 - o `cliente_hash` (código do endereço de rede, nunca o IP) fica os mesmos 180 dias.
 
-**Pedido de exclusão de um contato do site** (o visitante pede pelo formulário ou por telefone). Quem executa é o
-operador, com o sim do dono no chat, porque apaga dado; a ação no painel é o 29.83. O pedido feito pelo formulário é
-ele mesmo um contato que chegou ao chat: são duas ou mais linhas e duas ou mais mensagens a apagar. Nada do conteúdo
-vai para chat, cartão ou log.
+**Pedido de exclusão de um contato do site** (o visitante pede pelo formulário ou por telefone).
+- **Pelo painel (29.83):** Configuração → "Site e privacidade". Busque pelo telefone com DDD, marque as linhas
+  (inclusive a do próprio pedido, quando ele veio pelo formulário), diga por onde o pedido chegou e confirme "Apagar
+  definitivamente". Quem aperta é uma pessoa logada; o resultado lista as mensagens que ficaram para apagar à mão no
+  chat. Uma linha `mantida` com `em_envio` pede outra tentativa em um minuto; com `falhou`, ver o log `poc.portal` e o
+  da Canais; com `canal_sem_exclusao`, o 28.34 ainda não está na base: use o procedimento manual abaixo.
+- **Manual (reserva, quando o painel não serve):** quem executa é o operador, com o sim do dono no chat, porque apaga
+  dado. O pedido feito pelo formulário é ele mesmo um contato que chegou ao chat: são duas ou mais linhas e duas ou
+  mais mensagens a apagar. Nada do conteúdo vai para chat, cartão ou log.
 1. Achar as linhas comparando TODOS os dígitos que o visitante informou, com DDD (troque `<DIGITOS>`, por exemplo
    `11987654321`; com o `55` na frente, use o número inteiro como ele veio). O SELECT mostra os dígitos para conferir
    antes de apagar:

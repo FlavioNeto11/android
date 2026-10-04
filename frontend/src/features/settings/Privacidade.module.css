@@ -1,0 +1,89 @@
+/* Exclusão a pedido do titular (29.83): busca, lista com caixas, escolha de origem e resultado. Uma coluna no celular. */
+.inlineIcon {
+  flex: none;
+  vertical-align: -2px;
+}
+
+.busca {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.campoTelefone {
+  flex: 1 1 220px;
+  max-width: 320px;
+}
+
+.barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.muted {
+  margin: 0;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.colCaixa {
+  width: 1%;
+}
+
+.origem {
+  margin: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+}
+
+.origemLegenda {
+  padding: 0 var(--sp-1);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.opcao {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: var(--hit-min);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.opcao input {
+  flex: 0 0 auto;
+  accent-color: var(--accent);
+}
+
+.acoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.lista {
+  margin: var(--sp-1) 0 var(--sp-2);
+  padding-left: var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.confirmaLista {
+  margin: var(--sp-1) 0 var(--sp-3);
+  padding-left: var(--sp-5);
+}
+
+.paragrafo {
+  margin: 0 0 var(--sp-2);
+}

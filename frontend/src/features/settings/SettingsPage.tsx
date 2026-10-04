@@ -1,4 +1,4 @@
-import { AppWindow, Bot, ServerCrash, SlidersHorizontal, Smartphone, Workflow } from 'lucide-react';
+import { AppWindow, Bot, ServerCrash, ShieldCheck, SlidersHorizontal, Smartphone, Workflow } from 'lucide-react';
 import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Page } from '../../components/Page';
@@ -12,9 +12,10 @@ import { AppsSection } from './AppsSection';
 import { FlowsRecipesSection } from './FlowsRecipesSection';
 import { InstancesSection } from './InstancesSection';
 import { LimitsSection } from './LimitsSection';
+import { PrivacidadeSection } from './PrivacidadeSection';
 import styles from './Settings.module.css';
 
-type SectionId = 'apps' | 'instancias' | 'ia' | 'fluxos' | 'limites';
+type SectionId = 'apps' | 'instancias' | 'ia' | 'fluxos' | 'limites' | 'privacidade';
 
 const SECTIONS: TabDef<SectionId>[] = [
   { id: 'apps', label: 'Aplicativos', icon: AppWindow },
@@ -22,11 +23,12 @@ const SECTIONS: TabDef<SectionId>[] = [
   { id: 'ia', label: 'IA', icon: Bot },
   { id: 'fluxos', label: 'Fluxos e receitas', icon: Workflow },
   { id: 'limites', label: 'Limites', icon: SlidersHorizontal },
+  { id: 'privacidade', label: 'Site e privacidade', icon: ShieldCheck },
 ];
 
 /** Como a guia aparece no link (`#/configuracao?aba=aplicativos`); "Aplicativos" é a padrão e não entra nele. */
 const ABA_NO_LINK: Record<SectionId, string> = {
-  apps: 'aplicativos', instancias: 'instancias', ia: 'ia', fluxos: 'fluxos', limites: 'limites',
+  apps: 'aplicativos', instancias: 'instancias', ia: 'ia', fluxos: 'fluxos', limites: 'limites', privacidade: 'privacidade',
 };
 
 function secaoDoLink(aba: string | undefined): SectionId {
@@ -52,11 +54,11 @@ export function SettingsPage() {
   return (
     <Page
       title="Configuração"
-      lead="Aplicativos que a IA opera, associação de instâncias e contas, status da IA, fluxos e receitas aprendidos e limites de segurança."
+      lead="Aplicativos que a IA opera, associação de instâncias e contas, status da IA, fluxos e receitas aprendidos, limites de segurança e a exclusão de contatos do site."
     >
       <Tabs tabs={SECTIONS} active={section} onChange={change} idBase="cfg" label="Seções de configuração" />
       <TabPanel idBase="cfg" id={section} className={styles.panel}>
-        {!hydrated && section !== 'ia' ? (
+        {!hydrated && section !== 'ia' && section !== 'privacidade' ? (
           connStatus === 'connecting' ? (
             <LoadingRegion label="Carregando a configuração…" className={styles.stack}>
               <Skeleton width="50%" height={16} />
@@ -74,6 +76,8 @@ export function SettingsPage() {
           <InstancesSection />
         ) : section === 'ia' ? (
           <AiSection />
+        ) : section === 'privacidade' ? (
+          <PrivacidadeSection />
         ) : section === 'fluxos' ? (
           <FlowsRecipesSection />
         ) : (

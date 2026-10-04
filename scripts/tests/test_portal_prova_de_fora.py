@@ -54,6 +54,7 @@ else
     /api/ws) codigo=403 ;;
     /api/login) codigo=429 ;;
     /central/|/assets/site.css) codigo=200 ;;
+    /api/portal/contatos/busca|/api/portal/contatos/excluir) codigo=401 ;;
     /central) codigo=307; destino="${url%/central}/central/" ;;
     /) codigo=200; extra="content-security-policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'"
        [[ "$QUEBRA" == cookie ]] && extra="$extra"$'\r\n''set-cookie: __cf_bm=x; Path=/; Secure; HttpOnly' ;;
@@ -124,13 +125,18 @@ def test_com_o_site_e_o_contato_ligados_tudo_passa_e_nada_de_verdade_e_enviado(t
     assert r.returncode == 0, r.stdout + r.stderr
     assert "RESULTADO: tudo como esperado" in r.stdout
     for esperado in ("/rascunho.pdf", "/site/index.html", "/robots.txt (corpo)", "/ (cabecalhos)", "/ (sem cookie)",
-                     "tipo errado recusado", "corpo acima do teto", "POST com a isca", "/api/instances"):
+                     "tipo errado recusado", "corpo acima do teto", "POST com a isca", "POST isca (sem cookie)",
+                     "/api/portal/contatos/busca", "/api/portal/contatos/excluir", "/api/instances"):
         assert esperado in r.stdout, esperado
-    contato = [p for p in pedidos if p.startswith("POST /api/portal/contato")]
-    assert len(contato) == 3
+    contato = [p for p in pedidos if p.split()[:2] == ["POST", "/api/portal/contato"]]
+    assert len(contato) == 4                                   # a isca duas vezes (código e cabeçalhos), 415 e 413
     assert all("isca=1" in p or "tipo=text/plain" in p or int(p.split("bytes=")[1].split()[0]) > 8192
                for p in contato), contato
     assert not [p for p in pedidos if "auth=1" in p], "a prova nunca manda credencial"
+    exclusao = [p for p in pedidos if p.split()[1].startswith("/api/portal/contatos/")]
+    assert len(exclusao) == 2, exclusao
+    # Os corpos da exclusão são inválidos de propósito: ids vazio e telefone curto, nunca um pedido que apagaria algo.
+    assert all(int(p.split("bytes=")[1].split()[0]) < 40 for p in exclusao), exclusao
     login = [p for p in pedidos if p.split()[1] == "/api/login"]
     assert login and all(p.startswith("GET ") for p in login), "a rota de entrada só leva GET (405 na origem)"
 

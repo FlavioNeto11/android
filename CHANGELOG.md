@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 29.83: exclusão de contatos do site a pedido do titular (branch feat/29-83-exclusao-de-contato)
+
+- **O pedido:** o aviso de privacidade do site oferece a exclusão; até aqui só havia o procedimento manual. A
+  orquestradora aprovou o desenho às 23:20Z (Configuração, migração 109, adendo v1.42, o lado da Canais no 28.34).
+- **O que muda:**
+  - Configuração ganha a seção "Site e privacidade" (`?aba=privacidade`): busca pelo telefone com DDD, lista só com
+    id, data, estado e os 4 dígitos finais, "o pedido chegou por" sem texto livre e a confirmação com o que será e o
+    que não será apagado;
+  - `POST /api/portal/contatos/busca` e `POST /api/portal/contatos/excluir`, só para uma pessoa na sessão (401 sem
+    ela, mesmo no loopback e com o Bearer);
+  - a Canais primeiro (`apagar_avisos_do_portal`, 28.34, pelo `getattr`), o DELETE só com `ok` dela; registro em
+    `portal_exclusoes` (migração 109) sem dado do titular e sem prazo;
+  - a prova de fora confere 401 nas duas rotas (com corpo inválido de propósito) e nenhum `Set-Cookie` na resposta
+    da isca.
+- **Prova:** `simulated` (`tests/test_portal_exclusao.py` 14, prova de fora 4, Configuração no frontend). `not_run`:
+  o 28.34 real, o central, PostgreSQL.
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
 - `scripts/tests/test_poda_ab_offline.py` confere `scripts/poda-ab-offline.py`: só a UI do Chrome sai, a `url_bar` fica,

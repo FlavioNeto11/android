@@ -6070,3 +6070,25 @@ Sem migração. Muda o `Worker` da v0.8 (`GET /api/workers`, `GET /api/workers/{
 - **Prova:** `simulated` (`backend/tests/test_limites_por_servidor.py::test_api_lista_e_muda_limites_do_host_e_do_worker`,
   `frontend/src/store/metricas.test.ts`, caso 29.82). `not_run`: o topo e a Infraestrutura do central com o notebook em
   9 ligados, 9 decididas e 6 declaradas, depois do deploy.
+## Adendo v1.42 (04/10/2026; número da orquestradora; item 29.83) — exclusão de contatos do site a pedido do titular
+
+Duas rotas novas, **atrás de sessão e só para uma pessoa nela** (ADR-075, "Exclusão a pedido do titular"). Sem
+`request.state.operador` (sem o cookie de sessão do painel), **401** `sessao_exigida`, inclusive no loopback e com o
+Bearer. Nenhuma entra na exceção do portão. Valem com o site e o contato ligados ou não. Migração `109_portal_exclusoes`.
+
+- `POST /api/portal/contatos/busca`, corpo JSON `{telefone}` (é `POST` para o telefone não ir para a URL). Compara
+  todos os dígitos, com DDD (10 a 13 dígitos; o `55` é opcional). **200** `{"contatos": [{id, criado_em, estado,
+  final}]}`, com `final` = os 4 dígitos finais do telefone guardado. Nome, empresa, mensagem e o número inteiro nunca
+  saem. **422** `telefone_invalido`.
+- `POST /api/portal/contatos/excluir`, corpo JSON `{ids: [1..50 inteiros], pedido_por: "formulario" | "telefone" |
+  "outro"}`. **200** `{apagados: [id], mantidos: [{id, motivo}], inexistentes: [id], mensagens_apagadas: n,
+  mensagens_a_mao: [{contato_id, enviada_em}], sem_canal: bool}`.
+  - `motivo`: `em_envio` (a mensagem estava saindo; tentar de novo em um minuto), `falhou` (a Canais não confirmou a
+    fila; nada apagado daquele contato) ou `canal_sem_exclusao` (o aviso do 28.32 está na base sem o 28.34: use o
+    procedimento manual de `docs/operacao.md`).
+  - `mensagens_a_mao`: as mensagens (do bot ou respostas do dono, ou a hora em que uma pode ter saído sem registro) que
+    o dono apaga no chat; só ids e horas.
+  - Erros: **422** `ids_invalidos` ou `pedido_por_invalido`; **415** sem JSON; **413** acima de 4096 bytes.
+- O registro em `portal_exclusoes` guarda só ids, motivos, contagens, o operador e o `pedido_por`; sem prazo.
+- Prova: `simulated` (`backend/tests/test_portal_exclusao.py`, com uma Canais falsa no lugar do 28.34). `not_run`: o
+  28.34 real e o central.
