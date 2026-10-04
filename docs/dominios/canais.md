@@ -516,10 +516,12 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     contagens, no molde do 28.31:
     - título "ANA: 🌐 Contatos do site acima do limite";
     - "N contatos guardados sem aviso e M descartados na última hora.";
-    - "Crítico: possível abuso do formulário de contato do site.";
-    - "Espera você: decidir se o formulário de contato do site segue ligado." com algum descartado ou com 20 ou mais
-      retidos (limiar combinado com o Portal); senão, "Nada a fazer: os guardados ficam na Central, sem aviso."
-    A resposta do dono a ele só informa e não liga nem desliga o formulário.
+    - com algum descartado ou com 20 ou mais retidos (limiar combinado com o Portal): "Crítico: possível abuso do
+      formulário de contato do site." e "Nada a fazer agora: o formulário se protege sozinho. Se quiser desligar o
+      contato do site, diga no chat da orquestradora.";
+    - abaixo disso: "Crítico: nada." e "Nada a fazer: os guardados ficam na Central, sem aviso."
+    Nunca "Espera você": não há gesto que o dono faça no aviso, e desligar o contato é configuração do central com
+    reinício (orquestradora, 04/10 22:37Z). A resposta do dono a ele só informa e não liga nem desliga o formulário.
 - **Hoje:** `modules/avisos/domain/portal.py` (montagem e higiene),
   `infrastructure/servico.py::avisar_contato_do_portal` e `avisar_resumo_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
   a tabela dos contatos, a taxa e a retenção são da frente Portal (29.77).

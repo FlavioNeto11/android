@@ -39,8 +39,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     (`e910916b`).
 - PR empilhado (pedido do 29.77 e dois ajustes da revisão):
   - `portal.resumo`: `avisar_resumo_do_portal(retidos, descartados, janela_h)`, só contagens, uma mensagem por hora
-    UTC (chave `portal-resumo:<hora>`). "Espera você" com algum descartado ou com 20 ou mais retidos. A resposta do dono
-    só informa.
+    UTC (chave `portal-resumo:<hora>`). Com algum descartado ou com 20 ou mais retidos, aponta o possível abuso; nunca
+    "Espera você", porque o formulário se protege sozinho. A resposta do dono só informa.
   - Os ordinais `º` e `ª` passam sem o NFKC ("nº 12, 1ª via, 2º andar").
   - No máximo 2 marcas combinantes por caractere (30 empilhadas viram 2).
   - Testes: 196 passed nos arquivos tocados e no roteamento (`test_avisos_portal_*`, `test_avisos_telegram`,

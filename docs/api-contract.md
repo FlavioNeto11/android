@@ -5899,8 +5899,9 @@ Sem rota HTTP nova. É o contrato interno que a rota de contato do Portal (29.77
 - `state.avisos.avisar_resumo_do_portal(retidos: int, descartados: int, janela_h: int) -> ContatoAvisado`: os contatos
   acima dos tetos da rota numa mensagem só de contagens, tipo `portal.resumo`, nível 1, chave
   `portal-resumo:<AAAA-MM-DDTHH>Z` (uma por hora UTC; a segunda chamada na hora volta `enfileirado=True` sem duplicar).
-  Inteiros de 0 a 1 000 000, a janela de 1 a 24 h e ao menos um contato; senão, `campo_invalido`. "Espera você" com
-  algum descartado ou com 20 ou mais retidos; senão, "Nada a fazer". A resposta do dono a ele só informa.
+  Inteiros de 0 a 1 000 000, a janela de 1 a 24 h e ao menos um contato; senão, `campo_invalido`. Nunca "Espera
+  você": com algum descartado ou com 20 ou mais retidos, o crítico é o possível abuso e a última linha diz que o
+  formulário se protege sozinho; abaixo disso, "Crítico: nada." e "Nada a fazer". A resposta do dono a ele só informa.
 - **Prova:** `simulated`. Arquivos `backend/tests/test_avisos_portal_contato.py` (domínio) e
   `backend/tests/test_avisos_portal_servico.py` (fila, entrega, corpo apagado, Trello e resposta). `not_run`: envio real
   ao Telegram e a rota do Portal.

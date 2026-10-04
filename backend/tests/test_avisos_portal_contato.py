@@ -189,17 +189,24 @@ def test_resumo_chave_por_hora_e_so_contagens() -> None:
     assert (aviso.chave, aviso.tipo, aviso.link, aviso.nivel) == ("portal-resumo:2026-10-04T22Z", "portal.resumo", None, 1)
     assert aviso.titulo == "ANA: 🌐 Contatos do site acima do limite"
     assert aviso.corpo.split("\n") == ["3 contatos guardados sem aviso e 0 descartados na última hora.",
-                                       "Crítico: possível abuso do formulário de contato do site.",
-                                       "Nada a fazer: os guardados ficam na Central, sem aviso."]
+                                       "Crítico: nada.", "Nada a fazer: os guardados ficam na Central, sem aviso."]
     outra = p.aviso_do_resumo(9, 1, 2, AGORA.replace(minute=59))
     assert outra is not None and outra.chave == aviso.chave
 
 
 @pytest.mark.parametrize(("retidos", "descartados", "espera"), [
     (19, 0, False), (20, 0, True), (0, 1, True), (1, 0, False), (0, 500, True)])
-def test_resumo_espera_o_dono_acima_do_limiar(retidos: int, descartados: int, espera: bool) -> None:
-    corpo = p.corpo_do_resumo(retidos, descartados, 1)
-    assert corpo.split("\n")[-1].startswith("Espera você:" if espera else "Nada a fazer:")
+def test_resumo_acima_do_limiar_aponta_o_abuso_e_nunca_espera_o_dono(retidos: int, descartados: int,
+                                                                     espera: bool) -> None:
+    """Orquestradora, 04/10 22:37Z: sem gesto possível no aviso, nunca "Espera você"; o formulário se protege."""
+    linhas = p.corpo_do_resumo(retidos, descartados, 1).split("\n")
+    assert len(linhas) == 3 and not any("Espera você" in x for x in linhas)
+    if espera:
+        assert linhas[1:] == ["Crítico: possível abuso do formulário de contato do site.",
+                              "Nada a fazer agora: o formulário se protege sozinho. Se quiser desligar o contato do "
+                              "site, diga no chat da orquestradora."]
+    else:
+        assert linhas[1:] == ["Crítico: nada.", "Nada a fazer: os guardados ficam na Central, sem aviso."]
 
 
 def test_resumo_singular_e_janela() -> None:

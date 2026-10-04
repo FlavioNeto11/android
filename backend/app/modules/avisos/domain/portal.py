@@ -214,7 +214,8 @@ def aviso_do_contato(contato: ContatoDoPortal) -> Aviso | None:
 TIPO_DO_RESUMO = "portal.resumo"
 TITULO_DO_RESUMO = titulo_do_aviso("🌐 Contatos do site acima do limite")
 #: Com algum descartado (o teto do dia estourou) ou com tantos retidos na janela (o teto de uma hora inteira), o resumo
-#: espera o dono; abaixo disso, "Nada a fazer". Combinado com a sessão do Portal.
+#: aponta o possível abuso. Combinado com a sessão do Portal. Nunca "Espera você": não há gesto que o dono faça ali, e
+#: o formulário já se protege sozinho (orquestradora, 04/10 22:37Z).
 LIMIAR_RETIDOS = 20
 CONTAGEM_MAX, JANELA_MAX_H = 1_000_000, 24
 
@@ -238,19 +239,22 @@ def resumo_valido(retidos: object, descartados: object, janela_h: object) -> boo
     return int(retidos) + int(descartados) > 0  # type: ignore[call-overload]
 
 
-def espera_o_dono(retidos: int, descartados: int) -> bool:
+def acima_do_limiar(retidos: int, descartados: int) -> bool:
     return descartados > 0 or retidos >= LIMIAR_RETIDOS
 
 
 def corpo_do_resumo(retidos: int, descartados: int, janela_h: int) -> str:
-    """O molde do 28.31: o resultado com os números, o que é crítico e se espera o dono. O assunto está no título."""
+    """O molde do 28.31: o resultado com os números, o que é crítico e "Nada a fazer". O assunto está no título."""
     janela = "na última hora" if janela_h == 1 else f"nas últimas {janela_h} h"
     guardados = "1 contato guardado" if retidos == 1 else f"{retidos} contatos guardados"
     descarte = "1 descartado" if descartados == 1 else f"{descartados} descartados"
-    gesto = ("Espera você: decidir se o formulário de contato do site segue ligado."
-             if espera_o_dono(retidos, descartados) else "Nada a fazer: os guardados ficam na Central, sem aviso.")
-    return "\n".join([f"{guardados} sem aviso e {descarte} {janela}.",
-                       "Crítico: possível abuso do formulário de contato do site.", gesto])
+    if acima_do_limiar(retidos, descartados):
+        critico = "Crítico: possível abuso do formulário de contato do site."
+        gesto = ("Nada a fazer agora: o formulário se protege sozinho. Se quiser desligar o contato do site, diga no "
+                 "chat da orquestradora.")
+    else:
+        critico, gesto = "Crítico: nada.", "Nada a fazer: os guardados ficam na Central, sem aviso."
+    return "\n".join([f"{guardados} sem aviso e {descarte} {janela}.", critico, gesto])
 
 
 def aviso_do_resumo(retidos: int, descartados: int, janela_h: int, agora: datetime) -> Aviso | None:
