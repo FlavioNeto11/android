@@ -44,6 +44,8 @@ from app.models import Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram, ConflitoDeConsumidor
 from app.modules.avisos.application.entrada import (
     AJUDA,
+    RESPOSTA_IDENTIDADE,
+    SAUDACAO,
     Intencao,
     casar_ref,
     rotear,
@@ -300,7 +302,7 @@ class ConversaDoCanal:
     async def enviar_ajuda_inicial(self, saida: SaidaDaConversa) -> None:
         """A ajuda vai uma vez só por canal, na primeira volta em que o canal responde."""
         if not self.repo.ajuda_ja_enviada():
-            await self._enviar(saida, "A Central agora atende por aqui.\n" + AJUDA, origem="ajuda")
+            await self._enviar(saida, SAUDACAO + AJUDA, origem="ajuda")
 
     async def avisar_antigas(self, saida: SaidaDaConversa) -> None:
         """Avisa o dono, uma vez, das mensagens escritas com a Central fora do ar que `registrar` descartou desde o
@@ -529,6 +531,8 @@ class ConversaDoCanal:
             await self._responder(saida, linha, "Recado guardado para a orquestradora (não executado).")
         elif i.tipo == "ajuda":
             await self._feita(saida, linha, i, AJUDA)
+        elif i.tipo == "identidade":
+            await self._feita(saida, linha, i, RESPOSTA_IDENTIDADE)
         elif i.tipo == "desconhecida":
             await self._feita(saida, linha, i, f"{i.motivo or 'Não entendi.'} /ajuda mostra os comandos.")
         elif i.tipo == "status":

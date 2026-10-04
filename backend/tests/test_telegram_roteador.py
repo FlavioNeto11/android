@@ -106,3 +106,25 @@ def test_casar_ref_aceita_o_id_inteiro_ou_o_fim_com_4_ou_mais():
     assert casar_ref("4985a1", ids) == ["r-20261002181523-4985a1", "apr-0a4985a1"]   # ambíguo: os dois voltam
     assert casar_ref("a1", ids) == []                                                # curto demais
     assert sufixo("r-20261002181523-4985a1") == "4985a1"
+
+
+# ---------------------------------------------------------------------------------------------- 28.17: quem é a ANA
+@pytest.mark.parametrize("texto", [
+    "quem é você?", "Quem é você", "quem e vc", "Oi, quem é você?", "você é uma IA?", "Você é um robô?",
+    "você é humana?", "é uma pessoa?", "vc é bot?", "qual é o seu nome?", "como você se chama?", "/quem", "/ana",
+])
+def test_a_pergunta_pela_identidade_nao_e_pedido(texto):
+    assert rotear(texto).tipo == "identidade"
+
+
+@pytest.mark.parametrize("texto", [
+    "você é capaz de postar no android-09?", "quem é você no android-09? abre o perfil", "abre o perfil e diz quem é",
+])
+def test_pedido_que_comeca_parecido_segue_como_texto_livre(texto):
+    assert rotear(texto).tipo == "livre"
+
+
+def test_com_fato_de_pergunta_a_frase_e_a_resposta_da_execucao():
+    """Reply ao aviso de pergunta: "quem é você?" é o que a pessoa respondeu à execução, não a pergunta à ANA."""
+    i = rotear("quem é você?", fato="run:r-20261002181523-4985a1:needs_input")
+    assert (i.tipo, i.texto) == ("responder", "quem é você?")

@@ -46,6 +46,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_anthropic_provider.py::test_plano_da_execucao_pede_cache_de_1h_e_volta_a_5m_pela_config_31_30`
   e `::test_padrao_e_1h_so_no_plano_da_execucao_31_30`. Real: `not_run` (sai da próxima leitura de latência).
 
+## 2026-10-04 — 28.17: os canais se identificam como ANA (branch canais/28-17-canais-como-ana, sem migração)
+
+- `modules/avisos/domain/mensagem.py`: todo título de aviso do Telegram começa com `ANA: ` (`titulo_do_aviso`, o nome
+  vem de `app.contracts.identidade`), inclusive o agrupado do 28.19 e o aviso do convidado do Trello. Antes era
+  "Central de Aparelhos: ". Só texto: nenhuma regra de entrega ou de resposta olha o título.
+- `modules/avisos/application/entrada.py`: a primeira mensagem do canal traz a apresentação inteira ("Oi! Sou a ANA, a
+  IA Gerente de Operações da Central…") com a ajuda; depois, só o nome. A gramática ganha a intenção `identidade`:
+  "quem é você?", "você é uma IA?" e `/quem` respondem que é a ANA e que é uma IA, sem ir à prévia. A frase precisa
+  ser SÓ a pergunta, para um pedido que começa parecido seguir como texto livre; em reply a uma pergunta de execução,
+  a frase continua sendo a resposta da execução.
+- O Trello já escrevia `🤖 ANA · HH:MMZ ·` desde o 32.2; o resumo de hora em hora é ferramenta da sessão Canais e já se
+  apresentava como ANA. O nome segue fora do prompt de quem escreve pela persona (`test_identidade_da_ia.py`).
+- Testes: `test_telegram_roteador.py` (frases de identidade e os pedidos que não podem cair nela),
+  `test_telegram_entrada.py`, `test_trello_leitor.py` e `test_identidade_da_ia.py` (os títulos), com os títulos
+  esperados atualizados nos testes de aviso. Prova simulada; a real vem com o primeiro aviso depois do deploy.
+
 ## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
 
 - `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido

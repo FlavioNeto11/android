@@ -17,6 +17,7 @@ from app.config import Config
 from app.contracts.identidade import NOME_DA_IA
 from app.db import Database
 from app.modules.avisos.adapters.trello import BaldeDeRequisicoes, ClienteTrello
+from app.modules.avisos.application.entrada import RESPOSTA_IDENTIDADE
 from app.modules.avisos.domain.mensagem import Aviso
 from app.modules.avisos.infrastructure.entrada import ConversaDoCanal, Recebida
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
@@ -486,6 +487,14 @@ async def test_status_pendencias_e_ajuda_do_dono_respondem_em_comentario_curto_e
     assert "2 esperando você" in pendencias and "0000aa11"[-6:] in pendencias and "4985a1" in pendencias
     assert "comentar" not in pendencias and '"oi"' not in pendencias             # o resumo da aprovação não vai ao Trello
     assert ajuda.startswith(PREFIXO + "Comandos da Central") and AJUDA_DO_TRELLO.strip() in ajuda
+
+
+async def test_quem_e_a_ana_no_trello_responde_que_e_ia(c: Cenario) -> None:
+    """28.17: `/quem` num cartão qualquer responde com a apresentação e "uma IA"; nada vai à prévia."""
+    c.trello.comenta(DONO, C_MANUAL, "/quem")
+    await c.volta()
+    assert c.trello.textos() == [PREFIXO + RESPOSTA_IDENTIDADE]
+    assert c.acoes_da_central() == []
 
 
 async def test_a_resposta_passa_pela_redacao_e_tira_email_conta_e_ip(c: Cenario) -> None:

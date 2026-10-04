@@ -41,7 +41,7 @@ from app.modules.avisos.adapters.trello import ClienteTrello, FalhaDoTrello
 from app.modules.avisos.application.entrada import AJUDA, Intencao, rotear
 from app.modules.avisos.application.entrega import FalhaDeEnvio
 from app.modules.avisos.application.espelho import PREFIXO_DA_IA, prefixo_da_ia
-from app.modules.avisos.domain.mensagem import Aviso, chave_do_fato
+from app.modules.avisos.domain.mensagem import Aviso, chave_do_fato, titulo_do_aviso
 from app.modules.avisos.infrastructure.entrada import (
     ConversaDoCanal,
     Linha,
@@ -571,7 +571,7 @@ class LeitorDoTrello:
         if self._avisar_dono is not None:
             self._avisar_dono(Aviso(
                 chave=chave_do_fato("trello-convidado", r.id_externo), tipo="trello.convidado",
-                titulo="Central de Aparelhos: um convidado do Trello fez um pedido",
+                titulo=titulo_do_aviso("um convidado do Trello fez um pedido"),
                 corpo="Nada foi executado. Veja o cartão no Trello; para atender, peça pelo painel ou pelo Telegram.",
                 link=None))
         if responder:

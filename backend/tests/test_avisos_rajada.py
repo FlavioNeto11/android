@@ -99,7 +99,7 @@ def test_rajada_de_11_vira_o_primeiro_na_hora_e_um_agrupado_com_a_contagem(tmp_p
     c.volta()
     assert len(c.canal.enviados) == 2
     titulo, corpo, link = c.canal.enviados[1]
-    assert titulo == "Central de Aparelhos: 10 execuções pararam pedindo informação"
+    assert titulo == "ANA: 10 execuções pararam pedindo informação"
     assert corpo == CORPO_AGRUPADO and link == "L"
     assert c.fila.contagens() == {"enviado": 11}
     # O reply ao agrupado não aponta fato nenhum: a `canal_enviadas` guarda a família do grupo.
@@ -253,4 +253,4 @@ def test_o_link_do_agrupado_e_o_da_caixa_mesmo_sem_link_na_primeira_linha(tmp_pa
     c.chega("pedido:p2", tipo="pedido.relatorio_pronto", link="CAIXA")
     c.chega("pedido:p3", tipo="pedido.relatorio_pronto", link="CAIXA")
     c.volta()
-    assert c.canal.enviados == [("Central de Aparelhos: 3 novidades de pedidos", CORPO_AGRUPADO, "CAIXA")]
+    assert c.canal.enviados == [("ANA: 3 novidades de pedidos", CORPO_AGRUPADO, "CAIXA")]

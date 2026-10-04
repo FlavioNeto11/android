@@ -87,7 +87,7 @@ def test_ligado_o_evento_de_pendencia_sai_uma_vez_com_o_link_da_caixa(tmp_path: 
     assert _pendencia(servico) is False, "o mesmo fato enfileirou duas vezes"
     _volta(servico)
     _volta(servico)
-    assert canal.enviados == [("Central de Aparelhos: Uma execução parou pedindo informação",
+    assert canal.enviados == [("ANA: Uma execução parou pedindo informação",
                                "Abra a caixa de Pendências do painel para ver.", "http://painel.local:8000/#/pendencias")]
     assert banco.one("SELECT estado, tentativas FROM avisos_entregas")["estado"] == "enviado"
 
