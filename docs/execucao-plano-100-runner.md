@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-366 de 415 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+366 de 416 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -414,6 +414,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.27 | implemented | simulated | claude-opus-5-5 | — | PR #189 @ f295f15a, na main pela suíte 18 (merge e50e8ed7; deploy 18, f1651ec8). A espera ANTES do primeiro julgamento (patient, pós-condição julgada ou nível de entrega) deixa de ser o sono fixo de judge_wait_s (1,5 s)… |  |
 | 31.28 | partial | real | claude-opus-5-5 | — | Só a medida, só leitura (mode=ro + query_only), central WIN-7S2UASNLFOP, 04/10/2026 00:56Z, janelas de measurements kind=metricas desde 02/10, por aparelho: leitura da árvore com e sem prévia do painel no MESMO aparelho… | Sem A/B controlado (árvore lida N vezes com o painel aberto e fechado no mesmo aparelho do central sem conta real); a mudança (prévia fora do ADB e reuso da ár… |
 | 31.29 | implemented | simulated | claude-opus-5-5 | — | PR #190 @ 7d63cd2a (56706826 + a troca pedida pela Android), na main pela suíte 18 (merge 78e6dc67; deploy 18, f1651ec8). Investigação só leitura (04/10 00:55Z): 11 de 12 comandos da 1ª rodada da linha de base diziam só… |  |
+| 31.30 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -422,7 +423,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (49): 8.3, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 30.18, 30.31, 30.34, 31.10, 31.11, 31.12, 31.26, 31.28, T.2
+Pendentes (50): 8.3, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 30.18, 30.31, 30.34, 31.10, 31.11, 31.12, 31.26, 31.28, 31.30, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
