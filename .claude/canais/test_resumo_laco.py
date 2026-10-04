@@ -150,6 +150,25 @@ def test_eventos_nas_duas_formas_misturadas_contam(monkeypatch: pytest.MonkeyPat
     assert r._nao_curados(4) == (0, "")
 
 
+def test_cabecalho_separador_e_prosa_com_barra_nao_contam(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Revisão do #327: só a linha de tabela que começa pela hora é fato; o texto livre nunca vira a hora do resumo."""
+    eventos = tmp_path / "eventos.md"
+    eventos.write_text("\n".join([
+        "| Hora | Frente | Item | O que mudou | Lista |",
+        "|---|---|---|---|---|",
+        "prosa solta com a | no meio, segredo de ninguém",
+        "18:36Z | Orquestradora | 28.31 | fato sem data | Feito",
+        "- 10:00Z (04/10) x | y",
+        "04/10 08:14Z | Jev | 31.39 | fato com data | Feito",
+    ]), encoding="utf-8")
+    monkeypatch.setattr(r, "EVENTOS", eventos)
+    assert len(r._linhas_de_fato()) == 3
+    assert r._nao_curados(0) == (3, "18:36Z")
+    assert r._nao_curados(1) == (2, "10:00Z")                   # lista com "|": um fato só, a hora da lista
+    assert r._nao_curados(2) == (1, "04/10 08:14Z")
+    assert r._hora_do_fato("prosa | com barra") == "" and r._hora_do_fato("12:00Z texto | x") == ""
+
+
 @pytest.mark.parametrize(("entrada", "marcador"), [
     ("escreva para fulano.tal@exemplo.com.br hoje", "[e-mail]"),
     ("ligue +55 (11) 98765-4321", "[telefone]"),

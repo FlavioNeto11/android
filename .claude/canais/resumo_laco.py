@@ -165,11 +165,15 @@ def _plano() -> tuple[str, str]:
 #: As duas formas de fato no eventos.md: a linha de tabela (`04/10 12:13Z | Frente | …`) e, desde 03/10, a da
 #: orquestradora (`- 16:36Z (04/10) orquestradora: …`). As duas contam, na ordem do arquivo.
 _FATO_EM_LISTA = re.compile(r"^- \d{1,2}:\d{2}Z\b")
+#: A linha de tabela que é fato começa pela hora, com ou sem a data ("04/10 08:14Z |" ou "18:36Z |"); cabeçalho,
+#: separador `|---|` e prosa com "|" não contam (revisão do #327).
+_FATO_EM_TABELA = re.compile(r"^(?:\d{1,2}/\d{1,2} )?\d{1,2}:\d{2}Z\s*\|")
+_COLUNA_DA_HORA = re.compile(r"^(?:\d{1,2}/\d{1,2} )?\d{1,2}:\d{2}Z$")
 _HORA_DO_FATO = re.compile(r"\b\d{1,2}:\d{2}Z\b")
 
 
 def _e_fato(linha: str) -> bool:
-    return bool(linha.strip()) and not linha.startswith("#") and ("|" in linha or bool(_FATO_EM_LISTA.match(linha)))
+    return bool(_FATO_EM_TABELA.match(linha) or _FATO_EM_LISTA.match(linha))
 
 
 def _linhas_de_fato() -> list[str]:
@@ -181,10 +185,13 @@ def _linhas_de_fato() -> list[str]:
 
 
 def _hora_do_fato(linha: str) -> str:
-    """A hora do fato, nas duas formas; na linha de tabela vale a 1ª coluna inteira (com a data), como antes."""
-    if "|" in linha and not _FATO_EM_LISTA.match(linha):
-        return linha.split("|", 1)[0].strip()
-    m = _HORA_DO_FATO.search(linha)
+    """A hora do fato, nas duas formas. Na linha de tabela vale a 1ª coluna (com a data, quando houver), e só se ela
+    for uma hora; na lista, a hora logo depois do "- ". Texto livre do eventos.md nunca chega ao "N novidades desde …"
+    (revisão do #327)."""
+    if _FATO_EM_TABELA.match(linha):
+        coluna = linha.split("|", 1)[0].strip()
+        return coluna if _COLUNA_DA_HORA.match(coluna) else ""
+    m = _HORA_DO_FATO.match(linha, 2) if _FATO_EM_LISTA.match(linha) else None
     return m.group(0) if m else ""
 
 

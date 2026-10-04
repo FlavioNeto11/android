@@ -39,8 +39,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   linha de tabela e a linha "- HH:MMZ (DD/MM) orquestradora: …", na ordem do arquivo. Antes contava só a de tabela, e as
   45 linhas novas do dia ficavam fora da conta (medido no arquivo de 04/10 às 22:08Z: 289 fatos, 244 de tabela).
   Condição para ligar o laço.
-- O laço segue parado até o F3 estar no ar e a orquestradora liberar.
-- Prova `simulated`: 23 testes em `.claude/canais/test_resumo_laco.py` e 17 em `.claude/trello/test_redacao.py` (40
+- Revisão do #327: só conta a linha de tabela que começa pela hora (com ou sem a data); cabeçalho, separador e prosa
+  com "|" não contam, e a hora do resumo só aceita uma hora (texto livre do canal interno nunca chega a ela). A linha
+  em lista com "|" é um fato só. No arquivo de 04/10 às 22:53Z dá 290 fatos pelas duas regras.
+- O laço segue parado até o F3 estar no ar e a orquestradora liberar. Antes de ligá-lo, `--carimbar` e `--armar`
+  recarimbam os índices pela contagem nova (eles foram gravados contando só a tabela).
+- Prova `simulated`: 24 testes em `.claude/canais/test_resumo_laco.py` e 17 em `.claude/trello/test_redacao.py` (41
   passed). O ensaio contra os dados de agora compôs a mensagem sem enviar. `not_run`: um envio real.
 
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
