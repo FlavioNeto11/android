@@ -1150,6 +1150,11 @@ class AvisosCfg(BaseModel):
     validade_h: float = Field(24.0, gt=0, le=720)           # pendente mais velho que isto deixa de ser notícia
     incerto_apos_s: float = Field(600.0, ge=60, le=86_400)  # `enviando` parado há isto vira `incerto`
     retencao_dias: float = Field(30.0, gt=0, le=3650)
+    #: Rajada (28.19): o primeiro aviso de um tipo sai na hora; os do mesmo tipo que chegam até `agrupar_s` depois
+    #: esperam o fim dessa janela e saem juntos, como UMA mensagem com a contagem quando são `agrupar_a_partir_de` ou
+    #: mais (com menos, um a um). 0 desliga (cada aviso sai sozinho, como antes do 28.19).
+    agrupar_s: float = Field(60.0, ge=0, le=3600)
+    agrupar_a_partir_de: int = Field(3, ge=2, le=100)
     #: Faixas do `learning.needs_person` (30.21) que avisam fora do painel (28.14). Padrão: só a C (item a item); a B é
     #: aprovação em lote e fica na caixa de Pendências, para não virar um aviso por receita.
     aprendizado_faixas: list[Literal["B", "C"]] = Field(default_factory=lambda: ["C"])

@@ -498,6 +498,8 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   # validade_h: 24                # pendente mais velho que isto vira `descartado` (notícia velha não sai)
   # incerto_apos_s: 600           # `enviando` parado há isto (queda no meio do envio) vira `incerto`, sem reenvio
   # retencao_dias: 30             # purga das linhas finais
+  # agrupar_s: 60                 # rajada (28.19): 1º aviso do tipo sai na hora; os seguintes da janela saem juntos (0 desliga)
+  # agrupar_a_partir_de: 3        # com tantos ou mais na janela, UMA mensagem com a contagem; com menos, um a um
   # aprendizado_faixas: [C]       # faixas do learning.needs_person que avisam (28.14); a B (lote) fica só na caixa
   # entrada:                       # a conversa de volta (28.15, ADR-071): o chat do .env aprova, veta, responde e pede
   #   enabled: false              # (false) desligada; só liga com avisos.enabled. Ligar troca o consumidor do bot (docs/operacao.md)

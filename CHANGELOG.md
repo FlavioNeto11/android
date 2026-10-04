@@ -60,6 +60,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_tranca_por_cliente.py` (14), `test_sessao_do_painel.py`, os 106 arquivos que montam
   o app (1507 passed), `frontend/src/features/login/LoginPage.test.tsx` (9). A prova de fora fica para depois do deploy.
 
+## 2026-10-04 — 28.19: lote de teste não avisa um por um (branch `canais/28-19-avisos-lote`)
+
+### Código
+- `contracts/origem.py`: `PREFIXO_LOTE` (`lote:<frente>:<id>`) e `e_execucao_do_sistema`. O avisador não manda aviso
+  de execução de prova, de validação do QA nem de lote de frente.
+- `modules/avisos`:
+  - a rajada do mesmo tipo sai como UM aviso agrupado com a contagem, e o primeiro sai na hora;
+  - a regra está em `fila_sql.reivindicar_um`, com as chaves novas `avisos.agrupar_s` (60) e
+    `avisos.agrupar_a_partir_de` (3);
+  - o reply ao agrupado não responde a fato nenhum (`canal_enviadas.fato = grupo:<tipo>`).
+- Sem migração. Prova `simulated`: `backend/tests/test_avisos_rajada.py` (12 casos). A aprovação que um lote abre segue avisando (só o dono decide), e o link do agrupado é o da caixa.
+
 ## 2026-10-03/04 — Suíte 16 na main e deploy 16 no central (3b5355ce; migrações 087 e 088; config sem mudança)
 
 - Integrados em `integ/suite-16`, nesta ordem: #174, #178 (30.42, com a correção do `for_each` e o 30.41 pelo
