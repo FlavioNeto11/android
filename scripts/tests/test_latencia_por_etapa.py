@@ -107,7 +107,7 @@ def test_fases_somam_a_parede_e_a_acao_casa_pela_chamada(tmp_path: Path) -> None
     dpa = rel["decisao_para_acao"]
     assert dpa["metodo"] == "actions.ai_call_id"
     assert dpa["fim_da_acao_ate_proximo_decide_ms"]["p50"] == 1300.0     # 9,2 → 10,5
-    assert abs(dpa["fim_do_decide_ate_intencao_ms"]["p50"] - 1.5) < 1e-6     # 2 ms e 1 ms
+    assert dpa["fim_do_decide_ate_intencao_ms"]["p50"] == 1.0    # 2 ms e 1 ms: o posto mais próximo (31.60), não 1,5
     prep = rel["preparo"]["partes_ms"]
     assert prep["total"]["n"] == 2 and prep["total"]["soma"] == 1000.0 + 1300.0
     assert prep["outros"]["soma"] == (1000 - 900 - 40 - 5) + (1300 - 600 - 600 - 30)
@@ -168,3 +168,19 @@ def test_banco_inexistente_nao_e_criado(tmp_path: Path) -> None:
     except SystemExit as exc:
         assert "não encontrado" in str(exc)
     assert not falta.exists()
+
+
+def test_31_60_percentil_e_o_posto_mais_proximo_do_backend() -> None:
+    """31.60: o script usa o posto mais próximo de `app.metricas.percentil` (K-085), não a interpolação de antes. n=2, 6 e
+    10: o p50 e o p95 são amostras que aconteceram, iguais às do backend."""
+    from app.metricas import percentil as do_backend
+
+    for n in (2, 6, 10):
+        xs = [float(10 * (i + 1)) for i in range(n)]
+        for q in (0.5, 0.95):
+            assert lat.percentil(xs, q) == do_backend(xs, q * 100)
+            assert lat.percentil(xs, q) in xs                      # nunca um valor interpolado
+    assert lat.percentil([10.0, 20.0], 0.5) == 10.0               # K-085: n=2 no p50 é o menor (o banqueiro dava 20)
+    assert lat.percentil([10.0, 20.0, 30.0, 40.0, 50.0, 60.0], 0.5) == 30.0     # interpolado era 35
+    assert lat.percentil([float(x) for x in range(10, 110, 10)], 0.95) == 100.0  # interpolado era 95,5
+    assert lat.percentil([], 0.5) is None

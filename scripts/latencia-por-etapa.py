@@ -46,6 +46,9 @@ from pathlib import Path
 from typing import Final
 
 RAIZ = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(RAIZ / "backend"))
+
+from app.metricas import percentil as _posto_mais_proximo  # noqa: E402 - a MESMA regra de percentil do backend (K-085)
 Linha = Mapping[str, object]
 Intervalo = tuple[datetime, datetime]
 
@@ -98,13 +101,10 @@ def iso(d: datetime) -> str:
 
 
 def percentil(valores: Sequence[float], q: float) -> float | None:
-    """Interpolação linear entre os postos (a mesma da leitura de 03/10)."""
-    xs = sorted(valores)
-    if not xs:
-        return None
-    k = (len(xs) - 1) * q
-    f = int(k)
-    return xs[f] + (xs[min(f + 1, len(xs) - 1)] - xs[f]) * (k - f)
+    """31.60: o posto mais próximo de `app.metricas.percentil` (K-085), o mesmo de `GET /api/desempenho`, da sombra e dos
+    scripts do Jev: o valor é uma latência que aconteceu. Até aqui o script interpolava entre os postos, e a linha de base
+    de 04/10 foi recalculada com esta regra para a comparação do 31.58 não misturar duas definições. `q` em fração."""
+    return _posto_mais_proximo(sorted(valores), q * 100)
 
 
 def dist(valores: Iterable[float | int | None]) -> dict[str, float | int | None]:
