@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-415 de 454 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+415 de 457 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -350,6 +350,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.71 | pendente | — | — | — |  |  |
 | 29.72 | pendente | — | — | — |  |  |
 | 29.73 | pendente | — | — | — |  |  |
+| 29.74 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -420,7 +421,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.10 | implemented | real | claude-opus-5-5 | — | 04/10/2026, WIN-7S2UASNLFOP, deploy 20 (051fc3e0, migração 088). Execução paga única r-20261004082212-1e14e6 (android-12, QA, chave lote:jev:31.10:082212:n1, 08:22:12Z a 08:22:27Z, completed, US$ 0,0532 pela regra do sp… | None |
 | 31.11 | partial | simulated | claude-opus-5-5 | — | PR #270 (suíte 29): fonte confirmacao_em_bloco no rótulo 1 do curador, medida à parte, fora da taxa de acordo e do veredito; a transição do dono item a item vence; arquivo inválido falha fechado (--rotulos-em-bloco em j… | Resposta literal do dono à ficha (confirmar os 28 claros; 10 e 42: rebaixar ou manter). Nenhum rótulo gravado até lá. |
 | 31.12 | pendente | — | — | — |  |  |
-| 31.13 | partial | real | claude-opus-5-5 | — | 04/10/2026 14:55Z, central 60b3a0a9. `scripts/jev-braco-offline-intencao.py --r5 --enviar --teto 0.05`: 79 casos enviáveis, 51 comandos distintos (piso 10), 316 chamadas ao Jev, todas ok. Custo medido pelo transporte: U… | falta caso de paráfrase que a regex perca para medir a cobertura; R5_LIBERADA segue False |
+| 31.13 | partial | simulated | claude-opus-5-5 | — | 04/10/2026. Histórico real (só leitura, sem custo): 427 execuções reais, 173 com sucesso comprovado, 99 com required_apps = 102 pares execução×app; em 102 o app é citado no comando: 0 paráfrases que a regex perde. Bater… | Sem caso real em 427 execuções; a sintética mede 4 de 16 paráfrases pegas (en e pt) no limiar 0,85. R5_LIBERADA segue False. |
 | 31.14 | implemented | simulated | claude-opus-5-5 (sessão Jev) | — | feat/31-14-decisor-jev @ 555543fd (a9166bcb o item, 555543fd a revisão), na main pelo merge 712aaea5 da suíte 7 (123650cc). DecisorJev real: só choice vai ao fio; gasto conferido ANTES do POST (RoutingProvider.conferir_… |  |
 | 31.15 | implemented | simulated | claude-opus-5-5 (sessão Jev) | — | feat/ra-10-observabilidade @ f94022c3 (88936fea, 935bb3f5, 57dd17b8, 483635fe, f94022c3), na main pela suíte 7 (123650cc). Migração 080: verdict, escalate, motivo e image_reason em ai_calls, em vocabulário fechado no có… |  |
 | 31.16 | implemented | simulated | opus (sessão jev, executora da orquestradora) | — | feat/31-16-telas-ra10 @d5942edf (10d63168: seção "Modelo forte e conferência" em Diagnóstico › Custo de IA, com escalations por motivo, rejulgamento, cascata, recolhidos por app e imagem e o aviso do driven_by nulo, sem… |  |
@@ -452,6 +453,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.42 | implemented | real | claude-opus-5-5 | — | Medida só leitura, 04/10 16:01-16:05Z, central 1fc66a6c, sem IA: 88 itens esperaram a pessoa em 14 dias (a 5, b 2, d 8, e 3, f 48, f' 22); 98 abertos (61 PROVED, 37 INFERRED). Contraprova: R1 5/5 sem divergência da pess… | None |
 | 31.43 | pendente | — | — | — |  |  |
 | 31.44 | pendente | — | — | — |  |  |
+| 31.45 | pendente | — | — | — |  |  |
+| 31.46 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -461,7 +464,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (39): 8.3, 14.12, 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.25, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.34, 29.38, 29.41, 29.68, 29.71, 29.72, 29.73, 30.34, 30.48, 30.52, 30.55, 31.11, 31.12, 31.13, 31.35, 31.40, 31.43, 31.44, T.2
+Pendentes (42): 8.3, 14.12, 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.25, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.34, 29.38, 29.41, 29.68, 29.71, 29.72, 29.73, 29.74, 30.34, 30.48, 30.52, 30.55, 31.11, 31.12, 31.13, 31.35, 31.40, 31.43, 31.44, 31.45, 31.46, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
