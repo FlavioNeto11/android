@@ -187,6 +187,26 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_canais_anexos_lista.py` (18 casos), `test_canais_anexos_trello.py` (5 novos: link, código
   curto, envio repetido), `frontend/src/features/canais/AnexosTab.test.tsx` (13 casos). `real`: `not_run` (o passeio no navegador,
   depois do deploy).
+## 2026-10-04 — 30.60: CREATE_POST endurecido (branch feat/30-60-create-post-endurecido)
+
+- Revisão do deploy 29: os achados 1, 2, 3, 5 e 6 e o N1, N3 e N4 foram confirmados no código e consertados. O achado 4
+  (identificador de login no `{conta_instagram_usuario}`) fica com o PR #292. O CREATE_POST não usa essa variável: a
+  guarda usa `{account_label}`, que vem de `profile_accounts.handle`.
+- A prova `count_gt` aceita guardas depois de `&`. A do CREATE_POST exige o título do próprio perfil. Com efeito
+  disparado, essa prova vira fato para o modelo e deixa de ser atalho. Ganhou marcas de pendente e de falha (textos não
+  medidos).
+- A galeria fica só com a imagem da etapa: limpeza da pasta `Central` no MediaStore e no disco, `ls` conferido, e
+  indexação conferida por `content query`.
+- A persona do objetivo precisa ter vínculo com o aparelho.
+- A aprovação reaproveitada compara a imagem. A edição grava o texto dentro da transação da decisão.
+- `LimitsCfg.publicar_sem_aprovacao` (padrão `false`) e o piso na porta de política.
+- `tests/test_create_post_endurecido.py` (21). Os 22 arquivos afetados deram 462 aprovados. Real: `not_run`.
+- Revisão da fila (suíte 31), achado médio: a aprovação aprovada de objetivo encerrado, que nunca disparou, deixa de
+  contar como "pedido em aberto". Antes ela reservava o alvo na frota, recusava a resposta nova por 30 dias (30.56) e
+  ocupava o teto (30.57), sem aparecer em Pendências. O conserto é o corte `_DE_OBJETIVO_VIVO` nas três leituras de
+  `pending_approvals`; o pedido sem objetivo segue contando. Há teste em `test_ja_respondido.py`, com mutante conferido;
+  os 11 arquivos afetados deram 241 aprovados.
+
 ## 2026-10-04 — 30.57: a resposta a comentário ensina, e o leque do for_each para na política antes do pedido (branch feat/30-57-comentario-e-for-each)
 
 - (a) Prova `simulated` de que a resposta a comentário ensina o perfil pelo caminho real (`open_effect` com

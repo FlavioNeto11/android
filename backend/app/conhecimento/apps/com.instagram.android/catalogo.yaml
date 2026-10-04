@@ -500,9 +500,15 @@ acoes:
     post_kind: model_judged
     post_value: publicação criada no próprio perfil
     post_description: O número de publicações do próprio perfil é maior que o lido antes de publicar.
-    # A contagem do cabeçalho do perfil (ver READ_POSTS_COUNT). Prova positiva dispensa o verificador; sem ela, o
-    # modelo julga como antes.
-    local_proof: count_gt:posts_antes:id=profile_header_familiar_post_count_value
+    # A contagem do cabeçalho do perfil (ver READ_POSTS_COUNT), com a guarda do @ do PRÓPRIO perfil no título (30.60):
+    # o cabeçalho de outro perfil (um sugerido aberto depois do Share) tem o mesmo id. `{account_label}` é a conta
+    # esperada no aparelho, que o executor acrescenta aos argumentos da prova. 30.60: em efeito de risco alto a prova
+    # positiva NÃO dispensa o modelo: vira fato para ele, e o "sim" dele passa pelo rejulgamento do 17.10.
+    local_proof: count_gt:posts_antes:id=profile_header_familiar_post_count_value&id=action_bar_title|text=={account_label}
+    # NÃO MEDIDO (30.60): os textos do upload no Instagram 447 ainda não foram vistos; a primeira publicação de teste
+    # os mede. Enquanto "Posting…" estiver na tela, nada é dado por feito; "Couldn't post" depois do Share desmente.
+    pending_marks: [Posting…, Posting..., Finishing up…, Finishing up..., Publicando…, Publicando...]
+    failure_marks: [Couldn't post, Couldn’t post, Couldn't upload, Couldn’t upload, Não foi possível publicar]
     side_effect: true
     risk: high
     # NÃO MEDIDO: o botão final da tela de legenda. Exato (`==`) para não casar "Share to Facebook" e afins. Medido

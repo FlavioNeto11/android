@@ -140,3 +140,23 @@ async def test_na_porta_do_despacho_a_repetida_nao_vira_pedido(harness: Any) -> 
     assert state.approval_service.list() == []
     bindings = json.loads(state.db.one("SELECT bindings FROM steps WHERE id='run-f:android-01:v1:efeito'")["bindings"])
     assert bindings["content"] == "Valeu! 🙌"                       # nada foi reescrito
+
+
+def test_aprovacao_de_objetivo_encerrado_sem_efeito_nao_fica_em_aberto(tmp_path: Path) -> None:
+    """Revisão da fila (suíte 31): a aprovação aprovada cuja etapa nunca disparou não ganha `interaction_id`, e o
+    `expire_for_objective` só expira as pendentes. Com o objetivo encerrado, ela não recusa a resposta nova (30.56) nem
+    ocupa o teto (30.57); com o objetivo vivo, continua reservando."""
+    _svc, _repo, policies, db, pid = _lucas(tmp_path)
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
+               " VALUES ('r-orfa', 'k-orfa', 'responder', 'execute', 'running', 0, '[\"android-01\"]', ?)", (to_iso(now()),))
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status) VALUES ('r-orfa:o', 'r-orfa', 'android-01', 'running')")
+    store = ApprovalStore(db)
+    pedido = store.open(profile_id=pid, capability="REPLY_COMMENT", summary="Responder", target=BRUNO,
+                        run_id="r-orfa", objective_id="r-orfa:o")
+    store.decide(pedido.id, status="approved")
+    responder = capability_of(IG, "REPLY_COMMENT")
+    assert not policies.check(pid, responder, counterparty=BRUNO, app_id="instagram").allowed      # vivo: reserva
+    assert policies.repo.pedidos_em_aberto_desde(pid, to_iso(now() - timedelta(days=1)))
+    db.execute("UPDATE objectives SET status='failed' WHERE id='r-orfa:o'")                        # morreu antes do efeito
+    assert policies.check(pid, responder, counterparty=BRUNO, app_id="instagram").allowed
+    assert policies.repo.pedidos_em_aberto_desde(pid, to_iso(now() - timedelta(days=1))) == []

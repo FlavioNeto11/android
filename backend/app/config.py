@@ -363,6 +363,9 @@ class LimitsCfg(BaseModel):
     # (viva), esta conta espera ao menos isto, em segundos, desde o último gesto com efeito DELA (vale o maior entre este valor e
     # `cooldown_between_external_actions_s` do perfil). Ritmo baixo de propósito; conta retirada por bloqueio segue recusada.
     fleet_min_spacing_to_own_account_s: int = Field(600, ge=0, le=86400)
+    # 30.60 (N4): publicar no feed (balde `posts`) passa por uma pessoa mesmo com perfil ou grupo `autonomous`, como a DM
+    # fria do ADR-055. Só a instalação afrouxa, aqui; um perfil não tem esse poder.
+    publicar_sem_aprovacao: bool = False
     ai_max_calls_per_objective: int = Field(60, ge=1, le=1000)
     # Item 17.12: o teto acima é de UM objetivo sem repetição. Num `for_each`, cada item a mais soma `ai_max_calls_per_item`
     # (`teto = ai_max_calls_per_objective + por_item × (itens − 1)`), até `ai_max_calls_absolute`. 12 = ~8 chamadas medidas
