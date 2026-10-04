@@ -349,6 +349,10 @@ def renovar_plano(state: AppState, run_id: str) -> dict[str, object]:
         vencidas = state.approvals.vencer_do_plano(now_iso(), run_id=run_id)
     if renovadas:
         state.repo.decision(f"validade dos sins do plano renovada até {validade}: {renovadas} item(ns)", run_id=run_id)
+    if vencidas:
+        # Só a contagem (sem alvo nem texto): o que venceu volta para o dono rever, e o log diz quantos.
+        state.repo.decision(f"{vencidas} sim(ns) do plano já vencido(s) não se renovaram: voltam para você rever",
+                            run_id=run_id)
     if vencidas and not renovadas:
         raise PortaIndisponivel("sim_vencido", f"{vencidas} sim(ns) do plano já tinham vencido e não se renovam: "
                                                "reveja a prévia (ou a porta pergunta na execução).", vencidas=vencidas)

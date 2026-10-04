@@ -5801,12 +5801,16 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
   (`step_id`, `selo`, `motivo`) e `previa` (a nova), e nada é gravado. 422 `invalid_body`: a mesma etapa com duas chaves,
   ou para aprovar e tirar. Senão, numa transação: cada sim vira `pending_approvals` `approved` de origem `plano`
   (`chave_sha256`, `chave_v`, `plan_version`, `expires_at`, `midia_sha256`, `decided_by`); as tiradas e as dependentes
-  delas (pela conta do servidor, nunca pela lista do cliente) vão a `cancelled`; uma `decision` registra o gesto. Depois,
+  delas (pela conta do servidor, nunca pela lista do cliente) vão a `cancelled`; uma `decision` registra o gesto. Cada
+  item aprovado aceita `texto` opcional, o texto EDITADO no cartão: a chave conferida é a vista (a do texto da prévia),
+  o texto entra na etapa (`apply_edit`) e a chave gravada é a recalculada da etapa relida (a do texto que vai sair);
+  texto vazio, com `{…}` ou em ação que não escreve dá 422 `invalid_body`, sem gravar nada. Depois,
   `runs.start`. Resposta `{run, aprovacoes, tiradas, validade_ate}`. O segundo gesto é recusado (409 `invalid_state`).
 - **`POST /api/runs/{id}/porta/renovar`** (200): a validade dos sins do plano ainda VÁLIDOS volta a contar de agora,
   sem reabrir os itens. `{run_id, renovadas, vencidas, validade_ate}`. O sim que já venceu (mesmo que a faxina ainda não
   o tenha marcado) não se renova: sai como `expired` na hora; se nenhum foi renovado, 409 `sim_vencido` (`vencidas`),
-  e o dono revê a prévia ou a porta pergunta na execução. 404; 409 `invalid_state` em execução terminada.
+  e o dono revê a prévia ou a porta pergunta na execução. Os vencidos também ganham uma `decision` (só a contagem). 404;
+  409 `invalid_state` em execução terminada.
 - **Validade:** `Settings.aprovacao_no_plano_validade_h` (padrão 24, de 1 a 72).
 - **Na execução** (trava deste item; o 31.49 estende): o `_approval_gate`, depois do descarte do 30.65 (aprovação anterior
   a `presa_em` não vale), aceita o sim de origem `plano` só se `approved`, dentro de `expires_at`, sem `interaction_id` e
@@ -5816,8 +5820,14 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
   aberto (frota, 30.56, 30.57). O objetivo encerrado (cancelado, vencido, abandonado) encerra o sim sem efeito, e a faxina
   periódica marca `expired` o que passou da validade; a execução `planned` em si não é cancelada.
 - **`Approval`** (lista de aprovações, eventos) ganha `origem`, `expires_at` e `plan_version`.
-- **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_chave_da_aprovacao.py`). `not_run`:
-  o painel (fatia seguinte) e qualquer execução real.
+- **Painel** (`frontend/src/features/runs/PortaDoPlano.tsx`): na execução `planned`, a prévia em cartões por aparelho e
+  persona, com o selo, "Saiba mais", o texto editável no 🔒, "Não fazer esta" (as dependentes saem junto), a seção
+  "Ainda vão pedir você na execução" e a barra "Aprovar N e iniciar"; o 409 `plano_mudou` mostra o que mudou e troca pela
+  prévia nova. Na execução viva, `ValidadeDoPlano` mostra a validade dos sins do plano com "Renovar" (o caso misto diz
+  "N renovados, M vencidos voltam para você rever").
+- **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_chave_da_aprovacao.py`,
+  `frontend/src/features/runs/PortaDoPlano.test.tsx`). `not_run`: o percurso no navegador (depois do deploy) e qualquer
+  execução real.
 
 ## Adendo v1.33 (04/10/2026; número da orquestradora; item 31.50) — `vence_em` e o lembrete antes do vencimento
 

@@ -366,6 +366,7 @@ async def test_renovar_nao_ressuscita_o_sim_vencido_que_a_faxina_nao_marcou(harn
     itens = _plano_com_dm(state)
     aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
                                                                          chave=itens["dm"]["chave"])]), por="flavio")
+    # Síncrono de propósito entre o UPDATE e o Renovar: um `await` aqui deixaria a faxina do harness marcar antes.
     state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() - timedelta(minutes=1)),))
     try:
         renovar_plano(state, "run-p")
@@ -374,6 +375,8 @@ async def test_renovar_nao_ressuscita_o_sim_vencido_que_a_faxina_nao_marcou(harn
         assert exc.codigo == "sim_vencido" and exc.extra["vencidas"] == 1
     linha = state.db.one("SELECT status, expires_at FROM pending_approvals")
     assert linha["status"] == "expired" and parse_iso(linha["expires_at"]) < now()
+    assert state.db.scalar("SELECT COUNT(*) FROM events WHERE run_id='run-p' AND kind='decision'"
+                           " AND message LIKE '%não se renovaram%'") == 1
 
 
 async def test_editar_o_texto_no_cartao_do_plano_recalcula_a_chave(harness: Any, monkeypatch: Any) -> None:
@@ -403,3 +406,19 @@ async def test_texto_editado_com_variavel_ou_vazio_e_recusado_sem_gravar(harness
             assert exc.status == 422 and exc.codigo == "invalid_body"
     assert not state.db.scalar("SELECT COUNT(*) FROM pending_approvals") and not iniciou
     assert json.loads(state.db.scalar("SELECT bindings FROM steps WHERE key='dm'"))["content"] == DM["content"]
+
+
+async def test_renovar_misto_renova_o_valido_e_devolve_o_vencido(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[
+        ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"]),
+        ItemAprovado(step_id=itens["dm2"]["step_id"], chave=itens["dm2"]["chave"])]), por="flavio")
+    # Síncrono de propósito entre o UPDATE e o Renovar (a faxina do harness não pode correr no meio).
+    state.db.execute("UPDATE pending_approvals SET expires_at=? WHERE step_id=?",
+                     (to_iso(now() - timedelta(minutes=1)), itens["dm2"]["step_id"]))
+    saida = renovar_plano(state, "run-p")
+    assert (saida["renovadas"], saida["vencidas"]) == (1, 1)
+    estados = {r["step_id"]: r["status"] for r in state.db.query("SELECT step_id, status FROM pending_approvals")}
+    assert estados == {itens["dm"]["step_id"]: "approved", itens["dm2"]["step_id"]: "expired"}
