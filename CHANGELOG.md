@@ -29,6 +29,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   que preserve a privacidade, falha com motivo literal (regra em `learning/domain/falhas.py`), nunca sucesso.
 - Teste: `tests/test_dialogos_em_serie.py` (árvores remontadas do que a 5b56e6 gravou; o executor não grava a árvore
   inteira), `simulated`; prova `real` não executada.
+- Revisão do #308: só no navegador; veto no rótulo e no id, com espanhol, alemão e consentimento implícito ("Got it",
+  "Entendi", "OK"); id só para ícone sem rótulo; diálogo que volta falha no teto; "sem saída" não é pulado
+  (`scheduler.py`); só o diálogo que cobre a tela conta. O teste de ponta a ponta (harness) achou que o toque da regra
+  era recusado na validação (faltava `is_commit_action`): corrigido. 22 testes no arquivo, 119 na regressão.
 
 ## 2026-10-04 — 29.73: o agente reconecta rápido depois do reinício do central (branch fix/29-73-reconexao-rapida)
 

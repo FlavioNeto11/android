@@ -20,6 +20,18 @@ from ..automation.hierarchy import UiElement, UiTree
 #: Quantos diálogos em série a regra fecha numa tentativa da limpeza (os da 5b56e6 eram dois).
 LIMITE_DE_DIALOGOS = 4
 
+#: Revisão do #308: a regra só vale no navegador (o item é dele). Num app com conta real, um aviso não reconhecido com
+#: "Dismiss" não se fecha por regra sem pessoa.
+NAVEGADORES = frozenset({"com.android.chrome"})
+
+#: Fração mínima da tela que um diálogo cobre para contar como "o que cobre" quando a área do juiz não é conhecida
+#: (revisão do #308, 3a: um id banner/modal que sobra pequeno na página não transforma a limpeza certa em falha).
+_FRACAO_QUE_COBRE = 0.15
+
+
+def e_navegador(pacote: str | None) -> bool:
+    return (pacote or "") in NAVEGADORES
+
 #: Rótulos que fecham ou recusam, na ordem de preferência (recusar o não essencial antes de só fechar). Comparados sem
 #: acento e sem caixa, com o rótulo INTEIRO (não "contém"): "Não aceitar cookies" não casa com "aceitar".
 _ROTULOS_QUE_FECHAM: tuple[str, ...] = (
@@ -36,9 +48,10 @@ _ROTULOS_QUE_FECHAM: tuple[str, ...] = (
 #: Id do botão que fecha (o "Agora não" da 5b56e6 é `download-app-bottom-banner-close`).
 _ID_QUE_FECHA = re.compile(r"(^|[-_/:])(close|dismiss|reject|decline|fechar|recusar)([-_]|$)", re.IGNORECASE)
 
-#: O que a regra nunca toca, mesmo que o id ou o rótulo também case com algo acima.
-_NUNCA = re.compile(r"aceit|accept|permit|allow|concord|agree|configur|personaliz|gerenciar|manage|settings|ok\b",
-                    re.IGNORECASE)
+#: O que a regra nunca toca, no rótulo E no id (revisão do #308: `cookie-accept-and-close`), mesmo que algo acima
+#: também case. "Got it", "Entendi" e "OK" valem como aceite num banner de consentimento implícito.
+_NUNCA = re.compile(r"aceit|acept|akzept|accept|permit|allow|concord|agree|configur|personaliz|gerenciar|manage|"
+                    r"settings|got[ _-]?it|entendi|\bok(ay)?\b", re.IGNORECASE)
 
 #: O que, na árvore, tem cara de diálogo, banner ou aviso de cookies (classe, id ou texto).
 _PISTAS = re.compile(r"dialog|modal|banner|cookie|popup|pop_up|overlay|consent|bottom_?sheet|privacidade|privacy",
@@ -84,9 +97,16 @@ def dialogo_sem_saida(tree: UiTree, area: tuple[int, int, int, int] | None = Non
         # Só o que tem cara de diálogo (classe ou id), dentro da área do que cobria quando se sabe: um elemento
         # qualquer que o juiz citou (um "Voltar") não é diálogo do site e segue com a IA, como antes.
         if (_PISTAS.search(e.class_name or "") or _PISTAS.search(e.resource_id or "")) \
-                and (area is None or _dentro(e, area) or e.bounds == area):
+                and (_dentro(e, area) or e.bounds == area if area is not None else _cobre_a_tela(e, tree)):
             return (_rotulo(e) or e.resource_id or e.class_name.rsplit(".", 1)[-1])[:80]
     return None
+
+
+def _cobre_a_tela(e: UiElement, tree: UiTree) -> bool:
+    largura = max((x.bounds[2] for x in tree.elements), default=0)
+    altura = max((x.bounds[3] for x in tree.elements), default=0)
+    x1, y1, x2, y2 = e.bounds
+    return largura > 0 and altura > 0 and (x2 - x1) * (y2 - y1) >= _FRACAO_QUE_COBRE * largura * altura
 
 
 def botao_que_fecha(tree: UiTree, area: tuple[int, int, int, int] | None = None) -> UiElement | None:
@@ -101,16 +121,15 @@ def botao_que_fecha(tree: UiTree, area: tuple[int, int, int, int] | None = None)
     for e in tree.elements:
         if not e.clickable or not e.enabled or not any(_dentro(e, c) for c in caixas):
             continue
-        rotulo = _rotulo(e)
-        if _NUNCA.search(rotulo):
+        rotulo, rid = _rotulo(e), e.resource_id or ""
+        if _NUNCA.search(rotulo) or _NUNCA.search(rid):
             continue
         normal = _normal(rotulo)
         if normal in _ROTULOS_QUE_FECHAM:
             candidatos.append((_ROTULOS_QUE_FECHAM.index(normal), e))
-        elif not rotulo and _ID_QUE_FECHA.search(e.resource_id or ""):
+        elif not rotulo and _ID_QUE_FECHA.search(rid):
+            # Só o ícone SEM rótulo vale pelo id (revisão do #308, 1b): um "Got it" com id `*-close` é aceite.
             candidatos.append((len(_ROTULOS_QUE_FECHAM), e))
-        elif _ID_QUE_FECHA.search(e.resource_id or "") and not _NUNCA.search(e.resource_id or ""):
-            candidatos.append((len(_ROTULOS_QUE_FECHAM) + 1, e))
     if not candidatos:
         return None
     return min(candidatos, key=lambda par: par[0])[1]

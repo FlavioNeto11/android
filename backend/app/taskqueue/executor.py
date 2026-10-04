@@ -68,7 +68,7 @@ from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
-from .dialogos import LIMITE_DE_DIALOGOS, MOTIVO_SEM_SAIDA, botao_que_fecha, dialogo_sem_saida
+from .dialogos import LIMITE_DE_DIALOGOS, MOTIVO_SEM_SAIDA, botao_que_fecha, dialogo_sem_saida, e_navegador
 from .relacao import relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -2096,23 +2096,28 @@ class StepExecutor:
                     repo.decision(f"{iid} · {step.title}: receita divergiu — {exc}; a IA assume esta etapa",
                                   run_id=run_id, instance_id=iid, step_id=step.id)
             scale = self._image_scale(obs, ai_cfg)
-            if (decision is None and limpeza and not fired and fechados_pela_regra < LIMITE_DE_DIALOGOS
-                    and (botao := botao_que_fecha(obs.tree, cobertura_da_limpeza.bounds
-                                                  if cobertura_da_limpeza is not None
-                                                  and ainda_cobre(cobertura_da_limpeza, obs.tree) else None))
-                    is not None):
-                # ---------- 31.51: o botão que fecha ou recusa está na árvore: toca nele, sem IA e sem gastar ação
+            # 31.51: só no NAVEGADOR (revisão do #308): num app com conta real, um aviso não reconhecido com "Dismiss"
+            # não se fecha por regra sem pessoa; ali fica o comportamento de antes.
+            area = (cobertura_da_limpeza.bounds if cobertura_da_limpeza is not None
+                    and ainda_cobre(cobertura_da_limpeza, obs.tree) else None)
+            regra_vale = decision is None and limpeza and not fired and e_navegador(obs.package)
+            botao = botao_que_fecha(obs.tree, area) if regra_vale else None
+            if botao is not None and fechados_pela_regra < LIMITE_DE_DIALOGOS:
+                # ---------- o botão que fecha ou recusa está na árvore: toca nele, sem IA e sem gastar ação
                 rotulo = (botao.text or botao.desc or botao.resource_id)[:60]
-                decision = Decision(tool="tap", args={"element_id": botao.id,
+                decision = Decision(tool="tap", args={"element_id": botao.id, "is_commit_action": False,
                                                       "rationale": f"[regra 31.51] fechar o diálogo: '{rotulo}'"})
                 fechados_pela_regra += 1
                 pela_regra = True
                 history.append(f"(executor) diálogo fechado pela árvore, sem IA: '{rotulo}' ({botao.id})")
-            elif decision is None and limpeza and not fired and (sobra := dialogo_sem_saida(
-                    obs.tree, cobertura_da_limpeza.bounds if cobertura_da_limpeza is not None
-                    and ainda_cobre(cobertura_da_limpeza, obs.tree) else None)) is not None:
-                # 31.51: diálogo sem saída que preserve a privacidade (só aceitar, ou não reconhecido): falha com o
-                # motivo, sem IA. A IA poderia aceitar os cookies opcionais ou abrir o app; nunca vira sucesso.
+            elif botao is not None:
+                # O diálogo volta depois do teto de toques: falha dizendo qual ficou, sem cair na IA.
+                return await falhar_sem_nova_tentativa(
+                    f"{MOTIVO_SEM_SAIDA} '{(botao.text or botao.desc or botao.resource_id)[:60]}': ele voltou depois de "
+                    f"{LIMITE_DE_DIALOGOS} toques; nada foi aceito.", obs)
+            elif regra_vale and (sobra := dialogo_sem_saida(obs.tree, area)) is not None:
+                # Diálogo sem saída que preserve a privacidade (só aceitar, ou não reconhecido): falha com o motivo,
+                # sem IA. A IA poderia aceitar os cookies opcionais ou abrir o app; nunca vira sucesso.
                 return await falhar_sem_nova_tentativa(
                     f"{MOTIVO_SEM_SAIDA} '{sobra}': nenhum botão de recusar, fechar ou continuar no navegador; nada "
                     "foi aceito.", obs)

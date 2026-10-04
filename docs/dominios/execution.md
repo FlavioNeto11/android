@@ -302,7 +302,11 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
     próprio (`LIMITE_DE_DIALOGOS`, 4) que não gasta as `max_actions` da etapa. Nunca toca "aceitar", "permitir",
     "concordo" nem "configurar". Diálogo sem essa saída (o aviso que só aceita, ou um diálogo não reconhecido): a
     etapa falha com "A limpeza não fechou o diálogo do site '…'", sem IA e sem aceitar nada. As ações levam
-    `source='regra'`.
+    `source='regra'`. Revisão do #308: só no NAVEGADOR (`dialogos.NAVEGADORES`; em outro app, como o Instagram, fica
+    o comportamento de antes); o veto vale no rótulo e no id (`cookie-accept-and-close`) e pega "Aceptar",
+    "Akzeptieren", "Got it", "Entendi" e "OK"; o id só vale para ícone sem rótulo; o diálogo que volta depois de 4
+    toques falha dizendo qual ficou; a falha "sem saída" NÃO é pulada como limpeza opcional (o objetivo falha, a etapa
+    seguinte não roda com o diálogo na tela); e só conta o diálogo que cobre a tela (área do juiz, ou 15% dela).
 - **Relação do valor lido (item 31.41, `ai.relacao_do_valor`, sem migração):** o `read_value` só grava a saída com
   evidência de que o elemento É o que foi pedido (`taskqueue/relacao.py`, determinístico): (a) o seletor que o catálogo
   declara (`saidas_relacao: [nome=seletor]`); (b) um termo do nome, do glossário PT→EN ou de um sinônimo do catálogo
