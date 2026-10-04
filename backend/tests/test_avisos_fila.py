@@ -89,7 +89,8 @@ def test_a_mensagem_nao_leva_dado_de_persona_conta_nem_conteudo() -> None:
         aviso = aviso_de_evento(kind, {**dados, "active": True}, 5, PAINEL)
         assert aviso is not None
         texto = texto_da_mensagem(aviso.titulo, aviso.corpo, aviso.link)
-        for proibido in ("Maria", "4455", "maria.souza", "CPF", "persona-lucas", "android-01", "lucas"):
+        # O aparelho pode sair (28.31): "android-01" não é pessoa, conta nem contato.
+        for proibido in ("Maria", "4455", "maria.souza", "CPF", "persona-lucas", "lucas"):
             assert proibido not in texto, (kind, proibido)
     aviso = aviso_de_evento("run.updated", {"run": {"id": "r1", "status": "needs_input", "command": "mande oi ao Pedro",
                                                     "status_detail": "qual é o telefone do Pedro?"}}, 6, PAINEL)

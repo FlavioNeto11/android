@@ -20,7 +20,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 
 from app.config import Config
 from app.contracts.origem import PREFIXO_LOTE, e_execucao_do_sistema
@@ -45,7 +45,8 @@ FAXINA_S = 3600.0
 class ServicoDeAvisos:
     def __init__(self, cfg: Config, bus: EventBus, fila: FilaDeAvisos, lideranca: Lideranca, *,
                  canal: Canal | None = None, lider: Callable[[str], int | None] | None = None,
-                 redigir: Callable[[str], str] | None = None, faxina_canais: FaxinaDosCanais | None = None):
+                 redigir: Callable[[str], str] | None = None, faxina_canais: FaxinaDosCanais | None = None,
+                 nomes_de_persona: Callable[[], Iterable[str]] | None = None):
         self.cfg = cfg
         self.bus = bus
         self.fila = fila
@@ -53,6 +54,7 @@ class ServicoDeAvisos:
         self._canal = canal
         #: O redator do conteúdo do aviso (28.15, decisão (d)): só vale com a conversa de volta ligada.
         self._redigir = redigir
+        self._nomes_de_persona = nomes_de_persona
         #: Quem diz se sou o líder: o `AppState._lider` (que tolera banco fora do ar). Injetável nos testes.
         self._lider = lider or self._tomar
         self._esperar_ate = 0.0
@@ -105,9 +107,14 @@ class ServicoDeAvisos:
             return False
         cfg = self.cfg.file.avisos
         # Com a conversa de volta ligada, a aprovação e a pergunta levam o conteúdo redigido (decisão (d) do ADR-071):
-        # o dono responde ali mesmo. Desligada, a mensagem segue a menor possível (28.11).
-        redigir = self._redigir if cfg.entrada.enabled else None
-        aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir)
+        # o dono responde ali mesmo. Desligada, a mensagem diz onde responder. O redator e os nomes de persona valem
+        # sempre (28.31): são eles que deixam o rótulo do pedido sair. Sem os nomes, nada de texto da pessoa sai.
+        redigir, conversa = self._redigir, cfg.entrada.enabled
+        nomes = self._nomes()
+        if nomes is None:
+            redigir, conversa, nomes = None, False, []
+        aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir,
+                                nomes=nomes, conversa=conversa)
         if aviso is None or self._e_de_prova(kind, data):
             return False
         try:
@@ -115,6 +122,17 @@ class ServicoDeAvisos:
         except Exception:  # noqa: BLE001 - o aviso nunca derruba o emissor nem o laço
             log.exception("avisos: não foi possível enfileirar %s", aviso.chave)
             return False
+
+    def _nomes(self) -> list[str] | None:
+        """Os nomes de persona que o aviso não pode carregar, ou `None` se a leitura falhou (aí o aviso sai sem texto da
+        pessoa: o rótulo vira a reserva e o conteúdo fica no painel)."""
+        if self._nomes_de_persona is None:
+            return []
+        try:
+            return list(self._nomes_de_persona())
+        except Exception:  # noqa: BLE001 - o aviso sai mesmo assim, só que sem texto da pessoa
+            log.exception("avisos: nomes de persona indisponíveis")
+            return None
 
     def enfileirar_aviso(self, aviso: Aviso) -> bool:
         """Enfileira um aviso JÁ montado (o leitor do Trello avisa o dono do pedido de um convidado, 32.2). Mesma guarda

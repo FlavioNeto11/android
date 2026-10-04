@@ -51,7 +51,7 @@ from .modules.avisos.infrastructure.anexos import ArmazemDeAnexos
 from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
-from .modules.avisos.infrastructure.portas_da_central import PortasReais
+from .modules.avisos.infrastructure.portas_da_central import PortasReais, nomes_de_persona
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
 from .decisoes_inversas import inversas_das_filas
 from .modules.decisoes.application.desfazer import DesfazerDecisoes
@@ -319,7 +319,8 @@ class AppState:
         # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
         self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider,
                                       redigir=TriagemDeCredencial().redigir,
-                                      faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta))
+                                      faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta),
+                                      nomes_de_persona=lambda: nomes_de_persona(self.db))
         # O que a plataforma decide sozinha (28.25): o registro único, o adaptador que recolhe os produtores e o resumo
         # agrupado (no máximo uma mensagem por janela) pelo mesmo caminho dos avisos. O desfazer entra pelas rotas.
         self.decisoes_registro = RegistroDeDecisoes(self.db)

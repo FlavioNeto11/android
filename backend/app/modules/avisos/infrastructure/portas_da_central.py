@@ -72,12 +72,7 @@ class PortasReais:
 
     # ------------------------------------------------------------------ leitura
     def nomes_de_persona(self) -> list[str]:
-        """Nome de exibição, primeiro e último nome e @ das personas: o que a conversa tira de todo texto que manda pelo
-        canal (28.28). Inclui as aposentadas: o nome continua sendo de uma pessoa da plataforma."""
-        nomes: list[str] = []
-        for r in self.db.query("SELECT display_name, first_name, last_name, username FROM instagram_profiles"):
-            nomes.extend(str(v) for v in (r["display_name"], r["first_name"], r["last_name"], r["username"]) if v)
-        return nomes
+        return nomes_de_persona(self.db)
 
     def status(self) -> str:
         h = self._saude()
@@ -225,3 +220,12 @@ def _resumo_da_aprovacao(a: dict[str, object]) -> str:
     if conteudo:
         partes.append(f"\"{conteudo[:500]}\"")
     return ": ".join(partes)
+
+
+def nomes_de_persona(db: Database) -> list[str]:
+    """Nome de exibição, primeiro e último nome e @ das personas: o que a conversa (28.28) e o aviso (28.31) tiram de
+    todo texto que mandam pelo canal. Inclui as aposentadas: o nome continua sendo de uma pessoa da plataforma."""
+    nomes: list[str] = []
+    for r in db.query("SELECT display_name, first_name, last_name, username FROM instagram_profiles"):
+        nomes.extend(str(v) for v in (r["display_name"], r["first_name"], r["last_name"], r["username"]) if v)
+    return nomes
