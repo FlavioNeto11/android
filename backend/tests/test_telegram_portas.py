@@ -190,3 +190,37 @@ async def test_plano_mudou_volta_com_a_previa_nova_e_nada_inicia(harness: Harnes
     assert portas.imagem_da_etapa(run_id, "etapa-que-nao-existe") is None
     portas.cancelar(run_id)
     await harness.wait_run(run_id, statuses=("cancelled",))
+
+
+async def test_cancelar_do_canal_nao_cancela_execucao_que_outro_gesto_iniciou(harness: Harness,
+                                                                              como_telegram: None) -> None:
+    """Nota R1 da revisão do #336: entre a leitura `planned` do canal e o cancelamento, o painel pode iniciar. O
+    `cancelar` da porta é condicionado a `planned` num `UPDATE` só: a execução que já seguiu não é tocada."""
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:952", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    portas.iniciar(run_id)                                   # o outro gesto chegou antes
+    portas.cancelar(run_id)                                  # o abandono do canal, atrasado
+    st = harness.state
+    assert st is not None
+    assert not st.db.scalar("SELECT cancel_requested FROM runs WHERE id=?", (run_id,))
+    assert portas.estado_da_execucao(run_id) not in ("cancelled", "cancelling")
+
+
+async def test_inicio_depois_da_marca_do_cancelamento_e_recusado(harness: Harness, como_telegram: None) -> None:
+    """O outro lado da corrida: o cancelamento condicionado marcou `cancel_requested` e ainda não fechou; o início
+    que leu `planned` antes não pode passar por cima (compare-and-set no `start`)."""
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:953", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    st = harness.state
+    assert st is not None
+    st.db.execute("UPDATE runs SET cancel_requested=1 WHERE id=?", (run_id,))
+    with pytest.raises(RecusaDaCentral):
+        portas.iniciar(run_id)
+    assert portas.estado_da_execucao(run_id) == "planned"
+    st.db.execute("UPDATE runs SET cancel_requested=0 WHERE id=?", (run_id,))
+    portas.cancelar(run_id)                                  # planned: o condicionado cancela de fato
+    await harness.wait_run(run_id, statuses=("cancelled",))

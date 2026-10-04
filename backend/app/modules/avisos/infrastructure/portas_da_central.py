@@ -239,8 +239,9 @@ class PortasReais:
             raise RecusaDaCentral(exc.message) from None
 
     def cancelar(self, run_id: str) -> None:
+        """Só a execução ainda `planned` (compare-and-set no serviço): a que outro gesto já iniciou segue."""
         try:
-            self.runs.cancel(run_id, por=autor_do_gesto(operador_atual()))
+            self.runs.cancel(run_id, por=autor_do_gesto(operador_atual()), so_se_planejada=True)
         except RunError as exc:
             raise RecusaDaCentral(exc.message) from None
 

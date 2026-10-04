@@ -1493,7 +1493,9 @@ class ConversaDoCanal:
     def _cancelar_plano(self, run_id: str) -> None:
         """Todo caminho que abandona a porta (Cancelar, prévia vencida, recusa, falha, linha presa) cancela a execução
         só de plano: esquecida em `planned`, ela trava o despacho do aprendizado. Só a que ainda está em `planned`: a
-        recusa `invalid_state` pode ser de um plano que já foi iniciado, e esse segue."""
+        recusa `invalid_state` pode ser de um plano que já foi iniciado, e esse segue. A leitura aqui só poupa a chamada;
+        quem decide é o `cancelar` da porta, condicionado a `planned` num `UPDATE` só, porque outro gesto (o "Aprovar e
+        iniciar" do painel) pode iniciar a execução entre a leitura e o cancelamento."""
         if not run_id:
             return
         try:

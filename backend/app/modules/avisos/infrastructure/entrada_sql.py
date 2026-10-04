@@ -39,8 +39,21 @@ def _previa(bruta: object) -> dict[str, object]:
 
 
 def _fase_like(fase: str) -> str:
-    """O padrão `LIKE` da fase da linha do Executar (28.27) no JSON da `previa`, como o `marcar` grava."""
-    return "%" + json.dumps({"fase": fase}, ensure_ascii=False)[1:-1] + "%"
+    """O padrão `LIKE` da fase da linha do Executar (28.27) no JSON da `previa`. Só estreita, e sem depender dos
+    separadores do `json.dumps` do `marcar` (nota da revisão do #336: um `marcar` compacto deixaria `planejando()`
+    vazio em silêncio, e todo Executar pararia). Quem decide é `_na_fase`, com o JSON lido. A aspa no texto do dono sai
+    escapada (`\\"`) e não casa com `"fase"`."""
+    return '%"fase"%' + json.dumps(fase, ensure_ascii=False) + "%"
+
+
+def _na_fase(linhas: list[dict[str, object]], fase: str) -> list[dict[str, object]]:
+    def fase_de(linha: dict[str, object]) -> object:
+        try:
+            previa = json.loads(str(linha.get("previa") or "{}"))
+        except ValueError:
+            return None
+        return previa.get("fase") if isinstance(previa, dict) else None
+    return [linha for linha in linhas if fase_de(linha) == fase]
 
 
 def _curto(texto: str | None, n: int = MAX_CURTO) -> str | None:
@@ -163,18 +176,18 @@ class EntradasDoCanal:
     def planejando(self, limite: int = 20) -> list[dict[str, object]]:
         """As linhas do Executar com a execução criada só de plano, esperando o plano (28.27). A fase é filtrada no SQL
         (revisão do #336, A2): sem isto, 20 linhas presas noutra fase calariam o vigia. O texto da `previa` é o
-        `json.dumps` de `marcar`; uma aspa no texto do dono sai escapada e não casa com o fragmento."""
-        return [dict(r) for r in self.db.query(
+        `json.dumps` de `marcar`, mas o filtro não depende dos separadores dele (`_fase_like`, `_na_fase`)."""
+        return _na_fase([dict(r) for r in self.db.query(
             "SELECT * FROM canal_entradas WHERE canal=? AND estado='executando' AND run_id IS NOT NULL AND previa LIKE ?"
-            " ORDER BY id LIMIT ?", (self.canal, _fase_like("planejando"), limite))]
+            " ORDER BY id LIMIT ?", (self.canal, _fase_like("planejando"), limite))], "planejando")
 
     def presas_na_porta(self, idade_s: float) -> list[dict[str, object]]:
         """O "Executar (aprova N)" passou a linha a `executando` e o processo caiu antes do desfecho (revisão do #336,
         A2): o vigia não olha essa fase, e nada mais a destrava."""
         limite = to_iso(self.relogio() - timedelta(seconds=idade_s))
-        return [dict(r) for r in self.db.query(
+        return _na_fase([dict(r) for r in self.db.query(
             "SELECT * FROM canal_entradas WHERE canal=? AND estado='executando' AND run_id IS NOT NULL AND previa LIKE ?"
-            " AND tratada_em < ? ORDER BY id LIMIT 20", (self.canal, _fase_like("porta"), limite))]
+            " AND tratada_em < ? ORDER BY id LIMIT 20", (self.canal, _fase_like("porta"), limite))], "porta")
 
     def recusadas_sem_resposta(self, idade_max_s: float, limite: int = 20) -> list[dict[str, object]]:
         """As recusas de credencial ou de pergunta sensível dos últimos `idade_max_s` segundos a que a Central ainda

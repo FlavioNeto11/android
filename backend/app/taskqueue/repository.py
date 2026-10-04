@@ -256,8 +256,13 @@ class Repository:
         return False
 
     def set_run_status(self, run_id: str, status: RunStatus, detail: str | None = None, *, message: str | None = None,
-                       level: str = "info", dados: dict[str, object] | None = None) -> None:
-        """`dados`: campos a mais no `data` do `run.updated` desta transição (o autor do início, P12)."""
+                       level: str = "info", dados: dict[str, object] | None = None,
+                       so_se: tuple[RunStatus, ...] = ()) -> bool:
+        """`dados`: campos a mais no `data` do `run.updated` desta transição (o autor do início, P12).
+
+        `so_se`: a troca só vale se a execução ainda está num desses estados E sem cancelamento pedido, num `UPDATE`
+        só (compare-and-set); senão nada muda, nada sai e devolve `False`. É o início (`RunService.start`) contra o
+        cancelamento condicionado do canal (28.27), que marca `cancel_requested` antes de fechar a execução."""
         anterior = self.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,))
         fields, params = ["status=?", "status_detail=?"], [status.value, detail]
         if status == RunStatus.running:
@@ -266,9 +271,17 @@ class Repository:
         if status in RUN_TERMINAL:
             fields.append("finished_at=COALESCE(finished_at, ?)")
             params.append(now_iso())
-        self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
+        if so_se:
+            marcas = ", ".join("?" for _ in so_se)
+            cur = self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=? AND status IN ({marcas}) "
+                                  "AND cancel_requested=0", (*params, run_id, *(s.value for s in so_se)))
+            if cur.rowcount != 1:
+                return False
+        else:
+            self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
         self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
         self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level, dados=dados)
+        return True
 
     def request_pause(self, run_id: str, reason: str) -> None:
         """Pausa automaticamente (disjuntor de conta de IA): idempotente e sem checar quem pediu — ao contrário

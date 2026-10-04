@@ -130,6 +130,11 @@ def _bloco(n: int, item: Mapping[str, object], fora: bool, nomes: list[str], red
         # Só a imagem do item que pede o sim pelo canal é enviada (conferida pelo sha256); a dos outros fica no painel.
         enviada = not fora and item.get("selo") == APROVACAO
         linhas.append(f"   Imagem: segue abaixo, como \"item {n}\"." if enviada else "   Imagem: no painel.")
+    rotulo = item.get("rotulo_ia")
+    if isinstance(rotulo, bool):
+        # 29.79 (regra do dono, 03/10: foto realista de IA leva o rótulo): quem aprova vê se a publicação sai com o
+        # rótulo de IA do Instagram. Nulo ou ausente (imagem por resolver, ou base sem o campo) não diz nada.
+        linhas.append(f"   Rótulo de IA: {'sim' if rotulo else 'não'}.")
     if item.get("selo") == "adiado" and _hora(item.get("retry_at")):
         linhas.append(f"   Segue a partir de {_hora(item.get('retry_at'))}.")
     return "\n".join(linhas)

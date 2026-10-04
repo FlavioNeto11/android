@@ -66,3 +66,18 @@ def test_linha_sem_aprovacao() -> None:
     assert p.linha_sem_aprovacao("abc123", p.LeituraDaPorta()) == (
         "Execução abc123 iniciada: o plano não tem aprovação pendente. Conto aqui quando terminar.")
     assert "2 itens vão pedir você" in p.linha_sem_aprovacao("abc123", p.LeituraDaPorta(na_execucao=2))
+
+
+def test_rotulo_de_ia_aparece_so_quando_vem_preenchido() -> None:
+    """29.79 (#334) na porta pelo canal: quem aprova a publicação vê se ela sai com o rótulo de IA. `True` e `False`
+    viram a linha; `None` (imagem por resolver) e a ausência do campo (base sem o #334) não dizem nada."""
+    def texto(**kw: object) -> str:
+        previa = {"itens": [_item("a", **kw)]}
+        leitura = p.ler_porta(previa, [], _redigir, lambda _i: True)
+        return "\n\n".join(p.mensagens_da_porta(previa, "abc123", leitura, [], _redigir))
+
+    imagem = {"tem_imagem": True, "imagem_sha256": "1" * 64}
+    assert "   Rótulo de IA: sim." in texto(rotulo_ia=True, **imagem)
+    assert "   Rótulo de IA: não." in texto(rotulo_ia=False, **imagem)
+    assert "Rótulo de IA" not in texto(rotulo_ia=None, **imagem)
+    assert "Rótulo de IA" not in texto(**imagem)

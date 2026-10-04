@@ -896,6 +896,30 @@ async def test_vigia_so_le_a_fase_planejando_e_nao_se_cala_com_presas(c: Cenario
     assert all(json.loads(str(x["previa"]))["fase"] == "planejando" for x in c.repo.planejando())
 
 
+async def test_fase_gravada_por_marcar_e_lida_por_planejando_e_presas_na_porta(tmp_path: Path) -> None:
+    """Nota da revisão do #336: o filtro da fase não pode depender dos separadores do `json.dumps` do `marcar`. Grava
+    por `marcar` e lê por `planejando()` e `presas_na_porta()`; a mesma `previa` gravada compacta também é achada; a
+    aspa e a palavra "fase" no texto do dono não enganam o filtro."""
+    agora = [datetime(2026, 10, 4, 23, 0, tzinfo=timezone.utc)]
+    c = Cenario(tmp_path, relogio=lambda: agora[0])
+
+    def linha(n: int, fase: str, **extra: object) -> int:
+        c.repo.gravar(id_externo=str(n), ordem=None, tipo="mensagem", do_dono=False, ref_mensagem=None,
+                      responde_a=None, texto="x", tamanho=1, estado="ignorada")
+        ident = int(c.linha(n)["id"])
+        c.repo.marcar(ident, "executando", run_id=f"r-{n:06d}", previa={"fase": fase, **extra})
+        return ident
+
+    plan, porta = linha(1, "planejando"), linha(2, "porta")
+    enganosa = linha(3, "porta", texto='o dono escreveu "fase" e "planejando"')
+    compacta = linha(4, "porta")
+    c.db.execute("UPDATE canal_entradas SET previa=? WHERE id=?",
+                 (json.dumps({"fase": "planejando"}, separators=(",", ":")), compacta))
+    assert sorted(int(x["id"]) for x in c.repo.planejando()) == [plan, compacta]
+    agora[0] += timedelta(hours=1)
+    assert sorted(int(x["id"]) for x in c.repo.presas_na_porta(60)) == [porta, enganosa]
+
+
 async def test_linha_presa_na_porta_e_recuperada_e_a_execucao_cancelada(tmp_path: Path) -> None:
     agora = [datetime(2026, 10, 4, 23, 0, tzinfo=timezone.utc)]
     c = Cenario(tmp_path, relogio=lambda: agora[0])

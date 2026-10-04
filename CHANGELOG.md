@@ -39,6 +39,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Todo abandono da porta cancela a execução que ainda está em `planned`. A presa antes do `run_id` também, achada
     pela chave de idempotência.
   - `plano_mudou` para N = 0 inicia numa linha que diz que o plano mudou.
+- Notas baixas da revisão e a junção (orquestradora, 23:13Z e 23:22Z):
+  - R1, corrida no cancelamento: o `cancelar` da porta passa `so_se_planejada` ao `RunService.cancel`, que marca o pedido
+    num `UPDATE … WHERE status='planned' AND cancel_requested=0` e não faz nada se outro gesto já iniciou; o `start`
+    troca o estado só se ainda `planned`/`planning` sem pedido de cancelar (`set_run_status(so_se=…)`), e senão recusa
+    com `invalid_state`.
+  - O filtro da fase não depende mais dos separadores do `json.dumps` do `marcar`: o `LIKE` só estreita
+    (`%"fase"%"<fase>"%`) e o JSON lido decide (`_na_fase`).
+  - S4: o bloco do item diz "Rótulo de IA: sim/não" quando o `rotulo_ia` do #334 vem preenchido; nulo ou ausente não diz
+    nada. Na junção, o #334 entra antes.
+  - Prova `simulated`: 81 passed em `test_avisos_porta.py`, `test_telegram_entrada.py` e `test_telegram_portas.py`
+    (a execução iniciada que o cancelamento atrasado não toca, o início recusado depois da marca, `marcar` lido por
+    `planejando()` e `presas_na_porta()` com a `previa` compacta, e os quatro valores do rótulo); 139 passed nos
+    arquivos de início e cancelamento (`test_cancelamento`, `test_inicio_com_autor`, `test_maquinas_de_estado`,
+    `test_execution`, `test_contrato_http` e outros).
 - `mensagem.partes_da_aprovacao` passa a montar as linhas de alvo e texto da aprovação pendente e da porta (a mesma
   regra), e `mensagem.texto_mostravel` diz se o texto sai inteiro.
 - Regra C-26 em `docs/dominios/canais.md`.
