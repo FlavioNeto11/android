@@ -143,6 +143,18 @@ def profile_data(fields: Mapping[str, object] | None) -> tuple[AvailableDatum, .
                  for nome, coluna, rotulo, tipo in PROFILE_FIELDS if _texto(fields.get(coluna)))
 
 
+def _usuario_da_conta(c: AccountRecord) -> str | None:
+    """O valor de `conta_<app>_usuario`: o NOME da conta no app (o @ do Instagram), que é o que o plano usa para
+    abrir perfil, buscar e conferir. Item 29.71: com `login_identifier or handle`, o e-mail de login do Instagram
+    vencia o @ e entrava no binding, no título e no objetivo da etapa (f85a37); pela busca, iria ao campo de busca.
+    No app de login GERENCIADO o identificador de login nunca vira variável: quem entra é o provedor de sessão, que o
+    lê da credencial. No app de login por formulário (sem provedor de sessão) a variável continua sendo o que o
+    formulário pede, o identificador, e o handle só quando ele falta."""
+    if c.managed:
+        return _texto(c.handle)
+    return _texto(c.login_identifier) or _texto(c.handle)
+
+
 def _rotulo_da_conta(c: AccountRecord) -> str:
     return c.app_label + (f" ({c.host})" if c.host else "")
 
@@ -155,7 +167,7 @@ def account_data(accounts: Sequence[AccountRecord]) -> tuple[AvailableDatum, ...
     saida: list[AvailableDatum] = []
     for c in accounts:
         onde = _rotulo_da_conta(c)
-        if _texto(c.login_identifier) or _texto(c.handle):
+        if _usuario_da_conta(c):
             nome = _sem_colisao(account_name(c.app_id, c.host, SUFIXO_USUARIO), usados)
             saida.append(AvailableDatum(name=nome, label=f"usuário da conta em {onde}", kind=DatumKind.text,
                                         sensitive=False, app_id=c.app_id, account_id=c.account_id, host=c.host))
@@ -182,7 +194,7 @@ def profile_variables(fields: Mapping[str, object] | None, accounts: Sequence[Ac
     por_conta = {d.account_id: d for d in account_data(accounts) if not d.sensitive and d.account_id}
     for c in accounts:
         d = por_conta.get(c.account_id)
-        v = _texto(c.login_identifier) or _texto(c.handle)
+        v = _usuario_da_conta(c)
         if d is not None and v:
             valores[d.name] = v
     return valores
@@ -202,7 +214,7 @@ def resolve_secret(accounts: Sequence[AccountRecord], name: str) -> SecretResolu
     histórico), sem valor nenhum."""
     usados: set[str] = set()
     for c in accounts:
-        if _texto(c.login_identifier) or _texto(c.handle):
+        if _usuario_da_conta(c):
             _sem_colisao(account_name(c.app_id, c.host, SUFIXO_USUARIO), usados)
         if not c.has_credential:
             continue

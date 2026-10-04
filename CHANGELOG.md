@@ -40,6 +40,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `test_roteamento_por_persona.py::test_e_principal_entre_dois_com_sessao_diz_o_motivo`, e o
   esperado da prévia HTTP em `test_roteamento_execucao.py` passa a ter `motivo`; 3377 testes que tocam `origem` e
   alvos verdes. Sem DDL. Real: `not_run` (a releitura da mesma prévia depois do deploy).
+## 2026-10-04 — 29.71: a variável da conta entrega o nome no app, não o e-mail de login (branch fix/29-71-usuario-da-conta)
+
+- Prova real do 8.3 (r-20261004151656-f85a37): `{conta_instagram_usuario}` resolveu para o e-mail de login da conta
+  (`login_identifier or handle`) e entrou no binding, no título e no objetivo da etapa de abrir o perfil, e daí em 35
+  eventos. Pela busca, o e-mail iria ao campo de busca do app.
+- `_usuario_da_conta`: no app de login gerenciado (Instagram, Outlook) o valor é o handle, e sem handle a variável não
+  existe; o provedor de sessão segue lendo o identificador da credencial. No app de login por formulário nada muda
+  (é o que o formulário pede). No central, o handle do Outlook é o próprio endereço de login: nenhum fluxo regride.
+  O fluxo candidato da f85a37 guardou o nome da variável, não o valor: passa a receber o @ sem reaprender.
+- Os 35 eventos antigos da f85a37 ficam (apagar dado é com o dono, pela orquestradora).
+- Prova `simulated`: `test_usuario_da_conta.py` (4, puros, mutação conferida: 3 falham sem o conserto) e os testes de
+  credencial e de variáveis da persona (51). Sem DDL. Real: `not_run`.
 
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 

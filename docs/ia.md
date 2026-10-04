@@ -67,7 +67,9 @@ prompt de atributos (nunca o nome da persona) e, da segunda imagem em diante, a 
 evolução, `PlanRequest.available_data` e `StepContext.available_data` (`backend/app/planning/provider.py`) levam a
 lista de "Dados da persona disponíveis" (`planning/prompts.py::dados_block`): para cada dado, nome lógico, rótulo
 e tipo. Dado não sigiloso (`perfil_nome`, `perfil_email`, `conta_<app>_usuario`) é variável `{nome}` que o executor
-resolve por aparelho na materialização; dado sigiloso (`conta_<app>_senha`) aparece só como **nome** para
+resolve por aparelho na materialização (29.71: `conta_<app>_usuario` é o nome da conta no app, o @ do Instagram;
+no app de login gerenciado o identificador de login nunca vira variável, e no de login por formulário ele segue sendo
+o valor, porque é o que o formulário pede); dado sigiloso (`conta_<app>_senha`) aparece só como **nome** para
 `type_secret(name=…)`, e o valor sai do cofre direto para o campo pelo canal sensível. O planejador (livre e por
 catálogo) recebe a lista **comum** a todos os aparelhos da execução (`available_data.common_data`); o ator e o
 verificador, a do aparelho da etapa. App com `SessionProvider` (Instagram) não oferece senha ao modelo: entra
