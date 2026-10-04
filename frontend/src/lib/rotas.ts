@@ -11,6 +11,7 @@
  *   #/pendencias                  a caixa única do que espera uma decisão sua (aprendizado, personas, execuções, intervenções)
  *   #/aprendizado?aba=aprovar|aprendido|falhas|sinais   (sem `aba` = Para aprovar)
  *   #/infraestrutura  #/diagnostico
+ *   #/canais                      o estado do aviso e da conversa pelo Telegram e do espelho no Trello (só leitura, 32.5)
  *   #/configuracao?aba=aplicativos|instancias|ia|fluxos|limites   (sem `aba` = Aplicativos: o link antigo
  *                                 `#/configuracao` continua abrindo a mesma guia)
  *
@@ -44,7 +45,7 @@
  *     (de gatilho), `profile_id`, `pede_atencao=1`, `ordem` = `atualizado` | `proxima` | `criado`. Convivem com `aba`.
  */
 export const TELAS = ['painel', 'personas', 'aplicativos', 'execucoes', 'pedidos', 'pendencias', 'aprendizado',
-                      'infraestrutura', 'configuracao', 'diagnostico'] as const;
+                      'infraestrutura', 'configuracao', 'diagnostico', 'canais'] as const;
 export type Tela = (typeof TELAS)[number];
 
 export interface Rota {

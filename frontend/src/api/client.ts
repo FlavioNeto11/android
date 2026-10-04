@@ -41,6 +41,7 @@ import type {
   DeviceAppState,
   ControlReleaseResponse,
   ControlTakeResponse,
+  CanaisEstado,
   CommandRefinement,
   CreateRunRequest,
   CredentialCloneRequest,
@@ -466,6 +467,8 @@ export const api = {
   diagnostics: (refresh: boolean) =>
     request<Diagnostics>('GET', '/diagnostics', { query: { refresh: refresh ? 1 : 0 }, timeoutMs: 180_000 }),
   metrics: () => request<Metrics>('GET', '/metrics'),
+  /** Estado dos canais externos (Telegram e Trello), só leitura (32.5). */
+  canaisEstado: (signal?: AbortSignal) => request<CanaisEstado>('GET', '/canais/estado', { signal }),
 
   getSettings: () => request<Settings>('GET', '/settings'),
   putSettings: (patch: Partial<Settings>) => request<Settings>('PUT', '/settings', { body: patch }),

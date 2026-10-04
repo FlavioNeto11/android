@@ -1,0 +1,74 @@
+.grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr));
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.cartao {
+  min-width: 0;
+}
+
+.titulo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.corpo {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.desligado {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.problemas {
+  margin: 0;
+  padding-left: var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.fatos {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.fato {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fato dt {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.fato dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.nunca {
+  color: var(--text-3);
+}
+
+.alerta {
+  color: var(--warning-text);
+  font-weight: 600;
+}
+
+.leadIcone {
+  vertical-align: -2px;
+}

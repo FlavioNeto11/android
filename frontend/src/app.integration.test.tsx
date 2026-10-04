@@ -49,6 +49,13 @@ beforeAll(async () => {
     .on('GET', new RegExp(`^/api/runs/${RUN_ID}/events$`), () => json(RUN_EVENTS))
     .on('GET', new RegExp(`^/api/runs/${RUN_ID}/report$`), () => json(REPORT))
     .on('GET', /^\/api\/diagnostics$/, () => json(DIAGNOSTICS))
+    .on('GET', /^\/api\/canais\/estado$/, () => json({
+      gerado_em: '2026-10-04T12:00:00Z',
+      aviso_telegram: { ligado: false, segredo_presente: false, fila: {}, ultimo_envio_em: null, ultima_falha: null, problemas: [] },
+      conversa_telegram: { ligada: false, ultima_leitura_em: null, entradas: {}, problemas: [] },
+      trello: { ligado: false, webhook_ligado: false, cadastro_automatico: false, ultima_reconciliacao_em: null, cartoes: {},
+                entradas: {}, problemas: [] },
+    }))
     .on('GET', /^\/api\/ai$/, () => json(makeSnapshot().health.ai))
     .on('GET', /^\/api\/instances\/[^/]+\/frame$/, () => {
       frameSeq += 1;
@@ -708,11 +715,21 @@ describe('Central de Aparelhos — rotas por objeto e menu', () => {
     return Array.from(nav.querySelectorAll('a[aria-current="page"]')).map((a) => text(a as HTMLElement));
   };
 
-  it('o menu lateral tem as dez seções e marca a atual', async () => {
+  it('o menu lateral tem as onze seções e marca a atual', async () => {
     await goTo('#/painel');
     const nav = document.querySelector('nav[aria-label="Seções"]') as HTMLElement;
-    expect(nav.querySelectorAll('a')).toHaveLength(10);
+    expect(nav.querySelectorAll('a')).toHaveLength(11);
     expect(atual()).toEqual(['Painel']);
+  });
+
+  it('#/canais abre a tela Canais (32.5) com os três cartões', async () => {
+    await goTo('#/canais');
+    await waitFor(() => expect(text()).toContain('Aviso pelo Telegram'));
+    expect(text()).toContain('Conversa pelo Telegram');
+    expect(text()).toContain('Trello');
+    expect(atual()).toEqual(['Canais']);
+    expect(document.title).toBe('Canais · Central de Aparelhos');
+    await goTo('#/painel');
   });
 
   it('#/perfis (link antigo) vira #/personas sem quebrar', async () => {
