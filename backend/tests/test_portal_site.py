@@ -199,7 +199,7 @@ def test_pasta_real_so_tem_extensoes_da_lista_e_nada_em_linha() -> None:
     assert form is not None and 'method="post"' in form.group(0)
     # A CSP só deixa `'self'`: recurso de fora seria bloqueado em silêncio, e a página subiria sem ele.
     css = arquivos["/assets/site.css"].corpo.decode("utf-8")
-    assert not re.search(r'(?:src|href)="https?://(?!wa\.me/)', html), "recurso de fora na página"
+    assert not re.search(r'(?:src|href)="https?://(?!wa\.me/|dev\.nvit\.com\.br/)', html), "recurso de fora na página"
     assert "@import" not in css and not re.search(r"url\(\s*['\"]?https?:", css), "recurso de fora no CSS"
 
 
@@ -208,3 +208,34 @@ def test_padrao_do_telefone_e_o_mesmo_no_config_no_dominio_e_na_pagina() -> None
     pagina = re.search(r"TELEFONE_VALIDO = /(.+?)/;", js)
     assert pagina is not None
     assert TELEFONE_PUBLICO.pattern == TELEFONE.pattern == pagina.group(1)
+
+
+# ---------------------------------------------------------------- acabamento (29.80)
+async def test_pagina_404_propria_com_status_404_e_a_csp(harness: Harness) -> None:
+    _preparar(harness, site=True)
+    async with _cliente(harness) as c:
+        r = await c.get("/pagina-que-nao-existe")
+        assert r.status_code == 404 and r.headers["content-type"].startswith("text/html")
+        assert "Esta página não existe" in r.text and 'href="/central/"' in r.text
+        assert r.headers["content-security-policy"] == CABECALHOS_DO_SITE["Content-Security-Policy"]
+        assert (await c.post("/pagina-que-nao-existe", content=b"x")).status_code in (403, 405)
+        assert (await c.head("/pagina-que-nao-existe")).status_code == 404
+
+
+def _png(corpo: bytes) -> tuple[int, int]:
+    assert corpo[:8] == b"\x89PNG\r\n\x1a\n"
+    return int.from_bytes(corpo[16:20], "big"), int.from_bytes(corpo[20:24], "big")
+
+
+def test_previa_de_link_e_icones_da_mesma_origem_e_leves() -> None:
+    arquivos = ler_site(SITE)
+    html = arquivos["/index.html"].corpo.decode("utf-8")
+    imagem = re.search(r'<meta property="og:image" content="https://dev\.nvit\.com\.br(/[^"]+)">', html)
+    assert imagem is not None and imagem.group(1) in arquivos, "og:image tem de ser um arquivo da própria pasta"
+    assert _png(arquivos[imagem.group(1)].corpo) == (1200, 630)          # PNG: o WhatsApp não lê SVG
+    for prop in ("og:title", "og:description", "og:url", "og:image:alt"):
+        assert f'property="{prop}"' in html, prop
+    assert _png(arquivos["/assets/icone-180.png"].corpo) == (180, 180)
+    assert arquivos["/favicon.ico"].corpo[:4] == b"\x00\x00\x01\x00"
+    pesados = {p: len(a.corpo) for p, a in arquivos.items() if len(a.corpo) > 200_000}
+    assert not pesados, f"arquivo do site acima de 200 KB: {pesados}"

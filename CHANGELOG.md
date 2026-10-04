@@ -31,6 +31,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `POST /api/portal/contato` (adendo v1.36), a segunda exceção do portão em `/api/`: isca e token de tempo mínimo com
     a mesma resposta do aceito, validação, taxa por cliente (HMAC com sal, IPv6 por /64), teto diário e teto de avisos
     por hora; grava antes de avisar a Canais (28.32) e o laço `portal-contatos` reenvia e apaga em 180 dias;
+  - acabamento (29.80): prévia de link (Open Graph com imagem própria em PNG 1200×630, a mesma origem), `favicon.ico` e
+    ícone de 180 px, página 404 própria (com status 404 e a mesma CSP), contraste AA (o ciano de texto em fundo claro
+    passou a `#0e7490`) e anel de foco com 3:1 nos fundos claro e escuro, conferidos no navegador;
   - migração 107 (`portal_contatos`); ADR-075, que emenda o ADR-073; `scripts/portal-prova-de-fora.sh` ganha
     `SITE=ligado` e `CONTATO=ligado` (um `POST` com a isca, que não grava nem avisa).
 - **Prova:** `simulated` (`backend/tests/test_portal_site.py`, 12; `backend/tests/test_portal_contato.py`, 19; mais

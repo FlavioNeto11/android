@@ -150,8 +150,11 @@ class SitePublico:
             return
         arquivo = self.arquivos.get(caminho)
         if arquivo is None:
-            await _responder(send, 404, "Não encontrado.".encode("utf-8"), "text/plain; charset=utf-8",
-                             {"Cache-Control": "no-cache"}, metodo)
+            # A página 404 do site (29.80), com o status 404; sem ela na pasta, o texto curto de sempre.
+            pagina = self.arquivos.get("/404.html")
+            corpo, tipo = ((pagina.corpo, pagina.tipo) if pagina is not None
+                           else ("Não encontrado.".encode("utf-8"), "text/plain; charset=utf-8"))
+            await _responder(send, 404, corpo, tipo, {"Cache-Control": "no-cache"}, metodo)
             return
         cabecalhos = {"Cache-Control": "no-cache", "ETag": arquivo.etag}
         if _cabecalho(scope, b"if-none-match") == arquivo.etag:

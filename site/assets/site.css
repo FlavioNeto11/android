@@ -15,7 +15,8 @@
   --texto: #e8eef5;
   --texto-2: #a7b6c8;
   --acento: #22d3ee;
-  --acento-forte: #0891b2;
+  --acento-forte: #0e7490;   /* texto e traço sobre fundo claro: 5,4:1 no branco, AA (29.80) */
+  --foco: #0e7490;
   --acento-2: #2dd4bf;
   --ok: #34d399;
   --vai: #38bdf8;
@@ -36,7 +37,9 @@ h1, h2, h3 { line-height: 1.15; margin: 0 0 .5em; letter-spacing: -.015em; }
 p { margin: 0 0 1em; }
 ul, ol { margin: 0; padding: 0; list-style: none; }
 a { color: var(--acento-forte); text-underline-offset: 3px; }
-:focus-visible { outline: 3px solid var(--acento); outline-offset: 3px; border-radius: 6px; }
+/* Foco com 3:1 nos dois fundos (WCAG 1.4.11): escuro no claro, ciano no escuro. */
+:focus-visible { outline: 3px solid var(--foco); outline-offset: 3px; border-radius: 6px; }
+.topo, .abertura, .secao-escura, .rodape { --foco: var(--acento); }
 
 .sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
 .visualmente-oculto {
@@ -433,6 +436,7 @@ a { color: var(--acento-forte); text-underline-offset: 3px; }
 .contato-acoes svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
 .formulario {
+  --foco: var(--acento-forte);   /* cartão claro dentro da seção escura */
   background: #fff; color: var(--tinta); border-radius: 16px; padding: 24px; display: grid; gap: 18px;
   box-shadow: 0 40px 80px -40px rgba(0, 0, 0, .6);
 }
@@ -490,3 +494,10 @@ address + .rodape-titulo { margin-top: 28px; }
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Página 404 do site (29.80): a abertura escura ocupa a tela, sem o resto da página. */
+.pagina-erro { min-height: 100vh; display: flex; flex-direction: column; background: var(--noite); }
+.pagina-erro main { flex: 1; display: flex; }
+.abertura.erro { flex: 1; display: flex; align-items: center; }
+.abertura.erro h1 { max-width: 16em; }
+.formulario-fora p { margin: 0; }
