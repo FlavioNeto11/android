@@ -279,6 +279,14 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   não vale). Valor da IMAGEM, ou saída de catálogo sem seletor nem rótulo na árvore: UMA pergunta de sim ou não ao
   verificador (~US$ 0,005 com o Haiku e imagem), e incerto conta como não. Dúvida recusa a leitura
   (`leitura.sem_relacao`, linha na execução); quatro recusas viram o desfecho do 31.38. Achado real: 03d58e.
+  **Nome de PAPEL (item 31.47, sem migração):** `manchete`, `título`, `assunto`, `nome`, `remetente`, `autor`… (lista
+  fechada pt/en, `e_nome_de_papel`) rotulam o LUGAR do texto, não uma palavra dele: a manchete de um portal nunca contém
+  "manchete". Sem evidência da árvore, o nome de papel vai SEMPRE ao verificador (mesmo em planejamento livre, sem
+  catálogo), e a pergunta é "este elemento ocupa o papel X nesta tela?" (`pergunta_de_papel`: id, bounds e tamanho da
+  tela; rodapé, item de menu, botão, banner e anúncio nomeados como NÃO), não "o texto tem relação com X". "não" e
+  "incerto" recusam como antes. Nome que não é de papel (preço, protocolo…) segue com a pergunta de relação. Custo: uma
+  chamada de verificação por leitura de papel sem rótulo na árvore. Achado real: df1212 (g1, `read_headline`): duas
+  leituras certas da manchete recusadas, sem juiz nenhum, e a etapa terminou em dado ausente.
 - **Leitura sem o dado (item 31.38, `ai.max_decisoes_leitura`, sem migração):** na etapa de LEITURA (declara saídas,
   sem efeito nem commit_guard) o ator pode chamar `step_blocked(kind="dado_ausente")`, e o teto de decisões por
   tentativa (12: p95 de 8 medido em 16 leituras com sucesso desde 27/09, com folga) tem o mesmo desfecho. A etapa não

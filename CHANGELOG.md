@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.47: nome de papel é julgado como papel, não como palavra do texto (branch fix/31-47-relacao-de-papel)
+
+- Achado real (df1212, Chrome, g1, android-09, banco central só leitura): `read_value(name=
+  "manchete", element_id="e85")` recusado duas vezes com "sem relação com 'manchete'" (31.41) e a etapa `read_headline`
+  em dado ausente. Nenhuma chamada de juiz existia na tentativa: a regra da árvore não achou rótulo nem forma e o nome
+  não estava em `cap.saidas` (planejamento livre). O texto de uma manchete nunca contém "manchete".
+- `taskqueue/relacao.py`: lista fechada de nomes de papel pt/en (`e_nome_de_papel`) e o enunciado `pergunta_de_papel`
+  ("este elemento ocupa o papel X nesta tela?", com id, bounds e tamanho da tela; rodapé, menu, botão, banner e anúncio
+  nomeados como não ocupam). `executor.py`: nome de papel sem evidência na árvore sempre vai ao verificador
+  (`_relacao_visual(..., alvo=)`), e a recusa do histórico diz que o papel não foi confirmado. As quatro recusas viram
+  dado ausente (31.41/31.38) continuam; "não" e "incerto" recusam; nome que não é de papel segue com a pergunta antiga.
+- Prova `simulated`: `tests/test_relacao_de_papel.py` (36: lista, caso df1212 com juiz "ocupa", controle negativo com
+  rodapé e menu, nome fora da lista, ponta a ponta no harness) e os testes do 31.41; nenhuma IA paga. Execução real
+  `not_run`. Sem migração; nenhum texto com snapshot sha256 mudou.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão

@@ -11,6 +11,11 @@ Evidência que vale, nesta ordem (a primeira que casar responde):
   (c) `forma`: a forma do valor confere com um tipo FECHADO inferido do nome — e-mail, data, telefone ou URL. Número
       sozinho não é forma (qualquer número da tela passaria; foi quase o 03d58e).
 Nada disso: `None` = dúvida, e dúvida nunca fecha como sucesso (quem chama recusa a leitura).
+
+Item 31.47: nome de PAPEL (manchete, título, assunto, remetente…) rotula o LUGAR do texto na tela, não uma palavra dele:
+a manchete de um portal nunca contém "manchete" (r-20261004172132-df1212, g1: duas leituras certas recusadas). Para
+esses nomes, sem evidência da árvore, a pergunta ao juiz é "este elemento ocupa o papel X nesta tela?" (`pergunta_de_papel`),
+e não "o texto tem relação com X". Dúvida segue recusando; elemento que não ocupa o papel (rodapé, menu, botão) também.
 """
 from __future__ import annotations
 
@@ -43,6 +48,10 @@ _TIPO_DO_NOME: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("email", ("email", "mail")), ("data", ("data", "nascimento", "date", "vencimento", "aniversario")),
     ("telefone", ("telefone", "celular", "phone", "whatsapp", "fone")), ("url", ("url", "link", "site", "endereco_web")),
 )
+#: Nomes de saída que dizem o PAPEL do elemento na tela (31.47), em pt e en, já normalizados. Lista FECHADA de propósito:
+#: o que não está aqui (preço, protocolo, código…) é dado que a tela rotula ou tem forma, e segue na pergunta de relação.
+_PAPEIS = frozenset({"manchete", "headline", "titulo", "title", "subtitulo", "subtitle", "assunto", "subject", "nome",
+                     "name", "remetente", "sender", "autor", "author", "destinatario", "recipient"})
 _FAIXA_ACIMA_PX = 80          # o rótulo logo acima do valor (formulário em duas linhas)
 
 
@@ -67,6 +76,29 @@ def termos_do_nome(nome: str, sinonimos: tuple[str, ...] = ()) -> set[str]:
 def tipo_pelo_nome(nome: str) -> str | None:
     n = _normal(nome)
     return next((tipo for tipo, chaves in _TIPO_DO_NOME if any(c in n for c in chaves)), None)
+
+
+def e_nome_de_papel(nome: str) -> bool:
+    """O nome da saída é de PAPEL (`manchete`, `titulo_do_video`, `assunto`…)? Vale qualquer palavra do nome na lista
+    fechada `_PAPEIS`; o resto do nome só qualifica (`primeira_manchete`)."""
+    return any(parte in _PAPEIS for parte in re.split(r"[_\-\s]+", _normal(nome)))
+
+
+def pergunta_de_papel(nome: str, valor: str, alvo: UiElement | None = None,
+                      tela: tuple[int, int] | None = None) -> str:
+    """O enunciado da pergunta ao juiz para um nome de PAPEL (31.47): o elemento ocupa o papel `nome` NESTA tela? O
+    juiz vê a imagem; o elemento vai descrito pela posição (bounds, na tela de `tela` px) para ele achá-lo. Fechado
+    contra "aceita qualquer texto": rodapé, menu, botão, banner e anúncio estão nomeados como NÃO."""
+    onde = ""
+    if alvo is not None:
+        x1, y1, x2, y2 = alvo.bounds
+        onde = f" (elemento {alvo.id}, {alvo.class_name.rsplit('.', 1)[-1] or 'View'}, bounds [{x1},{y1}][{x2},{y2}]"
+        onde += f", numa tela de {tela[0]}x{tela[1]} px)" if tela else ")"
+    return (f"O valor lido para '{nome}' foi \"{valor}\"{onde}. '{nome}' é um PAPEL na tela, não uma palavra do texto: "
+            f"o texto de uma manchete não contém 'manchete'. Julgue SÓ o papel: esse elemento ocupa o papel de '{nome}' "
+            "nesta tela (a posição, o destaque, o tamanho e os vizinhos o identificam como tal)? Se for rodapé, item "
+            "de menu, botão, banner, anúncio, aviso ou outro texto qualquer, NÃO ocupa. yes = ocupa; no = não ocupa; "
+            "uncertain = não dá para afirmar.")
 
 
 def relacoes_do_catalogo(entradas: tuple[str, ...], nome: str) -> tuple[str | None, tuple[str, ...]]:
