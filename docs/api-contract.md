@@ -207,6 +207,7 @@ interface Settings {
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;
   ai_max_calls_per_item: number; ai_max_calls_absolute: number;   // 17.12: teto = base + por_item × (itens − 1), até o absoluto
   capture_grid_interval_s: number; capture_focus_interval_s: number; frame_max_age_ms: number;
+  capture_yield_to_tree_s: number;   // 31.34: segundos em que a grade cede a vez à leitura da árvore (0 desliga)
   log_retention_days: number; evidence_retention_days: number;
 }
 

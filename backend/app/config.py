@@ -375,6 +375,8 @@ class LimitsCfg(BaseModel):
     ai_max_usd_per_day: float = Field(0.0, ge=0, le=100_000)
     capture_grid_interval_s: float = Field(5, ge=1, le=120)
     capture_focus_interval_s: float = Field(1, ge=0.3, le=30)
+    #: Item 31.34: segundos em que a prévia da GRADE de um aparelho cede a vez a uma leitura da árvore dele (0 desliga).
+    capture_yield_to_tree_s: float = Field(2.0, ge=0, le=30)
     frame_max_age_ms: int = Field(6000, ge=500, le=120000)
     # Prévia sob demanda (evolução de desempenho, contrato C2 do adendo v0.20). `on_demand`: só se captura prévia
     # de aparelho que algum painel está olhando (grade visível ou foco) ou que está sob controle manual — sem

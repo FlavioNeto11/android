@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.34: a prévia da grade cede a vez à leitura da árvore (branch feat/31-34-grade-cede-a-vez, sem migração)
+
+- `hierarchy()` marca o aparelho por `capture_yield_to_tree_s` (configuração, 2 s por padrão, 0 desliga, PUT /api/settings);
+  nesse intervalo a volta da GRADE não captura (`arvore_em_curso`, conta em `captura.evitada`) e o painel mostra a última
+  miniatura. O foco e o pedido explícito não cedem. Medida do 31.28 (04/10, android-04): painel aberto levava o p95 da
+  leitura da árvore de ~0,3 s a ~2 s.
+- Prova: `simulated` (`backend/tests/test_grade_cede_a_arvore.py`); `real` depois do deploy, com o mesmo `ab_3128.py`.
+
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 
 - `DeviceManager._recalcular_motivo_do_parado`: reescreve o `state_detail` de um aparelho de worker `stopped` com o
