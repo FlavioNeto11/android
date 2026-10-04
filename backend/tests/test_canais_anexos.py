@@ -32,7 +32,7 @@ from app.modules.avisos.domain.anexos import (
     sha256_valido,
     tamanho_legivel,
 )
-from app.modules.avisos.infrastructure.anexos import AnexoRecusado, ArmazemDeAnexos, CaminhoForaDoArmazem, caminho_em
+from app.modules.avisos.infrastructure.anexos import AnexoJaResolvido, AnexoRecusado, ArmazemDeAnexos, CaminhoForaDoArmazem, caminho_em
 from app.modules.avisos.infrastructure.entrada import (
     MOTIVO_TIPO_FORA,
     ConversaDoCanal,
@@ -896,3 +896,34 @@ async def test_a_falha_comum_responde_e_deixa_motivo_nao_deixa_pendente(c: Cenar
     [r] = c.linhas()
     assert r["estado"] == "recusado" and r["motivo_recusa"] and r["ref_externa"] is None
     assert "Mande de novo" in c.ultima()
+
+
+# ---------------------------------------------------------------- achado 10: sem `assert` guardando invariante de produção
+async def _pendente_ja_resolvido(c: CenarioAnexos) -> dict[str, object]:
+    """Uma linha `pendente` que OUTRO líder já resolveu (a cópia velha que este ainda tem na mão)."""
+    await c.volta(msg(5, "oi"))
+    velha = c.armazem.pendente("ref-x", entrada_id=int(str(c.entrada(5)["id"])), mime_declarado=None, tamanho=10)
+    c.armazem.recusar("o tipo não serve", linha_id=int(str(velha["id"])), tamanho=10)
+    return velha
+
+
+async def test_resolver_duas_vezes_o_pendente_levanta_erro_proprio_mesmo_sem_assert(c: CenarioAnexos) -> None:
+    velha = await _pendente_ja_resolvido(c)
+    with pytest.raises(AnexoJaResolvido) as exc:
+        c.armazem.recusar("de novo", linha_id=int(str(velha["id"])))
+    assert exc.value.linha is not None and exc.value.linha["estado"] == "recusado"
+    assert not isinstance(exc.value, AssertionError)
+
+
+async def test_pendente_ja_resolvido_nao_derruba_a_conversa_e_o_dono_ouve_o_resultado_gravado(c: CenarioAnexos) -> None:
+    velha = await _pendente_ja_resolvido(c)
+    c.bot.arquivos["ref-x"] = JPEG
+    texto = await c.conversa()._baixar(SaidaDoTelegram(c.canal), velha)               # type: ignore[arg-type]
+    assert texto.startswith("Não guardei o anexo:") and "o tipo não serve" in texto
+    assert [l["estado"] for l in c.linhas()] == ["recusado"]                          # nada duplicado, nada reaberto
+
+
+async def test_sem_armazem_o_baixar_responde_em_vez_de_levantar(tmp_path: Path) -> None:
+    c = CenarioAnexos(tmp_path, anexos=False)
+    texto = await c.conversa()._baixar(SaidaDoTelegram(c.canal), {"id": 1, "ref_externa": "x"})   # type: ignore[arg-type]
+    assert texto.startswith("Não guardei o anexo:")
