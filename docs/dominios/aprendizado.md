@@ -1570,7 +1570,7 @@ nunca chama IA.
 - a `invalida` da execução VENCE no fechamento (antes do `for`): o pedido fecha `recusada` com o motivo dela
   (`efeito_repetido`, `ponto_de_partida`, `ator_sem_acao`). Não devolve o item ao curador nem reabre. Um pedido já
   fechado `sem_evidencia` cuja execução ganha depois a `invalida` passa ao motivo dela (o mesmo molde do 30.36);
-- **limite de provas:** no máximo 2 provas por item e versão do conteúdo em 7 dias (`MAXIMO_DE_PROVAS`,
+- **limite de provas:** no máximo 4 provas por item e versão do conteúdo em 7 dias (era 2 até o 29.75; `MAXIMO_DE_PROVAS`,
   `JANELA_DE_PROVAS_DIAS`). A 3ª fecha `recusada/limite_de_provas` ao despachar, sem gastar. A versão é a marca
   `[xxxxxxxxxxxx]` (`content_hash` do plano); prova anterior com outra marca não conta, e prova sem marca conta (lado
   seguro). É aproximado, sem migração;
@@ -1593,7 +1593,7 @@ No P4 de 03/10, a prova do fluxo com `for_each` sobre 8 contatos gastou US$ 0,15
 enviou 3 mensagens e fechou `sem_evidencia`; inteira, custaria de 0,33 a 0,36. Decisão da orquestradora (03/10 21:44Z),
 sem migração:
 
-- **O teto da prova de fluxo** é `min(0,40; 0,05 + 0,02 × etapas)` (`domain/validacao.teto_da_prova`,
+- **O teto da prova de fluxo** é `min(0,80; 0,05 + 0,02 × etapas)` (máximo de 0,40 até o 29.75) (`domain/validacao.teto_da_prova`,
   `TETO_DA_PROVA_*`). Ele vai ao pedido no despacho, no mesmo UPDATE que liga a execução (`comecar(...,
   teto_da_prova=)`), e VENCE o teto gravado: o fixo de quando o pedido nasceu, ou o 0,15 gravado à mão em 03/10 20:56Z.
 - **O plano acima do máximo não despacha.** Com 18 etapas ou mais, ou de tamanho desconhecido, o pedido fecha
@@ -1641,7 +1641,7 @@ das versões). `real`: `not_run` até o deploy.
 O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 e o fluxo nunca se validava por pedido: o
 lv-5cf7389f13e4e0f0 (30.47, 04/10) fechou `plano_acima_do_teto`. Agora a PROVA de fluxo roda uma amostra:
 
-- **N** é o maior número de itens que cabe no máximo da prova (`maximo_de_etapas_da_prova()`, 17 etapas), entre
+- **N** é o maior número de itens que cabe no máximo da prova (`maximo_de_etapas_da_prova()`, 37 etapas desde o 29.75), entre
   `AMOSTRA_MINIMA` (2) e `AMOSTRA_MAXIMA` (3): `tamanho_da_amostra(fixas, por_item)` em `domain/validacao.py`. Sem
   laço, ou sem caber nem 2 itens, é `None` e o pedido fecha `plano_acima_do_teto` como antes.
 - **Os N primeiros, na ordem da tela.** Não há sorteio: o `Scheduler._expand_for_each`, só quando a execução tem

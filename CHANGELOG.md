@@ -332,6 +332,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `simulated`: `tests/test_telegram_entrada.py` tem 5 casos novos, e 4 deles falham contra o código antigo. O teste do
   roteador também foi coberto. Nos arquivos de canais tocados: 203 passed.
 - Doc: `docs/dominios/canais.md`, depois da C-13.
+## 2026-10-04 — 29.75: limites da prova de fluxo calibrados (branch fix/29-75-limites-da-validacao)
+
+- `MAXIMO_DE_PROVAS` passa de 2 para 4 por item e versão em 7 dias. Em 7 dias houve 1 recusa `limite_de_provas`.
+- `TETO_DA_PROVA_MAXIMO_USD` passa de 0,40 para 0,80, e a prova cabe em até 37 etapas. Em 7 dias houve 3 recusas
+  `plano_acima_do_teto`.
+- Decisão da orquestradora sobre a tabela do 29.75. O ambiente é de calibração (decisão do dono).
+- A saúde (D-5), o α do curador, a regra de uma conta por alvo e a recusa `efeito_real` ficam como estão.
+- Os testes do limite, da amostra e do teto passam a seguir as constantes. Os 63 arquivos `test_learning_*` deram
+  1061 aprovados. A prova é `simulated`.
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
