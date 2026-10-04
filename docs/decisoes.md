@@ -5510,7 +5510,8 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
    `portal-contatos` (a cada minuto, no líder da trava `avisos`) reenvia pela ordem `tentativas, id` e respeita o teto
    da hora. O "+N" acima dos tetos (os `retido` agora e os `descartado` da última hora) vai ao dono pelo aviso
    `portal.resumo` da Canais (`avisar_resumo_do_portal(retidos, descartados, janela_h)`, #335), só com números e com
-   chave por hora UTC: o laço chama a cada volta e a chave garante uma mensagem por hora. `tentativas` conta as chamadas que chegaram à Canais, menos `canal_desligado` (espera, não falha); com 10
+   chave por hora UTC (vale a primeira chamada da hora): o laço chama uma vez por hora, na virada, com a hora que
+   acabou de fechar. Acima do limiar da Canais sai na hora; abaixo, na janela da rotina. `tentativas` conta as chamadas que chegaram à Canais, menos `canal_desligado` (espera, não falha); com 10
    falhas (`FALHAS_MAX`) a linha vira `descartado` com motivo `falhas_demais`. Sem isso, um conteúdo que faz a Canais
    levantar voltaria a cada minuto e, com 20 assim, prenderia o reenvio dos seguintes em silêncio.
    `entregue` aqui quer dizer "na fila da Canais" (`enfileirado=True`), não "lido no Telegram": se o canal for

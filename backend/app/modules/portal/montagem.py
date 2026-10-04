@@ -92,6 +92,7 @@ class Portal:
         Roda mesmo com o contato desligado: a promessa dos 180 dias da página vale para o que já foi guardado, e
         desligar o formulário não pode congelar a retenção. Desligado, só o reenvio é pulado."""
         ultima_retencao = float("-inf")
+        hora_do_resumo = now().strftime("%Y-%m-%dT%H")      # a 1ª volta não resume uma hora pela metade
         while True:
             await asyncio.sleep(REENVIO_S)
             if lider() is None:
@@ -101,8 +102,13 @@ class Portal:
                     contagem = await asyncio.to_thread(self.contatos.reenviar, now())
                     if contagem:
                         log.info("portal: reenvio %s", contagem)
-                    # A cada volta: a chave por hora UTC da Canais é que faz "no máximo um por hora".
-                    await asyncio.to_thread(self.contatos.resumir, now())
+                    # Uma vez por hora UTC, na virada, com a hora que acabou de fechar: na chave da Canais
+                    # (`portal-resumo:<hora>`) vale a PRIMEIRA chamada da hora, então chamar a cada minuto deixaria uma
+                    # contagem pequena do começo da hora esconder um pico do fim dela.
+                    agora = now()
+                    if agora.strftime("%Y-%m-%dT%H") != hora_do_resumo:
+                        hora_do_resumo = agora.strftime("%Y-%m-%dT%H")
+                        await asyncio.to_thread(self.contatos.resumir, agora)
                 if time.monotonic() - ultima_retencao >= RETENCAO_S:
                     apagados = await asyncio.to_thread(self.repo.apagar_vencidos, now())
                     ultima_retencao = time.monotonic()
