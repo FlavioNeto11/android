@@ -109,6 +109,9 @@ class Governance:
     limit_bucket: str | None = None
     #: O parâmetro que diz quem é a pessoa do outro lado do efeito: o alvo da regra de uma conta por alvo (ADR-055).
     counterparty: str | None = None
+    #: 30.64: os parâmetros que dizem sobre o quê o efeito age (post, comentário, conversa, mídia); com o perfil, a
+    #: ação e o texto, a identidade do item aprovado e do item já feito. Vazio numa ação com efeito: falha fechado.
+    objeto_alvo: tuple[str, ...] = ()
     #: Exige conteúdo gerado (e aprovado, se a política pedir) antes de agir.
     needs_draft: bool = False
 

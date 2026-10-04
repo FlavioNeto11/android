@@ -228,6 +228,9 @@ acoes:
     inherited_bindings: [caption_contains, post_author]
     # Quem recebe a curtida é quem publicou: é por ele que a frota conta contas por alvo (ADR-055).
     counterparty: post_author
+    # 30.64: o objeto do efeito (com o perfil, a ação e o texto, a identidade do item aprovado e do já feito):
+    # o post é o de `post_author` que tem `caption_contains`; a pessoa sozinha não diz QUAL post.
+    objeto_alvo: [post_author, caption_contains]
     precondition: A publicação alvo está aberta na tela.
     goal: Curtir a publicação aberta, uma única vez.
     post_kind: model_judged
@@ -255,6 +258,7 @@ acoes:
     optional_bindings: [post_author]
     inherited_bindings: [post_author]
     counterparty: post_author
+    objeto_alvo: [post_author]
     precondition: A publicação alvo está aberta na tela.
     goal: Remover a curtida da publicação aberta.
     post_kind: model_judged
@@ -284,6 +288,7 @@ acoes:
     band_guard: ['{username}']
     limit_bucket: likes
     counterparty: username                      # o dono do comentário, não o autor da publicação
+    objeto_alvo: [username]
     # O coração marcado tem de estar na FAIXA do comentário de {username}: o de cima não prova o de baixo.
     local_proof: selector_band:desc==Liked
     reconciliation: Observar o ícone do comentário alvo depois do toque.
@@ -297,6 +302,7 @@ acoes:
     # dono do comentário, e herdar `username` faria um comentário no post contar para quem comentou nele.
     inherited_bindings: [caption_contains, post_author]
     counterparty: post_author
+    objeto_alvo: [post_author, caption_contains]
     precondition: A lista de comentários está aberta e o texto já foi escrito e aprovado.
     goal: Publicar o comentário com o conteúdo aprovado.
     post_kind: model_judged
@@ -335,6 +341,7 @@ acoes:
     band_guard: ['{username}']
     limit_bucket: comments
     counterparty: username
+    objeto_alvo: [username]
     default_policy: approval_required
     needs_draft: true
     reconciliation: A resposta precisa aparecer na conversa do comentário; nunca reenviar por timeout.
@@ -360,6 +367,7 @@ acoes:
     commit_guard: ['{username}', '{content}']
     limit_bucket: dms
     counterparty: username
+    objeto_alvo: [username]
     default_policy: approval_required
     needs_draft: true
     failure_marks: [Not delivered, Tap to retry, Failed to send, Message not sent, Não entregue, Toque para
@@ -389,6 +397,7 @@ acoes:
     commit_guard: ['{username}']
     limit_bucket: follows
     counterparty: username
+    objeto_alvo: [username]
     default_policy: approval_required
     reconciliation: 'Ler o botão depois do toque: Following, Requested ou ainda Follow.'
 
@@ -407,6 +416,7 @@ acoes:
     commit_guard: ['{username}']
     limit_bucket: follows
     counterparty: username
+    objeto_alvo: [username]
     default_policy: manual_only
     reconciliation: Ler o botão depois da confirmação; o app costuma pedir confirmação em diálogo.
 
@@ -426,6 +436,7 @@ acoes:
     band_guard: ['{username}']
     limit_bucket: follows
     counterparty: username
+    objeto_alvo: [username]
     default_policy: approval_required
     reconciliation: A linha do pedido some ou muda de estado; não tocar de novo.
 
@@ -445,6 +456,7 @@ acoes:
     band_guard: ['{username}']
     limit_bucket: follows
     counterparty: username
+    objeto_alvo: [username]
     default_policy: approval_required
     reconciliation: A linha some da lista; recusar duas vezes não é possível, mas tocar de novo acerta outro
       pedido.
@@ -492,6 +504,7 @@ acoes:
     # contas por alvo); por isso não há `counterparty` nem binding `username`/`target`.
     bindings: [image_id]
     optional_bindings: [posts_antes, content_brief, content, content_verbatim]
+    objeto_alvo: [image_id]
     preparo: [PUT_MEDIA_IN_GALLERY]
     precondition: A imagem está na galeria do aparelho, o editor de nova publicação está aberto com ela escolhida e a
       legenda já foi escrita e aprovada.

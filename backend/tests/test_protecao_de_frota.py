@@ -237,7 +237,7 @@ def test_executor_passa_a_contraparte_declarada_ao_historico(tmp_path: Path) -> 
 def test_carga_recusa_acao_com_limite_sem_alvo_declarado() -> None:
     base = {"key": "SEGUIR", "title": "Seguir", "goal": "Seguir.", "post_kind": "model_judged", "post_value": "x",
             "post_description": "y", "side_effect": True, "commit_selector": "text=Follow", "limit_bucket": "follows",
-            "bindings": ["username"]}
+            "bindings": ["username"], "objeto_alvo": ["username"]}
     with pytest.raises(CatalogoInvalido, match="counterparty"):
         catalogo_de_dados({"app": "com.exemplo.x", "contract_version": 1, "acoes": [base]})
     with pytest.raises(CatalogoInvalido, match="counterparty"):
