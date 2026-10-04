@@ -6709,6 +6709,42 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T02:23:12+00:00"
+  },
+  "29.64": {
+   "id": "29.64",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #191 (b8cb3f5c + e840d668, revisão da orquestradora 01:31Z), suíte 18, deploy 18 (f1651ec8). simulated: backend/tests/test_retoque_no_login.py (16: toque ignorado com formulário intacto ganha UM re-toque sem redigitar e entra; dois ignorados param incertos sem terceiro envio; carregando, senha limpa, botão desabilitado, identificador trocado, erro de credencial/desafio/outra tela na releitura, outro pacote e conta parada no meio não ganham re-toque; review -> active com a conta conferida aberta, também no observe_only, mantendo blocked_until; invalid não se reconcilia; a senha não vaza em banco, log nem resultado), FakeInstagram.envios_ignorados/tela_ao_ignorar/pacote_forcado; vizinhos do login 270 passed. Real not_run: o toque perdido não se reproduz de propósito e pede login em conta real (android-13, 04/10, c-20261004001548-03701b é o caso que motivou).",
+   "grupo": "android-suite18",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T02:35:26+00:00"
+  },
+  "29.65": {
+   "id": "29.65",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #192 (b321b081), suíte 18, deploy 18 (f1651ec8). simulated: backend/tests/test_roteamento_por_persona.py (caso E: sessão nos dois -> o principal; entre secundários com sessão o balanceamento desempata; principal desligado com secundário ligado cede ao balanceamento) e test_roteamento_execucao.py (prévia com os dois ligados -> principal; com cada um desligado -> o ligado); 115 passed nos testes de roteamento. Mundo.ligados vem do serviço (InstanceState.online). Com ele no ar, a regra de dizer o aparelho nos comandos da persona do android-13 caiu.",
+   "grupo": "android-suite18",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T02:35:26+00:00"
+  },
+  "29.60": {
+   "id": "29.60",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #193 (9175e09f), suíte 18, deploy 18 (f1651ec8). simulated: frontend/src/features/runs/ResumoDaExecucao.test.tsx (linha 'Efeito repetido' no resumo com título, aparelho, 'apareceu N vezes' e 'contado na tela pelo verificador'; some sem repetição) e resumo.test.ts (frases e filtro de 2+ cópias); 158 passed em features/runs; detalhe da etapa (InstancesTab) mostra 'Efeito repetido'. O percurso no navegador é da validação do deploy 18.",
+   "grupo": "android-suite18",
+   "modelo": "claude-opus-5-5",
+   "esforco": "sessao executora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T02:35:26+00:00"
   }
  },
  "rodadas": [
@@ -8412,6 +8448,17 @@
    ],
    "grupos": [
     "canais-noite-04-10"
+   ]
+  },
+  {
+   "quando": "2026-10-04T02:35:26+00:00",
+   "itens": [
+    "29.64",
+    "29.65",
+    "29.60"
+   ],
+   "grupos": [
+    "android-suite18"
    ]
   }
  ]

@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-351 de 415 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+354 de 415 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -331,12 +331,12 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.57 | pendente | — | — | — |  |  |
 | 29.58 | implemented | real | claude-opus-5-5 | — | real 04/10/2026 00:01:08Z-00:01:56Z, central WIN-7S2UASNLFOP, commit 3b5355ce (deploy 16): execução r-20261004000108-fee44f no android-10 (QA Messenger, sem conta) com o comando da 5f2de5 -> completed, 6 etapas succeede… |  |
 | 29.59 | pendente | — | — | — |  |  |
-| 29.60 | pendente | — | — | — |  |  |
+| 29.60 | implemented | simulated | claude-opus-5-5 | — | PR #193 (9175e09f), suíte 18, deploy 18 (f1651ec8). simulated: frontend/src/features/runs/ResumoDaExecucao.test.tsx (linha 'Efeito repetido' no resumo com título, aparelho, 'apareceu N vezes' e 'contado na tela pelo ver… |  |
 | 29.61 | pendente | — | — | — |  |  |
 | 29.62 | implemented | real | opus | — | PR #184 (3cc8c1aa, com a revisao da Android: a 2a chave lida uma vez e o mesmo inteiro no lock e no unlock), na main pela suite 17 e no ar no deploy 17 (0b7c2c39, 01:14:31Z de 04/10; o backend do central subiu migrando… |  |
 | 29.63 | pendente | — | — | — |  |  |
-| 29.64 | pendente | — | — | — |  |  |
-| 29.65 | pendente | — | — | — |  |  |
+| 29.64 | implemented | simulated | claude-opus-5-5 | — | PR #191 (b8cb3f5c + e840d668, revisão da orquestradora 01:31Z), suíte 18, deploy 18 (f1651ec8). simulated: backend/tests/test_retoque_no_login.py (16: toque ignorado com formulário intacto ganha UM re-toque sem redigita… |  |
+| 29.65 | implemented | simulated | claude-opus-5-5 | — | PR #192 (b321b081), suíte 18, deploy 18 (f1651ec8). simulated: backend/tests/test_roteamento_por_persona.py (caso E: sessão nos dois -> o principal; entre secundários com sessão o balanceamento desempata; principal desl… |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -422,7 +422,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (64): 8.3, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.57, 29.59, 29.60, 29.61, 29.63, 29.64, 29.65, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.45, 31.10, 31.11, 31.12, 31.21, 31.26, 31.27, 31.28, 31.29, 32.4, T.2
+Pendentes (61): 8.3, 12.3, 14.12, 14.13, 15.15, 17.6, 17.9, 18.8, 18.9, 23.2, 23.11, 23.14, 25.9, 25.11, 27.2, 27.4, 28.10, 28.12, 28.13, 28.15, 28.16, 28.17, 28.18, 29.7, 29.9, 29.13, 29.19, 29.21, 29.24, 29.25, 29.26, 29.30, 29.33, 29.35, 29.36, 29.37, 29.38, 29.39, 29.41, 29.53, 29.57, 29.59, 29.61, 29.63, 30.18, 30.31, 30.34, 30.36, 30.37, 30.38, 30.45, 31.10, 31.11, 31.12, 31.21, 31.26, 31.27, 31.28, 31.29, 32.4, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
