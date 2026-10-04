@@ -226,6 +226,8 @@ def test_em_on_publica_e_confirma_pela_porta_da_pessoa(mundo: Mundo) -> None:
     aprovada = mundo.servico.entrada(LivroKind.RECEITA, refs["aprovar"].removeprefix("receita:"))
     assert (aprovada.state, aprovada.native_status) == (SkillState.PUBLISHED, "active")
     trilha = {str(t["item_ref"]): t for t in mundo.trilha_da_plataforma()}
+    # Contrato com a Canais (28.25): o desfazer acha o item pelas COLUNAS da linha (item_kind, item_ref, to_state).
+    assert {(str(t["item_kind"]), str(t["to_state"])) for t in trilha.values()} == {("receita", "published")}
     assert (trilha[refs["aprovar"]]["from_state"], trilha[refs["aprovar"]]["to_state"]) == ("validated", "published")
     assert regra_do_motivo(str(trilha[refs["aprovar"]]["reason"])) == ("qa_para_aprovar", 1)
     confirmacao = trilha[refs["revisar"]]
