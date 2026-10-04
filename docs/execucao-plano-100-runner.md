@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-410 de 445 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+410 de 447 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -279,6 +279,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.21 | implemented | real | sessao | — | PR #220 (canais/28-21-resolver-incerta @ 6104332e, migração 095, adendo v1.15), suíte 23, deploy 23 em 9add9fb2 (migração 095_ocorrencia_resolvida). Real em 04/10/2026 no central: o pedido ped_O_tLG52eXcmZNGB0THvIkA (lo… | None |
 | 28.22 | implemented | real | sessao | — | PR #247 (migração 099, adendo v1.17), suíte 26, deploy 26 (60b3a0a9). (b) motivo do cancelamento: REAL em 04/10/2026 13:17:18Z (ped_llz09XacVMyGLaanpZDOhg; motivo só no detalhe, 0 eventos e 0 avisos com ele) e tela vali… | None |
 | 28.23 | implemented | real | claude-opus-5-5 | — | Lado da execução, real em 04/10/2026, deploy 27 (ac7175ac, migração 100), android-09 (QA), pedidos de teste com gatilho agora, os dois cancelados depois. (1) observar: ped_3w4Kmy-wUSShbaLbvAUJyg, r-20261004151528-729abd… | None |
+| 28.24 | pendente | — | — | — |  |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -345,6 +346,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.67 | implemented | real | claude-opus-5-5 | — | Real 04/10, central em 60b3a0a9 (deploy 26), durante a suíte 27: measurements(kind='irq') com host_cpu 87,4–91,7 % às 14:59:03–07Z ficaram ignorada=true em android-05 (irq 0,116), 03 (0,157), 01 (0,2115) e 06 (0,4237, q… | None |
 | 29.68 | partial | real | claude-fable-5-1 | — | 04/10/2026, android-10 contra android-09 (notebook), sem IA. Antes do reboot (12:33Z): árvore pela API p50 252 ms (10) contra 283 ms (09); no convidado do 10, load 1,2 e kernel inflado nos mesmos processos (composer 8,8… | Resto não explicado: 6,0 s contra 4,3 s com uma amostra por aparelho. Próxima medida: cinco execuções alternadas por aparelho, sem IA, com o central calmo, e o… |
 | 29.70 | pendente | — | — | — |  |  |
+| 29.71 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -452,7 +454,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (35): 8.3, 14.12, 15.15, 17.6, 17.9, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.41, 29.66, 29.68, 29.70, 30.34, 30.48, 30.52, 30.53, 31.11, 31.12, 31.13, 31.26, 31.35, 31.40, T.2
+Pendentes (37): 8.3, 14.12, 15.15, 17.6, 17.9, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.41, 29.66, 29.68, 29.70, 29.71, 30.34, 30.48, 30.52, 30.53, 31.11, 31.12, 31.13, 31.26, 31.35, 31.40, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
