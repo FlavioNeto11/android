@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.56: a resposta a comentário já dada não volta ao dono como pedido novo (branch feat/30-56-ja-respondido)
+
+- Caso real: a execução `r-20261004172212-fc1a88` pediu ao lucas uma segunda resposta ao comentário do bruno (a primeira
+  era de 03/10, `int-fPuCkX3vCt7WnmsL`). O dono aprovou pelo Telegram e só o ator, já na tela, recusou a duplicata.
+  Nada saiu; o item foi abandonado (US$ 0,1643).
+- `PolicyEngine.check` recusa o `REPLY_COMMENT` antes do rascunho e da aprovação, sem `retry_at`, quando esta conta já
+  respondeu ao mesmo alvo na janela `fleet_target_window_days` (saída `comment_replied` pendente, confirmada ou incerta,
+  gravada por etapa de `REPLY_COMMENT` ou sem etapa conhecida) ou já tem pedido de resposta a ele em aberto. A interação
+  e o pedido da própria etapa não contam (retomada). `CREATE_COMMENT`, que grava o mesmo tipo, fica fora.
+- Repositório: `ultima_saida_para` e `pedido_em_aberto_para`, perguntas do próprio perfil. Emenda datada do ADR-055.
+  Sem migração.
+- Prova `simulated`: `backend/tests/test_ja_respondido.py` (8 testes, com a forma exata da interação real e a porta do
+  despacho). Sobre uma cópia do banco do central, o caso real é recusado citando a `int-fPuCkX3vCt7WnmsL`. Na
+  produção: `not_run` até o deploy.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão

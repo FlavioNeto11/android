@@ -2093,7 +2093,8 @@ class AppState:
         # `package`: a política é do APP desta etapa (23.10) — SEND_MESSAGE do Instagram e o de outro catálogo são
         # escolhas diferentes do perfil.
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
-                                       app_id=app_da_etapa.id if app_da_etapa else None, package=pacote)
+                                       app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
+                                       step_id=srow["id"])
         if not veredito.allowed:
             return veredito
         # O texto é escrito AQUI, com a persona deste perfil, antes de qualquer digitação e antes da aprovação —
