@@ -6335,15 +6335,16 @@
   },
   "30.36": {
    "id": "30.36",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "PR #163 (feat/30-36-forma @ 2a16417a; código 32d69b00, docs 2a16417a; base d5a1c3a9, a main da suíte 12), para a suíte 13. Comparador da sombra com caminho × forma (Posicao.FORMA, que não conta), contra efetivo num ponto só (promocao.efetivas/contrarias, linhas.contra_efetivo), passo forma_dos_fluxos (reclassificação idempotente), motivos evidencia_contra/divergencia_de_forma/sem_caminho no pedido do 30.31 com remotivação do sem_evidencia, caminho_da_receita pelo plano do fluxo ativo, notas do dossiê só quando valem, painel com a forma à parte; emenda à D1 do ADR-054; adendo v0.96; sem migração. simulated: tests/test_learning_forma.py (20); bateria dos afetados depois do rebase 146 arquivos 2449 passed 0 failed; vitest do aprendizado 151 passed; typecheck ok; docs-check 0/0. Cópia do banco do central (17:04Z, depois do deploy 12): 1 linha forma, 2 remotivados, 5 pendentes sem_caminho (19→14), 6 revisões novas do curador ~US$ 0,06. Falta: o merge na suíte 13, a PG (55433 desligada; SQL NOT EXISTS puro) e o real (a reclassificação no central depois do deploy 13).",
-   "grupo": "aprendizado-pr163",
-   "modelo": "claude-opus-5-5",
-   "esforco": "medio",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Codigo na main desde a suite 13 (PR #163) e no ar desde o deploy 13; hoje o central esta em c683ab0e (deploy 19). Real, banco do central em so leitura, lido em 04/10 08:09Z: 1 linha learning_evidence com stance='forma' (03/10 19:05:42Z), gravada pela sombra fora da regra das duas discordancias; os pedidos do 30.31 fecharam pelos motivos novos (1 divergencia_de_forma e 1 evidencia_contra em learning_validations). As suites seguintes rodaram em PG os testes afetados (suite 18: 4306 passed com o esquema do worker), cobrindo o SQL NOT EXISTS que faltava no PG. Simulado: os testes do PR #163 (test_learning_forma*, test_learning_validacao*).",
+   "blocker": "",
+   "grupo": "30.36-30.37",
+   "modelo": "opus",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T17:11:59+00:00"
+   "quando": "2026-10-04T08:14:29+00:00"
   },
   "32.1": {
    "id": "32.1",
@@ -6367,15 +6368,16 @@
   },
   "30.38": {
    "id": "30.38",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "Partes (a) e (b) implantadas no deploy 16 (commit 3b5355ce; branch feat/30-38-ab-validacao @ 096bc432, adendo v1.02): vocabulário fechado da origem em app/contracts/origem.py, selo de origem no painel e aba Aprendizado > Validação (GET /api/aprendizado/validacoes); summaryOf mantém origem/origem_ref/prova_fluxo_id/pedido_id/app_ids ao abrir pelo cartão (frontend/src/store/live.test.ts). Simulated: backend/tests/test_origem_da_execucao.py, test_validacoes_listagem.py, testes do front (1439 passed na suíte 16). Percurso no navegador feito antes do merge; a conferência no deploy 16 (selo ao abrir pelo clique no cartão) é da validação do deploy 16. Parte (c) saiu no #174.",
-   "grupo": "android-deploy16-e-8.4",
-   "modelo": "claude-opus-5-5",
-   "esforco": "sessao executora",
+   "evidence": "(c) na suíte 13, (a) e (b) na suíte 14, tudo no ar; adendo v1.02. simulated: testes das suítes 13 e 14. Conferências reais da orquestradora no central (WIN-7S2UASNLFOP, deploy 20, 051fc3e0) em 04/10/2026: (a) às 08:13Z a tela Execuções mostrava a origem nas execuções de validação (14 marcas 'Prova de fluxo (validação)' e 10 'Validação do QA' na lista e no cartão); (b) GET /api/aprendizado/validacoes devolveu 200 às 08:13Z e a tela Aprendizado › Validação foi percorrida nas validações dos deploys 17 e 18; (c) GET /api/aprendizado/pendentes serviu `classe` com `classe_no_parecer` nulo nos 3 pareceres pendentes (classe B, sem divergência no momento). O caso em que a classe gravada difere da de agora não apareceu no central, por isso a prova do item fica simulated.",
+   "blocker": "",
+   "grupo": "orquestradora-deploy20",
+   "modelo": "claude-fable-5-1",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T01:18:16+00:00"
+   "quando": "2026-10-04T08:14:29+00:00"
   },
   "29.51": {
    "id": "29.51",
@@ -6428,15 +6430,16 @@
   },
   "30.37": {
    "id": "30.37",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "PR #168 (feat/30-37-prova @ d067d904, base 177b18cd), para a suíte 14: migração 084 (runs.prova_fluxo_id, learning_validations.teto_usd); a execução de prova roda o plano do próprio fluxo (FlowStore.plano_em_prova, candidate/validated/active) sem planejador, RESOLVE, flow_id, flows.used, skill_hash, sombra da intenção nem aprendizado de fluxo; etapa que pediria pessoa encerra a prova pelo sistema (etapas fechadas, aprovações expiradas, sem cancelou_execucao, sem aviso); evidência pelas etapas (for/against, infra não conta) com a marca do conteúdo, inclusive no fluxo ativo; pedido de fluxo despacha como prova, sem_caminho pelo molde (só a receita volta ao curador), infra fecha sem_evidencia, teto 0,10 por pedido no roteador, reabertura do item 8 uma vez; selo 'Prova de fluxo (validação)' e RunSummary.prova_fluxo_id; emenda datada à D1 do ADR-054, adendo v0.97. simulated: test_learning_prova, test_learning_prova_validacao, test_learning_forma, test_learning_validacao_sql, test_avisos_servico, SeloDeProva/ResumoDaExecucao/RunsPage; bateria dos 259 afetados 5676 passed; vitest 1417/1418 (RunsPage '50 por vez' com tempo esgotado sob prioridade ociosa, 559 ms isolado); typecheck ok; docs-check 0/0. Cópia do central (03/10 ~19:00Z): os 26 fluxos vivos cabem no próprio comando de origem; a reabertura dá os 3 esperados (QA conta, localizar contato, QA-001-2). Falta: merge e deploy da suíte 14, P4 religado (validacao.modo on) e a prova real na primeira validação de fluxo depois do deploy; o custo da prova em coluna própria no registro_p4.py.",
-   "grupo": "aprendizado-pr168",
-   "modelo": "claude-opus-5-5",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Codigo na main desde a suite 14 (PR #168, migracao 084) e no ar desde o deploy 15; P4 ligado (validacao.modo on). Real, banco do central em so leitura, lido em 04/10 08:09Z: 13 execucoes de prova de fluxo (runs.prova_fluxo_id), de 03/10 20:50:26Z a 04/10 01:34:29Z. Os pedidos fecharam 10 feita e 3 recusada, com a evidencia do fluxo pelas etapas da propria prova (10 for, 1 against, 1 invalida pela regra do 30.42). Provas com o plano do proprio fluxo: por exemplo r-20261004012429-e25100 (2/2 etapas, US$ 0,0675) e r-20261004001905-9c839c (6/6, US$ 0,0755). O custo da prova tem coluna propria no registro (registro_p4.py, ajuste f). Simulado: test_learning_prova.py e test_learning_prova_validacao.py.",
+   "blocker": "",
+   "grupo": "30.36-30.37",
+   "modelo": "opus",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-03T19:07:53+00:00"
+   "quando": "2026-10-04T08:14:29+00:00"
   },
   "30.39": {
    "id": "30.39",
@@ -6748,16 +6751,16 @@
   },
   "29.61": {
    "id": "29.61",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "PR #194, na main pela suíte 19 (c683ab0e) e no ar no deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). simulated: front 1475 passed na suíte 19, com os testes do aviso e da seleção. real, conferido pela orquestradora no painel local do central entre 03:06Z e 03:08Z (navegador embutido, bundle index-CsKdzKDQ.js, que contém o texto do aviso): (a) Execuções sem id no link abriu a execução mais recente da lista (r-20261004013429-72c696): ok; (b) trocar o endereço para uma rota que não existe (#/rota-que-nao-existe) devolveu o endereço à tela atual, mas o aviso 'Este endereço não existe no painel' NÃO apareceu (nenhum elemento com role=alert, texto ausente do corpo), em três tentativas.",
-   "blocker": "O aviso de rota desconhecida não aparece no central: falta achar por que o estado rotaDesconhecida não chega à tela (suspeita: é limpo quando a rota atual é reaplicada). Correção e nova conferência no navegador.",
-   "grupo": "orquestradora-deploy19",
+   "evidence": "PR #194 (suíte 19) e a correção do PR #198 (051fc3e0, suíte 20 só-painel: typecheck limpo, front 1476 de 1477, a falha foi um timeout de RunsPage sob carga em arquivo não tocado, 7 de 7 isolado duas vezes). No ar no deploy 20 (04/10/2026 08:12Z, WIN-7S2UASNLFOP, commit 051fc3e0, bundle index-CHh0iWg3.js). real, conferido pela orquestradora no painel local do central às 08:13Z de 04/10 (navegador embutido): (a) Execuções sem id no link abriu a execução mais recente (r-20261004013429-72c696); (b) trocar o endereço para #/rota-que-nao-existe devolveu o endereço à tela atual e mostrou o aviso com role=alert 'Este endereço não existe no painel', com os botões 'Ir para o Painel' e 'Dispensar'; 'Dispensar' tirou o aviso. Prova de fora do portal ok às 08:12:53Z.",
+   "blocker": "",
+   "grupo": "orquestradora-deploy20",
    "modelo": "claude-fable-5-1",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T03:09:09+00:00"
+   "quando": "2026-10-04T08:14:29+00:00"
   },
   "29.59": {
    "id": "29.59",
@@ -6788,15 +6791,117 @@
   "32.4": {
    "id": "32.4",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #196 (cdad8422), na main pela suíte 19 (c683ab0e) e no ar no deploy 19 (04/10/2026 03:05Z). O link do painel nos cartões do espelho do Trello só leva identificador que casa por inteiro com a lista de permissão (execução r-<14 dígitos>-<6 hex>, pedido ped_<22>, receita:<número>, fluxo:<hex de 8 ou mais ou f<número>>); o resto abre só a tela. simulated: testes do espelho (105 passed, com slug de uma palavra, curto e com número, e os ids reais); leitura independente do diff antes da troca. real: not_run (sem cartão novo do espelho depois do deploy 19 na hora do registro).",
+   "proof": "real",
+   "evidence": "PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho reescreveu o cartão 6ac1b4b2bf3f7aae05f18458 às 03:05:14Z e o link do painel passou a sair sem slug (#/aprendizado?aba=aprendido). simulated: testes do espelho (105 passed, com slug de uma palavra, curto e com número, e os ids reais).",
    "blocker": "",
-   "grupo": "orquestradora-deploy19",
+   "grupo": "orquestradora-deploy20",
    "modelo": "claude-fable-5-1",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T03:09:09+00:00"
+   "quando": "2026-10-04T08:14:29+00:00"
+  },
+  "29.63": {
+   "id": "29.63",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #186 na main pela suite 18 (integ/suite-18 f1651ec8, FF 02:05Z de 04/10) e no ar no deploy 18 (02:06:05-02:06:41Z; so harness de teste, sem efeito no central). Medida real no farm-pg (PostgreSQL 17 de teste nesta maquina), 04/10, mesmo commit b2fda9f0 e mesmos testes (test_learning_* e mais 2 arquivos), -n 8, Idle: com ESQUEMA_MODELO=off, 1033 passed + 2 skipped em 8 min 49 s (01:18:43-01:27:36Z); com o esquema do worker, 1033 passed + 2 skipped em 2 min 51 s (01:27:36-01:30:31Z), com 8 migracoes, 551 reusos, 0 trocas e 0 conexoes encerradas (ESQUEMA_MODELO_RELATORIO). Em uso real na suite 18 (orquestradora): PG dos afetados 4306 passed + 12 skipped, 183 arquivos, -n 8, com o esquema do worker, em 12 min 32 s. Testes do proprio harness: tests/test_esquema_do_worker.py (3) e test_trava_de_migracao_por_esquema.py (3), 6 passed em PG as 01:18Z.",
+   "blocker": "",
+   "grupo": "29.63-30.45",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:14:29+00:00"
+  },
+  "30.45": {
+   "id": "30.45",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #188 (head 43895322) na main pela suite 18 (f1651ec8) e no ar no deploy 18 (02:06:41Z de 04/10). GET /api/aprendizado/validacoes manda invalida_depois em cada pedido; o Resumo da execucao diz 'inválida (…)' e o historico do item diz 'Rodou; depois: inválida — …'. No mesmo PR, da validacao do deploy 17: a evidencia com titulo mostra 'etapa N — Título', e a chave snake_case fica no title. Simulado: backend/tests/test_validacoes_listagem.py (2 testes novos: a invalida chegada depois e a de outra execucao, e o detalhe sem motivo lendo sem_evidencia) e frontend ValidacaoTab.test.tsx, model.test.ts e DetalheRico.test.tsx (vitest 333 em aprendizado e runs; typecheck limpo); suite 18 SQLite 9158 passed e PG dos afetados 4306 passed. Navegador em 04/10, 01:31-01:33Z, servidor proprio (8765/5188, copia do banco do central de 01:31Z): o Resumo da 5f2de5 diz 'Veredito da validação: inválida (O efeito saiu mais de uma vez…)', a ef5c86 segue 'a favor', o historico do fluxo diz 'Rodou; depois: inválida — …' e nao ha rolagem horizontal a 375 px. Real: not_run, a conferir no painel do central (Resumo da 5f2de5) depois do deploy 20.",
+   "blocker": "",
+   "grupo": "29.63-30.45",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:14:29+00:00"
+  },
+  "31.21": {
+   "id": "31.21",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Fechamento de registro: o item estava implementado e sem linha no estado. Código: PR #162 (671233fc a sombra diz se a chamada chegou ao POST, migração 083_sombra_postado; e12d15fd a leitura da intenção conhece a marca), na main pela suíte 13 (merge 376094b2), implantado no deploy 13 (1c54a7bb) e no ar desde então (083 em schema_migrations do central). Critérios do plano: decisao_fechada_sombra.postado (1 transporte chamado, 0 parou antes, NULO não se sabe) e ai_call_id em todas as linhas da chamada; decisor e porta repassam a marca (a rede acima do prazo guarda a do decisor); scripts/jev-leitura-intencao.py conta rede antes/depois/sem marca e a régua cega, e o cruzamento por id com ai_calls reprova nas linhas marcadas. simulated: backend/tests/test_decisao_fechada_postado.py (19) e 5 testes em scripts/tests/test_jev_leitura_intencao.py. real: 03/10/2026, WIN-7S2UASNLFOP, central em 51270b9c (deploy 14): leitura scripts/jev-leitura-intencao.py às 21:01:46Z (mode=ro + query_only) — intenção 1 chamada, 1 postada, marca 1, 0 fallbacks, veredito OK, 0 violações, cruzamento por id bate; a validação do deploy 14 no navegador (agente da orquestradora, banco ro) leu as 6 linhas novas da sombra com postado = 1 e ai_call_id de uma linha decisao_fechada com ok 1. Linha que gerou a marca: execução r-20261003210026-1639eb.",
+   "blocker": "",
+   "arquivos": [
+    "backend/migrations/083_sombra_postado.sql",
+    "backend/app/planning/decisao_fechada/porta.py",
+    "backend/app/planning/decisao_fechada/sombra.py",
+    "backend/app/planning/decisao_fechada/decisores.py",
+    "scripts/jev-leitura-intencao.py"
+   ],
+   "testes": "test_decisao_fechada_postado.py: 19; scripts/tests/test_jev_leitura_intencao.py: +5 (suíte 13).",
+   "grupo": "jev-31-21-31-27-31-28-31-29",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:14:29+00:00"
+  },
+  "31.27": {
+   "id": "31.27",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #189 @ f295f15a, na main pela suíte 18 (merge e50e8ed7; deploy 18, f1651ec8). A espera ANTES do primeiro julgamento (patient, pós-condição julgada ou nível de entrega) deixa de ser o sono fixo de judge_wait_s (1,5 s): lê a árvore a cada 0,3 s e sai quando a assinatura fica igual por ai.judge_wait_estavel_s (novo, 0,6 s), sem marca pendente do catálogo, com teto em judge_wait_s; a última leitura vira a 1ª do verificador. A espera entre sondagens (LT-5) segue fixa; judge_wait_estavel_s: 0 volta ao antigo; attempts.juiz_espera_ms (31.24) conta nos dois modos. simulated: backend/tests/test_juiz_espera_adaptativa.py (7); afetados 44 arquivos 850 passed + 1 falha de contagem de leituras em test_caminho_rapido_2 (LT-5), corrigida fixando judge_wait_estavel_s = 0 no _executor daqueles testes (asserção intacta), depois 36 passed; suíte 18 da orquestradora. Partida real (só leitura, 04/10): linha de base 4 esperas antes do julgamento = 6 s em 233 s de parede; 'depois' do deploy 16, 6 esperas = 9 s em 149 s. O real do ganho é a leitura depois do deploy 18, comparando também chamadas do juiz por etapa (ponto da Android: ícone de 'enviando' pode assentar antes e custar um 2º julgamento).",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/taskqueue/executor.py",
+    "backend/app/config.py",
+    "backend/tests/test_juiz_espera_adaptativa.py",
+    "backend/tests/test_caminho_rapido_2.py",
+    "docs/dominios/execution.md"
+   ],
+   "testes": "test_juiz_espera_adaptativa.py: 7 passed; afetados 850 + 36 passed (Idle, serial).",
+   "grupo": "jev-31-21-31-27-31-28-31-29",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:14:29+00:00"
+  },
+  "31.28": {
+   "id": "31.28",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Só a medida, só leitura (mode=ro + query_only), central WIN-7S2UASNLFOP, 04/10/2026 00:56Z, janelas de measurements kind=metricas desde 02/10, por aparelho: leitura da árvore com e sem prévia do painel no MESMO aparelho na janela. Worker do notebook (09/10/12/13; prévia ~88 KB, ~0,4 s): sem prévia 603 leituras, mediana dos p50 244 ms; com prévia 129 leituras, 149 ms — a prévia não pesa. Central (01/03/06; screencap cru ~700 KB, ~1,1 s): sem prévia 618 leituras, mediana dos p50 721 ms; com prévia 14 leituras em 5 janelas, 3.571 ms — indício de ~5×, amostra pequena e confundida (conta real, app pesado, prévia aberta quando alguém mexe). Página: .claude/handoffs/jev-31-28-medida-previa-2026-10-04.md. Orquestradora (04/10 01:00Z): medida aceita como inconclusiva, sem A/B nesta noite.",
+   "blocker": "Sem A/B controlado (árvore lida N vezes com o painel aberto e fechado no mesmo aparelho do central sem conta real); a mudança (prévia fora do ADB e reuso da árvore) é da Android e só se o A/B confirmar.",
+   "arquivos": [],
+   "testes": "não se aplica (medida só leitura).",
+   "grupo": "jev-31-21-31-27-31-28-31-29",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:14:29+00:00"
+  },
+  "31.29": {
+   "id": "31.29",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #190 @ 7d63cd2a (56706826 + a troca pedida pela Android), na main pela suíte 18 (merge 78e6dc67; deploy 18, f1651ec8). Investigação só leitura (04/10 00:55Z): 11 de 12 comandos da 1ª rodada da linha de base diziam só 'Configurações', o cadastro tem um nome só ('Configurações do Android'), nenhum app foi citado, a execução caiu no Instagram e o planejador pediu a pessoa (11 avisos no Telegram). Correção: planning/apps_do_comando.apps_citados ignora acento e caixa; APELIDOS_POR_PACOTE dá a com.android.settings só apelidos de mais de uma palavra ('Configurações do aparelho/telefone/celular/sistema', 'Ajustes do aparelho/telefone/sistema', 'Android Settings'); uma palavra só ('ajustes na legenda', 'configurações de privacidade') segue no app padrão; o padrão para o Instagram sem app citado não mudou. simulated: backend/tests/test_planejador_entre_apps.py::test_apelido_de_app_de_sistema_sem_acento_e_sem_caixa_31_29; afetados 36 arquivos + arquitetura 1158 passed. O real (um 'abra as Configurações do aparelho' num aparelho de QA) não foi executado.",
+   "blocker": "",
+   "arquivos": [
+    "backend/app/planning/apps_do_comando.py",
+    "backend/tests/test_planejador_entre_apps.py",
+    "docs/dominios/execution.md"
+   ],
+   "testes": "test_planejador_entre_apps.py + arquitetura 39 passed; afetados 1158 passed (Idle, serial).",
+   "grupo": "jev-31-21-31-27-31-28-31-29",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T08:14:29+00:00"
   }
  },
  "rodadas": [
@@ -8542,6 +8647,49 @@
    ],
    "grupos": [
     "orquestradora-deploy19"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:14:29+00:00",
+   "itens": [
+    "29.63",
+    "30.45"
+   ],
+   "grupos": [
+    "29.63-30.45"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:14:29+00:00",
+   "itens": [
+    "30.36",
+    "30.37"
+   ],
+   "grupos": [
+    "30.36-30.37"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:14:29+00:00",
+   "itens": [
+    "31.21",
+    "31.27",
+    "31.28",
+    "31.29"
+   ],
+   "grupos": [
+    "jev-31-21-31-27-31-28-31-29"
+   ]
+  },
+  {
+   "quando": "2026-10-04T08:14:29+00:00",
+   "itens": [
+    "29.61",
+    "32.4",
+    "30.38"
+   ],
+   "grupos": [
+    "orquestradora-deploy20"
    ]
   }
  ]
