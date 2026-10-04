@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-408 de 445 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+409 de 445 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -278,7 +278,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.20 | implemented | real | sessao | — | PR #216 (canais/28-20-orcamento-sem-efeito @ 95be2ea9), suíte 23, deploy 23 em 9add9fb2. Real em 04/10/2026 no central (WIN-7S2UASNLFOP): pedido ped_bdH23ZWKXDSkln9MstvhfA (lote:canais:28.12-03, só leitura, android-10),… | None |
 | 28.21 | implemented | real | sessao | — | PR #220 (canais/28-21-resolver-incerta @ 6104332e, migração 095, adendo v1.15), suíte 23, deploy 23 em 9add9fb2 (migração 095_ocorrencia_resolvida). Real em 04/10/2026 no central: o pedido ped_O_tLG52eXcmZNGB0THvIkA (lo… | None |
 | 28.22 | implemented | real | sessao | — | PR #247 (migração 099, adendo v1.17), suíte 26, deploy 26 (60b3a0a9). (b) motivo do cancelamento: REAL em 04/10/2026 13:17:18Z (ped_llz09XacVMyGLaanpZDOhg; motivo só no detalhe, 0 eventos e 0 avisos com ele) e tela vali… | None |
-| 28.23 | partial | simulated | claude-fable-5-1 | — | LADO DO LAÇO (Canais), no ar: Desenho aprovado pela orquestradora em 04/10 (seis pontos), escrito no §9 de docs/design/pedidos-persistentes.md (PR #252). Lado do laço: PR #253 (canais/28-23-teto-no-laco @ 9b84692d), suí… | O lado da execução (PR 257, migração 100, adendo v1.19) espera a suíte seguinte à 26; até ele ir ao ar o campo do laço fica inerte e `pedidos` segue DESLIGADO… |
+| 28.23 | implemented | real | claude-fable-5-1 | — | Lado do laço: PR #253, suíte 26, deploy 26 (60b3a0a9). Lado da execução: PR #257 (migração 100_teto_de_autonomia, adendo v1.19), suíte 27, deploy 27 (ac7175ac, no ar às 15:10:38Z de 04/10/2026, central WIN-7S2UASNLFOP),… |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -452,7 +452,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (37): 8.3, 14.12, 15.15, 17.6, 17.9, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.23, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.41, 29.66, 29.68, 29.70, 30.34, 30.48, 30.51, 30.52, 30.53, 30.54, 31.11, 31.12, 31.26, 31.35, 31.40, T.2
+Pendentes (36): 8.3, 14.12, 15.15, 17.6, 17.9, 18.9, 23.2, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.41, 29.66, 29.68, 29.70, 30.34, 30.48, 30.51, 30.52, 30.53, 30.54, 31.11, 31.12, 31.26, 31.35, 31.40, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

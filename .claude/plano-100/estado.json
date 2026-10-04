@@ -7509,16 +7509,16 @@
   },
   "28.23": {
    "id": "28.23",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "LADO DO LAÇO (Canais), no ar: Desenho aprovado pela orquestradora em 04/10 (seis pontos), escrito no §9 de docs/design/pedidos-persistentes.md (PR #252). Lado do laço: PR #253 (canais/28-23-teto-no-laco @ 9b84692d), suíte 26, deploy 26 (60b3a0a9). _requisicao passa teto_de_autonomia = autonomia_efetiva(pedido, papel) só se RunCreate.model_fields tem o campo; fica inerte até o lado da execução. Simulado: backend/tests/test_pedidos_teto_na_execucao.py (7, com contraprova: 6 falham sem a mudança; um modelo com o campo e outro sem). LADO DA EXECUÇÃO (Jev), em PR: Lado da execução no PR #257 (feat/28-23-teto-de-autonomia, df9e03ec), aberto, sem suíte hoje. Migração 100 (runs.teto_de_autonomia), adendo v1.19, RunCreate e RunSummary. Com observar: plan.refused acima_da_autonomia e execução failed; no despacho, a defesa para antes da etapa de efeito e do preenchimento dela, com o objetivo failed (métrica execucao.parada_no_teto). Com preparar: aprovação forçada; o efeito sem ação do catálogo é segurado e o objetivo vai a waiting_user. Nulo e agir: iguais a hoje. Validação local (Idle, SQLite, depois do PG verde da 26): test_teto_de_autonomia 4 passed; 30 arquivos afetados 750 passed, 3 skipped; scripts/tests 544 passed; docs-check 0 erros. PG, central e laço da Canais: not_run.",
-   "blocker": "O lado da execução (PR 257, migração 100, adendo v1.19) espera a suíte seguinte à 26; até ele ir ao ar o campo do laço fica inerte e `pedidos` segue DESLIGADO no central. Prova real: um pedido em `observar` e um em `preparar` depois do deploy.",
-   "grupo": "orquestradora-pos-deploy26",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Lado do laço: PR #253, suíte 26, deploy 26 (60b3a0a9). Lado da execução: PR #257 (migração 100_teto_de_autonomia, adendo v1.19), suíte 27, deploy 27 (ac7175ac, no ar às 15:10:38Z de 04/10/2026, central WIN-7S2UASNLFOP), com `pedidos.enabled: true`. PROVA REAL da Jev em 04/10 ~15:15Z, android-09 (sem conta, QA Messenger), dois pedidos de teste com gatilho agora, ambos cancelados depois: (1) OBSERVAR, pedido ped_3w4Kmy-wUSShbaLbvAUJyg, execução r-20261004151528-729abd: teto gravado observar; plan.refused com motivo acima_da_autonomia e a etapa send_message; execução failed com 0 etapas rodadas e 0 ações de efeito; US$ 0,019. (2) PREPARAR, pedido ped_R49xbXD7W7mZynfIUTwPuQ, execução r-20261004151545-153cea: teto gravado preparar; open_app, check_account, open_conversation e fill_message succeeded; send_message ficou ready com 0 tentativas; objetivo em waiting_user (blocked_kind policy); 0 ações de efeito; US$ 0,040. Simulado: backend/tests/test_pedidos_teto_na_execucao.py e test_teto_de_autonomia.",
+   "blocker": "",
+   "grupo": "orquestradora-deploy27",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:24:55+00:00"
+   "quando": "2026-10-04T15:16:55+00:00"
   },
   "30.48": {
    "id": "30.48",
@@ -9779,6 +9779,15 @@
    ],
    "grupos": [
     "canais"
+   ]
+  },
+  {
+   "quando": "2026-10-04T15:16:55+00:00",
+   "itens": [
+    "28.23"
+   ],
+   "grupos": [
+    "orquestradora-deploy27"
    ]
   }
  ]
