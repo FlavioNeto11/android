@@ -81,8 +81,12 @@ async def anexar_ao_cartao(db: Database, cfg: Config, armazem: ArmazemDeAnexos, 
     cfg_a = cfg.file.avisos.entrada.anexos
     try:
         conteudo, mime, sha = armazem.conteudo_de(anexo_id, tipos=cfg_a.tipos, max_bytes=cfg_a.max_bytes)
-    except (CaminhoForaDoArmazem, AnexoRecusado) as exc:
-        raise AnexoNaoPodeIrAoCartao("anexo_sem_arquivo", getattr(exc, "motivo", None) or str(exc)) from None
+    except CaminhoForaDoArmazem as exc:
+        raise AnexoNaoPodeIrAoCartao("anexo_sem_arquivo", str(exc)) from None
+    except AnexoRecusado as exc:
+        # 28.24 F5: o tipo que a entrada não aceita (ou o grande demais) é recusa de regra, não arquivo sumido. Sai
+        # antes de qualquer chamada ao Trello.
+        raise AnexoNaoPodeIrAoCartao("tipo_nao_aceito", getattr(exc, "motivo", None) or str(exc), 422) from None
     card, quadro = await cliente.cartao(indicado)
     if quadro not in cfg.file.trello.quadros:
         raise AnexoNaoPodeIrAoCartao("cartao_fora_dos_quadros", "Esse cartão não é de um quadro que a Central espelha.")

@@ -220,6 +220,7 @@ class ArmazemDeAnexos:
         total = int(self.db.scalar("SELECT COUNT(*)" + base, tuple(par)) or 0)
         linhas = self.db.query(
             "SELECT a.id, a.canal, a.direcao, a.mime, a.bytes, a.estado, a.motivo_recusa, a.criado_em, a.apagado_em,"
+            " a.descricao, a.lida_em,"
             " CASE WHEN a.direcao = 'entrada' AND e.do_dono = 1 THEN 1 ELSE 0 END AS do_dono,"
             " CASE WHEN a.direcao = 'entrada' AND e.do_dono = 1 AND e.tipo = 'mensagem' THEN 1 ELSE 0 END AS de_mensagem_do_dono"
             + base + " ORDER BY a.id DESC LIMIT ? OFFSET ?", (*par, int(limite), int(deslocamento)))

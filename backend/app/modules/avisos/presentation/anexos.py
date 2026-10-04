@@ -21,7 +21,7 @@ from pydantic import BaseModel
 from app.modules.avisos.adapters.trello import FalhaDoTrello
 from app.modules.avisos.domain.anexos import EXTENSAO
 from app.modules.avisos.infrastructure.anexos import ArmazemDeAnexos
-from app.modules.avisos.infrastructure.anexos_leitura import LeituraRecusada
+from app.modules.avisos.infrastructure.anexos_leitura import IMAGENS, LeituraRecusada
 from app.modules.avisos.infrastructure.anexos_trello import AnexoNaoPodeIrAoCartao, anexar_ao_cartao
 from app.util import parse_iso, to_iso
 
@@ -71,18 +71,24 @@ def _instante(valor: str | None, nome: str) -> str | None:
     return to_iso(dt)
 
 
-def _item(linha: dict[str, object]) -> dict[str, object]:
-    """Uma linha da lista: os campos do painel e dois fatos já resolvidos, para a tela não repetir a regra."""
+def _item(linha: dict[str, object], tipos: frozenset[str]) -> dict[str, object]:
+    """Uma linha da lista: os campos do painel e três fatos já resolvidos, para a tela não repetir a regra. `tipos` é a
+    lista que a entrada aceita (`avisos.entrada.anexos.tipos`)."""
     guardado = linha.get("estado") == "guardado"
     do_dono = bool(linha.get("do_dono"))
+    origem_do_dono = guardado and bool(linha.get("de_mensagem_do_dono"))
     return {
         "id": linha["id"], "canal": linha["canal"], "direcao": linha["direcao"], "mime": linha["mime"],
         "bytes": linha["bytes"], "estado": linha["estado"], "motivo_recusa": linha["motivo_recusa"],
         "criado_em": linha["criado_em"], "apagado_em": linha["apagado_em"], "do_dono": do_dono,
         # O conteúdo sai para imagem/PDF guardados, nunca o do convidado (a entrada de quem não é o dono).
         "tem_conteudo": guardado and linha.get("mime") in COM_CONTEUDO and (do_dono or linha["direcao"] == "saida"),
-        # A mesma regra de `conferir_origem`: só a mensagem do dono, guardada.
-        "pode_ir_ao_cartao": guardado and bool(linha.get("de_mensagem_do_dono")),
+        # A mesma regra de `conferir_origem`: só a mensagem do dono, guardada; e só o tipo que a entrada aceita (28.24 F5).
+        "pode_ir_ao_cartao": origem_do_dono and linha.get("mime") in tipos,
+        # F5: o botão Ler. Só a imagem do dono; a descrição gravada (já redigida na leitura) vem junto.
+        "pode_ler": origem_do_dono and linha.get("mime") in IMAGENS and linha.get("mime") in tipos,
+        "descricao": linha.get("descricao"),
+        "lida_em": linha.get("lida_em"),
     }
 
 
@@ -103,7 +109,8 @@ async def lista_de_anexos(
     linhas, total = _armazem(request).listar(
         canal=canal, direcao=direcao, do_dono=do_dono, estado=estado, desde=_instante(desde, "desde"),
         ate=_instante(ate, "ate"), limite=limit, deslocamento=offset)
-    return {"items": [_item(x) for x in linhas], "total": total, "limit": limit, "offset": offset}
+    tipos = frozenset(request.app.state.poc.cfg.file.avisos.entrada.anexos.tipos)
+    return {"items": [_item(x, tipos) for x in linhas], "total": total, "limit": limit, "offset": offset}
 
 
 @router.get("/{ident}")

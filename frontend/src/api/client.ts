@@ -43,6 +43,7 @@ import type {
   ControlTakeResponse,
   CanaisEstado,
   CanalAnexoAoCartao,
+  CanalAnexoLeitura,
   CanalAnexosPagina,
   CommandRefinement,
   CreateRunRequest,
@@ -487,6 +488,12 @@ export const api = {
   /** Anexa ao cartão do Trello o arquivo que o dono mandou (`confirmar` é exigido pela rota: é efeito num sistema externo). */
   canaisAnexarAoCartao: (id: number, card: string) =>
     request<CanalAnexoAoCartao>('POST', `/canais/anexos/${id}/trello`, { body: { card, confirmar: true } }),
+  /** F5: a IA descreve a imagem. Chamada paga (com teto por imagem): só sai do botão de confirmar. */
+  canaisLerAnexo: (id: number) =>
+    request<CanalAnexoLeitura>('POST', `/canais/anexos/${id}/ler`, { body: { confirmar: true }, timeoutMs: 90_000 }),
+  /** F5: o arquivo do anexo como Blob, para a aba guardá-lo em memória (a rota responde `no-store`). */
+  canaisAnexoArquivo: async (id: number): Promise<Blob> =>
+    (await rawRequest('GET', `/canais/anexos/${id}/conteudo`)).blob(),
 
   getSettings: () => request<Settings>('GET', '/settings'),
   putSettings: (patch: Partial<Settings>) => request<Settings>('PUT', '/settings', { body: patch }),

@@ -1,6 +1,6 @@
-import { CircleCheck, Download, Eye, EyeOff, FileQuestion, FileText, ImageOff, Paperclip } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { api, canalAnexoConteudoUrl } from '../../api/client';
+import { CircleCheck, Download, Eye, EyeOff, FileQuestion, FileText, ImageIcon, ImageOff, Paperclip, ScanText } from 'lucide-react';
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+import { api, canalAnexoConteudoUrl, toApiError } from '../../api/client';
 import type { CanalAnexo, CanalAnexosPagina } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -29,12 +29,72 @@ interface Filtros {
 const SEM_FILTROS: Filtros = { canal: '', direcao: '', periodo: 'tudo', soDono: false };
 const temFiltro = (f: Filtros) => f.canal !== '' || f.direcao !== '' || f.periodo !== 'tudo' || f.soDono;
 
+type ObterArquivo = (id: number) => Promise<string>;
+
 /**
- * A aba Anexos da tela Canais (item 28.24, fatia 4): o que passou pelos canais como arquivo, do mais novo ao mais velho.
- * Imagem e PDF têm prévia ao clicar; o arquivo que o dono mandou pode ir a um cartão do Trello, com confirmação na linha.
- *
- * FALTA (fatia 3, entra num ajuste depois que as duas estiverem na main): o botão "Ler" e a descrição do anexo pela IA.
- * Esta tela não chama IA nenhuma e não mostra nome de remetente: o produto não guarda esse dado.
+ * F5: o arquivo de cada imagem baixa UMA vez enquanto a aba está aberta e fica em memória (URL `blob:`). A rota responde
+ * `no-store` de propósito (a foto do dono não vai ao cache em disco do navegador); sem isto, cada troca de filtro e cada
+ * prévia baixavam o arquivo inteiro de novo. Ao sair da aba, as URLs são revogadas.
+ */
+function useArquivosEmMemoria(): ObterArquivo {
+  const cache = useRef(new Map<number, Promise<string>>());
+  useEffect(() => {
+    const mapa = cache.current;
+    return () => {
+      for (const p of mapa.values()) p.then((url) => URL.revokeObjectURL(url), () => undefined);
+      mapa.clear();
+    };
+  }, []);
+  return useCallback((id: number) => {
+    let p = cache.current.get(id);
+    if (!p) {
+      p = api.canaisAnexoArquivo(id).then((b) => URL.createObjectURL(b));
+      cache.current.set(id, p);
+      p.catch(() => { cache.current.delete(id); });          // a falha não fica guardada: a próxima vez tenta de novo
+    }
+    return p;
+  }, []);
+}
+
+function useUrlDoArquivo(obter: ObterArquivo, id: number, ativo: boolean): { url: string | null; falhou: boolean } {
+  const [estado, setEstado] = useState<{ url: string | null; falhou: boolean }>({ url: null, falhou: false });
+  useEffect(() => {
+    if (!ativo) return undefined;
+    let vivo = true;
+    obter(id).then((url) => { if (vivo) setEstado({ url, falhou: false }); },
+                   () => { if (vivo) setEstado({ url: null, falhou: true }); });
+    return () => { vivo = false; };
+  }, [obter, id, ativo]);
+  return estado;
+}
+
+/**
+ * F5 (revisão da parte 16): a miniatura só baixa quando o item chega perto da tela, como fazia o `loading="lazy"` da
+ * `<img>` antes da memória: sem isto, cada página (e cada "Carregar mais") baixava todas as imagens de uma vez. Sem
+ * IntersectionObserver (navegador antigo, teste), o item vale como visível.
+ */
+function useNaTela(ref: RefObject<Element | null>): boolean {
+  const [visivel, setVisivel] = useState(() => typeof IntersectionObserver === 'undefined');
+  useEffect(() => {
+    const el = ref.current;
+    if (visivel || !el || typeof IntersectionObserver === 'undefined') return undefined;
+    const observador = new IntersectionObserver((entradas) => {
+      if (entradas.some((e) => e.isIntersecting)) {
+        setVisivel(true);
+        observador.disconnect();
+      }
+    }, { rootMargin: '200px' });
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [ref, visivel]);
+  return visivel;
+}
+
+/**
+ * A aba Anexos da tela Canais (item 28.24, fatias 4 e 5): o que passou pelos canais como arquivo, do mais novo ao mais velho.
+ * Imagem e PDF têm prévia ao clicar; o arquivo que o dono mandou pode ir a um cartão do Trello, e a imagem dele pode ser
+ * descrita pela IA (chamada paga, sempre com confirmação na linha). Esta tela não mostra nome de remetente: o produto não
+ * guarda esse dado.
  */
 export function AnexosTab() {
   const [filtros, setFiltros] = useState<Filtros>(SEM_FILTROS);
@@ -44,15 +104,19 @@ export function AnexosTab() {
   const [carregandoMais, setCarregandoMais] = useState(false);
   const [aberto, setAberto] = useState<number | null>(null);
   const [anexando, setAnexando] = useState<number | null>(null);
-  const [anexados, setAnexados] = useState<ReadonlySet<number>>(new Set());
+  /** O anexo que foi ao cartão, e se ele já estava lá (a rota não anexa duas vezes). */
+  const [anexados, setAnexados] = useState<ReadonlyMap<number, boolean>>(new Map());
   const token = useRef(0);
+  /** O "desde" do período é fixado na primeira página: "Carregar mais" pede a mesma janela, e o total não anda sozinho. */
+  const desde = useRef<string | undefined>(undefined);
   const agora = useNow();
+  const obterArquivo = useArquivosEmMemoria();
 
   const consulta = useCallback((f: Filtros, offset: number) => api.canaisAnexos({
     canal: f.canal || undefined,
     direcao: f.direcao || undefined,
     do_dono: f.soDono ? 'true' : undefined,
-    desde: desdeDoPeriodo(f.periodo, Date.now()),
+    desde: desde.current,
     limit: PAGINA,
     offset,
   }), []);
@@ -65,6 +129,7 @@ export function AnexosTab() {
     setErro(null);
     setAberto(null);
     setAnexando(null);
+    desde.current = desdeDoPeriodo(filtros.periodo, Date.now());
     consulta(filtros, 0).then((r) => {
       if (meu !== token.current) return;
       setPagina(r);
@@ -108,7 +173,9 @@ export function AnexosTab() {
       ) : (
         <EmptyState icon={Paperclip} title="Nenhum anexo ainda"
                     hint="Mande uma foto ou um PDF ao bot do Telegram e ele aparece aqui.">
-          Os arquivos que você manda aos canais, e os que a Central envia, ficam listados nesta aba.
+          Os arquivos que você manda aos canais, e os que a Central envia, ficam listados nesta aba. Com um arquivo seu, dá
+          para ver a prévia, anexá-lo a um cartão do Trello pelo link ou pelo código do cartão e, se for imagem, pedir que a
+          IA a descreva.
         </EmptyState>
       )
     ) : (
@@ -117,11 +184,11 @@ export function AnexosTab() {
         <ul className={styles.anexos} aria-label="Anexos dos canais">
           {itens.map((a) => (
             <ItemDeAnexo key={a.id} a={a} agora={agora} aberto={aberto === a.id} anexando={anexando === a.id}
-                         anexado={anexados.has(a.id)}
+                         anexado={anexados.get(a.id)} obterArquivo={obterArquivo}
                          onAbrir={() => setAberto((atual) => (atual === a.id ? null : a.id))}
                          onAnexar={() => setAnexando(a.id)}
                          onCancelarAnexar={() => setAnexando(null)}
-                         onAnexado={() => { setAnexando(null); setAnexados((s) => new Set(s).add(a.id)); }} />
+                         onAnexado={(jaEstava) => { setAnexando(null); setAnexados((m) => new Map(m).set(a.id, jaEstava)); }} />
           ))}
         </ul>
         <div className={styles.rodape}>
@@ -172,41 +239,72 @@ export function AnexosTab() {
   );
 }
 
-function Miniatura({ a, motivo }: { a: CanalAnexo; motivo: string | null }) {
+function Miniatura({ tipo, motivo, url, falhou }: { tipo: Tipo; motivo: string | null; url: string | null; falhou: boolean }) {
   const [quebrou, setQuebrou] = useState(false);
-  const tipo = tipoDoAnexo(a);
-  if (a.tem_conteudo && tipo === 'imagem' && !quebrou) {
-    return <img src={canalAnexoConteudoUrl(a.id)} alt="" loading="lazy" decoding="async" className={styles.imagem} onError={() => setQuebrou(true)} />;
+  if (url && !quebrou) {
+    return <img src={url} alt="" decoding="async" className={styles.imagem} onError={() => setQuebrou(true)} />;
   }
-  const Icone = quebrou || motivo ? ImageOff : tipo === 'pdf' ? FileText : FileQuestion;
+  // A imagem que ainda está chegando mostra o ícone de imagem; a que não veio, o de imagem quebrada.
+  const Icone = quebrou || falhou || motivo ? ImageOff : tipo === 'imagem' ? ImageIcon : tipo === 'pdf' ? FileText : FileQuestion;
   return <span className={styles.icone}><Icone size={28} aria-hidden /></span>;
 }
 
-function ItemDeAnexo({ a, agora, aberto, anexando, anexado, onAbrir, onAnexar, onCancelarAnexar, onAnexado }: {
+const custoLegivel = (usd: number) =>
+  `US$ ${usd.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}`;
+
+function ItemDeAnexo({ a, agora, aberto, anexando, anexado, obterArquivo, onAbrir, onAnexar, onCancelarAnexar, onAnexado }: {
   a: CanalAnexo;
   agora: number;
   aberto: boolean;
   anexando: boolean;
-  anexado: boolean;
+  /** `undefined`: não foi ao cartão nesta visita; `true`: já estava lá; `false`: anexado agora. */
+  anexado: boolean | undefined;
+  obterArquivo: ObterArquivo;
   onAbrir: () => void;
   onAnexar: () => void;
   onCancelarAnexar: () => void;
-  onAnexado: () => void;
+  onAnexado: (jaEstava: boolean) => void;
 }) {
   const tipo = tipoDoAnexo(a);
   const motivo = semPrevia(a);
+  const item = useRef<HTMLLIElement>(null);
+  const naTela = useNaTela(item);
+  // Baixa ao chegar à tela ou ao abrir a prévia, o que vier primeiro; depois fica na memória da aba.
+  const arquivo = useUrlDoArquivo(obterArquivo, a.id, a.tem_conteudo && tipo === 'imagem' && (naTela || aberto));
   const [imagemQuebrou, setImagemQuebrou] = useState(false);
+  // "Ler pela IA" (F3/F5): a descrição gravada vem na lista; a nova só sai do botão de confirmar (chamada paga).
+  const [descricao, setDescricao] = useState<string | null>(a.descricao);
+  const [custo, setCusto] = useState<number | null>(null);
+  const [ler, setLer] = useState<'fechado' | 'confirmando' | 'lendo'>('fechado');
+  const [erroLer, setErroLer] = useState<string | null>(null);
   const nome = `${ROTULO_DO_TIPO[tipo]} ${a.id}`;
+
+  const lerPelaIa = async () => {
+    if (ler === 'lendo') return;
+    setLer('lendo');
+    setErroLer(null);
+    try {
+      const r = await api.canaisLerAnexo(a.id);
+      setDescricao(r.descricao);
+      setCusto(r.do_cache ? null : r.custo_usd);
+      setLer('fechado');
+    } catch (e) {
+      // A mensagem da rota já vem em português (ex.: o teto do dia, ou a imagem que não é do dono).
+      setErroLer(toApiError(e).message);
+      setLer('confirmando');
+    }
+  };
+
   return (
-    <li className={styles.anexo} data-expandido={aberto || undefined} aria-label={nome}>
+    <li ref={item} className={styles.anexo} data-expandido={aberto || undefined} aria-label={nome}>
       <div className={styles.anexoTopo}>
         {a.tem_conteudo ? (
           <button type="button" className={styles.miniatura} aria-expanded={aberto}
                   aria-label={`${aberto ? 'Fechar' : 'Ver'} a prévia: ${nome}`} onClick={onAbrir}>
-            <Miniatura a={a} motivo={motivo} />
+            <Miniatura tipo={tipo} motivo={motivo} url={arquivo.url} falhou={arquivo.falhou} />
           </button>
         ) : (
-          <span className={styles.miniatura} aria-hidden><Miniatura a={a} motivo={motivo} /></span>
+          <span className={styles.miniatura} aria-hidden><Miniatura tipo={tipo} motivo={motivo} url={null} falhou={false} /></span>
         )}
         <div className={styles.anexoInfo}>
           <div className={styles.selos}>
@@ -223,7 +321,10 @@ function ItemDeAnexo({ a, agora, aberto, anexando, anexado, onAbrir, onAnexar, o
             {a.tem_conteudo ? (
               <Button size="sm" variant="outline" icon={aberto ? EyeOff : Eye} onClick={onAbrir}>{aberto ? 'Fechar prévia' : 'Ver prévia'}</Button>
             ) : null}
-            {a.pode_ir_ao_cartao && !anexando && !anexado ? (
+            {a.pode_ler && descricao == null && ler === 'fechado' ? (
+              <Button size="sm" variant="outline" icon={ScanText} onClick={() => setLer('confirmando')}>Ler pela IA</Button>
+            ) : null}
+            {a.pode_ir_ao_cartao && !anexando && anexado === undefined ? (
               <Button size="sm" variant="outline" icon={Paperclip} onClick={onAnexar}>Anexar ao cartão</Button>
             ) : null}
           </div>
@@ -231,10 +332,12 @@ function ItemDeAnexo({ a, agora, aberto, anexando, anexado, onAbrir, onAnexar, o
       </div>
       {aberto && a.tem_conteudo ? (
         <div className={styles.previa}>
-          {tipo === 'imagem' && !imagemQuebrou ? (
-            <img src={canalAnexoConteudoUrl(a.id)} alt={`Prévia: ${nome}`} className={styles.previaImagem} onError={() => setImagemQuebrou(true)} />
-          ) : tipo === 'imagem' ? (
+          {tipo === 'imagem' && arquivo.url && !imagemQuebrou ? (
+            <img src={arquivo.url} alt={`Prévia: ${nome}`} className={styles.previaImagem} onError={() => setImagemQuebrou(true)} />
+          ) : tipo === 'imagem' && (arquivo.falhou || imagemQuebrou) ? (
             <p className={styles.motivo}>Não consegui carregar a imagem: o arquivo pode ter saído da Central.</p>
+          ) : tipo === 'imagem' ? (
+            <p className={styles.motivo}>Carregando a imagem…</p>
           ) : (
             <div className={styles.previaPdf}>
               <FileText size={32} aria-hidden />
@@ -246,8 +349,34 @@ function ItemDeAnexo({ a, agora, aberto, anexando, anexado, onAbrir, onAnexar, o
           )}
         </div>
       ) : null}
+      {ler !== 'fechado' && descricao == null ? (
+        <div className={styles.anexar} role="group" aria-label={`Ler pela IA: ${nome}`}>
+          <p className={styles.anexarResumo}>
+            A IA descreve a imagem numa chamada paga, com teto por imagem. A descrição fica guardada: ler de novo não custa.
+          </p>
+          <div className={styles.anexarAcoes}>
+            <Button size="sm" variant="primary" loading={ler === 'lendo'} onClick={() => void lerPelaIa()}>Confirmar e ler pela IA</Button>
+            <Button size="sm" variant="ghost" disabled={ler === 'lendo'} onClick={() => { setLer('fechado'); setErroLer(null); }}>
+              Cancelar
+            </Button>
+          </div>
+          {erroLer ? <p className={styles.lerErro} role="alert">{erroLer}</p> : null}
+        </div>
+      ) : null}
+      {descricao != null ? (
+        <div className={styles.descricao}>
+          <p className={styles.descricaoRotulo}>
+            <ScanText size={14} aria-hidden /> Descrição pela IA{custo != null ? ` · custou ${custoLegivel(custo)}` : ''}
+          </p>
+          <p className={styles.descricaoTexto}>{descricao}</p>
+        </div>
+      ) : null}
       {anexando ? <AnexarAoCartao anexoId={a.id} onFeito={onAnexado} onCancelar={onCancelarAnexar} /> : null}
-      {anexado ? <p className={styles.feito} role="status"><CircleCheck size={14} aria-hidden /> Anexado ao cartão do Trello.</p> : null}
+      {anexado !== undefined ? (
+        <p className={styles.feito} role="status">
+          <CircleCheck size={14} aria-hidden /> {anexado ? 'Já estava no cartão do Trello: nada foi anexado de novo.' : 'Anexado ao cartão do Trello.'}
+        </p>
+      ) : null}
     </li>
   );
 }

@@ -5679,3 +5679,14 @@ Aditivo ao v1.22. Sem rota nova e sem migração.
 Prova:
 - `simulated`: `tests/test_decisoes_registro_coerente.py`.
 - `not_run`: PostgreSQL e o central depois do deploy.
+## Adendo v1.37 (04/10/2026; número da orquestradora; item 28.24, F5) — a lista diz o que dá para ler, e o cartão recusa o tipo
+
+Sem migração. Muda a v1.26 e a rota `POST .../trello`.
+- `GET /api/canais/anexos`: cada item ganha três chaves fixas.
+  - `pode_ler`: a imagem guardada que o dono mandou, a única que `POST .../ler` aceita.
+  - `descricao`: a descrição que a IA já gravou, ou `null`.
+  - `lida_em`: ISO, ou `null`.
+
+  `pode_ir_ao_cartao` passa a exigir também um mime da lista `avisos.entrada.anexos.tipos`.
+- `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
+  `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.

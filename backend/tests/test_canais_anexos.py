@@ -751,6 +751,24 @@ def f(tmp_path: Path) -> CenaFaxina:
     return CenaFaxina(tmp_path)
 
 
+async def test_a_faxina_apaga_a_descricao_da_ia_junto_com_o_arquivo(f: CenaFaxina) -> None:
+    """28.24 F5 (revisão da parte 16): a descrição vence com o arquivo, mesmo quando o arquivo não sai nesta volta; a do
+    anexo dentro do prazo fica."""
+    velho = f.guardar(JPEG)
+    f.avancar(31)
+    novo = f.guardar(PNG)
+    f.db.execute("UPDATE canal_anexos SET descricao='Print com telefone de terceiro.'")
+    f.faxina._apagar_se_ninguem_usa = _falha_de_disco                                # noqa: SLF001 - o arquivo não sai
+    f.faxinar()
+    assert f.db.scalar("SELECT descricao FROM canal_anexos WHERE id=?", (velho,)) is None
+    assert f.estados()[velho] == "guardado"                                           # a próxima volta tenta o arquivo
+    assert f.db.scalar("SELECT descricao FROM canal_anexos WHERE id=?", (novo,)) == "Print com telefone de terceiro."
+
+
+def _falha_de_disco(*_: object) -> None:
+    raise OSError("disco ocupado")
+
+
 async def test_a_faxina_apaga_o_arquivo_e_a_linha_vencidos_e_deixa_o_recente(f: CenaFaxina) -> None:
     velho = f.guardar(JPEG)
     f.arm.recusar("tipo fora da lista")                                               # recusado: sem arquivo, só a linha
