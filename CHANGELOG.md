@@ -104,6 +104,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   mensagem ou cartão, nem segredo. Sem escrita, sem migração, sem config nova.
 - Prova `simulated`: `backend/tests/test_canais_estado.py` (19) e `frontend/src/features/canais/CanaisPage.test.tsx`. `not_run`:
   o central; a conferência no navegador vem depois do deploy.
+## 2026-10-04 — 28.20: parada no teto de orçamento sem commit fecha `falhou` pelo orçamento (branch canais/28-20-orcamento-sem-efeito, sem migração)
+
+- Achado real do 28.12 (run `r-20261004090000-bbfe54`, android-09). O pedido era de só observar e parou no teto de
+  US$ 0,10 por ocorrência depois de tocar para navegar. Fechou `incerta` ("efeito externo possível") e o pedido foi para
+  `aguardando_pessoa`, o que travou a recorrência.
+- `RepositorioDePedidos.parou_no_orcamento_sem_efeito_declarado`: alguma tentativa com `attempts.error_kind = 'budget'`
+  e nenhuma ação com `side_effect = 1`. Nesse caso, `LacoDePedidos._decidir_tentativa` não conta o efeito possível dos
+  toques, e a falha fica `definitiva` com o motivo do orçamento, sem nova tentativa e com o pedido `ativo`. A falha conta
+  em `pausa_por_falha`. Com ação de commit, segue `incerta`.
+- Decisão registrada em `docs/design/pedidos-laco.md` (o "parâmetro a revisitar com números no 28.12").
+- Testes: `test_pedidos_retentativa.py` (3 novos: sem commit → `falhou` e a hora seguinte roda; com commit → `incerta`;
+  conta nas falhas seguidas). Prova simulada; a real é a próxima ocorrência que parar no teto depois do deploy.
 
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 

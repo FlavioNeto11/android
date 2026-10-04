@@ -214,6 +214,66 @@ async def test_o_driver_provou_que_nada_chegou_ao_aparelho_e_falha_sem_efeito_e_
     assert o["estado"] == "falhou" and "esgotou as 2 tentativas" in o["motivo"] and _pedido_estado(db)["estado"] != "aguardando_pessoa"
 
 
+def _parar_no_orcamento(db, run_id: str, alvo: str = "android-01") -> None:
+    """A tentativa termina no teto de orçamento, como o executor grava o `AIError(kind='budget')` (RA-22)."""
+    db.execute("UPDATE attempts SET error_kind='budget' WHERE id=?", (f"{run_id}:{alvo}:v1:agir:a1",))
+
+
+async def test_parada_no_orcamento_sem_commit_falha_por_orcamento_e_a_recorrencia_segue(h: Harness) -> None:
+    """28.20 (achado real do 28.12, run r-20261004090000-bbfe54): a ocorrência de só observar parou no teto da ocorrência
+    depois de abrir a página e tocar para navegar. Os toques são efeito possível, mas nenhum é commit: fecha `falhou` pelo
+    orçamento, sem nova tentativa, e o pedido segue `ativo` (nada de `aguardando_pessoa` nem de aviso pedindo a pessoa)."""
+    r, db = Relogio(), h.state.db
+    r.t = datetime(2026, 10, 2, 12, 0, 5, tzinfo=UTC)
+    laco, avisos = _laco(h, r, retentativa_base_s=60)
+    _horaria(db, dtstart="2026-10-02T12:00:00", max_tentativas=2, pausa_por_falha=3)
+    laco.uma_volta()
+    run_id = _falhar_a_ultima(db, "parcial: 0 de 1")
+    _acao(db, run_id, tool="open_url", efeito=0)
+    _acao(db, run_id, tool="tap", efeito=1)
+    _acao(db, run_id, tool="tap", efeito=1)
+    _parar_no_orcamento(db, run_id)
+    res = laco.uma_volta()
+    assert (res.fechadas, res.retentadas, res.aguardando) == (1, 0, 0)
+    primeira = _ocs(db)[0]
+    assert primeira["estado"] == "falhou" and "parou no teto de orçamento" in primeira["motivo"]
+    assert "efeito externo" not in primeira["motivo"]
+    assert _pedido_estado(db)["estado"] == "ativo" and not avisos
+    r.avancar(3600)
+    assert laco.uma_volta().despachadas == 1, "a ocorrência da hora seguinte roda"
+    assert [x["ocorrencia_id"] for x in _runs(db)] == [primeira["id"], _ocs(db)[1]["id"]],         "a primeira não ganhou nova tentativa; a segunda execução é da ocorrência seguinte"
+
+
+async def test_parada_no_orcamento_com_commit_continua_incerta(h: Harness) -> None:
+    """Com uma ação de efeito declarado na execução, o teto não muda a regra do 28.5: o envio pode ter saído."""
+    r, db = Relogio(), h.state.db
+    laco, avisos = _laco(h, r)
+    _agora(db, "ped1", r, max_tentativas=2)
+    laco.uma_volta()
+    run_id = _falhar_a_ultima(db)
+    _acao(db, run_id, tool="tap", efeito=1, commit=1)
+    _parar_no_orcamento(db, run_id)
+    laco.uma_volta()
+    [o] = _ocs(db)
+    assert o["estado"] == "incerta" and "efeito externo possível" in o["motivo"]
+    assert _pedido_estado(db)["estado"] == "aguardando_pessoa" and len(avisos) == 1
+
+
+async def test_parada_no_orcamento_conta_nas_falhas_seguidas(h: Harness) -> None:
+    """A falha por orçamento é `falhou` como as outras: `pausa_por_falha` continua valendo."""
+    r, db = Relogio(), h.state.db
+    laco, avisos = _laco(h, r)
+    _agora(db, "ped1", r, max_tentativas=1)
+    db.execute("UPDATE pedidos SET pausa_por_falha=1 WHERE id='ped1'")
+    laco.uma_volta()
+    run_id = _falhar_a_ultima(db)
+    _acao(db, run_id, tool="tap", efeito=1)
+    _parar_no_orcamento(db, run_id)
+    laco.uma_volta()
+    assert _ocs(db)[0]["estado"] == "falhou"
+    assert _pedido_estado(db)["estado"] == "pausado" and [a["tipo"] for a in avisos] == ["pausa_automatica"]
+
+
 async def test_execucao_purgada_conta_como_efeito_possivel_e_vira_incerta(h: Harness) -> None:
     r, db = Relogio(), h.state.db
     laco, avisos = _laco(h, r)
