@@ -534,6 +534,12 @@ Do mesmo relatório de latência. Nenhum dos três converte falha em sucesso nem
   que falha ou foco que não chega: a volta seguinte não comprova e o ator assume na mesma tentativa. A abertura entra na
   regra do ANR como a da IA entrava (uma reabertura; a 2ª morte para a etapa). `esperar_foco` sonda a 0,5 s nos primeiros
   5 s (`INTERVALO_INICIAL_DO_FOCO_S`, `JANELA_INICIAL_DO_FOCO_S`), depois volta aos 2 s.
+  - 31.48: vale também para a etapa que prova por um elemento DO app (`element_present` com `id=<pacote>:id/…`,
+    `executor.pacote_da_prova`), quando esse app não está na frente. MEDIDO no banco central (04/10): o "abrir o QA
+    Messenger" com a prova da lista (modelo 141e) foi à IA em 43 de 49 sucessos (15 só para pedir `open_app`, 19 para
+    voltar de dentro de uma conversa); com `app_foreground` (2c35) fechou sem ator em 50 de 50. Aberto o app, a lista à
+    vista fecha pelo LT-1 sem ator. O aviso "Novidades da versão" é outra tela (a lista some), então a prova não vale e
+    o ator o dispensa. Com o app já na frente (dentro de uma conversa), abrir não muda nada e segue o ator.
   - Em modo sombra essas etapas não alimentam o `_veredito_da_sombra`, porque a IA não decide nelas. Uma candidata de
     `open_app` não promove por sombra.
   - O `open_app` do comando do painel (`manager.open_app`, com HOME e foco pelo adb) não mudou: está fora do caminho da

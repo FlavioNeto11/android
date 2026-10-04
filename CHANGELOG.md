@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.48: abrir o app sem IA também quando a prova é um elemento do app (branch fix/31-48-open-app-sem-ator)
+
+- MEDIDO no banco central: a etapa "abrir o QA Messenger" provada pela lista (`element_present`, modelo 141e) foi à IA
+  em 43 de 49 sucessos. Com `app_foreground` (2c35), fechou sem ator em 50 de 50.
+- O LT-6 passa a abrir o app sem IA quando a prova é `id=<pacote>:id/…` e o app não está na frente. Depois, o LT-1 fecha
+  sem ator se a lista aparecer. Com o aviso "Novidades da versão" (outra tela), o ator o dispensa.
+- Fica com o ator: os 19 casos em que o app já estava na frente, dentro de uma conversa. Voltar por regra pede uma
+  árvore real para medir.
+- Teste: `tests/test_caminho_rapido_2.py`, com os dois modelos e o aviso, `simulated`. `real`: not_run.
+
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
 - **O defeito:** o dono perguntou ao bot "porque tem tanta coisa represada em validação?" e depois respondeu "no
