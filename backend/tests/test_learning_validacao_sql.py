@@ -51,14 +51,16 @@ class Parque:
         self.lista: list[AparelhoCandidato] = []
         self.prontos: set[str] = {QA}                    # os pacotes prontos nos aparelhos de `lista`
         self.pedidos_de_aparelho: list[tuple[str, ...]] = []
+        self.exigencias: list[frozenset[str]] = []        # 30.50: as variáveis de aparelho que cada pedido exigiu
         self.enfileiradas: list[tuple[str, str, str]] = []
         self.provas: list[str | None] = []               # 30.37: o fluxo provado de cada execução enfileirada
 
     def ambiente(self) -> Ambiente:
         return self.ambiente_
 
-    def aparelhos(self, pacotes: Sequence[str]) -> Sequence[AparelhoCandidato]:
+    def aparelhos(self, pacotes: Sequence[str], exige: frozenset[str] = frozenset()) -> Sequence[AparelhoCandidato]:
         self.pedidos_de_aparelho.append(tuple(pacotes))
+        self.exigencias.append(exige)
         return self.lista if pacotes and set(pacotes) <= self.prontos else []
 
     def gasto_da_operacao(self, agora: datetime, dias: int) -> float:
@@ -331,3 +333,22 @@ def test_execucao_so_de_plano_parada_em_planned_nao_segura_o_p4(tmp_path: Path) 
     execucao("r-planejando", "plan", "planning")                   # o plano em voo também segura
     assert despacho.ambiente().execucoes_em_curso == 2
     db.close()
+
+
+def test_o_despachante_pede_o_aparelho_com_as_variaveis_do_plano(
+        mundo: tuple[Database, ServicoDeValidacao, Parque, Relogio, dict[str, object]],
+        monkeypatch: pytest.MonkeyPatch) -> None:
+    """30.50: o serviço passa ao despacho as variáveis de aparelho que o plano do pedido usa."""
+    _db, servico, parque, _relogio, _ajustes = mundo
+    assert servico.ao_parecer(_receita(), "lr-1", PEDE, B) is not None
+    pedidas: list[tuple[str, str]] = []
+
+    def variaveis(item_ref: str, comando: str) -> frozenset[str]:
+        pedidas.append((item_ref, comando))
+        return frozenset({"account_label"})
+
+    monkeypatch.setattr(servico._fontes, "variaveis_de_aparelho", variaveis)
+    parque.lista = [_ap("android-10")]
+    assert servico.uma_volta(lambda: 1) is not None
+    assert parque.exigencias and all(e == frozenset({"account_label"}) for e in parque.exigencias)
+    assert pedidas and all(c == COMANDO for _, c in pedidas)

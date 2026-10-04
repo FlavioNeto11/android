@@ -41,6 +41,11 @@ FALTA_AUTOMATIZAVEL = frozenset({Falta.EXECUCAO_REAL, Falta.REPRODUCAO_EM_OUTRO_
 BETA_PADRAO = 0.05
 #: Execuções de validação por hora, no máximo (o parque é compartilhado com o uso).
 MAXIMO_POR_HORA = 4
+#: 30.50: as variáveis do plano que dependem do APARELHO e podem faltar nele (o executor as preenche por aparelho;
+#: `instance_id` e `run_id` nunca faltam). A prova em aparelho sem uma delas vira `""` e a etapa não tem como passar:
+#: em 04/10 a fec1a1 caiu no android-04, sem `account_label`, e fechou `ator_sem_acao` no `check_account`.
+VARIAVEIS_DE_APARELHO = ("account_label",)
+
 #: 30.42: provas da MESMA versão do conteúdo do fluxo que o item aceita na janela; a 3ª fecha `limite_de_provas`.
 MAXIMO_DE_PROVAS = 2
 JANELA_DE_PROVAS_DIAS = 7
