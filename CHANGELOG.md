@@ -227,6 +227,9 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Revisão U1: a recusa do juiz vai limpa ao histórico do ator (`linha_da_recusa_do_juiz`) e ao `attempts.error`
   (`finish_attempt`, `note_attempt`). Os resíduos conhecidos (saída do `read_value`, recorte visual, omnibox e abas,
   evidência) estão escritos em `docs/ia.md`.
+- Revisão U1b: o veredito final do juiz é limpo na fonte (`executor.py`, antes da nota da evidência), e com ele a nota,
+  `steps.status_detail`, `objectives.status_detail` e `blocked_reason`, o evento e o `evidence_text` do sucesso.
+  Teste da execução inteira no harness com o juiz recusando com `?token=`; falha sem o conserto.
 - A limpeza de endereços mudou para `app/security/enderecos.py`. Prova `simulated`:
   `backend/tests/test_url_fora_do_prompt.py`.
 

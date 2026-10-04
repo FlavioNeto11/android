@@ -1706,6 +1706,10 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   - 31.54 (U1 da revisão): a RECUSA do juiz também vai limpa ao histórico do ator (`linha_da_recusa_do_juiz`) e ao
     `attempts.error` (`finish_attempt` e `note_attempt`). Com a barra sem tapar, o juiz pode transcrever a URL da imagem;
     ao provedor isso não é novo, mas ao banco, ao painel e ao aviso era.
+  - 31.54 (U1b da revisão): o veredito FINAL do juiz é limpo uma vez, na fonte (`enderecos_limpos(text)` antes da nota da
+    evidência). Daí saem limpos a nota, o `detail` do desfecho (status da etapa e do objetivo, `blocked_reason`, evento,
+    atenção, `settle_effect`) e, no sucesso, o `evidence_text`. `evidencia_da_conta` e `PARTES_EM_ELEMENTOS_DIFERENTES`
+    casam frase e rótulo, não URL.
   - **Resíduos conhecidos, sem código agora:**
     - a saída do `read_value` guarda o valor cru e vai crua às etapas seguintes como `{{saida}}`, por desenho;
     - o recorte da leitura visual é imagem crua;

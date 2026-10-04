@@ -3133,6 +3133,11 @@ class StepExecutor:
             return dataclasses.replace(desfecho, ai_error_kind=exc.kind)
         except DriverError as exc:
             return await fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
+        # 31.54 (U1b da revisão): com a barra sem tapar, o juiz pode transcrever a URL da imagem. Limpa UMA vez aqui, na
+        # fonte: o mesmo `text` vira a nota da evidência, o `detail` do desfecho (status da etapa e do objetivo,
+        # `blocked_reason`, evento, atenção, `settle_effect`) e, no sucesso, o `evidence_text`. `evidencia_da_conta` e
+        # `PARTES_EM_ELEMENTOS_DIFERENTES` casam frase e rótulo, não URL, e a limpeza guarda o host e o 1º pedaço.
+        text = enderecos_limpos(text) if text else text
         # o nível de entrega declarado pela IA em step_done não vale como prova; só o observado na verificação
         note = f"Pós-condição {'comprovada' if ok else 'NÃO comprovada'}: {text}"
         await evidence(obs, note, kind="verifier" if obs is None else "screenshot")

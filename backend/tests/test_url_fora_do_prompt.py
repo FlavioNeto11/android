@@ -147,3 +147,36 @@ async def test_o_erro_da_recusa_grava_a_url_limpa(harness: Harness) -> None:
                            error="recusada: a tela é https://contas.exemplo/reset/tok?token=abc123#x")
     gravado = st.db.one("SELECT error FROM attempts WHERE id=?", (tentativa["id"],))
     assert gravado is not None and "abc123" not in gravado["error"] and "contas.exemplo/reset/…" in gravado["error"]
+
+
+async def test_a_recusa_final_do_juiz_com_url_vai_limpa_a_etapa_ao_objetivo_e_a_nota(
+        harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """U1b: a recusa FINAL do juiz vira a nota da evidência e o `detail` do desfecho, que segue para
+    `steps.status_detail`, `objectives.status_detail` e `blocked_reason` e para a mensagem do evento. Limpa na fonte
+    (o veredito), nenhum desses destinos guarda a query nem o caminho além do 1º pedaço."""
+    from app.planning.provider import Usage, Verdict
+
+    st = harness.state
+    assert st is not None
+    executor = st.scheduler.executor
+    juizes: list[int] = []
+
+    async def verify(req: Any) -> tuple[Verdict, Usage]:
+        juizes.append(1)
+        return Verdict(satisfied="no", evidence="a barra mostra https://contas.exemplo/reset/tok?token=abc123#x "
+                                                "e a mensagem não aparece"), Usage()
+
+    monkeypatch.setattr(executor.provider, "verify", verify)
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS + ("completed_with_issues", "cancelled"), timeout=60)
+    assert juizes, "o juiz tem de ter sido chamado para a prova valer"
+    textos = [r["t"] or "" for r in st.db.query(
+        "SELECT status_detail t FROM steps WHERE run_id=? UNION ALL SELECT status_detail FROM objectives WHERE run_id=?"
+        " UNION ALL SELECT blocked_reason FROM objectives WHERE run_id=? UNION ALL SELECT note FROM evidence"
+        " WHERE run_id=? UNION ALL SELECT message FROM events WHERE run_id=?", (run.id,) * 5)]
+    assert not [t for t in textos if "abc123" in t or "/reset/tok" in t]
+    assert any("contas.exemplo/reset/…?…" in t for t in textos)     # o texto do juiz chegou, limpo
+    notas = [r["note"] or "" for r in st.db.query("SELECT note FROM evidence WHERE run_id=?", (run.id,))]
+    assert any(n.startswith("Pós-condição NÃO comprovada: ") and "contas.exemplo/reset/…?…" in n for n in notas)
+    bloqueio = [r["b"] for r in st.db.query("SELECT blocked_reason b FROM objectives WHERE run_id=?", (run.id,))]
+    assert any(b and "contas.exemplo/reset/…?…" in b for b in bloqueio)
