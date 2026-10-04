@@ -195,6 +195,20 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Prova `simulated`: `tests/test_relacao_de_papel.py` (36: lista, caso df1212 com juiz "ocupa", controle negativo com
   rodapé e menu, nome fora da lista, ponta a ponta no harness) e os testes do 31.41; nenhuma IA paga. Execução real
   `not_run`. Sem migração; nenhum texto com snapshot sha256 mudou.
+## 2026-10-04 — 31.51: a limpeza fecha diálogos do site em série pela árvore, sem aceitar nada (branch fix/31-51-dialogos-em-serie)
+
+- Achado real r-20261004190200-5b56e6 (android-10): "Abra o app…" e depois o aviso de cookies cobriam a página; a
+  limpeza gastou as 3 ações da etapa (voltar, reabrir o Chrome, procurar) sem tocar no "Agora não" que estava na
+  árvore, e no plano revisado a IA tocou "Configurar cookies", que abre outro modal.
+- `taskqueue/dialogos.py`: `botao_que_fecha` (recusar antes de fechar; nunca aceitar, permitir ou configurar) e
+  `dialogo_sem_saida`. O executor toca o botão antes do ator, até 4 diálogos, sem gastar as ações da etapa; sem saída
+  que preserve a privacidade, falha com motivo literal (regra em `learning/domain/falhas.py`), nunca sucesso.
+- Teste: `tests/test_dialogos_em_serie.py` (árvores remontadas do que a 5b56e6 gravou; o executor não grava a árvore
+  inteira), `simulated`; prova `real` não executada.
+- Revisão do #308: só no navegador; veto no rótulo e no id, com espanhol, alemão e consentimento implícito ("Got it",
+  "Entendi", "OK"); id só para ícone sem rótulo; diálogo que volta falha no teto; "sem saída" não é pulado
+  (`scheduler.py`); só o diálogo que cobre a tela conta. O teste de ponta a ponta (harness) achou que o toque da regra
+  era recusado na validação (faltava `is_commit_action`): corrigido. 22 testes no arquivo, 119 na regressão.
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
