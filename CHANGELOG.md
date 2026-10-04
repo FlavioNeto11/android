@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.37: imagem na 1ª decisão da leitura e ler a tela fora do ciclo (branch feat/31-37-imagem-na-leitura, sem migração)
+
+- A etapa com `saidas` manda a imagem já na 1ª decisão (motivo novo `primeira_da_leitura`, também no painel de uso);
+  `observe_screen` e `read_value` (`FORA_DO_CICLO`) não contam mais como ciclo sem progresso nem disparam a escalada.
+  A contagem segue valendo para ferramenta que age na tela. Achado real: 12.3, d62546 e e7df7c.
+- Prova: `simulated` (`backend/tests/test_imagem_na_leitura.py`, com contraprova); `real` depois do deploy.
+
 ## 2026-10-04 — 28.16: faxina das tabelas de canal por prazo de retenção (branch canais/28-16-faxina-canais, sem migração)
 
 - `modules/avisos/infrastructure/faxina_sql.py`: a faxina das tabelas de canal, por canal. Vale para `canal_entradas` e
