@@ -304,10 +304,21 @@ def reservado_aos_filhos(filhos: Iterable[FilhoNoOrcamento]) -> float:
 
 
 # ------------------------------------------------------------------ F3: o papel limita a autonomia
-def autonomia_efetiva(autonomia: str, papel: str | None) -> str:
+#: O teto de quem NÃO é o porta-voz numa família que tem um (F5, §9 "para fora"): só o porta-voz toca um alvo. O pedido sem
+#: papel (a raiz, ou um irmão comum) observa e consolida; efeito é do porta-voz. O redator segue com o `preparar` do papel
+#: (rascunho com aprovação), que já é mais restrito que o de quem age.
+TETO_FORA_DO_PORTA_VOZ = "observar"
+
+
+def autonomia_efetiva(autonomia: str, papel: str | None, familia_com_porta_voz: bool = False) -> str:
     """A mais restrita entre a autonomia do pedido e o teto do papel (§6.4: o pedido nunca afrouxa; aqui o papel também
-    não). Papel ou autonomia desconhecidos não afrouxam nada: devolvem a autonomia como veio."""
+    não). Papel ou autonomia desconhecidos não afrouxam nada: devolvem a autonomia como veio.
+
+    F5: numa família com porta-voz, quem tem papel comum (sem papel) não age fora dele: o teto é `observar`. O papel que já
+    tem teto próprio (`TETO_DO_PAPEL`) mantém o dele; o porta-voz também."""
     teto = TETO_DO_PAPEL.get(papel or "")
+    if teto is None and familia_com_porta_voz and papel is None:
+        teto = TETO_FORA_DO_PORTA_VOZ
     if teto is None or autonomia not in AUTONOMIAS:
         return autonomia
     return min(autonomia, teto, key=AUTONOMIAS.index)
@@ -323,10 +334,12 @@ def validar_autonomia(autonomia: str, papel: str | None) -> Recusa | None:
                   f"`{autonomia}`.", "autonomia")
 
 
-def nota_de_rebaixamento(autonomia: str, papel: str | None) -> str | None:
+def nota_de_rebaixamento(autonomia: str, papel: str | None, familia_com_porta_voz: bool = False) -> str | None:
     """O que a ocorrência registra quando o laço decide abaixo da autonomia gravada (pedido do legado, ou gravado com a
     colaboração desligada): só os nomes do papel e das autonomias, nunca o texto do pedido."""
-    efetiva = autonomia_efetiva(autonomia, papel)
+    efetiva = autonomia_efetiva(autonomia, papel, familia_com_porta_voz)
     if efetiva == autonomia:
         return None
+    if papel is None:
+        return f"autonomia rebaixada: a família tem porta-voz e só ele age para fora: {autonomia} → {efetiva}"
     return f"autonomia rebaixada ao teto do papel {papel}: {autonomia} → {efetiva}"
