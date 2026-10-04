@@ -456,7 +456,7 @@ IA) e o tira do comando; `resolver_alvos` escolhe o aparelho. Política `device_
 |---|---|
 | só aparelho, 0 ou 1 persona | a persona do aparelho (ou nenhuma), origem `ui` |
 | só aparelho, 2+ personas | a que serve ao app do comando; senão pergunta |
-| persona (`one`) | sessão pronta num aparelho apto > principal apto > balanceamento entre aptos > principal |
+| persona (`one`) | sessão pronta num aparelho apto (com sessão em mais de um: o principal, se ligado ou se nenhum outro com sessão estiver ligado; 29.65) > principal apto > balanceamento entre aptos > principal |
 | persona (`primary`/`all`) | o principal / todos os aptos |
 | persona + aparelhos | interseção (vazia → 409 `sem_intersecao`); um → `ui`, vários → política |
 | `targets` com aparelhos | usados como vieram (não vinculado → 409 `sem_vinculo`) |

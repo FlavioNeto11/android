@@ -27,6 +27,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   inválida — …". É o caso da 5f2de5, achado no navegador do 30.43.
 - Sem migração. Testes: `test_validacoes_listagem.py` e `ValidacaoTab.test.tsx`.
 
+## 2026-10-04 — 29.65: com a política `one`, a sessão no principal ganha (branch fix/29-65-one-prefere-principal, sem migração)
+
+- `resolver_alvos`: com sessão pronta em mais de um aparelho da persona, vai ao PRINCIPAL quando ele está ligado (ou
+  quando nenhum outro com sessão está); principal desligado com secundário ligado e entre secundários, o balanceamento
+  segue decidindo. `Mundo.ligados` (aparelhos `online`) vem do serviço.
+- Motivo: android-06 (principal) e android-13 (secundário) com sessão do André em 04/10; o desempate mandava a mesma
+  persona ora a um, ora a outro, e todo comando precisava dizer o aparelho.
+- Prova `simulated`: `test_roteamento_por_persona.py` (o caso E passa a esperar o principal; dois casos novos),
+  `test_roteamento_execucao.py` (prévia com os dois ligados e com cada um desligado); 115 passed nos testes de roteamento.
+
 ## 2026-10-04 — Suíte 17 na main e deploy 17 no central (0b7c2c39; sem migração; Trello na etapa 2)
 
 - **Integrado e implantado** (FF 01:13:09Z; deploy 01:13:35–01:14:31Z): #182 (30.43), #183 (30.44), #184 (29.62, trava de

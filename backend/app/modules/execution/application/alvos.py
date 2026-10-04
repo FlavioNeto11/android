@@ -10,8 +10,8 @@ Precedência (design §7.7), em ordem:
    só `instance_ids` (o caminho direto por aparelho, de sempre);
 2. **texto** só ESTREITA o que a interface deu; quando contradiz (fala de quem não está na seleção), vira PERGUNTA,
    nunca escolha silenciosa. Com a interface vazia, o texto decide — e a origem `texto` obriga a prévia (§7.6);
-3. **vínculos** preenchem o aparelho quando só a persona foi dada: sessão pronta NAQUELE aparelho primeiro, depois
-   o principal;
+3. **vínculos** preenchem o aparelho quando só a persona foi dada: sessão pronta NAQUELE aparelho primeiro (com
+   sessão em mais de um, o principal; 29.65), depois o principal;
 4. **balanceamento** desempata entre aparelhos igualmente bons (o que já prefere aparelho ligado).
 
 Pura de propósito — sem banco, sem runtime, sem IA — para ser testada em tabela como `balanceamento`. O serviço
@@ -151,6 +151,9 @@ class Mundo:
     #: num conjunto com um app de conta eles não contam em `serve` (ver `relevantes`). Vazio = todo app conta, que é
     #: exatamente a regra de antes para um app só.
     sem_conta: frozenset[str] = frozenset()
+    #: 29.65: os aparelhos LIGADOS agora. É o que deixa o principal com sessão ganhar sem acordar um aparelho à toa:
+    #: principal desligado e outro com sessão ligado, quem decide é o balanceamento (que prefere o ligado).
+    ligados: frozenset[str] = frozenset()
 
     def nome(self, profile_id: str) -> str:
         return dict(self.nomes).get(profile_id, profile_id)
@@ -246,10 +249,14 @@ def _aparelhos_pela_politica(mundo: Mundo, profile_id: str, candidatos: list[str
     if len(candidatos) == 1:
         return [(candidatos[0], "vinculo")]
     # `one`: a pessoa faz uma vez (D4). Sessão pronta NAQUELE aparelho antes de tudo: é onde a conta já está
-    # aberta; entre dois com sessão, o balanceamento (que prefere o ligado) desempata.
+    # aberta. Entre dois com sessão, o principal (29.65): o secundário existe para quando o principal não serve, e
+    # o desempate do balanceamento mandava a mesma persona ora a um, ora a outro (android-06 e android-13, 04/10).
+    # O principal desligado com outro ligado e entre secundários, o balanceamento (que prefere o ligado) desempata.
     com_sessao = [d for d in aptos if (profile_id, d) in mundo.sessoes_prontas]
     if len(com_sessao) == 1:
         return [(com_sessao[0], "vinculo")]
+    if principal in com_sessao and (principal in mundo.ligados or not mundo.ligados.intersection(com_sessao)):
+        return [(str(principal), "vinculo")]
     if com_sessao:
         return [(mundo.desempatar(com_sessao) or com_sessao[0], "balanceamento")]
     # Sem sessão pronta em lugar nenhum: o principal, onde a porta de sessão autentica se houver credencial com
