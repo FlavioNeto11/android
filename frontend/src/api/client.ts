@@ -179,7 +179,10 @@ export function hintForError(e: ApiError): string {
     case 'invalid_credentials':
       return 'Nome ou chave de acesso não conferem. A chave é o API_TOKEN do backend, com quem cuida do parque.';
     case 'too_many_attempts':
-      return 'Tentativas demais em pouco tempo. Espere um minuto antes de tentar de novo.';
+      return 'A trava protege a chave de acesso contra chutes e vale só para quem errou; o acesso pela própria máquina '
+        + 'não é trancado.';
+    case 'rate_limited':
+      return 'O endereço público limita as tentativas de cada pessoa por alguns segundos.';
     case 'forbidden_host':
       return 'Este backend não aceita ser chamado por este endereço. Ele precisa constar em server.public_hosts '
         + 'no config.yaml do central — é a defesa que impede um nome de fora se passar por ele.';
@@ -233,7 +236,7 @@ export function hintForError(e: ApiError): string {
   return 'Tente novamente. Se persistir, consulte o Diagnóstico.';
 }
 
-function parseErrorBody(status: number, body: unknown): ApiError {
+function parseErrorBody(status: number, body: unknown, retryAfter: string | null = null): ApiError {
   // Formato do contrato: {"detail": {"code": string, "message": string, ...}}
   if (body && typeof body === 'object' && 'detail' in body) {
     const detail = (body as { detail: unknown }).detail;
@@ -265,6 +268,14 @@ function parseErrorBody(status: number, body: unknown): ApiError {
   if (body && typeof body === 'object' && typeof (body as { code?: unknown }).code === 'string') {
     const b = body as Record<string, unknown>;
     return new ApiError(status, b.code as string, typeof b.message === 'string' ? b.message : `Erro HTTP ${status}`, b);
+  }
+  // 29.56: o limite de taxa da borda (Cloudflare) responde 429 em HTML, sem o nosso envelope. Sem este caso o login
+  // de fora mostrava "Erro HTTP 429"; a regra da borda é por IP e libera em 10 s, que é o padrão quando falta
+  // o `Retry-After`.
+  if (status === 429) {
+    const segundos = Math.max(1, Number.parseInt(retryAfter ?? '', 10) || 10);
+    return new ApiError(429, 'rate_limited', `Muitas tentativas em pouco tempo. Espere ${segundos} segundos e tente de novo.`,
+      { retry_after_s: segundos });
   }
   return new ApiError(status, `http_${status}`, `Erro HTTP ${status}`);
 }
@@ -327,7 +338,7 @@ async function rawRequest(method: string, path: string, opts: RequestOptions = {
       } catch {
         parsed = null;
       }
-      throw parseErrorBody(res.status, parsed);
+      throw parseErrorBody(res.status, parsed, res.headers.get('Retry-After'));
     }
     return res;
   } catch (e) {
@@ -379,7 +390,7 @@ async function requestBinary<T>(path: string, file: Blob, query: Record<string, 
       if (res.status === 401) for (const fn of unauthorizedListeners) fn();
       let parsed: unknown = null;
       try { parsed = await res.json(); } catch { parsed = null; }
-      throw parseErrorBody(res.status, parsed);
+      throw parseErrorBody(res.status, parsed, res.headers.get('Retry-After'));
     }
     return (await res.json()) as T;
   } catch (e) {
