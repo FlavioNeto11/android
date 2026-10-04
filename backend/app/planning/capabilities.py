@@ -36,6 +36,8 @@ _VARIAVEL = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 TEXTO = "content"
 BRIEFING = "content_brief"
 VERBATIM = "content_verbatim"
+#: 30.64: os argumentos de TEXTO da ação. Ficam fora do objeto-alvo: o texto se compara à parte, já com a edição.
+ARGUMENTOS_DE_TEXTO: frozenset[str] = frozenset({"content", BRIEFING, VERBATIM})
 _SIM = ("true", "1", "sim", "yes", "verdadeiro")
 
 
@@ -86,6 +88,11 @@ class Capability:
     # era adivinhado por `username or target`, e curtir e comentar, que não têm `username`, gravavam `counterparty`
     # NULL em todo `post_liked`/`comment_replied` do central — a coordenação de frota nem chegava a ser consultada.
     counterparty: str | None = None
+    # 30.64: os argumentos que dizem SOBRE O QUÊ o efeito age (o post, o comentário, a conversa, a mídia): com o
+    # perfil, a ação e o texto, formam a identidade do item aprovado e do item já feito. A pessoa sozinha não basta:
+    # "comentar no post A de @ana" e "no post B" têm o mesmo `counterparty`. Ação com efeito sem esta declaração
+    # falha fechado (não se aprova antes nem se reconhece repetida); o teste do catálogo lista as que faltam.
+    objeto_alvo: tuple[str, ...] = ()
     needs_draft: bool = False                   # exige conteúdo gerado (e aprovado, se a política pedir) antes
     interaction_type: str | None = None         # que interação isto vira no histórico do perfil (dm_sent, followed…)
     internal: bool = False                      # resolvida por código determinístico; não é oferecida ao planejador
@@ -245,6 +252,19 @@ def counterparty_error(cap: Capability) -> str | None:
     return None
 
 
+def objeto_alvo_error(cap: Capability) -> str | None:
+    """Motivo pelo qual o objeto-alvo declarado é inválido; `None` quando está bem formado. Cada nome precisa ser
+    argumento da ação, e o texto fica de fora: ele se compara à parte, já com a edição de quem aprovou."""
+    for nome in cap.objeto_alvo:
+        if nome not in (*cap.bindings, *cap.optional_bindings):
+            return f"objeto_alvo {nome!r} não é argumento da ação (bindings/optional_bindings)"
+        if nome in ARGUMENTOS_DE_TEXTO:
+            return f"objeto_alvo {nome!r} é o texto da ação; o texto se compara à parte"
+    if len(set(cap.objeto_alvo)) != len(cap.objeto_alvo):
+        return "objeto_alvo com nome repetido"
+    return None
+
+
 def saidas_error(cap: Capability) -> str | None:
     """Motivo pelo qual as saídas declaradas por uma ação são inválidas; `None` quando estão bem formadas. Conferido
     na carga, com a mesma regra de nome do `PlanStep`: YAML torto não pode esperar o planejamento para falhar. A coleta
@@ -300,6 +320,9 @@ class CapabilityCatalog:
             erro = counterparty_error(c)
             if erro:
                 raise ValueError(f"{package}: {c.key}.counterparty — {erro}")
+            erro = objeto_alvo_error(c)
+            if erro:
+                raise ValueError(f"{package}: {c.key}.objeto_alvo — {erro}")
             erro = saidas_error(c)
             if erro:
                 raise ValueError(f"{package}: {c.key}.saidas — {erro}")
@@ -513,6 +536,24 @@ def alvo_da_acao(cap: Capability | None, bindings: Mapping[str, object] | None) 
         if valor:
             return valor
     return None
+
+
+def objeto_da_acao(cap: Capability | None, bindings: Mapping[str, object] | None) -> dict[str, str] | None:
+    """30.64: o objeto do efeito desta etapa, pelos argumentos que a ação declara em `objeto_alvo`; o que for o
+    `counterparty` sai normalizado (`@nome`), como na porta de frota. `None` quando não dá para dizer: ação sem
+    catálogo, sem declaração, ou com argumento declarado ainda por resolver (`{item}`, `{{saida:…}}`). Quem recebe
+    `None` falha fechado: não reaproveita aprovação nem reconhece o item como repetido sem olhar de novo."""
+    if cap is None or not cap.objeto_alvo:
+        return None
+    valores = bindings or {}
+    objeto: dict[str, str] = {}
+    for nome in cap.objeto_alvo:
+        bruto = valores.get(nome)
+        texto = "" if bruto is None else str(bruto).strip()
+        if "{" in texto:
+            return None
+        objeto[nome] = (normalizar_alvo(texto) or "") if nome == cap.counterparty else texto
+    return objeto
 
 
 def contraparte(cap: Capability | None, bindings: Mapping[str, object] | None) -> str | None:

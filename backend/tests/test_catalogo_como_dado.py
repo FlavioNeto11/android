@@ -65,6 +65,8 @@ CAMPOS_NOVOS: dict[str, object] = {
     "pending_marks": [],
     # 29.30: as internas que o `compose` põe antes da ação (CREATE_POST → PUT_MEDIA_IN_GALLERY). As 23 de antes, nenhuma.
     "preparo": [],
+    # 30.64: sobre o quê o efeito age (post, comentário, conversa, mídia). Quem não tem efeito não declara.
+    "objeto_alvo": [],
 }
 MUDANCAS: dict[tuple[str, str], object] = {
     # C10 — o pedido citava "o post que contém 'Ainda sobre Setembro Amarelo 2024'", mas "Posts", a folha "Comments"
@@ -114,6 +116,18 @@ MUDANCAS: dict[tuple[str, str], object] = {
     # beatriz, com "Sending…" congelado, por ENVIADA. Critério objetivo pela árvore, antes do modelo: pendente nunca é
     # enviada; bolha com o texto e o campo de escrita da conversa (declarado) sem ele = enviada.
     ("SEND_MESSAGE", "pending_marks"): ["Sending…", "Sending...", "Enviando…", "Enviando..."],
+    # 30.64 — aprovar "comentar no post A de @ana" valia para o post B dela depois de uma revisão do plano: a pessoa
+    # sozinha não identifica o item. Toda ação com efeito declara sobre o quê age; sem isso falha fechado.
+    ("LIKE_POST", "objeto_alvo"): ["post_author", "caption_contains"],
+    ("UNLIKE_POST", "objeto_alvo"): ["post_author"],
+    ("LIKE_COMMENT", "objeto_alvo"): ["username"],
+    ("CREATE_COMMENT", "objeto_alvo"): ["post_author", "caption_contains"],
+    ("REPLY_COMMENT", "objeto_alvo"): ["username"],
+    ("SEND_MESSAGE", "objeto_alvo"): ["username"],
+    ("FOLLOW", "objeto_alvo"): ["username"],
+    ("UNFOLLOW", "objeto_alvo"): ["username"],
+    ("ACCEPT_FOLLOW_REQUEST", "objeto_alvo"): ["username"],
+    ("DECLINE_FOLLOW_REQUEST", "objeto_alvo"): ["username"],
     ("SEND_MESSAGE", "local_proof"): "sent_text:id=row_thread_composer_edittext",
     ("SEND_MESSAGE", "post_description"): ("A mensagem aparece na conversa com {username} como mensagem enviada — ela "
                                            "saiu do campo de escrita, que volta vazio — e não há marca de falha (como "

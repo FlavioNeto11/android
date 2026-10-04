@@ -17,13 +17,11 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from ..db import Database, Row, dumps, loads
+from ..planning.capabilities import ARGUMENTOS_DE_TEXTO
 from ..security.sessions import operador_atual
 from ..util import new_token, now, now_iso, parse_iso
 
 STATUSES = ("pending", "approved", "edited", "rejected", "expired")
-
-#: 30.64: os argumentos de TEXTO da etapa. Ficam fora do objeto da ação: o texto se compara à parte, já com a edição.
-ARGUMENTOS_DE_TEXTO = frozenset({"content", "content_brief", "content_verbatim"})
 
 
 @dataclass(slots=True)
