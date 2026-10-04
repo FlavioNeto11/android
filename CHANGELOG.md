@@ -21,12 +21,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-04 — 28.31 F2a: o pedido guarda quem o criou e o lote (branch canais/28-31-f2a-autor, sobre a F1)
 
-- Migração 106 (`pedidos.criado_por_tipo`, `pedidos.lote`), decididas na criação por `pedidos/domain/autor.py`: com
-  operador é `dono`; sem operador e com `lote:` na chave, `frente`; senão `desconhecido`. O loopback sem sessão não é o
-  dono (decisão da orquestradora, 04/10 20:11Z). Sem backfill.
+- Migração 106 (`pedidos.criado_por_tipo`, `pedidos.lote`), decididas na criação por `pedidos/domain/autor.py`
+  (contrato da orquestradora, 04/10 20:27Z): `lote:` na chave é `frente`, sempre; operador na lista declarada
+  `pedidos.operadores_do_dono` (ou `trello:<membro_dono>`) é `dono`; outro operador é `convidado` (o login aceita
+  qualquer nome); sem operador, `desconhecido`. Lista vazia de fábrica: ninguém é o dono. Sem backfill.
 - O `AvisoDTO` ganha `criado_pelo_dono` e `de_lote` (Adendo v1.31). Com isso o rótulo do pedido criado pelo dono volta a
   sair no Telegram (com os filtros da F1), e o aviso de pedido de lote vai à janela de rotina (`pedido.lote.<tipo>`),
-  menos a aprovação, que sai na hora.
+  menos a aprovação e a ocorrência incerta, que saem na hora.
 - Prova `simulated`: `backend/tests/test_pedidos_autor.py`. `not_run`: pedido real depois do deploy.
 
 ## 2026-10-04 — 28.31 F1: o aviso diz o que aconteceu, o que é crítico e se espera o dono (branch canais/28-31-avisos-com-conteudo)

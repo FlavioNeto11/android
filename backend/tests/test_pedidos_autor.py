@@ -1,8 +1,9 @@
 """Item 28.31, F2a (migração 106): o pedido guarda quem o criou e a chave de lote, decididos UMA vez, na criação.
 
 Prova `simulated` (`arquivo::teste`): banco de teste, aparelhos falsos, planejamento desligado. Cobre: a regra do autor
-(loopback sem sessão NÃO é o dono), a gravação pela API e pelo serviço, as marcas no `AvisoDTO` (gravado e lido), o aviso
-de lote indo à janela (menos a aprovação) e o pedido anterior à 106 saindo pelo id curto.
+(só a lista declarada é o dono; loopback sem sessão e nome qualquer no login não são), a gravação pela API e pelo
+serviço, as marcas no `AvisoDTO` (gravado e lido), o aviso de lote indo à janela (menos a aprovação e a ocorrência
+incerta) e o pedido anterior à 106 saindo pelo id curto.
 """
 from __future__ import annotations
 
@@ -32,25 +33,50 @@ async def h(harness: Harness, monkeypatch) -> Harness:
     return harness
 
 
+DONOS = autor.operadores_do_dono(["Dono Teste"], "m-dono")
+
+
 @pytest.mark.parametrize(("operador", "chave", "esperado", "lote"), [
-    ("Dono", "chave-qualquer-0001", autor.DONO, None),
-    ("telegram:dono", "lote:canais:28.31", autor.DONO, "lote:canais:28.31"),   # o operador vence: é o dono, com lote
+    # 1. só a lista declarada (sem diferença de caixa e espaço) e o `trello:<membro_dono>` são o dono
+    ("Dono Teste", "chave-qualquer-0001", autor.DONO, None),
+    ("  dono   teste ", "chave-qualquer-0001", autor.DONO, None),
+    ("trello:m-dono", "chave-qualquer-0001", autor.DONO, None),
+    # 2. `lote:` é da frente SEMPRE, mesmo com o operador do dono
+    ("Dono Teste", "lote:canais:28.31", autor.FRENTE, "lote:canais:28.31"),
     (None, "lote:canais:28.31", autor.FRENTE, "lote:canais:28.31"),
     ("  ", " lote:aprendizado:30.1 ", autor.FRENTE, "lote:aprendizado:30.1"),
+    # 3. operador que não é o dono: convidado (o membro autorizado do Trello, o nome qualquer do login)
+    ("Outra Pessoa", "chave-qualquer-0001", autor.CONVIDADO, None),
+    ("trello:m-autorizado", "chave-qualquer-0001", autor.CONVIDADO, None),
+    ("telegram:m-dono", "chave-qualquer-0001", autor.CONVIDADO, None),
+    # 4. sem operador e sem lote
     (None, "chave-qualquer-0001", autor.DESCONHECIDO, None),
     (None, "xlote:canais:1", autor.DESCONHECIDO, None),
     (None, None, autor.DESCONHECIDO, None),
 ])
 def test_autor_da_criacao(operador: str | None, chave: str | None, esperado: str, lote: str | None) -> None:
-    assert autor.autor_da_criacao(operador, chave) == esperado
+    assert autor.autor_da_criacao(operador, chave, DONOS) == esperado
     assert autor.lote_da_chave(chave) == lote
     assert esperado in autor.TIPOS
+
+
+def test_lista_vazia_ninguem_e_o_dono() -> None:
+    vazia = autor.operadores_do_dono([], "")
+    assert vazia == frozenset()
+    assert autor.autor_da_criacao("Dono Teste", "chave-qualquer-0001", vazia) == autor.CONVIDADO
+    assert autor.autor_da_criacao("trello:", "chave-qualquer-0001", vazia) == autor.CONVIDADO
+    assert autor.autor_da_criacao("Dono Teste", "chave-qualquer-0001") == autor.CONVIDADO
 
 
 def _autoria(h: Harness, pid: str) -> tuple[str | None, str | None]:
     r = h.state.db.one("SELECT criado_por_tipo, lote FROM pedidos WHERE id=?", (pid,))
     assert r is not None
     return r["criado_por_tipo"], r["lote"]
+
+
+async def test_a_api_le_a_lista_da_config(h: Harness) -> None:
+    cfg = h.cfg.file
+    assert h.state.pedidos_api.donos == autor.operadores_do_dono(cfg.pedidos.operadores_do_dono, cfg.trello.membro_dono)
 
 
 async def test_pela_api_o_loopback_sem_sessao_nao_e_o_dono(h: Harness) -> None:
@@ -63,11 +89,26 @@ async def test_pela_api_o_loopback_sem_sessao_nao_e_o_dono(h: Harness) -> None:
     assert _autoria(h, solto.json()["id"]) == (autor.DESCONHECIDO, None)
 
 
-async def test_com_operador_o_pedido_e_do_dono(h: Harness) -> None:
+async def test_nome_qualquer_no_login_nao_vira_dono(h: Harness, monkeypatch) -> None:
+    """O `POST /api/login` aceita qualquer nome: a sessão com nome fora da lista grava `convidado`; o da lista, `dono`."""
+    monkeypatch.setattr(h.state.pedidos_api, "donos", DONOS)
+    c = _cliente(h)
+    assert c.post("/api/login", json={"operator": "Alguém Qualquer"}).status_code == 200
+    r = _criar(c, "chave-do-login-0001")
+    assert r.status_code == 201, r.text
+    assert _autoria(h, r.json()["id"]) == (autor.CONVIDADO, None)
+    assert c.post("/api/login", json={"operator": "Dono Teste"}).status_code == 200
+    r = _criar(c, "chave-do-login-0002")
+    assert r.status_code == 201, r.text
+    assert _autoria(h, r.json()["id"]) == (autor.DONO, None)
+
+
+async def test_o_dono_declarado_cria_pelo_servico(h: Harness, monkeypatch) -> None:
+    monkeypatch.setattr(h.state.pedidos_api, "donos", DONOS)
     api = h.state.pedidos_api
     corpo = CriarCorpo.model_validate({**_corpo(), "idempotency_key": "chave-do-dono-0001"}).para_corpo()
     view, _dup = api.criar(corpo, idempotency_key="chave-do-dono-0001", titulo=None,
-                           confirmacao=api.previa(corpo)["confirmacao"], operador="Dono")
+                           confirmacao=api.previa(corpo)["confirmacao"], operador="Dono Teste")
     assert _autoria(h, view["id"]) == (autor.DONO, None)
 
 
@@ -103,12 +144,12 @@ def _aviso(sub: str, de_lote: object) -> object:
 
 
 @pytest.mark.parametrize("sub", sorted(TIPOS_DO_PEDIDO))
-def test_aviso_de_lote_vai_a_janela_menos_a_aprovacao(sub: str) -> None:
+def test_aviso_de_lote_vai_a_janela_menos_a_aprovacao_e_a_incerta(sub: str) -> None:
     a = _aviso(sub, True)
     assert a is not None
-    if sub == "aprovacao_pendente":
-        # Só o dono decide a aprovação: ela segue na hora mesmo no lote (a regra das execuções de lote).
-        assert a.tipo == "pedido.aprovacao_pendente" and entrega_do_tipo(a.tipo) == AGORA
+    if sub in ("aprovacao_pendente", "ocorrencia_incerta"):
+        # Só o dono decide a aprovação, e efeito incerto em conta real é crítico: os dois seguem na hora mesmo no lote.
+        assert a.tipo == f"pedido.{sub}" and entrega_do_tipo(a.tipo) == AGORA
     else:
         assert a.tipo == f"pedido.lote.{sub}" and entrega_do_tipo(a.tipo) == JANELA
     # Só `True` liga: um valor que não é booleano não muda o tipo.

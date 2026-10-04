@@ -709,6 +709,8 @@ pedidos:                          # pedidos persistentes (28.4): o objetivo que 
   retentativa_teto_s: 900         # ... no máximo isto (o laço pode levar até tick_s a mais)
   piso_observar_s: 900           # menor intervalo entre ocorrências de pedido `observar` ou `preparar` (28.9): 15 min
   piso_agir_s: 3600               # idem para `agir` (efeito externo): 1 h
+  operadores_do_dono: []          # nomes de sessão do painel que são o DONO (28.31 F2a): só o pedido deles mostra o título
+                                  # no Telegram; qualquer outro nome grava `convidado` (o login aceita qualquer nome). Vazia: ninguém
   colaboracao:                    # colaboração entre pedidos (28.10, F1 e F2): pai, filhos, dependências e papéis
     enabled: false                #   DESLIGADA de fábrica: a API recusa `pai_id`, `papel` e `dependencias` (422 `colaboracao_desligada`).
                                   #   Ligada, valida e grava; F2: o laço só despacha o filho com a dependência comprovada e

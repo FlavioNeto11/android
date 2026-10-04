@@ -5657,19 +5657,24 @@ política (`PolicyEngine.check`, item 30.62): o provedor `contexto_do_pedido(run
 
 ## Adendo v1.31 (04/10/2026; número da orquestradora; item 28.31 F2a) — o pedido guarda quem o criou, e o aviso diz se é do dono ou de um lote
 
-Migração 106 (`pedidos.criado_por_tipo`, `pedidos.lote`), decididas uma vez, na criação (`POST /api/pedidos`):
+Migração 106 (`pedidos.criado_por_tipo`, `pedidos.lote`), decididas uma vez, na criação (`POST /api/pedidos`), nesta
+ordem (contrato da orquestradora, 04/10 20:27Z):
 
-- com operador (a sessão do painel, ou a conversa do dono no Telegram ou no Trello): `dono`;
-- sem operador e com `idempotency_key` que começa com `lote:` (o caminho das frentes pelo loopback): `frente`, e `lote`
-  guarda a chave;
-- sem os dois: `desconhecido`. O loopback sem sessão NÃO é o dono. `convidado` e `ia` são do vocabulário; hoje nada os cria.
+1. `idempotency_key` que começa com `lote:`: `frente`, SEMPRE, mesmo com operador; `lote` guarda a chave.
+2. Operador na lista declarada do dono: `dono`. A lista é a chave nova `pedidos.operadores_do_dono` (config por
+   instalação, nomes de sessão do painel, sem diferença de caixa e espaço), mais o `trello:<trello.membro_dono>`. Vazia de
+   fábrica: ninguém é o dono.
+3. Outro operador: `convidado`. O `POST /api/login` aceita qualquer nome, então uma sessão das frentes ou a pessoa de
+   confiança caem aqui.
+4. Sem operador: `desconhecido`. O loopback sem sessão não é o dono. `ia` é do vocabulário; hoje nada a cria.
 
 O `PedidoView` não muda. O **`AvisoDTO`** (`GET /api/pedidos/avisos` e o evento `pedido.aviso`) ganha dois campos, sempre
 presentes:
 
 - `criado_pelo_dono` (booleano): o pedido é do dono. Só aí o canal de fora pode mostrar o título; os outros saem pelo id curto.
 - `de_lote` (booleano): o pedido é do lote de uma frente. O aviso vai à janela de rotina do canal, qualquer que seja o nível
-  (tipo `pedido.lote.<tipo>` na fila de envio), menos `aprovacao_pendente`, que só o dono decide e sai na hora.
+  (tipo `pedido.lote.<tipo>` na fila de envio), menos `aprovacao_pendente` (só o dono decide) e `ocorrencia_incerta`
+  (efeito incerto em conta real é crítico), que saem na hora.
 
 Pedido anterior à 106: os dois `false`. **Prova:** `simulated` (`backend/tests/test_pedidos_autor.py`). `not_run`: um pedido
 real de lote depois do deploy.

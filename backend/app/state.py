@@ -646,7 +646,8 @@ class AppState:
             # barramento. É o MESMO caminho dos avisos da API (`PedidosApi.registrar_aviso`): chave igual, um evento só.
             avisar=lambda aviso: self.pedidos_api.registrar_aviso(aviso))
         # API de pedidos (28.9): prévia, criação, ações, leitura e os eventos `pedido.*` (as marcas do laço e das ações).
-        self.pedidos_api = PedidosApi(self.db, self.pedidos, self.runs, self.bus.emit, cfg.file.pedidos)
+        self.pedidos_api = PedidosApi(self.db, self.pedidos, self.runs, self.bus.emit, cfg.file.pedidos,
+                                      membro_trello_dono=cfg.file.trello.membro_dono)
         self.pedidos.notificar = self.pedidos_api.publicar
         # Costuras do aprendizado (ADR-054, A2): o executor pede as lições do ator e avisa cada tentativa fechada; o
         # serviço de execução pede as do planejador e avisa os gestos (resolver, repetir, cancelar, responder); o

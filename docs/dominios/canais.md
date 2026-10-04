@@ -317,9 +317,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
       na mensagem da janela de 1 h, uma linha cada.
   - A rajada (vários do mesmo tipo seguidos) lista uma linha por item, até 5, mais "+N no painel".
   - O rótulo do pedido é texto da pessoa: só sai quando o pedido foi criado pelo dono (o de convidado, de frente ou
-    de IA sai sempre pelo id curto; desde a F2a, migração 106, o pedido guarda quem o criou, e o anterior a ela sai
-    pelo id curto) e nenhum filtro mudaria nada nele. O aviso de pedido de lote de frente (`lote:`) vai à janela de rotina,
-    menos a aprovação. São três filtros:
+    de IA sai sempre pelo id curto; desde a F2a, migração 106, o pedido guarda quem o criou: `dono` só para o
+    operador da lista `pedidos.operadores_do_dono` ou o `trello:<membro_dono>`, e o anterior à 106 sai pelo id curto) e
+    nenhum filtro mudaria nada nele. O aviso de pedido de lote de frente (`lote:`) vai à janela de rotina, menos a
+    aprovação e a ocorrência incerta. São três filtros:
     - o redator de credencial;
     - contato (e-mail, @, telefone, IP);
     - persona pela régua estrita: 2 letras ou mais, e "Ana" também.

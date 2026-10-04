@@ -104,8 +104,10 @@ def _chave_alvo(t: tuple[str, str | None, str | None]) -> tuple[str, str, str]:
 
 class PedidosApi:
     def __init__(self, db: Database, laco: LacoDePedidos, runs: RunService, emitir: Callable[..., object],
-                 cfg: PedidosCfg):
+                 cfg: PedidosCfg, *, membro_trello_dono: str | None = None):
         self.db = db
+        #: 28.31 F2a: quem é o dono na criação (a lista declarada e o `trello:<membro_dono>`).
+        self.donos = dominio_autor.operadores_do_dono(cfg.operadores_do_dono, membro_trello_dono)
         self.laco = laco
         self.repo = laco.repo
         self.acoes = laco.acoes
@@ -385,7 +387,7 @@ class PedidosApi:
                  p.orcamento_ocorrencia_usd, p.sobreposicao, p.janela_recuperacao_s, 1 if p.coalescer else 0,
                  p.max_tentativas, p.pausa_por_falha, corpo.pai_id, corpo.papel, operador,
                  # 28.31 F2a (106): quem criou, decidido aqui e só aqui; é o que deixa o aviso mostrar o título
-                 dominio_autor.autor_da_criacao(operador, idempotency_key), dominio_autor.lote_da_chave(idempotency_key),
+                 dominio_autor.autor_da_criacao(operador, idempotency_key, self.donos), dominio_autor.lote_da_chave(idempotency_key),
                  em, em))
             for de, tipo in corpo.dependencias:
                 self.repo.inserir_dependencia(de, pid, tipo, em)
