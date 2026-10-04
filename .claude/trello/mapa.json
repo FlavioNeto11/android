@@ -3176,10 +3176,17 @@
    "lista": "em_execucao",
    "lote": "canais",
    "nome": "31.39 — Remedir a linha de base de latência depois das correções de hoje"
+  },
+  "28.23": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2472fe6257eae6a2d3159",
+   "url": "https://trello.com/c/Hy9MtBmn",
+   "lista": "em_execucao",
+   "lote": "canais",
+   "nome": "28.23 — O limite de autonomia do pedido chega à execução"
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T12:24:10Z",
+ "atualizado_em": "2026-10-04T12:34:29Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
