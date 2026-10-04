@@ -2389,3 +2389,139 @@ Desfecho: não concluído; prova `real` da falha, com custo pelo `/api/usage?run
   12:27Z; a segunda tentativa está acima).
 - No QA Messenger, a pós-condição comprovou a lista de conversas por seletor, mas o nome do primeiro contato não está
   no texto da evidência. A leitura do valor não ficou registrada.
+
+## 30. Fechamento da Fase 28: pedidos persistentes, real × simulado × não executado (04/10/2026)
+
+Item 28.13. Só leitura e documentação: nenhum código de produto, nenhum teste de produto, nenhuma ação em aparelho,
+conta ou IA paga. A fonte de cada linha é o registro do `aplicar` (`.claude/plano-100/estado.json`), o "Fecha quando"
+da §13 de [design/pedidos-persistentes.md](design/pedidos-persistentes.md), as linhas 28.1 a 28.21 do
+[plano-100](plano-100.md) e os fatos da prova real do 28.12 de 04/10. Onde esta seção ficou mais nova que o registro,
+a linha diz de onde veio. Base lida: `origin/main` `24da29ef`. Runtime do central em 04/10 12:07Z
+(`GET /api/health`): `commit` `24da29ef`, `migration` `098_etapa_opcional` (deploy 25, com a 28.10 F2 desligada).
+O deploy 22 (`d37043df`, 09:42Z) trouxe as faxinas e o convidado; o 23 (`9add9fb2`), o 28.20 e o 28.21; o 24, a
+28.10 F1 e as correções da leitura que a prova 2 mediu. Horas em UTC.
+
+O bloco 28.12 fechou às 12:07Z por decisão da orquestradora: **caso de uso caro demais para o teto com o código
+atual**. Os números estão abaixo; o 28.12 fica parcial no plano, com o bloqueio escrito.
+
+### 30.1 Os itens
+
+Três níveis que não se misturam: `real` (data, máquina, commit e ids), `simulated` (`arquivo::teste`) e `not_run`.
+Nos itens com dois níveis, cada um vem separado. Máquina é o central, salvo onde a linha diz outra.
+
+| Item | Estado | Prova | O que há (e, se não fechou, a ação exata) |
+|---|---|---|---|
+| 28.1 Trava de líder | feito | `simulated` | PR #56 via #61 (migração 066, ADR-064): dois `AppState` no mesmo banco, um só líder, outro assume depois de 120 s. `not_run`: a prova com dois backends no central. |
+| 28.2 Modelo do pedido | feito | `simulated` | PR #55 via #61 (migração 067): tabela de transições, chave determinística. O uso real dos dados veio com o laço ligado (28.12). |
+| 28.3 Recorrência e fuso | feito | `simulated` | PR #54, `backend/tests/test_pedidos_recorrencia.py` (79 casos, incluindo horário de verão). |
+| 28.4 Laço de pedidos | feito | `simulated` + `real` | Desenho PR #59, código PR #73, ADR-066 (D1 a D7), laço desligado de fábrica. `real` (04/10, deploys 21 a 24): o laço ligado despachou 5 ocorrências de 4 pedidos e atravessou os reinícios dos deploys 23 e 24 com exatamente uma execução por ocorrência, nenhuma duplicada e nenhuma sumida. PostgreSQL: `not_run`. |
+| 28.5 Tentativas e efeito | feito | `simulated` + `real` parcial | PR #90: nova tentativa só sem efeito possível, `incerta` para o pedido em `aguardando_pessoa`. `real`: a ocorrência das 09:00Z da prova 1 fechou `incerta` e o pedido ficou em `aguardando_pessoa`; isso gerou as emendas 28.20 e 28.21. |
+| 28.6 Orçamento e prioridade | feito | `simulated` + `real` | PR #85. `real`: em 04/10, a ocorrência das 09:00Z (run `r-20261004090000-bbfe54`) parou no teto de US$ 0,10 por ocorrência com US$ 0,107 gastos: a trava por ocorrência funciona. Teto por pedido e adiamento por saldo: `simulated`. |
+| 28.7 Memória e relatório | feito | `simulated` + `real` parcial | PR #85 (migração 070): relatório determinístico, incerteza e falha nunca viram conclusão. `real`: dois relatórios de encerramento (`pedido_relatorios`, `gerado_por='deterministico'`) dos pedidos -01 (09:11:53Z) e -04 (12:07:24Z), ambos `sem_conclusao` e com o bloco `nao_coberto`: a incerta e a falha não viraram conclusão. **Achado:** o encerramento por orçamento não gera o relatório (ver 30.2). |
+| 28.8 Gatilhos de evento, condição e persona | feito | `simulated` | Suíte 5 (contrato v0.67): cursor com detecção de buraco da retenção. Um pedido condicional rodando no central: `not_run` (ver 30.2). |
+| 28.9 API e tela Pedidos | feito | `simulated` + `real` parcial | PR #106 (migração 072, ADR-062 emendado): API, criação pelo Comando com prévia, caixa de avisos. Navegador contra backend simulado a 1366 e 375 px. `real`: a API criou, editou com selo, pausou, retomou e cancelou os 4 pedidos da prova; no painel (Chrome, ~10:24Z), a guia Ocorrências do -02 mostrou a incerta resolvida com a nota. A lista de próximas execuções de um pedido ativo no painel: `not_run`. |
+| 28.10 Colaboração | **não feito** | `not_run` | Só o desenho (§9 de pedidos-persistentes). Dividido em F1 a F5 (ADR-074). F1 (estrutura, migração 096, adendo v1.16) é o PR #227, no ar desde o deploy 24; F2 (dependência no laço) é o PR #240, no ar desde o deploy 25; as duas desligadas de fábrica. F3 e F4 esperam o ok da orquestradora, uma por vez. F5 (regras para fora) fica só `simulated` até o dono autorizar. A §13 permite deixar para depois da prova sem bloquear. |
+| 28.11 Aviso fora do painel | feito | `real` | Telegram, PR #73 (migração 068). 02/10 ~20:02Z, `a1fa730`: `scripts/avisos-telegram.py testar` saiu com 0 e o dono confirmou o recebimento. |
+| 28.12 Prova real | **parcial** | `real` parcial | Bloco fechado às 12:07Z (orquestradora), detalhe abaixo. Bloqueio: a leitura de página de varejo no navegador custa US$ 0,26 a 0,31 por ocorrência e trava no juiz por sobreposição; reabre depois do 31.38 provado e do diagnóstico da Jev sobre o juiz. |
+| 28.13 Fechamento | feito | n/a | Esta seção e o ADR-074 (proposto). O estado pelo mecanismo é com a orquestradora. |
+| 28.14 `learning.needs_person` no aviso | feito | `simulated` | PR #100: chave de deduplicação comum aos quatro eventos de aviso. A entrega real ao dono dessa classe de aviso: `not_run`. |
+| 28.15 Conversa pelo Telegram | feito | `simulated` | PR #166 (migração 085, ADR-071), `7fd72929` e `e657b4c8`, deploy 14, entrada desligada (`avisos.entrada.enabled=false`). `not_run`: a conversa real; liga com o sim do dono. Registrado pela orquestradora como implemented/simulated. |
+| 28.16 Faxina das tabelas de canal | feito | `simulated` | PR #208, no ar desde o deploy 22 (`d37043df`, 09:42Z). Teste com relógio falso. A faxina da 090 está no PR #225, na suíte 23. |
+| 28.17 Canais como ANA | feito | `real` | PR #202, suíte 21, deploy 21. `real`: aviso `avisos_entregas` id 28, 09:01:27Z, título "ANA: …". |
+| 28.18 Convidado no Telegram | feito | `simulated` | PR #205 (migração 090, emenda do ADR-071), no ar desde o deploy 22. Desligado de fábrica; a prova real vem com o primeiro contato depois de a entrada ser ligada. |
+| 28.19 Lote não avisa um por um | feito | `simulated` | PR #187, deploy 18 (`f1651ec8`): rajada de 11 sai como 2 mensagens. |
+| 28.20 Parada por orçamento sem efeito | feito | `simulated` + `real` | PR #216, suíte 23, deploy 23. A parada no teto sem ação de commit fecha `falhou` pelo orçamento. `real`: run `r-20261004103500-ba5ebc` (pedido -03) fechou `falhou` às 10:38Z com o motivo do orçamento, sem "efeito externo possível"; antes do deploy o mesmo caso fechava `incerta` (`bbfe54`, `f8722d`). |
+| 28.21 A pessoa resolve a incerta | feito | `simulated` + `real` | PR #220, suíte 23, migração 095, adendo v1.15: rota `/resolver` com nota obrigatória. `real`: às 10:21:07Z a ocorrência `oefcffa51b961548c` do -02 (run `f8722d`) foi resolvida (200), continuou `incerta` com nota e autor gravados, as pendências esvaziaram e o pedido retomou. |
+
+**Registro no mecanismo.** Os itens 28.15 a 28.18 não tinham entrada no `estado.json` (o 28.15 já foi aplicado por
+`resultado-28-15.json`). Os 28.10, 28.13, 28.20 e 28.21 também estão sem entrada na leitura de 04/10. A orquestradora aplica o resto pelo `scripts/claude-plan-100.py aplicar`.
+
+**28.12, prova real 1 (04/10).** Pedido `ped_3Ypk6VjEVUGQC4ziIiNtvQ` (`lote:canais:28.12-01`), android-09, deploy 21
+(`32cbcd6d`).
+- A ocorrência das 09:00Z parou no teto de US$ 0,10 por ocorrência, com US$ 0,107 gastos. Fechou `incerta`
+  ("efeito externo possível") e o pedido ficou preso em `aguardando_pessoa`. Cancelado às 09:11:53Z.
+- Custo: o ator (`decide`) no claude-sonnet-5, 11 chamadas (4 com imagem), 28 mil tokens novos e 86 mil lidos do
+  cache. O plano foi no Sonnet 5.5 (1 chamada) e o juiz no Haiku (1).
+- O que provou: o laço ligado despacha, a trava de orçamento por ocorrência funciona, a incerta para o pedido, e o
+  cancelamento fecha. O que mostrou: duas lacunas, tratadas pelo 28.20 e pelo 28.21.
+
+**28.12, provas 2 a 4.** Quatro pedidos no total (`lote:canais:28.12-01` a `-04`), todos só de observação, sem
+nenhuma ação com efeito externo. Cada ocorrência, do banco (`pedido_ocorrencias`):
+
+| Pedido | Ocorrência | Run | Custo (US$) | Fechou | Motivo |
+|---|---|---|---|---|---|
+| -01 `ped_3Ypk6VjEVUGQC4ziIiNtvQ` | 09:00Z | `bbfe54` | 0,1069 | `incerta` | teto da ocorrência (US$ 0,10); antes do 28.20 |
+| -02 `ped_O_tLG52eXcmZNGB0THvIkA` | 10:00Z | `f8722d` | 0,3087 | `incerta` | teto; resolvida às 10:21Z pelo 28.21 |
+| -02 | 11:00Z | — | 0 | `pulada` | pedido pausado (gesto explícito) |
+| -02 | 12:00Z | `3894c1` | 0,3063 | `falhou` | o resto do orçamento (US$ 0,285) não cobre uma ocorrência |
+| -03 `ped_bdH23ZWKXDSkln9MstvhfA` | 10:35Z | `ba5ebc` | 0,3055 | `falhou` | orçamento total esgotado (28.20) |
+| -04 `ped_Jfb2Q2_EXBicgUxGwiivUQ` | 10:45Z | `7ae54f` | 0,2610 | `falhou` | teto da ocorrência (US$ 0,25) |
+| -04 | 11:45Z e 12:45Z | — | 0 | `pulada` | pedido pausado |
+
+- Gasto real do bloco: **US$ 1,288** de US$ 1,70. Cinco execuções, **todas acima do teto da ocorrência**; nenhuma
+  entregou a leitura pedida.
+- Fim dos pedidos: -01 cancelado (09:11:53Z), -02 e -03 encerrados por orçamento, -04 cancelado (12:07:24Z).
+- Avisos gravados: `ocorrencia_incerta` 2, `orcamento_esgotado` 2, `relatorio_pronto` 2. Observações: 5, todas
+  `resultado` `ausente`.
+- O -02 antes e depois das correções do deploy 24 (10:00Z × 12:00Z): decisões 23 → 19, imagens 11 → 12,
+  verificações 5 → 8, duração 224 → 297 s, custo igual (0,3087 → 0,3063). A correção não baixou o custo.
+- Onde trava: o juiz rejeita a pós-condição do `open_url` por causa do diálogo "Abra o app" sobreposto à página, e o
+  ator gasta o resto do teto contornando. Achado entregue à Jev (31.38).
+
+**28.12, pedido só de leitura com relatório determinístico** (o -03): `not_run`. A leitura da página falhou no
+orçamento (`ba5ebc`) e o pedido encerrou por orçamento, caminho que não gera relatório (achado abaixo). Decisão da
+orquestradora: fica `not_run` com essa causa.
+
+**Achados do fechamento** (propostos à orquestradora, sem número reservado):
+- O encerramento **por orçamento** (`laco._conferir_orcamento`) não grava o relatório final; o encerramento por
+  contagem ou prazo e o cancelamento gravam. O §6.5 de [design/pedidos-persistentes.md](design/pedidos-persistentes.md)
+  lista o orçamento entre os motivos e diz que encerrar gera o relatório final. Prova `real`: -02 e -03, com
+  `encerrado_motivo='orcamento'` e nenhuma linha em `pedido_relatorios`.
+- `POST /api/pedidos/{id}/cancelar` aceita `motivo` e não o grava (`servico.cancelar` passa só o operador). O
+  cancelamento do -04 às 12:07:24Z não deixou motivo no banco.
+
+### 30.2 A fase fecha?
+
+Cláusula por cláusula do "Fecha quando" da §13: "um pedido recorrente e um condicional rodam no central por pelo
+menos três ocorrências cada, atravessando um reinício do backend sem ocorrência duplicada nem perdida em silêncio,
+com custo por ocorrência gravado, relatório com observado × conclusão e a tela Pedidos mostrando histórico e
+próximas execuções".
+
+| Cláusula | Resposta | Por quê |
+|---|---|---|
+| Pedido recorrente com 3 ocorrências no central | **Não** (parcial) | O -02 teve 3 ocorrências marcadas: 2 executadas (10:00Z `incerta`, 12:00Z `falhou`) e 1 `pulada` por pausa explícita. Nenhuma das cinco execuções do bloco entregou a leitura; todas passaram do teto. Reabre com o bloqueio do 28.12. |
+| Pedido condicional com 3 ocorrências no central | **Não** | O -04 tinha gatilho de condição junto da recorrência. A recorrência rodou uma vez (10:45Z, `falhou` no teto da ocorrência) e a observação `preco_1` nunca ganhou valor, então a borda da condição nunca foi avaliada em real. Condição (28.8): `simulated`. |
+| Atravessar um reinício sem duplicar nem perder | **Sim** (`real`) | Os reinícios dos deploys 23 e 24 caíram com pedidos ativos: uma execução por ocorrência, nenhuma duplicada, nenhuma sumida; as não executadas ficaram `pulada` com motivo. A ocorrência perdida de propósito (janela de recuperação) é `not_run`. |
+| Custo por ocorrência gravado | **Sim** (`real`) | As 5 ocorrências executadas têm `custo_usd` gravado (tabela acima), e o gasto do pedido soma por elas. |
+| Relatório com observado × conclusão | **Parcial** (`real`) | Dois relatórios determinísticos reais (-01 e -04), `sem_conclusao` e com `nao_coberto`. O relatório de uma leitura bem-sucedida e o do pedido só de leitura: `not_run` (nenhuma leitura deu certo). O encerramento por orçamento não gera relatório (achado). |
+| Tela Pedidos com histórico e próximas execuções | **Parcial** (`real`) | Histórico real visto no painel (guia Ocorrências do -02, ~10:24Z). Próximas execuções de um pedido ativo no painel: `not_run`, e os 4 pedidos estão terminais. |
+| Prova `real` para leitura, `simulated` para colaboração e efeito, `not_run` com a dependência exata para o que exige autorização | **Parcial** | Leitura: ver as linhas acima. Colaboração: `not_run` (28.10 não feito), que a §13 deixa para depois sem bloquear. Efeito: nenhuma ação com efeito externo foi feita; a reputação com resposta publicada segue `not_run` e depende do dono. |
+
+**Em resumo.** A fase **não fecha**. O motor tem prova `real`: o laço liga, despacha, atravessa reinícios sem
+duplicar nem perder, grava o custo por ocorrência, respeita os tetos, para na incerteza (28.5), falha pelo orçamento
+sem efeito (28.20) e deixa a pessoa resolver a incerta (28.21); o aviso por Telegram (28.11) e a identidade da ANA
+(28.17) também. O que não fecha é o caso de uso: a leitura de página de varejo custa US$ 0,26 a 0,31 por ocorrência e
+trava no juiz, então nem o recorrente nem o condicional chegaram a três leituras. A colaboração (28.10) a §13 permite
+deixar para depois.
+
+### 30.3 O que falta, por quem decide
+
+| Quem | O quê | Itens |
+|---|---|---|
+| Dono | Sim para ligar a entrada do Telegram (`avisos.entrada.enabled`) e trocar a caixa provisória; só então a conversa real | 28.15 |
+| Dono | Autorizar as regras para fora da colaboração (F5) e a reputação com resposta publicada | 28.10, 28.12 |
+| Dono ou orquestradora | Aceitar fechar a fase com o condicional `simulated`, ou pedir uma prova real de condição | 28.8, 28.12 |
+| Orquestradora | Ok para as fatias F3 e F4 do 28.10, uma por vez (F1 e F2 no ar, desligadas) | 28.10 |
+| Orquestradora | Aplicar o registro no mecanismo: 28.10, 28.13 e 28.16 a 28.21 | 28.13 |
+| Jev e frente de latência e custo | Provar o 31.38 e diagnosticar o juiz na pós-condição com sobreposição; só então reabrir o 28.12 | 28.12 |
+| Orquestradora | Reservar número para os dois achados (relatório no encerramento por orçamento; motivo do cancelamento) | 28.7, 28.9 |
+| Frente de latência e custo | Olhar o custo do ator `decide` medido na prova 1 (ADR-074, item 5); só registro | 28.6, 28.12 |
+| Execução, sem pedir | PostgreSQL da trava de líder e do laço; prova com dois backends no central | 28.1, 28.4 |
+
+### 30.4 Validação
+
+`python scripts/docs-check.py` e `python scripts/claude-plan-100.py check` rodados no worktree
+`canais-28-13`, base `24da29ef`, em 04/10/2026 12:12Z. `docs-check`: 0 erros, 0 avisos. `claude-plan-100.py check`
+no checkout central (o worktree não tem os pacotes gerados): passou. Os números do 28.12 vêm de leitura só do banco do
+central (`pedido_ocorrencias`, `pedido_relatorios`, `pedido_avisos`, `pedido_observacoes`) e do `GET /api/health`.
+Nenhum teste de produto foi rodado, de propósito: o item é documental.
