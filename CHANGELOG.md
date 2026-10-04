@@ -67,6 +67,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Painel: Pendências ganha a aba "Decidido sozinho" (`?aba=decididas`): filtro por período e regra, o porquê e os fatos em
   português, o desfazer com o motivo em linha (o botão do aprendizado é "Desligar") e, sem volta segura, o porquê no lugar
   do botão.
+## 2026-10-04 — 31.44: pós-condição com valor vazio falha fechado antes de agir (branch fix/31-44-pos-condicao-impossivel)
+
+- Achado real (histórico de erros do portal, 29.72): na r-20261004111836-fec1a1 o molde `…account_label|text={account_label}`
+  chegou ao android-04, sem rótulo de conta; `text=` vazio virou busca do texto literal "text=" e a etapa gastou 3
+  tentativas e 3 `decide` para "0 elemento(s)". O 30.50 só tirou o aparelho do despacho de prova.
+- `UiTree.parte_sem_valor` e `parte_vazia_da_pos_condicao`; guarda no `_run_step`, antes de observar, agir ou chamar a IA:
+  sem conta conhecida no aparelho, `waiting_user` com o motivo do 24.4 (`conta_errada`, tentativa devolvida); com conta,
+  defeito do plano na 1ª tentativa, sem plano revisado. Nenhum literal novo em `falhas.py`, sem migração.
+- O `message_input|text=<conversa>` da r-20261004082521-2f21e2 tem valor e fica com o 31.32 (tela final, 1 tentativa);
+  não há YAML do QA Messenger para corrigir e o prompt do planejador tem snapshot.
+- Prova `simulated`: `tests/test_pos_condicao_impossivel.py` (ainda não executado: janela de teste fechada). `real`:
+  `not_run`.
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
