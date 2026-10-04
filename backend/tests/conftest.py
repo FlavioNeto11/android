@@ -10,6 +10,7 @@ import pytest
 import pytest_asyncio
 
 from app.config import AppConfigFile, Config, EnvSettings
+from app.db import MIGRATIONS_DIR as _MIGRACOES_ORIGINAIS
 from app.devices.emulator_backend import FakeEmulatorBackend
 from app.models import RunCreate
 from app.planning.provider import Usage
@@ -94,7 +95,7 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
                  {"id": "instagram", "name": "Instagram", "package": "com.instagram.android",
                   "activity": "com.instagram.mainactivity.MainActivity"}],
     })
-    dsn = db_dsn if db_dsn is not None else _dsn_de_teste()
+    dsn = db_dsn if db_dsn is not None else _dsn_de_teste(reusar=True)
     e_pg = bool(dsn) and dsn.startswith(("postgres://", "postgresql://"))
     campos: dict[str, Any] = {
         "AI_PROVIDER": "simulated",
@@ -115,9 +116,10 @@ def make_config(tmp: Path, count: int = 3, *, store: str | None = None,
 
 
 _SCHEMAS_DE_TESTE: list[str] = []              # achado #163: toda corrida em PostgreSQL some daqui no fim da sessão
+_REUSO_NESTE_TESTE: list[bool] = [False]        # 29.63: o esquema do worker já foi entregue neste teste?
 
 
-def _dsn_de_teste() -> str | None:
+def _dsn_de_teste(*, reusar: bool = False) -> str | None:
     r"""Sem `TEST_DATABASE_URL`, a suíte roda em SQLite, como sempre.
 
     Com ela, cada teste ganha um SCHEMA próprio no PostgreSQL — isolamento equivalente ao arquivo temporário do
@@ -129,10 +131,25 @@ def _dsn_de_teste() -> str | None:
 
     Cada chamada empilha o schema criado em `_SCHEMAS_DE_TESTE`; `pytest_sessionfinish` apaga todos no fim (achado
     #163 — sem isso o catálogo do banco de teste só cresce: 1608 schemas / 1,9 GB medidos numa única corrida).
+
+    `reusar` (29.63, só os ajudantes compartilhados: `make_config` e `fake_skills.banco`): a primeira abertura de
+    banco do teste recebe o esquema do worker, já migrado e esvaziado (`tests/esquema_do_worker.py`), em vez de um
+    esquema novo a migrar (~3,2 s por teste). Com `MIGRATIONS_DIR` trocado (testes da própria migração), não reusa.
+    `ESQUEMA_MODELO=off` desliga o reuso (a medida antes/depois no mesmo commit e nos mesmos testes).
     """
     base = os.environ.get("TEST_DATABASE_URL")
     if not base:
         return None
+    if reusar and not _REUSO_NESTE_TESTE[0] and os.environ.get("ESQUEMA_MODELO") != "off":
+        from app import db as db_mod
+
+        from .esquema_do_worker import ESQUEMA_DO_WORKER
+
+        if db_mod.MIGRATIONS_DIR == _MIGRACOES_ORIGINAIS:
+            dsn = ESQUEMA_DO_WORKER.dsn(base, _SCHEMAS_DE_TESTE)
+            if dsn is not None:
+                _REUSO_NESTE_TESTE[0] = True
+                return dsn
     import psycopg
 
     schema = f"t{uuid.uuid4().hex[:12]}"
@@ -153,15 +170,18 @@ def pytest_sessionfinish(session: Any, exitstatus: int) -> None:  # noqa: ARG001
     mesmo PostgreSQL de teste ao mesmo tempo (uma em primeiro plano, outra em segundo, como o ritmo de trabalho
     registra) apagariam os schemas uma da outra. Cada sessão só é dona do que ELA criou.
     """
+    from .esquema_do_worker import ESQUEMA_DO_WORKER
+
+    ESQUEMA_DO_WORKER.relatar()
     base = os.environ.get("TEST_DATABASE_URL")
-    if not base or not _SCHEMAS_DE_TESTE:
+    if not base or not (_SCHEMAS_DE_TESTE or ESQUEMA_DO_WORKER.criados):
         return
     try:
         import psycopg
 
         with psycopg.connect(base, autocommit=True, connect_timeout=5) as c:
             c.execute("SET lock_timeout = '3s'")
-            for schema in _SCHEMAS_DE_TESTE:
+            for schema in [*_SCHEMAS_DE_TESTE, *ESQUEMA_DO_WORKER.criados]:
                 try:
                     c.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
                 except Exception:
@@ -389,6 +409,7 @@ def _schemas_do_teste_somem_ao_fim_dele() -> Iterator[None]:
     de módulo ou de sessão cria banco — se algum passar a criar, este apagaria o banco dele no meio do módulo.
     """
     inicio = len(_SCHEMAS_DE_TESTE)
+    _REUSO_NESTE_TESTE[0] = False                  # 29.63: a 1ª abertura de banco deste teste pode reusar o do worker
     yield
     novos = _SCHEMAS_DE_TESTE[inicio:]
     base = os.environ.get("TEST_DATABASE_URL")

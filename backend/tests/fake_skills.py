@@ -67,7 +67,7 @@ def documento(skill_id: str, template: str | None, *, nota: str = "v1", app: str
 
 
 def banco(tmp_path: Path, nome: str = "hab.sqlite3") -> Database:
-    db = Database(_dsn_de_teste() or tmp_path / nome)
+    db = Database(_dsn_de_teste(reusar=True) or tmp_path / nome)
     db.migrate()
     return db
 

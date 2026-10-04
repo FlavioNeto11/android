@@ -32,6 +32,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Prova real** do 29.56 de fora (orquestradora, 01:15Z): 8 Bearer inventados → 401, o 9º → 429 `Retry-After: 60`;
   cabeçalhos DENY/nosniff/same-origin em `/central/`; webhook HEAD 200, GET 401, POST sem assinatura 401.
 
+## 2026-10-04 — 29.63: o esquema do worker no harness de PostgreSQL (branch fix/29-63-esquema-modelo)
+
+- `tests/esquema_do_worker.py`: em PG, cada worker migra um esquema uma vez, e a 1ª abertura de banco de cada teste
+  pelos ajudantes compartilhados o recebe esvaziado. Isso troca o custo de ~3,2 s por teste (criar, migrar e apagar)
+  pelo de esvaziar. Só harness de teste; em SQLite nada muda.
+- Os testes da própria migração seguem com esquema novo.
+- Qualquer falha ou mudança de estrutura troca o esquema, então o custo volta ao de antes, sem teste vermelho.
+- `ESQUEMA_MODELO=off` serve para a medida antes e depois.
+- Teste: `backend/tests/test_esquema_do_worker.py` (só com `TEST_DATABASE_URL`).
+- Prova em PG (farm-pg, 04/10, mesmo commit e mesmos testes, `-n 8`, Idle):
+  - com `ESQUEMA_MODELO=off`: 1033 passed, 2 skipped em 8 min 49 s;
+  - com o reuso: 1033 passed, 2 skipped em 2 min 51 s, com 8 migrações, 551 reusos e 0 trocas;
+  - os testes novos: 6 passed.
+- SQLite intacto.
+
 ## 2026-10-04 — 29.56: tranca de login por cliente, limite no Bearer e cabeçalhos de segurança (branch fix/29-56-tranca-por-cliente, sem migração)
 
 - A `PortaoDeLogin` passou a ser por cliente (`security.access.cliente_de`): pelo túnel o par é sempre `127.0.0.1`, e o
