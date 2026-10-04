@@ -102,6 +102,9 @@ ATALHO_ANTES_DO_ATOR = True
 SONDAGENS_DA_TELA_PARADA = 3
 #: 31.27: o intervalo entre duas leituras da árvore na espera adaptativa do juiz (`judge_wait_estavel_s`).
 PASSO_DA_ESPERA_DO_JUIZ_S = 0.3
+#: 31.32: o diagnóstico do seletor composto impossível nesta tela (`UiTree.partes_em_elementos_diferentes`). O texto é o
+#: que `learning/domain/falhas.py` classifica como `seletor_em_elementos_diferentes`.
+PARTES_EM_ELEMENTOS_DIFERENTES = "as partes do seletor estão em elementos diferentes desta tela"
 #: LT-6 (caminho rápido 2): a etapa `app_foreground` abre o app pelo executor antes de consultar o ator. Existe para os
 #: testes cujo gancho é a decisão do ator numa etapa dessas (como `ATALHO_ANTES_DO_ATOR`): eles desligam isto.
 OPEN_APP_SEM_IA = True
@@ -2604,6 +2607,10 @@ class StepExecutor:
         if step.side_effect and fired:
             return StepOutcome(Outcome.uncertain, f"O efeito foi disparado, mas não foi possível comprová-lo: {text}",
                                delivery_level=level)
+        if unprovable and PARTES_EM_ELEMENTOS_DIFERENTES in text:
+            return StepOutcome(Outcome.failed, "Defeito do plano — o seletor da pós-condição exige no MESMO elemento (`|`) "
+                               "o que a tela mostra em elementos separados; repetir ou recuperar não resolve: "
+                               f"{text}", plan_defect=True)
         if unprovable:
             return StepOutcome(Outcome.failed, "Defeito do plano — a pós-condição não é comprovável pela tela (descreve "
                                f"processo/histórico); repetir não resolve: {text}", plan_defect=True)
@@ -2946,6 +2953,12 @@ class StepExecutor:
                                                     "verificação encerra sem esperar o fim do orçamento") if t), \
                     level, obs, False
             if ok or uma_rodada or time.monotonic() >= t_end or judged_polls >= max_calls:
+                if (not ok and not uma_rodada and post.kind == "element_present" and frente is None and not pendentes
+                        and not ausentes and obs.tree.partes_em_elementos_diferentes(post.value)):
+                    # 31.32: na tela FINAL (o orçamento inteiro olhado), cada parte do seletor está na tela, mas em
+                    # elementos diferentes, e `|` exige o mesmo elemento. Outra tentativa ou o plano revisado (que
+                    # copia a etapa) pediriam o mesmo impossível: é defeito do plano, e a etapa falha já.
+                    return False, "; ".join(t for t in (text, PARTES_EM_ELEMENTOS_DIFERENTES) if t), level, obs, True
                 return ok, text, level, obs, False
             await self._esperar_o_juiz(attempt_id)
 

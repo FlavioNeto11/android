@@ -538,6 +538,7 @@ const FALHA: Record<string, { label: string; camada: Camada }> = {
   coleta_incompleta: { label: 'Coleta incompleta', camada: 'conhecimento_do_app' },
   digitacao_incompleta: { label: 'Digitação incompleta', camada: 'automacao' },
   defeito_do_plano: { label: 'Defeito do plano', camada: 'plano' },
+  seletor_em_elementos_diferentes: { label: 'Seletor com as partes em elementos diferentes', camada: 'plano' },
   falta_informacao: { label: 'Falta informação de quem pediu', camada: 'pessoa' },
   outro: { label: 'Outro (sem regra)', camada: 'indefinida' },
   // Categorias do backlog (A3), não tipos de tentativa: o sucesso mascarado e o fracasso que era sucesso.
