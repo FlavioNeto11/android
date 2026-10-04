@@ -36,7 +36,8 @@ from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, En
                                                entrada_do_item, estado_nativo, motivo_da_confirmacao, para_aprovar,
                                                status_nativo)
 from app.modules.learning.domain.modo_por_app import modo_efetivo
-from app.modules.learning.domain.promocao import Evidencia, contrarias, efetivas
+from app.modules.learning.domain.promocao import (ORIGEM_DO_USO, Evidencia, contrarias, efetivas, falhas_seguidas_no_fim,
+                                                  usos_do_fluxo)
 from app.modules.learning.domain.prova import etapa_citada
 from app.modules.learning.domain.saude import Saude, SinaisDeSaude, calcular
 from app.modules.learning.domain.versao import quadro_da_tela, quadro_independente
@@ -388,16 +389,23 @@ class LearningService:
             contra = len(contrarias(evidencias))          # 30.36: a forma não é contra, nem o `against` que ela tirou
         else:
             a_favor = contra = None
+        falhas_seguidas = e.falhas_seguidas
+        contestaveis = evidencias
+        if e.kind is LivroKind.FLUXO:
+            # 30.51: o USO do fluxo ativo é o contador dele, como a reprodução é o da receita: entra na eficácia (acima) e
+            # nas falhas seguidas (os limiares do D-5), não na contestação. Uma falha de uso não é contestação.
+            falhas_seguidas = falhas_seguidas_no_fim(usos_do_fluxo(reversed(evidencias)))   # o repositório: id DESC
+            contestaveis = tuple(x for x in evidencias if not x.origin_ref.startswith(ORIGEM_DO_USO))
         recentes: int | None = None
         if e.kind is not LivroKind.HABILIDADE and e.state is SkillState.PUBLISHED:
             corte = agora - timedelta(days=self.ajustes.saude.contestacao_dias)
-            recentes = sum(1 for x in contrarias(evidencias)
+            recentes = sum(1 for x in contrarias(contestaveis)
                            if (q := _quando(x.observed_at)) is not None and q >= corte)
         motivo = trilha[-1].reason if trilha and e.state in (SkillState.DEPRECATED, SkillState.DISABLED) else None
         return calcular(SinaisDeSaude(
             kind=e.kind, estado=e.state, agora=agora, criado_em=e.created_at, estado_desde=e.state_at,
             ultimo_uso=e.last_used_at, usos=e.uses, a_favor=a_favor, contra=contra, exige_o_dono=e.requires_owner,
-            detalhe=motivo or e.detail, falhas_seguidas=e.falhas_seguidas, contestacoes_recentes=recentes,
+            detalhe=motivo or e.detail, falhas_seguidas=falhas_seguidas, contestacoes_recentes=recentes,
             obsolescencia=obsolescencia),
             self.ajustes.saude)
 

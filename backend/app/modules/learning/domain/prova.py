@@ -254,6 +254,19 @@ def veredito_da_prova(etapas: Sequence[EtapaDaProva], *, status: str,
     return nada
 
 
-__all__ = ["COM_EFEITO", "PREFIXO", "PREFIXO_DA_EXPANSAO", "ROTULO_DO_MOTIVO", "SEM_ACAO", "AcaoDaProva", "EtapaDaProva",
-           "MotivoDaInvalida", "TentativaDaProva", "VereditoDaProva", "amostra_da_evidencia", "amostra_do_rastro",
-           "detalhe_da_invalida", "efeito_repetido", "motivo_da_invalida", "rastro_da_amostra", "veredito_da_prova"]
+
+def evidencia_de_uso(posicao: Posicao | None, texto: str, *, conta_contra: bool) -> tuple[Posicao, str] | None:
+    """30.51: o que a execução comum que USOU o fluxo ativo deixa, dado o veredito da MESMA regra da prova
+    (`veredito_da_prova`: a `posicao` e o `texto`).
+
+    Só `FOR` e `AGAINST`: a `INVALIDA` e o "sem desfecho" não dizem nada do fluxo e não viram linha. `conta_contra`
+    falso (ensaio, lote de teste, execução cancelada) tira o `AGAINST`: o que a pessoa ou o teste interrompeu não é o
+    fluxo falhando. O texto troca o "prova:" por "uso:", para quem lê a evidência saber de onde ela veio."""
+    if posicao is Posicao.FOR or (posicao is Posicao.AGAINST and conta_contra):
+        return posicao, ("uso:" + texto[len("prova:"):] if texto.startswith("prova:") else texto)
+    return None
+
+__all__ = ["COM_EFEITO", "PREFIXO", "PREFIXO_DA_EXPANSAO", "ROTULO_DO_MOTIVO", "SEM_ACAO", "AcaoDaProva",
+           "EtapaDaProva", "MotivoDaInvalida", "TentativaDaProva", "VereditoDaProva", "amostra_da_evidencia",
+           "amostra_do_rastro", "detalhe_da_invalida", "efeito_repetido", "evidencia_de_uso", "motivo_da_invalida",
+           "rastro_da_amostra", "veredito_da_prova"]

@@ -57,6 +57,11 @@ class Limiares:
 #: não conta de novo — nem contra na saúde (`contestado_recentemente`) e na fila "Revisar", nem a favor na promoção.
 ORIGEM_DA_REPRODUCAO = "reproducao:"
 
+#: 30.51: a origem da evidência de USO do fluxo ativo (`uso:<run_id>`): a execução comum que casou com o fluxo e o
+#: executou (`runs.flow_id`), lida pelas etapas como a prova. Distinta da prova e da sombra (`run:<run_id>`): uma
+#: execução é uma coisa só (a prova tem `prova_fluxo_id` e não `flow_id`; a sombra só compara execução sem fluxo).
+ORIGEM_DO_USO = "uso:"
+
 
 def efetivas(evidencias: Iterable[Evidencia]) -> list[Evidencia]:
     """As evidências que valem, na ordem recebida (30.36, 30.42): o `against` que tem uma `forma` da MESMA origem no mesmo
@@ -78,6 +83,23 @@ def efetivas(evidencias: Iterable[Evidencia]) -> list[Evidencia]:
 def contrarias(evidencias: Iterable[Evidencia]) -> list[Evidencia]:
     """As que contam contra: `against` ou `conflict` efetivos (a `forma` e a `invalida` nunca)."""
     return [e for e in efetivas(evidencias) if e.stance in (Posicao.AGAINST, Posicao.CONFLICT)]
+
+
+def usos_do_fluxo(cronologicas: Iterable[Evidencia]) -> list[bool]:
+    """30.51: os usos REAIS do fluxo ativo (`ORIGEM_DO_USO`), efetivos, na ordem recebida (a mais antiga primeiro, como
+    em `evidencia_decisiva`): `True` a favor. A ordem é a da gravação, nunca o `observed_at`, que empata no milissegundo."""
+    return [e.stance is Posicao.FOR for e in efetivas(cronologicas)
+            if e.origin_ref.startswith(ORIGEM_DO_USO) and not e.simulated and e.stance in (Posicao.FOR, Posicao.AGAINST)]
+
+
+def falhas_seguidas_no_fim(usos: Sequence[bool]) -> int:
+    """As falhas seguidas do fim da lista (o `consecutive_fail` da receita): o último acerto zera."""
+    n = 0
+    for ok in reversed(usos):
+        if ok:
+            break
+        n += 1
+    return n
 
 
 def veredito_de_repeticao(evidencias: Iterable[Evidencia], limiares: Limiares = Limiares()) -> VereditoDeRepeticao:

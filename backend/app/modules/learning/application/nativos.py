@@ -39,7 +39,8 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ErroDeAprend
 from app.modules.learning.domain.evidencia_invalida import Renascimento, reaprendizado, run_invalidada
 from app.modules.learning.domain.livro import escopo_do_fluxo, ref_da_trilha
 from app.modules.learning.domain.prova import MotivoDaInvalida, detalhe_da_invalida
-from app.modules.learning.domain.promocao import Decisao, Evidencia, Limiares, contrarias, veredito_de_repeticao
+from app.modules.learning.domain.promocao import (ORIGEM_DO_USO, Decisao, Evidencia, Limiares, contrarias,
+                                                  veredito_de_repeticao)
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.skills.domain.matching import bind_template_parameters, extract_parameters
 from app.modules.skills.domain.refs import is_legacy_skill_id
@@ -153,6 +154,9 @@ class ExecucaoAssentada:
     assinatura: AssinaturaDoPlano | None
     #: 30.37: a EXECUÇÃO DE PROVA de um fluxo (a validação pelo próprio fluxo); `None` em toda execução comum.
     prova: ProvaDaExecucao | None = None
+    #: 30.51: a execução comum que USOU o fluxo ativo (`runs.flow_id`), lida pela regra da prova: só `FOR` ou `AGAINST`
+    #: (`domain.prova.evidencia_de_uso`); `None` sem fluxo, na prova, e quando a execução não diz nada do fluxo.
+    uso: ProvaDaExecucao | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -353,6 +357,8 @@ class SombraDosFluxos:
             return 0
         if execucao.prova is not None:
             return self._minerar_prova(execucao, execucao.prova)
+        if execucao.uso is not None:
+            return self._minerar_uso(execucao, execucao.uso)
         gravadas = 0
         for fluxo in self._leitura.fluxos_em_prova():
             posicao = self._posicao(fluxo, execucao)
@@ -393,6 +399,22 @@ class SombraDosFluxos:
             except ErroDeAprendizado as exc:            # veto, conflito, D1
                 log.info("aprendizado: fluxo %s segue como está: %s", prova.fluxo_id, exc)
         return 1
+
+    def _minerar_uso(self, execucao: ExecucaoAssentada, uso: ProvaDaExecucao) -> int:
+        """30.51: a execução comum que usou o fluxo ativo deixa UMA linha, de origem própria (`uso:<run_id>`), a favor
+        ou contra pelas etapas. Nenhum D1 aqui: o fluxo usado é o ativo, e quem o rebaixa é a saúde (D-5) e o curador.
+        A mesma execução nunca conta duas vezes: se o item já tem `for`/`against` dela (de outra origem), nada é
+        gravado."""
+        ref = ref_da_trilha(LivroKind.FLUXO, uso.fluxo_id)
+        if uso.posicao is None or any(e.run_id == execucao.run_id and e.stance in (Posicao.FOR, Posicao.AGAINST)
+                                      and e.origin_ref != f"{ORIGEM_DO_USO}{execucao.run_id}"
+                                      for e in self._repo.evidencias(ref)):
+            return 0
+        nova = self._repo.registrar_evidencia(NovaEvidencia(
+            item_ref=ref, stance=uso.posicao, origin_ref=f"{ORIGEM_DO_USO}{execucao.run_id}",
+            simulated=execucao.simulada, run_id=execucao.run_id, instance_id=execucao.aparelho,
+            detail=f"{marca_do_conteudo(uso.content_hash)} {uso.detalhe}"))
+        return 1 if nova else 0                           # sem `nova`: o digest desta execução já passou por aqui
 
     def _posicao(self, fluxo: FluxoEmProva, execucao: ExecucaoAssentada) -> tuple[Posicao, str] | None:
         if fluxo.nasceu_de == execucao.run_id:
