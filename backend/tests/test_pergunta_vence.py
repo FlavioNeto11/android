@@ -314,3 +314,18 @@ async def test_31_50_lembrete_uma_vez_nas_duas_horas_antes_com_dados_sem_texto_d
     comando = str(st.db.scalar("SELECT command FROM runs WHERE id=?", (run_id,)))
     assert comando not in json.dumps(dados, ensure_ascii=False)
     assert _status(harness, run_id, oid)[0] == "waiting_user"                  # o lembrete não muda estado
+
+
+async def test_31_50_vence_em_no_dto_do_objetivo_parado_e_da_pergunta(harness: Harness) -> None:
+    """31.50: o painel e o montador leem QUANDO vence: mais tardio entre a espera e a marca de ligado, mais o prazo."""
+    st = harness.state
+    assert st is not None
+    run_id, oid = await _parado(harness, espera_h=20, fim_h=20)
+    desde = max(str(st.repo.objective_row(oid)["finished_at"]), str(st.repo.run_row(run_id)["finished_at"]))
+    dto = st.repo.objective_dto(st.repo.objective_row(oid))
+    assert dto.vence_em == to_iso(parse_iso(desde) + timedelta(hours=24))
+    assert st.repo.run_summary(st.repo.run_row(run_id)).vence_em is None      # a execução terminal não vence
+    run_pergunta, entrada = await _pergunta(harness)
+    assert st.repo.run_summary(st.repo.run_row(run_pergunta)).vence_em == to_iso(entrada + timedelta(hours=24))
+    harness.cfg.file.execucao.vencimento_ligado = False
+    assert st.repo.objective_dto(st.repo.objective_row(oid)).vence_em is None

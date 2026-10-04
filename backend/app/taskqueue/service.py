@@ -147,6 +147,7 @@ class RunService:
         self.dados = SqlProfileDataStore(repo.db, tem_provedor_de_sessao=lambda pacote: session_provider_of(pacote)
                                          is not None)
         self.scheduler = scheduler
+        repo.prazo_do_vencimento = self._prazo_para_os_dtos     # 31.50: o `vence_em` dos DTOs
         self._historico: HistoricoDeAcoes | None = None
         self.devices = devices
         self.provider = provider
@@ -1552,6 +1553,15 @@ class RunService:
                                      "acontece_se_vencer": "cancelado pelo sistema"})
             saidos.append(chave)
         return saidos
+
+    def _prazo_para_os_dtos(self) -> tuple[float, str] | None:
+        """31.50: o que o repositório precisa para o `vence_em`. Desligado, `None`. Só LÊ a marca: quem a grava é a
+        volta do vencimento, para uma leitura de DTO nunca escrever no banco."""
+        ligado, horas = self._vencimento()
+        if not ligado:
+            return None
+        marca = self.repo.db.scalar("SELECT value FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
+        return horas, str(marca or now_iso())      # sem a marca ainda: a volta a grava agora
 
     def _ligado_desde(self) -> str:
         """31.50, carência ao ligar: quando o vencimento foi visto ligado pela primeira vez (`settings`, durável entre
