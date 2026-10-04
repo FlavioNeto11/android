@@ -2965,6 +2965,13 @@ class AppState:
                 log.info("vencimento: %s sim(ns) do plano vencido(s)", vencidos_do_plano)
         except Exception:  # a faxina nunca derruba o processo
             log.exception("vencimento dos sins do plano")
+        try:
+            # 31.50: o lembrete do que vence nas próximas horas (uma vez por item; o texto é do montador dos avisos).
+            lembrados = await asyncio.to_thread(self.runs.lembrar_antes_de_vencer, now())
+            if lembrados:
+                log.info("vencimento: %s lembrete(s) antes de vencer", len(lembrados))
+        except Exception:  # a faxina nunca derruba o processo
+            log.exception("lembrete antes do vencimento")
         return True
 
     async def _retention_loop(self) -> None:

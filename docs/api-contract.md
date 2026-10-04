@@ -342,6 +342,7 @@ interface ManualInput {
 | `plan.revised` | `{objective_id, version, reason}` | sim |
 | `control.changed` | `{instance_id, control, pending}` | sim |
 | `decision` | `{text}` | sim |
+| `pendencia.vence_em` | 31.50, uma vez por item, 2 h antes de vencer: `{o_que: aprovacao\|objetivo\|execucao, run_id, objective_id?, aparelho? \| aparelhos?, acao?, etapa?, vence_em, acontece_se_vencer, chave: "vencimento:lembrete:<id>", regra: "31.50"}`; nunca o comando nem o título. `vence_em` (ISO, nulo fora da espera) também vem em `RunSummary` (`needs_input`), `Objective` (parado) e na lista de aprovações pendentes | sim |
 | `log` | livre | sim |
 | `apps.updated` | `{apps: AppConfig[]}` | não |
 | `settings.updated` | `{settings: Settings}` | não |
@@ -5853,3 +5854,14 @@ lidos do item de AGORA, em lote (os mesmos `capabilities`/`nomes_das_capabilitie
 O item que saiu do livro vem com os três nulos, como `titulo`. Campos novos e opcionais: quem não os lê não muda. O painel
 titula a decisão como as outras telas (`tituloDoItem`: "Enviar a mensagem (v1)"), e sem eles cai no título de antes.
 Prova `simulated`: `backend/tests/test_aprovacao_automatica.py` e `frontend/src/features/aprendizado/DecididoPelaPlataforma.test.tsx`.
+## Adendo v1.33 (04/10/2026; número da orquestradora; item 31.50) — `vence_em` e o lembrete antes do vencimento
+
+- `RunSummary.vence_em`, `Objective.vence_em` e o campo `vence_em` de cada item de `GET /api/approvals` (pendentes): o
+  instante ISO em que o item vence pelo sistema. O cálculo é o mais tardio entre a entrada na espera e a marca de quando
+  o vencimento foi ligado (`vencimento_ligado_desde`), mais `execucao.pergunta_vence_h`. É `null` fora da espera
+  (`needs_input`; objetivo `waiting_user` de execução terminada; aprovação `pending`) e com o vencimento desligado.
+  A aprovação vence junto com o objetivo que bloqueia. Campo novo e opcional: cliente antigo o ignora.
+- As listas (`GET /api/runs` e afins) leem as entradas em `needs_input` numa consulta só, para todas as execuções.
+- Evento novo `pendencia.vence_em` (tabela de eventos acima). Sai uma vez por ESPERA, 2 h antes de vencer, com a chave
+  `vencimento:lembrete:<id>:<entrada na espera>`: o objetivo retomado que volta a esperar ganha outro lembrete. O
+  texto ao dono é do montador dos avisos (28.31).

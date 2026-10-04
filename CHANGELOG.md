@@ -239,6 +239,21 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Revisão curta: o vazio cita a aprovação automática quando ela está ligada; o topo só afirma o vazio com as duas listas
   lidas (Revisar em falha ou carregando é dito); o título da decisão usa o nome do catálogo (`capability_nome`, que a
   rota `aprovacao-automatica` passa a mandar com `capability` e `etapa`; adendo v1.34).
+## 2026-10-04 — 31.50: achados da revisão do deploy 30 (branch fix/31-50-revisao-deploy30)
+
+- (a) A r-20261004195451-7d3527 (prova real do 31.45) foi pelo ator: o plano veio de um fluxo salvo antes do #278.
+  - O plano de fluxo passa a provar a etapa de catálogo com a pós-condição atual do catálogo.
+  - OPEN_MAIL_INBOX prova sem IA pela lista E pelo título "Inbox"; sem o título, o juiz decide.
+- (b) O vencimento do objetivo parado roda numa transação só.
+- (c) `pergunta_vence_h` tem piso de 1 h.
+- (d) O rejulgamento do 17.10 vai sem a dica da tela.
+- Carência ao ligar: a marca `vencimento_ligado_desde` fica em `settings`. No deploy, o que hoje espera ganha mais 24 h.
+- Lembrete `pendencia.vence_em` 2 h antes, uma vez por item, com dados sem o comando; a Canais põe o tipo no
+  montador. `vence_em` no `RunSummary`, no `Objective` e na lista de aprovações pendentes.
+- Contrato: adendo v1.33 (número da orquestradora). O lembrete sai uma vez por espera (a chave leva a entrada), e as
+  listas leem as entradas em `needs_input` numa consulta só.
+- Testes: `test_outlook_declarado.py`, `test_dica_de_tela_ao_juiz.py`, `test_pergunta_vence.py` e
+  `test_needs_input_expira.py`, `simulated`. `real`: not_run.
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 

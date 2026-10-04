@@ -313,7 +313,7 @@ async def snapshot(request: Request) -> Any:
     runs = s.db.query(_SQL_RUNS_DO_SNAPSHOT)
     return {"last_event_id": s.bus.last_id(), "server_time": now_iso(), "health": s.health(),
             "metrics": s.devices.last_metrics, "instances": s.devices.list_dtos(), "apps": apps_list(s),
-            "runs": [s.repo.run_summary(r) for r in runs], "settings": s.settings.get(),
+            "runs": s.repo.run_summaries(runs), "settings": s.settings.get(),
             "workers": s.workers.dtos(),
             # Pedidos persistentes (28.9): por estado, avisos e os que esperam uma pessoa, completo e sem janela. Cada
             # `aguardando_pessoa` é UM item da caixa de Pendências, com a aprovação e a `needs_input` dele agrupadas.
@@ -1801,7 +1801,7 @@ async def profile_runs(request: Request, profile_id: str, limit: int = 20) -> An
     rows = s.db.query(
         "SELECT r.* FROM runs r WHERE EXISTS (SELECT 1 FROM objectives o WHERE o.run_id=r.id AND o.profile_id=?)"
         " ORDER BY r.created_at DESC LIMIT ?", (profile_id, min(max(limit, 1), 100)))
-    return [s.repo.run_summary(r) for r in rows]
+    return s.repo.run_summaries(rows)
 
 
 @router.get("/approvals")
@@ -3041,7 +3041,7 @@ async def list_runs(request: Request, limit: int = Query(20, ge=1, le=200), offs
     sql = "SELECT r.* FROM runs r" + (" WHERE " + " AND ".join(where) if where else "")
     total = s.db.scalar("SELECT COUNT(*) FROM (" + sql + ") x", tuple(params)) or 0
     rows = s.db.query(sql + " ORDER BY r.created_at DESC LIMIT ? OFFSET ?", tuple(params) + (limit, offset))
-    return {"runs": [s.repo.run_summary(r) for r in rows], "total": int(total), "limit": limit, "offset": offset}
+    return {"runs": s.repo.run_summaries(rows), "total": int(total), "limit": limit, "offset": offset}
 
 
 class DistributionPreviewBody(BaseModel):

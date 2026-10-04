@@ -18,6 +18,7 @@ Nível de prova: `simulated` (arquivo real do app; árvore sintética; provedor 
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -203,8 +204,8 @@ class _JuizQueCaptura:
         return Verdict(satisfied="yes", evidence="[teste] ok"), Usage()
 
 
-async def _julgar(tmp_path: Path, pacote: str) -> VerifyRequest:
-    """Uma etapa livre `model_judged` com a lista do app `pacote` na frente; devolve o pedido que o juiz recebeu."""
+async def _julgar(tmp_path: Path, pacote: str, *, efeito: bool = False) -> list[VerifyRequest]:
+    """Uma etapa livre `model_judged` com a lista do app `pacote` na frente; devolve os pedidos que o juiz recebeu."""
     import time
 
     from app.devices.manager import Observation
@@ -224,6 +225,11 @@ async def _julgar(tmp_path: Path, pacote: str) -> VerifyRequest:
     ex.cfg = make_config(tmp_path, 1)
     ai = ex.cfg.file.ai
     ai.verify_budget_min_s = ai.verify_budget_s = ai.verify_budget_patient_s = 1.5
+    if efeito:   # o 17.10 só rejulga quando o modelo de escalonamento é outro
+        original = ex.cfg.ai_role
+        ex.cfg.ai_role = lambda papel, perfil=None: (  # type: ignore[method-assign]
+            replace(original(papel, perfil), model=f"modelo-{papel}") if papel in ("verify", "escalation")
+            else original(papel, perfil))
     ex.repo = SimpleNamespace(decision=lambda *a, **k: None)  # type: ignore[assignment]
     ex.devices = Aparelho()  # type: ignore[assignment]
     ex.provider = juiz  # type: ignore[assignment]
@@ -235,7 +241,7 @@ async def _julgar(tmp_path: Path, pacote: str) -> VerifyRequest:
     ex._ai = _ai  # type: ignore[method-assign]
     etapa = StepDTO(id="r-x:android-01:v1:verify_sent", run_id="r-x", objective_id="r-x:android-01",
                     instance_id="android-01", plan_version=1, seq=1, key="verify_sent", title="Conferir Enviados",
-                    goal="Abrir Enviados", depends_on=[], side_effect=False, commit_guard=[],
+                    goal="Abrir Enviados", depends_on=[], side_effect=efeito, commit_guard=[],
                     postcondition=Postcondition(kind="model_judged", value="a pasta Enviados mostra mensagens",
                                                 description="A pasta Enviados mostra mensagens."),
                     timeout_s=60, max_attempts=1, attempts=1, status=StepStatus.verifying)
@@ -243,20 +249,28 @@ async def _julgar(tmp_path: Path, pacote: str) -> VerifyRequest:
                      lambda: _ctx(), "r-x", "r-x:android-01", time.monotonic() + 1.0, 5.0, patient=False, facts=[],
                      pacote=pacote, uma_rodada=True)
     assert len(juiz.pedidos) >= 1
-    return juiz.pedidos[0]
+    return juiz.pedidos
 
 
 async def test_o_executor_entrega_a_dica_do_outlook_ao_juiz(tmp_path: Path) -> None:
-    pedido = await _julgar(tmp_path, OUTLOOK)
+    pedido = (await _julgar(tmp_path, OUTLOOK))[0]
     assert pedido.dicas_da_tela == telas.dicas_da_tela(CONHECIMENTO_DE_APPS / OUTLOOK, _lista_do_outlook(),
                                                        package=OUTLOOK) != []
     assert "NÃO confirmado" in pedido.dicas_da_tela[0]
 
 
 async def test_o_executor_nao_entrega_dica_de_app_que_nao_declara(tmp_path: Path) -> None:
-    pedido = await _julgar(tmp_path, INSTAGRAM)
+    pedido = (await _julgar(tmp_path, INSTAGRAM))[0]
     assert pedido.dicas_da_tela == []
     # O texto que o provedor monta é o de antes: o bloco some junto com a dica.
     com_campo = prompts.verifier_user_text(pedido.ctx, "tela", ["e1 View"], None, pedido.facts, pedido.dicas_da_tela)
     assert com_campo == prompts.verifier_user_text(pedido.ctx, "tela", ["e1 View"], None, pedido.facts)
-    assert "dicas_da_tela" not in com_campo
+    assert "dicas_da_tela" not in com_campo
+
+
+async def test_31_50d_o_rejulgamento_do_sim_com_efeito_vai_sem_a_dica(tmp_path: Path) -> None:
+    """31.50 (d): o 17.10 é a segunda opinião independente; com a orientação do primeiro juiz, deixava de ser."""
+    primeiro, *resto = await _julgar(tmp_path, OUTLOOK, efeito=True)
+    assert primeiro.dicas_da_tela != [] and not primeiro.escalate
+    rejulgamento = [p for p in resto if p.escalate]
+    assert rejulgamento and all(p.dicas_da_tela == [] for p in rejulgamento)

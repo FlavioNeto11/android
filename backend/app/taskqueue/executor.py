@@ -3573,8 +3573,9 @@ class StepExecutor:
                         verdict = await self._ai(
                             run_id, objective_id,
                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
-                                                                       facts=list(facts or []), escalate=True,
-                                                                       dicas_da_tela=dicas)),
+                                                                       facts=list(facts or []), escalate=True)),
+                            # 31.50 (d): SEM a dica da tela. O rejulgamento do "sim" com efeito é a segunda opinião
+                            # independente; com a mesma orientação do primeiro juiz, deixava de ser.
                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="sim_com_efeito",
                                                  image_reason=motivo_imagem))

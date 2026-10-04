@@ -1512,7 +1512,9 @@ class ExecucaoCfg(BaseModel):
     vencimento_ligado: bool = True
     #: Horas sem resposta para a pergunta (`needs_input`) e o bloqueio (`waiting_user`) vencerem. Para o bloqueio, o relógio é
     #: o mais tardio entre a entrada do objetivo em `waiting_user` e o fim da execução.
-    pergunta_vence_h: float = Field(24.0, ge=0.01, le=8760.0)
+    #: 31.50 (c): piso de 1 h. Com 0,01 h, um "0.05" digitado no lugar de "5" encerrava em minutos tudo o que espera uma
+    #: pessoa (perguntas, bloqueios e aprovações pendentes), e o vencimento não tem desfazer.
+    pergunta_vence_h: float = Field(24.0, ge=1.0, le=8760.0)
 
 
 class AppConfigFile(BaseModel):

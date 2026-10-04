@@ -37,9 +37,16 @@ acoes:
     # `model_judged` "com a lista de mensagens", e a linha da lista é um `ComposeView` sem texto nem descrição: o juiz
     # via "Inbox" e recusava por não ler remetente e assunto (r-…-8c3f6e, r-…-996716, 3 tentativas cada). Remetente e
     # assunto continuam exigidos, mas como SAÍDA (`read_value`, leitura visual do 12.5), não como prova da tela.
-    post_kind: element_present
-    post_value: id=conversation_list
-    post_description: A lista da Caixa de Entrada do Outlook está à vista.
+    # 31.50 (a): a lista sozinha não diz QUAL pasta é (Enviados e Rascunhos usam o mesmo componente; SUPOSIÇÃO). A prova
+    # pela árvore exige a lista E o título da barra. OBSERVADO (04/10 20:1x, android-01, Outlook em inglês): o título é
+    # um `TextView` "Inbox" sem id em [144,77][242,131], dentro de `toolbar`. Sem o título (outra pasta, outro idioma),
+    # o juiz decide, com a dica da tela (`telas.yaml`).
+    post_kind: model_judged
+    post_value: Caixa de Entrada do Outlook aberta
+    post_description: A pasta aberta é a Caixa de Entrada (título "Inbox" ou "Caixa de Entrada" na barra), com a lista.
+    # O título vale só DENTRO da `toolbar` (revisão do #313): o item "Inbox" do menu lateral, aberto sobre outra pasta,
+    # não prova a caixa. Só "Inbox": os aparelhos estão em inglês (OBSERVADO no android-01); em outro idioma, o juiz.
+    local_proof: selector:id=conversation_list & text==Inbox|dentro=toolbar
 
   - key: COLLECT_MAIL_HEADERS
     title: Levantar remetente e assunto das mensagens recentes
