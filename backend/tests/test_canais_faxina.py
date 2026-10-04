@@ -2,6 +2,7 @@
 linha que espera alguém e a mais nova de cada canal ficam, e o dedupe segue valendo dentro do prazo."""
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -171,3 +172,34 @@ def test_o_servico_faxina_sem_o_telegram_pronto_so_no_lider_e_de_hora_em_hora(c:
                            Lideranca(c.db, dono="servidor-b", relogio=c.r), lider=lambda _n: None,
                            faxina_canais=c.faxina)
     assert fora.faxinar_canais() == []                               # fora do líder, nada
+
+
+@pytest.mark.parametrize("ligado", [True, False])
+async def test_a_primeira_faxina_do_laco_e_na_subida_so_com_o_aviso_ligado(c: Cena, ligado: bool) -> None:
+    """29.78: ligado, a primeira volta não espera o primeiro `intervalo_s` sem evento (nem um evento): o que venceu com o
+    processo parado sai na subida. Desligado, a volta da subida não toma a trava `avisos` (28.4) e não apaga nada. Nos dois
+    casos o contador sai do zero, que é o que o harness espera antes de entregar o backend."""
+    c.cfg.file.avisos.enabled = ligado
+    c.cfg.file.avisos.intervalo_s = 3600                             # o laço não acorda sozinho durante o teste
+    lid = Lideranca(c.db, dono=AQUI, relogio=c.r)
+    servico = ServicoDeAvisos(c.cfg, EventBus(c.db, origin=AQUI), FilaDeAvisos(c.db, relogio=c.r), lid,
+                              faxina_canais=c.faxina)
+    c.entrada("trello", "a1")
+    c.r.avancar(40)
+    c.entrada("trello", "a2")
+    laco = asyncio.create_task(servico.laco())
+    try:
+        for _ in range(200):
+            if servico.voltas_da_faxina_dos_canais:
+                break
+            await asyncio.sleep(0.01)
+        assert servico.voltas_da_faxina_dos_canais == 1
+        if ligado:
+            assert set(c.linhas("trello")) == {"a2"}
+        else:
+            assert set(c.linhas("trello")) == {"a1", "a2"}
+            assert c.db.one("SELECT dono FROM travas WHERE nome='avisos' AND dono IS NOT NULL") is None
+    finally:
+        laco.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await laco

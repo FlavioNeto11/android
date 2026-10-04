@@ -19,6 +19,7 @@ import httpx
 import pytest
 import pytest_asyncio
 
+from app.db import loads
 from app.devices.adb import AdbTimeout
 from app.models import CommandState, InstalledAppState, InstanceState
 from app.releases.service import InstalacaoIncerta
@@ -270,11 +271,26 @@ async def test_instalacao_interrompida_por_reinicio_sai_de_verifying_sozinha(tmp
     try:
         s.release_repo.upsert_app_state("android-01", INSTAGRAM, state=InstalledAppState.installing.value,
                                         pending_op="install", pending_op_at="2026-09-21T10:00:00Z")
+        marca = int(s.db.scalar("SELECT COALESCE(MAX(id), 0) FROM events") or 0)
         await h.crash()
         s = await h.boot()
 
-        linha = s.release_repo.app_state("android-01", INSTAGRAM)
-        assert linha["state"] == InstalledAppState.verifying.value and linha["pending_op"] is None
+        # 29.78: o harness só entrega o backend depois das faxinas da subida, e a releitura automática (pelo aparelho
+        # falso, que não tem o pacote) já aconteceu nesse meio-tempo. A passagem por `verifying` fica nos eventos.
+        do_app = [d["app_state"] for d in (loads(r["data"]) for r in s.db.query(
+            "SELECT data FROM events WHERE kind='app_state.updated' AND id>? ORDER BY id", (marca,)))
+                  if d["app_state"]["instance_id"] == "android-01" and d["app_state"]["package_name"] == INSTAGRAM]
+        assert [a["state"] for a in do_app][:1] == [InstalledAppState.verifying.value], "o reinício põe em verifying"
+        assert do_app[0]["pending_op"] is None
+        await h.wait(lambda: s.release_repo.app_state("android-01", INSTAGRAM)["state"]
+                     != InstalledAppState.verifying.value, what="a releitura automática da subida")
+        assert s.release_repo.app_state("android-01", INSTAGRAM)["state"] == InstalledAppState.missing.value
+        assert s.pacotes_sem_desfecho("android-01") == []
+
+        # A releitura também vale depois da subida: a mesma dívida, agora criada à mão, é paga por
+        # `_reverificar_interrompidas` sem rota manual.
+        s.release_repo.upsert_app_state("android-01", INSTAGRAM, state=InstalledAppState.verifying.value,
+                                        pending_op=None, detail="Operação interrompida por reinício.")
         assert s.pacotes_sem_desfecho("android-01") == [INSTAGRAM]
 
         relidos: list[str] = []

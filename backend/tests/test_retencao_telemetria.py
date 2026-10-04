@@ -57,6 +57,15 @@ async def test_telemetria_vence_em_48_h_e_o_resto_do_log_fica(harness: Harness, 
     assert not [r for r in caplog.records if r.levelno >= logging.ERROR]   # nem a purga nem o optimize falharam
 
 
+async def test_o_harness_entrega_o_backend_depois_da_primeira_volta_das_faxinas(harness: Harness) -> None:
+    """29.78: a premissa dos testes que gravam linha "velha" logo depois do `boot`. A retenção, a expiração e a faxina dos
+    canais já deram a volta da subida, e a próxima só vem depois de 10 min, 1 h ou 6 h: nada apaga no meio do teste."""
+    state = harness.state
+    assert state is not None
+    assert state.voltas_de_faxina["retencao"] >= 1 and state.voltas_de_faxina["expiracao"] >= 1
+    assert state.avisos.voltas_da_faxina_dos_canais >= 1
+
+
 async def test_purga_em_lotes_leva_tudo_e_poupa_execucao_aberta(harness: Harness) -> None:
     state = harness.state
     assert state is not None

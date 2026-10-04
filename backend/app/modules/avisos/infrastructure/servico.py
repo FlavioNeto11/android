@@ -66,6 +66,9 @@ class ServicoDeAvisos:
         #: estar ligado sem ele, e o que já foi gravado precisa sair no prazo mesmo com o canal desligado depois.
         self._faxina_canais = faxina_canais
         self._faxina_canais_em = 0.0
+        #: 29.78: voltas do laço pela faxina dos canais (feita, recusada ou fora do prazo). Quem precisa saber que a
+        #: volta da subida já passou (o harness dos testes) espera este número sair do zero.
+        self.voltas_da_faxina_dos_canais = 0
 
     # ------------------------------------------------------------------ configuração e saúde
     def _segredos(self) -> tuple[str, str]:
@@ -277,12 +280,27 @@ class ServicoDeAvisos:
         self._faxina_canais_em = time.monotonic() + FAXINA_S
         return feitas
 
+    def _faxinar_canais_contando(self) -> None:
+        try:
+            self.faxinar_canais()
+        except Exception:  # noqa: BLE001 - a faxina nunca derruba o laço de aviso
+            log.exception("canais: faxina")
+        finally:
+            self.voltas_da_faxina_dos_canais += 1
+
     # ------------------------------------------------------------------ laço
     async def laco(self) -> None:
         """Escuta o barramento e entrega a cada `intervalo_s`. Assinatura que o barramento descartou (consumidor lento)
         é refeita lendo o que ficou para trás por `since`: o dedupe por chave torna a releitura inofensiva."""
         fila_de_eventos = self.bus.subscribe()
         ultimo = self.bus.last_id()
+        # 29.78: a primeira faxina dos canais é já na subida, como a retenção e a expiração, e não depois do primeiro
+        # `intervalo_s` sem evento: o que venceu com o processo parado sai agora, e nada mais apaga por uma hora. Só
+        # com o aviso ligado: a faxina toma a trava `avisos`, que o backend com ele desligado não renova (28.4).
+        if self.ligado:
+            self._faxinar_canais_contando()
+        else:
+            self.voltas_da_faxina_dos_canais += 1
         while True:
             try:
                 if not self.bus.is_subscribed(fila_de_eventos):
@@ -300,7 +318,7 @@ class ServicoDeAvisos:
                     ultimo = max(ultimo, rec.id or 0)
                     rec = fila_de_eventos.get_nowait() if not fila_de_eventos.empty() else None
                 await self.entregar_uma_vez()
-                self.faxinar_canais()
+                self._faxinar_canais_contando()
             except asyncio.CancelledError:
                 self.bus.unsubscribe(fila_de_eventos)
                 raise

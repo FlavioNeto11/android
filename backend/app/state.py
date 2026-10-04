@@ -706,6 +706,9 @@ class AppState:
         self.scheduler.executor.persona_images = self.persona_images      # 29.30: mídia da publicação própria
         self._diag_cache: dict[str, Any] | None = None
         self._bg: list[asyncio.Task[Any]] = []
+        #: 29.78: voltas completas dos laços de faxina (rodando ou não, conforme a trava). A primeira é na subida;
+        #: o harness dos testes só entrega o backend depois dela, senão a faxina apagava o que o teste acabou de gravar.
+        self.voltas_de_faxina: dict[str, int] = {"retencao": 0, "expiracao": 0}
         self._last_health: dict[str, Any] | None = None
         #: Última leitura da sonda do túnel por worker (achado #179): worker_id -> 'up' | 'down'.
         self._transport_cache: dict[str, str] = {}
@@ -2936,6 +2939,7 @@ class AppState:
         `EXPIRACAO_INTERVALO_S`."""
         while True:
             await self._expiracao_uma_vez()
+            self.voltas_de_faxina["expiracao"] += 1
             await asyncio.sleep(EXPIRACAO_INTERVALO_S)
 
     async def _expiracao_uma_vez(self) -> bool:
@@ -2977,6 +2981,7 @@ class AppState:
     async def _retention_loop(self) -> None:
         while True:
             await self._retencao_uma_vez()
+            self.voltas_de_faxina["retencao"] += 1
             await asyncio.sleep(6 * 3600)
 
     async def _retencao_uma_vez(self) -> bool:
