@@ -30,7 +30,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   nova, texto fixo sem dado pessoal e link para a aba "Decidido sozinho".
 - `GET /api/decisoes-automaticas` e `POST /api/decisoes-automaticas/{id}/desfazer` (v1.22 do contrato). O desfazer do
   aprendizado DESLIGA o item; pergunta, objetivo e pedido respondem 409 `sem_inversa_segura` com o porquê.
-- A aba do painel fica para um PR próprio (suíte 31).
+- Painel: Pendências ganha a aba "Decidido sozinho" (`?aba=decididas`): filtro por período e regra, o porquê e os fatos em
+  português, o desfazer com o motivo em linha (o botão do aprendizado é "Desligar") e, sem volta segura, o porquê no lugar
+  do botão.
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
