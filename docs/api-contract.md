@@ -5423,7 +5423,7 @@ nem contestação, e não pesa contra o item. Quem recusou vai ao log do backend
 ## Adendo v1.22 (04/10/2026; número da orquestradora; item 28.25) — o que a plataforma decidiu sozinha, com o desfazer
 
 Registro único `decisoes_automaticas` (migração 102) das decisões que a plataforma toma no lugar do dono (pedido 30.55) e
-duas rotas, atrás do mesmo login do painel. O resumo no Telegram não é rota: ver `docs/dominios/canais.md` (C-21).
+duas rotas, atrás do mesmo login do painel. O resumo no Telegram não é rota: ver `docs/dominios/canais.md` (C-23).
 
 `GET /api/decisoes-automaticas?regra=&fila=&desde=&ate=&desfeitas=todas|sim|nao&limite=` (as mais novas primeiro;
 `desde` inclusivo e `ate` exclusivo, datas ISO em UTC; `limite` 1 a 500, padrão 200).

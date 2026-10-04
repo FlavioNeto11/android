@@ -275,7 +275,7 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   `--chat` só aceita um id já vinculado.
 - **No produto:** a entrada do 28.15 troca a caixa provisória, com o "vai" da orquestradora.
 
-**C-21 · O que a plataforma decidiu sozinha: um resumo, nunca um aviso por decisão.**
+**C-23 · O que a plataforma decidiu sozinha: um resumo, nunca um aviso por decisão.**
 - **Origem:** dono, 04/10 (pedido 30.55: decidir sozinha o que hoje espera a aprovação dele); item 28.25.
 - **Regra:**
   - Cada decisão automática fica no registro `decisoes_automaticas`, com a regra que decidiu, e o dono vê todas na aba
