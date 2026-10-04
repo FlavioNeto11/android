@@ -201,6 +201,8 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   (as dependentes saem junto) e clica "Aprovar N e iniciar"; se o plano mudou, a tela diz o quê e mostra a prévia nova.
 - O gesto aceita o texto editado no cartão: a chave gravada é a do texto que vai sair (recalculada no servidor).
 - Na execução viva, a validade dos sins do plano aparece com "Renovar"; o que já venceu volta para o dono rever.
+- Nota da Ferramentas: o painel reconhece `{ação}` como variável como o servidor (flag `u`), conta o limite por
+  caractere (um emoji vale 1) e avisa, sem travar, quando sobra `{` no texto ("ele sai exatamente assim").
 - Prova: `simulated` (`tests/test_porta_do_plano.py`, `PortaDoPlano.test.tsx`). `not_run`: o percurso no navegador.
 
 ## 2026-10-04 — 30.61: a prévia da porta e a aprovação antecipada no plano, backend (branch feat/30-61-aprovacao-no-plano)

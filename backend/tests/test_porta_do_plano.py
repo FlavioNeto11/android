@@ -469,6 +469,20 @@ async def test_chave_solta_e_texto_final_e_o_longo_tem_mensagem_propria(harness:
     assert state.db.scalar("SELECT generated_content FROM pending_approvals") == "oi :-{ até logo"
 
 
+async def test_chave_solta_aprovada_no_plano_e_honrada_pela_porta_na_execucao(harness: Any, monkeypatch: Any) -> None:
+    """Nota da Ferramentas (04/10), 2a: o texto com `{` literal (`:-{`) ganha chave na prévia, o sim do plano a grava e a
+    porta da execução, que recalcula a chave da etapa relida pela mesma função, segue sem perguntar."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    _plano(state, [{"key": "dm", "cap": "SEND_MESSAGE", "bindings": {**DM, "content": "oi :-{ até logo"}}])
+    item = _por_chave(previa_da_porta(state, "run-p"))["dm"]
+    assert item["selo"] == "aprovacao" and item["chave"]
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
+                  por="flavio")
+    assert state.db.scalar("SELECT chave_sha256 FROM pending_approvals") == item["chave"]
+    assert await _gate(state, "dm") is None
+
+
 async def test_dm_editada_para_um_texto_ja_enviado_segue_no_cadeado_com_a_regra_real(harness: Any,
                                                                                     monkeypatch: Any) -> None:
     """B1, cenário real (`_repetido` de verdade, sem monkeypatch): a única regra da porta que depende do TEXTO é a da

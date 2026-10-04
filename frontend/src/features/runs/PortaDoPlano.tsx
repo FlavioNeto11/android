@@ -39,10 +39,22 @@ interface Mudou { step_id: string; selo: string | null; motivo: string }
 /** O começo do motivo que o servidor dá quando o item deixou de ser 🔒 por causa do texto editado (B1). */
 const MOTIVO_DO_TEXTO_EDITADO = 'com o texto editado:';
 
-/** O mesmo limite e o mesmo marcador de modelo do servidor (`LIMITE_DO_TEXTO`, `tem_variavel`). */
+/** O mesmo limite e o mesmo marcador de modelo do servidor (`LIMITE_DO_TEXTO`, `tem_variavel`). O `\w` do Python
+ * cobre Unicode e o do JavaScript não: `[\p{L}\p{N}_]` com a flag `u` é o equivalente, para `{ação}` ser variável nos
+ * dois lados (nota da Ferramentas, 04/10). */
 export const LIMITE_DO_TEXTO = 2200;
 export function temVariavel(texto: string): boolean {
-  return /\{\{|\$\{|\{[A-Za-z_][\w.:-]*\}/.test(texto);
+  return /\{\{|\$\{|\{[A-Za-z_][\p{L}\p{N}_.:-]*\}/u.test(texto);
+}
+
+/** O tamanho como o servidor conta (`len` do Python: ponto de código, não unidade UTF-16; um emoji conta 1). */
+export function tamanhoDoTexto(texto: string): number {
+  return [...texto.trim()].length;
+}
+
+/** Sobra `{` que não é marcador (`{ nome }`, `:-{`): o texto sai exatamente assim. Avisa, não trava. */
+export function temChaveSolta(texto: string): boolean {
+  return texto.includes('{') && !temVariavel(texto);
 }
 
 /** Lê o 409 `plano_mudou`: a lista do que mudou e a prévia nova. Tolerante: o que faltar vira vazio. */
@@ -94,7 +106,7 @@ export function PortaDoPlano({ runId }: { runId: string }) {
   const aprovaveis = itens.filter((i) => i.selo === 'aprovacao' && i.chave && !tiradasComDependentes.has(i.step_id));
   const emBranco = aprovaveis.filter((i) => i.texto != null && (textos[i.step_id] ?? i.texto).trim() === '').length;
   const comVariavel = aprovaveis.filter((i) => temVariavel(textos[i.step_id] ?? '')).length;
-  const longos = aprovaveis.filter((i) => (textos[i.step_id] ?? '').trim().length > LIMITE_DO_TEXTO).length;
+  const longos = aprovaveis.filter((i) => tamanhoDoTexto(textos[i.step_id] ?? '') > LIMITE_DO_TEXTO).length;
 
   const cartoes = useMemo(() => {
     const m = new Map<string, ItemDaPorta[]>();
@@ -247,6 +259,9 @@ export function PortaDoPlano({ runId }: { runId: string }) {
                     <TextArea rows={3} aria-label={`Texto de ${oQue(item)} em ${item.aparelho}`} value={texto}
                               onChange={(e) => setTextos((s) => ({ ...s, [item.step_id]: e.target.value }))} />
                   ) : item.texto ? <p className={styles.draftWhat}>“{item.texto}”</p> : null}
+                  {editavel && temChaveSolta(texto) ? (
+                    <p className={styles.draftWhat} role="note">Este texto tem uma chave ({'{'}); ele sai exatamente assim.</p>
+                  ) : null}
                   {item.motivo || item.dica ? (
                     <Disclosure summary="Saiba mais">
                       {item.motivo ? <p>{item.motivo}</p> : null}

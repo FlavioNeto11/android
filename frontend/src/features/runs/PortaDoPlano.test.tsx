@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ItemDaPorta, PreviaDaPorta } from '../../api/types';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { PortaDoPlano, ValidadeDoPlano, frasesDoRenovar, temVariavel } from './PortaDoPlano';
+import { PortaDoPlano, ValidadeDoPlano, frasesDoRenovar, tamanhoDoTexto, temChaveSolta, temVariavel } from './PortaDoPlano';
 
 let root: Root;
 let container: HTMLElement;
@@ -176,6 +176,30 @@ describe('Revisão do painel (F1, F2, B2)', () => {
     expect(temVariavel('oi {item}')).toBe(true);
     expect(temVariavel('{{saida:nome}}')).toBe(true);
     expect(temVariavel('oi :-{ tchau')).toBe(false);
+  });
+
+  it('nota da Ferramentas: o marcador com acento é variável, como no servidor; o tamanho conta ponto de código', () => {
+    expect(temVariavel('oi {ação}')).toBe(true);
+    expect(temVariavel('{número}')).toBe(true);
+    expect(temVariavel('{ nome }')).toBe(false);
+    expect(tamanhoDoTexto('😀'.repeat(2200))).toBe(2200);
+    expect(temChaveSolta('oi { nome }')).toBe(true);
+    expect(temChaveSolta('oi {nome}')).toBe(false);
+  });
+
+  it('a chave solta no texto avisa sem travar o Aprovar', async () => {
+    await montar();
+    await setValue(byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement, 'oi { nome }');
+    expect(text(container)).toContain('ele sai exatamente assim');
+    const botao = byRole('button', /Aprovar 1 e iniciar/);
+    expect(botao.getAttribute('aria-disabled') === 'true' || (botao as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('o emoji perto do limite conta como o servidor conta', async () => {
+    await montar();
+    await setValue(byRole('textbox', /Texto de SEND_MESSAGE/) as HTMLTextAreaElement, '😀'.repeat(2200));
+    const botao = byRole('button', /Aprovar 1 e iniciar/);
+    expect(botao.getAttribute('aria-disabled') === 'true' || (botao as HTMLButtonElement).disabled).toBe(false);
   });
 });
 

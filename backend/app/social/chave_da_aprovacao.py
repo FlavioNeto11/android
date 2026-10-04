@@ -76,6 +76,8 @@ def argumentos_da_acao(cap: Capability, bindings: Mapping[str, object]) -> dict[
             continue
         bruto = bindings.get(nome)
         texto = "" if bruto is None else str(bruto).strip()
+        # Mais estrito que `tem_variavel` DE PROPÓSITO (nota da Ferramentas, 04/10): um argumento (alvo, id, objeto)
+        # com qualquer `{` não é o valor final que se aprova; falhar fechado aqui só faz o item perguntar na execução.
         if "{" in texto:
             return None
         argumentos[nome] = texto.lower().lstrip("@") if nome == cap.counterparty else texto
@@ -89,7 +91,7 @@ def midia_da_etapa(db: Database, bindings: Mapping[str, object]) -> tuple[bool, 
     imagem = str(valor).strip() if valor is not None else ""
     if not imagem:
         return False, None
-    if "{" in imagem:
+    if "{" in imagem:                   # mais estrito que `tem_variavel` de propósito: id de imagem não tem `{`
         return True, None
     sha = db.scalar("SELECT bytes_sha256 FROM persona_images WHERE id=? AND status='ready'", (imagem,))
     return True, (str(sha) if sha else None)
