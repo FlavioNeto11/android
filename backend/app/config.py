@@ -1517,6 +1517,60 @@ class ExecucaoCfg(BaseModel):
     pergunta_vence_h: float = Field(24.0, ge=1.0, le=8760.0)
 
 
+#: Telefone publicável no site (29.77): só dígitos e `+ ( ) -` e espaço. É o mesmo filtro do formulário: o campo não
+#: vira canal de texto livre nem de link.
+TELEFONE_PUBLICO = re.compile(r"^[0-9+()\- ]{8,30}$")
+
+
+class ContatoPublicoCfg(BaseModel):
+    """Um contato comercial mostrado no site, com toque para ligar e link de WhatsApp. Vem do config de cada
+    instalação, nunca do código: o repositório não carrega telefone pessoal, e trocar um número não pede mudança."""
+
+    nome: str = Field(min_length=1, max_length=80)
+    telefone: str
+
+    @field_validator("telefone")
+    @classmethod
+    def _telefone_publicavel(cls, valor: str) -> str:
+        valor = valor.strip()
+        if not TELEFONE_PUBLICO.match(valor) or sum(c.isdigit() for c in valor) < 8:
+            raise ValueError("portal.contatos[].telefone: só dígitos, espaço e + ( ) -, com ao menos 8 dígitos")
+        return valor
+
+
+class PortalContatoLimitesCfg(BaseModel):
+    """Os tetos do formulário de contato (29.77, ADR-075). A Cloudflare não é a defesa: tudo isto vale no backend."""
+
+    por_cliente_hora: int = Field(3, ge=1, le=100)
+    por_cliente_dia: int = Field(10, ge=1, le=1000)
+    #: Mensagens ao Telegram por hora, somando todos os visitantes. Acima disso o contato fica `retido` e sai na hora
+    #: seguinte: nunca some calado, e um pico não atrasa os avisos de aprovação, que dividem o mesmo bot.
+    telegram_hora: int = Field(20, ge=1, le=200)
+    #: Linhas guardadas por dia. Acima disso o contato é descartado e só CONTADO (o texto não é gravado): um robô que
+    #: contorne o limite por cliente não enche o disco.
+    guardados_dia: int = Field(500, ge=10, le=10_000)
+    #: Teto do corpo do POST, conferido lendo em fluxo (o `chunked` não tem `Content-Length`).
+    corpo_max_bytes: int = Field(8192, ge=2048, le=65_536)
+    #: Janela do token de tempo mínimo que vai no HTML: mais cedo que isso é robô; mais tarde, a página ficou aberta
+    #: tempo demais e o visitante recarrega.
+    token_min_s: int = Field(3, ge=1, le=60)
+    token_max_s: int = Field(7200, ge=600, le=86_400)
+
+
+class PortalCfg(BaseModel):
+    """O site institucional na raiz do nome público e o formulário de contato (29.77, ADR-075).
+
+    As duas bandeiras nascem DESLIGADAS, aqui e no exemplo: o merge e o deploy não abrem nada. Desligado o site, `/`
+    segue no 307 para `/central/` (ADR-073); desligado o contato, a rota responde 404. Quem liga é a orquestradora, no
+    `config.yaml` do central, depois do sim do dono às capturas. O prazo de guarda do contato (180 dias) é fixo e está
+    escrito na própria página: mudar o prazo é mudar a página, não um número aqui."""
+
+    site_ligado: bool = False
+    contato_ligado: bool = False
+    contatos: list[ContatoPublicoCfg] = []
+    limites: PortalContatoLimitesCfg = PortalContatoLimitesCfg()
+
+
 class AppConfigFile(BaseModel):
     server: ServerCfg = ServerCfg()
     paths: PathsCfg = PathsCfg()
@@ -1536,6 +1590,7 @@ class AppConfigFile(BaseModel):
     avisos: AvisosCfg = AvisosCfg()
     trello: TrelloCfg = TrelloCfg()
     pedidos: PedidosCfg = PedidosCfg()
+    portal: PortalCfg = PortalCfg()          # site institucional e contato (29.77, ADR-075); desligado de fábrica
     apps: list[AppSeed] = []
     sensitive_screens: list[SensitiveScreenSeed] = []
 

@@ -122,6 +122,7 @@ from .modules.pedidos.infrastructure.contexto import contexto_do_pedido
 from .modules.pedidos.infrastructure.laco import LacoDePedidos
 from .modules.pedidos.infrastructure.saldo import motivo_de_adiamento
 from .modules.pedidos.infrastructure.servico import PedidosApi
+from .modules.portal.montagem import Portal
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
@@ -349,6 +350,8 @@ class AppState:
                                       redigir=TriagemDeCredencial().redigir,
                                       faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta),
                                       nomes_de_persona=lambda: nomes_de_persona(self.db))
+        # O contato do site institucional (29.77, ADR-075): grava antes de avisar e entrega pela Canais. Desligado de fábrica.
+        self.portal = Portal(cfg, self.db, self.avisos)
         # O que a plataforma decide sozinha (28.25): o registro único, o adaptador que recolhe os produtores e o resumo
         # agrupado (no máximo uma mensagem por janela) pelo mesmo caminho dos avisos. O desfazer entra pelas rotas.
         self.decisoes_registro = RegistroDeDecisoes(self.db)
@@ -2635,6 +2638,8 @@ class AppState:
             self._bg.append(asyncio.create_task(self._saldos_loop(), name="saldos-de-ia"))
             # Aviso fora do painel: enfileira em qualquer réplica (chave única) e só o líder da trava `avisos` envia.
             self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
+            # O reenvio dos contatos do site e a retenção de 180 dias (29.77), no líder da mesma trava `avisos`.
+            self._bg.append(asyncio.create_task(self.portal.laco(lambda: self._lider(AVISOS)), name="portal-contatos"))
             # O recolher das decisões automáticas (28.25) em qualquer réplica; o resumo, só no líder da trava `avisos`.
             self._bg.append(asyncio.create_task(self.decisoes.laco(), name="decisoes-automaticas"))
             # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).

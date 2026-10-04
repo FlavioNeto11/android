@@ -137,6 +137,10 @@
           avisar("Recebemos a sua mensagem. Obrigado! Vamos retornar pelo telefone que você deixou.", "sucesso");
         } else if (resposta.status === 429) {
           avisar("Recebemos muitas mensagens agora. Tente mais tarde, ou ligue ou chame no WhatsApp.", "erro");
+        } else if (resposta.status === 400) {
+          avisar("A página ficou aberta por muito tempo. Recarregue a página e envie de novo.", "erro");
+        } else if (resposta.status === 422) {
+          avisar("Confira os campos: nome, um telefone com DDD, a mensagem e a concordância.", "erro");
         } else {
           avisar("Não foi possível enviar agora. Tente de novo em instantes, ou ligue ou chame no WhatsApp.", "erro");
         }
