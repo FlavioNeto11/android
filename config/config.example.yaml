@@ -232,7 +232,7 @@ limits:
 # Vencimento do que espera uma pessoa que não veio (29.50 e 31.43): só muda estado; nada responde, digita nem toca aparelho.
 execucao:
   vencimento_ligado: true         # false: nem a pergunta (needs_input) nem o bloqueio (waiting_user) vencem sozinhos
-  pergunta_vence_h: 24            # horas sem resposta (0,01 a 8760); no bloqueio, conta do mais tardio entre a espera e o fim da execução
+  pergunta_vence_h: 24            # horas sem resposta (1 a 8760); no bloqueio, conta do mais tardio entre a espera e o fim da execução
 
 ai:
   # O provedor real é escolhido no .env (AI_PROVIDER). Quando for externo, screenshots e textos das telas SAEM

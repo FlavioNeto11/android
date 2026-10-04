@@ -964,8 +964,52 @@ def test_a_caixa_do_outlook_prova_pela_lista_e_nao_pelo_juiz() -> None:
     m = {x.definition.package: x for x in descobrir(PASTA_DOS_APPS)}[OUTLOOK]
     assert m.catalog is not None
     cap = m.catalog.get("OPEN_MAIL_INBOX")
-    assert (cap.post_kind, cap.post_value) == ("element_present", "id=conversation_list")
+    assert (cap.post_kind, cap.local_proof) == ("model_judged", "selector:id=conversation_list & text==Inbox")
     assert "lista de mensagens" not in cap.post_description
     assert cap.saidas == ("remetente", "assunto")
     telas = (PASTA_DOS_APPS / OUTLOOK / "telas.yaml").read_text(encoding="utf-8")
     assert "ids: [conversation_list]" in telas
+
+
+def _pasta(titulo: str) -> Any:
+    """A barra e a lista como o android-01 mostrou (04/10): o título é um TextView sem id dentro de `toolbar`."""
+    p = 'package="com.microsoft.office.outlook" clickable="false" enabled="true" content-desc=""'
+    return parse_hierarchy(
+        '<hierarchy rotation="0">'
+        f'<node index="0" text="" resource-id="com.microsoft.office.outlook:id/toolbar" class="android.view.ViewGroup" {p}'
+        ' bounds="[0,48][720,160]" />'
+        f'<node index="1" text="{titulo}" resource-id="" class="android.widget.TextView" {p} bounds="[144,77][242,131]" />'
+        f'<node index="2" text="" resource-id="com.microsoft.office.outlook:id/conversation_list"'
+        f' class="androidx.compose.ui.platform.ComposeView" {p} bounds="[0,160][720,1115]" />'
+        '</hierarchy>')
+
+
+def test_31_50a_a_prova_local_da_caixa_exige_o_titulo_da_pasta() -> None:
+    """31.50 (a): a lista é a mesma em Enviados; sem o título "Inbox", a árvore NÃO prova (o juiz decide)."""
+    from types import SimpleNamespace
+
+    from app.taskqueue.proofs import local_proof_holds
+    m = {x.definition.package: x for x in descobrir(PASTA_DOS_APPS)}[OUTLOOK]
+    assert m.catalog is not None
+    prova = m.catalog.get("OPEN_MAIL_INBOX").local_proof
+    etapa = SimpleNamespace(bindings={})
+    assert local_proof_holds(prova, etapa, _pasta("Inbox")) is True
+    assert not local_proof_holds(prova, etapa, _pasta("Sent"))
+    assert not local_proof_holds(prova, etapa, _pasta("Drafts"))
+
+
+def test_31_50a_plano_de_fluxo_salvo_prova_com_o_catalogo_atual() -> None:
+    """31.50 (a), OBSERVADO na r-20261004195451-7d3527: o fluxo salvo antes do #278 trouxe a pós-condição antiga. A
+    etapa de catálogo passa a provar com a do catálogo atual; etapa sem ação de catálogo, ou de outro app, fica igual."""
+    from app.models import PlanStep, Postcondition
+    from app.planning.capabilities import atualizar_pos_condicoes
+    velha = Postcondition(kind="model_judged", value="caixa de entrada aberta", description="")
+    da_caixa = PlanStep(key="open_inbox", title="t", goal="g", postcondition=velha, capability="OPEN_MAIL_INBOX")
+    livre = PlanStep(key="livre", title="t", goal="g", postcondition=velha)
+    de_outro_app = PlanStep(key="outro", title="t", goal="g", postcondition=velha, capability="OPEN_MAIL_INBOX",
+                            app_id="instagram")
+    assert atualizar_pos_condicoes([da_caixa, livre, de_outro_app], OUTLOOK) == ["open_inbox"]
+    assert da_caixa.postcondition.value == "Caixa de Entrada do Outlook aberta"
+    assert livre.postcondition == velha and de_outro_app.postcondition == velha
+    assert atualizar_pos_condicoes([da_caixa], OUTLOOK) == []          # já atual: nada a trocar
+    assert atualizar_pos_condicoes([livre], "pacote.sem.catalogo") == []

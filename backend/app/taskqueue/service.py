@@ -29,7 +29,8 @@ from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, Distributi
                       RunSummary, RunTarget, RunTargetsPreview, RunTargetsResolveBody, SessionStatus, StepResult,
                       StepStatus)
 from ..planning.apps_do_comando import apps_citados, pede_site
-from ..planning.capabilities import CapabilityCatalog, efeito_fora_do_catalogo, load_catalog
+from ..planning.capabilities import (CapabilityCatalog, atualizar_pos_condicoes, efeito_fora_do_catalogo,
+                                     load_catalog)
 from ..planning.decisao_fechada.entidades import registrar_fonte_dos_apps
 from ..planning.catalog import capabilities_of, session_provider_of
 from ..planning.parsing import apps_do_plano, texto_fora_do_catalogo
@@ -1084,6 +1085,7 @@ class RunService:
                                         "não cabe mais no molde dele.", level="warn")
                     return
                 plan = da_prova
+                self._pos_do_catalogo(run_id, plan)
                 repo.decision(f"Prova de fluxo (validação): o plano é o do fluxo {prova}, com os parâmetros do comando "
                               "de origem; o planejador não é chamado.", run_id=run_id)
             elif known is not None and known.plan is None:
@@ -1092,6 +1094,7 @@ class RunService:
             elif known is not None and known.plan is not None:
                 plan = known.plan
                 self._registrar_resolucao(run_id, known)
+                self._pos_do_catalogo(run_id, plan)
             else:
                 # Livre, por catálogo ou ENTRE APPS (item 24.1): quem decide é `_catalogos`, pelo app dos aparelhos e
                 # pelos apps que o comando cita.
@@ -1339,6 +1342,14 @@ class RunService:
             session_max_age_s=int(self.scheduler.cfg.file.contas.session_max_age_s),
             unknown_retry_cap=int(self.scheduler.get_settings().session_unknown_retry_cap)))
 
+    def _pos_do_catalogo(self, run_id: str, plan: Plan) -> None:
+        """31.50 (a): o plano de fluxo salvo prova as etapas de catálogo com a pós-condição ATUAL do catálogo."""
+        if plan.planner.provider != "fluxo":
+            return
+        if trocadas := atualizar_pos_condicoes(plan.steps, plan.app_package):
+            self.repo.decision(f"Plano salvo: a prova de {', '.join(trocadas)} segue o catálogo atual do app "
+                               "(31.50 a), não a pós-condição gravada no fluxo.", run_id=run_id)
+
     def _alvos(self, run: Mapping[str, object]) -> tuple[list[Target], str]:
         """Onde os recursos se resolvem — o aparelho e a persona DO ALVO, como `_plan` fotografa — e o comando sem
         destinos, que é o que casa com a habilidade."""
@@ -1581,25 +1592,29 @@ class RunService:
                 continue
             oid, run_id = str(o["id"]), str(o["run_id"])
             try:
-                # A guarda de corrida: nenhum valor muda (`status=status`), só o `rowcount` diz se o objetivo ainda espera e
-                # a execução ainda está terminal. Mudar o status aqui desligaria a conferência de transição e a conta da
-                # espera do `set_objective` logo abaixo.
-                if not self.repo.db.execute(
-                        "UPDATE objectives SET status=status WHERE id=? AND status=? AND EXISTS "
-                        f"(SELECT 1 FROM runs WHERE id=? AND status IN ({marcas}))",
-                        (oid, ObjectiveStatus.waiting_user.value, run_id, *terminais)).rowcount:
-                    continue
-                motivo = f"vencido sem resposta em {horas} h"
-                self.repo.cancel_open_steps(run_id, objective_id=oid, reason=f"pedido {motivo}")
-                self.repo.set_objective(
-                    oid, ObjectiveStatus.cancelled,
-                    detail=f"Sem resposta em {horas} h: o pedido venceu e foi encerrado pelo sistema. "
-                           "Para seguir, faça o pedido de novo.",
-                    message=f"{o['instance_id']}: pedido sem resposta em {horas} h; encerrado pelo sistema",
-                    dados={"vencimento": {"regra": REGRA_DO_VENCIMENTO, "motivo": MOTIVO_VENCIDO, "horas": horas,
-                                          "desde": desde}})
-                self.scheduler._expirar_aprovacoes(oid, f"pedido {motivo}")  # noqa: SLF001
-                self.repo.recompute_run(run_id)
+                # 31.50 (b): a guarda e o cancelamento numa transação só. Em comandos separados, uma retomada entre a
+                # guarda e o `set_objective` era atropelada, e uma falha no meio deixava as etapas canceladas com o
+                # objetivo ainda em `waiting_user`. A `tx()` é reentrante: o que os métodos abrem por dentro entra nesta.
+                with self.repo.db.tx():
+                    # A guarda de corrida: nenhum valor muda (`status=status`), só o `rowcount` diz se o objetivo ainda
+                    # espera e a execução ainda está terminal. Mudar o status aqui desligaria a conferência de transição e
+                    # a conta da espera do `set_objective` logo abaixo.
+                    if not self.repo.db.execute(
+                            "UPDATE objectives SET status=status WHERE id=? AND status=? AND EXISTS "
+                            f"(SELECT 1 FROM runs WHERE id=? AND status IN ({marcas}))",
+                            (oid, ObjectiveStatus.waiting_user.value, run_id, *terminais)).rowcount:
+                        continue
+                    motivo = f"vencido sem resposta em {horas} h"
+                    self.repo.cancel_open_steps(run_id, objective_id=oid, reason=f"pedido {motivo}")
+                    self.repo.set_objective(
+                        oid, ObjectiveStatus.cancelled,
+                        detail=f"Sem resposta em {horas} h: o pedido venceu e foi encerrado pelo sistema. "
+                               "Para seguir, faça o pedido de novo.",
+                        message=f"{o['instance_id']}: pedido sem resposta em {horas} h; encerrado pelo sistema",
+                        dados={"vencimento": {"regra": REGRA_DO_VENCIMENTO, "motivo": MOTIVO_VENCIDO, "horas": horas,
+                                              "desde": desde}})
+                    self.scheduler._expirar_aprovacoes(oid, f"pedido {motivo}")  # noqa: SLF001
+                    self.repo.recompute_run(run_id)
                 self._soltar_aviso_do_aparelho(str(o["instance_id"]))
                 vencidos.append(oid)
             except Exception:  # noqa: BLE001 - um objetivo ruim não pode prender os outros

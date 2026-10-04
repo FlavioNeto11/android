@@ -537,6 +537,31 @@ def _aplicar(texto: str, valores: dict[str, str]) -> str:
     return _VARIAVEL.sub(lambda m: valores.get(m.group(1), m.group(0)), texto or "")
 
 
+def atualizar_pos_condicoes(steps: Iterable[PlanStep], package: str | None) -> list[str]:
+    """31.50 (a): a etapa de catálogo de um plano SALVO (fluxo) passa a provar com a pós-condição ATUAL do catálogo.
+
+    OBSERVADO (r-20261004195451-7d3527, 04/10): o OPEN_MAIL_INBOX do fluxo salvo antes do #278 trouxe o
+    `model_judged` antigo, e a etapa foi pelo ator e pelo juiz (13 chamadas) em vez do `element_present` do catálogo.
+    O fluxo congela o plano, e o catálogo é a fonte da prova. Só a etapa do app do plano (`app_id` nulo) cuja ação o
+    catálogo ainda tem; o resto do plano não muda. Devolve as chaves das etapas trocadas.
+    """
+    catalog = load_catalog(package)
+    if catalog is None:
+        return []
+    trocadas = []
+    for step in steps:
+        if step.app_id is not None or not step.capability or not catalog.has(step.capability):
+            continue
+        cap = catalog.get(step.capability)
+        valores = {k: v for k, v in step.bindings.items() if v is not None}
+        atual = Postcondition(kind=cap.post_kind, value=_aplicar(cap.post_value, valores),  # type: ignore[arg-type]
+                              description=_aplicar(cap.post_description, valores))
+        if (atual.kind, atual.value) != (step.postcondition.kind, step.postcondition.value):
+            step.postcondition = atual
+            trocadas.append(step.key)
+    return trocadas
+
+
 def capability_of(package: str | None, key: str | None) -> Capability | None:
     """A capability desta etapa, quando o app tem catálogo. Fora disso, `None` — e tudo segue como antes."""
     catalog = load_catalog(package)

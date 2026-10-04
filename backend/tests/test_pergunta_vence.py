@@ -239,3 +239,34 @@ async def test_o_objetivo_vencido_deixa_de_contar_como_aberto(harness: Harness) 
     assert st.repo.objective_row(oid)["status"] in _OBJETIVO_ABERTO
     st.runs.vencer_objetivos_parados(now())
     assert st.repo.objective_row(oid)["status"] not in _OBJETIVO_ABERTO
+
+
+async def test_31_50b_falha_no_meio_do_vencimento_nao_deixa_metade_gravada(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """31.50 (b): a guarda e o cancelamento são UMA transação. Uma falha depois de cancelar as etapas (aqui, ao expirar
+    as aprovações) desfaz tudo: o objetivo segue esperando com a etapa aberta, e a volta seguinte vence inteiro."""
+    st = harness.state
+    assert st is not None
+    run_id, oid = await _parado(harness, espera_h=30, fim_h=30)
+    abertas = st.db.scalar("SELECT COUNT(*) FROM steps WHERE objective_id=? AND status='waiting_user'", (oid,))
+    assert abertas == 1
+
+    def quebra(*_a: Any, **_k: Any) -> None:
+        raise RuntimeError("[teste] falha no meio do vencimento")
+
+    monkeypatch.setattr(st.scheduler, "_expirar_aprovacoes", quebra)
+    assert st.runs.vencer_objetivos_parados(now()) == []
+    assert _status(harness, run_id, oid)[0] == "waiting_user"
+    assert st.db.scalar("SELECT COUNT(*) FROM steps WHERE objective_id=? AND status='waiting_user'", (oid,)) == 1
+    monkeypatch.undo()
+    assert st.runs.vencer_objetivos_parados(now()) == [oid]
+
+
+def test_31_50c_o_prazo_tem_piso_de_uma_hora() -> None:
+    """31.50 (c): um "0.05" no lugar de "5" encerraria em minutos tudo o que espera uma pessoa, sem desfazer."""
+    from pydantic import ValidationError
+
+    from app.config import ExecucaoCfg
+    with pytest.raises(ValidationError):
+        ExecucaoCfg(pergunta_vence_h=0.05)
+    assert ExecucaoCfg(pergunta_vence_h=1).pergunta_vence_h == 1
