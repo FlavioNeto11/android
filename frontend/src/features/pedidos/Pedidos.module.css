@@ -82,6 +82,7 @@
 .previaGrade { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--sp-3); }
 .previaBloco { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-3); border: 1px solid var(--border-1); border-radius: var(--radius-md); background: var(--surface-1); min-width: 0; }
 .previaTitulo { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-sm); color: var(--text-1); }
+.resolver { display: inline-flex; margin-left: var(--sp-2); vertical-align: middle; }
 .listaSimples { margin: 0; padding-left: var(--sp-4); color: var(--text-2); font-size: var(--fs-sm); }
 .datas { margin: 0; padding-left: var(--sp-4); color: var(--text-1); font-size: var(--fs-sm); display: flex; flex-direction: column; gap: 2px; }
 

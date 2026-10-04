@@ -88,6 +88,11 @@ export interface OcorrenciaDTO {
   criada_em: string;
   iniciada_em: string | null;
   terminada_em: string | null;
+  /** (28.21) Uma pessoa conferiu a ocorrência `incerta` e a deu por resolvida: quando, quem e o que conferiu. A
+   *  ocorrência CONTINUA `incerta`; só deixa de ser pendência. Ausentes/nulos no legado e nas que ninguém resolveu. */
+  resolvida_em?: string | null;
+  resolvida_por?: string | null;
+  resolvida_nota?: string | null;
 }
 
 export interface PedidoView extends PedidoDTO {

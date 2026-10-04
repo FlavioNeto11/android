@@ -1,6 +1,6 @@
 import { apiRequest } from '../../api/client';
 import type {
-  FiltroDePedidos, ListaDeAvisos, ListaDeOcorrencias, ListaDePedidos, PedidoCancelado, PedidoCriacao,
+  FiltroDePedidos, ListaDeAvisos, ListaDeOcorrencias, ListaDePedidos, OcorrenciaDTO, PedidoCancelado, PedidoCriacao,
   PedidoCriado, PedidoDetalhe, PedidoEdicao, PedidoEdicaoResultado, PedidoCorpo, PedidoPrevia, PedidoRetomado,
   PedidoSemMudanca, PedidoView,
 } from '../../api/pedidos';
@@ -66,6 +66,10 @@ export const apiPedidos = {
   /** Sem `confirmar: true` responde 409 `confirmacao_necessaria` com o que seria afetado (`details`), e não muda nada. */
   cancelar: (id: string, corpo: { confirmar: boolean; motivo?: string }) =>
     apiRequest<PedidoCancelado>('POST', `/pedidos/${enc(id)}/cancelar`, { body: corpo }),
+  /** (28.21) Dá a ocorrência `incerta` por resolvida (a nota é obrigatória). Só marca: não reexecuta nem muda o estado.
+   *  Repetir é idempotente (200, devolve o que foi gravado antes). 404/409 se não existe ou não está incerta. */
+  resolverIncerta: (id: string, ocorrenciaId: string, nota: string) =>
+    apiRequest<OcorrenciaDTO>('POST', `/pedidos/${enc(id)}/ocorrencias/${enc(ocorrenciaId)}/resolver`, { body: { nota } }),
   ocorrencias: (id: string, q: { estado?: string; limit?: number; antes_de?: string } = {}, signal?: AbortSignal) =>
     apiRequest<ListaDeOcorrencias>('GET', `/pedidos/${enc(id)}/ocorrencias`, { query: q, signal }),
   execucoes: (id: string, limit = 20, signal?: AbortSignal) =>

@@ -30,6 +30,7 @@ import {
 } from './modelo';
 import { AvisoDoLacoDesligado } from './LacoDesligado';
 import { ProximasDatas } from './PreviaDoPedido';
+import { ResolverIncerta } from './ResolverIncerta';
 import { usePedidosStore } from './store';
 import styles from './Pedidos.module.css';
 
@@ -167,6 +168,11 @@ function AvisoQueEsperaVoce({ p, onMudou }: { p: PedidoDetalhe; onMudou: () => v
             <li key={`${x.tipo}-${x.ref}`}>
               {texto.charAt(0).toUpperCase() + texto.slice(1)}, e retome.
               {href ? <> <a href={href}>{x.run_id || href.includes('execucoes') ? 'Abrir a execução' : 'Ver as ocorrências'}</a></> : null}
+              {x.tipo === 'ocorrencia_incerta' && x.ocorrencia_id ? (
+                <span className={styles.resolver}>
+                  <ResolverIncerta pedidoId={p.id} ocorrenciaId={x.ocorrencia_id} onResolvida={onMudou} />
+                </span>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -287,6 +293,12 @@ function LinhaDaOcorrencia({ o, agora }: { o: OcorrenciaDTO; agora: number }) {
         {/* Nada some em silêncio: a pulada, a perdida e a que falhou dizem por quê. */}
         {o.motivo ? <span className={styles.motivo}>Motivo: {o.motivo}</span> : null}
         {o.resumo ? <span className={styles.motivo}>{o.resumo}</span> : null}
+        {/* 28.21: a incerta que uma pessoa conferiu segue incerta, e diz quem, quando e o quê. */}
+        {o.resolvida_em ? (
+          <span className={styles.motivo}>
+            Resolvida por {o.resolvida_por ?? 'alguém'}, {dataCurta(o.resolvida_em)}{o.resolvida_nota ? `: ${o.resolvida_nota}` : '.'}
+          </span>
+        ) : null}
         <div className={styles.meta}>
           <span>Custo: {formatUsd(o.custo_usd)}</span>
           {o.run_id && o.run_disponivel ? (
