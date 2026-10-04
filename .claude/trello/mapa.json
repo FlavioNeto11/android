@@ -2145,7 +2145,7 @@
   "29.38": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1441df45a9563fa86c171",
    "url": "https://trello.com/c/K2m3OjZ4",
-   "lista": "bloqueado",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.39": {
@@ -2612,7 +2612,7 @@
   "31.19": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141eb90524f4f79035048",
    "url": "https://trello.com/c/lf8oc5UB",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "31.19 · Calibração do curador (30 rótulos do dono)"
   },
@@ -2689,7 +2689,7 @@
   "estudo:power-ups": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1501af4b33c20b16f5d4a",
    "url": "https://trello.com/c/tYp0Ebq5",
-   "lista": "em_execucao",
+   "lista": "concluido_hoje",
    "lote": "canais"
   },
   "29.51": {
@@ -2714,7 +2714,7 @@
   "31.23": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15522ccc4d4796d5327d3",
    "url": "https://trello.com/c/GSb5DSA1",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "fatos-1916"
   },
   "32.3": {
@@ -2970,7 +2970,7 @@
   "31.29": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac20a6cf45a69c7d4652388",
    "url": "https://trello.com/c/kgzM4nDl",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "Apelidos de mais de uma palavra no cadastro do app"
   },
@@ -3194,7 +3194,7 @@
   "30.51": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2520e4ae1363a554c6eff",
    "url": "https://trello.com/c/2wkgl0Gj",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "30.51 — Execução comum que usa um fluxo aprendido deixa evidência"
   },
@@ -3228,10 +3228,46 @@
    "url": "https://trello.com/c/mjYDdaJi",
    "lista": "em_execucao",
    "lote": null
+  },
+  "29.71": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac26fa913b8c7d0996de09a",
+   "url": "https://trello.com/c/drLZAPXt",
+   "lista": "proximas",
+   "lote": null
+  },
+  "avulso:ferramentas-do-claude": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac26fa56f4c1a8867cb5378",
+   "url": "https://trello.com/c/Wn7iAVdz",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "30.55": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac277fa860ea70afdbe5987",
+   "url": "https://trello.com/c/bvILP8V8",
+   "lista": "proximas",
+   "lote": null
+  },
+  "31.42": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2784d7cef973fcb39d106",
+   "url": "https://trello.com/c/9JFpdEPs",
+   "lista": "em_execucao",
+   "lote": null
+  },
+  "28.25": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2785257d3831db43d8e69",
+   "url": "https://trello.com/c/enArdvfN",
+   "lista": "proximas",
+   "lote": null
+  },
+  "29.72": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac27855489bd6e45cf9ff25",
+   "url": "https://trello.com/c/4mABUwkP",
+   "lista": "proximas",
+   "lote": null
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T15:20:00Z",
+ "atualizado_em": "2026-10-04T16:01:00Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",

@@ -149,6 +149,41 @@ def _nao_curados(curados_ate: int) -> tuple[int, str]:
     return len(novos), novos[0].split("|", 1)[0].strip()
 
 
+#: listas do quadro Execução onde cartão parado é sinal de esquecimento (04/10: no lugar do teto do List Limits)
+LISTAS_VIGIADAS = ("em_execucao", "em_validacao")
+PARADO = timedelta(hours=48)
+
+
+def _parados(agora: datetime) -> tuple[int, list[str]] | None:
+    """Cartões das listas vigiadas sem movimento há mais de 48 h e SEM data de espera (`due`): quem espera uma data
+    conhecida (11/10, 17/10…) leva o `due` no cartão e não conta. Leitura pela API do Trello com o cliente do
+    `powerups.py` (autenticação no cabeçalho, nunca na URL nem impressa). `None` = a leitura falhou nesta rodada."""
+    try:
+        import powerups  # noqa: PLC0415 - só carrega o .env quando o resumo precisa
+
+        listas = powerups.EST["quadros"]["execucao"]["listas"]
+        vigiadas = {powerups._id(listas[k]) for k in LISTAS_VIGIADAS}
+        with powerups._cliente() as c:
+            r = c.get(f"/boards/{powerups.QUADRO['execucao']}/cards",
+                      params={"filter": "open", "fields": "name,idList,due,dateLastActivity"})
+            r.raise_for_status()
+            cartoes = r.json()
+    except Exception:  # noqa: BLE001 - o resumo segue sem a linha; a falha não pode derrubar o laço
+        return None
+    parados = []
+    for k in cartoes:
+        if k.get("idList") not in vigiadas or k.get("due"):
+            continue
+        try:
+            ultima = datetime.fromisoformat(str(k.get("dateLastActivity")).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if agora - ultima > PARADO:
+            parados.append((ultima, str(k.get("name") or "")))
+    parados.sort()
+    return len(parados), [nome for _, nome in parados[:3]]
+
+
 def compor(cursor: dict, agora: datetime) -> tuple[str, int]:
     sit = _ler_json(SITUACAO, {})
     titulo, detalhe = _plano()
@@ -178,6 +213,12 @@ def compor(cursor: dict, agora: datetime) -> tuple[str, int]:
     if not mudou and not n:
         partes.append("▪️ nada novo nas frentes")
     total_linhas = len(_linhas_de_fato())
+
+    parados = _parados(agora)
+    if parados and parados[0]:
+        n_p, nomes = parados
+        partes += ["", f"<b>⏳ {n_p} cartão(ões) parado(s) há mais de 48 h, sem data de espera</b>"]
+        partes += [f"▪️ {_e(_cortar(x, MAX_CHARS_MUDOU))}" for x in nomes]
 
     pend = sit.get("pendencias") or []
     partes += ["", "<b>🙋 Pendências suas</b>"]
