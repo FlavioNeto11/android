@@ -556,15 +556,45 @@ async def test_enviar_anexo_recusa_link_simbolico_para_fora(c: CenarioAnexos, tm
 
 async def test_enviar_anexo_aceita_arquivo_dentro_do_armazem_e_confere_o_conteudo(c: CenarioAnexos) -> None:
     c.pasta.mkdir(parents=True, exist_ok=True)
-    dentro = c.pasta / "gerado.png"
+    dentro = caminho_em(c.pasta, sha(PNG), "image/png")
+    dentro.parent.mkdir(parents=True, exist_ok=True)
     dentro.write_bytes(PNG)
     await c.conversa().enviar_anexo(SaidaDoTelegram(c.canal), dentro)                # type: ignore[arg-type]
     assert [e["metodo"] for e in c.bot.envios] == ["sendPhoto"]
-    ruim = c.pasta / "ruim.png"
+    ruim = caminho_em(c.pasta, sha(EXE), "image/png")
+    ruim.parent.mkdir(parents=True, exist_ok=True)
     ruim.write_bytes(EXE)                                                            # dentro da pasta, mas não é imagem
     with pytest.raises(AnexoRecusado):
         await c.conversa().enviar_anexo(SaidaDoTelegram(c.canal), ruim)              # type: ignore[arg-type]
     assert len(c.bot.envios) == 1
+
+
+async def test_enviar_anexo_por_caminho_recusa_tmp_nome_sem_sha_e_conteudo_que_nao_bate_com_o_nome(c: CenarioAnexos) -> None:
+    """Achado 11 da revisão: o caminho só era conferido pela pasta e pelo tipo, não pelo sha256 do nome."""
+    c.pasta.mkdir(parents=True, exist_ok=True)
+    certo = caminho_em(c.pasta, sha(PNG), "image/png")
+    certo.parent.mkdir(parents=True, exist_ok=True)
+    maus = {
+        "tmp": certo.parent / f".{certo.name}.ab12cd34.tmp",                          # sobra de `_gravar_atomico`
+        "sem_sha": certo.parent / "gerado.png",
+        "outro_sha": certo.parent / f"{sha(b'outro')}.png",                           # nome de sha, conteúdo de outro
+    }
+    for caminho in maus.values():
+        caminho.write_bytes(PNG)
+        with pytest.raises(AnexoRecusado):
+            await c.conversa().enviar_anexo(SaidaDoTelegram(c.canal), caminho)       # type: ignore[arg-type]
+    assert c.bot.envios == [] and c.linhas() == []
+
+
+async def test_enviar_anexo_por_id_recusa_arquivo_do_disco_que_mudou_depois_de_guardado(c: CenarioAnexos) -> None:
+    c.bot.arquivos["d-png"] = PNG
+    await c.volta(documento(5, "d-png", mime="image/png"))
+    [entrada] = c.linhas()
+    caminho = caminho_em(c.pasta, sha(PNG), "image/png")
+    caminho.write_bytes(PNG + b"corrompido")                                         # o conteúdo não é mais o do nome
+    with pytest.raises(AnexoRecusado):
+        await c.conversa().enviar_anexo(SaidaDoTelegram(c.canal), entrada["id"])     # type: ignore[arg-type]
+    assert c.bot.envios == []
 
 
 async def test_enviar_conteudo_do_produto_confere_o_tipo_guarda_e_manda(c: CenarioAnexos) -> None:

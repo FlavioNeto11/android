@@ -216,7 +216,12 @@ class ArmazemDeAnexos:
         mime = detectar_mime(dados)
         if mime is None or mime not in tipos:
             raise AnexoRecusado("O conteúdo não é um tipo que a Central envia.")
-        return dados, mime, hashlib.sha256(dados).hexdigest()
+        sha = hashlib.sha256(dados).hexdigest()
+        # O nome É o sha256 do conteúdo (`<sha>.<ext>`): um `.tmp` que sobrou de `_gravar_atomico`, um arquivo que o
+        # operador largou na pasta ou um conteúdo que mudou depois de guardado não saem por um canal.
+        if caminho.name != f"{sha}.{EXTENSAO[mime]}":
+            raise AnexoRecusado("O arquivo não é o conteúdo que o nome diz; não envio.")
+        return dados, mime, sha
 
     def registrar_saida(self, sha: str, mime: str, tamanho: int, *, entrada_id: int | None = None) -> Linha:
         """A linha do que a Central mandou (a referência por id ou sha256 não grava de novo o arquivo)."""
