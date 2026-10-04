@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.45: a caixa do Outlook prova pela lista, não pelo juiz (branch fix/31-45-caixa-do-outlook)
+
+- Achado do histórico de erros do portal (29.72, grupos fk-c8cc5b1edb e fk-856157d929): a `OPEN_MAIL_INBOX` era
+  `model_judged` "com a lista de mensagens", e a linha da lista é um `ComposeView` sem texto; o juiz via "Inbox" e
+  recusava por não ler remetente e assunto (r-…-8c3f6e, r-…-996716: 3 tentativas cada).
+- Agora a prova é `element_present id=conversation_list`, o id que já define a tela `caixa_de_entrada` em `telas.yaml`.
+  Remetente e assunto seguem exigidos como saída (`read_value`, leitura visual do 12.5), não como prova da tela.
+- Teste: `tests/test_outlook_declarado.py::test_a_caixa_do_outlook_prova_pela_lista_e_nao_pelo_juiz` (`simulated`);
+  prova `real` não executada (uma abertura da caixa no android-01, só leitura, depois do deploy).
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
