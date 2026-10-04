@@ -537,6 +537,9 @@ class PolicyEngine:
         dias = max(1, int(getattr(self._settings(), "fleet_target_window_days", 30) or 30))
         inicio = agora - timedelta(days=dias)
         since = to_iso(max(inicio, desde) if desde is not None else inicio)
+        # O pedido conta pela DECISÃO quando há `desde` (G1 da revisão do 31.49): o pendente criado antes do sim e
+        # aprovado depois não estava na prévia (ela só conta aprovado), e é repetição nova.
+        decidido_desde = to_iso(desde) if desde is not None else None
         qual = ", ".join(f"{k} {v}" for k, v in objeto.items() if v) or "o mesmo objeto"
         for interacao, quando, quem, argumentos, enviado in self.repo.saidas_da_acao(
                 profile_id, cap.key, types=(cap.interaction_type,), statuses=CONTAM, since=since, app_id=app_id,
@@ -555,7 +558,8 @@ class PolicyEngine:
                     "Se for mesmo outro item, diga no comando o que o distingue (a legenda do post, por exemplo) e refaça "
                     "o plano.")
         for pedido, quando, quem, argumentos, status, a_digitar in self.repo.pedidos_da_acao(
-                profile_id, cap.key, since=since, app_id=app_id, exclude_step_id=step_id):
+                profile_id, cap.key, since=to_iso(inicio), app_id=app_id, exclude_step_id=step_id,
+                decidido_desde=decidido_desde):
             if do_registro(argumentos, quem) != objeto:
                 continue
             if conversa:

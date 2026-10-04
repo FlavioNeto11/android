@@ -2133,7 +2133,10 @@ class AppState:
         pelo_teto = ("teto de autonomia preparar: o efeito precisa da sua aprovação"
                      if teto == "preparar" and cap.side_effect else "")
         if veredito.needs_approval or confirmacao or pelo_teto or repetida:
-            motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, repetida or "") if m)
+            # O `check` já põe a repetição no `reason` quando o texto era conhecido antes do rascunho: sem este corte, o
+            # cartão trazia a mesma frase duas vezes (revisão do 31.49).
+            nova = repetida if repetida and repetida not in (veredito.reason or "") else ""
+            motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, nova) if m)
             # 30.65: a etapa que usa a exceção sempre pede decisão nova; o aprovado de outra versão não vale para ela.
             return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao,
                                        pacote=pacote, app_id=app_da_etapa_id)
@@ -2574,7 +2577,7 @@ class AppState:
             nova = self.policies.mensagem_repetida(profile_id, cap, bindings, app_id=app_id, step_id=srow["id"],
                                                    desde=parse_iso(pedido.decided_at))
             if nova:
-                return f"depois do sim, {nova}"
+                return "a repetição surgiu depois do sim"
         return ""
 
     def _seed_apps(self) -> None:

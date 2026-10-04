@@ -115,11 +115,61 @@ async def test_a_mesma_dm_mandada_depois_do_sim_faz_a_execucao_perguntar_de_novo
     veredito = await _gate(state, "dm")
     assert veredito is not None and not veredito.allowed and veredito.policy == "approval_required"
     linhas = {r["origem"]: r for r in state.db.query("SELECT * FROM pending_approvals")}
-    assert linhas["plano"]["status"] == "expired" and "depois do sim" in linhas["plano"]["decided_note"]
-    assert "esta conta já mandou ESTA mensagem" in linhas["plano"]["decided_note"]
+    assert linhas["plano"]["status"] == "expired"
+    assert "a repetição surgiu depois do sim" in linhas["plano"]["decided_note"]
     assert linhas["execucao"]["status"] == "pending"
-    assert "esta conta já mandou ESTA mensagem" in linhas["execucao"]["summary"]
-    assert "o sim dado no plano não vale: depois do sim" in linhas["execucao"]["summary"]
+    # A frase da repetição (com o alvo) vem do motivo da porta, uma vez só; o descarte só diz quando ela surgiu.
+    assert linhas["execucao"]["summary"].count("esta conta já mandou ESTA mensagem") == 1
+    assert "o sim dado no plano não vale: a repetição surgiu depois do sim" in linhas["execucao"]["summary"]
+
+
+async def test_pendente_de_outra_execucao_aprovado_depois_do_sim_faz_perguntar_de_novo(harness: Any,
+                                                                                    monkeypatch: Any) -> None:
+    """G1: o pedido PENDENTE de outra execução, com a mesma DM ao mesmo alvo, foi criado ANTES do sim. A prévia só conta
+    aprovado, então o dono não o viu. Aprovado DEPOIS do sim, ele é repetição nova: conta pela decisão, não pela criação."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    _plano(state, [{"key": "dm", "cap": "SEND_MESSAGE", "bindings": DM}])
+    pid = str(state.db.scalar("SELECT profile_id FROM objectives"))
+    outro = state.approvals.open(profile_id=pid, capability="SEND_MESSAGE", summary="dm de outra execução",
+                                 target=ALVO, content=DM["content"], run_id="r-outra")
+    state.db.execute("UPDATE pending_approvals SET created_at=? WHERE id=?",
+                     (to_iso(now() - timedelta(minutes=5)), outro.id))
+    item = _por_chave(previa_da_porta(state, "run-p"))["dm"]
+    assert item["selo"] == "aprovacao" and "repetição" not in item["motivo"]     # o pendente não aparece na prévia
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
+                  por="flavio")
+    state.db.execute("UPDATE pending_approvals SET status='approved', decided_at=? WHERE id=?",
+                     (to_iso(now() + timedelta(seconds=1)), outro.id))
+    veredito = await _gate(state, "dm")
+    assert veredito is not None and not veredito.allowed and veredito.policy == "approval_required"
+    plano = state.db.one("SELECT status, decided_note FROM pending_approvals WHERE origem='plano'")
+    assert plano["status"] == "expired" and "a repetição surgiu depois do sim" in plano["decided_note"]
+    novo = state.db.one("SELECT summary FROM pending_approvals WHERE origem='execucao' AND step_id IS NOT NULL")
+    assert "já foi aprovada" in novo["summary"]
+
+
+async def test_excecao_presa_depois_do_sim_tira_o_sim_de_aprovado(harness: Any, monkeypatch: Any) -> None:
+    """Nota da revisão: com a exceção 30.65 presa à etapa DEPOIS do sim, o sim do plano não vale e sai como `expired`;
+    antes ficava `approved` até a faxina e contava como "aprovada e não enviada" no `_repetido` de outras etapas."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    _aprovado_no_plano(state, DM)
+    etapa = state.db.one("SELECT * FROM steps WHERE key='dm'")
+    obj = state.db.one("SELECT * FROM objectives WHERE id=?", (etapa["objective_id"],))
+    depois = to_iso(now() + timedelta(seconds=1))
+    state.db.execute("INSERT INTO excecoes_de_politica(id, regra, profile_id, alvo, capability, motivo, autorizacao,"
+                     " autor, criada_em, expira_em, step_id, presa_em) VALUES ('exc-3149','uma_conta_por_alvo',?,?,"
+                     "'SEND_MESSAGE','m','a','orquestradora',?,?,?,?)",
+                     (obj["profile_id"], ALVO, depois, to_iso(now() + timedelta(hours=1)), etapa["id"], depois))
+    from app.planning.capabilities import capability_of
+    cap = capability_of("com.instagram.android", "SEND_MESSAGE")
+    assert cap is not None
+    veredito = state._approval_gate(obj, etapa, cap, str(obj["profile_id"]), excecao="exc-3149",  # noqa: SLF001
+                                    pacote="com.instagram.android")
+    assert veredito is not None and not veredito.allowed
+    plano = state.db.one("SELECT status, decided_note FROM pending_approvals WHERE origem='plano'")
+    assert plano["status"] == "expired" and "exceção 30.65" in plano["decided_note"]
 
 
 async def test_a_mesma_dm_mandada_antes_do_sim_segue_coberta_por_ele(harness: Any, monkeypatch: Any) -> None:
