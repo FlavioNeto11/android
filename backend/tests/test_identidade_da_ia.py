@@ -44,3 +44,18 @@ def test_o_escritor_social_nao_importa_a_identidade() -> None:
 def test_o_painel_usa_o_mesmo_nome() -> None:
     fonte = (RAIZ / "frontend" / "src" / "lib" / "identidade.ts").read_text(encoding="utf-8")
     assert re.search(r"export const NOME_DA_IA = '([^']+)';", fonte).group(1) == NOME_DA_IA  # type: ignore[union-attr]
+
+
+def test_os_avisos_dos_canais_falam_como_ana() -> None:
+    """28.17: todo título de aviso (um por um, agrupado e o do convidado do Trello) começa com o nome da IA; o nome
+    vem da constante de contrato, e o antigo "Central de Aparelhos:" não volta."""
+    from app.modules.avisos.domain.mensagem import ROTULOS, aviso_de_evento, titulo_agrupado
+
+    a = aviso_de_evento("run.updated", {"run": {"id": "r-1", "status": "needs_input"}}, 7)
+    assert a is not None and a.titulo == f"{NOME_DA_IA}: Uma execução parou pedindo informação"
+    assert titulo_agrupado("approval.pending", 3) == f"{NOME_DA_IA}: 3 aprovações aguardando a sua decisão"
+    fontes = [RAIZ / "backend" / "app" / "modules" / "avisos" / p
+              for p in ("domain/mensagem.py", "infrastructure/trello_leitor.py", "infrastructure/entrada.py")]
+    for fonte in fontes:
+        assert "Central de Aparelhos:" not in fonte.read_text(encoding="utf-8"), fonte
+    assert all(NOME_DA_IA not in r for r in ROTULOS.values())          # o nome entra uma vez, pelo prefixo

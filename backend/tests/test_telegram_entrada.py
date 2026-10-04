@@ -20,6 +20,7 @@ from pydantic import SecretStr
 from app.config import Config
 from app.db import Database
 from app.modules.avisos.adapters.telegram import CanalTelegram
+from app.modules.avisos.application.entrada import RESPOSTA_IDENTIDADE
 from app.modules.avisos.infrastructure.entrada import (
     OPERADOR_DO_TELEGRAM,
     RESPOSTA_CREDENCIAL,
@@ -222,14 +223,14 @@ async def test_offset_do_banco_ajuda_uma_vez_e_reinicio_sem_repetir(c: Cenario) 
     gets = [p for m, p, _ in c.bot.chamadas if m == "getUpdates"]
     assert gets[0]["offset"] == "0" and "callback_query" in gets[0]["allowed_updates"]
     assert c.repo.proximo_offset() == 7
-    assert c.bot.textos()[0].startswith("A Central agora atende por aqui.")       # a /ajuda da 1ª subida
+    assert c.bot.textos()[0].startswith("Oi! Sou a ANA, a IA Gerente")   # a /ajuda da 1ª subida, com a apresentação
     assert c.portas.nomes() == ["status"]
     # Reinício: outro serviço no mesmo banco pede a partir do 7; as updates 5 e 6 não voltam nem se repetem.
     c.servico = c.novo_servico()
     assert await c.volta() == 0
     assert [p for m, p, _ in c.bot.chamadas if m == "getUpdates"][-1]["offset"] == "7"
     assert c.portas.nomes() == ["status"]
-    assert sum(1 for t in c.bot.textos() if t.startswith("A Central agora atende")) == 1
+    assert sum(1 for t in c.bot.textos() if t.startswith("Oi! Sou a ANA")) == 1
 
 
 async def test_update_relida_nao_duplica(c: Cenario) -> None:
@@ -432,3 +433,12 @@ async def test_operador_e_valor_e_o_veto_leva_a_nota(c: Cenario) -> None:
     c.repo.registrar_enviada("556", "aviso", fato="approval:apr-0000aa11")
     await c.volta(msg(5, "/vetar o tom ficou agressivo", reply_to=556))
     assert c.portas.chamadas[-1] == ("decidir", ("apr-0000aa11", "reject", "o tom ficou agressivo"), "trello:abc123")
+
+
+async def test_quem_e_voce_responde_que_e_a_ana_e_que_e_ia_sem_previa(c: Cenario) -> None:
+    """28.17: a pergunta pela identidade não vira pedido (nada vai à prévia) e a resposta diz que é uma IA."""
+    await c.volta(msg(5, "quem é você?"), msg(6, "/quem"))
+    assert c.portas.nomes() == []
+    assert c.bot.textos()[-2:] == [RESPOSTA_IDENTIDADE] * 2
+    assert "uma IA, não uma pessoa" in RESPOSTA_IDENTIDADE and RESPOSTA_IDENTIDADE.startswith("Sou a ANA, a IA")
+    assert c.linha(5)["intencao"] == "identidade" and c.linha(5)["estado"] == "feita"

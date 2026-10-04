@@ -73,7 +73,7 @@ def test_mesma_espera_reemitida_sai_uma_vez_e_reentrada_sai_de_novo(tmp_path: Pa
     assert servico.enfileirar_evento("learning.needs_person", _dados(desde="2026-10-02T22:00:00+00:00"), 13) is True
     asyncio.run(servico.entregar_uma_vez())
     asyncio.run(servico.entregar_uma_vez())
-    assert [t for t, _c, _l in canal.enviados] == ["Central de Aparelhos: Um conhecimento aprendido espera a sua revisão"] * 2
+    assert [t for t, _c, _l in canal.enviados] == ["ANA: Um conhecimento aprendido espera a sua revisão"] * 2
     assert banco.scalar("SELECT COUNT(*) FROM avisos_entregas") == 2
 
 

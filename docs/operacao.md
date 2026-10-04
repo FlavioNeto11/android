@@ -702,6 +702,9 @@ O mesmo bot também RECEBE: o chat do `TELEGRAM_CHAT_ID` aprova, veta, responde 
 A Central trata isso como o painel trata. A gramática fechada está em [design/canais-externos.md](design/canais-externos.md)
 §2, e a `/ajuda` do bot a repete. O detalhe técnico está no ADR-071.
 
+Quem fala no bot é a **ANA** (28.17): os avisos começam com `ANA: `, a primeira mensagem traz a apresentação inteira,
+e "quem é você?" (ou `/quem`) responde que é a ANA e que é uma IA, sem virar pedido.
+
 - Vem **desligada** (`avisos.entrada.enabled: false`) e só liga com `avisos.enabled`. O token, o chat e a trava `avisos`
   são os do aviso.
 - Ligar troca o consumidor do bot: só um processo pode ler o `getUpdates`. Enquanto outro lê (a caixa provisória da

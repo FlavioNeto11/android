@@ -23,12 +23,19 @@ Com a conversa de volta ligada (28.15, decisão (d) do ADR-071), a aprovação e
 dono responder ali mesmo: o resumo, o alvo e o texto da aprovação, e a pergunta da execução. Passam pelo redator
 injetado (`TriagemDeCredencial.redigir`), com corte em 500 caracteres, sem captura de tela; o link segue. Sem o
 redator (a conversa desligada), a mensagem continua a menor possível.
+
+Quem fala é a ANA (28.17, decisão do dono de 03/10): todo título começa com `titulo_do_aviso`, que lê o nome da
+constante de contrato (`app.contracts.identidade`). Só texto: nenhuma regra de entrega ou de resposta olha o título.
 """
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from app.contracts.identidade import NOME_DA_IA
+
+#: O começo de todo título de aviso (28.17): quem fala é a ANA, não "a Central de Aparelhos".
+PREFIXO_DO_TITULO = f"{NOME_DA_IA}: "
 #: A caixa que o aviso espelha. O caminho é o da rota do painel (`frontend/src/lib/rotas.ts`).
 CAMINHO_DA_CAIXA = "#/pendencias"
 
@@ -70,6 +77,11 @@ class Aviso:
     titulo: str
     corpo: str
     link: str | None
+
+
+def titulo_do_aviso(frase: str) -> str:
+    """O título de um aviso: o nome da IA e a frase fixa. O único lugar que monta o prefixo."""
+    return PREFIXO_DO_TITULO + frase
 
 
 def link_da_caixa(url_painel: str | None) -> str | None:
@@ -175,7 +187,7 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         tipo, chave = "learning.needs_person", chave_do_fato("learning", *[x for x in partes if x is not None])
     else:
         return None
-    return Aviso(chave=chave, tipo=tipo, titulo="Central de Aparelhos: " + ROTULOS.get(tipo, ROTULO_GENERICO_DE_PEDIDO),
+    return Aviso(chave=chave, tipo=tipo, titulo=titulo_do_aviso(ROTULOS.get(tipo, ROTULO_GENERICO_DE_PEDIDO)),
                  corpo=corpo or (CORPO_PADRAO if pendencia else ""), link=link)
 
 
@@ -198,7 +210,7 @@ FAMILIA_DO_GRUPO = "grupo"
 def titulo_agrupado(tipo: str, n: int) -> str:
     modelo = ROTULOS_AGRUPADOS.get(tipo) or (ROTULO_AGRUPADO_DE_PEDIDO if tipo.startswith("pedido.")
                                              else ROTULO_AGRUPADO_GENERICO)
-    return "Central de Aparelhos: " + modelo.format(n=n)
+    return titulo_do_aviso(modelo.format(n=n))
 
 
 def texto_da_mensagem(titulo: str, corpo: str, link: str | None) -> str:

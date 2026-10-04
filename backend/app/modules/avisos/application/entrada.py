@@ -15,7 +15,9 @@ Sem fato (a mensagem solta):
   como a `/pendencias` mostra;
 - `/para <aparelho|persona> <objetivo>`, ou "para o X: <objetivo>";
 - texto livre: um objetivo, com o destino tirado do texto pelo extrator do painel;
-- `/orq <texto>`: recado para a orquestradora, guardado e não executado.
+- `/orq <texto>`: recado para a orquestradora, guardado e não executado;
+- "quem é você?", "você é uma IA?" (e `/quem`): a pergunta pela identidade (28.17). Quem responde é a ANA, que diz
+  que é IA; a frase precisa ser SÓ a pergunta, para um pedido que começa parecido seguir como texto livre.
 
 Com fato (a resposta a um aviso, o comentário num cartão), o id é o do fato e não se escreve:
 - aprovação: "sim" ou `/aprovar [nota]` aprova; "não" ou `/vetar [nota]` veta;
@@ -30,8 +32,10 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
+from app.contracts.identidade import APRESENTACAO_DA_IA
+
 #: O que cada intenção é. `desconhecida` responde com a ajuda; `vazia` não responde.
-INTENCOES = frozenset({"ajuda", "status", "pendencias", "aprovar", "vetar", "responder", "para", "livre",
+INTENCOES = frozenset({"ajuda", "identidade", "status", "pendencias", "aprovar", "vetar", "responder", "para", "livre",
                        "orquestradora", "desconhecida", "vazia"})
 
 AJUDA = (
@@ -45,8 +49,21 @@ AJUDA = (
     "Respondendo a um aviso, o id é o dele: \"sim\" aprova, \"não\" veta, e o texto responde a uma pergunta.\n"
     "Senha e código não passam por aqui: grave no painel.")
 
+#: A primeira mensagem do canal (28.17): a apresentação inteira uma vez; depois, só o nome.
+SAUDACAO = f"Oi! Sou a {APRESENTACAO_DA_IA}, e agora atendo por aqui.\n"
+#: ANA é IA e diz isso se perguntarem (decisão do dono, 03/10).
+RESPOSTA_IDENTIDADE = f"Sou a {APRESENTACAO_DA_IA}: uma IA, não uma pessoa. /ajuda mostra o que eu faço por aqui."
+
 _SIM = frozenset({"sim", "s", "aprovar", "aprova", "aprovo", "ok", "pode", "confirmo", "\U0001f44d"})
 _NAO = frozenset({"nao", "n", "vetar", "veta", "vetado", "rejeitar", "rejeita", "recusar", "recuso", "\U0001f44e"})
+#: A pergunta pela identidade, já sem acento e em minúsculas, de ponta a ponta: "quem é você?", "você é uma IA?",
+#: "é um robô?", "qual é o seu nome?". Ancorada nas duas pontas de propósito: "você é capaz de postar…" é pedido.
+_QUEM_E = re.compile(
+    r"^(?:(?:oi|ola|e ai)[\s,!.]+)?(?:"
+    r"quem (?:e|eh) (?:voce|vc|tu)|"
+    r"(?:voce|vc|tu)? ?e (?:uma? )?(?:ia|robo|bot|pessoa|humana|humano|gente de verdade|de verdade)|"
+    r"(?:qual (?:e )?)?(?:o )?seu nome|como (?:voce|vc) se chama"
+    r")\s*[?!.]*$")
 _ANDROID = re.compile(r"^android-\d+$", re.IGNORECASE)
 #: "para o X: objetivo", "para a X: objetivo", "para X: objetivo" (os dois-pontos são o que separa o destino).
 _PARA_LIVRE = re.compile(r"^\s*para\s+(?:o\s+|a\s+)?(?P<alvo>[^:\n]{1,60}?)\s*:\s*(?P<objetivo>\S.*)$",
@@ -117,6 +134,8 @@ def rotear(texto: str | None, *, fato: str | Fato | None = None) -> Intencao:
         por_fato = _rotear_resposta(t, f)
         if por_fato is not None:
             return por_fato
+    if _QUEM_E.match(" ".join(_sem_acento(t).split())):
+        return Intencao("identidade")
     m = _PARA_LIVRE.match(t)
     if m:
         return Intencao("para", alvo=m.group("alvo").strip(), texto=m.group("objetivo").strip())
@@ -127,6 +146,8 @@ def _rotear_comando(t: str, f: Fato | None) -> Intencao:
     cmd, resto = _comando(t)
     if cmd in ("ajuda", "start", "help"):
         return Intencao("ajuda")
+    if cmd in ("quem", "ana"):
+        return Intencao("identidade")
     if cmd in ("status", "estado"):
         return Intencao("status")
     if cmd == "pendencias":
