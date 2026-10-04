@@ -74,6 +74,15 @@ else
         confere /assets/site.css    "200" "site: estilo"
         confere /.git/config        "404" "site: nada fora da pasta do site"
         confere /config/config.yaml "404" "site: nada fora da pasta do site"
+        confere /site/index.html    "404" "site: o caminho da pasta nao e servido"
+        confere /rascunho.pdf       "404" "site: extensao fora da lista fechada"
+        confere /pagina-que-nao-existe "404" "site: a pagina 404 propria, com status 404"
+        robots="$(curl -s -m 20 "https://$H/robots.txt" | tr -d '\r')"
+        if [[ "$robots" == *"Disallow: /central/"* && "$robots" == *"Disallow: /api/"* ]]; then
+            printf 'ok     %-28s      (barra /central/ e /api/)\n' "/robots.txt (corpo)"
+        else
+            printf 'FALHOU %-28s      esperado Disallow de /central/ e /api/\n' "/robots.txt (corpo)"; FALHAS=$((FALHAS + 1))
+        fi
         csp="$(curl -s -o /dev/null -D - -m 20 "https://$H/" | tr -d '\r' | grep -i '^content-security-policy:')"
         if [[ "$csp" == *"script-src 'self'"* && "$csp" == *"frame-ancestors 'none'"* ]]; then
             printf 'ok     %-28s      (CSP do site)\n' "/ (cabecalhos)"
@@ -134,6 +143,11 @@ else
         confere /api/portal/contato "202" "contato do site: POST com a isca (nao grava, nao avisa)" \
             -X POST -H "Content-Type: application/json" -H "Origin: https://$H" \
             -d '{"nome":"prova","telefone":"00000000","mensagem":"prova","consentimento":true,"site":"isca","token":""}'
+        confere /api/portal/contato "415" "contato do site: tipo errado recusado antes de ler o corpo" \
+            -X POST -H "Content-Type: text/plain" -H "Origin: https://$H" -d 'site=isca'
+        grande="$(printf '%*s' 9000 '' | tr ' ' 'a')"
+        confere /api/portal/contato "413" "contato do site: corpo acima do teto" \
+            -X POST -H "Content-Type: application/json" -H "Origin: https://$H" -d "{\"site\":\"$grande\"}"
     else
         confere /api/portal/contato "401 404" "contato do site: fechado (401 antes do 29.77, 404 desligado)" \
             -X POST -H "Content-Type: application/json" -H "Origin: https://$H" -d '{"site":"isca"}'
