@@ -230,6 +230,7 @@ ai:
   actor_history_lines: 6          # item 7.6: histórico do ator comprimido (REJEITADA/FALHOU/(executor) + últimas N)
   image_policy: auto              # (always) imagem só quando precisa ou quando o modelo pede
   rich_tree_min_elements: 8
+  limpeza_opcional: true        # 31.36: etapa que só limpa a tela é pulada se não se comprova (false = a de sempre)
   strong_model_for_side_effect: by_risk   # true = todo efeito externo decide no modelo caro (39 % das decisões iam ao
                                           # Opus, até curtir com seletor de commit); by_risk = só risco alto do
                                           # catálogo, risco médio sem seletor de commit, ou app sem catálogo (menos o app

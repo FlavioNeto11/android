@@ -253,6 +253,12 @@ despacho (`_policy_gate`, a trava de sempre, com a mesma frase) e em `RunService
   títulos das ações oferecidas pelo catálogo dele (ADR-052), no formato "<Pedido> não está disponível no <app>: o
   catálogo dele só tem <títulos>. Faça essa parte você mesmo ou peça só o que está nessa lista." O evento
   `plan.refused` leva `{motivo: "sem_acao_do_catalogo", pedidos: [{app_id, app, pedido, disponiveis}]}`.
+- **Etapa de limpeza opcional (item 31.36, `ai.limpeza_opcional`, migração 098):** o planejador marca `opcional` a
+  etapa que só limpa a tela (aviso, banner, cookies, dica); o parsing só aceita a marca sem efeito, sem `saidas`, sem
+  for_each e sem commit_guard. Ela roda com no máximo 3 decisões do ator, sem juiz (`so_prova_local`) e sem escalar.
+  Não comprovada, vira `skipped` como AVISO (`running|verifying → skipped`), sem replano; a dependência e o progresso
+  a contam como resolvida, e o objetivo pode fechar `succeeded`. O ator ganhou a regra "feche o aviso que cobre o
+  alvo; se não fechar, siga sem ele". Achado real: f8722d (28.12-02).
 - App sem catálogo (o QA Messenger) segue livre com efeito. Os 12 fluxos ativos do central com `send_message` livre
   são todos dele (medido em 03/10, só leitura).
 - **O caso que motivou** (r-20261001190557-e7bc42, 01/10 19:05Z: "enviar e-mail pelo Outlook", `fill_recipient`

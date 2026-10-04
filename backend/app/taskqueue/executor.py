@@ -335,6 +335,9 @@ def tela_da_falha(arvore: object, pacote: str | None) -> str | None:
 
 
 #: RA-10: os motivos de imagem com que a imagem VAI junto; nos demais, a chamada decide pela árvore.
+#: Item 31.36: decisões do ator que uma etapa opcional (só limpa a tela) pode gastar antes de ser pulada.
+LIMITE_DA_ETAPA_OPCIONAL = 3
+
 _IMAGEM_VAI: frozenset[str] = frozenset({"politica_sempre", "pedida", "problema", "primeira_julgada", "arvore_pobre"})
 #: RA-10: a frase da linha do tempo de cada motivo de escalonamento do `decide` (a do efeito vem da política de risco).
 _FRASE_DO_ESCALONAMENTO: dict[str, str] = {
@@ -1499,6 +1502,9 @@ class StepExecutor:
         errors_in_row = 0
         declared: StepDone | None = None
         max_actions = int(s.max_actions_per_step)
+        opcional = step.opcional and self.cfg.file.ai.limpeza_opcional
+        if opcional:                       # item 31.36: limpar a tela vale no máximo 3 decisões do ator
+            max_actions = min(max_actions, LIMITE_DA_ETAPA_OPCIONAL)
         ai_cfg = self._ai_da_execucao(str(run["id"]))      # 17.14: o perfil da execução pode trocar imagem e árvore
         judged_step = step.postcondition.kind == "model_judged" or need is not None
         decisions = 0
@@ -1878,6 +1884,8 @@ class StepExecutor:
                     rr.retorno_contado = True
                     contar_retorno_ia(rr.diverged)
                 tier = 1 if (base_tier or retentativa_subiu or errors_in_row >= 2 or same_count >= 1 or piso_forcou) else 0
+                if opcional:                   # item 31.36: a limpeza opcional nunca sobe para o modelo caro
+                    tier = 0
                 # RA-10: o porquê do modelo forte NESTA decisão, em vocabulário fechado (`ai_calls.escalate`); a frase
                 # da linha do tempo sai dele, uma vez por etapa.
                 escalonamento: MotivoDeEscalonamento | None = (
@@ -2704,6 +2712,8 @@ class StepExecutor:
         """A verificação (`_verificar`), com o tempo inteiro dela somado na tentativa (31.24, C-4:
         `attempts.verificacao_ms`). Só mede: os argumentos passam como vieram."""
         inicio = time.monotonic()
+        if step.opcional and self.cfg.file.ai.limpeza_opcional:
+            so_prova_local = True              # item 31.36: a limpeza opcional só se comprova sem juiz
         try:
             return await self._verificar(rt, step, ctx_for, run_id, objective_id, deadline, call_timeout,
                                          patient=patient, facts=facts, failure_marks=failure_marks,

@@ -53,6 +53,7 @@ class _StepOut(BaseModel):
     app_id: str | None = None
     # Item 24.3 (contrato C2): os nomes dos valores que esta etapa LÊ para as seguintes (`{{saida:<nome>}}`).
     saidas: list[str] = []
+    opcional: bool = False            # item 31.36: etapa que só limpa a tela (o parsing confere a regra)
 
 
 class _PlanOut(BaseModel):
@@ -107,6 +108,7 @@ class _LivreOut(BaseModel):
     timeout_s: int
     max_attempts: int
     saidas: list[str] = []            # item 24.3: o valor que a etapa livre lê (na de catálogo, `saidas` da etapa)
+    opcional: bool = False            # item 31.36: etapa que só limpa a tela (o parsing confere a regra)
 
 
 class _MultiStepOut(BaseModel):
@@ -154,6 +156,7 @@ class _StepCurtoOut(BaseModel):
     for_each: str | None
     app_id: str | None = None
     saidas: list[str] = []
+    opcional: bool = False            # item 31.36: etapa que só limpa a tela (o parsing confere a regra)
 
 
 class _PlanCurtoOut(BaseModel):
@@ -173,6 +176,7 @@ class _LivreCurtoOut(BaseModel):
     postcondition: _PostCurtoOut
     timeout_s: int
     saidas: list[str] = []
+    opcional: bool = False            # item 31.36: etapa que só limpa a tela (o parsing confere a regra)
 
 
 class _MultiStepCurtoOut(BaseModel):
@@ -277,7 +281,11 @@ def _etapa_livre(key: str, e: _StepOut | _LivreOut | _StepCurtoOut | _LivreCurto
                     postcondition=postcondicao, timeout_s=max(30, min(e.timeout_s, 600)),
                     max_attempts=1 if e.side_effect else max(1, min(tentativas, 5)),
                     for_each=norm_key(for_each) if for_each else None, app_id=app_id,
-                    saidas=list(dict.fromkeys(n for n in map(_norm_saida, e.saidas) if n)))
+                    saidas=list(dict.fromkeys(n for n in map(_norm_saida, e.saidas) if n)),
+                    # Item 31.36: opcional só a etapa que não pode deixar marca: sem efeito, sem saída, sem for_each e
+                    # sem commit_guard. Fora disso o campo é ignorado (a etapa é a de sempre).
+                    opcional=bool(getattr(e, "opcional", False)) and not e.side_effect and not e.commit_guard
+                    and not for_each and not e.saidas)
 
 
 def saidas_sem_leitura(steps: Iterable[PlanStep]) -> list[MissingInfo]:

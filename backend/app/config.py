@@ -625,6 +625,9 @@ class AiCfg(BaseModel):
     # auto: só hierarquia quando a árvore é rica; imagem na 1ª decisão de etapa julgada por visão, em árvore pobre,
     # após erro/ciclo, ou quando o modelo pede (observe_screen.need_image)
     rich_tree_min_elements: int = 8
+    # Item 31.36: a etapa marcada `opcional` pelo planejador (só limpa a tela) roda com no máximo 3 decisões, sem
+    # juiz e sem escalar, e falhar a deixa `skipped` sem derrubar o objetivo. `false` = a etapa de sempre.
+    limpeza_opcional: bool = True
     # Quando a etapa com efeito externo decide no modelo de escalonamento: `true` = sempre (era o único modo: em
     # 19-23/09, 39 % das decisões foram ao Opus, inclusive curtir com seletor de commit declarado); `false` = nunca
     # por efeito; `by_risk` = só risco alto do catálogo, risco médio SEM seletor de commit, ou app sem catálogo

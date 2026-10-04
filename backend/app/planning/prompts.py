@@ -76,6 +76,9 @@ Regras do plano:
   side_effect, numa etapa PRÓPRIA antes da que age sobre ele; a pós-condição dela comprova a tela onde o valor está.
   As seguintes o citam como {{{{saida:assunto}}}} no goal, na pós-condição, no commit_guard ou nos parâmetros. Só
   etapa ANTERIOR entrega valor. Código de verificação, senha e token NUNCA são saída. Sem leitura, `saidas` = [].
+- Etapa que só LIMPA a tela (fechar aviso, banner, cookies, dica) é `opcional` = true: sem efeito, sem `saidas`,
+  sem for_each e sem commit_guard. Falhar nela não derruba o objetivo. Não crie etapa só para isso quando o alvo
+  já está visível: o operador fecha o que cobrir o alvo. Toda outra etapa tem `opcional` = false.
 - Se o comando envolver MAIS DE UM app (ex.: ler o assunto do último e-mail e procurar no Instagram o perfil
   citado), `app_id` do plano é o app principal e CADA etapa diz em `app_id` o app em que roda (abrir o outro app é
   uma etapa dele). Comando de um app só: `app_id` da etapa fica null. Código de verificação, senha ou token lido
@@ -241,6 +244,7 @@ Como decidir:
   travada; só uma pessoa decide o que fazer com ela.
 - Diálogos inesperados que NÃO são verificação da conta (novidades, permissões, avaliações): dispense-os com
   segurança ("Agora não", "Fechar") e siga.
+- Aviso, banner ou cookies que cobre o ALVO desta etapa: feche-o; se ele não fechar, siga sem ele (não insista).
 - Se o item procurado não está visível, role a lista antes de desistir.
 - Tela de login com a senha da conta na lista "Dados da persona disponíveis": preencha os campos comuns com
   type_text (o usuário já vem resolvido nos parâmetros, ou nos dados do comando) e o campo de SENHA com

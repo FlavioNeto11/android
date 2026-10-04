@@ -367,8 +367,8 @@ class Repository:
                 "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
                 " side_effect, commit_guard, precondition, postcondition, timeout_s, max_attempts, status, template_hash,"
                 " variables, for_each, capability, template_key, commit_selector, band_guard, bindings, app_id,"
-                " skill_id, skill_version, node_id, strategy, saidas)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " skill_id, skill_version, node_id, strategy, saidas, opcional)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (f"{run_id}:{iid}:v{version}:{s.key}", run_id, oid, iid, version, seq, s.key, s.title, s.goal,
                  dumps(s.depends_on), int(s.side_effect), dumps(s.commit_guard), s.precondition,
                  s.postcondition.model_dump_json(), s.timeout_s, s.max_attempts, StepStatus.pending.value,
@@ -376,7 +376,8 @@ class Repository:
                  s.capability, s.template_key, s.commit_selector, dumps(s.band_guard) if s.band_guard else None,
                  dumps(s.bindings) if s.bindings else None, s.app_id,
                  o.skill_id if o else None, o.skill_version if o else None, o.node_id if o else None,
-                 ">".join(o.strategies) if o and o.strategies else None, dumps(s.saidas) if s.saidas else None))
+                 ">".join(o.strategies) if o and o.strategies else None, dumps(s.saidas) if s.saidas else None,
+                 1 if s.opcional else None))
 
     # ================================================================== etapas
     def step_row(self, step_id: str) -> Row:
@@ -628,8 +629,10 @@ class Repository:
         v1 dele tinha sucesso, 'abrir publicação' v2 ficou pronta ao lado — as etapas correram fora de ordem e a
         execução fechou como falha faltando só o comentário."""
         marcas = ",".join("?" * len(deps))
-        atuais = {row["key"]: row["status"] for row in self.db.query(
-            f"SELECT key, status FROM steps WHERE objective_id=? AND plan_version=? AND key IN ({marcas})",
+        # Item 31.36: a etapa OPCIONAL pulada desta versão conta como resolvida; a pulada pelo replano, não.
+        atuais = {row["key"]: ("succeeded" if row["status"] == "skipped" and row["opcional"] else row["status"])
+                  for row in self.db.query(
+            f"SELECT key, status, opcional FROM steps WHERE objective_id=? AND plan_version=? AND key IN ({marcas})",
             (objective_id, plan_version, *deps))}
         for dep in deps:
             if dep in atuais:
@@ -1339,7 +1342,9 @@ class Repository:
             ai_calls=row["ai_calls"], ai_input_tokens=row["ai_input_tokens"], ai_output_tokens=row["ai_output_tokens"])
 
     def _step_progress(self, objective_id: str, version: int) -> tuple[int, int]:
-        r = self.db.one("SELECT SUM(CASE WHEN status='succeeded' THEN 1 ELSE 0 END) d, COUNT(*) t FROM steps WHERE objective_id=? AND plan_version=?",
+        # Item 31.36: a etapa opcional pulada conta como feita (o objetivo não fica preso nela).
+        r = self.db.one("SELECT SUM(CASE WHEN status='succeeded' OR (status='skipped' AND opcional=1) THEN 1 ELSE 0 END) d,"
+                        " COUNT(*) t FROM steps WHERE objective_id=? AND plan_version=?",
                         (objective_id, version))
         return int(r["d"] or 0), int(r["t"] or 0)
 
@@ -1358,7 +1363,8 @@ class Repository:
             driven_by=r["driven_by"] if "driven_by" in r.keys() else None,
             capability=r["capability"], commit_selector=r["commit_selector"],
             band_guard=loads(r["band_guard"], []) or [], bindings=loads(r["bindings"], {}) or {},
-            for_each=r["for_each"], variables=loads(r["variables"], {}) or {}, app_id=_col(r, "app_id"))
+            for_each=r["for_each"], variables=loads(r["variables"], {}) or {}, app_id=_col(r, "app_id"),
+            opcional=bool(_col(r, "opcional")))
 
     @staticmethod
     def action_dto(r: Row) -> ActionDTO:

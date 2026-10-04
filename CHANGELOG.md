@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.36: etapa de limpeza opcional (branch feat/31-36-limpeza-opcional, sobre o 31.33, migração 098)
+
+- O planejador marca `opcional` a etapa que só limpa a tela; o parsing só aceita sem efeito, sem saídas, sem for_each e
+  sem commit_guard. Com `ai.limpeza_opcional` (ligada): no máximo 3 decisões, sem juiz e sem escalar; não comprovada,
+  vira `skipped` como aviso e o objetivo segue sem replano (não vira `completed_with_issues`). Regra nova do ator: fechar
+  o aviso que cobre o alvo e, se não fechar, seguir. Achado real: f8722d (28.12-02, US$ 0,309, 23 decisões).
+- Prompts que mudam: ACTOR_SYSTEM, PLANNER_SYSTEM(_CURTO) e PLANNER_MULTIAPP_SYSTEM(_CURTO) (hashes atualizados);
+  goldens do compilador iguais (o campo falso não é serializado).
+- Prova: `simulated` (`backend/tests/test_etapa_opcional.py`); `real` depois do deploy.
+
 ## 2026-10-04 — 31.33: o pedido fora do catálogo vira recusa, não pergunta (branch feat/31-33-recusa-fora-do-catalogo, sem migração)
 
 - O planejador põe o pedido que nenhuma ação do catálogo do app cobre no campo fechado `fora_do_catalogo` (nos três

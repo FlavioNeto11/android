@@ -119,8 +119,11 @@ STEP_TRANSITIONS: Mapping[str, frozenset[str]] = _tabela({
     # transição, represar levantava InvalidTransition, o worker morria e ressuscitava em laço quente.
     "ready": frozenset({"running", "retry_wait", "cancelled", "skipped", "waiting_user"}),
     # running → ready: cedeu num ponto seguro (pausa/controle manual) SEM efeito externo pendente
-    "running": frozenset({"verifying", "retry_wait", "waiting_user", "failed", "uncertain", "cancelled", "ready"}),
-    "verifying": frozenset({"succeeded", "retry_wait", "waiting_user", "failed", "uncertain", "cancelled", "ready"}),
+    # running/verifying → skipped: a etapa OPCIONAL (31.36) que não se comprovou é pulada e o objetivo segue.
+    "running": frozenset({"verifying", "retry_wait", "waiting_user", "failed", "uncertain", "cancelled", "ready",
+                          "skipped"}),
+    "verifying": frozenset({"succeeded", "retry_wait", "waiting_user", "failed", "uncertain", "cancelled", "ready",
+                            "skipped"}),
     "retry_wait": frozenset({"ready", "cancelled", "skipped"}),
     # decisões do usuário
     "waiting_user": frozenset({"ready", "succeeded", "failed", "cancelled", "skipped"}),
