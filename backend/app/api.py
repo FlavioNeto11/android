@@ -676,6 +676,7 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
         f" SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) p_fresh,"
         f" SUM(CASE WHEN usd IS NULL THEN cache_read ELSE 0 END) p_cache_read,"
         f" SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) p_cache_write,"
+        f" SUM(CASE WHEN usd IS NULL THEN COALESCE(cache_write_1h, 0) ELSE 0 END) p_cache_write_1h,"
         f" SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) p_output"
         f" FROM ai_calls WHERE {where} GROUP BY role, model, tier ORDER BY role, model", params)
     groups, total = [], 0.0
@@ -684,6 +685,8 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
         # Sem preço por token, o grupo só tem custo se toda chamada OK declarou o dela; senão fica sem preço (total parcial).
         por_token = (0.0 if r["declaradas"] >= r["calls"] - r["errors"] else None) if p is None else (
             r["p_fresh"] * p[0] + r["p_cache_read"] * p[1] + r["p_cache_write"] * p[2] + r["p_output"] * p[3]) / 1_000_000
+        if por_token is not None and p is not None:   # 31.31: a gravação de 1 h custa 2x a entrada
+            por_token += costs.extra_1h(prices, r["model"], r["p_cache_write_1h"])
         usd = None if por_token is None else round(por_token + float(r["usd_declarado"] or 0), 4)
         total += usd or 0.0
         linha = {k: r[k] for k in ("role", "model", "tier", "calls", "fresh", "cache_read", "cache_write", "output",

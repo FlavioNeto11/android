@@ -17,6 +17,9 @@ from ..util import now, to_iso
 
 #: Colunas de `ai_calls` na ordem dos preços: [entrada nova, cache lido, cache gravado, saída].
 COLUNAS = ("input_tokens", "cache_read", "cache_write", "output_tokens")
+#: Item 31.31 (migração 092): a gravação de cache de 1 h custa 2x a entrada base (a de 5 min, o 3º preço de
+#: `ai.prices`, é 1,25x). `cache_write` é o total gravado; `cache_write_1h` é a parte de 1 h dele.
+FATOR_DA_GRAVACAO_DE_1H = 2.0
 
 
 def price_for(prices: dict[str, list[float]], model: str) -> list[float] | None:
@@ -52,8 +55,20 @@ def _tokens(row: Any) -> list[float]:
     return [float(row[c] or 0) for c in COLUNAS]
 
 
+def extra_1h(prices: dict[str, list[float]], model: str, tokens_1h: float | None) -> float:
+    """31.31: o que a parte de 1 h de `cache_write` custa ALÉM do preço de gravação de 5 min com que `usd` já a
+    contou: `tokens_1h × (2 × entrada − gravação)`. Modelo sem preço paga a tarifa mais cara, como em `usd`."""
+    if not tokens_1h:
+        return 0.0
+    p, _ = effective_price(prices, model)
+    return float(tokens_1h) * (FATOR_DA_GRAVACAO_DE_1H * p[0] - p[2]) / 1_000_000
+
+
 def row_usd(prices: dict[str, list[float]], row: Any) -> float:
-    return usd(prices, row["model"], _tokens(row))
+    """Custo por tokens de uma linha (ou soma) de `ai_calls`. A coluna `cache_write_1h` é opcional na linha: sem ela
+    (a consulta não a pediu), a gravação inteira sai pelo preço de 5 min, como antes do 31.31."""
+    um_h = row["cache_write_1h"] if "cache_write_1h" in row.keys() else 0
+    return usd(prices, row["model"], _tokens(row)) + extra_1h(prices, row["model"], um_h)
 
 
 def day_start_iso() -> str:
@@ -91,6 +106,7 @@ def spent_usd(db: Any, prices: dict[str, list[float]], *, run_id: str | None = N
         f"SELECT model, SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) input_tokens,"
         f" SUM(CASE WHEN usd IS NULL THEN cache_read ELSE 0 END) cache_read,"
         f" SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) cache_write,"
+        f" SUM(CASE WHEN usd IS NULL THEN COALESCE(cache_write_1h, 0) ELSE 0 END) cache_write_1h,"
         f" SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) output_tokens,"
         f" SUM(COALESCE(usd, 0)) usd_declarado FROM ai_calls WHERE {where} GROUP BY model", params)
     return round(sum(row_usd(prices, linha) + float(linha["usd_declarado"] or 0) for linha in linhas), 6)
@@ -118,6 +134,7 @@ def usd_por(db: Database, prices: dict[str, list[float]], coluna: str, where: st
         f" SUM(CASE WHEN usd IS NULL THEN input_tokens ELSE 0 END) input_tokens,"
         f" SUM(CASE WHEN usd IS NULL THEN cache_read ELSE 0 END) cache_read,"
         f" SUM(CASE WHEN usd IS NULL THEN cache_write ELSE 0 END) cache_write,"
+        f" SUM(CASE WHEN usd IS NULL THEN COALESCE(cache_write_1h, 0) ELSE 0 END) cache_write_1h,"
         f" SUM(CASE WHEN usd IS NULL THEN output_tokens ELSE 0 END) output_tokens,"
         f" SUM(COALESCE(usd, 0)) usd_declarado FROM ai_calls WHERE {where}"
         f" GROUP BY {coluna}, model, COALESCE(provider,'') = 'simulated'", params)

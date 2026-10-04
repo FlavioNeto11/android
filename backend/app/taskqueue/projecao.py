@@ -118,6 +118,7 @@ class HistoricoDeAcoes:
             "SELECT s.id sid, s.capability cap, s.app_id app_id, r.app_ids app_ids, s.started_at ini, "
             "s.finished_at fim, a.model modelo, count(a.id) n, COALESCE(sum(a.input_tokens), 0) i, "
             "COALESCE(sum(a.cache_read), 0) cr, COALESCE(sum(a.cache_write), 0) cw, "
+            "COALESCE(sum(a.cache_write_1h), 0) cw1h, "
             "COALESCE(sum(a.output_tokens), 0) o, COALESCE(sum(a.usd), 0) usd_decl "
             "FROM steps s JOIN runs r ON r.id = s.run_id LEFT JOIN ai_calls a ON a.step_id = s.id "
             "WHERE r.simulated = 0 AND s.status = 'succeeded' AND s.finished_at >= ? "
@@ -135,7 +136,8 @@ class HistoricoDeAcoes:
             etapa.chamadas += n
             if n and linha["modelo"]:
                 etapa.usd += float(linha["usd_decl"] or 0) or costs.usd(
-                    precos, str(linha["modelo"]), [linha["i"], linha["cr"], linha["cw"], linha["o"]])
+                    precos, str(linha["modelo"]), [linha["i"], linha["cr"], linha["cw"], linha["o"]]) \
+                    + costs.extra_1h(precos, str(linha["modelo"]), linha.get("cw1h"))   # 31.31
         grupos: dict[tuple[str, str], list[_Etapa]] = defaultdict(list)
         for etapa in por_etapa.values():
             grupos[etapa.chave].append(etapa)
