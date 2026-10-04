@@ -27,7 +27,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - outro item: nada se decide, e a resposta diz qual é qual;
   - o mesmo item: a decisão segue, e o id sai da nota;
   - uma palavra que não é id continua sendo nota.
-- `simulated`: `tests/test_telegram_entrada.py` tem 3 casos novos, e 2 deles falham contra o código antigo. O teste do
+- Revisão da fila da suíte 31: o id também é conferido contra a aprovação já decidida ou vencida e contra a execução
+  esperando resposta, e um pedaço curto com dígito ("a1f") é recusado como id incompleto.
+- `simulated`: `tests/test_telegram_entrada.py` tem 5 casos novos, e 4 deles falham contra o código antigo. O teste do
   roteador também foi coberto. Nos arquivos de canais tocados: 203 passed.
 - Doc: `docs/dominios/canais.md`, depois da C-13.
 

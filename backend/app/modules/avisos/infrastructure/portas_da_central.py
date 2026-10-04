@@ -84,6 +84,11 @@ class PortasReais:
     def aprovacoes_pendentes(self) -> list[str]:
         return [str(a["id"]) for a in self.aprovacoes.list(status="pending", limit=200)]
 
+    def ids_de_aprovacoes(self) -> list[str]:
+        """As aprovações em qualquer estado (as 500 mais novas): o id digitado num reply pode ser de uma já decidida ou
+        vencida (28.26, revisão da suíte 31), e aí também é "outro item"."""
+        return [str(a["id"]) for a in self.aprovacoes.list(status=None, limit=500)]
+
     def execucoes_esperando(self) -> list[str]:
         return [str(r["id"]) for r in self.db.query(
             "SELECT id FROM runs WHERE status='needs_input' ORDER BY created_at DESC LIMIT 200")]

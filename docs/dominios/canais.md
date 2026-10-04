@@ -206,6 +206,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - `/aprovar <id>` ou `/vetar <id>` em reply a um aviso (28.26): se o id é de OUTRA pendência, nada se decide e a
     resposta diz qual é qual. Se é o mesmo item, a decisão segue e o id sai da nota. Uma palavra que não é id de
     pendência é só nota, como antes. Código: `ref_digitado` em `application/entrada.py` e a conferência em `_decidir`.
+  - A conferência vale contra a aprovação em QUALQUER estado (`ids_de_aprovacoes`: já decidida ou vencida) e contra a
+    execução esperando resposta, e não só contra as pendentes. Um pedaço de 1 a 3 caracteres com dígito ("a1f") é id
+    incompleto: nada se decide, e a resposta pede 4 ou mais caracteres. "ok" e "sim" seguem como nota (revisão da
+    fila da suíte 31, 04/10).
 
 **C-14 · Cartão novo do dono.**
 - **Origem:** dono 03/10 ~20:10Z.
