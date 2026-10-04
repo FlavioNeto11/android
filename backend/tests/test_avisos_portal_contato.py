@@ -10,8 +10,8 @@ from app.modules.avisos.domain import portal as p
 
 
 def _contato(**kw: object) -> p.ContatoDoPortal:
-    base: dict = {"contato_id": 7, "nome": "Maria Visitante", "empresa": "Empresa Exemplo", "telefone": "+55 (11) 98765-4321",
-                  "mensagem": "Quero saber mais.\nObrigada."}
+    base: dict = {"contato_id": 7, "nome": "Maria Visitante", "empresa": "Empresa Exemplo",
+                  "telefone": "+55 (11) 98765-4321", "mensagem": "Quero saber mais.\nObrigada."}
     base.update(kw)
     return p.ContatoDoPortal(**base)
 
@@ -27,7 +27,8 @@ def test_o_aviso_tem_chave_tipo_titulo_fixo_e_linhas_rotuladas() -> None:
 
 
 def test_o_mesmo_contato_tem_a_mesma_chave() -> None:
-    assert p.aviso_do_contato(_contato()).chave == p.aviso_do_contato(_contato(mensagem="outra")).chave  # type: ignore[union-attr]
+    um, outro = p.aviso_do_contato(_contato()), p.aviso_do_contato(_contato(mensagem="outra"))
+    assert um is not None and outro is not None and um.chave == outro.chave
     assert p.chave_do_contato(8) != p.chave_do_contato(7)
 
 
@@ -79,13 +80,20 @@ def test_telefone_fica_so_com_digitos_e_sinais() -> None:
     ("domínio pаypal.com com letra cirílica", "domínio pаypal[.]com com letra cirílica"),
     ("toque /aprovar 123", "toque ⁄aprovar 123"),
     ("/vetar tudo", "⁄vetar tudo"),
+    ("/start", "⁄start"),
+    ("antes /start depois", "antes ⁄start depois"),
+    ("/executar@nome_do_bot agora", "⁄executar＠nome_do_bot agora"),
+    ("pode /executar@nome_do_bot já", "pode ⁄executar＠nome_do_bot já"),
+    ("fale com @usuario_x", "fale com ＠usuario_x"),
+    ("@inicio da frase", "＠inicio da frase"),
+    ("e-mail fulano@exemplo.com", "e-mail fulano@exemplo[.]com"),
 ])
 def test_desarmar_links(entrada: str, esperado: str) -> None:
     assert p.desarmar_links(entrada) == esperado
 
 
 @pytest.mark.parametrize("texto", [
-    "versão 1.37 custou R$ 3,50 e 2.5 h", "às 21:47Z de 2026-10-04", "e/ou 50/50", "a/b", "ok.",
+    "versão 1.37 custou R$ 3,50 e 2.5 h", "às 21:47Z de 2026-10-04", "e/ou 50/50", "a/b", "ok.", "a @ b", "@ab",
 ])
 def test_desarmar_nao_mexe_em_texto_comum(texto: str) -> None:
     assert p.desarmar_links(texto) == texto
@@ -95,13 +103,15 @@ def test_links_desarmados_em_todos_os_campos() -> None:
     corpo = p.corpo_do_contato(_contato(nome="site.com", empresa="https://empresa.com", mensagem="/aprovar\nwww.x.io"))
     assert "Nome: site[.]com" in corpo and "Empresa: hxxps://empresa[.]com" in corpo
     assert "│ ⁄aprovar" in corpo and "│ www[.]x[.]io" in corpo
+    citada = p.citar("ok\n/aprovar 1\nmeio /start fim\n/executar@nome_do_bot")
+    assert "/" not in citada and "@" not in citada
     assert "://" not in corpo.replace("hxxps://", "")
 
 
 def test_sem_redacao_o_nome_e_o_telefone_chegam_inteiros() -> None:
     """ADR-075: o contato serve para o dono responder; nada de `[persona]`, `[conta]` ou `[telefone]` aqui."""
     corpo = p.corpo_do_contato(_contato(nome="Lucas Andre", mensagem="me chame no @meuperfil"))
-    assert "Nome: Lucas Andre" in corpo and "@meuperfil" in corpo and "98765-4321" in corpo
+    assert "Nome: Lucas Andre" in corpo and "＠meuperfil" in corpo and "98765-4321" in corpo
 
 
 @pytest.mark.parametrize("campos", [

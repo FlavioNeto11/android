@@ -71,6 +71,9 @@ _DOMINIO = re.compile(r"(?<![^\W_])((?:[^\W_](?:[^\W_]|-)*\.)+[^\W\d_]{2,})(?![^
 _IP = re.compile(r"(?<![\d.])(\d{1,3}(?:\.\d{1,3}){3})(?![\d.])")
 #: comando de bot no começo de palavra: `/aprovar` vira `⁄aprovar` (barra de fração), que o Telegram não toca
 _COMANDO = re.compile(r"(?<!\S)/(?=[A-Za-z])")
+#: menção `@usuario` (e o `@bot` de `/cmd@bot`) vira `＠usuario` (arroba de largura cheia); o `@` de um e-mail, já com o
+#: domínio desarmado (`a@exemplo[.]com`), fica
+_MENCAO = re.compile(r"@(?=[A-Za-z0-9_]{3,})(?![A-Za-z0-9_-]*\[\.\])")
 
 
 def _sem_controle(texto: str, *, quebra: str) -> str:
@@ -92,18 +95,19 @@ def telefone_limpo(valor: str | None) -> str:
 
 def desarmar_links(texto: str) -> str:
     """Nada do visitante fica tocável no chat do dono: `https://` → `hxxps://`, outro `esquema://` → `esquema[:]//`,
-    o ponto de domínio e de IP → `[.]` (o `www.` e o `t.me/` caem aí) e `/comando` → `⁄comando`. Desarmar a mais é o
-    lado seguro: "fim.Depois" sem espaço vira "fim[.]Depois"."""
+    o ponto de domínio e de IP → `[.]` (o `www.` e o `t.me/` caem aí), `/comando` → `⁄comando` e `@usuario` →
+    `＠usuario`. Desarmar a mais é o lado seguro: "fim.Depois" sem espaço vira "fim[.]Depois"."""
     texto = _HTTP.sub(lambda m: f"hxx{m.group(2).lower()}://", texto)
     texto = _ESQUEMA.sub(lambda m: m.group(1) + "[:]//" if not m.group(1).lower().startswith("hxxp") else m.group(0),
                          texto)
     texto = _DOMINIO.sub(lambda m: m.group(1).replace(".", "[.]"), texto)
     texto = _IP.sub(lambda m: m.group(1).replace(".", "[.]"), texto)
+    texto = _MENCAO.sub("＠", texto)
     return _COMANDO.sub("⁄", texto)
 
 
 def citar(mensagem: str) -> str:
-    """A mensagem com as quebras dela, cada linha com o marcador de citação; duas linhas em branco seguidas viram uma."""
+    """A mensagem com as quebras dela e o marcador de citação em cada linha; linhas em branco seguidas viram uma."""
     linhas = [_ESPACOS.sub(" ", x).rstrip() for x in _sem_controle(mensagem, quebra="\n").split("\n")]
     saida: list[str] = []
     for linha in linhas:
