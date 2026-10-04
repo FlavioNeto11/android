@@ -6683,6 +6683,32 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T01:35:11+00:00"
+  },
+  "32.2": {
+   "id": "32.2",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9ffd8ff009c2 00:37:41Z -> resposta 6ac1a0003d46c26f66a60e71 00:38:24Z (43 s, reconciliação 60 s). Etapa 2 (rota do webhook, deploy 17 0b7c2c39): prova de fora da orquestradora 01:15Z sem credencial (HEAD 200; GET, barra final e POST sem/qualquer assinatura 401). Etapa 3: scripts/trello-webhook.py --aplicar 01:17:10Z (quadro Execução; --ensaio depois: manter, ativo). Etapa 4: /status action 6ac1a920c89362468ee0f675 01:17:20.195Z, webhook veredito=ok 01:17:20.750Z, resposta 6ac1a921808461c43bf46aa2 01:17:21.576Z (1,4 s ponta a ponta). Etapa 5 (deploy 18 f1651ec8, cadastro_automatico, reconciliar_s 300, listas da Central): espelho criou o cartão 6ac1b4b2bf3f7aae05f18458 às 02:06:42Z (livro:lv-32fded52ec729464), 12 min / ~11 reconciliações sem duplicar nem rajada, saúde sem problems, log sem ERROR. Config pelo script .claude/handoffs/canais/trello-config.py (etapas 1-3, com backup em data/backups).",
+   "blocker": null,
+   "grupo": "canais-noite-04-10",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T02:23:12+00:00"
+  },
+  "28.19": {
+   "id": "28.19",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #187 (canais/28-19-avisos-lote @ 61e9a117), suíte 18 e deploy 18 (f1651ec8). backend/tests/test_avisos_rajada.py (12): rajada de 11 -> 2 mensagens; dois do dono continuam dois; tipo segurado não trava outro; espera nunca passa da janela; falha do agrupado vale para todas as linhas; reply ao agrupado sem fato; link do agrupado é o da caixa; lote/Telegram/painel pela origem; aprovação de lote segue avisando. 46 verdes em avisos/servico/fila/origem; 439 nos arquivos de aviso, canal, Trello, Telegram, origem, arquitetura e config (antes da revisão).",
+   "blocker": "real: not_run até a primeira rajada de verdade (o próximo lote já vai marcado lote:<frente>:<id> e uma execução por vez)",
+   "grupo": "canais-noite-04-10",
+   "modelo": "opus",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-04T02:23:12+00:00"
   }
  },
  "rodadas": [
@@ -8376,6 +8402,16 @@
    ],
    "grupos": [
     "30.43-30.44-29.62"
+   ]
+  },
+  {
+   "quando": "2026-10-04T02:23:12+00:00",
+   "itens": [
+    "32.2",
+    "28.19"
+   ],
+   "grupos": [
+    "canais-noite-04-10"
    ]
   }
  ]
