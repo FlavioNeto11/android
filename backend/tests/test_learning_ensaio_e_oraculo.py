@@ -12,6 +12,7 @@ migrado, `ServicoDeValidacao` com o parque falso). Nível de prova: `simulated`.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -20,6 +21,7 @@ from app.modules.learning.domain.validacao import MOTIVO_HUMANO, Motivo
 from app.modules.learning.domain.vocabulario import Posicao
 from app.modules.learning.infrastructure.ligar_nativos import LeituraSql
 from app.taskqueue.oraculo_qa import URI_DAS_MENSAGENS, conferencia_se_aplica, mensagens_da_execucao
+from app.taskqueue.scheduler import Scheduler
 
 from .test_learning_prova import Real, real  # noqa: F401  (a fixture `real` é a armação da prova)
 from .test_learning_prova_validacao import B, PEDE, Mundo, _fluxo, _linha, mundo  # noqa: F401
@@ -54,7 +56,10 @@ def _decisoes(real: Real, run_id: str) -> list[str]:
         "SELECT message FROM events WHERE run_id=? AND kind='decision' ORDER BY id", (run_id,))]
 
 
-async def test_o_ensaio_para_antes_do_efeito_e_nada_e_enviado(real: Real) -> None:
+async def test_o_ensaio_para_antes_do_preenchimento_e_nada_e_digitado_nem_enviado(real: Real) -> None:
+    """Portão 1 real (a3b72b, 04/10): parado só antes do `send_message`, o ensaio deixava o texto digitado no
+    `message_input`, e um toque seguinte o enviaria. Agora para antes do preenchimento de que o envio depende (no plano
+    simulado, `compose_message`; no real, `fill_message`)."""
     fake = real.h.fakes["android-01"]
     enviadas = len(fake.messages)
     run = real.prova(f"{PREFIXO_ENSAIO}lv-ensaio")
@@ -62,21 +67,42 @@ async def test_o_ensaio_para_antes_do_efeito_e_nada_e_enviado(real: Real) -> Non
     assert detalhe.status == "cancelled"                                 # pelo sistema, sem esperar ninguém
     etapas = {str(r["key"]): str(r["status"]) for r in real.db.query(
         "SELECT key, status FROM steps WHERE run_id=? ORDER BY seq, id", (run,))}
-    assert etapas["send_message"] == "skipped" and etapas["verify_sent"] == "skipped"
-    assert all(s == "succeeded" for k, s in etapas.items() if k not in ("send_message", "verify_sent")), etapas
+    parou = ("compose_message", "send_message", "verify_sent")
+    assert all(etapas[k] == "skipped" for k in parou), etapas
+    assert all(s == "succeeded" for k, s in etapas.items() if k not in parou), etapas
     assert len(fake.messages) == enviadas                                # nada saiu
+    assert fake.input_text == ""                                         # e nada ficou digitado na caixa
     # nenhuma tentativa na etapa de efeito, e nenhuma ação de commit gravada na execução
     assert real.db.scalar("SELECT COUNT(*) FROM attempts a JOIN steps s ON s.id=a.step_id"
-                          " WHERE s.run_id=? AND s.key='send_message'", (run,)) == 0
+                          " WHERE s.run_id=? AND s.key IN ('compose_message','send_message')", (run,)) == 0
     acoes = [json.loads(str(r["args"] or "{}")) for r in real.db.query(
         "SELECT a.args FROM actions a JOIN attempts t ON t.id=a.attempt_id JOIN steps s ON s.id=t.step_id"
         " WHERE s.run_id=? ORDER BY a.id", (run,))]
     assert not any(isinstance(a, dict) and a.get("is_commit_action") for a in acoes)
-    assert any("Ensaio só de leitura: parou antes da etapa" in d and "(send_message)" in d
-               for d in _decisoes(real, run)), _decisoes(real, run)
+    assert any("Ensaio só de leitura: parou antes da etapa" in d and "(compose_message), que prepara o efeito" in d
+               and "(send_message)" in d for d in _decisoes(real, run)), _decisoes(real, run)
     # o veredito da prova não deixa evidência: nem a favor (contaria para o 30.34) nem contra
     leitura = LeituraSql(real.db).execucao(run)
     assert leitura is not None and leitura.prova is not None and leitura.prova.posicao is None
+
+
+def test_o_preenchimento_e_so_o_do_plano_livre_de_que_o_efeito_depende() -> None:
+    """A ação do catálogo antes do efeito é navegação declarada (o Instagram digita o comentário DENTRO da etapa com
+    efeito, `CREATE_COMMENT`): o ensaio a percorre. O passo livre de que o efeito depende é o preenchimento."""
+    efeitos = [{"id": "e", "key": "send_message", "seq": 5, "depends_on": '["fill_message"]'},
+               {"id": "c", "key": "comment_1", "seq": 9, "depends_on": '["open_comments_1"]'}]
+    duble = SimpleNamespace(repo=SimpleNamespace(db=SimpleNamespace(query=lambda _sql, _p: efeitos)))
+    obj = {"id": "o", "plan_version": 1}
+
+    def prepara(key: str, *, capability: str | None = None, side_effect: int = 0) -> object:
+        srow = {"key": key, "capability": capability, "side_effect": side_effect}
+        e = Scheduler._efeito_que_esta_etapa_prepara(duble, obj, srow)  # type: ignore[arg-type]
+        return None if e is None else e["key"]
+
+    assert prepara("fill_message") == "send_message"
+    assert prepara("open_comments_1", capability="OPEN_COMMENTS") is None     # catálogo: navegação, segue
+    assert prepara("open_conversation") is None                               # o efeito não depende dela
+    assert prepara("send_message", side_effect=1) is None                     # o efeito para pela regra de sempre
 
 
 async def test_a_prova_comum_segue_ate_o_efeito(real: Real) -> None:

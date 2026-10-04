@@ -37,6 +37,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `PedidoView.papel`; o detalhe traz `filhos` e `dependencias`. Cancelar o pai cancela os filhos vivos na mesma transação;
   o pai encerrado pelo sistema encerra os filhos (motivo `pai`, via `PedidosApi.publicar`). O laço não muda.
 - Prova `simulated`: `test_pedidos_colaboracao_dominio.py` e `test_pedidos_colaboracao_api.py`. `not_run`: PostgreSQL e o central.
+## 2026-10-04 — 30.31: o ensaio para antes do preenchimento do efeito (branch feat/30-31-ensaio-antes-do-preenchimento)
+
+- O ensaio só de leitura (`ensaio:<id>`) agora para também antes da etapa sem efeito e sem ação do catálogo de que o
+  efeito depende diretamente: no QA, o `fill_message`. O portão 1 real (a3b72b, android-10) parou antes do envio, mas
+  deixou o texto digitado no `message_input`, e um toque seguinte o enviaria.
+- A ação do catálogo antes do efeito (`OPEN_COMMENTS`) segue: no Instagram, o comentário é digitado dentro da própria
+  etapa com efeito.
+- Prova `simulated`: `test_learning_ensaio_e_oraculo.py` (o campo termina vazio; mutação conferida).
 
 ## 2026-10-04 — 28.16: faxina das tabelas de canal por prazo de retenção (branch canais/28-16-faxina-canais, sem migração)
 

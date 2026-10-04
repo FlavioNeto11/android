@@ -1041,13 +1041,21 @@ caminhos de sempre (a sombra do fluxo, os contadores da receita) e quem decide s
   - **O ensaio só de leitura** (chave `ensaio:<pedido>`, `contracts/origem.py`; `Scheduler._parar_no_ensaio`):
     - O que faz: percorre o fluxo e para ANTES da primeira etapa com efeito fora do aparelho, sem assumi-la. Nenhuma
       tentativa, nenhuma decisão do ator, nenhum toque.
+    - Para antes também do PREENCHIMENTO desse efeito (`Scheduler._efeito_que_esta_etapa_prepara`):
+      - É a etapa sem efeito e sem ação do catálogo de que uma etapa com efeito ainda por rodar depende diretamente.
+        No QA, é o `fill_message` antes do `send_message`.
+      - O portão 1 real (r-20261004094430-a3b72b, android-10, 04/10) parou só antes do envio, e o texto ficou digitado
+        no `message_input`. Um toque seguinte o enviaria.
+      - A ação do catálogo segue, porque é navegação declarada (`OPEN_COMMENTS` antes de `CREATE_COMMENT`), e o
+        Instagram digita o comentário dentro da própria etapa com efeito.
+      - No plano livre, na dúvida, o ensaio para uma etapa mais cedo.
     - Como fecha: ela e as seguintes ficam `skipped`, e o objetivo fecha `cancelled` pelo sistema, como a prova que
       pediria uma pessoa (30.37).
     - Por que não deixa evidência: o veredito não deixa nenhuma, e o pedido fecha `ensaio_so_leitura`, nunca
       `feita`. Navegar até o botão não é o fluxo, e um `for` do ensaio contaria para a autopublicação (30.34) um fluxo
       cujo efeito nunca rodou. A linha `invalida` do 30.42 continua vencendo.
-    - O que falta: nada cria execução de ensaio ainda. Ligar o despachante ao Instagram em perfil de terceiro (G3)
-      é decisão da orquestradora, com a vez dela no aparelho de conta real.
+    - O que falta: nada cria execução de ensaio sozinho; ela nasce pela API com a chave. O ensaio no Instagram vai
+      depois deste ajuste no ar, repetindo o portão 1 com o campo conferido vazio (decisão da orquestradora, 04/10).
   - Prova `simulated`: `tests/test_learning_ensaio_e_oraculo.py`.
 - **Fora das fatias 1 e 2:** a classe do fluxo pela etapa mais restritiva (30.32).
 - **Prova** `simulated`: `tests/test_learning_validacao.py`, `tests/test_learning_validacao_sql.py`,
