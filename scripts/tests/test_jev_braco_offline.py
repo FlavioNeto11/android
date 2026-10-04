@@ -238,6 +238,27 @@ def test_regra_da_saude_e_um_segundo_controle_so_de_acompanhamento(banco: Banco,
     assert "regra da saúde" in braco.em_markdown(r)
 
 
+def test_controle_da_saude_v2_rebaixa_em_degradando_ao_lado_do_pre_registrado(banco: Banco) -> None:
+    """31.55: `controle_saude_v2` muda só `degradando` (→ rebaixar, a política do sistema); o pré-registrado segue igual."""
+    banco.revisao(saude="degradando", decisao="rebaixar")
+    banco.revisao(saude="saudavel", decisao="manter")
+    banco.revisao(saude="parado", decisao="observar")
+    casos, fora = _casos(banco)
+    assert [c.controle_saude for c in casos] == ["opt:revisar", "opt:manter", "opt:revisar"]       # não mudou
+    assert [c.controle_saude_v2 for c in casos] == ["opt:rebaixar", "opt:manter", "opt:revisar"]
+    assert braco.CONTROLE_DA_SAUDE["degradando"] == "revisar"
+    assert {k: v for k, v in braco.CONTROLE_DA_SAUDE_V2.items() if braco.CONTROLE_DA_SAUDE[k] != v} == {
+        "degradando": "rebaixar"}
+    r = braco.montar(casos, [None] * len(casos), fora=fora, agora=AGORA, enviado=False, interrompido=None, teto=None,
+                     pedidos_secos=0)
+    m = r["estratos"]["receita"]["medidas"]
+    assert m["concordancia_do_controle_da_saude_v2_com_o_curador"] == braco.rel._taxa(3, 3)
+    assert m["concordancia_do_controle_da_saude_com_o_curador"] == braco.rel._taxa(2, 3)
+    assert [l["controle_saude_v2"] for l in r["linhas"]] == ["opt:rebaixar", "opt:manter", "opt:revisar"]
+    md = braco.em_markdown(r)
+    assert "regra da saúde v2" in md and "circular" in md
+
+
 def test_a_saida_nao_leva_dossie_nem_item_ref(banco: Banco, tmp_path: Path) -> None:
     banco.revisao(contra=1)
     banco.revisao(kind="fluxo")

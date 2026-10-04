@@ -87,6 +87,12 @@ AVISO: Final = "acompanhamento; nenhum número aqui vale para GO (rótulos 1 e 2
 #: (inativo, obsoleto provável, indeterminado ou ausente) não tem resposta de controle.
 CONTROLE_DA_SAUDE: Final = {"saudavel": "manter", "pouca_amostra": "revisar", "em_prova": "revisar",
                             "sem_evidencia": "revisar", "parado": "revisar", "degradando": "revisar"}
+#: 31.55 (orquestradora, 04/10 22:36Z, da Aprendizado): a mesma regra com `degradando` → `rebaixar`, AO LADO da
+#: pré-registrada, que não muda. Por quê: o próprio sistema rebaixa sozinho em `degradando` (`learning/domain/ciclo.py`)
+#: e a aprovação automática conta `degradando` como contra; um controle que diz `revisar` ali contradiz a política que
+#: deveria espelhar. Ressalva: com os rótulos em bloco (31.11), a concordância desta coluna com o dono sobe de forma
+#: CIRCULAR (a ficha confirmada em bloco foi escrita pela mesma regra). Só acompanhamento, fora do GO.
+CONTROLE_DA_SAUDE_V2: Final = {**CONTROLE_DA_SAUDE, "degradando": "rebaixar"}
 
 
 @dataclass(frozen=True)
@@ -102,6 +108,7 @@ class Caso:
     real: str | None
     controle: str
     controle_saude: str | None = None
+    controle_saude_v2: str | None = None
 
 
 # ------------------------------------------------------------------ decisores do braço
@@ -217,13 +224,15 @@ def casos_do_curador(db: Any, *, desde: str | None, autores_dono: frozenset[str]
             estado_json=json.dumps(dict(pedido.estado), sort_keys=True, ensure_ascii=False),
             rotulo=rotulo, fonte=fonte,
             real=decisao_real_da_triagem(parecer, validade=r["validade"], simulado=r["simulated"]),
-            controle=rel._controle_do_curador(r), controle_saude=controle_da_saude(r)))
+            controle=rel._controle_do_curador(r), controle_saude=controle_da_saude(r),
+            controle_saude_v2=controle_da_saude(r, CONTROLE_DA_SAUDE_V2)))
     return casos, fora
 
 
-def controle_da_saude(revisao: Mapping[str, Any]) -> str | None:
-    """O 2º controle (acompanhamento): o rótulo de saúde do C0 pelo `CONTROLE_DA_SAUDE`, ou `None` fora do mapa."""
-    destino = CONTROLE_DA_SAUDE.get(str(rel._estado_c0(revisao).get("saude") or ""))
+def controle_da_saude(revisao: Mapping[str, Any], mapa: Mapping[str, str] = CONTROLE_DA_SAUDE) -> str | None:
+    """O 2º controle (acompanhamento): o rótulo de saúde do C0 pelo `mapa` (o pré-registrado `CONTROLE_DA_SAUDE` ou o
+    `CONTROLE_DA_SAUDE_V2`), ou `None` fora do mapa."""
+    destino = mapa.get(str(rel._estado_c0(revisao).get("saude") or ""))
     return rel._opt(destino) if destino else None
 
 
@@ -301,13 +310,14 @@ def montar(casos: Sequence[Caso], registros: Sequence[RegistroDeDecisao | None],
     for caso, registro in zip(casos, registros, strict=False):
         linha = _linha(caso, registro)
         item = {"linha": linha, "rotulo": caso.rotulo, "fonte": caso.fonte, "real": caso.real,
-                "estado": caso.estado_json, "controle": caso.controle, "controle_saude": caso.controle_saude}
+                "estado": caso.estado_json, "controle": caso.controle, "controle_saude": caso.controle_saude,
+                "controle_saude_v2": caso.controle_saude_v2}
         por_kind[caso.kind].append(item)
         linhas_saida.append({
             "dossie_hash": caso.dossie_hash, "kind": caso.kind, "estado": _hash_curto(caso.estado_json),
             "escolha": linha["escolha"], "maior": _maior(linha), "probabilidades": linha["probabilidades"],
             "confianca": linha["confianca"], "fallback": linha["fallback_reason"], "controle": caso.controle,
-            "controle_saude": caso.controle_saude,
+            "controle_saude": caso.controle_saude, "controle_saude_v2": caso.controle_saude_v2,
             "real": caso.real, "rotulo": caso.rotulo, "fonte": caso.fonte})
     rotulos = sum(1 for c in casos if c.rotulo)
     estratos = {}
@@ -324,6 +334,9 @@ def montar(casos: Sequence[Caso], registros: Sequence[RegistroDeDecisao | None],
         estrato["medidas"]["concordancia_do_controle_da_saude_com_o_curador"] = rel._taxa(
             sum(1 for i in com_saude if i["controle_saude"] == i["real"]), len(com_saude))
         estrato["medidas"]["controle_da_saude_sem_resposta"] = len(com_real) - len(com_saude)
+        com_v2 = [i for i in com_real if i["controle_saude_v2"]]
+        estrato["medidas"]["concordancia_do_controle_da_saude_v2_com_o_curador"] = rel._taxa(
+            sum(1 for i in com_v2 if i["controle_saude_v2"] == i["real"]), len(com_v2))
         estrato["sinal"] = _sinal(itens)
         estratos[kind] = estrato
     custo: dict[str, Any] = {"nivel": "PROVED (medido pelo transporte)" if enviado else "not_run (--seco)"}
@@ -351,7 +364,8 @@ CONTROLE_EM_UMA_LINHA: Final = (
     "O controle é a regra local gratuita do golden set (mais evidência contra que a favor → `revisar`, senão `manter`); "
     "a concordância dele com o curador mede quanto o parecer do curador se explica só pelas contagens de evidência. "
     "O 2º controle, só de acompanhamento, é a regra da saúde (`CONTROLE_DA_SAUDE`): quanto do parecer se explica só "
-    "pelo rótulo de saúde do dossiê.")
+    "pelo rótulo de saúde do dossiê. A coluna `controle_saude_v2` é a mesma regra com `degradando` → `rebaixar` (a "
+    "política do próprio sistema); com rótulos em bloco, a concordância dela com o dono é circular.")
 
 
 def _resposta_do_sinal(m: Mapping[str, Any], s: Mapping[str, Any]) -> str:
@@ -386,7 +400,8 @@ def em_markdown(r: Mapping[str, Any]) -> str:
                    f" maior probabilidade {m['concordancia_da_maior_com_o_curador']},"
                    f" controle {m['concordancia_do_controle_com_o_curador']},"
                    f" regra da saúde {m['concordancia_do_controle_da_saude_com_o_curador']}"
-                   f" (sem resposta {m['controle_da_saude_sem_resposta']}).",
+                   f" (sem resposta {m['controle_da_saude_sem_resposta']}),"
+                   f" regra da saúde v2 {m['concordancia_do_controle_da_saude_v2_com_o_curador']}.",
                    "- Cobertura por limiar (maior probabilidade): "
                    + ", ".join(f"{k}: {v['maior_probabilidade']}" for k, v in m["cobertura_por_limiar"].items()) + "."]
     c = r["custo"]
