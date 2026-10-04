@@ -57,6 +57,11 @@ SISTEMAS = {
     # propósito; o ator e o verificador não a levam e ficam iguais.
     "PLANNER_SYSTEM": "a0426974079c7874db7bfc23a41f4d28465c366d5167ac4b1879aa29c46dd68c",
     "PLANNER_CAPABILITY_SYSTEM": "934ff137e14363d860716da67345518c26b1bc7e2043db629636f1d3b2754e12",
+    # 29.57 (leitura da orquestradora): o multiapp e as variantes curtas não tinham hash congelado; passam a ter, já
+    # com a regra de identidade.
+    "PLANNER_MULTIAPP_SYSTEM": "8fdb26742394ae408e78d59ae55a1e51963fdcee40d8ec05d0209bdff942cdd0",
+    "PLANNER_SYSTEM_CURTO": "cc0adaaae0eade1fab89fe8b7a7a3516f16da992bf9814bebcb5af984aa24686",
+    "PLANNER_MULTIAPP_SYSTEM_CURTO": "c7bc091d64e466dc5b190cb128c9266021983f6fb58976060bb990befab016cd",
     # Item 29.58 (C): o verificador passa a contar as cópias do efeito desta execução (`copias`) — o hash muda de
     # propósito, não é enfraquecimento do teste.
     "VERIFIER_SYSTEM": "5da999c9734dcf67e15274124d1fd17486162fe44963b115c30677e8f941f7cb",

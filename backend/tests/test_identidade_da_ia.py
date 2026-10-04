@@ -17,7 +17,8 @@ RAIZ = Path(__file__).resolve().parents[2]
 
 
 def test_quem_fala_com_a_pessoa_leva_a_regra_e_diz_que_e_ia() -> None:
-    for nome in ("PLANNER_SYSTEM", "PLANNER_CAPABILITY_SYSTEM", "PLANNER_MULTIAPP_SYSTEM"):
+    for nome in ("PLANNER_SYSTEM", "PLANNER_CAPABILITY_SYSTEM", "PLANNER_MULTIAPP_SYSTEM", "PLANNER_SYSTEM_CURTO",
+                 "PLANNER_MULTIAPP_SYSTEM_CURTO"):
         assert REGRA_DE_IDENTIDADE in getattr(prompts, nome), nome
     assert REGRA_DE_IDENTIDADE in refine_system(prompts.UNTRUSTED_RULE, prompts.CONDUCT_RULE)
     assert f"você é {NOME_DA_IA}" in REGRA_DE_IDENTIDADE
