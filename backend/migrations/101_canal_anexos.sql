@@ -8,6 +8,10 @@
 -- - `estado = 'guardado'`: o arquivo existe em data/anexos. `recusado`: nada foi guardado e `motivo_recusa` diz por quê
 --   (em português simples, o mesmo que o dono leu); o sha256 e o mime podem ser NULL (recusado antes de baixar).
 --   `apagado`: a faxina por retenção apagou o arquivo.
+--   `pendente`: a mensagem foi gravada e o anexo AINDA não foi baixado (some em segundos). Se a Central cai nesse intervalo,
+--   a linha sobra e a volta seguinte tenta baixar UMA vez; se não der, vira `recusado` e o dono é avisado. Só nesse estado
+--   `ref_externa` (a referência opaca do canal, o `file_id` do Telegram) e `mime_declarado` (só se for um tipo da lista)
+--   existem; ao resolver, os dois voltam a NULL.
 --
 -- O nome do arquivo NUNCA vem do remetente: só o sha256 e a extensão da lista de tipos aceitos nomeiam o que está no
 -- disco. Dois anexos com o mesmo conteúdo são duas linhas e UM arquivo (deduplicação pelo sha256); a faxina só apaga o
@@ -29,7 +33,9 @@ CREATE TABLE IF NOT EXISTS canal_anexos (
     estado         TEXT NOT NULL,                 -- 'guardado' | 'recusado' | 'apagado'
     motivo_recusa  TEXT,                          -- por que foi recusado (curto, em português, sem conteúdo do arquivo)
     criado_em      TEXT NOT NULL,
-    apagado_em     TEXT
+    apagado_em     TEXT,
+    ref_externa    TEXT,                          -- só no `pendente`: a referência opaca do canal para baixar
+    mime_declarado TEXT                           -- só no `pendente`: o tipo que o remetente declarou, se da lista
 );
 -- Os anexos de uma mensagem (a leitura por entrada) e a faxina por prazo.
 CREATE INDEX IF NOT EXISTS ix_canal_anexos_entrada ON canal_anexos(canal, entrada_id);

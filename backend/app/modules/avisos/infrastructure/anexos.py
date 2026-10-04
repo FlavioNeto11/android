@@ -16,7 +16,7 @@ import logging
 import os
 import secrets
 from collections.abc import Callable, Collection
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from app.db import Database
@@ -84,7 +84,16 @@ class ArmazemDeAnexos:
 
     # ------------------------------------------------------------------ gravação
     def _inserir(self, *, entrada_id: int | None, direcao: str, estado: str, sha: str | None, mime: str | None,
-                 tamanho: int, motivo: str | None) -> Linha:
+                 tamanho: int, motivo: str | None, linha_id: int | None = None) -> Linha:
+        if linha_id is not None:
+            # Resolve a linha `pendente` (a mensagem já estava gravada, o anexo esperava o download): a referência sai.
+            cur = self.db.execute(
+                "UPDATE canal_anexos SET sha256=?, mime=?, bytes=?, estado=?, motivo_recusa=?, ref_externa=NULL,"
+                " mime_declarado=NULL WHERE id=? AND estado='pendente'",
+                (sha, mime, int(tamanho), estado, motivo[:MAX_MOTIVO] if motivo else None, int(linha_id)))
+            linha = self.linha(int(linha_id))
+            assert linha is not None and (cur.rowcount or 0) == 1, "o anexo pendente já foi resolvido"
+            return linha
         ident = self.db.inserted_id(
             "INSERT INTO canal_anexos(canal, entrada_id, direcao, sha256, mime, bytes, estado, motivo_recusa, criado_em)"
             " VALUES (?,?,?,?,?,?,?,?,?)",
@@ -94,12 +103,31 @@ class ArmazemDeAnexos:
         assert linha is not None
         return linha
 
+    def pendente(self, ref: str, *, entrada_id: int, mime_declarado: str | None, tamanho: int) -> Linha:
+        """O anexo da mensagem do dono que vai ser baixado. Gravado ANTES do download, na mesma transação da mensagem: uma
+        queda no meio deixa esta linha, e `a_retomar` a acha. `mime_declarado` só entra se for um tipo da lista."""
+        ident = self.db.inserted_id(
+            "INSERT INTO canal_anexos(canal, entrada_id, direcao, bytes, estado, criado_em, ref_externa, mime_declarado)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (self.canal, entrada_id, "entrada", int(tamanho), "pendente", self._agora(), ref,
+             mime_declarado if mime_declarado in EXTENSAO else None))
+        linha = self.linha(int(ident))
+        assert linha is not None
+        return linha
+
+    def a_retomar(self, idade_s: float, limite: int = 20) -> list[Linha]:
+        """Os `pendente` mais velhos que `idade_s`: a Central caiu entre gravar a mensagem e baixar o anexo."""
+        desde = to_iso(self.relogio() - timedelta(seconds=idade_s))
+        return [dict(r) for r in self.db.query(
+            "SELECT * FROM canal_anexos WHERE canal=? AND estado='pendente' AND criado_em < ? ORDER BY id LIMIT ?",
+            (self.canal, desde, limite))]
+
     def recusar(self, motivo: str, *, entrada_id: int | None = None, direcao: str = "entrada", tamanho: int = 0,
-                mime: str | None = None) -> Linha:
+                mime: str | None = None, linha_id: int | None = None) -> Linha:
         """Registra o anexo que NÃO foi guardado (voz, tipo fora da lista, grande demais, divergente, falha ao baixar).
         `mime` só se for um da lista (o declarado é do remetente e não entra no banco)."""
         return self._inserir(entrada_id=entrada_id, direcao=direcao, estado="recusado", sha=None,
-                             mime=mime if mime in EXTENSAO else None, tamanho=tamanho, motivo=motivo)
+                             mime=mime if mime in EXTENSAO else None, tamanho=tamanho, motivo=motivo, linha_id=linha_id)
 
     @staticmethod
     def verificar(conteudo: bytes, *, tipos: Collection[str], max_bytes: int, mime_declarado: str | None = None) -> str:
@@ -118,7 +146,7 @@ class ArmazemDeAnexos:
         return detectado
 
     def guardar(self, conteudo: bytes, *, tipos: Collection[str], max_bytes: int, entrada_id: int | None = None,
-                direcao: str = "entrada", mime_declarado: str | None = None) -> Linha:
+                direcao: str = "entrada", mime_declarado: str | None = None, linha_id: int | None = None) -> Linha:
         """Confere e guarda o conteúdo. Devolve a linha `guardado`; levanta `AnexoRecusado` (sem gravar nada em disco ou
         no banco) quando o conteúdo não serve. Quem chama registra a recusa com `recusar`."""
         detectado = self.verificar(conteudo, tipos=tipos, max_bytes=max_bytes, mime_declarado=mime_declarado)
@@ -132,7 +160,7 @@ class ArmazemDeAnexos:
         if not novo:
             log.info("anexos: conteúdo repetido; o arquivo existente é reaproveitado")
         return self._inserir(entrada_id=entrada_id, direcao=direcao, estado="guardado", sha=sha, mime=detectado,
-                             tamanho=len(conteudo), motivo=None)
+                             tamanho=len(conteudo), motivo=None, linha_id=linha_id)
 
     # ------------------------------------------------------------------ leitura
     def linha(self, ident: int) -> Linha | None:

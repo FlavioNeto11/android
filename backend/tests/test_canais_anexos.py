@@ -794,3 +794,75 @@ async def test_rota_exige_o_mesmo_login_das_outras_rotas_de_canais(harness: Harn
         ok = await cli.get(f"/api/canais/anexos/{ident}/conteudo", headers={"Authorization": "Bearer tk-anexos-5d1e"})
         assert ok.status_code == 200 and ok.content == PNG
 
+
+
+# ---------------------------------------------------------------- 0: a falha no download nunca fica calada
+def _interrompida(c: CenarioAnexos, uid: int, file_id: str, *, mime: str | None = None,
+                  velha: bool = True) -> tuple[int, dict[str, object]]:
+    """A Central caiu entre gravar a mensagem e baixar o anexo: a mensagem e o `pendente` ficaram no banco."""
+    c.repo.gravar(id_externo=str(uid), ordem=uid, tipo="mensagem", do_dono=True, ref_mensagem=str(uid * 10),
+                  responde_a=None, texto=None, tamanho=0, estado="ignorada")
+    ident = c.repo.id_de(str(uid))
+    assert ident is not None
+    linha = c.armazem.pendente(file_id, entrada_id=ident, mime_declarado=mime, tamanho=500)
+    if velha:
+        c.db.execute("UPDATE canal_anexos SET criado_em='2026-01-01T00:00:00Z' WHERE id=?", (linha["id"],))
+    return ident, linha
+
+
+async def test_queda_entre_gravar_e_baixar_a_volta_seguinte_baixa_uma_vez_e_conta(c: CenarioAnexos) -> None:
+    c.bot.arquivos["f1"] = PDF
+    ident, linha = _interrompida(c, 5, "f1", mime="application/pdf")
+    await c.volta()
+    [r] = c.linhas()
+    assert (r["estado"], r["mime"], r["ref_externa"], r["mime_declarado"]) == ("guardado", "application/pdf", None, None)
+    assert c.ultima().startswith("Recebi o PDF (") and c.bot.mensagens()[-1]["reply_parameters"]["message_id"] == 50   # type: ignore[index]
+    assert c.bot.downloads == ["docs/f1"]
+    await c.volta()                                                                  # nada pendente: não baixa de novo
+    assert c.bot.downloads == ["docs/f1"]
+
+
+async def test_queda_e_o_download_falha_na_retomada_o_dono_e_avisado_e_a_linha_fecha(c: CenarioAnexos) -> None:
+    c.bot.arquivos["f1"] = PDF
+    c.bot.falha_download = httpx.ConnectError("sem rede")
+    _interrompida(c, 5, "f1")
+    await c.volta()
+    [r] = c.linhas()
+    assert r["estado"] == "recusado" and "baixar" in str(r["motivo_recusa"]) and r["ref_externa"] is None
+    assert c.ultima() == "Não guardei o anexo: não consegui baixar o arquivo do canal. Mande de novo."
+    await c.volta()                                                                  # UMA tentativa só
+    assert c.bot.downloads == ["docs/f1"] and len(c.bot.mensagens()) == 1
+
+
+async def test_pendente_recente_nao_e_retomado(c: CenarioAnexos) -> None:
+    c.bot.arquivos["f1"] = PDF
+    _interrompida(c, 5, "f1", velha=False)                                           # ainda dentro do download normal
+    await c.volta()
+    assert [l["estado"] for l in c.linhas()] == ["pendente"] and c.bot.downloads == [] and c.bot.mensagens() == []
+
+
+async def test_erro_inesperado_no_download_deixa_pendente_e_a_proxima_volta_retoma(c: CenarioAnexos,
+                                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    c.bot.arquivos["foto-g"] = JPEG
+    real = CanalTelegram.baixar_anexo
+
+    async def quebra(self: CanalTelegram, ref: str, max_bytes: int) -> bytes:
+        raise RuntimeError("a Central caiu")
+
+    monkeypatch.setattr(CanalTelegram, "baixar_anexo", quebra)
+    await c.volta(foto(5, "foto-g"))
+    [r] = c.linhas()
+    assert r["estado"] == "pendente" and r["ref_externa"] == "foto-g" and r["entrada_id"] == c.entrada(5)["id"]
+    monkeypatch.setattr(CanalTelegram, "baixar_anexo", real)
+    c.db.execute("UPDATE canal_anexos SET criado_em='2026-01-01T00:00:00Z'")
+    await c.volta()
+    assert [l["estado"] for l in c.linhas()] == ["guardado"] and c.ultima().startswith("Recebi a imagem (")
+
+
+async def test_a_falha_comum_responde_e_deixa_motivo_nao_deixa_pendente(c: CenarioAnexos) -> None:
+    c.bot.arquivos["foto-g"] = JPEG
+    c.bot.falha_download = httpx.ReadTimeout("devagar")
+    await c.volta(foto(5, "foto-g"))
+    [r] = c.linhas()
+    assert r["estado"] == "recusado" and r["motivo_recusa"] and r["ref_externa"] is None
+    assert "Mande de novo" in c.ultima()

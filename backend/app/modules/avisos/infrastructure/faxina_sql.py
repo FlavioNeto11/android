@@ -132,6 +132,7 @@ class FaxinaDosCanais:
             anexos = 0
             if self.pasta_anexos is not None:
                 anexos = self.db.execute(
-                    "DELETE FROM canal_anexos WHERE canal=? AND criado_em < ? AND estado IN ('apagado','recusado')",
+                    "DELETE FROM canal_anexos WHERE canal=? AND criado_em < ?"
+                    " AND estado IN ('apagado','recusado','pendente')",
                     (canal, limite)).rowcount or 0
         return Faxina(int(zeradas), int(apagadas), int(enviadas), int(cartoes), int(eventos), int(anexos))
