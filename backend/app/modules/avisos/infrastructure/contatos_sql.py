@@ -50,8 +50,14 @@ class ContatosDoCanal:
 
     def tocar(self, chat_id: str, perfil: Mapping[str, object] | None) -> None:
         """A última vez que o chat falou, e o perfil mais recente que o Telegram deu (a pessoa pode trocar o @)."""
-        self.db.execute("UPDATE canal_contatos SET ultima_em=?, perfil=COALESCE(?, perfil) WHERE canal=? AND chat_id=?",
-                        (self._agora(), _perfil(perfil), self.canal, chat_id))
+        # Duas formas explícitas, sem `COALESCE(?, perfil)`: parâmetro nulo sem tipo é o que o PostgreSQL recusa (28.19).
+        novo = _perfil(perfil)
+        if novo is None:
+            self.db.execute("UPDATE canal_contatos SET ultima_em=? WHERE canal=? AND chat_id=?",
+                            (self._agora(), self.canal, chat_id))
+        else:
+            self.db.execute("UPDATE canal_contatos SET ultima_em=?, perfil=? WHERE canal=? AND chat_id=?",
+                            (self._agora(), novo, self.canal, chat_id))
 
     def marcar_nome_pedido(self, chat_id: str) -> None:
         self.db.execute("UPDATE canal_contatos SET nome_pedido_em=? WHERE canal=? AND chat_id=?",
