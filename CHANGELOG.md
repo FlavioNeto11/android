@@ -21,7 +21,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-04 — 32.5: a tela Canais no painel, só leitura (branch canais/32-5-tela-canais)
 
-- `GET /api/canais/estado` (`modules/avisos/presentation/estado.py`, consulta em `infrastructure/estado_sql.py`; adendo v1.11 de
+- `GET /api/canais/estado` (`modules/avisos/presentation/estado.py`, consulta em `infrastructure/estado_sql.py`; adendo v1.13 de
   `docs/api-contract.md`) e a tela `#/canais` (`frontend/src/features/canais/`), no menu junto de Diagnóstico: três cartões (aviso
   pelo Telegram, conversa pelo Telegram, Trello) com selo ligado / desligado / com problema, "há X min", contagens em
   português e o motivo da última falha traduzido. A resposta é lista fechada de números, horas e códigos: nunca conteúdo de aviso,

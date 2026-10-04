@@ -253,7 +253,7 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   Telegram, Trello) com selo ligado, desligado ou com problema, "há X min" e as contagens em frases ("3 avisos enviados, 1 na fila"); o
   motivo da última falha de envio vem traduzido e os códigos de problema viram frases. Relê a cada 30 s e não tem botão de
   escrita (ligar, desligar e reenviar ficam na configuração). Nunca mostra conteúdo de aviso, mensagem ou cartão
-  (`GET /api/canais/estado`, adendo v1.11 do contrato). Código em `frontend/src/features/canais/`.
+  (`GET /api/canais/estado`, adendo v1.13 do contrato). Código em `frontend/src/features/canais/`.
 - **Diagnóstico: "Outros dados" legível (29/09, mesmo pedido).** Era uma árvore aninhada sem fim, em que o teste de
   escala repetia a lista de aparelhos em cada leva. Agora cada chave tem um bloco com título e explicação
   (`frontend/src/features/diagnostics/OutrosDados.tsx`, leitura em `outros.ts`):

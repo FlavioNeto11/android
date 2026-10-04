@@ -5196,7 +5196,7 @@ Prova:
   `test_validacoes_listagem.py::test_a_listagem_filtra_por_item_e_por_execucao`.
 - `not_run`: o central depois do deploy.
 
-## Adendo v1.11 (04/10/2026; número provisório, a orquestradora confirma no merge; item 32.5) — `GET /api/canais/estado`, o estado dos canais
+## Adendo v1.13 (04/10/2026; número da orquestradora; item 32.5) — `GET /api/canais/estado`, o estado dos canais
 
 Uma rota nova, **só leitura**, atrás do login como toda rota `/api/` do painel (sessão ou credencial; sem elas, `401`
 `unauthorized`; `POST`, `PUT`, `PATCH` e `DELETE` no caminho dão `405`). Sem migração e sem config nova. Alimenta a tela
