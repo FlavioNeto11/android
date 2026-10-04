@@ -127,6 +127,7 @@
       }
     ],
     "missing": [],
+    "fora_do_catalogo": [],
     "planner": {
       "provider": "skill",
       "model": "skill:ig.ler_conversa@1",

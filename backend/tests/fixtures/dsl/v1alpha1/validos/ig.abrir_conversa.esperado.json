@@ -91,6 +91,7 @@
       }
     ],
     "missing": [],
+    "fora_do_catalogo": [],
     "planner": {
       "provider": "skill",
       "model": "skill:ig.abrir_conversa@1",
