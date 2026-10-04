@@ -89,6 +89,7 @@ from .planning.capabilities import load_catalog
 from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
 from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
+from .social.excecoes import ExcecaoInvalida
 from .social.service import SocialError
 from .taskqueue import observabilidade
 from .taskqueue.repository import CONTENT_TYPES
@@ -1621,6 +1622,35 @@ async def put_policy(request: Request, profile_id: str, body: ProfilePolicyPatch
         return st(request).social.set_policy(profile_id, body, package=package)
     except SocialError as exc:
         raise _social_error(exc) from exc
+
+
+# ---------------------------------------------------------------- exceções de política (item 30.65)
+class ExcecaoDePoliticaCreate(BaseModel):
+    """Exceção de uso único à regra de uma conta por alvo (ADR-055): um perfil, um alvo, uma ação, até 72 h. Ela não
+    libera sozinha: a etapa casada passa por aprovação em Pendências."""
+    model_config = ConfigDict(extra="forbid")
+    profile_id: str = Field(min_length=1, max_length=80)
+    alvo: str = Field(min_length=1, max_length=120)
+    capability: str = Field(min_length=1, max_length=60)
+    motivo: str = Field(min_length=1, max_length=500)
+    autorizacao: str = Field(min_length=1, max_length=300)
+    expira_em: str = Field(min_length=1, max_length=40)
+
+
+@router.post("/politica/excecoes", status_code=201)
+async def criar_excecao_de_politica(request: Request, body: ExcecaoDePoliticaCreate) -> dict[str, object]:
+    try:
+        criada = st(request).excecoes.criar(profile_id=body.profile_id, alvo=body.alvo, capability=body.capability,
+                                            motivo=body.motivo, autorizacao=body.autorizacao, autor=quem(request),
+                                            expira_em=body.expira_em)
+    except ExcecaoInvalida as exc:
+        raise err(422, "excecao_invalida", str(exc)) from exc
+    return {"excecao": criada.to_dict()}
+
+
+@router.get("/politica/excecoes")
+async def listar_excecoes_de_politica(request: Request, profile_id: str | None = None) -> dict[str, object]:
+    return {"excecoes": [e.to_dict() for e in st(request).excecoes.listar(profile_id=profile_id)]}
 
 
 # ---------------------------------------------------------------- contas do perfil por app (item 12.1)

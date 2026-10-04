@@ -2128,6 +2128,7 @@ class AppState:
         # escolhas diferentes do perfil.
         # 30.62: a execução que nasceu de um pedido entre personas leva a família dele; as personas da família contam
         # como UMA conta por alvo e a pessoa real sem conversa passa por aprovação. Sem pedido, `None` e nada muda.
+        self.excecoes.vencer()                    # 30.65: a exceção vencida sai com evento antes de a porta olhar
         veredito = self.policies.check(profile_id, cap, run_id=obj["run_id"], counterparty=alvo,
                                        app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
                                        step_id=srow["id"],
