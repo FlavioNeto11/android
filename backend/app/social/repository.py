@@ -102,6 +102,15 @@ class AparelhoEmQuarentena(RuntimeError):
         self.marcador = marcador
 
 
+#: Achado da revisão da fila (suíte 31): um pedido sem interação só "está em aberto" enquanto o objetivo dele está vivo.
+#: A aprovação aprovada cuja etapa nunca disparou (falhou antes do efeito, objetivo vencido ou encerrado) nunca ganha
+#: `interaction_id`, e o `expire_for_objective` só expira as pendentes. Sem este corte ela reservava o alvo na frota
+#: (ADR-055), recusava a resposta nova por 30 dias (30.56) e ocupava o teto por hora e por dia (30.57), sem aparecer em
+#: Pendências. O pedido avulso, sem objetivo, segue contando (o lado seguro); `waiting_user` e `uncertain` também.
+_DE_OBJETIVO_VIVO = (" AND (objective_id IS NULL OR NOT EXISTS (SELECT 1 FROM objectives o"
+                     " WHERE o.id=pending_approvals.objective_id AND o.status IN ('succeeded','failed','cancelled')))")
+
+
 class SocialRepository:
     def __init__(self, db: Database):
         self.db = db
@@ -1496,8 +1505,8 @@ class SocialRepository:
         # Os ids servem só para a união das duas fontes; daqui sai apenas a contagem.
         contas |= {str(r["profile_id"]) for r in self.db.query(
             "SELECT DISTINCT profile_id FROM pending_approvals WHERE profile_id IS NOT NULL AND profile_id<>?"
-            " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?"
-            " AND lower(ltrim(trim(target), '@'))=?",
+            " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?" + _DE_OBJETIVO_VIVO
+            + " AND lower(ltrim(trim(target), '@'))=?",
             (exclude_profile_id, since, counterparty.lower().lstrip("@")))}
         return len(contas), ultima
 
@@ -1548,8 +1557,8 @@ class SocialRepository:
         sem_a_etapa = " AND (step_id IS NULL OR step_id<>?)" if exclude_step_id else ""
         linha = self.db.one(
             "SELECT id FROM pending_approvals WHERE profile_id=? AND capability=?"
-            " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?"
-            f" AND lower(ltrim(trim(target), '@'))=?{sem_a_etapa} ORDER BY created_at DESC, id DESC LIMIT 1",
+            " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?" + _DE_OBJETIVO_VIVO
+            + f" AND lower(ltrim(trim(target), '@'))=?{sem_a_etapa} ORDER BY created_at DESC, id DESC LIMIT 1",
             (profile_id, capability, since, counterparty.lower().lstrip("@"),
              *((exclude_step_id,) if exclude_step_id else ())))
         return str(linha["id"]) if linha else None
@@ -1563,8 +1572,8 @@ class SocialRepository:
         sem_a_etapa = " AND (step_id IS NULL OR step_id<>?)" if exclude_step_id else ""
         return [(str(r["capability"]), str(r["created_at"])) for r in self.db.query(
             "SELECT capability, created_at FROM pending_approvals WHERE profile_id=?"
-            " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?"
-            f"{sem_a_etapa} ORDER BY created_at, id",
+            " AND status IN ('pending','approved','edited') AND interaction_id IS NULL AND created_at>=?" + _DE_OBJETIVO_VIVO
+            + f"{sem_a_etapa} ORDER BY created_at, id",
             (profile_id, since, *((exclude_step_id,) if exclude_step_id else ())))]
 
     # ------------------------------------------------------------------ memória
