@@ -9,7 +9,9 @@ O que se prova:
 - o carregador lê a dica do Outlook e recusa, na carga, campo desconhecido, texto vazio ou grande e tela não declarada;
 - `dicas_da_tela` devolve a dica na tela do Outlook e `[]` para outro app, para pacote fora do alfabeto e sem declaração;
 - o texto do juiz sem dica é IDÊNTICO ao de antes, e com dica traz o bloco depois dos fatos;
-- o provedor Anthropic envia a dica no conteúdo, e nada dela no sistema.
+- o provedor Anthropic envia a dica no conteúdo, e nada dela no sistema;
+- a dica do Outlook diz que linha presente prova SÓ que HÁ mensagens e que o veredito sem leitura visual segue NÃO confirmado;
+- o executor entrega a dica ao juiz no Outlook e não entrega em app que não declara (juiz falso que captura o pedido).
 
 Nível de prova: `simulated` (arquivo real do app; árvore sintética; provedor com cliente falso; nenhuma chamada de IA).
 """
@@ -27,7 +29,7 @@ from app.automation.hierarchy import parse_hierarchy
 from app.planning import prompts
 from app.planning.anthropic_provider import AnthropicProvider
 from app.planning.capabilities import CONHECIMENTO_DE_APPS
-from app.planning.provider import AppContext, ScreenInput, StepContext, VerifyRequest
+from app.planning.provider import AppContext, ScreenInput, StepContext, Usage, Verdict, VerifyRequest
 
 from .conftest import make_config
 
@@ -172,3 +174,89 @@ async def test_o_provedor_poe_a_dica_no_conteudo_e_nunca_no_sistema(tmp_path: Pa
     assert "dicas_da_tela" not in sem and "<dicas_da_tela>" in com and dicas[0] in com
     assert falso.chamadas[0]["system"] == falso.chamadas[1]["system"]          # o sistema não muda por causa da dica
     assert "ComposeView" not in json.dumps(falso.chamadas[1]["system"])
+
+
+# ------------------------------------------------------------------ guarda contra falso sucesso (invariante do projeto)
+def test_a_dica_do_outlook_diz_que_linha_presente_nao_prova_mensagem_especifica() -> None:
+    """A dica não pode virar licença para aprovar: o texto tem de dizer, com todas as letras, o que a linha prova e o que
+    não prova. Quem reescrever o texto sem essas frases quebra aqui (o comportamento real do juiz é `not_run`: exige
+    chamada paga)."""
+    k = telas.da_pasta(CONHECIMENTO_DE_APPS / OUTLOOK)
+    assert k is not None
+    texto = " ".join(k.dicas_para(None))
+    for frase in ("prova SÓ que HÁ mensagens na pasta",
+                  "NÃO prova que uma mensagem específica foi enviada ou recebida",
+                  "remetente, assunto ou \"o e-mail X foi enviado\"",
+                  "sem leitura visual o veredito continua NÃO confirmado"):
+        assert frase in texto, frase
+
+
+# ------------------------------------------------------------------ a ligação no executor
+class _JuizQueCaptura:
+    """Guarda os `VerifyRequest` que o executor entrega ao juiz e diz "sim" (a decisão do juiz não é o que se prova)."""
+
+    def __init__(self) -> None:
+        self.pedidos: list[VerifyRequest] = []
+
+    async def verify(self, req: VerifyRequest) -> tuple[Verdict, Usage]:
+        self.pedidos.append(req)
+        return Verdict(satisfied="yes", evidence="[teste] ok"), Usage()
+
+
+async def _julgar(tmp_path: Path, pacote: str) -> VerifyRequest:
+    """Uma etapa livre `model_judged` com a lista do app `pacote` na frente; devolve o pedido que o juiz recebeu."""
+    import time
+
+    from app.devices.manager import Observation
+    from app.models import Postcondition, StepDTO, StepStatus
+    from app.taskqueue.executor import StepExecutor
+
+    class Aparelho:
+        async def observe(self, rt: object, *, timeout: float, imagem: bool) -> Observation:
+            return Observation(frame_id="1", ts="2026-10-04T12:00:00Z", width=720, height=1280, jpeg=None,
+                               tree=_lista_do_outlook(pacote), package=pacote, sensitive=False)
+
+        async def completar_imagem(self, rt: object, obs: Observation, *, timeout: float, lado_max: int) -> Observation:
+            return obs
+
+    juiz = _JuizQueCaptura()
+    ex = object.__new__(StepExecutor)
+    ex.cfg = make_config(tmp_path, 1)
+    ai = ex.cfg.file.ai
+    ai.verify_budget_min_s = ai.verify_budget_s = ai.verify_budget_patient_s = 1.5
+    ex.repo = SimpleNamespace(decision=lambda *a, **k: None)  # type: ignore[assignment]
+    ex.devices = Aparelho()  # type: ignore[assignment]
+    ex.provider = juiz  # type: ignore[assignment]
+
+    async def _ai(run_id: str, objective_id: str | None, fabrica: Any, **_kw: Any) -> Verdict:
+        resultado, _uso = await fabrica()
+        return resultado  # type: ignore[no-any-return]
+
+    ex._ai = _ai  # type: ignore[method-assign]
+    etapa = StepDTO(id="r-x:android-01:v1:verify_sent", run_id="r-x", objective_id="r-x:android-01",
+                    instance_id="android-01", plan_version=1, seq=1, key="verify_sent", title="Conferir Enviados",
+                    goal="Abrir Enviados", depends_on=[], side_effect=False, commit_guard=[],
+                    postcondition=Postcondition(kind="model_judged", value="a pasta Enviados mostra mensagens",
+                                                description="A pasta Enviados mostra mensagens."),
+                    timeout_s=60, max_attempts=1, attempts=1, status=StepStatus.verifying)
+    await ex._verify(SimpleNamespace(id="android-01"), etapa,  # noqa: SLF001
+                     lambda: _ctx(), "r-x", "r-x:android-01", time.monotonic() + 1.0, 5.0, patient=False, facts=[],
+                     pacote=pacote, uma_rodada=True)
+    assert len(juiz.pedidos) >= 1
+    return juiz.pedidos[0]
+
+
+async def test_o_executor_entrega_a_dica_do_outlook_ao_juiz(tmp_path: Path) -> None:
+    pedido = await _julgar(tmp_path, OUTLOOK)
+    assert pedido.dicas_da_tela == telas.dicas_da_tela(CONHECIMENTO_DE_APPS / OUTLOOK, _lista_do_outlook(),
+                                                       package=OUTLOOK) != []
+    assert "NÃO confirmado" in pedido.dicas_da_tela[0]
+
+
+async def test_o_executor_nao_entrega_dica_de_app_que_nao_declara(tmp_path: Path) -> None:
+    pedido = await _julgar(tmp_path, INSTAGRAM)
+    assert pedido.dicas_da_tela == []
+    # O texto que o provedor monta é o de antes: o bloco some junto com a dica.
+    com_campo = prompts.verifier_user_text(pedido.ctx, "tela", ["e1 View"], None, pedido.facts, pedido.dicas_da_tela)
+    assert com_campo == prompts.verifier_user_text(pedido.ctx, "tela", ["e1 View"], None, pedido.facts)
+    assert "dicas_da_tela" not in com_campo

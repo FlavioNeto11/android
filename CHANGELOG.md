@@ -28,11 +28,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   carga), `VerifyRequest.dicas_da_tela` e o bloco `<dicas_da_tela>` no texto do juiz dos dois provedores. O
   `VERIFIER_SYSTEM` não muda (snapshot de `test_prompts_licoes`); sem dica o texto é idêntico ao de antes, então os outros
   apps não mudam.
-- O Outlook declara a dica (app inteiro; só a caixa foi inspecionada, e a mesma lista serve Enviados: SUPOSIÇÃO): linhas
-  presentes provam que a pasta tem mensagens; remetente ou assunto específico não se provam pela árvore, e vêm da leitura
-  visual (ADR-070). A ação VERIFY_SENT_MAIL no catálogo NÃO entrou.
-- Prova `simulated`: `tests/test_dica_de_tela_ao_juiz.py` (21) e 505 testes dos arquivos que tocam o conhecimento de telas,
-  o texto do juiz e os provedores. Execução real: `not_run` (enviar e-mail é efeito externo não autorizado).
+- O Outlook declara a dica (app inteiro; só a caixa foi inspecionada, e a mesma lista serve Enviados: SUPOSIÇÃO). O texto
+  diz com todas as letras que linha presente prova SÓ que HÁ mensagens na pasta, que NÃO prova que uma mensagem específica
+  foi enviada ou recebida, e que, se a pós-condição pede remetente, assunto ou "o e-mail X foi enviado", sem leitura
+  visual o veredito continua NÃO confirmado (ADR-070). A ação VERIFY_SENT_MAIL no catálogo NÃO entrou.
+- Prova `simulated`: `tests/test_dica_de_tela_ao_juiz.py` (24: o texto da dica exige as frases acima; a ligação no
+  executor com juiz falso que captura o `VerifyRequest`, com dica no Outlook e sem dica em app que não declara) e 505
+  testes dos arquivos que tocam o conhecimento de telas, o texto do juiz e os provedores. O comportamento real do juiz
+  na pasta Enviados: `not_run` (exige chamada paga de IA e enviar e-mail é efeito externo não autorizado).
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 

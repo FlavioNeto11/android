@@ -174,8 +174,8 @@ leitura_visual:
 # porque a lista das outras pastas (Enviados, Rascunhos) é o mesmo componente (SUPOSIÇÃO: só a caixa foi inspecionada).
 dicas_ao_juiz:
   - texto: >-
-      Neste app as linhas da lista de e-mails (caixa de entrada e pastas como Enviados) são um ComposeView sem texto nem
-      descrição na hierarquia: a árvore não mostra remetente nem assunto. Não recuse por faltar remetente ou assunto na
-      árvore: linhas presentes na lista bastam para provar que a pasta tem mensagens. O conteúdo de uma mensagem não se
-      prova pela árvore; é lido da imagem pela leitura visual, e uma pós-condição que exija um remetente ou assunto
-      específico segue sem prova pela árvore.
+      Neste app as linhas da lista de e-mails (caixa de entrada e pastas como Enviados) são um ComposeView sem texto na
+      hierarquia: a árvore não mostra remetente nem assunto, e isso sozinho não é motivo para recusar a pasta. Linha
+      presente prova SÓ que HÁ mensagens na pasta; NÃO prova que uma mensagem específica foi enviada ou recebida. Se a
+      pós-condição pede remetente, assunto ou "o e-mail X foi enviado", sem leitura visual o veredito continua NÃO
+      confirmado.
