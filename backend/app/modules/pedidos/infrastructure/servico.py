@@ -38,6 +38,7 @@ from app.modules.pedidos.infrastructure.avisos import MAXIMO_DE_IDS, CaixaDeAvis
 from app.modules.pedidos.infrastructure.laco import LacoDePedidos
 from app.modules.pedidos.infrastructure.repositorio_memoria import RepositorioDeMemoria
 from app.modules.pedidos.infrastructure.repositorio import novo_id
+from app.shared.costuras import PAINEL
 from app.taskqueue.service import RunError, RunService
 from app.util import parse_iso, to_iso
 
@@ -337,6 +338,28 @@ class PedidosApi:
         base["puladas"] = self._contar_puladas_da_retomada(pedido_id) - antes
         return {"pedido": self.view(self._pedido(pedido_id)), "sem_mudanca": False, **base}
 
+    def resolver_incerta(self, pedido_id: str, ocorrencia_id: str, nota: str | None, operador: str | None) -> JsonObject:
+        """A pessoa conferiu no mundo real o que a ocorrência `incerta` fez e a dá por resolvida (28.21). Só marca (quem,
+        quando, nota): o estado segue `incerta`, nada é reexecutado, e o `retomar` passa a valer quando não restar outra
+        pendência. Repetir numa já resolvida é idempotente: 200 com o que foi gravado na primeira vez (a nota nova é
+        ignorada, para a trilha não ser reescrita). 404 se a ocorrência não existe ou é de outro pedido; 409
+        `invalid_state` se não está incerta."""
+        self._pedido(pedido_id)
+        o = self.repo.ocorrencia(ocorrencia_id)
+        if o is None or o["pedido_id"] != pedido_id:
+            raise ErroDeApi(404, "not_found", f"Ocorrência {ocorrencia_id} não existe neste pedido.", kind="ocorrencia")
+        if o["estado"] != "incerta":
+            raise ErroDeApi(409, "invalid_state", f"A ocorrência está {o['estado']}: só uma ocorrência incerta se resolve.",
+                            estado=o["estado"])
+        texto = (nota or "").strip()
+        if not texto:
+            raise ErroDeApi(422, "nota_obrigatoria", "Diga o que você conferiu para dar a ocorrência por resolvida.")
+        if o["resolvida_em"] is None:
+            self.repo.resolver_incerta(ocorrencia_id, em=to_iso(self.agora()), por=operador or PAINEL, nota=texto)
+            self._descarregar()
+        # Relê: a perdedora de uma corrida devolve o que a vencedora gravou, nunca o próprio texto.
+        return self.ocorrencia(self.db.one(self._SQL_OCORRENCIA + " WHERE o.id=?", (ocorrencia_id,)))
+
     def _contar_puladas_da_retomada(self, pedido_id: str) -> int:
         return int(self.db.scalar("SELECT COUNT(*) FROM pedido_ocorrencias WHERE pedido_id=? AND motivo=?",
                                   (pedido_id, "pausado: retomado daqui")) or 0)
@@ -585,7 +608,8 @@ class PedidosApi:
                    "status_detail": o.get("run_detalhe")}
         d: JsonObject = {c: o[c] for c in (
             "id", "pedido_id", "pedido_versao", "gatilho_id", "previsto_para", "chave", "origem", "estado", "tentativa",
-            "run_id", "motivo", "custo_usd", "resumo", "criada_em", "iniciada_em", "terminada_em")}
+            "run_id", "motivo", "custo_usd", "resumo", "criada_em", "iniciada_em", "terminada_em",
+            "resolvida_em", "resolvida_por", "resolvida_nota")}
         d["run"] = run
         d["run_disponivel"] = o.get("run_id") is None or run is not None
         return d
@@ -651,11 +675,12 @@ class PedidosApi:
                 " r.id=a.run_id WHERE a.status='pending' AND r.pedido_id=? ORDER BY a.created_at", (pedido_id,)):
             saida.append({"tipo": "aprovacao", "ref": r["id"], "run_id": r["run_id"],
                           "ocorrencia_id": r["ocorrencia_id"], "desde": r["created_at"]})
-        # `incerta` é fim de linha da ocorrência: continua pendente até uma ocorrência posterior concluir (a pessoa
-        # resolveu e o pedido seguiu). Heurística declarada no adendo; não há marca de "resolvida" na 067.
+        # `incerta` é fim de linha da ocorrência: continua pendente até a pessoa resolvê-la (28.21: `resolvida_em`,
+        # pela rota `resolver`) ou, regra antiga que fica, até uma ocorrência posterior concluir (o pedido seguiu).
+        # Resolver NÃO muda o estado: a ocorrência segue `incerta` e só sai da lista de pendências.
         for r in self.db.query(
                 "SELECT o.id, o.run_id, o.terminada_em, o.criada_em FROM pedido_ocorrencias o WHERE o.pedido_id=? AND"
-                " o.estado='incerta' AND NOT EXISTS (SELECT 1 FROM pedido_ocorrencias c WHERE c.pedido_id=o.pedido_id"
+                " o.estado='incerta' AND o.resolvida_em IS NULL AND NOT EXISTS (SELECT 1 FROM pedido_ocorrencias c WHERE c.pedido_id=o.pedido_id"
                 " AND c.estado='concluida' AND c.terminada_em > o.terminada_em) ORDER BY o.previsto_para", (pedido_id,)):
             saida.append({"tipo": "ocorrencia_incerta", "ref": r["id"], "run_id": r["run_id"],
                           "ocorrencia_id": r["id"], "desde": r["terminada_em"] or r["criada_em"]})

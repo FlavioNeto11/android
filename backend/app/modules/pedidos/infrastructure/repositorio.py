@@ -204,6 +204,18 @@ class RepositorioDePedidos:
     def ocorrencia(self, ocorrencia_id: str) -> Row | None:
         return self.db.one("SELECT * FROM pedido_ocorrencias WHERE id=?", (ocorrencia_id,))
 
+    def resolver_incerta(self, ocorrencia_id: str, *, em: str, por: str, nota: str) -> bool:
+        """A pessoa deu a ocorrência `incerta` por resolvida (28.21). Só a marca: o estado NÃO muda (continua `incerta`) e
+        nada é reexecutado. O CAS (`estado='incerta' AND resolvida_em IS NULL`) faz a segunda chamada concorrente perder
+        sem sobrescrever quem, quando e a nota da primeira; `False` quer dizer que não gravou (já resolvida ou não incerta)."""
+        cur = self.db.execute(
+            "UPDATE pedido_ocorrencias SET resolvida_em=?, resolvida_por=?, resolvida_nota=? WHERE id=? AND"
+            " estado='incerta' AND resolvida_em IS NULL", (em, por, nota, ocorrencia_id))
+        mudou = (cur.rowcount or 0) == 1
+        if mudou:
+            self.marcar("ocorrencia", ocorrencia_id, pessoa=True)
+        return mudou
+
     def previstas_ate(self, gatilho_id: str, ate: str) -> list[Row]:
         """As `prevista` do gatilho cuja hora já chegou (`previsto_para <= ate`, `formatar_instante`)."""
         return self.db.query("SELECT * FROM pedido_ocorrencias WHERE gatilho_id=? AND estado='prevista'"
