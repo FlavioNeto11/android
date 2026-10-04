@@ -5296,3 +5296,9 @@ Prova:
   incerto; pendências vazias e retomar 200; idempotência; 409; 404; evento; sessão; 401) e
   `frontend/src/features/pedidos/PedidosPage.test.tsx` (fluxo do botão, 409, exibição).
 - `not_run`: o central depois do deploy (a migração 095 e o fluxo no painel).
+**Com a 30.34-B (mesmo item, PR empilhado):**
+- `ultima_volta` ganha `publicados`: os fluxos publicados pela emenda naquela volta, 0 fora de `on` com o balanço
+  liberado.
+- O bloco ganha `publicados_pela_emenda`: o total na trilha (`validated → published` pelo sistema, com o motivo
+  `autopublicacao_b:`).
+- `modo` passa a poder ser `"on"`.

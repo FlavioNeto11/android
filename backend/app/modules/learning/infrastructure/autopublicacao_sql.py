@@ -15,7 +15,7 @@ from datetime import datetime
 from app.db import Database
 from app.modules.learning.application.ports import NovoSinal, RepositorioDeAprendizado
 from app.modules.learning.domain.autopublicacao import CasoDaSombra, EventoDoCaso, Regressao
-from app.modules.learning.domain.ciclo import SYSTEM_ACTOR
+from app.modules.learning.domain.ciclo import MOTIVO_DA_EMENDA_B, SYSTEM_ACTOR
 from app.modules.learning.domain.vocabulario import Polaridade, SignalKind
 from app.modules.learning.infrastructure import linhas
 from app.util import parse_iso, to_iso
@@ -65,6 +65,14 @@ class LivroDaSombraSql:
             if d.get("item_ref") == item_ref and d.get("decisao_final") == "recusou":
                 somar(Regressao.PARECER_RECUSADO, linhas.texto_ou_nulo(r, "created_at"))
         return eventos
+
+    def publicados(self) -> int:
+        """Os fluxos publicados pela emenda B (30.34-B): a linha da trilha com o motivo marcado. As métricas da D1
+        contam toda publicação do sistema; esta conta separa as da emenda."""
+        r = self._db.one("SELECT COUNT(*) AS n FROM learning_transitions WHERE from_state='validated'"
+                         " AND to_state='published' AND decided_by=? AND reason LIKE ?",
+                         (SYSTEM_ACTOR, f"{MOTIVO_DA_EMENDA_B}:%"))
+        return int(r["n"]) if r is not None else 0
 
 
 __all__ = ["LivroDaSombraSql", "PREFIXO"]

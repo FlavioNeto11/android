@@ -24,7 +24,7 @@ from app.modules.learning.domain import relacoes as rel
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
                                                NotaComCaraDeSegredo, SkillState, TransicaoProibida,
                                                UseARotaDasHabilidades, Vetado, caminho_da_pessoa, conferir_transicao,
-                                               motivo_do_veto)
+                                               motivo_da_emenda_b, motivo_do_veto)
 from app.modules.learning.domain.evidencia_invalida import (ja_invalidada, motivo_de_evidencia_invalida,
                                                             reaprendizado, reservado, run_invalidada, run_valida)
 from app.modules.learning.domain.conteudo import capability_unica, licao_legivel, nome_da_capability, tela_legivel
@@ -536,6 +536,9 @@ class LearningService:
         if reservado(motivo):
             raise EntradaInvalida("'evidencia_invalida' é um tipo de desligamento com ação própria (marcar a "
                                   "evidência inválida do item), não um motivo livre.")
+        if motivo_da_emenda_b(motivo):
+            raise EntradaInvalida("'autopublicacao_b' é a marca da publicação pela emenda B (30.34), que só o sistema "
+                                  "escreve; não é um motivo livre.")
         if kind is LivroKind.HABILIDADE:
             sid, _, versao = ref.rpartition("@")
             raise UseARotaDasHabilidades(
@@ -587,8 +590,23 @@ class LearningService:
         self.avisar_item(item, novo, by=by)
         return novo
 
+    def autopublicar_fluxo(self, ref: str, *, reason: str) -> EntradaDoLivro:
+        """30.34-B: o SISTEMA publica o fluxo com efeito pela emenda de 03/10 à D1. Só a autopublicação chama, depois
+        da regra (`domain/autopublicacao.avaliar`) e do balanço da sombra (`libera`). Fora daqui a D1 é a de sempre:
+        `mudar_estado(by='sistema')` num fluxo com efeito segue recusando.
+
+        A guarda é a de toda transição (a tabela, o veto, o reaprendido e a guarda do fluxo), menos o efeito externo,
+        e só de `validated` para `published`. O motivo começa com `autopublicacao_b:` e diz por que publicou."""
+        if not motivo_da_emenda_b(reason):
+            raise EntradaInvalida("A publicação pela emenda B leva o motivo marcado ('autopublicacao_b: ...').")
+        e = self.entrada(LivroKind.FLUXO, ref)
+        if e.state is not SkillState.VALIDATED:
+            raise TransicaoProibida(f"A emenda B publica só fluxo em 'validated'; {ref} está em '{e.native_status}'.")
+        self._mover_nativo(e, SkillState.PUBLISHED, by=SYSTEM_ACTOR, reason=reason.strip(), run_id=None, emenda_b=True)
+        return self.entrada(LivroKind.FLUXO, ref)
+
     def _mover_nativo(self, e: EntradaDoLivro, para: SkillState, *, by: str, reason: str,
-                      run_id: str | None) -> None:
+                      run_id: str | None, emenda_b: bool = False) -> None:
         if e.state is None or e.native_status is None:
             raise TransicaoProibida(f"O estado '{e.native_status}' de {e.kind.value} {e.ref} não é do livro.")
         para_status = status_nativo(e.kind, para)
@@ -599,13 +617,13 @@ class LearningService:
             raise TransicaoProibida("Receita substituída não volta: a versão nova da mesma etapa é a que vale.")
         actor = conferir_transicao(e.state, para, by, side_effect=e.side_effect, human_origin=e.human_origin,
                                    modo_publica=self._modo_publica(e.kind, e.app),
-                                   reaprendido=e.reaprendido is not None)
+                                   reaprendido=e.reaprendido is not None, emenda_b=emenda_b)
         if actor is Actor.SYSTEM and para in (SkillState.VALIDATED, SkillState.PUBLISHED) and e.content_hash:
             self._conferir_veto(e.content_hash, e.scope_key, e.app_version)
         self._repo.transicionar_nativo(
             MudancaNativa(kind=e.kind, ref=e.ref, de_status=e.native_status, para_status=para_status,
                           de_estado=e.state, para_estado=para, content_hash=e.content_hash, scope_key=e.scope_key,
-                          app_version=e.app_version), by=by, reason=reason, run_id=run_id)
+                          app_version=e.app_version), by=by, reason=reason, run_id=run_id, emenda_b=emenda_b)
         self._espera.mudou_sem_falhar(e, replace(e, state=para, native_status=para_status),
                                       por_sistema=by == SYSTEM_ACTOR)
 

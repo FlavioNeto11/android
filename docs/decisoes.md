@@ -3254,6 +3254,12 @@ mesma regra do aceite.
   vem à parte (30.34-B), com `decided_by = sistema` e o motivo da emenda na trilha, para as métricas o separarem da D1.
 - **Sem migração.** O livro da sombra é o sinal `autopublicaria` (um por item, pelo índice único de `learning_signals`).
   Os eventos vêm da evidência, da trilha e do sinal `parecer_decidido`.
+- **04/10, 30.34-B:** o caminho do `on` pela trava está feito e entregue desligado.
+  - Há uma marca `emenda_b` em `conferir_transicao` e em `_mover_fluxo`, que só `LearningService.autopublicar_fluxo`
+    passa, e só de `validated` para `published`.
+  - O texto de pessoa e o reaprendido seguem com o dono.
+  - O motivo `autopublicacao_b: ...` vai à trilha, e a rota genérica o recusa.
+  - O central segue em `shadow`.
 
 Prova `simulated`: `backend/tests/test_learning_autopublicacao.py` (a regra pura) e
 `test_learning_autopublicacao_sombra.py` (a sombra com o banco migrado). `not_run`: a sombra no central. Domínio:

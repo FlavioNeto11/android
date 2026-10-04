@@ -27,7 +27,8 @@ from app.db import INTEGRITY_ERRORS, Database, Row
 from app.modules.learning.application.ports import (MudancaNativa, NovaEvidencia, NovoSinal, PrimeiraChamada,
                                                     Retencao)
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, Desligamento, EntradaInvalida,
-                                               ExigeODono, NaoEncontrado, SkillState, conferir_nascimento)
+                                               ExigeODono, NaoEncontrado, SkillState, TransicaoProibida,
+                                               conferir_nascimento, motivo_da_emenda_b)
 from app.modules.learning.domain.efeito import Exposicao
 from app.modules.learning.domain.evidencia_invalida import PREFIXO, reaprendizado
 from app.modules.learning.domain.falhas import classificar_falha
@@ -170,16 +171,24 @@ class SqlLearningRepository:
         return movido
 
     # ================================================================== receita e fluxo (só o status)
-    def transicionar_nativo(self, mudanca: MudancaNativa, *, by: str, reason: str, run_id: str | None = None) -> None:
+    def transicionar_nativo(self, mudanca: MudancaNativa, *, by: str, reason: str, run_id: str | None = None,
+                            emenda_b: bool = False) -> None:
+        """`emenda_b` (30.34-B): o fluxo com efeito publicado pelo sistema pela emenda de 03/10 à D1. O serviço já
+        conferiu a regra; aqui a guarda de novo é estreita: só fluxo, só pelo sistema, só de `validated` para
+        `published` e com o motivo marcado. O reaprendido e a guarda do fluxo valem igual."""
         if not by.strip() or not reason.strip():
             raise EntradaInvalida("Transição sem quem decidiu ou sem motivo não entra na trilha.")
         m = mudanca
+        if emenda_b and not (m.kind is LivroKind.FLUXO and by == SYSTEM_ACTOR and m.de_estado is SkillState.VALIDATED
+                             and m.para_estado is SkillState.PUBLISHED and motivo_da_emenda_b(reason)):
+            raise TransicaoProibida("A emenda B (30.34) só publica fluxo em 'validated', pelo sistema e com o motivo "
+                                    "dela na trilha.")
         agora = self._clock()
         with self._db.tx():
             if m.kind is LivroKind.RECEITA:
                 self._mover_receita(m, by=by)
             elif m.kind is LivroKind.FLUXO:
-                self._mover_fluxo(m, by=by)
+                self._mover_fluxo(m, by=by, emenda_b=emenda_b)
             else:
                 raise EntradaInvalida(f"{m.kind.value} não tem status movido pelo livro.")
             self._registrar(ref_da_trilha(m.kind, m.ref), m.kind, m.content_hash, m.scope_key, m.app_version,
@@ -251,12 +260,12 @@ class SqlLearningRepository:
         if int(cur.rowcount or 0) != 1:
             raise ConflitoDeEstado(f"Receita {recipe_id} mudou de status durante a transição; releia e tente de novo.")
 
-    def _mover_fluxo(self, m: MudancaNativa, *, by: str) -> None:
+    def _mover_fluxo(self, m: MudancaNativa, *, by: str, emenda_b: bool = False) -> None:
         row = self._db.one("SELECT * FROM flows WHERE id=?", (m.ref,))
         if row is None:
             raise NaoEncontrado(f"Fluxo '{m.ref}' não existe.")
         if m.para_status == "active":
-            if by == SYSTEM_ACTOR and fluxo_tem_efeito(linhas.json_legado(linhas.texto(row, "plan"))):
+            if by == SYSTEM_ACTOR and not emenda_b and fluxo_tem_efeito(linhas.json_legado(linhas.texto(row, "plan"))):
                 raise ExigeODono(f"Fluxo {m.ref} tem etapa de efeito externo: publicar é decisão do dono (D1).")
             if by == SYSTEM_ACTOR and self._reaprendido(m):
                 raise ExigeODono(f"Fluxo {m.ref} foi reaprendido depois de uma evidência inválida: publicar é decisão "

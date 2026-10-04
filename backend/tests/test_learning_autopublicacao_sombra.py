@@ -16,13 +16,15 @@ from app.db import Database
 from app.modules.learning.application.autopublicacao import ServicoDeAutopublicacao
 from app.modules.learning.application.metricas import ServicoDeMetricas
 from app.modules.learning.application.nativos import marca_do_conteudo
-from app.modules.learning.application.ports import Ajustes, NovaEvidencia, NovaRevisao, NovoSinal
+from app.modules.learning.application.ports import Ajustes, MudancaNativa, NovaEvidencia, NovaRevisao, NovoSinal
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.autopublicacao import MotivoDeFora
-from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.ciclo import (Actor, ConflitoDeEstado, EntradaInvalida, ExigeODono, SkillState,
+                                               TransicaoProibida, conferir_transicao)
 from app.modules.learning.domain.curador import Confianca, Decisao, Parecer
 from app.modules.learning.domain.vocabulario import LivroKind, Polaridade, Posicao, SignalKind
 from app.modules.learning.infrastructure import ligar_autopublicacao
+from app.modules.learning.infrastructure.autopublicacao_sql import LivroDaSombraSql
 from app.modules.learning.infrastructure.feedback_sql import LeituraDoVotoSql
 from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.metricas_sql import FontesDeMetricasSql
@@ -139,9 +141,10 @@ def test_depois_de_parar_nenhuma_volta_roda(mundo: Mundo) -> None:
     assert mundo.laco._volta(LIDER) is None and mundo.casos() == []
 
 
-def test_on_nao_e_aceito_nesta_fatia() -> None:
+def test_o_config_aceita_on_e_recusa_o_resto() -> None:
+    assert AutopublicacaoCfg(modo="on").modo == "on" and AutopublicacaoCfg().modo == "off"
     with pytest.raises(ValidationError):
-        AutopublicacaoCfg(modo="on")  # type: ignore[arg-type]
+        AutopublicacaoCfg(modo="sim")  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(("preparo", "motivo"), [
@@ -245,7 +248,7 @@ def test_a_volta_vazia_deixa_rastro_no_log_e_nas_metricas(mundo: Mundo, caplog: 
     with caplog.at_level("INFO", logger="poc.aprendizado"):
         assert mundo.laco._volta(LIDER) is not None
     assert mundo.auto.relatorio()["ultima_volta"] == {"em": to_iso(INICIO), "modo": "shadow", "avaliados": 0,
-                                                      "publicaria": 0, "marcados": 0}
+                                                      "publicaria": 0, "marcados": 0, "publicados": 0}
     assert any("autopublicação em shadow: 0 fluxo(s) avaliado(s), 0 publicaria(m), 0 caso(s) novo(s)" in m
                for m in caplog.messages), caplog.messages
     ref = mundo.pronto("comentar-no-post")
@@ -253,7 +256,8 @@ def test_a_volta_vazia_deixa_rastro_no_log_e_nas_metricas(mundo: Mundo, caplog: 
     with caplog.at_level("INFO", logger="poc.aprendizado"):
         mundo.laco._volta(LIDER)
     assert mundo.auto.relatorio()["ultima_volta"] == {"em": to_iso(INICIO + timedelta(hours=1)), "modo": "shadow",
-                                                      "avaliados": 1, "publicaria": 1, "marcados": 1}
+                                                      "avaliados": 1, "publicaria": 1, "marcados": 1,
+                                                      "publicados": 0}
     assert any(m.endswith(f"1 caso(s) novo(s): {ref}") for m in caplog.messages)
 
 
@@ -277,3 +281,117 @@ async def test_a_primeira_volta_sai_logo_depois_do_inicio(mundo: Mundo, monkeypa
         await mundo.laco.laco(LIDER)
     assert esperas == [ligar_autopublicacao.PRIMEIRA_VOLTA_S, 3600.0, 3600.0]
     assert mundo.auto.relatorio()["ultima_volta"] is not None
+
+
+# ------------------------------------------------------------------ 30.34-B: o `on` pela trava da D1
+def _liberar(mundo: Mundo, casos: int = 30) -> None:
+    """O balanço liberado: `casos` marcas limpas, fechadas há mais de 7 dias (nenhum evento depois delas)."""
+    marca = mundo.agora
+    mundo.agora = marca - timedelta(days=9)
+    livro = LivroDaSombraSql(mundo.db, mundo.repo)
+    for i in range(casos):
+        assert livro.marcar(f"fluxo:antigo-{i}", {"modo": "shadow"}, app="com.instagram.android")
+    mundo.agora = marca
+    assert mundo.auto.balanco().libera is (casos >= 30)
+
+
+def _trilha(mundo: Mundo, ref: str) -> list[dict[str, object]]:
+    return [dict(r) for r in mundo.db.query("SELECT from_state, to_state, decided_by, reason FROM learning_transitions"
+                                            " WHERE item_ref=? ORDER BY id", (ref,))]
+
+
+def test_on_sem_o_balanco_liberado_so_marca(mundo: Mundo) -> None:
+    """Entregue desligado: com 0 casos fechados (o central em 04/10), `on` é igual a `shadow`."""
+    mundo.cfg = AutopublicacaoCfg(modo="on")
+    ref = mundo.pronto("comentar-no-post")
+    r = mundo.laco._volta(LIDER)
+    assert r is not None and r.marcados == (ref,) and r.publicados == ()
+    assert mundo.servico.entrada(LivroKind.FLUXO, "comentar-no-post").state is SkillState.VALIDATED
+    assert _trilha(mundo, ref) == [] and mundo.auto.relatorio()["publicados_pela_emenda"] == 0
+
+
+def test_on_com_o_balanco_liberado_publica_pela_emenda_e_diz_por_que(mundo: Mundo) -> None:
+    mundo.cfg = AutopublicacaoCfg(modo="on")
+    _liberar(mundo)
+    ref = mundo.pronto("comentar-no-post")
+    rid = mundo.db.one("SELECT id FROM learning_reviews WHERE item_ref=? ORDER BY id DESC LIMIT 1", (ref,))["id"]
+    r = mundo.laco._volta(LIDER)
+    assert r is not None and r.publicados == (ref,) and r.marcados == (ref,)      # a sombra segue medindo
+    assert mundo.servico.entrada(LivroKind.FLUXO, "comentar-no-post").state is SkillState.PUBLISHED
+    assert mundo.db.one("SELECT status FROM flows WHERE id='comentar-no-post'")["status"] == "active"
+    [t] = _trilha(mundo, ref)
+    assert (t["from_state"], t["to_state"], t["decided_by"]) == ("validated", "published", "sistema")
+    motivo = str(t["reason"])
+    assert motivo.startswith("autopublicacao_b: ") and str(rid) in motivo
+    assert "2 execuções reais em 2 aparelhos" in motivo and "30 de 30 casos fechados" in motivo
+    rel = mundo.auto.relatorio()
+    ultima = rel["ultima_volta"]
+    assert rel["publicados_pela_emenda"] == 1 and isinstance(ultima, dict) and ultima["publicados"] == 1
+    # A volta seguinte não publica de novo: o fluxo saiu de `validated`.
+    mundo.agora += timedelta(hours=1)
+    r2 = mundo.laco._volta(LIDER)
+    assert r2 is not None and r2.avaliados == 0 and r2.publicados == ()
+
+
+def test_a_d1_segue_inteira_fora_do_caminho_da_emenda(mundo: Mundo) -> None:
+    """A prova de que a trava não abriu para mais ninguém: o sistema pela rota genérica, a pessoa com o motivo da
+    emenda e o repositório com a marca fora do caso dela são recusados."""
+    ref = mundo.pronto("comentar-no-post")
+    with pytest.raises(ExigeODono):
+        mundo.servico.mudar_estado(LivroKind.FLUXO, "comentar-no-post", SkillState.PUBLISHED, by="sistema",
+                                   reason="publicar sozinho")
+    for quem in ("sistema", "painel"):
+        with pytest.raises(EntradaInvalida):
+            mundo.servico.mudar_estado(LivroKind.FLUXO, "comentar-no-post", SkillState.PUBLISHED, by=quem,
+                                       reason="autopublicacao_b: na mão")
+    with pytest.raises(EntradaInvalida):
+        mundo.servico.autopublicar_fluxo("comentar-no-post", reason="sem a marca")
+    e = mundo.servico.entrada(LivroKind.FLUXO, "comentar-no-post")
+    assert e.native_status is not None and e.content_hash is not None
+    mudanca = MudancaNativa(kind=LivroKind.FLUXO, ref="comentar-no-post", de_status=e.native_status,
+                            para_status="active", de_estado=SkillState.VALIDATED, para_estado=SkillState.PUBLISHED,
+                            content_hash=e.content_hash, scope_key=e.scope_key, app_version=e.app_version)
+    with pytest.raises(TransicaoProibida):                                         # pessoa com a marca, no repositório
+        mundo.repo.transicionar_nativo(mudanca, by="painel", reason="autopublicacao_b: x", emenda_b=True)
+    with pytest.raises(ExigeODono):                                                # o sistema sem a marca
+        mundo.repo.transicionar_nativo(mudanca, by="sistema", reason="autopublicacao_b: x")
+    assert mundo.servico.entrada(LivroKind.FLUXO, "comentar-no-post").state is SkillState.VALIDATED
+    assert _trilha(mundo, ref) == []
+
+
+def test_a_emenda_so_vale_de_validated_e_nunca_para_o_candidato(mundo: Mundo) -> None:
+    mundo.fluxo("ainda-candidato", status="candidate")
+    with pytest.raises(TransicaoProibida):
+        mundo.servico.autopublicar_fluxo("ainda-candidato", reason="autopublicacao_b: teste")
+    assert mundo.servico.entrada(LivroKind.FLUXO, "ainda-candidato").state is SkillState.CANDIDATE
+
+
+@pytest.mark.parametrize(("human_origin", "reaprendido", "de"), [
+    (True, False, SkillState.VALIDATED),       # texto de pessoa segue com o dono
+    (False, True, SkillState.VALIDATED),       # o reaprendido (30.23) segue com o dono
+    (False, False, SkillState.CANDIDATE),      # pular a validação nunca
+])
+def test_a_regra_pura_da_emenda_e_estreita(human_origin: bool, reaprendido: bool, de: SkillState) -> None:
+    with pytest.raises(TransicaoProibida):
+        conferir_transicao(de, SkillState.PUBLISHED, "sistema", side_effect=True, human_origin=human_origin,
+                           modo_publica=True, reaprendido=reaprendido, emenda_b=True)
+    assert conferir_transicao(SkillState.VALIDATED, SkillState.PUBLISHED, "sistema", side_effect=True,
+                              human_origin=False, modo_publica=True, emenda_b=True) is Actor.SYSTEM
+    with pytest.raises(ExigeODono):
+        conferir_transicao(SkillState.VALIDATED, SkillState.PUBLISHED, "sistema", side_effect=True,
+                           human_origin=False, modo_publica=True)
+
+
+def test_a_recusa_da_trava_no_meio_nao_derruba_a_volta(mundo: Mundo, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O veto ou a guarda do fluxo recusando: fica no log, o fluxo segue esperando o dono e a volta termina."""
+    mundo.cfg = AutopublicacaoCfg(modo="on")
+    _liberar(mundo)
+    mundo.pronto("comentar-no-post")
+
+    def recusa(ref: str, *, reason: str) -> None:
+        raise ConflitoDeEstado("o fluxo mudou no meio")
+
+    monkeypatch.setattr(mundo.servico, "autopublicar_fluxo", recusa)
+    r = mundo.laco._volta(LIDER)
+    assert r is not None and r.publicados == () and len(r.marcados) == 1
+    assert mundo.servico.entrada(LivroKind.FLUXO, "comentar-no-post").state is SkillState.VALIDATED

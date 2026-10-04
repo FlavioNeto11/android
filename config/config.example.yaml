@@ -640,8 +640,9 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
     custo_estimado_usd: 0.07
     teto_por_pedido_usd: 0.10     # 30.37: teto de gasto de IA de UM pedido (a execução de prova); acima, o roteador barra
   # Autopublicação do fluxo de classe B (30.34): parecer "aprovar" com confiança alta + ≥ 2 execuções reais em ≥ 2
-  # aparelhos. "off" (padrão) não roda · "shadow" só marca o que publicaria (o livro da sombra). "on" ainda não é aceito:
-  # vem depois do relatório da sombra (≥ 30 casos fechados com ≥ 90 % sem regressão).
+  # aparelhos. "off" (padrão) não roda · "shadow" só marca o que publicaria (o livro da sombra) · "on" (30.34-B)
+  # publica pela emenda à D1, mas só com o balanço da sombra liberado (≥ 30 casos fechados com ≥ 90 % sem regressão);
+  # sem ele, "on" é igual a "shadow". Ligar "on" é decisão da orquestradora, com o relatório da sombra.
   autopublicacao:
     modo: "off"
     intervalo_s: 3600             # de quanto em quanto tempo o laço avalia os fluxos (sob a trava de líder)

@@ -196,6 +196,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   cria ensaio no central ainda.
 - **Painel:** o motivo novo e a fonte `provedor` com texto próprio.
 - Sem migração. Testes: `test_learning_ensaio_e_oraculo.py` (9) e os afetados (1140 passed em SQLite).
+## 2026-10-04 — 30.34-B: o `on` da autopublicação pela trava da D1, entregue desligado (branch feat/30-34-fatia-b)
+
+- `aprendizado.autopublicacao.modo` aceita `on`. Sem o balanço da sombra liberado (≥ 30 casos fechados, ≥ 90 % sem
+  regressão), é igual a `shadow`. O central segue em `shadow`.
+- A saída da D1 é estreita.
+  - A marca `emenda_b` em `conferir_transicao` e em `_mover_fluxo` só é passada por
+    `LearningService.autopublicar_fluxo`, de `validated` para `published`.
+  - O texto de pessoa, o reaprendido, o veto e a guarda do fluxo seguem valendo.
+  - O sistema pela rota genérica continua recebendo `ExigeODono`, e o motivo `autopublicacao_b` é reservado.
+- O motivo na trilha traz o parecer, as execuções, os aparelhos e o balanço. O relatório ganha
+  `publicados_pela_emenda`, e `ultima_volta` ganha `publicados`.
+- Prova `simulated`: `test_learning_autopublicacao_sombra.py`, 8 testes novos, com mutação conferida. Empilhado sobre o
+  #204.
 
 ## 2026-10-04 — 30.34: a sombra da autopublicação deixa rastro e roda logo depois do início (branch feat/30-34-volta)
 
