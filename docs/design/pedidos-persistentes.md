@@ -525,7 +525,8 @@ mesmo com a dependência gravada direto no banco):
   nada no plano nem no executor lê `pedidos.autonomia`; o §6.4 ("efeito recusado no plano") ainda não vale no caminho da
   execução. É o 28.23, desenhado abaixo. Até ele estar no ar, `pedidos` fica desligado no central (decisão de 04/10).
 
-**28.23: o teto de autonomia chega à execução** (desenho para aprovação; migração 100 e adendo v1.19 reservados).
+**28.23: o teto de autonomia chega à execução** (desenho aprovado em 04/10; migração 100 e adendo v1.19 reservados). O lado
+do laço está entregue: `_requisicao` só passa o campo quando o `RunCreate` o tem, então os dois lados entram em qualquer ordem.
 
 - **Contrato:** `RunCreate.teto_de_autonomia` (`observar`, `preparar`, `agir` ou nulo = como hoje), gravado na execução.
 - **Laço (Canais):** `_requisicao` passa `autonomia_efetiva(pedido, papel)`; toda execução nascida de pedido leva teto.
