@@ -19,6 +19,7 @@ from app.modules.learning.domain.curador import (MAX_EVIDENCIAS, AppDoItem, Doss
                                                  PassoDaTrilha, Relacao, montar_dossie)
 from app.modules.learning.domain.evidencia_invalida import run_invalidada
 from app.modules.learning.domain.politica_de_risco import FatosDeRisco, toca_sessao_ou_autenticacao
+from app.modules.learning.domain.prova import amostra_da_evidencia
 from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.saude import Saude
 from app.modules.learning.domain.validacao import Motivo
@@ -52,9 +53,10 @@ class DossiesSql:
         return [Evidencia(id=linhas.inteiro(r, "id"), posicao=linhas.texto(r, "stance"),
                           origin_ref=linhas.texto(r, "origin_ref"), em=linhas.texto(r, "observed_at"),
                           run_id=linhas.texto_ou_nulo(r, "run_id"), aparelho=linhas.texto_ou_nulo(r, "instance_id"),
-                          app_version=linhas.texto_ou_nulo(r, "app_version"), simulated=bool(r["simulated"]))
+                          app_version=linhas.texto_ou_nulo(r, "app_version"), simulated=bool(r["simulated"]),
+                          amostra=amostra_da_evidencia(linhas.texto_ou_nulo(r, "detail")))
                 for r in self._db.query(
-                    "SELECT id, stance, origin_ref, run_id, instance_id, app_version, simulated, observed_at"
+                    "SELECT id, stance, origin_ref, run_id, instance_id, app_version, simulated, observed_at, detail"
                     " FROM learning_evidence WHERE item_ref=? ORDER BY id DESC LIMIT 200", (item_ref,))]
 
     def _apps(self, e: EntradaDoLivro, conteudo: JsonObject | None) -> tuple[AppDoItem, ...]:

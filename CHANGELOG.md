@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.48: a prova de fluxo com `for_each` roda uma amostra (branch feat/30-48-prova-por-amostra)
+
+- O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 (lv-5cf7389f13e4e0f0 fechou
+  `plano_acima_do_teto`). Agora a prova de fluxo expande só os N primeiros itens na ordem da tela, N entre 2 e 3, o
+  maior que cabe em 17 etapas; a execução comum segue com a lista inteira.
+- O rastro da amostra vai no motivo da versão do plano; a evidência diz "provado em amostra de N (de M itens)" e o
+  dossiê do curador a mostra. A estimativa do teto usa a amostra só na prova de fluxo.
+- Prova `simulated`: `test_learning_prova_amostra.py` (7) e `test_learning_prova_teto.py` reescrito (mutações
+  conferidas). Sem DDL. Real: `not_run`.
 ## 2026-10-04 — teste do preparo zumbi drenado sem Timer de relógio (branch fix/b2-r4-sem-timer)
 
 - `test_prontidao_subsistemas::test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa` falhou no
