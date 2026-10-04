@@ -21,7 +21,9 @@ from app.porta_do_plano import (
     ItemAprovado,
     PortaIndisponivel,
     aprovar_plano,
+    PreviaDoItemBody,
     previa_da_porta,
+    previa_do_item,
     renovar_plano,
 )
 from app.taskqueue.repository import MOTIVO_REJEICAO
@@ -183,6 +185,11 @@ async def _gate(state: Any, chave_da_etapa: str, run_id: str = "run-p") -> Any:
     etapa = db.one("SELECT * FROM steps WHERE id=?", (f"{run_id}:android-01:v1:{chave_da_etapa}",))
     return await state._policy_gate(db.one("SELECT * FROM objectives WHERE id=?", (etapa["objective_id"],)),  # noqa: SLF001
                                     etapa, db.one("SELECT * FROM runs WHERE id=?", (run_id,)))
+
+
+def _chave_do_texto(state: Any, step_id: str, texto: str) -> str:
+    """30.68: a chave que o dono VÊ na prévia do texto editado, a que o gesto exige."""
+    return str(previa_do_item(state, "run-p", PreviaDoItemBody(step_id=step_id, texto=texto))["item"]["chave"])  # type: ignore[index]
 
 
 def _plano_com_dm(state: Any) -> dict[str, dict[str, Any]]:
@@ -385,10 +392,11 @@ async def test_editar_o_texto_no_cartao_do_plano_recalcula_a_chave(harness: Any,
     _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
     vista = itens["dm"]["chave"]
+    editada = _chave_do_texto(state, itens["dm"]["step_id"], "oi! tudo certo por aí?")
     aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
-        step_id=itens["dm"]["step_id"], chave=vista, texto="oi! tudo certo por aí?")]), por="flavio")
+        step_id=itens["dm"]["step_id"], chave=editada, texto="oi! tudo certo por aí?")]), por="flavio")
     linha = state.db.one("SELECT * FROM pending_approvals")
-    assert linha["chave_sha256"] not in (None, vista) and linha["generated_content"] == "oi! tudo certo por aí?"
+    assert linha["chave_sha256"] == editada != vista and linha["generated_content"] == "oi! tudo certo por aí?"
     assert json.loads(state.db.scalar("SELECT bindings FROM steps WHERE key='dm'"))["content"] == "oi! tudo certo por aí?"
     assert await _gate(state, "dm") is None                      # a etapa relida tem a chave gravada
 
@@ -425,8 +433,10 @@ async def test_renovar_misto_renova_o_valido_e_devolve_o_vencido(harness: Any, m
 
 
 async def test_texto_editado_que_muda_o_selo_volta_409_e_desfaz_a_edicao(harness: Any, monkeypatch: Any) -> None:
-    """Revisão do painel, B1: o selo se refaz com o texto editado. Se ele deixa de ser 🔒 (aqui, recusado como o
-    comentário repetido), nada se grava: a edição volta atrás (rollback) e o dono ouve o porquê."""
+    """Revisão do painel, B1: o selo se refaz com o texto editado. Se ele deixa de ser 🔒, nada se grava e o dono ouve o
+    porquê. O selo recusado é FORÇADO aqui (monkeypatch): hoje nenhuma regra real tira o item do 🔒 pela edição — a
+    recusa do comentário repetido é pelo objeto, não pelo texto, e a DM repetida pede confirmação. O teste com a regra
+    real possível é o da DM (`test_dm_editada_para_um_texto_ja_enviado…`)."""
     import app.porta_do_plano as porta
 
     state = harness.state
@@ -465,7 +475,8 @@ async def test_chave_solta_e_texto_final_e_o_longo_tem_mensagem_propria(harness:
     except PortaIndisponivel as exc:
         assert exc.codigo == "texto_longo" and "2200" in exc.mensagem
     aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
-        step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="oi :-{ até logo")]), por="flavio")
+        step_id=itens["dm"]["step_id"], chave=_chave_do_texto(state, itens["dm"]["step_id"], "oi :-{ até logo"),
+        texto="oi :-{ até logo")]), por="flavio")
     assert state.db.scalar("SELECT generated_content FROM pending_approvals") == "oi :-{ até logo"
 
 
@@ -496,10 +507,52 @@ async def test_dm_editada_para_um_texto_ja_enviado_segue_no_cadeado_com_a_regra_
     state.social_repo.record_interaction(pid, type="dm_sent", direction="outbound", status="confirmed",
                                          counterparty=ALVO, outgoing_content="já mandei isto", app_id="ig",
                                          run_id="r-antiga", occurred_at=to_iso(now() - timedelta(days=1)))
+    # 30.68: o dono VÊ o motivo novo na prévia do texto editado antes do sim, e a chave do gesto é a dessa prévia.
+    vista = previa_do_item(state, "run-p", PreviaDoItemBody(step_id=itens["dm"]["step_id"], texto="já mandei isto"))
+    proposto = vista["item"]                                                                # type: ignore[index]
+    assert proposto["selo"] == APROVACAO and "repetição passa por confirmação" in proposto["motivo"]
     aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
-        step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="já mandei isto")]), por="flavio")
+        step_id=itens["dm"]["step_id"], chave=proposto["chave"], texto="já mandei isto")]), por="flavio")
     linha = state.db.one("SELECT status, generated_content FROM pending_approvals WHERE origem='plano'")
     assert (linha["status"], linha["generated_content"]) == ("approved", "já mandei isto")
     previa_refeita = _por_chave(previa_da_porta(state, "run-p"))["dm"]
     assert previa_refeita["selo"] == APROVACAO and "repetição passa por confirmação" in previa_refeita["motivo"]
     assert await _gate(state, "dm") is None                      # a mesma chave: o sim do plano cobre a confirmação
+
+
+async def test_previa_do_item_so_le_e_o_gesto_exige_a_chave_do_texto_editado(harness: Any, monkeypatch: Any) -> None:
+    """30.68: a rota da prévia do item não grava nada; o gesto com o texto editado e a chave da prévia ANTIGA (a do
+    texto que o dono não aprovou) volta 409 e não grava."""
+    state = harness.state
+    iniciou = _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    antes = _contagens(state)
+    vista = previa_do_item(state, "run-p", PreviaDoItemBody(step_id=itens["dm"]["step_id"], texto="  outro texto  "))
+    assert _contagens(state) == antes and vista["texto"] == "outro texto"
+    try:
+        aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+            step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="outro texto")]), por="flavio")
+        raise AssertionError("a chave do texto antigo não aprova o texto novo")
+    except PortaIndisponivel as exc:
+        assert exc.codigo == "plano_mudou"
+        assert exc.extra["mudaram"][0]["motivo"].startswith("com o texto editado:")          # type: ignore[index]
+    assert not state.db.scalar("SELECT COUNT(*) FROM pending_approvals") and not iniciou
+    for texto, codigo in (("", "invalid_body"), ("x" * 2201, "texto_longo"), ("oi {nome}", "invalid_body")):
+        try:
+            previa_do_item(state, "run-p", PreviaDoItemBody(step_id=itens["dm"]["step_id"], texto=texto))
+            raise AssertionError(texto)
+        except PortaIndisponivel as exc:
+            assert exc.codigo == codigo and exc.status == 422
+
+
+async def test_previa_do_item_pela_rota(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    app = create_app(harness.cfg, state=state)
+    app.state.poc = state
+    cliente = TestClient(app, client=("127.0.0.1", 123))
+    ok = cliente.post("/api/runs/run-p/porta/item", json={"step_id": itens["dm"]["step_id"], "texto": "oi de novo"})
+    assert ok.status_code == 200 and ok.json()["item"]["selo"] == APROVACAO and len(ok.json()["item"]["chave"]) == 64
+    fora = cliente.post("/api/runs/run-p/porta/item", json={"step_id": "nao-existe", "texto": "x"})
+    assert fora.status_code == 409 and fora.json()["detail"]["code"] == "plano_mudou"

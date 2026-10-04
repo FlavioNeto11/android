@@ -60,9 +60,16 @@ class ItemAprovado(BaseModel):
 
     step_id: str = Field(min_length=1, max_length=300)
     chave: str = Field(min_length=64, max_length=64)
-    #: O texto EDITADO no cartão do plano (`None`: o da prévia). A chave conferida é a que o dono viu (a do texto da
-    #: prévia); a gravada é a do texto editado, recalculada da etapa relida: a chave é a do texto que vai sair.
+    #: O texto EDITADO no cartão do plano (`None`: o da prévia). 30.68: com texto editado, `chave` é a da prévia DESSE
+    #: texto (`POST …/porta/item`), a que o dono viu; o servidor a confere antes e depois do `apply_edit`.
     texto: str | None = Field(default=None, max_length=20_000)   # o limite real (LIMITE_DO_TEXTO) tem mensagem própria
+
+
+class PreviaDoItemBody(BaseModel):
+    """30.68: `POST /runs/{id}/porta/item`, a prévia de UM item com o texto proposto no cartão (só leitura)."""
+
+    step_id: str = Field(min_length=1, max_length=300)
+    texto: str = Field(max_length=20_000)   # o limite real (LIMITE_DO_TEXTO) tem mensagem própria
 
 
 class AprovarPlanoBody(BaseModel):
@@ -153,6 +160,49 @@ def _plano(state: AppState, run_id: str) -> tuple[Row, dict[str, Row], list[Row]
         por_objetivo.setdefault(str(e["objective_id"]), []).append(e)
     dependentes = {k: v for lista in por_objetivo.values() for k, v in _dependentes(lista).items()}
     return run, objetivos, etapas, dependentes
+
+
+def _validar_texto(sid: str, original: Mapping[str, object] | None, texto: str) -> None:
+    """As recusas do texto proposto, iguais na prévia do item e no gesto (422)."""
+    if original is None:
+        raise PortaIndisponivel("plano_mudou", "A etapa não está mais no plano.", 409)
+    if original.get("texto") is None:
+        raise PortaIndisponivel("invalid_body", f"A etapa {sid} não escreve texto: não há o que editar.", 422)
+    if not texto:
+        raise PortaIndisponivel("invalid_body", "O texto editado está vazio.", 422)
+    if len(texto) > LIMITE_DO_TEXTO:
+        raise PortaIndisponivel("texto_longo", f"O texto editado tem {len(texto)} caracteres; o limite é "
+                                               f"{LIMITE_DO_TEXTO}.", 422)
+    if tem_variavel(texto):
+        raise PortaIndisponivel("invalid_body", "O texto editado tem variável por resolver ({nome}): escreva o "
+                                                "texto final.", 422)
+
+
+def _item_com_texto(state: AppState, run: Row, obj: Row, e: Row, texto: str,
+                    dependentes: list[str]) -> dict[str, object] | None:
+    """O item como a porta o veria com `texto` no lugar do da etapa, SEM gravar: a mesma conta de `_item` sobre uma
+    cópia da linha. A chave sai igual à da etapa depois do `apply_edit` (o texto entra nos argumentos já sem espaço nas
+    pontas, como o `definir_texto` grava)."""
+    argumentos = loads(e["bindings"], {}) or {}
+    copia = {**e, "bindings": json.dumps({**argumentos, "content": texto}, ensure_ascii=False)}
+    return _item(state, run, obj, copia, dependentes, {}, set())
+
+
+def previa_do_item(state: AppState, run_id: str, corpo: PreviaDoItemBody) -> dict[str, object]:
+    """30.68: a prévia de UM item com o texto proposto no cartão: selo, motivo e chave, para o dono VER o que muda (a
+    DM repetida passa a dizer "esta conta já mandou ESTA mensagem") antes do sim. Só leitura: não grava, não chama IA;
+    a mesma conta de `previa_da_porta`. A chave devolvida é a que o gesto exige para esse texto."""
+    run, objetivos, etapas, dependentes = _plano(state, run_id)
+    etapa = next((e for e in etapas if str(e["id"]) == corpo.step_id), None)
+    if etapa is None:
+        raise PortaIndisponivel("plano_mudou", "A etapa não está mais no plano.", 409)
+    obj = objetivos[str(etapa["objective_id"])]
+    deps = dependentes.get(corpo.step_id, [])
+    original = _item(state, run, obj, etapa, deps, {}, set())
+    texto = corpo.texto.strip()
+    _validar_texto(corpo.step_id, original, texto)
+    proposto = _item_com_texto(state, run, obj, etapa, texto, deps)
+    return {"step_id": corpo.step_id, "texto": texto, "item": proposto}
 
 
 def previa_da_porta(state: AppState, run_id: str) -> dict[str, object]:
@@ -279,35 +329,36 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
     if set(corpo.tirar) & {sid for sid, _c in pedidos}:
         raise PortaIndisponivel("invalid_body", "A mesma etapa veio para aprovar e para tirar.", 422)
     mudaram: list[dict[str, object]] = []
+    etapa_por_id = {str(e["id"]): e for e in etapas}
+    # 30.68: o texto editado de verdade (diferente do da prévia) se confere pela prévia DESSE texto, a que o dono viu.
+    editados = {sid: t for sid, t in editados.items()
+                if itens.get(sid) is None or t != str(itens[sid].get("texto") or "").strip()}
+    for sid, texto in editados.items():
+        if itens.get(sid) is not None:              # a etapa que saiu do plano entra em `mudaram`, abaixo
+            _validar_texto(sid, itens.get(sid), texto)
     for sid, chave in pedidos:
         item = itens.get(sid)
+        if sid in editados and item is not None:
+            e = etapa_por_id[sid]
+            proposto = _item_com_texto(state, _run, objetivos[str(e["objective_id"])], e, editados[sid], [])
+            if proposto is None or proposto["selo"] != APROVACAO or not proposto["chave"] or proposto["chave"] != chave:
+                motivo = (str(proposto["motivo"]) if proposto and proposto["selo"] != APROVACAO and proposto["motivo"]
+                          else "a prévia deste texto mudou: confira de novo")
+                mudaram.append({"step_id": sid, "selo": proposto["selo"] if proposto else None,
+                                "motivo": f"com o texto editado: {motivo}"})
+            continue
         if item is None or item["selo"] != APROVACAO or not item["chave"] or item["chave"] != chave:
             mudaram.append({"step_id": sid, "selo": item["selo"] if item else None,
                             "motivo": (item["motivo"] if item else "a etapa não está mais no plano")
                             or "a chave mudou: o item não é mais o que você viu"})
     mudaram += [{"step_id": sid, "selo": None, "motivo": "a etapa não está mais no plano"}
                 for sid in corpo.tirar if sid not in do_plano]
-    for sid, texto in editados.items():
-        item = itens.get(sid)
-        if item is None or sid in {m["step_id"] for m in mudaram}:
-            continue
-        if item.get("texto") is None:
-            raise PortaIndisponivel("invalid_body", f"A etapa {sid} não escreve texto: não há o que editar.", 422)
-        if not texto:
-            raise PortaIndisponivel("invalid_body", "O texto editado está vazio.", 422)
-        if len(texto) > LIMITE_DO_TEXTO:
-            raise PortaIndisponivel("texto_longo", f"O texto editado tem {len(texto)} caracteres; o limite é "
-                                                   f"{LIMITE_DO_TEXTO}.", 422)
-        if tem_variavel(texto):
-            raise PortaIndisponivel("invalid_body", "O texto editado tem variável por resolver ({nome}): escreva o "
-                                                    "texto final.", 422)
     if mudaram:
         raise PortaIndisponivel("plano_mudou", f"{len(mudaram)} item(ns) mudaram desde a prévia; nada foi gravado.",
                                 mudaram=mudaram, previa=previa)
     tirados = sorted({*corpo.tirar, *(d for sid in corpo.tirar for d in dependentes.get(sid, []))})
     aprovar = [(sid, chave) for sid, chave in pedidos if sid not in tirados]   # a dependente de uma tirada sai junto
     validade = to_iso(now() + timedelta(hours=validade_h(state)))
-    etapa_por_id = {str(e["id"]): e for e in etapas}
     gravadas: list[str] = []
     with state.db.tx():
         # Dois gestos ao mesmo tempo: a transação serializa, e o segundo vê o sim do primeiro (ou a execução iniciada).
@@ -318,13 +369,12 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
             item, e = itens[sid], etapa_por_id[sid]
             obj = objetivos[str(e["objective_id"])]
             novo = editados.get(sid)
-            if novo is not None and novo != str(item.get("texto") or "").strip():
+            if novo is not None:
                 apply_edit(state.db, sid, novo)
-                # O selo se refaz com o texto editado (revisão do painel, B1): há regra que depende do texto (o
-                # comentário repetido é recusado, a DM repetida pede confirmação). Se o item editado não é mais um 🔒
-                # com chave, nada se grava (o raise dentro da transação desfaz a edição) e o dono ouve o porquê.
+                # Rede de segurança (B1): a etapa RELIDA depois da edição tem de dar a MESMA chave que o dono viu na
+                # prévia do texto (30.68). Se não der, nada se grava (o raise dentro da transação desfaz a edição).
                 refeito = _item(state, _run, obj, state.repo.step_row(sid), [], {}, set())
-                if refeito is None or refeito["selo"] != APROVACAO or not refeito["chave"]:
+                if refeito is None or refeito["selo"] != APROVACAO or not refeito["chave"] or refeito["chave"] != chave:
                     motivo = str(refeito["motivo"] if refeito else "") or "o item não fecha mais uma aprovação"
                     raise PortaIndisponivel(
                         "plano_mudou", "Com o texto editado, o item não é mais o que se aprova no plano; nada foi "
