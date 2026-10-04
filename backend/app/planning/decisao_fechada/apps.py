@@ -48,7 +48,8 @@ NAO: Final = "nao"
 MAX_APPS: Final = 16
 #: 31.13/29.75 (orquestradora, 04/10): 0,5, SÓ em sombra (a R5 não tem `on`; um `on` pede decisão e limiar próprios). O
 #: pré-registro era 0,85; a sintética deu 4 de 16 paráfrases pegas em 0,85 e 8 de 16 em 0,5, sem falso `sim`, e a maior
-#: probabilidade de um `nao` foi 0,18. A linha da sombra grava a probabilidade, então o relatório ainda mede em 0,85.
+#: probabilidade de um `nao` foi 0,18. A linha da sombra grava a probabilidade, e o relatório do braço offline mede
+#: nos dois limiares (colunas `_0_85` de `jev-braco-offline-intencao.py`).
 LIMIAR: Final = 0.5
 _NOME_MAX: Final = 200
 

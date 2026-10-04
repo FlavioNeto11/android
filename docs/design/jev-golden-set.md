@@ -509,8 +509,10 @@ do `app` no estado).* Nenhuma chamada paga foi feita para isto. O código é
   métrica mediria um eco. O estado da R5 está contido no da intenção.
 - **Emenda de 04/10/2026 (31.13, pela tabela do 29.75, aceita pela orquestradora às 21:05Z): na sombra, o limiar
   passa a 0,5.** A sintética deu 4 de 16 paráfrases pegas em 0,85 e 8 de 16 em 0,5, sem falso `sim`; a maior
-  probabilidade de um `nao` foi 0,18. Não há caso real em 427 execuções. A linha da sombra grava a probabilidade, e por
-  isso o relatório ainda mede em 0,85. Um `on` pede decisão e limiar próprios. O texto abaixo é o pré-registro original.
+  probabilidade de um `nao` foi 0,18. Não há caso real em 427 execuções. A linha da sombra grava a probabilidade, e o
+  relatório do braço offline (`jev-braco-offline-intencao.py --r5`) mede nos dois limiares: as colunas `_0_85` contam o
+  `sim` pelo `p_sim` de cada linha, e a métrica pré-registrada segue sendo a delas. Um `on` pede decisão e limiar
+  próprios. O texto abaixo é o pré-registro original.
 - **Limiar: 0,85 sobre a probabilidade devolvida do "verdadeiro".** Abaixo dele, a resposta conta como SEM resposta. O
   complemento nunca vira `nao` (B7 do roteiro: P(noul) ≠ 1 − P(não-noul)). Na linha da sombra, a escolha só pode ser
   `sim` ou vazia, e a probabilidade fica gravada mesmo abaixo do limiar.
