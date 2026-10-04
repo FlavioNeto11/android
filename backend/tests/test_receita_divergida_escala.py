@@ -36,6 +36,7 @@ async def _aprende_e_diverge(harness: Harness) -> tuple[set[str], list[dict[str,
 
 
 async def test_divergencia_sozinha_nao_sobe_de_modelo(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     com_receita, decisoes = await _aprende_e_diverge(harness)
     divergidas = [c for c in decisoes if c["step"] in com_receita]    # etapa COM receita que ainda assim chamou a IA
     assert divergidas, "o cenário precisa fazer uma receita divergir"
@@ -48,6 +49,7 @@ async def test_divergencia_sozinha_nao_sobe_de_modelo(harness: Harness) -> None:
 
 
 async def test_retorno_a_ia_e_contado_uma_vez_por_etapa_com_motivo_fechado(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     com_receita, decisoes = await _aprende_e_diverge(harness)
     etapas_divergidas = {c["step"] for c in decisoes if c["step"] in com_receita}
     assert etapas_divergidas

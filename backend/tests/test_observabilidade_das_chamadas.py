@@ -159,6 +159,7 @@ async def test_receitas_desligadas_a_ia_conduz_e_grava_driven_by(tmp_path: Path)
     h = Harness(tmp_path, 1)
     h.cfg.file.ai.recipes = "off"
     await h.boot()
+    h.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     try:
         run = h.run(["android-01"])
         await h.wait_run(run.id, statuses=TERMINAIS)

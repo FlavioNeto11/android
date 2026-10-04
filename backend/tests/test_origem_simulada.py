@@ -43,6 +43,7 @@ def _regra_de_producao(h: Harness) -> None:
 
 # ------------------------------------------------------------------ ponta a ponta (executor + lojas + D1)
 async def test_execucao_simulada_nao_publica_receita_nem_fluxo_mesmo_com_os_atalhos_abertos(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     _regra_de_producao(harness)
     db = harness.state.db                                                          # type: ignore[union-attr]
     primeira = await harness.wait_run(harness.run(["android-01"]).id)

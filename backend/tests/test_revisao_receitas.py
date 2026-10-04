@@ -99,6 +99,7 @@ def _driven(h: Harness, run_id: str) -> dict[str, Any]:
 async def test_divergencia_volta_a_ia_no_modelo_de_acao_e_o_retorno_e_contado_uma_vez(harness: Harness) -> None:
     """Era defeito F8 (`receita.retorno_ia` nunca contado): o executor passou a contar o retorno UMA vez por
     tentativa, na primeira consulta à IA depois da divergência — sem subir de tier (a IA decide no modelo de ação)."""
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     _, n = await _aprende_em_01(harness)
     _quebra_open_conversation(harness)
     harness.ai.calls.clear()
@@ -132,6 +133,7 @@ async def test_nova_tentativa_conta_consulta_reproducao_e_retorno_por_tentativa(
     e a reprodução só por etapa (`_after_step` saía cedo em `retry`), então uma nova tentativa virava duas
     consultas para uma reprodução e a divergência da 1ª sumia. Por tentativa a razão fecha: cada receita encontrada
     desemboca em exatamente um veredito de reprodução, e cada divergência que levou a etapa à IA é um retorno."""
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     _, n = await _aprende_em_01(harness)
     _quebra_open_conversation(harness)
     harness.cfg.file.ai.cascade_blocked_to_tier1 = False    # o bloqueio forçado aqui é o que o teste exercita: a cascata do 17.10 o absorveria no tier 1
@@ -173,6 +175,7 @@ async def test_nova_tentativa_conta_consulta_reproducao_e_retorno_por_tentativa(
 
 # ================================================================== cenário 3: quarentena
 async def test_receita_em_quarentena_nao_reproduz_conta_quarentena_e_reaprende(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     r1, n = await _aprende_em_01(harness)
     db = harness.state.db                                                   # type: ignore[union-attr]
     db.execute("UPDATE recipes SET status='quarantined' WHERE step_key='open_conversation' AND status='active'")
@@ -214,6 +217,7 @@ async def test_receita_em_quarentena_nao_reproduz_conta_quarentena_e_reaprende(h
 async def test_lider_so_e_eleito_quando_despachado(harness: Harness) -> None:
     """android-01 é o 1º da fila mas está sob controle manual (a porta `ai_begin` o segura DEPOIS do desbravador):
     não pode virar líder, senão 02 e 03 esperariam um aparelho parado até o teto."""
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     _liga(harness)
     devs = harness.state.devices.devices                                    # type: ignore[union-attr]
     devs["android-01"].control = ControlOwner.user
@@ -254,6 +258,7 @@ async def test_lider_so_e_eleito_quando_despachado(harness: Harness) -> None:
 
 
 async def test_aparelho_do_lider_que_cai_libera_quem_espera(harness: Harness) -> None:
+    harness.pular_o_tempo()   # T.2: relógio virtual; o que se confere não depende de tempo real
     _liga(harness)
     portao, parado = asyncio.Event(), asyncio.Event()
     _segura(harness, "android-01", portao, parado=parado)
