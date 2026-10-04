@@ -5556,6 +5556,14 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 - O token vale por `token_max_s` (2 h) e pode ser reusado nesse prazo: ele prova que houve uma página aberta há pouco,
   não que o envio é único. Quem reusa continua sob a taxa por cliente e os tetos.
 
+**Limites conhecidos** (revisão independente do #333, notas baixas).
+- Apagar o conteúdo ao descartar é um `UPDATE` que zera os campos: a página antiga do banco (SQLite com WAL,
+  PostgreSQL) só some de fato no vacuum. As cópias em `data/backups` guardam o que havia na hora da cópia e herdam o
+  mesmo prazo: saem pelo teto de cópias dos backups, não pelo descarte.
+- Um contato `retido` que depois volta a `pendente` (o canal caiu antes da entrega) perde o motivo `teto_por_hora` e
+  fica de fora do resumo: o resumo pode subcontar. E uma virada de hora sem líder da trava `avisos` (o backend caído
+  ou a trava trocando de dono) não é resumida: aquela hora fica sem resumo.
+
 **Marca pública** (o que a página diz é parte da decisão).
 - A página apresenta a **ANA** como a inteligência da SICAT que rege a presença digital de quem contrata. As **personas**
   são a identidade DECLARADA de quem contrata (a voz da marca, do atendimento, do porta-voz), com tom, memória e limites
