@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 30.34: a sombra da autopublicação deixa rastro e roda logo depois do início (branch feat/30-34-volta)
+
+- Relatório da sombra à orquestradora (leitura real 08:28:53Z, central em 051fc3e0): 0 casos. Nenhum dos 48 fluxos
+  estava em `validated`, e os 5 candidatos com efeito externo não tinham evidência.
+- O laço esperava `intervalo_s` (3600 s) antes da primeira volta. No log do central, 16 inícios entre o deploy 11
+  (03/10 15:29Z) e o deploy 20 (04/10 08:11Z) deram no máximo 9 voltas em 16,7 h, e 10 dos 15 intervalos não tiveram
+  nenhuma. A primeira volta passa a sair 60 s depois do início.
+- Toda volta loga uma linha `info` (avaliados, publicaria, casos novos), e as métricas ganham
+  `curador.autopublicacao.ultima_volta` (adendo v1.12).
+- Prova `simulated`: `test_learning_autopublicacao_sombra.py`, 3 testes novos. A fatia B (o `on`) segue fora.
+
 ## 2026-10-04 — 29.53: o portão de PostgreSQL de uma suíte, por escrito (branch docs/29-53-portao-pg, só docs)
 
 - `docs/banco.md` ("O portão de PostgreSQL de uma suíte") e `.claude/rules/testes.md`. Toda suíte roda PG dirigido

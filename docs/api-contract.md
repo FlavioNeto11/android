@@ -5195,3 +5195,16 @@ Prova:
 - `simulated`: `backend/tests/test_learning_reproducao_repetida.py`, `test_learning_nasceu_em_validacao.py` e
   `test_validacoes_listagem.py::test_a_listagem_filtra_por_item_e_por_execucao`.
 - `not_run`: o central depois do deploy.
+
+## Adendo v1.12 (04/10/2026; número da orquestradora; item 30.34) — a última volta da sombra da autopublicação
+
+Aditivo ao v0.93. `GET /api/aprendizado/metricas` → `curador.autopublicacao` ganha `ultima_volta`:
+
+- `null` antes da primeira volta deste processo;
+- depois, `{"em": "<ISO>", "modo": "shadow", "avaliados": N, "publicaria": P, "marcados": M}`:
+  - `avaliados`: os fluxos em `validated` que a D1 segura;
+  - `publicaria`: os que passam na regra agora;
+  - `marcados`: os casos novos desta volta.
+
+É em memória e zera no reinício. A primeira volta sai 60 s depois do início, e as seguintes de `intervalo_s` em
+`intervalo_s`. Os outros campos do bloco não mudam. O painel ainda não lê a chave.

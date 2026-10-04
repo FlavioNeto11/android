@@ -1103,8 +1103,16 @@ em sombra. Nesta fatia (30.34-A) a regra vai até `shadow`; publicar de verdade 
   recusando o parecer (o sinal `parecer_decidido` com `recusou`, que guarda a data da decisão).
   - `balanco` conta casos, abertos, limpos e regredidos, e a taxa sobre os FECHADOS (`null` sem nenhum).
   - Ela libera o `on` só com ≥ 30 fechados e ≥ 90 % limpos.
-- **O laço** (`LacoDaAutopublicacao`) roda sob a trava de líder, de `intervalo_s` em `intervalo_s` (3600 de fábrica),
-  numa thread: só lê o livro e grava sinais. Sem IA, sem aparelho.
+- **O laço** (`LacoDaAutopublicacao`) roda sob a trava de líder, numa thread: só lê o livro e grava sinais. Sem IA,
+  sem aparelho.
+  - A primeira volta sai 60 s depois do início (`PRIMEIRA_VOLTA_S`), e as seguintes de `intervalo_s` em `intervalo_s`
+    (3600 de fábrica).
+  - Até 04/10 a primeira esperava o intervalo inteiro. Com dez reinícios entre o deploy 11 e o 20, a sombra pode ter
+    rodado pouco.
+  - Toda volta deixa uma linha `info` no log (avaliados, publicaria, casos novos), mesmo vazia.
+  - A última volta do processo fica em `curador.autopublicacao.ultima_volta` (`em`, `modo`, `avaliados`, `publicaria`,
+    `marcados`; `null` antes da primeira). É em memória, e o reinício zera.
+  - Sem esse rastro, "0 casos" não separava "avaliou e ninguém passou" de "não rodou" (relatório de 04/10).
 - **Nas métricas** (`/api/aprendizado/metricas`), o bloco `curador` ganha a chave `autopublicacao`. É o balanço, global,
   com o modo e os limiares; a chave é aditiva (adendo v0.93) e só aparece com o serviço composto.
 - **Config:** `aprendizado.autopublicacao.modo: "off" | "shadow"` e `intervalo_s`. `on` é recusado até a 30.34-B.
@@ -1157,6 +1165,14 @@ e `created_by = sistema`. O `data` traz `modo`, `review_id`, `execucoes`, `apare
   o separarem da D1.
 - O `on` aceito no config. Sem `libera`, ele se comporta como `shadow`.
 - O script do relatório e a linha do painel.
+
+**O primeiro relatório (04/10).**
+- Leitura real às 08:28:53Z, no central em 051fc3e0 (deploy 20), com a sombra ligada desde o deploy 11:
+  - casos 0, abertos 0, limpos 0, regrediram 0, taxa `null`, libera `false`.
+- Dos 48 fluxos (22 published, 20 candidate, 6 disabled), nenhum estava em `validated`: a regra não teve candidato.
+- Os 5 candidatos com efeito externo (3 do QA, 2 do Instagram, estes C desde a 30.32) não tinham evidência a favor nem
+  contra.
+- O próximo passo, decidido pela orquestradora, é dirigir validações P4 aos 3 do QA.
 
 **O que esperar dos números.** No ensaio de 03/10 nenhum fluxo estava em `validated` segurado pela D1. Os casos dependem
 de fluxos B com efeito que cheguem a `validated` com o parecer `aprovar` de confiança alta e ≥ 2 execuções em ≥ 2
