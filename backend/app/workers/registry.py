@@ -154,8 +154,12 @@ class WorkerCapacity:
             return None
         return efetiva - int(self.reserved_mb or 0)
 
-    def sem_recurso(self) -> str | None:
+    def sem_recurso(self, limiar_cpu_percent: float | None = None) -> str | None:
         """`None` quando dá para subir mais um aparelho lá; senão, a frase que explica por que não.
+
+        `limiar_cpu_percent` (29.33, RA-4): com a CPU da última batida ACIMA dele, boot novo espera — subir outro
+        emulador numa máquina saturada alonga todos os boots em voo e o preparo deles estoura (3 episódios medidos,
+        1 chegou ao reset). `None` (sem limiar, ou CPU que a batida não trouxe) nunca recusa: "não sei" não é "lotada".
 
         **Sem medição recente, não se admite boot novo.** Batida velha devolvia `None` ("não sei" não é "não
         pode") — e o rodízio tratava o desconhecido como ilimitado: mandava tantos `start` quantas vagas houvesse
@@ -185,7 +189,17 @@ class WorkerCapacity:
         if self.disk_free_gb is not None and self.disk_free_gb < PISO_DISCO_GB:
             return (f"worker '{self.name}' está com {self.disk_free_gb:.1f} GB de disco livre "
                     f"(piso: {PISO_DISCO_GB:.0f} GB)")
-        return None
+        return self.cpu_acima(limiar_cpu_percent)
+
+    def cpu_acima(self, limiar_cpu_percent: float | None) -> str | None:
+        """A frase de espera quando a CPU da última batida passa do limiar; `None` no resto (inclusive CPU
+        desconhecida e batida velha: a velha já é segurada por `sem_recurso`, e o número dela não vale)."""
+        if limiar_cpu_percent is None or self.stale or self.cpu_percent is None:
+            return None
+        if self.cpu_percent <= limiar_cpu_percent:
+            return None
+        return (f"worker '{self.name}' está com {self.cpu_percent:.0f} % de CPU (limite para subir mais um boot: "
+                f"{limiar_cpu_percent:.0f} %): boot novo lá espera a carga baixar")
 
 
 def recurso_no_limite(res: WorkerResources | None) -> str | None:

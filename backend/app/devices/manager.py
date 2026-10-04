@@ -35,7 +35,7 @@ from ..models import (AutomationInfo, ConnectivityInfo, ControlOwner, ReadinessI
 from ..shared.costuras import SEM_COSTURAS_DE_GESTO, CosturaDeControle, TomadaDeControle, avisar
 from ..util import new_token, now, now_iso, parse_iso, to_iso
 from . import emulator as emu
-from .adb import Adb, AdbError, AdbTimeout
+from .adb import PRAZO_DO_AJUSTE_S, Adb, AdbError, AdbTimeout, fator_de_carga_do_preparo
 from .apps_de_fundo import AjusteDosApps
 from .apps_de_fundo import validar_lista as validar_apps_de_fundo
 from .emulator_backend import EmulatorBackend, RealEmulatorBackend
@@ -80,7 +80,9 @@ RESPOSTA_POS_BOOT_S = 60.0
 #: É UMA RODADA INTEIRA: com 20 s fixos e o display a 20 s (`prontidao.PRAZO_S`), um display lento mas vivo teria só
 #: ~4 s no piso — o mesmo falso negativo que o prazo novo do display corrige.
 RESPOSTA_MIN_S = prontidao.prazo_da_rodada()
-#: Prazo do `prepare_for_automation` no executor do aparelho (o adb dentro dele desiste em 40 s).
+#: Prazo BASE do `prepare_for_automation` no executor do aparelho (o adb dentro dele desiste em
+#: `PRAZO_DO_AJUSTE_S` = 40 s). Com a máquina carregada os dois crescem juntos (`DeviceManager._prazo_do_preparo`,
+#: 29.33): 60 s fixos transformavam boot lento em degrau de reparo.
 PRAZO_DO_PREPARO_S = 60.0
 #: Teto da espera pelo fim de um preparo "zumbi" (o executor desistiu de esperar; a chamada segue viva na thread do
 #: aparelho). Cortado também pelo orçamento de quem chama. Não termina a tempo = não pronto — nunca espera infinita.
@@ -857,6 +859,30 @@ class DeviceManager:
         rt.dimensoes = {}
 
     # ------------------------------------------------------------------ saúde do convidado
+    def _cpu_do_host(self) -> float | None:
+        """CPU do host na última amostra do laço de métricas (a cada 3 s). `None` = ainda não amostrou."""
+        return None if self.last_metrics is None else self.last_metrics.cpu_percent
+
+    def _boots_em_voo(self, rt: DeviceRuntime) -> int:
+        """Quantos OUTROS aparelhos desta máquina estão bootando agora (aparelho remoto boota na máquina dele)."""
+        return sum(1 for d in self.devices.values() if d is not rt and not d.external
+                   and d.state == InstanceState.booting)
+
+    def _prazo_do_preparo(self, rt: DeviceRuntime) -> float:
+        """Prazo do preparo proporcional à carga (29.33, RA-4) — e já ajusta o do `shell` interno do adb.
+
+        O preparo SÓ roda depois de `boot_completed` + interface (`_wait_boot`) e da prontidão (`_preparar_e_revalidar`),
+        então o relógio dele já nasce do "Boot completed", e não do spawn. O que faltava era a carga: os ajustes são
+        processos DO CONVIDADO, e com o host saturado por outros boots um preparo sadio levava mais de 60 s, estourava
+        (`AdbTimeout`, efeito incerto, tentativa não pronta) e descia o degrau de reparo — 3 episódios medidos, um
+        até o reset. Esticar pela CPU é a forma mais simples que mantém a regra (estouro = incerto) para o aparelho
+        que de fato não responde: o teto é 3× (180 s). O prazo do executor e o do adb crescem JUNTOS; esticar só o
+        de fora deixaria o de dentro (40 s) estourar primeiro.
+        """
+        fator = fator_de_carga_do_preparo(self._cpu_do_host())
+        rt.adb.prazo_do_ajuste_s = PRAZO_DO_AJUSTE_S * fator
+        return PRAZO_DO_PREPARO_S * fator
+
     @staticmethod
     def _prontidao(rt: DeviceRuntime, fase: str, detalhe: str) -> None:
         if rt.readiness_phase != fase or rt.readiness_detail != detalhe:
@@ -891,7 +917,8 @@ class DeviceManager:
         fim = None if restante_s is None else time.monotonic() + restante_s
         rt.adb.apps_de_fundo = self.apps_de_fundo_de(rt)
         try:     # ajustes idempotentes (sem animações, tela ligada, sem teclado virtual sobre a tela, apps de fundo)
-            ajuste = await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
+            ajuste = await rt.executor.run(rt.adb.prepare_for_automation, timeout=self._prazo_do_preparo(rt),
+                                           label="prepare")
         except (DriverError, AdbError) as exc:
             return await self._revalidar_depois_de(rt, exc, "o preparo", fim)
         self._registrar_apps_de_fundo(rt, ajuste)
@@ -2483,7 +2510,12 @@ class DeviceManager:
             inflight += max(0.0, custo - rss)
         free_mb = self.emulator.free_ram_mb()
         after = free_mb - inflight - est
-        if after >= a.min_free_ram_mb_after_boot:
+        # Admissão por CPU (29.33, RA-4): a RAM cabe, mas o host já está saturado (outros boots em voo, na maioria dos
+        # casos) — mais um emulador alonga todos eles e o preparo estoura. CPU desconhecida (laço de métricas ainda sem
+        # amostra) não recusa. O motivo e a espera crescente são os da RAM.
+        cpu = self._cpu_do_host()
+        cpu_alta = cpu is not None and cpu > a.max_cpu_percent_before_boot
+        if after >= a.min_free_ram_mb_after_boot and not cpu_alta:
             # Admitido: a reserva entra AGORA, antes de qualquer `await` de quem chamou. O próximo `_boot` que
             # passar por aqui (outra vaga do `boot_limiter`) já a desconta.
             self._reservas[rt.id] = est
@@ -2491,19 +2523,26 @@ class DeviceManager:
             self._reservas_orfas.pop(rt.id, None)
             metricas.contar("capacidade.reserva", resultado="concedida")
             return None
-        metricas.contar("capacidade.reserva", resultado="recusada", motivo="ram")
+        por_ram = after < a.min_free_ram_mb_after_boot          # RAM tem precedência no texto: é a que se resolve com a pessoa
+        metricas.contar("capacidade.reserva", resultado="recusada", motivo="ram" if por_ram else "cpu")
         online = sum(1 for d in self.devices.values() if d.state == InstanceState.online)
-        msg = (f"Capacidade do host atingida: {free_mb:.0f} MB disponíveis"
-               + (f" (−{inflight:.0f} MB reservados para boots em andamento)" if inflight else "")
-               + f"; esta instância precisa de ≈{est} MB e o host deve manter {a.min_free_ram_mb_after_boot} MB "
-               f"livres. {online} instância(s) online. Libere memória no host ou use uma imagem mais leve.")
+        if por_ram:
+            msg = (f"Capacidade do host atingida: {free_mb:.0f} MB disponíveis"
+                   + (f" (−{inflight:.0f} MB reservados para boots em andamento)" if inflight else "")
+                   + f"; esta instância precisa de ≈{est} MB e o host deve manter {a.min_free_ram_mb_after_boot} MB "
+                   f"livres. {online} instância(s) online. Libere memória no host ou use uma imagem mais leve.")
+        else:
+            msg = (f"CPU do host no limite: {cpu:.0f} % (limite para subir mais um boot: "
+                   f"{a.max_cpu_percent_before_boot:.0f} %); {self._boots_em_voo(rt)} boot(s) em andamento e {online} "
+                   "instância(s) online. O boot espera a carga baixar e é tentado de novo sozinho.")
         rt.start_refusals += 1          # o rodízio não insiste a cada tick: espera crescente
         rt.start_backoff_until = time.monotonic() + min(120, 15 * 2 ** (rt.start_refusals - 1))
         back = InstanceState.hibernated if rt.snapshot_valid else InstanceState.stopped
         self._set_state(rt, back, msg, level="warn", attention=msg)      # o snapshot continua válido
         self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)", (now_iso(), "capacity", dumps({
             "instance_id": rt.id, "refused": True, "online": online, "mem_available_mb": round(free_mb),
-            "inflight_reserved_mb": round(inflight), "needed_mb": est})))
+            "inflight_reserved_mb": round(inflight), "needed_mb": est, "motivo": "ram" if por_ram else "cpu",
+            "host_cpu_percent": None if cpu is None else round(cpu, 1)})))
         return msg
 
     def _vencer_reservas_orfas(self) -> None:
@@ -2621,6 +2660,9 @@ class DeviceManager:
             await asyncio.sleep(espera_inicial_s)
             t0 = time.monotonic()
         a_cfg = self.android_de(rt)
+        # 29.33 (RA-4): a carga em que ESTE boot começou — a CPU do host e os outros boots em voo —, para a medição
+        # `boot` explicar os boots lentos (a de depois do boot descreve uma máquina que já aliviou).
+        cpu_ao_iniciar, em_voo_ao_iniciar = self._cpu_do_host(), self._boots_em_voo(rt)
         # RA-15 (29.34, 03/10/2026): dois relógios. `t0` (o spawn) segue valendo para `boot_seconds` — spawn→online, comparável
         # com o histórico. O PRAZO tem início próprio (`inicio_prazo`). Wake: ANTES do veredito do log o prazo é o de boot
         # a frio, contado do spawn — carregar 2 GB devagar sob CPU alta ainda é mais rápido que descartar o snapshot e
@@ -2697,7 +2739,8 @@ class DeviceManager:
         p: prontidao.Prontidao | None = None
         rt.adb.apps_de_fundo = self.apps_de_fundo_de(rt)
         try:
-            ajuste = await rt.executor.run(rt.adb.prepare_for_automation, timeout=PRAZO_DO_PREPARO_S, label="prepare")
+            ajuste = await rt.executor.run(rt.adb.prepare_for_automation, timeout=self._prazo_do_preparo(rt),
+                                           label="prepare")
         except (AdbTimeout, DriverTimeout) as exc:
             # Efeito incerto no aparelho (e, se foi o executor, a chamada ainda viva): nenhuma escada nesta tentativa
             # prova ser posterior a ele. Wake cai no boot a frio; a frio vira `error` com a escada de reparo.
@@ -2737,7 +2780,9 @@ class DeviceManager:
             medida = {
                 "instance_id": rt.id, "boot_seconds": rt.boot_seconds, "kind": "warm" if warm else "cold",
                 "online_after": sum(1 for d in self.devices.values() if d.state == InstanceState.online) + 1,
-                "mem_available_gb": round(vm.available / 2**30, 1), "image": self.android_de(rt).system_image}
+                "mem_available_gb": round(vm.available / 2**30, 1), "image": self.android_de(rt).system_image,
+                "host_cpu_percent": None if cpu_ao_iniciar is None else round(cpu_ao_iniciar, 1),
+                "boots_em_voo": em_voo_ao_iniciar}
             if warm:                               # RA-15: quanto levou carregar o snapshot (None = o log não disse)
                 medida["load_ms"] = None if load_s is None else int(round(load_s * 1000))
             self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)",

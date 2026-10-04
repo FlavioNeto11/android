@@ -81,6 +81,11 @@ android:
   # toda instância sem override, qualquer que seja a imagem).
   # est_instance_ram_mb: 3000
   min_free_ram_mb_after_boot: 1500
+  # Admissão por CPU (29.33): boot novo numa máquina com a CPU ACIMA deste percentual espera — no host, recusa com espera
+  # crescente (como a RAM, motivo "CPU do host no limite"); num worker, o rodízio segura pela CPU da última batida. Subir
+  # outro emulador com a máquina saturada alonga todos os boots em voo. 100 desliga. CPU desconhecida nunca recusa.
+  # O prazo do preparo pós-boot também cresce com a CPU (60 s até 50 %, 180 s a 100 %): não tem chave, é a regra.
+  max_cpu_percent_before_boot: 85
   # Redundante com o perfil (que já põe `-lowram` em google_apis e AOSP), mas necessário se você declarar
   # `ram_mb` acima: com número explícito, só valem as flags daqui.
   extra_emulator_args: ["-lowram"]
