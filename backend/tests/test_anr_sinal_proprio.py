@@ -356,6 +356,7 @@ async def test_mortes_por_anr_contam_pela_etapa_e_nao_pela_tentativa(tmp_path: P
     h = Harness(tmp_path, 1)
     h.ai = CountingProvider(SimuladoComPrazoCurto(prazo_s))
     await h.boot()
+    await h.medir_a_internet()   # T.2: a sonda do monitor agora; o Instagram não espera os 6 s da 1ª volta
     assert h.state is not None
     try:
         fake = h.fakes["android-01"]
@@ -487,6 +488,7 @@ async def test_prazo_da_etapa_na_chamada_de_ia_nao_e_ia_indisponivel(tmp_path: P
     h = Harness(tmp_path, 1)
     h.ai = DecisaoPendurada(SimulatedProvider())             # type: ignore[assignment]
     await h.boot()
+    await h.medir_a_internet()   # T.2: a sonda do monitor agora; o Instagram não espera os 6 s da 1ª volta
     assert h.state is not None
     try:
         run = h.run(["android-01"])

@@ -36,7 +36,7 @@ class LeituraDoAprendidoSql:
         etapas = [linhas.texto(r, "id") for r in self._db.query(
             "SELECT id FROM steps WHERE run_id=? ORDER BY objective_id, plan_version, seq", (run_id,))]
         tentativas = self._db.query(
-            "SELECT a.recipe_id, a.failure_kind, a.status, a.error FROM attempts a JOIN steps s ON s.id = a.step_id"
+            "SELECT a.recipe_id, a.failure_kind, a.status, a.error, a.recovery FROM attempts a JOIN steps s ON s.id = a.step_id"
             " WHERE s.run_id=? ORDER BY a.step_id, a.number", (run_id,))
         usadas: list[str] = []
         for t in tentativas:
@@ -79,7 +79,8 @@ class LeituraDoAprendidoSql:
                                         (run_id,))),
             tentativas=tuple(TentativaDaExecucao(
                 failure_kind=linhas.texto_ou_nulo(t, "failure_kind"), status=linhas.texto_ou_nulo(t, "status"),
-                erro=linhas.texto_ou_nulo(t, "error")) for t in tentativas))
+                erro=linhas.texto_ou_nulo(t, "error"), recovery=linhas.texto_ou_nulo(t, "recovery"))
+                for t in tentativas))
 
 
 def _entre(r: Row, run_id: str) -> int | None:

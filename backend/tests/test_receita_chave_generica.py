@@ -250,6 +250,7 @@ async def parque(tmp_path: Path) -> AsyncIterator[Harness]:
     h.cfg.file.ai.recipes = "replay"
     h.cfg.file.ai.flows = False
     await h.boot()
+    await h.medir_a_internet()   # T.2: a sonda do monitor agora; o Instagram não espera os 6 s da 1ª volta
     assert h.state is not None
     h.state.db.execute("UPDATE instances SET app_id='instagram' WHERE id='android-01'")
     h.state.devices.get("android-01").app_id = "instagram"

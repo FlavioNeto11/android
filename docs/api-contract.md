@@ -5410,6 +5410,43 @@ Prova:
 - `simulated`: `backend/tests/test_teto_de_autonomia.py` (os três níveis e o nulo).
 - `not_run`: PostgreSQL e o central depois do deploy.
 
+## Adendo v1.26 (04/10/2026; número da orquestradora; item 28.24, F4) — a lista de anexos e o conteúdo só de imagem e PDF
+
+Sem migração. Alimenta a aba Anexos da tela Canais. Atrás do mesmo login das outras `/api/canais` (sem ele, **401**).
+- `GET /api/canais/anexos`: página de anexos, do mais novo ao mais velho. Filtros (todos opcionais): `canal`, `direcao`
+  (`entrada`|`saida`), `do_dono` (booleano; olha a mensagem de origem, e a saída nunca é "do dono"), `estado`
+  (`guardado`|`recusado`|`apagado`; o `pendente`, que ainda espera o download, nunca entra), `desde` e `ate` (ISO; `ate` é
+  exclusivo; data sozinha vale 00:00Z), `limit` (1 a 100, padrão 24) e `offset`. Resposta: `{items, total, limit, offset}`,
+  com `total` batendo com os filtros. Cada item tem chaves fixas: `id`, `canal`, `direcao`, `mime`, `bytes`, `estado`,
+  `motivo_recusa`, `criado_em`, `apagado_em`, `do_dono`, `tem_conteudo` (imagem ou PDF guardado que sai por `/conteudo`; nunca o
+  de convidado) e `pode_ir_ao_cartao` (a regra de `POST .../trello`: mensagem do dono, guardada). Sem caminho de disco, sem
+  `sha256`, sem referência do canal e sem nome de remetente. **422** para filtro inválido (`periodo_invalido` para data fora do ISO).
+- `GET /api/canais/anexos/{id}/conteudo` (muda a v1.21): além de `Content-Disposition: attachment; filename="anexo-<id>.<ext>"` e
+  `X-Content-Type-Options: nosniff`, agora responde `Cache-Control: no-store`; só sai imagem (JPEG, PNG, WEBP) e PDF. Novos erros:
+  **415** `tipo_sem_previa` (o `text/plain` guardado não sai por aqui) e **404** `anexo_de_convidado` (a mensagem de origem não é
+  do dono; o convidado nunca tem anexo baixado, então a linha só existiria por defeito). Os 404 `anexo_sem_arquivo` e o 410
+  `anexo_apagado` seguem como na v1.21.
+
+## Adendo v1.25 (04/10/2026; número da orquestradora; item 28.24, F3) — a IA lê a imagem que o dono mandou
+
+Migração `103_canal_anexos_descricao` (só `ADD COLUMN` em `canal_anexos`: `descricao`, `lida_em`, `modelo_leitura`, `custo_usd`,
+`tokens_entrada`, `tokens_saida`). Os metadados do `GET /api/canais/anexos/{id}` NÃO mudam (as chaves fixas da v1.21 seguem; a
+descrição sai pela rota nova).
+
+- `POST /api/canais/anexos/{id}/ler` com `{"confirmar": true}`: a IA descreve a imagem. Atrás do mesmo login das outras rotas de
+  `/api/canais`. **200** `{anexo_id, descricao, custo_usd, do_cache, modelo}`; com a descrição já gravada, `do_cache: true`,
+  `custo_usd: 0` e nenhuma chamada ao provedor. Erros (`detail.code`): **400** `confirmacao_necessaria` (sem `confirmar: true`);
+  **404** `anexo_desconhecido`; **409** `anexo_nao_permitido` (convidado, saída ou mensagem que não é do dono), `anexo_sem_arquivo`,
+  `leitura_acima_do_teto` (a estimativa passa de `teto_usd`; nada foi enviado), `gasto_barrado` (teto do dia ou saldo da conta) ou
+  `gasto_nao_conferido`; **422** `anexo_nao_imagem` ou `imagem_grande_demais` (acima de 5 MB, o máximo do provedor); **502**
+  `ia_falhou` (nada é gravado como lido); **503** `leitura_desligada`, `sem_modelo_de_visao` ou `not_ready`.
+- Só imagem JPEG, PNG ou WEBP: o GIF não está na lista de tipos guardados (a animação é recusada no download), então não chega aqui.
+- Telegram, sem rota HTTP: `/ler`, "leia" ou "o que tem nessa imagem" em reply a uma foto do dono (intenção `ler_anexo`, fato
+  `anexo:<id>`); sem reply a um anexo, a resposta explica o formato. A resposta é a descrição mais uma linha com o modelo e o custo.
+- Config: `avisos.entrada.anexos.leitura` (`enabled`, `teto_usd` 0,05, `modelo` vazio = o mais barato com visão de `ai.prices`,
+  `max_tokens` 400). A descrição passa pelo redator de credencial dos textos do canal. O custo entra em `ai_calls` com
+  `origem='canais'` (o vocabulário de origem ganhou `canais`), por tokens x `ai.prices`.
+
 ## Adendo v1.21 (04/10/2026; número da orquestradora; item 28.24, F1) — anexos nos canais
 
 O Telegram passa a receber e a devolver arquivos (regra do dono em `docs/dominios/canais.md`, C-22). Migração `101_canal_anexos`.
@@ -5437,7 +5474,7 @@ Comportamento da conversa (sem rota nova):
   `sendDocument` para o resto; o nome no envio é `anexo-<sha>.<ext>`. A porta `SaidaComAnexos` é do canal: o Trello, que não a cumpre, recusa
   o anexo com o motivo.
 - A faxina por retenção (28.16) apaga o arquivo e a linha dos anexos vencidos, sem seguir link nem sair de `data/anexos`.
-- Config: `avisos.entrada.anexos` (`enabled`, `max_bytes`, `tipos`). A leitura da imagem pela IA não existe ainda.
+- Config: `avisos.entrada.anexos` (`enabled`, `max_bytes`, `tipos`). A leitura da imagem pela IA veio na F3 (v1.25).
 
 Complemento (F2, mesmo item):
 - **Download que falha:** a mensagem do dono e os anexos a baixar entram juntos, na mesma transação (`estado = 'pendente'`, com
@@ -5445,8 +5482,12 @@ Complemento (F2, mesmo item):
   ao dono ("… Mande de novo."). Se a Central cai entre gravar e baixar, a volta seguinte (anexo `pendente` com mais de 60 s) baixa UMA
   vez e conta o resultado; se falhar, fecha como `recusado` e avisa. Escolhi avisar+uma tentativa, e não só avisar, porque a referência
   do arquivo no Telegram costuma valer por horas e a retomada poupa o reenvio.
-- `POST /api/canais/anexos/{id}/trello` com `{"card": "<24 hex>", "confirmar": true}`: anexa ao cartão do Trello a imagem que o DONO
-  mandou (exceção (b) do dono, 04/10 15:17Z). Atrás do mesmo login. **200** `{anexo_id, card, trello_anexo}`; **400**
+- `POST /api/canais/anexos/{id}/trello` com `{"card": "<link, código curto ou id>", "confirmar": true}`: anexa ao cartão do Trello a
+  imagem que o DONO mandou (exceção (b) do dono, 04/10 15:17Z). Atrás do mesmo login. `card` aceita o link do cartão
+  (`https://trello.com/c/<código>/...`), o código curto de 8 letras e dígitos ou o id de 24 hexadecimais; o backend lê o id inteiro e
+  o quadro pela API (`GET /1/cards/{código ou id}`), e a resposta traz o id inteiro (28.24 F4, revisão da fila da suíte 31). O mesmo
+  arquivo no mesmo cartão vai uma vez só: se o cartão já tem o anexo de nome `anexo-<sha>.<ext>`, nada sobe e a resposta traz o que
+  existe com `ja_estava: true`. **200** `{anexo_id, card, trello_anexo, ja_estava}`; **400**
   `confirmacao_necessaria`; **404** `anexo_desconhecido`; **409** `anexo_nao_permitido` (convidado, saída ou mensagem que não é do dono),
   `anexo_sem_arquivo` (recusado, apagado ou sumido do disco) ou `cartao_fora_dos_quadros` (o cartão não é de um quadro de
   `trello.quadros`, conferido pela API antes de anexar); **422** `cartao_invalido`; **502** `trello_falhou` (mensagem sem chave nem token);
@@ -5466,6 +5507,107 @@ nem contestação, e não pesa contra o item. Quem recusou vai ao log do backend
 - **409** `pedido_nao_pendente`: o pedido já saiu de `pendente` (despachou, fechou ou expirou).
 - **503:** a validação não foi composta.
 
+## Adendo v1.22 (04/10/2026; número da orquestradora; item 28.25) — o que a plataforma decidiu sozinha, com o desfazer
+
+Registro único `decisoes_automaticas` (migração 102) das decisões que a plataforma toma no lugar do dono (pedido 30.55) e
+duas rotas, atrás do mesmo login do painel. O resumo no Telegram não é rota: ver `docs/dominios/canais.md` (C-23).
+
+`GET /api/decisoes-automaticas?regra=&fila=&desde=&ate=&desfeitas=todas|sim|nao&limite=` (as mais novas primeiro;
+`desde` inclusivo e `ate` exclusivo, datas ISO em UTC; `limite` 1 a 500, padrão 200).
+- **200:** `{itens, total, regras, desfazer_dias}`. Cada item: `id`, `fila` (`pergunta`, `objetivo`, `aprendizado` ou
+  `pedido`), `item_ref`, `regra`, `efeito` (frase curta em português), `fatos` (objeto plano e curto, sem dado pessoal),
+  `decidida_em`, `resumida_em`, `desfeita`, `desfeita_em`, `desfeita_por`, `motivo_do_desfazer`, `pode_desfazer`,
+  `acao_do_desfazer` (`Desligar` para o aprendizado, `Desfazer` nas outras), `por_que_nao` (em português; é o que o painel
+  mostra no lugar do botão) e `prazo_ate`.
+- **400:** `fila` fora do vocabulário ou data inválida. **422:** `desfeitas` ou `limite` fora do contrato.
+
+`POST /api/decisoes-automaticas/{id}/desfazer` com `{confirmar: true, motivo?}` (`motivo` até 300 caracteres; campo
+desconhecido é 422: quem desfez é o operador da SESSÃO, nunca o corpo).
+- **200:** o item no formato acima, mais `desfeita_agora` (falso quando já estava desfeita). **Idempotente:** desfazer
+  duas vezes não chama a fila dona de novo nem muda `desfeita_por` e o motivo.
+- **400** `confirmation_required`: sem `confirmar: true`. **404** `not_found`. **409** `prazo_vencido`: passaram os
+  `avisos.decisoes_automaticas.desfazer_dias` (7) desde `decidida_em`.
+- **409** `sem_inversa_segura`: a fila dona não tem volta segura; a mensagem começa com "não dá para desfazer
+  automaticamente: " e traz o porquê. Nada é marcado como desfeito.
+- **503** `not_ready`: o registro não foi composto.
+
+Inversa por fila (hoje): `aprendizado` DESLIGA o item (`published → disabled`, pelo mesmo caminho de
+`POST /api/aprendizado/{kind}/{ref}/status`; vale como veto, a plataforma não decide de novo), nunca `published →
+validated`, que o ciclo do livro não tem; `pergunta`, `objetivo` e `pedido` respondem `sem_inversa_segura`.
+
+Entradas do registro (o adaptador do 28.25, idempotente pela `origem_ref`): os eventos `run.updated` e `objective.updated`
+com `dados.vencimento = {regra, horas, desde}` (31.43; a forma antiga `dados.expirada` do 29.50 não é lida) e as linhas de
+`learning_transitions` com `decided_by = 'plataforma'` e motivo `auto:<regra> v<n> — <fatos>`, também depois do prefixo
+`confirmado que fica: ` (30.55). Quem decide registra direto por `app/shared/decisoes.py::registrar_decisao`.
+
+## Adendo v1.23 (04/10/2026; número da orquestradora; item 31.43) — a pergunta parada vence sozinha: `vencimento` nos eventos
+
+Aditivo ao v0.95. Nenhuma rota nova, nenhum status novo e nenhuma migração. O prazo da pergunta sem resposta passa a vir do
+config (`execucao.pergunta_vence_h`, 24 h por padrão; `execucao.vencimento_ligado` desliga). O que muda para quem lê:
+
+- O `data` do `run.updated` que a 29.50 emite (`needs_input` → `cancelled` pelo sistema) ganha `vencimento`; o `expirada` do v0.95
+  continua, igual, para quem já o lê.
+- Caso novo: o objetivo em `waiting_user` de execução já terminada (`completed_with_issues`) que ninguém retomou no prazo vai a
+  `cancelled` pelo sistema, e o `objective.updated` dessa transição leva o mesmo campo. A execução segue como
+  `recompute_run` a deriva (sem `cancel_requested`, sem o sinal `cancelou_execucao`).
+- Formato fixo, exatamente estas quatro chaves nos dois eventos:
+
+```json
+{"objective": {"status": "cancelled", "…": "…"},
+ "vencimento": {"regra": "31.43", "motivo": "vencido_sem_resposta", "horas": 24, "desde": "2026-10-03T12:00:00.000Z"}}
+```
+
+- `desde`: no `run.updated`, o `ts` da entrada em `needs_input`; no `objective.updated`, o mais tardio entre a entrada do
+  objetivo em `waiting_user` e o fim da execução. `horas` é o prazo em vigor (24, ou 0.5 se o config disser meia hora).
+- `status_detail` do objetivo: "Sem resposta em 24 h: o pedido venceu e foi encerrado pelo sistema. Para seguir, faça o
+  pedido de novo."
+
+Prova:
+- `simulated`: `tests/test_pergunta_vence.py`, `tests/test_needs_input_expira.py`.
+- `not_run`: o primeiro ciclo no central depois do deploy (fecha o estoque de 22 objetivos).
+## Adendo v1.24 (04/10/2026; número da orquestradora; item 30.55) — a aprovação automática por política
+
+`GET /api/aprendizado/aprovacao-automatica?itens=` é só leitura. `itens` é um booleano (padrão `false`).
+
+```json
+{"modo": "shadow",
+ "ultima_volta": {"em": "2026-10-04T17:00:00.000Z", "modo": "shadow", "avaliados": 40,
+                  "decidiria": ["receita:180", "fluxo:enviar-bom-dia-a-cada-contato-da-lista-d"], "marcados": 18,
+                  "decididos": [], "fora": {"app_fora_do_qa": 11, "classe_c": 10, "sem_a_favor": 18}},
+ "casos_na_sombra": 18,
+ "decididos_pela_plataforma": [{"item_ref": "receita:180", "de": "validated", "para": "published",
+                                "motivo": "auto:qa_para_aprovar v1 — classe B; …", "em": "…"}],
+ "itens": [{"item_ref": "receita:22", "fila": "revisar", "regra": "qa_revisar", "decide": false,
+            "fora": ["app_fora_do_qa", "classe_c", "sem_a_favor"], "classe": "C", "apps": ["com.instagram.android"],
+            "a_favor": 0, "contra": 0, "falhas_de_reproducao": 0, "saude": "sem_evidencia"}]}
+```
+
+- `ultima_volta` é `null` antes da primeira volta deste processo (90 s depois do início).
+- `decididos_pela_plataforma` traz as últimas 50 linhas da trilha com `decided_by = "plataforma"`, da mais nova para a
+  mais antiga. Cada uma vem com o item de AGORA: `kind`, `ref`, `titulo`, `app` e `estado` (o painel oferece Desligar
+  só ao que segue `published`); `gesto` (`publicar` ou `confirmar_que_fica`); `regra` e `versao` lidas do motivo. O
+  item que saiu do livro vem com `titulo`, `app` e `estado` nulos.
+- `itens` só vem com `itens=true`. Os motivos de fora são um vocabulário fechado
+  (`domain/aprovacao_automatica.MotivoDeFora`).
+- **503** `not_ready`: a aprovação automática não foi composta.
+
+Na trilha (`learning_transitions` e o detalhe do item), a decisão da plataforma é uma linha com
+`decided_by = "plataforma"`:
+- a publicação é `validated → published`, com o motivo `auto:<regra> v<n> — <fatos>`;
+- a confirmação de "Revisar" é `published → published`, com o motivo `confirmado que fica: auto:<regra> v<n> — <fatos>`.
+
+As regras são `qa_para_aprovar` e `qa_revisar`. O regex é `(?:^|: )auto:(?P<regra>[a-z_]+) v(?P<versao>\d+)(?: — |$)`.
+
+O desfazer é o `POST /api/aprendizado/{kind}/{ref}/status` de sempre, com `{"to": "disabled", "reason": "…"}`:
+- **200** com o item em `item.state = "disabled"`;
+- **409** `transition_forbidden` quando o item já está desligado.
+
+O operador de sessão chamado `plataforma` é gravado como `painel:plataforma`, como já acontece com `sistema`.
+
+Config: `aprendizado.aprovacao_automatica.modo` = `off` (de fábrica), `shadow` ou `on`, e `intervalo_s` (900).
+
+- `simulated`: `tests/test_aprovacao_automatica.py`.
+- `real`: `not_run` até o deploy.
 ## Adendo v1.27 (04/10/2026; número da orquestradora; item 28.10 F4) — o relatório do pai consolida os filhos
 
 Aditivo ao v1.16 e ao v1.17. Sem migração e sem rota nova. Só vale com `pedidos.colaboracao.enabled` e para um pedido com filhos;

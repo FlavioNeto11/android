@@ -69,7 +69,9 @@ lista de "Dados da persona disponíveis" (`planning/prompts.py::dados_block`): p
 e tipo. Dado não sigiloso (`perfil_nome`, `perfil_email`, `conta_<app>_usuario`) é variável `{nome}` que o executor
 resolve por aparelho na materialização (29.71: `conta_<app>_usuario` é o nome da conta no app, o @ do Instagram;
 no app de login gerenciado o identificador de login nunca vira variável, e no de login por formulário ele segue sendo
-o valor, porque é o que o formulário pede); dado sigiloso (`conta_<app>_senha`) aparece só como **nome** para
+o valor, porque é o que o formulário pede; a lista do planejador e a materialização usam o mesmo predicado "o app
+tem provedor de sessão?", e até a revisão do deploy 29 o `Repository` o tinha fixo em falso, o que deixava o e-mail
+no binding e no título da etapa); dado sigiloso (`conta_<app>_senha`) aparece só como **nome** para
 `type_secret(name=…)`, e o valor sai do cofre direto para o campo pelo canal sensível. O planejador (livre e por
 catálogo) recebe a lista **comum** a todos os aparelhos da execução (`available_data.common_data`); o ator e o
 verificador, a do aparelho da etapa. App com `SessionProvider` (Instagram) não oferece senha ao modelo: entra
@@ -503,6 +505,10 @@ nome da chave. A produção roda com os valores do exemplo (lidos em `GET /api/h
 | `ai.pathfinder_wait_s` | 240 | 0 (`config.py`) |
 | `android.auto_start_devices` | `true` | `false` (`config.py`) |
 | `android.max_online_devices` | 2 — comentado como vagas desta máquina | 10 (`config.py`, teto do host; cada worker traz o próprio `max_slots`) |
+
+Prazo da etapa livre (a conduzida pelo ator de IA): o `timeout_s` vem do modelo, preso entre `PISO_DA_ETAPA_COM_IA_S`
+(120 s, item 29.75; era 30) e 600 s em `planning/parsing.py::_etapa_livre`. Em 7 dias até 04/10, 18 tentativas morreram
+por prazo, 12 delas com os 60 s que o modelo pedia, 8 com a chamada de IA passando do prazo restante.
 
 ## 12. O que foi MEDIDO (não confundir com configuração prevista)
 

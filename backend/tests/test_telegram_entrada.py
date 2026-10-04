@@ -113,6 +113,11 @@ class PortasFalsas:
         self.pergunta = "Para qual contato?"        # o que a execução em needs_input pergunta (B2)
         self.sensivel_aberta = False                # há execução esperando senha/código/2FA/token (palavra solta)
         self.sensivel_quebra = False
+        self.recusar_previa: str | None = None      # 28.28: o texto da recusa da prévia (o "sem destino" do extrator)
+        self.personas: list[str] = []               # 28.28: os nomes que a conversa tira do que manda
+
+    def nomes_de_persona(self) -> list[str]:
+        return list(self.personas)
 
     def _anota(self, nome: str, *args: object) -> None:
         self.chamadas.append((nome, args, operador_atual()))
@@ -134,6 +139,9 @@ class PortasFalsas:
     def execucoes_esperando(self) -> list[str]:
         return ["r-20261002181523-4985a1"]
 
+    def ids_de_aprovacoes(self) -> list[str]:
+        return [*self.aprovacoes_pendentes(), "apr-0000cc33"]       # cc33 já foi decidida
+
     def decidir(self, approval_id: str, verbo: str, nota: str | None = None) -> str:
         self._anota("decidir", approval_id, verbo) if nota is None else self._anota("decidir", approval_id, verbo, nota)
         return "Aprovado: a execução segue." if verbo == "approve" else "Vetado: nada é enviado."
@@ -144,6 +152,8 @@ class PortasFalsas:
 
     def previa(self, texto: str, instance_ids: list[str] | None = None) -> Previa:
         self._anota("previa", texto, tuple(instance_ids or ()))
+        if self.recusar_previa:
+            raise RecusaDaCentral(self.recusar_previa)
         if instance_ids:
             return Previa(alvos=[{"instance_id": instance_ids[0], "profile_id": None, "origem": "ui"}], perguntas=[],
                           comando=texto)
@@ -355,6 +365,46 @@ async def test_reply_ao_aviso_de_aprovacao_decide_como_pessoa(c: Cenario) -> Non
     assert c.linha(5)["alvo"] == "approval:apr-0000aa11"
 
 
+async def test_reply_com_id_de_outra_pendencia_nao_decide_nada(c: Cenario) -> None:
+    # 28.26: o reply é ao aviso do aa11 e o id digitado é o do bb22. Antes, decidia o aa11 com "bb22" de nota.
+    c.repo.registrar_enviada("555", "aviso", fato="approval:apr-0000aa11")
+    await c.volta(msg(5, "/aprovar bb22", reply_to=555))
+    assert "decidir" not in c.portas.nomes()
+    assert c.linha(5)["estado"] == "feita"
+    resposta = c.bot.textos()[-1]
+    assert "nada foi decidido" in resposta and "aa11" in resposta and "bb22" in resposta
+
+
+async def test_reply_com_id_de_aprovacao_decidida_ou_de_pergunta_nao_decide(c: Cenario) -> None:
+    # Revisão da suíte 31: só as PENDENTES eram conferidas, e o id de uma já decidida ou de uma execução esperando
+    # resposta virava nota e decidia o aviso respondido.
+    c.repo.registrar_enviada("555", "aviso", fato="approval:apr-0000aa11")
+    await c.volta(msg(5, "/aprovar cc33", reply_to=555), msg(6, "/vetar 4985a1", reply_to=555))
+    assert "decidir" not in c.portas.nomes()
+    assert all("nada foi decidido" in t for t in c.bot.textos()[-2:])
+
+
+async def test_reply_com_pedaco_curto_de_id_nao_decide_mas_nota_curta_segue(c: Cenario) -> None:
+    c.repo.registrar_enviada("555", "aviso", fato="approval:apr-0000aa11")
+    await c.volta(msg(5, "/aprovar a1f", reply_to=555))
+    assert "decidir" not in c.portas.nomes()
+    assert "curto demais" in c.bot.textos()[-1]
+    await c.volta(msg(6, "/aprovar ok pode ir", reply_to=555))
+    assert c.portas.chamadas[-1] == ("decidir", ("apr-0000aa11", "approve", "ok pode ir"), OPERADOR_DO_TELEGRAM)
+
+
+async def test_reply_com_o_mesmo_id_decide_e_o_id_sai_da_nota(c: Cenario) -> None:
+    c.repo.registrar_enviada("555", "aviso", fato="approval:apr-0000bb22")
+    await c.volta(msg(5, "/vetar bb22 o tom ficou agressivo", reply_to=555))
+    assert c.portas.chamadas[-1] == ("decidir", ("apr-0000bb22", "reject", "o tom ficou agressivo"), OPERADOR_DO_TELEGRAM)
+
+
+async def test_reply_com_nota_que_nao_e_id_segue_como_antes(c: Cenario) -> None:
+    c.repo.registrar_enviada("555", "aviso", fato="approval:apr-0000aa11")
+    await c.volta(msg(5, "/aprovar pode seguir assim", reply_to=555))
+    assert c.portas.chamadas[-1] == ("decidir", ("apr-0000aa11", "approve", "pode seguir assim"), OPERADOR_DO_TELEGRAM)
+
+
 async def test_aprovar_pelo_fim_do_id_e_ambiguidade(c: Cenario) -> None:
     await c.volta(msg(5, "/vetar bb22"), msg(6, "/aprovar aa11"))
     assert c.portas.chamadas[0][:2] == ("decidir", ("apr-0000bb22", "reject"))
@@ -442,3 +492,74 @@ async def test_quem_e_voce_responde_que_e_a_ana_e_que_e_ia_sem_previa(c: Cenario
     assert c.bot.textos()[-2:] == [RESPOSTA_IDENTIDADE] * 2
     assert "uma IA, não uma pessoa" in RESPOSTA_IDENTIDADE and RESPOSTA_IDENTIDADE.startswith("Sou a ANA, a IA")
     assert c.linha(5)["intencao"] == "identidade" and c.linha(5)["estado"] == "feita"
+
+
+# ---------------------------------------------------------------- 28.28: pergunta ao bot não vira comando de aparelho
+SEM_DESTINO = 'Diga onde ou por quem: escolha aparelhos, personas, ou cite no comando ("com a persona André", "no android-03").'
+
+
+async def test_pergunta_solta_do_dono_vai_a_orquestradora_e_nao_a_previa(c: Cenario) -> None:
+    # A mensagem literal do dono (entrada 889, 04/10 18:19Z): virava texto livre e a prévia pedia destino.
+    c.portas.recusar_previa = SEM_DESTINO
+    await c.volta(msg(5, "porque tem tanta coisa represada em validação?"))
+    assert "previa" not in c.portas.nomes()
+    assert (c.linha(5)["estado"], c.linha(5)["destino"]) == ("orquestradora", "orquestradora")
+    assert c.bot.textos()[-1] == "Recebi sua pergunta: a resposta vem por aqui, em resposta a esta mensagem."
+
+
+async def test_reply_a_resposta_do_repasse_continua_a_conversa(c: Cenario) -> None:
+    # O "no trello" do dono (entrada 891) foi reply à NOSSA resposta: junta à pergunta e não vira pedido novo.
+    c.portas.recusar_previa = SEM_DESTINO
+    await c.volta(msg(5, "porque tem tanta coisa represada em validação?"))
+    resposta = c.repo.db.scalar("SELECT ref_mensagem FROM canal_enviadas WHERE entrada_id=?", (c.linha(5)["id"],))
+    await c.volta(msg(6, "no trello", reply_to=int(resposta)))
+    assert "previa" not in c.portas.nomes()
+    assert c.linha(6)["estado"] == "orquestradora"
+    assert json.loads(c.linha(6)["previa"])["texto"] == "porque tem tanta coisa represada em validação? — no trello"
+    assert "anterior" in c.bot.textos()[-1]
+
+
+async def test_texto_livre_sem_destino_recusado_vai_a_orquestradora_sem_o_texto_do_extrator(c: Cenario) -> None:
+    c.portas.recusar_previa = SEM_DESTINO
+    await c.volta(msg(5, "ver o andamento das coisas"))
+    assert c.linha(5)["estado"] == "orquestradora"
+    assert "Diga onde ou por quem" not in c.bot.textos()[-1]
+    assert "no android-12" in c.bot.textos()[-1]
+
+
+async def test_pedido_com_aparelho_segue_para_a_previa_mesmo_com_interrogacao(c: Cenario) -> None:
+    # Contraprova: citar o aparelho faz da frase um pedido.
+    await c.volta(msg(5, "pode abrir o QA Messenger no android-09?"))
+    assert c.portas.chamadas[-1][0] == "previa"
+    assert "Executar" in json.dumps(c.bot.mensagens()[-1]["reply_markup"])
+
+
+async def test_quem_e_voce_segue_identidade(c: Cenario) -> None:
+    await c.volta(msg(5, "quem é você?"))
+    assert "previa" not in c.portas.nomes()
+    assert c.linha(5)["estado"] == "feita"
+
+
+async def test_nenhuma_resposta_do_canal_sai_com_nome_de_persona(c: Cenario) -> None:
+    # Varre as recusas: o texto vem do serviço compartilhado com o painel e pode trazer o nome (o exemplo do extrator).
+    c.portas.personas = ["André", "andre.qa", "Bruno Lima"]
+    c.portas.recusar_criar = True
+    c.portas.alvos = [{"instance_id": "android-09", "profile_id": None, "origem": "texto"}]
+    c.portas.perguntas = []
+    await c.volta(msg(5, "/para android-09: comente oi com a persona André e @andre.qa"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.recusar_previa = "Recusado: Bruno Lima e ANDRE não podem agir aqui"
+    await c.volta(msg(7, "/para android-10: postar"))
+    for texto in c.bot.textos():
+        normal = texto.lower()
+        assert "andré" not in normal and "andre" not in normal and "bruno lima" not in normal, texto
+    assert any("<persona>" in t for t in c.bot.textos())
+
+
+async def test_sem_nome_de_persona_troca_palavra_inteira_sem_acento_e_poupa_a_ana() -> None:
+    from app.modules.avisos.infrastructure.entrada import sem_nome_de_persona
+    nomes = ["André", "@andre.qa", "Ana", "Bruno Lima", "Li"]
+    assert sem_nome_de_persona('cite "com a persona ANDRE" ou @andre.qa', nomes) == 'cite "com a persona <persona>" ou <persona>'
+    assert sem_nome_de_persona("Bruno Lima respondeu; a ANA viu", nomes) == "<persona> respondeu; a ANA viu"
+    # Contraprova: pedaço de palavra não é nome ("Andressa", "Lista"), e nome curto demais (< 3) não entra.
+    assert sem_nome_de_persona("Andressa olhou a Lista", nomes) == "Andressa olhou a Lista"

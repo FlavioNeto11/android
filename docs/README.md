@@ -59,6 +59,24 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 | Execução do plano-100 pela IDE (workflow, pacotes, custo) | [`claude-plano-100.md`](claude-plano-100.md) | Ao rodar a esteira (skill `plano-100`) |
 | Mudanças por data | [`../CHANGELOG.md`](../CHANGELOG.md) | Para ver o que mudou e o que está implantado |
 
+## Onde alterar
+
+| Área | Código | Doc principal |
+|---|---|---|
+| API, eventos, rotas | `backend/app/api.py`, `models.py`, `events.py` | [`api-contract.md`](api-contract.md) |
+| Comandos e worker | `backend/app/commands/`, `workers/`, `worker/` | [`arquitetura.md`](arquitetura.md), [`worker.md`](worker.md) |
+| Aparelhos e parque | `backend/app/devices/`, `taskqueue/scheduler.py` | [`dominios/parque.md`](dominios/parque.md) |
+| Fila e execução | `backend/app/taskqueue/`, `modules/execution/` | [`dominios/execution.md`](dominios/execution.md) |
+| IA | `backend/app/planning/`, `taskqueue/executor.py` | [`ia.md`](ia.md) |
+| Apps, releases, loja, manifesto de app | `backend/app/releases/`, `modules/applications/` (`planning/catalog/` é shim) | [`dominios/apps-e-loja.md`](dominios/apps-e-loja.md) |
+| Skills, DSL, compilador, ensino | `backend/app/modules/skills/`, `modules/capabilities/`, `contracts/skills/` | [`dominios/skills.md`](dominios/skills.md), [`design/evolucao-arquitetural.md`](design/evolucao-arquitetural.md) |
+| Perfis, Instagram, treinamento | `backend/app/social/`, `app/conhecimento/apps/`, `integrations/app_declarado/`, `training/` | [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md) |
+| Retrieval de contexto de código (desligado por padrão) | `backend/app/modules/context_retrieval/`, `scripts/plano-100-pacotes.py --contexto` | [`dominios/context-retrieval.md`](dominios/context-retrieval.md) |
+| Banco e migrações | `backend/app/db.py`, `backend/migrations/` | [`banco.md`](banco.md) |
+| Segurança | `backend/app/security/` | [`operacao.md`](operacao.md) |
+| Painel | `frontend/src/features/*` | [`produto.md`](produto.md) |
+| Operação e scripts | `scripts/*.ps1` | [`operacao.md`](operacao.md) |
+
 ## Registros datados (histórico: evidência, não instrução)
 
 | Documento | O que é | Situação |
@@ -71,7 +89,7 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 
 ## Instruções para o Claude (carregadas automaticamente)
 
-- [`../CLAUDE.md`](../CLAUDE.md): invariantes, comandos, protocolo e mapa "onde alterar".
+- [`../CLAUDE.md`](../CLAUDE.md): invariantes, comandos essenciais e protocolo; o mapa "onde alterar" está na seção [Onde alterar](#onde-alterar) acima.
 - `.claude/rules/*.md`: regras por caminho, carregadas quando você abre arquivos da área (migrações, workflow,
   segredos e mundo real, testes, plano-100).
 - `.claude/skills/`:

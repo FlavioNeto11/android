@@ -107,7 +107,12 @@ gerenciador de aparelhos, de um lado, e o livro, do outro. Sem o livro ligado (`
 
 `failure_kind` é gravado em `repository.finish_attempt` (o erro final), na reconciliação (`interrompida`) e no desfecho
 da etapa. O vocabulário é fechado (`domain/falhas.py::FailureKind`), e uma catraca por AST exige que todo motivo do
-executor caia fora de `outro`. A camada e o "onde alterar" saem do tipo na hora da leitura.
+executor caia fora de `outro`. A catraca cobre também os motivos de `dado_ausente(...)` (30.58). A camada e o "onde
+alterar" saem do tipo na hora da leitura.
+
+O "Dado ausente: procurei …" da etapa de leitura (31.38) é `alvo_ausente`, qualquer que seja o motivo entre parênteses
+(30.58). A regra vem antes dos tetos de IA: "orçamento de chamadas da etapa esgotado" diz como a leitura desistiu, não
+que faltou crédito. Antes, as 7 tentativas de 04/10 caíam em `outro` e viravam candidato genérico no portal.
 
 Quando a etapa termina por erro de IA, o tipo vem dele e não do texto (RA-22, migração 081). O executor põe o
 `AIError.kind` no `StepOutcome.ai_error_kind` (o `desfecho_de_ia`, a verificação, e o `_run_guarded` do scheduler para o
@@ -117,6 +122,19 @@ Os dois classificam por `classificar_falha(texto, status, error_kind)`, o mesmo 
 `invalid_output` → `ia_indisponivel` (`pelo_erro_que_encerrou`). `step_deadline` não decide: o ANR anotado no texto
 continua ganhando do prazo. O status vem antes (`interrupted` segue `interrompida`). Com isso a mensagem de IA do
 executor deixa de ser contrato; as REGRAS de texto ficam para o legado sem `error_kind`.
+
+**A interrompida que esperou a pessoa (29.74).** `interrupted` segue `interrompida` na reconciliação, na pausa e na
+tomada de controle. A tentativa que parou para esperar a pessoa (o `recovery` do `waiting_user`, "Aguardando o
+usuário", e o da prova de fluxo, "Prova de fluxo: encerrada pelo sistema": `falhas.ESPEROU_A_PESSOA`) é classificada
+pelo texto, como a etapa: autenticação, trava da conta (`auth_challenge`), saldo, falta de informação. Texto sem regra
+ali, ou com tipo de navegação (o texto gravado pode ser o erro anterior da tentativa), é o relato livre da IA
+(`ia_declarou_bloqueio`): só o que nunca vira lição e a falta de informação passam (`DA_PESSOA_NA_ESPERA`). Antes, tudo isso formava um grupo da camada `execucao`
+(`fk-d0f1c2ed23`, ~77 ocorrências em 04/10) que ninguém consertava. O legado gravado `interrompida` é relido com o
+`recovery` na leitura retroativa (`falhas.tipo_da_tentativa`, no relatório, no agregado diário, no feedback e no
+aprendido da execução), sem migração, e conta como retroativo. Com `retroativo=False`, fica o gravado. A série
+diária já agregada (`learning_daily`) não é reescrita: os dias antigos seguem `interrompida` e os recentes saem
+reclassificados (decisão da orquestradora, 04/10: não recompor, não se apaga dado por isso). Saúde D-5, orçamento do
+curador, gatilhos, dossiê e a régua do 30.55 não leem o tipo da tentativa.
 
 **Dívida paga (29/09, `2b0e5db`).** O contrato de gesto mora em `app/shared/costuras.py`: `TomadaDeControle`,
 `CosturaDeControle`, `avisar`, as portas de comando e de ensino e `autor_do_gesto`. `taskqueue/costuras.py` o reexporta,
@@ -377,7 +395,17 @@ com o banco aberto só para leitura.
   depois de `fixed` é medida nas últimas 2 × `prova_minimo` elegíveis. `fixed` e `reopened` nunca vêm de uma pessoa.
 - **Propostas** (sempre decisão de pessoa): `acao_de_catalogo` (ação nova não entra no catálogo pelo banco),
   `promover_licao` e `promover_tela`.
+  - Desde o 30.59, a `acao_de_catalogo` agrupa por (app, chave da etapa), com a referência `<pacote>|etapa:<chave>`.
+    Antes agrupava por `template_hash`, e a mesma etapa com dois objetivos virava duas propostas iguais.
+  - Ela não é proposta quando 80 % ou mais das etapas comprovadas fecharam sem IA (`driven_by` `recipe` ou
+    `sem_ator`, `ACAO_SEM_IA_MAX`): o ganho já foi colhido.
+  - As linhas antigas, por `template_hash` (`<pacote>|<hash>`), não são reescritas: o estado de uma linha é da pessoa.
+    Ficam abertas até alguém marcá-las `wontfix` pela rota do backlog.
 - `scripts/aprendizado-backlog.py` grava o md em `data/aprendizado/` e imprime o topo.
+- `scripts/candidatos-do-portal.py` (29.72) grava `data/aprendizado/candidatos-do-portal.json`: os grupos abertos e sem
+  item do plano viram candidatos para a orquestradora numerar (contagem, ids de exemplo, frente sugerida). Ajuste de 04/10: `amostra_de_lote` (quantos dos exemplos são execução nossa, pela chave de idempotência
+  `lote:`/`ensaio:` ou pela prova de fluxo, lida do banco do central só para leitura, porque a API não expõe a chave) e
+  `dias_sem_ocorrer`; o grupo de amostra toda nossa ou parado há mais de 7 dias vai para o fim, com o motivo em `rebaixado`.
 - **Quebra de série do `pct_por_receita`** (a parte das etapas conduzidas só por receita, em `Saude`): no deploy 7
   (03/10/2026, processo do central de pé às 07:28:40Z; commit 49811568, migração 081) o denominador mudou. Antes,
   a etapa conduzida pela IA com as receitas desligadas ficava com `driven_by` nulo (`-`, fora da conta). Desde então
@@ -1547,7 +1575,7 @@ nunca chama IA.
 - a `invalida` da execução VENCE no fechamento (antes do `for`): o pedido fecha `recusada` com o motivo dela
   (`efeito_repetido`, `ponto_de_partida`, `ator_sem_acao`). Não devolve o item ao curador nem reabre. Um pedido já
   fechado `sem_evidencia` cuja execução ganha depois a `invalida` passa ao motivo dela (o mesmo molde do 30.36);
-- **limite de provas:** no máximo 2 provas por item e versão do conteúdo em 7 dias (`MAXIMO_DE_PROVAS`,
+- **limite de provas:** no máximo 4 provas por item e versão do conteúdo em 7 dias (era 2 até o 29.75; `MAXIMO_DE_PROVAS`,
   `JANELA_DE_PROVAS_DIAS`). A 3ª fecha `recusada/limite_de_provas` ao despachar, sem gastar. A versão é a marca
   `[xxxxxxxxxxxx]` (`content_hash` do plano); prova anterior com outra marca não conta, e prova sem marca conta (lado
   seguro). É aproximado, sem migração;
@@ -1570,7 +1598,7 @@ No P4 de 03/10, a prova do fluxo com `for_each` sobre 8 contatos gastou US$ 0,15
 enviou 3 mensagens e fechou `sem_evidencia`; inteira, custaria de 0,33 a 0,36. Decisão da orquestradora (03/10 21:44Z),
 sem migração:
 
-- **O teto da prova de fluxo** é `min(0,40; 0,05 + 0,02 × etapas)` (`domain/validacao.teto_da_prova`,
+- **O teto da prova de fluxo** é `min(0,80; 0,05 + 0,02 × etapas)` (máximo de 0,40 até o 29.75) (`domain/validacao.teto_da_prova`,
   `TETO_DA_PROVA_*`). Ele vai ao pedido no despacho, no mesmo UPDATE que liga a execução (`comecar(...,
   teto_da_prova=)`), e VENCE o teto gravado: o fixo de quando o pedido nasceu, ou o 0,15 gravado à mão em 03/10 20:56Z.
 - **O plano acima do máximo não despacha.** Com 18 etapas ou mais, ou de tamanho desconhecido, o pedido fecha
@@ -1618,7 +1646,7 @@ das versões). `real`: `not_run` até o deploy.
 O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 e o fluxo nunca se validava por pedido: o
 lv-5cf7389f13e4e0f0 (30.47, 04/10) fechou `plano_acima_do_teto`. Agora a PROVA de fluxo roda uma amostra:
 
-- **N** é o maior número de itens que cabe no máximo da prova (`maximo_de_etapas_da_prova()`, 17 etapas), entre
+- **N** é o maior número de itens que cabe no máximo da prova (`maximo_de_etapas_da_prova()`, 37 etapas desde o 29.75), entre
   `AMOSTRA_MINIMA` (2) e `AMOSTRA_MAXIMA` (3): `tamanho_da_amostra(fixas, por_item)` em `domain/validacao.py`. Sem
   laço, ou sem caber nem 2 itens, é `None` e o pedido fecha `plano_acima_do_teto` como antes.
 - **Os N primeiros, na ordem da tela.** Não há sorteio: o `Scheduler._expand_for_each`, só quando a execução tem
@@ -1785,3 +1813,84 @@ Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
   teto de 150 tokens vale só para os pares (o bloco passa de ~220); `destemplatizar` troca substring sem fronteira de
   palavra; a varredura olha só 2 dias; o painel não consome as sugestões.
 - **Todos:** a suíte em PostgreSQL para o SQL de A2–A9 é `not_run`.
+
+## A aprovação automática (30.55)
+
+Pedido do dono (04/10): há coisa demais para ele aprovar pelo portal. A plataforma passa a decidir, pela régua, a
+receita e o fluxo que esperam por ele em duas filas. Desenho aprovado pela orquestradora às 16:16Z; a régua foi medida
+no 31.42; emenda datada do ADR-054. Sem migração.
+
+| Fila | Gesto da plataforma | Regra (no motivo) |
+|---|---|---|
+| "Para aprovar" (`validated` segurado pela D1) | publica (`validated → published`) | `qa_para_aprovar` |
+| "Revisar" (legado publicado com efeito) | confirma que fica, sem disparar prova | `qa_revisar` |
+
+**A régua** (`domain/aprovacao_automatica.avaliar`, pura). Devolve todos os motivos de fora, não só o primeiro:
+
+| Condição | Motivo de fora |
+|---|---|
+| a plataforma ainda não decidiu este item | `ja_decidido_pela_plataforma` |
+| todo app do item é de categoria `qa` (`apps.category`) | `app_fora_do_qa` |
+| classe de agora A ou B (a mais restritiva entre o dossiê e o parecer; sem dossiê, C) | `classe_c` |
+| ≥ 1 a favor real e efetivo na versão atual | `sem_a_favor` |
+| 0 contra efetivo | `evidencia_contra` |
+| nenhuma falha de reprodução (receita: `replay_fail`) | `falha_de_reproducao` |
+| saúde não é `degradando` nem `obsoleto_provavel` | `saude_rebaixando` |
+| nenhum parecer real e pendente do curador pedindo rebaixar, desativar, substituir, fundir ou aposentar | `parecer_contra` |
+| não é reaprendido (30.23), não tem texto de pessoa, nenhum veto o alcança | `reaprendido`, `texto_de_pessoa`, `vetado` |
+
+O parecer ausente ou `pedir_evidencia` não barra: a delegação do dono cobre. O simulado e o que uma pessoa já decidiu
+não pesam.
+
+A evidência da receita mora na fonte: a favor = `replay_ok` + `shadow_agree`; contra = a sombra que discordou
+(`shadow_total − shadow_agree`). O fluxo usa a evidência real da marca do conteúdo, sem as execuções invalidadas, como a
+autopublicação.
+
+**Como decide** (`application/aprovacao_automatica.py`). O laço próprio roda sob a trava de líder; a primeira volta é
+90 s depois do início, e as seguintes a cada `intervalo_s`.
+- **Em `shadow`:** marca uma vez o que decidiria (sinal `aprovaria`, `source_ref = aprovaria:<item>`,
+  `created_by = sistema`; fora da aba Sinais).
+- **Em `on`:** passa pela porta da pessoa (`LearningService.mudar_estado` e `confirmar_que_fica`) com
+  `by = "plataforma"`.
+  - Trilha, veto, guarda do fluxo e CAS são os de sempre.
+  - O motivo é `auto:<regra> v1 — classe B; app com.pocqa.messenger (qa); 10 a favor, 0 contra; 0 falhas de
+    reprodução; saúde saudavel; parecer observar (lr-…)`. Na confirmação, vem depois de `confirmado que fica: `.
+  - `regra_do_motivo()` devolve `(regra, versão)`. É o contrato com a Canais (28.25), que lê as linhas de
+    `decided_by = plataforma` por adaptador.
+  - O rótulo do parecer NÃO é gravado: a decisão da plataforma não entra no acerto do curador.
+- **A recusa** de uma transição (o item mudou no meio, um veto novo) fica no log, e o item segue com o dono.
+
+**Desfazer** é desligar (`published → disabled`), a ação de sempre da pessoa; a tabela não volta a `validated`. O item
+que a plataforma já decidiu não é decidido por ela de novo.
+
+**Leitura:** `GET /api/aprendizado/aprovacao-automatica?itens=true` devolve:
+- o modo e a última volta (avaliados, quem decidiria, decididos e quantos ficaram fora por motivo);
+- os casos na sombra e as últimas 50 decisões da plataforma;
+- com `itens`, a régua item a item.
+
+**Painel** (aba Aprendizado › Para aprovar; `DecididoPelaPlataforma.tsx`): a seção "Decidido pela plataforma" fica
+depois das duas filas, para o dono ver primeiro o que sobra para ele.
+- **Em `on`:** mostra as 5 decisões mais recentes, com "Ver todas". Cada uma traz o título, o gesto ("Publicou" ou
+  "Confirmou que fica"), a hora, a regra e o "Por quê" (os fatos do motivo, sem o prefixo). O botão "Desligar" (motivo
+  obrigatório) só aparece enquanto o item segue `published`; o item já desligado leva o selo "Desligado depois".
+- **Em `shadow`:** avisa que a plataforma só observa e lista, pelos nomes das filas, o que ela decidiria na última
+  volta.
+- **Em `off` sem decisão, ou com backend sem a rota:** a seção some.
+- "Para aprovar" diz, em `on`, que os itens do app de teste que cumprem a régua a plataforma decide sozinha.
+
+**Config:** `aprendizado.aprovacao_automatica`, com `modo: off | shadow | on` (`off` de fábrica) e `intervalo_s`
+(900). O laço lê o modo a cada volta, mas do config CARREGADO: o `config.yaml` só é lido na subida, então mudar o modo
+pede reiniciar a tarefa `farm-central` (30.63; antes esta linha dizia o contrário). Escreva o modo entre aspas
+(`modo: "on"`). Sem aspas, o YAML lê `on`/`off` como booleano, e desde o 30.63 o booleano vale como a palavra.
+
+Revisão que a régua lê (30.63): a REAL mais recente do curador. Uma simulada mais nova não esconde um parecer real
+anterior contra nem uma classe C.
+
+**Prova:**
+- `simulated`: `backend/tests/test_aprovacao_automatica.py`.
+- Ensaio sobre uma CÓPIA do banco do central (04/10 ~16:40Z, também `simulated`):
+  - de 40 itens (3 + 37), decidiria 18, todos do app de QA e classe B;
+  - em `on`, as filas foram de 3 para 0 e de 37 para 22;
+  - a segunda volta não decidiu nada;
+  - os 11 do Instagram ficaram com o dono.
+- `real`: `not_run` até o deploy (entra em `shadow`).

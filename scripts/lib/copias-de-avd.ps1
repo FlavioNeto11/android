@@ -10,7 +10,8 @@ $script:EstadosParados = @('hibernated', 'stopped')
 
 function Get-EstadoDoAparelho {
   param([string]$Id, [string]$Api = 'http://127.0.0.1:8000')
-  $lista = Invoke-RestMethod -Uri "$Api/api/instances" -TimeoutSec 10
+  # 30 s (29.75): o backup roda em prioridade Idle e, com o host ocupado, a lista passou dos 10 s (04/10, android-06).
+  $lista = Invoke-RestMethod -Uri "$Api/api/instances" -TimeoutSec 30
   if ($lista -isnot [array] -and $lista.instances) { $lista = $lista.instances }
   $rt = $lista | Where-Object { $_.id -eq $Id } | Select-Object -First 1
   if ($rt) { [string]$rt.state } else { 'desconhecido' }

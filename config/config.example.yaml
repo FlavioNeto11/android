@@ -208,6 +208,8 @@ limits:
   # públicos da MESMA conta quando o alvo é outra conta da frota (viva); vale o maior entre ele e o cooldown do perfil (45 s).
   # Conta retirada por bloqueio segue recusada. Baixe com cuidado: é o ritmo baixo que a decisão do dono pede.
   fleet_min_spacing_to_own_account_s: 600
+  # 30.60 (N4): publicar no feed passa por uma pessoa mesmo com perfil ou grupo autônomo. true só se o dono decidir.
+  publicar_sem_aprovacao: false
   # Item 17.12: num for_each, cada item além do primeiro soma ai_max_calls_per_item ao teto acima, até ai_max_calls_absolute
   # (60 + 12 × 7 = 144 para 8 itens). 0 em per_item desliga a proporção. O rejulgamento conta; os tetos em US$ seguem.
   ai_max_calls_per_item: 12
@@ -226,6 +228,11 @@ limits:
   max_online_devices: 2           # vagas simultâneas: ≈2,6 GB cada. Suba conforme a RAM livre desta máquina
   min_online_dwell_s: 30
   idle_stop_s: 0                  # >0 também hiberna por ociosidade, mesmo sem disputa de vaga
+
+# Vencimento do que espera uma pessoa que não veio (29.50 e 31.43): só muda estado; nada responde, digita nem toca aparelho.
+execucao:
+  vencimento_ligado: true         # false: nem a pergunta (needs_input) nem o bloqueio (waiting_user) vencem sozinhos
+  pergunta_vence_h: 24            # horas sem resposta (0,01 a 8760); no bloqueio, conta do mais tardio entre a espera e o fim da execução
 
 ai:
   # O provedor real é escolhido no .env (AI_PROVIDER). Quando for externo, screenshots e textos das telas SAEM
@@ -517,6 +524,10 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   # agrupar_s: 60                 # rajada (28.19): 1º aviso do tipo sai na hora; os seguintes da janela saem juntos (0 desliga)
   # agrupar_a_partir_de: 3        # com tantos ou mais na janela, UMA mensagem com a contagem; com menos, um a um
   # aprendizado_faixas: [C]       # faixas do learning.needs_person que avisam (28.14); a B (lote) fica só na caixa
+  # decisoes_automaticas:          # o que a plataforma decide sozinha (28.25)
+  #   janela_min: 60              # no máximo UMA mensagem de resumo por janela, e só se houve decisão nova
+  #   desfazer_dias: 7            # prazo para o dono desfazer uma decisão automática
+  #   intervalo_s: 30             # volta do adaptador (eventos e trilha do aprendizado) e do resumo
   # entrada:                       # a conversa de volta (28.15, ADR-071): o chat do .env aprova, veta, responde e pede
   #   enabled: false              # (false) desligada; só liga com avisos.enabled. Ligar troca o consumidor do bot (docs/operacao.md)
   #   limite_por_min: 10          # mensagens do chat por minuto; o excesso vira `limitada`
@@ -535,6 +546,11 @@ avisos:                           # aviso fora do painel (item 28.11): espelho d
   #     enabled: true             # (true) false = recusa todo anexo, com o motivo dito ao dono
   #     max_bytes: 10485760       # (10 MB) acima disso é recusado sem baixar tudo; o Bot API baixa até 20 MB
   #     tipos: [image/jpeg, image/png, image/webp, application/pdf, text/plain]   # o mime é conferido pelo conteúdo
+  #     leitura:                  # (28.24 F3) a IA descreve a imagem que o DONO mandou, a pedido (/ler em reply, ou POST /api/canais/anexos/{id}/ler)
+  #       enabled: true           # (true) false = a leitura responde 'desligada', sem chamar o provedor
+  #       teto_usd: 0.05          # (0.05) por imagem, ESTIMADO antes da chamada: acima disso nada é enviado ao provedor
+  #       modelo: ""              # vazio = o mais barato de ai.prices com vision:true em ai.models (hoje claude-haiku-4-5)
+  #       max_tokens: 400         # teto da resposta do modelo
 
 trello:                           # Trello do dono (item 32.2, ADR-072): espelho do plano e canal de comandos. Ligar exige TRELLO_API_KEY e TRELLO_TOKEN no .env
   enabled: false                  # (false) desligado = nenhuma chamada ao Trello. Os segredos NUNCA moram aqui (docs/operacao.md)
@@ -588,6 +604,7 @@ rede:                             # rede por aparelho (ADR-056): aplicação no 
     udp_dns: 8.8.4.4              # UDP de DNS de ida e volta (o cliente sequestra e resolve pelo túnel)
     udp_ntp: time.google.com      # UDP que não é DNS (NTP); udp_ok só com os dois
     reverificar_s: 600            # aparelho `parcial` é medido de novo depois disto (varredura ou porta da tarefa)
+    prazo_leitura_s: 90           # prazo de cada leitura da rede pelo adb (a fila dá +10 s); era 45 fixo (29.75)
     abrir_apps: false             # true = a sonda abre o app exigido sem tráfego na janela TAMBÉM sem tarefa esperando
                                   # (com tarefa segurada pela porta, abre sempre: é o que a tarefa faria; é usar a conta)
     espera_app_s: 15              # quanto o app aberto pela sonda fica na frente antes de voltar ao início
@@ -659,6 +676,15 @@ aprendizado:                      # aprendizado contínuo (ADR-054): livro, D1, 
   autopublicacao:
     modo: "off"
     intervalo_s: 3600             # de quanto em quanto tempo o laço avalia os fluxos (sob a trava de líder)
+  # Aprovação automática por política (30.55, pedido do dono em 04/10): a plataforma decide a receita ou o fluxo de
+  # "Para aprovar" (publica) e de "Revisar" (confirma que fica) quando: classe A ou B, todo app de categoria qa, ≥ 1 a
+  # favor real e 0 contra na versão atual, sem falha de reprodução, saúde sem rebaixar e nenhum parecer de rebaixar ou
+  # descartar. Conta real, classe C e app sem categoria ficam com o dono. Grava decided_by=plataforma com o motivo
+  # "auto:<regra> v1 — <fatos>"; desfazer é a ação de sempre. "off" (padrão) · "shadow" só marca o que decidiria · "on".
+  # Sempre entre aspas (on/off sem aspas é booleano no YAML) e, para valer, reinicie o central (o config é lido na subida).
+  aprovacao_automatica:
+    modo: "off"
+    intervalo_s: 900
   ia_resumos_por_dia: 0           # lição escrita por IA: desligada (gasta saldo e abre injeção); só 0 é aceito
   takeover_gravar: false          # gravar as entradas manuais da tomada de controle fora do treino
   retencao: {sinais_dias: 180, feedback_dias: 365, exposicoes_dias: 120, evidencias_por_item: 200, diario_dias: 400,

@@ -45,7 +45,13 @@ ver [`../api-contract.md`](../api-contract.md); para os estados de comando e o r
   23 wakes passavam de 90 s só carregando). Com "Successfully loaded snapshot" (`_snapshot_verdict` True) o
   `wake_timeout_s` passa a contar DESSE instante — a hora em que o log foi lido, na resolução de `boot_poll_s`, não o
   carimbo do emulador. Veredito False: boot a frio com `boot_timeout_s` desde o spawn, como antes. A medição `boot`
-  `kind=warm` traz `load_ms` (spawn → veredito lido; `null` se o log não disse). O wake do worker remoto não tem
+  `kind=warm` traz `load_ms` (spawn → veredito lido; `null` se ninguém disse) e `snapshot_por` (`log`, `uptime` ou
+  `null`). **Segunda fonte, o uptime (04/10):** a saída do emulador para o arquivo é bufferizada e "Successfully loaded
+  snapshot" só chega ao log depois do boot (prova real contra no android-02: `load_ms` nulo com `/proc/uptime` = 3728 s
+  12 min depois do wake). No primeiro `boot_completed` de um wake sem veredito, `Adb.uptime_s` lê o `/proc/uptime` do
+  convidado; maior que o tempo desde o spawn mais `FOLGA_DO_UPTIME_S` (15 s) = snapshot carregado (`load_ms` = spawn →
+  boot, `uptime_s` na medição, prazo do wake contado do boot). Só positivo: uptime pequeno ou ilegível não decide, e o
+  negativo continua só pelo log (ele conta `snapshot_failures`). O wake do worker remoto não tem
   prazo próprio de 90 s (`worker/executor.py::_v_start` usa `boot_timeout_s`): sem mudança. Aceite real em 7 dias: wake
   > 90 s e "snapshot descartado" = 0 (`not_run`).
 - **Admissão por CPU e prazo do preparo pela carga (RA-4, item 29.33)** — a admissão só olhava RAM, e o preparo pós-boot
@@ -779,8 +785,10 @@ comandos e as leituras são só stdlib, em `devices/sonda_rede.py` (vão no agen
 `devices/rede_medicao.medir`; quem decide quando é o passo `verificar` da convergência (comando `device.network`,
 `acao: verificar`), com `conectado` ou `parcial`: ao ligar, a pedido, pela porta da tarefa (no máximo a cada 30 s) e
 na varredura quando vence `rede.deriva_s` ou, no `parcial`, `rede.sonda.reverificar_s` (padrão 600 s; depois de uma
-medição que não verificou, a porta também espera esse tanto). Antes de medir, relê como o conferir: deriva regride e
-nada é medido. O que se mede:
+medição que não verificou, a porta também espera esse tanto). Cada leitura da rede pelo adb (observação, estado da
+interface, janela do start) tem o prazo `rede.sonda.prazo_leitura_s` (90 s; a fila do aparelho dá mais 10), item 29.75:
+eram 45 s fixos, e 6 medições ao ligar falharam por prazo em 7 dias com o host disputado. Antes de medir, relê como o
+conferir: deriva regride e nada é medido. O que se mede:
 
 - **IP de saída v4 e v6**: HTTP/1.0 a um eco de IP na porta 80 (`rede.sonda.hosts_ipv4`, padrão `api.ipify.org` e
   `ipv4.icanhazip.com`; `hosts_ipv6`, `api6.ipify.org` e `ipv6.icanhazip.com`: a família vem do host), com o stdin

@@ -32,7 +32,7 @@ from typing import Any, Callable
 
 from ..db import loads
 from ..models import InteractionStatus, InteractionType
-from ..planning.capabilities import Capability, normalizar_alvo
+from ..planning.capabilities import Capability, capability_of, normalizar_alvo
 from ..planning.catalog import pacote_ancora
 from ..util import now, parse_iso, to_iso
 from .contas_nossas import eh_conta_nossa, foi_retirada
@@ -86,6 +86,27 @@ TODOS_OS_BALDES: tuple[str, ...] = tuple(dict.fromkeys(t for tipos in BUCKET_TYP
 UMA_CONTA_POR_ALVO: frozenset[str] = frozenset({"follows", "dms", "comments"})
 _ROTULO_DO_BALDE = {"follows": "seguir", "dms": "mensagem direta", "comments": "comentário", "likes": "curtida",
                    "posts": "publicação"}
+
+#: Item 30.56: efeitos que ESTA conta faz uma vez só por pessoa na janela da frota (`fleet_target_window_days`). Fazer de
+#: novo é duplicata, não outro gesto: em 04/10 o dono aprovou uma segunda resposta do lucas ao mesmo comentário do bruno
+#: (a primeira era de 03/10) e só o ator, já na tela, recusou. A chave é (perfil, alvo, tipo, janela): a resposta não
+#: grava a publicação (`thread_key` e `target` ficam nulos), então outra resposta à mesma pessoa noutro post também
+#: espera a janela. Por AÇÃO, não por balde nem por tipo: `CREATE_COMMENT` grava o mesmo `comment_replied`, e comentar
+#: em vários posts da mesma pessoa segue valendo — o histórico separa as duas pela etapa que gravou a interação.
+#: Seguir fica de fora: o segundo FOLLOW é alternância (deixar de seguir), não duplicata.
+UMA_VEZ_POR_ALVO: frozenset[str] = frozenset({"REPLY_COMMENT"})
+
+def _balde(acao: str, package: str | None) -> str | None:
+    """O balde de limite de uma ação pelo catálogo do app (`None` = o âncora); `None` se o catálogo não a tem."""
+    cap = capability_of(package or pacote_ancora(), acao)
+    return cap.limit_bucket if cap else None
+
+
+def _data(iso: str) -> str:
+    """`2026-10-03T05:51:53.472Z` → `03/10/2026 05:51Z`, para o motivo que a pessoa lê."""
+    quando = parse_iso(iso)
+    return quando.strftime("%d/%m/%Y %H:%MZ") if quando else iso
+
 
 #: A interação que diz que a pessoa JÁ conversa com esta conta: ela escreveu a esta conta por mensagem direta.
 _FALA_DELA_NA_DM = (InteractionType.dm_received.value,)
@@ -342,8 +363,35 @@ class PolicyEngine:
         return bool(alvo) and self.repo.has_inbound_from(profile_id, alvo, types=_FALA_DELA_NA_DM, app_id=app_id)
 
     # ------------------------------------------------------------------ decisão
+    def _ja_feito(self, profile_id: str, cap: Capability, counterparty: str | None, agora: datetime,
+                  app_id: str | None, step_id: str | None) -> tuple[str, str] | None:
+        """30.56: esta conta já fez este efeito com esta pessoa na janela, ou tem pedido dele em aberto? `None` libera;
+        senão `(motivo, dica)` de uma RECUSA, antes do rascunho e da aprovação. A interação e o pedido da PRÓPRIA etapa
+        (`step_id`) não contam: a porta roda de novo quando a etapa aprovada é retomada."""
+        if cap.key not in UMA_VEZ_POR_ALVO or not cap.interaction_type or self._settings is None:
+            return None
+        alvo = normalizar_alvo(counterparty)
+        if alvo is None:
+            return None
+        dias = max(1, int(getattr(self._settings(), "fleet_target_window_days", 30) or 30))
+        since = to_iso(agora - timedelta(days=dias))
+        dica = ("A resposta já está publicada; responder de novo publicaria uma segunda. Se for mesmo outro comentário "
+                "da mesma pessoa, uma pessoa responde à mão, fora da automação.")
+        feita = self.repo.ultima_saida_para(profile_id, alvo, types=(cap.interaction_type,), statuses=CONTAM,
+                                            since=since, app_id=app_id, capability=cap.key, exclude_step_id=step_id)
+        if feita is not None:
+            interacao, quando = feita
+            return (f"esta conta já respondeu a {alvo} em {_data(quando)} ({interacao}); em resposta a comentário vale "
+                    f"uma vez por pessoa em {dias} dias (30.56) — recusado antes da aprovação", dica)
+        pedido = self.repo.pedido_em_aberto_para(profile_id, cap.key, alvo, since=since, exclude_step_id=step_id)
+        if pedido is not None:
+            return (f"esta conta já tem um pedido de resposta a {alvo} em aberto ({pedido}); um segundo publicaria duas "
+                    "respostas (30.56) — recusado antes da aprovação", "Decida o pedido que já está em Pendências.")
+        return None
+
     def check(self, profile_id: str, cap: Capability, *, run_id: str | None = None,
-              counterparty: str | None = None, app_id: str | None = None, package: str | None = None) -> Verdict:
+              counterparty: str | None = None, app_id: str | None = None, package: str | None = None,
+              step_id: str | None = None) -> Verdict:
         politica = self.policy_for(profile_id, cap, package)
         if politica == "disabled":
             return Verdict(allowed=False, policy=politica,
@@ -363,22 +411,41 @@ class PolicyEngine:
             alvo = normalizar_alvo(counterparty) or "esta pessoa"
             nota = (f"mensagem para {alvo}, que ainda não conversa com esta conta: DM sem conversa prévia sempre "
                     "passa por aprovação (ADR-055)")
+        # 30.60 (N4): publicação no feed tem o mesmo piso. O `default_policy: approval_required` do CREATE_POST era só o
+        # padrão: um grupo `autonomous` publicava sem ninguém ver. Afrouxa só `LimitsCfg.publicar_sem_aprovacao`.
+        configuracao = self._settings() if self._settings is not None else None
+        if cap.limit_bucket == "posts" and cap.side_effect and politica == "autonomous" \
+                and not getattr(configuracao, "publicar_sem_aprovacao", False):
+            politica = "approval_required"
+            nota = "; ".join(t for t in (nota, f"{cap.key} publica no feed: passa por aprovação mesmo com o perfil "
+                                         "autônomo (30.60)") if t)
         if not cap.side_effect or not cap.limit_bucket:
             return Verdict(policy=politica, needs_approval=politica == "approval_required", reason=nota)
 
-        limites = self.limits_for(profile_id)
         agora = now()
+        # Recusa antes dos tetos: estes só ADIAM (`retry_at`), e o repetido não sai nem depois.
+        if (feito := self._ja_feito(profile_id, cap, counterparty, agora, app_id, step_id)) is not None:
+            return Verdict(allowed=False, policy=politica, reason=feito[0], hint=feito[1])
+        limites = self.limits_for(profile_id)
         tipos = BUCKET_TYPES.get(cap.limit_bucket, ())
         aquecendo = self._aquecendo(profile_id, limites, agora)
         contagem: dict[str, int] = {}
+        # 30.57: o pedido de aprovação ainda sem interação também ocupa o teto. Sem isto, os 5 itens de um `for_each`
+        # viravam 5 pedidos ao dono com `comments_per_hour` 3: a porta só via o que já tinha saído, e nada sai antes
+        # do sim. O da própria etapa não conta (a porta roda de novo na retomada).
+        na_fila = [quando for acao, quando in self.repo.pedidos_em_aberto_desde(
+            profile_id, to_iso(agora - timedelta(days=1)), exclude_step_id=step_id)
+            if _balde(acao, package) == cap.limit_bucket]
         # `direction="outbound"`: limite é sobre o que ESTA conta faz. Desde que ler uma conversa passou a gravar o
         # que a contraparte disse, contar só por tipo faria a caixa de entrada consumir a cota de envio.
         for unidade, delta, rotulo in (("hour", timedelta(hours=1), cap.limit_bucket),
                                        ("day", timedelta(days=1), f"{cap.limit_bucket}_dia")):
             teto = self._teto_com_aquecimento(limites.get(f"{cap.limit_bucket}_per_{unidade}", 0), limites, aquecendo)
             janela = to_iso(agora - delta)
-            feitas = self.repo.count_interactions_since(profile_id, janela, types=tipos, statuses=CONTAM,
+            saidas = self.repo.count_interactions_since(profile_id, janela, types=tipos, statuses=CONTAM,
                                                         direction="outbound")
+            pedidos = sum(1 for quando in na_fila if quando >= janela)
+            feitas = saidas + pedidos
             contagem[rotulo] = feitas
             if teto and feitas >= teto:
                 mais_antiga = self.repo.oldest_interaction_since(profile_id, janela, types=tipos, statuses=CONTAM,
@@ -386,9 +453,10 @@ class PolicyEngine:
                 libera = (parse_iso(mais_antiga) + delta) if mais_antiga else (agora + timedelta(minutes=10))
                 unidade_pt = "hora" if unidade == "hour" else "dia"
                 aquecimento_txt = " (perfil em aquecimento)" if aquecendo else ""
+                fila_txt = f", {pedidos} deles pedido(s) na fila de aprovação" if pedidos else ""
                 return Verdict(allowed=False, policy=politica, counts=contagem, retry_at=to_iso(libera),
                                reason=f"limite de {teto} {cap.limit_bucket} por {unidade_pt} atingido neste perfil "
-                                      f"({feitas}){aquecimento_txt}")
+                                      f"({feitas}{fila_txt}){aquecimento_txt}")
 
         if (parado := self._fleet_gate(profile_id, cap, counterparty, agora, app_id)) is not None:
             return Verdict(allowed=False, policy=politica, counts=contagem, retry_at=parado[1],

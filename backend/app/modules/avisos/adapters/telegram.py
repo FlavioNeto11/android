@@ -14,6 +14,7 @@ token mesmo que ele apareça ali. A redação central (`security.redaction`) é 
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json as _jsonlib
 import re
@@ -48,6 +49,10 @@ LEGENDA_MAX = 1024
 _FILE_PATH = re.compile(r"[A-Za-z0-9_./-]{1,200}")
 #: Download e upload levam mais que uma mensagem de texto.
 TIMEOUT_ARQUIVO_S = 60.0
+#: O teto de TEMPO do download inteiro. O `timeout` do httpx vale por operação (cada leitura entre pedaços), então um arquivo
+#: lento chegando aos poucos o segurava indefinidamente; e o leitor da conversa é um só (`/aprovar` do dono espera atrás
+#: dele). O download é assíncrono e não trava o laço de eventos; este prazo só limita quanto a conversa fica parada.
+PRAZO_DOWNLOAD_S = 90.0
 
 
 class TokenAusente(Exception):
@@ -103,13 +108,15 @@ def _espera_pedida(resposta: httpx.Response, corpo: Mapping[str, object]) -> flo
 
 
 class CanalTelegram:
-    def __init__(self, token: str, chat_id: str = "", *, client: httpx.AsyncClient | None = None, timeout_s: float = 10.0):
+    def __init__(self, token: str, chat_id: str = "", *, client: httpx.AsyncClient | None = None, timeout_s: float = 10.0,
+                 prazo_download_s: float = PRAZO_DOWNLOAD_S):
         if not token:
             raise TokenAusente("TELEGRAM_BOT_TOKEN ausente: cadastre o token do bot no .env (docs/operacao.md)")
         self._token = token
         self._chat_id = chat_id
         self._client = client
         self._timeout = timeout_s
+        self._prazo_download = prazo_download_s
 
     def _url(self, metodo: str) -> str:
         return f"{API}/bot{self._token}/{metodo}"
@@ -226,7 +233,7 @@ class CanalTelegram:
         url = self._url_arquivo(caminho)
         cliente = self._client or httpx.AsyncClient()
         try:
-            async with cliente.stream("GET", url, timeout=max(self._timeout, TIMEOUT_ARQUIVO_S)) as baixa:
+            async with asyncio.timeout(self._prazo_download),                     cliente.stream("GET", url, timeout=max(self._timeout, TIMEOUT_ARQUIVO_S)) as baixa:
                 if baixa.status_code != 200:
                     raise FalhaDeEnvio(f"Telegram recusou o download ({baixa.status_code})",
                                        definitiva=baixa.status_code in DEFINITIVOS, status=baixa.status_code)
@@ -239,7 +246,7 @@ class CanalTelegram:
                     if len(partes) > max_bytes:
                         raise AnexoGrandeDemais(max_bytes)
                 return bytes(partes)
-        except httpx.TimeoutException:
+        except (httpx.TimeoutException, TimeoutError):
             raise FalhaDeEnvio("tempo esgotado ao baixar o anexo do Telegram") from None
         except (httpx.HTTPError, httpx.StreamError) as exc:
             raise FalhaDeEnvio(f"falha de rede ao baixar o anexo ({type(exc).__name__})") from None

@@ -116,6 +116,16 @@ PARTES_EM_ELEMENTOS_DIFERENTES = "as partes do seletor estão em elementos difer
 OPEN_APP_SEM_IA = True
 
 
+def parte_vazia_da_pos_condicao(post: Postcondition) -> str | None:
+    """31.44: o que a pós-condição confere sem valor (`text=`, `<vazia>`, `texto vazio`), ou `None` quando tem valor.
+    Só olha o que se decide pelo texto da própria pós-condição: `element_present` e `text_visible`."""
+    if post.kind == "element_present":
+        return UiTree.parte_sem_valor(post.value)
+    if post.kind == "text_visible" and not norm_text(post.value):
+        return "texto vazio"
+    return None
+
+
 async def reler_se_ocupada(ler: Callable[[], Awaitable[T]], *, prazo: float, quem: str) -> T:
     """Faz a leitura e, se a UI estiver ocupada ou a leitura tiver falhado fora da sessão, relê com recuo — sem tocar
     na sessão. O recuo sai do prazo da etapa (`prazo`, relógio monotônico): sem tempo para esperar, o erro sobe na
@@ -1474,6 +1484,12 @@ class StepExecutor:
 
         if enviar is None:
             return await falha("este aparelho não sabe receber mídia na galeria", tentar_de_novo=False)
+        # 30.60 (achado 6): o perfil do objetivo precisa ter vínculo ATIVO com ESTE aparelho. Sem isso, a imagem de uma
+        # persona iria para a galeria de outra (objetivo de A despachado num aparelho que só tem B). O vínculo secundário
+        # conta (android-13 é também do André): é pertencer ao aparelho, não ser o único dele.
+        if persona_id and self.social is not None and self.social.repo.binding(persona_id, rt.id) is None:
+            return await falha(f"a persona do objetivo não está vinculada a {rt.id}: a imagem dela não vai para a galeria "
+                               "de outro perfil (nada foi enviado ao aparelho)", tentar_de_novo=False)
         try:
             remoto = await rt.executor.run(colocar_midia_na_galeria, self.persona_images, persona_id,
                                            step.bindings.get("image_id"), enviar, timeout=float(step.timeout_s),
@@ -1579,6 +1595,20 @@ class StepExecutor:
             return StepOutcome(Outcome.waiting_user, "A etapa confere a conta, e não há UMA conta da pessoa conhecida "
                                                      "no app dela; nada foi conferido contra uma conta vazia.",
                                needs="Cadastre ou reative a conta da pessoa neste aplicativo e retome o item.")
+        # 31.44: pós-condição com valor VAZIO (`text=` de um molde `text={var}` cuja variável chegou sem valor) não tem
+        # como ser comprovada: o seletor degrada para a busca do texto literal "text=" e a etapa gastaria as tentativas
+        # e a IA (fec1a1: 3 chamadas) para chegar a "0 elemento(s)". Falha fechada ANTES de qualquer observação ou ação.
+        if (vazia := parte_vazia_da_pos_condicao(step.postcondition)) is not None:
+            if not account_label:
+                # O aparelho está sem conta conhecida (rótulo vazio): é o caso do 24.4, com a mesma saída (a tentativa é
+                # devolvida e a pessoa cadastra a conta); o tipo é de conta, nunca vira lição para o planejador.
+                return StepOutcome(Outcome.waiting_user, f"A pós-condição confere {vazia} sem valor, e não há UMA conta "
+                                                         "da pessoa conhecida no app dela; nada foi conferido contra "
+                                                         "um valor vazio.",
+                                   needs="Cadastre ou reative a conta da pessoa neste aplicativo e retome o item.")
+            return StepOutcome(Outcome.failed, f"Defeito do plano — a pós-condição confere {vazia} sem valor (variável "
+                                               "do plano que chegou vazia); nada foi conferido contra um valor vazio e "
+                                               "repetir não resolve.", plan_defect=True)
         if saidas_declaradas:
             history.append("(executor) esta etapa entrega às seguintes o(s) valor(es) "
                            + ", ".join(f"'{n}'" for n in saidas_declaradas)
@@ -3216,7 +3246,18 @@ class StepExecutor:
             # texto ausente) devolve `None`/`False` e cai para o modelo — nunca vira reprovação por si só.
             # Fase G: a pergunta vai ao `CapabilityProvider` (a mesma `local_proof_holds`, embrulhada); só `proved`
             # vale como atalho, exatamente como o `True` de antes.
-            if judged and need is None and local_proof and await self._prova_local(step, capability, obs):
+            provada = (judged and need is None and bool(local_proof)
+                       and await self._prova_local(step, capability, obs, conta=getattr(ctx_for(), "account_label", None)))
+            if provada and step.side_effect and local_proof.startswith("count_gt"):
+                # 30.60: a prova por CONTAGEM (publicar) não fecha o efeito sozinha. O contador do cabeçalho sobe de forma
+                # otimista, antes de o upload terminar ("Posting…"), e uma publicação nunca se repete por dúvida: a prova
+                # vira fato para o modelo, e o "sim" dele passa pelo rejulgamento do 17.10. O `sent_text` da DM segue
+                # como atalho: é o critério objetivo do ADR-055 (bolha com o texto e campo vazio), não um contador.
+                fato = f"a prova local da pós-condição casou na tela ({local_proof})"
+                if fato not in (facts or []):           # o laço relê a tela: o fato entra uma vez só
+                    facts = [*(facts or []), fato]
+                    text = "; ".join(t for t in (text, fato + "; o modelo confere antes de dar por feito") if t)
+            elif provada:
                 ok, judged = True, False
                 text = (f"pós-condição comprovada pela árvore local, sem IA ({local_proof})"
                         if not local_proof.startswith("sent_text") else
@@ -3261,6 +3302,10 @@ class StepExecutor:
                     if quer_imagem:
                         obs = await self.devices.completar_imagem(rt, obs, timeout=call_timeout, lado_max=lado_max)
                     screen, _ = self._screen(obs, with_image=quer_imagem, protect=tuple(step.commit_guard), ai=ai_cfg)
+                    # Item 31.46: o que o app declara sobre a própria árvore (a linha da lista do Outlook sem texto),
+                    # uma vez por julgamento; vazio para quem não declara, e o pedido fica como era.
+                    dicas = telas_do_app.dicas_da_tela(CONHECIMENTO_DE_APPS / (obs.package or ""), obs.tree,
+                                                       package=obs.package)
                     # `t_end` é o orçamento DESTA verificação (nunca além do prazo da etapa): a chamada de
                     # verificação passa a ter limite próprio, que era o que faltava (achado #96).
                     if await self._sent_text_dispensa_o_juiz(step, capability, obs, need=need, local_proof=local_proof,
@@ -3278,7 +3323,8 @@ class StepExecutor:
                     else:
                         verdict = await self._ai(run_id, objective_id,
                                                  lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
-                                                                                            facts=list(facts or []))),
+                                                                                            facts=list(facts or []),
+                                                                                            dicas_da_tela=dicas)),
                                                  step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                                                  marca=MarcaDaChamada(motivo=proposito, image_reason=motivo_imagem))
                     judged_polls += 1
@@ -3298,7 +3344,8 @@ class StepExecutor:
                         verdict = await self._ai(
                             run_id, objective_id,
                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
-                                                                       facts=list(facts or []), escalate=True)),
+                                                                       facts=list(facts or []), escalate=True,
+                                                                       dicas_da_tela=dicas)),
                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="nivel", image_reason=motivo_imagem))
                         level = verdict.delivery_level
@@ -3316,7 +3363,8 @@ class StepExecutor:
                         verdict = await self._ai(
                             run_id, objective_id,
                             lambda: self.provider.verify(VerifyRequest(ctx=ctx_for(), screen=screen,
-                                                                       facts=list(facts or []), escalate=True)),
+                                                                       facts=list(facts or []), escalate=True,
+                                                                       dicas_da_tela=dicas)),
                             step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
                             marca=MarcaDaChamada(motivo="rejulgamento", escalate="sim_com_efeito",
                                                  image_reason=motivo_imagem))
@@ -3463,7 +3511,7 @@ class StepExecutor:
         return await self._prova_local(step, capability, obs, sem_nivel=True)
 
     async def _prova_local(self, step: StepDTO, capability: CapabilityRef | None, obs: Observation, *,
-                           sem_nivel: bool = False) -> bool:
+                           sem_nivel: bool = False, conta: str | None = None) -> bool:
         """A prova local pela porta `CapabilityProvider.verify` (fase G). `proved` é o atalho de sempre.
 
         `not_proved` (marca de falha visível na tela) também cai para o caminho de sempre, e não reprova aqui: quem
@@ -3473,8 +3521,12 @@ class StepExecutor:
         """
         if capability is None:
             return False
+        # 30.60: a conta esperada no aparelho entra como `account_label`, para a prova conferir que a tela é a do PRÓPRIO
+        # perfil (o argumento da etapa, se houver, vence).
+        argumentos = {**({"account_label": conta} if conta else {}),
+                      **{k: str(v) for k, v in (step.bindings or {}).items() if v is not None}}
         vista = StepView(node_id=step.key, capability=capability,
-                         bindings=tuple((k, str(v)) for k, v in (step.bindings or {}).items() if v is not None),
+                         bindings=tuple(argumentos.items()),
                          band_guard=tuple(step.band_guard or ()),
                          required_delivery_level=(step.postcondition.required_delivery_level.value
                                                   if step.postcondition.required_delivery_level and not sem_nivel

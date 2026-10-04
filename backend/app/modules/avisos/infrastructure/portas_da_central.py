@@ -17,6 +17,7 @@ from collections.abc import Awaitable, Callable
 from app.db import Database
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
 from app.modules.avisos.application.entrada import casar_ref
+from app.modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo, LeituraRecusada
 from app.modules.avisos.infrastructure.entrada import Captura, Pendencia, Previa, RecusaDaCentral
 from app.security.sessions import operador_atual
 from app.shared.costuras import autor_do_gesto
@@ -40,9 +41,11 @@ _ATIVAS = ("planning", "running", "paused", "cancelling")
 class PortasReais:
     def __init__(self, *, db: Database, runs: RunService, aprovacoes: ApprovalService, saude: Callable[[], Health],
                  online: Callable[[], list[str]],
-                 capturar: Callable[[str], Awaitable[tuple[bytes | None, str | None]]] | None = None):
+                 capturar: Callable[[str], Awaitable[tuple[bytes | None, str | None]]] | None = None,
+                 leitor_de_anexos: LeitorDeAnexo | None = None):
         self.db = db
         self._capturar = capturar
+        self._leitor_de_anexos = leitor_de_anexos
         self.runs = runs
         self.aprovacoes = aprovacoes
         self._saude = saude
@@ -55,7 +58,27 @@ class PortasReais:
         jpeg, motivo = await self._capturar(instance_id)
         return Captura(conteudo=jpeg, motivo=motivo)
 
+    async def ler_anexo(self, anexo_id: int) -> str:
+        """A descrição da imagem do dono pela IA (28.24, F3), pela MESMA porta da rota `POST /api/canais/anexos/{id}/ler`."""
+        if self._leitor_de_anexos is None:
+            raise RecusaDaCentral("A leitura de imagem pela IA não está disponível nesta Central.")
+        try:
+            leitura = await self._leitor_de_anexos.ler(anexo_id)
+        except LeituraRecusada as recusa:
+            raise RecusaDaCentral(recusa.motivo, recusa.codigo) from None
+        rodape = ("Já tinha lido esta imagem: sem custo novo." if leitura.do_cache
+                  else f"Li com {leitura.modelo}; custo US$ {leitura.custo_usd:.4f}.")
+        return f"{leitura.descricao}\n\n{rodape}"
+
     # ------------------------------------------------------------------ leitura
+    def nomes_de_persona(self) -> list[str]:
+        """Nome de exibição, primeiro e último nome e @ das personas: o que a conversa tira de todo texto que manda pelo
+        canal (28.28). Inclui as aposentadas: o nome continua sendo de uma pessoa da plataforma."""
+        nomes: list[str] = []
+        for r in self.db.query("SELECT display_name, first_name, last_name, username FROM instagram_profiles"):
+            nomes.extend(str(v) for v in (r["display_name"], r["first_name"], r["last_name"], r["username"]) if v)
+        return nomes
+
     def status(self) -> str:
         h = self._saude()
         online = self._online()
@@ -83,6 +106,11 @@ class PortasReais:
 
     def aprovacoes_pendentes(self) -> list[str]:
         return [str(a["id"]) for a in self.aprovacoes.list(status="pending", limit=200)]
+
+    def ids_de_aprovacoes(self) -> list[str]:
+        """As aprovações em qualquer estado (as 500 mais novas): o id digitado num reply pode ser de uma já decidida ou
+        vencida (28.26, revisão da suíte 31), e aí também é "outro item"."""
+        return [str(a["id"]) for a in self.aprovacoes.list(status=None, limit=500)]
 
     def execucoes_esperando(self) -> list[str]:
         return [str(r["id"]) for r in self.db.query(

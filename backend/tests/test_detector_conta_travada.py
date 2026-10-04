@@ -412,6 +412,7 @@ async def _parque(tmp_path: Path, **fake: Any) -> AsyncIterator[Harness]:
     h.ai = CountingProvider(AtorQueVe())
     h.cfg.file.ai.recipes = "replay"
     await h.boot()
+    await h.medir_a_internet()   # T.2: a sonda do monitor agora; o Instagram não espera os 6 s da 1ª volta
     s = _estado(h)
     s.db.execute("UPDATE instances SET app_id='instagram' WHERE id=?", (IID,))
     s.devices.get(IID).app_id = "instagram"
@@ -555,6 +556,7 @@ async def test_codigo_nao_bloqueia_e_trava_depois_do_codigo_bloqueia(tmp_path: P
     sessão já `auth_challenge` fazia a tela desmentida sair cedo e `bloquear_por_desafio` recusar ("não é entrada")."""
     h = Harness(tmp_path, 1)
     await h.boot()
+    await h.medir_a_internet()   # T.2: a sonda do monitor agora; o Instagram não espera os 6 s da 1ª volta
     try:
         s = _estado(h)
         pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
@@ -669,6 +671,7 @@ async def test_quarentena_que_falha_nao_cala_o_desafio_no_meio_da_execucao(tmp_p
     perfil ficava `blocked`, mas a fila "Aguardando intervenção" não era avisada e nada dizia que o marcador faltou."""
     h = Harness(tmp_path, 1)
     await h.boot()
+    await h.medir_a_internet()   # T.2: a sonda do monitor agora; o Instagram não espera os 6 s da 1ª volta
     try:
         s = _estado(h)
         pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id

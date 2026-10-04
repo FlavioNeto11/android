@@ -59,8 +59,16 @@ registrar_fonte_dos_apps(nomes_e_apelidos)
 _VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
 #: 29.50: a pergunta (`needs_input`) sem resposta por este tempo expira PELO SISTEMA (`RunService.expirar_sem_resposta`).
 #: Antes, a execução esperava para sempre, e só um cancelamento pela rota a tirava do ar, o que é um sinal de PESSOA
-#: (`cancelou_execucao`, ADR-054) que ninguém deu.
+#: (`cancelou_execucao`, ADR-054) que ninguém deu. É o PADRÃO: o prazo de verdade é `execucao.pergunta_vence_h` (31.43).
 NEEDS_INPUT_EXPIRA_H = 24
+#: 31.43: a marca para máquina de todo vencimento do sistema (pergunta ou bloqueio), no `data` do evento.
+REGRA_DO_VENCIMENTO = "31.43"
+MOTIVO_VENCIDO = "vencido_sem_resposta"
+
+
+def _horas(h: float) -> int | float:
+    """24.0 vira 24 (texto e evento sem casa decimal à toa); 0.5 continua 0.5."""
+    return int(h) if float(h).is_integer() else h
 
 
 def pede_outro_alvo(command: str, apps: list[AppContext], pacotes_dos_aparelhos: set[str]) -> bool:
@@ -1488,18 +1496,28 @@ class RunService:
             self.scheduler._expirar_aprovacoes(o["id"], "execução cancelada")  # noqa: SLF001
         self.repo.set_run_status(run_id, RunStatus.cancelled, detalhe, message=message, dados=dados)
 
+    def _vencimento(self) -> tuple[bool, float]:
+        """31.43: `execucao.vencimento_ligado` e `execucao.pergunta_vence_h`, lidos a cada volta (config editável)."""
+        cfg = self.scheduler.cfg.file.execucao
+        return cfg.vencimento_ligado, float(cfg.pergunta_vence_h)
+
     def expirar_sem_resposta(self, agora: datetime) -> list[str]:
-        """29.50: cancela PELO SISTEMA a execução que espera resposta (`needs_input`) há `NEEDS_INPUT_EXPIRA_H` horas.
-        Devolve as execuções expiradas.
+        """29.50: cancela PELO SISTEMA a execução que espera resposta (`needs_input`) há `execucao.pergunta_vence_h` horas
+        (padrão `NEEDS_INPUT_EXPIRA_H`). Devolve as execuções expiradas. Com `execucao.vencimento_ligado: false`, não faz nada.
 
         Não passa por `cancel`: sem `por`, sem o sinal `cancelou_execucao` (ninguém fez o gesto), e com o motivo humano
-        no texto. A marca para máquina (`expirada`) vai num campo próprio do `run.updated`, como os `issue_codes`.
+        no texto. A marca para máquina vai num campo próprio do `run.updated`, como os `issue_codes`: `expirada` (29.50, a
+        que já existia) e `vencimento` (31.43, com a regra e o motivo `vencido_sem_resposta`).
 
         O relógio é a ENTRADA em `needs_input`, não a criação: o `run.updated` daquela transição. Ele não se perde,
         porque a retenção poupa todo evento de execução sem `finished_at`, e `needs_input` não tem `finished_at`. Como
         `needs_input` só sai para `cancelled`, o último `run.updated` é o da entrada; outro depois dele só atrasaria a
         expiração, nunca a adiantaria. Sem evento nenhum (execução anterior aos eventos), vale a criação."""
-        limite = to_iso(agora - timedelta(hours=NEEDS_INPUT_EXPIRA_H))
+        ligado, horas_cfg = self._vencimento()
+        if not ligado:
+            return []
+        horas = _horas(horas_cfg)
+        limite = to_iso(agora - timedelta(hours=horas_cfg))
         expiradas: list[str] = []
         # A entrada é depois da criação: quem nasceu depois do limite não pode ter vencido.
         for run in self.repo.db.query("SELECT id, created_at FROM runs WHERE status=? AND created_at < ? "
@@ -1515,14 +1533,90 @@ class RunService:
                                         (run_id, RunStatus.needs_input.value)).rowcount:
                 continue
             self._cancelar_antes_de_iniciar(
-                run_id, f"Sem resposta em {NEEDS_INPUT_EXPIRA_H} h: a pergunta expirou e a execução foi encerrada pelo "
+                run_id, f"Sem resposta em {horas} h: a pergunta expirou e a execução foi encerrada pelo "
                         "sistema. Para seguir, faça o pedido de novo.",
-                message=f"Execução {run_id}: ninguém respondeu às perguntas em {NEEDS_INPUT_EXPIRA_H} h; encerrada "
+                message=f"Execução {run_id}: ninguém respondeu às perguntas em {horas} h; encerrada "
                         "pelo sistema",
-                dados={"expirada": {"motivo": "sem_resposta", "horas": NEEDS_INPUT_EXPIRA_H,
-                                    "desde": str(entrada)}})
+                dados={"expirada": {"motivo": "sem_resposta", "horas": horas, "desde": str(entrada)},
+                       "vencimento": {"regra": REGRA_DO_VENCIMENTO, "motivo": MOTIVO_VENCIDO, "horas": horas,
+                                      "desde": str(entrada)}})
             expiradas.append(run_id)
         return expiradas
+
+    def vencer_objetivos_parados(self, agora: datetime) -> list[str]:
+        """31.43: fecha PELO SISTEMA o objetivo em `waiting_user` de execução JÁ TERMINADA que ninguém retomou em
+        `execucao.pergunta_vence_h` horas. Devolve os objetivos vencidos. Com `execucao.vencimento_ligado: false`, não faz nada.
+
+        Antes, `recompute_run` levava a execução a `completed_with_issues` "para permitir retomada", e o objetivo ficava
+        `waiting_user` para sempre (22 assim no banco central em 04/10): pergunta que ninguém responde não some da fila.
+        Só muda estado, como a 29.50: não responde, não digita, não toca o aparelho e não chama IA. Pedido de senha,
+        desafio ou CAPTCHA também só são encerrados; nada é digitado. O objetivo vira `cancelled`, as etapas abertas e as
+        aprovações pendentes dele também, e o `objective.updated` leva `vencimento` com a regra, o motivo e o relógio. Depois
+        `recompute_run` deriva o status da execução (fica `completed_with_issues`: não é cancelamento pela pessoa, e por
+        isso também não há o sinal `cancelou_execucao`).
+
+        O relógio é o MAIS TARDIO entre a entrada do objetivo em `waiting_user` (`objectives.finished_at`, gravado nessa
+        transição) e o fim da execução (`runs.finished_at`): nunca adianta o vencimento, e uma retomada de outro item da
+        execução (que reabre e refecha a execução) reinicia o prazo.
+
+        Corrida: a pessoa pode retomar o item (ou a execução) entre a leitura e a escrita. A escrita é condicional ao
+        objetivo ainda em `waiting_user` E à execução ainda terminal; do contrário, a resposta dela vale e nada é tocado."""
+        ligado, horas_cfg = self._vencimento()
+        if not ligado:
+            return []
+        horas = _horas(horas_cfg)
+        limite = to_iso(agora - timedelta(hours=horas_cfg))
+        terminais = tuple(s.value for s in RUN_TERMINAL)
+        marcas = ",".join("?" for _ in terminais)
+        vencidos: list[str] = []
+        candidatos = self.repo.db.query(
+            "SELECT o.id, o.run_id, o.instance_id, o.finished_at AS espera_desde, r.finished_at AS fim_da_execucao "
+            f"FROM objectives o JOIN runs r ON r.id=o.run_id WHERE o.status=? AND r.status IN ({marcas}) "
+            "AND COALESCE(r.finished_at, o.finished_at) < ? ORDER BY o.id",
+            (ObjectiveStatus.waiting_user.value, *terminais, limite))
+        for o in candidatos:
+            # `or ""` só para comparar: sem a marca da espera, vale a do fim da execução (e vice-versa, pelo SQL).
+            desde = max(str(o["espera_desde"] or ""), str(o["fim_da_execucao"] or ""))
+            if not desde or desde >= limite:
+                continue
+            oid, run_id = str(o["id"]), str(o["run_id"])
+            try:
+                # A guarda de corrida: nenhum valor muda (`status=status`), só o `rowcount` diz se o objetivo ainda espera e
+                # a execução ainda está terminal. Mudar o status aqui desligaria a conferência de transição e a conta da
+                # espera do `set_objective` logo abaixo.
+                if not self.repo.db.execute(
+                        "UPDATE objectives SET status=status WHERE id=? AND status=? AND EXISTS "
+                        f"(SELECT 1 FROM runs WHERE id=? AND status IN ({marcas}))",
+                        (oid, ObjectiveStatus.waiting_user.value, run_id, *terminais)).rowcount:
+                    continue
+                motivo = f"vencido sem resposta em {horas} h"
+                self.repo.cancel_open_steps(run_id, objective_id=oid, reason=f"pedido {motivo}")
+                self.repo.set_objective(
+                    oid, ObjectiveStatus.cancelled,
+                    detail=f"Sem resposta em {horas} h: o pedido venceu e foi encerrado pelo sistema. "
+                           "Para seguir, faça o pedido de novo.",
+                    message=f"{o['instance_id']}: pedido sem resposta em {horas} h; encerrado pelo sistema",
+                    dados={"vencimento": {"regra": REGRA_DO_VENCIMENTO, "motivo": MOTIVO_VENCIDO, "horas": horas,
+                                          "desde": desde}})
+                self.scheduler._expirar_aprovacoes(oid, f"pedido {motivo}")  # noqa: SLF001
+                self.repo.recompute_run(run_id)
+                self._soltar_aviso_do_aparelho(str(o["instance_id"]))
+                vencidos.append(oid)
+            except Exception:  # noqa: BLE001 - um objetivo ruim não pode prender os outros
+                log.exception("vencimento do objetivo %s", oid)
+        return vencidos
+
+    def _soltar_aviso_do_aparelho(self, instance_id: str) -> None:
+        """Tira do aparelho o "Bloqueado: ..." que o objetivo vencido deixou, se NENHUM outro objetivo dele ainda espera
+        uma pessoa. Outro aviso (pressão, conectividade, resultado incerto) não é tocado."""
+        rt = self.devices.devices.get(instance_id)
+        if rt is None or not str(rt.attention or "").startswith("Bloqueado:"):
+            return
+        if self.repo.db.scalar("SELECT 1 FROM objectives WHERE instance_id=? AND status=? LIMIT 1",
+                               (instance_id, ObjectiveStatus.waiting_user.value)):
+            return
+        rt.attention = None
+        self.devices.publish(rt)
 
     # ------------------------------------------------------------------ retomadas
     def _requeue(self, obj: Any, reason: str) -> None:

@@ -363,6 +363,9 @@ class LimitsCfg(BaseModel):
     # (viva), esta conta espera ao menos isto, em segundos, desde o último gesto com efeito DELA (vale o maior entre este valor e
     # `cooldown_between_external_actions_s` do perfil). Ritmo baixo de propósito; conta retirada por bloqueio segue recusada.
     fleet_min_spacing_to_own_account_s: int = Field(600, ge=0, le=86400)
+    # 30.60 (N4): publicar no feed (balde `posts`) passa por uma pessoa mesmo com perfil ou grupo `autonomous`, como a DM
+    # fria do ADR-055. Só a instalação afrouxa, aqui; um perfil não tem esse poder.
+    publicar_sem_aprovacao: bool = False
     ai_max_calls_per_objective: int = Field(60, ge=1, le=1000)
     # Item 17.12: o teto acima é de UM objetivo sem repetição. Num `for_each`, cada item a mais soma `ai_max_calls_per_item`
     # (`teto = ai_max_calls_per_objective + por_item × (itens − 1)`), até `ai_max_calls_absolute`. 12 = ~8 chamadas medidas
@@ -937,6 +940,11 @@ class RedeSondaCfg(BaseModel):
     # uid 2000, sem app, DNS, UDP nem vazamento), ligado e livre, a cada `reverificar_s`: sem perfil, a saída é a da casa
     # (presumida) até a medida dizer o contrário. `false` desliga (o harness de testes não fala com adb).
     medir_sem_rede: bool = True
+    # O prazo de cada leitura da rede pelo adb (observação, estado da interface, janela do start), item 29.75. Era 45 s
+    # fixos no código, com a fila do aparelho dando +10 ("rede do aparelho excedeu 55s"): 6 medições ao ligar falharam
+    # por prazo em 7 dias (03, 05, 06 e 09, host disputado por boot e suíte), e o aparelho ficou sem prova pós-boot até a
+    # varredura seguinte. 90 s cobre o boot sob carga; a leitura normal leva poucos segundos.
+    prazo_leitura_s: float = Field(90, ge=10, le=600)
 
     @field_validator("hosts_ipv4", "hosts_ipv6")
     @classmethod
@@ -1134,6 +1142,26 @@ class AutopublicacaoCfg(BaseModel):
     intervalo_s: int = Field(3600, ge=60, le=86_400)        # de quanto em quanto tempo o laço avalia os fluxos
 
 
+class AprovacaoAutomaticaCfg(BaseModel):
+    """A aprovação automática por política (30.55; pedido do dono em 04/10). De fábrica `off` (nada roda); `shadow` só
+    marca, no livro da sombra, a receita ou o fluxo que a plataforma decidiria; `on` decide (publica o de "Para aprovar"
+    e confirma que fica o de "Revisar"), com `decided_by = plataforma` e a regra no motivo. A régua (classe A ou B, app
+    de categoria qa, evidência da versão atual, saúde e parecer) é do domínio (`domain/aprovacao_automatica.py`), não
+    daqui: mudá-la é decisão do dono e muda a versão da regra."""
+
+    modo: Literal["off", "shadow", "on"] = "off"
+    intervalo_s: int = Field(900, ge=60, le=86_400)         # de quanto em quanto tempo o laço passa a régua
+
+    @field_validator("modo", mode="before")
+    @classmethod
+    def _modo_do_yaml(cls, v: object) -> object:
+        """30.63 (b): `modo: on` sem aspas é o booleano `true` no YAML 1.1 (e `off`, `false`). Em 04/10 isso derrubou a
+        carga do config inteiro por 7 s. O booleano vale como a palavra que a pessoa escreveu."""
+        if isinstance(v, bool):
+            return "on" if v else "off"
+        return v
+
+
 class LearningCfg(BaseModel):
     """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA
     no pipeline: digest por execução e curadoria determinística. De fábrica, lições em `shadow` e telas em `observe`,
@@ -1162,6 +1190,7 @@ class LearningCfg(BaseModel):
     curador: CuradorCfg = CuradorCfg()
     validacao: ValidacaoCfg = ValidacaoCfg()
     autopublicacao: AutopublicacaoCfg = AutopublicacaoCfg()
+    aprovacao_automatica: AprovacaoAutomaticaCfg = AprovacaoAutomaticaCfg()
 
 
 class ConvidadosDoTelegramCfg(BaseModel):
@@ -1175,6 +1204,17 @@ class ConvidadosDoTelegramCfg(BaseModel):
     novos_por_hora: int = Field(20, ge=1, le=500)           # chats novos atendidos por hora; o excesso fica sem resposta
 
 
+class LeituraDeAnexoCfg(BaseModel):
+    """A IA lê a imagem que o DONO mandou (item 28.24, fatia F3; C-22). Só imagem de entrada do dono, uma chamada por imagem
+    (a descrição fica gravada e a segunda leitura não paga), com teto em dólar ESTIMADO antes de chamar: acima dele, nada
+    é enviado ao provedor. `modelo` vazio = o mais barato de `ai.prices` que `ai.models` declara com visão."""
+
+    enabled: bool = True
+    teto_usd: float = Field(0.05, gt=0, le=5)
+    modelo: str = ""
+    max_tokens: int = Field(400, ge=50, le=2000)
+
+
 class AnexosDaEntradaCfg(BaseModel):
     """Anexos dos canais (item 28.24, F1; regra do dono em `docs/dominios/canais.md` §6). Só o chat do dono tem anexo
     baixado, e só os tipos da lista: o mime é conferido pelo CONTEÚDO (assinatura), nunca só pelo que o remetente
@@ -1185,6 +1225,7 @@ class AnexosDaEntradaCfg(BaseModel):
     max_bytes: int = Field(10 * 1024 * 1024, ge=1024, le=20_000_000)
     tipos: list[Literal["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"]] = Field(
         default_factory=lambda: ["image/jpeg", "image/png", "image/webp", "application/pdf", "text/plain"])
+    leitura: LeituraDeAnexoCfg = LeituraDeAnexoCfg()
 
 
 class EntradaDoTelegramCfg(BaseModel):
@@ -1206,6 +1247,18 @@ class EntradaDoTelegramCfg(BaseModel):
     retencao_dias: float = Field(30.0, ge=2, le=3650)
     convidados: ConvidadosDoTelegramCfg = ConvidadosDoTelegramCfg()
     anexos: AnexosDaEntradaCfg = AnexosDaEntradaCfg()
+
+
+class DecisoesAutomaticasCfg(BaseModel):
+    """O que a plataforma decide sozinha (item 28.25): o resumo agrupado no Telegram e o prazo do desfazer. O resumo só sai
+    com `avisos.enabled` e o canal pronto; sem eles, o registro e a aba do painel funcionam do mesmo jeito."""
+
+    #: No máximo UMA mensagem por janela, e só se houve decisão nova nela. Nunca um aviso por decisão.
+    janela_min: float = Field(60.0, ge=1, le=1440)
+    #: Quantos dias o dono pode desfazer uma decisão depois que ela aconteceu.
+    desfazer_dias: float = Field(7.0, ge=0.01, le=365)
+    #: De quanto em quanto tempo o laço recolhe os eventos e a trilha (o adaptador) e confere a janela do resumo.
+    intervalo_s: float = Field(30.0, ge=5, le=3600)
 
 
 class AvisosCfg(BaseModel):
@@ -1236,6 +1289,7 @@ class AvisosCfg(BaseModel):
     #: aprovação em lote e fica na caixa de Pendências, para não virar um aviso por receita.
     aprendizado_faixas: list[Literal["B", "C"]] = Field(default_factory=lambda: ["C"])
     entrada: EntradaDoTelegramCfg = EntradaDoTelegramCfg()
+    decisoes_automaticas: DecisoesAutomaticasCfg = DecisoesAutomaticasCfg()
 
 
 #: Os papéis que `trello.listas` aceita (32.2): onde a Central cria os cartões, as listas cujo destino vale sim e não, e
@@ -1439,6 +1493,17 @@ class PedidosCfg(BaseModel):
     colaboracao: ColaboracaoCfg = ColaboracaoCfg()
 
 
+class ExecucaoCfg(BaseModel):
+    """Vencimento do que espera uma pessoa que não veio (29.50 e 31.43). Só muda ESTADO: nada responde a pergunta, digita,
+    toca aparelho ou chama IA. Ligado de fábrica: sem isto a pergunta sem resposta prende a execução (`needs_input`) e o
+    objetivo (`waiting_user`) para sempre. Desligado, nenhum dos dois vence."""
+
+    vencimento_ligado: bool = True
+    #: Horas sem resposta para a pergunta (`needs_input`) e o bloqueio (`waiting_user`) vencerem. Para o bloqueio, o relógio é
+    #: o mais tardio entre a entrada do objetivo em `waiting_user` e o fim da execução.
+    pergunta_vence_h: float = Field(24.0, ge=0.01, le=8760.0)
+
+
 class AppConfigFile(BaseModel):
     server: ServerCfg = ServerCfg()
     paths: PathsCfg = PathsCfg()
@@ -1446,6 +1511,7 @@ class AppConfigFile(BaseModel):
     instances: InstancesCfg = InstancesCfg()
     appium: AppiumCfg = AppiumCfg()
     limits: LimitsCfg = LimitsCfg()
+    execucao: ExecucaoCfg = ExecucaoCfg()
     ai: AiCfg = AiCfg()
     contas: ContasCfg = ContasCfg()
     releases: ReleasesCfg = ReleasesCfg()
