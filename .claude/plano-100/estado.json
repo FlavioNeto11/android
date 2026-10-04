@@ -6750,14 +6750,14 @@
    "id": "29.61",
    "status": "partial",
    "proof": "real",
-   "evidence": "PR #194, na main pela suíte 19 (c683ab0e) e no ar no deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). simulated: front 1475 passed na suíte 19, com os testes do aviso e da seleção. real, conferido pela orquestradora no painel local do central às 03:10Z (navegador embutido, bundle index-CsKdzKDQ.js, que contém o texto do aviso): (a) Execuções sem id no link abriu a execução mais recente da lista (r-20261004013429-72c696): ok; (b) trocar o endereço para uma rota que não existe (#/rota-que-nao-existe) devolveu o endereço à tela atual, mas o aviso 'Este endereço não existe no painel' NÃO apareceu (nenhum elemento com role=alert, texto ausente do corpo), em três tentativas.",
+   "evidence": "PR #194, na main pela suíte 19 (c683ab0e) e no ar no deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). simulated: front 1475 passed na suíte 19, com os testes do aviso e da seleção. real, conferido pela orquestradora no painel local do central entre 03:06Z e 03:08Z (navegador embutido, bundle index-CsKdzKDQ.js, que contém o texto do aviso): (a) Execuções sem id no link abriu a execução mais recente da lista (r-20261004013429-72c696): ok; (b) trocar o endereço para uma rota que não existe (#/rota-que-nao-existe) devolveu o endereço à tela atual, mas o aviso 'Este endereço não existe no painel' NÃO apareceu (nenhum elemento com role=alert, texto ausente do corpo), em três tentativas.",
    "blocker": "O aviso de rota desconhecida não aparece no central: falta achar por que o estado rotaDesconhecida não chega à tela (suspeita: é limpo quando a rota atual é reaplicada). Correção e nova conferência no navegador.",
    "grupo": "orquestradora-deploy19",
    "modelo": "claude-fable-5-1",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T03:08:57+00:00"
+   "quando": "2026-10-04T03:09:09+00:00"
   },
   "29.59": {
    "id": "29.59",
@@ -6796,7 +6796,7 @@
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T03:08:57+00:00"
+   "quando": "2026-10-04T03:09:09+00:00"
   }
  },
  "rodadas": [
@@ -8526,6 +8526,16 @@
   },
   {
    "quando": "2026-10-04T03:08:57+00:00",
+   "itens": [
+    "29.61",
+    "32.4"
+   ],
+   "grupos": [
+    "orquestradora-deploy19"
+   ]
+  },
+  {
+   "quando": "2026-10-04T03:09:09+00:00",
    "itens": [
     "29.61",
     "32.4"
