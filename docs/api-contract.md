@@ -5465,3 +5465,27 @@ nem contestação, e não pesa contra o item. Quem recusou vai ao log do backend
 - **404** `pedido_desconhecido`: não há o pedido.
 - **409** `pedido_nao_pendente`: o pedido já saiu de `pendente` (despachou, fechou ou expirou).
 - **503:** a validação não foi composta.
+
+## Adendo v1.27 (04/10/2026; número da orquestradora; item 28.10 F4) — o relatório do pai consolida os filhos
+
+Aditivo ao v1.16 e ao v1.17. Sem migração e sem rota nova. Só vale com `pedidos.colaboracao.enabled` e para um pedido com filhos;
+sem isso o relatório é idêntico ao de antes (a chave `consolidacao` não existe).
+
+- **`conteudo` do relatório** (`GET /api/pedidos/{id}/relatorios`, `.../{rid}`; qualquer gatilho) ganha o objeto `consolidacao`:
+  - `fontes[]`: `{filho_id, papel, estado, situacao: "com_dado"|"sem_dado", em_andamento, observacoes, memoria}`, uma por filho direto;
+  - `valores[]`: `{origem: "observacao"|"memoria", alvo, nome, tipo, valor, fontes: [{filho_id, papel}], n_fontes}`: o mesmo valor
+    vindo de vários filhos aparece uma vez;
+  - `conflitos[]`: `{origem, alvo, nome, tipo, versoes: [{valor, fontes, n_fontes}]}`: valores diferentes para a mesma chave. Não há
+    campo de vencedor: o relatório não resolve por voto nem por maioria;
+  - `omitidos: {valores, conflitos}` (tetos 200 e 100) e `resumo: {filhos, com_dado, sem_dado, em_andamento, valores, conflitos}`.
+- **Origem dos dados:** observações comprovadas (`observado`, com valor, ocorrência `concluida`) e memória `descoberta`, `decisao` e
+  `fonte` dos filhos diretos. Nunca o texto livre das execuções, o título do filho ou nome de persona.
+- **`nao_coberto`** ganha os tipos `conflito_entre_filhos`, `filho_em_andamento`, `filho_sem_dado` e `consolidacao_indisponivel`, e a
+  `conclusao.situacao` fica `parcial` com qualquer um deles.
+- **Aviso `relatorio_pronto`:** quando o relatório tem o bloco, `dados` ganha `filhos_lidos` e `conflitos` (inteiros) e a mensagem do
+  painel termina com "Consolidou N filho(s); N conflito(s).". O texto do canal de fora (Telegram) leva só "N conflito(s) entre os
+  filhos", sem conteúdo e sem nome.
+
+Prova:
+- `simulated`: `backend/tests/test_pedidos_colaboracao_consolidacao.py`.
+- `not_run`: pedido pai de teste no app de teste, PostgreSQL e o central (a colaboração está desligada lá).

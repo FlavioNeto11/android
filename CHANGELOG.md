@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.10 F4: o pai consolida observações e memória dos filhos (branch canais/28-10-f4-consolidacao, sem migração)
+
+- O relatório do pai ganha o bloco `consolidacao` (`fontes`, `valores`, `conflitos`), lido só das observações comprovadas e da
+  memória-fato dos filhos diretos, nunca do texto livre das execuções. Divergência entre filhos é conflito com as duas fontes (id e
+  papel), sem voto; valor igual agrupa com a contagem; filho sem dado ou em andamento é marcado e rebaixa a conclusão a `parcial`.
+- O aviso `relatorio_pronto` leva só contagens ao Telegram ("N conflito(s) entre os filhos"). Sem filhos ou com a colaboração
+  desligada, o relatório é o de antes (adendo v1.27; `docs/design/pedidos-persistentes.md` §9.1).
+- Prova `simulated`: `backend/tests/test_pedidos_colaboracao_consolidacao.py`. `not_run`: pedido pai de teste no app de teste.
+
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
 - Retorno do dono (04/10, Aprendizado › Para aprovar com 5 selecionados): o formulário do aceite abria com o botão
