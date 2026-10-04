@@ -3347,6 +3347,7 @@ interface AvisoDTO {
   id: string; pedido_id: string; pedido_titulo: string; ocorrencia_id: string | null;
   tipo: AvisoTipo; nivel: 'info' | 'warn' | 'error'; mensagem: string; dados: Record<string, unknown>;
   requer_pessoa: boolean; criado_em: string; lido_em: string | null;
+  criado_pelo_dono: boolean; de_lote: boolean;   // Adendo v1.31 (28.31 F2a)
 }
 ```
 
@@ -5653,3 +5654,22 @@ Sem migração, atrás de `pedidos.colaboracao.enabled` (desligada, tudo como an
 
 As regras 1 e 2 (uma conta por alvo no pedido inteiro e `approval_required` para pessoa real sem conversa prévia) são da porta de
 política (`PolicyEngine.check`, item 30.62): o provedor `contexto_do_pedido(run_id)` vem num PR à parte.
+
+## Adendo v1.31 (04/10/2026; número da orquestradora; item 28.31 F2a) — o pedido guarda quem o criou, e o aviso diz se é do dono ou de um lote
+
+Migração 106 (`pedidos.criado_por_tipo`, `pedidos.lote`), decididas uma vez, na criação (`POST /api/pedidos`):
+
+- com operador (a sessão do painel, ou a conversa do dono no Telegram ou no Trello): `dono`;
+- sem operador e com `idempotency_key` que começa com `lote:` (o caminho das frentes pelo loopback): `frente`, e `lote`
+  guarda a chave;
+- sem os dois: `desconhecido`. O loopback sem sessão NÃO é o dono. `convidado` e `ia` são do vocabulário; hoje nada os cria.
+
+O `PedidoView` não muda. O **`AvisoDTO`** (`GET /api/pedidos/avisos` e o evento `pedido.aviso`) ganha dois campos, sempre
+presentes:
+
+- `criado_pelo_dono` (booleano): o pedido é do dono. Só aí o canal de fora pode mostrar o título; os outros saem pelo id curto.
+- `de_lote` (booleano): o pedido é do lote de uma frente. O aviso vai à janela de rotina do canal, qualquer que seja o nível
+  (tipo `pedido.lote.<tipo>` na fila de envio), menos `aprovacao_pendente`, que só o dono decide e sai na hora.
+
+Pedido anterior à 106: os dois `false`. **Prova:** `simulated` (`backend/tests/test_pedidos_autor.py`). `not_run`: um pedido
+real de lote depois do deploy.

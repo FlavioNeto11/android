@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.31 F2a: o pedido guarda quem o criou e o lote (branch canais/28-31-f2a-autor, sobre a F1)
+
+- Migração 106 (`pedidos.criado_por_tipo`, `pedidos.lote`), decididas na criação por `pedidos/domain/autor.py`: com
+  operador é `dono`; sem operador e com `lote:` na chave, `frente`; senão `desconhecido`. O loopback sem sessão não é o
+  dono (decisão da orquestradora, 04/10 20:11Z). Sem backfill.
+- O `AvisoDTO` ganha `criado_pelo_dono` e `de_lote` (Adendo v1.31). Com isso o rótulo do pedido criado pelo dono volta a
+  sair no Telegram (com os filtros da F1), e o aviso de pedido de lote vai à janela de rotina (`pedido.lote.<tipo>`),
+  menos a aprovação, que sai na hora.
+- Prova `simulated`: `backend/tests/test_pedidos_autor.py`. `not_run`: pedido real depois do deploy.
+
 ## 2026-10-04 — 28.31 F1: o aviso diz o que aconteceu, o que é crítico e se espera o dono (branch canais/28-31-avisos-com-conteudo)
 
 A queixa do dono (Telegram, 04/10 19:10Z): avisos "genéricos e sem relevância". A causa estava no código, e era de

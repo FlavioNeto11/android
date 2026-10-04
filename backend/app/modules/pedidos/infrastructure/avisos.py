@@ -18,6 +18,7 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 
 from app.db import Database, Row, dumps, loads
+from app.modules.pedidos.domain.autor import DONO
 from app.modules.pedidos.domain.avisos import NIVEIS, TIPOS, id_do_aviso
 from app.util import to_iso
 
@@ -27,6 +28,12 @@ JsonObject = dict[str, object]
 
 #: Teto de ids por chamada de `ler` (o contrato diz ≤ 200).
 MAXIMO_DE_IDS = 200
+
+
+def _autoria(p: Row) -> JsonObject:
+    """28.31 F2a: o aviso diz se o pedido é do dono (aí o canal pode mostrar o título) e se é do lote de uma frente (aí
+    o aviso vai à janela de rotina). Pedido anterior à migração 106 não é de nenhum dos dois."""
+    return {"criado_pelo_dono": p["criado_por_tipo"] == DONO, "de_lote": bool(p["lote"])}
 
 
 class CaixaDeAvisos:
@@ -51,7 +58,7 @@ class CaixaDeAvisos:
         if nivel not in NIVEIS:
             raise ValueError(f"nível de aviso inválido: {nivel!r}")
         pessoa = pessoa_padrao if requer_pessoa is None else requer_pessoa
-        pedido = self.db.one("SELECT titulo FROM pedidos WHERE id=?", (pedido_id,))
+        pedido = self.db.one("SELECT titulo, criado_por_tipo, lote FROM pedidos WHERE id=?", (pedido_id,))
         if pedido is None:
             return None
         if self.db.one("SELECT 1 AS x FROM pedido_avisos WHERE chave_dedupe=?", (chave,)) is not None:
@@ -64,7 +71,7 @@ class CaixaDeAvisos:
              chave, criado_em))
         if (cur.rowcount or 0) != 1:
             return None
-        dto: JsonObject = {"id": aviso_id, "pedido_id": pedido_id, "pedido_titulo": pedido["titulo"],
+        dto: JsonObject = {"id": aviso_id, "pedido_id": pedido_id, "pedido_titulo": pedido["titulo"], **_autoria(pedido),
                            "ocorrencia_id": ocorrencia_id, "tipo": tipo, "nivel": nivel, "mensagem": mensagem,
                            "dados": dict(dados or {}), "requer_pessoa": pessoa, "criado_em": criado_em, "lido_em": None}
         try:
@@ -85,7 +92,7 @@ class CaixaDeAvisos:
     # ------------------------------------------------------------------ ler
     @staticmethod
     def dto(r: Row) -> JsonObject:
-        return {"id": r["id"], "pedido_id": r["pedido_id"], "pedido_titulo": r["pedido_titulo"],
+        return {"id": r["id"], "pedido_id": r["pedido_id"], "pedido_titulo": r["pedido_titulo"], **_autoria(r),
                 "ocorrencia_id": r["ocorrencia_id"], "tipo": r["tipo"], "nivel": r["nivel"], "mensagem": r["mensagem"],
                 "dados": loads(r["dados"], {}) or {}, "requer_pessoa": bool(r["requer_pessoa"]),
                 "criado_em": r["criado_em"], "lido_em": r["lido_em"]}
@@ -103,7 +110,8 @@ class CaixaDeAvisos:
         if lido is not None:
             onde.append("a.lido_em IS NOT NULL" if lido else "a.lido_em IS NULL")
         linhas = self.db.query(
-            "SELECT a.*, p.titulo AS pedido_titulo FROM pedido_avisos a JOIN pedidos p ON p.id = a.pedido_id"
+            "SELECT a.*, p.titulo AS pedido_titulo, p.criado_por_tipo, p.lote FROM pedido_avisos a"
+            " JOIN pedidos p ON p.id = a.pedido_id"
             f" WHERE {' AND '.join(onde)} ORDER BY a.criado_em DESC, a.id DESC LIMIT ? OFFSET ?",
             (*params, limite + 1, inicio))
         return [self.dto(r) for r in linhas[:limite]], len(linhas) > limite

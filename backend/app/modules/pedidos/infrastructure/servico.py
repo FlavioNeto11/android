@@ -30,6 +30,7 @@ from app.db import Database, Row, dumps, loads
 from app.events import EPHEMERAL_KINDS
 from app.models import RunTargetsPreview
 from app.modules.execution.presentation.schemas import RunTargetsResolveBody
+from app.modules.pedidos.domain import autor as dominio_autor
 from app.modules.pedidos.domain import avisos as dominio_avisos
 from app.modules.pedidos.domain import colaboracao
 from app.modules.pedidos.domain import gatilhos as dominio_gatilhos
@@ -375,13 +376,17 @@ class PedidosApi:
                 "INSERT INTO pedidos(id, titulo, objetivo, contexto, criterios_sucesso, alvos, autonomia, fuso,"
                 " inicio_em, fim_em, max_ocorrencias, orcamento_total_usd, orcamento_ocorrencia_usd, sobreposicao,"
                 " janela_recuperacao_s, coalescer, max_tentativas, pausa_por_falha, pai_id, papel, estado, versao,"
-                " criado_por, criado_em, atualizado_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'rascunho',1,?,?,?)",
+                " criado_por, criado_por_tipo, lote, criado_em, atualizado_em)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'rascunho',1,?,?,?,?,?)",
                 (pid, resumo[:120], p.objetivo_sem_destinos, corpo.contexto,
                  dumps(list(corpo.criterios_sucesso)) if corpo.criterios_sucesso is not None else None,
                  m.alvos_json, p.autonomia, p.fuso, to_iso(p.inicio_em) if p.inicio_em else None,
                  to_iso(p.fim_em) if p.fim_em else None, p.max_ocorrencias, p.orcamento_total_usd,
                  p.orcamento_ocorrencia_usd, p.sobreposicao, p.janela_recuperacao_s, 1 if p.coalescer else 0,
-                 p.max_tentativas, p.pausa_por_falha, corpo.pai_id, corpo.papel, operador, em, em))
+                 p.max_tentativas, p.pausa_por_falha, corpo.pai_id, corpo.papel, operador,
+                 # 28.31 F2a (106): quem criou, decidido aqui e só aqui; é o que deixa o aviso mostrar o título
+                 dominio_autor.autor_da_criacao(operador, idempotency_key), dominio_autor.lote_da_chave(idempotency_key),
+                 em, em))
             for de, tipo in corpo.dependencias:
                 self.repo.inserir_dependencia(de, pid, tipo, em)
             for g in p.gatilhos:

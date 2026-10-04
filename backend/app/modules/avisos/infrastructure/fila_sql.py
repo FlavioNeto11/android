@@ -25,6 +25,7 @@ from app.db import Database
 from app.modules.avisos.application.entrega import Cerca, Entrega
 from app.modules.avisos.domain.mensagem import (
     JANELA_DA_ROTINA_S,
+    PREFIXO_DE_LOTE,
     TIPOS_DA_JANELA,
     TIPO_DA_ROTINA,
     Aviso,
@@ -38,6 +39,8 @@ from app.util import to_iso
 #: Estados que já não mudam: candidatos à purga.
 ESTADOS_FINAIS = ("enviado", "falhou", "incerto", "descartado")
 MAX_ERRO = 300
+#: O aviso do pedido de lote de frente (28.31 F2a) vai à janela: o tipo dele começa com este prefixo.
+LOTE_LIKE = PREFIXO_DE_LOTE + "%"
 #: Quantas linhas devidas a reivindicação olha para achar a próxima mensagem: mais que qualquer rajada real.
 LIMITE_DA_VARREDURA = 500
 #: Os avisos sobre quem não é o dono (28.18) saem sempre um a um: o do convidado novo se decide respondendo a ELE (o
@@ -93,13 +96,15 @@ class FilaDeAvisos:
         da_janela = sorted(TIPOS_DA_JANELA)
         marcas_da_janela = ",".join("?" * len(da_janela))
         devidas_sql = ("SELECT id, tipo, criado_em FROM avisos_entregas WHERE estado='pendente' AND canal=?"
-                       " AND (proximo_envio_em IS NULL OR proximo_envio_em <= ?) AND tipo {} IN ({}) ORDER BY id LIMIT ?")
+                       " AND (proximo_envio_em IS NULL OR proximo_envio_em <= ?)"
+                       " AND {}(tipo IN ({}) OR tipo LIKE ?) ORDER BY id LIMIT ?")
         with cerca():
-            na_hora = self.db.query(devidas_sql.format("NOT", marcas_da_janela),
-                                    (self.canal, agora, *da_janela, LIMITE_DA_VARREDURA))
+            na_hora = self.db.query(devidas_sql.format("NOT ", marcas_da_janela),
+                                    (self.canal, agora, *da_janela, LOTE_LIKE, LIMITE_DA_VARREDURA))
             escolhidas = self._escolher(na_hora, agrupar_s, agrupar_a_partir_de) if na_hora else []
             rotina = [] if escolhidas else self.db.query(devidas_sql.format("", marcas_da_janela),
-                                                         (self.canal, agora, *da_janela, LIMITE_DA_VARREDURA))
+                                                         (self.canal, agora, *da_janela, LOTE_LIKE,
+                                                          LIMITE_DA_VARREDURA))
             e_rotina = False
             if not escolhidas and rotina:
                 fecha = to_iso(self.relogio() - timedelta(seconds=janela_s))
