@@ -83,8 +83,8 @@ from .state import AppState
 from .workers.captura import ErroDeMidia
 from .workers.protocol import EnvioDeMidia, Hello, Refused, parse_upstream
 from .workers.portao import BLOQUEIO_S
-from .workers.registry import INSCRICAO_TTL_S, WorkerError
-from .version import agent_version
+from .workers.registry import INSCRICAO_TTL_S, WorkerError, motivo_do_conflito
+from .version import agent_version, codigo_do_agente
 from .planning.capabilities import load_catalog
 from .planning.catalog import registered
 from .releases.catalog import ReleaseValidationError
@@ -3712,10 +3712,13 @@ async def _worker_canal(s: AppState, websocket: WebSocket, hello: Hello, credenc
         await websocket.send_json(payload)
 
     async def fechar() -> None:
-        # 4409 = "conflito": outra conexão deste mesmo worker assumiu o canal. O agente duplicado para em vez de
-        # ficar batendo por um socket órfão que o central já não usa para despachar.
+        # 4409 = "conflito": outra conexão deste mesmo worker assumiu o canal. O agente deslocado cancela o que tinha
+        # em voo e cede o canal por um tempo (29.76). Se ESTA conexão roda código diferente do central e a nova roda
+        # o do central (`codigo_do_agente` já guarda o `hello` da nova), é a cópia velha de uma atualização: o motivo
+        # diz isso, e o agente velho não volta.
+        motivo = motivo_do_conflito(codigo_do_agente(), hello.agent_code, s.workers.codigo_do_agente.get(worker_id))
         with contextlib.suppress(Exception):
-            await websocket.close(code=4409)
+            await websocket.close(code=4409, reason=motivo)
 
     link = s.workers.attach(worker_id, send, fechar)
     # O aparelho daquele worker passa a aceitar o ciclo de vida que o agente declarou — menos `hibernate`/`wake`

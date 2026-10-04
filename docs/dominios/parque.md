@@ -51,7 +51,15 @@ ver [`../api-contract.md`](../api-contract.md); para os estados de comando e o r
   12 min depois do wake). No primeiro `boot_completed` de um wake sem veredito, `Adb.uptime_s` lê o `/proc/uptime` do
   convidado; maior que o tempo desde o spawn mais `FOLGA_DO_UPTIME_S` (15 s) = snapshot carregado (`load_ms` = spawn →
   boot, `uptime_s` na medição, prazo do wake contado do boot). Só positivo: uptime pequeno ou ilegível não decide, e o
-  negativo continua só pelo log (ele conta `snapshot_failures`). O wake do worker remoto não tem
+  negativo continua só pelo log (ele conta `snapshot_failures`). `load_ms` não é a mesma medida nas duas fontes: pelo
+  log, spawn → linha lida; pelo uptime, spawn → `boot_completed`, com o boot depois do carregamento. Quem agregar
+  filtra por `snapshot_por`. Depois do veredito pelo uptime o log não é lido no laço; na medição, se o log disser que o
+  `poc_hib` foi recusado, a medição leva `log_contradiz: true` e sai um aviso, sem mudar o aparelho (29.76). Como o
+  log é bufferizado, há uma segunda leitura `LOG_CONTRADIZ_RELEITURA_S` (120 s) depois, só para o mesmo boot (mesmo
+  deslocamento do log), que só avisa. Nos logs
+  reais, as 7 recusas do `poc_hib` seguiram em boot a frio (50 a 80 s), nunca em outro snapshot. Prova real do
+  uptime em 04/10, deploy 30: wake do android-02, `load_ms` 15266, `snapshot_por` `uptime`, `uptime_s` 10596,3.
+  O wake do worker remoto não tem
   prazo próprio de 90 s (`worker/executor.py::_v_start` usa `boot_timeout_s`): sem mudança. Aceite real em 7 dias: wake
   > 90 s e "snapshot descartado" = 0 (`not_run`).
 - **Admissão por CPU e prazo do preparo pela carga (RA-4, item 29.33)** — a admissão só olhava RAM, e o preparo pós-boot
