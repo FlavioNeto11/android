@@ -355,6 +355,10 @@ def fora_do_catalogo(itens: Iterable[_ForaOut], catalogos: Mapping[str, Capabili
     return saida
 
 
+#: A frase vai ao painel e ao Telegram: o catálogo do Instagram tem ~30 ações e viraria um parágrafo.
+MAX_TITULOS_NA_RECUSA = 8
+
+
 def texto_fora_do_catalogo(pedido: str, app: str, disponiveis: list[str]) -> str:
     """Item 31.33: a frase da recusa, só com dados (o pedido dito pelo modelo, o nome do app e os títulos do catálogo
     dele). Nada de app ou ação fixos aqui: serve a qualquer app declarado (ADR-052)."""
@@ -362,7 +366,9 @@ def texto_fora_do_catalogo(pedido: str, app: str, disponiveis: list[str]) -> str
     sujeito = (pedido[:1].upper() + pedido[1:]) if pedido else "Isso"
     if not disponiveis:
         return f"{sujeito} não está disponível no {app}. Faça essa parte você mesmo."
-    itens = [d[:1].lower() + d[1:] for d in disponiveis]
+    itens = [d[:1].lower() + d[1:] for d in disponiveis[:MAX_TITULOS_NA_RECUSA]]
+    if len(disponiveis) > MAX_TITULOS_NA_RECUSA:
+        itens.append(f"mais {len(disponiveis) - MAX_TITULOS_NA_RECUSA}")
     lista = itens[0] if len(itens) == 1 else ", ".join(itens[:-1]) + " e " + itens[-1]
     return (f"{sujeito} não está disponível no {app}: o catálogo dele só tem {lista}. Faça essa parte você mesmo ou "
             "peça só o que está nessa lista.")

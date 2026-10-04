@@ -110,3 +110,10 @@ async def test_execucao_termina_recusada_sem_pergunta_e_com_plan_refused(tmp_pat
         assert json.loads(linha["plan"])["fora_do_catalogo"][0]["app"] == "Microsoft Outlook"
     finally:
         await state.stop()
+
+
+def test_lista_de_titulos_tem_teto_de_8_e_mais_n() -> None:
+    titulos = [f"Ação {i}" for i in range(1, 31)]
+    texto = texto_fora_do_catalogo("x", "App", titulos)
+    assert "ação 8 e mais 22." in texto and "ação 9" not in texto
+    assert "mais" not in texto_fora_do_catalogo("x", "App", titulos[:8])
