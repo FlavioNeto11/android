@@ -65,6 +65,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `test_rede_aplicacao.py::test_reiniciar_o_backend_nao_zera_o_teto_de_reinicios` (memória
   esvaziada no meio, como um processo novo: o total de pedidos fica em `reinicios_max`, e a desistência zera a conta
   na linha). Real: `not_run` (a medida de reinícios pela rede em 7 dias depois do deploy).
+## 2026-10-04 — 29.38: backup diário farm-backup, teto de 10 cópias de deploy e -PularBackup depois do ensaio (branch feat/29-38-backup-diario)
+
+- `backup.ps1` ganha `-Origem` (deploy, ensaio, diario, manual) e `-Teto`. O manifesto passa a dizer `origem` e
+  `commit`. `-Instalar` registra a tarefa `farm-backup` (diária, 03:00) no lugar da `parque-backup-diario`, que
+  nunca tinha sido registrada no ambiente central.
+- O `deploy.ps1` guarda as 10 cópias de deploy e de ensaio mais novas (eram 161 cópias e 23 GB em
+  `data/backups`). Cópia antiga sem `origem` conta como de deploy; as cópias diária e manual e as pastas com nome
+  escolhido à mão ficam. A poda nasce em ensaio: lista o que apagaria e não apaga até `-Podar` ou o arquivo
+  `data/backups/PODAR-LIGADO`, que se cria depois do sim do dono; a tarefa também só se registra depois dele.
+- `deploy.ps1 -PularBackup` numa subida de verdade só vale até 60 min depois de um `-Ensaio` no mesmo commit. Sem
+  esse ensaio, o deploy recusa antes de parar qualquer coisa (`scripts/lib/copias-de-backup.ps1`).
+- Prova `simulated`: `backend/tests/test_backup.py`, com 3 testes novos (teto em ensaio e depois ligado, com cópias falsas de cada origem;
+  ensaio recente do mesmo commit; recusa antes do `stop.ps1`). Real: `not_run` até o deploy com a cópia nova e o
+  registro da tarefa.
 
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 

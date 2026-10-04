@@ -29,7 +29,8 @@
   Repassa para stop.ps1: desliga também os emuladores que o projeto iniciou.
 
 .PARAMETER PularBackup
-  Só para reexecutar a conferência. Não use numa subida de verdade.
+  Numa subida de verdade, só até 60 min depois de um `-Ensaio` no mesmo commit (a cópia dele vale para a subida);
+  sem esse ensaio, o script recusa antes de parar qualquer coisa. Com `-Ensaio`, só reexecuta a conferência.
 
 .PARAMETER PularFrontend
   Não reconstrói `frontend/dist`. Só quando o que mudou é comprovadamente backend, ou quando o `npm` não está
@@ -70,9 +71,24 @@ if ($antes) {
 }
 
 # ------------------------------------------------------------------ 1. cópia, ANTES de qualquer coisa
+# Teto de 10 cópias de deploy (29.38): eram 161 cópias e 23 GB em 04/10, com dez deploys num dia.
+$tetoDeCopias = 10
+$minutosDoEnsaio = 60
+if ($PularBackup -and -not $Ensaio) {
+  # Subida sem cópia própria só logo depois de um `-Ensaio` da MESMA árvore: a cópia dele é a cópia desta subida.
+  # Sem esse ensaio, recusa antes de parar qualquer coisa.
+  . (Join-Path $PSScriptRoot 'lib\copias-de-backup.ps1')
+  $ensaio = Find-EnsaioRecente (Join-Path $root 'data\backups') $esperadoCommit $minutosDoEnsaio
+  if (-not $ensaio) {
+    throw ("-PularBackup só vale até $minutosDoEnsaio min depois de um 'deploy.ps1 -Ensaio' no commit " +
+           "$esperadoCommit, e não há cópia de ensaio assim em data\backups. Rode o -Ensaio ou suba sem -PularBackup.")
+  }
+  Write-Host "backup: a cópia do ensaio $($ensaio.Name) (mesmo commit, há menos de $minutosDoEnsaio min) vale para esta subida."
+}
 if (-not $PularBackup) {
   Write-Host '--- backup (com o backend no ar; a API de backup do SQLite é consistente) ---'
-  & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'backup.ps1') -IncluirSegredos
+  $origem = if ($Ensaio) { 'ensaio' } else { 'deploy' }
+  & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'backup.ps1') -IncluirSegredos -Origem $origem -Teto $tetoDeCopias
   if ($LASTEXITCODE -ne 0) { throw 'o backup falhou; a subida NÃO continua sem cópia do banco.' }
 }
 

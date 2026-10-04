@@ -13,6 +13,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -149,6 +150,101 @@ def test_backup_e_restore_ensaio_de_ponta_a_ponta(tmp_path: Path) -> None:
     assert "ENSAIO" in r.stdout
     with sqlite3.connect(str(ensaio / "poc.sqlite3")) as c:
         assert c.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 500
+
+
+# ---------------------------------------------------------------- teto das cópias e o ensaio (29.38)
+def _copia_falsa(destino: Path, nome: str, manifesto: dict[str, object] | None) -> Path:
+    pasta = destino / nome
+    pasta.mkdir(parents=True)
+    if manifesto is not None:
+        (pasta / "manifesto.json").write_text(json.dumps(manifesto), encoding="utf-8")
+    return pasta
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
+def test_teto_mantem_dez_copias_de_deploy_e_nao_toca_nas_outras(tmp_path: Path) -> None:
+    """161 cópias e 23 GB em `data/backups` (04/10): com dez deploys num dia, a retenção de 14 dias não segurava
+    nada. O teto conta deploy, ensaio e as cópias antigas sem `origem` (a tarefa diária nunca tinha sido registrada,
+    então elas vieram do deploy); a diária, a manual e a pasta com nome escolhido à mão ficam."""
+    raiz = _raiz_isolada(tmp_path)
+    destino = tmp_path / "backups"
+    for i in range(1, 3):                                   # antigas, sem `origem`
+        _copia_falsa(destino, f"20260901-00000{i}", {"ts": "2026-09-01T00:00:00Z"})
+    for i in range(1, 12):                                  # 11 de deploy e de ensaio
+        _copia_falsa(destino, f"20261001-0000{i:02d}", {"origem": "deploy" if i % 2 else "ensaio"})
+    _copia_falsa(destino, "20260801-000000", {"origem": "diario"})
+    _copia_falsa(destino, "20260802-000000", {"origem": "manual"})
+    _copia_falsa(destino, "20260803-000000-antes-ra20b", None)
+    banco = tmp_path / "poc.sqlite3"
+    _banco_com_wal_vivo(banco).close()
+
+    def rodar() -> str:
+        r = subprocess.run(["pwsh", "-NoProfile", "-File", str(raiz / "scripts" / "backup.ps1"), "-Banco", str(banco),
+                            "-Destino", str(destino), "-Reter", "0", "-Origem", "deploy", "-Teto", "10"],
+                           capture_output=True, text=True, timeout=180, cwd=str(raiz))
+        assert r.returncode == 0, r.stdout + r.stderr
+        return r.stdout
+
+    # 1) Sem a chave, a poda é ENSAIO: lista as 4 que apagaria (2 antigas + 11 + a nova = 14) e não apaga nada.
+    saida = rodar()
+    assert saida.count("apagaria (teto") == 4
+    assert "NADA apagado" in saida
+    ficaram = sorted(p.name for p in destino.iterdir())
+    assert len(ficaram) == 2 + 11 + 3 + 1
+    nova = ficaram[-1]
+    assert json.loads((destino / nova / "manifesto.json").read_text(encoding="utf-8-sig"))["origem"] == "deploy"
+
+    # 2) Com `PODAR-LIGADO` no destino (criado depois do sim do dono), apaga: 15 contadas, saem as 5 mais velhas.
+    (destino / "PODAR-LIGADO").write_text("sim do dono\n", encoding="utf-8")
+    time.sleep(1.1)                                         # o carimbo da pasta é por segundo
+    saida = rodar()
+    assert saida.count("removido (teto") == 5
+    ficaram = sorted(p.name for p in destino.iterdir() if p.is_dir())
+    contadas = [n for n in ficaram if n.startswith("2026100")]
+    assert len(contadas) == 10
+    assert contadas[:8] == [f"20261001-0000{i:02d}" for i in range(4, 12)] and nova in contadas
+    assert "20260901-000001" not in ficaram and "20260901-000002" not in ficaram
+    assert {"20260801-000000", "20260802-000000", "20260803-000000-antes-ra20b"} <= set(ficaram)
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
+def test_pular_backup_so_vale_com_ensaio_recente_do_mesmo_commit(tmp_path: Path) -> None:
+    """`deploy.ps1 -PularBackup` numa subida de verdade usa a cópia do `-Ensaio` feito logo antes, na mesma árvore.
+    Ensaio de outro commit (o deploy pode trazer migração que ele não ensaiou), ensaio velho e cópia de deploy não
+    valem."""
+    from datetime import datetime, timedelta, timezone
+
+    agora = datetime.now(timezone.utc)
+    destino = tmp_path / "backups"
+    _copia_falsa(destino, "20261004-090000", {"origem": "ensaio", "commit": "abc", "ts": agora.isoformat()})
+    _copia_falsa(destino, "20261004-080000", {"origem": "ensaio", "commit": "velho",
+                                              "ts": (agora - timedelta(hours=2)).isoformat()})
+    _copia_falsa(destino, "20261004-091000", {"origem": "deploy", "commit": "dep", "ts": agora.isoformat()})
+    lib = SCRIPTS / "lib" / "copias-de-backup.ps1"
+
+    def achar(commit: str, minutos: int) -> str:
+        cmd = (f". '{lib}'; $p = Find-EnsaioRecente '{destino}' '{commit}' {minutos}; "
+               "if ($p) { $p.Name } else { 'nenhum' }")
+        r = subprocess.run(["pwsh", "-NoProfile", "-Command", cmd], capture_output=True, text=True, timeout=60)
+        assert r.returncode == 0, r.stderr
+        return r.stdout.strip()
+
+    assert achar("abc", 60) == "20261004-090000"
+    assert achar("outro", 60) == "nenhum"           # ensaio de outro commit
+    assert achar("velho", 60) == "nenhum"           # ensaio de duas horas atrás
+    assert achar("velho", 180) == "20261004-080000"
+    assert achar("dep", 60) == "nenhum"             # cópia de deploy não é ensaio
+    assert achar("", 60) == "nenhum"                # árvore sem commit conhecido não pula nada
+
+
+def test_deploy_recusa_pular_backup_antes_de_parar_qualquer_coisa() -> None:
+    """A recusa do `-PularBackup` sem ensaio vem antes do `stop.ps1`: lido no texto do script, porque rodar o
+    deploy de verdade num teste pararia o ambiente central."""
+    texto = (SCRIPTS / "deploy.ps1").read_text(encoding="utf-8")
+    recusa = texto.index("Find-EnsaioRecente")
+    assert recusa < texto.index("'stop.ps1'")
+    assert "-Origem $origem -Teto $tetoDeCopias" in texto
+    assert "$tetoDeCopias = 10" in texto
 
 
 # ---------------------------------------------------------------- o retrato do que está no ar
