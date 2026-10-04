@@ -265,7 +265,10 @@ async def test_o_sim_do_plano_vencido_nao_vale(harness: Any, monkeypatch: Any) -
     state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() - timedelta(minutes=1)),))
     veredito = await _gate(state, "dm")
     assert veredito is not None and not veredito.allowed
-    assert state.db.scalar("SELECT decided_note FROM pending_approvals WHERE origem='plano'").endswith("venceu")
+    # Duas saídas certas: a porta o descarta ("… venceu") ou a faxina da subida do harness já o marcou ("… vencido
+    # (validade)") antes do `_gate`. Em ambas o sim sai `expired` e a porta recusa; a nota não decide o teste.
+    linha = state.db.one("SELECT status, decided_note FROM pending_approvals WHERE origem='plano'")
+    assert linha["status"] == "expired" and "venc" in linha["decided_note"]
 
 
 async def test_o_gesto_pela_rota(harness: Any, monkeypatch: Any) -> None:
