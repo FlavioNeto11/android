@@ -457,19 +457,40 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
 - o descartado (teto diário, `campo_invalido`, `falhas_demais`) tem o conteúdo apagado sem chegar à equipe. O
   `pendente` (canal desligado) e o `retido` (excesso na hora) guardam o conteúdo até a entrega ou os 180 dias;
 - cópias de segurança: a pasta `AAAAMMDD-HHmmss` sai na primeira cópia depois de 14 dias (`-Reter 14`), menos a mais
-  nova; as de deploy e de ensaio têm ainda o teto de 10. Pasta com sufixo no nome não sai sozinha: depois de ligar o
-  contato, quem cria uma a apaga à mão quando acabar;
+  nova, que nunca sai sozinha; as de deploy e de ensaio têm ainda o teto de 10. Pasta com sufixo no nome não sai
+  sozinha: depois de ligar o contato, quem cria uma a apaga à mão quando acabar. Teto prático, com a rotina rodando:
+  cerca de 195 dias;
 - o `cliente_hash` (código do endereço de rede, nunca o IP) fica os mesmos 180 dias.
 
 **Pedido de exclusão de um contato do site** (o visitante pede pelo formulário ou por telefone). Quem executa é o
-operador, com o sim do dono no chat, porque apaga dado; a ação no painel é o 29.83.
-1. Achar as linhas pelo telefone que o visitante deu, comparando só os dígitos (troque `<DIGITOS>` pelos últimos 8):
-   `SELECT id, criado_em, estado FROM portal_contatos WHERE replace(replace(replace(replace(replace(telefone,' ',''),'-',''),'(',''),')',''),'+','') LIKE '%<DIGITOS>'`.
-   Não copie o conteúdo para chat, cartão ou log.
-2. Apagar a mensagem no chat do Telegram: o dono, à mão (o bot só apaga a própria mensagem até 48 h).
-3. Responder ao visitante pelo telefone que ele deixou. Dizer que as cópias de segurança saem pela rotina delas, em até
-   14 dias.
-4. Apagar as linhas, incluindo a do próprio pedido de exclusão: `DELETE FROM portal_contatos WHERE id IN (<ids>)`.
+operador, com o sim do dono no chat, porque apaga dado; a ação no painel é o 29.83. O pedido feito pelo formulário é
+ele mesmo um contato que chegou ao chat: são duas ou mais linhas e duas ou mais mensagens a apagar. Nada do conteúdo
+vai para chat, cartão ou log.
+1. Achar as linhas comparando TODOS os dígitos que o visitante informou, com DDD (troque `<DIGITOS>`, por exemplo
+   `11987654321`; com o `55` na frente, use o número inteiro como ele veio). O SELECT mostra os dígitos para conferir
+   antes de apagar:
+   `SELECT id, criado_em, estado, replace(replace(replace(replace(replace(telefone,' ',''),'-',''),'(',''),')',''),'+','') AS digitos FROM portal_contatos WHERE replace(replace(replace(replace(replace(telefone,' ',''),'-',''),'(',''),')',''),'+','') LIKE '%<DIGITOS>'`.
+   Fique só com as linhas cujos `digitos` são os do visitante (com ou sem o `55`).
+2. Ver o aviso de cada linha na fila da Canais (chave `portal:<id>`, em `avisos_entregas`) e as mensagens que o bot já
+   mandou (`canal_enviadas`, `fato` = a mesma chave):
+   `SELECT chave, estado FROM avisos_entregas WHERE chave IN ('portal:<id1>', 'portal:<id2>')` e
+   `SELECT fato, ref_mensagem, enviada_em FROM canal_enviadas WHERE canal='telegram' AND fato IN ('portal:<id1>', 'portal:<id2>')`.
+   Se algum aviso estiver `enviando`, espere um minuto e repita: ele vira `enviado` ou `pendente`.
+3. Apagar as respostas do dono a essas mensagens, que ficam com texto em `canal_entradas`: apagar só o texto e manter a
+   linha, que é o registro do canal:
+   `UPDATE canal_entradas SET texto=NULL WHERE canal='telegram' AND responde_a IN (<ref_mensagem do passo 2>)`.
+4. Numa transação só, apagar o aviso que ainda não saiu e as linhas do contato, para o laço do portal não reenfileirar
+   no meio:
+   `BEGIN;`
+   `DELETE FROM avisos_entregas WHERE chave IN ('portal:<id1>', 'portal:<id2>') AND estado <> 'enviando';`
+   `DELETE FROM portal_contatos WHERE id IN (<id1>, <id2>);`
+   `COMMIT;`
+   O `pendente`, o `falhou` e o `incerto` ainda têm o texto; o `enviado` e o `descartado` já não têm, e saem juntos.
+   Se o passo 2 ainda mostrar `enviando`, não apague: espere e volte ao passo 2.
+5. Apagar as mensagens no chat do Telegram: o dono, à mão (o bot só apaga a própria mensagem até 48 h). Use as datas
+   do passo 2 para achá-las; são todas as do passo 2, inclusive a do próprio pedido.
+6. Responder ao visitante pelo telefone que ele deixou. Dizer que as cópias de segurança saem em cerca de duas
+   semanas, pela rotina, e que a cópia mais nova e as pastas com sufixo no nome não saem sozinhas.
 
 **Recuo.** `site_ligado` e `contato_ligado` em `false` e reiniciar `farm-central`: a raiz volta ao 307 para o painel e a
 rota responde 404. Recuo parcial: só `contato_ligado: false`; o site fica e mostra o aviso no lugar do formulário. A

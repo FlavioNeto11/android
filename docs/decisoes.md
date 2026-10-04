@@ -5568,7 +5568,8 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
   - as de deploy e de ensaio ainda têm o teto das 10 mais novas (com `PODAR-LIGADO` no destino);
   - a pasta com sufixo no nome (feita à mão, como `-ensaio-restauracao-2939`) não casa com a regra e não sai sozinha:
     quem a cria depois de o contato estar ligado a apaga à mão quando acabar;
-  - com as cópias rodando, um contato some de tudo em até ~194 dias (180 + 14). Parada a rotina, a última cópia fica.
+  - com as cópias rodando, um contato some de tudo em cerca de 195 dias (180 + 14 e a hora da faxina). Parada a
+    rotina, a última cópia fica.
 - O `cliente_hash` (HMAC do IP, ou do /64 no IPv6, com o sal que não gira) fica na linha pelos mesmos 180 dias, contra
   abuso; a página diz isso. O IP em si não é guardado em lugar nenhum do portal.
 - **Exclusão a pedido**: hoje é o procedimento manual de `docs/operacao.md` ("Pedido de exclusão de um contato do site"),
