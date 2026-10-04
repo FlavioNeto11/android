@@ -19,6 +19,11 @@ export interface ButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement
   disabledReason?: string | null;
   /** Botão só com ícone: `label` vira aria-label + tooltip. */
   iconOnly?: boolean;
+  /**
+   * O nome acessível. Com `iconOnly`, também o tooltip. Sem `iconOnly` e com texto visível (`children`), vira o
+   * `aria-label` (30.67: antes ele era ignorado e o leitor de tela ouvia só "Não enviar este", sem dizer de qual item).
+   * Deve CONTER o texto visível (WCAG 2.5.3, rótulo no nome): quem fala o que vê precisa acionar o botão.
+   */
   label?: string;
   block?: boolean;
   children?: ReactNode;
@@ -52,7 +57,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       ref={ref}
       type={type ?? 'button'}
       className={cx(ui.btn, VARIANT[variant], size === 'sm' && ui.btnSm, size === 'lg' && ui.btnLg, iconOnly && ui.btnIconOnly, block && ui.btnBlock, className)}
-      aria-label={iconOnly ? (disabledReason ? `${label ?? ''} — indisponível: ${disabledReason}` : label) : rest['aria-label']}
+      aria-label={iconOnly || (label && children != null)
+        ? (disabledReason ? `${label ?? ''} — indisponível: ${disabledReason}` : label)
+        : rest['aria-label']}
       aria-disabled={blocked || undefined}
       aria-busy={loading || undefined}
       disabled={disabled}
