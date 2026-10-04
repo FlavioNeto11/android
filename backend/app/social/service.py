@@ -1046,8 +1046,14 @@ class SocialService:
             outgoing_content=bindings.get("content"), target=bindings.get("target"), run_id=run_id,
             objective_id=objective_id, step_id=step_id, instance_id=instance_id,
             incoming_content=(draft_meta or {}).get("incoming") or None, metadata=meta, app_id=app_id).id
-        # 30.65: o efeito saiu, então a exceção presa a esta etapa (se houver) está gasta. Uso único.
-        self.excecoes.gastar(step_id, interaction_id)
+        # 30.65: o efeito saiu, então a exceção presa a esta etapa (se houver) está gasta. Uso único. Uma falha aqui não
+        # pode derrubar o `open_effect`: o executor pularia `_effects` e `link_interaction`, e a conta deste efeito (que
+        # alimenta a janela do ADR-055) se perderia.
+        try:
+            self.excecoes.gastar(step_id, interaction_id)
+        except Exception:  # noqa: BLE001
+            log.exception("30.65: a exceção da etapa %s não foi marcada como usada (interação %s)", step_id,
+                          interaction_id)
         return interaction_id
 
     def settle_effect(self, profile_id: str, interaction_id: str, *, outcome: str,

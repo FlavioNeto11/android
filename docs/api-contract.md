@@ -1168,6 +1168,8 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `politica.excecao_criada` | sim | `social/excecoes.py` — exceção de uso único à regra de uma conta por alvo criada pela rota (30.65) |
 | `politica.excecao_usada` | sim | `social/excecoes.py` — o efeito da etapa presa saiu e a exceção foi gasta (30.65) |
 | `politica.excecao_vencida` | sim | `social/excecoes.py` — a exceção venceu sem uso (30.65) |
+| `politica.excecao_recusada` | sim | `social/excecoes.py` — o dono rejeitou o cartão da etapa presa e a exceção acabou (30.65) |
+| `politica.excecao_revogada` | sim | `social/excecoes.py` — a exceção em aberto foi revogada pela rota (30.65) |
 | `app_state.updated` | sim | `state.py` |
 | `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
@@ -5662,20 +5664,32 @@ política (`PolicyEngine.check`, item 30.62): o provedor `contexto_do_pedido(run
 Migração `104_excecoes_de_politica`. A porta de frota (ADR-055) recusa, sem caminho de aprovação, o efeito sobre um alvo que
 outra conta da frota já tocou na janela. A exceção tira só essa recusa, só para o perfil, o alvo e a ação dela, e NÃO libera
 sozinha: a etapa casada vira `approval_required` e aparece em Pendências com o motivo "exceção … à regra de uma conta por alvo
-em 30 dias (ADR-055) … uso único (30.65)". Conta retirada, espaçamento, tetos, DM fria e repetição (30.64) seguem valendo.
+em 30 dias (ADR-055), criada por <autor> em <hora> …; autorização citada: <texto> … uso único (30.65)". "Autorizada pelo
+dono" só aparece quando quem criou era operador com sessão no painel: o loopback cria sem sessão, e aí a autorização é só
+texto citado. Conta retirada, espaçamento, tetos, DM fria e repetição (30.64) seguem valendo. A etapa que usa a exceção
+sempre abre cartão novo: o aprovado de uma versão anterior com o mesmo texto e alvo não é reaproveitado.
 
 - **`POST /api/politica/excecoes`** (201), atrás do login. Corpo, todos obrigatórios, campo desconhecido é recusado:
   `profile_id` (perfil de ORIGEM), `alvo` (o @, normalizado), `capability` (`SEND_MESSAGE`...), `motivo`, `autorizacao`
-  (quem autorizou, por onde e quando) e `expira_em` (UTC ISO; no máximo 72 h a partir de agora). O autor é a sessão do
-  painel. Resposta `{"excecao": {...}}`. 422 `excecao_invalida`: prazo acima de 72 h ou já passado, alvo vazio, perfil
-  inexistente.
+  (quem autorizou, por onde e quando) e `expira_em` (UTC ISO; no máximo 72 h a partir de agora). O autor é o operador da
+  sessão; sem sessão (loopback), o rótulo `panel`, e `autor_com_sessao` fica falso. Resposta `{"excecao": {...}}`.
+  422 `excecao_invalida`: prazo acima de 72 h ou já passado, alvo vazio, perfil inexistente, alvo que não é conta nossa
+  viva (abrir para pessoa real é decisão do dono), ou já existe uma em aberto para o mesmo perfil, alvo e ação. 409
+  `note_looks_secret`: `motivo` ou `autorizacao` com formato de credencial, antes de qualquer escrita (a triagem de nota;
+  hora com segundos, `19:02:26Z`, cai nela: escreva `19:02 UTC`).
+- **`POST /api/politica/excecoes/{id}/revogar`** (200): encerra a exceção em aberto, livre ou presa. `{"excecao": {...}}`
+  com `estado: "revogada"`. 404 `not_found`; 409 `excecao_encerrada` se ela já terminou.
 - **`GET /api/politica/excecoes?profile_id=`**: `{"excecoes": [...]}`, as mais novas primeiro (até 200). Cada uma traz
   `id`, `regra` (`uma_conta_por_alvo`), `profile_id`, `alvo`, `capability`, `motivo`, `autorizacao`, `autor`,
-  `criada_em`, `expira_em`, `step_id`, `presa_em`, `usada_em`, `interaction_id`, `vencida_em` e `estado`
-  (`ativa` | `presa` | `usada` | `vencida`). Ler encerra as vencidas.
+  `autor_com_sessao`, `criada_em`, `expira_em`, `step_id`, `presa_em`, `usada_em`, `interaction_id`, `vencida_em`,
+  `encerrada_em`, `encerrada_por`, `encerramento` e `estado` (`ativa` | `presa` | `usada` | `vencida` | `recusada` |
+  `revogada`). Ler encerra as vencidas.
 - **Ciclo.** A porta do despacho prende a exceção à etapa que casou (outra etapa só a toma se a presa terminou sem efeito);
-  o `open_effect` a gasta quando o efeito sai (uso único: a segunda volta à recusa). Sem uso até `expira_em`, ela vence.
+  o `open_effect` a gasta quando o efeito sai (uso único: a segunda volta à recusa; uma falha ao gastar não derruba o
+  efeito, que fica registrado). Sem uso até `expira_em`, ela vence e solta a etapa; o vencimento roda na porta do despacho
+  e na leitura da rota, não há varredura em segundo plano. Rejeitar o cartão da etapa presa a encerra (`recusada`), e a
+  rota de revogar também: encerrada não volta a valer para etapa nenhuma.
 - **Eventos** (persistidos, sem aviso no Telegram): `politica.excecao_criada`, `politica.excecao_usada`,
-  `politica.excecao_vencida`. Não entram no registro de decisões automáticas (28.25): é decisão de pessoa.
+  `politica.excecao_vencida`, `politica.excecao_recusada` e `politica.excecao_revogada`. Não entram no registro de decisões automáticas (28.25): é decisão de pessoa.
 - **Prova:** `simulated` (`backend/tests/test_excecao_de_politica.py`). `not_run`: a exceção do 31.26, que a orquestradora
   cria depois do deploy 32.

@@ -1639,13 +1639,35 @@ class ExcecaoDePoliticaCreate(BaseModel):
 
 @router.post("/politica/excecoes", status_code=201)
 async def criar_excecao_de_politica(request: Request, body: ExcecaoDePoliticaCreate) -> dict[str, object]:
+    # Motivo e autorização são texto livre que vai ao banco e ao evento `politica.excecao_criada`: a triagem de nota
+    # recusa antes de qualquer escrita (segredo nunca em evento).
+    for campo, valor in (("motivo", body.motivo), ("autorizacao", body.autorizacao)):
+        if _TRIAGEM_DE_NOTA.recusa(valor.strip()):
+            raise err(409, "note_looks_secret", f"O campo {campo} tem formato ou assunto de credencial e nada foi "
+                                                "gravado. Reescreva sem o segredo; hora com segundos (19:02:26Z) cai na "
+                                                "mesma regra, escreva 19:02 UTC.")
     try:
         criada = st(request).excecoes.criar(profile_id=body.profile_id, alvo=body.alvo, capability=body.capability,
                                             motivo=body.motivo, autorizacao=body.autorizacao, autor=quem(request),
-                                            expira_em=body.expira_em)
+                                            expira_em=body.expira_em,
+                                            autor_com_sessao=bool(getattr(request.state, "operador", None)))
     except ExcecaoInvalida as exc:
         raise err(422, "excecao_invalida", str(exc)) from exc
     return {"excecao": criada.to_dict()}
+
+
+@router.post("/politica/excecoes/{excecao_id}/revogar")
+async def revogar_excecao_de_politica(request: Request, excecao_id: str) -> dict[str, object]:
+    """Encerra a exceção ainda em aberto (livre ou presa a uma etapa que espera o cartão). 404 se não existe; 409
+    `excecao_encerrada` se já terminou."""
+    excecoes = st(request).excecoes
+    if excecoes.obter(excecao_id) is None:
+        raise err(404, "not_found", f"exceção {excecao_id} não existe")
+    try:
+        revogada = excecoes.revogar(excecao_id, por=quem(request))
+    except ExcecaoInvalida as exc:
+        raise err(409, "excecao_encerrada", str(exc)) from exc
+    return {"excecao": revogada.to_dict()}
 
 
 @router.get("/politica/excecoes")

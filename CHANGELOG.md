@@ -241,6 +241,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   prazo (no máximo 72 h). Cada passo vira evento `politica.excecao_*`.
 - `PolicyEngine._fleet_gate` deixa passar só a recusa de uma conta por alvo do perfil, alvo e ação da exceção. O `check`
   põe a etapa em `approval_required`, com o motivo, e devolve `Verdict.excecao`. O `check` continua só lendo.
+- Revisão da fila (orquestradora, 04/10): o cartão diz quem criou e cita a autorização, e só atesta o dono com sessão de
+  operador; a etapa com exceção não reaproveita o aprovado de outra versão; só alvo que é conta nossa viva; rejeitar o
+  cartão encerra a exceção e há `POST /api/politica/excecoes/{id}/revogar`; uma em aberto por trio; `gastar` com ordem
+  e sem pegar vencida ou encerrada; `vencer` solta a etapa; falha ao gastar não derruba o `open_effect`; motivo e
+  autorização passam pela triagem de nota (409 `note_looks_secret`).
 - Emenda 30.65 do ADR-055. Prova `simulated`: `backend/tests/test_excecao_de_politica.py`. `not_run`: a exceção do 31.26,
   depois do deploy 32.
 
