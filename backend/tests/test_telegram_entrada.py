@@ -123,6 +123,7 @@ class PortasFalsas:
         self.mudou: list[dict[str, object]] | None = None     # o próximo `aprovar_plano` dá 409 `plano_mudou`
         self.recusar_aprovar: str | None = None
         self.imagens: dict[str, tuple[bytes, str]] = {}
+        self.estado_ao_criar = "planned"            # o status da execução só de plano logo depois de criada
 
     def nomes_de_persona(self) -> list[str]:
         return list(self.personas)
@@ -172,7 +173,7 @@ class PortasFalsas:
         self.modo_criado = modo
         if self.recusar_criar:
             raise RecusaDaCentral("Nenhum aparelho apto no pré-voo.")
-        self.estados["r-20261003180000-abc123"] = "planned" if modo == "plan" else "running"
+        self.estados["r-20261003180000-abc123"] = self.estado_ao_criar if modo == "plan" else "running"
         return "r-20261003180000-abc123", "abc123"
 
     def estado_da_execucao(self, run_id: str) -> str | None:
@@ -607,3 +608,144 @@ async def test_sem_nome_de_persona_troca_palavra_inteira_sem_acento_e_poupa_a_an
     assert sem_nome_de_persona("Bruno Lima respondeu; a ANA viu", nomes) == "<persona> respondeu; a ANA viu"
     # Contraprova: pedaço de palavra não é nome ("Andressa", "Lista"), e nome curto demais (< 3) não entra.
     assert sem_nome_de_persona("Andressa olhou a Lista", nomes) == "Andressa olhou a Lista"
+
+
+# ===================================================================== 28.27: a porta do plano pelo canal
+RUN = "r-20261003180000-abc123"
+
+
+def _item(sid: str, selo: str = "aprovacao", texto: str | None = "oi, tudo bem?", **kw: object) -> dict[str, object]:
+    base: dict[str, object] = {"step_id": sid, "selo": selo, "chave": f"{sid:0<64}" if selo == "aprovacao" else None,
+                               "titulo": "Comentar no post", "acao": "COMMENT", "alvo": "post 123", "texto": texto,
+                               "motivo": "", "tem_imagem": False, "imagem_sha256": None, "aparelho": "android-09"}
+    base.update(kw)
+    return base
+
+
+def _porta(*itens: dict[str, object], validade: str = "2099-10-05T22:40:00Z", **kw: object) -> dict[str, object]:
+    return {"itens": list(itens), "hash_do_plano": "h" * 64, "validade_ate": validade, "parcial": False,
+            "total": False, **kw}
+
+
+async def _executar(c: Cenario, texto: str = "abra o Chrome no android-09") -> int:
+    await c.volta(msg(5, texto))
+    ident = int(c.linha(5)["id"])
+    await c.volta(botao(6, f"x:{ident}", mid=c.bot.mid))
+    return ident
+
+
+async def test_porta_com_sim_pendente_mostra_a_previa_e_so_inicia_no_segundo_toque(c: Cenario) -> None:
+    c.portas.previa_da_porta = _porta(_item("s1"), _item("s2", selo="permitido", texto=None))
+    ident = await _executar(c)
+    assert "aprovar_plano" not in c.portas.nomes() and c.portas.estados[RUN] == "planned"
+    linha = c.linha(5)
+    previa = json.loads(str(linha["previa"]))
+    assert (linha["estado"], previa["fase"], previa["aprovar"]) == ("pergunta", "porta", [["s1", f"{'s1':0<64}"]])
+    ultima = c.bot.mensagens()[-1]
+    assert [b["callback_data"] for b in ultima["reply_markup"]["inline_keyboard"][0]] == [  # type: ignore[index]
+        f"p:{ident}", f"c:{ident}"]
+    assert ultima["reply_markup"]["inline_keyboard"][0][0]["text"] == "Executar (aprova 1)"  # type: ignore[index]
+    assert str(ultima["text"]).startswith("Plano abc123: 1 item pede o seu sim antes de começar.")
+    await c.volta(botao(7, f"p:{ident}", mid=c.bot.mid))
+    # Exatamente os pares do retrato (o que o dono VIU), pelo operador do canal.
+    assert c.portas.chamadas[-1] == ("aprovar_plano", (RUN, (("s1", f"{'s1':0<64}"),)), OPERADOR_DO_TELEGRAM)
+    assert c.linha(5)["estado"] == "feita"
+    assert "Execução abc123 iniciada; 1 sim gravado, válidos até 22:40Z. Conto aqui quando terminar." in c.bot.textos()
+    await c.volta(botao(8, f"p:{ident}", mid=c.bot.mid))
+    assert c.portas.nomes().count("aprovar_plano") == 1 and "Esta prévia já foi tratada." in c.bot.textos()
+
+
+async def test_sem_sim_pendente_inicia_com_um_toque_e_uma_linha(c: Cenario) -> None:
+    c.portas.previa_da_porta = _porta(_item("s1", selo="permitido"), _item("s2", selo="na_execucao"), total=True)
+    await _executar(c)
+    assert c.portas.chamadas[-1] == ("aprovar_plano", (RUN, ()), OPERADOR_DO_TELEGRAM)
+    assert c.linha(5)["estado"] == "feita"
+    assert c.bot.textos()[-1] == ("Execução abc123 iniciada: o plano não tem aprovação pendente agora; 1 item vai "
+                                  "pedir você na execução. Conto aqui quando terminar.")
+
+
+async def test_plano_ainda_sendo_feito_espera(c: Cenario) -> None:
+    c.portas.estado_ao_criar = "planning"
+    await _executar(c)
+    assert "porta" not in c.portas.nomes() and c.linha(5)["estado"] == "executando"
+    c.portas.estados[RUN] = "planned"
+    await c.volta()
+    assert c.portas.chamadas[-1][0] == "aprovar_plano" and c.linha(5)["estado"] == "feita"
+
+
+async def test_porta_ilegivel_inicia_e_a_porta_decide_no_despacho(c: Cenario) -> None:
+    c.portas.porta_quebra = True
+    await _executar(c)
+    assert c.portas.chamadas[-1][:2] == ("iniciar", (RUN,)) and c.linha(5)["estado"] == "feita"
+    assert "as travas se decidem na execução" in c.bot.textos()[-1]
+
+
+async def test_plano_mudou_manda_a_previa_nova_e_nada_e_gravado(c: Cenario) -> None:
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    c.portas.mudou = [{"step_id": "s1", "selo": "aprovacao", "motivo": "a chave mudou"}]
+    c.portas.previa_da_porta = _porta(_item("s1", chave="d" * 64), _item("s3"))
+    await c.volta(botao(7, f"p:{ident}", mid=c.bot.mid))
+    assert "O plano mudou em 1 item desde a prévia: nada foi gravado. Segue a prévia nova." in c.bot.textos()
+    assert c.portas.estados[RUN] == "planned" and c.linha(5)["estado"] == "pergunta"
+    assert json.loads(str(c.linha(5)["previa"]))["aprovar"] == [["s1", "d" * 64], ["s3", f"{'s3':0<64}"]]
+    await c.volta(botao(8, f"p:{ident}", mid=c.bot.mid))
+    assert c.portas.chamadas[-1] == ("aprovar_plano", (RUN, (("s1", "d" * 64), ("s3", f"{'s3':0<64}"))),
+                                     OPERADOR_DO_TELEGRAM)
+    assert c.portas.nomes().count("aprovar_plano") == 2
+
+
+async def test_previa_da_porta_vencida_cancela_a_execucao(c: Cenario) -> None:
+    c.portas.previa_da_porta = _porta(_item("s1"), validade="2000-01-01T00:00:00Z")
+    ident = await _executar(c)
+    await c.volta(botao(7, f"p:{ident}", mid=c.bot.mid))
+    assert "aprovar_plano" not in c.portas.nomes() and c.portas.chamadas[-1][:2] == ("cancelar", (RUN,))
+    assert c.linha(5)["estado"] == "cancelada" and c.bot.textos()[-1] == "Esta prévia venceu; mande o pedido de novo."
+
+
+async def test_cancelar_na_porta_cancela_a_execucao(c: Cenario) -> None:
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    await c.volta(botao(7, f"c:{ident}", mid=c.bot.mid))
+    assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and c.linha(5)["estado"] == "cancelada"
+    assert "aprovar_plano" not in c.portas.nomes()
+
+
+async def test_item_cujo_texto_os_filtros_mudariam_fica_fora_do_sim_pelo_canal(c: Cenario) -> None:
+    """P1 (orquestradora, 04/10 21:58Z): o dono não aprova o que não pode ver por inteiro."""
+    c.portas.personas = ["Bruno Lima"]
+    c.portas.previa_da_porta = _porta(_item("s1", texto="oi, Bruno Lima"), _item("s2"))
+    await _executar(c)
+    assert json.loads(str(c.linha(5)["previa"]))["aprovar"] == [["s2", f"{'s2':0<64}"]]
+    textos = "\n".join(c.bot.textos())
+    assert "bruno" not in textos.lower()
+    assert "1 item não pode ser mostrado aqui por inteiro; ele pede você no painel ou na execução." in textos
+
+
+async def test_texto_do_item_chega_como_e_sem_parse_mode(c: Cenario) -> None:
+    """R2: a mensagem vai em texto puro; o texto do item chega ao dono como é."""
+    texto = '{x} <b>negrito</b> & "aspas" *asterisco* _sub_'
+    c.portas.previa_da_porta = _porta(_item("s1", texto=texto))
+    await _executar(c)
+    ultima = c.bot.mensagens()[-1]
+    assert f"Texto: “{texto}”" in str(ultima["text"]) and "parse_mode" not in ultima
+
+
+async def test_imagem_conferida_vai_ao_dono_e_a_diferente_fica_fora(c: Cenario, monkeypatch: pytest.MonkeyPatch) -> None:
+    import hashlib
+
+    enviadas: list[tuple[bytes, str]] = []
+
+    async def enviar(saida: object, conteudo: bytes, legenda: str = "", **kw: object) -> str:
+        enviadas.append((conteudo, legenda))
+        return "999"
+
+    monkeypatch.setattr(c.servico.conversa, "enviar_conteudo", enviar)
+    imagem = b"\x89PNG imagem da etapa"
+    c.portas.imagens = {"s1": (imagem, "application/octet-stream"), "s2": (b"outra", "application/octet-stream")}
+    c.portas.previa_da_porta = _porta(
+        _item("s1", tem_imagem=True, imagem_sha256=hashlib.sha256(imagem).hexdigest()),
+        _item("s2", tem_imagem=True, imagem_sha256=hashlib.sha256(b"a que a porta viu").hexdigest()))
+    await _executar(c)
+    assert json.loads(str(c.linha(5)["previa"]))["aprovar"] == [["s1", f"{'s1':0<64}"]]
+    assert enviadas == [(imagem, "item 1")]

@@ -19,6 +19,37 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 28.27: o Executar do Telegram mostra as travas do plano antes de começar (branch canais/28-27-porta-no-telegram)
+
+- O Executar do canal cria a execução só de plano (`mode="plan"`). Um vigia da conversa, com o operador do canal, lê a
+  porta do 30.61 quando o plano fica pronto:
+  - nada a aprovar pelo canal: inicia com `aprovar_plano(aprovar=[])` e manda uma linha;
+  - senão: a prévia da porta, um bloco por item (selo, motivo, alvo e texto por extenso pela regra da aprovação
+    pendente, e a imagem conferida pelo sha256), com "Executar (aprova N)" e "Cancelar".
+- O segundo toque manda exatamente os pares `(etapa, chave)` que o dono viu. Plano mudado (409): nada gravado, prévia
+  nova. Vencida: cancela a execução `planned`. Porta ilegível: inicia e a porta decide no despacho.
+- P1: item cujo texto os filtros mudariam, longo demais ou com imagem que não confere fica fora do sim pelo canal.
+- `mensagem.partes_da_aprovacao` passa a montar as linhas de alvo e texto da aprovação pendente e da porta (a mesma
+  regra), e `mensagem.texto_mostravel` diz se o texto sai inteiro.
+- Regra C-26 em `docs/dominios/canais.md`.
+- Prova `simulated`:
+  - 420 passed em todos os `test_avisos_*`, `test_telegram_*` e `test_canais_anexos*`, em série e em Idle;
+  - os novos: 10 na conversa (`test_telegram_entrada.py`, com o falso da porta), 2 nas portas reais no harness
+    (`test_telegram_portas.py`) e 5 no domínio (`test_avisos_porta.py`).
+- `not_run`: o Telegram real e um plano real com item que pede o sim.
+
+## 2026-10-04 — 28.31 F3: a rotina do resumo sai no máximo uma vez por hora; "Precisa de você" que muda sai já (branch canais/28-31-piso-da-rotina)
+
+- **Por quê:** a orquestradora pediu, no "liga" do laço (04/10 23:14Z), pela regra da rotina agrupada: a rotina sai no
+  máximo uma vez por hora, mesmo que algo mude a cada volta de 20 minutos. O que muda "Precisa de você" sai na volta em
+  que mudar. Até aqui o laço mandava a cada volta com mudança.
+- **O quê:** `resumo_laco.py` ganhou `pode_enviar` (pura) e `--piso-rotina` (3600 s). A volta só de rotina antes do
+  piso grava só `conferido_em`; o retrato do cursor não anda, e o envio seguinte conta tudo desde o último. A pendência
+  nova ou resolvida passa o piso. Doc: `docs/dominios/canais.md` C-19 e § 8.
+- **Prova:** `simulated`, `.claude/canais/test_resumo_laco.py` (45 passed com `test_redacao.py`: a rotina antes e
+  depois do piso, a pendência nova, a resolvida, o primeiro retrato, e a `rodada` que segura sem andar o retrato).
+  O laço real: `not_run` com o piso; ele roda desde 23:15Z com `--intervalo 3600`, que já respeita a hora.
+
 ## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
 
 - `.claude/canais/resumo_laco.py`: o resumo abre com `🙋 Precisa de você: N` e a lista, com 🆕 na pendência nova.

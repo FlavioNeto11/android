@@ -156,3 +156,37 @@ async def test_pergunta_sensivel_aberta_com_a_porta_real(harness: Harness, como_
     st.runs.cancel(senha.id)
     assert st.repo.run_row(senha.id)["status"] != "needs_input"
     assert portas.pergunta_sensivel(senha.id) == "senha" and portas.pergunta_sensivel(None) is None
+
+
+# ===================================================================== 28.27: a porta do plano pelo canal
+async def test_executar_do_canal_cria_so_o_plano_e_a_porta_inicia(harness: Harness, como_telegram: None) -> None:
+    """`modo="plan"` para em `planned`; a prévia é a do `GET /runs/{id}/porta`; o "Executar (aprova N)" é o
+    `aprovar_plano` (30.61), e só ele inicia."""
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:950", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    assert portas.estado_da_execucao(run_id) == "planned"
+    previa = portas.porta(run_id)
+    assert isinstance(previa.get("itens"), list) and previa.get("hash_do_plano")
+    resposta = portas.aprovar_plano(run_id, [])
+    assert resposta["aprovacoes"] == [] and portas.estado_da_execucao(run_id) != "planned"
+    with pytest.raises(RecusaDaCentral):
+        portas.porta(run_id)                                 # fora de `planned` a porta não se aplica
+    assert portas.estado_da_execucao("r-nao-existe") is None
+
+
+async def test_plano_mudou_volta_com_a_previa_nova_e_nada_inicia(harness: Harness, como_telegram: None) -> None:
+    from app.modules.avisos.infrastructure.entrada import PlanoMudou
+
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:951", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    with pytest.raises(PlanoMudou) as mudou:
+        portas.aprovar_plano(run_id, [("etapa-que-nao-existe", "a" * 64)])
+    assert mudou.value.codigo == "plano_mudou" and mudou.value.mudaram and "itens" in mudou.value.previa
+    assert portas.estado_da_execucao(run_id) == "planned"
+    assert portas.imagem_da_etapa(run_id, "etapa-que-nao-existe") is None
+    portas.cancelar(run_id)
+    await harness.wait_run(run_id, statuses=("cancelled",))
