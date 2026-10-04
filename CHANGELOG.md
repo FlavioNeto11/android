@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
+
+- `scripts/tests/test_poda_ab_offline.py` confere `scripts/poda-ab-offline.py`: só a UI do Chrome sai, a `url_bar` fica,
+  e a saída leva só números e ids.
+- Medida `real` (04/10 23:22Z, central `2c47b9fa`, android-09, execução `r-20261004231719-fd3d52` do 31.47, árvores do
+  diagnóstico do 31.52): 5 árvores. Redução dos caracteres do prompt do ator com a poda: 0,533, 0,273, 0,182, 0,149 e
+  0,141; mediana 0,182 (3964 → 3243 caracteres). Sem IA, só leitura.
+- Prova do script: `simulated` (`scripts/tests/test_poda_ab_offline.py`).
+
 ## 2026-10-04 — 28.31 F3: a rotina do resumo sai no máximo uma vez por hora; "Precisa de você" que muda sai já (branch canais/28-31-piso-da-rotina)
 
 - **Por quê:** a orquestradora pediu, no "liga" do laço (04/10 23:14Z), pela regra da rotina agrupada: a rotina sai no
