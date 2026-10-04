@@ -30,6 +30,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Prova:** `simulated`, `.claude/canais/test_resumo_laco.py` (45 passed com `test_redacao.py`: a rotina antes e
   depois do piso, a pendência nova, a resolvida, o primeiro retrato, e a `rodada` que segura sem andar o retrato).
   O laço real: `not_run` com o piso; ele roda desde 23:15Z com `--intervalo 3600`, que já respeita a hora.
+- **Leitura pós-merge da orquestradora (23:18Z), consertada em seguida:** a saúde que deixa de ser 🟢 ou volta a ele
+  fura o piso, uma vez por transição (a que segue ruim fica com ele); `seguro_ate` diz até quando a rotina fica
+  segura, e o `--ensaio` diz "o laço seguraria pelo piso até HH:MMZ"; hora sem fuso no `--ultimo-envio` é recusada com
+  mensagem, e no cursor não derruba o laço. Prova `simulated`: 49 passed (piora, volta, segue ruim com outro texto,
+  hora sem fuso e o `--armar` que recusa).
 
 ## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
 

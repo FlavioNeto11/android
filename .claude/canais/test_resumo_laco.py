@@ -281,3 +281,35 @@ def test_rodada_segura_a_rotina_sem_andar_o_retrato(monkeypatch: pytest.MonkeyPa
     assert novo["conferido_em"] == "2026-10-04T22:00:00Z" and novo["enviado_em"] == cursor["enviado_em"]
     novo = r.rodada({**cursor, "enviado_em": "2026-10-04T20:59:00Z"}, 3600)
     assert enviados == ["texto de rotina"] and novo is not None and novo["message_id"] == 999
+
+
+RUIM = "🔴 <b>Central não respondeu</b>"
+RECENTE = "2026-10-04T21:59:00Z"
+
+
+def test_saude_que_piora_fura_o_piso() -> None:
+    assert r.pode_enviar({"pendencias": [], "saude": RUIM}, {"pendencias": [], "saude": OK}, RECENTE, AGORA, 3600)
+    assert r.pode_enviar({"pendencias": [], "saude": RUIM}, None, RECENTE, AGORA, 3600)   # ruim já no 1º envio
+
+
+def test_saude_que_volta_ao_verde_fura_o_piso() -> None:
+    assert r.pode_enviar({"pendencias": [], "saude": OK}, {"pendencias": [], "saude": RUIM}, RECENTE, AGORA, 3600)
+
+
+def test_saude_que_segue_ruim_fica_com_o_piso_mesmo_com_outro_texto() -> None:
+    outro = "🟠 <b>Central com problema</b> · fila parada"
+    ant = {"pendencias": [], "saude": RUIM}
+    assert not r.pode_enviar({"pendencias": [], "saude": RUIM}, ant, RECENTE, AGORA, 3600)
+    assert not r.pode_enviar({"pendencias": [], "saude": outro}, ant, RECENTE, AGORA, 3600)
+    assert r.seguro_ate({"pendencias": [], "saude": outro}, ant, RECENTE, AGORA, 3600) == AGORA + timedelta(minutes=59)
+
+
+def test_hora_sem_fuso_nao_derruba_e_armar_recusa(monkeypatch: pytest.MonkeyPatch,
+                                                  capsys: pytest.CaptureFixture[str]) -> None:
+    assert r.pode_enviar({"pendencias": []}, {"pendencias": []}, "2026-10-04T21:59:00", AGORA, 3600)
+    gravados: list[dict] = []
+    monkeypatch.setattr(r, "_gravar_json", lambda p, d: gravados.append(d))
+    monkeypatch.setattr(sys, "argv", ["resumo_laco.py", "--armar", "--desde-linha", "5",
+                                      "--ultimo-envio", "2026-10-04T23:10:48"])
+    assert r.main() == 2 and gravados == []
+    assert "com o Z" in capsys.readouterr().out
