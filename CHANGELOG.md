@@ -84,6 +84,26 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   duas definições. Exemplos: ator p95 de 4.130 para 4.207 ms; parede p95 de 69,6 para 87,2 s (n=10, a amostra real).
 - Prova: `simulated` (`scripts/tests/test_latencia_por_etapa.py`, n=2, 6 e 10). O teste que esperava a mediana
   interpolada de {1, 2} ms (1,5) passou a esperar o posto (1,0).
+## 2026-10-04 — 31.56: o veredito mecânico do A/B da barra tapada, pré-registrado (branch feat/31-56-veredito)
+
+- `scripts/jev-veredito-31-56.py` só lê o banco (`mode=ro` com `query_only`, sem IA). Para as execuções das chaves
+  `lote:jev:31.56-{off,on}-NN`, ele devolve:
+  - sucesso, decisões por etapa, tokens e latência por etapa (posto mais próximo);
+  - custo por `costs.spent_usd`;
+  - o veredito (`liga`, `nao_liga` ou `inconclusivo`) pelo critério escrito no código antes de qualquer execução:
+    sucesso igual ou maior no braço ligado e não mais de 20 % de decisões por etapa a mais.
+- A saída leva só números e ids.
+- Revisão do #338, as bordas pré-registradas antes de qualquer execução:
+  - V1: desligado em 0 decisão por etapa e ligado acima de 0 é `nao_liga`; os dois em 0 é igual;
+  - V2: a razão sai das somas cruas, em fração exata, sem arredondar antes; os 20 % exatos ligam;
+  - V3: só os pares completos (uma `off` e uma `on` no mesmo NN) entram; os outros vão para `pares_incompletos`, e
+    com menos de 3 pares completos o veredito é `inconclusivo`. As chaves fora do padrão são contadas
+    (`chaves_ignoradas`);
+  - execução cancelada, à mão ou pelo teto, conta como insucesso do braço;
+  - os estados terminais vêm do `RUN_TERMINAL` do backend; a saída diz de onde vieram os preços (`precos: config` ou
+    `padrao`); banco inexistente dá "banco não encontrado" em vez de traceback.
+- Prova: `simulated` (`scripts/tests/test_jev_veredito_31_56.py`, 17 testes, um por regra, com o N1: o sucesso decide antes de "braço sem etapa"). Nenhuma execução do 31.56
+  ainda.
 
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
 
