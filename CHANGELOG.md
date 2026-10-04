@@ -303,6 +303,14 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   listas leem as entradas em `needs_input` numa consulta só.
 - Testes: `test_outlook_declarado.py`, `test_dica_de_tela_ao_juiz.py`, `test_pergunta_vence.py` e
   `test_needs_input_expira.py`, `simulated`. `real`: not_run.
+## 2026-10-04 — 31.55: a pergunta do curador R1 medida no braço offline (branch feat/31-55-pergunta-do-curador)
+
+- `scripts/jev-braco-offline.py`: `--pergunta` com as variantes pré-registradas (`PERGUNTAS_DO_31_55`); o runtime não
+  muda (`ESTADO_DA_SOMBRA` = `v1`, limiar 0,85).
+- Medida (`real`, central só leitura e braço offline pago, 04/10 21:45Z a 21:56Z, US$ 0,006948): nenhuma variante bate o
+  critério de 70 % a 0,85 (v2 1 de 11, P1 0 de 48, P2 2 de 6); os rótulos são confirmação em bloco, então o acordo é
+  circular. Registro em `docs/design/jev-golden-set.md` § 2.
+- Prova do código: `simulated` (`scripts/tests/test_jev_braco_offline.py`).
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
