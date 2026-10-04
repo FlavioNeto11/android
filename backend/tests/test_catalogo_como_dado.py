@@ -120,15 +120,27 @@ MUDANCAS: dict[tuple[str, str], object] = {
 }
 
 
+#: Ações acrescentadas DEPOIS do instantâneo: ele é do catálogo ANTIGO e não ganha entradas novas. Cada uma entra aqui
+#: com o item que a trouxe; o que vale para elas é conferido nos testes do item, não por comparação com o JSON.
+ACOES_NOVAS = {
+    "READ_POSTS_COUNT": "29.30",
+    "PUT_MEDIA_IN_GALLERY": "29.30",
+    "CREATE_POST": "29.30",
+}
+
+
 # ---------------------------------------------------------------------------------------------------- equivalência
 def test_o_yaml_do_instagram_carrega_igual_ao_catalogo_em_python_que_substituiu() -> None:
     antes = json.loads(ANTES.read_text(encoding="utf-8"))
     catalogo = carregar_catalogo(ARQUIVO)
     assert catalogo.package == antes["package"] == PACKAGE
     assert catalogo.contract_version == 1
-    agora = catalogo.capabilities
+    todas = catalogo.capabilities
+    # as ações novas carregam, e a elas (e só a elas) o instantâneo não se aplica
+    assert {c.key for c in todas} - {c["key"] for c in antes["capabilities"]} == set(ACOES_NOVAS)
+    agora = [c for c in todas if c.key not in ACOES_NOVAS]
     assert [c.key for c in agora] == [c["key"] for c in antes["capabilities"]]      # mesma ordem
-    assert len(agora) == 23
+    assert len(agora) == 23 and len(todas) == 23 + len(ACOES_NOVAS)
     # nenhuma mudança órfã: ação e campo existem (um nome de campo errado nunca seria comparado)
     assert set(MUDANCAS) <= {(c.key, campo) for c in agora for campo in _normalizado(c)}
     for cap, esperado in zip(agora, antes["capabilities"], strict=True):
@@ -148,7 +160,7 @@ def test_o_yaml_do_instagram_carrega_igual_ao_catalogo_em_python_que_substituiu(
         for f in fields(Capability):
             if str(f.type) == "tuple[str, ...]":
                 assert isinstance(getattr(cap, f.name), tuple), f"{cap.key}.{f.name}"
-    assert [c.key for c in catalogo.offered] == [c["key"] for c in antes["capabilities"] if not c["internal"]]
+    assert [c.key for c in catalogo.offered if c.key not in ACOES_NOVAS] ==         [c["key"] for c in antes["capabilities"] if not c["internal"]]
 
 
 def test_o_registro_de_apps_entrega_ao_instagram_o_catalogo_do_arquivo() -> None:
@@ -159,7 +171,7 @@ def test_o_registro_de_apps_entrega_ao_instagram_o_catalogo_do_arquivo() -> None
     # Por conteúdo, não por identidade: outro teste pode limpar o cache de `catalogo_do_pacote` depois que o registro
     # já guardou o objeto da primeira leitura.
     assert [asdict(c) for c in registrado.capabilities] == [asdict(c) for c in carregar_catalogo(ARQUIVO).capabilities]
-    assert len(registrado.capabilities) == 23 and registrado.has("SEND_MESSAGE")
+    assert len(registrado.capabilities) == 23 + len(ACOES_NOVAS) and registrado.has("SEND_MESSAGE")
 
 
 def test_a_versao_aceita_e_a_que_o_registro_de_capabilities_entende() -> None:

@@ -123,6 +123,7 @@ class FakeInstagram:
     _frio: int = 0
     _tela_ao_abrir: str = "login"
     calls: list[str] = field(default_factory=list)
+    midias_na_galeria: list[dict] = field(default_factory=list)      # 29.30: o que o push colocou na galeria
     typed: list[str] = field(default_factory=list)
     installed: bool = True
     # caixa de mensagens e conversa (fase G)
@@ -188,6 +189,14 @@ class FakeInstagram:
 
     def app_version(self, package: str) -> str:
         return "447.0.0(447000)"
+
+    def enviar_midia_para_galeria(self, local: str, nome: str, *, timeout: float = 60) -> str:
+        """29.30: o `Adb.enviar_midia_para_galeria` do dublê. Registra o que chegou (nome, bytes lidos do arquivo local e
+        a indexação pedida) em `midias_na_galeria`; não toca na tela."""
+        with open(local, "rb") as f:
+            dados = f.read()
+        self.midias_na_galeria.append({"nome": nome, "bytes": dados, "indexada": True})
+        return f"/sdcard/Pictures/Central/{nome}.jpg"
 
     def force_stop(self, package: str) -> None:
         self.screen = "launcher"

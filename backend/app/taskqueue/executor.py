@@ -64,6 +64,7 @@ from .foreach import sanitize_item, teto_de_chamadas
 from .proofs import marcas_pendentes_na_tela, variantes_de_arroba
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .latencia import TemposDaTentativa, ms_desde
+from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_galeria
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
@@ -592,6 +593,9 @@ class StepExecutor:
         #: sensível que a digita. Sem os dois, `type_secret` recusa (o valor nunca toma o caminho de `type_text`).
         self.secrets: Any = None
         self.sensitive_input: Any = None
+        #: 29.30, injetado pelo AppState: o serviço de imagens da persona, de onde `PUT_MEDIA_IN_GALLERY` tira a mídia.
+        #: Sem ele a etapa falha com o motivo (nada vai ao aparelho).
+        self.persona_images: Any = None
         #: VERIFY pela porta de capability (fase G, §14.1): a prova local do catálogo, embrulhada pelo provider. O
         #: executor continua dono do aparelho e do desfecho: ele observa e entrega a leitura; só `proved` dispensa o
         #: verificador, `not_proved`/`unknown` seguem o caminho de sempre (o modelo).
@@ -1441,6 +1445,51 @@ class StepExecutor:
         except Exception:  # noqa: BLE001 - corrigir o cache nunca pode derrubar a etapa
             log.exception("%s: falha ao atualizar o estado de sessão do perfil", instance_id)
 
+    async def _run_interna(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str,
+                           rt: DeviceRuntime) -> StepOutcome:
+        """`PUT_MEDIA_IN_GALLERY` (29.30): a imagem da persona da conta deste aparelho vai para a galeria dele.
+
+        Sem efeito na conta, sem tela. A conferência de posse e de estado da imagem acontece ANTES do push
+        (`colocar_midia_na_galeria`): recusa nunca toca no aparelho. O mesmo `rt.adb` serve aparelho local e remoto (a
+        central alcança o remoto pelo túnel, `docs/worker.md`); a prova real num aparelho remoto está `not_run`."""
+        repo = self.repo
+        # A persona da conta do aparelho: o perfil do OBJETIVO, ou o único do aparelho (a mesma resolução da porta de
+        # política). O id do perfil é o da persona (051), por onde as imagens são guardadas.
+        persona_id = objective["profile_id"] or (
+            self.social.repo.perfil_unico_da_instancia(rt.id) if self.social is not None else None)
+        # Aparelho falso (testes): o dublê tem o método; o `adb` de verdade não existe ali (o mesmo desvio da
+        # conferência no app de QA, `Scheduler`).
+        enviar = (getattr(rt.io, "enviar_midia_para_galeria", None) if self.devices.io_factory is not None
+                  else rt.adb.enviar_midia_para_galeria)
+
+        async def falha(motivo: str, *, tentar_de_novo: bool) -> StepOutcome:
+            await repo.add_evidence_async(run_id=run["id"], instance_id=rt.id, step_id=step.id, attempt_id=attempt_id,
+                                          kind="text", note=f"Falha: {motivo}")
+            if tentar_de_novo and step.attempts < step.max_attempts:
+                return StepOutcome(Outcome.retry, motivo)
+            return StepOutcome(Outcome.failed, motivo)
+
+        if enviar is None:
+            return await falha("este aparelho não sabe receber mídia na galeria", tentar_de_novo=False)
+        try:
+            remoto = await rt.executor.run(colocar_midia_na_galeria, self.persona_images, persona_id,
+                                           step.bindings.get("image_id"), enviar, timeout=float(step.timeout_s),
+                                           label="mídia na galeria")
+        except MidiaRecusada as exc:
+            return await falha(str(exc), tentar_de_novo=False)              # repetir não muda a posse nem o estado
+        except Exception as exc:  # noqa: BLE001 - AdbError, prazo, aparelho fora: o push é repetível
+            return await falha(f"a mídia não chegou à galeria: {str(exc).splitlines()[0][:200] if str(exc) else type(exc).__name__}",
+                               tentar_de_novo=True)
+        texto = f"imagem colocada na galeria do aparelho ({remoto})"
+        await repo.add_evidence_async(run_id=run["id"], instance_id=rt.id, step_id=step.id, attempt_id=attempt_id,
+                                      kind="text", note=f"Pós-condição comprovada: {texto}")
+        with repo.db.tx():
+            repo.transition_step(step.id, StepStatus.succeeded, detail=texto,
+                                 result=StepResult(verified=True, evidence_text=texto),
+                                 message=f"Etapa '{step.title}' comprovada: {texto}")
+        repo.finish_attempt(attempt_id, AttemptStatus.succeeded, observed=texto)
+        return StepOutcome(Outcome.succeeded, texto)
+
     async def _run_step(self, *, run: Any, objective: Any, step: StepDTO, attempt_id: str, rt: DeviceRuntime,
                         app: AppContext, account_label: str | None, remaining: list[str],
                         stop_reason: Callable[[], str | None], resumed_after_manual: bool,
@@ -1451,6 +1500,9 @@ class StepExecutor:
         params: dict[str, str] = {**loads(objective["parameters"], {}), **step.variables}   # inclui {item} da cópia
         collecting = step.postcondition.kind == "items_collected"
         cap = capability_of(app.package, step.capability)      # None em app sem catálogo: nada muda
+        if cap is not None and cap.internal and cap.key in INTERNAS_POR_CODIGO:
+            # Código determinístico, fora do laço da IA (como o login): não há observação, decisão nem verificador.
+            return await self._run_interna(run=run, objective=objective, step=step, attempt_id=attempt_id, rt=rt)
         # A legenda da publicação alvo (`caption_contains`), quando o pedido a citou: vazio = post por posição, como
         # sempre. Com ela, a pós-condição exige o texto na tela e o toque de efeito só vale no cartão que o traz.
         cartao = guardas_do_cartao(cap.card_guard, step.bindings) if cap else ()

@@ -33,6 +33,7 @@ links_de_perfil:
 # (quem decide é `_draft_gate`, olhando a última fala dela).
 tipos_de_texto:
   CREATE_COMMENT: post_comment
+  CREATE_POST: post_caption
   REPLY_COMMENT: comment_reply
   SEND_MESSAGE: dm_initiate
 # Ações de LEITURA de conversa: o que coletam é fala de outra pessoa, e é por aqui que o perfil ouve.

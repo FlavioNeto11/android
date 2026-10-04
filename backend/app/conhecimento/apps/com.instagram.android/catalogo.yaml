@@ -448,3 +448,69 @@ acoes:
     default_policy: approval_required
     reconciliation: A linha some da lista; recusar duas vezes não é possível, mas tocar de novo acerta outro
       pedido.
+
+  # ------------------------------------------------------------------------------- publicar no PRÓPRIO feed (29.30)
+  # CONTRATO MEDIDO EM PARTE (prova real da publicação `not_run`): o editor do Instagram 447 foi explorado só até a
+  # galeria, sem publicar (04/10 16:05Z, android-13, com o sim do dono); a legenda e o Share se medem na publicação de
+  # UMA imagem de teste, que o dono também autorizou. Os seletores abaixo são
+  # os mais conservadores possíveis (exatos, e a prova local só afirma, nunca reprova) e SERÃO conferidos nessa
+  # exploração; até lá, o que decide é o verificador por modelo e a aprovação humana.
+  #
+  # A sequência é: READ_POSTS_COUNT (entrega `posts_antes`) → PUT_MEDIA_IN_GALLERY (código: coloca a imagem da persona
+  # na galeria do aparelho) → CREATE_POST (aprovado por uma pessoa) → de volta ao perfil, onde a contagem prova o efeito.
+  - key: READ_POSTS_COUNT
+    title: Ler quantas publicações o próprio perfil tem
+    precondition: O perfil da conta conectada está aberto.
+    goal: Ler na tela do PRÓPRIO perfil o número de publicações, sem tocar em nada que mude a conta. Entregue-o em
+      `posts_antes` com read_value(value_kind=number).
+    saidas: [posts_antes]
+    # Medido em 04/10 16:05Z no android-13 (Instagram 447, perfil próprio): o número de publicações é o texto de
+    # `profile_header_familiar_post_count_value` (o rótulo "posts" é outro elemento).
+    saidas_relacao: ['posts_antes=id=profile_header_familiar_post_count_value', posts_antes~publicações, posts_antes~posts]
+    post_kind: model_judged
+    post_value: número de publicações do próprio perfil lido
+    post_description: O número de publicações do cabeçalho do perfil foi lido e entregue em posts_antes.
+    default_policy: autonomous
+
+  - key: PUT_MEDIA_IN_GALLERY
+    title: Colocar a imagem da persona na galeria do aparelho
+    internal: true
+    bindings: [image_id]
+    goal: Copiar a imagem `image_id` da persona para a galeria do aparelho (pasta Pictures/Central) e pedir a
+      indexação, para o editor de publicação enxergá-la.
+    post_kind: model_judged
+    post_value: imagem na galeria do aparelho
+    post_description: O aparelho recebeu o arquivo da imagem e a galeria foi avisada.
+    reconciliation: O push e a indexação são repetíveis (o nome do arquivo é fixo por imagem); não há efeito na conta.
+
+  - key: CREATE_POST
+    title: Publicar a imagem no feed com a legenda aprovada
+    interaction_type: post_published
+    # `image_id` é obrigatório em PUT_MEDIA_IN_GALLERY e aqui herda dela (a aprovação mostra a imagem). `posts_antes`
+    # vem de READ_POSTS_COUNT e é o que a prova local compara. Sem alvo: publicar não tem OUTRA pessoa (ADR-055 conta
+    # contas por alvo); por isso não há `counterparty` nem binding `username`/`target`.
+    optional_bindings: [image_id, posts_antes, content_brief, content, content_verbatim]
+    inherited_bindings: [image_id]
+    precondition: A imagem está na galeria do aparelho, o editor de nova publicação está aberto com ela escolhida e a
+      legenda já foi escrita e aprovada.
+    goal: Publicar a imagem escolhida com a legenda aprovada. Depois do Share, voltar ao PRÓPRIO perfil para a
+      contagem de publicações (a prova é o número maior que o lido antes).
+    post_kind: model_judged
+    post_value: publicação criada no próprio perfil
+    post_description: O número de publicações do próprio perfil é maior que o lido antes de publicar.
+    # A contagem do cabeçalho do perfil (ver READ_POSTS_COUNT). Prova positiva dispensa o verificador; sem ela, o
+    # modelo julga como antes.
+    local_proof: count_gt:posts_antes:id=profile_header_familiar_post_count_value
+    side_effect: true
+    risk: high
+    # NÃO MEDIDO: o botão final da tela de legenda. Exato (`==`) para não casar "Share to Facebook" e afins. Medido
+    # até a galeria em 04/10 16:05Z (android-13): `profile_header_create_button` (desc "Create New") → "Create new post"
+    # → tela "New post" com `next_button_textview` (Next) e `action_bar_cancel`; a galeria estava vazia, então a
+    # tela da legenda e o Share ficam para a primeira publicação de teste.
+    commit_selector: text==Share
+    commit_guard: ['{content}']
+    limit_bucket: posts
+    default_policy: approval_required
+    needs_draft: true
+    reconciliation: Nunca tocar em Share de novo por timeout ou dúvida; voltar ao perfil e conferir a contagem de
+      publicações contra posts_antes.

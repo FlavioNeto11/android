@@ -25,6 +25,7 @@ Medido em 19-24/09: 207 chamadas de verificação para 158 etapas julgadas; boa 
 """
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable
 from typing import Any
 
@@ -77,6 +78,8 @@ def local_proof_holds(local_proof: str | None, step: Any, tree: UiTree) -> bool 
             if not compositores or any(norm_text(conteudo) in norm_text(c.text) for c in compositores):
                 return False
         return tree.sent_as_message(conteudo)
+    if tipo == "count_gt":
+        return _contagem_maior(bruto, bindings, tree)
     # O `&` é separado ANTES de resolver as variáveis: um valor de binding nunca vira operador da prova.
     seletores = [resolve_templates(p.strip(), bindings) or "" for p in bruto.split("&")]
     if any(not s or "{" in s for s in seletores):     # variável sem valor nesta etapa: não há o que provar
@@ -98,3 +101,40 @@ def local_proof_holds(local_proof: str | None, step: Any, tree: UiTree) -> bool 
         return any(all(any(tree.text_in_band(v, e.bounds) for v in variantes_de_arroba(g)) for g in guardas)
                    for e in achados)
     return None
+
+
+# Um inteiro com ou sem separador de milhar ("1,234", "1.234", "12"). Grupos de 3 dígitos depois do primeiro: "1.2" não
+# é milhar (é decimal) e fica com o "1" só se vier colado a um sufixo, caso que `_primeiro_inteiro` recusa antes.
+_INTEIRO = re.compile(r"(?<![\d.,])(\d{1,3}(?:[.,]\d{3})+|\d+)(?![\d])")
+# Sufixo que abrevia a contagem ("1.2K", "3 mil", "2M"): o texto não traz o número exato.
+_ABREVIADO = re.compile(r"^\s*(?:[kKmM]\b|mil\b|milh)", re.IGNORECASE)
+
+
+def _primeiro_inteiro(texto: str) -> int | None:
+    """O primeiro inteiro do texto, ou `None` quando não dá para afirmar o valor: sem número, decimal ("1.2K") ou
+    abreviado ("1 mil", "3M"). Uma contagem abreviada nunca é comparada: o chute faria a prova mentir."""
+    achado = _INTEIRO.search(texto or "")
+    if achado is None:
+        return None
+    resto = (texto or "")[achado.end():]
+    if _ABREVIADO.match(resto) or re.match(r"^[.,]\d", resto):
+        return None
+    return int(re.sub(r"[.,]", "", achado.group(1)))
+
+
+def _contagem_maior(bruto: str, bindings: dict[str, str], tree: UiTree) -> bool | None:
+    """`count_gt:<binding>:<seletor>` (29.30): o número do elemento é MAIOR que o do binding (a contagem lida ANTES).
+
+    `True` = maior; `False` = igual ou menor (nenhuma publicação nova apareceu); `None` = não dá para afirmar
+    (binding ausente ou não numérico, elemento ausente, texto sem número ou abreviado). Nunca reprova por si só."""
+    nome, _, seletor = bruto.partition(":")
+    antes = bindings.get(nome.strip())
+    if antes is None or not re.fullmatch(r"\s*\d+\s*", antes) or not seletor.strip():
+        return None
+    achados = tree.find_proof(seletor.strip(), variants=variantes_de_arroba)
+    if not achados:
+        return None
+    numeros = [n for e in achados if (n := _primeiro_inteiro(e.text or e.desc or "")) is not None]
+    if not numeros:
+        return None
+    return max(numeros) > int(antes)

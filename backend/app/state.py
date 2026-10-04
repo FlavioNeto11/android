@@ -631,6 +631,7 @@ class AppState:
         # ADR-025: a credencial fornecida para a execução só chega ao aparelho pelo canal sensível, do cofre ao driver.
         self.scheduler.executor.secrets = self.secrets
         self.scheduler.executor.sensitive_input = self.sensitive_input
+        self.scheduler.executor.persona_images = self.persona_images      # 29.30: mídia da publicação própria
         self._diag_cache: dict[str, Any] | None = None
         self._bg: list[asyncio.Task[Any]] = []
         self._last_health: dict[str, Any] | None = None

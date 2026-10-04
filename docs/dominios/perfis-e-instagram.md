@@ -497,6 +497,28 @@ históricos como a tabela `instagram_profiles` e o prefixo `/api/instagram/`), `
 só em dado, entra no registro com catálogo, leitura e login). Os testes leem o Instagram por
 `backend/tests/pacote_instagram.py`. Aparelho e conta reais depois da troca: `not_run`.
 
+### Publicar no próprio feed (item 29.30, PR-A)
+
+Três ações em `catalogo.yaml`, em sequência: `READ_POSTS_COUNT` (sem efeito; entrega `posts_antes`, a contagem lida do
+cabeçalho do PRÓPRIO perfil) → `PUT_MEDIA_IN_GALLERY` (`internal`, `image_id` obrigatório: código, não IA) →
+`CREATE_POST` (`approval_required`, `risk: high`, `needs_draft`; a legenda é o `content` aprovado, tipo de texto
+`post_caption`). A prova de `CREATE_POST` é local, `count_gt:posts_antes:<seletor>`: o número do perfil depois de
+publicar é MAIOR que o lido antes (`taskqueue/proofs.py`; abreviado como "1.2K" ou sem o elemento não afirma, e o modelo
+julga). Por timeout nunca se toca em Share de novo: a reconciliação confere a contagem.
+
+- **Sem alvo.** Publicar não tem outra pessoa do outro lado: a interação é `post_published`, o balde é `posts`
+  (`BALDES_SEM_ALVO` isenta só ele do `counterparty`; a regra de uma conta por alvo, ADR-055, não se aplica) e os tetos
+  são `posts_per_hour` e `posts_per_day`, ambos 1 (o aquecimento usa `max(1, …)`: continua 1). Nenhum argumento da ação
+  se chama `username` nem `target`, para o `open_effect` não tomá-lo por alvo.
+- **A mídia.** `PersonaImageService.obter(persona, imagem)` consulta pelo par: imagem de outra persona, inexistente ou
+  não pronta é recusada ANTES de qualquer push. O `Adb.enviar_midia_para_galeria` serve aparelho local e remoto (a
+  central alcança o remoto pelo túnel, `docs/worker.md`): não há verbo de agente.
+- **Estado.** Contrato NÃO medido: os seletores do editor de publicação do Instagram 447 (botão Share, contador do
+  cabeçalho) ainda não foram explorados num aparelho. Prova `simulated` em `test_create_post.py`; real e remoto
+  `not_run`, à espera da exploração autorizada pelo dono.
+- **Pendente (PR-B).** O planejador só oferece ações não `internal`: falta inserir `PUT_MEDIA_IN_GALLERY` antes de
+  `CREATE_POST` no plano, e o painel mostrar a imagem na aprovação (o `image_id` está nos `bindings` da etapa).
+
 ## O Outlook como dado (item 23.8)
 
 `backend/app/conhecimento/apps/com.microsoft.office.outlook/`, lido pelos mesmos motores, sem Python do Outlook:

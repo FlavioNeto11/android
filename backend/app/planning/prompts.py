@@ -356,6 +356,10 @@ _INSTRUCAO_DE_TELA: dict[str, str] = {
     "dm_initiate": "Isto é só a conversa/tela aberta, de contexto. Mensagem simples (cumprimentar, dar um recado) "
                    "NÃO descreve nem comenta o que está na tela: escreva só o que <intencao> pede, no tamanho da "
                    "persona. Cite algo da tela apenas se a intenção pedir.",
+    # 29.30: a legenda de uma publicação PRÓPRIA. A tela aberta (editor, galeria) não é o assunto: o assunto é a
+    # <intencao>; descrever a tela na legenda seria publicar o nome dos botões.
+    "post_caption": "Isto é só a tela aberta, de contexto. Escreva a legenda que <intencao> pede, na voz da persona, "
+                    "no tamanho dela; NÃO descreva a tela nem cite botões.",
     "dm_reply": "Isto é só a conversa/tela aberta, de contexto — o que responder está em <conteudo_recebido>. NÃO "
                 "descreva nem comente o que está na tela; responda à fala recebida, no tamanho da persona.",
 }
@@ -363,7 +367,8 @@ _INSTRUCAO_DE_TELA: dict[str, str] = {
 
 def social_user_text(req: SocialRequest) -> str:
     tipo = {"dm_reply": "responder uma mensagem direta", "comment_reply": "responder um comentário",
-            "dm_initiate": "escrever uma mensagem direta", "post_comment": "comentar uma publicação"}.get(
+            "dm_initiate": "escrever uma mensagem direta", "post_comment": "comentar uma publicação",
+            "post_caption": "escrever a legenda de uma publicação sua"}.get(
         req.kind, req.kind)
     # O @ da contraparte costuma vir de uma lista LIDA DA TELA (`{item}` da coleta de comentários): é texto de
     # terceiro dentro de `<tarefa>`, que é bloco de moldura e não é marcado como dado. Escapa também.

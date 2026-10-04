@@ -1119,6 +1119,7 @@ class InteractionType(StrEnum):
     unfollowed = "unfollowed"
     follow_request_accepted = "follow_request_accepted"
     follow_request_declined = "follow_request_declined"
+    post_published = "post_published"     # 29.30: publicação PRÓPRIA no feed (sem contraparte)
     profile_opened = "profile_opened"
     other = "other"
 

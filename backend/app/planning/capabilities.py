@@ -80,7 +80,7 @@ class Capability:
     card_control: tuple[str, ...] = ()
     reconciliation: str = ""                    # o que observar depois do efeito para saber se ele valeu
     default_policy: str = "autonomous"
-    limit_bucket: str | None = None             # likes | comments | follows | dms — chave do limite por hora
+    limit_bucket: str | None = None             # likes | comments | follows | dms | posts — chave do limite por hora
     # O argumento que diz QUEM é a pessoa do outro lado do efeito (ADR-055): o alvo da regra de uma conta por alvo e a
     # contraparte gravada no histórico. Obrigatório em toda ação com `limit_bucket` (conferido na carga). Antes o alvo
     # era adivinhado por `username or target`, e curtir e comentar, que não têm `username`, gravavam `counterparty`
@@ -159,13 +159,24 @@ class CapabilityNode:
 
 
 #: Formas aceitas de `Capability.local_proof` (a semântica está em `taskqueue/proofs.py`).
-LOCAL_PROOFS = ("sent_text", "sent_text:", "selector:", "selector_band:")
+LOCAL_PROOFS = ("sent_text", "sent_text:", "selector:", "selector_band:", "count_gt:")
 
 
 def local_proof_error(valor: str | None) -> str | None:
     """Motivo pelo qual uma declaração de `local_proof` é inválida; `None` quando está bem formada. Conferido ao
     montar o catálogo: uma prova mal escrita não pode virar "sempre cai para o modelo" em silêncio."""
     if valor is None or valor == "sent_text":
+        return None
+    if valor.startswith("count_gt:"):
+        # 29.30: `count_gt:<binding>:<seletor>` — o número lido no elemento é MAIOR que o do binding (a contagem de
+        # antes). O binding é nome de variável; o seletor é de UM elemento (sem `&`).
+        binding, _, seletor = valor[len("count_gt:"):].partition(":")
+        if not re.fullmatch(r"[a-z_0-9]+", binding):
+            return "count_gt: o binding precisa ser um nome ([a-z_0-9]+)"
+        if not seletor.strip():
+            return "count_gt: sem seletor"
+        if "&" in seletor:
+            return "count_gt: não aceita `&` (o seletor é de UM elemento)"
         return None
     for prefixo in ("sent_text:", "selector:", "selector_band:"):
         if valor.startswith(prefixo):
@@ -207,6 +218,11 @@ def inherited_bindings_error(cap: Capability) -> str | None:
     return None
 
 
+#: Baldes cuja ação não tem OUTRA pessoa do outro lado: publicar no próprio feed (29.30). A regra de uma conta por
+#: alvo (ADR-055) conta contas por ALVO e aqui não há alvo; só estes baldes dispensam `counterparty`.
+BALDES_SEM_ALVO: frozenset[str] = frozenset({"posts"})
+
+
 def counterparty_error(cap: Capability) -> str | None:
     """Motivo pelo qual o alvo declarado de uma ação é inválido; `None` quando está bem formado.
 
@@ -214,6 +230,8 @@ def counterparty_error(cap: Capability) -> str | None:
     uma conta por alvo (ADR-055) não tem o que conferir e a próxima ação com efeito escaparia dela calada. O nome
     precisa ser um argumento da própria ação — um nome solto nunca teria valor."""
     if cap.counterparty is None:
+        if cap.limit_bucket in BALDES_SEM_ALVO:
+            return None
         return "ação com limit_bucket precisa declarar counterparty (o argumento que diz quem é o alvo)" \
             if cap.limit_bucket else None
     if cap.counterparty not in (*cap.bindings, *cap.optional_bindings):
