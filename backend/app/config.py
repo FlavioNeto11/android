@@ -1134,6 +1134,17 @@ class AutopublicacaoCfg(BaseModel):
     intervalo_s: int = Field(3600, ge=60, le=86_400)        # de quanto em quanto tempo o laço avalia os fluxos
 
 
+class AprovacaoAutomaticaCfg(BaseModel):
+    """A aprovação automática por política (30.55; pedido do dono em 04/10). De fábrica `off` (nada roda); `shadow` só
+    marca, no livro da sombra, a receita ou o fluxo que a plataforma decidiria; `on` decide (publica o de "Para aprovar"
+    e confirma que fica o de "Revisar"), com `decided_by = plataforma` e a regra no motivo. A régua (classe A ou B, app
+    de categoria qa, evidência da versão atual, saúde e parecer) é do domínio (`domain/aprovacao_automatica.py`), não
+    daqui: mudá-la é decisão do dono e muda a versão da regra."""
+
+    modo: Literal["off", "shadow", "on"] = "off"
+    intervalo_s: int = Field(900, ge=60, le=86_400)         # de quanto em quanto tempo o laço passa a régua
+
+
 class LearningCfg(BaseModel):
     """Aprendizado contínuo (ADR-054): o livro, o D1, a falha classificada e a régua durável. Nenhuma chamada de IA
     no pipeline: digest por execução e curadoria determinística. De fábrica, lições em `shadow` e telas em `observe`,
@@ -1162,6 +1173,7 @@ class LearningCfg(BaseModel):
     curador: CuradorCfg = CuradorCfg()
     validacao: ValidacaoCfg = ValidacaoCfg()
     autopublicacao: AutopublicacaoCfg = AutopublicacaoCfg()
+    aprovacao_automatica: AprovacaoAutomaticaCfg = AprovacaoAutomaticaCfg()
 
 
 class ConvidadosDoTelegramCfg(BaseModel):

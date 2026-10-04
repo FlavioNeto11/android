@@ -5524,3 +5524,44 @@ config (`execucao.pergunta_vence_h`, 24 h por padrão; `execucao.vencimento_liga
 Prova:
 - `simulated`: `tests/test_pergunta_vence.py`, `tests/test_needs_input_expira.py`.
 - `not_run`: o primeiro ciclo no central depois do deploy (fecha o estoque de 22 objetivos).
+## Adendo v1.24 (04/10/2026; número da orquestradora; item 30.55) — a aprovação automática por política
+
+`GET /api/aprendizado/aprovacao-automatica?itens=` é só leitura. `itens` é um booleano (padrão `false`).
+
+```json
+{"modo": "shadow",
+ "ultima_volta": {"em": "2026-10-04T17:00:00.000Z", "modo": "shadow", "avaliados": 40,
+                  "decidiria": ["receita:180", "fluxo:enviar-bom-dia-a-cada-contato-da-lista-d"], "marcados": 18,
+                  "decididos": [], "fora": {"app_fora_do_qa": 11, "classe_c": 10, "sem_a_favor": 18}},
+ "casos_na_sombra": 18,
+ "decididos_pela_plataforma": [{"item_ref": "receita:180", "de": "validated", "para": "published",
+                                "motivo": "auto:qa_para_aprovar v1 — classe B; …", "em": "…"}],
+ "itens": [{"item_ref": "receita:22", "fila": "revisar", "regra": "qa_revisar", "decide": false,
+            "fora": ["app_fora_do_qa", "classe_c", "sem_a_favor"], "classe": "C", "apps": ["com.instagram.android"],
+            "a_favor": 0, "contra": 0, "falhas_de_reproducao": 0, "saude": "sem_evidencia"}]}
+```
+
+- `ultima_volta` é `null` antes da primeira volta deste processo (90 s depois do início).
+- `decididos_pela_plataforma` traz as últimas 50 linhas da trilha com `decided_by = "plataforma"`, da mais nova para a
+  mais antiga.
+- `itens` só vem com `itens=true`. Os motivos de fora são um vocabulário fechado
+  (`domain/aprovacao_automatica.MotivoDeFora`).
+- **503** `not_ready`: a aprovação automática não foi composta.
+
+Na trilha (`learning_transitions` e o detalhe do item), a decisão da plataforma é uma linha com
+`decided_by = "plataforma"`:
+- a publicação é `validated → published`, com o motivo `auto:<regra> v<n> — <fatos>`;
+- a confirmação de "Revisar" é `published → published`, com o motivo `confirmado que fica: auto:<regra> v<n> — <fatos>`.
+
+As regras são `qa_para_aprovar` e `qa_revisar`. O regex é `(?:^|: )auto:(?P<regra>[a-z_]+) v(?P<versao>\d+)(?: — |$)`.
+
+O desfazer é o `POST /api/aprendizado/{kind}/{ref}/status` de sempre, com `{"to": "disabled", "reason": "…"}`:
+- **200** com o item em `item.state = "disabled"`;
+- **409** `transition_forbidden` quando o item já está desligado.
+
+O operador de sessão chamado `plataforma` é gravado como `painel:plataforma`, como já acontece com `sistema`.
+
+Config: `aprendizado.aprovacao_automatica.modo` = `off` (de fábrica), `shadow` ou `on`, e `intervalo_s` (900).
+
+- `simulated`: `tests/test_aprovacao_automatica.py`.
+- `real`: `not_run` até o deploy.
