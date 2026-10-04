@@ -362,7 +362,10 @@ describe('página Aprendizado', () => {
     await waitFor(() => expect(item('receita:40')).toBeTruthy());
     const legado = item('receita:40');
     expect(text(legado)).toContain('Curtir a última foto');
-    expect(text(legado)).toContain('tem efeito externo');
+    // 30.66: o motivo comum ("tem efeito externo") é dito uma vez, no cabeçalho de Revisar, e não em cada item.
+    expect(text(legado)).not.toContain('Publicado antes da regra de aprovação');
+    const revisar = container.querySelector('[aria-labelledby="aprendizado-revisar"]') as HTMLElement;
+    expect(text(revisar)).toContain('Publicados antes da regra de aprovação (tem efeito externo) e ainda ativos');
     await click(byRole('button', /^Desligar$/, legado));
     await setValue(byRole('textbox', /Motivo/, legado) as HTMLInputElement, 'comentário automático não');
     await click(byRole('button', /^Confirmar desligamento/, legado));

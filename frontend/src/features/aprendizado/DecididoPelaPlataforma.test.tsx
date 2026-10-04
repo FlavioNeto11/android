@@ -6,7 +6,7 @@ import { FakeBackend, byRole, click, installBrowserStubs, json, setValue, text, 
 import { useToastStore } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
-import { fatosDoMotivo, lerRelatorioDaAprovacao } from './aprovacaoAutomatica';
+import { fatosDoMotivo, lerRelatorioDaAprovacao, rotuloDaRegra, tituloDaDecisao } from './aprovacaoAutomatica';
 
 /**
  * 30.55: a seção "Decidido pela plataforma" da aba Para aprovar, contra o contrato do adendo v1.24
@@ -88,7 +88,7 @@ describe('Decidido pela plataforma', () => {
     await montar();
     await waitFor(() => linha('receita:180'));
     const vivo = linha('receita:180');
-    expect(text(vivo)).toContain('send_message_i1 (v1)');
+    expect(text(vivo)).toContain('Receita nº 180 · send message (v1)');
     expect(text(vivo)).toContain('Publicou');
     expect(text(vivo)).toContain('classe B; app com.pocqa.messenger (qa)');
     expect(text(vivo)).not.toContain('auto:');
@@ -201,7 +201,83 @@ describe('Decidido pela plataforma', () => {
 describe('30.63: o porquê com os rótulos da tela', () => {
   it('troca a saúde crua e o parecer com id pelos rótulos', () => {
     expect(fatosDoMotivo('auto:qa_revisar v1 — classe B; 3 a favor; saúde pouca_amostra; parecer pedir_evidencia (lr-ade33a6e8607eaeb)'))
-      .toBe('classe B; 3 a favor; saúde: Pouca amostra; parecer do curador: pedir evidencia');
+      .toBe('classe B; 3 a favor; saúde: Pouca amostra; parecer do curador: pedir mais evidência');
     expect(fatosDoMotivo('auto:qa_revisar v1 — saúde saudavel')).toBe('saúde: Saudável');
+  });
+});
+
+describe('30.66: os textos da aba Para aprovar', () => {
+  it('a regra aparece com nome legível, e o id cru só no title', async () => {
+    await montar();
+    await waitFor(() => linha('receita:180'));
+    const vivo = linha('receita:180');
+    expect(text(vivo)).toContain('Aprovação automática do que esperava você');
+    expect(text(linha('receita:5'))).toContain('Confirmação automática do que estava em revisão');
+    expect(text(secao()!)).not.toMatch(/qa_para_aprovar|qa_revisar/);
+    expect(vivo.querySelector('[title="qa_para_aprovar"]')).toBeTruthy();
+    expect(rotuloDaRegra('outra_regra')).toBe('Regra automática outra_regra');
+  });
+
+  it('título de chave interna com versão ou com lacuna crua fica legível', async () => {
+    relatorio = { modo: 'on', ultima_volta: null, casos_na_sombra: 0, decididos_pela_plataforma: [
+      ...DECISOES, { ...DECISOES[0], item_ref: 'fluxo:f-1', kind: 'fluxo', ref: 'f-1', em: '2026-10-04T17:01:00Z',
+                     titulo: 'Mandar "{message_template}" para {recipient_1}' }] };
+    await montar();
+    await waitFor(() => linha('fluxo:f-1'));
+    expect(text(linha('fluxo:f-1'))).toContain('Mandar … para …');
+    expect(text(linha('receita:5'))).toContain('Receita nº 5 · collect contacts (v1)');
+    expect(text(secao()!)).not.toMatch(/[{}]|_i1|send_message/);
+    const d = { kind: 'receita' as const, ref: '9', item_ref: 'receita:9' };
+    expect(tituloDaDecisao({ ...d, titulo: null })).toBe('Receita nº 9');
+    expect(tituloDaDecisao({ ...d, titulo: '{x}' })).toBe('Receita nº 9');
+    expect(tituloDaDecisao({ ...d, titulo: 'send_message_i1 (v1)' }, 'Enviar a mensagem (v1)')).toBe('Enviar a mensagem (v1)');
+    expect(tituloDaDecisao({ ...d, titulo: 'Enviar a mensagem (v2)' })).toBe('Enviar a mensagem (v2)');
+  });
+
+  it('com a fila vazia e itens em Revisar, o topo diz as duas coisas e cita a aprovação automática ligada', async () => {
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Nada para aprovar; 1 para revisar sem pressa'));
+    expect(text(container)).not.toContain('Nada aguardando você');
+    await waitFor(() => expect(text(container)).toContain('até você decidir (ou a aprovação automática, que está ligada)'));
+    expect(text(container)).toContain('aparece aqui, a menos que a aprovação automática o publique.');
+  });
+
+  it('com a aprovação automática desligada, o vazio não fala dela', async () => {
+    relatorio = { modo: 'off', ultima_volta: null, casos_na_sombra: 0, decididos_pela_plataforma: [] };
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Nada para aprovar; 1 para revisar sem pressa'));
+    expect(text(container)).not.toContain('aprovação automática, que está ligada');
+    expect(text(container)).not.toContain('a menos que a aprovação automática');
+  });
+
+  it('com Revisar em falha, o topo não afirma o vazio', async () => {
+    backend.on('GET', /^\/api\/aprendizado\/revisar$/,
+               () => json({ detail: { code: 'internal', message: 'falhou' } }, 500));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('Nada para aprovar; não deu para carregar Revisar'));
+    expect(text(container)).not.toContain('Nada aguardando você');
+  });
+
+  it('o título usa o nome do catálogo quando o backend o manda', () => {
+    const d = { kind: 'receita' as const, ref: '180', item_ref: 'receita:180', titulo: 'send_message_i1 (v1)' };
+    expect(tituloDaDecisao({ ...d, capability: 'SEND_MESSAGE', capability_nome: 'Enviar a mensagem' }))
+      .toBe('Enviar a mensagem (v1)');
+    expect(tituloDaDecisao({ ...d, etapa: 'Digitar a mensagem' })).toBe('Digitar a mensagem (v1)');
+    expect(tituloDaDecisao(d)).toBe('Receita nº 180 · send message (v1)');           // sem catálogo: o recurso de antes
+  });
+
+  it('em Revisar a frase do efeito externo aparece uma vez, no cabeçalho, e não em cada item', async () => {
+    const motivo = { codigo: 'efeito_externo', espera_o_dono: true, detalhe: null };
+    const itens = ['80', '81', '82'].map((ref) => ({ ...LEGADO, ref, title: `item ${ref} (v1)`, por_que_nao_publica: motivo }));
+    const outro = { ...LEGADO, ref: '83', title: 'item 83 (v1)',
+                    por_que_nao_publica: { codigo: 'texto_de_pessoa', espera_o_dono: true, detalhe: null } };
+    backend.on('GET', /^\/api\/aprendizado\/revisar$/, () => json({ itens: [...itens, outro], total: 4 }));
+    await montar();
+    await waitFor(() => expect(text(container)).toContain('item 83 (v1)'));
+    const revisar = container.querySelector('[aria-labelledby="aprendizado-revisar"]') as HTMLElement;
+    expect(text(revisar).split('Publicados antes da regra de aprovação (tem efeito externo)')).toHaveLength(2);
+    expect(text(revisar)).not.toContain('Publicado antes da regra de aprovação (tem efeito externo)');
+    // o item com OUTRO motivo segue dizendo o dele
+    expect(text(revisar)).toContain('Publicado antes da regra de aprovação (tem texto de pessoa): vale revisar.');
   });
 });

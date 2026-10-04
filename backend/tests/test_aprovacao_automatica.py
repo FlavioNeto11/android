@@ -244,6 +244,8 @@ def test_em_on_publica_e_confirma_pela_porta_da_pessoa(mundo: Mundo) -> None:
     assert (d["kind"], d["ref"], d["gesto"], d["regra"], d["versao"], d["estado"], d["app"]) == (
         "receita", refs["aprovar"].removeprefix("receita:"), "publicar", "qa_para_aprovar", 1, "published", QA)
     assert d["titulo"] == "enviar (v1)" and decisoes[0]["gesto"] == "confirmar_que_fica"  # type: ignore[index]
+    # 30.66: a capability e o nome do catálogo, para o painel titular como as outras telas (aqui sem catálogo: None).
+    assert {"capability", "capability_nome", "etapa"} <= set(d)  # type: ignore[arg-type]
 
 
 def test_o_que_o_dono_desfaz_fica_com_ele(mundo: Mundo) -> None:

@@ -5839,3 +5839,17 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
   `comentario_sim` ou `comentario_nao`). Nada se executa e nada se aprova por eles.
 - **Prova:** `simulated` (`backend/tests/test_canais_comentario_do_dono.py`). `not_run`: comentário real num cartão de
   teste.
+## Adendo v1.34 (04/10/2026; número da orquestradora; item 30.66) — a decisão da plataforma com o nome do catálogo
+
+`GET /api/aprendizado/aprovacao-automatica` (adendo v1.24): cada linha de `decididos_pela_plataforma` ganha três campos,
+lidos do item de AGORA, em lote (os mesmos `capabilities`/`nomes_das_capabilities` da rota do livro):
+
+- `capability`: a ação do catálogo do item (receita: a derivação do detalhe; lição e tela: a `scope_capability`), ou
+  `null` quando não se sabe;
+- `capability_nome`: o nome dela em português, do catálogo do app (por exemplo "Enviar a mensagem"), ou `null` sem
+  catálogo;
+- `etapa`: o título da etapa de origem da receita, ou `null`.
+
+O item que saiu do livro vem com os três nulos, como `titulo`. Campos novos e opcionais: quem não os lê não muda. O painel
+titula a decisão como as outras telas (`tituloDoItem`: "Enviar a mensagem (v1)"), e sem eles cai no título de antes.
+Prova `simulated`: `backend/tests/test_aprovacao_automatica.py` e `frontend/src/features/aprendizado/DecididoPelaPlataforma.test.tsx`.

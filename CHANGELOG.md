@@ -229,6 +229,16 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - A `url_bar` sai da lista da poda e volta ao prompt do ator (risco achado na medida do 31.35).
 - Teste: `tests/test_tamanho_do_prompt_do_ator.py`, `simulated`. `real`: not_run (janela de prova, com o diagnóstico
   ligado num aparelho de teste).
+## 2026-10-04 — 30.66: textos da aba Para aprovar (branch fix/30-66-textos-do-painel)
+
+- Fila vazia com itens em Revisar: o topo diz "Nada para aprovar; N para revisar sem pressa". A frase "publicado antes da
+  regra de aprovação (tem efeito externo)" vai uma vez para o cabeçalho de Revisar, em vez de em cada item.
+- Decidido pela plataforma: regra com nome legível (o id só no `title`), título sem chave interna com versão nem lacuna
+  crua (`tituloDaDecisao`), parecer do curador "pedir mais evidência". Prova `simulated`: testes de componente em
+  `DecididoPelaPlataforma.test.tsx` e `AprendizadoPage.test.tsx`. Navegador: `not_run` (passeio depois do deploy 32).
+- Revisão curta: o vazio cita a aprovação automática quando ela está ligada; o topo só afirma o vazio com as duas listas
+  lidas (Revisar em falha ou carregando é dito); o título da decisão usa o nome do catálogo (`capability_nome`, que a
+  rota `aprovacao-automatica` passa a mandar com `capability` e `etapa`; adendo v1.34).
 
 ## 2026-10-04 — 28.28: pergunta ao bot do Telegram vai à orquestradora, e nome de persona não sai pelo canal (branch canais/28-28-pergunta-ao-bot)
 
