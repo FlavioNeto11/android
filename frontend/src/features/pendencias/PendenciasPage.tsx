@@ -1,10 +1,11 @@
-import { CheckCircle2, ExternalLink, TriangleAlert } from 'lucide-react';
+import { Bot, CheckCircle2, ExternalLink, Inbox, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo } from 'react';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { Page } from '../../components/Page';
+import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { cx } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
@@ -13,6 +14,7 @@ import { PARAM_FOCO, useUiStore } from '../../store/ui';
 import { nomeDe } from '../profiles/pessoa';
 import { DIAS_PARA_ANTIGA, ROTULO_DA_ORIGEM, ehAntiga, type OrigemDaPendencia, type Pendencia } from './modelo';
 import { numeroExibido, origemFalhou } from './exibicao';
+import { DecididoSozinho } from './DecididoSozinho';
 import { usePendenciasStore } from './store';
 import { usePendencias } from './usePendencias';
 import styles from './Pendencias.module.css';
@@ -28,6 +30,29 @@ const ehOrigem = (v: string | undefined): v is OrigemDaPendencia => !!v && (ORIG
  * leva à tela onde se decide. O filtro por origem fica no link (`?origem=execucao`).
  */
 export function PendenciasPage() {
+  const aba = useUiStore((s) => s.rota.query.aba) === 'decididas' ? 'decididas' : 'esperando';
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const abas: TabDef<Aba>[] = [
+    { id: 'esperando', label: 'Esperando você', icon: Inbox },
+    { id: 'decididas', label: 'Decidido sozinho', icon: Bot },
+  ];
+  return (
+    <Page
+      title="Pendências"
+      lead="Tudo o que espera uma decisão sua, num lugar só, e o que a plataforma decidiu sozinha, com o desfazer."
+    >
+      <Tabs tabs={abas} active={aba} onChange={(a) => trocarQuery({ aba: a === 'esperando' ? undefined : a, origem: undefined }, 'replace')}
+            idBase="pendencias" label="Pendências" />
+      <TabPanel idBase="pendencias" id={aba}>
+        {aba === 'decididas' ? <DecididoSozinho /> : <EsperandoVoce />}
+      </TabPanel>
+    </Page>
+  );
+}
+
+type Aba = 'esperando' | 'decididas';
+
+function EsperandoVoce() {
   const agora = useNow();
   const origemDoLink = useUiStore((s) => s.rota.query.origem);
   const trocarQuery = useUiStore((s) => s.trocarQuery);
@@ -54,10 +79,8 @@ export function PendenciasPage() {
   const recentes = antigas.length > 0 ? visiveis.filter((p) => !ehAntiga(p, agora)) : visiveis;
 
   return (
-    <Page
-      title="Pendências"
-      lead="Tudo o que espera uma decisão sua, num lugar só: aprendizados para aprovar, textos das personas, execuções que ficaram aguardando você e contas que pedem uma intervenção (login, desafio de segurança, conta errada)."
-    >
+    <>
+      <p className={styles.nota}>Tudo o que espera uma decisão sua, num lugar só: aprendizados para aprovar, textos das personas, execuções que ficaram aguardando você e contas que pedem uma intervenção (login, desafio de segurança, conta errada).</p>
       {falhou ? (
         <Banner tone="warning" icon={TriangleAlert} compact role="status">
           Não foi possível ler todas as origens agora. A lista pode estar incompleta; ela se atualiza sozinha.
@@ -117,7 +140,7 @@ export function PendenciasPage() {
           &quot;Pede atenção&quot;.
         </p>
       </Disclosure>
-    </Page>
+    </>
   );
 }
 
