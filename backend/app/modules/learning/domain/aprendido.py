@@ -143,7 +143,8 @@ _ROTULO_DO_BRACO: Mapping[str, str] = {Braco.WITH.value: "exposta ao prompt", Br
 _POSICAO: Mapping[str, str] = {Posicao.FOR.value: "a favor", Posicao.AGAINST.value: "contra",
                                Posicao.CONFLICT.value: "em conflito",
                                Posicao.FORMA.value: "de forma (não conta)",   # 30.36
-                               Posicao.INVALIDA.value: "inválida (não conta)"}   # 30.42
+                               Posicao.INVALIDA.value: "inválida (não conta)",   # 30.42
+                               Posicao.REVALIDADA.value: "revalidada (desfaz a inválida; não conta)"}   # 30.53
 
 _MOTIVO_DA_INVALIDA: Mapping[str, str] = {m.value: r for m, r in ROTULO_DO_MOTIVO.items()}
 

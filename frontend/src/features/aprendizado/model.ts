@@ -162,7 +162,7 @@ export interface EvidenciaDoLivro {
   /** `forma` (30.36): a execução fez o caminho do item e só reescreveu a forma; não conta contra nem a favor.
    *  `invalida` (30.42): a prova não vale como evidência (efeito repetido, ponto de partida, ator sem ação); o `detail`
    *  traz o motivo (`motivoDaInvalida`); não conta, e o `for`/`against` da mesma execução que ela corrigiu também não. */
-  stance: 'for' | 'against' | 'conflict' | 'forma' | 'invalida';
+  stance: 'for' | 'against' | 'conflict' | 'forma' | 'invalida' | 'revalidada';   // 30.53: revalidada desfaz a inválida
   origin_ref: string;
   run_id: string | null;
   instance_id: string | null;

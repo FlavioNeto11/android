@@ -21,20 +21,25 @@ def _irma(alias: str, posicao: str) -> str:
             f" AND f.origin_ref = {alias}.origin_ref AND f.stance = '{posicao}')")
 
 
+def _invalida_viva(alias: str) -> str:
+    """A `invalida` irmã que vale: sem a `revalidada` da mesma origem ao lado (30.53, que só a neutraliza)."""
+    return f"({_irma(alias, 'invalida')} AND NOT {_irma(alias, 'revalidada')})"
+
+
 def contra_efetivo(alias: str) -> str:
     """A condição SQL de `promocao.contrarias` sobre `learning_evidence AS <alias>` (30.36, 30.42): `against` ou
     `conflict`, menos o `against` que tem uma `forma` ou uma `invalida` da mesma origem no mesmo item (a linha que a
     reclassificação corrigiu). Os leitores em SQL usam esta, para não divergir do domínio."""
     a = alias
     return (f"({fora_da_reproducao(a)} AND ({a}.stance = 'conflict' OR ({a}.stance = 'against'"
-            f" AND NOT {_irma(a, 'forma')} AND NOT {_irma(a, 'invalida')})))")
+            f" AND NOT {_irma(a, 'forma')} AND NOT {_invalida_viva(a)})))")
 
 
 def favor_efetivo(alias: str) -> str:
     """A condição SQL do `for` que vale (30.42): fora da reprodução da receita e sem uma `invalida` da mesma origem no
     mesmo item (a prova que a reclassificação tirou do a favor). É o par de `contra_efetivo` e o de `promocao.efetivas`."""
     a = alias
-    return f"({fora_da_reproducao(a)} AND {a}.stance = 'for' AND NOT {_irma(a, 'invalida')})"
+    return f"({fora_da_reproducao(a)} AND {a}.stance = 'for' AND NOT {_invalida_viva(a)})"
 
 
 def fora_da_reproducao(alias: str) -> str:

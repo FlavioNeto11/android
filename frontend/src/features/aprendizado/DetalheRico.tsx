@@ -410,13 +410,16 @@ function Versao({ v, appNome }: { v: VersaoDoItem; appNome: string | null }) {
 
 const POSTURA: Record<EvidenciaDoLivro['stance'], string> = {
   for: 'a favor', against: 'contra', conflict: 'em conflito', forma: 'divergência de forma', invalida: 'inválida',
+  revalidada: 'revalidada',
 };
 
 function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
   // 30.36: o "contra" que tem a forma da mesma execução ao lado foi reclassificado: fica na lista, fora da conta.
   const formas = new Set(evid.filter((x) => x.stance === 'forma').map((x) => x.origin_ref));
   // 30.42: o `for` ou `against` que tem a `invalida` da mesma execução ao lado (a prova que não vale) também sai da conta.
-  const invalidas = new Set(evid.filter((x) => x.stance === 'invalida').map((x) => x.origin_ref));
+  // 30.53: a `revalidada` da mesma execução desfaz a `invalida` (a conferência que contava um item do laço como repetição).
+  const revalidadas = new Set(evid.filter((x) => x.stance === 'revalidada').map((x) => x.origin_ref));
+  const invalidas = new Set(evid.filter((x) => x.stance === 'invalida' && !revalidadas.has(x.origin_ref)).map((x) => x.origin_ref));
   const porInvalida = (x: EvidenciaDoLivro) => (x.stance === 'for' || x.stance === 'against') && invalidas.has(x.origin_ref);
   const corrigida = (x: EvidenciaDoLivro) => (x.stance === 'against' && formas.has(x.origin_ref)) || porInvalida(x);
   const n = (s: EvidenciaDoLivro['stance']) => evid.filter((x) => x.stance === s && !corrigida(x)).length;
@@ -435,7 +438,9 @@ function Evidencia({ evid }: { evid: readonly EvidenciaDoLivro[] }) {
           {evid.map((x, i) => (
             <li key={`${x.origin_ref}-${i}`}>
               {POSTURA[x.stance] ?? x.stance}
-              {x.stance === 'invalida' ? ` (${motivoDaInvalida(x.detail) ?? 'a prova não vale'}; não conta)` : ''}
+              {x.stance === 'invalida' ? (revalidadas.has(x.origin_ref) ? ' (desfeita pela revalidada; não conta)'
+                : ` (${motivoDaInvalida(x.detail) ?? 'a prova não vale'}; não conta)`) : ''}
+              {x.stance === 'revalidada' ? ' (desfaz a inválida desta execução; não conta)' : ''}
               {porInvalida(x) ? ' (reclassificada como inválida; não conta)' : corrigida(x) ? ' (reclassificada como forma; não conta)' : ''}
               {x.run_id ? <>{' · '}<a className={styles.linkAlvo} href={hrefDaExecucao(x.run_id)} title={x.run_id}>{rotuloDaExecucao(x.run_id)}</a></> : ''}
               {x.instance_id ? ` · aparelho ${x.instance_id}` : ''}

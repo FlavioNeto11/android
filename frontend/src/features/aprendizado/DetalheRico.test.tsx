@@ -300,6 +300,23 @@ describe('detalhe rico: relações e seções ausentes', () => {
     expect(linhas.join(' ')).not.toContain('invalida:');                  // o formato nunca aparece cru
   });
 
+  it('30.53: a revalidada desfaz a inválida da mesma execução, e o a favor dela volta à conta', async () => {
+    const ev = (stance: EvidenciaDoLivro['stance'], run: string, minuto: string, detail: string | null = null) => ({
+      stance, origin_ref: `run:${run}`, run_id: run, instance_id: 'android-10', app_version: null, simulated: false,
+      detail, observed_at: `2026-10-04T13:${minuto}:00Z` });
+    await mostrar(detalhe({
+      evidencias: [ev('for', 'r-2', '07', '[686ac998656d] prova: 3/3 etapas comprovadas'),
+                   ev('invalida', 'r-2', '30', '[686ac998656d] invalida:efeito_repetido — o efeito saiu 2 vezes'),
+                   ev('revalidada', 'r-2', '40', '[686ac998656d] revalidada: a conferência do QA contou 2 mensagens')],
+    }));
+    const secao = text(container.querySelector('[aria-label="Evidências"]')!.parentElement!);
+    expect(secao).toContain('1 a favor · 0 contra');
+    const linhas = Array.from(container.querySelectorAll('[aria-label="Evidências"] li')).map((li) => text(li));
+    expect(linhas.filter((l) => l.startsWith('inválida (desfeita pela revalidada; não conta)'))).toHaveLength(1);
+    expect(linhas.filter((l) => l.startsWith('revalidada (desfaz a inválida desta execução; não conta)'))).toHaveLength(1);
+    expect(linhas.some((l) => l.startsWith('a favor (reclassificada como inválida'))).toBe(false);
+  });
+
   it('a linha de forma mostra a pós-condição pelo rótulo, sem a marca do conteúdo (polimento do deploy 13)', async () => {
     await mostrar(detalhe({
       evidencias: [{ stance: 'forma', origin_ref: 'run:r-2', run_id: 'r-2', instance_id: 'android-09', app_version: null,
