@@ -363,6 +363,7 @@ async def test_digest_encadeado_no_fim_da_execucao_sem_derrubar_nada(harness: Ha
 
     state = harness.state
     assert state is not None
+    harness.pular_o_tempo()   # T.2: sem assentamento em tempo real
     gravador = _Gravador()
     state.learning.registrar_minerador(_Quebrado())                # roda primeiro e lança
     state.learning.registrar_minerador(gravador)

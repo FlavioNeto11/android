@@ -856,6 +856,7 @@ async def test_o_voto_pelo_app_inteiro_nao_cai_na_operacao_da_execucao(harness: 
 
     state = harness.state
     assert state is not None
+    harness.pular_o_tempo()   # T.2: sem assentamento em tempo real
     run = harness.run(["android-01"])
     await harness.wait_run(run.id)
     app = create_app(harness.cfg, state=state)
