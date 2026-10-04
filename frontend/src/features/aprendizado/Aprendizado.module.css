@@ -134,8 +134,7 @@
 /* O motivo que toda decisão exige: em linha, nunca modal. */
 .decisao {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
+  flex-direction: column;
   gap: var(--sp-2);
   padding: var(--sp-3);
   border: 1px dashed var(--border-2);
@@ -143,9 +142,20 @@
   background: var(--surface-1);
 }
 
-.decisaoCampo { flex: 1 1 260px; min-width: 0; }
+.decisaoCampo { min-width: 0; }
 
-.decisaoAcoes { display: flex; gap: var(--sp-2); }
+/* 30.54: o campo e as ações na mesma linha; em tela estreita as ações descem inteiras, nunca para a linha da dica. */
+.decisaoLinha { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+
+.decisaoTexto { flex: 1 1 260px; min-width: 0; }
+
+.decisaoAcoes { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.decisaoResumo { display: flex; flex-direction: column; gap: var(--sp-1); color: var(--text-2); font-size: var(--fs-sm); }
+
+.decisaoResumo ul { margin: 0; padding-left: var(--sp-4); }
+
+.decisaoPendente { margin: 0; color: var(--text-3); font-size: var(--fs-xs); }
 
 .erroInline { color: var(--danger-text); font-size: var(--fs-sm); }
 
