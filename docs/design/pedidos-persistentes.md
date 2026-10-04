@@ -569,7 +569,7 @@ da mesma família, com o mesmo objetivo e personas diferentes. Cobertura: o cód
 conteúdo com outras palavras e uma persona citar a outra como terceiro dependem do planejador (lado da Jev).
 **Para a porta de política (30.62, `PolicyEngine.check`):** a regra 1 (uma conta por alvo no pedido INTEIRO, curtida incluída)
 e a regra 2 (`approval_required` quando o alvo é pessoa real sem conversa prévia) precisam do contexto da família, que o provedor
-`contexto_do_pedido(run_id)` entrega à porta numa fatia separada.
+`contexto_do_pedido(run_id)` entrega à porta numa fatia separada (F5b, PR #295, não ligada ao `AppState` até o 30.62 entrar).
 
 ## 10. Recursos e custo (26.6)
 
