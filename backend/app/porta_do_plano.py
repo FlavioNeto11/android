@@ -27,6 +27,7 @@ from .db import Row, loads
 from .models import RUN_TERMINAL, InteractionType, StepStatus
 from .planning.capabilities import contraparte, objeto_da_acao, texto_a_gerar
 from .social.chave_da_aprovacao import VERSAO_DA_CHAVE, chave_da_aprovacao, midia_da_etapa, texto_exato
+from .taskqueue.repository import MOTIVO_REJEICAO
 from .util import now, to_iso
 
 if TYPE_CHECKING:
@@ -250,8 +251,9 @@ def _itens(previa: Mapping[str, object]) -> list[dict[str, object]]:
     return [i for i in itens if isinstance(i, dict)] if isinstance(itens, list) else []
 
 
-#: O que o gesto escreve no `detail` da etapa tirada e no `decided_note` da aprovação.
-MOTIVO_TIRADA = "tirada na prévia da porta (30.61): o dono escolheu não fazer"
+#: O `detail` da etapa tirada. Começa por `MOTIVO_REJEICAO` porque é DECISÃO, não lacuna: é esse prefixo que faz o
+#: `recovery_steps` ("Tentar novamente", recuperação automática) não recriar a etapa que o dono tirou.
+MOTIVO_TIRADA = f"{MOTIVO_REJEICAO}: tirada na prévia da porta (30.61), o dono escolheu não fazer"
 
 
 def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por: str) -> dict[str, object]:

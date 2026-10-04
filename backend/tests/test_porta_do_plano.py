@@ -24,6 +24,7 @@ from app.porta_do_plano import (
     previa_da_porta,
     renovar_plano,
 )
+from app.taskqueue.repository import MOTIVO_REJEICAO
 from app.util import now, parse_iso, to_iso
 
 from .test_capabilities import IG, SENHA
@@ -207,6 +208,9 @@ async def test_aprovar_grava_o_sim_do_plano_tira_as_dependentes_e_inicia(harness
     assert parse_iso(linha["expires_at"]) > now() + timedelta(hours=23)
     status = {r["key"]: r["status"] for r in state.db.query("SELECT key, status FROM steps")}
     assert status["dm2"] == "cancelled" and status["depois"] == "cancelled" and status["dm"] != "cancelled"
+    # decisão, não lacuna: o prefixo da rejeição impede o `recovery_steps` de recriar as tiradas
+    assert all(r["status_detail"].startswith(MOTIVO_REJEICAO) for r in state.db.query(
+        "SELECT status_detail FROM steps WHERE key IN ('dm2','depois')"))
     assert saida["tiradas"] == ["run-p:android-01:v1:depois", "run-p:android-01:v1:dm2"]
     assert iniciou == [("run-p", "flavio")]
     # o segundo gesto não grava outro sim
