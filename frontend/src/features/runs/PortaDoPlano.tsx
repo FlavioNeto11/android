@@ -36,6 +36,12 @@ function oQue(item: ItemDaPorta): string {
 
 interface Mudou { step_id: string; selo: string | null; motivo: string }
 
+/** O mesmo limite e o mesmo marcador de modelo do servidor (`LIMITE_DO_TEXTO`, `tem_variavel`). */
+export const LIMITE_DO_TEXTO = 2200;
+export function temVariavel(texto: string): boolean {
+  return /\{\{|\{[A-Za-z_][\w.:-]*\}/.test(texto);
+}
+
 /** Lê o 409 `plano_mudou`: a lista do que mudou e a prévia nova. Tolerante: o que faltar vira vazio. */
 function lerPlanoMudou(detail: Record<string, unknown> | null): { mudaram: Mudou[]; previa: PreviaDaPorta | null } {
   const mudaram = Array.isArray(detail?.mudaram) ? (detail.mudaram as Mudou[]) : [];
@@ -84,7 +90,8 @@ export function PortaDoPlano({ runId }: { runId: string }) {
   }, [itens, tiradas]);
   const aprovaveis = itens.filter((i) => i.selo === 'aprovacao' && i.chave && !tiradasComDependentes.has(i.step_id));
   const emBranco = aprovaveis.filter((i) => i.texto != null && (textos[i.step_id] ?? i.texto).trim() === '').length;
-  const comVariavel = aprovaveis.filter((i) => (textos[i.step_id] ?? '').includes('{')).length;
+  const comVariavel = aprovaveis.filter((i) => temVariavel(textos[i.step_id] ?? '')).length;
+  const longos = aprovaveis.filter((i) => (textos[i.step_id] ?? '').trim().length > LIMITE_DO_TEXTO).length;
 
   const cartoes = useMemo(() => {
     const m = new Map<string, ItemDaPorta[]>();
@@ -133,7 +140,16 @@ export function PortaDoPlano({ runId }: { runId: string }) {
       if (err.code === 'plano_mudou') {
         const lido = lerPlanoMudou(err.detail);
         setMudaram(lido.mudaram);
-        if (lido.previa) setPrevia(lido.previa);
+        if (lido.previa) {
+          // F1/F3 da revisão: o que a pessoa marcou e editou só vale para as etapas da prévia NOVA. Uma tirada que sumiu
+          // no replanejamento voltaria em 409 a cada clique sem aparecer para desmarcar; a edição de um item que mudou
+          // esconderia o texto novo.
+          const vivas = new Set(lido.previa.itens.map((i) => i.step_id));
+          const mudados = new Set(lido.mudaram.map((m) => m.step_id));
+          setTiradas((t) => new Set([...t].filter((id) => vivas.has(id))));
+          setTextos((t) => Object.fromEntries(Object.entries(t).filter(([id]) => vivas.has(id) && !mudados.has(id))));
+          setPrevia(lido.previa);
+        }
         else await carregar();
       } else {
         toastError('Não foi possível aprovar o plano', e);
@@ -271,7 +287,8 @@ export function PortaDoPlano({ runId }: { runId: string }) {
           loading={enviando}
           disabledReason={emBranco > 0
             ? `${emBranco} texto(s) em branco: escreva o texto ou marque “Não fazer esta”.`
-            : comVariavel > 0 ? 'Há texto com {…}: escreva o texto final.' : null}
+            : comVariavel > 0 ? 'Há texto com {nome}: escreva o texto final.'
+              : longos > 0 ? `Há texto acima de ${LIMITE_DO_TEXTO} caracteres.` : null}
           onClick={() => void aprovarEIniciar()}
         >
           {aprovaveis.length > 0 ? `Aprovar ${aprovaveis.length} e iniciar` : 'Iniciar e decidir na execução'}
@@ -292,15 +309,18 @@ export function frasesDoRenovar(renovadas: number, vencidas: number): string {
  * que já venceu volta para o dono rever (a porta pergunta de novo na execução).
  */
 export function ValidadeDoPlano({ runId, token = '' }: { runId: string; token?: string }) {
-  const [abertos, setAbertos] = useState<{ total: number; vence: string | null } | null>(null);
+  const [abertos, setAbertos] = useState<{ total: number; vence: string | null; vencidos: number } | null>(null);
   const [renovando, setRenovando] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
       const lista = await api.listApprovals('approved', undefined, runId);
       const doPlano = lista.filter((a) => a.origem === 'plano' && a.interaction_id === null && a.expires_at);
-      const vence = doPlano.map((a) => a.expires_at as string).sort()[0] ?? null;
-      setAbertos({ total: doPlano.length, vence });
+      // F2: o vencido que a faxina ainda não marcou não "vale até" uma hora passada; ele já voltou para o dono.
+      const agora = Date.now();
+      const validos = doPlano.filter((a) => Date.parse(a.expires_at as string) > agora);
+      const vence = validos.map((a) => a.expires_at as string).sort()[0] ?? null;
+      setAbertos({ total: validos.length, vence, vencidos: doPlano.length - validos.length });
     } catch {
       setAbertos(null);                       // sem a lista, não há o que mostrar; a porta segue decidindo
     }
@@ -327,13 +347,16 @@ export function ValidadeDoPlano({ runId, token = '' }: { runId: string; token?: 
     }
   }
 
-  if (!abertos || abertos.total === 0) return null;
+  if (!abertos || abertos.total + abertos.vencidos === 0) return null;
   return (
     <Banner
       tone="info"
       icon={Clock}
       role="status"
-      title={`${abertos.total} sim(ns) dado(s) na prévia ${abertos.vence ? `valem até ${formatDateTime(abertos.vence)}` : 'em aberto'}`}
+      title={abertos.total > 0
+        ? `${abertos.total} sim(ns) dado(s) na prévia valem até ${formatDateTime(abertos.vence)}`
+          + (abertos.vencidos > 0 ? `; ${abertos.vencidos} venceu(ram) e volta(m) para você` : '')
+        : `${abertos.vencidos} sim(ns) dado(s) na prévia venceu(ram) e volta(m) para você`}
       actions={<Button size="sm" icon={RotateCcw} loading={renovando} onClick={() => void renovar()}>Renovar</Button>}
     >
       Cada um vale só para o item idêntico e uma vez. Renovar estende o que ainda vale; o que já venceu volta para você.

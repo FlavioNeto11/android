@@ -5804,7 +5804,10 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
   delas (pela conta do servidor, nunca pela lista do cliente) vão a `cancelled`; uma `decision` registra o gesto. Cada
   item aprovado aceita `texto` opcional, o texto EDITADO no cartão: a chave conferida é a vista (a do texto da prévia),
   o texto entra na etapa (`apply_edit`) e a chave gravada é a recalculada da etapa relida (a do texto que vai sair);
-  texto vazio, com `{…}` ou em ação que não escreve dá 422 `invalid_body`, sem gravar nada. Depois,
+  texto vazio, com marcador de modelo (`{nome}`, `{{…}}`; uma chave solta é texto) ou em ação que não escreve dá 422
+  `invalid_body`, e acima de 2200 caracteres 422 `texto_longo`, sem gravar nada. O selo se refaz com o texto editado: se
+  o item deixa de ser 🔒 com chave (por exemplo, o comentário repetido), 409 `plano_mudou` com "com o texto editado: …" e
+  a edição desfeita. Depois,
   `runs.start`. Resposta `{run, aprovacoes, tiradas, validade_ate}`. O segundo gesto é recusado (409 `invalid_state`).
 - **`POST /api/runs/{id}/porta/renovar`** (200): a validade dos sins do plano ainda VÁLIDOS volta a contar de agora,
   sem reabrir os itens. `{run_id, renovadas, vencidas, validade_ate}`. O sim que já venceu (mesmo que a faxina ainda não

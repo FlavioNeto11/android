@@ -102,3 +102,9 @@ def test_acao_com_objeto_insuficiente_nunca_se_aprova_no_plano() -> None:
     base = {"username": "@a", "content": "obrigada!", "content_verbatim": "true"}
     assert _chave("REPLY_COMMENT", {**base, "target": "comentário 'que lindo'"}) is None
     assert _chave("REPLY_COMMENT", base) is None
+
+
+def test_chave_solta_nao_e_variavel() -> None:
+    """B2 da revisão do painel: só `{nome}` e `{{…}}` são marcadores de modelo; o emoticon é texto final."""
+    assert _chave("SEND_MESSAGE", {**DM, "content": "oi :-{ tchau"}) is not None
+    assert _chave("SEND_MESSAGE", {**DM, "content": "oi {nome}"}) is None

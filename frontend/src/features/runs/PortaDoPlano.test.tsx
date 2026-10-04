@@ -4,7 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { ItemDaPorta, PreviaDaPorta } from '../../api/types';
 import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { PortaDoPlano, ValidadeDoPlano, frasesDoRenovar } from './PortaDoPlano';
+import { PortaDoPlano, ValidadeDoPlano, frasesDoRenovar, temVariavel } from './PortaDoPlano';
 
 let root: Root;
 let container: HTMLElement;
@@ -139,5 +139,42 @@ describe('ValidadeDoPlano (30.61, Renovar)', () => {
     await act(async () => root.render(<ValidadeDoPlano runId="run-r" />));
     await waitFor(() => expect(backend.callsTo('GET', /\/approvals/)).toHaveLength(1));
     expect(text(container)).toBe('');
+  });
+});
+
+describe('Revisão do painel (F1, F2, B2)', () => {
+  it('F1: depois do plano_mudou, a tirada que sumiu da prévia nova não volta a ir (sem laço de 409)', async () => {
+    const nova = previa([item({})]);
+    let chamadas = 0;
+    backend.on('POST', /\/runs\/run-p\/aprovar-plano$/, () => {
+      chamadas += 1;
+      return chamadas === 1
+        ? json({ detail: { code: 'plano_mudou', message: 'mudou', previa: nova,
+          mudaram: [{ step_id: 'run-p:android-01:v1:like', selo: null, motivo: 'a etapa não está mais no plano' }] } }, 409)
+        : json({ run: { id: 'run-p', status: 'running' }, aprovacoes: ['apr-1'], tiradas: [], validade_ate: '2026-10-05T21:00:00.000Z' });
+    });
+    await montar();
+    await click(byRole('button', /Não fazer esta — LIKE_POST/));
+    await click(byRole('button', /Aprovar 1 e iniciar/));
+    await waitFor(() => expect(text(container)).toContain('O plano mudou desde a prévia'));
+    await click(byRole('button', /Aprovar 1 e iniciar/));
+    await waitFor(() => expect(backend.callsTo('POST', /aprovar-plano$/)).toHaveLength(2));
+    const segundo = backend.callsTo('POST', /aprovar-plano$/)[1]?.body as { tirar: string[] };
+    expect(segundo.tirar).toEqual([]);
+  });
+
+  it('F2: o sim vencido que a faxina não marcou não aparece como válido', async () => {
+    backend.on('GET', /\/approvals/, () => json([
+      { id: 'apr-1', origem: 'plano', interaction_id: null, expires_at: '2020-01-01T00:00:00.000Z', status: 'approved' },
+    ]));
+    await act(async () => root.render(<ValidadeDoPlano runId="run-r" />));
+    await waitFor(() => expect(text(container)).toContain('1 sim(ns) dado(s) na prévia venceu(ram) e volta(m) para você'));
+    expect(text(container)).not.toContain('valem até');
+  });
+
+  it('B2: só o marcador de modelo é variável', () => {
+    expect(temVariavel('oi {item}')).toBe(true);
+    expect(temVariavel('{{saida:nome}}')).toBe(true);
+    expect(temVariavel('oi :-{ tchau')).toBe(false);
   });
 });

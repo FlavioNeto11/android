@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 
 from ..db import Database
@@ -41,6 +42,15 @@ _PELA_REGRA_PROPRIA = frozenset({TEXTO, BRIEFING, VERBATIM, ARGUMENTO_DA_IMAGEM}
 OBJETO_INSUFICIENTE = frozenset({"REPLY_COMMENT"})
 
 
+#: O marcador de modelo que ainda não virou texto: `{item}`, `{nome}`, `{{saida:…}}`. Uma chave solta (emoticon, código)
+#: é texto final (revisão do painel, B2).
+_VARIAVEL = re.compile(r"\{\{|\{[A-Za-z_][\w.:-]*\}")
+
+
+def tem_variavel(texto: str) -> bool:
+    return _VARIAVEL.search(texto) is not None
+
+
 def texto_exato(cap: Capability, bindings: Mapping[str, object]) -> tuple[bool, str | None]:
     """`(fechado, texto)`. Fechado quando a etapa não escreve nada, ou escreve um texto já final (`content_verbatim`);
     aberto quando o texto ainda vai ser escrito (briefing): aí não há o que aprovar no plano."""
@@ -50,7 +60,7 @@ def texto_exato(cap: Capability, bindings: Mapping[str, object]) -> tuple[bool, 
     texto = valores.get(TEXTO)
     if texto is None or not str(texto).strip():
         return (not cap.needs_draft), None
-    if "{" in str(texto):                               # `{item}`, `{{saida:…}}`: ainda não é o texto que vai sair
+    if tem_variavel(str(texto)):                        # `{item}`, `{{saida:…}}`: ainda não é o texto que vai sair
         return False, None
     return True, str(texto)
 

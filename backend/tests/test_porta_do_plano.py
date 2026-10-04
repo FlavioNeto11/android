@@ -422,3 +422,48 @@ async def test_renovar_misto_renova_o_valido_e_devolve_o_vencido(harness: Any, m
     assert (saida["renovadas"], saida["vencidas"]) == (1, 1)
     estados = {r["step_id"]: r["status"] for r in state.db.query("SELECT step_id, status FROM pending_approvals")}
     assert estados == {itens["dm"]["step_id"]: "approved", itens["dm2"]["step_id"]: "expired"}
+
+
+async def test_texto_editado_que_muda_o_selo_volta_409_e_desfaz_a_edicao(harness: Any, monkeypatch: Any) -> None:
+    """Revisão do painel, B1: o selo se refaz com o texto editado. Se ele deixa de ser 🔒 (aqui, recusado como o
+    comentário repetido), nada se grava: a edição volta atrás (rollback) e o dono ouve o porquê."""
+    import app.porta_do_plano as porta
+
+    state = harness.state
+    iniciou = _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    original = porta._item
+
+    def com_texto_repetido(*args: Any, **kw: Any) -> Any:
+        item = original(*args, **kw)
+        if item is not None and item.get("texto") == "já mandei isto":
+            return {**item, "selo": porta.RECUSADO, "chave": None, "motivo": "esta conta já mandou este texto"}
+        return item
+
+    monkeypatch.setattr(porta, "_item", com_texto_repetido)
+    try:
+        aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+            step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="já mandei isto")]), por="flavio")
+        raise AssertionError("devia devolver plano_mudou")
+    except PortaIndisponivel as exc:
+        assert exc.codigo == "plano_mudou"
+        [mudou] = exc.extra["mudaram"]                                                   # type: ignore[misc]
+        assert mudou["motivo"] == "com o texto editado: esta conta já mandou este texto"
+    assert not state.db.scalar("SELECT COUNT(*) FROM pending_approvals") and not iniciou
+    assert json.loads(state.db.scalar("SELECT bindings FROM steps WHERE key='dm'"))["content"] == DM["content"]
+
+
+async def test_chave_solta_e_texto_final_e_o_longo_tem_mensagem_propria(harness: Any, monkeypatch: Any) -> None:
+    """B2: só o marcador de modelo (`{nome}`) é variável; o texto acima do limite recebe a mensagem própria."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    try:
+        aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+            step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="x" * 2201)]), por="flavio")
+        raise AssertionError("devia recusar o texto longo")
+    except PortaIndisponivel as exc:
+        assert exc.codigo == "texto_longo" and "2200" in exc.mensagem
+    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+        step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="oi :-{ até logo")]), por="flavio")
+    assert state.db.scalar("SELECT generated_content FROM pending_approvals") == "oi :-{ até logo"
