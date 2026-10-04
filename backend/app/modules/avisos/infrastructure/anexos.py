@@ -167,6 +167,52 @@ class ArmazemDeAnexos:
         r = self.db.one("SELECT * FROM canal_anexos WHERE id=?", (int(ident),))
         return dict(r) if r is not None else None
 
+    def listar(self, *, canal: str | None = None, direcao: str | None = None, do_dono: bool | None = None,
+               estado: str | None = None, desde: str | None = None, ate: str | None = None, limite: int = 24,
+               deslocamento: int = 0) -> tuple[list[Linha], int]:
+        """A página de anexos (a tela Anexos, 28.24 F4), do mais novo ao mais velho, e o total que bate com os filtros.
+        `do_dono` olha a MENSAGEM de origem (`canal_entradas.do_dono`): só a entrada do dono conta; a saída é da Central.
+        O que sai são só colunas seguras: nada de `ref_externa`, `mime_declarado` nem caminho (o produto não guarda o nome
+        do remetente). O `pendente` (esperando o download) não é anexo ainda e não entra."""
+        onde, par = ["a.estado <> 'pendente'"], []
+        if canal:
+            onde.append("a.canal = ?")
+            par.append(canal)
+        if direcao:
+            onde.append("a.direcao = ?")
+            par.append(direcao)
+        if estado:
+            onde.append("a.estado = ?")
+            par.append(estado)
+        if do_dono is True:
+            onde.append("a.direcao = 'entrada' AND e.do_dono = 1")
+        elif do_dono is False:
+            onde.append("NOT (a.direcao = 'entrada' AND e.do_dono = 1)")
+        if desde:
+            onde.append("a.criado_em >= ?")
+            par.append(desde)
+        if ate:
+            onde.append("a.criado_em < ?")
+            par.append(ate)
+        base = (" FROM canal_anexos a LEFT JOIN canal_entradas e ON e.canal = a.canal AND e.id = a.entrada_id"
+                " WHERE " + " AND ".join(onde))
+        total = int(self.db.scalar("SELECT COUNT(*)" + base, tuple(par)) or 0)
+        linhas = self.db.query(
+            "SELECT a.id, a.canal, a.direcao, a.mime, a.bytes, a.estado, a.motivo_recusa, a.criado_em, a.apagado_em,"
+            " CASE WHEN a.direcao = 'entrada' AND e.do_dono = 1 THEN 1 ELSE 0 END AS do_dono,"
+            " CASE WHEN a.direcao = 'entrada' AND e.do_dono = 1 AND e.tipo = 'mensagem' THEN 1 ELSE 0 END AS de_mensagem_do_dono"
+            + base + " ORDER BY a.id DESC LIMIT ? OFFSET ?", (*par, int(limite), int(deslocamento)))
+        return [dict(r) for r in linhas], total
+
+    def origem_e_de_convidado(self, anexo: Linha) -> bool:
+        """A mensagem de origem existe e NÃO é do dono. O convidado nunca tem anexo baixado, então uma linha assim só
+        existiria por defeito: o conteúdo não sai por nenhuma rota. Sem mensagem de origem (saída, teste), não é convidado."""
+        if anexo.get("direcao") != "entrada" or anexo.get("entrada_id") is None:
+            return False
+        r = self.db.one("SELECT do_dono FROM canal_entradas WHERE canal=? AND id=?",
+                        (anexo.get("canal"), int(str(anexo["entrada_id"]))))
+        return r is not None and int(r["do_dono"]) != 1
+
     def da_entrada(self, entrada_id: int) -> list[Linha]:
         return [dict(r) for r in self.db.query(
             "SELECT * FROM canal_anexos WHERE canal=? AND entrada_id=? ORDER BY id", (self.canal, int(entrada_id)))]

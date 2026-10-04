@@ -5410,6 +5410,23 @@ Prova:
 - `simulated`: `backend/tests/test_teto_de_autonomia.py` (os três níveis e o nulo).
 - `not_run`: PostgreSQL e o central depois do deploy.
 
+## Adendo v1.26 (04/10/2026; número da orquestradora; item 28.24, F4) — a lista de anexos e o conteúdo só de imagem e PDF
+
+Sem migração. Alimenta a aba Anexos da tela Canais. Atrás do mesmo login das outras `/api/canais` (sem ele, **401**).
+- `GET /api/canais/anexos`: página de anexos, do mais novo ao mais velho. Filtros (todos opcionais): `canal`, `direcao`
+  (`entrada`|`saida`), `do_dono` (booleano; olha a mensagem de origem, e a saída nunca é "do dono"), `estado`
+  (`guardado`|`recusado`|`apagado`; o `pendente`, que ainda espera o download, nunca entra), `desde` e `ate` (ISO; `ate` é
+  exclusivo; data sozinha vale 00:00Z), `limit` (1 a 100, padrão 24) e `offset`. Resposta: `{items, total, limit, offset}`,
+  com `total` batendo com os filtros. Cada item tem chaves fixas: `id`, `canal`, `direcao`, `mime`, `bytes`, `estado`,
+  `motivo_recusa`, `criado_em`, `apagado_em`, `do_dono`, `tem_conteudo` (imagem ou PDF guardado que sai por `/conteudo`; nunca o
+  de convidado) e `pode_ir_ao_cartao` (a regra de `POST .../trello`: mensagem do dono, guardada). Sem caminho de disco, sem
+  `sha256`, sem referência do canal e sem nome de remetente. **422** para filtro inválido (`periodo_invalido` para data fora do ISO).
+- `GET /api/canais/anexos/{id}/conteudo` (muda a v1.21): além de `Content-Disposition: attachment; filename="anexo-<id>.<ext>"` e
+  `X-Content-Type-Options: nosniff`, agora responde `Cache-Control: no-store`; só sai imagem (JPEG, PNG, WEBP) e PDF. Novos erros:
+  **415** `tipo_sem_previa` (o `text/plain` guardado não sai por aqui) e **404** `anexo_de_convidado` (a mensagem de origem não é
+  do dono; o convidado nunca tem anexo baixado, então a linha só existiria por defeito). Os 404 `anexo_sem_arquivo` e o 410
+  `anexo_apagado` seguem como na v1.21.
+
 ## Adendo v1.21 (04/10/2026; número da orquestradora; item 28.24, F1) — anexos nos canais
 
 O Telegram passa a receber e a devolver arquivos (regra do dono em `docs/dominios/canais.md`, C-22). Migração `101_canal_anexos`.
@@ -5445,8 +5462,12 @@ Complemento (F2, mesmo item):
   ao dono ("… Mande de novo."). Se a Central cai entre gravar e baixar, a volta seguinte (anexo `pendente` com mais de 60 s) baixa UMA
   vez e conta o resultado; se falhar, fecha como `recusado` e avisa. Escolhi avisar+uma tentativa, e não só avisar, porque a referência
   do arquivo no Telegram costuma valer por horas e a retomada poupa o reenvio.
-- `POST /api/canais/anexos/{id}/trello` com `{"card": "<24 hex>", "confirmar": true}`: anexa ao cartão do Trello a imagem que o DONO
-  mandou (exceção (b) do dono, 04/10 15:17Z). Atrás do mesmo login. **200** `{anexo_id, card, trello_anexo}`; **400**
+- `POST /api/canais/anexos/{id}/trello` com `{"card": "<link, código curto ou id>", "confirmar": true}`: anexa ao cartão do Trello a
+  imagem que o DONO mandou (exceção (b) do dono, 04/10 15:17Z). Atrás do mesmo login. `card` aceita o link do cartão
+  (`https://trello.com/c/<código>/...`), o código curto de 8 letras e dígitos ou o id de 24 hexadecimais; o backend lê o id inteiro e
+  o quadro pela API (`GET /1/cards/{código ou id}`), e a resposta traz o id inteiro (28.24 F4, revisão da fila da suíte 31). O mesmo
+  arquivo no mesmo cartão vai uma vez só: se o cartão já tem o anexo de nome `anexo-<sha>.<ext>`, nada sobe e a resposta traz o que
+  existe com `ja_estava: true`. **200** `{anexo_id, card, trello_anexo, ja_estava}`; **400**
   `confirmacao_necessaria`; **404** `anexo_desconhecido`; **409** `anexo_nao_permitido` (convidado, saída ou mensagem que não é do dono),
   `anexo_sem_arquivo` (recusado, apagado ou sumido do disco) ou `cartao_fora_dos_quadros` (o cartão não é de um quadro de
   `trello.quadros`, conferido pela API antes de anexar); **422** `cartao_invalido`; **502** `trello_falhou` (mensagem sem chave nem token);

@@ -305,10 +305,14 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
     exceções são só do arquivo, e só ao chat do dono (a) e ao cartão que o dono pediu (b).
   - A leitura do conteúdo da imagem pela IA é chamada paga: só quando o dono pede, com teto por mensagem e custo
     registrado (F2; a F1 só guarda e referencia).
+  - A tela Anexos (aba de Canais no painel, F4) lista o que passou pelos canais, só para quem tem o login do painel: miniatura
+    de imagem, ícone de PDF, canal, sentido, data e tamanho, sem nome de remetente nem caminho de disco. Só imagem e PDF têm
+    prévia (o texto guardado e o anexo de convidado não saem por `/conteudo`), o arquivo sai como download com
+    `Cache-Control: no-store`, e "Anexar ao cartão" é a rota da exceção (b) com o id do cartão e a confirmação na própria linha.
 - **Hoje:** nada na operação provisória.
 - **No produto:** item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, `anexos_trello.py`, o
   adaptador do Telegram, `GET /api/canais/anexos/{id}`, `POST /api/canais/anexos/{id}/trello`, `devices/captura_pontual.py`,
-  migração 101). Falta: a leitura pela IA (teto por imagem) e a tela do painel.
+  migração 101; `GET /api/canais/anexos` e a aba Anexos, `frontend/src/features/canais/AnexosTab.tsx`). Falta: a leitura pela IA (teto por imagem) e o botão "Ler" na tela.
 - **Prova:** `simulated` (`backend/tests/test_canais_anexos.py`, `test_canais_anexos_trello.py`, `test_canais_captura.py`);
   `not_run` com o bot, o Trello, o aparelho e o disco reais.
 
