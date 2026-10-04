@@ -94,6 +94,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-03/04 — Suíte 16 na main e deploy 16 no central (3b5355ce; migrações 087 e 088; config sem mudança)
 
+## 2026-10-04 — 31.29: apelidos de app de sistema e casamento sem acento (branch feat/31-29-apelidos-do-app)
+
+- `apps_citados` ignora acento e caixa. `com.android.settings` ganha apelidos de mais de uma palavra
+  (`APELIDOS_POR_PACOTE`): "Configurações do aparelho", "Ajustes do telefone", "Android Settings" etc. Uma palavra só
+  não é apelido ("ajustes na legenda" segue no app padrão).
+- O padrão para o Instagram sem app citado não muda.
+- Origem: investigação só leitura do 31.29. 11 de 12 comandos da 1ª rodada da linha de base caíram no Instagram por
+  dizerem só "Configurações".
+- Prova: `simulated` (`tests/test_planejador_entre_apps.py::test_apelido_de_app_de_sistema_sem_acento_e_sem_caixa_31_29`).
+  Doc: `docs/dominios/execution.md`.
+
+ no central (3b5355ce; migrações 087 e 088; config sem mudança)
+
 - Integrados em `integ/suite-16`, nesta ordem: #174, #178 (30.42, com a correção do `for_each` e o 30.41 pelo
   #181, d17b36c6), 30.38 (a, b), #176 (29.55), #179 (29.58), #175 (31.24, migração 088), #177 (32.2, migração 087,
   com o `deque(maxlen)` da revisão) e o 31.25 (cherry-pick 2962f2e7).

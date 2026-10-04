@@ -131,6 +131,26 @@ def test_apps_citados_pelo_nome_e_pelo_rotulo_fora_das_aspas() -> None:
     assert not pede_site('envie "veja o site https://exemplo.test" para @ana')
 
 
+
+def test_apelido_de_app_de_sistema_sem_acento_e_sem_caixa_31_29() -> None:
+    """31.29: "Configurações" sozinho não casava o app cadastrado como "Configurações do Android" (11 de 12 na linha de
+    base de 04/10 caíram no Instagram). Apelidos de sistema de MAIS DE UMA palavra, sem acento e sem caixa; uma palavra
+    só ("ajustes", "configurações") não é apelido, porque sequestraria comando do Instagram (revisão da Android)."""
+    ajustes = AppContext("configura-es-do-android", "Configurações do Android", "com.android.settings", None, None, None)
+    apps = [*TODOS, ajustes]
+    for comando in ("Abra as Configurações do aparelho e mostre a bateria", "abra os ajustes do telefone",
+                    "open Android Settings", "abra as configuracoes do celular", "Abra as Configurações do Android",
+                    "ABRA AS CONFIGURAÇÕES DO SISTEMA", "abra as configuracoes do android"):
+        assert [a.id for a in apps_citados(comando, apps)] == ["configura-es-do-android"], comando
+    # uma palavra só segue no app padrão: nenhum app citado
+    for comando in ("faça uns ajustes na legenda", "mude as configurações de privacidade",
+                    "abra as Configurações e mostre a bateria", "abra os settings"):
+        assert apps_citados(comando, apps) == [], comando
+    assert [a.id for a in apps_citados("abra as configurações do Instagram", apps)] == ["instagram"]
+    assert [a.id for a in apps_citados("abra o instagram", apps)] == ["instagram"]       # sem acento nos de sempre
+    assert apps_citados('envie "veja nas Configurações do aparelho" para @ana', apps) == []   # entre aspas é conteúdo
+
+
 # ================================================================== o que vai ao planejador
 def test_um_app_com_catalogo_sem_outro_app_segue_no_planejamento_por_catalogo() -> None:
     catalog, catalogs, apps, pacote = RunService._catalogos("curta o post de @ana", TODOS, NO_IG)  # noqa: SLF001
