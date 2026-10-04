@@ -288,3 +288,66 @@ def test_cli_abre_so_leitura_e_nao_cria_banco(tmp_path: Path, banco: Banco) -> N
             db.execute("DELETE FROM decisao_fechada_sombra")
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------- 31.11: rótulos confirmados pelo dono em bloco
+def _confirmacao(item: str, rotulo: str, data: str = "2026-10-06T12:00:00Z") -> dict[str, str]:
+    return {"item_ref": item, "rotulo": rotulo, "data": data, "frase": "confirmo os rótulos propostos", "autor": "Flavio"}
+
+
+def _arquivo(tmp_path: Path, *linhas: dict[str, str]) -> str:
+    caminho = tmp_path / "rotulos-em-bloco.json"
+    caminho.write_text(json.dumps({"confirmacoes": list(linhas)}), encoding="utf-8")
+    return str(caminho)
+
+
+def test_confirmacao_em_bloco_e_fonte_a_parte_fora_da_taxa_e_do_veredito(banco: Banco, tmp_path: Path) -> None:
+    """Decisão da orquestradora (04/10): ninguém registra transição como o dono; a confirmação em bloco é uma fonte
+    própria, com data e frase literal, mostrada SEPARADA e fora da taxa de acordo e do veredito principal."""
+    for ref in ("a", "b"):
+        banco.revisao(template="curador", item_ref=f"receita:{ref}", dossie_hash=ref, saida={"decisao": "manter"})
+        banco.sombra(origem="curador", pergunta="curador_triagem", escolha="opt:manter", ref=ref)
+    banco.transicao("receita:a", "disabled", por="Flavio")                    # item a item: o dono descartou o a
+    conf = rel.ler_confirmacoes(_arquivo(tmp_path, _confirmacao("receita:a", "manter"), _confirmacao("receita:b", "manter")))
+    r = rel.relatorio_do_curador(banco.db, None, AGORA, frozenset({"Flavio"}), conf)
+    m = r["estratos"]["receita"]["medidas"]
+    assert m["rotulos"] == 1 and m["rotulos_por_fonte"] == {"dono": 1}         # o item a item vence no a
+    assert m["acordo"] == 0.0                                                 # escolha manter × rótulo descartar
+    bloco = m[rel.FONTE_EM_BLOCO]
+    assert bloco["rotulos"] == 1 and bloco["acordo"] == 1.0                   # o b, só pela confirmação, à parte
+    info = r["rotulo_1"][rel.FONTE_EM_BLOCO]
+    assert info["itens"] == 2 and info["confirmacoes"] == [("2026-10-06T12:00:00Z", "Flavio",
+                                                            "confirmo os rótulos propostos")]
+    assert "confirmacao_em_bloco" not in m["rotulos_por_fonte"]
+
+
+def test_confirmacao_antes_da_sombra_nao_rotula(banco: Banco, tmp_path: Path) -> None:
+    banco.revisao(template="curador", item_ref="receita:a", dossie_hash="a", saida={"decisao": "manter"})
+    banco.sombra(origem="curador", pergunta="curador_triagem", escolha="opt:manter", ref="a")
+    conf = rel.ler_confirmacoes(_arquivo(tmp_path, _confirmacao("receita:a", "manter", "2026-10-01T00:00:00Z")))
+    m = rel.relatorio_do_curador(banco.db, None, AGORA, frozenset({"Flavio"}), conf)["estratos"]["receita"]["medidas"]
+    assert m["rotulos"] == 0 and rel.FONTE_EM_BLOCO not in m
+
+
+def test_sem_arquivo_o_relatorio_fica_como_antes(banco: Banco) -> None:
+    banco.revisao(template="curador", item_ref="receita:a", dossie_hash="a", saida={"decisao": "manter"})
+    banco.sombra(origem="curador", pergunta="curador_triagem", escolha="opt:manter", ref="a")
+    r = rel.relatorio_do_curador(banco.db, None, AGORA, frozenset({"Flavio"}))
+    assert rel.FONTE_EM_BLOCO not in r["rotulo_1"] and rel.FONTE_EM_BLOCO not in r["estratos"]["receita"]["medidas"]
+    assert rel.ler_confirmacoes(None) == {}
+
+
+@pytest.mark.parametrize("linha", [
+    {"item_ref": "receita:a", "rotulo": "revisar", "data": "2026-10-06T12:00:00Z", "frase": "ok", "autor": "Flavio"},
+    {"item_ref": "receita:a", "rotulo": "manter", "data": "ontem", "frase": "ok", "autor": "Flavio"},
+    {"item_ref": "receita:a", "rotulo": "manter", "data": "2026-10-06T12:00:00Z", "frase": "", "autor": "Flavio"},
+    {"item_ref": "receita:a", "rotulo": "manter", "data": "2026-10-06T12:00:00Z", "frase": "ok"},
+])
+def test_confirmacao_fora_da_forma_falha_fechada(tmp_path: Path, linha: dict[str, str]) -> None:
+    with pytest.raises(SystemExit):
+        rel.ler_confirmacoes(_arquivo(tmp_path, linha))
+
+
+def test_o_mesmo_item_duas_vezes_falha_fechada(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        rel.ler_confirmacoes(_arquivo(tmp_path, _confirmacao("receita:a", "manter"), _confirmacao("receita:a", "rebaixar")))

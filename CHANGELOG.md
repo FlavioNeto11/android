@@ -91,6 +91,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `test_capabilities_do_dominio.py`, `test_protecao_de_frota.py`. Real: `not_run` — os seletores do editor de
   publicação (Share, contador de publicações) NÃO foram medidos; a exploração e a publicação de UMA imagem de teste
   esperam o sim do dono. O planejador ainda não emite `PUT_MEDIA_IN_GALLERY` (interna não é oferecida): resolvido no PR-B (`preparo`).
+## 2026-10-04 — 31.11: rótulos do curador confirmados pelo dono em bloco, como fonte à parte (branch feat/31-11-rotulos-em-bloco, sem migração)
+
+- `scripts/jev-relatorio-31-10.py` e `scripts/jev-braco-offline.py` aceitam `--rotulos-em-bloco ARQ`: a confirmação em
+  bloco do dono (data, frase literal, autor, item, rótulo) é a fonte `confirmacao_em_bloco` do rótulo 1.
+- Ela fica fora da taxa de acordo e do veredito principal, com medidas próprias; a transição do dono item a item vence.
+  Ninguém registra transição como se fosse o dono (decisão da orquestradora, golden set §2).
+- Prova `simulated`: `scripts/tests/test_jev_relatorio_31_10.py`.
 
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 

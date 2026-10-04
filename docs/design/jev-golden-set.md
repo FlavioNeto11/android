@@ -169,6 +169,23 @@ de volta e volume real, e só então decide o contrato com a Aprendizado.
 - **Pergunta futura, sem ação:** incluir o fluxo na triagem (C2 na R1). A prova de fluxo do 30.37 seria o rótulo
   mais limpo, e 29 das 57 revisões de 03/10 são de fluxo.
 
+*Registro de 04/10 (~16:05Z), 31.11, decisão da orquestradora sobre a fonte do rótulo 1.* Nenhum limiar da tabela mudou.
+- **Ninguém registra transição como se fosse o dono.** A confirmação do dono a uma lista de rótulos proposta (ficha
+  `.claude/handoffs/jev/rotulos-31-11.md`: 30 receitas, a regra pelo histórico de replay) vira uma **segunda fonte**
+  do rótulo 1, `confirmacao_em_bloco`. Ela vive num arquivo próprio (`--rotulos-em-bloco ARQ`, JSON
+  `{"confirmacoes": [{item_ref, rotulo, data, frase, autor}]}`, com a frase literal do dono) e vale só depois da
+  linha da sombra.
+- **Não se mistura:**
+  - a transição do dono item a item vence;
+  - as linhas em bloco ficam fora de `rotulos`, `acordo`, `erro_grave` e do veredito principal, com medidas próprias
+    em `medidas.confirmacao_em_bloco`;
+  - `rotulo_1.confirmacao_em_bloco` mostra a data, o autor e a frase.
+- **GO do 31.11:** diz por extenso de que fonte veio cada rótulo. A ficha é regra de sessão Claude confirmada em bloco,
+  não rótulo independente do Jev (registro de 03/10).
+- **Arquivo fora da forma** (rótulo fora de manter, rebaixar ou descartar; data fora do ISO; campo vazio; item
+  repetido): o relatório encerra com erro. Falha fechada.
+- Prova `simulated`: `scripts/tests/test_jev_relatorio_31_10.py`.
+
 ## 3. Intenção (R2 e R3, 31.9)
 
 **Estratos (RA-2; execuções de 7 dias até 03/10 no central):** qa-messenger 58 (+3), instagram 15, outlook 5.
