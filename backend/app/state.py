@@ -129,7 +129,7 @@ from .taskqueue.sombra_intencao import SombraDaIntencao, catalogo_de
 from .taskqueue.travas import (AVISOS, CURADORIA, PEDIDOS, RENOVAR_TRAVA_S, RETENCAO, SALDOS, TRAVAS_DOS_LACOS, Lideranca,
                                TravaPerdida)
 from .training.generalizer import ProviderSkillGeneralizer
-from .social.chave_da_aprovacao import chave_da_aprovacao, midia_da_etapa
+from .social.chave_da_aprovacao import chave_da_aprovacao, midia_da_etapa, texto_exato
 from .util import iso_in, now, now_iso, parse_iso, to_iso
 from .vitrine import (_apps_changed, alvos_da_distribuicao, laco_de_convergencia, previa_de_entrega,
                       trabalho_ao_ligar)
@@ -2345,7 +2345,12 @@ class AppState:
             # coluna existir (`draft_meta` nulo): se existe pedido, aquele texto já foi mostrado a alguém.
             #
             # A conferência é feita DENTRO do lock: quem esperou na fila pode ter esperado justamente por si.
-            if ler_rascunho(self.db, srow["id"]) or self.approvals.for_step(srow["id"]) is not None:
+            #
+            # 31.49: o sim dado no PLANO não conta como texto mostrado. Ele só existe para texto final (o briefing não
+            # tem chave), então se a etapa chegou aqui com briefing, aquele sim não a cobre: pular a escrita deixaria
+            # a etapa sem texto, e o pedido da execução sairia sem o que vai ser enviado.
+            pedido = self.approvals.for_step(srow["id"])
+            if ler_rascunho(self.db, srow["id"]) or (pedido is not None and pedido.origem != "plano"):
                 return None
             # O tipo de texto e as leituras de tela são do APP da etapa (o manifesto dele no registro de apps).
             tipo = capabilities_of(pacote).text_kind(cap.key) or "dm_initiate"
@@ -2475,6 +2480,7 @@ class AppState:
         ser presa a ela.
         """
         pedido = self.approvals.for_step(srow["id"])
+        descarte = ""
         presa = self.excecoes.obter(excecao) if excecao else None
         if pedido is not None and presa is not None and presa.presa_em \
                 and parse_iso(pedido.created_at) < parse_iso(presa.presa_em):
@@ -2507,6 +2513,10 @@ class AppState:
                     "alvo e mesmo texto, e o efeito ainda não tinha saído.",
                     run_id=obj["run_id"], instance_id=obj["instance_id"], step_id=srow["id"])
         if pedido is None:
+            # 31.49: quando o sim do plano não valeu, o cartão novo diz por quê; quem decide vê que já tinha aprovado
+            # algo e o que mudou, e não um pedido repetido sem explicação.
+            motivo = "; ".join(m for m in (motivo, f"o sim dado no plano não vale: {descarte}" if descarte else "")
+                               if m)
             pedido = self.approvals.open(
                 profile_id=profile_id, capability=cap.key,
                 summary=f"{srow['title']} — {motivo}" if motivo else srow["title"],
@@ -2544,6 +2554,13 @@ class AppState:
                                    midia_sha256=sha)
         if chave is None or chave != pedido.chave_sha256:
             return "o item mudou desde a aprovação (a chave divergiu)"
+        # 31.49: aprovação sem texto nunca libera escrita. A chave já leva o texto; esta conferência, depois dela, é a
+        # regra dita com todas as letras, e pega o sim gravado sem o texto que o dono viu (o que vai sair tem de ser o
+        # que ele leu).
+        if cap.needs_draft:
+            fechado, texto = texto_exato(cap, bindings)
+            if not fechado or texto is None or (pedido.content or "").strip() != texto.strip():
+                return "o sim do plano não traz o texto que vai sair"
         return ""
 
     def _seed_apps(self) -> None:
