@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 14.13: o DTO do aparelho só vai ao log quando conta um fato; índices de tempo (branch feat/14-13-telemetria-fora-da-auditoria, migração 094)
+
+- Medido no central (24 h, leitura só): 7383 `instance.updated` por dia, o dobro do que o plano supunha. ~2550 eram
+  trocas de controle `ai↔none`, que o `control.changed` já grava (a troca ia ao log duas vezes, uma com o DTO
+  inteiro), e 391 eram só telemetria.
+- `DeviceManager.publish` persiste `instance.updated` quando muda um campo material do DTO
+  (`devices/publicacao.assinatura_material`, sem `resources`, `frame`, `connectivity.checked_at`,
+  `stream.frame_age_s`/`last_frame_at`, `repair_pause.remaining_s` e os campos do controle), quando há mensagem própria,
+  quando o nível não é `info`, ou quando o controle mudou sem `control.changed`. O resto vai como `instance.progress`
+  (novo, efêmero), e o painel o aplica como o `instance.updated`.
+- Migração 094: índices `events(ts)`, `events(kind, ts)`, `measurements(kind, ts)` e `measurements(ts)`.
+- Prova `simulated`: `backend/tests/test_telemetria_fora_da_auditoria.py` (4) e `frontend/src/store/reducer.test.ts`
+  (instance.progress). Real: `not_run` até o deploy; a medida é a contagem de `instance.updated` por dia.
+- Achado à parte (item 29.66): `supported_verbs`, `renderer` e `abis` alternam entre dois valores nos 09/10/12/13.
+
 ## 2026-10-04 — 29.36: o motivo do aparelho remoto parado acompanha a conexão e a queda (branch fix/29-36-detalhe-do-externo-parado, sem migração)
 
 - `DeviceManager._recalcular_motivo_do_parado`: reescreve o `state_detail` de um aparelho de worker `stopped` com o

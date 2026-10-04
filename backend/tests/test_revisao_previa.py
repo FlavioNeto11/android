@@ -195,7 +195,7 @@ async def test_revisao_marcador_por_hierarquia_nao_declara_captura_recuperada(ha
 
 
 async def test_revisao_marcador_sensivel_nao_vaza_por_evento_cache_nem_rota(harness: Harness) -> None:
-    """Tela sensível: nenhum caminho de saída carrega imagem — `frame` e `instance.updated` só com metadados,
+    """Tela sensível: nenhum caminho de saída carrega imagem — `frame` e o DTO (`instance.updated` ou, só com quadro novo, `instance.progress`, 14.13) só com metadados,
     `recent_frames` só com (instante, largura, altura), `/frame` thumb e full com 404 `sensitive_screen`, e a
     observação da IA sem `jpeg`."""
     s = harness.state
@@ -214,7 +214,7 @@ async def test_revisao_marcador_sensivel_nao_vaza_por_evento_cache_nem_rota(harn
     while not fila.empty():
         eventos.append(fila.get_nowait())
     s.bus.unsubscribe(fila)
-    assert any(ev.kind == "frame" for ev in eventos) and any(ev.kind == "instance.updated" for ev in eventos)
+    assert any(ev.kind == "frame" for ev in eventos) and any(ev.kind in ("instance.updated", "instance.progress") for ev in eventos)
     for ev in eventos:
         bruto = dumps(ev.data or {})
         # "/9j/" é o começo de todo JPEG em base64; `jpeg_full`/`jpeg_thumb` são os campos do `Frame` em memória.

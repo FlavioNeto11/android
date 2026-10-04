@@ -36,6 +36,7 @@ from ..shared.costuras import SEM_COSTURAS_DE_GESTO, CosturaDeControle, TomadaDe
 from ..util import new_token, now, now_iso, parse_iso, to_iso
 from . import emulator as emu
 from .adb import Adb, AdbError, AdbTimeout
+from .publicacao import assinatura_material
 from .apps_de_fundo import AjusteDosApps
 from .apps_de_fundo import validar_lista as validar_apps_de_fundo
 from .emulator_backend import EmulatorBackend, RealEmulatorBackend
@@ -429,6 +430,11 @@ class DeviceRuntime:
         self.lease_expires_mono: float = 0
         self.takeover_requested = False
         self.pending_lease_id: str | None = None
+        #: 14.13: o que o log já conta deste aparelho, a assinatura material do último `instance.updated` e o controle
+        #: do último `control.changed` ou `instance.updated` (`devices/publicacao.py`). None = nada ainda: a primeira
+        #: publicação persiste.
+        self.dto_publicado: str | None = None
+        self.controle_anunciado: tuple[str, bool] | None = None
         # frames
         self.frame: Frame | None = None
         self.frame_seq = 0
@@ -807,8 +813,18 @@ class DeviceManager:
         return [self.dto(rt) for rt in self.devices.values()]
 
     def publish(self, rt: DeviceRuntime, message: str | None = None, level: str = "info") -> None:
-        self.bus.emit("instance.updated", message or f"{rt.id}: {rt.state.value}", level=level, instance_id=rt.id,
-                      data={"instance": self.dto(rt).model_dump(mode="json")})
+        # 14.13: fato vai ao log (`instance.updated`); telemetria e troca de controle já anunciada vão ao painel como
+        # `instance.progress`, efêmero. A regra e a medida estão em `devices/publicacao.py`.
+        dto = self.dto(rt).model_dump(mode="json")
+        assinatura = assinatura_material(dto)
+        controle = (rt.control.value, rt.takeover_requested)
+        # Mensagem explícita é registro ("inventário conferido", "adotado do worker…"): vai ao log mesmo sem campo novo.
+        persistir = (message is not None or level != "info" or assinatura != rt.dto_publicado
+                     or controle != rt.controle_anunciado)
+        self.bus.emit("instance.updated" if persistir else "instance.progress", message or f"{rt.id}: {rt.state.value}",
+                      level=level, instance_id=rt.id, data={"instance": dto})
+        if persistir:
+            rt.dto_publicado, rt.controle_anunciado = assinatura, controle
 
     def _set_state(self, rt: DeviceRuntime, state: InstanceState, detail: str | None = None,
                    *, level: str = "info", attention: str | None = None) -> None:
@@ -3938,6 +3954,8 @@ class DeviceManager:
     def _control_event(self, rt: DeviceRuntime, message: str) -> None:
         self.bus.emit("control.changed", f"{rt.id}: {message}", instance_id=rt.id,
                       data={"instance_id": rt.id, "control": rt.control.value, "pending": rt.takeover_requested})
+        # 14.13: o fato do controle já está no log; o DTO que segue só vai persistido se algo MAIS mudou.
+        rt.controle_anunciado = (rt.control.value, rt.takeover_requested)
         self.publish(rt)
 
     def request_control(self, rt: DeviceRuntime, *, por: str | None = None) -> tuple[str, str]:

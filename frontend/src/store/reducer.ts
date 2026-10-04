@@ -473,7 +473,9 @@ export function applyEvent(state: DataState, ev: EventRecord): DataState {
 
   const data = ev.data;
   switch (ev.kind) {
-    case 'instance.updated': {
+    case 'instance.updated':
+    // 14.13: o mesmo DTO, efêmero (só telemetria ou o controle que o `control.changed` já anunciou).
+    case 'instance.progress': {
       const inst = obj<Instance>(data, 'instance');
       if (inst && typeof inst.id === 'string') next = upsertInstance(next, inst);
       break;

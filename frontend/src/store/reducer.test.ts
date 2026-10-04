@@ -175,6 +175,16 @@ describe('applyEvent — estado global', () => {
     expect(s.instances['android-01']).toMatchObject({ control: 'user', control_pending: false, control_since: '2026-09-17T12:00:01.000Z' });
   });
 
+  it('instance.progress (14.13) atualiza a instância como o instance.updated, sem entrar no log nem mexer no cursor', () => {
+    let s = hydrated();
+    s = applyEvent(s, event(101, 'instance.updated', { instance: instance(1, { state: 'online' }) }));
+    const recentes = s.recentEvents.length;
+    s = applyEvent(s, event(null, 'instance.progress', { instance: instance(1, { state: 'online', resources: { rss_mb: 1234, cpu_percent: 99 } }) }));
+    expect(s.instances['android-01']?.resources).toMatchObject({ rss_mb: 1234, cpu_percent: 99 });
+    expect(s.lastEventId).toBe(101);
+    expect(s.recentEvents.length).toBe(recentes);
+  });
+
   it('instance.retired (v0.26) tira o aparelho aposentado da lista e da ordem, sem esperar o snapshot', () => {
     let s = hydrated();
     expect(s.instances['android-02']).toBeTruthy();
