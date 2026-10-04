@@ -46,6 +46,13 @@ MOTIVO_DESLIGADO_POR_REGRA = ("o item foi desligado depois por uma regra automá
 #: desfazer desligaria o gesto da pessoa registrando-o como "desfez a decisão da plataforma".
 MOTIVO_RELIGADO_A_MAO = ("o item foi religado à mão por {quem} depois; a publicação de agora é dessa pessoa; confira na "
                          "tela do Aprendizado")
+#: Revisão do #322 (A1b): publicado de novo por uma regra automática depois desta decisão. Desfazer a antiga desligaria
+#: a publicação nova, que é de outra decisão.
+MOTIVO_REPUBLICADO_POR_REGRA = ("o item foi publicado de novo depois por uma regra automática; a publicação de agora é "
+                                "de outra decisão; confira na tela do Aprendizado")
+#: Na linha antiga, sem o id da transição da decisão, a trilha inteira é lida: só conta como republicação o que volta
+#: de um estado fora de circulação (a primeira publicação, de `validated`, é a da própria decisão).
+_VOLTAS_A_CIRCULAR = frozenset({SkillState.DISABLED, SkillState.DEPRECATED})
 
 
 def _de_pessoa(autor: object) -> bool:
@@ -85,7 +92,10 @@ class InversaDoAprendizado:
     def memorizado(self) -> Iterator[None]:
         """Revisão do 28.29 (achado 4): na listagem, `por_que_nao`, `descrever` e `desfeita_por_fora` perguntavam o mesmo
         item ao livro, 3 a 4 leituras por decisão e até 200 decisões por GET. Aqui, uma leitura por item. O desfazer
-        não passa por aqui: ele lê o estado de agora."""
+        não passa por aqui: ele lê o estado de agora.
+
+        Cuidado: uma tarefa (`asyncio.create_task`) criada DENTRO deste bloco copia o contexto e herdaria o MESMO dict,
+        que continua vivo nela depois do `reset`. Hoje nada cria tarefa aqui; quem criar, abra o memo dentro dela."""
         token = self._memo.set({})
         try:
             yield
@@ -149,17 +159,19 @@ class InversaDoAprendizado:
             if ultimo is not None and not _de_pessoa(ultimo.decided_by):
                 return MOTIVO_DESLIGADO_POR_REGRA
         elif _mudou_depois(entrada.state_at, decisao.decidida_em):
-            # Revisão do #322 (A1): publicado de novo depois da decisão. Religado à mão por uma pessoa, a publicação de
-            # agora é dela (o achado 6 pelo caminho da regra que desligou). Intocado, a trilha nem é lida.
+            # Revisões do #322 (A1 e A1b): publicado de novo depois da decisão, a publicação de agora é de quem
+            # republicou: de uma pessoa (religar, reativar o depreciado, devolver à prova e publicar) ou de outra regra.
+            # Desfazer esta decisão desligaria a publicação nova. Intocado, a trilha nem é lida.
             try:
-                religado = self._ultima(kind, self._ref(decisao, kind), SkillState.PUBLISHED, depois_de)
+                nova = self._ultima(kind, self._ref(decisao, kind), SkillState.PUBLISHED, depois_de)
             except ErroDeAprendizado:
                 return None
-            # Religar é `disabled → published`: a primeira publicação (de `validated`) não conta, porque é a que a
-            # decisão registrou (na linha sem o id da transição, a trilha inteira é lida).
-            if (religado is not None and religado.from_state is SkillState.DISABLED
-                    and _de_pessoa(religado.decided_by)):
-                return MOTIVO_RELIGADO_A_MAO.format(quem=religado.decided_by)
+            # Com o id da transição da decisão, toda publicação depois dela é republicação; sem ele (linha antiga),
+            # só a que volta de fora de circulação.
+            if nova is not None and (depois_de > 0 or nova.from_state in _VOLTAS_A_CIRCULAR):
+                if _de_pessoa(nova.decided_by):
+                    return MOTIVO_RELIGADO_A_MAO.format(quem=nova.decided_by)
+                return MOTIVO_REPUBLICADO_POR_REGRA
         return None
 
     def _ultima(self, kind: LivroKind, ref: str, para: SkillState, depois_de: int):  # noqa: ANN202 - a transição

@@ -40,8 +40,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - N1 do #320: o memo da listagem vive num `ContextVar`. Outra requisição ou thread não vê o memo de uma listagem
     aberta. A trilha também é memorizada na listagem.
   - M1 (relógios de dois backends): anotado, sem conserto.
-  - Testes: 46 passed em `test_decisoes_registro_coerente` e `test_decisoes_desfazer`, em série e em Idle, com três
-    testes novos (A1, o religar por regra e o memo por contexto).
+  - A1b: toda publicação depois da transição da decisão é republicação e tira o botão. De pessoa (religar, reativar o
+    depreciado, devolver à prova e publicar), com o motivo de religado à mão. De regra, com "publicado de novo por uma
+    regra automática", porque desfazer a antiga desligaria a publicação nova. Isso troca o comportamento anterior, em
+    que o religar por regra mantinha o botão. Na linha antiga, sem o id da transição, só conta a volta de `disabled` ou
+    `deprecated`.
+  - O memo diz que uma tarefa criada dentro do bloco herdaria o mesmo dict (hoje nada cria tarefa ali).
+  - Testes: 49 passed em `test_decisoes_registro_coerente` e `test_decisoes_desfazer`, em série e em Idle. São seis
+    testes novos:
+    - A1;
+    - o reativado depois de depreciado;
+    - o republicado por regra;
+    - o memo por contexto;
+    - os dois caminhos da trilha, com e sem o id.
 
 ## 2026-10-04 — 28.29, achado 4 da revisão: o GET do registro lê o livro uma vez por item (branch canais/28-29-leitura-unica)
 

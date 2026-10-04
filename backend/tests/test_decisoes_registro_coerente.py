@@ -17,7 +17,7 @@ import pytest
 
 
 from app.db import Database, dumps
-from app.decisoes_inversas import InversaDoAprendizado, SemInversaDaExecucao
+from app.decisoes_inversas import MOTIVO_REPUBLICADO_POR_REGRA, InversaDoAprendizado, SemInversaDaExecucao
 from app.modules.decisoes.domain.decisao import Decisao
 from app.modules.decisoes.domain.leitura import (efeito_do_aprendizado, efeito_legivel, fatos_legiveis, texto_curto,
                                                  decisao_de_evento)
@@ -328,15 +328,16 @@ async def test_desligado_por_regra_e_religado_a_mao_nao_oferece_o_botao(harness:
     assert len(_trilha(harness, lic)) == n                                        # nada desligou o que a pessoa religou
 
 
-async def test_religado_pela_plataforma_mantem_o_botao(harness: Harness) -> None:
-    """O religar por regra (`plataforma`) é outra decisão automática: a publicação segue da plataforma, e o botão fica."""
+async def test_republicado_por_regra_tira_o_botao(harness: Harness) -> None:
+    """Revisão do #322 (A1b; antes o botão ficava): a republicação por regra (`plataforma`) é OUTRA decisão
+    automática. Desfazer esta desligaria a publicação nova, que não é dela."""
     lic = _publicar_licao(harness)
     _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"}, dias_atras=0.001)
     harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DISABLED, by="sistema", reason="saúde piorou")
     harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.PUBLISHED, by="plataforma", reason="voltou")
     async with _cliente(harness) as c:
         [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
-    assert item["pode_desfazer"] is True and item["por_que_nao"] is None
+    assert item["pode_desfazer"] is False and item["por_que_nao"].endswith(MOTIVO_REPUBLICADO_POR_REGRA)
 
 
 def test_o_memo_e_por_contexto() -> None:
@@ -363,3 +364,63 @@ def test_o_memo_e_por_contexto() -> None:
         assert livro.lidas == 1
         contextvars.Context().run(lambda: (inversa.por_que_nao(d), inversa.descrever(d)))
         assert livro.lidas == 3                                     # o outro contexto leu de novo, sem o memo
+
+
+def _inversa_com_trilha(*passos: tuple[int, SkillState | None, SkillState, str]) -> InversaDoAprendizado:
+    """A inversa sobre um livro falso: o item está publicado e mudou depois da decisão; a trilha é a dada."""
+    from types import SimpleNamespace
+
+    class Livro:
+        def entrada(self, kind: object, ref: str) -> object:
+            return SimpleNamespace(state=SkillState.PUBLISHED, state_at=None, title="Lição")
+
+        def detalhe(self, kind: object, ref: str) -> object:
+            return SimpleNamespace(trilha=[SimpleNamespace(id=i, from_state=de, to_state=para, decided_by=por,
+                                                           decided_at="2026-10-04T13:00:00Z", reason="r")
+                                           for i, de, para, por in passos])
+
+    return InversaDoAprendizado(Livro())  # type: ignore[arg-type]
+
+
+def _decisao_com_id(transicao: int) -> Decisao:
+    return Decisao(1, "aprendizado", "receita:1", f"aprendizado:{transicao}", "r", "e",
+                   {"kind": "receita", "para": "published"}, "2026-10-04T12:00:00Z")
+
+
+S = SkillState
+_DA_DECISAO = (10, S.VALIDATED, S.PUBLISHED, "plataforma")
+_DEVOLVIDO = [(11, S.PUBLISHED, S.DISABLED, "sistema"), (12, S.DISABLED, S.CANDIDATE, "painel:dono"),
+              (13, S.CANDIDATE, S.VALIDATED, "sistema")]
+
+
+def test_com_o_id_da_decisao_toda_publicacao_depois_dela_e_republicacao() -> None:
+    """Revisão do #322 (A1b): devolver à prova e publicar de novo (pessoa ou regra) também tira o botão."""
+    regra = _inversa_com_trilha(_DA_DECISAO, *_DEVOLVIDO, (14, S.VALIDATED, S.PUBLISHED, "sistema"))
+    assert regra.por_que_nao(_decisao_com_id(10)) == MOTIVO_REPUBLICADO_POR_REGRA
+    pessoa = _inversa_com_trilha(_DA_DECISAO, *_DEVOLVIDO, (14, S.VALIDATED, S.PUBLISHED, "painel:dono"))
+    assert "religado à mão por painel:dono" in (pessoa.por_que_nao(_decisao_com_id(10)) or "")
+    assert _inversa_com_trilha(_DA_DECISAO).por_que_nao(_decisao_com_id(10)) is None       # só a da própria decisão
+
+
+def test_sem_o_id_da_decisao_so_conta_a_volta_de_fora_de_circulacao() -> None:
+    """Linha antiga (`origem_ref` sem id): a trilha inteira é lida, então a primeira publicação não conta."""
+    antiga = _decisao("aprendizado", "receita:1", {"kind": "receita", "para": "published"})
+    assert _inversa_com_trilha((5, S.VALIDATED, S.PUBLISHED, "painel:dono")).por_que_nao(antiga) is None
+    reativado = _inversa_com_trilha((5, S.VALIDATED, S.PUBLISHED, "plataforma"),
+                                    (6, S.PUBLISHED, S.DEPRECATED, "sistema"), (7, S.DEPRECATED, S.PUBLISHED, "panel"))
+    assert "religado à mão por panel" in (reativado.por_que_nao(antiga) or "")
+
+
+async def test_depreciado_pela_regra_e_reativado_pela_pessoa_nao_oferece_o_botao(harness: Harness) -> None:
+    """Revisão do #322 (A1b), pelo livro de verdade: `deprecated → published` é sempre de pessoa."""
+    lic = _publicar_licao(harness)
+    did = _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"}, dias_atras=0.001)
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DEPRECATED, by="sistema", reason="sem uso")
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.PUBLISHED, by="panel", reason="reativei")
+    n = len(_trilha(harness, lic))
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+        assert item["pode_desfazer"] is False and "religado à mão por panel" in item["por_que_nao"]
+        r = await c.post(f"/api/decisoes-automaticas/{did}/desfazer", json={"confirmar": True, "motivo": "x"})
+        assert r.status_code == 409
+    assert len(_trilha(harness, lic)) == n
