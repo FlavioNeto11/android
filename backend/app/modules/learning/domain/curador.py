@@ -56,6 +56,10 @@ FORMA_DA_EVIDENCIA = ("posicao `forma`: a execução fez o caminho do item e só
 INVALIDA_DA_EVIDENCIA = ("posicao `invalida`: a execução de prova não vale como evidência do item (efeito repetido, ponto "
                          "de partida que falhou, ou o ator que não agiu); não conta contra nem a favor, e o `for` ou "
                          "`against` da mesma execução que ela corrigiu não vem na lista")
+#: 30.48: só quando alguma evidência da lista é de prova em amostra.
+AMOSTRA_DA_EVIDENCIA = ("`amostra` \"N de M\": provado em amostra de N — a prova rodou só os N primeiros itens do laço, "
+                        "na ordem da tela; é uma evidência como outra, sobre a etapa do laço, e não diz que a lista "
+                        "inteira foi feita")
 OUTRA_VERSAO_DA_EVIDENCIA = ("`de_versoes_anteriores`: evidências de uma versão ANTERIOR do conteúdo do item (o fluxo "
                              "mudou depois delas, por exemplo reaprendido); não contam a favor nem contra a versão atual, "
                              "e a reprodução em outro aparelho se lê só na `lista`")
@@ -123,6 +127,7 @@ class Evidencia:
     aparelho: str | None = None
     app_version: str | None = None
     simulated: bool = False
+    amostra: str | None = None              # 30.48: "N de M" na prova que rodou só os N primeiros itens do `for_each`
     #: 30.52: a linha tem a marca de OUTRO conteúdo do item (`[<hash12>]` no `detail`, a versão anterior do fluxo
     #: reaprendido). Vai à parte no dossiê, rotulada: a regra da sombra (30.34) já a deixa de fora.
     outra_versao: bool = False
@@ -329,9 +334,14 @@ class Dossie:
             item["sem_caminho"] = SEM_CAMINHO_DA_RECEITA
         if i.nasceu_em:
             item["nasceu_em_validacao"] = NASCEU_EM_VALIDACAO.format(origem=i.nasceu_em)
+
         def linha(e: Evidencia) -> JsonObject:
-            return {"id": e.id_citavel, "posicao": e.posicao, "origin_ref": e.origin_ref, "run_id": e.run_id,
-                    "aparelho": e.aparelho, "app_version": e.app_version, "simulated": e.simulated, "em": e.em}
+            dados: JsonObject = {"id": e.id_citavel, "posicao": e.posicao, "origin_ref": e.origin_ref,
+                                 "run_id": e.run_id, "aparelho": e.aparelho, "app_version": e.app_version,
+                                 "simulated": e.simulated, "em": e.em}
+            if e.amostra is not None:                   # 30.48: só na prova em amostra
+                dados["amostra"] = e.amostra
+            return dados
 
         evidencias: JsonObject = {"total": self.evidencias_total, "incluidas": len(self.evidencias),
                                   "lista": [linha(e) for e in self.evidencias if not e.outra_versao]}
@@ -343,6 +353,8 @@ class Dossie:
             evidencias["forma_e"] = FORMA_DA_EVIDENCIA
         if any(e.posicao == "invalida" for e in self.evidencias):
             evidencias["invalida_e"] = INVALIDA_DA_EVIDENCIA
+        if any(e.amostra is not None for e in self.evidencias):
+            evidencias["amostra_e"] = AMOSTRA_DA_EVIDENCIA
         if i.kind == "receita":
             evidencias["contadores_e"] = CONTADORES_DA_RECEITA
             if (self.conteudo.get("sombra") or {}).get("shadow_total") == 0:

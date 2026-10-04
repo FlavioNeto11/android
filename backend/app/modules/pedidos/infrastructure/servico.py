@@ -128,6 +128,14 @@ class PedidosApi:
             return None, previa.Bloqueio(e.code, e.message, "alvos")
 
     def _validar_colaboracao(self, corpo: CorpoDoPedido, pid: str | None) -> previa.Bloqueio | None:
+        """A estrutura (F1) e, com ela válida, o teto de autonomia do papel (F3): a pessoa corrige primeiro a árvore."""
+        b = self._validar_estrutura(corpo, pid)
+        if b is not None or corpo.papel is None or not self.cfg.colaboracao.enabled:
+            return b
+        r = colaboracao.validar_autonomia(corpo.autonomia, corpo.papel)
+        return previa.Bloqueio(r.codigo, r.mensagem, r.campo or "") if r else None
+
+    def _validar_estrutura(self, corpo: CorpoDoPedido, pid: str | None) -> previa.Bloqueio | None:
         """A estrutura de pai, papel e dependências (28.10, F1), pelo domínio. `pid` é o id que o pedido terá (na prévia
         não se sabe: a chave de idempotência só chega na criação). Pedido que já existe é repetição da mesma chave: a
         estrutura dele foi conferida quando nasceu e o pai pode ter terminado desde então, então não se confere de novo."""
@@ -441,7 +449,7 @@ class PedidosApi:
         if not confirmar:
             raise ErroDeApi(409, "confirmacao_necessaria", "Cancelar não desfaz o que já foi feito. Confirme.",
                             execucoes_em_curso=em_curso, ocorrencias_futuras=futuras)
-        self._rodar(lambda: self.acoes.cancelar(pedido_id, por=operador), p)
+        self._rodar(lambda: self.acoes.cancelar(pedido_id, por=operador, motivo=motivo), p)
         return {"pedido": self.view(self._pedido(pedido_id)), "sem_mudanca": False,
                 "execucoes_em_curso": [{"run_id": r} for r in em_curso], "ocorrencias_canceladas": futuras,
                 "filhos_cancelados": len(vivos)}
@@ -540,6 +548,9 @@ class PedidosApi:
         if analise.bloqueios:
             b = analise.bloqueios[0]
             raise ErroDeApi(422, b.codigo, b.mensagem, **({"campo": b.campo} if b.campo else {}))
+        recusa = colaboracao.validar_autonomia(depois.autonomia, p["papel"])     # F3: o papel não muda, a autonomia sim
+        if recusa is not None:
+            raise ErroDeApi(422, recusa.codigo, recusa.mensagem, campo=recusa.campo)
         selo_antes, selo_depois = previa.selo(antes), previa.selo(depois)
         muda: list[JsonObject] = []
         fa, fd = previa.forma_canonica(antes), previa.forma_canonica(depois)
@@ -701,6 +712,8 @@ class PedidosApi:
                                  " ORDER BY r.created_at", (pedido_id,))
         filhos = self.repo.filhos(pedido_id)
         v.update({
+            # texto livre de pessoa (28.22): só aqui, nunca no `view()`, que vai inteiro no evento `pedido.updated`
+            "cancelado_motivo": p["cancelado_motivo"],
             "filhos": [{"id": f["id"], "titulo": f["titulo"], "estado": f["estado"], "papel": f["papel"]} for f in filhos],
             "dependencias": [{"de": d["de"], "para": d["para"], "tipo": d["tipo"]}
                              for d in self.repo.dependencias_entre([pedido_id, *(f["id"] for f in filhos)])],

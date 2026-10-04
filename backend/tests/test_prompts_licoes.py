@@ -65,7 +65,8 @@ SISTEMAS = {
     "PLANNER_MULTIAPP_SYSTEM_CURTO": "14fc6c1f7867f06ede5db34fedd97437ba8eedcbab048eddf40559476dec1a35",
     # Item 29.58 (C): o verificador passa a contar as cópias do efeito desta execução (`copias`) — o hash muda de
     # propósito, não é enfraquecimento do teste.
-    "VERIFIER_SYSTEM": "5da999c9734dcf67e15274124d1fd17486162fe44963b115c30677e8f941f7cb",
+    # Item 31.40: o verificador marca `sobreposicao` quando algo cobre o alvo — o hash muda de propósito.
+    "VERIFIER_SYSTEM": "95311c6d36d88f9090fa3de5e0356e8987ad1b449d3492e3bbe3fac05e9feb0a",
 }
 
 

@@ -125,6 +125,9 @@ class Capability:
     # (`CapabilityNode.saidas`); sem escolha, o executor exige todos os que a ação declara. Quem tira o valor continua
     # sendo o executor, do texto do elemento na tela, com a triagem de segredo de sempre.
     saidas: tuple[str, ...] = ()
+    # Item 31.41: como reconhecer, na tela, o elemento de cada saída: `nome=seletor` (o elemento casa o seletor) ou
+    # `nome~termo` (um sinônimo do rótulo). Sem entrada, valem o nome da saída, o glossário e a forma do valor.
+    saidas_relacao: tuple[str, ...] = ()
 
     def describe(self) -> str:
         """Linha que vai ao planejador. Curta de propósito: o prompt cresce com o catálogo."""
@@ -231,6 +234,10 @@ def saidas_error(cap: Capability) -> str | None:
             return f"nome de saída inválido: {nome!r} (use {SAIDA_NOME_RE.pattern})"
     if len(set(cap.saidas)) != len(cap.saidas):
         return "nomes de saída repetidos"
+    for entrada in cap.saidas_relacao:                 # 31.41: `nome=seletor` ou `nome~termo`, de uma saída declarada
+        nome = re.split(r"[=~]", entrada, maxsplit=1)[0].strip()
+        if not re.search(r"[=~]", entrada) or nome not in cap.saidas:
+            return f"saidas_relacao inválida: {entrada!r} (use <saída>=<seletor> ou <saída>~<termo>)"
     return None
 
 

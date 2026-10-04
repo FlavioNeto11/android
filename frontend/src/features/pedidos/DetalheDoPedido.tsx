@@ -249,6 +249,7 @@ function Resumo({ p }: { p: PedidoDetalhe }) {
             <div><dt>Pausa após falhas seguidas</dt><dd>{p.pausa_por_falha}</dd></div>
             <div><dt>Tentativas por ocorrência</dt><dd>{p.max_tentativas}</dd></div>
             {p.encerrado_motivo ? <div><dt>Encerrado porque</dt><dd>{ROTULO_DO_ENCERRAMENTO[p.encerrado_motivo]}</dd></div> : null}
+            {p.estado === 'cancelado' && p.cancelado_motivo ? <div><dt>Cancelado porque</dt><dd>{p.cancelado_motivo}</dd></div> : null}
           </dl>
         </CartaoResumo>
         <CartaoResumo icone={UserRound} titulo="Autoria">

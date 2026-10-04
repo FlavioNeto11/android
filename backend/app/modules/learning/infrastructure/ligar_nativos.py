@@ -44,7 +44,8 @@ from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.evidencia_invalida import run_da_etapa
 from app.modules.learning.domain.promocao import ORIGEM_DA_REPRODUCAO
 from app.modules.learning.domain.prova import (PREFIXO_DA_EXPANSAO, AcaoDaProva, EtapaDaProva, TentativaDaProva,
-                                               detalhe_da_invalida, efeito_repetido, veredito_da_prova)
+                                               amostra_do_rastro, detalhe_da_invalida, efeito_repetido,
+                                               veredito_da_prova)
 from app.modules.learning.domain.livro import (escopo_da_receita, estado_nativo, fluxo_tem_efeito, hash_da_receita,
                                                ref_da_trilha)
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
@@ -168,6 +169,12 @@ class LeituraSql:
             return None
         v = veredito_da_prova(self._etapas_da_prova(run_id), status=status, expansoes=self._expansoes(run_id))
         texto = detalhe_da_invalida(v.motivo, v.texto) if v.motivo is not None else v.texto
+        # 30.48: a prova que rodou só os N primeiros itens do `for_each` diz isso na própria evidência, que o painel e o
+        # parecer do curador mostram. É uma evidência como outra: não muda nenhuma condição da D1.
+        amostra = amostra_do_rastro(self._motivos_da_expansao(run_id))
+        if amostra is not None and v.posicao is not None:
+            como = "provado" if v.posicao is Posicao.FOR else "prova"
+            texto = f"{texto} — {como} em amostra de {amostra[0]} (de {amostra[1]} itens)"
         return ProvaDaExecucao(fluxo_id, content_hash(conteudo), v.posicao, texto)
 
     def efeito_repetido_da_execucao(self, run_id: str, *, regra_propria: bool = True) -> int | None:
@@ -197,6 +204,12 @@ class LeituraSql:
                     de_validacao=eh_execucao_de_validacao(linhas.texto_ou_nulo(r, "prova_fluxo_id"),
                                                           linhas.texto_ou_nulo(r, "idempotency_key")))
                 for r in self._db.query(sql + " ORDER BY e.id", tuple(args))]
+
+    def _motivos_da_expansao(self, run_id: str) -> list[str]:
+        return [linhas.texto(r, "reason") for r in self._db.query(
+            "SELECT v.reason FROM plan_versions v JOIN objectives o ON o.id = v.objective_id"
+            " WHERE o.run_id=? AND v.version > 1 AND v.reason LIKE ? ORDER BY v.version, v.objective_id",
+            (run_id, PREFIXO_DA_EXPANSAO + "%"))]
 
     def _expansoes(self, run_id: str) -> frozenset[int]:
         """As versões do plano da execução que a expansão do `for_each` criou (`plan_versions.reason`), que o veredito não

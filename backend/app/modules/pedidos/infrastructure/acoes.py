@@ -122,15 +122,17 @@ class AcoesDePedidos:
         self.repo.avancar_cursor(g["id"], formatar_instante(agora))
 
     # ------------------------------------------------------------------ cancelar
-    def cancelar(self, pedido_id: str, *, por: str | None = None) -> list[str]:
+    def cancelar(self, pedido_id: str, *, por: str | None = None, motivo: str | None = None) -> list[str]:
         """Cancela o pedido e, junto, os descendentes que ainda não terminaram (28.10 F1, §9: "o pai encerra os filhos
-        quando encerra"), tudo na MESMA transação. Devolve os ids dos descendentes cancelados."""
+        quando encerra"), tudo na MESMA transação. Devolve os ids dos descendentes cancelados. O `motivo` da pessoa vai
+        só para o pedido que ela cancelou (`cancelado_motivo`, 28.22); os descendentes ficam sem, porque não foram eles."""
         p = self._pedido(pedido_id)
         transicionar_pedido(p["estado"], "cancelado", ator=ATOR_PESSOA)
         em = to_iso(self.relogio())
         cancelados: list[str] = []
         with self.repo.db.tx():
-            if not self.repo.mudar_estado_do_pedido(pedido_id, p["estado"], "cancelado", em, pessoa=True):
+            if not self.repo.mudar_estado_do_pedido(pedido_id, p["estado"], "cancelado", em,
+                                                    cancelado_motivo=(motivo or "").strip() or None, pessoa=True):
                 raise AcaoInvalida(f"pedido {pedido_id} mudou de estado no meio")
             for linha in self.repo.ids_prevista_devida(pedido_id):
                 transicionar_ocorrencia(linha["estado"], "cancelada", motivo="pedido cancelado")

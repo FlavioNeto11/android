@@ -281,3 +281,106 @@ def test_commit_em_execucao_sai_do_git_sem_chamar_git() -> None:
     esperado = subprocess.run(["git", "-C", str(RAIZ), "rev-parse", "HEAD"],
                               capture_output=True, text=True, timeout=30).stdout.strip()
     assert lido == esperado and len(lido or "") == 40
+
+
+# ---------------------------------------------------------------- cópia a frio dos AVDs (29.39)
+LIB_AVD = SCRIPTS / "lib" / "copias-de-avd.ps1"
+
+
+def _avd_falso(avd_home: Path, aparelho: str) -> dict[str, bytes]:
+    """Um AVD de mentira: o `.ini` com o caminho absoluto, o disco do usuário, um snapshot e a trava do emulador."""
+    pasta = avd_home / f"{aparelho}.avd"
+    (pasta / "snapshots" / "poc_hib").mkdir(parents=True)
+    (pasta / "hardware-qemu.ini.lock").mkdir()
+    (pasta / "hardware-qemu.ini.lock" / "pid").write_text("4242", encoding="ascii")
+    conteudo = {"userdata-qemu.img": os.urandom(256 * 1024), "config.ini": b"hw.cpu.ncore=2\n",
+                "snapshots/poc_hib/ram.bin": os.urandom(64 * 1024)}
+    for rel, dados in conteudo.items():
+        (pasta / rel).write_bytes(dados)
+    (avd_home / f"{aparelho}.ini").write_text(f"avd.ini.encoding=UTF-8\npath={pasta}\npath.rel=avd\\{aparelho}.avd\n",
+                                              encoding="ascii")
+    return conteudo
+
+
+def _pwsh(comando: str) -> str:
+    r = subprocess.run(["pwsh", "-NoProfile", "-Command", f". '{LIB_AVD}'; {comando}"],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr
+    return r.stdout.strip()
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
+def test_copia_a_frio_confere_o_hash_e_a_restauracao_nao_apaga_o_avd_substituido(tmp_path: Path) -> None:
+    """29.39: a cópia leva o `.ini` e o `.avd` (sem a trava do emulador), com o sha256 de cada arquivo no manifesto e
+    só o id do aparelho; a restauração confere a cópia, MOVE o AVD que estava lá e aponta o `.ini` para o lugar novo."""
+    origem, destino = tmp_path / "avd", tmp_path / "backups"
+    conteudo = _avd_falso(origem, "android-07")
+    livre = "{ param($i) $null }"
+    saida = _pwsh(f"$r = Copy-AvdAFrio -Id android-07 -AvdHome '{origem}' -Destino '{destino}' -Guarda {livre} "
+                  "-Commit abc -LivreMinimoBytes 0; $r.estado; $r.pasta")
+    estado, pasta = saida.splitlines()[-2:]
+    assert estado == "completa"
+    manifesto = json.loads((Path(pasta) / "manifesto.json").read_text(encoding="utf-8-sig"))
+    assert set(manifesto) == {"origem", "aparelho", "commit", "ts", "estado", "motivo", "total_bytes", "arquivos"}
+    assert manifesto["origem"] == "avd-semanal" and manifesto["aparelho"] == "android-07"
+    caminhos = {a["caminho"].replace("\\", "/") for a in manifesto["arquivos"]}
+    assert caminhos == {"android-07.ini"} | {f"android-07.avd/{rel}" for rel in conteudo}   # a trava não vai
+    assert all(len(a["sha256"]) == 64 for a in manifesto["arquivos"])
+
+    # Restaura num AVD_HOME que já tem um android-07 (o "estragado"): ele sai para os substituídos, inteiro.
+    alvo, substituidos = tmp_path / "avd-restaurado", tmp_path / "substituidos"
+    (alvo / "android-07.avd").mkdir(parents=True)
+    (alvo / "android-07.avd" / "userdata-qemu.img").write_bytes(b"estragado")
+    (alvo / "android-07.ini").write_text("path=velho\n", encoding="ascii")
+    _pwsh(f"Restore-AvdAFrio -Copia '{pasta}' -AvdHome '{alvo}' -Id android-07 -Guarda {livre} "
+          f"-Substituidos '{substituidos}' | Out-Null")
+    for rel, dados in conteudo.items():
+        assert (alvo / "android-07.avd" / rel).read_bytes() == dados
+    ini = (alvo / "android-07.ini").read_text(encoding="utf-8-sig")
+    assert f"path={alvo / 'android-07.avd'}" in ini and "path.rel" not in ini
+    guardados = list(substituidos.glob("*-avd-substituido"))
+    assert len(guardados) == 1 and (guardados[0] / "android-07.avd" / "userdata-qemu.img").read_bytes() == b"estragado"
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
+def test_copia_aborta_limpa_se_o_aparelho_acorda_no_meio(tmp_path: Path) -> None:
+    """Não há trava que segure o rodízio: a guarda roda antes de cada arquivo e no fim. O aparelho que acorda no meio
+    deixa a cópia `abortada` (pasta renomeada, nada apagado) e o AVD intacto."""
+    origem, destino = tmp_path / "avd", tmp_path / "backups"
+    conteudo = _avd_falso(origem, "android-07")
+    acorda = "{ param($i) $script:n++; if ($script:n -ge 3) { 'aparelho online, não hibernado nem parado' } }"
+    saida = _pwsh(f"$script:n = 0; $r = Copy-AvdAFrio -Id android-07 -AvdHome '{origem}' -Destino '{destino}' "
+                  f"-Guarda {acorda} -LivreMinimoBytes 0; $r.estado; $r.motivo; $r.pasta")
+    estado, motivo, pasta = saida.splitlines()[-3:]
+    assert estado == "abortada" and "online" in motivo and pasta.endswith("-abortada")
+    manifesto = json.loads((Path(pasta) / "manifesto.json").read_text(encoding="utf-8-sig"))
+    assert manifesto["estado"] == "abortada" and len(manifesto["arquivos"]) == 2
+    for rel, dados in conteudo.items():
+        assert (origem / "android-07.avd" / rel).read_bytes() == dados
+    # E a restauração recusa a cópia abortada.
+    r = subprocess.run(["pwsh", "-NoProfile", "-Command",
+                        f". '{LIB_AVD}'; Restore-AvdAFrio -Copia '{pasta}' -AvdHome '{tmp_path / 'x'}' -Id android-07 "
+                        f"-Guarda {{ $null }} -Substituidos '{tmp_path / 's'}'"], capture_output=True, text=True, timeout=60)
+    assert r.returncode != 0 and "completa (abortada)" in (r.stdout + r.stderr)   # o stderr vem na página do console
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
+def test_guarda_recusa_aparelho_no_ar_e_avd_em_uso(tmp_path: Path) -> None:
+    def motivo(estado: str, em_uso: bool) -> str:
+        return _pwsh(f"$m = Get-MotivoParaNaoCopiar android-07 -LerEstado {{ param($i) '{estado}' }} "
+                     f"-AvdEmUso {{ param($i) ${str(em_uso).lower()} }}; if ($m) {{ $m }} else {{ 'livre' }}")
+    assert motivo("hibernated", False) == "livre" and motivo("stopped", False) == "livre"
+    assert "online" in motivo("online", False) and "booting" in motivo("booting", False)
+    assert "usando o AVD" in motivo("hibernated", True)
+
+
+@pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
+def test_avds_nasce_desligada_sem_aparelhos_e_sem_a_chave(tmp_path: Path) -> None:
+    """A etapa `-AVDs` sem lista explícita só roda com `AVD-LIGADO` no destino (sim do dono); sem ele, nada é lido."""
+    raiz = _raiz_isolada(tmp_path)
+    destino = tmp_path / "backups"
+    r = subprocess.run(["pwsh", "-NoProfile", "-File", str(raiz / "scripts" / "backup.ps1"), "-AVDs", "-Destino",
+                        str(destino), "-Api", "http://127.0.0.1:9"], capture_output=True, text=True, timeout=60,
+                       cwd=str(raiz))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "DESLIGADA" in r.stdout and not (destino / "avd").exists()

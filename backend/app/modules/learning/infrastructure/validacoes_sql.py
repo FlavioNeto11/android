@@ -14,7 +14,8 @@ from app.models import Plan
 from app.modules.learning.application.validacao import (COMANDO_NA_LISTA, NovoPedido, Origem, PedidoListado,
                                                        PedidoVivo)
 from app.modules.learning.domain.validacao import (VARIAVEIS_DE_APARELHO, EstadoDoPedido, Grupo, Motivo,
-                                                 ProvaAnterior, marca_da_evidencia, motivo_da_prova_invalida)
+                                                 ProvaAnterior, marca_da_evidencia, motivo_da_prova_invalida,
+                                                 tamanho_da_amostra)
 from app.modules.learning.domain.vocabulario import LivroKind, Posicao
 from app.modules.learning.infrastructure import linhas
 from app.planning import costs
@@ -368,7 +369,7 @@ class FontesDaValidacaoSql:
         # O id do fluxo vem do `planner.model` que `FlowStore._plano_com_valores` grava (`fluxo:<id>`, `fluxo-prova:<id>`).
         kind, _, ref = item_ref.partition(":")
         fluxo_id = ref if kind == "fluxo" else plano.planner.model.partition(":")[2]
-        return self._etapas_do_plano(plano, fluxo_id)
+        return self._etapas_do_plano(plano, fluxo_id, amostra=kind == "fluxo")
 
     def variaveis_de_aparelho(self, item_ref: str, comando: str) -> frozenset[str]:
         """30.50: as `VARIAVEIS_DE_APARELHO` que aparecem como `{nome}` no plano que a validação rodaria."""
@@ -389,7 +390,7 @@ class FontesDaValidacaoSql:
             return None
         return None
 
-    def _etapas_do_plano(self, plano: Plan, fluxo_id: str) -> int | None:
+    def _etapas_do_plano(self, plano: Plan, fluxo_id: str, *, amostra: bool = False) -> int | None:
         """As etapas fixas mais as etapas-modelo do `for_each` vezes o tamanho da lista que a execução de ORIGEM do fluxo
         coletou (`objectives.collected`, o maior entre os objetivos dela). É aproximado: a próxima lista pode ter outro
         tamanho, e o roteador segue barrando a chamada além do teto. Lista que não se sabe: `None` (não despacha)."""
@@ -409,6 +410,11 @@ class FontesDaValidacaoSql:
                 for chave, itens in coletado.items():
                     if isinstance(itens, list):
                         tamanhos[chave] = max(tamanhos.get(chave, 0), len(itens))
+        # 30.48: a prova de FLUXO roda a amostra (os N primeiros itens; a lista menor, inteira), então o tamanho
+        # desconhecido deixa de barrar. A receita roda pelo fluxo ativo, que não é prova: a lista inteira, como antes.
+        n = tamanho_da_amostra(fixas, sum(modelos.values())) if amostra else None
+        if n is not None:
+            return fixas + sum(c * min(n, tamanhos.get(chave, n)) for chave, c in modelos.items())
         if any(chave not in tamanhos for chave in modelos):
             return None
         return fixas + sum(n * tamanhos[chave] for chave, n in modelos.items())

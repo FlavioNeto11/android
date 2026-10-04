@@ -512,8 +512,32 @@ mesmo com a dependência gravada direto no banco):
 - **Limite conhecido:** o teto que o `AIRouter` dá à EXECUÇÃO do pai (`teto_usd_da_execucao`) ainda é `total − gasto`, sem a reserva:
   uma execução do pai pode, no pior caso, gastar além do saldo livre, o limite do excesso que o 28.6 já documenta (uma ocorrência).
 
-Fica para as próximas fatias: **F3** (o papel limita as capacidades e a autonomia no plano da
-ocorrência e a escolha de persona), **F4** (consolidação: o pai lê observações e memória dos filhos, e o conflito vai ao
+**F3: o papel limita a autonomia** (adendo v1.18, sem migração, atrás de `pedidos.colaboracao.enabled`).
+
+- **Teto por papel** (`colaboracao.TETO_DO_PAPEL`): `pesquisador` e `checador` → `observar`; `redator` → `preparar`;
+  `porta_voz` → `agir`. Sem papel, vale a autonomia do pedido.
+- **Na API:** a prévia, a criação e o `PATCH` da autonomia recusam acima do teto com 422 `autonomia_acima_do_papel`
+  (`campo: autonomia`). A estrutura (F1) é conferida antes: a pessoa corrige primeiro a árvore.
+- **No laço, como defesa** (pedido do legado, ou gravado com a colaboração desligada): a sobreposição, a janela padrão e o
+  piso de evento usam `autonomia_efetiva` = a mais restrita entre a do pedido e o teto do papel. A ocorrência terminada
+  ganha no `motivo` a nota `autonomia rebaixada ao teto do papel <papel>: <gravada> → <efetiva>`, sem texto do pedido.
+- **Limite conhecido (achado da F3):** a autonomia do pedido NÃO chega à execução. `_requisicao` cria a execução sem teto e
+  nada no plano nem no executor lê `pedidos.autonomia`; o §6.4 ("efeito recusado no plano") ainda não vale no caminho da
+  execução. É o 28.23, desenhado abaixo. Até ele estar no ar, `pedidos` fica desligado no central (decisão de 04/10).
+
+**28.23: o teto de autonomia chega à execução** (desenho aprovado em 04/10; migração 100 e adendo v1.19 reservados). O lado
+do laço está entregue: `_requisicao` só passa o campo quando o `RunCreate` o tem, então os dois lados entram em qualquer ordem.
+
+- **Contrato:** `RunCreate.teto_de_autonomia` (`observar`, `preparar`, `agir` ou nulo = como hoje), gravado na execução.
+- **Laço (Canais):** `_requisicao` passa `autonomia_efetiva(pedido, papel)`; toda execução nascida de pedido leva teto.
+- **Plano (Jev):** com `observar`, a etapa com efeito é recusada no plano. Com `preparar`, ela exige aprovação qualquer que
+  seja a política da persona (vale a mais restritiva das duas). `agir` segue como hoje.
+- **Despacho (Jev), defesa:** com `observar`, a execução para antes da etapa de efeito e do preenchimento dela, pelo mesmo
+  mecanismo do ensaio só de leitura do aprendizado. Sem ação com efeito não há efeito possível: a ocorrência fecha `falhou`, não `incerta` (28.5).
+- **Prova:** `simulated` dos dois lados. A real é um pedido `observar` com objetivo de efeito, num aparelho sem conta real:
+  a execução tem de parar antes da etapa. Só depois do deploy, com `pedidos` religado.
+
+Fica para as próximas fatias: a escolha de persona pelo papel, **F4** (consolidação: o pai lê observações e memória dos filhos, e o conflito vai ao
 relatório) e **F5** (as regras para fora: uma conta por alvo no pedido inteiro, `approval_required` para pessoa real e a
 proibição de apoio simulado).
 

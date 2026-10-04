@@ -67,6 +67,7 @@ from .latencia import TemposDaTentativa, ms_desde
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
+from .relacao import relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
                      ler_valor_visual, nomes_citados, razao_sem_segredo, texto_da_tela, texto_do_elemento, triagem,
@@ -256,6 +257,14 @@ class StepOutcome:
     #: estourou). Não há nova tentativa da MESMA etapa; o scheduler dá UM plano revisado por objetivo, e a segunda vez
     #: fecha o objetivo como falha.
     dado_ausente: bool = False
+    #: Item 31.40: o juiz recusou a etapa sem efeito porque algo COBRE o alvo. O scheduler insere a limpeza opcional
+    #: antes dela (uma vez por objetivo) em vez de repetir a mesma etapa.
+    sobreposicao: bool = False
+
+
+class OrcamentoDaEtapa(AIError):
+    """Item 18.3: o orçamento de chamadas da AÇÃO estourou. É `kind="budget"` como os outros tetos; a classe própria
+    deixa o executor dar, numa etapa de leitura, o desfecho do 31.38 (dado ausente) em vez da falha genérica."""
 
 
 #: Item 31.38: o começo do `detail` da etapa de leitura que não achou o valor (o scheduler e o plano revisado o reconhecem).
@@ -811,7 +820,7 @@ class StepExecutor:
         normal = f"{est.chamadas.p50:g}–{est.chamadas.p90:g}"
         janela = self.historico.janela_dias          # a EFETIVA: nunca passa da retenção de ai_calls (ADR-054)
         if feitas >= limite:
-            exc = AIError(f"A etapa passou do orçamento de {limite} chamadas de IA para {nome}: o normal, em "
+            exc = OrcamentoDaEtapa(f"A etapa passou do orçamento de {limite} chamadas de IA para {nome}: o normal, em "
                           f"{est.amostras} etapas concluídas nos últimos {janela} dias, é {normal}. Parada "
                           "para não girar até o prazo.", kind="budget")
             self._registrar_orcamento_estourado(run_id, objective_id, step_id, role, exc, attempt_id, marca)
@@ -1677,6 +1686,9 @@ class StepExecutor:
                 return await fail_or_retry(com_anr(f"Prazo da etapa ({step.timeout_s}s) esgotado durante {durante}: "
                                                    f"{exc}"), obs)
             if exc.kind == "budget":
+                if isinstance(exc, OrcamentoDaEtapa) and leitura and not fired:
+                    # 31.40 (b): o orçamento da ação cortou a LEITURA: o desfecho do 31.38, sem repetir a etapa.
+                    return await dado_ausente("orçamento de chamadas da etapa esgotado", obs)
                 return StepOutcome(Outcome.failed if not fired else Outcome.uncertain, str(exc))
             if exc.kind == "refusal":
                 # Achado #93: recusa do provedor por política NÃO é "IA indisponível" — repetir a etapa
@@ -1705,6 +1717,7 @@ class StepExecutor:
         # verificação, não duas. Quando não aprova, o laço segue na mesma tentativa, com o veredito no `history`.
         veredito_antecipado: tuple[bool, str, DeliveryLevel | None, Observation | None, bool] | None = None
         copias_vistas: list[int] = []        # 29.58 (C): `Verdict.copias` de cada julgamento desta tentativa
+        sobreposicoes: list[bool] = []       # 31.40: `Verdict.sobreposicao` de cada "não"/"incerto" desta tentativa
         julgamentos_antes_do_ator = 0
         sig_julgada_antes_do_ator: str | None = None
 
@@ -2246,6 +2259,36 @@ class StepExecutor:
                                        needs="Este valor é da pessoa (ADR-009): faça esta parte manualmente, ou refaça "
                                              "o comando sem depender dele, e retome o item.")
                 assert alvo is not None
+                if ai_cfg.relacao_do_valor:
+                    # 31.41: o valor só vale se algo na tela o liga ao nome pedido; dúvida recusa a leitura (03d58e: um
+                    # id de execução numa mensagem foi entregue como "protocolo"). Da árvore, a regra determinística; da
+                    # imagem (sem texto na árvore), UMA pergunta de sim ou não ao verificador, e incerto conta como não.
+                    relacao = (relacao_do_valor(obs.tree, alvo, args.name, valor,
+                                                relacoes=tuple(cap.saidas_relacao) if cap else ())
+                               if lido_da_imagem is None else None)
+                    perguntou = relacao is None and (lido_da_imagem is not None or bool(cap and args.name in cap.saidas))
+                    if perguntou:
+                        # Da imagem, ou saída que o CATÁLOGO declara sem seletor nem rótulo na árvore (a caixa do Outlook,
+                        # a lista do QA): a ação diz onde está o valor, mas só o juiz confirma que é ele. Livre: dúvida.
+                        relacao = await self._relacao_visual(rt, step, ctx_for, run_id, oid, deadline, attempt_id,
+                                                             obs, args.name, valor, ai_cfg)
+                    if relacao is None:
+                        aid = intencao("read_value", args_da_chamada_invalida(bruto, obs.tree), None, side_effect=False)
+                        repo.finish_action(aid, ActionStatus.rejected, error=f"sem relação com '{args.name}'")
+                        metricas.contar("leitura.sem_relacao", origem="imagem" if lido_da_imagem else "arvore")
+                        repo.decision(f"{iid} · {step.title}: leitura de '{args.name}' recusada: nada na tela liga o "
+                                      "valor ao que foi pedido (sem seletor, rótulo ou forma"
+                                      + ("; o verificador não confirmou)" if perguntou else ")"),
+                                      run_id=run_id, instance_id=iid, step_id=step.id)
+                        history.append(f"read_value REJEITADA: nada na tela liga este valor a '{args.name}' (nem rótulo "
+                                       "vizinho, nem forma, nem o seletor do catálogo). Leia o elemento rotulado como "
+                                       f"'{args.name}'; se ele não existe nesta tela, chame "
+                                       'step_blocked(kind="dado_ausente").')
+                        errors_in_row += 1
+                        recusas_de_saida += 1
+                        if errors_in_row >= 4 or recusas_de_saida >= 4:
+                            return await dado_ausente("o valor lido não tinha relação com o pedido", obs)
+                        continue
                 lidos[args.name] = (valor, args.value_kind)
                 if lido_da_imagem is not None:
                     # O recorte vira evidência SÓ agora, com a leitura válida; a nota não traz o valor. A ação não leva o
@@ -2692,7 +2735,8 @@ class StepExecutor:
                                                                                   if cap and app.package else None),
                                                                       attempt_id=attempt_id, cartao=cartao,
                                                                       pacote=app.package, imagem_forcada=bool(visuais),
-                                                                      copias_vistas=copias_vistas)
+                                                                      copias_vistas=copias_vistas,
+                                                                      sobreposicoes=sobreposicoes)
         except DriverTimeout as exc:
             return await self._stuck(rt, step, fired, str(exc))
         except AIError as exc:
@@ -2766,6 +2810,12 @@ class StepExecutor:
         if unprovable:
             return StepOutcome(Outcome.failed, "Defeito do plano — a pós-condição não é comprovável pela tela (descreve "
                                f"processo/histórico); repetir não resolve: {text}", plan_defect=True)
+        if (sobreposicoes and sobreposicoes[-1] and not step.side_effect and not step.commit_guard and not step.opcional
+                and self.cfg.file.ai.limpeza_apos_sobreposicao):
+            # 31.40: o último "não" foi por algo que COBRE o alvo. Repetir a etapa daria na mesma tela coberta (3894c1:
+            # três recusas e um plano revisado igual): o scheduler põe a limpeza opcional antes dela, uma vez.
+            metricas.contar("etapa.sobreposicao")
+            return StepOutcome(Outcome.failed, f"Pós-condição não comprovada (sobreposição): {text}", sobreposicao=True)
         return StepOutcome(Outcome.retry if step.attempts < step.max_attempts else Outcome.failed,
                            f"Pós-condição não comprovada: {text}")
 
@@ -2852,13 +2902,36 @@ class StepExecutor:
         """Os tempos da tentativa em curso (31.24, C-4), ou `None` fora de `run_step` (chamada sem tentativa)."""
         return self._tempos_da_tentativa.get(attempt_id) if attempt_id else None
 
+    async def _relacao_visual(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
+                              objective_id: str, deadline: float, attempt_id: str | None, obs: Observation, nome: str,
+                              valor: str, ai: AiCfg) -> str | None:
+        """31.41: o valor lido da IMAGEM não tem elemento com texto na árvore para a regra determinística. Uma pergunta
+        de sim ou não ao verificador, com a imagem: este valor é, na tela, o `nome` pedido? "yes" = `"verificador"`;
+        "no", "uncertain" ou qualquer outra coisa = `None` (dúvida nunca fecha como sucesso). Custa uma chamada de
+        verificação por leitura visual aceita pelo leitor."""
+        ctx = dataclasses.replace(ctx_for(), postcondition_description=(
+            f"O valor lido para '{nome}' foi \"{valor}\". Julgue SÓ a relação: na tela, esse texto é o '{nome}' que o "
+            "objetivo pede (o rótulo, a posição ou o papel dele na tela o identificam como tal), e não outro texto "
+            "qualquer? yes = é; no = é outro; uncertain = não dá para afirmar."))
+        if obs.jpeg is None:
+            obs = await self.devices.completar_imagem(rt, obs, timeout=float(self.get_settings().driver_call_timeout_s),
+                                                      lado_max=ai.screenshot_max_side)
+        screen, _ = self._screen(obs, with_image=True, protect=tuple(step.commit_guard), ai=ai)
+        t_end = min(deadline, time.monotonic() + float(ai.verify_budget_s))
+        verdict = await self._ai(run_id, objective_id,
+                                 lambda: self.provider.verify(VerifyRequest(ctx=ctx, screen=screen, facts=[])),
+                                 step_id=step.id, role="verify", deadline=t_end, attempt_id=attempt_id,
+                                 marca=MarcaDaChamada(motivo="julgamento", image_reason="pedida"))
+        return "verificador" if verdict.satisfied == "yes" else None
+
     async def _verify(self, rt: DeviceRuntime, step: StepDTO, ctx_for: Callable[[], StepContext], run_id: str,
                       objective_id: str, deadline: float, call_timeout: float, *, patient: bool,
                       facts: list[str] | None = None, failure_marks: tuple[str, ...] = (),
                       local_proof: str | None = None, capability: CapabilityRef | None = None,
                       attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                       imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
-                      proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None
+                      proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None,
+                      sobreposicoes: list[bool] | None = None
                       ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """A verificação (`_verificar`), com o tempo inteiro dela somado na tentativa (31.24, C-4:
         `attempts.verificacao_ms`). Só mede: os argumentos passam como vieram."""
@@ -2871,7 +2944,7 @@ class StepExecutor:
                                          local_proof=local_proof, capability=capability, attempt_id=attempt_id,
                                          cartao=cartao, pacote=pacote, imagem_forcada=imagem_forcada,
                                          uma_rodada=uma_rodada, so_prova_local=so_prova_local, proposito=proposito,
-                                         copias_vistas=copias_vistas)
+                                         copias_vistas=copias_vistas, sobreposicoes=sobreposicoes)
         finally:
             if (tempos := self._tempos(attempt_id)) is not None:
                 tempos.verificacao_ms += ms_desde(inicio)
@@ -2882,7 +2955,8 @@ class StepExecutor:
                          local_proof: str | None = None, capability: CapabilityRef | None = None,
                          attempt_id: str | None = None, cartao: tuple[str, ...] = (), pacote: str | None,
                          imagem_forcada: bool = False, uma_rodada: bool = False, so_prova_local: bool = False,
-                         proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None
+                         proposito: MotivoDaChamada = "julgamento", copias_vistas: list[int] | None = None,
+                         sobreposicoes: list[bool] | None = None
                          ) -> tuple[bool, str, DeliveryLevel | None, Observation | None, bool]:
         """`uma_rodada`: uma só leitura e, se a pós-condição a exigir, um só julgamento — devolve o veredito mesmo
         negativo, sem esperar a tela mudar até o fim do orçamento. É o modo dos atalhos que conferem ANTES do ator
@@ -3063,6 +3137,8 @@ class StepExecutor:
                         level = verdict.delivery_level
                     if copias_vistas is not None and verdict.copias is not None:
                         copias_vistas.append(verdict.copias)
+                    if sobreposicoes is not None and verdict.satisfied in ("no", "uncertain"):
+                        sobreposicoes.append(bool(verdict.sobreposicao))
                     ok = verdict.satisfied == "yes"
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
                         ok = False

@@ -176,6 +176,34 @@ def efeito_repetido(etapas: Sequence[EtapaDaProva], *, regra_propria: bool = Tru
 #: `plan_versions.reason`). A expansão não é replanejamento: as cópias por item SÃO o plano do fluxo.
 PREFIXO_DA_EXPANSAO = "Expandido para "
 
+#: 30.48: o rastro da amostra no motivo da expansão da prova (`plan_versions.reason`), lido de volta pelo veredito.
+_AMOSTRA = re.compile(r"amostra de (\d+) de (\d+) itens")
+
+
+def rastro_da_amostra(usados: int, total: int) -> str:
+    """30.48: o que a expansão da PROVA diz da lista: a amostra (os N primeiros) ou a prova inteira (lista ≤ N)."""
+    if usados < total:
+        return f"prova de fluxo: amostra de {usados} de {total} itens, os primeiros na ordem da tela"
+    return f"prova de fluxo: prova inteira, {total} de {total} itens"
+
+
+_AMOSTRA_NA_EVIDENCIA = re.compile(r"em amostra de (\d+) \(de (\d+) itens\)")
+
+
+def amostra_da_evidencia(detalhe: str | None) -> str | None:
+    """30.48: `"N de M"` quando a evidência é de prova em amostra (o rótulo que o veredito põe no `detail`), ou `None`."""
+    achado = _AMOSTRA_NA_EVIDENCIA.search(detalhe or "")
+    return f"{achado.group(1)} de {achado.group(2)}" if achado is not None else None
+
+
+def amostra_do_rastro(motivos: Sequence[str]) -> tuple[int, int] | None:
+    """30.48: `(usados, total)` da amostra registrada na expansão, ou `None` (sem amostra: lista inteira ou sem laço)."""
+    for m in motivos:
+        achado = _AMOSTRA.search(m)
+        if achado is not None:
+            return int(achado.group(1)), int(achado.group(2))
+    return None
+
 
 def _da_expansao(e: EtapaDaProva, expansoes: frozenset[int]) -> bool:
     """A etapa aberta que a expansão do `for_each` pulou (`plano revisado (vN)`, com N uma versão de expansão): o
@@ -226,5 +254,6 @@ def veredito_da_prova(etapas: Sequence[EtapaDaProva], *, status: str,
     return nada
 
 
-__all__ = ["COM_EFEITO", "PREFIXO", "PREFIXO_DA_EXPANSAO", "ROTULO_DO_MOTIVO", "SEM_ACAO", "AcaoDaProva", "EtapaDaProva", "MotivoDaInvalida", "TentativaDaProva",
-           "VereditoDaProva", "detalhe_da_invalida", "efeito_repetido", "motivo_da_invalida", "veredito_da_prova"]
+__all__ = ["COM_EFEITO", "PREFIXO", "PREFIXO_DA_EXPANSAO", "ROTULO_DO_MOTIVO", "SEM_ACAO", "AcaoDaProva", "EtapaDaProva",
+           "MotivoDaInvalida", "TentativaDaProva", "VereditoDaProva", "amostra_da_evidencia", "amostra_do_rastro",
+           "detalhe_da_invalida", "efeito_repetido", "motivo_da_invalida", "rastro_da_amostra", "veredito_da_prova"]

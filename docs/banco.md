@@ -32,7 +32,7 @@ Erros de driver também são neutros: `INTEGRITY_ERRORS` e `OPERATIONAL_ERRORS` 
 Importa porque a **idempotência** do projeto é chave `UNIQUE` + captura da violação — capturar a exceção errada
 transformaria "já existe, devolva o original" em erro 500.
 
-## Migrações (001–076, 078 a 083, 086, 088, 090, 092 a 098)
+## Migrações (001–076, 078 a 083, 086, 088, 090, 092 a 099)
 
 Cada migração é um arquivo em `backend/migrations/`, aplicado uma vez e nunca editado depois
 (`app/db.py::migrate`): quem precisa mudar o que uma migração já aplicada fez cria a PRÓXIMA migração. A tabela
@@ -134,6 +134,7 @@ chamadas para não custar a cada `/api/health`.
 | 096 | pedido_dependencias | Item 28.10, fatia F1 (colaboração entre pedidos, só a estrutura; número reservado pela orquestradora, a lacuna 089 a 095 é esperada; desenho em `design/pedidos-persistentes.md` §9). Tabela `pedido_dependencias(de, para, tipo, criado_em)` com `PRIMARY KEY (de, para)` e índice por `para`: **`para` depende de `de`** (a seta vai de quem vem antes para quem espera); `tipo` é `precisa_de_resultado` ou `depois_de`. `pedidos` ganha `papel TEXT` (`pesquisador`, `checador`, `redator`, `porta_voz`; NULL = pedido comum) e o índice `ix_pedidos_pai` sobre `pai_id` (da 067, que ninguém lia). Padrão da 067/085: sem FK e sem CHECK (profundidade, filhos, ciclo, linhagem, porta-voz único e orçamento reservado são do domínio, `modules/pedidos/domain/colaboracao.py`, e os limites vêm de `pedidos.colaboracao` na config), tempo em texto ISO. A F1 só grava e valida: o laço (`laco.py`) não lê nada disto. Simulado em `tests/test_pedidos_colaboracao_api.py`; PostgreSQL pela mesma fábrica quando `TEST_DATABASE_URL` existe |
 | 097 | tamanho_do_prompt_do_ator | Item 31.35 (Fase 31; número reservado em `.claude/reservas.md`, 04/10; as 089 a 096 são de outros itens). Só mede: `ai_calls.prompt_arvore_chars`, `prompt_historico_chars` (caracteres da árvore e do histórico que foram ao ator) e `prompt_podados` (elementos da barra do navegador tirados do prompt), NULOS fora da decisão do ator. Só `ADD COLUMN`. Simulado em `tests/test_tamanho_do_prompt_do_ator.py` |
 | 098 | etapa_opcional | Item 31.36 (Fase 31; número dado pela orquestradora em 04/10). `steps.opcional INTEGER`: 1 = etapa de limpeza opcional (sem efeito, sem saídas, sem for_each, sem commit_guard; o parsing garante); falhar a leva a `skipped` e o objetivo segue, e a dependência e o progresso a contam como resolvida. NULO = a etapa de sempre. Só `ADD COLUMN`. Simulado em `tests/test_etapa_opcional.py` |
+| 099 | pedido_cancelado_motivo | Item 28.22 (Fase 28; número dado pela orquestradora em 04/10). `pedidos.cancelado_motivo TEXT`: o motivo que a pessoa deu em `POST /api/pedidos/{id}/cancelar` (até 200), antes aceito e descartado. Texto livre de pessoa: só o `GET /api/pedidos/{id}` o devolve, fora do `view()` e do evento `pedido.updated`. Nulo sem motivo, no legado e nos descendentes cancelados em cascata. Só `ADD COLUMN`. Simulado em `tests/test_pedidos_api.py` |
 
 As oito tabelas novas de 031–039 estão em quatro migrações: `panel_sessions` (035), `policy_groups` (036),
 `profile_accounts` e `account_credentials` (037), `training_sessions`, `training_inputs` e `flow_scope` (038),
@@ -763,7 +764,7 @@ ninguém descobre até precisar.
 | `config/` | cópia direta | `scripts/backup.ps1` |
 | `data/credentials.key` | cópia direta, **só com `-IncluirSegredos`** | `scripts/backup.ps1` |
 | `.env` | **não entra** — é o arquivo de segredos; guarde no gerenciador de senhas | — |
-| `data/avd` (64 GB) | cópia **a frio**, sob demanda, com os emuladores desligados | manual (ver abaixo) |
+| `data/avd` (~60 GB) | cópia **a frio**, um aparelho por vez, só hibernado ou parado (29.39) | `scripts/backup.ps1 -AVDs` (ver abaixo) |
 | `apks/` (catálogo) | cópia direta — **obrigatória junto com o banco** | manual, ou storage compartilhado |
 | `data/evidence`, `data/avatars` | cópia direta, ou já no bucket | manual, ou storage compartilhado |
 
@@ -846,12 +847,31 @@ um arquivo `.env` bem guardado; a alternativa é só um dos backends executar au
 `data/avd` guarda as sessões: a conta Google da VM-loja (com 2FA) e os logins do Instagram. Aparelho novo sem
 esses dados significa refazer login e passar por desafio de verificação — por isso eles importam, e por isso não
 entram no backup diário (dezenas de GB, e a cópia a quente de um emulador ligado não é confiável). A política é
-cópia **a frio**, sob demanda, antes de mexer no host:
+cópia **a frio** (29.39), pela etapa `-AVDs` do `backup.ps1` (`scripts/lib/copias-de-avd.ps1`):
 
 ```powershell
-pwsh -File scripts\stop.ps1 -StopEmulators
-Compress-Archive -Path data\avd\* -DestinationPath D:\copias\avd-$(Get-Date -Format yyyyMMdd).zip
+pwsh -File scripts\backup.ps1 -AVDs -Aparelhos android-07     # só os aparelhos da lista
+pwsh -File scripts\backup.ps1 -AVDs                           # os locais com conta: só com data\backups\AVD-LIGADO
 ```
+
+- **Um aparelho por vez, e só se ele JÁ estiver hibernado ou parado.** A cópia nunca hiberna nem desliga ninguém;
+  o aparelho no ar fica para a próxima.
+- **Não há trava contra o rodízio acordar o aparelho no meio** (a pausa de reparo, persistida desde o 25.13, segura
+  só reinício e reset automáticos). Por isso a guarda roda antes de cada arquivo e mais uma vez no fim: aparelho fora
+  de `hibernated`/`stopped` ou emulador com o AVD aberto param a cópia, que fica em `<carimbo>-abortada` (nada é
+  apagado; o AVD só foi lido).
+- **Destino:** `data\backups\avd\<id>\<carimbo>\`, com `manifesto.json` (`origem: avd-semanal`, commit,
+  estado, e caminho, tamanho e sha256 de cada arquivo, conferido depois da cópia). Manifesto e saída levam só o id
+  do aparelho, nunca nome de conta ou de persona. As travas do emulador (`*.lock`) não vão. Recusa se sobrariam
+  menos de 50 GB livres. ~5,5 a 6 GB por aparelho.
+- **Nasce desligada e sem agendamento.** A lista padrão (aparelhos locais com conta vinculada) só roda com o arquivo
+  `AVD-LIGADO` no destino, criado depois do sim do dono; a tarefa `farm-backup` (29.38) não chama `-AVDs`. Aparelho
+  de conta real só com esse sim. Retenção: 2 cópias por aparelho, pela mesma regra de poda do 29.38.
+- **Restauração** (`Restore-AvdAFrio`, com o aparelho parado): confere o sha256 da cópia inteira, MOVE o AVD atual
+  para `<carimbo>-avd-substituido\` (nunca apaga), copia de volta, confere de novo e reescreve o `path=` do `.ini`
+  para o lugar restaurado. A sessão volta ao estado da cópia (até 7 dias atrás): se o app pedir login de novo, é
+  com a pessoa. O ensaio da restauração roda só em aparelho de QA, num `ANDROID_AVD_HOME` à parte e num emulador
+  avulso `-read-only` fora das portas do parque.
 
 No worker, o equivalente é `C:\farm\avd`.
 

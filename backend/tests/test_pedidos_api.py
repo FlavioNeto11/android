@@ -246,6 +246,31 @@ async def test_acoes_repetidas_sao_200_sem_mudanca_e_o_invalido_e_409(h: Harness
     assert c.post("/api/pedidos/nao-existe/pausar", json={}).status_code == 404
 
 
+async def test_cancelar_grava_o_motivo_so_no_detalhe_e_nunca_no_evento_nem_no_aviso(h: Harness) -> None:
+    """28.22 (achado real do 28.12): o `motivo` do cancelamento era aceito e descartado. Agora fica em
+    `cancelado_motivo` e só o GET do detalhe o devolve: é texto de pessoa, fora do `view()` (que vai inteiro no evento
+    `pedido.updated`), dos avisos e, por eles, do Telegram."""
+    c = _cliente(h)
+    pid = _criar(c).json()["id"]
+    motivo = "teto do bloco atingido, conferido no painel"
+    ok = c.post(f"/api/pedidos/{pid}/cancelar", json={"confirmar": True, "motivo": f"  {motivo}  "}).json()
+    assert ok["pedido"]["estado"] == "cancelado" and "cancelado_motivo" not in ok["pedido"], "a resposta é o view()"
+    assert h.state.db.scalar("SELECT cancelado_motivo FROM pedidos WHERE id=?", (pid,)) == motivo
+    assert c.get(f"/api/pedidos/{pid}").json()["cancelado_motivo"] == motivo
+    [item] = c.get("/api/pedidos").json()["items"]
+    assert "cancelado_motivo" not in item, "a lista também é o view()"
+    assert h.state.db.scalar("SELECT COUNT(*) FROM events WHERE data LIKE ?", (f"%{motivo}%",)) == 0
+    assert h.state.db.scalar("SELECT COUNT(*) FROM pedido_avisos WHERE pedido_id=? AND COALESCE(dados,'') || "
+                             "COALESCE(mensagem,'') LIKE ?", (pid, f"%{motivo}%")) == 0
+    # sem motivo (ou só espaços) fica nulo; repetir o cancelamento não troca o motivo gravado
+    outro = _criar(c, chave="chave-de-teste-0002").json()["id"]
+    assert c.post(f"/api/pedidos/{outro}/cancelar", json={"confirmar": True, "motivo": "   "}).status_code == 200
+    assert c.get(f"/api/pedidos/{outro}").json()["cancelado_motivo"] is None
+    assert c.post(f"/api/pedidos/{pid}/cancelar", json={"confirmar": True, "motivo": "outro"}).json()["sem_mudanca"]
+    assert c.get(f"/api/pedidos/{pid}").json()["cancelado_motivo"] == motivo
+    assert c.post(f"/api/pedidos/{pid}/cancelar", json={"confirmar": True, "motivo": "x" * 201}).status_code == 422
+
+
 async def test_edicao_com_versao_dry_run_e_selo(h: Harness) -> None:
     c = _cliente(h)
     p = _criar(c).json()

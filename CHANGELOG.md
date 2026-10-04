@@ -28,6 +28,37 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   sem DDL). O pedido lv-26679df914e1b809 rodou por falta dela.
 - Prova `simulated`: `test_learning_dossie_pela_marca.py` (3; mutação conferida); 1122 testes do aprendizado, do
   curador e da validação passam com `-n 2`. Real: `not_run`.
+## 2026-10-04 — 30.48: a prova de fluxo com `for_each` roda uma amostra (branch feat/30-48-prova-por-amostra)
+
+- O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 (lv-5cf7389f13e4e0f0 fechou
+  `plano_acima_do_teto`). Agora a prova de fluxo expande só os N primeiros itens na ordem da tela, N entre 2 e 3, o
+  maior que cabe em 17 etapas; a execução comum segue com a lista inteira.
+- O rastro da amostra vai no motivo da versão do plano; a evidência diz "provado em amostra de N (de M itens)" e o
+  dossiê do curador a mostra. A estimativa do teto usa a amostra só na prova de fluxo.
+- Prova `simulated`: `test_learning_prova_amostra.py` (7) e `test_learning_prova_teto.py` reescrito (mutações
+  conferidas). Sem DDL. Real: `not_run`.
+## 2026-10-04 — 31.40: a recusa por sobreposição insere a limpeza opcional (branch feat/31-40-sobreposicao, sem migração)
+
+- `Verdict.sobreposicao` (o juiz diz quando algo COBRE o alvo; regra nova no `VERIFIER_SYSTEM`, hash muda). Em etapa
+  sem efeito, o plano revisado põe uma limpeza `opcional` antes dela, uma vez por objetivo, e retoma da tela atual; o
+  juiz não afrouxa. O orçamento 18.3 numa etapa de leitura vira o desfecho do 31.38. Prova:
+  `backend/tests/test_sobreposicao.py` (simulated); real `not_run`.
+## 2026-10-04 — 29.39: cópia a frio dos AVDs, um aparelho por vez (branch feat/29-39-copia-avd)
+
+- `backup.ps1 -AVDs [-Aparelhos …]` e `scripts/lib/copias-de-avd.ps1`: copia o `.ini` e o `.avd` de um aparelho
+  hibernado ou parado para `data/backups/avd/<id>/<carimbo>/`, com o sha256 de cada arquivo no manifesto (só o id
+  do aparelho). Sem trava contra o rodízio, a guarda roda antes de cada arquivo e no fim; o aparelho que acorda deixa
+  a cópia `abortada`, sem apagar nada. `Restore-AvdAFrio` confere a cópia, move o AVD substituído e reescreve o `.ini`.
+- Nasce desligada: sem `-Aparelhos`, só com `data/backups/AVD-LIGADO` (sim do dono); fora do `farm-backup`.
+- Prova `simulated`: `backend/tests/test_backup.py` (4 novos: hash e restauração sem apagar; aborto quando o aparelho
+  acorda; guarda; nasce desligada).
+## 2026-10-04 — 31.41: o valor lido precisa ter relação com o pedido (branch feat/31-41-relacao-do-valor, sem migração)
+
+- `taskqueue/relacao.py`: seletor do catálogo, rótulo (próprio elemento, vizinho, glossário, sinônimo) ou forma
+  fechada; da imagem ou de saída de catálogo sem rótulo, uma pergunta ao verificador. Dúvida recusa
+  (`leitura.sem_relacao`) e nunca fecha como sucesso. Campo novo `Capability.saidas_relacao`. Prova:
+  `backend/tests/test_relacao_do_valor.py` (simulated, com as travas f014e6 e 12.3); real `not_run`.
+
 ## 2026-10-04 — teste do preparo zumbi drenado sem Timer de relógio (branch fix/b2-r4-sem-timer)
 
 - `test_prontidao_subsistemas::test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa` falhou no
@@ -41,6 +72,31 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   desligados, porta 55434), aprovado pela orquestradora pela medida da suíte 25: conexão aceita em 3,1 s contra
   ~6 min do `farm-pg`, e ~10 % mais testes por segundo. O `farm-pg` fica para a suíte inteira em PG. Regras em
   `docs/banco.md`, `docs/operacao.md` e `.claude/rules/testes.md`. Só documentação.
+## 2026-10-04 — 28.22: relatório no encerramento por orçamento e motivo do cancelamento (branch canais/28-22-encerramento-e-motivo, migração 099, adendo v1.17)
+
+- `laco._conferir_orcamento`: encerrar por orçamento grava o relatório final, na mesma cerca, como a contagem e o
+  prazo (§6.5). Achado real do 28.12: os pedidos -02 e -03 encerraram por orçamento sem relatório.
+- `POST /api/pedidos/{id}/cancelar` grava o `motivo` em `pedidos.cancelado_motivo` (migração 099). Só o detalhe o
+  devolve, fora do `view()` e do evento; o painel mostra "Cancelado porque". Achado real: o -04 cancelado às 12:07:24Z
+  ficou sem motivo.
+- Prova `simulated`: `test_pedidos_orcamento.py` (3 novos, com contraprova), `test_pedidos_api.py` (1 novo), vitest
+  `PedidosPage.test.tsx` (2 novos). Real: `not_run` até o deploy.
+## 2026-10-04 — 28.23, lado do laço: a execução do pedido leva o teto de autonomia (branch canais/28-23-teto-no-laco)
+
+- `laco._requisicao` passa `teto_de_autonomia` = a mais restrita entre a autonomia do pedido e o teto do papel, só quando o
+  `RunCreate` tem o campo (o lado da execução, migração 100 e adendo v1.19, é de outra frente). Os dois lados entram em
+  qualquer ordem sem quebrar; o teto só vale quando os dois estiverem no ar.
+- Prova `simulated`: `test_pedidos_teto_na_execucao.py` (7, com contraprova; um modelo com o campo e outro sem). Real: `not_run`.
+
+## 2026-10-04 — 28.10 F3: o papel limita a autonomia do pedido (branch canais/28-10-f3-papeis, sem migração, adendo v1.18)
+
+- `colaboracao.TETO_DO_PAPEL`: pesquisador e checador observam, o redator prepara, só o porta-voz age. A prévia, a criação
+  e o `PATCH` recusam acima do teto com 422 `autonomia_acima_do_papel`.
+- O laço decide a sobreposição, a janela e o piso com a mais restrita das duas, e a ocorrência registra o rebaixamento.
+- Achado: a autonomia do pedido não chega à execução (o §6.4 não vale no plano). O desenho do 28.23 está em
+  `docs/design/pedidos-persistentes.md` §9; até ele estar no ar, `pedidos` fica desligado no central.
+- Prova `simulated`: `test_pedidos_colaboracao_papeis.py` (17, com contraprova). Real: `not_run`.
+
 ## 2026-10-04 — 28.13: fechamento da Fase 28 (branch canais/28-13-fechamento-fase-28, só docs)
 
 - `docs/relatorio-validacao.md` §30: os itens 28.1 a 28.21 com real × simulado × não executado, a fase cláusula por

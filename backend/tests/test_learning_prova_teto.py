@@ -99,12 +99,22 @@ def test_o_teto_e_proporcional_com_piso_e_maximo() -> None:
 
 
 # ------------------------------------------------------------------ o fluxo
-def test_o_for_each_de_8_contatos_fecha_acima_do_teto_sem_executar(mundo: Mundo) -> None:
-    """O caso do P4 de 03/10 (0f0d85): 3 fixas + 4 modelos × 8 contatos = 35 etapas, teto 0,75 > 0,40."""
+def test_o_for_each_de_8_contatos_despacha_a_amostra_de_3(mundo: Mundo) -> None:
+    """O caso do P4 de 03/10 (0f0d85): 3 fixas + 4 modelos × 8 contatos = 35 etapas, teto 0,75 > 0,40. Desde o 30.48 a
+    prova roda a AMOSTRA dos 3 primeiros: 3 + 4 × 3 = 15 etapas, teto 0,35."""
     db, servico, parque, _, _ = mundo
     pid = servico.ao_parecer(_fluxo(db, "f-grande", _plano("f-grande", modelos=4), coletados=8), "lr-1", PEDE, B)
-    assert pid is not None
-    assert servico.uma_volta(lambda: 1) is None
+    assert pid is not None and servico.uma_volta(lambda: 1) is not None
+    linha = _linha(db, pid)
+    assert linha["estado"] == "rodando" and parque.provas == ["f-grande"]
+    assert float(str(linha["teto_usd"])) == pytest.approx(teto_da_prova(3 + 4 * 3))
+
+
+def test_o_for_each_em_que_nem_a_amostra_minima_cabe_fecha_sem_executar(mundo: Mundo) -> None:
+    """3 fixas + 8 modelos × 2 itens = 19 etapas > 17: nem a amostra mínima cabe no teto; o pedido fecha sem rodar."""
+    db, servico, parque, _, _ = mundo
+    pid = servico.ao_parecer(_fluxo(db, "f-largo", _plano("f-largo", modelos=8), coletados=8), "lr-1", PEDE, B)
+    assert pid is not None and servico.uma_volta(lambda: 1) is None
     linha = _linha(db, pid)
     assert (linha["estado"], linha["motivo"], linha["run_id"]) == ("recusada", "plano_acima_do_teto", None)
     assert parque.provas == []
@@ -119,11 +129,14 @@ def test_o_for_each_pequeno_despacha_com_o_teto_proporcional(mundo: Mundo) -> No
     assert float(str(linha["teto_usd"])) == pytest.approx(teto_da_prova(3 + 2 * 2))      # 0,19, não o 0,15 fixo
 
 
-def test_o_for_each_sem_lista_coletada_na_origem_nao_despacha(mundo: Mundo) -> None:
+def test_o_for_each_sem_lista_coletada_na_origem_despacha_a_amostra(mundo: Mundo) -> None:
+    """Antes do 30.48 o tamanho desconhecido não despachava nunca (o lv-5cf7389f13e4e0f0); agora a amostra de 3 cabe."""
     db, servico, parque, _, _ = mundo
     pid = servico.ao_parecer(_fluxo(db, "f-sem", _plano("f-sem", modelos=1), coletados=None), "lr-1", PEDE, B)
-    assert pid is not None and servico.uma_volta(lambda: 1) is None
-    assert _linha(db, pid)["motivo"] == "plano_acima_do_teto" and parque.provas == []
+    assert pid is not None and servico.uma_volta(lambda: 1) is not None
+    linha = _linha(db, pid)
+    assert linha["estado"] == "rodando" and parque.provas == ["f-sem"]
+    assert float(str(linha["teto_usd"])) == pytest.approx(teto_da_prova(3 + 1 * 3))
 
 
 # ------------------------------------------------------------------ a receita

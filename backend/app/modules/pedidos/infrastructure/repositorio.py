@@ -92,11 +92,12 @@ class RepositorioDePedidos:
 
     def mudar_estado_do_pedido(self, pedido_id: str, de: str, para: str, em: str, *, versao: int | None = None,
                                pausado_motivo: str | None = None, encerrado_motivo: str | None = None,
-                               pessoa: bool = False) -> bool:
+                               cancelado_motivo: str | None = None, pessoa: bool = False) -> bool:
         sql = ("UPDATE pedidos SET estado=?, atualizado_em=?, proxima_em=NULL,"
-               " pausado_motivo=COALESCE(?, pausado_motivo), encerrado_motivo=COALESCE(?, encerrado_motivo)"
+               " pausado_motivo=COALESCE(?, pausado_motivo), encerrado_motivo=COALESCE(?, encerrado_motivo),"
+               " cancelado_motivo=COALESCE(?, cancelado_motivo)"
                " WHERE id=? AND estado=?")
-        params: list[object] = [para, em, pausado_motivo, encerrado_motivo, pedido_id, de]
+        params: list[object] = [para, em, pausado_motivo, encerrado_motivo, cancelado_motivo, pedido_id, de]
         if versao is not None:
             sql += " AND versao=?"
             params.append(versao)
@@ -143,7 +144,8 @@ class RepositorioDePedidos:
     def gatilhos_dinamicos_ativos(self, tipo: str) -> list[Row]:
         """Os gatilhos `tipo` ativos de pedidos `ativo`, com o que o laço precisa do pedido (o passo 4 do §7.2)."""
         return self.db.query(
-            "SELECT g.*, p.versao AS pedido_versao, p.autonomia AS pedido_autonomia, p.fim_em AS pedido_fim_em,"
+            "SELECT g.*, p.versao AS pedido_versao, p.autonomia AS pedido_autonomia, p.papel AS pedido_papel,"
+            " p.fim_em AS pedido_fim_em,"
             " p.max_ocorrencias AS pedido_max_ocorrencias FROM pedido_gatilhos g JOIN pedidos p ON p.id = g.pedido_id"
             " WHERE g.tipo=? AND g.ativo=1 AND p.estado='ativo' ORDER BY p.criado_em, g.criado_em, g.id", (tipo,))
 

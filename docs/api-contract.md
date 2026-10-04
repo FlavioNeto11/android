@@ -5349,3 +5349,52 @@ Aditivo ao v0.45 (pedidos). Uma migração (096) e nenhuma rota nova. Desligado 
 Prova:
 - `simulated`: `backend/tests/test_pedidos_colaboracao_dominio.py` e `test_pedidos_colaboracao_api.py`.
 - `not_run`: PostgreSQL e o central depois do deploy.
+
+## Adendo v1.17 (04/10/2026; número da orquestradora; item 28.22) — relatório no encerramento por orçamento e motivo do cancelamento
+
+Aditivo ao v1.16. Uma migração (099) e nenhuma rota nova. Os dois achados vêm da prova real do 28.12 (04/10).
+
+- **Encerramento por orçamento:** o pedido que o laço encerra com `encerrado_motivo: "orcamento"` agora grava o
+  relatório final de encerramento (`gatilho: "encerramento"`), como já faziam a contagem, o prazo e o cancelamento
+  (§6.5 de `design/pedidos-persistentes.md`). Com ele vem o aviso `relatorio_pronto` de sempre. Se o relatório
+  quebrar, o pedido encerra mesmo assim e o relatório sai depois, sob demanda.
+- **`POST /api/pedidos/{id}/cancelar`:** o `motivo` do corpo (até 200, aparado; só espaços conta como sem motivo)
+  passa a ser gravado em `cancelado_motivo`. Vale só para o pedido cancelado pela pessoa: os descendentes cancelados
+  em cascata ficam sem motivo. Repetir o cancelamento (`sem_mudanca: true`) não troca o motivo gravado.
+- **`GET /api/pedidos/{id}`** ganha `cancelado_motivo: string | null`. O campo **não** entra no `PedidoView`: a lista,
+  a resposta das ações e o evento `pedido.updated` não o trazem. É texto livre de pessoa, então também não vai para
+  aviso, Telegram ou Trello. O painel o mostra no detalhe, em Comportamento, como "Cancelado porque".
+
+Prova:
+- `simulated`: `backend/tests/test_pedidos_orcamento.py` (3 testes novos, com contraprova) e
+  `test_pedidos_api.py::test_cancelar_grava_o_motivo_so_no_detalhe_e_nunca_no_evento_nem_no_aviso`; vitest
+  `PedidosPage.test.tsx` (2 novos).
+- `not_run`: PostgreSQL e o central depois do deploy.
+## Adendo v1.18 (04/10/2026; número da orquestradora; item 28.10 F3) — o papel limita a autonomia do pedido
+
+Aditivo ao v1.16 (o v1.17 é do 28.22). Sem migração e sem rota nova. Só vale com `pedidos.colaboracao.enabled`.
+
+- **Teto por papel:** `pesquisador` e `checador` vão até `observar`, `redator` até `preparar`, e `porta_voz` até `agir`.
+- **`POST /api/pedidos/previa` e `POST /api/pedidos`:** o pedido com `papel` e uma `autonomia` acima do teto é recusado com
+  422 `autonomia_acima_do_papel` (`campo: "autonomia"`), e a prévia o lista como bloqueio, sem selo. A estrutura (os códigos
+  do v1.16) é conferida antes. Vale também para o pedido sem pai.
+- **`PATCH /api/pedidos/{id}`:** mudar a `autonomia` de um pedido com papel para acima do teto é 422
+  `autonomia_acima_do_papel`, já no `dry_run`. O papel continua sem mudar depois de criado.
+- **Ocorrência:** quando o laço decide abaixo da autonomia gravada (pedido gravado acima do teto antes desta fatia), a
+  ocorrência terminada traz no `motivo` a nota `autonomia rebaixada ao teto do papel <papel>: <gravada> → <efetiva>`.
+- **Limite:** a autonomia ainda não chega à execução. O teto vale no que o laço decide (sobreposição, janela, piso). A
+  execução ganha o teto no 28.23 (adendo v1.19).
+
+Prova:
+- `simulated`: `backend/tests/test_pedidos_colaboracao_papeis.py` (17 testes, com contraprova: sem a fatia, 3 falham).
+- `not_run`: PostgreSQL e o central (a colaboração e `pedidos` estão desligados lá).
+
+## Adendo v1.20 (04/10/2026; número da orquestradora; item 30.52) — a pessoa recusa um pedido de validação pendente
+
+`POST /api/aprendizado/validacoes/{id}/recusar`, sem corpo. Fecha o pedido ainda `pendente` como `recusada`, com o
+motivo `recusada_pela_pessoa`, sem execução nem gasto. O motivo é neutro: não é chegada para o curador, nem evidência,
+nem contestação, e não pesa contra o item. Quem recusou vai ao log do backend.
+- **200:** o pedido, no mesmo formato de um item de `GET /api/aprendizado/validacoes` (`motivo_humano` incluído).
+- **404** `pedido_desconhecido`: não há o pedido.
+- **409** `pedido_nao_pendente`: o pedido já saiu de `pendente` (despachou, fechou ou expirou).
+- **503:** a validação não foi composta.

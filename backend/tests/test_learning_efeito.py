@@ -150,6 +150,7 @@ def test_uma_licao_em_prova_por_escopo(mundo: Mundo) -> None:
 async def test_tentativa_de_receita_sem_exposicao_e_licao_no_ator(harness: Harness) -> None:
     st = harness.state
     assert st is not None
+    harness.pular_o_tempo()   # T.2: sem assentamento em tempo real; o que se confere é exposição e braço
     harness.cfg.file.ai.recipes = "replay"
     harness.cfg.file.aprendizado.licoes.modo = "on"
     harness.cfg.file.aprendizado.licoes.holdout_publicada = 0.0                  # toda unidade no braço `with`
