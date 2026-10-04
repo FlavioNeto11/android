@@ -5246,8 +5246,9 @@ a pessoa não tinha como sair de `aguardando_pessoa` além de cancelar. A prova 
    [design/pedidos-persistentes.md](design/pedidos-persistentes.md), lido uma cláusula por vez, cada uma com sim,
    não ou pendente, e o nível da prova (`real`, `simulated`, `not_run`). A fase só se declara fechada quando as
    cláusulas de leitura estiverem `real`; o que exige autorização do dono fica `not_run` com a dependência exata.
-   - Hoje: **não fecha**. Faltam a prova 2 do 28.12 (⏳ PENDENTE-28.12-02) e uma prova real de pedido condicional,
-     ou a decisão de aceitar o condicional como `simulated`.
+   - Hoje: **não fecha**. O motor tem prova `real` (reinício sem duplicar nem perder, custo por ocorrência, tetos,
+     incerta, 28.20 e 28.21), mas o caso de uso não: as cinco execuções do 28.12 passaram do teto sem entregar a
+     leitura, e o condicional nunca avaliou a condição em real. O 28.12 fica parcial, com o bloqueio no relatório §30.
    - A colaboração (28.10) a §13 já permite deixar para depois sem bloquear. Este ADR confirma isso.
 3. **Emendas do 28.5 vindas do dado real.** Valem junto da regra do 28.5 (§7.6 do desenho):
    - **28.20:** quando alguma tentativa tem `error_kind` de orçamento e nenhuma ação tem `side_effect`, a falha é
@@ -5259,7 +5260,7 @@ a pessoa não tinha como sair de `aguardando_pessoa` além de cancelar. A prova 
      `incerta`, nada reexecuta e `pendencias()` a ignora; o pedido retoma quando não houver outra pendência (PR #220).
 4. **O 28.10 sai em fatias F1 a F5, e a liberação tem regras.**
    - **F1 (estrutura):** migração 096 e adendo v1.16, PR #227, na suíte 24, **desligada de fábrica**.
-   - **F2 (dependência no laço):** a ocorrência do filho só fica `devida` com a dependência comprovada
+   - **F2 (dependência no laço):** PR #240, suíte 25, deploy 25, desligada. A ocorrência do filho só fica `devida` com a dependência comprovada
      (`precisa_de_resultado` = ocorrência do `de` `concluida` na janela; `depois_de` = terminada). A reserva de orçamento
      dos filhos passa a valer também no laço.
    - **F3 (papéis):** `pesquisador` e `checador` limitam a autonomia a `observar`, `redator` a `preparar`, e só o
@@ -5288,11 +5289,14 @@ a pessoa não tinha como sair de `aguardando_pessoa` além de cancelar. A prova 
 - `real`: 04/10/2026, central, deploy 21 (`32cbcd6d`), pedido `ped_3Ypk6VjEVUGQC4ziIiNtvQ`
   (`lote:canais:28.12-01`), android-09, run `r-20261004090000-bbfe54`: parada no teto de US$ 0,10 por ocorrência com
   US$ 0,107 gastos; fechou `incerta`; pedido preso em `aguardando_pessoa`; cancelado às 09:11:53Z.
-- `real` pendente: pedido `ped_O_tLG52eXcmZNGB0THvIkA` (`lote:canais:28.12-02`), três ocorrências, reinício no meio.
-  ⏳ PENDENTE-28.12-02.
+- `real`: 04/10/2026, central, deploys 23 e 24, pedidos -02 a -04 (`lote:canais:28.12-02` a `-04`): uma execução
+  por ocorrência através de dois reinícios; runs `f8722d`, `3894c1`, `ba5ebc` e `7ae54f`, todas acima do teto, gasto
+  do bloco US$ 1,288 de 1,70; `ba5ebc` fechou `falhou` pelo orçamento (28.20); a incerta de `f8722d` foi resolvida às
+  10:21:07Z (28.21). Detalhe no relatório §30.1.
 - `simulated`: as decisões 3 e 4 têm teste nos PRs #216, #220 e #227; ver o relatório §30.1 para o arquivo de cada
   item.
-- `not_run`: pedido condicional no central; pedido de leitura (políticos) com relatório determinístico; 28.10 F2 a F5.
+- `not_run`: a condição avaliada em real (o -04 nunca observou o valor); o relatório de uma leitura bem-sucedida;
+  a ocorrência perdida de propósito; 28.10 F2 ligada, F3 a F5.
 
 **Relação.** [ADR-059](#adr-059--pedidos-persistentes-pertencem-ao-produto-pedido-ocorrência-e-execução) (muda de
 estado), ADR-062 (Pendências), ADR-064 (trava), ADR-066 (laço), ADR-071 (Telegram; 28.15 e 28.18), ADR-072 (Trello),

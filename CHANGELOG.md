@@ -22,8 +22,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-04 — 28.13: fechamento da Fase 28 (branch canais/28-13-fechamento-fase-28, só docs)
 
 - `docs/relatorio-validacao.md` §30: os itens 28.1 a 28.21 com real × simulado × não executado, a fase cláusula por
-  cláusula (hoje não fecha: falta a prova 2 do 28.12 e a prova real do pedido condicional), o que falta por quem decide
-  e a validação. Rascunho: os resultados da prova 2 do 28.12 levam o marcador `PENDENTE-28.12-02`.
+  cláusula (não fecha: o motor tem prova `real`, o caso de uso não), o que falta por quem decide e a validação.
+- 28.12 (real, 04/10, deploys 21 a 24): 4 pedidos, 5 execuções, todas acima do teto, US$ 1,288 de 1,70; reinícios sem
+  duplicar nem perder; 28.20 e 28.21 provados. Fica parcial: a leitura de varejo custa US$ 0,26 a 0,31 e trava no juiz.
+- Dois achados sem número: o encerramento por orçamento não gera relatório; `/cancelar` não grava o motivo.
 - `docs/decisoes.md`: ADR-074 (proposto). O ADR-059 passa de proposto a aceito; a fase fecha por cláusula; as emendas
   do 28.5 vindas do dado real (28.20 e 28.21); o 28.10 em fatias F1 a F5 com regras de liberação; o custo do ator da
   prova 1 registrado para a frente de latência e custo.
