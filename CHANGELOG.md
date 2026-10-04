@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.11: rótulos do curador confirmados pelo dono em bloco, como fonte à parte (branch feat/31-11-rotulos-em-bloco, sem migração)
+
+- `scripts/jev-relatorio-31-10.py` e `scripts/jev-braco-offline.py` aceitam `--rotulos-em-bloco ARQ`: a confirmação em
+  bloco do dono (data, frase literal, autor, item, rótulo) é a fonte `confirmacao_em_bloco` do rótulo 1.
+- Ela fica fora da taxa de acordo e do veredito principal, com medidas próprias; a transição do dono item a item vence.
+  Ninguém registra transição como se fosse o dono (decisão da orquestradora, golden set §2).
+- Prova `simulated`: `scripts/tests/test_jev_relatorio_31_10.py`.
+
 ## 2026-10-04 — 30.52: o dossiê do curador pela marca do conteúdo e a recusa do pedido pela pessoa (branch fix/30-52-dossie-pela-marca)
 
 - O parecer lr-1cfb91a981c5f21f citou `against` da versão antiga do fluxo reaprendido e pediu uma reprodução que já

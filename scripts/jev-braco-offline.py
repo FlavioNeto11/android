@@ -144,7 +144,8 @@ def _hash_curto(texto: str) -> str:
 
 
 def casos_do_curador(db: Any, *, desde: str | None, autores_dono: frozenset[str],
-                     versao_do_estado: str = ESTADO_DA_SOMBRA) -> tuple[list[Caso], Counter[str]]:
+                     versao_do_estado: str = ESTADO_DA_SOMBRA,
+                     confirmacoes: Mapping[str, Mapping[str, str]] | None = None) -> tuple[list[Caso], Counter[str]]:
     """Os casos da R1: uma revisão do curador por caso, só os `kind` de F1 (`TriagemDoCurador.pedido`). O rótulo é o
     do relatório do 31.10, contado a partir da revisão (não há linha de sombra no braço offline)."""
     sql = "SELECT * FROM learning_reviews WHERE template_id=?" + (" AND created_at>=?" if desde else "")
@@ -162,7 +163,7 @@ def casos_do_curador(db: Any, *, desde: str | None, autores_dono: frozenset[str]
         if pedido is None:
             fora[str(r["item_kind"])] += 1
             continue
-        rotulo, fonte = rel._rotulo_do_curador(db, r, str(r["created_at"]), autores_dono)
+        rotulo, fonte = rel._rotulo_do_curador(db, r, str(r["created_at"]), autores_dono, confirmacoes)
         try:
             parecer = json.loads(r["saida"]).get("decisao") if r["saida"] else None
         except (ValueError, AttributeError):
@@ -364,6 +365,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--desde", help="ISO-8601 UTC; padrão: todas as revisões ainda no banco")
     p.add_argument("--autor-dono", action="append", default=[], metavar="NOME",
                    help="o `decided_by` do dono no rótulo 1 (repetível); sem ele, o rótulo 1 fica desligado")
+    p.add_argument("--rotulos-em-bloco", metavar="ARQ",
+                   help="31.11: o JSON dos rótulos confirmados pelo dono em bloco (fonte à parte, fora do veredito)")
     p.add_argument("--enviar", action="store_true", help="chama o Jev de verdade (exige --teto)")
     p.add_argument("--teto", type=float, help=f"teto da rodada em US$ (no máximo {TETO_MAX_USD})")
     p.add_argument("--json", help="arquivo do JSON; padrão: a tela")
@@ -376,10 +379,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.teto is None or not 0 < args.teto <= TETO_MAX_USD:
             raise SystemExit(f"--enviar exige --teto entre 0 e {TETO_MAX_USD} (US$)")
         teto = Teto(args.teto)
+    confirmacoes = rel.ler_confirmacoes(args.rotulos_em_bloco)
     db = rel._abrir(args)
     try:
         casos, fora = casos_do_curador(db, desde=args.desde, versao_do_estado=args.estado,
-                                       autores_dono=frozenset(n.strip() for n in args.autor_dono if n.strip()))
+                                       autores_dono=frozenset(n.strip() for n in args.autor_dono if n.strip()),
+                                       confirmacoes=confirmacoes)
     finally:
         db.close()
     seco = DecisorSeco() if teto is None else None

@@ -104,6 +104,45 @@ def _ts(ts: str) -> datetime:
     return datetime.fromisoformat(ts.replace("Z", "+00:00"))
 
 
+# ------------------------------------------------------------------ 31.11: rótulos confirmados pelo dono em bloco
+#: A fonte do rótulo que veio de uma confirmação EM BLOCO do dono a uma lista proposta (decisão da orquestradora, 04/10).
+#: Ninguém registra transição como se fosse o dono: a confirmação vive num arquivo próprio, com a data e a frase literal
+#: dele, e as linhas dela ficam SEPARADAS das transições feitas por ele item a item, sem entrar na mesma taxa.
+FONTE_EM_BLOCO = "confirmacao_em_bloco"
+ROTULOS_EM_BLOCO = frozenset({"manter", "rebaixar", "descartar"})
+
+
+def ler_confirmacoes(caminho: str | None) -> dict[str, dict[str, str]]:
+    """{item_ref: {data, frase, autor, rotulo}} do arquivo `{"confirmacoes": [...]}`. Qualquer linha fora da forma, ou o
+    mesmo item duas vezes, encerra com erro: uma confirmação ambígua não vira rótulo (falha fechada)."""
+    if not caminho:
+        return {}
+    try:
+        bruto = json.loads(Path(caminho).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"--rotulos-em-bloco: não li {caminho}: {exc}") from None
+    itens = bruto.get("confirmacoes") if isinstance(bruto, dict) else None
+    if not isinstance(itens, list) or not itens:
+        raise SystemExit("--rotulos-em-bloco: o arquivo precisa de uma lista não vazia em `confirmacoes`")
+    saida: dict[str, dict[str, str]] = {}
+    for i, c in enumerate(itens, 1):
+        campos = {k: str(c.get(k) or "").strip() for k in ("item_ref", "rotulo", "data", "frase", "autor")} \
+            if isinstance(c, dict) else {}
+        if not campos or not all(campos.values()):
+            raise SystemExit(f"--rotulos-em-bloco: a linha {i} precisa de item_ref, rotulo, data, frase e autor")
+        if campos["rotulo"] not in ROTULOS_EM_BLOCO:
+            raise SystemExit(f"--rotulos-em-bloco: a linha {i} tem o rótulo {campos['rotulo']!r}, fora de "
+                             f"{sorted(ROTULOS_EM_BLOCO)}")
+        try:
+            _ts(campos["data"])
+        except ValueError:
+            raise SystemExit(f"--rotulos-em-bloco: a linha {i} tem a data fora do ISO-8601") from None
+        if campos["item_ref"] in saida:
+            raise SystemExit(f"--rotulos-em-bloco: o item {campos['item_ref']} aparece duas vezes")
+        saida[campos["item_ref"]] = {k: v for k, v in campos.items() if k != "item_ref"}
+    return saida
+
+
 # ------------------------------------------------------------------ leitura
 def _linhas(db: Any, origem: str, perguntas: Iterable[str], desde: str | None) -> list[Mapping[str, Any]]:
     pergs = tuple(perguntas)
@@ -154,7 +193,8 @@ def _revisao_do_curador(db: Any, dossie_hash: str) -> Mapping[str, Any] | None:
 
 
 def _rotulo_do_curador(db: Any, revisao: Mapping[str, Any], desde_ts: str,
-                       autores_dono: frozenset[str] = frozenset()) -> tuple[str | None, str | None]:
+                       autores_dono: frozenset[str] = frozenset(),
+                       confirmacoes: Mapping[str, Mapping[str, str]] | None = None) -> tuple[str | None, str | None]:
     """(rótulo na régua da triagem, fonte). 1: a decisão do DONO no item depois da sombra; 2: `resultado_posterior`.
 
     31.19: o rótulo 1 só vale com `decided_by` entre os `autores_dono` declarados (`--autor-dono`). Até aqui valia todo
@@ -172,6 +212,10 @@ def _rotulo_do_curador(db: Any, revisao: Mapping[str, Any], desde_ts: str,
         if transicao is not None and (rotulo := _rotulo_da_transicao(transicao["from_state"],
                                                                      str(transicao["to_state"]))):
             return rotulo, "dono"
+    # 31.11: a transição do dono item a item vence; sem ela, a confirmação em bloco feita DEPOIS da sombra, como fonte
+    # própria (`confirmacao_em_bloco`), que as medidas mostram à parte.
+    if confirmacoes and (c := confirmacoes.get(str(revisao["item_ref"]))) is not None and _ts(c["data"]) >= _ts(desde_ts):
+        return c["rotulo"], FONTE_EM_BLOCO
     posterior = revisao["resultado_posterior"]
     if isinstance(posterior, str) and posterior in ROTULO_POSTERIOR:
         return posterior, "posterior"
@@ -219,14 +263,15 @@ def _transicoes_fora_do_dono(db: Any, desde: str | None, autores_dono: frozenset
 
 
 def relatorio_do_curador(db: Any, desde: str | None, agora: datetime,
-                         autores_dono: frozenset[str] = frozenset()) -> dict[str, Any]:
+                         autores_dono: frozenset[str] = frozenset(),
+                         confirmacoes: Mapping[str, Mapping[str, str]] | None = None) -> dict[str, Any]:
     linhas = _linhas(db, "curador", (PERGUNTA_TRIAGEM,), desde)
     por_kind: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for linha in linhas:
         revisao = _revisao_do_curador(db, str(linha["ref"] or ""))
         kind = str(revisao["item_kind"]) if revisao is not None else "desconhecido"
-        rotulo, fonte = (_rotulo_do_curador(db, revisao, str(linha["ts"]), autores_dono) if revisao is not None
-                         else (None, None))
+        rotulo, fonte = (_rotulo_do_curador(db, revisao, str(linha["ts"]), autores_dono, confirmacoes)
+                         if revisao is not None else (None, None))
         parecer = None
         if revisao is not None and revisao["saida"]:
             try:
@@ -243,6 +288,11 @@ def relatorio_do_curador(db: Any, desde: str | None, agora: datetime,
                                 "transicoes_fora_do_dono": _transicoes_fora_do_dono(db, desde, autores_dono)}
     if not autores_dono:
         rotulo_1["nota"] = "sem autor dono declarado (--autor-dono): o rótulo 1 está desligado"
+    if confirmacoes:
+        rotulo_1[FONTE_EM_BLOCO] = {
+            "itens": len(confirmacoes), "nivel": "PROVED (o arquivo); o rótulo é a lista proposta confirmada pelo dono",
+            "confirmacoes": sorted({(c["data"], c["autor"], c["frase"]) for c in confirmacoes.values()}),
+            "nota": "fonte separada das transições item a item; não entra na taxa de acordo nem no veredito principal"}
     return {"linhas": len(linhas), "estratos": estratos, "custo": _custo(linhas), "rotulo_1": rotulo_1,
             "nota": "concordância com o curador principal é acompanhamento, nunca GO sozinha (§2)"}
 
@@ -250,7 +300,9 @@ def relatorio_do_curador(db: Any, desde: str | None, agora: datetime,
 def _estrato_do_curador(itens: Sequence[dict[str, Any]], agora: datetime) -> dict[str, Any]:
     total = len(itens)
     respondidos = [i for i in itens if _respondeu(i["linha"])]
-    rotulados = [i for i in respondidos if i["rotulo"]]
+    # 31.11: a confirmação em bloco não se mistura com o rótulo do dono item a item: fica fora daqui e tem medidas próprias.
+    em_bloco = [i for i in respondidos if i["rotulo"] and i["fonte"] == FONTE_EM_BLOCO]
+    rotulados = [i for i in respondidos if i["rotulo"] and i["fonte"] != FONTE_EM_BLOCO]
     acordo = sum(1 for i in rotulados if i["linha"]["escolha"] == _opt(i["rotulo"]))
     grave = sum(1 for i in rotulados if i["rotulo"] == "manter"
                 and i["linha"]["escolha"] in (_opt("rebaixar"), _opt("descartar")))
@@ -278,6 +330,14 @@ def _estrato_do_curador(itens: Sequence[dict[str, Any]], agora: datetime) -> dic
                                                  if (_maior_probabilidade(i["linha"]) or 0) >= limiar), total)}
             for limiar in LIMIARES_DE_SENSIBILIDADE},
     }
+    if em_bloco:
+        nb = len(em_bloco)
+        medidas[FONTE_EM_BLOCO] = {
+            "rotulos": nb, "acordo": _taxa(sum(1 for i in em_bloco if i["linha"]["escolha"] == _opt(i["rotulo"])), nb),
+            "erro_grave": _taxa(sum(1 for i in em_bloco if i["rotulo"] == "manter"
+                                    and i["linha"]["escolha"] in (_opt("rebaixar"), _opt("descartar"))), nb),
+            "acordo_controle": _taxa(sum(1 for i in em_bloco if i["controle"] == _opt(i["rotulo"])), nb),
+            "nota": "taxa à parte: rótulos da lista proposta, confirmada pelo dono em bloco (não item a item)"}
     if n < CURADOR["rotulos_min"]:
         veredito, falhou = "sem amostra", [f"rótulos {n} < {CURADOR['rotulos_min']}"]
     else:
@@ -408,10 +468,11 @@ def _teto_da_r2(flows: Sequence[Mapping[str, Any]] | None) -> dict[str, Any]:
 
 # ------------------------------------------------------------------ montagem e saída
 def montar(db: Any, *, desde: str | None, agora: datetime,
-           flows: Sequence[Mapping[str, Any]] | None, autores_dono: frozenset[str] = frozenset()) -> dict[str, Any]:
+           flows: Sequence[Mapping[str, Any]] | None, autores_dono: frozenset[str] = frozenset(),
+           confirmacoes: Mapping[str, Mapping[str, str]] | None = None) -> dict[str, Any]:
     return {"gerado_em": agora.isoformat().replace("+00:00", "Z"), "desde": desde,
             "limiares": {"curador": CURADOR, "intencao": INTENCAO, "fonte": "docs/design/jev-golden-set.md §1–§3"},
-            "curador": relatorio_do_curador(db, desde, agora, autores_dono),
+            "curador": relatorio_do_curador(db, desde, agora, autores_dono, confirmacoes),
             "intencao": relatorio_da_intencao(db, desde, agora, flows),
             "regra": "o relatório nunca liga nada; `on` é decisão registrada (ADR-069 item 6)"}
 
@@ -429,6 +490,9 @@ def em_markdown(rel: Mapping[str, Any]) -> str:
             linhas += [f"Rótulo 1 (decisão do dono): autores {', '.join(r1['autores_dono']) or 'nenhum'}; "
                        f"{r1['transicoes_fora_do_dono']} transições de pessoa fora do dono na janela."
                        + (f" {r1['nota']}." if r1.get("nota") else ""), ""]
+            if (blocos := r1.get(FONTE_EM_BLOCO)) is not None:
+                linhas += [f"Confirmação em bloco (fonte à parte, fora do veredito): {blocos['itens']} itens; "
+                           + "; ".join(f"{d}, {a}: \"{f}\"" for d, a, f in blocos["confirmacoes"]) + ".", ""]
         for estrato, dados in parte["estratos"].items():
             m = dados["medidas"]
             linhas.append(f"### {estrato}: **{dados['veredito']}** ({dados['modo']})")
@@ -491,12 +555,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     p.add_argument("--md", help="arquivo do Markdown")
     p.add_argument("--autor-dono", action="append", default=[], metavar="NOME",
                    help="o `decided_by` do dono no rótulo 1 do curador (repetível); sem ele, o rótulo 1 fica desligado")
+    p.add_argument("--rotulos-em-bloco", metavar="ARQ",
+                   help="31.11: o JSON dos rótulos confirmados pelo dono em bloco (fonte à parte, fora do veredito)")
     args = p.parse_args(argv)
+    confirmacoes = ler_confirmacoes(args.rotulos_em_bloco)
     db = _abrir(args)
     try:
         rel = montar(db, desde=args.desde, agora=datetime.now(UTC),
                      flows=None if args.sem_flows else _flows(args.flows_url),
-                     autores_dono=frozenset(n.strip() for n in args.autor_dono if n.strip()))
+                     autores_dono=frozenset(n.strip() for n in args.autor_dono if n.strip()), confirmacoes=confirmacoes)
     finally:
         db.close()
     texto = json.dumps(rel, ensure_ascii=False, indent=1, default=str)
