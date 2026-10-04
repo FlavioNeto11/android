@@ -1959,7 +1959,7 @@
   "12.3": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142b3e8f34668b50fd52f",
    "url": "https://trello.com/c/0sbl2YgL",
-   "lista": "proximas",
+   "lista": "em_execucao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "14.12": {
@@ -2019,7 +2019,7 @@
   "23.14": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac142fa999f63e54d9770c0",
    "url": "https://trello.com/c/IKAAgEwV",
-   "lista": "proximas",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes"
   },
   "25.9": {
@@ -2049,7 +2049,7 @@
   "28.10": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14311e0dc03a396d20157",
    "url": "https://trello.com/c/H97IVCOb",
-   "lista": "proximas",
+   "lista": "em_execucao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "28.12": {
@@ -2097,13 +2097,13 @@
   "29.24": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1436533843fd56b60aff4",
    "url": "https://trello.com/c/2A5ZzxuA",
-   "lista": "proximas",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.25": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1436a19f1235227698fcc",
    "url": "https://trello.com/c/wiUaYwIp",
-   "lista": "proximas",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.26": {
@@ -2121,19 +2121,19 @@
   "29.33": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac143789f04b7688ec30dc0",
    "url": "https://trello.com/c/sAmgIRtT",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.35": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14411a50206ea39ff3d98",
    "url": "https://trello.com/c/yqMD3Eei",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.36": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac144156c5aea2331b921ba",
    "url": "https://trello.com/c/qFYCOetI",
-   "lista": "proximas",
+   "lista": "em_validacao",
    "lote": "lote_A8_atuais_pendentes"
   },
   "29.37": {
@@ -2163,7 +2163,7 @@
   "30.18": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac14429fdeb1c4e032289c7",
    "url": "https://trello.com/c/1mQK0Sju",
-   "lista": "proximas",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes"
   },
   "30.33": {
@@ -2577,7 +2577,7 @@
   "31.10": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac141dbf065d35d70728692",
    "url": "https://trello.com/c/SoG7QPZL",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "lote_A8_atuais_pendentes",
    "nome": "31.10 · Sombra de intenção da C3 (o Jev classifica cada comando, sem decidir)"
   },
@@ -2726,7 +2726,7 @@
   "29.53": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac15528e037265c60615b72",
    "url": "https://trello.com/c/mfIQJOyx",
-   "lista": "proximas",
+   "lista": "concluido_hoje",
    "lote": "fatos-1916"
   },
   "investigacao:curador-revisao": {
@@ -2921,14 +2921,14 @@
   "28.19": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3d128481569da872e34",
    "url": "https://trello.com/c/LzBZ2WcK",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "Lote de teste não avisa um por um"
   },
   "30.45": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3d7eb91bfb1fe58adb8",
    "url": "https://trello.com/c/KqAowv5B",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "Veredito enxerga a evidência reclassificada"
   },
@@ -2949,7 +2949,7 @@
   "31.27": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3e7a9595d5f084cdb7d",
    "url": "https://trello.com/c/UEzohhY4",
-   "lista": "em_validacao",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "Espera do juiz que acompanha a tela"
   },
@@ -2963,7 +2963,7 @@
   "31.28": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac1a3f2938e24a52669004e",
    "url": "https://trello.com/c/WKjq4JIc",
-   "lista": "proximas",
+   "lista": "concluido_hoje",
    "lote": "canais",
    "nome": "A prévia do painel disputa o aparelho?"
   },
@@ -3029,10 +3029,115 @@
    "lista": "em_validacao",
    "lote": "canais",
    "nome": "28.21 — Resolver ocorrência incerta destrava o pedido"
+  },
+  "suite:21": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac228100d584115f9834c8a",
+   "url": "https://trello.com/c/OTujDQGC",
+   "lista": "concluido_hoje",
+   "lote": "canais",
+   "nome": "Suíte 21 → deploy 21: 29.36, 31.30 e 28.17"
+  },
+  "suite:22": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac22814da186573b76dbb3d",
+   "url": "https://trello.com/c/aSEFr6PD",
+   "lista": "concluido_hoje",
+   "lote": "canais",
+   "nome": "Suíte 22 → deploy 22: nove entregas"
+  },
+  "suite:23": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2281933ace3f3aca5caa1",
+   "url": "https://trello.com/c/GORvhjts",
+   "lista": "em_execucao",
+   "lote": "canais",
+   "nome": "Suíte 23 → deploy 23: onze entregas"
+  },
+  "31.30": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2281ee750144efdb2cf7d",
+   "url": "https://trello.com/c/jkbbNeVR",
+   "lista": "concluido_hoje",
+   "lote": "canais",
+   "nome": "31.30 — Planejador mais rápido: o plano fica guardado por 1 hora"
+  },
+  "30.46": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac22822178d383b3f7d9efc",
+   "url": "https://trello.com/c/r8qyhLJn",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "30.46 — O curador para de gravar um cache que nunca relê"
+  },
+  "31.31": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac22827e8f34668b53f6eec",
+   "url": "https://trello.com/c/mlvCIYvl",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "31.31 — Estimativa de custo separa a gravação do cache de 1 hora"
+  },
+  "31.32": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2282b4d4353c3a3d77e66",
+   "url": "https://trello.com/c/4HHPPnG6",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "31.32 — Plano com conferência impossível falha cedo e com clareza"
+  },
+  "31.34": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2282fe701662ae35276a7",
+   "url": "https://trello.com/c/qB1I9qRl",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "31.34 — A prévia do painel cede a vez à execução"
+  },
+  "31.35": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac22833e228b6b5dc67c408",
+   "url": "https://trello.com/c/rUS1CJga",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "31.35 — Custo do ator na navegação pelo navegador"
+  },
+  "29.66": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac22837203aaf8dfcf43cac",
+   "url": "https://trello.com/c/NR3R88GQ",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "29.66 — Campos do aparelho que alternavam a cada reinício"
+  },
+  "30.47": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2283b9cf82ea8d51c2301",
+   "url": "https://trello.com/c/dchZ6Lbu",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "30.47 — Rota para pedir a validação de um fluxo candidato"
+  },
+  "31.33": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2283e190f57ee0d20d05a",
+   "url": "https://trello.com/c/mQsMXHfg",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "31.33 — Recusa clara quando a ação pedida não existe no app"
+  },
+  "29.67": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac228427c94d9584a7e80e9",
+   "url": "https://trello.com/c/okBJKQaY",
+   "lista": "proximas",
+   "lote": "canais",
+   "nome": "29.67 — Sonda de saúde não conta falha com a central saturada"
+  },
+  "31.36": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac228464df7c5af092144a4",
+   "url": "https://trello.com/c/0PZ1X5FK",
+   "lista": "em_execucao",
+   "lote": "canais",
+   "nome": "31.36 — Etapa de limpeza opcional não derruba o objetivo"
+  },
+  "31.37": {
+   "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac2290352678b8f75de4086",
+   "url": "https://trello.com/c/LTS7bYIM",
+   "lista": "em_validacao",
+   "lote": "canais",
+   "nome": "31.37 — Leitura de valor sem gastar decisão pedindo a imagem"
   }
  },
  "falhas": [],
- "atualizado_em": "2026-10-04T08:44:06Z",
+ "atualizado_em": "2026-10-04T10:21:11Z",
  "arquivados": {
   "29.50": {
    "card": "ari:cloud:trello::card/workspace/6ac1399c0c5cfe6a3373f1c6/6ac140b47c94d9584a3dc72e",
