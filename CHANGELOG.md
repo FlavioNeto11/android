@@ -35,6 +35,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   segura, e o `--ensaio` diz "o laço seguraria pelo piso até HH:MMZ"; hora sem fuso no `--ultimo-envio` é recusada com
   mensagem, e no cursor não derruba o laço. Prova `simulated`: 49 passed (piora, volta, segue ruim com outro texto,
   hora sem fuso e o `--armar` que recusa).
+- **Gravidade (orquestradora, 23:21Z):** piorar fura o piso sempre. A saúde se compara por gravidade (🟢 < 🟡 < 🔴):
+  a que SOBE, ou volta ao 🟢, sai na volta; a que desce sem chegar ao 🟢 espera o piso. Texto sem marca conta como o
+  pior. Prova `simulated`: 52 passed (sobe entre ruins, desce entre ruins, volta ao verde, texto sem marca).
 
 ## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
 

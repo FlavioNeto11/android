@@ -345,9 +345,9 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - Quando nada mudou e não há pendência nova, o resumo **não sai** naquela hora.
   - **Cadência** (orquestradora, 04/10 23:14Z, pela regra da rotina agrupada): o laço confere a cada 20 minutos; a
     rotina sai **no máximo uma vez por hora** desde o último envio, mesmo que algo mude a cada volta. Saem na volta em
-    que mudarem: "Precisa de você" (pendência nova ou resolvida) e a saúde da Central que deixa de ser 🟢 ou volta a
-    ele (23:18Z: com a Central fora, o laço é o único que conta ao dono), uma vez por transição; a saúde que segue ruim
-    fica com o piso. A rotina segurada não se perde: o envio seguinte conta tudo o que mudou desde o último.
+    que mudarem: "Precisa de você" (pendência nova ou resolvida) e a saúde da Central que piora (gravidade 🟢 < 🟡 < 🔴
+    que sobe) ou volta ao 🟢 (23:18Z e 23:21Z: com a Central fora, o laço é o único que conta ao dono), uma vez por
+    transição; a que desce sem chegar ao 🟢 e a que segue igual ficam com o piso. A rotina segurada não se perde: o envio seguinte conta tudo o que mudou desde o último.
   - **Ao editar o `situacao.json`** durante a hora segurada: não reescreva a pendência que não mudou de fato (a
     comparação é pelo texto, e a reescrita fura o piso); e ACRESCENTE ao `mudou_extra`, sem reescrever, porque ele só
     esvazia depois de um envio e o dono ainda não viu as linhas antigas.
