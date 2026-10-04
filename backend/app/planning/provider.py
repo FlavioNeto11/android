@@ -271,6 +271,9 @@ class Verdict(BaseModel):
     #: 29.58 (C): quantas cópias do efeito DESTA execução a tela mostra (a mesma mensagem enviada duas vezes agora → 2).
     #: Interno: decide o fechamento `uncertain` "efeito repetido"; fora da serialização quando nulo.
     copias: int | None = Field(default=None, exclude_if=lambda v: v is None)
+    #: Item 31.40: o "não"/"incerto" é porque um diálogo, banner, aviso ou cookies COBRE o alvo da pós-condição. Só vale
+    #: em etapa sem efeito: a recuperação insere uma limpeza opcional antes dela, uma vez por objetivo. O juiz não afrouxa.
+    sobreposicao: bool | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 @dataclass(slots=True)

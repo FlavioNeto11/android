@@ -28,6 +28,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   dossiê do curador a mostra. A estimativa do teto usa a amostra só na prova de fluxo.
 - Prova `simulated`: `test_learning_prova_amostra.py` (7) e `test_learning_prova_teto.py` reescrito (mutações
   conferidas). Sem DDL. Real: `not_run`.
+## 2026-10-04 — 31.40: a recusa por sobreposição insere a limpeza opcional (branch feat/31-40-sobreposicao, sem migração)
+
+- `Verdict.sobreposicao` (o juiz diz quando algo COBRE o alvo; regra nova no `VERIFIER_SYSTEM`, hash muda). Em etapa
+  sem efeito, o plano revisado põe uma limpeza `opcional` antes dela, uma vez por objetivo, e retoma da tela atual; o
+  juiz não afrouxa. O orçamento 18.3 numa etapa de leitura vira o desfecho do 31.38. Prova:
+  `backend/tests/test_sobreposicao.py` (simulated); real `not_run`.
+
 ## 2026-10-04 — teste do preparo zumbi drenado sem Timer de relógio (branch fix/b2-r4-sem-timer)
 
 - `test_prontidao_subsistemas::test_b2_r4_boot_local_preparo_zumbi_drenado_nao_libera_esta_tentativa` falhou no

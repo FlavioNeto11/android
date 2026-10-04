@@ -21,7 +21,7 @@ from ..modules.learning.domain.falhas import FailureKind
 from ..modules.learning.domain.prova import rastro_da_amostra
 from ..modules.learning.domain.validacao import tamanho_da_amostra
 from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
-                      ObjectiveStatus, Plan, PlanStep, RunStatus, StepStatus)
+                      ObjectiveStatus, Plan, PlanStep, Postcondition, RunStatus, StepDTO, StepStatus)
 from ..planning.capabilities import capability_of
 from ..planning.catalog import capabilities_of
 from ..releases.service import InstalacaoIncerta
@@ -47,6 +47,8 @@ MAX_PLAN_REVISIONS = 1
 MOTIVO_FALTA_DE_INFORMACAO = "falta de informação"
 #: Item 31.38: o motivo da revisão dada à leitura que não achou o valor (UMA por objetivo; a contagem lê este prefixo).
 MOTIVO_DADO_AUSENTE = "dado ausente"
+#: Item 31.40: o motivo da revisão que insere a limpeza opcional antes da etapa recusada por sobreposição (UMA por objetivo).
+MOTIVO_SOBREPOSICAO = "sobreposição"
 # estados que o rodízio pode ligar sob demanda
 WAKEABLE = {InstanceState.stopped, InstanceState.absent, InstanceState.hibernated}
 #: Quanto um objetivo ESPERA o worker que hospeda o aparelho dele voltar antes de parar para uma pessoa. Queda
@@ -1758,6 +1760,8 @@ class Scheduler:
         # failed
         repo.finish_attempt(attempt_id, AttemptStatus.failed, error=detail, screen=out.tela_da_falha, error_kind=kind)
         repo.transition_step(step.id, StepStatus.failed, detail=detail, level="error", error_kind=kind)
+        if out.sobreposicao and self._limpar_antes(obj, step, detail or "sobreposição"):
+            return True                      # 31.40: segue da tela atual, com a limpeza antes da etapa
         if out.dado_ausente:                 # 31.38: UM plano revisado por objetivo, com a evidência; a segunda vez é final
             ja_revisou = int(self.repo.db.scalar(
                 "SELECT COUNT(*) FROM plan_versions WHERE objective_id=? AND reason LIKE ?",
@@ -2127,6 +2131,43 @@ class Scheduler:
             if mudou or rascunho != nova["draft_meta"]:
                 db.execute("UPDATE steps SET bindings=?, commit_guard=?, draft_meta=? WHERE id=?",
                            (dumps(bindings) if bindings else None, dumps(guardas), rascunho, nova["id"]))
+
+    def _limpar_antes(self, obj: Row, step: StepDTO, detail: str) -> bool:
+        """31.40: o juiz recusou a etapa SEM efeito porque algo cobre o alvo. Em vez de repeti-la (a mesma tela coberta),
+        o plano revisado põe ANTES dela uma etapa `opcional` de limpeza (31.36: até 3 decisões, sem juiz, pulada como
+        aviso se não se comprovar) e retoma da tela atual. Uma vez por objetivo e dentro do teto de recuperação; fora
+        disso, `False` e vale o caminho de sempre."""
+        run = self.repo.run_row(obj["run_id"])
+        if run is None or run["prova_fluxo_id"] or not self._pode_recuperar(obj["id"], step.id, step.side_effect):
+            return False
+        if int(self.repo.db.scalar("SELECT COUNT(*) FROM plan_versions WHERE objective_id=? AND reason LIKE ?",
+                                   (obj["id"], f"Recuperação automática ({MOTIVO_SOBREPOSICAO})%")) or 0):
+            return False
+        steps = self.recovery_steps(run, obj["id"], da_tela_atual=True)
+        alvo = next((s for s in steps if s.key == step.key), None)
+        if alvo is None:
+            return False
+        chave = f"limpar_antes_{step.key}"
+        limpar = PlanStep(key=chave, title=f"Fechar o que cobre '{step.title}'",
+                          goal=(f"Feche o diálogo, banner, aviso ou pedido de cookies que cobre a tela de '{step.title}'. "
+                                "Não toque em mais nada; se não fechar, siga sem ele."),
+                          depends_on=list(alvo.depends_on), app_id=alvo.app_id, max_attempts=1, timeout_s=60,
+                          opcional=True,
+                          postcondition=Postcondition(kind="model_judged", value="nada cobre a tela",
+                                                      description="Nenhum diálogo, banner ou aviso cobre a tela."))
+        novos: list[PlanStep] = []
+        for s in steps:
+            if s.key == step.key:
+                novos += [limpar, s.model_copy(update={"depends_on": [chave]})]
+            else:
+                novos.append(s)
+        reason = f"Recuperação automática ({MOTIVO_SOBREPOSICAO}) após '{step.title}': {detail}"
+        versao = self.repo.revise_plan(obj["id"], reason, novos)
+        self.herdar_textos(obj["id"], versao)
+        metricas.contar("etapa.limpeza_inserida")
+        self.repo.decision(f"{obj['instance_id']}: {reason}. Uma limpeza opcional entra antes da etapa; retomando da "
+                           "tela atual.", run_id=obj["run_id"], instance_id=obj["instance_id"])
+        return True
 
     def _revisao_cabe(self, obj: Row, step_id: str, side_effect: bool) -> bool:
         """`_try_recover` revisaria agora? Só leitura (29.35): quem chama precisa decidir ANTES de gravar a tentativa
