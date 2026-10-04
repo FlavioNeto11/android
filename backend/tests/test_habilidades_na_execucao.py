@@ -254,11 +254,12 @@ EQUIVALENCIA = [
 
 def _executor() -> Any:
     """Só o que `StepExecutor._prova_local` lê do executor: a porta de capability."""
-    return SimpleNamespace(capabilities=CatalogCapabilityProvider(CatalogCapabilityRegistry(lambda _app: None)))
+    return SimpleNamespace(capabilities=CatalogCapabilityProvider(CatalogCapabilityRegistry(lambda _app: None)),
+                           _linha_de_base=lambda: {"etapa": 0})      # 31.59: nenhuma bolha igual antes do envio
 
 
 def _etapa(chave: str, bindings: dict[str, str]) -> Any:
-    return SimpleNamespace(key=chave.lower(), bindings=bindings, band_guard=[],
+    return SimpleNamespace(id="etapa", key=chave.lower(), bindings=bindings, band_guard=[], mensagens_antes=0,
                            postcondition=SimpleNamespace(required_delivery_level=None))
 
 

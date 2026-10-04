@@ -314,6 +314,11 @@ achado não se confirmam nos dados.
     A métrica é a mesma, com `prova=marcador:<nivel>`, e o rejulgamento decide o nível que vale. Nenhum app declara
     marcador ainda: se a árvore real do Instagram expõe "Seen" ou "Delivered" debaixo da bolha não foi medido, e a
     declaração espera uma captura real, só leitura.
+    Desde o 31.59, a prova `sent_text` (e o marcador por cima dela) exige a LINHA DE BASE: no toque do efeito, o
+    executor guarda quantas bolhas com o texto IGUAL (normalizado; não mais "contém") a tela tinha, e a prova só vale
+    se depois houver mais. Sem isso, uma mensagem antiga com o mesmo texto (ou que contém o texto), com "Seen" embaixo e
+    o campo limpo, passava por envio. A linha de base mora em memória; a verificação sem ela (reconciliação depois de
+    reinício) não tem prova pela árvore e vai ao modelo.
   - `verdict` (o desfecho): `yes`/`no`/`uncertain`/`unprovable` no `verify`; o nome da ferramenta no `decide` (fora
     da lista de ferramentas, `desconhecida`); `plano` ou `pergunta` no `plan`; nulo na leitura e na linha de erro.
   - `image_reason` (por que a imagem foi junto, ou não), na ordem de `_motivo_da_imagem`. Sem imagem: `sensivel`,

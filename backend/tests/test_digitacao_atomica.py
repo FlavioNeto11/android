@@ -317,11 +317,11 @@ def test_texto_ainda_no_compositor_nao_prova_envio() -> None:
     como mensagem publicada — prova de envio falsa. Agora ele é o campo: texto nele = não saiu."""
     so_no_campo = parse_hierarchy(_tela(_no("android.widget.AutoCompleteTextView", text="oi, tudo bem?",
                                             rid=ID_COMPOSITOR, y=1180)))
-    assert so_no_campo.sent_as_message("oi, tudo bem?") is False
+    assert so_no_campo.sent_as_message("oi, tudo bem?", antes=0) is False
 
     publicado = parse_hierarchy(_tela(_no("android.widget.TextView", text="oi, tudo bem?", y=600),
                                       _no("android.widget.AutoCompleteTextView", text=DICA, rid=ID_COMPOSITOR, y=1180)))
-    assert publicado.sent_as_message("oi, tudo bem?") is True
+    assert publicado.sent_as_message("oi, tudo bem?", antes=0) is True
 
 
 def test_tela_de_desafio_com_campo_autocomplete_e_sensivel() -> None:

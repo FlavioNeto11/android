@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.59: a prova de envio pela árvore exige linha de base e texto igual (branch feat/31-57-marcador-de-entrega)
+
+- Achado A1 da revisão do 31.57, que vale também para o `sent_text` do 31.26, já na `main`: a bolha ANTIGA com o mesmo
+  texto, ou que CONTÉM o texto, com o campo limpo, passava por envio. Pior ainda com "Seen" embaixo: ia a `read`.
+- `UiTree.mensagens_iguais` conta por igualdade normalizada, e `sent_as_message(..., antes=)` só prova com MAIS bolhas
+  iguais do que a linha de base. Sem linha de base, não afirma nada.
+- O executor guarda a linha de base no toque do efeito (`_guardar_linha_de_base`), e ela chega à prova local
+  (`StepView.mensagens_antes`) e ao marcador.
+- Prova: `simulated` (`backend/tests/test_marcador_de_entrega.py`, com os casos da bolha antiga, da que contém o texto
+  e do rejulgamento com o mesmo modelo). Os testes que provam envio passaram a declarar a linha de base (nenhuma bolha
+  igual antes). A chamada no ponto do toque foi conferida pela leitura do código.
+
 ## 2026-10-04 — 31.57: o marcador de entrega declarado no catálogo dispensa o primeiro julgamento (branch feat/31-57-marcador-de-entrega)
 
 - Catálogo: o campo `delivery_marks` (`nivel=Texto`, com os níveis `sent`, `delivered` e `read`) é conferido na carga e

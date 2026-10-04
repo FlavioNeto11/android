@@ -62,11 +62,12 @@ _ORDEM_DO_MARCADOR = {"sent": 1, "delivered": 2, "read": 3}
 
 
 def nivel_pelo_marcador(marcas: Iterable[tuple[str, str]], conteudo: str | None, tree: UiTree, *,
-                        pendentes: Iterable[str] = (), falhas: Iterable[str] = ()) -> str | None:
+                        antes: int | None, pendentes: Iterable[str] = (), falhas: Iterable[str] = ()) -> str | None:
     """31.57: o nível de entrega que o MARCADOR declarado no catálogo afirma para a mensagem DESTA execução, ou `None`
     (o juiz decide, como antes). Só afirma quando tudo vale:
 
-    - o texto saiu (`sent_as_message`: numa bolha, fora do campo de escrita);
+    - o texto saiu (`sent_as_message` com a linha de base `antes`: mais bolhas com o texto IGUAL que antes do envio, e
+      fora do campo de escrita; sem linha de base, nada se afirma, 31.59);
     - nenhuma marca de pendente ("Sending…") nem de falha ("Not delivered") na tela;
     - o marcador é a PRIMEIRA linha de texto logo abaixo da bolha mais baixa com o texto. O "Seen" de uma mensagem
       antiga fica acima dela, e uma mensagem depois da nossa ficaria entre as duas; nos dois casos não casa.
@@ -75,11 +76,11 @@ def nivel_pelo_marcador(marcas: Iterable[tuple[str, str]], conteudo: str | None,
     pergunta ao juiz."""
     pares = [(nivel, norm_text(texto)) for nivel, texto in marcas if norm_text(texto)]
     n = norm_text(conteudo or "")
-    if not pares or not n or tree.sent_as_message(conteudo or "") is not True:
+    if not pares or not n or tree.sent_as_message(conteudo or "", antes=antes) is not True:
         return None
     if marcas_pendentes_na_tela(pendentes, tree) or marcas_pendentes_na_tela(falhas, tree):
         return None
-    bolhas = [e for e in tree.elements if not e.editable and n in norm_text(f"{e.text} {e.desc}")]
+    bolhas = [e for e in tree.elements if not e.editable and (norm_text(e.text) == n or norm_text(e.desc) == n)]
     if not bolhas:
         return None
     bolha = max(bolhas, key=lambda e: e.bounds[3])
@@ -113,7 +114,7 @@ def local_proof_holds(local_proof: str | None, step: Any, tree: UiTree) -> bool 
             # nele, a mensagem não saiu (a dica "Message…" do campo vazio não contém o texto).
             if not compositores or any(norm_text(conteudo) in norm_text(c.text) for c in compositores):
                 return False
-        return tree.sent_as_message(conteudo)
+        return tree.sent_as_message(conteudo, antes=getattr(step, "mensagens_antes", None))
     if tipo == "count_gt":
         return _contagem_maior(bruto, bindings, tree)
     # O `&` é separado ANTES de resolver as variáveis: um valor de binding nunca vira operador da prova.

@@ -120,6 +120,8 @@ def _executor_de_verificacao(tmp_path: Path, telas: list[UiTree], verificador: _
     ex.devices = _Aparelho(telas)
     ex.provider = verificador
     ex.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(lambda _app: None))
+    # 31.59: a linha de base do toque do efeito (nenhuma bolha igual antes); vale para qualquer etapa destes testes.
+    ex._mensagens_antes = _ZeroParaQualquerEtapa()
 
     async def _ai(run_id: str, objective_id: str | None, fabrica: Any, **_kw: Any) -> Verdict:
         resultado, _uso = await fabrica()
@@ -127,6 +129,11 @@ def _executor_de_verificacao(tmp_path: Path, telas: list[UiTree], verificador: _
 
     ex._ai = _ai
     return ex
+
+
+class _ZeroParaQualquerEtapa(dict):  # type: ignore[type-arg]
+    def get(self, _chave: Any, _padrao: Any = None) -> int:  # type: ignore[override]
+        return 0
 
 
 def _publicacao() -> StepDTO:

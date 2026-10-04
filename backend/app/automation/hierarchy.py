@@ -254,18 +254,30 @@ class UiTree:
         n = norm_text(needle)
         return bool(n) and any(n in norm_text(t) for t in self.texts())
 
-    def sent_as_message(self, content: str) -> bool | None:
+    def mensagens_iguais(self, content: str) -> int:
+        """31.59: quantos elementos NÃO editáveis têm o texto (ou a descrição) IGUAL ao conteúdo, normalizado. Igualdade
+        e não "contém": a bolha antiga "oi, tudo bem?" não é a mensagem "oi"."""
+        n = norm_text(content)
+        if not n:
+            return 0
+        return sum(1 for e in self.elements if not e.editable and (norm_text(e.text) == n or norm_text(e.desc) == n))
+
+    def sent_as_message(self, content: str, *, antes: int | None = None) -> bool | None:
         """Prova determinística de 'texto enviado numa conversa' (achado #102), sem chamar o modelo: o conteúdo
         aparece num elemento que NÃO é editável (uma mensagem já publicada no fio) e não sobra em nenhum campo
         editável (o campo de escrita, que some/limpa depois do envio — se ainda tiver o texto, ele não saiu de
         lá e não está comprovado). `None` quando não há conteúdo para provar (etapa sem `content` conhecido);
-        chamador cai para o julgamento do modelo nesse caso e em qualquer resultado False."""
+        chamador cai para o julgamento do modelo nesse caso e em qualquer resultado False.
+
+        31.59: `antes` é quantas bolhas com o texto IGUAL havia na tela de ANTES do envio (a linha de base que o executor
+        guarda no toque do efeito). A prova exige que a contagem tenha AUMENTADO: sem isso, uma mensagem antiga com o
+        mesmo texto e o campo limpo eram indistinguíveis de um envio. Sem linha de base (`None`), a árvore não afirma
+        nada e o modelo julga, como antes de existir a prova."""
         n = norm_text(content)
-        if not n:
+        if not n or antes is None:
             return None
-        em_bolha = any(not e.editable and n in norm_text(f"{e.text} {e.desc}") for e in self.elements)
         no_campo = any(e.editable and n in norm_text(e.text) for e in self.elements)
-        return em_bolha and not no_campo
+        return self.mensagens_iguais(content) > antes and not no_campo
 
     def count_text(self, needle: str) -> int:
         n = norm_text(needle)

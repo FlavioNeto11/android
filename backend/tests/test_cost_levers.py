@@ -141,14 +141,15 @@ def test_prova_local_de_dm_enviada_exige_fora_do_campo_de_escrita() -> None:
     for tamanho in (81, 300):
         conteudo = "y" * tamanho
         enviada = parse_hierarchy(_mensagem_no_fio(conteudo))
-        assert enviada.sent_as_message(conteudo) is True
+        assert enviada.sent_as_message(conteudo, antes=0) is True
+        assert enviada.sent_as_message(conteudo) is None                      # 31.59: sem linha de base, não opina
 
         ainda_no_campo = parse_hierarchy(_mensagem_no_fio(conteudo, tambem_no_campo=True))
-        assert ainda_no_campo.sent_as_message(conteudo) is False              # só no campo: não prova envio
+        assert ainda_no_campo.sent_as_message(conteudo, antes=0) is False     # só no campo: não prova envio
 
     vazia = parse_hierarchy(_mensagem_no_fio("y" * 81))
-    assert vazia.sent_as_message("") is None                                   # sem conteúdo conhecido: não opina
-    assert vazia.sent_as_message("outra coisa que não está na tela") is False
+    assert vazia.sent_as_message("", antes=0) is None                          # sem conteúdo conhecido: não opina
+    assert vazia.sent_as_message("outra coisa que não está na tela", antes=0) is False
 
 
 def test_catalogo_do_instagram_declara_prova_local_para_enviar_mensagem() -> None:

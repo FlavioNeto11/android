@@ -6,6 +6,10 @@ declarar esse marcador, e com ele casado logo abaixo da bolha DESTA execução o
 rejulgamento do 17.10 continua e decide; sem ele, com a chave desligada, sem marcador declarado ou com o marcador fora
 do lugar, tudo segue como antes.
 
+31.59 (revisão do 31.57, vale também para o `sent_text` do 31.26): a bolha é reconhecida por texto IGUAL (não "contém")
+e só conta se a tela tiver MAIS bolhas iguais do que a de antes do envio (a linha de base que o executor guarda no
+toque do efeito). Sem linha de base, a árvore não afirma nada.
+
 Nível de prova: `simulated` (árvores montadas com os ids das telas reais do Instagram e juízes de mentira). Nenhum app
 declara `delivery_marks` ainda: se a árvore real do Instagram expõe "Seen"/"Delivered" debaixo da bolha NÃO foi medido
 (UNKNOWN). A declaração no catálogo espera uma árvore real capturada, só leitura, numa janela de prova. Prova `real`:
@@ -49,8 +53,8 @@ def _status(texto: str) -> tuple[str, str, str]:
     return (_TV, texto, "direct_message_status_text")
 
 
-def _nivel(tela: UiTree, **kw: Any) -> str | None:
-    return nivel_pelo_marcador(marcas_de_entrega(MARCAS), CONTEUDO, tela, **kw)
+def _nivel(tela: UiTree, antes: int = 0, **kw: Any) -> str | None:
+    return nivel_pelo_marcador(marcas_de_entrega(MARCAS), CONTEUDO, tela, antes=antes, **kw)
 
 
 # ==================================================================== a prova pela árvore
@@ -72,8 +76,8 @@ def test_outra_mensagem_entre_a_nossa_e_o_marcador_nao_conta() -> None:
 
 def test_mesma_mensagem_repetida_vale_a_bolha_mais_baixa() -> None:
     """O mesmo texto mandado antes (outra execução) e agora: o marcador tem de estar debaixo da MAIS BAIXA."""
-    assert _nivel(_tela(CABECALHO, BOLHA, _status("Seen"), BOLHA, CAMPO_VAZIO)) is None
-    assert _nivel(_tela(CABECALHO, BOLHA, BOLHA, _status("Seen"), CAMPO_VAZIO)) == "read"
+    assert _nivel(_tela(CABECALHO, BOLHA, _status("Seen"), BOLHA, CAMPO_VAZIO), antes=1) is None
+    assert _nivel(_tela(CABECALHO, BOLHA, BOLHA, _status("Seen"), CAMPO_VAZIO), antes=1) == "read"
 
 
 def test_marcador_dentro_de_uma_frase_nao_conta() -> None:
@@ -86,8 +90,29 @@ def test_pendente_falha_ou_texto_no_campo_nao_afirmam_nada() -> None:
     tela = _tela(CABECALHO, BOLHA, _status("Seen"), (_TV, "Not delivered", "y"), CAMPO_VAZIO)
     assert _nivel(tela, falhas=("Not delivered",)) is None
     assert _nivel(_tela(CABECALHO, BOLHA, _status("Seen"), (_ET, CONTEUDO, "row_thread_composer_edittext"))) is None
-    assert nivel_pelo_marcador([], CONTEUDO, _tela(CABECALHO, BOLHA, _status("Seen"), CAMPO_VAZIO)) is None
-    assert nivel_pelo_marcador(marcas_de_entrega(MARCAS), None, _tela(CABECALHO, BOLHA, _status("Seen"))) is None
+    assert nivel_pelo_marcador([], CONTEUDO, _tela(CABECALHO, BOLHA, _status("Seen"), CAMPO_VAZIO), antes=0) is None
+    assert nivel_pelo_marcador(marcas_de_entrega(MARCAS), None, _tela(CABECALHO, BOLHA, _status("Seen")),
+                               antes=0) is None
+
+
+# ==================================================================== 31.59: a bolha antiga não é a nossa
+def test_bolha_antiga_com_o_mesmo_texto_e_seen_nao_prova_sem_aumentar_a_contagem() -> None:
+    """A1 da revisão: a última mensagem nossa tem o MESMO texto, com "Seen" embaixo; o envio de agora não virou bolha,
+    mas o campo limpou. Pela árvore sozinha, a tela é igual a um envio lido. A linha de base (1 bolha igual antes) a
+    separa: sem bolha nova, nem `sent_text` nem o marcador afirmam."""
+    tela = _tela(CABECALHO, BOLHA, _status("Seen"), CAMPO_VAZIO)
+    assert tela.sent_as_message(CONTEUDO, antes=1) is False
+    assert _nivel(tela, antes=1) is None
+    assert tela.sent_as_message(CONTEUDO) is None and _nivel(tela, antes=None) is None   # sem linha de base: nada
+
+
+def test_bolha_que_contem_o_texto_nao_e_a_mensagem() -> None:
+    """A1, segunda forma: a bolha antiga "oi, tudo bem?" CONTÉM a mensagem "oi". Igualdade, não "contém"."""
+    antiga = (_TV, f"{CONTEUDO} e mais um pedaço", "direct_text_message_text_view")
+    tela = _tela(CABECALHO, antiga, _status("Seen"), CAMPO_VAZIO)
+    assert tela.mensagens_iguais(CONTEUDO) == 0
+    assert tela.sent_as_message(CONTEUDO, antes=0) is False
+    assert _nivel(tela) is None
 
 
 def test_dois_marcadores_na_mesma_linha_fica_o_maior() -> None:
@@ -201,6 +226,28 @@ async def test_sem_rejulgamento_o_marcador_nao_fecha_sozinho(tmp_path: Path, com
     assert (juizes.barato, juizes.escalonamento) == (1, 0)
 
 
+async def test_rejulgamento_com_o_mesmo_modelo_o_marcador_nao_fecha_sozinho(tmp_path: Path,
+                                                                            com_marcas: None) -> None:
+    """O 17.10 só confere com modelo DIFERENTE; com o mesmo nas duas funções não há segunda opinião, e o marcador não
+    dispensa nada (o mesmo vale para o rejulgamento desligado, acima)."""
+    juizes = _Juizes(DeliveryLevel.read)
+    ex = _executor(tmp_path, [VISTA], juizes)  # type: ignore[arg-type]   # sem `_com_modelos_diferentes`
+    assert ex.cfg.ai_role("verify").model == ex.cfg.ai_role("escalation").model
+    ok, texto = await _verificar(ex, _envio_com_nivel(DeliveryLevel.read))
+    assert ok, texto
+    assert juizes.barato == 1
+
+
+async def test_bolha_antiga_na_linha_de_base_vai_ao_barato(tmp_path: Path, com_marcas: None) -> None:
+    """31.59 no executor: com a linha de base guardada no toque (1 bolha igual antes) e a mesma tela depois, o marcador
+    não dispensa o julgamento barato."""
+    juizes = _Juizes(DeliveryLevel.read)
+    ex = _pronto(tmp_path, juizes, VISTA)
+    ex._mensagens_antes = {k: 1 for k in ex._mensagens_antes}  # noqa: SLF001
+    await _verificar(ex, _envio_com_nivel(DeliveryLevel.read))
+    assert juizes.barato >= 1
+
+
 async def test_chave_desligada_volta_ao_de_antes(tmp_path: Path, com_marcas: None) -> None:
     juizes = _Juizes(DeliveryLevel.read)
     ex = _pronto(tmp_path, juizes, VISTA)
@@ -208,3 +255,16 @@ async def test_chave_desligada_volta_ao_de_antes(tmp_path: Path, com_marcas: Non
     ok, texto = await _verificar(ex, _envio_com_nivel(DeliveryLevel.read))
     assert ok, texto
     assert (juizes.barato, juizes.escalonamento) == (1, 1)
+
+
+def test_a_linha_de_base_e_a_contagem_da_tela_no_toque(tmp_path: Path) -> None:
+    """31.59: `_guardar_linha_de_base` (chamado no toque do efeito, em `_run_step`) guarda quantas bolhas IGUAIS a tela
+    de antes tem; a etapa sem `content` não guarda nada. A chamada no ponto do toque é conferida pela leitura do código."""
+    ex = _executor(tmp_path, [VISTA], _Juizes(DeliveryLevel.read))  # type: ignore[arg-type]
+    ex._mensagens_antes = {}  # noqa: SLF001
+    etapa = _envio_com_nivel(DeliveryLevel.read)
+    ex._guardar_linha_de_base(etapa, _tela(CABECALHO, BOLHA, _status("Seen"), (_ET, CONTEUDO, "c")))  # noqa: SLF001
+    assert ex._linha_de_base() == {etapa.id: 1}  # noqa: SLF001
+    sem_texto = etapa.model_copy(update={"id": "outra", "bindings": {"username": "@ana"}})
+    ex._guardar_linha_de_base(sem_texto, VISTA)  # noqa: SLF001
+    assert "outra" not in ex._linha_de_base()  # noqa: SLF001
