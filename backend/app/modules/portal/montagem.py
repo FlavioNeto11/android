@@ -60,7 +60,8 @@ class Portal:
                                          tipo_do_contato=_tipo_da_canais, avisar_resumo=avisar_resumo)
         # A exclusão a pedido (29.83) vale com o contato ligado ou não: a promessa da página continua depois de desligar.
         self.exclusao = ServicoDeExclusao(self.repo, apagar_no_canal=apagar_no_canal,
-                                          canal_presente=lambda: avisar() is not None)
+                                          canal_presente=lambda: avisar() is not None,
+                                          buscas_por_hora=lambda: cfg.file.portal.limites.buscas_por_operador_hora)
         for _codigo, mensagem, _dica in self.problemas(com_contagens=False):   # o banco ainda não migrou aqui
             log.warning("portal: %s", mensagem)
 

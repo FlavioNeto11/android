@@ -737,6 +737,7 @@ portal:                           # site institucional na raiz do nome público 
     corpo_max_bytes: 8192         # teto do corpo do POST, lido em fluxo (2048 a 65536)
     token_min_s: 3                # o formulário enviado antes disso é tratado como robô (1 a 60)
     token_max_s: 7200             # depois disso a página ficou aberta demais e o visitante recarrega (600 a 86400)
+    buscas_por_operador_hora: 30  # buscas por telefone na exclusão a pedido do titular (29.83), por operador (1 a 1000)
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço

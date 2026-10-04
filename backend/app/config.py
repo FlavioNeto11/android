@@ -1564,6 +1564,9 @@ class PortalContatoLimitesCfg(BaseModel):
     #: tempo demais e o visitante recarrega.
     token_min_s: int = Field(3, ge=1, le=60)
     token_max_s: int = Field(7200, ge=600, le=86_400)
+    #: Buscas por telefone na exclusão a pedido do titular (29.83), por operador da sessão e por hora, contadas em
+    #: memória no processo. Não é o formulário: é o painel, mas a busca acha contatos e não pode virar varredura.
+    buscas_por_operador_hora: int = Field(30, ge=1, le=1000)
 
 
 class PortalCfg(BaseModel):

@@ -34,6 +34,18 @@ class PedidoInvalido(ValueError):
         self.code = code
 
 
+class MuitasBuscas(Exception):
+    """O operador passou do teto de buscas da hora; `espera_s` vai no `Retry-After`."""
+
+    def __init__(self, espera_s: int) -> None:
+        super().__init__(f"espere {espera_s} s")
+        self.espera_s = espera_s
+
+
+#: Uma hora: a janela do teto de buscas por operador.
+JANELA_DAS_BUSCAS_S = 3600.0
+
+
 class Achado(Protocol):
     id: int
     criado_em: str
@@ -99,18 +111,36 @@ def _ids(valor: object) -> list[int]:
 
 class ServicoDeExclusao:
     def __init__(self, repo: RepositorioDeExclusao, *, apagar_no_canal: Callable[[], ApagarNoCanal | None],
-                 canal_presente: Callable[[], bool]) -> None:
+                 canal_presente: Callable[[], bool], buscas_por_hora: Callable[[], int]) -> None:
         self.repo = repo
         self._apagar_no_canal = apagar_no_canal
         self._canal_presente = canal_presente
+        self._buscas_por_hora = buscas_por_hora
+        # operador → instantes (relógio monotônico) das buscas da última hora. Em memória no processo: reiniciar zera,
+        # e isso basta, porque a busca exige o número inteiro e é de quem já está logado (decisão da orquestradora).
+        self._buscas: dict[str, list[float]] = {}
 
-    def buscar(self, telefone: object) -> list[dict[str, object]]:
+    def _contar_busca(self, operador: str, agora_s: float) -> None:
+        recentes = [t for t in self._buscas.get(operador, []) if agora_s - t < JANELA_DAS_BUSCAS_S]
+        if len(recentes) >= self._buscas_por_hora():
+            self._buscas[operador] = recentes
+            raise MuitasBuscas(max(1, int(JANELA_DAS_BUSCAS_S - (agora_s - recentes[0])) + 1))
+        recentes.append(agora_s)
+        self._buscas[operador] = recentes
+        for chave in [c for c, ts in self._buscas.items() if not ts or agora_s - ts[-1] >= JANELA_DAS_BUSCAS_S]:
+            del self._buscas[chave]                        # quem não busca há uma hora sai: o dicionário não cresce
+
+    def buscar(self, telefone: object, *, operador: str, agora_s: float) -> list[dict[str, object]]:
         """Os contatos com aquele telefone, só com id, data, estado e os 4 dígitos finais. Nome, empresa e mensagem
-        nunca saem daqui: a lista serve para escolher o que apagar, não para ler."""
+        nunca saem daqui: a lista serve para escolher o que apagar, não para ler. Conta no teto do operador só a busca
+        válida (a inválida não acha nada); o log leva o operador e a contagem, nunca o telefone."""
         if not isinstance(telefone, str) or nacional(telefone) is None:
             raise PedidoInvalido("telefone_invalido", "Informe o telefone com DDD (10 a 13 dígitos).")
-        return [{"id": c.id, "criado_em": c.criado_em, "estado": c.estado, "final": final(c.telefone)}
-                for c in self.repo.com_telefone() if mesmo_telefone(telefone, c.telefone)]
+        self._contar_busca(operador, agora_s)
+        achados = [{"id": c.id, "criado_em": c.criado_em, "estado": c.estado, "final": final(c.telefone)}
+                   for c in self.repo.com_telefone() if mesmo_telefone(telefone, c.telefone)]
+        log.info("portal: busca de exclusão por %s: %s achado(s)", operador, len(achados))
+        return achados
 
     # A exclusão em três passos, para esta camada não carregar o laço de eventos: a rota roda `preparar` e `concluir`
     # (banco) numa thread e `decidir` (só a Canais, que é assíncrona) no laço.

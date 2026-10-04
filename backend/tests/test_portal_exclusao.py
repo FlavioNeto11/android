@@ -18,6 +18,7 @@ import pytest
 from pydantic import SecretStr
 
 from app.main import create_app
+from app.modules.portal.application.exclusao import MuitasBuscas
 from app.modules.portal.domain.exclusao import final, mesmo_telefone, nacional
 from app.util import now
 
@@ -328,3 +329,62 @@ async def test_canais_real_lapide_impede_o_aviso_depois_da_exclusao(harness: Har
     # A mensagem já enviada saiu do chat agora (menos de 47 h) ou ficou para apagar à mão, nunca esquecida.
     enviadas = sum(1 for x in linhas if x["estado"] == "enviado")
     assert r.json()["mensagens_apagadas"] + len(r.json()["mensagens_a_mao"]) >= enviadas, r.json()
+
+
+# ------------------------------------------------------------------ teto de buscas e a janela entre módulos
+async def test_31a_busca_do_operador_da_429_e_o_outro_operador_segue(harness: Harness,
+                                                                     caplog: pytest.LogCaptureFixture) -> None:
+    """30 por hora por operador (`portal.limites.buscas_por_operador_hora`); a busca inválida não conta; o log leva
+    o operador e a contagem, nunca o telefone."""
+    assert harness.cfg.file.portal.limites.buscas_por_operador_hora == 30
+    _gravar(harness, TEL_A)
+    with caplog.at_level("INFO", logger="poc.portal"):
+        async with _logado(harness) as c:
+            assert (await c.post("/api/portal/contatos/busca", json={"telefone": "1"})).status_code == 422
+            for _ in range(30):
+                assert (await c.post("/api/portal/contatos/busca", json={"telefone": TEL_A})).status_code == 200
+            r = await c.post("/api/portal/contatos/busca", json={"telefone": TEL_A})
+    assert r.status_code == 429 and r.json()["detail"]["code"] == "muitas_buscas"
+    assert 1 <= int(r.headers["retry-after"]) <= 3601
+    async with _cliente(harness) as outro:
+        assert (await outro.post("/api/login", json={"operator": "Outra Pessoa"})).status_code == 200
+        assert (await outro.post("/api/portal/contatos/busca", json={"telefone": TEL_A})).status_code == 200
+    assert "busca de exclusão por Operadora Teste: 1 achado(s)" in caplog.text
+    assert "90000" not in caplog.text and "0001" not in caplog.text
+
+
+def test_teto_de_buscas_libera_depois_da_hora(harness: Harness) -> None:
+    assert harness.state is not None
+    servico = harness.state.portal.exclusao
+    for i in range(30):
+        servico.buscar(TEL_A, operador="x", agora_s=1000.0 + i)
+    with pytest.raises(MuitasBuscas):
+        servico.buscar(TEL_A, operador="x", agora_s=1100.0)
+    assert servico.buscar(TEL_A, operador="x", agora_s=1000.0 + 3600.5) == []     # a 1ª saiu da janela
+
+
+async def test_falha_do_portal_depois_do_ok_da_canais_e_a_repeticao_resolve(harness: Harness,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    """A janela entre módulos: a Canais já disse `ok` (lápide posta) e a transação do Portal cai. Nada fica
+    meio-apagado: a linha e o registro seguem como estavam; repetir apaga e registra UMA vez (a Canais é idempotente
+    na chave e devolve `ok` de novo)."""
+    assert harness.state is not None
+    a = _gravar(harness, TEL_A)
+    canais = _canais(harness, monkeypatch, CanaisFalsa(padrao=ApagadoFalso("ok", 0)))
+    repo = harness.state.portal.repo
+    original = repo.excluir
+
+    def quebra(**kw: object) -> int:
+        raise RuntimeError("banco caiu no meio")
+
+    monkeypatch.setattr(repo, "excluir", quebra)
+    async with _cliente(harness) as c:
+        assert (await c.post("/api/login", json={"operator": "Operadora Teste"})).status_code == 200
+        with pytest.raises(RuntimeError):
+            await c.post("/api/portal/contatos/excluir", json={"ids": [a], "pedido_por": "telefone"})
+        assert _ids_no_banco(harness) == {a} and _registros(harness) == []
+        monkeypatch.setattr(repo, "excluir", original)
+        r = await c.post("/api/portal/contatos/excluir", json={"ids": [a], "pedido_por": "telefone"})
+    assert r.status_code == 200 and r.json()["apagados"] == [a]
+    assert _ids_no_banco(harness) == set() and len(_registros(harness)) == 1
+    assert canais is not None and canais.chamados == [a, a]

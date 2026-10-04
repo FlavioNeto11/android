@@ -28,7 +28,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     id, data, estado e os 4 dígitos finais, "o pedido chegou por" sem texto livre e a confirmação com o que será e o
     que não será apagado;
   - `POST /api/portal/contatos/busca` e `POST /api/portal/contatos/excluir`, só para uma pessoa na sessão (401 sem
-    ela, mesmo no loopback e com o Bearer);
+    ela, mesmo no loopback e com o Bearer), com teto de 30 buscas por hora por operador (429 `muitas_buscas`);
   - a Canais primeiro (`apagar_avisos_do_portal`, 28.34, pelo `getattr`), o DELETE só com `ok` dela; registro em
     `portal_exclusoes` (migração 109) sem dado do titular e sem prazo;
   - a prova de fora confere 401 nas duas rotas (com corpo inválido de propósito) e nenhum `Set-Cookie` na resposta

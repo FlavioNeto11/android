@@ -5586,7 +5586,11 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 - Rotas `POST /api/portal/contatos/busca` e `POST /api/portal/contatos/excluir` (adendo v1.42), atrás de sessão e
   com uma PESSOA nela: sem `request.state.operador`, 401, mesmo no loopback e com o Bearer (que é anônimo). Nenhuma
   automação chama. A busca é `POST` para o telefone não ir para a URL nem para o log de acesso.
-- A busca compara TODOS os dígitos informados, com DDD, com o `55` do país opcional dos dois lados.
+- A busca compara TODOS os dígitos informados, com DDD, com o `55` do país opcional dos dois lados. Teto de 30 buscas
+  válidas por hora por operador (`portal.limites.buscas_por_operador_hora`, em memória; 429 `muitas_buscas`): a busca
+  acha contatos e não pode virar varredura. Cada busca deixa no log o operador e a contagem, sem o telefone.
+- Uma falha do Portal DEPOIS do `ok` da Canais deixa a linha e o registro como estavam (a lápide já segura o aviso);
+  repetir a exclusão resolve, porque a Canais é idempotente na chave. Coberto por teste.
 - **A Canais antes do DELETE** (`apagar_avisos_do_portal`, 28.34, contrato fora do Git em
   `.claude/handoffs/portal-exclusao-contrato.md`): ela tira o aviso da fila para sempre (lápide na chave
   `portal:<id>`, que faz qualquer reenfileirar virar no-op e fecha a corrida com o laço de reenvio), apaga o texto

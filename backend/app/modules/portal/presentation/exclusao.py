@@ -11,13 +11,14 @@ A busca é `POST` (e não `GET ?telefone=`) para o telefone não ir para a URL n
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Mapping
 
 from fastapi import APIRouter, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
-from app.modules.portal.application.exclusao import PedidoInvalido
+from app.modules.portal.application.exclusao import MuitasBuscas, PedidoInvalido
 from app.modules.portal.montagem import Portal
 from app.shared.costuras import autor_do_gesto
 from app.util import now
@@ -68,9 +69,15 @@ async def buscar_contatos(request: Request) -> Response:
         return preparo
     portal, dados = preparo
     try:
-        contatos = await run_in_threadpool(portal.exclusao.buscar, dados.get("telefone"))
+        contatos = await run_in_threadpool(portal.exclusao.buscar, dados.get("telefone"),
+                                           operador=autor_do_gesto(request.state.operador), agora_s=time.monotonic())
     except PedidoInvalido as erro:
         return _invalido(erro)
+    except MuitasBuscas as erro:
+        return JSONResponse(
+            {"detail": {"code": "muitas_buscas",
+                        "message": "Muitas buscas nesta hora. Espere um pouco e tente de novo."}},
+            status_code=429, headers={"Retry-After": str(erro.espera_s)})
     return JSONResponse({"contatos": contatos}, headers={"Cache-Control": "no-store"})
 
 

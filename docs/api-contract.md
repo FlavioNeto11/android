@@ -6079,7 +6079,10 @@ Bearer. Nenhuma entra na exceção do portão. Valem com o site e o contato liga
 - `POST /api/portal/contatos/busca`, corpo JSON `{telefone}` (é `POST` para o telefone não ir para a URL). Compara
   todos os dígitos, com DDD (10 a 13 dígitos; o `55` é opcional). **200** `{"contatos": [{id, criado_em, estado,
   final}]}`, com `final` = os 4 dígitos finais do telefone guardado. Nome, empresa, mensagem e o número inteiro nunca
-  saem. **422** `telefone_invalido`.
+  saem. **422** `telefone_invalido`. **429** `muitas_buscas` com `Retry-After`: acima de
+  `portal.limites.buscas_por_operador_hora` (30) buscas válidas por operador da sessão na última hora, contadas em
+  memória no processo (outro operador não é afetado; reiniciar zera). O log de cada busca leva o operador e a
+  contagem de achados, nunca o telefone.
 - `POST /api/portal/contatos/excluir`, corpo JSON `{ids: [1..50 inteiros], pedido_por: "formulario" | "telefone" |
   "outro"}`. **200** `{apagados: [id], mantidos: [{id, motivo}], inexistentes: [id], mensagens_apagadas: n,
   mensagens_a_mao: [{contato_id, enviada_em}], sem_canal: bool}`.
