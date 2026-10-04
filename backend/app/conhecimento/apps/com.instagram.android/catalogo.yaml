@@ -503,12 +503,16 @@ acoes:
     # vem de READ_POSTS_COUNT e é o que a prova local compara. Sem alvo: publicar não tem OUTRA pessoa (ADR-055 conta
     # contas por alvo); por isso não há `counterparty` nem binding `username`/`target`.
     bindings: [image_id]
-    optional_bindings: [posts_antes, content_brief, content, content_verbatim]
+    # 29.79: `rotulo_ia` NÃO vem do planejador: a central o grava na etapa pela origem da imagem (`persona_images`:
+    # gerada ou importada → "true"; enviada pelo dono → "false"), por cima do que vier no plano. Entra na chave da
+    # aprovação como qualquer argumento da etapa: publicar sem o rótulo é outro item.
+    optional_bindings: [posts_antes, content_brief, content, content_verbatim, rotulo_ia]
     objeto_alvo: [image_id]
     preparo: [PUT_MEDIA_IN_GALLERY]
     precondition: A imagem está na galeria do aparelho, o editor de nova publicação está aberto com ela escolhida e a
       legenda já foi escrita e aprovada.
-    goal: Publicar a imagem escolhida com a legenda aprovada. Depois do Share, voltar ao PRÓPRIO perfil para a
+    goal: Publicar a imagem escolhida com a legenda aprovada. Se rotulo_ia for "true", ligar "Add AI label" na tela
+      da legenda ANTES do Share (o Share é recusado sem ele). Depois do Share, voltar ao PRÓPRIO perfil para a
       contagem de publicações (a prova é o número maior que o lido antes).
     post_kind: model_judged
     post_value: publicação criada no próprio perfil
@@ -528,8 +532,16 @@ acoes:
     # até a galeria em 04/10 16:05Z (android-13): `profile_header_create_button` (desc "Create New") → "Create new post"
     # → tela "New post" com `next_button_textview` (Next) e `action_bar_cancel`; a galeria estava vazia, então a
     # tela da legenda e o Share ficam para a primeira publicação de teste.
-    commit_selector: text==Share
+    # 29.79: MEDIDO na publicação manual do 8.3 (android-01, 03/10 04:43Z, `data/diag-8-3/a01-post-02-rotulo-on.json`):
+    # o botão é `share_footer_button` (desc "Share"); o texto "Share" é um TextView filho, não clicável. Com
+    # `text==Share` o toque no botão de verdade seria recusado como "elemento errado".
+    commit_selector: id=share_footer_button
     commit_guard: ['{content}']
+    # 29.79 (regra do dono, 03/10): imagem realista gerada por IA e publicada pela automação SEMPRE leva o rótulo de
+    # IA do Instagram. MEDIDO no mesmo 8.3 (`a01-post-02-rotulo-off.json` e `-on.json`): "Add AI label" é um TextView
+    # sem estado; o interruptor é um `android.view.View` clicável na MESMA linha, `checked=true` quando ligado. A
+    # conferir de novo na medida dos seletores depois do deploy (versão do app). Sem ele ligado, nada de Share.
+    commit_switch: ['rotulo_ia:text==Add AI label']
     limit_bucket: posts
     default_policy: approval_required
     needs_draft: true

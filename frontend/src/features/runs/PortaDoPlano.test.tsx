@@ -239,12 +239,13 @@ describe('29.30 no cartão do plano', () => {
   it('a publicação mostra a imagem que vai ao feed', async () => {
     backend.on('GET', /\/runs\/run-p\/porta$/, () => json(previa([
       item({ step_id: 'run-p:android-01:v1:pub', acao: 'CREATE_POST', alvo: null, tem_imagem: true, image_id: 'img-1',
-             imagem_sha256: 'c'.repeat(64) }),
+             imagem_sha256: 'c'.repeat(64), rotulo_ia: true }),
     ])));
     await montar();
     const img = container.querySelector('img');
     expect(img?.getAttribute('alt')).toBe('Imagem que CREATE_POST publica');
     expect(img?.getAttribute('src')).toContain('img-1');
+    expect(text(container)).toContain('com rótulo de IA');       // 29.79
   });
 });
 

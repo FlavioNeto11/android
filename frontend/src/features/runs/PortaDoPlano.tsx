@@ -324,6 +324,7 @@ export function PortaDoPlano({ runId }: { runId: string }) {
                     <span className={styles.draftWhat}>{oQue(item)}</span>
                     <Badge tone={selo.tone} icon={selo.icon}>{rotuloDoSelo(item)}</Badge>
                     {item.tem_imagem ? <Badge tone="neutral" icon={ImageIcon}>com imagem</Badge> : null}
+                    {item.rotulo_ia ? <Badge tone="neutral">com rótulo de IA</Badge> : null}
                     {tirada ? <Badge tone="warning">{porDependencia ? 'sai junto (depende de uma tirada)' : 'não será feita'}</Badge> : null}
                   </div>
                   {item.image_id && item.profile_id ? (

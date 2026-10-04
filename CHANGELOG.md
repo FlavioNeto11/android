@@ -194,6 +194,22 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Limite conhecido: o nome de um terceiro escrito por extenso, sem @, e-mail ou telefone, não é detectável; ele só sai
   no texto que a pessoa escreveu e que a conversa já mostrava.
 - `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
+
+## 2026-10-04 — 29.79: a foto realista de IA sai SEMPRE com o rótulo de IA do Instagram (branch feat/29-79-rotulo-ia)
+
+- A central grava `rotulo_ia` na etapa que publica imagem pela origem dela (gerada ou importada: "true"; enviada pelo
+  dono: "false"), por cima do que o plano disser. Como argumento da etapa, entra na chave da aprovação: publicar sem o
+  rótulo é outro item, e o sim reaproveitado numa revisão confere o rótulo também.
+- Catálogo novo `commit_switch` (`<argumento>:<seletor>`): no CREATE_POST, `rotulo_ia:text==Add AI label`. O executor
+  não toca no Share sem o interruptor ligado na mesma linha do texto; na 2ª recusa (ou na 1ª, se veio de receita) a
+  etapa para pedindo uma pessoa. Medido na publicação manual do 8.3 (android-01, 03/10): o interruptor e o botão do
+  Share (`commit_selector` passa a `id=share_footer_button`; o `text==Share` era o TextView filho, não clicável).
+- A imagem de OUTRA persona não fecha chave nem se aprova no plano ("a imagem é de outra persona"); a galeria já a
+  recusava na execução.
+- O cartão do plano e as aprovações da execução dizem "com rótulo de IA".
+- Prova: `simulated` (`tests/test_rotulo_ia.py`, `tests/test_rotulo_ia_no_executor.py`, `PortaDoPlano.test.tsx`,
+  `execution.test.tsx`). `not_run`: a medida dos seletores no aparelho depois do deploy e a 1ª publicação real.
+
 ## 2026-10-04 — 31.49: o executor honra o sim dado no plano (branch feat/31-49-executor-honra-o-plano)
 
 - `backend/app/state.py`: o sim do plano de capacidade com texto só vale com o texto exato que vai sair (conferido depois

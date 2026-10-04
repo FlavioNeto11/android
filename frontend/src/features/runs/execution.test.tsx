@@ -282,7 +282,7 @@ describe('Textos — os N rascunhos da execução, lidos e decididos juntos', ()
 
   it('29.30: a publicação mostra a imagem que vai ao feed ao lado da legenda; o comentário não ganha imagem', async () => {
     const post = { ...rascunho('a-3', 'obj-3', 'Fim de tarde'), capability: 'CREATE_POST', target: null,
-                   summary: 'Publicar a imagem no feed', image_id: 'img-9' };
+                   summary: 'Publicar a imagem no feed', image_id: 'img-9', rotulo_ia: true };
     backend.on('GET', /^\/api\/approvals$/, () => json([rascunho('a-1', 'obj-1', 'Que post lindo!'), post]));
 
     const el = await render(<Textos detail={makeRunDetail()} />);
@@ -292,6 +292,8 @@ describe('Textos — os N rascunhos da execução, lidos e decididos juntos', ()
     expect(imagens).toHaveLength(1);
     expect(imagens[0]?.getAttribute('src')).toBe('/api/personas/p-a-3/images/img-9');
     expect(imagens[0]?.getAttribute('alt')).toContain('Imagem que será publicada');
+    expect(text(el)).toContain('com rótulo de IA');             // 29.79: o rótulo de IA aparece só na publicação
+    expect(text(el).match(/com rótulo de IA/g)).toHaveLength(1);
   });
 
   it('trocar de aba não apaga o que a pessoa já reescreveu', async () => {

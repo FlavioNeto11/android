@@ -84,17 +84,48 @@ def argumentos_da_acao(cap: Capability, bindings: Mapping[str, object]) -> dict[
     return argumentos
 
 
-def midia_da_etapa(db: Database, bindings: Mapping[str, object]) -> tuple[bool, str | None]:
-    """`(tem_imagem, sha256)`: a imagem que a etapa vai publicar, pelo sha256 dos BYTES (não pelo id). Imagem citada sem
-    sha256 conhecido (ainda gerando, falhou, id que não existe) dá `(True, None)`, e quem chama falha fechado."""
+#: 29.79: o argumento que diz se a publicação leva o rótulo de IA do Instagram ("true"/"false"), gravado pela central.
+ARGUMENTO_DO_ROTULO_IA = "rotulo_ia"
+
+
+def _id_da_imagem(bindings: Mapping[str, object]) -> str:
     valor = bindings.get(ARGUMENTO_DA_IMAGEM)
-    imagem = str(valor).strip() if valor is not None else ""
+    return str(valor).strip() if valor is not None else ""
+
+
+def midia_da_etapa(db: Database, bindings: Mapping[str, object], *,
+                   perfil: str | None = None) -> tuple[bool, str | None]:
+    """`(tem_imagem, sha256)`: a imagem que a etapa vai publicar, pelo sha256 dos BYTES (não pelo id). Imagem citada sem
+    sha256 conhecido (ainda gerando, falhou, id que não existe) dá `(True, None)`, e quem chama falha fechado. Com
+    `perfil`, a imagem de OUTRA persona também dá `(True, None)` (29.79): publicá-la na conta errada não se desfaz."""
+    imagem = _id_da_imagem(bindings)
     if not imagem:
         return False, None
     if "{" in imagem:                   # mais estrito que `tem_variavel` de propósito: id de imagem não tem `{`
         return True, None
+    if perfil is not None and imagem_de_outra_persona(db, bindings, perfil):
+        return True, None
     sha = db.scalar("SELECT bytes_sha256 FROM persona_images WHERE id=? AND status='ready'", (imagem,))
     return True, (str(sha) if sha else None)
+
+
+def imagem_de_outra_persona(db: Database, bindings: Mapping[str, object], perfil: str) -> bool:
+    """A imagem citada existe e é de OUTRA persona que `perfil` (29.79)? `persona_images.persona_id` é o perfil."""
+    imagem = _id_da_imagem(bindings)
+    if not imagem or "{" in imagem:
+        return False
+    dona = db.scalar("SELECT persona_id FROM persona_images WHERE id=?", (imagem,))
+    return dona is not None and str(dona) != perfil
+
+
+def rotulo_ia_da_imagem(db: Database, image_id: str) -> str | None:
+    """29.79: "true" se a imagem pede o rótulo de IA do Instagram, "false" se não; `None` se ela não existe. Só a
+    enviada pelo dono (`upload`) sai sem rótulo: a gerada é foto realista de IA (regra do dono, 03/10) e a importada
+    não tem origem conhecida, então leva o rótulo (o lado seguro)."""
+    origem = db.scalar("SELECT source FROM persona_images WHERE id=?", ((image_id or "").strip(),))
+    if origem is None:
+        return None
+    return "false" if str(origem) == "upload" else "true"
 
 
 def chave_da_aprovacao(bindings: Mapping[str, object], cap: Capability, *, perfil: str, aparelho: str,

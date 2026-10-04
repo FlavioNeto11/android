@@ -17,7 +17,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Protocol, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Mapping, Protocol, Sequence, TypeVar
 from urllib.parse import unquote
 
 from PIL import Image
@@ -1943,6 +1943,7 @@ class StepExecutor:
         decide_kind = self.cfg.ai_role("decide").kind
         forcar_tier_1 = False                  # a decisão anterior foi descartada pelo piso: a PRÓXIMA sobe de tier
         bloqueio_escalado = False              # item 17.10: o bloqueio do tier 0 sobe ao tier 1 UMA vez por tentativa
+        recusas_do_interruptor = 0             # 29.79: a 2ª recusa por interruptor desligado para pedindo uma pessoa
         cascata_pendente = False               # RA-10: a PRÓXIMA decisão é a da cascata (o `bloqueio_escalado` fica)
         tier = base_tier                       # só existe de verdade dentro do laço (decisão fresca); este é o
                                                 # valor antes de qualquer decisão — nunca lido por uma de receita
@@ -2909,6 +2910,21 @@ class StepExecutor:
                     reject = "o efeito externo desta etapa já foi disparado; é proibido repetir. Apenas verifique."
                 else:
                     reject = rejeicao_do_commit(step.commit_guard, step.band_guard, cartao, obs.tree, target)
+                    desligado = (rejeicao_do_interruptor(cap.commit_switch, step.bindings, obs.tree)
+                                 if reject is None and cap is not None else None)
+                    if desligado:
+                        recusas_do_interruptor += 1
+                        aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=True,
+                                       source="recipe" if from_recipe else "ai")
+                        repo.finish_action(aid, ActionStatus.rejected, error=desligado)
+                        await evidence(obs, f"Efeito recusado antes do toque: {desligado}")
+                        if recusas_do_interruptor >= 2 or from_recipe:
+                            # 29.79: sem o interruptor confirmado ligado, o efeito não sai; uma pessoa olha a tela.
+                            return StepOutcome(Outcome.waiting_user, desligado, needs=(
+                                "Confira na tela se o interruptor pedido está ligado (o rótulo de IA da publicação) e "
+                                "retome o item; nada foi publicado."))
+                        history.append(f"{decision.tool} REJEITADA pelo executor: {desligado}")
+                        continue
                 if reject:
                     aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=True,
                                    source="recipe" if from_recipe else "ai")
@@ -3793,6 +3809,34 @@ def rejeicao_do_commit(commit_guard: Sequence[str], band_guard: Sequence[str], c
         return ("o alvo precisa estar no mesmo cartão (publicação) de: " + ", ".join(f'"{m}"' for m in fora_do_cartao)
                 + " — é o botão logo ACIMA dessa legenda; como está, o efeito pode acertar outra publicação. Role até a"
                   " legenda aparecer logo abaixo do botão, ou chame step_blocked se ela não estiver nesta tela")
+    return None
+
+
+def interruptor_ligado(tree: UiTree, seletor: str) -> bool:
+    """O interruptor de `seletor` está ligado na tela? O elemento do seletor marcado, ou um elemento marcado na MESMA
+    linha dele (no Instagram o texto "Add AI label" e o interruptor são irmãos)."""
+    for alvo in tree.find_selector(seletor):
+        if alvo.checked:
+            return True
+        # Faixas verticais que se SOBREPÕEM: o interruptor medido (03/10) é mais alto que o texto, e o centro dele cai
+        # bem na borda de baixo do texto.
+        y1, y2 = alvo.bounds[1], alvo.bounds[3]
+        if any(e.checked and e.bounds[1] < y2 and e.bounds[3] > y1 for e in tree.elements):
+            return True
+    return False
+
+
+def rejeicao_do_interruptor(commit_switch: Sequence[str], bindings: Mapping[str, str], tree: UiTree) -> str | None:
+    """29.79: por que o toque de efeito NÃO pode acontecer por um interruptor desligado; `None` quando cada interruptor
+    exigido (`<argumento>:<seletor>` com o argumento "true") está ligado na tela. Pura, para o teste bater sem
+    aparelho."""
+    for entrada in commit_switch:
+        argumento, _, seletor = entrada.partition(":")
+        if str(bindings.get(argumento.strip(), "")).strip().lower() != "true":
+            continue
+        if not interruptor_ligado(tree, seletor.strip()):
+            return (f"antes do efeito, '{seletor.strip()}' tem de estar LIGADO (a etapa pede {argumento.strip()}) e não "
+                    "está: ligue-o nesta tela antes de tocar no efeito")
     return None
 
 

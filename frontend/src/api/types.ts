@@ -1339,6 +1339,8 @@ export interface Approval {
   /** 29.30: a imagem da persona que a etapa vai publicar (CREATE_POST), para quem aprova ver o que sai. Ausente nas
    *  aprovações sem imagem (e no backend anterior ao campo). */
   image_id?: string | null;
+  /** 29.79: a publicação sai com o rótulo de IA do Instagram; `null` sem imagem. */
+  rotulo_ia?: boolean | null;
   /** 30.61: `plano` (o sim dado na prévia da porta) ou `execucao`. Ausente nas respostas antigas = `execucao`. */
   origem?: 'plano' | 'execucao';
   /** 30.61: até quando o sim do plano vale; nulo nas de execução. */
@@ -2896,6 +2898,8 @@ export interface ItemDaPorta {
   tem_imagem?: boolean;
   /** A imagem que a publicação leva (29.30/30.68), só a de sha256 conhecido; o painel a mostra no cartão. */
   image_id?: string | null;
+  /** 29.79: a publicação sai com o rótulo de IA do Instagram; `null` sem imagem. */
+  rotulo_ia?: boolean | null;
   imagem_sha256?: string | null;
   chave: string | null;
   dependentes: string[];

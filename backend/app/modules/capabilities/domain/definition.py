@@ -93,6 +93,8 @@ class SideEffectContract:
     commit_selector: str | None = None
     commit_guard: tuple[str, ...] = ()
     band_guard: tuple[str, ...] = ()
+    #: 29.79: `<argumento>:<seletor>` dos interruptores que têm de estar ligados antes do toque (o rótulo de IA).
+    commit_switch: tuple[str, ...] = ()
     #: Que interação isto vira no histórico do perfil (`dm_sent`, `followed`…).
     interaction_type: str | None = None
     #: Textos que, visíveis depois do efeito, provam que ele NÃO valeu.

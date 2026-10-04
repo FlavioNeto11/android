@@ -29,6 +29,7 @@ from ..modules.pedidos.domain.orcamento import teto_da_execucao
 from ..planning.catalog import session_provider_of
 from ..planning.provider import Usage
 from ..security.redaction import redact
+from ..social.chave_da_aprovacao import ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_ROTULO_IA, rotulo_ia_da_imagem
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, parse_iso, to_iso, truncate
 from .latencia import TemposDaTentativa, motivo_da_espera
@@ -328,6 +329,17 @@ class Repository:
             " physical_id=COALESCE(?, physical_id) WHERE id=?",
             (worker_id, hosted_by, device_serial, physical_id, objective_id))
 
+    def _com_rotulo_ia(self, bindings: dict[str, str]) -> dict[str, str]:
+        """29.79: a etapa que publica uma imagem leva `rotulo_ia` pela ORIGEM da imagem, por cima do que o plano disser
+        (o planejador nunca decide se a foto de IA sai sem rótulo). Imagem por resolver ou inexistente: o argumento sai
+        e a etapa falha fechado na chave e na galeria, como antes."""
+        imagem = (bindings.get(ARGUMENTO_DA_IMAGEM) or "").strip()
+        if not imagem:
+            return bindings
+        sem = {k: val for k, val in bindings.items() if k != ARGUMENTO_DO_ROTULO_IA}
+        rotulo = rotulo_ia_da_imagem(self.db, imagem) if "{" not in imagem else None
+        return {**sem, ARGUMENTO_DO_ROTULO_IA: rotulo} if rotulo is not None else sem
+
     def _insert_steps(self, run_id: str, oid: str, iid: str, version: int, steps: list[PlanStep],
                       variables: dict[str, str], reason: str) -> None:
         resolved: list[PlanStep] = []
@@ -364,7 +376,7 @@ class Repository:
                 "precondition": resolve_templates(s.precondition, v), "postcondition": post,
                 "commit_guard": [resolve_templates(g, v) or "" for g in s.commit_guard],
                 "band_guard": [resolve_templates(g, v) or "" for g in s.band_guard],
-                "bindings": {k: resolve_templates(val, v) or "" for k, val in s.bindings.items()}}))
+                "bindings": self._com_rotulo_ia({k: resolve_templates(val, v) or "" for k, val in s.bindings.items()})}))
         self.db.execute("INSERT INTO plan_versions(objective_id, version, reason, steps, created_at) VALUES (?,?,?,?,?)",
                         (oid, version, reason, dumps([s.model_dump(mode="json") for s in resolved]), now_iso()))
         for seq, s in enumerate(resolved, start=1):
