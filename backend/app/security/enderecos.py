@@ -64,7 +64,10 @@ _URL_NO_TEXTO = re.compile(r"(?:https?://|\bwww\.)[^\s'\"<>]+|\b(?:[a-z0-9-]+\.)
 def enderecos_limpos(texto: str) -> str:
     """31.52: o texto com cada endereço passado por `endereco_para_o_prompt` (histórico do ator). Cortado em
     `_TETO_DO_TEXTO` antes da regex: um erro do driver com um blob de 100 mil caracteres travava o laço por minutos."""
-    return _URL_NO_TEXTO.sub(lambda m: endereco_para_o_prompt(m.group(0)), (texto or "")[:_TETO_DO_TEXTO])
+    texto = texto or ""
+    cortado = len(texto) > _TETO_DO_TEXTO           # o corte não é silencioso: quem lê vê o `…`
+    limpo = _URL_NO_TEXTO.sub(lambda m: endereco_para_o_prompt(m.group(0)), texto[:_TETO_DO_TEXTO])
+    return limpo + "…" if cortado else limpo
 
 
 __all__ = ["endereco_para_o_prompt", "enderecos_limpos"]
