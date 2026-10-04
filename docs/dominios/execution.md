@@ -134,6 +134,31 @@ Uma execução em `needs_input` há `NEEDS_INPUT_EXPIRA_H` (24 h) sem resposta �
   iniciado e sem a intenção do prazo de início (`pedidos/domain/fechamento.py`).
 - Prova `simulated`: `backend/tests/test_needs_input_expira.py`.
 
+### A pergunta parada vence sozinha (31.43)
+
+O prazo da 29.50 deixa de ser a constante e passa ao config (`execucao.pergunta_vence_h`, 24 h por padrão; a chave
+`execucao.vencimento_ligado`, ligada de fábrica, desliga os dois vencimentos). `NEEDS_INPUT_EXPIRA_H` fica como o padrão.
+
+- Segundo caso: o objetivo em `waiting_user` de uma execução JÁ TERMINADA (na prática `completed_with_issues`, onde
+  `recompute_run` deixa a execução "para permitir retomada"). Ele ficava `waiting_user` para sempre; no central eram 22.
+  `RunService.vencer_objetivos_parados(agora)` roda no mesmo laço (`_expiracao_uma_vez`) e o fecha PELO SISTEMA:
+  - o relógio é o mais tardio entre `objectives.finished_at` (a entrada em `waiting_user`) e `runs.finished_at`:
+    nunca adianta, e a retomada de outro item da execução recomeça o prazo;
+  - o objetivo vira `cancelled`, com as etapas abertas e as aprovações pendentes dele; o `status_detail` é "Sem resposta
+    em 24 h: o pedido venceu e foi encerrado pelo sistema. Para seguir, faça o pedido de novo.";
+  - `recompute_run` deriva o status da execução, que segue `completed_with_issues`: não é cancelamento da pessoa, sem
+    `cancel_requested` e sem o sinal `cancelou_execucao`;
+  - a escrita é condicional ao objetivo ainda em `waiting_user` e à execução ainda terminal: a retomada no meio da
+    varredura ganha. Execução ainda viva (`running`, `paused`, `needs_input`) não é tocada;
+  - fecha o estoque existente no primeiro ciclo, sem escrita manual no banco.
+- A marca para máquina, de formato fixo (a Canais a lê por um adaptador), vai nos dois casos em `dados.vencimento` com
+  exatamente `regra` ("31.43"), `motivo` ("vencido_sem_resposta"), `horas` e `desde`: no `run.updated` (pergunta; o
+  `expirada` da 29.50 continua ao lado) e no `objective.updated` (objetivo parado).
+- Só muda estado: nada responde a pergunta, digita, toca o aparelho ou chama IA. Pedido de senha, desafio ou CAPTCHA
+  também só são encerrados. O "Bloqueado: …" que o objetivo deixou no aparelho sai se nenhum outro objetivo dele espera
+  uma pessoa; os outros avisos ficam. O objetivo vencido deixa de contar como aberto (`api._OBJETIVO_ABERTO`).
+- Prova `simulated`: `backend/tests/test_pergunta_vence.py`. `not_run`: o primeiro ciclo no central depois do deploy.
+
 Provas (`simulated`, harness na porta 5640):
 `backend/tests/test_intencao_chamadores.py::test_os_tres_chamadores_coerentes_para_a_mesma_frase` (valor inválido,
 buraco vazio e empate, com `count("plan")` inalterado) e `::test_empate_na_execucao_pergunta_com_as_opcoes_e_nao_grava_skill`.
@@ -570,6 +595,32 @@ a recuperação copiou a etapa igual e falhou mais 3.
   - nenhum juiz entra no lugar da pós-condição (decisão da orquestradora: 4 execuções no histórico não pagam um
     caminho novo entre a tela e o "comprovado").
 - Teste: `tests/test_seletor_impossivel.py` (`simulated`, com um caso de ponta a ponta no harness).
+
+### Pós-condição com valor vazio falha fechado antes de agir (31.44)
+
+Achado do histórico de erros do portal (29.72). Na r-20261004111836-fec1a1 (validação do fluxo "enviar a mensagem", no
+android-04), o molde de `check_account` era `id=…:id/account_label|text={account_label}`; a etapa não declara app e o
+aparelho não tinha `account_label`, então o valor virou `""`. `UiTree._partes_do_seletor` degrada `text=` para a busca
+do texto literal "text=": a etapa gastou 3 tentativas e 3 chamadas `decide` (32 mil tokens) para chegar a "0 elemento(s)".
+
+- **Guarda** (`_run_step`, junto das do `{{saida:…}}` e do `{account_label}` do 24.4, antes de qualquer observação,
+  ação ou IA): `parte_vazia_da_pos_condicao` acha parte do seletor (`element_present`) com chave conhecida e valor vazio
+  (`UiTree.parte_sem_valor`), parte em branco, ou `text_visible` em branco.
+- **Desfecho:** se o aparelho está sem conta conhecida (`account_label` vazio), `waiting_user` com o motivo do 24.4
+  (tipo `conta_errada`, que nunca vira lição; a tentativa é devolvida e a pessoa cadastra a conta). Com conta
+  conhecida, é variável do plano que chegou vazia: defeito do plano (`defeito_do_plano`) na 1ª tentativa, sem plano
+  revisado.
+- **Fora do alcance:** o seletor com valor preenchido mas incoerente (o `message_input|text=<nome da conversa>` da
+  r-20261004082521-2f21e2, caso do 31.32). Antes da ação o campo de escrita nem está na tela, então nada decide em
+  tempo de entrada; quem fecha é o 31.32, na tela final e em 1 tentativa. Esse seletor veio do planejador real: o QA
+  Messenger não tem pasta em `conhecimento/apps/` nem plano escrito à mão (o provedor simulado já usa
+  `id=chat_title|text={recipient}`), e o texto do planejador tem snapshot por sha256 (`test_prompts_licoes.py`), então
+  a correção fica com a lição do 31.32.
+- **Limite conhecido:** o 30.50 já tira do despacho de prova o aparelho sem `account_label`; esta guarda cobre qualquer
+  execução. Um molde "Conta: {account_label}" em texto livre ("Conta: " não vazio) segue pelo 24.4.
+- **Risco aceito (igual ao 31.32):** o `defeito_do_plano` com conta conhecida retém também os aparelhos irmãos da
+  execução, mesmo quando a variável vazia é por aparelho; e o tipo entra no minerador de lições do planejador.
+- Teste: `tests/test_pos_condicao_impossivel.py` (`simulated`; prova `real` não executada).
 
 ## VERIFY pela porta de capability
 

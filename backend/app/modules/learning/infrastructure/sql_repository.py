@@ -31,7 +31,7 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, D
                                                conferir_nascimento, motivo_da_emenda_b)
 from app.modules.learning.domain.efeito import Exposicao
 from app.modules.learning.domain.evidencia_invalida import PREFIXO, reaprendizado
-from app.modules.learning.domain.falhas import classificar_falha
+from app.modules.learning.domain.falhas import tipo_da_tentativa
 from app.modules.learning.domain.livro import (Escopo, ItemDeAprendizado, NovoItem, Transicao, fluxo_tem_efeito,
                                                receita_tem_efeito, ref_da_trilha)
 from app.modules.learning.domain.promocao import Evidencia
@@ -467,7 +467,7 @@ class SqlLearningRepository:
         pacotes = {linhas.texto(r, "id"): linhas.texto_ou_nulo(r, "package") or linhas.texto(r, "id")
                    for r in self._db.query("SELECT id, package FROM apps")}
         tentativas = self._db.query(
-            "SELECT a.id, a.step_id, a.number, a.status, a.error, a.failure_kind, a.started_at, a.finished_at,"
+            "SELECT a.id, a.step_id, a.number, a.status, a.error, a.failure_kind, a.recovery, a.started_at, a.finished_at,"
             " s.capability, s.app_id, s.driven_by, s.status AS step_status, r.app_ids,"
             " (SELECT MAX(x.number) FROM attempts x WHERE x.step_id = a.step_id) AS ultima"
             " FROM attempts a JOIN steps s ON s.id = a.step_id JOIN runs r ON r.id = s.run_id"
@@ -477,8 +477,8 @@ class SqlLearningRepository:
         for t in tentativas:
             fim = linhas.texto(t, "finished_at")
             app = app_da_etapa(t["app_id"], t["app_ids"])
-            tipo = linhas.texto_ou_nulo(t, "failure_kind") or classificar_falha(
-                linhas.texto_ou_nulo(t, "error"), linhas.texto_ou_nulo(t, "status"))
+            tipo = tipo_da_tentativa(linhas.texto_ou_nulo(t, "failure_kind"), linhas.texto_ou_nulo(t, "error"),
+                                     linhas.texto_ou_nulo(t, "status"), recovery=linhas.texto_ou_nulo(t, "recovery"))
             chave = (fim[:10], pacotes.get(app, app), linhas.texto_ou_nulo(t, "capability") or "*",
                      str(tipo) if tipo else "", linhas.texto_ou_nulo(t, "driven_by") or "")
             g = grupos[chave]

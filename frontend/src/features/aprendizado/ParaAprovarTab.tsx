@@ -1,6 +1,6 @@
 import { Bot, CheckCheck, History, Inbox, ShieldAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { toApiError } from '../../api/client';
+import { ApiError, toApiError } from '../../api/client';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
@@ -14,6 +14,8 @@ import { apiAprendizado } from './api';
 import { useContagemDoAprendizado } from './contagem';
 import { IntencaoSecao } from './IntencaoSecao';
 import { AvisoDaHabilidade, DecisaoInline, ItemDoLivro, aplicarTransicao, chaveDoItem } from './ItemDoLivro';
+import { DecididoPelaPlataforma } from './DecididoPelaPlataforma';
+import type { RelatorioDaAprovacao } from './aprovacaoAutomatica';
 import { ResumoParaDecidir } from './ResumoParaDecidir';
 import {
   type AcaoDoItem, type EntradaDoLivro, ONDE_FICAM_AS_HABILIDADES, acaoDeAprovarNaFila, acoesNaFila, ordenarPendentes,
@@ -106,9 +108,17 @@ export function ParaAprovarTab() {
   const [selLegado, setSelLegado] = useState<Set<string>>(() => new Set());
   const [lote, setLote] = useState<Lote | null>(null);
   const [modo, setModo] = useState<ModoDoCurador | null>(null);
+  const [aprovacao, setAprovacao] = useState<RelatorioDaAprovacao | null>(null);
+  const [erroDaAprovacao, setErroDaAprovacao] = useState<LoadError | null>(null);
 
   const carregar = useCallback(async () => {
-    const [p, r] = await Promise.allSettled([apiAprendizado.pendentes(), apiAprendizado.revisar()]);
+    const [p, r, a] = await Promise.allSettled([apiAprendizado.pendentes(), apiAprendizado.revisar(),
+                                                apiAprendizado.aprovacaoAutomatica()]);
+    // 30.55: sem a rota (backend de antes, 404) a seção some; as filas seguem. 30.63 (c): qualquer OUTRO erro aparece
+    // na seção, em vez de sumir com ela (o dono achava que a plataforma não tinha decidido nada).
+    setAprovacao(a.status === 'fulfilled' ? a.value : null);
+    setErroDaAprovacao(a.status === 'rejected' && !(a.reason instanceof ApiError && a.reason.status === 404)
+      ? toLoadError(a.reason) : null);
     setFila((antes) => (p.status === 'fulfilled'
       ? { itens: ordenarPendentes(Array.isArray(p.value?.itens) ? p.value.itens : []), erro: null }
       : { itens: antes.itens, erro: toLoadError(p.reason) }));
@@ -133,6 +143,10 @@ export function ParaAprovarTab() {
   const titulos = useMemo(() => new Map([...titulosDaLista(itensFila), ...titulosDaLista(itensLegado)]),
                           [itensFila, itensLegado]);
   const tituloDe = (e: EntradaDoLivro) => titulos.get(e) ?? tituloDoItem(e);
+  const tituloDaRef = (ref: string): string => {
+    const e = [...itensFila, ...itensLegado].find((x) => chaveDoItem(x) === ref);
+    return e ? tituloDe(e) : ref;
+  };
 
   const alternar = (set: typeof setSelFila) => (e: EntradaDoLivro, sim: boolean) =>
     set((antes) => {
@@ -224,6 +238,7 @@ export function ParaAprovarTab() {
         <p className={styles.secaoLead}>
           Itens com efeito fora do sistema (mensagem, publicação), com texto de pessoa ou reaprendidos depois de uma
           evidência inválida esperam a sua aprovação.{' '}
+          {aprovacao?.modo === 'on' ? 'Os do app de teste que cumprem a régua, a plataforma decide sozinha (veja embaixo). ' : null}
           <a className={styles.linkAlvo} href={hashDe('pendencias')}>Ver todas as suas pendências</a>
         </p>
         <Disclosure summary="Saiba mais" bare>
@@ -379,6 +394,10 @@ export function ParaAprovarTab() {
           </ul>
         )}
       </section>
+
+      {/* 30.55: o que a plataforma decidiu fica depois das filas: o dono vê primeiro o que sobra para ele. */}
+      <DecididoPelaPlataforma relatorio={aprovacao} erro={erroDaAprovacao} tituloDe={tituloDaRef}
+        onMudou={() => void carregar()} />
 
       <IntencaoSecao />
     </>

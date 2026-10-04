@@ -28,8 +28,9 @@ from app.modules.learning.domain.backlog import RegrasDoBacklog
 from app.modules.learning.domain.camada import ModosDeRuntime
 from app.modules.learning.domain.saude import LimiaresDeSaude
 from app.modules.learning.domain.vocabulario import Modo, ModoDeTelas
-from app.modules.learning.infrastructure import (ligar_autopublicacao, ligar_costuras, ligar_curador, ligar_licoes,
-                                                 ligar_nativos, ligar_obsolescencia, ligar_telas, ligar_voz)
+from app.modules.learning.infrastructure import (ligar_aprovacao_automatica, ligar_autopublicacao, ligar_costuras,
+                                                 ligar_curador, ligar_licoes, ligar_nativos, ligar_obsolescencia, ligar_telas,
+                                                 ligar_voz)
 from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro, LojaSql
 from app.modules.learning.infrastructure.eventos import (Barramento, EventosNoBarramento, RiscoDoRegistro,
                                                          TitulosDoRegistro)
@@ -160,6 +161,9 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     # 30.34: a autopublicação do fluxo B em sombra (laço próprio sob a trava de líder; `off` de fábrica).
     auto = ligar_autopublicacao.ligar(servico, repo, db, config=lambda: config().autopublicacao, relogio=relogio,
                                       catalogo=risco)
+    # 30.55: a aprovação automática por política (laço próprio sob a trava de líder; `off` de fábrica).
+    ligar_aprovacao_automatica.ligar(servico, repo, db, config=lambda: config().aprovacao_automatica, relogio=relogio,
+                                     catalogo=risco)
     # 30.8: as métricas (só leitura); a economia é a do aproveitamento, reaproveitada, e o orçamento, o do curador.
     servico.anexar(ServicoDeMetricas(servico, FontesDeMetricasSql(db, precos=precos),
                                      aproveitamento=partial(_aproveitamento, db),

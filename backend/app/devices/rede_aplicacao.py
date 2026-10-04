@@ -408,6 +408,10 @@ class NoDaTela:
                 and self.limites[2] >= outro.limites[2] and self.limites[3] >= outro.limites[3])
 
 
+#: A folga da fila do aparelho sobre o prazo do adb numa leitura da rede (o "excedeu 55s" era 45 + 10).
+FOLGA_DA_FILA_S = 10.0
+
+
 class AparelhoDaRede(Protocol):
     """O que a receita precisa do aparelho. `AparelhoPeloAdb` é o de verdade; o teste passa um dublê."""
 
@@ -415,7 +419,7 @@ class AparelhoDaRede(Protocol):
     serial: str
     external: bool
 
-    async def shell(self, comando: str, *, timeout: float = 40) -> str: ...
+    async def shell(self, comando: str, *, timeout: float | None = 40) -> str: ...
     async def elementos(self) -> list[Elemento]: ...
     async def arvore(self) -> list[NoDaTela]: ...
     async def tocar(self, x: int, y: int) -> None: ...
@@ -431,9 +435,12 @@ class AparelhoPeloAdb:
         self.st, self.rt = st, rt
         self.id, self.serial, self.external = rt.id, rt.serial, bool(rt.external)
 
-    async def shell(self, comando: str, *, timeout: float = 40) -> str:
-        chamada = functools.partial(self.rt.adb.shell, comando, timeout=timeout)
-        return str(await self.rt.executor.run(chamada, timeout=timeout + 10, label="rede do aparelho") or "")
+    async def shell(self, comando: str, *, timeout: float | None = 40) -> str:
+        """`timeout=None`: o prazo das leituras da sonda (`rede.sonda.prazo_leitura_s`, 29.75); a fila do aparelho dá
+        mais `FOLGA_DA_FILA_S` para o adb devolver antes de a chamada contar como travada."""
+        prazo = float(self.st.cfg.file.rede.sonda.prazo_leitura_s) if timeout is None else timeout
+        chamada = functools.partial(self.rt.adb.shell, comando, timeout=prazo)
+        return str(await self.rt.executor.run(chamada, timeout=prazo + FOLGA_DA_FILA_S, label="rede do aparelho") or "")
 
     async def elementos(self) -> list[Elemento]:
         arvore = await self.st.devices.hierarchy(self.rt)
@@ -747,7 +754,7 @@ async def observar(ap: AparelhoDaRede, pacote: str, *, esperar_tun_s: float = 0.
     (medido: ~40 s depois do boot sob carga). Leitura como root é recusada: o bloqueio não cobre o uid 0."""
     fim = time.monotonic() + esperar_tun_s
     while True:
-        obs = ler_observacao(await ap.shell(comando_de_observacao(pacote), timeout=45))
+        obs = ler_observacao(await ap.shell(comando_de_observacao(pacote), timeout=None))
         if obs.uid != UID_DO_SHELL:
             raise RedeAplicacaoError(
                 f"a leitura da rede rodou como uid {obs.uid}, não como o shell (2000): o bloqueio não cobre o root, e "
@@ -1042,7 +1049,7 @@ async def religar_pela_interface(ap: AparelhoDaRede, pacote: str, atividade: str
     Devolve o código do desfecho e o que foi observado."""
     if not _TILE.match(atividade or ""):
         raise RedeAplicacaoError(f"atividade do cliente VPN inválida: {atividade!r}")
-    antes = _lido(await ap.shell(comando_do_estado_da_interface(pacote), timeout=45))
+    antes = _lido(await ap.shell(comando_do_estado_da_interface(pacote), timeout=None))
     locale = locale_do_aparelho(antes)
     iniciar, parar_rotulos, idioma = rotulos_para(locale)
     visto = {"locale": locale or "não lido", "rotulo": "", "metodo": ""}
@@ -1080,7 +1087,7 @@ async def religar_pela_interface(ap: AparelhoDaRede, pacote: str, atividade: str
         visto["rotulo"] = botao.texto
         visto["metodo"] = (f"árvore: rótulo `action_start` ({botao.texto!r}, recurso {idioma or 'qualquer idioma do SFA'}) "
                            "+ menor contêiner clicável do pacote")
-        agora = _lido(await ap.shell(comando_do_estado_da_interface(pacote), timeout=45))
+        agora = _lido(await ap.shell(comando_do_estado_da_interface(pacote), timeout=None))
         if pacote not in agora.get("F", ""):
             return ReligadoPelaInterface(None, FOCO_NAO_E_O_CLIENTE, "o foco da tela não é do cliente VPN; nenhum toque "
                                          f"(foco: {agora.get('F', 'não lido')[:120]})", rotulo=botao.texto,
@@ -1097,7 +1104,7 @@ async def religar_pela_interface(ap: AparelhoDaRede, pacote: str, atividade: str
             await asyncio.sleep(2.0)                   # o `tun0` aparece um instante antes do CONNECTED no dumpsys
             obs = await observar(ap, pacote)
         try:
-            janela = _lido(await ap.shell(comando_da_janela_do_start(pacote, base), timeout=45))
+            janela = _lido(await ap.shell(comando_da_janela_do_start(pacote, base), timeout=None))
             classe, porque = classe_na_janela(base, janela)
         except Exception as exc:  # noqa: BLE001 - sem a leitura, a classe é desconhecida; nunca uma conclusão inventada
             janela, classe, porque = {}, CLASSE_DESCONHECIDA, f"a janela do Start não foi lida: {type(exc).__name__}"

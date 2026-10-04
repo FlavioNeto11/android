@@ -7,6 +7,7 @@ sondas/o veredito do log são dublês; o laço de `_wait_boot`, a prontidão e a
 from __future__ import annotations
 
 import json
+import subprocess
 from typing import Any
 
 import pytest
@@ -22,9 +23,11 @@ BOOT_S = 400
 
 
 def _preparar(harness: Harness, monkeypatch: pytest.MonkeyPatch, relogio: _RelogioInjetavel, *,
-              carregado_em: float | None, boot_ok_em: float, ui: Any) -> tuple[Any, dict[str, int]]:
+              carregado_em: float | None, boot_ok_em: float, ui: Any,
+              uptime: float | None = None) -> tuple[Any, dict[str, int]]:
     """`carregado_em`: instante (do relógio injetável) em que o log passa a dizer "Successfully loaded" (None = nunca).
-    `boot_ok_em`: instante a partir do qual `boot_completed` é verdadeiro. Cada sonda lenta custa 30 s de relógio."""
+    `boot_ok_em`: instante a partir do qual `boot_completed` é verdadeiro. Cada sonda lenta custa 30 s de relógio.
+    `uptime`: o que `/proc/uptime` do convidado responde (None = ilegível), 29.34."""
     s = harness.state
     assert s is not None
     rt = s.devices.get("android-01")
@@ -49,6 +52,7 @@ def _preparar(harness: Harness, monkeypatch: pytest.MonkeyPatch, relogio: _Relog
     monkeypatch.setattr(rt.adb, "boot_completed", boot_completed)
     monkeypatch.setattr(rt.adb, "ui_ready", ui_ready)
     monkeypatch.setattr(rt.adb, "prepare_for_automation", lambda *a, **k: None)
+    monkeypatch.setattr(rt.adb, "uptime_s", lambda *a, **k: uptime)
     monkeypatch.setattr(s.devices, "_snapshot_verdict",
                         lambda _rt: True if carregado_em is not None and relogio.agora >= carregado_em else None)
     monkeypatch.setattr(s.devices, "_start_online_tasks", lambda _rt: None)
@@ -88,8 +92,8 @@ async def test_carregado_e_sem_interface_no_prazo_do_wake_devolve_falso(harness:
 
 
 async def test_sem_veredito_do_log_o_prazo_e_o_de_boot_a_frio(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
-    """O log nunca diz nada: antes do veredito vale `boot_timeout_s` desde o spawn (não os 90 s do wake). A interface
-    pronta aos 150 s desde o spawn acorda, e a medição fica sem `load_ms` (o veredito não veio)."""
+    """O log nunca diz nada e o uptime não lê: antes do veredito vale `boot_timeout_s` desde o spawn (não os 90 s do
+    wake). A interface pronta aos 150 s desde o spawn acorda, e a medição fica sem `load_ms` (o veredito não veio)."""
     relogio = _RelogioInjetavel()
     rt, _ = _preparar(harness, monkeypatch, relogio, carregado_em=None, boot_ok_em=relogio.agora + 120,
                       ui=lambda _agora: True)
@@ -98,6 +102,7 @@ async def test_sem_veredito_do_log_o_prazo_e_o_de_boot_a_frio(harness: Harness, 
     assert await s.devices._wait_boot(rt, relogio.monotonic(), warm=True) is True      # noqa: SLF001
     dados = json.loads(s.db.query("SELECT data FROM measurements WHERE kind='boot'")[-1]["data"])
     assert dados["kind"] == "warm" and "load_ms" in dados and dados["load_ms"] is None
+    assert dados["snapshot_por"] is None and "uptime_s" not in dados
 
 
 async def test_medicao_do_boot_warm_tem_load_ms(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -111,6 +116,7 @@ async def test_medicao_do_boot_warm_tem_load_ms(harness: Harness, monkeypatch: p
     dados = json.loads(s.db.query("SELECT data FROM measurements WHERE kind='boot'")[-1]["data"])
 
     assert dados["kind"] == "warm" and isinstance(dados["load_ms"], int) and dados["load_ms"] == 120_000
+    assert dados["snapshot_por"] == "log"
     assert {"instance_id", "boot_seconds", "online_after", "mem_available_gb", "image"} <= set(dados)
 
 
@@ -123,3 +129,75 @@ async def test_boot_a_frio_nao_tem_load_ms(harness: Harness, monkeypatch: pytest
     assert await s.devices._wait_boot(rt, relogio.monotonic(), warm=False) is True     # noqa: SLF001
     dados = json.loads(s.db.query("SELECT data FROM measurements WHERE kind='boot'")[-1]["data"])
     assert dados["kind"] == "cold" and "load_ms" not in dados
+
+
+# ------------------------------------------------------------------ 29.34: o veredito pelo uptime do convidado
+async def test_log_mudo_e_uptime_grande_da_o_veredito_e_o_load_ms(harness: Harness,
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """A prova real de 04/10 (android-02, wake das 16:19Z): o log só recebe "Successfully loaded snapshot" depois do
+    boot (saída bufferizada) e o `load_ms` saía `None`. Com o uptime do convidado (3728 s) maior que o tempo desde o
+    spawn, o veredito vem no `boot_completed`: `load_ms` = spawn → boot, e o prazo do wake passa a contar dali."""
+    relogio = _RelogioInjetavel()
+    rt, _ = _preparar(harness, monkeypatch, relogio, carregado_em=None, boot_ok_em=relogio.agora + 120,
+                      ui=lambda _agora: True, uptime=3728.0)
+    s = harness.state
+    assert s is not None
+    assert await s.devices._wait_boot(rt, relogio.monotonic(), warm=True) is True      # noqa: SLF001
+    dados = json.loads(s.db.query("SELECT data FROM measurements WHERE kind='boot'")[-1]["data"])
+
+    assert (dados["kind"], dados["snapshot_por"], dados["uptime_s"]) == ("warm", "uptime", 3728.0)
+    assert isinstance(dados["load_ms"], int) and dados["load_ms"] == 120_000   # 4 sondas de 30 s até o boot
+    assert rt.snapshot_failures == 0
+
+
+async def test_veredito_pelo_uptime_poe_o_prazo_do_wake(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Com o veredito pelo uptime, a interface que nunca fica pronta derruba o wake `wake_timeout_s` depois do boot
+    (como o veredito pelo log), e não os 400 s do boot a frio contados do spawn."""
+    relogio = _RelogioInjetavel()
+    rt, chamadas = _preparar(harness, monkeypatch, relogio, carregado_em=None, boot_ok_em=relogio.agora,
+                             ui=lambda _agora: False, uptime=3728.0)
+    s = harness.state
+    assert s is not None
+    inicio = relogio.agora
+    assert await s.devices._wait_boot(rt, relogio.monotonic(), warm=True) is False     # noqa: SLF001
+    # O prazo conta do boot (lido depois da sonda de 30 s): sondas da interface até passar de 90 s dali, bem antes dos
+    # 400 s do boot a frio que valeriam sem veredito.
+    assert chamadas["ui_ready"] == 4
+    assert relogio.agora - inicio < BOOT_S / 2
+
+
+async def test_uptime_pequeno_nao_e_veredito(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Uptime menor que o tempo desde o spawn (snapshot salvo logo depois de um boot a frio, ou boot a frio de fato)
+    não decide nada: segue o prazo de boot a frio e nenhuma falha de snapshot é contada."""
+    relogio = _RelogioInjetavel()
+    rt, _ = _preparar(harness, monkeypatch, relogio, carregado_em=None, boot_ok_em=relogio.agora + 120,
+                      ui=lambda _agora: True, uptime=50.0)
+    s = harness.state
+    assert s is not None
+    falhas_antes = rt.snapshot_failures
+    assert await s.devices._wait_boot(rt, relogio.monotonic(), warm=True) is True      # noqa: SLF001
+    dados = json.loads(s.db.query("SELECT data FROM measurements WHERE kind='boot'")[-1]["data"])
+    assert (dados["load_ms"], dados["snapshot_por"]) == (None, None)
+    assert rt.snapshot_failures == falhas_antes
+
+
+def test_snapshot_pelo_uptime_so_responde_sim_com_certeza() -> None:
+    assert manager_mod.snapshot_pelo_uptime(3728.0, 167.0) is True
+    assert manager_mod.snapshot_pelo_uptime(None, 10.0) is False
+    assert manager_mod.snapshot_pelo_uptime(170.0, 167.0) is False        # dentro da folga: não decide
+    assert manager_mod.snapshot_pelo_uptime(167.0 + manager_mod.FOLGA_DO_UPTIME_S + 0.1, 167.0) is True
+
+
+def test_adb_uptime_s_le_o_proc_uptime(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    s = harness.state
+    assert s is not None
+    adb = s.devices.get("android-01").adb
+    respostas = iter([(0, "3728.41 7012.80\n"), (0, ""), (1, "error: device offline"), (0, "lixo")])
+
+    def run(args: list[str], **_k: Any) -> subprocess.CompletedProcess[str]:
+        assert args == ["shell", "cat /proc/uptime"]
+        rc, saida = next(respostas)
+        return subprocess.CompletedProcess(args, rc, saida, "")
+
+    monkeypatch.setattr(adb, "_run", run)
+    assert [adb.uptime_s() for _ in range(4)] == [3728.41, None, None, None]

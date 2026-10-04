@@ -957,3 +957,15 @@ def test_o_catalogo_do_outlook_declara_o_valor_que_entrega_sem_codigo() -> None:
     assert m.catalog.get("COLLECT_MAIL_HEADERS").saidas == ()
     todos = {n for c in m.catalog.capabilities for n in c.saidas}
     assert not any(t in n for n in todos for t in ("codigo", "senha", "token", "code", "password"))
+
+def test_a_caixa_do_outlook_prova_pela_lista_e_nao_pelo_juiz() -> None:
+    """31.45: a OPEN_MAIL_INBOX prova pela árvore, com o id que define a tela `caixa_de_entrada` em `telas.yaml`; o juiz
+    exigia ler remetente e assunto de uma linha sem texto (`ComposeView`). Os dois seguem como saída, não como prova."""
+    m = {x.definition.package: x for x in descobrir(PASTA_DOS_APPS)}[OUTLOOK]
+    assert m.catalog is not None
+    cap = m.catalog.get("OPEN_MAIL_INBOX")
+    assert (cap.post_kind, cap.post_value) == ("element_present", "id=conversation_list")
+    assert "lista de mensagens" not in cap.post_description
+    assert cap.saidas == ("remetente", "assunto")
+    telas = (PASTA_DOS_APPS / OUTLOOK / "telas.yaml").read_text(encoding="utf-8")
+    assert "ids: [conversation_list]" in telas

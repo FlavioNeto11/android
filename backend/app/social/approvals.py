@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from ..db import Database, dumps, loads
+from ..db import Database, Row, dumps, loads
 from ..security.sessions import operador_atual
 from ..util import new_token, now, now_iso, parse_iso
 
@@ -168,7 +168,7 @@ class ApprovalStore:
 
     def decide(self, approval_id: str, *, status: str, content: str | None = None,
                note: str | None = None, decided_by: str | None = None,
-               na_mesma_transacao: Callable[[Any], None] | None = None) -> Approval | None:
+               na_mesma_transacao: Callable[[Row], None] | None = None) -> Approval | None:
         """Decisão é definitiva: só uma aprovação `pending` pode ser decidida, e só uma vez.
 
         `decided_by` sai da sessão do painel quando não é informado. Lido AQUI, e não empurrado por parâmetro
@@ -337,7 +337,7 @@ class ApprovalService:
             raise SocialError("content_not_allowed",
                               "Só `edit` recebe texto; aprovar ou rejeitar não trocam o que será enviado.", 400)
 
-        editar: Callable[[Any], None] | None = None
+        editar: Callable[[Row], None] | None = None
         if verb == "edit" and pedido.step_id:
             texto, etapa = content.strip(), pedido.step_id                     # type: ignore[union-attr]
             editar = lambda _row: apply_edit(self.repo.db, etapa, texto)

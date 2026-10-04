@@ -50,6 +50,7 @@ async def parque(tmp_path: Path) -> AsyncIterator[Harness]:
     h.ai = CountingProvider(AtorDoInstagram())
     h.cfg.file.skills.enabled = True
     await h.boot()
+    await h.medir_a_internet()   # T.2: a sonda do monitor agora; o Instagram não espera os 6 s da 1ª volta
     s = estado(h)
     s.db.execute("UPDATE instances SET app_id='instagram' WHERE id=?", (IID,))
     s.devices.get(IID).app_id = "instagram"

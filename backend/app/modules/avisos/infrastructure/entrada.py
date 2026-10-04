@@ -41,7 +41,8 @@ import json
 import logging
 import re
 import time
-from collections.abc import Awaitable, Callable, Mapping
+import unicodedata
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
@@ -66,7 +67,7 @@ from app.modules.avisos.domain.anexos import (
     normalizar_mime,
     tamanho_legivel,
 )
-from app.modules.avisos.infrastructure.anexos import AnexoRecusado, ArmazemDeAnexos
+from app.modules.avisos.infrastructure.anexos import AnexoJaResolvido, AnexoRecusado, ArmazemDeAnexos
 from app.modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.security.sessions import OPERADOR
@@ -76,6 +77,43 @@ log = logging.getLogger("poc.avisos.entrada")
 
 #: Quem age pela conversa, na auditoria (decisão (b)): legível e sem o chat_id.
 OPERADOR_DO_TELEGRAM = "telegram:dono"
+#: O que o dono ouve quando a mensagem vai à orquestradora (28.28), pelo motivo do repasse. Nunca o texto do extrator do
+#: painel: "Diga onde ou por quem" não responde a uma pergunta.
+RESPOSTA_DO_REPASSE = {
+    "comando": "Recado guardado para a orquestradora (não executado).",
+    "reply": "Recado guardado para a orquestradora (não executado).",
+    "pergunta": "Recebi sua pergunta: a resposta vem por aqui, em resposta a esta mensagem.",
+    "continuacao": "Recebi, junto com a mensagem anterior: a resposta vem por aqui, em resposta a esta mensagem.",
+    "sem_destino": ("Não sei se isso é um pedido para um aparelho ou uma pergunta para mim. Se é pergunta, já repassei: a "
+                    "ANA responde por aqui. Se é pedido, mande de novo dizendo o aparelho (ex.: \"no android-12\")."),
+}
+#: No lugar de um nome de persona em texto que sai pelo canal (28.28; regra C-02: nome de persona não vai ao canal).
+PERSONA_OCULTA = "<persona>"
+
+
+def sem_nome_de_persona(texto: str, nomes: Iterable[str]) -> str:
+    """Troca nome, primeiro nome e @ de persona cadastrada por `PERSONA_OCULTA`, palavra inteira e sem diferença de
+    maiúscula ou acento. Vale para TODO texto que a conversa manda: as recusas e as perguntas da prévia vêm de texto
+    compartilhado com o painel, onde o nome pode aparecer (o exemplo "com a persona …" do extrator)."""
+    # "ANA" é o nome da IA da Central (decisão do dono, 03/10): uma persona chamada Ana não apaga a ANA das respostas.
+    alvos = sorted({n.strip().lstrip("@") for n in nomes if n and len(n.strip().lstrip("@")) >= 3
+                    and _sem_acento_minusculo(n.strip().lstrip("@")) != "ana"}, key=len, reverse=True)
+    if not alvos:
+        return texto
+    base = _sem_acento_minusculo(texto)
+    trocas: list[tuple[int, int]] = []
+    for nome in alvos:
+        for m in re.finditer(rf"(?<![\w@])@?{re.escape(_sem_acento_minusculo(nome))}(?!\w)", base):
+            if not any(a < m.end() and m.start() < b for a, b in trocas):
+                trocas.append((m.start(), m.end()))
+    for a, b in sorted(trocas, reverse=True):
+        texto = texto[:a] + PERSONA_OCULTA + texto[b:]
+    return texto
+
+
+def _sem_acento_minusculo(t: str) -> str:
+    # Um caractere por caractere (NFD sem as marcas), para as posições do texto original continuarem valendo.
+    return "".join(unicodedata.normalize("NFD", ch.lower())[0] for ch in t)
 #: A credencial é recusada sem guardar e apagada do canal quando ele deixa (contrato dos canais, §7); a resposta nunca
 #: ecoa o texto.
 RESPOSTA_CREDENCIAL = ("Isso parece senha ou código: não guardei, não repassei e apaguei a mensagem do chat. Senha "
@@ -108,6 +146,7 @@ MOTIVO_TIPO_FORA = "esse tipo de arquivo não é aceito. Aceito imagem (JPEG, PN
 _MOTIVO_GRANDE = "o arquivo é grande demais (o limite é {max})."
 MOTIVO_ANEXOS_DESLIGADOS = "os anexos estão desligados na Central."
 MOTIVO_SEM_ANEXO_NO_CANAL = "este canal não baixa anexos."
+MOTIVO_NAO_REGISTROU = "não consegui registrar o anexo agora. Mande de novo."
 MOTIVO_NAO_BAIXOU = "não consegui baixar o arquivo do canal. Mande de novo."
 #: O mime genérico não é declaração de tipo: vale o que o conteúdo mostrar.
 _MIME_GENERICO = "application/octet-stream"
@@ -194,6 +233,10 @@ class PortasDaCentral(Protocol):
     def online(self) -> list[str]: ...
     async def captura(self, instance_id: str) -> Captura:
         """A tela atual do aparelho pela MESMA prévia do painel (tela sensível não sai). Não executa nada nele."""
+        ...
+    async def ler_anexo(self, anexo_id: int) -> str:
+        """A IA descreve a imagem que o dono mandou (28.24, F3): o texto para o dono, com o custo. A recusa (teto, falha da
+        IA, gasto barrado) sobe como `RecusaDaCentral`, com a frase para o dono."""
         ...
     def desfecho(self, run_id: str) -> str | None: ...
     def pergunta_sensivel(self, ref: str | None) -> str | None:
@@ -284,6 +327,13 @@ class SaidaDoTelegram:
 
 def parece_codigo(texto: str) -> bool:
     return bool(_CODIGO.fullmatch(texto))
+
+
+def _parece_id_curto(palavra: str) -> bool:
+    """Um pedaço de id curto demais para a `casar_ref` (1 a 3 caracteres de letra e número, com pelo menos um dígito):
+    "a1f" é id incompleto; "ok" e "sim" são começo de nota."""
+    p = palavra.strip().lower()
+    return 0 < len(p) < 4 and p.isalnum() and any(c.isdigit() for c in p)
 
 
 def _int(v: object) -> int | None:
@@ -566,23 +616,47 @@ class ConversaDoCanal:
                 motivo = _MOTIVO_GRANDE.format(max=tamanho_legivel(cfg.max_bytes))
             elif self.anexos is None or a.ref is None or not hasattr(saida, "baixar_anexo"):
                 motivo = MOTIVO_SEM_ANEXO_NO_CANAL
-            if motivo is not None:
-                respostas.append(self._anexo_recusado(a, motivo, ident))
+            elif ident is None:
+                motivo = MOTIVO_NAO_REGISTROU                       # a mensagem não está gravada: sem ela o pendente não tem dono
+            if motivo is not None or self.anexos is None or ident is None or a.ref is None:
+                respostas.append(self._anexo_recusado(a, motivo or MOTIVO_NAO_REGISTROU, ident))
             else:
-                assert self.anexos is not None and ident is not None and a.ref is not None
                 pendentes.append(self.anexos.pendente(a.ref, entrada_id=ident, mime_declarado=declarado,
                                                       tamanho=a.tamanho or 0))
         return ident, respostas, pendentes
 
+    def _armazem(self) -> ArmazemDeAnexos:
+        """O armazém, ou `AnexoRecusado` (que as conversas já dizem ao dono): checagem explícita, que o `python -O` não remove."""
+        if self.anexos is None:
+            raise AnexoRecusado("Os anexos não estão disponíveis na Central.")
+        return self.anexos
+
     def _recusa_pendente(self, linha: Mapping[str, object], motivo: str) -> str:
-        assert self.anexos is not None
-        self.anexos.recusar(motivo, linha_id=self._id(linha), tamanho=int(str(linha.get("bytes") or 0)))
+        self._armazem().recusar(motivo, linha_id=self._id(linha), tamanho=int(str(linha.get("bytes") or 0)))
         return RESPOSTA_ANEXO_RECUSADO.format(motivo=motivo)
 
     async def _baixar(self, saida: SaidaDaConversa | None, linha: Mapping[str, object]) -> str:
         """Baixa e guarda o anexo `pendente`. Sempre RESOLVE a linha (`guardado` ou `recusado`, com o motivo) e devolve o
-        que dizer ao dono: a falha no download nunca fica calada nem deixa a linha pendente."""
-        assert self.anexos is not None
+        que dizer ao dono: a falha no download nunca fica calada nem deixa a linha pendente. Uma linha que outro líder já
+        resolveu não derruba a conversa: a resposta é o resultado que ficou gravado."""
+        try:
+            return await self._baixar_pendente(saida, linha)
+        except AnexoJaResolvido as ja:
+            log.warning("anexos: o pendente %s já estava resolvido; digo o resultado gravado", linha.get("id"))
+            return self._texto_do_resolvido(ja.linha)
+        except AnexoRecusado as recusa:                                   # sem armazém (`_armazem`)
+            return RESPOSTA_ANEXO_RECUSADO.format(motivo=recusa.motivo)
+
+    @staticmethod
+    def _texto_do_resolvido(linha: Mapping[str, object] | None) -> str:
+        if linha is not None and linha.get("estado") == "guardado":
+            return RESPOSTA_ANEXO_OK.format(rotulo=ROTULO.get(str(linha.get("mime")), "o arquivo"),
+                                            tamanho=tamanho_legivel(int(str(linha.get("bytes") or 0))), id=linha.get("id"))
+        motivo = _texto(linha.get("motivo_recusa")) if linha is not None else None
+        return RESPOSTA_ANEXO_RECUSADO.format(motivo=motivo or "o anexo já foi tratado antes.")
+
+    async def _baixar_pendente(self, saida: SaidaDaConversa | None, linha: Mapping[str, object]) -> str:
+        armazem = self._armazem()
         cfg = self.cfg.file.avisos.entrada.anexos
         baixar = getattr(saida, "baixar_anexo", None)
         ref = str(linha.get("ref_externa") or "")
@@ -596,8 +670,8 @@ class ConversaDoCanal:
             log.warning("telegram: anexo não baixado (%s)", falha.motivo)       # o motivo do canal já vem sem URL nem token
             return self._recusa_pendente(linha, MOTIVO_NAO_BAIXOU)
         try:
-            guardada = self.anexos.guardar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes,
-                                           mime_declarado=_texto(linha.get("mime_declarado")), linha_id=self._id(linha))
+            guardada = armazem.guardar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes,
+                                       mime_declarado=_texto(linha.get("mime_declarado")), linha_id=self._id(linha))
         except AnexoRecusado as recusa:
             return self._recusa_pendente(linha, recusa.motivo)
         return RESPOSTA_ANEXO_OK.format(rotulo=ROTULO.get(str(guardada["mime"]), "o arquivo"),
@@ -623,8 +697,7 @@ class ConversaDoCanal:
         conferidos de novo pelo conteúdo. A legenda passa pela redação de credencial; quem chama garante que ela não
         traz nome de persona, conta, e-mail, telefone nem IP (regra do dono para texto de mensagem e de cartão)."""
         cfg = self._cfg_do_envio(saida)
-        assert self.anexos is not None
-        conteudo, mime, sha = self.anexos.conteudo_de(referencia, tipos=cfg.tipos, max_bytes=cfg.max_bytes)
+        conteudo, mime, sha = self._armazem().conteudo_de(referencia, tipos=cfg.tipos, max_bytes=cfg.max_bytes)
         return await self._despachar(saida, conteudo, mime, sha, legenda, responde_a, entrada_id)
 
     async def enviar_conteudo(self, saida: SaidaDaConversa, conteudo: bytes, legenda: str = "", *,
@@ -633,8 +706,7 @@ class ConversaDoCanal:
         """Manda ao dono um arquivo que o PRODUTO gerou (uma captura de tela do aparelho, p. ex.). O conteúdo é conferido
         como o recebido (tipo da lista pela assinatura, teto) e fica guardado em `data/anexos` com a retenção do 28.16."""
         cfg = self._cfg_do_envio(saida)
-        assert self.anexos is not None
-        mime = self.anexos.verificar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes, mime_declarado=mime_declarado)
+        mime = self._armazem().verificar(conteudo, tipos=cfg.tipos, max_bytes=cfg.max_bytes, mime_declarado=mime_declarado)
         return await self._despachar(saida, conteudo, mime, None, legenda, responde_a, entrada_id)
 
     def _cfg_do_envio(self, saida: SaidaDaConversa):  # noqa: ANN202 - o modelo de config
@@ -647,15 +719,21 @@ class ConversaDoCanal:
 
     async def _despachar(self, saida: SaidaDaConversa, conteudo: bytes, mime: str, sha: str | None, legenda: str,
                          responde_a: str | None, entrada_id: int | None) -> str | None:
-        assert self.anexos is not None
+        armazem = self._armazem()
         enviada = await saida.enviar_anexo(conteudo, mime, self._redigir(legenda),  # type: ignore[attr-defined]
                                            responde_a=responde_a)
         self.repo.registrar_enviada(enviada, "anexo", entrada_id=entrada_id)
-        if sha is None:
-            # O conteúdo que o produto gerou ainda não está no armazém: guarda agora, já enviado (a linha é `saida`).
-            self.anexos.guardar(conteudo, tipos=(mime,), max_bytes=len(conteudo), entrada_id=entrada_id, direcao="saida")
-        else:
-            self.anexos.registrar_saida(sha, mime, len(conteudo), entrada_id=entrada_id)
+        # Daqui em diante o arquivo JÁ está no chat do dono: uma falha ao guardar o rastro (erro de disco, banco) não pode
+        # virar "não enviei" para quem chamou. Registra o que deu, diz a verdade no log e devolve o envio.
+        try:
+            if sha is None:
+                # O conteúdo que o produto gerou ainda não está no armazém: guarda agora, já enviado (a linha é `saida`).
+                armazem.guardar(conteudo, tipos=(mime,), max_bytes=len(conteudo), entrada_id=entrada_id, direcao="saida")
+            else:
+                armazem.registrar_saida(sha, mime, len(conteudo), entrada_id=entrada_id)
+        except Exception as erro:  # noqa: BLE001 - o envio já aconteceu; o rastro é o que falhou
+            motivo = erro.motivo if isinstance(erro, AnexoRecusado) else type(erro).__name__
+            log.error("anexos: enviei o arquivo (mensagem %s), mas não consegui guardar o rastro dele (%s)", enviada, motivo)
         return enviada
 
     async def _recusar_credencial(self, saida: SaidaDaConversa | None, r: Recebida, motivo: str, ok: str,
@@ -778,17 +856,36 @@ class ConversaDoCanal:
         # Regra do CANAL (decisão (e)): reply a uma mensagem do bot que a Central não mandou é da orquestradora; reply
         # a uma mensagem da própria pessoa não é reply ao bot. A gramática comum só conhece o `/orq`.
         if responde_a is not None and enviada is None and not self.repo.da_pessoa(responde_a) and texto.strip():
-            return Intencao("orquestradora", texto=texto.strip())
+            return Intencao("orquestradora", texto=texto.strip(), repasse="reply")
         fato = enviada.get("fato") if enviada is not None else None
+        if enviada is None and responde_a is not None and self.anexos is not None:
+            fato = self._fato_do_anexo(responde_a)
+        # Reply a uma resposta NOSSA sem fato (28.28): continua a conversa da mensagem que a gerou. Se aquela foi
+        # repassada à orquestradora (ou falhou), esta vai junto, com o texto de antes, e não vira pedido novo ("no
+        # trello" depois de uma pergunta virava "Diga onde ou por quem").
+        if enviada is not None and not fato and enviada.get("entrada_id") is not None and texto.strip():
+            antes = self.repo.linha(int(str(enviada["entrada_id"])))
+            if antes is not None and str(antes.get("estado")) in ("orquestradora", "falhou") and antes.get("texto"):
+                return Intencao("orquestradora", texto=f"{str(antes['texto']).strip()} — {texto.strip()}",
+                                repasse="continuacao")
         return rotear(texto, fato=str(fato) if fato else None)
+
+    def _fato_do_anexo(self, responde_a: str) -> str | None:
+        """O reply do dono a uma foto dele vira o fato `anexo:<id>` (a 1ª imagem GUARDADA da mensagem respondida); sem foto
+        guardada ali, nada muda e a mensagem segue a gramática comum (28.24, F3)."""
+        entrada = self.repo.entrada_da_pessoa(responde_a)
+        if entrada is None or self.anexos is None:
+            return None
+        for a in self.anexos.da_entrada(entrada):
+            if a.get("estado") == "guardado" and str(a.get("mime") or "").startswith("image/"):
+                return f"anexo:{a['id']}"
+        return None
 
     async def _agir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         if i.tipo == "vazia":
             self.repo.marcar(self._id(linha), "ignorada", intencao=i.tipo, de=("recebida",))
         elif i.tipo == "orquestradora":
-            self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora",
-                             de=("recebida",))
-            await self._responder(saida, linha, "Recado guardado para a orquestradora (não executado).")
+            await self._repassar(saida, linha, i)
         elif i.tipo == "ajuda":
             await self._feita(saida, linha, i, AJUDA)
         elif i.tipo == "identidade":
@@ -801,6 +898,8 @@ class ConversaDoCanal:
             await self._feita(saida, linha, i, texto, alvo=f"convidado:{i.ref}" if i.ref else None)
         elif i.tipo == "captura":
             await self._captura(saida, linha, i)
+        elif i.tipo == "ler_anexo":
+            await self._ler_anexo(saida, linha, i)
         elif i.tipo == "desconhecida":
             await self._feita(saida, linha, i, f"{i.motivo or 'Não entendi.'} /ajuda mostra os comandos.")
         elif i.tipo == "status":
@@ -811,9 +910,35 @@ class ConversaDoCanal:
             await self._decidir(saida, linha, i)
         elif i.tipo == "responder":
             await self._responder_pergunta(saida, linha, i)
-        elif i.tipo in ("para", "livre"):
-            texto = texto_para_o_extrator(i.alvo or "", i.texto) if i.tipo == "para" else i.texto
-            await self._previa(saida, linha, i, texto, None)
+        elif i.tipo == "para":
+            await self._previa(saida, linha, i, texto_para_o_extrator(i.alvo or "", i.texto), None)
+        elif i.tipo == "livre":
+            try:
+                await self._previa(saida, linha, i, i.texto, None)
+            except RecusaDaCentral:
+                # 28.28: texto livre que a prévia recusa (quase sempre "sem destino") não vira falha com o texto do
+                # extrator do painel; vai à orquestradora, e o dono ouve as duas saídas.
+                await self._repassar(saida, linha, Intencao("orquestradora", texto=i.texto, repasse="sem_destino"))
+
+    def _nomes_de_persona(self) -> list[str]:
+        """Os nomes que não saem pelo canal. A porta é opcional (as portas de teste antigas não a têm); erro de leitura
+        não derruba a resposta, mas fica no log."""
+        ler = getattr(self.portas, "nomes_de_persona", None)
+        if ler is None:
+            return []
+        try:
+            return list(ler())
+        except Exception:  # noqa: BLE001 - a resposta sai mesmo assim; o nome do exemplo é o único risco
+            log.exception("telegram: nomes de persona indisponíveis")
+            return []
+
+    async def _repassar(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """A mensagem fica guardada para a orquestradora (estado `orquestradora`), que responde; a Canais entrega a
+        resposta em reply à mensagem do dono (o caminho inteiro em docs/dominios/canais.md, 28.28)."""
+        self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora",
+                         previa={"repasse": i.repasse or "comando", "texto": i.texto},
+                         de=("recebida", "pergunta"))
+        await self._responder(saida, linha, RESPOSTA_DO_REPASSE.get(i.repasse or "", RESPOSTA_DO_REPASSE["comando"]))
 
     async def _feita(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, texto: str, *, alvo: str | None = None,
                      run_id: str | None = None) -> None:
@@ -844,6 +969,17 @@ class ConversaDoCanal:
             self.repo.marcar(self._id(linha), "feita", intencao=i.tipo, destino="central", alvo=alvo_do_fato,
                              resposta="captura enviada", de=("recebida", "pergunta", "executando"))
 
+    async def _ler_anexo(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """A IA descreve a foto do dono (28.24, F3). Sem Executar: o gasto é pequeno e tem teto por imagem; a descrição fica
+        gravada e a segunda leitura não paga. A recusa vira uma frase ao dono (nada é gravado como lido)."""
+        alvo = f"anexo:{i.ref}"
+        try:
+            texto = await self.portas.ler_anexo(int(i.ref or 0))
+        except RecusaDaCentral as recusa:
+            await self._feita(saida, linha, i, str(recusa)[:500], alvo=alvo)
+            return
+        await self._feita(saida, linha, i, texto, alvo=alvo)
+
     def _texto_pendencias(self) -> str:
         itens = self.portas.pendencias()
         if not itens:
@@ -857,6 +993,19 @@ class ConversaDoCanal:
         linhas.append("Decida com /aprovar <id>, /vetar <id> ou /responder <id> <texto>, ou responda ao aviso.")
         return "\n".join(linhas)
 
+    def _outros_ids(self) -> list[str]:
+        """Os ids que um id digitado pode estar indicando além das aprovações pendentes: as aprovações em qualquer
+        estado (`ids_de_aprovacoes`, se a porta tiver) e as execuções esperando resposta. Erro de leitura não decide nada
+        a mais: devolve o que conseguiu."""
+        ids: list[str] = []
+        todas = getattr(self.portas, "ids_de_aprovacoes", None)
+        for ler in ((todas,) if callable(todas) else ()) + (self.portas.execucoes_esperando,):
+            try:
+                ids.extend(ler())
+            except Exception:  # noqa: BLE001 - na dúvida, a conferência fica com as pendentes
+                log.exception("conversa: falha ao ler os ids para conferir o id digitado")
+        return ids
+
     @staticmethod
     def _um_id(ref: str, ids: list[str], o_que: str) -> tuple[str | None, str]:
         achados = casar_ref(ref, ids)
@@ -867,11 +1016,34 @@ class ConversaDoCanal:
         return achados[0], ""
 
     async def _decidir(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
-        aid, erro = self._um_id(i.ref or "", self.portas.aprovacoes_pendentes(), "aprovação pendente")
+        pendentes = self.portas.aprovacoes_pendentes()
+        aid, erro = self._um_id(i.ref or "", pendentes, "aprovação pendente")
         if aid is None:
             await self._feita(saida, linha, i, erro)
             return
-        texto = self.portas.decidir(aid, "approve" if i.tipo == "aprovar" else "reject", i.texto or None)
+        nota = i.texto or None
+        if i.ref_digitado:
+            # Reply a um aviso E um id digitado (28.26): se o id é de OUTRA pendência, a pessoa pode estar decidindo a
+            # errada; nada se decide e a resposta diz qual é qual. Se é o mesmo item, segue, e o id sai da nota.
+            # Palavra que não casa com nenhuma pendência é só o começo da nota, como antes.
+            # A revisão da suíte 31 (04/10): o id de aprovação já decidida ou vencida, ou de execução esperando
+            # resposta, também é "outro item"; e um pedaço curto com dígito (menos de 4) é id incompleto, não nota.
+            digitados = casar_ref(i.ref_digitado, pendentes + self._outros_ids())
+            if not digitados and _parece_id_curto(i.ref_digitado):
+                await self._feita(saida, linha, i, (
+                    f"O id {i.ref_digitado} é curto demais para eu saber qual item é (use 4 ou mais caracteres, como a "
+                    "/pendencias mostra): nada foi decidido. Para decidir o aviso respondido, responda só com sim ou não."))
+                return
+            if digitados and aid not in digitados:
+                outro = digitados[0][-6:] if len(digitados) == 1 else "mais de um item"
+                await self._feita(saida, linha, i, (
+                    f"O aviso respondido é do item {aid[-6:]} e o id {i.ref_digitado} é de outro ({outro}): "
+                    f"nada foi decidido. Responda ao aviso só com sim ou não, ou mande /{i.tipo} {i.ref_digitado} "
+                    "sem responder ao aviso."))
+                return
+            if digitados:
+                nota = i.texto.split(maxsplit=1)[1] if len(i.texto.split(maxsplit=1)) > 1 else None
+        texto = self.portas.decidir(aid, "approve" if i.tipo == "aprovar" else "reject", nota)
         await self._feita(saida, linha, i, texto, alvo=f"approval:{aid}")
 
     async def _responder_pergunta(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
@@ -980,6 +1152,7 @@ class ConversaDoCanal:
 
     async def _enviar(self, saida: SaidaDaConversa, texto: str, *, origem: str, responde_a: str | None = None,
                       botoes: list[tuple[str, str]] | None = None, entrada_id: int | None = None) -> None:
+        texto = sem_nome_de_persona(texto, self._nomes_de_persona())
         try:
             enviada = await saida.responder(texto, responde_a=responde_a, botoes=botoes)
         except FalhaDeEnvio as falha:

@@ -66,7 +66,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-052](#adr-052--conhecimento-de-app-como-dado-zero-python-por-app-motores-genéricos-no-núcleo) | Conhecimento de app como dado: zero Python por app, motores genéricos no núcleo | vigente; fatias 1–4 implementadas (28/09), fatia 5 (aprendizado) absorvida por ADR-054 (20.9) | 28/09 |
 | [ADR-053](#adr-053--falhas-reiteradas-do-instagram-medir-para-onde-foi-o-tempo-e-não-transformar-lentidão-em-falha) | Falhas reiteradas do Instagram: medir para onde foi o tempo e não transformar lentidão em falha | vigente, implantado em 28/09 (`93967d0`); pendências dos revisores resolvidas em `7a02491` (itens 21.10–21.14) | 28/09 |
 | [ADR-054](#adr-054--aprendizado-contínuo-livro-de-aprendizado-com-ciclo-de-vida-publicação-sozinha-só-sem-efeito-externo-d1-feedback-implícito-com-botão-opcional-d2-lições-medidas-e-backlog-do-que-mais-falha) | Aprendizado contínuo: livro com ciclo de vida, D1 (publica sozinho só sem efeito externo), D2 (feedback implícito + botão), lições medidas e backlog do que mais falha | vigente; fundação (A1) implantada em `c359f65` (29/09 ~03:55Z), A2–A9 integradas e implantadas em 29/09 ~07:38Z (lições em shadow, telas em observe) | 29/09 |
-| [ADR-055](#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta) | Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta | vigente (código, migração 054); integrado em `c359f65`, a implantar; `e9da86e` implantado; substitui em parte o ADR-029; substituída em parte por ADR-056 (a cláusula de rede); emendado 04/10 (30.56: resposta a comentário uma vez por pessoa, também na mesma conta; 30.57: pedido pendente ocupa o teto e o próprio perfil sai do `for_each`; 30.60: publicar passa por aprovação mesmo com perfil autônomo) | 29/09 |
+| [ADR-055](#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta) | Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta | vigente (código, migração 054); integrado em `c359f65`, a implantar; `e9da86e` implantado; substitui em parte o ADR-029; substituída em parte por ADR-056 (a cláusula de rede); emendado 04/10 (30.56: resposta a comentário uma vez por pessoa, também na mesma conta; 30.57: pedido pendente ocupa o teto e o próprio perfil sai do `for_each`; 30.60: publicar passa por aprovação mesmo com perfil autônomo; 30.62: a família de um pedido entre personas conta como uma conta) | 29/09 |
 | [ADR-056](#adr-056--rede-por-aparelho-vpn-dentro-do-android-com-proxy-encadeado-saída-medida-e-revisão-da-cláusula-de-rede-do-adr-055) | Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida; revisa a cláusula de rede do ADR-055 | vigente (decisão do dono); Fase 25 a implementar; substitui em parte o ADR-055 | 29/09 |
 | [ADR-057](#adr-057--outlook-como-primeiro-app-novo-conta-por-app-sessão-por-conta-e-credencial-clonada-no-cofre) | Outlook como primeiro app novo: conta por app, sessão por conta e credencial clonada no cofre | vigente (decisão do dono); Fase 23 a implementar | 29/09 |
 | [ADR-058](#adr-058--comando-entre-aplicativos-catálogo-pelo-app-da-etapa-e-valor-lido-entre-etapas) | Comando entre aplicativos: catálogo pelo app da etapa e valor lido entre etapas | vigente; Fase 24 implementada (24.1–24.9); o §3 (valor lido entre etapas) é completado pelo [ADR-065](#adr-065--ação-de-catálogo-entrega-valor-lido-a-outra-etapa-saidas-declaradas-no-catalogoyaml) para ação de catálogo | 29/09 |
@@ -3325,6 +3325,43 @@ Prova `simulated`: `backend/tests/test_learning_prova.py`. `real`: `not_run` at�
 deploy que levar o 30.37 (o P4 fica pausado, `validacao.modo: off`, até lá). Domínio:
 [dominios/aprendizado.md](dominios/aprendizado.md), seção "A prova de fluxo (30.37)".
 
+**Emenda (04/10/2026, pedido do dono no chat da Canais; desenho aprovado pela orquestradora às 16:16Z; Fase 30, item
+30.55): a plataforma decide pela régua o que hoje espera o dono.** O dono pediu: "está ficando MUITA coisa para eu
+aprovar pelo portal ... a plataforma ja tem dados o suficiente pra tomar essa decisão". A medida do 31.42 mostrou que
+os 5 itens que ele aprovou eram todos do app de QA, de classe B e sem falha.
+
+- **O que a plataforma decide.** A receita ou o fluxo de "Para aprovar" (ela publica) e de "Revisar" (ela confirma
+  que fica, sem disparar prova). Decide só quando tudo vale junto:
+  - classe de agora A ou B;
+  - todo app do item de categoria `qa`;
+  - ≥ 1 a favor real e 0 contra efetivo na versão atual, e nenhuma falha de reprodução;
+  - saúde que não rebaixa;
+  - nenhum parecer real e pendente do curador pedindo rebaixar, desativar, substituir, fundir ou aposentar;
+  - não é reaprendido, não tem texto de pessoa, nenhum veto o alcança;
+  - a plataforma ainda não decidiu este item.
+- **O parecer não precisa ser "aprovar".** Parecer ausente ou `pedir_evidencia` não barra: é a delegação do dono (a R1
+  do 31.42 bateu 5 de 5 com a decisão dele).
+- **Fica com o dono:** conta real (Instagram), credencial, desafio, classe C, o que o curador quer rebaixar ou
+  descartar, app sem categoria e a mudança desta régua, que muda a versão da regra.
+- **Quem decide e como.** A plataforma passa pela porta da pessoa (`mudar_estado`, `confirmar_que_fica`) com
+  `decided_by = plataforma`: trilha, veto, guarda do fluxo e CAS são os de sempre.
+  - O motivo é `auto:<regra> v<n> — <fatos>` (na confirmação, depois de `confirmado que fica: `). É contrato com a
+    Canais (28.25).
+  - Sem `@` antes da versão: a forma `x:y@z` parece credencial, e a triagem do livro recusava a confirmação.
+  - A rota não aceita "plataforma" como operador da sessão (vira `painel:plataforma`, como `sistema`).
+  - O rótulo do parecer do curador NÃO é gravado: a decisão da plataforma não é rótulo humano.
+- **Desfazer** é a ação de sempre da pessoa: desligar (`published → disabled`; a tabela não volta a `validated`). O
+  item que a plataforma já decidiu uma vez não é decidido por ela de novo.
+- **Modo:** `aprendizado.aprovacao_automatica.modo` = `off` (de fábrica), `shadow` (marca uma vez o que decidiria, sinal
+  `aprovaria`) ou `on`. No deploy entra em `shadow`; a orquestradora lê o primeiro ciclo e vira `on` no mesmo dia se
+  bater com o ensaio.
+- **Sem migração.**
+
+Prova `simulated`: `backend/tests/test_aprovacao_automatica.py`. Ensaio sobre uma CÓPIA do banco do central (04/10,
+~16:40Z, também `simulated`): de 40 itens, decidiria 18, todos do app de QA e classe B; os 11 do Instagram ficam com
+o dono. `real`: `not_run` até o deploy. Domínio: [dominios/aprendizado.md](dominios/aprendizado.md), seção "A
+aprovação automática (30.55)".
+
 ## ADR-055 — Proteção de contas: a conta travada para sem ser tocada, o aparelho entra em quarentena, uma conta por alvo e nenhum reset com conta
 
 **Data:** 29/09/2026 · **Estado:** vigente; `e9da86e` implantado em 28/09; `c359f65` (+ `2511b12`) implantado em 29/09
@@ -3645,6 +3682,21 @@ disso bloqueia") e o fluxo de 8 contatos do QA seguem como estão.
 da DM fria. Perfil ou grupo `autonomous` para `CREATE_POST` vira `approval_required` na porta de política; só a
 instalação afrouxa, por `LimitsCfg.publicar_sem_aprovacao` (padrão `false`). Prova `simulated`:
 `backend/tests/test_create_post_endurecido.py`.
+
+**Emenda 30.62, 04/10/2026 (orquestradora, 28.10 F5):** num pedido entre personas, a porta recebe
+`pedido: ContextoDoPedido(raiz, familia, porta_vozes)`, de `social/policy.py`, e a família conta como uma conta só.
+- **Uma conta por alvo no pedido inteiro, em todos os baldes**, inclusive curtir, que na frota aceita mais de uma.
+  - Com porta-vozes (um conjunto; vazio = nenhum declarado), só eles tocam o alvo, e entre eles vale uma conta por
+    alvo.
+  - Sem porta-voz, a primeira persona da família que mexeu com o alvo, ou que tem pedido em aberto sobre ele, fica com
+    ele.
+  - Nos dois casos as outras são recusadas, não adiadas. A contagem é a da frota, restrita aos ids da família
+    (`fleet_targeting(only_profile_ids=)`).
+- **Pessoa real sem conversa prévia:** com pedido, efeito sobre alvo que não é conta nossa e não conversa com esta conta
+  vira `approval_required` em qualquer ação, não só DM. Pelo 30.61, essa aprovação aparece na prévia.
+- **Sem pedido, nada muda.**
+
+Prova `simulated`: `backend/tests/test_contexto_do_pedido.py`.
 
 ## ADR-056 — Rede por aparelho: VPN dentro do Android com proxy encadeado, saída medida e revisão da cláusula de rede do ADR-055
 

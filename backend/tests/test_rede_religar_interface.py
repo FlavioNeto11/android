@@ -430,3 +430,30 @@ def test_os_comandos_do_aparelho_usam_o_baseline_do_aparelho_e_recusam_entrada_r
     for ruim in ("", "ontem", "10-01 15:00:10", "10-01 15:00:10.000'; reboot; '"):
         with pytest.raises(RedeAplicacaoError):
             comando_da_janela_do_start(PKG, ruim)
+
+
+async def test_leitura_da_rede_usa_o_prazo_da_config_e_a_folga_da_fila() -> None:
+    """29.75: o prazo das leituras da sonda era 45 s fixos (+10 da fila = "rede do aparelho excedeu 55s", 6 vezes em 7
+    dias, ao ligar sob carga). `timeout=None` lê `rede.sonda.prazo_leitura_s`; um prazo explícito continua valendo."""
+    from types import SimpleNamespace as NS
+
+    from app.config import RedeSondaCfg
+    from app.devices.rede_aplicacao import FOLGA_DA_FILA_S
+
+    pedidos: list[tuple[float, float]] = []
+
+    class Fila:
+        async def run(self, chamada, *, timeout, label):
+            pedidos.append((chamada.keywords["timeout"], timeout))
+            assert label == "rede do aparelho"
+            return "ok"
+
+    rt = NS(id="android-06", serial="s", external=False, executor=Fila(), adb=NS(shell=lambda *a, **k: "ok"))
+    st = NS(cfg=NS(file=NS(rede=NS(sonda=RedeSondaCfg()))))
+    ap = AparelhoPeloAdb(st, rt)
+    assert await ap.shell("cat /proc/net/route", timeout=None) == "ok"
+    assert await ap.shell("getprop", timeout=12) == "ok"
+    assert pedidos == [(90.0, 90.0 + FOLGA_DA_FILA_S), (12, 12 + FOLGA_DA_FILA_S)]
+    assert RedeSondaCfg().prazo_leitura_s == 90
+    with pytest.raises(ValueError):
+        RedeSondaCfg(prazo_leitura_s=5)

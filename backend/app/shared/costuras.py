@@ -30,6 +30,9 @@ PAINEL = "panel"
 #: O ator de sistema das habilidades e do livro (`skills.domain.lifecycle.SYSTEM_ACTOR`), repetido porque o kernel não
 #: vê as habilidades; o teste confere a igualdade.
 SISTEMA = "sistema"
+#: Quem decide pela régua da aprovação automática (30.55, `learning.domain.aprovacao_automatica.PLATAFORMA`): como o
+#: `sistema`, nunca o nome de um operador da sessão; o teste confere a igualdade.
+PLATAFORMA = "plataforma"
 
 #: As saídas humanas de um comando incerto (`CommandResolveBody.outcome`).
 DesfechoDoComando = Literal["succeeded", "failed", "cancelled"]
@@ -37,12 +40,13 @@ DesfechoDoComando = Literal["succeeded", "failed", "cancelled"]
 
 def autor_do_gesto(operador: object) -> str:
     """Quem fez o gesto: o operador da sessão do painel (`request.state.operador`), ou `panel`. Nunca o ator de
-    sistema — pela rota decide sempre uma pessoa, e a régua diária só conta como negativo humano o que não é dele.
+    sistema nem a plataforma (30.55) — pela rota decide sempre uma pessoa, e a régua diária só conta como negativo
+    humano o que não é dele.
 
     O nome vem da SESSÃO, nunca do corpo da requisição (`requested_by`): aquele campo qualquer chamador escreve, e um
     `sistema` ali tiraria o gesto da conta das pessoas."""
     quem = operador if isinstance(operador, str) and operador.strip() else PAINEL
-    return f"painel:{quem}" if quem == SISTEMA else quem
+    return f"painel:{quem}" if quem in (SISTEMA, PLATAFORMA) else quem
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +135,6 @@ def avisar(aviso: Callable[[_T], None], dado: _T) -> None:
         log.exception("aprendizado: a costura %s falhou (a operação seguiu)", type(dado).__name__)
 
 
-__all__ = ["PAINEL", "SEM_COSTURAS_DE_GESTO", "SISTEMA", "CorrecaoDeEnsino", "CosturaDeComando", "CosturaDeControle",
-           "CosturaDeEnsino", "DesfechoDoComando", "ResolucaoDeComando", "SemCosturasDeGesto", "TomadaDeControle",
-           "autor_do_gesto", "avisar"]
+__all__ = ["PAINEL", "PLATAFORMA", "SEM_COSTURAS_DE_GESTO", "SISTEMA", "CorrecaoDeEnsino", "CosturaDeComando",
+           "CosturaDeControle", "CosturaDeEnsino", "DesfechoDoComando", "ResolucaoDeComando", "SemCosturasDeGesto",
+           "TomadaDeControle", "autor_do_gesto", "avisar"]

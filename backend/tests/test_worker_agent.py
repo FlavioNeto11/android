@@ -418,3 +418,35 @@ def test_diario_de_agente_anterior_continua_legivel_nos_dois_sentidos(tmp_path: 
     bruto = json.loads((tmp_path / ARQUIVO).read_text(encoding="utf-8"))
     assert bruto["resultados"] == {"c-9": {"command_id": "c-9"}} and bruto["cercas"] == {"android-03": 9}
     assert "c-10" in bruto["confirmados"]
+
+
+# ---------------------------------------------------------------- 29.73: reconexão rápida depois do reinício do central
+def _fechado(codigo: int | None) -> Exception:
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+    if codigo is None:
+        return OSError("connection refused")
+    return ConnectionClosedError(Close(codigo, "service restart"), Close(codigo, "service restart"), True)
+
+
+def test_reinicio_do_central_abre_a_janela_curta_e_a_escada_volta_depois() -> None:
+    """Deploy 28 (04/10): o central avisou 1012, ficou ~76 s fora, e a escada (2, 4, 8, 16, 32, 60 s) deixou o
+    worker um minuto fora depois de o central voltar. Com o aviso de reinício, a espera fica curta e fixa por 3 min;
+    a queda sem aviso segue a escada de sempre."""
+    r = agent_mod.EsperaDeReconexao()
+    assert r.depois_da_queda(_fechado(1012), 0.0) == agent_mod.RECONEXAO_RAJADA_S
+    # Dentro da janela, as recusas de conexão (o central ainda subindo) não fazem a espera crescer.
+    esperas = [r.depois_da_queda(_fechado(None), t) for t in (3.0, 6.0, 9.0, 60.0, 120.0, 179.0)]
+    assert esperas == [agent_mod.RECONEXAO_RAJADA_S] * 6
+    # Passada a janela, a escada retoma do ponto em que estava.
+    assert r.depois_da_queda(_fechado(None), 181.0) == agent_mod.RECONEXAO_MIN_S
+    assert r.depois_da_queda(_fechado(None), 183.0) == agent_mod.RECONEXAO_MIN_S * 2
+
+
+def test_queda_sem_aviso_de_reinicio_segue_a_escada() -> None:
+    r = agent_mod.EsperaDeReconexao()
+    esperas = [r.depois_da_queda(_fechado(c), float(i)) for i, c in enumerate((None, 1006, None, None, None, None, None))]
+    assert esperas == [2.0, 4.0, 8.0, 16.0, 32.0, 60.0, 60.0]
+    assert agent_mod.codigo_do_fechamento(_fechado(1001)) == 1001 and agent_mod.codigo_do_fechamento(OSError()) is None
+    r.sessao_viveu()
+    assert r.depois_da_queda(_fechado(None), 100.0) == agent_mod.RECONEXAO_MIN_S

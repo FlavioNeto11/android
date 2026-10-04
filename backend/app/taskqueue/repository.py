@@ -24,6 +24,7 @@ from ..modules.identity.application.available_data import profile_variables
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.learning.domain.falhas import classificar_falha
 from ..modules.pedidos.domain.orcamento import teto_da_execucao
+from ..planning.catalog import session_provider_of
 from ..planning.provider import Usage
 from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
@@ -141,9 +142,12 @@ class Repository:
         self.owner_id = owner_id
         #: Onde a evidência é gravada (item 5.7). Sem argumento, é a pasta local de sempre.
         self.storage: Storage = storage or DiskStorage(evidence_dir)
-        #: Os dados NÃO sigilosos da persona de cada aparelho, para as variáveis `{perfil_email}` etc. (ADR-040). Só
-        #: o não sigiloso é lido aqui, então "o app tem provedor?" não muda nada: fica em falso.
-        self._dados = SqlProfileDataStore(db, tem_provedor_de_sessao=lambda _pacote: False)
+        #: Os dados NÃO sigilosos da persona de cada aparelho, para as variáveis `{perfil_email}` etc. (ADR-040). "O app
+        #: tem provedor de sessão?" decide o VALOR de `conta_<app>_usuario` (29.71: o nome no app, nunca o e-mail de
+        #: login, no app de login gerenciado): com o predicado em falso, a materialização punha o e-mail do Instagram no
+        #: binding, no título e no objetivo da etapa, embora a lista do planejador (`service.dados`) já desse o @.
+        self._dados = SqlProfileDataStore(db, tem_provedor_de_sessao=lambda pacote: session_provider_of(pacote)
+                                          is not None)
 
     # ================================================================== execuções
     def create_run(self, req: RunCreate, *, simulated: bool, targets: str | None = None,
@@ -742,14 +746,15 @@ class Repository:
 
         `error_kind` (RA-22): o `AIError.kind` que encerrou a tentativa (`StepOutcome.ai_error_kind`). Vai para
         `attempts.error_kind` e decide o tipo antes do texto; sem ele (nenhum erro de IA), a coluna fica nula."""
-        atual = self.db.one("SELECT status, error FROM attempts WHERE id=?", (attempt_id,))
+        atual = self.db.one("SELECT status, error, recovery FROM attempts WHERE id=?", (attempt_id,))
         anterior = atual["status"] if atual else None
         erro = truncate(error, 800)
         # A falha classificada (ADR-054): o tipo do erro FINAL, o mesmo que o COALESCE abaixo deixa gravado — o texto
         # novo ou, sem ele, o que `note_attempt` já anotou nesta tentativa. Mesmo classificador puro da leitura do
-        # legado: o gravado e o retroativo nunca discordam.
+        # legado: o gravado e o retroativo nunca discordam. O `recovery` separa a interrompida que esperou a pessoa
+        # (29.74) da reconciliação, da pausa e da tomada.
         tipo = classificar_falha(erro if erro is not None else (atual["error"] if atual else None), status.value,
-                                 error_kind)
+                                 error_kind, recovery if recovery is not None else (atual["recovery"] if atual else None))
         # A tela só acompanha um tipo de falha: tentativa comprovada ou cancelada não tem "onde falhou", e a tela
         # sem tipo seria um grupo do backlog sem falha nenhuma.
         tela = (screen or None) if tipo is not None else None
@@ -954,7 +959,9 @@ class Repository:
     def set_objective(self, objective_id: str, status: ObjectiveStatus, *, detail: str | None = None,
                       blocked_reason: str | None = None, needs: str | None = None,
                       delivery_level: DeliveryLevel | None = None, message: str | None = None,
-                      level: str = "info", blocked_kind: str | None = None) -> None:
+                      level: str = "info", blocked_kind: str | None = None,
+                      dados: dict[str, object] | None = None) -> None:
+        """`dados`: campos a mais no `data` do `objective.updated` desta transição (a marca de vencimento, 31.43)."""
         # `wait_reason` sempre volta a NULL aqui (item 7.3): toda chamada a `set_objective` é uma transição de
         # ESTADO do objetivo — a espera tipada (device_slot/profile_limit/ai_capacity/model_response), que só o
         # scheduler e o `_ai` escrevem via `note_waiting`/coluna direta, sempre termina numa destas transições.
@@ -988,7 +995,7 @@ class Repository:
         self.bus.emit("objective.updated", message or f"{row['instance_id']}: objetivo {status.value}"
                       + (f" — {detail}" if detail else ""), level=level, run_id=row["run_id"],
                       instance_id=row["instance_id"], objective_id=objective_id,
-                      data={"objective": self.objective_dto(row).model_dump(mode="json")})
+                      data={"objective": self.objective_dto(row).model_dump(mode="json"), **(dados or {})})
 
     def emit_objective(self, objective_id: str, message: str | None = None) -> None:
         """Publica o objetivo sem mudar o estado (progresso de etapas, nível de entrega)."""

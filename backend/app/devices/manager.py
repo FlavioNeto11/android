@@ -2760,6 +2760,8 @@ class DeviceManager:
         timeout = a_cfg.boot_timeout_s
         inicio_prazo = t0
         load_s: float | None = None                # spawn → snapshot carregado (só wake que chegou ao veredito True)
+        carregado_por: str | None = None           # 29.34: quem deu o veredito True ("log" ou "uptime")
+        uptime_no_veredito: float | None = None
         phase = "aguardando o Android iniciar"
         booted_at: float | None = None
         checked_load = False
@@ -2776,7 +2778,7 @@ class DeviceManager:
                     rt.snapshot_failures = 0
                     # É a hora em que o log foi LIDO (resolução de `boot_poll_s`), não o carimbo do emulador: o erro
                     # é de até um poll para mais, e favorece quem carregou.
-                    load_s = agora - t0
+                    load_s, carregado_por = agora - t0, "log"
                     inicio_prazo, timeout = agora, a_cfg.wake_timeout_s
                 elif verdict is False:
                     checked_load = True
@@ -2810,6 +2812,19 @@ class DeviceManager:
                         booted_at = time.monotonic()
                         self._prontidao(rt, "boot_completed", "boot concluído; aguardando a interface")
                         phase = "Android iniciado; aguardando a interface"
+                        if warm and not checked_load:
+                            uptime = await self._uptime_do_convidado(rt)
+                            if snapshot_pelo_uptime(uptime, booted_at - t0):
+                                # 29.34 (prova real contra, 04/10): a saída do emulador para o arquivo é bufferizada
+                                # e "Successfully loaded snapshot" só chega ao log DEPOIS do boot, então o veredito
+                                # pelo log não vinha e o wake seguia no prazo de boot a frio, sem `load_ms`. O uptime
+                                # do convidado maior que o tempo desde o spawn só existe com o snapshot carregado.
+                                # Só POSITIVO: uptime pequeno (snapshot salvo logo depois de um boot a frio) não
+                                # prova boot a frio, e o negativo conta `snapshot_failures` (o AVD deixa de hibernar).
+                                checked_load = True
+                                rt.snapshot_failures = 0
+                                load_s, carregado_por, uptime_no_veredito = booted_at - t0, "uptime", uptime
+                                inicio_prazo, timeout = booted_at, a_cfg.wake_timeout_s
                 elif await rt.executor.run(rt.adb.ui_ready, timeout=15, label="ui_ready") or \
                         (time.monotonic() - booted_at) > 120:
                     break
@@ -2872,8 +2887,11 @@ class DeviceManager:
                 "mem_available_gb": round(vm.available / 2**30, 1), "image": self.android_de(rt).system_image,
                 "host_cpu_percent": None if cpu_ao_iniciar is None else round(cpu_ao_iniciar, 1),
                 "boots_em_voo": em_voo_ao_iniciar}
-            if warm:                               # RA-15: quanto levou carregar o snapshot (None = o log não disse)
+            if warm:                               # RA-15: quanto levou carregar o snapshot (None = ninguém disse)
                 medida["load_ms"] = None if load_s is None else int(round(load_s * 1000))
+                medida["snapshot_por"] = carregado_por
+                if uptime_no_veredito is not None:
+                    medida["uptime_s"] = round(uptime_no_veredito, 1)
             self.db.execute("INSERT INTO measurements(ts, kind, data) VALUES (?,?,?)",
                             (now_iso(), "boot", dumps(medida)))
         # Antes de declarar `online`: o DTO que anuncia a entrada no ar já sai com o renderizador (e com o aviso).
@@ -2996,6 +3014,14 @@ class DeviceManager:
     # ------------------------------------------------------------------ snapshot (hibernação)
     def _snapshot_dir(self, rt: DeviceRuntime) -> Path:
         return self.cfg.avd_home / f"{rt.avd_name}.avd" / "snapshots" / emu.SNAPSHOT_NAME
+
+    async def _uptime_do_convidado(self, rt: DeviceRuntime) -> float | None:
+        """`/proc/uptime` do convidado, ou `None`: a leitura é só uma segunda fonte do veredito do snapshot e nunca
+        derruba o boot."""
+        try:
+            return await rt.executor.run(rt.adb.uptime_s, timeout=10, label="uptime")
+        except Exception:  # noqa: BLE001 - qualquer falha = sem veredito por esta fonte
+            return None
 
     def _snapshot_verdict(self, rt: DeviceRuntime) -> bool | None:
         """True = snapshot carregado · False = recusado pelo emulador · None = o log ainda não disse."""
@@ -4353,6 +4379,18 @@ class DeviceManager:
                 raise DriverError(rt.automation.detail or "Sessão de automação indisponível", effect_possible=False) from exc
             xml = await rt.executor.run(rt.io.page_source, timeout=40, label="hierarquia")
         return self.arvore(rt, xml, max_elements=400)
+
+
+#: Folga do veredito pelo uptime (29.34): num boot a frio o uptime do convidado nunca passa do tempo desde o spawn (o
+#: kernel começa depois do processo); a folga cobre o relógio do host e o do convidado andando um pouco diferente.
+FOLGA_DO_UPTIME_S = 15.0
+
+
+def snapshot_pelo_uptime(uptime_s: float | None, desde_o_spawn_s: float) -> bool:
+    """O snapshot foi carregado? Só responde SIM com certeza: uptime maior que o tempo desde o spawn, com folga. Uptime
+    pequeno ou ilegível não prova boot a frio (um snapshot salvo logo depois de um boot a frio também tem uptime
+    pequeno), e quem chama segue sem veredito."""
+    return uptime_s is not None and uptime_s > desde_o_spawn_s + FOLGA_DO_UPTIME_S
 
 
 def _hw_signature(a: Any) -> str:

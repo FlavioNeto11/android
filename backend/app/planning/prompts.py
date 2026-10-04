@@ -566,10 +566,13 @@ def _quantas_ferramentas(encadear: int) -> str:
 
 
 def verifier_user_text(ctx: StepContext, screen_desc: str, elements: list[str], required_level: str | None,
-                       facts: list[str] | None = None) -> str:
+                       facts: list[str] | None = None, dicas: list[str] | None = None) -> str:
     need = f"\nNível de entrega exigido: {required_level}." if required_level else ""
     done = ("\n\n<fatos_do_executor>\n" + "\n".join(f"  {i + 1}. {f}" for i, f in enumerate(facts))
             + "\n</fatos_do_executor>") if facts else ""
+    # Item 31.46: o que o app declara sobre a própria árvore (a linha da lista sem texto). Fato de desenho da tela, não
+    # regra de aceite: a pós-condição continua sendo a do passo. Sem dica o bloco some e o texto é o de antes.
+    done += ("\n\n<dicas_da_tela>\n" + "\n".join(f"  - {d}" for d in dicas) + "\n</dicas_da_tela>") if dicas else ""
     return (f"{step_block(ctx)}{need}{done}\n\nOBSERVAÇÃO ATUAL — {screen_desc}\n<elementos_da_tela>\n"
             + ("\n".join(elements) or "(hierarquia vazia)") + "\n</elementos_da_tela>\n\nJulgue a pós-condição.")
 

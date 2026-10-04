@@ -1913,7 +1913,7 @@ class Scheduler:
             # a versão que só expande não é replanejamento.
             repo.revise_plan(obj["id"], f"Expandido para {len(items)} item(ns) lidos em '{step.title}'{rastro}", steps)
 
-    def _sem_o_proprio_perfil(self, obj: Any, step: Any, plan: Plan, items: list[str]) -> list[str]:
+    def _sem_o_proprio_perfil(self, obj: Row, step: StepDTO, plan: Plan, items: list[str]) -> list[str]:
         """30.57: no bloco com EFEITO, o item que é o próprio perfil que executa sai antes da expansão (responder ao
         próprio comentário, curtir a própria publicação). Não vira etapa, então também não conta como item falho no
         `_settle_items`; o rastro diz quantos saíram. Só o próprio: as outras contas nossas interagem entre si (emenda

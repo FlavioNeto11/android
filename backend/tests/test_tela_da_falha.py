@@ -233,6 +233,7 @@ async def test_a_execucao_grava_a_tela_da_tentativa_que_falhou(harness: Harness,
     st = harness.state
     assert st is not None
     _app_do_instagram(monkeypatch, harness)
+    await harness.medir_a_internet()   # T.2: a sonda do monitor agora; o Instagram não espera os 6 s da 1ª volta
     falhou: list[str] = []
 
     async def run_step(**kw: Any) -> StepOutcome:
@@ -385,6 +386,6 @@ async def test_trava_achada_dentro_da_ferramenta_grava_a_tela_da_trava(tmp_path:
                             " JOIN steps p ON p.id = a.step_id WHERE p.run_id=? AND a.failure_kind IS NOT NULL",
                             (run.id,))
         assert [(r["status"], r["failure_kind"], r["failure_screen"]) for r in linhas] == [
-            ("interrupted", FailureKind.INTERROMPIDA.value, "desafio")]
+            ("interrupted", FailureKind.AUTENTICACAO.value, "desafio")]    # a trava fica com a pessoa (29.74)
         # a última árvore observada é a de antes do gesto, e NÃO é a verificação: a tela gravada veio da trava
         assert tela_da_falha(s.devices.get(IID).last_tree, PKG) != "desafio"
