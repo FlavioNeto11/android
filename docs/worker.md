@@ -256,7 +256,9 @@ inscrito", na Infraestrutura, apontar para um worker que não existe mais.
 - **Ausência de batida** é o que marca o worker indisponível, não o socket fechado — socket cai por rede
   piscando, e isso não significa que o worker parou de trabalhar. Batida a cada 10 s, ausente após 3 perdidas.
 - **Reconexão automática** com espera crescente até 60 s. Recusa explicada (credencial errada, não inscrito) faz
-  o agente **parar** em vez de martelar: insistir não resolveria.
+  o agente **parar** em vez de martelar: insistir não resolveria. Quando o central AVISA que está reiniciando
+  (fechamento 1012 ou 1001), a espera fica fixa em 3 s por 3 min (29.73): com a escada, o worker ficava até um
+  minuto fora depois de o central voltar de um deploy longo.
 - **Cerca (fencing):** todo despacho leva um número monotônico e o agente o devolve no resultado. Resultado com
   cerca velha — ou **sem** cerca — é recusado. E quem recusa não é só o central: o **agente** guarda a maior cerca
   já executada por aparelho (em disco, no diário) e recusa despacho de cerca que não seja MAIOR sem tocar no

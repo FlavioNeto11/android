@@ -45,6 +45,42 @@ FEATURES = (FEATURE_RESERVA_DE_BOOT, *FEATURES_DE_OBSERVACAO)
 #: Espera entre tentativas de reconexão. Cresce até um teto: martelar o central não ajuda ninguém.
 RECONEXAO_MIN_S = 2.0
 RECONEXAO_MAX_S = 60.0
+#: Item 29.73: o central que AVISA que está reiniciando (fechamento 1012 "service restart", ou 1001 "going away")
+#: volta em segundos ou num minuto (o deploy com backup). Com a escada de sempre, a tentativa de 32 s caía antes da
+#: volta e a seguinte só vinha 60 s depois: o worker ficava até um minuto fora depois do central de pé (deploy 28,
+#: 04/10). Nessa janela a espera fica curta e fixa; passada ela, volta à escada.
+RECONEXAO_RAJADA_S = 3.0
+RECONEXAO_RAJADA_JANELA_S = 180.0
+FECHAMENTO_DE_REINICIO = frozenset({1001, 1012})
+
+
+def codigo_do_fechamento(exc: BaseException) -> int | None:
+    """O código do fechamento que o CENTRAL mandou (`ConnectionClosed.rcvd`); `None` quando não houve fechamento
+    recebido (queda de rede, recusa de conexão)."""
+    rcvd = getattr(exc, "rcvd", None)
+    codigo = getattr(rcvd, "code", None)
+    return int(codigo) if isinstance(codigo, int) else None
+
+
+class EsperaDeReconexao:
+    """Quanto esperar antes da próxima tentativa. Puro (o relógio vem de fora), para o teste não depender de rede."""
+
+    def __init__(self) -> None:
+        self.espera = RECONEXAO_MIN_S
+        self.rajada_ate = 0.0
+
+    def sessao_viveu(self) -> None:
+        self.espera = RECONEXAO_MIN_S
+
+    def depois_da_queda(self, exc: BaseException, agora: float) -> float:
+        """A espera desta vez. O fechamento de reinício abre a janela curta; dentro dela a espera não cresce."""
+        if codigo_do_fechamento(exc) in FECHAMENTO_DE_REINICIO:
+            self.rajada_ate = agora + RECONEXAO_RAJADA_JANELA_S
+        if agora < self.rajada_ate:
+            return RECONEXAO_RAJADA_S
+        esta = self.espera
+        self.espera = min(RECONEXAO_MAX_S, self.espera * 2)
+        return esta
 
 
 def ws_url(server: str) -> str:
@@ -444,16 +480,17 @@ class Agent:
         self._tarefas[msg.command_id] = asyncio.create_task(self._executar(msg))
 
     async def run_forever(self) -> None:
-        espera = RECONEXAO_MIN_S
+        reconexao = EsperaDeReconexao()
         while True:
+            espera = RECONEXAO_MIN_S
             try:
                 await self._sessao()
-                espera = RECONEXAO_MIN_S          # sessão que viveu: a próxima tentativa volta a ser rápida
+                reconexao.sessao_viveu()          # sessão que viveu: a próxima tentativa volta a ser rápida
             except RuntimeError as exc:
                 # Recusa explicada (credencial errada, não inscrito): insistir não resolve, e o texto é para humano.
                 log.error("%s", exc)
                 return
             except Exception as exc:  # noqa: BLE001 - rede: tenta de novo, sempre
+                espera = reconexao.depois_da_queda(exc, asyncio.get_running_loop().time())
                 log.warning("conexão caiu (%s); nova tentativa em %.0f s", exc, espera)
             await asyncio.sleep(espera)
-            espera = min(RECONEXAO_MAX_S, espera * 2)
