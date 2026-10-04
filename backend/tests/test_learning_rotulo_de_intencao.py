@@ -330,6 +330,7 @@ async def test_sem_composicao_a_rota_responde_503(db: Database) -> None:
 async def test_o_appstate_liga_o_rotulo_e_a_execucao_simulada_nao_pergunta(harness: Harness) -> None:
     st = harness.state
     assert st is not None
+    harness.pular_o_tempo()   # T.2: sem assentamento em tempo real
     rotulos = st.learning.extensao(ServicoDeRotulos)
     assert rotulos is not None
     run = harness.run(["android-01"])
