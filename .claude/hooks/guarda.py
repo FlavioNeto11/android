@@ -36,6 +36,30 @@ def sensivel(p):
     return "/.cloudflared/" in "/" + p
 
 
+def so_por_extensao(p):
+    # True quando o token só é sensível pela extensão (não é o arquivo de ambiente, nome fixo nem a pasta do túnel).
+    p = normalizar(p)
+    base = p.rsplit("/", 1)[-1]
+    if base == ".env" or base.startswith(".env.") or base in ("cert.pem", "gradle.properties", "local.properties"):
+        return False
+    return "/.cloudflared/" not in "/" + p
+
+
+def parece_arquivo(token, cwd, raiz):
+    # Num comando, `s.key` (coluna de SQL, atributo de objeto) termina como arquivo de chave e não é arquivo. O token
+    # solto só é barrado se existir arquivo com esse nome na pasta atual, na raiz do projeto ou numa pasta do primeiro
+    # nível dela (pega `cd data && cat credentials.key`). Com barra ou curinga, é caminho: barra sempre.
+    t = token.strip().strip("\"'")
+    if any(c in t for c in "/\\*?["):
+        return True
+    pastas = [cwd, raiz]
+    try:
+        pastas += [os.path.join(raiz, d) for d in os.listdir(raiz) if os.path.isdir(os.path.join(raiz, d))]
+    except OSError:
+        pass
+    return any(p and os.path.isfile(os.path.join(p, t)) for p in pastas)
+
+
 def raiz_git(caminho):
     # Raiz do checkout que contém o arquivo (checkout principal ou worktree). Só lê.
     pasta = os.path.dirname(os.path.abspath(caminho))
@@ -73,7 +97,9 @@ def main():
     if tool in TOOLS_DE_COMANDO:
         comando = MENSAGEM.sub(" ", inp.get("command", ""))
         tokens = re.split(r"[\s\"'=<>|;&()`,]+", comando)
-        if any(t and sensivel(t) for t in tokens):
+        cwd = ev.get("cwd") or "."
+        raiz = os.environ.get("CLAUDE_PROJECT_DIR") or cwd
+        if any(t and sensivel(t) and (not so_por_extensao(t) or parece_arquivo(t, cwd, raiz)) for t in tokens):
             bloquear("Bloqueado pela guarda do projeto: o comando cita um arquivo de segredo (.env, chave ou "
                      "certificado). Para saber se a chave está configurada, use GET /api/ai. Se o nome aparece só "
                      "como texto, ponha-o numa mensagem -m \"…\" (que a guarda ignora), use git commit -F <arquivo>, "
