@@ -19,6 +19,7 @@ Os avisos são linhas de `pedido_avisos` (migração 072): TODO `pedido.aviso` �
 from __future__ import annotations
 
 import base64
+import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -975,9 +976,13 @@ class PedidosApi:
         p = self.repo.pedido(r["pedido_id"]) if r is not None else None
         if r is None or p is None:
             return
-        self._aviso(p, None, "relatorio_pronto", dominio_avisos.chave_do_relatorio(rid),
-                    f"O relatório {r['sequencia']} do pedido '{p['titulo']}' está pronto.",
-                    {"relatorio_id": rid, "sequencia": int(r["sequencia"]), "gatilho": r["gatilho"]})
+        dados: dict[str, object] = {"relatorio_id": rid, "sequencia": int(r["sequencia"]), "gatilho": r["gatilho"]}
+        mensagem = f"O relatório {r['sequencia']} do pedido '{p['titulo']}' está pronto."
+        resumo = _resumo_da_consolidacao(r["conteudo"])
+        if resumo is not None:               # 28.10 F4: só contagens; o valor lido e o id dos filhos ficam no relatório
+            dados.update({"filhos_lidos": resumo["filhos"], "conflitos": resumo["conflitos"]})
+            mensagem += f" Consolidou {resumo['filhos']} filho(s); {resumo['conflitos']} conflito(s)."
+        self._aviso(p, None, "relatorio_pronto", dominio_avisos.chave_do_relatorio(rid), mensagem, dados)
 
     def _aviso(self, p: Row, ocorrencia_id: str | None, tipo: str, chave: str, mensagem: str,
                dados: Mapping[str, object]) -> None:
@@ -988,6 +993,15 @@ class PedidosApi:
     def registrar_aviso(self, aviso: Mapping[str, object]) -> JsonObject | None:
         """O `avisar` do laço: o `AvisoDTO` do 28.5/28.6 passa pelo MESMO caminho que os avisos da API."""
         return self.caixa.registrar_dto(aviso)
+
+
+def _resumo_da_consolidacao(conteudo: str | None) -> dict[str, int] | None:
+    """As contagens do bloco `consolidacao` do relatório (28.10 F4), ou `None` sem bloco ou com conteúdo ilegível."""
+    try:
+        resumo = (json.loads(conteudo or "{}").get("consolidacao") or {}).get("resumo")
+        return {"filhos": int(resumo["filhos"]), "conflitos": int(resumo["conflitos"])} if resumo else None
+    except (TypeError, ValueError, KeyError, AttributeError):
+        return None
 
 
 __all__ = ["CorpoDoPedido", "ErroDeApi", "PedidosApi", "ESTADOS", "PEDIDO_ATORES"]

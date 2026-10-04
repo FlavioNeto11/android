@@ -456,7 +456,7 @@ o espaçamento e os limites são código; a IA entra no plano e na leitura de ca
     nunca se citam como terceiros, nunca aparecem como vozes distintas na mesma conversa. É o comportamento
     inautêntico coordenado da política da Meta e a campanha coordenada que o ADR-050 já recusa.
 
-### 9.1 Fatias F1 e F2 (28.10, 04/10/2026): a estrutura e o laço que a lê
+### 9.1 Fatias F1 a F4 (28.10, 04/10/2026): a estrutura, o laço que a lê, o papel e a consolidação
 
 **F1: só a estrutura.**
 
@@ -537,9 +537,30 @@ do laço está entregue: `_requisicao` só passa o campo quando o `RunCreate` o 
 - **Prova:** `simulated` dos dois lados. A real é um pedido `observar` com objetivo de efeito, num aparelho sem conta real:
   a execução tem de parar antes da etapa. Só depois do deploy, com `pedidos` religado.
 
-Fica para as próximas fatias: a escolha de persona pelo papel, **F4** (consolidação: o pai lê observações e memória dos filhos, e o conflito vai ao
-relatório) e **F5** (as regras para fora: uma conta por alvo no pedido inteiro, `approval_required` para pessoa real e a
-proibição de apoio simulado).
+**F4: a consolidação do pai (adendo v1.27).**
+
+Entregue sem migração, atrás de `pedidos.colaboracao.enabled` (desligado, ou sem filhos, o relatório é byte a byte o de antes):
+
+- **Leitura** (`domain/consolidacao.py`, puro; `ServicoDeRelatorios._filhos_vistos`). Ao montar QUALQUER relatório do pai
+  (sob demanda, de período ou o de encerramento), lê dos filhos DIRETOS só dados estruturados: as observações comprovadas
+  (`observado`, com valor, numa ocorrência `concluida`; por alvo e nome vale a mais recente do filho) e a memória-fato
+  (`descoberta`, `decisao`, `fonte`, não resolvida). `progresso` e `pendencia` são estado do trabalho do filho e ficam fora.
+  Nunca o texto livre das execuções, o `trecho` ou o título do filho. Falha de leitura não derruba o relatório: ele sai sem o
+  bloco e com o item `consolidacao_indisponivel` em "não coberto".
+- **Conflito.** Valores diferentes (comparados sem diferença de espaço) para a mesma chave (origem, alvo, nome) vindos de
+  filhos diferentes são um CONFLITO com todas as versões e, em cada uma, as fontes (id do filho e papel). Sem voto, sem maioria,
+  sem vencedor. Valor igual de vários filhos aparece UMA vez, com `n_fontes`.
+- **Forma.** Bloco `consolidacao`: `fontes` (cada filho, o estado, `com_dado`/`sem_dado`, `em_andamento`), `valores`, `conflitos`,
+  `omitidos` e `resumo` (contagens). Conflito, filho sem dado e filho em andamento também entram em "não coberto", e a conclusão do
+  pai fica `parcial` em vez de `sustentada`: divergência e incerteza nunca contam como sucesso.
+- **Canais.** O aviso `relatorio_pronto` ganha `dados.filhos_lidos` e `dados.conflitos`; o texto do Telegram leva só "N conflito(s)
+  entre os filhos". Sem valor lido, sem id de filho, sem nome de persona, conta, aparelho ou texto de comando. O valor e as fontes
+  ficam no relatório do painel e da API do dono.
+- **Prova:** `simulated` (`backend/tests/test_pedidos_colaboracao_consolidacao.py`). `not_run`: um pedido pai de teste no app de
+  teste, depois do deploy.
+
+Fica para as próximas fatias: a escolha de persona pelo papel e **F5** (as regras para fora: uma conta por alvo no pedido inteiro,
+`approval_required` para pessoa real e a proibição de apoio simulado).
 
 ## 10. Recursos e custo (26.6)
 

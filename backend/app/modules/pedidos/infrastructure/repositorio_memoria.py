@@ -111,6 +111,10 @@ class RepositorioDeMemoria:
         return self.db.query("SELECT id, previsto_para, estado, motivo, custo_usd, origem FROM pedido_ocorrencias"
                              " WHERE pedido_id=? ORDER BY previsto_para, id", (pedido_id,))
 
+    def filhos_do_pai(self, pedido_id: str) -> list[Row]:
+        """Os filhos DIRETOS (28.10 F4): só id, papel e estado; o título, que pode citar a persona, nem é lido."""
+        return self.db.query("SELECT id, papel, estado FROM pedidos WHERE pai_id=? ORDER BY id", (pedido_id,))
+
     # ------------------------------------------------------------------ relatórios
     def relatorio_de_encerramento(self, pedido_id: str) -> Row | None:
         return self.db.one("SELECT * FROM pedido_relatorios WHERE pedido_id=? AND gatilho='encerramento'", (pedido_id,))

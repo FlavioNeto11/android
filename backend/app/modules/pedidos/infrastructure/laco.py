@@ -133,7 +133,8 @@ class LacoDePedidos:
         #: Observações do fechamento, memória e relatório (28.7). O resumo por IA só existe com `resumo_ia` ligado E um
         #: `resumidor` injetado; sem os dois, nada de IA é chamado.
         self.relatorios = ServicoDeRelatorios(db, lambda: self.relogio(), resumidor=resumidor, resumo_ia=cfg.resumo_ia,
-                                              resumo_ia_teto_usd=cfg.resumo_ia_teto_usd, marcar=self.repo.marcar)
+                                              resumo_ia_teto_usd=cfg.resumo_ia_teto_usd, marcar=self.repo.marcar,
+                                              colaboracao=lambda: self.cfg.colaboracao.enabled)
         self.acoes = AcoesDePedidos(self.repo, runs, lambda: self.relogio(), self.acordar, relatorios=self.relatorios)
         self._loop: asyncio.AbstractEventLoop | None = None
         self._evento: asyncio.Event | None = None

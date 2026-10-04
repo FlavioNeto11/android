@@ -302,6 +302,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `PISO_DA_ETAPA_COM_IA_S` (120; era 30) e 600. Etapa de catálogo e receita não mudam.
 - Teste: `test_esquema_curto_do_plano.py` com o piso novo (30 → 120, 60 → 120, o teto de 600 mantido); 492 testes do
   planejador e do parser aprovados. Prova: simulated. A Jev lê o diff antes do merge (arquivo do planejador).
+## 2026-10-04 — 28.10 F4: o pai consolida observações e memória dos filhos (branch canais/28-10-f4-consolidacao, sem migração)
+
+- O relatório do pai ganha o bloco `consolidacao` (`fontes`, `valores`, `conflitos`), lido só das observações comprovadas e da
+  memória-fato dos filhos diretos, nunca do texto livre das execuções. Divergência entre filhos é conflito com as duas fontes (id e
+  papel), sem voto; valor igual agrupa com a contagem; filho sem dado ou em andamento é marcado e rebaixa a conclusão a `parcial`.
+- O aviso `relatorio_pronto` leva só contagens ao Telegram ("N conflito(s) entre os filhos"). Sem filhos ou com a colaboração
+  desligada, o relatório é o de antes (adendo v1.27; `docs/design/pedidos-persistentes.md` §9.1).
+- Prova `simulated`: `backend/tests/test_pedidos_colaboracao_consolidacao.py`. `not_run`: pedido pai de teste no app de teste.
 
 ## 2026-10-04 — 30.54: o aceite em lote dos pareceres mostra o que vai fazer (branch fix/30-54-aceite-em-lote, só painel)
 
