@@ -5940,11 +5940,16 @@ Sem rota HTTP nova. A conversa do Telegram usa os MESMOS serviços das rotas do 
   - **N > 0**: a linha volta a `pergunta`, com `previa = {fase: "porta", run_id, curta, hash_do_plano, validade_ate,
     aprovar: [[step_id, chave], …]}`. Saem a prévia e os botões `p:<id>` ("Executar (aprova N)") e `c:<id>` ("Cancelar").
   - Porta ilegível: `RunService.start`, e a porta decide no despacho.
-- O `p:<id>` chama `aprovar_plano` com exatamente os pares de `previa.aprovar`.
-  - `plano_mudou` (409): nada gravado, e sai a prévia nova.
-  - `invalid_state`: a recusa volta como texto.
+- O botão é `p:<id>:<marca>`, com `marca` = 8 caracteres do sha256 de `[hash_do_plano, aprovar]` (`previa.marca`). Sem a
+  marca, ou com a de outro retrato, responde "Essa prévia mudou" e não aprova nada.
+- O `p:<id>:<marca>` chama `aprovar_plano` com exatamente os pares de `previa.aprovar`.
+  - `plano_mudou` (409): nada gravado, e sai a prévia nova; se ela não tem nada a aprovar, inicia (N = 0) numa linha que
+    diz que o plano mudou.
+  - `invalid_state`: a recusa volta como texto; a execução que ainda está em `planned` é cancelada.
   - Vencida (`avisos.entrada.ttl_previa_s` da linha ou `validade_ate` da porta): `RunService.cancel`.
-- `c:<id>` na fase da porta também cancela a execução `planned`.
+- `c:<id>` na fase da porta também cancela a execução `planned`, como todo caminho que abandona a porta (recusa, erro,
+  prévia que não saiu, linha presa recuperada depois de `PRESA_S`). A linha presa antes de gravar o `run_id` acha a
+  execução pela chave de idempotência do Executar (`telegram:<update_id>`).
 - Item aprovável pelo canal: selo `aprovacao` com `chave`, texto que `privacidade.texto_livre` não mudaria (até 3000
   caracteres), bloco que cabe inteiro numa mensagem (3800) e, se `tem_imagem`, bytes cujo sha256 bate com
   `imagem_sha256`. Só a imagem desses itens é enviada. O resto pede o dono no painel ou na execução.

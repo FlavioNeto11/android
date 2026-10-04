@@ -31,6 +31,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - P1: item cujo texto os filtros mudariam, longo demais, cujo bloco não cabe inteiro numa mensagem ou com imagem que não
   confere fica fora do sim pelo canal, e a imagem dele não sai (revisão de segredos, achados A e B). O aparelho passa
   pelo filtro, e o erro interno ao iniciar sem sim pendente marca a linha como falha em vez de repetir a cada volta.
+- Revisão independente do #336 (`C:/claude-ferramentas/revisao-28-27.md`):
+  - A1: a exceção ao iniciar sem a porta marca falha, e cada linha do vigia tem o próprio `try`.
+  - A2: `planejando()` filtra a fase no SQL, e a linha presa na fase da porta é recuperada depois de `PRESA_S`.
+  - O botão leva a marca do retrato: o de uma prévia velha não aprova o novo.
+  - A prévia que não sai marca falha e avisa uma vez.
+  - Todo abandono da porta cancela a execução que ainda está em `planned`. A presa antes do `run_id` também, achada
+    pela chave de idempotência.
+  - `plano_mudou` para N = 0 inicia numa linha que diz que o plano mudou.
 - `mensagem.partes_da_aprovacao` passa a montar as linhas de alvo e texto da aprovação pendente e da porta (a mesma
   regra), e `mensagem.texto_mostravel` diz se o texto sai inteiro.
 - Regra C-26 em `docs/dominios/canais.md`.

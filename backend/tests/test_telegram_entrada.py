@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -23,6 +23,7 @@ from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrada import RESPOSTA_IDENTIDADE
 from app.modules.avisos.infrastructure.entrada import (
     OPERADOR_DO_TELEGRAM,
+    PRESA_S,
     RESPOSTA_CREDENCIAL,
     RESPOSTA_CREDENCIAL_SEM_APAGAR,
     Pendencia,
@@ -124,6 +125,7 @@ class PortasFalsas:
         self.recusar_aprovar: str | None = None
         self.imagens: dict[str, tuple[bytes, str]] = {}
         self.estado_ao_criar = "planned"            # o status da execução só de plano logo depois de criada
+        self.criada_com: dict[str, str] = {}        # chave de idempotência → run_id (a linha presa antes do run_id)
 
     def nomes_de_persona(self) -> list[str]:
         return list(self.personas)
@@ -178,6 +180,10 @@ class PortasFalsas:
 
     def estado_da_execucao(self, run_id: str) -> str | None:
         return self.estados.get(run_id, "running")
+
+    def execucao_da_chave(self, chave: str) -> str | None:
+        self._anota("execucao_da_chave", chave)
+        return self.criada_com.get(chave)
 
     def porta(self, run_id: str) -> dict[str, object]:
         self._anota("porta", run_id)
@@ -627,6 +633,15 @@ def _porta(*itens: dict[str, object], validade: str = "2099-10-05T22:40:00Z", **
             "total": False, **kw}
 
 
+def _marca(c: Cenario) -> str:
+    return str(json.loads(str(c.linha(5)["previa"]))["marca"])
+
+
+def _p(c: Cenario, ident: int) -> str:
+    """O "Executar (aprova N)" da prévia ATUAL: leva a marca do retrato gravado."""
+    return f"p:{ident}:{_marca(c)}"
+
+
 async def _executar(c: Cenario, texto: str = "abra o Chrome no android-09") -> int:
     await c.volta(msg(5, texto))
     ident = int(c.linha(5)["id"])
@@ -643,15 +658,15 @@ async def test_porta_com_sim_pendente_mostra_a_previa_e_so_inicia_no_segundo_toq
     assert (linha["estado"], previa["fase"], previa["aprovar"]) == ("pergunta", "porta", [["s1", f"{'s1':0<64}"]])
     ultima = c.bot.mensagens()[-1]
     assert [b["callback_data"] for b in ultima["reply_markup"]["inline_keyboard"][0]] == [  # type: ignore[index]
-        f"p:{ident}", f"c:{ident}"]
+        f"p:{ident}:{_marca(c)}", f"c:{ident}"]
     assert ultima["reply_markup"]["inline_keyboard"][0][0]["text"] == "Executar (aprova 1)"  # type: ignore[index]
     assert str(ultima["text"]).startswith("Plano abc123: 1 item pede o seu sim antes de começar.")
-    await c.volta(botao(7, f"p:{ident}", mid=c.bot.mid))
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
     # Exatamente os pares do retrato (o que o dono VIU), pelo operador do canal.
     assert c.portas.chamadas[-1] == ("aprovar_plano", (RUN, (("s1", f"{'s1':0<64}"),)), OPERADOR_DO_TELEGRAM)
     assert c.linha(5)["estado"] == "feita"
     assert "Execução abc123 iniciada; 1 sim gravado, válidos até 22:40Z. Conto aqui quando terminar." in c.bot.textos()
-    await c.volta(botao(8, f"p:{ident}", mid=c.bot.mid))
+    await c.volta(botao(8, _p(c, ident), mid=c.bot.mid))
     assert c.portas.nomes().count("aprovar_plano") == 1 and "Esta prévia já foi tratada." in c.bot.textos()
 
 
@@ -685,11 +700,11 @@ async def test_plano_mudou_manda_a_previa_nova_e_nada_e_gravado(c: Cenario) -> N
     ident = await _executar(c)
     c.portas.mudou = [{"step_id": "s1", "selo": "aprovacao", "motivo": "a chave mudou"}]
     c.portas.previa_da_porta = _porta(_item("s1", chave="d" * 64), _item("s3"))
-    await c.volta(botao(7, f"p:{ident}", mid=c.bot.mid))
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
     assert "O plano mudou em 1 item desde a prévia: nada foi gravado. Segue a prévia nova." in c.bot.textos()
     assert c.portas.estados[RUN] == "planned" and c.linha(5)["estado"] == "pergunta"
     assert json.loads(str(c.linha(5)["previa"]))["aprovar"] == [["s1", "d" * 64], ["s3", f"{'s3':0<64}"]]
-    await c.volta(botao(8, f"p:{ident}", mid=c.bot.mid))
+    await c.volta(botao(8, _p(c, ident), mid=c.bot.mid))
     assert c.portas.chamadas[-1] == ("aprovar_plano", (RUN, (("s1", "d" * 64), ("s3", f"{'s3':0<64}"))),
                                      OPERADOR_DO_TELEGRAM)
     assert c.portas.nomes().count("aprovar_plano") == 2
@@ -698,7 +713,7 @@ async def test_plano_mudou_manda_a_previa_nova_e_nada_e_gravado(c: Cenario) -> N
 async def test_previa_da_porta_vencida_cancela_a_execucao(c: Cenario) -> None:
     c.portas.previa_da_porta = _porta(_item("s1"), validade="2000-01-01T00:00:00Z")
     ident = await _executar(c)
-    await c.volta(botao(7, f"p:{ident}", mid=c.bot.mid))
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
     assert "aprovar_plano" not in c.portas.nomes() and c.portas.chamadas[-1][:2] == ("cancelar", (RUN,))
     assert c.linha(5)["estado"] == "cancelada" and c.bot.textos()[-1] == "Esta prévia venceu; mande o pedido de novo."
 
@@ -791,3 +806,171 @@ async def test_erro_interno_ao_iniciar_sem_sim_pendente_nao_fica_em_laco(c: Cena
     assert c.bot.textos()[-1] == "Não iniciei a execução: erro interno (está no log da Central)."
     await c.volta()
     assert c.linha(5)["estado"] == "falhou"
+
+
+# ----------------------------------------------------------- revisão independente do #336 (04/10 22:59Z)
+async def test_botao_de_previa_velha_nao_aprova_o_retrato_novo(c: Cenario) -> None:
+    """Decisão da orquestradora: depois do `plano_mudou`, o "Executar" da mensagem ANTIGA não aprova o retrato novo."""
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    velho = _p(c, ident)
+    c.portas.mudou = [{"step_id": "s1", "selo": "aprovacao", "motivo": "a chave mudou"}]
+    c.portas.previa_da_porta = _porta(_item("s1", chave="d" * 64))
+    await c.volta(botao(7, velho, mid=c.bot.mid))                 # o 409: sai a prévia nova, de marca nova
+    assert _p(c, ident) != velho
+    await c.volta(botao(8, velho, mid=c.bot.mid - 3))             # o botão da mensagem antiga, de novo
+    assert c.bot.textos()[-1] == "Essa prévia mudou: nada foi aprovado. Use a prévia nova, a mais recente desta conversa."
+    assert c.portas.nomes().count("aprovar_plano") == 1 and c.linha(5)["estado"] == "pergunta"
+    await c.volta(botao(9, f"p:{ident}", mid=c.bot.mid))           # sem marca nenhuma: também não aprova
+    assert c.portas.nomes().count("aprovar_plano") == 1
+    await c.volta(botao(10, _p(c, ident), mid=c.bot.mid))
+    assert c.portas.chamadas[-1] == ("aprovar_plano", (RUN, (("s1", "d" * 64),)), OPERADOR_DO_TELEGRAM)
+
+
+async def test_plano_mudou_para_nada_a_aprovar_inicia_numa_linha_que_diz_que_mudou(c: Cenario) -> None:
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    c.portas.mudou = [{"step_id": "s1", "selo": "permitido", "motivo": "não pede mais"}]
+    c.portas.previa_da_porta = _porta(_item("s1", selo="permitido"))
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    assert c.portas.chamadas[-1] == ("aprovar_plano", (RUN, ()), OPERADOR_DO_TELEGRAM)
+    assert c.linha(5)["estado"] == "feita"
+    assert c.bot.textos()[-1] == ("O plano mudou desde a prévia e nenhum item pede o seu sim agora: execução abc123 "
+                                  "iniciada. Conto aqui quando terminar.")
+    assert not any(t.startswith("O plano mudou em") for t in c.bot.textos())          # uma linha só
+
+
+async def test_erro_ao_iniciar_sem_a_porta_marca_falha_cancela_e_nao_cala_as_outras(c: Cenario,
+                                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão do #336 (A1): a exceção genérica no start não sobe do vigia nem deixa a linha em `planejando`."""
+    c.portas.porta_quebra = True
+
+    def quebra(run_id: str) -> None:
+        raise RuntimeError("banco fora")
+
+    monkeypatch.setattr(c.portas, "iniciar", quebra)
+    await _executar(c)
+    assert c.linha(5)["estado"] == "falhou" and c.portas.chamadas[-1][:2] == ("cancelar", (RUN,))
+    assert c.bot.textos()[-1] == "Não iniciei a execução: erro interno (está no log da Central)."
+    n = len(c.bot.textos())
+    await c.volta()
+    assert len(c.bot.textos()) == n                                  # avisado uma vez; não repete a cada volta
+
+
+async def test_uma_linha_ruim_nao_cala_as_outras_da_volta(c: Cenario, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.modules.avisos.infrastructure import entrada as modulo
+
+    await _executar(c)                                               # N = 0: a primeira inicia e fica `feita`
+    await c.volta(msg(20, "abra o Chrome no android-10"))
+    segunda = int(c.linha(20)["id"])
+    # As duas em `planejando` na MESMA volta: a primeira (id menor) quebra, a segunda tem de ser vista.
+    c.repo.marcar(int(c.linha(5)["id"]), "executando", run_id=RUN, previa={"fase": "planejando", "curta": "abc123"},
+                  de=("feita",))
+    c.portas.estados[RUN] = "planned"
+    c.repo.marcar(segunda, "executando", run_id="r-outra-000002", previa={"fase": "planejando", "curta": "000002"},
+                  de=("pergunta",))
+    c.portas.estados["r-outra-000002"] = "running"
+    original = modulo.ConversaDoCanal._ver_um_plano
+
+    async def ruim(self: object, saida: object, linha: dict) -> None:
+        if linha["run_id"] == RUN:
+            raise RuntimeError("linha ruim")
+        await original(self, saida, linha)                          # type: ignore[arg-type]
+
+    monkeypatch.setattr(modulo.ConversaDoCanal, "_ver_um_plano", ruim)
+    await c.volta()
+    assert c.linha(5)["estado"] == "falhou"                          # a ruim foi abandonada, com a execução cancelada
+    assert c.linha(20)["estado"] == "feita"                          # e a seguinte da volta foi vista
+
+
+async def test_vigia_so_le_a_fase_planejando_e_nao_se_cala_com_presas(c: Cenario) -> None:
+    """Revisão do #336 (A2): `planejando()` filtra a fase no SQL; 25 linhas presas na porta não calam o vigia."""
+    for n in range(25):
+        # Gravadas direto (não pelo chat: o limite por minuto seguraria as mensagens), já na fase da porta.
+        c.repo.gravar(id_externo=str(100 + n), ordem=None, tipo="mensagem", do_dono=False, ref_mensagem=None,
+                      responde_a=None, texto="x", tamanho=1, estado="ignorada")
+        c.repo.marcar(int(c.linha(100 + n)["id"]), "executando", run_id=f"r-presa-{n:06d}",
+                      previa={"fase": "porta", "curta": f"{n:06d}"})
+    await _executar(c)
+    assert c.linha(5)["estado"] == "feita"                           # a nova foi vista mesmo atrás das 25
+    assert all(json.loads(str(x["previa"]))["fase"] == "planejando" for x in c.repo.planejando())
+
+
+async def test_linha_presa_na_porta_e_recuperada_e_a_execucao_cancelada(tmp_path: Path) -> None:
+    agora = [datetime(2026, 10, 4, 23, 0, tzinfo=timezone.utc)]
+    c = Cenario(tmp_path, relogio=lambda: agora[0])
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    # A queda: o CAS de `pergunta` a `executando` do "Executar (aprova N)" passou, o resto não.
+    assert c.repo.marcar(ident, "executando", de=("pergunta",))
+    agora[0] += timedelta(seconds=PRESA_S + 1)
+    await c.volta()
+    assert c.linha(5)["estado"] == "falhou" and c.portas.chamadas[-1][:2] == ("cancelar", (RUN,))
+    assert c.bot.textos()[-1].startswith("A aprovação deste plano foi interrompida antes de terminar")
+
+
+async def test_linha_presa_antes_do_run_id_cancela_a_execucao_esquecida(tmp_path: Path) -> None:
+    agora = [datetime(2026, 10, 4, 23, 0, tzinfo=timezone.utc)]
+    c = Cenario(tmp_path, relogio=lambda: agora[0])
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    ident = int(c.linha(5)["id"])
+    assert c.repo.marcar(ident, "executando", de=("pergunta",))  # a queda entre o CAS e gravar o `run_id`
+    c.portas.criada_com["telegram:5"] = RUN
+    c.portas.estados[RUN] = "planned"
+    agora[0] += timedelta(seconds=PRESA_S + 1)
+    await c.volta()
+    assert c.linha(5)["estado"] == "falhou"
+    assert ("execucao_da_chave", ("telegram:5",), OPERADOR_DO_TELEGRAM) in c.portas.chamadas
+    assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,))
+
+
+async def test_previa_que_nao_sai_marca_falha_cancela_e_avisa_uma_vez(c: Cenario) -> None:
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    falhas = {"n": 0}
+    original = c.bot.handler
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        corpo = json.loads(req.content) if req.content else {}
+        if req.url.path.endswith("/sendMessage") and str(corpo.get("text", "")).startswith("Plano abc123"):
+            falhas["n"] += 1
+            return httpx.Response(400, json={"ok": False, "description": "Bad Request: message is too long"})
+        return original(req)
+
+    c.bot.handler = handler                                          # type: ignore[method-assign]
+    c.servico = c.novo_servico()
+    await _executar(c)
+    assert falhas["n"] >= 1 and c.linha(5)["estado"] == "falhou"
+    assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and "aprovar_plano" not in c.portas.nomes()
+    assert c.bot.textos()[-1] == ("Não consegui mandar a prévia do plano abc123: nada foi aprovado nem iniciado, e a "
+                                  "execução foi cancelada. Mande o pedido de novo.")
+    n = len(c.bot.textos())
+    await c.volta()
+    assert len(c.bot.textos()) == n
+
+
+@pytest.mark.parametrize("caminho", ["cancelar", "vencida", "recusa", "erro"])
+async def test_todo_caminho_que_abandona_a_porta_cancela_a_execucao_planned(c: Cenario, caminho: str,
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    c.portas.previa_da_porta = _porta(_item("s1"), validade="2000-01-01T00:00:00Z" if caminho == "vencida"
+                                      else "2099-10-05T22:40:00Z")
+    ident = await _executar(c)
+    if caminho == "recusa":
+        c.portas.recusar_aprovar = "O plano desta execução não pode ser aprovado agora."
+    if caminho == "erro":
+        def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+            raise RuntimeError("banco fora")
+        monkeypatch.setattr(c.portas, "aprovar_plano", quebra)
+    gesto = f"c:{ident}" if caminho == "cancelar" else _p(c, ident)
+    await c.volta(botao(7, gesto, mid=c.bot.mid))
+    assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and c.portas.estados[RUN] == "cancelled"
+    assert c.linha(5)["estado"] in ("cancelada", "falhou")
+
+
+async def test_recusa_de_plano_ja_iniciado_nao_cancela(c: Cenario) -> None:
+    """`invalid_state` de um plano que outro gesto já iniciou: a execução segue, e o desfecho de sempre a conta."""
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    c.portas.recusar_aprovar = "O plano desta execução já foi aprovado ou iniciado."
+    c.portas.estados[RUN] = "running"
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    assert "cancelar" not in c.portas.nomes() and c.linha(5)["estado"] == "feita"

@@ -13,6 +13,8 @@ usar HTML ou Markdown, o texto do item tem de ser escapado aqui.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -87,9 +89,21 @@ def _hora(iso: object) -> str | None:
         return None
 
 
-def linha_sem_aprovacao(curta: str, leitura: LeituraDaPorta) -> str:
-    """A linha só do caminho N = 0 (decisão da orquestradora, 04/10 21:58Z): a execução já foi iniciada."""
+def marca_do_retrato(hash_do_plano: object, pares: list[list[str]]) -> str:
+    """8 caracteres que identificam O retrato que uma prévia mostrou: o hash do plano e os pares que o botão aprova. O
+    `plano_mudou` pode vir sem o hash mudar (a política mudou um selo, a imagem trocou), por isso entram os pares."""
+    bruto = json.dumps([str(hash_do_plano or ""), pares], ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(bruto.encode("utf-8")).hexdigest()[:8]
+
+
+def linha_sem_aprovacao(curta: str, leitura: LeituraDaPorta, *, plano_mudou: bool = False) -> str:
+    """A linha só do caminho N = 0 (decisão da orquestradora, 04/10 21:58Z): a execução já foi iniciada. Depois de um
+    `plano_mudou`, a linha diz que o plano mudou e que nenhum item pede mais o sim (decisão de 04/10 22:59Z)."""
     k = leitura.na_execucao
+    if plano_mudou:
+        resto = (f" {'1 item vai pedir' if k == 1 else f'{k} itens vão pedir'} você na execução." if k else "")
+        return (f"O plano mudou desde a prévia e nenhum item pede o seu sim agora: execução {curta} iniciada.{resto} "
+                "Conto aqui quando terminar.")
     if not k:
         return f"Execução {curta} iniciada: o plano não tem aprovação pendente. Conto aqui quando terminar."
     itens = "1 item vai pedir" if k == 1 else f"{k} itens vão pedir"

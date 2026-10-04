@@ -206,6 +206,10 @@ class PortasReais:
         row = self.runs.repo.run_row(run_id)
         return str(row["status"]) if row is not None else None
 
+    def execucao_da_chave(self, chave: str) -> str | None:
+        valor = self.db.scalar("SELECT id FROM runs WHERE idempotency_key=?", (chave,))
+        return str(valor) if valor else None
+
     def porta(self, run_id: str) -> dict[str, object]:
         if self._previa_da_porta is None:
             raise RecusaDaCentral("A prévia da porta não está disponível nesta Central.")

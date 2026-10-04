@@ -38,6 +38,11 @@ def _previa(bruta: object) -> dict[str, object]:
     return valor if isinstance(valor, dict) else {}
 
 
+def _fase_like(fase: str) -> str:
+    """O padrão `LIKE` da fase da linha do Executar (28.27) no JSON da `previa`, como o `marcar` grava."""
+    return "%" + json.dumps({"fase": fase}, ensure_ascii=False)[1:-1] + "%"
+
+
 def _curto(texto: str | None, n: int = MAX_CURTO) -> str | None:
     return None if texto is None else texto.strip()[:n]
 
@@ -156,10 +161,20 @@ class EntradasDoCanal:
             " ORDER BY id LIMIT 20", (self.canal, limite))]
 
     def planejando(self, limite: int = 20) -> list[dict[str, object]]:
-        """As linhas do Executar com a execução criada só de plano (28.27): quem lê a fase é a conversa."""
+        """As linhas do Executar com a execução criada só de plano, esperando o plano (28.27). A fase é filtrada no SQL
+        (revisão do #336, A2): sem isto, 20 linhas presas noutra fase calariam o vigia. O texto da `previa` é o
+        `json.dumps` de `marcar`; uma aspa no texto do dono sai escapada e não casa com o fragmento."""
         return [dict(r) for r in self.db.query(
-            "SELECT * FROM canal_entradas WHERE canal=? AND estado='executando' AND run_id IS NOT NULL ORDER BY id LIMIT ?",
-            (self.canal, limite))]
+            "SELECT * FROM canal_entradas WHERE canal=? AND estado='executando' AND run_id IS NOT NULL AND previa LIKE ?"
+            " ORDER BY id LIMIT ?", (self.canal, _fase_like("planejando"), limite))]
+
+    def presas_na_porta(self, idade_s: float) -> list[dict[str, object]]:
+        """O "Executar (aprova N)" passou a linha a `executando` e o processo caiu antes do desfecho (revisão do #336,
+        A2): o vigia não olha essa fase, e nada mais a destrava."""
+        limite = to_iso(self.relogio() - timedelta(seconds=idade_s))
+        return [dict(r) for r in self.db.query(
+            "SELECT * FROM canal_entradas WHERE canal=? AND estado='executando' AND run_id IS NOT NULL AND previa LIKE ?"
+            " AND tratada_em < ? ORDER BY id LIMIT 20", (self.canal, _fase_like("porta"), limite))]
 
     def recusadas_sem_resposta(self, idade_max_s: float, limite: int = 20) -> list[dict[str, object]]:
         """As recusas de credencial ou de pergunta sensível dos últimos `idade_max_s` segundos a que a Central ainda
