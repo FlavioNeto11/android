@@ -52,7 +52,7 @@ function VereditoDaValidacao({ runId }: { runId: string }) {
 
 /** 29.60: uma etapa com efeito repetido, já pronta para o resumo. */
 export interface EfeitoRepetidoNoResumo {
-  chave: string; titulo: string; aparelho: string; copias: number; fonte: 'verificador' | 'acoes';
+  chave: string; titulo: string; aparelho: string; copias: number; fonte: 'verificador' | 'acoes' | 'provedor';
 }
 
 interface Props {

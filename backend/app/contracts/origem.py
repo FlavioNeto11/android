@@ -48,11 +48,24 @@ def eh_execucao_de_validacao(prova_fluxo_id: str | None, idempotency_key: str | 
 PREFIXO_LOTE = "lote:"
 
 
+#: 30.31 (fatia 2): a chave das execuções de ENSAIO SÓ DE LEITURA (`ensaio:<pedido>`). O ensaio percorre o fluxo até
+#: a etapa com efeito fora do aparelho e PARA antes dela (`Scheduler._parar_no_ensaio`): é como a validação lê um fluxo
+#: do Instagram em perfil de terceiro sem nada sair da máquina. Fica FORA de `PREFIXOS_DE_ORIGEM`, como o lote: o ensaio
+#: de um fluxo é uma prova (`prova_fluxo_id`), e a origem que o painel mostra é a dela.
+PREFIXO_ENSAIO = "ensaio:"
+
+
+def eh_ensaio_de_leitura(idempotency_key: str | None) -> bool:
+    """A execução é um ensaio só de leitura (30.31, fatia 2): para antes da primeira etapa com efeito externo."""
+    return (idempotency_key or "").startswith(PREFIXO_ENSAIO)
+
+
 def e_execucao_do_sistema(prova_fluxo_id: str | None, idempotency_key: str | None) -> bool:
-    """A execução é do sistema, e não de uma pessoa (28.19): prova de fluxo, validação do QA ou lote de frente. Nada
-    dela vira aviso individual ao dono. Telegram e Trello são pedidos de pessoa: seguem avisando."""
+    """A execução é do sistema, e não de uma pessoa (28.19): prova de fluxo, validação do QA, ensaio só de leitura ou
+    lote de frente. Nada dela vira aviso individual ao dono. Telegram e Trello são pedidos de pessoa: seguem avisando."""
     origem, _ = origem_da_execucao(prova_fluxo_id, idempotency_key)
-    return origem in ("prova_fluxo", "validacao_qa") or (idempotency_key or "").startswith(PREFIXO_LOTE)
+    return (origem in ("prova_fluxo", "validacao_qa") or (idempotency_key or "").startswith(PREFIXO_LOTE)
+            or eh_ensaio_de_leitura(idempotency_key))
 
 
 def origem_da_execucao(prova_fluxo_id: str | None,

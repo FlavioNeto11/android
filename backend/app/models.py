@@ -1801,9 +1801,11 @@ class RunSummary(BaseModel):
 
 class EfeitoRepetido(BaseModel):
     """29.58 (C): o efeito externo da etapa saiu mais de uma vez. `fonte`: quem viu — o verificador, na tela, ou as
-    ações de efeito gravadas (mais de uma etapa da mesma etapa-modelo e alvo disparou nesta versão do plano)."""
+    ações de efeito gravadas (mais de uma etapa da mesma etapa-modelo e alvo disparou nesta versão do plano). 30.31
+    (fatia 2): `provedor`, a conferência no próprio app ao fim da execução de validação (o ContentProvider do QA conta
+    as mensagens desta execução; `taskqueue/oraculo_qa.py`)."""
     copias: int = Field(ge=2)
-    fonte: Literal["verificador", "acoes"]
+    fonte: Literal["verificador", "acoes", "provedor"]
 
 
 class StepResult(BaseModel):

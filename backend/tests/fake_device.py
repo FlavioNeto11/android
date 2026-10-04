@@ -226,6 +226,14 @@ class FakeQaDevice:
     def app_version(self, package: str) -> str:
         return self.version
 
+    def consultar_provedor(self, uri: str) -> str:
+        """30.31 (fatia 2): o `ContentProvider` do QA, no formato do `adb shell content query` (uma linha por
+        mensagem). Só leitura; não entra em `calls` (não é toque na tela)."""
+        if not uri.endswith("/messages"):
+            return "No result found."
+        return "\n".join(f"Row: {i} _id={i + 1}, account={self.account}, contact={m.contact}, body={m.body}, "
+                         f"status=Entregue ✓✓, created_at={int(m.sent_at * 1000)}" for i, m in enumerate(self.messages))
+
     def force_stop(self, package: str) -> None:
         self._enter("force_stop")
         try:

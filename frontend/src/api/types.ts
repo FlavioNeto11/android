@@ -248,7 +248,7 @@ interface RunSummary {
 export type OrigemDaExecucao = 'prova_fluxo' | 'validacao_qa' | 'telegram' | 'trello';
 
 /** 29.58: o efeito que apareceu repetido (o 29.60 mostra no painel). */
-export interface EfeitoRepetido { copias: number; fonte: 'verificador' | 'acoes' }
+export interface EfeitoRepetido { copias: number; fonte: 'verificador' | 'acoes' | 'provedor' }
 
 interface Step {
   id: string;                 // estável: `${run_id}:${instance_id}:v${plan_version}:${key}`

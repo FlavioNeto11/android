@@ -5195,3 +5195,30 @@ Prova:
 - `simulated`: `backend/tests/test_learning_reproducao_repetida.py`, `test_learning_nasceu_em_validacao.py` e
   `test_validacoes_listagem.py::test_a_listagem_filtra_por_item_e_por_execucao`.
 - `not_run`: o central depois do deploy.
+
+## Adendo v1.11 (04/10/2026; número da orquestradora; item 30.31, fatia 2) — o ensaio só de leitura e a conferência no app de QA
+
+Aditivo aos v1.07, v1.10 e ao contrato do 29.58. Nenhuma rota nova e nenhuma migração.
+
+- **Motivo novo do pedido de validação: `ensaio_so_leitura`** (`GET /api/aprendizado/validacoes`, com `motivo_humano`).
+  O ensaio só de leitura percorreu o fluxo e parou antes da etapa com efeito fora do aparelho, como devia. O pedido
+  fecha `recusada` com esse motivo. Não é evidência do fluxo, nem a favor nem contra. O painel diz "ensaio só de
+  leitura (parou antes do efeito; não conta)".
+- **A execução de ensaio** tem a chave de idempotência `ensaio:<pedido>`, fora de `PREFIXOS_DE_ORIGEM`, como o lote:
+  - a origem que o painel mostra é a da prova (`prova_fluxo`);
+  - a etapa com efeito e as seguintes ficam `skipped`, o objetivo fecha `cancelled` pelo sistema e a execução,
+    `cancelled`;
+  - a decisão "Ensaio só de leitura: parou antes da etapa N (chave)…" fica na linha do tempo;
+  - é execução do sistema: sem aviso individual (28.19).
+- **`steps.result.efeito_repetido.fonte`** ganha o valor `provedor`, ao lado de `verificador` e `acoes`, que são da
+  Android. Ao fim da execução de validação cujo comando traz `{run_id}`, o `ContentProvider` do QA conta as mensagens
+  daquela execução. A partir de 2, a etapa de efeito ganha `{"copias": N, "fonte": "provedor"}`, e o veredito do 30.42
+  e a reprodução do 30.43 a leem como as outras fontes. O painel diz "contado no próprio app de QA ao fim da
+  validação". A decisão "Conferência no app de QA (etapa N, chave): …" fica na linha do tempo, com 0, 1 ou N
+  mensagens.
+
+Prova:
+- `simulated`: `backend/tests/test_learning_ensaio_e_oraculo.py`.
+- Real da conferência: a primeira validação do QA com `{run_id}` depois do deploy.
+- Ensaio: `not_run`. Nada cria execução de ensaio no central ainda; a ligação do despachante ao Instagram em perfil
+  de terceiro é da orquestradora.

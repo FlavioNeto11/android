@@ -163,6 +163,11 @@ describe('30.43: o veredito e a leitura do pedido', () => {
     expect(n.itens[0]?.invalida_depois).toEqual(invalida_depois);
   });
 
+  it('30.31 (fatia 2): o ensaio só de leitura não é "sem evidência" nem falha', () => {
+    expect(vereditoDoPedido({ estado: 'recusada', motivo: 'ensaio_so_leitura', motivo_humano: 'Ensaio só de leitura…' }))
+      .toBe('ensaio só de leitura (parou antes do efeito; não conta)');
+  });
+
   it('vereditoDoPedido: sem pedido é null (a legenda de sempre); expirada sem motivo não afirma nada', () => {
     expect(vereditoDoPedido(null)).toBeNull();
     expect(vereditoDoPedido({ estado: 'expirada', motivo: null, motivo_humano: null })).toBe('sem evidência (sem motivo registrado)');

@@ -205,6 +205,8 @@ class FontesDaValidacao(Protocol):
     #: tamanho desconhecido.
     def etapas_da_execucao(self, item_ref: str, comando: str) -> int | None: ...
     def desfecho(self, run_id: str) -> tuple[str, float] | None: ...    # (status, usd) quando assentou
+    #: 30.31 (fatia 2): a execução é um ensaio só de leitura (`contracts.origem.eh_ensaio_de_leitura`).
+    def ensaio_da_execucao(self, run_id: str) -> bool: ...
 
 
 class DespachoDeValidacao(Protocol):
@@ -353,6 +355,11 @@ class ServicoDeValidacao:
         # curador (`chegadas()`) nem se reabrem (`para_reabrir()`): fechar sem evidência de verdade é o ponto.
         invalida = self._fontes.invalida_da_execucao(p.item_ref, run_id)
         posicao = None if invalida is not None else self._fontes.posicao_da_execucao(p.item_ref, run_id)
+        if invalida is None and posicao is None and self._fontes.ensaio_da_execucao(run_id):
+            # 30.31 (fatia 2): o ensaio parou antes do efeito, como devia. Não é infra (`sem_evidencia`) nem falha:
+            # é o desfecho do ensaio, que nunca deixa evidência do fluxo (um `for` dele contaria para o 30.34).
+            return int(self._registro.fechar(p.id, EstadoDoPedido.RECUSADA, Motivo.ENSAIO_SO_LEITURA, usd,
+                                             self._relogio()))
         if invalida is not None:
             estado, motivo = EstadoDoPedido.RECUSADA, motivo_da_prova_invalida(invalida)
         elif posicao is Posicao.FOR:

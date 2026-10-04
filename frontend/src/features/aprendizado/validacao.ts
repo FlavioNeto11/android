@@ -116,6 +116,7 @@ export function vereditoDoPedido(
   const porque = p.motivo_humano ?? p.motivo;
   if (p.motivo === 'evidencia_contra') return 'contra';
   if (p.motivo === 'divergencia_de_forma') return 'só a forma (não conta)';
+  if (p.motivo === 'ensaio_so_leitura') return 'ensaio só de leitura (parou antes do efeito; não conta)'; // 30.31
   if (p.motivo && MOTIVOS_DE_PROVA_INVALIDA.includes(p.motivo)) return `inválida (${porque})`;
   return `sem evidência (${porque ?? 'sem motivo registrado'})`;
 }
