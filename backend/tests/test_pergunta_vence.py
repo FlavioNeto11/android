@@ -20,6 +20,7 @@ from typing import Any
 
 import pytest
 
+from app.taskqueue.service import CHAVE_LIGADO_DESDE
 from app.util import now, parse_iso, to_iso
 
 from .conftest import Harness
@@ -28,12 +29,20 @@ INCOMPLETO = "Abra o QA Messenger e envie uma mensagem"
 MOTIVO = "vencido_sem_resposta"
 
 
+def ligado_ha_muito(h: Harness) -> None:
+    """O vencimento ligado bem antes de qualquer espera do teste: a carência do 31.50 já passou."""
+    assert h.state is not None
+    h.state.db.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET "
+                       "value=excluded.value", (CHAVE_LIGADO_DESDE, "2000-01-01T00:00:00.000Z"))
+
+
 async def _pergunta(h: Harness) -> tuple[str, Any]:
     """Uma execução real em `needs_input` e o instante em que ela entrou lá (o `run.updated` da transição)."""
     run = h.run(["android-01"], command=INCOMPLETO, mode="plan")
     await h.wait_run(run.id, ("needs_input",))
     assert h.state is not None
     entrada = h.state.db.scalar("SELECT MAX(ts) FROM events WHERE run_id=? AND kind='run.updated'", (run.id,))
+    ligado_ha_muito(h)
     return run.id, parse_iso(entrada)
 
 
@@ -50,6 +59,7 @@ async def _parado(h: Harness, *, espera_h: float, fim_h: float, run_status: str 
     st.db.execute("UPDATE steps SET status='waiting_user' WHERE id=(SELECT MAX(id) FROM steps WHERE objective_id=?)",
                   (oid,))
     st.db.execute("UPDATE runs SET status=?, finished_at=?, cancel_requested=0 WHERE id=?", (run_status, fim, run.id))
+    ligado_ha_muito(h)
     return run.id, oid
 
 
@@ -98,7 +108,7 @@ async def test_a_pergunta_vence_no_prazo_do_config_com_o_motivo_para_maquina(har
 
 def test_o_padrao_do_config_e_o_de_24_horas() -> None:
     from app.config import ExecucaoCfg
-    from app.taskqueue.service import NEEDS_INPUT_EXPIRA_H
+    from app.taskqueue.service import CHAVE_LIGADO_DESDE, NEEDS_INPUT_EXPIRA_H
     cfg = ExecucaoCfg()
     assert (cfg.vencimento_ligado, cfg.pergunta_vence_h) == (True, NEEDS_INPUT_EXPIRA_H)
 
@@ -269,4 +279,20 @@ def test_31_50c_o_prazo_tem_piso_de_uma_hora() -> None:
     from app.config import ExecucaoCfg
     with pytest.raises(ValidationError):
         ExecucaoCfg(pergunta_vence_h=0.05)
-    assert ExecucaoCfg(pergunta_vence_h=1).pergunta_vence_h == 1
+    assert ExecucaoCfg(pergunta_vence_h=1).pergunta_vence_h == 1
+
+
+async def test_31_50_ao_ligar_o_que_ja_esperava_ganha_a_carencia(harness: Harness) -> None:
+    """31.50, carência: ligar o vencimento não vence de uma vez o que já estava parado (os 21 da primeira volta do
+    deploy 30). O prazo conta do mais tardio entre a espera e a marca de quando foi ligado; desligar apaga a marca."""
+    st = harness.state
+    assert st is not None
+    run_id, oid = await _parado(harness, espera_h=100, fim_h=100)
+    harness.cfg.file.execucao.vencimento_ligado = False
+    assert st.runs.vencer_objetivos_parados(now()) == []          # desligado: a marca some
+    assert st.db.scalar("SELECT value FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,)) is None
+    harness.cfg.file.execucao.vencimento_ligado = True
+    assert st.runs.vencer_objetivos_parados(now()) == []          # acabou de ligar: carência
+    assert _status(harness, run_id, oid)[0] == "waiting_user"
+    assert st.runs.vencer_objetivos_parados(now() + timedelta(hours=23)) == []
+    assert st.runs.vencer_objetivos_parados(now() + timedelta(hours=25)) == [oid]

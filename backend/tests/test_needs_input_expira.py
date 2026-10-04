@@ -16,12 +16,19 @@ from typing import Any
 import pytest
 
 from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
-from app.taskqueue.service import NEEDS_INPUT_EXPIRA_H
+from app.taskqueue.service import CHAVE_LIGADO_DESDE, NEEDS_INPUT_EXPIRA_H
 from app.util import now, parse_iso, to_iso
 
 from .conftest import COMMAND, Harness
 
 INCOMPLETO = "Abra o QA Messenger e envie uma mensagem"
+
+
+def ligado_ha_muito(h: Harness) -> None:
+    """O vencimento ligado bem antes de qualquer espera do teste: a carência do 31.50 já passou."""
+    assert h.state is not None
+    h.state.db.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET "
+                       "value=excluded.value", (CHAVE_LIGADO_DESDE, "2000-01-01T00:00:00.000Z"))
 
 
 async def _pergunta(h: Harness) -> tuple[str, Any]:
@@ -30,6 +37,7 @@ async def _pergunta(h: Harness) -> tuple[str, Any]:
     await h.wait_run(run.id, ("needs_input",))
     assert h.state is not None
     entrada = h.state.db.scalar("SELECT MAX(ts) FROM events WHERE run_id=? AND kind='run.updated'", (run.id,))
+    ligado_ha_muito(h)
     return run.id, parse_iso(entrada)
 
 

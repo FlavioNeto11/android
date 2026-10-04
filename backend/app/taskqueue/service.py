@@ -62,6 +62,8 @@ _VOLTAM_COM_RODIZIO = WAKEABLE | {InstanceState.stopping}
 #: Antes, a execução esperava para sempre, e só um cancelamento pela rota a tirava do ar, o que é um sinal de PESSOA
 #: (`cancelou_execucao`, ADR-054) que ninguém deu. É o PADRÃO: o prazo de verdade é `execucao.pergunta_vence_h` (31.43).
 NEEDS_INPUT_EXPIRA_H = 24
+#: 31.50: a marca (em `settings`) de quando o vencimento foi visto ligado; a carência conta dela (`_ligado_desde`).
+CHAVE_LIGADO_DESDE = "vencimento_ligado_desde"
 #: 31.43: a marca para máquina de todo vencimento do sistema (pergunta ou bloqueio), no `data` do evento.
 REGRA_DO_VENCIMENTO = "31.43"
 MOTIVO_VENCIDO = "vencido_sem_resposta"
@@ -1496,6 +1498,21 @@ class RunService:
                 run_id=run_id, status_anterior=status.value, antes_de_iniciar=antes_de_iniciar, quem=por, em=em))
         return self.repo.run_summary(self._run(run_id))
 
+    def _ligado_desde(self) -> str:
+        """31.50, carência ao ligar: quando o vencimento foi visto ligado pela primeira vez (`settings`, durável entre
+        reinícios). O relógio de cada espera conta a partir do mais tardio entre a entrada nela e esta marca. Antes, o
+        relógio usava só marcas do passado, e ao ligar venceu de uma vez tudo o que já estava parado (21 objetivos na
+        primeira volta do deploy 30, sem aviso). Desligar apaga a marca: ligar de novo dá a carência outra vez."""
+        db = self.repo.db
+        if not (marca := db.scalar("SELECT value FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))):
+            db.execute("INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT(key) DO NOTHING",
+                       (CHAVE_LIGADO_DESDE, now_iso()))
+            marca = db.scalar("SELECT value FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
+        return str(marca)
+
+    def _esquecer_ligado_desde(self) -> None:
+        self.repo.db.execute("DELETE FROM settings WHERE key=?", (CHAVE_LIGADO_DESDE,))
+
     def _cancelar_antes_de_iniciar(self, run_id: str, detalhe: str, *, message: str | None = None,
                                    dados: dict[str, object] | None = None) -> None:
         """Fecha como `cancelled` a execução que não começou: etapas abertas, objetivos e aprovações junto. Quem chama
@@ -1526,9 +1543,12 @@ class RunService:
         expiração, nunca a adiantaria. Sem evento nenhum (execução anterior aos eventos), vale a criação."""
         ligado, horas_cfg = self._vencimento()
         if not ligado:
+            self._esquecer_ligado_desde()
             return []
         horas = _horas(horas_cfg)
         limite = to_iso(agora - timedelta(hours=horas_cfg))
+        if self._ligado_desde() >= limite:          # 31.50: ainda na carência de quando o vencimento foi ligado
+            return []
         expiradas: list[str] = []
         # A entrada é depois da criação: quem nasceu depois do limite não pode ter vencido.
         for run in self.repo.db.query("SELECT id, created_at FROM runs WHERE status=? AND created_at < ? "
@@ -1574,9 +1594,12 @@ class RunService:
         objetivo ainda em `waiting_user` E à execução ainda terminal; do contrário, a resposta dela vale e nada é tocado."""
         ligado, horas_cfg = self._vencimento()
         if not ligado:
+            self._esquecer_ligado_desde()
             return []
         horas = _horas(horas_cfg)
         limite = to_iso(agora - timedelta(hours=horas_cfg))
+        if self._ligado_desde() >= limite:          # 31.50: ainda na carência de quando o vencimento foi ligado
+            return []
         terminais = tuple(s.value for s in RUN_TERMINAL)
         marcas = ",".join("?" for _ in terminais)
         vencidos: list[str] = []
