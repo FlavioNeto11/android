@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — o ensaio do `--amplo` aceita a forma anterior de um valor de exemplo trocado (branch chore/trocar-nomes-anteriores)
+
+- `scripts/trocar-nomes-nos-testes.py`: a tabela privada ganha a chave opcional `anteriores`, os valores que ela já teve e que
+  já foram aplicados nos testes. Contam como feitos na checagem "um valor de exemplo já existe nos testes". Motivo: três
+  nomes de exemplo da tabela passaram a coincidir com palavras de um teste novo da Canais; trocar na tabela os valores que
+  colidem deixava a forma antiga (aplicada) acusando o outro pedaço dela.
+- Prova `simulated`: `scripts/tests/test_trocar_nomes_ids.py` (6; o novo prova o aborto sem a chave e a passagem com ela).
+  Ensaio real em cb6742d4: 171 arquivos e 1584 linhas, checagem passou (também com `--banco`); nada escrito.
+
 ## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
 
 - O fluxo ensinado que a prova real desligou (30.81) renasce na mesma linha quando a pessoa ensina o mesmo comando de

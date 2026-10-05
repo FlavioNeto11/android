@@ -143,7 +143,9 @@ def main() -> int:
     # Do par, só o pedaço que o par INTRODUZ conta como novo: o handle de exemplo que só troca o sufixo mantém os
     # nomes de exemplo que já estavam nos testes.
     novos |= {p for velho, novo in tabela.get("pares", {}).items() for p in pedacos_de(novo) - pedacos_de(velho)}
-    feitos = [*tabela["handles"].values(), *tabela.get("pares", {}).values()]
+    # `anteriores`: valores que a tabela já teve e que JÁ foram aplicados nos testes (o valor de exemplo trocado depois de
+    # uma colisão): contam como feitos, senão os pedaços deles que seguem na tabela abortariam o `--amplo`.
+    feitos = [*tabela["handles"].values(), *tabela.get("pares", {}).values(), *tabela.get("anteriores", [])]
     # 31.105: o handle já trocado também fica com o ponto escapado numa regex de teste (`/nome\.sobrenome1234/`);
     # sem essa forma, o pedaço dele sobrava e o `--amplo` abortava pelo próprio valor de exemplo.
     feitos += [f.replace(".", "\\.") for f in feitos if "." in f]
