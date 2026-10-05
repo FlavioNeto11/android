@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
+
 from app.modules.learning.domain.backlog import ESPERANDO_A_PESSOA, SEM_CONDUCAO
 from app.modules.learning.infrastructure.licoes_sql import SqlLicoesRepository
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql
@@ -84,16 +86,31 @@ def _contagens(st: AppState) -> dict[str, int]:
     return {t: int(st.db.scalar(f"SELECT COUNT(*) FROM {t}") or 0) for t in _TABELAS_DO_DIGEST}
 
 
-async def test_o_digest_rodado_de_novo_na_mesma_execucao_nao_duplica_nada(harness: Harness) -> None:
+async def _execucao(h: Harness, caso: str) -> str:
+    """A execução do caso, já no estado final. `cancelada_na_espera`: parou esperando a pessoa e foi cancelada, e o
+    gancho de saída (#382) já a digeriu uma vez."""
+    st = _estado(h)
+    if caso == "concluida":
+        h.cfg.file.ai.recipes = "replay"
+        return str((await h.wait_run(h.run(["android-01"]).id)).id)
+    run_id = await _esperando_login(h)
+    st.runs.cancel(run_id)
+    await h.wait(lambda: st.repo.run_row(run_id)["status"] == "cancelled", what="execução cancelada")
+    await h.wait(lambda: not st._digestoes, what="digests do gancho")   # noqa: SLF001 - o que o gancho encadeou
+    return run_id
+
+
+@pytest.mark.parametrize("caso", ["concluida", "cancelada_na_espera"])
+async def test_o_digest_rodado_de_novo_na_mesma_execucao_nao_duplica_nada(harness: Harness, caso: str) -> None:
     """A execução que sai da espera é digerida na saída, e a que a migração 111 moveu de `completed_with_issues` para
     `awaiting_person` já tinha sido digerida antes. O segundo digest da MESMA execução não pode somar linha em nenhuma
-    tabela do aprendizado (a leitura dos 10 mineradores na nota de desenho do 30.69)."""
+    tabela do aprendizado (a leitura dos 10 mineradores na nota de desenho do 30.69). É a segunda rede contra o
+    assentamento em dobro: o digest lê a execução só pelo `run_id` e pelas linhas dela, então vale para qualquer caminho
+    que o chame duas vezes, inclusive o da execução `cancelled`."""
     st = _estado(harness)
-    harness.cfg.file.ai.recipes = "replay"
-    run = await harness.wait_run(harness.run(["android-01"]).id)
-    assert run.status == "completed"
-    st.learning.digerir_execucao(run.id)
+    run_id = await _execucao(harness, caso)
+    st.learning.digerir_execucao(run_id)
     antes = _contagens(st)
-    relatorio = st.learning.digerir_execucao(run.id)
+    relatorio = st.learning.digerir_execucao(run_id)
     assert not relatorio.pulado and not relatorio.falhas, relatorio
     assert _contagens(st) == antes
