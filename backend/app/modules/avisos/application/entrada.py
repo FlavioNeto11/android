@@ -229,10 +229,15 @@ def rotear(texto: str | None, *, fato: str | Fato | None = None) -> Intencao:
     f = fato if isinstance(fato, Fato) else Fato.de(fato)
     if t.startswith("/"):
         return _rotear_comando(t, f)
+    # 28.41, G1 da releitura do #380 (orquestradora, 05/10 07:50Z): resposta a aviso nunca vira COMANDO. Na resposta
+    # a um fato sem ramo próprio, a gramática comum vale, mas só o texto livre (a prévia) e o `para` viram "só
+    # informa"; a pergunta, a captura e a identidade não executam nada e seguem. O anexo é a exceção (28.24).
+    sem_ramo = False
     if f is not None:
         por_fato = _rotear_resposta(t, f)
         if por_fato is not None:
             return por_fato
+        sem_ramo = not f.anexo
     normal = " ".join(_sem_acento(t).split())
     captura = _CAPTURA.match(normal)
     if captura:
@@ -241,9 +246,13 @@ def rotear(texto: str | None, *, fato: str | Fato | None = None) -> Intencao:
         return Intencao("identidade")
     m = _PARA_LIVRE.match(t)
     if m:
+        if sem_ramo:
+            return Intencao("desconhecida", motivo=SO_INFORMA_SEM_RAMO)
         return Intencao("para", alvo=m.group("alvo").strip(), texto=m.group("objetivo").strip())
     if _eh_pergunta(normal):
         return Intencao("orquestradora", texto=t, repasse="pergunta")
+    if sem_ramo:
+        return Intencao("desconhecida", motivo=SO_INFORMA_SEM_RAMO)
     return Intencao("livre", texto=t)
 
 
@@ -356,11 +365,9 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         return Intencao("desconhecida", motivo="Para decidir esta aprovação, responda \"sim\" ou \"não\".")
     if f.pergunta:
         return Intencao("responder", ref=f.ident, texto=t)
-    # 28.41 (regra de fundo da leitura do #380, orquestradora 05/10 06:53Z): a resposta a uma mensagem nossa cujo fato
-    # não tem ramo (`pedido:`, `learning:`, `trello-convidado:` e qualquer família nova) só informa. O texto livre fica
-    # só para a mensagem que não responde a nada nosso; assim um tipo novo de aviso não reabre a lacuna. O único `None`
-    # acima é o do anexo, que segue a gramática comum de propósito (28.24).
-    return Intencao("desconhecida", motivo=SO_INFORMA_SEM_RAMO)
+    # Sem ramo próprio (`pedido:`, `learning:`, `trello-convidado:`, os espelhos e qualquer família nova): a gramática
+    # comum decide, e a regra de fundo de `rotear` tira dela o comando (28.41).
+    return None
 
 
 def texto_para_o_extrator(alvo: str, objetivo: str) -> str:

@@ -595,14 +595,24 @@ def test_o_agrupado_de_conta_e_o_de_lembrete_vao_a_caixa_sem_o_id_de_um_item() -
 
 
 # ===================================================================== 7. o 28.41 (leitura do #380 e do #382)
-@pytest.mark.parametrize("fato", ["pedido:p1", "learning:r1:o1", "trello-convidado:c1", "familia-nova:x1"])
-@pytest.mark.parametrize("texto", ["sim", "abre o instagram no android-13", "o que houve?"])
-def test_resposta_a_fato_sem_ramo_so_informa(fato: str, texto: str) -> None:
-    """Regra de fundo (orquestradora, 05/10 06:53Z): o texto livre fica só para a mensagem que não responde a nada
-    nosso. Um tipo novo de aviso (`familia-nova`) não reabre a lacuna."""
+@pytest.mark.parametrize("fato", ["pedido:p1", "learning:r1:o1", "trello-convidado:c1", "deploy:d025b671:110",
+                                  "run:r1:running", "familia-nova:x1"])
+@pytest.mark.parametrize(("texto", "tipo"), [
+    ("sim", "so_informa"), ("abre o instagram no android-13", "so_informa"),
+    ("para android-09: abrir o QA Messenger", "so_informa"),
+    ("o que houve?", "orquestradora"), ("manda um print do android-13", "captura"), ("quem é você?", "identidade")])
+def test_resposta_a_fato_sem_ramo_nunca_vira_comando(fato: str, texto: str, tipo: str) -> None:
+    """Regra de fundo (orquestradora, 05/10 06:53Z; G1 da releitura do #380, 07:50Z): resposta a aviso nunca vira
+    COMANDO. O texto livre (a prévia) e o `para` só informam; a pergunta vai à orquestradora, e a captura e a
+    identidade, que não executam nada, seguem. Um tipo novo de aviso (`familia-nova`) não reabre a lacuna."""
     from app.modules.avisos.application.entrada import SO_INFORMA_SEM_RAMO, rotear
     i = rotear(texto, fato=fato)
-    assert i.tipo == "desconhecida" and i.motivo == SO_INFORMA_SEM_RAMO
+    if tipo == "so_informa":
+        assert i.tipo == "desconhecida" and i.motivo == SO_INFORMA_SEM_RAMO
+    else:
+        assert i.tipo == tipo and i.tipo == rotear(texto).tipo
+        if tipo == "orquestradora":
+            assert i.repasse == "pergunta"
 
 
 @pytest.mark.parametrize("texto", ["sim", "abre o instagram no android-13", "o que houve?"])
@@ -623,6 +633,10 @@ def test_no_trello_o_fato_sem_ramo_responde_o_comando_livre_desligado(fato: str)
     texto = "abre o instagram no android-13"
     i = ConversaDoTrello._intencao(SimpleNamespace(), {"texto": texto, "responde_a": f"{PREFIXO_DO_FATO}{fato}"})  # type: ignore[arg-type]
     assert i.tipo == "livre" and i.motivo == SO_INFORMA_SEM_RAMO
+    # G1: a pergunta no cartão-espelho volta a ir à orquestradora (28.28).
+    pergunta = ConversaDoTrello._intencao(SimpleNamespace(),  # type: ignore[arg-type]
+                                          {"texto": "o que houve?", "responde_a": f"{PREFIXO_DO_FATO}{fato}"})
+    assert pergunta.tipo == "orquestradora" and pergunta.repasse == "pergunta"
     plano = ConversaDoTrello._intencao(SimpleNamespace(), {"texto": texto, "responde_a": ""})  # type: ignore[arg-type]
     assert plano.tipo == "orquestradora" and plano.repasse == REPASSE_COMENTARIO
 

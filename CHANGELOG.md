@@ -30,6 +30,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   mensagem que não responde a nada nosso (o anexo segue a gramática comum, 28.24). No Trello, onde o texto livre
   nunca executou, o comentário num cartão cujo fato não tem ramo responde o "comando livre está desligado" de
   sempre e nunca vira prévia, nem com o comando livre ligado (orquestradora, 05/10 07:24Z).
+- G1 da releitura do #380 (orquestradora, 05/10 07:50Z): resposta a aviso nunca vira COMANDO, e pergunta não executa
+  nada. Na resposta a um fato sem ramo, só o texto livre e o `para` viram "só informa"; a pergunta volta a ir à
+  orquestradora, e a captura e a identidade seguem (no Trello também). G2, no contrato: `/para` com barra num
+  cartão-espelho, com o comando livre ligado, ainda mostra a prévia de leitura.
 - Leitura do #382: o gesto do desfecho segue o `blocked_kind` dos objetivos parados (aparelho: abrir a execução;
   aprovação: a caixa de Pendências; os dois: as duas linhas).
 - R2: o `/status` conta os objetivos parados (sem contar duas vezes o que espera uma aprovação) e diz que eles estão

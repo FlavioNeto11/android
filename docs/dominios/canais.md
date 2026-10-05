@@ -407,13 +407,18 @@ avisos depois da faxina"), e a trava cai no TTL.
     caixa, e o lembrete agrupado diz onde fica cada coisa (28.41).
   - Responder ao aviso de objetivo parado ou de conta só informa: "Este aviso só informa: para resolver, toque no
     link dele." (28.41). O `/status` conta também os objetivos parados.
-  - Regra de fundo da resposta (28.41, orquestradora 05/10 06:53Z): a resposta a uma mensagem nossa cujo fato não tem
-    ramo próprio só informa; o texto livre (e a prévia de execução) fica só para a mensagem que não responde a nada
-    nosso. O agrupado (`grupo:<tipo>`, `grupo:rotina`), o pedido, o aprendizado e qualquer família nova caem aí. A
-    única exceção é o anexo do dono, em que só "ler" é dele (28.24). No Trello a regra de fundo é outra (lá o texto
-    livre nunca executou): o comentário num cartão cujo fato não tem ramo (espelhos do livro, do deploy e do custo,
-    pedido, aprendizado, convidado) responde o "comando livre está desligado no Trello" de sempre e nunca vira
-    prévia, nem com `trello.comando_livre` ligado; o cartão do plano, sem fato, segue à orquestradora (28.30).
+  - Regra de fundo da resposta (28.41; orquestradora 05/10 06:53Z, G1 às 07:50Z): **resposta a aviso nunca vira
+    COMANDO; pergunta não executa nada.** Na resposta a uma mensagem nossa cujo fato não tem ramo próprio (o pedido,
+    o aprendizado, os espelhos, o `run:` que não é pergunta e qualquer família nova), a gramática comum vale, mas o
+    texto livre (a prévia de execução) e o `para` só informam ("mande uma mensagem nova, sem responder a um aviso");
+    a pergunta vai à orquestradora (28.28), e a captura e a identidade seguem. O texto livre e o `para` completos ficam
+    só para a mensagem que não responde a nada nosso. O agrupado, o objetivo parado e a conta têm ramo próprio e só
+    informam; o anexo do dono é a exceção em que tudo segue a gramática comum (28.24).
+  - No Trello, onde o texto livre nunca executou, a mesma regra mantém a frase de sempre: o texto livre num cartão
+    cujo fato não tem ramo responde "comando livre está desligado no Trello" e nunca vira prévia, nem com
+    `trello.comando_livre` ligado; a pergunta vai à orquestradora; o cartão do plano, sem fato, segue à orquestradora
+    (28.30). Limite (G2): o comando com barra (`/para android-09 x`) não passa pela regra de fundo, então num
+    cartão-espelho, com `trello.comando_livre` ligado, ele ainda mostra a prévia (só leitura, sem executar).
   - O gesto do desfecho segue o motivo da parada (`blocked_kind`): o item parado no aparelho manda abrir a execução;
     o parado numa aprovação manda à caixa de Pendências; os dois casos, as duas linhas.
   - O rótulo do pedido é texto da pessoa: só sai quando o pedido foi criado pelo dono (o de convidado, de frente ou
