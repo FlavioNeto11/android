@@ -97,6 +97,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_porta_do_plano.py`, 10 testes novos; `test_telegram_entrada`, 1 novo;
   `test_telegram_portas`, `test_executor_honra_o_plano`; `frontend/src/features/runs/PortaDoPlano.test.tsx`). Real:
   `not_run`, gesto no central depois do deploy 34.
+
 ## 2026-10-04 — 29.83: exclusão de contatos do site a pedido do titular (branch feat/29-83-exclusao-de-contato)
 
 - **O pedido:** o aviso de privacidade do site oferece a exclusão; até aqui só havia o procedimento manual. A
@@ -117,6 +118,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     da isca.
 - **Prova:** `simulated` (`tests/test_portal_exclusao.py` 24, 1 pula sem o #340; prova de fora 4; Configuração no frontend). `not_run`:
   o 28.34 real, o central, PostgreSQL.
+
 ## 2026-10-05 — 29.86: as duas últimas leituras de vagas fora da regra única (branch fix/29-86-vagas-restantes)
 
 - R1 e R2 da revisão do 29.84 (`C:\claude-ferramentas\revisao-29-84.md`), em cima do #352.
@@ -143,6 +145,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_limites_por_servidor.py::test_agendador_e_rota_de_limites_leem_as_vagas_pela_regra_unica`.
   A regra muda pelo gancho e o setting não: a foto, a frase da espera e a rota acompanham. A mutação para a leitura
   direta derruba o teste.
+
 ## 2026-10-05 — 29.80: o rótulo "Ilustração" do site com contraste AA (branch fix/29-80-contraste-ilustracao)
 
 - **Achado da prova real do 29.80 no endereço público** (05/10 ~01:50Z, navegador embutido, só GET). O rótulo
@@ -156,6 +159,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   O teste lê as cores e os fundos do próprio CSS e reprova com a cor antiga. O resto do 29.80 no endereço público está
   no resultado do plano: as outras 253 de 255 linhas de texto passaram, ou eram decorativas com `aria-hidden`; 40 de
   40 focos têm anel de 3 px, com contraste de 4,94 ou mais; e a 404 vem com status 404 e `noindex`.
+
 ## 2026-10-05 — 29.85: a prova de fora pede a raiz como navegador e reprova script de outra origem (branch feat/29-85-prova-sem-script-de-fora)
 
 - **Por quê:** com o site ligado (05/10 01:19Z), a borda da Cloudflare injeta `static.cloudflareinsights.com/beacon.min.js`
@@ -181,6 +185,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     challenge-platform embutido e um desafio 403.
   - `real` (05/10 01:31Z, máquina do central, só GET): a raiz pedida como navegador traz `/assets/site.js` e o beacon;
     pedida pelo `curl` puro, 0 ocorrências. A prova de fora vai reprovar até o dono desligar o recurso na zona.
+
 ## 2026-10-05 — 29.87: a tela da legenda rola até o rótulo de IA e fecha a folha de aviso sem escolher (branch feat/29-87-rolar-ate-o-rotulo)
 
 - Achados da leitura real do android-13 (05/10 01:24Z–01:30Z, deploy 33, sem Share e sem tocar no interruptor): a linha
