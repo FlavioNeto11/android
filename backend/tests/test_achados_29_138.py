@@ -12,14 +12,17 @@ Tudo falso: nenhum processo sobe, nenhum `node` roda.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
+import psutil
 import pytest
 
 from app import marca_de_partida
+from app.automation import appium_server as mod
 from app.automation.appium_server import LISTENER_MARKER
 
 from .test_appium_start_pid_novo import _subir_com
-from .test_saude_do_appium import _com_appium_instalado, _server
+from .test_saude_do_appium import _com_appium_instalado, _server, _Vivo
 from .test_supervisor_partida import Bancada
 
 _FRASE = f"Appium REST http interface {LISTENER_MARKER} http://127.0.0.1:4723\n"
@@ -82,3 +85,28 @@ def test_sem_ver_os_donos_a_frase_do_log_ainda_prova(tmp_path: Path, monkeypatch
     _subir_com(monkeypatch, server, roteiro=["Loaded 3 filtering rules\n", _FRASE], morre=False, responde=[True])
     assert server._subir(wait_s=5) is True
     assert server.log_masking_active is True
+
+
+# ================================================================== S1 da leitura do #446: dois donos na porta
+def test_um_dono_nosso_e_outro_alheio_na_porta_e_externo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """127.0.0.1 com o nosso (13056) e 0.0.0.0 com um alheio (4000): o nosso ao lado não prova para onde vão as
+    requisições, então não há órfão a readotar com o mascaramento dele."""
+    server = _server(tmp_path)
+    cmd = _com_appium_instalado(server, tmp_path, monkeypatch)
+    nosso, alheio = _Vivo("node", cmd), _Vivo("node", ["node", "C:/outro/projeto/appium.js"])
+    monkeypatch.setattr(mod.psutil, "Process", lambda pid: {13056: nosso, 4000: alheio}[pid])
+    porta = server.cfg.file.appium.port
+    conexoes = [SimpleNamespace(status=psutil.CONN_LISTEN, laddr=SimpleNamespace(port=porta), pid=13056),
+                SimpleNamespace(status=psutil.CONN_LISTEN, laddr=SimpleNamespace(port=porta), pid=4000)]
+    monkeypatch.setattr(mod.psutil, "net_connections", lambda kind="tcp": conexoes)
+    assert server._own_orphan() is None
+
+
+def test_na_subida_um_dono_alheio_ao_lado_do_novo_nao_deixa_provar(tmp_path: Path,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    server = _server(tmp_path)
+    _com_appium_instalado(server, tmp_path, monkeypatch)
+    _subir_com(monkeypatch, server, roteiro=["Loaded 3 filtering rules\n", _FRASE], morre=False, responde=[True],
+               donos=[36048, 4000])
+    assert server._subir(wait_s=1) is False
+    assert not server._pid_file.exists()
