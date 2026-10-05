@@ -146,6 +146,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   retomada que para de novo, a anti-repetição, o rearme duplo, o líder velho e a volta sem leitura de estado). Real:
   `not_run`.
 
+## 2026-10-05 — 30.71: as sobras da leitura do #390 (branch feat/30-71-sobras-do-digest, sobre o #390)
+
+- `execucoes_a_preencher` deixa de escolher a execução `awaiting_person`, que tem `finished_at` mas cuja exposição não fecha enquanto espera: antes ela entrava em toda passada sem preencher nada e, com `LIMIT 200` por `run_id`, podia tirar a vez de quem fecha.
+- O teste da idempotência do digest compara também os `SUM` de `evidence_for`, `evidence_against`, `distinct_runs` e `distinct_devices` de `learning_items`, além das linhas. Desde o T1 da leitura do 30.71, a medida é DA execução (as tabelas com `run_id` por ele; as de item, pelos itens que ela tocou), e o caso `concluida` também espera os digests do assentamento: uma escrita legítima de fora não reprova à toa.
+- N1 da leitura do 30.71: a janela de `execucoes_a_preencher` conta da saída da espera, `COALESCE(r.assentada_em, r.finished_at)`. O vencimento e o cancelamento não limpam o `finished_at` (a hora da entrada). Teste novo: `test_a_espera_mais_longa_que_a_janela_conta_da_saida`.
+- Doc (`aprendizado.md`): no estoque migrado, as exposições congeladas com `waiting_user` antes do 30.69 ficam assim; o relatório de condução, recalculado, mostra `esperando_pessoa` também nas antigas. Nota N2: a exposição de etapa que concluiu antes da espera só é preenchida na saída (atrasa, não perde).
+- Prova `simulated`: `backend/tests/test_digest_na_saida_da_espera.py` (6 passed na d6409fbe; o novo `test_a_curadoria_nao_escolhe_a_execucao_que_espera_e_escolhe_quando_ela_sai` confere também que a saída da espera preenche a exposição). Na 2ª ponta do 30.71, com o T1 e o N1, SQLite em Idle: dirigidos 78 passed (`-n 2`, digest_na_saida_da_espera, aguardando_pessoa, learning_licoes, aprendizado_backfill_licoes, prompts_licoes) e catracas 86 passed (`-n 4`). No caso `cancelada_na_espera` do T1, a medida é o que o digest da saída ESCREVE: a exposição da etapa que espera, com `filled_at` e `outcome`, que o segundo digest não pode mudar.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,
