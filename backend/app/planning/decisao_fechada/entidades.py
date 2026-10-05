@@ -322,7 +322,7 @@ _RECUSA_NO_ORIGINAL: Final[tuple[tuple[MotivoDoFiltro, re.Pattern[str]], ...]] =
         rf"|(?<![^\W_])[^\W_]+[\-_]+(?:at|arroba|chez)[\-_]+(?:{_PROVEDOR}(?![^\W_])"
         rf"|[^\W_]+(?:[\-_.]+[^\W_]+)*?[\-_.]+{_TLD}(?![^\W_]))"
         # e o provedor antes do nome, com pista de destinatário ("mande um oi pro gmail da zilda"). Sem a pista, "abra o
-        # gmail do lucas" é navegação e passa; o provedor que também é app ("manda pro Outlook da Ana a foto") também
+        # gmail do fulano" é navegação e passa; o provedor que também é app ("manda pro Outlook da Ana a foto") também
         rf"|\b{_PISTA_DE_EMAIL}\s+(?:o\s+|a\s+)?{_PROVEDOR_SO_DE_EMAIL_E_NAO_APP}\s+(?:da|do|de)\s+(?!{_NAO_DONO}\b)"
         r"[^\W\d_]+(?![\w\-])"
         # `@` sem a parte local colada (separada por espaço ou tabulação), seguido de domínio com topo
@@ -534,7 +534,7 @@ def _limpar(texto: str) -> str:
 #: `[usuario]`. Perto da palavra "e-mail" (até cinco palavras), só o domínio de topo; e, com qualquer âncora, o valor
 #: rotulado ("o e-mail dela é zilda e o provedor é gmail"). Sem âncora, o provedor é nome de produto e passa ("a Zilda
 #: Prado está no gmail", "ela usa gmail"). Com o `@handle` e o handle com ponto, o provedor que também é app (outlook,
-#: live, terra) fica: "comente na live do @lucas" é a live do Instagram.
+#: live, terra) fica: "comente na live do @fulano" é a live do Instagram.
 _FRAG_PROVEDOR: Final = re.compile(
     rf"(?i)(?<![\w\-]){_PROVEDOR_SO_DE_EMAIL_E_NAO_APP[:-1]}|correio)(?![\w\-])")
 _FRAG_PROVEDOR_APP: Final = re.compile(rf"(?i)(?<![\w\-]){_PROVEDOR_QUE_E_APP}(?![\w\-])")

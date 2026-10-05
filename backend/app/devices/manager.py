@@ -209,8 +209,8 @@ class Observation:
     package: str | None
     sensitive: bool
     # Adendo v0.20, contrato C1 (todos opcionais): quando a hierarquia e a imagem foram lidas (`image_at=None` = sem
-    # imagem), POR QUE não há imagem (`sensitive` | `policy`; omitir não é falha de captura), de onde veio e de
-    # qual geração do runtime do aparelho.
+    # imagem), POR QUE não há imagem (`sensitive` | `policy`: omitir não é falha de captura; `capture_failed`: a
+    # aquisição FALHOU e quem chamou aceitou seguir só pela árvore, 31.76), de onde veio e de qual geração do runtime.
     tree_at: str | None = None
     image_at: str | None = None
     image_omitted: str | None = None
@@ -221,6 +221,11 @@ class Observation:
     # `None` = não medido (observação montada fora de `observe`, dublê de teste); sem imagem, `ms_imagem` fica `None`.
     ms_arvore: float | None = None
     ms_imagem: float | None = None
+    # Item 31.76: só com `image_omitted == "capture_failed"`. `captura_falha` é "Tipo: mensagem" do erro (nunca texto de
+    # tela); `captura_excedeu_prazo` diz que foi `DriverTimeout`, ou seja, o screencap PODE seguir preso no executor do
+    # aparelho, e a próxima leitura só vale depois de ele (`DeviceExecutor.drain`) ficar livre.
+    captura_falha: str | None = None
+    captura_excedeu_prazo: bool = False
 
 
 @dataclass(slots=True)
@@ -3211,7 +3216,7 @@ class DeviceManager:
         if (travada := self.conta_travada_em(rt.id)) is not None:
             # Quarentena (ADR-055): conta travada logada. O painel e o agente já recusam `start` sem a confirmação
             # da pessoa (`despacho._precheck`); o emulador DESTA máquina, que o rodízio liga direto, recusa aqui —
-            # senão o aparelho do felipe subiria sozinho por causa de uma tarefa que a porta bloquearia depois.
+            # senão o aparelho da conta travada subiria sozinho por causa de uma tarefa que a porta bloquearia depois.
             rt.start_backoff_until = time.monotonic() + 600
             self.marcar_atencao(rt, f"Em quarentena: a conta @{travada} está travada e logada neste aparelho; ele não "
                                     "é ligado automaticamente. Precisa do dono.")
@@ -3907,7 +3912,8 @@ class DeviceManager:
         return visto is not None and time.monotonic() - visto[1] <= self.VALIDADE_DA_ATIVIDADE_S
 
     async def observe(self, rt: DeviceRuntime, *, timeout: float,
-                      imagem: bool | Callable[[UiTree], bool] = True, lado_max: int | None = None) -> Observation:
+                      imagem: bool | Callable[[UiTree], bool] = True, lado_max: int | None = None,
+                      tolerar_falha_da_imagem: bool = False) -> Observation:
         """Observação: hierarquia PRIMEIRO, imagem só quando pedida (contrato C1 do adendo v0.20).
 
         `imagem`: `True` (padrão, o comportamento de antes: imagem sempre, JPEG cheio e prévia publicada), `False`
@@ -3919,6 +3925,12 @@ class DeviceManager:
         imagem por escolha de quem chamou, `image_omitted="policy"`. Omitir NÃO é falha de captura. Sem imagem, a
         largura e a altura vêm do último frame desta geração na orientação que a hierarquia declara, ou de
         `wm size` — nunca de outro aparelho; sem nenhuma dessas, a imagem é adquirida (é o jeito de saber).
+
+        `tolerar_falha_da_imagem` (31.76, desligado por padrão; só o laço do ator o liga): a árvore já foi lida e o
+        tamanho da tela se sabe SEM a imagem (as dimensões lembradas desta geração) — então a falha da aquisição
+        (`DriverTimeout` ou `FalhaDeLeitura`) não derruba a observação: volta a árvore, `jpeg=None` e
+        `image_omitted="capture_failed"`, e a falha entra na métrica de captura. Sem dimensões conhecidas, ou com o
+        parâmetro desligado, a exceção sobe como sempre. Captura que falhou nunca é prova nem sucesso de nada.
         """
         ex = rt.executor
         t0 = time.perf_counter()
@@ -3938,8 +3950,22 @@ class DeviceManager:
             quer = True
         if quer:
             t_imagem = time.perf_counter()
-            com_imagem = await self._observar_imagem(rt, tree, pkg, tree_at, timeout=timeout, lado_max=lado_max,
-                                                     previa_sempre=imagem is True)
+            try:
+                com_imagem = await self._observar_imagem(rt, tree, pkg, tree_at, timeout=timeout, lado_max=lado_max,
+                                                         previa_sempre=imagem is True)
+            except (DriverTimeout, FalhaDeLeitura) as exc:
+                lembradas = self._dimensoes_lembradas(rt, xml) if tolerar_falha_da_imagem else None
+                if lembradas is None:
+                    raise
+                # Só a métrica: `rt.capture_failures` é a série da PRÉVIA do painel (estado do stream e recuo do
+                # intervalo) e só zera quando a prévia captura de novo; a observação nunca mexeu nela.
+                metricas.contar("captura.total", origem="observacao", resultado="falha")
+                return Observation(frame_id=self._novo_frame_id(rt), ts=tree_at, width=lembradas[0],
+                                   height=lembradas[1], jpeg=None, tree=tree, package=pkg, sensitive=tree.sensitive,
+                                   tree_at=tree_at, image_at=None, image_omitted="capture_failed",
+                                   runtime_gen=rt.geracao, ms_arvore=ms_arvore,
+                                   captura_falha=f"{type(exc).__name__}: {exc}"[:300],
+                                   captura_excedeu_prazo=isinstance(exc, DriverTimeout))
             com_imagem.ms_arvore, com_imagem.ms_imagem = ms_arvore, (time.perf_counter() - t_imagem) * 1000
             return com_imagem
         if dims is not None:
@@ -4008,7 +4034,10 @@ class DeviceManager:
         """A imagem de uma observação que saiu só com a árvore, quando a necessidade aparece DEPOIS (a receita
         divergiu; o verificador vai julgar pela visão). Mesma árvore, imagem adquirida em seguida pelo mesmo
         executor, sem ação no meio. Tela sensível — nesta árvore ou numa leitura mais nova — continua sem imagem."""
-        if obs.image_omitted != "policy" or self._previa_sensivel(rt) or rt.executor.em_trecho_sensivel:
+        # `capture_failed` entra: quem JULGA pela imagem (verificador, evidência) não aceita a falha tolerada do laço do
+        # ator, e tenta de novo — sem tolerância, de modo que uma segunda falha sobe como sempre (31.76).
+        if (obs.image_omitted not in ("policy", "capture_failed") or self._previa_sensivel(rt)
+                or rt.executor.em_trecho_sensivel):
             return obs
         t_imagem = time.perf_counter()
         completa = await self._observar_imagem(rt, obs.tree, obs.package, obs.tree_at or obs.ts, timeout=timeout,
@@ -4123,9 +4152,9 @@ class DeviceManager:
             rt.dimensoes, rt.dimensoes_geracao = {}, rt.geracao
         rt.dimensoes["landscape" if w > h else "portrait"] = (w, h)
 
-    async def _dimensoes_sem_imagem(self, rt: DeviceRuntime, xml: str, *, timeout: float) -> tuple[int, int] | None:
-        """Tamanho da tela SEM imagem (contrato C1): o do último frame desta geração na orientação que a própria
-        hierarquia declara, ou `wm size`. `None` = não se sabe, e quem chamou adquire a imagem."""
+    def _dimensoes_lembradas(self, rt: DeviceRuntime, xml: str) -> tuple[int, int] | None:
+        """O que `_dimensoes_sem_imagem` sabe SEM tocar no aparelho: o último frame desta geração, na orientação que a
+        hierarquia declara. Sem chamada ao executor — é o que serve quando ele pode estar preso (31.76)."""
         orientacao = _orientacao_da_hierarquia(xml)
         conhecidas = rt.dimensoes if rt.dimensoes_geracao == rt.geracao else {}
         if orientacao is not None:
@@ -4137,6 +4166,15 @@ class DeviceManager:
                 return h, w
         elif len(conhecidas) == 1:                # sem rotação na hierarquia: só vale se só uma orientação foi vista
             return next(iter(conhecidas.values()))
+        return None
+
+    async def _dimensoes_sem_imagem(self, rt: DeviceRuntime, xml: str, *, timeout: float) -> tuple[int, int] | None:
+        """Tamanho da tela SEM imagem (contrato C1): o do último frame desta geração na orientação que a própria
+        hierarquia declara, ou `wm size`. `None` = não se sabe, e quem chamou adquire a imagem."""
+        lembradas = self._dimensoes_lembradas(rt, xml)
+        if lembradas is not None:
+            return lembradas
+        orientacao = _orientacao_da_hierarquia(xml)
         if orientacao is None:
             return None
         fisico = await self._wm_size(rt, timeout=timeout)

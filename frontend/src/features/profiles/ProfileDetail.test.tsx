@@ -34,16 +34,16 @@ const SENHA = 'senha-secreta-9!Zk';
 
 function perfil(over: Partial<InstagramProfile> = {}): InstagramProfile {
   return {
-    id: 'ig-1', username: 'mariana.costa91182', display_name: 'Mariana Costa', first_name: 'Mariana',
+    id: 'ig-1', username: 'luciana.bastos73519', display_name: 'Mariana Costa', first_name: 'Mariana',
     last_name: 'Costa', birth_date: null, email: null, persona_id: 'persona-1', persona_name: 'Mariana — fotografia',
     status: 'active', instance_id: 'android-02',
     locality: { worker_id: null, worker_name: 'este servidor', worker_state: 'online', known: true,
                 available: true, moved: false, physical_id: null, detail: null },
     offline_policy: 'wait',
-    credential: { configured: true, login_identifier: 'mariana.costa91182', status: 'active', failed_attempts: 0,
+    credential: { configured: true, login_identifier: 'luciana.bastos73519', status: 'active', failed_attempts: 0,
                   blocked_until: null, updated_at: '2026-09-17T10:00:00Z', last_used_at: null },
-    session: { status: 'session_ready', instance_id: 'android-02', observed_username: 'mariana.costa91182',
-               verified_at: '2026-09-17T11:00:00Z', detail: '@mariana.costa91182 confirmado na tela',
+    session: { status: 'session_ready', instance_id: 'android-02', observed_username: 'luciana.bastos73519',
+               verified_at: '2026-09-17T11:00:00Z', detail: '@luciana.bastos73519 confirmado na tela',
                stale: false },
     last_verified_at: null, last_activity_at: null,
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
@@ -75,7 +75,7 @@ async function abrir(p: InstagramProfile = perfil()): Promise<void> {
   await act(async () => {
     root.render(<ProfileDetail profile={p} onBack={() => {}} onChanged={async () => {}} />);
   });
-  await waitFor(() => text().includes('@mariana.costa91182'));
+  await waitFor(() => text().includes('@luciana.bastos73519'));
 }
 
 const SECOES_NA_TELA = ['Visão geral', 'Perfil', 'Contas e aparelhos', 'Atividade', 'Avançado'];
@@ -142,7 +142,7 @@ it('trocar de seção avisa a tela pela guia (a URL guarda a guia, não a seçã
     root.render(<ProfileDetail profile={perfil()} aba="visao" onAbaChange={(a) => pedidos.push(a)} onBack={() => {}}
                                onChanged={async () => {}} />);
   });
-  await waitFor(() => text().includes('@mariana.costa91182'));
+  await waitFor(() => text().includes('@luciana.bastos73519'));
   await click(byRole('button', /^Atividade/));
   await click(byRole('button', /^Avançado/));
   expect(pedidos).toEqual(['interacoes', 'habilidades']);
@@ -152,7 +152,7 @@ it('o cabeçalho tem a identidade UMA vez: nome e @ não se repetem na Visão ge
   await abrir();
   const t = text();
   expect((t.match(/Mariana Costa/g) ?? []).length).toBe(1);
-  expect((t.match(/@mariana\.costa91182/g) ?? []).length).toBe(1);
+  expect((t.match(/@luciana\.bastos73519/g) ?? []).length).toBe(1);
   expect(container.querySelectorAll('h1')).toHaveLength(1);
   expect(container.querySelector('h1')?.textContent).toBe('Mariana Costa');
   // O cartão "Identidade" ficou só com atributos.
@@ -237,7 +237,7 @@ const SEM_SENHA = { configured: false, login_identifier: null, status: null, fai
 function conta(over: Partial<ProfileAccount> = {}): ProfileAccount {
   return {
     id: 'acc-1', profile_id: 'ig-1', app_id: 'instagram', app_name: 'Instagram', package: 'com.instagram.android',
-    handle: 'mariana.costa91182', host: null, login_identifier: 'mariana@exemplo.com', status: 'active',
+    handle: 'luciana.bastos73519', host: null, login_identifier: 'mariana@exemplo.com', status: 'active',
     session_status: 'unknown', session_detail: null, session_verified_at: null,
     session: { status: 'unknown', instance_id: 'android-02', observed_username: null, verified_at: null, detail: null,
                stale: false },
@@ -322,7 +322,7 @@ it('conta sem senha usa a senha de outra conta da persona: POST …/credential/c
   expect(allByRole('combobox', /Usar a senha de outra conta desta persona/i)).toHaveLength(1);
   expect(byRole('button', /Usar esta senha/i).getAttribute('aria-disabled')).toBe('true');
   await setValue(escolha, 'acc-1');
-  expect(escolha.textContent).toContain('Instagram — mariana.costa91182');
+  expect(escolha.textContent).toContain('Instagram — luciana.bastos73519');
   await click(byRole('button', /Usar esta senha/i));
   await waitFor(() => backend.callsTo('POST', /\/credential\/clone$/).length === 1);
   expect(backend.callsTo('POST', /\/credential\/clone$/)[0]?.body).toEqual({ clonar_de: 'acc-1' });
@@ -363,7 +363,7 @@ it('o identificador de login mostra o valor GRAVADO, nunca o handle por padrão'
   root = createRoot(container);
   await abrirContas([conta(CONTA_SEM_SENHA)]);
   const vazio = byRole('textbox', /Identificador de login/i) as HTMLInputElement;
-  expect(vazio.value).toBe('');                                            // e não "mariana.costa91182"
+  expect(vazio.value).toBe('');                                            // e não "luciana.bastos73519"
   expect(text()).toContain('Identificador de login gravado: nenhum');
 });
 
@@ -422,11 +422,11 @@ it('Conectar e Verificar usam a rota DA CONTA, gateados por session_actions', as
 it('conta conectada mostra a conta observada e oferece reconectar', async () => {
   await abrirContas([conta({
     session_status: 'session_ready',
-    session: { status: 'session_ready', instance_id: 'android-02', observed_username: 'mariana.costa91182',
+    session: { status: 'session_ready', instance_id: 'android-02', observed_username: 'luciana.bastos73519',
                verified_at: '2026-09-17T10:00:00Z', detail: null, stale: true },
   })]);
   expect(text()).toContain('Conectado');
-  expect(text()).toContain('Conta observada na tela: @mariana.costa91182');
+  expect(text()).toContain('Conta observada na tela: @luciana.bastos73519');
   expect(text()).toContain('dado velho');
   expect(byRole('button', /Reconectar/i)).toBeTruthy();
 });
@@ -451,11 +451,11 @@ it('persona sem @ ganha o Instagram pela adoção: POST /instagram/profiles com 
   expect(text()).toContain('Sem conta de cadastro');
   await click(byRole('button', /Adicionar conta/i));
   await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'instagram');
-  await setValue(byRole('textbox', /Usuário do Instagram/i) as HTMLInputElement, 'mariana.costa91182');
+  await setValue(byRole('textbox', /Usuário do Instagram/i) as HTMLInputElement, 'luciana.bastos73519');
   await click(byRole('button', /^Adicionar$/i));
   await waitFor(() => backend.callsTo('POST', /^\/api\/instagram\/profiles$/).length === 1);
   expect(backend.callsTo('POST', /^\/api\/instagram\/profiles$/)[0]?.body)
-    .toEqual({ username: 'mariana.costa91182', persona_id: 'ig-1' });
+    .toEqual({ username: 'luciana.bastos73519', persona_id: 'ig-1' });
   expect(backend.callsTo('POST', /\/accounts$/)).toHaveLength(0);
 });
 
@@ -485,7 +485,7 @@ it('catálogo de apps indisponível: o formulário espera o catálogo e não cri
   ]));
   await click(byRole('button', /Tentar de novo/));
   await setValue(await waitFor(() => byRole('combobox', /Aplicativo/i)) as HTMLSelectElement, 'instagram');
-  await setValue(byRole('textbox', /Usuário do Instagram/i) as HTMLInputElement, 'mariana.costa91182');
+  await setValue(byRole('textbox', /Usuário do Instagram/i) as HTMLInputElement, 'luciana.bastos73519');
   await click(byRole('button', /^Adicionar$/i));
   await waitFor(() => backend.callsTo('POST', /^\/api\/instagram\/profiles$/).length === 1);
   expect(backend.callsTo('POST', /\/accounts$/)).toHaveLength(0);
@@ -773,7 +773,7 @@ it('o limite mostra um medidor com o uso de hoje contado das interações confir
 it('Completar com IA manda a instrução do dono ao enrich e mostra a persona completada', async () => {
   const base = {
     id: 'ig-1', name: 'Mariana — fotografia', summary: null, persona_prompt: null,
-    traits: { tone: 'calmo' }, voice_gaps: ['slang'], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    traits: { tone: 'calmo' }, voice_gaps: ['slang'], profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   };
   backend.on('GET', /\/personas\/ig-1$/, () => json(base));
@@ -793,7 +793,7 @@ it('Completar com IA manda a instrução do dono ao enrich e mostra a persona co
 it('Completar com IA sem instrução não manda corpo, e sem lacuna avisa que não havia nada a completar', async () => {
   const base = {
     id: 'ig-1', name: 'Mariana — fotografia', summary: 'x', persona_prompt: 'y', traits: { tone: 'calmo' },
-    voice_gaps: [], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    voice_gaps: [], profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   };
   backend.on('GET', /\/personas\/ig-1$/, () => json(base));
@@ -814,7 +814,7 @@ it('avisa quais campos de voz faltam na persona e deixa preencher cada um', asyn
     // O backend calcula: é a MESMA lista que vai ao modelo. A tela não recalcula nada.
     voice_gaps: ['slang', 'dm_style', 'comment_style', 'with_known', 'with_strangers', 'common_phrases',
                  'forbidden_phrases', 'examples'],
-    profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
   await abrir();
@@ -834,7 +834,7 @@ it('avisa quais campos de voz faltam na persona e deixa preencher cada um', asyn
 it('testar persona aceita a INTENÇÃO, não só a mensagem recebida', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => json({
     id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
-    traits: { tone: 'calmo' }, voice_gaps: [], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    traits: { tone: 'calmo' }, voice_gaps: [], profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
   backend.on('POST', /preview/, () => json({
@@ -858,7 +858,7 @@ it('testar persona aceita a INTENÇÃO, não só a mensagem recebida', async () 
 it('testar persona mostra o rascunho e não publica nada', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => json({
     id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
-    traits: { tone: 'calmo' }, profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    traits: { tone: 'calmo' }, profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
   backend.on('POST', /preview/, () => json({
@@ -876,7 +876,7 @@ it('testar persona mostra o rascunho e não publica nada', async () => {
 it('29.57: a recusa da prévia se identifica como ANA, e o rascunho não aparece', async () => {
   backend.on('GET', /\/personas\/ig-1$/, () => json({
     id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
-    traits: { tone: 'calmo' }, profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    traits: { tone: 'calmo' }, profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
   backend.on('POST', /preview/, () => json({
@@ -900,7 +900,7 @@ it('a persona marca o valor certo nas réguas e mostra Diz × Nunca diz e os exe
       examples: ['Oi! Tudo bem por aí?'], with_known: 'Direta e calorosa', with_strangers: 'Educada e reservada',
     },
     voice_gaps: ['slang', 'humor', 'dm_style', 'comment_style'],
-    profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
   await abrir();
@@ -1120,7 +1120,7 @@ it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha próp
   };
   montarConfigBackend(caps, politica);
   backend.on('GET', /policy-groups$/, () => json([
-    { id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [], members: [{ id: 'ig-1', username: 'mariana.costa91182' }], created_at: '', updated_at: '' },
+    { id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [], members: [{ id: 'ig-1', username: 'luciana.bastos73519' }], created_at: '', updated_at: '' },
     { id: 'grp-2', name: 'Soltos', description: '', capabilities: {}, limits: {}, loosened: [], members: [], created_at: '', updated_at: '' },
   ]));
   backend.on('PUT', /\/policy$/, () => json({ ...politica, own: {}, origin: { ...politica.origin, SEND_MESSAGE: 'group' },
@@ -1158,7 +1158,7 @@ it('aba Persona com a API caída mostra o erro com "Tentar de novo" em vez de ca
 
   backend.on('GET', /\/personas\/ig-1$/, () => json({
     id: 'ig-1', name: 'Mariana — fotografia', summary: 'Fala de fotografia', persona_prompt: 'Responda com calma.',
-    traits: {}, voice_gaps: [], profile_id: 'ig-1', profile_username: 'mariana.costa91182',
+    traits: {}, voice_gaps: [], profile_id: 'ig-1', profile_username: 'luciana.bastos73519',
     created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }));
   await click(byRole('button', /Tentar de novo/));
@@ -1219,7 +1219,7 @@ it('guia Contas e acesso com a API caída mostra o erro com "Tentar de novo", n�
   expect(text()).not.toContain('Carregando…');
 
   backend.on('GET', /\/accounts$/, () => json([{
-    id: 'acc-1', profile_id: 'ig-1', app_id: 'instagram', app_name: 'Instagram', handle: 'mariana.costa91182',
+    id: 'acc-1', profile_id: 'ig-1', app_id: 'instagram', app_name: 'Instagram', handle: 'luciana.bastos73519',
     login_identifier: null, automated_login: true, credential_configured: true, session_status: 'logged_out',
     session_verified_at: null, session_detail: null, created_at: '2026-09-17T10:00:00Z', updated_at: '2026-09-17T10:00:00Z',
   }]));
@@ -1232,7 +1232,7 @@ it('guia Contas e acesso com a API caída mostra o erro com "Tentar de novo", n�
 
 // ---------------------------------------------------------------- evolução 2, onda E1: biografia por seção
 const PESSOA = {
-  id: 'ig-1', name: 'Mariana Costa', summary: 'Fotógrafa de retratos.', persona_prompt: '', username: 'mariana.costa91182',
+  id: 'ig-1', name: 'Mariana Costa', summary: 'Fotógrafa de retratos.', persona_prompt: '', username: 'luciana.bastos73519',
   traits: { tone: 'calmo' }, voice_gaps: [],
   biography: {
     schema_version: 1,

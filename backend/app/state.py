@@ -698,12 +698,13 @@ class AppState:
         # 30.31: a validação automática do "pedir evidência" do curador precisa da fila de execuções e do parque
         # (`off` de fábrica). O despachante só roda com o central saudável e sem execução em curso.
         ligar_validacao.ligar(self.learning, self.db, fila=self.runs, parque=self.scheduler,
-                              fluxo_ativo_para=lambda comando: self.scheduler.flows.match(comando) is not None,
+                              # 30.81: o ensinado que espera a prova não é o fluxo ativo do comando
+                              fluxo_ativo_para=lambda comando: self.scheduler.flows.ativo_para(comando) is not None,
                               saudavel=lambda: not self.health().problems,
                               config=lambda: self.cfg.file.aprendizado.validacao,
                               precos=lambda: self.cfg.file.ai.prices, relogio=now,
                               # 30.36: o plano do fluxo ativo, para a receita sem caminho não gastar uma execução
-                              plano_ativo_para=lambda comando: (m[1] if (m := self.scheduler.flows.match(comando))
+                              plano_ativo_para=lambda comando: (m[1] if (m := self.scheduler.flows.ativo_para(comando))
                                                                 else None))
         # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
         # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
@@ -2717,7 +2718,7 @@ class AppState:
                 log.info("Appium: %s (%s)", "ok" if ok else "indisponível", self.appium.detail)
             await self.devices.start()
             # O `account_label` de cada aparelho passa a ser o derivado (vínculo ou conta travada; ADR-055) — em 28/09
-            # os quinze diziam `qa-user-NN` da configuração, e o android-04 com o felipe logado enganou um experimento.
+            # os quinze diziam `qa-user-NN` da configuração, e o android-04 com o sicrano logado enganou um experimento.
             self.social_repo.sincronizar_rotulos()
             # Antes do scheduler e da reconciliação: a partir daqui o ciclo de vida local tem para quem ir, e um
             # comando despachado sem o worker local no ar seria recusado com "não está conectado".
@@ -3588,7 +3589,7 @@ class AppState:
         problema_capacidade = self._problema_de_capacidade_local()
         if problema_capacidade is not None:
             problems.append(problema_capacidade)
-        # ADR-055: conta travada logada em aparelho LIGADO. O android-04 passou horas no ar com o felipe no desafio
+        # ADR-055: conta travada logada em aparelho LIGADO. O android-04 passou horas no ar com a conta no desafio
         # e a saúde não dizia nada; um aparelho assim é um risco à conta enquanto estiver de pé.
         if (travadas := self._contas_travadas_no_ar()):
             problems.append(Problem(

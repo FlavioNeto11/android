@@ -16,8 +16,8 @@ CATALOGO = CatalogoDeDestinos(
     personas=(
         PersonaNomeavel("p-andre", ("André", "André Carvalho"), ("andre.carvalho",)),
         PersonaNomeavel("p-andre-s", ("André", "André Souza"), ()),
-        PersonaNomeavel("p-lucas", ("Lucas", "Lucas Almeida"), ("lucas.almeida9484",)),
-        PersonaNomeavel("p-mariana", ("Mariana", "Mari Costa"), ("mariana.costa91182",)),
+        PersonaNomeavel("p-lucas", ("Lucas", "Lucas Almeida"), ("tadeu.quintela4821",)),
+        PersonaNomeavel("p-mariana", ("Mariana", "Mari Costa"), ("luciana.bastos73519",)),
     ),
     aparelhos=("android-01", "android-02", "android-03", "android-11"),
 )
@@ -29,9 +29,9 @@ POSITIVAS: list[tuple[str, list[tuple[str, ...]], list[str], str]] = [
      "curtir a última foto da @nasa"),
     ("peça pro Lucas abrir o Instagram", [("p-lucas",)], [], "abrir o Instagram"),
     ("Curta a foto da @nasa com a persona Mariana", [("p-mariana",)], [], "Curta a foto da @nasa"),
-    ("responda as DMs como @lucas.almeida9484", [("p-lucas",)], [], "responda as DMs"),
+    ("responda as DMs como @tadeu.quintela4821", [("p-lucas",)], [], "responda as DMs"),
     ("Curta a foto, com a persona Lucas.", [("p-lucas",)], [], "Curta a foto."),     # o ponto final é fronteira
-    ("responda as DMs como @lucas.almeida9484.", [("p-lucas",)], [], "responda as DMs."),
+    ("responda as DMs como @tadeu.quintela4821.", [("p-lucas",)], [], "responda as DMs."),
     ("abra o app no android-02.", [], ["android-02"], "abra o app."),
     ("pela Mari Costa, responda o último comentário", [("p-mariana",)], [], "responda o último comentário"),
     ("pelo @andre.carvalho abra o feed", [("p-andre",)], [], "abra o feed"),

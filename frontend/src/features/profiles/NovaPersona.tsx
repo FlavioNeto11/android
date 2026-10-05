@@ -463,7 +463,7 @@ export function NovaPersonaManual({ onClose, onCriada }: {
         <Field label="Nome" error={erros.nome}>
           {({ id, describedBy, invalid }) => (
             <TextInput id={id} aria-describedby={describedBy} invalid={invalid} value={nome}
-                       placeholder="Mariana Costa" onChange={(e) => setNome(e.target.value)} />
+                       placeholder="Rita Fagundes" onChange={(e) => setNome(e.target.value)} />
           )}
         </Field>
         <div className={styles.pair}>

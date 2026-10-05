@@ -399,7 +399,7 @@ async def ler_conta(k: ConhecimentoDeSessao, observe: Observar, tap: Tocar, *, e
             continue
 
         # A conta só é lida DEPOIS de tocar na NOSSA aba de perfil. Ler o perfil em que se caiu não serve: o perfil
-        # de outra pessoa tem o mesmo cabeçalho, e foi assim que @vinijr virou "conta errada" no aparelho de @felipe.
+        # de outra pessoa tem o mesmo cabeçalho, e foi assim que @vinijr virou "conta errada" no aparelho de outra conta nossa.
         alvo = k.aba_de_perfil(tree)
         if alvo is None:
             break
@@ -1231,7 +1231,7 @@ class SessaoDeclarada:
         detalhe = f"{textos.desafio} ({verdict.detail}){trava}" if verdict.outcome is Outcome.AUTH_CHALLENGE \
             else verdict.detail
         if verdict.outcome is Outcome.UNCERTAIN:
-            # O incerto é o caso que se repetia (juliana, 18/09): a sessão tem de dizer que o login parou e por quê.
+            # O incerto é o caso que se repetia (uma conta real, 18/09): a sessão tem de dizer que o login parou e por quê.
             detalhe = f"{verdict.detail}; {motivo_do_login_parado(self.conhecimento.rotulo)}"
         self._save(conta, instance_id, status, observed=verdict.observed_username,
                    verified_at=now_iso() if verdict.outcome is Outcome.SESSION_READY else None,
@@ -1253,7 +1253,7 @@ class SessaoDeclarada:
             return
         # Daqui para baixo, a SENHA JÁ FOI ENVIADA e o desfecho não foi sucesso (incerto, desafio, conta errada).
         # ADR-055: UM envio assim já para o login automático até uma pessoa olhar. O freio de antes (3 falhas e 300 s
-        # de espera, `_count_failure`) se repetia a cada intervalo vencido: a juliana recebeu seis envios de senha
+        # de espera, `_count_failure`) se repetia a cada intervalo vencido: uma conta real recebeu seis envios de senha
         # em 4h25 em 18/09. O intervalo continua só para falha ANTES do envio, em que a senha não saiu da máquina.
         self._parar_login(conta, instance_id, verdict.detail, falhou=True)
 
@@ -1487,7 +1487,7 @@ class SessaoDeclarada:
             self.repo.update_profile(profile_id, {"last_verified_at": now_iso()})
         if status is SessionStatus.auth_challenge:
             # A regra do desafio (item 23.5), com o rótulo do app declarado nas mensagens. Na conta âncora, só a
-            # TRAVADA (ADR-055) bloqueia o perfil: o código de login/2FA pede uma pessoa sem bloquear — bruno e andre
+            # TRAVADA (ADR-055) bloqueia o perfil: o código de login/2FA pede uma pessoa sem bloquear — duas contas reais
             # passaram por ele em 18/09 e seguem vivos. Sem subtipo é regra declarada por sinal, fora do detector:
             # vale como trava. Na conta de outro app, qualquer desafio para só ela (P9). A quarentena é protegida por
             # dentro: falhar não pode impedir o evento da fila logo abaixo. A conta travada é a DESTE app (o @ e o

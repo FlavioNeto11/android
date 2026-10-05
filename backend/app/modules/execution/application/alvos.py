@@ -1,6 +1,6 @@
 """Para quem e onde uma execução acontece: `resolver_alvos` (segunda evolução, onda C; design persona-e-parque §7.4).
 
-A hierarquia é Servidor → Aparelho → Persona(s), com vínculo N:N (migração 051). "Peça para o André fazer X" diz a
+A hierarquia é Servidor → Aparelho → Persona(s), com vínculo N:N (migração 051). "Peça para o Beltrano fazer X" diz a
 PESSOA; o sistema escolhe o aparelho. "No android-03" diz o APARELHO; o sistema descobre a persona. A pessoa pode
 dizer as duas coisas pela interface (seleção estruturada) e pelo texto do comando — e as duas podem discordar.
 
@@ -280,7 +280,7 @@ def _aparelhos_pela_politica(mundo: Mundo, profile_id: str, candidatos: list[str
 def _personas_do_texto(mundo: Mundo, dicas: DicasDoTexto, universo: Sequence[str] | None,
                        estado: _Estado) -> set[str] | None:
     """As personas que o texto aponta, cada menção resolvida contra o `universo` (a seleção da interface; `None` =
-    interface vazia). Menção ambígua (dois "André") → pergunta; menção fora da seleção → pergunta (contradição).
+    interface vazia). Menção ambígua (dois "Beltrano") → pergunta; menção fora da seleção → pergunta (contradição).
     `None` = o texto não fala de persona."""
     if not dicas.personas:
         return None
@@ -318,7 +318,7 @@ def resolver_alvos(pedido: PedidoDeAlvos, dicas: DicasDoTexto, mundo: Mundo) -> 
         _so_pelo_texto(pedido, dicas, mundo, estado)
     else:
         raise RecusaDeAlvo("sem_alvo", "Diga onde ou por quem: escolha aparelhos, personas, ou cite no comando "
-                                       "(“com a persona André”, “no android-03”).", 400)
+                                       "(“com a persona Fulana”, “no android-03”).", 400)
     vistos: dict[str, AlvoResolvido] = {}
     for a in estado.alvos:
         if a.instance_id in vistos:

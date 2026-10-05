@@ -412,6 +412,17 @@ avisos depois da faxina"), e a trava cai no TTL.
       objetivo parado. A conta em tela não reconhecida (`unknown`, 29.92) tem frase e três linhas próprias, e o link abre o Foco
       do aparelho (`#/painel?foco=<id>`), onde fica o "Assumir controle". Toda tela de link de aviso está em `TELAS`
       de `frontend/src/lib/rotas.ts` (catraca em `test_avisos_objetivo_parado.py`).
+    - O que a pessoa ENSINOU e o sistema rebaixou (28.50; eventos da Aprendizado, 30.80 B): `learning.ensinado_sem_receita`
+      (nada ativo ficou para a etapa, que voltou para a IA) sai na hora; `learning.ensinado_rebaixado` (outra receita
+      ainda segura a etapa) vai à rotina. Um evento por transição da trilha, com a chave
+      `learning:ensinado:<kind>:<ref>:<desde>`. No texto, como no 28.14, nenhum identificador do item: "Uma receita (ou
+      um fluxo) que você ensinou" e a frase fixa do `para` (quarentena, obsoleto, substituído). O link é o detalhe na aba
+      Aprendizado (`#/aprendizado?aba=aprendido&item=receita:<id>`), porque o item não está na caixa. **O id de FLUXO não
+      sai para fora (orquestradora, leitura do 30.80 B):** é o slug do resumo do pedido e pode carregar identificador de
+      conta ou nome. Ele não vai ao texto nem ao link (que fica `#/aprendizado?aba=aprendido`), e na chave entra só um
+      resumo dele (`h` + 16 hexadecimais do sha256). O `message` do evento nunca é lido. Vale até o 30.83 tirar o pedido
+      do id; o número da receita, só dígitos, segue indo. O gesto: ensinar de novo no Modo treinamento, ou reativar pelo Aprendizado
+      se o app já foi consertado. `ref` ou `app` fora do formato do contrato: nada sai.
     - **2, algo falhou:** a pausa e o orçamento esgotado pararam algo do dono e saem na hora. A ocorrência perdida e
       os eventos perdidos não pararam nada e esperam a janela.
     - **3, rotina** (relatório, encerramento, 80% do orçamento, condição atendida, aprendizado): nunca sai sozinha. Vai

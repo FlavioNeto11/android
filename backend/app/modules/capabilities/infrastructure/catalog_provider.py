@@ -81,7 +81,7 @@ class CatalogCapabilityProvider:
             return VerifyResult(VerifyOutcome.not_proved,
                                 "a tela mostra " + ", ".join(f'"{m}"' for m in marcas) + " depois do efeito")
         # Efeito a caminho ("Sending…"): antes da prova local, porque a bolha com o texto e o campo limpo também estão
-        # na tela enquanto o app ainda envia — foi assim que a DM da beatriz passou por enviada em 19/09 (ADR-055).
+        # na tela enquanto o app ainda envia — foi assim que a DM da ciclana passou por enviada em 19/09 (ADR-055).
         pendentes = marcas_pendentes_na_tela(definicao.side_effect.pending_marks, tela)
         if pendentes:
             return VerifyResult(VerifyOutcome.pending, "envio pendente: a tela ainda mostra "

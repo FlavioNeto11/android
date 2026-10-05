@@ -9,6 +9,7 @@ não é o Chrome). Nível de prova: `simulated`.
 """
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 import pytest
@@ -18,11 +19,11 @@ from app.config import AiCfg
 from app.modules.learning.domain.falhas import classificar_texto
 from app.taskqueue.dialogos import (LIMITE_DE_RECUSAS_DE_ACEITE, MOTIVO_ACEITE_RECUSADO,
                                     REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha, rotulo_para_o_ator,
-                                    toque_que_aceita)
+                                    texto_da_barra, toque_que_aceita)
 
 from .conftest import Harness
 from .fake_device import Node
-from .test_dialogos_em_serie import _ACEITAR, _CONFIGURAR, _COOKIES, _PAGINA, _arvore, _no
+from .test_dialogos_em_serie import _ACEITAR, _CONFIGURAR, _COOKIES, _COOKIES_TEXTO, _PAGINA, _arvore, _no
 
 TERMINAIS = ("completed", "completed_with_issues", "failed", "waiting_user", "needs_input", "uncertain")
 
@@ -484,6 +485,147 @@ def test_k2b_com_aviso_de_verdade_a_palavra_de_aceite_e_recusada_em_qualquer_lug
     assert _recusa(tree, "ACEITAR TODOS") == "ACEITAR TODOS"
 
 
+# ------------------------------------------------------------- 31.75: a página que imita o id do navegador
+_WEBVIEW = ("Loja | Página", (0, 160, 720, 1232), "", "android.webkit.WebView", False)
+_RAIZ = ("", (0, 48, 720, 160), "com.android.chrome:id/control_container", "android.widget.FrameLayout", True)
+
+
+def test_31_75_a_pagina_com_id_do_chrome_nao_ganha_a_isencao() -> None:
+    """O Chrome expõe o `id` do HTML como `resource-id`: um botão da PÁGINA com `id="com.android.chrome:id/allow"` vem
+    entre a WebView e a raiz da interface e é julgado como página (recusado: diz aceitar com aviso de verdade)."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("Aceitar", (40, 300, 300, 360), "com.android.chrome:id/allow", "android.widget.Button", True),
+                _RAIZ,
+                ("More options", (624, 48, 720, 160), "com.android.chrome:id/menu_button", "android.widget.ImageButton", True))
+    assert _recusa(tree, "Aceitar") == "Aceitar"
+    assert _recusa(tree, "More options") is None                     # a interface de verdade, depois da raiz
+
+
+def test_31_75_o_aviso_da_pagina_com_id_do_chrome_segue_marca() -> None:
+    """Um aviso da página com `id="com.android.chrome:id/cookie_banner"` não escapa da marca."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060),
+                 "com.android.chrome:id/cookie_banner", "", False),
+                ("Continuar", (40, 1080, 300, 1140), "", "android.widget.Button", True),
+                _RAIZ)
+    assert _recusa(tree, "Continuar") == "Continuar"
+
+
+def test_31_75_h3_sem_a_raiz_a_pagina_vai_ate_o_fim_e_o_id_nao_vale() -> None:
+    """H3: com WebView e nenhuma raiz válida depois dela (a barra escondida pela rolagem: ml-2, ml-3, uol-2), a página vai
+    até o fim do documento: o botão com id do Chrome que diz aceitar é recusado (falha fechada)."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("Aceitar", (40, 300, 300, 360), "com.android.chrome:id/allow", "android.widget.Button", True))
+    assert _recusa(tree, "Aceitar") == "Aceitar"
+
+
+def test_31_75_h3_arvore_truncada_a_raiz_fora_do_corte_tambem_falha_fechada() -> None:
+    """H3: na árvore truncada (`tree.truncada`) a raiz pode ter ficado de fora do corte: o resto é página."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("Aceitar", (40, 300, 300, 360), "com.android.chrome:id/allow", "android.widget.Button", True))
+    tree.truncada = True
+    assert _recusa(tree, "Aceitar") == "Aceitar"
+
+
+def test_31_75_h2_a_raiz_falsa_do_html_nao_encerra_a_pagina() -> None:
+    """H2: o HTML pode pôr o id da raiz (`bottom_container`) num `View` antes do botão falso; só o FrameLayout da
+    interface nativa encerra a página. O botão com id do Chrome que diz aceitar é recusado; a raiz real, depois, segue."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("", (0, 1100, 720, 1232), "com.android.chrome:id/bottom_container", "android.view.View", False),
+                ("Aceitar", (40, 300, 300, 360), "com.android.chrome:id/allow", "android.widget.Button", True),
+                _RAIZ,
+                ("More options", (624, 48, 720, 160), "com.android.chrome:id/menu_button", "android.widget.ImageButton", True))
+    assert _recusa(tree, "Aceitar") == "Aceitar"
+    assert _recusa(tree, "More options") is None
+
+
+def test_31_75_h1_o_alvo_de_outra_instancia_da_mesma_arvore_nao_ganha_a_isencao() -> None:
+    """H1: a identidade da página é o `id` eN do leitor, não o `id()` do objeto Python: o alvo vindo de OUTRA instância da
+    mesma árvore (uma releitura) é julgado como página do mesmo jeito."""
+    nos = (_WEBVIEW,
+           ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+           ("Aceitar", (40, 300, 300, 360), "com.android.chrome:id/allow", "android.widget.Button", True),
+           _RAIZ)
+    tree, outra = _xml(*nos), _xml(*nos)
+    alvo = _alvo(outra, "Aceitar")
+    assert alvo is not _alvo(tree, "Aceitar")                          # é outro objeto (a premissa do teste)
+    achado = toque_que_aceita(tree, alvo)
+    assert achado is alvo
+
+
+def test_31_75_a_webview_sem_titulo_e_sem_rolagem_fica_na_arvore_e_a_pagina_nao_se_esconde() -> None:
+    """Leitura do 31.75 (achado 2): com `<title>` vazio e `overflow: hidden` a WebView vinha sem texto e sem rolagem, e o
+    leitor a descartava; sem ela, o botão da página com id do Chrome voltava a ganhar a isenção. O leitor a guarda sempre."""
+    tree = _xml(("", (0, 160, 720, 1232), "", "android.webkit.WebView", False),
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("Aceitar", (40, 300, 300, 360), "com.android.chrome:id/allow", "android.widget.Button", True),
+                _RAIZ,
+                ("More options", (624, 48, 720, 160), "com.android.chrome:id/menu_button", "android.widget.ImageButton", True))
+    assert any(e.class_name.endswith(".WebView") for e in tree.elements)
+    assert _recusa(tree, "Aceitar") == "Aceitar"
+    assert _recusa(tree, "More options") is None
+
+
+def test_31_75_a_variante_do_iframe_o_que_vem_antes_dele_e_pagina() -> None:
+    """Achado 2, variante: a WebView principal sem título e um iframe com título exposto como WebView aninhada DEPOIS do
+    botão falso. Com a principal na árvore, o que vem antes do iframe já é página."""
+    tree = _xml(("", (0, 160, 720, 1232), "", "android.webkit.WebView", False),
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("Aceitar", (40, 300, 300, 360), "com.android.chrome:id/allow", "android.widget.Button", True),
+                ("Anúncio", (0, 600, 720, 900), "", "android.webkit.WebView", False),
+                _RAIZ)
+    assert _recusa(tree, "Aceitar") == "Aceitar"
+
+
+def test_31_75_a_segunda_webview_depois_da_raiz_tambem_e_pagina() -> None:
+    """Achado 3: a página é a união dos trechos de TODAS as WebViews, cada um até a primeira raiz válida depois dela."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                _RAIZ,
+                ("Outra | Página", (0, 160, 720, 1232), "", "android.webkit.WebView", False),
+                ("Aceitar", (40, 300, 300, 360), "com.android.chrome:id/allow", "android.widget.Button", True),
+                ("", (0, 1104, 720, 1232), "com.android.chrome:id/bottom_container", "android.widget.FrameLayout", False),
+                ("More options", (512, 1120, 608, 1232), "com.android.chrome:id/translate_infobar_menu_button",
+                 "android.widget.ImageButton", True))
+    assert _recusa(tree, "Aceitar") == "Aceitar"
+    assert _recusa(tree, "More options") is None                     # depois da raiz da segunda, segue interface
+
+
+def test_31_75_sem_webview_vale_o_id_como_antes() -> None:
+    """Sem WebView na árvore (o leitor a corta quando vem sem título) não se sabe onde a página começa: vale o id."""
+    tree = _xml(("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("More options", (512, 1120, 608, 1232), "com.android.chrome:id/translate_infobar_menu_button",
+                 "android.widget.ImageButton", True),
+                _RAIZ)
+    assert _recusa(tree, "More options") is None
+
+
+def test_31_75_o_gov_br_real_a_interface_do_chrome_depois_da_raiz_segue_isenta() -> None:
+    """Os nós da captura real do gov.br (05/10, `gov-3-rodape`, ids e1..e52): a WebView (e3), a folha de cookies (e30..e39),
+    a raiz `bottom_container` (e44) e a barra de tradução do Chrome depois dela (e51 "More options", e52 "Close"). A
+    página fica recusada; a interface real do Chrome, com id do navegador depois da raiz, segue livre."""
+    tree = _xml(("GOV.BR", (0, 48, 720, 1232), "", "android.webkit.WebView", False),
+                ("Para melhorar a sua experiência na plataforma e prover serviços personalizados, utilizamos cookies.",
+                 (48, 632, 672, 700), "", "android.widget.TextView", False),
+                ("Gerenciar cookies", (202, 908, 518, 972), "", "android.widget.Button", True),
+                ("Rejeitar cookies", (192, 1004, 528, 1068), "", "android.widget.Button", True),
+                ("Aceitar cookies", (192, 1100, 528, 1164), "", "android.widget.Button", True),
+                ("", (0, 1104, 720, 1232), "com.android.chrome:id/bottom_container", "android.widget.FrameLayout", False),
+                ("", (512, 1120, 608, 1232), "com.android.chrome:id/translate_infobar_menu_button",
+                 "android.widget.ImageButton", True),
+                ("", (608, 1120, 720, 1232), "com.android.chrome:id/infobar_close_button",
+                 "android.widget.ImageButton", True))
+    menu, fechar = tree.elements[6], tree.elements[7]               # "More options" e "Close" (o rótulo é `content-desc`)
+    assert _recusa(tree, "Aceitar cookies") == "Aceitar cookies"
+    assert _recusa(tree, "Gerenciar cookies") == "Gerenciar cookies"
+    assert _recusa(tree, "Rejeitar cookies") is None
+    assert toque_que_aceita(tree, menu) is None and toque_que_aceita(tree, fechar) is None
+
+
 #: A tela de 2400 px de altura do celular: a faixa em volta da marca é de 288 px (`_MARGEM_DA_FAIXA`).
 _TELA_2400 = ("", (0, 0, 1080, 2400), "", "android.widget.FrameLayout", False)
 
@@ -528,3 +670,117 @@ def test_k2c_a_pergunta_do_aviso_tem_cara_de_aviso_e_o_link_do_rodape_nao() -> N
                   ("Política de privacidade", (40, 2300, 500, 2360), "", "", True),
                   ("Aceitar", (40, 600, 400, 660), "", "android.widget.Button", True))
     assert _recusa(rodape, "Aceitar") is None
+
+
+# ------------------------------------------------------------- 31.75, N1: o link inline exposto como par de nós
+def _par(texto: str, b: tuple[int, int, int, int]) -> tuple[Any, Any]:
+    """O Chrome expõe um link inline (gov-3, "Declaração de Cookies") como DOIS nós com o mesmo texto e os mesmos bounds:
+    o clicável e um filho que NÃO é clicável."""
+    return ((texto, b, "", "android.view.View", True), (texto, b, "", "android.widget.TextView", False))
+
+
+def test_n1_o_link_de_privacidade_exposto_como_par_nao_liga_a_recusa_na_tela_toda() -> None:
+    """(a) Rodapé só com o link, como par, e um "OK" longe dele: sem aviso de consentimento, o "OK" passa."""
+    tree = _xml(_TELA_2400,
+                *_par("Política de privacidade", (40, 2300, 500, 2360)),
+                ("OK", (40, 600, 400, 660), "", "android.widget.Button", True),
+                ("Aceitar", (500, 600, 900, 660), "", "android.widget.Button", True))
+    assert _recusa(tree, "OK") is None
+    assert _recusa(tree, "Aceitar") is None
+
+
+def test_n1_o_par_dentro_de_um_aviso_de_verdade_segue_recusando() -> None:
+    """(b) O mesmo par dentro de um aviso real (texto longo ou caixa): a palavra de aceite segue recusada."""
+    longo = _xml(_TELA_2400,
+                 ("Usamos cookies para melhorar sua experiência", (40, 1500, 1040, 1560), "", "", False),
+                 *_par("Declaração de Cookies", (398, 1580, 660, 1616)),
+                 ("Aceitar", (40, 600, 400, 660), "", "android.widget.Button", True))
+    assert _recusa(longo, "Aceitar") == "Aceitar"
+    caixa = _xml(_TELA_2400,
+                 ("", (0, 1400, 1080, 1800), "cookie-banner", "", False),
+                 *_par("Política de privacidade", (40, 1700, 500, 1760)),
+                 ("OK", (40, 600, 400, 660), "", "android.widget.Button", True))
+    assert _recusa(caixa, "OK") == "OK"
+
+
+def test_n1_a_marca_curta_sem_gemeo_clicavel_segue_com_cara_de_aviso() -> None:
+    """(c) O K2c não afrouxa: o título curto não clicável, sem gêmeo clicável, liga a recusa; com um clicável de OUTRO
+    texto no mesmo lugar, também (só o gêmeo de mesmo texto e mesmos bounds vale)."""
+    sozinho = _xml(_TELA_2400,
+                   ("Sua privacidade", (40, 1500, 600, 1560), "", "", False),
+                   ("OK", (40, 600, 400, 660), "", "android.widget.Button", True))
+    assert _recusa(sozinho, "OK") == "OK"
+    outro_texto = _xml(_TELA_2400,
+                       ("Sua privacidade", (40, 1500, 600, 1560), "", "", False),
+                       ("Detalhes", (40, 1500, 600, 1560), "", "android.widget.Button", True),
+                       ("OK", (40, 600, 400, 660), "", "android.widget.Button", True))
+    assert _recusa(outro_texto, "OK") == "OK"
+def test_31_104_pagina_esparsa_mede_a_tela_pela_janela_e_o_aviso_segue_marca() -> None:
+    """31.104: a janela do dump (31.77) é a tela inteira, mas as folhas só ocupam o canto de cima. Pela extensão das
+    folhas (400×300), o texto do aviso (400×200) passava de 60 % da "página", deixava de ser marca e o "Aceitar todos"
+    passava. Pela maior das duas medidas, o aviso segue marca e o aceite é recusado."""
+    aviso = _no(1, _COOKIES_TEXTO, 0, 40, 400, 240, rid="cookie-consent-banner", classe="android.view.View",
+                clicavel=False)
+    aceitar = _no(2, "Aceitar todos", 40, 250, 300, 300)
+    xml = ('<hierarchy rotation="0"><node index="0" text="" resource-id="" class="android.widget.FrameLayout"'
+           ' package="com.android.chrome" content-desc="" clickable="false" enabled="true" bounds="[0,0][720,1280]">'
+           + aviso + aceitar + "</node></hierarchy>")
+    tree = parse_hierarchy(xml)
+    assert tree.janela == (0, 0, 720, 1280)
+    assert max(e.bounds[2] for e in tree.elements) == 400 and max(e.bounds[3] for e in tree.elements) == 300
+    assert _recusa(tree, "Aceitar todos") == "Aceitar todos"
+
+def test_31_104_sem_janela_o_tamanho_da_tela_do_executor_trava() -> None:
+    """N1 da leitura do 31.104: árvore sem janela (montada fora do leitor), folhas esparsas. Só pela extensão, o aviso
+    não é marca e o aceite passa (o comportamento de antes); com o tamanho da tela que o executor conhece, trava."""
+    aviso = _no(1, _COOKIES_TEXTO, 0, 40, 400, 240, rid="cookie-consent-banner", classe="android.view.View",
+                clicavel=False)
+    tree = dataclasses.replace(parse_hierarchy(_arvore(aviso, _no(2, "Aceitar todos", 40, 250, 300, 300))), janela=None)
+    alvo = _alvo(tree, "Aceitar todos")
+    assert toque_que_aceita(tree, alvo) is None
+    recusado = toque_que_aceita(tree, alvo, None, (720, 1280))
+    assert recusado is not None and recusado.text == "Aceitar todos"
+
+
+# ------------------------------------------------------------- 31.103: a barra de endereço de verdade
+_BARRA = "com.android.chrome:id/url_bar"
+
+
+def test_31_103_a_barra_falsa_da_pagina_nao_vence_a_barra_real() -> None:
+    """A página põe `id="com.android.chrome:id/url_bar"` num elemento antes da barra real: na ordem do documento ela
+    vem primeiro. O texto da barra é o do nó FORA do trecho da página (a régua do 31.75)."""
+    tree = _xml(_WEBVIEW,
+                ("loja.exemplo.com.br/oferta", (0, 200, 720, 260), _BARRA, "android.widget.EditText", False),
+                _RAIZ,
+                ("outro.exemplo.net/pagina", (0, 60, 600, 150), _BARRA, "android.widget.EditText", True))
+    assert texto_da_barra(tree, {_BARRA}) == "outro.exemplo.net/pagina"
+
+
+def test_31_103_sem_barra_fora_da_pagina_nao_ha_barra_confiavel() -> None:
+    """H3 do 31.75: WebView sem raiz válida depois dela, a página vai até o fim; a única barra é da página. Sem barra
+    confiável, `""`: não há isenção de host."""
+    tree = _xml(_WEBVIEW, ("loja.exemplo.com.br/oferta", (0, 200, 720, 260), _BARRA, "android.widget.EditText", False))
+    assert texto_da_barra(tree, {_BARRA}) == ""
+
+
+def test_31_103_sem_webview_vale_a_barra_como_antes() -> None:
+    tree = _xml(("loja.exemplo.com.br/oferta", (0, 60, 600, 150), _BARRA, "android.widget.EditText", True))
+    assert texto_da_barra(tree, {_BARRA}) == "loja.exemplo.com.br/oferta"
+
+
+async def test_pelo_laco_31_103_a_barra_falsa_da_pagina_nao_libera_o_aceite(harness: Harness,
+                                                                              monkeypatch: Any) -> None:
+    """O host liberado pelo dono vem de uma barra FALSA da página (antes da raiz do Chrome); a barra real diz outro
+    host. O aceite é recusado: no código anterior, a primeira barra do documento liberava o toque."""
+    harness.cfg.file.ai.consentimento_aceito_em = ["exemplo.com.br"]
+    webview = Node("android.webkit.WebView", (0, 160, 720, 1232), text="Loja | Página")
+    falsa = Node("android.widget.EditText", (0, 200, 720, 260), text="loja.exemplo.com.br/oferta", rid=_BARRA)
+    raiz = Node("android.widget.FrameLayout", (0, 48, 720, 160), rid="com.android.chrome:id/control_container",
+                clickable=True)
+    real = Node("android.widget.EditText", (0, 60, 600, 150), text="outro.exemplo.net/pagina", rid=_BARRA,
+                clickable=True)
+    final, fake, antes = await _pelo_laco(harness, monkeypatch, [
+        lambda t: _decisao("tap", element_id=_no_aceitar(t).id, is_commit_action=False)],
+        webview, falsa, AVISO, ACEITAR, raiz, real)
+    assert _toques_em(fake, antes, ACEITAR.bounds) == 0
+    assert len(_recusadas(harness, final.id, "tap")) == 1

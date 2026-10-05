@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ..db import Database, Row
-from ..modules.learning.domain.livro import apps_na_ordem_do_plano
+from ..modules.learning.domain.aprovacao_automatica import PLATAFORMA
+from ..modules.learning.domain.livro import CONFIRMADO_QUE_FICA, apps_na_ordem_do_plano
 from ..modules.skills.domain.document import JsonValue
 from ..modules.skills.domain.matching import specificity
 from ..models import Plan, PlannerInfo, StepResult
@@ -32,6 +33,8 @@ RESERVED = {"instance_id", "run_id", "account_label"}
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 #: Quem decide quando a própria loja muda o status (nascimento de execução, reaproveitamento). O treino leva a origem.
 SISTEMA = "sistema"
+#: 30.81: a origem do fluxo ensinado no modo treinamento (`flows.source = 'training:<sessão>'`).
+PREFIXO_DO_TREINO = "training:"
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +192,35 @@ def preencher_refs_publicas(db: Database) -> int:
                          (ref_aleatoria(db), linha["id"]))
         feitas += int(cur.rowcount or 0)
     return feitas
+
+
+# ------------------------------------------------------------------ o ensinado ainda sem prova (30.81)
+def ensinado_em_prova(db: Database, row: Row) -> dict[str, str | None] | None:
+    """O fluxo ensinado no modo treinamento que ainda espera a prova: `{persona, sessao}` (a persona que ensinou,
+    `None` se a sessão não tinha), ou `None` quando não se aplica. Sai da espera com uma prova a favor, real e não
+    invalidada (execução com `prova_fluxo_id` deste fluxo, depois do nascimento) ou com o "Confirmar que fica"
+    explícito de uma PESSOA depois do nascimento (leitura da Reload, achado 3: adotar e desfazer, ou outra linha
+    qualquer, não liberam; nem o sistema, nem a régua da plataforma, nem um treino). Desligado, não está ativo. O fluxo que não veio do treino, ou que não está ativo, não
+    paga consulta."""
+    fonte = str(row.get("source") or "")
+    if not fonte.startswith(PREFIXO_DO_TREINO) or row.get("status", "active") != "active":
+        return None
+    sessao = fonte[len(PREFIXO_DO_TREINO):]
+    ref, nasceu = f"fluxo:{row['id']}", str(row["created_at"] or "")
+    r = db.one(
+        "SELECT (SELECT profile_id FROM training_sessions WHERE id=?) AS persona,"
+        " EXISTS (SELECT 1 FROM learning_evidence e JOIN runs ru ON ru.id = e.run_id"
+        "  WHERE e.item_ref=? AND e.stance='for' AND e.simulated=0 AND ru.prova_fluxo_id=? AND e.observed_at>=?"
+        "  AND NOT EXISTS (SELECT 1 FROM learning_evidence i WHERE i.item_ref = e.item_ref"
+        "  AND i.origin_ref = e.origin_ref AND i.stance='invalida')) AS provado,"
+        " EXISTS (SELECT 1 FROM learning_transitions t WHERE t.item_ref=? AND t.decided_at>=?"
+        "  AND t.reason LIKE ? AND t.decided_by NOT IN (?,?) AND t.decided_by NOT LIKE ?) AS decidido",
+        (sessao, ref, row["id"], nasceu, ref, nasceu, f"{CONFIRMADO_QUE_FICA}%", SISTEMA, PLATAFORMA,
+         f"{PREFIXO_DO_TREINO}%"))
+    if r is not None and (bool(r["provado"]) or bool(r["decidido"])):
+        return None
+    persona = r["persona"] if r is not None else None
+    return {"persona": str(persona) if persona else None, "sessao": sessao}
 
 
 class FlowStore:
@@ -355,12 +387,16 @@ class FlowStore:
             "SELECT app_id FROM flow_required_apps WHERE flow_id=? ORDER BY app_id", (flow_id,))]
 
     # ------------------------------------------------------------------ casar
-    def match(self, command: str, profile_ids: list[str | None] | None = None) -> tuple[Row, Plan] | None:
+    def match(self, command: str, profile_ids: list[str | None] | None = None, *,
+              sem_ensino_em_prova: bool = False) -> tuple[Row, Plan] | None:
         """Comando novo × modelos conhecidos. Casa o texto inteiro; cada {nome} captura o valor novo.
 
         `profile_ids` (item 13.2): os perfis dos aparelhos da execução. Fluxo com escopo (habilidade treinada para
         perfis/grupos) só casa quando TODOS eles estão no escopo — um aparelho fora dele planejaria sozinho, e o
         plano é um só por execução. `None` = prévia sem aparelhos (custo, apps exigidos): qualquer fluxo serve.
+
+        30.81: o fluxo ensinado ainda sem prova (`ensinado_em_prova`) só casa quando TODOS os perfis são a persona que
+        ensinou; a sessão sem persona não casa em lugar nenhum até a prova. A prévia sem aparelhos casa como antes.
         """
         # F1 (31.89): entre moldes que casam o mesmo comando ganha o MAIS ESPECÍFICO (o critério do resolvedor v2,
         # `matching.specificity`: mais texto fixo, depois menos parâmetros), não o mais usado: "curtir o post de {p}"
@@ -374,11 +410,29 @@ class FlowStore:
             values = self._extract(row["command_template"], command)
             if values is None:
                 continue
+            if profile_ids is not None and self._restrito_ao_ensino(row, profile_ids):
+                continue
+            if sem_ensino_em_prova and ensinado_em_prova(self.db, row) is not None:
+                continue
             plan = self._plano_com_valores(row, values, provider="fluxo")
             if plan is None:
                 continue                              # faltou valor para algum parâmetro: não é este fluxo
             return row, plan
         return None
+
+    def ativo_para(self, command: str) -> tuple[Row, Plan] | None:
+        """30.81 (achado 4 da Reload): o fluxo ativo do comando para a VALIDAÇÃO (sem aparelhos), sem o ensinado que
+        ainda espera a prova: para ela, ele ainda não é o fluxo ativo de ninguém além de quem ensinou."""
+        return self.match(command, None, sem_ensino_em_prova=True)
+
+    # ------------------------------------------------------------------ o ensinado ainda sem prova (30.81)
+    def _restrito_ao_ensino(self, row: Row, profile_ids: list[str | None]) -> bool:
+        """O ensinado sem prova fica fora do `match` quando algum perfil da execução não é a persona que ensinou."""
+        espera = ensinado_em_prova(self.db, row)
+        if espera is None:
+            return False
+        persona = espera["persona"]
+        return persona is None or not profile_ids or any(p != persona for p in profile_ids)
 
     def plano_em_prova(self, flow_id: str, command: str) -> Plan | None:
         """30.37: o plano do PRÓPRIO fluxo para a execução de prova (a validação do fluxo pelo próprio fluxo), com os

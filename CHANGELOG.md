@@ -19,6 +19,56 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
+
+- `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
+  receita ativa. A que segurava a chave (a ativa aprendida da IA, a `validated` que esperava o dono, ou a de uma
+  demonstração anterior) sai como `superseded`. Antes a demonstração era descartada em silêncio ("já havia ativa").
+  - A trilha dos dois lados é assinada pela sessão de treino: "substituída pela vN, demonstrada pela pessoa no modo
+    treinamento".
+  - Com o MESMO caminho nada se grava, e `save` devolve o id da que já vale.
+  - Ao substituir, `save` devolve o id NOVO.
+  - O salvamento que não é do treino segue igual: não troca a ativa nem a `validated`.
+- `RecipeStore.viva(...)` (novo, público): a receita que segura a chave hoje, a ativa ou a `validated`. É para o
+  relatório do treino dizer qual já existia.
+- Sem migração e sem rota nova.
+- Prova `simulated`: `backend/tests/test_treino_substitui_receita.py` (6), verificado por mutação com 5 regras.
+  Real: `not_run` (a próxima sessão de treino numa etapa que já tinha receita).
+- Junção com o 31.86 (#438):
+  - a prévia e o relatório do salvar leem `RecipeStore.previa_do_treino` (a mesma conta do `save`). Com o mesmo
+    caminho, "já havia receita". Com outro, "receita gravada, substituindo a vN (receita N)";
+  - `chave_ocupada` virou `viva(...) is not None`;
+  - o reparo (`POST /api/training/{id}/recipes`) passa `so_em_chave_virgem=True` ao `save`, que repete DENTRO da `tx`
+    a conferência de chave virgem e do veto da pessoa: o reparo não herda o poder da demonstração;
+  - o prefixo `training:` fica no reparo, porque os leitores dele (a origem no painel, `Origem.TREINO`, as genéricas,
+    o aviso do 30.80 B) seguem tratando a receita refeita como ensinada.
+
+## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
+
+- **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).
+- Prova `real`: ensaio com a cópia `data\backups\20261005-173228`; `GET /api/health` ok e sem problemas; prova de fora com tudo como esperado (`/api/instances` 401 de fora, 403 com Host forjado); agente do notebook em `0.1.0+61d431c`; mypy 257 igual ao teto.
+- Prova `simulated` (suíte 40): `scripts/tests` 672 passed; backend em SQLite 11875 passed; frontend 1678 passed na segunda rodada (2 falhas intermitentes na primeira, item 29.148); catracas 88 e 6; PostgreSQL dirigido nos 257 arquivos afetados, 5231 passed e 0 falhas.
+- `not_run`: percurso no navegador e prova real do conserto com conta real.
+
+## 2026-10-05 — 31.106: exemplos fictícios no código do frontend (branch fix/31-106-exemplos-ficticios-no-frontend)
+
+- `frontend/src/features/profiles/NovaPersona.tsx`: o placeholder do campo Nome, que aparece na tela, era o nome de uma
+  persona real; passa a um nome fictício, conferido contra os nomes do banco central e a tabela de troca (sem colisão).
+- `frontend/src/features/profiles/slugPersona.ts` (2 comentários) e `frontend/src/lib/rotas.ts` (1): o id real de persona
+  usado como exemplo (`ig-…`, existe no banco) passa a um id fictício no mesmo formato. O id não estava na tabela de
+  troca, e a troca ampla não o pegaria. Os slugs de nome nesses comentários ficam para a troca ampla do 31.105.
+- Prova `simulated`: `slugPersona.test.ts`, `rotas.test.ts`, `NovaPersonaLote.test.tsx` e `ProfilesPage.test.tsx`
+  (87 passed) e `tsc --noEmit` limpo. `real`: `not_run` (o placeholder não foi visto no navegador).
+
+## 2026-10-05 — 28.50: o aviso do que a pessoa ensinou e o sistema rebaixou (branch canais/28-50-aviso-do-ensinado)
+
+- `learning.ensinado_sem_receita` (precisa de você, na hora) e `learning.ensinado_rebaixado` (rotina), os eventos da
+  Aprendizado (30.80 B), entram em `KINDS_QUE_AVISAM`, `NIVEL_POR_TIPO`, `ROTULOS`, `ROTULOS_AGRUPADOS`,
+  `GESTO_AGRUPADO`, `CAMINHO_AGRUPADO` e `aviso_de_evento`.
+- Sem identificador do item no texto; o link vai ao detalhe na aba Aprendizado. O id de fluxo, que pode carregar
+  conta ou nome (leitura do 30.80 B), não sai para fora: nem no texto, nem no link, e na chave entra só um resumo
+  dele; o `message` do evento não é lido. Vale até o 30.83. Payload fora do contrato não vira aviso.
+- Prova: `simulated` (`backend/tests/test_avisos_ensinado.py`). Real: `not_run`; depende do PR da Aprendizado.
 
 ## 2026-10-05 — 30.83 (fatia 1): a referência do fluxo é aleatória e não sai do resumo (branch feat/30-83-ref-publico-do-fluxo)
 
@@ -48,6 +98,84 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated` (suíte 39): `scripts/tests` 672 passed; backend em SQLite 11840 passed, com 3 falhas consertadas e relidas antes do deploy; frontend 1678 passed; catracas 88 e 6. No PostgreSQL dirigido, 10182 passed e 2 failed conhecidas (`test_dialogos_em_serie.py` e `test_sobreposicao_com_duas_causas.py`, item 29.139): essa etapa não passou inteira.
 - Consertos de junção: `estado_com_marca` lê a fábrica na chamada (29.131, `e6020a23`); `TrainingStopBody` nasce na apresentação do treino, e o teste da proposta descarta a gravação com o controle (`9f9e2b39`).
 - Plano-100: 9 IDs novos (28.52, 29.140 a 29.145, 31.101 e 31.102) e o resultado da suíte 39 aplicado pelo mecanismo: 548 de 645.
+
+## 2026-10-05 — 30.81: o fluxo ensinado só vale para a persona que ensinou até a prova (branch feat/30-81-prova-do-ensinado)
+
+- O fluxo salvo no modo treinamento segue nascendo ativo, mas o `match` com aparelhos só o usa quando TODOS os perfis
+  são a persona do ensino (`training_sessions.profile_id`). A prévia sem aparelhos casa como antes. A sessão sem persona
+  não casa em lugar nenhum, e o salvar e a prévia avisam numa linha de `warnings`.
+- A espera acaba com uma prova real a favor, não invalidada, de uma execução com `prova_fluxo_id` deste fluxo depois do
+  nascimento, ou com a decisão de uma pessoa depois do nascimento. Não contam o sistema, a régua da plataforma e outro
+  treino. O fluxo que não veio do treino não paga consulta a mais.
+- A volta da validação (`ServicoDeValidacao.uma_volta`) abre a prova com UMA consulta por volta: reprodução em outro
+  aparelho, o molde preenchido pelos `example` da proposta salva, o aparelho do treino de fora, `review_id`
+  `ensino:<sessão>`, um pedido vivo por vez.
+- O que a prova automática não cobre passa à pessoa: o pedido nasce `recusada` com o motivo e sai
+  `learning.ensinado_espera_decisao` (`warn`). Isso vale para a classe C, o item sem dossiê de agora, toda recusa ao
+  nascer (efeito em app real, sessão, credencial, sem exemplo, sem caminho) e as tentativas esgotadas. Motivos novos:
+  `classe_c` e `tentativas_esgotadas`, este depois de 3 pedidos sem veredito.
+- O veredito CONTRÁRIO de uma prova real leva o fluxo e as receitas ativas do mesmo treino ao `disabled` do Livro,
+  pelo sistema e com a execução na trilha (status nativo `disabled` no fluxo, `quarantined` na receita).
+- Leitura da Reload: a receita do treino em espera só é achada para a persona que ensinou (`RecipeStore.find(persona=)`,
+  rótulo `ensino_em_prova` em `receita.consulta`); só o "Confirmar que fica" explícito libera; a validação usa
+  `FlowStore.ativo_para`, sem o ensinado em espera. A receita só é liberada pelo "Confirmar que fica" ou por ter rodado
+  na prova real do fluxo com a etapa comprovada; a execução de prova do fluxo acha as receitas da sessão
+  (`RecipeStore.find(prova_fluxo=)`, `RecipeStore._restrita_ao_ensino`, `Executor` no `find`); o fluxo desligado por
+  uma pessoa não as solta, nem o fluxo apagado (N4: sem fluxo, falha fechada pela persona da sessão; N5: só a evidência dela numa execução de
+  prova a libera).
+- O id do fluxo não vai ao `backend.log` nos logs novos do 30.81 (`_no_log`; o pedido de prova do ensinado loga só o
+  número do pedido). O aviso do 30.80 B sai pelo caminho de sempre. A falha de
+  infraestrutura, a prova simulada e a divergência de forma não rebaixam.
+- "Confirmar que fica" (`POST /api/aprendizado/fluxo/{id}/confirmar`) passa a valer também para o ensinado que espera a
+  pessoa. Ele e desligar pelo Livro publicam `learning.ensinado_decidido` (`liberado`, `desligado` ou `outro`), um por
+  nascimento. A entrada de fluxo do Livro ganha `espera_a_pessoa` (o motivo literal, ou `null`) para o painel mostrar o
+  botão.
+- O campo `ensinado_em_prova: {persona, sessao}`, combinado com a Portal, vai em `POST /api/flows/match`,
+  `GET /api/flows/cobertura`, na resposta do salvar do treino e no topo da de `POST /api/training/{id}/recipes`. Fica
+  ausente quando não se aplica.
+- Funções tocadas (K-095):
+  - `taskqueue/flows.py`: `ensinado_em_prova` (nova), `FlowStore.match` (`sem_ensino_em_prova` no fim),
+    `FlowStore.ativo_para` e `FlowStore._restrito_ao_ensino` (novas);
+  - `taskqueue/recipes.py`: `RecipeStore.find` (`persona` no fim) e `_restrita_ao_ensino` (nova);
+    `taskqueue/executor.py`: a chamada do `find` passa a persona do objetivo; `state.py`: `fluxo_ativo_para` e
+    `plano_ativo_para` usam `ativo_para`;
+  - `social/capacidades.py`: `cobertura_do_fluxo` e `cobertura_dos_fluxos`, que agora seleciona `source` e
+    `created_at`;
+  - `training/skills.py`: `save`, `preview`, `refazer_receitas`, `_em_prova` (nova) e `_aviso_sem_persona` (nova);
+  - `application/nativos.py`: `SombraDosFluxos.__init__` (`ensinado` no fim), `_minerar_prova` e
+    `_rebaixar_o_ensinado` (nova);
+  - `application/validacao.py`: `ServicoDeValidacao.__init__` (`ensino` no fim), `uma_volta`,
+    `_abrir_provas_do_ensino` e `_abrir_prova_do_ensinado` (novas);
+  - `application/servico.py`: `_mover_nativo`, `confirmar_que_fica`, `espera_a_pessoa` e `avisar_espera_do_ensinado`
+    (novas as duas últimas);
+  - `application/ensinado.py`: `AvisadorDoEnsinado.espera_decisao`, `espera_da_pessoa`, `motivo_da_espera` e
+    `decidiu_sem_falhar` (novas);
+  - `presentation/livro.py`: `_entrada` e `_da_espera` (nova);
+  - `domain/validacao.py`: `comando_do_ensino` e `passo_do_ensino` (novas);
+  - `domain/ensinado.py`: `EsperaDoEnsinado`, `DecisaoDoEnsinado` e `decisao_da_pessoa` (novas);
+  - `infrastructure`: `LeituraSql.ensinado_a_esperar`, `LeitorDoEnsinadoSql.espera_da_pessoa`, `motivo_da_espera` e
+    `_espera`,
+    `EnsinoDaValidacaoSql`, os dois métodos novos de `EventosNoBarramento` e a ligação em `ligar_nativos.ligar` e
+    `ligar_validacao.ligar`.
+- Prova `simulated`: `backend/tests/test_ensinado_em_prova.py`. Real: `not_run` (o próximo treino salvo no central).
+
+## 2026-10-05 — 30.80 parte B: o ensinado que o sistema tirou de uso avisa (branch feat/30-80b-aviso-do-ensinado)
+
+- Eventos novos `learning.ensinado_rebaixado` (`info`) e `learning.ensinado_sem_receita` (`warn`). Saem quando a receita
+  ou o fluxo ensinado no modo treinamento (`training:<sessão>`), em uso, sai de uso por decisão do SISTEMA:
+  quarentena por falhas seguidas, substituição ou obsolescência. Um por transição: "sem receita" quando nada ativo
+  ficou no lugar.
+- O payload é a lista fechada combinada com a Canais (28.50): `kind`, `ref`, `app`, `treino`, `sem_receita_ativa`,
+  `para` (status nativo) e `desde` (o instante da transição NA TRILHA, estável numa reemissão).
+- Não avisam: o gesto de uma pessoa, outra demonstração, o item que a IA aprendeu e o nascimento.
+- `domain/ensinado.py` (a regra e o payload), `application/ensinado.py` (`AvisadorDoEnsinado`, chamado nos dois
+  caminhos: a loja via `avisar_mudanca_nativa` e o Livro via `_mover_nativo`), `infrastructure/ensinado_sql.py`
+  (`LeitorDoEnsinadoSql`) e `EventosNoBarramento.ensinado_rebaixado`.
+- Condição da leitura do 28.50 pela Reload: o id do FLUXO não vai ao `backend.log`. O `message` do fluxo fica só com
+  o tipo e o app (`AvisoDoEnsinado.mensagem`), e o `log.exception` do aviso que falha também (`_no_log` em
+  `AvisadorDoEnsinado.mudou_isolado` e `mudou_sem_falhar`). O id segue em `data.ref`; o id opaco é o 30.83.
+- Prova `simulated`: `backend/tests/test_learning_ensinado_rebaixado.py` (7), verificado por mutação com 7 regras.
+  Real: `not_run` (a próxima quarentena de receita ensinada).
 
 ## 2026-10-05 — 29.131 e 29.138: as sobras das leituras do #433, #435, #441 e #443, e os achados das revisões automáticas do #443 (branch fix/29-131-sobras-supervisor-readocao)
 
@@ -250,6 +378,48 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   - `real`: 05/10, central, sobre 19e34b22, `MYPY_PYTHON=C:\farm\ferramentas\mypy\Scripts\python.exe`; a catraca
     deu 257 erros, igual ao teto, rc 0, em 34 s.
 
+## 2026-10-05 — 31.98: nomes de conta fora dos comentários e docstrings do backend (branch chore/31-98-nomes-fora-dos-comentarios)
+
+- Comentários e docstrings de `backend/app` (27 arquivos, 100 trechos) não citam mais nome nem @ de conta ou persona: as
+  narrativas de incidente dizem "uma conta real" e os exemplos usam nomes de exemplo fixos (fulano, beltrano, ciclano,
+  sicrano), o mesmo para a mesma pessoa, para as referências cruzadas continuarem casando. Comportamento igual: o ast
+  de cada arquivo, com as docstrings zeradas, é idêntico antes e depois.
+- Única mudança em texto que vai à IA: o exemplo de nome de usuário com @ de `PLANNER_CAPABILITY_SYSTEM` virou
+  fictício; os hashes de `PLANNER_CAPABILITY_SYSTEM`, `PLANNER_MULTIAPP_SYSTEM` e `PLANNER_MULTIAPP_SYSTEM_CURTO` em
+  `tests/test_prompts_licoes.py` mudam de propósito (só o exemplo difere; conferido contra o texto antigo).
+- A recusa `sem_alvo` (`execution/application/alvos.py`) cita "com a persona Fulana" como exemplo; o texto esperado e os
+  dados de `tests/test_telegram_entrada.py` usam nomes de exemplo (acentuado onde o teste é o corte sem acento). Fora, de propósito:
+  a lista fictícia do `simulated_provider`, o nome de uma lista do Trello e uma variável homônima. Os @ de contas usados
+  como dado nos outros testes são o 31.101.
+- Prova `simulated`: `not_run` (funil da suíte 39; os dirigidos rodam depois do "no ar"). Real: `not_run`.
+
+## 2026-10-05 — 31.101: os testes não usam mais o identificador de uma conta real (branch test/31-101-dados-ficticios-nos-testes)
+
+- Os @ com número de contas reais que os testes usavam como dado viraram valores de exemplo fixos, o mesmo para o
+  mesmo papel, de 7 contas: na primeira rodada, as do android-01, android-02 e android-03 (36 arquivos de teste, 208
+  linhas); na segunda, as do android-04, android-06, android-07 e android-08 (8 arquivos, 20 linhas; o longo mantém o
+  comprimento, que é o que o comentário de `Profiles.module.css` descreve). A conta do android-05 não aparece em teste. O comentário de `config/eval-set.yaml` que dizia qual conta o android-01 opera passa a citar o aparelho
+  (`«conta do android-01»`): um valor de exemplo ali tornaria o comentário falso. A troca é `scripts/trocar-nomes-nos-testes.py`, que lê a tabela de
+  um arquivo local fora de qualquer checkout (`--tabela` ou `TROCA_DE_NOMES_TABELA`, sem caminho padrão; recusa tabela
+  dentro deste repositório, do `--raiz` ou de qualquer árvore de trabalho do git, perguntando ao próprio git; a conferência falha fechada: só "fora de um repositório" libera). O script não guarda nome nenhum e só imprime contagens. A caixa vai trecho a trecho, para os
+  testes de caixa ("Nome.Sobrenome…", "NOME.sobrenome…") manterem a força.
+- `--amplo` troca também os `pares` da tabela (nome.sobrenome sem o número, inclusive colado a um dígito, mas nunca o começo de um sobrenome mais longo, e os handles
+  de exemplo que repetiam o sufixo numérico de uma conta real) e os pedaços de nome (ensaio: 120 arquivos, 1435 linhas). Não aplicado: roda como última junção
+  no corte de uma suíte, quando a orquestradora marcar, para não conflitar com os ramos da fila.
+- Sem catraca nesta rodada: hash de identificador curto num teste versionado se reverte por dicionário; se houver
+  uma, é HMAC com a chave no mesmo caminho local da tabela.
+- Prova `simulated`: `not_run` (funil da suíte 39). Conferido sem pytest: nenhum identificador antigo nos testes. Real: `not_run`.
+
+## 2026-10-05 — 31.102: os documentos não citam mais o @ de conta real (branch docs/31-102-identificadores-fora-dos-docs)
+
+- Em `docs/` (8 arquivos, 40 ocorrências), cada @ de conta real virou a referência ao aparelho, `«conta do android-NN»`;
+  o "@" da frase original ficou onde estava, porque em alguns exemplos é ele o sentido ("entre como @…", "digitou sem
+  arroba"). Só texto: nenhuma decisão, ADR ou prova muda de sentido.
+- `README.md`: os exemplos de comando do `instagram.ps1` usam `-Perfil @<usuario-do-perfil>`.
+- Fora, de propósito: `docs/execucao-plano-100-runner.md` (gerado pelo mecanismo do plano-100 a partir do estado) e
+  arquivos fora de `docs/`; os pedaços de nome em prosa ficam para a troca ampla.
+- Prova: `not_run` (docs-check depois do "no ar" da suíte 39). Real: `not_run`.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.
@@ -303,6 +473,119 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   marcada "autoria não confirmada". Nome sem `P-NNN` chega marcado "sem número". Testes do 🤖 e do "sim" com aprovação
   aberta.
 - Prova: `simulated` (`backend/tests/test_canais_respostas_as_perguntas.py`). Real: `not_run`.
+
+## 2026-10-05 — 31.103: o host do aceite vem da barra de verdade (branch fix/31-103-barra-fora-da-pagina, sobre 31.75 + 31.104)
+
+- `taskqueue/dialogos.py`: `texto_da_barra(tree, barras)`, o texto do primeiro nó com o id da barra de endereço FORA do
+  conteúdo da página (`_conteudo_web`, a régua do 31.75); sem barra fora da página, `""`.
+- `taskqueue/executor.py`: `_aceite_do_toque` lê o host de `ai.consentimento_aceito_em` por ela. Antes, o primeiro nó
+  com o id na ordem do documento: a página com `id="com.android.chrome:id/url_bar"` antes da barra real escolhia o
+  host e liberava o "Aceitar". Sem barra confiável, não há isenção (o lado que trava).
+- Leitura do 31.103 (A1, S1, N2): os leitores do id da barra (`BARRA_DE_ENDERECO`) que decidem alguma coisa:
+  - **mudou, `_conferir_destino`** (a conferência do site antes do `type_secret`): lia o primeiro nó com o id e com
+    texto. Uma página de outro domínio com o id e o host da conta antes da barra real recebia a senha. Agora lê por
+    `texto_da_barra`; sem barra fora da página, o host é vazio e cai no erro que já existia ("Não dá para confirmar o
+    site"), sem digitar.
+  - **mudou, `imagem_com_barra_tapada`** (o que vai ao provedor): tapava só o primeiro nó com o id, ou seja, a falsa, e
+    o endereço real ia na imagem. Agora tapa TODO nó com o id, dentro e fora da página: tapar também o da página é o
+    lado que protege (some um trecho da página, nunca o endereço).
+  - **mudou, `_aceite_do_toque`** (a isenção de host): este item.
+  - **ficou, `_arvore_com_endereco_limpo`** (o texto da barra que vai ao prompt): já passa TODO nó com o id por
+    `endereco_para_o_prompt`, inclusive o da página; não escolhe um nó, então não há o primeiro a enganar.
+- Prova `simulated`, todas verificadas por mutação contra o código anterior:
+  - `backend/tests/test_ator_nao_aceita_consentimento.py`: os três `test_31_103_…` (unidade) e
+    `test_pelo_laco_31_103_a_barra_falsa_da_pagina_nao_libera_o_aceite` (pelo laço);
+  - `backend/tests/test_credenciais_da_conta.py`: `test_31_103_a_barra_falsa_com_o_host_da_conta_nao_recebe_a_senha` e
+    `test_31_103_a_barra_real_com_o_host_da_conta_vale_mesmo_com_a_falsa` (valores de teste, sem conta real);
+  - `backend/tests/test_url_fora_do_prompt.py::test_31_103_a_barra_falsa_da_pagina_nao_esconde_a_real_e_as_duas_sao_tapadas`.
+  `real`: `not_run`.
+
+## 2026-10-05 — 31.75: a página com id do navegador não ganha a isenção do K2 (branch feat/31-75-pagina-com-id-do-navegador)
+
+- Furo do 31.72: o Chrome expõe o `id` do HTML como `resource-id`; um botão da página com
+  `id="com.android.chrome:id/allow"` era tratado como interface do navegador e escapava da trava.
+- `taskqueue/dialogos.py`: `_conteudo_web` (nova). Na ordem do documento, o que está entre a WebView e a primeira raiz
+  da interface do Chrome (`control_container`, `bottom_container`) é página: `_do_navegador` e `_de_consentimento`
+  não dão a isenção ali. Sem WebView, vale o id, como antes (limite declarado em `docs/ia.md` § 20).
+- Endurecimentos pedidos na leitura, para falhar fechado: H1 (a identidade da página é o `e.id` eN do leitor, não o
+  `id()` do objeto), H2 (a raiz só encerra a página com o id de raiz E a classe `FrameLayout`; uma raiz falsa em `View`
+  não encerra) e H3 (com WebView e sem raiz válida, a página vai até o fim do documento: a barra escondida pela
+  rolagem e a árvore truncada). Limites que sobram: sem WebView (só tela nativa, depois da correção abaixo) vale o
+  id; a regra supõe que conteúdo web não expõe `FrameLayout`; marcar a página pelo ancestral WebView não foi feito.
+- Correções da leitura do 31.75: (2) o leitor guarda SEMPRE a WebView (`parse_hierarchy`): a página com `<title>`
+  vazio e sem rolagem sumia com ela, e o botão com id do Chrome voltava a ganhar a isenção, inclusive com um iframe
+  depois dele; (3) a página é a união dos trechos de TODAS as WebViews, cada um até a primeira raiz válida; (1) nos
+  quatro testes de H1, H2 e H3 o "Aceitar" falso saiu da faixa da marca: antes eles passavam também sem a regra
+  (o ramo K2 recusava pela faixa).
+- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (5 testes novos do 31.75, com a captura real do
+  gov.br: a barra de tradução do Chrome depois da raiz segue livre) e 3 da leitura, 54 passed; mutações conferidas
+  depois da correção, cada uma reprova o teste dela: H1, H2, H3, o leitor sem a WebView e só o primeiro trecho. Os
+  vizinhos (`test_dialogos_em_serie`, `test_outlook_declarado`, `test_sensitive_input`, `test_sobreposicao*`,
+  `test_treino_segredo_na_gravacao`, `test_grade_cede_a_arvore`, `test_observacao_arvore_primeiro`) e
+  `test_arquitetura` verdes; `@tests/catracas.txt`, 88 passed. As árvores reais de `data/diag-31-72/` dão o mesmo antes (152f8b54) e depois (NTP, ml, g1, uol com 0
+  recusado; gov-3 com 12 clicáveis recusados, nenhum do Chrome; "More options" livre). `real`: `not_run`.
+- N1 (acréscimo da orquestradora, commit à parte): `dialogos._gemeo`/`_clicavel`. O link inline que o Chrome expõe como
+  par de nós (mesmo texto e bounds, um clicável e um filho não clicável, visto no gov-3) é um nó só, clicável: não liga
+  a recusa de "OK"/"Aceitar" num rodapé só com "Política de privacidade". O gêmeo também deixa de ser a "caixa" da marca
+  (`_caixa_da_marca`), senão o par se tornaria aviso pelo outro lado. Prova `simulated`: 3 testes `test_n1_*`; as árvores
+  reais ficam idênticas (gov-3 com 12). `real`: `not_run`.
+## 2026-10-05 — 31.104: a tela do aviso pela maior medida (branch fix/31-104-pagina-pela-janela, sobre o 31.77)
+
+- `taskqueue/dialogos.py`: `toque_que_aceita` mede a tela pela maior das medidas, em largura e altura: a extensão das
+  folhas, a janela do dump (`UiTree.janela`, 31.77) e o tamanho da tela que o executor conhece (parâmetro `tela`, do
+  `ToolContext`, passado por `_aceite_do_toque`; vale também sem janela, N1 da leitura). Antes era só a extensão: numa página esparsa, o texto do aviso
+  passava de 60 % dela, deixava de ser marca, e o "Aceitar todos" passava (achado S1, que vem do 31.72). A faixa em volta
+  da marca, fração da altura, cresce junto. A mudança é monótona: nada que travava passa a dispensar.
+- `_cobre_a_tela` fica pela extensão das folhas: ali a medida menor é o lado que endurece (mais etapas falham fechado);
+  a maior afrouxaria.
+- Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py`, `test_31_104_pagina_esparsa_…` (reprova o
+  código anterior, conferido por mutação) e `test_31_104_sem_janela_o_tamanho_da_tela_do_executor_trava`. `real`: `not_run`.
+
+## 2026-10-05 — 31.77: uma fração só e a janela flutuante pela raiz do dump (branch feat/31-77-fracao-unica-e-janela-pela-raiz)
+
+- `automation/hierarchy.py`: `UiTree.janela` (novo, `None` por padrão) e `_janela_do_dump`. É a união dos bounds dos
+  nós de topo do dump, lida antes de o leitor descartar o contêiner sem texto, sem os de `com.android.systemui`.
+- `taskqueue/dialogos.py`: `_FRACAO_DA_PAGINA` vira `FRACAO_DA_PAGINA`, pública e única (K2 da leitura do #391).
+- `taskqueue/executor.py`: `_FRACAO_DA_JANELA` sai. O L2 de `sobreposicao_vale` passa a usar `tree.janela` contra
+  `FRACAO_DA_PAGINA`, e não mais a extensão das folhas (L2-a). Sem janela, o L2 não decide.
+- Leitura da revisão: o diálogo com janela de tela inteira fica fora da regra da janela flutuante (limite escrito em
+  `docs/ia.md`, L2); o nó de topo com bounds zerados ao lado de um válido não entra na união (teste novo). A marcação
+  pelo ancestral não foi feita nem é prometida por este ramo.
+- Prova `simulated`: `backend/tests/test_janela_pela_raiz.py` (8 testes; a página esparsa com folhas em 15 % da tela
+  não passa por janela). Os testes do 31.73, com dump plano, não mudam: a união dos nós de topo é a extensão das
+  folhas. `real`: `not_run`, à espera de um dump bruto de um diálogo nativo e de uma página esparsa.
+
+## 2026-10-05 — 31.76: falha só da imagem não derruba a observação do ator (branch fix/31-76-falha-so-da-imagem)
+
+- Medida real (05/10, aparelho com load 18 a 20): "DriverTimeout: screencap (na origem) excedeu 25s" com a árvore saindo
+  (47 elementos). Antes, o timeout da imagem ia a `_stuck` (dreno de até 180 s) e a `FalhaDeLeitura` contava erro seguido
+  até "A leitura da tela seguiu falhando".
+- `devices/manager.py`: `observe(tolerar_falha_da_imagem=False)`. Ligado, com a árvore lida e o tamanho da tela lembrado
+  (`_dimensoes_lembradas`, sem tocar o executor), a falha da imagem (`DriverTimeout` ou `FalhaDeLeitura`) volta como
+  `jpeg=None`, `image_omitted="capture_failed"`, `captura_falha` e `captura_excedeu_prazo`, e conta `captura.total`
+  `resultado=falha` (a série da prévia, `capture_failures`, não é tocada). Sem dimensões, ou desligado, a exceção sobe
+  como antes. `completar_imagem` refaz a captura de uma observação `capture_failed` (verificador e evidência não
+  aceitam a falha tolerada).
+- `taskqueue/executor.py`: só o laço do ator liga o parâmetro. Em `capture_failed`: sem `_stuck`, sem `errors_in_row`, sem
+  recriar sessão; segue pela árvore. No timeout, espera o executor do aparelho ficar livre (`drain`, limitado pelo prazo
+  da etapa) e relê só a árvore. Se o ator PEDIU a imagem e a captura falha 2 vezes seguidas, vale o caminho de antes
+  (`fail_or_retry`, "A captura da tela seguiu falhando").
+- Leitura da revisão (delta depois do 820ac0d5):
+  - **Evidência:** imagem AUSENTE não é tela sensível. A observação `capture_failed` tenta a captura tardia da evidência
+    (como a `policy`). Sem imagem, a evidência é texto, sem `redacted`, com o motivo na nota: "(captura da tela
+    falhou)", "(imagem ausente)" ou "(imagem não adquirida: <Tipo>)", e não mais "(tela sensível: captura omitida)".
+    A tardia que devolve `None` (tela que é ou pode ser sensível, ou geração trocada) segue "tela sensível" com
+    `redacted`, em `policy` e em `capture_failed` (leitura do delta; teste com `policy` e tardia `None`).
+  - **Contagem mais estrita, mantida:** a falha tolerada com a imagem PEDIDA pelo ator conta seguida até 2; sem a imagem
+    pedida, não conta. Quem pede a imagem e não a recebe não decide às cegas.
+  - **O caminho de antes mudou:** com a imagem pedida e a captura falhando, a etapa ia a `_stuck` depois de 3 erros
+    seguidos de leitura; agora vai a `fail_or_retry` com limite de 2 ("A captura da tela seguiu falhando").
+  - **Classificador:** o motivo novo "A captura da tela seguiu falhando" ganha regra em `modules/learning/domain/falhas.py`
+    (`ui_ocupada`, a família da leitura que segue falhando); sem ela a catraca do motivo literal reprovava.
+- Prova `simulated`: `backend/tests/test_falha_so_da_imagem.py` (15 testes, aparelho falso; conferidos por mutação: o da
+  captura que falhou reprova o 820ac0d5, e o da tardia `None` reprova o e76778ed). `real`: `not_run`.
+  Contrato: adendo v1.55 em `docs/api-contract.md` (`image_omitted` ganha `capture_failed`; campo interno, fora de DTO,
+  evento e evidência da API). Parágrafo em `docs/ia.md` ("Imagem sob demanda").
 
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 

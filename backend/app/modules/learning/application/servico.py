@@ -11,14 +11,18 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
 
+from app.modules.learning.application.ensinado import AvisadorDoEnsinado
+from app.modules.learning.domain.ensinado import EsperaDoEnsinado, decisao_da_pessoa
 from app.modules.learning.application.espera import AvisadorDeEspera, RiscoDoNativo
 from app.modules.learning.application.obsolescencia import ContextoDeObsolescencia, LeitorDeObsolescencia
-from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, Minerador, MudancaNativa,
-                                                    LacoPeriodico, NovoSinal, PassoDeCuradoria, PortaDeEventos,
+from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, LeitorDoEnsinado,
+                                                    Minerador, MudancaNativa, LacoPeriodico, NovoSinal,
+                                                    PassoDeCuradoria, PortaDeEventos, PortaDoEnsinado,
                                                     RepositorioDeAprendizado, TitulosDoCatalogo, TriagemDeTexto)
 from app.modules.learning.domain import relacoes as rel
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
@@ -149,13 +153,18 @@ class LearningService:
                  eventos: PortaDeEventos | None = None, catalogo_de_risco: CatalogoDeRisco | None = None,
                  titulos: TitulosDoCatalogo | None = None,
                  risco_do_nativo: RiscoDoNativo | None = None,
+                 ensinado: PortaDoEnsinado | None = None, leitor_do_ensinado: LeitorDoEnsinado | None = None,
+                 isolar_o_aviso: Callable[[], AbstractContextManager[object]] | None = None,
                  id_do_fluxo: Callable[[str], str] | None = None) -> None:
         """`retencao_de_logs_dias`: o `log_retention_days` VIGENTE (muda com o processo no ar); é o que diz até
         onde `ai_calls` ainda está inteiro. `eventos`: a porta do `learning.needs_person` (30.21; sem ela, nada é
         publicado); `catalogo_de_risco`: os fatos do catálogo do app para a faixa B ou C; `titulos`: o nome da
         capability no catálogo (sem ele, o painel mostra o código); `risco_do_nativo`: a capability da receita e as
-        etapas do fluxo, lidas como o dossiê as lê, para a faixa do aviso ser a do parecer (30.33). `id_do_fluxo`
-        (30.83): a referência que chega numa rota (o id ou a `ref_publico` de um aviso) para o id interno."""
+        etapas do fluxo, lidas como o dossiê as lê, para a faixa do aviso ser a do parecer (30.33).
+        `ensinado`/`leitor_do_ensinado` (30.80 B): o aviso do ensinado que o sistema tirou de uso; sem os dois, nada.
+        `isolar_o_aviso` (N1 da leitura do 30.80 B): o savepoint do banco, só em volta desse aviso no caminho da loja.
+        `id_do_fluxo` (30.83): a referência que chega numa rota (o id ou a `ref_publico` de um aviso) para o id
+        interno."""
         self._repo = repo
         self._fontes = fontes
         self._triagem = triagem
@@ -167,6 +176,7 @@ class LearningService:
         self._extensoes: list[object] = []
         self._lacos: list[LacoPeriodico] = []
         self._espera = AvisadorDeEspera(eventos, catalogo_de_risco, relogio, risco_do_nativo)
+        self._ensinado = AvisadorDoEnsinado(ensinado, leitor_do_ensinado, relogio, isolar_o_aviso)
         self._titulos = titulos
         self._id_do_fluxo = id_do_fluxo
 
@@ -637,12 +647,17 @@ class LearningService:
                                    reaprendido=e.reaprendido is not None, emenda_b=emenda_b)
         if actor is Actor.SYSTEM and para in (SkillState.VALIDATED, SkillState.PUBLISHED) and e.content_hash:
             self._conferir_veto(e.content_hash, e.scope_key, e.app_version)
+        # 30.81: o ensinado que esperava a pessoa, lido ANTES da linha dela (depois, a espera já acabou)
+        espera_do_ensinado = self._ensinado.espera_da_pessoa(e) if actor is Actor.PERSON else None
         self._repo.transicionar_nativo(
             MudancaNativa(kind=e.kind, ref=e.ref, de_status=e.native_status, para_status=para_status,
                           de_estado=e.state, para_estado=para, content_hash=e.content_hash, scope_key=e.scope_key,
                           app_version=e.app_version), by=by, reason=reason, run_id=run_id, emenda_b=emenda_b)
-        self._espera.mudou_sem_falhar(e, replace(e, state=para, native_status=para_status),
-                                      por_sistema=by == SYSTEM_ACTOR)
+        depois = replace(e, state=para, native_status=para_status)
+        self._espera.mudou_sem_falhar(e, depois, por_sistema=by == SYSTEM_ACTOR)
+        self._ensinado.mudou_sem_falhar(e, depois, por_sistema=by == SYSTEM_ACTOR)   # 30.80 B: a obsolescência
+        if espera_do_ensinado is not None:                                           # 30.81: a pessoa decidiu
+            self._ensinado.decidiu_sem_falhar(depois, espera_do_ensinado, decisao_da_pessoa(para, confirmou=False))
 
     def invalidar_evidencia(self, kind: LivroKind, ref: str, run_id: str, *, by: str) -> EntradaDoLivro:
         """30.23: a receita ou o fluxo foi aprendido de um sucesso falso (a execução `run_id` terminou como sucesso sem
@@ -693,7 +708,10 @@ class LearningService:
         if texto and self._recusa(texto):
             raise NotaComCaraDeSegredo("O motivo tem formato ou assunto de credencial e não foi gravado.")
         e = self.entrada(kind, ref)
-        if not self.em_revisar(e) or e.native_status is None:
+        # 30.81: o fluxo ensinado que a prova automática passou à pessoa também se confirma (é o "liberado")
+        em_revisar = self.em_revisar(e)
+        espera = None if em_revisar else self._ensinado.espera_da_pessoa(e)
+        if (espera is None and not em_revisar) or e.native_status is None:
             raise ConflitoDeEstado(f"{kind.value} {ref} não está em \"Revisar\" (já confirmado, decidido por uma pessoa, "
                                    "sem efeito externo ou fora de circulação): não há o que confirmar.")
         self._repo.confirmar_que_fica(
@@ -701,7 +719,19 @@ class LearningService:
                           de_estado=SkillState.PUBLISHED, para_estado=SkillState.PUBLISHED,
                           content_hash=e.content_hash, scope_key=e.scope_key, app_version=e.app_version),
             by=by, reason=motivo_da_confirmacao(texto))
+        if espera is not None:
+            self._ensinado.decidiu_sem_falhar(e, espera, decisao_da_pessoa(SkillState.PUBLISHED, confirmou=True))
         return self.entrada(kind, ref)
+
+    def espera_a_pessoa(self, e: EntradaDoLivro) -> str | None:
+        """30.81: o motivo literal (`classe_c`, `tentativas_esgotadas`, `efeito_real`...) quando o fluxo ensinado espera
+        a decisão de uma pessoa e o "Confirmar que fica" vale para ele; `None` em todo o resto."""
+        return self._ensinado.motivo_da_espera(e)
+
+    def avisar_espera_do_ensinado(self, aviso: EsperaDoEnsinado) -> None:
+        """30.81: `learning.ensinado_espera_decisao`, pela volta da validação, logo depois de gravar o pedido recusado
+        que marca a espera. PROPAGA a falha da porta."""
+        self._ensinado.espera_decisao(aviso)
 
     def _conferir_veto(self, content_hash: str, scope_key: str, app_version: str | None) -> None:
         motivo = motivo_do_veto(self._repo.desligamentos(content_hash, scope_key), agora=self._relogio(),
@@ -757,6 +787,7 @@ class LearningService:
         if de_status is not None:
             antes = replace(depois, state=estado_nativo(kind, de_status), native_status=de_status)
         self._espera.mudou(antes, depois, por_sistema=by == SYSTEM_ACTOR)
+        self._ensinado.mudou_isolado(antes, depois, por_sistema=by == SYSTEM_ACTOR)  # 30.80 B: quarentena, troca
 
     def registrar_sinal(self, sinal: NovoSinal, *, recusar_nota: bool = False, substituir: bool = False,
                         um_por_evento: bool = False) -> int | None:

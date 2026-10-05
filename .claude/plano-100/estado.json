@@ -9603,6 +9603,76 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-05T18:10:01+00:00"
+  },
+  "31.75": {
+   "id": "31.75",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 3ebbb3bb: a página com id do navegador não ganha a isenção; a WebView fica sempre na árvore. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/main 8ac140e0 + fix/31-103-barra-fora-da-pagina 2bce3b1e, que traz 31.75, 31.77 e 31.104; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed; backend SQLite -n 6 11875 passed, 13 skipped, 0 falhas; frontend typecheck limpo, build ok, 1678 passed na 2a rodada (a 1a deu 2 failed por timeout em features/runs/RunsPage.test.tsx com a máquina carregada, o 29.148; o arquivo sozinho deu 7 passed duas vezes; a junção não toca o frontend); catracas 88 + 6 passed; docs-check 0; mypy 257 = teto; PG dirigido 257 arquivos em 2 partes: 2741 passed, 7 skipped e 2490 passed, 1 skipped, 0 falhas (fim 20:19:35Z). Deploy 40 em 05/10/2026 20:34Z (deploy.ps1 -Ensaio, backup data/backups/20261005-173228, depois -PularBackup): /api/health ok, commit 61d431ce, migração 115_receita_nao_aplicavel, problems []; 8010 escutando; prova de fora 46 ok, /api/instances 401 de fora; agente do notebook 0.1.0+61d431c, agent_outdated false.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_ator_nao_aceita_consentimento.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-40",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T20:37:39+00:00"
+  },
+  "31.77": {
+   "id": "31.77",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 5e0aa9b7: uma fração só para página e janela, e a janela flutuante pela raiz do dump. Simulado: backend/tests/test_janela_pela_raiz.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/main 8ac140e0 + fix/31-103-barra-fora-da-pagina 2bce3b1e, que traz 31.75, 31.77 e 31.104; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed; backend SQLite -n 6 11875 passed, 13 skipped, 0 falhas; frontend typecheck limpo, build ok, 1678 passed na 2a rodada (a 1a deu 2 failed por timeout em features/runs/RunsPage.test.tsx com a máquina carregada, o 29.148; o arquivo sozinho deu 7 passed duas vezes; a junção não toca o frontend); catracas 88 + 6 passed; docs-check 0; mypy 257 = teto; PG dirigido 257 arquivos em 2 partes: 2741 passed, 7 skipped e 2490 passed, 1 skipped, 0 falhas (fim 20:19:35Z). Deploy 40 em 05/10/2026 20:34Z (deploy.ps1 -Ensaio, backup data/backups/20261005-173228, depois -PularBackup): /api/health ok, commit 61d431ce, migração 115_receita_nao_aplicavel, problems []; 8010 escutando; prova de fora 46 ok, /api/instances 401 de fora; agente do notebook 0.1.0+61d431c, agent_outdated false.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_janela_pela_raiz.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-40",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T20:37:39+00:00"
+  },
+  "31.104": {
+   "id": "31.104",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 5d571ccd (com N1 e N2 da leitura em 0d2ff45a): a tela do aviso pela maior medida. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/main 8ac140e0 + fix/31-103-barra-fora-da-pagina 2bce3b1e, que traz 31.75, 31.77 e 31.104; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed; backend SQLite -n 6 11875 passed, 13 skipped, 0 falhas; frontend typecheck limpo, build ok, 1678 passed na 2a rodada (a 1a deu 2 failed por timeout em features/runs/RunsPage.test.tsx com a máquina carregada, o 29.148; o arquivo sozinho deu 7 passed duas vezes; a junção não toca o frontend); catracas 88 + 6 passed; docs-check 0; mypy 257 = teto; PG dirigido 257 arquivos em 2 partes: 2741 passed, 7 skipped e 2490 passed, 1 skipped, 0 falhas (fim 20:19:35Z). Deploy 40 em 05/10/2026 20:34Z (deploy.ps1 -Ensaio, backup data/backups/20261005-173228, depois -PularBackup): /api/health ok, commit 61d431ce, migração 115_receita_nao_aplicavel, problems []; 8010 escutando; prova de fora 46 ok, /api/instances 401 de fora; agente do notebook 0.1.0+61d431c, agent_outdated false.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_ator_nao_aceita_consentimento.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-40",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T20:37:39+00:00"
+  },
+  "31.103": {
+   "id": "31.103",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 2bce3b1e (com A1 e S1 da leitura): o aceite e o destino do segredo leem a barra de endereço de verdade. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::*, backend/tests/test_credenciais_da_conta.py::*, backend/tests/test_url_fora_do_prompt.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/main 8ac140e0 + fix/31-103-barra-fora-da-pagina 2bce3b1e, que traz 31.75, 31.77 e 31.104; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed; backend SQLite -n 6 11875 passed, 13 skipped, 0 falhas; frontend typecheck limpo, build ok, 1678 passed na 2a rodada (a 1a deu 2 failed por timeout em features/runs/RunsPage.test.tsx com a máquina carregada, o 29.148; o arquivo sozinho deu 7 passed duas vezes; a junção não toca o frontend); catracas 88 + 6 passed; docs-check 0; mypy 257 = teto; PG dirigido 257 arquivos em 2 partes: 2741 passed, 7 skipped e 2490 passed, 1 skipped, 0 falhas (fim 20:19:35Z). Deploy 40 em 05/10/2026 20:34Z (deploy.ps1 -Ensaio, backup data/backups/20261005-173228, depois -PularBackup): /api/health ok, commit 61d431ce, migração 115_receita_nao_aplicavel, problems []; 8010 escutando; prova de fora 46 ok, /api/instances 401 de fora; agente do notebook 0.1.0+61d431c, agent_outdated false.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_ator_nao_aceita_consentimento.py",
+    "backend/tests/test_credenciais_da_conta.py",
+    "backend/tests/test_url_fora_do_prompt.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; a prova real do login pela web segue not_run",
+   "grupo": "android-suite-40",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T20:37:39+00:00"
   }
  },
  "rodadas": [
@@ -12369,6 +12439,18 @@
    ],
    "grupos": [
     "orquestradora-percurso-deploy-39"
+   ]
+  },
+  {
+   "quando": "2026-10-05T20:37:39+00:00",
+   "itens": [
+    "31.75",
+    "31.77",
+    "31.104",
+    "31.103"
+   ],
+   "grupos": [
+    "android-suite-40"
    ]
   }
  ]

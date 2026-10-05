@@ -600,7 +600,7 @@ def _precheck(s: AppState, rt: DeviceRuntime, action: str, body: InstanceActionB
     if action not in LIFECYCLE_ACTIONS:
         return "rejected", "ação desconhecida"
     # Quarentena (ADR-055) antes de tudo: conta travada logada. Em 27/09 01:47Z um `open_app` chegou ao android-04
-    # com o felipe já bloqueado e o desafio na tela. Só parar e hibernar passam; o resto exige a confirmação
+    # com a conta já bloqueada e o desafio na tela. Só parar e hibernar passam; o resto exige a confirmação
     # explícita da pessoa — que o pedido automático (remediação, rodízio, saúde, reconciliação) nunca manda.
     if action not in VERBOS_DA_QUARENTENA and (marcador := s.social_repo.conta_travada_no_aparelho(rt.id)) is not None:
         if not body.confirm_locked_account:
@@ -919,7 +919,7 @@ def remediar(s: AppState, instance_id: str, motivo: str) -> str | None:
     Antes: 2 restarts em memória e "a decisão é de uma pessoa" — para sempre, e zerado num reinício do backend.
 
     ADR-055: o `reset` automático NUNCA acontece em aparelho com conta — vínculo ativo ou marcador de conta travada.
-    Em 24/09 o 3º degrau apagou a sessão do andre (conta real, viva); reset automático só vale para aparelho sem
+    Em 24/09 o 3º degrau apagou a sessão de uma conta real viva; reset automático só vale para aparelho sem
     conta nenhuma. Com vínculo, o 3º degrau é "precisa do dono" + `stop` (parar não apaga nada, e o estado desejado
     vira `stopped`: a escada não volta sozinha). Com conta travada logada (quarentena) nem os `restart` acontecem —
     reiniciar religaria o app de uma conta morta —: é direto o "precisa do dono" + `stop`.
@@ -936,7 +936,7 @@ def remediar(s: AppState, instance_id: str, motivo: str) -> str | None:
         return None
     # Hospedeiro sobrecarregado: o convidado "degradou" porque a MÁQUINA não tem CPU, não porque o Android dele
     # adoeceu. Subir de degrau aí só piora (reiniciar é o momento mais pesado de um convidado) e, com a escada, chega
-    # ao reset. Em 29/09 02:05–02:15Z o android-01 (lucas) levou restart e reset nessa situação, com a máquina
+    # ao reset. Em 29/09 02:05–02:15Z o android-01 (fulano) levou restart e reset nessa situação, com a máquina
     # saturada por testes e o boot de outro aparelho (ADR-055). Espera a máquina aliviar e reconfere.
     metricas = s.devices.last_metrics
     local = not rt.worker_id or rt.worker_id == s.cfg.owner_id
