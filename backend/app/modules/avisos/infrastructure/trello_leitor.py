@@ -38,7 +38,7 @@ from datetime import datetime, timedelta, timezone
 from app.config import Config, TrelloCfg
 from app.models import Problem
 from app.modules.avisos.adapters.trello import ClienteTrello, FalhaDoTrello
-from app.modules.avisos.application.entrada import AJUDA, Intencao, rotear
+from app.modules.avisos.application.entrada import AJUDA, SO_INFORMA_SEM_RAMO, Intencao, rotear
 from app.modules.avisos.application.entrega import FalhaDeEnvio
 from app.modules.avisos.application.espelho import PREFIXO_DA_IA, prefixo_da_ia
 from app.modules.avisos.domain.mensagem import ROTINA, Aviso, chave_do_fato, titulo_do_aviso
@@ -236,9 +236,6 @@ class SaidaDoTrello:
 
 #: 28.30: o comentário do dono num cartão sem aviso da Central (os cartões do plano).
 REPASSE_COMENTARIO = "comentario"
-#: 28.41 (lacunas da leitura do #380, orquestradora 05/10 06:53Z): os cartões-espelho do livro de decisões, do deploy
-#: e do custo (`espelho.py`) não são aviso que se decide; o comentário neles segue o caminho dos cartões do plano.
-ESPELHOS_COMO_O_PLANO = frozenset({"livro", "deploy", "custo"})
 #: O operador da linha sem autor lido: não casa com nenhum `membro_dono` (os ids do Trello são hexadecimais).
 AUTOR_DESCONHECIDO = "desconhecido"
 TIPO_DO_COMENTARIO = "trello.comentario"
@@ -316,14 +313,20 @@ class ConversaDoTrello(ConversaDoCanal):
         texto = str(linha.get("texto") or "")
         responde_a = str(linha.get("responde_a") or "")
         fato = responde_a[len(PREFIXO_DO_FATO):] if responde_a.startswith(PREFIXO_DO_FATO) else None
-        como_o_plano = fato is None or fato.partition(":")[0] in ESPELHOS_COMO_O_PLANO
-        if como_o_plano and not texto.lstrip().startswith("/"):
+        if fato is None and not texto.lstrip().startswith("/"):
             # Comentário num cartão que não é de aviso da Central (os cartões do plano, 28.30): não é pedido nem comando,
             # mas também não fica mudo. Vai à orquestradora e pede a confirmação do dono no Telegram (`_comentario`).
             if not texto.strip():
                 return Intencao("vazia")
             return Intencao("orquestradora", texto=texto.strip(), repasse=REPASSE_COMENTARIO)
-        return rotear(texto, fato=fato)
+        i = rotear(texto, fato=fato)
+        if i.tipo == "desconhecida" and i.motivo == SO_INFORMA_SEM_RAMO:
+            # 28.41, regra de fundo no Trello (orquestradora, 05/10 07:24Z): o comentário num cartão cujo fato não tem
+            # ramo (os espelhos do livro, do deploy e do custo, o pedido, o aprendizado, o convidado) responde como
+            # sempre respondeu, "comando livre está desligado no Trello", e nunca vira prévia, nem com o
+            # `trello.comando_livre` ligado. No Telegram a mesma regra diz "mande uma mensagem nova".
+            return Intencao("livre", texto=texto.strip(), motivo=SO_INFORMA_SEM_RAMO)
+        return i
 
     # ------------------------------------------------------------------ o que cada intenção faz aqui
     async def _botao(self, saida: SaidaDaConversa, linha: Linha) -> None:
@@ -418,7 +421,7 @@ class ConversaDoTrello(ConversaDoCanal):
 
     async def _previa(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, texto: str,
                       instance_ids: list[str] | None) -> None:
-        if not self.cfg.file.trello.comando_livre:
+        if not self.cfg.file.trello.comando_livre or i.motivo == SO_INFORMA_SEM_RAMO:
             await self._feita(saida, linha, i, RESPOSTA_COMANDO_LIVRE)
             return
         # Ligado, o Trello só MOSTRA a prévia (leitura): sem botão, sem comando de executar. O texto do pedido não volta.

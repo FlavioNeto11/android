@@ -410,9 +410,10 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Regra de fundo da resposta (28.41, orquestradora 05/10 06:53Z): a resposta a uma mensagem nossa cujo fato não tem
     ramo próprio só informa; o texto livre (e a prévia de execução) fica só para a mensagem que não responde a nada
     nosso. O agrupado (`grupo:<tipo>`, `grupo:rotina`), o pedido, o aprendizado e qualquer família nova caem aí. A
-    única exceção é o anexo do dono, em que só "ler" é dele (28.24). No Trello, o comentário nos espelhos do livro,
-    do deploy e do custo segue o caminho dos cartões do plano (orquestradora, com a confirmação ao dono); o de
-    convidado só informa.
+    única exceção é o anexo do dono, em que só "ler" é dele (28.24). No Trello a regra de fundo é outra (lá o texto
+    livre nunca executou): o comentário num cartão cujo fato não tem ramo (espelhos do livro, do deploy e do custo,
+    pedido, aprendizado, convidado) responde o "comando livre está desligado no Trello" de sempre e nunca vira
+    prévia, nem com `trello.comando_livre` ligado; o cartão do plano, sem fato, segue à orquestradora (28.30).
   - O gesto do desfecho segue o motivo da parada (`blocked_kind`): o item parado no aparelho manda abrir a execução;
     o parado numa aprovação manda à caixa de Pendências; os dois casos, as duas linhas.
   - O rótulo do pedido é texto da pessoa: só sai quando o pedido foi criado pelo dono (o de convidado, de frente ou
