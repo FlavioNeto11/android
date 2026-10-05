@@ -113,16 +113,43 @@ def _abrir_repositorio_do_produto():  # noqa: ANN202 - o repositório do produto
     return EntradasDoCanal(Database(load_config().db_dsn), canal="telegram")
 
 
-def _gravar_enviada(mid: object, abrir=None) -> None:  # noqa: ANN001
-    """Grava a mensagem que o script mandou ao DONO em `canal_enviadas` (`origem='ana'`, sem fato), para a resposta (reply)
-    do dono a ela ser reconhecida como resposta à ANA, e não cair como texto livre. Falhar aqui NUNCA falha o envio: só
-    avisa. Só o chat do dono (os `message_id` de um convidado podem colidir com os do dono na mesma tabela)."""
+#: Uma opção de pergunta de escolha (28.44): um número ou UMA letra (decisão da orquestradora na leitura do #412). Palavra
+#: nenhuma: "sim", "ok", "pode" ou "publica" como opção fariam a resposta solta parecer um aval.
+_OPCAO = re.compile(r"^(?:\d{1,3}|[A-Za-z])$")
+#: As letras que a conversa lê como sim ou não ("s", "n"): também não servem de opção.
+_LETRAS_DE_AVAL = {"s", "n"}
+
+
+def opcoes_da_escolha(valor: str) -> str:
+    """`--escolha 1,2,3` → `1-2-3`, o detalhe do fato `escolha:<msg>:<opções>`. Pelo menos duas opções, sem repetir,
+    números ou letras; fora disso, ValueError antes de qualquer envio."""
+    opcoes = [o.strip() for o in valor.split(",") if o.strip()]
+    if (len(opcoes) < 2 or len({o.lower() for o in opcoes}) != len(opcoes) or not all(_OPCAO.match(o) for o in opcoes)
+            or any(o.lower() in _LETRAS_DE_AVAL for o in opcoes)):
+        raise ValueError("--escolha pede de 2 opções em diante, separadas por vírgula, cada uma um número ou uma letra "
+                         "(ex.: 1,2,3 ou A,B,C), sem S nem N")
+    return "-".join(opcoes)
+
+
+def _gravar_enviada(mid: object, abrir=None, *, escolha: str | None = None,  # noqa: ANN001
+                    substitui: int | None = None) -> bool:
+    """Grava a mensagem que o script mandou ao DONO em `canal_enviadas` (`origem='ana'`), para a resposta (reply) do dono a
+    ela ser reconhecida como resposta à ANA, e não cair como texto livre. Falhar aqui NUNCA falha o envio: só avisa. Só
+    o chat do dono (os `message_id` de um convidado podem colidir com os do dono na mesma tabela).
+
+    28.44: com `escolha` (as opções já em `1-2-3`), o fato é `escolha:<mid>:<opções>`, e a resposta solta do dono pode
+    casar com ela. Com `substitui`, a pergunta antiga deixa de estar aberta (`registrar_substituta`)."""
     try:
         if mid is None:
-            return
-        (abrir or _abrir_repositorio_do_produto)().registrar_enviada(str(mid), "ana")
+            return False
+        repo = (abrir or _abrir_repositorio_do_produto)()
+        repo.registrar_enviada(str(mid), "ana", fato=f"escolha:{mid}:{escolha}" if escolha else None)
+        if substitui is not None:
+            repo.registrar_substituta(str(mid), str(substitui))
+        return True
     except Exception as exc:  # noqa: BLE001 - a mensagem já saiu; o banco não pode desfazer isso
         print(f"aviso: a mensagem saiu, mas não foi registrada em canal_enviadas ({type(exc).__name__})")
+        return False
 
 
 class FotoRecusada(Exception):
@@ -202,7 +229,8 @@ async def _enviar_foto(legenda: str, reply_to: int | None, step_id: str, previa:
     return 0
 
 
-async def _enviar(texto: str, reply_to: int | None, chat: str | None = None) -> int:
+async def _enviar(texto: str, reply_to: int | None, chat: str | None = None, *, escolha: str | None = None,
+                  substitui: int | None = None) -> int:
     env = EnvSettings()
     token = _segredo(env.telegram_bot_token)
     chat_id = _segredo(env.telegram_chat_id)
@@ -245,8 +273,12 @@ async def _enviar(texto: str, reply_to: int | None, chat: str | None = None) -> 
         print(f"enviado {modo} ({len(texto)} chars) message_id={mid}")
         if chat:
             _historico_de_saida(chat, mid, _sem_tags(texto))
-        else:
-            _gravar_enviada(mid)
+        elif not _gravar_enviada(mid, escolha=escolha, substitui=substitui) and (escolha or substitui is not None):
+            # A pergunta saiu sem a marca: a resposta solta não casa com ela, e a substituída segue aberta. Erro visível,
+            # para quem mandou registrar à mão ou avisar (leitura do #412).
+            print("ERRO: a mensagem saiu, mas a marca da escolha ou da substituição não foi gravada; a resposta solta "
+                  "não vai casar com ela")
+            return 3
         return 0
     except FalhaDeEnvio as exc:
         print(f"Falhou: {exc.motivo}")
@@ -261,7 +293,21 @@ def main() -> int:
     ap.add_argument("--titulo", default=None, help="compatibilidade: vira a 1ª linha em negrito")
     ap.add_argument("--foto", default=None, metavar="STEP_ID", help="28.45: manda a imagem desta etapa (só ao dono)")
     ap.add_argument("--previa", default=None, help="28.45: a prévia da porta gravada (JSON), com o imagem_sha256")
+    ap.add_argument("--escolha", default=None, metavar="OPÇÕES",
+                    help="28.44: a mensagem pede uma escolha (ex.: 1,2,3); a resposta solta do dono casa com ela")
+    ap.add_argument("--substitui", type=int, default=None, metavar="MESSAGE_ID",
+                    help="28.44: esta mensagem substitui a pergunta de escolha anterior, que deixa de estar aberta")
     args = ap.parse_args()
+    escolha = None
+    if args.escolha is not None or args.substitui is not None:
+        if args.chat or args.foto:
+            print("--escolha e --substitui valem só para texto ao dono; nada enviado")
+            return 2
+        try:
+            escolha = opcoes_da_escolha(args.escolha) if args.escolha is not None else None
+        except ValueError as exc:
+            print(f"{exc}; nada enviado")
+            return 2
     texto = Path(args.arquivo).read_text(encoding="utf-8").strip()
     if not texto:
         print("arquivo vazio")
@@ -273,7 +319,7 @@ def main() -> int:
             print("--foto vai só ao dono e pede --previa; nada enviado")
             return 2
         return asyncio.run(_enviar_foto(texto, args.reply_to, args.foto, Path(args.previa)))
-    return asyncio.run(_enviar(texto, args.reply_to, args.chat))
+    return asyncio.run(_enviar(texto, args.reply_to, args.chat, escolha=escolha, substitui=args.substitui))
 
 
 if __name__ == "__main__":

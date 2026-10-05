@@ -5,6 +5,7 @@ Telegram. Rodar da raiz: `backend/.venv/Scripts/python.exe -m pytest -q .claude/
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import sys
 from pathlib import Path
@@ -63,3 +64,76 @@ def test_foto_nao_vai_a_convidado_e_pede_a_previa(monkeypatch: pytest.MonkeyPatc
         monkeypatch.setattr(sys, "argv", ["telegram_status.py", str(legenda), "--foto", ETAPA, *extra])
         assert t.main() == 2
     assert "nada enviado" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ 28.44: --escolha e --substitui
+def test_opcoes_da_escolha_viram_o_detalhe_do_fato() -> None:
+    assert t.opcoes_da_escolha("1,2,3") == "1-2-3"
+    assert t.opcoes_da_escolha(" A , B ,C,D ") == "A-B-C-D"
+    assert t.opcoes_da_escolha("10,20") == "10-20"
+    # Leitura do #412: opção é número ou UMA letra; palavra de aval e as letras S e N não servem.
+    for ruim in ("1", "1,1", "1,a-b", "1,x:y", "1,,", "1,opcao-muito-longa-demais", "sim,nao", "ok,pode",
+                 "publica,1", "aprovar,vetar", "S,N", "A,s", "1,2,1000"):
+        with pytest.raises(ValueError):
+            t.opcoes_da_escolha(ruim)
+
+
+class _RepoFalso:
+    def __init__(self) -> None:
+        self.feitas: list[tuple[object, ...]] = []
+
+    def registrar_enviada(self, ref: str, origem: str, *, fato: str | None = None) -> None:
+        self.feitas.append(("enviada", ref, origem, fato))
+
+    def registrar_substituta(self, nova: str, antiga: str) -> None:
+        self.feitas.append(("substituta", nova, antiga))
+
+
+def test_gravar_enviada_marca_a_escolha_e_a_substituta() -> None:
+    repo = _RepoFalso()
+    t._gravar_enviada(297, lambda: repo, escolha="1-2-3", substitui=294)
+    assert repo.feitas == [("enviada", "297", "ana", "escolha:297:1-2-3"), ("substituta", "297", "294")]
+    repo = _RepoFalso()
+    t._gravar_enviada(298, lambda: repo)
+    assert repo.feitas == [("enviada", "298", "ana", None)]                  # sem a flag, nada muda
+
+
+def test_escolha_ruim_ou_a_convidado_nada_envia(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                               capsys: pytest.CaptureFixture[str]) -> None:
+    texto = tmp_path / "pergunta.txt"
+    texto.write_text("Responda 1, 2 ou 3.", encoding="utf-8")
+
+    async def nao_envia(*_a: object, **_k: object) -> int:
+        raise AssertionError("não devia enviar")
+
+    monkeypatch.setattr(t, "_enviar", nao_envia)
+    for extra in (["--escolha", "1"], ["--escolha", "1,2", "--chat", "123"], ["--substitui", "294", "--foto", ETAPA]):
+        monkeypatch.setattr(sys, "argv", ["telegram_status.py", str(texto), *extra])
+        assert t.main() == 2
+    assert capsys.readouterr().out.count("nada enviado") == 3
+
+
+def test_marca_da_escolha_que_nao_grava_sai_com_erro(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                                     capsys: pytest.CaptureFixture[str]) -> None:
+    """Leitura do #412: se a marca da pergunta nova não grava, a resposta solta não casa e a antiga segue aberta. O
+    script sai com erro visível (3), e não com o 0 de "enviado"."""
+    class _Resposta:
+        status_code = 200
+
+    class _CanalOk:
+        def __init__(self, *_a: object) -> None: ...
+
+        async def _chamar(self, *_a: object, **_k: object) -> _Resposta:
+            return _Resposta()
+
+    from types import SimpleNamespace
+
+    from pydantic import SecretStr
+    monkeypatch.setattr(t, "EnvSettings", lambda: SimpleNamespace(telegram_chat_id=SecretStr("1"),
+                                                                   telegram_bot_token=SecretStr("x")))
+    monkeypatch.setattr(t, "CanalTelegram", _CanalOk)
+    monkeypatch.setattr(t, "_json", lambda _r: {"ok": True, "result": {"message_id": 297}})
+    monkeypatch.setattr(t, "_gravar_enviada", lambda *_a, **_k: False)
+    assert asyncio.run(t._enviar("Responda 1 ou 2.", None, escolha="1-2")) == 3
+    assert "ERRO" in capsys.readouterr().out
+    assert asyncio.run(t._enviar("Sem escolha.", None)) == 0              # sem a marca, a falha do registro só avisa
