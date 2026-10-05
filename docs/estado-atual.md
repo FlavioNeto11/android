@@ -1,10 +1,30 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `61d431ce` (migração 115, deploy 40); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 05/10/2026: runtime do backend em `ac77742c` (migração 116, deploy 41); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 41 no ar (05/10/2026, 22:06Z, central `ac77742c`, migração `116_ref_publico_do_fluxo`, nova).** Dezesseis
+  pontas sobre `65452966`, com o ensino na frente: 30.79, 30.80 B, 30.81, 30.83 (fatias 1 a 3), 28.50, 29.146 e 29.143;
+  privacidade 31.98, 31.101, 31.102 e 31.106; consertos 31.76, 28.52, 29.139, 29.140 e 29.149, mais a anotação de tipo do
+  30.81. Detalhe no [CHANGELOG](../CHANGELOG.md) e no [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): ensaio com a cópia `data\backups\20261005-190117` (aplicou a 116 numa cópia
+    restaurada, depois apagada); deploy com `-PularBackup`; `GET /api/health` ok e sem problemas; prova de fora com tudo como
+    esperado na segunda rodada (a primeira, logo após a subida, teve uma falha transitória em `/api/login`, 404 em vez de 429);
+    `/api/instances` 401 de fora e 403 com Host forjado; agente do notebook em `0.1.0+ac77742`; android-01, android-03 e
+    android-06 `online` com automação `ready` depois da readoção, sem reinício, reset ou login (03 e 06 estavam em `error`
+    desde a readoção do deploy 40, que dá 60 s e eles levam 65 a 75 s: item 29.151).
+  - `simulated` (suíte 41 sobre `ac77742c`, central em Idle): `scripts/tests` 672 passed; backend em SQLite 11990 passed e 13
+    skipped; frontend 1686 passed e build (o teste de data fixa do 29.149 passou); catracas 88 e 6; mypy 257, igual ao teto;
+    PostgreSQL dirigido nos 474 arquivos afetados, em duas partes, 10398 passed e 0 falhas (as duas falhas conhecidas do
+    29.139 sumiram); repetição dos 51 arquivos tocados pela anotação de tipo, 922 passed em SQLite e em PostgreSQL.
+  - `not_run`: percurso no navegador das telas do ensino (frente Portal, logo após o deploy); prova real do ensino num app de
+    teste (31.79).
+  - Plano-100: resultado da suíte 41 e cinco itens já integrados sem estado (31.72, 31.73, 31.78, 30.71, 31.93) aplicados
+    pelo mecanismo; IDs novos 28.54, 29.148, 31.107, 29.149, 29.150 e 31.108: 660 itens, 569 implementados. Conta nova desde
+    20:27Z, com política de economia (Sonnet por padrão, Opus só no ensino e numa leitora, ramo só de teste ou texto lido por
+    PR com a revisão automática do Codex).
 - **Deploy 40 no ar (05/10/2026, 20:37Z, central `61d431ce`, migração `115_receita_nao_aplicavel`, sem migração
   nova).** Suíte mínima, de uma junção só (`2bce3b1e` sobre `8ac140e0`), feita na troca de conta para pôr no ar o
   conserto da senha pela web: a conferência do site antes de digitar lia o primeiro nó com o identificador da barra de

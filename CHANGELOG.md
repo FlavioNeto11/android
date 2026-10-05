@@ -48,6 +48,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `PortaDoPlano.test.tsx` "mostra a validade dos sins do plano…" usava `2026-10-05T21:00Z` como instante futuro; às 21:00Z de hoje o sim passou a "vencido" e o teste falhou (determinístico, também em ramos que passavam antes). A validade agora é relativa ao relógio (6 h à frente; a renovação, 30 h).
 - Prova `simulated`: o arquivo sozinho, 22/22 em duas rodadas, em 05/10 depois das 21:00Z. Outras datas fixas próximas em testes (a conferir, sem mudança aqui): `ValidacaoTab.test.tsx` (`expira_em` em 06/10), `NovoPedido.test.tsx` (prazo em 09/10), `MetricasTab.test.tsx` (17/10).
 
+## 2026-10-05 — Deploy 41 (suíte 41: ensino, privacidade e consertos)
+
+- **Implantado** às 22:06Z: central em `ac77742c`, migração `116_ref_publico_do_fluxo` (nova, do 30.83), 16 pontas sobre `65452966`. Itens: 31.98, 31.101, 31.102, 31.76, 31.106, 30.79 (#439), 30.80 B, 30.81, 28.50, 29.146, 29.143, 28.52, 29.139, 29.140, 30.83 (fatias 1 a 3 e a junção com o 30.81) e 29.149; mais a anotação de tipo do 30.81 (`f907c138`).
+- Prova `real`: ensaio com a cópia `data\backups\20261005-190117` aplicando a 116 numa cópia restaurada; `GET /api/health` ok e sem problemas; prova de fora com tudo como esperado (`/api/instances` 401 de fora, 403 com Host forjado); agente do notebook em `0.1.0+ac77742`; android-01, 03 e 06 `online` com automação `ready` depois da readoção.
+- Prova `simulated` (suíte 41): `scripts/tests` 672 passed; backend em SQLite 11990 passed; frontend 1686 passed e build; catracas 88 e 6; mypy 257 igual ao teto; PostgreSQL dirigido nos 474 arquivos afetados, 10398 passed e 0 falhas (as duas falhas conhecidas do 29.139 sumiram); repetição dos 51 arquivos da anotação, 922 passed em SQLite e em PostgreSQL.
+- `not_run`: percurso no navegador das telas do ensino; prova real do ensino num app de teste (31.79).
+- Plano-100: resultado da suíte 41 e os cinco itens já integrados sem estado (31.72, 31.73, 31.78, 30.71, 31.93) aplicados; IDs novos 28.54, 29.148, 31.107, 29.149, 29.150 e 31.108 (660 itens, 569 implementados).
+
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
 - **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).
