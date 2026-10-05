@@ -7423,26 +7423,15 @@
   "31.40": {
    "id": "31.40",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "31.40 b implantado no deploy 28 (PR #263): Verdict.cobre + Cobertura (resource_id/texto/bounds), ainda_cobre decide pela árvore, um único juiz por limpeza sem elemento conhecido, step_done sem gesto recusado, receita desligada em etapa opcional. backend/tests/test_sobreposicao.py (5 testes novos). Tentativa real dd3a72 (04/10, android-09): o site exibiu verificação de conta, cancelada sem tocar, US$ 0,045; não volta àquele site.",
-   "blocker": "Prova real pendente: depois do deploy 29, mesmo comando público do braço ligado do 31.35 (limpeza do banner de cookies).",
-   "arquivos": [
-    "backend/app/taskqueue/executor.py",
-    "backend/app/taskqueue/scheduler.py",
-    "backend/app/planning/provider.py",
-    "backend/app/planning/prompts.py",
-    "backend/app/learning/domain/falhas.py"
-   ],
-   "testes": [
-    "backend/tests/test_sobreposicao.py",
-    "backend/tests/test_prompts_licoes.py"
-   ],
-   "grupo": "jev-suite-29",
-   "modelo": "claude-opus-5-5",
-   "esforco": "high",
+   "proof": "real",
+   "evidence": "Prova real em 05/10/2026, central WIN-7S2UASNLFOP, deploy 35 (d025b671), android-09 sem vínculo e sem conta, execução r-20261005071303-f24955 (lote:jev:31.40-r1, página pública de comércio), de 07:13:03Z a 07:15:20Z, US$ 0,1637 por costs.spent_usd (parou pela regra de 0,15 da ficha; teto da janela 0,30), 0 avisos ao dono. PROVADO: o juiz recusou com motivo sobreposicao; a limpeza foi inserida antes da etapa (plano v2, mecanismo do 31.36); a limpeza não aceitou nada (31.51): rodou em 2 s e registrou que não havia botão de recusar, fechar ou continuar. NÃO PROVADO: a limpeza fechar o diálogo e a etapa terminar comprovada (o banner não tem fechar na árvore; desfecho completed_with_issues, 0 de 1). Achados que viraram item: o ator tocou em aceitar cookies duas vezes (31.72); sobreposição venceu com causa dupla (31.73); a espera por texto levou 15,6 s e 40,9 s com 8 s pedidos (31.74). Relatório: .claude/handoffs/jev-31-40-janela-2026-10-05.md.",
+   "blocker": "As execuções 2 e 3 (site com banner de cookies) só rodam com o 31.72 no ar: o ator ainda aceita consentimento por conta própria.",
+   "grupo": "resultado-orquestradora-janela35c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:16:39+00:00"
+   "quando": "2026-10-05T07:25:21+00:00"
   },
   "31.41": {
    "id": "31.41",
@@ -8043,14 +8032,14 @@
    "id": "31.58",
    "status": "partial",
    "proof": "real",
-   "evidence": "04/10 23:36:34Z, scripts/latencia-por-etapa.py (só leitura) de 23:09:51Z a 23:36:34Z, checkout 0b5f7683: ator Sonnet 5 n=15 p50 2.351 ms p95 6.514 ms (base n=22, 2.027/4.207); parede normais n=3 p50 65,4 s p95 98,5 s (base n=10, 13,3/87,2). Arquivos jev-latencia-pos-deploy-32.{md,json}.",
-   "blocker": "Medido, inconclusivo contra a base (decisão da orquestradora, opção a): 3 provas de outra natureza contra uma bateria de 10; painel não conferido. Repetir de graça depois do 31.56, painel fechado.",
-   "grupo": "orquestrador-resultado-suite32-b",
+   "evidence": "Bateria real em 05/10/2026, central WIN-7S2UASNLFOP, deploy 35 (d025b671), android-12 (QA Messenger, conta de QA), lote:jev:31.58-1 a -10, de 06:58:03Z a 07:03:29Z: 10 de 10 completed, US$ 0,4157 por costs.spent_usd (base de 04/10: 0,3818; teto 0,60), 0 avisos ao dono, 0 aprovações (conferido pela orquestradora no banco, só leitura). Parede das normais p50 13,3 s para 15,7 s e p95 87,2 s para 75,0 s; ator por chamada p50 2.027 para 2.582 ms; na soma, tent_resto 73 para 121 s e tent_aparelho 8 para 21 s. MEDIDA CONTAMINADA: o runner do CI no central rodou pytest serial de um PR das 06:58:38Z em diante (execuções 2 a 10), e os jobs ocupavam o runner desde 06:33Z; os dois CIs foram cancelados às 07:06Z. Análise só de leitura (.claude/handoffs/jev-analise-31-58-2026-10-05.md): não é regressão do código; a releitura antes do toque de efeito (29.90) custa cerca de 2 s nos dois envios; o resto é carga do host (inferido: type_text 6,66 s contra 1,53 s, preparo da observação 2,3 a 3,0 s contra 0,4 a 0,6 s) e comportamento do ator em duas execuções. Relatório: .claude/handoffs/jev-latencia-31-58-2026-10-05.md.",
+   "blocker": "Falta a segunda bateria, limpa (lote:jev:31.58b, teto US$ 0,60), com a fila do CI vazia e o runner sem job; aprovada, espera a vez.",
+   "grupo": "resultado-orquestradora-janela35c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:55:48+00:00"
+   "quando": "2026-10-05T07:25:21+00:00"
   },
   "31.60": {
    "id": "31.60",
@@ -11322,6 +11311,16 @@
    ],
    "grupos": [
     "resultado-orquestradora-suite35"
+   ]
+  },
+  {
+   "quando": "2026-10-05T07:25:21+00:00",
+   "itens": [
+    "31.58",
+    "31.40"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela35c"
    ]
   }
  ]
