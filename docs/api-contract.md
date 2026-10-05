@@ -6457,3 +6457,15 @@ Mudanças aditivas; o painel não muda.
 - A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
   que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
 - **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).
+
+## Adendo v1.62 (05/10/2026; número da orquestradora; item 31.100) — o `save` do treinamento recusa marcador reservado no comando
+
+`POST /api/training/{session_id}/save` ganha um 400 novo, no formato do adendo v1.57 (`detail: {code, message}`):
+- `parametro_reservado`: o `command_template` usa `{instance_id}`, `{run_id}` ou `{account_label}`. No casamento do pedido
+  (`FlowStore._extract`) eles valem como texto literal, e o fluxo só casaria com quem digitasse as chaves. A mensagem
+  diz quais e sugere texto fixo ou um parâmetro próprio. Não termina com "Peça uma nova proposta à IA.": o comando é
+  editável na tela.
+- Muda uma regra do v1.57: antes o reservado no comando passava (`parametro_nao_declarado` não o contava). Declarado em
+  `parameters`, fora do comando, continua aceito: o plano o usa e a materialização o resolve.
+- **Prova:** `simulated` (`backend/tests/test_treino_validacao_do_salvar.py`).
+

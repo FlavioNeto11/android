@@ -112,6 +112,20 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
 - A revisão de PR é pedida PR a PR pela orquestradora; a regra automática do repositório fica desligada. Operação em `docs/operacao.md` § 5.
 - Prova `real` para a revisão: três PRs em 05/10, 566,87 créditos (US$ 5,67), 10 achados e 9 confirmados pelas frentes. Prova `not_run` para o agente de nuvem.
 
+## 2026-10-05 — 31.100: o salvar do treino recusa marcador reservado no comando (branch fix/31-100-placeholder-reservado-no-comando)
+
+- `training/skills.validar_proposta_para_salvar`: `{instance_id}`, `{run_id}` ou `{account_label}` no `command_template`
+  recusa com `parametro_reservado` (400, adendo v1.62). O `FlowStore._extract` os trata como texto literal, e o fluxo
+  só casaria com quem digitasse as chaves. Nos `parameters` do plano continuam aceitos. Achado da revisão automática do
+  #442, conferido pela Aprendizado.
+- Prova `simulated`: `tests/test_treino_validacao_do_salvar.py` (o caso na tabela de recusas, os três reservados pelo
+  nome, o reservado nos parâmetros que segue valendo; o teste que aceitava o reservado no comando ficou só com a chave
+  de catálogo). Real: `not_run`.
+- N1 da leitura do #444: o prompt da proposta (`planning/training.TRAINER_SYSTEM`) avisa que os três são do sistema e
+  que o salvar recusa; o 400 fica como rede. `test_prompt_da_proposta_proibe_o_marcador_reservado_no_comando` fixa a
+  frase e cada nome de `RESERVED`. Prova `simulated`: o arquivo e `test_arquitetura.py` (68 passed),
+  `@tests/catracas.txt` (88 passed). `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
+
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 
 - Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.

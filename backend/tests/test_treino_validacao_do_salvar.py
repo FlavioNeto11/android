@@ -41,6 +41,10 @@ def _param_nao_declarado(p: dict[str, Any]) -> None:
     p["command_template"] = COMANDO + " sobre {assunto}"
 
 
+def _reservado_no_comando(p: dict[str, Any]) -> None:
+    p["command_template"] = COMANDO + " em {account_label}"                # 31.100: casaria só com as chaves digitadas
+
+
 def _sem_chave(p: dict[str, Any]) -> None:
     p["steps"][1]["key"] = ""
 
@@ -122,6 +126,7 @@ CASOS: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
     ("comando_generico", _comeca_por_parametro),
     ("parametro_fora_do_comando", _param_fora),
     ("parametro_nao_declarado", _param_nao_declarado),
+    ("parametro_reservado", _reservado_no_comando),
     ("etapa_invalida", _sem_chave),
     ("etapa_invalida", _chave_repetida),
     ("etapa_invalida", _sem_titulo_nem_objetivo),
@@ -156,7 +161,7 @@ async def test_save_recusa_com_400_e_sem_escrever_nada(harness: Harness, codigo:
         await st.skills.save(sid, proposal=proposta, profile_ids=[], group_ids=[])
     assert erro.value.code == codigo and erro.value.status == 400, (erro.value.code, erro.value.message)
     assert erro.value.message.strip()
-    assert erro.value.message.endswith("Peça uma nova proposta à IA.") == (codigo not in ("comando_generico", "parametro_invalido"))
+    assert erro.value.message.endswith("Peça uma nova proposta à IA.") == (codigo not in ("comando_generico", "parametro_invalido", "parametro_reservado"))
     assert _rastro(st, sid) == antes                      # nem fluxo, nem receita, nem a sessão virou "saved"
     assert st.db.scalar("SELECT COUNT(*) FROM flow_required_apps") == 0
 
@@ -191,14 +196,34 @@ async def test_rota_devolve_400_com_o_codigo(harness: Harness) -> None:
     assert r.status_code == 400 and r.json()["detail"]["code"] == "parametro_fora_do_comando", r.text
 
 
-def test_validador_aceita_marcador_reservado_e_chave_de_catalogo() -> None:
+def test_validador_aceita_chave_de_catalogo() -> None:
     p = _valida()
-    p["command_template"] = "responda a DM de {contato} com {mensagem} em {account_label}"
     p["steps"][1]["capability"] = "SEND_DM"
     p["steps"][1]["side_effect"] = True
     p["steps"][1]["postcondition"] = {"kind": "model_judged", "value": "", "description": ""}
     saida, avisos = validar_proposta_para_salvar(p, {1, 2, 3, 4}, etapa_do_catalogo=lambda st: st.get("capability") == "SEND_DM")
     assert avisos == [] and saida["steps"][1]["inputs"] == [2, 3] and saida["discarded"][0]["seq"] == 4
+
+
+@pytest.mark.parametrize("reservado", ["instance_id", "run_id", "account_label"])
+def test_marcador_reservado_no_comando_e_recusado_com_o_nome(reservado: str) -> None:
+    """31.100: `FlowStore._extract` trata o reservado como texto literal; no comando, o fluxo só casaria com quem
+    digitasse as chaves. A mensagem diz qual e não manda pedir outra proposta (o comando é editável na tela)."""
+    p = _valida()
+    p["command_template"] = f"{COMANDO} em {{{reservado}}}"
+    with pytest.raises(TrainingError) as erro:
+        validar_proposta_para_salvar(p, {1, 2, 3, 4})
+    assert erro.value.code == "parametro_reservado" and erro.value.status == 400
+    assert "{" + reservado + "}" in erro.value.message and not erro.value.message.endswith("Peça uma nova proposta à IA.")
+
+
+def test_marcador_reservado_nos_parametros_continua_valendo() -> None:
+    """31.100, o outro lado: declarado em `parameters` (e fora do comando) o reservado segue aceito; o plano o usa e o
+    `materialize` o resolve."""
+    p = _valida()
+    p["parameters"].append({"name": "account_label", "example": "", "description": ""})
+    saida, avisos = validar_proposta_para_salvar(p, {1, 2, 3, 4})
+    assert avisos == [] and [x["name"] for x in saida["parameters"]][-1] == "account_label"
 
 
 def test_padrao_da_chave_e_o_do_plan_step() -> None:
@@ -297,3 +322,14 @@ async def test_comando_que_nao_e_texto_vira_400(harness: Harness) -> None:
     with pytest.raises(TrainingError) as erro:
         await st.skills.save(sid, proposal=_com(command_template=12), profile_ids=[], group_ids=[])
     assert erro.value.code == "invalid_command" and erro.value.status == 400
+
+
+def test_prompt_da_proposta_proibe_o_marcador_reservado_no_comando() -> None:
+    """N1 do #444: a IA é avisada ANTES de propor; o `parametro_reservado` do salvar fica como rede, não como o 1º aviso.
+    Fixa a frase e cada nome de `RESERVED`, para um nome novo lá não ficar fora do prompt."""
+    from app.planning.training import TRAINER_SYSTEM  # noqa: PLC0415
+    from app.taskqueue.flows import RESERVED  # noqa: PLC0415
+
+    assert "são do sistema e o salvar recusa" in TRAINER_SYSTEM
+    for nome in sorted(RESERVED):
+        assert "{" + nome + "}" in TRAINER_SYSTEM
