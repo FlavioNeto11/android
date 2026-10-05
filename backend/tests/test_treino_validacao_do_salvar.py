@@ -181,7 +181,8 @@ async def test_proposta_valida_continua_salvando_e_avisa_etapa_sem_efeito_sem_po
     proposta["steps"][0]["postcondition"] = {"kind": "model_judged", "value": "", "description": ""}   # sem efeito: aceita
     salvo = await st.skills.save(sid, proposal=proposta, profile_ids=[], group_ids=[])
     assert salvo["flow_id"] and st.training.get(sid)["status"] == "saved"
-    assert len(salvo["warnings"]) == 1 and "Etapa abrir" in salvo["warnings"][0]
+    assert len(salvo["warnings"]) == 2 and "Etapa abrir" in salvo["warnings"][0]
+    assert "persona" in salvo["warnings"][1]               # 30.81: gravado sem persona, não vale até a prova
     plano = st.db.one("SELECT plan FROM flows WHERE id=?", (salvo["flow_id"],))["plan"]
     assert "fazer abrir" in plano                          # o objetivo serviu de descrição, como antes
 

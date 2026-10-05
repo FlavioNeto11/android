@@ -149,7 +149,15 @@ def _entrada(e: EntradaDoLivro, servico: LearningService | None = None, saude: S
             "por_que_nao_publica": None if motivo is None else {
                 "codigo": motivo.codigo, "espera_o_dono": motivo.espera_o_dono, "detalhe": motivo.detalhe},
             "saude": _saude(saude), "nasceu_de": e.nasceu_de, "nasceu_em": e.nasceu_em, "reaprendido": _reaprendido(e.reaprendido),
-            **_do_legado(e, legado)}
+            **_do_legado(e, legado), **_da_espera(e, servico)}
+
+
+def _da_espera(e: EntradaDoLivro, servico: LearningService | None) -> JsonObject:
+    """30.81, só no fluxo: `espera_a_pessoa`, o motivo literal quando o ensinado espera a decisão de uma pessoa (o
+    "Confirmar que fica" vale para ele), ou `null`."""
+    if servico is None or e.kind is not LivroKind.FLUXO:
+        return {}
+    return {"espera_a_pessoa": servico.espera_a_pessoa(e)}
 
 
 def _do_legado(e: EntradaDoLivro, legado: LegadoDecidido | None) -> JsonObject:

@@ -55,7 +55,7 @@ def build(tmp_path: Path) -> tuple[SocialService, SocialRepository, PolicyEngine
     return svc, repo, PolicyEngine(repo), db
 
 
-def perfil(svc: SocialService, username: str = "mariana.costa91182", instance: str = "android-02") -> str:
+def perfil(svc: SocialService, username: str = "luciana.bastos73519", instance: str = "android-02") -> str:
     return svc.create_profile(ProfileCreate(username=username, password=SENHA, instance_id=instance)).id
 
 
@@ -329,7 +329,7 @@ def test_limite_por_execucao_conta_so_o_que_saiu_desta_execucao(tmp_path: Path) 
 
 def test_limites_de_um_perfil_nao_afetam_o_outro(tmp_path: Path) -> None:
     svc, repo, policies, _ = build(tmp_path)
-    lucas = perfil(svc, "lucas.almeida9484", "android-01")
+    lucas = perfil(svc, "tadeu.quintela4821", "android-01")
     mariana = perfil(svc)
     for pid in (lucas, mariana):
         repo.update_profile(pid, {"automation_policy": '{"limits": {"likes_per_hour": 2, '
@@ -388,7 +388,7 @@ class _FleetSettings:
 
 def test_frota_bloqueia_a_conta_seguinte_apos_o_teto_de_contas_no_mesmo_alvo(tmp_path: Path) -> None:
     svc, repo, _, db = build(tmp_path)
-    lucas = perfil(svc, "lucas.almeida9484", "android-01")
+    lucas = perfil(svc, "tadeu.quintela4821", "android-01")
     mariana = perfil(svc)
     for pid in (lucas, mariana):
         repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0}}'})
@@ -406,7 +406,7 @@ def test_frota_bloqueia_a_conta_seguinte_apos_o_teto_de_contas_no_mesmo_alvo(tmp
 
 def test_frota_espaca_acoes_de_contas_diferentes_sobre_o_mesmo_alvo(tmp_path: Path) -> None:
     svc, repo, _, db = build(tmp_path)
-    lucas = perfil(svc, "lucas.almeida9484", "android-01")
+    lucas = perfil(svc, "tadeu.quintela4821", "android-01")
     mariana = perfil(svc)
     for pid in (lucas, mariana):
         repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0}}'})
@@ -476,8 +476,8 @@ def test_execucao_junta_os_textos_e_decide_em_lote(tmp_path: Path) -> None:
     _etapa_com_conteudo(db)
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
                " VALUES ('run-9','k9','outra','execute','running',1,'[]','2026-09-17T10:00:00Z')")
-    p1 = social.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA)).id
-    p2 = social.create_profile(ProfileCreate(username="mariana.costa91182", password=SENHA)).id
+    p1 = social.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA)).id
+    p2 = social.create_profile(ProfileCreate(username="luciana.bastos73519", password=SENHA)).id
     a1 = store.open(profile_id=p1, capability="CREATE_COMMENT", summary="Comentar", target="@ana",
                     content="texto do lucas", run_id="run-1")
     a2 = store.open(profile_id=p2, capability="CREATE_COMMENT", summary="Comentar", target="@ana",
@@ -943,8 +943,8 @@ async def test_cada_perfil_escreve_o_seu_texto_a_partir_do_mesmo_briefing(harnes
                " VALUES ('run-p','kp','elogiar','execute','running',1,'[\"android-01\",\"android-02\"]',"
                "'2026-09-17T10:00:00Z')")
     escritos: dict[str, str] = {}
-    vozes = (("android-01", "lucas.almeida9484", "Direto e sóbrio, sem firula"),
-             ("android-02", "mariana.costa91182", "Acolhedor e caloroso, próximo"))
+    vozes = (("android-01", "tadeu.quintela4821", "Direto e sóbrio, sem firula"),
+             ("android-02", "luciana.bastos73519", "Acolhedor e caloroso, próximo"))
     for iid, usuario, tom in vozes:
         db.execute("UPDATE instances SET app_id='ig' WHERE id=?", (iid,))
         pid = state.social.create_profile(ProfileCreate(username=usuario, password=SENHA, instance_id=iid)).id
@@ -1025,7 +1025,7 @@ async def test_dois_aparelhos_escrevendo_juntos_ainda_enxergam_o_texto_um_do_out
                " VALUES ('run-c','kc','elogiar','execute','running',1,'[\"android-01\",\"android-02\"]',"
                "'2026-09-17T10:00:00Z')")
     portas = []
-    for iid, usuario in (("android-01", "lucas.almeida9484"), ("android-02", "mariana.costa91182")):
+    for iid, usuario in (("android-01", "tadeu.quintela4821"), ("android-02", "luciana.bastos73519")):
         db.execute("UPDATE instances SET app_id='ig' WHERE id=?", (iid,))
         pid = state.social.create_profile(ProfileCreate(username=usuario, password=SENHA, instance_id=iid)).id
         state.social.set_policy(pid, ProfilePolicyPatch(capabilities={"CREATE_COMMENT": "autonomous"}))
@@ -1072,7 +1072,7 @@ async def test_o_texto_aprovado_e_o_texto_que_vai_ser_digitado(harness: Any) -> 
     db = state.db
     db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
     db.execute("UPDATE instances SET app_id='ig' WHERE id='android-01'")
-    pid = state.social.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA,
+    pid = state.social.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA,
                                                     instance_id="android-01")).id
     persona = state.social.create_persona(PersonaCreate(name="lucas", traits=PersonaTraits(tone="Direto")))
     state.social.update_profile(pid, ProfilePatch(persona_id=persona.id))
@@ -1183,7 +1183,7 @@ async def test_orcamento_de_ia_esgotado_diz_o_que_fazer_e_nao_gasta_nada(harness
     db = state.db
     db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
     db.execute("UPDATE instances SET app_id='ig' WHERE id='android-01'")
-    pid = state.social.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA,
+    pid = state.social.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA,
                                                     instance_id="android-01")).id
     state.social.set_policy(pid, ProfilePolicyPatch(capabilities={"CREATE_COMMENT": "autonomous"}))
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
@@ -1219,7 +1219,7 @@ async def test_porta_de_politica_cria_aprovacao_e_segura_a_etapa(harness: Any) -
     db = state.db
     db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
     db.execute("UPDATE instances SET app_id='ig' WHERE id='android-01'")
-    pid = state.social.create_profile(ProfileCreate(username="mariana.costa91182", password=SENHA,
+    pid = state.social.create_profile(ProfileCreate(username="luciana.bastos73519", password=SENHA,
                                                     instance_id="android-01")).id
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
                " VALUES ('run-x','kx','responda','execute','running',1,'[\"android-01\"]','2026-09-17T10:00:00Z')")
@@ -1263,7 +1263,7 @@ async def test_confirmar_concluido_tambem_fecha_a_interacao_no_historico(harness
     que alimenta relacionamento, conversa e memória. Confirmar a etapa precisa fechar a interação junto."""
     state = harness.state
     db = state.db
-    pid = state.social.create_profile(ProfileCreate(username="mariana.costa91182", password=SENHA,
+    pid = state.social.create_profile(ProfileCreate(username="luciana.bastos73519", password=SENHA,
                                                     instance_id="android-01")).id
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
                " VALUES ('run-c','kc','enviar','execute','running',1,'[\"android-01\"]','2026-09-17T10:00:00Z')")
@@ -1339,7 +1339,7 @@ async def test_rotas_de_catalogo_politica_e_auditoria(tmp_path: Path) -> None:
             assert (await c.get("/api/capabilities", params={"package": "com.pocqa.messenger"})).json() == []
 
             pid = (await c.post("/api/instagram/profiles",
-                                json={"username": "mariana.costa91182", "password": SENHA})).json()["id"]
+                                json={"username": "luciana.bastos73519", "password": SENHA})).json()["id"]
 
             politica = (await c.get(f"/api/instagram/profiles/{pid}/policy")).json()
             assert politica["capabilities"]["LIKE_POST"] == "autonomous"

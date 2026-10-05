@@ -3,7 +3,7 @@
 Quatro valores. `not_proved` é a tela DESMENTINDO a etapa (uma marca de falha visível); `unknown` é não dar para
 afirmar nada — quem julga, então, é o verificador de sempre. `pending` é o efeito ainda a caminho ("Sending…" na
 tela): não desmente, mas também não deixa ninguém afirmar — nem a prova local nem o modelo, que nem deve ser
-perguntado; quem verifica espera a marca sumir (ADR-055: em 19/09 a DM da beatriz foi dada por enviada com
+perguntado; quem verifica espera a marca sumir (ADR-055: em 19/09 a DM da ciclana foi dada por enviada com
 "Sending…" congelado). Falha ou incerteza nunca viram sucesso: só `proved` fecha a etapa sem o modelo.
 """
 from __future__ import annotations

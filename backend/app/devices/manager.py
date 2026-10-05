@@ -177,10 +177,12 @@ def sem_snapshot(porque: str) -> str:
 
 
 class ControlError(Exception):
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, **detalhes: str | None):
         super().__init__(message)
         self.code = code
         self.message = message
+        #: 29.143: o que o painel mostra junto da recusa (`controlled_by_other`: `dono` e `desde`); vai ao corpo do 409.
+        self.detalhes = detalhes
 
 
 class InstanceBusy(Exception):
@@ -209,8 +211,8 @@ class Observation:
     package: str | None
     sensitive: bool
     # Adendo v0.20, contrato C1 (todos opcionais): quando a hierarquia e a imagem foram lidas (`image_at=None` = sem
-    # imagem), POR QUE não há imagem (`sensitive` | `policy`; omitir não é falha de captura), de onde veio e de
-    # qual geração do runtime do aparelho.
+    # imagem), POR QUE não há imagem (`sensitive` | `policy`: omitir não é falha de captura; `capture_failed`: a
+    # aquisição FALHOU e quem chamou aceitou seguir só pela árvore, 31.76), de onde veio e de qual geração do runtime.
     tree_at: str | None = None
     image_at: str | None = None
     image_omitted: str | None = None
@@ -221,6 +223,11 @@ class Observation:
     # `None` = não medido (observação montada fora de `observe`, dublê de teste); sem imagem, `ms_imagem` fica `None`.
     ms_arvore: float | None = None
     ms_imagem: float | None = None
+    # Item 31.76: só com `image_omitted == "capture_failed"`. `captura_falha` é "Tipo: mensagem" do erro (nunca texto de
+    # tela); `captura_excedeu_prazo` diz que foi `DriverTimeout`, ou seja, o screencap PODE seguir preso no executor do
+    # aparelho, e a próxima leitura só vale depois de ele (`DeviceExecutor.drain`) ficar livre.
+    captura_falha: str | None = None
+    captura_excedeu_prazo: bool = False
 
 
 @dataclass(slots=True)
@@ -443,6 +450,10 @@ class DeviceRuntime:
         self.lease_expires_mono: float = 0
         self.takeover_requested = False
         self.pending_lease_id: str | None = None
+        #: 29.143: de quem é o lease (e o pedido pendente): o `por` de quem o recebeu (o operador da sessão, ou `panel`).
+        #: Não persiste, como o próprio lease.
+        self.lease_dono: str | None = None
+        self.pending_dono: str | None = None
         #: 14.13: o que o log já conta deste aparelho, a assinatura material do último `instance.updated` e o controle
         #: do último `control.changed` ou `instance.updated` (`devices/publicacao.py`). None = nada ainda: a primeira
         #: publicação persiste.
@@ -596,6 +607,9 @@ class DeviceManager:
         #: é o que cumpre a promessa do texto de desafio (`textos.desafio` do `sessao.yaml`: "devolva o controle: a verificação recomeça sozinha"),
         #: hoje só palavra (achado #106).
         self.on_control_released: Callable[[DeviceRuntime], None] = lambda rt: None
+        #: 29.143: uma pessoa TOMOU o controle de outra (a tomada explícita). Recebe (aparelho, quem tomou, de quem). O
+        #: estado encerra a gravação viva de quem ensinava, sem salvar nem descartar; chamado ANTES do lease novo.
+        self.on_lease_taken: Callable[[DeviceRuntime, str, str], None] = lambda rt, novo, antigo: None
         #: Modo treinamento (item 13.1): recebe cada entrada manual já executada, com a árvore da tela de ANTES.
         self.on_training_input: Callable[[DeviceRuntime, dict[str, Any], Any], None] | None = None
         #: Aprendizado (ADR-054, A2): uma pessoa pediu o aparelho com a IA no meio de uma etapa. Só os ids — nem
@@ -3211,7 +3225,7 @@ class DeviceManager:
         if (travada := self.conta_travada_em(rt.id)) is not None:
             # Quarentena (ADR-055): conta travada logada. O painel e o agente já recusam `start` sem a confirmação
             # da pessoa (`despacho._precheck`); o emulador DESTA máquina, que o rodízio liga direto, recusa aqui —
-            # senão o aparelho do felipe subiria sozinho por causa de uma tarefa que a porta bloquearia depois.
+            # senão o aparelho da conta travada subiria sozinho por causa de uma tarefa que a porta bloquearia depois.
             rt.start_backoff_until = time.monotonic() + 600
             self.marcar_atencao(rt, f"Em quarentena: a conta @{travada} está travada e logada neste aparelho; ele não "
                                     "é ligado automaticamente. Precisa do dono.")
@@ -3907,7 +3921,8 @@ class DeviceManager:
         return visto is not None and time.monotonic() - visto[1] <= self.VALIDADE_DA_ATIVIDADE_S
 
     async def observe(self, rt: DeviceRuntime, *, timeout: float,
-                      imagem: bool | Callable[[UiTree], bool] = True, lado_max: int | None = None) -> Observation:
+                      imagem: bool | Callable[[UiTree], bool] = True, lado_max: int | None = None,
+                      tolerar_falha_da_imagem: bool = False) -> Observation:
         """Observação: hierarquia PRIMEIRO, imagem só quando pedida (contrato C1 do adendo v0.20).
 
         `imagem`: `True` (padrão, o comportamento de antes: imagem sempre, JPEG cheio e prévia publicada), `False`
@@ -3919,6 +3934,12 @@ class DeviceManager:
         imagem por escolha de quem chamou, `image_omitted="policy"`. Omitir NÃO é falha de captura. Sem imagem, a
         largura e a altura vêm do último frame desta geração na orientação que a hierarquia declara, ou de
         `wm size` — nunca de outro aparelho; sem nenhuma dessas, a imagem é adquirida (é o jeito de saber).
+
+        `tolerar_falha_da_imagem` (31.76, desligado por padrão; só o laço do ator o liga): a árvore já foi lida e o
+        tamanho da tela se sabe SEM a imagem (as dimensões lembradas desta geração) — então a falha da aquisição
+        (`DriverTimeout` ou `FalhaDeLeitura`) não derruba a observação: volta a árvore, `jpeg=None` e
+        `image_omitted="capture_failed"`, e a falha entra na métrica de captura. Sem dimensões conhecidas, ou com o
+        parâmetro desligado, a exceção sobe como sempre. Captura que falhou nunca é prova nem sucesso de nada.
         """
         ex = rt.executor
         t0 = time.perf_counter()
@@ -3938,8 +3959,22 @@ class DeviceManager:
             quer = True
         if quer:
             t_imagem = time.perf_counter()
-            com_imagem = await self._observar_imagem(rt, tree, pkg, tree_at, timeout=timeout, lado_max=lado_max,
-                                                     previa_sempre=imagem is True)
+            try:
+                com_imagem = await self._observar_imagem(rt, tree, pkg, tree_at, timeout=timeout, lado_max=lado_max,
+                                                         previa_sempre=imagem is True)
+            except (DriverTimeout, FalhaDeLeitura) as exc:
+                lembradas = self._dimensoes_lembradas(rt, xml) if tolerar_falha_da_imagem else None
+                if lembradas is None:
+                    raise
+                # Só a métrica: `rt.capture_failures` é a série da PRÉVIA do painel (estado do stream e recuo do
+                # intervalo) e só zera quando a prévia captura de novo; a observação nunca mexeu nela.
+                metricas.contar("captura.total", origem="observacao", resultado="falha")
+                return Observation(frame_id=self._novo_frame_id(rt), ts=tree_at, width=lembradas[0],
+                                   height=lembradas[1], jpeg=None, tree=tree, package=pkg, sensitive=tree.sensitive,
+                                   tree_at=tree_at, image_at=None, image_omitted="capture_failed",
+                                   runtime_gen=rt.geracao, ms_arvore=ms_arvore,
+                                   captura_falha=f"{type(exc).__name__}: {exc}"[:300],
+                                   captura_excedeu_prazo=isinstance(exc, DriverTimeout))
             com_imagem.ms_arvore, com_imagem.ms_imagem = ms_arvore, (time.perf_counter() - t_imagem) * 1000
             return com_imagem
         if dims is not None:
@@ -4008,7 +4043,10 @@ class DeviceManager:
         """A imagem de uma observação que saiu só com a árvore, quando a necessidade aparece DEPOIS (a receita
         divergiu; o verificador vai julgar pela visão). Mesma árvore, imagem adquirida em seguida pelo mesmo
         executor, sem ação no meio. Tela sensível — nesta árvore ou numa leitura mais nova — continua sem imagem."""
-        if obs.image_omitted != "policy" or self._previa_sensivel(rt) or rt.executor.em_trecho_sensivel:
+        # `capture_failed` entra: quem JULGA pela imagem (verificador, evidência) não aceita a falha tolerada do laço do
+        # ator, e tenta de novo — sem tolerância, de modo que uma segunda falha sobe como sempre (31.76).
+        if (obs.image_omitted not in ("policy", "capture_failed") or self._previa_sensivel(rt)
+                or rt.executor.em_trecho_sensivel):
             return obs
         t_imagem = time.perf_counter()
         completa = await self._observar_imagem(rt, obs.tree, obs.package, obs.tree_at or obs.ts, timeout=timeout,
@@ -4123,9 +4161,9 @@ class DeviceManager:
             rt.dimensoes, rt.dimensoes_geracao = {}, rt.geracao
         rt.dimensoes["landscape" if w > h else "portrait"] = (w, h)
 
-    async def _dimensoes_sem_imagem(self, rt: DeviceRuntime, xml: str, *, timeout: float) -> tuple[int, int] | None:
-        """Tamanho da tela SEM imagem (contrato C1): o do último frame desta geração na orientação que a própria
-        hierarquia declara, ou `wm size`. `None` = não se sabe, e quem chamou adquire a imagem."""
+    def _dimensoes_lembradas(self, rt: DeviceRuntime, xml: str) -> tuple[int, int] | None:
+        """O que `_dimensoes_sem_imagem` sabe SEM tocar no aparelho: o último frame desta geração, na orientação que a
+        hierarquia declara. Sem chamada ao executor — é o que serve quando ele pode estar preso (31.76)."""
         orientacao = _orientacao_da_hierarquia(xml)
         conhecidas = rt.dimensoes if rt.dimensoes_geracao == rt.geracao else {}
         if orientacao is not None:
@@ -4137,6 +4175,15 @@ class DeviceManager:
                 return h, w
         elif len(conhecidas) == 1:                # sem rotação na hierarquia: só vale se só uma orientação foi vista
             return next(iter(conhecidas.values()))
+        return None
+
+    async def _dimensoes_sem_imagem(self, rt: DeviceRuntime, xml: str, *, timeout: float) -> tuple[int, int] | None:
+        """Tamanho da tela SEM imagem (contrato C1): o do último frame desta geração na orientação que a própria
+        hierarquia declara, ou `wm size`. `None` = não se sabe, e quem chamou adquire a imagem."""
+        lembradas = self._dimensoes_lembradas(rt, xml)
+        if lembradas is not None:
+            return lembradas
+        orientacao = _orientacao_da_hierarquia(xml)
         if orientacao is None:
             return None
         fisico = await self._wm_size(rt, timeout=timeout)
@@ -4183,36 +4230,62 @@ class DeviceManager:
         if rt.control != ControlOwner.ai:
             return
         if rt.takeover_requested and rt.pending_lease_id:
-            self._grant_user(rt, rt.pending_lease_id)
+            self._grant_user(rt, rt.pending_lease_id, dono=rt.pending_dono or "panel")
         else:
             rt.control, rt.control_since = ControlOwner.none, None
             self._control_event(rt, "IA liberou o aparelho")
 
-    def _grant_user(self, rt: DeviceRuntime, lease_id: str) -> None:
+    def _grant_user(self, rt: DeviceRuntime, lease_id: str, *, dono: str,
+                    mensagem: str = "Controle manual concedido ao usuário", **extra: str) -> None:
         rt.control, rt.control_since = ControlOwner.user, now_iso()
         rt.lease_id, rt.pending_lease_id, rt.takeover_requested = lease_id, None, False
+        rt.lease_dono, rt.pending_dono = dono, None
         rt.training_session_id = None              # gravação só começa depois do controle (training.start)
         rt.lease_expires_mono = time.monotonic() + MANUAL_LEASE_TTL_S
         rt.attention = "Controle manual ativo — a execução automática deste aparelho está suspensa."
-        self._control_event(rt, "Controle manual concedido ao usuário")
+        self._control_event(rt, mensagem, **extra)
 
-    def _control_event(self, rt: DeviceRuntime, message: str) -> None:
+    def _control_event(self, rt: DeviceRuntime, message: str, **extra: str) -> None:
         self.bus.emit("control.changed", f"{rt.id}: {message}", instance_id=rt.id,
-                      data={"instance_id": rt.id, "control": rt.control.value, "pending": rt.takeover_requested})
+                      data={"instance_id": rt.id, "control": rt.control.value, "pending": rt.takeover_requested,
+                            **extra})
         # 14.13: o fato do controle já está no log; o DTO que segue só vai persistido se algo MAIS mudou.
         rt.controle_anunciado = (rt.control.value, rt.takeover_requested)
         self.publish(rt)
 
-    def request_control(self, rt: DeviceRuntime, *, por: str | None = None) -> tuple[str, str]:
-        """`por`: quem pediu (a rota passa o autor da sessão), levado ao sinal `tomou_controle` (ADR-054)."""
+    def request_control(self, rt: DeviceRuntime, *, por: str | None = None, tomar: bool = False) -> tuple[str, str]:
+        """`por`: quem pediu (a rota passa o autor da sessão), levado ao sinal `tomou_controle` (ADR-054) e, desde o
+        29.143, dono do lease. A mesma pessoa (outra aba) recebe o mesmo lease, como antes. Outra pessoa recebe 409
+        `controlled_by_other` dizendo quem controla, nunca o lease calado: com ele, quem só olhava podia tocar, parar ou
+        descartar a gravação de quem ensina. `tomar=True` é a tomada explícita: lease NOVO, o antigo deixa de valer, e a
+        gravação viva de quem ensinava é encerrada (sem salvar nem descartar: a revisão segue com ela).
+
+        Limite: sem sessão todo chamador é `panel`, e entre eles não há como distinguir; `panel` e um operador com
+        sessão se recusam um ao outro."""
+        quem = por or "panel"
         if rt.control == ControlOwner.user and rt.lease_id:
-            rt.lease_expires_mono = time.monotonic() + MANUAL_LEASE_TTL_S
-            return "granted", rt.lease_id
+            dono = rt.lease_dono or "panel"
+            if quem == dono:
+                rt.lease_expires_mono = time.monotonic() + MANUAL_LEASE_TTL_S
+                return "granted", rt.lease_id
+            if not tomar:
+                raise ControlError("controlled_by_other",
+                                   f"{dono} está no controle de {rt.id} desde {rt.control_since}; para assumir, use a "
+                                   "tomada explícita.", dono=dono, desde=rt.control_since)
+            self.on_lease_taken(rt, quem, dono)
+            lease = new_token()
+            self._grant_user(rt, lease, dono=quem, mensagem=f"{quem} tomou o controle de {dono}",
+                             tomado_por=quem, tomado_de=dono)
+            return "granted", lease
         if rt.control == ControlOwner.ai:
             # a IA termina a ação em andamento e cede num ponto seguro
+            if rt.pending_lease_id and quem != (rt.pending_dono or "panel"):
+                dono = rt.pending_dono or "panel"
+                raise ControlError("controlled_by_other", f"{dono} já pediu o controle de {rt.id}; aguardando a IA.",
+                                   dono=dono, desde=None)
             primeiro_pedido = not rt.pending_lease_id
             pendente = rt.pending_lease_id or new_token()
-            rt.pending_lease_id = pendente
+            rt.pending_lease_id, rt.pending_dono = pendente, quem
             rt.takeover_requested = True
             self._control_event(rt, "Usuário pediu o controle; aguardando a IA concluir a ação atual")
             atual = rt.current
@@ -4223,12 +4296,12 @@ class DeviceManager:
                        TomadaDeControle(rt.id, atual.run_id, atual.objective_id, atual.step_id, quem=por))
             return "pending", pendente
         lease = new_token()
-        self._grant_user(rt, lease)
+        self._grant_user(rt, lease, dono=quem)
         return "granted", lease
 
     def release_control(self, rt: DeviceRuntime, lease_id: str) -> None:
         if rt.takeover_requested and rt.pending_lease_id == lease_id:
-            rt.takeover_requested, rt.pending_lease_id = False, None
+            rt.takeover_requested, rt.pending_lease_id, rt.pending_dono = False, None, None
             self._control_event(rt, "Pedido de controle cancelado")
             return
         if rt.control != ControlOwner.user or rt.lease_id != lease_id:
@@ -4236,7 +4309,7 @@ class DeviceManager:
         self._end_user_control(rt, "Usuário devolveu o controle; a IA vai observar a tela novamente antes de agir")
 
     def _end_user_control(self, rt: DeviceRuntime, message: str | None) -> None:
-        rt.control, rt.control_since, rt.lease_id = ControlOwner.none, None, None
+        rt.control, rt.control_since, rt.lease_id, rt.lease_dono = ControlOwner.none, None, None, None
         # Fim do controle é fim da gravação. Se o encerramento no gravador falhar (state.py engole), o id preso valeria
         # a folga do quadro velho no PRÓXIMO controle, fora de gravação.
         rt.training_session_id = None

@@ -25,7 +25,7 @@ from app.taskqueue.executor import FRACAO_DA_SOBREPOSICAO, sobreposicao_vale
 
 from .conftest import Harness
 from .fake_device import Node
-from .test_sobreposicao import TERMINAIS, _juiz_com_ref, _limpeza
+from .test_sobreposicao import TERMINAIS, _juiz_com_ref, _limpeza, _mensagem_ja_entregue
 
 
 def _no(texto: str, b: tuple[int, int, int, int], *, rid: str = "", classe: str = "android.view.View",
@@ -210,6 +210,7 @@ def _area(e: Any) -> int:
 async def _rodar(harness: Harness, escolher: Any) -> Any:
     harness.pular_o_tempo()
     harness.encurtar_verificacao(1.5)
+    _mensagem_ja_entregue(harness)                    # 29.139: o "coberta" do 1º julgamento cai na tela final
     _juiz_citando(harness.ai.inner, "verify_sent", escolher)
     run = harness.run(["android-01"])
     await harness.wait_run(run.id, statuses=TERMINAIS)

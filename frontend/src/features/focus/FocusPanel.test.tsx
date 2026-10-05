@@ -659,17 +659,17 @@ describe('FocusPanel — painel do Modo treinamento (31.80, 31.84, 31.85, 31.86)
     expect(backend.callsTo('POST', /\/input$/)[0]!.body).not.toHaveProperty('clear_first');
   });
 
-  it('31.85: 409 stale_frame durante a gravação vira "N entrada(s) recusada(s): refaça" na barra', async () => {
+  it('31.85: 409 stale_frame durante a gravação vira "N entradas recusadas: refaça" na barra', async () => {
     comGravacao();
     backend.on('POST', /\/input$/, () => apiError(409, 'stale_frame', 'A tela mudou.'));
     const el = await renderFocus(aparelho());
     await aguardarQuadro(el);
     await waitFor(() => expect(text(el)).toContain('Gravando: Responder a DM'));
-    expect(text(el)).not.toContain('recusada(s)');
+    expect(text(el)).not.toContain('recusada');
     await click(byRole('button', /^Enter$/, el));
-    await waitFor(() => expect(text(el)).toContain('1 entrada(s) recusada(s): refaça'));
+    await waitFor(() => expect(text(el)).toContain('1 entrada recusada: refaça'));
     await click(byRole('button', /^Enter$/, el));
-    await waitFor(() => expect(text(el)).toContain('2 entrada(s) recusada(s): refaça'));
+    await waitFor(() => expect(text(el)).toContain('2 entradas recusadas: refaça'));
   });
 
   it('31.85: enquanto a entrada está em voo, "Enviando ao aparelho…" aparece (aria-live) e some ao responder', async () => {

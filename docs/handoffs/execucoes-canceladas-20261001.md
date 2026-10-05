@@ -18,7 +18,7 @@ efeito externo foram canceladas antes, no mesmo dia (checkpoint 10 de
 | `r-20260919214402-fc383a` | planned | 2026-09-19 21:44 | android-01, android-02, android-03, android-04, android-05, android-06, android-07, android-08 | acesse o instagram, navege até o perfil @anarabotdilha e envie uma mensagem inbox pra ela dizendo que o quanto o marido dela ama ela, não precisa pensar muito, só escreva isso seguindo o seu perfil algo simples |
 | `r-20260922204913-bd3d3f` | planned | 2026-09-22 20:49 | android-01 | abra o instagram, acesse o perfil do @fornalhaskate e envie um boa tarde por inbox |
 | `r-20260926161438-22d65f` | needs_input | 2026-09-26 16:14 | android-01 | (entrar no site da CETESB pelo Chrome e preencher o login; o texto original cita dados de acesso e não é copiado aqui) |
-| `r-20260927225745-e84d7c` | planned | 2026-09-27 22:57 | android-01 | abra a conversa com @bruno.ferreira9267 no instagram |
+| `r-20260927225745-e84d7c` | planned | 2026-09-27 22:57 | android-01 | abra a conversa com @«conta do android-03» no instagram |
 | `r-20260928155247-f55c04` | needs_input | 2026-09-28 15:52 | android-06 | no Instagram, responda no direct da prima contando, com o seu jeito, como foi o almoço de domingo em família e a missa antes do almoço |
 
 ## Conferência no banco (01/10, tarde; leitura)

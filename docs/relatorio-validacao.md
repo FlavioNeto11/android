@@ -413,7 +413,7 @@ seletor declarado, guarda de linha, limites por perfil, aprovação com três ve
   são a melhor leitura da variante `en-US` — e só valem de fato depois de rodar contra o app instalado. É a
   pendência de maior risco, e por isso ela está cedo no plano.
 * **O aceite de nível 1 ponta a ponta** (importar release → instalar → cadastrar perfil → autenticar → verificar
-  `@mariana.costa91182` → `SESSION_READY`) depende do item acima e da troca da senha exposta no chat.
+  `@«conta do android-02»` → `SESSION_READY`) depende do item acima e da troca da senha exposta no chat.
 * **O aceite de nível 2** (uma interação social real entre as duas contas, com persona, memória e efeito único)
   depende de observar o efeito confirmado numa conta real. A geração **já está ligada ao motor** desde 18/09: o
   texto nasce em `draft_response`, por perfil, na porta de política — ver 8.4.
@@ -481,7 +481,7 @@ tenderia à mesma frase óbvia. Quem gera passou a receber uma lista explícita 
 textos dos irmãos da mesma execução e os últimos que aquele perfil publicou — e, se a saída voltar igual mesmo
 assim (ignorando acento, caixa e pontuação), gera de novo uma vez.
 
-Medido na execução `r-20260919123637-988923`, dando ao perfil `@lucas.almeida9484` **a mesma intenção** que tinha
+Medido na execução `r-20260919123637-988923`, dando ao perfil `@«conta do android-01»` **a mesma intenção** que tinha
 produzido a frase repetida:
 
 | | texto |
@@ -646,11 +646,11 @@ interação. Saíram **8 respostas distintas**, cada uma reconhecível pela pers
 
 | Perfil | Tom declarado | Trecho do que escreveu |
 |---|---|---|
-| @lucas.almeida9484 | direto e sóbrio, sem firula | *valeu, Thi. saiu como eu queria dessa vez.* (minúsculas, sem emoji) |
-| @mariana.costa91182 | acolhedor e caloroso | *Aaah que bom que você gostou! 🤍 … Faz o meu dia ✨* |
-| @felipe.nogueira93762026 | analítico, pergunta de volta | *achei que tinha ficado meio denso demais, tipo log de stack trace… teve alguma parte que te pegou mais?* |
-| @juliana.mendes9056 | firme, frases curtas que fecham ideia | *Obrigada, Thiago. Fico feliz que tenha feito sentido para você.* |
-| @thiago.moreira4827 | descontraído, academia | *jurava que ia ficar torto igual meu agachamento kkkk 🏋🏾* |
+| @«conta do android-01» | direto e sóbrio, sem firula | *valeu, Thi. saiu como eu queria dessa vez.* (minúsculas, sem emoji) |
+| @«conta do android-02» | acolhedor e caloroso | *Aaah que bom que você gostou! 🤍 … Faz o meu dia ✨* |
+| @«conta do android-04» | analítico, pergunta de volta | *achei que tinha ficado meio denso demais, tipo log de stack trace… teve alguma parte que te pegou mais?* |
+| @«conta do android-05» | firme, frases curtas que fecham ideia | *Obrigada, Thiago. Fico feliz que tenha feito sentido para você.* |
+| @«conta do android-08» | descontraído, academia | *jurava que ia ficar torto igual meu agachamento kkkk 🏋🏾* |
 
 O contraste entre a primeira linha e a última é o que o defeito original apagava: mesma pergunta, mesma tarefa,
 oito vozes. Uma quarta capability que escreva sem declarar o tipo do texto sairia com voz de mensagem privada num
@@ -1076,7 +1076,7 @@ Autorizado pelo dono em 27/09 ("tudo autorizado"), com teto de US$ 10,24 no sald
   - A sessão acumulava 4 leituras sem reconhecer a tela desde 26/09 (achado #104).
   - Uma verificação pedida depois falhou, porque o convidado estava sob pressão: load ~22 em 2 vCPU, 741 MB livres.
   - O objetivo foi abandonado com nota.
-- **`r-20260927230248-2ae798` (android-06, andre → `@lucas.almeida9484`): `completed`, 1 de 1 com sucesso
+- **`r-20260927230248-2ae798` (android-06, andre → `@«conta do android-01»`): `completed`, 1 de 1 com sucesso
   comprovado.**
   - "Abrir as mensagens" foi comprovada pelo verificador, e a receita foi aprendida.
   - "Abrir a conversa" foi comprovada **pela árvore local, sem IA** (`selector:text=={username}&id=row_thread_composer_edittext`).
@@ -1089,8 +1089,8 @@ Autorizado pelo dono em 27/09 ("tudo autorizado"), com teto de US$ 10,24 no sald
   - o processo cross-app.
 
   Os três seguem `simulated`.
-- Achado: a receita de OPEN_THREAD não foi aprendida. O ator digitou `lucas.almeida9484` sem arroba, e
-  `detemplate` não cobre o valor `@lucas.almeida9484`. A correção de `eb9ba02` vale para seletor, não para texto
+- Achado: a receita de OPEN_THREAD não foi aprendida. O ator digitou `«conta do android-01»` sem arroba, e
+  `detemplate` não cobre o valor `@«conta do android-01»`. A correção de `eb9ba02` vale para seletor, não para texto
   digitado.
 
 **Ensino v2 com IA real (prova `real`).**
@@ -1415,13 +1415,13 @@ tinha o bloco `instagram:`, que agora é recusado na carga (conferido antes com 
 **Prova `real`: sessão pelo motor genérico** (`SessaoDeclarada` com o Instagram só em dado; "Verificar conta", que só
 observa: nada digitado, nenhuma ação na conta).
 
-- android-01, 19:36 UTC, comando `c-20260928193606-816b9c`: `session_ready`, "@lucas.almeida9484 confirmado na
+- android-01, 19:36 UTC, comando `c-20260928193606-816b9c`: `session_ready`, "@«conta do android-01» confirmado na
   tela" (a sessão do lucas estava `unknown`).
 - android-06, 19:34 UTC, comando `c-20260928193456-4eb818`: o convidado estava sob pressão (load 11–16 em 2 vCPU,
   `screencap` estourando 25 s) e a árvore veio vazia. O motor NÃO afirmou sessão: gravou `unknown` com "tela ainda
   sem elementos". É o comportamento pedido (incerteza não conta como sucesso).
 - android-06, 19:37 UTC, comando `c-20260928193708-3c547f`, ainda sob carga 15: `session_ready`,
-  "@andre.carvalho9543 confirmado na tela".
+  "@«conta do android-06» confirmado na tela".
 
 **`simulated`.** Suíte do backend em SQLite: 2741 ok, com `test_backup` falhando só no worktree, que não tem
 `config.yaml`. Também passaram `test_pacote_declarado.py` (um cliente de e-mail só em dado entra no registro com
@@ -1500,7 +1500,7 @@ só passa com a legenda presente (`textos_do_cartao_ausentes` em `executor._veri
 mostra só o seletor "Posts": melhoria anotada.
 
 **Prova `real` 2: com efeito**, autorizada pelo dono em chat em 28/09 ("Curtir e comentar outro post"). Execução
-`r-20260928235215-6eb84c`, mesmo central e aparelho, persona andre (`@andre.carvalho9543`). Pedido: no perfil
+`r-20260928235215-6eb84c`, mesmo central e aparelho, persona andre (`@«conta do android-06»`). Pedido: no perfil
 @anarabottinipsicopedagoga, a publicação mais recente cuja legenda NÃO contém "Ainda sobre Setembro Amarelo 2024"
 (essa está curtida pelo andre desde a e31953, e curtir de novo descurtiria); curtir uma vez e comentar um elogio
 simples.
@@ -1511,7 +1511,7 @@ simples.
   não levou `caption_contains`, e a guarda de cartão não entrou em jogo nesta prova.
 - Curtida: toque às 23:53:45Z; pós-condição `selector:desc==Liked` comprovada pela árvore local, sem IA.
 - Comentário: toque em "Post" às 23:54:57Z; o texto inteiro, "rapaz, que post bacana esse, com carinho de quem quer
-  fazer diferença 👏 é isso aí!", apareceu na lista como do andre.carvalho9543. Digitação por
+  fazer diferença 👏 é isso aí!", apareceu na lista como da «conta do android-06». Digitação por
   `mobile: replaceElementValue` em 234 ms (HTTP 200), com o texto mascarado no `appium.log` como `**SECURE**` (0
   ocorrências do texto no log).
 - **Achado de processo (K-052):** o comentário NÃO passou por aprovação humana. A política própria do perfil do andre
@@ -1563,11 +1563,11 @@ Janelas estimadas (UTC):
 
 | Conta | Aparelho | Janela do bloqueio | O sistema viu a tela? | Confiança |
 |---|---|---|---|---|
-| juliana.mendes9056 | android-05 | 19/09 22:10:13 – 20/09 14:36:52 | sim: relato do dono, `r-20260920143652-132c2e` | janela alta; gatilho baixa |
-| felipe.nogueira93762026 | android-04 | 19/09 22:10:08 – 23/09 19:39:54 (palavra do dono) ou 27/09 01:48:39 (1ª observação) | — | média |
-| beatriz.rocha9276 | android-07 | 19/09 22:11:18 – 23/09 19:39:54 | não: status declarado | baixa |
-| thiago.moreira4827 | android-08 | 19/09 22:12:10 – 23/09 19:39:54 | não: status declarado | baixa |
-| mariana.costa91182 | android-02 | 20/09 21:28:10 – 23/09 19:39:54 | não: status declarado | janela média; gatilho baixa |
+| «conta do android-05» | android-05 | 19/09 22:10:13 – 20/09 14:36:52 | sim: relato do dono, `r-20260920143652-132c2e` | janela alta; gatilho baixa |
+| «conta do android-04» | android-04 | 19/09 22:10:08 – 23/09 19:39:54 (palavra do dono) ou 27/09 01:48:39 (1ª observação) | — | média |
+| «conta do android-07» | android-07 | 19/09 22:11:18 – 23/09 19:39:54 | não: status declarado | baixa |
+| «conta do android-08» | android-08 | 19/09 22:12:10 – 23/09 19:39:54 | não: status declarado | baixa |
+| «conta do android-02» | android-02 | 20/09 21:28:10 – 23/09 19:39:54 | não: status declarado | janela média; gatilho baixa |
 
 - Nada separa as vivas (DM 5/5 × 2/3, Fisher p = 0,375). Detalhe, lacunas e buracos do código:
   [ADR-055](decisoes.md#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta).
@@ -1714,7 +1714,7 @@ convenção aceita como dívida: `devices/manager.py` passou a importar `taskque
     `wellbeing`, `photos`, `maps`, `calendar` e `docs`;
   - nenhum deles rodando depois;
   - `MemAvailable` do android-06: 974 MB (antes, 670–830 MB); do android-01: 1054 MB (antes, 730–960 MB);
-  - "Verificar conta" do andre no android-06 às 07:41:12Z confirmou @andre.carvalho9543 (`c-20260929074028-e124bc`):
+  - "Verificar conta" do andre no android-06 às 07:41:12Z confirmou @«conta do android-06» (`c-20260929074028-e124bc`):
     o Instagram segue ok sem os apps.
 - **Lições (A7) e telas aprendidas (A8)** rodam nos modos de fábrica (`shadow` e `observe`). A prova delas depende de
   execuções reais acumularem dados (`not_run`, abaixo).
@@ -1724,7 +1724,7 @@ convenção aceita como dívida: `devices/manager.py` passou a importar `taskque
 - 02:05:31Z: a escada de reparo pediu `restart` do android-01, 2º degrau (motivo: "o `system_server` caiu").
 - 02:10:14Z: o `restart` falhou ("o Android subiu, mas não ficou pronto em 60 s": o preparo estourou o prazo).
 - 02:15:34Z: `reset`, 3º degrau (`c-20260929021534-6d15cd`, `requested_by` `system`, terminado às 02:20:27Z). Apagou o
-  Instagram e a sessão do lucas.almeida9484, uma das três contas vivas.
+  Instagram e a sessão da «conta do android-01», uma das três contas vivas.
 - Fonte: os eventos `instance.remediation` e `command.updated` em `data\logs\backend.log.2026-09-28` (hora local,
   -03:00) e `GET /api/commands/c-20260929021534-6d15cd`.
 - Causa assumida: a máquina central estava saturada pelo trabalho da IDE em paralelo — a suíte inteira, o Docker Desktop
@@ -2319,13 +2319,13 @@ orquestradora), a migração `081_error_kind_em_attempts` e o curador em `on`.
 Antes de disparar:
 - `GET /api/health` sem problemas;
 - nenhuma execução em curso (a última foi criada às 07:55Z);
-- no `android-01`, o Instagram estava em primeiro plano com a conta `lucas.almeida9484` viva, na tela de comentários
+- no `android-01`, o Instagram estava em primeiro plano com a conta `«conta do android-01»` viva, na tela de comentários
   do post dela, e não na de verificação de humano. A tela foi lida pelo `GET /hierarchy`, com o controle manual tomado
   e devolvido sem nenhum toque.
 
 | Objetivo | Aparelho | Execução | Desfecho | Custo |
 |---|---|---|---|---:|
-| 1. Instagram | `android-01` | `r-20261003113432-46c639` | `completed`. Etapa `OPEN_PROFILE` (IA) comprovada: perfil `@lucas.almeida9484`, 26 seguidores (evidência 2094) | US$ 0,0823 |
+| 1. Instagram | `android-01` | `r-20261003113432-46c639` | `completed`. Etapa `OPEN_PROFILE` (IA) comprovada: perfil `@«conta do android-01»`, 26 seguidores (evidência 2094) | US$ 0,0823 |
 | 2. QA Messenger | `android-10` (notebook) | `r-20261003113532-7d649c` | `completed`. Abrir o app (`sem_ator`) e a lista (IA), comprovados por seletor (evidências 2095 e 2096) | US$ 0,0335 |
 | 3. Outlook | `android-01` | `r-20261003113615-ca3f1a` | `completed_with_issues`, objetivo em `waiting_user`. O login automático do Outlook está parado até uma pessoa olhar a conta no aparelho (ADR-009); nada foi tocado | US$ 0,0079 (só o plano) |
 

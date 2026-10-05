@@ -1,10 +1,29 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `9f9e2b39` (migração 115, deploy 39); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 05/10/2026: runtime do backend em `61d431ce` (migração 115, deploy 40); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 40 no ar (05/10/2026, 20:37Z, central `61d431ce`, migração `115_receita_nao_aplicavel`, sem migração
+  nova).** Suíte mínima, de uma junção só (`2bce3b1e` sobre `8ac140e0`), feita na troca de conta para pôr no ar o
+  conserto da senha pela web: a conferência do site antes de digitar lia o primeiro nó com o identificador da barra de
+  endereço, e uma página de outro domínio que imitasse a barra receberia a senha (31.103). Itens: 31.75, 31.77, 31.104
+  e 31.103. O detalhe está no [CHANGELOG](../CHANGELOG.md) e no [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): ensaio com a cópia `data\backups\20261005-173228`, depois
+    `scripts/deploy.ps1 -PularBackup`; `GET /api/health` ok e sem problemas; prova de fora com tudo como esperado
+    (46 linhas ok; `/api/instances` 401 de fora e 403 com Host forjado); agente do notebook em `0.1.0+61d431c` às
+    20:36Z (A10); android-01, android-03 e android-06 já estavam `online` antes da religação (readotados após o
+    reinício do backend, nenhum start enviado), com pausa de reparo até 21:34Z.
+  - `simulated` (suíte 40 sobre `61d431ce`, central em Idle): `scripts/tests` 672 passed; backend em SQLite 11875
+    passed e 13 skipped; frontend 1678 passed na segunda rodada (a primeira teve 2 falhas intermitentes em
+    `RunsPage.test.tsx` com a máquina carregada, item 29.148); catracas 88 e 6; mypy 257, igual ao teto; PostgreSQL
+    dirigido nos 257 arquivos afetados, em duas partes, 5231 passed e 0 falhas (a parte 2 terminou sozinha no host
+    durante a troca de conta).
+  - `not_run`: o percurso no navegador (em curso pela frente Portal); a prova real do conserto com conta real (login
+    pela web não provocado).
+  - Plano-100: resultado da suíte 40 aplicado pelo mecanismo. Sessões da conta nova abertas pelo roteiro de
+    `.claude/handoffs/orquestrador/abrir-sessoes.md`, com modelo e força por economia (fora do Git).
 - **Deploy 39 no ar (05/10/2026, 18:06Z, central `9f9e2b39`, migração `115_receita_nao_aplicavel`, sem migração
   nova).** Dezessete pontas sobre `19e34b22`, mais dois consertos de junção. Itens: 29.128, 29.129, 29.130, 29.131,
   29.132, 29.138, 29.141, 29.144, 28.49, 31.92, 31.97, 31.99 e 31.100; em parte, 28.51 (A), 31.87 (F1), 31.90 (B) e
@@ -303,7 +322,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Parque:** apps do Google desativados no preparo (21.15, K-059; `MemAvailable` de 670–960 para 974–1054 MB) e o
     reparo que espera a máquina aliviar (21.16, `9348e9c`, K-058).
   - **Incidente (29/09, 02:05–02:15Z):** com a máquina saturada pela IDE, a escada de reparo do central (ainda em
-    `7a02491`) deu `restart` e `reset` no android-01 e apagou o Instagram e a sessão do lucas.almeida9484
+    `7a02491`) deu `restart` e `reset` no android-01 e apagou o Instagram e a sessão da «conta do android-01»
     (`c-20260929021534-6d15cd`). A conta não foi tocada desde então; o android-01 está sem o app. Conduta: um trabalho
     pesado por vez no central, testes em prioridade ociosa, Docker e WSL desligados depois dos testes em PostgreSQL.
   - **Decisões do dono pendentes:**
@@ -670,8 +689,8 @@ por decisão do dono.
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
 1a. **Evolução de desempenho: implantada e provada em 27/09.**
-    - **Contas do Instagram (27/09, pedido do dono):** só `lucas.almeida9484` (android-01), `bruno.ferreira9267`
-      (android-03) e `andre.carvalho9543` (android-06) funcionam.
+    - **Contas do Instagram (27/09, pedido do dono):** só `«conta do android-01»` (android-01), `«conta do android-03»`
+      (android-03) e `«conta do android-06»` (android-06) funcionam.
       - As outras cinco foram desatreladas: `blocked`, sem persona e sem aparelho. A tabela está
         em [`relatorio-desempenho.md`](relatorio-desempenho.md) §10.
       O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia.

@@ -28,7 +28,7 @@ from .ports import CredenciaisDaConta, EventSink, ProfileStore, QuarentenaDeCont
 PRECISA_DE_PESSOA: frozenset[str] = frozenset({SessionStatus.auth_challenge.value, SessionStatus.wrong_account.value})
 
 #: `account_credentials.status` depois de um envio de senha sem sucesso (ADR-055): o login AUTOMÁTICO para até uma
-#: pessoa olhar. A juliana recebeu seis envios em 4h25 em 18/09 — o freio de antes (3 falhas, 300 s de espera) se
+#: pessoa olhar. Uma conta real recebeu seis envios em 4h25 em 18/09 — o freio de antes (3 falhas, 300 s de espera) se
 #: repetia a cada intervalo vencido. Ao lado de `active` e `invalid` (a coluna é texto, sem CHECK: nenhuma migração).
 #: Quem solta: a pessoa guardando a senha de novo (`set_account_credential` volta a `active`) ou um login que confirma
 #: a conta — o "Conectar" do painel, que é a pessoa olhando, pode tentar.

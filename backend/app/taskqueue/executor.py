@@ -74,9 +74,10 @@ from .recipes import (NAO_APLICAVEL_CONTA_APOS, READ_ONLY, AlvoAusente, RecipeDi
                       contar_retorno_ia, distill, eh_generica, filhos_rotulados, hash_generico_da_linha,
                       unique_selectors)
 from .repository import Repository
-from .dialogos import (FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE, MOTIVO_ACEITE_RECUSADO,
-                       MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha, dialogo_sem_saida,
-                       e_navegador, rotulo_para_o_ator, tipo_do_elemento, toque_que_aceita)
+from .dialogos import (FRACAO_DA_PAGINA, FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE,
+                       MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha,
+                       dialogo_sem_saida, e_navegador, rotulo_para_o_ator, texto_da_barra, tipo_do_elemento,
+                       toque_que_aceita)
 from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -199,17 +200,19 @@ def imagem_com_barra_tapada(jpeg: bytes, tree: UiTree, pacote: str | None, largu
     tapar com segurança: pacote sem barra conhecida, barra fora da árvore ou sem área. Quem chama manda a imagem como
     está e registra o motivo."""
     barra = BARRA_DE_ENDERECO.get(pacote or "")
-    alvo = next((e for e in tree.elements if barra is not None and e.resource_id == barra), None)
-    if alvo is None or largura <= 0 or altura <= 0:
-        return None
-    x1, y1, x2, y2 = alvo.bounds
-    if x2 <= x1 or y2 <= y1:
+    # 31.103 (S1 da leitura): TODO nó com o id da barra é tapado, não só o primeiro. A página pode pôr o id num elemento
+    # antes da barra real; tapar só o primeiro taparia a falsa e mandaria o endereço real ao provedor. Tapar também o da
+    # página é o lado que protege (some um trecho da página da imagem, nunca o endereço).
+    caixas = [e.bounds for e in tree.elements if barra is not None and e.resource_id == barra
+              and e.bounds[2] > e.bounds[0] and e.bounds[3] > e.bounds[1]]
+    if not caixas or largura <= 0 or altura <= 0:
         return None
     with Image.open(io.BytesIO(jpeg)) as img:
         img = img.convert("RGB")
         fx, fy = img.width / largura, img.height / altura
-        ImageDraw.Draw(img).rectangle((int(x1 * fx), int(y1 * fy), int(x2 * fx + 0.999), int(y2 * fy + 0.999)),
-                                      fill=(0, 0, 0))
+        desenho = ImageDraw.Draw(img)
+        for x1, y1, x2, y2 in caixas:
+            desenho.rectangle((int(x1 * fx), int(y1 * fy), int(x2 * fx + 0.999), int(y2 * fy + 0.999)), fill=(0, 0, 0))
         buf = io.BytesIO()
         img.save(buf, "JPEG", quality=72)
     return buf.getvalue()
@@ -396,11 +399,6 @@ def cobertura_na_arvore(tree: UiTree, ref: str | None) -> Cobertura | None:
 #: conteúdo; a captura de 05/10 08:06Z confirmou os bounds) e 83,8 % como modal (r-20261004190200-5b56e6, cobria).
 FRACAO_DA_SOBREPOSICAO = FRACAO_QUE_COBRE
 
-#: L2 da leitura do #391: abaixo desta fração da tela, a árvore inteira é uma janela flutuante (o dump de um diálogo
-#: nativo), não a página. A mesma fração de 60 % que o 31.72 usa para a página.
-_FRACAO_DA_JANELA = 0.6
-
-
 def _area_de(b: tuple[int, int, int, int]) -> int:
     return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
 
@@ -437,14 +435,12 @@ def sobreposicao_vale(tree: UiTree, ref: str | None, largura: int, altura: int) 
         return True
     # L2 da leitura do #391: no diálogo nativo (AlertDialog) o leitor corta o painel (`android:id/parentPanel`, sem
     # texto) e, com o dump só da janela do diálogo, sobram título, mensagem e botões, todos pequenos e sem pista. A
-    # árvore inteira menor que `_FRACAO_DA_JANELA` da tela é uma janela flutuante: o que se vê é o próprio diálogo.
-    if tree.elements:
-        x1 = min(e.bounds[0] for e in tree.elements)
-        y1 = min(e.bounds[1] for e in tree.elements)
-        x2 = max(e.bounds[2] for e in tree.elements)
-        y2 = max(e.bounds[3] for e in tree.elements)
-        if _area_de((x1, y1, x2, y2)) < _FRACAO_DA_JANELA * tela:
-            return True
+    # JANELA do dump menor que `FRACAO_DA_PAGINA` da tela é uma janela flutuante: o que se vê é o próprio diálogo.
+    # L2-a (31.77): a janela é a dos nós de topo do dump (`UiTree.janela`), não a extensão das folhas que sobraram: a
+    # página esparsa sem ids (Compose, Flutter) fica com folhas abaixo de 60 % e passaria por janela. Sem a janela (árvore
+    # montada fora de `parse_hierarchy`), o L2 não decide: a extensão das folhas é justamente o erro que ele corrige.
+    if tree.janela is not None and _area_de(tree.janela) < FRACAO_DA_PAGINA * tela:
+        return True
     base = caixa or citado
     area = base.bounds
     # Os descendentes da base, sem a relação de pai na árvore: na ordem do documento (a do uiautomator, em
@@ -935,8 +931,10 @@ class StepExecutor:
         barra = BARRA_DE_ENDERECO.get(pacote or "")
         if barra is None:
             return
-        texto = next((e.text for e in (await observe()).elements if e.resource_id == barra and e.text), "")
-        host = _host(texto)
+        # 31.103 (A1 da leitura): a barra de VERDADE, fora do trecho da página. O primeiro nó com o id e com texto podia
+        # ser um elemento da página de outro domínio com o host da conta, e a senha seria digitada nela. Sem barra
+        # fora da página, o host é vazio e nada é digitado.
+        host = _host(texto_da_barra(await observe(), {barra}))
         if not host:
             raise DriverError("Não dá para confirmar o site: a barra de endereço não está visível. Role a página ao "
                               "topo e tente de novo.", effect_possible=False)
@@ -1279,12 +1277,12 @@ class StepExecutor:
                 continue                               # o gesto falharia na execução, como antes
             alvos.append((el, (px, py)))
         if ai.consentimento_aceito_em:
-            barras = set(BARRA_DE_ENDERECO.values())
-            texto = next((e.text for e in tree.elements if e.resource_id in barras), "")
-            host = _host(texto or "")
+            # 31.103: a barra de verdade, fora do trecho da página; a página com o id da barra não escolhe o host.
+            host = _host(texto_da_barra(tree, set(BARRA_DE_ENDERECO.values())))
             if host and any(host == h or host.endswith("." + h) for h in map(str.casefold, ai.consentimento_aceito_em)):
                 return None
-        return next((r for el, ponto in alvos if (r := toque_que_aceita(tree, el, ponto)) is not None), None)
+        tela = (tool_ctx.width, tool_ctx.height)        # 31.104: a terceira medida da tela, vale mesmo sem janela
+        return next((r for el, ponto in alvos if (r := toque_que_aceita(tree, el, ponto, tela)) is not None), None)
 
     def _image_scale(self, obs: Observation, ai: AiCfg | None = None) -> float:
         """Pixels do aparelho por pixel do espaço de coordenadas que o modelo enxerga."""
@@ -1417,7 +1415,10 @@ class StepExecutor:
                 rr.variant = await self.devices.variant_of(rt)
                 rr.row = self.recipes.find(app.package, rr.app_version, rr.step_hash,
                                            signature=rr.signature, variant=rr.variant,
-                                           step_hash_generico=rr.step_hash_generico)
+                                           step_hash_generico=rr.step_hash_generico,
+                                           # 30.81: a receita ensinada em espera de prova só vale para quem ensinou
+                                           persona=self.repo.persona_do_objetivo(objective["profile_id"], rt.id),
+                                           prova_fluxo=run["prova_fluxo_id"])
                 if rr.row is not None:
                     rr.replayer = self.recipes.replayer(rr.row, rr.variables)
                     if rr.row["status"] == "candidate":
@@ -1823,7 +1824,7 @@ class StepExecutor:
             return await falha("este aparelho não sabe receber mídia na galeria", tentar_de_novo=False)
         # 30.60 (achado 6): o perfil do objetivo precisa ter vínculo ATIVO com ESTE aparelho. Sem isso, a imagem de uma
         # persona iria para a galeria de outra (objetivo de A despachado num aparelho que só tem B). O vínculo secundário
-        # conta (android-13 é também do André): é pertencer ao aparelho, não ser o único dele.
+        # conta (android-13 é também do Beltrano): é pertencer ao aparelho, não ser o único dele.
         if persona_id and self.social is not None and self.social.repo.binding(persona_id, rt.id) is None:
             return await falha(f"a persona do objetivo não está vinculada a {rt.id}: a imagem dela não vai para a galeria "
                                "de outro perfil (nada foi enviado ao aparelho)", tentar_de_novo=False)
@@ -2037,9 +2038,11 @@ class StepExecutor:
                                               kind="text", note=note)
                 return
             data = obs.jpeg
-            if data is None and not obs.sensitive and obs.image_omitted == "policy":
-                # A observação saiu só com a árvore (a imagem não ia ao modelo). A evidência adquire a SUA, agora, com
-                # o próprio horário na nota — é só evidência, nunca fonte de coordenada (adendo v0.20, C1).
+            sensivel_tardia = False
+            if data is None and not obs.sensitive and obs.image_omitted in ("policy", "capture_failed"):
+                # A observação saiu só com a árvore (a imagem não ia ao modelo, ou a captura falhou e o 31.76 tolerou).
+                # A evidência adquire a SUA, agora, com o próprio horário na nota — é só evidência, nunca fonte de
+                # coordenada (adendo v0.20, C1).
                 try:
                     tardia = await self.devices.imagem_tardia(rt, timeout=call_timeout)
                 except DriverError as exc:
@@ -2050,9 +2053,18 @@ class StepExecutor:
                 if tardia is not None:
                     data, quando = tardia
                     note += f" (imagem adquirida depois da observação, às {quando})"
-            if obs.sensitive or data is None:
+                else:
+                    # `None` da tardia é a tela que é (ou pode ser) sensível, ou a geração trocada: segue "sensível".
+                    sensivel_tardia = True
+            if obs.sensitive or sensivel_tardia:
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
                                               kind=kind, note=note + " (tela sensível: captura omitida)", redacted=True)
+            elif data is None:
+                # Leitura do 31.76: imagem AUSENTE não é tela sensível. Dizer "sensível" com `redacted` afirmaria na
+                # trilha de auditoria um fato falso sobre a tela.
+                motivo = "captura da tela falhou" if obs.image_omitted == "capture_failed" else "imagem ausente"
+                await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
+                                              kind="text", note=note + f" ({motivo})")
             else:
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
                                               kind=kind, note=note, data=data)
@@ -2128,6 +2140,7 @@ class StepExecutor:
         same_count = 0
         sigs: list[tuple[str, str, str]] = []                  # (tela exata, tela estrutural, ação)
         errors_in_row = 0
+        falhas_de_captura = 0              # 31.76: capturas seguidas que falharam com a árvore já lida (zera com imagem)
         declared: StepDone | None = None
         max_actions = int(s.max_actions_per_step)
         opcional = step.opcional and self.cfg.file.ai.limpeza_opcional
@@ -2341,8 +2354,43 @@ class StepExecutor:
             try:
                 obs = last_obs = await reler_se_ocupada(
                     lambda: self.devices.observe(rt, timeout=call_timeout, lado_max=ai_cfg.screenshot_max_side,
-                                                 imagem=lambda t: not receita_decide and self._want_image(t, **pede)),
+                                                 imagem=lambda t: not receita_decide and self._want_image(t, **pede),
+                                                 tolerar_falha_da_imagem=True),
                     prazo=deadline, quem=iid)
+                if obs.image_omitted == "capture_failed":
+                    # 31.76: a falha foi SÓ da imagem (a árvore saiu e o tamanho da tela se sabe): nada de `_stuck`,
+                    # de erro seguido nem de sessão recriada. A decisão segue pela árvore; a captura nunca vira prova.
+                    falhas_de_captura += 1
+                    log.info("%s: a captura da tela falhou (%s); a decisão segue pela árvore", iid, obs.captura_falha)
+                    if falhas_de_captura == 1:
+                        repo.decision(f"{iid} · {step.title}: a captura da tela falhou "
+                                      f"({(obs.captura_falha or '').split(':', 1)[0]}); a decisão segue só pela árvore",
+                                      run_id=run_id, instance_id=iid, step_id=step.id)
+                    if obs.captura_excedeu_prazo and not await rt.executor.drain(
+                            max_wait_s=max(0.0, min(180.0, deadline - time.monotonic()))):
+                        # O screencap segue preso no executor do aparelho: a próxima chamada entraria atrás dele.
+                        if time.monotonic() >= deadline:
+                            return await fail_or_retry(com_anr(f"Tempo da etapa esgotado ({step.timeout_s}s)."), obs)
+                        return await self._stuck(rt, step, fired, obs.captura_falha or "")
+                    if image_requested and falhas_de_captura >= 2:
+                        # O ator pediu a imagem e ela falhou de novo: a árvore sozinha não responde ao pedido.
+                        return await fail_or_retry(f"A captura da tela seguiu falhando: {obs.captura_falha}", obs)
+                    if image_requested:
+                        history.append("(executor) a captura da tela falhou nesta volta; decida pela lista de "
+                                       "elementos, sem a imagem.")
+                    if obs.captura_excedeu_prazo:
+                        # Com o executor livre de novo, a árvore da decisão é lida DEPOIS dele (e só ela).
+                        relida = await reler_se_ocupada(
+                            lambda: self.devices.observe(rt, timeout=call_timeout, imagem=False,
+                                                         lado_max=ai_cfg.screenshot_max_side,
+                                                         tolerar_falha_da_imagem=True),
+                            prazo=deadline, quem=iid)
+                        obs = last_obs = (dataclasses.replace(relida, image_omitted="capture_failed",
+                                                              captura_falha=obs.captura_falha,
+                                                              captura_excedeu_prazo=True)
+                                          if relida.image_omitted == "policy" else relida)
+                elif obs.jpeg is not None:
+                    falhas_de_captura = 0
                 observacao_ms = ms_desde(t_observacao)
             except DriverTimeout as exc:
                 return await self._stuck(rt, step, fired, str(exc))
@@ -3926,7 +3974,7 @@ class StepExecutor:
                                              "conta como prova") if t)
             pendentes = marcas_pendentes_na_tela(marcas_pendentes, obs.tree)
             if pendentes:
-                # ADR-055: "Sending…" na tela é efeito A CAMINHO, nunca feito. Em 19/09 a DM da beatriz foi dada por
+                # ADR-055: "Sending…" na tela é efeito A CAMINHO, nunca feito. Em 19/09 a DM da ciclana foi dada por
                 # enviada com "Sending…" congelado: a bolha e o campo limpo já estavam lá, e o modelo disse "sim". Nem
                 # a prova local nem o modelo são consultados; segue olhando até o fim do prazo desta verificação (o
                 # app costuma sair de "Sending…" em 1–2 s). Sem sair, o efeito disparado fica incerto.

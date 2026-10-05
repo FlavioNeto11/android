@@ -16,7 +16,7 @@ from app.models import InteractionStatus, InteractionType
 
 from .test_social_memory import build, dois_perfis
 
-BRUNO = "@bruno.ferreira9267"
+BRUNO = "@valdir.teixeira6352"
 COMENTARIO = "Que foto boa! Também toco guitarra nas horas vagas"
 FATO = {"subject": BRUNO, "content": "toca guitarra nas horas vagas", "importance": 0.6, "confidence": 0.7}
 

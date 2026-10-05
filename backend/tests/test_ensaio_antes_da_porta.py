@@ -29,7 +29,7 @@ def _comentario(harness: Any, chave: str) -> None:
     db = state.db
     db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
     db.execute("UPDATE instances SET app_id='ig' WHERE id='android-01'")
-    pid = state.social.create_profile(ProfileCreate(username="mariana.costa91182", password=SENHA,
+    pid = state.social.create_profile(ProfileCreate(username="luciana.bastos73519", password=SENHA,
                                                     instance_id="android-01")).id
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
                " VALUES ('run-e',?,'comente','execute','running',1,'[\"android-01\"]','2026-10-04T11:00:00Z')",

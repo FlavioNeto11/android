@@ -2,11 +2,12 @@
 import { act } from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { WATCH_RENEW_MS, WATCH_TTL_S } from '../api/ws';
-import { makeRunDetail, makeSnapshot } from '../test/fixtures';
+import { makeEvent, makeRunDetail, makeSnapshot } from '../test/fixtures';
 import { FakeBackend, FakeWebSocket, flush, installBrowserStubs, json, waitFor } from '../test/harness';
 import { useControlStore } from './control';
 import { WATCH_COALESCE_MS, startLive, stopLive, summaryOf } from './live';
 import { usePreviewStore } from './preview';
+import { useToastStore } from './toasts';
 import { useUiStore } from './ui';
 
 /**
@@ -200,5 +201,26 @@ describe('live — resumo que volta à lista quando o detalhe chega (30.38)', ()
     const resumo = summaryOf(makeRunDetail());
     expect(resumo).not.toHaveProperty('origem');
     expect(resumo).not.toHaveProperty('origem_ref');
+  });
+});
+
+// 29.143: na tomada o controle segue `user` (de outra pessoa); só o `tomado_por` do evento diz que o lease desta aba caiu.
+describe('live — tomada do controle por outra pessoa (29.143)', () => {
+  afterEach(() => useControlStore.setState({ leases: {} }));
+
+  it('o control.changed com tomado_por derruba o lease desta aba e avisa quem tomou', async () => {
+    useControlStore.setState({ leases: { 'android-01': { leaseId: 'lease-1', status: 'granted', acquiredAt: Date.now() - 60_000 } } });
+    const dados = { instance_id: 'android-01', control: 'user', pending: false, tomado_por: 'Operadora B', tomado_de: 'Operador A' };
+    await act(async () => FakeWebSocket.last.serverSend({ type: 'event', event: makeEvent(9001, 'control.changed', dados, { instance_id: 'android-01' }) }));
+    await waitFor(() => expect(useControlStore.getState().leases['android-01']).toBeUndefined());
+    expect(useToastStore.getState().toasts.map((t) => t.title)).toContain('Operadora B tomou o controle de android-01');
+  });
+
+  it('control.changed sem tomado_por (a troca de sempre) não derruba o lease concedido', async () => {
+    useControlStore.setState({ leases: { 'android-01': { leaseId: 'lease-1', status: 'granted', acquiredAt: Date.now() - 60_000 } } });
+    const dados = { instance_id: 'android-01', control: 'user', pending: false };
+    await act(async () => FakeWebSocket.last.serverSend({ type: 'event', event: makeEvent(9002, 'control.changed', dados, { instance_id: 'android-01' }) }));
+    await flush(20);
+    expect(useControlStore.getState().leases['android-01']?.leaseId).toBe('lease-1');
   });
 });

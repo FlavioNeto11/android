@@ -8,7 +8,7 @@
 #   Microsoft; se ele propõe código ("Verify your email") e oferece "Use your password", escolhe-se a senha (é o
 #   método de entrada que o titular usa, não um desafio resolvido); a senha vai ao `passwordEntry` SÓ pelo canal
 #   sensível, numa página que mostra ESTE e-mail (`bannerText`) → "Next".
-# Depois do "Next" (observado 30/09 android-06, login real do André): o aviso da conta Microsoft ("OK"), o diálogo de
+# Depois do "Next" (observado 30/09 android-06, login real do Beltrano): o aviso da conta Microsoft ("OK"), o diálogo de
 # chave de acesso do sistema (Voltar), "Authentication in progress", "Add another account" ("MAYBE LATER"), os
 # informativos de privacidade ("NEXT"), de diagnóstico ("Decline") e de experiências ("CONTINUE TO OUTLOOK"), a caixa
 # e a gaveta com o e-mail. O "Stay signed in?" e as recusas da Microsoft seguem suposição; o que não casar termina

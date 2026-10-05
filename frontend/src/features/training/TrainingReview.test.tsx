@@ -66,6 +66,7 @@ it('mostra a gravação (texto sigiloso sem conteúdo), pede a proposta, e salva
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('QA-001'));
   expect(text()).toContain('(texto não gravado)');
+  expect(text()).toContain('O que você fez (2 entradas)');
   await click(byRole('button', /Pedir proposta à IA/i));
   await waitFor(() => expect(text()).toContain('O texto muda?'));
   expect(text()).toContain('{contato} = QA-001');
@@ -396,7 +397,8 @@ it('toque sem alvo nas palavras do backend (#440), o "Confere" em português e a
 
 // ---------------------------------------------------------------- 31.90-B: prévia do salvar (v1.58), recusas no campo e refazer receitas
 const PREVIA_OK = { steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita será gravada ao salvar' }], warnings: [] };
-const reasonDa = (reason: string) => ({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, reason }] });
+// Sem receita, para o motivo aparecer na tela (com receita, o painel mostra a frase dele: 29.146).
+const reasonDa = (reason: string) => ({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, recipe: false, reason }] });
 
 async function abrirEProporComPrevia() {
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
@@ -410,7 +412,7 @@ it('a prévia mostra o que cada etapa vira; a recusa do comando vai no campo e t
     return comando.startsWith('{') ? apiError(400, 'comando_generico', 'O comando precisa começar por palavra fixa.') : json(PREVIA_OK);
   });
   await abrirEProporComPrevia();
-  await waitFor(() => expect(text()).toContain('Ao salvar: receita será gravada ao salvar'));
+  await waitFor(() => expect(text()).toContain('Ao salvar: a receita desta etapa é gravada.'));
   const comando = () => byRole('textbox', /Comando/) as HTMLInputElement;
   const salvar = () => byRole('button', /^Salvar como fluxo/);
   expect(comando().getAttribute('aria-invalid')).toBeNull();
@@ -424,7 +426,7 @@ it('a prévia mostra o que cada etapa vira; a recusa do comando vai no campo e t
   expect(text()).not.toContain('Ao salvar:');                      // a prévia velha não fica ao lado da recusa
 
   await setValue(comando(), 'mande para {contato}');
-  await waitFor(() => expect(text()).toContain('Ao salvar: receita será gravada ao salvar'));
+  await waitFor(() => expect(text()).toContain('Ao salvar: a receita desta etapa é gravada.'));
   expect(comando().getAttribute('aria-invalid')).toBeNull();
   expect(salvar().getAttribute('aria-disabled')).toBeNull();
 });

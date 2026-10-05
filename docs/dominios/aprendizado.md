@@ -1986,6 +1986,137 @@ anterior contra nem uma classe C.
   - os 11 do Instagram ficaram com o dono.
 - `real`: `not_run` até o deploy (entra em `shadow`).
 
+## A demonstração substitui a receita da etapa (30.79)
+
+B1 do mapa do ensino (31.81). Achado: a pessoa demonstrava no modo treinamento uma etapa que já tinha receita ativa,
+e `RecipeStore.save` descartava a demonstração em silêncio ("a ativa só sai por quarentena").
+
+- **A regra:** a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE substitui a
+  receita que segura a chave, que é `RecipeStore.viva`:
+  - a ativa aprendida da IA;
+  - a `validated` que esperava o dono, que assim sai da fila dele;
+  - a de uma demonstração anterior.
+- **A substituída** vai para `superseded`. A trilha dos dois lados é assinada pela sessão de treino (`por`), não pelo
+  sistema.
+- **O mesmo caminho** não grava nada: `save` devolve o id da que já vale. Ao substituir, devolve o id novo.
+- **Fora do treino nada muda:** a ativa e a `validated` seguram a chave, e a herança (RA-20) segue sendo do sistema
+  mesmo vinda de receita ensinada.
+- **A trilha da substituída** é assinada pela sessão de treino em qualquer status (ativa, `validated`, candidata,
+  quarentena): a causa foi a demonstração.
+- **Prévia e salvar do treino (junção com o 31.86):** os dois leem `RecipeStore.previa_do_treino`, a mesma conta do
+  `save`.
+  - O mesmo caminho dá "já havia receita", e outro caminho dá "…, substituindo a vN (receita N)".
+  - `chave_ocupada` é `viva(...) is not None`.
+- **O reparo** (`POST /api/training/{id}/recipes`) não herda esse poder: passa `so_em_chave_virgem=True`, e o `save`
+  grava só em chave que nunca teve receita e sem veto da pessoa. A conferência se repete DENTRO da transação.
+  - O prefixo continua `training:`: a receita refeita segue ensinada para a origem no painel, para `Origem.TREINO`,
+    para as genéricas e para o aviso do 30.80 B.
+- A demonstração ainda nasce ativa e não passa pela prova; isso é o 30.81.
+- **Prova:** `simulated`, em `backend/tests/test_treino_substitui_receita.py`. `real`: `not_run`.
+
+## O ensinado rebaixado avisa (30.80 parte B)
+
+B2 do mapa do ensino (31.81). A receita ou o fluxo que a pessoa demonstrou no modo treinamento caía em quarentena ou
+era desligado pela obsolescência em silêncio: a etapa voltava para a IA e quem ensinou não sabia.
+
+- **Quando:** o item `training:<sessão>` estava em uso (`published`) e o SISTEMA o tirou de uso. Dois caminhos,
+  ambos depois da trilha e na mesma transação:
+  - a loja (`LearningService.avisar_mudanca_nativa`): quarentena por falhas seguidas, substituição;
+  - o Livro (`LearningService._mover_nativo`): a obsolescência e todo `mudar_estado(by='sistema')`.
+- **Não avisa:** o gesto de uma pessoa, outra demonstração (30.79: o autor é a sessão de treino), o item que a IA
+  aprendeu e o nascimento.
+- **Dois tipos, um por transição:**
+  - `learning.ensinado_sem_receita` (`warn`): nada ativo ficou no lugar, ou seja, nenhuma receita ativa na mesma chave
+    e nenhum fluxo ativo no mesmo `match_key`;
+  - `learning.ensinado_rebaixado` (`info`): outro ativo segura o lugar.
+- **Payload** (`domain/ensinado.py::CAMPOS_DO_PAYLOAD`), lista fechada combinada com a Canais (28.50): `kind`, `ref`,
+  `app`, `treino` (o id inteiro, `trn-…`), `sem_receita_ativa`, `para` (status nativo) e `desde`.
+  - `desde` é o `decided_at` da última linha da trilha do item, e não o relógio: a reemissão traz o mesmo valor, que é
+    a chave de deduplicação da Canais.
+  - Nunca conteúdo, seletor, conta ou texto de tela.
+- **Quem traduz para o dono** é a frente Canais (28.50): o texto do aviso é fixo, e o id vai só no link do detalhe.
+- **Prova:** `simulated`, em `backend/tests/test_learning_ensinado_rebaixado.py`. `real`: `not_run`.
+
+## O ensinado só vale para quem ensinou até a prova (30.81)
+
+O fluxo salvo no modo treinamento nascia ativo e casava para qualquer aparelho sem prova nenhuma. Desenho aprovado pela
+orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajustes de 16:25Z).
+
+- **Nasce ativo, restrito** (`taskqueue/flows.py::ensinado_em_prova`):
+  - O `match` com aparelhos só usa o ensinado quando TODOS os perfis são a persona do ensino
+    (`training_sessions.profile_id`).
+  - A prévia sem aparelhos (`profile_ids=None`) casa como antes.
+  - A sessão sem persona não casa em lugar nenhum, e o salvar diz isso numa linha de `warnings`.
+  - O fluxo que não veio do treino sai antes de qualquer consulta.
+  - O `IntentResolver` não muda, e não há migração.
+- **A espera acaba** com:
+  - uma prova real a favor, sem `invalida` da mesma origem, de uma execução com `prova_fluxo_id` deste fluxo, depois do
+    nascimento;
+  - ou o "Confirmar que fica" EXPLÍCITO de uma pessoa depois do nascimento (motivo `confirmado que fica`; leitura da
+    Reload, achado 3). Não contam `sistema`, `plataforma` (a régua), `training:` (outra demonstração) nem outra linha da
+    pessoa (adotar e desfazer não liberam). Desligado, o fluxo não está ativo.
+- **A receita do treino espera junto** (achado 1, decisão da orquestradora): enquanto o fluxo da mesma sessão espera a
+  prova, `RecipeStore.find` só acha a receita `training:<sessão>` para a persona do objetivo que ensinou
+  (`persona=`, passado pelo executor). Fora dela, a consulta termina `ensino_em_prova` (rótulo novo de
+  `receita.consulta`), sem herança, e a etapa vai para a IA. Quem ensinou usa a receita logo depois de salvar. A
+  receita que não veio do treino não paga consulta a mais.
+- **O que libera a receita do treino** (N1 e N2 da Reload, decisão da orquestradora): o "Confirmar que fica" explícito
+  de uma pessoa no fluxo da sessão, ou a evidência a favor DA RECEITA (`receita:<id>`, `for`, não simulada, sem
+  `invalida`) numa execução real de prova desse fluxo. A prova aprovada do fluxo sozinha não basta: a receita que não
+  rodou na prova segue só para quem ensinou. A execução de prova do próprio fluxo (`prova_fluxo_id`, passado pelo
+  executor como `prova_fluxo=`) acha as receitas da sessão, para provar o que vai liberar. O fluxo desligado por uma
+  pessoa não solta as receitas dele. O fluxo APAGADO (`DELETE /api/flows/{id}`) também não (N4 da Reload): sem
+  fluxo, a receita segue só para a persona da sessão, e só a evidência a favor dela numa execução real DE PROVA a
+  libera (N5: a execução comum de quem ensinou não conta).
+- **Para a validação** (achado 4), o fluxo ativo do comando é `FlowStore.ativo_para`: o `match` sem aparelhos, sem o
+  ensinado em espera (`state.py`, `fluxo_ativo_para` e `plano_ativo_para`).
+- **Quem abre a prova:** a volta da validação, e não o ouvinte do nascimento. O `save` grava a proposta final (com os
+  `example`) DEPOIS de `learn_from_plan`, e o ouvinte leria a proposta velha.
+  - `EnsinoDaValidacaoSql.a_provar` é uma consulta só por volta.
+  - O pedido é a reprodução em outro aparelho. O comando é o molde com o `example` de cada parâmetro
+    (`domain/validacao.py::comando_do_ensino`), e o aparelho do treino fica de fora.
+  - O `review_id` é `ensino:<sessão>`, com um pedido vivo por item. A execução leva a chave de sempre da validação.
+- **O que a prova automática não cobre passa à pessoa.** O pedido nasce `recusada` com o motivo, e sai
+  `learning.ensinado_espera_decisao`. Isso vale para:
+  - a classe C, e o item sem dossiê de agora (`classe_c`);
+  - toda recusa ao nascer: `efeito_real`, `sessao_ou_autenticacao`, `credencial`, `sem_origem` (faltou exemplo) e
+    `sem_caminho`;
+  - as tentativas esgotadas: 3 pedidos sem veredito, por aparelho fora do ar, expiração ou sem evidência
+    (`tentativas_esgotadas`, `TETO_DE_TENTATIVAS_DO_ENSINO`).
+
+  O conjunto é `MOTIVOS_QUE_ESPERAM_A_PESSOA`. Depois dele, a volta não abre mais nada para aquele nascimento.
+- **Rebaixamento** (`SombraDosFluxos._rebaixar_o_ensinado`):
+  - Só o veredito CONTRÁRIO (`against`) de uma prova real desliga o fluxo que ainda esperava. Vai a `disabled` pelo
+    sistema, como a sombra contradita, com a execução na trilha. As receitas ativas `training:<sessão>` vão junto ao
+    estado `disabled` do Livro (achado 2), que na receita é o status nativo `quarantined`, cada uma com a trilha.
+  - O 30.80 B avisa pelo caminho que já existe.
+  - Não rebaixam: a infraestrutura (`posicao=None`), a prova simulada e a forma.
+  - Uma pessoa reverte pelo Livro.
+- **A decisão da pessoa:**
+  - "Confirmar que fica" (30.24) passa a valer para o ensinado que espera a pessoa; antes, só "Revisar". O resultado é
+    `liberado`.
+  - Desligar pelo Livro é `desligado`.
+  - As duas publicam `learning.ensinado_decidido`, uma por nascimento: a espera é lida ANTES da linha da pessoa.
+  - O ensinado que ainda está na prova automática não se confirma (409).
+  - O Livro diz quando o botão vale: `espera_a_pessoa` traz o motivo literal no fluxo que espera, e `null` no resto
+    (`presentation/livro.py::_da_espera`, para a Portal).
+- **Eventos**, combinados com a Canais às 15:31Z:
+  - `learning.ensinado_espera_decisao`: `{kind, ref, app, treino, persona, desde}`;
+  - `learning.ensinado_decidido`: `{kind, ref, desde, decisao, decidido_em}`.
+
+  O `desde` é o nascimento (`flows.created_at`), o mesmo nos dois. Persona e slug nunca vão no `message`. O cartão da
+  lista de perguntas não decide (C-13).
+- **Campo da Portal:** `ensinado_em_prova: {persona, sessao}`, ausente quando não se aplica. Vai em:
+  - `cobertura_do_fluxo`, que serve `/flows/match` e `/flows/cobertura`;
+  - a resposta do salvar do treino;
+  - o topo da resposta de `/training/{id}/recipes`.
+- **Limites:**
+  - Se o barramento falha, o evento `learning.ensinado_espera_decisao` se perde: o pedido recusado que marca a espera
+    fica, e o Livro mostra `espera_a_pessoa`, mas a Canais não recebe o cartão (leitura da Reload, item 6).
+  - O fluxo desligado pela prova bloqueia o reensino do MESMO comando (a `match_key` é única): fica para o 30.84.
+  - A receita escondida pela espera não cai para a genérica nem para a herança (N3 da Reload): é falha fechada, e a
+    etapa vai para a IA mesmo quando uma receita genérica serviria.
+- **Prova:** `simulated`, em `backend/tests/test_ensinado_em_prova.py`. `real`: `not_run`.
 ## A prova sem evidência diz a causa (30.75)
 
 A leitura de 05/10 (`.claude/handoffs/aprendizado-sem-evidencia.md`) achou 5 pedidos de fluxo `sem_evidencia`:

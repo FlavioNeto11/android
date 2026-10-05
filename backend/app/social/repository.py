@@ -78,7 +78,7 @@ _ROTULO_DERIVADO = ("vinculo", "marcador")
 
 def normalizar_handle(handle: str) -> str:
     """A conta como o marcador a guarda: sem '@' e em minúsculas — o Instagram não distingue, e o índice de
-    unicidade do marcador aberto precisa ver `@Felipe` e `felipe` como a mesma conta."""
+    unicidade do marcador aberto precisa ver `@Sicrano` e `sicrano` como a mesma conta."""
     return handle.strip().lstrip("@").strip().lower()
 
 
@@ -98,7 +98,7 @@ def frase_da_quarentena(marcador: Row, acao: str | None = None, conta: str | Non
 
 class AparelhoEmQuarentena(RuntimeError):
     """O aparelho tem conta travada logada (marcador aberto, 054): nenhuma persona é vinculada nele. O serviço a
-    traduz em 409 `aparelho_em_quarentena`. O android-04 ficou no ar com o felipe no desafio e sem vínculo, e o
+    traduz em 409 `aparelho_em_quarentena`. O android-04 ficou no ar com a conta no desafio e sem vínculo, e o
     vínculo, a troca de aparelho e o cadastro aceitariam outra persona ali — que entraria no app de uma conta morta."""
 
     code = "aparelho_em_quarentena"
@@ -802,7 +802,7 @@ class SocialRepository:
 
     # ------------------------------------------------------------------ conta travada no aparelho (054, ADR-055)
     # O marcador é do APARELHO, não do perfil nem do vínculo — por isso estas leituras não pedem `profile_id`, como a
-    # localidade de `instances` acima. O android-04 ficou no ar com o felipe no desafio e sem vínculo nenhum: pela
+    # localidade de `instances` acima. O android-04 ficou no ar com a conta no desafio e sem vínculo nenhum: pela
     # regra de isolamento, perguntar "de quem é este aparelho" devolvia "de ninguém", e o parque tratou um aparelho
     # com conta morta logada como aparelho livre.
     def conta_travada_no_aparelho(self, instance_id: str) -> Row | None:
@@ -1007,7 +1007,7 @@ class SocialRepository:
 
     # ------------------------------------------------------------------ account_label derivado (054)
     # `instances.account_label` vinha só da configuração (`instances.accounts`) ou do que alguém digitou, e nunca
-    # mais mudava: em 28/09 os quinze aparelhos diziam `qa-user-NN`, inclusive o android-04 com o felipe logado — e
+    # mais mudava: em 28/09 os quinze aparelhos diziam `qa-user-NN`, inclusive o android-04 com o sicrano logado — e
     # um experimento acreditou nisso e tocou o desafio. Os leitores (planejamento, variável `{account_label}`,
     # cartão do aparelho) leem a COLUNA, então ela é mantida aqui a cada vínculo, desvínculo e marcador, e varrida
     # na partida (`sincronizar_rotulos`). O rótulo da configuração só é tocado quando há o que derivar.

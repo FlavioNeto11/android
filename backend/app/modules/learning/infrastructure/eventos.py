@@ -7,6 +7,8 @@ from typing import Protocol
 
 from app.integrations.app_declarado.conhecimento import PASTA_DOS_APPS
 from app.modules.applications.infrastructure import registry
+from app.modules.learning.domain.ensinado import (TIPO_DECIDIDO, TIPO_ESPERA_DECISAO, AvisoDoEnsinado,
+                                                  DecisaoDoEnsinado, EsperaDoEnsinado)
 from app.modules.learning.domain.espera import AvisoDeEspera, FatosDoCatalogo
 from app.planning.capabilities import UnknownCapability
 
@@ -21,7 +23,7 @@ class Barramento(Protocol):
 
 
 class EventosNoBarramento:
-    """`PortaDeEventos` sobre o `EventBus`: evento persistido (não está em `EPHEMERAL_KINDS`), sem aparelho. O
+    """`PortaDeEventos` (e `PortaDoEnsinado`, 30.80 B) sobre o `EventBus`: evento persistido (não está em `EPHEMERAL_KINDS`), sem aparelho. O
     payload é só o que `AvisoDeEspera.como_dados` monta (lista fechada). A falha SOBE: cada chamador decide."""
 
     def __init__(self, bus: Barramento) -> None:
@@ -29,6 +31,17 @@ class EventosNoBarramento:
 
     def esperando_a_pessoa(self, aviso: AvisoDeEspera) -> None:
         self._bus.emit(TIPO_DO_EVENTO, aviso.mensagem(), level=aviso.nivel, data=aviso.como_dados())
+
+    def ensinado_rebaixado(self, aviso: AvisoDoEnsinado) -> None:
+        """30.80 B (`PortaDoEnsinado`): o tipo diz a criticidade; o payload é só `AvisoDoEnsinado.como_dados`."""
+        self._bus.emit(aviso.tipo, aviso.mensagem(), level=aviso.nivel, data=aviso.como_dados())
+
+    def ensinado_espera_decisao(self, aviso: EsperaDoEnsinado) -> None:
+        """30.81: precisa de uma pessoa (vira cartão na lista de perguntas pela Canais)."""
+        self._bus.emit(TIPO_ESPERA_DECISAO, aviso.mensagem(), level="warn", data=aviso.como_dados())
+
+    def ensinado_decidido(self, aviso: DecisaoDoEnsinado) -> None:
+        self._bus.emit(TIPO_DECIDIDO, aviso.mensagem(), level="info", data=aviso.como_dados())
 
 
 class RiscoDoRegistro:

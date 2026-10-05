@@ -1176,6 +1176,10 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `app_state.updated` | sim | `state.py` |
 | `session.needs_person` | sim | — |
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
+| `learning.ensinado_rebaixado` | sim | `modules/learning/application/ensinado.py::AvisadorDoEnsinado`, chamado por `LearningService` (`avisar_mudanca_nativa` e `_mover_nativo`) — a receita ou o fluxo ensinado no modo treinamento saiu de uso por decisão do SISTEMA (quarentena, substituição, obsolescência) e outro ativo segura o lugar; 30.80 B |
+| `learning.ensinado_sem_receita` | sim | o mesmo, quando nada ativo ficou no lugar (a etapa voltou para a IA); `warn`; 30.80 B; ver o adendo v1.61 |
+| `learning.ensinado_espera_decisao` | sim | `ServicoDeValidacao` (a volta da validação), via `LearningService.avisar_espera_do_ensinado`. O fluxo ensinado que a prova automática não cobre espera a decisão de uma pessoa; `warn`; 30.81; ver o adendo v1.65 |
+| `learning.ensinado_decidido` | sim | `LearningService` (`confirmar_que_fica`, `_mover_nativo`): uma pessoa decidiu o ensinado que esperava; `info`; 30.81; ver o adendo v1.65 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 
@@ -1411,7 +1415,7 @@ cliente ou agente antigo mantém o comportamento de antes.
 **C1. Observação** (`devices/manager.py::Observation`). Os campos de hoje ficam (`frame_id`, `ts`, `width`,
 `height`, `jpeg`, `tree`, `package`, `sensitive`). Entram, opcionais:
 - `tree_at` e `image_at`: horário ISO da hierarquia e do screencap (`image_at: null` = sem imagem);
-- `image_omitted`: `sensitive` ou `policy` quando `jpeg` é `null`. Omitir a imagem **não** é falha de captura;
+- `image_omitted`: `sensitive`, `policy` ou `capture_failed` (adendo v1.55) quando `jpeg` é `null`. Omitir a imagem **não** é falha de captura (`capture_failed` é, e quem chamou a aceitou);
 - `source` (`central_adb`, ou `worker_local` quando a imagem veio da captura na origem, `observe_local`) e
   `runtime_gen` (geração do runtime do aparelho).
 
@@ -6458,6 +6462,31 @@ Mudanças aditivas; o painel não muda.
 - A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
   que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
 - **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).
+## Adendo v1.61 (05/10/2026; número da orquestradora; item 30.80 B) — o ensinado que o sistema tirou de uso avisa
+
+Dois tipos novos de evento, persistidos e sem aparelho. São aditivos: o painel não muda, e quem os traduz para o dono é a
+frente Canais (28.50).
+- `learning.ensinado_rebaixado` (`level: "info"`): a receita ou o fluxo ensinado no modo treinamento
+  (`training:<sessão>`), que estava em uso, saiu de uso por decisão do SISTEMA (quarentena por falhas seguidas,
+  substituição, obsolescência), e outra receita ativa na mesma chave (ou outro fluxo ativo no mesmo `match_key`)
+  segura o lugar.
+- `learning.ensinado_sem_receita` (`level: "warn"`): o mesmo, quando nada ativo ficou no lugar; a IA volta a conduzir
+  a etapa.
+- Cada transição publica UM dos dois. Não publicam: o gesto de uma pessoa, outra demonstração, o item que a IA
+  aprendeu e o nascimento.
+- `data`, lista fechada (`domain/ensinado.py::CAMPOS_DO_PAYLOAD`):
+  - `kind`: `"receita"` ou `"fluxo"`;
+  - `ref`: o id da receita (só dígitos) ou do fluxo (slug `[a-z0-9-]`);
+  - `app`: o pacote;
+  - `treino`: o id inteiro da sessão de treino (`trn-…`);
+  - `sem_receita_ativa`: `boolean`, o mesmo que o tipo diz;
+  - `para`: o status NATIVO de destino (`quarantined`, `superseded`, `disabled`);
+  - `desde`: ISO UTC, o instante da transição gravado na trilha (`learning_transitions.decided_at`), estável numa
+    reemissão.
+- Nunca conteúdo da receita ou do fluxo, seletor, conta ou texto de tela. O `message` só leva tipo, id, pacote e o
+  status nativo, e quem avisa o dono não o usa. No fluxo, o `message` não leva o id (hoje o slug do resumo literal, que
+  vai ao `backend.log` no `warn`); ele segue só em `data.ref` (leitura do 28.50 pela Reload).
+- **Prova:** `simulated` (`backend/tests/test_learning_ensinado_rebaixado.py`).
 
 ## Adendo v1.62 (05/10/2026; número da orquestradora; item 31.100) — o `save` do treinamento recusa marcador reservado no comando
 
@@ -6529,3 +6558,82 @@ Mudança de comportamento em duas rotas do modo treinamento; o corpo novo é adi
   `control_required`, mostrar a mensagem do erro e manter a barra de gravação (a gravação segue viva; nada foi encerrado),
   em vez de tratá-la como sessão encerrada. Quem não tem o controle vê a gravação, mas não a encerra.
 - **Prova:** `simulated` (`backend/tests/test_treino_parar_exige_controle.py`); `real`: `not_run`.
+
+## Adendo v1.55 (05/10/2026; número da coordenação; item 31.76) — `image_omitted` ganha `capture_failed`
+
+Sem migração e sem rota nova. `image_omitted` é um campo de `Observation` (`devices/manager.py`, contrato C1 do adendo
+v0.20), interno ao backend: não aparece em DTO, evento nem evidência da API (conferido por `grep` em `backend/app`,
+`frontend/src` e `docs`; as únicas ocorrências são o dataclass, o `observe` e o executor).
+- `capture_failed`: a aquisição da imagem FALHOU (`DriverTimeout` ou `FalhaDeLeitura`), a árvore já estava lida, o
+  tamanho da tela se sabia sem a imagem e quem chamou aceitou seguir só pela árvore (`observe(tolerar_falha_da_imagem=
+  True)`, desligado por padrão). Nunca é prova nem sucesso de nada.
+- Só o laço do ator do executor liga o parâmetro. Verificação, evidência, prévia do painel e controle manual não: neles a
+  exceção sobe como antes, e `completar_imagem` refaz a captura de uma observação `capture_failed`.
+- Campos junto, também internos: `captura_falha` ("Tipo: mensagem", sem texto de tela) e `captura_excedeu_prazo`.
+- A métrica `captura.total` conta `origem=observacao, resultado=falha`; a série da prévia (`capture_failures`) não é tocada.
+- **Evidência da API:** o campo não vai a ela, mas a evidência da etapa muda com ele. A observação `capture_failed` tenta
+  a captura tardia (como a `policy`); sem imagem, a evidência é `kind="text"`, `redacted=0`, com o motivo na nota
+  ("(captura da tela falhou)", "(imagem ausente)" ou "(imagem não adquirida: <Tipo>)"). "Tela sensível" e
+  `redacted=1` ficam para a tela sensível: a da observação e a da captura tardia que devolve `None` (tela que é ou
+  pode ser sensível, ou geração trocada).
+- **Prova:** `simulated` (`backend/tests/test_falha_so_da_imagem.py`).
+
+## Adendo v1.65 (05/10/2026; número da orquestradora; item 30.81) — o fluxo ensinado espera a prova
+
+Aditivo. O fluxo salvo no modo treinamento segue nascendo `active`, mas até a prova só vale para a persona que ensinou.
+- **`ensinado_em_prova`** (combinado com a Portal): `{"persona": string|null, "sessao": "trn-…"}`, AUSENTE quando não
+  se aplica. Vai em:
+  - `POST /api/flows/match` e cada item de `GET /api/flows/cobertura`;
+  - a resposta de `POST /api/training/{id}/save`;
+  - o topo da resposta de `POST /api/training/{id}/recipes`, ao lado de `flow_id`.
+
+  `persona: null` quer dizer que o treino não tinha persona, e o fluxo não casa em aparelho nenhum até a prova.
+- **`warnings`** do salvar e da prévia do treino ganham uma linha quando a sessão não tinha persona.
+- **Casar:** com aparelhos, o ensinado em prova só casa quando TODOS os perfis são a persona do ensino. A prévia sem
+  aparelhos casa como antes.
+- **A espera acaba** com uma prova real a favor (execução com `prova_fluxo_id`, depois do nascimento, sem `invalida`)
+  ou com o "Confirmar que fica" explícito de uma pessoa (adotar ou outra linha da pessoa não contam).
+- **Receita do treino:** enquanto o fluxo da mesma sessão espera, a receita `training:<sessão>` só é usada para a
+  persona que ensinou. Em `GET /api/desempenho`, `receita.consulta{resultado}` ganha `ensino_em_prova`. Ela passa a
+  valer para todos com o "Confirmar que fica" explícito no fluxo, ou quando ela mesma rodou na prova real do fluxo
+  com a etapa comprovada; a prova do fluxo sozinha não a libera, e o fluxo desligado por uma pessoa também não.
+- **Pedidos de validação** (`GET /api/aprendizado/validacoes`):
+  - o pedido da prova do ensinado tem `review_id` `ensino:<sessão>` e `run_origem: null`;
+  - `motivo` ganha `classe_c` (classe C, ou sem dossiê de agora) e `tentativas_esgotadas` (3 pedidos sem veredito);
+  - com eles, e com as recusas ao nascer (`efeito_real`, `sessao_ou_autenticacao`, `credencial`, `sem_origem`,
+    `sem_caminho`), o pedido `recusada` marca que o ensinado espera a pessoa.
+- **`POST /api/aprendizado/fluxo/{id}/confirmar`** aceita também o fluxo ensinado que espera a pessoa (antes, 409 fora
+  de "Revisar"). O ensinado que ainda está na prova automática segue com 409.
+- **Livro** (as entradas de `GET /api/aprendizado` e do detalhe): o fluxo ganha `espera_a_pessoa: string|null`, que
+  traz o motivo literal quando o ensinado espera a decisão de uma pessoa e o "Confirmar que fica" vale para ele, e
+  `null` em todo o resto. Fica ausente nos outros tipos. Combinado com a Portal (31.91).
+- **Rebaixamento:** o veredito contrário de uma prova real leva o fluxo e as receitas ativas do mesmo treino ao estado
+  `disabled` do Livro, pelo sistema (status nativo `disabled` no fluxo e `quarantined` na receita). Os eventos do 30.80 B (v1.61) saem como sempre.
+- **Eventos novos**, persistidos e sem aparelho:
+  - `learning.ensinado_espera_decisao` (`warn`), com `data` `{kind: "fluxo", ref, app, treino, persona, desde}`;
+  - `learning.ensinado_decidido` (`info`), com `data` `{kind, ref, desde, decisao: "liberado"|"desligado"|"outro",
+    decidido_em}`. É um por nascimento.
+
+  O `desde` é o nascimento do fluxo (ISO UTC), o mesmo nos dois. O `message` não leva persona nem o id do fluxo.
+- **Prova:** `simulated` (`backend/tests/test_ensinado_em_prova.py`).
+
+## Adendo v1.67 (05/10/2026; número da orquestradora; item 29.143) — o controle manual tem dono
+
+Mudança de comportamento em `POST /api/instances/{id}/control/take`; o corpo novo é aditivo e opcional.
+- O lease do controle de usuário (e o pedido pendente com a IA) passa a ter dono: o operador da sessão do painel, ou
+  `panel` sem sessão (o mesmo autor do sinal `tomou_controle`, ADR-054). Não persiste, como o lease.
+- A mesma pessoa (outra aba) recebe o mesmo `lease_id`, como antes.
+- Outra pessoa recebe **409** `controlled_by_other`, com `dono` e `desde` (ISO, `null` no pendente) no corpo do erro,
+  em vez do lease calado. Mensagens: "<dono> está no controle de <aparelho> desde <hora>; para assumir, use a tomada
+  explícita." e, com a IA no controle, "<dono> já pediu o controle de <aparelho>; aguardando a IA.". A recusa não muda nada.
+- Tomada explícita: corpo `{"tomar": true}` (`extra=forbid`; sem corpo ou `false` é o pedido de sempre). Devolve 200
+  `{status:'granted', lease_id}` com um lease NOVO. O antigo deixa de valer na hora (`input`, `release` e o
+  `training.*` respondem como sem lease). A gravação viva de quem ensinava é encerrada (`recorded`, nem salva nem
+  descartada), com um log `warn` "interrompida pela tomada de <novo>". O `control.changed` traz "<novo> tomou o
+  controle de <antigo>", com `tomado_por` e `tomado_de` em `data`. Com o pedido pendente de outra pessoa, a tomada também
+  é recusada (409).
+- Limite: sem sessão todo chamador é `panel`, e entre eles não há como distinguir; `panel` e um operador com sessão se
+  recusam um ao outro.
+- **O que o painel precisa mudar (Portal):** no 409 `controlled_by_other`, mostrar quem está no controle e desde
+  quando, e oferecer "Tomar o controle" com confirmação, que manda `{"tomar": true}`.
+- **Prova:** `simulated` (`backend/tests/test_controle_com_dono_29_143.py`); `real`: `not_run`.

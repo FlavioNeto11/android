@@ -40,7 +40,8 @@ def _defeito(condicao: bool, mensagem: str) -> None:
 _VOCABULARIO = {
     # `candidata`: a receita em prova (test_receita_candidata) — achada, mas a IA decide e ela só é comparada
     # `herdada`: a chave sem receita herdou a provada de outra chave, como candidata (RA-20, test_receita_heranca)
-    "receita.consulta": {"resultado": {"encontrada", "candidata", "ausente", "quarentena", "herdada"}},
+    "receita.consulta": {"resultado": {"encontrada", "candidata", "ausente", "quarentena", "herdada",
+                                       "ensino_em_prova"}},
     "receita.ausente": {"causa": {c.value for c in CausaDoAusente}},
     "receita.reproducao": {"resultado": {"ok", "divergiu", "nao_aplicavel"}},   # nao_aplicavel: 30.80
     "receita.retorno_ia": {"motivo": {m for _, m in _MOTIVOS_DO_RETORNO} | {"outro"}},

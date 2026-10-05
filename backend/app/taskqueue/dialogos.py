@@ -105,6 +105,8 @@ def dialogo_sem_saida(tree: UiTree, area: tuple[int, int, int, int] | None = Non
 
 
 def _cobre_a_tela(e: UiElement, tree: UiTree) -> bool:
+    # Leitura do 31.104: aqui a medida pelas folhas (menor ou igual à tela) é o lado que ENDURECE: mais elementos
+    # "cobrem" e mais etapas falham fechado. A medida maior (janela, tela) afrouxaria; por isso fica a das folhas.
     largura = max((x.bounds[2] for x in tree.elements), default=0)
     altura = max((x.bounds[3] for x in tree.elements), default=0)
     x1, y1, x2, y2 = e.bounds
@@ -144,8 +146,10 @@ def botao_que_fecha(tree: UiTree, area: tuple[int, int, int, int] | None = None)
 #: que `_PISTAS`: um "OK" de um diálogo qualquer do site não é consentimento.
 _CONSENTIMENTO = re.compile(r"cookie|consent|privacidade|privacy|lgpd|gdpr|rgpd", re.IGNORECASE)
 
-#: Acima desta fração da tela, um elemento marcado é a página (o WebView com "privacidade" no título), não um aviso.
-_FRACAO_DA_PAGINA = 0.6
+#: A fração da tela que separa a página do que flutua sobre ela. Uma só, pública (K2 da leitura do #391), com dois
+#: usos: acima dela, um elemento marcado é a página (o WebView com "privacidade" no título), não um aviso (31.72); e
+#: abaixo dela, a janela inteira do dump é uma janela flutuante, o próprio diálogo (31.73, `executor.sobreposicao_vale`).
+FRACAO_DA_PAGINA = 0.6
 
 #: A faixa do aviso: a altura do elemento marcado mais esta fração da tela acima e abaixo. O leitor da árvore descarta
 #: o contêiner vazio e não clicável, e no Chrome o texto do aviso e os botões costumam ser IRMÃOS nele: sem o
@@ -173,12 +177,59 @@ _NUNCA_NO_ROTULO = re.compile(r"\b(?:" + _NUNCA.pattern + ")", re.IGNORECASE)
 _ID_DO_NAVEGADOR = tuple(f"{p}:id/" for p in NAVEGADORES)
 
 
-def _do_navegador(e: UiElement) -> bool:
-    return (e.resource_id or "").startswith(_ID_DO_NAVEGADOR)
+#: 31.75: as raízes da interface do Chrome que vêm DEPOIS do conteúdo da página na ordem do documento (capturas de
+#: 05/10: `control_container`, a barra de cima, no ML e no g1; `bottom_container`, a barra de tradução, no gov.br).
+_RAIZES_DO_NAVEGADOR = ("control_container", "bottom_container")
+#: H2: a classe das raízes nas 13 capturas reais com raiz; o conteúdo web (`View`, `Button`, `TextView`) não a expõe.
+_CLASSE_DA_RAIZ = "android.widget.FrameLayout"
 
 
-def _de_consentimento(e: UiElement) -> bool:
-    if _do_navegador(e):
+def _conteudo_web(tree: UiTree) -> frozenset[str]:
+    """31.75: os elementos da PÁGINA (os `id` eN que o leitor dá, únicos por árvore), sem confiar no `resource-id`. O
+    Chrome expõe o `id` do HTML como `resource-id`, então uma página pode ter `id="com.android.chrome:id/x"` e se passar
+    por interface. Na ordem do documento, o conteúdo da página vem entre a WebView e a primeira RAIZ da interface do
+    Chrome; o que tiver id do navegador ali dentro é da página. Três endurecimentos, para falhar FECHADO onde a página
+    manda:
+    - H1: a identidade é o `e.id` (o `id()` do objeto Python daria a isenção calado a um alvo vindo de outra instância
+      da mesma árvore).
+    - H2: a raiz só encerra a página com o id de raiz E a classe `FrameLayout` (a interface nativa); o HTML pode pôr o
+      id da raiz num `View`, `Button` ou `TextView` antes do botão falso.
+    - H3: com WebView e NENHUMA raiz válida depois dela (a barra escondida pela rolagem; a árvore truncada, que deixou a
+      raiz fora do corte), a página vai até o FIM do documento. Prefere-se o toque recusado ao aceite em silêncio.
+    - Leitura do 31.75: o leitor guarda SEMPRE a WebView (`parse_hierarchy`), então a página não consegue sumir com ela
+      (`<title>` vazio e sem rolagem). E a página é a UNIÃO dos trechos de TODAS as WebViews, cada um até a primeira raiz
+      válida depois dela: uma segunda WebView depois da raiz, ou um iframe exposto como WebView aninhada, não fica fora.
+    Sem WebView na árvore não há conteúdo web (a página inicial anônima, `cookie_controls_card`, é nativa): vale o id."""
+    raizes = {f"{p}{r}" for p in _ID_DO_NAVEGADOR for r in _RAIZES_DO_NAVEGADOR}
+    pagina: set[str] = set()
+    dentro = False
+    for e in tree.elements:
+        if "WebView" in (e.class_name or ""):
+            if dentro:
+                pagina.add(e.id)                        # a WebView aninhada (iframe) também é da página
+            dentro = True
+        elif dentro and (e.resource_id or "") in raizes and (e.class_name or "") == _CLASSE_DA_RAIZ:
+            dentro = False
+        elif dentro:
+            pagina.add(e.id)
+    return frozenset(pagina)
+
+
+def texto_da_barra(tree: UiTree, barras: set[str]) -> str:
+    """31.103: o texto da barra de endereço DE VERDADE, o primeiro nó com o id da barra FORA do conteúdo da página
+    (`_conteudo_web`, a régua do 31.75). A página pode pôr `id="com.android.chrome:id/url_bar"` num elemento antes da
+    barra real, e o primeiro na ordem do documento seria o dela. Sem barra fora da página, `""`: sem barra confiável
+    não há isenção de host (o lado que trava)."""
+    web = _conteudo_web(tree)
+    return next((e.text or "" for e in tree.elements if e.resource_id in barras and e.id not in web), "")
+
+
+def _do_navegador(e: UiElement, web: frozenset[str] = frozenset()) -> bool:
+    return (e.resource_id or "").startswith(_ID_DO_NAVEGADOR) and e.id not in web
+
+
+def _de_consentimento(e: UiElement, web: frozenset[str] = frozenset()) -> bool:
+    if _do_navegador(e, web):
         return False
     return any(_CONSENTIMENTO.search(x) for x in (e.class_name or "", e.resource_id or "", _rotulo(e)[:120]))
 
@@ -210,8 +261,8 @@ def _fecha_ou_recusa(e: UiElement) -> bool:
     return _normal(rotulo) in _ROTULOS_QUE_FECHAM or (not rotulo and bool(_ID_QUE_FECHA.search(e.resource_id or "")))
 
 
-def toque_que_aceita(tree: UiTree, alvo: UiElement | None,
-                     ponto: tuple[int, int] | None = None) -> UiElement | None:
+def toque_que_aceita(tree: UiTree, alvo: UiElement | None, ponto: tuple[int, int] | None = None,
+                     tela: tuple[int, int] | None = None) -> UiElement | None:
     """O elemento cujo toque ACEITARIA um aviso de consentimento do site; `None` quando o toque pode seguir.
 
     Com qualquer marca de consentimento na tela, o rótulo que diz aceitar (`_NUNCA`: "ACEITAR TODOS", "Allow all",
@@ -223,18 +274,25 @@ def toque_que_aceita(tree: UiTree, alvo: UiElement | None,
     silêncio."""
     if alvo is None:
         return None
-    largura = max((e.bounds[2] for e in tree.elements), default=0)
-    altura = max((e.bounds[3] for e in tree.elements), default=0)
-    pagina = _FRACAO_DA_PAGINA * largura * altura
+    # 31.104: a tela é a MAIOR medida, entre a extensão das folhas, a janela do dump (31.77) e o tamanho da tela que o
+    # executor conhece (`tela`, do `ToolContext`; vale mesmo sem janela). Pela das folhas só, numa página esparsa o
+    # texto do aviso passava de 60 % dela, deixava de ser marca, e o "Aceitar todos" passava. Aqui o lado que trava é a
+    # página maior (e a faixa, que é fração da altura, também cresce). Monótona: nada que travava passa a dispensar.
+    janela = tree.janela or (0, 0, 0, 0)
+    tela_l, tela_a = tela or (0, 0)
+    largura = max(max((e.bounds[2] for e in tree.elements), default=0), janela[2], tela_l)
+    altura = max(max((e.bounds[3] for e in tree.elements), default=0), janela[3], tela_a)
+    pagina = FRACAO_DA_PAGINA * largura * altura
     # K2: só a marca que tem cara de aviso (abaixo de 60 % da tela; a interface do navegador já saiu em
     # `_de_consentimento`) liga a trava.
-    marcas = [e for e in tree.elements if _de_consentimento(e) and _area(e.bounds) < pagina]
+    web = _conteudo_web(tree)                       # 31.75: o id do navegador dentro da página não vale
+    marcas = [e for e in tree.elements if _de_consentimento(e, web) and _area(e.bounds) < pagina]
     if not marcas:
         return None
     x = ponto[0] if ponto is not None else (alvo.bounds[0] + alvo.bounds[2]) / 2
     y = ponto[1] if ponto is not None else (alvo.bounds[1] + alvo.bounds[3]) / 2
     na_zona = any(_na_zona(tree, m, x, y, pagina, _MARGEM_DA_FAIXA * altura) for m in marcas)
-    if _do_navegador(alvo):
+    if _do_navegador(alvo, web):
         # K2: o botão do navegador (o menu da barra de tradução por cima da folha de cookies do gov.br, 05/10) não é
         # a página: fora da zona não se julga pelo rótulo; dentro dela, só o que diz aceitar é recusado.
         return alvo if na_zona and _diz_aceitar(alvo) else None
@@ -269,9 +327,12 @@ def _na_zona(tree: UiTree, marca: UiElement, x: float, y: float, pagina: float, 
 def _caixa_da_marca(tree: UiTree, marca: UiElement, pagina: float) -> UiElement | None:
     """A caixa reconhecida da marca, ou `None`. Z1 da releitura: só um contêiner DISTINTO da marca é caixa. O parágrafo
     do aviso com o link "política de cookies" dentro dele não é: a zona encolheria para o retângulo dele e o botão
-    100 px abaixo passaria."""
-    caixas = [e for e in tree.elements if e is not marca and _contem(e.bounds, marca.bounds) and _area(e.bounds) < pagina
-              and (_de_consentimento(e) or _PISTAS.search(e.class_name or "") or _PISTAS.search(e.resource_id or ""))]
+    100 px abaixo passaria. N1: o gêmeo da marca (par de nós do mesmo link) também não é caixa."""
+    web = _conteudo_web(tree)
+    caixas = [e for e in tree.elements if e is not marca and not _gemeo(e, marca) and _contem(e.bounds, marca.bounds) and _area(e.bounds) < pagina
+              and (_de_consentimento(e, web) or _PISTAS.search(e.class_name or "") or _PISTAS.search(e.resource_id or ""))]
+    # Com a página maior (31.104), a maior caixa pode ser outra, não aninhada com a de antes; só acontece com dois
+    # contêineres não aninhados que contêm a marca, e a zona continua sendo a de um contêiner que a contém.
     caixa = max(caixas, key=lambda e: _area(e.bounds), default=None)
     if caixa is not None and any(e is not caixa and _contem(caixa.bounds, e.bounds) for e in tree.elements):
         return caixa
@@ -283,10 +344,21 @@ def _caixa_da_marca(tree: UiTree, marca: UiElement, pagina: float) -> UiElement 
 _FRASE_DE_AVISO = 30
 
 
+def _gemeo(a: UiElement, b: UiElement) -> bool:
+    """N1: o mesmo texto nos mesmos bounds. O Chrome expõe um link inline como DOIS nós assim (gov-3, "Declaração de
+    Cookies": o clicável e um filho não clicável); o par é um nó só."""
+    return a is not b and bool(_rotulo(a)) and a.bounds == b.bounds and _rotulo(a) == _rotulo(b)
+
+
+def _clicavel(tree: UiTree, e: UiElement) -> bool:
+    """N1: `e` é clicável ou tem um gêmeo clicável (o par é um nó só, clicável)."""
+    return e.clickable or any(g.clickable and _gemeo(g, e) for g in tree.elements)
+
+
 def _cara_de_aviso(tree: UiTree, marca: UiElement, pagina: float) -> bool:
     # K2c da leitura: o título ou a pergunta do aviso ("Sua privacidade", "Aceitar cookies?") não é clicável e tem
-    # menos de 30 caracteres; o link do rodapé, que o K2b quer deixar de fora, é clicável.
-    return (not marca.clickable or len(_rotulo(marca)) > _FRASE_DE_AVISO
+    # menos de 30 caracteres; o link do rodapé, que o K2b quer deixar de fora, é clicável (N1: ou tem gêmeo clicável).
+    return (not _clicavel(tree, marca) or len(_rotulo(marca)) > _FRASE_DE_AVISO
             or _caixa_da_marca(tree, marca, pagina) is not None)
 
 

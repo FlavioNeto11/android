@@ -1,6 +1,8 @@
 import { create } from 'zustand';
-import { API_BASE, api } from '../api/client';
+import { API_BASE, api, toApiError, type ApiError } from '../api/client';
 import type { Instance } from '../api/types';
+import { confirm } from '../components/Confirm';
+import { formatClock } from '../lib/time';
 import { useAppStore } from './app';
 import { toast, toastError } from './toasts';
 
@@ -24,26 +26,37 @@ export interface Lease {
  */
 const LEASE_GRACE_MS = 3000;
 
+/** Quando ESTA aba fez a última tomada explícita de cada aparelho: o `control.changed` dela não derruba o lease novo. */
+const tomadasDestaAba: Record<string, number> = {};
+
 interface ControlStore {
   leases: Record<string, Lease>;
   busy: Record<string, boolean>;
-  take: (instanceId: string) => Promise<void>;
+  /** `tomar`: a tomada explícita do controle de outra pessoa (29.143), depois da confirmação. */
+  take: (instanceId: string, tomar?: boolean) => Promise<void>;
   release: (instanceId: string) => Promise<void>;
   /** Reconciliação com o estado vindo do servidor (eventos/snapshot). */
   reconcile: (instance: Pick<Instance, 'id' | 'control' | 'control_pending'>) => void;
   drop: (instanceId: string) => void;
+  /** `control.changed` de uma tomada (29.143): o lease desta aba, se havia, deixou de valer. */
+  tomado: (instanceId: string, por: string) => void;
 }
 
 export const useControlStore = create<ControlStore>((set, get) => ({
   leases: {},
   busy: {},
 
-  take: async (instanceId) => {
+  take: async (instanceId, tomar = false) => {
     if (get().busy[instanceId]) return;
     set((s) => ({ busy: { ...s.busy, [instanceId]: true } }));
+    let recusa: ApiError | null = null;
     try {
-      const res = await api.takeControl(instanceId);
+      if (tomar) tomadasDestaAba[instanceId] = Date.now();
+      const res = await api.takeControl(instanceId, tomar);
       set((s) => ({ leases: { ...s.leases, [instanceId]: { leaseId: res.lease_id, status: res.status, acquiredAt: Date.now() } } }));
+      // S1 da leitura: a janela conta da RESPOSTA. Com a tomada lenta (o backend encerra a gravação no mesmo pedido), a
+      // marca de antes do pedido já teria vencido quando o `control.changed` chegasse, e ele derrubaria o lease novo.
+      if (tomar) tomadasDestaAba[instanceId] = Date.now();
       // Reflete já a resposta; o evento `control.changed` confirma em seguida.
       if (res.status === 'granted') {
         useAppStore.getState().patchInstance(instanceId, { control: 'user', control_pending: false });
@@ -53,10 +66,14 @@ export const useControlStore = create<ControlStore>((set, get) => ({
         toast({ tone: 'info', title: 'Controle solicitado', message: `Aguardando a IA concluir a ação atual em ${instanceId}…`, key: `take-${instanceId}` });
       }
     } catch (e) {
-      toastError(`Não foi possível assumir o controle de ${instanceId}`, e);
+      const erro = toApiError(e);
+      if (erro.code === 'controlled_by_other' && !tomar) recusa = erro;
+      else toastError(`Não foi possível assumir o controle de ${instanceId}`, e);
     } finally {
       set((s) => ({ busy: { ...s.busy, [instanceId]: false } }));
     }
+    // 29.143: outra pessoa está no controle. O painel diz quem e desde quando, e a tomada só vai com a confirmação.
+    if (recusa && await confirmarTomada(instanceId, recusa)) await get().take(instanceId, true);
   },
 
   release: async (instanceId) => {
@@ -95,6 +112,16 @@ export const useControlStore = create<ControlStore>((set, get) => ({
     }
   },
 
+  tomado: (instanceId, por) => {
+    const lease = get().leases[instanceId];
+    if (!lease || Date.now() - (tomadasDestaAba[instanceId] ?? 0) < LEASE_GRACE_MS) return;
+    get().drop(instanceId);
+    toast({
+      tone: 'warning', title: `${por} tomou o controle de ${instanceId}`, key: `tomado-${instanceId}`,
+      message: 'O seu controle deste aparelho acabou. Se havia uma gravação de treinamento, ela foi encerrada e está em "Para revisar".',
+    });
+  },
+
   drop: (instanceId) =>
     set((s) => {
       if (!s.leases[instanceId]) return s;
@@ -102,6 +129,27 @@ export const useControlStore = create<ControlStore>((set, get) => ({
       return { leases: rest };
     }),
 }));
+
+/**
+ * A recusa `controlled_by_other` (adendo v1.67) com `dono` e `desde`. Com o pedido de outra pessoa ainda pendente
+ * (`desde` nulo), o backend recusa também a tomada: o painel só explica. Devolve se a pessoa confirmou a tomada.
+ */
+async function confirmarTomada(instanceId: string, recusa: ApiError): Promise<boolean> {
+  const dono = typeof recusa.detail?.dono === 'string' && recusa.detail.dono ? recusa.detail.dono : 'Outra pessoa';
+  const desde = typeof recusa.detail?.desde === 'string' ? recusa.detail.desde : null;
+  if (!desde) {
+    toast({ tone: 'info', title: `${dono} já pediu o controle de ${instanceId}`, key: `take-${instanceId}`,
+            message: 'O pedido espera a IA terminar a ação atual. Tente de novo depois que essa pessoa devolver o controle.' });
+    return false;
+  }
+  const { confirmed } = await confirm({
+    title: `${dono} está no controle de ${instanceId}`, danger: true,
+    confirmLabel: 'Tomar o controle', cancelLabel: 'Cancelar',
+    body: `Desde ${formatClock(desde)}. Tomar o controle tira o aparelho dessa pessoa na hora. Se ela estiver gravando um `
+      + 'treinamento, a gravação é encerrada e fica em "Para revisar" (não é descartada).',
+  });
+  return confirmed;
+}
 
 /** O usuário desta aba pode interagir agora? (lease concedido + servidor confirma o controle) */
 export function userHasControl(instance: Pick<Instance, 'control' | 'control_pending'> | undefined, lease: Lease | undefined): boolean {
