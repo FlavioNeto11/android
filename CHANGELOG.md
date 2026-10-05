@@ -22,13 +22,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-05 — 31.90-E: corrigir o que a etapa confere e os exemplos dos parâmetros na revisão do ensino (branch feat/31-90-e-editar-poscondicao-e-parametros)
 
 - **O quê.** Na revisão da proposta (`TrainingReview`), cada etapa ganha "Editar o que a etapa confere" (tipo, valor e descrição da
-  pós-condição) e a proposta ganha "Editar exemplos e descrições dos parâmetros". O nome do parâmetro não se edita, porque está no
+  pós-condição) e a proposta ganha "Editar os exemplos dos parâmetros". O nome do parâmetro não se edita, porque está no
   comando. A etapa com efeito fora do aparelho e sem comprovação já abre o editor; o editor aberto não fecha enquanto se digita.
+- **Achados do Codex no PR 457 (conferidos, os dois válidos).** O salvar refaz a etapa com ação do catálogo pelo catálogo
+  (`TrainingSkills._preparar`, `cat.build_step`), então a conferência editada ali seria mostrada e jogada fora: a etapa com
+  `capability` perdeu o editor e diz que a conferência vem do catálogo. E a descrição do parâmetro nunca entra no fluxo salvo
+  (`Plan.parameters` leva só o nome; só o exemplo vai para a prova): o campo saiu, ficou o exemplo.
 - **Servidor.** Sem mudança: o `save` já valida a proposta editada (31.83) e a recusa (`pos_condicao_vazia`, `parametro_*`) aparece
   no botão Salvar como as outras. Sem rota nova.
-- **Prova.** `simulated`: `frontend/src/features/training/TrainingReview.test.tsx::31.90-E` (5 testes: edição de tipo, valor e
-  descrição; exemplo e descrição do parâmetro com o corpo do save; abertura automática; editor fechado; recusa do servidor), com
-  mutação dos dois handlers reprovando 2 testes. Frontend inteiro 1691/1691 e `typecheck` limpos (4 workers, Idle).
+- **Prova.** `simulated`: `frontend/src/features/training/TrainingReview.test.tsx::31.90-E` (6 testes: edição de tipo, valor e
+  descrição; exemplo do parâmetro com o corpo do save; abertura automática; editor fechado; recusa do servidor; etapa do catálogo
+  sem editor), com
+  mutação dos dois handlers reprovando 2 testes. Frontend inteiro 1692/1692 e `typecheck` limpos (4 workers, Idle).
   `not_run`: percurso no navegador (entra no percurso do deploy que levar este corte).
 
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)

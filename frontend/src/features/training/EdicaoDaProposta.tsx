@@ -1,7 +1,10 @@
 /**
- * 31.90-E: o que a pessoa pode corrigir na proposta da IA além do texto: o que cada etapa CONFERE (a pós-condição) e os
- * exemplos e descrições dos parâmetros. O `save` já valida a proposta editada (31.83); aqui só se edita e a recusa
- * dele aparece no botão Salvar, como as outras. O nome do parâmetro não se edita: ele está no comando.
+ * 31.90-E: o que a pessoa pode corrigir na proposta da IA além do texto: o que cada etapa CONFERE (a pós-condição) e o
+ * exemplo de cada parâmetro. O `save` já valida a proposta editada (31.83); aqui só se edita e a recusa dele aparece no
+ * botão Salvar, como as outras. O nome do parâmetro não se edita: ele está no comando.
+ *
+ * Só se edita o que o salvar PRESERVA (`TrainingSkills._preparar`): a etapa com ação do catálogo é refeita pelo catálogo,
+ * com a conferência dele (por isso não tem editor), e do parâmetro só o exemplo entra no fluxo e na prova automática.
  */
 import { Disclosure } from '../../components/Disclosure';
 import { Select, TextInput } from '../../components/Field';
@@ -34,6 +37,10 @@ export function EditorDaPosCondicao({ indice, etapa, onChange }: {
   // `items_collected` (coleta) é lida pelo executor: aparece como está, e quem edita escolhe outro tipo se quiser trocar.
   const opcoes = tipo ? TIPOS : [{ kind: pos.kind, rotulo: pos.kind, valor: 'Valor' }, ...TIPOS];
   const mudar = (parcial: Partial<PosCondicao>) => onChange({ ...pos, ...parcial });
+  // A etapa com ação do catálogo sai do salvar com a conferência do catálogo: uma edição aqui seria mostrada e jogada fora.
+  if (etapa.capability) {
+    return <p className={styles.muted}>O que esta etapa confere vem da ação do catálogo “{etapa.capability}” e não muda por aqui.</p>;
+  }
   return (
     <Disclosure bare summary="Editar o que a etapa confere" openWhen={semComprovacao(etapa)}>
       {() => (
@@ -53,7 +60,7 @@ export function EditorDaPosCondicao({ indice, etapa, onChange }: {
   );
 }
 
-/** "Editar exemplos e descrições": o exemplo é o que a prova automática repete; a descrição é o que a IA lê. */
+/** "Editar os exemplos": o exemplo é o que a prova automática repete; a descrição do parâmetro não entra no fluxo salvo. */
 export function EditorDosParametros({ parametros, onChange }: {
   parametros: TrainingProposal['parameters'];
   onChange: (lista: TrainingProposal['parameters']) => void;
@@ -61,7 +68,7 @@ export function EditorDosParametros({ parametros, onChange }: {
   const mudar = (i: number, parcial: Partial<TrainingProposal['parameters'][number]>) =>
     onChange(parametros.map((p, k) => (k === i ? { ...p, ...parcial } : p)));
   return (
-    <Disclosure bare summary="Editar exemplos e descrições dos parâmetros">
+    <Disclosure bare summary="Editar os exemplos dos parâmetros">
       {() => (
         <div className={styles.editor}>
           {parametros.map((p, i) => (
@@ -69,8 +76,6 @@ export function EditorDosParametros({ parametros, onChange }: {
               <strong>{`{${p.name}}`}</strong>
               <TextInput aria-label={`Exemplo de {${p.name}}`} value={p.example} placeholder="Um valor de exemplo"
                          onChange={(e) => mudar(i, { example: e.target.value })} />
-              <TextInput aria-label={`Descrição de {${p.name}}`} value={p.description} placeholder="O que este parâmetro é"
-                         onChange={(e) => mudar(i, { description: e.target.value })} />
             </div>
           ))}
         </div>

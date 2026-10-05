@@ -606,16 +606,16 @@ it('31.90-E: o que a etapa confere se edita (tipo, valor, descrição) e o save 
   expect(corpoDoSave().proposal.steps[0]!.postcondition).toEqual({ kind: 'model_judged', value: 'Mensagem enviada', description: 'a bolha aparece' });
 });
 
-it('31.90-E: exemplo e descrição do parâmetro se editam; o nome não, e o save leva os dois', async () => {
+it('31.90-E: o exemplo do parâmetro se edita (a descrição não: o salvar a jogaria fora) e o save o leva', async () => {
   await abrirComProposta(SESSAO, PROPOSTA);
-  await abrirResumo(/Editar exemplos e descrições/);
+  await abrirResumo(/Editar os exemplos dos parâmetros/);
   expect(allByRole('textbox', /Nome de \{contato\}/)).toHaveLength(0);
+  expect(allByRole('textbox', /Descrição de \{contato\}/)).toHaveLength(0);
   await setValue(byRole('textbox', /Exemplo de \{contato\}/) as HTMLInputElement, 'QA-002');
-  await setValue(byRole('textbox', /Descrição de \{contato\}/) as HTMLInputElement, 'o nome na lista de conversas');
   await waitFor(() => expect(text()).toContain('{contato} = QA-002'));
   await click(byRole('button', /^Salvar como fluxo/));
   await waitFor(() => expect(backend.callsTo('POST', /\/save$/)).toHaveLength(1));
-  expect(corpoDoSave().proposal.parameters).toEqual([{ name: 'contato', example: 'QA-002', description: 'o nome na lista de conversas' }]);
+  expect(corpoDoSave().proposal.parameters).toEqual([{ name: 'contato', example: 'QA-002', description: '' }]);
 });
 
 it('31.90-E: a etapa com efeito e sem comprovação já abre o editor; a que comprova, não', async () => {
@@ -638,4 +638,12 @@ it('31.90-E: a recusa do servidor (pos_condicao_vazia) aparece no Salvar, como a
   await abrirComProposta(SESSAO, PROPOSTA);
   await click(byRole('button', /^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('A etapa com efeito precisa dizer como comprovar.'));
+});
+
+it('31.90-E: etapa com ação do catálogo não tem editor da conferência (o salvar a refaz pelo catálogo) e diz de onde ela vem', async () => {
+  const doCatalogo = { ...PROPOSTA.steps[0]!, side_effect: true, capability: 'SEND_MESSAGE', postcondition: { kind: 'model_judged', value: '', description: '' } };
+  await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [doCatalogo] });
+  expect(text()).toContain('O que esta etapa confere vem da ação do catálogo “SEND_MESSAGE” e não muda por aqui.');
+  expect(allByRole('combobox', /Tipo de conferência da etapa 1/)).toHaveLength(0);
+  expect(Array.from(document.querySelectorAll('summary')).some((x) => /Editar o que a etapa confere/.test(x.textContent ?? ''))).toBe(false);
 });
