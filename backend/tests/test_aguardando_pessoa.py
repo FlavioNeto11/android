@@ -336,17 +336,31 @@ async def test_a_parada_solta_a_trava_e_acorda_os_pedidos_como_na_main_sem_diges
     assert g["digest"] == [] and g["sem_worker"] == []           # nenhum digest enquanto espera
 
 
-@pytest.mark.parametrize("resolucao", ["confirm_done", "abandon"])
-async def test_concluir_ou_abandonar_assenta_uma_vez_sem_worker(harness: Harness, monkeypatch: pytest.MonkeyPatch,
-                                                                resolucao: str) -> None:
+async def test_abandonar_assenta_uma_vez_sem_worker(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
     st = harness.state
     assert st is not None
     run_id, g = await _parada_gravada(harness, monkeypatch)
     oid = str(st.db.scalar("SELECT id FROM objectives WHERE run_id=?", (run_id,)))
-    st.runs.resolve(run_id, oid, ResolveBody(resolution=resolucao))
+    st.runs.resolve(run_id, oid, ResolveBody(resolution="abandon"))
     await _assentou(harness, g, run_id)
-    assert _status_da_execucao(harness, run_id) in ("completed", "completed_with_issues")
+    assert _status_da_execucao(harness, run_id) == "completed_with_issues"
     _um_assentamento(st, g, run_id, sem_worker=True)
+
+
+async def test_confirmar_o_item_assenta_uma_vez_quando_o_worker_fecha(harness: Harness,
+                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
+    """Confirmar à mão a etapa parada devolve o objetivo às etapas seguintes: a execução volta a `running`, o worker a
+    fecha e assenta no `finally`. O gancho de saída não dispara junto."""
+    st = harness.state
+    assert st is not None
+    run_id, g = await _parada_gravada(harness, monkeypatch)
+    oid = str(st.db.scalar("SELECT id FROM objectives WHERE run_id=?", (run_id,)))
+    harness.fakes["android-01"].require_login = False             # a pessoa logou e confirmou
+    harness.fakes["android-01"].screen = "home"
+    st.runs.resolve(run_id, oid, ResolveBody(resolution="confirm_done"))
+    await harness.wait_run(run_id, statuses=("completed", "completed_with_issues", "failed"))
+    await _assentou(harness, g, run_id)
+    _um_assentamento(st, g, run_id, sem_worker=False)
 
 
 async def test_o_vencimento_em_thread_assenta_uma_vez_no_laco(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -384,6 +398,7 @@ async def test_a_retomada_que_conclui_assenta_uma_vez_pelo_worker_nunca_em_dobro
     run_id, g = await _parada_gravada(harness, monkeypatch)
     oid = str(st.db.scalar("SELECT id FROM objectives WHERE run_id=?", (run_id,)))
     harness.fakes["android-01"].require_login = False             # a pessoa logou no aparelho
+    harness.fakes["android-01"].screen = "home"
     st.runs.resolve(run_id, oid, ResolveBody(resolution="retry", note="loguei no aparelho"))
     await harness.wait_run(run_id, statuses=("completed", "completed_with_issues", "failed"))
     await _assentou(harness, g, run_id)
@@ -401,7 +416,12 @@ async def test_a_aprovacao_que_retoma_assenta_uma_vez_pelo_worker(harness: Harne
     etapa = st.db.scalar("SELECT id FROM steps WHERE objective_id=? AND status='waiting_user'", (oid,))
     pedido = st.approval_service.store.open(profile_id=None, capability="CREATE_COMMENT", summary="teste 29.93",
                                             run_id=run_id, objective_id=oid, step_id=etapa)
+    # O estado da represa de aprovação (`Scheduler._hold` → `_block`): objetivo `waiting_user` com
+    # `blocked_kind='approval'` e a etapa ainda por fazer. A etapa parada no login vira a etapa represada.
+    st.db.execute("UPDATE steps SET status='ready' WHERE id=?", (etapa,))
+    st.db.execute("UPDATE objectives SET blocked_kind='approval' WHERE id=?", (oid,))
     harness.fakes["android-01"].require_login = False
+    harness.fakes["android-01"].screen = "home"
     st.approval_service.decide(pedido.id, "approve")
     await harness.wait_run(run_id, statuses=("completed", "completed_with_issues", "failed"))
     await _assentou(harness, g, run_id)

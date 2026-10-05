@@ -301,12 +301,15 @@ class Repository:
             self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
         self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
         self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level, dados=dados)
-        # 29.93: a execução fecha (terminal, vindo de um não terminal) com o fim do trabalho automático JÁ gravado. Só
-        # acontece na saída de `awaiting_person`, direto ou passando por `cancelling`: a retomada limpa o `finished_at`
-        # (`recompute_run`), e a execução que fecha no fim do trabalho o grava nesta MESMA troca e assenta pelo
-        # `_settle_run` do worker, como antes. Nenhum worker vai assentar esta: o assentamento sai daqui, uma vez.
-        if (status in RUN_TERMINAL and anterior is not None and RunStatus(anterior) not in RUN_TERMINAL
-                and linha is not None and linha["finished_at"] and self.ao_assentar_sem_worker is not None):
+        # 29.93: a execução fecha saindo da espera da pessoa, e nenhum worker vai assentá-la: o assentamento sai daqui,
+        # uma vez. Dois jeitos de chegar: direto de `awaiting_person` (concluir, abandonar, vencer; o `resolve` limpa o
+        # `finished_at` antes do `recompute_run`, por isso o critério é o estado anterior) ou de `cancelling` com o fim
+        # do trabalho automático já gravado (o cancelamento da espera não o limpa). A retomada passa por `running`,
+        # e quem assenta é o worker, no `_settle_run`, como antes; o cancelamento de uma execução que roda chega a
+        # `cancelling` sem `finished_at`.
+        saiu_da_espera = anterior == RunStatus.awaiting_person.value or (
+            anterior == RunStatus.cancelling.value and linha is not None and bool(linha["finished_at"]))
+        if status in RUN_TERMINAL and saiu_da_espera and self.ao_assentar_sem_worker is not None:
             try:
                 self.ao_assentar_sem_worker(run_id)
             except Exception:  # noqa: BLE001 - o assentamento nunca derruba a troca de estado já gravada

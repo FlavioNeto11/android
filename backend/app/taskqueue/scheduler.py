@@ -231,7 +231,7 @@ class Scheduler:
         self.on_run_settled: Callable[[str], Any] | None = None
         # 29.93: a execução PAROU esperando a pessoa (`awaiting_person`). Solta o que a main soltava ao parar (trava de
         # rascunho, pedidos), sem o digest, que sai na saída do estado (`Repository.ao_assentar_sem_worker`).
-        self.on_run_parada: Callable[[str], Any] | None = None
+        self.on_run_parada: Callable[[str], None] | None = None
         # Uma etapa de COLETA terminou: (objetivo, etapa, itens lidos). Quem sabe o que fazer com uma lista de
         # falas é o domínio social (gravar o que a contraparte disse), não a fila — daqui sai só o fato de que a
         # leitura aconteceu. Injetado pelo AppState.

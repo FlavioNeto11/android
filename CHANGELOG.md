@@ -36,9 +36,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Pedidos: a ocorrência fecha como fechava com o `completed_with_issues`, para o domínio da Canais não mudar agora.
 - Assentamento (A1 da leitura): nenhum digest enquanto a execução espera (fora do `ASSENTADAS` e dos conjuntos
   finais). Na parada, o `_settle_run` solta o que a main soltava nessa hora (o explorador, a trava de rascunho, o
-  acordar dos pedidos) sem o digest (`Scheduler.on_run_parada`). Na saída sem worker (concluir, abandonar, vencer,
-  cancelar), `Repository.set_run_status` chama `ao_assentar_sem_worker`: terminal vindo de não terminal com
-  `finished_at` já gravado. É o assentamento inteiro, uma vez, agendado no laço por `call_soon_threadsafe` quando vem
+  acordar dos pedidos) sem o digest (`Scheduler.on_run_parada`). Na saída sem worker (abandonar, vencer, cancelar),
+  `Repository.set_run_status` chama `ao_assentar_sem_worker`: terminal vindo direto de `awaiting_person`, ou de
+  `cancelling` com o `finished_at` da espera ainda gravado. O critério é o estado anterior, porque o `resolve` limpa o
+  `finished_at` antes do `recompute_run`. É o assentamento inteiro, uma vez, agendado no laço por `call_soon_threadsafe` quando vem
   de uma thread (o vencimento roda em `to_thread`). A retomada limpa o `finished_at` e assenta pelo worker, como
   antes, sem dobrar. O que o digest conta durante e depois da espera é do 30.69 (Aprendizado), empilhado.
 - A retenção de evidência por idade também poupa a execução aguardando.

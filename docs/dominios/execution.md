@@ -1230,9 +1230,11 @@ Contexto: design §2.4; decisão: [ADR-038](../decisoes.md#adr-038--máquinas-de
   - **Parada sem digest:** ao parar, o `_settle_run` do worker solta o explorador, a trava de rascunho e acorda os
     pedidos (`Scheduler.on_run_parada` → `AppState._execucao_parada`), na mesma hora em que a main soltava ao parar
     em `completed_with_issues`.
-  - **Assentamento na saída, uma vez:** sem worker (concluir, abandonar, vencer, cancelar), `Repository.set_run_status`
-    chama `ao_assentar_sem_worker` (`AppState._execucao_assentada`: digest, trava, pedidos) quando a execução vai a
-    terminal, vinda de não terminal, com `finished_at` já gravado. De outra thread (o vencimento roda em `to_thread`;
+  - **Assentamento na saída, uma vez:** sem worker (abandonar, vencer, cancelar), `Repository.set_run_status` chama
+    `ao_assentar_sem_worker` (`AppState._execucao_assentada`: digest, trava, pedidos) quando a execução vai a terminal
+    vinda direto de `awaiting_person`, ou de `cancelling` com o `finished_at` da espera ainda gravado (o `resolve`
+    limpa o `finished_at` antes do `recompute_run`; por isso o critério é o estado anterior). Confirmar a etapa
+    parada devolve o objetivo às etapas seguintes, e quem fecha é o worker. De outra thread (o vencimento roda em `to_thread`;
     a rota síncrona, no threadpool), é agendado no laço por `call_soon_threadsafe`. A retomada limpa o `finished_at`,
     e quem assenta é o worker, como antes: o gancho não dispara junto.
 - **Reabertura registrada como é:** `completed_with_issues → running, paused, completed, cancelling` e
