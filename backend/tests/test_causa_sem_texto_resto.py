@@ -160,3 +160,27 @@ def test_validar_saida_levanta_sem_o_texto_e_sem_a_causa() -> None:
     with pytest.raises(AIError) as erro:
         validar_saida(_esquema_que_ecoa(), _bruto(), "Saída inválida")
     _sem_o_texto(erro.value)
+
+
+def test_o_lugar_do_erro_do_plano_conhece_os_modelos_aninhados_e_cala_o_resto() -> None:
+    """N1 da leitura do #376: `_sem_entrada` passa `Plan`, mas o erro nasce em `PlanStep` ou `MissingInfo`. Os nomes deles
+    entram pela recursão; o campo de um modelo que `Plan` não alcança vira `?` (seguro, perde informação)."""
+    from pydantic import BaseModel, ValidationError
+
+    from app.models import Plan, PlanStep
+    from app.planning.provider import erro_de_validacao_sem_entrada
+    from app.shared.validacao import nomes_de_campo
+
+    assert set(PlanStep.model_fields) <= nomes_de_campo(Plan)          # PlanStep é alcançado pela recursão
+    with pytest.raises(ValidationError) as do_passo:
+        PlanStep.model_validate({})
+    motivo = erro_de_validacao_sem_entrada(do_passo.value, Plan)
+    assert "?" not in motivo and "missing" in motivo
+
+    class Alheio(BaseModel):
+        campo_que_o_plano_nao_tem_31_70: int
+
+    with pytest.raises(ValidationError) as alheio:
+        Alheio.model_validate({"campo_que_o_plano_nao_tem_31_70": SEGREDO})
+    motivo = erro_de_validacao_sem_entrada(alheio.value, Plan)
+    assert motivo == "1 erro(s) de validação (?: int_parsing)" and SEGREDO not in motivo
