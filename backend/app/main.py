@@ -56,6 +56,9 @@ from .modules.avisos.presentation.webhook_trello import router as trello_webhook
 from .modules.context_retrieval.presentation.router import router as context_retrieval_router
 from .modules.learning.presentation.router import router as learning_router
 from .modules.pedidos.presentation.router import router as pedidos_router
+from .modules.portal.presentation.contato import METODOS_DO_CONTATO, ROTA_DO_CONTATO
+from .modules.portal.presentation.contato import router as portal_contato_router
+from .modules.portal.presentation.site import SitePublico
 from .modules.skills.presentation.router import router as skills_router
 from .security.access import CABECALHO_DO_IP_NA_BORDA, CLIENTE_LOCAL, avaliar, cliente_de, publicos_de
 from .security.redaction import RedactingFilter, chave_sensivel
@@ -292,6 +295,10 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
                 # 32.2 §8 (ADR-072): o Trello não tem credencial nossa. Só `HEAD` e `POST` neste caminho EXATO passam sem
                 # ela; quem autentica é a assinatura `X-Trello-Webhook`, conferida na rota. `forbidden_host` não é perdoado.
                 recusa = None
+            if recusa == "unauthorized" and caminho == ROTA_DO_CONTATO and request.method in METODOS_DO_CONTATO:
+                # 29.77 (ADR-075): o formulário do site institucional é de quem não tem conta. Só `POST` neste caminho
+                # EXATO; desligado, a rota responde 404. `forbidden_host` e a checagem de `Origin` abaixo seguem valendo.
+                recusa = None
             if chuta and operador is None and caminho.startswith("/api/"):
                 # 29.56: o Bearer tinha o mesmo oráculo de força bruta que o login, sem trava nenhuma. Bloqueado,
                 # nem o token certo passa (é o que torna a trava uma trava); quem já tem sessão segue pelo cookie.
@@ -329,6 +336,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         app.include_router(canais_estado_router)       # `/api/canais/estado` (32.5): só leitura, atrás do login
         app.include_router(canais_anexos_router)       # `/api/canais/anexos/{id}` (28.24): só leitura, atrás do login
         app.include_router(decisoes_automaticas_router)   # `/api/decisoes-automaticas` (28.25): listar e desfazer, atrás do login
+        app.include_router(portal_contato_router)      # `POST /api/portal/contato` (29.77): fora do login; 404 desligado
     app.include_router(worker_router)      # o canal do worker também atende na porta principal (modo (b))
     dist = cfg.root / "frontend" / "dist"
     if cfg.serve_api and dist.exists():
@@ -340,11 +348,29 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         async def _para_o_painel() -> RedirectResponse:
             return RedirectResponse(url=PREFIXO_DO_PAINEL + "/", status_code=307)
 
-        for caminho_de_entrada in ("/", PREFIXO_DO_PAINEL):
+        site_ligado = cfg.file.portal.site_ligado and (cfg.root / "site" / "index.html").is_file()
+        if cfg.file.portal.site_ligado and not site_ligado:
+            logging.getLogger("poc").warning("portal.site_ligado sem a pasta %s: a raiz segue no painel",
+                                             cfg.root / "site")
+        # 29.77: com o site institucional ligado, a raiz é dele e só `/central` segue redirecionando ao painel.
+        for caminho_de_entrada in ((PREFIXO_DO_PAINEL,) if site_ligado else ("/", PREFIXO_DO_PAINEL)):
             app.add_api_route(caminho_de_entrada, _para_o_painel, methods=["GET", "HEAD"], include_in_schema=False)
 
         app.mount(PREFIXO_DO_PAINEL, PainelEstatico(directory=dist, html=True), name="frontend")
+        if site_ligado:
+            # POR ÚLTIMO: o `mount` na raiz casa qualquer caminho, então tudo que veio antes (a API, `/central`) vence.
+            # Uma pasta `site/` com arquivo fora da lista derruba a subida aqui (ADR-075).
+            app.mount("/", SitePublico(cfg.root / "site", cfg.file.portal.contatos, _token_da_pagina,
+                                       contato_ligado=cfg.file.portal.contato_ligado), name="site")
     return app
+
+
+def _token_da_pagina(scope: Mapping[str, object]) -> str:
+    """O token do formulário (29.77) para a página que está saindo. O estado nasce no `lifespan`, depois do
+    `create_app`; antes dele, ou sem o portal, a página sai sem token e o envio é recusado."""
+    app = scope.get("app")
+    portal = getattr(getattr(getattr(app, "state", None), "poc", None), "portal", None)
+    return portal.token() if portal is not None else ""
 
 
 #: Onde o painel é servido (29.54). Tem de bater com o `base` do `frontend/vite.config.ts`.

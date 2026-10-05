@@ -82,6 +82,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-072](#adr-072--o-trello-do-dono-como-espelho-e-canal-de-comandos-só-o-dono-comanda-aprovar-pelo-trello-nunca-aprova-e-o-webhook-é-um-aviso) | O Trello do dono como espelho e canal de comandos: só o dono comanda, aprovar pelo Trello nunca aprova, o webhook é um aviso (item 32.2) | vigente (dono e orquestradora, 03/10; entrada e cadastro desligados) | 03/10 |
 | [ADR-073](#adr-073--portal-na-internet-por-túnel-de-saída-da-cloudflare-o-host-separa-o-público-do-local-o-painel-mora-em-central) | Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central` (item 29.54) | aceito (dono, 03/10; túnel `real` desde 03/10 21:47Z) | 03/10 |
 | [ADR-074](#adr-074--fechamento-da-fase-28-pedidos-persistentes-aceitos-a-fase-fecha-por-cláusula-as-emendas-do-dado-real-e-a-colaboração-em-fatias) | Fechamento da Fase 28: pedidos persistentes aceitos, a fase fecha por cláusula, as emendas do dado real e a colaboração em fatias (item 28.13) | proposto (Canais, 04/10) | 04/10 |
+| [ADR-075](#adr-075--site-institucional-na-raiz-e-contato-público-que-chega-ao-telegram-do-dono-emenda-ao-adr-073) | Site institucional na raiz e contato público que chega ao Telegram do dono: emenda ao ADR-073 (item 29.77) | proposto (Portal, 04/10; site e contato desligados) | 04/10 |
 
 ---
 
@@ -5441,3 +5442,170 @@ estado), ADR-062 (Pendências), ADR-064 (trava), ADR-066 (laço), ADR-071 (Teleg
 ADR-050, ADR-055 e ADR-009 (colaboração e conta por alvo), ADR-051 (saldo);
 [design/pedidos-persistentes.md](design/pedidos-persistentes.md) §9 e §13, [relatorio-validacao.md](relatorio-validacao.md)
 §30, [api-contract.md](api-contract.md) adendos v1.15 e v1.16.
+
+---
+
+## ADR-075 — Site institucional na raiz e contato público que chega ao Telegram do dono: emenda ao ADR-073
+
+**Data:** 04/10/2026 · **Estado:** proposto (Portal, 04/10; item 29.77). Código desligado por bandeira, prova
+`simulated` (`backend/tests/test_portal_site.py`, `backend/tests/test_portal_contato.py`); ligar no central é da
+orquestradora, depois do PR da Canais (28.32).
+
+**Contexto.** O dono pediu (chat de 04/10 ~20:56Z) um site institucional público na raiz de `https://dev.nvit.com.br/`,
+com link para o painel em `/central/` e um formulário de contato cuja mensagem chega ao Telegram dele pelo bot que já
+existe (ADR-071). Os telefones dele e do sócio aparecem na página, com WhatsApp. Pelo ADR-073, fora de `/api/` o portão
+trata tudo como público e a raiz só redirecionava ao painel; o site muda as duas coisas, e a rota de contato é a
+segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
+
+**Decisão.**
+
+1. **Duas bandeiras, desligadas de fábrica** (`portal.site_ligado` e `portal.contato_ligado` no `config.yaml`, que só
+   vale na subida). Com `site_ligado` desligado nada muda: `/` segue no 307 para `/central/`. Ligado, a raiz é do site e
+   só `/central` redireciona. Contato ligado sem o site é recusado na subida (`PortalCfg`): a rota aceitaria (o robô
+   recebe 202) sem página que emita o token. Com o site no ar e o contato desligado, o servidor troca o formulário (entre
+   `<!--portal:formulario-->` e `<!--portal:fim-do-formulario-->`) por um aviso de que ele está fora do ar, e os
+   telefones seguem na página; se o token vier vazio, o JS faz o mesmo. Esse é o recuo parcial: desligar só o contato.
+   Com `site_ligado` e sem a pasta `site/` (sem o `index.html`), a raiz segue no painel, o contato vale como desligado
+   e a saúde mostra `portal_site_sem_pasta`.
+2. **O site é servido da memória** (`modules/portal/presentation/site.py::SitePublico`), montado por ÚLTIMO na raiz para a
+   API e `/central` casarem antes. A pasta `site/` é lida uma vez, numa lista fechada de extensões (`html css js svg png
+   webp ico txt woff2`); arquivo fora da lista ou oculto **derruba a subida do central inteiro**, de propósito: um
+   rascunho, um PDF ou uma captura com telefone nunca chegam à internet por descuido. O gatilho realista é o `Thumbs.db`
+   ou o `desktop.ini` do Explorer; por isso o `scripts/deploy.ps1` confere a pasta antes de parar qualquer coisa (e no
+   `-Ensaio`). Só `GET` e `HEAD`; o resto é 405; o que não está na pasta é 404 (travessia incluída). O `index.html` sai
+   com `no-store` (é montado por requisição); os outros arquivos, com ETag e `no-cache` (os nomes não têm hash). Com isso
+   a Cloudflare não guarda nada e todo pedido chega ao túnel: aceito pelo tamanho do site.
+3. **Cabeçalhos do site.** O site mora na MESMA origem do painel: um script injetado nele faria `fetch('/api/…')` com o
+   cookie de quem está logado, e a checagem de `Origin` deixaria passar. Por isso a CSP vai inteira e sem
+   `unsafe-inline`: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self';
+   form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'`, mais `Permissions-Policy` (câmera,
+   microfone e localização desligados) e `Cross-Origin-Opener-Policy: same-origin`. Os de sempre (`nosniff` e os demais)
+   vêm do `guarda`. A página não tem script, estilo nem manipulador em linha, nem recurso de fora (há teste); o JS só
+   escreve com `textContent` e posta com `credentials: "omit"`. O HSTS é dado pela Cloudflare (ADR-073, um mês). O site
+   não põe cookie, não tem analytics e não carrega fonte de terceiros.
+   O nome público (`dev.nvit.com.br`, ADR-073) fica escrito no HTML estático no `canonical`, no `og:url` e no
+   `og:image` (a prévia de link exige endereço absoluto), sem marcador trocado pelo servidor; há teste que reprova se
+   os três divergirem. Servido por outro nome, a prévia aponta para esse.
+4. **Os contatos da página** vêm de `portal.contatos` (nome e telefone, validados) no `config.yaml` da instalação, fora
+   do Git, e entram escapados no marcador `<!--portal:contatos-->`. Sem contatos, o bloco some. Número real nunca vai a
+   código, teste, exemplo ou captura de PR.
+5. **`POST /api/portal/contato`**, a única rota de `/api/` do portal. O portão perdoa o 401 só neste caminho EXATO e só
+   para `POST`; `forbidden_host` e a checagem de `Origin` seguem valendo (o formulário posta da mesma origem, então
+   `https://dev.nvit.com.br` em `server.allowed_origins` é condição de funcionamento: sem ela todo envio leva 403). Com a
+   bandeira desligada responde 404. A ordem das defesas (`modules/portal/application/contato.py`):
+   - `Content-Type` diferente de JSON: 415, antes de ler o corpo; corpo acima de `limites.corpo_max_bytes`: 413, lido em
+     fluxo;
+   - isca preenchida, token ausente, falso ou cedo demais (`token_min_s`): **202 idêntico ao de um contato aceito** e nada
+     gravado, para o robô não aprender o que o barrou. O token é `ts.hmac` com o sal da instalação, emitido na página;
+     expirado (`token_max_s`, a pessoa deixou a aba aberta) dá 400 com o pedido de recarregar;
+   - campos fora dos tetos da página (nome e empresa 80, telefone 30 com 8 dígitos ou mais, mensagem 1500) ou sem
+     consentimento: 422. O texto é normalizado (NFC, sem caractere de controle; quebra de linha só na mensagem);
+   - taxa por cliente, contada no banco (sobrevive a reinício e vale entre réplicas): `por_cliente_hora` e
+     `por_cliente_dia`, 429 com o texto que aponta os telefones. O cliente é o de `security.access.cliente_de`, que só
+     aceita o IP da borda (`cf-connecting-ip`) com par loopback, `tls_behind_proxy` e Host público; sem o cabeçalho todo
+     visitante cai no balde `tunel`, e o site inteiro fica em `por_cliente_hora` contatos por hora. Por isso, com o
+     contato ligado e sem `tls_behind_proxy` ou sem o nome público, a subida registra um aviso e o `GET /api/health`
+     mostra o problema `portal_contato_sem_ip_da_borda`. No banco vai só o HMAC do cliente (IPv6 pelo /64), nunca o IP;
+   - teto diário global (`guardados_dia`): acima dele a linha entra como `descartado` e SEM o conteúdo (conta para a
+     taxa, não guarda dado de quem não vai ser atendido) e a pessoa recebe o 429.
+6. **Grava antes de avisar** (migração 107, `portal_contatos`). Só depois a Canais é chamada pelo contrato do 28.32
+   (`state.avisos.avisar_contato_do_portal(ContatoDoPortal(...))`, chave `portal:<id>`, idempotente), resolvido na hora de
+   usar: sem o código da Canais a linha fica `pendente` (`canal_ausente`). Acima de `telegram_hora` avisos por hora a
+   linha fica `retido`; `canal_desligado` e falha deixam `pendente`; `campo_invalido` vira `descartado`. **Descartar
+   apaga o conteúdo, por qualquer motivo** (teto diário, `campo_invalido`, `falhas_demais`): ficam o estado, o motivo,
+   as horas e o hash do cliente; não se guarda dado de quem não vai ser atendido. O laço `portal-contatos` (a cada
+   minuto, no líder da trava `avisos`) reenvia pela ordem `tentativas, id` e respeita o teto da hora. `tentativas`
+   conta as chamadas que chegaram à Canais, menos `canal_desligado` (espera, não falha); com 10 falhas (`FALHAS_MAX`) a
+   linha vira `descartado` com motivo `falhas_demais`. Sem isso, um conteúdo que faz a Canais levantar voltaria a cada
+   minuto e, com 20 assim, prenderia o reenvio dos seguintes em silêncio.
+   **O "+N" acima dos tetos** vai ao dono pelo aviso `portal.resumo` da Canais (`avisar_resumo_do_portal(retidos,
+   descartados, janela_h)`, #335), só com números e com chave por hora UTC (vale a primeira chamada da hora). O laço
+   chama uma vez por hora, na virada, sobre a hora FECHADA anterior, então cada contato entra em um resumo só:
+   `retidos` são os que chegaram nela e bateram no teto de avisos (a linha guarda o motivo `teto_por_hora` mesmo depois
+   de entregue), e `descartados` são só os do teto diário, o único sinal de abuso. Acima do limiar da Canais sai na
+   hora; abaixo, na janela da rotina. O que não é abuso aparece na saúde: `portal_contatos_parados` com os `pendente`
+   por `canal_desligado` há mais de 1 h e os `falhas_demais` das últimas 24 h, só em contagens.
+   `entregue` aqui quer dizer "na fila da Canais" (`enfileirado=True`), não "lido no Telegram": se o canal for
+   desligado com o aviso ainda na fila, ele vence em `avisos.validade_h` e o corpo some, e a linha do portal segue
+   `entregue` (o contato continua na tabela pelos 180 dias). Por isso a página diz ao visitante que a mensagem foi
+   recebida, nunca que chegou a alguém.
+7. **O texto do visitante é DADO.** Não vai para IA, `runs`, `pedidos`, aprovações, cartão nem barramento; a resposta do
+   dono à mensagem no Telegram é "só informa" (28.32). O log do portal leva só o id da linha e o motivo, nunca nome,
+   telefone, mensagem ou IP (há teste).
+8. **Exceção do filtro de privacidade.** Na Canais, os campos do contato NÃO passam por `texto_seguro` nem pelo `redigir`:
+   o dono quer o nome e o telefone do visitante inteiros, que é o propósito do formulário. A higiene fica: linha única
+   para nome, empresa e telefone, sem bidi nem largura zero, mensagem com marcador de citação por linha, endereços
+   desarmados (`desarmar_links`) e título fixo "mensagem de visitante do site (não verificada)".
+9. **Retenção.** A linha inteira (o dado pessoal some com ela) vence em 180 dias, o prazo escrito no aviso de privacidade
+   da página; não é configurável: mudar exige mudar a página e este ADR. O laço apaga a cada hora e roda mesmo com o
+   contato desligado (desligar o formulário não congela a promessa). Na Canais, o corpo da `avisos_entregas` é apagado
+   depois de enviado e a `canal_enviadas` guarda só a chave. Os backups guardam cópia pela regra deles (abaixo, "Cópias de segurança"). O
+   histórico no Telegram é do dono. Controladora dos dados: a SICAT (está na página).
+10. **Ligar e recuar.** Ligar: o bloco `portal:` no `config.yaml` do central (`site_ligado` e `contato_ligado` em `true`,
+    `contatos` com os dois números), a origem pública em `allowed_origins` (já está pelo ADR-073), reiniciar a tarefa
+    `farm-central` e rodar `SITE=ligado CONTATO=ligado bash scripts/portal-prova-de-fora.sh depois`, que manda UM `POST`
+    com a isca (passa por Host, Origin, Content-Type e pela exceção do portão, e não grava nem avisa ninguém).
+    Recuar: as duas bandeiras em `false` e reiniciar; a raiz volta ao 307.
+
+**Preço consciente** (revisão independente do #333, aceito pela orquestradora).
+- A contagem da taxa por cliente e dos tetos não é atômica: duas requisições simultâneas podem passar ambas no limite.
+  O excesso possível é de uma ou duas linhas, e os tetos seguem valendo na volta seguinte.
+- Um envio feito menos de `token_min_s` (3 s) depois de abrir a página recebe o 202 e some sem ser gravado: é o mesmo
+  caminho do robô, de propósito. Uma pessoa não preenche o formulário tão rápido; um preenchimento automático do
+  navegador mais um clique imediato poderia, e esse contato se perde sem aviso.
+- O token vale por `token_max_s` (2 h) e pode ser reusado nesse prazo: ele prova que houve uma página aberta há pouco,
+  não que o envio é único. Quem reusa continua sob a taxa por cliente e os tetos.
+
+**Limites conhecidos** (revisão independente do #333, notas baixas).
+- Apagar o conteúdo ao descartar é um `UPDATE` que zera os campos: a página antiga do banco (SQLite com WAL,
+  PostgreSQL) só some de fato no vacuum. As cópias em `data/backups` guardam o que havia na hora da cópia e saem pela
+  regra delas, não pelo descarte.
+- **Cópias de segurança** (`scripts/backup.ps1`, o prazo real; a página não promete número e diz que elas "podem guardar
+  a mensagem por mais tempo"):
+  - a pasta com o nome padrão `AAAAMMDD-HHmmss` (tarefa diária `farm-backup`, deploy, ensaio e manual sem sufixo) sai
+    na primeira cópia bem-sucedida depois de 14 dias (`-Reter 14`, o padrão que a tarefa e o deploy usam); a mais nova
+    nunca sai, mesmo vencida;
+  - as de deploy e de ensaio ainda têm o teto das 10 mais novas (com `PODAR-LIGADO` no destino);
+  - a pasta com sufixo no nome (feita à mão, como `-ensaio-restauracao-2939`) não casa com a regra e não sai sozinha:
+    quem a cria depois de o contato estar ligado a apaga à mão quando acabar;
+  - com as cópias rodando, um contato some de tudo em cerca de 195 dias (180 + 14 e a hora da faxina). Parada a
+    rotina, a última cópia fica.
+- O `cliente_hash` (HMAC do IP, ou do /64 no IPv6, com o sal que não gira) fica na linha pelos mesmos 180 dias, contra
+  abuso; a página diz isso. O IP em si não é guardado em lugar nenhum do portal.
+- **Exclusão a pedido**: hoje é o procedimento manual de `docs/operacao.md` ("Pedido de exclusão de um contato do site"),
+  com o sim do dono porque apaga dado. A ação de produto (rota e botão no painel) é o 29.83.
+- Um contato `retido` que depois volta a `pendente` (o canal caiu antes da entrega) perde o motivo `teto_por_hora` e
+  fica de fora do resumo: o resumo pode subcontar. E uma virada de hora sem líder da trava `avisos` (o backend caído
+  ou a trava trocando de dono) não é resumida: aquela hora fica sem resumo.
+
+**Marca pública** (o que a página diz é parte da decisão).
+- A página apresenta a **ANA** como a inteligência da SICAT que rege a presença digital de quem contrata. As **personas**
+  são a identidade DECLARADA de quem contrata (a voz da marca, do atendimento, do porta-voz), com tom, memória e limites
+  próprios; a ANA conduz e as personas falam, e a ANA não entra no conteúdo delas.
+- A seção **"O que a ANA não faz"** fica na página: sem perfis falsos, sem simular opinião espontânea, sem se passar por
+  pessoa real, sem deepfake, notícia falsa nem ofensa, sem burlar regras de plataforma nem mecanismos de detecção, e
+  CAPTCHA e códigos ficam com uma pessoa (ADR-009). O conteúdo feito com IA é identificado onde a plataforma ou a regra
+  exige. A página nunca vende volume de contas, "engajamento orgânico" nem "parecer humano". Tirar ou afrouxar essa
+  seção pede ADR novo.
+- **Quem faz:** SICAT (responsável e contratante), Nova IT (tecnologia), RM Ambiental (assessoria e vendas). Os CNPJs e o
+  endereço no rodapé são os dados públicos das empresas; os únicos números de documento no repositório estão em
+  `site/index.html`.
+
+**Emendas ao ADR-073.**
+- Item 4 (o que abre sem credencial, de fora) passa a ser: o estático em `/central/`, `/central` (307), `/` (307 para o
+  painel, ou o site com `portal.site_ligado`), as três rotas de sessão, o webhook do Trello (`HEAD` e `POST`, ADR-072) e
+  `POST /api/portal/contato` (este ADR). Todo o resto de `/api` segue em 401.
+- Item 5 ("nenhum outro caminho fora de `/api` e `/central` serve arquivo"): com o site ligado, a raiz serve a pasta
+  `site/` e nada além da lista. No loopback, `/api/<inexistente>` passa a responder o 404 do site, não o JSON do
+  FastAPI (de fora segue 401).
+
+**Fica de fora (de propósito).**
+- `GET /api/portal/info`, que chegou a ser reservado: os contatos vão no HTML, e a rota seria superfície sem uso.
+- Limite de taxa da Cloudflare para `/api/portal/contato`: recomendado (a taxa do app é a segunda camada), decisão do dono.
+- Cookie, analytics, fonte ou script de terceiros no site.
+
+**Relação.** ADR-073 (portal; emendado aqui), ADR-072 (a outra exceção do portão), ADR-071 (o bot), ADR-009 e
+ADR-025/040 (o que fica com a pessoa), item 28.32 (o lado Canais), [operacao.md](operacao.md) "Site institucional na
+raiz", [api-contract.md](api-contract.md) adendo v1.36, [banco.md](banco.md) migração 107; `backend/app/main.py`
+(`guarda`, montagem da raiz), `backend/app/modules/portal/`, `site/`, `scripts/portal-prova-de-fora.sh`,
+`scripts/deploy.ps1`.

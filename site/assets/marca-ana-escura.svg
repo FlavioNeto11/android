@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 114 44" width="114" height="44" role="img" aria-label="ANA">
+  <g fill="none" stroke="#0b1a2c" stroke-width="6" stroke-linejoin="round">
+    <path d="M3 37L19 7l16 30"/>
+    <path d="M45 37V7l24 30V7"/>
+    <path d="M79 37L95 7l16 30"/>
+  </g>
+  <circle cx="19" cy="31" r="4" fill="#0891b2"/>
+  <circle cx="95" cy="31" r="4" fill="#0891b2"/>
+</svg>

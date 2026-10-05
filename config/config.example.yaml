@@ -720,6 +720,21 @@ pedidos:                          # pedidos persistentes (28.4): o objetivo que 
     max_filhos: 5                 #   filhos diretos de um mesmo pai (1 a 20)
     espera_dependencia_s: 3600    #   F2: quanto a ocorrência do filho espera o `de` ser comprovado antes de virar `pulada` (60 a 604800)
 
+portal:                           # site institucional na raiz do nome público e formulário de contato (29.77, ADR-075)
+  site_ligado: false              # DESLIGADO de fábrica: `/` segue no 307 para `/central/`. Ligado, `/` serve a pasta `site/`
+  contato_ligado: false           # DESLIGADO de fábrica: `POST /api/portal/contato` responde 404. Ligado, o contato vai ao
+                                  #   Telegram do dono pela fila de avisos (tipo `portal.contato`), guardado por 180 dias
+  contatos: []                    # telefones mostrados na página: [{nome: "...", telefone: "+55 .."}]. Nunca no Git: só no
+                                  #   config.yaml de cada instalação. Sem contatos, o bloco some e fica só o formulário
+  limites:
+    por_cliente_hora: 3           # contatos por cliente (IP da borda; IPv6 por /64) por hora (1 a 100)
+    por_cliente_dia: 10           # ... e por dia, contado no banco (1 a 1000)
+    telegram_hora: 20             # mensagens ao Telegram por hora, todos somados; acima, o contato fica retido e sai depois
+    guardados_dia: 500            # linhas guardadas por dia; acima, o contato é descartado e só contado (10 a 10000)
+    corpo_max_bytes: 8192         # teto do corpo do POST, lido em fluxo (2048 a 65536)
+    token_min_s: 3                # o formulário enviado antes disso é tratado como robô (1 a 60)
+    token_max_s: 7200             # depois disso a página ficou aberta demais e o visitante recarrega (600 a 86400)
+
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
   # escrito no comando. Sem esta linha o planejador não tem app para "abra o Chrome e entre no site…".

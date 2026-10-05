@@ -5898,6 +5898,27 @@ Sem migração. Muda a v1.26 e a rota `POST .../trello`.
 - `POST /api/canais/anexos/{id}/trello`: o anexo de tipo que a entrada não aceita, ou maior que o teto, é recusado com **422**
   `tipo_nao_aceito` antes de qualquer chamada ao Trello. O arquivo fora do armazém segue **409** `anexo_sem_arquivo`.
 
+## Adendo v1.36 (04/10/2026; número da orquestradora; item 29.77) — o contato do site institucional
+
+Uma rota nova, pública, desligada de fábrica (ADR-075). O `GET /api/portal/info` reservado junto saiu: os contatos da
+página vão no HTML. Migração `107_portal_contatos`.
+
+- `POST /api/portal/contato`, **sem credencial** (a exceção do portão é só este caminho e só `POST`; `GET` segue 401 de
+  fora). `forbidden_host` e a checagem de `Origin` valem como em toda rota. Com `portal.contato_ligado` desligado: **404**
+  sem corpo.
+- Corpo: JSON `{nome, empresa?, telefone, mensagem, consentimento: true, site, token}`. `site` é a isca (vazia);
+  `token` é o do campo oculto da página (`ts.hmac`). Tetos: nome e empresa 80, telefone 30 (dígitos, espaço, `+ ( ) -`,
+  8 dígitos ou mais), mensagem 1500.
+- **202** `{"ok": true}` com `Cache-Control: no-store`: contato aceito (gravado; entregue à Canais, retido pelo teto da
+  hora ou pendente para o laço). A MESMA resposta para isca preenchida e token ausente, falso ou cedo demais, que não
+  gravam nada.
+- Erros (`detail.code`, com `detail.message` em português): **400** `token_expirado` (recarregar a página); **413** sem
+  corpo (acima de `portal.limites.corpo_max_bytes`, lido em fluxo); **415** sem corpo (`Content-Type` não é
+  `application/json`; nada é lido); **422** `campo_invalido` (`detail.campos` lista os nomes) ou `consentimento_ausente`;
+  **429** `muitas_mensagens` (taxa por cliente ou teto diário; a mensagem aponta os telefones da página).
+- O corpo nunca volta na resposta nem no log. Nada vai a `runs`, `pedidos`, aprovações ou IA.
+- Prova: `simulated` (`backend/tests/test_portal_contato.py`). `not_run`: ligado no central.
+
 ## Adendo v1.38 (04/10/2026; número da orquestradora; item 30.68) — a prévia do texto editado antes do sim
 
 O v1.32 conferia a chave do texto DA PRÉVIA e recalculava no servidor a do texto editado: o dono aprovava sem ver o que

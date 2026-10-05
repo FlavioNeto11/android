@@ -74,6 +74,7 @@ Para retomar o trabalho, siga a ordem de leitura de [`../CLAUDE.md`](../CLAUDE.m
 | Retrieval de contexto de código (desligado por padrão) | `backend/app/modules/context_retrieval/`, `scripts/plano-100-pacotes.py --contexto` | [`dominios/context-retrieval.md`](dominios/context-retrieval.md) |
 | Banco e migrações | `backend/app/db.py`, `backend/migrations/` | [`banco.md`](banco.md) |
 | Segurança | `backend/app/security/` | [`operacao.md`](operacao.md) |
+| Site institucional e contato público (desligados por padrão) | `site/`, `backend/app/modules/portal/` | [`operacao.md`](operacao.md) "Site institucional na raiz", ADR-075 em [`decisoes.md`](decisoes.md) |
 | Painel | `frontend/src/features/*` | [`produto.md`](produto.md) |
 | Operação e scripts | `scripts/*.ps1` | [`operacao.md`](operacao.md) |
 

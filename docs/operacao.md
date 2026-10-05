@@ -410,6 +410,92 @@ para sem tirar nada se alguma foi mexida à mão) e `conferir` só lê e diz se 
 sem gravar; a prova de fora deu 22 de 22 às 23:06:58Z.
 Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `cloudflared service uninstall`).
 
+### Site institucional na raiz (29.77, ADR-075; desligado, prova `simulated`)
+
+O site público da SICAT/ANA (pasta `site/`, versionada) vai na raiz de `https://dev.nvit.com.br/`, com o painel seguindo
+em `/central/`. O formulário de contato manda a mensagem ao Telegram do dono pelo bot (contrato `portal.contato`, item
+28.32 da Canais). Tudo DESLIGADO de fábrica; o `config.yaml` só vale na subida.
+
+**Ligar (orquestradora, depois do PR da Canais no ar):**
+
+1. No `config/config.yaml` do central, o bloco abaixo, com os dois números de verdade (estão no brief fora do Git;
+   nunca em doc, teste ou commit). Os dois `_ligado` vão juntos: contato sem o site é recusado na subida, e só o site
+   mostra, no lugar do formulário, o aviso de que ele está fora do ar (o recuo parcial).
+
+   ```yaml
+   portal:
+     site_ligado: true
+     contato_ligado: true
+     contatos:
+       - nome: "<nome>"
+         telefone: "<+55 (DDD) número>"
+   ```
+
+2. Conferir que `https://dev.nvit.com.br` está em `server.allowed_origins` (está desde o ADR-073; sem ela todo envio
+   leva 403) e que o aviso do Telegram está pronto (`GET /api/canais/estado`). Depois do reinício, o `GET /api/health`
+   não pode trazer `portal_contato_sem_ip_da_borda` (falta `tls_behind_proxy` ou o nome público: a taxa por cliente
+   viraria uma só para todos).
+3. `pwsh -File scripts\deploy.ps1 -Ensaio` confere a pasta `site/` (arquivo fora da lista derruba a subida do central
+   inteiro; o caso comum é o `Thumbs.db` ou o `desktop.ini` do Explorer: apague e rode de novo). Depois, reiniciar a
+   tarefa `farm-central`.
+4. Prova de fora, sem credencial e sem contato de verdade:
+   `SITE=ligado CONTATO=ligado bash scripts/portal-prova-de-fora.sh depois`. O `POST` dela leva a isca preenchida:
+   202 prova Host, Origin, Content-Type e a exceção do portão, sem gravar nem avisar. 403 = falta a origem; 404 =
+   bandeira desligada (ou o reinício não aconteceu); 401 = o código do 29.77 não está no ar.
+5. O primeiro contato de verdade é do dono (ele preenche o formulário e confere a mensagem no Telegram): é efeito no
+   Telegram dele, então pede o sim dele.
+
+**O que esperar.** Taxa por cliente pelo IP da borda (`cf-connecting-ip`; só vale com `tls_behind_proxy` e o Host
+público): 3 por hora e 10 por dia de fábrica (`portal.limites`). Teto global de 500 guardados por dia e de 20 avisos
+por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando a janela abre). Os contatos ficam em
+`portal_contatos` (migração 107) por 180 dias. Para ver o que está parado sem expor o conteúdo:
+`SELECT estado, motivo, COUNT(*) FROM portal_contatos GROUP BY 1, 2`.
+
+**O que a página promete e onde isso vale** (aviso de privacidade, ADR-075):
+- sem cookie: a prova de fora reprova se a raiz devolver `Set-Cookie` (a borda da Cloudflare poderia pôr um);
+- 180 dias no sistema: o laço apaga a linha inteira a cada hora, com o contato ligado ou não;
+- o descartado (teto diário, `campo_invalido`, `falhas_demais`) tem o conteúdo apagado sem chegar à equipe. O
+  `pendente` (canal desligado) e o `retido` (excesso na hora) guardam o conteúdo até a entrega ou os 180 dias;
+- cópias de segurança: a pasta `AAAAMMDD-HHmmss` sai na primeira cópia depois de 14 dias (`-Reter 14`), menos a mais
+  nova, que nunca sai sozinha; as de deploy e de ensaio têm ainda o teto de 10. Pasta com sufixo no nome não sai
+  sozinha: depois de ligar o contato, quem cria uma a apaga à mão quando acabar. Teto prático, com a rotina rodando:
+  cerca de 195 dias;
+- o `cliente_hash` (código do endereço de rede, nunca o IP) fica os mesmos 180 dias.
+
+**Pedido de exclusão de um contato do site** (o visitante pede pelo formulário ou por telefone). Quem executa é o
+operador, com o sim do dono no chat, porque apaga dado; a ação no painel é o 29.83. O pedido feito pelo formulário é
+ele mesmo um contato que chegou ao chat: são duas ou mais linhas e duas ou mais mensagens a apagar. Nada do conteúdo
+vai para chat, cartão ou log.
+1. Achar as linhas comparando TODOS os dígitos que o visitante informou, com DDD (troque `<DIGITOS>`, por exemplo
+   `11987654321`; com o `55` na frente, use o número inteiro como ele veio). O SELECT mostra os dígitos para conferir
+   antes de apagar:
+   `SELECT id, criado_em, estado, replace(replace(replace(replace(replace(telefone,' ',''),'-',''),'(',''),')',''),'+','') AS digitos FROM portal_contatos WHERE replace(replace(replace(replace(replace(telefone,' ',''),'-',''),'(',''),')',''),'+','') LIKE '%<DIGITOS>'`.
+   Fique só com as linhas cujos `digitos` são os do visitante (com ou sem o `55`).
+2. Ver o aviso de cada linha na fila da Canais (chave `portal:<id>`, em `avisos_entregas`) e as mensagens que o bot já
+   mandou (`canal_enviadas`, `fato` = a mesma chave):
+   `SELECT chave, estado FROM avisos_entregas WHERE chave IN ('portal:<id1>', 'portal:<id2>')` e
+   `SELECT fato, ref_mensagem, enviada_em FROM canal_enviadas WHERE canal='telegram' AND fato IN ('portal:<id1>', 'portal:<id2>')`.
+   Se algum aviso estiver `enviando`, espere um minuto e repita: ele vira `enviado` ou `pendente`.
+3. Apagar as respostas do dono a essas mensagens, que ficam com texto em `canal_entradas`: apagar só o texto e manter a
+   linha, que é o registro do canal:
+   `UPDATE canal_entradas SET texto=NULL WHERE canal='telegram' AND responde_a IN (<ref_mensagem do passo 2>)`.
+4. Numa transação só, apagar o aviso que ainda não saiu e as linhas do contato, para o laço do portal não reenfileirar
+   no meio:
+   `BEGIN;`
+   `DELETE FROM avisos_entregas WHERE chave IN ('portal:<id1>', 'portal:<id2>') AND estado <> 'enviando';`
+   `DELETE FROM portal_contatos WHERE id IN (<id1>, <id2>);`
+   `COMMIT;`
+   O `pendente`, o `falhou` e o `incerto` ainda têm o texto; o `enviado` e o `descartado` já não têm, e saem juntos.
+   Se o passo 2 ainda mostrar `enviando`, não apague: espere e volte ao passo 2.
+5. Apagar as mensagens no chat do Telegram: o dono, à mão (o bot só apaga a própria mensagem até 48 h). Use as datas
+   do passo 2 para achá-las; são todas as do passo 2, inclusive a do próprio pedido.
+6. Responder ao visitante pelo telefone que ele deixou. Dizer que as cópias de segurança saem em cerca de duas
+   semanas, pela rotina, e que a cópia mais nova e as pastas com sufixo no nome não saem sozinhas.
+
+**Recuo.** `site_ligado` e `contato_ligado` em `false` e reiniciar `farm-central`: a raiz volta ao 307 para o painel e a
+rota responde 404. Recuo parcial: só `contato_ligado: false`; o site fica e mostra o aviso no lugar do formulário. A
+retenção de 180 dias continua rodando com o contato desligado.
+
 ## 12. Tabela de scripts por risco
 
 `[S]` seguro (só leitura ou sandbox) · `[T]` gasta chamada de API paga · `[P]` toca o parque, o ambiente central ou o sistema ·
@@ -447,7 +533,7 @@ Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `clou
 | `portal-gerar-senha.ps1` | P | **Rodado pelo dono**: gera o `API_TOKEN` e grava no `.env` sem mostrar na tela (`-Trocar` substitui). Sessão de IA não roda este script no `.env` de verdade |
 | `python scripts/portal-config.py conferir`, ou `ligar`/`recuar` com `--ensaio` | S | Só lê o `config.yaml`: diz se o bloco `server` está pronto para o portal ou o que mudaria |
 | `python scripts/portal-config.py ligar` / `recuar` | P | Declara ou tira o hostname público no `config.yaml` (sete linhas, com cópia em `data/backups/`); vale no próximo reinício do central |
-| `portal-prova-de-fora.sh antes` / `depois` | S | Só pedidos sem credencial ao endereço público; nunca tenta login. Sai com 2 se `/api/instances` der 200 |
+| `portal-prova-de-fora.sh antes` / `depois` | S | Só pedidos sem credencial ao endereço público; nunca tenta login. Sai com 2 se `/api/instances` der 200. Com `SITE=ligado` confere o site na raiz (CSP, `robots.txt`, 404 fora da lista fechada); com `CONTATO=ligado`, um `POST` com a isca (não grava nem avisa), o 415 e o 413. Testado contra um `curl` falso em `scripts/tests/test_portal_prova_de_fora.py` |
 | `usage-report.ps1` | S | Só lê `ai_calls`, não chama provedor |
 | `demo-run.ps1` | D/T | Envia comando real ao backend (gasta IA se o provedor não for simulado) |
 | `aceites-remotos.ps1` (sem `-Yes`) | S | Só mostra o roteiro |

@@ -14,6 +14,14 @@
 #             WEBHOOK_DO_TRELLO=ligado          a Etapa 2 do 32.2 esta no ar (`trello.webhook.enabled: true`): o webhook
 #                                               responde 200 ao HEAD e 401 ao GET e ao POST sem assinatura. Sem a
 #                                               variavel, o esperado e o webhook fechado (401 ou 404).
+#             SITE=ligado                       o site institucional esta no ar (29.77, `portal.site_ligado: true`): a
+#                                               raiz responde 200 com a CSP do site e SEM Set-Cookie (a pagina
+#                                               promete que nao usa cookies), em vez do 307 para o painel.
+#             CONTATO=ligado                    o formulario esta no ar (`portal.contato_ligado: true`). A prova manda UM
+#                                               POST com a ISCA preenchida: passa por Host, Origin, Content-Type e pela
+#                                               excecao do portao, e por construcao nao grava nem avisa ninguem (202).
+#                                               Nunca manda contato de verdade. 403 = falta a origem em allowed_origins;
+#                                               404 = bandeira desligada; 401 = a excecao do portao nao esta no codigo.
 #
 # Regra de ouro: /api/instances NUNCA pode dar 200 de fora. Se der: Stop-Service Cloudflared e investigue antes de religar.
 set -u
@@ -61,7 +69,38 @@ else
     confere /api/session        "200" "rota de sessao: aberta, diz que nao ha sessao"
     confere /central/           "200" "painel estatico"
     confere /central            "301 302 307 308" "sem a barra final: redireciona"
-    confere /                   "301 302 307 308" "raiz: redireciona para o painel"
+    if [[ "${SITE:-}" == "ligado" ]]; then
+        confere /                   "200" "raiz: o site institucional (29.77)"
+        confere /robots.txt         "200" "site: robots.txt"
+        confere /assets/site.css    "200" "site: estilo"
+        confere /.git/config        "404" "site: nada fora da pasta do site"
+        confere /config/config.yaml "404" "site: nada fora da pasta do site"
+        confere /site/index.html    "404" "site: o caminho da pasta nao e servido"
+        confere /rascunho.pdf       "404" "site: extensao fora da lista fechada"
+        confere /pagina-que-nao-existe "404" "site: a pagina 404 propria, com status 404"
+        robots="$(curl -s -m 20 "https://$H/robots.txt" | tr -d '\r')"
+        if [[ "$robots" == *"Disallow: /central/"* && "$robots" == *"Disallow: /api/"* ]]; then
+            printf 'ok     %-28s      (barra /central/ e /api/)\n' "/robots.txt (corpo)"
+        else
+            printf 'FALHOU %-28s      esperado Disallow de /central/ e /api/\n' "/robots.txt (corpo)"; FALHAS=$((FALHAS + 1))
+        fi
+        cabecalhos="$(curl -s -o /dev/null -D - -m 20 "https://$H/" | tr -d '\r')"
+        csp="$(grep -i '^content-security-policy:' <<< "$cabecalhos")"
+        if [[ "$csp" == *"script-src 'self'"* && "$csp" == *"frame-ancestors 'none'"* ]]; then
+            printf 'ok     %-28s      (CSP do site)\n' "/ (cabecalhos)"
+        else
+            printf 'FALHOU %-28s      esperado a CSP do site\n' "/ (cabecalhos)"; FALHAS=$((FALHAS + 1))
+        fi
+        # A pagina diz "nao usa cookies nem rastreadores" (ADR-075). A origem nunca poe cookie no site; a borda da
+        # Cloudflare poderia, conforme a zona. Se aparecer, muda o texto da pagina ou desliga-se o recurso na zona.
+        if grep -qi '^set-cookie:' <<< "$cabecalhos"; then
+            printf 'FALHOU %-28s      a raiz pos cookie; a pagina promete que nao usa\n' "/ (sem cookie)"; FALHAS=$((FALHAS + 1))
+        else
+            printf 'ok     %-28s      (nenhum Set-Cookie, como a pagina promete)\n' "/ (sem cookie)"
+        fi
+    else
+        confere /                   "301 302 307 308" "raiz: redireciona para o painel"
+    fi
     confere /docs               "404" "docs da API fora de /api: nao existem mais"
     confere /redoc              "404" "idem"
     confere /openapi.json       "404" "mapa da API fora de /api: nao existe mais"
@@ -100,12 +139,28 @@ else
         printf 'FALHOU %-28s      esperado token_required true e operator null\n' "/api/session (corpo)"
         FALHAS=$((FALHAS + 1))
     fi
-    # Para onde a raiz manda: tem de ser caminho relativo ao proprio endereco publico, nunca 127.0.0.1.
-    destino="$(curl -s -o /dev/null -m 20 -w '%{redirect_url}' "https://$H/")"
+    # Para onde a raiz manda (ou /central, com o site no ar): caminho relativo ao proprio endereco, nunca 127.0.0.1.
+    entrada="/"; [[ "${SITE:-}" == "ligado" ]] && entrada="/central"
+    destino="$(curl -s -o /dev/null -m 20 -w '%{redirect_url}' "https://$H$entrada")"
     case "$destino" in
-        "https://$H/central/"*) printf 'ok     %-28s -> %s\n' "/ (Location)" "$destino" ;;
-        *) printf 'FALHOU %-28s -> %s  esperado https://%s/central/\n' "/ (Location)" "$destino" "$H"; FALHAS=$((FALHAS + 1)) ;;
+        "https://$H/central/"*) printf 'ok     %-28s -> %s\n' "$entrada (Location)" "$destino" ;;
+        *) printf 'FALHOU %-28s -> %s  esperado https://%s/central/\n' "$entrada (Location)" "$destino" "$H"; FALHAS=$((FALHAS + 1)) ;;
     esac
+    # Contato do site (29.77): a outra excecao sem credencial em /api/, so POST no caminho exato.
+    confere /api/portal/contato "401" "contato do site: GET segue fechado"
+    if [[ "${CONTATO:-}" == "ligado" ]]; then
+        confere /api/portal/contato "202" "contato do site: POST com a isca (nao grava, nao avisa)" \
+            -X POST -H "Content-Type: application/json" -H "Origin: https://$H" \
+            -d '{"nome":"prova","telefone":"00000000","mensagem":"prova","consentimento":true,"site":"isca","token":""}'
+        confere /api/portal/contato "415" "contato do site: tipo errado recusado antes de ler o corpo" \
+            -X POST -H "Content-Type: text/plain" -H "Origin: https://$H" -d 'site=isca'
+        grande="$(printf '%*s' 9000 '' | tr ' ' 'a')"
+        confere /api/portal/contato "413" "contato do site: corpo acima do teto" \
+            -X POST -H "Content-Type: application/json" -H "Origin: https://$H" -d "{\"site\":\"$grande\"}"
+    else
+        confere /api/portal/contato "401 404" "contato do site: fechado (401 antes do 29.77, 404 desligado)" \
+            -X POST -H "Content-Type: application/json" -H "Origin: https://$H" -d '{"site":"isca"}'
+    fi
 fi
 
 # Host forjado: a borda da Cloudflare nao entrega, e o central nunca ve "localhost" vindo de fora.
