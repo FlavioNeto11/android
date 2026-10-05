@@ -367,14 +367,16 @@ class FlowStore:
         diz que renasceu e por que tinha sido desligado."""
         template = command_template.strip()
         key = _norm(template)
-        recusa = self.recusa_do_treino(template)
-        if recusa is not None:
-            raise ValueError(recusa)
-        existente = self.db.one("SELECT id, status, source FROM flows WHERE match_key=?", (key,))
-        antes = self._desligado_pela_prova(existente) if existente is not None else None
         apps = [plan.app_id, *(s.app_id for s in plan.steps)]
         de: str | None = None
         with self.db.tx():
+            # A recusa e a trilha lidas DENTRO da transação (N1 da leitura): uma pessoa que mexa no fluxo entre a
+            # leitura e a escrita faz a linha não renascer; o CAS abaixo confere só o status.
+            recusa = self.recusa_do_treino(template)
+            if recusa is not None:
+                raise ValueError(recusa)
+            existente = self.db.one("SELECT id, status, source FROM flows WHERE match_key=?", (key,))
+            antes = self._desligado_pela_prova(existente) if existente is not None else None
             if existente is not None and antes is not None:
                 # CAS no status, como em `learn_from_run`: só renasce se ninguém a religou no meio.
                 cur = self.db.execute(

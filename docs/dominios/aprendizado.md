@@ -2133,6 +2133,8 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   a última linha da trilha. Seguem recusando: o desligado por uma pessoa, o que uma pessoa mexeu depois da prova, o
   adotado por uma habilidade, o ativo e o comando com habilidade publicada.
 - A prévia do treino (31.86) recusa pela mesma regra (`FlowStore.recusa_do_treino`).
+- A recusa e a trilha são lidas dentro da transação do renascimento. A sessão antiga e a nova ficam com o mesmo
+  `training_sessions.flow_id`; hoje nada lê o fluxo por ali (o ensinado acha a sessão pelo `flows.source`).
 - **Prova:** `simulated`, em `backend/tests/test_reensinar_o_desligado_pela_prova.py`. `real`: `not_run`.
 
 ## A referência pública do fluxo é aleatória (30.83)

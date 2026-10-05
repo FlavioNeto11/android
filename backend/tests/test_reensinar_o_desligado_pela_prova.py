@@ -41,7 +41,9 @@ def _linha(mundo: Mundo, fid: str) -> dict[str, object]:
 
 
 def test_o_ensinado_desligado_pela_prova_renasce_na_mesma_linha_e_volta_a_esperar_a_prova(mundo: Mundo) -> None:
+    rid = mundo.receita_do_treino()                                      # rebaixada junto com o fluxo (30.81)
     fid = _desligado_pela_prova(mundo)
+    assert mundo.db.scalar("SELECT status FROM recipes WHERE id=?", (rid,)) == "quarantined"
     antes = _linha(mundo, fid)
     assert mundo.flows.recusa_do_treino(MODELO) is None                    # a prévia do treino deixa passar
     assert mundo.ensina(sessao=NOVA, persona=BIA) == fid                   # mesma linha, mesmo id
@@ -58,6 +60,7 @@ def test_o_ensinado_desligado_pela_prova_renasce_na_mesma_linha_e_volta_a_espera
     (a_provar,) = [x for x in EnsinoDaValidacaoSql(mundo.db, mundo.servico).a_provar() if x.fluxo_id == fid]
     assert (a_provar.sessao, a_provar.persona, a_provar.tentativas) == (NOVA, BIA, 0)
     assert mundo.casa([BIA]) and not mundo.casa([ANA])                   # só a persona da sessão nova, até a prova
+    assert mundo.db.scalar("SELECT status FROM recipes WHERE id=?", (rid,)) == "quarantined"     # N2: sem toque
 
 
 def test_a_prova_antiga_nao_libera_o_renascido(mundo: Mundo) -> None:
