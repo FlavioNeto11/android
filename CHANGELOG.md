@@ -68,6 +68,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Consertos de junção: `estado_com_marca` lê a fábrica na chamada (29.131, `e6020a23`); `TrainingStopBody` nasce na apresentação do treino, e o teste da proposta descarta a gravação com o controle (`9f9e2b39`).
 - Plano-100: 9 IDs novos (28.52, 29.140 a 29.145, 31.101 e 31.102) e o resultado da suíte 39 aplicado pelo mecanismo: 548 de 645.
 
+## 2026-10-05 — 30.80 parte B: o ensinado que o sistema tirou de uso avisa (branch feat/30-80b-aviso-do-ensinado)
+
+- Eventos novos `learning.ensinado_rebaixado` (`info`) e `learning.ensinado_sem_receita` (`warn`). Saem quando a receita
+  ou o fluxo ensinado no modo treinamento (`training:<sessão>`), em uso, sai de uso por decisão do SISTEMA:
+  quarentena por falhas seguidas, substituição ou obsolescência. Um por transição: "sem receita" quando nada ativo
+  ficou no lugar.
+- O payload é a lista fechada combinada com a Canais (28.50): `kind`, `ref`, `app`, `treino`, `sem_receita_ativa`,
+  `para` (status nativo) e `desde` (o instante da transição NA TRILHA, estável numa reemissão).
+- Não avisam: o gesto de uma pessoa, outra demonstração, o item que a IA aprendeu e o nascimento.
+- `domain/ensinado.py` (a regra e o payload), `application/ensinado.py` (`AvisadorDoEnsinado`, chamado nos dois
+  caminhos: a loja via `avisar_mudanca_nativa` e o Livro via `_mover_nativo`), `infrastructure/ensinado_sql.py`
+  (`LeitorDoEnsinadoSql`) e `EventosNoBarramento.ensinado_rebaixado`.
+- Condição da leitura do 28.50 pela Reload: o id do FLUXO não vai ao `backend.log`. O `message` do fluxo fica só com
+  o tipo e o app (`AvisoDoEnsinado.mensagem`), e o `log.exception` do aviso que falha também (`_no_log` em
+  `AvisadorDoEnsinado.mudou_isolado` e `mudou_sem_falhar`). O id segue em `data.ref`; o id opaco é o 30.83.
+- Prova `simulated`: `backend/tests/test_learning_ensinado_rebaixado.py` (7), verificado por mutação com 7 regras.
+  Real: `not_run` (a próxima quarentena de receita ensinada).
+
 ## 2026-10-05 — 29.131 e 29.138: as sobras das leituras do #433, #435, #441 e #443, e os achados das revisões automáticas do #443 (branch fix/29-131-sobras-supervisor-readocao)
 
 Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.

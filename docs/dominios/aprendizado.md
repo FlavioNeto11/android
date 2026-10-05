@@ -2013,6 +2013,29 @@ e `RecipeStore.save` descartava a demonstração em silêncio ("a ativa só sai 
     para as genéricas e para o aviso do 30.80 B.
 - A demonstração ainda nasce ativa e não passa pela prova; isso é o 30.81.
 - **Prova:** `simulated`, em `backend/tests/test_treino_substitui_receita.py`. `real`: `not_run`.
+
+## O ensinado rebaixado avisa (30.80 parte B)
+
+B2 do mapa do ensino (31.81). A receita ou o fluxo que a pessoa demonstrou no modo treinamento caía em quarentena ou
+era desligado pela obsolescência em silêncio: a etapa voltava para a IA e quem ensinou não sabia.
+
+- **Quando:** o item `training:<sessão>` estava em uso (`published`) e o SISTEMA o tirou de uso. Dois caminhos,
+  ambos depois da trilha e na mesma transação:
+  - a loja (`LearningService.avisar_mudanca_nativa`): quarentena por falhas seguidas, substituição;
+  - o Livro (`LearningService._mover_nativo`): a obsolescência e todo `mudar_estado(by='sistema')`.
+- **Não avisa:** o gesto de uma pessoa, outra demonstração (30.79: o autor é a sessão de treino), o item que a IA
+  aprendeu e o nascimento.
+- **Dois tipos, um por transição:**
+  - `learning.ensinado_sem_receita` (`warn`): nada ativo ficou no lugar, ou seja, nenhuma receita ativa na mesma chave
+    e nenhum fluxo ativo no mesmo `match_key`;
+  - `learning.ensinado_rebaixado` (`info`): outro ativo segura o lugar.
+- **Payload** (`domain/ensinado.py::CAMPOS_DO_PAYLOAD`), lista fechada combinada com a Canais (28.50): `kind`, `ref`,
+  `app`, `treino` (o id inteiro, `trn-…`), `sem_receita_ativa`, `para` (status nativo) e `desde`.
+  - `desde` é o `decided_at` da última linha da trilha do item, e não o relógio: a reemissão traz o mesmo valor, que é
+    a chave de deduplicação da Canais.
+  - Nunca conteúdo, seletor, conta ou texto de tela.
+- **Quem traduz para o dono** é a frente Canais (28.50): o texto do aviso é fixo, e o id vai só no link do detalhe.
+- **Prova:** `simulated`, em `backend/tests/test_learning_ensinado_rebaixado.py`. `real`: `not_run`.
 ## A prova sem evidência diz a causa (30.75)
 
 A leitura de 05/10 (`.claude/handoffs/aprendizado-sem-evidencia.md`) achou 5 pedidos de fluxo `sem_evidencia`:
