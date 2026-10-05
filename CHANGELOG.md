@@ -29,7 +29,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   prazo é de 120 s, e uma partida presa também deixa pilha. No máximo 3 despejos por episódio, a cada 30 s; a volta
   do laço sai no log com a duração; ficam os 20 despejos mais novos. Disco que falha: o aviso sai sem o arquivo.
 - O supervisor cita na linha do kill o despejo dos últimos 5 min (ou diz que não há).
-- Prova `simulated`: {PROVA}
+- Prova `simulated`: `backend/tests/test_vigia_do_laco.py`, 11 passed, um deles com relógio real e o laço preso
+  de propósito (`time.sleep` no laço), a pilha gravada pela thread. Mutações: sem o despejo reprova 6; a batida
+  depois do `poc.start()`, 1; o supervisor sem citar, 1; a partida com o prazo do laço, 1. Vizinhos: 111 passed
+  (supervisão do central, identidade do backend, TLS, painel estático, autenticação, arquitetura, cobertura de
+  rotas) e `@tests/catracas.txt` 88 passed. `not_run`: a catraca do mypy (o mypy não está instalado no venv do
+  central, compartilhado com o backend no ar) e a prova real, que só vem com um travamento de verdade depois do
+  deploy.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 

@@ -13,6 +13,8 @@ import pytest
 from app import supervisor as sup
 from app.vigia_do_laco import PREFIXO, VigiaDoLaco, ultimo_despejo
 
+from .conftest import Harness
+
 
 class _Relogio:
     def __init__(self) -> None:
@@ -170,3 +172,32 @@ def test_supervisor_sem_despejo_diz_que_nao_ha(caplog: pytest.LogCaptureFixture)
     with caplog.at_level(logging.WARNING, logger="poc.supervisor"):
         s.run(ciclos=3)
     assert "3 conferências seguidas sem resposta; sem despejo de pilha do vigia" in caplog.text
+
+
+class _EstadoQueSobe:
+    """O `AppState` falso: a partida espera (é onde um laço preso apareceria) e diz se a batida já começou."""
+    def __init__(self, vigia: VigiaDoLaco) -> None:
+        self.vigia = vigia
+        self.bateu_antes_de_subir: bool | None = None
+
+    async def start(self) -> None:
+        await asyncio.sleep(0.05)
+        self.bateu_antes_de_subir = self.vigia._bateu                    # noqa: SLF001
+
+    async def stop(self) -> None:
+        return None
+
+
+async def test_a_batida_comeca_antes_da_partida_do_estado(harness: Harness, tmp_path: Path) -> None:
+    """A partida do `AppState` presa no laço também tem de deixar pilha: a batida começa ANTES do `poc.start()`."""
+    from app.main import create_app
+
+    v = VigiaDoLaco(tmp_path, intervalo_s=0.01)
+    estado = _EstadoQueSobe(v)
+    app = create_app(harness.cfg, state=estado, vigia=v)                  # type: ignore[arg-type]
+    async with app.router.lifespan_context(app):
+        assert estado.bateu_antes_de_subir is True
+    await asyncio.sleep(0.05)
+    antes = v._ultima                                                      # noqa: SLF001
+    await asyncio.sleep(0.05)
+    assert v._ultima == antes, "a batida seguiu depois do fim do lifespan"  # noqa: SLF001
