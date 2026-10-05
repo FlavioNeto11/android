@@ -308,6 +308,14 @@ avisos depois da faxina"), e a trava cai no TTL.
     comando com `/` segue a gramática, e o papel sem lista configurada não liga nada. Origem: 05/10 ~16:10Z, as cinco
     respostas às P-001 a P-005 pediram confirmação no Telegram, contra a regra de que a pergunta e a resposta ficam só no
     Trello.
+  - **Quem conta como o dono num cartão de pergunta (revisão do #447):** a Central, os scripts e as sessões escrevem no
+    Trello com o token dele. Por isso toda escrita de IA no Trello leva 🤖 no começo, e a resposta num cartão de pergunta
+    vale o que vale o token. Só conta a action do membro dele, sem 🤖 e sem `appCreator`: o que ele digita no aplicativo
+    ou no site vem com o campo nulo, e o que sai pela API leva o app (medido em 05/10 nas 9 respostas dele e nos
+    comentários da Central). Com `appCreator`, a linha fica `ignorada` ("escrita por app"). Sem o campo no retorno, a
+    resposta chega à orquestradora marcada "autoria não confirmada" e não registra decisão. Nome de cartão sem `P-NNN`
+    no começo chega marcado "sem número: conferir o cartão antes de registrar decisão". Fora das listas de perguntas o
+    segundo fator segue sendo a confirmação no Telegram (28.30).
   - O recado que falha por erro interno responde com uma frase fixa, e o reply a ela segue à orquestradora (a entrada 1256
     de 04/10 ficou `falhou` sem resposta).
   - O login do painel recusa nome começado por `trello:` ou `telegram:`: esse é o operador dos canais. A sessão antiga

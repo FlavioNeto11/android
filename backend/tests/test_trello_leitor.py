@@ -84,7 +84,7 @@ class TrelloFalso:
 
     def acao(self, tipo: str, autor: str, card: str, *, texto: str | None = None, para: str | None = None,
              ha_s: float = 0, quadro: str = QUADRO, ident: str | None = None, lista: str | None = None,
-             nome: str | None = None) -> dict[str, object]:
+             nome: str | None = None, app: object = None, sem_app: bool = False) -> dict[str, object]:
         self.n += 1
         dados: dict[str, object] = {"board": {"id": quadro}, "card": {"id": card}}
         if nome is not None:                            # 28.51: o nome do cartão que a action do Trello traz
@@ -97,6 +97,8 @@ class TrelloFalso:
             dados["listAfter"] = {"id": para}
         a: dict[str, object] = {"id": ident or f"a{self.n:04d}", "idMemberCreator": autor, "type": tipo,
                                 "date": _iso(self.relogio.t - timedelta(seconds=ha_s)), "data": dados}
+        if not sem_app:                                 # revisão do #447: o app que escreveu (None = digitado por gente)
+            a["appCreator"] = app
         self.acoes.append(a)
         return a
 
