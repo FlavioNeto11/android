@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.74: o `wait_for` conta a leitura da árvore no prazo (branch fix/31-74-wait-for-pelo-relogio)
+
+- Achado real na janela do 31.40 (r-20261005071303-f24955): dois `wait_for("R$", 8)` duraram 15,6 s e 40,9 s com
+  `waited_s` 8,0. O laço (`automation/tools.py`, `execute_tool`) somava só o sono, 1 s por volta, e não as leituras da
+  árvore do Chrome.
+- Agora o prazo soma o sono pedido e a leitura medida (`tools._relogio`, injetável). Depois do último sono vem uma
+  última leitura, então a parede não passa do pedido mais uma leitura. O `waited_s` relata a parede.
+- Prova `simulated`: `tests/test_wait_for_pelo_relogio.py` (4, com leitura lenta de 1 s e 4 s num relógio falso); os 4
+  reprovam com o laço antigo. `real`: `not_run`.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
