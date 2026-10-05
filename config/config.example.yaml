@@ -579,6 +579,7 @@ trello:                           # Trello do dono (item 32.2, ADR-072): espelho
   # idade_max_s: 900              # action mais velha que isto (Central fora do ar) não é tratada
   # retencao_dias: 30             # (28.16) depois disso o texto é zerado, a linha apagada e o cartão arquivado esquecido (mínimo 2)
   # membros_autorizados: []       # quem o dono autorizou a PEDIR além dele; vazia = o pedido de convidado vira aviso ao dono
+  # apps_do_dono: []              # 28.54: apps que o dono reconheceu como ele (o Trello no celular dele); vazia de fábrica, um id só com o sim dele
   # responder_convidados: false   # responde a pergunta de convidado no cartão, só com o que o quadro já mostra
   # webhook:                      # caminho principal da entrada (§8 do desenho); exige TRELLO_API_SECRET no .env e o portal público
   #   enabled: false              # (false) separado de trello.enabled; só faz a ROTA responder, NUNCA cadastra nada no Trello
