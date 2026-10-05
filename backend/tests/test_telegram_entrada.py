@@ -941,6 +941,8 @@ async def test_cancelar_na_porta_cancela_a_execucao(c: Cenario) -> None:
     await c.volta(botao(7, f"c:{ident}", mid=c.bot.mid))
     assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and c.linha(5)["estado"] == "cancelada"
     assert "aprovar_plano" not in c.portas.nomes()
+    # 28.41 (N1 da leitura do #361): só o Cancelar do dono leva o gesto (o sinal `cancelou_execucao`, ADR-054).
+    assert c.portas.sem_gesto == []
 
 
 async def test_item_cujo_texto_os_filtros_mudariam_fica_fora_do_sim_pelo_canal(c: Cenario) -> None:
@@ -1164,6 +1166,7 @@ async def test_linha_presa_antes_do_run_id_cancela_a_execucao_esquecida(tmp_path
     assert c.linha(5)["estado"] == "falhou"
     assert ("execucao_da_chave", ("telegram:5",), OPERADOR_DO_TELEGRAM) in c.portas.chamadas
     assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,))
+    assert c.portas.sem_gesto == [RUN], "o cancelamento automático não é gesto do dono (28.41, N1 do #361)"
 
 
 async def test_previa_que_nao_sai_marca_falha_cancela_e_avisa_uma_vez(c: Cenario) -> None:
@@ -1183,6 +1186,7 @@ async def test_previa_que_nao_sai_marca_falha_cancela_e_avisa_uma_vez(c: Cenario
     await _executar(c)
     assert falhas["n"] >= 1 and c.linha(5)["estado"] == "falhou"
     assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and "aprovar_plano" not in c.portas.nomes()
+    assert c.portas.sem_gesto == [RUN], "o cancelamento automático não é gesto do dono (28.41, N1 do #361)"
     assert c.bot.textos()[-1] == ("Não consegui mandar a prévia do plano abc123: nada foi aprovado nem iniciado, e a "
                                   "execução foi cancelada. Mande o pedido de novo.")
     n = len(c.bot.textos())

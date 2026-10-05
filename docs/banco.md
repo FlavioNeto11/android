@@ -147,6 +147,7 @@ chamadas para não custar a cada `/api/health`.
 | 109 | portal_exclusoes | Item 29.83 (exclusão a pedido do titular, ADR-075; número reservado pela orquestradora em 04/10; a 108 é da Aprendizado). Tabela nova `portal_exclusoes`: uma linha por "Apagar definitivamente" no painel, gravada na MESMA transação do DELETE em `portal_contatos`. `executado_por` (o operador da sessão), `pedido_por` (`formulario`, `telefone` ou `outro`, CHECK; sem texto livre), `ids` (JSON dos ids apagados), `mantidos` (JSON `[{id, motivo}]`), `mensagens_apagadas` e `mensagens_a_mao` (contagens). Não guarda NADA do titular (nem nome, nem telefone, nem hash dele, nem a mensagem) e por isso não tem prazo de retenção: é a prova do atendimento. Índice por `executado_em`. Simulado em `tests/test_portal_exclusao.py` |
 | 110 | passou_a_porta | Item 31.64, S1 da revisão do #350 (número reservado pela orquestradora em 05/10 02:02Z). `steps.passou_a_porta INTEGER NOT NULL DEFAULT 0`: a porta de política (`_policy_gate`) grava 1 quando libera o efeito da etapa, na mesma passada sem `await` da regra do objeto na família (31.53); nunca volta a 0. A regra conta SEMPRE a irmã do mesmo pedido que passou enquanto ela está em estado aberto (`pending`, `ready`, `running`, `verifying`, `retry_wait`, `waiting_user`, `uncertain`; S2: a concluída sai pela saída gravada, com a janela da regra, e falha, cancelamento e `skipped` não contam) e aplica "só as mais antigas" (`started_at`, `id`) apenas entre as que não passaram: a retomada com a data da primeira tomada e o relógio de cada máquina deixam de decidir. Só `ADD COLUMN`. Simulado em `tests/test_passou_a_porta.py` e `tests/test_familia_por_objeto.py` |
 | 111 | execucao_aguardando_pessoa | Item 29.93 (número reservado pela orquestradora em 05/10 06:44Z). Só dados, sem esquema (não há CHECK em `runs.status`): `UPDATE runs SET status='awaiting_person'` nas execuções em `completed_with_issues` com algum objetivo `waiting_user`, o estado em que o `recompute_run` as deixa desde o 29.93. `finished_at` fica (é de onde o vencimento do 31.50 conta). Execução só com `uncertain` não muda. Idempotente; 0 linhas no banco do central em 05/10 (medido em `mode=ro`). Simulado em `tests/test_aguardando_pessoa.py` |
+| 112 | sessao_status_since | Item 29.100, nota da leitura do 29.96 (número reservado pela orquestradora em 05/10 07:00Z). `account_sessions.status_since TEXT`: desde quando a sessão está assim (a mudança de estado e, no `unknown`, a chegada ao teto). `SocialRepository.set_account_session` grava a hora da gravação quando o estado muda (ou a linha nasce) e, no `unknown`, quando a série chega ao teto do aparelho (a parada, P1 da leitura do #384); fora disso MANTÉM a anterior quando o mesmo estado é regravado (reobservação abaixo do teto, "Verificar conta" no teto, invalidação de quem já estava `unknown`). A decisão vai num `CASE` dentro do próprio upsert (P2); `updated_at` segue sendo a última gravação. Preenchimento: `updated_at` nas linhas que não são `session_ready` (numa sessão parada, a última gravação é a parada); `session_ready` fica nula, e o painel cai em `verified_at`. Chega ao REST como `SessionInfo.status_since` (adendo v1.51) e é o `desde` do item da sessão em Pendências. Só `ADD COLUMN` e um `UPDATE` limitado às nulas. Simulado em `tests/test_sessao_status_since.py` |
 | 113 | execucao_assentada_em | Itens 29.93 e 29.103, #382 (número reservado pela orquestradora em 05/10 07:45Z; a 112 é do #384). `runs.assentada_em TEXT`, nula: a marca de que a execução já foi assentada (digest, trava de rascunho, pedidos). Compare-and-set `UPDATE … SET assentada_em=? WHERE id=? AND assentada_em IS NULL AND status IN (finais)` em `Repository.marcar_assentada`: só quem grava assenta, uma vez, mesmo com dois backends. Preenchida na migração para toda execução já em estado final (`completed`, `completed_with_issues`, `failed`, `cancelled`) com `COALESCE(finished_at, started_at, created_at)` (`runs` não tem `updated_at`); as que a 111 levou a `awaiting_person` ficam nulas. Zerada só pelo `set_run_status`, ao ir a estado não final que não seja `cancelling`. Simulado em `tests/test_aguardando_pessoa.py` |
 
 As oito tabelas novas de 031–039 estão em quatro migrações: `panel_sessions` (035), `policy_groups` (036),
@@ -360,6 +361,24 @@ pela regra de saúde. Desde então o portão é este:
   emuladores), e para no fim. O `farm-pg` (volume persistente, porta 55433, `fsync` ligado) fica para a suíte
   inteira em PG e para reproduzir o que só falha com durabilidade. Espere a primeira conexão aceita antes do
   pytest: a primeira rodada da suíte 18 deu 1913 erros "the database system is starting up".
+
+  Desde o 29.99 o contêiner sobe por `scripts/pg-rapido.py`, sempre com a mesma configuração, mais WAL mínimo
+  (`wal_level=minimal`, `max_wal_senders=0`, `max_wal_size=256MB`, `checkpoint_timeout=1min`), e só no loopback. O
+  script recria o contêiner a cada parte (`--partes`, o tmpfs volta vazio) e espera a conexão pelo TCP. A cada 30 s
+  ele amostra o tmpfs, o `pg_wal`, a `base`, os esquemas de teste e o tamanho de `pg_class`, `pg_attribute` e
+  `pg_depend`; a 85 % do tmpfs, mata a árvore do pytest e para com uma linha. A amostra decide pelo `df`: o rc e o
+  erro do `du` não contam, porque ele tropeça em arquivo que some no meio, o comum com esquemas criados e apagados;
+  `wal` e `base` ilegíveis saem como "?". Fora do Windows, o pytest sobe num grupo de processos próprio, e o aborto
+  mata o grupo inteiro (o K-099); no Windows, `taskkill /T`. Kill que falha aparece na linha do aborto.
+  - **Por quê.** Na suíte 35, os 467 arquivos juntos encheram os 4 GB: 181 failed, 823 errors, quase todos
+    `DiskFull`. Pelos logs do contêiner, o estouro foi na `base/` (3688 erros ali e 1668 em `global/`, nenhum em
+    `pg_wal`). O WAL ficou estável perto de 1 GB, com 30 segmentos reciclados por checkpoint, igual nas metades.
+  - **As metades** (234 e 233 arquivos) passaram com pico de 1057 e 1077 MB: 928 e 944 MB de WAL, 129 e 133 de base.
+  - **Com o WAL mínimo** (05/10, 07:37–08:01Z, metade 1, 234 arquivos, -n 8): "5524 passed, 8 skipped in
+    1409.34s". O pico ficou em 388 MB (WAL 256, base 132), contra 1057 MB, em 46 amostras, todas válidas. O WAL
+    ficou preso nos 256 MB.
+  - **O que ainda falta.** Por que a `base` passou de ~3 GB só na rodada inteira é a medida pendente do 29.99: uma
+    rodada inteira com o amostrador, na vez da orquestradora.
 
   | Suíte | Contêiner | Aceitar conexão | PG dirigido |
   |---|---|---|---|

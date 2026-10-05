@@ -228,7 +228,7 @@ def norm_key(key: str) -> str:
 
 def _sem_entrada(exc: Exception) -> str:
     """`ValueError` dos `except` mistos é do nosso código (frase do sistema); a `ValidationError`, sem a entrada."""
-    return erro_de_validacao_sem_entrada(exc) if isinstance(exc, ValidationError) else str(exc)
+    return erro_de_validacao_sem_entrada(exc, Plan) if isinstance(exc, ValidationError) else str(exc)
 
 
 def loads_json(raw: str, what: str) -> Any:

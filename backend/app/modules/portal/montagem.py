@@ -9,14 +9,20 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+import re
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Protocol
 
 from app.config import Config
 from app.db import Database
 from app.modules.portal.application.contato import Avisar, AvisarResumo, ServicoDeContato, TipoDoContato
 from app.modules.portal.application.exclusao import ApagarNoCanal, ServicoDeExclusao
 from app.modules.portal.application.protecao import emitir_token
+from app.modules.portal.application.vigia import AvisarBorda, Vigia
+from app.modules.portal.adapters.borda_http import BuscarPelaBorda
 from app.modules.portal.domain.exclusao import nome_do_operador
 from app.modules.portal.infrastructure.contatos_sql import ContatosSql
 from app.security.access import publicos_de
@@ -27,6 +33,10 @@ log = logging.getLogger("poc.portal")
 #: Uma volta do reenvio por minuto; a retenção de 180 dias a cada hora (é faxina, não prazo).
 REENVIO_S = 60
 RETENCAO_S = 3600
+#: A 1ª volta do vigia da borda (29.97) espera a subida assentar: não disputa com o deploy nem com o reinício.
+PRIMEIRA_VOLTA_DO_VIGIA_S = 300
+#: Um nome, sem esquema, porta, caminho nem espaço: é o que vira `https://<nome>/` no pedido do vigia.
+_NOME_PUBLICO = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 MODULO_DA_CANAIS = "app.modules.avisos.domain.portal"
 
@@ -40,10 +50,43 @@ def _tipo_da_canais() -> TipoDoContato | None:
     return tipo if callable(tipo) else None
 
 
+class RelogioDoPortal(Protocol):
+    """A hora do portal num lugar só (T.2): as rotas, os laços, o token da página e o prazo do vigia leem daqui, e os
+    testes trocam por um relógio parado. Os serviços já recebem a hora por parâmetro; o relógio é só a borda."""
+
+    def agora(self) -> datetime: ...
+
+    def epoch_s(self) -> float: ...
+
+    def monotonico_s(self) -> float: ...
+
+
+class RelogioReal:
+    """O de verdade: os mesmos `now()`, `time.time()` e `time.monotonic()` que cada ponto lia antes."""
+
+    def agora(self) -> datetime:
+        return now()
+
+    def epoch_s(self) -> float:
+        return time.time()
+
+    def monotonico_s(self) -> float:
+        return time.monotonic()
+
+
+@dataclass
+class EstadoDoLaco:
+    """O que uma volta do laço do contato lembra da anterior: a hora UTC do último resumo e a última retenção."""
+
+    hora_do_resumo: str
+    ultima_retencao: float = float("-inf")
+
+
 class Portal:
-    def __init__(self, cfg: Config, db: Database, avisos: object) -> None:
+    def __init__(self, cfg: Config, db: Database, avisos: object, relogio: RelogioDoPortal | None = None) -> None:
         self.cfg = cfg
         self.repo = ContatosSql(db)
+        self.relogio: RelogioDoPortal = relogio or RelogioReal()
 
         def avisar() -> Avisar | None:
             funcao = getattr(avisos, "avisar_contato_do_portal", None)
@@ -51,6 +94,10 @@ class Portal:
 
         def avisar_resumo() -> AvisarResumo | None:
             funcao = getattr(avisos, "avisar_resumo_do_portal", None)
+            return funcao if callable(funcao) else None
+
+        def avisar_borda() -> AvisarBorda | None:
+            funcao = getattr(avisos, "avisar_borda_do_portal", None)        # 29.97, escrito pela Canais
             return funcao if callable(funcao) else None
 
         def apagar_no_canal() -> ApagarNoCanal | None:
@@ -66,8 +113,23 @@ class Portal:
                                           buscas_no_total=lambda: cfg.file.portal.limites.buscas_total_hora,
                                           donos=lambda: frozenset(
                                               n for n in map(nome_do_operador, cfg.file.pedidos.operadores_do_dono) if n))
+        # O relógio é lido na hora de cada pedido: um teste que troca `portal.relogio` vale também para o vigia.
+        buscar = BuscarPelaBorda(lambda: cfg.file.portal.vigia.prazo_s, monotonico=lambda: self.relogio.monotonico_s())
+        self.vigia = Vigia(buscar, host=self.nome_do_vigia,
+                           site_ligado=lambda: cfg.file.portal.site_ligado and self.site_presente,
+                           csp_do_painel=lambda: cfg.file.server.csp_do_painel,
+                           voltas_sem_conferir=lambda: cfg.file.portal.vigia.voltas_sem_conferir,
+                           intervalo_s=lambda: cfg.file.portal.vigia.intervalo_s, avisar=avisar_borda)
         for _codigo, mensagem, _dica in self.problemas(com_contagens=False):   # o banco ainda não migrou aqui
             log.warning("portal: %s", mensagem)
+
+    def nome_do_vigia(self) -> str | None:
+        """O 1º nome de `server.public_hosts`, na ordem do config (nunca o `Host` de um pedido), ou `None`: vigia
+        desligado, sem nome público, ou nome que não é só um nome (porta, esquema, caminho)."""
+        if not self.cfg.file.portal.vigia.ligado:
+            return None
+        nome = next((h.strip().lower() for h in self.cfg.file.server.public_hosts if h.strip()), "")
+        return nome if _NOME_PUBLICO.fullmatch(nome) else None
 
     @property
     def site_presente(self) -> bool:
@@ -96,10 +158,11 @@ class Portal:
                 "portal_contato_sem_ip_da_borda", problema + ".",
                 "Declare server.tls_behind_proxy e server.public_hosts no config.yaml e reinicie, ou desligue "
                 "portal.contato_ligado. Procedimento em docs/operacao.md, \"Site institucional na raiz\"."))
+        achados += self.vigia.problemas()                 # 29.97: só o estado da última volta, sem rede
         if not com_contagens:
             return achados
         try:
-            esperando, falhos = self.repo.parados(now())
+            esperando, falhos = self.repo.parados(self.relogio.agora())
         except Exception:  # noqa: BLE001 - a saúde não cai por causa de uma contagem
             log.exception("portal: contagem dos contatos parados")
             esperando, falhos = 0, 0
@@ -138,7 +201,7 @@ class Portal:
         if not self.contato_ligado:
             return ""
         try:
-            return emitir_token(self.contatos.sal(), time.time())
+            return emitir_token(self.contatos.sal(), self.relogio.epoch_s())
         except Exception:  # noqa: BLE001 - sem banco a página ainda abre; o envio é que vai falhar, com aviso
             log.exception("portal: não foi possível emitir o token da página")
             return ""
@@ -148,28 +211,44 @@ class Portal:
 
         Roda mesmo com o contato desligado: a promessa dos 180 dias da página vale para o que já foi guardado, e
         desligar o formulário não pode congelar a retenção. Desligado, só o reenvio é pulado."""
-        ultima_retencao = float("-inf")
-        hora_do_resumo = now().strftime("%Y-%m-%dT%H")      # a 1ª volta não resume uma hora pela metade
+        # A 1ª volta não resume uma hora pela metade.
+        estado = EstadoDoLaco(hora_do_resumo=self.relogio.agora().strftime("%Y-%m-%dT%H"))
         while True:
             await asyncio.sleep(REENVIO_S)
             if lider() is None:
                 continue
-            try:
-                if self.contato_ligado:
-                    contagem = await asyncio.to_thread(self.contatos.reenviar, now())
-                    if contagem:
-                        log.info("portal: reenvio %s", contagem)
-                    # Uma vez por hora UTC, na virada, com a hora que acabou de fechar: na chave da Canais
-                    # (`portal-resumo:<hora>`) vale a PRIMEIRA chamada da hora, então chamar a cada minuto deixaria uma
-                    # contagem pequena do começo da hora esconder um pico do fim dela.
-                    agora = now()
-                    if agora.strftime("%Y-%m-%dT%H") != hora_do_resumo:
-                        hora_do_resumo = agora.strftime("%Y-%m-%dT%H")
-                        await asyncio.to_thread(self.contatos.resumir, agora)
-                if time.monotonic() - ultima_retencao >= RETENCAO_S:
-                    apagados = await asyncio.to_thread(self.repo.apagar_vencidos, now())
-                    ultima_retencao = time.monotonic()
-                    if apagados:
-                        log.info("portal: %s contato(s) apagado(s) pela retenção", apagados)
-            except Exception:  # noqa: BLE001 - o laço nunca derruba o processo
-                log.exception("portal: volta do reenvio")
+            await self.volta_do_laco(estado)
+
+    async def volta_do_laco(self, estado: EstadoDoLaco) -> None:
+        """Uma volta do laço do contato, separada do `sleep` para o teste rodá-la com o relógio parado (T.2)."""
+        try:
+            if self.contato_ligado:
+                contagem = await asyncio.to_thread(self.contatos.reenviar, self.relogio.agora())
+                if contagem:
+                    log.info("portal: reenvio %s", contagem)
+                # Uma vez por hora UTC, na virada, com a hora que acabou de fechar: na chave da Canais
+                # (`portal-resumo:<hora>`) vale a PRIMEIRA chamada da hora, então chamar a cada minuto deixaria uma
+                # contagem pequena do começo da hora esconder um pico do fim dela.
+                agora = self.relogio.agora()
+                if agora.strftime("%Y-%m-%dT%H") != estado.hora_do_resumo:
+                    estado.hora_do_resumo = agora.strftime("%Y-%m-%dT%H")
+                    await asyncio.to_thread(self.contatos.resumir, agora)
+            if self.relogio.monotonico_s() - estado.ultima_retencao >= RETENCAO_S:
+                apagados = await asyncio.to_thread(self.repo.apagar_vencidos, self.relogio.agora())
+                estado.ultima_retencao = self.relogio.monotonico_s()
+                if apagados:
+                    log.info("portal: %s contato(s) apagado(s) pela retenção", apagados)
+        except Exception:  # noqa: BLE001 - o laço nunca derruba o processo
+            log.exception("portal: volta do reenvio")
+
+    async def laco_da_borda(self, lider: Callable[[], int | None]) -> None:
+        """O vigia da borda (29.97), uma volta por `portal.vigia.intervalo_s`, só no líder da trava `avisos` (é ele
+        quem avisa). A 1ª volta espera `PRIMEIRA_VOLTA_DO_VIGIA_S`; a subida e a saúde nunca esperam a borda."""
+        await asyncio.sleep(PRIMEIRA_VOLTA_DO_VIGIA_S)
+        while True:
+            if lider() is not None and self.nome_do_vigia() is not None:
+                try:
+                    await asyncio.to_thread(self.vigia.volta, self.relogio.agora())
+                except Exception:  # noqa: BLE001 - o laço nunca derruba o processo
+                    log.exception("portal: volta do vigia da borda")
+            await asyncio.sleep(self.cfg.file.portal.vigia.intervalo_s)

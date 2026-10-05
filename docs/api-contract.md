@@ -6203,6 +6203,34 @@ Sem migração. Aditivo no `data` do evento `step.updated` (`TaskRepository.emit
   Ausente = backend de antes do 29.90.
 - **Prova:** `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py::test_a_folha_que_nao_fecha_para_numa_pessoa_sem_mais_toque`).
 
+## Adendo v1.48 (05/10/2026; número da orquestradora; item 29.96) — a sessão parada no teto aparece nas filas
+
+Sem migração. Campo aditivo em `SessionInfo`, que vai em `PersonaDTO.session`, `InstagramProfileDTO.session`,
+`PersonaDeviceDTO.session`, `PersonaOnDeviceDTO.session` e `ProfileAccountDTO.session`:
+- `unknown_at_cap: boolean` (padrão `false`): a sessão está em `unknown` NO TETO do aparelho dela. O teto é o de
+  `shared.vinculos.teto_de_unknown`: 1 com vínculo ativo (conta real, 29.92), senão o global
+  `session_unknown_retry_cap`. A automação parou sem tocar numa tela que não reconheceu e espera uma pessoa.
+- É a MESMA regra do `session.needs_person` (`SocialRepository.unknown_no_teto`): o campo liga quando o aviso entra e
+  desliga quando o aviso sai.
+- Não desconta o teto "velho" (gravado antes de o aparelho entrar no ar ou além da validade), ao contrário do
+  `ProviderSession.unknown_capped` da prévia de recursos. Aquele responde "reler ou pedir a pessoa"; este responde
+  "há um aviso aberto esperando alguém". Um reinício do emulador não tira o item da fila enquanto o aviso segue aberto.
+- O `status` continua `unknown`. O painel usa o campo nas duas filas que filtravam só por estado ("Aguardando
+  intervenção" de Personas e a caixa de Pendências), com o rótulo "Tela não reconhecida" em vez de "Não verificada".
+- **Prova:** `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py::test_parada_no_teto_aparece_no_rest_pela_regra_do_aviso`,
+  `frontend/src/features/pendencias/PendenciasPage.test.tsx`, `frontend/src/features/profiles/ProfilesPage.test.tsx`).
+
+## Adendo v1.49 (05/10/2026; número da orquestradora; item 31.71) — `MotivoDaImagem` ganha `leitura_pendente`
+
+Sem migração: `ai_calls.image_reason` é `TEXT` sem `CHECK` (migração 080). Aditivo no vocabulário `MotivoDaImagem`
+(`planning/provider.py`), que aparece em `GET /api/usage` como chave de `image_reasons`.
+- `leitura_pendente`: a imagem foi porque a etapa entrega valor (`saidas`) e ainda falta saída declarada. Só existe com
+  `ai.imagem_enquanto_falta_saida` ligada (desligada por padrão). Vem depois de `sensivel`, `politica_*`, `pedida`,
+  `problema` e `primeira_*` na ordem da regra: a política e a tela sensível continuam mandando.
+- O painel rotula o valor novo ("saída ainda não lida", `frontend/src/features/usage/usage.ts`); um valor desconhecido
+  segue aparecendo pela chave crua. Ausente = backend de antes do 31.71 ou chave desligada.
+- **Prova:** `simulated` (`backend/tests/test_imagem_enquanto_falta_saida.py`).
+
 ## Adendo v1.50 (05/10/2026; número da orquestradora; item 29.93) — a execução que espera você não aparece como encerrada
 
 Antes, quando o trabalho automático acabava com um objetivo em `waiting_user` (um gesto da pessoa no aparelho: login,
@@ -6238,3 +6266,32 @@ e quem lê o contrato a davam por encerrada, e a retomada do item a "reabria".
   e nenhuma assenta em dobro.
 - **Prova:** `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
   `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). `not_run`: o central.
+
+## Adendo v1.51 (05/10/2026; número da orquestradora; item 29.100) — a hora em que o estado da sessão começou
+
+Migração 112. Campo aditivo em `SessionInfo`, nos mesmos cinco DTOs do adendo v1.48:
+- `status_since: string | null`: ISO-8601 UTC de desde quando a sessão está assim.
+  - É a hora da mudança de estado (ou da linha nova).
+  - No `unknown`, é também a hora em que a série de reobservações CHEGOU ao teto do aparelho (`unknown_at_cap`,
+    v1.48): a parada.
+  - Por isso a sessão parada mostra a hora da parada, mesmo quando o `unknown` começou dias antes por um gesto
+    administrativo (vínculo, wipe, logout).
+- Fora disso, regravar o mesmo estado não move a hora: a reobservação abaixo do teto, o "Verificar conta" no teto e a
+  invalidação de quem já estava `unknown`.
+- `verified_at` continua sendo a última verificação.
+- A decisão é tomada dentro do próprio upsert, contra a linha que o comando encontra, então duas gravações concorrentes
+  não deixam a hora velha.
+- Caso raro: a sessão pode entrar no teto SEM gravação, porque `unknown_at_cap` é lido contra o teto de agora.
+  - Acontece quando o teto cai até uma série que ainda não estava parada (de 3 para 2, com a série em 2), ou quando
+    outra conta no aparelho ganha vínculo ativo (o teto vira 1).
+  - Nesse caso, Pendências mostra a hora do começo do `unknown` (ou do gesto), e a gravação seguinte no teto não a
+    corrige.
+  - Só afeta a hora mostrada.
+- A invalidação e o "Verificar conta" sem `reobserved` tiram a sessão do teto, porque a série volta a zero, e ela some
+  de Pendências. É assim desde antes do 29.100.
+- Nulo quando a sessão não existe, ou quando era `session_ready` antes da migração 112 e não mudou de estado desde
+  então. A migração preenche as outras com a última gravação. Em `session_ready` gravada depois da 112, é a hora em que
+  ficou pronta.
+- O painel usa `status_since` como o "desde" do item da sessão em Pendências e cai em `verified_at` quando ele falta.
+  Ausente = backend de antes do 29.100.
+- **Prova:** `simulated` (`backend/tests/test_sessao_status_since.py`, `frontend/src/features/pendencias/PendenciasPage.test.tsx`).

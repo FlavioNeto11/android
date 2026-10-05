@@ -677,6 +677,18 @@ export interface SessionInfo {
   detail: string | null;
   /** "Conectado" verificado há tempo demais: o aparelho é relido antes da próxima tarefa. */
   stale: boolean;
+  /**
+   * 29.96 (adendo v1.48): `unknown` NO TETO do aparelho — a automação parou sem tocar numa tela que não reconheceu e
+   * espera uma pessoa (a mesma regra do `session.needs_person`). Opcional só para os dublês de teste antigos: o backend
+   * sempre manda; ausente vale `false`.
+   */
+  unknown_at_cap?: boolean;
+  /**
+   * 29.100 (adendo v1.51): desde quando a sessão está assim: a mudança de estado e, no `unknown`, a chegada ao teto (a
+   * parada); regravar o mesmo estado fora disso não a move. Nulo na sessão
+   * `session_ready` de antes da migração 112. Opcional pelo mesmo motivo de `unknown_at_cap`.
+   */
+  status_since?: string | null;
 }
 
 /** Política de localidade: o que fazer quando o servidor onde os dados do perfil vivem não responde. */

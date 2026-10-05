@@ -41,6 +41,7 @@ import unicodedata
 from dataclasses import dataclass
 
 from app.contracts.identidade import APRESENTACAO_DA_IA
+from app.modules.avisos.domain.mensagem import FAMILIA_DO_GRUPO
 
 #: O que cada intenção é. `desconhecida` responde com a ajuda; `vazia` não responde.
 INTENCOES = frozenset({"ajuda", "identidade", "status", "pendencias", "aprovar", "vetar", "responder", "para", "livre",
@@ -172,14 +173,43 @@ class Fato:
         return self.tipo == "convidado"
 
     @property
+    def objetivo_parado(self) -> bool:
+        """O aviso do objetivo parado (28.40): `objective:<id>:<entrada na espera>`. Só informa; o gesto é no painel."""
+        return self.tipo == "objective"
+
+    @property
+    def conta(self) -> bool:
+        """O aviso da conta que pede a pessoa: `session:<id do evento>`. Só informa; o gesto é no painel."""
+        return self.tipo == "session"
+
+    @property
+    def agrupado(self) -> bool:
+        """A mensagem que junta vários avisos: `grupo:<tipo>` (`FAMILIA_DO_GRUPO`). Só informa."""
+        return self.tipo == FAMILIA_DO_GRUPO
+
+    @property
     def resumo_do_portal(self) -> bool:
         """O resumo dos contatos do site acima dos tetos (28.32): `portal-resumo:<hora>`. Só informa."""
         return self.tipo == "portal-resumo"
 
     @property
+    def borda_do_portal(self) -> bool:
+        """O aviso do vigia da borda do site (29.97): `portal-borda:<código>:<dia>`. O gesto é na zona da Cloudflare."""
+        return self.tipo == "portal-borda"
+
+    @property
     def portal(self) -> bool:
         """A mensagem de um visitante do site (28.32): `portal:<contato_id>`. Só informa."""
         return self.tipo == "portal"
+
+
+#: A resposta a um aviso que só informa e se resolve pelo link dele (28.41).
+SO_INFORMA_PELO_LINK = "Este aviso só informa: para resolver, toque no link dele."
+#: A resposta à mensagem agrupada (28.41, F1 da leitura do #380): ela não diz a qual item se responde.
+SO_INFORMA_O_AGRUPADO = "Esta mensagem junta vários avisos e só informa: para resolver, toque no link dela."
+#: A resposta a um aviso sem ramo próprio (28.41): diz como pedir algo, porque o pedido não sai de uma resposta.
+SO_INFORMA_SEM_RAMO = ("Este aviso só informa: nada foi executado. Para pedir algo, mande uma mensagem nova, sem "
+                       "responder a um aviso.")
 
 
 def _sem_acento(s: str) -> str:
@@ -204,10 +234,15 @@ def rotear(texto: str | None, *, fato: str | Fato | None = None) -> Intencao:
     f = fato if isinstance(fato, Fato) else Fato.de(fato)
     if t.startswith("/"):
         return _rotear_comando(t, f)
+    # 28.41, G1 da releitura do #380 (orquestradora, 05/10 07:50Z): resposta a aviso nunca vira COMANDO. Na resposta
+    # a um fato sem ramo próprio, a gramática comum vale, mas só o texto livre (a prévia) e o `para` viram "só
+    # informa"; a pergunta, a captura e a identidade não executam nada e seguem. O anexo é a exceção (28.24).
+    sem_ramo = False
     if f is not None:
         por_fato = _rotear_resposta(t, f)
         if por_fato is not None:
             return por_fato
+        sem_ramo = not f.anexo
     normal = " ".join(_sem_acento(t).split())
     captura = _CAPTURA.match(normal)
     if captura:
@@ -216,9 +251,13 @@ def rotear(texto: str | None, *, fato: str | Fato | None = None) -> Intencao:
         return Intencao("identidade")
     m = _PARA_LIVRE.match(t)
     if m:
+        if sem_ramo:
+            return Intencao("desconhecida", motivo=SO_INFORMA_SEM_RAMO)
         return Intencao("para", alvo=m.group("alvo").strip(), texto=m.group("objetivo").strip())
     if _eh_pergunta(normal):
         return Intencao("orquestradora", texto=t, repasse="pergunta")
+    if sem_ramo:
+        return Intencao("desconhecida", motivo=SO_INFORMA_SEM_RAMO)
     return Intencao("livre", texto=t)
 
 
@@ -274,6 +313,15 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         # caixa de Pendências (revisão do #372): a frase manda ao link do próprio lembrete, que é o lugar certo.
         return Intencao("desconhecida", motivo="Este lembrete só avisa: para resolver, toque no link dele ou responda "
                                                "ao aviso original.")
+    if f.objetivo_parado or f.conta:
+        # 28.41 (R1 da leitura do #372): nada se responde a esses avisos; o gesto é no aparelho, pelo link. Sem este
+        # ramo, a resposta cairia no texto livre e poderia virar a prévia de uma execução NOVA.
+        return Intencao("desconhecida", motivo=SO_INFORMA_PELO_LINK)
+    if f.agrupado:
+        # 28.41 (F1 da leitura do #380): a mensagem agrupada (`grupo:<tipo>`, 28.19, e `grupo:rotina`, 28.31) junta
+        # vários avisos e não diz qual; nada se decide nem se responde por ela. É o caso mais provável de resposta a um
+        # objetivo parado ("3 objetivos pararam"), e sem este ramo virava prévia de execução nova.
+        return Intencao("desconhecida", motivo=SO_INFORMA_O_AGRUPADO)
     if f.anexo:
         # Só o pedido de leitura é do anexo; "sim", um objetivo ou qualquer outra frase seguem a gramática comum (None).
         return Intencao("ler_anexo", ref=f.ident) if _LER.match(" ".join(_sem_acento(t).split())) else None
@@ -283,6 +331,11 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         return Intencao("desconhecida", motivo="Esta mensagem é de um visitante do site e só informa: nada foi executado, "
                                                "e a sua resposta não vai a ele. Para falar com ele, use o contato que "
                                                "ele deixou.")
+    if f.borda_do_portal:
+        # 29.97: o que o dono responde ao aviso da borda (por exemplo, "não mudei nada na zona") é recado para a
+        # orquestradora. Sem este ramo, a resposta cairia no texto livre e viraria PEDIDO.
+        return Intencao("orquestradora", ref=f.ident, repasse="borda",
+                        texto=f"Resposta do dono ao aviso da borda do site ({f.ident}, {f.detalhe}): {t}")
     if f.resumo_do_portal:
         # Só contagens: sem este ramo, um "sim" a ele cairia no texto livre e viraria pedido.
         return Intencao("desconhecida", motivo="Este aviso só informa: nada foi executado, e a resposta a ele não liga "
@@ -322,6 +375,8 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         return Intencao("desconhecida", motivo="Para decidir esta aprovação, responda \"sim\" ou \"não\".")
     if f.pergunta:
         return Intencao("responder", ref=f.ident, texto=t)
+    # Sem ramo próprio (`pedido:`, `learning:`, `trello-convidado:`, os espelhos e qualquer família nova): a gramática
+    # comum decide, e a regra de fundo de `rotear` tira dela o comando (28.41).
     return None
 
 
