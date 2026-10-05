@@ -53,6 +53,13 @@ const FEITA_POR_IA: { valor: '' | 'true' | 'false'; rotulo: string }[] = [
   { valor: 'false', rotulo: 'Não, é foto real (sai sem rótulo de IA)' },
 ];
 
+/** A mesma resposta na própria foto, em rótulo curto: o cartão é estreito, e o selo ao lado já diz a consequência. */
+const FEITA_POR_IA_CURTO: { valor: '' | 'true' | 'false'; rotulo: string }[] = [
+  { valor: '', rotulo: 'Não informado' },
+  { valor: 'true', rotulo: 'Sim, feita por IA' },
+  { valor: 'false', rotulo: 'Não, foto real' },
+];
+
 function paraResposta(valor: string): boolean | null {
   return valor === 'true' ? true : valor === 'false' ? false : null;
 }
@@ -346,14 +353,17 @@ function Foto({ imagem: i, alt, busy, onPrincipal, onApagar, onFeitaPorIa }: {
           {estado ? <Badge size="sm" tone={estado.tone}>{estado.label}</Badge> : null}
           {i.provider === 'simulated' ? <Badge size="sm" tone="warning">simulado</Badge> : null}
           <Badge size="sm" tone="neutral">{ORIGEM[i.source] ?? i.source}</Badge>
-          <Badge size="sm" tone={rotulo ? 'info' : 'neutral'}>{rotulo ? 'com rótulo de IA' : 'sem rótulo de IA'}</Badge>
+          {/* 29.81: o upload sem resposta sai sem rótulo, mas não é "foto real": ninguém disse. */}
+          {rotulo ? <Badge size="sm" tone="info">com rótulo de IA</Badge>
+            : i.feita_por_ia === false ? <Badge size="sm" tone="neutral">sem rótulo de IA (foto real)</Badge>
+            : <Badge size="sm" tone="warning">rótulo de IA não informado</Badge>}
         </div>
         {i.source === 'upload' ? (
           <Field label="Feita por IA?">
             {({ id }) => (
               <Select id={id} value={daResposta(i.feita_por_ia)} disabled={busy}
                       onChange={(e) => onFeitaPorIa(e.target.value)}>
-                {FEITA_POR_IA.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
+                {FEITA_POR_IA_CURTO.map((o) => <option key={o.valor} value={o.valor}>{o.rotulo}</option>)}
               </Select>
             )}
           </Field>

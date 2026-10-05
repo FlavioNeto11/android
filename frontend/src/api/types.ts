@@ -1347,6 +1347,9 @@ export interface Approval {
   image_id?: string | null;
   /** 29.79: a publicação sai com o rótulo de IA do Instagram; `null` sem imagem. */
   rotulo_ia?: boolean | null;
+  /** 29.81: o porquê do rótulo: `ia`, `foto_real` (o dono disse) ou `nao_informado` (ninguém disse); `null` sem
+   *  imagem ou na etapa gravada antes do campo. */
+  rotulo_ia_motivo?: 'ia' | 'foto_real' | 'nao_informado' | null;
   /** 30.61: `plano` (o sim dado na prévia da porta) ou `execucao`. Ausente nas respostas antigas = `execucao`. */
   origem?: 'plano' | 'execucao';
   /** 30.61: até quando o sim do plano vale; nulo nas de execução. */
@@ -2910,6 +2913,9 @@ export interface ItemDaPorta {
   image_id?: string | null;
   /** 29.79: a publicação sai com o rótulo de IA do Instagram; `null` sem imagem. */
   rotulo_ia?: boolean | null;
+  /** 29.81: o porquê do rótulo: `ia`, `foto_real` (o dono disse) ou `nao_informado` (ninguém disse); `null` sem
+   *  imagem ou na etapa gravada antes do campo. */
+  rotulo_ia_motivo?: 'ia' | 'foto_real' | 'nao_informado' | null;
   imagem_sha256?: string | null;
   chave: string | null;
   dependentes: string[];

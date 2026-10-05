@@ -6070,3 +6070,37 @@ Sem migração. Muda o `Worker` da v0.8 (`GET /api/workers`, `GET /api/workers/{
 - **Prova:** `simulated` (`backend/tests/test_limites_por_servidor.py::test_api_lista_e_muda_limites_do_host_e_do_worker`,
   `frontend/src/store/metricas.test.ts`, caso 29.82). `not_run`: o topo e a Infraestrutura do central com o notebook em
   9 ligados, 9 decididas e 6 declaradas, depois do deploy.
+
+## Adendo v1.44 (05/10/2026; número da orquestradora; item 29.81) — a foto enviada diz se foi feita por IA
+
+Regra do dono (03/10): foto realista de IA publicada pela automação leva o rótulo de IA do Instagram. Até a v1.40 a
+origem decidia sozinha (`upload` = sem rótulo), e a foto de IA que o dono subisse à mão sairia sem ele.
+
+- **`persona_images.feita_por_ia`** (migração 108, `INTEGER` nulo): a resposta do dono para a foto ENVIADA. `1` = feita
+  por IA, `0` = foto real, nulo = não informado. A migração só acrescenta a coluna: as linhas antigas ficam nulas e o
+  rótulo de cada uma é o de antes (upload sem, gerada e importada com).
+- **`PersonaImageDTO.feita_por_ia`** (`boolean | null`): o mesmo, na lista e no detalhe das imagens da persona.
+- **`POST /personas/{id}/images?feita_por_ia=true|false`**: o parâmetro é opcional (ausente = não informado); outro
+  valor responde 422.
+- **`PUT /personas/{id}/images/{image_id}/feita-por-ia`** com `{"feita_por_ia": true | false | null}` (o campo é
+  obrigatório; `null` volta a "não informado"): corrige a resposta. 404 sem a imagem; **409 `nao_e_upload`** na gerada ou
+  importada, que saem sempre com o rótulo. A correção regrava o `rotulo_ia` e o `rotulo_ia_motivo` das etapas ABERTAS
+  que publicam essa imagem; a etapa que já terminou não muda.
+- **`rotulo_ia`** da etapa (v1.40): o upload sai `"true"` só com `feita_por_ia = 1`. Gerada e importada, `"true"` sempre.
+- **`rotulo_ia_motivo`**, argumento novo da etapa gravado pela central junto do `rotulo_ia`: `"ia"` (gerada, importada ou
+  enviada e marcada como de IA), `"foto_real"` (o dono disse) ou `"nao_informado"` (ninguém disse). **Entra na chave da
+  aprovação** como argumento da etapa. Decisão: "foto real" e "não informado" saem iguais no Instagram (sem rótulo), mas
+  o dono lê itens diferentes — num ele afirmou, no outro há um aviso de que ninguém afirmou. O sim dado ao aviso não pode
+  valer como se ele tivesse dito "é foto real"; responder depois muda a chave, e o item volta a pedir o sim. O sim
+  reaproveitado numa revisão do plano exige o mesmo porquê.
+- **`ItemDaPorta.rotulo_ia_motivo`** e **`Approval.rotulo_ia_motivo`** (`"ia" | "foto_real" | "nao_informado" | null`;
+  `null` sem imagem ou na etapa gravada antes do campo). O painel mostra três textos no cartão do plano, na aba Textos e
+  na guia Aprovações: "com rótulo de IA"; "sem rótulo de IA (foto real, informado por você)"; e, em aviso, "sem rótulo
+  de IA: ninguém informou se a foto é de IA", com o link para a guia Imagens da persona. Sem o porquê, o "sem rótulo"
+  também fica em aviso. A galeria mostra em cada foto "com rótulo de IA", "sem rótulo de IA (foto real)" ou "rótulo de
+  IA não informado", e a enviada se corrige na própria foto.
+- **`GET /approvals`** entrega também o `rotulo_ia_motivo` (o `rotulo_ia` entrou no conserto da suíte 33, `22f641b2`:
+  `Approval.to_dict` não o levava, e o selo da aba Textos e da guia Aprovações nunca aparecia).
+- **Prova:** `simulated` (`backend/tests/test_upload_feito_por_ia.py`,
+  `frontend/src/features/profiles/GuiaImagens.test.tsx`, `frontend/src/features/profiles/SeloRotuloIa.test.tsx`,
+  `frontend/src/features/runs/PortaDoPlano.test.tsx`). `not_run`: publicação real de uma foto enviada.

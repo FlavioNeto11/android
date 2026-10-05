@@ -9,6 +9,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { TextArea } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { toast, toastError } from '../../store/toasts';
+import { SeloRotuloIa } from '../profiles/SeloRotuloIa';
 import styles from './Runs.module.css';
 
 /** Texto em edição e a escolha do usuário para cada rascunho. */
@@ -186,8 +187,7 @@ export function TextsTab({ detail, approvals }: { detail: RunDetail; approvals: 
                 {editado ? <Badge tone="info">editado</Badge> : null}
                 {branco ? <Badge tone="warning">em branco</Badge> : null}
                 {alvo === 'descartar' ? <Badge tone="warning">não será enviado</Badge> : null}
-                {a.rotulo_ia ? <Badge tone="neutral">com rótulo de IA</Badge> : null}
-                {a.rotulo_ia === false ? <Badge tone="warning">sem rótulo de IA (imagem enviada por você)</Badge> : null}
+                <SeloRotuloIa rotulo={a.rotulo_ia} motivo={a.rotulo_ia_motivo} profileId={a.profile_id} />
               </div>
               {a.image_id && a.profile_id ? (
                 // 29.30: a publicação leva esta imagem; quem aprova a legenda vê também o que vai ao feed.

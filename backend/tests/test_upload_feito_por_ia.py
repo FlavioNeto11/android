@@ -144,3 +144,57 @@ def test_a_migracao_108_so_acrescenta_a_coluna_nula() -> None:
     texto = (Path(__file__).resolve().parents[1] / "migrations" / "108_imagem_feita_por_ia.sql").read_text(encoding="utf-8")
     comandos = [linha for linha in texto.splitlines() if linha.strip() and not linha.lstrip().startswith("--")]
     assert comandos == ["ALTER TABLE persona_images ADD COLUMN feita_por_ia INTEGER;"]
+
+
+async def test_so_o_motivo_mudando_tambem_muda_a_chave(harness: Any) -> None:
+    """Pedido da orquestradora (04/10): "não informado" → "foto real" mantém o rótulo "false", mas o dono passa a ler
+    outro item ("você disse que é foto real" em vez de "ninguém informou"). O porquê é argumento da etapa e entra na
+    chave: o sim dado ao item "não informado" não cobre o item "foto real". E os três estados chegam ao item da prévia."""
+    state = harness.state
+    pid = _plano(state, [
+        {"key": "enviada", "cap": "CREATE_POST",
+         "bindings": {"image_id": "img-enviada", "content": "praia", "content_verbatim": "true"}},
+        {"key": "gerada", "cap": "CREATE_POST",
+         "bindings": {"image_id": "img-gerada", "content": "praia", "content_verbatim": "true"}}])
+    _imagem(state, "img-enviada", pid, "upload")
+    _imagem(state, "img-gerada", pid, "generated")
+    # Como a central grava ao materializar (`_com_rotulo_ia`): o rótulo e o porquê.
+    assert state.repo.ressincronizar_rotulo_ia("img-enviada") == 1
+    assert state.repo.ressincronizar_rotulo_ia("img-gerada") == 1
+    itens = _por_chave(previa_da_porta(state, "run-p"))
+    assert (itens["enviada"]["rotulo_ia"], itens["enviada"]["rotulo_ia_motivo"]) == (False, "nao_informado")
+    assert (itens["gerada"]["rotulo_ia"], itens["gerada"]["rotulo_ia_motivo"]) == (True, "ia")
+    antes = itens["enviada"]["chave"]
+    assert antes
+
+    state.db.execute("UPDATE persona_images SET feita_por_ia=0 WHERE id='img-enviada'")
+    assert state.repo.ressincronizar_rotulo_ia("img-enviada") == 1
+    depois = _por_chave(previa_da_porta(state, "run-p"))["enviada"]
+    assert (depois["rotulo_ia"], depois["rotulo_ia_motivo"]) == (False, "foto_real")
+    assert depois["chave"] and depois["chave"] != antes
+
+
+async def test_a_rota_das_aprovacoes_entrega_o_rotulo_e_o_porque(tmp_path: Path) -> None:
+    """Achado no percurso do painel (05/10): `Approval.to_dict` não levava o `rotulo_ia` (29.79) nem o porquê, e o selo
+    da aba Textos e da guia Aprovações nunca aparecia — o teste do painel simulava o campo. A rota tem de entregá-los."""
+    cfg = make_config(tmp_path)
+    cfg.ensure_dirs()
+    app = create_app(cfg)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        async with app.router.lifespan_context(app):
+            state = app.state.poc
+            pid = _plano(state, [{"key": f"pub{k}", "cap": "CREATE_POST",
+                                  "bindings": {"image_id": f"img-{k}", "content": "praia", "content_verbatim": "true"}}
+                                 for k in (1, 2, 3)])
+            _imagem(state, "img-1", pid, "generated")
+            _imagem(state, "img-2", pid, "upload")
+            _imagem(state, "img-3", pid, "upload")
+            state.db.execute("UPDATE persona_images SET feita_por_ia=0 WHERE id='img-3'")
+            for k in (1, 2, 3):
+                state.repo.ressincronizar_rotulo_ia(f"img-{k}")
+                state.approvals.open(profile_id=pid, capability="CREATE_POST", summary=f"publicar {k}",
+                                     run_id="run-p", objective_id="run-p:android-01",
+                                     step_id=f"run-p:android-01:v1:pub{k}", content="praia")
+            lista = (await c.get("/api/approvals", params={"profile_id": pid})).json()
+            vistos = {a["image_id"]: (a["rotulo_ia"], a["rotulo_ia_motivo"]) for a in lista}
+            assert vistos == {"img-1": (True, "ia"), "img-2": (False, "nao_informado"), "img-3": (False, "foto_real")}

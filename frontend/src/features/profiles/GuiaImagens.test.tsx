@@ -200,14 +200,17 @@ it('29.81: o selo do rótulo de IA em cada foto, e a enviada se corrige na próp
     imagem(),
     imagem({ id: 'img-2', is_primary: false, source: 'upload', provider: null, model: null, seed: null, feita_por_ia: null,
              url: '/api/personas/ig-1/images/img-2' }),
+    imagem({ id: 'img-3', is_primary: false, source: 'upload', provider: null, model: null, seed: null, feita_por_ia: false,
+             url: '/api/personas/ig-1/images/img-3' }),
   ]));
   backend.on('PUT', /\/images\/img-2\/feita-por-ia$/, () => json(imagem({ id: 'img-2', source: 'upload', feita_por_ia: true })));
   await abrirImagens();
-  await waitFor(() => text().includes('sem rótulo de IA'));
+  await waitFor(() => text().includes('rótulo de IA não informado'));
   const cartoes = Array.from(container.querySelectorAll('figure'));
   expect(text(cartoes[0]!)).toContain('com rótulo de IA');                 // gerada: sempre com
   expect(cartoes[0]!.querySelector('select')).toBeNull();                   // e não se marca
-  expect(text(cartoes[1]!)).toContain('sem rótulo de IA');                  // enviada sem resposta: sem
+  expect(text(cartoes[1]!)).toContain('rótulo de IA não informado');        // enviada sem resposta: ninguém disse
+  expect(text(cartoes[2]!)).toContain('sem rótulo de IA (foto real)');      // enviada e dita foto real
   await setValue(cartoes[1]!.querySelector('select') as HTMLSelectElement, 'true');
   await waitFor(() => backend.callsTo('PUT', /\/images\/img-2\/feita-por-ia$/).length === 1);
   expect(backend.callsTo('PUT', /\/images\/img-2\/feita-por-ia$/)[0]?.body).toEqual({ feita_por_ia: true });

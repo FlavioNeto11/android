@@ -12,6 +12,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import type { Tone } from '../../lib/status';
 import { formatClock, formatDateTime } from '../../lib/time';
 import { useAppStore } from '../../store/app';
+import { SeloRotuloIa } from '../profiles/SeloRotuloIa';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Runs.module.css';
 
@@ -324,8 +325,7 @@ export function PortaDoPlano({ runId }: { runId: string }) {
                     <span className={styles.draftWhat}>{oQue(item)}</span>
                     <Badge tone={selo.tone} icon={selo.icon}>{rotuloDoSelo(item)}</Badge>
                     {item.tem_imagem ? <Badge tone="neutral" icon={ImageIcon}>com imagem</Badge> : null}
-                    {item.rotulo_ia ? <Badge tone="neutral">com rótulo de IA</Badge> : null}
-                    {item.rotulo_ia === false ? <Badge tone="warning">sem rótulo de IA (imagem enviada por você)</Badge> : null}
+                    <SeloRotuloIa rotulo={item.rotulo_ia} motivo={item.rotulo_ia_motivo} profileId={item.profile_id} />
                     {tirada ? <Badge tone="warning">{porDependencia ? 'sai junto (depende de uma tirada)' : 'não será feita'}</Badge> : null}
                   </div>
                   {item.image_id && item.profile_id ? (

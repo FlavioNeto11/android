@@ -27,8 +27,8 @@ from .db import Row, loads
 from .models import RUN_TERMINAL, InteractionType, StepStatus
 from .planning.capabilities import contraparte, objeto_da_acao, texto_a_gerar
 from .social.approvals import apply_edit
-from .social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_ROTULO_IA, VERSAO_DA_CHAVE,
-                                        chave_da_aprovacao, imagem_de_outra_persona, midia_da_etapa, tem_variavel,
+from .social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_MOTIVO_DO_ROTULO, ARGUMENTO_DO_ROTULO_IA,
+                                        VERSAO_DA_CHAVE, chave_da_aprovacao, imagem_de_outra_persona, midia_da_etapa, tem_variavel,
                                         texto_exato)
 from .taskqueue.repository import MOTIVO_REJEICAO
 from .taskqueue.service import RunError
@@ -344,6 +344,9 @@ def _item(state: AppState, run: Row, obj: Row, e: Row, dependentes: list[str], r
             # `None` sem imagem ou sem o argumento (imagem por resolver): só "false" gravado diz "sem rótulo".
             "rotulo_ia": (str(bindings[ARGUMENTO_DO_ROTULO_IA]).strip().lower() == "true")
                          if tem_imagem and bindings.get(ARGUMENTO_DO_ROTULO_IA) is not None else None,
+            # 29.81: o porquê, para o item distinguir "foto real" (o dono disse) de "não informado" (ninguém disse).
+            "rotulo_ia_motivo": (str(bindings.get(ARGUMENTO_DO_MOTIVO_DO_ROTULO) or "").strip() or None)
+                                if tem_imagem else None,
             "imagem_sha256": imagem_sha, "chave": chave, "falhou": False}
 
 

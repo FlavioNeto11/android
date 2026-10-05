@@ -20,6 +20,7 @@ from ..db import Database, Row, dumps, loads
 from ..planning.capabilities import Capability, objeto_da_acao
 from ..security.sessions import operador_atual
 from ..util import new_token, now, now_iso, parse_iso
+from .chave_da_aprovacao import ARGUMENTO_DO_MOTIVO_DO_ROTULO
 from .excecoes import ExcecoesDePolitica
 
 STATUSES = ("pending", "approved", "edited", "rejected", "expired")
@@ -50,6 +51,9 @@ class Approval:
     image_id: str | None = None
     #: 29.79: a publicação sai com o rótulo de IA do Instagram (`rotulo_ia` da etapa); `None` sem imagem.
     rotulo_ia: bool | None = None
+    #: 29.81: o porquê do rótulo (`"ia"`, `"foto_real"`, `"nao_informado"`), o `rotulo_ia_motivo` que a central gravou
+    #: na etapa; `None` sem imagem ou na etapa gravada antes do campo.
+    rotulo_ia_motivo: str | None = None
     #: 30.61: `plano` (o sim dado na prévia da porta, antes de iniciar) ou `execucao` (a porta do despacho, como sempre).
     #: A de origem `plano` só vale na execução para o item IDÊNTICO (`chave_sha256`, recalculada no despacho), dentro de
     #: `expires_at` e antes de o efeito sair; senão conta como ausente e a porta pergunta de novo.
@@ -69,7 +73,8 @@ class Approval:
         d = {k: getattr(self, k) for k in
              ("id", "profile_id", "run_id", "objective_id", "step_id", "capability", "target", "summary",
               "generated_content", "approved_content", "status", "created_at", "decided_at", "decided_note",
-              "decided_by", "interaction_id", "image_id", "rotulo_ia", "origem", "expires_at", "plan_version")}
+              "decided_by", "interaction_id", "image_id", "rotulo_ia", "rotulo_ia_motivo", "origem", "expires_at",
+              "plan_version")}
         d["content"] = self.content
         return d
 
@@ -86,6 +91,7 @@ class ApprovalStore:
                         decided_at=row["decided_at"], decided_note=row["decided_note"],
                         decided_by=row["decided_by"], interaction_id=row["interaction_id"],
                         image_id=self._imagem_da_etapa(row["step_id"]), rotulo_ia=self._rotulo_da_etapa(row["step_id"]),
+                        rotulo_ia_motivo=self._motivo_do_rotulo(row["step_id"]),
                         origem=row.get("origem") or "execucao",
                         expires_at=row.get("expires_at"), chave_sha256=row.get("chave_sha256"),
                         chave_v=row.get("chave_v"), plan_version=row.get("plan_version"),
@@ -117,6 +123,14 @@ class ApprovalStore:
         argumentos = loads(self.db.scalar("SELECT bindings FROM steps WHERE id=?", (step_id,)), {})
         valor = argumentos.get("rotulo_ia") if isinstance(argumentos, dict) else None
         return str(valor).strip().lower() == "true" if valor is not None else None
+
+    def _motivo_do_rotulo(self, step_id: str | None) -> str | None:
+        """29.81: o porquê do rótulo (`rotulo_ia_motivo` que a central gravou na etapa), ou `None` sem imagem."""
+        if not step_id or self._imagem_da_etapa(step_id) is None:
+            return None
+        argumentos = loads(self.db.scalar("SELECT bindings FROM steps WHERE id=?", (step_id,)), {})
+        valor = argumentos.get(ARGUMENTO_DO_MOTIVO_DO_ROTULO) if isinstance(argumentos, dict) else None
+        return (str(valor).strip() or None) if valor is not None else None
 
     def get(self, approval_id: str) -> Approval | None:
         row = self.db.one("SELECT * FROM pending_approvals WHERE id=?", (approval_id,))
@@ -169,6 +183,8 @@ class ApprovalStore:
                 and anterior.image_id == self._imagem_da_etapa(step_id)
                 # 29.79: a mesma imagem sem o rótulo de IA (ou com) é outra publicação.
                 and anterior.rotulo_ia == self._rotulo_da_etapa(step_id)
+                # 29.81: e com outro porquê ("foto real" x "não informado"): o dono leu outro item.
+                and anterior.rotulo_ia_motivo == self._motivo_do_rotulo(step_id)
                 # 30.64: o mesmo texto para a mesma pessoa em OUTRO post (outra legenda, outro autor) é outra ação.
                 # declarado no catálogo (`objeto_alvo`); sem declaração não há reuso (acima).
                 and self.objeto_da_etapa(anterior.step_id, acao) == objeto)

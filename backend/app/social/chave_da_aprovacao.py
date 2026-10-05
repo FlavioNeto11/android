@@ -86,6 +86,10 @@ def argumentos_da_acao(cap: Capability, bindings: Mapping[str, object]) -> dict[
 
 #: 29.79: o argumento que diz se a publicação leva o rótulo de IA do Instagram ("true"/"false"), gravado pela central.
 ARGUMENTO_DO_ROTULO_IA = "rotulo_ia"
+#: 29.81: o PORQUÊ do rótulo ("ia", "foto_real", "nao_informado"), também gravado pela central. Como argumento da etapa,
+#: entra na chave: corrigir "não informado" para "foto real" (o mesmo "false") muda o que o dono lê no item, e o sim
+#: dado antes não o cobre mais.
+ARGUMENTO_DO_MOTIVO_DO_ROTULO = "rotulo_ia_motivo"
 
 
 def _id_da_imagem(bindings: Mapping[str, object]) -> str:
@@ -116,6 +120,22 @@ def imagem_de_outra_persona(db: Database, bindings: Mapping[str, object], perfil
         return False
     dona = db.scalar("SELECT persona_id FROM persona_images WHERE id=?", (imagem,))
     return dona is not None and str(dona) != perfil
+
+
+def motivo_do_rotulo_ia(db: Database, bindings: Mapping[str, object]) -> str | None:
+    """29.81: POR QUE a imagem da etapa sai com ou sem o rótulo de IA, para quem aprova ler os três estados: "ia"
+    (gerada, importada ou enviada e marcada como feita por IA), "foto_real" (enviada e marcada como foto real) ou
+    "nao_informado" (enviada sem resposta: sai sem rótulo, mas ninguém disse que é foto real). `None` sem imagem
+    legível ou inexistente."""
+    imagem = _id_da_imagem(bindings)
+    if not imagem or "{" in imagem:
+        return None
+    linha = db.one("SELECT source, feita_por_ia FROM persona_images WHERE id=?", (imagem,))
+    if linha is None:
+        return None
+    if str(linha["source"]) != "upload" or (linha["feita_por_ia"] is not None and bool(linha["feita_por_ia"])):
+        return "ia"
+    return "foto_real" if linha["feita_por_ia"] is not None else "nao_informado"
 
 
 def rotulo_ia_da_imagem(db: Database, image_id: str) -> str | None:

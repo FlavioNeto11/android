@@ -498,10 +498,21 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   Correção: `PUT /personas/{id}/images/{image_id}/feita-por-ia` `{feita_por_ia: true|false|null}`. As etapas abertas
   que publicam a imagem regravam o `rotulo_ia`, a chave da aprovação muda, e o sim dado antes deixa de cobrir a
   publicação.
-- Painel, na guia Imagens: "Esta foto foi feita por IA?" no envio, o selo "com/sem rótulo de IA" em cada foto e a
-  correção na própria foto enviada.
-- Prova: `simulated` (`backend/tests/test_upload_feito_por_ia.py`, `GuiaImagens.test.tsx`). `not_run`: o envio pelo
-  painel no navegador e a publicação real.
+- Três estados, não dois: `rotulo_ia_motivo` (`ia`, `foto_real`, `nao_informado`) é argumento da etapa, gravado junto do
+  `rotulo_ia`, e entra na chave da aprovação. "Foto real" (o dono disse) e "não informado" (ninguém disse) saem iguais no
+  Instagram, mas são itens diferentes para quem aprova: responder depois muda a chave e pede o sim de novo.
+- Painel: na guia Imagens, "Esta foto foi feita por IA?" no envio, o selo de cada foto ("com rótulo de IA", "sem
+  rótulo de IA (foto real)" ou, em aviso, "rótulo de IA não informado") e a correção na própria foto enviada. No cartão
+  do plano, na aba Textos e na guia Aprovações: "sem rótulo de IA (foto real, informado por você)" ou, em aviso, "sem
+  rótulo de IA: ninguém informou se a foto é de IA", com o link para a guia Imagens da persona. Adendo v1.44.
+- `GET /approvals` entrega o `rotulo_ia_motivo`. O `rotulo_ia`, achado faltando no percurso do painel deste item (o
+  selo da aba Textos e da guia Aprovações nunca aparecia), entrou como conserto na suíte 33 (`22f641b2`).
+- Prova: `simulated` (`backend/tests/test_upload_feito_por_ia.py`, `GuiaImagens.test.tsx`, `SeloRotuloIa.test.tsx`,
+  `PortaDoPlano.test.tsx`) e o percurso no navegador, em painel isolado (backend do worktree com a config do harness,
+  banco temporário, 05/10): os três selos da galeria, a correção na própria foto mudando o selo e a chave, os três
+  textos no cartão do plano, na aba Textos e na guia Aprovações e o link até a guia Imagens. As fotos do percurso
+  entraram pela API: `not_run` o envio pelo painel (o seletor "Esta foto foi feita por IA?" com o arquivo; só
+  `GuiaImagens.test.tsx`) e a publicação real.
 
 ## 2026-10-04 — 29.79: a foto realista de IA sai SEMPRE com o rótulo de IA do Instagram (branch feat/29-79-rotulo-ia)
 
