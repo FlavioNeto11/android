@@ -409,7 +409,7 @@ class SombraDosFluxos:
             try:
                 self._avaliar(fluxo, run_id)
             except ErroDeAprendizado as exc:            # veto, conflito, D1: um fluxo não para os outros
-                log.info("aprendizado: fluxo segue como está: %s", exc)        # 30.83: sem o id (slug do resumo)
+                log.info("aprendizado: fluxo segue como está (%s)", type(exc).__name__)   # 30.83: o texto pode ter o id
         return gravadas
 
     def _minerar_prova(self, execucao: ExecucaoAssentada, prova: ProvaDaExecucao) -> int:
@@ -433,7 +433,7 @@ class SombraDosFluxos:
             try:
                 self._avaliar(em_prova, execucao.run_id)
             except ErroDeAprendizado as exc:            # veto, conflito, D1
-                log.info("aprendizado: fluxo segue como está: %s", exc)    # 30.83: sem o id (slug do resumo)
+                log.info("aprendizado: fluxo segue como está (%s)", type(exc).__name__)   # 30.83: o texto pode ter o id
         return 1
 
     def _rebaixar_o_ensinado(self, prova: ProvaDaExecucao, run_id: str) -> None:
@@ -449,7 +449,8 @@ class SombraDosFluxos:
                 LivroKind.FLUXO, prova.fluxo_id, SkillState.DISABLED, by=SYSTEM_ACTOR, run_id=run_id,
                 reason=f"{MOTIVO_DA_PROVA_DO_ENSINADO} ({prova.detalhe})"[:300])
         except ErroDeAprendizado as exc:                 # conflito de estado: outro caminho já o tirou
-            log.info("aprendizado: ensinado segue como está (execução %s): %s", run_id, exc)     # 30.83: sem o id
+            log.info("aprendizado: ensinado segue como está (execução %s, %s)", run_id,
+                     type(exc).__name__)                          # 30.83: o texto pode ter o id
             return
         for rid in espera.receitas:
             try:

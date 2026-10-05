@@ -514,3 +514,20 @@ def test_apagar_o_fluxo_nao_libera_as_receitas_dele(mundo: Mundo) -> None:
     mundo.execucao_de_prova(fid, "r-prova")
     _evidencia_da_receita(mundo, rid, "r-prova", stance="for")
     assert _acha(mundo, BIA)                             # a evidência a favor dela numa execução real de prova libera
+
+
+def test_a_excecao_do_rebaixamento_vai_ao_log_so_pelo_tipo(mundo: Mundo, caplog: pytest.LogCaptureFixture,
+                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    """30.83, S1 da leitura: o texto de uma exceção pode trazer o id antigo (o slug do resumo, com nome). O log da
+    sombra diz só o tipo dela."""
+    fid = mundo.ensina()
+    mundo.execucao_de_prova(fid, "r-contra")
+
+    def conflito(*args: object, **kwargs: object) -> None:
+        raise ConflitoDeEstado("Fluxo enviar-mensagem-para-maria-souza mudou de status; releia e tente de novo.")
+
+    monkeypatch.setattr(mundo.servico, "mudar_estado", conflito)
+    with caplog.at_level("INFO", logger="poc.aprendizado"):
+        mundo.minera_prova(fid, "r-contra", Posicao.AGAINST)
+    assert "ensinado segue como está (execução r-contra, ConflitoDeEstado)" in caplog.text, caplog.text
+    assert "maria" not in caplog.text

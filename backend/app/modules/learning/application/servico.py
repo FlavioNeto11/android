@@ -35,6 +35,7 @@ from app.modules.learning.domain.conteudo import capability_unica, licao_legivel
 from app.modules.learning.domain.efeito import exposicao_json
 from app.modules.learning.domain.espera import Faixa
 from app.modules.learning.domain.livro import (ESTADOS_DA_EVIDENCIA_INVALIDA, EntradaDoLivro, ItemDeAprendizado,
+                                               quem_no_log,
                                                NovoItem, Transicao, a_revisar, apps_do_item, contagem,
                                                decididos_para_revisar, devolve_a_prova, e_confirmacao,
                                                entrada_do_item, estado_nativo, motivo_da_confirmacao, para_aprovar,
@@ -249,7 +250,7 @@ class LearningService:
         if kind in KINDS_DE_ITEM:
             item = self._repo.item(ref)
             if item is None or item.kind is not kind:
-                raise NaoEncontrado(f"Não há {kind.value} '{ref}' no livro.")
+                raise NaoEncontrado(f"Não há {quem_no_log(kind, ref)} com essa referência no livro.")
             return entrada_do_item(item)
         ler: dict[LivroKind, Callable[[str], EntradaDoLivro | None]] = {
             LivroKind.RECEITA: self._fontes.receita, LivroKind.FLUXO: self._fontes.fluxo,
@@ -257,7 +258,7 @@ class LearningService:
         }
         achada = ler[kind](ref)
         if achada is None:
-            raise NaoEncontrado(f"Não há {kind.value} '{ref}' no livro.")
+            raise NaoEncontrado(f"Não há {quem_no_log(kind, ref)} com essa referência no livro.")
         return self._reaprendida(achada)
 
     # ================================================================== reaprendido (30.23)
@@ -599,7 +600,7 @@ class LearningService:
             raise EntradaInvalida(f"'{status}' não é um status de {kind.value}.")
         atual = self.entrada(kind, ref)
         if atual.state is None:
-            raise TransicaoProibida(f"O estado '{atual.native_status}' de {kind.value} {ref} não é do livro.")
+            raise TransicaoProibida(f"O estado '{atual.native_status}' de {quem_no_log(kind, ref)} não é do livro.")
         for passo in caminho_da_pessoa(atual.state, para):
             atual = self.mudar_estado(kind, ref, passo, by=by, reason=reason)
         return atual
@@ -608,7 +609,7 @@ class LearningService:
                     run_id: str | None, detalhe: str | None = None) -> ItemDeAprendizado:
         item = self._repo.item(ref)
         if item is None or item.kind is not kind:
-            raise NaoEncontrado(f"Não há {kind.value} '{ref}' no livro.")
+            raise NaoEncontrado(f"Não há {quem_no_log(kind, ref)} com essa referência no livro.")
         actor = conferir_transicao(item.state, para, by, side_effect=item.side_effect,
                                    human_origin=item.human_origin, modo_publica=self._modo_publica(kind, item.escopo.app))
         if actor is Actor.SYSTEM and para in (SkillState.VALIDATED, SkillState.PUBLISHED):
@@ -628,14 +629,14 @@ class LearningService:
             raise EntradaInvalida("A publicação pela emenda B leva o motivo marcado ('autopublicacao_b: ...').")
         e = self.entrada(LivroKind.FLUXO, ref)
         if e.state is not SkillState.VALIDATED:
-            raise TransicaoProibida(f"A emenda B publica só fluxo em 'validated'; {ref} está em '{e.native_status}'.")
+            raise TransicaoProibida(f"A emenda B publica só fluxo em 'validated'; o fluxo está em '{e.native_status}'.")
         self._mover_nativo(e, SkillState.PUBLISHED, by=SYSTEM_ACTOR, reason=reason.strip(), run_id=None, emenda_b=True)
         return self.entrada(LivroKind.FLUXO, ref)
 
     def _mover_nativo(self, e: EntradaDoLivro, para: SkillState, *, by: str, reason: str,
                       run_id: str | None, emenda_b: bool = False) -> None:
         if e.state is None or e.native_status is None:
-            raise TransicaoProibida(f"O estado '{e.native_status}' de {e.kind.value} {e.ref} não é do livro.")
+            raise TransicaoProibida(f"O estado '{e.native_status}' de {quem_no_log(e.kind, e.ref)} não é do livro.")
         para_status = status_nativo(e.kind, para)
         if para_status is None:
             raise TransicaoProibida(f"{e.kind.value} não tem o estado '{para.value}' (fluxo sai de circulação como "
@@ -675,14 +676,14 @@ class LearningService:
             raise EntradaInvalida(f"'{run}' não é o id de uma execução (r-AAAAMMDDhhmmss-xxxxxx).")
         e = self.entrada(kind, ref)
         if e.nasceu_de is None:
-            raise TransicaoProibida(f"{kind.value} {ref} não foi aprendido de uma execução (treino ou origem "
+            raise TransicaoProibida(f"{quem_no_log(kind, ref)} não foi aprendido de uma execução (treino ou origem "
                                     "ilegível): não há evidência de execução a invalidar.")
         if e.nasceu_de != run:
-            raise TransicaoProibida(f"{kind.value} {ref} foi aprendido da execução {e.nasceu_de}, não da {run}: só a "
-                                    "execução de origem pode ser marcada como evidência inválida.")
+            raise TransicaoProibida(f"{quem_no_log(kind, ref)} foi aprendido da execução {e.nasceu_de}, não da {run}: "
+                                    "só a execução de origem pode ser marcada como evidência inválida.")
         if e.state not in ESTADOS_DA_EVIDENCIA_INVALIDA or e.native_status is None:
-            raise TransicaoProibida(f"{kind.value} {ref} está '{e.native_status}': o aposentado já saiu de circulação "
-                                    "e a evidência inválida não muda nada nele.")
+            raise TransicaoProibida(f"{quem_no_log(kind, ref)} está '{e.native_status}': o aposentado já saiu de "
+                                    "circulação e a evidência inválida não muda nada nele.")
         if ja_invalidada(self._repo.trilha(e.trail_ref), run):
             return e
         motivo = motivo_de_evidencia_invalida(run)
@@ -712,8 +713,8 @@ class LearningService:
         em_revisar = self.em_revisar(e)
         espera = None if em_revisar else self._ensinado.espera_da_pessoa(e)
         if (espera is None and not em_revisar) or e.native_status is None:
-            raise ConflitoDeEstado(f"{kind.value} {ref} não está em \"Revisar\" (já confirmado, decidido por uma pessoa, "
-                                   "sem efeito externo ou fora de circulação): não há o que confirmar.")
+            raise ConflitoDeEstado(f"{quem_no_log(kind, ref)} não está em \"Revisar\" (já confirmado, decidido por uma "
+                                   "pessoa, sem efeito externo ou fora de circulação): não há o que confirmar.")
         self._repo.confirmar_que_fica(
             MudancaNativa(kind=e.kind, ref=e.ref, de_status=e.native_status, para_status=e.native_status,
                           de_estado=SkillState.PUBLISHED, para_estado=SkillState.PUBLISHED,

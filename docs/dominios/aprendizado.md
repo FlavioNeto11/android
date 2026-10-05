@@ -2151,8 +2151,10 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   rodam dentro da transação que falhou) dizem só o tipo; a autopublicação loga só as contagens.
 - `ref_publica_do_fluxo` nunca devolve o id: sem a `ref_publico`, preenche na hora; sem a linha, sorteia uma que não
   abre nada (cada chamada outra; a Canais só avisa a entrada).
-- **Limites:** o id interno segue em `item.ref` do Livro, em `GET /api/flows` e no id da habilidade adotada de um fluxo
-  legado. O texto de uma exceção do domínio ("O fluxo <id> já tem…") ainda pode ir ao log junto do `%s` da exceção.
+- Fatia 4: o texto das exceções de fluxo (Livro, pedido de validação, loja) diz só "fluxo" (`quem_no_log`), e os logs
+  da sombra dos fluxos dizem só o tipo da exceção.
+- **Limites:** o id interno segue em `item.ref` do Livro, no `ref` do efeito do voto, em `GET /api/flows`, na resposta
+  do `PUT /api/flows/{id}`, no `flow_id` de adopt e release e no id da habilidade adotada de um fluxo legado.
 - **Prova:** `simulated`, em `backend/tests/test_ref_publico_do_fluxo.py`. `real`: `not_run`.
 
 ## A prova sem evidência diz a causa (30.75)
