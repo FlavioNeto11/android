@@ -110,7 +110,8 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
     do runner. Pulando com mais de 48 h desde a última, ela reprova e o run fica vermelho, em vez de pular calado.
     - A marca quer dizer "a corrida INICIOU", não "terminou bem".
     - O disparo manual só-PG (`somente_postgres`) não grava a marca, porque não roda nada no central.
-    - Marca ilegível é regravada com a hora de agora, com `::warning::`.
+    - Marca ilegível é regravada com a hora de agora, com `::warning::`. Como na pasta limpa (abaixo), isso também
+      pode atrasar o vermelho em até 48 h: o aviso no run é o único sinal até lá.
     - Se a pasta `_work` do runner for limpa, a primeira pulada regrava a marca com a hora de agora: nunca reprova à
       toa, mas pode atrasar o vermelho em até 48 h.
   - **Premissa:** a porta lê o `CommandLine` dos processos, que para processo de outro usuário só vem a quem está
