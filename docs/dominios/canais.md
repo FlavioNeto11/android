@@ -317,12 +317,16 @@ avisos depois da faxina"), e a trava cai no TTL.
     no começo chega marcado "sem número: conferir o cartão antes de registrar decisão". Fora das listas de perguntas o
     segundo fator segue sendo a confirmação no Telegram (28.30).
   - **A marca separa a API da tela, não o dono da IA (revisão do #447, R1):** uma sessão que dirigisse o navegador ou o
-    aplicativo do Trello com a conta dele escreveria sem `appCreator`. Por isso nenhuma sessão comenta em cartão das
-    listas de perguntas pela tela do Trello: sessão só escreve pela API e com 🤖. Se aparecer "escrita por app" numa
+    aplicativo do Trello com a conta dele escreveria sem `appCreator`. **Proibição (decisão da orquestradora, N1 da
+    revisão do 28.52):** nenhuma sessão escreve em cartão das listas de perguntas pelo conector do Trello nem pela tela,
+    com ou sem 🤖; só a Canais escreve ali, pela API da Central e com 🤖. Se o conector gravar como `digitado`, uma
+    escrita dele sem 🤖 contaria como resposta do dono. A única exceção é a sonda abaixo, com 🤖, num cartão de teste e
+    só com o sinal da orquestradora. Se aparecer "escrita por app" numa
     resposta que ele digitou, é sinal de que o Trello passou a marcar os próprios aplicativos: avisar a orquestradora.
   - **Medida (28.52):** nas listas de perguntas, o comentário com 🤖 continua sem valer nada (`outro`, `ignorada`), mas a
     linha guarda a autoria em `responde_a` (`pergunta:P-NNN;autoria=app|digitado|nao_confirmada`). Um comentário com 🤖
-    pelo conector do Trello num cartão de teste dessas listas diz se o conector leva `appCreator`. Resultado: `not_run`.
+    pelo conector do Trello num cartão de teste dessas listas diz se o conector leva `appCreator`. Num cartão sem `P-NNN`
+    o campo sai `pergunta:;autoria=…` (número vazio), e a contagem da medida aceita isso. Resultado: `not_run`.
   - O recado que falha por erro interno responde com uma frase fixa, e o reply a ela segue à orquestradora (a entrada 1256
     de 04/10 ficou `falhou` sem resposta).
   - O login do painel recusa nome começado por `trello:` ou `telegram:`: esse é o operador dos canais. A sessão antiga

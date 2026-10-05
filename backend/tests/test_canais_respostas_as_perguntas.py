@@ -208,3 +208,33 @@ def test_a_autoria_fica_so_nas_listas_de_perguntas(tmp_path: Path) -> None:
         acao = c.trello.comenta(DONO, C_MANUAL, "Autorizado", lista="lista-de-outra-coisa", **kw)  # type: ignore[arg-type]
         r = recebida_da_action(acao, c.cfg.file.trello, chave_do_cartao=lambda _card: None)
         assert r is not None and r.responde_a is None and r.do_dono
+
+
+@pytest.mark.parametrize(("kw", "autoria"), [({}, "digitado"), ({"app": APP}, "app"), ({"sem_app": True}, "nao_confirmada")])
+def test_comentario_da_central_sem_robo_e_reconhecido_e_nao_vale(tmp_path: Path, kw: dict[str, object],
+                                                                  autoria: str) -> None:
+    """N2 da revisão do 28.52: o que a própria Central escreveu é reconhecido pelo id da action, sem 🤖, e segue `outro`."""
+    c = Cenario(tmp_path)
+    c.cfg.file.trello.listas.update(perguntas=L_PERGUNTAS, perguntas_respondidas=L_RESPONDIDAS)
+    acao = c.trello.comenta(DONO, C_MANUAL, "Resposta registrada: NÃO", lista=L_PERGUNTAS,
+                            nome="P-006. Uma pergunta de teste?", **kw)  # type: ignore[arg-type]
+    r = recebida_da_action(acao, c.cfg.file.trello, chave_do_cartao=lambda _card: None,
+                           da_central=lambda ident: ident == str(acao["id"]))
+    assert r is not None and (r.tipo, r.do_dono, r.texto) == ("outro", False, "")
+    assert r.responde_a == f"{MARCA_DA_PERGUNTA}P-006;autoria={autoria}"
+    # O mesmo texto, de outra action que não é da Central, é resposta do dono.
+    outra = recebida_da_action(acao, c.cfg.file.trello, chave_do_cartao=lambda _card: None, da_central=lambda _i: False)
+    assert outra is not None and outra.tipo == "mensagem" and outra.do_dono
+
+
+@pytest.mark.parametrize("nome", ["Cartão de teste da medida", "P-06. dois dígitos"])
+def test_cartao_de_teste_sem_numero_guarda_a_pergunta_vazia(tmp_path: Path, nome: str) -> None:
+    """N3 da revisão do 28.52: num cartão sem `P-NNN` o campo sai `pergunta:;autoria=…`; a contagem da medida aceita isso."""
+    c = Cenario(tmp_path)
+    c.cfg.file.trello.listas.update(perguntas=L_PERGUNTAS, perguntas_respondidas=L_RESPONDIDAS)
+    acao = c.trello.comenta(DONO, C_MANUAL, "🤖 sonda de autoria", lista=L_PERGUNTAS, nome=nome)
+    r = recebida_da_action(acao, c.cfg.file.trello, chave_do_cartao=lambda _card: None)
+    assert r is not None and (r.tipo, r.do_dono, r.texto) == ("outro", False, "")
+    assert r.responde_a == f"{MARCA_DA_PERGUNTA};autoria=digitado"
+    numero, _, autoria = (r.responde_a or "").removeprefix(MARCA_DA_PERGUNTA).partition(";autoria=")
+    assert (numero, autoria) == ("", "digitado")
