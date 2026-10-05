@@ -1,10 +1,23 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `a0c9865e` (migração 107, deploy 33); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 05/10/2026: runtime do backend em `584ac9c8` (migração 109, deploy 34); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 34 no ar (05/10/2026, central `584ac9c8`, migração `109_portal_exclusoes`).**
+  - `real` (central WIN-7S2UASNLFOP): fast-forward às 03:18:38Z; `scripts\deploy.ps1 -Ensaio` limpo às 03:18:49Z e
+    `scripts\deploy.ps1 -PularDependencias` de 03:19:59Z a 03:21:23Z (cópia `20261005-002000`); agentes dos dois workers em
+    `0.1.0+584ac9c`; prova de fora às 03:21:37Z (41 linhas ok, a raiz pedida como navegador sem script de outra origem);
+    caminhada no navegador do site e do painel (Configuração, "Site e privacidade"; guia de imagens da persona com "Esta foto
+    foi feita por IA?"; Infraestrutura, Canais e Pendências).
+  - `simulated`: suíte 34 na `584ac9c8` (scripts 602 passed; SQLite 10748 passed e 13 skipped; PG dirigido 4965 passed e
+    11 skipped; frontend 1598 passed).
+  - `not_run`: a exclusão de um contato real (só a pedido do titular), o envio de foto com a resposta, a prévia de plano com
+    `vista_em` numa execução real e a folha de aviso do Instagram num aparelho real (29.87).
+  - Achados da subida: `deploy.ps1 -PularBackup` recusa no primeiro segundo (29.94); a borda guarda `/assets/site.css` e
+    `/assets/site.js` por 4 h, e quem já visitou o site vê o estilo antigo nesse intervalo (29.95). O 29.85 fechou: o Web
+    Analytics da zona foi desligado em 05/10 (~02:24Z) com o sim do dono, e a prova de fora reprova script de outra origem.
 - **Deploy 33 no ar e portal institucional LIGADO (05/10/2026, central `a0c9865e`, migração `107_portal_contatos`).**
   - `real` (central WIN-7S2UASNLFOP): fast-forward e `scripts\deploy.ps1 -PularDependencias` de 01:10Z a 01:12Z, agentes dos dois
     workers em `0.1.0+a0c9865`; prova de fora às 01:14:34Z com o site desligado e às 01:19:51Z com
