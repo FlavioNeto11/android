@@ -87,9 +87,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `esperando_a_pessoa`, `AvisoDeEspera.mensagem`, `LearningService.__init__` (`id_do_fluxo`, último) e
   `ref_interna` (nova), `montar_aprendizado`, as rotas de `presentation/livro.py` e `validacoes.py::pedir_validacao`,
   `ref_publica_do_fluxo` e `id_do_fluxo` (novas).
-- Próximas fatias: `/api/flows/{id}`, os `href` das respostas do painel, os eventos `learning.ensinado_*` (depois do
-  30.80 B e do 30.81) e os logs que levam `fluxo:<id>`.
-- Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (7). Real: `not_run`.
+- N2 da leitura: `ref_publica_do_fluxo` nunca cai no id (preenche na hora; sem a linha, sorteia).
+- Junção da suíte 41 (30.80 B e 30.81): a porta única leva a `ref_publica_do_fluxo`; o teste do 30.79 confere a
+  chave pela `viva()` e a busca pela persona que ensinou, porque a busca comum fica fechada até a prova (30.81).
+- Fatia 3: os eventos `learning.ensinado_*` de fluxo saem com a referência pública; `PUT`/`DELETE /api/flows/{id}`,
+  adopt e release aceitam a referência; o `href` de desfazer do voto a leva; os logs da validação, da espera, da
+  trilha, dos nativos, do ensinado e da autopublicação não citam o fluxo (`quem_no_log`, `ref_no_log`). Funções
+  tocadas (K-095): `ref_publica_do_fluxo`, `EventosNoBarramento` (`_publico`, nova, e os três `ensinado_*`),
+  `update_flow`, `delete_flow`, `adopt_flow`, `release_flow`, `_id_do_fluxo` (nova, skills), `_efeito` e
+  `_ref_do_href` (nova), `quem_no_log` e `ref_no_log` (novas), os logs de `ServicoDeValidacao`, `AvisadorDeEspera`,
+  `PoliticaD1DoFluxo.mudou`, `SombraDosFluxos`, `EnsinoDaValidacaoSql.entrada` e `ServicoDeAutopublicacao`.
+- Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (14), `test_treino_substitui_receita.py` e
+  `test_learning_autopublicacao_sombra.py`. Real: `not_run`.
 
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
 

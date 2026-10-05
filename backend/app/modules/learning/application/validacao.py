@@ -33,7 +33,7 @@ from typing import Protocol
 from app.contracts.origem import PREFIXO_VALIDACAO
 from app.modules.learning.domain.ciclo import ConflitoDeEstado, ExigeODono, SkillState, TransicaoProibida
 from app.modules.learning.domain.curador import Decisao, Falta, Parecer
-from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item
+from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item, ref_no_log
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, Classificacao, Razao
 from app.modules.learning.domain.ensinado import EsperaDoEnsinado
 from app.modules.learning.domain.validacao import (PREFIXO_DO_ENSINO, VALIDADE_DO_PEDIDO_H, Ambiente, AparelhoCandidato,
@@ -365,7 +365,7 @@ class ServicoDeValidacao:
             teto_usd=aj.teto_por_pedido_usd), agora)
         if pid is None:
             raise ConflitoDeEstado(f"O fluxo {e.ref} já tem um pedido de validação vivo.")
-        log.info("aprendizado: %s pediu a validação de %s (pedido %s)", by, e.trail_ref, pid)
+        log.info("aprendizado: %s pediu a validação de %s (pedido %s)", by, ref_no_log(e.trail_ref), pid)
         return pid
 
     # ------------------------------------------------------------------ 1d. a prova do ensinado (30.81)
@@ -393,7 +393,7 @@ class ServicoDeValidacao:
             try:
                 self._abrir_prova_do_ensinado(x, passo, agora, aj)
             except Exception:  # noqa: BLE001 - um ensinado não para os outros
-                log.exception("aprendizado: prova do ensinado %s", x.fluxo_id)
+                log.exception("aprendizado: prova do ensinado")              # 30.83: sem o id do fluxo
 
     def _abrir_prova_do_ensinado(self, x: EnsinadoAProvar, passo: str, agora: datetime,
                                  aj: AjustesDaValidacao) -> None:
@@ -490,7 +490,8 @@ class ServicoDeValidacao:
                             else None)
             if self._registro.comecar(p.id, run_id, aparelho, agora, teto_usd=aj.teto_por_pedido_usd,
                                       teto_da_prova=proporcional):
-                log.info("aprendizado: validação %s de %s em %s (execução %s)", p.id, p.item_ref, aparelho, run_id)
+                log.info("aprendizado: validação %s de %s em %s (execução %s)", p.id, ref_no_log(p.item_ref), aparelho,
+                         run_id)
                 return run_id
         log.info("aprendizado: validação espera (%s; %d pedido(s) pendente(s))", Motivo.SEM_APARELHO.value,
                  len(pendentes))
@@ -560,14 +561,14 @@ class ServicoDeValidacao:
             if p.item_kind in (LivroKind.RECEITA.value, LivroKind.FLUXO.value) and not self._caminho(
                     p.item_kind, p.item_ref, p.comando):
                 if self._registro.recusar(p.id, Motivo.SEM_CAMINHO, agora):
-                    log.info("aprendizado: validação %s de %s sem caminho (%s)", p.id, p.item_ref,
+                    log.info("aprendizado: validação %s de %s sem caminho (%s)", p.id, ref_no_log(p.item_ref),
                              "o fluxo ativo não chega à etapa" if p.item_kind == LivroKind.RECEITA.value
                              else "o comando de origem não cabe no molde do fluxo")
                 continue
             motivo = self._recusa_de_prova(p, agora)
             if motivo is not None:
                 if self._registro.recusar(p.id, motivo, agora):
-                    log.info("aprendizado: validação %s de %s recusada ao despachar (%s)", p.id, p.item_ref,
+                    log.info("aprendizado: validação %s de %s recusada ao despachar (%s)", p.id, ref_no_log(p.item_ref),
                              motivo.value)
                 continue
             vivos.append(p)
@@ -638,7 +639,8 @@ class ServicoDeValidacao:
             pid = self._registro.criar(novo, agora)
             if pid is not None:
                 n += 1
-                log.info("aprendizado: validação %s reaberta para %s com a execução de prova", pid, novo.item_ref)
+                log.info("aprendizado: validação %s reaberta para %s com a execução de prova", pid,
+                         ref_no_log(novo.item_ref))
         return n
 
     # ------------------------------------------------------------------ 4. o gatilho `evidencia_chegou` do curador

@@ -511,7 +511,7 @@ class PoliticaD1DoFluxo:
                 if self._avisar is not None:      # 30.21: depois da trilha, no mesmo savepoint (a falha sobe até ele)
                     self._avisar(LivroKind.FLUXO, m.flow_id, m.de, m.para, by=m.por)
         except Exception:  # noqa: BLE001 - a trilha e o aviso informam; o fluxo aprendido não cai por causa deles
-            log.exception("aprendizado: trilha do fluxo %s", m.flow_id)
+            log.exception("aprendizado: trilha do fluxo (%s)", m.run_id or "sem execução")   # N1: o id não vai ao log
 
 
 

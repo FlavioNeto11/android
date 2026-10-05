@@ -2128,8 +2128,14 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
 - Sai a pública: `learning.needs_person` de fluxo (`ref` e `href`), sem a referência no `message`. Entra qualquer uma:
   as rotas do Livro com `{ref}` e o pedido de validação traduzem por `LearningService.ref_interna` (adendo v1.66).
 - A habilidade adotada de um fluxo novo herda o id opaco (`<app>.f-…`); o nome legível segue em `flows.name`.
-- **Limites (próximas fatias):** `/api/flows/{id}`, os `href` das respostas do painel, os eventos `learning.ensinado_*`
-  (30.80 B e 30.81, em ramo) e os logs com `fluxo:<id>` ainda usam o id interno.
+- Fatia 3: os eventos do ensinado (30.80 B e 30.81) saem pela pública na mesma porta (`EventosNoBarramento._publico`);
+  as rotas antigas de fluxo (`PUT`/`DELETE /api/flows/{id}`, adopt e release) e o `href` de desfazer do voto aceitam
+  ou levam a pública. Os logs não citam o fluxo: `quem_no_log` e `ref_no_log` (sem banco, porque os `log.exception`
+  rodam dentro da transação que falhou) dizem só o tipo; a autopublicação loga só as contagens.
+- `ref_publica_do_fluxo` nunca devolve o id: sem a `ref_publico`, preenche na hora; sem a linha, sorteia uma que não
+  abre nada (cada chamada outra; a Canais só avisa a entrada).
+- **Limites:** o id interno segue em `item.ref` do Livro, em `GET /api/flows` e no id da habilidade adotada de um fluxo
+  legado. O texto de uma exceção do domínio ("O fluxo <id> já tem…") ainda pode ir ao log junto do `%s` da exceção.
 - **Prova:** `simulated`, em `backend/tests/test_ref_publico_do_fluxo.py`. `real`: `not_run`.
 
 ## A prova sem evidência diz a causa (30.75)

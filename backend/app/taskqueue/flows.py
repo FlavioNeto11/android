@@ -163,14 +163,17 @@ def ref_aleatoria(db: Database) -> str:
 def ref_publica_do_fluxo(db: Database, flow_id: str) -> str:
     """A referência que sai do central (evento, `href`). Nunca cai no id (N2 da leitura da Ferramentas): sem a
     `ref_publico` (uma réplica no código antigo criou o fluxo depois da subida), preenche NA HORA; sem a linha (fluxo
-    apagado), uma referência nova que não abre nada, em vez do id."""
+    apagado), uma referência nova que não abre nada, em vez do id. Nesse caso cada chamada sorteia outra: a entrada e
+    a saída de espera de um fluxo apagado não casam (a Canais só avisa a entrada; nota b da leitura)."""
     linha = db.one("SELECT ref_publico FROM flows WHERE id=?", (flow_id,))
     if linha is None:
         return ref_aleatoria(db)
     if linha["ref_publico"]:
         return str(linha["ref_publico"])
-    db.execute("UPDATE flows SET ref_publico=? WHERE id=? AND ref_publico IS NULL", (ref_aleatoria(db), flow_id))
-    return str(db.scalar("SELECT ref_publico FROM flows WHERE id=?", (flow_id,)))
+    sorteada = ref_aleatoria(db)
+    db.execute("UPDATE flows SET ref_publico=? WHERE id=? AND ref_publico IS NULL", (sorteada, flow_id))
+    gravada = db.scalar("SELECT ref_publico FROM flows WHERE id=?", (flow_id,))
+    return str(gravada) if gravada else sorteada     # a linha sumiu entre os dois: a sorteada, nunca "None" (nota a)
 
 
 def id_do_fluxo(db: Database, ref: str) -> str:

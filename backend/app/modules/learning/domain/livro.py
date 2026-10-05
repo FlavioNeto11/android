@@ -64,6 +64,19 @@ def ref_da_trilha(kind: LivroKind, ref: str) -> str:
     return ref if kind in KINDS_DE_ITEM else f"{kind.value}:{ref}"
 
 
+def quem_no_log(kind: LivroKind, ref: str) -> str:
+    """O que um log diz de um item do livro: o fluxo só pelo tipo, porque o id antigo é o slug do resumo literal e
+    pode trazer nome (30.83, N1; a regra do `_no_log` do 30.80 B); o resto com o id, que é só dígitos ou `li-…`. Sem
+    banco: os `log.exception` rodam dentro da transação que falhou."""
+    return kind.value if kind is LivroKind.FLUXO else f"{kind.value} {ref}"
+
+
+def ref_no_log(item_ref: str) -> str:
+    """`quem_no_log` para a chave da trilha e dos pedidos de validação (`fluxo:<id>`, `receita:<n>`, `li-…`)."""
+    tipo, sep, _ = item_ref.partition(":")
+    return LivroKind.FLUXO.value if sep and tipo == LivroKind.FLUXO.value else item_ref
+
+
 # ------------------------------------------------------------------ efeito externo das fontes nativas
 def _lista(valor: JsonValue) -> list[JsonValue]:
     return valor if isinstance(valor, list) else []

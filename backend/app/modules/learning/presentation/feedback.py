@@ -23,10 +23,12 @@ A ORDEM importa duas vezes: estas rotas entram antes do livro (`router.py`), cuj
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.db import Database
 from app.modules.learning.application.aprendido import AprendizadoDaExecucao
 from app.modules.learning.application.feedback import (EfeitoAplicado, ServicoDeFeedback, SinalGravado, Voto)
 from app.modules.learning.application.servico import NOTA_MAX, LearningService
@@ -37,6 +39,7 @@ from app.modules.learning.infrastructure.feedback_sql import montar_feedback
 from app.modules.learning.presentation.livro import _chamar, _quem
 from app.modules.learning.presentation.nomes import nomear
 from app.modules.skills.domain.document import JsonObject, JsonValue
+from app.taskqueue.flows import ref_publica_do_fluxo
 
 router = APIRouter(prefix="/api")
 log = logging.getLogger("poc.aprendizado")
@@ -68,11 +71,21 @@ def _sinal(s: SinalGravado) -> JsonObject:
             "updated_at": s.updated_at}
 
 
-def _efeito(a: EfeitoAplicado) -> JsonObject:
+def _ref_do_href(request: Request) -> Callable[[str, str], str]:
+    """30.83: o `href` de um fluxo leva a referência pública (a rota aceita as duas formas); o `ref` do efeito segue
+    com o id interno, que o painel casa com a lista de fluxos."""
+    db: object = getattr(getattr(request.app.state, "poc", None), "db", None)
+
+    def ref(kind: str, valor: str) -> str:
+        return ref_publica_do_fluxo(db, valor) if kind == "fluxo" and isinstance(db, Database) else valor
+    return ref
+
+
+def _efeito(a: EfeitoAplicado, ref_do_href: Callable[[str, str], str]) -> JsonObject:
     e = a.efeito
     desfazer: JsonObject | None = None
     if a.reativavel:
-        desfazer = {"method": "POST", "href": f"/api/aprendizado/{e.kind}/{e.ref}/status",
+        desfazer = {"method": "POST", "href": f"/api/aprendizado/{e.kind}/{ref_do_href(e.kind, e.ref)}/status",
                     "body": {"to": "published", "reason": "reativado depois do voto"}}
     return {"acao": e.acao.value, "kind": e.kind, "ref": e.ref, "uso": e.uso.value if e.uso else None,
             "de": e.de.value if e.de else None, "para": e.para.value if e.para else None, "aplicado": a.aplicado,
@@ -110,7 +123,8 @@ async def votar(request: Request, run_id: str, corpo: CorpoDoVoto) -> JsonObject
     quem = _quem(request)
     voto = Voto(verdict=corpo.verdict, reason=corpo.reason, note=corpo.note, objective_id=corpo.objective_id)
     resultado = _chamar(lambda: feedback.votar(run_id, voto, by=quem))
-    return {"signal": _sinal(resultado.sinal), "efeitos": [_efeito(a) for a in resultado.efeitos],
+    ref_do_href = _ref_do_href(request)
+    return {"signal": _sinal(resultado.sinal), "efeitos": [_efeito(a, ref_do_href) for a in resultado.efeitos],
             "resumo": resultado.resumo}
 
 

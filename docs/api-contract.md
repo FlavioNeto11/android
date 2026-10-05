@@ -6634,5 +6634,12 @@ Muda o VALOR de `ref` nos eventos de fluxo e passa a aceitar a referência nova 
   `item.ref`. Referência desconhecida: o 404 de sempre.
 - **Quem consome:** a Canais deduplica por `desde` + `ref`; a partir do deploy, o `ref` de um fluxo antigo muda uma vez
   (do slug para a referência pública). Até o deploy, a Canais segue sem transmitir o `ref` de fluxo nem o `message`.
-- **Ainda não coberto** (próximas fatias do 30.83): as rotas `/api/flows/{id}`, os `href` das respostas do painel, os
-  eventos `learning.ensinado_*` (30.80 B e 30.81, ainda em ramo) e os logs que levam `fluxo:<id>`.
+- **Fatia 3:**
+  - os eventos `learning.ensinado_rebaixado`, `learning.ensinado_sem_receita`, o da espera de decisão e o da decisão
+    (adendos v1.61 e v1.65), com `kind: "fluxo"`, levam em `data.ref` a referência pública;
+  - `PUT` e `DELETE /api/flows/{id}`, `POST /api/flows/{id}/adopt` e `/release` aceitam as duas formas. A resposta segue
+    com o id interno (`id`, `flow_id`);
+  - o `desfazer.href` de um efeito do voto (`POST /api/runs/{id}/feedback`) leva a referência pública; o `ref` do
+    efeito segue com o id interno.
+- **Ainda com o id interno:** `item.ref` nas respostas do Livro, `GET /api/flows` (o painel casa por ele), e o id da
+  habilidade adotada de um fluxo legado (`<app>.<slug>`, e `flow:<slug>` nas relações).

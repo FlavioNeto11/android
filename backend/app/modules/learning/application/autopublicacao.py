@@ -110,13 +110,12 @@ class ServicoDeAutopublicacao:
                 publicados.append(x.item_ref)
         r = ResultadoDaVolta(modo, avaliados, tuple(publicaria), tuple(marcados), tuple(publicados))
         self._ultima = (self._relogio(), r)
-        # Uma linha por volta, mesmo vazia: é ela que prova no log que a sombra roda.
-        log.info("aprendizado: autopublicação em %s: %d fluxo(s) avaliado(s), %d publicaria(m), %d caso(s) novo(s)%s",
-                 modo.value, avaliados, len(publicaria), len(marcados),
-                 f": {', '.join(marcados)}" if marcados else "")
+        # Uma linha por volta, mesmo vazia: é ela que prova no log que a sombra roda. Só as contagens (30.83): a chave
+        # `fluxo:<id>` do fluxo antigo é o slug do resumo literal; os casos ficam em `learning_signals`.
+        log.info("aprendizado: autopublicação em %s: %d fluxo(s) avaliado(s), %d publicaria(m), %d caso(s) novo(s)",
+                 modo.value, avaliados, len(publicaria), len(marcados))
         if publicados:
-            log.warning("aprendizado: autopublicação (emenda B) publicou %d fluxo(s) com efeito: %s", len(publicados),
-                        ", ".join(publicados))
+            log.warning("aprendizado: autopublicação (emenda B) publicou %d fluxo(s) com efeito", len(publicados))
         return r
 
     def _publicar(self, e: EntradaDoLivro, x: AvaliacaoDoFluxo, b: BalancoDaSombra) -> bool:
