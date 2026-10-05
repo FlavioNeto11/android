@@ -417,4 +417,41 @@ describe('página Aprendizado', () => {
     expect(md).toContain('backend/app/devices/manager.py');
     expect(md).toContain('r-20260928165254-e31953');
   });
+
+  it('30.81: o fluxo ensinado que espera a pessoa mostra o porquê, oferece "Confirmar que fica" na frente e usa a rota própria', async () => {
+    const ENSINADO = entrada({ kind: 'fluxo', ref: 'f-30', state: 'published', native_status: 'active', side_effect: false,
+                               requires_owner: false, title: 'Mandar mensagem', acoes: [ACAO('disabled', 'desligar')],
+                               espera_a_pessoa: 'tentativas_esgotadas' });
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [ENSINADO, PUBLICADO], total: 2, contagem: {} }));
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    await waitFor(() => expect(item('fluxo:f-30')).toBeTruthy());
+    const ensinado = item('fluxo:f-30');
+    expect(text(ensinado)).toContain('Ensinado, ainda em prova: só vale para a persona que ensinou.');
+    expect(text(ensinado)).toContain('tentou 3 vezes sem veredito');
+    expect(text(ensinado)).not.toContain('tentativas_esgotadas');           // o código fica no title, nunca na tela
+    expect(allByRole('button', /^(Confirmar que fica|Desligar)$/, ensinado).map(text)).toEqual(['Confirmar que fica', 'Desligar']);
+    // O fluxo comum, sem o campo, segue só com o que o backend ofereceu.
+    expect(text(item('fluxo:f-9'))).not.toContain('Ensinado, ainda em prova');
+    expect(allByRole('button', /^Confirmar que fica$/, item('fluxo:f-9'))).toHaveLength(0);
+
+    await click(byRole('button', /^Confirmar que fica$/, ensinado));
+    expect(byRole('textbox', /Motivo \(opcional\)/, ensinado)).toBeTruthy();
+    await click(byRole('button', /^Confirmar que fica$/, ensinado));
+    await waitFor(() => expect(confirmarCalls()).toHaveLength(1));
+    expect(confirmarCalls()[0]?.path).toBe('/api/aprendizado/fluxo/f-30/confirmar');
+    expect(statusCalls()).toHaveLength(0);
+  });
+
+  it('30.81: `espera_a_pessoa: null` (o ensinado ainda na prova automática) não oferece o botão', async () => {
+    const NA_PROVA = entrada({ kind: 'fluxo', ref: 'f-31', state: 'published', native_status: 'active', side_effect: false,
+                               requires_owner: false, title: 'Mandar mensagem', acoes: [ACAO('disabled', 'desligar')],
+                               espera_a_pessoa: null });
+    backend.on('GET', /^\/api\/aprendizado$/, () => json({ itens: [NA_PROVA], total: 1, contagem: {} }));
+    await montar();
+    await click(byRole('tab', /^Aprendido/, container));
+    await waitFor(() => expect(item('fluxo:f-31')).toBeTruthy());
+    expect(allByRole('button', /^Confirmar que fica$/, item('fluxo:f-31'))).toHaveLength(0);
+    expect(text(item('fluxo:f-31'))).not.toContain('Ensinado, ainda em prova');
+  });
 });

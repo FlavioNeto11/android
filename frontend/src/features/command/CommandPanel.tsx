@@ -9,6 +9,7 @@ import type {
 import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { TextArea } from '../../components/Field';
+import { SeloEmProva } from '../../components/SeloEmProva';
 import ui from '../../components/ui.module.css';
 import { balanceAlerts, balanceBrief, balanceStateLabel, balanceTone, balanceUsage } from '../../lib/aiBalance';
 import { cx, plural, truncate } from '../../lib/format';
@@ -689,6 +690,8 @@ export function CommandPanel() {
           </div>
 
           <div className={styles.actions}>
+            {/* 30.81: o comando casa um fluxo ensinado que ainda espera a prova; o selo diz o que isso muda. */}
+            <SeloEmProva ensinado={estimate?.ensinado_em_prova} />
             {estimate && estimate.estimated_usd !== null ? (
               <span className={styles.shortcut} title={`Fluxo conhecido: ${estimate.name}`}>
                 estimativa: US$ {estimate.estimated_usd.toFixed(2)} por aparelho ·{' '}

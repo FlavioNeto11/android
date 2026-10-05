@@ -6,6 +6,7 @@ import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { Checkbox } from '../../components/Field';
 import { StatusBadge } from '../../components/StatusBadge';
+import { textoDaEsperaDaPessoa } from '../../lib/emProva';
 import { cx, formatInt } from '../../lib/format';
 import { saveJson } from '../../lib/storage';
 import { toLoadError } from '../../lib/loadError';
@@ -192,6 +193,13 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
         </p>
       ) : null}
       {naoPublica ? <p className={styles.notaDoItem}>O sistema não publica sozinho: {naoPublica}</p> : null}
+      {/* 30.81: o ensinado que a prova automática passou à pessoa. Até ela decidir, só vale para a persona que ensinou. */}
+      {e.kind === 'fluxo' && e.espera_a_pessoa ? (
+        <p className={styles.avisoDoItem} title={`motivo: ${e.espera_a_pessoa}`}>
+          Ensinado, ainda em prova: só vale para a persona que ensinou. {textoDaEsperaDaPessoa(e.espera_a_pessoa)}{' '}
+          “Confirmar que fica” libera o fluxo para quem estiver no escopo.
+        </p>
+      ) : null}
       {e.confirmado ? (
         <p className={styles.notaDoItem}>
           Confirmado que fica por {e.confirmado.por},{' '}

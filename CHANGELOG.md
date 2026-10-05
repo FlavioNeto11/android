@@ -20,6 +20,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-05 — 30.81, painel: o ensinado em prova e o "Confirmar que fica" do fluxo que espera a pessoa (branch feat/30-81-painel-em-prova)
+
+- Só frontend, sobre o contrato do adendo v1.65 (`ensinado_em_prova` e `espera_a_pessoa`, combinados com a Portal). Os campos são opcionais: sem o backend do 30.81 na main, nada muda na tela.
+  - Selo "em prova" (com a explicação no `title`) no relatório do salvar do treino, no "Refazer receitas" (a frase diz que as receitas só valem para a persona que ensinou e o selo some quando a espera acaba), na estimativa do comando que casa um fluxo ensinado, nos caminhos da persona e na lista de fluxos de Configuração. A gravação sem persona diz que o fluxo não vale em aparelho nenhum até a prova.
+  - No Livro, o fluxo com `espera_a_pessoa` mostra o porquê em português (um texto por motivo do contrato; o código fica no `title`, e um motivo novo cai numa frase geral) e oferece "Confirmar que fica" na frente de "Desligar", pela rota própria `…/confirmar`. Com `null` ou em outro tipo de item, nada muda.
+  - Nenhuma frase leva o id da persona.
+- Prova `simulated`: `TrainingReview.test.tsx` (2 testes novos), `AprendizadoPage.test.tsx` (2), `model.test.ts` (1), `emProva.test.ts` (2). Frontend inteiro 1685/1685 com 4 workers em Idle e typecheck verde, em 05/10 sobre `65452966`. `real`: `not_run` até o backend do 30.81 entrar e o percurso no navegador.
+
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
 - **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).
