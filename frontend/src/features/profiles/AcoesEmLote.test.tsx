@@ -98,7 +98,8 @@ async function render(): Promise<void> {
 describe('ações em lote', () => {
   function rotas(pessoas: PersonaDTO[] = [MARIANA, LUCAS, HELENA]) {
     backend.on('GET', /^\/api\/personas$/, () => json(pessoas));
-    // O "Completar" relê a persona antes do pedido (29.128).
+    // O "Completar" relê a persona antes do pedido (29.128). Uma rota específica registrada depois, no teste, vence esta:
+    // o FakeBackend tenta da mais nova para a mais velha.
     backend.on('GET', /^\/api\/personas\/[^/]+$/, (c) => json(pessoas.find((p) => c.path.endsWith(`/${p.id}`))));
     backend.on('GET', /\/instagram\/policy-groups$/, () => json([
       { id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [], members: [],
