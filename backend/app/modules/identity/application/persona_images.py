@@ -204,7 +204,12 @@ class PersonaImageService:
         if registro.source != "upload":
             raise ValueError("só a imagem enviada por você se marca: a gerada é sempre feita por IA")
         if not self.records.set_feita_por_ia(persona_id, image_id, valor):
-            return registro, False             # N3: a mesma resposta não é correção (nada grava nem anuncia)
+            # N3: a mesma resposta não é correção (nada grava nem anuncia). F1/F2: "nenhuma linha" também é a imagem
+            # apagada entre a leitura e a escrita; relida, ela é o estado de agora, não o lido antes.
+            relido = self.records.get(persona_id, image_id)
+            if relido is None:
+                raise KeyError(image_id)
+            return relido, False
         self._anunciar(persona_id, image_id, registro.status)
         atualizado = self.records.get(persona_id, image_id)
         assert atualizado is not None

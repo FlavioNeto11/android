@@ -68,10 +68,11 @@ class SqlPersonaImages:
 
     def set_feita_por_ia(self, persona_id: str, image_id: str, valor: bool | None) -> bool:
         # R1 da revisão do #351: "mudou" sai da escrita condicional (nulo comparado como -1, igual no SQLite e no
-        # PostgreSQL), não de uma leitura anterior: duas marcações concorrentes não ficam ambas "sem mudança".
+        # PostgreSQL), não de uma leitura anterior: duas marcações concorrentes não ficam ambas "sem mudança". O CAST:
+        # o PG já recusou parâmetro nulo sem tipo num COALESCE (`contatos_sql.py`, 28.18).
         novo = None if valor is None else int(valor)
         cursor = self._db.execute("UPDATE persona_images SET feita_por_ia=? WHERE id=? AND persona_id=?"
-                                  " AND COALESCE(feita_por_ia, -1) <> COALESCE(?, -1)",
+                                  " AND COALESCE(feita_por_ia, -1) <> COALESCE(CAST(? AS INTEGER), -1)",
                                   (novo, image_id, persona_id, novo))
         return bool(cursor.rowcount)
 

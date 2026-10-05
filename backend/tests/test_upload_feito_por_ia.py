@@ -42,7 +42,9 @@ async def test_o_upload_guarda_a_resposta_e_a_correcao_so_vale_para_upload(tmp_p
         de_ia = await svc.registrar_upload("ig-1", _png(20, 20), "image/png", feita_por_ia=True)
         assert sem_resposta.feita_por_ia is None and de_ia.feita_por_ia is True
         assert svc.obter("ig-1", de_ia.id).feita_por_ia is True               # releitura do banco
-        assert svc.marcar_feita_por_ia("ig-1", sem_resposta.id, False)[0].feita_por_ia is False
+        assert svc.marcar_feita_por_ia("ig-1", sem_resposta.id, False)[1] is True              # mudança real
+        assert svc.marcar_feita_por_ia("ig-1", sem_resposta.id, False)[1] is False           # a mesma: não mudou
+        assert svc.obter("ig-1", sem_resposta.id).feita_por_ia is False
         assert svc.marcar_feita_por_ia("ig-1", sem_resposta.id, None)[0].feita_por_ia is None   # volta a "não informado"
         assert svc.marcar_feita_por_ia("ig-1", sem_resposta.id, None)[1] is False            # a mesma: não mudou
         db.execute("UPDATE persona_images SET source='generated' WHERE id=?", (de_ia.id,))
@@ -217,7 +219,14 @@ async def test_mesma_resposta_nao_mexe_e_falha_no_meio_nao_grava_nada(tmp_path: 
             _imagem(state, "img-u", pid, "upload")
             antes = state.db.scalar("SELECT bindings FROM steps WHERE key='pub'")
             url = f"/api/personas/{pid}/images/img-u/feita-por-ia"
-            assert (await c.put(url, json={"feita_por_ia": None})).status_code == 200      # já era "não informado"
+            chamadas: list[str] = []
+            original = state.repo.ressincronizar_rotulo_ia
+            state.repo.ressincronizar_rotulo_ia = lambda image_id: chamadas.append(image_id) or original(image_id)
+            try:
+                assert (await c.put(url, json={"feita_por_ia": None})).status_code == 200  # já era "não informado"
+            finally:
+                state.repo.ressincronizar_rotulo_ia = original
+            assert chamadas == []                                                          # nada a ressincronizar
             assert state.db.scalar("SELECT bindings FROM steps WHERE key='pub'") == antes
 
             def quebra(_image_id: str) -> int:
