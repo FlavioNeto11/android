@@ -3211,7 +3211,7 @@ class DeviceManager:
         if (travada := self.conta_travada_em(rt.id)) is not None:
             # Quarentena (ADR-055): conta travada logada. O painel e o agente já recusam `start` sem a confirmação
             # da pessoa (`despacho._precheck`); o emulador DESTA máquina, que o rodízio liga direto, recusa aqui —
-            # senão o aparelho do felipe subiria sozinho por causa de uma tarefa que a porta bloquearia depois.
+            # senão o aparelho da conta travada subiria sozinho por causa de uma tarefa que a porta bloquearia depois.
             rt.start_backoff_until = time.monotonic() + 600
             self.marcar_atencao(rt, f"Em quarentena: a conta @{travada} está travada e logada neste aparelho; ele não "
                                     "é ligado automaticamente. Precisa do dono.")

@@ -236,6 +236,21 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   - `real`: 05/10, central, sobre 19e34b22, `MYPY_PYTHON=C:\farm\ferramentas\mypy\Scripts\python.exe`; a catraca
     deu 257 erros, igual ao teto, rc 0, em 34 s.
 
+## 2026-10-05 — 31.98: nomes de conta fora dos comentários e docstrings do backend (branch chore/31-98-nomes-fora-dos-comentarios)
+
+- Comentários e docstrings de `backend/app` (27 arquivos, 100 trechos) não citam mais nome nem @ de conta ou persona: as
+  narrativas de incidente dizem "uma conta real" e os exemplos usam nomes de exemplo fixos (fulano, beltrano, ciclano,
+  sicrano), o mesmo para a mesma pessoa, para as referências cruzadas continuarem casando. Comportamento igual: o ast
+  de cada arquivo, com as docstrings zeradas, é idêntico antes e depois.
+- Única mudança em texto que vai à IA: o exemplo de nome de usuário com @ de `PLANNER_CAPABILITY_SYSTEM` virou
+  fictício; os hashes de `PLANNER_CAPABILITY_SYSTEM`, `PLANNER_MULTIAPP_SYSTEM` e `PLANNER_MULTIAPP_SYSTEM_CURTO` em
+  `tests/test_prompts_licoes.py` mudam de propósito (só o exemplo difere; conferido contra o texto antigo).
+- A recusa `sem_alvo` (`execution/application/alvos.py`) cita "com a persona Fulana" como exemplo; o texto esperado e os
+  dados de `tests/test_telegram_entrada.py` usam nomes de exemplo (acentuado onde o teste é o corte sem acento). Fora, de propósito:
+  a lista fictícia do `simulated_provider`, o nome de uma lista do Trello e uma variável homônima. Os @ de contas usados
+  como dado nos outros testes são o 31.101.
+- Prova `simulated`: `not_run` (funil da suíte 39; os dirigidos rodam depois do "no ar"). Real: `not_run`.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.

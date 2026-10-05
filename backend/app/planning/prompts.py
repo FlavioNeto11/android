@@ -113,7 +113,7 @@ Regras:
   `pedido` = a ação pedida, em poucas palavras e no infinitivo. `missing` é só para dado que FALTA a uma ação que
   existe; fora disso, `fora_do_catalogo` = [].
 - Preencha todos os argumentos obrigatórios de cada ação em `bindings` (lista de {{name, value}}). Nome de usuário
-  vai com @ (ex.: @mariana.costa91182).
+  vai com @ (ex.: @fulana.tal1234).
 - TEXTO DE MENSAGEM OU COMENTÁRIO: o mesmo plano roda em VÁRIOS aparelhos, cada um com um perfil e uma persona
   própria, e quem escreve é cada perfil, na sua voz, depois. Então NÃO escreva o texto final aqui. Em
   `content_brief` ponha a INTENÇÃO, em uma frase: O QUE dizer e o que NÃO dizer (ex.: "elogiar o trabalho do

@@ -1160,7 +1160,7 @@ class Scheduler:
         """A conta foi bloqueada: pausa as execuções em curso dela e das contas que agiram sobre os MESMOS alvos nas
         48 h anteriores (ADR-055). Devolve as execuções pausadas.
 
-        Por quê: cinco das oito contas do Instagram caíram (beatriz, felipe, juliana, mariana, thiago), e seguir com
+        Por quê: cinco das oito contas do Instagram caíram, e seguir com
         a frota no mesmo ritmo, sobre as mesmas pessoas, é repetir o padrão que derrubou a primeira. Pausar é o
         mecanismo de sempre (`Repository.request_pause`, o do disjuntor de conta de IA): o que está no meio para no
         ponto seguro seguinte, nada novo é despachado, e quem retoma é uma pessoa, pelo painel, depois de conferir.
@@ -2015,7 +2015,7 @@ class Scheduler:
             return items
 
         def do_proprio(item: str) -> bool:
-            # o item da coleta é o @ ("bruno.ferreira9267") ou "autor said texto" (folha de comentários)
+            # o item da coleta é o @ ("ciclano.souza5678") ou "autor said texto" (folha de comentários)
             return any(normalizar_alvo(x) in proprios for x in (item, item.split(" said ", 1)[0]))
 
         fora = [i for i in items if do_proprio(i)]
