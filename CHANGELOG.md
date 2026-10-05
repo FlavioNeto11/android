@@ -22,7 +22,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-05 — 28.41: sobras das leituras do #361 e do #372 (branch canais/28-41-sobras)
 
 - R1: a resposta do dono ao aviso de objetivo parado ou de conta (`objective:` e `session:`) só informa ("Este aviso
-  só informa: para resolver, toque no link dele.") e nunca vira prévia de execução nova.
+  só informa: para resolver, toque no link dele.") e nunca vira prévia de execução nova. F1 da leitura do #380: a
+  resposta à mensagem AGRUPADA (`grupo:<tipo>` e `grupo:rotina`) também só informa ("Esta mensagem junta vários avisos
+  e só informa: para resolver, toque no link dela."); antes ela caía no texto livre.
 - R2: o `/status` conta os objetivos parados (sem contar duas vezes o que espera uma aprovação) e diz que eles estão
   em Execuções.
 - N1 do #372: com a conta igual, o aviso de conta só cala o objetivo que parou por motivo de conta, como no ramo só

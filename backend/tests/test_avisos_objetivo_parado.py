@@ -534,6 +534,19 @@ def test_responder_ao_aviso_de_objetivo_ou_de_conta_nao_vira_execucao(fato: str,
     assert i.tipo == "desconhecida" and i.motivo == SO_INFORMA_PELO_LINK
 
 
+@pytest.mark.parametrize("tipo", ["objective.waiting_user", "session.needs_person", "approval.pending",
+                                  "pendencia.vence_em", "rotina"])
+@pytest.mark.parametrize("texto", ["sim", "abre o instagram no android-13", "o que houve?"])
+def test_responder_ao_agrupado_nao_vira_execucao_nem_decide(tipo: str, texto: str) -> None:
+    """F1 da leitura do #380: a mensagem agrupada leva `grupo:<tipo>` (`entrega.py`), não a chave de um aviso. Sem o
+    ramo, "abre o instagram no android-13" em resposta a "3 objetivos pararam" virava prévia de execução nova, e o "sim"
+    ao agrupado de aprovações virava texto livre."""
+    from app.modules.avisos.application.entrada import SO_INFORMA_O_AGRUPADO, rotear
+    from app.modules.avisos.domain.mensagem import FAMILIA_DO_GRUPO
+    i = rotear(texto, fato=f"{FAMILIA_DO_GRUPO}:{tipo}")
+    assert i.tipo == "desconhecida" and i.motivo == SO_INFORMA_O_AGRUPADO
+
+
 def test_o_status_conta_o_objetivo_parado_sem_contar_a_aprovacao_duas_vezes(tmp_path: Path) -> None:
     """R2: o `/status` dizia só aprovações e perguntas."""
     _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())

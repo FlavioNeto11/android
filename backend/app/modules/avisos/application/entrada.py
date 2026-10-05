@@ -41,6 +41,7 @@ import unicodedata
 from dataclasses import dataclass
 
 from app.contracts.identidade import APRESENTACAO_DA_IA
+from app.modules.avisos.domain.mensagem import FAMILIA_DO_GRUPO
 
 #: O que cada intenção é. `desconhecida` responde com a ajuda; `vazia` não responde.
 INTENCOES = frozenset({"ajuda", "identidade", "status", "pendencias", "aprovar", "vetar", "responder", "para", "livre",
@@ -182,6 +183,11 @@ class Fato:
         return self.tipo == "session"
 
     @property
+    def agrupado(self) -> bool:
+        """A mensagem que junta vários avisos: `grupo:<tipo>` (`FAMILIA_DO_GRUPO`). Só informa."""
+        return self.tipo == FAMILIA_DO_GRUPO
+
+    @property
     def resumo_do_portal(self) -> bool:
         """O resumo dos contatos do site acima dos tetos (28.32): `portal-resumo:<hora>`. Só informa."""
         return self.tipo == "portal-resumo"
@@ -194,6 +200,8 @@ class Fato:
 
 #: A resposta a um aviso que só informa e se resolve pelo link dele (28.41).
 SO_INFORMA_PELO_LINK = "Este aviso só informa: para resolver, toque no link dele."
+#: A resposta à mensagem agrupada (28.41, F1 da leitura do #380): ela não diz a qual item se responde.
+SO_INFORMA_O_AGRUPADO = "Esta mensagem junta vários avisos e só informa: para resolver, toque no link dela."
 
 
 def _sem_acento(s: str) -> str:
@@ -292,6 +300,11 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         # 28.41 (R1 da leitura do #372): nada se responde a esses avisos; o gesto é no aparelho, pelo link. Sem este
         # ramo, a resposta cairia no texto livre e poderia virar a prévia de uma execução NOVA.
         return Intencao("desconhecida", motivo=SO_INFORMA_PELO_LINK)
+    if f.agrupado:
+        # 28.41 (F1 da leitura do #380): a mensagem agrupada (`grupo:<tipo>`, 28.19, e `grupo:rotina`, 28.31) junta
+        # vários avisos e não diz qual; nada se decide nem se responde por ela. É o caso mais provável de resposta a um
+        # objetivo parado ("3 objetivos pararam"), e sem este ramo virava prévia de execução nova.
+        return Intencao("desconhecida", motivo=SO_INFORMA_O_AGRUPADO)
     if f.anexo:
         # Só o pedido de leitura é do anexo; "sim", um objetivo ou qualquer outra frase seguem a gramática comum (None).
         return Intencao("ler_anexo", ref=f.ident) if _LER.match(" ".join(_sem_acento(t).split())) else None
