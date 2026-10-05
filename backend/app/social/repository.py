@@ -1617,9 +1617,14 @@ class SocialRepository:
         enquanto a primeira ainda publicava.
 
         F1 da revisão do #350: a etapa vira `running` na TOMADA, antes da porta. Duas irmãs tomadas juntas se veriam em
-        `running` e as duas seriam recusadas. Com a etapa `exclude_step_id` já tomada, só contam as MAIS ANTIGAS que ela
-        (`started_at`, com o `id` no desempate): das que correm juntas, exatamente uma passa. Sem `started_at` (a prévia,
-        a etapa ainda não tomada), todas as em curso contam."""
+        `running` e as duas seriam recusadas. Com a etapa `exclude_step_id` já tomada, das que AINDA NÃO passaram a porta
+        só contam as MAIS ANTIGAS que ela (`started_at`, com o `id` no desempate): das que correm juntas, exatamente uma
+        passa. Sem `started_at` (a prévia, a etapa ainda não tomada), todas as em curso contam.
+
+        S1 da mesma revisão (migração 110): a que já PASSOU a porta (`passou_a_porta = 1`) conta SEMPRE, em qualquer
+        estado que não seja falha nem cancelamento. Sem isso, a etapa que voltava de `retry_wait` ou `waiting_user` com o
+        `started_at` da primeira tomada era "mais antiga" que a irmã que já publicava, e as duas publicavam; e a ordem
+        pelo relógio de cada máquina se invertia com dois backends."""
         por_app = " AND (e.app_id=? OR e.app_id IS NULL)" if app_id else ""
         sem_a_etapa = " AND e.id<>?" if exclude_step_id else ""
         minha = (self.db.scalar("SELECT started_at FROM steps WHERE id=?", (exclude_step_id,))
@@ -1628,15 +1633,22 @@ class SocialRepository:
                         if minha else "")
         linhas = self.db.query(
             "SELECT e.id, e.bindings FROM steps e JOIN objectives o ON o.id=e.objective_id"
-            " WHERE o.profile_id=? AND e.capability=? AND e.status IN ('running','verifying')"
-            f"{por_app}{sem_a_etapa}{mais_antigas} ORDER BY e.id LIMIT 200",
-            (profile_id, capability, *((app_id,) if app_id else ()), *((exclude_step_id,) if exclude_step_id else ()),
-             *((str(minha), str(minha), exclude_step_id) if minha else ())))
+            " WHERE o.profile_id=? AND e.capability=?"
+            " AND ((e.passou_a_porta=1 AND e.status NOT IN ('failed','cancelled','skipped'))"
+            f" OR (e.passou_a_porta=0 AND e.status IN ('running','verifying'){mais_antigas}))"
+            f"{por_app}{sem_a_etapa} ORDER BY e.id LIMIT 200",
+            (profile_id, capability, *((str(minha), str(minha), exclude_step_id) if minha else ()),
+             *((app_id,) if app_id else ()), *((exclude_step_id,) if exclude_step_id else ())))
         saida: list[tuple[str, dict[str, object] | None]] = []
         for r in linhas:
             argumentos = loads(r["bindings"], None)
             saida.append((str(r["id"]), argumentos if isinstance(argumentos, dict) else None))
         return saida
+
+    def marcar_passou_a_porta(self, step_id: str) -> None:
+        """31.64 S1 (migração 110): a porta liberou o efeito desta etapa. Gravado na passada sem `await` da decisão; nunca
+        volta a 0 (a etapa que passou e falhou sai da conta pelo estado)."""
+        self.db.execute("UPDATE steps SET passou_a_porta=1 WHERE id=?", (step_id,))
 
     def pedidos_da_acao(self, profile_id: str, capability: str, *, since: str, app_id: str | None = None,
                         exclude_step_id: str | None = None, decidido_desde: str | None = None

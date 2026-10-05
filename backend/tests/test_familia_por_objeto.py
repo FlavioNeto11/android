@@ -13,6 +13,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from app.models import InteractionStatus, ProfileCreate
 from app.planning.capabilities import capability_of
 from app.social.approvals import ApprovalStore
@@ -120,6 +122,35 @@ def test_tres_irmas_tomadas_juntas_so_a_mais_antiga_passa(tmp_path: Path) -> Non
                 if "31.53" not in policies.check(pid, publicar, step_id=sid, pedido=pedido,
                                                  bindings={"image_id": "img-1"}).reason]
     assert passaram == [c]
+
+
+@pytest.mark.parametrize("parada", ["retry_wait", "waiting_user"])
+def test_s1_a_que_volta_com_a_tomada_antiga_nao_passa_a_irma_que_ja_passou(tmp_path: Path, parada: str) -> None:
+    """S1 da revisão do #350: A é tomada primeiro e para (`retry_wait` ou `waiting_user`) antes da porta; B é tomada
+    depois, PASSA a porta e publica; A volta a `ready`, é retomada com o `started_at` da primeira tomada e chega à porta.
+    Pela ordem das tomadas A seria a mais antiga e as duas publicariam; com a marca de B, A é recusada."""
+    _repo, policies, db, a, b = _familia(tmp_path)
+    publicar = capability_of(IG, "CREATE_POST")
+    pedido = ContextoDoPedido(raiz="r-a", familia=frozenset({a, b}))
+    sa = _etapa_tomada(db, "r-a", a, "2026-10-05T01:00:00Z", "android-01")
+    db.execute("UPDATE steps SET status=? WHERE id=?", (parada, sa))
+    sb = _etapa_tomada(db, "r-b", b, "2026-10-05T01:00:30Z", "android-02")
+    assert "31.53" not in policies.check(b, publicar, step_id=sb, pedido=pedido, bindings={"image_id": "img-1"}).reason
+    db.execute("UPDATE steps SET passou_a_porta=1 WHERE id=?", (sb,))            # o que a porta grava ao liberar B
+    db.execute("UPDATE steps SET status='ready' WHERE id=?", (sa,))
+    db.execute("UPDATE steps SET status='running' WHERE id=?", (sa,))            # retomada: `started_at` fica o de t0
+    veredito = policies.check(a, publicar, step_id=sa, pedido=pedido, bindings={"image_id": "img-1"})
+    assert not veredito.allowed and "31.53" in veredito.reason
+
+
+def test_s1_a_irma_que_passou_e_falhou_nao_conta_mais(tmp_path: Path) -> None:
+    _repo, policies, db, a, b = _familia(tmp_path)
+    publicar = capability_of(IG, "CREATE_POST")
+    pedido = ContextoDoPedido(raiz="r-a", familia=frozenset({a, b}))
+    sb = _etapa_tomada(db, "r-b", b, "2026-10-05T01:00:00Z", "android-02")
+    db.execute("UPDATE steps SET passou_a_porta=1, status='failed' WHERE id=?", (sb,))
+    sa = _etapa_tomada(db, "r-a", a, "2026-10-05T01:00:30Z", "android-01")
+    assert "31.53" not in policies.check(a, publicar, step_id=sa, pedido=pedido, bindings={"image_id": "img-1"}).reason
 
 
 def test_sem_pedido_ou_com_outra_imagem_nada_muda(tmp_path: Path) -> None:

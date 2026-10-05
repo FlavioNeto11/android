@@ -30,6 +30,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **F1 da revisão:** a etapa vira `running` na tomada, antes da porta; duas irmãs tomadas juntas se viam e as duas
   eram recusadas. Agora só contam as MAIS ANTIGAS que a etapa da porta (`started_at`, `id` no desempate): das
   que correm juntas, exatamente uma passa (testes de duas e de três irmãs).
+- **S1 da revisão (migração 110):** a ordem das tomadas não basta (a retomada de `retry_wait`/`waiting_user` mantém o
+  `started_at` da primeira tomada; o relógio varia por máquina). A porta marca `steps.passou_a_porta` ao liberar o
+  efeito; quem passou conta sempre (fora de falha e cancelamento), e "só as mais antigas" vale só entre as que não
+  passaram. Testes: retomada de `retry_wait` e de `waiting_user` recusada; a que passou e falhou não conta.
 - Prova: `simulated` (`backend/tests/test_familia_por_objeto.py::test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem`,
   falha no código anterior). Real: `not_run`.
 
