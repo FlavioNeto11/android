@@ -6345,10 +6345,14 @@ Novos 400, no formato de sempre (`detail: {code, message}`; a mensagem diz o que
   `postcondition.kind` inválido. Antes: 500.
 - `parametro_fora_do_comando`: parâmetro em `parameters` que o `command_template` não usa.
 - `parametro_nao_declarado`: `{x}` no comando sem parâmetro declarado (`instance_id`, `run_id` e `account_label` não contam).
-- `comando_generico`: menos de 2 palavras ou de 10 letras/dígitos fora das chaves.
+- `comando_generico`: o comando não começa por palavra fixa (ex.: `{pedido} no instagram`), ou tem menos de 2 palavras ou de 6 letras/dígitos fixos fora das chaves. `ligue para {contato}` passa; `siga {perfil}` não.
+- `parametro_invalido`: `{…}` no comando que não é nome válido (minúsculas, sem acento, números e `_`).
+- `entrada_duplicada`: entrada em duas etapas, ou em uma etapa e em `discarded`; a mensagem lista os `#seq`.
 - `pos_condicao_vazia`: etapa com `side_effect` sem `postcondition.value` nem `description` (salvo ação de catálogo).
 - `entradas_sem_etapa`: entrada gravada fora de `steps[].inputs` e de `discarded`; a mensagem lista os `#seq`.
-- `proposta_invalida`: item de `discarded` sem `seq` numérico.
+- `proposta_invalida`: tipo errado: `steps`/`parameters`/`discarded` que não é lista, item de `discarded` sem `seq` inteiro, `summary`/`app_id` que não é texto.
+- `etapa_invalida` cobre também `inputs` que não é lista de inteiros, `bindings` que não é lista de objetos e `title`/`goal`/`value`/`description` que não é texto.
+- Os códigos `entradas_sem_etapa`, `entrada_duplicada`, `parametro_fora_do_comando`, `parametro_nao_declarado`, `pos_condicao_vazia`, `etapa_invalida` e `proposta_invalida` terminam a mensagem com "Peça uma nova proposta à IA." (a tela ainda não edita etapas; 31.90).
 
 Campo aditivo na resposta de sucesso: `warnings: string[]` (vazio quando não há), com as etapas sem efeito aceitas sem
 descrição de pós-condição (o objetivo serviu de critério). O painel pode ignorá-lo.

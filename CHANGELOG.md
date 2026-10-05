@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.83 (2ª leitura): duplicadas, comando por posição, tipos errados e parâmetro inválido (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `entrada_duplicada` (400): entrada em duas etapas ou em etapa e `discarded` (o `_receitas` tirava o toque da etapa calado).
+- `comando_generico` passa a olhar a posição: o comando começa por palavra fixa e tem 2 palavras e 6 letras fixas (era 10).
+  Barra `{pedido} no instagram` e `{acao} para o cliente`; passa `envie {mensagem} para {contato}` e `ligue para {contato}`.
+  `TRAINER_SYSTEM`: o comando começa pelo verbo.
+- Tipo errado vira 400 (`etapa_invalida`/`proposta_invalida`) em vez de 500: `title`/`goal`/`value`, `bindings`,
+  `inputs` que não é lista de inteiros (`"12"` virava `[1, 2]` calado), `discarded`, `parameters`, `summary`, `app_id` e
+  comando que não é texto.
+- `parametro_invalido`: `{Contato}`/`{endereço}` no comando não casam o padrão e ficavam literais.
+- Adendo v1.57 e doc do domínio atualizados. Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (46),
+  com mutação (S1 3 falham, S2 3 + 2, N3 2). Real: `not_run`.
+
 ## 2026-10-05 — 31.93: chave repetida de 40 caracteres não trava mais o `propose` (branch fix/31-83-validacao-do-salvar-do-treino)
 
 - `normalizar_proposta` repetia `f"{k}_2"[:40]` até a chave ser nova; com 40 caracteres o corte devolvia a mesma chave e o

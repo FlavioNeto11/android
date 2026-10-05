@@ -69,7 +69,32 @@ def _entrada_orfa(p: dict[str, Any]) -> None:
     p["discarded"] = []                                    # a #4 não está em etapa nem em descarte
 
 
+def _duplicada_em_descartada(p: dict[str, Any]) -> None:
+    p["discarded"].append({"seq": 2, "why": "também descartada"})   # a #2 está na etapa 2 e em `discarded`
+
+
+def _duplicada_em_duas_etapas(p: dict[str, Any]) -> None:
+    p["steps"][0]["inputs"] = [1, 2]                                 # a #2 também está na etapa 2
+
+
+def _parametro_com_maiuscula(p: dict[str, Any]) -> None:
+    p["command_template"] = "responda a DM de {Contato} com {mensagem}"
+
+
+def _parametro_com_acento(p: dict[str, Any]) -> None:
+    p["command_template"] = "responda a DM de {endereço} com {mensagem}"
+
+
+def _comeca_por_parametro(p: dict[str, Any]) -> None:
+    p["command_template"] = "{contato} para o cliente {mensagem}"       # 4 palavras fixas, mas começa por parâmetro
+
+
 CASOS: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+    ("entrada_duplicada", _duplicada_em_descartada),
+    ("entrada_duplicada", _duplicada_em_duas_etapas),
+    ("parametro_invalido", _parametro_com_maiuscula),
+    ("parametro_invalido", _parametro_com_acento),
+    ("comando_generico", _comeca_por_parametro),
     ("parametro_fora_do_comando", _param_fora),
     ("parametro_nao_declarado", _param_nao_declarado),
     ("etapa_invalida", _sem_chave),
@@ -106,7 +131,7 @@ async def test_save_recusa_com_400_e_sem_escrever_nada(harness: Harness, codigo:
         await st.skills.save(sid, proposal=proposta, profile_ids=[], group_ids=[])
     assert erro.value.code == codigo and erro.value.status == 400, (erro.value.code, erro.value.message)
     assert erro.value.message.strip()
-    assert erro.value.message.endswith("Peça uma nova proposta à IA.") == (codigo != "comando_generico")
+    assert erro.value.message.endswith("Peça uma nova proposta à IA.") == (codigo not in ("comando_generico", "parametro_invalido"))
     assert _rastro(st, sid) == antes                      # nem fluxo, nem receita, nem a sessão virou "saved"
     assert st.db.scalar("SELECT COUNT(*) FROM flow_required_apps") == 0
 
@@ -155,3 +180,78 @@ def test_padrao_da_chave_e_o_do_plan_step() -> None:
     from app.models import PlanStep
     from app.training.skills import _CHAVE_DE_ETAPA
     assert _CHAVE_DE_ETAPA.pattern == next(m.pattern for m in PlanStep.model_fields["key"].metadata if hasattr(m, "pattern"))
+
+
+def _com(**mudancas: Any) -> dict[str, Any]:
+    p = _valida()
+    p.update(mudancas)
+    return p
+
+
+def _sem_marca_de_etapa(**campos: Any) -> dict[str, Any]:
+    p = _valida()
+    p["steps"][1].update(campos)
+    return p
+
+
+@pytest.mark.parametrize("comando", ["{pedido} no instagram", "{acao} para o cliente", "siga {perfil}", "abra {app}",
+                                     "{mensagem}", "  "])
+def test_comando_que_sequestra_pedido_alheio_e_recusado(comando: str) -> None:
+    nomes = sorted({m for m in __import__("re").findall(r"\{([a-z]+)\}", comando)})
+    p = _com(command_template=comando, parameters=[{"name": n, "example": "x"} for n in nomes])
+    with pytest.raises(TrainingError) as erro:
+        validar_proposta_para_salvar(p, {1, 2, 3, 4})
+    assert erro.value.code == "comando_generico" and "comece pelo verbo" in erro.value.message
+
+
+@pytest.mark.parametrize(("comando", "nomes"), [("envie {mensagem} para {contato}", ["mensagem", "contato"]),
+                                                ("ligue para {contato}", ["contato"])])
+def test_molde_curto_e_legitimo_passa(comando: str, nomes: list[str]) -> None:
+    p = _com(command_template=comando, parameters=[{"name": n, "example": "x"} for n in nomes])
+    validar_proposta_para_salvar(p, {1, 2, 3, 4})
+
+
+def test_mensagem_da_duplicada_lista_os_numeros() -> None:
+    p = _valida()
+    p["steps"][0]["inputs"] = [1, 2]
+    p["discarded"].append({"seq": 3, "why": "x"})
+    with pytest.raises(TrainingError) as erro:
+        validar_proposta_para_salvar(p, {1, 2, 3, 4})
+    assert erro.value.code == "entrada_duplicada" and "#2" in erro.value.message and "#3" in erro.value.message
+    assert erro.value.message.endswith("Peça uma nova proposta à IA.")
+
+
+# Tipos errados: antes davam KeyError/AttributeError/TypeError (500) ou viravam outra coisa calados (`inputs: "12"`).
+MALFORMADAS: list[tuple[str, dict[str, Any]]] = [
+    ("etapa_invalida", _sem_marca_de_etapa(title=7)),
+    ("etapa_invalida", _sem_marca_de_etapa(goal=["x"])),
+    ("etapa_invalida", _sem_marca_de_etapa(postcondition={"kind": "model_judged", "value": 5, "description": "d"})),
+    ("etapa_invalida", _sem_marca_de_etapa(postcondition={"kind": "model_judged", "value": "v", "description": {}})),
+    ("etapa_invalida", _sem_marca_de_etapa(bindings=["username"])),
+    ("etapa_invalida", _sem_marca_de_etapa(bindings={"username": "x"})),
+    ("etapa_invalida", _sem_marca_de_etapa(inputs="23")),
+    ("etapa_invalida", _sem_marca_de_etapa(inputs=["2", "3"])),
+    ("etapa_invalida", _sem_marca_de_etapa(inputs=[2, True])),
+    ("etapa_invalida", _sem_marca_de_etapa(capability=["LIKE_POST"])),
+    ("proposta_invalida", _com(discarded="4")),
+    ("proposta_invalida", _com(discarded=[{"why": "sem seq"}])),
+    ("proposta_invalida", _com(discarded=["4"])),
+    ("proposta_invalida", _com(parameters="contato")),
+    ("proposta_invalida", _com(parameters=[{"name": ["x"]}])),
+    ("proposta_invalida", _com(summary=3)),
+    ("proposta_invalida", _com(app_id=["qa"])),
+]
+
+
+@pytest.mark.parametrize(("codigo", "proposta"), MALFORMADAS, ids=[f"{c}-{i}" for i, (c, _) in enumerate(MALFORMADAS)])
+def test_tipo_errado_vira_400_e_nao_500(codigo: str, proposta: dict[str, Any]) -> None:
+    with pytest.raises(TrainingError) as erro:
+        validar_proposta_para_salvar(proposta, {1, 2, 3, 4})
+    assert erro.value.code == codigo and erro.value.status == 400, (erro.value.code, erro.value.message)
+
+
+async def test_comando_que_nao_e_texto_vira_400(harness: Harness) -> None:
+    st, sid = await _sessao_gravada(harness)
+    with pytest.raises(TrainingError) as erro:
+        await st.skills.save(sid, proposal=_com(command_template=12), profile_ids=[], group_ids=[])
+    assert erro.value.code == "invalid_command" and erro.value.status == 400
