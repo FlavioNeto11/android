@@ -397,7 +397,9 @@ avisos depois da faxina"), e a trava cai no TTL.
       os eventos perdidos não pararam nada e esperam a janela.
     - **3, rotina** (relatório, encerramento, 80% do orçamento, condição atendida, aprendizado): nunca sai sozinha. Vai
       na mensagem da janela de 1 h, uma linha cada.
-  - A rajada (vários do mesmo tipo seguidos) lista uma linha por item, até 5, mais "+N no painel".
+  - A rajada (vários do mesmo tipo seguidos) lista uma linha por item, até 5, mais "+N no painel". O gesto e o link
+    do agrupado são do tipo: a caixa de Pendências, ou, no objetivo parado, Execuções (`#/execucoes`, sem o id de um
+    item só), porque ele não está na caixa (revisão do #372, G1).
   - O rótulo do pedido é texto da pessoa: só sai quando o pedido foi criado pelo dono (o de convidado, de frente ou
     de IA sai sempre pelo id curto; desde a F2a, migração 106, o pedido guarda quem o criou: `dono` só para o
     operador da lista `pedidos.operadores_do_dono` ou o `trello:<membro_dono>`, e o anterior à 106 sai pelo id curto) e

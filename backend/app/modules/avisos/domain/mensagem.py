@@ -578,12 +578,34 @@ def _itens(titulos: Sequence[str], maximo: int) -> list[str]:
     return linhas
 
 
-def corpo_agrupado(titulos: Sequence[str]) -> str:
-    """Uma linha por item (o assunto de cada aviso, que já passou pelos filtros), até `ITENS_NO_AGRUPADO`, e o gesto."""
+#: O gesto e a tela do aviso AGRUPADO, por tipo (revisão do #372, G1). O padrão manda à caixa de Pendências; o objetivo
+#: parado não está lá (ADR-062, D1), então a rajada dele leva a Execuções, sem o id de nenhuma.
+GESTO_AGRUPADO_PADRAO = "Espera você: abra a caixa de Pendências do painel para responder a cada um."
+GESTO_AGRUPADO: dict[str, str] = {
+    "objective.waiting_user": ("Espera você: abra Execuções no painel e, em cada item parado, escolha Assumir controle, "
+                               "Tentar novamente ou Abandonar."),
+}
+CAMINHO_AGRUPADO: dict[str, str] = {"objective.waiting_user": "#/execucoes"}
+
+
+def corpo_agrupado(titulos: Sequence[str], tipo: str | None = None) -> str:
+    """Uma linha por item (o assunto de cada aviso, que já passou pelos filtros), até `ITENS_NO_AGRUPADO`, e o gesto
+    do tipo."""
+    gesto = GESTO_AGRUPADO.get(tipo or "")
     if not titulos:
-        return CORPO_AGRUPADO
-    return "\n".join([*_itens(titulos, ITENS_NO_AGRUPADO),
-                      "Espera você: abra a caixa de Pendências do painel para responder a cada um."])
+        return f"Chegaram em sequência. {gesto}" if gesto else CORPO_AGRUPADO
+    return "\n".join([*_itens(titulos, ITENS_NO_AGRUPADO), gesto or GESTO_AGRUPADO_PADRAO])
+
+
+def link_agrupado(tipo: str, links: Sequence[str | None]) -> str | None:
+    """O link do agrupado: o primeiro que houver no grupo (todos são da caixa, ou nenhum, no aviso de pedido que não pede
+    pessoa) ou, no tipo com tela própria (`CAMINHO_AGRUPADO`), a tela dele na mesma base, sem o id de um item só."""
+    primeiro = next((x for x in links if x), None)
+    caminho = CAMINHO_AGRUPADO.get(tipo)
+    if primeiro is None or caminho is None:
+        return primeiro
+    base, separador, _ = primeiro.partition("#/")
+    return base + caminho if separador else primeiro
 
 
 def titulo_da_rotina(n: int) -> str:

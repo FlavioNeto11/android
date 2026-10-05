@@ -448,3 +448,57 @@ def test_a_evidencia_e_de_objetivo_que_terminou_nos_dois_bancos(tmp_path: Path) 
     portas.db = banco
     texto = portas.desfecho("r1") or ""
     assert "Evidência: a falha que terminou" in texto and "MARCADOR" not in texto
+
+
+# ===================================================================== 5. a rajada (revisão do #372, G1)
+def _cena(tmp_path: Path) -> Any:
+    from .test_avisos_rajada import Cena
+    return Cena(tmp_path)
+
+
+def _rajada(c: Any, tipo: str, links: list[str]) -> tuple[str, str, str | None]:
+    """O primeiro sai na hora; os seguintes, dentro de 60 s e a partir do 3º na fila, viram o agrupado."""
+    for i, link in enumerate(links):
+        c.chega(f"{tipo}:{i}", tipo=tipo, link=link)
+        c.volta()
+        c.avancar(4)
+    c.avancar(60)
+    c.volta()
+    assert len(c.canal.enviados) == 2, c.canal.enviados
+    return c.canal.enviados[1]
+
+
+def test_tres_objetivos_parados_em_60_s_o_agrupado_leva_a_execucoes(tmp_path: Path) -> None:
+    """O cenário mais provável do deploy 35: um aviso do app cobre o botão em vários aparelhos da mesma execução."""
+    links = [f"{PAINEL}/#/execucoes/r-2026100503400{i}-abc123" for i in range(5)]
+    titulo, corpo, link = _rajada(_cena(tmp_path), "objective.waiting_user", links)
+    assert titulo == "ANA: 4 objetivos pararam esperando você"
+    assert corpo.split("\n")[-1] == ("Espera você: abra Execuções no painel e, em cada item parado, escolha Assumir "
+                                     "controle, Tentar novamente ou Abandonar.")
+    assert "Pendências" not in corpo
+    assert link == f"{PAINEL}/#/execucoes", "o agrupado não leva ao id de UM objetivo"
+
+
+def test_tres_aprovacoes_o_agrupado_segue_com_a_caixa(tmp_path: Path) -> None:
+    caixa = f"{PAINEL}/#/pendencias"
+    titulo, corpo, link = _rajada(_cena(tmp_path), "approval.pending", [caixa] * 5)
+    assert titulo == "ANA: 4 aprovações aguardando a sua decisão"
+    assert corpo.split("\n")[-1] == "Espera você: abra a caixa de Pendências do painel para responder a cada um."
+    assert link == caixa
+
+
+def test_agrupado_sem_itens_e_sem_link_por_tipo() -> None:
+    from app.modules.avisos.domain.mensagem import CORPO_AGRUPADO, corpo_agrupado, link_agrupado
+    assert corpo_agrupado([], "approval.pending") == CORPO_AGRUPADO
+    assert "Pendências" not in corpo_agrupado([], "objective.waiting_user")
+    assert link_agrupado("objective.waiting_user", [None, None]) is None
+    assert link_agrupado("objective.waiting_user", [None, "https://x/c/#/execucoes/r-1"]) == "https://x/c/#/execucoes"
+    assert link_agrupado("run.needs_input", [None, "L"]) == "L"
+
+
+def test_responder_a_um_lembrete_nao_manda_a_caixa() -> None:
+    """A chave do lembrete não diz se ele é de objetivo parado, que não está na caixa: a frase manda ao link dele."""
+    from app.modules.avisos.application.entrada import rotear
+    i = rotear("ok, vou ver", fato="vencimento:lembrete:r1:o1:2026-10-05T03:40:00.000Z")
+    assert i.tipo == "desconhecida" and i.motivo is not None
+    assert "Pendências" not in i.motivo and "link" in i.motivo
