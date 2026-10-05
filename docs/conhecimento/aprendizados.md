@@ -2599,3 +2599,105 @@ script antigos, e o HTML novo (que é `no-store`) pode encontrar o script velho.
 - Mexer na configuração da borda continua pedindo o sim do dono; o conserto é do nosso lado.
 
 **Aplicabilidade.** Vigente enquanto o site público passar pela borda com endereços de arquivo sem versão.
+
+### K-098 — Teste que inspeciona o código inteiro fora do `test_arquitetura` não entra no dirigido: dois PRs chegaram a final com ele vermelho
+
+**Sintoma.** Na suíte 35, os PRs do 31.64 e do 29.92 chegaram a "final", lidos por leitor independente e com o dirigido
+verde, com `test_social_profiles::test_todo_metodo_por_perfil_exige_profile_id` vermelho. Quem achou foi o ensaio da
+integração, depois do corte. O teste para no primeiro nome que ofende, então a segunda falha ficou escondida atrás da
+primeira.
+
+**Medição (`simulated`, 05/10/2026, central WIN-7S2UASNLFOP).** O ensaio da suíte 35 acusou os dois; o conserto foi só
+de teste, por cima das pontas lidas (três nomes na lista de métodos globais). A varredura só leitura da árvore
+`48d2e716` achou meia centena de testes desse tipo fora do `test_arquitetura`, em seis grupos de gatilho. Reunidos em
+`backend/tests/catracas.txt` (53 identificadores, 86 testes), rodam em cerca de 40 s com `-n 4` em prioridade Idle; os
+de `scripts/tests/catracas.txt` (6), em 1 s.
+
+**Causa.** A regra do dirigido só nomeava o `test_arquitetura`, a cobertura de rotas e os apps fora do núcleo. Catraca
+é o teste que inspeciona assinaturas ou o código inteiro: mora no arquivo de teste do domínio dela e quebra longe do
+arquivo editado. Quem acrescenta um método a um repositório num PR sobre outra coisa não roda o teste do repositório.
+
+**O que fazer.**
+
+- Todo dirigido que toque `backend/app` roda `pytest @tests/catracas.txt -n 4`, de `backend/`; se tocar scripts ou a
+  configuração, também `pytest @scripts/tests/catracas.txt`, da raiz (29.98; regra em `.claude/rules/testes.md`).
+- Catraca nova entra no arquivo de identificadores no mesmo PR; `tests/test_catracas.py` reprova identificador que não
+  existe. O arquivo não aceita comentário nem linha em branco: qualquer um dos dois zera a coleta.
+- Catraca que percorre uma lista junta todos os ofensores antes de falhar, para uma falha não esconder a outra.
+- Rodada dirigida vale pela contagem, não pela cor: um caminho de arquivo que não existe na linha de comando do
+  `pytest` zera a coleta inteira ("no tests ran", saída 4), como o comentário no arquivo de identificadores.
+- O "final" de um PR diz que as catracas rodaram na ponta final, e o leitor independente cobra essa linha.
+
+**Aplicabilidade.** Vigente. O inventário por gatilho está em `.claude/rules/testes.md`.
+
+### K-099 — Parar o shell pai de uma corrente em segundo plano deixa os filhos sem console: todo teste que abre `pwsh` cai com `0xC0000142`
+
+**Sintoma.** Na suíte 35, a primeira rodada de `scripts/tests` deu 63 vermelhos. Todos eram testes que abrem `pwsh`
+como subprocesso, e todos saíam com o código 3221225794 (`0xC0000142`).
+
+**Medição (`simulated`, 05/10/2026, central WIN-7S2UASNLFOP, `d025b671`).** A corrente longa tinha sido lançada em
+segundo plano e o shell pai foi parado; os filhos seguiram órfãos, sem console. A mesma árvore, relançada do começo num
+único comando em segundo plano, deu 616 passed. Não sobrou processo órfão depois da segunda rodada.
+
+**Causa.** Corrente longa em segundo plano não morre no tempo limite de dez minutos da ferramenta; parar o shell pai
+tira o console dos filhos sem encerrá-los. No Windows, processo sem console não consegue iniciar o `pwsh`, e a falha
+aparece como erro de inicialização da DLL, não como falha do teste.
+
+**O que fazer.**
+
+- A corrente da suíte roda num único comando em segundo plano, e o shell pai não se para.
+- Se for preciso parar, mata-se a árvore inteira de processos e relança-se do começo.
+- `0xC0000142` em teste de subprocesso é falta de console, não defeito do código: antes de investigar o teste, conferir
+  como a rodada foi lançada.
+
+**Aplicabilidade.** Vigente no central (Windows), para qualquer rodada longa lançada por sessão.
+
+### K-100 — O PostgreSQL rápido de teste estoura o disco em memória pela base, não pelo diário, quando recebe a suíte quase inteira
+
+**Sintoma.** Na suíte 35, o dirigido em PostgreSQL com 467 arquivos de uma vez, com `-n 8`, terminou em
+`psycopg.errors.DiskFull` no contêiner `farm-pg-rapido`, que guarda os dados num disco em memória de 4 GB.
+
+**Medição (`simulated`, 05/10/2026, central WIN-7S2UASNLFOP, `d025b671`, pelos registros do contêiner).** O diário de
+transações ficou estável, perto de 1 GB, tanto na rodada inteira quanto nas metades. Nenhum dos erros de falta de
+espaço aponta para o diário: apontam para a base e para o catálogo global. A base passou de cerca de 3 GB na rodada
+inteira; nas metades, o pico dela foi 141 MB. Em duas metades, com o contêiner parado e subido entre elas, a suíte
+passou (9671 passed e 13 skipped).
+
+**Causa.** Ainda não medida. As duas hipóteses são catálogo inchado por milhares de esquemas criados e apagados, com a
+limpeza automática atrasada, e esquema criado fora do caminho que a faxina por teste cobre. O 29.99 mede.
+
+**O que fazer.**
+
+- Até o 29.99 fechar, o dirigido grande em PostgreSQL roda em duas metades, com o contêiner reiniciado entre elas.
+- Aumentar o disco em memória não é saída: ele já ocupa metade da memória da máquina virtual do Docker, e o teto dela
+  mora num arquivo que não se mexe sem o dono.
+- Erro de disco cheio em teste de banco é erro de ambiente: não se lê como falha dos testes, e a rodada se repete
+  inteira depois de liberar o espaço.
+
+**Aplicabilidade.** Provisória: vale até a medida do 29.99, que troca a causa e pode trocar a regra.
+
+### K-101 — O CI no runner do central disputa a máquina com as medidas: uma janela de latência saiu contaminada
+
+**Sintoma.** Na bateria do 31.58 de 05/10, nove das dez execuções saíram mais lentas que a base de 04/10 (parede das
+normais com p50 de 13,3 s para 15,7 s), sem mudança de código que explicasse o tamanho da diferença. A conferência do
+host, feita antes de abrir a janela, não mostrava nenhum processo de teste.
+
+**Medição (`real`, 05/10/2026, central WIN-7S2UASNLFOP, `d025b671`).** A conferência das 06:57:20Z deu zero processo de
+teste e zero contêiner. Havia duas rodadas de CI de PR na fila do runner `central`; ele começou o `pytest -q` serial às
+06:58:38Z, 35 s depois do começo da bateria (06:58:03Z), e seguiu até o cancelamento das duas, às 07:06Z. Uma rodada de
+PR leva de 62 a 115 min. A análise só de leitura atribuiu cerca de 2 s à releitura antes do toque de efeito (29.90) e o
+resto à carga do host: `type_text` em 6,66 s contra 1,53 s, e o preparo da observação em 2,3 a 3,0 s contra 0,4 a 0,6 s.
+
+**Causa.** O runner próprio mora na máquina do parque e das medidas. O gatilho por PR enfileira uma suíte serial a cada
+push em ramo com PR aberto, e a fila não aparece na lista de processos até o job começar.
+
+**O que fazer.**
+
+- Antes de abrir janela de medida, conferir quatro coisas: processo de teste vivo, contêiner de teste, fila do CI vazia
+  (`gh run list --status queued`) e runner sem job (`gh run list --status in_progress`).
+- Todo push em ramo com PR leva `[skip ci]` no commit da ponta, inclusive o de merge; conferir com
+  `git log -1 --format=%s` antes do `gh pr create`.
+- Rodada de CI que comece durante medida ou suíte se cancela com `gh run cancel <id>`.
+- Medida que cruzou com o CI não se aproveita como comparação: repete-se inteira, com o host quieto.
+
+**Aplicabilidade.** Vigente até o 29.102 tirar o gatilho por PR; depois dele, vale para a volta agendada e para a manual.

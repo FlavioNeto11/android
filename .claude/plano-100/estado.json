@@ -7031,16 +7031,16 @@
   },
   "29.38": {
    "id": "29.38",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real 04/10, máquina central: poda ligada (PODAR-LIGADO) e executada no deploy 28 (158 pastas, 188,1 GB livres); teto de 10 cópias de deploy segurou no deploy 29 (17:18Z): data/backups tem exatamente 10 cópias de deploy (20261004-051103 a 20261004-141831), mais as nomeadas, que ficam fora do teto. Tarefa farm-backup registrada, State Ready, NextRunTime 05/10 03:00 local.",
-   "blocker": "Falta a primeira execução diária da farm-backup (05/10 03:00 local = 06:00Z, LastTaskResult ainda 267011 = nunca rodou). O bloqueio antigo (poda e decisão do dono) não vale mais.",
-   "grupo": "orquestradora-deploy30",
+   "evidence": "05/10/2026, central (C:\\git\\android), commit no ar 584ac9c8 (deploy 34), a main em 81f99de3. A tarefa agendada farm-backup (pwsh -File scripts\\backup.ps1 -Destino C:\\git\\android\\data\\backups -Reter 14 -Origem diario) rodou na volta das 06:00Z: Get-ScheduledTaskInfo deu LastRunTime 05/10/2026 03:00:02 local (06:00:02Z), LastTaskResult 0 e NextRunTime 06/10/2026 03:00:00 local; lido às 06:03:10Z. A cópia está em data/backups/20261005-030002. O manifesto.json traz ts 2026-10-05T03:00:02.52-03:00, origem diario, commit 81f99de3635b390e4be93b9f69a36821b39609c7, banco sqlite, arquivo poc.sqlite3 com 190963712 bytes, migration 109_portal_exclusoes, 113 tabelas, config true e credentials_key false; a pasta config/ da cópia tem o config.yaml. A retenção de 14 dias não apagou nada: há 15 pastas de cópia e a mais antiga é de 03/10. O prune não foi rodado (apagar cópia é dado do dono).",
+   "blocker": "A retenção (-Reter 14, que apaga cópias com mais de 14 dias) vai ao dono pela orquestradora; a primeira poda real só acontece a partir de 17/10.",
+   "grupo": "resultado-orquestradora-suite35",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T18:39:06+00:00"
+   "quando": "2026-10-05T06:32:50+00:00"
   },
   "28.20": {
    "id": "28.20",
@@ -7423,26 +7423,15 @@
   "31.40": {
    "id": "31.40",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "31.40 b implantado no deploy 28 (PR #263): Verdict.cobre + Cobertura (resource_id/texto/bounds), ainda_cobre decide pela árvore, um único juiz por limpeza sem elemento conhecido, step_done sem gesto recusado, receita desligada em etapa opcional. backend/tests/test_sobreposicao.py (5 testes novos). Tentativa real dd3a72 (04/10, android-09): o site exibiu verificação de conta, cancelada sem tocar, US$ 0,045; não volta àquele site.",
-   "blocker": "Prova real pendente: depois do deploy 29, mesmo comando público do braço ligado do 31.35 (limpeza do banner de cookies).",
-   "arquivos": [
-    "backend/app/taskqueue/executor.py",
-    "backend/app/taskqueue/scheduler.py",
-    "backend/app/planning/provider.py",
-    "backend/app/planning/prompts.py",
-    "backend/app/learning/domain/falhas.py"
-   ],
-   "testes": [
-    "backend/tests/test_sobreposicao.py",
-    "backend/tests/test_prompts_licoes.py"
-   ],
-   "grupo": "jev-suite-29",
-   "modelo": "claude-opus-5-5",
-   "esforco": "high",
+   "proof": "real",
+   "evidence": "Prova real em 05/10/2026, central WIN-7S2UASNLFOP, deploy 35 (d025b671), android-09 sem vínculo e sem conta, execução r-20261005071303-f24955 (lote:jev:31.40-r1, página pública de comércio), de 07:13:03Z a 07:15:20Z, US$ 0,1637 por costs.spent_usd (parou pela regra de 0,15 da ficha; teto da janela 0,30), 0 avisos ao dono. PROVADO: o juiz recusou com motivo sobreposicao; a limpeza foi inserida antes da etapa (plano v2, mecanismo do 31.36); a limpeza não aceitou nada (31.51): rodou em 2 s e registrou que não havia botão de recusar, fechar ou continuar. NÃO PROVADO: a limpeza fechar o diálogo e a etapa terminar comprovada (o banner não tem fechar na árvore; desfecho completed_with_issues, 0 de 1). Achados que viraram item: o ator tocou em aceitar cookies duas vezes (31.72); sobreposição venceu com causa dupla (31.73); a espera por texto levou 15,6 s e 40,9 s com 8 s pedidos (31.74). Relatório: .claude/handoffs/jev-31-40-janela-2026-10-05.md.",
+   "blocker": "As execuções 2 e 3 (site com banner de cookies) só rodam com o 31.72 no ar: o ator ainda aceita consentimento por conta própria.",
+   "grupo": "resultado-orquestradora-janela35c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:16:39+00:00"
+   "quando": "2026-10-05T07:25:21+00:00"
   },
   "31.41": {
    "id": "31.41",
@@ -8043,14 +8032,14 @@
    "id": "31.58",
    "status": "partial",
    "proof": "real",
-   "evidence": "04/10 23:36:34Z, scripts/latencia-por-etapa.py (só leitura) de 23:09:51Z a 23:36:34Z, checkout 0b5f7683: ator Sonnet 5 n=15 p50 2.351 ms p95 6.514 ms (base n=22, 2.027/4.207); parede normais n=3 p50 65,4 s p95 98,5 s (base n=10, 13,3/87,2). Arquivos jev-latencia-pos-deploy-32.{md,json}.",
-   "blocker": "Medido, inconclusivo contra a base (decisão da orquestradora, opção a): 3 provas de outra natureza contra uma bateria de 10; painel não conferido. Repetir de graça depois do 31.56, painel fechado.",
-   "grupo": "orquestrador-resultado-suite32-b",
+   "evidence": "Bateria real em 05/10/2026, central WIN-7S2UASNLFOP, deploy 35 (d025b671), android-12 (QA Messenger, conta de QA), lote:jev:31.58-1 a -10, de 06:58:03Z a 07:03:29Z: 10 de 10 completed, US$ 0,4157 por costs.spent_usd (base de 04/10: 0,3818; teto 0,60), 0 avisos ao dono, 0 aprovações (conferido pela orquestradora no banco, só leitura). Parede das normais p50 13,3 s para 15,7 s e p95 87,2 s para 75,0 s; ator por chamada p50 2.027 para 2.582 ms; na soma, tent_resto 73 para 121 s e tent_aparelho 8 para 21 s. MEDIDA CONTAMINADA: o runner do CI no central rodou pytest serial de um PR das 06:58:38Z em diante (execuções 2 a 10), e os jobs ocupavam o runner desde 06:33Z; os dois CIs foram cancelados às 07:06Z. Análise só de leitura (.claude/handoffs/jev-analise-31-58-2026-10-05.md): não é regressão do código; a releitura antes do toque de efeito (29.90) custa cerca de 2 s nos dois envios; o resto é carga do host (inferido: type_text 6,66 s contra 1,53 s, preparo da observação 2,3 a 3,0 s contra 0,4 a 0,6 s) e comportamento do ator em duas execuções. Relatório: .claude/handoffs/jev-latencia-31-58-2026-10-05.md.",
+   "blocker": "Falta a segunda bateria, limpa (lote:jev:31.58b, teto US$ 0,60), com a fila do CI vazia e o runner sem job; aprovada, espera a vez.",
+   "grupo": "resultado-orquestradora-janela35c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:55:48+00:00"
+   "quando": "2026-10-05T07:25:21+00:00"
   },
   "31.60": {
    "id": "31.60",
@@ -8067,16 +8056,16 @@
   },
   "31.56": {
    "id": "31.56",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), saúde no commit cb5848d8 com o mesmo código da a0c9865e do deploy 33 (o diff entre as duas em backend, frontend, site, scripts e config é vazio). A/B ao vivo no android-09 (worker-lan-01, sem conta real), mesmos pedidos de navegador, HOME e load abaixo de 2 antes de cada execução, uma por vez. Braço desligado, 01:37Z a 01:44Z: r-20261005013711-82f9e6, r-20261005014042-e546be, r-20261005014402-e2ea36. Chave ai.tapar_barra_de_endereco ligada no config.yaml do central às 01:47:46Z (cópia data/backups/config.yaml.antes-31-56-ligar-20261005-014746), reinício da farm-central às 01:47:55Z, saúde em 38 s. Braço ligado, 01:50Z a 01:58Z: r-20261005015052-273884, r-20261005015422-3f7364, r-20261005015713-359c5e. Chaves lote:jev:31.56-off-01 a 03 e lote:jev:31.56-on-01 a 03, cada uma criou execução nova. Veredito mecânico de scripts/jev-veredito-31-56.py (critério registrado em 04/10 22:49Z, antes de qualquer execução): LIGA. 3 pares completos; sucesso 3 de 3 nos dois braços; decisões por etapa 14 em 6 contra 16 em 6, 14,3 por cento a mais, dentro do limite de 20; tokens 251631 contra 273703. Custo por spent_usd: US$ 0,24185 desligado e US$ 0,254863 ligado, total US$ 0,496713 de um teto de US$ 1,00; nenhuma execução passou de US$ 0,25. Saída inteira em .claude/handoffs/jev-veredito-31-56-2026-10-05.json (fora do Git), conferida pela orquestradora contra o banco. Ressalvas: n=3 por braço; a latência por etapa não entra no critério e variou muito. A chave fica ligada no central.",
-   "blocker": "o padrão segue desligado em config.py e no config.example.yaml; virar padrão é PR do Jev na suíte 35",
-   "grupo": "resultado-orquestradora-janela33b",
+   "evidence": "#360, ponta fba4fd86, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). `tapar_barra_de_endereco` passa a ser True por padrão em config.py e no config.example.yaml. Real (do item 31.56, antes deste PR): A/B ao vivo em 05/10/2026 no android-09, máquina central WIN-7S2UASNLFOP, código do deploy 33 (a0c9865e), sites públicos, 3 execuções por braço; 16 decisões com a barra tapada contra 14 sem ela (+14,3 %, dentro do limite de 20 %), sucesso igual. Simulado: 568 passed em 21 arquivos e test_url_fora_do_prompt.py::test_o_padrao_do_codigo_e_o_do_exemplo_nao_divergem. Ressalva: n = 3 por braço.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite35",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T02:07:45+00:00"
+   "quando": "2026-10-05T06:32:50+00:00"
   },
   "31.54": {
    "id": "31.54",
@@ -8467,6 +8456,240 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-05T04:25:01+00:00"
+  },
+  "29.90": {
+   "id": "29.90",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Deploy 35 no ar (central d025b671, 05/10/2026 06:18Z; a orquestradora completa). PR https://github.com/FlavioNeto11/android/pull/370 (feat/29-90-ok-e-aceite, ponta b8df172a, base aab8e7f0), lido pela Reload plugins e pela Ferramentas do Claude (delta 13ff73b9..b8df172a; nada bloqueia). O que entrou: 'ok' fora dos rótulos globais de dispensa do Instagram (sessao.yaml); releitura antes do toque de efeito (tap/long_press; cobertura_nova_no_ponto: cobertura | alvo_movido | releitura_falhou), limite de 3 recusas por tentativa, D5 (com cobertura: waiting_user aviso_do_app; só alvo movido: fail_or_retry), D2-R1 (receita segurada: rr.diverged, a IA assume), métricas executor.tela_mudou_antes_do_efeito{motivo,origem} e executor.releitura_antes_do_efeito_ms{resultado}, motivo tela_mudou no funil de receitas; proibido_na_tela e regra_de_fechar em todos os idiomas declarados; FailureKind aviso_do_app (camada pessoa, nunca vira lição); failure_kind no step.updated e no objective.updated (adendo v1.47); telas.yaml inválido avisa uma vez por mtime. Prova simulated (Idle, -n 2, ensaio 29.90+29.92 sobre aab8e7f0): lote do laço 115 arquivos, 2175 passed; frontend typecheck limpo e src/features/aprendizado 198 passed; mutações: releitura desligada reprova o teste da folha entre a guarda e o Share; marca do D2-R1 desligada reprova o teste da receita. Arquivos: backend/tests/test_legenda_rola_e_fecha_a_folha.py, test_receita_divergida_escala.py, test_sobreposicao.py, test_learning_falhas.py, test_learning_diagnostico.py, test_funil_de_receitas.py. Real not_run: aparelho real e a duração da releitura (p50/p95, central e remoto). Notas para a 36 (no commit do 29.96): N2 (motivo do waiting_user usa a última mudança) e D5-N1.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "29.92": {
+   "id": "29.92",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Deploy 35 no ar (central d025b671, 05/10/2026 06:18Z; a orquestradora completa). PR https://github.com/FlavioNeto11/android/pull/371 (fix/29-92-sessao-unknown-pede-a-pessoa, ponta 50c37d47, base aab8e7f0), lido pela Reload plugins (U1/U2 fechados em 68cd7a0d) e pela orquestradora (50c37d47, só teste). O que entrou: teto de unknown 1 em aparelho com vínculo ativo (SocialRepository.teto_de_unknown); session.needs_person na entrada e na saída do unknown no teto; outro pacote com verificação humana não é reaberto por cima (voltar_ao_estado_conhecido(nao_reabrir_sobre=)); prévia de recursos com o mesmo teto (U1); retirada de conta fecha o item (U2); métricas sessao.unknown_rodada, sessao.unknown_resolvida e sessao.parada_resolvida{via}. Prova simulated (Idle, -n 2): ensaio conjunto 2175 passed; delta U1/U2 192 + 229 passed; 50c37d47: test_social_profiles.py inteiro e dirigidos, 133 passed. Arquivos: backend/tests/test_porta_de_sessao_no_teto.py, test_instagram_auth.py, test_leitura_de_recursos.py, test_conta_bloqueada_sai.py, test_social_profiles.py. Real not_run: aparelho real. A sessão parada ainda não aparece em Pendências: item 29.96 (suíte 36).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "30.70": {
+   "id": "30.70",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Deploy 35 no ar (central d025b671, 05/10/2026 06:18Z; a orquestradora completa). PR https://github.com/FlavioNeto11/android/pull/374 (fix/30-70-espera-nao-e-veredito, ponta b50ab384, base 48d2e716), lido pela Ferramentas do Claude. O que entrou: em StepExecutor._after_step, waiting_user ao lado de retry entre os desfechos que não são veredito sobre a receita (não soma replay_fail nem consecutive_fail, não grava driven_by); reproducao_sql._ETAPAS ignora a etapa em waiting_user (com b50ab384, também cancelled e skipped, que só nascem da espera antiga). Prova simulated (Idle): backend/tests/test_espera_nao_e_veredito_da_receita.py (3 testes em 2def28d0, 4 em b50ab384; cada metade do conserto, desfeita, reprova o seu teste); dirigidos 325 passed (2def28d0) e 60 passed (delta do D1). Real not_run: aparelho real.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "31.64": {
+   "id": "31.64",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#350, ponta 7dd2a65b (def17247, mais o teste da lista `globais` pedido no ensaio da 35), suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). Simulado, em Idle: o teste novo (status por status: `ready` e `failed` não contam; `running` e `verifying` recusam; outra imagem não conta; falha no código anterior). Dirigidos: 44 (família e arquitetura) e 566 (36 arquivos de porta e política). No 7dd2a65b: test_social_profiles, test_familia_por_objeto, test_passou_a_porta e test_arquitetura, 44 passed. Real not_run.",
+   "blocker": "prova real pede execução com `publicar_sem_aprovacao` ligado e irmã de imagem no mesmo pedido; sem janela marcada",
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "31.65": {
+   "id": "31.65",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#364, ponta dfccbddf, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). O motivo livre da persona sai da dica (DICA_DA_RECUSA fixa) e fica em draft_meta.motivo_da_recusa; StepDTO.motivo_da_persona só no detalhe, fora do `step.updated`; adendo v1.46. M3: a etapa replanejada não herda o motivo (`scheduler.herdar_textos`, `_sem_o_motivo`). M2 é limitação aceita: o motivo novo aparece no painel quando o detalhe recarrega, não ao vivo. Simulado: 264 testes dirigidos do backend e 100 do frontend (sobre aab8e7f0); no M3, 68 + 22 passed. Real not_run.",
+   "blocker": "prova real pede uma recusa da porta por motivo da persona numa execução real",
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "31.66": {
+   "id": "31.66",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#368, ponta 58f61efd, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). `DeviceManager.tirar_da_frente` manda HOME quando o navegador está na frente no fim do objetivo terminal. H1: nada com controle pedido ou do usuário. H2: nada com tela de verificação na última árvore. V1: nada sem árvore lida. A árvore velha é limitação aceita. Simulado: tests/test_navegador_fora_da_frente.py (10 testes) e test_arquitetura, 19 passed. Real not_run: a carga do convidado antes e depois (android-09) não foi medida.",
+   "blocker": "medida real da carga do convidado antes e depois do HOME pede aparelho e janela",
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "31.67": {
+   "id": "31.67",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#365, ponta 120dd97d, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). parsing.loads_json, provider.persona_draft_from_json, training.proposal_from_json e tools.validate_call passam a levantar fora do `except`, sem a causa (sem o texto do modelo em __cause__ e __context__). Simulado: 4 testes novos em test_rascunho_fora_do_log.py, que falham no código anterior; 293 dirigidos passaram. Real não se aplica (só o caminho de erro).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "31.69": {
+   "id": "31.69",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#362, ponta b1af598f, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). VALOR_CURTO = 4: um valor curto só fecha a leitura sem step_done por `resource_id` único (`valor_segue_na_tela`). Simulado: 3 testes em test_leitura_sem_step_done.py; 180 dirigidos passaram. Real not_run.",
+   "blocker": "prova real pede uma leitura de valor curto numa execução real",
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "31.70": {
+   "id": "31.70",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#373, ponta f3db9ee5, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). Erro sobre a saída do modelo sem o texto dela: openai_provider.decide, command_refinement.refinement_from_json, orquestracao.orquestracao_from_json (com motivo_sem_valor: só o `type` e o nome de campo), planning/curador.parecer_from_json, learning/domain/curador._parecer e _rotulo, skills/domain/document.parse_json_object. M5 avaliado, sem mudança. Simulado: test_causa_sem_texto_resto.py (9 casos) e 1 teste em test_openai_provider.py; 67 dirigidos e 652 dos módulos tocados passaram. Real não se aplica (só o caminho de erro). O H2 (o `from exc` restante) vai para a 36.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "29.98": {
+   "id": "29.98",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#375, ponta 2f8ed37c, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). backend/tests/catracas.txt (53 ids) e scripts/tests/catracas.txt (6 ids), rodados com `pytest @arquivo`. tests/test_catracas.py trava o formato (sem `#` nem linha vazia, que zeram a coleta, medido no pytest 9.1.1) e a existência de cada id, por ast. Regra em .claude/rules/testes.md. Simulado, em Idle, sobre 7d0684ad: @tests/catracas.txt com -n 4 deu 86 passed em 30,8 s; @scripts/tests/catracas.txt, 6 passed; test_catracas, 6 passed. Real não se aplica (só teste e regra).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "28.37": {
+   "id": "28.37",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 35 inteira verde (scripts/tests 616 passed; SQLite 10925 passed e 13 skipped; PG dirigido em duas metades (467 arquivos) 9671 passed e 13 skipped; frontend 1601 passed; catracas 86 e 6 passed; docs-check e typecheck rc=0), deploy 35 no ar às 05/10/2026 06:18Z (central em d025b671, migração 110); números da orquestradora. Simulated: backend/tests/test_avisos_canais_frota.py, backend/tests/test_avisos_servico.py e backend/tests/test_canais_faxina.py (cada backend publica, na roda do scheduler, quais canais liga; a saúde acusa quando os backends ligam canais diferentes; a retirada apaga só o próprio valor, pela chave E pelo valor). PR #357, ponta 016b0db3.",
+   "blocker": "Real not_run: o central tem um backend só, então não há frota mista a acusar. A prova real vem quando um segundo backend subir com outro canal ligado, sem provocar.",
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "28.38": {
+   "id": "28.38",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 35 inteira verde (scripts/tests 616 passed; SQLite 10925 passed e 13 skipped; PG dirigido em duas metades (467 arquivos) 9671 passed e 13 skipped; frontend 1601 passed; catracas 86 e 6 passed; docs-check e typecheck rc=0), deploy 35 no ar às 05/10/2026 06:18Z (central em d025b671, migração 110); números da orquestradora. Simulated: backend/tests/test_telegram_entrada.py, backend/tests/test_telegram_portas.py e backend/tests/test_trello_leitor.py (a execução que espera uma resposta diz 'responda no painel para ela seguir'; a que está sendo cancelada diz isso; o desfecho só se marca com envio ok ou falha definitiva e não se perde em falha passageira; o plano esquecido há 1 h é cancelado sem o sinal de gesto da pessoa; o desfecho do Trello tira a Evidência e aponta o painel). PR #358, ponta 5aba6204.",
+   "blocker": "Real not_run: depende de um pedido do dono pelo Telegram ou pelo Trello que pare esperando resposta, seja cancelado ou fique em plano por 1 h depois do deploy 35. Prova real quando acontecer, sem provocar.",
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "28.39": {
+   "id": "28.39",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 35 inteira verde (scripts/tests 616 passed; SQLite 10925 passed e 13 skipped; PG dirigido em duas metades (467 arquivos) 9671 passed e 13 skipped; frontend 1601 passed; catracas 86 e 6 passed; docs-check e typecheck rc=0), deploy 35 no ar às 05/10/2026 06:18Z (central em d025b671, migração 110); números da orquestradora. Simulated: backend/tests/test_telegram_entrada.py (só o Cancelar do dono leva o gesto; o plano esquecido usa a hora em que foi visto em planned, gravada no banco, e sobrevive ao reinício; o desfecho gira em lotes de 20 sem deixar linha para trás; o desfecho sem id de mensagem é registrado como resultado:<id>; a resposta a mensagem apagada sai com allow_sending_without_reply, teste de caracterização porque o código já mandava isso desde o 28.15). PR #361, ponta 388744b6.",
+   "blocker": "Real not_run: o plano esquecido e o reinício no meio de uma espera só aparecem com um pedido real pelo canal depois do deploy 35, sem provocar.",
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "28.40": {
+   "id": "28.40",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 35 inteira verde (scripts/tests 616 passed; SQLite 10925 passed e 13 skipped; PG dirigido em duas metades (467 arquivos) 9671 passed e 13 skipped; frontend 1601 passed; catracas 86 e 6 passed; docs-check e typecheck rc=0), deploy 35 no ar às 05/10/2026 06:18Z (central em d025b671, migração 110); números da orquestradora. Simulated: backend/tests/test_avisos_objetivo_parado.py, 62 testes (o objetivo que entra em waiting_user avisa uma vez por espera, de qualquer origem; a aprovação fica de fora; o lote de frente cala pelo mesmo predicado do run.updated; o aviso de conta só cala o objetivo da mesma conta, e outra persona ou outro app da mesma persona avisam; o texto nunca leva o detalhe nem o needs; o link abre a própria execução e o aviso de conta em tela não reconhecida abre o Foco do aparelho; toda tela de link existe nas rotas do painel; o desfecho diz 'N esperando você' e a Evidência nunca é o motivo livre de um objetivo parado). Rede dirigida de avisos, canais, trello e telegram com test_arquitetura. PR #372, ponta 27e53bda (com o lembrete do 31.50 e o aviso agrupado do objetivo parado levando a Execuções; backend/tests/test_avisos_vencimento.py; rede dirigida 948 passed).",
+   "blocker": "Real not_run: depende de um objetivo parar esperando o dono depois do deploy 35 (por exemplo, uma tela não reconhecida num aparelho de conta real), sem provocar em conta real.",
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "29.89": {
+   "id": "29.89",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #367, ponta FINAL 2564a0a3 (81c2dd18 rebaseada em aab8e7f0 + a leitura do #367: limitação do dono declarado no ADR-075, chave com espaços no api-contract, teste do espaço interno), branch feat/29-89-cota-do-dono. O dono (pedidos.operadores_do_dono, comparado sem espaço sobrando, com os de dentro juntados, e em casefold) fica fora do teto geral de 60 buscas por hora da exclusão e tem só a cota de um operador (30/h); com a lista vazia ninguém escapa do teto somado. Simulado, 05/10/2026, WIN-7S2UASNLFOP, prioridade Idle: ~03:33Z na 81c2dd18, backend/tests/test_portal_exclusao.py + test_portal_contato.py + test_arquitetura.py + test_contrato_http.py + test_configuracao_de_exemplo.py, 95 passaram; 03:52Z na 2564a0a3, test_portal_exclusao.py + test_arquitetura.py, 36 passaram (inclui test_espaco_dentro_do_nome_nao_abre_outro_balde e o dono declarado como ' Dono  Teste '); docs-check 0/0. A Android rodou o ensaio da suíte 35 com esta ponta. not_run: o central (a busca do dono com o teto geral esgotado não se provoca no central sem dois operadores esgotando 60 buscas; fica simulated). Limitação aceita (ADR-075): a cota do dono vale para quem se declara dono no login; identidade por algo que não se declara fica para a tranca por cliente. Implantado no deploy 35 (central em d025b671, subida de 05/10/2026 às 06:18:46Z, no ar às 06:28Z); a cota do dono no central segue not_run, pelo motivo acima.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "29.91": {
+   "id": "29.91",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #366, ponta FINAL 8e11d7f2 (a leitura do #366: Z1 o teste da prova de fora em LF, N2 o modo da CSP tipado com ModoDaCspDoPainel, N3 o wss:// de server.public_hosts e o ws/wss de server.allowed_origins explícitos no connect-src, N4 as grafias da chave em docs/operacao.md, N5 /404.html pelo nome sai 404), branch feat/29-91-html-sem-injecao. O HTML do site (raiz e 404) sai com no-transform e gzip da própria origem; o index.html do painel sai com no-transform e a CSP do painel; server.csp_do_painel (aplicar | so_relatar | desligada) desfaz sem deploy; a prova de fora pede /central/ como navegador e confere no-transform, o gzip da origem e a CSP do painel. Simulado, 05/10/2026, WIN-7S2UASNLFOP, Idle: 04:07Z na 8e11d7f2, backend/tests/test_painel_estatico.py + test_portal_site.py + test_configuracao_de_exemplo.py + test_arquitetura.py + test_contrato_http.py + test_portal_contato.py, 99 passaram; scripts/tests/test_portal_prova_de_fora.py 19; docs-check 0/0. Navegador num painel isolado (harness, porta 8794, 05/10): 11 telas sem aparelho e, com o aparelho falso, a prévia /frame?mode=thumb, o quadro blob: 720x1280, o anexo blob: e o upload de foto da persona, sem violação de CSP. Real ANTES do deploy (05/10 03:35:48Z, central 584ac9c8, só GET): a raiz chega em zstd com 11.355 B e no-store; /central/ sem no-transform e sem CSP; nenhum beacon (RUM desligado na zona desde 02:23Z). Real, deploy 35 (05/10/2026, central WIN-7S2UASNLFOP, commit d025b671, subida às 06:18:46Z), pela orquestradora. Tempo (1), com server.csp_do_painel em so_relatar: a 1ª prova de fora (scripts/portal-prova-de-fora.sh depois, 06:22:03Z a 06:22:10Z) deu rc=1 com 45 ok e uma falha, a esperada, 'FALHOU /central/ (sem transformar) sem a CSP do painel (server.csp_do_painel em aplicar?)'; 'ok / (sem transformar) (no-transform, gzip da origem)'; /api/instances 401 e 403. Caminhada do painel pelo nome público (/central/, logado, 06:23Z a 06:25Z), com ouvinte de securitypolicyviolation e ReportingObserver: cabeçalho Report-Only presente, com o wss do nome público; zero violação no carregamento e em 15 visitas de rota; 79 recursos, nenhum de fora da origem; imagem por blob carregou. Tempo (2): chave trocada para aplicar às 06:25:22Z (cópia do config.yaml anterior em data/backups), farm-central reiniciada de 06:25:47Z a 06:26:44Z; a 2ª prova de fora (06:27:29Z a 06:27:36Z) deu rc=0 com 46 ok, entre eles 'ok /central/ (sem transformar) (no-transform, CSP do painel)'; no navegador, cabeçalho Content-Security-Policy aplicado e sem o Report-Only, painel inteiro, imagem por blob carregou, zero violação em 4 telas. O Web Analytics não foi religado. not_run no central (aba do navegador oculta, sem gesto manual): o quadro do aparelho desenhado, o upload de foto e a tela de Anexos sob a política aplicada; esses três têm a prova simulated no painel isolado, acima.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "29.95": {
+   "id": "29.95",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #369, ponta FINAL 148d35dc (o merge a331a95e do #366 novo e a leitura do #369: V1 a guarda do teste acha toda forma de citar arquivo da pasta sem ?v=, V4 a mensagem da prova com as três causas), branch feat/29-95-versao-dos-arquivos-do-site, sobre o #366. Na subida, o index.html e o 404.html apontam CSS, JS, marcas e ícones com ?v= e os 12 primeiros hex do sha256 do conteúdo; a prova de fora confere que o ?v= do CSS e do JS é o conteúdo que a borda entrega. Nada muda na Cloudflare. Simulado, 05/10/2026, WIN-7S2UASNLFOP, Idle: 04:13Z na 148d35dc, backend/tests/test_painel_estatico.py + test_portal_site.py + test_configuracao_de_exemplo.py + test_arquitetura.py + test_contrato_http.py + test_portal_contato.py, 102 passaram; scripts/tests/test_portal_prova_de_fora.py 22; bash -n ok; docs-check 0/0. Real antes do deploy (05/10 03:43:46Z, só GET): /assets/site.css?v=<novo> deu cf-cache-status MISS e depois REVALIDATED, a borda guarda separado por query. Real, deploy 35 (05/10/2026, central em d025b671), pela orquestradora: nas duas provas de fora (06:22Z e 06:27Z), 'ok /assets/site.css (versao) (?v=59dafa9abf76 e o conteudo que a borda entrega)' e 'ok /assets/site.js (versao) (?v=4d658e12ade1 e o conteudo que a borda entrega)', com o ?v= que a raiz aponta. not_run: a conferência a olho, no Chrome do dono, do estilo novo sem recarga forçada (este deploy não mudou o estilo do site).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
+  },
+  "29.94": {
+   "id": "29.94",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #363 (fix/29-94-deploy-variavel-do-ensaio, ponta final 4213f201), na suíte 35, implantada em d025b671 (deploy 35, subida 05/10 06:18:46Z; no ar declarado pela orquestradora às 06:28Z). O defeito foi real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): `deploy.ps1 -PularBackup` morreu com 'Cannot convert value System.IO.DirectoryInfo to type SwitchParameter', porque a variável `$ensaio` era o próprio `[switch]$Ensaio` (o PowerShell não diferencia maiúsculas de minúsculas em nome de variável). Nada foi parado, e a subida foi sem -PularBackup. Conserto: `$copiaDoEnsaio` em `deploy.ps1` e `$podarDeVerdade` em `backup.ps1`, a mesma classe de erro contra `[switch]$Podar`, achada pela varredura. Prova simulated: `scripts/tests/test_deploy_portao_do_ensaio.py`. Os casos: (1) roda o trecho do portão recortado do deploy, debaixo da linha de param real, com cópia de ensaio de mentira; (2) varre por AST todo `.ps1` com param e acusa reatribuição de parâmetro switch em qualquer caixa, com variável de foreach contando como atribuição; (3) a mutação reproduz a mensagem exata do deploy 34; (4) os minutos da janela do ensaio são lidos do próprio script. `scripts/testes-afetados.py` liga `scripts/**/*.ps1` a esse teste. No ensaio da 35 (`ensaio/suite-35b`), os testes de scripts passaram (31 passed com o `test_testes_afetados`). Suíte 35 na d025b671: scripts/tests 616 passed; SQLite 10925 passed, 13 skipped; PG dirigido em duas metades (467 arquivos) 9671 passed, 13 skipped; front 1601; docs-check e typecheck ok; catracas 86+6. No deploy 35, `deploy.ps1 -Ensaio` (rc=0, cópia 20261005-031703) e depois `deploy.ps1 -PularDependencias` SEM -PularBackup (rc=0 em 84 s).",
+   "blocker": "Prova real (`not_run`): só no primeiro deploy que rodar `-Ensaio` e depois `-PularBackup` com a cópia do mesmo commit dentro de 60 min.",
+   "grupo": "resultado-orquestradora-suite35",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T06:32:50+00:00"
   }
  },
  "rodadas": [
@@ -11060,6 +11283,44 @@
    ],
    "grupos": [
     "resultado-orquestradora-janela34f"
+   ]
+  },
+  {
+   "quando": "2026-10-05T06:32:50+00:00",
+   "itens": [
+    "29.90",
+    "29.92",
+    "30.70",
+    "31.64",
+    "31.65",
+    "31.66",
+    "31.67",
+    "31.69",
+    "31.70",
+    "31.56",
+    "29.98",
+    "28.37",
+    "28.38",
+    "28.39",
+    "28.40",
+    "29.89",
+    "29.91",
+    "29.95",
+    "29.94",
+    "29.38"
+   ],
+   "grupos": [
+    "resultado-orquestradora-suite35"
+   ]
+  },
+  {
+   "quando": "2026-10-05T07:25:21+00:00",
+   "itens": [
+    "31.58",
+    "31.40"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela35c"
    ]
   }
  ]

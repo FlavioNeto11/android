@@ -15,6 +15,7 @@ from ..models import AiStatus, DeliveryLevel, PersonaDraft, Plan, SocialDraftDTO
 # provedor); reexportado daqui para os provedores o importarem como importam `SocialRequest`.
 from ..modules.identity.domain.persona_generation import PersonaGenerationRequest  # noqa: F401
 from ..modules.identity.domain.available_data import AvailableDatum
+from ..shared.validacao import erros_sem_valor
 
 if TYPE_CHECKING:
     from ..config import ResolvedRole
@@ -59,15 +60,17 @@ MOTIVOS_DE_ORCAMENTO: tuple[str, ...] = ("saldo", "dia", "fatia_curador", "fatia
                                          "pedido")
 
 
-def erro_de_validacao_sem_entrada(exc: ValidationError, limite: int = 6) -> str:
+def erro_de_validacao_sem_entrada(exc: ValidationError, modelo: type[BaseModel], limite: int = 6) -> str:
     """31.63 (V1): a `ValidationError` da saída do modelo em texto SEM a entrada. O `str(exc)` do pydantic v2 traz
     `input_value=`, isto é, o pedaço do JSON do modelo (o rascunho, o plano); a mensagem vai ao `AIError`, daí a
     `ai_calls.error_message`, ao log e ao motivo da etapa (espera, aviso, resumo). Aqui só o lugar e o tipo de cada erro.
     Quem levanta o `AIError` com isto o levanta FORA do `except` (`validar_saida`): o `log.warning(..., exc_info=True)`
     do `_ai` imprime a causa encadeada, e mesmo com `from None` a `ValidationError` com a entrada ficaria no
-    `__context__` (a regra da transcrição, abaixo, e de `sensitive_input`)."""
-    erros = exc.errors(include_input=False, include_url=False, include_context=False)
-    partes = [f"{'.'.join(map(str, e['loc'])) or '(raiz)'}: {e['type']}" for e in erros[:limite]]
+    `__context__` (a regra da transcrição, abaixo, e de `sensitive_input`).
+    Sobras do 31.70: o lugar sai de `app.shared.validacao`, a regra única com o domínio. Do `loc`, só índice e nome de
+    campo do `modelo` (com alias); a chave de um `dict` e a do `extra_forbidden` viram `?`."""
+    erros = erros_sem_valor(exc, modelo)
+    partes = erros[:limite]
     if len(erros) > limite:
         partes.append(f"e mais {len(erros) - limite}")
     return f"{len(erros)} erro(s) de validação ({'; '.join(partes)})"
@@ -82,7 +85,7 @@ def validar_saida(modelo: type[_Modelo], dados: object, prefixo: str) -> _Modelo
     try:
         return modelo.model_validate(dados)
     except ValidationError as exc:
-        falha = erro_de_validacao_sem_entrada(exc)
+        falha = erro_de_validacao_sem_entrada(exc, modelo)
     raise AIError(f"{prefixo}: {falha}", kind="invalid_output")
 
 
@@ -158,7 +161,7 @@ MotivoDaChamada = Literal["julgamento", "rejulgamento", "vazio", "decisao", "cas
 #: Sem imagem: sensivel · politica_nunca · arvore_rica. Com imagem: politica_sempre · pedida · problema ·
 #: primeira_julgada · arvore_pobre. A coluna `with_image` diz se ela de fato foi (a captura pode falhar).
 MotivoDaImagem = Literal["sensivel", "politica_nunca", "politica_sempre", "pedida", "problema", "primeira_julgada",
-                         "primeira_da_leitura", "arvore_pobre", "arvore_rica"]
+                         "primeira_da_leitura", "leitura_pendente", "arvore_pobre", "arvore_rica"]
 MOTIVOS_DE_ESCALONAMENTO: Final[tuple[str, ...]] = get_args(MotivoDeEscalonamento)
 MOTIVOS_DA_CHAMADA: Final[tuple[str, ...]] = get_args(MotivoDaChamada)
 MOTIVOS_DA_IMAGEM: Final[tuple[str, ...]] = get_args(MotivoDaImagem)

@@ -511,6 +511,11 @@ class AppState:
         # O lock de escrita é por execução: some junto com ela, senão o dicionário cresceria para sempre. E o digest do
         # aprendizado (ADR-054) é encadeado aqui, numa thread: o fim da execução nunca espera nem cai por causa dele.
         self.scheduler.on_run_settled = self._execucao_assentada
+        # 29.93: a parada esperando a pessoa solta o mesmo que a main soltava ao parar, sem o digest; e a execução que
+        # fecha sem worker (saída dessa espera, cancelamento órfão do 29.103) não tem quem chame o `_settle_run`: o
+        # repositório a assenta com o MESMO gancho, se ganhar a marca `assentada_em` (#382, migração 113).
+        self.scheduler.on_run_parada = self._execucao_parada
+        self.repo.ao_assentar_sem_worker = self._execucao_assentada
         self.scheduler.on_items_collected = self._registrar_leitura
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions
@@ -596,6 +601,9 @@ class AppState:
                 "SELECT run_id FROM objectives WHERE id=?", (oid,))),
             dias=lambda: float(self.cfg.file.avisos.decisoes_automaticas.desfazer_dias))
         self._digestoes: set[asyncio.Task[None]] = set()
+        #: O laço de eventos do backend, guardado no `start`: o assentamento sem worker (29.93) pode vir de uma thread
+        #: (o vencimento roda em `to_thread`; a rota síncrona de resolver, no threadpool) e é agendado nele.
+        self._laco_principal: asyncio.AbstractEventLoop | None = None
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
         self.teaching = TeachingService(
@@ -1451,10 +1459,10 @@ class AppState:
             return motivo, None
         # 29.92: teto por aparelho. Com vínculo ativo (conta real) é 1: o primeiro `unknown` de um `ensure_session` já
         # para, porque a rodada seguinte pode cair no login e digitar a senha guardada em cima de uma tela que ninguém
-        # reconheceu. A tela classificada direto como login segue para o `_login` com consentimento (ADR-040).
-        teto = self.social_repo.teto_de_unknown(rt.id) or self.settings.get().session_unknown_retry_cap
-        if (session and session["status"] == SessionStatus.unknown.value
-                and int(session["unknown_streak"] or 0) >= teto):
+        # reconheceu. A tela classificada direto como login segue para o `_login` com consentimento (ADR-040). 29.96:
+        # a comparação é a do aviso e do `SessionInfo.unknown_at_cap` (`unknown_no_teto`), não uma cópia; o teto global
+        # vem dos ajustes ao vivo pelo `teto_de_reobservacao` que o repositório recebe na montagem.
+        if session is not None and self.social_repo.unknown_no_teto(session, rt.id):
             # Achado #104: sem este teto, uma tela que `classify()` nunca reconhece (sinal ausente da tabela,
             # onboarding fora do mapa) reabria o app e reobservava a cada tick, sem parar e sem aviso. Depois de
             # `teto` reobservações seguidas com o mesmo resultado, para de insistir sozinho — vira caso de
@@ -2681,6 +2689,7 @@ class AppState:
 
     # ------------------------------------------------------------------ ciclo de vida
     async def start(self) -> None:
+        self._laco_principal = asyncio.get_running_loop()
         self.bus.bind_loop(asyncio.get_running_loop())
         self._curador_do_hub.ligar_laco(asyncio.get_running_loop())
         # O transporte do despacho sobe ANTES de qualquer efeito: com a bandeira do NATS ligada e sem broker no
@@ -2973,14 +2982,37 @@ class AppState:
                 log.exception("gravação da janela de métricas")
 
     # ------------------------------------------------------------------ aprendizado contínuo (ADR-054)
-    def _execucao_assentada(self, run_id: str) -> None:
-        """A execução saiu do ar: solta o lock de escrita dela e encadeia o digest do aprendizado numa thread."""
+    def _execucao_parada(self, run_id: str) -> None:
+        """A execução parou: solta o lock de escrita dela e acorda os pedidos. Sozinho, é a parada esperando a pessoa
+        (`awaiting_person`, 29.93), que não digere; dentro do `_execucao_assentada`, o começo do assentamento."""
         self._draft_locks.pop(run_id, None)
         self.pedidos.ao_assentar(run_id)             # só acorda o laço de pedidos (28.4); nunca escreve aqui
+
+    def _assentamento_agendado(self, run_id: str) -> None:
+        """O assentamento que veio de outra thread, já no laço. Sem o envoltório, a exceção cairia no tratador padrão
+        do asyncio, sem dizer de que execução era."""
+        try:
+            self._execucao_assentada(run_id)
+        except Exception:  # noqa: BLE001 - o assentamento nunca derruba o laço
+            log.exception("assentamento agendado da execução %s", run_id)
+
+    def _execucao_assentada(self, run_id: str) -> None:
+        """A execução saiu do ar: solta o lock de escrita dela e encadeia o digest do aprendizado numa thread."""
         try:
             laco = asyncio.get_running_loop()
         except RuntimeError:
-            return                                   # fora do laço de eventos não há execução assentando
+            # 29.93: a saída da espera sem worker pode vir de uma thread (vencimento, rota síncrona). O assentamento
+            # inteiro vai para o laço: o dicionário de travas e o `create_task` do digest são dele.
+            principal = self._laco_principal
+            if principal is not None and principal.is_running():
+                principal.call_soon_threadsafe(self._assentamento_agendado, run_id)
+            else:
+                # Sem laço (teste sem `start`, ou thread que termina depois do desligamento): solta, e o digest desta
+                # execução se perde; só o `backfill_licoes` manual o recupera. O aviso deixa a perda visível.
+                self._execucao_parada(run_id)
+                log.warning("aprendizado: execução %s assentou sem o laço de eventos; o digest dela não rodou", run_id)
+            return
+        self._execucao_parada(run_id)
         tarefa = laco.create_task(self._digerir(run_id), name=f"aprendizado-{run_id}")
         self._digestoes.add(tarefa)
         tarefa.add_done_callback(self._digestoes.discard)
@@ -3252,7 +3284,8 @@ class AppState:
         """
         vencidas = self.db.query(
             "SELECT DISTINCT run_id, storage, stored_by FROM evidence WHERE ts < ? AND run_id IN "
-            "(SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ?)", (ev_cut, ev_cut))
+            "(SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ? AND status <> 'awaiting_person')",
+            (ev_cut, ev_cut))
         limpos: list[str] = []
         for r in vencidas:
             onde = r["storage"] or DISK

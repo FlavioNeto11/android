@@ -96,6 +96,7 @@ export const RUN_STATUS: Record<RunStatus, StatusMeta> = {
   running: { label: 'Em execução', tone: 'accent', icon: LoaderCircle, spin: true },
   paused: { label: 'Pausada', tone: 'warning', icon: CirclePause },
   cancelling: { label: 'Cancelando', tone: 'warning', icon: LoaderCircle, spin: true },
+  awaiting_person: { label: 'Aguardando você', tone: 'warning', icon: Hand },
   completed: { label: 'Concluída', tone: 'success', icon: CircleCheck },
   completed_with_issues: { label: 'Concluída com problemas', tone: 'warning', icon: TriangleAlert },
   cancelled: { label: 'Cancelada', tone: 'muted', icon: Ban },
@@ -218,6 +219,22 @@ export const SESSION_STATUS = {
 } as const satisfies Record<string, StatusMeta>;
 
 /**
+ * 29.96: a sessão `unknown` NO TETO do aparelho (`SessionInfo.unknown_at_cap`). O estado continua `unknown`, mas não é
+ * "ninguém olhou": a automação olhou, não reconheceu a tela e parou sem tocar nela — só uma pessoa resolve.
+ */
+export const SESSAO_PARADA_NO_TETO: StatusMeta = {
+  label: 'Tela não reconhecida', tone: 'warning', icon: ShieldAlert,
+  description: 'A automação parou sem tocar numa tela que não reconheceu. Assuma o controle do aparelho, resolva a tela '
+    + 'e devolva à IA; a sessão é relida sozinha.',
+};
+
+/** O selo da sessão: o do estado, salvo a parada no teto, que tem o seu (29.96). */
+export function metaDaSessao(session: { status?: string | null; unknown_at_cap?: boolean } | null | undefined): StatusMeta {
+  if (session?.unknown_at_cap) return SESSAO_PARADA_NO_TETO;
+  return metaOf(ACCOUNT_SESSION_STATUS, session?.status ?? 'unknown');
+}
+
+/**
  * Sessão de uma CONTA do perfil num app (`ProfileAccount.session_status`, `AppDetail.accounts[].session_status`):
  * os valores do Instagram mais os que a pessoa marca à mão nos apps sem login automático ("entrei"/"saí").
  */
@@ -325,6 +342,15 @@ export function isRunActive(status: RunStatus): boolean {
 
 export function isRunTerminal(status: RunStatus): boolean {
   return TERMINAL_RUN.has(status);
+}
+
+/**
+ * Sem trabalho automático pela frente: terminada ou `awaiting_person` (29.93, o `RUN_SEM_TRABALHO` do backend). É o
+ * que valia para o `completed_with_issues` com objetivo esperando: repetir, relatório e custo finais, recarga do
+ * detalhe. Cancelar e o aviso "precisam de você" seguem em `isRunTerminal`: a execução esperando a pessoa não acabou.
+ */
+export function isRunSemTrabalho(status: RunStatus): boolean {
+  return TERMINAL_RUN.has(status) || status === 'awaiting_person';
 }
 
 /**

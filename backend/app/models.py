@@ -66,6 +66,10 @@ class RunStatus(StrEnum):
     running = "running"
     paused = "paused"
     cancelling = "cancelling"
+    # 29.93: o trabalho automático acabou e um objetivo espera um gesto da pessoa no aparelho (`waiting_user`). NÃO é
+    # terminal: a retomada do item reabre a execução, e o vencimento (31.50) fecha o objetivo parado. Diferente de
+    # `needs_input`, que é a pergunta ANTES de agir (o plano ainda não rodou).
+    awaiting_person = "awaiting_person"
     completed = "completed"
     completed_with_issues = "completed_with_issues"
     cancelled = "cancelled"
@@ -73,6 +77,9 @@ class RunStatus(StrEnum):
 
 
 RUN_TERMINAL = {RunStatus.completed, RunStatus.completed_with_issues, RunStatus.cancelled, RunStatus.failed}
+#: 29.93: sem trabalho automático pela frente, terminada ou esperando a pessoa. Grava `finished_at` (o fim do trabalho
+#: automático), é de onde o relógio do vencimento (31.50) conta, e é o que a retomada de um item reabre.
+RUN_SEM_TRABALHO = RUN_TERMINAL | {RunStatus.awaiting_person}
 
 
 class ObjectiveStatus(StrEnum):
@@ -537,6 +544,15 @@ class SessionInfo(BaseModel):
     # "Conectado" verificado há tempo demais: continua sendo o que se observou, mas deixa de valer como verdade
     # de agora — a porta relê o aparelho antes da tarefa, e o cartão diz que o dado é velho.
     stale: bool = False
+    #: 29.96: `unknown` NO TETO deste aparelho (`shared.vinculos.teto_de_unknown`; com vínculo ativo, 1): a porta
+    #: parou de reobservar e espera uma pessoa. É a mesma regra do `session.needs_person` (entrada e saída do aviso),
+    #: e põe a sessão nas filas "Aguardando intervenção" e Pendências, que filtram por estado.
+    unknown_at_cap: bool = False
+    #: 29.100: desde quando a sessão está assim (`account_sessions.status_since`): a mudança de estado e, no `unknown`, a
+    #: chegada ao teto (a parada); fora disso, regravar o mesmo estado não a move. É a hora que Pendências mostra.
+    #: `None` em sessão gravada só antes da migração e já `session_ready` nela (a migração preenche as demais com a
+    #: última gravação).
+    status_since: str | None = None
 
 
 class PersonaDeviceDTO(BaseModel):

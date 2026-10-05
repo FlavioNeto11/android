@@ -54,6 +54,9 @@ BASE_DIAS = 28
 JANELA_DA_REINCIDENCIA = 2
 #: `steps.driven_by` nulo (etapa anterior à coluna, ou que nunca chegou ao executor).
 SEM_CONDUCAO = "-"
+#: 30.69 (N1 da leitura do #374): a etapa em `waiting_user` sem `driven_by`. Desde o 30.70, a espera não é veredito e não
+#: grava quem conduziu; antes ela aparecia como "sem condução", como se fosse anterior à coluna.
+ESPERANDO_A_PESSOA = "esperando_pessoa"
 #: Propostas (ADR-054, tipos "ação nova", "lição" e "tela").
 ACAO_EXECUCOES_MIN = 3
 #: 30.59: a etapa livre que já fecha sem IA (receita ou atalho do executor) em pelo menos esta fração das vezes não vira
@@ -702,7 +705,7 @@ class Saude:
     @property
     def pct_por_receita(self) -> float | None:
         """Etapas conduzidas só por receita, sobre as que registraram quem conduziu (`-` = anterior à coluna)."""
-        total = sum(n for k, n in self.etapas_por_conducao.items() if k != SEM_CONDUCAO)
+        total = sum(n for k, n in self.etapas_por_conducao.items() if k not in (SEM_CONDUCAO, ESPERANDO_A_PESSOA))
         return self.etapas_por_conducao.get("recipe", 0) / total if total else None
 
     @property
@@ -711,7 +714,8 @@ class Saude:
 
 
 __all__ = ["ACAO_EXECUCOES_MIN", "BASE_DIAS", "ESTADOS_DA_PESSOA", "EXEMPLOS", "IDS_DA_PROVA", "JANELA_DA_REINCIDENCIA",
-           "LIMITE_DE_OUTRO", "QUALQUER", "ROTULO", "SEM_CONDUCAO", "AcaoLivre", "ChamadaDeTela", "ChaveDoGrupo",
+           "LIMITE_DE_OUTRO", "QUALQUER", "ROTULO", "SEM_CONDUCAO", "ESPERANDO_A_PESSOA", "AcaoLivre", "ChamadaDeTela",
+           "ChaveDoGrupo",
            "Exemplo", "FonteDaOcorrencia", "GrupoDeFalha", "ItemParaPromover", "LinhaDoBacklog", "Medida", "Ocorrencia",
            "ParteDeOutro", "Proposta", "RegrasDoBacklog", "ResultadoDaProva", "Saude", "SaudeDasExecucoes",
            "TelaQueChamou", "Tendencia", "TipoDeVerificacao", "Veredito", "agrupar", "camada_do_tipo",

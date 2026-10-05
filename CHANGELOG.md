@@ -19,6 +19,218 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
+
+- `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,
+  só o `type` e, do `loc`, só o índice e o nome de campo do esquema (com `alias` e `validation_alias`). A chave de um
+  `dict`, a do `extra_forbidden` e o id de membro de união viram `?`.
+- `planning/provider.erro_de_validacao_sem_entrada(exc, modelo, limite)`: ganha o `modelo` e passa a usar a regra
+  única. Antes deixava a chave de `dict` e a do `extra_forbidden` no `loc`. Chamadores: `validar_saida` (o modelo dela)
+  e `parsing._sem_entrada` (`Plan`).
+- `command_refinement.motivo_sem_valor` usa a mesma regra; o domínio a importa do kernel, não de `app.planning`.
+- O H2 (o `from exc` em `parsing.loads_json`, `provider.persona_draft_from_json` e `training.proposal_from_json`) já
+  saiu no #365 (31.67), na suíte 35; aqui não há o que mudar nele.
+- `backend/tests/catracas.txt` ganha a catraca nova da Canais: `test_avisos_objetivo_parado.py::test_toda_tela_de_link_de_aviso_existe_nas_rotas_do_painel`.
+- Prova: `simulated`, em Idle, sobre d025b671: `backend/tests/test_causa_sem_texto_resto.py` (3 testes novos) e os
+  dirigidos dos chamadores, 178 passed; `pytest @tests/catracas.txt -n 4`, 87 passed; scripts, 6 passed.
+
+## 2026-10-05 — 29.100: Pendências mostra a hora da parada, não a da última verificação (branch feat/29-100-pendencias-hora-da-parada)
+
+- **Migração 112** (`account_sessions.status_since`): desde quando a sessão está assim. `SocialRepository.set_account_session` troca a hora na mudança de estado e, no `unknown`, quando a série chega ao teto do aparelho (P1 da leitura: um `unknown` administrativo de dias atrás que para hoje mostra hoje). Fora disso, regravar o mesmo estado a mantém. A decisão vai num `CASE` dentro do upsert, contra a linha que o comando encontra (P2: sem corrida entre o "Verificar conta" e o motor). O preenchimento usa `updated_at` onde o estado não é `session_ready`; a pronta fica nula.
+- **Adendo v1.51:** `SessionInfo.status_since`, nos três montadores do 29.96 (`profile_dto`, `sessao_no_aparelho`, `_account_dto`).
+- **Painel:** `desdeDaSessao` (`pendencias/modelo.ts`) é o "desde" do item em Pendências e a hora e a ordem de "Aguardando intervenção" (`ProfilesPage.tsx`), com `verified_at` como reserva. Antes, a parada de agora aparecia como de dias atrás e ia para o topo da fila como a mais antiga.
+- Prova `simulated`: `backend/tests/test_sessao_status_since.py`, `PendenciasPage.test.tsx` e `ProfilesPage.test.tsx` (os resultados no PR). `not_run`: o painel do central, até o deploy.
+
+## 2026-10-05 — 29.96: a sessão parada no teto aparece em Pendências e em "Aguardando intervenção" (branch feat/29-96-parada-no-teto-em-pendencias)
+
+- Achado da leitura do #371 (S): o `unknown` no teto abre o aviso `session.needs_person`, mas as duas filas do painel
+  filtravam só por estado (`auth_challenge`, `wrong_account`, `needs_person`), e a sessão parada continua `unknown`. O
+  dono recebia o aviso e não achava o item.
+- `SessionInfo.unknown_at_cap` (adendo v1.48), preenchido nos três montadores (persona, persona no aparelho, conta) por
+  `SocialRepository.parada_no_teto`, com a mesma regra do aviso (`unknown_no_teto`).
+- A regra do teto mora num lugar só, `shared.vinculos.teto_de_unknown`, chamado pela porta (via repositório), pela
+  prévia de recursos e pelo campo (N1 da leitura do #371).
+- Notas de texto do #370 (29.90): o motivo do `waiting_user` do D5 cita a ÚLTIMA cobertura, não a última mudança
+  (N2), e não diz mais "não é declarado", porque a folha declarada que reabre também chega lá (D5-N1).
+- Painel: `precisaDePessoa(session)` nas duas filas; rótulo "Tela não reconhecida" (`SESSAO_PARADA_NO_TETO`,
+  `metaDaSessao`); o selo da persona pede "Resolver".
+- Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py` (T1: o teto de quem
+  compõe sem vínculo), `test_social_profiles.py`; `frontend/src/features/pendencias/PendenciasPage.test.tsx`,
+  `profiles/ProfilesPage.test.tsx`, `profiles/estadoSessao.test.ts`). `not_run`: aparelho real.
+
+## 2026-10-05 — 31.71: a imagem segue enquanto falta saída declarada, atrás de chave desligada (branch feat/31-71-imagem-enquanto-falta-saida)
+
+- Achado real (r-20261004232524-2e0775, ai_calls 4499 a 4510): na leitura do Outlook, 4 dos 8 decides não avançaram.
+  Sem imagem, o ator tentava concluir (recusa) ou pedia `observe_screen`.
+- `ai.imagem_enquanto_falta_saida` (desligada por padrão; vira padrão só com o A/B): com ela, o motivo novo
+  `leitura_pendente` manda a imagem em toda decisão enquanto faltar saída declarada. Vem depois de `sensivel`,
+  `politica_*`, `pedida`, `problema` e `primeira_*`: a política manda, e os motivos de hoje não mudam de nome. Lida a
+  última saída, o motivo some na decisão seguinte.
+- Com a imagem por `leitura_pendente`, a decisão leva um lembrete só com os NOMES do que falta
+  (`lembrete_da_leitura`). Ele vai na cópia da decisão (`historico_do_ator`), não no histórico durável, onde o
+  `compress_history` o guardaria a cada decisão.
+- Por que o ator, já com a imagem, também não leu (o 4501 e o 4502) segue UNKNOWN. A hipótese "o prompt não avisa" foi
+  refutada por leitura estática; o A/B mede a imagem e o lembrete juntos.
+- Adendo v1.49 (`MotivoDaImagem`), rótulo no painel, `docs/ia.md` e o exemplo de config.
+- Prova: `simulated` (`backend/tests/test_imagem_enquanto_falta_saida.py`, 8 testes). Real: `not_run`; o A/B é
+  janela da orquestradora (`.claude/handoffs/jev-roteiro-31-71-ab.md`).
+
+## 2026-10-05 — 30.69: o que o digest do aprendizado conta durante e depois da espera pela pessoa (branch feat/30-69-digest-na-saida-da-espera, sobre o 29.93)
+
+- Com o 29.93, a execução que espera a pessoa fica em `awaiting_person` e só assenta na saída. O gancho da saída é do
+  #382. Aqui fica o que o digest grava.
+- `licoes_sql._ETAPA_FINAL` sem `waiting_user`: a exposição da etapa que espera não congela. A curadoria
+  (`execucoes_a_preencher`) escolhe as execuções pelo `finished_at`, que a espera grava, e preenchia o desfecho
+  `waiting_user`, que nunca mais mudava.
+- Relatório de condução: a etapa em espera sem `driven_by` conta como `esperando_pessoa`, fora da porcentagem por
+  receita (N1 da leitura do #374).
+- Catraca da premissa do 30.70 (D1-N2): `cancel_open_steps` e `revise_plan` não tocam etapa `failed` nem `uncertain`.
+- Prova: `simulated` (`backend/tests/test_digest_na_saida_da_espera.py`). `not_run`: aparelho real.
+
+## 2026-10-05 — 29.93: a execução que espera você não aparece como encerrada (branch fix/29-93-aguardando-pessoa)
+
+- `RunStatus.awaiting_person` (não terminal): o `recompute_run` leva a ele a execução sem trabalho automático com algum
+  objetivo `waiting_user`. Antes ela ia a `completed_with_issues`, que é terminal. Execução só com `uncertain` segue
+  `completed_with_issues`. Conjunto novo `RUN_SEM_TRABALHO` (terminais + o novo): grava `finished_at`, é o que a retomada
+  reabre e o que o vencimento do 31.50 lê (prazo, lembrete, varredura e `vence_em`, sem mudança de comportamento).
+- Tabela de transições (`execution/domain/states.py`), cancelar (aceito) e o corte por idade do
+  `vitrine.objetivo_que_segura` com o estado novo.
+- A purga de eventos por idade (`EventBus.purge_older_than`) poupa a execução aguardando: ela tem `finished_at` e
+  continua aberta.
+- Snapshot: a execução aguardando vem por 7 dias depois de `finished_at` (com o vencimento desligado nada a fecharia). A
+  caixa de Pendências não depende do snapshot para isso: ela conta só `needs_input` (ADR-062).
+- Telegram: o desfecho diz "parou" (redação da Canais; serve à parada no aparelho e à aprovação); a contagem "esperando você" e o gesto são do 28.40. `TERMINAIS`
+  da entrada inclui o estado novo (o desfecho é a única linha, 28.36).
+- Pedidos: a ocorrência fecha como fechava com o `completed_with_issues`, para o domínio da Canais não mudar agora.
+- Assentamento (A1 da leitura): nenhum digest enquanto a execução espera (fora do `ASSENTADAS` e dos conjuntos
+  finais). Na parada, o `_settle_run` solta o que a main soltava nessa hora (o explorador, a trava de rascunho, o
+  acordar dos pedidos) sem o digest (`Scheduler.on_run_parada`). Na saída sem worker (abandonar, vencer, cancelar),
+  `Repository.set_run_status` chama `ao_assentar_sem_worker`: terminal vindo direto de `awaiting_person`, ou de
+  `cancelling` com o `finished_at` da espera ainda gravado. O critério é o estado anterior, porque o `resolve` limpa o
+  `finished_at` antes do `recompute_run`. É o assentamento inteiro, uma vez, agendado no laço por `call_soon_threadsafe` quando vem
+  de uma thread (o vencimento roda em `to_thread`). A retomada limpa o `finished_at` e assenta pelo worker, como
+  antes, sem dobrar. O que o digest conta durante e depois da espera é do 30.69 (Aprendizado), empilhado.
+- Assentamento exatamente uma vez (leitura 2 do #382), pela marca `runs.assentada_em` (migração 113): compare-and-set
+  em `Repository.marcar_assentada`. O worker grava o estado final e a marca na mesma transação e assenta em linha; a
+  rede do `set_run_status` (estado final vindo de estado de trabalho, depois do COMMIT, sem worker vivo) só assenta se
+  ganhar a marca. Isso fecha o D1 (cancelar a `completed_with_issues` já assentada assentava de novo) e entrega o
+  29.103 (a execução cancelada sem worker nunca assentava). O `set_run_status` zera a marca ao reabrir (não no
+  `cancelling`). A 113 marca toda execução já final na hora da migração.
+- A retenção de evidência por idade também poupa a execução aguardando.
+- Painel: rótulo "Aguardando você", grupo "Pede atenção"; Cancelar e o aviso "precisam de você" voltam a valer nela;
+  `isRunSemTrabalho` para repetir, relatório, custo e recarga do detalhe.
+- Migração de dados `111_execucao_aguardando_pessoa`: 0 linhas no central em 05/10. Migração `113_execucao_assentada_em`
+  (coluna e preenchimento). Adendo v1.50 do contrato (números da orquestradora).
+- Prova: `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
+  `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). Real: `not_run`.
+
+## 2026-10-05 — 28.41: sobras das leituras do #361 e do #372 (branch canais/28-41-sobras)
+
+- R1: a resposta do dono ao aviso de objetivo parado ou de conta (`objective:` e `session:`) só informa ("Este aviso
+  só informa: para resolver, toque no link dele.") e nunca vira prévia de execução nova. F1 da leitura do #380: a
+  resposta à mensagem AGRUPADA (`grupo:<tipo>` e `grupo:rotina`) também só informa ("Esta mensagem junta vários avisos
+  e só informa: para resolver, toque no link dela."); antes ela caía no texto livre.
+- Regra de fundo (orquestradora, 05/10 06:53Z): a resposta a uma mensagem nossa cujo fato não tem ramo (`pedido:`,
+  `learning:`, `trello-convidado:` ou família nova) só informa e diz como pedir algo; o texto livre fica só para a
+  mensagem que não responde a nada nosso (o anexo segue a gramática comum, 28.24). No Trello, onde o texto livre
+  nunca executou, o comentário num cartão cujo fato não tem ramo responde o "comando livre está desligado" de
+  sempre e nunca vira prévia, nem com o comando livre ligado (orquestradora, 05/10 07:24Z).
+- G1 da releitura do #380 (orquestradora, 05/10 07:50Z): resposta a aviso nunca vira COMANDO, e pergunta não executa
+  nada. Na resposta a um fato sem ramo, só o texto livre e o `para` viram "só informa"; a pergunta volta a ir à
+  orquestradora, e a captura e a identidade seguem (no Trello também). G2, no contrato: `/para` com barra num
+  cartão-espelho, com o comando livre ligado, ainda mostra a prévia de leitura.
+- Fecho do G1 (orquestradora, 05/10 08:00Z): a regra vale nos dois canais para o texto sem barra. O comando com barra
+  é explícito e fica como está (G3: no Telegram, `/para` em resposta a um aviso vira a prévia com o botão de
+  executar). Teste de ponta a ponta: a pergunta no espelho do deploy chega à orquestradora com a frase do repasse.
+  Catraca nova: toda chave de `Aviso(...)` em `backend/app` sai de um `chave_do_*` e tem `<família>:<identidade>`.
+- Leitura do #382: o gesto do desfecho segue o `blocked_kind` dos objetivos parados (aparelho: abrir a execução;
+  aprovação: a caixa de Pendências; os dois: as duas linhas).
+- R2: o `/status` conta os objetivos parados (sem contar duas vezes o que espera uma aprovação) e diz que eles estão
+  em Execuções.
+- N1 do #372: com a conta igual, o aviso de conta só cala o objetivo que parou por motivo de conta, como no ramo só
+  da persona.
+- N4: o desfecho da execução recusada no planejamento diz o motivo por uma frase fixa (`plan.refused`), sem o trecho
+  do comando que o `status_detail` traz; sem recusa e sem evidência, só o estado.
+- Agrupados: a conta que pede a pessoa vai sempre à caixa (o avulso em tela não reconhecida abre o Foco de UM
+  aparelho); o lembrete agrupado diz onde ficam a aprovação, a pergunta e o objetivo parado.
+- N1 do #361: os testes provam que só o Cancelar do dono leva o gesto, e que os cancelamentos automáticos não.
+- Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` e `backend/tests/test_telegram_entrada.py`.
+  Real: `not_run`.
+
+## 2026-10-05 — 29.101 (parte da Canais): o aviso da API aberta pelo endereço público (branch canais/29-101-api-aberta)
+
+- `avisos/domain/portal.py`: o oitavo código do vigia, `api_aberta` (só com `onde=api`), no tipo próprio
+  `portal.borda_api`, com o texto aprovado pela orquestradora: o que chegou (um pedido sem login a `/api/instances`
+  foi atendido), o crítico (dados do central legíveis sem senha; escrita não testada) e o gesto do dono (parar o
+  serviço do túnel; responder vai à orquestradora, só com sessão ativa). O achado não entra no texto.
+- `avisos/domain/mensagem.py`: `portal.borda_api` no nível 1, saindo na hora; sem agrupar, sem link e fora do Trello
+  pelo prefixo `portal.`.
+- Leitura do #383: o `sem_conferir` com `onde=api` fala da API (horas, motivo, não espera o dono; no `api-500`, um
+  olhar), com chave própria por dia, separada da do site.
+- Notas da releitura do #381: o filtro do achado pega também IP com `_`, decimal longo e hexadecimal; o fuso se
+  confere por `utcoffset()`; o achado recusado inteiro tenta só o host.
+- Prova `simulated`: `backend/tests/test_avisos_portal_borda_api.py`. Real: `not_run`.
+
+## 2026-10-05 — 29.97 (parte da Canais): o aviso do vigia da borda do site (branch canais/29-97-borda-do-portal)
+
+- `avisos/domain/portal.py`: `aviso_da_borda` e `chave_da_borda`. Sete códigos do vigia do Portal, cada um com
+  assunto, o que chegou, o que é crítico e o gesto na zona da Cloudflare. Uma mensagem por código e dia UTC. O achado
+  só sai como host e caminho ou o nome do cookie; query, `=`, espaço e IP nunca saem.
+- `avisos/domain/mensagem.py`: `portal.borda` e `portal.borda_sem_conferir` no nível 2, saindo na hora.
+- `avisos/infrastructure/servico.py`: `avisar_borda_do_portal`, no molde do `avisar_resumo_do_portal` (contrato com
+  o Portal de 05/10 04:25Z).
+- `avisos/application/entrada.py` e `infrastructure/entrada.py`: a resposta do dono ao aviso vai à orquestradora como
+  recado e nunca vira pedido.
+- Leitura do #381: B1, o achado também perde o IP escondido num nome (`10.0.0.5.nip.io`, `10-0-0-5.sslip.io`) e a
+  forma curta ou decimal (`127.1`, `2130706433`); B2, `agora` sem fuso é `campo_invalido`; B3, o `sem_conferir` não
+  diz "Crítico" nem espera o dono (pode ser o caminho do central, e não o site).
+- Prova `simulated`: `backend/tests/test_avisos_portal_borda.py`. Real: `not_run`.
+
+## 2026-10-05 — T.2 (fatia do portal): a hora do portal num lugar só (branch feat/t2-relogio-do-portal)
+
+- **É refatoração de produção**, não só teste (N1 da leitura do #387): `portal/montagem.py` ganha o `RelogioDoPortal`
+  (`agora()`, `epoch_s()`, `monotonico_s()`; o `RelogioReal` usa os mesmos `now()`, `time.time()` e
+  `time.monotonic()` de antes), e passam a ler dele as rotas do contato e da exclusão, o token da página, a saúde, os
+  dois laços e o prazo total do adaptador da borda. A volta do laço do contato sai do `sleep` (`volta_do_laco`). O
+  comportamento não muda; os commits dizem `test(portal)` e não foram reescritos.
+- **Testes que deixaram o relógio real:** o token pelo HTTP (fronteira exata do mínimo e do máximo), o resumo da hora,
+  uma volta do laço, o teto por hora da exclusão pela rota e o prazo total do vigia. Ficam com a hora real as chamadas
+  `now()` passadas direto aos serviços e o `sleep(0.02)` da corrida entre threads.
+- **O relógio de verdade continua provado** (R1 da leitura do #387): um teste do `RelogioReal` (UTC, `epoch_s` igual a
+  `agora`, monotônico que não volta) e um de rota do contato SEM trocar o relógio, com o token da própria página; um
+  `epoch_s` atrasado ou um `agora` sem fuso reprovam os dois (medido por mutação).
+- **Prova:** `simulated` (`tests/test_portal_contato.py`, `test_portal_exclusao.py`, `test_portal_borda.py`). O T.2
+  segue `partial`: esta fatia é evidência, não o fecho.
+
+## 2026-10-05 — 29.101: o vigia da borda confere que a API não abre para fora (branch feat/29-101-vigia-da-api)
+
+- **Por quê** (nota da leitura do 29.97): o vigia pedia o painel, a raiz, o CSS e o JS, e não via o defeito mais grave
+  do endereço público, a API respondendo sem credencial.
+- **O quê:** um 5º GET por volta, o primeiro, a `/api/instances` pelo nome público, sem credencial e sem cookie. Só o
+  status importa: o adaptador não lê o corpo (`ler_corpo=False`), que aberto seria dado do central.
+  - 401 ou 403: ok.
+  - 2xx: defeito `api_aberta` (`onde` = `/api/instances`, o mesmo no `achado` do aviso). O aviso sai na 1ª volta,
+    pela Canais (tipo próprio dela, nível "precisa de você", um por dia), e a saúde mostra `portal_api_aberta`,
+    separado e antes do `portal_borda_defeito`, com o gesto: tirar o nome público do ar e conferir
+    `server.public_hosts` e o token.
+  - 502, 504, 52x, 530, rede ou tempo esgotado: "não consegui conferir", como o resto da volta.
+  - O desafio da borda (403 com `cf-mitigated: challenge`) e outro status (404, 3xx, 500): "não consegui conferir"
+    DA API, com o código (`api-desafio`, `api-404`), contado e avisado à parte do site (`onde=api`, saúde
+    `portal_api_sem_conferir`), para não gritar crítico à toa nem dizer que a página está fora; avisa depois de
+    `voltas_sem_conferir` voltas. O 500 diz na saúde que o pedido pode ter passado do portão.
+  - A API sem resposta (rede, 52x, tempo esgotado) com o site TAMBÉM sem conferir é a mesma queda e conta só pelo site;
+    com o site conferido na mesma volta (rota lenta, regra da zona só em `/api/*`), conta e avisa como da API.
+  - Quem liga o vigia é a subida do backend (`state.py`, tarefa `portal-borda`), no líder da trava `avisos`, com a hora
+    do projeto em UTC; há teste do laço ligado, não só da volta isolada.
+  - O vigia só avisa: não para serviço, não toca túnel nem configuração.
+- **Contrato com a Canais:** código `api_aberta`, `onde` `api`, `achado` fixo `/api/instances`. A parte dela vem em PR
+  próprio, empilhado sobre o #381.
+- **Prova:**
+  - `simulated`: `backend/tests/test_portal_borda.py` (a tabela de status da API, o 1º pedido sem credencial e sem
+    corpo lido, o aviso na hora e a saúde separada, o status estranho que só avisa depois de N voltas).
+  - `not_run`: o central. A prova `real` é a 1ª volta depois do deploy, lida na saúde (a API fechada dá ok). A API
+    aberta de verdade não se provoca.
+
 ## 2026-10-05 — 29.97: o vigia da borda (branch feat/29-97-vigia-da-borda)
 
 - **Por quê:** os dois defeitos do portal desta semana (o beacon injetado na raiz e no painel, e o CSS e o JS
@@ -56,6 +268,48 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     config) e `scripts/tests/test_portal_prova_de_fora.py` (22, a prova pela régua);
   - `not_run`: o central. A prova `real` é a 1ª volta depois do deploy 36, lida na saúde e no log. Defeito de verdade
     não se provoca: nada de religar recurso na zona.
+
+## 2026-10-05 — 31.74: o `wait_for` conta a leitura da árvore no prazo (branch fix/31-74-wait-for-pelo-relogio)
+
+- Achado real na janela do 31.40 (r-20261005071303-f24955): dois `wait_for("R$", 8)` duraram 15,6 s e 40,9 s com
+  `waited_s` 8,0. O laço (`automation/tools.py`, `execute_tool`) somava só o sono, 1 s por volta, e não as leituras da
+  árvore do Chrome.
+- Agora o prazo soma o sono pedido e a leitura medida (`tools._relogio`, injetável). Depois do último sono vem uma
+  última leitura, então a parede não passa do pedido mais uma leitura. O `waited_s` relata a parede.
+- Prova `simulated`: `tests/test_wait_for_pelo_relogio.py` (4, com leitura lenta de 1 s e 4 s num relógio falso); os 4
+  reprovam com o laço antigo. `real`: `not_run`.
+
+## 2026-10-05 — 29.106: o "começar a partir de" do grupo de acesso só vale a última escolha (branch fix/29-106-partir-de)
+
+- O defeito, achado pelo atraso semeado do 29.104 e não visto em uso: no editor de grupo novo, o "começar a partir de"
+  lia o acesso da persona sem estado de "em voo" e sem descartar a resposta velha.
+  - Escolher A e logo B, com A respondendo depois, deixava o rascunho com A.
+  - O "Criar grupo" seguia livre durante a leitura: quem clicava antes da resposta criava o grupo com o rascunho
+    anterior.
+- `frontend/src/features/profiles/PolicyGroups.tsx`:
+  - cada chamada leva um número (`useRef`), e só a última aplica a resposta, o erro e o fim da espera. Escolher o
+    "Padrão do catálogo" também aposenta a leitura em voo;
+  - com a leitura em voo (`lendoPerfil`), o Criar/Salvar e os editores de ações e de limites ficam travados, porque
+    uma escolha feita ali seria apagada pela resposta.
+- `ProfilesPage.test.tsx`: o `it.fails` do W2 (#392) virou `it` (A responde depois de B e o grupo parte de B). Um
+  caso novo prova o botão e o editor travados com a leitura segura e o grupo criado com a escolha do perfil depois
+  dela.
+- Prova `simulated` (central, 05/10, Node 24.19.0):
+  - sem o conserto, os dois casos caem nas asserções da corrida;
+  - com ele, o ProfilesPage passa com o atraso ligado (sementes 11, 44 e 88, 49/49 cada);
+  - a suíte do frontend inteira deu 1605/1605;
+  - no navegador: `not_run` até o deploy.
+
+## 2026-10-05 — 29.110: a seção "O que a ANA não faz" sai do site público (branch fix/portal-sem-o-que-a-ana-nao-faz)
+
+- Ordem do dono em chat, 05/10, na sessão do Portal: "tire o trecho abaixo agora do portal".
+- `site/index.html`: sai o bloco `<aside class="limites">`, com o título e o parágrafo. `site/assets/site.css`: sai o
+  `.limites`, que ficou sem uso; a versão `?v=` do CSS muda sozinha.
+- ADR-076 (emenda ao ADR-075): só o texto público sai. Os limites de comportamento seguem valendo no produto
+  (invariantes, ADR-009, ADR-040, rótulo de IA do Instagram).
+- Nenhum outro texto do site, nem a prova de fora, nem a régua apontava para a seção (conferido por busca).
+- Prova: `not_run` até a bateria de latência acabar; depois, `test_portal_site`, `test_portal_prova_de_fora` e
+  `docs-check`, e a página pública no navegador depois de aplicada.
 
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
@@ -349,7 +603,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   que não gravou não o faz repetir.
 - A mensagem original apagada pelo dono: o desfecho já vai com `allow_sending_without_reply` (adaptador do Telegram),
   então o 400 não acontece e não há tentativa a fazer sem a referência. No Trello, a referência é o próprio cartão, e não
-  há para onde mandar sem ele. Fica provado por teste.
+  há para onde mandar sem ele. O teste é de caracterização: o código já mandava isso desde o 28.15 (nota da leitura do
+  #361).
 - Prova: `simulated`, com 6 testes novos em `tests/test_telegram_entrada.py`; ao todo, 144 passaram em
   `test_telegram_entrada`, `test_trello_leitor` e `test_telegram_portas`. No ambiente real: `not_run`.
 

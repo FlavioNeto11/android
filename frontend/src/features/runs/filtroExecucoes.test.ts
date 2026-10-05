@@ -62,6 +62,7 @@ describe('filtros de execuções', () => {
     expect(grupoDoStatus('completed')).toBe('concluida');
     expect(grupoDoStatus('completed_with_issues')).toBe('pendencia');
     expect(grupoDoStatus('needs_input')).toBe('pendencia');
+    expect(grupoDoStatus('awaiting_person')).toBe('pendencia');    // 29.93: "Pede atenção", como o de antes
     expect(grupoDoStatus('failed')).toBe('falha');
     expect(grupoDoStatus('cancelled')).toBe('cancelada');
     for (const s of ['planning', 'running', 'paused', 'cancelling'] as const) expect(grupoDoStatus(s)).toBe('andamento');

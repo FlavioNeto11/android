@@ -678,6 +678,10 @@ class AiCfg(BaseModel):
     # de endereço do Chrome (bounds da `url_bar` na árvore) na imagem que vai ao ator e ao juiz; o texto limpo da barra
     # (31.52) segue na árvore. `false` volta a mandar a imagem como está.
     tapar_barra_de_endereco: bool = True
+    # Item 31.71, DESLIGADO por padrão (vira padrão só com o A/B): numa etapa que entrega valor (`saidas`), a imagem vai
+    # em TODA decisão enquanto faltar saída declarada (motivo `leitura_pendente`), com um lembrete só com os NOMES do
+    # que falta. Achado da r-…-2e0775: sem imagem, o ator tentava concluir ou pedia `observe_screen` (4 de 8 decides).
+    imagem_enquanto_falta_saida: bool = False
     # Item 31.35 (parte B), DESLIGADO por padrão: quantas ações o ator pode mandar numa decisão de etapa SEM efeito
     # (chamadas paralelas de ferramenta; o executor confere o alvo de cada uma na tela nova). 1 = uma só, como sempre.
     # Liga só depois do A/B com teto (sucesso igual e >= 30 % menos decisões).
@@ -1572,9 +1576,10 @@ class ContatoPublicoCfg(BaseModel):
 
 
 class PortalVigiaCfg(BaseModel):
-    """O vigia da borda (29.97): de hora em hora, no líder da trava `avisos`, o central pede o site e o painel pelo
-    primeiro nome de `server.public_hosts`, como um visitante (só GET, sem credencial, no máximo 4 pedidos por volta), e
-    confere o que a borda da Cloudflare fez com eles. Sem nome público, nada roda, mesmo com `ligado: true`."""
+    """O vigia da borda (29.97): de hora em hora, no líder da trava `avisos`, o central pede a API, o site e o painel
+    pelo primeiro nome de `server.public_hosts`, como um visitante (só GET, sem credencial, no máximo 5 pedidos por
+    volta), e confere que a API recusa (29.101) e o que a borda da Cloudflare fez com as páginas. A API é conferida
+    mesmo com `portal.site_ligado: false`. Sem nome público, ou com `ligado: false`, nada roda, nem a API."""
 
     model_config = _PORTAL_ESTRITO
 
