@@ -19,6 +19,31 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.97: o vigia da borda (branch feat/29-97-vigia-da-borda)
+
+- **Por quê:** os dois defeitos do portal desta semana (o beacon injetado na raiz e no painel, e o CSS e o JS
+  guardados por 4 h) nasceram de configuração da zona da Cloudflare, que muda a qualquer hora, e a prova de fora só
+  roda quando alguém lembra.
+- **O que muda:**
+  - `portal/domain/borda.py`, a régua: o que é defeito (`script_injetado`, `html_transformado`, `csp_ausente`,
+    `cookie`, `versao_divergente`, `pagina_fora`) e o que é "não consegui conferir" (rede, tempo esgotado, 520 a 526,
+    530, sem resposta);
+  - `scripts/portal-prova-de-fora.sh` passa a decidir pela mesma régua, por `scripts/portal-regua-da-borda.py`, que
+    carrega o arquivo do domínio pelo caminho (sem venv). As linhas saem iguais; o script no FALHOU sai sem query. A
+    variável `CSP_DO_PAINEL=so_relatar` serve à rodada de uma subida em relatório;
+  - `portal/application/vigia.py` e `portal/adapters/borda_http.py`: de hora em hora, no líder da trava `avisos`, até
+    4 GET pelo 1º nome público, como navegador e sem credencial. O estado fica em memória, a saúde o lê
+    (`portal_borda_defeito`, `portal_borda_sem_conferir`), e o aviso vai pela Canais (`avisar_borda_do_portal`, PR
+    dela), um por código e por dia;
+  - `portal.vigia` (`ligado`, `intervalo_s`, `prazo_s`, `voltas_sem_conferir`) no config estrito e no exemplo.
+- **Prova:**
+  - `simulated`: `tests/test_portal_borda.py` (24: a volta limpa com 4 GET sem credencial, cada defeito com código,
+    lugar e nenhum segredo, a CSP conforme o modo do painel, rede, tempo e túnel como "não conferido", o aviso só na
+    transição e um por dia, o canal que não enfileira tentando de novo, N voltas seguidas, a saúde sem rede, o nome do
+    config) e `scripts/tests/test_portal_prova_de_fora.py` (22, a prova pela régua);
+  - `not_run`: o central. A prova `real` é a 1ª volta depois do deploy 36, lida na saúde e no log. Defeito de verdade
+    não se provoca: nada de religar recurso na zona.
+
 ## 2026-10-05 — 29.95: o site aponta cada arquivo pela versão do conteúdo (branch feat/29-95-versao-dos-arquivos-do-site)
 
 - **Por quê** (caminhada da orquestradora depois do deploy 34): no Chrome do dono, o rótulo "Ilustração" seguiu com a

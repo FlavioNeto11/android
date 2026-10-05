@@ -267,6 +267,22 @@ async def test_saude_le_so_o_estado_e_o_nome_vem_do_config(harness: Harness) -> 
     assert "portal_borda_sem_conferir" in codigos
 
 
+def test_a_regua_e_o_cli_da_prova_de_fora_rodam_sem_o_venv() -> None:
+    """A prova de fora roda com qualquer Python do PATH, sem o venv: a régua e o CLI que a carrega pelo caminho só podem
+    importar a biblioteca padrão (e a régua, nada de `app`)."""
+    import ast
+    import sys
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[2]
+    for arquivo in (raiz / "backend/app/modules/portal/domain/borda.py", raiz / "scripts/portal-regua-da-borda.py"):
+        arvore = ast.parse(arquivo.read_text(encoding="utf-8"))
+        nomes = {a.name.split(".")[0] for n in ast.walk(arvore) if isinstance(n, ast.Import) for a in n.names}
+        nomes |= {n.module.split(".")[0] for n in ast.walk(arvore) if isinstance(n, ast.ImportFrom) and n.module}
+        fora = sorted(n for n in nomes if n not in sys.stdlib_module_names and n != "__future__")
+        assert not fora, f"{arquivo.name} importa fora da biblioteca padrão: {fora}"
+
+
 def test_configuracao_do_vigia_e_estrita() -> None:
     from pydantic import ValidationError
 

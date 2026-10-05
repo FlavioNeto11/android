@@ -89,6 +89,7 @@ if [[ "$caminho" == / && "$codigo" == 200 && "$navegador" == 1 ]]; then
   corpo="$corpo<script src=\"/assets/site.js?v=2026-10-05T01:00\" defer></script></head><body><main></main>"
   case "$QUEBRA" in
     beacon) corpo="$corpo<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{\"token\": \"x\"}'></script>" ;;
+    beacon_com_token) corpo="$corpo<script defer src=\"https://static.cloudflareinsights.com/beacon.min.js?token=tk-beacon-9f31\"></script>" ;;
     script_de_fora) corpo="$corpo<script src=\"https://cdn.exemplo.invalid/x.js\"></script>" ;;
     src_espacado) corpo="$corpo<script"$'\n'"  defer"$'\n'"  src = \"https://cdn.exemplo.invalid/y.js\"></script>" ;;
     maiuscula) corpo="$corpo<SCRIPT SRC='HTTPS://cdn.exemplo.invalid/z.js'></SCRIPT>" ;;
@@ -231,6 +232,16 @@ def test_script_que_a_pagina_nao_tem_reprova_e_diz_onde_desligar(tmp_path: Path,
     assert r.returncode == 1, r.stdout
     assert "FALHOU / (como navegador)" in r.stdout and esperado in r.stdout
     assert "Web Analytics" in r.stdout and "Rocket Loader" in r.stdout and "Nao afrouxe a CSP" in r.stdout
+
+
+def test_a_linha_do_script_injetado_sai_sem_a_query(tmp_path: Path) -> None:
+    """29.97: o beacon leva o token da conta na query. A linha da prova (que vai a log, chat e PR) diz qual script, e
+    nunca a query dele."""
+    r, _ = _rodar(tmp_path, quebra="beacon_com_token")
+    assert r.returncode == 1, r.stdout
+    assert "FALHOU / (como navegador)" in r.stdout
+    assert "https://static.cloudflareinsights.com/beacon.min.js" in r.stdout
+    assert "tk-beacon-9f31" not in r.stdout + r.stderr and "?token" not in r.stdout
 
 
 def test_raiz_que_nao_vem_200_como_navegador_reprova(tmp_path: Path) -> None:
