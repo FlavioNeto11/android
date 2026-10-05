@@ -1504,17 +1504,16 @@ async def set_persona_image_feita_por_ia(request: Request, persona_id: str, imag
     regravam o `rotulo_ia`, e o sim dado antes deixa de cobrir a publicação (a chave muda)."""
     s = st(request)
     pid = _pessoa(s, persona_id).id
-    anterior = s.persona_images.obter(pid, image_id)
     # N2 da revisão: a marca e as etapas abertas mudam juntas; se a regravação falhar no meio, nenhuma das duas fica.
     with s.db.tx():
         try:
-            registro = s.persona_images.marcar_feita_por_ia(pid, image_id, body.feita_por_ia)
+            registro, mudou = s.persona_images.marcar_feita_por_ia(pid, image_id, body.feita_por_ia)
         except KeyError:
             raise err(404, "not_found", "Imagem não encontrada nesta persona.") from None
         except ValueError as exc:
             raise err(409, "nao_e_upload", str(exc)) from None
-        # N3: a mesma resposta não regrava as etapas abertas nem invalida o sim dado a elas.
-        if anterior is None or anterior.feita_por_ia != registro.feita_por_ia:
+        # N3/R1: só a resposta que MUDOU (decidido na escrita, dentro da transação) regrava as etapas abertas.
+        if mudou:
             s.repo.ressincronizar_rotulo_ia(image_id)
     return imagens_dto([registro])[0]
 

@@ -66,9 +66,14 @@ class SqlPersonaImages:
             self._db.execute("UPDATE persona_images SET is_primary=0 WHERE persona_id=? AND is_primary=1", (persona_id,))
             self._db.execute("UPDATE persona_images SET is_primary=1 WHERE id=? AND persona_id=?", (image_id, persona_id))
 
-    def set_feita_por_ia(self, persona_id: str, image_id: str, valor: bool | None) -> None:
-        self._db.execute("UPDATE persona_images SET feita_por_ia=? WHERE id=? AND persona_id=?",
-                         (None if valor is None else int(valor), image_id, persona_id))
+    def set_feita_por_ia(self, persona_id: str, image_id: str, valor: bool | None) -> bool:
+        # R1 da revisão do #351: "mudou" sai da escrita condicional (nulo comparado como -1, igual no SQLite e no
+        # PostgreSQL), não de uma leitura anterior: duas marcações concorrentes não ficam ambas "sem mudança".
+        novo = None if valor is None else int(valor)
+        cursor = self._db.execute("UPDATE persona_images SET feita_por_ia=? WHERE id=? AND persona_id=?"
+                                  " AND COALESCE(feita_por_ia, -1) <> COALESCE(?, -1)",
+                                  (novo, image_id, persona_id, novo))
+        return bool(cursor.rowcount)
 
     def delete(self, persona_id: str, image_id: str) -> None:
         self._db.execute("DELETE FROM persona_images WHERE id=? AND persona_id=?", (image_id, persona_id))

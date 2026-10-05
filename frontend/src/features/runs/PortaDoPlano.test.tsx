@@ -87,6 +87,15 @@ describe('PortaDoPlano (30.61)', () => {
     expect(byRole('button', /Aprovar 1 e iniciar/)).toBeTruthy();
   });
 
+  it('plural de verdade com 2: "2 ações em 2 aparelhos: 2 pedem seu aval"', async () => {
+    backend.on('GET', /\/runs\/run-p\/porta$/, () => json(previa([
+      item({ step_id: 'run-p:android-01:v1:dm' }),
+      item({ objective_id: 'run-p:android-02', step_id: 'run-p:android-02:v1:dm', aparelho: 'android-02' }),
+    ])));
+    await montar();
+    expect(text(container)).toContain('2 ações em 2 aparelhos: 2 pedem seu aval');
+  });
+
   it('aprova com a chave vista, manda o texto editado e as tiradas', async () => {
     backend.on('POST', /\/runs\/run-p\/aprovar-plano$/, () => json({
       run: { id: 'run-p', status: 'running' }, aprovacoes: ['apr-1'], tiradas: [], validade_ate: '2026-10-05T21:00:00.000Z',
