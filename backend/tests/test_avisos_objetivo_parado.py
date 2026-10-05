@@ -10,6 +10,7 @@ repositório de mentira.
 from __future__ import annotations
 
 import json
+import re
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -38,6 +39,8 @@ from app.util import now, to_iso
 from .test_avisos_servico import AQUI, CanalFalso, Relogio, _backend, _cfg
 
 PAINEL = "https://painel.exemplo/central"
+RUN = "r-20261005034000-abc123"
+ROOT = Path(__file__).resolve().parents[1]
 REDIGIR = TriagemDeCredencial().redigir
 ESPERA = "2026-10-05T03:40:00.000Z"
 
@@ -57,13 +60,27 @@ def _dados(obj: dict[str, object] | None = None, **kw: object) -> dict[str, obje
 
 # ===================================================================== 1. o montador
 def test_o_objetivo_parado_diz_onde_e_o_gesto_e_sai_na_hora_com_o_link() -> None:
-    a = aviso_de_evento("objective.updated", _dados(), 7, PAINEL)
+    a = aviso_de_evento("objective.updated", _dados(_obj(run_id=RUN)), 7, PAINEL)
     assert a is not None
     assert a.tipo == "objective.waiting_user" and a.chave == f"objective:r1:o1:{ESPERA}"
     assert a.titulo == "ANA: ✋ O objetivo no android-13 parou esperando você"
-    assert a.corpo == GESTO_DO_OBJETIVO
-    assert a.link == f"{PAINEL}/#/pendencias"
+    assert a.corpo == ("Espera você: abra a execução no painel e, no item parado, escolha Assumir controle, Tentar "
+                       "novamente ou Abandonar.")
+    # O objetivo parado não está na caixa de Pendências (ADR-062, D1): o link é a própria execução, e o id não vai
+    # ao texto.
+    assert a.link == f"{PAINEL}/#/execucoes/{RUN}" and RUN not in a.titulo + a.corpo
     assert a.nivel == PRECISA_DE_VOCE and entrega_do_tipo(a.tipo) == AGORA
+
+
+@pytest.mark.parametrize("run_id", ["r1", "r-2026/../x", None, "r-20261005034000-abc123?x=1"])
+def test_id_de_execucao_fora_do_formato_abre_so_a_tela(run_id: object) -> None:
+    a = aviso_de_evento("objective.updated", _dados(_obj(run_id=run_id)), 7, PAINEL)
+    assert a is not None and a.link == f"{PAINEL}/#/execucoes"
+
+
+def test_sem_base_publica_o_aviso_sai_sem_link() -> None:
+    a = aviso_de_evento("objective.updated", _dados(_obj(run_id=RUN)), 7, "ftp://painel")
+    assert a is not None and a.link is None
 
 
 def test_sem_aparelho_o_assunto_e_generico() -> None:
@@ -142,8 +159,10 @@ def test_o_tipo_entra_nos_que_avisam_no_nivel_e_na_rajada() -> None:
 # ===================================================================== 2. a conta em tela não reconhecida (29.92)
 def test_a_conta_em_tela_nao_reconhecida_tem_as_tres_linhas_dela() -> None:
     a = aviso_de_evento("session.needs_person", {"instance_id": "android-13", "status": "unknown", "active": True,
-                                                 "detail": "tela com @fulana"}, 11)
+                                                 "detail": "tela com @fulana"}, 11, PAINEL)
     assert a is not None
+    # O link abre o Foco do aparelho, onde fica o "Assumir controle" (Pendências seria um clique a mais).
+    assert a.link == f"{PAINEL}/#/painel?foco=android-13"
     assert a.titulo == "ANA: 🔐 android-13: tela de app não reconhecida; a automação parou sem tocar nela"
     linhas = a.corpo.split("\n")
     assert linhas[0] == "Nada foi tentado: nem voltar, nem entrar com a senha."
@@ -154,8 +173,29 @@ def test_a_conta_em_tela_nao_reconhecida_tem_as_tres_linhas_dela() -> None:
 
 @pytest.mark.parametrize("status", ["auth_challenge", "wrong_account", "outro"])
 def test_as_outras_situacoes_da_conta_seguem_com_as_linhas_de_sempre(status: str) -> None:
-    a = aviso_de_evento("session.needs_person", {"instance_id": "android-13", "status": status, "active": True}, 11)
+    a = aviso_de_evento("session.needs_person", {"instance_id": "android-13", "status": status, "active": True}, 11,
+                        PAINEL)
     assert a is not None and a.corpo.split("\n") == LINHAS_DA_CONTA_PADRAO
+    assert a.link == f"{PAINEL}/#/pendencias", "as outras situações aparecem na caixa e seguem com o link dela"
+
+
+def test_aparelho_fora_do_formato_abre_so_o_painel() -> None:
+    a = aviso_de_evento("session.needs_person", {"instance_id": "android 13&x=1", "status": "unknown", "active": True},
+                        11, PAINEL)
+    assert a is not None and a.link == f"{PAINEL}/#/painel"
+
+
+def test_toda_tela_de_link_de_aviso_existe_nas_rotas_do_painel() -> None:
+    """Catraca: o link de um aviso nomeia uma tela de `TELAS` (`frontend/src/lib/rotas.ts`). Em 05/10 o 28.40 quase
+    mandou o dono a `#/aparelhos`, que não existe."""
+    rotas = (ROOT.parent / "frontend" / "src" / "lib" / "rotas.ts").read_text(encoding="utf-8")
+    bloco = re.search(r"export const TELAS = \[(.*?)\] as const", rotas, re.S)
+    assert bloco is not None, "TELAS sumiu de rotas.ts: atualize esta catraca"
+    telas = set(re.findall(r"'([a-z]+)'", bloco.group(1)))
+    usadas = {t for arq in (ROOT / "app" / "modules" / "avisos").rglob("*.py")
+              for t in re.findall(r"#/([a-z]+)", arq.read_text(encoding="utf-8"))}
+    assert usadas and "pendencias" in usadas and "execucoes" in usadas and "painel" in usadas
+    assert usadas <= telas, f"tela de link que o painel não conhece: {sorted(usadas - telas)}"
 
 
 # ===================================================================== 3. o serviço
@@ -392,3 +432,19 @@ def test_o_motivo_livre_do_objetivo_parado_nao_vira_evidencia(tmp_path: Path) ->
     banco.execute("UPDATE objectives SET status='waiting_user' WHERE id='r1:o1'")
     texto = portas.desfecho("r1") or ""
     assert "Evidência" not in texto and "MARCADOR" not in texto
+
+
+def test_a_evidencia_e_de_objetivo_que_terminou_nos_dois_bancos(tmp_path: Path) -> None:
+    """N3 da revisão do #372: na execução falha, o objetivo ainda aberto (sem `finished_at`) não é a evidência. O `DESC`
+    põe `NULL` primeiro no PostgreSQL e por último no SQLite: sem o filtro, os dois bancos escolheriam diferente."""
+    _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
+    _run(banco, "r1", chave="k-comum")
+    for oid, aparelho, status, detalhe, fim in (
+            ("r1:o1", "android-12", "failed", "a falha que terminou", "2026-10-05T03:00:00.000Z"),
+            ("r1:o2", "android-13", "running", "MARCADOR ainda aberto", None)):
+        banco.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, status_detail, finished_at)"
+                      " VALUES (?,?,?,?,?,?,?)", (oid, "r1", aparelho, status, 1, detalhe, fim))
+    portas = _portas(RunStatus.failed, failed=1, running=1)
+    portas.db = banco
+    texto = portas.desfecho("r1") or ""
+    assert "Evidência: a falha que terminou" in texto and "MARCADOR" not in texto

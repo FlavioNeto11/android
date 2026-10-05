@@ -149,8 +149,10 @@ LINHAS_DA_CONTA: dict[str, list[str]] = {
                 "a sessão e segue."],
 }
 LINHAS_DA_CONTA_PADRAO = ["Nada é tentado na tela até alguém resolver.", "Espera você: resolva no aparelho pelo painel."]
-#: 28.40: o gesto do objetivo parado. Quem decide é a caixa de Pendências (retomar, ajustar ou abandonar o item).
-GESTO_DO_OBJETIVO = "Espera você: veja o motivo e decida na caixa de Pendências."
+#: 28.40: o gesto do objetivo parado. Ele NÃO está na caixa de Pendências (ADR-062, D1: o `waiting_user` fica em
+#: Execuções); os botões do item parado são os de `frontend/src/features/runs/InstancesTab.tsx`.
+GESTO_DO_OBJETIVO = ("Espera você: abra a execução no painel e, no item parado, escolha Assumir controle, Tentar novamente "
+                     "ou Abandonar.")
 #: O que parou o objetivo, pelo `failure_kind` do `objective.updated` (29.90) ou, sem ele, pelo `blocked_kind`. Texto fixo:
 #: o `status_detail` e o `needs` nunca saem (podem trazer tela, conta ou texto do comando). Fora do mapa (o `ui_ocupada`
 #: do 29.87, nulo antes da classificação), a mensagem fica sem a linha do motivo.
@@ -217,6 +219,24 @@ def link_da_caixa(url_painel: str | None) -> str | None:
     if not base.lower().startswith(("http://", "https://")):
         return None
     return base.rstrip("/") + "/" + CAMINHO_DA_CAIXA
+
+
+#: 28.40 (orquestradora, 05/10 04:24Z): os links que não são a caixa, pelas rotas do painel (`frontend/src/lib/rotas.ts`):
+#: a execução (`#/execucoes/<id>`) e o Foco do aparelho (`#/painel?foco=<id>`, parâmetro global). O id só entra se casar
+#: INTEIRO com o formato; senão o link abre só a tela.
+ID_DE_EXECUCAO = re.compile(r"r-\d{14}-[0-9a-f]{6}")
+ID_DE_APARELHO = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,62}")
+
+
+def link_da_tela(url_painel: str | None, caminho: str) -> str | None:
+    """`<base>/<caminho>` com a mesma regra da `link_da_caixa` (só `http(s)://`)."""
+    caixa = link_da_caixa(url_painel)
+    return caixa.removesuffix(CAMINHO_DA_CAIXA) + caminho if caixa else None
+
+
+def _id_valido(formato: re.Pattern[str], valor: object) -> str | None:
+    texto = _texto(valor)
+    return texto if texto and formato.fullmatch(texto) else None
 
 
 def _texto(valor: object) -> str | None:
@@ -420,6 +440,11 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         situacao = SITUACAO_DA_CONTA.get(status, "uma conta pede intervenção humana")
         assunto = f"🔐 {aparelho}: {situacao}" if aparelho else f"🔐 {situacao[0].upper()}{situacao[1:]}"
         linhas = list(LINHAS_DA_CONTA.get(status, LINHAS_DA_CONTA_PADRAO))
+        if status == "unknown":
+            # O link abre o Foco do aparelho, onde fica o "Assumir controle" que a linha 3 pede (a tela não reconhecida
+            # só entra em Pendências com o 29.96, e lá seria um clique a mais). As outras situações seguem com a caixa.
+            foco = _id_valido(ID_DE_APARELHO, aparelho)
+            link = link_da_tela(url_painel, f"#/painel?foco={foco}" if foco else "#/painel")
     elif kind == "objective.updated":
         # 28.40: o objetivo que ENTRA em `waiting_user` pedindo a pessoa, de qualquer origem (a folha de tela não
         # reconhecida do 29.87, a falta de informação, a política, a IA indisponível, o pré-voo). A aprovação fica de
@@ -441,6 +466,9 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         motivo = MOTIVO_DA_PARADA.get(_texto(d.get("failure_kind")) or _texto(o.get("blocked_kind")) or "")
         assunto = f"✋ {f'O objetivo no {aparelho}' if aparelho else 'Um objetivo'} parou esperando você"
         linhas = [x for x in (f"Etapa que espera: {etapa}." if etapa else None, motivo, GESTO_DO_OBJETIVO) if x]
+        # A própria execução: o objetivo parado não está na caixa de Pendências. O id não aparece no texto.
+        run = _id_valido(ID_DE_EXECUCAO, o.get("run_id"))
+        link = link_da_tela(url_painel, f"#/execucoes/{run}" if run else "#/execucoes")
     elif kind == "pedido.aviso":
         aviso = _filho(dados, "aviso")
         ident = _texto(aviso.get("id")) or (f"evento-{evento_id}" if evento_id else None)

@@ -24,9 +24,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `avisos/domain/mensagem.py`: tipo `objective.waiting_user` (nível 1, sai na hora, com rajada). O objetivo que entra
   em `waiting_user` pedindo a pessoa, de qualquer origem, avisa uma vez por espera (`objective:<id>:<finished_at>`); a
   aprovação fica de fora. Texto fixo: aparelho, etapa que espera (nome do catálogo ou chave), motivo pelo
-  `failure_kind` do 29.90 ou pelo `blocked_kind`, e o gesto da caixa de Pendências; nunca o detalhe, o `needs` nem o
-  título da etapa. A conta em tela não reconhecida (`unknown`, 29.92) ganha a frase e as três linhas revisadas pela
-  Aprendizado.
+  `failure_kind` do 29.90 ou pelo `blocked_kind`, e o gesto do item parado na execução (Assumir controle, Tentar
+  novamente ou Abandonar), com o link da própria execução: o objetivo parado não está na caixa de Pendências; nunca o
+  detalhe, o `needs` nem o título da etapa. A conta em tela não reconhecida (`unknown`, 29.92) ganha a frase e as três
+  linhas revisadas pela Aprendizado, e o link abre o Foco do aparelho, onde fica o "Assumir controle". Catraca: toda tela de link de aviso
+  existe nas rotas do painel.
 - `avisos/infrastructure/servico.py`: `objective.updated` entra nos eventos que avisam; o serviço põe a capability da
   etapa em `waiting_user` e o nome dela; o lote de frente cala pelo mesmo `_e_de_prova` do `run.updated`; o aviso de
   conta do mesmo aparelho, ativo e posterior à criação da execução, cala o objetivo só se for da mesma conta (ou, sem

@@ -176,9 +176,11 @@ class PortasReais:
                 # 28.40: o objetivo parado não termina sozinho; sem o gesto, "concluída com problemas" parecia o fim.
                 linhas.append(GESTO_DO_OBJETIVO)
         # O objetivo parado (`waiting_user`) não é evidência: o motivo livre dele traz texto de tela ou de conta, que o
-        # aviso do 28.40 nunca manda (revisão do #372, O2). O gesto acima já diz onde ver.
+        # aviso do 28.40 nunca manda (revisão do #372, O2). O gesto acima já diz onde ver. Só o objetivo que terminou
+        # (N3): `NULL` vem primeiro no `DESC` do PostgreSQL e por último no do SQLite.
         evidencia = self.db.scalar("SELECT status_detail FROM objectives WHERE run_id=? AND status_detail IS NOT NULL"
-                                   " AND status <> 'waiting_user' ORDER BY finished_at DESC, id DESC LIMIT 1", (run_id,))
+                                   " AND status <> 'waiting_user' AND finished_at IS NOT NULL"
+                                   " ORDER BY finished_at DESC, id DESC LIMIT 1", (run_id,))
         detalhe = evidencia or resumo.status_detail
         if detalhe:
             linhas.append(f"Evidência: {str(detalhe)[:300]}")
