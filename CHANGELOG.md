@@ -30,6 +30,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O texto continua onde quem decide o vê: na etapa e no pedido de aprovação.
 - Prova: `simulated` (`backend/tests/test_rascunho_fora_do_log.py`, 2 testes; falham com o código da main). Rodada
   dirigida: 170 passed.
+
 ## 2026-10-05 — 31.61 (A): leitura julgada com prova local de tela fecha sem `step_done` (branch feat/31-61-leitura-sem-step-done)
 
 - **Etapa:** a de leitura (tem saídas, sem efeito, sem `commit_guard`, sem `commit_selector`), julgada, com prova local
@@ -51,6 +52,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   na lista relida não confirma "QA-001".
 - Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`; o `_prova_local` é dublê por árvore). Real:
   `not_run`, janela depois do deploy 34.
+
 ## 2026-10-05 — 31.62: bolha sem id, o "abaixo" em todos os contêineres de lista, pelo centro (branch feat/31-62-lista-de-todos-os-conteineres)
 
 - **Todos os contêineres:** `UiTree._ultima_sem_tipo` confere "mensagem abaixo" em TODOS os contêineres de lista que
@@ -63,6 +65,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   iria ao juiz. Pelo centro (y=1168), ele fica fora.
 - Prova: `simulated` (`backend/tests/test_bolha_sem_id.py`, 2 testes novos que falham no código anterior). Real:
   `not_run`.
+
 ## 2026-10-05 — 28.36: a aprovação no plano trava a linha da execução (branch canais/28-36-trava-na-aprovacao)
 
 - `aprovar_plano` conferia a execução com um `SELECT`. Com dois backends no PostgreSQL (read committed), o cancelamento
@@ -83,6 +86,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   início; a trava da linha antes do primeiro sim). Ao todo 124 passaram (`test_telegram_portas`, `test_porta_do_plano`,
   `test_avisos_porta`, `test_executor_honra_o_plano`, `test_telegram_entrada`, `test_cobertura_de_rotas`), em Idle e
   sem `-n`. A corrida entre dois backends no PostgreSQL: `not_run` (não roda num processo só).
+
 ## 2026-10-05 — 31.68 (G1b): o sim do plano cobre só a repetição vista na prévia (branch feat/g1b-vista-em-na-aprovacao)
 
 - **O resíduo do #330:** o sim dado na prévia valia desde o clique. A DM igual mandada ou aprovada entre a prévia na tela
@@ -149,6 +153,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   continua lendo o estado de agora.
 - Prova `simulated`: dois testes novos em `tests/test_decisoes_registro_coerente.py`, que falham com a memória desligada
   (as leituras se repetiam por item) e passam com ela. 86 passed nos cinco arquivos de decisões.
+
 ## 2026-10-04 — 28.34: contato do site excluído a pedido do titular some do canal (branch canais/28-34-exclusao-do-contato)
 
 - **Por quê:** o 29.83 do Portal apaga um contato do site a pedido de quem escreveu. Sem o lado do canal, o aviso
@@ -269,6 +274,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - os novos: 13 na conversa (`test_telegram_entrada.py`, com o falso da porta), 2 nas portas reais no harness
     (`test_telegram_portas.py`) e 5 no domínio (`test_avisos_porta.py`).
 - `not_run`: o Telegram real e um plano real com item que pede o sim.
+
 ## 2026-10-05 — 28.35: a trava `avisos` só fica com quem usa um canal (branch canais/28-35-trava-so-com-aviso)
 
 - Antes, `faxinar_canais` tomava a trava `avisos` sem olhar `avisos.enabled`, e o backend desligado a segurava até o
@@ -339,6 +345,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_limites_por_servidor.py::test_api_lista_e_muda_limites_do_host_e_do_worker`
   e `frontend/src/store/metricas.test.ts` (9 ligados, 9 decididas, 6 declaradas: sem "acima"; backend antigo segue o
   declarado). A mutação para a regra antiga derruba o caso novo. `not_run`: a leitura no painel do central depois do deploy.
+
 ## 2026-10-04 — 31.53: a família do pedido também se compara pelo objeto, e o texto que cita outra conta dela passa por aprovação (branch feat/31-53-objeto-alvo-na-familia)
 
 Lado Jev do 28.10 F5, sobre o 31.49 (#330).
