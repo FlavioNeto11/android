@@ -19,12 +19,12 @@ import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '..
 import { conteudoAoTopo } from '../../lib/scroll';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { lembrarVisao, visaoPreferida } from '../../lib/visao';
-import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
+import { metaDaSessao } from '../../lib/status';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
 // Estados de sessão que só uma pessoa resolve: o mesmo conjunto da caixa de Pendências (fila e caixa não divergem).
-import { PRECISA_DE_PESSOA } from '../pendencias/modelo';
+import { precisaDePessoa } from '../pendencias/modelo';
 import { BarraDeLote } from './AcoesEmLote';
 import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
@@ -350,7 +350,7 @@ function InterventionQueue({ profiles, instances, workers }: {
 
   const itens = useMemo(
     () => profiles
-      .filter((p) => PRECISA_DE_PESSOA.has(p.session.status))
+      .filter((p) => precisaDePessoa(p.session))
       // Mais velho primeiro: quem está esperando há mais tempo aparece no topo.
       .sort((a, b) => (a.session.verified_at ?? '').localeCompare(b.session.verified_at ?? '')),
     [profiles],
@@ -372,14 +372,14 @@ function InterventionQueue({ profiles, instances, workers }: {
             <Badge tone="warning">{itens.length}</Badge>
           </span>
         }
-        subtitle="Login, desafio de segurança ou conta errada — só uma pessoa resolve. Assuma o controle e resolva na tela do aparelho; devolver o controle relê a tela sozinho."
+        subtitle="Login, desafio de segurança, conta errada ou tela que a automação não reconheceu — só uma pessoa resolve. Assuma o controle e resolva na tela do aparelho; devolver o controle relê a tela sozinho."
       />
       <CardBody>
         <ul className={styles.filaLista}>
           {itens.map((p) => {
             const inst = p.instance_id ? instances[p.instance_id] : undefined;
             const server = inst ? serverHintOf(inst, workers) : null;
-            const sess = metaOf(ACCOUNT_SESSION_STATUS, p.session.status);
+            const sess = metaDaSessao(p.session);
             return (
               <li key={p.id} className={styles.filaItem}>
                 <Avatar src={profileAvatarUrl(p.id, p.has_avatar)} name={p.display_name || p.username} size={32} />

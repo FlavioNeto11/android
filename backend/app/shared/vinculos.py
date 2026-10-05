@@ -32,10 +32,21 @@ def tem_vinculo_ativo(db: _Consulta, instance_id: str) -> bool:
                   (instance_id,)) is not None
 
 
+def teto_de_unknown(db: _Consulta, instance_id: str, teto_global: int | None) -> int | None:
+    """29.92: quantas reobservações seguidas em `unknown` se aceitam neste aparelho antes de parar e chamar uma pessoa.
+
+    Aparelho com vínculo ativo (conta real) tem teto 1: a rodada seguinte reabriria o app e, caindo na tela de login,
+    digitaria a senha guardada em cima de uma tela que ninguém reconheceu. Nos demais, o teto global
+    (`session_unknown_retry_cap`, de quem chama: a porta lê os ajustes ao vivo, o provedor de recursos e o repositório
+    recebem o valor na montagem). `None` sem teto global. É a regra única da porta de sessão, da prévia de recursos e do
+    campo `SessionInfo.unknown_at_cap` (29.96)."""
+    return 1 if tem_vinculo_ativo(db, instance_id) else teto_global
+
+
 def aparelhos_com_vinculo_ativo(db: _Consulta) -> set[str]:
     """Todos os aparelhos com vínculo ativo de persona, numa consulta só."""
     return {str(r["instance_id"]) for r in
             db.query("SELECT DISTINCT instance_id FROM device_profile_bindings WHERE active=1", ())}
 
 
-__all__ = ["aparelhos_com_vinculo_ativo", "tem_vinculo_ativo"]
+__all__ = ["aparelhos_com_vinculo_ativo", "tem_vinculo_ativo", "teto_de_unknown"]

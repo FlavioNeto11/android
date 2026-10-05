@@ -676,6 +676,12 @@ export interface SessionInfo {
   detail: string | null;
   /** "Conectado" verificado há tempo demais: o aparelho é relido antes da próxima tarefa. */
   stale: boolean;
+  /**
+   * 29.96 (adendo v1.48): `unknown` NO TETO do aparelho — a automação parou sem tocar numa tela que não reconheceu e
+   * espera uma pessoa (a mesma regra do `session.needs_person`). Opcional só para os dublês de teste antigos: o backend
+   * sempre manda; ausente vale `false`.
+   */
+  unknown_at_cap?: boolean;
 }
 
 /** Política de localidade: o que fazer quando o servidor onde os dados do perfil vivem não responde. */

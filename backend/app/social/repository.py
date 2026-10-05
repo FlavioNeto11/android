@@ -22,7 +22,7 @@ from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
 from ..planning.catalog import pacote_ancora
 from ..metricas import metricas
-from ..shared.vinculos import tem_vinculo_ativo
+from ..shared.vinculos import teto_de_unknown
 from ..util import new_token, now, now_iso, to_iso
 from .contas_nossas import hash_do_handle, citacao_da_conta, foi_retirada, registrar_lapide, rotulo_da_conta, MARCADOR
 from .limpeza_de_conta import AparelhoDaLimpeza
@@ -1074,9 +1074,13 @@ class SocialRepository:
         pessoa. Aparelho com vínculo ativo (conta real, `shared.vinculos`) tem teto 1: a rodada seguinte reabre o app
         e, se cair na tela de login, digita a senha guardada (`_login(automatic=True)`) — em cima de uma tela que
         ninguém reconheceu. Nos demais, o teto global (`session_unknown_retry_cap`). `None` sem teto configurado."""
-        if tem_vinculo_ativo(self.db, instance_id):
-            return 1
-        return self.teto_de_reobservacao() if self.teto_de_reobservacao is not None else None
+        return teto_de_unknown(self.db, instance_id,
+                               self.teto_de_reobservacao() if self.teto_de_reobservacao is not None else None)
+
+    def parada_no_teto(self, sessao: Row | None) -> bool:
+        """29.96: `SessionInfo.unknown_at_cap` — a sessão lida (`_SESSAO`) está em `unknown` no teto do aparelho DELA
+        (a coluna `instance_id`; a sessão de outro aparelho responde pelo teto de lá)."""
+        return sessao is not None and self.unknown_no_teto(sessao, str(sessao["instance_id"]))
 
     def unknown_no_teto(self, sessao: Row | None, instance_id: str) -> bool:
         """29.92: a sessão gravada está em `unknown` no teto deste aparelho, isto é, parada esperando uma pessoa."""
@@ -1261,7 +1265,7 @@ class SocialRepository:
                 observed_username=session["observed_username"] if session else None,
                 verified_at=session["verified_at"] if session else None,
                 detail=session["detail"] if session else None,
-                stale=sessao_vencida(session, self.session_max_age_s)),
+                stale=sessao_vencida(session, self.session_max_age_s), unknown_at_cap=self.parada_no_teto(session)),
             app_on_device=app, session_actions=acoes,
             last_verified_at=row["last_verified_at"], last_activity_at=row["last_activity_at"])
 
@@ -1275,7 +1279,8 @@ class SocialRepository:
         return SessionInfo(
             status=SessionStatus(s["status"]) if s else SessionStatus.unknown, instance_id=instance_id,
             observed_username=s["observed_username"] if s else None, verified_at=s["verified_at"] if s else None,
-            detail=s["detail"] if s else None, stale=sessao_vencida(s, self.session_max_age_s))
+            detail=s["detail"] if s else None, stale=sessao_vencida(s, self.session_max_age_s),
+            unknown_at_cap=self.parada_no_teto(s))
 
     def devices_de(self, profile_id: str) -> list[PersonaDeviceDTO]:
         """`PersonaDTO.devices` (051): cada vínculo ativo, o principal primeiro, com o estado do aparelho quando o

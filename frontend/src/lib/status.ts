@@ -218,6 +218,22 @@ export const SESSION_STATUS = {
 } as const satisfies Record<string, StatusMeta>;
 
 /**
+ * 29.96: a sessão `unknown` NO TETO do aparelho (`SessionInfo.unknown_at_cap`). O estado continua `unknown`, mas não é
+ * "ninguém olhou": a automação olhou, não reconheceu a tela e parou sem tocar nela — só uma pessoa resolve.
+ */
+export const SESSAO_PARADA_NO_TETO: StatusMeta = {
+  label: 'Tela não reconhecida', tone: 'warning', icon: ShieldAlert,
+  description: 'A automação parou sem tocar numa tela que não reconheceu. Assuma o controle do aparelho, resolva a tela '
+    + 'e devolva à IA; a sessão é relida sozinha.',
+};
+
+/** O selo da sessão: o do estado, salvo a parada no teto, que tem o seu (29.96). */
+export function metaDaSessao(session: { status?: string | null; unknown_at_cap?: boolean } | null | undefined): StatusMeta {
+  if (session?.unknown_at_cap) return SESSAO_PARADA_NO_TETO;
+  return metaOf(ACCOUNT_SESSION_STATUS, session?.status ?? 'unknown');
+}
+
+/**
  * Sessão de uma CONTA do perfil num app (`ProfileAccount.session_status`, `AppDetail.accounts[].session_status`):
  * os valores do Instagram mais os que a pessoa marca à mão nos apps sem login automático ("entrei"/"saí").
  */

@@ -34,6 +34,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated`, em Idle, sobre d025b671: `backend/tests/test_causa_sem_texto_resto.py` (3 testes novos) e os
   dirigidos dos chamadores, 178 passed; `pytest @tests/catracas.txt -n 4`, 87 passed; scripts, 6 passed.
 
+## 2026-10-05 — 29.96: a sessão parada no teto aparece em Pendências e em "Aguardando intervenção" (branch feat/29-96-parada-no-teto-em-pendencias)
+
+- Achado da leitura do #371 (S): o `unknown` no teto abre o aviso `session.needs_person`, mas as duas filas do painel
+  filtravam só por estado (`auth_challenge`, `wrong_account`, `needs_person`), e a sessão parada continua `unknown`. O
+  dono recebia o aviso e não achava o item.
+- `SessionInfo.unknown_at_cap` (adendo v1.48), preenchido nos três montadores (persona, persona no aparelho, conta) por
+  `SocialRepository.parada_no_teto`, com a mesma regra do aviso (`unknown_no_teto`).
+- A regra do teto mora num lugar só, `shared.vinculos.teto_de_unknown`, chamado pela porta (via repositório), pela
+  prévia de recursos e pelo campo (N1 da leitura do #371).
+- Notas de texto do #370 (29.90): o motivo do `waiting_user` do D5 cita a ÚLTIMA cobertura, não a última mudança
+  (N2), e não diz mais "não é declarado", porque a folha declarada que reabre também chega lá (D5-N1).
+- Painel: `precisaDePessoa(session)` nas duas filas; rótulo "Tela não reconhecida" (`SESSAO_PARADA_NO_TETO`,
+  `metaDaSessao`); o selo da persona pede "Resolver".
+- Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py` (T1: o teto de quem
+  compõe sem vínculo), `test_social_profiles.py`; `frontend/src/features/pendencias/PendenciasPage.test.tsx`,
+  `profiles/ProfilesPage.test.tsx`, `profiles/estadoSessao.test.ts`). `not_run`: aparelho real.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
