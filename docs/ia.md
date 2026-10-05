@@ -1789,6 +1789,17 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
     no limite, falha sem nova tentativa. **K4:** o B1 vindo de receita marca a divergência dela.
   - A carga de `ai.consentimento_aceito_em` recusa sufixo público (`com.br`, `gov.br`, `github.io`…): o host vale para
     os subdomínios. O rótulo que vai ao ator perde caracteres de controle e de formatação (Cc, Cf).
+- 2ª leitura do #386:
+  - **Z1:** só um contêiner DISTINTO da marca é caixa. O parágrafo do aviso com o link "política de cookies" não
+    encolhe a zona para o retângulo dele; a marca que é ela mesma a caixa externa fica com a faixa de 12 % (a linha da
+    página logo acima da folha do gov.br é recusada, do lado seguro).
+  - **K1b:** o `botao_que_fecha` do 31.51 usa o mesmo `_diz_aceitar` ("Continuar sem aceitar" é saída). O rótulo
+    exato de fechar só livra quando o outro campo não diz aceitar: text "X" com desc "Accept" (#308) segue vetado.
+  - **K2b:** a palavra de aceite é recusada em qualquer lugar só com marca que tenha cara de aviso (texto de mais de 30
+    caracteres ou dentro de caixa reconhecida). Com só o link "Política de privacidade" do rodapé, "OK", "Permitir" e
+    "Aceitamos Pix" longe dele passam; na faixa dele, não.
+  - Ficam do lado seguro, recusados: "Rejeitar cookies." com ponto e "Rejeitar todos os cookies" (fora da lista
+    exata), e o `type_text(press_enter=True)` com o foco num botão segue sem tratamento.
 - O recusado vira ação `rejected` com o motivo "o consentimento do site não é aceito pelo ator (eN, Tipo)": no `error`
   e no `status_detail` (que chegam a aviso e cartão) vão só o id e o tipo; o rótulo, texto da página, vai só ao
   histórico do ator, com os espaços normalizados. Quatro recusas somadas na ETAPA (ou quatro erros seguidos) encerram
