@@ -1568,6 +1568,22 @@ class ContatoPublicoCfg(BaseModel):
         return valor
 
 
+class PortalVigiaCfg(BaseModel):
+    """O vigia da borda (29.97): de hora em hora, no líder da trava `avisos`, o central pede o site e o painel pelo
+    primeiro nome de `server.public_hosts`, como um visitante (só GET, sem credencial, no máximo 4 pedidos por volta), e
+    confere o que a borda da Cloudflare fez com eles. Sem nome público, nada roda, mesmo com `ligado: true`."""
+
+    model_config = _PORTAL_ESTRITO
+
+    ligado: bool = True
+    intervalo_s: int = Field(3600, ge=600, le=86_400)
+    #: O prazo de cada pedido. Esgotado, a volta não conta como defeito nem como sucesso.
+    prazo_s: int = Field(10, ge=1, le=60)
+    #: Voltas seguidas sem conseguir conferir (rede, tempo esgotado, a borda sem alcançar o central) até virar problema
+    #: na saúde e aviso ao dono.
+    voltas_sem_conferir: int = Field(3, ge=1, le=48)
+
+
 class PortalContatoLimitesCfg(BaseModel):
     """Os tetos do formulário de contato (29.77, ADR-075). A Cloudflare não é a defesa: tudo isto vale no backend."""
 
@@ -1609,6 +1625,7 @@ class PortalCfg(BaseModel):
     contato_ligado: bool = False
     contatos: list[ContatoPublicoCfg] = []
     limites: PortalContatoLimitesCfg = PortalContatoLimitesCfg()
+    vigia: PortalVigiaCfg = PortalVigiaCfg()
 
     @model_validator(mode="after")
     def _contato_so_com_o_site(self) -> "PortalCfg":

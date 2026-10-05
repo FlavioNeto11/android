@@ -2703,6 +2703,9 @@ class AppState:
             self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
             # O reenvio dos contatos do site e a retenção de 180 dias (29.77), no líder da mesma trava `avisos`.
             self._bg.append(asyncio.create_task(self.portal.laco(lambda: self._lider(AVISOS)), name="portal-contatos"))
+            # O vigia da borda (29.97): de hora em hora, no mesmo líder; sem nome público não faz nada.
+            self._bg.append(asyncio.create_task(self.portal.laco_da_borda(lambda: self._lider(AVISOS)),
+                                                name="portal-borda"))
             # O recolher das decisões automáticas (28.25) em qualquer réplica; o resumo, só no líder da trava `avisos`.
             self._bg.append(asyncio.create_task(self.decisoes.laco(), name="decisoes-automaticas"))
             # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).

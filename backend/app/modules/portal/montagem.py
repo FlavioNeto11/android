@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
+import re
 import time
 from collections.abc import Callable
 
@@ -17,6 +18,8 @@ from app.db import Database
 from app.modules.portal.application.contato import Avisar, AvisarResumo, ServicoDeContato, TipoDoContato
 from app.modules.portal.application.exclusao import ApagarNoCanal, ServicoDeExclusao
 from app.modules.portal.application.protecao import emitir_token
+from app.modules.portal.application.vigia import AvisarBorda, Vigia
+from app.modules.portal.adapters.borda_http import BuscarPelaBorda
 from app.modules.portal.infrastructure.contatos_sql import ContatosSql
 from app.security.access import publicos_de
 from app.util import now
@@ -26,6 +29,10 @@ log = logging.getLogger("poc.portal")
 #: Uma volta do reenvio por minuto; a retenção de 180 dias a cada hora (é faxina, não prazo).
 REENVIO_S = 60
 RETENCAO_S = 3600
+#: A 1ª volta do vigia da borda (29.97) espera a subida assentar: não disputa com o deploy nem com o reinício.
+PRIMEIRA_VOLTA_DO_VIGIA_S = 300
+#: Um nome, sem esquema, porta, caminho nem espaço: é o que vira `https://<nome>/` no pedido do vigia.
+_NOME_PUBLICO = re.compile(r"[a-z0-9-]+(?:\.[a-z0-9-]+)+")
 
 MODULO_DA_CANAIS = "app.modules.avisos.domain.portal"
 
@@ -52,6 +59,10 @@ class Portal:
             funcao = getattr(avisos, "avisar_resumo_do_portal", None)
             return funcao if callable(funcao) else None
 
+        def avisar_borda() -> AvisarBorda | None:
+            funcao = getattr(avisos, "avisar_borda_do_portal", None)        # 29.97, escrito pela Canais
+            return funcao if callable(funcao) else None
+
         def apagar_no_canal() -> ApagarNoCanal | None:
             funcao = getattr(avisos, "apagar_avisos_do_portal", None)      # 28.34; ausente antes dele
             return funcao if callable(funcao) else None
@@ -63,8 +74,21 @@ class Portal:
                                           canal_presente=lambda: avisar() is not None,
                                           buscas_por_hora=lambda: cfg.file.portal.limites.buscas_por_operador_hora,
                                           buscas_no_total=lambda: cfg.file.portal.limites.buscas_total_hora)
+        self.vigia = Vigia(BuscarPelaBorda(lambda: cfg.file.portal.vigia.prazo_s), host=self.nome_do_vigia,
+                           site_ligado=lambda: cfg.file.portal.site_ligado and self.site_presente,
+                           csp_do_painel=lambda: cfg.file.server.csp_do_painel,
+                           voltas_sem_conferir=lambda: cfg.file.portal.vigia.voltas_sem_conferir,
+                           intervalo_s=lambda: cfg.file.portal.vigia.intervalo_s, avisar=avisar_borda)
         for _codigo, mensagem, _dica in self.problemas(com_contagens=False):   # o banco ainda não migrou aqui
             log.warning("portal: %s", mensagem)
+
+    def nome_do_vigia(self) -> str | None:
+        """O 1º nome de `server.public_hosts`, na ordem do config (nunca o `Host` de um pedido), ou `None`: vigia
+        desligado, sem nome público, ou nome que não é só um nome (porta, esquema, caminho)."""
+        if not self.cfg.file.portal.vigia.ligado:
+            return None
+        nome = next((h.strip().lower() for h in self.cfg.file.server.public_hosts if h.strip()), "")
+        return nome if _NOME_PUBLICO.fullmatch(nome) else None
 
     @property
     def site_presente(self) -> bool:
@@ -93,6 +117,7 @@ class Portal:
                 "portal_contato_sem_ip_da_borda", problema + ".",
                 "Declare server.tls_behind_proxy e server.public_hosts no config.yaml e reinicie, ou desligue "
                 "portal.contato_ligado. Procedimento em docs/operacao.md, \"Site institucional na raiz\"."))
+        achados += self.vigia.problemas()                 # 29.97: só o estado da última volta, sem rede
         if not com_contagens:
             return achados
         try:
@@ -170,3 +195,15 @@ class Portal:
                         log.info("portal: %s contato(s) apagado(s) pela retenção", apagados)
             except Exception:  # noqa: BLE001 - o laço nunca derruba o processo
                 log.exception("portal: volta do reenvio")
+
+    async def laco_da_borda(self, lider: Callable[[], int | None]) -> None:
+        """O vigia da borda (29.97), uma volta por `portal.vigia.intervalo_s`, só no líder da trava `avisos` (é ele
+        quem avisa). A 1ª volta espera `PRIMEIRA_VOLTA_DO_VIGIA_S`; a subida e a saúde nunca esperam a borda."""
+        await asyncio.sleep(PRIMEIRA_VOLTA_DO_VIGIA_S)
+        while True:
+            if lider() is not None and self.nome_do_vigia() is not None:
+                try:
+                    await asyncio.to_thread(self.vigia.volta, now())
+                except Exception:  # noqa: BLE001 - o laço nunca derruba o processo
+                    log.exception("portal: volta do vigia da borda")
+            await asyncio.sleep(self.cfg.file.portal.vigia.intervalo_s)

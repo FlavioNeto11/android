@@ -220,7 +220,9 @@ def test_a_raiz_e_pedida_como_navegador_e_o_script_proprio_passa(tmp_path: Path)
     ("script_de_fora", "https://cdn.exemplo.invalid/x.js"),
     ("src_espacado", "https://cdn.exemplo.invalid/y.js"),                # X1: tag em linhas, `src = "…"`
     ("maiuscula", "HTTPS://cdn.exemplo.invalid/z.js"),                    # X2: SCRIPT SRC e HTTPS:// em maiúscula
-    ("src_na_query", "https://cdn.exemplo.invalid/a.js?src=b"),          # Y2: `?src=` dentro da URL não é o valor
+    # Y2: `?src=` dentro da URL não é o valor. A query sai da linha (29.97: a régua nunca repete query, que no beacon
+    # leva token), e o valor certo é a URL, não o `b`.
+    ("src_na_query", "script que a pagina nao tem no HTML: https://cdn.exemplo.invalid/a.js\n"),
     ("cdn_cgi", "/cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js"),   # X3: a própria origem
     ("desafio_embutido", "(embutido)"),                                   # X3: /cdn-cgi/ em script sem src
 ])
@@ -259,7 +261,7 @@ def test_o_painel_e_pedido_como_navegador_e_o_html_sai_intocado(tmp_path: Path) 
 @pytest.mark.parametrize(("quebra", "linha", "motivo"), [
     ("beacon_no_painel", "FALHOU /central/ (como navegador)", "https://static.cloudflareinsights.com/beacon.min.js"),
     ("transformado", "FALHOU / (sem transformar)", "sem no-transform"),
-    ("recomprimido", "FALHOU / (sem transformar)", "esperado o gzip da origem; veio content-encoding: br"),
+    ("recomprimido", "FALHOU / (sem transformar)", "esperado o gzip da origem; veio br"),
     ("painel_so_relata", "FALHOU /central/ (sem transformar)", "server.csp_do_painel em aplicar?"),
 ])
 def test_borda_que_reescreve_ou_painel_sem_csp_reprova(tmp_path: Path, quebra: str, linha: str, motivo: str) -> None:

@@ -22,6 +22,9 @@
 #                                               excecao do portao, e por construcao nao grava nem avisa ninguem (202).
 #                                               Nunca manda contato de verdade. 403 = falta a origem em allowed_origins;
 #                                               404 = bandeira desligada; 401 = a excecao do portao nao esta no codigo.
+#             CSP_DO_PAINEL=so_relatar          o central subiu com `server.csp_do_painel: so_relatar`: o painel tem de
+#                                               vir com o Report-Only, nao com a CSP que barra (29.91).
+#             PYTHON=caminho                    o Python 3.11+ da regua da borda (padrao: python no PATH; 29.97).
 #
 # Regra de ouro: /api/instances NUNCA pode dar 200 de fora. Se der: Stop-Service Cloudflared e investigue antes de religar.
 set -u
@@ -46,108 +49,53 @@ confere() { # caminho esperado descricao [args extras]
     fi
 }
 
-confere_como_navegador() { # caminho rotulo  -> o HTML pedido como navegador nao tem script injetado
-    local caminho="$1" rotulo="$2"
-    # 29.85: a borda da Cloudflare injeta o beacon do Web Analytics (static.cloudflareinsights.com) no HTML so
-    # quando o pedido parece de navegador; o curl puro nao ve (medido em 05/10). A CSP do site bloqueia e o script
-    # nao roda, mas sobra um erro de console em todo visitante, e a pagina promete "sem rastreadores". Por isso a
-    # raiz e baixada COMO navegador, e qualquer <script src> de outra origem reprova. A CSP nao muda: o conserto e
-    # desligar o recurso na zona. A Cloudflare tambem injeta script na PROPRIA origem, sob /cdn-cgi/ (Rocket Loader,
-    # challenge-platform, ofuscacao de e-mail): relativo, passa na CSP, e tambem reprova.
-    local ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
-    local nav codigo_nav html html_linha de_fora src esquema
-    nav="$(curl -q -s -m 20 -w '\n%{http_code}' -H 'Accept: text/html,application/xhtml+xml' -H "User-Agent: $ua" \
-        "https://$H$caminho")"
-    codigo_nav="${nav##*$'\n'}"; html="${nav%$'\n'*}"
-    # Uma linha so: a tag pode vir quebrada em linhas, e o `=` com espaco em volta.
-    html_linha="$(tr '\r\n\t' '   ' <<< "$html")"
-    de_fora=""
-    shopt -s nocasematch                   # HTTPS:// e o nome publico em maiuscula sao o mesmo endereco
-    while IFS= read -r src; do
-        # O esquema so conta ANTES do primeiro / ? ou #: `/assets/site.js?v=T01:00` e relativo, nao "de fora".
-        esquema="${src%%[/?#]*}"
-        case "$src" in
-            *"/cdn-cgi/"*) de_fora="$de_fora $src" ;;
-            "https://$H/"*|"//$H/"*) ;;
-            //*) de_fora="$de_fora $src" ;;
-            *) case "$esquema" in
-                   *:*) de_fora="$de_fora $src" ;;   # https:, data:, javascript:
-                   ""|[a-z0-9._~%-]*) ;;             # relativo a propria origem
-                   *) de_fora="$de_fora $src" ;;     # o que nao se reconhece reprova
-               esac ;;
-        esac
-    # O valor do atributo nunca tem espaco, entao o ultimo "<espaco>src=" da casada e o atributo de verdade: um
-    # `?src=b` DENTRO da URL nao e precedido de espaco e nao vira o valor (um `.*src=` guloso o pegava).
-    done < <(grep -oiE "<script[^>]*[[:space:]]src[[:space:]]*=[[:space:]]*[\"']?[^\"' >]+" <<< "$html_linha" |
-             sed -E "s/.*[[:space:]][sS][rR][cC][[:space:]]*=[[:space:]]*[\"']?//")
-    shopt -u nocasematch
-    if [[ "$codigo_nav" != 200 ]]; then
-        printf 'FALHOU %-28s %s  esperado 200: sem ver a pagina nao ha o que conferir (desafio da Cloudflare?)\n' \
-            "$rotulo" "$codigo_nav"; FALHAS=$((FALHAS + 1))
-    elif [[ -z "$html" ]]; then
-        printf 'FALHOU %-28s      a raiz veio vazia pedida como navegador\n' "$rotulo"; FALHAS=$((FALHAS + 1))
-    elif [[ -n "$de_fora" || "$html_linha" == *cloudflareinsights* || "$html_linha" == *"/cdn-cgi/"* ]]; then
-        printf 'FALHOU %-28s      script que a pagina nao tem no HTML:%s\n' "$rotulo" "${de_fora:- (embutido)}"
-        echo '       -> desligue na Cloudflare, na zona do nome publico, o recurso que injeta:'
-        echo '          cloudflareinsights = Web Analytics / Real User Measurements (RUM), a injecao automatica do beacon;'
-        echo '          /cdn-cgi/scripts = Rocket Loader (Speed > Optimization); /cdn-cgi/challenge-platform = desafio'
-        echo '          JS / Bot Fight Mode; /cdn-cgi/l/email-protection = Email Address Obfuscation (Scrape Shield).'
-        echo '          Nao afrouxe a CSP: a pagina promete que nao usa rastreadores.'
-        FALHAS=$((FALHAS + 1))
-    else
-        printf 'ok     %-28s      (nenhum script de fora nem da Cloudflare no HTML)\n' "$rotulo"
-    fi
+# 29.97: o que e DEFEITO na borda e decidido pela mesma regua do vigia do central
+# (backend/app/modules/portal/domain/borda.py), chamada por scripts/portal-regua-da-borda.py. Aqui so se baixa com
+# curl e se passa o que veio pelo stdin; muda a regua, mudam as duas. Precisa de um Python 3.11+ no PATH (ou PYTHON=).
+REGUA="$(dirname "$0")/portal-regua-da-borda.py"
+# No Git Bash, um argumento que comeca com / vira caminho do Windows ao chegar num executavel nativo ("/central/"
+# viraria "C:/Program Files/Git/central/"). A regua recebe os argumentos crus, e o caminho dela ja convertido.
+REGUA="$(cygpath -w "$REGUA" 2>/dev/null || printf '%s' "$REGUA")"
+regua_crua() { MSYS2_ARG_CONV_EXCL='*' MSYS_NO_PATHCONV=1 "$PY" "$REGUA" "$@"; }
+PY="${PYTHON:-python}"
+# A borda so injeta o beacon quando o pedido parece de navegador (medido em 05/10): o curl puro nao ve.
+UA_NAVEGADOR='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
+
+regua() { # conferencia [args]; o stdin vai para a regua. Imprime a linha dela e conta a falha
+    local saida rc
+    saida="$(regua_crua "$@")"; rc=$?
+    printf '%s\n' "$saida"
+    [[ "$rc" == 0 ]] || FALHAS=$((FALHAS + 1))
+}
+
+confere_como_navegador() { # caminho rotulo  -> o HTML pedido como navegador nao tem script injetado (29.85)
+    # A CSP do site bloqueia o beacon, mas sobra um erro de console em todo visitante, e a pagina promete "sem
+    # rastreadores"; no painel sem CSP aplicada ele roda (29.91). A CSP nao muda: o conserto e desligar na zona.
+    local caminho="$1" rotulo="$2" nav
+    nav="$(curl -q -s -m 20 -w '\n%{http_code}' -H 'Accept: text/html,application/xhtml+xml' \
+        -H "User-Agent: $UA_NAVEGADOR" "https://$H$caminho")"
+    regua pagina --rotulo "$rotulo" --onde "$caminho" --host "$H" --status "${nav##*$'\n'}" <<< "${nav%$'\n'*}"
+}
+
+cabecalhos_de() { # caminho  -> os cabecalhos da pagina pedida como navegador, aceitando gzip, br e zstd
+    # Se a borda respeita o `no-transform` (29.91), a raiz chega no gzip que a ORIGEM fez; br ou zstd = a borda abriu.
+    curl -q -s -o /dev/null -D - -m 20 -H 'Accept: text/html' -H 'Accept-Encoding: gzip, br, zstd' \
+        -H "User-Agent: $UA_NAVEGADOR" "https://$H$1"
 }
 
 confere_versao_dos_arquivos() { # -> o HTML aponta o CSS e o JS na versao que a borda entrega (29.95)
-    # A borda guarda CSS e JS por 4 h no navegador (max-age=14400 no lugar do no-cache da origem). A pagina aponta
-    # cada arquivo com ?v=<sha256 do conteudo>: aqui se baixa pelo endereco da pagina e se confere o hash. Diferenca
-    # quer dizer que a borda guarda sem olhar a query (nivel de cache "Ignore query string"), serviu copia velha ou
-    # alterou o arquivo no caminho (minificacao automatica, Rocket Loader).
-    local html arquivo versao veio
-    html="$(curl -q -s -m 20 "https://$H/" | tr '\r\n\t' '   ')"
+    local raiz pares arquivo versao
+    raiz="$(curl -q -s -m 20 "https://$H/")"
+    pares="$(regua_crua versoes <<< "$raiz")"
     for arquivo in /assets/site.css /assets/site.js; do
-        versao="$(grep -oE "[[:space:]](href|src)=\"$arquivo\\?v=[0-9a-f]+\"" <<< "$html" | head -1 | sed -E 's/.*\?v=([0-9a-f]+)"/\1/')"
+        versao="$(awk -v a="$arquivo" '$1 == a { print $2; exit }' <<< "$pares")"
         if [[ -z "$versao" ]]; then
-            printf 'FALHOU %-28s      a pagina aponta o arquivo sem ?v= (o navegador guarda o velho por 4 h)\n' "$arquivo (versao)"
-            FALHAS=$((FALHAS + 1)); continue
-        fi
-        veio="$(curl -q -s -m 20 --compressed "https://$H$arquivo?v=$versao" | sha256sum | cut -c1-${#versao})"
-        if [[ "$veio" == "$versao" ]]; then
-            printf 'ok     %-28s      (?v=%s e o conteudo que a borda entrega)\n' "$arquivo (versao)" "$versao"
+            regua versao --rotulo "$arquivo (versao)" --onde "$arquivo" --versao "" < /dev/null
         else
-            printf 'FALHOU %-28s      a pagina pede ?v=%s e a borda entregou %s\n' "$arquivo (versao)" "$versao" "${veio:-nada}"
-            echo '       -> ou a borda guarda sem olhar a query (nivel de cache "Ignore query string"), ou serviu copia'
-            echo '          velha, ou ALTEROU o arquivo no caminho (minificacao automatica de CSS/JS, Rocket Loader).'
-            FALHAS=$((FALHAS + 1))
+            regua versao --rotulo "$arquivo (versao)" --onde "$arquivo" --versao "$versao" \
+                < <(curl -q -s -m 20 --compressed "https://$H$arquivo?v=$versao")
         fi
     done
-}
-
-confere_html_intocado() { # caminho rotulo gzip|csp  -> a borda nao pode reescrever este HTML (29.91)
-    # `no-transform` proibe a borda de mexer no HTML (beacon, Rocket Loader, e-mail ofuscado), e tambem de recomprimir.
-    # Por isso o pedido aceita gzip, br e zstd: se a borda respeita, o site chega no gzip que a ORIGEM fez; br ou zstd
-    # quer dizer que a borda abriu o corpo. O painel nao e comprimido na origem; nele vale a CSP do painel.
-    local caminho="$1" rotulo="$2" modo="$3" ua cab guarda cod csp
-    ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
-    cab="$(curl -q -s -o /dev/null -D - -m 20 -H 'Accept: text/html' -H 'Accept-Encoding: gzip, br, zstd' \
-        -H "User-Agent: $ua" "https://$H$caminho" | tr -d '\r')"
-    guarda="$(grep -i '^cache-control:' <<< "$cab")"
-    cod="$(grep -i '^content-encoding:' <<< "$cab" | tr 'A-Z' 'a-z')"
-    csp="$(grep -i '^content-security-policy:' <<< "$cab")"
-    if [[ "$guarda" != *no-transform* ]]; then
-        printf 'FALHOU %-28s      sem no-transform no Cache-Control (%s)\n' "$rotulo" "${guarda:-nenhum}"
-        FALHAS=$((FALHAS + 1))
-    elif [[ "$modo" == gzip && "$cod" != *gzip* ]]; then
-        printf 'FALHOU %-28s      esperado o gzip da origem; veio %s\n' "$rotulo" "${cod:-sem compressao}"
-        FALHAS=$((FALHAS + 1))
-    elif [[ "$modo" == csp && ( "$csp" != *"script-src 'self'"* || "$csp" != *"frame-ancestors 'none'"* ) ]]; then
-        # Report-Only ou nada: `server.csp_do_painel` fora de `aplicar` no config.yaml do central.
-        printf 'FALHOU %-28s      sem a CSP do painel (server.csp_do_painel em aplicar?)\n' "$rotulo"
-        FALHAS=$((FALHAS + 1))
-    else
-        printf 'ok     %-28s      (no-transform%s)\n' "$rotulo" "$([[ "$modo" == gzip ]] && echo ', gzip da origem' || echo ', CSP do painel')"
-    fi
 }
 
 echo "prova de fora de https://$H  modo=$MODO  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -174,7 +122,8 @@ else
     confere /central/           "200" "painel estatico"
     # 29.91: o painel nao tinha CSP, e a borda injetou nele o beacon do Web Analytics em 05/10.
     confere_como_navegador /central/ "/central/ (como navegador)"
-    confere_html_intocado /central/ "/central/ (sem transformar)" csp
+    regua cabecalhos --rotulo "/central/ (sem transformar)" --onde /central/ --sem-transformar \
+        --csp "${CSP_DO_PAINEL:-aplicar}" <<< "$(cabecalhos_de /central/)"
     confere /central            "301 302 307 308" "sem a barra final: redireciona"
     if [[ "${SITE:-}" == "ligado" ]]; then
         confere /                   "200" "raiz: o site institucional (29.77)"
@@ -191,22 +140,13 @@ else
         else
             printf 'FALHOU %-28s      esperado Disallow de /central/ e /api/\n' "/robots.txt (corpo)"; FALHAS=$((FALHAS + 1))
         fi
-        cabecalhos="$(curl -q -s -o /dev/null -D - -m 20 "https://$H/" | tr -d '\r')"
-        csp="$(grep -i '^content-security-policy:' <<< "$cabecalhos")"
-        if [[ "$csp" == *"script-src 'self'"* && "$csp" == *"frame-ancestors 'none'"* ]]; then
-            printf 'ok     %-28s      (CSP do site)\n' "/ (cabecalhos)"
-        else
-            printf 'FALHOU %-28s      esperado a CSP do site\n' "/ (cabecalhos)"; FALHAS=$((FALHAS + 1))
-        fi
         # A pagina diz "nao usa cookies nem rastreadores" (ADR-075). A origem nunca poe cookie no site; a borda da
         # Cloudflare poderia, conforme a zona. Se aparecer, muda o texto da pagina ou desliga-se o recurso na zona.
-        if grep -qi '^set-cookie:' <<< "$cabecalhos"; then
-            printf 'FALHOU %-28s      a raiz pos cookie; a pagina promete que nao usa\n' "/ (sem cookie)"; FALHAS=$((FALHAS + 1))
-        else
-            printf 'ok     %-28s      (nenhum Set-Cookie, como a pagina promete)\n' "/ (sem cookie)"
-        fi
+        cab_raiz="$(cabecalhos_de /)"
+        regua cabecalhos --rotulo "/ (cabecalhos)" --onde / --csp site <<< "$cab_raiz"
+        regua cabecalhos --rotulo "/ (sem cookie)" --onde / --sem-cookie <<< "$cab_raiz"
         confere_como_navegador / "/ (como navegador)"
-        confere_html_intocado / "/ (sem transformar)" gzip
+        regua cabecalhos --rotulo "/ (sem transformar)" --onde / --sem-transformar --gzip <<< "$cab_raiz"
         confere_versao_dos_arquivos
     else
         confere /                   "301 302 307 308" "raiz: redireciona para o painel"
