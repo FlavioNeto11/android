@@ -78,7 +78,15 @@ function Linhas({ texto }: { texto: string }) {
   );
 }
 
-export function TeachingPanel({ trainingSessionId, intent, appId }: { trainingSessionId: string; intent: string; appId: string | null }) {
+export function TeachingPanel({ trainingSessionId, intent, appId, somenteLeitura = false }: {
+  trainingSessionId: string; intent: string; appId: string | null;
+  /**
+   * 31.91 (caminho único de ensino, decisão do dono de 05/10): a revisão só MOSTRA o ensino que a gravação já tem,
+   * sem gerar, responder, salvar nem descartar; sem ensino, o painel não aparece. A habilidade nasce do fluxo salvo
+   * ("Gerar habilidade deste fluxo"). Nada do ensino antigo é apagado.
+   */
+  somenteLeitura?: boolean;
+}) {
   const [ensino, setEnsino] = useState<TeachingSessionView | null>(null);
   const [carga, setCarga] = useState<Carga>({ estado: 'carregando' });
   const [tentativa, setTentativa] = useState(0);
@@ -159,6 +167,9 @@ export function TeachingPanel({ trainingSessionId, intent, appId }: { trainingSe
     : undefined;
   const esperando = (acao: Acao) => (ocupado && ocupado !== acao ? 'Aguarde a ação em andamento.' : null);
 
+  // Só leitura: enquanto carrega ou sem ensino, nada a mostrar (não há o que gerar por aqui).
+  if (somenteLeitura && (carga.estado === 'carregando' || (carga.estado === 'pronto' && !ensino))) return null;
+
   let corpo;
   if (carga.estado === 'carregando') {
     corpo = (
@@ -228,9 +239,16 @@ export function TeachingPanel({ trainingSessionId, intent, appId }: { trainingSe
             <ul className={styles.bannerList} aria-label="Erros de compilação">{ensino.errors.map((e) => <li key={e} className="mono">{e}</li>)}</ul>
           </Banner>
         ) : null}
+        {somenteLeitura ? (
+          <p className={styles.muted}>
+            Ensino desta gravação, de antes do caminho único: fica só para leitura. Para a habilidade, salve como fluxo e
+            use "Gerar habilidade deste fluxo".
+          </p>
+        ) : null}
         {ensino.open_questions.map((q) => {
           const texto = textoDa(q);
           const acao: Acao = `responder:${q.id}`;
+          if (somenteLeitura) return <p key={q.id} className={styles.muted}><MessageCircleQuestion size={14} aria-hidden /> {texto}</p>;
           return (
             <div key={q.id} className={styles.step}>
               <p><MessageCircleQuestion size={14} aria-hidden /> {texto}</p>
@@ -244,26 +262,28 @@ export function TeachingPanel({ trainingSessionId, intent, appId }: { trainingSe
             </div>
           );
         })}
-        <div className={styles.actions}>
-          {(ensino.status === 'asking' && ensino.open_questions.length === 0) || ensino.status === 'open' ? (
-            <Button size="sm" variant="outline" icon={Sparkles} loading={ocupado === 'gerar'} disabledReason={esperando('gerar')}
-                    onClick={() => void executar('gerar', () => api.proposeCandidate(ensino.id, chave()), 'Não foi possível gerar a candidata')}>
-              {ensino.status === 'asking' ? 'Gerar de novo com as respostas' : 'Pedir outra candidata'}
-            </Button>
-          ) : null}
-          {candidata && (ensino.status === 'validating' || ensino.status === 'ready') ? (
-            <Button size="sm" variant="primary" icon={FileCheck2} loading={ocupado === 'salvar'} disabledReason={esperando('salvar')}
-                    onClick={() => void salvarRascunho(ensino, candidata)}>
-              Salvar como rascunho
-            </Button>
-          ) : null}
-          {!TERMINAL.has(ensino.status) ? (
-            <Button size="sm" variant="dangerGhost" icon={Trash2} loading={ocupado === 'descartar'} disabledReason={esperando('descartar')}
-                    onClick={() => void descartar(ensino)}>
-              Descartar
-            </Button>
-          ) : null}
-        </div>
+        {somenteLeitura ? null : (
+          <div className={styles.actions}>
+            {(ensino.status === 'asking' && ensino.open_questions.length === 0) || ensino.status === 'open' ? (
+              <Button size="sm" variant="outline" icon={Sparkles} loading={ocupado === 'gerar'} disabledReason={esperando('gerar')}
+                      onClick={() => void executar('gerar', () => api.proposeCandidate(ensino.id, chave()), 'Não foi possível gerar a candidata')}>
+                {ensino.status === 'asking' ? 'Gerar de novo com as respostas' : 'Pedir outra candidata'}
+              </Button>
+            ) : null}
+            {candidata && (ensino.status === 'validating' || ensino.status === 'ready') ? (
+              <Button size="sm" variant="primary" icon={FileCheck2} loading={ocupado === 'salvar'} disabledReason={esperando('salvar')}
+                      onClick={() => void salvarRascunho(ensino, candidata)}>
+                Salvar como rascunho
+              </Button>
+            ) : null}
+            {!TERMINAL.has(ensino.status) ? (
+              <Button size="sm" variant="dangerGhost" icon={Trash2} loading={ocupado === 'descartar'} disabledReason={esperando('descartar')}
+                      onClick={() => void descartar(ensino)}>
+                Descartar
+              </Button>
+            ) : null}
+          </div>
+        )}
         {ensino.status === 'published' ? (
           <p>Rascunho <strong>{ensino.result_version_id}</strong> criado. Publicar a habilidade é outra decisão: submeter, validar e publicar a versão em Configuração → Fluxos e receitas → Habilidades.</p>
         ) : null}

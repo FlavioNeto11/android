@@ -2,15 +2,17 @@
  * Revisão do treinamento (item 13.3) — é isto que faz o fluxo ser "inteligência assistida" e não macro:
  * a gravação aparece do lado esquerdo; a IA propõe, do lado direito, o COMANDO com parâmetros, as ETAPAS com
  * objetivo e verificação, o que foi DESCARTADO (erro, vai-e-volta) e as DÚVIDAS; a pessoa ajusta e escolhe quem
- * recebe. Salvar cria o fluxo + as receitas; o relatório diz, etapa a etapa, o que já roda sem IA. "Habilidade" aqui é
- * só a versionada (ensino v2, `TeachingPanel`), que com `features.skills` ligado é o caminho principal.
+ * recebe. Salvar cria o fluxo + as receitas; o relatório diz, etapa a etapa, o que já roda sem IA.
+ * 31.91 (caminho único de ensino, decisão do dono de 05/10): o fluxo salvo é o ponto de partida; com `features.skills`,
+ * a habilidade versionada nasce dele ("Gerar habilidade deste fluxo", a conversão da fase J). O ensino v2 que a gravação
+ * já tinha aparece só para leitura (`TeachingPanel somenteLeitura`).
  */
-import { RefreshCw, ServerCrash, Sparkles, WandSparkles } from 'lucide-react';
+import { GraduationCap, RefreshCw, ServerCrash, Sparkles, WandSparkles } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
 import type {
-  Capability, InstagramProfile, PolicyGroup, TrainingInput, TrainingPreview, TrainingProposal, TrainingRecipesResult, TrainingSaveResult,
-  TrainingSession, TrainingStep,
+  Capability, FlowConversion, InstagramProfile, PolicyGroup, TrainingAnswer, TrainingInput, TrainingPreview, TrainingProposal,
+  TrainingRecipesResult, TrainingSaveResult, TrainingSession, TrainingStep,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -58,6 +60,10 @@ function devolverEntrada(p: TrainingProposal, seq: number, etapa: number): Train
 }
 
 const listaDeSeqs = (seqs: number[]) => seqs.map((n) => `#${n}`).join(', ');
+
+/** Limites do adendo v1.63 que a tela aplica antes de mandar: resposta de até 500 caracteres, até 8 por pedido. */
+const MAX_RESPOSTA = 500;
+const MAX_RESPOSTAS_POR_PEDIDO = 8;
 
 /** Espera depois da última edição antes de pedir a prévia (v1.58); exportada para o teste esperar sem número mágico. */
 export const ESPERA_DA_PREVIA_MS = 500;
@@ -217,6 +223,17 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   };
   const [pensando, setPensando] = useState(false);
   const [salvando, setSalvando] = useState(false);
+  // v1.63: as respostas da pessoa às perguntas da proposta, por pergunta, e a recusa de resposta com cara de segredo.
+  const [respostas, setRespostas] = useState<Record<string, string>>({});
+  const [erroResposta, setErroResposta] = useState<{ message: string; question: string | null } | null>(null);
+  // O que está respondido nas perguntas da proposta atual, no limite do contrato (até 8 por chamada).
+  const respondidas: TrainingAnswer[] = (proposta?.questions ?? [])
+    .map((q) => ({ question: q, answer: (respostas[q] ?? '').trim() }))
+    .filter((a) => a.answer)
+    .slice(0, MAX_RESPOSTAS_POR_PEDIDO);
+  // "Gerar habilidade deste fluxo" (a conversão da fase J) depois de salvar, com `features.skills`.
+  const [conversao, setConversao] = useState<FlowConversion | null>(null);
+  const [convertendo, setConvertendo] = useState(false);
   const [resultado, setResultado] = useState<TrainingSaveResult | null>(null);
   // Prévia do salvar (v1.58): o que cada etapa vira e a recusa, antes de clicar. `leitura` descarta a resposta de uma
   // prévia que outra edição já tornou velha (a primeira pode esperar a leitura do aparelho e chegar depois da segunda).
@@ -256,9 +273,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     void carregarEscopo();
   }, [carregarEscopo]);
 
-  // Fase F: com `features.skills` ligado, a revisão ganha o ensino v2, que passa a ser o caminho principal (o único
-  // botão primário do diálogo); o fluxo de sempre vira o caminho secundário. Desligado (ou backend sem o campo), o
-  // painel é exatamente o de antes.
+  // Com `features.skills` ligado, o relatório do salvar oferece gerar a habilidade do fluxo e a revisão mostra (só
+  // leitura) o ensino v2 antigo da gravação. Desligado (ou backend sem o campo), nada disso aparece.
   const ensinoV2 = useAppStore((st) => st.health?.features?.skills === true);
 
   // Catálogo do app (se houver): etapa com efeito num app com catálogo precisa dizer QUAL ação ela é.
@@ -325,11 +341,11 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     return () => clearTimeout(espera);
   }, [corpoDoSalvar, bloqueioLocal, resultado, fechada, sessionId]);
 
-  async function pedirProposta() {
+  async function pedirProposta(answers: TrainingAnswer[] = []) {
     if (editado) {
       const { confirmed } = await confirm({
-        title: 'Pedir outra proposta?',
-        confirmLabel: 'Pedir outra proposta',
+        title: answers.length ? 'Pedir nova proposta com as respostas?' : 'Pedir outra proposta?',
+        confirmLabel: answers.length ? 'Pedir nova proposta' : 'Pedir outra proposta',
         cancelLabel: 'Voltar',
         body: 'A proposta atual e o que você mudou nela (comando, etapas, destino das entradas, ações do catálogo) são substituídos pela nova. Quem recebe o fluxo continua marcado.',
       });
@@ -337,14 +353,21 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     }
     setPensando(true);
     try {
-      const s = await api.proposeTraining(sessionId);
+      const s = await api.proposeTraining(sessionId, answers);
       setSessao(s);
+      setRespostas({});
+      setErroResposta(null);
       setProposta(s.proposal);
       setOriginal(s.proposal);
       setDestino({});
       setAviso('');
     } catch (e) {
-      toastError('A IA não conseguiu propor o fluxo', e);
+      // v1.63: resposta com cara de senha ou código fica no campo dela, sem toast (o texto não pode ir adiante).
+      const err = toApiError(e);
+      if (err.code === 'resposta_sensivel') {
+        const pergunta = typeof err.detail?.question === 'string' ? err.detail.question : null;
+        setErroResposta({ message: err.message, question: pergunta });
+      } else toastError('A IA não conseguiu propor o fluxo', e);
     } finally {
       setPensando(false);
     }
@@ -397,6 +420,27 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     }
   }
 
+
+  async function gerarHabilidade() {
+    if (!resultado || convertendo) return;
+    const { confirmed } = await confirm({
+      title: 'Gerar a habilidade deste fluxo?',
+      confirmLabel: 'Gerar habilidade',
+      cancelLabel: 'Agora não',
+      body: 'A versão 1 da habilidade é o plano deste fluxo, sem mudança: as execuções seguem iguais e as receitas continuam valendo. '
+        + 'A versão 2 fica em rascunho, para dar tipo aos parâmetros, anotar riscos e versionar. O fluxo é desligado na mesma '
+        + 'operação, e dá para desfazer em Configuração → Fluxos e receitas.',
+    });
+    if (!confirmed) return;
+    setConvertendo(true);
+    try {
+      setConversao(await api.adoptFlow(resultado.flow_id));
+    } catch (e) {
+      toastError('Não foi possível gerar a habilidade', e);
+    } finally {
+      setConvertendo(false);
+    }
+  }
 
   // "Depois", Esc e o clique no fundo passam por aqui: com edição pendente, a pessoa confirma antes de perder.
   async function fechar() {
@@ -481,7 +525,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
             footer={resultado ? <Button onClick={onClose}>Fechar</Button> : (
               <>
                 <Button variant="ghost" onClick={() => void fechar()}>Depois</Button>
-                <Button variant={proposta && !ensinoV2 ? 'primary' : 'secondary'} icon={Sparkles} loading={salvando}
+                <Button variant={proposta ? 'primary' : 'secondary'} icon={Sparkles} loading={salvando}
                         disabledReason={motivoNaoSalvar()} onClick={() => void salvar()}>
                   Salvar como fluxo
                 </Button>
@@ -516,6 +560,21 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           {semReceitaAoSalvar ? (
             <RefazerReceitas sessionId={sessionId} onFeito={(r) => setResultado((x) => (x ? { ...x, steps: r.steps } : x))} />
           ) : null}
+          {ensinoV2 ? (
+            conversao ? (
+              <p role="status">
+                Habilidade <strong>{conversao.skill_id}</strong>: {conversao.published.ref} publicada (o plano deste fluxo) e
+                {' '}{conversao.draft.ref} em rascunho, em Configuração → Fluxos e receitas → Habilidades.
+              </p>
+            ) : (
+              <span className={styles.actions}>
+                <Button size="sm" variant="outline" icon={GraduationCap} loading={convertendo} onClick={() => void gerarHabilidade()}>
+                  Gerar habilidade deste fluxo
+                </Button>
+                <span className={styles.muted}>Parâmetros com tipo, riscos e versões só existem na habilidade.</span>
+              </span>
+            )
+          ) : null}
         </div>
       ) : (
         <div className={styles.review}>
@@ -546,7 +605,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
               <div className={styles.ask}>
                 <p>A IA vai ler a gravação e propor o fluxo: o comando com o que varia, as etapas com o objetivo de cada
                   uma e o que foi engano. Uma chamada do modelo do planejador (poucos centavos).</p>
-                <Button variant={ensinoV2 ? 'secondary' : 'primary'} icon={WandSparkles} loading={pensando} onClick={() => void pedirProposta()}>Pedir proposta à IA</Button>
+                <Button variant="primary" icon={WandSparkles} loading={pensando} onClick={() => void pedirProposta()}>Pedir proposta à IA</Button>
               </div>
             ) : (
               <>
@@ -578,7 +637,23 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                   </p>
                 ) : null}
                 {proposta.questions.length ? (
-                  <ul className={styles.questions}>{proposta.questions.map((q) => <li key={q}>{q}</li>)}</ul>
+                  <section className={styles.questions} aria-label="Perguntas da IA">
+                    <p className={styles.muted}>Responda o que souber; a resposta vai para a IA. Não escreva senha nem código.</p>
+                    {proposta.questions.map((q) => (
+                      <Field key={q} label={q} error={erroResposta && (erroResposta.question === null || erroResposta.question === q) && (respostas[q] ?? '').trim()
+                        ? erroResposta.message : null}>
+                        {({ id, describedBy, invalid }) => (
+                          <TextInput id={id} aria-describedby={describedBy} invalid={invalid} maxLength={MAX_RESPOSTA} value={respostas[q] ?? ''}
+                                     onChange={(e) => { setRespostas((r) => ({ ...r, [q]: e.target.value })); setErroResposta(null); }} />
+                        )}
+                      </Field>
+                    ))}
+                  </section>
+                ) : null}
+                {proposta.answers?.length ? (
+                  <ul className={styles.questions} aria-label="Respostas já dadas">
+                    {proposta.answers.map((a) => <li key={a.question}>{a.question} <strong>{a.answer}</strong></li>)}
+                  </ul>
                 ) : null}
                 <ol className={styles.steps}>
                   {proposta.steps.map((s, i) => (
@@ -663,10 +738,16 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                     </>
                   )}
                 </fieldset>
-                <Button size="sm" variant="ghost" icon={WandSparkles} loading={pensando} onClick={() => void pedirProposta()}>Pedir outra proposta</Button>
+                <span className={styles.actions}>
+                  <Button size="sm" variant={respondidas.length ? 'outline' : 'ghost'} icon={WandSparkles} loading={pensando}
+                          onClick={() => void pedirProposta(respondidas)}>
+                    {respondidas.length ? 'Pedir nova proposta com as respostas' : 'Pedir outra proposta'}
+                  </Button>
+                  <span className={styles.muted}>Uma chamada da IA (poucos centavos); a proposta inteira é trocada pela nova.</span>
+                </span>
               </>
             )}
-            {ensinoV2 ? <TeachingPanel trainingSessionId={sessao.id} intent={sessao.intent} appId={sessao.app_id} /> : null}
+            {ensinoV2 ? <TeachingPanel trainingSessionId={sessao.id} intent={sessao.intent} appId={sessao.app_id} somenteLeitura /> : null}
           </div>
         </div>
       )}

@@ -165,57 +165,49 @@ it('com features.skills desligado (padrão), a revisão é a de sempre: sem ensi
   }
 });
 
-it('com features.skills ligado: gera a candidata, responde a pergunta, gera de novo e salva como rascunho', async () => {
+// 31.91: caminho único de ensino. Com `features.skills`, a revisão não gera candidata: o fluxo salvo vira habilidade
+// pela conversão da fase J, e o ensino v2 que a gravação já tinha aparece só para leitura.
+it('com features.skills ligado e sem ensino: nada de candidata; depois de salvar, "Gerar habilidade deste fluxo" converte o fluxo', async () => {
+  comHabilidades(true);
+  backend.on('GET', /\/teaching-sessions$/, () => json([]));
+  backend.on('POST', /\/flows\/mandar-mensagem\/adopt$/, () => json({
+    flow_id: 'mandar-mensagem', skill_id: 'qa-messenger.mandar_mensagem', warnings: [],
+    published: { ref: 'qa-messenger.mandar_mensagem@1' }, draft: { ref: 'qa-messenger.mandar_mensagem@2' },
+  }));
+  await act(async () => root.render(<><TrainingReview sessionId="trn-1" onClose={() => {}} /><ConfirmHost /></>));
+  await waitFor(() => expect(backend.callsTo('GET', /teaching-sessions$/)).toHaveLength(1));
+  await flush(ATRASO_MAXIMO + 30);
+  expect(text()).not.toContain('Habilidade versionada');
+  expect(allByRole('button', /Gerar candidata de habilidade/i)).toHaveLength(0);
+  expect(byRole('button', /Pedir proposta à IA/i).className).toMatch(/btnPrimary/);
+  await click(byRole('button', /Pedir proposta à IA/i));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  expect(byRole('button', /^Salvar como fluxo/).className).toMatch(/btnPrimary/);
+
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  expect(text()).toContain('Parâmetros com tipo, riscos e versões só existem na habilidade.');
+  await click(byRole('button', /^Gerar habilidade deste fluxo$/));
+  await click(await waitFor(() => byRole('button', /^Gerar habilidade$/, byRole('dialog', /Gerar a habilidade deste fluxo/))));
+  await waitFor(() => expect(text()).toContain('qa-messenger.mandar_mensagem@2 em rascunho'));
+  expect(backend.callsTo('POST', /\/adopt$/)).toHaveLength(1);
+  expect(backend.callsTo('POST', /\/teaching-sessions$/)).toHaveLength(0);
+});
+
+it('com features.skills ligado e ensino antigo na gravação: o ensino aparece só para leitura, sem responder, gerar nem descartar', async () => {
   comHabilidades(true);
   const pergunta = { id: 7, kind: 'effect_confirmation', key: 'efeito:enviar', origin: 'ai',
                      text: 'A etapa “Enviar” muda algo fora do aparelho?', target: null, candidate_id: 'cand-1' };
-  backend.on('GET', /\/teaching-sessions$/, () => json([]));
-  backend.on('POST', /\/teaching-sessions$/, () => json(ensino('open'), 201));
-  backend.on('POST', /\/teaching-sessions\/ens-1\/demonstrations$/, () => json(ensino('open')));
-  let geracoes = 0;
-  backend.on('POST', /\/teaching-sessions\/ens-1\/candidates$/, () => {
-    geracoes += 1;
-    return json(geracoes === 1
-      ? ensino('asking', { current_candidate: candidata(1), open_questions: [pergunta] })
-      : ensino('validating', { current_candidate: candidata(2) }));
-  });
-  backend.on('POST', /\/teaching-sessions\/ens-1\/answers$/, () => json(ensino('asking', { current_candidate: candidata(1) })));
-  backend.on('POST', /\/skill-candidates\/cand-2\/validate$/, () => json(ensino('ready', { current_candidate: candidata(2) })));
-  backend.on('POST', /\/skill-candidates\/cand-2\/publish$/, () => json(ensino('published', {
-    current_candidate: candidata(2, 'accepted'), result_version_id: 'qa-messenger.mandar_mensagem@1' })));
-
+  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
+  backend.on('GET', /\/teaching-sessions\/ens-1$/, () => json(ensino('asking', { current_candidate: candidata(1), open_questions: [pergunta] })));
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('Habilidade versionada'));
-  expect(backend.callsTo('GET', /teaching-sessions$/)[0]!.query.get('training_session_id')).toBe('trn-1');
-  // P1.5: "Gerar" só aparece depois de saber que a gravação não tem ensino.
-  await waitFor(() => byRole('button', /Gerar candidata de habilidade/i));
-  // P2.1: com o ensino v2 ligado, ele é o caminho principal — o rodapé do fluxo deixa de ser primário.
-  expect(byRole('button', /Gerar candidata de habilidade/i).className).toMatch(/btnPrimary/);
-  expect(byRole('button', /^Salvar como fluxo/).className).not.toMatch(/btnPrimary/);
-  expect(byRole('button', /Pedir proposta à IA/i).className).not.toMatch(/btnPrimary/);
-  await click(byRole('button', /Gerar candidata de habilidade/i));
-  await waitFor(() => expect(text()).toContain('muda algo fora do aparelho'));
-  expect(text()).toContain('{contato} · string = QA-001');
-  expect(text()).toContain('efeito externo');
-  const criado = backend.callsTo('POST', /\/teaching-sessions$/)[0]!.body as { instruction: string; app_id: string };
-  expect(criado).toEqual({ instruction: 'Mandar mensagem', app_id: 'qa-messenger' });
-  expect((backend.callsTo('POST', /demonstrations$/)[0]!.body as { training_session_id: string }).training_session_id).toBe('trn-1');
-
-  expect(text()).toMatch(/candidata 1 .*proposta/);                    // status da candidata em português
-  await setValue(byRole('textbox', /Resposta à pergunta: A etapa “Enviar” muda algo/i) as HTMLInputElement, 'Sim, é enviar.');
-  await click(byRole('button', /^Responder$/i));
-  await waitFor(() => expect(text()).toContain('Gerar de novo com as respostas'));
-  expect(backend.callsTo('POST', /answers$/)[0]!.body).toEqual({ question_id: 7, body: 'Sim, é enviar.' });
-  await click(byRole('button', /Gerar de novo com as respostas/i));
-  await waitFor(() => expect(text()).toContain('Salvar como rascunho'));
-  await click(byRole('button', /Salvar como rascunho/i));
-  await waitFor(() => expect(text()).toContain('qa-messenger.mandar_mensagem@1'));
-  expect(backend.callsTo('POST', /validate$/)[0]!.body).toEqual({ mode: 'static' });
-  expect(backend.callsTo('POST', /publish$/)).toHaveLength(1);
-  expect(text()).toContain('Configuração → Fluxos e receitas → Habilidades');   // o nome da aba, como na TopBar
-  expect(allByRole('button', /^Descartar/)).toHaveLength(0);                      // terminal: nada a descartar
-  // o "Salvar como fluxo" de sempre continua lá, sem ponte com o ensino v2
-  expect(backend.callsTo('POST', /\/save$/)).toHaveLength(0);
+  expect(text()).toContain('muda algo fora do aparelho');
+  expect(text()).toContain('fica só para leitura');
+  expect(allByRole('textbox', /Resposta à pergunta/)).toHaveLength(0);
+  for (const nome of [/^Responder$/, /Gerar de novo/, /Pedir outra candidata/, /Salvar como rascunho/, /^Descartar$/]) {
+    expect(allByRole('button', nome)).toHaveLength(0);
+  }
 });
 
 // ---------------------------------------------------------------- 31.90-A: quem ensinou corrige as entradas
@@ -495,4 +487,49 @@ it('etapa sem receita no salvar: "Refazer receitas" só com o clique, chama /rec
   await waitFor(() => expect(text()).toContain('1 receita gravada agora.'));
   expect(text()).toContain('— receita gravada');                        // o relatório troca pelo do refazer
   expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(1);
+});
+
+// ---------------------------------------------------------------- 31.91 F2 (v1.63): responder às perguntas da proposta
+it('as respostas vão no corpo do propose e a proposta nova as mostra; sem resposta, o corpo não vai', async () => {
+  let pedidas = 0;
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => {
+    pedidas += 1;
+    return json({ ...SESSAO, status: 'proposed', proposal: pedidas === 1 ? PROPOSTA
+      : { ...PROPOSTA, questions: [], answers: [{ question: 'O texto muda?', answer: 'Muda a cada cliente.' }] } });
+  });
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  expect(backend.callsTo('POST', /\/propose$/)[0]!.body).toBeUndefined();
+  expect(text()).toContain('Não escreva senha nem código');
+  expect(byRole('button', /^Pedir outra proposta$/)).toBeTruthy();
+
+  await setValue(byRole('textbox', /^O texto muda\?$/) as HTMLInputElement, '  Muda a cada cliente.  ');
+  await click(byRole('button', /^Pedir nova proposta com as respostas$/));
+  await waitFor(() => expect(regiao('Respostas já dadas', 'ul').textContent).toContain('Muda a cada cliente.'));
+  expect(backend.callsTo('POST', /\/propose$/)[1]!.body).toEqual({ answers: [{ question: 'O texto muda?', answer: 'Muda a cada cliente.' }] });
+  expect(rotulados('section', 'Perguntas da IA')).toHaveLength(0);     // respondida, não volta como pergunta
+});
+
+it('resposta com cara de senha (resposta_sensivel) fica no campo da pergunta, sem toast, e a proposta não muda', async () => {
+  useToastStore.setState({ toasts: [] });
+  let pedidas = 0;
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => {
+    pedidas += 1;
+    return pedidas === 1 ? json({ ...SESSAO, status: 'proposed', proposal: PROPOSTA })
+      : apiError(400, 'resposta_sensivel', 'A resposta parece senha ou código: não mande segredo para a IA.');
+  });
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  const campo = () => byRole('textbox', /^O texto muda\?$/) as HTMLInputElement;
+  await setValue(campo(), 'Senha123!');
+  await click(byRole('button', /^Pedir nova proposta com as respostas$/));
+  await waitFor(() => expect(campo().getAttribute('aria-invalid')).toBe('true'));
+  expect(text()).toContain('A resposta parece senha ou código');
+  expect(useToastStore.getState().toasts.filter((t) => t.title === 'A IA não conseguiu propor o fluxo')).toHaveLength(0);
+  expect((byRole('textbox', /Comando/) as HTMLInputElement).value).toBe('mande para {contato}');   // a proposta atual fica
+  // Mexer na resposta tira o aviso.
+  await setValue(campo(), 'Muda a cada cliente.');
+  expect(campo().getAttribute('aria-invalid')).toBeNull();
 });
