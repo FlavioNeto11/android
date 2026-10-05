@@ -26,7 +26,7 @@ class BuscarPelaBorda:
         self._prazo_s = prazo_s
         self._transporte = transporte        # os testes passam um `httpx.MockTransport`
 
-    def __call__(self, url: str, *, aceita: str | None) -> Resposta:
+    def __call__(self, url: str, *, aceita: str | None, ler_corpo: bool = True) -> Resposta:
         cabecalhos = {"User-Agent": NAVEGADOR, "Accept": "text/html,application/xhtml+xml,*/*"}
         if aceita:
             cabecalhos["Accept-Encoding"] = aceita
@@ -36,7 +36,8 @@ class BuscarPelaBorda:
                               trust_env=False) as cliente, cliente.stream("GET", url, headers=cabecalhos) as r:
                 recebidos = {k.lower(): v for k, v in r.headers.items()}
                 corpo = b""
-                if recebidos.get("content-encoding", "").strip().lower() in LEGIVEL:
+                # `ler_corpo=False` (a API, 29.101): o status basta, e aberta o corpo seria dado do central.
+                if ler_corpo and recebidos.get("content-encoding", "").strip().lower() in LEGIVEL:
                     for pedaco in r.iter_bytes():
                         corpo += pedaco
                         if len(corpo) > CORPO_MAX:

@@ -9,7 +9,8 @@ Uma régua só para os dois que conferem a borda, para não divergirem:
 
 Três desfechos, e o terceiro não é nem defeito nem sucesso: `sem_conferir` é a rede, o tempo esgotado ou a borda sem
 alcançar o central (520 a 526, 530). Os defeitos nasceram de medidas de 05/10: o beacon do Web Analytics injetado na
-raiz e no painel (29.85, 29.91), e o CSS e o JS guardados por 4 h com o endereço sem versão (29.95).
+raiz e no painel (29.85, 29.91), e o CSS e o JS guardados por 4 h com o endereço sem versão (29.95). O 29.101 junta o
+defeito mais grave do endereço público: a API respondendo sem credencial.
 """
 from __future__ import annotations
 
@@ -26,6 +27,14 @@ HTML_TRANSFORMADO = "html_transformado"
 CSP_AUSENTE = "csp_ausente"
 COOKIE = "cookie"
 VERSAO_DIVERGENTE = "versao_divergente"
+API_ABERTA = "api_aberta"
+
+#: O que o vigia pede SEM credencial para saber se a API fecha para fora (29.101): a lista de aparelhos, que é ler e
+#: mexer no central. O mesmo texto vai no `achado` do aviso (contrato da Canais).
+CAMINHO_DA_API = "/api/instances"
+#: As recusas certas: 401 do portão do central (`security/access.py`, nome público sem credencial) ou 403 de uma
+#: camada à frente dele.
+API_RECUSOU = frozenset({401, 403})
 
 #: A borda sem alcançar o central (o túnel): não diz nada sobre a página. O 0 é o `curl` sem resposta nenhuma.
 #: 502 e 504 vêm do túnel (`cloudflared`) sem alcançar a origem: disponibilidade, não configuração da borda, que é o
@@ -57,6 +66,10 @@ GESTOS: Mapping[str, str] = {
         "Ou a borda guarda sem olhar a query (Caching Level em 'Ignore query string'; o certo é Standard), ou serviu "
         "cópia velha, ou ALTEROU o arquivo no caminho (minificação automática de CSS/JS, Rocket Loader)."),
     PAGINA_FORA: "Sem ver a página não há o que conferir: desafio da Cloudflare? Veja Security > Bots e o WAF da zona.",
+    API_ABERTA: (
+        "A API do central respondeu SEM credencial pelo endereço público: tire o nome público do ar já (pare o túnel ou "
+        "a rota dele) e confira server.public_hosts e o token da API no config.yaml do central. O vigia só avisa; nada "
+        "foi parado."),
 }
 
 _SCRIPT_SRC = re.compile(r"""<script\b[^>]*?\ssrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))""", re.IGNORECASE)
@@ -222,6 +235,19 @@ def conferir_versao(onde: str, versao: str | None, status: int | None = None, co
     if veio != versao:
         return _defeito(Achado(VERSAO_DIVERGENTE, onde, f"a página pede ?v={versao} e a borda entregou {veio}"))
     return Desfecho(OK)
+
+
+def conferir_api(status: int) -> Desfecho:
+    """A API pedida pelo nome público sem credencial (29.101). Recusa (401, 403) é ok; 2xx é a API aberta para a
+    internet. O túnel sem alcançar a origem não diz nada. Outro status (3xx, 404, 500) também não prova nem um nem
+    outro: vira sem_conferir com o status, que avisa depois de N voltas em vez de gritar crítico à toa."""
+    if status in API_RECUSOU:
+        return Desfecho(OK)
+    if status in STATUS_SEM_CONFERIR:
+        return sem_conferir("sem resposta" if status == 0 else f"borda {status}")
+    if 200 <= status < 300:
+        return _defeito(Achado(API_ABERTA, CAMINHO_DA_API, f"status {status} sem credencial", CAMINHO_DA_API))
+    return sem_conferir(f"api {status}")
 
 
 def juntar(desfechos: Iterable[Desfecho]) -> Desfecho:

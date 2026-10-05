@@ -6,8 +6,8 @@ deploy: o beacon do Web Analytics injetado na raiz e no painel (29.85, 29.91) e 
 A prova de fora só roda quando alguém lembra; o vigia roda sozinho. O que é defeito é decidido pela régua comum
 (`domain/borda.py`), a mesma da prova de fora.
 
-Uma volta faz no máximo 4 GET, um por conferência, sem retry e sem credencial: a raiz e o painel como navegador, e o
-CSS e o JS pelo endereço com `?v=` que a raiz aponta. O estado fica em memória: a saúde só o lê, sem pedir nada à rede.
+Uma volta faz no máximo 5 GET, um por conferência, sem retry e sem credencial: a API (29.101, só o status, o corpo
+nunca é lido), a raiz e o painel como navegador, e o CSS e o JS pelo endereço com `?v=` que a raiz aponta. O estado fica em memória: a saúde só o lê, sem pedir nada à rede.
 O aviso ao dono sai pela Canais (`avisar_borda_do_portal`, contrato dela) uma vez por código e por dia, e o "não
 consegui conferir" só depois de N voltas seguidas.
 """
@@ -27,7 +27,7 @@ log = logging.getLogger("poc.portal")
 
 #: O caminho conferido → o `onde` do contrato da Canais.
 ONDE_DO_AVISO: Mapping[str, str] = {"/": "raiz", "/central/": "painel", "/assets/site.css": "css",
-                                    "/assets/site.js": "js"}
+                                    "/assets/site.js": "js", borda.CAMINHO_DA_API: "api"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +42,7 @@ class SemResposta(Exception):
 
 
 class Buscar(Protocol):
-    def __call__(self, url: str, *, aceita: str | None) -> Resposta: ...
+    def __call__(self, url: str, *, aceita: str | None, ler_corpo: bool = True) -> Resposta: ...
 
 
 class AvisarBorda(Protocol):
@@ -52,17 +52,22 @@ class AvisarBorda(Protocol):
                  horas_sem_conferir: int | None = None) -> object: ...
 
 
-def _pedir(buscar: Buscar, url: str, aceita: str | None) -> Resposta | Desfecho:
+def _pedir(buscar: Buscar, url: str, aceita: str | None, *, ler_corpo: bool = True) -> Resposta | Desfecho:
     try:
-        return buscar(url, aceita=aceita)
+        return buscar(url, aceita=aceita, ler_corpo=ler_corpo)
     except SemResposta as exc:
         return borda.sem_conferir(str(exc) or "sem resposta")
 
 
 def uma_volta(buscar: Buscar, *, host: str, site_ligado: bool, csp_do_painel: str) -> Desfecho:
-    """As conferências de uma volta, juntas. O painel sempre; a raiz e a versão do CSS e do JS só com o site ligado."""
+    """As conferências de uma volta, juntas. A API e o painel sempre; a raiz e a versão do CSS e do JS só com o site
+    ligado."""
     base = f"https://{host}"
     desfechos: list[Desfecho] = []
+
+    # A API primeiro: é o defeito mais grave. Só o status importa; aberta, o corpo seria dado do central (29.101).
+    api = _pedir(buscar, base + borda.CAMINHO_DA_API, None, ler_corpo=False)
+    desfechos.append(api if isinstance(api, Desfecho) else borda.conferir_api(api.status))
 
     painel = _pedir(buscar, base + "/central/", borda.ACEITA)
     if isinstance(painel, Desfecho):
@@ -203,9 +208,18 @@ class Vigia:
         """Para o `/api/health`: só o estado da última volta, nenhum pedido de rede aqui."""
         achados: list[tuple[str, str, str]] = []
         quando = f"{self.quando:%H:%M}Z" if self.quando else "?"
-        if self.ultima is not None and self.ultima.estado == borda.DEFEITO:
-            detalhes = "; ".join(f"{a.onde}: {a.detalhe}" for a in self.ultima.achados)
-            codigos = list(dict.fromkeys(a.codigo for a in self.ultima.achados))
+        defeitos = self.ultima.achados if self.ultima is not None and self.ultima.estado == borda.DEFEITO else ()
+        if any(a.codigo == borda.API_ABERTA for a in defeitos):
+            # Separado e primeiro: não é a página mexida pelo caminho, é o central aberto para a internet (29.101).
+            achados.append((
+                "portal_api_aberta",
+                f"O vigia da borda (volta das {quando}) pediu {borda.CAMINHO_DA_API} pelo nome público SEM credencial "
+                "e a API respondeu.",
+                borda.GESTOS[borda.API_ABERTA]))
+        defeitos = tuple(a for a in defeitos if a.codigo != borda.API_ABERTA)
+        if defeitos:
+            detalhes = "; ".join(f"{a.onde}: {a.detalhe}" for a in defeitos)
+            codigos = list(dict.fromkeys(a.codigo for a in defeitos))
             achados.append((
                 "portal_borda_defeito",
                 f"O vigia da borda (volta das {quando}) achou a página mexida pelo caminho: {detalhes}.",

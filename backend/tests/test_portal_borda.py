@@ -1,4 +1,4 @@
-"""O vigia da borda (29.97) e a régua comum com a prova de fora.
+"""O vigia da borda (29.97, e a API pedida sem credencial do 29.101) e a régua comum com a prova de fora.
 
 Prova `simulated`: a régua pura, a volta com `httpx.MockTransport` imitando a borda (o mesmo catálogo de defeitos do
 `curl` falso de `scripts/tests/test_portal_prova_de_fora.py`), o estado entre voltas, o aviso uma vez por código e por
@@ -49,6 +49,12 @@ def _borda(quebra: str = "") -> httpx.MockTransport:
             return httpx.Response(522, text="Connection timed out")
         if quebra in ("502", "504"):
             return httpx.Response(int(quebra), text="Bad gateway")
+        if caminho == borda.CAMINHO_DA_API:
+            if quebra == "api_aberta":
+                return httpx.Response(200, json=[{"serial": "emulador-segredo"}])
+            if quebra == "api_404":
+                return httpx.Response(404)
+            return httpx.Response(401, json={"detail": "unauthorized"})
         if caminho == "/central/":
             corpo = b'<!doctype html><script type="module" src="/central/assets/index-abc.js"></script><div id="root">'
             if quebra == "beacon_no_painel":
@@ -100,21 +106,21 @@ def _volta(quebra: str = "", *, site: bool = True, csp: str = "aplicar") -> tupl
 
 
 # ------------------------------------------------------------------ a régua e a volta
-def test_volta_limpa_e_ok_com_no_maximo_quatro_get_sem_credencial() -> None:
+def test_volta_limpa_e_ok_com_no_maximo_cinco_get_sem_credencial() -> None:
     d, pedidos = _volta()
     assert d.estado == borda.OK, d
-    assert [p.url.path for p in pedidos] == ["/central/", "/", "/assets/site.css", "/assets/site.js"]
+    assert [p.url.path for p in pedidos] == ["/api/instances", "/central/", "/", "/assets/site.css", "/assets/site.js"]
     for p in pedidos:
         assert p.method == "GET" and p.url.host == HOST and p.url.scheme == "https"
         assert "authorization" not in p.headers and "cookie" not in p.headers
         assert "Mozilla/5.0" in p.headers["user-agent"]                   # a borda só injeta para navegador
-    assert pedidos[1].headers["accept-encoding"] == borda.ACEITA
-    assert pedidos[2].url.query == f"v={VCSS}".encode()
+    assert pedidos[2].headers["accept-encoding"] == borda.ACEITA
+    assert pedidos[3].url.query == f"v={VCSS}".encode()
 
 
 def test_site_desligado_confere_so_o_painel() -> None:
     d, pedidos = _volta(site=False)
-    assert d.estado == borda.OK and [p.url.path for p in pedidos] == ["/central/"]
+    assert d.estado == borda.OK and [p.url.path for p in pedidos] == ["/api/instances", "/central/"]
 
 
 @pytest.mark.parametrize(("quebra", "codigo", "onde", "item"), [
@@ -127,17 +133,19 @@ def test_site_desligado_confere_so_o_painel() -> None:
     ("versao_velha", borda.VERSAO_DIVERGENTE, "/assets/site.css", ""),
     ("desafio", borda.PAGINA_FORA, "/", ""),
     ("painel_so_relata", borda.CSP_AUSENTE, "/central/", ""),
+    ("api_aberta", borda.API_ABERTA, "/api/instances", "/api/instances"),
 ])
 def test_cada_defeito_da_borda_tem_codigo_lugar_e_nenhum_segredo(quebra: str, codigo: str, onde: str,
                                                                   item: str) -> None:
     d, _ = _volta(quebra)
     assert d.estado == borda.DEFEITO, d
     achado = next(a for a in d.achados if a.codigo == codigo)
-    if quebra in ("desafio", "transformado", "cookie", "painel_so_relata"):
+    if quebra in ("desafio", "transformado", "cookie", "painel_so_relata", "api_aberta"):
         assert {a.codigo for a in d.achados} == {codigo}, d.achados   # V1: um defeito, um aviso, o gesto certo
     assert achado.onde == onde and achado.item == item
     texto = " ".join(f"{a.detalhe} {a.item}" for a in d.achados)
     assert "token=" not in texto and "valor-secreto" not in texto        # nem query do beacon, nem valor do cookie
+    assert "emulador-segredo" not in texto                               # nem dado da API aberta (29.101)
 
 
 def test_csp_conforme_o_modo_do_painel() -> None:
@@ -153,7 +161,7 @@ def test_csp_conforme_o_modo_do_painel() -> None:
 def test_rede_tempo_e_tunel_nao_sao_defeito_nem_sucesso(quebra: str, motivo: str) -> None:
     d, pedidos = _volta(quebra)
     assert d.estado == borda.SEM_CONFERIR and motivo in d.motivo and not d.achados
-    assert len(pedidos) <= 2                                             # sem retry nem rajada
+    assert len(pedidos) <= 3                                             # sem retry nem rajada: API, painel, raiz
 
 
 def test_scripts_de_fora_aceita_o_proprio_e_relativo() -> None:
@@ -187,8 +195,8 @@ class CanaisFalsa:
 
 
 def _vigia(quebra: Callable[[], str], canais: CanaisFalsa | None, *, n: int = 3) -> Vigia:
-    def buscar(url: str, *, aceita: str | None) -> Resposta:
-        return BuscarPelaBorda(lambda: 5, _borda(quebra()))(url, aceita=aceita)
+    def buscar(url: str, *, aceita: str | None, ler_corpo: bool = True) -> Resposta:
+        return BuscarPelaBorda(lambda: 5, _borda(quebra()))(url, aceita=aceita, ler_corpo=ler_corpo)
     return Vigia(buscar, host=lambda: HOST, site_ligado=lambda: True, csp_do_painel=lambda: "aplicar",
                  voltas_sem_conferir=lambda: n, intervalo_s=lambda: 3600, avisar=lambda: canais)
 
@@ -245,7 +253,7 @@ def test_sem_a_funcao_da_canais_fica_so_na_saude() -> None:
 
 
 def test_sem_nome_publico_nao_pede_nada() -> None:
-    def buscar(url: str, *, aceita: str | None) -> Resposta:
+    def buscar(url: str, *, aceita: str | None, ler_corpo: bool = True) -> Resposta:
         raise AssertionError("pediu sem nome público")
     vigia = Vigia(buscar, host=lambda: None, site_ligado=lambda: True, csp_do_painel=lambda: "aplicar",
                   voltas_sem_conferir=lambda: 3, intervalo_s=lambda: 3600, avisar=lambda: None)
@@ -272,7 +280,7 @@ async def test_saude_le_so_o_estado_e_o_nome_vem_do_config(harness: Harness) -> 
     assert portal.nome_do_vigia() is None
     harness.cfg.file.portal.vigia.ligado = True
 
-    def buscar(url: str, *, aceita: str | None) -> Resposta:
+    def buscar(url: str, *, aceita: str | None, ler_corpo: bool = True) -> Resposta:
         raise AssertionError("a saúde não pode pedir nada à rede")
     portal.vigia._buscar = buscar  # type: ignore[assignment]
     portal.vigia.seguidas_sem_conferir = 5
@@ -318,7 +326,7 @@ def test_painel_recomprimido_e_html_transformado_e_nao_pagina_fora() -> None:
 def test_css_e_js_pedidos_so_com_gzip() -> None:
     """V3: um `brotli` que entre no venv não pode virar corpo ilegível e versão divergente falsa."""
     _, pedidos = _volta()
-    assert [p.headers["accept-encoding"] for p in pedidos[2:]] == ["gzip", "gzip"]
+    assert [p.headers["accept-encoding"] for p in pedidos[3:]] == ["gzip", "gzip"]
 
 
 def test_versao_e_a_primeira_apontada_e_o_item_tem_teto() -> None:
@@ -346,3 +354,56 @@ def test_o_achado_da_canais_e_so_host_e_caminho_no_alfabeto_dela(src: str, item:
     host e caminho, sem query, fragmento, credencial nem porta, e no alfabeto `[A-Za-z0-9._/-]`."""
     assert borda.item_do_script(src) == item
     assert re.fullmatch(r"[A-Za-z0-9._/-]{1,120}", borda.item_do_script(src))
+
+
+# ------------------------------------------------------------------ 29.101: a API pedida de fora sem credencial
+@pytest.mark.parametrize(("status", "estado", "motivo"), [
+    (401, borda.OK, ""), (403, borda.OK, ""), (200, borda.DEFEITO, ""), (204, borda.DEFEITO, ""),
+    (502, borda.SEM_CONFERIR, "borda 502"), (504, borda.SEM_CONFERIR, "borda 504"), (0, borda.SEM_CONFERIR, "sem resposta"),
+    (404, borda.SEM_CONFERIR, "api 404"), (302, borda.SEM_CONFERIR, "api 302"), (500, borda.SEM_CONFERIR, "api 500"),
+])
+def test_a_api_sem_credencial_tem_de_recusar(status: int, estado: str, motivo: str) -> None:
+    """401 ou 403 é ok; 2xx é a API aberta; o túnel não diz nada; o resto não prova nem um nem outro e não grita
+    crítico à toa: sem_conferir com o status, que avisa depois de N voltas."""
+    d = borda.conferir_api(status)
+    assert d.estado == estado and d.motivo == motivo
+    if estado == borda.DEFEITO:
+        assert [(a.codigo, a.onde, a.item) for a in d.achados] == [(borda.API_ABERTA, "/api/instances", "/api/instances")]
+
+
+def test_a_api_e_o_primeiro_pedido_sem_credencial_e_o_corpo_nao_e_lido() -> None:
+    transporte = _borda("api_aberta")
+    buscar = BuscarPelaBorda(lambda: 5, transporte)
+    resposta = buscar(f"https://{HOST}/api/instances", aceita=None, ler_corpo=False)
+    assert resposta.status == 200 and resposta.corpo == b""              # aberta, o corpo seria dado do central
+    d, pedidos = _volta("api_aberta", site=False)
+    api = pedidos[0]
+    assert api.url.path == "/api/instances" and api.method == "GET"
+    assert "authorization" not in api.headers and "cookie" not in api.headers
+    assert d.estado == borda.DEFEITO and {a.codigo for a in d.achados} == {borda.API_ABERTA}
+
+
+def test_api_aberta_avisa_na_hora_e_a_saude_a_poe_primeiro_e_separada() -> None:
+    estado = {"q": "api_aberta"}
+    canais = CanaisFalsa()
+    vigia = _vigia(lambda: estado["q"], canais)
+    vigia.volta(AGORA)
+    assert canais.chamadas == [("api_aberta", "api", "/api/instances", None)]   # na 1ª volta, sem esperar N
+    [(codigo, mensagem, dica)] = vigia.problemas()
+    assert codigo == "portal_api_aberta" and "SEM credencial" in mensagem and "emulador-segredo" not in mensagem
+    assert "tire o nome público do ar" in dica and "nada foi parado" in dica
+    estado["q"] = "beacon"                                               # a API fechou e a borda injetou
+    vigia.volta(AGORA + timedelta(hours=1))
+    estado["q"] = "api_aberta"
+    vigia.volta(AGORA + timedelta(hours=2))
+    # Reabriu no mesmo dia: o vigia chama de novo; quem segura a repetição é a chave da Canais, por código e dia.
+    assert [c[0] for c in canais.chamadas] == ["api_aberta", "script_injetado", "api_aberta"]
+
+
+def test_api_que_responde_outra_coisa_so_avisa_depois_de_n_voltas() -> None:
+    canais = CanaisFalsa()
+    vigia = _vigia(lambda: "api_404", canais, n=2)
+    vigia.volta(AGORA)
+    assert canais.chamadas == []
+    vigia.volta(AGORA + timedelta(hours=1))
+    assert canais.chamadas == [("sem_conferir", "raiz", "api-404", 2)]
