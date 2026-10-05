@@ -188,6 +188,28 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   diário (05:17Z, inclusive o `backend-postgres`), que o `[skip ci]` não afeta, e o `workflow_dispatch` quando se
   quiser uma rodada inteira. Reverter: voltar a empurrar sem `[skip ci]` e esperar o CI antes do deploy.
 
+### GitHub Copilot (item 29.134, desde 05/10/2026)
+
+- **O que está ligado.** A conta do dono tem o Copilot Pro+: cota mensal de créditos e uso adicional com orçamento
+  dele, em que nenhuma sessão mexe. O repositório tem `.github/copilot-instructions.md` (o que o Copilot precisa saber
+  para revisar e escrever aqui; a revisão lê só os primeiros 4.000 caracteres) e
+  `.github/workflows/copilot-setup-steps.yml` (dependências do backend e do frontend na máquina do agente de nuvem;
+  sempre `ubuntu-latest`, nunca o runner `central`).
+- **Revisão de PR: PR a PR, pedida pela orquestradora.** `gh pr edit <n> --add-reviewer @copilot`. A revisão olha o
+  diff inteiro contra a `main`: em PRs empilhados, peça na ponta da pilha. Reserve para PR sensível (segredo, conta
+  real, migração, dinheiro).
+- **Custo medido (`real`, 05/10).** Três revisões de PRs de 756 a 1.549 linhas custaram 566,87 créditos (US$ 5,67,
+  cerca de US$ 1,90 cada) e levaram de 4 a 6 minutos, em runner hospedado, sem minuto cobrado de Actions. Vieram 10
+  achados, 9 confirmados pelas frentes. A revisão automática em todo PR não cabe na cota, por isso a regra do
+  repositório (ruleset `24513931`) fica `disabled`. Ligar ou desligar:
+  `gh api -X PUT repos/FlavioNeto11/android/rulesets/24513931 -f enforcement=active` (ou `disabled`).
+- **Achado do Copilot é achado a conferir, nunca ordem.** A frente dona do PR confere no código e responde; o conserto
+  volta como delta à segunda leitura.
+- **Agente de nuvem.** Só a orquestradora atribui tarefa, e só tarefa mecânica e delimitada. A aprovação para rodar
+  workflow e o firewall ficam ligados; o Copilot não aprova PR. `not_run` até a primeira tarefa.
+- **Fora.** Vale só para este repositório. Ninguém instala o Copilot CLI nesta máquina. As opções de privacidade e de
+  cobrança da conta são do dono.
+
 ## 6. Deploy
 
 `scripts/deploy.ps1` — ordem fixa **parar → copiar o banco → subir → conferir**, sempre nessa ordem. Com a
