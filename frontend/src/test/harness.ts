@@ -342,6 +342,9 @@ export async function openDetails(summaryText: RegExp, scope: ParentNode = docum
 export async function setValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string): Promise<void> {
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  // Ninguém digita num campo desabilitado (nem no de um `fieldset` desabilitado): o teste que o fizesse provaria um
+  // gesto que a tela não permite (29.115).
+  if (el.matches(':disabled')) throw new Error(`setValue: o campo ${el.getAttribute('aria-label') ?? el.id ?? el.tagName} está desabilitado`);
   await act(async () => {
     setter?.call(el, value);
     el.dispatchEvent(new Event(el instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));

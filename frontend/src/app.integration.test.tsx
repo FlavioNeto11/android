@@ -593,6 +593,8 @@ describe('Central de Aparelhos — sessão completa', () => {
     const preview = byRole('combobox', 'Prévia dos aparelhos') as HTMLSelectElement;
     expect(preview.value).toBe('on_demand');
     expect(Array.from(preview.options).map((o) => o.textContent)).toEqual(['Sob demanda (padrão)', 'Sempre (modo antigo)']);
+    // Os campos ficam desabilitados enquanto o PUT anterior não volta (29.115).
+    await waitFor(() => !preview.matches(':disabled'));
     await setValue(preview, 'always');
     // O PUT anterior registrado ainda não voltou: o Salvar fica em `loading` até a resposta (29.104).
     await click(await botaoPronto(/^Salvar limites/));
