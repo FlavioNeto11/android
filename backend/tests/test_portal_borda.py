@@ -46,18 +46,25 @@ def _borda(quebra: str = "") -> httpx.MockTransport:
             raise httpx.ConnectError("sem rota", request=pedido)
         if quebra == "tunel":
             return httpx.Response(522, text="Connection timed out")
+        if quebra in ("502", "504"):
+            return httpx.Response(int(quebra), text="Bad gateway")
         if caminho == "/central/":
             corpo = b'<!doctype html><script type="module" src="/central/assets/index-abc.js"></script><div id="root">'
             if quebra == "beacon_no_painel":
                 corpo += b"<script defer src='https://static.cloudflareinsights.com/beacon.min.js?token=x'></script>"
             cab = {"cache-control": "no-cache, must-revalidate, no-transform", "content-security-policy": CSP_SITE}
+            if quebra == "painel_recomprimido":
+                cab["content-encoding"] = "br"
+                return httpx.Response(200, headers=cab, content=b"\x8b\x00corpo-br")
             if quebra == "painel_so_relata":
                 cab = {"cache-control": "no-cache, must-revalidate, no-transform",
                        "content-security-policy-report-only": CSP_SITE}
             return httpx.Response(200, headers=cab, content=corpo)
         if caminho == "/":
             if quebra == "desafio":
-                return httpx.Response(403, text="<title>Just a moment...</title>")
+                # O desafio não tem no-transform, CSP nem gzip, e traz o cookie da borda (V1).
+                return httpx.Response(403, headers={"set-cookie": "__cf_bm=v; Path=/"},
+                                      text="<title>Just a moment...</title>")
             extra = ""
             if quebra == "beacon":
                 extra = "<script defer src='https://static.cloudflareinsights.com/beacon.min.js'></script>"
@@ -125,6 +132,8 @@ def test_cada_defeito_da_borda_tem_codigo_lugar_e_nenhum_segredo(quebra: str, co
     d, _ = _volta(quebra)
     assert d.estado == borda.DEFEITO, d
     achado = next(a for a in d.achados if a.codigo == codigo)
+    if quebra in ("desafio", "transformado", "cookie", "painel_so_relata"):
+        assert {a.codigo for a in d.achados} == {codigo}, d.achados   # V1: um defeito, um aviso, o gesto certo
     assert achado.onde == onde and achado.item == item
     texto = " ".join(f"{a.detalhe} {a.item}" for a in d.achados)
     assert "token=" not in texto and "valor-secreto" not in texto        # nem query do beacon, nem valor do cookie
@@ -138,7 +147,8 @@ def test_csp_conforme_o_modo_do_painel() -> None:
 
 
 @pytest.mark.parametrize(("quebra", "motivo"), [("timeout", "tempo esgotado"), ("rede", "rede"),
-                                                ("tunel", "borda 522")])
+                                                ("tunel", "borda 522"), ("502", "borda 502"),
+                                                ("504", "borda 504")])
 def test_rede_tempo_e_tunel_nao_sao_defeito_nem_sucesso(quebra: str, motivo: str) -> None:
     d, pedidos = _volta(quebra)
     assert d.estado == borda.SEM_CONFERIR and motivo in d.motivo and not d.achados
@@ -150,6 +160,10 @@ def test_scripts_de_fora_aceita_o_proprio_e_relativo() -> None:
             '<script src="//site.exemplo.invalid/b.js"></script><SCRIPT SRC = "https://cdn.invalid/x.js?src=b">'
             "<script src='data:text/javascript,1'></script>")
     assert borda.scripts_de_fora(html, HOST) == ["https://cdn.invalid/x.js", "data:text/javascript,1"]
+    # V2: o navegador lê `\` como `/` e ignora tabulação: os três são `//outro.invalid/x.js`, script de fora.
+    for disfarce in ("\\\\outro.invalid/x.js", "/\\outro.invalid/x.js", "/\t/outro.invalid/x.js"):
+        assert borda.scripts_de_fora(f'<script src="{disfarce}"></script>', HOST) == [disfarce], disfarce
+    assert borda.scripts_de_fora('<script src="\\\\site.exemplo.invalid/a.js"></script>', HOST) == []
     assert borda.scripts_de_fora("<script>a='/cdn-cgi/challenge-platform/x'</script>", HOST) == ["(embutido)"]
 
 
@@ -214,7 +228,7 @@ def test_sem_conferir_so_avisa_na_n_esima_volta_seguida() -> None:
         vigia.volta(AGORA + timedelta(hours=h))
     assert canais.chamadas == [] and vigia.problemas() == []
     vigia.volta(AGORA + timedelta(hours=2))
-    assert canais.chamadas == [("sem_conferir", "raiz", None, 3)]
+    assert canais.chamadas == [("sem_conferir", "raiz", "tempo-esgotado", 3)]   # o aviso diz o código
     assert [p[0] for p in vigia.problemas()] == ["portal_borda_sem_conferir"]
     estado["q"] = ""
     vigia.volta(AGORA + timedelta(hours=3))                              # voltou: zera, e a saúde limpa
@@ -292,3 +306,23 @@ def test_configuracao_do_vigia_e_estrita() -> None:
         PortalVigiaCfg(intervalo_s=60)                                   # menos de 10 min viraria rajada
     with pytest.raises(ValidationError):
         PortalVigiaCfg.model_validate({"ligada": True})                 # chave com outro nome recusa
+
+
+def test_painel_recomprimido_e_html_transformado_e_nao_pagina_fora() -> None:
+    """V4: o painel em br não se lê; o defeito é a borda ter aberto o corpo, não a página fora."""
+    d, _ = _volta("painel_recomprimido", site=False)
+    assert {a.codigo for a in d.achados} == {borda.HTML_TRANSFORMADO}, d.achados
+
+
+def test_css_e_js_pedidos_so_com_gzip() -> None:
+    """V3: um `brotli` que entre no venv não pode virar corpo ilegível e versão divergente falsa."""
+    _, pedidos = _volta()
+    assert [p.headers["accept-encoding"] for p in pedidos[2:]] == ["gzip", "gzip"]
+
+
+def test_versao_e_a_primeira_apontada_e_o_item_tem_teto() -> None:
+    html = '<link href="/assets/site.css?v=aaaaaaaaaaaa"><link href="/assets/site.css?v=bbbbbbbbbbbb">'
+    assert borda.versoes_pedidas(html) == {"/assets/site.css": "aaaaaaaaaaaa"}            # V8, como a prova antiga
+    enorme = "data:text/javascript," + "x" * 500
+    [achado] = borda.conferir_html("/", 200, f'<script src="{enorme}"></script>', host=HOST).achados
+    assert len(achado.item) == borda.ITEM_MAX                                             # V12

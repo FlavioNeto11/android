@@ -68,10 +68,8 @@ def uma_volta(buscar: Buscar, *, host: str, site_ligado: bool, csp_do_painel: st
     if isinstance(painel, Desfecho):
         desfechos.append(painel)
     else:
-        desfechos.append(borda.conferir_html("/central/", painel.status, _texto(painel), host=host))
-        desfechos.append(borda.conferir_cabecalhos(
-            "/central/", painel.status, painel.cabecalhos, sem_transformar=True,
-            csp=None if csp_do_painel == "desligada" else csp_do_painel))
+        desfechos += _pagina("/central/", painel, host, sem_transformar=True,
+                             csp=None if csp_do_painel == "desligada" else csp_do_painel)
     if not site_ligado:
         return borda.juntar(desfechos)
 
@@ -79,27 +77,40 @@ def uma_volta(buscar: Buscar, *, host: str, site_ligado: bool, csp_do_painel: st
     if isinstance(raiz, Desfecho):
         desfechos.append(raiz)
         return borda.juntar(desfechos)
-    desfechos.append(borda.conferir_cabecalhos("/", raiz.status, raiz.cabecalhos, sem_transformar=True,
-                                               gzip_da_origem=True, csp="site", sem_cookie=True))
-    if not _corpo_legivel(raiz):
-        # br ou zstd: a borda abriu e recomprimiu a página (o defeito já está acima); o HTML não dá para ler aqui.
+    desfechos += _pagina("/", raiz, host, sem_transformar=True, gzip_da_origem=True, csp="site", sem_cookie=True)
+    if raiz.status != 200 or not _corpo_legivel(raiz):
         return borda.juntar(desfechos)
     html = _texto(raiz)
-    desfechos.append(borda.conferir_html("/", raiz.status, html, host=host))
-    if raiz.status != 200:
-        return borda.juntar(desfechos)
     versoes = borda.versoes_pedidas(html)
     for caminho in ("/assets/site.css", "/assets/site.js"):
         versao = versoes.get(caminho)
         if versao is None:
             desfechos.append(borda.conferir_versao(caminho, None))
             continue
-        arquivo = _pedir(buscar, f"{base}{caminho}?v={versao}", None)
+        # Só gzip: um `brotli` que entre no venv não pode virar corpo ilegível e `versao_divergente` falso (V3).
+        arquivo = _pedir(buscar, f"{base}{caminho}?v={versao}", "gzip")
         if isinstance(arquivo, Desfecho):
             desfechos.append(arquivo)
         else:
             desfechos.append(borda.conferir_versao(caminho, versao, arquivo.status, arquivo.corpo))
     return borda.juntar(desfechos)
+
+
+def _pagina(onde: str, resposta: Resposta, host: str, *, sem_transformar: bool = False, gzip_da_origem: bool = False,
+            csp: str | None = None, sem_cookie: bool = False) -> list[Desfecho]:
+    """A página e os cabeçalhos dela. Fora do 200 só vale o `pagina_fora` do HTML: um desafio da borda (403) não tem
+    `no-transform`, CSP nem gzip, e conferir cabeçalho nele viraria 3 ou 4 avisos com gesto errado (V1). Corpo em br
+    ou zstd não se lê aqui: a borda abriu e recomprimiu, e o `html_transformado` dos cabeçalhos já diz isso."""
+    if resposta.status != 200:
+        return [borda.conferir_html(onde, resposta.status, "", host=host)]
+    desfechos = [borda.conferir_cabecalhos(onde, resposta.status, resposta.cabecalhos, sem_transformar=sem_transformar,
+                                           gzip_da_origem=gzip_da_origem, csp=csp, sem_cookie=sem_cookie)]
+    if _corpo_legivel(resposta):
+        desfechos.append(borda.conferir_html(onde, resposta.status, _texto(resposta), host=host))
+    elif not any(a.codigo == borda.HTML_TRANSFORMADO for d in desfechos for a in d.achados):
+        codificacao = borda.cabecalho(resposta.cabecalhos, "content-encoding")
+        desfechos.append(borda.corpo_recomprimido(onde, codificacao))
+    return desfechos
 
 
 def _corpo_legivel(resposta: Resposta) -> bool:
@@ -143,7 +154,9 @@ class Vigia:
             log.warning("portal: vigia da borda sem conferir (%s), %s volta(s) seguida(s)", desfecho.motivo,
                         self.seguidas_sem_conferir)
             if self.seguidas_sem_conferir >= self._n():
-                self._avisar_uma_vez(borda.SEM_CONFERIR, "raiz", agora, horas=self._horas())
+                # O aviso diz o código (`borda-502`, `tempo-esgotado`): o filtro da Canais só deixa [A-Za-z0-9._/-].
+                codigo = desfecho.motivo.split(",", 1)[0].strip().replace(" ", "-")
+                self._avisar_uma_vez(borda.SEM_CONFERIR, "raiz", agora, achado=codigo or None, horas=self._horas())
             return desfecho
         self.seguidas_sem_conferir = 0
         self._avisado_em.pop(borda.SEM_CONFERIR, None)

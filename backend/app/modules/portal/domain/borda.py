@@ -28,7 +28,11 @@ COOKIE = "cookie"
 VERSAO_DIVERGENTE = "versao_divergente"
 
 #: A borda sem alcançar o central (o túnel): não diz nada sobre a página. O 0 é o `curl` sem resposta nenhuma.
-STATUS_SEM_CONFERIR = frozenset({0, 520, 521, 522, 523, 524, 525, 526, 530})
+#: 502 e 504 vêm do túnel (`cloudflared`) sem alcançar a origem: disponibilidade, não configuração da borda, que é o
+#: que o vigia confere (decisão da orquestradora, 05/10 04:58Z).
+STATUS_SEM_CONFERIR = frozenset({0, 502, 504, 520, 521, 522, 523, 524, 525, 526, 530})
+#: Teto do que vai ao aviso do dono num `item` (um `src` `data:` pode ser enorme).
+ITEM_MAX = 120
 #: O pedido aceita os três: se a borda respeita o `no-transform`, a raiz chega no gzip que a ORIGEM fez.
 ACEITA = "gzip, br, zstd"
 #: A borda só injeta o beacon quando o pedido parece de navegador (medido em 05/10).
@@ -46,7 +50,8 @@ GESTOS: Mapping[str, str] = {
         "Confira na zona as Transform Rules e as Compression Rules; se nada mudou lá, pode ser do deploy: diga no chat "
         "da orquestradora."),
     CSP_AUSENTE: (
-        "Confira server.csp_do_painel no config.yaml do central e as Transform Rules da zona (podem tirar cabeçalhos)."),
+        "Confira as Transform Rules da zona (podem tirar cabeçalhos); no painel, confira também server.csp_do_painel no "
+        "config.yaml do central."),
     COOKIE: "Desligue Bot Fight Mode na zona, ou mude o texto da página, que promete não usar cookies.",
     VERSAO_DIVERGENTE: (
         "Ou a borda guarda sem olhar a query (Caching Level em 'Ignore query string'; o certo é Standard), ou serviu "
@@ -98,7 +103,8 @@ def scripts_de_fora(html: str, host: str) -> list[str]:
     achados: list[str] = []
     for m in _SCRIPT_SRC.finditer(html):
         src = next(g for g in m.groups() if g is not None).strip()
-        baixo = src.lower()
+        # Como o navegador lê: tabulação e quebra de linha somem, e `\` vale `/` (`\\outro/x.js` é `//outro/x.js`).
+        baixo = re.sub(r"[\t\n\r]", "", src).replace("\\", "/").lower()
         esquema = re.split(r"[/?#]", baixo, maxsplit=1)[0]
         if "/cdn-cgi/" in baixo:
             de_fora = True
@@ -130,7 +136,7 @@ def conferir_html(onde: str, status: int, html: str, *, host: str) -> Desfecho:
         return _defeito(Achado(PAGINA_FORA, onde, f"status {status}"))
     if not html.strip():
         return _defeito(Achado(PAGINA_FORA, onde, "corpo vazio pedido como navegador"))
-    return _defeito(*(Achado(SCRIPT_INJETADO, onde, src, src.split("//", 1)[-1])
+    return _defeito(*(Achado(SCRIPT_INJETADO, onde, src, src.split("//", 1)[-1][:ITEM_MAX])
                       for src in scripts_de_fora(html, host)))
 
 
@@ -163,6 +169,12 @@ def conferir_cabecalhos(onde: str, status: int, cabecalhos: Mapping[str, str], *
     return _defeito(*achados)
 
 
+def corpo_recomprimido(onde: str, codificacao: str) -> Desfecho:
+    """A página veio em br ou zstd e o corpo não se lê: a borda abriu e recomprimiu o HTML (V4 da leitura). No painel,
+    que a origem não comprime, é o único sinal; na raiz o `gzip_da_origem` já acusa o mesmo."""
+    return _defeito(Achado(HTML_TRANSFORMADO, onde, f"corpo recomprimido pela borda ({codificacao})"))
+
+
 def _csp_ok(cabecalhos: Mapping[str, str], modo: str) -> bool:
     """`aplicar` e `site` exigem o cabeçalho que barra; `so_relatar`, o Report-Only (a subida do 29.91 no central)."""
     nome = "content-security-policy-report-only" if modo == "so_relatar" else "content-security-policy"
@@ -172,7 +184,10 @@ def _csp_ok(cabecalhos: Mapping[str, str], modo: str) -> bool:
 
 def versoes_pedidas(html: str) -> dict[str, str]:
     """`{"/assets/site.css": "<12 hex>", "/assets/site.js": …}` como a raiz os aponta (29.95)."""
-    return {caminho: versao for caminho, versao in _VERSAO.findall(html)}
+    versoes: dict[str, str] = {}
+    for caminho, versao in _VERSAO.findall(html):
+        versoes.setdefault(caminho, versao)                  # o 1º, como a prova antiga (`head -1`)
+    return versoes
 
 
 def conferir_versao(onde: str, versao: str | None, status: int | None = None, corpo: bytes | None = None) -> Desfecho:

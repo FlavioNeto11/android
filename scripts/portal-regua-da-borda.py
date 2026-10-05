@@ -46,8 +46,10 @@ def _cabecalhos(texto: str) -> tuple[int, dict[str, str]]:
     cab: dict[str, str] = {}
     for linha in linhas[1:]:
         nome, _, valor = linha.partition(":")
-        if nome.strip():
-            cab[nome.strip().lower()] = valor.strip()
+        chave = nome.strip().lower()
+        if chave:
+            # Repetido (duas CSP, uma posta por Transform Rule) junta com ", ", como o httpx entrega ao vigia (V7).
+            cab[chave] = f"{cab[chave]}, {valor.strip()}" if chave in cab else valor.strip()
     return status, cab
 
 

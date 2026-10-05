@@ -6,6 +6,7 @@ que não resolve e tempo esgotado viram `SemResposta`: a volta não diz nada sob
 """
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 
 import httpx
@@ -29,6 +30,7 @@ class BuscarPelaBorda:
         cabecalhos = {"User-Agent": NAVEGADOR, "Accept": "text/html,application/xhtml+xml,*/*"}
         if aceita:
             cabecalhos["Accept-Encoding"] = aceita
+        inicio = time.monotonic()
         try:
             with httpx.Client(transport=self._transporte, timeout=self._prazo_s(), follow_redirects=False,
                               trust_env=False) as cliente, cliente.stream("GET", url, headers=cabecalhos) as r:
@@ -39,6 +41,10 @@ class BuscarPelaBorda:
                         corpo += pedaco
                         if len(corpo) > CORPO_MAX:
                             break
+                        # O prazo do httpx vale por fase (conexão, cada pedaço): uma resposta que pinga devagar passaria
+                        # dele. O pedido inteiro também tem prazo (V13).
+                        if time.monotonic() - inicio > self._prazo_s():
+                            raise SemResposta("tempo esgotado")
                 return Resposta(r.status_code, recebidos, corpo)
         except httpx.TimeoutException as exc:
             raise SemResposta("tempo esgotado") from exc

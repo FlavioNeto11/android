@@ -27,10 +27,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **O que muda:**
   - `portal/domain/borda.py`, a régua: o que é defeito (`script_injetado`, `html_transformado`, `csp_ausente`,
     `cookie`, `versao_divergente`, `pagina_fora`) e o que é "não consegui conferir" (rede, tempo esgotado, 520 a 526,
-    530, sem resposta);
+    530, sem resposta, e 502/504 do túnel, que são disponibilidade e não configuração da borda);
   - `scripts/portal-prova-de-fora.sh` passa a decidir pela mesma régua, por `scripts/portal-regua-da-borda.py`, que
-    carrega o arquivo do domínio pelo caminho (sem venv). As linhas saem iguais; o script no FALHOU sai sem query. A
-    variável `CSP_DO_PAINEL=so_relatar` serve à rodada de uma subida em relatório;
+    carrega o arquivo do domínio pelo caminho e roda com qualquer Python 3.11+ do PATH, sem o venv (há teste: só
+    biblioteca padrão). O que muda na saída:
+    - as linhas `ok` saem iguais;
+    - as de FALHOU mudam de texto: uma por falha; o valor sem o nome do cabeçalho (`veio br`); o script sem a query
+      (o beacon leva token nela); linha de gesto (`-> …`) também em `html_transformado`, `csp_ausente`, `cookie` e
+      "sem ?v="; e "nao conferido: borda 522" no lugar de "522 esperado 200";
+    - os cabeçalhos da raiz (`/ (cabecalhos)`, `/ (sem cookie)`) passam a ser pedidos como navegador, num pedido só,
+      mais fiel ao visitante: se a zona só põe `__cf_bm` para navegador, a linha do cookie agora acusa;
+    - `src` com barra invertida (`\\outro/x.js`) e com tabulação no meio seguem reprovando, como o navegador os lê;
+    - sem Python 3.11+ ou com `CSP_DO_PAINEL` fora de `aplicar|so_relatar`, a prova PARA no começo com o motivo
+      (saída 3). A variável `CSP_DO_PAINEL=so_relatar` serve à rodada de uma subida em relatório;
   - `portal/application/vigia.py` e `portal/adapters/borda_http.py`: de hora em hora, no líder da trava `avisos`, até
     4 GET pelo 1º nome público, como navegador e sem credencial. O estado fica em memória, a saúde o lê
     (`portal_borda_defeito`, `portal_borda_sem_conferir`), e o aviso vai pela Canais (`avisar_borda_do_portal`, PR

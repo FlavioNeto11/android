@@ -61,9 +61,24 @@ PY="${PYTHON:-python}"
 # A borda so injeta o beacon quando o pedido parece de navegador (medido em 05/10): o curl puro nao ve.
 UA_NAVEGADOR='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
 
+# Sem a regua nao ha prova: Python velho, o atalho da Microsoft Store ou CSP_DO_PAINEL errado param aqui, com o
+# motivo, em vez de cada linha sair em branco.
+if ! MSYS2_ARG_CONV_EXCL='*' "$PY" -c 'import sys; sys.exit(sys.version_info < (3, 11))' > /dev/null 2>&1; then
+    echo "PARE: a regua da borda precisa de um Python 3.11+ (PYTHON=caminho; agora: $PY)"; exit 3
+fi
+case "${CSP_DO_PAINEL:-aplicar}" in
+    aplicar|so_relatar) ;;
+    *) echo "PARE: CSP_DO_PAINEL so aceita aplicar ou so_relatar (veio ${CSP_DO_PAINEL})"; exit 3 ;;
+esac
+
 regua() { # conferencia [args]; o stdin vai para a regua. Imprime a linha dela e conta a falha
-    local saida rc
+    local saida rc rotulo="" anterior=""
+    for arg in "$@"; do [[ "$anterior" == "--rotulo" ]] && rotulo="$arg"; anterior="$arg"; done
     saida="$(regua_crua "$@")"; rc=$?
+    if [[ -z "$saida" ]]; then
+        saida="$(printf 'FALHOU %-28s      a regua da borda nao respondeu (saida %s; veja o stderr)' "$rotulo" "$rc")"
+        [[ "$rc" == 0 ]] && rc=1
+    fi
     printf '%s\n' "$saida"
     [[ "$rc" == 0 ]] || FALHAS=$((FALHAS + 1))
 }
