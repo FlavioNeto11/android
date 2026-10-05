@@ -85,6 +85,17 @@ def test_l2a_a_barra_do_sistema_como_janela_propria_nao_infla_a_janela() -> None
     assert tree.janela == (40, 480, 680, 820)
 
 
+def test_no_de_topo_zerado_ao_lado_de_um_valido_fica_fora_da_janela() -> None:
+    """N2 da revisão: um nó de topo com bounds zerados (`[0,0][0,0]`, a janela ainda sem medida) não entra na união; a
+    janela é a do nó válido, e o diálogo segue valendo pela janela."""
+    zerado = _no("", (0, 0, 0, 0), classe="android.widget.FrameLayout", pkg="com.exemplo.app")
+    dialogo = _no("", (40, 480, 680, 820), classe="android.widget.FrameLayout", pkg="android",
+                  filhos=_no("Permitir acesso à localização?", (88, 520, 632, 580), pkg="android"))
+    tree = parse_hierarchy(_dump(zerado, dialogo))
+    assert tree.janela == (40, 480, 680, 820)
+    assert sobreposicao_vale(tree, _id(tree, "Permitir acesso à localização?"), 720, 1280) is True
+
+
 def test_sem_a_janela_o_l2_nao_decide() -> None:
     """Árvore montada fora de `parse_hierarchy` (`janela=None`): o L2 não cai de volta na extensão das folhas, que é o
     erro que ele corrige; quem decide são as outras regras (aqui, nada cobre: não vale)."""
