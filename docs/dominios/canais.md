@@ -766,7 +766,19 @@ operação. Aqui só se descreve a forma deles.
 Os scripts da operação provisória ficam versionados em `.claude/canais/`, e os dados deles ficam na pasta excluída:
 
 - `telegram_inbox.py`: lê as mensagens do bot;
-- `telegram_status.py`: envia uma mensagem, com `--reply-to` e `--chat`;
+- `telegram_status.py`: envia uma mensagem, com `--reply-to` e `--chat`. Também tem:
+  - `--escolha` e `--substitui`, do 28.44;
+  - `--foto STEP_ID`, que manda ao dono a imagem que a etapa vai publicar (28.45 e 28.46):
+    - a imagem só sai se o sha256 dos bytes bater com o `imagem_sha256` que a prévia da porta mostra. Esse sha é lido
+      da própria Central (`sha_da_imagem_na_porta`, a mesma conta do `porta_do_plano._item`). Um teste em
+      `test_rotulo_ia.py` prende as duas juntas, inclusive no `None` da imagem de outra persona;
+    - o `--previa <porta.json>` é opcional e, se vier, também tem de bater com a Central;
+    - cada falha diz o seu motivo e nada sai: a Central não lida, a imagem fora do armazém, o sha diferente, o chat
+      vazio;
+    - sem resposta do Telegram (tempo esgotado, 5xx), a foto pode ter saído: a saída manda conferir o chat antes de
+      repetir;
+    - o script usa o backend do checkout central, então o `--foto` do 28.46 só funciona depois do deploy dele. Antes
+      disso, recusa com "a Central não foi lida (ImportError)", e nada sai;
 - `resumo_laco.py`: o resumo de hora em hora, com `--carimbar` e `--ensaio`;
 - `url_painel.py`: grava ou recua o `avisos.url_painel` do `config.yaml`, com backup.
 

@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.46: a foto da etapa conferida contra a prévia da própria Central (branch canais/28-46-foto-pela-central)
+
+- `telegram_status.py --foto` lê o `imagem_sha256` da Central (`sha_da_imagem_na_porta`, a mesma conta da prévia da
+  porta), e não só de um arquivo. O `--previa` virou opcional e, se vier, tem de bater com a Central.
+- `imagem_da_etapa` saiu da classe `PortasReais` para uma função, e o script a usa sem montar as portas.
+- Cada falha diz o seu motivo, sem traceback. Sem resposta do Telegram, a saída manda conferir o chat antes de
+  repetir.
+- Prova:
+  - `simulated`: `.claude/canais/test_telegram_status.py`, com o envio montado e o sha errado sem chamar o envio, e
+    `backend/tests/test_rotulo_ia.py`, com o sha da foto igual ao da prévia da porta, item a item;
+  - `real`: a leitura do sha e dos bytes no banco do central, em 05/10, deu 5fbf3507… e 166824 bytes na etapa da
+    primeira publicação, sem envio.
+
 ## 2026-10-05 — 28.44: a resposta solta casa com a pergunta de escolha aberta (branch canais/28-44-escolha-solta)
 
 - A pergunta de escolha que a ANA manda leva a marca `escolha:<msg>:<opções>` (`telegram_status.py --escolha 1,2,3`).
