@@ -426,6 +426,17 @@ class FontesDaValidacaoSql:
         r = self._db.one("SELECT idempotency_key FROM runs WHERE id=?", (run_id,))
         return r is not None and eh_ensaio_de_leitura(linhas.texto_ou_nulo(r, "idempotency_key"))
 
+    def causa_sem_evidencia(self, run_id: str) -> Motivo | None:
+        """30.75: pelos campos estruturados, nunca pelo texto. O teto vence o login: o corte pelo orçamento é o que
+        gastou sem deixar evidência; a parada no login não gasta."""
+        if self._db.one("SELECT 1 FROM attempts a JOIN steps s ON s.id = a.step_id WHERE s.run_id=?"
+                        " AND a.error_kind='budget' LIMIT 1", (run_id,)) is not None:
+            return Motivo.ORCAMENTO_DA_PROVA
+        if self._db.one("SELECT 1 FROM objectives WHERE run_id=? AND blocked_kind='auth' LIMIT 1",
+                        (run_id,)) is not None:
+            return Motivo.APP_SEM_SESSAO
+        return None
+
     def desfecho(self, run_id: str) -> tuple[str, float] | None:
         r = self._db.one("SELECT status FROM runs WHERE id=?", (run_id,))
         if r is None:

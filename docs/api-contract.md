@@ -6295,3 +6295,18 @@ Migração 112. Campo aditivo em `SessionInfo`, nos mesmos cinco DTOs do adendo 
 - O painel usa `status_since` como o "desde" do item da sessão em Pendências e cai em `verified_at` quando ele falta.
   Ausente = backend de antes do 29.100.
 - **Prova:** `simulated` (`backend/tests/test_sessao_status_since.py`, `frontend/src/features/pendencias/PendenciasPage.test.tsx`).
+
+## Adendo v1.54 (05/10/2026; número da orquestradora; item 30.75) — a prova sem evidência diz a causa
+
+Valores aditivos de `motivo` nos pedidos de validação (`GET /api/aprendizado/validacoes`, `itens[].motivo`, e
+`contagem` por estado sem mudança):
+- `orcamento_da_prova`: a execução da prova foi cortada pelo teto do pedido (`teto_usd`) no meio. O gasto (`usd`) não
+  deixou evidência no fluxo.
+- `app_sem_sessao`: o app pediu login no aparelho escolhido, e a prova parou ali. O aparelho sai dos candidatos das
+  próximas provas daquele app até a verificação nova dele (a do app no aparelho, ou um objetivo concluído num fluxo do
+  mesmo app nele).
+- Os dois saem do mesmo lugar que `sem_evidencia`: o pedido de fluxo que fecha sem evidência a favor nem contra.
+  - O pedido já fechado `sem_evidencia` pode passar a um deles, uma vez, pelo passo da curadoria.
+  - Nenhum dos dois é chegada do curador.
+- O texto para a pessoa vem do servidor (`MOTIVO_HUMANO`), como os demais. O painel não precisa de mudança.
+- **Prova:** `simulated` (`backend/tests/test_validacao_motivos_da_prova.py`).

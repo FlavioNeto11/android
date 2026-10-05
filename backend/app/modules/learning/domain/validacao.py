@@ -111,6 +111,11 @@ class Motivo(StrEnum):
     RITMO = "ritmo"                                   # já rodaram MAXIMO_POR_HORA na última hora
     # ao fechar
     SEM_EVIDENCIA = "sem_evidencia"                   # a execução assentou e não deixou evidência no item
+    #: 30.75: duas causas de "sem evidência" que a execução de prova registra de forma estruturada. Nenhuma diz nada
+    #: sobre o item (não é chegada do curador, não é contra, não se reabre sozinha): só deixam a medida dizer o que
+    #: travou e quanto custou.
+    ORCAMENTO_DA_PROVA = "orcamento_da_prova"         # o teto do pedido cortou a execução no meio (`error_kind=budget`)
+    APP_SEM_SESSAO = "app_sem_sessao"                 # o app pediu login no aparelho (`objectives.blocked_kind=auth`)
     EVIDENCIA_CONTRA = "evidencia_contra"             # 30.36: deixou evidência CONTRA (o curador volta ao item)
     DIVERGENCIA_DE_FORMA = "divergencia_de_forma"     # 30.36: fez o caminho e só reescreveu a forma (nem a favor)
     #: 30.42: a prova deixou a linha `invalida` (nem a favor nem contra); o motivo é o dela (`domain/prova.py`)
@@ -153,6 +158,9 @@ MOTIVO_HUMANO: Mapping[Motivo, str] = {
     Motivo.ORCAMENTO: "O orçamento de validação desta janela acabou.",
     Motivo.RITMO: "Já rodou o máximo de validações desta hora.",
     Motivo.SEM_EVIDENCIA: "A execução terminou sem deixar evidência no item.",
+    Motivo.ORCAMENTO_DA_PROVA: "O teto da prova cortou a execução no meio; o gasto não deixou evidência.",
+    Motivo.APP_SEM_SESSAO: ("O app pediu login no aparelho escolhido; a prova parou ali. O aparelho sai das próximas "
+                            "provas deste app até uma verificação nova."),
     Motivo.EVIDENCIA_CONTRA: "A execução deixou evidência contra o item; o curador volta a ele.",
     Motivo.DIVERGENCIA_DE_FORMA: "A execução fez o caminho, mas só reescreveu a forma; não conta a favor.",
     Motivo.EXECUCAO_FALHOU: "A execução de validação falhou.",
