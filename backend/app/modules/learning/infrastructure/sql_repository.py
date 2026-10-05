@@ -33,7 +33,7 @@ from app.modules.learning.domain.efeito import Exposicao
 from app.modules.learning.domain.evidencia_invalida import PREFIXO, reaprendizado
 from app.modules.learning.domain.falhas import tipo_da_tentativa
 from app.modules.learning.domain.livro import (Escopo, ItemDeAprendizado, NovoItem, Transicao, fluxo_tem_efeito,
-                                               receita_tem_efeito, ref_da_trilha)
+                                               quem_no_log, receita_tem_efeito, ref_da_trilha)
 from app.modules.learning.domain.promocao import Evidencia
 from app.modules.learning.domain.vocabulario import (SINAIS_DE_INTERVENCAO, Braco, LivroKind, Polaridade, Posicao,
                                                      SignalKind, SourceKind)
@@ -224,9 +224,9 @@ class SqlLearningRepository:
             else:
                 raise EntradaInvalida(f"{m.kind.value} não tem status movido pelo livro.")
             if row is None:
-                raise NaoEncontrado(f"{m.kind.value} '{m.ref}' não existe.")
+                raise NaoEncontrado(f"{quem_no_log(m.kind, m.ref)} não existe.")
             if linhas.texto(row, "status") != m.de_status:
-                raise ConflitoDeEstado(f"{m.kind.value} {m.ref} mudou de status; releia e tente de novo.")
+                raise ConflitoDeEstado(f"{quem_no_log(m.kind, m.ref)} mudou de status; releia e tente de novo.")
             self._registrar(ref_da_trilha(m.kind, m.ref), m.kind, m.content_hash, m.scope_key, m.app_version,
                             estado, estado, reason, by, self._clock(), None)
 
@@ -265,18 +265,18 @@ class SqlLearningRepository:
     def _mover_fluxo(self, m: MudancaNativa, *, by: str, emenda_b: bool = False) -> None:
         row = self._db.one("SELECT * FROM flows WHERE id=?", (m.ref,))
         if row is None:
-            raise NaoEncontrado(f"Fluxo '{m.ref}' não existe.")
+            raise NaoEncontrado("O fluxo não existe.")
         if m.para_status == "active":
             if by == SYSTEM_ACTOR and not emenda_b and fluxo_tem_efeito(linhas.json_legado(linhas.texto(row, "plan"))):
-                raise ExigeODono(f"Fluxo {m.ref} tem etapa de efeito externo: publicar é decisão do dono (D1).")
+                raise ExigeODono("O fluxo tem etapa de efeito externo: publicar é decisão do dono (D1).")
             if by == SYSTEM_ACTOR and self._reaprendido(m):
-                raise ExigeODono(f"Fluxo {m.ref} foi reaprendido depois de uma evidência inválida: publicar é decisão "
+                raise ExigeODono("O fluxo foi reaprendido depois de uma evidência inválida: publicar é decisão "
                                  "do dono (classe B).")
             if self._guarda_do_fluxo is not None and (motivo := self._guarda_do_fluxo(m.ref)) is not None:
                 raise ConflitoDeEstado(motivo)
         cur = self._db.execute("UPDATE flows SET status=? WHERE id=? AND status=?", (m.para_status, m.ref, m.de_status))
         if int(cur.rowcount or 0) != 1:
-            raise ConflitoDeEstado(f"Fluxo {m.ref} mudou de status durante a transição; releia e tente de novo.")
+            raise ConflitoDeEstado("O fluxo mudou de status durante a transição; releia e tente de novo.")
 
     # ================================================================== trilha
     def _registrar(self, item_ref: str, kind: LivroKind, content_hash: str | None, scope_key: str,

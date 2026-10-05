@@ -33,7 +33,7 @@ from typing import Protocol
 from app.contracts.origem import PREFIXO_VALIDACAO
 from app.modules.learning.domain.ciclo import ConflitoDeEstado, ExigeODono, SkillState, TransicaoProibida
 from app.modules.learning.domain.curador import Decisao, Falta, Parecer
-from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item, ref_no_log
+from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item, quem_no_log, ref_no_log
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, Classificacao, Razao
 from app.modules.learning.domain.ensinado import EsperaDoEnsinado
 from app.modules.learning.domain.validacao import (PREFIXO_DO_ENSINO, VALIDADE_DO_PEDIDO_H, Ambiente, AparelhoCandidato,
@@ -342,8 +342,8 @@ class ServicoDeValidacao:
             raise TransicaoProibida("A validação automática está desligada (aprendizado.validacao.modo: off).")
         if e.kind is not LivroKind.FLUXO or e.state is not SkillState.CANDIDATE:
             estado = e.state.value if e.state is not None else e.native_status
-            raise TransicaoProibida(f"Pedir validação vale só para fluxo candidato; {e.kind.value} {e.ref} está em "
-                                    f"'{estado}'.")
+            raise TransicaoProibida("Pedir validação vale só para fluxo candidato; "
+                                    f"{quem_no_log(e.kind, e.ref)} está em '{estado}'.")
         risco = self._risco_do_item(e) if self._risco_do_item is not None else None
         if risco is None or risco.classe is ClasseDeRisco.C:
             raise ExigeODono("Fluxo de classe C segue item a item com o dono: a validação automática não o prova.")
@@ -364,7 +364,7 @@ class ServicoDeValidacao:
             estado=pedido.estado.value, motivo=None, expira_em=to_iso(agora + timedelta(hours=VALIDADE_DO_PEDIDO_H)),
             teto_usd=aj.teto_por_pedido_usd), agora)
         if pid is None:
-            raise ConflitoDeEstado(f"O fluxo {e.ref} já tem um pedido de validação vivo.")
+            raise ConflitoDeEstado("O fluxo já tem um pedido de validação vivo.")
         log.info("aprendizado: %s pediu a validação de %s (pedido %s)", by, ref_no_log(e.trail_ref), pid)
         return pid
 

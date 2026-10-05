@@ -6641,5 +6641,12 @@ Muda o VALOR de `ref` nos eventos de fluxo e passa a aceitar a referência nova 
     com o id interno (`id`, `flow_id`);
   - o `desfazer.href` de um efeito do voto (`POST /api/runs/{id}/feedback`) leva a referência pública; o `ref` do
     efeito segue com o id interno.
-- **Ainda com o id interno:** `item.ref` nas respostas do Livro, `GET /api/flows` (o painel casa por ele), e o id da
-  habilidade adotada de um fluxo legado (`<app>.<slug>`, e `flow:<slug>` nas relações).
+- **Fatia 4:** o texto das exceções de fluxo (o `detail.message` dos 404, 409 e 422 do Livro, do pedido de validação e
+  da loja) não cita a referência: diz só "fluxo" ("Não há fluxo com essa referência no livro.", "O fluxo mudou de
+  status…"). A receita segue com o número.
+- **Fica com o id interno** (o painel casa por ele; nada disso vai a evento):
+  - `item.ref` nas respostas do Livro e o `ref` do efeito do voto;
+  - `GET /api/flows`, a resposta do `PUT /api/flows/{id}` (`id` e `name`) e o `flow_id` de adopt e release;
+  - o id da habilidade adotada de um fluxo legado (`<app>.<slug>`) e `flow:<slug>` nas relações.
+- **Para a Canais:** a chave do aviso do ensinado (o hash do `ref`) muda uma vez no deploy, como a do
+  `learning.needs_person`. Um fluxo apagado sorteia uma referência nova a cada reemissão, e a chave muda junto.

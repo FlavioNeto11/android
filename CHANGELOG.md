@@ -97,7 +97,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `update_flow`, `delete_flow`, `adopt_flow`, `release_flow`, `_id_do_fluxo` (nova, skills), `_efeito` e
   `_ref_do_href` (nova), `quem_no_log` e `ref_no_log` (novas), os logs de `ServicoDeValidacao`, `AvisadorDeEspera`,
   `PoliticaD1DoFluxo.mudou`, `SombraDosFluxos`, `EnsinoDaValidacaoSql.entrada` e `ServicoDeAutopublicacao`.
-- Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (14), `test_treino_substitui_receita.py` e
+- Fatia 4 (S1 da leitura da fatia 3): o texto das exceções de fluxo de `LearningService`, `ServicoDeValidacao` e
+  `SqlLearningRepository` diz só "fluxo" (`quem_no_log`), e os três logs de `SombraDosFluxos` dizem só o tipo da
+  exceção. O adendo v1.66 lista tudo que fica com o id interno e avisa a Canais da chave do aviso do ensinado.
+- Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (15), `test_ensinado_em_prova.py` (36),
+  `test_treino_substitui_receita.py` e
   `test_learning_autopublicacao_sombra.py`. Real: `not_run`.
 
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)

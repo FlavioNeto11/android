@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -22,7 +23,7 @@ from app.main import create_app
 from app.models import Plan, PlannerInfo, PlanStep, Postcondition
 from app.modules.learning.application.espera import AvisadorDeEspera
 from app.modules.learning.application.feedback import EfeitoAplicado
-from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.ciclo import ConflitoDeEstado, SkillState, TransicaoProibida
 from app.modules.learning.domain.ensinado import AvisoDoEnsinado, DecisaoDoEnsinado, EsperaDoEnsinado
 from app.modules.learning.domain.espera import AvisoDeEspera, Faixa
 from app.modules.learning.domain.livro import EntradaDoLivro, quem_no_log, ref_no_log
@@ -260,3 +261,15 @@ def test_o_href_de_desfazer_do_voto_leva_a_referencia_publica() -> None:
                                  "body": {"to": "published", "reason": "reativado depois do voto"}}
     assert fluxo["ref"] == SLUG                         # o `ref` segue o id interno, que o painel casa com a lista
     assert isinstance(receita["desfazer"], dict) and receita["desfazer"]["href"] == "/api/aprendizado/receita/42/status"
+
+
+def test_as_excecoes_do_pedido_de_validacao_nao_levam_o_slug(mundo: Mundo) -> None:
+    """S1 da leitura da fatia 3: o texto da exceção vai ao `detail` da resposta e ao log."""
+    e = mundo.candidato(SLUG)
+    mundo.servico.pedir_pela_pessoa(e, by="painel")
+    with pytest.raises(ConflitoDeEstado) as vivo:
+        mundo.servico.pedir_pela_pessoa(e, by="painel")
+    with pytest.raises(TransicaoProibida) as publicado:
+        mundo.servico.pedir_pela_pessoa(replace(e, state=SkillState.PUBLISHED), by="painel")
+    assert "maria" not in str(vivo.value) and "maria" not in str(publicado.value)
+    assert "pedido de validação vivo" in str(vivo.value) and "fluxo" in str(publicado.value)
