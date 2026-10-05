@@ -177,10 +177,12 @@ def sem_snapshot(porque: str) -> str:
 
 
 class ControlError(Exception):
-    def __init__(self, code: str, message: str):
+    def __init__(self, code: str, message: str, **detalhes: Any):
         super().__init__(message)
         self.code = code
         self.message = message
+        #: 29.143: o que o painel mostra junto da recusa (`controlled_by_other`: `dono` e `desde`); vai ao corpo do 409.
+        self.detalhes = detalhes
 
 
 class InstanceBusy(Exception):
@@ -443,6 +445,10 @@ class DeviceRuntime:
         self.lease_expires_mono: float = 0
         self.takeover_requested = False
         self.pending_lease_id: str | None = None
+        #: 29.143: de quem é o lease (e o pedido pendente): o `por` de quem o recebeu (o operador da sessão, ou `panel`).
+        #: Não persiste, como o próprio lease.
+        self.lease_dono: str | None = None
+        self.pending_dono: str | None = None
         #: 14.13: o que o log já conta deste aparelho, a assinatura material do último `instance.updated` e o controle
         #: do último `control.changed` ou `instance.updated` (`devices/publicacao.py`). None = nada ainda: a primeira
         #: publicação persiste.
@@ -596,6 +602,9 @@ class DeviceManager:
         #: é o que cumpre a promessa do texto de desafio (`textos.desafio` do `sessao.yaml`: "devolva o controle: a verificação recomeça sozinha"),
         #: hoje só palavra (achado #106).
         self.on_control_released: Callable[[DeviceRuntime], None] = lambda rt: None
+        #: 29.143: uma pessoa TOMOU o controle de outra (a tomada explícita). Recebe (aparelho, quem tomou, de quem). O
+        #: estado encerra a gravação viva de quem ensinava, sem salvar nem descartar; chamado ANTES do lease novo.
+        self.on_lease_taken: Callable[[DeviceRuntime, str, str], None] = lambda rt, novo, antigo: None
         #: Modo treinamento (item 13.1): recebe cada entrada manual já executada, com a árvore da tela de ANTES.
         self.on_training_input: Callable[[DeviceRuntime, dict[str, Any], Any], None] | None = None
         #: Aprendizado (ADR-054, A2): uma pessoa pediu o aparelho com a IA no meio de uma etapa. Só os ids — nem
@@ -4183,36 +4192,62 @@ class DeviceManager:
         if rt.control != ControlOwner.ai:
             return
         if rt.takeover_requested and rt.pending_lease_id:
-            self._grant_user(rt, rt.pending_lease_id)
+            self._grant_user(rt, rt.pending_lease_id, dono=rt.pending_dono or "panel")
         else:
             rt.control, rt.control_since = ControlOwner.none, None
             self._control_event(rt, "IA liberou o aparelho")
 
-    def _grant_user(self, rt: DeviceRuntime, lease_id: str) -> None:
+    def _grant_user(self, rt: DeviceRuntime, lease_id: str, *, dono: str,
+                    mensagem: str = "Controle manual concedido ao usuário", **extra: Any) -> None:
         rt.control, rt.control_since = ControlOwner.user, now_iso()
         rt.lease_id, rt.pending_lease_id, rt.takeover_requested = lease_id, None, False
+        rt.lease_dono, rt.pending_dono = dono, None
         rt.training_session_id = None              # gravação só começa depois do controle (training.start)
         rt.lease_expires_mono = time.monotonic() + MANUAL_LEASE_TTL_S
         rt.attention = "Controle manual ativo — a execução automática deste aparelho está suspensa."
-        self._control_event(rt, "Controle manual concedido ao usuário")
+        self._control_event(rt, mensagem, **extra)
 
-    def _control_event(self, rt: DeviceRuntime, message: str) -> None:
+    def _control_event(self, rt: DeviceRuntime, message: str, **extra: Any) -> None:
         self.bus.emit("control.changed", f"{rt.id}: {message}", instance_id=rt.id,
-                      data={"instance_id": rt.id, "control": rt.control.value, "pending": rt.takeover_requested})
+                      data={"instance_id": rt.id, "control": rt.control.value, "pending": rt.takeover_requested,
+                            **extra})
         # 14.13: o fato do controle já está no log; o DTO que segue só vai persistido se algo MAIS mudou.
         rt.controle_anunciado = (rt.control.value, rt.takeover_requested)
         self.publish(rt)
 
-    def request_control(self, rt: DeviceRuntime, *, por: str | None = None) -> tuple[str, str]:
-        """`por`: quem pediu (a rota passa o autor da sessão), levado ao sinal `tomou_controle` (ADR-054)."""
+    def request_control(self, rt: DeviceRuntime, *, por: str | None = None, tomar: bool = False) -> tuple[str, str]:
+        """`por`: quem pediu (a rota passa o autor da sessão), levado ao sinal `tomou_controle` (ADR-054) e, desde o
+        29.143, dono do lease. A mesma pessoa (outra aba) recebe o mesmo lease, como antes. Outra pessoa recebe 409
+        `controlled_by_other` dizendo quem controla, nunca o lease calado: com ele, quem só olhava podia tocar, parar ou
+        descartar a gravação de quem ensina. `tomar=True` é a tomada explícita: lease NOVO, o antigo deixa de valer, e a
+        gravação viva de quem ensinava é encerrada (sem salvar nem descartar: a revisão segue com ela).
+
+        Limite: sem sessão todo chamador é `panel`, e entre eles não há como distinguir; `panel` e um operador com
+        sessão se recusam um ao outro."""
+        quem = por or "panel"
         if rt.control == ControlOwner.user and rt.lease_id:
-            rt.lease_expires_mono = time.monotonic() + MANUAL_LEASE_TTL_S
-            return "granted", rt.lease_id
+            dono = rt.lease_dono or "panel"
+            if quem == dono:
+                rt.lease_expires_mono = time.monotonic() + MANUAL_LEASE_TTL_S
+                return "granted", rt.lease_id
+            if not tomar:
+                raise ControlError("controlled_by_other",
+                                   f"{dono} está no controle de {rt.id} desde {rt.control_since}; para assumir, use a "
+                                   "tomada explícita.", dono=dono, desde=rt.control_since)
+            self.on_lease_taken(rt, quem, dono)
+            lease = new_token()
+            self._grant_user(rt, lease, dono=quem, mensagem=f"{quem} tomou o controle de {dono}",
+                             tomado_por=quem, tomado_de=dono)
+            return "granted", lease
         if rt.control == ControlOwner.ai:
             # a IA termina a ação em andamento e cede num ponto seguro
+            if rt.pending_lease_id and quem != (rt.pending_dono or "panel"):
+                dono = rt.pending_dono or "panel"
+                raise ControlError("controlled_by_other", f"{dono} já pediu o controle de {rt.id}; aguardando a IA.",
+                                   dono=dono, desde=None)
             primeiro_pedido = not rt.pending_lease_id
             pendente = rt.pending_lease_id or new_token()
-            rt.pending_lease_id = pendente
+            rt.pending_lease_id, rt.pending_dono = pendente, quem
             rt.takeover_requested = True
             self._control_event(rt, "Usuário pediu o controle; aguardando a IA concluir a ação atual")
             atual = rt.current
@@ -4223,12 +4258,12 @@ class DeviceManager:
                        TomadaDeControle(rt.id, atual.run_id, atual.objective_id, atual.step_id, quem=por))
             return "pending", pendente
         lease = new_token()
-        self._grant_user(rt, lease)
+        self._grant_user(rt, lease, dono=quem)
         return "granted", lease
 
     def release_control(self, rt: DeviceRuntime, lease_id: str) -> None:
         if rt.takeover_requested and rt.pending_lease_id == lease_id:
-            rt.takeover_requested, rt.pending_lease_id = False, None
+            rt.takeover_requested, rt.pending_lease_id, rt.pending_dono = False, None, None
             self._control_event(rt, "Pedido de controle cancelado")
             return
         if rt.control != ControlOwner.user or rt.lease_id != lease_id:
@@ -4236,7 +4271,7 @@ class DeviceManager:
         self._end_user_control(rt, "Usuário devolveu o controle; a IA vai observar a tela novamente antes de agir")
 
     def _end_user_control(self, rt: DeviceRuntime, message: str | None) -> None:
-        rt.control, rt.control_since, rt.lease_id = ControlOwner.none, None, None
+        rt.control, rt.control_since, rt.lease_id, rt.lease_dono = ControlOwner.none, None, None, None
         # Fim do controle é fim da gravação. Se o encerramento no gravador falhar (state.py engole), o id preso valeria
         # a folga do quadro velho no PRÓXIMO controle, fora de gravação.
         rt.training_session_id = None

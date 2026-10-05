@@ -528,6 +528,8 @@ class AppState:
         # Devolver o controle manual, num aparelho cujo perfil esperava uma pessoa, dispara a reobservação —
         # é o que o texto de desafio do app (`sessao.yaml`) promete e, sem isto, o código não fazia (achado #106).
         self.devices.on_control_released = self._controle_devolvido
+        # 29.143: a tomada explícita encerra a gravação de quem ensinava (sem salvar nem descartar) antes do lease novo.
+        self.devices.on_lease_taken = self._controle_tomado
         # Modo treinamento (item 13.1): cada entrada manual do Foco, com a tela de antes, vai para a gravação.
         from .training.recorder import TrainingRecorder  # noqa: PLC0415
         # A persona do treino é a que a pessoa escolheu; sem escolha, a ÚNICA do aparelho para o app (com duas, o
@@ -1241,6 +1243,14 @@ class AppState:
         except Exception:  # noqa: BLE001 - a gravação nunca pode impedir a devolução do controle
             log.exception("%s: não foi possível encerrar o treinamento ao devolver o controle", rt.id)
         self._reobservar_apos_intervencao(rt)
+
+    def _controle_tomado(self, rt: DeviceRuntime, novo: str, antigo: str) -> None:
+        """29.143: uma gravação nunca passa de mão em mão. A de quem perdeu o controle termina aqui, marcada no log;
+        o aparelho segue com uma pessoa, então não há reobservação (diferente de `_controle_devolvido`)."""
+        try:
+            self.training.stop_for_instance(rt.id, motivo=f"interrompida pela tomada de {novo} (estava com {antigo})")
+        except Exception:  # noqa: BLE001 - a gravação nunca pode impedir a troca de controle
+            log.exception("%s: não foi possível encerrar o treinamento na tomada do controle", rt.id)
 
     def _reobservar_apos_intervencao(self, rt: DeviceRuntime) -> None:
         """O controle manual voltou para o aparelho (devolvido ou expirado). Se o perfil vinculado estava
