@@ -218,7 +218,7 @@ class SqlLearningRepository:
                 try:
                     row = self._db.one("SELECT status FROM recipes WHERE id=?", (int(m.ref),))
                 except ValueError as exc:
-                    raise NaoEncontrado(f"Receita '{m.ref}' não existe.") from exc
+                    raise NaoEncontrado("Não há receita com essa referência (o id é um número).") from exc
             elif m.kind is LivroKind.FLUXO:
                 row = self._db.one("SELECT status FROM flows WHERE id=?", (m.ref,))
             else:
@@ -237,7 +237,7 @@ class SqlLearningRepository:
         try:
             recipe_id = int(m.ref)
         except ValueError as exc:
-            raise NaoEncontrado(f"Receita '{m.ref}' não existe.") from exc
+            raise NaoEncontrado("Não há receita com essa referência (o id é um número).") from exc
         row = self._db.one("SELECT * FROM recipes WHERE id=?", (recipe_id,))
         if row is None:
             raise NaoEncontrado(f"Receita {recipe_id} não existe.")

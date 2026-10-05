@@ -30,7 +30,7 @@ from app.modules.learning.domain.autopublicacao import (Acao, Avaliacao, Balanco
                                                         avaliar, balanco, desfecho)
 from app.modules.learning.domain.ciclo import MOTIVO_DA_EMENDA_B, ErroDeAprendizado, SkillState
 from app.modules.learning.domain.evidencia_invalida import run_invalidada
-from app.modules.learning.domain.livro import EntradaDoLivro, LivroKind
+from app.modules.learning.domain.livro import EntradaDoLivro, LivroKind, ref_no_log
 from app.modules.learning.domain.parecer import RevisaoGravada, mais_restritiva
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
 from app.modules.learning.domain.promocao import Contadores, contadores
@@ -129,7 +129,7 @@ class ServicoDeAutopublicacao:
         try:
             self._servico.autopublicar_fluxo(e.ref, reason=motivo)
         except ErroDeAprendizado as exc:
-            log.warning("aprendizado: autopublicação (emenda B) recusada para %s: %s", x.item_ref, exc)
+            log.warning("aprendizado: autopublicação (emenda B) recusada para %s: %s", ref_no_log(x.item_ref), exc)
             return False
         return True
 
