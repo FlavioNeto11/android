@@ -158,9 +158,16 @@ def ref_aleatoria(db: Database) -> str:
 
 
 def ref_publica_do_fluxo(db: Database, flow_id: str) -> str:
-    """A referência que sai do central (evento, `href`): a `ref_publico`; sem ela (subida ainda não preencheu), o id."""
+    """A referência que sai do central (evento, `href`). Nunca cai no id (N2 da leitura da Ferramentas): sem a
+    `ref_publico` (uma réplica no código antigo criou o fluxo depois da subida), preenche NA HORA; sem a linha (fluxo
+    apagado), uma referência nova que não abre nada, em vez do id."""
     linha = db.one("SELECT ref_publico FROM flows WHERE id=?", (flow_id,))
-    return str(linha["ref_publico"]) if linha is not None and linha["ref_publico"] else flow_id
+    if linha is None:
+        return ref_aleatoria(db)
+    if linha["ref_publico"]:
+        return str(linha["ref_publico"])
+    db.execute("UPDATE flows SET ref_publico=? WHERE id=? AND ref_publico IS NULL", (ref_aleatoria(db), flow_id))
+    return str(db.scalar("SELECT ref_publico FROM flows WHERE id=?", (flow_id,)))
 
 
 def id_do_fluxo(db: Database, ref: str) -> str:

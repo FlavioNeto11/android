@@ -104,7 +104,15 @@ def test_as_duas_traducoes_aceitam_o_id_e_a_referencia(db: Database) -> None:
     antigo = "enviar-mensagem-para-maria-souza"
     assert id_do_fluxo(db, ref) == id_do_fluxo(db, antigo) == antigo
     assert id_do_fluxo(db, "f-ffffffffffff") == "f-ffffffffffff"                 # desconhecida: o 404 de sempre
-    assert ref_publica_do_fluxo(db, "sem-linha") == "sem-linha"
+    assert FORMA.fullmatch(ref_publica_do_fluxo(db, "sem-linha"))               # N2: nunca cai no id
+
+
+def test_o_fluxo_sem_referencia_ganha_na_hora_e_nunca_sai_o_id(db: Database) -> None:
+    _legado(db, "enviar-mensagem-para-maria-souza", "mande uma mensagem a maria")   # réplica no código antigo
+    ref = ref_publica_do_fluxo(db, "enviar-mensagem-para-maria-souza")
+    assert FORMA.fullmatch(ref) and "maria" not in ref
+    assert db.scalar("SELECT ref_publico FROM flows WHERE id=?", ("enviar-mensagem-para-maria-souza",)) == ref
+    assert ref_publica_do_fluxo(db, "enviar-mensagem-para-maria-souza") == ref      # a mesma nas próximas
 
 
 def test_o_aviso_do_fluxo_sai_com_a_referencia_publica_e_sem_o_id_na_mensagem(db: Database) -> None:
