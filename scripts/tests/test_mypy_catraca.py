@@ -29,3 +29,11 @@ def test_o_teto_do_repositorio_e_um_numero(tmp_path):
     f = tmp_path / "teto.txt"
     f.write_text("# comentário\n\n12\n", encoding="utf-8")
     assert mc.ler_teto(f) == 12
+
+
+def test_python_sem_mypy_diz_o_que_falta_e_reprova(monkeypatch, capsys):
+    import subprocess
+    monkeypatch.setattr(mc.subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(
+        [], 1, stdout="", stderr="python.exe: No module named mypy\n"))
+    assert mc.main() == 2
+    assert "requirements-dev" in capsys.readouterr().out

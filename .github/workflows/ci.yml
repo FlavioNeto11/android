@@ -65,8 +65,15 @@ env:
 jobs:
   # 29.102: a corrida diária desiste se o runner do central já tem um pytest vivo (a suíte do funil ou uma medida).
   # Em 05/10 o SQLite do cron disputou a máquina com a suíte 35 e foi cancelado pelo limite de 60 min; e a medida de
-  # latência não pode ter um pytest serial no meio. Desistir é um aviso visível, não um vermelho; o disparo manual
-  # roda sempre (quem dispara sabe o que está rodando).
+  # latência não pode ter um pytest serial no meio (K-101). Desistir é um aviso visível; o disparo manual roda sempre
+  # (quem dispara sabe o que está rodando). Rede PARCIAL quando pula: o `backend-postgres` (hospedado) roda assim mesmo.
+  # Para não ficar sem rede em silêncio:
+  # - pytest vivo há mais de 6 h é órfão: não conta para a porta e sai como `::error::` com o PID;
+  # - mais de 48 h sem corrida de verdade (a marca `farm-porta-ultima-corrida.txt` na pasta de trabalho do runner, que a
+  #   própria porta grava quando deixa rodar) e a porta reprova: o run fica VERMELHO em vez de pular de novo.
+  # PREMISSA: o `CommandLine` de processo de OUTRO usuário só vem preenchido para quem está elevado. O runner do central
+  # roda como Administrator, nível Highest (tarefa `farm-ci-runner`), e as suítes e medidas também rodam como
+  # Administrator: hoje a porta vê todos. Se o runner deixar de ser elevado, a porta passa a ver zero e nunca pula.
   porta:
     name: porta · o runner está livre?
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
@@ -76,16 +83,32 @@ jobs:
     steps:
       - id: conferir
         run: |
-          $vivos = @()
+          $agora = (Get-Date).ToUniversalTime()
+          $marca = Join-Path (Split-Path $env:RUNNER_TEMP) 'farm-porta-ultima-corrida.txt'
+          $vivos = @(); $orfaos = @()
           if ($IsWindows) {
-            $vivos = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+            $todos = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
                        Where-Object { $_.CommandLine -match 'pytest' })
+            $orfaos = @($todos | Where-Object { ($agora - $_.CreationDate.ToUniversalTime()).TotalHours -gt 6 })
+            $vivos = @($todos | Where-Object { ($agora - $_.CreationDate.ToUniversalTime()).TotalHours -le 6 })
+          }
+          foreach ($o in $orfaos) {
+            Write-Host "::error::pytest órfão no runner (PID $($o.ProcessId), desde $($o.CreationDate.ToUniversalTime().ToString('u'))): não conta para a porta; encerre-o"
           }
           if ($vivos.Count -gt 0 -and '${{ github.event_name }}' -eq 'schedule') {
+            if (-not (Test-Path $marca)) { $agora.ToString('o') | Set-Content $marca }   # primeira vez: começa a contar
+            $ultima = [datetime]::Parse((Get-Content $marca -Raw).Trim(), $null, 'RoundtripKind').ToUniversalTime()
+            $horas = [int]($agora - $ultima).TotalHours
+            $pids = ($vivos | ForEach-Object { $_.ProcessId }) -join ', '
             "livre=false" >> $env:GITHUB_OUTPUT
-            Write-Host "::warning::corrida diária pulada: $($vivos.Count) processo(s) pytest vivo(s) no runner"
+            if ($horas -gt 48) {
+              Write-Host "::error::corrida diária pulada de novo (pytest vivo: PID $pids) e a última de verdade foi há $horas h: sem rede há mais de 48 h"
+              exit 1
+            }
+            Write-Host "::warning::corrida diária pulada: pytest vivo no runner (PID $pids); última corrida de verdade há $horas h"
           } else {
             "livre=true" >> $env:GITHUB_OUTPUT
+            $agora.ToString('o') | Set-Content $marca
           }
 
   backend-sqlite:

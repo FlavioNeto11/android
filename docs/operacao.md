@@ -99,16 +99,31 @@ serial no runner do central, que é a máquina das suítes e das medidas de lat�
 três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que restou para a corrida diária voltar a ser rede:
 
 - **Porta do runner:** o job `porta` olha se o runner já tem um `pytest` vivo; na corrida agendada, com um vivo, os
-  jobs do central são pulados com um aviso (`::warning::`), sem vermelho. O disparo manual roda sempre. O job de
-  PostgreSQL, hospedado na GitHub, não depende dela. Em 05/10 o SQLite do cron disputou a máquina com a suíte 35 e caiu
-  no limite de 60 min.
+  jobs do central são pulados com um aviso (`::warning::`). O disparo manual roda sempre. Em 05/10 o SQLite do cron
+  disputou a máquina com a suíte 35 e caiu no limite de 60 min.
+  - **Rede parcial:** quando a porta pula, o job de PostgreSQL, hospedado na GitHub, roda assim mesmo.
+  - **Órfão:** `pytest` vivo há mais de 6 h não conta e sai como `::error::` com o PID (encerre-o).
+  - **48 h:** a porta grava a hora de cada corrida de verdade em `farm-porta-ultima-corrida.txt`, na pasta de trabalho
+    do runner. Pulando com mais de 48 h desde a última, ela reprova e o run fica vermelho, em vez de pular calado.
+  - **Premissa:** a porta lê o `CommandLine` dos processos, que para processo de outro usuário só vem a quem está
+    elevado. O runner roda como Administrator, nível Highest (tarefa `farm-ci-runner`), e as suítes e medidas também:
+    hoje ela vê todos. Runner sem elevação veria zero e nunca pularia. A forma robusta seria uma trava de PID num
+    caminho fixo, gravada pelo funil e pelas medidas; ficou de fora porque cada sessão roda os seus scripts.
 - **Catraca do mypy:** o código novo (`app.contracts`, `app.modules`, `app.shared`) nasceu com zero erro e derivou até
   254 no cron de 05/10 (257 na base do 29.102, depois da suíte 35); o job reprovava toda noite. Agora `scripts/mypy-catraca.py` reprova só se a contagem passa do teto em
-  `backend/mypy-teto.txt`; quem baixa a contagem baixa o teto no mesmo commit.
+  `backend/mypy-teto.txt`; quem baixa a contagem baixa o teto no mesmo commit. Sem o `pull_request`, o cron só a veria
+  DEPOIS do merge e reprovaria para todos sem dizer quem subiu: por isso ela roda também no funil, junto das catracas,
+  e no dirigido de quem toca `backend/app` (`.claude/rules/testes.md`). Leva ~1 min e pede o mypy do
+  `requirements-dev.txt` no Python que a roda. O teto é do Windows, a plataforma do runner: o mypy avalia os ramos de
+  `sys.platform`, e em Linux a contagem pode ser outra.
 - **docs-check em clone limpo:** `.claude/handoff-current.md` entrou no `.gitignore` versionado (estava só no
   `.git/info/exclude`, que não vem num clone).
 - **Testes que dependiam do host:** `test_pausa_de_reparo` compara a saúde antes e depois da pausa, não um valor
-  absoluto; `test_backup::test_copia_a_frio_...` roda só no Windows (a lib de cópia de AVD é do Windows).
+  absoluto (hermético). `test_backup::test_copia_a_frio_...` NÃO ficou hermético: roda só no Windows (a lib de cópia
+  de AVD é do Windows) e pula no Linux.
+- **"Nada dispara em push" não é literal:** o `conteiner.yml` ainda roda em push de qualquer ramo que toque
+  `deploy/**`, `.dockerignore`, `backend/requirements.txt`, `backend/app/main.py` ou `frontend/package*.json`. Ele é
+  hospedado e não ocupa o central.
 
 `.github/workflows/ci.yml` — **6 jobs** (até 24/09 eram 5, e o cabeçalho do arquivo dizia 4):
 

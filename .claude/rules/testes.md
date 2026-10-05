@@ -24,7 +24,8 @@ paths:
 - Teste multi-banco abre o banco pela fábrica configurada, nunca `Database(caminho)` direto.
 - Teste de tempo real usa relógio **injetável**, não `time.sleep`/`datetime.now()` direto.
 - **Catracas (29.98): todo dirigido que toque `backend/app` roda `pytest @tests/catracas.txt -n 4`** (de `backend/`,
-  cerca de 40 s em Idle). Se tocar também scripts ou a config, roda `pytest @scripts/tests/catracas.txt` da raiz (1 s).
+  cerca de 40 s em Idle), **e `python scripts/mypy-catraca.py`** (da raiz, ~1 min; precisa do mypy do
+  `requirements-dev.txt`; 29.102: sem CI em PR, é aqui que se vê quem subiu a contagem). Se tocar também scripts ou a config, roda `pytest @scripts/tests/catracas.txt` da raiz (1 s).
   Catraca é o teste que inspeciona o código inteiro ou assinaturas: quebra longe do arquivo editado, e o dirigido não a
   roda sozinho (o #350 chegou a final com uma vermelha). Teste novo desse tipo entra no arquivo no mesmo PR que o cria.
   O arquivo é só id por linha, sem comentário nem linha vazia: uma linha `#` faz a coleta inteira voltar vazia, e

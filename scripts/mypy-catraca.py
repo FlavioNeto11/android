@@ -56,6 +56,9 @@ def main() -> int:
                        cwd=RAIZ / "backend", capture_output=True, text=True, check=False)
     saida = r.stdout + r.stderr
     print(saida, end="" if saida.endswith("\n") else "\n")
+    if "No module named mypy" in saida:
+        print(f"o Python que roda a catraca ({sys.executable}) não tem o mypy: instale o requirements-dev.txt nele")
+        return 2
     rc, msg = veredito(contar(saida), ler_teto())
     print(msg)
     return rc

@@ -1,4 +1,6 @@
 # Teto da catraca do mypy no código novo (app.contracts, app.modules, app.shared): scripts/mypy-catraca.py (29.102).
 # Medido na base deste PR (0c264685, mypy 2.3.1 do requirements-dev, 05/10/2026 08:26Z): 257. O cron do CI de 05/10
 # (run 37268669842, commit 81f99de3) deu 254; os 3 a mais vieram com os merges da suíte 35. Só desce.
+# Plataforma: Windows (win32), a mesma do runner `central`. O mypy avalia ramos de `sys.platform`: em Linux a contagem
+# pode ser outra, e este teto não vale lá.
 257
