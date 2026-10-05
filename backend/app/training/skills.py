@@ -37,10 +37,29 @@ COMANDO_PALAVRAS_FIXAS_MIN = 2
 COMANDO_CARACTERES_FIXOS_MIN = 10
 _KINDS_DE_POSCONDICAO = frozenset(get_args(Postcondition.model_fields["kind"].annotation))
 Proposta = dict[str, Any]       # proposta e etapa: JSON livre vindo do cliente, validado à mão abaixo
-_CHAVE_DE_ETAPA = re.compile(PlanStep.model_fields["key"].metadata[0].pattern)
+
+
+def _padrao_da_chave_de_etapa() -> re.Pattern[str]:
+    """O padrão de `PlanStep.key`, achado pelo item de `metadata` que tem `pattern` (e não pela posição: outra
+    restrição no campo mudaria a ordem)."""
+    for restricao in PlanStep.model_fields["key"].metadata:
+        if getattr(restricao, "pattern", None):
+            return re.compile(restricao.pattern)
+    raise RuntimeError("PlanStep.key deixou de ter `pattern`: a validação do salvar do treino precisa ser revista")
+
+
+_CHAVE_DE_ETAPA = _padrao_da_chave_de_etapa()
+
+
+#: A tela de revisão ainda não deixa atribuir nem descartar entrada, nem editar etapa (31.90): nestes códigos a
+#: única saída que existe hoje é pedir outra proposta. O comando é editável na tela, por isso `comando_generico` fica fora.
+_REFAZER_A_PROPOSTA = frozenset({"entradas_sem_etapa", "parametro_fora_do_comando", "parametro_nao_declarado",
+                                 "pos_condicao_vazia", "etapa_invalida"})
 
 
 def _erro(code: str, mensagem: str) -> TrainingError:
+    if code in _REFAZER_A_PROPOSTA:
+        mensagem = f"{mensagem} Peça uma nova proposta à IA."
     return TrainingError(code, mensagem, 400)
 
 

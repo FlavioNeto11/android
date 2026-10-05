@@ -106,6 +106,7 @@ async def test_save_recusa_com_400_e_sem_escrever_nada(harness: Harness, codigo:
         await st.skills.save(sid, proposal=proposta, profile_ids=[], group_ids=[])
     assert erro.value.code == codigo and erro.value.status == 400, (erro.value.code, erro.value.message)
     assert erro.value.message.strip()
+    assert erro.value.message.endswith("Peça uma nova proposta à IA.") == (codigo != "comando_generico")
     assert _rastro(st, sid) == antes                      # nem fluxo, nem receita, nem a sessão virou "saved"
     assert st.db.scalar("SELECT COUNT(*) FROM flow_required_apps") == 0
 
@@ -148,3 +149,9 @@ def test_validador_aceita_marcador_reservado_e_chave_de_catalogo() -> None:
     p["steps"][1]["postcondition"] = {"kind": "model_judged", "value": "", "description": ""}
     saida, avisos = validar_proposta_para_salvar(p, {1, 2, 3, 4}, etapa_do_catalogo=lambda st: st.get("capability") == "SEND_DM")
     assert avisos == [] and saida["steps"][1]["inputs"] == [2, 3] and saida["discarded"][0]["seq"] == 4
+
+
+def test_padrao_da_chave_e_o_do_plan_step() -> None:
+    from app.models import PlanStep
+    from app.training.skills import _CHAVE_DE_ETAPA
+    assert _CHAVE_DE_ETAPA.pattern == next(m.pattern for m in PlanStep.model_fields["key"].metadata if hasattr(m, "pattern"))
