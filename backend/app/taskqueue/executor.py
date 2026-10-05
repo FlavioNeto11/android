@@ -386,6 +386,21 @@ def cobertura_na_arvore(tree: UiTree, ref: str | None) -> Cobertura | None:
     return None
 
 
+#: 31.73: a fração mínima da tela que o elemento citado cobre para a recusa do juiz valer como sobreposição. Medido nas
+#: duas árvores reais do banner "Abra o app e ganhe frete grátis" do Mercado Livre (720 x 1280): 11,6 % como faixa no
+#: topo (r-20261005071303-f24955, o juiz disse que a causa era o conteúdo) e 83,8 % como modal
+#: (r-20261004190200-5b56e6, cobria de fato). É a mesma fração do 31.51 (`dialogos._FRACAO_QUE_COBRE`).
+FRACAO_DA_SOBREPOSICAO = 0.15
+
+
+def cobre_a_tela(c: Cobertura, largura: int, altura: int) -> bool:
+    """31.73: o elemento citado cobre ao menos `FRACAO_DA_SOBREPOSICAO` da tela. Sem o tamanho da tela, vale como antes."""
+    if largura <= 0 or altura <= 0:
+        return True
+    x1, y1, x2, y2 = c.bounds
+    return max(0, x2 - x1) * max(0, y2 - y1) >= FRACAO_DA_SOBREPOSICAO * largura * altura
+
+
 def ainda_cobre(c: Cobertura, tree: UiTree) -> bool:
     """31.40 b (i): o elemento que cobria segue na árvore E na mesma área. Sumiu, ou saiu da área que cobria: a limpeza
     está feita. Sem resource-id nem texto, só a mesma caixa conta como o mesmo elemento."""
@@ -3846,9 +3861,16 @@ class StepExecutor:
                     if copias_vistas is not None and verdict.copias is not None:
                         copias_vistas.append(verdict.copias)
                     if sobreposicoes is not None and verdict.satisfied in ("no", "uncertain"):
-                        sobreposicoes.append(bool(verdict.sobreposicao))
-                        if (coberturas is not None and verdict.sobreposicao
-                                and (achada := cobertura_na_arvore(obs.tree, verdict.cobre)) is not None):
+                        achada = cobertura_na_arvore(obs.tree, verdict.cobre) if verdict.sobreposicao else None
+                        pequena = achada is not None and not cobre_a_tela(achada, obs.width, obs.height)
+                        if pequena:
+                            # 31.73: o juiz marcou sobreposição citando um elemento que cobre menos de 15 % da tela
+                            # (o banner "Abra o app" do topo, na f24955: 11,6 %), e a causa principal era o conteúdo
+                            # errado. Uma faixa assim não esconde o alvo: a limpeza seria inserida à toa e o desfecho
+                            # esconderia a causa. Vale como "não" comum. Sem elemento citado, fica como antes.
+                            metricas.contar("juiz.sobreposicao_descartada", motivo="cobertura_pequena")
+                        sobreposicoes.append(bool(verdict.sobreposicao) and not pequena)
+                        if coberturas is not None and achada is not None and not pequena:
                             coberturas.append(achada)
                     ok = verdict.satisfied == "yes"
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:

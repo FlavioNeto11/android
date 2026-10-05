@@ -1758,3 +1758,19 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   com a poda. Imprime só números e ids.
 - Prova `simulated`: `backend/tests/test_tamanho_do_prompt_do_ator.py`. `not_run`: o A/B sobre árvores reais. Fica
   para a janela de prova, com o diagnóstico ligado no android-09 ou 10 por config, sem conta real.
+
+## 21. A recusa por sobreposição pede cobertura de verdade (item 31.73)
+
+- O 31.40 insere a limpeza opcional quando o juiz recusa com `sobreposicao`. O juiz é um booleano do modelo: na
+  r-20261005071303-f24955 ele o marcou citando o banner "Abra o app" do Mercado Livre e, no próprio texto, disse que a
+  causa principal era o conteúdo errado. A limpeza entrou à toa, falhou, e o desfecho escondeu a causa.
+- Duas camadas:
+  - o prompt do juiz: com OUTRA causa além da cobertura (conteúdo errado, outra tela, o item não está lá),
+    `sobreposicao` é false;
+  - a regra estrutural (`executor.cobre_a_tela`): o elemento citado precisa cobrir ao menos 15 % da tela
+    (`FRACAO_DA_SOBREPOSICAO`). Menor que isso, a recusa vale como "não" comum, com a métrica
+    `juiz.sobreposicao_descartada`. Sem elemento achado, fica como antes.
+- Os 15 % foram medidos nas duas ocorrências reais do banner (bounds gravados nas variáveis da limpeza, 720 x 1280):
+  11,6 % como faixa no topo (f24955) e 83,8 % como modal (r-20261004190200-5b56e6, que cobria de fato). É a mesma
+  fração do 31.51.
+- Prova `simulated`: `backend/tests/test_sobreposicao_com_duas_causas.py`. `not_run`: uma recusa real com duas causas.

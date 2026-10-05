@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.73: a recusa por sobreposição pede cobertura de verdade (branch fix/31-73-sobreposicao-com-duas-causas)
+
+- Achado real na janela do 31.40 (r-20261005071303-f24955): o juiz marcou `sobreposicao` com o banner do topo, e o
+  próprio texto dele dizia que a causa era o conteúdo errado; a limpeza entrou à toa e escondeu a causa.
+- Prompt do juiz: outra causa além da cobertura é `sobreposicao` false (hash de `VERIFIER_SYSTEM` atualizado de
+  propósito). `executor.cobre_a_tela` e `FRACAO_DA_SOBREPOSICAO` (15 %, medido nas duas árvores reais do banner:
+  11,6 % e 83,8 %): menor, a recusa vale como "não" comum. `docs/ia.md` § 21.
+- Os testes do 31.40 e do 31.51 citavam o 1º nó do app de teste (0,5 % da tela); agora citam um aviso que cobre 62,5 %,
+  posto na tela do aparelho falso (`test_sobreposicao._juiz_com_ref`).
+- Prova `simulated`: `tests/test_sobreposicao_com_duas_causas.py` (4), com mutação conferida. `real`: `not_run`.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro

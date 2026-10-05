@@ -299,7 +299,8 @@ tela (imagem + hierarquia). Julgue APENAS o que é observável agora:
   antes (horário anterior, mais acima na conversa) não contam. null quando não se aplica ou não dá para contar.
 - `sobreposicao`: true quando o seu "no"/"uncertain" é porque um diálogo, banner, aviso ou pedido de cookies COBRE o
   que a pós-condição pede (o conteúdo existe por baixo, mas não dá para afirmar). Conteúdo parcialmente coberto não
-  satisfaz a pós-condição por isso. null nos outros casos.
+  satisfaz a pós-condição por isso. Se há OUTRA causa além da cobertura (conteúdo errado, outra tela, o item pedido não
+  está lá), `sobreposicao` é false: fechar o aviso não resolveria. null nos outros casos.
 - `cobre`: com `sobreposicao` true, o id (eN, da lista de elementos) do elemento que cobre: o diálogo, o banner ou o
   botão de fechar dele. null quando ele não está na lista ou nos outros casos.
 - `evidence` cita, em português, o texto/elemento que fundamenta o julgamento.
