@@ -466,3 +466,55 @@ async def test_a_retencao_de_evidencia_poupa_a_execucao_aguardando(harness: Harn
     limpos = st._apagar_evidencias_vencidas(to_iso(now() - timedelta(days=7)))   # noqa: SLF001
     assert fechada in limpos and espera not in limpos
     assert st.db.scalar("SELECT COUNT(*) FROM evidence WHERE run_id=?", (espera,)) > 0
+
+
+async def test_o_assentamento_sai_depois_do_commit_e_nao_sai_no_rollback(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """O vencimento troca o estado dentro de uma `tx()`: o gancho espera o COMMIT (`Database.depois_do_commit`), e a
+    transação desfeita não assenta nada."""
+    st = harness.state
+    assert st is not None
+    run_id, g = await _parada_gravada(harness, monkeypatch)
+    with st.db.tx():
+        st.repo.set_run_status(run_id, RunStatus.completed_with_issues, "teste do commit")
+        assert g["sem_worker"] == []                              # ainda dentro: nada disparou
+    assert g["sem_worker"] == [run_id]                            # depois do COMMIT, uma vez
+    desfeita, g2 = await _parada_gravada(harness, monkeypatch, "android-02")
+    with pytest.raises(RuntimeError):
+        with st.db.tx():
+            st.repo.set_run_status(desfeita, RunStatus.completed_with_issues, "teste do rollback")
+            raise RuntimeError("cai antes do commit")
+    assert g2["sem_worker"] == [] and _status_da_execucao(harness, desfeita) == "awaiting_person"
+
+
+async def test_sem_laco_o_assentamento_solta_e_avisa_que_o_digest_se_perdeu(harness: Harness,
+                                                                            monkeypatch: pytest.MonkeyPatch,
+                                                                            caplog: pytest.LogCaptureFixture) -> None:
+    st = harness.state
+    assert st is not None
+    g = _gravar(st, monkeypatch)
+    monkeypatch.setattr(st, "_laco_principal", None)              # a thread que termina depois do desligamento
+    st._draft_locks["run-sem-laco"] = asyncio.Lock()             # noqa: SLF001
+    with caplog.at_level("WARNING"):
+        await asyncio.to_thread(st._execucao_assentada, "run-sem-laco")                      # noqa: SLF001
+    assert g["pedidos"] == ["run-sem-laco"] and "run-sem-laco" not in st._draft_locks      # noqa: SLF001
+    assert g["digest"] == []
+    assert any("run-sem-laco" in r.getMessage() and "digest" in r.getMessage() for r in caplog.records
+               if r.levelname == "WARNING")
+
+
+async def test_a_excecao_do_assentamento_agendado_diz_a_execucao(harness: Harness, monkeypatch: pytest.MonkeyPatch,
+                                                                caplog: pytest.LogCaptureFixture) -> None:
+    st = harness.state
+    assert st is not None
+
+    def quebra(run_id: str) -> None:
+        raise RuntimeError("falha de teste no assentamento")
+
+    monkeypatch.setattr(st, "_execucao_parada", quebra)
+    with caplog.at_level("ERROR"):
+        await asyncio.to_thread(st._execucao_assentada, "run-que-quebra")                    # noqa: SLF001
+        await harness.wait(lambda: any("run-que-quebra" in r.getMessage() for r in caplog.records),
+                           what="log do assentamento agendado")
+    assert any(r.levelname == "ERROR" and "assentamento agendado da execução run-que-quebra" in r.getMessage()
+               for r in caplog.records)

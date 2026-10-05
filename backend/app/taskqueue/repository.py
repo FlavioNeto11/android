@@ -310,11 +310,19 @@ class Repository:
         saiu_da_espera = anterior == RunStatus.awaiting_person.value or (
             anterior == RunStatus.cancelling.value and linha is not None and bool(linha["finished_at"]))
         if status in RUN_TERMINAL and saiu_da_espera and self.ao_assentar_sem_worker is not None:
-            try:
-                self.ao_assentar_sem_worker(run_id)
-            except Exception:  # noqa: BLE001 - o assentamento nunca derruba a troca de estado já gravada
-                log.exception("assentamento da execução %s na saída da espera", run_id)
+            # Depois do COMMIT: o vencimento troca o estado dentro de uma `tx()`, numa thread; disparado ali dentro, o
+            # assentamento esperaria a trava do banco no laço de eventos ou leria a execução ainda esperando.
+            self.db.depois_do_commit(lambda: self._assentar_sem_worker(run_id))
         return True
+
+    def _assentar_sem_worker(self, run_id: str) -> None:
+        gancho = self.ao_assentar_sem_worker
+        if gancho is None:
+            return
+        try:
+            gancho(run_id)
+        except Exception:  # noqa: BLE001 - o assentamento nunca derruba a troca de estado já gravada
+            log.exception("assentamento da execução %s na saída da espera", run_id)
 
     def request_pause(self, run_id: str, reason: str) -> None:
         """Pausa automaticamente (disjuntor de conta de IA): idempotente e sem checar quem pediu — ao contrário
