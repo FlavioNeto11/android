@@ -31,12 +31,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   continua aberta.
 - Snapshot: a execução aguardando vem por 7 dias depois de `finished_at` (com o vencimento desligado nada a fecharia). A
   caixa de Pendências não depende do snapshot para isso: ela conta só `needs_input` (ADR-062).
-- Telegram: o desfecho diz "parou no aparelho" (redação da Canais); a contagem "esperando você" e o gesto são do 28.40. `TERMINAIS`
+- Telegram: o desfecho diz "parou" (redação da Canais; serve à parada no aparelho e à aprovação); a contagem "esperando você" e o gesto são do 28.40. `TERMINAIS`
   da entrada inclui o estado novo (o desfecho é a única linha, 28.36).
 - Pedidos: a ocorrência fecha como fechava com o `completed_with_issues`, para o domínio da Canais não mudar agora.
-- Aprendizado: nenhum digest enquanto a execução espera (`_settle_run` não a assenta; fora do `ASSENTADAS` e dos
-  conjuntos finais). Toda saída do estado passa por `Repository.set_run_status`, onde o 30.69 (PR empilhado da
-  Aprendizado) liga o digest. Os dois PRs entram juntos.
+- Assentamento (A1 da leitura): nenhum digest enquanto a execução espera (fora do `ASSENTADAS` e dos conjuntos
+  finais). Na parada, o `_settle_run` solta o que a main soltava nessa hora (o explorador, a trava de rascunho, o
+  acordar dos pedidos) sem o digest (`Scheduler.on_run_parada`). Na saída sem worker (concluir, abandonar, vencer,
+  cancelar), `Repository.set_run_status` chama `ao_assentar_sem_worker`: terminal vindo de não terminal com
+  `finished_at` já gravado. É o assentamento inteiro, uma vez, agendado no laço por `call_soon_threadsafe` quando vem
+  de uma thread (o vencimento roda em `to_thread`). A retomada limpa o `finished_at` e assenta pelo worker, como
+  antes, sem dobrar. O que o digest conta durante e depois da espera é do 30.69 (Aprendizado), empilhado.
+- A retenção de evidência por idade também poupa a execução aguardando.
 - Painel: rótulo "Aguardando você", grupo "Pede atenção"; Cancelar e o aviso "precisam de você" voltam a valer nela;
   `isRunSemTrabalho` para repetir, relatório, custo e recarga do detalhe.
 - Migração de dados `111_execucao_aguardando_pessoa`: 0 linhas no central em 05/10. Adendo v1.50 do contrato (números

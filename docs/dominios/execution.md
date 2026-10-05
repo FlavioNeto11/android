@@ -1223,11 +1223,18 @@ Contexto: design §2.4; decisão: [ADR-038](../decisoes.md#adr-038--máquinas-de
 - **`awaiting_person` (29.93):** o trabalho automático acabou e um objetivo espera um gesto da pessoa (`waiting_user`).
   Não é terminal, mas está em `RUN_SEM_TRABALHO` (`app/models.py`): grava `finished_at`, é de onde o vencimento do 31.50
   conta e é o que a retomada reabre. Só `waiting_user` leva a ele; execução só com `uncertain` segue
-  `completed_with_issues`. Não assenta (nenhum digest enquanto espera; o 30.69 digere na saída, em
-  `Repository.set_run_status`); o fechamento de pedido o lê como o `completed_with_issues` de antes; o snapshot o traz
-  por 7 dias depois de `finished_at`. A purga de eventos por idade a poupa como aberta, mesmo com `finished_at`; o
-  `recompute_run` a reafirma quando só o detalhe muda (como o `completed_with_issues`). Diferente de `needs_input`, a pergunta antes de
-  agir.
+  `completed_with_issues`. O fechamento de pedido o lê como o `completed_with_issues` de antes; o snapshot o traz por 7
+  dias depois de `finished_at`. A purga de eventos e a retenção de evidência por idade o poupam como aberto, mesmo com
+  `finished_at`; o `recompute_run` o reafirma quando só o detalhe muda (como o `completed_with_issues`). Diferente de
+  `needs_input`, a pergunta antes de agir.
+  - **Parada sem digest:** ao parar, o `_settle_run` do worker solta o explorador, a trava de rascunho e acorda os
+    pedidos (`Scheduler.on_run_parada` → `AppState._execucao_parada`), na mesma hora em que a main soltava ao parar
+    em `completed_with_issues`.
+  - **Assentamento na saída, uma vez:** sem worker (concluir, abandonar, vencer, cancelar), `Repository.set_run_status`
+    chama `ao_assentar_sem_worker` (`AppState._execucao_assentada`: digest, trava, pedidos) quando a execução vai a
+    terminal, vinda de não terminal, com `finished_at` já gravado. De outra thread (o vencimento roda em `to_thread`;
+    a rota síncrona, no threadpool), é agendado no laço por `call_soon_threadsafe`. A retomada limpa o `finished_at`,
+    e quem assenta é o worker, como antes: o gancho não dispara junto.
 - **Reabertura registrada como é:** `completed_with_issues → running, paused, completed, cancelling` e
   `cancelled → running, paused` (`recompute_run` reabre quando um item é retomado). É a reabertura que o design §2.4
   aponta; ela entra na tabela para ser revista no passo "impor", não aprovada.

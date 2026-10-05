@@ -229,6 +229,9 @@ class Scheduler:
         self.policy_gate: Callable[[Any, Any, Any], Awaitable[Any]] | None = None
         # Execução saiu do ar (terminou ou foi cancelada): quem guarda estado POR execução limpa o seu aqui.
         self.on_run_settled: Callable[[str], Any] | None = None
+        # 29.93: a execução PAROU esperando a pessoa (`awaiting_person`). Solta o que a main soltava ao parar (trava de
+        # rascunho, pedidos), sem o digest, que sai na saída do estado (`Repository.ao_assentar_sem_worker`).
+        self.on_run_parada: Callable[[str], Any] | None = None
         # Uma etapa de COLETA terminou: (objetivo, etapa, itens lidos). Quem sabe o que fazer com uma lista de
         # falas é o domínio social (gravar o que a contraparte disse), não a fila — daqui sai só o fato de que a
         # leitura aconteceu. Injetado pelo AppState.
@@ -1382,17 +1385,22 @@ class Scheduler:
             self.wake()
 
     def _settle_run(self, run_id: str) -> None:
-        """Execução terminou: solta o que era guardado só por causa dela. `awaiting_person` (29.93) não assenta: nenhum
-        digest enquanto a execução espera a pessoa; o aprendizado digere na saída do estado (30.69)."""
+        """Execução terminou: solta o que era guardado só por causa dela.
+
+        `awaiting_person` (29.93) para sem assentar: solta o que a main soltava nessa hora, quando a parada era
+        `completed_with_issues` (o explorador, a trava de rascunho, o acordar dos pedidos), mas nenhum digest
+        enquanto a execução espera a pessoa. O assentamento inteiro sai na saída do estado, sem worker
+        (`Repository.ao_assentar_sem_worker`), ou aqui mesmo, se a pessoa retomar e o worker fechar."""
         run = self.repo.run_row(run_id)
         terminais = (RunStatus.completed.value, RunStatus.completed_with_issues.value, RunStatus.failed.value,
                      RunStatus.cancelled.value)
-        if run is None or run["status"] not in terminais:
+        if run is None or run["status"] not in (*terminais, RunStatus.awaiting_person.value):
             return
         self._pathfinders.pop(run_id, None)
-        if self.on_run_settled is not None:
+        gancho = self.on_run_settled if run["status"] in terminais else self.on_run_parada
+        if gancho is not None:
             try:
-                self.on_run_settled(run_id)
+                gancho(run_id)
             except Exception:  # noqa: BLE001 - limpeza nunca derruba o fim da execução
                 log.exception("limpeza de fim de execução %s", run_id)
 

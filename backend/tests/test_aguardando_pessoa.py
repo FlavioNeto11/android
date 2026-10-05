@@ -17,13 +17,14 @@ Prova `simulated`: o harness com aparelho e provedor simulados.
 """
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from typing import Any
 
 import pytest
 
 from app.api import _SQL_RUNS_DO_SNAPSHOT, _STATUS_DO_SNAPSHOT, AGUARDANDO_NO_SNAPSHOT_D
-from app.models import RUN_SEM_TRABALHO, RUN_TERMINAL, RunStatus
+from app.models import RUN_SEM_TRABALHO, RUN_TERMINAL, ResolveBody, RunStatus
 from app.modules.avisos.infrastructure.entrada import TERMINAIS
 from app.modules.avisos.infrastructure.portas_da_central import _DESFECHO
 from app.modules.execution.domain.states import RUN_TRANSITIONS
@@ -199,7 +200,7 @@ async def test_consumidores_do_needs_input_nao_pegam_a_execucao_aguardando(harne
 # ------------------------------------------------------------------ Telegram e pedidos
 def test_o_telegram_conta_a_execucao_aguardando_como_desfecho_com_frase_propria() -> None:
     assert "awaiting_person" in TERMINAIS                 # o desfecho é a única linha (28.36), como no terminal
-    assert _DESFECHO[RunStatus.awaiting_person] == "parou no aparelho"
+    assert _DESFECHO[RunStatus.awaiting_person] == "parou"
     assert all(v != _DESFECHO[RunStatus.awaiting_person] for k, v in _DESFECHO.items() if k != RunStatus.awaiting_person)
 
 
@@ -269,3 +270,179 @@ async def test_a_purga_de_eventos_poupa_a_execucao_aguardando(harness: Harness) 
     st.bus.purge_older_than(to_iso(now() - timedelta(days=14)))
     assert st.db.scalar("SELECT COUNT(*) FROM events WHERE run_id=?", (espera,)) > 0
     assert st.db.scalar("SELECT COUNT(*) FROM events WHERE run_id=?", (fechada,)) == 0
+
+
+# ------------------------------------------------------------------ A1: o assentamento sai uma vez, por qualquer saída
+# A main assentava UMA vez, no `finally` do worker, quando a parada virava `completed_with_issues`: o digest, a trava
+# de rascunho (`_draft_locks`) e o acordar dos pedidos. Agora a parada (`awaiting_person`) solta a trava e acorda os
+# pedidos na MESMA hora de antes, sem o digest; o assentamento inteiro sai na saída do estado, com ou sem worker.
+def _gravar(st: Any, monkeypatch: pytest.MonkeyPatch) -> dict[str, list[str]]:
+    """Grava os três efeitos pelo caminho de verdade (`_execucao_parada`/`_execucao_assentada`), trocando só as
+    pontas: o digest do aprendizado e o acordar do laço de pedidos."""
+    g: dict[str, list[str]] = {"digest": [], "pedidos": [], "sem_worker": []}
+    monkeypatch.setattr(st.learning, "digerir_execucao", lambda run_id, *a, **k: g["digest"].append(run_id))
+    monkeypatch.setattr(st.pedidos, "ao_assentar", lambda run_id: g["pedidos"].append(run_id))
+    original = st.repo.ao_assentar_sem_worker
+    assert original is not None                                  # o AppState liga o gancho de saída
+
+    def sem_worker(run_id: str) -> None:
+        g["sem_worker"].append(run_id)
+        original(run_id)
+
+    monkeypatch.setattr(st.repo, "ao_assentar_sem_worker", sem_worker)
+    return g
+
+
+async def _assentou(h: Harness, g: dict[str, list[str]], run_id: str) -> None:
+    """Espera o digest (que roda numa thread pelo `_digerir`) e mais uma folga, para um segundo não passar calado."""
+    await h.wait(lambda: run_id in g["digest"], what="digest da execução")
+    await asyncio.sleep(0.3)
+
+
+async def _parada_gravada(h: Harness, monkeypatch: pytest.MonkeyPatch,
+                          aparelho: str = "android-01") -> tuple[str, dict[str, list[str]]]:
+    st = h.state
+    assert st is not None
+    g = _gravar(st, monkeypatch)
+    run_id = await _esperando_login(h, aparelho)
+    await asyncio.sleep(0.3)
+    assert _status_da_execucao(h, run_id) == "awaiting_person"
+    for k in g:
+        g[k].clear()
+    st._draft_locks[run_id] = asyncio.Lock()                    # noqa: SLF001 - a trava que a saída tem de soltar
+    return run_id, g
+
+
+def _um_assentamento(st: Any, g: dict[str, list[str]], run_id: str, *, sem_worker: bool) -> None:
+    assert g["digest"] == [run_id]                               # uma vez, nunca em dobro
+    assert g["pedidos"] == [run_id]
+    assert run_id not in st._draft_locks                         # noqa: SLF001
+    assert g["sem_worker"] == ([run_id] if sem_worker else [])
+
+
+async def test_a_parada_solta_a_trava_e_acorda_os_pedidos_como_na_main_sem_digest(harness: Harness,
+                                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    st = harness.state
+    assert st is not None
+    g = _gravar(st, monkeypatch)
+    harness.fakes["android-01"].screen = "launcher"
+    harness.fakes["android-01"].require_login = True
+    run = harness.run(["android-01"])
+    st._draft_locks[str(run.id)] = asyncio.Lock()               # noqa: SLF001 - como se a etapa tivesse escrito
+    await harness.wait_run(run.id)
+    await asyncio.sleep(0.3)
+    assert _status_da_execucao(harness, str(run.id)) == "awaiting_person"
+    assert g["pedidos"] == [run.id] and str(run.id) not in st._draft_locks    # noqa: SLF001 - a hora da main
+    assert g["digest"] == [] and g["sem_worker"] == []           # nenhum digest enquanto espera
+
+
+@pytest.mark.parametrize("resolucao", ["confirm_done", "abandon"])
+async def test_concluir_ou_abandonar_assenta_uma_vez_sem_worker(harness: Harness, monkeypatch: pytest.MonkeyPatch,
+                                                                resolucao: str) -> None:
+    st = harness.state
+    assert st is not None
+    run_id, g = await _parada_gravada(harness, monkeypatch)
+    oid = str(st.db.scalar("SELECT id FROM objectives WHERE run_id=?", (run_id,)))
+    st.runs.resolve(run_id, oid, ResolveBody(resolution=resolucao))
+    await _assentou(harness, g, run_id)
+    assert _status_da_execucao(harness, run_id) in ("completed", "completed_with_issues")
+    _um_assentamento(st, g, run_id, sem_worker=True)
+
+
+async def test_o_vencimento_em_thread_assenta_uma_vez_no_laco(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O vencimento roda em `to_thread` (state.py): fora do laço, o assentamento é agendado nele, e o digest sai."""
+    st = harness.state
+    assert st is not None
+    run_id, g = await _parada_gravada(harness, monkeypatch)
+    oid = str(st.db.scalar("SELECT id FROM objectives WHERE run_id=?", (run_id,)))
+    velho = to_iso(now() - timedelta(hours=30))
+    st.db.execute("UPDATE objectives SET finished_at=? WHERE id=?", (velho, oid))
+    st.db.execute("UPDATE runs SET finished_at=? WHERE id=?", (velho, run_id))
+    ligado_ha_muito(harness)
+    assert await asyncio.to_thread(st.runs.vencer_objetivos_parados, now()) == [oid]
+    await _assentou(harness, g, run_id)
+    assert _status_da_execucao(harness, run_id) == "completed_with_issues"
+    _um_assentamento(st, g, run_id, sem_worker=True)
+
+
+async def test_cancelar_a_execucao_aguardando_assenta_uma_vez(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    st = harness.state
+    assert st is not None
+    run_id, g = await _parada_gravada(harness, monkeypatch)
+    st.runs.cancel(run_id, por="operador-teste")
+    await harness.wait_run(run_id, statuses=("cancelled",))
+    await _assentou(harness, g, run_id)
+    _um_assentamento(st, g, run_id, sem_worker=True)             # `awaiting_person` → `cancelling` → `cancelled`
+
+
+async def test_a_retomada_que_conclui_assenta_uma_vez_pelo_worker_nunca_em_dobro(harness: Harness,
+                                                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    """O caminho COM worker: a retomada limpa o `finished_at`, o worker fecha a execução e assenta no `finally`; o
+    gancho de saída não dispara junto (digest e pedidos contados: uma vez cada)."""
+    st = harness.state
+    assert st is not None
+    run_id, g = await _parada_gravada(harness, monkeypatch)
+    oid = str(st.db.scalar("SELECT id FROM objectives WHERE run_id=?", (run_id,)))
+    harness.fakes["android-01"].require_login = False             # a pessoa logou no aparelho
+    st.runs.resolve(run_id, oid, ResolveBody(resolution="retry", note="loguei no aparelho"))
+    await harness.wait_run(run_id, statuses=("completed", "completed_with_issues", "failed"))
+    await _assentou(harness, g, run_id)
+    _um_assentamento(st, g, run_id, sem_worker=False)
+
+
+async def test_a_aprovacao_que_retoma_assenta_uma_vez_pelo_worker(harness: Harness,
+                                                                 monkeypatch: pytest.MonkeyPatch) -> None:
+    """A aprovação decidida retoma o objetivo (`resume_objective` + `recompute_run`, approvals.py): é a retomada, e o
+    assentamento sai uma vez, no fim do worker."""
+    st = harness.state
+    assert st is not None
+    run_id, g = await _parada_gravada(harness, monkeypatch)
+    oid = str(st.db.scalar("SELECT id FROM objectives WHERE run_id=?", (run_id,)))
+    etapa = st.db.scalar("SELECT id FROM steps WHERE objective_id=? AND status='waiting_user'", (oid,))
+    pedido = st.approval_service.store.open(profile_id=None, capability="CREATE_COMMENT", summary="teste 29.93",
+                                            run_id=run_id, objective_id=oid, step_id=etapa)
+    harness.fakes["android-01"].require_login = False
+    st.approval_service.decide(pedido.id, "approve")
+    await harness.wait_run(run_id, statuses=("completed", "completed_with_issues", "failed"))
+    await _assentou(harness, g, run_id)
+    _um_assentamento(st, g, run_id, sem_worker=False)
+
+
+async def test_a_execucao_que_ja_nasce_esperando_assenta_uma_vez_na_saida(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """O impedimento no início (`RunService.start`) leva o item a `waiting_user` sem worker nenhum. Na main ela nem
+    assentava (nenhum worker rodou); agora assenta uma vez, na saída."""
+    st = harness.state
+    assert st is not None
+    g = _gravar(st, monkeypatch)
+    recusa = {"code": "device_off", "motivo": "o aparelho está desligado", "acao": "ligue-o e retome este item"}
+    monkeypatch.setattr(st.runs, "pre_voo", lambda ids, **kw: {"android-01": recusa} if kw.get("ao_iniciar") else {})
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id)
+    run_id = str(run.id)
+    assert _status_da_execucao(harness, run_id) == "awaiting_person"
+    assert g["digest"] == [] and g["sem_worker"] == []
+    g["pedidos"].clear()
+    oid = str(st.db.scalar("SELECT id FROM objectives WHERE run_id=?", (run_id,)))
+    st.runs.resolve(run_id, oid, ResolveBody(resolution="abandon"))
+    await _assentou(harness, g, run_id)
+    _um_assentamento(st, g, run_id, sem_worker=True)
+
+
+async def test_a_retencao_de_evidencia_poupa_a_execucao_aguardando(harness: Harness) -> None:
+    """A retenção de evidência decidia só por `finished_at`: a aguardando seria tratada como fechada."""
+    st = harness.state
+    assert st is not None
+    espera = await _esperando_login(harness, "android-01")
+    fechada = await _esperando_login(harness, "android-02")
+    st.runs.cancel(fechada, por="operador-teste")
+    await harness.wait_run(fechada, statuses=("cancelled",))
+    velho = to_iso(now() - timedelta(days=30))
+    for run_id, aparelho in ((espera, "android-01"), (fechada, "android-02")):
+        st.repo.add_evidence(run_id=run_id, instance_id=aparelho, step_id=None, attempt_id=None, kind="screenshot",
+                             note="teste 29.93", data=b"\xff\xd8jpeg", ext="jpg")
+        st.db.execute("UPDATE evidence SET ts=? WHERE run_id=?", (velho, run_id))
+        st.db.execute("UPDATE runs SET finished_at=? WHERE id=?", (velho, run_id))
+    limpos = st._apagar_evidencias_vencidas(to_iso(now() - timedelta(days=7)))   # noqa: SLF001
+    assert fechada in limpos and espera not in limpos
+    assert st.db.scalar("SELECT COUNT(*) FROM evidence WHERE run_id=?", (espera,)) > 0

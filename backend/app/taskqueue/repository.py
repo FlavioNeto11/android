@@ -7,6 +7,7 @@ operações críticas (assumir etapa + registrar tentativa) são uma única tran
 """
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 from collections.abc import Callable, Sequence
@@ -39,6 +40,8 @@ from .latencia import TemposDaTentativa, motivo_da_espera
 from .recipes import para_hash, step_template_hash
 from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
+
+log = logging.getLogger("poc.repository")
 
 #: Tipo do conteúdo por extensão de evidência. O disco não guarda tipo (quem serve o decide pela extensão), mas
 #: o S3 guarda — e sem isto toda captura de tela chegaria ao navegador como `application/octet-stream`.
@@ -158,6 +161,11 @@ class Repository:
         #: 31.50: (prazo em horas, ligado desde) do vencimento, ou `None` desligado. Quem sabe é o `RunService`, que o
         #: preenche; sem ele (testes de repositório), os DTOs saem sem `vence_em`, como antes.
         self.prazo_do_vencimento: Callable[[], tuple[float, str] | None] | None = None
+        #: 29.93: o assentamento da execução que fecha SEM worker, porque o trabalho automático já tinha acabado: ela
+        #: esperava a pessoa (`awaiting_person`) e sai pela confirmação, pelo abandono, pelo vencimento (31.50) ou pelo
+        #: cancelamento. O `Scheduler._settle_run` só roda no fim de um worker. Quem liga isto é o `AppState`, com o
+        #: MESMO gancho do `_settle_run` (`_execucao_assentada`: digest, trava de rascunho e pedidos).
+        self.ao_assentar_sem_worker: Callable[[str], None] | None = None
         #: Os dados NÃO sigilosos da persona de cada aparelho, para as variáveis `{perfil_email}` etc. (ADR-040). "O app
         #: tem provedor de sessão?" decide o VALOR de `conta_<app>_usuario` (29.71: o nome no app, nunca o e-mail de
         #: login, no app de login gerenciado): com o predicado em falso, a materialização punha o e-mail do Instagram no
@@ -274,7 +282,8 @@ class Repository:
         `so_se`: a troca só vale se a execução ainda está num desses estados E sem cancelamento pedido, num `UPDATE`
         só (compare-and-set); senão nada muda, nada sai e devolve `False`. É o início (`RunService.start`) contra o
         cancelamento condicionado do canal (28.27), que marca `cancel_requested` antes de fechar a execução."""
-        anterior = self.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,))
+        linha = self.db.one("SELECT status, finished_at FROM runs WHERE id=?", (run_id,))
+        anterior = linha["status"] if linha is not None else None
         fields, params = ["status=?", "status_detail=?"], [status.value, detail]
         if status == RunStatus.running:
             fields.append("started_at=COALESCE(started_at, ?)")
@@ -292,6 +301,16 @@ class Repository:
             self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
         self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
         self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level, dados=dados)
+        # 29.93: a execução fecha (terminal, vindo de um não terminal) com o fim do trabalho automático JÁ gravado. Só
+        # acontece na saída de `awaiting_person`, direto ou passando por `cancelling`: a retomada limpa o `finished_at`
+        # (`recompute_run`), e a execução que fecha no fim do trabalho o grava nesta MESMA troca e assenta pelo
+        # `_settle_run` do worker, como antes. Nenhum worker vai assentar esta: o assentamento sai daqui, uma vez.
+        if (status in RUN_TERMINAL and anterior is not None and RunStatus(anterior) not in RUN_TERMINAL
+                and linha is not None and linha["finished_at"] and self.ao_assentar_sem_worker is not None):
+            try:
+                self.ao_assentar_sem_worker(run_id)
+            except Exception:  # noqa: BLE001 - o assentamento nunca derruba a troca de estado já gravada
+                log.exception("assentamento da execução %s na saída da espera", run_id)
         return True
 
     def request_pause(self, run_id: str, reason: str) -> None:

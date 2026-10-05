@@ -511,6 +511,11 @@ class AppState:
         # O lock de escrita é por execução: some junto com ela, senão o dicionário cresceria para sempre. E o digest do
         # aprendizado (ADR-054) é encadeado aqui, numa thread: o fim da execução nunca espera nem cai por causa dele.
         self.scheduler.on_run_settled = self._execucao_assentada
+        # 29.93: a parada esperando a pessoa solta o mesmo que a main soltava ao parar, sem o digest; e a execução que
+        # fecha na saída dessa espera (confirmação, abandono, vencimento, cancelamento) não tem worker para chamar o
+        # `_settle_run`: o repositório a assenta com o MESMO gancho.
+        self.scheduler.on_run_parada = self._execucao_parada
+        self.repo.ao_assentar_sem_worker = self._execucao_assentada
         self.scheduler.on_items_collected = self._registrar_leitura
         # Wipe, perda do aparelho ou qualquer coisa que mexa no disco invalida a sessão observada.
         self.devices.on_session_invalidated = self._invalidate_sessions
@@ -596,6 +601,9 @@ class AppState:
                 "SELECT run_id FROM objectives WHERE id=?", (oid,))),
             dias=lambda: float(self.cfg.file.avisos.decisoes_automaticas.desfazer_dias))
         self._digestoes: set[asyncio.Task[None]] = set()
+        #: O laço de eventos do backend, guardado no `start`: o assentamento sem worker (29.93) pode vir de uma thread
+        #: (o vencimento roda em `to_thread`; a rota síncrona de resolver, no threadpool) e é agendado nele.
+        self._laco_principal: asyncio.AbstractEventLoop | None = None
         # Ensino v2 (fase F, §13): as rotas ficam atrás de `skills.enabled`; o generalizador é o `generalize` do
         # provedor (simulado: regras fixas; real: uma chamada paga do planejador, contada em `ai_calls`).
         self.teaching = TeachingService(
@@ -2681,6 +2689,7 @@ class AppState:
 
     # ------------------------------------------------------------------ ciclo de vida
     async def start(self) -> None:
+        self._laco_principal = asyncio.get_running_loop()
         self.bus.bind_loop(asyncio.get_running_loop())
         self._curador_do_hub.ligar_laco(asyncio.get_running_loop())
         # O transporte do despacho sobe ANTES de qualquer efeito: com a bandeira do NATS ligada e sem broker no
@@ -2970,14 +2979,26 @@ class AppState:
                 log.exception("gravação da janela de métricas")
 
     # ------------------------------------------------------------------ aprendizado contínuo (ADR-054)
-    def _execucao_assentada(self, run_id: str) -> None:
-        """A execução saiu do ar: solta o lock de escrita dela e encadeia o digest do aprendizado numa thread."""
+    def _execucao_parada(self, run_id: str) -> None:
+        """A execução parou: solta o lock de escrita dela e acorda os pedidos. Sozinho, é a parada esperando a pessoa
+        (`awaiting_person`, 29.93), que não digere; dentro do `_execucao_assentada`, o começo do assentamento."""
         self._draft_locks.pop(run_id, None)
         self.pedidos.ao_assentar(run_id)             # só acorda o laço de pedidos (28.4); nunca escreve aqui
+
+    def _execucao_assentada(self, run_id: str) -> None:
+        """A execução saiu do ar: solta o lock de escrita dela e encadeia o digest do aprendizado numa thread."""
         try:
             laco = asyncio.get_running_loop()
         except RuntimeError:
-            return                                   # fora do laço de eventos não há execução assentando
+            # 29.93: a saída da espera sem worker pode vir de uma thread (vencimento, rota síncrona). O assentamento
+            # inteiro vai para o laço: o dicionário de travas e o `create_task` do digest são dele.
+            principal = self._laco_principal
+            if principal is not None and principal.is_running():
+                principal.call_soon_threadsafe(self._execucao_assentada, run_id)
+            else:
+                self._execucao_parada(run_id)        # sem laço (teste sem `start`): solta, e não há digest a encadear
+            return
+        self._execucao_parada(run_id)
         tarefa = laco.create_task(self._digerir(run_id), name=f"aprendizado-{run_id}")
         self._digestoes.add(tarefa)
         tarefa.add_done_callback(self._digestoes.discard)
@@ -3249,7 +3270,8 @@ class AppState:
         """
         vencidas = self.db.query(
             "SELECT DISTINCT run_id, storage, stored_by FROM evidence WHERE ts < ? AND run_id IN "
-            "(SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ?)", (ev_cut, ev_cut))
+            "(SELECT id FROM runs WHERE finished_at IS NOT NULL AND finished_at < ? AND status <> 'awaiting_person')",
+            (ev_cut, ev_cut))
         limpos: list[str] = []
         for r in vencidas:
             onde = r["storage"] or DISK

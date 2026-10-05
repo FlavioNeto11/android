@@ -6227,7 +6227,7 @@ e quem lê o contrato a davam por encerrada, e a retomada do item a "reabria".
   objetivo continua `waiting_user`).
 - **Cliente com `switch` exaustivo sobre `RunStatus`** precisa do caso novo (o painel é o único hoje: rótulo "Aguardando
   você", grupo "Pede atenção", e os botões de cancelar e o aviso "precisam de você" voltam a valer nela).
-- **Telegram:** o desfecho diz "parou no aparelho"; a contagem "esperando você" e o gesto seguem os do 28.40.
+- **Telegram:** o desfecho diz "parou"; a contagem "esperando você" e o gesto seguem os do 28.40.
 - **Pedidos:** a ocorrência fecha como fechava com o `completed_with_issues` (`incerta` ou `falhou`); o "esperando você"
   na ocorrência, se vier, é do 28.40.
 - **Migração de dados** (`111_execucao_aguardando_pessoa`): leva a `awaiting_person` as execuções já paradas em

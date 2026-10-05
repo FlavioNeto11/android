@@ -42,7 +42,7 @@ from app.taskqueue.service import RunError, RunService
 #: fim: um objetivo espera um gesto do dono no aparelho, e a linha diz isso em vez de "concluída com problemas".
 _DESFECHO = {RunStatus.completed: "concluída", RunStatus.completed_with_issues: "concluída com problemas",
              RunStatus.failed: "falhou", RunStatus.cancelled: "cancelada",
-             RunStatus.awaiting_person: "parou no aparelho"}
+             RunStatus.awaiting_person: "parou"}
 _ATIVAS = ("planning", "running", "paused", "cancelling")
 
 
