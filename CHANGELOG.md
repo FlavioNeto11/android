@@ -27,6 +27,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   agente anterior ao marco). Fecha a janela residual do 29.123: nos primeiros segundos de uma subida, antes de o
   emulador descarregar a saída bufferizada (29.34), a última `emuglConfig_init` era a da subida anterior, e um
   diálogo dela pararia o aparelho. Vale no central agora e no notebook depois da atualização do agente.
+- M1 da leitura: quando o emulador anterior morreu no meio de uma linha (sem `\n`), o `start_process` escreve um `\n`
+  antes do marco; colado na linha cortada, o marco faria a readoção começar no pedaço final da subida anterior (e um
+  "Showing crashdialog" nele pararia o aparelho). Log que já termina em `\n` não ganha linha vazia. Prova
+  `simulated`: `test_marco_nao_cola_na_linha_cortada_da_subida_anterior` e `test_log_que_termina_em_quebra_nao_ganha_linha_vazia`;
+  sem o `\n`, o primeiro reprova. Dirigidos e vizinhos: 67 passed; catracas 88.
 - R2: só "o arquivo não existe" dá offset 0. Erro passageiro com o arquivo existindo tenta de novo (3 vezes); depois,
   o fim do arquivo se o `stat` responder; senão, offset desconhecido (`-1`), e nem o detector de diálogo nem o
   veredito do snapshot leem o log nessa readoção.

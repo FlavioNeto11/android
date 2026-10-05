@@ -81,6 +81,34 @@ async def test_nos_primeiros_segundos_o_dialogo_da_subida_anterior_nao_para(harn
             boot.cancel()
 
 
+def test_marco_nao_cola_na_linha_cortada_da_subida_anterior(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """M1 da leitura do #441: o emulador anterior morreu no meio da linha do diálogo (sem `\n`). Colado nela, o
+    marco faria a readoção começar no pedaço final da subida anterior, e o diálogo dela voltaria a parar o aparelho."""
+    monkeypatch.setattr(emu.subprocess, "Popen", lambda *_a, **_k: type("P", (), {"pid": 1})())
+    exe = tmp_path / "emulator"
+    exe.write_text("", encoding="utf-8")
+    log = tmp_path / "logs" / "emulator-avd.log"
+    log.parent.mkdir(parents=True)
+    anterior = (_SUBIDA + _DIALOGO).rstrip("\n")
+    log.write_bytes(anterior.encode())
+    emu.start_process(_Cfg(tmp_path), _Tools(exe), "avd", 5554, AndroidCfg())  # type: ignore[arg-type]
+    offset = emu.inicio_da_subida_atual(log)
+    assert offset == len(anterior.encode()) + 1, "o marco começa numa linha própria"
+    assert emu.dialogo_de_crash(log, offset or 0) is False
+
+
+def test_log_que_termina_em_quebra_nao_ganha_linha_vazia(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(emu.subprocess, "Popen", lambda *_a, **_k: type("P", (), {"pid": 1})())
+    exe = tmp_path / "emulator"
+    exe.write_text("", encoding="utf-8")
+    log = tmp_path / "logs" / "emulator-avd.log"
+    log.parent.mkdir(parents=True)
+    log.write_bytes(_SUBIDA.encode())
+    emu.start_process(_Cfg(tmp_path), _Tools(exe), "avd", 5554, AndroidCfg())  # type: ignore[arg-type]
+    assert emu.inicio_da_subida_atual(log) == len(_SUBIDA.encode())
+    assert "\n\n" not in log.read_text(encoding="utf-8")
+
+
 def test_subida_sem_marco_depois_de_uma_com_marco_usa_a_emugl(tmp_path: Path) -> None:
     """Agente anterior ao marco: a subida nova só tem `emuglConfig_init`. Vale a última de qualquer das duas."""
     log = tmp_path / "emulator-avd.log"
