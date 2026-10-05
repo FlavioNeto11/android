@@ -20,6 +20,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
+
+- **Implantado** às 18:06Z: central em `9f9e2b39`, migração `115_receita_nao_aplicavel` (sem migração nova), 17 pontas sobre `19e34b22` e dois consertos de junção.
+- Prova `real`: `GET /api/health` ok e sem problemas, prova de fora com tudo como esperado (`/api/instances` 403), agente do notebook em `0.1.0+9f9e2b3`, mypy 257 igual ao teto pelo `scripts/mypy-catraca.py`.
+- Prova `simulated` (suíte 39): `scripts/tests` 672 passed; backend em SQLite 11840 passed, com 3 falhas consertadas e relidas antes do deploy; frontend 1678 passed; catracas 88 e 6. No PostgreSQL dirigido, 10182 passed e 2 failed conhecidas (`test_dialogos_em_serie.py` e `test_sobreposicao_com_duas_causas.py`, item 29.139): essa etapa não passou inteira.
+- Consertos de junção: `estado_com_marca` lê a fábrica na chamada (29.131, `e6020a23`); `TrainingStopBody` nasce na apresentação do treino, e o teste da proposta descarta a gravação com o controle (`9f9e2b39`).
+- Plano-100: 9 IDs novos (28.52, 29.140 a 29.145, 31.101 e 31.102) e o resultado da suíte 39 aplicado pelo mecanismo: 548 de 645.
+
 ## 2026-10-05 — 29.131 e 29.138: as sobras das leituras do #433, #435, #441 e #443, e os achados das revisões automáticas do #443 (branch fix/29-131-sobras-supervisor-readocao)
 
 Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
