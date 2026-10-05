@@ -83,6 +83,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-073](#adr-073--portal-na-internet-por-túnel-de-saída-da-cloudflare-o-host-separa-o-público-do-local-o-painel-mora-em-central) | Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central` (item 29.54) | aceito (dono, 03/10; túnel `real` desde 03/10 21:47Z) | 03/10 |
 | [ADR-074](#adr-074--fechamento-da-fase-28-pedidos-persistentes-aceitos-a-fase-fecha-por-cláusula-as-emendas-do-dado-real-e-a-colaboração-em-fatias) | Fechamento da Fase 28: pedidos persistentes aceitos, a fase fecha por cláusula, as emendas do dado real e a colaboração em fatias (item 28.13) | proposto (Canais, 04/10) | 04/10 |
 | [ADR-075](#adr-075--site-institucional-na-raiz-e-contato-público-que-chega-ao-telegram-do-dono-emenda-ao-adr-073) | Site institucional na raiz e contato público que chega ao Telegram do dono: emenda ao ADR-073 (item 29.77) | proposto (Portal, 04/10; site e contato desligados) | 04/10 |
+| [ADR-076](#adr-076--a-seção-o-que-a-ana-não-faz-sai-do-site-público-emenda-ao-adr-075) | A seção "O que a ANA não faz" sai do site público: emenda ao ADR-075 (item 29.110) | aceito (dono, 05/10) | 05/10 |
 
 ---
 
@@ -5690,7 +5691,8 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
   pessoa real, sem deepfake, notícia falsa nem ofensa, sem burlar regras de plataforma nem mecanismos de detecção, e
   CAPTCHA e códigos ficam com uma pessoa (ADR-009). O conteúdo feito com IA é identificado onde a plataforma ou a regra
   exige. A página nunca vende volume de contas, "engajamento orgânico" nem "parecer humano". Tirar ou afrouxar essa
-  seção pede ADR novo.
+  seção pede ADR novo. **Substituído em 05/10 pelo ADR-076:** a seção saiu da página por ordem do dono; os limites
+  seguem valendo no produto.
 - **Quem faz:** SICAT (responsável e contratante), Nova IT (tecnologia), RM Ambiental (assessoria e vendas). Os CNPJs e o
   endereço no rodapé são os dados públicos das empresas; os únicos números de documento no repositório estão em
   `site/index.html`.
@@ -5713,3 +5715,29 @@ ADR-025/040 (o que fica com a pessoa), item 28.32 (o lado Canais), [operacao.md]
 raiz", [api-contract.md](api-contract.md) adendo v1.36, [banco.md](banco.md) migração 107; `backend/app/main.py`
 (`guarda`, montagem da raiz), `backend/app/modules/portal/`, `site/`, `scripts/portal-prova-de-fora.sh`,
 `scripts/deploy.ps1`.
+
+## ADR-076 — A seção "O que a ANA não faz" sai do site público: emenda ao ADR-075
+
+**Data:** 05/10/2026 · **Estado:** aceito (dono, em chat, 05/10/2026; item 29.110).
+
+**Contexto.** O ADR-075 ("Marca pública") pôs na página a seção "O que a ANA não faz" e disse que tirá-la pedia ADR
+novo. O dono pediu em chat, na sessão do Portal, em 05/10/2026 entre 08:29Z e 08:35Z: "tire o trecho abaixo agora do
+portal", com o título "O que a ANA não faz" e o parágrafo da seção, que começa em "Não cria perfis falsos" e termina
+em "isso é parte do serviço".
+
+**Decisão.**
+- Este ADR substitui o trecho do ADR-075 que prendia a seção na página. O bloco `<aside class="limites">` sai de
+  `site/index.html`, com o título e o parágrafo, e o CSS `.limites` sai de `site/assets/site.css`, que ficou sem uso.
+  Nenhum outro texto do site (FAQ, menu, `og:description`, `site.js`), nem a prova de fora, nem a régua da borda
+  apontava para a seção.
+- **O que NÃO muda:** só o texto público sai. Os limites de comportamento continuam valendo no produto:
+  - as invariantes do CLAUDE.md (sem fake news, sem ofensa explícita, nada de evasão de detecção de emulador ou
+    antibot, nem de mascarar emulador, imagem ou identidade);
+  - o ADR-009 (desafio, CAPTCHA e 2FA sem código ficam com a pessoa);
+  - o ADR-040 (credencial só pelo canal sensível, com consentimento);
+  - o rótulo de IA do Instagram nas imagens geradas.
+- O resto da "Marca pública" do ADR-075 fica como está. Voltar com a seção, ou pôr outro texto no lugar dela, é decisão
+  do dono.
+
+**Relação.** Emenda ao ADR-075 ("Marca pública"); ADR-009 e ADR-040, que seguem inteiros; `site/index.html`,
+`site/assets/site.css`.

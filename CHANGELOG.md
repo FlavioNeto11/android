@@ -300,6 +300,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - a suíte do frontend inteira deu 1605/1605;
   - no navegador: `not_run` até o deploy.
 
+## 2026-10-05 — 29.110: a seção "O que a ANA não faz" sai do site público (branch fix/portal-sem-o-que-a-ana-nao-faz)
+
+- Ordem do dono em chat, 05/10, na sessão do Portal: "tire o trecho abaixo agora do portal".
+- `site/index.html`: sai o bloco `<aside class="limites">`, com o título e o parágrafo. `site/assets/site.css`: sai o
+  `.limites`, que ficou sem uso; a versão `?v=` do CSS muda sozinha.
+- ADR-076 (emenda ao ADR-075): só o texto público sai. Os limites de comportamento seguem valendo no produto
+  (invariantes, ADR-009, ADR-040, rótulo de IA do Instagram).
+- Nenhum outro texto do site, nem a prova de fora, nem a régua apontava para a seção (conferido por busca).
+- Prova: `not_run` até a bateria de latência acabar; depois, `test_portal_site`, `test_portal_prova_de_fora` e
+  `docs-check`, e a página pública no navegador depois de aplicada.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
