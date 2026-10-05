@@ -108,12 +108,15 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     # `collect_list` da coleta, deixar de ler (ou insistir em leitura inválida) é conduta do ator com a ferramenta. E
     # concluir na tela de outro app (item 24.7) também: o executor disse qual app abrir e o ator não abriu. E insistir
     # em "dado ausente" fora de etapa de leitura (31.38): a ferramenta só vale onde há o que ler. E concluir a limpeza
-    # sem gesto nenhum (31.40 b): o executor disse o que cobre a tela e o ator não fechou.
-    (_F.IA_CHAMADA_INVALIDA, ("insistiu em chamadas invalidas", "nao usou collect_list", "acao da receita invalida",
+    # sem gesto nenhum (31.40 b): o executor disse o que cobre a tela e o ator não fechou. E reler o mesmo nome com valores
+    # diferentes até o teto da leitura sem concluir (31.78): nenhum valor ficou estável para entregar.
+    (_F.IA_CHAMADA_INVALIDA, ("insistiu em chamadas invalidas", "leu valores divergentes", "nao usou collect_list", "acao da receita invalida",
                               "concluiu a etapa sem ler o valor", "o valor da etapa nao foi lido",
                               "entrega as seguintes nao foi lido", "concluir a etapa fora do app dela",
                               "dado ausente' numa etapa que nao e de leitura",
-                              "concluiu a limpeza sem tocar no que cobre a tela")),
+                              "concluiu a limpeza sem tocar no que cobre a tela",
+                              # 31.72 (B1): o type_text que tocaria um botão do site em vez de um campo
+                              "insistiu em type_text fora de campo editavel")),
     (_F.IA_INDISPONIVEL, ("ia indisponivel", "verificacao nao pode ser feita", "sem chave configurada",
                           "chave da anthropic invalida", "credencial recusada por", "falha de rede ao contatar",
                           "limite de requisicoes", "resposta do modelo truncada", "sem chamar nenhuma ferramenta",
@@ -144,7 +147,9 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
                                "saiu de foco antes de completar", "digitacao incompleta")),
     # 31.51: o diálogo do site que a limpeza não fecha sem aceitar nada é a tela que segue coberta.
     (_F.POS_CONDICAO_NAO_COMPROVADA, ("pos-condicao nao comprovada", "pos-condicao nao apareceu",
-                                      "a limpeza nao fechou o dialogo do site")),
+                                      "a limpeza nao fechou o dialogo do site",
+                                      # 31.72: o ator que insistiu em aceitar o consentimento: a tela segue coberta
+                                      "o consentimento do site nao e aceito pelo ator")),
     (_F.ALVO_AUSENTE, ("alvo ausente", "nao achou o alvo", "elemento nao encontrado")),
     # 29.74: o valor sensível que a triagem não deixa passar de uma etapa a outra (ADR-009) é parada do executor que
     # pede a pessoa sem passar pela IA; sem regra, viraria relato da IA.

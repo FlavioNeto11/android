@@ -374,8 +374,11 @@ it('canário e rollback dão tom de ACEITO, com o comando, e nunca tom de sucess
   await render();
   await click(byRole('button', /Colocar em prova/i));
   await click(noDialogo(/^Colocar em prova$/i));
-  await waitFor(() => useToastStore.getState().toasts.length > 0);
-  const t = useToastStore.getState().toasts.at(-1)!;
+  // O toast do pedido pelo título, não pela posição: as cargas da página (rotas sem handler aqui) também avisam, e
+  // com a resposta atrasada podem chegar depois dele (29.104).
+  const doPedido = () => useToastStore.getState().toasts.find((x) => x.title.startsWith('Prova começou em'));
+  await waitFor(() => doPedido() !== undefined);
+  const t = doPedido()!;
   expect(t.tone).toBe('info');
   expect(t.message).toContain('cmd-9');
   expect(t.message).not.toContain('quando o aparelho responder');
@@ -387,8 +390,10 @@ it('promover continua verde: é decisão de banco, e ela aconteceu agora', async
   useToastStore.setState({ toasts: [] });
   await render();
   await click(byRole('button', /Promover/i));
-  await waitFor(() => useToastStore.getState().toasts.length > 0);
-  expect(useToastStore.getState().toasts.at(-1)!.tone).toBe('success');
+  // Pelo título, como no canário: um aviso de carga atrasado pode chegar depois (29.104).
+  const daPromocao = () => useToastStore.getState().toasts.find((x) => x.title === 'Versão promovida');
+  await waitFor(() => daPromocao() !== undefined);
+  expect(daPromocao()!.tone).toBe('success');
 });
 
 it('o desfecho por aparelho chega sozinho: o evento do backend muda a lista sem recarregar', async () => {
@@ -461,8 +466,8 @@ it('"Instalar em…" agrupa por servidor e explica, antes de enviar, quem não r
   await render();
   await click(byRole('button', /Instalar em…/i));
   await waitFor(() => byRole('dialog', /.+/));
-
-  expect(text()).toContain('Servidor worker-lan-01');
+  // O diálogo abre antes da lista de destinos chegar (29.104).
+  await waitFor(() => text().includes('Servidor worker-lan-01'));
   expect(text()).toContain('o pacote exige arm64-v8a');
   const caixas = [...container.querySelectorAll('dialog input[type=checkbox]')] as HTMLInputElement[];
   expect(caixas).toHaveLength(2);
@@ -534,8 +539,9 @@ it('a tela diz que a conta Google vale só naquela VM e oferece abrir a tela da 
   backend.on('GET', /\/store$/, () => json(estadoDaLoja()));
   comLojaNoPainel();
   await render();
-  // A regra que nenhuma tela dizia: conta de uma VM não instala em outra.
-  expect(text()).toContain('só nesta VM-loja');
+  // A regra que nenhuma tela dizia: conta de uma VM não instala em outra. O render só espera o título fixo; o
+  // texto vem com o estado da loja (29.104).
+  await waitFor(() => text().includes('só nesta VM-loja'));
   expect(text()).toContain('copiado por ADB');
   expect(text()).toContain('nesta máquina');
   expect(byRole('button', /Abrir a tela da loja/i)).toBeTruthy();

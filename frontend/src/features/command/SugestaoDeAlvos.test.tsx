@@ -93,7 +93,8 @@ describe('Modo Automático', () => {
   it('"Escolher manualmente" a partir da sugestão leva ao modo por persona com as sugeridas marcadas', async () => {
     await setValue(campo(), 'responda à tia sobre a missa de domingo');
     await click(byRole('button', /^Executar/));
-    await waitFor(() => expect(text(container)).toContain('Quem faz e onde'));
+    // "Quem faz e onde" já aparece com a sugestão carregando; as marcadas só existem depois que ela chega (29.104).
+    await waitFor(() => expect(text(container)).toContain('católica devota'));
     await click(byRole('button', /^Escolher manualmente/));
     expect(byRole('button', /Por persona/).getAttribute('aria-pressed')).toBe('true');
     expect(JSON.parse(window.localStorage.getItem('cda.commandPersonas') ?? '[]')).toEqual(['p-marina']);

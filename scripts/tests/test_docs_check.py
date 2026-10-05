@@ -296,5 +296,21 @@ class DocsCheckTests(unittest.TestCase):
         self.assertIn('docs-check: 0 erros, 0 avisos', buffer.getvalue())
 
 
+
+class CloneLimpo(unittest.TestCase):
+    """29.102: o handoff local estava só no `.git/info/exclude`, que não vem num clone, e o docs-check do CI acusava o
+    link do CLAUDE.md como quebrado toda noite. O `.gitignore` VERSIONADO tem de ignorá-lo: num repositório novo,
+    só com ele, o alvo é ignorado."""
+
+    def test_o_gitignore_versionado_ignora_o_handoff_local(self):
+        import subprocess
+        gitignore = (SCRIPT.parents[1] / '.gitignore').read_text(encoding='utf-8')
+        with tempfile.TemporaryDirectory() as d:
+            subprocess.run(['git', 'init', '-q'], cwd=d, check=True)
+            (Path(d) / '.gitignore').write_text(gitignore, encoding='utf-8')
+            r = subprocess.run(['git', 'check-ignore', '-q', '--', '.claude/handoff-current.md'], cwd=d, check=False)
+        self.assertEqual(r.returncode, 0, 'o .gitignore versionado não ignora .claude/handoff-current.md')
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -8,7 +8,7 @@ import { initialDataState } from '../../store/reducer';
 import { useToastStore } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { makePedido, makePersona, makeRun, makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, botaoPronto, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { CommandPanel } from '../command/CommandPanel';
 import { gatilhoDoQuando, quandoInicial, rruleDe } from './gatilho';
 import { NovoPedido } from './NovoPedido';
@@ -215,7 +215,8 @@ describe('integração com o Comando', () => {
     expect(corpoDe(/previa$/)).toMatchObject({ objetivo: 'Resuma o feed todo dia', alvos: { instance_ids: ['android-01'] } });
     // Criar um pedido NÃO cria execução: o Executar de sempre segue intacto.
     expect(backend.callsTo('POST', /^\/api\/runs$/)).toHaveLength(0);
-    await click(byRole('button', /Confirmar e criar/));
+    // O pedido da prévia registrado não é a prévia na tela: Confirmar só libera quando ela chega (29.104).
+    await click(await botaoPronto(/Confirmar e criar/));
     await waitFor(() => expect(window.location.hash).toBe('#/pedidos/ped_novo'));
   });
 

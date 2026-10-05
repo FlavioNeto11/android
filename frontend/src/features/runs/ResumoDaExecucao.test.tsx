@@ -197,8 +197,8 @@ describe('veredito da validação no resumo', () => {
   it.each(CASOS)('prova de fluxo, %s: "Veredito da validação: %s"', async (_nome, over, esperado) => {
     itens = [pedido(over)];
     await mostrarComOrigem('prova_fluxo');
-    await waitFor(() => expect(text(resumo())).toContain('Veredito da validação'));
-    expect(text(resumo())).toContain(`Veredito da validação: ${esperado}`);
+    // O rótulo aparece antes do valor, que vem do fetch: espera o valor, não só o rótulo (29.104).
+    await waitFor(() => expect(text(resumo())).toContain(`Veredito da validação: ${esperado}`));
     expect(text(resumo())).not.toContain('sucesso comprovado');            // o veredito é do item, não da execução
     const ultima = chamadas().at(-1);
     expect(ultima?.query.get('run')).toBe(RUN_ID);

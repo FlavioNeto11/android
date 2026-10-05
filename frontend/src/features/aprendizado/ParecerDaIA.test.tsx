@@ -136,6 +136,8 @@ describe('parecer da IA na fila', () => {
     await waitFor(() => expect(chamadas(/\/parecer\//)).toHaveLength(1));
     expect(chamadas(/\/parecer\//)[0]?.path).toBe('/api/aprendizado/licao/li-b/parecer/lr-b');
     expect(chamadas(/\/parecer\//)[0]?.body).toEqual({ resposta: 'aceitar', motivo: 'pareceres conferidos', em_lote: true });
+    // O aviso sai com a resposta, não com o pedido registrado (29.104).
+    await waitFor(() => expect(useToastStore.getState().toasts.length).toBeGreaterThan(0));
     const [aviso] = useToastStore.getState().toasts;
     expect(aviso?.title).toContain('1 parecer aceito de 2 itens selecionados');
     expect(JSON.stringify(aviso?.details)).toContain('Classe C: decida item a item');

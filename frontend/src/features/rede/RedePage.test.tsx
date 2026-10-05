@@ -12,7 +12,7 @@ import type { NetworkDeviceRow, NetworkProfileListed, NetworkServerStatus } from
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { RedePage, nomeDoPacote } from './RedePage';
 
 function perfil(over: Partial<NetworkProfileListed> = {}): NetworkProfileListed {
@@ -135,7 +135,7 @@ it('cria o perfil e manda o segredo uma vez só, no corpo do pedido', async () =
   await setValue(byRole('textbox', /^Nome do perfil$/) as HTMLInputElement, 'VPN nova');
   await setValue(byRole('textbox', /^Host$/) as HTMLInputElement, '10.0.0.20');
   await setValue(byRole('textbox', /Segredo/) as HTMLInputElement, 'chave-privada-de-teste');
-  await click(byRole('button', /^Criar$/));
+  await click(await botaoPronto(/^Criar$/));
   await waitFor(() => backend.callsTo('POST', /\/network\/profiles$/).length === 1);
   const b = backend.callsTo('POST', /\/network\/profiles$/)[0]!.body as Record<string, unknown>;
   expect(b).toMatchObject({ name: 'VPN nova', kind: 'vpn', protocol: 'wireguard', endpoint_host: '10.0.0.20', secret: 'chave-privada-de-teste' });
@@ -164,7 +164,7 @@ it('atribuir em lote exige prévia (dry_run) antes de aplicar, e manda os mesmos
     instance_ids: ['android-02'], vpn_profile_id: 'vpn-1', confirm_real_account: [], dry_run: true,
   });
   await waitFor(() => text().includes('aplicaria agora'));
-  await click(byRole('button', /^Aplicar/));
+  await click(await botaoPronto(/^Aplicar/));
   await waitFor(() => backend.callsTo('POST', /\/network\/assign/).length === 2);
   const final = backend.callsTo('POST', /\/network\/assign/)[1]!.body as Record<string, unknown>;
   expect(final).toEqual({ instance_ids: ['android-02'], vpn_profile_id: 'vpn-1', confirm_real_account: [], dry_run: false });
@@ -194,7 +194,7 @@ it('política fica de fora do pedido quando ninguém mexe nela: não rebaixa um 
   // A Política nunca é tocada: continua "não mudar".
   await click(byRole('button', /Ver prévia/));
   await waitFor(() => backend.callsTo('POST', /\/network\/assign/).length === 1);
-  await click(byRole('button', /^Aplicar/));
+  await click(await botaoPronto(/^Aplicar/));
   await waitFor(() => backend.callsTo('POST', /\/network\/assign/).length === 2);
   const final = backend.callsTo('POST', /\/network\/assign/)[1]!.body as Record<string, unknown>;
   expect(final.policy).toBeUndefined();
@@ -227,7 +227,7 @@ it('aparelho com conta real pede confirmação POR APARELHO antes de aplicar (AD
   await setValue(byRole('combobox', /Perfil de VPN/) as HTMLSelectElement, 'vpn-1');
   await click(byRole('button', /Ver prévia/));
   await waitFor(() => backend.callsTo('POST', /\/network\/assign/).length === 1);
-  await click(byRole('button', /^Aplicar/));
+  await click(await botaoPronto(/^Aplicar/));
   const dialogo = await waitFor(() => byRole('dialog', /Mudar a saída de android-01/));
   expect(text(dialogo)).toContain('@mariana');
   // Ainda não mandou o pedido de verdade: a confirmação é obrigatória antes.
@@ -258,7 +258,7 @@ it('recusar a confirmação de conta real aborta o lote inteiro: nenhum segundo 
   await setValue(byRole('combobox', /Perfil de VPN/) as HTMLSelectElement, 'vpn-1');
   await click(byRole('button', /Ver prévia/));
   await waitFor(() => backend.callsTo('POST', /\/network\/assign/).length === 1);
-  await click(byRole('button', /^Aplicar/));
+  await click(await botaoPronto(/^Aplicar/));
   const dialogo = await waitFor(() => byRole('dialog', /Mudar a saída de android-01/));
   await click(byRole('button', /^Cancelar$/, dialogo));
   await flush(20);
@@ -349,7 +349,7 @@ it('prévia em voo quando a seleção muda: a resposta velha não liga "Aplicar"
   // Nova prévia, agora da seleção que está na tela; aplicar manda exatamente ela.
   await click(byRole('button', /Ver prévia/));
   await waitFor(() => text().includes('aplicaria agora'));
-  await click(byRole('button', /^Aplicar/));
+  await click(await botaoPronto(/^Aplicar/));
   await waitFor(() => backend.callsTo('POST', /\/network\/assign/).length === 3);
   const [, previa, final] = backend.callsTo('POST', /\/network\/assign/).map((c) => c.body as Record<string, unknown>);
   expect(final).toEqual({ ...previa, dry_run: false });
@@ -528,13 +528,13 @@ it('o cadastro manda a saída esperada em params só quando preenchida (29.6)', 
   await waitFor(() => text().includes('WireGuard escritório'));
   await setValue(byRole('textbox', /^Nome do perfil$/) as HTMLInputElement, 'Dedicada-01');
   await setValue(byRole('textbox', /^Host$/) as HTMLInputElement, 'vpn.provedor.example');
-  await click(byRole('button', /^Criar$/));
+  await click(await botaoPronto(/^Criar$/));
   await waitFor(() => backend.callsTo('POST', /\/network\/profiles$/).length === 1);
   expect('params' in (backend.callsTo('POST', /\/network\/profiles$/)[0]!.body as object)).toBe(false);
   await setValue(byRole('textbox', /^Nome do perfil$/) as HTMLInputElement, 'Dedicada-02');
   await setValue(byRole('textbox', /^Host$/) as HTMLInputElement, 'vpn.provedor.example');
   await setValue(byRole('textbox', /Saída esperada/) as HTMLInputElement, ' 198.51.100.8 ');
-  await click(byRole('button', /^Criar$/));
+  await click(await botaoPronto(/^Criar$/));
   await waitFor(() => backend.callsTo('POST', /\/network\/profiles$/).length === 2);
   expect(backend.callsTo('POST', /\/network\/profiles$/)[1]!.body).toMatchObject({
     name: 'Dedicada-02', params: { egress_esperado: '198.51.100.8' },
@@ -569,7 +569,7 @@ it('a prévia mostra os avisos de saída dedicada (compartilhada, ou trocada por
   expect(text(previa)).toContain('android-01 deixa a saída dedicada 198.51.100.9 do perfil Dedicada-02');
   expect(previa.querySelectorAll('[data-aviso-de-saida]').length).toBe(2);
   // É aviso: o Aplicar segue liberado, e o pedido é o mesmo da prévia.
-  await click(byRole('button', /^Aplicar/));
+  await click(await botaoPronto(/^Aplicar/));
   await waitFor(() => backend.callsTo('POST', /\/network\/assign/).length === 2);
   expect((backend.callsTo('POST', /\/network\/assign/)[1]!.body as { dry_run: boolean }).dry_run).toBe(false);
 });

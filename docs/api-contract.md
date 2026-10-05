@@ -279,7 +279,7 @@ interface Snapshot {
 | `POST /api/instances/{id}/control/release` | `{lease_id}` | `{status:'released'}` |
 | `PUT /api/instances/{id}/repair-pause` | `{ttl_s: 60..10800, reason: string(3..200)}` | `RepairPauseInfo` `{until, since, reason, by, remaining_s}`; pausa o reparo AUTOMÁTICO (escada e reinício por saúde) só deste aparelho; `ttl_s` obrigatório, expira sozinha, repetir renova; `422` sem prazo ou fora dos limites, `404` aparelho desconhecido |
 | `DELETE /api/instances/{id}/repair-pause` | – | `{status:'resumed'}`; `404 {code:'no_repair_pause'}` sem pausa em vigor |
-| `POST /api/instances/{id}/input` | `ManualInput` | `{ok:true}`; `409 {code:'stale_frame'|'frame_mismatch'|'not_controller'}` |
+| `POST /api/instances/{id}/input` | `ManualInput` | `{ok:true}`; `409 {code:'stale_frame'|'frame_mismatch'|'capture_failing'|'not_controller'}` (a tecla não confere o quadro: v1.52) |
 | `POST /api/runs` | `{command, instance_ids, idempotency_key, mode:'plan'|'execute', ai_profile?}` | `RunSummary` (`deduplicated:true` se a chave já existia; `ai_profile`/`ai_profile_source:'explicit'|'canary'|null`, item 17.7); `422 {code:'ai_profile_desconhecido'}` se `ai_profile` não está em `ai.profiles` |
 | `GET /api/runs?limit=20` | – | `RunSummary[]` |
 | `GET /api/runs/{id}` | – | `RunDetail` |
@@ -4075,7 +4075,8 @@ pessoa: a escolha dela mede se a IA acerta, sem a influência dela (D-3). O pare
   `curador: {modo, pendentes_ocultos, pode_pedir_revisao} | null`. `Revisao`: `{id, criado_em, gatilho, validade, classe,
   simulated, modelo, estado_no_parecer, parecer, atual, acao, recusa, decisao_final, decidido_por, override,
   override_motivo, transicao_id}`. `parecer` é a saída validada (`decisao`, `alvo`, `faixa`, `causa`, `confianca`,
-  `probabilidade`, `evidencias_citadas`, `riscos`, `inconsistencias`, `falta` e `conclusao`, o único texto livre), `null`
+  `probabilidade`, `evidencias_citadas`, `riscos`, `inconsistencias`, `falta` e `conclusao`, o único texto livre; e
+  `falta_descartada` só quando a validação tirou de `falta` um rótulo fora da classe, adendo v1.53), `null`
   quando a `validade` não é `ok` (`invalida:<motivo>`, `recusada:custo`, `recusada:triagem`). `atual`: é o parecer que uma
   decisão de agora responde (só ele traz `acao` e `recusa`). `classe`: a efetiva, a da política endurecida pela `faixa`
   que a IA declarou.
@@ -6295,3 +6296,58 @@ Migração 112. Campo aditivo em `SessionInfo`, nos mesmos cinco DTOs do adendo 
 - O painel usa `status_since` como o "desde" do item da sessão em Pendências e cai em `verified_at` quando ele falta.
   Ausente = backend de antes do 29.100.
 - **Prova:** `simulated` (`backend/tests/test_sessao_status_since.py`, `frontend/src/features/pendencias/PendenciasPage.test.tsx`).
+
+## Adendo v1.52 (05/10/2026; número da orquestradora; item 29.105) — as teclas de navegação não dependem do quadro, e o quadro velho com a captura falhando diz o porquê
+
+`POST /api/instances/{id}/input` (`ManualInput`), sem campo novo:
+- `type:'key'` com `key` em `back`, `home` ou `recents` (Voltar, Início, Recentes) não confere mais o `frame_id`: nem
+  se o backend o conhece, nem a idade, nem o tamanho. A tecla de navegação não aponta para nada na tela e SAI dela. O
+  lease (`not_controller`) e o aparelho no ar (`offline`) continuam valendo. O `frame_id` segue obrigatório no corpo;
+  o painel manda o da imagem exibida, ou `''` quando nenhuma imagem chegou.
+- `enter` e `delete` agem sobre o campo em foco (às cegas, o Enter confirmaria o que a pessoa não vê) e seguem, como
+  toque, toque longo, arraste e texto, exigindo um quadro atual. Quando o quadro é desconhecido ou velho:
+  - com a captura falhando (`consecutive_capture_failures > 0` no `stream` da instância): `409 {code:'capture_failing'}`,
+    com a mensagem do motivo (`last_capture_error`) e da saída (Voltar, Início e Recentes passam). Esperar a imagem nova
+    não resolve;
+  - sem falha registrada: `409 {code:'stale_frame'}`, como antes (a corrida comum entre o painel e a tela).
+  - Aceito: uma falha passageira da captura junto da corrida comum responde `capture_failing` em vez de `stale_frame`.
+- `frame_mismatch` não mudou.
+- O caso que motivou: na medida do 31.72 (android-09, 05/10), com a aba anônima do Chrome na frente, o quadro congelou e
+  todo `/input` voltou `stale_frame`, até o Voltar: o painel ficou sem saída.
+- O mesmo sintoma apareceu SEM tela protegida (android-09, 05/10, 10:28Z, deploy 36 `e5f1b22b`): o convidado
+  sobrecarregado (load 18 a 20) fez o screencap estourar o prazo (`DriverTimeout: screencap (na origem) excedeu 25s`), o
+  `x-frame-id` parou por cerca de 30 s e três toques voltaram `stale_frame`. Com este código, seriam `capture_failing`,
+  e a tecla de navegação passaria. O congelamento do 31.72 pode ter sido sobrecarga, não a FLAG_SECURE.
+- O vizinho que nenhum código pega; por isso a regra é ler o quadro antes de tocar: o toque com quadro novo que não
+  foi lido, depois de a tela mudar (K-102 em `docs/conhecimento/aprendizados.md`).
+- **O que o screencap faz com a FLAG_SECURE ainda é INFERRED** (falha, ou sai uma imagem preta):
+  - se falha: o `stream` registra a falha, toque, texto, Enter e Apagar recebem `capture_failing`, e a tecla de
+    navegação é a saída;
+  - se sai preto: o quadro se renova (preto), o `stale_frame` não dispara, e o toque passa às cegas sobre uma imagem
+    preta. O 29.105 não detecta isso, nem o marcador de tela sensível pela hierarquia; a tecla de navegação segue
+    sendo a saída.
+- O painel trata `capture_failing` com aviso próprio (o motivo do backend e "use Voltar, Início ou Recentes") e manda
+  essas três teclas mesmo sem imagem exibida; Enter e Apagar sem imagem ficam no painel, com "Ainda não há imagem na
+  tela". Ausente = backend de antes do 29.105 (a tecla recebia `stale_frame` com o quadro velho).
+- **Prova:** `simulated` (`backend/tests/test_tela_protegida.py`, `frontend/src/app.integration.test.tsx`). `real`
+  parcial, ANTES deste código (deploy 36, `e5f1b22b`): no android-04, com a captura sã, o toque com quadro de ~40 s
+  voltou `stale_frame` e o Voltar com quadro recente passou (`data/diag-29-105/29-105-medida.md`); no android-09, a
+  sobrecarga acima (`data/diag-29-105/a09/registro.txt`). A tela protegida em si: `not_run`.
+
+## Adendo v1.53 (05/10/2026; número da orquestradora; item 30.73) — a falta que a validação tirou do parecer da classe B
+
+Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learning_reviews.saida` relida. Aparece em
+`GET /api/aprendizado/{kind}/{ref}` (`pareceres[]`) e na resposta do pedido de revisão
+(`POST /api/aprendizado/{kind}/{ref}/revisao`, `revisao`):
+- `falta_descartada: string[]`, com rótulos do mesmo vocabulário fechado de `falta` (`Falta`).
+  - São os que a IA marcou fora das faltas da classe do item e a validação tirou de `falta`.
+  - Hoje só acontece na classe B, com `voto_da_pessoa` e `decisao_da_pessoa`: um provedor sem esquema estrito pode
+    devolvê-los mesmo fora das opções.
+- AUSENTE quando não houve descarte. A `saida` dos pareceres sem descarte, inclusive todo o estoque de `curador-v1`,
+  fica byte a byte como antes.
+- Não entra em decisão nenhuma: nem no aceite, nem na regra da autopublicação, nem no pedido de prova. Existe para não
+  esconder que o modelo insistiu.
+- Nunca leva texto da IA, só rótulos.
+- O mesmo descarte sai numa linha de log do curador, com o id da revisão, a classe e os rótulos.
+- O painel pode ignorar a chave. Ausente também quer dizer backend de antes do 30.73.
+- **Prova:** `simulated` (`backend/tests/test_curador_classe_b.py`).

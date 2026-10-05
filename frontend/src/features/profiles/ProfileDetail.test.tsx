@@ -339,7 +339,8 @@ it('adicionar conta com a senha de outra conta: o campo de senha some e o POST l
   backend.on('POST', /\/accounts$/, () => json(conta({ ...OUTLOOK, credential_configured: true }), 201));
   await abrirContas([conta()]);
   await click(byRole('button', /Adicionar conta/i));
-  await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'outlook');
+  // O formulário espera o catálogo de apps: o seletor só aparece quando ele chega (29.104).
+  await setValue(await waitFor(() => byRole('combobox', /Aplicativo/i)) as HTMLSelectElement, 'outlook');
   await setValue(byRole('textbox', /Usuário na conta/i) as HTMLInputElement, 'mariana@outlook.com');
   const senhas = container.querySelectorAll('input[type="password"]').length;
   await setValue(byRole('combobox', /^Usar a senha de outra conta/i) as HTMLSelectElement, 'acc-1');
@@ -410,6 +411,8 @@ it('Conectar e Verificar usam a rota DA CONTA, gateados por session_actions', as
   expect(text()).toContain('Não há sessão para encerrar.');
   await click(byRole('button', /^Conectar$/i));
   await waitFor(() => backend.callsTo('POST', /\/accounts\/acc-1\/session\/connect$/).length === 1);
+  // Os botões da conta dividem o `loading`: Verificar só aceita o clique depois da resposta do Conectar (29.104).
+  await waitFor(() => byRole('button', /Verificar conta/i).getAttribute('aria-busy') !== 'true');
   await click(byRole('button', /Verificar conta/i));
   await waitFor(() => backend.callsTo('POST', /\/accounts\/acc-1\/session\/verify$/).length === 1);
   // As rotas antigas por perfil (apelidos da conta âncora) não são mais chamadas daqui.
@@ -1039,6 +1042,8 @@ it('a visão geral mostra o cartão de identidade com números e uma mini linha 
   expect(backend.callsTo('GET', /personas/)).toHaveLength(0);
   for (const dado of ['34 anos', 'feminino', 'Curitiba', 'Fotógrafa']) expect(text()).toContain(dado);
 
+  // Os números vêm de `capacidades`, que pode chegar depois da persona (29.104).
+  await waitFor(() => text().includes('75%'));
   expect(text()).toContain('8');            // interações confirmadas (6+2)
   expect(text()).toContain('75%');          // roda sem IA
   await waitFor(() => text().includes('alvo-1'));
