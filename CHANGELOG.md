@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
+
+- Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e
+  31.88 F2 painel (46b9040b). Os conflitos eram só de CHANGELOG e do fim de `TrainingReview.test.tsx` (cada ramo acrescentou ao fim); ficaram os
+  blocos e os testes dos dois lados (33 testes na revisão: 21 + 6 do E + 2 do F + 4 do F2).
+- Uma correção de teste que só a junção mostrou: o teste do 31.90-C que segura a leitura das personas soltava a resposta antes de o fetch atrasado
+  entregar o pedido ao handler (semente 88 a 100 ms); agora espera o pedido chegar.
+- Prova `simulated`: frontend inteiro 1708/1708, typecheck limpo e `npm run build` ok (4 workers, Idle); com atraso do fetch passam as sementes
+  7/40, 88/100 e 13/150. `not_run`: o percurso no navegador (deploy 43; o do 31.88 F2 de ponta a ponta depende do backend f75b3b97).
+
 ## 2026-10-05 — 31.90-C: o treino pergunta de quem é o ensino, quando o aparelho tem mais de uma persona (branch feat/31-90-c-persona-ao-iniciar)
 
 - Só frontend; o backend já aceitava `profile_id` no início da gravação e recusava com 409 `persona_ambigua` quando o aparelho tem duas personas para o app e nenhuma é escolhida. O painel não mandava o campo, então esse aparelho não conseguia ensinar nada pelo painel (e, com o 30.81, um treino sem persona gera um fluxo que não vale em aparelho nenhum).

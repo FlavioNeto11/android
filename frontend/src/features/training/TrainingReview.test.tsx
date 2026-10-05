@@ -7,12 +7,9 @@ import { initialDataState } from '../../store/reducer';
 import { makeSnapshot } from '../../test/fixtures';
 import { ConfirmHost } from '../../components/Confirm';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { alvoReconhecido, ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
 import type { TrainingInput } from '../../api/types';
-
 import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
 
 /** O atraso máximo do fetch falso (modo ATRASO_DO_FETCH_MS): a resposta que o teste solta depois ainda pode estar a caminho. */
 const ATRASO_MAXIMO = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
@@ -652,6 +649,7 @@ it('31.90-E: etapa com ação do catálogo não tem editor da conferência (o sa
   expect(text()).toContain('O que esta etapa confere vem da ação do catálogo “SEND_MESSAGE” e não muda por aqui.');
   expect(allByRole('combobox', /Tipo de conferência da etapa 1/)).toHaveLength(0);
   expect(Array.from(document.querySelectorAll('summary')).some((x) => /Editar o que a etapa confere/.test(x.textContent ?? ''))).toBe(false);
+});
 
 // ---------------------------------------------------------------- 31.90-F: como a gravação reconhece o elemento tocado
 it('31.90-F: a coluna da gravação diz por que a gravação reconhece o elemento (seletor e id, sem o pacote)', async () => {
