@@ -124,6 +124,39 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
   `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). Real: `not_run`.
 
+## 2026-10-05 — 28.41: sobras das leituras do #361 e do #372 (branch canais/28-41-sobras)
+
+- R1: a resposta do dono ao aviso de objetivo parado ou de conta (`objective:` e `session:`) só informa ("Este aviso
+  só informa: para resolver, toque no link dele.") e nunca vira prévia de execução nova. F1 da leitura do #380: a
+  resposta à mensagem AGRUPADA (`grupo:<tipo>` e `grupo:rotina`) também só informa ("Esta mensagem junta vários avisos
+  e só informa: para resolver, toque no link dela."); antes ela caía no texto livre.
+- Regra de fundo (orquestradora, 05/10 06:53Z): a resposta a uma mensagem nossa cujo fato não tem ramo (`pedido:`,
+  `learning:`, `trello-convidado:` ou família nova) só informa e diz como pedir algo; o texto livre fica só para a
+  mensagem que não responde a nada nosso (o anexo segue a gramática comum, 28.24). No Trello, onde o texto livre
+  nunca executou, o comentário num cartão cujo fato não tem ramo responde o "comando livre está desligado" de
+  sempre e nunca vira prévia, nem com o comando livre ligado (orquestradora, 05/10 07:24Z).
+- G1 da releitura do #380 (orquestradora, 05/10 07:50Z): resposta a aviso nunca vira COMANDO, e pergunta não executa
+  nada. Na resposta a um fato sem ramo, só o texto livre e o `para` viram "só informa"; a pergunta volta a ir à
+  orquestradora, e a captura e a identidade seguem (no Trello também). G2, no contrato: `/para` com barra num
+  cartão-espelho, com o comando livre ligado, ainda mostra a prévia de leitura.
+- Fecho do G1 (orquestradora, 05/10 08:00Z): a regra vale nos dois canais para o texto sem barra. O comando com barra
+  é explícito e fica como está (G3: no Telegram, `/para` em resposta a um aviso vira a prévia com o botão de
+  executar). Teste de ponta a ponta: a pergunta no espelho do deploy chega à orquestradora com a frase do repasse.
+  Catraca nova: toda chave de `Aviso(...)` em `backend/app` sai de um `chave_do_*` e tem `<família>:<identidade>`.
+- Leitura do #382: o gesto do desfecho segue o `blocked_kind` dos objetivos parados (aparelho: abrir a execução;
+  aprovação: a caixa de Pendências; os dois: as duas linhas).
+- R2: o `/status` conta os objetivos parados (sem contar duas vezes o que espera uma aprovação) e diz que eles estão
+  em Execuções.
+- N1 do #372: com a conta igual, o aviso de conta só cala o objetivo que parou por motivo de conta, como no ramo só
+  da persona.
+- N4: o desfecho da execução recusada no planejamento diz o motivo por uma frase fixa (`plan.refused`), sem o trecho
+  do comando que o `status_detail` traz; sem recusa e sem evidência, só o estado.
+- Agrupados: a conta que pede a pessoa vai sempre à caixa (o avulso em tela não reconhecida abre o Foco de UM
+  aparelho); o lembrete agrupado diz onde ficam a aprovação, a pergunta e o objetivo parado.
+- N1 do #361: os testes provam que só o Cancelar do dono leva o gesto, e que os cancelamentos automáticos não.
+- Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` e `backend/tests/test_telegram_entrada.py`.
+  Real: `not_run`.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
@@ -416,7 +449,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   que não gravou não o faz repetir.
 - A mensagem original apagada pelo dono: o desfecho já vai com `allow_sending_without_reply` (adaptador do Telegram),
   então o 400 não acontece e não há tentativa a fazer sem a referência. No Trello, a referência é o próprio cartão, e não
-  há para onde mandar sem ele. Fica provado por teste.
+  há para onde mandar sem ele. O teste é de caracterização: o código já mandava isso desde o 28.15 (nota da leitura do
+  #361).
 - Prova: `simulated`, com 6 testes novos em `tests/test_telegram_entrada.py`; ao todo, 144 passaram em
   `test_telegram_entrada`, `test_trello_leitor` e `test_telegram_portas`. No ambiente real: `not_run`.
 
