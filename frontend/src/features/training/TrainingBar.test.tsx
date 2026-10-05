@@ -140,3 +140,18 @@ it('A6: a região viva do contador nasce vazia com a gravação e o texto entra 
   expect(viva.isConnected).toBe(true);
   expect(viva.textContent).toBe('1 entrada(s) recusada(s): refaça');
 });
+
+it('29.142: "Para revisar" corta o nome com reticências, leva o nome inteiro no rótulo e diz o estado de cada gravação', async () => {
+  const longo = 'Atualizar o cadastro do perfil no QA Messenger com o nome e a cidade';
+  backend.on('GET', /\/training$/, () => json([
+    { ...GRAVANDO, id: 'trn-a', intent: longo, status: 'recorded' },
+    { ...GRAVANDO, id: 'trn-b', intent: longo, status: 'proposed' },
+  ]));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Para revisar:'));
+  const gravada = byRole('button', /, só gravada$/);
+  const pronta = byRole('button', /, proposta pronta$/);
+  expect(gravada.getAttribute('aria-label')).toBe(`Revisar “${longo}”, só gravada`);
+  expect(gravada.textContent).toBe('Atualizar o cadastro do perfil no QA… · só gravada');
+  expect(pronta.textContent).toBe('Atualizar o cadastro do perfil no QA… · proposta pronta');
+});

@@ -3469,8 +3469,10 @@ def _limites_dos_servidores(s: Any) -> list[ServerLimitsDTO]:
                                         max_working=decidido.get("max_working"),
                                         min_free_ram_mb=declarado.min_free_ram_mb,
                                         max_devices=decidido.get("max_devices"))
-            travado = {"min_free_ram_mb": "Guarda do boot deste servidor: `android.min_free_ram_mb_after_boot` "
-                                          "no config.yaml."}
+            # 29.142: a frase é para a pessoa (a chave crua com crases aparecia no painel); a chave fica no comentário:
+            # `android.min_free_ram_mb_after_boot` no config.yaml.
+            travado = {"min_free_ram_mb": "Depois de ligar mais um aparelho, este servidor tem de manter pelo menos isto "
+                                          "livre. Muda só na configuração da instalação, com reinício."}
             nome = linha["name"] if linha is not None else f"{wid} (este servidor)"
         else:
             d = s.workers.limites_declarados(wid)

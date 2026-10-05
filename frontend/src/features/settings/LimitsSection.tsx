@@ -6,7 +6,7 @@ import { Button } from '../../components/Button';
 import { EmptyState } from '../../components/EmptyState';
 import { Checkbox, Field, Select, TextInput } from '../../components/Field';
 import { PageSection } from '../../components/Page';
-import { cx } from '../../lib/format';
+import { cx, plural } from '../../lib/format';
 import { useAppStore } from '../../store/app';
 import { toast, toastError } from '../../store/toasts';
 import { ServersLimits } from './ServersLimits';
@@ -80,7 +80,7 @@ export function LimitsSection() {
         footer={(
           <>
             <span className={cx(styles.saveNote, dirtyCount > 0 && styles.saveNoteDirty)} aria-live="polite">
-              {dirtyCount === 0 ? 'Nenhuma alteração pendente.' : errorCount > 0 ? `${dirtyCount} alteração(ões) · corrija ${errorCount} campo(s) para salvar` : `${dirtyCount} alteração(ões) não salva(s)`}
+              {dirtyCount === 0 ? 'Nenhuma alteração pendente.' : errorCount > 0 ? `${plural(dirtyCount, 'alteração', 'alterações')} · corrija ${plural(errorCount, 'campo', 'campos')} para salvar` : `${plural(dirtyCount, 'alteração não salva', 'alterações não salvas')}`}
             </span>
             <Button variant="ghost" icon={Undo2} disabled={dirtyCount === 0 || saving} onClick={() => { setDrafts({}); setShowAll(false); }}>
               Descartar alterações

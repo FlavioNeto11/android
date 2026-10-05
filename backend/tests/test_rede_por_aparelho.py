@@ -769,7 +769,7 @@ async def test_visao_por_aparelho_com_legado_rebaixado_e_pendencias(parque: Harn
     assert a3["legacy_proxy"]["value"] == "10.0.0.5:3128" and a3["pending"] is None
     assert aparelhos["android-02"]["effective_state"] == "pendente"
     assert aparelhos["android-02"]["restriction"] and "quarentena" in aparelhos["android-02"]["restriction"]
-    assert aparelhos["android-01"]["real_account"] == "@lucas.teste"
+    assert aparelhos["android-01"]["real_account"] == "@lucas.teste (Instagram)"      # 29.142: o app ao lado
     assert aparelhos["android-01"]["effective_state"] is None and aparelhos["android-01"]["last_measurement"] is None
 
     # Com rede pedida, a linha nova manda, e a última medição aparece (a pendência some da quarentena).
@@ -949,3 +949,16 @@ async def test_aparelho_sem_rede_pedida_e_presumido_e_a_sonda_so_le(parque: Harn
         await _conectar(parque, c, "android-01", vpn_profile_id=vpn["id"])
     assert rede.registrar_saida_sem_rede(st, "android-01", CASA4, None, "x") is None
     assert next(d for d in rede.listar_aparelhos(st)["devices"] if d["instance_id"] == "android-01")["egress_home"]["basis"] is None  # type: ignore[union-attr]
+
+
+async def test_conta_real_uma_linha_por_persona_com_os_apps(parque: Harness) -> None:
+    """29.142: a persona vinculada ao aparelho para dois apps sai uma vez, com os apps ao lado (antes: "@x, @x")."""
+    st = parque.state
+    assert st is not None
+    st.social.create_profile(ProfileCreate(username="persona.teste", instance_id="android-01"))
+    assert rede._conta_real(st, "android-01") == "@persona.teste (Instagram)"
+    pid = str(st.db.scalar("SELECT id FROM instagram_profiles WHERE username='persona.teste'"))
+    outro = st.db.one("SELECT id, name FROM apps WHERE name <> 'Instagram' ORDER BY id LIMIT 1")
+    assert outro is not None
+    st.social_repo.bind(pid, "android-01", app_id=str(outro["id"]))
+    assert rede._conta_real(st, "android-01") == f"@persona.teste (Instagram, {outro['name']})"

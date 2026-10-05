@@ -33,6 +33,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - A revisão de PR é pedida PR a PR pela orquestradora; a regra automática do repositório fica desligada. Operação em `docs/operacao.md` § 5.
 - Prova `real` para a revisão: três PRs em 05/10, 566,87 créditos (US$ 5,67), 10 achados e 9 confirmados pelas frentes. Prova `not_run` para o agente de nuvem.
 
+## 2026-10-05 — 29.142: textos da volta da 38 (Limites, "Para revisar" e a coluna "Conta real") (branch fix/29-142-textos-da-volta-38)
+
+- Achado 6, Limites: o "sem alterações" das duas telas é um texto só ("Nenhuma alteração pendente."), a contagem usa o plural certo no lugar de "alteração(ões)" e "campo(s)", e a trava da RAM livre depois do boot vira frase para a pessoa no lugar da chave crua do `config.yaml` (`backend/app/api.py`).
+- Achado 7, "Para revisar" na barra do treinamento: o nome longo é cortado na última palavra inteira com reticências, o rótulo acessível leva o nome inteiro e as duas situações dizem o estado ("· proposta pronta" ou "· só gravada").
+- Achado 8, coluna "Conta real" da rede por aparelho: uma entrada por conta, com os apps ao lado (`@conta (Instagram, Outlook)`), no lugar de repetir a conta a cada app (`backend/app/devices/rede.py::_conta_real`).
+- Prova `simulated`: `backend/tests/test_rede_por_aparelho.py::test_conta_real_uma_linha_por_persona_com_os_apps`, `frontend/src/features/training/TrainingBar.test.tsx` (29.142) e `frontend/src/features/settings/ServersLimits.test.tsx` (teto de aparelhos); typecheck verde; 392 testes do frontend em training, settings, servers, focus e profiles; catracas 88 passed; dirigidos do backend 1810 passed. A catraca do mypy ficou `not_run` (o venv do central não tem o mypy).
+
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 
 - Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.

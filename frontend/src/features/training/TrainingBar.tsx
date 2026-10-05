@@ -19,6 +19,17 @@ import { TrainingReview } from './TrainingReview';
 import { useTrainingStore } from './trainingStore';
 import styles from './Training.module.css';
 
+/** Quantos caracteres do nome da gravação cabem no botão de "Para revisar"; o nome inteiro vai no rótulo. */
+const ROTULO_DA_GRAVACAO = 40;
+
+/** Corta o nome na última palavra inteira que cabe, com reticências (29.142: antes o corte caía no meio da palavra). */
+function encurtar(nome: string): string {
+  if (nome.length <= ROTULO_DA_GRAVACAO) return nome;
+  const corte = nome.slice(0, ROTULO_DA_GRAVACAO - 1);
+  const espaco = corte.lastIndexOf(' ');
+  return `${(espaco > ROTULO_DA_GRAVACAO / 2 ? corte.slice(0, espaco) : corte).trimEnd()}…`;
+}
+
 const DESCRICAO: Record<string, string> = {
   tap: 'toque', long_press: 'toque longo', swipe: 'deslize', text: 'texto', key: 'tecla', open_app: 'abrir app',
 };
@@ -185,8 +196,12 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
         <div className={styles.pending}>
           <span className={styles.muted}>Para revisar:</span>
           {pendentes.map((s) => (
-            <Button key={s.id} size="sm" variant="ghost" onClick={() => setRevisando(s.id)}>
-              {s.intent.slice(0, 40)}{s.status === 'proposed' ? ' · proposta pronta' : ''}
+            <Button key={s.id} size="sm" variant="ghost" onClick={() => setRevisando(s.id)}
+                    label={`Revisar “${s.intent}”${s.status === 'proposed' ? ', proposta pronta' : ', só gravada'}`}>
+              {/* 29.142: o rótulo leva o nome inteiro; o estado aparece nas duas situações, para a só gravada não
+                  parecer igual à de proposta pronta. */}
+              {encurtar(s.intent)}
+              {s.status === 'proposed' ? ' · proposta pronta' : ' · só gravada'}
             </Button>
           ))}
         </div>

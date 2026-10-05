@@ -439,12 +439,19 @@ def remover_perfil(st: AppState, profile_id: str) -> None:
 # ============================================================================ quem pode receber
 def _conta_real(st: AppState, instance_id: str) -> str | None:
     """As contas vinculadas ao aparelho (vínculo ativo), ou `None`. A mesma regra do reparo em escada do ADR-055
-    (`despacho.remediar_reiniciando`): conta vinculada é conta real logada, até prova em contrário."""
-    nomes = []
+    (`despacho.remediar_reiniciando`): conta vinculada é conta real logada, até prova em contrário.
+
+    Uma linha por persona, com os apps dos vínculos ao lado (29.142): desde a 051 o vínculo é por app, e a mesma
+    persona ligada para dois apps saía repetida ("@x, @x"). Vínculo sem app não acrescenta nada ao nome."""
+    contas: dict[str, list[str]] = {}
     for b in st.social_repo.profiles_of_instance(instance_id):
         perfil = st.social_repo.profile_row(str(b["profile_id"]))
-        nomes.append(f"@{perfil['username']}" if perfil is not None else str(b["profile_id"]))
-    return ", ".join(nomes) or None
+        apps = contas.setdefault(f"@{perfil['username']}" if perfil is not None else str(b["profile_id"]), [])
+        if b["app_id"]:
+            nome_do_app = str(st.db.scalar("SELECT name FROM apps WHERE id=?", (b["app_id"],)) or b["app_id"])
+            if nome_do_app not in apps:
+                apps.append(nome_do_app)
+    return ", ".join(f"{nome} ({', '.join(apps)})" if apps else nome for nome, apps in contas.items()) or None
 
 
 def apps_exigidos(st: AppState, instance_id: str) -> list[str]:
