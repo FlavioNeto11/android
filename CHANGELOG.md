@@ -156,6 +156,31 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   O teste lê as cores e os fundos do próprio CSS e reprova com a cor antiga. O resto do 29.80 no endereço público está
   no resultado do plano: as outras 253 de 255 linhas de texto passaram, ou eram decorativas com `aria-hidden`; 40 de
   40 focos têm anel de 3 px, com contraste de 4,94 ou mais; e a 404 vem com status 404 e `noindex`.
+## 2026-10-05 — 29.85: a prova de fora pede a raiz como navegador e reprova script de outra origem (branch feat/29-85-prova-sem-script-de-fora)
+
+- **Por quê:** com o site ligado (05/10 01:19Z), a borda da Cloudflare injeta `static.cloudflareinsights.com/beacon.min.js`
+  no HTML da raiz quando o pedido parece de navegador. Com o `curl` puro não aparece; por isso a prova passava. A CSP
+  do site bloqueia o script, mas fica um erro de console em todo visitante, e a página promete que não usa rastreadores.
+- **O que muda:** com `SITE=ligado`, `scripts/portal-prova-de-fora.sh` baixa a raiz com `Accept` e `User-Agent` de
+  navegador. Ela FALHA se achar `cloudflareinsights` ou qualquer `<script src>` de outra origem, e diz onde se desliga
+  (Web Analytics / RUM da zona). A CSP não muda.
+- **Revisão do #353 (X1 a X5):**
+  - X1: o extrator pega a tag quebrada em linhas e o `src = "…"`.
+  - X2: `HTTPS://` e `SCRIPT SRC` em maiúscula reprovam; o que o extrator não reconhece também reprova.
+  - X3: `/cdn-cgi/` reprova, inclusive em script sem `src`, e a mensagem diz o recurso da zona (Rocket Loader,
+    challenge-platform, ofuscação de e-mail).
+  - X4: o pedido como navegador exige 200; um desafio 403 ou 503 não dá `ok`.
+  - X5: todo `curl` do script leva `-q`, para o `~/.curlrc` de quem roda não entrar no pedido. Um teste confere todo
+    `curl` do arquivo, inclusive os de outro PR.
+  - Y1: o esquema só conta antes do primeiro `/`, `?` ou `#`, então `/assets/site.js?v=…T01:00` segue relativo.
+  - Y2: o valor é o do último `<espaço>src=` da tag, então um `?src=b` dentro da URL não vira o valor (era um falso
+    negativo).
+- **Prova:**
+  - `simulated`: `scripts/tests/test_portal_prova_de_fora.py`, 14 testes. O `curl` falso injeta o beacon (aspas
+    simples, como a Cloudflare), um script de outra origem, a tag em linhas, a maiúscula, o Rocket Loader, o
+    challenge-platform embutido e um desafio 403.
+  - `real` (05/10 01:31Z, máquina do central, só GET): a raiz pedida como navegador traz `/assets/site.js` e o beacon;
+    pedida pelo `curl` puro, 0 ocorrências. A prova de fora vai reprovar até o dono desligar o recurso na zona.
 
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
