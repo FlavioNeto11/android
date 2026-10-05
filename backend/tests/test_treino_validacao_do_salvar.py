@@ -137,7 +137,7 @@ async def _sessao_gravada(harness: Harness, entradas: int = 4) -> tuple[Any, str
     s = st.training.start("android-01", intent="Responder uma DM no QA Messenger", lease_id=lease, app_id="qa-messenger")
     for _ in range(entradas):
         st.training.record(rt, {"type": "open_app", "app_id": "qa-messenger"}, None)
-    st.training.stop(s["id"])
+    st.training.stop(s["id"], lease_id=lease)
     return st, s["id"]
 
 

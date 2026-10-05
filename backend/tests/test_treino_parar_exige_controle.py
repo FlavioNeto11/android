@@ -147,7 +147,7 @@ async def test_orfa_sem_gravador_encerra_e_descarta_sem_lease(harness: Harness) 
 
 async def test_discard_de_sessao_ja_gravada_funciona_sem_lease(harness: Harness) -> None:
     st, rt, lease, sid = await _gravando(harness)
-    st.training.stop(sid)                            # `recorded`
+    st.training.stop(sid, lease_id=lease)            # `recorded`
     assert _linha(st, sid)["status"] == "recorded"
     async with _cliente(harness) as c:
         r = await c.post(f"/api/training/{sid}/discard")
@@ -166,10 +166,13 @@ async def test_encerramentos_internos_nao_pedem_controle(harness: Harness) -> No
     st, rt, lease, sid = await _gravando(harness)
     st.training.stop_for_instance("android-01")
     assert _linha(st, sid)["status"] == "recorded"
-    # chamada interna sem o parâmetro novo (domínio e testes)
+    # chamada do sistema que diz o que é; sem dizer, o `stop` confere
     status, lease = st.devices.request_control(rt)
     sid2 = st.training.start("android-01", intent="Segunda", lease_id=lease)["id"]
-    assert st.training.stop(sid2, discard=True)["status"] == "discarded"
+    with pytest.raises(TrainingError) as sem_dizer:
+        st.training.stop(sid2, discard=True)
+    assert sem_dizer.value.code == "control_required" and _linha(st, sid2)["status"] == "recording"
+    assert st.training.stop(sid2, discard=True, por_sistema=True)["status"] == "discarded"
     # troca de gravação órfã no `start` e reconciliação do reinício
     sid3 = st.training.start("android-01", intent="Terceira", lease_id=lease)["id"]
     rt.training_session_id = None
@@ -179,9 +182,46 @@ async def test_encerramentos_internos_nao_pedem_controle(harness: Harness) -> No
     assert st.training.reconcile_after_restart() == 1 and _linha(st, sid4)["status"] == "recorded"
 
 
-async def test_no_dominio_exigir_controle_recusa_com_o_mesmo_codigo_do_start(harness: Harness) -> None:
+async def test_no_dominio_a_conferencia_e_o_padrao_e_recusa_com_o_mesmo_codigo_do_start(harness: Harness) -> None:
     st, rt, lease, sid = await _gravando(harness)
     with pytest.raises(TrainingError) as erro:
-        st.training.stop(sid, exigir_controle=True)
+        st.training.stop(sid)
     assert (erro.value.code, erro.value.status) == ("control_required", 409)
-    assert st.training.stop(sid, exigir_controle=True, lease_id=lease)["status"] == "recorded"
+    assert st.training.stop(sid, lease_id=lease)["status"] == "recorded"
+
+
+# ------------------------------------------------------------------ duas réplicas
+async def test_gravacao_de_aparelho_hospedado_por_outra_replica_nao_e_orfa(harness: Harness) -> None:
+    st, rt, lease, sid = await _gravando(harness)
+    assert st.training.owner_id == st.cfg.owner_id and st.cfg.owner_id
+    st.db.execute("UPDATE instances SET hosted_by=? WHERE id='android-01'", ("outra-replica",))
+    rt.training_session_id = None                    # daqui parece órfã, mas o gravador pode estar na outra réplica
+    async with _cliente(harness) as c:
+        for acao in ("stop", "discard"):
+            r = await c.post(f"/api/training/{sid}/{acao}", json={"lease_id": lease})
+            assert r.status_code == 409, r.text
+            assert "gravacao_em_outro_servidor" in r.text and "Esta gravação está em outro servidor; encerre por lá." in r.text
+    assert _linha(st, sid)["status"] == "recording" and not _linha(st, sid)["finished_at"]
+    assert len(st.training.get(sid)["inputs"]) == 1
+
+
+@pytest.mark.parametrize("dono", [None, "proprio"])
+@pytest.mark.parametrize("acao", ["stop", "discard"])
+async def test_sem_dono_ou_do_proprio_processo_sem_gravador_segue_orfa(harness: Harness, dono, acao) -> None:
+    st, rt, lease, sid = await _gravando(harness)
+    st.db.execute("UPDATE instances SET hosted_by=? WHERE id='android-01'",
+                  (st.cfg.owner_id if dono == "proprio" else None,))
+    rt.training_session_id = None
+    async with _cliente(harness) as c:
+        r = await c.post(f"/api/training/{sid}/{acao}")
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == ("recorded" if acao == "stop" else "discarded")
+
+
+async def test_outra_replica_nao_atrapalha_o_descarte_de_sessao_que_nao_grava(harness: Harness) -> None:
+    st, rt, lease, sid = await _gravando(harness)
+    st.training.stop(sid, lease_id=lease)
+    st.db.execute("UPDATE instances SET hosted_by=? WHERE id='android-01'", ("outra-replica",))
+    async with _cliente(harness) as c:
+        r = await c.post(f"/api/training/{sid}/discard")
+        assert r.status_code == 200 and r.json()["status"] == "discarded"

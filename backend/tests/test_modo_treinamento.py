@@ -74,7 +74,7 @@ async def test_sem_gravacao_a_entrada_manual_nao_deixa_rastro(harness: Harness) 
     await _entrada(st, rt, lease, type="key", key="back")
     assert st.db.scalar("SELECT COUNT(*) FROM training_inputs") == 0
     s = st.training.start("android-01", intent="x", lease_id=lease)
-    st.training.stop(s["id"], discard=True)
+    st.training.stop(s["id"], discard=True, lease_id=lease)
     assert st.training.get(s["id"])["status"] == "discarded" and rt.training_session_id is None
 
 
@@ -96,7 +96,7 @@ async def _gravar_mensagem(st, rt, lease, fake) -> str:
     await _entrada(st, rt, lease, type="text", text="Olá, tudo certo?")
     await _entrada(st, rt, lease, type="tap", x=640, y=1200)                    # Enviar
     await _entrada(st, rt, lease, type="key", key="back")                       # sobra de quem ensinou
-    st.training.stop(s["id"])
+    st.training.stop(s["id"], lease_id=lease)
     return s["id"]
 
 
@@ -153,7 +153,7 @@ async def test_efeito_no_app_com_catalogo_exige_a_acao_do_catalogo(harness: Harn
     st, rt, lease = await _no_controle(harness)
     s = st.training.start("android-01", intent="curtir", lease_id=lease, app_id="instagram")
     st.training.record(rt, {"type": "open_app", "app_id": "instagram"}, None)
-    st.training.stop(s["id"])
+    st.training.stop(s["id"], lease_id=lease)
     proposta = {"summary": "curtir", "command_template": "curta a publicação de {perfil}", "app_id": "instagram",
                 "parameters": [{"name": "perfil", "example": "nasa", "description": ""}], "discarded": [], "questions": [],
                 "steps": [{"key": "curtir", "title": "Curtir", "goal": "curtir", "inputs": [1], "side_effect": True,

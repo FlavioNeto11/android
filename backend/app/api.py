@@ -600,7 +600,7 @@ async def get_training(request: Request, session_id: str) -> Any:
 async def stop_training(request: Request, session_id: str, body: TrainingStopBody | None = None) -> Any:
     from .training.recorder import TrainingError  # noqa: PLC0415
     try:
-        return st(request).training.stop(session_id, lease_id=body.lease_id if body else None, exigir_controle=True)
+        return st(request).training.stop(session_id, lease_id=body.lease_id if body else None)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -654,8 +654,7 @@ async def redo_training_recipes(request: Request, session_id: str) -> dict[str, 
 async def discard_training(request: Request, session_id: str, body: TrainingStopBody | None = None) -> Any:
     from .training.recorder import TrainingError  # noqa: PLC0415
     try:
-        return st(request).training.stop(session_id, discard=True, lease_id=body.lease_id if body else None,
-                                         exigir_controle=True)
+        return st(request).training.stop(session_id, discard=True, lease_id=body.lease_id if body else None)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 

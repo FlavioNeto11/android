@@ -6468,6 +6468,11 @@ Mudança de comportamento em duas rotas do modo treinamento; o corpo novo é adi
     Sem `lease_id` ou com outro: **409** `control_required`, com a mensagem "Só quem está com o controle do aparelho
     encerra esta gravação." (`/discard`: "…descarta esta gravação."). A recusa não muda nada: a sessão segue `recording`,
     o gravador segue ativo e nenhuma entrada se perde. Se o controle passou a outra pessoa, só o lease novo para ou descarta.
+  - Aparelho hospedado por OUTRA réplica (`instances.hosted_by` de outro dono): a gravação viva dele não é órfã. `/stop` e
+    `/discard` respondem **409** `gravacao_em_outro_servidor` ("Esta gravação está em outro servidor; encerre por lá."), sem
+    mudar nada, com ou sem lease. Sem dono carimbado, ou do próprio processo sem gravador ativo, a sessão segue órfã.
+  - Alcance: o item cobre quem NÃO tem o lease. Quem clica "Assumir" com um controle de usuário vigente recebe hoje o mesmo
+    lease (`request_control`) e passa pela conferência; isso fica para o item 29.143.
   - Continuam SEM lease: a gravação órfã (sem gravador ativo, ou com o aparelho em `none` ou `ai`: controle devolvido,
     expirado ou backend reiniciado), o `/discard` de sessão que não está em `recording` (gravada ou proposta) e os
     encerramentos do sistema (devolver o controle, trocar a gravação no `start`, reconciliar após o reinício).
