@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.82, segredo na gravação do treinamento (branch fix/31-80-82-gravacao-do-treino)
+
+- Achados da auditoria, conferidos no código: sem árvore (leitura falhou ou estourou o prazo) um texto digitado só
+  dependia das heurísticas; o alvo de um toque levava o conteúdo do campo editável; `screen_lines`/`screen_title`
+  não passavam por filtro.
+- `recorder.py`: sem árvore o texto não é gravado (`has_text` e `text_len` ficam); no alvo, campo editável perde o
+  `text` (e os `unique` que dependiam dele) e qualquer `text`/`desc` que case com `looks_secret`, `mentions_credential`
+  ou `parece_senha_ou_codigo` sai; linhas e título de tela com esses formatos saem. A receita segue por `resource_id`
+  (`build_selectors` dá o seletor `rid`). Editável sem `resource_id` e sem `desc` fica como era.
+- Prova `simulated`: `backend/tests/test_treino_segredo_na_gravacao.py` (4; sem o conserto os 4 falham) e
+  `test_modo_treinamento.py` (7 passed). Real: `not_run`.
+
 ## 2026-10-05 — 31.80, gravação do treinamento órfã depois do reinício (branch fix/31-80-82-gravacao-do-treino)
 
 - Medido no real (05/10): o reinício no meio de uma gravação deixava `training_sessions.status='recording'`, o aparelho

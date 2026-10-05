@@ -26,6 +26,39 @@ log = logging.getLogger(__name__)
 TITULO_IDS = ("action_bar_title", "igds_action_bar_title", "header_title", "title_text_view", "toolbar_title")
 
 
+def _parece_segredo(texto: str | None) -> bool:
+    """Os três filtros de segredo da gravação, juntos: formato de credencial, fala de credencial e senha/código."""
+    return bool(texto) and (looks_secret(texto) or mentions_credential(texto) or parece_senha_ou_codigo(texto or ""))
+
+
+#: Que campos do alvo cada seletor `unique` usa (o espelho de `recipes._combo`, sem o import tardio).
+_CAMPOS_DO_SELETOR = {"rid+text": ("resource_id", "text"), "rid+desc": ("resource_id", "desc"), "rid": ("resource_id",),
+                      "desc": ("desc",), "text": ("text",)}
+
+
+def _alvo_sem_segredo(alvo: dict | None) -> dict | None:
+    """31.82 (b): o alvo gravado leva `text`/`desc` do elemento tocado. Num campo editável o `text` é o CONTEÚDO do campo
+    (o que a pessoa já digitou), que não identifica o campo: sai (`resource_id`, `desc` de rótulo e classe ficam). Em
+    qualquer alvo, `text`/`desc` que casem com os filtros de segredo saem. Os seletores `unique` que dependiam do campo
+    removido saem junto (a destilação, em `_combo`, também os ignoraria); um campo editável SEM `resource_id` e
+    sem `desc` fica como estava (só tem o `text` para ser achado de novo), ainda sob os filtros de segredo."""
+    if alvo is None:
+        return None
+    limpo = dict(alvo)
+    editavel = bool(limpo.get("editable"))
+    identificavel_sem_texto = bool(limpo.get("resource_id") or limpo.get("desc"))
+    if editavel and identificavel_sem_texto:
+        limpo["text"] = ""
+    for campo in ("text", "desc"):
+        if _parece_segredo(limpo.get(campo)):
+            limpo[campo] = ""
+    if "unique" in limpo:
+        limpo["unique"] = [k for k in limpo["unique"] or [] if all(limpo.get(c) for c in _CAMPOS_DO_SELETOR.get(k, ("?",)))]
+    if limpo.get("filhos"):
+        limpo["filhos"] = [f for f in (_alvo_sem_segredo(dict(f)) for f in limpo["filhos"]) if f and f.get("unique")]
+    return limpo
+
+
 class TrainingError(Exception):
     def __init__(self, code: str, message: str, status: int = 409):
         super().__init__(message)
@@ -153,24 +186,29 @@ class TrainingRecorder:
         sensivel = bool(tree is not None and tree.sensitive)
         alvo = None
         if tree is not None and tipo in ("tap", "long_press") and entrada.get("x") is not None:
-            alvo = _safe_target(tree.at(int(entrada["x"]), int(entrada["y"])), tree)
+            alvo = _alvo_sem_segredo(_safe_target(tree.at(int(entrada["x"]), int(entrada["y"])), tree))
         texto = entrada.get("text")
         tem_texto = bool(texto)
         if texto is not None:
             foco = next((e for e in (tree.elements if tree is not None else []) if e.focused), None)
-            if (sensivel or (foco is not None and foco.password) or looks_secret(texto) or mentions_credential(texto)
-                    or parece_senha_ou_codigo(texto)):
+            # 31.82 (a): sem a árvore (leitura falhou ou estourou o prazo) não se sabe se o campo era de senha, e as
+            # heurísticas deixam passar senha curta ou só minúscula: não se grava (fica `has_text` e o tamanho).
+            if (tree is None or sensivel or (foco is not None and foco.password) or _parece_segredo(texto)):
                 texto = None                     # a pessoa digitou algo que não pode ser guardado
         seq = int(self.db.scalar("SELECT COALESCE(MAX(seq), 0) FROM training_inputs WHERE session_id=?", (sid,)) or 0) + 1
         pacote = next((p for p in (tree.packages if tree is not None else []) if p != "com.android.systemui"), None)
+        titulo = titulo_da_tela(tree) if tree is not None and not sensivel else None
+        if _parece_segredo(titulo):
+            titulo = None                        # 31.82 (c): a tela com "Seu código é 123456" não vira título
+        linhas = ([ln for ln in linhas_de_conteudo(tree.elements, limite_linhas=24) if not _parece_segredo(ln)][:8]
+                  if tree is not None and not sensivel else None)
         self.db.execute(
             "INSERT INTO training_inputs(session_id, seq, ts, type, x, y, x2, y2, key_name, text, has_text, text_len,"
             " package, app_id, target, screen_title, screen_lines, sensitive) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (sid, seq, now_iso(), tipo, entrada.get("x"), entrada.get("y"), entrada.get("x2"), entrada.get("y2"),
              entrada.get("key"), texto, int(tem_texto), len(entrada.get("text") or "") if tem_texto else None,
              pacote, entrada.get("app_id"), dumps(alvo) if alvo else None,
-             titulo_da_tela(tree) if tree is not None and not sensivel else None,
-             dumps(linhas_de_conteudo(tree.elements, limite_linhas=8)) if tree is not None and not sensivel else None,
+             titulo, dumps(linhas) if linhas is not None else None,
              int(sensivel)))
         self.db.execute("UPDATE training_sessions SET updated_at=? WHERE id=?", (now_iso(), sid))
         self.bus.emit("training.input", f"{rt.id}: treinamento — entrada {seq} ({tipo})", instance_id=rt.id,

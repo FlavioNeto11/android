@@ -320,6 +320,11 @@ Prova: `test_ensino_v2.py::test_laco_de_perguntas_e_respostas_ate_o_rascunho` (v
   outra gravação e continuar dali; o gravador **não religa sozinho** (gravar sem a pessoa saber é pior que encerrar).
 - Um `start` que encontra uma gravação "viva" só no banco (o aparelho não a está gravando) encerra a antiga como
   `recorded` e aceita a nova. `already_recording` continua só para a gravação que o aparelho realmente grava.
+- **O que a gravação não guarda** (31.82): texto digitado quando a árvore da tela não veio (aparelho lento: sem ver a tela
+  não se sabe se o campo era de senha; fica `has_text` e o tamanho); o conteúdo de um campo editável tocado (o alvo
+  gravado leva `resource_id`, rótulo e classe, não o que estava escrito; a receita segue por `resource_id`); `text`/`desc`
+  do alvo, linhas e título de tela que falem de código ou senha ("Seu código é 123456"). Um campo editável sem
+  `resource_id` nem rótulo fica como era (só tem o `text` para ser achado de novo), ainda sob os filtros de segredo.
 
 ## O generalizador e o custo
 
