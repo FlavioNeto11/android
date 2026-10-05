@@ -316,7 +316,8 @@ def _acompanhar(rotulo: str, proc: Processo, saida: Path, relatar: Callable[[str
 
 
 def parar(executar: Executar, relatar: Callable[[str], None]) -> bool:
-    """N1 do 29.113: o `docker stop` que falha (ou estoura o prazo) deixava o tmpfs de 4 GB de pé sem aviso."""
+    """N1 do 29.113: o `docker stop` que falha (ou estoura o prazo) deixava o tmpfs de 4 GB de pé sem aviso. Só para e
+    relata; o `docker rm -f` fica como sugestão na linha, para quem confere antes de apagar."""
     r = executar(["docker", "stop", NOME])
     if r.returncode == 0:
         return True
@@ -358,20 +359,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             relatar(f"parte {i}/{len(fatias)}: {len(f)} arquivos (de {len(todos)}), {f[0]} … {f[-1]}")
         return 0
     pasta = args.saidas or (args.resumo.parent if args.resumo else Path.cwd())
-    for i, f in enumerate(fatias, 1):
-        rotulo = f"pg parte {i}/{len(fatias)}"
-        livre = ram_livre_gb()
-        if livre is not None and livre < RAM_MINIMA_GB:
-            relatar(f"{rotulo} NÃO RODOU: {livre} GB livres, abaixo de {RAM_MINIMA_GB} {agora()}")
-            return 9
-        rc = rodar_parte(rotulo, f, pasta / f"pg_parte{i}.txt", relatar)
-        if rc != 0:
-            relatar(f"{rotulo} PAROU (rc={rc}); as partes seguintes não rodaram")
+    subiu = False
+    try:
+        for i, f in enumerate(fatias, 1):
+            rotulo = f"pg parte {i}/{len(fatias)}"
+            livre = ram_livre_gb()
+            if livre is not None and livre < RAM_MINIMA_GB:
+                relatar(f"{rotulo} NÃO RODOU: {livre} GB livres, abaixo de {RAM_MINIMA_GB} {agora()}")
+                return 9
+            subiu = True
+            rc = rodar_parte(rotulo, f, pasta / f"pg_parte{i}.txt", relatar)
+            if rc != 0:
+                relatar(f"{rotulo} PAROU (rc={rc}); as partes seguintes não rodaram")
+                return rc
+        relatar(f"pg verde: {len(fatias)} partes, {len(todos)} arquivos {agora()}")
+        return 0
+    finally:
+        # Q2 da leitura do 29.113: interrompido (Ctrl-C, exceção), o contêiner também para; antes, o tmpfs de 4 GB
+        # ficava preso na RAM até a próxima rodada. Sem parte iniciada, não há contêiner a parar.
+        if subiu:
             parar(_executar, relatar)
-            return rc
-    parar(_executar, relatar)
-    relatar(f"pg verde: {len(fatias)} partes, {len(todos)} arquivos {agora()}")
-    return 0
 
 
 if __name__ == "__main__":

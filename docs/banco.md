@@ -375,7 +375,8 @@ pela regra de saúde. Desde então o portão é este:
   o `docker run` que falha (a imagem que falta, com o `--pull=never`) diz o erro dele antes do "não aceitou conexão".
   Desde o 29.113: a parte interrompida (Ctrl-C, o `--resumo` que falha) mata a árvore do pytest antes de subir o
   erro, e diz "INTERROMPIDA"; o pytest que sai sozinho entre a amostra e o aborto fica com o rc dele, não "ABORTADA";
-  o `docker stop` que falha avisa que o tmpfs pode seguir de pé. O pai morto de fora (o pwsh fechado) ainda deixa
+  o `docker stop` que falha avisa que o tmpfs pode seguir de pé e sugere o `docker rm -f`; o contêiner para também
+  quando a rodada é interrompida. O pai morto de fora (o pwsh fechado) ainda deixa
   a árvore viva: confira `python -m pytest` antes de outra rodada.
   - **Por quê.** Na suíte 35, os 467 arquivos juntos encheram os 4 GB: 181 failed, 823 errors, quase todos
     `DiskFull`. Pelos logs do contêiner, o estouro foi na `base/` (3688 erros ali e 1668 em `global/`, nenhum em
