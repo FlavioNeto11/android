@@ -400,8 +400,8 @@ class PainelEstatico(StaticFiles):
     bytes), e o que tem hash pode ser guardado por um ano sem perguntar.
     """
 
-    def __init__(self, *args: Any, csp: str = "aplicar", **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
+    def __init__(self, *, directory: str | os.PathLike[str], html: bool = False, csp: str = "aplicar") -> None:
+        super().__init__(directory=directory, html=html)
         self._cabecalho_da_csp = {"aplicar": "Content-Security-Policy",
                                   "so_relatar": "Content-Security-Policy-Report-Only"}.get(csp)
 
