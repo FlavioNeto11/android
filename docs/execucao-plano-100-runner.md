@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-548 de 654 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+552 de 654 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -612,9 +612,9 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.72 | pendente | — | — | — |  |  |
 | 31.73 | pendente | — | — | — |  |  |
 | 31.74 | implemented | simulated | claude-fable-5-1 | — | #389, ponta 3acf4707, suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos,… | prova real pede um wait_for numa tela lenta (Chrome) depois do deploy 36; sem janela marcada |
-| 31.75 | pendente | — | — | — |  |  |
+| 31.75 | implemented | simulated | claude-opus-5-5 | — | Ponta 3ebbb3bb: a página com id do navegador não ganha a isenção; a WebView fica sempre na árvore. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/ma… | None |
 | 31.76 | pendente | — | — | — |  |  |
-| 31.77 | pendente | — | — | — |  |  |
+| 31.77 | implemented | simulated | claude-opus-5-5 | — | Ponta 5e0aa9b7: uma fração só para página e janela, e a janela flutuante pela raiz do dump. Simulado: backend/tests/test_janela_pela_raiz.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/main 8ac140e0 + fix/31… | None |
 | 31.78 | pendente | — | — | — |  |  |
 | 31.79 | pendente | — | — | — |  |  |
 | 31.80 | implemented | simulated | claude-opus-5-5 | — | #427 (5a56f403) e #428 (05b44377). Simulado: backend/tests/test_treino_gravacao_orfa.py::*, frontend/src/features/training/trainingStore.test.ts::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 38 sobre… | None |
@@ -640,8 +640,8 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.100 | implemented | simulated | claude-opus-5-5 | — | #444, ponta 7b065215. Simulado: backend/tests/test_treino_validacao_do_salvar.py::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows… | None |
 | 31.101 | pendente | — | — | — |  |  |
 | 31.102 | pendente | — | — | — |  |  |
-| 31.103 | pendente | — | — | — |  |  |
-| 31.104 | pendente | — | — | — |  |  |
+| 31.103 | implemented | simulated | claude-opus-5-5 | — | Ponta 2bce3b1e (com A1 e S1 da leitura): o aceite e o destino do segredo leem a barra de endereço de verdade. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::*, backend/tests/test_credenciais_da_conta.py:… | None |
+| 31.104 | implemented | simulated | claude-opus-5-5 | — | Ponta 5d571ccd (com N1 e N2 da leitura em 0d2ff45a): a tela do aviso pela maior medida. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/main 8ac140e0… | None |
 | 31.105 | pendente | — | — | — |  |  |
 | 31.106 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
@@ -661,7 +661,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (106): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.42, 28.43, 28.44, 28.45, 28.46, 28.50, 28.51, 28.52, 28.53, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.83, 29.102, 29.104, 29.105, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.134, 29.135, 29.136, 29.137, 29.139, 29.140, 29.142, 29.143, 29.145, 29.146, 29.147, 30.34, 30.71, 30.72, 30.73, 30.74, 30.76, 30.77, 30.78, 30.79, 30.81, 30.82, 30.83, 30.84, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.55, 31.58, 31.72, 31.73, 31.75, 31.76, 31.77, 31.78, 31.79, 31.81, 31.86, 31.87, 31.88, 31.89, 31.90, 31.91, 31.93, 31.96, 31.98, 31.101, 31.102, 31.103, 31.104, 31.105, 31.106, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (102): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.42, 28.43, 28.44, 28.45, 28.46, 28.50, 28.51, 28.52, 28.53, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.83, 29.102, 29.104, 29.105, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.134, 29.135, 29.136, 29.137, 29.139, 29.140, 29.142, 29.143, 29.145, 29.146, 29.147, 30.34, 30.71, 30.72, 30.73, 30.74, 30.76, 30.77, 30.78, 30.79, 30.81, 30.82, 30.83, 30.84, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.55, 31.58, 31.72, 31.73, 31.76, 31.78, 31.79, 31.81, 31.86, 31.87, 31.88, 31.89, 31.90, 31.91, 31.93, 31.96, 31.98, 31.101, 31.102, 31.105, 31.106, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

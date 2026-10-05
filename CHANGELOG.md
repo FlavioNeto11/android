@@ -20,6 +20,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
+
+- **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).
+- Prova `real`: ensaio com a cópia `data\backups\20261005-173228`; `GET /api/health` ok e sem problemas; prova de fora com tudo como esperado (`/api/instances` 401 de fora, 403 com Host forjado); agente do notebook em `0.1.0+61d431c`; mypy 257 igual ao teto.
+- Prova `simulated` (suíte 40): `scripts/tests` 672 passed; backend em SQLite 11875 passed; frontend 1678 passed na segunda rodada (2 falhas intermitentes na primeira, item 29.148); catracas 88 e 6; PostgreSQL dirigido nos 257 arquivos afetados, 5231 passed e 0 falhas.
+- `not_run`: percurso no navegador e prova real do conserto com conta real.
+
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
 
 - **Implantado** às 18:06Z: central em `9f9e2b39`, migração `115_receita_nao_aplicavel` (sem migração nova), 17 pontas sobre `19e34b22` e dois consertos de junção.
