@@ -20,14 +20,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
-## 2026-10-05 — 31.87 F2 (identidade): gênero e idioma do perfil viram variável da persona (branch feat/31-87-f2-gender-e-locale)
+## 2026-10-05 — 31.87 F2 (identidade): gênero, idioma e a biografia por seção viram variável da persona (branch feat/31-87-f2-gender-e-locale)
 
 - `PROFILE_FIELDS` ganha `perfil_genero` (coluna `gender`) e `perfil_idioma` (coluna `locale`), texto simples, só quando há
-  valor. Tudo o que deriva da lista segue sozinho: a lista de dados ao planejador, `profile_variables`, a varredura do
-  pré-voo do F1 (pergunta com rótulo, nunca valor) e as colunas lidas. Decisão do dono de 05/10 15:13Z (os dados da persona
-  entram no ensinado). A biografia por seção vem no passo seguinte deste item (P-012); senha, código e 2FA ficam só no cofre.
-- Prova `simulated`: `backend/tests/test_perfil_genero_e_idioma.py::*` (3 testes, valores sintéticos), com os 113 de
-  pré-voo e credenciais, catracas e arquitetura verdes. Real: `not_run`.
+  valor (decisão do dono de 05/10 15:13Z: os dados da persona entram no ensinado).
+- Biografia por seção (P-012: o dono disse SIM às seis seções, inclusive crenças): tabela fechada `BIOGRAPHY_FIELDS` de 20
+  marcadores ESCALARES lidos do JSON da coluna `biography`, em qualquer versão conhecida (`normalizar_biografia`): origem
+  (`perfil_cidade_natal`, `perfil_cidade_de_criacao`, `perfil_nacionalidade`), casa (`perfil_cidade`, `perfil_estado`, `perfil_pais`,
+  `perfil_residencia`), trabalho (`perfil_profissao`, `perfil_empregador`, `perfil_formacao`), vida (`perfil_estado_civil`,
+  `perfil_filhos`), crenças (`perfil_religiao`, `perfil_pratica_religiosa`, `perfil_orientacao_politica`,
+  `perfil_engajamento_politico`) e gostos (`perfil_interesses`, `perfil_hobbies`, `perfil_preferencias`, `perfil_aversoes`;
+  lista curta vira itens separados por vírgula). Ficam FORA, de propósito, as frases longas e as listas de fatos: histórico,
+  como aparece na fala, valores, pautas e resumos das crenças. Vazio ou forma estranha não vira marcador; zero filhos é valor.
+- Tudo o que deriva da lista segue sozinho: a lista de dados ao planejador (nome e rótulo, nunca valor), `profile_variables`,
+  a varredura do pré-voo do F1 (a pergunta leva rótulo) e a coluna lida pelo adaptador (`biography` entrou no SELECT).
+  Contrato para o ensino (Aprendizado): `identity.application.available_data.profile_variables(store, profile_id)`; só a
+  forma do dicionário ganhou chaves. Senha, código e 2FA seguem só pelo cofre.
+- Prova `simulated`: `backend/tests/test_perfil_variaveis_da_persona.py::*` (7 testes, valores sintéticos, mutação do SELECT
+  reprovada), mais 213 de pré-voo, credenciais, persona, catracas e arquitetura verdes. Real: `not_run`.
 
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
