@@ -340,6 +340,34 @@ async def test_erro_no_meio_da_faxina_tambem_solta_a_trava(tmp_path: Path, monke
         await hh.state.stop()
 
 
+async def test_soltar_que_falha_sai_registrado_a_parte(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                      caplog: pytest.LogCaptureFixture) -> None:
+    """Revisão do #345: a falha do `soltar` não se confunde com erro da faxina (a trava fica até o TTL) e não troca a
+    exceção da faxina pela dela."""
+    hh = await _desligado(tmp_path)
+    try:
+        def nao_solta(nome: str) -> None:
+            raise RuntimeError("soltar fora")
+
+        monkeypatch.setattr(hh.state.avisos.lideranca, "soltar", nao_solta)
+        with caplog.at_level(logging.ERROR):
+            assert len(hh.state.avisos.faxinar_canais()) == 2
+        assert [r.getMessage() for r in caplog.records if "soltar a trava" in r.getMessage()] == [
+            "canais: soltar a trava avisos depois da faxina"]
+        assert not [r for r in caplog.records if r.getMessage() == "canais: faxina"]
+
+        def quebra(**kw: object) -> object:
+            raise ValueError("banco fora")
+
+        hh.state.avisos._faxina_canais_em = 0.0  # noqa: SLF001
+        monkeypatch.setattr(hh.state.avisos._faxina_canais, "faxinar", quebra)  # noqa: SLF001
+        with pytest.raises(ValueError):
+            hh.state.avisos.faxinar_canais()
+    finally:
+        monkeypatch.undo()
+        await hh.state.stop()
+
+
 async def test_o_desligado_nunca_tira_a_trava_do_ligado(tmp_path: Path) -> None:
     """Com a trava de outro backend vivo (o líder com o aviso ligado), o desligado não toma, não faz a faxina e não a
     solta: o líder faz."""

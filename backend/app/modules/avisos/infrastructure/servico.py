@@ -274,7 +274,10 @@ class ServicoDeAvisos:
             return self._faxinar_canais(token)
         finally:
             if not trava_de_avisos_em_uso(self.cfg):
-                self.lideranca.soltar(AVISOS)
+                try:
+                    self.lideranca.soltar(AVISOS)
+                except Exception:  # noqa: BLE001 - registro à parte: não é erro da faxina, e a trava cai no TTL
+                    log.exception("canais: soltar a trava avisos depois da faxina")
 
     def _faxinar_canais(self, token: int) -> list[Faxina]:
         assert self._faxina_canais is not None

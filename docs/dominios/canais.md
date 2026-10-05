@@ -189,6 +189,10 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 desligados (o harness, um ensaio) ainda faz a faxina dos canais, inclusive a primeira, na subida: toma a trava,
 faxina e a solta no `finally`, mesmo com erro no meio. Se a trava já é de outro backend (o líder ligado), o desligado
 não a toma e não faxina. O resumo das decisões só sai com `avisos.enabled`.
+`avisos.enabled` e `trello.enabled` têm de ser iguais em todos os backends: numa frota misturada (um só com aviso,
+outro só com Trello), quem pega a trava primeiro fica com ela, e o canal do outro para de vez. Hoje nada avisa disso
+na saúde; o backend não sabe o que o líder liga. A falha ao soltar a trava sai no log à parte ("canais: soltar a trava
+avisos depois da faxina"), e a trava cai no TTL.
 
 ## 4. Pedidos, autorizações e decisões
 
