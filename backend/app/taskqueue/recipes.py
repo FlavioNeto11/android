@@ -839,8 +839,9 @@ class RecipeStore:
         faria é `previa_do_treino`."""
         return self.viva(package, app_version, step_hash, signature=signature, variant=variant) is not None
 
-    def previa_do_treino(self, package: str, app_version: str, step_hash: str, actions: list[dict[str, Any]], *,
-                         signature: str = "", variant: str = "") -> tuple[str, Row | None]:
+    def previa_do_treino(self, package: str, app_version: str, step_hash: str,
+                         actions: Sequence[Mapping[str, object]], *, signature: str = "",
+                         variant: str = "") -> tuple[str, Row | None]:
         """O que o `save` do TREINO faria com estas ações, sem gravar (a prévia do 31.86 e o relatório do salvar):
         - `("ja_vale", viva)`: o mesmo caminho da receita que segura a chave (o `save` devolve o id dela);
         - `("substitui", viva)`: outro caminho (o `save` grava a versão nova e a viva vira `superseded`);
