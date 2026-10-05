@@ -37,6 +37,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   único `CAMPOS_SEM_RESPOSTA_POR_TEXTO` (destino + dado da persona: refinar, perguntas pendentes, sinal
   `respondeu_pergunta`, preferências e sugestões do livro); a sucessora recusa a resposta quando TODAS as perguntas são
   `persona_data`. O rodapé do `RunView` junta os caminhos no caso misto.
+- 31.99, achados da revisão automática do #437: (1) `_resolvidos_de` só aceita o parâmetro como substituto quando toda
+  variável da persona citada no valor dele é da persona (`materialize` resolve os parâmetros numa passada só, e
+  `{"perfil_sobrenome": "{perfil_sobrenome}"}` sem o dado passava cru); (2) `revise_plan` confere e insere com a MESMA
+  leitura da persona, feita dentro da transação, como `materialize` (lida fora, uma edição no intervalo passava com o
+  valor antigo); (3) o comentário de `RunService._plan` não diz mais que o valor no comando resolve. Testes: o parâmetro
+  que cita a si mesmo (com e sem texto depois), o que cita um dado que a persona tem, e o retrato único no replano.
 - Prova `simulated`: `tests/test_prevoo_dado_da_persona.py` (24 passed; 14 no 796a26ac, 18 no 3f502014), `RunView.test.tsx` (8 passed); vizinhos e `test_arquitetura.py` verdes;
   `pytest @tests/catracas.txt`, 88 passed. `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
 

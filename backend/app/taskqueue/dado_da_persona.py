@@ -66,8 +66,12 @@ def _nomes(parametros: Mapping[str, str], passos: Sequence[PlanStep]) -> list[st
 
 
 def _resolvidos_de(variaveis: Mapping[str, str] | None, parametros: Mapping[str, str]) -> set[str]:
-    return ({k for k, v in (variaveis or {}).items() if str(v).strip()}
-            | {k for k, v in parametros.items() if str(v).strip()})
+    """As variáveis NÃO vazias da persona, mais os parâmetros que as substituem. 31.99 (achado do #437): o parâmetro só
+    substitui quando toda variável da persona citada no valor dele é da persona. `materialize` resolve os parâmetros
+    contra as variáveis numa passada só, então `{"perfil_sobrenome": "{perfil_sobrenome}"}` sem o dado ficava cru."""
+    da_persona = {k for k, v in (variaveis or {}).items() if str(v).strip()}
+    return da_persona | {k for k, v in parametros.items()
+                         if str(v).strip() and all(m.group(1) in da_persona for m in _CITACAO.finditer(str(v)))}
 
 
 def _resolvidos(variaveis: Mapping[str, str] | None, plano: Plan) -> set[str]:

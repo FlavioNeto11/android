@@ -1155,12 +1155,16 @@ class Repository:
     def revise_plan(self, objective_id: str, reason: str, steps: list[PlanStep]) -> int:
         """Nova versão do plano para o objetivo: etapas abertas da versão atual viram `skipped`, as já
         comprovadas permanecem no histórico e as novas nascem com ids estáveis da nova versão."""
-        # Rede de segurança (31.87, R1): os chamadores consultam `faltas_do_replano` e recusam com motivo; o replano que
-        # chegasse aqui com dado ausente nunca grava `{perfil_x}` cru (levanta ANTES de qualquer escrita).
-        if faltam := self.faltas_do_replano(objective_id, steps):
-            raise DadoDaPersonaAusente(faltam)
         with self.db.tx():
             obj = self.objective_row(objective_id)
+            params = loads(obj["parameters"], {}) or {}
+            variaveis = self._variaveis_da_persona(obj["profile_id"])
+            # Rede de segurança (31.87, R1): os chamadores consultam `faltas_do_replano` e recusam com motivo; o replano
+            # que chegasse aqui com dado ausente nunca grava `{perfil_x}` cru. 31.99 (achado do #437): a conferência usa
+            # o MESMO retrato da persona que a inserção, lido dentro da transação e antes de qualquer escrita, como em
+            # `materialize`; lida fora, uma edição da persona no intervalo passava com o valor antigo.
+            if faltam := faltas_dos_passos(steps, params, variaveis):
+                raise DadoDaPersonaAusente(faltam)
             version = obj["plan_version"] + 1
             for r in self.db.query("SELECT id, status FROM steps WHERE objective_id=? AND plan_version=?",
                                    (objective_id, obj["plan_version"])):
@@ -1179,10 +1183,8 @@ class Repository:
                         " WHERE step_id=? AND status='pending'",
                         (now_iso(), f"plano revisado (v{version}): esta etapa não vai mais acontecer", r["id"]))
             self.db.execute("UPDATE objectives SET plan_version=? WHERE id=?", (version, objective_id))
-            params = loads(obj["parameters"], {})
             account = self.db.scalar("SELECT account_label FROM instances WHERE id=?", (obj["instance_id"],)) or ""
-            base = {"instance_id": obj["instance_id"], "run_id": obj["run_id"], "account_label": account,
-                    **self._variaveis_da_persona(obj["profile_id"])}
+            base = {"instance_id": obj["instance_id"], "run_id": obj["run_id"], "account_label": account, **variaveis}
             self._insert_steps(obj["run_id"], objective_id, obj["instance_id"], version, steps, {**params, **base}, reason)
         self.bus.emit("plan.revised", f"{obj['instance_id']}: plano revisado (v{version}) — {reason}", level="warn",
                       run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=objective_id,

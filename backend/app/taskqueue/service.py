@@ -1183,7 +1183,8 @@ class RunService:
             return
         # Item 31.87 (F1): `{perfil_*}` e `{conta_*_usuario}` que a persona de algum aparelho não resolve. Sem isto o
         # texto cru ia ao objetivo da etapa (receita diverge, a IA assume com `{perfil_sobrenome}` escrito). Nada é
-        # materializado nem despachado: a pessoa cadastra o dado ou o diz no comando. Só ids e rótulos na mensagem.
+        # materializado nem despachado: a pessoa cadastra o dado na persona e cria outra execução (a resposta por texto
+        # é recusada: o valor dito no comando não alimenta o parâmetro de um fluxo reaproveitado). Só ids e rótulos.
         if faltas := faltas_por_aparelho(plan, instances):
             sem_persona = frozenset(str(i["instance_id"]) for i in instances if not i.get("profile_id"))
             self._pedir_resposta(run_id, perguntas_do_dado(faltas, sem_persona),

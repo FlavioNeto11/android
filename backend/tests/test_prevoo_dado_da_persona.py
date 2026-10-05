@@ -256,6 +256,27 @@ def test_parametro_do_plano_com_o_mesmo_nome_resolve() -> None:
     assert faltas_por_aparelho(plano, [{"instance_id": "android-01", "variables": {}}]) == {}
 
 
+def test_parametro_que_cita_a_si_mesmo_nao_resolve() -> None:
+    """31.99 (achado do #437): `materialize` resolve os parâmetros contra a persona numa passada só. O parâmetro com o
+    nome da variável e valor `{perfil_sobrenome}` (ou `{perfil_sobrenome} X`) não a substitui: sem o dado na persona, o
+    texto ficava cru e passava pelo pré-voo e pela defesa."""
+    for valor in ("{perfil_sobrenome}", "{perfil_sobrenome} X"):
+        plano = _plano_puro("Digitar {perfil_sobrenome}.")
+        plano.parameters = {"perfil_sobrenome": valor}
+        assert faltas_por_aparelho(plano, [{"instance_id": "android-01", "variables": {}}]) == {
+            "android-01": ["perfil_sobrenome"]}, valor
+        with pytest.raises(DadoDaPersonaAusente):
+            exigir_resolvido(plano, {})
+
+
+def test_parametro_que_cita_dado_que_a_persona_tem_segue_resolvendo() -> None:
+    """O outro lado do 31.99: o parâmetro que cita uma variável que a persona TEM resolve na mesma passada e continua
+    valendo (o pré-voo não pode recusar o que funciona)."""
+    plano = _plano_puro("Digitar {perfil_sobrenome}.")
+    plano.parameters = {"perfil_sobrenome": "{perfil_nome} X"}
+    assert faltas_por_aparelho(plano, [{"instance_id": "android-01", "variables": {"perfil_nome": NOME}}]) == {}
+
+
 def test_a_pergunta_so_leva_id_e_rotulo() -> None:
     faltas = {"android-12": ["perfil_sobrenome"], "android-13": ["perfil_nome", "perfil_email"]}
     q = perguntas(faltas, sem_persona=frozenset({"android-13"}))
@@ -299,6 +320,21 @@ def test_revise_plan_recusa_dado_ausente_antes_de_gravar(harness: Harness) -> No
     assert erro.value.faltam == ("perfil_nome",) and NOME not in str(erro.value)
     assert repo.objective_row(oid)["plan_version"] == antes                    # nada gravado
     assert harness.state.db.scalar("SELECT COUNT(*) FROM plan_versions WHERE objective_id=?", (oid,)) == 1  # type: ignore[union-attr]
+
+
+def test_revise_plan_confere_e_insere_com_o_mesmo_retrato_da_persona(harness: Harness,
+                                                                      monkeypatch: pytest.MonkeyPatch) -> None:
+    """31.99 (achado do #437): a persona editada entre a conferência e a inserção. A conferência lia a persona FORA da
+    transação e a inserção a relia DENTRO; com o dado sumindo no intervalo, `{perfil_nome}` ia cru para a etapa. Agora
+    as duas usam a mesma leitura, feita dentro da transação."""
+    repo = harness.state.repo                                                   # type: ignore[union-attr]
+    run_id, oid, plano = _objetivo_sem_persona(harness, "k-replano-retrato")
+    leituras = iter([{"perfil_nome": NOME}])
+    monkeypatch.setattr(repo, "_variaveis_da_persona", lambda _perfil: next(leituras, {}))
+    versao = repo.revise_plan(oid, "teste", plano.steps)
+    goals = [str(r["goal"]) for r in harness.state.db.query(                     # type: ignore[union-attr]
+        "SELECT goal FROM steps WHERE objective_id=? AND plan_version=?", (oid, versao))]
+    assert goals and all("{perfil_nome}" not in g and NOME in g for g in goals), goals
 
 
 def test_recuperacao_automatica_e_recusada_com_motivo_so_com_nomes(harness: Harness) -> None:
