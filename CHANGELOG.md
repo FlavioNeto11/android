@@ -27,7 +27,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - No Livro, o fluxo com `espera_a_pessoa` mostra o porquê em português (um texto por motivo do contrato; o código fica no `title`, e um motivo novo cai numa frase geral) e oferece "Confirmar que fica" na frente de "Desligar", pela rota própria `…/confirmar`. Com `null` ou em outro tipo de item, nada muda.
   - Nenhuma frase leva o id da persona.
   - Leitura do Codex no PR 451, os dois achados procederam: com `persona: null` o relatório do salvar e o do "Refazer receitas" dizem que o comando e as receitas não valem em aparelho nenhum (e não "só a persona que ensinou"), e a nota do Livro, que não sabe se a gravação tinha persona, usa frase neutra para os dois casos.
-- Prova `simulated`: `TrainingReview.test.tsx` (2 testes novos), `AprendizadoPage.test.tsx` (2), `model.test.ts` (1), `emProva.test.ts` (3). Frontend inteiro 1686/1686 com 4 workers em Idle e typecheck verde, em 05/10 sobre `65452966`. `real`: `not_run` até o backend do 30.81 entrar e o percurso no navegador.
+- Prova `simulated`: `TrainingReview.test.tsx` (2 testes novos), `AprendizadoPage.test.tsx` (2), `model.test.ts` (1), `emProva.test.ts` (3). Frontend inteiro 1685/1686 com 4 workers em Idle e typecheck verde, em 05/10 sobre `65452966`: a única falha é `PortaDoPlano.test.tsx` (data fixa de 05/10 21:00Z que venceu; falha igual na main pura; conserto em `fix/porta-do-plano-validade-relativa`). `real`: `not_run` até o backend do 30.81 entrar e o percurso no navegador.
 
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
