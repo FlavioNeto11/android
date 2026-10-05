@@ -12,6 +12,7 @@ from app.social.chave_da_aprovacao import (
     OBJETO_INSUFICIENTE,
     chave_da_aprovacao,
     midia_da_etapa,
+    tem_variavel,
     texto_exato,
 )
 
@@ -102,3 +103,13 @@ def test_acao_com_objeto_insuficiente_nunca_se_aprova_no_plano() -> None:
     base = {"username": "@a", "content": "obrigada!", "content_verbatim": "true"}
     assert _chave("REPLY_COMMENT", {**base, "target": "comentário 'que lindo'"}) is None
     assert _chave("REPLY_COMMENT", base) is None
+
+
+def test_chave_solta_nao_e_variavel() -> None:
+    """B2 da revisão do painel: só `{nome}` e `{{…}}` são marcadores de modelo; o emoticon é texto final."""
+    assert _chave("SEND_MESSAGE", {**DM, "content": "oi :-{ tchau"}) is not None
+    assert _chave("SEND_MESSAGE", {**DM, "content": "oi {nome}"}) is None
+    assert _chave("SEND_MESSAGE", {**DM, "content": "oi ${ parameters.nome }"}) is None    # N1: a expressão com espaço
+    # O `\w` do Python cobre Unicode: o marcador com acento é variável (o painel usa o mesmo padrão com a flag `u`).
+    assert _chave("SEND_MESSAGE", {**DM, "content": "oi {ação}"}) is None
+    assert tem_variavel("{número}") and not tem_variavel("{ nome }")

@@ -31,6 +31,7 @@ import {
   type PerguntaDaExecucao,
 } from './model';
 import { PlanTab } from './PlanTab';
+import { PortaDoPlano, ValidadeDoPlano } from './PortaDoPlano';
 import { ReportTab } from './ReportTab';
 import { RespostaSensivel } from './RespostaSensivel';
 import { ResumoDaExecucao } from './ResumoDaExecucao';
@@ -457,8 +458,13 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
           ) : null}
           {run.status === 'planned' ? (
             <Banner tone="info" icon={ListChecks} title="Plano pronto para revisão" role="status">
-              Nada foi executado ainda. Confira as etapas na aba Plano e clique em “Iniciar execução” quando estiver de acordo.
+              Nada foi executado ainda. Confira as etapas na aba Plano e, abaixo, o que a porta vai fazer com cada ação;
+              aprove o que pede o seu aval e inicie (ou “Iniciar execução” para decidir tudo na execução).
             </Banner>
+          ) : null}
+          {run.status === 'planned' ? <PortaDoPlano runId={run.id} /> : null}
+          {!terminal && run.status !== 'planned' && run.status !== 'planning' ? (
+            <ValidadeDoPlano runId={run.id} token={`${counts.waiting_user}:${run.status}`} />
           ) : null}
           {blockedCount > 0 && !terminal ? (
             <Banner

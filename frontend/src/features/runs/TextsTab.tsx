@@ -212,7 +212,7 @@ export function TextsTab({ detail, approvals }: { detail: RunDetail; approvals: 
                   size="sm"
                   variant="ghost"
                   icon={alvo === 'descartar' ? Undo2 : undefined}
-                  label={`${alvo === 'descartar' ? 'Voltar a enviar' : 'Não enviar'} — ${aparelho}`}
+                  label={`${alvo === 'descartar' ? 'Voltar a enviar' : 'Não enviar este'} — ${aparelho}`}
                   onClick={() => setEscolha((s) => ({ ...s, [a.id]: alvo === 'descartar' ? 'enviar' : 'descartar' }))}
                 >
                   {alvo === 'descartar' ? 'Voltar a enviar' : 'Não enviar este'}

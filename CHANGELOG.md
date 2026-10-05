@@ -298,6 +298,17 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Limite conhecido: o nome de um terceiro escrito por extenso, sem @, e-mail ou telefone, não é detectável; ele só sai
   no texto que a pessoa escreveu e que a conversa já mostrava.
 - `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
+## 2026-10-04 — 30.61: o painel da prévia da porta (branch feat/30-61-painel)
+
+- Na execução com plano pronto, a tela mostra o que a porta vai fazer com cada ação, em cartões por aparelho e persona:
+  liberada, pede seu aval, espera, não será feita, decide na execução. O dono edita o texto, tira o que não quer
+  (as dependentes saem junto) e clica "Aprovar N e iniciar"; se o plano mudou, a tela diz o quê e mostra a prévia nova.
+- O gesto aceita o texto editado no cartão: a chave gravada é a do texto que vai sair (recalculada no servidor).
+- Na execução viva, a validade dos sins do plano aparece com "Renovar"; o que já venceu volta para o dono rever.
+- Nota da Ferramentas: o painel reconhece `{ação}` como variável como o servidor (flag `u`), conta o limite por
+  caractere (um emoji vale 1) e avisa, sem travar, quando sobra `{` no texto ("ele sai exatamente assim").
+- Prova: `simulated` (`tests/test_porta_do_plano.py`, `PortaDoPlano.test.tsx`). `not_run`: o percurso no navegador.
+
 ## 2026-10-04 — 30.61: a prévia da porta e a aprovação antecipada no plano, backend (branch feat/30-61-aprovacao-no-plano)
 
 - `GET /api/runs/{id}/porta`: numa execução `planned`, o selo de cada etapa com efeito (permitido, aprovação, adiado,
