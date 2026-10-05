@@ -66,6 +66,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_protecao_de_frota.py`, teste da retomada novo, que falha com a marca antiga,
   e a ausência no evento gravado; `frontend/src/features/runs/CorrigirEtapa.test.tsx`, 2 testes novos;
   `frontend/src/store/reducer.test.ts`, 1 novo). Real: `not_run`.
+## 2026-10-05 — 31.67: causa de exceção sem texto do modelo nem argumentos de ferramenta (branch fix/31-67-causa-sem-texto)
+
+- V1b e V4 da revisão do 31.63. Três erros de IA (`parsing.loads_json`, `provider.persona_draft_from_json`,
+  `training.proposal_from_json`) eram levantados com `from exc` sobre o `JSONDecodeError`, cujo `.doc` é o texto
+  inteiro do modelo; `tools.validate_call` guardava na causa a `ValidationError` com os argumentos que o ator escolheu.
+  Hoje não vazava (ninguém percorre a cadeia), mas um serializador que seguisse `__cause__` veria o texto.
+- Agora os quatro são levantados FORA do `except` (sem `__cause__` nem `__context__`), com a mensagem de antes (linha e
+  coluna; `loc: msg`, e os erros da ferramenta lidos sem a entrada).
+- Prova: `simulated` (`backend/tests/test_rascunho_fora_do_log.py`, 4 testes novos). Real: `not_run`.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
