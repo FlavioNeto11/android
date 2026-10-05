@@ -384,6 +384,14 @@ Agora são três camadas, no central e no agente (`devices/emulator.py` está no
 
   A marca cai na próxima subida (`_spawn`) ou quando o aparelho entra no ar.
 
+- **Readoção (29.123, 05/10/2026).** O log do emulador acumula as subidas, e o offset só era gravado no spawn: um
+  backend recém-subido tinha 0. Na readoção que caía no `_wait_boot` (a sonda não fechava com o host saturado), o
+  detector lia o histórico, e um `Showing crashdialog` de dias antes parou o 03 e o 06, ambos com conta real, às
+  12:57Z (incidente de 05/10, 29.122). Agora o `_adopt` local grava como offset o tamanho atual do log. Só o que o
+  emulador escrever depois da readoção conta, para o diálogo, para o veredito do snapshot e para a releitura do
+  29.76 (d). O custo: um diálogo que já estava na tela ANTES do reinício do backend não é visto, e a espera vai até
+  o prazo do boot.
+
 Prova: `simulated` (`backend/tests/test_relatorio_de_falha_do_emulador.py`, e os dois casos do agente em
 `backend/tests/test_worker_executor.py`). A prova `real` ainda é `not_run`: é a subida de um aparelho SEM conta com o
 dump da quarentena posto de volta em `reports/`, e espera a vez da orquestradora.

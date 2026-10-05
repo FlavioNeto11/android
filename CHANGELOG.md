@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.123: a readoção não lê o histórico do log do emulador (branch fix/29-123-readocao-sem-log-antigo)
+
+- O incidente de 05/10 (29.122): às 12:56:52Z, um backend recém-subido readotou 01, 03 e 06. Com o host saturado,
+  a sonda não fechou e a readoção caiu no `_wait_boot`, que procura o diálogo de relatório de falha (29.55 c) a
+  partir de `boot_log_offset`. Esse offset só era gravado no spawn, e um backend novo tem 0. O detector leu o log
+  inteiro, achou `Showing crashdialog` de boots antigos (três vezes no log do 03 e três no do 06, nenhuma no do
+  01) e encerrou o 03 e o 06, ambos com conta real, às 12:57:05Z e 12:57:29Z.
+- `DeviceManager._adopt` (local) grava como offset o tamanho atual do log. Valem só as linhas escritas depois da
+  readoção, para o diálogo, para o veredito do snapshot e para a releitura do 29.76 (d). O custo: um diálogo que já
+  estava na tela antes do reinício do backend não é visto, e a espera vai até o prazo do boot.
+- Prova `simulated`: `backend/tests/test_readocao_sem_log_antigo.py`, 2 passed. A mutação (sem o conserto) reprova
+  os 2. Vizinhos: 136 passed (prontidão, readoção, wake, apps de fundo, arquitetura) e 81 passed (ciclo de vida do
+  emulador, relatório de falha, veredito do snapshot, executor do worker). `real`: `not_run` até o deploy (o
+  Orquestrador religa 01, 03 e 06 por `start`).
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

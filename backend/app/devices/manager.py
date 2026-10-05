@@ -1593,6 +1593,12 @@ class DeviceManager:
         if not self.tools.found():
             rt.state, rt.state_detail = InstanceState.stopped, "Android SDK não encontrado"
             return
+        # 29.123: o log do emulador é acumulado entre subidas, e o `boot_log_offset` só é gravado no spawn (um backend
+        # recém-subido tem 0). Readotar sem isto fazia o `_wait_boot` ler o HISTÓRICO: um "Showing crashdialog" de um
+        # boot antigo parou o 03 e o 06 (contas reais) em 05/10 12:57Z, e o veredito do snapshot e a releitura do
+        # 29.76 (d) liam linhas de outras partidas. Da readoção em diante, só o que o emulador escrever conta.
+        log_path = self.cfg.logs_dir / f"emulator-{rt.avd_name}.log"
+        rt.boot_log_offset = log_path.stat().st_size if log_path.exists() else 0
         alive = emu.is_our_emulator(rt.pid, rt.avd_name)
         try:
             state = await rt.executor.run(rt.adb.state, timeout=12, label="adb get-state")
