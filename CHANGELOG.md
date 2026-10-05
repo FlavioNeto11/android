@@ -138,6 +138,18 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   `RedePage.test.tsx`. Quatro mutações, todas pegas. Frontend inteiro: 1631/1631. Settings, rede e `src/test` com
   `ATRASO_DO_FETCH_MS=40` nas sementes 7 e 88: 156/156.
 
+## 2026-10-05 — 31.90-B: a revisão do treino mostra a prévia do salvar e oferece "Refazer receitas" (branch feat/31-90-b-revisao-previa)
+
+- Prévia do salvar (adendo v1.58): meio segundo depois da última edição, cada etapa diz "Ao salvar: sem IA/com IA" com o motivo. Os avisos aparecem abaixo das etapas. A resposta velha de uma prévia que outra edição superou é descartada. A prévia só roda quando a tela não tem o que dizer antes (sem destino, duplicada, escopo).
+- Recusas no lugar certo: as do comando (`comando_generico`, `parametro_invalido`, `parametro_fora_do_comando`, `parametro_nao_declarado`, `parametro_reservado` do v1.62, `duplicate_command`) aparecem no campo "Comando" com `aria-invalid` e a mensagem do backend, sem toast. As outras 400 (inclusive `entrada_inexistente`) viram o motivo do "Salvar" travado até a próxima edição.
+- "Refazer receitas" acionado pela pessoa: no relatório do salvar, quando alguma etapa saiu sem receita, e na lista nova "Salvas" da barra de treinamento. Diz quantas receitas a chamada gravou e o motivo de cada etapa que segue sem receita. A frase do adendo v1.58 em `docs/api-contract.md` foi trocada para "o painel oferece".
+- R1/R2 (#436): o select só escolhe a etapa, e quem move é o botão "Devolver". Depois de mover, o foco vai para a entrada no lugar novo, e uma região `role=status` diz para onde ela foi.
+- "Sair sem salvar" compara com a proposta que chegou: descartar e devolver a mesma entrada não pede mais confirmação.
+- N2: o descarte repetido conta uma vez (#442). Entrada que está numa etapa e no descarte ganha "Manter descartada".
+- Textos: o "Confere" sai em português; o toque sem alvo usa as palavras de `linha_da_entrada` (#440); a mesma tecla seguida vira uma linha só na gravação ("tecla delete ×15"); B1 (#428): o aviso da gravação de outra aba diz "clique em Retomar controle".
+- Fica para depois: o selo "em prova" (`ensinado_em_prova`, 30.81) não está na `main`. A TrainingBar com o controle assumido segue só com prova simulada.
+- Prova `simulated`: `frontend/src/features/training/TrainingReview.test.tsx` e `TrainingBar.test.tsx`; `real`: `not_run`.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.

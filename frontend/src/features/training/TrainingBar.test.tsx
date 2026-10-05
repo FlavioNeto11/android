@@ -107,6 +107,8 @@ it('órfã: com o controle em "none" também avisa e oferece Concluir e Descarta
 it('gravação viva de quem tem o controle em outra aba: aviso certo, sem Concluir nem Descartar', async () => {
   await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId={null} mine={false} />));
   await waitFor(() => expect(text()).toContain('Há uma gravação em andamento neste aparelho por quem está com o controle.'));
+  // B1 (#428): a quem recarregou a página, o aviso diz a saída.
+  expect(text()).toMatch(/Se a gravação é sua.*clique em Retomar controle/s);
   expect(text()).not.toContain('não está mais gravando');
   expect(text()).not.toContain('Gravando:');
   expect(allByRole('button', /^Concluir e revisar$/)).toHaveLength(0);
@@ -139,4 +141,23 @@ it('A6: a região viva do contador nasce vazia com a gravação e o texto entra 
   await act(async () => { useTrainingStore.getState().registrarRecusa('android-01'); });
   expect(viva.isConnected).toBe(true);
   expect(viva.textContent).toBe('1 entrada(s) recusada(s): refaça');
+});
+
+// 31.90-B (v1.58): a sessão salva sai de "Para revisar", mas a etapa sem receita ainda pode ganhá-la daqui.
+it('sessão salva aparece em "Salvas" com "Refazer receitas", que só chama /recipes no clique', async () => {
+  const SALVA = { ...GRAVANDO, id: 'trn-7', intent: 'Abrir o perfil', status: 'saved', flow_id: 'abrir-perfil' };
+  backend.on('GET', /\/training$/, () => json([SALVA]));
+  backend.on('POST', /\/training\/trn-7\/recipes$/, () => json({
+    session: SALVA, flow_id: 'abrir-perfil', created: 0,
+    steps: [{ key: 'abrir', title: 'Abrir', recipe: false, reason: 'já havia receita ativa para esta etapa' }],
+  }));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Salvas (1)'));
+  expect(text()).not.toContain('Para revisar');
+  // A lista fica num Disclosure recolhido (<details>), que mantém o conteúdo no DOM.
+  expect(byRole('button', /^Refazer receitas de “Abrir o perfil”$/).closest('details')).not.toBeNull();
+  await click(byRole('button', /^Refazer receitas de “Abrir o perfil”$/));
+  await waitFor(() => expect(text()).toContain('Nenhuma receita nova.'));
+  expect(text()).toContain('Abrir (já havia receita ativa para esta etapa)');
+  expect(backend.callsTo('POST', /\/training\/trn-7\/recipes$/)).toHaveLength(1);
 });

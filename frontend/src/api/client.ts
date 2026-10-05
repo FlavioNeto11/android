@@ -92,7 +92,9 @@ import type {
   ProfileAccountCreateRequest,
   ProfileAccountPatchRequest,
   AppOverview,
+  TrainingPreview,
   TrainingProposal,
+  TrainingRecipesResult,
   TrainingSaveResult,
   TrainingSession,
   SkillSummary,
@@ -752,6 +754,11 @@ export const api = {
   proposeTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/propose`),
   saveTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[] }) =>
     request<TrainingSaveResult>('POST', `/training/${enc(id)}/save`, { body }),
+  /** Adendo v1.58: a mesma conferência e destilação do salvar, sem gravar nada. */
+  previewTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[] }) =>
+    request<TrainingPreview>('POST', `/training/${enc(id)}/preview`, { body }),
+  /** Adendo v1.58: refaz as receitas das etapas que ficaram sem receita numa sessão já salva. */
+  redoTrainingRecipes: (id: string) => request<TrainingRecipesResult>('POST', `/training/${enc(id)}/recipes`),
   // Ensino v2 e habilidades (fase F): só existem com `health.features.skills`; desligado, o backend responde 404
   // `skills_disabled`.
   listSkills: (signal?: AbortSignal) => request<SkillSummary[]>('GET', '/skills', { signal }),

@@ -10,12 +10,13 @@ import type { Instance, TrainingSession } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
+import { Disclosure } from '../../components/Disclosure';
 import { Field, Select, TextInput } from '../../components/Field';
 import { isRecord, plural } from '../../lib/format';
 import { useAppStore } from '../../store/app';
 import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
-import { TrainingReview } from './TrainingReview';
+import { RefazerReceitas, TrainingReview, toqueSemAlvo } from './TrainingReview';
 import { useTrainingStore } from './trainingStore';
 import styles from './Training.module.css';
 
@@ -116,6 +117,9 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   );
 
   const pendentes = sessoes.filter((s) => s.status === 'recorded' || s.status === 'proposed');
+  // v1.58: a sessão salva some de "Para revisar", mas a etapa que ficou sem receita (aparelho fora do ar no salvar)
+  // ainda pode ganhá-la; daqui a pessoa refaz quando o aparelho voltar, sem reabrir a revisão.
+  const salvas = sessoes.filter((s) => s.status === 'saved').slice(0, 5);
 
   return (
     <section className={styles.bar} aria-label="Modo treinamento">
@@ -123,7 +127,8 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
       {ativa && !mine && instance.control === 'user' ? (
         // Gravação viva de quem tem o controle em outra aba (ou depois de um F5: o lease vive só em memória) ou de
         // outra pessoa: quem só olha não encerra nem descarta a gravação alheia.
-        <p className={styles.hint} role="status">Há uma gravação em andamento neste aparelho por quem está com o controle.</p>
+        <p className={styles.hint} role="status">Há uma gravação em andamento neste aparelho por quem está com o controle. Se a gravação é sua
+          (em outra aba ou antes de recarregar a página), clique em Retomar controle para continuar por aqui.</p>
       ) : ativa && !mine ? (
         // 31.80: sessão `recording` sem NINGUÉM com o controle é gravação órfã (ex.: o servidor reiniciou); nada mais
         // é gravado, então a barra não diz "Gravando".
@@ -142,6 +147,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
               <li key={e.seq}>
                 <span className={styles.muted}>#{e.seq}</span> {DESCRICAO[e.type] ?? e.type}
                 {e.target?.text || e.target?.desc ? <> em <strong>{e.target.text || e.target.desc}</strong></> : null}
+                {toqueSemAlvo(e) ? <span className={styles.muted}> {toqueSemAlvo(e)}</span> : null}
                 {e.type === 'text' ? (e.text !== null ? <> “{e.text}”</> : <> ({e.text_len} caractere(s) sigilosos — não gravados)</>) : null}
                 {e.type === 'open_app' ? <> {e.app_id}</> : null}
                 {e.type === 'key' ? <> {e.key_name}</> : null}
@@ -190,6 +196,18 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             </Button>
           ))}
         </div>
+      ) : null}
+      {salvas.length ? (
+        <Disclosure summary={`Salvas (${salvas.length})`} bare>
+          <ul className={styles.salvas}>
+            {salvas.map((s) => (
+              <li key={s.id}>
+                <span>{s.intent}</span>
+                <RefazerReceitas sessionId={s.id} intent={s.intent} />
+              </li>
+            ))}
+          </ul>
+        </Disclosure>
       ) : null}
       {revisando ? (
         <TrainingReview sessionId={revisando} onClose={() => { setRevisando(null); void carregar(); }} />
