@@ -13,7 +13,6 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 
 from app.modules.portal.montagem import Portal
-from app.util import now
 
 ROTA_DO_CONTATO = "/api/portal/contato"
 METODOS_DO_CONTATO = frozenset({"POST"})
@@ -52,5 +51,5 @@ async def receber_contato(request: Request) -> Response:
         return JSONResponse({"detail": {"code": "campo_invalido", "message": "Confira os campos do formulário.",
                                         "campos": []}}, status_code=422)
     cliente = str(getattr(request.state, "cliente", None) or "desconhecido")
-    resposta = await run_in_threadpool(portal.contatos.receber, dados, cliente, now())
+    resposta = await run_in_threadpool(portal.contatos.receber, dados, cliente, portal.relogio.agora())
     return JSONResponse(dict(resposta.corpo), status_code=resposta.status, headers={"Cache-Control": "no-store"})

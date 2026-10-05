@@ -22,15 +22,17 @@ CORPO_MAX = 2 * 1024 * 1024
 
 
 class BuscarPelaBorda:
-    def __init__(self, prazo_s: Callable[[], int], transporte: httpx.BaseTransport | None = None) -> None:
+    def __init__(self, prazo_s: Callable[[], int], transporte: httpx.BaseTransport | None = None, *,
+                 monotonico: Callable[[], float] = time.monotonic) -> None:
         self._prazo_s = prazo_s
         self._transporte = transporte        # os testes passam um `httpx.MockTransport`
+        self._monotonico = monotonico        # o relógio do portal (T.2); os testes passam um que eles avançam
 
     def __call__(self, url: str, *, aceita: str | None, ler_corpo: bool = True) -> Resposta:
         cabecalhos = {"User-Agent": NAVEGADOR, "Accept": "text/html,application/xhtml+xml,*/*"}
         if aceita:
             cabecalhos["Accept-Encoding"] = aceita
-        inicio = time.monotonic()
+        inicio = self._monotonico()
         try:
             with httpx.Client(transport=self._transporte, timeout=self._prazo_s(), follow_redirects=False,
                               trust_env=False) as cliente, cliente.stream("GET", url, headers=cabecalhos) as r:
@@ -44,7 +46,7 @@ class BuscarPelaBorda:
                             break
                         # O prazo do httpx vale por fase (conexão, cada pedaço): uma resposta que pinga devagar passaria
                         # dele. O pedido inteiro também tem prazo (V13).
-                        if time.monotonic() - inicio > self._prazo_s():
+                        if self._monotonico() - inicio > self._prazo_s():
                             raise SemResposta("tempo esgotado")
                 return Resposta(r.status_code, recebidos, corpo)
         except httpx.TimeoutException as exc:
