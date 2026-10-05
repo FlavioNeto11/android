@@ -257,6 +257,20 @@ Leitura do W1 e do 29.112 pelas revisoras.
   - o GuiaImagens passa com `ATRASO_DO_FETCH_MS=40` na semente 88, onde caía;
   - typecheck limpo.
 
+## 2026-10-05 — 29.115: o formulário trava enquanto envia, em vez de apagar o que a pessoa mexeu (branch fix/29-115-form-trava-ao-enviar)
+
+- `frontend/src/features/settings/LimitsSection.tsx` e `frontend/src/features/rede/RedePage.tsx`: a resposta do envio
+  zera o formulário (`setDrafts({})`; `setNome('')`…). O que a pessoa mexia com o PUT ou o POST em voo sumia sem ser
+  salvo nem avisado. Achado do 29.104. Seguindo o que o painel já faz (perfis, imagens, editor de política), os campos
+  ficam desabilitados enquanto envia: nos Limites, o `fieldset` de cada grupo; no cadastro de VPN e proxy, cada campo.
+- `frontend/src/test/harness.ts`: o `setValue` recusa campo `:disabled`, inclusive o de `fieldset` desabilitado. Um
+  teste que digitasse ali provaria um gesto que a tela não permite. Nenhum teste existente dependia disso.
+- Testes: `LimitsSection.test.tsx` (novo) e um caso novo em `RedePage.test.tsx` seguram o pedido e conferem os campos
+  desabilitados e livres depois. Os dois falham no código anterior. Os dois testes que eram a prova esperam o campo
+  livre antes de digitar, como a pessoa. Prova simulated:
+  - frontend inteiro 1617/1617 sem atraso;
+  - app.integration, rede e settings 174/174 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
