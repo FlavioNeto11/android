@@ -22,7 +22,7 @@ from typing import Any, Protocol
 
 from ..db import Database, Row
 from ..modules.learning.domain.aprovacao_automatica import PLATAFORMA
-from ..modules.learning.domain.livro import apps_na_ordem_do_plano
+from ..modules.learning.domain.livro import CONFIRMADO_QUE_FICA, apps_na_ordem_do_plano
 from ..modules.skills.domain.document import JsonValue
 from ..modules.skills.domain.matching import specificity
 from ..models import Plan, PlannerInfo, StepResult
@@ -150,8 +150,9 @@ def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
 def ensinado_em_prova(db: Database, row: Row) -> dict[str, str | None] | None:
     """O fluxo ensinado no modo treinamento que ainda espera a prova: `{persona, sessao}` (a persona que ensinou,
     `None` se a sessão não tinha), ou `None` quando não se aplica. Sai da espera com uma prova a favor, real e não
-    invalidada (execução com `prova_fluxo_id` deste fluxo, depois do nascimento) ou com a decisão de uma pessoa
-    depois do nascimento ("Confirmar que fica", desligar; nem o sistema, nem a régua da plataforma, nem um treino). O fluxo que não veio do treino, ou que não está ativo, não
+    invalidada (execução com `prova_fluxo_id` deste fluxo, depois do nascimento) ou com o "Confirmar que fica"
+    explícito de uma PESSOA depois do nascimento (leitura da Reload, achado 3: adotar e desfazer, ou outra linha
+    qualquer, não liberam; nem o sistema, nem a régua da plataforma, nem um treino). Desligado, não está ativo. O fluxo que não veio do treino, ou que não está ativo, não
     paga consulta."""
     fonte = str(row.get("source") or "")
     if not fonte.startswith(PREFIXO_DO_TREINO) or row.get("status", "active") != "active":
@@ -165,8 +166,9 @@ def ensinado_em_prova(db: Database, row: Row) -> dict[str, str | None] | None:
         "  AND NOT EXISTS (SELECT 1 FROM learning_evidence i WHERE i.item_ref = e.item_ref"
         "  AND i.origin_ref = e.origin_ref AND i.stance='invalida')) AS provado,"
         " EXISTS (SELECT 1 FROM learning_transitions t WHERE t.item_ref=? AND t.decided_at>=?"
-        "  AND t.decided_by NOT IN (?,?) AND t.decided_by NOT LIKE ?) AS decidido",
-        (sessao, ref, row["id"], nasceu, ref, nasceu, SISTEMA, PLATAFORMA, f"{PREFIXO_DO_TREINO}%"))
+        "  AND t.reason LIKE ? AND t.decided_by NOT IN (?,?) AND t.decided_by NOT LIKE ?) AS decidido",
+        (sessao, ref, row["id"], nasceu, ref, nasceu, f"{CONFIRMADO_QUE_FICA}%", SISTEMA, PLATAFORMA,
+         f"{PREFIXO_DO_TREINO}%"))
     if r is not None and (bool(r["provado"]) or bool(r["decidido"])):
         return None
     persona = r["persona"] if r is not None else None
@@ -344,7 +346,8 @@ class FlowStore:
             "SELECT app_id FROM flow_required_apps WHERE flow_id=? ORDER BY app_id", (flow_id,))]
 
     # ------------------------------------------------------------------ casar
-    def match(self, command: str, profile_ids: list[str | None] | None = None) -> tuple[Row, Plan] | None:
+    def match(self, command: str, profile_ids: list[str | None] | None = None, *,
+              sem_ensino_em_prova: bool = False) -> tuple[Row, Plan] | None:
         """Comando novo × modelos conhecidos. Casa o texto inteiro; cada {nome} captura o valor novo.
 
         `profile_ids` (item 13.2): os perfis dos aparelhos da execução. Fluxo com escopo (habilidade treinada para
@@ -368,11 +371,18 @@ class FlowStore:
                 continue
             if profile_ids is not None and self._restrito_ao_ensino(row, profile_ids):
                 continue
+            if sem_ensino_em_prova and ensinado_em_prova(self.db, row) is not None:
+                continue
             plan = self._plano_com_valores(row, values, provider="fluxo")
             if plan is None:
                 continue                              # faltou valor para algum parâmetro: não é este fluxo
             return row, plan
         return None
+
+    def ativo_para(self, command: str) -> tuple[Row, Plan] | None:
+        """30.81 (achado 4 da Reload): o fluxo ativo do comando para a VALIDAÇÃO (sem aparelhos), sem o ensinado que
+        ainda espera a prova: para ela, ele ainda não é o fluxo ativo de ninguém além de quem ensinou."""
+        return self.match(command, None, sem_ensino_em_prova=True)
 
     # ------------------------------------------------------------------ o ensinado ainda sem prova (30.81)
     def _restrito_ao_ensino(self, row: Row, profile_ids: list[str | None]) -> bool:

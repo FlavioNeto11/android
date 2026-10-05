@@ -2024,8 +2024,16 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
 - **A espera acaba** com:
   - uma prova real a favor, sem `invalida` da mesma origem, de uma execução com `prova_fluxo_id` deste fluxo, depois do
     nascimento;
-  - ou a linha de uma PESSOA na trilha depois do nascimento ("Confirmar que fica", desligar). Não contam `sistema`,
-    `plataforma` (a régua) nem `training:` (outra demonstração).
+  - ou o "Confirmar que fica" EXPLÍCITO de uma pessoa depois do nascimento (motivo `confirmado que fica`; leitura da
+    Reload, achado 3). Não contam `sistema`, `plataforma` (a régua), `training:` (outra demonstração) nem outra linha da
+    pessoa (adotar e desfazer não liberam). Desligado, o fluxo não está ativo.
+- **A receita do treino espera junto** (achado 1, decisão da orquestradora): enquanto o fluxo da mesma sessão espera a
+  prova, `RecipeStore.find` só acha a receita `training:<sessão>` para a persona do objetivo que ensinou
+  (`persona=`, passado pelo executor). Fora dela, a consulta termina `ensino_em_prova` (rótulo novo de
+  `receita.consulta`), sem herança, e a etapa vai para a IA. Quem ensinou usa a receita logo depois de salvar. A
+  receita que não veio do treino não paga consulta a mais.
+- **Para a validação** (achado 4), o fluxo ativo do comando é `FlowStore.ativo_para`: o `match` sem aparelhos, sem o
+  ensinado em espera (`state.py`, `fluxo_ativo_para` e `plano_ativo_para`).
 - **Quem abre a prova:** a volta da validação, e não o ouvinte do nascimento. O `save` grava a proposta final (com os
   `example`) DEPOIS de `learn_from_plan`, e o ouvinte leria a proposta velha.
   - `EnsinoDaValidacaoSql.a_provar` é uma consulta só por volta.
@@ -2043,8 +2051,8 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   O conjunto é `MOTIVOS_QUE_ESPERAM_A_PESSOA`. Depois dele, a volta não abre mais nada para aquele nascimento.
 - **Rebaixamento** (`SombraDosFluxos._rebaixar_o_ensinado`):
   - Só o veredito CONTRÁRIO (`against`) de uma prova real desliga o fluxo que ainda esperava. Vai a `disabled` pelo
-    sistema, como a sombra contradita, com a execução na trilha. As receitas ativas `training:<sessão>` vão junto para a
-    quarentena, cada uma com a trilha.
+    sistema, como a sombra contradita, com a execução na trilha. As receitas ativas `training:<sessão>` vão junto ao
+    estado `disabled` do Livro (achado 2), que na receita é o status nativo `quarantined`, cada uma com a trilha.
   - O 30.80 B avisa pelo caminho que já existe.
   - Não rebaixam: a infraestrutura (`posicao=None`), a prova simulada e a forma.
   - Uma pessoa reverte pelo Livro.
@@ -2066,6 +2074,10 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   - `cobertura_do_fluxo`, que serve `/flows/match` e `/flows/cobertura`;
   - a resposta do salvar do treino;
   - o topo da resposta de `/training/{id}/recipes`.
+- **Limites:**
+  - Se o barramento falha, o evento `learning.ensinado_espera_decisao` se perde: o pedido recusado que marca a espera
+    fica, e o Livro mostra `espera_a_pessoa`, mas a Canais não recebe o cartão (leitura da Reload, item 6).
+  - O fluxo desligado pela prova bloqueia o reensino do MESMO comando (a `match_key` é única): fica para o 30.84.
 - **Prova:** `simulated`, em `backend/tests/test_ensinado_em_prova.py`. `real`: `not_run`.
 ## A prova sem evidência diz a causa (30.75)
 

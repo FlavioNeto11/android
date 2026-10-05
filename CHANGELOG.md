@@ -34,8 +34,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `learning.ensinado_espera_decisao` (`warn`). Isso vale para a classe C, o item sem dossiê de agora, toda recusa ao
   nascer (efeito em app real, sessão, credencial, sem exemplo, sem caminho) e as tentativas esgotadas. Motivos novos:
   `classe_c` e `tentativas_esgotadas`, este depois de 3 pedidos sem veredito.
-- O veredito CONTRÁRIO de uma prova real desliga o fluxo (`disabled`, pelo sistema, com a execução na trilha) e põe em
-  quarentena as receitas ativas do mesmo treino. O aviso do 30.80 B sai pelo caminho de sempre. A falha de
+- O veredito CONTRÁRIO de uma prova real leva o fluxo e as receitas ativas do mesmo treino ao `disabled` do Livro,
+  pelo sistema e com a execução na trilha (status nativo `disabled` no fluxo, `quarantined` na receita).
+- Leitura da Reload: a receita do treino em espera só é achada para a persona que ensinou (`RecipeStore.find(persona=)`,
+  rótulo `ensino_em_prova` em `receita.consulta`); só o "Confirmar que fica" explícito libera; a validação usa
+  `FlowStore.ativo_para`, sem o ensinado em espera. O aviso do 30.80 B sai pelo caminho de sempre. A falha de
   infraestrutura, a prova simulada e a divergência de forma não rebaixam.
 - "Confirmar que fica" (`POST /api/aprendizado/fluxo/{id}/confirmar`) passa a valer também para o ensinado que espera a
   pessoa. Ele e desligar pelo Livro publicam `learning.ensinado_decidido` (`liberado`, `desligado` ou `outro`), um por
@@ -45,7 +48,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `GET /api/flows/cobertura`, na resposta do salvar do treino e no topo da de `POST /api/training/{id}/recipes`. Fica
   ausente quando não se aplica.
 - Funções tocadas (K-095):
-  - `taskqueue/flows.py`: `ensinado_em_prova` (nova), `FlowStore.match` e `FlowStore._restrito_ao_ensino` (nova);
+  - `taskqueue/flows.py`: `ensinado_em_prova` (nova), `FlowStore.match` (`sem_ensino_em_prova` no fim),
+    `FlowStore.ativo_para` e `FlowStore._restrito_ao_ensino` (novas);
+  - `taskqueue/recipes.py`: `RecipeStore.find` (`persona` no fim) e `_restrita_ao_ensino` (nova);
+    `taskqueue/executor.py`: a chamada do `find` passa a persona do objetivo; `state.py`: `fluxo_ativo_para` e
+    `plano_ativo_para` usam `ativo_para`;
   - `social/capacidades.py`: `cobertura_do_fluxo` e `cobertura_dos_fluxos`, que agora seleciona `source` e
     `created_at`;
   - `training/skills.py`: `save`, `preview`, `refazer_receitas`, `_em_prova` (nova) e `_aviso_sem_persona` (nova);

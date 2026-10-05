@@ -32,6 +32,7 @@ from ..modules.learning.domain.causa_do_ausente import ChaveDaReceita, ReceitaVi
 from ..modules.learning.domain.livro import receita_tem_efeito
 from ..planning.provider import Decision
 from ..util import norm_text, now_iso
+from .flows import PREFIXO_DO_TREINO, ensinado_em_prova
 
 SENSITIVE_PARAM = re.compile(r"pass|senha|pin\b|otp|token|secret|segredo|c[oó]digo|code", re.IGNORECASE)
 READ_ONLY = {"observe_screen", "find_element", "wait_for", "verify_state"}
@@ -722,7 +723,8 @@ class RecipeStore:
             self.ouvinte.mudou(MudancaDaReceita(recipe_id=recipe_id, de=de, para=para, motivo=motivo, por=por))
 
     def find(self, package: str | None, app_version: str | None, step_hash: str | None, *,
-             signature: str = "", variant: str = "", step_hash_generico: str | None = None) -> Row | None:
+             signature: str = "", variant: str = "", step_hash_generico: str | None = None,
+             persona: str | None = None) -> Row | None:
         """Identidade da receita: pacote + versão + ASSINATURA + VARIANTE de interface + etapa.
 
         Assinatura entra porque dois APKs podem dizer a mesma versão e não serem o mesmo app; variante entra porque
@@ -746,6 +748,11 @@ class RecipeStore:
         tentativa achada pela genérica leva o rótulo `chave=generica` (a específica fica na série de antes), e quem
         chamou sabe a chave pelo `step_hash` da linha. Iguais (pós-condição vazia) ou sem genérica: uma consulta só.
         A herança tenta a específica e depois a genérica; a causa do ausente é medida uma vez, pela específica.
+
+        30.81: a receita ensinada no modo treinamento cujo fluxo ainda espera a prova (`flows.ensinado_em_prova`) só é
+        achada para a `persona` que ensinou (a do objetivo; `None` = aparelho sem persona, que não a acha). Fora dela, a
+        consulta termina `ensino_em_prova`, sem herança: a etapa vai para a IA. A prova aprovada libera para todas; a
+        reprovada desliga o fluxo e põe a receita em quarentena. A receita que não veio do treino não paga consulta.
         """
         if not (package and app_version and step_hash):
             return None
@@ -760,6 +767,9 @@ class RecipeStore:
             if row is not None:
                 resultado = nome
                 break
+        if row is not None and self._restrita_ao_ensino(row, persona):
+            metricas.contar("receita.consulta", resultado="ensino_em_prova")
+            return None
         if row is None:
             # Uma consulta a mais, só no erro: distingue "nunca aprendida" de "aprendida e posta de lado". As duas
             # mandam a etapa para a IA, mas pedem coisas diferentes de quem lê (aprender × investigar a tela).
@@ -779,6 +789,15 @@ class RecipeStore:
         generica_casou = row is not None and len(hashes) > 1 and row["step_hash"] == hashes[1]
         metricas.contar("receita.consulta", resultado=resultado, chave="generica" if generica_casou else None)
         return row
+
+    def _restrita_ao_ensino(self, row: Row, persona: str | None) -> bool:
+        """30.81: a receita do treino cujo fluxo espera a prova, consultada fora da persona que ensinou."""
+        origem = str(row["learned_from_step"] or "")
+        if not origem.startswith(PREFIXO_DO_TREINO):
+            return False
+        fluxo = self.db.one("SELECT * FROM flows WHERE source=? ORDER BY created_at DESC, id DESC LIMIT 1", (origem,))
+        espera = ensinado_em_prova(self.db, dict(fluxo)) if fluxo is not None else None
+        return espera is not None and (espera["persona"] is None or persona != espera["persona"])
 
     def _herdar(self, package: str, app_version: str, step_hash: str, *, signature: str,
                 variant: str, medir: bool = True) -> tuple[str, Row | None]:

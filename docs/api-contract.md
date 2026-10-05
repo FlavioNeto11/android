@@ -6571,7 +6571,9 @@ Aditivo. O fluxo salvo no modo treinamento segue nascendo `active`, mas até a p
 - **Casar:** com aparelhos, o ensinado em prova só casa quando TODOS os perfis são a persona do ensino. A prévia sem
   aparelhos casa como antes.
 - **A espera acaba** com uma prova real a favor (execução com `prova_fluxo_id`, depois do nascimento, sem `invalida`)
-  ou com a decisão de uma pessoa.
+  ou com o "Confirmar que fica" explícito de uma pessoa (adotar ou outra linha da pessoa não contam).
+- **Receita do treino:** enquanto o fluxo da mesma sessão espera, a receita `training:<sessão>` só é usada para a
+  persona que ensinou. Em `GET /api/desempenho`, `receita.consulta{resultado}` ganha `ensino_em_prova`.
 - **Pedidos de validação** (`GET /api/aprendizado/validacoes`):
   - o pedido da prova do ensinado tem `review_id` `ensino:<sessão>` e `run_origem: null`;
   - `motivo` ganha `classe_c` (classe C, ou sem dossiê de agora) e `tentativas_esgotadas` (3 pedidos sem veredito);
@@ -6582,8 +6584,8 @@ Aditivo. O fluxo salvo no modo treinamento segue nascendo `active`, mas até a p
 - **Livro** (as entradas de `GET /api/aprendizado` e do detalhe): o fluxo ganha `espera_a_pessoa: string|null`, que
   traz o motivo literal quando o ensinado espera a decisão de uma pessoa e o "Confirmar que fica" vale para ele, e
   `null` em todo o resto. Fica ausente nos outros tipos. Combinado com a Portal (31.91).
-- **Rebaixamento:** o veredito contrário de uma prova real leva o fluxo a `disabled` pelo sistema, e as receitas
-  ativas do mesmo treino a `quarantined`. Os eventos do 30.80 B (v1.61) saem como sempre.
+- **Rebaixamento:** o veredito contrário de uma prova real leva o fluxo e as receitas ativas do mesmo treino ao estado
+  `disabled` do Livro, pelo sistema (status nativo `disabled` no fluxo e `quarantined` na receita). Os eventos do 30.80 B (v1.61) saem como sempre.
 - **Eventos novos**, persistidos e sem aparelho:
   - `learning.ensinado_espera_decisao` (`warn`), com `data` `{kind: "fluxo", ref, app, treino, persona, desde}`;
   - `learning.ensinado_decidido` (`info`), com `data` `{kind, ref, desde, decisao: "liberado"|"desligado"|"outro",

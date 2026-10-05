@@ -15,7 +15,7 @@ from app.modules.learning.domain.aprovacao_automatica import PLATAFORMA
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR
 from app.modules.learning.domain.conteudo import PREFIXO_DE_TREINO
 from app.modules.learning.domain.ensinado import EsperaDoEnsinado, sessao_de_treino
-from app.modules.learning.domain.livro import EntradaDoLivro, ref_da_trilha
+from app.modules.learning.domain.livro import CONFIRMADO_QUE_FICA, EntradaDoLivro, ref_da_trilha
 from app.modules.learning.domain.validacao import MOTIVOS_QUE_ESPERAM_A_PESSOA, PREFIXO_DO_ENSINO, comando_do_ensino
 from app.modules.learning.domain.vocabulario import LivroKind
 from app.modules.learning.infrastructure import linhas
@@ -27,9 +27,10 @@ log = logging.getLogger(__name__)
 
 _ESPERAM = tuple(sorted(m.value for m in MOTIVOS_QUE_ESPERAM_A_PESSOA))
 _EM = ",".join("?" * len(_ESPERAM))
-#: Nem o sistema, nem a régua da plataforma, nem um treino: só a linha de uma pessoa tira o ensinado da espera.
-_DE_PESSOA = "t.decided_by NOT IN (?,?) AND t.decided_by NOT LIKE ?"
-_NAO_PESSOAS = (SYSTEM_ACTOR, PLATAFORMA, f"{PREFIXO_DE_TREINO}%")
+#: Só o "Confirmar que fica" explícito de uma pessoa tira o ensinado da espera (a mesma regra de
+#: `flows.ensinado_em_prova`): nem o sistema, nem a régua da plataforma, nem um treino, nem outra linha da pessoa.
+_DE_PESSOA = "t.reason LIKE ? AND t.decided_by NOT IN (?,?) AND t.decided_by NOT LIKE ?"
+_NAO_PESSOAS = (f"{CONFIRMADO_QUE_FICA}%", SYSTEM_ACTOR, PLATAFORMA, f"{PREFIXO_DE_TREINO}%")
 
 
 class LeitorDoEnsinadoSql:

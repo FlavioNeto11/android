@@ -168,11 +168,10 @@ class Mundo:
                         (f"fluxo:{fid}", stance, f"run:{run_id}", run_id, "android-05", int(simulada), "x",
                          now_iso()))
 
-    def trilha_de_pessoa(self, fid: str, por: str) -> None:
+    def trilha_de_pessoa(self, fid: str, por: str, motivo: str = "confirmado que fica") -> None:
         self.db.execute("INSERT INTO learning_transitions(item_ref, item_kind, scope_key, from_state, to_state,"
                         " reason, decided_by, decided_at) VALUES (?,?,?,?,?,?,?,?)",
-                        (f"fluxo:{fid}", "fluxo", "", "published", "published", "confirmado que fica", por,
-                         now_iso()))
+                        (f"fluxo:{fid}", "fluxo", "", "published", "published", motivo, por, now_iso()))
 
     def minera_prova(self, fid: str, run_id: str, posicao: Posicao | None, *, simulada: bool = False) -> int:
         e = self.servico.entrada(LivroKind.FLUXO, fid)
@@ -247,11 +246,14 @@ def test_a_prova_real_a_favor_libera_para_todas(mundo: Mundo) -> None:
     assert mundo.espera(fid) is None and mundo.casa([BIA]) and mundo.casa([ANA, BIA])
 
 
-@pytest.mark.parametrize("por, libera", [("sistema", False), ("plataforma", False), ("training:trn-2", False),
-                                         ("painel:dono", True)])
-def test_so_a_decisao_de_uma_pessoa_libera(mundo: Mundo, por: str, libera: bool) -> None:
+@pytest.mark.parametrize("por, motivo, libera", [
+    ("sistema", "confirmado que fica", False), ("plataforma", "confirmado que fica", False),
+    ("training:trn-2", "confirmado que fica", False),
+    ("painel:dono", "adotado pela habilidade ig.x@1", False),         # achado 3 da Reload: adotar não libera
+    ("painel:dono", "confirmado que fica", True), ("painel:dono", "confirmado que fica: serve", True)])
+def test_so_o_confirmar_explicito_de_uma_pessoa_libera(mundo: Mundo, por: str, motivo: str, libera: bool) -> None:
     fid = mundo.ensina()
-    mundo.trilha_de_pessoa(fid, por)
+    mundo.trilha_de_pessoa(fid, por, motivo)
     assert mundo.casa([BIA]) is libera
 
 
@@ -432,3 +434,38 @@ def test_o_livro_diz_que_o_ensinado_espera_a_pessoa_e_por_que(mundo: Mundo) -> N
     assert espera(classe_c) is None                      # decidido: acabou a espera
     assert "espera_a_pessoa" not in _entrada(mundo.servico.entrada(LivroKind.RECEITA, str(mundo.receita_do_treino())),
                                              mundo.servico)
+
+
+# ------------------------------------------------------------------ leitura da Reload (achados 1 e 4)
+def _acha(mundo: Mundo, persona: str | None) -> bool:
+    return mundo.store.find("com.instagram.android", "1.0(1)", "h-abrir", signature="", variant="en-US/xhdpi",
+                            persona=persona) is not None
+
+
+def test_a_receita_do_ensinado_em_espera_so_e_achada_para_quem_ensinou(mundo: Mundo) -> None:
+    fid = mundo.ensina()
+    mundo.receita_do_treino()
+    assert _acha(mundo, ANA)                             # quem ensinou usa logo depois de salvar
+    assert not _acha(mundo, BIA) and not _acha(mundo, None)
+    mundo.execucao_de_prova(fid, "r-ok")
+    mundo.evidencia(fid, "r-ok", "for")
+    assert _acha(mundo, BIA) and _acha(mundo, None)      # a prova aprovada libera para todas
+
+
+def test_a_receita_que_nao_veio_do_treino_nao_muda(mundo: Mundo) -> None:
+    mundo.ensina()
+    rid = mundo.store.save(package="com.instagram.android", app_version="1.0(1)", step_hash="h-outra",
+                           step_key="outra", learned_from="s1", candidate=False, signature="", variant="en-US/xhdpi",
+                           actions=[{"tool": "tap", "commit": False, "why": "x", "args": {},
+                                     "selectors": [{"kind": "rid", "rid": "app:id/x"}]}])
+    assert rid and mundo.store.find("com.instagram.android", "1.0(1)", "h-outra", signature="",
+                                    variant="en-US/xhdpi", persona=BIA) is not None
+
+
+def test_o_ensinado_em_espera_nao_e_o_fluxo_ativo_para_a_validacao(mundo: Mundo) -> None:
+    fid = mundo.ensina()
+    assert mundo.flows.match(_comando("@carla")) is not None             # a prévia segue casando
+    assert mundo.flows.ativo_para(_comando("@carla")) is None
+    mundo.execucao_de_prova(fid, "r-ok")
+    mundo.evidencia(fid, "r-ok", "for")
+    assert mundo.flows.ativo_para(_comando("@carla")) is not None
