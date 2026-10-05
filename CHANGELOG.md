@@ -165,6 +165,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   central, compartilhado com o backend no ar) e a prova real, que só vem com um travamento de verdade depois do
   deploy.
 
+## 2026-10-05 — 29.120: a corrida do teste da segunda leitura do log do snapshot (branch fix/29-120-corrida-releitura)
+
+- `test_wake_relogio_do_snapshot.py::test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura` reprovou
+  no PG dirigido da suíte 37 (1 failed, 9600 passed) e passou sozinho no PG. A causa estava no teste, não no código:
+  ele punha `LOG_CONTRADIZ_RELEITURA_S` em 10 ms, e a releitura, agendada dentro do `_wait_boot`, disparava em
+  qualquer `await` que ele ainda fizesse depois disso, antes de o teste ligar a recusa do log. Com a máquina cheia,
+  essas esperas passaram de 10 ms, e a releitura leu o veredito ainda `None`. Não era o `db.query` síncrono do teste
+  (um `time.sleep` de 50 ms ali não reprova: o laço não roda o temporizador durante ele).
+- Agora o teste captura a releitura no `call_later` do laço (só ela; o resto, o `asyncio.sleep` inclusive, segue no
+  laço de verdade), confere que o prazo é o `LOG_CONTRADIZ_RELEITURA_S` real e a dispara à mão depois que a recusa
+  chega. O código do central não muda.
+- Prova `simulated`: `backend/tests/test_wake_relogio_do_snapshot.py`, 12 passed. O teste antigo com o prazo em 0 s
+  reprova sempre (o disparo dentro do `_wait_boot`); o novo não depende do prazo, porque captura a releitura.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
