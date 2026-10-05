@@ -24,7 +24,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O A/B ao vivo do 31.56 deu LIGA (05/10, android-09, deploy 33, 3 execuções por braço): sucesso 3/3 nos dois braços,
   16 decisões ligada contra 14 desligada (+14,3 %, teto 20 %), US$ 0,496713 no total. O padrão de
   `ai.tapar_barra_de_endereco` passa a `true` em `config.py` e em `config.example.yaml`; o central já está ligado pela
-  config dele.
+  config dele. Ressalva: n = 3 por braço; o veredito é o do critério pré-registrado, não uma estimativa do efeito.
+- A virada é silenciosa para quem não tem a chave no `config.yaml`: quem quiser o comportamento antigo põe
+  `ai.tapar_barra_de_endereco: false`.
 - Prova: `real` do A/B (acima); `simulated` do padrão (`backend/tests/test_url_fora_do_prompt.py`).
 
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)

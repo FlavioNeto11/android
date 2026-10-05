@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import yaml
 from PIL import Image
 
 from app.automation.hierarchy import parse_hierarchy
@@ -85,8 +86,6 @@ def test_a_chave_vem_ligada_e_desligada_a_imagem_vai_como_esta() -> None:
 
 def test_o_padrao_do_codigo_e_o_do_exemplo_nao_divergem() -> None:
     """31.56: quem sobe sem `config.yaml` lê o exemplo; o padrão do código e o do exemplo têm de dizer o mesmo."""
-    import yaml
-
     exemplo = Path(__file__).resolve().parents[2] / "config" / "config.example.yaml"
     bruto = yaml.safe_load(exemplo.read_text(encoding="utf-8"))
     assert bruto["ai"]["tapar_barra_de_endereco"] is AiCfg().tapar_barra_de_endereco
