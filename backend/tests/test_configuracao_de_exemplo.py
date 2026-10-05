@@ -106,11 +106,30 @@ def test_a_partida_copia_o_exemplo_e_nunca_sobrescreve_o_que_ja_existe() -> None
 
 # ------------------------------------------------------------------ o bloco `portal` (29.77, 29.83)
 def test_o_teto_de_buscas_da_exclusao_vem_do_yaml_pelo_nome_exato(tmp_path: Path) -> None:
-    """`portal.limites.buscas_por_operador_hora` é lido pelo `load_config` com esse nome, e o exemplo traz o padrão."""
-    assert load_config(EXEMPLO).file.portal.limites.buscas_por_operador_hora == 30
+    """`portal.limites.buscas_por_operador_hora` e `buscas_total_hora` são lidos pelo `load_config` com esses nomes, e
+    o exemplo traz os padrões."""
+    limites = load_config(EXEMPLO).file.portal.limites
+    assert (limites.buscas_por_operador_hora, limites.buscas_total_hora) == (30, 60)
     alvo = tmp_path / "config.yaml"
-    alvo.write_text("portal:\n  limites:\n    buscas_por_operador_hora: 12\n", encoding="utf-8")
-    assert load_config(alvo).file.portal.limites.buscas_por_operador_hora == 12
+    alvo.write_text("portal:\n  limites:\n    buscas_por_operador_hora: 12\n    buscas_total_hora: 40\n",
+                    encoding="utf-8")
+    limites = load_config(alvo).file.portal.limites
+    assert (limites.buscas_por_operador_hora, limites.buscas_total_hora) == (12, 40)
+
+
+@pytest.mark.parametrize("bloco", [
+    "portal:\n  contatos:\n    - nome: Fulano\n      telefon: '+55 10 90000-0001'\n",     # chave errada
+    "portal:\n  contatos:\n    - nome: Fulano\n      telefone: 'ramal 90000-0001'\n",     # valor recusado
+])
+def test_erro_do_bloco_portal_nomeia_a_chave_e_nao_ecoa_o_valor(tmp_path: Path, bloco: str) -> None:
+    """O erro vai ao console do deploy e ao log da subida: diz o caminho e a chave, nunca o telefone (revisão E5)."""
+    alvo = tmp_path / "config.yaml"
+    alvo.write_text(bloco, encoding="utf-8")
+    with pytest.raises(Exception) as erro:
+        load_config(alvo)
+    texto = str(erro.value)
+    assert "portal.contatos.0.telefon" in texto
+    assert "90000" not in texto and "0001" not in texto and "input_value" not in texto
 
 
 @pytest.mark.parametrize("bloco", [

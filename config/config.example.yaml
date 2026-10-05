@@ -738,6 +738,7 @@ portal:                           # site institucional na raiz do nome público 
     token_min_s: 3                # o formulário enviado antes disso é tratado como robô (1 a 60)
     token_max_s: 7200             # depois disso a página ficou aberta demais e o visitante recarrega (600 a 86400)
     buscas_por_operador_hora: 30  # buscas por telefone na exclusão a pedido do titular (29.83), por operador (1 a 1000)
+    buscas_total_hora: 60         # as mesmas buscas somando todos os operadores (1 a 10000)
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço

@@ -6077,14 +6077,19 @@ Duas rotas novas, **atrás de sessão e só para uma pessoa nela** (ADR-075, "Ex
 Bearer. Nenhuma entra na exceção do portão. Valem com o site e o contato ligados ou não. Migração `109_portal_exclusoes`.
 
 - `POST /api/portal/contatos/busca`, corpo JSON `{telefone}` (é `POST` para o telefone não ir para a URL). Compara
-  o número INTEIRO, nunca prefixo nem finais: de 8 a 30 dígitos (o mínimo do formulário), sem os zeros da frente; no
-  brasileiro completo (DDD + número) o `55` é opcional dos dois lados; fora dele, igualdade exata de todos os dígitos
-  (sem DDD, internacional). **200** `{"contatos": [{id, criado_em, estado,
-  final}]}`, com `final` = os 4 dígitos finais do telefone guardado. Nome, empresa, mensagem e o número inteiro nunca
-  saem. **422** `telefone_invalido`. **429** `muitas_buscas` com `Retry-After`: acima de
-  `portal.limites.buscas_por_operador_hora` (30) buscas válidas por operador da sessão na última hora, contadas em
-  memória no processo (outro operador não é afetado; reiniciar zera). O log de cada busca leva o operador e a
-  contagem de achados, nunca o telefone.
+  o número INTEIRO, nunca prefixo nem finais.
+  - Aceita de 8 a 30 dígitos, contados com os zeros da frente, como o formulário conta. Na comparação, os zeros da
+    frente saem.
+  - No brasileiro completo (DDD + número), o `55` é opcional dos dois lados. Fora dele (sem DDD, internacional), vale
+    a igualdade exata de todos os dígitos.
+  - **200** `{"contatos": [{id, criado_em, estado, final}]}`, com `final` = os 4 dígitos finais do telefone guardado.
+    Nome, empresa, mensagem e o número inteiro nunca saem.
+  - **422** `telefone_invalido`.
+  - **429** `muitas_buscas` com `Retry-After`. Há dois tetos de buscas válidas na última hora, contados em memória no
+    processo (reiniciar zera):
+    - `portal.limites.buscas_por_operador_hora` (30) por operador da sessão, com o nome em `casefold`;
+    - `portal.limites.buscas_total_hora` (60) somando todos os operadores.
+  - O log de cada busca leva o operador e a contagem de achados, nunca o telefone.
 - `POST /api/portal/contatos/excluir`, corpo JSON `{ids: [1..50 inteiros], pedido_por: "formulario" | "telefone" |
   "outro"}`. **200** `{apagados: [id], mantidos: [{id, motivo}], inexistentes: [id], mensagens_apagadas: n,
   mensagens_a_mao: [{contato_id, enviada_em}], sem_canal: bool}`. `apagados` e o registro levam só o que ESTE DELETE

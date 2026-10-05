@@ -32,9 +32,15 @@ def digitos(texto: str) -> str:
 
 def chave_do_telefone(texto: str) -> str | None:
     """O número na forma de comparar, ou `None` se não chega a um telefone que o formulário aceitaria. Brasileiro
-    completo vira DDD + número (sem o `55`); o resto fica com todos os dígitos, sem os zeros da frente."""
-    d = digitos(texto).lstrip("0")
+    completo vira DDD + número (sem o `55`); o resto fica com todos os dígitos, sem os zeros da frente.
+
+    O mínimo e o máximo contam os dígitos ANTES de tirar os zeros, como o formulário conta (`campos.py`): um `0` e
+    mais 7 dígitos passa lá e tem de ser achado aqui (revisão do #342, E3-b)."""
+    d = digitos(texto)
     if len(d) < DIGITOS_MIN or len(d) > DIGITOS_MAX:
+        return None
+    d = d.lstrip("0")
+    if not d:
         return None
     if len(d) in (12, 13) and d.startswith(_PAIS):
         return "br:" + d[len(_PAIS):]

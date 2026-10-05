@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import importlib
 import json
+import threading
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -18,7 +20,7 @@ import pytest
 from pydantic import SecretStr
 
 from app.main import create_app
-from app.modules.portal.application.exclusao import MuitasBuscas
+from app.modules.portal.application.exclusao import MuitasBuscas, ServicoDeExclusao
 from app.modules.portal.domain.exclusao import chave_do_telefone, final, mesmo_telefone
 from app.util import now
 
@@ -99,6 +101,9 @@ def test_telefone_compara_o_numero_inteiro_com_o_55_e_o_0_opcionais() -> None:
     assert not mesmo_telefone("90000-0001", TEL_A)                     # o número inteiro, nunca os finais
     assert not mesmo_telefone(TEL_A, "")                               # o descarte apaga: nunca casa
     assert chave_do_telefone("1234567") is None and chave_do_telefone("1" * 31) is None
+    # O mínimo conta os zeros da frente, como o formulário: 0 + 7 dígitos passou lá e é achado aqui (revisão E3-b).
+    assert chave_do_telefone("0 9000-0001") == "num:90000001" and mesmo_telefone("09000-0001", "0 9000 0001")
+    assert chave_do_telefone("00000000") is None                       # só zeros (a isca da prova de fora)
     assert final(TEL_A) == "0001"
 
 
@@ -366,6 +371,67 @@ def test_teto_de_buscas_libera_depois_da_hora(harness: Harness) -> None:
     with pytest.raises(MuitasBuscas):
         servico.buscar(TEL_A, operador="x", agora_s=1100.0)
     assert servico.buscar(TEL_A, operador="x", agora_s=1000.0 + 3600.5) == []     # a 1ª saiu da janela
+
+
+def test_nome_que_so_muda_na_caixa_divide_o_balde(harness: Harness) -> None:
+    """O nome do operador é declarado no login: "Ana" e "ana" são o mesmo balde (revisão do #342, E4)."""
+    assert harness.state is not None
+    servico = harness.state.portal.exclusao
+    for i in range(30):
+        servico.buscar(TEL_A, operador="Ana" if i % 2 else "ana", agora_s=1000.0 + i)
+    for nome in ("ANA", "Ana", "ana"):
+        with pytest.raises(MuitasBuscas):
+            servico.buscar(TEL_A, operador=nome, agora_s=1100.0)
+
+
+def test_teto_geral_barra_o_terceiro_nome(harness: Harness, caplog: pytest.LogCaptureFixture) -> None:
+    """Um nome novo a cada login ganha outro balde por operador, mas não outro balde geral: 60 por hora somando todos
+    (`portal.limites.buscas_total_hora`). O log diz quem bateu no teto geral, sem telefone."""
+    assert harness.state is not None
+    assert harness.cfg.file.portal.limites.buscas_total_hora == 60
+    servico = harness.state.portal.exclusao
+    for nome in ("primeira", "segunda"):
+        for i in range(30):
+            servico.buscar(TEL_A, operador=nome, agora_s=1000.0 + i)
+    with caplog.at_level("WARNING", logger="poc.portal"), pytest.raises(MuitasBuscas) as erro:
+        servico.buscar(TEL_A, operador="terceira", agora_s=1100.0)
+    assert 1 <= erro.value.espera_s <= 3601
+    assert "teto geral de buscas de exclusão (60 na hora), pedido de terceira" in caplog.text
+    assert "90000" not in caplog.text
+    assert servico.buscar(TEL_A, operador="terceira", agora_s=1000.0 + 3600.5 + 30) == []   # a hora passou
+
+
+def test_duas_threads_no_limite_nao_passam_as_duas() -> None:
+    """A rota chama a busca em threads do pool. Com o teto em 1 e a leitura do teto lenta de propósito (abre a janela
+    da corrida), oito buscas ao mesmo tempo: só uma passa, e a limpeza não quebra com o dicionário mudando."""
+    class RepoVazio:
+        def com_telefone(self) -> list[object]:
+            return []
+
+    def teto_lento() -> int:
+        time.sleep(0.02)
+        return 1
+
+    servico = ServicoDeExclusao(RepoVazio(), apagar_no_canal=lambda: None,  # type: ignore[arg-type]
+                                canal_presente=lambda: False, buscas_por_hora=teto_lento, buscas_no_total=lambda: 1000)
+    largada = threading.Barrier(8)
+    passou: list[int] = []
+    barrado: list[int] = []
+
+    def uma(i: int) -> None:
+        largada.wait()
+        try:
+            servico.buscar(TEL_A, operador="mesma", agora_s=1000.0 + i / 100)
+            passou.append(i)
+        except MuitasBuscas:
+            barrado.append(i)
+
+    fios = [threading.Thread(target=uma, args=(i,)) for i in range(8)]
+    for f in fios:
+        f.start()
+    for f in fios:
+        f.join(10)
+    assert (len(passou), len(barrado)) == (1, 7)
 
 
 async def test_falha_do_portal_depois_do_ok_da_canais_e_a_repeticao_resolve(harness: Harness,

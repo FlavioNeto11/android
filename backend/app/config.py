@@ -1533,8 +1533,11 @@ TELEFONE_PUBLICO = re.compile(r"^[0-9+()\- ]{8,30}$")
 
 #: O bloco `portal` recusa chave desconhecida (o resto do arquivo aceita): um nome errado ali (`buscas_por_operador_hor`)
 #: valeria o padrão em silêncio, e é o bloco que mexe com o que a página promete ao visitante e com a exclusão a pedido
-#: do titular. A subida falha dizendo qual chave (pedido da orquestradora no 29.83).
-_PORTAL_ESTRITO = ConfigDict(extra="forbid")
+#: do titular. A subida falha dizendo qual chave (pedido da orquestradora no 29.83). O erro nomeia a chave e o caminho,
+#: nunca o valor: um `telefon:` digitado errado em `portal.contatos` poria o telefone no console do deploy e no log
+#: da subida (revisão do #342, E5). Aqui vale quando o modelo é validado sozinho; pelo arquivo inteiro, quem decide é
+#: o `AppConfigFile` (o pydantic usa a configuração do modelo raiz), que esconde o valor também.
+_PORTAL_ESTRITO = ConfigDict(extra="forbid", hide_input_in_errors=True)
 
 
 class ContatoPublicoCfg(BaseModel):
@@ -1577,6 +1580,9 @@ class PortalContatoLimitesCfg(BaseModel):
     #: Buscas por telefone na exclusão a pedido do titular (29.83), por operador da sessão e por hora, contadas em
     #: memória no processo. Não é o formulário: é o painel, mas a busca acha contatos e não pode virar varredura.
     buscas_por_operador_hora: int = Field(30, ge=1, le=1000)
+    #: As mesmas buscas somando todos os operadores. É este que limita a varredura: o nome do operador é declarado
+    #: no login, e um nome novo ganharia outro balde por operador, mas não outro balde geral (revisão do #342, E4).
+    buscas_total_hora: int = Field(60, ge=1, le=10_000)
 
 
 class PortalCfg(BaseModel):
@@ -1604,6 +1610,10 @@ class PortalCfg(BaseModel):
 
 
 class AppConfigFile(BaseModel):
+    # O erro de validação nomeia a chave e o caminho, sem ecoar o valor lido do arquivo: o config de cada instalação
+    # carrega telefones e nomes (portal.contatos), e a mensagem vai ao console do deploy e ao log da subida (E5).
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     server: ServerCfg = ServerCfg()
     paths: PathsCfg = PathsCfg()
     android: AndroidCfg = AndroidCfg()

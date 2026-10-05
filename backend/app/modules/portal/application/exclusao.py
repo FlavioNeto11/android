@@ -16,6 +16,7 @@ O registro não guarda dado do titular (só ids, contagens, o operador e o canal
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -36,14 +37,14 @@ class PedidoInvalido(ValueError):
 
 
 class MuitasBuscas(Exception):
-    """O operador passou do teto de buscas da hora; `espera_s` vai no `Retry-After`."""
+    """O operador, ou todos somados, passou do teto de buscas da hora; `espera_s` vai no `Retry-After`."""
 
     def __init__(self, espera_s: int) -> None:
         super().__init__(f"espere {espera_s} s")
         self.espera_s = espera_s
 
 
-#: Uma hora: a janela do teto de buscas por operador.
+#: Uma hora: a janela dos tetos de buscas (por operador e somado).
 JANELA_DAS_BUSCAS_S = 3600.0
 
 
@@ -110,26 +111,46 @@ def _ids(valor: object) -> list[int]:
     return ids
 
 
+def _espera(mais_antiga: float, agora_s: float) -> int:
+    return max(1, int(JANELA_DAS_BUSCAS_S - (agora_s - mais_antiga)) + 1)
+
+
 class ServicoDeExclusao:
     def __init__(self, repo: RepositorioDeExclusao, *, apagar_no_canal: Callable[[], ApagarNoCanal | None],
-                 canal_presente: Callable[[], bool], buscas_por_hora: Callable[[], int]) -> None:
+                 canal_presente: Callable[[], bool], buscas_por_hora: Callable[[], int],
+                 buscas_no_total: Callable[[], int]) -> None:
         self.repo = repo
         self._apagar_no_canal = apagar_no_canal
         self._canal_presente = canal_presente
         self._buscas_por_hora = buscas_por_hora
-        # operador → instantes (relógio monotônico) das buscas da última hora. Em memória no processo: reiniciar zera,
-        # e isso basta, porque a busca exige o número inteiro e é de quem já está logado (decisão da orquestradora).
+        self._buscas_no_total = buscas_no_total
+        # Instantes (relógio monotônico) das buscas da última hora: por operador e de todos somados. Em memória no
+        # processo: reiniciar zera, e isso basta, porque a busca exige o número inteiro e é de quem já está logado
+        # (decisão da orquestradora). A chave por operador é o nome em `casefold`: o nome é declarado no login, e
+        # "Ana" e "ana" são a mesma pessoa. O teto SOMADO é o que de fato limita a varredura: um nome novo a cada
+        # login ganharia outro balde por operador, mas não outro balde geral (revisão do #342, E4).
         self._buscas: dict[str, list[float]] = {}
+        self._todas: list[float] = []
+        # A rota chama `buscar` em threads do pool: sem a trava, duas buscas no limite passariam as duas, e a limpeza
+        # percorreria o dicionário enquanto outra thread insere.
+        self._trava = threading.Lock()
 
     def _contar_busca(self, operador: str, agora_s: float) -> None:
-        recentes = [t for t in self._buscas.get(operador, []) if agora_s - t < JANELA_DAS_BUSCAS_S]
-        if len(recentes) >= self._buscas_por_hora():
-            self._buscas[operador] = recentes
-            raise MuitasBuscas(max(1, int(JANELA_DAS_BUSCAS_S - (agora_s - recentes[0])) + 1))
-        recentes.append(agora_s)
-        self._buscas[operador] = recentes
-        for chave in [c for c, ts in self._buscas.items() if not ts or agora_s - ts[-1] >= JANELA_DAS_BUSCAS_S]:
-            del self._buscas[chave]                        # quem não busca há uma hora sai: o dicionário não cresce
+        chave = operador.casefold()
+        with self._trava:
+            todas = [t for t in self._todas if agora_s - t < JANELA_DAS_BUSCAS_S]
+            recentes = [t for t in self._buscas.get(chave, []) if agora_s - t < JANELA_DAS_BUSCAS_S]
+            self._todas = todas
+            self._buscas[chave] = recentes
+            if len(todas) >= self._buscas_no_total():
+                log.warning("portal: teto geral de buscas de exclusão (%s na hora), pedido de %s", len(todas), operador)
+                raise MuitasBuscas(_espera(todas[0], agora_s))
+            if len(recentes) >= self._buscas_por_hora():
+                raise MuitasBuscas(_espera(recentes[0], agora_s))
+            recentes.append(agora_s)
+            todas.append(agora_s)
+            for c in [c for c, ts in self._buscas.items() if not ts or agora_s - ts[-1] >= JANELA_DAS_BUSCAS_S]:
+                del self._buscas[c]                        # quem não busca há uma hora sai: o dicionário não cresce
 
     def buscar(self, telefone: object, *, operador: str, agora_s: float) -> list[dict[str, object]]:
         """Os contatos com aquele telefone, só com id, data, estado e os 4 dígitos finais. Nome, empresa e mensagem

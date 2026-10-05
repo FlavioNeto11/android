@@ -5586,14 +5586,34 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 - Rotas `POST /api/portal/contatos/busca` e `POST /api/portal/contatos/excluir` (adendo v1.42), atrás de sessão e
   com uma PESSOA nela: sem `request.state.operador`, 401, mesmo no loopback e com o Bearer (que é anônimo). Nenhuma
   automação chama. A busca é `POST` para o telefone não ir para a URL nem para o log de acesso.
-- A busca compara o número INTEIRO, nunca prefixo nem finais, de 8 a 30 dígitos (o mínimo do formulário) e sem os
-  zeros da frente: no brasileiro completo o `55` é opcional dos dois lados; fora dele (sem DDD, internacional),
-  igualdade exata de todos os dígitos. Tudo o que o formulário aceitou é achável (revisão do #342, E1). Teto de 30 buscas
-  válidas por hora por operador (`portal.limites.buscas_por_operador_hora`, em memória; 429 `muitas_buscas`): a busca
-  acha contatos e não pode virar varredura. Cada busca deixa no log o operador e a contagem, sem o telefone.
-- O bloco `portal` do `config.yaml` recusa chave desconhecida (`extra="forbid"` em `PortalCfg`, nos limites e nos
-  contatos; o resto do arquivo segue aceitando): é o bloco que mexe com o que a página promete e com a exclusão, e um
-  nome errado não pode valer o padrão em silêncio. Coberto por `tests/test_configuracao_de_exemplo.py`.
+- **Como a busca compara.**
+  - Compara o número INTEIRO, nunca prefixo nem finais.
+  - Aceita de 8 a 30 dígitos, contados COM os zeros da frente, como o formulário conta (revisão E3-b). Na comparação,
+    os zeros da frente saem.
+  - No brasileiro completo, o `55` é opcional dos dois lados. Fora dele (sem DDD, internacional), vale a igualdade
+    exata de todos os dígitos.
+  - Tudo o que o formulário aceitou é achável (revisão do #342, E1).
+  - Bordas aceitas e não tratadas (revisão E3):
+    - "+55" sem DDD tem 10 ou 11 dígitos e é lido como brasileiro com DDD 55. Pode casar com um número real do RS de
+      mesmo final, e o operador vê as datas e os 4 finais antes de marcar.
+    - Com o código de operadora (`0 15 11 …`), o número não casa com a forma só com DDD: busque como a pessoa escreveu.
+- **Dois tetos de busca, ambos em memória e com 429 `muitas_buscas`**, porque a busca acha contatos e não pode virar
+  varredura.
+  - 30 buscas válidas por hora por operador (`portal.limites.buscas_por_operador_hora`). A chave é o nome da sessão em
+    `casefold`, então "Ana" e "ana" dividem o balde.
+  - 60 por hora somando todos (`portal.limites.buscas_total_hora`). É este que limita a varredura: o nome é declarado
+    no login, e um nome novo ganharia outro balde por operador, mas não outro balde geral (revisão E4).
+  - A contagem é feita sob trava, porque a rota busca em threads do pool.
+  - Reiniciar o central zera os dois, e isso fica aceito: a busca exige o número inteiro e uma pessoa logada.
+  - Cada busca deixa no log o operador e a contagem, sem o telefone.
+- **O bloco `portal` do `config.yaml` recusa chave desconhecida** (`extra="forbid"` em `PortalCfg`, nos limites e
+  nos contatos; o resto do arquivo segue aceitando).
+  - Motivo: é o bloco que mexe com o que a página promete e com a exclusão, e um nome errado não pode valer o padrão
+    em silêncio.
+  - O erro nomeia o caminho e a chave, nunca o valor: `hide_input_in_errors` no `AppConfigFile`, o modelo raiz que o
+    pydantic consulta. Sem isso, um `telefon:` digitado errado poria o telefone no console do deploy e no log da
+    subida (revisão E5).
+  - Coberto por `tests/test_configuracao_de_exemplo.py`.
 - Uma falha do Portal DEPOIS do `ok` da Canais deixa a linha e o registro como estavam (a lápide já segura o aviso);
   repetir a exclusão resolve, porque a Canais é idempotente na chave. Coberto por teste.
 - **A Canais antes do DELETE** (`apagar_avisos_do_portal`, 28.34, contrato fora do Git em

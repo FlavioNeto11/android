@@ -12,8 +12,8 @@ import type { Tone } from '../../lib/status';
 import { parseTs } from '../../lib/time';
 import styles from './Privacidade.module.css';
 
-/** O telefone como a pessoa escreveu no formulário: de 8 a 30 dígitos, sem os zeros da frente (o de discagem), o mesmo
- *  mínimo do formulário. A API compara o número inteiro (com o 55 opcional no brasileiro completo); a regra local só
+/** O telefone como a pessoa escreveu no formulário: de 8 a 30 dígitos contando os zeros da frente, como o formulário
+ *  conta, e não só zeros. A API compara o número inteiro (com o 55 opcional no brasileiro completo); a regra local só
  *  evita ir à rede com o que ela recusaria. */
 const MIN_DIGITOS = 8;
 const MAX_DIGITOS = 30;
@@ -90,8 +90,7 @@ export function PrivacidadeSection() {
 
   const aoBuscar = async () => {
     const digitos = soDigitos(telefone);
-    const semZeros = digitos.replace(/^0+/, '');
-    if (semZeros.length < MIN_DIGITOS || semZeros.length > MAX_DIGITOS) {
+    if (digitos.length < MIN_DIGITOS || digitos.length > MAX_DIGITOS || /^0+$/.test(digitos)) {
       setErroTelefone(`Informe o telefone como a pessoa escreveu, com DDD se ela usou (${MIN_DIGITOS} a ${MAX_DIGITOS} dígitos).`);
       return;
     }

@@ -82,6 +82,17 @@ describe('Exclusão a pedido do titular', () => {
     expect(el.getAttribute('autocomplete')).toBe('off');
   });
 
+  it('conta os zeros da frente como o formulário conta: 0 + 7 dígitos busca; só zeros, não', async () => {
+    backend.on('POST', BUSCA, () => json({ contatos: [] }));
+    await render();
+    await buscar('00000000');
+    expect(text(container)).toContain('Informe o telefone como a pessoa escreveu');
+    expect(backend.calls).toHaveLength(0);
+    await buscar('0 9000-0001');
+    await waitFor(() => expect(backend.callsTo('POST', BUSCA)).toHaveLength(1));
+    expect(backend.callsTo('POST', BUSCA)[0]?.body).toEqual({ telefone: '090000001' });
+  });
+
   it('busca por POST com só os dígitos e mostra o final do telefone, sem nome nem mensagem', async () => {
     backend.on('POST', BUSCA, () => json(DOIS));
     await render();
