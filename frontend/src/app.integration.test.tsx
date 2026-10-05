@@ -8,7 +8,7 @@ import {
   DIAGNOSTICS, FLOWS, RECIPES, REPORT, RUN_EVENTS, RUN_ID, USAGE_SIMULATED, makeEvent, makeInstance, makeRun, makeRunDetail, makeSnapshot,
 } from './test/fixtures';
 import {
-  FakeBackend, FakeWebSocket, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, pointer, setValue, text, waitFor,
+  FakeBackend, FakeWebSocket, allByRole, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, pointer, setValue, text, waitFor,
 } from './test/harness';
 
 /**
@@ -282,7 +282,8 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(runPosts()).toHaveLength(2));
 
     backend.on('POST', /^\/api\/runs$/, () => json({ ...makeRun(), deduplicated: true }));
-    await click(byRole('button', /^Executar/));
+    // A segunda tentativa registrada ainda não voltou: o Executar fica em `loading` até a resposta (29.104).
+    await click(await botaoPronto(/^Executar/));
     await waitFor(() => expect(text()).toContain('Execução já existente — nenhuma duplicata criada'));
 
     const posts = runPosts().map((c) => c.body as { idempotency_key: string; mode: string; instance_ids: string[]; command: string });
@@ -414,6 +415,10 @@ describe('Central de Aparelhos — sessão completa', () => {
     const shownFrameId = `full-${frameSeq}`;
     expect(backend.callsTo('POST', /input$/)[0]?.body).toEqual({ type: 'tap', x: 540, y: 1200, lease_id: 'lease-1', frame_id: shownFrameId });
 
+    // O toque registrado ainda não voltou, e a tela recusa gesto enquanto envia: sem esperar, a margem passaria
+    // por estar ocupada, não por ser margem. As teclas saem do bloqueio com a resposta (29.104).
+    await botaoPronto('Voltar', panel);
+
     // margem (pillarbox) é rejeitada
     await pointer(box, 'pointerdown', 100, 600);
     await pointer(box, 'pointerup', 100, 600);
@@ -427,12 +432,14 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(backend.callsTo('POST', /input$/)).toHaveLength(2));
     expect(backend.callsTo('POST', /input$/)[1]?.body).toMatchObject({ type: 'swipe', x: 540, y: 2000, x2: 540, y2: 800, duration_ms: expect.any(Number) });
 
-    // tecla do Android e texto
-    await click(byRole('button', 'Voltar', panel));
+    // tecla do Android e texto. As teclas ficam desabilitadas enquanto o gesto anterior não volta (29.104).
+    await click(await botaoPronto('Voltar', panel));
     await waitFor(() => expect(backend.callsTo('POST', /input$/)).toHaveLength(3));
     expect(backend.callsTo('POST', /input$/)[2]?.body).toMatchObject({ type: 'key', key: 'back', lease_id: 'lease-1' });
 
-    // 409 stale_frame: explica e busca um frame novo
+    // 409 stale_frame: explica e busca um frame novo. Antes, a tecla tem de voltar: com ela em voo a tela recusa o
+    // toque e o 409 nunca seria pedido (29.104).
+    await botaoPronto('Voltar', panel);
     const framesBefore = backend.callsTo('GET', /android-01\/frame$/).length;
     backend.on('POST', /^\/api\/instances\/[^/]+\/input$/, () => apiError(409, 'stale_frame', 'Frame antigo'));
     await pointer(box, 'pointerdown', 500, 600);
@@ -477,7 +484,8 @@ describe('Central de Aparelhos — sessão completa', () => {
 
     // not_controller: explica e derruba o lease local
     backend.on('POST', /^\/api\/instances\/android-02\/input$/, () => apiError(409, 'not_controller', 'O controle voltou para a IA'));
-    await click(byRole('button', /^Início/, panel));
+    // O Início anterior registrado ainda não voltou, e as teclas ficam desabilitadas enquanto ele envia (29.104).
+    await click(await botaoPronto(/^Início/, panel));
     await waitFor(() => expect(text()).toContain('Você não está mais com o controle deste aparelho'));
     // sem o lease, a barra do controle manual sai da tela: não há tecla "desabilitada" para clicar à toa
     await waitFor(() => expect(allByRole('button', /^Início/, panel)).toHaveLength(0));
@@ -586,7 +594,8 @@ describe('Central de Aparelhos — sessão completa', () => {
     expect(preview.value).toBe('on_demand');
     expect(Array.from(preview.options).map((o) => o.textContent)).toEqual(['Sob demanda (padrão)', 'Sempre (modo antigo)']);
     await setValue(preview, 'always');
-    await click(byRole('button', /^Salvar limites/));
+    // O PUT anterior registrado ainda não voltou: o Salvar fica em `loading` até a resposta (29.104).
+    await click(await botaoPronto(/^Salvar limites/));
     await waitFor(() => expect(backend.callsTo('PUT', /settings$/)).toHaveLength(3));
     expect(backend.callsTo('PUT', /settings$/)[2]?.body).toEqual({ preview_mode: 'always' });
 
@@ -631,7 +640,8 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(backend.callsTo('DELETE', /flows\/abrir-config$/)).toHaveLength(1));
     await waitFor(() => expect(text(panel)).not.toContain('Abrir Configurações'));
 
-    await click(byRole('button', 'Excluir a receita open_app v1', panel));
+    // A lista se relê depois do DELETE do fluxo: o botão da receita só aceita o clique com ela de volta (29.104).
+    await click(await botaoPronto('Excluir a receita open_app v1', panel));
     const confirmRecipe = await waitFor(() => byRole('dialog', /Excluir a receita/));
     await click(byRole('button', 'Excluir receita', confirmRecipe));
     await waitFor(() => expect(backend.callsTo('DELETE', /recipes\/12$/)).toHaveLength(1));
