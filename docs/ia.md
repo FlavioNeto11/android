@@ -1763,16 +1763,28 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
 
 - A regra do 31.51 (a limpeza recusa ou fecha, nunca aceita) vale também para o ATOR. Na r-20261005071303-f24955 ele
   tocou "Aceitar cookies" duas vezes por conta própria.
-- A trava é do executor, não do prompt: no navegador, todo `tap` e `long_press` do ator, por elemento ou por coordenada,
-  passa por `dialogos.toque_que_aceita` ANTES de chegar ao aparelho. O que aceitaria vira ação `rejected` com o motivo
-  "o consentimento do site não é aceito pelo ator", conta como erro e, na 4ª insistência, a etapa falha sem nova
-  tentativa (`pos_condicao_nao_comprovada` em `falhas.py`). Nunca vira sucesso por aceite.
-- Na faixa de um aviso de consentimento (rótulo, id ou classe com cookie, consent, privacidade, privacy, LGPD ou GDPR,
-  mais 12 % da altura da tela acima e abaixo) só passam o recusar e o fechar de `botao_que_fecha`. "Continuar",
-  "Fechar e aceitar" e o botão com o texto só na imagem são recusados: o falso positivo vale mais que o aceite em
-  silêncio.
-- `ai.consentimento_aceito_em`: hosts em que o ator pode aceitar. Vazia por padrão; preenchê-la é decisão do dono.
+- A trava é do executor, não do prompt. No navegador, antes de o gesto chegar ao aparelho, passam por
+  `dialogos.toque_que_aceita`: `tap` e `long_press` (por elemento ou coordenada, julgados pelo PONTO tocado), o início
+  e o fim do `drag`, e o toque que o `type_text` com `element_id` dá no elemento. O `type_text` em elemento não
+  editável é recusado ("no navegador, type_text só em campo editável").
+- Com qualquer marca de consentimento na tela (cookie, consent, privacidade, privacy, LGPD ou GDPR no rótulo, id ou
+  classe), o rótulo que diz aceitar (aceitar, permitir, concordo, configurar, entendi, OK, allow, agree…) é recusado em
+  qualquer lugar. Na faixa em volta de cada marca (mais 12 % da altura da tela acima e abaixo; a marca com 60 % da tela
+  ou mais é a página) só passam o recusar, o fechar e o campo de texto: "Continuar" e o botão com o texto só na imagem
+  são recusados. O falso positivo vale mais que o aceite em silêncio.
+- O recusado vira ação `rejected` com o motivo "o consentimento do site não é aceito pelo ator (eN, Tipo)": no `error`
+  e no `status_detail` (que chegam a aviso e cartão) vão só o id e o tipo; o rótulo, texto da página, vai só ao
+  histórico do ator, com os espaços normalizados. Quatro recusas somadas na EXECUÇÃO (ou quatro erros seguidos) encerram
+  a etapa sem nova tentativa (`pos_condicao_nao_comprovada` em `falhas.py`). Nunca vira sucesso por aceite.
+- `ai.consentimento_aceito_em`: hosts em que o ator pode aceitar (lido da `url_bar`, com subdomínios). Vazia por padrão;
+  preenchê-la é decisão do dono. A carga recusa `*.loja.com`, `https://…` e caminho, que nunca casariam.
 - O prompt do ator diz "recuse; NUNCA aceite", só para economizar decisões.
-- Fora do navegador a trava não age: as folhas de app são declaradas no catálogo e fecham pela regra do 29.87.
+- Limites conhecidos:
+  - a trava só age com o pacote `com.android.chrome` (cobre as Custom Tabs); não cobre WebView embutida de app nem
+    outro navegador;
+  - o título de uma WebView com "privacidade" que ocupe menos de 60 % da árvore vira marca, e um "Salvar" perto dele é
+    recusado;
+  - "privacidad", "Datenschutz" e "confidentialité" não marcam; aviso sem nenhuma dessas palavras na árvore passa;
+  - fora do navegador a trava não age: as folhas de app são declaradas no catálogo e fecham pela regra do 29.87.
 - Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py`. `not_run`: as execuções 2 e 3 do 31.40,
   depois do deploy.

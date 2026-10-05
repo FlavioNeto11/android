@@ -26,7 +26,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `taskqueue/dialogos.py`: `toque_que_aceita` (nova). `taskqueue/executor.py`: `_aceite_do_toque` (novo) e a trava no
   `_run_step`, antes de o toque chegar ao aparelho. `AiCfg.consentimento_aceito_em` (vazia), regra em `falhas.py`,
   uma linha no prompt do ator (hash em `test_prompts_licoes` atualizado de propósito). `docs/ia.md` § 20.
-- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (10), com mutação conferida. `real`: `not_run`.
+- Leitura do #386 (Ferramentas do Claude): o `drag` (início e fim), o `type_text` com `element_id` (B1), o aceite
+  fora da faixa, o ponto tocado (N2), as recusas somadas na execução (N8), o rótulo fora do `error` (S1) e os hosts
+  validados na carga (N6).
+- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (23), com 5 mutações conferidas. `real`: `not_run`.
 
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 

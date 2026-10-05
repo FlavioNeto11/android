@@ -152,6 +152,13 @@ _MARGEM_DA_FAIXA = 0.12
 #: O motivo literal do toque recusado (regra em `learning/domain/falhas.py`).
 MOTIVO_ACEITE_RECUSADO = "o consentimento do site não é aceito pelo ator"
 
+#: N8 da leitura do #386: quantas recusas desta trava, somadas na EXECUÇÃO, encerram a etapa (alternar o aceite com
+#: `observe_screen` zera o `errors_in_row` e gastaria decisões até o teto).
+LIMITE_DE_RECUSAS_DE_ACEITE = 4
+
+#: B1 da leitura do #386: o `type_text` com `element_id` toca o elemento antes de escrever; no navegador, só em campo.
+REJEICAO_TYPE_TEXT_FORA_DE_CAMPO = "no navegador, type_text só em campo editável"
+
 
 def _de_consentimento(e: UiElement) -> bool:
     return any(_CONSENTIMENTO.search(x) for x in (e.class_name or "", e.resource_id or "", _rotulo(e)[:120]))
@@ -170,29 +177,42 @@ def _fecha_ou_recusa(e: UiElement) -> bool:
     return _normal(rotulo) in _ROTULOS_QUE_FECHAM or (not rotulo and bool(_ID_QUE_FECHA.search(e.resource_id or "")))
 
 
-def toque_que_aceita(tree: UiTree, alvo: UiElement | None) -> str | None:
-    """O rótulo do toque que ACEITARIA um aviso de consentimento do site; `None` quando o toque pode seguir.
+def toque_que_aceita(tree: UiTree, alvo: UiElement | None,
+                     ponto: tuple[int, int] | None = None) -> UiElement | None:
+    """O elemento cujo toque ACEITARIA um aviso de consentimento do site; `None` quando o toque pode seguir.
 
-    Na zona de um aviso de consentimento só passam o recusar e o fechar de `botao_que_fecha`; todo o resto é recusado,
-    inclusive o que não tem a palavra (um "Continuar", um "Fechar e aceitar", um botão com o texto só na imagem). A zona
-    é a faixa da tela em volta de cada elemento marcado que não seja a página (`_MARGEM_DA_FAIXA`). Fora da zona, só o
-    alvo que diz aceitar E consentimento no próprio rótulo ("Aceitar cookies"). Prefere o falso positivo (o toque
-    recusado; um link do rodapé perto de "Política de privacidade") ao aceite em silêncio."""
+    Com qualquer marca de consentimento na tela, o rótulo que diz aceitar (`_NUNCA`: "ACEITAR TODOS", "Allow all",
+    "Concordo", "OK") é recusado em qualquer lugar: o "Aceitar" de um aviso alto fica fora da faixa do texto (leitura do
+    #386). Na faixa da tela em volta de cada marca que não seja a página (`_MARGEM_DA_FAIXA`), só passam o recusar e o
+    fechar de `botao_que_fecha` e o campo de texto; todo o resto é recusado, inclusive o que não tem a palavra
+    ("Continuar", o botão com o texto só na imagem). O toque é julgado pelo PONTO tocado (`ponto`, do
+    `resolve_point`), não pelo centro do elemento achado. Prefere o falso positivo (o toque recusado) ao aceite em
+    silêncio."""
     if alvo is None:
         return None
-    rotulo = (_rotulo(alvo) or alvo.resource_id or alvo.class_name.rsplit(".", 1)[-1])[:60]
     marcas = [e for e in tree.elements if _de_consentimento(e)]
     if not marcas:
         return None
-    if _de_consentimento(alvo) and any(_NUNCA.search(x) for x in (alvo.text or "", alvo.desc or "",
-                                                                  alvo.resource_id or "")):
-        return rotulo
+    if any(_NUNCA.search(x) for x in (alvo.text or "", alvo.desc or "", alvo.resource_id or "")):
+        return alvo
+    if alvo.editable:
+        return None                                    # tocar num campo de texto não aceita nada
     largura = max((e.bounds[2] for e in tree.elements), default=0)
     altura = max((e.bounds[3] for e in tree.elements), default=0)
     margem = _MARGEM_DA_FAIXA * altura
-    centro = (alvo.bounds[1] + alvo.bounds[3]) / 2
+    y = ponto[1] if ponto is not None else (alvo.bounds[1] + alvo.bounds[3]) / 2
     na_zona = any(_area(m.bounds) < _FRACAO_DA_PAGINA * largura * altura
-                  and m.bounds[1] - margem <= centro <= m.bounds[3] + margem for m in marcas)
+                  and m.bounds[1] - margem <= y <= m.bounds[3] + margem for m in marcas)
     if na_zona and not _fecha_ou_recusa(alvo):
-        return rotulo
+        return alvo
     return None
+
+
+def rotulo_para_o_ator(e: UiElement) -> str:
+    """O rótulo de um elemento da página para o histórico do ator: espaços normalizados, até 60 caracteres. É texto da
+    página: vai só ao ator, nunca ao `error` nem ao `status_detail` (que chegam a aviso e cartão)."""
+    return " ".join((_rotulo(e) or e.resource_id or e.class_name.rsplit(".", 1)[-1]).split())[:60]
+
+
+def tipo_do_elemento(e: UiElement) -> str:
+    return e.class_name.rsplit(".", 1)[-1] or "elemento"

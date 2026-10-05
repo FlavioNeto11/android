@@ -666,6 +666,19 @@ class AiCfg(BaseModel):
     #: Item 31.72: hosts em que o ATOR pode aceitar um aviso de consentimento (cookies, privacidade). Vazia, nenhum: o
     #: toque de aceite é recusado antes de chegar ao aparelho. Preencher é decisão do dono, não de frente.
     consentimento_aceito_em: list[str] = Field(default_factory=list)
+
+    @field_validator("consentimento_aceito_em")
+    @classmethod
+    def _so_hosts(cls, hosts: list[str]) -> list[str]:
+        """31.72 (N6 da leitura): `*.loja.com`, `https://loja.com` e `loja.com/x` nunca casariam com o host da barra, em
+        silêncio. Recusa na carga, com o nome da chave; um host já vale para os subdomínios."""
+        limpos = [h.strip().casefold() for h in hosts]
+        ruins = [h for h in limpos if not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", h)]
+        if ruins:
+            raise ValueError(f"ai.consentimento_aceito_em aceita só host (loja.com.br), sem esquema, caminho nem "
+                             f"curinga; os subdomínios já valem: {ruins}")
+        return limpos
+
     #: Item 31.41: o valor lido só é gravado com evidência de RELAÇÃO com o nome pedido (seletor do catálogo, rótulo
     #: vizinho ou forma fechada; da imagem, um "sim" do verificador). Dúvida recusa a leitura (`leitura.sem_relacao`).
     relacao_do_valor: bool = True

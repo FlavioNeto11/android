@@ -113,7 +113,9 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
                               "concluiu a etapa sem ler o valor", "o valor da etapa nao foi lido",
                               "entrega as seguintes nao foi lido", "concluir a etapa fora do app dela",
                               "dado ausente' numa etapa que nao e de leitura",
-                              "concluiu a limpeza sem tocar no que cobre a tela")),
+                              "concluiu a limpeza sem tocar no que cobre a tela",
+                              # 31.72 (B1): o type_text que tocaria um botão do site em vez de um campo
+                              "insistiu em type_text fora de campo editavel")),
     (_F.IA_INDISPONIVEL, ("ia indisponivel", "verificacao nao pode ser feita", "sem chave configurada",
                           "chave da anthropic invalida", "credencial recusada por", "falha de rede ao contatar",
                           "limite de requisicoes", "resposta do modelo truncada", "sem chamar nenhuma ferramenta",

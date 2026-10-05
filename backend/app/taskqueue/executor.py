@@ -73,8 +73,9 @@ from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
-from .dialogos import (LIMITE_DE_DIALOGOS, MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA, botao_que_fecha,
-                       dialogo_sem_saida, e_navegador, toque_que_aceita)
+from .dialogos import (LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE, MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA,
+                       REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha, dialogo_sem_saida, e_navegador,
+                       rotulo_para_o_ator, tipo_do_elemento, toque_que_aceita)
 from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -1166,28 +1167,30 @@ class StepExecutor:
         informative = sum(1 for e in tree.elements if e.text or e.desc or e.clickable or e.editable)
         return "arvore_pobre" if informative < ai.rich_tree_min_elements else "arvore_rica"
 
-    def _aceite_do_toque(self, tool_ctx: ToolContext, args: object, tree: UiTree, ai: AiCfg) -> str | None:
-        """31.72: o rótulo do toque do ator que aceitaria um aviso de consentimento (`dialogos.toque_que_aceita`), pelo
-        elemento ou pela coordenada; `None` se o toque pode seguir. No `drag`, o ponto de INÍCIO e o de FIM: um arrasto
-        curto dentro do botão é um toque nele. Um host em `ai.consentimento_aceito_em` (vazia por padrão; preenchê-la é
+    def _aceite_do_toque(self, tool_ctx: ToolContext, args: object, tree: UiTree, ai: AiCfg) -> UiElement | None:
+        """31.72: o elemento cujo toque do ator aceitaria um aviso de consentimento (`dialogos.toque_que_aceita`), pelo
+        PONTO tocado (o do `resolve_point`, também por coordenada); `None` se o gesto pode seguir. No `drag`, o ponto de
+        INÍCIO e o de FIM: um arrasto curto dentro do botão é um toque nele. No `type_text` com `element_id`, o toque que
+        ele dá no elemento antes de escrever. Um host em `ai.consentimento_aceito_em` (vazia por padrão; preenchê-la é
         decisão do dono) libera o aceite ali."""
         if isinstance(args, Drag):
             pontos = [(None, args.from_x, args.from_y), (None, args.to_x, args.to_y)]
         else:
             pontos = [(getattr(args, "element_id", None), getattr(args, "x", None), getattr(args, "y", None))]
-        alvos = []
+        alvos: list[tuple[UiElement | None, tuple[int, int]]] = []
         for element_id, x, y in pontos:
             try:
-                alvos.append(resolve_point(tool_ctx, element_id, x, y)[2])
+                px, py, el = resolve_point(tool_ctx, element_id, x, y)
             except DriverError:
-                pass                                   # o gesto falharia na execução, como antes
+                continue                               # o gesto falharia na execução, como antes
+            alvos.append((el, (px, py)))
         if ai.consentimento_aceito_em:
             barras = set(BARRA_DE_ENDERECO.values())
             texto = next((e.text for e in tree.elements if e.resource_id in barras), "")
             host = _host(texto or "")
             if host and any(host == h or host.endswith("." + h) for h in map(str.casefold, ai.consentimento_aceito_em)):
                 return None
-        return next((r for alvo in alvos if (r := toque_que_aceita(tree, alvo)) is not None), None)
+        return next((r for el, ponto in alvos if (r := toque_que_aceita(tree, el, ponto)) is not None), None)
 
     def _image_scale(self, obs: Observation, ai: AiCfg | None = None) -> float:
         """Pixels do aparelho por pixel do espaço de coordenadas que o modelo enxerga."""
@@ -3000,28 +3003,53 @@ class StepExecutor:
                                        quick_tree, profile_id=profile_id, run_id=run_id, step_id=step.id),
                                    allowed_urls=urls_permitidas, allowed_hosts=hosts_das_contas, deadline=deadline,
                                    dormir=self.dormir)
-            if (decision.tool in ("tap", "long_press", "drag") and e_navegador(obs.package)
+            no_navegador = e_navegador(obs.package)
+            escreve_em = getattr(args, "element_id", None) if decision.tool == "type_text" else None
+            if (no_navegador and escreve_em and (campo := obs.tree.by_id(escreve_em)) is not None
+                    and not campo.editable):
+                # ---------- 31.72 (B1 da leitura do #386): o `type_text` com `element_id` TOCA o elemento antes de
+                # escrever, sem exigir campo; num botão do aviso seria o aceite por fora da trava. No navegador, só em
+                # campo editável.
+                aid = intencao(decision.tool, args.model_dump(mode="json"), rationale,
+                               side_effect=False, source="recipe" if from_recipe else "ai")
+                repo.finish_action(aid, ActionStatus.rejected,
+                                   error=f"{REJEICAO_TYPE_TEXT_FORA_DE_CAMPO} ({campo.id}, {tipo_do_elemento(campo)})")
+                history.append(f"type_text REJEITADA pelo executor: {REJEICAO_TYPE_TEXT_FORA_DE_CAMPO} "
+                               f"('{rotulo_para_o_ator(campo)}', {campo.id}); toque no campo de texto, não no botão.")
+                errors_in_row += 1
+                if errors_in_row >= 4:
+                    return await fail_or_retry("A IA insistiu em type_text fora de campo editável.", obs)
+                continue
+            if (no_navegador and (decision.tool in ("tap", "long_press", "drag") or escreve_em)
                     and (aceite := self._aceite_do_toque(tool_ctx, args, obs.tree, ai_cfg)) is not None):
                 # ---------- 31.72: a regra do 31.51 vale para o ATOR. Na r-20261005071303-f24955 ele tocou "Aceitar
                 # cookies" duas vezes por conta própria. Recusado ANTES de o toque chegar ao aparelho, por coordenada
-                # também, sem depender de o modelo obedecer ao prompt; nunca vira sucesso por aceite.
+                # também, sem depender de o modelo obedecer ao prompt; nunca vira sucesso por aceite. No `error` (e no
+                # `status_detail`, que chega a aviso e cartão) vão só o id e o tipo; o rótulo, texto da página, fica no
+                # histórico do ator (S1 da leitura).
                 saida = botao_que_fecha(obs.tree)
-                motivo_aceite = (f"{MOTIVO_ACEITE_RECUSADO} ('{aceite}'). Recuse ou feche o aviso"
-                                 + (f" ('{(saida.text or saida.desc or saida.resource_id)[:60]}', {saida.id})"
-                                    if saida is not None else "")
-                                 + ", ou siga sem aceitar.")
+                quem = f"({aceite.id}, {tipo_do_elemento(aceite)})"
                 aid = intencao(decision.tool, args.model_dump(mode="json"), rationale,
                                side_effect=False, source="recipe" if from_recipe else "ai")
-                repo.finish_action(aid, ActionStatus.rejected, error=motivo_aceite)
+                repo.finish_action(aid, ActionStatus.rejected, error=f"{MOTIVO_ACEITE_RECUSADO} {quem}")
                 metricas.contar("executor.consentimento_recusado", origem="recipe" if from_recipe else "ai")
                 if from_recipe:
-                    rr.diverged = f"toque de aceite: {aceite}"
-                history.append(f"{decision.tool} REJEITADA pelo executor: {motivo_aceite}")
+                    rr.diverged = f"toque de aceite: {quem}"
+                history.append(f"{decision.tool} REJEITADA pelo executor: {MOTIVO_ACEITE_RECUSADO} "
+                               f"('{rotulo_para_o_ator(aceite)}', {aceite.id}). Recuse ou feche o aviso"
+                               + (f" ('{rotulo_para_o_ator(saida)}', {saida.id})" if saida is not None else "")
+                               + ", ou siga sem aceitar.")
                 errors_in_row += 1
-                if errors_in_row >= 4:
+                # N8 da leitura: o `errors_in_row` zera em qualquer ação bem-sucedida, então alternar o aceite com
+                # `observe_screen` nunca chegaria a 4. Contam as recusas DESTA trava acumuladas na execução.
+                recusas = int(repo.db.scalar(
+                    "SELECT COUNT(*) FROM actions a JOIN attempts t ON t.id = a.attempt_id JOIN steps s ON s.id = "
+                    "t.step_id WHERE s.run_id = ? AND a.status = 'rejected' AND a.error LIKE ?",
+                    (run_id, MOTIVO_ACEITE_RECUSADO + "%")) or 0)
+                if errors_in_row >= 4 or recusas >= LIMITE_DE_RECUSAS_DE_ACEITE:
                     # Sem saída que preserve a privacidade, a etapa não tem o que repetir: falha com o motivo.
                     return await falhar_sem_nova_tentativa(
-                        f"A IA insistiu em aceitar: {MOTIVO_ACEITE_RECUSADO} ('{aceite}'); nada foi aceito.", obs)
+                        f"A IA insistiu em aceitar: {MOTIVO_ACEITE_RECUSADO} {quem}; nada foi aceito.", obs)
                 continue
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:
