@@ -311,7 +311,10 @@ class PortasDaCentral(Protocol):
     def iniciar(self, run_id: str) -> None:
         """Inicia a execução `planned` sem a porta (a prévia dela não pôde ser lida): a porta decide no despacho."""
         ...
-    def cancelar(self, run_id: str) -> None: ...
+    def cancelar(self, run_id: str, *, gesto: bool = True) -> None:
+        """Só a execução `planned`. `gesto=False`: ninguém fez o gesto (a faxina do plano esquecido, 28.38), e o sinal
+        `cancelou_execucao` não é gravado."""
+        ...
     def imagem_da_etapa(self, run_id: str, step_id: str) -> tuple[bytes, str] | None:
         """Os bytes e o mime da imagem que a etapa vai publicar (`image_id`), ou `None`. Quem chama confere o sha256."""
         ...
@@ -542,6 +545,8 @@ class ConversaDoCanal:
         self._antigas = 0
         #: O 429 pediu para esperar: o reenvio do desfecho não sai antes desta hora (epoch), mesmo com voltas no meio.
         self._desfecho_espera_ate = 0.0
+        #: A hora (epoch) em que esta conversa viu cada execução sem desfecho em `planned` (o plano esquecido, 28.38).
+        self._planned_desde: dict[str, float] = {}
         #: O "sim" ou o "não" do dono a quem chegou (28.18): (chat, autorizar) → o que responder ao dono. Só o leitor do
         #: Telegram com os convidados ligados o põe; sem ele, a resposta diz que o caminho está desligado.
         self.decidir_convidado: Callable[[str, bool], Awaitable[str]] | None = None
@@ -1555,7 +1560,7 @@ class ConversaDoCanal:
         await self._feita(saida, original, i, f"Execução {curta} iniciada; {n} {'sim gravado' if n == 1 else 'sins gravados'}"
                                               f"{validos}. Conto aqui quando terminar.", run_id=run_id)
 
-    def _cancelar_plano(self, run_id: str) -> None:
+    def _cancelar_plano(self, run_id: str, *, gesto: bool = True) -> None:
         """Todo caminho que abandona a porta (Cancelar, prévia vencida, recusa, falha, linha presa) cancela a execução
         só de plano: esquecida em `planned`, ela trava o despacho do aprendizado. Só a que ainda está em `planned`: a
         recusa `invalid_state` pode ser de um plano que já foi iniciado, e esse segue. A leitura aqui só poupa a chamada;
@@ -1566,7 +1571,7 @@ class ConversaDoCanal:
         try:
             if self.portas.estado_da_execucao(run_id) != "planned":
                 return
-            self.portas.cancelar(run_id)
+            self.portas.cancelar(run_id, gesto=gesto)
         except Exception:  # noqa: BLE001 - a execução `planned` não tem efeito; a faxina das execuções a encerra
             log.exception("telegram: cancelar a execução %s da prévia cancelada", run_id)
 
@@ -1579,18 +1584,23 @@ class ConversaDoCanal:
         retenção (28.16)."""
         if self._agora() < self._desfecho_espera_ate:
             return
-        for linha in self.repo.esperando_desfecho():
+        linhas = self.repo.esperando_desfecho()
+        vistas = {str(linha["run_id"]) for linha in linhas}
+        self._planned_desde = {r: t for r, t in self._planned_desde.items() if r in vistas}
+        for linha in linhas:
             run_id = str(linha["run_id"])
             texto = self.portas.desfecho(run_id)
             if texto is None:
+                # A linha fica `feita` ainda em `planning`: antes de 1 h de linha, a execução não pode estar 1 h em
+                # `planned`. Só então se lê o estado (a volta não relê as 20 execuções em curso a cada vez).
                 if self.repo.idade_s(linha) > PLANO_ESQUECIDO_S:
-                    # Como no `_reparar_presas`: o Executar foi do dono, e o operador do canal vale aqui (sem ele, a
-                    # porta atribuiria o gesto ao painel). Só se ainda `planned`; o desfecho sai na volta seguinte.
-                    token = OPERADOR.set(self.operador)
-                    try:
-                        self._cancelar_plano(run_id)
-                    finally:
-                        OPERADOR.reset(token)
+                    self._plano_esquecido(run_id)
+                continue
+            if self.repo.desfecho_ja_enviado(self._id(linha)):
+                # Saiu e ficou registrado, mas a marca não gravou (o banco caiu entre os dois): não repete (revisão do
+                # #358, F2). O tempo esgotado DEPOIS de o canal aceitar não deixa registro e ainda pode repetir: a
+                # troca é "pelo menos uma vez", porque na execução terminal esta é a única linha ao dono.
+                self.repo.marcar_desfecho(self._id(linha))
                 continue
             try:
                 await self._responder(saida, linha, self._texto_do_desfecho(texto), origem="resultado", exigir=True)
@@ -1601,6 +1611,28 @@ class ConversaDoCanal:
                     return
                 log.warning("telegram: desfecho da mensagem %s não sai nunca (%s)", linha.get("id"), falha.motivo)
             self.repo.marcar_desfecho(self._id(linha))
+
+    def _plano_esquecido(self, run_id: str) -> None:
+        """A hora conta de quando ESTA conversa viu a execução em `planned` (revisão do #358, F1): `runs` não guarda a
+        hora da transição, e a linha ficou `feita` ainda em `planning`, então um planejamento longo encurtaria a hora do
+        dono. Em memória: depois de um reinício a conta recomeça, o que dá mais tempo ao dono, nunca menos.
+
+        O cancelamento sai SEM gesto (`gesto=False`, F4): ninguém o fez, e o sinal `cancelou_execucao` não é gravado em
+        nome do dono nem do painel."""
+        try:
+            estado = self.portas.estado_da_execucao(run_id)
+        except Exception:  # noqa: BLE001 - sem a leitura, tenta na volta seguinte
+            log.exception("telegram: estado da execução %s sem desfecho", run_id)
+            return
+        if estado != "planned":
+            self._planned_desde.pop(run_id, None)
+            return
+        desde = self._planned_desde.setdefault(run_id, self._agora())
+        if self._agora() - desde <= PLANO_ESQUECIDO_S:
+            return
+        self._planned_desde.pop(run_id, None)
+        log.info("telegram: execução %s esquecida em planned; cancelada pela faxina do canal (28.38)", run_id)
+        self._cancelar_plano(run_id, gesto=False)     # o desfecho "cancelada" sai na volta seguinte
 
     def _texto_do_desfecho(self, texto: str) -> str:
         return self._redigir(texto)

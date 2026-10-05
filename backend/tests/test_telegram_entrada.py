@@ -116,6 +116,7 @@ class PortasFalsas:
         self.perguntas: list[str] = []
         self.recusar_criar = False
         self.desfechos: dict[str, str] = {}
+        self.sem_gesto: list[str] = []          # os cancelamentos que ninguém fez (a faxina do plano esquecido, 28.38)
         self.pergunta = "Para qual contato?"        # o que a execução em needs_input pergunta (B2)
         self.sensivel_aberta = False                # há execução esperando senha/código/2FA/token (palavra solta)
         self.sensivel_quebra = False
@@ -210,8 +211,10 @@ class PortasFalsas:
         self._anota("iniciar", run_id)
         self.estados[run_id] = "running"
 
-    def cancelar(self, run_id: str) -> None:
+    def cancelar(self, run_id: str, *, gesto: bool = True) -> None:
         self._anota("cancelar", run_id)
+        if not gesto:
+            self.sem_gesto.append(run_id)
         self.estados[run_id] = "cancelled"
 
     def imagem_da_etapa(self, run_id: str, step_id: str) -> tuple[bytes, str] | None:
@@ -565,25 +568,48 @@ async def test_desfecho_com_falha_definitiva_marca_e_nao_repete(c: Cenario) -> N
     assert c.bot.chamou("sendMessage") == n
 
 
-async def test_plano_esquecido_com_a_linha_feita_e_cancelado(c: Cenario) -> None:
+async def test_plano_esquecido_com_a_linha_feita_e_cancelado(tmp_path: Path) -> None:
     """28.38: a linha ficou feita e a execução voltou a `planned` (o `planning` de uma prévia termina ali) sem ninguém
-    iniciar nem cancelar. Antes de `PLANO_ESQUECIDO_S`, nada; depois, é cancelada, e o desfecho fecha a linha."""
+    iniciar nem cancelar. A hora conta de quando a conversa a VIU em `planned` (F1: a linha fica feita ainda em
+    `planning`); passada, é cancelada SEM gesto (F4: nada em nome do dono), e o desfecho fecha a linha."""
     from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
     from app.util import to_iso
 
+    agora = [1_000_000.0]
+    c = Cenario(tmp_path)
+    c.servico.conversa._agora = lambda: agora[0]                 # noqa: SLF001
     await c.volta(msg(5, "abra o Chrome no android-09"))
     await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
     assert c.linha(5)["estado"] == "feita"
     c.portas.estados[RUN] = "planned"
     await c.volta()
-    assert "cancelar" not in c.portas.nomes()
+    assert "cancelar" not in c.portas.nomes()                     # a linha é nova: nem lê o estado
     velha = to_iso(c.repo.relogio() - timedelta(seconds=PLANO_ESQUECIDO_S + 60))
     c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
     await c.volta()
-    assert c.portas.chamadas[-1] == ("cancelar", (RUN,), OPERADOR_DO_TELEGRAM) and c.portas.estados[RUN] == "cancelled"
+    assert "cancelar" not in c.portas.nomes()                     # a linha é velha, mas `planned` acabou de ser visto
+    agora[0] += PLANO_ESQUECIDO_S - 60
+    await c.volta()
+    assert "cancelar" not in c.portas.nomes()
+    agora[0] += 120
+    await c.volta()
+    assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and c.portas.estados[RUN] == "cancelled"
+    assert c.portas.sem_gesto == [RUN]
     c.portas.desfechos[RUN] = "Execução abc123: cancelada."
     await c.volta()
     assert c.bot.textos()[-1] == "Execução abc123: cancelada." and c.linha(5)["resultado_em"] is not None
+
+
+async def test_desfecho_que_ja_saiu_e_ficou_registrado_nao_repete(c: Cenario) -> None:
+    """Revisão do #358, F2: o desfecho saiu e ficou em `canal_enviadas`, mas a marca não gravou (o banco caiu entre
+    os dois). A volta seguinte marca sem mandar de novo."""
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.repo.registrar_enviada("999", "resultado", entrada_id=int(str(c.linha(5)["id"])))
+    c.portas.desfechos[RUN] = "Execução abc123: concluída."
+    n = c.bot.chamou("sendMessage")
+    await c.volta()
+    assert c.bot.chamou("sendMessage") == n and c.linha(5)["resultado_em"] is not None
 
 
 async def test_execucao_em_andamento_que_nao_tem_desfecho_nao_e_cancelada(c: Cenario) -> None:

@@ -252,6 +252,11 @@ class EntradasDoCanal:
             " AND run_id IS NOT NULL"
             " AND resultado_em IS NULL AND estado='feita' ORDER BY id LIMIT ?", (self.canal, limite))]
 
+    def desfecho_ja_enviado(self, ident: int) -> bool:
+        """O desfecho desta linha já saiu e ficou registrado (`canal_enviadas`, origem `resultado`): não se repete."""
+        return self.db.one("SELECT 1 AS x FROM canal_enviadas WHERE canal=? AND entrada_id=? AND origem='resultado'"
+                           " LIMIT 1", (self.canal, int(ident))) is not None
+
     def marcar_desfecho(self, ident: int) -> None:
         self.db.execute("UPDATE canal_entradas SET resultado_em=? WHERE id=? AND canal=?",
                         (self._agora(), int(ident), self.canal))
