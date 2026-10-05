@@ -18,6 +18,7 @@ import hashlib
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 OK, DEFEITO, SEM_CONFERIR = "ok", "defeito", "sem_conferir"
 
@@ -183,7 +184,9 @@ def endereco_do_script(src: str) -> tuple[str, str]:
       codificar, Q2) vira `url-invalida`, e o navegador nem carregaria o script."""
     if src == "(embutido)":
         return "embutido", src
-    limpo = re.split(r"[?#;]", re.sub(r"[\t\n\r]", "", src).replace("\\", "/").strip(_PONTAS), maxsplit=1)[0]
+    # Antes da autoridade, só `?` e `#` cortam: para o navegador ela termina em `/`, `?` ou `#`, e um `;` dentro dela é
+    # do userinfo (`https://usuario;sessao@cdn/x.js` é host `cdn`, R1). O `;` corta só o caminho, depois.
+    limpo = re.split(r"[?#]", re.sub(r"[\t\n\r]", "", src).replace("\\", "/").strip(_PONTAS), maxsplit=1)[0]
     m = _ESQUEMA.match(limpo)
     esquema = m.group(1).lower() if m else ""
     if limpo.startswith("//"):
@@ -195,9 +198,16 @@ def endereco_do_script(src: str) -> tuple[str, str]:
         # `data:` e `javascript:` mostram o próprio script na saúde (é o que foi injetado); o resto, só o nome.
         return nome, (src[:ITEM_MAX] if nome in ("data", "javascript") else f"{nome}:…")
     else:                                                 # relativo: `/cdn-cgi/…`, `a/b:c.js`
+        limpo = limpo.split(";", 1)[0]
+        if ":" in limpo.split("/", 1)[0]:
+            # `ht tps://usuario:senha@…` e `1usuario:senha@…` não são esquema para o navegador: são caminho relativo,
+            # mas o 1º segmento com `:` tem cara de credencial. Nada dele sai (R2).
+            return "relativo", '(relativo com ":")'
         return _no_alfabeto(limpo), limpo[:ITEM_MAX]
     autoridade, barra, caminho = resto.partition("/")
-    nome = autoridade.rsplit("@", 1)[-1].lower()          # o userinfo inteiro, até o ÚLTIMO `@` da autoridade (Q2)
+    caminho = caminho.split(";", 1)[0]
+    # O userinfo inteiro, até o ÚLTIMO `@` da autoridade (Q2); o host decodificado, para `%31%30.0.0.5` ser IP (R3).
+    nome = unquote(autoridade.rsplit("@", 1)[-1]).lower()
     if nome.startswith("["):
         host, porta = "ip", nome.partition("]")[2].removeprefix(":")
     else:
