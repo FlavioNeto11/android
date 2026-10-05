@@ -533,6 +533,10 @@ class StepOutcome:
     sobreposicao: bool = False
     #: 31.40 b: o elemento que cobre (do id do juiz ou da árvore), que a limpeza recebe; `None` quando não se achou.
     cobertura: Cobertura | None = None
+    #: 30.75 (no fim, para não deslocar quem monta por posição): a etapa parou na tela de senha do app (o app pede
+    #: login). Na execução de PROVA, o scheduler grava `objectives.blocked_kind='auth'` e o pedido de validação fecha
+    #: `app_sem_sessao`, não `sem_evidencia`.
+    pede_login: bool = False
 
 
 class OrcamentoDaEtapa(AIError):
@@ -2427,9 +2431,11 @@ class StepExecutor:
                                        f"O app pede autenticação e a senha da conta está guardada sem consentimento "
                                        f"({senha_do_app.refusal}): consentimento_pendente.",
                                        needs="Marque o consentimento na conta da persona (guia Contas e acesso da persona) e "
-                                             "retome o item — ou faça o login manualmente e devolva o controle.")
+                                             "retome o item — ou faça o login manualmente e devolva o controle.",
+                                       pede_login=True)
                 return StepOutcome(Outcome.waiting_user, f"O app pede autenticação ({porque}).",
-                                   needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.")
+                                   needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.",
+                                   pede_login=True)
             # ---------- decidir: a receita (se houver e ainda casar) fala primeiro; na divergência a IA assume
             decision: Decision | None = None
             from_recipe = False

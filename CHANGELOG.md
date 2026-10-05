@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
+
+- Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.
+- Motivos novos do pedido, pelos campos estruturados: `orcamento_da_prova` (`attempts.error_kind='budget'`) e `app_sem_sessao` (`objectives.blocked_kind='auth'`, gravado só na execução de prova a partir de `StepOutcome.pede_login`). Valem no fechamento e na remotivação do estoque; nenhum é chegada do curador. Adendo v1.54.
+- O aparelho em que a prova parou no login sai dos candidatos daquele app até a verificação nova do app nele, ou até um objetivo concluído num fluxo do mesmo app ali.
+- Não é falha do executor: sem regra nova em `falhas.py`.
+- Prova `simulated`: `backend/tests/test_validacao_motivos_da_prova.py` (9 passed, verificado por mutação).
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
