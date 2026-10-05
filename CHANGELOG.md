@@ -22,14 +22,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-05 — 31.101: os testes não usam mais o identificador de uma conta real (branch test/31-101-dados-ficticios-nos-testes)
 
 - Os @ com número de contas reais que os testes usavam como dado viraram valores de exemplo fixos, o mesmo para o
-  mesmo papel: os das três contas ativas (36 arquivos de teste, 208 linhas) e os das contas bloqueadas (8 arquivos,
-  20 linhas; o longo mantém o comprimento, que é o que o teste do card e o comentário de `Profiles.module.css`
-  exercitam). O comentário de `config/eval-set.yaml` que dizia qual conta o android-01 opera passa a citar o aparelho
+  mesmo papel, de 7 contas: na primeira rodada, as do android-01, android-02 e android-03 (36 arquivos de teste, 208
+  linhas); na segunda, as do android-04, android-06, android-07 e android-08 (8 arquivos, 20 linhas; o longo mantém o
+  comprimento, que é o que o comentário de `Profiles.module.css` descreve). A conta do android-05 não aparece em teste. O comentário de `config/eval-set.yaml` que dizia qual conta o android-01 opera passa a citar o aparelho
   (`«conta do android-01»`): um valor de exemplo ali tornaria o comentário falso. A troca é `scripts/trocar-nomes-nos-testes.py`, que lê a tabela de
   um arquivo local fora de qualquer checkout (`--tabela` ou `TROCA_DE_NOMES_TABELA`, sem caminho padrão; recusa tabela
-  dentro do repositório). O script não guarda nome nenhum e só imprime contagens. A caixa vai trecho a trecho, para os
+  dentro deste repositório, do `--raiz` ou de qualquer árvore de trabalho do git, perguntando ao próprio git). O script não guarda nome nenhum e só imprime contagens. A caixa vai trecho a trecho, para os
   testes de caixa ("Nome.Sobrenome…", "NOME.sobrenome…") manterem a força.
-- `--amplo` troca também os pedaços de nome (ensaio: 124 arquivos, 1594 linhas). Não aplicado: roda como última junção
+- `--amplo` troca também os `pares` da tabela (nome.sobrenome sem o número, inclusive colado a um dígito, e os handles
+  de exemplo que repetiam o sufixo numérico de uma conta real) e os pedaços de nome (ensaio: 120 arquivos, 1435 linhas). Não aplicado: roda como última junção
   no corte de uma suíte, quando a orquestradora marcar, para não conflitar com os ramos da fila.
 - Sem catraca nesta rodada: hash de identificador curto num teste versionado se reverte por dicionário; se houver
   uma, é HMAC com a chave no mesmo caminho local da tabela.

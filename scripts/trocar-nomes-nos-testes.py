@@ -60,8 +60,13 @@ def _caixa(original: str, novo: str) -> str:
 
 
 def trocador(tabela: dict, amplo: bool):
-    """O handle inteiro primeiro (com o número trocado); com `amplo`, depois cada pedaço de nome por palavra inteira."""
+    """O handle inteiro primeiro (com o número trocado); com `amplo`, depois os `pares` (nome.sobrenome sem o número,
+    inclusive colado a um dígito, e o handle de exemplo que repetia o sufixo de uma conta real) e cada pedaço de nome
+    por palavra inteira."""
     handles = [(re.compile(re.escape(velho), re.IGNORECASE), novo) for velho, novo in tabela["handles"].items()]
+    if amplo:
+        handles += [(re.compile(r"\b" + re.escape(velho), re.IGNORECASE), novo)
+                    for velho, novo in tabela.get("pares", {}).items()]
     pedacos = tabela["pedacos"] if amplo else {}
     pad = (re.compile(r"\b(" + "|".join(sorted(map(re.escape, pedacos), key=len, reverse=True)) + r")\b",
                       re.IGNORECASE) if pedacos else None)
@@ -85,6 +90,16 @@ def nomes_do_banco(banco: Path, fora: set[str]) -> set[str]:
     return reais - fora
 
 
+def _dentro_de_checkout(tabela: Path, raiz: Path) -> bool:
+    """Dentro deste repositório, do `--raiz` ou de QUALQUER árvore de trabalho do git (outro checkout, um worktree):
+    em todos, um `git add` descuidado a levaria a um commit. Quem responde por "qualquer árvore" é o próprio git."""
+    pasta = tabela.resolve().parent
+    if any(r.resolve() in (pasta, *pasta.parents) for r in (RAIZ, raiz)):
+        return True
+    git = subprocess.run(["git", "-C", str(pasta), "rev-parse", "--is-inside-work-tree"], capture_output=True, text=True)
+    return git.returncode == 0 and git.stdout.strip() == "true"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--tabela", type=Path, default=os.environ.get("TROCA_DE_NOMES_TABELA") or None)
@@ -95,8 +110,8 @@ def main() -> int:
     args = ap.parse_args()
     if args.tabela is None:
         raise SystemExit("diga a tabela: --tabela <arquivo.json> ou TROCA_DE_NOMES_TABELA (fora do repositório)")
-    if RAIZ in args.tabela.resolve().parents:
-        raise SystemExit("a tabela não pode ficar dentro do repositório")
+    if _dentro_de_checkout(args.tabela, args.raiz):
+        raise SystemExit("a tabela não pode ficar dentro de um repositório (este, o --raiz ou outro checkout)")
     tabela = json.loads(args.tabela.read_text(encoding="utf-8"))
     trocar = trocador(tabela, args.amplo)
     novos = {p for v in [*tabela["pedacos"].values(), *tabela["handles"].values()]
