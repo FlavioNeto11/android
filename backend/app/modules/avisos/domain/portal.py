@@ -308,3 +308,103 @@ def aviso_do_resumo(retidos: int, descartados: int, janela_h: int, agora: dateti
     return Aviso(chave=chave_do_resumo(agora), tipo=TIPO_DO_RESUMO_ROTINA,
                  titulo=titulo_do_resumo_rotina(retidos, descartados), corpo=corpo, link=None,
                  nivel=nivel_do_tipo(TIPO_DO_RESUMO_ROTINA))
+
+
+# ---------------------------------------------------------------------- o vigia da borda (29.97, laço do Portal)
+#: O laço do Portal confere, de hora em hora, a página pública como um visitante e chama `avisar_borda_do_portal` só na
+#: TRANSIÇÃO (a 1ª volta com aquele defeito, ou a N-ésima sem conseguir conferir). Contrato combinado com o Portal em
+#: 05/10 04:25Z. Os dois tipos são nível 2 e saem na hora (`PARARAM_ALGO`): o site errado para visitante parou algo do
+#: dono. Começam com `portal.`, então a fila nunca os agrupa (`SEM_AGRUPAR`): o corpo agrupado diria "abra a caixa de
+#: Pendências", e o gesto aqui é na zona da Cloudflare. Fora do espelho do Trello e sem link.
+TIPO_DA_BORDA = "portal.borda"
+TIPO_DA_BORDA_SEM_CONFERIR = "portal.borda_sem_conferir"
+SEM_CONFERIR = "sem_conferir"
+#: Onde o vigia achou o defeito, dito ao dono.
+ONDE_DA_BORDA: dict[str, str] = {"raiz": "A página inicial do site", "painel": "O painel", "css": "O estilo do site",
+                                 "js": "O script do site"}
+#: O achado só sai se for host e caminho (o beacon tem token na query) ou o nome do cookie: nada de `?`, `=`, espaço.
+_ACHADO = re.compile(r"[A-Za-z0-9._/-]{1,120}")
+HORAS_SEM_CONFERIR_MAX = 24 * 31
+REPASSA = "Se nada mudou lá, responda a esta mensagem: a ANA repassa à orquestradora."
+
+
+@dataclass(frozen=True, slots=True)
+class _Borda:
+    titulo: str
+    chegou: str          # `{onde}` e `{achado}` (com o separador já posto, ou vazio)
+    critico: str
+    gesto: str
+
+
+BORDA: dict[str, _Borda] = {
+    "script_injetado": _Borda(
+        "🌐 Site: a Cloudflare está pondo script na página",
+        "{onde} chegou com um script que a página não tem{achado}.",
+        "Crítico: a página promete não ter rastreador, e no painel, sem a proteção ligada, o script roda.",
+        "Espera você: no painel da Cloudflare, desligue Web Analytics (RUM) na zona; se o script for de /cdn-cgi/, "
+        "desligue Rocket Loader, Email Obfuscation ou Bot Fight Mode."),
+    "html_transformado": _Borda(
+        "🌐 Site: a borda está reescrevendo o HTML",
+        "{onde} chegou reescrito pela borda (sem a marca que proíbe mudar a página, ou recomprimido).",
+        "Crítico: com isso a borda volta a poder injetar script.",
+        f"Espera você: no painel da Cloudflare, confira Rules > Transform Rules e Compression Rules. {REPASSA}"),
+    "csp_ausente": _Borda(
+        "🌐 Site: página sem a política de segurança",
+        "{onde} chegou sem a política de segurança esperada.",
+        "Crítico: script de fora rodaria na página.",
+        f"Espera você: no painel da Cloudflare, confira se alguma Transform Rule tira cabeçalhos. {REPASSA}"),
+    "cookie": _Borda(
+        "🌐 Site: a página está pondo cookie",
+        "{onde} chegou pondo cookie{achado}.",
+        "Crítico: a página promete que não usa cookies.",
+        "Espera você: no painel da Cloudflare, desligue Bot Fight Mode. Se preferir mantê-lo, responda a esta mensagem: "
+        "a ANA pede à orquestradora para mudar o texto da página."),
+    "versao_divergente": _Borda(
+        "🌐 Site: estilo ou script fora da versão",
+        "{onde} chegou com um conteúdo diferente da versão que a página pede.",
+        "Crítico: visitantes veem estilo ou script velho ou alterado.",
+        "Espera você: no painel da Cloudflare, ponha Caching Level em Standard (não “Ignore query string”) e desligue "
+        "Auto Minify e Rocket Loader."),
+    "pagina_fora": _Borda(
+        "🌐 Site: a página não abre para visitante",
+        "{onde} respondeu a um visitante com um desafio da Cloudflare (403 ou 503).",
+        "Crítico: visitantes não veem o site.",
+        "Espera você: no painel da Cloudflare, confira Security > Bots e as regras do WAF."),
+}
+
+
+def chave_da_borda(codigo: str, agora: datetime) -> str:
+    """`portal-borda:<código>:<AAAA-MM-DD>`: um defeito que persiste dá uma mensagem por dia UTC, não uma por hora."""
+    return chave_do_fato("portal-borda", codigo, f"{agora.astimezone(timezone.utc):%Y-%m-%d}")
+
+
+def _achado(valor: object, separador: str, fim: str = "") -> str:
+    if not isinstance(valor, str) or not _ACHADO.fullmatch(valor.strip()) or _IP.search(valor):
+        return ""                        # fora do formato, ou um IP: nunca sai
+    return f"{separador}{valor.strip()}{fim}"
+
+
+def aviso_da_borda(codigo: object, onde: object, agora: datetime, *, achado: object = None,
+                   horas_sem_conferir: object = None) -> Aviso | None:
+    """O aviso pronto para a fila, ou `None` quando o código ou o lugar não são do contrato, ou falta a contagem de
+    horas do `sem_conferir`. O `achado` fora do formato é omitido, sem recusa. Sem link."""
+    if not isinstance(agora, datetime) or not isinstance(codigo, str):
+        return None
+    if codigo == SEM_CONFERIR:
+        if not _contagem(horas_sem_conferir, 1, HORAS_SEM_CONFERIR_MAX):
+            return None
+        h = int(horas_sem_conferir)  # type: ignore[call-overload]
+        corpo = "\n".join([f"Há {h} h o vigia não abre o site pelo nome público (tempo esgotado ou erro do túnel).",
+                           "Crítico: o site pode estar fora para visitantes.",
+                           f"Espera você: confira o túnel do central. {REPASSA}"])
+        return Aviso(chave=chave_da_borda(codigo, agora), tipo=TIPO_DA_BORDA_SEM_CONFERIR,
+                     titulo=titulo_do_aviso(f"🌐 Site: não consigo conferir a página há {h} h"), corpo=corpo, link=None,
+                     nivel=nivel_do_tipo(TIPO_DA_BORDA_SEM_CONFERIR))
+    borda = BORDA.get(codigo)
+    lugar = ONDE_DA_BORDA.get(onde) if isinstance(onde, str) else None
+    if borda is None or lugar is None:
+        return None
+    detalhe = _achado(achado, " (", ")") if codigo == "cookie" else _achado(achado, ": ")
+    corpo = "\n".join([borda.chegou.format(onde=lugar, achado=detalhe), borda.critico, borda.gesto])
+    return Aviso(chave=chave_da_borda(codigo, agora), tipo=TIPO_DA_BORDA, titulo=titulo_do_aviso(borda.titulo),
+                 corpo=corpo, link=None, nivel=nivel_do_tipo(TIPO_DA_BORDA))

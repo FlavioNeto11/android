@@ -87,9 +87,13 @@ NIVEL_POR_TIPO: dict[str, int] = {
     # do limiar, o formulário segurou contatos que seriam dele, e sai na hora; abaixo, vai com a rotina.
     "portal.resumo": ALGO_FALHOU,
     "portal.resumo_rotina": ROTINA,
+    # 29.97: o vigia da borda do site. O site errado para visitante parou algo do dono: sai na hora.
+    "portal.borda": ALGO_FALHOU,
+    "portal.borda_sem_conferir": ALGO_FALHOU,
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
-PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado", "portal.resumo"})
+PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado", "portal.resumo", "portal.borda",
+                          "portal.borda_sem_conferir"})
 #: O aviso de um pedido do LOTE de uma frente (28.31 F2a): o tipo ganha este prefixo e vai sempre à janela, qualquer que
 #: seja o nível, porque a prova da frente não é notícia para o dono. Duas exceções saem na hora: a aprovação, porque só o
 #: dono decide (orquestradora, 04/10 01:20Z, a mesma regra das execuções de lote), e a ocorrência incerta, porque efeito

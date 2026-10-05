@@ -177,6 +177,11 @@ class Fato:
         return self.tipo == "portal-resumo"
 
     @property
+    def borda_do_portal(self) -> bool:
+        """O aviso do vigia da borda do site (29.97): `portal-borda:<código>:<dia>`. O gesto é na zona da Cloudflare."""
+        return self.tipo == "portal-borda"
+
+    @property
     def portal(self) -> bool:
         """A mensagem de um visitante do site (28.32): `portal:<contato_id>`. Só informa."""
         return self.tipo == "portal"
@@ -281,6 +286,11 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         return Intencao("desconhecida", motivo="Esta mensagem é de um visitante do site e só informa: nada foi executado, "
                                                "e a sua resposta não vai a ele. Para falar com ele, use o contato que "
                                                "ele deixou.")
+    if f.borda_do_portal:
+        # 29.97: o que o dono responde ao aviso da borda (por exemplo, "não mudei nada na zona") é recado para a
+        # orquestradora. Sem este ramo, a resposta cairia no texto livre e viraria PEDIDO.
+        return Intencao("orquestradora", ref=f.ident, repasse="borda",
+                        texto=f"Resposta do dono ao aviso da borda do site ({f.ident}, {f.detalhe}): {t}")
     if f.resumo_do_portal:
         # Só contagens: sem este ramo, um "sim" a ele cairia no texto livre e viraria pedido.
         return Intencao("desconhecida", motivo="Este aviso só informa: nada foi executado, e a resposta a ele não liga "

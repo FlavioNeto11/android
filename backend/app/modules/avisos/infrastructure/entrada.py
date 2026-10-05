@@ -104,6 +104,8 @@ RESPOSTA_DO_REPASSE = {
     "comentario": "Recebi o seu comentário. Pedi a sua confirmação no Telegram: o sim de lá é que vale.",
     "comentario_sim": "Confirmado: repassei à orquestradora, que age e responde no cartão.",
     "comentario_nao": "Entendido: o comentário fica sem efeito. Avisei a orquestradora.",
+    # 29.97: a resposta ao aviso da borda do site.
+    "borda": "Recado sobre o site guardado para a orquestradora (nada foi mudado na zona).",
 }
 #: 28.30: as respostas do dono ao pedido de confirmação de um comentário seu no Trello.
 REPASSES_DO_COMENTARIO = ("comentario_sim", "comentario_nao")
