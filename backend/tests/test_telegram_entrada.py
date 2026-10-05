@@ -775,6 +775,30 @@ async def test_rearmar_duas_vezes_da_um_rearme_so(c: Cenario) -> None:
     assert json.loads(str(c.linha(5)["previa"]))["desfechos_rearmados"] == 1 and c.linha(5)["resultado_em"] is None
 
 
+async def test_rearme_perde_se_o_previa_mudou_entre_a_leitura_e_a_gravacao(c: Cenario,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    """C1 da leitura do #400: a cláusula `AND previa=?` da troca. Outro líder grava a linha ENTRE a leitura e o
+    UPDATE (a marca ainda lá, o `resultado_em` ainda preenchido): só o `previa` difere, e o rearme perde."""
+    import json
+    await _parada(c)
+    ident = int(str(c.linha(5)["id"]))
+    original = c.repo.db.scalar
+
+    def le_e_outro_grava(sql: str, params: tuple | dict = ()) -> object:
+        valor = original(sql, params)
+        if "resultado_em IS NOT NULL" in sql and sql.lstrip().startswith("SELECT previa"):
+            outra = {**json.loads(str(valor)), "outro_lider": 1}
+            c.db.execute("UPDATE canal_entradas SET previa=? WHERE id=?", (json.dumps(outra), ident))
+        return valor
+
+    monkeypatch.setattr(c.repo.db, "scalar", le_e_outro_grava)
+    assert c.repo.rearmar_desfecho(ident) is False
+    monkeypatch.undo()
+    linha = c.linha(5)
+    previa = json.loads(str(linha["previa"]))
+    assert linha["resultado_em"] is not None and previa["desfecho_parado"] is True and "desfechos_rearmados" not in previa
+
+
 async def test_lider_velho_com_a_foto_antiga_nao_manda_o_fim_duas_vezes(c: Cenario) -> None:
     """R1: o líder novo rearmou e mandou o fim; o velho, com a foto de `desfechos_parados` de antes, não rearma de
     novo (a marca já saiu), e o fim não se repete."""
