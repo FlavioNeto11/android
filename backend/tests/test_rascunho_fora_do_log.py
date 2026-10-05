@@ -66,6 +66,18 @@ def test_saida_social_invalida_vira_erro_sem_a_entrada() -> None:
     texto = str(caught.value)
     assert MARCA not in texto and "input_value" not in texto
     assert "content: string_type" in texto and "refused: bool_parsing" in texto
+    # V1a: levantado FORA do `except`: nem `__cause__` nem `__context__` guardam a `ValidationError` com a entrada.
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
+
+
+def test_proposta_de_treinamento_invalida_tambem_sai_sem_a_entrada() -> None:
+    """31.63 (V3): `proposal_from_json` usava `{exc}` com `from exc` sobre a saída do modelo."""
+    from app.planning.provider import AIError
+    from app.planning.training import proposal_from_json
+    with pytest.raises(AIError) as caught:
+        proposal_from_json('{"steps": "' + MARCA + '", "memoria": {"x": "' + MARCA + '"}}', None)  # type: ignore[arg-type]
+    assert MARCA not in str(caught.value) and "input_value" not in str(caught.value)
+    assert caught.value.__cause__ is None and caught.value.__context__ is None
 
 
 async def test_saida_social_invalida_nao_leva_o_rascunho_ao_motivo_ao_evento_nem_ao_log(

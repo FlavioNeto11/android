@@ -21,7 +21,7 @@ from ..models import (DeliveryLevel, ForaDoCatalogo, MissingInfo, Plan, PlannerI
 from ..taskqueue.saidas import referencias
 from .capabilities import (CapabilityCatalog, CapabilityNode, compose, herdar_argumentos, load_catalog,
                            montar_etapa)
-from .provider import AIError, PlanRequest, Verdict, erro_de_validacao_sem_entrada
+from .provider import AIError, PlanRequest, Verdict, erro_de_validacao_sem_entrada, validar_saida
 
 
 # ---- formatos de saída estruturada (compatíveis com strict) -------------------
@@ -319,11 +319,7 @@ def saidas_sem_leitura(steps: Iterable[PlanStep]) -> list[MissingInfo]:
 def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max_steps: int,
                    curto: bool = False) -> Plan:
     """Planejamento LIVRE (app sem catálogo). `curto` = o formato do LT-4b (`ai.esquema_do_plano`)."""
-    try:
-        out = (_PlanCurtoOut if curto else _PlanOut).model_validate(loads_json(raw, "Plano"))
-    except ValidationError as exc:
-        raise AIError(f"Plano inválido devolvido pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
-                      kind="invalid_output") from None
+    out = validar_saida(_PlanCurtoOut if curto else _PlanOut, loads_json(raw, "Plano"), "Plano inválido devolvido pelo modelo")
     app = next((a for a in req.apps if a.id == out.app_id), None)
     conhecidos = {a.id for a in req.apps}
     desconhecidos = sorted({s.app_id for s in out.steps if s.app_id and s.app_id not in conhecidos})
@@ -332,6 +328,7 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
         # Só vale guardar quando DIFERE do app do plano: etapa sem app é "a do plano", e isso mantém os planos
         # de um app só idênticos aos de antes (e as receitas com a mesma identidade).
         return s.app_id if s.app_id in conhecidos and s.app_id != (app.id if app else None) else None
+    falha: str | None = None                  # 31.63 (V1a): o raise sai FORA do `except`
     try:
         plan = Plan(
             summary=out.summary, app_id=app.id if app else None, app_package=app.package if app else None,
@@ -340,7 +337,9 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
                    for s in out.steps[:max_steps]],
             missing=out.missing, planner=PlannerInfo(provider=provider, model=model, simulated=False))
     except (ValidationError, ValueError) as exc:
-        raise AIError(f"Plano inválido devolvido pelo modelo: {_sem_entrada(exc)}", kind="invalid_output") from None
+        falha = _sem_entrada(exc)
+    if falha is not None:
+        raise AIError(f"Plano inválido devolvido pelo modelo: {falha}", kind="invalid_output")
     for desconhecido in desconhecidos:
         plan.missing.append(MissingInfo(field="app", question=f"O app '{desconhecido}' (de uma das etapas) não está "
                                                               "configurado. Qual aplicativo configurado deve ser usado?"))
@@ -402,11 +401,7 @@ def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: 
     a etapa LIVRE do plano entre apps: a de catálogo já é curta."""
     if getattr(req, "catalogs", None):
         return _plano_entre_apps(raw, req, provider=provider, model=model, max_steps=max_steps, curto=curto)
-    try:
-        out = _CapPlanOut.model_validate(loads_json(raw, "Plano"))
-    except ValidationError as exc:
-        raise AIError(f"Plano inválido devolvido pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
-                      kind="invalid_output") from None
+    out = validar_saida(_CapPlanOut, loads_json(raw, "Plano"), "Plano inválido devolvido pelo modelo")
     app = next((a for a in req.apps if a.package == req.catalog.package), None)
     nodes = [CapabilityNode(key=norm_key(s.key), capability=s.capability,
                             depends_on=[norm_key(d) for d in s.depends_on],
@@ -439,11 +434,7 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
     efeito, T19), então vira pergunta, como a ação que não existe. Qualquer pergunta zera as etapas: um plano meio
     montado seria pior que nenhum (a mesma regra do `compose`).
     """
-    try:
-        out = (_MultiPlanCurtoOut if curto else _MultiPlanOut).model_validate(loads_json(raw, "Plano"))
-    except ValidationError as exc:
-        raise AIError(f"Plano inválido devolvido pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
-                      kind="invalid_output") from None
+    out = validar_saida(_MultiPlanCurtoOut if curto else _MultiPlanOut, loads_json(raw, "Plano"), "Plano inválido devolvido pelo modelo")
     conhecidos = {a.id: a for a in req.apps if a.id}
     catalogos: Mapping[str, CapabilityCatalog] = req.catalogs
     etapas = out.steps[:max_steps]
@@ -461,6 +452,7 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
         nos.update(zip(indices, herdar_argumentos(catalogo, crus), strict=True))
     faltas: list[MissingInfo] = []
     montadas: list[tuple[str, PlanStep]] = []
+    falha: str | None = None                  # 31.63 (V1a): o raise sai FORA do `except`
     try:
         for i, s in enumerate(etapas):
             chave = norm_key(s.key)
@@ -522,26 +514,21 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
         if fora:
             plan.steps, plan.missing, plan.fora_do_catalogo = [], [], fora
     except (ValidationError, ValueError) as exc:
-        raise AIError(f"Plano inválido devolvido pelo modelo: {_sem_entrada(exc)}", kind="invalid_output") from None
+        falha = _sem_entrada(exc)
+    if falha is not None:
+        raise AIError(f"Plano inválido devolvido pelo modelo: {falha}", kind="invalid_output")
     plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
     return plan
 
 
 def verdict_from_json(raw: str) -> Verdict:
-    try:
-        return Verdict.model_validate(loads_json(raw, "Veredito"))
-    except ValidationError as exc:
-        raise AIError(f"Veredito inválido devolvido pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
-                      kind="invalid_output") from None
+    return validar_saida(Verdict, loads_json(raw, "Veredito"), "Veredito inválido devolvido pelo modelo")
 
 
 def social_from_json(raw: str, max_length: int) -> SocialDraftDTO:
-    try:
-        draft = SocialDraftDTO.model_validate(loads_json(raw, "Resposta social"))
-    except ValidationError as exc:
-        # 31.63 (V1): sem a entrada; o `content` do modelo é o rascunho e esta mensagem chega ao motivo da etapa.
-        raise AIError(f"Resposta social inválida devolvida pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
-                      kind="invalid_output") from None
+    # 31.63 (V1): sem a entrada; o `content` do modelo é o rascunho e esta mensagem chega ao motivo da etapa.
+    draft = validar_saida(SocialDraftDTO, loads_json(raw, "Resposta social"),
+                          "Resposta social inválida devolvida pelo modelo")
     if len(draft.content) > max_length:
         # Cortar aqui é mais barato e mais previsível do que pedir de novo; o limite é do app, não do modelo.
         draft.content = draft.content[:max_length].rstrip()

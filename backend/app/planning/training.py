@@ -17,9 +17,9 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 
-from .provider import AIError
+from .provider import AIError, validar_saida
 
 TRAINER_SYSTEM = """Você observa uma pessoa ensinando uma tarefa num celular Android e transforma a gravação numa
 HABILIDADE reutilizável por outros perfis. Você recebe a intenção declarada pela pessoa e, para cada entrada, a
@@ -153,9 +153,11 @@ def proposal_from_json(raw: str, req: TrainingRequest) -> dict[str, Any]:
         texto = re.sub(r"^```[a-zA-Z]*\s*", "", texto)
         texto = re.sub(r"\s*```$", "", texto).strip()
     try:
-        out = _TrainOut.model_validate(json.loads(texto))
-    except (ValueError, ValidationError) as exc:
+        dados = json.loads(texto)
+    except ValueError as exc:                # o `str` do JSONDecodeError diz linha e coluna, não o documento
         raise AIError(f"Proposta de treinamento inválida devolvida pelo modelo: {exc}", kind="invalid_output") from exc
+    # 31.63 (V3): a validação sem a entrada (`input_value=` traria a proposta do modelo), levantada fora do `except`.
+    out = validar_saida(_TrainOut, dados, "Proposta de treinamento inválida devolvida pelo modelo")
     return normalizar_proposta(out.model_dump(), req)
 
 
