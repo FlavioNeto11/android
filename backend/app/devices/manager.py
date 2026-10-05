@@ -12,6 +12,7 @@ import re
 import threading
 import time
 from collections import OrderedDict
+from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -4314,6 +4315,31 @@ class DeviceManager:
             self.bus.emit("log", f"{rt.id}: {package} encerrado para recomeçar de um estado conhecido", instance_id=rt.id)
         except (DriverError, AdbError) as exc:
             log.warning("%s: force-stop de %s falhou: %s", rt.id, package, exc)
+
+    async def tirar_da_frente(self, rt: DeviceRuntime, pacotes: Collection[str]) -> str | None:
+        """31.66: se o app em primeiro plano é um de `pacotes`, volta à tela inicial (HOME). Devolve o pacote tirado,
+        ou `None` (outro app na frente, foco ilegível, falha do ADB: nada muda e a execução não sente).
+
+        Por quê: o fim de uma execução de navegador deixava o Chrome na frente redesenhando a página, e o convidado
+        ficava com carga de 3 a 10 em 2 vCPU até alguém mexer (medido no android-09 em 05/10, janela de provas do
+        deploy 33). Depois de um HOME a carga caiu abaixo de 2 em 1,5 a 2,3 min."""
+        if self.io_factory is not None:
+            foco, tecla = getattr(rt.io, "current_focus", None), getattr(rt.io, "press_key", None)
+        else:
+            foco, tecla = rt.adb.current_focus, rt.adb.keyevent
+        if foco is None or tecla is None:
+            return None
+        try:
+            dono, _ = await rt.executor.run(foco, timeout=15, label="janela em foco")
+            if not dono or dono not in pacotes:
+                return None
+            await rt.executor.run(tecla, "home", timeout=20, label="tela inicial")
+        except (AdbError, DriverError) as exc:
+            log.info("%s: o navegador não saiu da frente ao fechar a execução (%s)", rt.id, exc)
+            return None
+        rt.capture_now.set()
+        self.bus.emit("log", f"{rt.id}: {dono} saiu do primeiro plano ao fechar a execução", instance_id=rt.id)
+        return str(dono)
 
     async def app_version(self, rt: DeviceRuntime, package: str) -> str:
         """Versão instalada do app NESTE aparelho (chave das receitas). Em cache até instalar outro APK ou religar."""
