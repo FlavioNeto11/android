@@ -1782,6 +1782,17 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   a página por baixo de um aviso fixo. Medido no gov.br (05/10, android-09): a folha de cookies de 49 % no rodapé vem no
   fim do documento, e as linhas da página por baixo dela vêm antes, inteiras dentro da área. No banner do Mercado Livre
   (f24955), os filhos vêm logo depois dele e nada de fora da sequência fica contido: segue descartado.
+- 2ª leitura do #391:
+  - **L1:** dois elementos com os MESMOS bounds não se contam um ao outro como contêiner (no Chrome, o View com texto e
+    o TextView filho igual); a linha da página por baixo de uma faixa pequena segue folha para o J3.
+  - **L2:** abaixo de 60 % da tela, a árvore inteira é uma janela flutuante (o dump de um diálogo nativo, cujo painel
+    `android:id/parentPanel` sem texto o leitor corta): a recusa vale. Prova `simulated`; o real fica `not_run` até a
+    captura de um AlertDialog. Limite: com a página no MESMO dump, a extensão não acusa a janela.
+  - Nas capturas inteiras (05/10): o banner da f24955 (ml-1-topo, 73 nós) segue descartado; a folha do gov.br e o
+    botão "Rejeitar cookies" dela (gov-3-rodape, 52 nós) valem.
+  - Notas sem conserto agora: o "X" fora da caixa quando só o cartão tem pista; a faixa fixa no rodapé com banner no
+    topo (a métrica não distingue erro do juiz); o aviso fixo que vem PRIMEIRO no documento pode engolir as primeiras
+    folhas da página (L3).
 - Os 15 % foram medidos nas duas ocorrências reais do banner (bounds gravados nas variáveis da limpeza e confirmados
   pela captura de 05/10, 720 x 1280): 11,6 % como faixa no topo (f24955) e 83,8 % como modal (r-20261004190200-5b56e6,
   que cobria de fato).

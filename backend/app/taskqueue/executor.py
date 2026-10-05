@@ -392,6 +392,10 @@ def cobertura_na_arvore(tree: UiTree, ref: str | None) -> Cobertura | None:
 #: conteúdo; a captura de 05/10 08:06Z confirmou os bounds) e 83,8 % como modal (r-20261004190200-5b56e6, cobria).
 FRACAO_DA_SOBREPOSICAO = FRACAO_QUE_COBRE
 
+#: L2 da leitura do #391: abaixo desta fração da tela, a árvore inteira é uma janela flutuante (o dump de um diálogo
+#: nativo), não a página. A mesma fração que separa a página de um aviso no 31.72 (`dialogos._FRACAO_DA_PAGINA`).
+_FRACAO_DA_JANELA = 0.6
+
 
 def _area_de(b: tuple[int, int, int, int]) -> int:
     return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
@@ -427,6 +431,16 @@ def sobreposicao_vale(tree: UiTree, ref: str | None, largura: int, altura: int) 
     caixa = min(caixas, key=lambda e: _area_de(e.bounds)) if caixas else None
     if caixa is not None and _area_de(caixa.bounds) >= FRACAO_DA_SOBREPOSICAO * tela:
         return True
+    # L2 da leitura do #391: no diálogo nativo (AlertDialog) o leitor corta o painel (`android:id/parentPanel`, sem
+    # texto) e, com o dump só da janela do diálogo, sobram título, mensagem e botões, todos pequenos e sem pista. A
+    # árvore inteira menor que `_FRACAO_DA_JANELA` da tela é uma janela flutuante: o que se vê é o próprio diálogo.
+    if tree.elements:
+        x1 = min(e.bounds[0] for e in tree.elements)
+        y1 = min(e.bounds[1] for e in tree.elements)
+        x2 = max(e.bounds[2] for e in tree.elements)
+        y2 = max(e.bounds[3] for e in tree.elements)
+        if _area_de((x1, y1, x2, y2)) < _FRACAO_DA_JANELA * tela:
+            return True
     base = caixa or citado
     area = base.bounds
     # Os descendentes da base, sem a relação de pai na árvore: na ordem do documento (a do uiautomator, em
@@ -445,8 +459,10 @@ def sobreposicao_vale(tree: UiTree, ref: str | None, largura: int, altura: int) 
             continue
         if _contem(e.bounds, area):
             continue                                   # ancestral: a página ou a tela
-        if any(o is not e and _contem(e.bounds, o.bounds) for o in tree.elements):
-            continue                                   # não é folha: um contêiner da página
+        if any(o is not e and o.bounds != e.bounds and _contem(e.bounds, o.bounds) for o in tree.elements):
+            # Não é folha: um contêiner da página. Com os MESMOS bounds não conta (L1 da leitura do #391): no Chrome, o
+            # View com texto e o TextView filho com o mesmo texto se conteriam um ao outro e a linha sumiria do J3.
+            continue
         if _cruza(e.bounds, area):
             return True
     return False
