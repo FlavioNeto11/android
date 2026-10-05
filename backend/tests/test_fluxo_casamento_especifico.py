@@ -192,6 +192,36 @@ def test_dois_valores_em_que_um_contem_o_outro() -> None:
     assert _sub_values("Banana Maria e Ana Maria", v) == "Banana Maria e {longo}"
 
 
+def test_numero_colado_a_unidade_e_trocado_mas_nao_o_numero_maior() -> None:
+    """Borda em DÍGITO exige só um não-dígito: letra vizinha pode. Mutação: com a borda de caractere de palavra também para dígito (a primeira versão do F6)
+    "esperar 10min" fica sem troca e o primeiro assert falha: o plano reaproveitado com 20 diria "10min" calado."""
+    v = {"n": "10"}
+    assert _sub_values("esperar 10min", v) == "esperar {n}min"
+    assert _sub_values("esperar 10 min", v) == "esperar {n} min"
+    assert _sub_values("esperar 100", v) == "esperar 100"
+    assert _sub_values("esperar 110", v) == "esperar 110"
+    assert _sub_values("versão v10", v) == "versão v{n}"
+    assert _sub_values("10, 100 e 10", v) == "{n}, 100 e {n}"
+
+
+@pytest.mark.parametrize(("texto", "valor"), [
+    ("posts", "post"), ("ana_silva", "ana"), ("fulano123", "fulano"), ("#tag2026", "tag"),
+])
+def test_palavra_maior_nao_perde_um_pedaco(texto: str, valor: str) -> None:
+    assert _sub_values(texto, {"v": valor}) == texto
+
+
+@pytest.mark.parametrize(("texto", "esperado"), [
+    ('curtir "ana"', 'curtir "{v}"'),
+    ("curtir 'ana'", "curtir '{v}'"),
+    ("curtir ana!", "curtir {v}!"),
+    ("curtir @ana", "curtir @{v}"),
+    ("o post da ana's", "o post da {v}'s"),
+])
+def test_aspas_pontuacao_arroba_e_genitivo_seguem_trocando(texto: str, esperado: str) -> None:
+    assert _sub_values(texto, {"v": "ana"}) == esperado
+
+
 def test_o_marcador_posto_nao_e_reescrito_por_outro_valor() -> None:
     # "nome" é palavra inteira dentro de "{nome}"; sem proteger o marcador, o segundo valor o corromperia.
     assert _sub_values("Ana e nome", {"a": "Ana", "b": "nome"}) == "{a} e {b}"
@@ -202,3 +232,20 @@ def test_texto_vazio_e_valor_vazio_ficam_como_estao() -> None:
     assert _sub_values(None, {"n": "Ana"}) is None
     assert _sub_values("", {"n": "Ana"}) == ""
     assert _sub_values("abc", {"n": ""}) == "abc"
+
+
+# ------------------------------------------------------------------ N2: parâmetro reservado (limite conhecido)
+def test_molde_com_reservado_conta_como_buraco_na_especificidade() -> None:
+    """Limite CONHECIDO, fixado como está hoje (não é desejo): `specificity` conta `{instance_id}` como buraco, mas
+    `_extract` o trata como texto literal do comando. O molde com reservado perde um ponto de buracos no critério
+    mesmo casando só o comando que traz o literal; se um dia isso mudar, este teste muda junto, de propósito."""
+    assert specificity("abrir {p} {instance_id}") == specificity("abrir {p} {q}") < specificity("abrir {x}")
+
+
+def test_molde_com_reservado_perde_para_o_generico_de_menos_buracos(db: Database) -> None:
+    fluxo(db, "f-reservado", "abrir {p} {instance_id}", plano=_plano("p"), uses=9)
+    fluxo(db, "f-generico", "abrir {x}", plano=_plano("x"), uses=1)
+    comando = "abrir fulano {instance_id}"            # os dois casam: o literal do reservado e o buraco do genérico
+    assert FlowStore._extract("abrir {p} {instance_id}", comando) == {"p": "fulano"}
+    assert FlowStore._extract("abrir {x}", comando) == {"x": "fulano {instance_id}"}
+    assert _vencedor(db, comando) == "f-generico"

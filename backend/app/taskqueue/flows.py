@@ -98,14 +98,25 @@ def _com_valores(text: str, values: dict[str, str]) -> str:
     return PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), text)
 
 
+def _borda(caractere: str, molde: str) -> str:
+    """O lookaround que a borda do valor exige (`molde` é o lookbehind ou o lookahead): dígito pede um não-dígito,
+    letra ou `_` pede um que não seja letra, dígito nem `_`, símbolo e espaço não pedem nada."""
+    if re.fullmatch(r"\d", caractere):
+        return molde.format(r"\d")
+    return molde.format(r"\w") if re.fullmatch(r"\w", caractere) else ""
+
+
 def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
     """Troca cada valor de exemplo por `{nome}` no texto do plano, valores mais longos primeiro.
 
-    F6 (31.89): o valor só é trocado INTEIRO. Com "Ana" de exemplo, "Banana" não vira "B{nome}na": a borda do valor
-    que é letra, dígito ou `_` exige, do lado de fora, início/fim do texto ou um caractere que não seja desses. Borda
-    que é símbolo ou espaço ("@fulano", "R$ 10") não exige nada: o símbolo já delimita, e o valor continua sendo
-    trocado colado no que vem antes ou depois. Cada troca só olha o texto que ainda não é `{nome}`: um valor curto
-    ("nome") não reescreve o marcador que um valor anterior acabou de pôr.
+    F6 (31.89): o valor só é trocado INTEIRO, e a borda se confere por CLASSE de caractere. Borda que é letra ou `_`
+    exige, do lado de fora, algo que não seja letra, dígito nem `_`: com "Ana" de exemplo, "Banana", "Ana2" e "a_Ana"
+    ficam como estão, e "posts", "ana_silva" e "fulano123" não perdem um pedaço para "post", "ana" e "fulano". Borda
+    que é DÍGITO exige só um não-dígito: com "10" de exemplo, "esperar 10min" vira "esperar {n}min" e "v10" vira "v{n}",
+    mas "100" e "110" ficam (exigir também não-letra aqui deixava "10min" sem troca, e o plano reaproveitado com outro número
+    dizia "10min" calado). Borda que é símbolo ou espaço ("@fulano", "R$ 10") não exige nada: o símbolo já delimita.
+    Cada troca só olha o texto que ainda não é `{nome}`: um valor curto ("nome") não reescreve o marcador que um
+    valor anterior acabou de pôr.
     """
     if not text:
         return text
@@ -113,8 +124,7 @@ def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
     for name, value in sorted(values.items(), key=lambda kv: -len(kv[1])):
         if not value:
             continue
-        antes = r"(?<!\w)" if re.match(r"\w", value[0]) else ""
-        depois = r"(?!\w)" if re.match(r"\w", value[-1]) else ""
+        antes, depois = _borda(value[0], "(?<!{})"), _borda(value[-1], "(?!{})")
         achar = re.compile(antes + re.escape(value) + depois)
         novos: list[tuple[str, bool]] = []
         for trecho, feito in pedacos:

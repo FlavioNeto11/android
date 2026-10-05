@@ -27,10 +27,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   dono é outra fatia).
 - F6: `_sub_values` troca o valor de exemplo só como palavra inteira ("Ana" não mexe em "Banana"); borda que é símbolo
   ou espaço ("@fulano", "R$ 10") continua trocada; um valor curto não reescreve o `{nome}` já posto.
+- F6, segunda leitura: a borda é por CLASSE. Valor que começa ou termina em dígito exige só um não-dígito do lado de fora
+  ("10" troca em "esperar 10min" e "v10", não em "100" nem "110"); letra ou `_` segue exigindo não-palavra ("posts",
+  "ana_silva", "fulano123" e "#tag2026" não perdem pedaço). Antes, "10min" ficava sem troca e o plano reaproveitado com
+  outro número dizia "10min" calado.
+- N2 (só teste, sem mudar código): molde com parâmetro reservado conta como buraco na especificidade e é literal no
+  `_extract`; a ordem de hoje nesse caso está fixada como limite conhecido.
 - Medido no banco real em 05/10 (só leitura): 0 comandos de 30 dias casam com 2 ou mais fluxos ativos e 0 fluxos ativos
   têm valor de exemplo que é substring de outra palavra; as duas mudanças não alteram resultado de hoje.
 - `test_intencao_resolucao.py::test_empate_entre_fluxos...` afirmava a ordem antiga (o mais usado vence); virou "o mais específico vence".
-- Prova: `simulated`: `backend/tests/test_fluxo_casamento_especifico.py` (23 testes, incluindo a paridade com
+- Prova: `simulated`: `backend/tests/test_fluxo_casamento_especifico.py` (35 testes, incluindo a paridade com
   `SqlSkillRepository.candidates`); revertidos F1 e F6 um por vez, falham 4 e 7 deles. Real: `not_run`.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
