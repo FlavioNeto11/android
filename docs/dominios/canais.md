@@ -407,6 +407,14 @@ avisos depois da faxina"), e a trava cai no TTL.
     caixa, e o lembrete agrupado diz onde fica cada coisa (28.41).
   - Responder ao aviso de objetivo parado ou de conta só informa: "Este aviso só informa: para resolver, toque no
     link dele." (28.41). O `/status` conta também os objetivos parados.
+  - Regra de fundo da resposta (28.41, orquestradora 05/10 06:53Z): a resposta a uma mensagem nossa cujo fato não tem
+    ramo próprio só informa; o texto livre (e a prévia de execução) fica só para a mensagem que não responde a nada
+    nosso. O agrupado (`grupo:<tipo>`, `grupo:rotina`), o pedido, o aprendizado e qualquer família nova caem aí. A
+    única exceção é o anexo do dono, em que só "ler" é dele (28.24). No Trello, o comentário nos espelhos do livro,
+    do deploy e do custo segue o caminho dos cartões do plano (orquestradora, com a confirmação ao dono); o de
+    convidado só informa.
+  - O gesto do desfecho segue o motivo da parada (`blocked_kind`): o item parado no aparelho manda abrir a execução;
+    o parado numa aprovação manda à caixa de Pendências; os dois casos, as duas linhas.
   - O rótulo do pedido é texto da pessoa: só sai quando o pedido foi criado pelo dono (o de convidado, de frente ou
     de IA sai sempre pelo id curto; desde a F2a, migração 106, o pedido guarda quem o criou: `dono` só para o
     operador da lista `pedidos.operadores_do_dono` ou o `trello:<membro_dono>`, e o anterior à 106 sai pelo id curto) e

@@ -417,7 +417,7 @@ def _portas(status: RunStatus, **contagens: int) -> PortasReais:
                                 ("succeeded", "failed", "waiting_user", "uncertain", "cancelled", "running", "pending")})
     repo = SimpleNamespace(run_row=lambda _rid: {"status": status.value},
                            run_summary=lambda _row: SimpleNamespace(counts=counts, short_id="abc123", status_detail=None))
-    db = SimpleNamespace(scalar=lambda *_a, **_k: None)
+    db = SimpleNamespace(scalar=lambda *_a, **_k: None, query=lambda *_a, **_k: [])
     return PortasReais(db=db, runs=SimpleNamespace(repo=repo), aprovacoes=None, saude=lambda: None,  # type: ignore[arg-type]
                        online=lambda: [])
 
@@ -592,3 +592,54 @@ def test_o_agrupado_de_conta_e_o_de_lembrete_vao_a_caixa_sem_o_id_de_um_item() -
     lembrete = corpo_agrupado(["⏳ O objetivo parado no android-13 vence em até 2 h"], "pendencia.vence_em")
     assert "Execuções" in lembrete and "Pendências" in lembrete
     assert link_agrupado("pendencia.vence_em", [f"{PAINEL}/#/execucoes/{RUN}"]) == f"{PAINEL}/#/pendencias"
+
+
+# ===================================================================== 7. o 28.41 (leitura do #380 e do #382)
+@pytest.mark.parametrize("fato", ["pedido:p1", "learning:r1:o1", "trello-convidado:c1", "familia-nova:x1"])
+@pytest.mark.parametrize("texto", ["sim", "abre o instagram no android-13", "o que houve?"])
+def test_resposta_a_fato_sem_ramo_so_informa(fato: str, texto: str) -> None:
+    """Regra de fundo (orquestradora, 05/10 06:53Z): o texto livre fica só para a mensagem que não responde a nada
+    nosso. Um tipo novo de aviso (`familia-nova`) não reabre a lacuna."""
+    from app.modules.avisos.application.entrada import SO_INFORMA_SEM_RAMO, rotear
+    i = rotear(texto, fato=fato)
+    assert i.tipo == "desconhecida" and i.motivo == SO_INFORMA_SEM_RAMO
+
+
+@pytest.mark.parametrize("texto", ["sim", "abre o instagram no android-13", "o que houve?"])
+def test_o_anexo_segue_a_gramatica_comum_de_proposito(texto: str) -> None:
+    """28.24: no anexo só o pedido de leitura é dele; o resto é a gramática comum (a única exceção à regra de fundo)."""
+    from app.modules.avisos.application.entrada import rotear
+    assert rotear(texto, fato="anexo:7") == rotear(texto)
+
+
+@pytest.mark.parametrize(("fato", "esperado"), [
+    ("deploy:d025b671:110", "orquestradora"), ("livro:l1", "orquestradora"), ("custo:2026-10-05", "orquestradora"),
+    (None, "orquestradora"), ("trello-convidado:c1", "desconhecida"), ("pedido:p1", "desconhecida")])
+def test_comentario_no_cartao_espelho_segue_o_plano(fato: str | None, esperado: str) -> None:
+    """Lacunas do #380 no Trello: o comentário nos espelhos do livro, do deploy e do custo vai à orquestradora como o
+    dos cartões do plano (com a confirmação ao dono); o de convidado e o de pedido só informam."""
+    from app.modules.avisos.infrastructure.trello_leitor import PREFIXO_DO_FATO, REPASSE_COMENTARIO, ConversaDoTrello
+    linha = {"texto": "abre o instagram no android-13", "responde_a": f"{PREFIXO_DO_FATO}{fato}" if fato else ""}
+    i = ConversaDoTrello._intencao(SimpleNamespace(), linha)  # type: ignore[arg-type]
+    assert i.tipo == esperado
+    if esperado == "orquestradora":
+        assert i.repasse == REPASSE_COMENTARIO and i.texto == "abre o instagram no android-13"
+
+
+@pytest.mark.parametrize(("bloqueios", "gestos"), [
+    ([None], ["objetivo"]), (["approval"], ["aprovacao"]), (["ai", "approval"], ["objetivo", "aprovacao"])])
+def test_o_gesto_do_desfecho_segue_o_motivo_da_parada(tmp_path: Path, bloqueios: list[str | None],
+                                                      gestos: list[str]) -> None:
+    """Leitura do #382: o objetivo parado numa aprovação se resolve na caixa de Pendências, não no aparelho."""
+    from app.modules.avisos.domain.mensagem import GESTO_DA_APROVACAO_NO_DESFECHO
+    _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
+    _run(banco, "r1", chave="k-comum")
+    for n, bloqueio in enumerate(bloqueios):
+        banco.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, blocked_kind)"
+                      " VALUES (?,?,?,?,?,?)", (f"r1:o{n}", "r1", f"android-1{n}", "waiting_user", 1, bloqueio))
+    portas = _portas(RunStatus.completed_with_issues, waiting_user=len(bloqueios))
+    portas.db = banco
+    linhas = (portas.desfecho("r1") or "").split("
+")
+    nomes = {GESTO_DO_OBJETIVO: "objetivo", GESTO_DA_APROVACAO_NO_DESFECHO: "aprovacao"}
+    assert [nomes[x] for x in linhas if x in nomes] == gestos

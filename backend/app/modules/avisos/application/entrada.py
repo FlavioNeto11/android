@@ -202,6 +202,9 @@ class Fato:
 SO_INFORMA_PELO_LINK = "Este aviso só informa: para resolver, toque no link dele."
 #: A resposta à mensagem agrupada (28.41, F1 da leitura do #380): ela não diz a qual item se responde.
 SO_INFORMA_O_AGRUPADO = "Esta mensagem junta vários avisos e só informa: para resolver, toque no link dela."
+#: A resposta a um aviso sem ramo próprio (28.41): diz como pedir algo, porque o pedido não sai de uma resposta.
+SO_INFORMA_SEM_RAMO = ("Este aviso só informa: nada foi executado. Para pedir algo, mande uma mensagem nova, sem "
+                       "responder a um aviso.")
 
 
 def _sem_acento(s: str) -> str:
@@ -353,7 +356,11 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         return Intencao("desconhecida", motivo="Para decidir esta aprovação, responda \"sim\" ou \"não\".")
     if f.pergunta:
         return Intencao("responder", ref=f.ident, texto=t)
-    return None
+    # 28.41 (regra de fundo da leitura do #380, orquestradora 05/10 06:53Z): a resposta a uma mensagem nossa cujo fato
+    # não tem ramo (`pedido:`, `learning:`, `trello-convidado:` e qualquer família nova) só informa. O texto livre fica
+    # só para a mensagem que não responde a nada nosso; assim um tipo novo de aviso não reabre a lacuna. O único `None`
+    # acima é o do anexo, que segue a gramática comum de propósito (28.24).
+    return Intencao("desconhecida", motivo=SO_INFORMA_SEM_RAMO)
 
 
 def texto_para_o_extrator(alvo: str, objetivo: str) -> str:

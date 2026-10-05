@@ -236,6 +236,9 @@ class SaidaDoTrello:
 
 #: 28.30: o comentário do dono num cartão sem aviso da Central (os cartões do plano).
 REPASSE_COMENTARIO = "comentario"
+#: 28.41 (lacunas da leitura do #380, orquestradora 05/10 06:53Z): os cartões-espelho do livro de decisões, do deploy
+#: e do custo (`espelho.py`) não são aviso que se decide; o comentário neles segue o caminho dos cartões do plano.
+ESPELHOS_COMO_O_PLANO = frozenset({"livro", "deploy", "custo"})
 #: O operador da linha sem autor lido: não casa com nenhum `membro_dono` (os ids do Trello são hexadecimais).
 AUTOR_DESCONHECIDO = "desconhecido"
 TIPO_DO_COMENTARIO = "trello.comentario"
@@ -313,7 +316,8 @@ class ConversaDoTrello(ConversaDoCanal):
         texto = str(linha.get("texto") or "")
         responde_a = str(linha.get("responde_a") or "")
         fato = responde_a[len(PREFIXO_DO_FATO):] if responde_a.startswith(PREFIXO_DO_FATO) else None
-        if fato is None and not texto.lstrip().startswith("/"):
+        como_o_plano = fato is None or fato.partition(":")[0] in ESPELHOS_COMO_O_PLANO
+        if como_o_plano and not texto.lstrip().startswith("/"):
             # Comentário num cartão que não é de aviso da Central (os cartões do plano, 28.30): não é pedido nem comando,
             # mas também não fica mudo. Vai à orquestradora e pede a confirmação do dono no Telegram (`_comentario`).
             if not texto.strip():

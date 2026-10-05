@@ -20,7 +20,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from app.db import Database, loads
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
 from app.modules.avisos.application.entrada import casar_ref
-from app.modules.avisos.domain.mensagem import GESTO_DO_OBJETIVO
+from app.modules.avisos.domain.mensagem import GESTO_DA_APROVACAO_NO_DESFECHO, GESTO_DO_OBJETIVO
 from app.modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo, LeituraRecusada
 from app.modules.avisos.infrastructure.entrada import Captura, Pendencia, PlanoMudou, Previa, RecusaDaCentral
 from app.porta_do_plano import PortaIndisponivel
@@ -186,7 +186,7 @@ class PortasReais:
                           + (f", {c.waiting_user} esperando você" if c.waiting_user else "") + ".")
             if c.waiting_user:
                 # 28.40: o objetivo parado não termina sozinho; sem o gesto, "concluída com problemas" parecia o fim.
-                linhas.append(GESTO_DO_OBJETIVO)
+                linhas += self._gestos_dos_parados(run_id)
         # O objetivo parado (`waiting_user`) não é evidência: o motivo livre dele traz texto de tela ou de conta, que o
         # aviso do 28.40 nunca manda (revisão do #372, O2). O gesto acima já diz onde ver. Só o objetivo que terminou
         # (N3): `NULL` vem primeiro no `DESC` do PostgreSQL e por último no do SQLite.
@@ -201,6 +201,15 @@ class PortasReais:
             # fixa do motivo; o detalhe fica no painel.
             linhas.append(motivo)
         return "\n".join(linhas)
+
+    def _gestos_dos_parados(self, run_id: str) -> list[str]:
+        """28.41 (leitura do #382): o gesto pelo motivo da parada, o mesmo `blocked_kind` do aviso do 28.40 e do
+        `/status`. O item parado no aparelho se resolve na execução; a aprovação, na caixa de Pendências. Os dois casos
+        na mesma execução: as duas linhas, nessa ordem. Sem leitura (contagem e linhas fora de passo), o gesto do item."""
+        tipos = {str(r["blocked_kind"] or "") for r in self.db.query(
+            "SELECT DISTINCT blocked_kind FROM objectives WHERE run_id=? AND status='waiting_user'", (run_id,))}
+        gestos = [GESTO_DO_OBJETIVO] if not tipos or tipos - {"approval"} else []
+        return gestos + ([GESTO_DA_APROVACAO_NO_DESFECHO] if "approval" in tipos else [])
 
     def _motivo_da_recusa(self, run_id: str) -> str | None:
         """A frase fixa do `plan.refused` mais recente da execução, ou `None` sem recusa no planejamento."""

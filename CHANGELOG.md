@@ -25,6 +25,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   só informa: para resolver, toque no link dele.") e nunca vira prévia de execução nova. F1 da leitura do #380: a
   resposta à mensagem AGRUPADA (`grupo:<tipo>` e `grupo:rotina`) também só informa ("Esta mensagem junta vários avisos
   e só informa: para resolver, toque no link dela."); antes ela caía no texto livre.
+- Regra de fundo (orquestradora, 05/10 06:53Z): a resposta a uma mensagem nossa cujo fato não tem ramo (`pedido:`,
+  `learning:`, `trello-convidado:` ou família nova) só informa e diz como pedir algo; o texto livre fica só para a
+  mensagem que não responde a nada nosso (o anexo segue a gramática comum, 28.24). No Trello, o comentário nos
+  cartões-espelho `livro:`, `deploy:` e `custo:` vai à orquestradora como o dos cartões do plano.
+- Leitura do #382: o gesto do desfecho segue o `blocked_kind` dos objetivos parados (aparelho: abrir a execução;
+  aprovação: a caixa de Pendências; os dois: as duas linhas).
 - R2: o `/status` conta os objetivos parados (sem contar duas vezes o que espera uma aprovação) e diz que eles estão
   em Execuções.
 - N1 do #372: com a conta igual, o aviso de conta só cala o objetivo que parou por motivo de conta, como no ramo só

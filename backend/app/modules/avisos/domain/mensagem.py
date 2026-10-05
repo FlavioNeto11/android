@@ -155,6 +155,8 @@ GESTO_DO_OBJETIVO = ("Espera você: abra a execução no painel e, no item parad
                      "ou Abandonar.")
 #: O mesmo gesto no lembrete do 31.50, que tem prazo (revisão do #372, L1).
 GESTO_DO_OBJETIVO_ANTES = GESTO_DO_OBJETIVO.replace("Espera você: ", "Espera você: antes disso, ", 1)
+#: 28.41 (leitura do #382): o objetivo parado numa APROVAÇÃO se resolve na caixa, não no aparelho.
+GESTO_DA_APROVACAO_NO_DESFECHO = "Espera você: decida a aprovação na caixa de Pendências."
 #: O que parou o objetivo, pelo `failure_kind` do `objective.updated` (29.90) ou, sem ele, pelo `blocked_kind`. Texto fixo:
 #: o `status_detail` e o `needs` nunca saem (podem trazer tela, conta ou texto do comando). Fora do mapa (o `ui_ocupada`
 #: do 29.87, nulo antes da classificação), a mensagem fica sem a linha do motivo.
