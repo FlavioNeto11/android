@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-458 de 522 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+458 de 524 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -294,6 +294,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.36 | pendente | — | — | — |  |  |
 | 28.37 | pendente | — | — | — |  |  |
 | 28.38 | pendente | — | — | — |  |  |
+| 28.39 | pendente | — | — | — |  |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -358,7 +359,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.65 | implemented | real | claude-opus-5-5 | — | Real 04/10, central em 1fc66a6c (deploy 28, 16:00:55Z): POST /api/runs/targets/resolve às 16:02:04Z, persona ig-KW1uWMsISqStNXbU com sessão pronta no android-06 (principal) e no android-13, política one: alvo android-06… | None |
 | 29.66 | implemented | real | claude-opus-5-5 | — | Real 04/10, depois do deploy 28 (1fc66a6c, com o #259): desde o reinício do backend (~16:00Z) até 16:02Z, abis 0 e supported_verbs 0 trocas fora da janela do seed (30 eventos marcados janela_do_seed). renderer: 10 event… | Ressalva para a orquestradora: o worker-lan-01 ficou worker_offline do reinício (16:00Z) até eu religar o agente (16:01:29Z), quando o central passou a esperar… |
 | 29.67 | implemented | real | claude-opus-5-5 | — | Real 04/10, central em 60b3a0a9 (deploy 26), durante a suíte 27: measurements(kind='irq') com host_cpu 87,4–91,7 % às 14:59:03–07Z ficaram ignorada=true em android-05 (irq 0,116), 03 (0,157), 01 (0,2115) e 06 (0,4237, q… | None |
-| 29.68 | implemented | real | claude-fable-5-1 | — | Ver android-nota-29-68.md: o HAL de sensores alto do android-10 era a mesma família de giro do qemu (K-093); o reinício a frio do 10 às 21:11Z (start c-20261004211130-4c02b7, 65,6 s) zerou o HAL (0,16 s de CPU desde o b… | Releitura do tempo da execução de leitura sem IA (51,5 s contra 40,2 s) ainda not_run. |
+| 29.68 | implemented | real | claude-fable-5-1 | — | Releitura no android-10 (worker-lan-01) em 05/10, das 02:04:44Z às 02:05:26Z. A saúde do central responde cb5848d8, com o código da a0c9865e. Execução r-20261005020444-320efb, chave lote:android:29.68-10, com o comando… | Duas ressalvas. A comparação é com os 40,2 s do 09 medidos em 04/10, não com uma execução no mesmo dia. E a máquina não estava quieta: o Aprendizado (114 arqui… |
 | 29.70 | implemented | real | claude-fable-5-1 | — | Real 04/10 17:46Z, máquina central, commit 1452f81d (o #261 está no ar desde o deploy 28): POST /api/runs/targets/suggest com 'abra o QA Messenger e leia a primeira conversa' -> modo 'distribuir', app_id qa-messenger, a… | None |
 | 29.71 | implemented | simulated | claude-fable-5-1 | — | PR #292 (fix/29-71-identificador-so-sem-handle) na suíte 31, no ar em 0ede1860 desde 04/10 19:52Z (deploy 31, migração 103). taskqueue/repository.py: SqlProfileDataStore(db, tem_provedor_de_sessao=lambda pacote: session… | Prova real not_run: precisa de uma execução no Instagram cujo plano use {conta_instagram_usuario}, que ficou travada até o deploy 31 e pede o ok da orquestrado… |
 | 29.72 | implemented | real | claude-fable-5-1 | — | Real 04/10, máquina central, deploy 30 (1b3568a7, PR #273 na suíte 30). Às 2026-10-04T18:32:59.577460Z rodei scripts/candidatos-do-portal.py contra o central (só GET e banco em mode=ro): 74 candidatos, fora 0/0/0. amost… | None |
@@ -369,17 +370,18 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.77 | partial | real | claude-fable-5-1 | — | Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), commit a0c9865e (deploy 33 no ar às 01:17:42Z, migração 107_portal_contatos). Sim do dono para ligar: Telegram 2026-10-05T00:59:01Z (linha 1501 de canal_entradas, do_… | o primeiro contato real pelo formulário é do dono; achado 29.85 (tag do Web Analytics injetada pela Cloudflare, bloqueada pela CSP) |
 | 29.78 | implemented | simulated | claude-fable-5-1 | — | PR #343 (fix/29-78-harness-espera-faxinas, ponta dc2c12f7) na suíte 33, no ar em a0c9865e. Harness.boot espera a primeira volta da retenção, da expiração e da faxina dos canais (AppState.voltas_de_faxina, ServicoDeAviso… | Achado à parte, que virou o 28.35 da Canais (PR #345, suíte 34): fora da subida, faxinar_canais toma a trava avisos com o aviso desligado. |
 | 29.79 | partial | real | claude-fable-5-1 | — | Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entraram o #334 (0d1232c9, merge bf8e5609: commit_switch, commit… | 29.87 (rolar até 'Add AI label' e a folha 'Sharing posts' no conhecimento do app), suíte 34; a 1ª publicação real (29.30) só depois do deploy 34 |
-| 29.80 | partial | real | claude-fable-5-1 | — | Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), commit a0c9865e, site ligado às 01:19Z. Prova de fora às 01:19:51Z: /pagina-que-nao-existe responde 404 com a página própria. Navegador às 01:22Z em https://dev.nvit.… | prévia de link num chat real, que é do dono |
+| 29.80 | partial | real | claude-fable-5-1 | — | Real em 05/10/2026, 01:48Z a 01:52Z, máquina WIN-7S2UASNLFOP, endereço público https://dev.nvit.com.br/ servido pelo deploy 33 (a0c9865e, site e contato ligados às 01:19Z); navegador embutido e curl, só GET (nenhum POST… | PR #356 (contraste do rótulo 'Ilustração') no deploy, e a prévia num chat real do WhatsApp e do Telegram (do dono) |
 | 29.81 | pendente | — | — | — |  |  |
 | 29.82 | implemented | real | claude-fable-5-1 | — | PR #339 (fix/29-82-vagas-decididas, ponta 757ba4bc, com a W1 da revisão) na suíte 33, no ar em a0c9865e desde 05/10 01:12Z (deploy 33, migração 107). WorkerRegistry.vagas_que_valem é a regra única do agendador (capacida… | O topo e a Infraestrutura do painel com o notebook em 9 ligados não foram fotografados depois do deploy (a caminhada da orquestradora carregou as telas, sem es… |
 | 29.83 | pendente | — | — | — |  |  |
 | 29.84 | pendente | — | — | — |  |  |
-| 29.85 | pendente | — | — | — |  |  |
+| 29.85 | partial | real | claude-fable-5-1 | — | PR #353, ponta final 5dd09934 (branch feat/29-85-prova-sem-script-de-fora; revisões X1-X5 e Y1-Y2 fechadas pela Ferramentas e pela Reload plugins). Real em 05/10/2026, máquina WIN-7S2UASNLFOP, do worktree C:\git\portal-… | merge do #353 na suíte 34 (junto do fix/29-83-curl-q 1fc0fad8, que põe -q no curl da isca do #342) |
 | 29.86 | pendente | — | — | — |  |  |
 | 29.87 | pendente | — | — | — |  |  |
 | 29.88 | implemented | real | claude-fable-5-1 | — | Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), commit a0c9865e (deploy 33). Conferido sem defeito e sem mudança de código. Sessão Android, 01:34Z a 01:35Z, no android-04 (worker remoto, sem conta real, lease própr… | None |
 | 29.89 | pendente | — | — | — |  |  |
 | 29.90 | pendente | — | — | — |  |  |
+| 29.91 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -529,7 +531,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (64): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.33, 28.34, 28.35, 28.36, 28.37, 28.38, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.75, 29.77, 29.79, 29.80, 29.81, 29.83, 29.84, 29.85, 29.86, 29.87, 29.89, 29.90, 30.34, 30.52, 30.67, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.49, 31.51, 31.53, 31.55, 31.56, 31.58, 31.61, 31.62, 31.63, 31.64, 31.65, 31.66, 31.67, 31.68, 31.69, T.2
+Pendentes (66): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.33, 28.34, 28.35, 28.36, 28.37, 28.38, 28.39, 29.7, 29.9, 29.13, 29.19, 29.21, 29.30, 29.38, 29.75, 29.77, 29.79, 29.80, 29.81, 29.83, 29.84, 29.85, 29.86, 29.87, 29.89, 29.90, 29.91, 30.34, 30.52, 30.67, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.49, 31.51, 31.53, 31.55, 31.56, 31.58, 31.61, 31.62, 31.63, 31.64, 31.65, 31.66, 31.67, 31.68, 31.69, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

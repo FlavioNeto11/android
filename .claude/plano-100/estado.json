@@ -7398,14 +7398,14 @@
    "id": "29.68",
    "status": "implemented",
    "proof": "real",
-   "evidence": "Ver android-nota-29-68.md: o HAL de sensores alto do android-10 era a mesma família de giro do qemu (K-093); o reinício a frio do 10 às 21:11Z (start c-20261004211130-4c02b7, 65,6 s) zerou o HAL (0,16 s de CPU desde o boot); recriar o AVD worker-02 deixou de ser necessário.",
-   "blocker": "Releitura do tempo da execução de leitura sem IA (51,5 s contra 40,2 s) ainda not_run.",
-   "grupo": "orquestrador-resultado-suite32-a",
+   "evidence": "Releitura no android-10 (worker-lan-01) em 05/10, das 02:04:44Z às 02:05:26Z. A saúde do central responde cb5848d8, com o código da a0c9865e. Execução r-20261005020444-320efb, chave lote:android:29.68-10, com o comando do 31.39 (QA Messenger: enviar 'Entrega POC {instance_id} {run_id}' ao contato QA-003 e concluir só com ENTREGUE). Resultado: completed, '1 de 1 com sucesso comprovado', duração 39,6 s. Antes eram 51,5 s no 10; a referência do 09 é 40,2 s (r-20261004200355-074480). O passo de digitar a mensagem levou 4,8 s (antes 8,5 s no 10; 4,4 s no 09). Os passos: abrir 5,6 s; conta 1,0 s; conversa 5,3 s; digitar 4,8 s; enviar 10,4 s; ENTREGUE 10,0 s. O planejador foi um fluxo; das etapas, 3 foram por receita, 2 pela IA e 1 sem ator. Custo US$ 0,0751 em 6 chamadas (/api/usage?run_id, a regra do costs.spent_usd). A causa da lentidão era o HAL de sensores girando (família K-093), e o reinício a frio de 04/10 às 21:11Z (c-20261004211130-4c02b7) a curou: ver .claude/handoffs/android-nota-29-68.md. A execução no 09 não foi feita: com ela, o total passaria do teto de US$ 0,10, e a orquestradora decidiu fechar com a do 10.",
+   "blocker": "Duas ressalvas. A comparação é com os 40,2 s do 09 medidos em 04/10, não com uma execução no mesmo dia. E a máquina não estava quieta: o Aprendizado (114 arquivos, -n 2) e o Jev rodavam testes em Idle, com a CPU do central em 22 % e a do notebook entre 15 e 20 % no início.",
+   "grupo": "resultado-orquestradora-janela33c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:43:27+00:00"
+   "quando": "2026-10-05T02:30:11+00:00"
   },
   "28.22": {
    "id": "28.22",
@@ -8186,14 +8186,14 @@
    "id": "29.80",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), commit a0c9865e, site ligado às 01:19Z. Prova de fora às 01:19:51Z: /pagina-que-nao-existe responde 404 com a página própria. Navegador às 01:22Z em https://dev.nvit.com.br/qualquer-coisa: título 'Página não encontrada · ANA · SICAT', meta robots noindex, links 'Ir para a página inicial', 'Entrar na Central' e 'Fale com a gente' (/#contato), sem rolagem horizontal. Em 360 px: botão Menu com aria-expanded, Esc devolve o foco ao botão, escolher item fecha o menu. Simulado (sessão Portal, PR 333): contraste AA, 40 de 40 focos visíveis e peso das imagens, em servidor local com a CSP real. not_run: a prévia de link num chat real do WhatsApp e do Telegram, e a medição de contraste e foco no endereço público.",
-   "blocker": "prévia de link num chat real, que é do dono",
-   "grupo": "resultado-orquestradora-suite33",
+   "evidence": "Real em 05/10/2026, 01:48Z a 01:52Z, máquina WIN-7S2UASNLFOP, endereço público https://dev.nvit.com.br/ servido pelo deploy 33 (a0c9865e, site e contato ligados às 01:19Z); navegador embutido e curl, só GET (nenhum POST). Prévia de link: canonical, og:url e og:image no mesmo endereço público; og:title, og:type website, og:locale pt_BR, og:image:width/height 1200x630, twitter:card summary_large_image (twitter:image ausente: o cartão usa a og:image); assets/previa.png 200, PNG 1200x630, 140932 bytes. Ícones: favicon.ico 48x48 4037 B, favicon.svg 281 B, assets/icone-180.png 2265 B. 404: GET /pagina-que-nao-existe deu HTTP 404 com a página própria ('Página não encontrada · ANA · SICAT') e meta robots noindex; fetch no navegador também 404. Contraste AA (estilos computados, fundo composto pelos ancestrais, inclusive gradientes; texto grande 3, demais 4,5): 255 linhas de texto em 1440 px e 248 em 360 px; reprovaram só textos com aria-hidden: os números 01/02/03 dos pilares (decorativos) e as iniciais do avatar (fundo de gradiente claro, contraste alto), e o rótulo 'Ilustração' do console (3,9 a 4,34) e da ficha de persona (2,98), que quem enxerga lê -> corrigido no PR #356 (fix/29-80-contraste-ilustracao, 31eee4bc: #6a8198 para #91a2b3, 6,01 a 6,70 e 4,59; teste em test_portal_site.py que reprova a cor antiga). Foco: Tab real 40 vezes (33 elementos distintos, do 'Pular para o conteúdo' ao rodapé, incluindo abas, FAQ, telefones, WhatsApp e os campos do formulário): 40/40 com :focus-visible e anel sólido de 3 px (#22d3ee no escuro, #0e7490 no claro), menor contraste do anel com o fundo 4,94 (mínimo 3). Sem rolagem horizontal em 1440 e 360 px; document.cookie vazio; o beacon da Cloudflare aparece e é bloqueado pela CSP (status 0), o que é o 29.85.",
+   "blocker": "PR #356 (contraste do rótulo 'Ilustração') no deploy, e a prévia num chat real do WhatsApp e do Telegram (do dono)",
+   "grupo": "resultado-orquestradora-janela33c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T01:26:30+00:00"
+   "quando": "2026-10-05T02:30:11+00:00"
   },
   "28.27": {
    "id": "28.27",
@@ -8233,6 +8233,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-05T02:07:45+00:00"
+  },
+  "29.85": {
+   "id": "29.85",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "PR #353, ponta final 5dd09934 (branch feat/29-85-prova-sem-script-de-fora; revisões X1-X5 e Y1-Y2 fechadas pela Ferramentas e pela Reload plugins). Real em 05/10/2026, máquina WIN-7S2UASNLFOP, do worktree C:\\git\\portal-29-85 na 5dd09934, contra https://dev.nvit.com.br (deploy 33, a0c9865e, site e contato ligados): (1) 01:31:46Z, antes do desligamento, a raiz pedida como navegador trazia /assets/site.js e https://static.cloudflareinsights.com/beacon.min.js/v31edd6df…, e pelo curl puro 0 ocorrências (o achado que a prova nova pega); (2) o dono liberou a Cloudflare às 02:15:13Z (Telegram, linha 1565) e a orquestradora desligou o Web Analytics/RUM da zona às 02:23-02:25Z; (3) 02:27:50Z: `SITE=ligado CONTATO=ligado WEBHOOK_DO_TRELLO=ligado bash scripts/portal-prova-de-fora.sh depois` -> 'RESULTADO: tudo como esperado', saída 0, 39 linhas ok, incluindo 'ok / (como navegador) (nenhum script de fora nem da Cloudflare no HTML)', CSP do site, sem Set-Cookie, 404s da lista fechada, webhook do Trello ligado, 429 do login na borda, isca 202, 415, 413 e Host forjado 403. Leituras só leitura antes (02:27:50Z) e depois (02:27:59Z): portal_contatos max_id=2 e contagem 2, avisos_entregas tipo portal.contato 2, sem mudança. Simulated: scripts/tests/test_portal_prova_de_fora.py, 14 testes (beacon, outra origem, tag em linhas, maiúscula, ?src= na URL, versão com dois-pontos, Rocket Loader, challenge-platform embutido, desafio 403, curl -q em toda chamada).",
+   "blocker": "merge do #353 na suíte 34 (junto do fix/29-83-curl-q 1fc0fad8, que põe -q no curl da isca do #342)",
+   "grupo": "resultado-orquestradora-janela33c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T02:30:11+00:00"
   }
  },
  "rodadas": [
@@ -10760,6 +10773,17 @@
    ],
    "grupos": [
     "resultado-orquestradora-janela33b"
+   ]
+  },
+  {
+   "quando": "2026-10-05T02:30:11+00:00",
+   "itens": [
+    "29.68",
+    "29.85",
+    "29.80"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela33c"
    ]
   }
  ]
