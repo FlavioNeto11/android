@@ -670,6 +670,8 @@ avisos depois da faxina"), e a trava cai no TTL.
       substituição só fecha a antiga se a nova veio antes da resposta. O `recebida_em` é a hora em que o nosso laço
       gravou, e uma pergunta mandada nessa brecha parecia anterior ao "1". A comparação é numérica, e não há teto pelo
       relógio (28.47): a pergunta que o script gravou um instante depois do "1", mas que veio antes dele no chat, casa.
+      A ordem por `message_id` supõe um chat só, e é o caso: a pergunta de escolha vai sempre ao privado do dono, e
+      só o privado dele conta como do dono (28.49).
     - **A resposta diz qual pergunta** (D1): "Li o seu "1" como a opção 1 da minha pergunta das HH:MMZ. Se não era
       isso, responda nela com Responder.", em reply à pergunta casada, não ao "1".
     - **Opção é número ou uma letra:** o `--escolha` recusa palavra ("sim", "ok", "pode", "publica") e as letras S e N.
@@ -809,14 +811,19 @@ Os scripts da operação provisória ficam versionados em `.claude/canais/`, e o
       da própria Central (`sha_da_imagem_na_porta`, a mesma conta do `porta_do_plano._item`). Um teste em
       `test_rotulo_ia.py` prende as duas juntas, inclusive no `None` da imagem de outra persona;
     - com o item já decidido no plano, o `midia_sha256` congelado no sim (`sha_da_imagem_aprovada`) é a âncora:
-      se a prévia de agora disser outro sha, nada sai (28.48);
+      se a prévia de agora disser outro sha, nada sai (28.48). Vale a DECISÃO mais recente da etapa, e só se for o
+      sim: um "não" depois do sim tira a âncora, e a foto não sai rotulada "aprovado"; o sim vencido não conta (28.49).
+      Um sim dado na execução, depois que a aprovação do plano deixou de valer, nasce sem `midia_sha256`; sendo a última
+      decisão, também tira a âncora (falha fechada), e o mesmo vale para o `edited`;
     - o `--previa <porta.json>` é opcional e, se vier, também tem de bater com a Central;
     - cada falha diz o seu motivo e nada sai: a Central não lida, a imagem fora do armazém, o sha diferente, o chat
       vazio;
     - sem resposta do Telegram (tempo esgotado, 5xx), a foto pode ter saído: a saída manda conferir o chat antes de
       repetir;
     - o script usa o backend do checkout central, então o `--foto` do 28.46 só funciona depois do deploy dele. Antes
-      disso, recusa com "a Central não foi lida (ImportError)", e nada sai;
+      disso, recusa com "a Central não foi lida (ImportError)", e nada sai. Vale para toda função nova que o script
+      importa (a âncora do 28.48 também): o deploy vem antes do uso. O script e o backend moram no mesmo checkout e
+      chegam juntos no merge; a janela só existe se o script for usado de um worktree contra o central antigo;
 - `resumo_laco.py`: o resumo de hora em hora, com `--carimbar` e `--ensaio`;
 - `url_painel.py`: grava ou recua o `avisos.url_painel` do `config.yaml`, com backup.
 

@@ -126,6 +126,18 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   frase e cada nome de `RESERVED`. Prova `simulated`: o arquivo e `test_arquitetura.py` (68 passed),
   `@tests/catracas.txt` (88 passed). `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
 
+## 2026-10-05 — 28.49: as sobras das leituras do #426 (28.47) e do #431 (28.48) (branch canais/28-49-sobras-das-leituras)
+
+- `sha_da_imagem_aprovada`: vale a decisão mais recente da etapa (`approved`, `edited` ou `rejected`, desempate pelo
+  id), e só se ela for o sim. Um "não" depois do sim tira a âncora, e a foto não sai rotulada "aprovado". O sim
+  vencido (`expired`) não é decisão do dono e não conta.
+- `canais.md`: a ordem por `message_id` supõe um chat só, e a pergunta de escolha vai sempre ao privado do dono; o
+  `--foto` pede o deploy antes do uso de toda função nova que importa.
+- Testes: o `_numero` com "²" (o caso que o `isdecimal` corrige; o 99 contra 100 já passava antes); a âncora com o sim
+  vencido mais novo, dois sins e o "não" depois do sim.
+- Prova: `simulated` (`backend/tests/test_rotulo_ia.py::test_a_ancora_da_foto_segue_a_decisao_mais_recente` e
+  `backend/tests/test_telegram_entrada.py::test_o_numero_do_message_id_so_aceita_digito_decimal`). Real: `not_run`.
+
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 
 - Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.
