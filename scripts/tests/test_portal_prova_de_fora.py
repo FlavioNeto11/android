@@ -43,6 +43,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 caminho="/${url#*://*/}"; [[ "$url" == *://*/* ]] || caminho="/"
+query=""; [[ "$caminho" == *\?* ]] && query="${caminho#*\?}"; caminho="${caminho%%\?*}"
 esquema="${url%%://*}"
 echo "$metodo $caminho tipo=$tipo bytes=${#dados} auth=$auth isca=$([[ "$dados" == *'"site":"isca"'* ]] && echo 1 || echo 0) nav=$navegador" >> "$CURL_LOG"
 codigo=404; corpo=""; destino=""; extra=""
@@ -55,7 +56,8 @@ else
     /api/session) codigo=200; corpo='{"token_required": true, "operator": null}' ;;
     /api/ws) codigo=403 ;;
     /api/login) codigo=429 ;;
-    /assets/site.css) codigo=200 ;;
+    /assets/site.css) codigo=200; corpo='body{}'; [[ "$QUEBRA" == versao_velha ]] && corpo='body{color:red}' ;;
+    /assets/site.js) codigo=200; corpo='console.log(1)' ;;
     /central/) codigo=200
        extra="cache-control: no-cache, must-revalidate, no-transform"$'\r\n'"content-security-policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'"
        [[ "$QUEBRA" == painel_so_relata ]] && extra="cache-control: no-cache, must-revalidate, no-transform"$'\r\n'"content-security-policy-report-only: default-src 'self'; script-src 'self'; frame-ancestors 'none'" ;;
@@ -96,6 +98,14 @@ if [[ "$caminho" == / && "$codigo" == 200 && "$navegador" == 1 ]]; then
     desafio) codigo=403; corpo='<!doctype html><html><head><title>Just a moment...</title></head><body></body>' ;;
   esac
   corpo="$corpo</body></html>"
+fi
+# A raiz sem cara de navegador (29.95): o CSS e o JS com ?v= e o começo do sha256 do conteúdo.
+if [[ "$caminho" == / && "$codigo" == 200 && "$navegador" == 0 ]]; then
+  vcss="$(printf '%s' 'body{}' | sha256sum | cut -c1-12)"; vjs="$(printf '%s' 'console.log(1)' | sha256sum | cut -c1-12)"
+  corpo="<!doctype html><html><head><link rel=\"stylesheet\" href=\"/assets/site.css?v=$vcss\">"
+  if [[ "$QUEBRA" == sem_versao ]]; then corpo="$corpo<script src=\"/assets/site.js\" defer></script>"
+  else corpo="$corpo<script src=\"/assets/site.js?v=$vjs\" defer></script>"; fi
+  corpo="$corpo</head><body></body></html>"
 fi
 # O painel pedido como navegador (29.91): o bundle com hash, relativo; a borda injetou o beacon nele em 05/10.
 if [[ "$caminho" == /central/ && "$codigo" == 200 && "$navegador" == 1 ]]; then
@@ -253,6 +263,24 @@ def test_o_painel_e_pedido_como_navegador_e_o_html_sai_intocado(tmp_path: Path) 
     ("painel_so_relata", "FALHOU /central/ (sem transformar)", "server.csp_do_painel em aplicar?"),
 ])
 def test_borda_que_reescreve_ou_painel_sem_csp_reprova(tmp_path: Path, quebra: str, linha: str, motivo: str) -> None:
+    r, _ = _rodar(tmp_path, quebra=quebra)
+    assert r.returncode == 1, r.stdout
+    assert linha in r.stdout and motivo in r.stdout, r.stdout
+
+
+# ------------------------------------------------------------------ 29.95: a versão dos arquivos do site
+def test_o_html_aponta_a_versao_que_a_borda_entrega(tmp_path: Path) -> None:
+    r, pedidos = _rodar(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "ok     /assets/site.css (versao)" in r.stdout and "ok     /assets/site.js (versao)" in r.stdout
+    assert [p for p in pedidos if p.startswith("GET /assets/site.js ")], pedidos
+
+
+@pytest.mark.parametrize(("quebra", "linha", "motivo"), [
+    ("versao_velha", "FALHOU /assets/site.css (versao)", "ALTEROU o arquivo no caminho"),   # V4: as três causas
+    ("sem_versao", "FALHOU /assets/site.js (versao)", "a pagina aponta o arquivo sem ?v="),
+])
+def test_arquivo_sem_versao_ou_com_a_velha_reprova(tmp_path: Path, quebra: str, linha: str, motivo: str) -> None:
     r, _ = _rodar(tmp_path, quebra=quebra)
     assert r.returncode == 1, r.stdout
     assert linha in r.stdout and motivo in r.stdout, r.stdout

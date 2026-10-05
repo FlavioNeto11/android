@@ -140,6 +140,32 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   registra as duas exceções de propósito: o app fora do primeiro plano não soma, e o login acontece na mesma rodada (U3/U4).
 - Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py`,
   `test_conta_bloqueada_sai.py`). `not_run`: aparelho real.
+## 2026-10-05 — 29.95: o site aponta cada arquivo pela versão do conteúdo (branch feat/29-95-versao-dos-arquivos-do-site)
+
+- **Por quê** (caminhada da orquestradora depois do deploy 34): no Chrome do dono, o rótulo "Ilustração" seguiu com a
+  cor antiga até a recarga forçada. A origem manda `no-cache` no CSS e no JS do site, e a borda os entrega com
+  `max-age=14400` (medido às 03:23:10Z e às 03:30:43Z). Assim, quem já visitou fica até 4 h com o CSS e o JS velhos
+  depois de cada deploy, e o HTML novo pode encontrar o JS velho.
+- **O que muda:**
+  - na subida, as páginas do site (`index.html` e `404.html`) passam a apontar cada arquivo da pasta com `?v=` e os 12
+    primeiros hex do sha256 do conteúdo (CSS, JS, marcas, ícones); conteúdo novo é endereço novo;
+  - o que não é arquivo do site fica como está: `/central/`, `/`, âncoras;
+  - a prova de fora baixa a raiz, pega o `?v=` do CSS e do JS e confere que a borda entrega, por esse endereço, o
+    conteúdo com esse hash. Reprova sem `?v=` ou com hash diferente, que é o caso de a borda guardar sem olhar a query.
+  - Nada muda na Cloudflare.
+- **Prova:**
+  - `simulated`: `tests/test_portal_site.py` (a raiz e a 404 apontam a versão que a origem serve; conteúdo novo muda
+    o endereço e a ETag da página; página, arquivo ausente e âncora ficam intactos; a guarda do teste reprova
+    qualquer citação a arquivo da pasta sem `?v=`, em aspas simples, sem aspas, maiúscula, `srcset`, `use href`,
+    caminho relativo ou `url()` no CSS, com um caso que prova que ela acha) e
+    `scripts/tests/test_portal_prova_de_fora.py` (22, com a versão velha e o arquivo sem `?v=` reprovando, e a
+    mensagem com as três causas: query ignorada, cópia velha ou arquivo alterado no caminho);
+  - a subida NÃO recusa um atributo fora dessas formas: derrubaria o central por um detalhe de HTML. Quem garante é
+    a guarda do teste;
+  - `real` (05/10 03:43:46Z, só GET): `/assets/site.css?v=<novo>` deu `cf-cache-status: MISS` e, na segunda vez,
+    `REVALIDATED`: a borda guarda separado por query, e o endereço novo não herda o guardado;
+  - `not_run`: o central depois do deploy e a prova de fora com as linhas novas.
+
 ## 2026-10-05 — 29.91: a borda não reescreve o HTML do site nem o do painel (branch feat/29-91-html-sem-injecao)
 
 - **Por quê:** em 05/10 a Cloudflare injetava o beacon do Web Analytics também no painel (`/central/`), que não tinha

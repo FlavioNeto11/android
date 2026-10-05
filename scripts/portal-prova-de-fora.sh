@@ -99,6 +99,31 @@ confere_como_navegador() { # caminho rotulo  -> o HTML pedido como navegador nao
     fi
 }
 
+confere_versao_dos_arquivos() { # -> o HTML aponta o CSS e o JS na versao que a borda entrega (29.95)
+    # A borda guarda CSS e JS por 4 h no navegador (max-age=14400 no lugar do no-cache da origem). A pagina aponta
+    # cada arquivo com ?v=<sha256 do conteudo>: aqui se baixa pelo endereco da pagina e se confere o hash. Diferenca
+    # quer dizer que a borda guarda sem olhar a query (nivel de cache "Ignore query string"), serviu copia velha ou
+    # alterou o arquivo no caminho (minificacao automatica, Rocket Loader).
+    local html arquivo versao veio
+    html="$(curl -q -s -m 20 "https://$H/" | tr '\r\n\t' '   ')"
+    for arquivo in /assets/site.css /assets/site.js; do
+        versao="$(grep -oE "[[:space:]](href|src)=\"$arquivo\\?v=[0-9a-f]+\"" <<< "$html" | head -1 | sed -E 's/.*\?v=([0-9a-f]+)"/\1/')"
+        if [[ -z "$versao" ]]; then
+            printf 'FALHOU %-28s      a pagina aponta o arquivo sem ?v= (o navegador guarda o velho por 4 h)\n' "$arquivo (versao)"
+            FALHAS=$((FALHAS + 1)); continue
+        fi
+        veio="$(curl -q -s -m 20 --compressed "https://$H$arquivo?v=$versao" | sha256sum | cut -c1-${#versao})"
+        if [[ "$veio" == "$versao" ]]; then
+            printf 'ok     %-28s      (?v=%s e o conteudo que a borda entrega)\n' "$arquivo (versao)" "$versao"
+        else
+            printf 'FALHOU %-28s      a pagina pede ?v=%s e a borda entregou %s\n' "$arquivo (versao)" "$versao" "${veio:-nada}"
+            echo '       -> ou a borda guarda sem olhar a query (nivel de cache "Ignore query string"), ou serviu copia'
+            echo '          velha, ou ALTEROU o arquivo no caminho (minificacao automatica de CSS/JS, Rocket Loader).'
+            FALHAS=$((FALHAS + 1))
+        fi
+    done
+}
+
 confere_html_intocado() { # caminho rotulo gzip|csp  -> a borda nao pode reescrever este HTML (29.91)
     # `no-transform` proibe a borda de mexer no HTML (beacon, Rocket Loader, e-mail ofuscado), e tambem de recomprimir.
     # Por isso o pedido aceita gzip, br e zstd: se a borda respeita, o site chega no gzip que a ORIGEM fez; br ou zstd
@@ -182,6 +207,7 @@ else
         fi
         confere_como_navegador / "/ (como navegador)"
         confere_html_intocado / "/ (sem transformar)" gzip
+        confere_versao_dos_arquivos
     else
         confere /                   "301 302 307 308" "raiz: redireciona para o painel"
     fi

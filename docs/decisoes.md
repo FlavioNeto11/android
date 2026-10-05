@@ -5490,7 +5490,8 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
      - o HTML do site (raiz e 404) sai com `no-transform`;
      - como isso tira a compressão da borda, o HTML sai comprimido em gzip daqui, quando o cliente aceita e acima de
        1 KB. Assim a página fica em ~10 KB e não em ~40 KB;
-     - o CSS e o JS seguem com a borda;
+     - o CSS e o JS seguem com a borda. Como ela troca o `no-cache` da origem por `max-age=14400`, as páginas apontam
+       cada arquivo do site com `?v=` e o começo do sha256 do conteúdo, calculado na subida (29.95);
      - o `index.html` do painel sai com `no-transform` e a CSP do painel (`CSP_DO_PAINEL` em `app/main.py`):
        `script-src 'self'`, `img-src 'self' blob: data:` (o quadro e os anexos) e `connect-src 'self'`, que cobre o
        WebSocket da mesma origem na CSP 3. Para navegador só com CSP 2 (Safari e iOS antigos), o `connect-src` lista

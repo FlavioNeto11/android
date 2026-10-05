@@ -14,6 +14,11 @@ O `index.html` é montado por requisição: os contatos do config entram ESCAPAD
 (sem contatos, o bloco some) e o token de tempo mínimo do formulário entra no marcador `<!--portal:token-->`. Por isso
 ele sai com `no-store`; os outros arquivos saem com ETag e `no-cache` (os nomes não têm hash, então o navegador
 revalida e recebe 304).
+
+A borda, porém, troca esse `no-cache` por `max-age=14400` nos arquivos que ela guarda (CSS, JS, imagens; medido em
+05/10), e quem já visitou ficava até 4 h com o CSS e o JS velhos depois de um deploy (29.95). Por isso as páginas
+apontam para cada arquivo do site com `?v=` e o começo do sha256 do conteúdo, calculado na subida: conteúdo novo é
+endereço novo, e nem a borda nem o navegador têm a versão velha guardada sob ele.
 """
 from __future__ import annotations
 
@@ -60,6 +65,10 @@ FIM_DO_FORMULARIO = "<!--portal:fim-do-formulario-->"
 SEM_FORMULARIO = ('<div class="formulario formulario-fora" id="formulario-contato"><p>O formulário de contato está '
                   'fora do ar no momento. Ligue ou chame no WhatsApp pelos telefones ao lado.</p></div>')
 _MARCADOR = re.compile(r"<!--portal:[a-z-]+-->")
+#: `href`/`src` com caminho absoluto da própria origem, sem query nem âncora: os candidatos a levar a versão.
+_ENDERECO_LOCAL = re.compile(r'(\s(?:href|src)=")(/[^"?#]*)(")')
+#: Hex do sha256 na versão: 12 bastam para que dois conteúdos diferentes não colidam na prática.
+DIGITOS_DA_VERSAO = 12
 
 
 class SiteInvalido(ValueError):
@@ -93,6 +102,24 @@ def ler_site(raiz: Path) -> dict[str, Arquivo]:
     return arquivos
 
 
+def versionar(arquivos: Mapping[str, Arquivo]) -> dict[str, Arquivo]:
+    """As páginas `.html` com `?v=<sha256>` em cada `href`/`src` que aponta para um arquivo do site que não é página.
+    O que não está na pasta (o painel, `/`, uma âncora) fica como está. A ETag da página é refeita sobre o corpo novo."""
+    def com_versao(achado: re.Match[str]) -> str:
+        alvo = arquivos.get(achado.group(2))
+        if alvo is None or alvo.tipo.startswith("text/html"):
+            return achado.group(0)
+        versao = hashlib.sha256(alvo.corpo).hexdigest()[:DIGITOS_DA_VERSAO]
+        return f"{achado.group(1)}{achado.group(2)}?v={versao}{achado.group(3)}"
+
+    saida = dict(arquivos)
+    for caminho, arquivo in arquivos.items():
+        if arquivo.tipo.startswith("text/html"):
+            corpo = _ENDERECO_LOCAL.sub(com_versao, arquivo.corpo.decode("utf-8")).encode("utf-8")
+            saida[caminho] = Arquivo(corpo, arquivo.tipo, '"' + hashlib.sha256(corpo).hexdigest()[:20] + '"')
+    return saida
+
+
 class ContatoPublico(Protocol):
     """`app.config.ContatoPublicoCfg`, visto daqui só pelos dois campos."""
     nome: str
@@ -124,7 +151,7 @@ class SitePublico:
 
     def __init__(self, raiz: Path, contatos: Iterable[ContatoPublico], token: Callable[[Scope], str], *,
                  contato_ligado: bool) -> None:
-        self.arquivos = ler_site(raiz)
+        self.arquivos = versionar(ler_site(raiz))
         modelo = self.arquivos["/index.html"].corpo.decode("utf-8").replace(
             MARCADOR_DOS_CONTATOS, bloco_de_contatos(contatos))
         if not contato_ligado and INICIO_DO_FORMULARIO in modelo and FIM_DO_FORMULARIO in modelo:

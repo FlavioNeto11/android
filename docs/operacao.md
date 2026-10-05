@@ -485,7 +485,9 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
       falso, que também recusa;
     - em `so_relatar` as violações só aparecem no console do navegador; o servidor não recebe relatório;
     - o `connect-src` lista também `wss://` de cada `server.public_hosts` e o `ws://`/`wss://` de cada
-      `server.allowed_origins`: o `'self'` não cobre WebSocket num navegador só com CSP 2 (Safari e iOS antigos).
+      `server.allowed_origins`: o `'self'` não cobre WebSocket num navegador só com CSP 2 (Safari e iOS antigos);
+  - as páginas do site apontam o CSS, o JS e as imagens com `?v=<sha256>` (29.95): a borda guarda esses arquivos por
+    4 h no navegador, e só um endereço novo faz quem já visitou ver o deploy novo.
   Com isso, um Web Analytics, um Rocket Loader ou uma ofuscação de e-mail religados por engano na zona não entram nas
   páginas. Para conferir de fora: `curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip' https://<host>/` mostra
   `content-encoding: gzip` e `no-transform`;
@@ -574,7 +576,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `portal-gerar-senha.ps1` | P | **Rodado pelo dono**: gera o `API_TOKEN` e grava no `.env` sem mostrar na tela (`-Trocar` substitui). Sessão de IA não roda este script no `.env` de verdade |
 | `python scripts/portal-config.py conferir`, ou `ligar`/`recuar` com `--ensaio` | S | Só lê o `config.yaml`: diz se o bloco `server` está pronto para o portal ou o que mudaria |
 | `python scripts/portal-config.py ligar` / `recuar` | P | Declara ou tira o hostname público no `config.yaml` (sete linhas, com cópia em `data/backups/`); vale no próximo reinício do central |
-| `portal-prova-de-fora.sh antes` / `depois` | S | Só pedidos sem credencial ao endereço público; nunca tenta login. Sai com 2 se `/api/instances` der 200. Com `SITE=ligado` confere o site na raiz (CSP, `robots.txt`, 404 fora da lista fechada, e nenhum `<script src>` de outra origem com a raiz pedida como navegador, 29.85; e, com o painel, `no-transform`, o gzip da origem na raiz e a CSP do painel, 29.91); com `CONTATO=ligado`, um `POST` com a isca (não grava nem avisa), o 415 e o 413. Testado contra um `curl` falso em `scripts/tests/test_portal_prova_de_fora.py` |
+| `portal-prova-de-fora.sh antes` / `depois` | S | Só pedidos sem credencial ao endereço público; nunca tenta login. Sai com 2 se `/api/instances` der 200. Com `SITE=ligado` confere o site na raiz (CSP, `robots.txt`, 404 fora da lista fechada, e nenhum `<script src>` de outra origem com a raiz pedida como navegador, 29.85; e, com o painel, `no-transform`, o gzip da origem na raiz e a CSP do painel, 29.91; e o `?v=` do CSS e do JS batendo com o que a borda entrega, 29.95); com `CONTATO=ligado`, um `POST` com a isca (não grava nem avisa), o 415 e o 413. Testado contra um `curl` falso em `scripts/tests/test_portal_prova_de_fora.py` |
 | `usage-report.ps1` | S | Só lê `ai_calls`, não chama provedor |
 | `demo-run.ps1` | D/T | Envia comando real ao backend (gasta IA se o provedor não for simulado) |
 | `aceites-remotos.ps1` (sem `-Yes`) | S | Só mostra o roteiro |
