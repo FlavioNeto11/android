@@ -15,7 +15,10 @@ O autor de tudo isto é o operador do ContextVar (`telegram:dono`), que o servi�
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Mapping
+
+from pydantic import ValidationError
 
 from app.db import Database, loads
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
@@ -51,6 +54,8 @@ MOTIVO_DA_RECUSA = {
     "acima_da_autonomia": "Motivo: o plano tinha etapas com efeito, e esta execução só podia observar. Nada foi feito.",
 }
 MOTIVO_DA_RECUSA_GENERICO = "Motivo: o plano foi recusado antes de começar. Nada foi executado; o detalhe está no painel."
+
+log = logging.getLogger(__name__)
 
 
 class PortasReais:
@@ -224,7 +229,16 @@ class PortasReais:
     # ------------------------------------------------------------------ ação (os serviços das rotas)
     def previa(self, texto: str, instance_ids: list[str] | None = None) -> Previa:
         try:
-            p = self.runs.previa_de_alvos(RunTargetsResolveBody(command=texto, instance_ids=instance_ids or []))
+            corpo = RunTargetsResolveBody(command=texto, instance_ids=instance_ids or [])
+        except ValidationError as exc:
+            # 28.43: o pedido fora do formato (curto ou longo demais) é recusa, não falha interna. A conversa já recusa
+            # o curto antes; esta é a rede para o que escapar. Só o corpo: um ValidationError de dentro da prévia é
+            # defeito e segue como falha interna. O log leva onde e o tipo, nunca o texto (pode ter dado do dono).
+            log.warning("pedido fora do formato da prévia: %s",
+                        [(".".join(map(str, e.get("loc") or ())), e.get("type")) for e in exc.errors()])
+            raise RecusaDaCentral("O pedido não cabe no formato de uma execução; diga o que fazer e em qual aparelho.") from None
+        try:
+            p = self.runs.previa_de_alvos(corpo)
         except RunError as exc:
             raise RecusaDaCentral(exc.message) from None
         return Previa(alvos=[t.model_dump() for t in p.targets],

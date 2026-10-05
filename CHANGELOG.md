@@ -29,6 +29,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `scripts/tests/test_pg_rapido.py` (4 novos), 15 passed; `pytest @scripts/tests/catracas.txt`,
   6 passed. Real: `not_run` (a próxima vez do PG da suíte).
 
+## 2026-10-05 — 28.43: recado curto demais não vira "erro aqui dentro" (branch canais/28-43-recado-curto)
+
+- O texto livre mais curto que o pedido aceita (o `min_length` lido do `RunTargetsResolveBody`) fica `recusada`, com
+  uma frase que diz o que fazer e sem "falhou". Antes ele chegava à prévia, estourava `ValidationError` e o dono lia
+  "erro aqui dentro" (o "1" solto de 05/10, 10:26Z).
+- `PortasReais.previa`: o `ValidationError` do pedido vira `RecusaDaCentral`.
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py` e `test_telegram_portas.py`, com 1 e 2 caracteres).
+  Real: `not_run`.
+
 ## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)
 
 - Pedido do dono pelo Telegram (entrada 1790, 05/10 09:39:19Z): "o que significa ana? precisa colocar isso no portal

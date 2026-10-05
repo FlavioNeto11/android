@@ -643,6 +643,12 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Na transação do gesto, a execução é conferida por um `UPDATE` que trava a linha, e não por um `SELECT`. Com dois
     backends no PostgreSQL, o cancelamento do outro espera o COMMIT e enxerga os sins, que expira junto; sem isso,
     sobravam sins `approved` numa execução cancelada (28.36).
+  - O recado livre mais curto que o pedido de execução aceita (o `min_length` de `RunTargetsResolveBody.command`, hoje
+    3) não chega à prévia (28.43). A linha fica `recusada` com o erro "curto demais para um pedido", e a resposta
+    pede para tocar em "Responder" na mensagem, ou para dizer o que fazer e em qual aparelho. Antes, o "1" solto do
+    dono (05/10 10:26Z) estourava `ValidationError` e virava "erro aqui dentro". A porta também converte o
+    `ValidationError` do pedido em `RecusaDaCentral`, como rede. Casar a resposta curta com a última pergunta
+    numerada é o 28.44.
   - O texto da recusa ou do erro ao iniciar segue o estado relido (28.38):
     - `running` ou `paused`: "em andamento";
     - `cancelling`: "está sendo cancelada";
