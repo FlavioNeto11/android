@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
+
+- `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,
+  só o `type` e, do `loc`, só o índice e o nome de campo do esquema (com `alias` e `validation_alias`). A chave de um
+  `dict`, a do `extra_forbidden` e o id de membro de união viram `?`.
+- `planning/provider.erro_de_validacao_sem_entrada(exc, modelo, limite)`: ganha o `modelo` e passa a usar a regra
+  única. Antes deixava a chave de `dict` e a do `extra_forbidden` no `loc`. Chamadores: `validar_saida` (o modelo dela)
+  e `parsing._sem_entrada` (`Plan`).
+- `command_refinement.motivo_sem_valor` usa a mesma regra; o domínio a importa do kernel, não de `app.planning`.
+- O H2 (o `from exc` em `parsing.loads_json`, `provider.persona_draft_from_json` e `training.proposal_from_json`) já
+  saiu no #365 (31.67), na suíte 35; aqui não há o que mudar nele.
+- `backend/tests/catracas.txt` ganha a catraca nova da Canais: `test_avisos_objetivo_parado.py::test_toda_tela_de_link_de_aviso_existe_nas_rotas_do_painel`.
+- Prova: `simulated`, em Idle, sobre d025b671: `backend/tests/test_causa_sem_texto_resto.py` (3 testes novos) e os
+  dirigidos dos chamadores, 178 passed; `pytest @tests/catracas.txt -n 4`, 87 passed; scripts, 6 passed.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
