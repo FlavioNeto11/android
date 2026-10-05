@@ -23,11 +23,13 @@ name: CI
 
 on:
   # Push só na main (28/09): com um runner próprio só, o push de cada branch com PR rodava duas vezes (push e
-  # pull_request) e enchia a fila; o branch com PR segue testado pelo `pull_request`.
+  # pull_request) e enchia a fila.
   # PUSH DESLIGADO em 30/09/2026 (decisão do dono: o ambiente ainda não é produção e esperar o CI atrasava todo o
-  # processo). A rede de segurança é a corrida diária abaixo (conjunto inteiro, com PostgreSQL), o disparo manual e o
-  # pull_request. Para voltar a rodar em todo push da main: devolver `push: branches: [main]` aqui.
-  pull_request:
+  # processo). Para voltar a rodar em todo push da main: devolver `push: branches: [main]` aqui.
+  # PULL_REQUEST DESLIGADO em 05/10/2026 (29.102, decisão da orquestradora): cada PR custava de 62 a 115 min serial no
+  # runner do central, que é a máquina das suítes e das medidas de latência, e o `[skip ci]` na ponta falhou três
+  # vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte (SQLite inteira, PG dirigido, front). A rede é a
+  # corrida diária abaixo e o disparo manual. Para voltar: devolver `pull_request:` aqui.
   workflow_dispatch:
     inputs:
       somente_postgres:
@@ -61,11 +63,37 @@ env:
   NODE_VERSION: "22.12.0"
 
 jobs:
+  # 29.102: a corrida diária desiste se o runner do central já tem um pytest vivo (a suíte do funil ou uma medida).
+  # Em 05/10 o SQLite do cron disputou a máquina com a suíte 35 e foi cancelado pelo limite de 60 min; e a medida de
+  # latência não pode ter um pytest serial no meio. Desistir é um aviso visível, não um vermelho; o disparo manual
+  # roda sempre (quem dispara sabe o que está rodando).
+  porta:
+    name: porta · o runner está livre?
+    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
+    timeout-minutes: 5
+    outputs:
+      livre: ${{ steps.conferir.outputs.livre }}
+    steps:
+      - id: conferir
+        run: |
+          $vivos = @()
+          if ($IsWindows) {
+            $vivos = @(Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+                       Where-Object { $_.CommandLine -match 'pytest' })
+          }
+          if ($vivos.Count -gt 0 -and '${{ github.event_name }}' -eq 'schedule') {
+            "livre=false" >> $env:GITHUB_OUTPUT
+            Write-Host "::warning::corrida diária pulada: $($vivos.Count) processo(s) pytest vivo(s) no runner"
+          } else {
+            "livre=true" >> $env:GITHUB_OUTPUT
+          }
+
   backend-sqlite:
     name: backend · pytest (SQLite)
+    needs: porta
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 60
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
+    if: ${{ needs.porta.outputs.livre == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     defaults:
       run:
         working-directory: backend
@@ -120,7 +148,8 @@ jobs:
     name: frontend · typecheck + vitest
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 30
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
+    needs: porta
+    if: ${{ needs.porta.outputs.livre == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     defaults:
       run:
         working-directory: frontend
@@ -151,7 +180,8 @@ jobs:
     name: dependências · pip-audit + npm audit
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 35
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
+    needs: porta
+    if: ${{ needs.porta.outputs.livre == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/esperar-parque
@@ -197,7 +227,8 @@ jobs:
     name: backend · mypy (gradual)
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 30
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
+    needs: porta
+    if: ${{ needs.porta.outputs.livre == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     defaults:
       run:
         working-directory: backend
@@ -214,8 +245,10 @@ jobs:
           path: backend/.mypy_cache
           key: mypy-${{ hashFiles('backend/requirements*.txt') }}-${{ github.sha }}
           restore-keys: mypy-${{ hashFiles('backend/requirements*.txt') }}-
-      # 1) código novo: bloqueante. Com follow_imports=silent, o legado importado não reporta erro aqui.
-      - run: python -m mypy -p app.contracts -p app.modules -p app.shared
+      # 1) código novo: catraca de contagem (29.102). Nasceu bloqueante com zero erro e derivou até 254 (cron de 05/10):
+      #    reprovava toda noite e ninguém olhava. Agora reprova só se a contagem SOBE acima do teto em
+      #    `backend/mypy-teto.txt`; quem baixa a contagem baixa o teto no mesmo commit. Nunca `continue-on-error`.
+      - run: python ../scripts/mypy-catraca.py
       # 2) legado: só mede (a contagem fica no log), não reprova.
       - run: python -m mypy
         continue-on-error: true
@@ -224,7 +257,8 @@ jobs:
     name: worker · instala só o agente e importa
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 30
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
+    needs: porta
+    if: ${{ needs.porta.outputs.livre == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     defaults:
       run:
         working-directory: backend
@@ -242,7 +276,8 @@ jobs:
     name: docs · docs-check e livro-razão do plano-100
     runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '"ubuntu-latest"') }}
     timeout-minutes: 25
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
+    needs: porta
+    if: ${{ needs.porta.outputs.livre == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.somente_postgres) }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/esperar-parque

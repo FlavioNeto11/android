@@ -94,6 +94,22 @@ segurança é a corrida diária das 05:17 UTC (conjunto inteiro, com PostgreSQL)
 trabalho é `scripts/testes-afetados.py` (§4). Não é mais preciso `[skip ci]` nos commits. Para voltar: devolver
 `push: branches: [main]` ao `on:` do `ci.yml` (e esperar o CI antes do deploy).
 
+**Desde 05/10/2026 também não roda em pull request** (29.102, decisão da orquestradora): cada PR custava de 62 a 115 min
+serial no runner do central, que é a máquina das suítes e das medidas de latência, e o `[skip ci]` na ponta falhou
+três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que restou para a corrida diária voltar a ser rede:
+
+- **Porta do runner:** o job `porta` olha se o runner já tem um `pytest` vivo; na corrida agendada, com um vivo, os
+  jobs do central são pulados com um aviso (`::warning::`), sem vermelho. O disparo manual roda sempre. O job de
+  PostgreSQL, hospedado na GitHub, não depende dela. Em 05/10 o SQLite do cron disputou a máquina com a suíte 35 e caiu
+  no limite de 60 min.
+- **Catraca do mypy:** o código novo (`app.contracts`, `app.modules`, `app.shared`) nasceu com zero erro e derivou até
+  254; o job reprovava toda noite. Agora `scripts/mypy-catraca.py` reprova só se a contagem passa do teto em
+  `backend/mypy-teto.txt`; quem baixa a contagem baixa o teto no mesmo commit.
+- **docs-check em clone limpo:** `.claude/handoff-current.md` entrou no `.gitignore` versionado (estava só no
+  `.git/info/exclude`, que não vem num clone).
+- **Testes que dependiam do host:** `test_pausa_de_reparo` compara a saúde antes e depois da pausa, não um valor
+  absoluto; `test_backup::test_copia_a_frio_...` roda só no Windows (a lib de cópia de AVD é do Windows).
+
 `.github/workflows/ci.yml` — **6 jobs** (até 24/09 eram 5, e o cabeçalho do arquivo dizia 4):
 
 | Job | Quando | O que faz |
@@ -132,8 +148,8 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   `gh api repos/FlavioNeto11/android/actions/runners`; pausar de verdade é `Stop-ScheduledTask` e encerrar
   `Runner.Listener`/`Runner.Worker` (de preferência com `busy=false`). Primeira corrida inteira verde no runner
   próprio: `69bba2d` e `0d2a508` (28/09).
-- **Gatilhos:** push só na `main`; branch com pull request roda pelo `pull_request` (antes eram duas corridas por
-  commit na mesma fila de um runner só). Um push novo no mesmo ref cancela a corrida anterior.
+- **Gatilhos:** só a corrida diária (`schedule`) e o disparo manual (`workflow_dispatch`); push e `pull_request`
+  estão desligados (30/09 e 05/10). Um disparo novo no mesmo ref cancela a corrida anterior.
 - **Isolamento:** cada job de Python tem venv próprio (`.github/actions/python-isolado`), porque no runner próprio o
   Python do toolcache é compartilhado; `shell: pwsh` nos dois sistemas (no Windows o runner resolve `bash` para o do WSL); um push novo no
   mesmo ref cancela o CI anterior (`concurrency`).
