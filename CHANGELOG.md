@@ -79,6 +79,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Leitura do Codex no PR 451, os dois achados procederam: com `persona: null` o relatório do salvar e o do "Refazer receitas" dizem que o comando e as receitas não valem em aparelho nenhum (e não "só a persona que ensinou"), e a nota do Livro, que não sabe se a gravação tinha persona, usa frase neutra para os dois casos.
 - Prova `simulated`: `TrainingReview.test.tsx` (2 testes novos), `AprendizadoPage.test.tsx` (2), `model.test.ts` (1), `emProva.test.ts` (3). Frontend inteiro 1685/1686 com 4 workers em Idle e typecheck verde, em 05/10 sobre `65452966`: a única falha é `PortaDoPlano.test.tsx` (data fixa de 05/10 21:00Z que venceu; falha igual na main pura; conserto em `fix/porta-do-plano-validade-relativa`). `real`: `not_run` até o backend do 30.81 entrar e o percurso no navegador.
 
+## 2026-10-05 — 29.136: a catraca de esperas lê `?.` seguido de dígito como ternário (branch fix/29-136-ternario-com-digito)
+
+- Só teste (`frontend/src/test/esperas.test.ts`). `temTernarioNoTopo` e `temOperadorNoTopo` liam `ok?.5:1` como encadeamento opcional; `eInterrogacaoDeTernario` passa a dizer que o `?` abre um ternário quando o `?.` é seguido de dígito. O `?.` de verdade (`ok?.length`, `ok?.[0]`) segue como encadeamento.
+- Dois casos novos: `!a?.5:c.querySelector('x')` é pego (antes passava como booleano) e `itens().find(…) && ok?.5:1` é poupado (antes era falso positivo, o `&&` é só a condição do ternário); mais o `?.length` verdadeiro, poupado.
+- Prova `simulated`: `esperas.test.ts` 4/4; com a regra antiga de volta o caso `!a?.5:…` falha. Typecheck verde. A catraca que varre os testes do repositório segue sem achado, em 05/10 sobre `65452966`.
+
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
 - **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).
