@@ -2118,6 +2118,23 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
     etapa vai para a IA mesmo quando uma receita genérica serviria.
 - **Prova:** `simulated`, em `backend/tests/test_ensinado_em_prova.py`. `real`: `not_run`.
 
+## Reensinar o comando que a prova desligou (30.84)
+
+- Antes, o fluxo ensinado que a prova real desligava (30.81) seguia na linha, e a `match_key` única fazia o `save` do
+  treino e a prévia responderem `duplicate_command`: a pessoa não conseguia corrigir a demonstração.
+- Agora (desenho da orquestradora, 05/10) esse fluxo renasce na MESMA linha (`FlowStore.learn_from_plan`): mesmo id e
+  referência pública, plano, sessão (`source`) e nascimento (`created_at`) novos, `uses` zerado, ativo.
+  - Volta à espera de prova do 30.81: a prova e o Confirmar contam a partir do `created_at`, e as tentativas por
+    sessão. A prova antiga não libera o renascido.
+  - A trilha diz que renasceu e por que tinha sido desligado ("reensinado no modo treinamento (mesma linha);
+    desligado antes: …"), assinada pela sessão nova (o treino nunca tira da espera).
+  - As receitas rebaixadas com o fluxo ficam como estão; as da sessão nova seguem a substituição do 30.79.
+- Só renasce o desligado PELA PROVA (`MOTIVO_DA_PROVA_DO_ENSINADO`, pelo sistema) quando esse desligamento ainda é
+  a última linha da trilha. Seguem recusando: o desligado por uma pessoa, o que uma pessoa mexeu depois da prova, o
+  adotado por uma habilidade, o ativo e o comando com habilidade publicada.
+- A prévia do treino (31.86) recusa pela mesma regra (`FlowStore.recusa_do_treino`).
+- **Prova:** `simulated`, em `backend/tests/test_reensinar_o_desligado_pela_prova.py`. `real`: `not_run`.
+
 ## A referência pública do fluxo é aleatória (30.83)
 
 - O id do fluxo era o slug do `plan.summary` literal (podia trazer nome ou @) e saía em evento, `href` e log (achado S1

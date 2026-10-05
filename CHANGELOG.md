@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
+
+- O fluxo ensinado que a prova real desligou (30.81) renasce na mesma linha quando a pessoa ensina o mesmo comando de
+  novo: mesmo id e referência pública, plano, sessão e nascimento novos, ativo e de novo em espera de prova. A trilha
+  diz que renasceu e por que tinha sido desligado.
+- O desligado por pessoa, o mexido por ela depois da prova, o adotado e o ativo seguem com o 409 `duplicate_command`;
+  a prévia do treino usa a mesma regra (`FlowStore.recusa_do_treino`).
+- Contrato: o `save` e a prévia do treino deixam de dar 409 nesse caso, e o `save` devolve o `flow_id` que já
+  existia. O número do adendo fica com a orquestradora.
+- Funções tocadas (K-095): `FlowStore.learn_from_plan`, `recusa_do_treino` e `_desligado_pela_prova` (novas),
+  `TrainingSkills.preview`, `SombraDosFluxos._rebaixar_o_ensinado` (o motivo vira a constante
+  `MOTIVO_DA_PROVA_DO_ENSINADO`).
+- Prova `simulated`: `backend/tests/test_reensinar_o_desligado_pela_prova.py` (7). Real: `not_run`.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
