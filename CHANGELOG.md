@@ -116,6 +116,59 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Testes: 132 passed nos arquivos tocados (`test_avisos_portal_*`, `test_avisos_telegram`, `test_avisos_servico`,
     `test_avisos_fila`), em série e em Idle.
 - `not_run`: envio real e a rota do Portal.
+## 2026-10-04 — 28.27: o Executar do Telegram mostra as travas do plano antes de começar (branch canais/28-27-porta-no-telegram)
+
+- O Executar do canal cria a execução só de plano (`mode="plan"`). Um vigia da conversa, com o operador do canal, lê a
+  porta do 30.61 quando o plano fica pronto:
+  - nada a aprovar pelo canal: inicia com `aprovar_plano(aprovar=[])` e manda uma linha;
+  - senão: a prévia da porta, um bloco por item (selo, motivo, alvo e texto por extenso pela regra da aprovação
+    pendente, e a imagem conferida pelo sha256), com "Executar (aprova N)" e "Cancelar".
+- O segundo toque manda exatamente os pares `(etapa, chave)` que o dono viu. Plano mudado (409): nada gravado, prévia
+  nova. Vencida: cancela a execução `planned`. Porta ilegível: inicia e a porta decide no despacho.
+- P1: item cujo texto os filtros mudariam, longo demais, cujo bloco não cabe inteiro numa mensagem ou com imagem que não
+  confere fica fora do sim pelo canal, e a imagem dele não sai (revisão de segredos, achados A e B). O aparelho passa
+  pelo filtro, e o erro interno ao iniciar sem sim pendente marca a linha como falha em vez de repetir a cada volta.
+- Revisão independente do #336 (`C:/claude-ferramentas/revisao-28-27.md`):
+  - A1: a exceção ao iniciar sem a porta marca falha, e cada linha do vigia tem o próprio `try`.
+  - A2: `planejando()` filtra a fase no SQL, e a linha presa na fase da porta é recuperada depois de `PRESA_S`.
+  - O botão leva a marca do retrato: o de uma prévia velha não aprova o novo.
+  - A prévia que não sai marca falha e avisa uma vez.
+  - Todo abandono da porta cancela a execução que ainda está em `planned`. A presa antes do `run_id` também, achada
+    pela chave de idempotência.
+  - `plano_mudou` para N = 0 inicia numa linha que diz que o plano mudou.
+- Notas baixas da revisão e a junção (orquestradora, 23:13Z e 23:22Z):
+  - R1, corrida no cancelamento: o `cancelar` da porta passa `so_se_planejada` ao `RunService.cancel`, que marca o pedido
+    num `UPDATE … WHERE status='planned' AND cancel_requested=0` e não faz nada se outro gesto já iniciou; o `start`
+    troca o estado só se ainda `planned`/`planning` sem pedido de cancelar (`set_run_status(so_se=…)`), e senão recusa
+    com `invalid_state`.
+  - O filtro da fase não depende mais dos separadores do `json.dumps` do `marcar`: o `LIKE` só estreita
+    (`%"fase"%"<fase>"%`) e o JSON lido decide (`_na_fase`).
+  - S4: o bloco do item diz "Rótulo de IA: sim/não" quando o `rotulo_ia` do #334 vem preenchido; nulo ou ausente não diz
+    nada. Na junção, o #334 entra antes.
+  - Prova `simulated`: 81 passed em `test_avisos_porta.py`, `test_telegram_entrada.py` e `test_telegram_portas.py`
+    (a execução iniciada que o cancelamento atrasado não toca, o início recusado depois da marca, `marcar` lido por
+    `planejando()` e `presas_na_porta()` com a `previa` compacta, e os quatro valores do rótulo); 139 passed nos
+    arquivos de início e cancelamento (`test_cancelamento`, `test_inicio_com_autor`, `test_maquinas_de_estado`,
+    `test_execution`, `test_contrato_http` e outros).
+- Revisão de `cec9ddca` (orquestradora e Aprendizado, 04/10 23:42Z), sobre a pilha do #330 (`1bbffb27`):
+  - S2/S7: a porta (`_exigir_na_porta`, um predicado só) recusa `planned` com `cancel_requested` na prévia, no
+    `previa_do_item` e dentro da transação do `aprovar_plano` ("Esta execução está sendo cancelada."); o `RunError` do
+    início depois do gesto vira `PortaIndisponivel("invalid_state")`;
+  - S1: a marca e o fecho do cancelamento condicionado vão na mesma `db.tx()`; o compare-and-set segue com
+    `cancel_requested=0`;
+  - N1: o início automático do `mode=execute` que perde a corrida vira log, sem traceback.
+  - Prova `simulated`: 14 passed em `test_telegram_portas.py` (porta recusa a que está sendo cancelada, início
+    recusado vira recusa da porta, marca e fecho voltam juntos) e 170 passed em `test_porta_do_plano`,
+    `test_chave_da_aprovacao`, `test_cancelamento`, `test_inicio_com_autor`, `test_maquinas_de_estado`,
+    `test_execution`, `test_contrato_http`, `test_telegram_entrada`, `test_avisos_porta` e `test_cobertura_de_rotas`.
+- `mensagem.partes_da_aprovacao` passa a montar as linhas de alvo e texto da aprovação pendente e da porta (a mesma
+  regra), e `mensagem.texto_mostravel` diz se o texto sai inteiro.
+- Regra C-26 em `docs/dominios/canais.md`.
+- Prova `simulated`:
+  - 420 passed em todos os `test_avisos_*`, `test_telegram_*` e `test_canais_anexos*`, em série e em Idle;
+  - os novos: 13 na conversa (`test_telegram_entrada.py`, com o falso da porta), 2 nas portas reais no harness
+    (`test_telegram_portas.py`) e 5 no domínio (`test_avisos_porta.py`).
+- `not_run`: o Telegram real e um plano real com item que pede o sim.
 
 ## 2026-10-04 — 28.31 F3: a rotina do resumo sai no máximo uma vez por hora; "Precisa de você" que muda sai já (branch canais/28-31-piso-da-rotina)
 

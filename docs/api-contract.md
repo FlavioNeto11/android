@@ -6027,6 +6027,34 @@ Instagram ("Add AI label").
   `frontend/src/features/runs/PortaDoPlano.test.tsx`, `frontend/src/features/runs/execution.test.tsx`). `not_run`: a
   conferência dos seletores na versão atual do app (controle manual, sem Share) e a 1ª publicação real.
 
+## Adendo v1.41 (04/10/2026; número da orquestradora; item 28.27) — o Executar do Telegram passa pela porta do plano
+
+Sem rota HTTP nova. A conversa do Telegram usa os MESMOS serviços das rotas do 30.61 (`GET /runs/{id}/porta` e
+`POST /runs/{id}/aprovar-plano`). A regra de produto é a C-26 de `docs/dominios/canais.md`.
+
+- O botão `Executar` (`x:<id>`) cria a execução com `mode="plan"`. Ela para em `planned` e nada inicia sozinho.
+- O vigia lê `porta_do_plano.previa_da_porta` quando a execução chega a `planned`, sempre com o operador `telegram:dono`.
+  - **N = 0** itens aprováveis pelo canal: chama `aprovar_plano(aprovar=[], tirar=[])`, que inicia, e manda uma linha.
+  - **N > 0**: a linha volta a `pergunta`, com `previa = {fase: "porta", run_id, curta, hash_do_plano, validade_ate,
+    aprovar: [[step_id, chave], …]}`. Saem a prévia e os botões `p:<id>` ("Executar (aprova N)") e `c:<id>` ("Cancelar").
+  - Porta ilegível: `RunService.start`, e a porta decide no despacho.
+- O botão é `p:<id>:<marca>`, com `marca` = 8 caracteres do sha256 de `[hash_do_plano, aprovar]` (`previa.marca`). Sem a
+  marca, ou com a de outro retrato, responde "Essa prévia mudou" e não aprova nada.
+- O `p:<id>:<marca>` chama `aprovar_plano` com exatamente os pares de `previa.aprovar`.
+  - `plano_mudou` (409): nada gravado, e sai a prévia nova; se ela não tem nada a aprovar, inicia (N = 0) numa linha que
+    diz que o plano mudou.
+  - `invalid_state`: a recusa volta como texto; a execução que ainda está em `planned` é cancelada.
+  - Vencida (`avisos.entrada.ttl_previa_s` da linha ou `validade_ate` da porta): `RunService.cancel`.
+- `c:<id>` na fase da porta também cancela a execução `planned`, como todo caminho que abandona a porta (recusa, erro,
+  prévia que não saiu, linha presa recuperada depois de `PRESA_S`). A linha presa antes de gravar o `run_id` acha a
+  execução pela chave de idempotência do Executar (`telegram:<update_id>`).
+- Item aprovável pelo canal: selo `aprovacao` com `chave`, texto que `privacidade.texto_livre` não mudaria (até 3000
+  caracteres), bloco que cabe inteiro numa mensagem (3800) e, se `tem_imagem`, bytes cujo sha256 bate com
+  `imagem_sha256`. Só a imagem desses itens é enviada. O resto pede o dono no painel ou na execução.
+- **Prova:** `simulated`. `backend/tests/test_telegram_entrada.py` (a conversa, com o falso),
+  `backend/tests/test_telegram_portas.py` (as portas reais no harness) e `backend/tests/test_avisos_porta.py` (domínio).
+  `not_run`: o Telegram real e um plano real com item que pede o sim.
+
 ## Adendo v1.43 (04/10/2026; número da orquestradora; item 29.82) — o worker traz as vagas que valem
 
 Sem migração. Muda o `Worker` da v0.8 (`GET /api/workers`, `GET /api/workers/{id}`, snapshot e `worker.updated`).

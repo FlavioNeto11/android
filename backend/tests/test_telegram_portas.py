@@ -156,3 +156,174 @@ async def test_pergunta_sensivel_aberta_com_a_porta_real(harness: Harness, como_
     st.runs.cancel(senha.id)
     assert st.repo.run_row(senha.id)["status"] != "needs_input"
     assert portas.pergunta_sensivel(senha.id) == "senha" and portas.pergunta_sensivel(None) is None
+
+
+# ===================================================================== 28.27: a porta do plano pelo canal
+async def test_executar_do_canal_cria_so_o_plano_e_a_porta_inicia(harness: Harness, como_telegram: None) -> None:
+    """`modo="plan"` para em `planned`; a prévia é a do `GET /runs/{id}/porta`; o "Executar (aprova N)" é o
+    `aprovar_plano` (30.61), e só ele inicia."""
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:950", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    assert portas.estado_da_execucao(run_id) == "planned"
+    previa = portas.porta(run_id)
+    assert isinstance(previa.get("itens"), list) and previa.get("hash_do_plano")
+    resposta = portas.aprovar_plano(run_id, [])
+    assert resposta["aprovacoes"] == [] and portas.estado_da_execucao(run_id) != "planned"
+    with pytest.raises(RecusaDaCentral):
+        portas.porta(run_id)                                 # fora de `planned` a porta não se aplica
+    assert portas.estado_da_execucao("r-nao-existe") is None
+
+
+async def test_plano_mudou_volta_com_a_previa_nova_e_nada_inicia(harness: Harness, como_telegram: None) -> None:
+    from app.modules.avisos.infrastructure.entrada import PlanoMudou
+
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:951", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    with pytest.raises(PlanoMudou) as mudou:
+        portas.aprovar_plano(run_id, [("etapa-que-nao-existe", "a" * 64)])
+    assert mudou.value.codigo == "plano_mudou" and mudou.value.mudaram and "itens" in mudou.value.previa
+    assert portas.estado_da_execucao(run_id) == "planned"
+    assert portas.imagem_da_etapa(run_id, "etapa-que-nao-existe") is None
+    portas.cancelar(run_id)
+    await harness.wait_run(run_id, statuses=("cancelled",))
+
+
+async def test_cancelar_do_canal_nao_cancela_execucao_que_outro_gesto_iniciou(harness: Harness,
+                                                                              como_telegram: None) -> None:
+    """Nota R1 da revisão do #336: entre a leitura `planned` do canal e o cancelamento, o painel pode iniciar. O
+    `cancelar` da porta é condicionado a `planned` num `UPDATE` só: a execução que já seguiu não é tocada."""
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:952", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    portas.iniciar(run_id)                                   # o outro gesto chegou antes
+    portas.cancelar(run_id)                                  # o abandono do canal, atrasado
+    st = harness.state
+    assert st is not None
+    assert not st.db.scalar("SELECT cancel_requested FROM runs WHERE id=?", (run_id,))
+    assert portas.estado_da_execucao(run_id) not in ("cancelled", "cancelling")
+
+
+async def test_inicio_depois_da_marca_do_cancelamento_e_recusado(harness: Harness, como_telegram: None) -> None:
+    """O outro lado da corrida: o cancelamento condicionado marcou `cancel_requested` e ainda não fechou; o início
+    que leu `planned` antes não pode passar por cima (compare-and-set no `start`)."""
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:953", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    st = harness.state
+    assert st is not None
+    st.db.execute("UPDATE runs SET cancel_requested=1 WHERE id=?", (run_id,))
+    with pytest.raises(RecusaDaCentral):
+        portas.iniciar(run_id)
+    assert portas.estado_da_execucao(run_id) == "planned"
+    st.db.execute("UPDATE runs SET cancel_requested=0 WHERE id=?", (run_id,))
+    portas.cancelar(run_id)                                  # planned: o condicionado cancela de fato
+    await harness.wait_run(run_id, statuses=("cancelled",))
+
+
+async def test_porta_recusa_execucao_que_esta_sendo_cancelada(harness: Harness, como_telegram: None) -> None:
+    """Revisão de `cec9ddca` (S2/S7): `planned` com `cancel_requested` (a marca do cancelamento do canal antes do fecho)
+    não oferece a prévia nem grava sim: sem isto, sobravam sins `approved` de origem `plano` numa execução cancelada."""
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:954", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    st = harness.state
+    assert st is not None
+    st.db.execute("UPDATE runs SET cancel_requested=1 WHERE id=?", (run_id,))
+    with pytest.raises(RecusaDaCentral) as previa:
+        portas.porta(run_id)
+    assert previa.value.codigo == "invalid_state" and "sendo cancelada" in str(previa.value)
+    with pytest.raises(RecusaDaCentral) as gesto:
+        portas.aprovar_plano(run_id, [])
+    assert gesto.value.codigo == "invalid_state" and "sendo cancelada" in str(gesto.value)
+    assert not st.db.scalar("SELECT COUNT(*) FROM pending_approvals WHERE run_id=? AND origem='plano'", (run_id,))
+    st.db.execute("UPDATE runs SET cancel_requested=0 WHERE id=?", (run_id,))
+    portas.cancelar(run_id)
+    await harness.wait_run(run_id, statuses=("cancelled",))
+
+
+async def test_inicio_recusado_depois_do_gesto_vira_recusa_da_porta(harness: Harness, como_telegram: None,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """O cancelamento que chega entre a transação do `aprovar_plano` e o `start`: a resposta é a da porta
+    (`invalid_state`), não um `RunError` do serviço."""
+    from app.taskqueue.service import RunError
+
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:955", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    st = harness.state
+    assert st is not None
+
+    def cancelado_no_meio(rid: str, *, por: str) -> None:
+        raise RunError("invalid_state", "A execução mudou de estado e não pode ser iniciada.")
+
+    monkeypatch.setattr(st.runs, "start", cancelado_no_meio)
+    with pytest.raises(RecusaDaCentral) as recusa:
+        portas.aprovar_plano(run_id, [])
+    assert recusa.value.codigo == "invalid_state"
+    monkeypatch.undo()
+    portas.cancelar(run_id)
+    await harness.wait_run(run_id, statuses=("cancelled",))
+
+
+async def test_marca_e_fecho_do_cancelamento_na_mesma_transacao(harness: Harness, como_telegram: None,
+                                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão de `cec9ddca` (S1): se o fecho falha, a marca volta junto; a execução não fica `planned` com
+    `cancel_requested`, que só o Cancelar do painel destravaria."""
+    portas = _portas(harness)
+    texto = "abrir o QA Messenger no android-01"
+    run_id, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:956", modo="plan")
+    await harness.wait_run(run_id, statuses=("planned",))
+    st = harness.state
+    assert st is not None
+
+    def fecho_que_quebra(rid: str, detalhe: str, **kw: Any) -> None:
+        raise RuntimeError("queda no meio")
+
+    monkeypatch.setattr(st.runs, "_cancelar_antes_de_iniciar", fecho_que_quebra)
+    with pytest.raises(RuntimeError):
+        st.runs.cancel(run_id, por="telegram:dono", so_se_planejada=True)
+    linha = st.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (run_id,))
+    assert linha is not None and linha["status"] == "planned" and not linha["cancel_requested"]
+    monkeypatch.undo()
+    assert st.runs.cancel(run_id, por="telegram:dono", so_se_planejada=True) is not None
+    await harness.wait_run(run_id, statuses=("cancelled",))
+
+
+async def test_cancelamento_entre_a_transacao_e_o_inicio_expira_os_sins_do_plano(harness: Harness,
+                                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pergunta do Aprendizado na conferência de `d1cdbb2c`: o cancelamento do canal chega DEPOIS de o `aprovar_plano`
+    gravar os sins e ANTES do `start`. Os sins de origem `plano` não podem ficar `approved` numa execução cancelada:
+    o `_cancelar_antes_de_iniciar` os expira, e o gesto volta como recusa da porta com o código do serviço."""
+    from app.porta_do_plano import AprovarPlanoBody, ItemAprovado, PortaIndisponivel, aprovar_plano
+
+    from .test_porta_do_plano import _plano_com_dm
+
+    st = harness.state
+    assert st is not None
+    itens = _plano_com_dm(st)
+    original = st.runs.start
+
+    def cancelado_antes_do_inicio(run_id: str, *, por: str) -> Any:
+        assert st.runs.cancel(run_id, por="telegram:dono", so_se_planejada=True) is not None
+        return original(run_id, por=por)
+
+    monkeypatch.setattr(st.runs, "start", cancelado_antes_do_inicio)
+    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+                             tirar=[itens["dm2"]["step_id"]])
+    with pytest.raises(PortaIndisponivel) as recusa:
+        aprovar_plano(st, "run-p", corpo, por="flavio")
+    assert recusa.value.codigo == "invalid_state"
+    assert st.db.scalar("SELECT status FROM runs WHERE id='run-p'") == "cancelled"
+    sins = [dict(r) for r in st.db.query("SELECT status FROM pending_approvals WHERE run_id='run-p' AND origem='plano'")]
+    assert sins and all(s["status"] != "approved" for s in sins)
+    with pytest.raises(PortaIndisponivel) as depois:                     # quem cancelou lê o motivo certo
+        aprovar_plano(st, "run-p", corpo, por="flavio")
+    assert "foi cancelada" in depois.value.mensagem

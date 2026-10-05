@@ -53,6 +53,7 @@ from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais, nomes_de_persona
+from .porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano, previa_da_porta
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos
 from .decisoes_inversas import inversas_das_filas
 from .modules.decisoes.application.desfazer import DesfazerDecisoes
@@ -618,7 +619,12 @@ class AppState:
                                         online=lambda: [d.id for d in self.devices.list_dtos()
                                                         if str(d.state) == "online" and d.kind != "store"],
                                         capturar=lambda alvo: capturar_para_o_dono(self.devices, alvo),
-                                        leitor_de_anexos=self.leitor_de_anexos)
+                                        leitor_de_anexos=self.leitor_de_anexos,
+                                        previa_da_porta=lambda rid: previa_da_porta(self, rid),
+                                        aprovar_plano=lambda rid, pares, por: aprovar_plano(
+                                            self, rid, AprovarPlanoBody(aprovar=[ItemAprovado(step_id=s, chave=c)
+                                                                                 for s, c in pares]), por=por),
+                                        ler_imagem=self.avatares.get)
         # Quem fala com o bot e não é o dono (28.18): apresentação, nome, o dono decide; desligado de fábrica
         # (`avisos.entrada.convidados.enabled`). A recusa de credencial é a mesma da conversa do dono.
         convidados = ConvidadosDoTelegram(

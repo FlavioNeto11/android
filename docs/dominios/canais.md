@@ -528,6 +528,42 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   `infrastructure/servico.py::avisar_contato_do_portal` e `avisar_resumo_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
   a tabela dos contatos, a taxa e a retenção são da frente Portal (29.77).
 
+**C-26 · O Executar do Telegram mostra as travas do plano antes de começar (28.27).**
+- **Origem:** dono (linha do 28.27: a prévia do comando no canal mostra o selo de cada item e o Executar vale como
+  aprovação do plano); desenho e decisões P1, P2 e P3 da orquestradora, 04/10 21:58Z. Usa a porta do plano (30.61,
+  `porta_do_plano.previa_da_porta` e `aprovar_plano`).
+- **Regra:**
+  - A prévia de alvos e o botão **Executar** seguem como antes. O Executar cria a execução só de plano
+    (`mode="plan"`), que para em `planned` sem iniciar.
+  - Um vigia na volta da conversa, com o operador do canal, espera o plano e lê a porta. Conta os itens que o dono
+    pode aprovar ali (N): selo `aprovacao` com chave, texto que os filtros não mudariam (`texto_mostravel`, até 3000
+    caracteres) e imagem conferida pelo sha256 dos bytes.
+    - **N = 0** (inclui a porta que não pôde ser calculada): inicia com `aprovar_plano(aprovar=[])` e manda UMA linha,
+      dizendo quantos itens vão pedir o dono na execução. Nenhum toque a mais.
+    - **N > 0**: manda a prévia da porta, com um bloco por item: selo, título, aparelho, motivo, e o alvo e o texto pela
+      mesma regra da aprovação pendente (`partes_da_aprovacao`), por extenso. A imagem vai logo depois, como "item n".
+      Os botões são **"Executar (aprova N)"** e **"Cancelar"**. Só o segundo toque inicia.
+  - O "Executar (aprova N)" manda exatamente os pares `(etapa, chave)` que o dono viu, gravados na linha. O botão
+    leva a marca DAQUELE retrato (8 caracteres do hash do plano e dos pares): o botão de uma prévia velha responde
+    "Essa prévia mudou" e não aprova nada (decisão da orquestradora, 04/10 22:59Z).
+  - Se o plano mudou (409 `plano_mudou`), nada é gravado e sai a prévia nova. Se o plano novo não tem nada a aprovar
+    pelo canal, ele inicia como todo N = 0, numa linha que diz que o plano mudou e que nenhum item pede o sim agora.
+  - Todo caminho que abandona a porta cancela a execução que ainda está em `planned` (esquecida, ela trava o despacho
+    do aprendizado): Cancelar, prévia vencida, recusa, erro interno, prévia que não saiu e linha presa recuperada. A
+    recusa de um plano que outro gesto já iniciou não cancela: a execução segue e o desfecho a conta.
+  - A prévia que não sai inteira marca a linha como falha e avisa o dono uma vez. Uma linha com erro não cala as
+    outras da volta do vigia; a linha que caiu no meio do "Executar (aprova N)" é recuperada depois de `PRESA_S`.
+  - P1: item que o dono não veria por inteiro (texto com nome de persona, contato ou segredo, texto longo, bloco que não
+    cabe inteiro numa mensagem, imagem que não confere) fica FORA do sim pelo canal. Ele pede o dono no painel ou na
+    execução, e a prévia diz quantos são. A imagem só sai para o item que fica no sim pelo canal.
+  - Desafio, 2FA e CAPTCHA seguem com a pessoa na execução (ADR-009); a prévia lembra disso no rodapé.
+  - Texto puro (R2): o adaptador não usa `parse_mode`, e o texto do item chega como é.
+  - A porta ilegível não trava o pedido: a execução inicia e a porta decide no despacho, como antes do 28.27.
+  - Nada disso vai ao Trello: a prévia da porta não é pendência.
+- **Hoje:** `modules/avisos/domain/porta.py` (leitura e texto), `infrastructure/entrada.py` (`_ver_planos`,
+  `_mostrar_porta`, `_executar_aprovando`) e `infrastructure/portas_da_central.py` (`porta`, `aprovar_plano`, `iniciar`,
+  `cancelar`, `imagem_da_etapa`).
+
 ## 7. Arquivos locais (fora do Git) e o que guardam
 
 Ficam em `.claude/handoffs/`, que o `.git/info/exclude` exclui: têm id de chat, vínculo com nome e estado da

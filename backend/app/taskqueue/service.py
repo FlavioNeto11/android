@@ -1186,7 +1186,11 @@ class RunService:
             repo.set_run_status(run_id, RunStatus.cancelled, "Cancelada durante o planejamento")
             return
         if run and run["mode"] == "execute":
-            self.start(run_id)
+            try:
+                self.start(run_id)
+            except RunError as exc:
+                # Corrida com um cancelamento (o `start` troca o estado por compare-and-set): o outro gesto venceu.
+                log.info("execução %s não iniciou sozinha: %s", run_id, exc.message)
         else:
             repo.set_run_status(run_id, RunStatus.planned, "Plano pronto para inspeção",
                                 message=f"Execução {run_id}: plano pronto; aguardando início")
@@ -1438,8 +1442,10 @@ class RunService:
             raise RunError("invalid_state", f"A execução está em '{run['status']}' e não pode ser iniciada.")
         if not self.repo.db.scalar("SELECT COUNT(*) FROM objectives WHERE run_id=?", (run_id,)):
             raise RunError("no_plan", "A execução ainda não tem plano materializado.")
-        self.repo.set_run_status(run_id, RunStatus.running, None, message=f"Execução {run_id} iniciada",
-                                 dados={"iniciada_por": por})
+        if not self.repo.set_run_status(run_id, RunStatus.running, None, message=f"Execução {run_id} iniciada",
+                                        dados={"iniciada_por": por}, so_se=(RunStatus.planned, RunStatus.planning)):
+            # Outro gesto chegou antes (o cancelamento do canal, ou outro início): a leitura acima já não vale.
+            raise RunError("invalid_state", "A execução mudou de estado e não pode ser iniciada.")
         # O MESMO pré-voo da criação, agora item a item: um plano pronto pode ficar dias parado, e o que estava
         # apto na criação pode não estar mais. O motivo específico ("é de outra máquina e está stopped", "o
         # servidor está em manutenção", "a entrega do app falhou") substitui o antigo "Aparelho offline", que
@@ -1483,7 +1489,7 @@ class RunService:
         self.scheduler.wake()
         return self.repo.run_summary(self._run(run_id))
 
-    def cancel(self, run_id: str, *, por: str | None = None) -> RunSummary:
+    def cancel(self, run_id: str, *, por: str | None = None, so_se_planejada: bool = False) -> RunSummary | None:
         """`por`: quem fez o GESTO (a rota passa o autor da sessão). Só ele vira o sinal `cancelou_execucao`
         (ADR-054); o cancelamento que a sucessora faz da execução respondida chama sem `por` — é consequência da
         resposta, que já tem o seu sinal.
@@ -1492,9 +1498,28 @@ class RunService:
         outra — com o cancelamento já valendo não grava: a execução em `cancelling`, ou assentada em
         `completed_with_issues` com `cancel_requested` (o item falho ou incerto, que `_finish_cancel` não fecha).
         `running` ou `paused` com `cancel_requested` só existem depois de uma REABERTURA (resolver ou repetir um item
-        de execução cancelada): cancelar ali é outro episódio."""
+        de execução cancelada): cancelar ali é outro episódio.
+
+        `so_se_planejada` (28.27, o canal que abandona a prévia): só cancela a execução que ainda está `planned`, e a
+        conferência é o próprio `UPDATE` que marca o pedido (compare-and-set), não uma leitura antes. Se outro gesto já
+        a iniciou, nada muda e devolve `None`; e o início que chega depois da marca é recusado (`start`, `so_se`)."""
         run = self._run(run_id)
         status = RunStatus(run["status"])
+        if so_se_planejada:
+            # Marca e fecho na MESMA transação: uma marca sem o fecho (queda no meio) deixaria `planned` com
+            # `cancel_requested`, que nada além do Cancelar do painel destrava (o `start` e a porta recusam).
+            with self.repo.db.tx():
+                cur = self.repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 "
+                                           "WHERE id=? AND status=? AND cancel_requested=0",
+                                           (run_id, RunStatus.planned.value))
+                if cur.rowcount != 1:
+                    return None
+                self._cancelar_antes_de_iniciar(run_id, "Cancelada antes de iniciar")
+            if por is not None:  # a marca provou `planned` sem pedido anterior: episódio novo
+                avisar(self.costuras.cancelou_execucao, CancelamentoDeExecucao(
+                    run_id=run_id, status_anterior=RunStatus.planned.value, antes_de_iniciar=True, quem=por,
+                    em=now_iso()))
+            return self.repo.run_summary(self._run(run_id))
         if status in RUN_TERMINAL and status != RunStatus.completed_with_issues:
             raise RunError("invalid_state", "A execução já terminou.")
         episodio_novo = status != RunStatus.cancelling and (
