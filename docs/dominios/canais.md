@@ -666,6 +666,16 @@ avisos depois da faxina"), e a trava cai no TTL.
       `responde_a`, e toda conferência de autorização segue pedindo o reply ao aviso.
     - **Pergunta sensível aberta:** com uma pergunta de senha aberta, a resposta solta curta segue a regra do curto com
       pergunta sensível, e é recusada como possível credencial. O reply à pergunta de escolha passa.
+    - **A ordem é a do chat** (C1 da leitura do #412): só casa a pergunta de `message_id` menor que o da resposta, e a
+      substituição só fecha a antiga se a nova veio antes da resposta. O `recebida_em` é a hora em que o nosso laço
+      gravou, e uma pergunta mandada nessa brecha parecia anterior ao "1".
+    - **A resposta diz qual pergunta** (D1): "Li o seu "1" como a opção 1 da minha pergunta das HH:MMZ. Se não era
+      isso, responda nela com Responder.", em reply à pergunta casada, não ao "1".
+    - **Opção é número ou uma letra:** o `--escolha` recusa palavra ("sim", "ok", "pode", "publica") e as letras S e N.
+      A conversa nunca lê palavra de aval como opção, mesmo com a marca forjada.
+    - **Limites conhecidos, sem conserto agora:**
+      - a mensagem encaminhada pelo dono conta como dele;
+      - se a marca da pergunta nova não grava, a antiga segue aberta, e o script sai com erro visível (código 3).
     - **Fora do escopo:** o Trello e o convidado ficam fora.
   - O texto da recusa ou do erro ao iniciar segue o estado relido (28.38):
     - `running` ou `paused`: "em andamento";

@@ -404,7 +404,9 @@ def opcao_da_escolha(texto: str | None, opcoes: list[str]) -> str | None:
     """A opção (como está na lista) que o texto INTEIRO indica, ou None (28.44). Só a opção sozinha casa: "1 e 3",
     "sim, a 2" e uma opção fora da lista não casam e seguem o caminho de sempre."""
     m = _OPCAO.match(" ".join(_sem_acento(texto or "").split()))
-    if m is None:
+    if m is None or m.group("op") in _SIM or m.group("op") in _NAO:
+        # Palavra de aval ("sim", "s", "ok", "não") nunca é opção, mesmo que a pergunta a tenha listado: o `--escolha`
+        # já recusa, e esta é a rede (decisão da orquestradora na leitura do #412).
         return None
     return next((o for o in opcoes if _sem_acento(o) == m.group("op")), None)
 

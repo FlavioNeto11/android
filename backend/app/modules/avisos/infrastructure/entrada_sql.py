@@ -58,6 +58,12 @@ def _na_fase(linhas: list[dict[str, object]], fase: str) -> list[dict[str, objec
     return [linha for linha in linhas if fase_de(linha) == fase]
 
 
+def _numero(ref: object) -> int | None:
+    """O `message_id` do Telegram como número (a ordem do chat); `None` para o que não é (`resultado:<id>`, vazio)."""
+    texto = str(ref or "").strip()
+    return int(texto) if texto.isdigit() else None
+
+
 def _curto(texto: str | None, n: int = MAX_CURTO) -> str | None:
     return None if texto is None else texto.strip()[:n]
 
@@ -239,23 +245,38 @@ class EntradasDoCanal:
             " VALUES (?,?,'substitui',?,NULL,?) ON CONFLICT (canal, ref_mensagem) DO NOTHING",
             (self.canal, f"substitui:{nova}", f"substitui:{antiga}", self._agora()))
 
-    def escolhas_abertas(self, ate: str, janela_s: float, *, fora: int) -> list[dict[str, object]]:
-        """As perguntas de escolha (`fato = 'escolha:<msg>:<opções>'`, 28.44) mandadas nos `janela_s` segundos antes de
-        `ate` (o `recebida_em` da resposta), da mais nova para a mais velha. Ficam de fora as que o dono já respondeu, por
-        reply de verdade (`responde_a`) ou por casamento (`alvo = 'escolha:<msg>'`), e as que uma mensagem posterior
-        substituiu (`substitui:<msg>`). `fora`: a própria linha que se casa, que não conta como resposta."""
+    def escolhas_abertas(self, ate: str, janela_s: float, *, fora: int, ref_da_resposta: str | None) -> list[dict[str, object]]:
+        """As perguntas de escolha (`fato = 'escolha:<msg>:<opções>'`, 28.44) abertas quando o dono escreveu a resposta
+        `ref_da_resposta`, da mais nova para a mais velha. Ficam de fora as que o dono já respondeu, por reply de verdade
+        (`responde_a`) ou por casamento (`alvo = 'escolha:<msg>'`), e as que uma mensagem ANTERIOR à resposta substituiu
+        (`substitui:<msg>`). `fora`: a própria linha que se casa, que não conta como resposta.
+
+        A ordem é a do `message_id`, não a do relógio (C1 da leitura do #412): no chat privado ele é uma sequência só,
+        para os dois lados, e o `recebida_em` é a hora em que o NOSSO laço gravou. Uma pergunta mandada depois de o dono
+        escrever, mas antes de o laço gravar, não casa; uma substituição nessa mesma brecha não fecha a anterior. A
+        janela de `janela_s` segundos antes de `ate` (o `recebida_em`) segue pelo relógio. Sem `ref_da_resposta`
+        numérica, nada casa."""
         limite = parse_iso(ate)
-        if limite is None:
+        resposta = _numero(ref_da_resposta)
+        if limite is None or resposta is None:
             return []
         desde = to_iso(limite - timedelta(seconds=janela_s))
-        return [dict(r) for r in self.db.query(
+        candidatas = [dict(r) for r in self.db.query(
             "SELECT s.ref_mensagem, s.fato, s.enviada_em FROM canal_enviadas s WHERE s.canal=? AND s.fato LIKE 'escolha:%'"
             " AND s.enviada_em >= ? AND s.enviada_em <= ?"
             " AND NOT EXISTS (SELECT 1 FROM canal_entradas e WHERE e.canal=s.canal AND e.do_dono=1 AND e.id <> ?"
             "  AND (e.responde_a=s.ref_mensagem OR e.alvo='escolha:' || s.ref_mensagem))"
-            " AND NOT EXISTS (SELECT 1 FROM canal_enviadas n WHERE n.canal=s.canal AND n.origem='substitui'"
-            "  AND n.fato='substitui:' || s.ref_mensagem)"
             " ORDER BY s.enviada_em DESC, s.ref_mensagem DESC", (self.canal, desde, ate, int(fora)))]
+        candidatas = [c for c in candidatas if (_numero(c["ref_mensagem"]) or resposta) < resposta]
+        if not candidatas:
+            return []
+        # As substituições já feitas quando o dono escreveu: a `nova` (o fim de `substitui:<nova>`) veio antes da resposta.
+        refs = [str(c["ref_mensagem"]) for c in candidatas]
+        substituidas = {str(r["fato"]).partition(":")[2] for r in self.db.query(
+            f"SELECT ref_mensagem, fato FROM canal_enviadas WHERE canal=? AND origem='substitui'"
+            f" AND fato IN ({','.join('?' * len(refs))})", (self.canal, *(f"substitui:{r}" for r in refs)))
+            if (_numero(str(r["ref_mensagem"]).partition(":")[2]) or resposta) < resposta}
+        return [c for c in candidatas if str(c["ref_mensagem"]) not in substituidas]
 
     def enviada(self, ref_mensagem: str) -> dict[str, object] | None:
         r = self.db.one("SELECT * FROM canal_enviadas WHERE canal=? AND ref_mensagem=?", (self.canal, ref_mensagem))
