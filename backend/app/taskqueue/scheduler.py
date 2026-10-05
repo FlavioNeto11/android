@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Protocol
 
-from ..config import Config
+from ..config import Config, LimitsCfg
 from ..shared.vinculos import aparelhos_com_vinculo_ativo
 from ..contracts.origem import eh_ensaio_de_leitura, eh_execucao_de_validacao
 from ..db import Row, dumps, loads
@@ -905,7 +905,7 @@ class Scheduler:
     def _capacidade(self, worker_id: str | None) -> Any:
         return self.worker_capacity(worker_id) if (worker_id and self.worker_capacity) else None
 
-    def _vagas_do_host(self, s: Any) -> int:
+    def _vagas_do_host(self, s: LimitsCfg) -> int:
         """29.84: as vagas DESTE servidor pela regra única (`WorkerRegistry.vagas_que_valem`, a do painel e do
         `capacidade`), não pela leitura direta de `max_online_devices`: se a regra ganhar algo, o distribuidor e a
         reserva do central acompanham. Sem registro de workers (agendador isolado em teste), o valor vivo."""
