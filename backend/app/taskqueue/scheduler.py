@@ -1770,9 +1770,14 @@ class Scheduler:
                                 error_kind=kind)
             repo.transition_step(step.id, StepStatus.uncertain, detail=detail, level="warn", error_kind=kind,
                                  result=out.result)
+            # 29.79 (d): o efeito comprovado não se repete (o resolve recusa o `retry`): a frase não o oferece.
+            comprovado = out.result is not None and out.result.efeito_comprovado
             repo.set_objective(oid, ObjectiveStatus.uncertain, detail=detail, blocked_reason=detail,
-                               needs="Confira no aparelho se o efeito ocorreu e decida: confirmar, repetir ou abandonar. "
-                                     "Nada será reenviado automaticamente.",
+                               needs=("O efeito saiu e foi comprovado; só uma conferência sobre ele ficou em aberto. "
+                                      "Confira no aparelho e decida: confirmar (com o print) ou abandonar. Repetir "
+                                      "faria o efeito de novo." if comprovado else
+                                      "Confira no aparelho se o efeito ocorreu e decida: confirmar, repetir ou abandonar. "
+                                      "Nada será reenviado automaticamente."),
                                delivery_level=out.delivery_level, level="warn", message=f"{rt.id}: resultado INCERTO — {detail}")
             rt.attention = "Resultado incerto: requer revisão"
             return False
@@ -2052,6 +2057,12 @@ class Scheduler:
         by_key = {s.key: s for s in plan.steps}
         proven = {r["key"]: bool(r["side_effect"]) for r in self.repo.db.query(
             "SELECT key, side_effect FROM steps WHERE objective_id=? AND status='succeeded'", (objective_id,))}
+        # 29.79 (d): o efeito comprovado com uma afirmação a mais incerta (a publicação saiu, o rótulo não se confirmou)
+        # também não volta: refazê-la publicaria de novo. Atravessa-se como o efeito comprovado.
+        for r in self.repo.db.query("SELECT key, result FROM steps WHERE objective_id=? AND side_effect=1"
+                                    " AND status<>'succeeded' AND result IS NOT NULL", (objective_id,)):
+            if (loads(r["result"], {}) or {}).get("efeito_comprovado"):
+                proven[r["key"]] = True
         # Rejeitada é DECISÃO, não lacuna: recriar a chave reabriria, com OUTRO texto, uma aprovação que alguém já
         # recusou — e a recusa, que a tela promete ser definitiva, não sobreviveria à primeira falha de qualquer
         # outra etapa do mesmo objetivo.

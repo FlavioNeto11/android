@@ -2559,7 +2559,7 @@ class AppState:
         if pedido.interaction_id is not None:
             return "já foi gasto num efeito"
         bindings = loads(srow["bindings"], {}) or {}
-        tem_imagem, sha = midia_da_etapa(self.db, bindings)
+        tem_imagem, sha = midia_da_etapa(self.db, bindings, perfil=profile_id)   # 29.79: só a imagem DESTA persona
         chave = chave_da_aprovacao(bindings, cap, perfil=profile_id, aparelho=str(obj["instance_id"]), pacote=pacote,
                                    run_id=str(obj["run_id"]), objective_id=str(obj["id"]), tem_imagem=tem_imagem,
                                    midia_sha256=sha)

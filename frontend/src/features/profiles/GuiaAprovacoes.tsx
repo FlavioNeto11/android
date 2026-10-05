@@ -2,6 +2,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { useState } from 'react';
 import { api, personaImageUrl } from '../../api/client';
 import type { Approval } from '../../api/types';
+import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
@@ -59,6 +60,9 @@ export function AbaAprovacoes({ profile }: { profile: Pessoa }) {
               <img className={styles.aprovacaoImagem} src={personaImageUrl(a.profile_id, a.image_id)}
                    alt="Imagem que será publicada" loading="lazy" />
             ) : null}
+            {a.rotulo_ia ? <Badge tone="neutral">Sai com o rótulo de IA do Instagram</Badge> : null}
+            {/* 29.79: o upload nasce sem rótulo; o dono pode ter enviado imagem feita por IA (marcar isso é o 29.81). */}
+            {a.rotulo_ia === false ? <Badge tone="warning">Sai sem rótulo de IA (imagem enviada por você)</Badge> : null}
             <Field label="Conteúdo que será enviado">
               {({ id }) => (
                 <TextArea id={id} rows={3} defaultValue={a.content ?? ''}

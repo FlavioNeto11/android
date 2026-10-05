@@ -27,8 +27,9 @@ from .db import Row, loads
 from .models import RUN_TERMINAL, InteractionType, StepStatus
 from .planning.capabilities import contraparte, objeto_da_acao, texto_a_gerar
 from .social.approvals import apply_edit
-from .social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, VERSAO_DA_CHAVE, chave_da_aprovacao, midia_da_etapa,
-                                        tem_variavel, texto_exato)
+from .social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_ROTULO_IA, VERSAO_DA_CHAVE,
+                                        chave_da_aprovacao, imagem_de_outra_persona, midia_da_etapa, tem_variavel,
+                                        texto_exato)
 from .taskqueue.repository import MOTIVO_REJEICAO
 from .util import now, now_iso, to_iso
 
@@ -287,7 +288,12 @@ def _item(state: AppState, run: Row, obj: Row, e: Row, dependentes: list[str], r
     objeto = objeto_da_acao(cap, bindings) if cap is not None else None
     fechado, texto = texto_exato(cap, bindings) if cap is not None else (True, None)
     texto_na_execucao = cap is not None and cap.needs_draft and texto_a_gerar(bindings) is not None
-    tem_imagem, imagem_sha = midia_da_etapa(state.db, bindings)
+    perfil_da_porta = str(porta.profile_id) if porta.profile_id else None
+    tem_imagem, imagem_sha = midia_da_etapa(state.db, bindings, perfil=perfil_da_porta)
+    if perfil_da_porta and selo in (APROVACAO, PERMITIDO) and imagem_de_outra_persona(state.db, bindings,
+                                                                                       perfil_da_porta):
+        # 29.79: publicar a imagem de uma persona na conta de outra não se desfaz; o item não é aprovável.
+        selo, motivo, dica = RECUSADO, "a imagem é de outra persona: ela não sai na conta deste perfil", ""
     chave = None
     if selo in (APROVACAO, PERMITIDO) and cap is not None and cap.side_effect and objeto is not None:
         assinatura = (str(porta.profile_id), cap.key, json.dumps(objeto, sort_keys=True))
@@ -320,6 +326,10 @@ def _item(state: AppState, run: Row, obj: Row, e: Row, dependentes: list[str], r
             # 29.30/30.68: quem aprova a publicação no plano vê a imagem que vai ao feed (só a de sha256 conhecido, a
             # mesma que entra na chave).
             "image_id": str(bindings.get(ARGUMENTO_DA_IMAGEM)).strip() if imagem_sha else None,
+            # 29.79: a publicação sai com o rótulo de IA do Instagram (o argumento que a central gravou na etapa).
+            # `None` sem imagem ou sem o argumento (imagem por resolver): só "false" gravado diz "sem rótulo".
+            "rotulo_ia": (str(bindings[ARGUMENTO_DO_ROTULO_IA]).strip().lower() == "true")
+                         if tem_imagem and bindings.get(ARGUMENTO_DO_ROTULO_IA) is not None else None,
             "imagem_sha256": imagem_sha, "chave": chave, "falhou": False}
 
 
@@ -408,6 +418,8 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
                 apply_edit(state.db, sid, novo)
                 # Rede de segurança (B1): a etapa RELIDA depois da edição tem de dar a MESMA chave que o dono viu na
                 # prévia do texto (30.68). Se não der, nada se grava (o raise dentro da transação desfaz a edição).
+                # `set()` de propósito: o duplicado no plano não depende do texto e já foi conferido acima (A1); aqui
+                # só a chave da etapa relida importa.
                 refeito = _item(state, _run, obj, state.repo.step_row(sid), [], {}, set())
                 if refeito is None or refeito["selo"] != APROVACAO or not refeito["chave"] or refeito["chave"] != chave:
                     motivo = str(refeito["motivo"] if refeito else "") or "o item não fecha mais uma aprovação"

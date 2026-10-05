@@ -64,10 +64,13 @@ def test_a_midia_entra_pelo_sha256_dos_bytes(tmp_path: Path) -> None:
     _svc, repo, _p, _db = build(tmp_path)
     assert midia_da_etapa(repo.db, {"caption": "x"}) == (False, None)
     assert midia_da_etapa(repo.db, {"image_id": "img-que-nao-existe"}) == (True, None)
-    com_a = _chave("SEND_MESSAGE", DM, tem_imagem=True, midia_sha256="a" * 64)
-    com_b = _chave("SEND_MESSAGE", DM, tem_imagem=True, midia_sha256="b" * 64)
+    rotulada = {**DM, "rotulo_ia": "true"}            # 29.79: a etapa com imagem traz o rótulo que a central gravou
+    com_a = _chave("SEND_MESSAGE", rotulada, tem_imagem=True, midia_sha256="a" * 64)
+    com_b = _chave("SEND_MESSAGE", rotulada, tem_imagem=True, midia_sha256="b" * 64)
     assert com_a is not None and com_b is not None and com_a != com_b
-    assert _chave("SEND_MESSAGE", DM, tem_imagem=True, midia_sha256=None) is None   # imagem sem sha256: fechado
+    assert _chave("SEND_MESSAGE", rotulada, tem_imagem=True, midia_sha256=None) is None   # imagem sem sha256: fechado
+    # 29.79, revisão R1: com imagem e SEM o rótulo gravado (etapa antiga, imagem resolvida depois), fechado.
+    assert _chave("SEND_MESSAGE", DM, tem_imagem=True, midia_sha256="a" * 64) is None
 
 
 # ------------------------------------------------------------------ revisão antecipada da chave (04/10)

@@ -405,6 +405,37 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Limite conhecido: o nome de um terceiro escrito por extenso, sem @, e-mail ou telefone, não é detectável; ele só sai
   no texto que a pessoa escreveu e que a conversa já mostrava.
 - `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
+
+## 2026-10-04 — 29.79: a foto realista de IA sai SEMPRE com o rótulo de IA do Instagram (branch feat/29-79-rotulo-ia)
+
+- A central grava `rotulo_ia` na etapa que publica imagem pela origem dela (gerada ou importada: "true"; enviada pelo
+  dono: "false"), por cima do que o plano disser. Como argumento da etapa, entra na chave da aprovação: publicar sem o
+  rótulo é outro item, e o sim reaproveitado numa revisão confere o rótulo também.
+- Catálogo novo `commit_switch` (`<argumento>:<seletor>`): no CREATE_POST, `rotulo_ia:text==Add AI label`. O executor
+  não toca no Share sem o interruptor ligado na mesma linha do texto; na 2ª recusa (ou na 1ª, se veio de receita) a
+  etapa para pedindo uma pessoa. Medido na publicação manual do 8.3 (android-01, 03/10): o interruptor e o botão do
+  Share (`commit_selector` passa a `id=share_footer_button`; o `text==Share` era o TextView filho, não clicável).
+- A imagem de OUTRA persona não fecha chave nem se aprova no plano ("a imagem é de outra persona"); a galeria já a
+  recusava na execução.
+- O cartão do plano e as aprovações da execução dizem "com rótulo de IA", ou "sem rótulo de IA (imagem enviada por
+  você)" no upload do dono (marcar o upload como feito por IA é o 29.81). Adendo v1.40.
+- Revisão R1: em dúvida não publica. A guarda do Share decide pela ORIGEM da imagem resolvida (`rotulo_ia_exigido`), e a
+  etapa com imagem e sem `rotulo_ia` gravado não fecha chave. (c) e C1: o interruptor é o ÚNICO candidato à direita do
+  texto na faixa dele (clicável, `checkable` ou marcado; `UiElement.checkable` novo); empate recusa como
+  "interruptor ambíguo".
+- Revisão (d): a contagem prova que publicou, não que saiu COM o rótulo. Catálogo novo `commit_switch_mark`; no
+  CREATE_POST, `rotulo_ia:id=secondary_label|text==AI info`, medido no 8.3 no cabeçalho do post. Depois do Share, só
+  leitura e pela árvore, a marca tem de estar colada abaixo do nome da conta: a última tela da verificação e no máximo
+  uma releitura. Só conta o cartão do TOPO (D2: um post antigo nosso com rótulo não confirma o novo). Sem ela, a etapa
+  fica `uncertain` ("publicado; o rótulo de IA não foi confirmado. Abra a publicação…") com
+  `StepResult.efeito_comprovado`. D1: essa etapa nunca se refaz. O "repetir" responde 409 `efeito_comprovado`, e
+  `recovery_steps` a atravessa. C1b: o candidato a interruptor tem o centro na faixa do texto alargada em meia altura.
+  Nos dois desfechos, a tela da conferência fica como evidência. O limite aceito pela orquestradora está escrito no
+  adendo: se o post novo estiver fora da tela e um antigo nosso, rotulado, for o primeiro cartão, a conferência passa. O
+  `needs` do objetivo não oferece repetir, e o painel esconde "Tentar novamente…" quando o efeito foi comprovado.
+- Prova: `simulated` (`tests/test_rotulo_ia.py`, `tests/test_rotulo_ia_no_executor.py`, `PortaDoPlano.test.tsx`,
+  `execution.test.tsx`). `not_run`: a medida dos seletores no aparelho depois do deploy e a 1ª publicação real.
+
 ## 2026-10-04 — 31.49: o executor honra o sim dado no plano (branch feat/31-49-executor-honra-o-plano)
 
 - `backend/app/state.py`: o sim do plano de capacidade com texto só vale com o texto exato que vai sair (conferido depois
