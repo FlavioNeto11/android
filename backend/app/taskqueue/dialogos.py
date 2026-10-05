@@ -225,8 +225,12 @@ def toque_que_aceita(tree: UiTree, alvo: UiElement | None,
     silêncio."""
     if alvo is None:
         return None
-    largura = max((e.bounds[2] for e in tree.elements), default=0)
-    altura = max((e.bounds[3] for e in tree.elements), default=0)
+    # 31.104: a tela é a MAIOR extensão, a das folhas ou a da janela do dump (31.77). Pela das folhas só, numa página
+    # esparsa o texto do aviso passava de 60 % dela, deixava de ser marca, e o "Aceitar todos" passava. Aqui o lado que
+    # trava é a página maior (e a faixa, que é fração da altura, também cresce).
+    janela = tree.janela or (0, 0, 0, 0)
+    largura = max(max((e.bounds[2] for e in tree.elements), default=0), janela[2])
+    altura = max(max((e.bounds[3] for e in tree.elements), default=0), janela[3])
     pagina = FRACAO_DA_PAGINA * largura * altura
     # K2: só a marca que tem cara de aviso (abaixo de 60 % da tela; a interface do navegador já saiu em
     # `_de_consentimento`) liga a trava.
