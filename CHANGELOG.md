@@ -29,6 +29,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   pelo prefixo `portal.`.
 - Leitura do #383: o `sem_conferir` com `onde=api` fala da API (horas, motivo, não espera o dono; no `api-500`, um
   olhar), com chave própria por dia, separada da do site.
+- Notas da releitura do #381: o filtro do achado pega também IP com `_`, decimal longo e hexadecimal; o fuso se
+  confere por `utcoffset()`; o achado recusado inteiro tenta só o host.
 - Prova `simulated`: `backend/tests/test_avisos_portal_borda_api.py`. Real: `not_run`.
 
 ## 2026-10-05 — 29.97 (parte da Canais): o aviso do vigia da borda do site (branch canais/29-97-borda-do-portal)

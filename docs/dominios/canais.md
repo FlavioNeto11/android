@@ -564,7 +564,8 @@ avisos depois da faxina"), e a trava cai no TTL.
     - O `achado` só sai como host e caminho, ou o nome do cookie: com `?`, `=`, espaço, IP ou mais de 120
       caracteres, é omitido sem recusa. IP inclui o que está dentro de um nome (`10.0.0.5.nip.io`,
       `10-0-0-5.sslip.io`) e a forma curta ou decimal: qualquer sequência de quatro números separados por `.` ou `-`,
-      ou rótulo só de dígitos, omite o achado (B1 da leitura do #381).
+      ou rótulo só de dígitos, omite o achado (B1 da leitura do #381); também com `_` como separador, decimal de 8+ dígitos e hexadecimal (`0x…`). Recusado o
+      achado inteiro (por exemplo, uma versão no caminho), sai só o host, se ele passar no mesmo filtro.
     - Quem chama manda SÓ host e caminho, sem query nem credencial: o filtro não reconhece segredo num segmento de
       caminho (`cdn/token/abc123` passa).
     - `agora` sem fuso é `campo_invalido`: o dia UTC da chave não pode depender do fuso do processo (B2).
