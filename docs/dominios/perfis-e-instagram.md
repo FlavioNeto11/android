@@ -405,7 +405,9 @@ A pessoa faz a tarefa no aparelho, pelo Foco, e a IA generaliza a gravação em 
   - `parametro_nao_declarado`: `{x}` no comando sem parâmetro declarado (marcadores reservados não contam).
   - `comando_generico`: o comando tem de COMEÇAR por palavra fixa (o fluxo casa com `.+?` e `fullmatch`, então `{pedido} no instagram` sequestraria todo pedido que termine assim) e ter ao menos 2 palavras e 6 letras fixas fora das chaves (`ligue para {contato}` passa; `siga {perfil}` não).
   - `parametro_invalido`: `{…}` no comando que não é nome válido (maiúscula, acento): ficaria literal e o fluxo nunca casaria.
-  - `entrada_duplicada`: entrada em duas etapas, ou em etapa e em `discarded` (o `_receitas` tiraria o toque da etapa calado).
+  - `entrada_duplicada`: entrada em duas etapas, em etapa e em `discarded`, ou repetida em `discarded` (o `_receitas` tiraria o toque da etapa calado).
+  - `entrada_inexistente`: `seq` em etapa ou em `discarded` que não está entre as gravadas (a receita apontaria para nada; 31.95).
+  - `parametro_invalido` vale também para `{` ou `}` sem par; `side_effect` tem de ser booleano (`"false"` virava verdadeiro).
   - `pos_condicao_vazia`: etapa com efeito externo sem `postcondition.value` nem `description` (e sem ação de
     catálogo, que traz a sua). Sem efeito, o objetivo serve de critério e o `save` devolve o aviso em `warnings`.
   - `entradas_sem_etapa`: entrada gravada que não está em nenhuma etapa nem em `discarded` (a lista `#n` vem na
