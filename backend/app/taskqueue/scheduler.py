@@ -829,7 +829,8 @@ class Scheduler:
         return f"aguardando vaga de trabalho em “{nome}” ({em_uso} de {teto} aparelhos trabalhando)"
 
     def servidores(self) -> dict[str, Servidor]:
-        """A foto de cada máquina para o balanceamento e para a tela Limites: capacidade, carga e vagas."""
+        """A foto de cada máquina para o balanceamento: capacidade, carga e vagas. A rota de limites usa só as chaves
+        dela (quais máquinas existem); os números de lá vêm do `capacidade`."""
         s = self.get_settings()
         devs = self.devices
         ids = {self.cfg.owner_id} | {self.servidor_de(rt) for rt in devs.devices.values()}

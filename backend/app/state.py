@@ -3367,8 +3367,8 @@ class AppState:
             return "postgres"
 
     def _problema_de_capacidade_local(self) -> Problem | None:
-        """Quanto cabe AGORA (RAM livre) contra o alvo decidido (`max_online_devices`) — mesma conta do portão de
-        boot real, para o aviso e a recusa nunca discordarem (achado #146, item 10.3)."""
+        """Quanto cabe AGORA (RAM livre) contra o alvo decidido (as vagas do central pela regra única) — mesma
+        conta do portão de boot real, para o aviso e a recusa nunca discordarem (achado #146, item 10.3)."""
         try:
             # 29.86 (R2): o alvo é o mesmo número do agendador e do painel (`vagas_que_valem` pelo `capacidade`);
             # sem a linha do central no registro (a janela da subida), o setting vivo.
@@ -3392,7 +3392,7 @@ class AppState:
             return Problem(
                 code="capacity_local",
                 message=f"RAM livre agora só sustenta ≈{estimated_max} aparelho(s) local(is) simultâneo(s), "
-                        f"abaixo do alvo configurado ({alvo}, `limits.max_online_devices`): ≈{free_mb:.0f} MB "
+                        f"abaixo do alvo configurado ({alvo}, vagas do central pela regra única): ≈{free_mb:.0f} MB "
                         f"livres, ≈{est_mb} MB por instância, {a.min_free_ram_mb_after_boot} MB de folga exigida.",
                 hint="Outro processo está usando a RAM do host (confira o WSL — `.wslconfig` — e outros "
                      "contêineres/VMs) ou o alvo local está otimista para esta máquina. O rodízio vai recusar "
