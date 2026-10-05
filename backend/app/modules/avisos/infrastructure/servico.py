@@ -42,6 +42,13 @@ KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_
 FAXINA_S = 3600.0
 
 
+def trava_de_avisos_em_uso(cfg: Config) -> bool:
+    """28.35: a trava `avisos` é de quem usa um canal: o aviso (Telegram) ou o Trello (espelho e leitor). É a mesma
+    condição da renovação (`AppState._manter_travas`): quem toma sem renovar seguraria a trava até o prazo e deixaria o
+    backend com o canal ligado sem líder (regra 28.4/28.11)."""
+    return bool(cfg.file.avisos.enabled or cfg.file.trello.enabled)
+
+
 class ServicoDeAvisos:
     def __init__(self, cfg: Config, bus: EventBus, fila: FilaDeAvisos, lideranca: Lideranca, *,
                  canal: Canal | None = None, lider: Callable[[str], int | None] | None = None,
@@ -254,12 +261,23 @@ class ServicoDeAvisos:
         self._faxina_em = time.monotonic() + FAXINA_S
 
     def faxinar_canais(self) -> list[Faxina]:
-        """Uma volta da faxina dos canais (28.16), de hora em hora e só no líder da trava `avisos`. Devolve o que fez."""
+        """Uma volta da faxina dos canais (28.16), de hora em hora e só no líder da trava `avisos`. Devolve o que fez.
+
+        Roda também com os dois canais desligados (o que já foi gravado sai no prazo), mas aí a trava não é renovada
+        por ninguém deste backend: ela é SOLTA logo depois, para não segurar o líder de outro backend (28.35)."""
         if self._faxina_canais is None or time.monotonic() < self._faxina_canais_em:
             return []
         token = self._lider(AVISOS)
         if token is None:
             return []
+        try:
+            return self._faxinar_canais(token)
+        finally:
+            if not trava_de_avisos_em_uso(self.cfg):
+                self.lideranca.soltar(AVISOS)
+
+    def _faxinar_canais(self, token: int) -> list[Faxina]:
+        assert self._faxina_canais is not None
 
         def cerca():  # noqa: ANN202 - context manager do mandato
             return self.lideranca.cercada(AVISOS, token)
