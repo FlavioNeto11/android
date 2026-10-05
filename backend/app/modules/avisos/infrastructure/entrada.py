@@ -540,6 +540,8 @@ class ConversaDoCanal:
         self._agora = relogio or time.time
         #: mensagens antigas desta volta (escritas com a Central fora): o dono é avisado uma vez no fim da volta
         self._antigas = 0
+        #: O 429 pediu para esperar: o reenvio do desfecho não sai antes desta hora (epoch), mesmo com voltas no meio.
+        self._desfecho_espera_ate = 0.0
         #: O "sim" ou o "não" do dono a quem chegou (28.18): (chat, autorizar) → o que responder ao dono. Só o leitor do
         #: Telegram com os convidados ligados o põe; sem ele, a resposta diz que o caminho está desligado.
         self.decidir_convidado: Callable[[str, bool], Awaitable[str]] | None = None
@@ -1572,7 +1574,11 @@ class ConversaDoCanal:
     async def _contar_desfechos(self, saida: SaidaDaConversa) -> None:
         """O desfecho só fica marcado quando saiu, ou quando tentar de novo não adianta (`FalhaDeEnvio.definitiva`): na
         execução terminal ele é a ÚNICA linha ao dono (28.36), e marcado sem sair o dono não saberia do fim (28.38). A
-        falha passageira para a volta (o canal está fora) e a linha tenta de novo na seguinte."""
+        falha passageira para a volta (o canal está fora) e a linha tenta de novo na seguinte, nunca antes do que o 429
+        pediu (`espera_s`). Sem teto de tentativas: no máximo uma falha por volta, e a linha `feita` sai pela faxina da
+        retenção (28.16)."""
+        if self._agora() < self._desfecho_espera_ate:
+            return
         for linha in self.repo.esperando_desfecho():
             run_id = str(linha["run_id"])
             texto = self.portas.desfecho(run_id)
@@ -1590,6 +1596,8 @@ class ConversaDoCanal:
                 await self._responder(saida, linha, self._texto_do_desfecho(texto), origem="resultado", exigir=True)
             except FalhaDeEnvio as falha:
                 if not falha.definitiva:
+                    if falha.espera_s:
+                        self._desfecho_espera_ate = self._agora() + falha.espera_s
                     return
                 log.warning("telegram: desfecho da mensagem %s não sai nunca (%s)", linha.get("id"), falha.motivo)
             self.repo.marcar_desfecho(self._id(linha))

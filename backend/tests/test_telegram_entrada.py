@@ -534,6 +534,25 @@ async def test_desfecho_que_nao_saiu_tenta_de_novo_na_volta_seguinte(c: Cenario)
     assert c.bot.textos().count("Execução abc123: concluída.") == 2      # a tentativa que falhou e a que saiu
 
 
+async def test_desfecho_com_429_espera_o_que_o_telegram_pediu(tmp_path: Path) -> None:
+    """28.38: o 429 traz o `retry_after`; as voltas no meio não reenviam o desfecho (nem a ida ao plano esquecido)."""
+    agora = [1_000_000.0]
+    c = Cenario(tmp_path)
+    c.servico.conversa._agora = lambda: agora[0]                 # noqa: SLF001
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.desfechos[RUN] = "Execução abc123: concluída."
+    c.bot.envio_falha = [429]
+    await c.volta()
+    n = c.bot.chamou("sendMessage")
+    agora[0] += 10
+    await c.volta()
+    assert c.bot.chamou("sendMessage") == n and c.linha(5)["resultado_em"] is None
+    agora[0] += 30
+    await c.volta()
+    assert c.linha(5)["resultado_em"] is not None
+
+
 async def test_desfecho_com_falha_definitiva_marca_e_nao_repete(c: Cenario) -> None:
     await c.volta(msg(5, "abra o Chrome no android-09"))
     await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
