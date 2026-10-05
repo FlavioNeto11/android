@@ -1807,6 +1807,14 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
     segue fora (o K2b).
   - Ficam do lado seguro, recusados: "Rejeitar cookies." com ponto e "Rejeitar todos os cookies" (fora da lista
     exata), e o `type_text(press_enter=True)` com o foco num botão segue sem tratamento.
+- 31.75, a página que imita o id do navegador: o Chrome expõe o `id` do HTML como `resource-id`, então um botão da
+  PÁGINA com `id="com.android.chrome:id/allow"` escaparia da isenção do K2 (classe e posição não separam). Na ordem do
+  documento, o conteúdo da página fica entre a WebView e a primeira RAIZ da interface do Chrome (`control_container`,
+  no ML e no g1; `bottom_container`, no gov.br; capturas de 05/10); o elemento com id do Chrome DENTRO desse trecho é
+  página, não ganha a isenção, é julgado como página e, com id de consentimento, vira marca (`dialogos._conteudo_web`).
+  A interface real do Chrome depois da raiz segue isenta (o "More options" do gov.br). **Limite declarado:** sem
+  WebView na árvore (o leitor a corta quando vem sem título) ou sem a raiz depois dela, não se sabe onde a página
+  termina e vale o id, como antes; o alvo precisa ser um elemento da MESMA árvore (o `resolve_point` do executor é).
 - O recusado vira ação `rejected` com o motivo "o consentimento do site não é aceito pelo ator (eN, Tipo)": no `error`
   e no `status_detail` (que chegam a aviso e cartão) vão só o id e o tipo; o rótulo, texto da página, vai só ao
   histórico do ator, com os espaços normalizados. Quatro recusas somadas na ETAPA (ou quatro erros seguidos) encerram

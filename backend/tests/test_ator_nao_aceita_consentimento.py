@@ -520,6 +520,37 @@ def test_31_75_sem_a_raiz_vale_o_id_como_antes() -> None:
     assert _recusa(tree, "More options") is None
 
 
+def test_31_75_sem_webview_vale_o_id_como_antes() -> None:
+    """Sem WebView na árvore (o leitor a corta quando vem sem título) não se sabe onde a página começa: vale o id."""
+    tree = _xml(("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("More options", (512, 1120, 608, 1232), "com.android.chrome:id/translate_infobar_menu_button",
+                 "android.widget.ImageButton", True),
+                _RAIZ)
+    assert _recusa(tree, "More options") is None
+
+
+def test_31_75_o_gov_br_real_a_interface_do_chrome_depois_da_raiz_segue_isenta() -> None:
+    """Os nós da captura real do gov.br (05/10, `gov-3-rodape`, ids e1..e52): a WebView (e3), a folha de cookies (e30..e39),
+    a raiz `bottom_container` (e44) e a barra de tradução do Chrome depois dela (e51 "More options", e52 "Close"). A
+    página fica recusada; a interface real do Chrome, com id do navegador depois da raiz, segue livre."""
+    tree = _xml(("GOV.BR", (0, 48, 720, 1232), "", "android.webkit.WebView", False),
+                ("Para melhorar a sua experiência na plataforma e prover serviços personalizados, utilizamos cookies.",
+                 (48, 632, 672, 700), "", "android.widget.TextView", False),
+                ("Gerenciar cookies", (202, 908, 518, 972), "", "android.widget.Button", True),
+                ("Rejeitar cookies", (192, 1004, 528, 1068), "", "android.widget.Button", True),
+                ("Aceitar cookies", (192, 1100, 528, 1164), "", "android.widget.Button", True),
+                ("", (0, 1104, 720, 1232), "com.android.chrome:id/bottom_container", "android.widget.FrameLayout", False),
+                ("", (512, 1120, 608, 1232), "com.android.chrome:id/translate_infobar_menu_button",
+                 "android.widget.ImageButton", True),
+                ("", (608, 1120, 720, 1232), "com.android.chrome:id/infobar_close_button",
+                 "android.widget.ImageButton", True))
+    menu, fechar = tree.elements[6], tree.elements[7]               # "More options" e "Close" (o rótulo é `content-desc`)
+    assert _recusa(tree, "Aceitar cookies") == "Aceitar cookies"
+    assert _recusa(tree, "Gerenciar cookies") == "Gerenciar cookies"
+    assert _recusa(tree, "Rejeitar cookies") is None
+    assert toque_que_aceita(tree, menu) is None and toque_que_aceita(tree, fechar) is None
+
+
 #: A tela de 2400 px de altura do celular: a faixa em volta da marca é de 288 px (`_MARGEM_DA_FAIXA`).
 _TELA_2400 = ("", (0, 0, 1080, 2400), "", "android.widget.FrameLayout", False)
 

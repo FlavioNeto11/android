@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.75: a página com id do navegador não ganha a isenção do K2 (branch feat/31-75-pagina-com-id-do-navegador)
+
+- Furo do 31.72: o Chrome expõe o `id` do HTML como `resource-id`; um botão da página com
+  `id="com.android.chrome:id/allow"` era tratado como interface do navegador e escapava da trava.
+- `taskqueue/dialogos.py`: `_conteudo_web` (nova). Na ordem do documento, o que está entre a WebView e a primeira raiz
+  da interface do Chrome (`control_container`, `bottom_container`) é página: `_do_navegador` e `_de_consentimento`
+  não dão a isenção ali. Sem WebView ou sem a raiz, vale o id, como antes (limite declarado em `docs/ia.md` § 20).
+- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (5 testes novos do 31.75, com a captura real do
+  gov.br: a barra de tradução do Chrome depois da raiz segue livre); mutações conferidas (desfazer cada regra reprova o
+  teste dela). As árvores reais de `data/diag-31-72/` dão o mesmo antes (152f8b54) e depois (NTP, ml, g1, uol com 0
+  recusado; gov-3 com 12 clicáveis recusados, nenhum do Chrome; "More options" livre). `real`: `not_run`.
+
 ## 2026-10-05 — 31.72: o ator não aceita consentimento do site (branch feat/31-72-ator-nao-aceita-consentimento)
 
 - Achado real na janela do 31.40 (r-20261005071303-f24955, android-09): o ator tocou "Aceitar cookies" duas vezes; a
