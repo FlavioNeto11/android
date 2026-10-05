@@ -179,6 +179,25 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py`: as funções puras sobre as árvores REAIS do 13
   em `tests/fixtures/instagram_legenda/`, e o laço do executor com a geometria medida). `not_run`: a 1ª publicação real
   (29.30), depois do deploy 34.
+## 2026-10-05 — 28.37: a saúde acusa quando os backends ligam canais diferentes (branch canais/28-37-canais-divergentes)
+
+- N1 da revisão do #345: numa frota com um backend só com o aviso e outro só com o Trello, quem pega a trava `avisos`
+  segura os dois laços, e o canal que só o outro liga para calado. Agora cada backend publica o que liga
+  (`CanaisDaFrota`, `avisos/infrastructure/canais_frota.py`) na tabela `settings`, chave `canais.config:<OWNER_ID>`,
+  sem migração. O valor é só `{avisos, trello, em}`. A escrita sai na volta das travas, só quando muda ou a cada
+  120 s.
+- Problema de saúde `canais_divergentes` quando um canal ligado em algum backend com publicação fresca (< 240 s) não
+  está ligado no líder da trava. Aparece em qualquer backend, e o texto não leva `OWNER_ID`. Sem líder, ou com um
+  backend só, não acusa.
+- A publicação sai no encerramento limpo, e a de backend sumido há mais de 1 h é varrida na escrita. A chave não
+  aparece no `GET /api/settings` e o `PUT` a recusa (`unknown_setting`).
+- Notas C1 a C3 da revisão, consertadas no próprio PR:
+  - C1: a varredura apaga com `WHERE key=? AND value=?`, pelo valor lido; a publicação que o dono regravou no meio fica.
+  - C2: o `retirar()` tem `try` próprio no `stop()`, e a falha das travas não o impede.
+  - C3: só quem roda o scheduler publica, retira e se conta (`roda=cfg.roda_scheduler`). Uma réplica só de API não
+    acusa um canal que nunca roda nela.
+- Prova: `simulated`, em `tests/test_avisos_canais_frota.py` (12 testes). A frota real com dois backends fica
+  `not_run`: hoje há um só.
 
 ## 2026-10-05 — 28.35: a trava `avisos` só fica com quem usa um canal (branch canais/28-35-trava-so-com-aviso)
 
