@@ -6643,3 +6643,19 @@ Muda o VALOR de `ref` nos eventos de fluxo e passa a aceitar a referência nova 
     efeito segue com o id interno.
 - **Ainda com o id interno:** `item.ref` nas respostas do Livro, `GET /api/flows` (o painel casa por ele), e o id da
   habilidade adotada de um fluxo legado (`<app>.<slug>`, e `flow:<slug>` nas relações).
+
+## Adendo v1.68 (05/10/2026; número da orquestradora; item 30.84) — reensinar o comando que a prova desligou
+
+Nenhum campo novo, sem migração. Muda quando `POST /api/training/{session_id}/save` e
+`POST /api/training/{session_id}/preview` respondem `409 duplicate_command`.
+- **Antes:** qualquer fluxo com a mesma `match_key` recusava, inclusive o ensinado que a prova real desligou (30.81,
+  adendo v1.65). A pessoa não conseguia corrigir a demonstração.
+- **Agora:** o fluxo ensinado cujo desligamento PELA PROVA ainda é a última linha da trilha não recusa.
+  - O `save` faz a MESMA linha renascer e devolve o `flow_id` que já existia (mesma referência pública, adendo v1.66).
+  - Plano, sessão e nascimento são novos; o fluxo fica ativo e de novo em espera de prova (adendo v1.65).
+  - A prévia responde como o `save` responderia, sem gravar.
+- **Seguem com o 409:** o fluxo desligado por uma pessoa, o que uma pessoa mexeu depois da prova, o adotado por uma
+  habilidade, o ativo, e o comando com habilidade versionada publicada. As mensagens não mudam.
+- **Quem consome:** o painel do treino (`TrainingReview`) mostra o `flow_id` devolvido e oferece a adoção dele; o
+  mesmo id de antes não muda nada ali.
+- **Prova:** `simulated` (`backend/tests/test_reensinar_o_desligado_pela_prova.py`).

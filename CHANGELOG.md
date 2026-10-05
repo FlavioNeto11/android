@@ -27,7 +27,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O desligado por pessoa, o mexido por ela depois da prova, o adotado e o ativo seguem com o 409 `duplicate_command`;
   a prévia do treino usa a mesma regra (`FlowStore.recusa_do_treino`).
 - Contrato: o `save` e a prévia do treino deixam de dar 409 nesse caso, e o `save` devolve o `flow_id` que já
-  existia. O número do adendo fica com a orquestradora.
+  existia (adendo v1.68).
 - Funções tocadas (K-095): `FlowStore.learn_from_plan`, `recusa_do_treino` e `_desligado_pela_prova` (novas),
   `TrainingSkills.preview`, `SombraDosFluxos._rebaixar_o_ensinado` (o motivo vira a constante
   `MOTIVO_DA_PROVA_DO_ENSINADO`).
