@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
+
+- **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.
+- Prova `real`: ensaio de migração sobre a cópia `20261005-125938`, `GET /api/health` ok e sem problemas, prova de fora com `rc=0` e 46 linhas ok (`/api/instances` 401 e 403), agente do notebook em `0.1.0+86afe1b`.
+- Prova `simulated` (suíte 38): `scripts/tests` 669 passed; backend em SQLite 11689 passed; frontend 1650 passed; mypy 257, igual ao teto. No PostgreSQL dirigido, 9824 passed e 5 failed conhecidas em `test_sobreposicao*.py` (item 29.139): essa etapa não passou inteira.
+- Plano-100: 78 IDs novos (janelas 37 e 38, com a Fase 33 e seus 8 itens) e o resultado da suíte 38 aplicado pelo mecanismo: 535 de 636. As linhas 3.3, 6.2, 6.4 e 8.3 deixaram de citar quatro achados que saíram do apêndice no `ebc316f9`.
+
+## 2026-10-05 — 29.134: GitHub Copilot no repositório (revisão de PR sob pedido e ambiente do agente de nuvem)
+
+- Pedido do dono de 05/10: usar o Copilot Pro+ para aliviar a carga das sessões e desta máquina.
+- `.github/copilot-instructions.md` e `.github/workflows/copilot-setup-steps.yml` (`f5d9a096`); o ambiente do agente roda sempre em `ubuntu-latest`, nunca no runner `central`.
+- A revisão de PR é pedida PR a PR pela orquestradora; a regra automática do repositório fica desligada. Operação em `docs/operacao.md` § 5.
+- Prova `real` para a revisão: três PRs em 05/10, 566,87 créditos (US$ 5,67), 10 achados e 9 confirmados pelas frentes. Prova `not_run` para o agente de nuvem.
+
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 
 - Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.

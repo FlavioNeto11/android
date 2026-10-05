@@ -8876,6 +8876,444 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-05T10:49:51+00:00"
+  },
+  "29.113": {
+   "id": "29.113",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ramo 8d26b1bb (sem PR; entrou como ramo na suíte 38). O próprio pg-rapido.py rodou o PG dirigido da 38 (real como ferramenta). Simulado: scripts/tests/test_pg_rapido.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "scripts/tests/test_pg_rapido.py"
+   ],
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "29.117": {
+   "id": "29.117",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ramo 0358381a (sem PR; entrou como ramo na suíte 38), com o Job Object; usado no PG dirigido da 38. Simulado: scripts/tests/test_pg_rapido.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "scripts/tests/test_pg_rapido.py"
+   ],
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "29.120": {
+   "id": "29.120",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#422, ponta 1ffa5890. Simulado: backend/tests/test_wake_relogio_do_snapshot.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_wake_relogio_do_snapshot.py"
+   ],
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "29.121": {
+   "id": "29.121",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#421, ponta 9cb77354. Simulado: backend/tests/test_vigia_do_laco.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_vigia_do_laco.py"
+   ],
+   "nota": "real pede um travamento do laço no central; not_run",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "29.123": {
+   "id": "29.123",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#420, ponta f87ec674. Simulado: backend/tests/test_readocao_sem_log_antigo.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_readocao_sem_log_antigo.py"
+   ],
+   "nota": "a prova real é a readoção de um emulador vivo depois do reinício do deploy 38; a orquestradora confere no log",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "29.124": {
+   "id": "29.124",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#433, ponta 056b14af. A partida do deploy 38 subiu sem kill do supervisor (o deploy deu ok). Simulado: backend/tests/test_supervisor_partida.py::*, backend/tests/test_vigia_do_laco.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_supervisor_partida.py",
+    "backend/tests/test_vigia_do_laco.py"
+   ],
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "29.125": {
+   "id": "29.125",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#435, ponta eb92cdfa. Simulado: backend/tests/test_supervisao_do_central.py::*, backend/tests/test_supervisor_partida.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_supervisao_do_central.py",
+    "backend/tests/test_supervisor_partida.py"
+   ],
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "29.127": {
+   "id": "29.127",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#441, ponta 044bd2f8, sobre o #420. Simulado: backend/tests/test_readocao_marco.py::*, backend/tests/test_readocao_sem_log_antigo.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_readocao_marco.py",
+    "backend/tests/test_readocao_sem_log_antigo.py"
+   ],
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "30.75": {
+   "id": "30.75",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#419, ponta b3ed5e26. Simulado: backend/tests/test_learning_prova.py::*, backend/tests/test_validacao_motivos_da_prova.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_learning_prova.py",
+    "backend/tests/test_validacao_motivos_da_prova.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "30.80": {
+   "id": "30.80",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#432, ponta 0229d457 (a 3e6fb016 é só ancestral dela); migração 115 aplicada no deploy 38 (real). Simulado: backend/tests/test_receita_nao_aplicavel.py::*, backend/tests/test_d1_receitas.py::*, backend/tests/test_receita_divergida_escala.py::*, backend/tests/test_revisao_receitas.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_receita_nao_aplicavel.py",
+    "backend/tests/test_d1_receitas.py",
+    "backend/tests/test_receita_divergida_escala.py",
+    "backend/tests/test_revisao_receitas.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "29.118": {
+   "id": "29.118",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#423, ponta d155c902. Simulado: frontend/src/features/profiles/AcoesEmLote.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/profiles/AcoesEmLote.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "29.119": {
+   "id": "29.119",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#424, ponta f2a17d75. Simulado: frontend/src/test/esperas.test.ts::*, frontend/src/components/Disclosure.test.tsx::*, frontend/src/features/profiles/GuiaImagens.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/test/esperas.test.ts",
+    "frontend/src/components/Disclosure.test.tsx",
+    "frontend/src/features/profiles/GuiaImagens.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "29.115": {
+   "id": "29.115",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#425, ponta 0068c114. Simulado: frontend/src/features/settings/LimitsSection.test.tsx::*, frontend/src/features/rede/RedePage.test.tsx::*, frontend/src/app.integration.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/settings/LimitsSection.test.tsx",
+    "frontend/src/features/rede/RedePage.test.tsx",
+    "frontend/src/app.integration.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "28.47": {
+   "id": "28.47",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#426, ponta afff08cd. Simulado: backend/tests/test_telegram_entrada.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_telegram_entrada.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "28.48": {
+   "id": "28.48",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#431, ponta 5cb4f5af. Simulado: backend/tests/test_rotulo_ia.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_rotulo_ia.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "31.80": {
+   "id": "31.80",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#427 (5a56f403) e #428 (05b44377). Simulado: backend/tests/test_treino_gravacao_orfa.py::*, frontend/src/features/training/trainingStore.test.ts::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_gravacao_orfa.py",
+    "frontend/src/features/training/trainingStore.test.ts",
+    "frontend/src/features/training/TrainingBar.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "31.82": {
+   "id": "31.82",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#427, ponta 5a56f403. Simulado: backend/tests/test_treino_segredo_na_gravacao.py::*, backend/tests/test_redaction_linha_com_codigo.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_segredo_na_gravacao.py",
+    "backend/tests/test_redaction_linha_com_codigo.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "31.94": {
+   "id": "31.94",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#440, ponta 3400c5ee. Simulado: backend/tests/test_treino_segredo_na_gravacao.py::*, backend/tests/test_treino_gravacao_orfa.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_segredo_na_gravacao.py",
+    "backend/tests/test_treino_gravacao_orfa.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "31.83": {
+   "id": "31.83",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#429, ponta 6ea2904c. Simulado: backend/tests/test_treino_validacao_do_salvar.py::*, backend/tests/test_treino_chave_da_etapa.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_validacao_do_salvar.py",
+    "backend/tests/test_treino_chave_da_etapa.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "31.86": {
+   "id": "31.86",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "#438 (dca4c079), parte B; e #428 (05b44377). Simulado: backend/tests/test_treino_previa_e_refazer_receitas.py::*, frontend/src/features/focus/FocusPanel.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_previa_e_refazer_receitas.py",
+    "frontend/src/features/focus/FocusPanel.test.tsx"
+   ],
+   "nota": "o PR cobre só uma parte do item; status e prova ficam para a frente dizer se fecha",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "31.95": {
+   "id": "31.95",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#442, ponta 98d111e0 + conserto da catraca do Any 97dbf664 (`dict[str, object]`). Simulado: backend/tests/test_treino_validacao_do_salvar.py::*, backend/tests/test_treino_chave_da_etapa.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_validacao_do_salvar.py",
+    "backend/tests/test_treino_chave_da_etapa.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "31.84": {
+   "id": "31.84",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#430, ponta 745641b0. Simulado: backend/tests/test_treino_teclas_na_destilacao.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_teclas_na_destilacao.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "31.85": {
+   "id": "31.85",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#430, ponta 745641b0. Simulado: backend/tests/test_treino_quadro_velho.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_quadro_velho.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "31.90": {
+   "id": "31.90",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "#436, ponta bb458b49, parte A. Simulado: frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/training/TrainingReview.test.tsx"
+   ],
+   "nota": "o PR cobre só uma parte do item; status e prova ficam para a frente dizer se fecha",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
+  },
+  "31.89": {
+   "id": "31.89",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "#434, ponta 20d4d645, só F1 e F6. Simulado: backend/tests/test_fluxo_casamento_especifico.py::*, backend/tests/test_intencao_resolucao.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_fluxo_casamento_especifico.py",
+    "backend/tests/test_intencao_resolucao.py"
+   ],
+   "nota": "o PR cobre só uma parte do item; status e prova ficam para a frente dizer se fecha",
+   "grupo": "android-suite-38",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T16:25:16+00:00"
   }
  },
  "rodadas": [
@@ -11563,6 +12001,39 @@
    ],
    "grupos": [
     "resultado-orquestradora-29-111"
+   ]
+  },
+  {
+   "quando": "2026-10-05T16:25:16+00:00",
+   "itens": [
+    "29.113",
+    "29.117",
+    "29.120",
+    "29.121",
+    "29.123",
+    "29.124",
+    "29.125",
+    "29.127",
+    "30.75",
+    "30.80",
+    "29.118",
+    "29.119",
+    "29.115",
+    "28.47",
+    "28.48",
+    "31.80",
+    "31.82",
+    "31.94",
+    "31.83",
+    "31.86",
+    "31.95",
+    "31.84",
+    "31.85",
+    "31.90",
+    "31.89"
+   ],
+   "grupos": [
+    "android-suite-38"
    ]
   }
  ]
