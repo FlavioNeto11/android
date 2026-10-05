@@ -91,7 +91,7 @@ export function slugDaPersona(p: Pessoa, todas: readonly Pessoa[]): string {
 
 /**
  * Quem o segmento do link nomeia: o id (links antigos), o slug de hoje, ou a forma com sufixo mesmo que o homônimo
- * já tenha saído (link compartilhado quando havia dois "Lucas Almeida"). `null` quando ninguém bate — ou quando o
+ * já tenha saído (link compartilhado quando havia dois "Tadeu Quintela"). `null` quando ninguém bate — ou quando o
  * nome-base é de vários e o link não diz qual.
  */
 export function resolverPersona<T extends Pessoa>(segmento: string | null | undefined, pessoas: readonly T[]): T | null {

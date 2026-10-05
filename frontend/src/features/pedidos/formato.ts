@@ -76,7 +76,7 @@ export function quemFazDoPedido(p: Pick<PedidoView, 'personas' | 'alvos'>): { pe
   return { personas, aparelhos };
 }
 
-/** A persona como a pessoa a conhece: "Bruno Ferreira (@bruno)"; sem a lista (ainda lendo ou persona apagada), o id, como o Comando faz. */
+/** A persona como a pessoa a conhece: "Valdir Teixeira (@valdir)"; sem a lista (ainda lendo ou persona apagada), o id, como o Comando faz. */
 export function nomeDaPersonaNoPedido(id: string, pessoas: readonly Pessoa[] | null | undefined): string {
   const p = pessoas?.find((x) => x.id === id);
   if (!p) return id;
@@ -85,7 +85,7 @@ export function nomeDaPersonaNoPedido(id: string, pessoas: readonly Pessoa[] | n
   return h && nome !== `@${h}` ? `${nome} (${rotuloDoIdentificador(h)})` : nome;
 }
 
-/** Um alvo da prévia em uma linha, sem id interno de persona: "android-03 · Bruno Ferreira (@bruno) · Outlook". */
+/** Um alvo da prévia em uma linha, sem id interno de persona: "android-03 · Valdir Teixeira (@valdir) · Outlook". */
 export function rotuloDoAlvo(
   t: Pick<ResolvedTarget, 'instance_id' | 'profile_id' | 'app_id' | 'app_ids'>,
   pessoas: readonly Pessoa[] | null | undefined, apps: readonly Pick<AppConfig, 'id' | 'name'>[],
