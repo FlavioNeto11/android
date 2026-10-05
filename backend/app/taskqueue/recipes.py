@@ -799,7 +799,8 @@ class RecipeStore:
         comprovada) numa execução real de prova desse fluxo (N1 da Reload, decisão da orquestradora: a prova só libera o
         que exercitou). A execução de prova do próprio fluxo a acha (`prova_fluxo`). O fluxo desligado sem isso não
         solta as receitas (N2). Sem o fluxo (apagado pela rota), falha fechada (N4): segue só para a persona da sessão,
-        e só a evidência a favor dela numa execução real a libera. Uma consulta, só na receita do treino."""
+        e só a evidência a favor dela numa execução real DE PROVA a libera (N5: a execução comum de quem ensinou não
+        conta). Uma consulta, só na receita do treino."""
         origem = str(row["learned_from_step"] or "")
         if not origem.startswith(PREFIXO_DO_TREINO):
             return False
@@ -808,7 +809,8 @@ class RecipeStore:
         if fluxo is not None and prova_fluxo is not None and prova_fluxo == fluxo["id"]:
             return False
         provada = ("EXISTS (SELECT 1 FROM learning_evidence e JOIN runs ru ON ru.id = e.run_id WHERE e.item_ref=?"
-                   " AND e.stance='for' AND e.simulated=0" + (" AND ru.prova_fluxo_id=?" if fluxo is not None else "")
+                   " AND e.stance='for' AND e.simulated=0"
+                   + (" AND ru.prova_fluxo_id=?" if fluxo is not None else " AND ru.prova_fluxo_id IS NOT NULL")
                    + " AND NOT EXISTS (SELECT 1 FROM learning_evidence i WHERE i.item_ref = e.item_ref"
                    " AND i.origin_ref = e.origin_ref AND i.stance='invalida')) AS provada")
         if fluxo is None:

@@ -510,4 +510,7 @@ def test_apagar_o_fluxo_nao_libera_as_receitas_dele(mundo: Mundo) -> None:
     assert not _acha(mundo, BIA) and not _acha(mundo, None) and _acha(mundo, ANA)
     mundo.execucao_de_prova(None, "r-ana")
     _evidencia_da_receita(mundo, rid, "r-ana", stance="for")
-    assert _acha(mundo, BIA)                             # a evidência a favor dela numa execução real libera
+    assert not _acha(mundo, BIA)                         # N5: a execução comum de quem ensinou não libera
+    mundo.execucao_de_prova(fid, "r-prova")
+    _evidencia_da_receita(mundo, rid, "r-prova", stance="for")
+    assert _acha(mundo, BIA)                             # a evidência a favor dela numa execução real de prova libera
