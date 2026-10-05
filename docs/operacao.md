@@ -223,10 +223,8 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   máquina Linux do agente, e ele honra esses hooks. O conserto é o item 29.147 (ramo `fix/29-147-hooks-portateis`):
   cada hook segue em exec-form (command + args, sem shell), com `command: "python"` resolvido pelo PATH (no Windows do
   dono é o Python 3.13; no agente, o `setup-python` de `copilot-setup-steps.yml`), os mesmos `-S -E` e o mesmo código
-  de saída (2 bloqueia). O `.claude/hooks/python.sh`, que resolve o interpretador por plataforma, fica no repositório
-  como alternativa em forma de shell, sem uso nos hooks. Enquanto o conserto não estiver na
-  `main`, o agente de nuvem não funciona neste repositório. Prova `simulated`:
-  `scripts/tests/test_hooks_portateis.py` (10 testes, os hooks rodando pelo bash); `real` em Linux, com o agente do
+  de saída (2 bloqueia). Enquanto o conserto não estiver na `main`, o agente de nuvem não funciona neste repositório. Prova `simulated`:
+  `scripts/tests/test_hooks_portateis.py` (os hooks rodando em exec-form com o `python` do PATH); `real` em Linux, com o agente do
   Copilot assumindo uma tarefa, fica `not_run`. A revisão de PR não é afetada.
 - **Fora.** Vale só para este repositório. Ninguém instala o Copilot CLI nesta máquina. As opções de privacidade e de
   cobrança da conta são do dono.
