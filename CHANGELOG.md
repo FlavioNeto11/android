@@ -46,8 +46,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
       foco como `blob:` (720x1280), o anexo PNG na aba Anexos como `blob:` e o upload de foto da persona (o arquivo
       posto no campo, enviado e mostrado pela API). Tudo carregou, sem nenhuma violação; no console, a única
       mensagem de CSP é a do teste proposital com `wss://exemplo.invalid`;
-  - `not_run`: o central (depois do deploy) e a prova de fora pedindo `/central/` como navegador, que entra quando o
-    #353 estiver na main.
+  - a prova de fora (`scripts/portal-prova-de-fora.sh`) passa a pedir também `/central/` como navegador e a conferir
+    `no-transform` na raiz e no painel, o gzip da origem na raiz (pedida com gzip, br e zstd: br ou zstd quer dizer
+    que a borda abriu o corpo) e a CSP do painel. `simulated`: `scripts/tests/test_portal_prova_de_fora.py` (19, com o
+    beacon no painel, o HTML sem `no-transform`, o corpo recomprimido e o painel em Report-Only reprovando);
+  - `real`, antes do deploy (05/10 03:35:48Z, central em `584ac9c8`, só GET): a raiz chega em zstd com 11.355 B no fio
+    e `Cache-Control: no-store`; o `/central/` em zstd, sem `no-transform` e sem CSP; nenhum beacon (o RUM está
+    desligado na zona desde as 02:23Z);
+  - `not_run`: o central depois do deploy 35 (o peso da raiz no gzip da origem, perto de 10,6 KB, e a prova de fora
+    com as linhas novas). Não se religa o Web Analytics para provar.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
