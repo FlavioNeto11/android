@@ -32,6 +32,7 @@ from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, ReadValue,
                                 TelaDeContaTravada, ToolContext, ToolValidationError, esperar_foco, execute_tool,
                                 looks_like_commit, resolve_point, urls_do_texto, validate_call)
 from ..config import AiCfg, Config, LimitsCfg
+from ..shared.vinculos import tem_vinculo_ativo
 from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.conta_observada import evidencia_legivel
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter, Observation, dimensoes_do_modelo
@@ -1185,8 +1186,7 @@ class StepExecutor:
 
         Aparelho com conta real (vínculo ativo de persona, a regra do ADR-055) nunca grava, mesmo listado: o vínculo
         mora no banco, não no config, por isso a recusa é aqui, na hora de gravar, e não na carga do config."""
-        if self.repo.db.one("SELECT 1 FROM device_profile_bindings WHERE instance_id=? AND active=1 LIMIT 1",
-                            (iid,)) is not None:
+        if tem_vinculo_ativo(self.repo.db, iid):
             log.warning("%s: diagnóstico 31.52 recusado, o aparelho tem conta real vinculada", iid)
             return
         corpo = {"regra": "31.52", "package": obs.package, "width": obs.width, "height": obs.height, "podados": podados,

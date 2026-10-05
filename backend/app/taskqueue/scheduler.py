@@ -13,6 +13,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Protocol
 
 from ..config import Config
+from ..shared.vinculos import aparelhos_com_vinculo_ativo
 from ..contracts.origem import eh_ensaio_de_leitura, eh_execucao_de_validacao
 from ..db import Row, dumps, loads
 from ..devices.manager import DeviceManager, DeviceRuntime, Limiter
@@ -1079,8 +1080,7 @@ class Scheduler:
     def _aparelhos_com_conta(self) -> set[str]:
         """Aparelhos com vínculo ativo de persona: conta vinculada é conta real logada até prova em contrário (a
         mesma regra do reparo em escada do ADR-055 e do `real_account` da rede)."""
-        return {str(r["instance_id"]) for r in
-                self.repo.db.query("SELECT DISTINCT instance_id FROM device_profile_bindings WHERE active=1")}
+        return aparelhos_com_vinculo_ativo(self.repo.db)
 
     def _ocupacao(self, p: str | None, s: Any) -> tuple[int, int]:
         """`(ligados, teto)` daquele conjunto de vagas, para a frase da espera dizer de qual máquina se fala."""

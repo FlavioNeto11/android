@@ -26,6 +26,7 @@ from app.modules.learning.infrastructure.revisoes_sql import RegistroDeRevisoesS
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.learning.infrastructure.validacoes_sql import FontesDaValidacaoSql, RegistroDeValidacoesSql
+from app.shared.vinculos import aparelhos_com_vinculo_ativo
 from app.taskqueue.balanceamento import Candidato
 from app.util import to_iso
 
@@ -91,8 +92,7 @@ class DespachoDoParque:
             com_o_app = [i for i in com_o_app if i in com_valor]
         if not com_o_app:
             return []
-        com_conta = {linhas.texto(r, "instance_id") for r in self._db.query(
-            "SELECT DISTINCT instance_id FROM device_profile_bindings WHERE active=1")}
+        com_conta = aparelhos_com_vinculo_ativo(self._db)     # conta vinculada é conta real (ADR-055)
         return [AparelhoCandidato(id=c.instance_id, online=c.ligado, ocioso=not c.ocupado, tem_o_app=True,
                                   conta_real=c.instance_id in com_conta)
                 for c in self._parque.candidatos_de(com_o_app)]
