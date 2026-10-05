@@ -102,9 +102,8 @@ def test_a_leitura_visual_e_a_chave_sao_independentes() -> None:
 # ------------------------------------------------- A2 da leitura do #379: a fiação pelo laço do executor, com o harness
 # O roteiro é o da r-…-2e0775 (o de `test_leitura_sem_step_done`): observar, `step_done` recusado, observar, `step_done`
 # recusado, ler o remetente, observar, ler o assunto, `step_done`. Do índice 0 ao 6 falta saída; do 7 em diante, não.
+import sys  # noqa: E402
 from typing import Any  # noqa: E402
-
-import pytest  # noqa: E402
 
 from app.planning.provider import Decision, Usage  # noqa: E402
 
@@ -117,6 +116,9 @@ async def _pelo_laco(harness: Harness, ligada: bool) -> tuple[list[dict[str, Any
     harness.cfg.file.ai.relacao_do_valor = False
     harness.cfg.file.ai.imagem_enquanto_falta_saida = ligada
     harness.cfg.file.ai.image_policy = "auto"                 # o harness manda sempre; o 31.71 é regra do `auto`
+    # A árvore do app de teste é pobre, e a imagem iria por `arvore_pobre` de qualquer jeito: com o mínimo em 1 ela
+    # conta como rica, e só o 31.71 manda a imagem (sem isso, tirar o `falta_saida=` da observação não reprovaria).
+    harness.cfg.file.ai.rich_tree_min_elements = 1
     visto: dict[str, Any] = {}
     roteiro = _roteiro(harness, visto)
     decisoes: list[dict[str, Any]] = []
@@ -140,7 +142,21 @@ async def _pelo_laco(harness: Harness, ligada: bool) -> tuple[list[dict[str, Any
 
 async def test_pelo_laco_a_chave_ligada_manda_imagem_e_lembrete_em_toda_decisao_com_saida_faltando(
         harness: Harness, caixa: None) -> None:
-    decisoes, motivos = await _pelo_laco(harness, ligada=True)
+    # A observação já sai COM a imagem (o `falta_saida=` do pedido de observação): a decisão nunca precisa completá-la
+    # depois. Sem isso, os testes passariam igual, com uma segunda aquisição de imagem por decisão (leitura do #379).
+    devices = harness.state.devices                                           # type: ignore[union-attr]
+    original, chamadores = devices.completar_imagem, []
+
+    def contado(*a: Any, **k: Any) -> Any:
+        chamadores.append(sys._getframe(1).f_code.co_name)
+        return original(*a, **k)
+
+    devices.completar_imagem = contado
+    try:
+        decisoes, motivos = await _pelo_laco(harness, ligada=True)
+    finally:
+        devices.completar_imagem = original
+    assert chamadores.count("_run_step") == 0, chamadores
     assert len(decisoes) > ULTIMA_COM_SAIDA_FALTANDO
     # a 2ª decisão (depois do `observe_screen`, antes de qualquer recusa) vai por `leitura_pendente`, com a imagem
     assert motivos[1] == "leitura_pendente" and decisoes[1]["imagem"]
@@ -159,6 +175,5 @@ async def test_pelo_laco_a_chave_desligada_nao_muda_nada(harness: Harness, caixa
     decisoes, motivos = await _pelo_laco(harness, ligada=False)
     assert "leitura_pendente" not in motivos
     assert all(not d["lembretes"] for d in decisoes)
-    assert motivos[1] in ("arvore_rica", "arvore_pobre"), motivos
-    # a imagem da 2ª decisão segue a regra de antes: só vai se a árvore do app de teste for pobre
-    assert decisoes[1]["imagem"] is (motivos[1] == "arvore_pobre")
+    assert motivos[1] == "arvore_rica", motivos
+    assert not decisoes[1]["imagem"]                             # a regra de antes: árvore rica vai sem imagem
