@@ -621,9 +621,10 @@ class AppState:
                                         capturar=lambda alvo: capturar_para_o_dono(self.devices, alvo),
                                         leitor_de_anexos=self.leitor_de_anexos,
                                         previa_da_porta=lambda rid: previa_da_porta(self, rid),
-                                        aprovar_plano=lambda rid, pares, por: aprovar_plano(
+                                        aprovar_plano=lambda rid, pares, por, vista_em=None: aprovar_plano(
                                             self, rid, AprovarPlanoBody(aprovar=[ItemAprovado(step_id=s, chave=c)
-                                                                                 for s, c in pares]), por=por),
+                                                                                 for s, c in pares],
+                                                                        vista_em=vista_em), por=por),
                                         ler_imagem=self.avatares.get)
         # Quem fala com o bot e não é o dono (28.18): apresentação, nome, o dono decide; desligado de fábrica
         # (`avisos.entrada.convidados.enabled`). A recusa de credencial é a mesma da conversa do dono.

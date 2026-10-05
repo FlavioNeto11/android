@@ -191,7 +191,8 @@ class PortasFalsas:
             raise RecusaDaCentral("sem plano")
         return dict(self.previa_da_porta)
 
-    def aprovar_plano(self, run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+    def aprovar_plano(self, run_id: str, aprovar: list[tuple[str, str]], *,
+                      vista_em: str | None = None) -> dict[str, object]:
         self._anota("aprovar_plano", run_id, tuple(aprovar))
         if self.mudou is not None:
             mudaram, self.mudou = self.mudou, None

@@ -303,6 +303,7 @@ async def test_cancelamento_entre_a_transacao_e_o_inicio_expira_os_sins_do_plano
     gravar os sins e ANTES do `start`. Os sins de origem `plano` não podem ficar `approved` numa execução cancelada:
     o `_cancelar_antes_de_iniciar` os expira, e o gesto volta como recusa da porta com o código do serviço."""
     from app.porta_do_plano import AprovarPlanoBody, ItemAprovado, PortaIndisponivel, aprovar_plano
+    from app.util import now_iso
 
     from .test_porta_do_plano import _plano_com_dm
 
@@ -316,7 +317,7 @@ async def test_cancelamento_entre_a_transacao_e_o_inicio_expira_os_sins_do_plano
         return original(run_id, por=por)
 
     monkeypatch.setattr(st.runs, "start", cancelado_antes_do_inicio)
-    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+    corpo = AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
                              tirar=[itens["dm2"]["step_id"]])
     with pytest.raises(PortaIndisponivel) as recusa:
         aprovar_plano(st, "run-p", corpo, por="flavio")

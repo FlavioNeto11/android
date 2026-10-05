@@ -9,11 +9,13 @@ import json
 from datetime import timedelta
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.models import ProfileCreate
 from app.porta_do_plano import (
+    MOTIVO_SEM_VISTA,
     APROVACAO,
     NA_EXECUCAO,
     RECUSADO,
@@ -27,7 +29,7 @@ from app.porta_do_plano import (
     renovar_plano,
 )
 from app.taskqueue.repository import MOTIVO_REJEICAO
-from app.util import now, parse_iso, to_iso
+from app.util import now, now_iso, parse_iso, to_iso
 
 from .test_capabilities import IG, SENHA
 
@@ -205,7 +207,7 @@ async def test_aprovar_grava_o_sim_do_plano_tira_as_dependentes_e_inicia(harness
     state = harness.state
     iniciou = _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
-    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+    corpo = AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
                              tirar=[itens["dm2"]["step_id"]])
     saida = aprovar_plano(state, "run-p", corpo, por="flavio")
     [linha] = state.db.query("SELECT * FROM pending_approvals")
@@ -234,7 +236,7 @@ async def test_item_que_mudou_devolve_409_e_nada_e_gravado(harness: Any, monkeyp
     iniciou = _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
     state.db.execute("UPDATE steps SET bindings=? WHERE key='dm'", (json.dumps({**DM, "content": "oi!"}),))
-    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+    corpo = AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
                              tirar=[itens["dm2"]["step_id"]])
     try:
         aprovar_plano(state, "run-p", corpo, por="flavio")
@@ -251,7 +253,7 @@ async def test_a_porta_honra_o_sim_identico_e_descarta_o_mudado(harness: Any, mo
     state = harness.state
     _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
                                                                          chave=itens["dm"]["chave"])]), por="flavio")
     assert await _gate(state, "dm") is None                      # o mesmo item: segue sem parar
     assert int(state.db.scalar("SELECT COUNT(*) FROM pending_approvals")) == 1
@@ -267,7 +269,7 @@ async def test_o_sim_do_plano_vencido_nao_vale(harness: Any, monkeypatch: Any) -
     state = harness.state
     _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
                                                                          chave=itens["dm"]["chave"])]), por="flavio")
     state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() - timedelta(minutes=1)),))
     veredito = await _gate(state, "dm")
@@ -286,11 +288,12 @@ async def test_o_gesto_pela_rota(harness: Any, monkeypatch: Any) -> None:
     app.state.poc = state
     cliente = TestClient(app, client=("127.0.0.1", 123))
     errado = cliente.post("/api/runs/run-p/aprovar-plano",
-                          json={"aprovar": [{"step_id": itens["dm"]["step_id"], "chave": "0" * 64}]})
+                          json={"aprovar": [{"step_id": itens["dm"]["step_id"], "chave": "0" * 64}], "vista_em": now_iso()})
     assert errado.status_code == 409 and errado.json()["detail"]["code"] == "plano_mudou"
     assert errado.json()["detail"]["previa"]["itens"]
     ok = cliente.post("/api/runs/run-p/aprovar-plano",
-                      json={"aprovar": [{"step_id": itens["dm"]["step_id"], "chave": itens["dm"]["chave"]}]})
+                      json={"aprovar": [{"step_id": itens["dm"]["step_id"], "chave": itens["dm"]["chave"]}],
+                            "vista_em": now_iso()})
     assert ok.status_code == 200 and len(ok.json()["aprovacoes"]) == 1
 
 
@@ -300,7 +303,7 @@ async def test_renovar_pela_rota(harness: Any, monkeypatch: Any) -> None:
     state = harness.state
     _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
                                                                          chave=itens["dm"]["chave"])]), por="flavio")
     app = create_app(harness.cfg, state=state)
     app.state.poc = state
@@ -320,7 +323,7 @@ async def test_renovar_estende_a_validade_e_cancelar_encerra_o_sim(harness: Any,
     state = harness.state
     _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
                                                                          chave=itens["dm"]["chave"])]), por="flavio")
     state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() + timedelta(hours=1)),))
     saida = renovar_plano(state, "run-p")
@@ -342,7 +345,7 @@ async def test_sim_de_versao_anterior_do_plano_nao_conta_como_pedido_em_aberto(h
     state = harness.state
     _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
                                                                          chave=itens["dm"]["chave"])]), por="flavio")
     pid = itens["dm"]["profile_id"]
     desde = to_iso(now() - timedelta(days=1))
@@ -355,7 +358,7 @@ async def test_a_faxina_vence_o_sim_do_plano_fora_da_validade(harness: Any, monk
     state = harness.state
     _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
                                                                          chave=itens["dm"]["chave"])]), por="flavio")
     assert state.approvals.vencer_do_plano(to_iso(now())) == 0
     state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() - timedelta(minutes=1)),))
@@ -371,7 +374,7 @@ async def test_renovar_nao_ressuscita_o_sim_vencido_que_a_faxina_nao_marcou(harn
     state = harness.state
     _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"],
                                                                          chave=itens["dm"]["chave"])]), por="flavio")
     # Síncrono de propósito entre o UPDATE e o Renovar: um `await` aqui deixaria a faxina do harness marcar antes.
     state.db.execute("UPDATE pending_approvals SET expires_at=?", (to_iso(now() - timedelta(minutes=1)),))
@@ -393,7 +396,7 @@ async def test_editar_o_texto_no_cartao_do_plano_recalcula_a_chave(harness: Any,
     itens = _plano_com_dm(state)
     vista = itens["dm"]["chave"]
     editada = _chave_do_texto(state, itens["dm"]["step_id"], "oi! tudo certo por aí?")
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(
         step_id=itens["dm"]["step_id"], chave=editada, texto="oi! tudo certo por aí?")]), por="flavio")
     linha = state.db.one("SELECT * FROM pending_approvals")
     assert linha["chave_sha256"] == editada != vista and linha["generated_content"] == "oi! tudo certo por aí?"
@@ -407,7 +410,7 @@ async def test_texto_editado_com_variavel_ou_vazio_e_recusado_sem_gravar(harness
     itens = _plano_com_dm(state)
     for texto in ("oi {item}", "   "):
         try:
-            aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+            aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(
                 step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto=texto)]), por="flavio")
             raise AssertionError("devia recusar")
         except PortaIndisponivel as exc:
@@ -420,7 +423,7 @@ async def test_renovar_misto_renova_o_valido_e_devolve_o_vencido(harness: Any, m
     state = harness.state
     _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[
         ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"]),
         ItemAprovado(step_id=itens["dm2"]["step_id"], chave=itens["dm2"]["chave"])]), por="flavio")
     # Síncrono de propósito entre o UPDATE e o Renovar (a faxina do harness não pode correr no meio).
@@ -452,7 +455,7 @@ async def test_texto_editado_que_muda_o_selo_volta_409_e_desfaz_a_edicao(harness
 
     monkeypatch.setattr(porta, "_item", com_texto_repetido)
     try:
-        aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+        aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(
             step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="já mandei isto")]), por="flavio")
         raise AssertionError("devia devolver plano_mudou")
     except PortaIndisponivel as exc:
@@ -469,12 +472,12 @@ async def test_chave_solta_e_texto_final_e_o_longo_tem_mensagem_propria(harness:
     _sem_iniciar(state, monkeypatch)
     itens = _plano_com_dm(state)
     try:
-        aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+        aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(
             step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="x" * 2201)]), por="flavio")
         raise AssertionError("devia recusar o texto longo")
     except PortaIndisponivel as exc:
         assert exc.codigo == "texto_longo" and "2200" in exc.mensagem
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(
         step_id=itens["dm"]["step_id"], chave=_chave_do_texto(state, itens["dm"]["step_id"], "oi :-{ até logo"),
         texto="oi :-{ até logo")]), por="flavio")
     assert state.db.scalar("SELECT generated_content FROM pending_approvals") == "oi :-{ até logo"
@@ -488,7 +491,7 @@ async def test_chave_solta_aprovada_no_plano_e_honrada_pela_porta_na_execucao(ha
     _plano(state, [{"key": "dm", "cap": "SEND_MESSAGE", "bindings": {**DM, "content": "oi :-{ até logo"}}])
     item = _por_chave(previa_da_porta(state, "run-p"))["dm"]
     assert item["selo"] == "aprovacao" and item["chave"]
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
                   por="flavio")
     assert state.db.scalar("SELECT chave_sha256 FROM pending_approvals") == item["chave"]
     assert await _gate(state, "dm") is None
@@ -510,7 +513,7 @@ async def test_a_segunda_dm_ao_mesmo_alvo_editada_nao_vira_cadeado(harness: Any,
     except PortaIndisponivel as exc:
         assert exc.codigo == "plano_mudou" and exc.status == 409
     try:
-        aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+        aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(
             step_id=itens["dm2"]["step_id"], chave="d" * 64, texto="outro texto")]), por="flavio")
         raise AssertionError("devia recusar")
     except PortaIndisponivel as exc:
@@ -532,7 +535,7 @@ async def test_o_segundo_comentario_no_mesmo_objeto_editado_segue_recusado(harne
     itens = _por_chave(previa_da_porta(state, "run-p"))
     assert itens["c1"]["selo"] == "aprovacao" and itens["c2"]["selo"] == "recusado"
     for chamada in (lambda: previa_do_item(state, "run-p", PreviaDoItemBody(step_id=itens["c2"]["step_id"], texto="outro")),
-                    lambda: aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+                    lambda: aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(
                         step_id=itens["c2"]["step_id"], chave="d" * 64, texto="outro")]), por="flavio")):
         try:
             chamada()
@@ -574,7 +577,7 @@ async def test_dm_editada_para_um_texto_ja_enviado_segue_no_cadeado_com_a_regra_
     vista = previa_do_item(state, "run-p", PreviaDoItemBody(step_id=itens["dm"]["step_id"], texto="já mandei isto"))
     proposto = vista["item"]                                                                # type: ignore[index]
     assert proposto["selo"] == APROVACAO and "repetição passa por confirmação" in proposto["motivo"]
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(
         step_id=itens["dm"]["step_id"], chave=proposto["chave"], texto="já mandei isto")]), por="flavio")
     linha = state.db.one("SELECT status, generated_content FROM pending_approvals WHERE origem='plano'")
     assert (linha["status"], linha["generated_content"]) == ("approved", "já mandei isto")
@@ -593,7 +596,7 @@ async def test_previa_do_item_so_le_e_o_gesto_exige_a_chave_do_texto_editado(har
     vista = previa_do_item(state, "run-p", PreviaDoItemBody(step_id=itens["dm"]["step_id"], texto="  outro texto  "))
     assert _contagens(state) == antes and vista["texto"] == "outro texto"
     try:
-        aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(
+        aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(
             step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"], texto="outro texto")]), por="flavio")
         raise AssertionError("a chave do texto antigo não aprova o texto novo")
     except PortaIndisponivel as exc:
@@ -619,3 +622,73 @@ async def test_previa_do_item_pela_rota(harness: Any, monkeypatch: Any) -> None:
     assert ok.status_code == 200 and ok.json()["item"]["selo"] == APROVACAO and len(ok.json()["item"]["chave"]) == 64
     fora = cliente.post("/api/runs/run-p/porta/item", json={"step_id": "nao-existe", "texto": "x"})
     assert fora.status_code == 409 and fora.json()["detail"]["code"] == "plano_mudou"
+
+
+# ------------------------------------------------------------------------------------- G1b: `vista_em`
+@pytest.mark.parametrize("vista_em", [None, "", "ontem", "2999-01-01T00:00:00Z"], ids=["sem", "vazio", "ilegivel",
+                                                                                       "futuro"])
+async def test_g1b_sem_vista_em_legivel_a_aprovacao_falha_fechada(harness: Any, monkeypatch: Any,
+                                                                  vista_em: str | None) -> None:
+    """Sem o instante da prévia vista (ou ilegível, ou no futuro), com item a aprovar: `plano_mudou` com o motivo de
+    recarregar e a prévia nova (que traz `vista_em`), e nada é gravado. Incerteza não conta como sim."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+                             vista_em=vista_em)
+    with pytest.raises(PortaIndisponivel) as recusa:
+        aprovar_plano(state, "run-p", corpo, por="flavio")
+    assert recusa.value.codigo == "plano_mudou"
+    assert [m["motivo"] for m in recusa.value.extra["mudaram"]] == [MOTIVO_SEM_VISTA]
+    assert recusa.value.extra["previa"]["vista_em"]
+    assert state.db.scalar("SELECT COUNT(*) FROM pending_approvals") == 0
+
+
+async def test_g1b_sem_item_a_aprovar_nao_exige_vista_em(harness: Any, monkeypatch: Any) -> None:
+    """Iniciar sem aprovar nada (N = 0, o Telegram chama assim) não depende da prévia vista."""
+    state = harness.state
+    iniciou = _sem_iniciar(state, monkeypatch)
+    _plano_com_dm(state)
+    aprovar_plano(state, "run-p", AprovarPlanoBody(), por="flavio")
+    assert iniciou
+
+
+async def test_g1b_a_mesma_dm_mandada_depois_da_previa_vista_nao_fica_coberta(harness: Any, monkeypatch: Any) -> None:
+    """O resíduo do #330: a DM igual mandada ENTRE a prévia na tela e o clique não estava no motivo lido. A chave não
+    muda; o gesto devolve `plano_mudou` com o motivo da repetição, e nada é gravado."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    vista = to_iso(now() - timedelta(seconds=30))
+    state.social_repo.record_interaction(str(itens["dm"]["profile_id"]), type="dm_sent", direction="outbound",
+                                         status="confirmed", counterparty=ALVO, outgoing_content=DM["content"],
+                                         app_id="ig", run_id="r-outra", occurred_at=to_iso(now() - timedelta(seconds=5)))
+    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+                             vista_em=vista)
+    with pytest.raises(PortaIndisponivel) as recusa:
+        aprovar_plano(state, "run-p", corpo, por="flavio")
+    assert recusa.value.codigo == "plano_mudou"
+    [mudou] = recusa.value.extra["mudaram"]
+    assert mudou["step_id"] == itens["dm"]["step_id"] and "depois da prévia que você viu" in mudou["motivo"]
+    assert state.db.scalar("SELECT COUNT(*) FROM pending_approvals") == 0
+
+
+async def test_g1b_a_mesma_dm_mandada_antes_da_previa_vista_segue_coberta(harness: Any, monkeypatch: Any) -> None:
+    """A repetição que já existia quando a prévia foi vista estava no motivo lido: o sim a cobre e o gesto grava."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    state.social_repo.record_interaction(str(itens["dm"]["profile_id"]), type="dm_sent", direction="outbound",
+                                         status="confirmed", counterparty=ALVO, outgoing_content=DM["content"],
+                                         app_id="ig", run_id="r-outra", occurred_at=to_iso(now() - timedelta(minutes=5)))
+    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+                             vista_em=to_iso(now() - timedelta(seconds=10)))
+    aprovar_plano(state, "run-p", corpo, por="flavio")
+    assert state.db.scalar("SELECT COUNT(*) FROM pending_approvals WHERE origem='plano'") == 1
+
+
+def test_g1b_a_previa_e_a_previa_do_item_trazem_vista_em(harness: Any) -> None:
+    state = harness.state
+    _plano_com_dm(state)
+    previa = previa_da_porta(state, "run-p")
+    assert parse_iso(str(previa["vista_em"])) is not None
