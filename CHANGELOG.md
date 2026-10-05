@@ -30,7 +30,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `command_refinement.motivo_sem_valor` usa a mesma regra; o domínio a importa do kernel, não de `app.planning`.
 - O H2 (o `from exc` em `parsing.loads_json`, `provider.persona_draft_from_json` e `training.proposal_from_json`) já
   saiu no #365 (31.67), na suíte 35; aqui não há o que mudar nele.
-- Prova: `simulated` (`backend/tests/test_causa_sem_texto_resto.py`, 3 testes novos); a rodar depois do "no ar" da 35.
+- `backend/tests/catracas.txt` ganha a catraca nova da Canais: `test_avisos_objetivo_parado.py::test_toda_tela_de_link_de_aviso_existe_nas_rotas_do_painel`.
+- Prova: `simulated`, em Idle, sobre d025b671: `backend/tests/test_causa_sem_texto_resto.py` (3 testes novos) e os
+  dirigidos dos chamadores, 178 passed; `pytest @tests/catracas.txt -n 4`, 87 passed; scripts, 6 passed.
 
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
