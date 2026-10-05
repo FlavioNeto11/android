@@ -1976,6 +1976,7 @@ class StepExecutor:
         same_count = 0
         sigs: list[tuple[str, str, str]] = []                  # (tela exata, tela estrutural, ação)
         errors_in_row = 0
+        falhas_de_captura = 0              # 31.76: capturas seguidas que falharam com a árvore já lida (zera com imagem)
         declared: StepDone | None = None
         max_actions = int(s.max_actions_per_step)
         opcional = step.opcional and self.cfg.file.ai.limpeza_opcional
@@ -2189,8 +2190,43 @@ class StepExecutor:
             try:
                 obs = last_obs = await reler_se_ocupada(
                     lambda: self.devices.observe(rt, timeout=call_timeout, lado_max=ai_cfg.screenshot_max_side,
-                                                 imagem=lambda t: not receita_decide and self._want_image(t, **pede)),
+                                                 imagem=lambda t: not receita_decide and self._want_image(t, **pede),
+                                                 tolerar_falha_da_imagem=True),
                     prazo=deadline, quem=iid)
+                if obs.image_omitted == "capture_failed":
+                    # 31.76: a falha foi SÓ da imagem (a árvore saiu e o tamanho da tela se sabe): nada de `_stuck`,
+                    # de erro seguido nem de sessão recriada. A decisão segue pela árvore; a captura nunca vira prova.
+                    falhas_de_captura += 1
+                    log.info("%s: a captura da tela falhou (%s); a decisão segue pela árvore", iid, obs.captura_falha)
+                    if falhas_de_captura == 1:
+                        repo.decision(f"{iid} · {step.title}: a captura da tela falhou "
+                                      f"({(obs.captura_falha or '').split(':', 1)[0]}); a decisão segue só pela árvore",
+                                      run_id=run_id, instance_id=iid, step_id=step.id)
+                    if obs.captura_excedeu_prazo and not await rt.executor.drain(
+                            max_wait_s=max(0.0, min(180.0, deadline - time.monotonic()))):
+                        # O screencap segue preso no executor do aparelho: a próxima chamada entraria atrás dele.
+                        if time.monotonic() >= deadline:
+                            return await fail_or_retry(com_anr(f"Tempo da etapa esgotado ({step.timeout_s}s)."), obs)
+                        return await self._stuck(rt, step, fired, obs.captura_falha or "")
+                    if image_requested and falhas_de_captura >= 2:
+                        # O ator pediu a imagem e ela falhou de novo: a árvore sozinha não responde ao pedido.
+                        return await fail_or_retry(f"A captura da tela seguiu falhando: {obs.captura_falha}", obs)
+                    if image_requested:
+                        history.append("(executor) a captura da tela falhou nesta volta; decida pela lista de "
+                                       "elementos, sem a imagem.")
+                    if obs.captura_excedeu_prazo:
+                        # Com o executor livre de novo, a árvore da decisão é lida DEPOIS dele (e só ela).
+                        relida = await reler_se_ocupada(
+                            lambda: self.devices.observe(rt, timeout=call_timeout, imagem=False,
+                                                         lado_max=ai_cfg.screenshot_max_side,
+                                                         tolerar_falha_da_imagem=True),
+                            prazo=deadline, quem=iid)
+                        obs = last_obs = (dataclasses.replace(relida, image_omitted="capture_failed",
+                                                              captura_falha=obs.captura_falha,
+                                                              captura_excedeu_prazo=True)
+                                          if relida.image_omitted == "policy" else relida)
+                elif obs.jpeg is not None:
+                    falhas_de_captura = 0
                 observacao_ms = ms_desde(t_observacao)
             except DriverTimeout as exc:
                 return await self._stuck(rt, step, fired, str(exc))

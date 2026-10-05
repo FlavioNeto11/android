@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.76: falha só da imagem não derruba a observação do ator (branch fix/31-76-falha-so-da-imagem)
+
+- Medida real (05/10, aparelho com load 18 a 20): "DriverTimeout: screencap (na origem) excedeu 25s" com a árvore saindo
+  (47 elementos). Antes, o timeout da imagem ia a `_stuck` (dreno de até 180 s) e a `FalhaDeLeitura` contava erro seguido
+  até "A leitura da tela seguiu falhando".
+- `devices/manager.py`: `observe(tolerar_falha_da_imagem=False)`. Ligado, com a árvore lida e o tamanho da tela lembrado
+  (`_dimensoes_lembradas`, sem tocar o executor), a falha da imagem (`DriverTimeout` ou `FalhaDeLeitura`) volta como
+  `jpeg=None`, `image_omitted="capture_failed"`, `captura_falha` e `captura_excedeu_prazo`, e conta `captura.total`
+  `resultado=falha`. Sem dimensões, ou desligado, a exceção sobe como antes. `completar_imagem` refaz a captura de uma
+  observação `capture_failed` (verificador e evidência não aceitam a falha tolerada).
+- `taskqueue/executor.py`: só o laço do ator liga o parâmetro. Em `capture_failed`: sem `_stuck`, sem `errors_in_row`, sem
+  recriar sessão; segue pela árvore. No timeout, espera o executor do aparelho ficar livre (`drain`, limitado pelo prazo
+  da etapa) e relê só a árvore. Se o ator PEDIU a imagem e a captura falha 2 vezes seguidas, vale o caminho de antes
+  (`fail_or_retry`, "A captura da tela seguiu falhando").
+- Prova `simulated`: `backend/tests/test_falha_so_da_imagem.py` (11 testes, aparelho falso). `real`: `not_run`.
+  `docs/api-contract.md` (C1, linha de `image_omitted`) NÃO foi ajustado: pede número de adendo da coordenação.
+
 ## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)
 
 - Pedido do dono pelo Telegram (entrada 1790, 05/10 09:39:19Z): "o que significa ana? precisa colocar isso no portal
