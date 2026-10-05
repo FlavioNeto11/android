@@ -103,7 +103,7 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
   PostgreSQL, hospedado na GitHub, não depende dela. Em 05/10 o SQLite do cron disputou a máquina com a suíte 35 e caiu
   no limite de 60 min.
 - **Catraca do mypy:** o código novo (`app.contracts`, `app.modules`, `app.shared`) nasceu com zero erro e derivou até
-  254; o job reprovava toda noite. Agora `scripts/mypy-catraca.py` reprova só se a contagem passa do teto em
+  254 no cron de 05/10 (257 na base do 29.102, depois da suíte 35); o job reprovava toda noite. Agora `scripts/mypy-catraca.py` reprova só se a contagem passa do teto em
   `backend/mypy-teto.txt`; quem baixa a contagem baixa o teto no mesmo commit.
 - **docs-check em clone limpo:** `.claude/handoff-current.md` entrou no `.gitignore` versionado (estava só no
   `.git/info/exclude`, que não vem num clone).

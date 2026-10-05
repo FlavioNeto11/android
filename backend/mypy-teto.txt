@@ -1,3 +1,4 @@
 # Teto da catraca do mypy no código novo (app.contracts, app.modules, app.shared): scripts/mypy-catraca.py (29.102).
-# Medido no cron do CI de 05/10/2026 (run 37268669842, commit 81f99de3, runner central). Só desce.
-254
+# Medido na base deste PR (0c264685, mypy 2.3.1 do requirements-dev, 05/10/2026 08:26Z): 257. O cron do CI de 05/10
+# (run 37268669842, commit 81f99de3) deu 254; os 3 a mais vieram com os merges da suíte 35. Só desce.
+257
