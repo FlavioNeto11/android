@@ -205,6 +205,22 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
 - Prova `simulated`: `backend/tests/test_treino_arraste_sem_coordenada.py`, 10 passed; mutação nos casos (a)/(b), (d) e
   nos dois de rolagem a partir de item de um dígito derruba os testes certos. `not_run`: aparelho real com padrão de bloqueio.
 
+## 2026-10-05 — 29.144: a catraca do mypy sem depender do venv de uma sessão (branch fix/29-144-mypy-caminho-fixo)
+
+- `scripts/mypy-catraca.py` aceita o Python do mypy à parte, por `--python <python.exe>` ou pela variável `MYPY_PYTHON`
+  (a opção vence). O mypy analisa o venv do backend por `--python-executable`, e o site-packages do backend entra no
+  `PYTHONPATH`, porque o plugin `pydantic.mypy` do `backend/mypy.ini` é importado pelo Python do próprio mypy. Sem
+  a opção nem a variável, o comando é o de antes.
+- No central, o Python fixo é `C:\farm\ferramentas\mypy` (fora do Git): venv do Python 3.13 só com os pinos do mypy
+  do `backend/requirements-dev.txt`. Antes, a medida da suíte 38 dependia de um venv no scratchpad de uma sessão, que
+  morre com ela.
+- `docs/operacao.md` (o Python do mypy, como recriar) e `.claude/rules/testes.md` (a catraca do dirigido) dizem o caminho.
+- Prova:
+  - `simulated`: `scripts/tests/test_mypy_catraca.py`, 7 passed (3 novos: o comando de sempre sem Python à parte, o
+    `--python-executable` e o `PYTHONPATH` com ele, e a precedência entre a opção e a variável);
+  - `real`: 05/10, central, sobre 19e34b22, `MYPY_PYTHON=C:\farm\ferramentas\mypy\Scripts\python.exe`; a catraca
+    deu 257 erros, igual ao teto, rc 0, em 34 s.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.

@@ -122,9 +122,20 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
   254 no cron de 05/10 (257 na base do 29.102, depois da suíte 35); o job reprovava toda noite. Agora `scripts/mypy-catraca.py` reprova só se a contagem passa do teto em
   `backend/mypy-teto.txt`; quem baixa a contagem baixa o teto no mesmo commit. Sem o `pull_request`, o cron só a veria
   DEPOIS do merge e reprovaria para todos sem dizer quem subiu: por isso ela roda também no funil, junto das catracas,
-  e no dirigido de quem toca `backend/app` (`.claude/rules/testes.md`). Leva ~1 min e pede o mypy do
-  `requirements-dev.txt` no Python que a roda. O teto é do Windows, a plataforma do runner: o mypy avalia os ramos de
-  `sys.platform`, e em Linux a contagem pode ser outra.
+  e no dirigido de quem toca `backend/app` (`.claude/rules/testes.md`). Leva ~1 min. O teto é do Windows, a plataforma
+  do runner: o mypy avalia os ramos de `sys.platform`, e em Linux a contagem pode ser outra.
+- **O Python do mypy (29.144):** o mypy mora num Python à parte, num caminho fixo fora do Git, e não no venv do backend.
+  No central é `C:\farm\ferramentas\mypy`, um venv do Python 3.13 com só os pinos do mypy do `backend/requirements-dev.txt`
+  (mypy, mypy-extensions, librt, ast-serialize, pathspec, typing-extensions). Medido em 05/10: 257 = teto, em 34 s.
+  - Uso: `$env:MYPY_PYTHON='C:\farm\ferramentas\mypy\Scripts\python.exe'; python scripts\mypy-catraca.py` (ou
+    `--python <python.exe>`). O script passa `--python-executable` com o venv do backend e põe o site-packages dele no
+    `PYTHONPATH`, porque o plugin `pydantic.mypy` do `backend/mypy.ini` é importado pelo Python do mypy.
+  - Os dois Pythons precisam ter a mesma versão (3.13). Com versões diferentes, o import do plugin quebra e a catraca
+    reprova por contagem desconhecida.
+  - Recriar, quando o pino mudar: `python -m venv C:\farm\ferramentas\mypy` e
+    `C:\farm\ferramentas\mypy\Scripts\python.exe -m pip install mypy==<pino> ...`, com os mesmos pinos do
+    `requirements-dev.txt`.
+  - Sem a variável nem a opção, vale o caminho de antes: o mypy no Python que roda a catraca.
 - **docs-check em clone limpo:** `.claude/handoff-current.md` entrou no `.gitignore` versionado (estava só no
   `.git/info/exclude`, que não vem num clone).
 - **Testes que dependiam do host:** `test_pausa_de_reparo` compara a saúde antes e depois da pausa, não um valor
