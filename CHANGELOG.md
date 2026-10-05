@@ -20,6 +20,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-05 — 31.109: o detemplate da receita tem a mesma borda do fluxo e do hash (branch fix/31-109-borda-do-detemplate)
+
+- `recipes.detemplate` (a ação que a receita aprende: texto digitado e seletor) trocava o valor por `str.replace` com o
+  piso de 3 caracteres: "nasal" virava `{perfil}l` na ação, enquanto a identidade da etapa (31.96) e o fluxo-modelo já
+  tinham a borda. Agora usa `flows.trocar_valores_por_nomes`; o piso e o cálculo de "coberto" não mudam.
+- Medido, só leitura, no banco do central em 05/10 (script em `.claude/handoffs/jev/`, saída só com
+  números): das 193 receitas com etapa de origem (87 ativas, 16 em quarentena, 44 substituídas, 46 candidatas), reaprendidas
+  das ações da tentativa com a regra antiga e a nova, **0** mudam de ação, com as variáveis do objetivo e no pior caso (união de
+  todos os valores de texto do objetivo, da etapa e dos alvos). O reaprender com a regra antiga reproduz a ação gravada de
+  173 delas; as outras 20 dependem de variáveis de inserção que o banco não guarda, e por isso o pior caso. Sem backfill.
+- A receita aprendida pelo Modo treinamento (`distill_training`) usa o mesmo `detemplate`, mas não tem linha de ação no
+  banco para reaprender: medida só pelos testes.
+- Prova `simulated`: `backend/tests/test_recipes.py::test_detemplate_so_troca_o_valor_inteiro_como_o_fluxo_e_o_hash`.
+  Real: `not_run`. Relido por 492 testes de receita, treino, fluxo, catracas e arquitetura (verdes).
+
 ## 2026-10-05 — 31.96: a troca de valor em fluxos e receitas tem borda mais conservadora (branch fix/31-96-borda-da-troca-de-valor)
 
 - `_sub_values` (`backend/app/taskqueue/flows.py`): borda do DÍGITO agora exige, à esquerda, nenhum caractere de palavra e,
@@ -845,7 +860,7 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - `ManualInput.clear_first` (só `type='text'`, padrão `false`) chega ao `type_text`; pelo ADB puro recusa `bad_input`.
   Adendo v1.56 do contrato.
 - Prova `simulated`: `backend/tests/test_treino_teclas_na_destilacao.py` (11 passed; sem o conserto, 3 falham; o `delete` solto em outro campo recusa).
-  Real: `not_run`.
+  Real: `not_run`. Relido por 492 testes de receita, treino, fluxo, catracas e arquitetura (verdes).
 
 ## 2026-10-05 — 31.85: gravando, o quadro mais recente não é recusado por idade (branch fix/31-84-85-entrada-manual-no-treino)
 
@@ -1001,7 +1016,7 @@ Leitura do W1 e do 29.112 pelas revisoras.
   "erro aqui dentro" (o "1" solto de 05/10, 10:26Z).
 - `PortasReais.previa`: o `ValidationError` do pedido vira `RecusaDaCentral`.
 - Prova: `simulated` (`backend/tests/test_telegram_entrada.py` e `test_telegram_portas.py`, com 1 e 2 caracteres).
-  Real: `not_run`.
+  Real: `not_run`. Relido por 492 testes de receita, treino, fluxo, catracas e arquitetura (verdes).
 
 ## 2026-10-05 — 31.78: a leitura julgada não gira mais relendo o mesmo valor até o teto (branch fix/31-78-leitura-sem-saida)
 
@@ -1388,7 +1403,7 @@ Leitura do 29.114 pela Ferramentas do Claude.
   aparelho); o lembrete agrupado diz onde ficam a aprovação, a pergunta e o objetivo parado.
 - N1 do #361: os testes provam que só o Cancelar do dono leva o gesto, e que os cancelamentos automáticos não.
 - Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` e `backend/tests/test_telegram_entrada.py`.
-  Real: `not_run`.
+  Real: `not_run`. Relido por 492 testes de receita, treino, fluxo, catracas e arquitetura (verdes).
 
 ## 2026-10-05 — 29.101 (parte da Canais): o aviso da API aberta pelo endereço público (branch canais/29-101-api-aberta)
 
@@ -1786,7 +1801,7 @@ Leitura do 29.114 pela Ferramentas do Claude.
 - `avisos/infrastructure/portas_da_central.py`: o desfecho nos canais diz "N esperando você" e o gesto; a "Evidência"
   pula o objetivo em `waiting_user`, cujo motivo livre traz texto de tela ou de conta (revisão do #372, O2).
 - Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` (50 testes); rede dirigida dos canais verde.
-  Real: `not_run`.
+  Real: `not_run`. Relido por 492 testes de receita, treino, fluxo, catracas e arquitetura (verdes).
 
 ## 2026-10-05 — 30.70: a espera por uma pessoa não é veredito sobre a receita (branch fix/30-70-espera-nao-e-veredito)
 
@@ -3927,7 +3942,7 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   (`spent_usd`), por origem (`usd_por`), no saldo por conta, no `/api/usage` e na projeção. A linha sem a coluna custa
   como antes. Os relatórios do aprendizado e do desempenho ainda contam a gravação a 1,25x.
 - Prova `simulated`: `backend/tests/test_cache_de_1h_no_custo.py` (6). PostgreSQL: `not_run` (fica para a suíte).
-  Real: `not_run`.
+  Real: `not_run`. Relido por 492 testes de receita, treino, fluxo, catracas e arquitetura (verdes).
 
 ## 2026-10-04 — 29.35: falta de informação do ator passa pela revisão determinística (branch fix/29-35-falta-de-informacao-revisa, sem migração)
 

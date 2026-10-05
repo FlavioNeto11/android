@@ -102,7 +102,7 @@ def para_hash(step: PlanStep, variables: dict[str, str] | None) -> PlanStep:
     Medido em 23/09/2026: o planejador às vezes escreve o valor literal na pós-condição ("perfil de @nasa aberto")
     em vez de `{perfil}`. A receita era gravada com o hash desse literal e nunca casava com o mesmo caminho para
     outro alvo — 15 receitas ativas do Instagram e cobertura zero em todos os fluxos. O fluxo-modelo já faz esta
-    troca ao aprender (`flows._sub_values`); aqui ela passa a valer também na identidade da etapa, dos dois lados.
+    troca ao aprender (`flows.trocar_valores_por_nomes`); aqui ela passa a valer também na identidade da etapa, dos dois lados.
     """
     valores = {k: v for k, v in (variables or {}).items()
                if k not in _NAO_TEMPLATIZA and isinstance(v, str) and len(v) >= 3 and "{" not in v}
@@ -226,12 +226,13 @@ def eh_generica(actions: Sequence[Mapping[str, object]], post_value: str | None,
 
 # ------------------------------------------------------------------ des-templatização
 def detemplate(text: str, variables: dict[str, str]) -> tuple[str, bool, bool]:
-    """Troca valores conhecidos por {nome} (o mais longo primeiro).
+    """Troca valores conhecidos por {nome} (o mais longo primeiro), com a MESMA borda do fluxo-modelo e do hash da
+    receita (31.109, `flows._sub_values`): o valor só vale inteiro, então "nasal" não vira `{perfil}l` e "v10" não vira
+    `v{n}`. Antes era `str.replace` sem borda, e a ação aprendida divergia da identidade da etapa.
     Devolve (texto, usou_alguma_variável, ficou_100%_coberto_por_variáveis)."""
-    out, used = text, False
-    for name, value in sorted(variables.items(), key=lambda kv: -len(kv[1] or "")):
-        if value and len(value) >= 3 and value in out:
-            out, used = out.replace(value, "{" + name + "}"), True
+    valores = {n: v for n, v in variables.items() if v and len(v) >= 3}
+    out = trocar_valores_por_nomes(text, valores) or text
+    used = out != text
     covered = used and not TEMPLATE_RE.sub("", out).strip(" \t\r\n.,;:!?-—()[]\"'“”")
     return out, used, covered
 
