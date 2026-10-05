@@ -27,6 +27,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `TrainingBar.test.tsx` (5 testes novos, um deles da regra por app); sem o `profile_id` no corpo o teste da escolha falha. Frontend inteiro 1691/1691 com 4 workers em Idle e typecheck verde, em 05/10 sobre `095a43b6`. `real`: `not_run` (o percurso com um aparelho de duas personas fica para depois do deploy).
 - Achado do Codex no PR 456 (conferido, válido): enquanto a leitura das personas corria, a lista ficava `null`, o Iniciar liberava e um aparelho com várias personas mandava o início sem `profile_id` (409). Agora a leitura tem estado próprio: o Iniciar fica travado com o motivo "Lendo as personas deste aparelho." até ela assentar, a lista de outro aparelho some ao trocar, e a falha da leitura continua sem travar o início. Prova `simulated`: `TrainingBar.test.tsx` (teste novo com a leitura segurada; sem a trava ele falha).
 
+## 2026-10-05 — 31.90-E: corrigir o que a etapa confere e os exemplos dos parâmetros na revisão do ensino (branch feat/31-90-e-editar-poscondicao-e-parametros)
+
+- **O quê.** Na revisão da proposta (`TrainingReview`), cada etapa ganha "Editar o que a etapa confere" (tipo, valor e descrição da
+  pós-condição) e a proposta ganha "Editar os exemplos dos parâmetros". O nome do parâmetro não se edita, porque está no
+  comando. A etapa com efeito fora do aparelho e sem comprovação já abre o editor; o editor aberto não fecha enquanto se digita.
+- **Achados do Codex no PR 457 (conferidos, os dois válidos).** O salvar refaz a etapa com ação do catálogo pelo catálogo
+  (`TrainingSkills._preparar`, `cat.build_step`), então a conferência editada ali seria mostrada e jogada fora: a etapa com
+  `capability` perdeu o editor e diz que a conferência vem do catálogo. E a descrição do parâmetro nunca entra no fluxo salvo
+  (`Plan.parameters` leva só o nome; só o exemplo vai para a prova): o campo saiu, ficou o exemplo.
+- **Servidor.** Sem mudança: o `save` já valida a proposta editada (31.83) e a recusa (`pos_condicao_vazia`, `parametro_*`) aparece
+  no botão Salvar como as outras. Sem rota nova.
+- **Prova.** `simulated`: `frontend/src/features/training/TrainingReview.test.tsx::31.90-E` (6 testes: edição de tipo, valor e
+  descrição; exemplo do parâmetro com o corpo do save; abertura automática; editor fechado; recusa do servidor; etapa do catálogo
+  sem editor), com
+  mutação dos dois handlers reprovando 2 testes. Frontend inteiro 1692/1692 e `typecheck` limpos (4 workers, Idle).
+  `not_run`: percurso no navegador (entra no percurso do deploy que levar este corte).
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
