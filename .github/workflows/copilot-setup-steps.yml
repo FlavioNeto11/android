@@ -1,0 +1,42 @@
+name: Copilot · ambiente do agente de nuvem
+
+# 29.134 — prepara a máquina em que o agente de nuvem do GitHub Copilot trabalha (dependências do backend e do
+# frontend já instaladas, para ele rodar os testes dos arquivos que tocou). O GitHub só usa este arquivo quando ele
+# está na branch padrão, e o job TEM de se chamar `copilot-setup-steps`.
+#
+# SEMPRE em runner hospedado. NUNCA copie daqui o `fromJSON(vars.CI_RUNS_ON ...)` do ci.yml: isso poria o agente no
+# runner `central`, a máquina dos emuladores, das suítes e das medidas de latência, com a rede da casa ao alcance.
+# No runner hospedado vale o firewall do agente (Settings > Copilot > Internet access); em runner próprio ele não vale.
+#
+# Sem segredo: o agente não recebe chave nenhuma (o ambiente `copilot` do repositório fica vazio) e a suíte fala só
+# com aparelho e provedor falsos. Sem PostgreSQL: a paridade de dialeto continua sendo do funil da coordenação.
+
+on:
+  workflow_dispatch:       # só para conferir à mão que os passos instalam; o agente chama o job por conta própria
+
+permissions:
+  contents: read
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"          # a mesma do ci.yml (env.PYTHON_VERSION)
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - name: dependências do backend
+        run: pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"         # a mesma do ci.yml (env.NODE_VERSION)
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: dependências do frontend
+        working-directory: frontend
+        run: npm ci

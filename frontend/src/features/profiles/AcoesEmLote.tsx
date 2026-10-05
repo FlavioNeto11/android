@@ -33,8 +33,9 @@ export const CONCORRENCIA_DO_LOTE = 3;
 const MAX_FOTOS = 3;
 const MAX_INSTRUCOES = 500;
 
-/** O motivo que vira "falhou" sem requisição: o grupo de acesso governa o que a CONTA faz (o editor de grupos nem
- *  lista quem não tem @), e atribuir a quem não tem conta deixaria um membro que o editor apagaria sem avisar. */
+/** O motivo que vira "falhou" sem requisição. O backend aceita persona sem conta no grupo, e o editor de grupos mostra e
+ *  preserva quem já é membro assim (29.25). A recusa é de produto: o grupo governa o que a CONTA faz no app, e sem conta
+ *  não há o que governar; a persona entra no grupo quando ganhar a conta (o editor também só oferece quem tem conta). */
 export const SEM_CONTA_NO_GRUPO = 'Sem conta de cadastro: o grupo de acesso governa o que a conta faz. '
   + 'Crie a conta na guia Contas e acesso antes de pôr a persona num grupo.';
 
@@ -64,10 +65,16 @@ export function BarraDeLote({
 }) {
   const [operacao, setOperacao] = useState<OperacaoDeLote | null>(null);
   // A releitura que perdeu a corrida para o prazo ainda está em voo: o erro da página segue nulo, mas a lista é a velha.
+  // Conta as pendentes: com duas (um lote estoura o prazo e outro também), a primeira que assenta não solta a trava.
   const [relendo, setRelendo] = useState(false);
+  const pendentes = useRef(0);
   const aguardarReleitura = useCallback((releitura: Promise<boolean>) => {
+    pendentes.current += 1;
     setRelendo(true);
-    void releitura.finally(() => setRelendo(false));
+    void releitura.finally(() => {
+      pendentes.current -= 1;
+      if (pendentes.current === 0) setRelendo(false);
+    });
   }, []);
   const decidePelaLista = listaVelha ? LISTA_VELHA : relendo ? LISTA_RELENDO : null;
   const n = selecionadas.length;
@@ -141,9 +148,13 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
         return `${plural(r.count, 'foto', 'fotos')} em geração${r.simulated ? ' (simulado)' : ''}`;
       }
       case 'completar': {
+        // Sem lacuna o servidor devolve a persona sem chamar o modelo: dizer isso evita achar que nada aconteceu. A
+        // comparação é com a persona relida agora, não com a da lista na tela: com a lista velha (ou editada noutra
+        // aba), o `updated_at` dela já difere e a frase diria "completada" sem o modelo ter sido chamado (29.128).
+        const antes = await api.getPersona(p.id).catch(() => null);
         const r = await api.enrichPersona(p.id, instrucoes.trim() || undefined);
-        // Sem lacuna o servidor devolve a persona sem chamar o modelo: dizer isso evita achar que nada aconteceu.
-        return r.updated_at !== p.updated_at ? 'completada' : 'nada faltava: o modelo não foi chamado';
+        if (!antes) return 'concluída; sem a leitura de antes, não dá para dizer se o modelo foi chamado';
+        return r.updated_at !== antes.updated_at ? 'completada' : 'nada faltava: o modelo não foi chamado';
       }
       case 'grupo': {
         if (grupoId && !p.username) throw new RecusaLocal(SEM_CONTA_NO_GRUPO);
@@ -274,6 +285,8 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
       titulo = `Grupo de acesso de ${plural(n, 'persona', 'personas')}`;
       icone = ShieldCheck;
       rotulo = grupoId ? `Pôr no grupo ${nomeDoGrupo ?? ''}`.trim() : 'Tirar do grupo';
+      // Todas sem conta: o resultado seria "0 ok", então nem começa (achado 5 da volta da 38).
+      if (grupoId && semConta === n) motivo = 'Nenhuma das selecionadas tem conta: crie a conta na guia Contas e acesso antes.';
       corpo = (
         <>
           <Field label="Grupo" hint="O grupo decide o que a conta pode fazer sozinha, com aprovação ou só à mão.">
@@ -286,7 +299,7 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
           </Field>
           {grupoId && semConta > 0 ? (
             <Banner tone="info" icon={TriangleAlert} role="status" title={`${plural(semConta, 'selecionada não tem', 'selecionadas não têm')} conta`}>
-              {SEM_CONTA_NO_GRUPO} Elas aparecem como falha no resumo; as outras entram no grupo.
+              {SEM_CONTA_NO_GRUPO}{semConta < n ? ' Elas aparecem como falha no resumo; as outras entram no grupo.' : ''}
             </Banner>
           ) : null}
         </>

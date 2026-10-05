@@ -201,13 +201,19 @@ def start_process(cfg: Config, tools: SdkTools, avd_name: str, console_port: int
 
 
 def _termina_em_quebra(log_path: Path) -> bool:
-    """O log termina em `\n` (ou está vazio, ou não existe)? Só o último byte é lido."""
+    """O log termina em `\n` (ou está vazio, ou não existe)? Só o último byte é lido. Um erro de leitura com o
+    arquivo existindo dá False (29.131): na dúvida, o `\n` a mais não atrapalha leitor nenhum, e o marco colado
+    numa linha cortada traria de volta o falso positivo do 29.123."""
     try:
+        if log_path.stat().st_size == 0:
+            return True
         with log_path.open("rb") as fh:
             fh.seek(-1, os.SEEK_END)
             return fh.read(1) == b"\n"
-    except OSError:                                # vazio (o seek negativo falha) ou ausente: nada a separar
+    except FileNotFoundError:
         return True
+    except OSError:
+        return False
 
 
 def is_our_emulator(pid: int | None, avd_name: str) -> bool:

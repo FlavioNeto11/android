@@ -62,6 +62,18 @@ log = logging.getLogger("poc.avisos.trello")
 #: O fato do cartão vai em `responde_a`, com este prefixo: não é um reply (o Trello não tem), e o prefixo impede a regra do
 #: Telegram ("reply a mensagem que a Central não mandou é da orquestradora") de se aplicar por engano.
 PREFIXO_DO_FATO = "fato:"
+#: 28.51: o comentário num cartão das listas de perguntas ao dono (papéis em `PAPEIS_DAS_PERGUNTAS`) leva esta marca em
+#: `responde_a`, seguida do número da pergunta tirado do nome do cartão ("P-006 · …"), ou nada se o nome não o trouxer.
+MARCA_DA_PERGUNTA = "pergunta:"
+PAPEIS_DAS_PERGUNTAS = ("perguntas", "perguntas_respondidas")
+#: Segundo fator da resposta num cartão de pergunta (revisão do #447): a Central e as sessões escrevem com o token do
+#: dono, e só o 🤖 os separava. O que ele digita no aplicativo ou no site vem sem `appCreator`; o que sai pela API leva
+#: o app (medido em 05/10 nas 9 respostas dele e nos comentários da Central). Com o app, a resposta não conta; sem o
+#: campo no retorno, não dá para confirmar a autoria e ela também não conta (falha fechada).
+AUTORIA_DE_APP = "app"
+AUTORIA_NAO_CONFIRMADA = "nao_confirmada"
+_SEPARADOR_DA_AUTORIA = ";autoria="
+_NUMERO_DA_PERGUNTA = re.compile(r"^\s*(P-\d{3,})(?!\d)")
 #: Comentário que começa com isto é de uma IA (a Central ou uma sessão), nunca um pedido do dono, que não usa 🤖.
 MARCA_DE_IA = "🤖"
 #: O `since` de um quadro que ainda não tem action nenhuma.
@@ -174,6 +186,15 @@ def recebida_da_action(action: Mapping[str, object], cfg: TrelloCfg, *,
     tipo_da_action = action.get("type")
     if tipo_da_action == "commentCard":
         texto = str(dados.get("text") or "")
+        lista = _texto((_mapa(dados.get("list")) or {}).get("id"))
+        das_perguntas = {cfg.listas.get(p) for p in PAPEIS_DAS_PERGUNTAS} - {None, ""}
+        if fato is None and lista is not None and lista in das_perguntas:
+            numero = _NUMERO_DA_PERGUNTA.match(str((_mapa(dados.get("card")) or {}).get("name") or ""))
+            fato = f"{MARCA_DA_PERGUNTA}{numero.group(1) if numero else ''}"
+            if "appCreator" not in action:
+                fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_NAO_CONFIRMADA}"
+            elif action.get("appCreator") is not None:
+                fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_DE_APP}"
         # Qualquer 🤖 no começo é de IA, não do dono: a Central, a sessão Canais, a orquestradora (`🤖 ORQ`) e os comentários
         # antigos (`🤖 HH:MMZ ·`) escrevem todos com o token dele. Regra C-07 de docs/dominios/canais.md.
         if texto.lstrip().startswith((PREFIXO_DA_IA, MARCA_DE_IA)) or (da_central is not None and da_central(ident)):
@@ -236,6 +257,16 @@ class SaidaDoTrello:
 
 #: 28.30: o comentário do dono num cartão sem aviso da Central (os cartões do plano).
 REPASSE_COMENTARIO = "comentario"
+#: 28.51: a resposta do dono a uma pergunta da lista de perguntas. Vai à orquestradora sem pedido de confirmação no
+#: Telegram, e o cartão recebe uma linha só. A resposta à pergunta não autoriza ação em conta real: essa segue pedindo o
+#: sim do 28.30 na hora da ação.
+REPASSE_RESPOSTA_A_PERGUNTA = "resposta_a_pergunta"
+RESPOSTA_A_PERGUNTA = "Recebi. A ANA repassa à frente que perguntou."
+#: O cartão cujo nome não começa por `P-NNN` (minúscula, "Re: P-006", "P-06"): a resposta segue, marcada para a
+#: orquestradora conferir o cartão antes de registrar a decisão (revisão do #447).
+SEM_NUMERO_DA_PERGUNTA = "sem número: conferir o cartão antes de registrar decisão"
+MOTIVO_ESCRITA_POR_APP = "escrita por app"
+AUTORIA_NAO_CONFIRMADA_TEXTO = "autoria não confirmada: não registrar decisão"
 #: O operador da linha sem autor lido: não casa com nenhum `membro_dono` (os ids do Trello são hexadecimais).
 AUTOR_DESCONHECIDO = "desconhecido"
 TIPO_DO_COMENTARIO = "trello.comentario"
@@ -313,6 +344,13 @@ class ConversaDoTrello(ConversaDoCanal):
         texto = str(linha.get("texto") or "")
         responde_a = str(linha.get("responde_a") or "")
         fato = responde_a[len(PREFIXO_DO_FATO):] if responde_a.startswith(PREFIXO_DO_FATO) else None
+        if responde_a.startswith(MARCA_DA_PERGUNTA) and not texto.lstrip().startswith("/"):
+            # 28.51: a resposta do dono a uma pergunta da lista de perguntas, não um comentário de cartão do plano.
+            if not texto.strip():
+                return Intencao("vazia")
+            numero, _, autoria = responde_a[len(MARCA_DA_PERGUNTA):].partition(_SEPARADOR_DA_AUTORIA)
+            return Intencao("orquestradora", ref=numero or None, texto=texto.strip(), alvo=autoria or None,
+                            repasse=REPASSE_RESPOSTA_A_PERGUNTA)
         if fato is None and not texto.lstrip().startswith("/"):
             # Comentário num cartão que não é de aviso da Central (os cartões do plano, 28.30): não é pedido nem comando,
             # mas também não fica mudo. Vai à orquestradora e pede a confirmação do dono no Telegram (`_comentario`).
@@ -343,7 +381,13 @@ class ConversaDoTrello(ConversaDoCanal):
     async def _agir_do_autor(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         autor = self._autor(linha)
         dono = bool(autor) and autor == self.cfg.file.trello.membro_dono
-        if i.repasse == REPASSE_COMENTARIO:
+        if i.repasse == REPASSE_RESPOSTA_A_PERGUNTA:
+            if dono:
+                await self._resposta_a_pergunta(saida, linha, i)
+            else:
+                # Só o dono responde as perguntas dele: a anotação de outro membro não vira nada.
+                self.repo.marcar(self._id(linha), "ignorada", intencao="vazia", de=("recebida",))
+        elif i.repasse == REPASSE_COMENTARIO:
             if dono:
                 await self._comentario(saida, linha, i)
             else:
@@ -356,6 +400,25 @@ class ConversaDoTrello(ConversaDoCanal):
             await self._feita(saida, linha, i, AJUDA + AJUDA_DO_TRELLO)
         else:
             await ConversaDoCanal._agir(self, saida, linha, i)
+
+    async def _resposta_a_pergunta(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """28.51: o comentário do dono num cartão da lista de perguntas é a resposta dele. Vai à orquestradora com o
+        número da pergunta e o texto, sem pedido de confirmação no Telegram, e o cartão recebe uma linha só."""
+        if i.alvo == AUTORIA_DE_APP:
+            # Escrita por app (a Central, um script ou uma sessão com o token dele), não digitada por ele: não conta.
+            self.repo.marcar(self._id(linha), "ignorada", intencao="vazia", destino="central",
+                             previa={"repasse": REPASSE_RESPOSTA_A_PERGUNTA, "motivo": MOTIVO_ESCRITA_POR_APP},
+                             de=("recebida",))
+            return
+        previa: dict[str, object] = {"repasse": REPASSE_RESPOSTA_A_PERGUNTA, "texto": i.texto, "pergunta": i.ref}
+        marcas = [AUTORIA_NAO_CONFIRMADA_TEXTO] if i.alvo == AUTORIA_NAO_CONFIRMADA else []
+        if i.ref is None:
+            marcas.append(SEM_NUMERO_DA_PERGUNTA)
+        if marcas:
+            previa["aviso"] = "; ".join(marcas)
+        self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora", previa=previa,
+                         de=("recebida", "pergunta"))
+        await self._responder(saida, linha, RESPOSTA_A_PERGUNTA)
 
     async def _comentario(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         """28.30: o comentário do dono num cartão. O comentário sozinho não autoriza nada (a ANA e as sessões escrevem

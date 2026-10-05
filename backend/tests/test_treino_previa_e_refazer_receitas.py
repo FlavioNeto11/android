@@ -42,7 +42,7 @@ async def _gravar(st: Any, rt: Any, lease: str, fake: Any) -> str:
     await _entrada(st, rt, lease, type="text", text=SEGREDO)                    # parece segredo: só has_text
     await _entrada(st, rt, lease, type="tap", x=640, y=1200)                    # Enviar
     await _entrada(st, rt, lease, type="key", key="back")                       # sobra de quem ensinou
-    st.training.stop(s["id"])
+    st.training.stop(s["id"], lease_id=lease)
     return s["id"]
 
 

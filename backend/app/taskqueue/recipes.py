@@ -539,7 +539,11 @@ def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *,
             # back, home, recents (e o resto) dependem do estado de quem ensinou.
             return None, f"tecla {tecla} depende do estado de quem ensinou"
         if tipo == "swipe":
-            dy = (e.get("y2") or 0) - (e.get("y") or 0)
+            if e.get("y") is None or e.get("y2") is None:
+                # 31.97: arraste sobre teclado, padrão de bloqueio ou tela sensível sai sem coordenada; sem ela não há
+                # direção, e "rolar para cima" por padrão seria um gesto inventado.
+                return None, "arraste não gravado (teclado, padrão de bloqueio ou tela sensível)"
+            dy = e["y2"] - e["y"]
             pending_scrolls.append("down" if dy < 0 else "up")          # dedo sobe = conteúdo rola para baixo
             continue
         commit = bool(side_effect and i == ultimo_toque)

@@ -150,6 +150,6 @@ async def test_treino_grava_a_persona_escolhida_e_recusa_a_nao_vinculada_ou_ambi
     assert exc.value.code == "persona_nao_vinculada"
     gravacao = st.training.start("android-01", intent="ensinar", lease_id=lease, app_id="qa-messenger")
     assert st.db.scalar("SELECT profile_id FROM training_sessions WHERE id=?", (gravacao["id"],)) == b
-    st.training.stop(gravacao["id"], discard=True)
+    st.training.stop(gravacao["id"], discard=True, lease_id=lease)
     gravacao = st.training.start("android-01", intent="ensinar", lease_id=lease, profile_id=a)
     assert st.db.scalar("SELECT profile_id FROM training_sessions WHERE id=?", (gravacao["id"],)) == a

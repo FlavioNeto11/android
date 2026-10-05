@@ -145,6 +145,15 @@ def e_emulador(nome: str) -> bool:
     return any(marca in nome for marca in _POUPADOS)
 
 
+def _idade(arquivo: Path) -> str:
+    """29.131: há quanto tempo a pilha citada foi gravada. Num kill pelo prazo da partida, o último despejo pode ser
+    de minutos antes, e a linha não pode fazer parecer que é a pilha do instante do kill."""
+    try:
+        return f" (gravada há {max(0.0, time.time() - arquivo.stat().st_mtime):.0f} s)"
+    except OSError:
+        return ""
+
+
 def iniciar_backend(raiz_backend: Path, log_dir: Path, partida_id: str | None = None) -> Processo:
     """`python -m app.main` com o MESMO interpretador que roda o supervisor (o do venv), com a saída em arquivo.
 
@@ -191,6 +200,8 @@ class Supervisor:
         self.teto_de_reinicios, self.pausa_longa_s = teto_de_reinicios, pausa_longa_s
         self.partida_id: str | None = None
         self.subiu_em = 0.0
+        # 29.138: a saúde já respondeu para ESTE processo? Depois disso a partida acabou, diga a marca o que disser.
+        self.respondeu_nesta_subida = False
         self.reinicios_seguidos = 0
         self.falhas_ate_reiniciar = falhas_ate_reiniciar
         self.carencia_s, self.intervalo_s = carencia_s, intervalo_s
@@ -211,6 +222,8 @@ class Supervisor:
         """
         if self._saudavel():
             self.relatorio.recusou_por_ja_haver_backend += 1
+            # 29.131: a porta responde (outro backend): não é reinício nosso falhando, a conta da pausa longa zera.
+            self.reinicios_seguidos = 0
             log.warning("já há um backend respondendo nesta porta e ele não é meu; não vou subir outro (%s). "
                         "Pare o backend iniciado à mão (scripts\\stop.ps1) para o serviço assumir.", motivo)
             self._dormir(self.intervalo_s)
@@ -219,6 +232,7 @@ class Supervisor:
         self.partida_id = self._nova_partida()
         self.proc = self._iniciar()
         self.subiu_em = self._relogio()
+        self.respondeu_nesta_subida = False
         self.relatorio.iniciou += 1
         self.falhas = 0
         self._dormir(self.carencia_s)
@@ -232,7 +246,8 @@ class Supervisor:
             except Exception:  # noqa: BLE001
                 arquivo = None
             log.warning("encerrando o backend (pid %s): %s%s", self.proc.pid, motivo,
-                        f"; pilha do laço travado em {arquivo}" if arquivo else "; sem despejo de pilha do vigia")
+                        f"; pilha do laço travado em {arquivo}{_idade(arquivo)}" if arquivo
+                        else "; sem despejo de pilha do vigia")
             self._encerrar(self.proc)
             self.proc = None
         self._esperar_antes_de_subir()
@@ -255,7 +270,13 @@ class Supervisor:
         """29.124: a descrição da partida que justifica o silêncio, ou `None` (vale a regra de sempre).
 
         Tolera só se a marca é DESTA subida (o id bate), a fase não é `no_ar`, a partida está abaixo do teto e a
-        última reescrita da marca é recente. Backend `no_ar` mudo segue a regra das três falhas."""
+        última reescrita da marca é recente. Backend `no_ar` mudo segue a regra das três falhas.
+
+        29.138 (achado do Copilot no #443): o backend que já respondeu à saúde terminou a partida, mesmo que a marca
+        final não tenha sido gravada (a escrita engole o erro) e o arquivo siga em `iniciando`. Sem esta guarda, um
+        laço travado de verdade depois disso era tratado como partida lenta por até 240/600 s."""
+        if self.respondeu_nesta_subida:
+            return None
         try:
             marca = self._ler_marca()
         except Exception:  # noqa: BLE001 - ler a marca não pode derrubar o supervisor: sem marca
@@ -293,6 +314,7 @@ class Supervisor:
             return
         if self._saudavel():
             self.relatorio.conferencias_ok += 1
+            self.respondeu_nesta_subida = True
             self.falhas = 0
             self.espera = self.espera_min_s       # sessão que vive: o próximo reinício volta a ser rápido
             self.reinicios_seguidos = 0
