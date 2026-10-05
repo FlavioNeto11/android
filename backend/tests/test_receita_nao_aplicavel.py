@@ -7,8 +7,9 @@ a etapa, e a receita saiu com `replay_fail=1`, uma falha que era da tela de part
   receita (nem `replay_ok` nem `replay_fail`); quem conduziu é a IA (`driven_by='ai'`), e o evento diz "tela de partida
   diferente";
 - se a IA assume e a etapa falha, é a falha comum da receita, como antes;
-- a 3ª "não se aplicou" SEGUIDA conta como falha comum (um 1º seletor quebrado não fica isento da quarentena); o ok e a
-  falha zeram a série.
+- a partir da 3ª "não se aplicou" SEGUIDA, cada uma conta como falha comum, sem zerar a série (um 1º seletor quebrado
+  não fica isento: a quarentena chega na 5ª, e não na 9ª — R1 da segunda leitura); o ok e a falha comum zeram a série;
+- o seletor AMBÍGUO (casa mais de um elemento) não é "não se aplicou": deixou de ser único, e isso é defeito da receita.
 
 Nível de prova: `simulated` (harness na porta 5640, aparelho falso; nenhuma IA paga).
 """
@@ -20,11 +21,16 @@ from typing import Any
 
 import pytest
 
+from app.automation.hierarchy import parse_hierarchy
+from app.modules.learning.domain.ciclo import SkillState
+from app.modules.learning.domain.vocabulario import LivroKind
 from app.planning.provider import Decision, Usage
-from app.taskqueue.recipes import NAO_APLICAVEL_CONTA_APOS, RecipeStore
+from app.taskqueue.recipes import NAO_APLICAVEL_CONTA_APOS, AlvoAusente, RecipeDiverged, RecipeStore, Replayer
 
 from .conftest import Harness
 from .fake_skills import banco as banco_migrado
+from .test_d1_receitas import DONO, Mundo
+from .test_recipes import XML
 
 PKG = "com.pocqa.messenger"
 CHAVE = {"signature": "", "variant": "en-US/xhdpi"}
@@ -45,7 +51,7 @@ def _uso(store: RecipeStore, rid: int) -> tuple[int, int, int, int]:
     return (int(r["replay_ok"]), int(r["replay_fail"]), int(r["consecutive_fail"]), int(r["nao_aplicavel_seguidas"]))
 
 
-def test_a_terceira_seguida_conta_como_falha_e_o_ok_e_a_falha_zeram(tmp_path: Path) -> None:
+def test_da_terceira_seguida_em_diante_cada_uma_conta_e_o_ok_e_a_falha_zeram(tmp_path: Path) -> None:
     db = banco_migrado(tmp_path, "nao-aplicavel.sqlite3")
     store = RecipeStore(db)
     rid = _salva(store)
@@ -56,10 +62,51 @@ def test_a_terceira_seguida_conta_como_falha_e_o_ok_e_a_falha_zeram(tmp_path: Pa
     store.nao_aplicavel(rid)
     store.nao_aplicavel(rid)
     assert store.nao_aplicavel(rid) == (True, False)                                   # a 3ª seguida é falha comum
-    assert _uso(store, rid) == (1, 1, 1, 0)
+    assert _uso(store, rid) == (1, 1, 1, 3)                                            # ...e NÃO zera a série
+    assert store.nao_aplicavel(rid) == (True, False) and _uso(store, rid) == (1, 2, 2, 4)   # a 4ª também conta
+    assert store.result(rid, True) is False and _uso(store, rid) == (2, 2, 0, 0)       # o ok zera as duas
     store.nao_aplicavel(rid)
-    assert store.result(rid, False) is False and _uso(store, rid) == (1, 2, 2, 0)      # a falha também zera
+    assert store.result(rid, False) is False and _uso(store, rid) == (2, 3, 1, 0)      # a falha comum zera a série
     db.close()
+
+
+def test_so_nao_se_aplicou_leva_a_quarentena_na_quinta(tmp_path: Path) -> None:
+    """R1 da segunda leitura: com a série zerando na 3ª, um 1º seletor quebrado de vez só chegava à quarentena na 9ª."""
+    db = banco_migrado(tmp_path, "quinta.sqlite3")
+    store = RecipeStore(db)
+    rid = _salva(store)
+    assert [store.nao_aplicavel(rid) for _ in range(5)] == [(False, False), (False, False), (True, False),
+                                                             (True, False), (True, True)]
+    assert db.scalar("SELECT status FROM recipes WHERE id=?", (rid,)) == "quarantined"
+    db.close()
+
+
+def test_reativar_pelo_livro_zera_a_serie(tmp_path: Path) -> None:
+    """N3 da segunda leitura: a reativação pelo livro zera `consecutive_fail` e também a série de "não se aplicou"."""
+    db = banco_migrado(tmp_path, "reativar.sqlite3")
+    mundo = Mundo(db)
+    rid = _salva(mundo.store)
+    for _ in range(5):
+        mundo.store.nao_aplicavel(rid)
+    assert mundo.status(rid) == "quarantined" and _uso(mundo.store, rid)[2:] == (3, 5)
+    mundo.servico.mudar_estado(LivroKind.RECEITA, str(rid), SkillState.PUBLISHED, by=DONO, reason="consertei o app")
+    assert mundo.status(rid) == "active" and _uso(mundo.store, rid)[2:] == (0, 0)
+    db.close()
+
+
+def test_alvo_ambiguo_nao_e_tela_de_partida_diferente() -> None:
+    """N1 da segunda leitura: o mesmo texto cobre o ausente e o ambíguo; só o ausente pode ser a tela de partida."""
+    tree = parse_hierarchy(XML)
+
+    def proxima(rid: str) -> None:
+        Replayer(recipe_id=1, version=1, variables={},
+                 actions=[{"tool": "tap", "selectors": [{"kind": "rid", "rid": rid}]}]).next(tree)
+
+    with pytest.raises(AlvoAusente, match="alvo ausente ou ambíguo"):
+        proxima("app:id/nao_existe")
+    with pytest.raises(RecipeDiverged, match="alvo ausente ou ambíguo") as caso:
+        proxima("app:id/conversation_name")                                   # duas linhas: deixou de ser único
+    assert not isinstance(caso.value, AlvoAusente)
 
 
 def test_falhas_e_nao_aplicaveis_seguidos_ainda_levam_a_quarentena(tmp_path: Path) -> None:

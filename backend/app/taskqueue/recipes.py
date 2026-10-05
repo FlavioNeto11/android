@@ -420,6 +420,16 @@ def resolve_selectors(tree: UiTree, selectors: list[dict[str, str]], variables: 
     return None
 
 
+def _alvo_ambiguo(tree: UiTree, selectors: list[dict[str, str]], variables: dict[str, str]) -> bool:
+    """30.80: algum seletor casou MAIS de um elemento habilitado (o que `resolve_selectors` recusou por ambíguo)."""
+    for sel in selectors:
+        text = retemplate(sel["text"], variables) if "text" in sel else None
+        desc = retemplate(sel["desc"], variables) if "desc" in sel else None
+        if len([e for e in _match(tree, sel.get("rid"), text, desc) if e.enabled]) > 1:
+            return True
+    return False
+
+
 # ------------------------------------------------------------------ destilação
 def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dict[str, Any]] | None, str]:
     """Ações executadas pela IA numa tentativa limpa → receita. Devolve (ações | None, motivo)."""
@@ -593,7 +603,10 @@ class Replayer:
                     return Decision(tool="scroll", args={"rationale": f"{tag} (rolando até o alvo aparecer)",
                                                          "direction": hint["direction"], "element_id": None,
                                                          "expect_done": False})
-                raise AlvoAusente(f"ação {self.idx + 1} ({act['tool']}): alvo ausente ou ambíguo nesta tela")
+                # 30.80: só o alvo AUSENTE pode ser a tela de partida errada; o seletor que casa mais de um elemento
+                # deixou de ser único, e isso é defeito da receita (a mesma mensagem, para o motivo casar igual).
+                erro = RecipeDiverged if _alvo_ambiguo(tree, act["selectors"], self.variables) else AlvoAusente
+                raise erro(f"ação {self.idx + 1} ({act['tool']}): alvo ausente ou ambíguo nesta tela")
             filho = next((s for s in act["selectors"] if s.get("via") == "filho"), None)
             if filho is not None and not toque_no_filho_cai_no_conteiner(tree, el, filho.get("conteiner")):
                 raise RecipeDiverged(f"ação {self.idx + 1} ({act['tool']}): o toque no rótulo não cairia no contêiner "
@@ -882,9 +895,15 @@ class RecipeStore:
             self.db.execute("UPDATE recipes SET replay_ok=replay_ok+1, consecutive_fail=0, nao_aplicavel_seguidas=0,"
                             " last_used_at=? WHERE id=?", (now_iso(), recipe_id))
             return False
+        return self._falhou(recipe_id, zera_serie=True)
+
+    def _falhou(self, recipe_id: int, *, zera_serie: bool) -> bool:
+        """A falha comum: `replay_fail`, `consecutive_fail` e a quarentena. `zera_serie=False` só na falha que VEM da
+        série de "não se aplicou" (30.80): zerá-la ali faria a série recomeçar e a quarentena chegar só na 9ª."""
+        serie = ", nao_aplicavel_seguidas=0" if zera_serie else ""
         with self.db.tx():
-            self.db.execute("UPDATE recipes SET replay_fail=replay_fail+1, consecutive_fail=consecutive_fail+1,"
-                            " nao_aplicavel_seguidas=0, last_used_at=? WHERE id=?", (now_iso(), recipe_id))
+            self.db.execute("UPDATE recipes SET replay_fail=replay_fail+1, consecutive_fail=consecutive_fail+1"
+                            f"{serie}, last_used_at=? WHERE id=?", (now_iso(), recipe_id))
             row = self.db.one("SELECT consecutive_fail, status FROM recipes WHERE id=?", (recipe_id,))
             if row and row["consecutive_fail"] >= QUARANTINE_AFTER:
                 self.db.execute("UPDATE recipes SET status='quarantined' WHERE id=?", (recipe_id,))
@@ -897,7 +916,9 @@ class RecipeStore:
     def nao_aplicavel(self, recipe_id: int) -> tuple[bool, bool]:
         """30.80: a receita divergiu na AÇÃO 1 por alvo ausente (a tela de partida era outra) e a etapa terminou
         comprovada pela IA. Não é veredito sobre ela: nem `replay_ok` nem `replay_fail`, e `consecutive_fail` fica como
-        está. A `NAO_APLICAVEL_CONTA_APOS`-ésima seguida conta como falha comum (`result(…, False)`), que zera a série.
+        está. A partir da `NAO_APLICAVEL_CONTA_APOS`-ésima seguida, CADA uma conta como falha comum (`replay_fail`,
+        `consecutive_fail`, quarentena), sem zerar a série: um 1º seletor quebrado de vez chega à quarentena na 5ª
+        (3ª, 4ª e 5ª contam). Só o ok e a falha comum zeram a série.
 
         Devolve `(contou_como_falha, entrou_em_quarentena)`."""
         with self.db.tx():
@@ -907,7 +928,9 @@ class RecipeStore:
         if seguidas < NAO_APLICAVEL_CONTA_APOS:
             metricas.contar("receita.reproducao", resultado="nao_aplicavel")
             return False, False
-        return True, self.result(recipe_id, False)
+        metricas.contar("receita.reproducao", resultado="divergiu")
+        return True, self._falhou(recipe_id, zera_serie=False)
+
     def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int, simulada: bool = False) -> bool:
         """Veredito da sombra de UMA execução da etapa. Devolve True se a candidata foi promovida a ativa agora.
 

@@ -27,14 +27,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `taskqueue/recipes.py`:
   - `AlvoAusente` (subclasse de `RecipeDiverged`);
   - `RecipeStore.nao_aplicavel`, com `NAO_APLICAVEL_CONTA_APOS=3`;
-  - `result` zera a série.
+  - `result` zera a série; a falha que vem da série (`_falhou(…, zera_serie=False)`) não zera.
 - `taskqueue/executor.py` (`_after_step`):
   - divergência na ação 1, antes de agir, por alvo ausente, com a etapa COMPROVADA: não é veredito sobre a receita, e
     `driven_by='ai'` a mantém fora da evidência contra;
   - o evento leva o código `receita_nao_aplicavel` e os ids;
-  - a 3ª seguida conta como falha comum.
+  - da 3ª seguida em diante, cada uma conta como falha comum, sem zerar a série: a quarentena chega na 5ª;
+  - o seletor ambíguo (casa mais de um elemento) segue como falha comum.
 - Migração 115: `recipes.nao_aplicavel_seguidas`.
-- `PUT /api/recipes/{id}` também a zera.
+- `PUT /api/recipes/{id}` e a reativação pelo livro também a zeram.
 - `GET /api/recipes` passa a trazer o campo.
 - Prova `simulated`:
   - `test_receita_nao_aplicavel.py` (4 testes, verificado por mutação);

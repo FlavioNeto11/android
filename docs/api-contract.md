@@ -6341,10 +6341,13 @@ Mudanças aditivas; o painel não muda.
 - `GET /api/recipes` (e toda leitura que devolve a linha da receita) ganha `nao_aplicavel_seguidas: integer`
   (migração 115, padrão `0`).
   - Conta as vezes seguidas em que a receita "não se aplicou": divergiu na AÇÃO 1, antes de agir, por alvo ausente
-    na tela, e a etapa terminou comprovada pela IA. Nesses casos nem `replay_ok` nem `replay_fail` mudam.
-  - A 3ª seguida conta como falha comum (`replay_fail`, `consecutive_fail` e a quarentena de sempre) e zera a série.
-  - O ok, a falha e o `PUT /api/recipes/{id}` também zeram.
+    na tela (não ambíguo), e a etapa terminou comprovada pela IA. Nesses casos nem `replay_ok` nem `replay_fail` mudam.
+  - Da 3ª seguida em diante, cada uma conta como falha comum (`replay_fail`, `consecutive_fail` e a quarentena de
+    sempre), sem zerar a série.
+  - O ok, a falha comum, o `PUT /api/recipes/{id}` e a reativação pelo livro zeram.
 - O evento `decision` desse caso diz "tela de partida diferente" e leva no `data`, além de `text`:
-  `kind: "receita_nao_aplicavel"`, `recipe_id`, `step_id` e `contou_como_falha: boolean` (`true` na 3ª seguida).
+  `kind: "receita_nao_aplicavel"`, `recipe_id`, `step_id` e `contou_como_falha: boolean` (`true` da 3ª seguida em diante).
 - A etapa fica com `driven_by: "ai"` quando não contou (nenhuma ação da receita rodou), e `"recipe+ai"` quando contou.
+- A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
+  que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
 - **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).
