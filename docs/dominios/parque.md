@@ -1060,21 +1060,20 @@ distinta", no fim desta seção. Prova: `simulated` (os casos de `tests/test_red
 esperada por aparelho", `tests/test_rede_sonda.py::test_sonda_que_mede_outra_saida_que_a_esperada_fica_parcial_e_a_tarefa_espera`
 e três casos de `RedePage.test.tsx`); com provedor e aparelho reais, `not_run` (é o piloto do item 29.7).
 
-**Decisão: a sonda abre o app exigido só quando uma tarefa espera por ele** (substitui a de "não abre por padrão",
-que travava; para o dono ratificar). App exigido é app de conta vinculada, e abrir o app é usar a conta (ADR-056 §7,
-K-057). Sem tarefa esperando (varredura, `ligou`, pedido), com `rede.sonda.abrir_apps: false` (padrão), app parado
-na janela fica `sem_trafego` — desde o 29.44 isso não segura o `parcial` se outro app passou pelo túnel, então o que
-segue abaixo vale quando NADA trafegou. Com política exigida a porta segura TODA tarefa fora de
+**Decisão: a sonda abre o app exigido só quando uma tarefa espera por ele** (substitui a de "não abre por padrão", que
+travava; para o dono ratificar). Sem tarefa esperando (varredura, `ligou`, pedido), com `rede.sonda.abrir_apps: false`
+(padrão), app parado na janela fica `sem_trafego` — desde o 29.44 isso não segura o `parcial` se outro app passou pelo
+túnel, então o que segue abaixo vale quando NADA trafegou. Com política exigida a porta segura TODA tarefa fora de
 `trafego_verificado`, inclusive a que abriria o app: o app vinculado e nunca aberto depois do reinício que a própria
-aplicação pede travava o aparelho para sempre. Por isso, quando a medição é disparada pela porta (`motivo='tarefa'`,
-uma tarefa segurada no aparelho), a sonda abre o app sem tráfego na janela pela tela inicial dele, espera
-`espera_app_s` e volta ao início — o que a tarefa faria, e só abrir (nenhum toque, nada publicado, nada enviado). O
-`parcial` medido sem abrir não faz a tarefa esperar `reverificar_s`: a porta mede de novo já, abrindo, uma vez
-(`_Memoria.medida_sem_abrir`); medido assim e ainda `parcial` (o app aberto não usou a rede), a espera volta a valer
-e a frase da tarefa traz o porquê. `abrir_apps: true` abre também sem tarefa esperando. Resíduo conhecido: app
-exigido NÃO instalado fica `nao_medido` (não há o que abrir) e segura, e a porta da rede vem antes da porta do app que
-o instalaria; só a entrega ao ligar (`vitrine.pendentes_ao_ligar`, quando o app está distribuído para o aparelho; o
-reinício da própria aplicação passa por ela) o instala sem tarefa — sem isso, a tarefa espera com o motivo na frase.
+aplicação pede travava o aparelho para sempre. Por isso, quando a medição é disparada pela porta (`motivo='tarefa'`, uma
+tarefa segurada no aparelho), a sonda abre o app sem tráfego na janela pela tela inicial dele, espera `espera_app_s` e
+volta ao início — o que a tarefa faria, e só abrir (nenhum toque, nada publicado, nada enviado). O `parcial` medido sem
+abrir não faz a tarefa esperar `reverificar_s`: a porta mede de novo já, abrindo, uma vez (`_Memoria.medida_sem_abrir`);
+medido assim e ainda `parcial` (o app aberto não usou a rede), a espera volta a valer e a frase da tarefa traz o porquê.
+`abrir_apps: true` abre também sem tarefa esperando. Resíduo conhecido: app exigido NÃO instalado fica `nao_medido` (não
+há o que abrir) e segura, e a porta da rede vem antes da porta do app que o instalaria; só a entrega ao ligar
+(`vitrine.pendentes_ao_ligar`, quando o app está distribuído para o aparelho; o reinício da própria aplicação passa por
+ela) o instala sem tarefa — sem isso, a tarefa espera com o motivo na frase.
 
 **Portão de rede (25.6).** `Scheduler.rede_gate` (contrato C4) é `ConvergenciaDeRede.motivo_de_espera`, ligado em
 `state.py`. Com política `livre`, nenhum efeito (nem com medição velha: nada vence e a varredura não remede por
@@ -1247,13 +1246,11 @@ solta quando o texto fala de WireGuard (`[Peer]`, `wg set wg0 …`, log do clien
 Para o aparelho **com conta real** que passou a sair por um perfil dedicado (com `egress_esperado`; piloto do item
 29.7), quando o servidor dedicado sai do ar ou o piloto termina.
 
-**O que não fazer.** Voltar o aparelho para o perfil do central (ou tirar o perfil) por uma reatribuição comum. Isso
-troca o IP de saída de uma conta logada (ADR-056 §7, K-057), e a troca fica em silêncio: o perfil de destino não
-declara saída esperada, então o aparelho volta a `trafego_verificado` pela saída compartilhada sem nada acusar a
-diferença. A prévia avisa (`saida_dedicada_trocada_por_compartilhada`), mas aviso não segura o pedido. Também não
-afrouxar a política "para o aparelho voltar a ter internet": sair de `exigida_com_bloqueio` tira o bloqueio, e o
-tráfego passa a sair pela interface física — a mesma troca de saída, por outro caminho. A plataforma não faz nenhuma
-das duas sozinha: a convergência nunca muda o perfil nem a política pedidos.
+**O que não fazer.** Voltar o aparelho para o perfil do central (ou tirar o perfil) por uma reatribuição comum. A prévia
+avisa (`saida_dedicada_trocada_por_compartilhada`), mas aviso não segura o pedido. Também não afrouxar a política "para
+o aparelho voltar a ter internet": sair de `exigida_com_bloqueio` tira o bloqueio, e o tráfego passa a sair pela
+interface física — a mesma troca de saída, por outro caminho. A plataforma não faz nenhuma das duas sozinha: a
+convergência nunca muda o perfil nem a política pedidos.
 
 **O procedimento.**
 

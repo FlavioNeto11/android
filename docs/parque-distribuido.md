@@ -389,8 +389,7 @@ pronto abaixo para ser executado quando o dono autorizar.
 3. **Vincular o perfil.** Conta NOVA para este teste, ou `Sair da conta` no aparelho local antes de vincular a
    mesma conta ao remoto — a mesma conta ativa em dois aparelhos ao mesmo tempo é risco desnecessário para a
    conta (não é limitação técnica do projeto).
-4. **Conectar.** Botão Conectar no perfil → aparelho remoto. Se o Instagram pedir checkpoint/verificação humana,
-   resolver pelo painel (VNC/scrcpy do worker) como já se faz nos locais.
+4. **Conectar.** Botão Conectar no perfil → aparelho remoto.
 5. **Confirmar `SESSION_READY`**, medir a latência do túnel neste passo (login é o ponto de maior tráfego).
 6. **Rodar uma DM ponta a ponta** acompanhando pelo frontend, com o destinatário avisado (é conta de teste).
 7. **Registrar em `docs/relatorio-validacao.md`**, separando explicitamente o que rodou em infraestrutura real

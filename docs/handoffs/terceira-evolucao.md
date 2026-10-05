@@ -60,8 +60,7 @@ externo do android-05 (chaves do piloto descartáveis; apagar o arquivo na próx
 - **P8:** IA paga pontual até US$ 1,50 nas provas 23.13, 24.9 e 27.2.
 - **P7:** rede nova em android-03 e android-06 depois de validada nos de QA, um por vez, fora de uso, conta
   conferida antes e depois.
-- **Login no Outlook** das 3 ativas autorizado (só leitura da caixa; verificação da Microsoft volta ao dono).
-- **P9:** desafio ou código no Outlook para só a conta Outlook; `conta_travada` mantém a quarentena do aparelho.
+- **Login no Outlook** das 3 ativas autorizado (só leitura da caixa).
 - **Ainda pendentes:** P1 (provedor, para IP distinto), P5 (consentimento de cada conta Outlook, no painel), P10
   (bloqueadas e lucas no Instagram), P12, P13.
 
@@ -139,7 +138,6 @@ entrega (`resultado.json` do mecanismo).
 | P6 | Confirmar o propósito que o ADR-056 cita do pedido: "isolamento, persistência e comprovação da rota e do IP de saída" e, "como objetivo de separação", "saída pública distinta e estável por dispositivo" **Aberta**: confirmar o propósito citado no ADR-056. | texto final do ADR-056 |
 | P7 | Autorização por aparelho para trocar a rede de conta real logada **Usada** (30/09): android-06 e android-03, conta conferida antes e depois. | 25.9 nos aparelhos 03 e 06 |
 | P8 | Saldo de IA (Anthropic em US$ 3,31) e autorização das validações pagas **Usada em parte**: ~US$ 0,56 de US$ 1,50; resta ~US$ 0,94 para 23.13/24.9/27.2. | 23.13, 24.9, 27.2 |
-| P9 | Desafio no Outlook bloqueia a persona inteira ou só a conta? **Resolvida** (29/09): desafio só na conta do app (23.5). | 23.5 |
 | P10 | Personas bloqueadas (5) e lucas (android-01 sem o Instagram) | 23.11, 23.13 |
 | P11 | RAM de 2 GB com dois apps grandes: medir no canário; pode pedir 3 GB **Descartada** (29/09): o convidado tinha 780 MB–1,2 GB livres nas quedas; a causa é o P15. | 23.12 |
 | P12 | Troca das senhas das 3 contas vivas (pendência anterior): depois do clone as senhas ficam independentes | 23.11 |

@@ -16,23 +16,11 @@
 
 `médio` · não provado · esforço P · fase 8 · seção do pedido: 5 e 9 · verificação: confirmado
 
-**O que é.** Login pelo túnel (campo de senha, desafio de segurança), porta de sessão e tarefa social em aparelho de outra máquina nunca rodaram. Toda a localidade de perfil em worker remoto é hoje hipótese.
+**O que é.** Login pelo túnel (campo de senha de segurança), porta de sessão e tarefa social em aparelho de outra máquina nunca rodaram. Toda a localidade de perfil em worker remoto é hoje hipótese.
 
 **O que falta.** Reiniciar o backend pelos scripts para o mascaramento de log do Appium voltar (senão o preenchimento de credencial segue bloqueado); vincular um perfil de teste a android-09, exercitar ensure_session e uma tarefa de leitura pelo túnel, medir latência e registrar no relatório de validação. Fazer depois da identidade física do aparelho (achado de E9) para não autenticar conta real em aparelho trocado.
 
 **Evidência.** GET /api/instagram/profiles: 8 perfis, todos vinculados a android-01..08 (locais) e todos 'session_ready'; banco vivo (leitura): nenhum vínculo ativo em android-09..15. GET /api/app-state: Instagram 'ready' em android-09/10 sem perfil vinculado. GET /api/health: problema appium_log_masking_off com a dica 'Preenchimento de credencial fica bloqueado até lá' - login automático está bloqueado nesta sessão do backend.
-
-## #104 — A redação do desafio relatado em produção ('Confirm you're human') não está na tabela de sinais do classificador — a classificação da tela real ainda não foi conferida
-
-`médio` · defeito · esforço P · fase 8 · seção do pedido: 4 (não insistir em ação que depende de pessoa) · verificação: parcial
-
-**O que é.** A tabela de sinais foi escrita antes do app real e não contém a redação do desafio que o Instagram apresentou a uma das 8 contas. Se nenhum outro texto da tela casar, ela cai em 'nenhum sinal conhecido', o perfil fica 'Não verificada' em vez de 'Ação necessária', e o agendador reabre o app e reobserva a cada tick enquanto houver objetivo pendente — o laço que _needs_person existe para impedir (sem digitar senha, pois a tela não é de login). Isto é previsão a partir do regex e do fluxo de código: a classificação dessa tela nunca foi exercitada de fato.
-
-**O que falta.** 1) Capturar a hierarquia real dessa tela (GET /api/instances/android-05/hierarchy com o aparelho ligado) e guardá-la como fixture; 2) acrescentar à tabela (en/pt) as redações de verificação humana vistas no app ('confirm you're human', 'to use your account', 'confirme que você é humano/uma pessoa') com teste sobre a fixture; 3) teto de reobservações automáticas por perfil quando o resultado for UNKNOWN repetido (bloquear com motivo em vez de repetir a cada tick).
-
-**Evidência.** navigation.py:41-42 (en) e :56-57 (pt): os padrões de challenge não cobrem 'confirm you're human' / 'to use your account' / 'confirme que você é humano'. Teste meu importando o módulo: search()=False em 6 variantes nas duas tabelas (controle 'confirm it's you' = True). Sem casar nada, classify() cai em UNKNOWN (navigation.py:327) -> authentication.py:128-131 grava status `unknown` -> state.py:221 devolve trabalho automático para `unknown` e scheduler.py:148-155 o roda a cada tick, sem teto nem espera; _needs_person (authentication.py:289-298) só segura auth_challenge/wrong_account. O texto do desafio vem do comando do dono em r-20260920143652-132c2e (status needs_input). NÃO conferido: a hierarquia real dessa tela — ninguém rodou 'Verificar conta' no android-05 depois do relato (sessão segue session_ready de 18/09), então não há prova de que a tela inteira não contenha outro termo que case (ex.: widget de captcha com 'I'm not a robot', que o padrão cobre).
-
-**O que o verificador corrigiu.** A lacuna do regex é real e reproduzi o teste; o laço sem teto para status `unknown` também está no código. Mas o achado afirmava como fato que a tela 'não é reconhecida' e que o perfil 'fica Não verificada': isso nunca aconteceu em produção (o run do relato nem chegou ao aparelho e a sessão do android-05 continua session_ready), e sem a hierarquia real não dá para excluir que outro texto da tela case. Corrigi título, descrição e evidência para separar o comprovado do inferido e pus a captura da fixture como primeiro passo. Severidade média mantida.
 
 ## #108 — Memória social nunca aprendeu nada: DM não tem caminho de 'recebido', nenhuma interação de entrada é gravada e o resumo da conversa nunca chega ao prompt
 
@@ -78,7 +66,7 @@
 
 **O que falta.** 1) Limites diários por balde (dms/follows/comments/likes_per_day) e aquecimento para conta nova; 2) regra de frota: máximo de contas por alvo por janela + espaçamento aleatório entre aparelhos no mesmo alvo (no _policy_gate, consultando social_interactions por counterparty em todos os perfis); 3) decidir e codificar a regra de afrouxar (permitir com confirmação e marca visual, ou recusar abaixo do padrão para risk=high) e corrigir o docstring; testes.
 
-**Evidência.** policy.py:27-34: DEFAULT_LIMITS só tem *_per_hour, actions_per_run e cooldown de 45 s; nada diário nem por alvo. check() (policy.py:88-132) conta só o próprio perfil. GET /api/runs/r-20260919162101-bca904: 8 contas seguiram o mesmo alvo entre 16:23 e 16:43 (20 min); r-20260919220216-7cfa59: 7 contas mandaram DM ao mesmo destinatário entre 22:03 e 22:11 (~9 min); no dia seguinte o dono relatou verificação humana numa dessas contas (r-20260920143652-132c2e) — consistente com, não prova de, detecção de comportamento coordenado. policy.py:75 diz que o perfil 'pode ENDURECER o padrão', mas :76-78 e service.py:465-485 aceitam qualquer valor válido; GET .../policy dos 8 perfis: SEND_MESSAGE approval_required -> autonomous em todos.
+**Evidência.** policy.py:27-34: DEFAULT_LIMITS só tem *_per_hour, actions_per_run e cooldown de 45 s; nada diário nem por alvo. check() (policy.py:88-132) conta só o próprio perfil.
 
 ## #107 — Planejador injeta tom no briefing e o bloco <tela> infla DMs simples; as 8 personas reais têm só os traços básicos (8 dos 15 campos de voz vazios)
 

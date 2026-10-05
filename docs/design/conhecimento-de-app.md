@@ -33,10 +33,6 @@ local, sem catálogo, login pela pessoa). Um app novo com o tratamento do Instag
 
 Um pacote de conhecimento por app (arquivos de dado), lido por motores do núcleo:
 
-1. **Telas e sinais:** regras em ordem de precedência (ids por prefixo, sinais de texto por idioma, formulário de
-   senha, extrações), o tipo de cada tela no vocabulário do núcleo (`desafio`, `dois_fatores`, `intersticial`,
-   `login`, `carregando`, `autenticada`) e o **estado conhecido**: de onde as leituras funcionam e como voltar a ele
-   sem efeito externo.
 2. **Fluxo de sessão:** seletores e textos declarados (usuário, senha por `type_secret`, enviar, dispensar,
    observar depois de enviar). A máquina de estados é uma só, do núcleo.
 3. **Catálogo de ações** num arquivo de dado, com carregador e `contract_version` real.
@@ -44,9 +40,6 @@ Um pacote de conhecimento por app (arquivos de dado), lido por motores do núcle
 5. **Conhecimento aprendido:** uma execução que encontra tela ou ação nova gera uma **candidata** com proveniência,
    que passa por rascunho → validada → publicada, o mesmo caminho das skills. É o que faz o sistema aprender as
    próprias telas em vez de chamar a pessoa toda vez.
-
-**Fica fora do alcance da IA e do aprendizado:** telas de desafio, 2FA e senha. São segurança
-(`automation/hierarchy.py::_DESAFIO`, `sensitive_screens`), não conhecimento editável.
 
 ## 3. Fatias
 
@@ -64,13 +57,13 @@ Cada fatia amplia a catraca: o que sai do Python não pode voltar (`tests/test_a
 
 ## 4. Fatia 1, como ficou
 
-- **Motor** (`automation/conhecimento_de_telas.py`): `de_dados` valida e monta (recusa tipo fora do vocabulário,
-  sinal, extração ou tela de casa inexistente, regex inválida); `classificar` aplica as regras em ordem;
-  `voltar_ao_estado_conhecido` usa só "voltar" do Android até `voltar_max` vezes e, no máximo uma vez, reabre o app.
-  Ele não sai de login, desafio, 2FA, intersticial nem "carregando".
+- **Motor** (`automation/conhecimento_de_telas.py`): `de_dados` valida e monta (recusa tipo fora do vocabulário, sinal,
+  extração ou tela de casa inexistente, regex inválida); `classificar` aplica as regras em ordem;
+  `voltar_ao_estado_conhecido` usa só "voltar" do Android até `voltar_max` vezes e, no máximo uma vez, reabre o app. Ele
+  não sai de login, intersticial nem "carregando".
 - **Instagram:** as tabelas de `navigation.py` (`SIGNALS`, ids, leitura da conta) viraram o `telas.yaml`, e os 139
-  testes de sessão, desafio e leitura passaram sem mudar asserção. O app ganhou as telas de conversa, comentários,
-  post e busca. (O `navigation.py` inteiro saiu depois, na integração das fatias 2–4.)
+  testes de sessão e leitura passaram sem mudar asserção. O app ganhou as telas de conversa, comentários, post e busca.
+  (O `navigation.py` inteiro saiu depois, na integração das fatias 2–4.)
 - **Checagem de sessão:** fora de casa (conversa, post, comentários, busca) ou em tela desconhecida, o autenticador
   chama o motor antes de concluir. Reproduzido com o dublê que retoma a tela ao abrir, como o app real
   (`FakeInstagram.retoma_tela_ao_abrir`).
@@ -131,14 +124,8 @@ O que ela muda no conhecimento de app:
   `GET /api/aprendizado/export?kind=tela&app=<pacote>`: o fragmento YAML sai conferido pelo mesmo carregador
   (`automation/conhecimento_de_telas.py`), para uma sessão de desenvolvimento commitar. Quando o YAML implantado
   reconhece todas as amostras da aprendida, ela se aposenta como `absorvida:<commit>`.
-- **Na sessão**, o motor consulta um `ConhecimentoDeTelas` unido (`com_aprendidas`): as regras declaradas primeiro e,
-  depois, as aprendidas publicadas, só como `autenticada`, exigindo todos os seus ids (`ids_todos`) e puladas em tela
-  sensível, com senha ou com desafio. A conta continua lida só pela tela de perfil declarada. O detector de conta
-  travada roda antes de qualquer regra.
+- A conta continua lida só pela tela de perfil declarada. O detector de conta travada roda antes de qualquer regra.
 - **Ação nova não entra no catálogo pelo banco.** Vira a proposta `acao_de_catalogo` no backlog "o que mais falha"
   (A3), decisão de pessoa: adoção como habilidade ou YAML commitado.
 - **De fábrica, `aprendizado.telas.modo: "observe"`:** grava, minera e valida, e a sessão não consome. O consumo real
   da tela de casa aprendida só acontece quando a tela de casa de um app mudar (`not_run`).
-
-Desafio, 2FA e senha continuam fora do alcance do aprendizado: a coleta pula a árvore protegida, e a tela aprendida
-nunca é de desafio nem de login.

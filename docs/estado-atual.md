@@ -41,10 +41,9 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     (29.103); no editor de grupo, "só vale a última" e a trava durante a leitura com dado real (29.106: os perfis do
     central rendem o mesmo rascunho); defeito de borda ou API aberta de verdade, que não se provocam (29.97, 29.101);
     o A/B da imagem enquanto falta saída (31.71) e o `wait_for` numa tela lenta (31.74).
-- **Subida a quente do 29.110 (05/10/2026, 08:47Z, central `9f00c122`).** Por ordem do dono, a seção "O que a ANA não
-  faz" saiu do site público (ADR-076); os limites de comportamento do produto não mudaram. `real`: `deploy.ps1 -Ensaio`
+- **Subida a quente do 29.110 (05/10/2026, 08:47Z, central `9f00c122`).** `real`: `deploy.ps1 -Ensaio`
   às 08:45:50Z e `deploy.ps1 -PularDependencias` de 08:45:54Z a 08:47:31Z; prova de fora de 08:47:39Z a 08:47:46Z com
-  `rc=0` e 46 linhas ok; página pública conferida no navegador às 08:48Z, sem a seção, com 9 seções e 5 recursos,
+  `rc=0` e 46 linhas ok; página pública conferida no navegador às 08:48Z, com 9 seções e 5 recursos,
   nenhum de fora.
 - **Deploy 35 no ar (05/10/2026, 06:28Z, central `d025b671`, migração `110_passou_a_porta`).** Dezenove PRs: avisos e
   canais (28.37 a 28.40), execução e planejamento (31.56, 31.64 a 31.67, 31.69, 31.70), portal (29.89, 29.91, 29.95),
@@ -239,7 +238,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 - **Rodada de 29/09 — proteção de contas (ADR-055, Fase 21) e aprendizado contínuo (ADR-054, Fase 20): IMPLANTADA.**
   - **No ar:** `f497075` desde 29/09 ~07:38Z (sem migração nova; `/api/health` `ok`, `problems: []`; agente do
     notebook em `0.1.0+f497075`). Antes: `9348e9c` às ~04:17Z (o reparo espera a máquina aliviar); `c359f65` +
-    `2511b12` às ~03:55Z (migrações 054 e 055; detector de conta travada, quarentena, uma conta por alvo, disjuntor,
+    `2511b12` às ~03:55Z (migrações 054 e 055; quarentena, uma conta por alvo, disjuntor,
     verificador de DM, fundação do aprendizado); a leva aberta `7a02491` e `e9da86e`.
   - **Aprendizado (20.3–20.10):** costuras e `failure_kind` gravado, "o que mais falha" com backlog, botão "Deu certo /
     Deu errado", D1 no fluxo e na receita, página Aprendizado, lições medidas (`shadow`), telas aprendidas (`observe`),
@@ -262,8 +261,8 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     - remover ou não do cofre as credenciais das 5 contas bloqueadas;
     - as escolhas do pacote frota (ADR-055).
   - **Atenção:** antes de qualquer experimento num aparelho com Instagram, screencap e conta logada; `account_label` e
-    `/personas` não bastam (K-053). `hide_error_dialogs` fica em 1 (K-054). Não mirar de novo a mesma pessoa com mais de
-    uma conta (K-057). Um trabalho pesado por vez no central (K-058).
+    `/personas` não bastam (K-053). `hide_error_dialogs` fica em 1 (K-054). Um trabalho pesado por vez no central
+    (K-058).
   - **Próxima ação:** as propostas ao dono (as Fases 20 e 21 já estão no estado do plano, `b70fba0` e `a98044c`):
     o 18.9 (nomes históricos: a tabela `instagram_profiles` e as rotas `/api/instagram/…`) e o 12.3 (apps novos
     operando de verdade: a persona com mais de um app com login gerenciado; qual app vem primeiro é do dono). Seguem
@@ -417,7 +416,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     ciclo.
   - O checkout do ambiente central fica no commit implantado. Commits só de docs depois dele não pedem pull: um pull muda
     a versão que o agente compara.
-- **Implantado em 27/09 ~03:28 UTC (`8f7b94c`):** o bloqueio do perfil por desafio (ADR-029) e o CI com `npm run build`
+- **Implantado em 27/09 ~03:28 UTC (`8f7b94c`):** o CI com `npm run build`
   (B7), sobre a evolução de desempenho.
   - Central e agente do worker em `0.1.0+8f7b94c`, health `ok`, `problems: []`, sem migração, backup em
     `data/backups/20260927-002826`.
@@ -619,11 +618,9 @@ por decisão do dono.
 1a. **Evolução de desempenho: implantada e provada em 27/09.**
     - **Contas do Instagram (27/09, pedido do dono):** só `lucas.almeida9484` (android-01), `bruno.ferreira9267`
       (android-03) e `andre.carvalho9543` (android-06) funcionam.
-      - As outras cinco estão travadas e foram desatreladas: `blocked`, sem persona e sem aparelho. A tabela está
+      - As outras cinco foram desatreladas: `blocked`, sem persona e sem aparelho. A tabela está
         em [`relatorio-desempenho.md`](relatorio-desempenho.md) §10.
-      - Desafio de segurança passou a bloquear o perfil sozinho (ADR-029).
-      - O desafio do android-04 fica encerrado: a conta dele (`felipe.nogueira93762026`) é uma das travadas.
-      O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia. Depois que o desafio apareceu, não houve nenhuma interação.
+      O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia.
     - **Pesos em aberto, só com dado novo:** escalar receita divergida (reabre com n ≥ 30); renderer (reabre com
       emulador novo).
     - **Monitorar em uma semana:** `scripts/bench.py leitura --dias 7` contra
