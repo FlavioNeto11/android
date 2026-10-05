@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-04 — 31.53: a família do pedido também se compara pelo objeto, e o texto que cita outra conta dela passa por aprovação (branch feat/31-53-objeto-alvo-na-familia)
+
+Lado Jev do 28.10 F5, sobre o 31.49 (#330).
+
+- `PolicyEngine._mesmo_objeto_na_familia` (`app/social/policy.py`): a regra da família do 30.62 compara pela pessoa e não via
+  o efeito sem pessoa como alvo (no catálogo de hoje, o `CREATE_POST`, `objeto_alvo: [image_id]`). Agora o objeto do catálogo
+  (30.64) é comparado com as saídas e os pedidos em aberto das OUTRAS personas do pedido, na janela da frota:
+  - mesma imagem: recusado, não adiado;
+  - objeto ambíguo: passa por aprovação;
+  - sem pedido, nada muda.
+- `PolicyEngine.cita_a_familia`, chamado pela porta (`_policy_gate`, `app/state.py`) depois do rascunho: o texto que cita o @
+  de OUTRA persona do mesmo pedido (com ou sem `@`, inteiro) passa por aprovação. O motivo
+  (`MOTIVO_CITA_A_FAMILIA`) não leva o @ nem o texto: ele viaja para decisão, evento, aviso e resumo.
+- Plano e porta passam pelo mesmo `PolicyEngine.check`; `porta_do_plano.py` não muda. Sem migração e sem forma nova na API.
+- Prova: `simulated` (`backend/tests/test_familia_por_objeto.py`, 7 testes; mais `test_contexto_do_pedido`,
+  `test_repetido_entre_execucoes`, `test_pedidos_colaboracao_para_fora`, `test_executor_honra_o_plano`,
+  `test_porta_do_plano`, `test_chave_da_aprovacao`, `test_objeto_alvo`, arquitetura, rotas e falhas: 236 passed).
+  `not_run`: pedido real entre personas depois do deploy.
+
 ## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
 
 - `.claude/canais/resumo_laco.py`: o resumo abre com `🙋 Precisa de você: N` e a lista, com 🆕 na pendência nova.
