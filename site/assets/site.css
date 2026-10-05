@@ -155,7 +155,7 @@ a { color: var(--acento-forte); text-underline-offset: 3px; }
 }
 .console-barra img { width: 40px; height: auto; }
 .console-barra b { margin-left: 4px; font-weight: 600; }
-.console-barra em { margin-left: auto; font-style: normal; font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; color: #6a8198; }
+.console-barra em { margin-left: auto; font-style: normal; font-size: .68rem; letter-spacing: .14em; text-transform: uppercase; color: #91a2b3; }
 .console-corpo { padding: 18px; display: grid; gap: 14px; }
 .balao { margin: 0; padding: 12px 14px; border-radius: 14px; font-size: .95rem; line-height: 1.45; }
 .balao-voce { justify-self: end; max-width: 88%; background: var(--acento); color: var(--noite); border-bottom-right-radius: 4px; font-weight: 600; }
@@ -268,7 +268,7 @@ a { color: var(--acento-forte); text-underline-offset: 3px; }
 }
 .ficha-topo b { display: block; font-size: 1.15rem; }
 .ficha-topo small { display: block; color: var(--texto-2); font-size: .8rem; }
-.ficha-topo em { align-self: start; font-style: normal; font-size: .64rem; letter-spacing: .14em; text-transform: uppercase; color: #6a8198; }
+.ficha-topo em { align-self: start; font-style: normal; font-size: .64rem; letter-spacing: .14em; text-transform: uppercase; color: #91a2b3; }
 .ficha-campos { margin: 0; padding: 6px 20px 14px; }
 .ficha-campos div { display: grid; gap: 2px; padding: 11px 0; border-bottom: 1px solid var(--noite-borda); }
 .ficha-campos div:last-child { border-bottom: 0; }

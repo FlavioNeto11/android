@@ -143,6 +143,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_limites_por_servidor.py::test_agendador_e_rota_de_limites_leem_as_vagas_pela_regra_unica`.
   A regra muda pelo gancho e o setting não: a foto, a frase da espera e a rota acompanham. A mutação para a leitura
   direta derruba o teste.
+## 2026-10-05 — 29.80: o rótulo "Ilustração" do site com contraste AA (branch fix/29-80-contraste-ilustracao)
+
+- **Achado da prova real do 29.80 no endereço público** (05/10 ~01:50Z, navegador embutido, só GET). O rótulo
+  "Ilustração" do console da abertura e o da ficha de persona são texto que quem enxerga lê; o leitor de tela recebe o
+  `aria-label` da figura. Com `#6a8198`, o contraste ficava abaixo do AA (4,5):
+  - no gradiente do console, de 3,9 a 4,34;
+  - no topo da ficha, 2,98.
+- **O que muda:** os dois passam a `#91a2b3` (`site/assets/site.css`): 6,01 a 6,70 no console e 4,59 no ponto mais claro
+  da ficha. Nada mais muda na página.
+- **Prova:** `simulated` em `backend/tests/test_portal_site.py::test_rotulo_ilustracao_tem_contraste_aa_nos_fundos_reais`.
+  O teste lê as cores e os fundos do próprio CSS e reprova com a cor antiga. O resto do 29.80 no endereço público está
+  no resultado do plano: as outras 253 de 255 linhas de texto passaram, ou eram decorativas com `aria-hidden`; 40 de
+  40 focos têm anel de 3 px, com contraste de 4,94 ou mais; e a 404 vem com status 404 e `noindex`.
 
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
