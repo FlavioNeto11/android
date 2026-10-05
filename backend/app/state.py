@@ -1197,7 +1197,8 @@ class AppState:
             return          # a trava confirmada retirou a conta (29.23): não há item de fila para uma conta que saiu
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=atual["status"] if atual is not None else None,
-                                 detail=detail[:300], account_id=str(conta["id"]))
+                                 detail=detail[:300], account_id=str(conta["id"]),
+                                 anterior_no_teto=self.social_repo.unknown_no_teto(atual, instance_id))
 
     def _pacote_em_curso(self, instance_id: str) -> str | None:
         """O pacote do app da etapa que o worker deste aparelho executa agora (o dela, senão o do plano, senão o do
@@ -1263,7 +1264,9 @@ class AppState:
 
         async def reobservar_todas() -> None:
             for provedor, pid, conta_id in pendentes:
-                await provedor.ensure_session(rt, pid, account_id=conta_id, observe_only=True)
+                await self._medindo_a_parada(
+                    "pessoa_devolveu", rt.id, pid, conta_id,
+                    lambda p=provedor, i=pid, c=conta_id: p.ensure_session(rt, i, account_id=c, observe_only=True))
 
         self.scheduler.run_device_job(rt, reobservar_todas, label="reobservação após devolver o controle")
 
@@ -1446,7 +1449,10 @@ class AppState:
                   else "a sessão deste perfil ainda não foi verificada")
         if session and session["status"] in self._SESSAO_PRECISA_DE_PESSOA:
             return motivo, None
-        teto = self.settings.get().session_unknown_retry_cap
+        # 29.92: teto por aparelho. Com vínculo ativo (conta real) é 1: o primeiro `unknown` de um `ensure_session` já
+        # para, porque a rodada seguinte pode cair no login e digitar a senha guardada em cima de uma tela que ninguém
+        # reconheceu. A tela classificada direto como login segue para o `_login` com consentimento (ADR-040).
+        teto = self.social_repo.teto_de_unknown(rt.id) or self.settings.get().session_unknown_retry_cap
         if (session and session["status"] == SessionStatus.unknown.value
                 and int(session["unknown_streak"] or 0) >= teto):
             # Achado #104: sem este teto, uma tela que `classify()` nunca reconhece (sinal ausente da tabela,
@@ -1512,10 +1518,28 @@ class AppState:
             # Marca ao começar, não ao pedir: se o aparelho estiver ocupado, `run_device_job` recusa o trabalho e a
             # releitura continua devida no próximo tick.
             self._releituras_do_teto[chave] = now_iso()
-            await provedor.ensure_session(rt, profile_id, account_id=conta_id, observe_only=True)
+            await self._medindo_a_parada("releitura_sem_toque", rt.id, profile_id, conta_id,
+                                         lambda: provedor.ensure_session(rt, profile_id, account_id=conta_id,
+                                                                         observe_only=True))
 
         return ("a tela não reconhecida foi registrada antes de o aparelho entrar no ar (ou passou da validade); o "
                 "aparelho vai ser relido antes da tarefa"), reler
+
+    async def _medindo_a_parada(self, via: str, instance_id: str, profile_id: str, conta_id: str | None,
+                                chamada: Callable[[], Awaitable[object]]) -> None:
+        """29.92: roda a releitura e, se ela tirou do teto uma sessão parada (`unknown` no teto deste aparelho) para
+        `session_ready`, conta `sessao.parada_resolvida{via}`. `releitura_sem_toque`: ninguém tocou no aparelho (a
+        releitura única do teto); `pessoa_devolveu`: a pessoa assumiu e devolveu o controle. É o que decide se vale
+        uma rodada automática só de observar, sem login."""
+        def sessao() -> Row | None:
+            return (self.social_repo.account_session_row(profile_id, conta_id, instance_id)
+                    if conta_id is not None else None)
+
+        parada = self.social_repo.unknown_no_teto(sessao(), instance_id)
+        await chamada()
+        depois = sessao()
+        if parada and depois is not None and depois["status"] == SessionStatus.session_ready.value:
+            metricas.contar("sessao.parada_resolvida", instancia=instance_id, via=via)
 
     def _entrada_no_ar(self, rt: DeviceRuntime) -> str | None:
         """Quando o aparelho entrou no ar pela última vez, em ISO: o mais recente entre o início do processo do

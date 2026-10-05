@@ -213,7 +213,8 @@ def aplicar_desafio(repo: RepositorioDoDesafio, bus: EventSink, *, profile_id: s
 
 
 def emit_needs_person_change(bus: EventSink, *, profile_id: str, instance_id: str, status: str,
-                             anterior_status: str | None, detail: str | None, account_id: str | None = None) -> None:
+                             anterior_status: str | None, detail: str | None, account_id: str | None = None,
+                             no_teto: bool = False, anterior_no_teto: bool = False) -> None:
     """Evento dedicado da fila "Aguardando intervenção" (achado #106) — em vez de só `log`.
 
     Dispara na ENTRADA e na SAÍDA de um estado de sessão que só uma pessoa resolve (`auth_challenge`,
@@ -224,9 +225,11 @@ def emit_needs_person_change(bus: EventSink, *, profile_id: str, instance_id: st
     (quando quem chama sabe) diz de QUAL conta da persona é a sessão (item 23.4): as de apps diferentes não se
     confundem na fila.
     """
+    # 29.92: `unknown` NO TETO (`no_teto`, `anterior_no_teto`: a porta parou de reobservar e espera uma pessoa) entra
+    # na mesma regra, uma vez na entrada e uma na saída — não a cada reobservação que confirma o mesmo estado.
     valor = str(status)
-    entrando = valor in PRECISA_DE_PESSOA
-    estava = anterior_status in PRECISA_DE_PESSOA
+    entrando = valor in PRECISA_DE_PESSOA or no_teto
+    estava = anterior_status in PRECISA_DE_PESSOA or anterior_no_teto
     if entrando == estava:
         return
     dados: dict[str, object] = {"profile_id": profile_id, "instance_id": instance_id, "status": valor,

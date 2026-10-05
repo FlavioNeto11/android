@@ -21,6 +21,8 @@ from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_
                       SessionActions, SessionInfo, SessionStatus)
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
 from ..planning.catalog import pacote_ancora
+from ..metricas import metricas
+from ..shared.vinculos import tem_vinculo_ativo
 from ..util import new_token, now, now_iso, to_iso
 from .contas_nossas import hash_do_handle, citacao_da_conta, foi_retirada, registrar_lapide, rotulo_da_conta, MARCADOR
 from .limpeza_de_conta import AparelhoDaLimpeza
@@ -1067,6 +1069,21 @@ class SocialRepository:
                            " (SELECT id FROM profile_accounts WHERE profile_id=?) ORDER BY updated_at DESC LIMIT 1",
                            (account_id, profile_id))
 
+    def teto_de_unknown(self, instance_id: str) -> int | None:
+        """29.92: quantas reobservações seguidas em `unknown` a porta aceita neste aparelho antes de parar e chamar uma
+        pessoa. Aparelho com vínculo ativo (conta real, `shared.vinculos`) tem teto 1: a rodada seguinte reabre o app
+        e, se cair na tela de login, digita a senha guardada (`_login(automatic=True)`) — em cima de uma tela que
+        ninguém reconheceu. Nos demais, o teto global (`session_unknown_retry_cap`). `None` sem teto configurado."""
+        if tem_vinculo_ativo(self.db, instance_id):
+            return 1
+        return self.teto_de_reobservacao() if self.teto_de_reobservacao is not None else None
+
+    def unknown_no_teto(self, sessao: Row | None, instance_id: str) -> bool:
+        """29.92: a sessão gravada está em `unknown` no teto deste aparelho, isto é, parada esperando uma pessoa."""
+        teto = self.teto_de_unknown(instance_id)
+        return (sessao is not None and teto is not None and sessao["status"] == SessionStatus.unknown.value
+                and int(sessao["unknown_streak"] or 0) >= teto)
+
     def set_account_session(self, profile_id: str, account_id: str, instance_id: str, *, status: SessionStatus,
                             observed_handle: str | None = None, verified_at: str | None = None,
                             detail: str | None = None, reobserved: bool = False) -> None:
@@ -1083,13 +1100,19 @@ class SocialRepository:
         if self.account_row(profile_id, account_id) is None:
             raise KeyError(account_id)
         streak = 0
+        anterior = self.db.one("SELECT status, unknown_streak FROM account_sessions WHERE account_id=?"
+                               " AND instance_id=?", (account_id, instance_id))
+        estava_em_unknown = anterior is not None and anterior["status"] == SessionStatus.unknown.value
         if status is SessionStatus.unknown and reobserved:
-            anterior = self.db.one("SELECT status, unknown_streak FROM account_sessions WHERE account_id=?"
-                                   " AND instance_id=?", (account_id, instance_id))
-            streak = int(anterior["unknown_streak"] or 0) + 1 if (anterior and
-                       anterior["status"] == SessionStatus.unknown.value) else 1
+            streak = int(anterior["unknown_streak"] or 0) + 1 if estava_em_unknown else 1
             if self.teto_de_reobservacao is not None:
                 streak = min(streak, self.teto_de_reobservacao())
+            # 29.92: a rodada do `unknown` vira dado (antes só o valor atual ficava, sobrescrito): quantas resolvem
+            # na 1ª, 2ª e 3ª rodada decide o teto. Só métrica, sem coluna.
+            metricas.contar("sessao.unknown_rodada", instancia=instance_id, rodada=streak)
+        elif status is SessionStatus.session_ready and estava_em_unknown and int(anterior["unknown_streak"] or 0):
+            metricas.contar("sessao.unknown_resolvida", instancia=instance_id,
+                            rodada_antes=int(anterior["unknown_streak"] or 0))
         self.db.execute(
             "INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at, detail,"
             " updated_at, unknown_streak) VALUES (?,?,?,?,?,?,?,?)"

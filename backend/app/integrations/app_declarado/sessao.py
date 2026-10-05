@@ -65,6 +65,7 @@ from ...models import SessionStatus
 from ...modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                            emit_needs_person_change, motivo_do_login_parado)
 from ...security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
+from ...shared.vinculos import tem_vinculo_ativo
 from ...util import now, now_iso, parse_iso
 from . import formulario as geometria
 from .conhecimento import CONFERIR_CONTA, Ajustes, ConhecimentoDeSessao, com_as_aprendidas
@@ -666,13 +667,32 @@ class SessaoDeclarada:
                 await rt.executor.run(rt.io.press_key, "back", timeout=30, label="voltar")
                 await asyncio.sleep(float(self.ajustes.settle_s))
 
+            # 29.92 (ressalva b): no aparelho com conta real, uma tela de OUTRO pacote que casa com o detector de
+            # verificação humana não leva o app reaberto por cima. Não marca conta travada (uma página qualquer com
+            # verificação daria falso positivo e retiraria a conta): é `unknown` com motivo próprio, que no teto 1
+            # deste aparelho já para e chama a pessoa.
+            com_conta_real = tem_vinculo_ativo(self.repo.db, rt.id)
+            verificacao_alheia: list[bool] = []
+
+            def nao_reabrir_sobre(t: UiTree) -> bool:
+                if com_conta_real and telas.detectar_conta_travada(t, k.telas) is not None:
+                    verificacao_alheia.append(True)
+                    return True
+                return False
+
             try:
                 tree, package, estado, passos = await telas.voltar_ao_estado_conhecido(
                     k.telas, observar=lambda: self._observe(rt), voltar=voltar,
                     reabrir=lambda: self._open_app(rt, aberturas),
-                    reconhecer=lambda t, p: visto.anotar(t, self._reconhecer(k, t, p, locale)))
+                    reconhecer=lambda t, p: visto.anotar(t, self._reconhecer(k, t, p, locale)),
+                    nao_reabrir_sobre=nao_reabrir_sobre)
             except AppParouDeResponder as exc:
                 return self._parou_de_responder(rt, str(exc))
+            if verificacao_alheia and estado.outro_app:
+                detail = (f"outro app na frente ({package or 'sem pacote'}) mostra uma verificação humana; o "
+                          f"{self.conhecimento.rotulo} não foi reaberto por cima, e uma pessoa olha a tela")
+                self._save(conta, rt.id, SessionStatus.unknown, detail=detail, reobserved=True)
+                return AuthResult(Outcome.UNCERTAIN, detail, session_status=SessionStatus.unknown)
             if passos:
                 log.info("%s: estado conhecido do app — %s → %s", rt.id, " → ".join(passos), _nome_da_tela(estado))
             # A reabertura pode trazer de volta a Custom Tab que estava por cima do app.
@@ -1482,7 +1502,9 @@ class SessaoDeclarada:
             return          # a trava confirmada retirou a conta (29.23): não há item de fila para uma conta que saiu
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=anterior["status"] if anterior is not None else None,
-                                 detail=detail, account_id=conta.id)
+                                 detail=detail, account_id=conta.id,
+                                 no_teto=self.repo.unknown_no_teto(self._sessao(conta, instance_id), instance_id),
+                                 anterior_no_teto=self.repo.unknown_no_teto(anterior, instance_id))
 
     @staticmethod
     def _status_for(outcome: Outcome) -> SessionStatus:

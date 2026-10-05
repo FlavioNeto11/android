@@ -364,12 +364,16 @@ async def voltar_ao_estado_conhecido(
         voltar: Callable[[], Awaitable[None]],
         reabrir: Callable[[], Awaitable[None]],
         reconhecer: Callable[[UiTree, str | None], TelaReconhecida],
+        nao_reabrir_sobre: Callable[[UiTree], bool] | None = None,
 ) -> tuple[UiTree, str | None, TelaReconhecida, list[str]]:
     """Leva o app ao estado conhecido declarado, só com "voltar" do Android e, no máximo uma vez, reabrir o app.
 
     Para numa tela de casa ou numa tela com tratamento próprio (login, desafio, 2FA, intersticial, carregando): dela
     ninguém "volta" por conta própria. Devolve a última observação e os passos dados, para quem chama registrar.
     Nenhum passo aqui tem efeito externo: voltar e abrir o app não publicam, não enviam, não seguem.
+
+    `nao_reabrir_sobre` (29.92): com outro app na frente e esta pergunta dizendo sim, nada é reaberto por cima e a tela
+    volta como está (`outro_app`), para quem chama decidir. O motor de sessão a usa no aparelho com conta real.
     """
     passos: list[str] = []
     tree, pacote = await observar()
@@ -379,7 +383,7 @@ async def voltar_ao_estado_conhecido(
         if k.em_casa(atual.tela) or atual.tipo in NAO_SE_VOLTA:
             return tree, pacote, atual, passos
         if atual.outro_app:
-            if reaberto or not k.estado_conhecido.reabrir:
+            if reaberto or not k.estado_conhecido.reabrir or (nao_reabrir_sobre is not None and nao_reabrir_sobre(tree)):
                 return tree, pacote, atual, passos
             await reabrir()
             reaberto = True

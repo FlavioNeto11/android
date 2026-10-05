@@ -121,6 +121,25 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `test_sobreposicao.py`, `test_learning_falhas.py`, `test_learning_diagnostico.py`, `test_funil_de_receitas.py`); o
   teste da folha entre a guarda e o Share falha com a releitura desligada (o toque cai na folha em 360,1188).
   `not_run`: aparelho real e a duração da releitura (p50/p95, central e remoto).
+## 2026-10-05 — 29.92: a sessão `unknown` em aparelho com conta real para na primeira e chama a pessoa (branch fix/29-92-sessao-unknown-pede-a-pessoa)
+
+- Achado do rastro do 29.90: abaixo do teto, a porta de sessão devolvia `ensure_session(automatic=True)` a cada tick; a
+  rodada seguinte reabria o app e, caindo na tela de login, digitava a senha guardada em cima de uma tela que ninguém
+  reconheceu. No teto, o objetivo parava sem aviso nenhum ao dono.
+- Na porta, aparelho com vínculo ativo (`shared.vinculos.tem_vinculo_ativo`) tem teto 1 (`SocialRepository.teto_de_unknown`):
+  o primeiro `unknown` já para. Como a porta só existe com vínculo, o `session_unknown_retry_cap` deixou de agir nela
+  (a chave fica). A tela classificada direto como login segue para o login com consentimento (ADR-040).
+- `session.needs_person` cobre o `unknown` no teto, uma vez na entrada e uma na saída (`emit_needs_person_change`,
+  `no_teto`/`anterior_no_teto`).
+- Ressalva (b): com vínculo, tela de OUTRO pacote que casa com o detector de verificação humana não leva o app reaberto
+  por cima (`voltar_ao_estado_conhecido(nao_reabrir_sobre=…)`); vira `unknown` com motivo próprio, sem marcar conta travada.
+- Métricas, sem coluna: `sessao.unknown_rodada{instancia, rodada}`, `sessao.unknown_resolvida{instancia, rodada_antes}`
+  e `sessao.parada_resolvida{instancia, via}` (`releitura_sem_toque` = a releitura única do teto, sem ninguém tocar; `pessoa_devolveu` = depois de a pessoa devolver o controle).
+- Leitura do #371: a prévia de recursos (`AppSessionProvider`) usa o mesmo teto por aparelho e não planeja
+  `session.verify` sobre a parada (U1). A retirada de conta fecha o item da fila do `unknown` no teto (U2). A doc
+  registra as duas exceções de propósito: o app fora do primeiro plano não soma, e o login acontece na mesma rodada (U3/U4).
+- Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py`,
+  `test_conta_bloqueada_sai.py`). `not_run`: aparelho real.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
