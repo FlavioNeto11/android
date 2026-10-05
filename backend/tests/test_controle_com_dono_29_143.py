@@ -9,7 +9,7 @@ from __future__ import annotations
 import pytest
 
 from app.devices.manager import ControlError
-from app.models import ControlOwner
+from app.models import ControlOwner, ManualInput
 from app.training.recorder import TrainingError
 
 from .conftest import Harness
@@ -94,6 +94,10 @@ async def test_a_tomada_explicita_troca_o_lease_e_encerra_a_gravacao_sem_descart
                for e in eventos)
     assert any(e["level"] == "warn" and "interrompida pela tomada de operador-b" in e["message"] for e in eventos)
     # o lease antigo não vale mais para nada: toque, gravação, devolução
+    with pytest.raises(ControlError) as exc:
+        await st.devices.manual_input(rt, ManualInput(lease_id=antigo, frame_id="x", type="key", key="back"))
+    assert exc.value.code == "not_controller"
+    await st.devices.manual_input(rt, ManualInput(lease_id=novo, frame_id="x", type="key", key="back"))  # o novo vale
     with pytest.raises(ControlError) as exc:
         st.devices.release_control(rt, antigo)
     assert exc.value.code == "not_controller"
