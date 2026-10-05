@@ -705,6 +705,66 @@ async def test_desfecho_que_ja_saiu_e_ficou_registrado_nao_repete(c: Cenario) ->
     assert c.bot.chamou("sendMessage") == n and c.linha(5)["resultado_em"] is not None
 
 
+def _desfechos(c: Cenario, inicio: str) -> list[str]:
+    return [t for t in c.bot.textos() if t.startswith(inicio)]
+
+
+async def _parada(c: Cenario) -> None:
+    """A execução criada pela conversa chega a `awaiting_person` e o "parou" sai uma vez."""
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "awaiting_person", "Execução abc123: parou."
+    await c.volta()
+    await c.volta()
+    assert _desfechos(c, "Execução abc123: parou.") == ["Execução abc123: parou."]
+    assert c.linha(5)["resultado_em"] is not None
+
+
+async def test_o_fim_real_depois_do_parou_chega_a_conversa_uma_vez(c: Cenario) -> None:
+    """28.42 (leitura do 29.93): o "parou" não é o fim. Quando a pessoa resolve e a execução conclui, o desfecho se
+    rearma e o fim chega à mesma conversa, uma vez, em resposta à mensagem que a criou."""
+    await _parada(c)
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "completed", "Execução abc123: concluída."
+    await c.volta()
+    await c.volta()
+    [final] = [m for m in c.bot.mensagens() if m["text"] == "Execução abc123: concluída."]
+    assert final["reply_parameters"]["message_id"] == 50                                    # type: ignore[index]
+    assert c.linha(5)["resultado_em"] is not None
+    assert _desfechos(c, "Execução abc123: parou.") == ["Execução abc123: parou."]
+
+
+async def test_parada_que_segue_parada_nao_rearma(c: Cenario) -> None:
+    await _parada(c)
+    for _ in range(3):
+        await c.volta()
+    assert len(_desfechos(c, "Execução abc123:")) == 1
+
+
+async def test_retomada_que_para_de_novo_conta_as_duas_paradas_e_o_fim(c: Cenario) -> None:
+    """A retomada devolve trabalho automático (`running`, sem desfecho): nada sai até ela parar de novo ou acabar."""
+    await _parada(c)
+    c.portas.estados[RUN] = "running"
+    del c.portas.desfechos[RUN]
+    await c.volta()
+    assert len(_desfechos(c, "Execução abc123:")) == 1 and c.linha(5)["resultado_em"] is None
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "awaiting_person", "Execução abc123: parou."
+    await c.volta()
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "failed", "Execução abc123: falhou."
+    await c.volta()
+    await c.volta()
+    assert _desfechos(c, "Execução abc123:") == ["Execução abc123: parou."] * 2 + ["Execução abc123: falhou."]
+
+
+async def test_fim_depois_do_parou_que_ja_saiu_e_ficou_registrado_nao_repete(c: Cenario) -> None:
+    """A anti-repetição do #358 (F2) conta os envios além dos rearmes: o fim registrado e sem marca não sai de novo."""
+    await _parada(c)
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "completed", "Execução abc123: concluída."
+    c.repo.registrar_enviada("999", "resultado", entrada_id=int(str(c.linha(5)["id"])))
+    n = c.bot.chamou("sendMessage")
+    await c.volta()
+    assert c.bot.chamou("sendMessage") == n and c.linha(5)["resultado_em"] is not None
+
+
 async def test_execucao_em_andamento_que_nao_tem_desfecho_nao_e_cancelada(c: Cenario) -> None:
     """Só a `planned` esquecida: a que roda há horas segue (o `_cancelar_plano` confere o estado)."""
     from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
