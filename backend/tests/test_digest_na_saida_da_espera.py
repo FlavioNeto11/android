@@ -145,9 +145,14 @@ _ITENS_DA_EXECUCAO = ("SELECT item_ref FROM learning_evidence WHERE run_id=?"
 _SOMAS_DOS_ITENS = ("evidence_for", "evidence_against", "distinct_runs", "distinct_devices")
 
 
-def _contagens(st: AppState, run_id: str) -> dict[str, int]:
-    contagens = {t: int(st.db.scalar(f"SELECT COUNT(*) FROM {t} WHERE run_id=?", (run_id,)) or 0)
-                 for t in _POR_EXECUCAO}
+def _contagens(st: AppState, run_id: str) -> dict[str, object]:
+    contagens: dict[str, object] = {t: int(st.db.scalar(f"SELECT COUNT(*) FROM {t} WHERE run_id=?", (run_id,)) or 0)
+                                    for t in _POR_EXECUCAO}
+    # o que o digest ESCREVE nas exposições da execução: preencher de novo mudaria o `filled_at`
+    contagens["learning_exposures.preenchidas"] = tuple(
+        (str(r["unit_id"]), str(r["filled_at"]), str(r["outcome"])) for r in st.db.query(
+            "SELECT unit_id, filled_at, outcome FROM learning_exposures WHERE run_id=? AND filled_at IS NOT NULL"
+            " ORDER BY unit_id", (run_id,)))
     contagens["learning_items"] = int(st.db.scalar(
         f"SELECT COUNT(*) FROM learning_items WHERE id IN ({_ITENS_DA_EXECUCAO})", (run_id, run_id)) or 0)
     contagens["learning_reviews"] = int(st.db.scalar(
@@ -169,9 +174,18 @@ async def _execucao(h: Harness, caso: str) -> str:
         await h.wait(lambda: not st._digestoes, what="digests do assentamento")   # noqa: SLF001
         return run_id
     run_id = await _esperando_login(h)
+    # O harness não tem lição exposta nesta execução, e o digest da saída não gravaria nada DELA: a medida por execução
+    # seria 0 = 0. A exposição da etapa que espera (a que o 30.69 deixa pendente) é o que o digest da saída escreve:
+    # o `filled_at` e o `outcome` dela entram na medida e não podem mudar no segundo digest.
+    etapa = st.db.one("SELECT id FROM steps WHERE run_id=? AND status='waiting_user' ORDER BY seq LIMIT 1", (run_id,))
+    assert etapa is not None
+    st.db.execute("UPDATE runs SET simulated=0 WHERE id=?", (run_id,))
+    st.db.execute("INSERT INTO learning_exposures(item_id, unit_id, role, arm, run_id, created_at)"
+                  " VALUES ('item-30-71-t1', ?, 'ator', 'with', ?, ?)", (f"step:{etapa['id']}", run_id, to_iso(now())))
     st.runs.cancel(run_id)
     await h.wait(lambda: st.repo.run_row(run_id)["status"] == "cancelled", what="execução cancelada")
-    await h.wait(lambda: not st._digestoes, what="digests do gancho")   # noqa: SLF001 - o que o gancho encadeou
+    await h.wait(lambda: not st._digestoes, what="digests do gancho")
+    assert st.db.scalar("SELECT filled_at FROM learning_exposures WHERE run_id=?", (run_id,)) is not None   # noqa: SLF001 - o que o gancho encadeou
     return run_id
 
 
