@@ -19,6 +19,26 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.91: a borda não reescreve o HTML do site nem o do painel (branch feat/29-91-html-sem-injecao)
+
+- **Por quê:** em 05/10 a Cloudflare injetava o beacon do Web Analytics também no painel (`/central/`), que não tinha
+  CSP. 244 páginas em 24 h foram à conta de análise, com seletores e ids de execução. O recurso foi desligado na zona,
+  mas pode ser religado por engano.
+- **O que muda:**
+  - o HTML do site (raiz e 404) sai com `no-transform`, e comprimido em gzip pela origem quando o cliente aceita e
+    acima de 1 KB. Sem isso a borda deixaria de comprimir e a raiz iria de ~10 KB a ~40 KB;
+  - o `index.html` do painel sai com `no-transform` e com a CSP do painel (`CSP_DO_PAINEL`): script, estilo e conexão
+    só da própria origem, e imagem também de `blob:` e `data:`;
+  - o CSS e o JS do site seguem comprimidos pela borda.
+- **Prova:**
+  - `simulated`: `tests/test_portal_site.py` (gzip só quando o cliente aceita, `q=0` respeitado, o mesmo HTML nos dois
+    jeitos, a 404 também, o CSS sem `no-transform`) e `tests/test_painel_estatico.py` (CSP e `no-transform` no
+    `index.html`, o bundle sem);
+  - navegador num painel isolado (harness, 0 aparelhos, porta 8794): 11 telas sem nenhuma violação de CSP e sem erro
+    no console, o WebSocket da mesma origem aberto e o de outra origem barrado pela CSP;
+  - `not_run`: o central (depois do deploy) e a prova de fora pedindo `/central/` como navegador, que entra quando o
+    #353 estiver na main.
+
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do

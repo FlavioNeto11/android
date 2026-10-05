@@ -471,6 +471,13 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
     (`challenge-platform`) ou a ofuscação de e-mail.
   - Reprova ainda a raiz que não vem 200 quando pedida como navegador (um desafio não mostra a página).
   - Nunca afrouxar a CSP;
+- a borda não reescreve o HTML (29.91):
+  - a raiz, a 404 e o `index.html` do painel saem com `Cache-Control: … no-transform`;
+  - o HTML do site sai comprimido em gzip pela origem;
+  - o painel tem CSP própria.
+  Com isso, um Web Analytics, um Rocket Loader ou uma ofuscação de e-mail religados por engano na zona não entram nas
+  páginas. Para conferir de fora: `curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip' https://<host>/` mostra
+  `content-encoding: gzip` e `no-transform`;
 - 180 dias no sistema: o laço apaga a linha inteira a cada hora, com o contato ligado ou não;
 - o descartado (teto diário, `campo_invalido`, `falhas_demais`) tem o conteúdo apagado sem chegar à equipe. O
   `pendente` (canal desligado) e o `retido` (excesso na hora) guardam o conteúdo até a entrega ou os 180 dias;

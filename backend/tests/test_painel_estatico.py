@@ -76,6 +76,24 @@ async def test_central_com_barra_serve_o_index_e_tambem_revalida(harness: Harnes
         assert "no-cache" in pagina.headers.get("cache-control", "")
 
 
+async def test_o_html_do_painel_barra_script_de_fora_e_a_borda_nao_o_reescreve(harness: Harness) -> None:
+    """29.91: em 05/10 a Cloudflare injetava o beacon do Web Analytics no `/central/` e, sem CSP, ele rodava. O
+    `index.html` sai com a CSP do painel (só scripts do próprio painel) e `no-transform` (a borda não reescreve o
+    HTML). O bundle com hash não precisa de CSP, porque não é documento."""
+    from app.main import CSP_DO_PAINEL
+
+    assert "script-src 'self';" in CSP_DO_PAINEL and "unsafe-inline" not in CSP_DO_PAINEL
+    assert "img-src 'self' blob: data:;" in CSP_DO_PAINEL            # o quadro do aparelho e os anexos são blob:
+    async with _cliente(harness) as c:
+        for caminho in ("/central/", "/central/index.html"):
+            pagina = await c.get(caminho)
+            assert pagina.headers["content-security-policy"] == CSP_DO_PAINEL, caminho
+            assert "no-transform" in pagina.headers["cache-control"], caminho
+            assert "no-cache" in pagina.headers["cache-control"], caminho      # e segue revalidando
+        bundle = await c.get("/central/assets/index-abc123.js")
+        assert "no-transform" not in bundle.headers["cache-control"]
+
+
 async def test_central_sem_barra_leva_ao_painel_com_redirecionamento_relativo(harness: Harness) -> None:
     """O Location é RELATIVO: o redirecionamento automático do Starlette montaria URL absoluta com o esquema que o
     processo enxerga (`http`, porque `proxy_headers` está desligado), e atrás do túnel TLS o navegador voltaria

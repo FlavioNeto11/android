@@ -403,9 +403,25 @@ class PainelEstatico(StaticFiles):
         resposta = super().file_response(*args, **kwargs)
         caminho = str(getattr(resposta, "path", ""))
         tem_hash = "/assets/" in caminho.replace("\\", "/")
-        resposta.headers["Cache-Control"] = ("public, max-age=31536000, immutable" if tem_hash
-                                             else "no-cache, must-revalidate")
+        if tem_hash:
+            resposta.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            # 29.91: o `index.html` do painel sai com CSP e `no-transform`. Em 05/10 a Cloudflare injetava o beacon do
+            # Web Analytics também no painel, e sem CSP ele rodava: 244 páginas de `/central/` em 24 h, com seletores
+            # e ids de execução, foram à conta de análise. O `no-transform` impede a borda de reescrever o HTML (é
+            # pequeno, a compressão não faz falta); a CSP barra qualquer script que não seja do próprio painel.
+            resposta.headers["Cache-Control"] = "no-cache, must-revalidate, no-transform"
+            resposta.headers["Content-Security-Policy"] = CSP_DO_PAINEL
         return resposta
+
+
+#: O que o painel construído carrega, medido no `frontend/dist` e no código em 05/10: script, estilo e ícone do
+#: próprio `/central/`; imagens da própria API, `blob:` (quadro do aparelho, anexos) e um `data:` no CSS; `fetch` e o
+#: WebSocket na mesma origem (`'self'` cobre `ws:`/`wss:` da mesma origem na CSP 3). Nenhum script ou estilo em linha,
+#: nenhum CSS-em-JS, nenhum `eval`; o `style={...}` do React vai pelo CSSOM, que a CSP não barra.
+CSP_DO_PAINEL = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; "
+    "font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
 
 
 def create_worker_app(state: AppState) -> FastAPI:

@@ -5483,6 +5483,18 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
    vêm do `guarda`. A página não tem script, estilo nem manipulador em linha, nem recurso de fora (há teste); o JS só
    escreve com `textContent` e posta com `credentials: "omit"`. O HSTS é dado pela Cloudflare (ADR-073, um mês). O site
    não põe cookie, não tem analytics e não carrega fonte de terceiros.
+   - **A borda não reescreve o HTML** (29.91, achado do 29.85 em 05/10). A Cloudflare injetou o beacon do Web
+     Analytics na raiz E no painel. O site barrava pela CSP; o painel, sem CSP, deixou ir à conta de análise 244 páginas
+     de `/central/` em 24 h. O recurso foi desligado na zona (02:23Z, com o sim do dono). Como o painel da Cloudflare pode
+     ser religado por engano, a proteção passou a ser do nosso lado também:
+     - o HTML do site (raiz e 404) sai com `no-transform`;
+     - como isso tira a compressão da borda, o HTML sai comprimido em gzip daqui, quando o cliente aceita e acima de
+       1 KB. Assim a página fica em ~10 KB e não em ~40 KB;
+     - o CSS e o JS seguem com a borda;
+     - o `index.html` do painel sai com `no-transform` e a CSP do painel (`CSP_DO_PAINEL` em `app/main.py`):
+       `script-src 'self'`, `img-src 'self' blob: data:` (o quadro e os anexos) e `connect-src 'self'`, que cobre o
+       WebSocket da mesma origem.
+     - A CSP do painel foi conferida em 11 telas sem violação, e o WebSocket de outra origem é barrado.
    O nome público (`dev.nvit.com.br`, ADR-073) fica escrito no HTML estático no `canonical`, no `og:url` e no
    `og:image` (a prévia de link exige endereço absoluto), sem marcador trocado pelo servidor; há teste que reprova se
    os três divergirem. Servido por outro nome, a prévia aponta para esse.
