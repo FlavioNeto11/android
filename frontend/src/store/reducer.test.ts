@@ -269,6 +269,17 @@ describe('applyEvent — detalhe da execução selecionada', () => {
     expect(s.detail?.events.map((e) => e.id)).toEqual([101, 102]);
   });
 
+  it('31.65: step.updated sem motivo_da_persona mantém o do detalhe; com null, limpa', () => {
+    let s = withDetail(hydrated(), 'run-a');
+    s = applyEvent(s, event(101, 'step.updated', { step: step({ motivo_da_persona: 'recusa do modelo' }) }, { run_id: 'run-a' }));
+    const { motivo_da_persona: _m, ...semMotivo } = step({ status: 'waiting_user' });
+    s = applyEvent(s, event(102, 'step.updated', { step: semMotivo }, { run_id: 'run-a' }));
+    expect(s.detail?.data?.steps[0]?.motivo_da_persona).toBe('recusa do modelo');
+    expect(s.detail?.data?.steps[0]?.status).toBe('waiting_user');
+    s = applyEvent(s, event(103, 'step.updated', { step: step({ motivo_da_persona: null }) }, { run_id: 'run-a' }));
+    expect(s.detail?.data?.steps[0]?.motivo_da_persona).toBeNull();
+  });
+
   it('attempt.updated chega sem actions e preserva as já registradas', () => {
     let s = withDetail(hydrated(), 'run-a');
     const attempt: Attempt = {

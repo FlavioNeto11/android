@@ -226,6 +226,29 @@ async def test_inicio_depois_da_marca_do_cancelamento_e_recusado(harness: Harnes
     await harness.wait_run(run_id, statuses=("cancelled",))
 
 
+async def test_cancelamento_sem_gesto_nao_grava_o_sinal_do_dono(harness: Harness, como_telegram: None) -> None:
+    """28.38, F4 da revisão do #358: a faxina do plano esquecido cancela com `gesto=False`, e o sinal
+    `cancelou_execucao` não sai em nome de ninguém. O mesmo cancelamento COM gesto grava (o contraste)."""
+    portas = _portas(harness)
+    st = harness.state
+    assert st is not None
+
+    def sinais() -> int:
+        return int(st.db.scalar("SELECT COUNT(*) FROM learning_signals WHERE kind='cancelou_execucao'") or 0)
+
+    texto = "abrir o QA Messenger no android-01"
+    com, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:953", modo="plan")
+    await harness.wait_run(com, statuses=("planned",))
+    portas.cancelar(com)
+    await harness.wait_run(com, statuses=("cancelled",))
+    antes = sinais()
+    sem, _ = portas.criar(texto, portas.previa(texto).alvos, "telegram:954", modo="plan")
+    await harness.wait_run(sem, statuses=("planned",))
+    portas.cancelar(sem, gesto=False)
+    await harness.wait_run(sem, statuses=("cancelled",))
+    assert antes == 1 and sinais() == antes
+
+
 async def test_porta_recusa_execucao_que_esta_sendo_cancelada(harness: Harness, como_telegram: None) -> None:
     """Revisão de `cec9ddca` (S2/S7): `planned` com `cancel_requested` (a marca do cancelamento do canal antes do fecho)
     não oferece a prévia nem grava sim: sem isto, sobravam sins `approved` de origem `plano` numa execução cancelada."""

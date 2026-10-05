@@ -17,6 +17,7 @@ from app.db import Database
 from app.modules.portal.application.contato import Avisar, AvisarResumo, ServicoDeContato, TipoDoContato
 from app.modules.portal.application.exclusao import ApagarNoCanal, ServicoDeExclusao
 from app.modules.portal.application.protecao import emitir_token
+from app.modules.portal.domain.exclusao import nome_do_operador
 from app.modules.portal.infrastructure.contatos_sql import ContatosSql
 from app.security.access import publicos_de
 from app.util import now
@@ -62,7 +63,9 @@ class Portal:
         self.exclusao = ServicoDeExclusao(self.repo, apagar_no_canal=apagar_no_canal,
                                           canal_presente=lambda: avisar() is not None,
                                           buscas_por_hora=lambda: cfg.file.portal.limites.buscas_por_operador_hora,
-                                          buscas_no_total=lambda: cfg.file.portal.limites.buscas_total_hora)
+                                          buscas_no_total=lambda: cfg.file.portal.limites.buscas_total_hora,
+                                          donos=lambda: frozenset(
+                                              n for n in map(nome_do_operador, cfg.file.pedidos.operadores_do_dono) if n))
         for _codigo, mensagem, _dica in self.problemas(com_contagens=False):   # o banco ainda não migrou aqui
             log.warning("portal: %s", mensagem)
 

@@ -45,3 +45,14 @@ def test_arquivo_sem_relacao_so_traz_as_guardas(tmp_path):
     r = ta.afetados(tmp_path, ["CHANGELOG.md"])
     assert {Path(t).name for t in r["testes"]} == {"test_arquitetura.py", "test_pacote_do_agente.py"}
     assert not r["amplo"]
+
+
+def test_ps1_de_scripts_traz_o_teste_do_portao_e_da_varredura(tmp_path):
+    """29.94: o teste dos `.ps1` (portão do -PularBackup e varredura de colisão com parâmetro) só existe em
+    `scripts/tests`; sem este mapa, mexer no `deploy.ps1` não o traria na validação dirigida."""
+    _arvore(tmp_path)
+    (tmp_path / "scripts" / "tests").mkdir(parents=True)
+    (tmp_path / "scripts" / "tests" / "test_deploy_portao_do_ensaio.py").write_text("")
+    for arq in ("scripts/deploy.ps1", "scripts/backup.ps1", "scripts/lib/copias-de-backup.ps1"):
+        r = ta.afetados(tmp_path, [arq])
+        assert "scripts/tests/test_deploy_portao_do_ensaio.py" in r["testes"], arq
