@@ -61,8 +61,11 @@ class AvisoDoEnsinado:
                 "sem_receita_ativa": self.sem_receita_ativa, "para": self.para, "desde": self.desde}
 
     def mensagem(self) -> str:
-        """Só identificadores e vocabulário fechado: a mensagem também é persistida e transmitida."""
-        quem = f"{self.kind} {self.ref}" + (f" ({self.app})" if self.app else "")
+        """Só identificadores e vocabulário fechado: a mensagem também é persistida, transmitida e vai ao backend.log
+        (`EventBus.emit` loga "kind | message" no `warn`). O id do FLUXO fica fora: hoje é o slug do resumo literal, que
+        pode trazer nome de pessoa (leitura do 28.50 pela Reload; o id opaco é o 30.83). Ele segue em `data.ref`."""
+        quem = self.kind if self.kind == "fluxo" else f"{self.kind} {self.ref}"
+        quem += f" ({self.app})" if self.app else ""
         if self.sem_receita_ativa:
             return f"Conhecimento ensinado rebaixado pelo sistema, a etapa voltou para a IA: {quem} [{self.para}]"
         return f"Conhecimento ensinado rebaixado pelo sistema: {quem} [{self.para}]"

@@ -61,13 +61,13 @@ class AvisadorDoEnsinado:
             with self._isolar():
                 self.mudou(antes, depois, por_sistema=por_sistema)
         except Exception:  # noqa: BLE001 - o savepoint já desfez o aviso; a transição e a trilha ficam
-            log.exception("aprendizado: aviso do ensinado de %s %s", depois.kind.value, depois.ref)
+            log.exception("aprendizado: aviso do ensinado de %s", _no_log(depois))
 
     def mudou_sem_falhar(self, antes: EntradaDoLivro | None, depois: EntradaDoLivro, *, por_sistema: bool) -> None:
         try:
             self.mudou(antes, depois, por_sistema=por_sistema)
         except Exception:  # noqa: BLE001 - o aviso informa; a transição já foi gravada e não cai por causa dele
-            log.exception("aprendizado: aviso do ensinado de %s %s", depois.kind.value, depois.ref)
+            log.exception("aprendizado: aviso do ensinado de %s", _no_log(depois))
 
     # ------------------------------------------------------------------ 30.81: o ensinado que espera a pessoa
     def espera_decisao(self, aviso: EsperaDoEnsinado) -> None:
@@ -82,7 +82,7 @@ class AvisadorDoEnsinado:
         try:
             return self._leitor.espera_da_pessoa(e.kind, e.ref)
         except Exception:  # noqa: BLE001 - sem a leitura, a decisão segue; só o evento dela não sai
-            log.exception("aprendizado: espera do ensinado %s", e.ref)
+            log.exception("aprendizado: espera do ensinado de %s", _no_log(e))
             return None
 
     def motivo_da_espera(self, e: EntradaDoLivro) -> str | None:
@@ -101,7 +101,13 @@ class AvisadorDoEnsinado:
             self._porta.ensinado_decidido(DecisaoDoEnsinado(kind=e.kind.value, ref=e.ref, desde=desde,
                                                             decisao=decisao, decidido_em=em))
         except Exception:  # noqa: BLE001 - o aviso informa; a decisão já foi gravada
-            log.exception("aprendizado: aviso da decisão do ensinado %s", e.ref)
+            log.exception("aprendizado: aviso da decisão do ensinado de %s", _no_log(e))
+
+
+def _no_log(e: EntradaDoLivro) -> str:
+    """O id do fluxo não vai ao backend.log (o slug do resumo literal pode trazer nome; leitura do 28.50); o da receita
+    é só dígitos."""
+    return e.kind.value if e.kind is LivroKind.FLUXO else f"{e.kind.value} {e.ref}"
 
 
 __all__ = ["AvisadorDoEnsinado"]
