@@ -136,7 +136,8 @@ def conferir_html(onde: str, status: int, html: str, *, host: str) -> Desfecho:
         return _defeito(Achado(PAGINA_FORA, onde, f"status {status}"))
     if not html.strip():
         return _defeito(Achado(PAGINA_FORA, onde, "corpo vazio pedido como navegador"))
-    return _defeito(*(Achado(SCRIPT_INJETADO, onde, src, src.split("//", 1)[-1][:ITEM_MAX])
+    # O detalhe vai à saúde e à linha da prova: um `data:` de 1 MB não pode aparecer inteiro (N1 da leitura do #378).
+    return _defeito(*(Achado(SCRIPT_INJETADO, onde, src[:ITEM_MAX], src.split("//", 1)[-1][:ITEM_MAX])
                       for src in scripts_de_fora(html, host)))
 
 

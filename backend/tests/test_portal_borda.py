@@ -326,3 +326,4 @@ def test_versao_e_a_primeira_apontada_e_o_item_tem_teto() -> None:
     enorme = "data:text/javascript," + "x" * 500
     [achado] = borda.conferir_html("/", 200, f'<script src="{enorme}"></script>', host=HOST).achados
     assert len(achado.item) == borda.ITEM_MAX                                             # V12
+    assert len(achado.detalhe) == borda.ITEM_MAX and achado.detalhe.startswith("data:")  # N1: a saúde mostra
