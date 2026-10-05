@@ -118,6 +118,9 @@ export interface EntradaDoLivro {
   confirmacao_contestada?: Confirmacao | null;
   /** O parecer pendente da IA (30.17): só nas listas Para aprovar e Revisar, e só com o curador em `on`. */
   parecer?: ParecerNaFila | null;
+  /** 30.81, só no fluxo: o motivo (código do contrato) por que o ensinado espera a decisão de uma pessoa e o "Confirmar
+   *  que fica" vale para ele; `null` no resto. Ausente nos outros tipos e em backend anterior. */
+  espera_a_pessoa?: string | null;
 }
 
 /** 30.23: a execução do sucesso falso e o item que ela ensinou (no fluxo, a própria linha, que renasce nela). */
@@ -653,6 +656,12 @@ export interface AcaoDoItem {
 
 const A = (to: EstadoDoLivro, label: string, confirmar: string, perigo = false): AcaoDoItem => ({ to, label, confirmar, perigo });
 
+/** "Confirmar que fica" (30.24): a pessoa mantém o item como está; ele sai de "Revisar" até chegar evidência contrária.
+ *  Nada muda no item, e o motivo é opcional. No ensinado que espera a pessoa (30.81), é o "liberado". */
+export const ACAO_CONFIRMAR_QUE_FICA: AcaoDoItem = {
+  to: 'published', label: 'Confirmar que fica', confirmar: 'Confirmar que fica', perigo: false, confirmaQueFica: true,
+};
+
 /** Texto dos botões por chave do backend (apresentação). `perigo` pinta o que tira o item de circulação. */
 const TEXTO_DA_ACAO: Record<RotuloDaAcao, { label: string; confirmar: string; perigo: boolean }> = {
   validar: { label: 'Validar', confirmar: 'Confirmar validação', perigo: false },
@@ -670,11 +679,14 @@ const TEXTO_DA_ACAO: Record<RotuloDaAcao, { label: string; confirmar: string; pe
  * Aqui só se põe o texto em português; nenhuma regra de transição mora no painel. Chave desconhecida (backend mais
  * novo) aparece como veio, sem botão de perigo.
  */
-export function acoesDoItem(e: Pick<EntradaDoLivro, 'acoes'>): AcaoDoItem[] {
-  return (e.acoes ?? []).map((a) => {
+export function acoesDoItem(e: Pick<EntradaDoLivro, 'acoes'> & Partial<Pick<EntradaDoLivro, 'kind' | 'espera_a_pessoa'>>): AcaoDoItem[] {
+  const acoes = (e.acoes ?? []).map((a) => {
     const t = TEXTO_DA_ACAO[a.rotulo];
     return t ? { to: a.to, ...t } : A(a.to, a.rotulo, `Confirmar ${a.rotulo}`);
   });
+  // 30.81: o fluxo ensinado que a prova automática passou à pessoa também se confirma. O backend diz quando o botão
+  // vale (`espera_a_pessoa`); ele vai na frente das outras ações, que seguem como o backend as calculou.
+  return e.kind === 'fluxo' && !!e.espera_a_pessoa ? [ACAO_CONFIRMAR_QUE_FICA, ...acoes] : acoes;
 }
 
 /** O passo "para cima" que a fila Para aprovar oferece (e a aprovação em lote aplica): validar ou aprovar. */

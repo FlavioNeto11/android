@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -65,6 +66,7 @@ from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.learning.presentation.router import router as learning_router
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
+from app.taskqueue.flows import id_do_fluxo, ref_publica_do_fluxo
 
 from .conftest import Harness
 from .fake_skills import TS, ValidadorFalso
@@ -171,7 +173,8 @@ class Mundo:
         habilidades = SqlSkillRepository(db, ValidadorFalso())
         self.repo = SqlLearningRepository(db, guarda_do_fluxo=GuardaDoFluxo(db, habilidades), precos=dict)
         self.servico = LearningService(self.repo, FontesSql(db), TriagemDeCredencial(), ajustes=Ajustes,
-                                       relogio=lambda: AGORA, retencao_de_logs_dias=lambda: 14)
+                                       relogio=lambda: AGORA, retencao_de_logs_dias=lambda: 14,
+                                       id_do_fluxo=partial(id_do_fluxo, db))      # 30.83: como a montagem
         # Uma lição publicada exposta (braço `with`) na etapa do item que deu certo, e outra no braço de controle.
         self.licao = self._licao("abra pelo atalho do perfil")
         self.licao_holdout = self._licao("role devagar")
@@ -314,7 +317,8 @@ async def test_errado_de_navegacao_rebaixa_o_usado_e_o_aprendido(mundo: Mundo, c
     desligou = next(e for e in corpo["efeitos"] if e["ref"] == "fluxo-usado")
     assert (desligou["de"], desligou["para"], desligou["aplicado"], desligou["uso"]) == (
         "published", "disabled", True, "usou")
-    assert desligou["desfazer"]["href"] == "/api/aprendizado/fluxo/fluxo-usado/status"
+    publica = ref_publica_do_fluxo(mundo.db, "fluxo-usado")              # 30.83: o `href` leva a pública
+    assert publica != "fluxo-usado" and desligou["desfazer"]["href"] == f"/api/aprendizado/fluxo/{publica}/status"
     assert desligou["desfazer"]["body"]["to"] == "published"
     # O aprendido desta execução e a receita aprendida eram CANDIDATOS: desligados, mas sem desfazer — a única volta
     # (→ published) publicaria o que nunca foi publicado nem aprovado.

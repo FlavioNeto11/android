@@ -24,7 +24,7 @@ from ..db import Row, dumps
 from ..models import Plan, PlannerInfo, PlanStep, Postcondition
 from ..planning.capabilities import CapabilityCatalog, CapabilityNode, load_catalog
 from ..planning.training import TrainingRequest
-from ..taskqueue.flows import PLACEHOLDER, RESERVED, _norm, ensinado_em_prova  # noqa: PLC2701 - a MESMA normalização da `match_key`
+from ..taskqueue.flows import PLACEHOLDER, RESERVED, ensinado_em_prova
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..util import now_iso
 from . import dado_da_persona
@@ -461,14 +461,10 @@ class TrainingSkills:
         ainda dá para corrigir a proposta. Nada vai ao banco: nem fluxo, escopo, receita, status ou evento."""
         sess = self.s.training.get(session_id)
         prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids, scope_on_proof)
-        # A única recusa do `save` que só aparece ao gravar (`learn_from_plan`): o comando repetido. Lida sem escrever.
-        chave = _norm(prep.comando)
-        if self.s.db.one("SELECT id FROM flows WHERE match_key=?", (chave,)):
-            raise TrainingError("duplicate_command", "Já existe uma habilidade para este comando. Mude o comando ou "
-                                                     "desative a outra.", 409)
-        if self.s.db.one("SELECT id FROM skill_versions WHERE state='published' AND match_key=?", (chave,)):
-            raise TrainingError("duplicate_command", "Já existe uma habilidade versionada publicada para este comando. "
-                                                     "Mude o comando ou desabilite a habilidade.", 409)
+        # A única recusa do `save` que só aparece ao gravar (`learn_from_plan`): o comando repetido. Lida sem escrever,
+        # pela MESMA regra do `save` (30.84: o ensinado que a prova desligou pode ser ensinado de novo).
+        if (recusa := self.s.scheduler.flows.recusa_do_treino(prep.comando)) is not None:
+            raise TrainingError("duplicate_command", recusa, 409)
         relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
                                           prep, session_id, gravar=False)
         return {"steps": relatorio, "warnings": [*prep.avisos, *_aviso_sem_persona(sess)],

@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Protocol
 
 from app.modules.learning.application.ports import FontesDoLivro, RepositorioDeAprendizado
 from app.modules.learning.domain.ciclo import SYSTEM_ACTOR, ErroDeAprendizado, SkillState
-from app.modules.learning.domain.livro import EntradaDoLivro, entrada_do_item
+from app.modules.learning.domain.livro import EntradaDoLivro, entrada_do_item, quem_no_log
 from app.modules.learning.domain.obsolescencia import (CatalogoDoApp, Respaldo, SinaisDeObsolescencia, Substituta,
                                                        VereditoDoCatalogo, destino_do_rebaixamento,
                                                        do_quadro_de_versao, respaldo_da_receita, respaldo_do_fluxo)
@@ -169,7 +169,8 @@ class RebaixamentoPorCatalogo:
             try:
                 self._servico.mudar_estado(e.kind, e.ref, destino, by=SYSTEM_ACTOR, reason=veredito.motivo)
             except ErroDeAprendizado as erro:
-                log.warning("aprendizado: %s %s não rebaixado por %s: %s", e.kind.value, e.ref, veredito.motivo, erro)
+                log.warning("aprendizado: %s não rebaixado por %s: %s", quem_no_log(e.kind, e.ref), veredito.motivo,
+                            erro)
                 continue
             rebaixados += 1
         return rebaixados

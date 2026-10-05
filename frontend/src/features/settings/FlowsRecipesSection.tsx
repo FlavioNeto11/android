@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import { api, hintForError, toApiError, type ApiError } from '../../api/client';
 import type { Flow, FlowCoverage, Recipe, SkillState, SkillSummary } from '../../api/types';
 import { Badge } from '../../components/Badge';
+import { SeloEmProva } from '../../components/SeloEmProva';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
@@ -659,6 +660,7 @@ function FlowList({ state, onRetry, onChange, cobertura, conversao }: ListProps<
                   <p className={styles.appMeta} aria-label="Cobertura de receitas">
                     Cobertura: {c.steps_with_recipe} de {c.steps_total} etapas com receita
                     {c.target_version ? ` (versão ${c.target_version})` : ''} · <Badge tone={custo.tone}>{custo.label}</Badge>
+                    {c.ensinado_em_prova ? <>{' '}<SeloEmProva ensinado={c.ensinado_em_prova} /></> : null}
                   </p>
                 );
               })()}

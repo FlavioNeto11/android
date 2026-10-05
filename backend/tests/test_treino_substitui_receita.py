@@ -16,9 +16,12 @@ Nível de prova: `simulated` (banco de teste migrado pela fábrica da suíte; ne
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+
+from app.util import to_iso
 
 from .fake_skills import banco as banco_migrado
 from .test_d1_receitas import CHAVE, PKG, Mundo, _acoes
@@ -50,6 +53,11 @@ def test_demonstracao_diferente_substitui_a_ativa_da_ia(mundo: Mundo) -> None:
     assert mundo.status(da_ia) == "superseded" and mundo.status(ensinada) == "active"
     assert _viva(mundo) == ensinada                                          # ela segura a chave
     assert mundo.procura() is None              # 30.81: fora da persona que ensinou, só depois da prova ou do Confirmar
+    agora = to_iso(datetime.now(UTC))                                       # N3 da leitura: a persona que ensinou a acha
+    mundo.db.execute("INSERT INTO training_sessions(id, instance_id, profile_id, intent, status, created_at, updated_at)"
+                     " VALUES ('t1','android-01','p-ensinou','ensinar','saved',?,?)", (agora, agora))
+    achada = mundo.store.find(PKG, "1.0(1)", "h-enviar", persona="p-ensinou", **CHAVE)
+    assert achada is not None and achada["id"] == ensinada
     # a trilha nos dois lados, assinada pela sessão de treino (não pelo sistema)
     assert mundo.trilha(da_ia)[-1] == ("published", "deprecated", TREINO)
     assert "demonstrada pela pessoa" in _motivo(mundo, da_ia) and "v2" in _motivo(mundo, da_ia)

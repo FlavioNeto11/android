@@ -138,11 +138,11 @@ type DetalheDaCorrecao = Pick<RunDetail, 'id' | 'plan' | 'plan_versions'>;
 
 /**
  * A origem da etapa quando ela se corrige aqui; `null` quando não cabe: habilidades desligadas
- * (`health.features.skills`), etapa que não falhou nem ficou sem prova, ou etapa que não veio de habilidade. Uma só
+ * (`health.features.skills`) ou a tela do ensino v2 desligada (`features.ensino_v2`, 31.91 F1), etapa que não falhou nem ficou sem prova, ou etapa que não veio de habilidade. Uma só
  * regra para a ação e para a marca da linha recolhida: marca "corrigível" sem a ação no detalhe seria pior que nada.
  */
 function useOrigemCorrigivel(detail: DetalheDaCorrecao, step: Step): StepOrigin | null {
-  const ligado = useAppStore((st) => st.health?.features?.skills === true);
+  const ligado = useAppStore((st) => st.health?.features?.skills === true && st.health?.features?.ensino_v2 === true);
   if (!ligado || !ETAPA_CORRIGIVEL.has(step.status)) return null;
   return origemDaEtapa(detail, step);
 }

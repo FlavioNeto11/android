@@ -31,3 +31,9 @@ qa-app/local.properties
 # partida, config/config.example.yaml. scripts/start.ps1 copia o exemplo na primeira partida, e o backend
 # cai nele sozinho se o arquivo nao existir (app/config.py::config_file_path).
 config/config.yaml
+
+# Dado de persona de verdade (voz e cadastro) não fica no Git (31.105): mora na pasta privada da instalação,
+# C:/farm/privado/, como a tabela de nomes de teste; os scripts recebem o caminho. A linha impede a volta por um
+# `git add` descuidado.
+scripts/personas-voz.json
+scripts/personas-novas.json

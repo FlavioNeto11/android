@@ -99,6 +99,7 @@ from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
 from .social.excecoes import ExcecaoEmUso, ExcecaoInvalida
 from .social.service import SocialError
 from .taskqueue import observabilidade
+from .taskqueue.flows import id_do_fluxo
 from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
@@ -878,6 +879,7 @@ async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObj
 @router.put("/flows/{flow_id}")
 async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> Any:
     s = st(request)
+    flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: o id ou a referência pública (o `href` dos avisos)
     if s.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)) is None:
         raise err(404, "not_found", "Fluxo não encontrado.")
     if patch.get("status") not in ("active", "disabled"):
@@ -935,6 +937,7 @@ async def set_flow_scope(request: Request, flow_id: str, body: EscopoDoFluxoBody
 @router.delete("/flows/{flow_id}", status_code=204)
 async def delete_flow(request: Request, flow_id: str) -> Response:
     s = st(request)
+    flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: antes da guarda da adoção, que lê pelo id
     # Fluxo adotado por uma habilidade é o caminho de volta da adoção (`release_flow` o religa): apagá-lo deixaria
     # a habilidade sem ter para onde desfazer. Desligar continua possível; apagar, só depois de desfazer.
     if (dona := s.skill_repo.adopter_id(flow_id)) is not None:

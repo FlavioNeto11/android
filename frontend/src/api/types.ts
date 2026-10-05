@@ -495,7 +495,10 @@ interface Health {
               system_image: string;
               // fase F — `skills.enabled`: o ensino v2 e a lista de habilidades só aparecem com isto ligado.
               // Ausente = backend anterior à fase F = desligado.
-              skills?: boolean };
+              skills?: boolean;
+              // 31.91 F1 — `skills.ensino_v2_na_tela`: a TELA do ensino v2 (revisão só para leitura e "Corrigir etapa").
+              // Só vale com `skills` também ligado. Ausente = desligado.
+              ensino_v2?: boolean };
 }
 
 interface Metrics {
@@ -1806,6 +1809,14 @@ export interface PanelSession {
   expires_at: string | null;
 }
 
+/** 30.81 (adendo v1.65): o fluxo ensinado no modo treinamento que ainda espera a prova. Só vale para a persona que
+ *  ensinou (`persona: null`: a gravação não tinha persona, e ele não casa em aparelho nenhum até a prova). `sessao` é a
+ *  gravação de origem (`trn-…`). AUSENTE quando não se aplica (e em backend anterior). */
+export interface EnsinadoEmProva {
+  persona: string | null;
+  sessao: string;
+}
+
 /** `GET /api/flows/cobertura` e o campo `flows[]` de `GET /api/instagram/profiles/{id}/capacidades`: quantas
  * etapas do plano-modelo têm receita ativa para a versão promovida do app — os "caminhos mapeados". */
 export interface FlowCoverage {
@@ -1826,6 +1837,8 @@ export interface FlowCoverage {
   /** Só na visão por perfil: quantas vezes este perfil concluiu o fluxo e quando foi a última. */
   times?: number;
   last_at?: string | null;
+  /** 30.81: o ensinado ainda sem prova (também em `POST /flows/match`). */
+  ensinado_em_prova?: EnsinadoEmProva;
 }
 
 /** `GET /api/instagram/profiles/{id}/capacidades` — o que a persona já fez e quanto disso roda sem IA. */
@@ -2051,6 +2064,8 @@ export interface TrainingSaveResult {
   steps: TrainingStepReport[];
   /** 31.83 (adendo v1.57): o que o salvar aceitou mas vale avisar; backend anterior não manda. */
   warnings?: string[];
+  /** 30.81: o fluxo salvo espera a prova; só vale para a persona que ensinou. */
+  ensinado_em_prova?: EnsinadoEmProva;
 }
 
 /** `POST /training/{id}/preview` (adendo v1.58): o que o salvar faria, sem gravar. */
@@ -2065,6 +2080,8 @@ export interface TrainingRecipesResult {
   flow_id: string;
   steps: TrainingStepReport[];
   created: number;
+  /** 30.81: no topo, ao lado de `flow_id`; ausente quando o fluxo já não espera. */
+  ensinado_em_prova?: EnsinadoEmProva;
 }
 
 // ---------------------------------------------------------------- ensino v2 e habilidades (fase F, `features.skills`)

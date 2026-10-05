@@ -31,7 +31,7 @@ from app.modules.learning.domain.aprovacao_automatica import (PLATAFORMA, Acao, 
                                                               regra_do_motivo)
 from app.modules.learning.domain.ciclo import ErroDeAprendizado, SkillState
 from app.modules.learning.domain.evidencia_invalida import run_invalidada
-from app.modules.learning.domain.livro import EntradaDoLivro, LivroKind
+from app.modules.learning.domain.livro import EntradaDoLivro, LivroKind, ref_no_log
 from app.modules.learning.domain.parecer import RevisaoGravada, mais_restritiva
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco
 from app.modules.learning.domain.promocao import contadores
@@ -159,7 +159,7 @@ class ServicoDeAprovacaoAutomatica:
             else:
                 self._servico.confirmar_que_fica(kind, f.ref, by=PLATAFORMA, motivo=texto)
         except ErroDeAprendizado as exc:
-            log.warning("aprendizado: aprovação automática recusada para %s: %s", x.item_ref, exc)
+            log.warning("aprendizado: aprovação automática recusada para %s: %s", ref_no_log(x.item_ref), exc)
             return False
         return True
 

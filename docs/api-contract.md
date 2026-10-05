@@ -1754,7 +1754,9 @@ interface Health   { /* + */ features: { hibernation: boolean; recipes: string; 
                                           skills?: boolean } }   // v0.23: skills.enabled; ausente = desligado
 ```
 
-- `features.skills` é `skills.enabled`, lido a cada `GET /api/health` (`state.py`, `Health.features`).
+- `features.skills` é `skills.enabled`, lido a cada `GET /api/health` (`state.py`, `Health.features`). `features.ensino_v2` é
+  `skills.ensino_v2_na_tela` (31.91 F1, padrão `false`): a TELA do ensino v2 (a revisão só para leitura e o "Corrigir etapa")
+  só aparece com `skills` E `ensino_v2` ligados; as rotas não dependem dele.
 - Opcional no painel: backend anterior à fase F não manda o campo, e o painel o trata como desligado.
 - O painel só chama as rotas abaixo com ele `true` ([produto](produto.md#3-fluxos-do-usuário)).
 
@@ -6657,8 +6659,41 @@ Muda o VALOR de `ref` nos eventos de fluxo e passa a aceitar a referência nova 
   `item.ref`. Referência desconhecida: o 404 de sempre.
 - **Quem consome:** a Canais deduplica por `desde` + `ref`; a partir do deploy, o `ref` de um fluxo antigo muda uma vez
   (do slug para a referência pública). Até o deploy, a Canais segue sem transmitir o `ref` de fluxo nem o `message`.
-- **Ainda não coberto** (próximas fatias do 30.83): as rotas `/api/flows/{id}`, os `href` das respostas do painel, os
-  eventos `learning.ensinado_*` (30.80 B e 30.81, ainda em ramo) e os logs que levam `fluxo:<id>`.
+- **Fatia 3:**
+  - os eventos `learning.ensinado_rebaixado`, `learning.ensinado_sem_receita`, o da espera de decisão e o da decisão
+    (adendos v1.61 e v1.65), com `kind: "fluxo"`, levam em `data.ref` a referência pública;
+  - `PUT` e `DELETE /api/flows/{id}`, `POST /api/flows/{id}/adopt` e `/release` aceitam as duas formas. A resposta segue
+    com o id interno (`id`, `flow_id`);
+  - o `desfazer.href` de um efeito do voto (`POST /api/runs/{id}/feedback`) leva a referência pública; o `ref` do
+    efeito segue com o id interno.
+- **Fatia 4:** o texto das exceções de fluxo (o `detail.message` dos 404, 409 e 422 do Livro, do pedido de validação e
+  da loja do Livro) não cita a referência: diz só "fluxo" ("Não há fluxo com essa referência no livro.", "O fluxo
+  mudou de status…"). A receita segue com o número.
+- **Fica com o id interno** (o painel casa por ele; nada disso vai a evento):
+  - `item.ref` nas respostas do Livro e o `ref` do efeito do voto;
+  - `GET /api/flows`, a resposta do `PUT /api/flows/{id}` (`id` e `name`) e o `flow_id` de adopt e release;
+  - o id da habilidade adotada de um fluxo legado (`<app>.<slug>`) e `flow:<slug>` nas relações;
+  - o texto das exceções da loja de habilidades no `detail` de adopt e release (a fatia 4 tratou só as do Livro).
+- **Varredura:** `backend/tests/test_ref_do_fluxo_fora_do_log.py` confere que nenhum log nem exceção do módulo do
+  aprendizado cita a referência crua.
+- **Para a Canais:** a chave do aviso do ensinado (o hash do `ref`) muda uma vez no deploy, como a do
+  `learning.needs_person`. Um fluxo apagado sorteia uma referência nova a cada reemissão, e a chave muda junto.
+
+## Adendo v1.68 (05/10/2026; número da orquestradora; item 30.84) — reensinar o comando que a prova desligou
+
+Nenhum campo novo, sem migração. Muda quando `POST /api/training/{session_id}/save` e
+`POST /api/training/{session_id}/preview` respondem `409 duplicate_command`.
+- **Antes:** qualquer fluxo com a mesma `match_key` recusava, inclusive o ensinado que a prova real desligou (30.81,
+  adendo v1.65). A pessoa não conseguia corrigir a demonstração.
+- **Agora:** o fluxo ensinado cujo desligamento PELA PROVA ainda é a última linha da trilha não recusa.
+  - O `save` faz a MESMA linha renascer e devolve o `flow_id` que já existia (mesma referência pública, adendo v1.66).
+  - Plano, sessão e nascimento são novos; o fluxo fica ativo e de novo em espera de prova (adendo v1.65).
+  - A prévia responde como o `save` responderia, sem gravar.
+- **Seguem com o 409:** o fluxo desligado por uma pessoa, o que uma pessoa mexeu depois da prova, o adotado por uma
+  habilidade, o ativo, e o comando com habilidade versionada publicada. As mensagens não mudam.
+- **Quem consome:** o painel do treino (`TrainingReview`) mostra o `flow_id` devolvido e oferece a adoção dele; o
+  mesmo id de antes não muda nada ali.
+- **Prova:** `simulated` (`backend/tests/test_reensinar_o_desligado_pela_prova.py`).
 
 ## Adendo v1.69 (05/10/2026; número da orquestradora; item 31.87 F2) — o ensino usa os dados da persona
 

@@ -23,7 +23,7 @@ from app.modules.learning.application.ports import CatalogoDeRisco, PortaDeEvent
 from app.modules.learning.domain.ciclo import SkillState
 from app.modules.learning.domain.espera import (AvisoDeEspera, FatosDoCatalogo, Faixa,
                                                 MotivoDeEntrada, classificar_espera, motivo_de_saida)
-from app.modules.learning.domain.livro import EntradaDoLivro, para_aprovar
+from app.modules.learning.domain.livro import EntradaDoLivro, para_aprovar, quem_no_log
 from app.modules.learning.domain.politica_de_risco import EtapaDeRisco
 from app.modules.learning.domain.vocabulario import LivroKind
 from app.util import to_iso
@@ -74,7 +74,7 @@ class AvisadorDeEspera:
             self.mudou(antes, depois, por_sistema=por_sistema, capability=capability,
                        sessao_ou_autenticacao=sessao_ou_autenticacao)
         except Exception:  # noqa: BLE001 - o aviso informa; a transição já foi gravada e não cai por causa dele
-            log.exception("aprendizado: aviso de espera de %s %s", depois.kind.value, depois.ref)
+            log.exception("aprendizado: aviso de espera de %s", quem_no_log(depois.kind, depois.ref))
 
     def _avisar(self, antes: EntradaDoLivro | None, depois: EntradaDoLivro, *, por_sistema: bool, capability: str,
                 sessao: bool) -> None:
@@ -117,7 +117,7 @@ class AvisadorDeEspera:
                                                          aguardando=True, motivo=MotivoDeEntrada.PARECER_DA_IA.value,
                                                          desde=desde))
         except Exception:  # noqa: BLE001 - o aviso informa; o parecer já foi gravado
-            log.exception("aprendizado: aviso de parecer de %s %s", e.kind.value, e.ref)
+            log.exception("aprendizado: aviso de parecer de %s", quem_no_log(e.kind, e.ref))
             return False
         return True
 

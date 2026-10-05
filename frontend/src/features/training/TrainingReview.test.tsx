@@ -128,9 +128,9 @@ it('"Depois" e "Pedir outra proposta" pedem confirmação quando há edição; s
 });
 
 // ---------------------------------------------------------------- fase F: ensino v2 atrás de `features.skills`
-function comHabilidades(ligado: boolean | undefined): void {
+function comHabilidades(ligado: boolean | undefined, ensinoV2: boolean | 'ausente' = ligado ?? 'ausente'): void {
   const health = makeSnapshot().health;
-  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado } } });
+  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado, ensino_v2: ensinoV2 === 'ausente' ? undefined : ensinoV2 } } });
 }
 
 const DOC = {
@@ -483,12 +483,72 @@ it('etapa sem receita no salvar: "Refazer receitas" só com o clique, chama /rec
   await click(byRole('button', /^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   expect(text()).toContain('com IA');
+  expect(text()).not.toContain('em prova');                             // sem `ensinado_em_prova`, nenhum selo (30.81)
   expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(0);       // quem aciona é a pessoa
 
   await click(byRole('button', /^Refazer receitas$/));
   await waitFor(() => expect(text()).toContain('1 receita gravada agora.'));
   expect(text()).toContain('— receita gravada');                        // o relatório troca pelo do refazer
   expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(1);
+});
+
+// ---------------------------------------------------------------- 30.81 (v1.65): o fluxo ensinado espera a prova
+const SALVO_SEM_RECEITA = [{ key: 'abrir', title: 'Abrir a conversa', recipe: false, reason: 'aparelho fora do ar' }];
+
+it('30.81: o salvar com `ensinado_em_prova` mostra o selo e diz que só a persona que ensinou usa até a prova; o refazer mantém ou tira', async () => {
+  let refeitas = 0;
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', warnings: [], steps: SALVO_SEM_RECEITA,
+    ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' },
+  }));
+  backend.on('POST', /\/training\/trn-1\/recipes$/, () => {
+    refeitas += 1;
+    const base = { session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', created: 1,
+                   steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }] };
+    // 1ª: o fluxo ainda espera; 2ª: uma prova ou uma pessoa já o liberou (o campo some).
+    return json(refeitas === 1 ? { ...base, ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' } } : { ...base, created: 0 });
+  });
+  await abrirEProporComPrevia();
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  expect(text()).toContain('em prova');
+  expect(text()).toContain('Até a prova, só a persona que ensinou pode pedir pelo comando');
+  expect(text()).not.toContain('Quem estiver no escopo pode pedir');
+  expect(document.querySelector('[title^="Ensinado e ainda sem prova: só vale para a persona que ensinou"]')).not.toBeNull();
+  expect(text()).not.toContain('ig-1');                    // o id da persona não vai para a frase
+
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('Em prova: as receitas só valem para a persona que ensinou.'));
+  expect(text()).toContain('em prova');
+
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('Quem estiver no escopo pode pedir pelo comando'));
+  expect(text()).not.toContain('em prova');
+});
+
+it('30.81: a gravação sem persona diz que o fluxo não vale em aparelho nenhum até a prova', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', warnings: [], steps: SALVO_SEM_RECEITA,
+    ensinado_em_prova: { persona: null, sessao: 'trn-1' },
+  }));
+  await abrirEProporComPrevia();
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  expect(text()).toContain('a gravação não tinha persona: não vale em aparelho nenhum até uma prova real dar certo');
+  // a linha que apresenta o comando não diz que uma persona que ensinou pode pedir: não há nenhuma
+  expect(text()).toContain('Até a prova, o comando não vale em aparelho nenhum');
+  expect(text()).not.toContain('só a persona que ensinou pode pedir');
+
+  backend.on('POST', /\/training\/trn-1\/recipes$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', created: 1,
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
+    ensinado_em_prova: { persona: null, sessao: 'trn-1' },
+  }));
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('a gravação não tinha persona, então as receitas não valem em aparelho nenhum.'));
+  expect(text()).not.toContain('as receitas só valem para a persona que ensinou');
 });
 
 // ---------------------------------------------------------------- 31.91 F2 (v1.63): responder às perguntas da proposta
@@ -579,4 +639,25 @@ it('mais de 8 respostas: o pedido trava com o motivo em vez de cortar a 9ª', as
   expect(backend.callsTo('POST', /\/propose$/)).toHaveLength(antes);
   await setValue(byRole('textbox', /^Pergunta 9$/) as HTMLInputElement, '');
   expect(byRole('button', /^Pedir nova proposta com as respostas/).getAttribute('aria-disabled')).toBeNull();
+});
+
+// ---------------------------------------------------------------- 31.91 F1: a tela do ensino v2 tem chave própria
+it('31.91 F1: com skills ligado e a tela do ensino v2 desligada (padrão), o ensino antigo some, mas "Gerar habilidade" fica', async () => {
+  comHabilidades(true, false);
+  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
+  backend.on('GET', /\/teaching-sessions\/ens-1$/, () => json(ensino('asking', { current_candidate: candidata(1), open_questions: [] })));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('entradas'));
+  expect(text()).not.toContain('Habilidade versionada');
+  expect(text()).not.toContain('fica só para leitura');
+  // a revisão nem pergunta pelo ensino antigo: nenhuma chamada a /teaching-sessions
+  expect(backend.calls.filter((c) => /teaching-sessions/.test(c.path))).toHaveLength(0);
+});
+
+it('31.91 F1: o campo ausente (backend anterior) também esconde a tela do ensino v2', async () => {
+  comHabilidades(true, 'ausente');
+  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('entradas'));
+  expect(text()).not.toContain('Habilidade versionada');
 });

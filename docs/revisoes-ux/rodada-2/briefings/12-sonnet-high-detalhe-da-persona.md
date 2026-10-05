@@ -12,7 +12,7 @@ forca_recomendada: high
 - **11 abas** na mesma faixa: Visão geral, Persona, Contas e acesso, Imagens, Aparelhos, Memória, Interações, Habilidades, Aprovações, Execuções, Configurações. A faixa rola, mas não há agrupamento nem prioridade.
 - O seletor de apps ("Todos / Instagram / Outlook / Conta em outro app") fica acima das abas sem explicar que filtra o conteúdo delas.
 - Campos sensíveis (religião, política) aparecem por padrão na Visão geral.
-- O identificador na URL é opaco (`#/personas/ig-CVG2z6c0Dv9dBrsY`).
+- O identificador na URL é opaco (`#/personas/ig-Ex4mpl0Pers0na12`).
 - O selo de estado no canto superior direito ("Conectado", "Não verificada") não explica o que fazer.
 
 ## O que fazer
@@ -27,7 +27,7 @@ forca_recomendada: high
 3. Tornar claro o escopo do seletor de apps ("Mostrando: Instagram") e o que ele filtra.
 4. Campos sensíveis (religião, política) atrás de um bloco recolhível "Atributos de personalidade", fechado por padrão.
 5. Tornar o selo de estado acionável: "Não verificada" leva ao fluxo de verificação; "Conectado" mostra desde quando.
-6. **ID legível na URL**: aceitar e gerar `#/personas/lucas-almeida` (slug por nome, com sufixo curto em caso de colisão). Manter compatibilidade com o ID antigo.
+6. **ID legível na URL**: aceitar e gerar `#/personas/tadeu-quintela` (slug por nome, com sufixo curto em caso de colisão). Manter compatibilidade com o ID antigo.
 7. Em 390 px: seções como lista suspensa ou rolagem horizontal com indicador, sem cortar rótulos.
 
 ## Critérios de aceite

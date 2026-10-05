@@ -22,6 +22,9 @@ from app.modules.learning.domain.livro import EntradaDoLivro
 from app.modules.learning.domain.vocabulario import LivroKind, Origem
 
 TIPO_REBAIXADO = "learning.ensinado_rebaixado"
+#: O começo do motivo com que a prova real que falha desliga o fluxo ensinado (30.81). O 30.84 o lê na trilha para
+#: deixar a pessoa ensinar o mesmo comando de novo: só esse desligamento, e só se ele ainda for a última linha.
+MOTIVO_DA_PROVA_DO_ENSINADO = "a prova do fluxo ensinado falhou"
 TIPO_SEM_RECEITA = "learning.ensinado_sem_receita"
 
 #: A lista fechada do `data` do evento (combinada com a Canais em 05/10; nome ou campo novo: avisar a frente antes).
@@ -129,6 +132,7 @@ def decisao_da_pessoa(para: SkillState | None, *, confirmou: bool) -> str:
     return "desligado" if para is SkillState.DISABLED else "outro"
 
 
-__all__ = ["CAMPOS_DA_DECISAO", "CAMPOS_DA_ESPERA", "CAMPOS_DO_PAYLOAD", "DECISOES", "TIPO_DECIDIDO",
+__all__ = ["CAMPOS_DA_DECISAO", "CAMPOS_DA_ESPERA", "CAMPOS_DO_PAYLOAD", "DECISOES", "MOTIVO_DA_PROVA_DO_ENSINADO",
+           "TIPO_DECIDIDO",
            "TIPO_ESPERA_DECISAO", "TIPO_REBAIXADO", "TIPO_SEM_RECEITA", "AvisoDoEnsinado", "DecisaoDoEnsinado",
            "EsperaDoEnsinado", "decisao_da_pessoa", "rebaixado_pelo_sistema", "sessao_de_treino"]
