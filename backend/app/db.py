@@ -114,6 +114,8 @@ class Database:
         self.dialect = "postgres" if _e_postgres(self.dsn) else "sqlite"
         self._lock = threading.RLock()
         self._tx_depth = 0
+        #: O que espera o `COMMIT` da transação de fora para rodar (`depois_do_commit`). Some no `ROLLBACK`.
+        self._depois_do_commit: list[Callable[[], None]] = []
         #: A conexão pode estar podre sem ter falhado ainda (um ROLLBACK que não completou). A próxima chamada
         #: fora de transação reabre antes de tentar, em vez de gastar uma falha para descobrir.
         self._suspeita = False
@@ -330,9 +332,20 @@ class Database:
                 self._reabrir()
                 return operacao(self._conn)
 
+    def depois_do_commit(self, fn: Callable[[], None]) -> None:
+        """Roda `fn` depois do `COMMIT` da transação aberta NESTA thread, fora da trava; sem transação, roda já. No
+        `ROLLBACK`, não roda. Existe para o efeito que outra thread vai ler (o assentamento de uma execução, 29.93):
+        disparado dentro da transação, ele podia esperar a trava no laço de eventos, ou ler o estado de antes."""
+        with self._lock:
+            if self._tx_depth > 0:
+                self._depois_do_commit.append(fn)
+                return
+        fn()
+
     @contextmanager
     def tx(self) -> Iterator[Any]:
         """Transação curta e atômica. Reentrante: o bloco de dentro entra na transação do de fora."""
+        pendentes: list[Callable[[], None]] = []
         with self._lock:
             outer = self._tx_depth == 0
             if outer:
@@ -349,8 +362,10 @@ class Database:
                         raise TransacaoAbortada("transação abortada por um erro engolido lá dentro (sem savepoint): "
                                                 "nada foi gravado")
                     self._conn.execute("COMMIT")
+                    pendentes, self._depois_do_commit = self._depois_do_commit, []
             except BaseException:
                 if outer:
+                    self._depois_do_commit = []
                     try:
                         self._conn.execute("ROLLBACK")
                     except Exception:   # noqa: BLE001 - ver abaixo
@@ -362,6 +377,11 @@ class Database:
                 raise
             finally:
                 self._tx_depth -= 1
+        for fn in pendentes:            # já gravado e fora da trava: o efeito lê o que foi gravado
+            try:
+                fn()
+            except Exception:  # noqa: BLE001 - o efeito posterior nunca desfaz nem derruba o que já foi gravado
+                log.exception("efeito depois do commit")
 
     def _transacao_abortada(self) -> bool:
         """A conexão diz que a transação aberta está abortada. Só o psycopg sabe dizer (`info.transaction_status`, lido

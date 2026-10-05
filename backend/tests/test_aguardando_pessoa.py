@@ -318,6 +318,7 @@ def _um_assentamento(st: Any, g: dict[str, list[str]], run_id: str, *, sem_worke
     assert g["pedidos"] == [run_id]
     assert run_id not in st._draft_locks                         # noqa: SLF001
     assert g["sem_worker"] == ([run_id] if sem_worker else [])
+    assert st.repo.run_row(run_id)["assentada_em"]               # a marca do #382 ficou gravada
 
 
 async def test_a_parada_solta_a_trava_e_acorda_os_pedidos_como_na_main_sem_digest(harness: Harness,
@@ -466,3 +467,131 @@ async def test_a_retencao_de_evidencia_poupa_a_execucao_aguardando(harness: Harn
     limpos = st._apagar_evidencias_vencidas(to_iso(now() - timedelta(days=7)))   # noqa: SLF001
     assert fechada in limpos and espera not in limpos
     assert st.db.scalar("SELECT COUNT(*) FROM evidence WHERE run_id=?", (espera,)) > 0
+
+
+async def test_o_assentamento_sai_depois_do_commit_e_nao_sai_no_rollback(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """O vencimento troca o estado dentro de uma `tx()`: o gancho espera o COMMIT (`Database.depois_do_commit`), e a
+    transação desfeita não assenta nada."""
+    st = harness.state
+    assert st is not None
+    run_id, g = await _parada_gravada(harness, monkeypatch)
+    with st.db.tx():
+        st.repo.set_run_status(run_id, RunStatus.completed_with_issues, "teste do commit")
+        assert g["sem_worker"] == []                              # ainda dentro: nada disparou
+    assert g["sem_worker"] == [run_id]                            # depois do COMMIT, uma vez
+    desfeita, g2 = await _parada_gravada(harness, monkeypatch, "android-02")
+    with pytest.raises(RuntimeError):
+        with st.db.tx():
+            st.repo.set_run_status(desfeita, RunStatus.completed_with_issues, "teste do rollback")
+            raise RuntimeError("cai antes do commit")
+    assert g2["sem_worker"] == [] and _status_da_execucao(harness, desfeita) == "awaiting_person"
+
+
+async def test_sem_laco_o_assentamento_solta_e_avisa_que_o_digest_se_perdeu(harness: Harness,
+                                                                            monkeypatch: pytest.MonkeyPatch,
+                                                                            caplog: pytest.LogCaptureFixture) -> None:
+    st = harness.state
+    assert st is not None
+    g = _gravar(st, monkeypatch)
+    monkeypatch.setattr(st, "_laco_principal", None)              # a thread que termina depois do desligamento
+    st._draft_locks["run-sem-laco"] = asyncio.Lock()             # noqa: SLF001
+    with caplog.at_level("WARNING"):
+        await asyncio.to_thread(st._execucao_assentada, "run-sem-laco")                      # noqa: SLF001
+    assert g["pedidos"] == ["run-sem-laco"] and "run-sem-laco" not in st._draft_locks      # noqa: SLF001
+    assert g["digest"] == []
+    assert any("run-sem-laco" in r.getMessage() and "digest" in r.getMessage() for r in caplog.records
+               if r.levelname == "WARNING")
+
+
+async def test_a_excecao_do_assentamento_agendado_diz_a_execucao(harness: Harness, monkeypatch: pytest.MonkeyPatch,
+                                                                caplog: pytest.LogCaptureFixture) -> None:
+    st = harness.state
+    assert st is not None
+
+    def quebra(run_id: str) -> None:
+        raise RuntimeError("falha de teste no assentamento")
+
+    monkeypatch.setattr(st, "_execucao_parada", quebra)
+    with caplog.at_level("ERROR"):
+        await asyncio.to_thread(st._execucao_assentada, "run-que-quebra")                    # noqa: SLF001
+        await harness.wait(lambda: any("run-que-quebra" in r.getMessage() for r in caplog.records),
+                           what="log do assentamento agendado")
+    assert any(r.levelname == "ERROR" and "assentamento agendado da execução run-que-quebra" in r.getMessage()
+               for r in caplog.records)
+
+
+# ------------------------------------------------------------------ #382: a marca `assentada_em` (migração 113)
+async def test_a_execucao_comum_assenta_em_linha_pelo_worker_uma_vez(harness: Harness,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """O caminho comum: o worker grava o estado final e a marca na mesma transação e assenta no `finally`, em linha. A
+    rede do `set_run_status` chega depois do COMMIT, encontra a marca e não assenta."""
+    st = harness.state
+    assert st is not None
+    g = _gravar(st, monkeypatch)
+    pelo_worker: list[str] = []
+    original = st.scheduler.on_run_settled
+    assert original is not None
+
+    def no_worker(run_id: str) -> None:
+        pelo_worker.append(run_id)
+        original(run_id)
+
+    monkeypatch.setattr(st.scheduler, "on_run_settled", no_worker)
+    harness.fakes["android-01"].screen = "home"
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed"))
+    await _assentou(harness, g, run.id)
+    assert pelo_worker == [run.id]
+    _um_assentamento(st, g, run.id, sem_worker=False)
+
+
+async def _assentada_pelo_worker(h: Harness, monkeypatch: pytest.MonkeyPatch) -> tuple[str, dict[str, list[str]]]:
+    """Uma execução que o worker fechou e assentou, levada a `completed_with_issues` com o objetivo incerto (o estado
+    que o worker grava quando a prova não fecha), com a marca de assentada intacta."""
+    st = h.state
+    assert st is not None
+    g = _gravar(st, monkeypatch)
+    h.fakes["android-01"].screen = "home"
+    run = h.run(["android-01"])
+    await h.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed"))
+    await _assentou(h, g, run.id)
+    assert st.repo.run_row(run.id)["assentada_em"]
+    st.db.execute("UPDATE objectives SET status='uncertain' WHERE run_id=?", (run.id,))
+    st.db.execute("UPDATE runs SET status='completed_with_issues' WHERE id=?", (run.id,))
+    for k in g:
+        g[k].clear()
+    return run.id, g
+
+
+async def test_d1_cancelar_a_execucao_incerta_ja_assentada_nao_assenta_de_novo(harness: Harness,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """D1: `completed_with_issues` → `cancelling` → `completed_with_issues` (o incerto que o `_finish_cancel` não
+    fecha). O `cancelling` não zera a marca, e a rede perde o compare-and-set: nada sai de novo."""
+    st = harness.state
+    assert st is not None
+    run_id, g = await _assentada_pelo_worker(harness, monkeypatch)
+    st.runs.cancel(run_id, por="operador-teste")
+    await harness.wait(lambda: _status_da_execucao(harness, run_id) != "cancelling", what="o cancelamento fechar")
+    await asyncio.sleep(0.5)
+    assert _status_da_execucao(harness, run_id) == "completed_with_issues"
+    assert g == {"digest": [], "pedidos": [], "sem_worker": []}
+
+
+async def test_d2_a_execucao_cancelada_sem_worker_assenta_uma_vez(harness: Harness,
+                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+    """D2 (29.103): uma execução reaberta e pausada, com o item pendente e nenhum worker vivo, é cancelada. O
+    `_finish_cancel` fecha o item e a execução; a reabertura zerou a marca, e a rede assenta, uma vez."""
+    st = harness.state
+    assert st is not None
+    run_id, g = await _assentada_pelo_worker(harness, monkeypatch)
+    st.db.execute("UPDATE objectives SET status='pending' WHERE run_id=?", (run_id,))
+    st.db.execute("UPDATE runs SET pause_requested=1 WHERE id=?", (run_id,))
+    assert st.repo.recompute_run(run_id) == RunStatus.running              # reabre como `paused`
+    run = st.repo.run_row(run_id)
+    assert run["status"] == "paused" and run["assentada_em"] is None       # a reabertura zera a marca
+    st._draft_locks[run_id] = asyncio.Lock()                    # noqa: SLF001 - a trava que o assentamento solta
+    st.runs.cancel(run_id, por="operador-teste")
+    await harness.wait_run(run_id, statuses=("cancelled",))
+    await _assentou(harness, g, run_id)
+    _um_assentamento(st, g, run_id, sem_worker=True)
