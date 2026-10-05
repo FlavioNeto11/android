@@ -1459,10 +1459,10 @@ class AppState:
             return motivo, None
         # 29.92: teto por aparelho. Com vínculo ativo (conta real) é 1: o primeiro `unknown` de um `ensure_session` já
         # para, porque a rodada seguinte pode cair no login e digitar a senha guardada em cima de uma tela que ninguém
-        # reconheceu. A tela classificada direto como login segue para o `_login` com consentimento (ADR-040).
-        teto = self.social_repo.teto_de_unknown(rt.id) or self.settings.get().session_unknown_retry_cap
-        if (session and session["status"] == SessionStatus.unknown.value
-                and int(session["unknown_streak"] or 0) >= teto):
+        # reconheceu. A tela classificada direto como login segue para o `_login` com consentimento (ADR-040). 29.96:
+        # a comparação é a do aviso e do `SessionInfo.unknown_at_cap` (`unknown_no_teto`), não uma cópia; o teto global
+        # vem dos ajustes ao vivo pelo `teto_de_reobservacao` que o repositório recebe na montagem.
+        if session is not None and self.social_repo.unknown_no_teto(session, rt.id):
             # Achado #104: sem este teto, uma tela que `classify()` nunca reconhece (sinal ausente da tabela,
             # onboarding fora do mapa) reabria o app e reobservava a cada tick, sem parar e sem aviso. Depois de
             # `teto` reobservações seguidas com o mesmo resultado, para de insistir sozinho — vira caso de
@@ -2746,6 +2746,9 @@ class AppState:
             self._bg.append(asyncio.create_task(self.avisos.laco(), name="avisos-fora-do-painel"))
             # O reenvio dos contatos do site e a retenção de 180 dias (29.77), no líder da mesma trava `avisos`.
             self._bg.append(asyncio.create_task(self.portal.laco(lambda: self._lider(AVISOS)), name="portal-contatos"))
+            # O vigia da borda (29.97): de hora em hora, no mesmo líder; sem nome público não faz nada.
+            self._bg.append(asyncio.create_task(self.portal.laco_da_borda(lambda: self._lider(AVISOS)),
+                                                name="portal-borda"))
             # O recolher das decisões automáticas (28.25) em qualquer réplica; o resumo, só no líder da trava `avisos`.
             self._bg.append(asyncio.create_task(self.decisoes.laco(), name="decisoes-automaticas"))
             # A conversa de volta (28.15): long-poll do getUpdates, só no líder da trava `avisos` (único consumidor).

@@ -482,3 +482,43 @@ async def test_parada_resolvida_na_releitura_conta_pela_via(harness: Harness) ->
     assert metricas.valor("sessao.unknown_resolvida", instancia=IID, rodada_antes=1) == 1
     saidas = [e for e in _eventos_de_pessoa(s) if e.get("active") is False]
     assert len(saidas) == 1                                            # a saída da fila também sai uma vez
+
+
+@pytest.mark.asyncio
+async def test_parada_no_teto_aparece_no_rest_pela_regra_do_aviso(harness: Harness) -> None:
+    """29.96: a sessão parada no teto (`unknown` com vínculo, teto 1) sai em `SessionInfo.unknown_at_cap` nos TRÊS
+    montadores (persona, persona no aparelho, conta), pela mesma regra do `session.needs_person`. É o que põe a parada
+    nas filas "Aguardando intervenção" e Pendências do painel, que filtram por estado e antes não a viam. Antes de
+    qualquer leitura de tela, e depois de a sessão voltar, o campo é falso."""
+    s = _estado(harness)
+    s.appium.log_masking_active = True
+    pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+
+    def campos() -> tuple[bool, bool, list[bool]]:
+        perfil = s.social_repo.profile_dto(pid)
+        no_aparelho = s.social_repo.sessao_no_aparelho(pid, None, IID)
+        assert perfil is not None and no_aparelho is not None
+        return (perfil.session.unknown_at_cap, no_aparelho.unknown_at_cap,
+                [c.session.unknown_at_cap for c in s.social.list_accounts(pid)])
+
+    assert campos() == (False, False, [False])
+    estranha = RaizEstranha(account=USUARIO, screen="feed", stored_password=SENHA)
+    await _motor(s, estranha).ensure_session(FakeRt(estranha, IID), pid, automatic=True)
+    assert campos() == (True, True, [True])
+    assert [e["active"] for e in _eventos_de_pessoa(s) if e.get("status") == "unknown"] == [True]
+
+    logado = FakeInstagram(account=USUARIO, screen="feed", stored_password=SENHA)
+    await _motor(s, logado).ensure_session(FakeRt(logado, IID), pid, observe_only=True)   # a pessoa devolveu
+    assert campos() == (False, False, [False])
+    assert [(e["status"], e["active"]) for e in _eventos_de_pessoa(s)] == [("unknown", True), ("session_ready", False)]
+
+
+@pytest.mark.asyncio
+async def test_unknown_administrativo_nao_e_parada(harness: Harness) -> None:
+    """O `unknown` gravado sem leitura de tela (cadastro, wipe) não soma e não é parada: o campo fica falso."""
+    s = _estado(harness)
+    pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+    s.social_repo.set_session(pid, status=SessionStatus.unknown, instance_id=IID)
+    perfil = s.social_repo.profile_dto(pid)
+    assert perfil is not None and perfil.session.status is SessionStatus.unknown
+    assert perfil.session.unknown_at_cap is False

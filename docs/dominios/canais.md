@@ -403,7 +403,28 @@ avisos depois da faxina"), e a trava cai no TTL.
       na mensagem da janela de 1 h, uma linha cada.
   - A rajada (vários do mesmo tipo seguidos) lista uma linha por item, até 5, mais "+N no painel". O gesto e o link
     do agrupado são do tipo: a caixa de Pendências, ou, no objetivo parado, Execuções (`#/execucoes`, sem o id de um
-    item só), porque ele não está na caixa (revisão do #372, G1).
+    item só), porque ele não está na caixa (revisão do #372, G1). A conta que pede a pessoa agrupada vai sempre à
+    caixa, e o lembrete agrupado diz onde fica cada coisa (28.41).
+  - Responder ao aviso de objetivo parado ou de conta só informa: "Este aviso só informa: para resolver, toque no
+    link dele." (28.41). O `/status` conta também os objetivos parados.
+  - Regra de fundo da resposta (28.41; orquestradora 05/10 06:53Z, G1 às 07:50Z): **resposta a aviso, no que não tem
+    barra, nunca vira COMANDO; pergunta não executa nada.** Vale nos dois canais para o texto sem barra. O comando com
+    barra é explícito e fica como está (G3): no Telegram, `/para android-09 x` em resposta a um aviso vai pelo
+    `_rotear_comando` e vira a prévia com o botão de executar; no Trello, ver o limite G2 abaixo. Nenhuma chave de aviso
+    fica sem `:`; sem ele, a resposta teria a gramática inteira, e um teste percorre os `Aviso(...)` de `backend/app`
+    (catraca). Na resposta a uma mensagem nossa cujo fato não tem ramo próprio (o pedido,
+    o aprendizado, os espelhos, o `run:` que não é pergunta e qualquer família nova), a gramática comum vale, mas o
+    texto livre (a prévia de execução) e o `para` só informam ("mande uma mensagem nova, sem responder a um aviso");
+    a pergunta vai à orquestradora (28.28), e a captura e a identidade seguem. O texto livre e o `para` completos ficam
+    só para a mensagem que não responde a nada nosso. O agrupado, o objetivo parado e a conta têm ramo próprio e só
+    informam; o anexo do dono é a exceção em que tudo segue a gramática comum (28.24).
+  - No Trello, onde o texto livre nunca executou, a mesma regra mantém a frase de sempre: o texto livre num cartão
+    cujo fato não tem ramo responde "comando livre está desligado no Trello" e nunca vira prévia, nem com
+    `trello.comando_livre` ligado; a pergunta vai à orquestradora; o cartão do plano, sem fato, segue à orquestradora
+    (28.30). Limite (G2): o comando com barra (`/para android-09 x`) não passa pela regra de fundo, então num
+    cartão-espelho, com `trello.comando_livre` ligado, ele ainda mostra a prévia (só leitura, sem executar).
+  - O gesto do desfecho segue o motivo da parada (`blocked_kind`): o item parado no aparelho manda abrir a execução;
+    o parado numa aprovação manda à caixa de Pendências; os dois casos, as duas linhas.
   - O rótulo do pedido é texto da pessoa: só sai quando o pedido foi criado pelo dono (o de convidado, de frente ou
     de IA sai sempre pelo id curto; desde a F2a, migração 106, o pedido guarda quem o criou: `dono` só para o
     operador da lista `pedidos.operadores_do_dono` ou o `trello:<membro_dono>`, e o anterior à 106 sai pelo id curto) e
@@ -555,8 +576,43 @@ avisos depois da faxina"), e a trava cai no TTL.
     - abaixo disso: "Crítico: nada." e "Nada a fazer: os guardados ficam na Central, sem aviso."
     Nunca "Espera você": não há gesto que o dono faça no aviso, e desligar o contato é configuração do central com
     reinício (orquestradora, 04/10 22:37Z). A resposta do dono a ele só informa e não liga nem desliga o formulário.
+  - O vigia da borda (29.97, contrato com o Portal de 05/10 04:25Z): o laço do Portal confere a página pública como
+    um visitante e, só na TRANSIÇÃO, chama `avisar_borda_do_portal(codigo, onde, agora, *, achado=None,
+    horas_sem_conferir=None)`.
+    - `codigo` é um destes: `script_injetado`, `html_transformado`, `csp_ausente`, `cookie`, `versao_divergente`,
+      `pagina_fora` ou `sem_conferir` (este exige `horas_sem_conferir`). `onde` é `raiz`, `painel`, `css` ou `js`.
+      Fora disso, `campo_invalido`.
+    - O `achado` só sai como host e caminho, ou o nome do cookie: com `?`, `=`, espaço, IP ou mais de 120
+      caracteres, é omitido sem recusa. IP inclui o que está dentro de um nome (`10.0.0.5.nip.io`,
+      `10-0-0-5.sslip.io`) e a forma curta ou decimal: qualquer sequência de quatro números separados por `.` ou `-`,
+      ou rótulo só de dígitos, omite o achado (B1 da leitura do #381); também com `_` como separador, decimal de 8+ dígitos e hexadecimal (`0x…`). Recusado o
+      achado inteiro (por exemplo, uma versão no caminho), sai só o host, se ele passar no mesmo filtro.
+    - Quem chama manda SÓ host e caminho, sem query nem credencial: o filtro não reconhece segredo num segmento de
+      caminho (`cdn/token/abc123` passa).
+    - `agora` sem fuso é `campo_invalido`: o dia UTC da chave não pode depender do fuso do processo (B2).
+    - Chave `portal-borda:<código>:<AAAA-MM-DD UTC>`: um defeito que persiste dá uma mensagem por dia. O defeito que
+      some e VOLTA no mesmo dia não manda segunda mensagem (a chave é a mesma, e a fila devolve `enfileirado=True`
+      sem enviar): a reaparição fica na saúde do Portal. Decisão da orquestradora, 05/10 04:59Z.
+    - Tipos `portal.borda` e `portal.borda_sem_conferir`: nível 2, saem na hora (`PARARAM_ALGO`), um a um (o
+      prefixo `portal.` nunca se agrupa, e o corpo agrupado diria "abra a caixa de Pendências"), sem link e fora do
+      Trello.
+    - Corpo no molde: o que chegou, "Crítico: …" e "Espera você: …" com o lugar na zona da Cloudflare. O
+      `sem_conferir` é a exceção (B3, decisão da orquestradora): sem conferir não é defeito visto, então não há
+      "Crítico"; o texto diz há quantas horas a conferência não completa (com o código do vigia, `borda-502`,
+      `tempo-esgotado`, `api-<status>`, pelo mesmo filtro do achado), que pode ser o caminho do central até a
+      internet e não o site, e que não espera o dono. O nível 2 fica.
+    - Achado recusado pelo filtro nunca cala o aviso: ele sai sem o item (pergunta da orquestradora, 05/10 06:51Z).
+    - A resposta do dono vai à orquestradora como recado (repasse `borda`) e nunca vira pedido.
+    - `api_aberta` (29.101, com o Portal; texto aprovado pela orquestradora em 05/10 06:56Z): a API do central
+      respondeu sem login pelo endereço público. Só com `onde=api`; tipo próprio `portal.borda_api` no nível 1 (sai
+      na hora e espera o dono). Texto fixo: o único caminho citado é `/api/instances`, e o achado não entra. O gesto
+      é dele (parar o serviço do túnel no central); responder vai à orquestradora pelo repasse `borda`, o que só
+      funciona com uma sessão ativa. Mesma chave por dia, sem reaviso no dia; a saúde do Portal mostra o achado.
+      Quando o vigia não consegue conferir a API (leitura do #383), manda `sem_conferir` com `onde=api` e o motivo
+      (`api-404`, `api-desafio`, `api-500`…): o texto é da API, com as horas e o motivo, não espera o dono, e no
+      `api-500` pede um olhar (a API devia recusar antes da rota). Chave própria, `portal-borda:sem_conferir_api:<dia>`.
 - **Hoje:** `modules/avisos/domain/portal.py` (montagem e higiene),
-  `infrastructure/servico.py::avisar_contato_do_portal` e `avisar_resumo_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
+  `infrastructure/servico.py::avisar_contato_do_portal`, `avisar_resumo_do_portal` e `avisar_borda_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
   a tabela dos contatos, a taxa e a retenção são da frente Portal (29.77).
 
 **C-26 · O Executar do Telegram mostra as travas do plano antes de começar (28.27).**

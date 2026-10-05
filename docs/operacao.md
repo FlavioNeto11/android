@@ -491,6 +491,17 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
   Com isso, um Web Analytics, um Rocket Loader ou uma ofuscação de e-mail religados por engano na zona não entram nas
   páginas. Para conferir de fora: `curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip' https://<host>/` mostra
   `content-encoding: gzip` e `no-transform`;
+- o vigia da borda (29.97) faz essas conferências sozinho, de hora em hora, no líder:
+  - liga com `portal.vigia.ligado` (de fábrica `true`) e só roda com `server.public_hosts`;
+  - a 1ª volta é 5 min depois da subida;
+  - pede também `/api/instances` sem credencial (29.101), que tem de dar 401 ou 403; se der 2xx, a saúde mostra
+    `portal_api_aberta` e o dono recebe o aviso na hora: a API do central está aberta para a internet, e o gesto é
+    tirar o nome público do ar (o vigia não para nada sozinho);
+  - o resultado aparece na saúde como `portal_borda_defeito` (com o gesto na zona) ou `portal_borda_sem_conferir`
+    (depois de `voltas_sem_conferir` voltas seguidas sem conseguir); no log `poc.portal`, "vigia da borda ok" a cada
+    volta limpa;
+  - o aviso ao dono vai pela Canais, um por código e por dia;
+  - o que é defeito é a régua de `backend/app/modules/portal/domain/borda.py`, a mesma da prova de fora;
 - 180 dias no sistema: o laço apaga a linha inteira a cada hora, com o contato ligado ou não;
 - o descartado (teto diário, `campo_invalido`, `falhas_demais`) tem o conteúdo apagado sem chegar à equipe. O
   `pendente` (canal desligado) e o `retido` (excesso na hora) guardam o conteúdo até a entrega ou os 180 dias;
@@ -551,6 +562,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `start.ps1` / `stop.ps1` | P | Sobe/derruba o backend, Appium e (opcional) emuladores do projeto; o `stop.ps1` também encerra o Appium órfão deste projeto (K-039) e tem `-Simular` |
 | `backup.ps1` | S | Cópia consistente do banco+config, sem parar nada |
 | `testes-afetados.py` | S | Lista (e com `--run` roda) só os testes que o diff atinge; `--ocioso` roda em prioridade ociosa |
+| `pg-rapido.py` | P | PG dirigido da suíte no contêiner descartável `farm-pg-rapido` (29.99): recria o contêiner com WAL mínimo, roda a lista em `--partes`, amostra o disco a cada 30 s e aborta a parte com uma linha em 85 % do tmpfs; `--simular` só lista as partes, `--amostrar` lê o contêiner de pé. Só com a vez da orquestradora |
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central` |

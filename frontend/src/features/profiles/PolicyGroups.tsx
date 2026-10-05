@@ -7,7 +7,7 @@
  * do perfil — nada de formulário novo. Membros se escolhem ali mesmo, marcando os perfis.
  */
 import { Plus, ShieldCheck, Trash2, Users } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type { AppCatalogEntry, Capability, InstagramProfile, PolicyGroup, PolicyName } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -176,6 +176,10 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
   const foraDaLista = (grupo?.members ?? []).filter((m) => !profiles.some((p) => p.id === m.id));
   const [padraoLimites, setPadraoLimites] = useState<Record<string, number>>({});
   const [salvando, setSalvando] = useState(false);
+  // "Começar a partir de" em voo (29.106): só a última escolha vale. Escolher A e logo B deixava a resposta de A, se
+  // chegasse depois, por cima de B; e salvar nesse meio criava o grupo sem a escolha.
+  const leituraDoPerfil = useRef(0);
+  const [lendoPerfil, setLendoPerfil] = useState(false);
   const [pacoteEscolhido, setPacoteEscolhido] = useState<string | null>(null);
   const { acoes, apps, pacoteEfetivo, pronto } = useAcoesDoApp(pacoteEscolhido);
   const chave = pacoteEfetivo ?? '';
@@ -205,24 +209,32 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
   }, [grupo, pronto, originais, chave, pacoteEfetivo]);
 
   async function partirDe(profileId: string) {
-    if (!profileId || !pronto) return;          // sem o catálogo, o rascunho ficaria sem app (chave '')
+    const minha = ++leituraDoPerfil.current;    // a escolha nova, mesmo a do padrão, aposenta a leitura em voo
+    if (!profileId || !pronto) {                // sem o catálogo, o rascunho ficaria sem app (chave '')
+      setLendoPerfil(false);
+      return;
+    }
+    setLendoPerfil(true);
     try {
       // O que o perfil tem HOJE de diferente do padrão, em CADA app com catálogo: o grupo dele por baixo, as
       // escolhas dele por cima. SUBSTITUI o rascunho inteiro — escolher A e depois B é partir de B; mesclar
       // levaria para o grupo uma ação de risco que só A afrouxou, sem aparecer como escolha de B.
       const pacotes = apps.length ? apps.map((a) => a.package) : [pacoteEfetivo];
       const politicas = await Promise.all(pacotes.map((pkg) => api.getPolicy(profileId, pkg)));
+      if (minha !== leituraDoPerfil.current) return;
       setRascunhos(Object.fromEntries(pacotes.map((pkg, i) =>
         [pkg ?? '', { ...(politicas[i]!.group ?? {}), ...(politicas[i]!.own ?? {}) }])));
       const base = politicas[0]!;
       setLimites({ ...(base.group_limits ?? {}), ...(base.own_limits ?? {}) });
     } catch (e) {
-      toastError('Não foi possível ler o acesso da persona', e);
+      if (minha === leituraDoPerfil.current) toastError('Não foi possível ler o acesso da persona', e);
+    } finally {
+      if (minha === leituraDoPerfil.current) setLendoPerfil(false);
     }
   }
 
   async function salvar() {
-    if (carregandoApp) return;
+    if (carregandoApp || lendoPerfil) return;
     if (!nome.trim()) {
       toast({ tone: 'warning', title: 'Dê um nome ao grupo' });
       return;
@@ -292,7 +304,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
                 <Button variant="ghost" onClick={onClose}>Cancelar</Button>
                 {/* Antes do catálogo, o rascunho não tem app: o grupo nasceria vazio e só um segundo pedido o
                     corrigiria — com os membros já dentro, herdando o padrão nesse intervalo. */}
-                <Button loading={salvando} disabled={carregandoApp} onClick={() => void salvar()}>
+                <Button loading={salvando} disabled={carregandoApp || lendoPerfil} onClick={() => void salvar()}>
                   {grupo ? 'Salvar grupo' : 'Criar grupo'}
                 </Button>
               </>
@@ -358,7 +370,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
           <div>
             <h4 className={styles.groupDialogSub}>O que as personas do grupo podem fazer</h4>
             <PolicyActionsEditor
-              acoes={acoes} efetivo={efetivo} salvando={salvando || carregandoApp}
+              acoes={acoes} efetivo={efetivo} salvando={salvando || carregandoApp || lendoPerfil}
               loosened={acoes.filter((c) => c.risk === 'high' && caps[c.key] && RANK[caps[c.key]!] > RANK[c.default_policy]).map((c) => c.key)}
               origem={(c) => (caps[c.key]
                 ? { propria: true, rotulo: 'definido no grupo', tone: 'info' }
@@ -378,7 +390,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
             <h4 className={styles.groupDialogSub}>Limites</h4>
             <div className={styles.limitGrid}>
               <LimitsEditor
-                limites={limitesEfetivos} salvando={salvando}
+                limites={limitesEfetivos} salvando={salvando || lendoPerfil}
                 origem={(k) => (k in limites
                   ? { propria: true, rotulo: 'definido no grupo', tone: 'info' }
                   : { propria: false, rotulo: 'padrão', tone: 'muted' })}

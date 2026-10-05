@@ -8,7 +8,7 @@ import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { aplicarHash, useUiStore } from '../../store/ui';
 import { makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, byRole, click, esperarElemento, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { ProfilesPage } from './ProfilesPage';
 
 /** A pessoa como `GET /personas` a devolve (v0.27): `username` nulo quando ainda não tem conta de cadastro. */
@@ -198,7 +198,7 @@ describe('personas', () => {
     await waitFor(() => byRole('tab', /Contas e acesso/i).getAttribute('aria-selected') === 'true');
     // O pedido chega pelo id; a tela o troca pelo nome legível (mesmo lugar, sem empilhar).
     expect(window.location.hash).toBe('#/personas/helena-prado/contas');
-    expect(text()).toContain('ainda não tem @ de cadastro');
+    await waitFor(() => text().includes('ainda não tem @ de cadastro'));             // a guia lê as contas pelo fetch
   });
 
   it('guia pedida que não existe cai na Visão geral', async () => {
@@ -489,6 +489,8 @@ describe('nova persona', () => {
     expect(backend.callsTo('POST', /^\/api\/personas$/)[0]?.body)
       .toEqual({ name: 'Helena Prado', birth_date: '1996-03-02', gender: null, summary: null });
     expect(container.ownerDocument.querySelector('input[type="password"]')).toBeNull();
+    // Até a tela abrir a criada: com a resposta em voo, ela navegaria já dentro do teste seguinte.
+    await waitFor(() => /^#\/personas\/./.test(window.location.hash));
   });
 });
 
@@ -537,6 +539,41 @@ describe('fila de intervenção', () => {
     // remoto (o painel em si é testado em `FocusPanel.test.tsx`; aqui importa que a fila manda para lá).
     await waitFor(() => useUiStore.getState().focusInstanceId === 'android-02');
   });
+
+  it('29.96: a sessão parada no teto entra na fila com o rótulo próprio e o mesmo "Assumir controle"', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([pessoa({
+      instance_id: 'android-01',
+      session: { status: 'unknown', instance_id: 'android-01', observed_username: null, verified_at: null,
+                 detail: 'Instagram não voltou ao estado conhecido', stale: false, unknown_at_cap: true },
+    })]));
+    backend.on('POST', /\/instances\/android-01\/control\/take$/, () => json({ status: 'granted', lease_id: 'lease-2' }));
+    await render();
+    await waitFor(() => text().includes('Aguardando intervenção'));
+    expect(text()).toContain('Tela não reconhecida');
+    expect(text()).toContain('tela que a automação não reconheceu');
+
+    await click(byRole('button', /Assumir controle/i));
+    await waitFor(() => useUiStore.getState().focusInstanceId === 'android-01');
+  });
+
+  it('29.100: a fila ordena pela hora em que o estado começou, não pela última verificação', async () => {
+    // A parada de agora tem a verificação mais velha (dias antes de parar); antes ela ia para o topo como "a que espera
+    // há mais tempo".
+    backend.on('GET', /^\/api\/personas$/, () => json([
+      pessoa({ id: 'ig-1', username: 'parou.agora', instance_id: 'android-01',
+               session: { status: 'unknown', instance_id: 'android-01', observed_username: null,
+                          verified_at: '2026-09-20T10:00:00Z', detail: null, stale: false, unknown_at_cap: true,
+                          status_since: '2026-10-05T06:30:00Z' } }),
+      pessoa({ id: 'ig-2', username: 'desafio.antigo', instance_id: 'android-02',
+               session: { status: 'auth_challenge', instance_id: 'android-02', observed_username: null,
+                          verified_at: '2026-10-01T09:00:00Z', detail: null, stale: false,
+                          status_since: '2026-10-01T09:00:00Z' } }),
+    ]));
+    await render();
+    await waitFor(() => text().includes('Aguardando intervenção'));
+    const fila = text().slice(text().indexOf('Aguardando intervenção'));
+    expect(fila.indexOf('desafio.antigo')).toBeLessThan(fila.indexOf('parou.agora'));
+  });
 });
 
 // ---------------------------------------------------------------- localidade (E9, item 4.4)
@@ -560,6 +597,13 @@ describe('onde a persona vive', () => {
 });
 
 describe('grupos de acesso', () => {
+  // A política que o editor mostra marcada numa ação: o pedido registrado no backend falso ainda não é a resposta
+  // aplicada, e o "começar a partir de" só vale quando a escolha do perfil aparece aqui.
+  function marcada(politica: RegExp, acao: RegExp): boolean {
+    const radio = byRole('radio', politica, byRole('radiogroup', acao));
+    return radio.getAttribute('aria-checked') === 'true' || (radio as HTMLInputElement).checked === true;
+  }
+
   function rotasBase(grupos: unknown[]) {
     backend.on('GET', /^\/api\/personas$/, () => json([
       pessoa({ id: 'ig-1', name: 'André Carvalho', username: 'andre.carvalho9543', policy_group_id: 'grp-1',
@@ -600,7 +644,7 @@ describe('grupos de acesso', () => {
                            { id: 'ig-8', username: null, name: null }],
                  created_at: '', updated_at: '' }]);
     await render();
-    const chips = await waitFor(() => document.querySelector('[aria-label="Personas no grupo Cautelosos"]') as HTMLElement);
+    const chips = await esperarElemento('[aria-label="Personas no grupo Cautelosos"]');
     const textos = Array.from(chips.querySelectorAll('span[data-sem-conta], span[class*="memberChip"]')).map((e) => e.textContent);
     expect(textos).toContain('@andre.carvalho9543');
     expect(textos).toContain('Beatriz Rocha · sem conta');
@@ -623,6 +667,7 @@ describe('grupos de acesso', () => {
     const beatriz = await waitFor(() => byRole('checkbox', /^Beatriz Rocha · sem conta$/) as HTMLInputElement);
     expect(beatriz.checked).toBe(true);                                    // a contagem (2) bate com o que se vê
     await click(beatriz);
+    await waitFor(() => !(byRole('button', /Salvar grupo/i) as HTMLButtonElement).disabled);    // preso até o catálogo
     await click(byRole('button', /Salvar grupo/i));
     await waitFor(() => expect(backend.callsTo('PUT', /policy-groups\/grp-1$/)).toHaveLength(1));
     expect((backend.callsTo('PUT', /policy-groups\/grp-1$/)[0]!.body as { profile_ids: string[] }).profile_ids)
@@ -745,12 +790,83 @@ describe('grupos de acesso', () => {
     const partir = byRole('combobox', /Começar a partir de/i) as HTMLSelectElement;
     await setValue(partir, 'ig-1');
     await waitFor(() => expect(backend.callsTo('GET', /ig-1\/policy$/)).toHaveLength(1));
+    await waitFor(() => marcada(/Sozinho/i, /Política de Seguir/i));
     await setValue(partir, 'ig-2');
     await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    await waitFor(() => !marcada(/Sozinho/i, /Política de Seguir/i));
     await click(byRole('button', /Criar grupo/i));
     await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
     expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
       .toEqual({});
+  });
+
+  // 29.106 (W2 da leitura do #392): o teste acima espera A aplicado antes de trocar, então não vê a corrida. Este
+  // força a ordem (A responde DEPOIS de B): a resposta de A, aposentada pela escolha de B, não entra no rascunho.
+  it('29.106: escolher A e logo B, com A respondendo depois de B, parte de B', async () => {
+    rotasBase([]);
+    let soltarA: () => void = () => undefined;
+    const aSegura = new Promise<void>((r) => { soltarA = r; });
+    backend.on('GET', /\/instagram\/profiles\/ig-1\/policy$/, async () => {
+      await aSegura;
+      return json({ limits: {}, capabilities: {}, defaults: {}, loosened: [], own: { FOLLOW: 'autonomous' }, group: {},
+                    own_limits: {}, group_limits: {} });
+    });
+    backend.on('GET', /\/instagram\/profiles\/ig-2\/policy$/, () => json({
+      limits: {}, capabilities: {}, defaults: {}, loosened: [], own: {}, group: {}, own_limits: {}, group_limits: {},
+    }));
+    backend.on('POST', /\/instagram\/policy-groups$/,
+      (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(byRole('radiogroup', /Política de Seguir/i)).toBeTruthy());
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Do Bruno');
+    const partir = byRole('combobox', /Começar a partir de/i) as HTMLSelectElement;
+    await setValue(partir, 'ig-1');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-1\/policy$/)).toHaveLength(1));
+    await setValue(partir, 'ig-2');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    await flush(30);                                                      // B aplicada
+    await act(async () => { soltarA(); });
+    await flush(30);                                                      // A chega por último
+    expect(marcada(/Sozinho/i, /Política de Seguir/i)).toBe(false);
+    await waitFor(() => !(byRole('button', /Criar grupo/i) as HTMLButtonElement).disabled);
+    await click(byRole('button', /Criar grupo/i));
+    await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
+    expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
+      .toEqual({});
+  });
+
+  it('29.106: com a leitura do "começar a partir de" em voo, o Criar grupo e o editor esperam', async () => {
+    rotasBase([]);
+    let soltar: () => void = () => undefined;
+    const segura = new Promise<void>((r) => { soltar = r; });
+    backend.on('GET', /\/instagram\/profiles\/ig-2\/policy$/, async () => {
+      await segura;
+      return json({ limits: {}, capabilities: {}, defaults: {}, loosened: [], own: { LIKE_POST: 'manual_only' },
+                    group: {}, own_limits: {}, group_limits: {} });
+    });
+    backend.on('POST', /\/instagram\/policy-groups$/,
+      (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(byRole('radiogroup', /Política de Curtir a publicação/i)).toBeTruthy());
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Do Bruno');
+    await setValue(byRole('combobox', /Começar a partir de/i) as HTMLSelectElement, 'ig-2');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    const criar = byRole('button', /Criar grupo/i) as HTMLButtonElement;
+    expect(criar.disabled).toBe(true);                                    // antes: criava com o rascunho anterior
+    const soManual = byRole('radio', /Só manual/i, byRole('radiogroup', /Política de Curtir a publicação/i));
+    expect((soManual as HTMLInputElement).disabled).toBe(true);           // mexer agora seria apagado pela resposta
+    await click(criar);
+    expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(0);
+
+    await act(async () => { soltar(); });
+    await waitFor(() => marcada(/Só manual/i, /Política de Curtir a publicação/i));
+    expect(criar.disabled).toBe(false);
+    await click(criar);
+    await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
+    expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
+      .toEqual({ LIKE_POST: 'manual_only' });
   });
 
   it('antes de o catálogo chegar, "começar a partir de" e salvar esperam: o grupo nasce com as escolhas do perfil', async () => {
@@ -784,6 +900,7 @@ describe('grupos de acesso', () => {
     await waitFor(() => expect((byRole('combobox', /Começar a partir de/i) as HTMLSelectElement).disabled).toBe(false));
     await setValue(byRole('combobox', /Começar a partir de/i) as HTMLSelectElement, 'ig-2');
     await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    await waitFor(() => marcada(/Só manual/i, /Política de Curtir a publicação/i));
     await click(byRole('button', /Criar grupo/i));
     await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
     const post = backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!;

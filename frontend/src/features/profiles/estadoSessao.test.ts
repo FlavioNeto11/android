@@ -21,6 +21,13 @@ describe('estadoDaSessao', () => {
     expect(estadoDaSessao({ status: 'session_ready' }).meta.label).toBe('Conectado');
   });
 
+  it('29.96: o `unknown` no teto é "Tela não reconhecida" e pede "Resolver", não "Verificar conta"', () => {
+    const e = estadoDaSessao({ status: 'unknown', verified_at: null, unknown_at_cap: true });
+    expect(e.meta.label).toBe('Tela não reconhecida');
+    expect(e.acao).toEqual({ rotulo: 'Resolver', guia: 'contas' });
+    expect(estadoDaSessao({ status: 'unknown', unknown_at_cap: false }).acao?.rotulo).toBe('Verificar conta');
+  });
+
   it('o que só uma pessoa resolve vira "Resolver"; o resto, "Ver conta"', () => {
     for (const status of ['auth_challenge', 'needs_person', 'wrong_account']) {
       expect(estadoDaSessao({ status }).acao?.rotulo).toBe('Resolver');

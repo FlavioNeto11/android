@@ -1,10 +1,54 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `584ac9c8` (migração 109, deploy 34); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 05/10/2026: runtime do backend em `e5f1b22b` (migração 113, deploy 36); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 36 no ar (05/10/2026, 09:48Z, central `e5f1b22b`, migração `113_execucao_assentada_em`).** Dezesseis PRs:
+  a execução que espera a pessoa e o assentamento uma vez só (29.93, 29.103; migrações 111 e 113), o vigia da borda e da
+  API (29.97, 29.101), sessão e Pendências (29.96, 29.100; migração 112), avisos (28.41), aprendizado (30.69),
+  execução (31.70, 31.71 atrás de chave desligada, 31.74), testes e painel (29.99, 29.104, 29.106, T.2).
+  - `real` (central WIN-7S2UASNLFOP): fast-forward e push às 09:39:34Z; `scripts\deploy.ps1 -Ensaio` de 09:39:43Z a
+    09:39:46Z (cópia `20261005-063944`); `scripts\deploy.ps1 -PularBackup -PularDependencias` de 09:40:43Z a 09:42:34Z,
+    primeira subida de verdade sem cópia própria (29.94), com a cópia do ensaio valendo; agentes dos dois workers em
+    `0.1.0+e5f1b22`. Depois da migração 113, as 493 execuções finais ficaram com a marca de assentamento e nenhuma
+    estava em `cancelling`. Prova de fora de 09:42:44Z a 09:42:51Z com `rc=0` e 46 linhas ok (`/api/instances` 401 e
+    403). Painel pelo nome público, 11 telas, sem erro, sem violação da política de conteúdo e sem recurso de fora. A
+    primeira volta do vigia da borda saiu limpa às 09:47:31Z, e a saúde ficou sem problema de portal. O dirigido em
+    PostgreSQL rodou inteiro numa parte só (9998 passed, 13 skipped, 30 min, pico de 413 MB dos 4096 MB): o 29.99 fecha
+    a regra provisória das duas metades do K-100, sem provar a causa do estouro da suíte 35.
+  - `simulated`: suíte 36 na `e5f1b22b` (scripts 631 passed; SQLite 11276 passed e 13 skipped; PostgreSQL 9998 passed e
+    13 skipped; frontend 1612 passed; catracas 88 e 6 passed).
+  - `not_run`: uma execução real que pare esperando a pessoa e saia da espera (29.93); um cancelamento sem worker vivo
+    (29.103); no editor de grupo, "só vale a última" e a trava durante a leitura com dado real (29.106: os perfis do
+    central rendem o mesmo rascunho); defeito de borda ou API aberta de verdade, que não se provocam (29.97, 29.101);
+    o A/B da imagem enquanto falta saída (31.71) e o `wait_for` numa tela lenta (31.74).
+- **Subida a quente do 29.110 (05/10/2026, 08:47Z, central `9f00c122`).** Por ordem do dono, a seção "O que a ANA não
+  faz" saiu do site público (ADR-076); os limites de comportamento do produto não mudaram. `real`: `deploy.ps1 -Ensaio`
+  às 08:45:50Z e `deploy.ps1 -PularDependencias` de 08:45:54Z a 08:47:31Z; prova de fora de 08:47:39Z a 08:47:46Z com
+  `rc=0` e 46 linhas ok; página pública conferida no navegador às 08:48Z, sem a seção, com 9 seções e 5 recursos,
+  nenhum de fora.
+- **Deploy 35 no ar (05/10/2026, 06:28Z, central `d025b671`, migração `110_passou_a_porta`).** Dezenove PRs: avisos e
+  canais (28.37 a 28.40), execução e planejamento (31.56, 31.64 a 31.67, 31.69, 31.70), portal (29.89, 29.91, 29.95),
+  sessão e aprendizado (29.90, 29.92, 30.70), implantação e testes (29.94, 29.98).
+  - `real` (central WIN-7S2UASNLFOP): fast-forward às 06:16:52Z; `scripts\deploy.ps1 -Ensaio` limpo às 06:17:06Z e
+    `scripts\deploy.ps1 -PularDependencias` no ar às 06:18:46Z (cópia `20261005-031723`); agentes dos dois workers em
+    `0.1.0+d025b67`. Proteção do painel (29.91) em dois tempos: com `server.csp_do_painel: so_relatar`, a prova de fora
+    das 06:22Z deu 45 linhas ok e a única falha esperada, e a caminhada do painel pelo nome público (15 visitas de rota)
+    não registrou violação; com a chave em `aplicar` e a `farm-central` reiniciada (06:25:47Z a 06:26:44Z), a prova de
+    fora das 06:27Z deu `rc=0` com 46 linhas ok, e o navegador mostrou a política aplicada, sem violação em 4 telas. As
+    duas provas conferiram a versão no endereço do CSS e do JS do site (29.95). A volta diária do backup rodou às
+    06:00:02Z com resultado 0 (29.38).
+  - `simulated`: suíte 35 na `d025b671` (scripts 616 passed; SQLite 10925 passed e 13 skipped; PG dirigido em duas
+    metades, 9671 passed e 13 skipped; frontend 1601 passed; catracas 86 e 6 passed).
+  - `not_run`: no central, sob a política aplicada, o quadro do aparelho desenhado, o upload de foto e a tela de Anexos
+    (a aba do navegador estava oculta; há prova `simulated` no painel isolado); `deploy.ps1 -PularBackup` numa subida de
+    verdade (29.94); o aviso de objetivo parado (28.40), o de sessão não reconhecida no teto (29.92) e a marca "passou a
+    porta" (31.64) num caso real.
+  - Achados da subida: o PostgreSQL rápido de teste não comporta os 467 arquivos de uma vez (29.99, K-100); dois PRs
+    chegaram a final com uma catraca vermelha (29.98, K-098); shell de segundo plano parado deixa filhos sem console
+    (K-099). A retenção do backup diário (14 dias) começa a apagar cópias perto de 18/10: pergunta aberta ao dono.
 - **Deploy 34 no ar (05/10/2026, central `584ac9c8`, migração `109_portal_exclusoes`).**
   - `real` (central WIN-7S2UASNLFOP): fast-forward às 03:18:38Z; `scripts\deploy.ps1 -Ensaio` limpo às 03:18:49Z e
     `scripts\deploy.ps1 -PularDependencias` de 03:19:59Z a 03:21:23Z (cópia `20261005-002000`); agentes dos dois workers em
