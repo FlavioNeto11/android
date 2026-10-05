@@ -11,6 +11,9 @@ import { FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserS
 import { alvoReconhecido, ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
 import type { TrainingInput } from '../../api/types';
 
+import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
+
 /** O atraso máximo do fetch falso (modo ATRASO_DO_FETCH_MS): a resposta que o teste solta depois ainda pode estar a caminho. */
 const ATRASO_MAXIMO = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
 
@@ -74,7 +77,7 @@ it('mostra a gravação (texto sigiloso sem conteúdo), pede a proposta, e salva
   await click(byRole('checkbox', /@aluno.dois/i));
   // P2.1: o rodapé salva um FLUXO e diz isso; "habilidade" fica para a versionada (ensino v2).
   expect(allByRole('button', /Salvar habilidade/i)).toHaveLength(0);
-  await click(byRole('button', /Salvar como fluxo/i));
+  await click(await botaoPronto(/Salvar como fluxo/i));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   const corpo = backend.callsTo('POST', /\/save$/)[0]!.body as { profile_ids: string[] };
   expect(corpo.profile_ids.sort()).toEqual(['ig-1', 'ig-2']);           // o perfil do aparelho já vem marcado
@@ -101,7 +104,7 @@ it('se a lista de perfis falha, o escopo mostra o erro com "Tentar de novo" e o 
   await click(byRole('button', /Tentar de novo/));
   await waitFor(() => expect(allByRole('checkbox', /@aluno.um/)).toHaveLength(1));
   expect(text()).toContain('Nada marcado = todos os perfis');
-  expect(byRole('button', /^Salvar como fluxo/).getAttribute('aria-disabled')).toBeNull();
+  await waitFor(() => expect(byRole('button', /^Salvar como fluxo/).getAttribute('aria-disabled')).toBeNull());
 });
 
 // ---------------------------------------------------------------- fase L: P2.6 — edição não se perde sem perguntar
@@ -186,7 +189,7 @@ it('com features.skills ligado e sem ensino: nada de candidata; depois de salvar
   await waitFor(() => expect(text()).toContain('O texto muda?'));
   expect(byRole('button', /^Salvar como fluxo/).className).toMatch(/btnPrimary/);
 
-  await click(byRole('button', /^Salvar como fluxo/));
+  await click(await botaoPronto(/^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   expect(text()).toContain('Parâmetros com tipo, riscos e versões só existem na habilidade.');
   await click(byRole('button', /^Gerar habilidade deste fluxo$/));
@@ -268,8 +271,7 @@ it('entrada sem etapa e sem descarte: bloco "Sem destino" no topo, Salvar travad
   await click(byRole('button', /^Devolver a entrada #3$/, regiao('Sem destino')));
   await waitFor(() => expect(rotulados('section', 'Sem destino')).toHaveLength(0));
   expect(regiao('Entradas da etapa 1', 'ul').textContent).toContain('Enviar');
-  expect(salvar().getAttribute('aria-disabled')).toBeNull();
-  await click(salvar());
+  await click(await botaoPronto(/^Salvar como fluxo/));          // pronto: a prévia que a devolução pediu já respondeu
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   const corpo = backend.callsTo('POST', /\/save$/)[0]!.body as { proposal: { steps: { inputs: number[] }[]; discarded: unknown[] } };
   expect(corpo.proposal.steps[0]!.inputs).toEqual([1, 3]);
@@ -291,7 +293,7 @@ it('Descartar tira da etapa e Devolver tira do descarte: a entrada nunca fica em
   // Descartar o #2 da etapa 1: sai da etapa e fica uma vez só no descarte, com o motivo da IA.
   await click(byRole('button', /^Descartar a entrada #2$/, regiao('Entradas da etapa 1', 'ul')));
   await waitFor(() => expect(regiao('Entradas da etapa 1', 'ul').textContent).not.toContain('#2'));
-  expect(salvar().getAttribute('aria-disabled')).toBeNull();
+  await waitFor(() => expect(salvar().getAttribute('aria-disabled')).toBeNull());
 
   // Descartar o #1 da etapa 1 e devolvê-lo à etapa 2; devolver o #4 (descartado pela IA) à etapa 2.
   await click(byRole('button', /^Descartar a entrada #1$/, regiao('Entradas da etapa 1', 'ul')));
@@ -329,7 +331,7 @@ it('texto não gravado nunca aparece, nem marcado como sensível com valor; os a
     steps: [{ key: 'abrir', title: 'Abrir', recipe: true, reason: 'receita gravada' }],
     warnings: ['A etapa "Abrir" não confere o efeito no servidor.'],
   }));
-  await click(byRole('button', /^Salvar como fluxo/));
+  await click(await botaoPronto(/^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   const sucesso = useToastStore.getState().toasts.find((t) => t.tone === 'success');
   expect(sucesso?.message).toContain('A etapa "Abrir" não confere o efeito no servidor.');
@@ -377,7 +379,7 @@ it('descarte repetido conta uma vez (#442); a entrada na etapa e no descarte sai
   await click(byRole('button', /^Manter a entrada #3 só em Descartadas$/, regiao('Descartadas')));
   await waitFor(() => expect(regiao('Entradas da etapa 1', 'ul').textContent).not.toContain('#3'));
   // O descarte segue com as duas linhas da IA, e isso não trava o salvar.
-  expect(salvar().getAttribute('aria-disabled')).toBeNull();
+  await waitFor(() => expect(salvar().getAttribute('aria-disabled')).toBeNull());
   expect(allByRole('button', /^Manter a entrada #3/)).toHaveLength(0);
 });
 
@@ -438,7 +440,7 @@ it('salvar recusado por parâmetro reservado (v1.62) fica no campo e sem toast; 
   backend.on('POST', /\/training\/trn-1\/save$/, () => apiError(400, 'parametro_reservado', 'O nome {run_id} é reservado: escolha outro.'));
   await abrirEProporComPrevia();
   await waitFor(() => expect(text()).toContain('Ao salvar:'));
-  await click(byRole('button', /^Salvar como fluxo/));
+  await click(await botaoPronto(/^Salvar como fluxo/));
   await waitFor(() => expect(byRole('textbox', /Comando/).getAttribute('aria-invalid')).toBe('true'));
   expect(text()).toContain('O nome {run_id} é reservado: escolha outro.');
   expect(useToastStore.getState().toasts.filter((t) => t.title === 'Não foi possível salvar o fluxo')).toHaveLength(0);
@@ -481,7 +483,7 @@ it('etapa sem receita no salvar: "Refazer receitas" só com o clique, chama /rec
     steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
   }));
   await abrirEProporComPrevia();
-  await click(byRole('button', /^Salvar como fluxo/));
+  await click(await botaoPronto(/^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   expect(text()).toContain('com IA');
   expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(0);       // quem aciona é a pessoa

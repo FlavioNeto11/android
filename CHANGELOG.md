@@ -56,6 +56,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `TrainingReview.test.tsx::31.90-F` (2 testes; sem tirar o pacote do id, ambos falham). Frontend inteiro 1688/1688
   e `typecheck` limpos (4 workers, Idle). `not_run`: percurso no navegador (entra no do deploy que levar este corte).
 
+## 2026-10-05 — 29.104 (2º PR): os testes que clicavam ou afirmavam antes do botão estar pronto (branch fix/29-104-falhas-sob-atraso)
+
+- Medido sobre a main 095a43b6 com o fetch falso atrasado (`ATRASO_DO_FETCH_MS`, `SEMENTE_DO_ATRASO`), a suíte inteira do frontend, 4 workers em Idle:
+  semente 7 a 40 ms passa 1686/1686 (as 53 falhas da primeira medição já tinham sido consertadas pelos itens 29.128 a 29.148), mas as sementes
+  88 a 40 ms, 1 a 100, 13 a 100 e 7 a 200 achavam 6 testes de 4 arquivos que clicam ou afirmam antes de o botão estar pronto.
+- Conserto, só em teste, com o `botaoPronto` que o harness já tem (nenhum produto mudou: era o teste apressado, não corrida do produto): o
+  Voltar, Recentes, Enter, Devolver à IA e Fechar do foco sem imagem (`app.integration.test.tsx`), o Confirmar e executar do 409 por aparelho
+  (`CommandPanel.test.tsx`), o Parar e o Parar o aparelho (`FocusPanel.test.tsx`) e os Salvar como fluxo da revisão do ensino
+  (`TrainingReview.test.tsx`, mais três "Salvar liberado" que viram `waitFor`).
+- Prova `simulated`: suíte inteira 1686/1686 sem atraso e nas sementes e atrasos 1/100, 3/200, 5/300, 7/200, 13/100, 21/150, 77/60, 88/40 e 99/100;
+  typecheck limpo. O conserto de cada teste falhava antes na semente que o achou. `not_run`: o Node 22 do CI.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
