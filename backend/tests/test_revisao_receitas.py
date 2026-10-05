@@ -42,7 +42,7 @@ _VOCABULARIO = {
     # `herdada`: a chave sem receita herdou a provada de outra chave, como candidata (RA-20, test_receita_heranca)
     "receita.consulta": {"resultado": {"encontrada", "candidata", "ausente", "quarentena", "herdada"}},
     "receita.ausente": {"causa": {c.value for c in CausaDoAusente}},
-    "receita.reproducao": {"resultado": {"ok", "divergiu"}},
+    "receita.reproducao": {"resultado": {"ok", "divergiu", "nao_aplicavel"}},   # nao_aplicavel: 30.80
     "receita.retorno_ia": {"motivo": {m for _, m in _MOTIVOS_DO_RETORNO} | {"outro"}},
     "pathfinder.desfecho": {"resultado": {"aprendeu", "falhou", "expirou", "liberado"}},
     "pathfinder.espera_s": {},
@@ -109,7 +109,9 @@ async def test_divergencia_volta_a_ia_no_modelo_de_acao_e_o_retorno_e_contado_um
 
     # o cenário aconteceu: só AQUELA etapa voltou para a IA; as outras reproduziram sem decisão de IA
     driven = _driven(harness, run.id)
-    assert driven["open_conversation"] == "recipe+ai" and driven["send_message"] == "recipe"
+    # 30.80: a divergência na AÇÃO 1 por alvo ausente, com a etapa comprovada, "não se aplicou" (nenhuma ação da
+    # receita rodou): a etapa fica com a IA (`ai`), e não `recipe+ai`
+    assert driven["open_conversation"] == "ai" and driven["send_message"] == "recipe"
     decisoes = [c for c in harness.ai.calls if c["role"] == "decide" and c["instance"] == "android-02"]
     assert {c["step"] for c in decisoes if c["step"] in ("compose_message", "send_message")} == set()
     divergidas = [c for c in decisoes if c["step"] == "open_conversation"]
@@ -117,7 +119,9 @@ async def test_divergencia_volta_a_ia_no_modelo_de_acao_e_o_retorno_e_contado_um
     # a divergência NÃO escala o modelo (config.py desde 7879d86; decisão da evolução de desempenho, 26/09)
     assert all(c["tier"] == 0 for c in divergidas), divergidas
     assert metricas.valor("receita.consulta", resultado="encontrada") == n
-    assert metricas.valor("receita.reproducao", resultado="divergiu") == 1
+    # 30.80: o veredito dessa tentativa é `nao_aplicavel` (a 1ª da série), não `divergiu`; segue um por tentativa
+    assert metricas.valor("receita.reproducao", resultado="nao_aplicavel") == 1
+    assert metricas.valor("receita.reproducao", resultado="divergiu") == 0
     assert metricas.valor("receita.reproducao", resultado="ok") == n - 1
     _rotulos_fechados((run.id,))
 
@@ -156,21 +160,26 @@ async def test_nova_tentativa_conta_consulta_reproducao_e_retorno_por_tentativa(
     db = harness.state.db                                                   # type: ignore[union-attr]
     etapa = db.one("SELECT id, driven_by FROM steps WHERE run_id=? AND key='open_conversation'", (run.id,))
     tentativas = db.scalar("SELECT COUNT(*) FROM attempts WHERE step_id=?", (etapa["id"],))
-    assert tentativas == 2 and etapa["driven_by"] == "recipe+ai"
+    assert tentativas == 2 and etapa["driven_by"] == "ai"         # 30.80: a 2ª tentativa "não se aplicou"
 
     encontradas = metricas.valor("receita.consulta", resultado="encontrada")
     reproducoes = metricas.total("receita.reproducao")
     # n etapas elegíveis, uma delas com 2 tentativas: n+1 consultas "encontrada" e n+1 vereditos de reprodução — as
     # duas tentativas de `open_conversation` divergiram (a receita segue quebrada na 2ª) e as outras n-1 reproduziram
     assert encontradas == n + 1 == reproducoes, (encontradas, reproducoes, n, tentativas)
-    assert metricas.valor("receita.reproducao", resultado="divergiu") == tentativas
+    # a 1ª tentativa (em `retry`) conta `divergiu`, como antes; a 2ª, comprovada pela IA depois da divergência na
+    # ação 1, é `nao_aplicavel` (30.80)
+    assert metricas.valor("receita.reproducao", resultado="divergiu") == 1
+    assert metricas.valor("receita.reproducao", resultado="nao_aplicavel") == 1
     assert metricas.valor("receita.reproducao", resultado="ok") == n - 1
     # cada divergência levou a sua tentativa de volta à IA: um retorno por tentativa, nem mais nem menos
     assert metricas.total("receita.retorno_ia") == tentativas
     _rotulos_fechados((run.id,))
     # a quarentena continua só com veredito da ETAPA: a tentativa que terminou em `retry` não entrou nela
-    falhas = db.scalar("SELECT replay_fail FROM recipes WHERE step_key='open_conversation' AND status='active'")
-    assert falhas == 1
+    # 30.80: e o veredito da etapa foi "não se aplicou", que não é falha da receita (a 1ª da série)
+    uso = db.one("SELECT replay_fail, nao_aplicavel_seguidas FROM recipes WHERE step_key='open_conversation'"
+                 " AND status='active'")
+    assert (uso["replay_fail"], uso["nao_aplicavel_seguidas"]) == (0, 1)
 
 
 # ================================================================== cenário 3: quarentena

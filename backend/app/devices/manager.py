@@ -62,6 +62,11 @@ log = logging.getLogger("poc.devices")
 #: hierarquia. A evidência fica guardada: mais velha que isto, a tela pode ter mudado para uma sensível sem ninguém ver.
 CLASSIFICACAO_FRESCA_S = 2.0
 MANUAL_LEASE_TTL_S = 600
+#: As teclas do controle manual que não conferem o quadro (29.105): só as de navegação, que saem da tela.
+TECLAS_DE_NAVEGACAO = frozenset({"back", "home", "recents"})
+#: Teto do quadro que a gravação do treinamento ainda aceita por ser o mais recente (31.85): a lentidão da própria
+#: gravação explica dezenas de segundos (um toque levou 24 s); mais que isto é captura travada, e a recusa volta.
+TETO_QUADRO_NA_GRAVACAO_MS = 60_000
 #: Interesse em prévia (contrato C2): o painel renova antes de vencer. Abaixo de 5 s, uma aba lenta piscaria entre
 #: ao vivo e suspensa; acima de 60 s, uma aba que fechou sem avisar manteria o aparelho sendo capturado à toa.
 TTL_INTERESSE_MIN_S = 5.0
@@ -352,6 +357,9 @@ class DeviceRuntime:
         #: Sessão de treinamento aberta neste aparelho (item 13.1). A verdade é `training_sessions`; isto só evita
         #: consultar o banco a cada toque.
         self.training_session_id: str | None = None
+        #: Instante (monotônico) em que a última entrada manual COM efeito terminou de rodar no aparelho (31.85): um quadro
+        #: capturado antes dele já não mostra a tela de agora, e a folga da gravação não vale para toque sobre ele.
+        self.ultima_entrada_mono: float = 0.0
         self.serial = ext or f"emulator-{self.console_port}"
         self.ports = InstancePorts(system=row["system_port"], mjpeg=row["mjpeg_port"],
                                    chromedriver=row["chromedriver_port"])
@@ -1596,6 +1604,13 @@ class DeviceManager:
         if not self.tools.found():
             rt.state, rt.state_detail = InstanceState.stopped, "Android SDK não encontrado"
             return
+        # 29.123: o log do emulador é acumulado entre subidas, e o `boot_log_offset` só é gravado no spawn (um backend
+        # recém-subido tem 0). Readotar sem isto fazia o detector de diálogo do `_wait_boot` ler o HISTÓRICO: um
+        # "Showing crashdialog" de um boot antigo parou o 03 e o 06 (contas reais) em 05/10 12:57Z. O offset passa a
+        # ser o começo da subida em curso (o último marco do `start_process` ou `emuglConfig_init`, 29.127), então o
+        # diálogo DESTA subida segue visto.
+        rt.boot_log_offset = await asyncio.to_thread(self._offset_da_readocao,
+                                                     self.cfg.logs_dir / f"emulator-{rt.avd_name}.log")
         alive = emu.is_our_emulator(rt.pid, rt.avd_name)
         try:
             state = await rt.executor.run(rt.adb.state, timeout=12, label="adb get-state")
@@ -2740,6 +2755,9 @@ class DeviceManager:
                         self._save_pid(rt, None)
                         await asyncio.to_thread(self._discard_snapshot, rt)
                         t0 = time.monotonic()
+                        # 29.127 (N1): a subida a frio é outra subida; o offset da tentativa do snapshot leria o log
+                        # dela também.
+                        rt.boot_log_offset = log_path.stat().st_size if log_path.exists() else 0
                         await asyncio.to_thread(self._spawn, rt, a, False, False)
                         self._set_state(rt, InstanceState.booting, "snapshot descartado; iniciando a frio")
                         await self._wait_boot(rt, t0)
@@ -3063,9 +3081,13 @@ class DeviceManager:
     def _snapshot_verdict(self, rt: DeviceRuntime) -> bool | None:
         """True = snapshot carregado · False = recusado pelo emulador · None = o log ainda não disse."""
         path = self.cfg.logs_dir / f"emulator-{rt.avd_name}.log"
+        if rt.boot_log_offset < 0:                  # 29.127: offset desconhecido, não lê o histórico
+            return None
         try:
             with path.open("rb") as fh:
-                fh.seek(rt.boot_log_offset)
+                # 29.127 (N3): o offset é medido antes do spawn, que pode rotacionar o log (`_rotate_log`). Log menor
+                # que o offset é o arquivo novo: lê do começo, como o `dialogo_de_crash`.
+                fh.seek(rt.boot_log_offset if rt.boot_log_offset <= path.stat().st_size else 0)
                 text = fh.read(400_000).decode("utf-8", errors="replace")
         except OSError:
             return None
@@ -3300,6 +3322,31 @@ class DeviceManager:
         await asyncio.to_thread(rt.session.close)
         rt.automation, rt.frame = AutomationInfo(), None
         self._set_state(rt, estado, detalhe)
+
+    @staticmethod
+    def _offset_da_readocao(log_path: Path, *, tentativas: int = 3, pausa_s: float = 0.2) -> int:
+        """O começo da subida em curso no log (29.123, 29.127). Sem marco nem `emuglConfig_init`, o fim do arquivo (só
+        conta o que vier depois). Sem arquivo, 0.
+
+        29.127 (R2): só "o arquivo não existe" dá 0. Um erro passageiro com o arquivo existindo (no Windows, um
+        compartilhamento negado, um antivírus) dava 0 e o detector lia o histórico inteiro, o falso positivo do
+        29.123. Agora tenta de novo; depois, o fim do arquivo, se o `stat` responder; senão, offset desconhecido, e o
+        detector não lê nada nesta readoção (a espera vai até o prazo do boot). Roda numa thread (`to_thread`)."""
+        for tentativa in range(tentativas):
+            try:
+                inicio = emu.inicio_da_subida_atual(log_path)
+                return inicio if inicio is not None else log_path.stat().st_size
+            except FileNotFoundError:
+                return 0
+            except OSError:
+                if tentativa + 1 < tentativas:
+                    time.sleep(pausa_s)
+        try:
+            return log_path.stat().st_size
+        except FileNotFoundError:
+            return 0
+        except OSError:
+            return emu.OFFSET_DESCONHECIDO
 
     async def _readotar_agora(self, rt: DeviceRuntime) -> None:
         """Readoção IMEDIATA depois de um `start`/`wake` que o agente concluiu. Sem isto o aparelho remoto só era
@@ -4176,6 +4223,7 @@ class DeviceManager:
     def _grant_user(self, rt: DeviceRuntime, lease_id: str) -> None:
         rt.control, rt.control_since = ControlOwner.user, now_iso()
         rt.lease_id, rt.pending_lease_id, rt.takeover_requested = lease_id, None, False
+        rt.training_session_id = None              # gravação só começa depois do controle (training.start)
         rt.lease_expires_mono = time.monotonic() + MANUAL_LEASE_TTL_S
         rt.attention = "Controle manual ativo — a execução automática deste aparelho está suspensa."
         self._control_event(rt, "Controle manual concedido ao usuário")
@@ -4221,11 +4269,28 @@ class DeviceManager:
 
     def _end_user_control(self, rt: DeviceRuntime, message: str | None) -> None:
         rt.control, rt.control_since, rt.lease_id = ControlOwner.none, None, None
+        # Fim do controle é fim da gravação. Se o encerramento no gravador falhar (state.py engole), o id preso valeria
+        # a folga do quadro velho no PRÓXIMO controle, fora de gravação.
+        rt.training_session_id = None
         rt.attention = None
         if message:
             self._control_event(rt, message)
         self.on_device_free()
         self.on_control_released(rt)
+
+    @staticmethod
+    def _quadro_velho(rt: DeviceRuntime, frase: str) -> ControlError:
+        """A recusa do toque, do arraste, do texto, do Enter e do Apagar sem quadro atual. Com a captura falhando, o quadro não vai se
+        renovar esperando: o código é outro (`capture_failing`), com o motivo e a saída (29.105). Sem falha
+        registrada, é a corrida comum entre o painel e a tela (`stale_frame`: aguardar a imagem nova resolve)."""
+        if rt.capture_failures > 0:
+            motivo = f" ({rt.capture_error})" if rt.capture_error else ""
+            return ControlError("capture_failing",
+                                f"A captura da tela está falhando{motivo}, e o quadro não se renova: toque, arraste, "
+                                "texto, Enter e Apagar precisam de um quadro atual. Voltar, Início e Recentes seguem "
+                                "aceitas e não dependem do quadro. Uma tela protegida contra captura (aba anônima, "
+                                "app bancário) faz isso.")
+        return ControlError("stale_frame", frase)
 
     def _check_lease(self, rt: DeviceRuntime, lease_id: str) -> None:
         if rt.control != ControlOwner.user or rt.lease_id != lease_id:
@@ -4237,15 +4302,36 @@ class DeviceManager:
         self.touch(rt)
         if rt.state != InstanceState.online:
             raise ControlError("offline", "O aparelho não está online.")
-        seen = rt.recent_frames.get(inp.frame_id)
-        s = self.get_settings()
-        if seen is None or rt.frame is None:
-            raise ControlError("stale_frame", "A interação se refere a um frame que o backend não reconhece mais.")
-        mono, fw, fh = seen
-        if (time.monotonic() - mono) * 1000 > max(s.frame_max_age_ms, s.capture_focus_interval_s * 3000):
-            raise ControlError("stale_frame", "O frame exibido está antigo demais para uma ação segura.")
-        if (fw, fh) != (rt.frame.info.width, rt.frame.info.height):
-            raise ControlError("frame_mismatch", "A orientação/tamanho da tela mudou desde o frame exibido.")
+        fw = fh = 0
+        so_pela_folga = False                      # 31.85: o quadro só passou pela folga da gravação
+        if not (inp.type == "key" and inp.key in TECLAS_DE_NAVEGACAO):
+            # 29.105: a tecla de navegação não aponta para nada na tela (sem coordenada nem campo), então não confere
+            # o quadro. É a saída quando ele não se renova: numa tela protegida contra captura (a aba anônima do
+            # Chrome, FLAG_SECURE) o screencap não traz imagem nova, e sem isto nem o Voltar passava (medida do
+            # 31.72). Enter e Apagar agem sobre o campo em foco: às cegas, o Enter confirmaria o que a pessoa não vê.
+            seen = rt.recent_frames.get(inp.frame_id)
+            s = self.get_settings()
+            if seen is None or rt.frame is None:
+                raise self._quadro_velho(rt, "A interação se refere a um frame que o backend não reconhece mais.")
+            mono, fw, fh = seen
+            idade_ms = (time.monotonic() - mono) * 1000
+            if idade_ms > max(s.frame_max_age_ms, s.capture_focus_interval_s * 3000):
+                # 31.85: gravando, cada entrada lê a hierarquia ANTES de agir e deixa o aparelho lento; o quadro que a
+                # pessoa vê passava da idade e as teclas seguintes eram recusadas em série (15 de 15, 05/10). O quadro
+                # MAIS RECENTE que o backend tem é o que ela está olhando, então vale (com a captura sã e até um teto);
+                # se já existe um mais novo, ela clicou numa imagem antiga e a recusa fica. Fora da gravação, como antes.
+                e_o_mais_recente = (rt.training_session_id and inp.frame_id == rt.frame.info.id
+                                    and rt.capture_failures == 0 and idade_ms <= TETO_QUADRO_NA_GRAVACAO_MS)
+                if not e_o_mais_recente:
+                    raise self._quadro_velho(rt, "O frame exibido está antigo demais para uma ação segura.")
+                so_pela_folga = True
+                # O quadro "mais recente" só é o mais recente porque a captura (no mesmo executor das ações) ainda não
+                # rodou depois da entrada ANTERIOR. Toque e arraste miram coordenada: sobre um quadro anterior à última
+                # entrada cairiam na tela nova com a coordenada da velha. Só passam com um quadro capturado depois dela.
+                if inp.type in ("tap", "long_press", "swipe") and mono <= rt.ultima_entrada_mono:
+                    raise self._quadro_velho(rt, "O frame exibido é anterior à última entrada; aguarde a imagem nova.")
+            if (fw, fh) != (rt.frame.info.width, rt.frame.info.height):
+                raise ControlError("frame_mismatch", "A orientação/tamanho da tela mudou desde o frame exibido.")
 
         def pt(x: float | None, y: float | None) -> tuple[int, int]:
             if x is None or y is None or not (0 <= x < fw and 0 <= y < fh):
@@ -4255,52 +4341,81 @@ class DeviceManager:
         # Modo treinamento: a tela de ANTES do toque é o que diz QUAL elemento a pessoa escolheu. Custa uma leitura
         # de hierarquia por entrada (~0,5 s) — só enquanto grava, e a tela avisa que o treinamento é mais lento.
         arvore_antes = await self._arvore_para_treino(rt) if rt.training_session_id else None
+        if so_pela_folga and (rt.frame is None or rt.frame.info.id != inp.frame_id):
+            # Chegou quadro novo enquanto a árvore era lida: a pessoa agiu sobre uma imagem que já não é a atual.
+            raise self._quadro_velho(rt, "A tela mudou enquanto a entrada era preparada; confira o quadro novo e repita.")
+        if so_pela_folga and (inp.type == "text" or (inp.type == "key" and inp.key in ("enter", "delete"))):
+            # Com a folga a pessoa olha um quadro de até 60 s, e nesse tempo a tela pode ter virado um diálogo ou um campo
+            # de senha. Texto, Enter e Apagar agem sobre o campo em foco: sem a árvore real (ou com tela sensível ou foco
+            # em senha) não dá para saber onde cairiam, e a recusa leva a pessoa ao quadro novo. Toque e arraste já miram
+            # um ponto que ela escolheu e seguem como estavam.
+            foco = next((e for e in (arvore_antes.elements if arvore_antes is not None else []) if e.focused), None)
+            if arvore_antes is None or arvore_antes.sensitive or (foco is not None and foco.password):
+                raise self._quadro_velho(rt, "O quadro exibido é antigo e a tela atual não pode ser confirmada (sensível, "
+                                             "campo de senha ou sem leitura): confira o quadro novo e repita.")
 
         t = inp.type
-        if t == "tap":
-            x, y = pt(inp.x, inp.y)
-            await rt.executor.run(self._manual(rt).tap, x, y, timeout=20, label="toque manual")
-            desc = f"toque em ({x},{y})"
-        elif t == "long_press":
-            x, y = pt(inp.x, inp.y)
-            await rt.executor.run(self._manual(rt).long_press, x, y, inp.duration_ms or 800, timeout=25, label="toque longo manual")
-            desc = f"toque longo em ({x},{y})"
-        elif t == "swipe":
-            x, y = pt(inp.x, inp.y)
-            x2, y2 = pt(inp.x2, inp.y2)
-            await rt.executor.run(self._manual(rt).swipe, x, y, x2, y2, inp.duration_ms or 300, timeout=25, label="arraste manual")
-            desc = f"arraste ({x},{y})→({x2},{y2})"
-        elif t == "key":
-            if not inp.key:
-                raise ControlError("bad_input", "Tecla não informada.")
-            await rt.executor.run(self._manual(rt).press_key, inp.key, timeout=20, label="tecla manual")
-            desc = f"tecla {inp.key}"
-        else:  # text — o conteúdo digitado nunca vai para o log (pode ser credencial)
-            text = inp.text or ""
-            if not text:
-                raise ControlError("bad_input", "Texto vazio.")
-            if rt.store:
-                # Decisão 4 do plano (dono, 24/09): a loja abre e opera como os outros aparelhos, e o texto pelo
-                # painel passa a valer nela. O que continua SEM passar pelo backend é a SENHA da conta Google: campo
-                # de senha em foco (ou tela sensível) recusa e manda digitar na janela do emulador. Sem conseguir
-                # ler a tela, o que tem cara de senha ou de código também é recusado — o resto é digitado.
-                await self._recusar_senha_na_loja(rt, text)
-            try:
-                if rt.session.connected or self.io_factory is not None:
-                    await rt.executor.run(lambda: rt.io.type_text(text, clear_first=False), timeout=30, label="digitação manual")
-                else:
-                    await rt.executor.run(rt.adb.input_text_ascii, text, timeout=30, label="digitação manual")
-            except AdbError as exc:
-                raise ControlError("bad_input", str(exc)) from exc
-            desc = f"digitação de {len(text)} caractere(s)"
+        # O carimbo vai no `finally`: a ação que estoura o prazo (o toque de 24 s) levanta, mas a thread não se
+        # interrompe e o toque cai no aparelho depois. Sem carimbo, o 2º toque sobre o mesmo quadro passaria pela folga
+        # (31.85). Carimba também a recusa anterior ao despacho (coordenada, tecla vazia, loja): custa uma recusa a
+        # mais sob a folga, e é o lado seguro frente a separar os casos.
+        try:
+            if t == "tap":
+                x, y = pt(inp.x, inp.y)
+                await rt.executor.run(self._manual(rt).tap, x, y, timeout=20, label="toque manual")
+                desc = f"toque em ({x},{y})"
+            elif t == "long_press":
+                x, y = pt(inp.x, inp.y)
+                await rt.executor.run(self._manual(rt).long_press, x, y, inp.duration_ms or 800, timeout=25, label="toque longo manual")
+                desc = f"toque longo em ({x},{y})"
+            elif t == "swipe":
+                x, y = pt(inp.x, inp.y)
+                x2, y2 = pt(inp.x2, inp.y2)
+                await rt.executor.run(self._manual(rt).swipe, x, y, x2, y2, inp.duration_ms or 300, timeout=25, label="arraste manual")
+                desc = f"arraste ({x},{y})→({x2},{y2})"
+            elif t == "key":
+                if not inp.key:
+                    raise ControlError("bad_input", "Tecla não informada.")
+                await rt.executor.run(self._manual(rt).press_key, inp.key, timeout=20, label="tecla manual")
+                desc = f"tecla {inp.key}"
+            else:  # text — o conteúdo digitado nunca vai para o log (pode ser credencial)
+                text = inp.text or ""
+                if not text:
+                    raise ControlError("bad_input", "Texto vazio.")
+                if rt.store:
+                    # Decisão 4 do plano (dono, 24/09): a loja abre e opera como os outros aparelhos, e o texto pelo
+                    # painel passa a valer nela. O que continua SEM passar pelo backend é a SENHA da conta Google: campo
+                    # de senha em foco (ou tela sensível) recusa e manda digitar na janela do emulador. Sem conseguir
+                    # ler a tela, o que tem cara de senha ou de código também é recusado — o resto é digitado.
+                    await self._recusar_senha_na_loja(rt, text)
+                try:
+                    if rt.session.connected or self.io_factory is not None:
+                        await rt.executor.run(lambda: rt.io.type_text(text, clear_first=inp.clear_first), timeout=30,
+                                              label="digitação manual")
+                    elif inp.clear_first:
+                        # O `input text` do ADB só acrescenta e não há primitiva de limpar o campo por ele: digitar assim
+                        # deixaria o texto antigo junto do novo. Recusa em vez de fingir (a sessão do Appium limpa).
+                        raise ControlError("bad_input", "Limpar o campo antes de digitar exige a sessão de automação do "
+                                                        "aparelho, e ela não está conectada.")
+                    else:
+                        await rt.executor.run(rt.adb.input_text_ascii, text, timeout=30, label="digitação manual")
+                except AdbError as exc:
+                    raise ControlError("bad_input", str(exc)) from exc
+                desc = f"digitação de {len(text)} caractere(s)"
+        finally:
+            rt.ultima_entrada_mono = time.monotonic()
         self.bus.emit("log", f"{rt.id}: entrada manual — {desc}", instance_id=rt.id)
         rt.capture_now.set()
         if rt.training_session_id and self.on_training_input is not None:
             try:
                 self.on_training_input(rt, {"type": t, "x": inp.x, "y": inp.y, "x2": inp.x2, "y2": inp.y2,
-                                            "key": inp.key, "text": inp.text if t == "text" else None}, arvore_antes)
-            except Exception:  # noqa: BLE001 - gravar é acessório: a entrada já aconteceu no aparelho
-                log.exception("%s: entrada não gravada no treinamento", rt.id)
+                                            "key": inp.key, "text": inp.text if t == "text" else None,
+                                            "clear_first": bool(t == "text" and inp.clear_first)}, arvore_antes)
+            except Exception as exc:  # noqa: BLE001 - gravar é acessório: a entrada já aconteceu no aparelho
+                # Sem a mensagem nem o traceback: o DETAIL de uma falha de constraint do PostgreSQL pode trazer a linha
+                # inteira, com o texto digitado (que pode ser credencial).
+                log.error("%s: entrada não gravada no treinamento (sessão %s): %s", rt.id, rt.training_session_id,
+                          type(exc).__name__)
 
     async def _arvore_para_treino(self, rt: DeviceRuntime) -> Any:
         try:

@@ -50,7 +50,8 @@ SISTEMAS = {
     # Item 24.3: o ator aprende quando usar read_value (ler antes de concluir e antes do efeito; código, senha e
     # token nunca são valor) — o hash muda de propósito, como no 24.8 abaixo.
     # Item 31.38: a regra de leitura ganhou `step_blocked(kind="dado_ausente")` — o hash muda de propósito.
-    "ACTOR_SYSTEM": "29ab96bfc6f9bf37bb09c321f36a54563565726ae62d60eaf86242b8480fd9c4",
+    # Item 31.72: a regra de aviso e cookies diz "recuse; NUNCA aceite" (a trava é do executor) — muda de propósito.
+    "ACTOR_SYSTEM": "8ba92d2e7fb3d830a127ac5c70a809c0e475c4a53d340e5c333254d98b84954f",
     # Item 24.8: o exemplo vedado (código lido no Outlook) virou um exemplo permitido, e a regra de código/senha/
     # token nunca atravessar etapas entrou no texto — o hash muda de propósito, não é enfraquecimento do teste.
     # Item 24.3: a regra de `saidas` e `{{saida:<nome>}}` (valor lido numa etapa e usado nas seguintes).
@@ -67,7 +68,9 @@ SISTEMAS = {
     # propósito, não é enfraquecimento do teste.
     # Item 31.40: o verificador marca `sobreposicao` quando algo cobre o alvo — o hash muda de propósito.
     # Item 31.40 b: e cita em `cobre` o id do elemento que cobre — o hash muda de propósito.
-    "VERIFIER_SYSTEM": "a4d0e42259723899533aaec2010c4485bcb569ac4e36866541d9a727a2370b43",
+    # Item 31.73: outra causa VISÍVEL fora do aviso (conteúdo errado, outra tela) é `sobreposicao` false; o que está só
+    # escondido pelo aviso não é outra causa — de propósito.
+    "VERIFIER_SYSTEM": "26a20a5c9efb73eaea09ae6361a7e34d92646d0209a8bcd392a25c89a5517d3c",
 }
 
 

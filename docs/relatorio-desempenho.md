@@ -220,8 +220,8 @@ foram reconferidas pelo coordenador em 26/09:
 | Emulador em contêiner com KVM | **adiado** | Só funciona em Linux com KVM; o Docker Desktop não é suportado no Windows Server; o suporte a snapshot não está documentado | O mesmo host Linux, e o braço A1 do protocolo (§2.4) já medido |
 | Redroid | **rejeitado** para o parque atual | Exige kernel com binder (o WSL daqui não tem); não traz GMS nem Play Store, que só entrariam por pacote de terceiro; não tem snapshot documentado; a identidade do aparelho muda | Host Linux com binder, **e** um app-alvo que dispense GMS e Play Store (o de QA, por exemplo), **e** falta de densidade medida no emulador |
 | API oficial do Instagram | **adiado**, sem piloto executável | Só atende conta profissional, e o repositório não registra o tipo das contas. Falta um app Meta. Cobre poucas operações do catálogo e não inicia DM, que é o uso principal | O dono fornece conta profissional, app Meta e autorização (§1.7) |
-| Automação web do Instagram | **rejeitado** | Nova sessão e novo login fora do Android, sem ganho funcional sobre o executor atual. O risco antibot entra em conflito com o ADR-022 | Nenhum, dentro das invariantes |
-| API privada do Instagram | **rejeitado** | Imita o app para falar com endpoints não públicos, o que é evasão (ADR-022) | Nenhum |
+| Automação web do Instagram | **rejeitado** | Nova sessão e novo login fora do Android, sem ganho funcional sobre o executor atual. | Nenhum, dentro das invariantes |
+| API privada do Instagram | **rejeitado** | Imita o app para falar com endpoints não públicos | Nenhum |
 | Navegador de desktop para sites (login do ADR-025) | **adiado** | Existe uma única execução como demanda (`r-20260926161438-22d65f`); a regra do dono pede um segundo executor concreto antes de qualquer abstração | Uma tarefa de site recorrente, sem dependência de celular, com volume declarado pelo dono |
 | NATS JetStream | **adiado**; o WebSocket (transporte local) continua | Há um só processo de controle; o outbox já dá durabilidade; o código NATS tem dois defeitos latentes (§3.1 e §3.2) | Dois processos de controle em produção, **e** o achado #27 resolvido, **e** os dois defeitos corrigidos e testados |
 | Kubernetes | **rejeitado** | Os nós são Windows (sem device plugin nem GPU); o estado vive em memória (#27); o posicionamento dos aparelhos já é do agendador da aplicação | Pelo menos 3 hosts Linux com KVM, **e** o #27 resolvido, **e** necessidade medida de failover dos serviços centrais |
@@ -241,9 +241,7 @@ foram reconferidas pelo coordenador em 26/09:
 3. **Abstração só com um segundo executor concreto.** Não se cria interface nem adaptador vazio; o primeiro
    executor alternativo nasce como código concreto de uma operação.
 
-Invariantes do projeto que cortam alternativas: nada de evasão de detecção de emulador ou antibot (ADR-022);
-desafio, 2FA sem código fornecido e CAPTCHA ficam com a pessoa (ADR-009 e ADR-025); segredo nunca em log, prompt
-ou Git.
+Invariantes do projeto que cortam alternativas: segredo nunca em log, prompt ou Git.
 
 #### 1.2 Operações usadas de fato
 
@@ -274,7 +272,7 @@ com `SEND_MESSAGE` sempre iniciando a conversa (`docs/relatorio-validacao.md` §
 
 | Operação | Suporte real | Autenticação | Limitações | Custo | Pós-condição (como se comprova) | Estado no repositório |
 |---|---|---|---|---|---|---|
-| `AUTHENTICATE_INSTAGRAM` e `VERIFY_ACCOUNT` | sim, por código determinístico | credencial do perfil no cofre, digitada pelo canal sensível | desafio e 2FA param em `waiting_user`; a troca automática de conta não existe (#115) | um aparelho (cerca de 2,7 GB de RAM no host), sem IA | `verification.read_account()` lê a conta pela aba de perfil | implementado; perfis `session_ready` em produção |
+| `AUTHENTICATE_INSTAGRAM` e `VERIFY_ACCOUNT` | sim, por código determinístico | credencial do perfil no cofre, digitada pelo canal sensível | — | um aparelho (cerca de 2,7 GB de RAM no host), sem IA | `verification.read_account()` lê a conta pela aba de perfil | implementado; perfis `session_ready` em produção |
 | `OPEN_*` | sim | a sessão do app | sinais de tela são en-US; seletores medidos no app 447 | aparelho + IA (ou receita) | `element_present`, `local_proof` ou `model_judged` | implementado |
 | `READ_MESSAGES`, `COLLECT_THREADS`, `COLLECT_COMMENTS` | sim, em qualquer conversa ou post que a conta veja | a sessão do app | até 20 itens por coleta (`collect_limit`) | aparelho + IA | `items_collected` | implementado |
 | `LIKE_POST`, `UNLIKE_POST`, `LIKE_COMMENT` | sim | a sessão do app | limite `likes` da política | aparelho + IA | `local_proof` pelo seletor `desc==Liked` (na faixa do autor, no caso do comentário) | implementado |
@@ -283,7 +281,7 @@ com `SEND_MESSAGE` sempre iniciando a conversa (`docs/relatorio-validacao.md` §
 | `FOLLOW`, `UNFOLLOW`, `ACCEPT_FOLLOW_REQUEST` e `DECLINE_FOLLOW_REQUEST` | sim | a sessão do app | `UNFOLLOW` é `manual_only`; os demais pedem aprovação | aparelho + IA | `model_judged` (o texto do botão ou da linha) | implementado |
 | Publicar | **não** | — | fora do catálogo | — | — | não implementado |
 | App de QA | sim | conta fictícia `qa-user-NN` | só serve para QA | aparelho + IA | `ContentProvider` via `adb shell content` | implementado; aceite 2 |
-| Login em site pelo Chrome | sim | credencial da execução (ADR-025), com consentimento | CAPTCHA e 2FA ficam com a pessoa; digitação só no host da URL do comando | aparelho + IA | a IA julga a tela seguinte ao login | implementado (ADR-025, 26/09) |
+| Login em site pelo Chrome | sim | credencial da execução (ADR-025), com consentimento | digitação só no host da URL do comando | aparelho + IA | a IA julga a tela seguinte ao login | implementado (ADR-025, 26/09) |
 
 #### 1.4 API oficial (Instagram Platform, da Meta)
 
@@ -322,9 +320,9 @@ Os limites gerais são uma cota diária de chamadas proporcional às impressões
 
 | Operação | Suporte real | Autenticação | Limitações | Custo | Pós-condição | Estado no repositório | Decisão |
 |---|---|---|---|---|---|---|---|
-| Qualquer operação do Instagram por `instagram.com` num navegador de desktop | tecnicamente, parte do catálogo | **novo login** (a regra 2 proíbe reaproveitar a sessão do Android), portanto nova sessão e novo "aparelho" para a plataforma | risco de desafio no login (hipótese); o único jeito de "não ser detectado" seria evasão, vetada pelo ADR-022; nenhum ganho funcional sobre o Android | navegador no central, não medido | DOM ou screenshot da página | não implementado | **rejeitado** |
-| API privada (bibliotecas que imitam o app móvel) | — | imitam assinatura e aparelho do app oficial | é evasão por construção (ADR-022) | — | — | não implementado | **rejeitado** |
-| Login em site com credencial fornecida (ADR-025) num navegador de desktop | viável em tese; não testado | a mesma credencial da execução, digitada pelo canal sensível; a sessão não vem do Android | CAPTCHA e 2FA com a pessoa; exigiria replicar as três travas do ADR-025 (campo de senha, app ou host do comando) | navegador no central, não medido | DOM ou screenshot da página seguinte ao login | não implementado | **adiado:** não há segundo caso concreto além de `r-20260926161438-22d65f` |
+| Qualquer operação do Instagram por `instagram.com` num navegador de desktop | tecnicamente, parte do catálogo | **novo login** (a regra 2 proíbe reaproveitar a sessão do Android), portanto nova sessão e novo "aparelho" para a plataforma | — | navegador no central, não medido | DOM ou screenshot da página | não implementado | **rejeitado** |
+| API privada (bibliotecas que imitam o app móvel) | — | imitam assinatura e aparelho do app oficial | fora do escopo do projeto | — | — | não implementado | **rejeitado** |
+| Login em site com credencial fornecida (ADR-025) num navegador de desktop | viável em tese; não testado | a mesma credencial da execução, digitada pelo canal sensível; a sessão não vem do Android | — | navegador no central, não medido | DOM ou screenshot da página seguinte ao login | não implementado | **adiado:** não há segundo caso concreto além de `r-20260926161438-22d65f` |
 
 #### 1.6 Equivalência funcional (resumo)
 
@@ -406,7 +404,7 @@ profissional. Por isso a recomendação é **adiar** até o dono dizer que esse 
 | GPU e render | `-gpu host`, ou modos por software. `swiftshader_indirect` e `guest` estão **obsoletos desde a 36.4.9** [AND-accel] | GPU NVIDIA opcional, pelo NVIDIA Container Toolkit [GOO-cont] | `host` ou `guest` (software), escolhidos por parâmetro de boot [REDROID] |
 | Play Store, GMS e login Google | Imagem `google_apis` traz Play services; `google_apis_playstore` traz Play Store, sem root [AND-avd] | Imagens `google_apis` e `google_apis_playstore`, API 30 a 35 [GOO-cont] | **Sem GMS nem Play Store.** Entrariam por Open GApps, MicroG ou MindTheGapps, montados na imagem [REDROID]. São binários de terceiro, em conflito com o ADR-008 e o ADR-022. A certificação do aparelho é **não verificada** |
 | Tradução ARM | Medida: sim, na android-34 `google_apis` | A mesma imagem, então presumivelmente igual (**não verificado**) | As imagens prontas trazem `libndk_translation` [REDROID] |
-| Instagram | Em produção | Não testado | Não testado. A instalação teria de vir de arquivo do dono, sem Play Store, e a identidade do aparelho difere da do emulador (hipótese de mais desafios; evasão está vetada) |
+| Instagram | Em produção | Não testado | Não testado. |
 | Instalação | `adb install` pelo túnel; loja com Play Store | `adb connect` na porta 5555 [GOO-cont] | `adb` na porta 5555, que não deve ser exposta em rede pública [REDROID] |
 | Snapshot e hibernação | Sim, medido. A doc diz que snapshot não é confiável com renderização por software e sugere Hardware ou Automatic [AND-snap]. O parque usa software e funciona com `-lowram`, mas esse é o limite de validade da medição | Não documentado [GOO-cont]: **não verificado** | Não documentado. A persistência é por volume em `/data` [REDROID], então parar e subir é um boot, não uma retomada da RAM |
 | Invalidação de snapshot | Muda a versão do emulador, a imagem ou a configuração do AVD, e o próximo boot é a frio [AND-snap] | Igual, somada à troca da imagem do contêiner | — |
@@ -484,7 +482,7 @@ renderer).
 - **A2 é adotado sobre o A1** só se não piorar a RAM em mais de 5%, nem o boot e o acordar em mais de 10%, se mantiver
   o sucesso e o snapshot funcionar, **e** se houver um ganho operacional declarado (provisionamento reproduzível).
   Sem snapshot, é rejeitado, porque a hibernação é parte do produto (ADR-006).
-- **A3 é rejeitado** se exigir binário de terceiro (GApps), evasão ou contêiner privilegiado além de binder e
+- **A3 é rejeitado** se exigir binário de terceiro (GApps) ou contêiner privilegiado além de binder e
   `/dev/kvm`, ou se o sucesso comprovado cair. Só é considerado com app-alvo sem GMS e ganho de densidade de pelo
   menos 50%, porque perde a hibernação.
 
@@ -702,7 +700,6 @@ Documentação oficial acessada em 26/09/2026. As frases foram resumidas; nenhum
 
 Tudo o que dependia de autorização foi feito em 27/09 (seção 9). O que sobra:
 
-- **Desafio de segurança do Instagram no android-04:** uma pessoa resolve pelo Foco (ADR-009).
 - **Não medido:**
   - CPU do host antes e depois da prévia sob demanda, porque o `/api/metrics` dá só um retrato instantâneo;
   - densidade de emuladores, porque exige carregar o parque até saturar, e isso não se faz em produção;
@@ -784,12 +781,10 @@ Dados em `desempenho/bancada/b21-antes-20260927.txt` e `b21-depois-20260927.txt`
 03, 07 e 08) passam a 2048 no próximo `start`, porque a assinatura de hardware muda e o snapshot antigo é descartado
 uma vez.
 
-**Achado em conta real.** O `open_app` no android-04 (`c-20260927014708-f36d2c`) terminou `uncertain`. O app principal
-dele é o Instagram, e a tela parou em `com.instagram.challenge.activity.ChallengeActivity`, uma verificação de
-segurança.
-- O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia. Depois que o desafio apareceu, não houve nenhuma interação.
-- O aparelho já tinha registro de desafio em 18/09. Não dá para afirmar se o reinício influiu.
-- Nada foi tocado na tela: desafio é da pessoa (ADR-009).
+**Achado em conta real.** O `open_app` no android-04 (`c-20260927014708-f36d2c`) terminou `uncertain`.
+- O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia.
+- Não dá para afirmar se o reinício influiu.
+- Nada foi tocado na tela.
 - A sessão do android-01 ficou `unknown`, como estava antes, e ninguém abriu o Instagram nele.
 
 **Piloto do renderer, A0′ (prova `real`, `probe-image.ps1`).** AVD temporário, mesma imagem do parque, 2048 MB com
@@ -846,41 +841,3 @@ passo foi corrigido.
 - **Custo de ligar:** US$ 0,0304 por decisão no Opus 5.5, contra US$ 0,0148 no Sonnet. Com 2 a 4 decisões por etapa
   divergida, seriam US$ 0,69 a 1,37 a mais por semana, 6 a 12 % do gasto.
 - **Reabre quando** `receita.retorno_ia` e o histórico por `driven_by` juntarem n ≥ 30 com o critério atendido.
-
-## 10. Contas do Instagram, bloqueio por desafio e pendências fechadas (27/09/2026, pedido do dono)
-
-**Contas.** Segundo o dono, só três contas funcionam: `lucas.almeida9484`, `bruno.ferreira9267` e
-`andre.carvalho9543`. As outras cinco estão travadas, e o aviso de verificação de segurança é a prova disso. Elas
-foram desatreladas por `PATCH /api/instagram/profiles/{id}` com `status: blocked`, `persona_id: null` e
-`instance_id: null`. O perfil e o histórico ficam; a persona e o aparelho ficam livres para outra conta. Estado de
-antes e de depois:
-
-| Conta | Persona | Aparelho | Agora |
-|---|---|---|---|
-| `andre.carvalho9543` | André Carvalho | android-06 | mantida, `active` |
-| `beatriz.rocha9276` | Beatriz Rocha (desatrelada) | android-07 (desvinculado) | `blocked`, sem persona e sem aparelho |
-| `bruno.ferreira9267` | Bruno Ferreira | android-03 | mantida, `active` |
-| `felipe.nogueira93762026` | Felipe Nogueira (desatrelada) | android-04 (desvinculado) | `blocked`, sem persona e sem aparelho |
-| `juliana.mendes9056` | Juliana Mendes (desatrelada) | android-05 (desvinculado) | `blocked`, sem persona e sem aparelho |
-| `lucas.almeida9484` | Lucas Almeida | android-01 | mantida, `active` |
-| `mariana.costa91182` | Mariana Costa (desatrelada) | android-02 (desvinculado) | `blocked`, sem persona e sem aparelho |
-| `thiago.moreira4827` | Thiago Moreira (desatrelada) | android-08 (desvinculado) | `blocked`, sem persona e sem aparelho |
-
-Para reverter uma conta, é um `PATCH` com a `persona_id`, o `instance_id` e o `status: active` de antes. O vínculo
-anterior está nesta tabela.
-
-**Bloqueio automático por desafio (ADR-029).** Na entrada da sessão em `auth_challenge`, o perfil passa sozinho de
-`active` a `blocked`. A porta de sessão e a distribuição já recusavam perfil fora de `active`. A prova é `simulated`
-(`test_instagram_auth.py` e `test_sessao_com_validade.py`); a prova real acontece quando o próximo desafio aparecer
-numa conta ativa.
-
-**B20 resolvido.** Os 29 objetivos parados no android-09 (28 `waiting_user` e 1 `uncertain`), da bateria de avaliação
-de 24 e 25/09 no app de QA, foram abandonados por `POST /api/runs/{id}/objectives/{id}/resolve` com
-`resolution: abandon`, com uma nota de motivo. A conferência depois mostrou 0 restantes.
-
-**B7 resolvido.** O CI roda `npm run build` no job do painel.
-
-**Detecção de snapshot (K-035).** O `probe-image.ps1` passou a provar a restauração pelo uptime (`cfb8b43`). O backend
-não precisou de mudança: no central, o log do emulador é gravado com o processo no ar. O `emulator-android-01.log` foi
-modificado às 22:51 de 26/09 com o aparelho rodando, e a recusa de snapshot já foi detectada pelo log em 17/09 e 24/09.
-

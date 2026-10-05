@@ -172,7 +172,7 @@ async def _rodar(harness: Harness, monkeypatch: Any, *, navegador: bool, botao: 
     monkeypatch.setattr(modulo, "e_navegador", lambda pacote: navegador)
     monkeypatch.setattr(modulo, "botao_que_fecha", botao)
     monkeypatch.setattr(modulo, "dialogo_sem_saida", sobra)
-    _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    _juiz_com_ref(harness, "verify_sent", cobertas=1)
     run = harness.run(["android-01"])
     await harness.wait_run(run.id, statuses=TERMINAIS)
     return run, _limpeza(harness, run.id)

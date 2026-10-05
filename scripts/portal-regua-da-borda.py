@@ -33,6 +33,19 @@ def _regua() -> ModuleType:
     return modulo
 
 
+LINHA_MAX = 200                                     # um Location comprido não empurra o resto da linha para fora
+
+
+def _linha(texto: str) -> str:
+    """O valor de terceiro que vai cru à linha (o `Location`). Todo caractere fora do ASCII imprimível vira `?`, sem a
+    dobra do NFKD: um `ｈttps` de largura total ou uma ligadura apareceria igual ao esperado ao lado de um FALHOU (L1 da
+    leitura do #396). Cortado, diz o tamanho total, porque a diferença pode estar depois do corte."""
+    limpo = "".join(c if 0x21 <= ord(c) <= 0x7E else "?" for c in texto)
+    if len(limpo) <= LINHA_MAX:
+        return limpo
+    return f"{limpo[:LINHA_MAX]}... ({len(limpo)} caracteres)"
+
+
 def _ascii(texto: str) -> str:
     """Toda linha FALHOU passa por aqui. Controle vindo da página ou da borda vira `?`: uma quebra de linha de
     terceiro partiria a linha em duas, a segunda com cara de instrução (U1 da leitura do #378)."""
@@ -58,7 +71,7 @@ def _cabecalhos(texto: str) -> tuple[int, dict[str, str]]:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("conferencia", choices=("pagina", "cabecalhos", "versao", "versoes"))
+    ap.add_argument("conferencia", choices=("pagina", "cabecalhos", "versao", "versoes", "linha"))
     ap.add_argument("--rotulo", default="")
     ap.add_argument("--onde", default="")
     ap.add_argument("--host", default="")
@@ -69,8 +82,12 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--csp", choices=("site", "aplicar", "so_relatar"))
     ap.add_argument("--sem-cookie", action="store_true")
     a = ap.parse_args(argv)
-    r = _regua()
     entrada = sys.stdin.buffer.read()
+    if a.conferencia == "linha":                     # 29.107: valor de terceiro que o shell imprime (o Location)
+        # Sem quebra no fim: o `$(...)` do shell tira o LF, mas não o CR que o print do Windows poria antes dele.
+        sys.stdout.write(_linha(entrada.decode("utf-8", "replace")))
+        return 0
+    r = _regua()
 
     if a.conferencia == "versoes":                   # a raiz no stdin; uma linha "<caminho> <versao>" por arquivo
         for caminho, versao in r.versoes_pedidas(entrada.decode("utf-8", "replace")).items():

@@ -46,7 +46,11 @@ async function render(status: ContextRetrievalStatus): Promise<HTMLElement> {
   backend.on('GET', ROTA, () => json(status));
   await act(async () => { root.render(<ContextRetrievalSection />); });
   await waitFor(() => expect(backend.callsTo('GET', ROTA)).toHaveLength(1));
-  await waitFor(() => expect(text(container)).not.toContain('Consultando'));
+  // A seção não escreve "Consultando": o que diz que a leitura acabou é o Atualizar sair do `loading` (29.104).
+  await waitFor(() => {
+    const atualizar = [...container.querySelectorAll('button')].find((b) => text(b).includes('Atualizar'));
+    return atualizar !== undefined && !atualizar.disabled && atualizar.getAttribute('aria-busy') !== 'true';
+  });
   return container;
 }
 

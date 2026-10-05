@@ -27,7 +27,7 @@ from ..automation import tools as ferramentas
 from ..automation.driver import DriverBusy, DriverError, DriverTimeout, FalhaDeLeitura, sessao_perdida
 from ..automation.hierarchy import (MOTIVO_DESAFIO, MOTIVO_SENHA, SUBTIPO_CODIGO, SUBTIPO_CONTA_TRAVADA,
                                     SUBTIPO_VERIFICACAO, ContaTravada, UiElement, UiTree)
-from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, ReadValue, StepBlocked, StepDone,
+from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, Drag, ReadValue, StepBlocked, StepDone,
                                 TelaDeContaTravada, ToolContext, ToolValidationError, esperar_foco, execute_tool,
                                 looks_like_commit, resolve_point, urls_do_texto, validate_call)
 from ..config import AiCfg, Config, LimitsCfg
@@ -70,10 +70,13 @@ from .proofs import marcas_pendentes_na_tela, nivel_pelo_marcador, variantes_de_
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .latencia import TemposDaTentativa, ms_desde
 from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_galeria
-from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
-                      filhos_rotulados, hash_generico_da_linha, unique_selectors)
+from .recipes import (NAO_APLICAVEL_CONTA_APOS, READ_ONLY, AlvoAusente, RecipeDiverged, RecipeStore, Replayer,
+                      contar_retorno_ia, distill, eh_generica, filhos_rotulados, hash_generico_da_linha,
+                      unique_selectors)
 from .repository import Repository
-from .dialogos import LIMITE_DE_DIALOGOS, MOTIVO_SEM_SAIDA, botao_que_fecha, dialogo_sem_saida, e_navegador
+from .dialogos import (FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE, MOTIVO_ACEITE_RECUSADO,
+                       MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha, dialogo_sem_saida,
+                       e_navegador, rotulo_para_o_ator, tipo_do_elemento, toque_que_aceita)
 from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -250,8 +253,9 @@ def valor_segue_na_tela(tree: UiTree, valor: str, resource_id: str, exato: bool)
 
 def linha_do_valor_lido(nome: str, valor: str, faltam: Sequence[str]) -> str:
     """A linha do histórico do ator depois de um `read_value` lido da árvore. 31.54: o valor que é URL vai limpo
-    (`enderecos_limpos`); a saída da etapa guarda o valor como foi lido, que é o que a pessoa pediu."""
-    return (f"read_value({nome}) → lido: {enderecos_limpos(valor)[:120]}"
+    (`enderecos_limpos`); a saída da etapa guarda o valor como foi lido, que é o que a pessoa pediu. 31.78: "entregue" e
+    o valor entre aspas: "lido: 0" se lia como "nada lido" (hipótese do 29.30, não provada pelo banco)."""
+    return (f'read_value({nome}) → lido e entregue: "{enderecos_limpos(valor)[:120]}"'
             + (f"; faltam: {', '.join(faltam)}" if faltam else "; todos os valores da etapa lidos"))
 
 
@@ -386,6 +390,88 @@ def cobertura_na_arvore(tree: UiTree, ref: str | None) -> Cobertura | None:
     return None
 
 
+#: 31.73: a fração mínima da tela que o que cobre ocupa para a recusa do juiz valer como sobreposição. É UMA constante,
+#: a do 31.51 (`dialogos.FRACAO_QUE_COBRE`), medida nas duas árvores reais do banner "Abra o app e ganhe frete grátis" do
+#: Mercado Livre (720 x 1280): 11,6 % como faixa no topo (r-20261005071303-f24955, o juiz disse que a causa era o
+#: conteúdo; a captura de 05/10 08:06Z confirmou os bounds) e 83,8 % como modal (r-20261004190200-5b56e6, cobria).
+FRACAO_DA_SOBREPOSICAO = FRACAO_QUE_COBRE
+
+#: L2 da leitura do #391: abaixo desta fração da tela, a árvore inteira é uma janela flutuante (o dump de um diálogo
+#: nativo), não a página. A mesma fração de 60 % que o 31.72 usa para a página.
+_FRACAO_DA_JANELA = 0.6
+
+
+def _area_de(b: tuple[int, int, int, int]) -> int:
+    return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
+
+
+def _contem(fora: tuple[int, int, int, int], dentro: tuple[int, int, int, int]) -> bool:
+    return fora[0] <= dentro[0] and fora[1] <= dentro[1] and dentro[2] <= fora[2] and dentro[3] <= fora[3]
+
+
+def _cruza(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def sobreposicao_vale(tree: UiTree, ref: str | None, largura: int, altura: int) -> bool:
+    """31.73: a recusa do juiz por `sobreposicao` vale? Só se julga o elemento que o juiz CITOU e que está na árvore
+    (J2 da leitura: a heurística de `cobertura_na_arvore` não decide; sem citado, vale como antes). Sem o tamanho da
+    tela, vale (como antes; o `dialogos._cobre_a_tela` responde "não" ali porque lá a pergunta é outra: se há diálogo
+    a fechar, e na dúvida a limpeza não falha).
+
+    Vale quando: o citado cobre `FRACAO_DA_SOBREPOSICAO` da tela; ou (J1) o menor elemento com pista de diálogo que o
+    CONTÉM cobre (o juiz pode citar o "X" de um modal); ou (J3) outra folha com texto, que não é ancestral nem
+    descendente, cruza a área (a faixa fixa sobre o conteúdo, como o aviso de cookies no rodapé sobre a última
+    mensagem). Senão é uma faixa no fluxo da página, que não esconde o alvo: na árvore real da f24955, nada da página
+    cruza o banner do topo (só os ancestrais, os filhos e 2 px da barra do Chrome, sem texto)."""
+    citado = tree.by_id(ref) if ref else None
+    if citado is None or largura <= 0 or altura <= 0:
+        return True
+    tela = largura * altura
+    if _area_de(citado.bounds) >= FRACAO_DA_SOBREPOSICAO * tela:
+        return True
+    caixas = [e for e in tree.elements if e is not citado and _contem(e.bounds, citado.bounds)
+              and (_PISTAS_DE_COBERTURA.search(e.class_name or "") or _PISTAS_DE_COBERTURA.search(e.resource_id or ""))]
+    caixa = min(caixas, key=lambda e: _area_de(e.bounds)) if caixas else None
+    if caixa is not None and _area_de(caixa.bounds) >= FRACAO_DA_SOBREPOSICAO * tela:
+        return True
+    # L2 da leitura do #391: no diálogo nativo (AlertDialog) o leitor corta o painel (`android:id/parentPanel`, sem
+    # texto) e, com o dump só da janela do diálogo, sobram título, mensagem e botões, todos pequenos e sem pista. A
+    # árvore inteira menor que `_FRACAO_DA_JANELA` da tela é uma janela flutuante: o que se vê é o próprio diálogo.
+    if tree.elements:
+        x1 = min(e.bounds[0] for e in tree.elements)
+        y1 = min(e.bounds[1] for e in tree.elements)
+        x2 = max(e.bounds[2] for e in tree.elements)
+        y2 = max(e.bounds[3] for e in tree.elements)
+        if _area_de((x1, y1, x2, y2)) < _FRACAO_DA_JANELA * tela:
+            return True
+    base = caixa or citado
+    area = base.bounds
+    # Os descendentes da base, sem a relação de pai na árvore: na ordem do documento (a do uiautomator, em
+    # profundidade), eles vêm em sequência logo depois dela, todos contidos na área. Uma folha contida na área FORA dessa
+    # sequência é a página por baixo de um aviso fixo (gov.br, 05/10: a folha de cookies de 49 % vem no fim do documento,
+    # e "Trabalho…" e "Viagens…" vêm antes dela, inteiras dentro da área).
+    ordem = tree.elements
+    i = next(k for k, e in enumerate(ordem) if e is base)
+    descendentes: set[int] = set()
+    for e in ordem[i + 1:]:
+        if not _contem(area, e.bounds):
+            break
+        descendentes.add(id(e))
+    for e in ordem:
+        if e is citado or e is caixa or id(e) in descendentes or not (e.text or e.desc):
+            continue
+        if _contem(e.bounds, area):
+            continue                                   # ancestral: a página ou a tela
+        if any(o is not e and o.bounds != e.bounds and _contem(e.bounds, o.bounds) for o in tree.elements):
+            # Não é folha: um contêiner da página. Com os MESMOS bounds não conta (L1 da leitura do #391): no Chrome, o
+            # View com texto e o TextView filho com o mesmo texto se conteriam um ao outro e a linha sumiria do J3.
+            continue
+        if _cruza(e.bounds, area):
+            return True
+    return False
+
+
 def ainda_cobre(c: Cobertura, tree: UiTree) -> bool:
     """31.40 b (i): o elemento que cobria segue na árvore E na mesma área. Sumiu, ou saiu da área que cobria: a limpeza
     está feita. Sem resource-id nem texto, só a mesma caixa conta como o mesmo elemento."""
@@ -448,6 +534,10 @@ class StepOutcome:
     sobreposicao: bool = False
     #: 31.40 b: o elemento que cobre (do id do juiz ou da árvore), que a limpeza recebe; `None` quando não se achou.
     cobertura: Cobertura | None = None
+    #: 30.75 (no fim, para não deslocar quem monta por posição): a etapa parou na tela de senha do app (o app pede
+    #: login). Na execução de PROVA, o scheduler grava `objectives.blocked_kind='auth'` e o pedido de validação fecha
+    #: `app_sem_sessao`, não `sem_evidencia`.
+    pede_login: bool = False
 
 
 class OrcamentoDaEtapa(AIError):
@@ -1171,6 +1261,31 @@ class StepExecutor:
         informative = sum(1 for e in tree.elements if e.text or e.desc or e.clickable or e.editable)
         return "arvore_pobre" if informative < ai.rich_tree_min_elements else "arvore_rica"
 
+    def _aceite_do_toque(self, tool_ctx: ToolContext, args: object, tree: UiTree, ai: AiCfg) -> UiElement | None:
+        """31.72: o elemento cujo toque do ator aceitaria um aviso de consentimento (`dialogos.toque_que_aceita`), pelo
+        PONTO tocado (o do `resolve_point`, também por coordenada); `None` se o gesto pode seguir. No `drag`, o ponto de
+        INÍCIO e o de FIM: um arrasto curto dentro do botão é um toque nele. No `type_text` com `element_id`, o toque que
+        ele dá no elemento antes de escrever. Um host em `ai.consentimento_aceito_em` (vazia por padrão; preenchê-la é
+        decisão do dono) libera o aceite ali."""
+        if isinstance(args, Drag):
+            pontos = [(None, args.from_x, args.from_y), (None, args.to_x, args.to_y)]
+        else:
+            pontos = [(getattr(args, "element_id", None), getattr(args, "x", None), getattr(args, "y", None))]
+        alvos: list[tuple[UiElement | None, tuple[int, int]]] = []
+        for element_id, x, y in pontos:
+            try:
+                px, py, el = resolve_point(tool_ctx, element_id, x, y)
+            except DriverError:
+                continue                               # o gesto falharia na execução, como antes
+            alvos.append((el, (px, py)))
+        if ai.consentimento_aceito_em:
+            barras = set(BARRA_DE_ENDERECO.values())
+            texto = next((e.text for e in tree.elements if e.resource_id in barras), "")
+            host = _host(texto or "")
+            if host and any(host == h or host.endswith("." + h) for h in map(str.casefold, ai.consentimento_aceito_em)):
+                return None
+        return next((r for el, ponto in alvos if (r := toque_que_aceita(tree, el, ponto)) is not None), None)
+
     def _image_scale(self, obs: Observation, ai: AiCfg | None = None) -> float:
         """Pixels do aparelho por pixel do espaço de coordenadas que o modelo enxerga."""
         return max(1.0, max(obs.width, obs.height) / (ai or self.cfg.file.ai).screenshot_max_side)
@@ -1518,6 +1633,24 @@ class StepExecutor:
                 self.repo.db.execute("UPDATE steps SET driven_by='ai' WHERE id=?", (step.id,))
             return
         repo = self.repo
+        if na_receita and ok and rr.partida_diferente and not replayed:
+            # 30.80: a tela de partida era outra (a ação 1 não achou o alvo) e a IA comprovou a etapa: a receita não se
+            # aplicou, e isso não é veredito sobre ela. Quem conduziu foi a IA (`ai`: nenhuma ação da receita rodou), e
+            # o aprendizado não lê evidência contra. A N-ésima seguida conta como falha comum (`nao_aplicavel`).
+            contou, quarantined = self.recipes.nao_aplicavel(rr.row["id"])
+            repo.db.execute("UPDATE steps SET driven_by=? WHERE id=?", ("recipe+ai" if contou else "ai", step.id))
+            texto = (f"{iid} · {step.title}: receita v{rr.row['version']} não se aplicou: tela de partida diferente"
+                     + (f" ({NAO_APLICAVEL_CONTA_APOS}ª seguida: conta como falha da receita)" if contou
+                        else "; não conta como falha da receita"))
+            # O código estável (`kind`) e os ids deixam a contagem sem ler o texto: a receita ensinada tentada que não
+            # servia naquela tela aparece já na 1ª vez, não só na quarentena.
+            repo.bus.emit("decision", texto, run_id=run_id, instance_id=iid, step_id=step.id,
+                          data={"text": texto, "kind": "receita_nao_aplicavel", "recipe_id": int(rr.row["id"]),
+                                "step_id": step.id, "contou_como_falha": contou})
+            if quarantined:
+                repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} em quarentena após falhas seguidas; "
+                              "a etapa será reaprendida com a IA", run_id=run_id, instance_id=iid, step_id=step.id)
+            return
         if na_receita:
             clean = ok and not rr.diverged
             quarantined = self.recipes.result(rr.row["id"], clean)
@@ -1780,6 +1913,15 @@ class StepExecutor:
         # 29.49: a recusa determinística de cada par (tela, âncora) já lido; reler o par vira `repetida` definitiva.
         recusas_visuais: dict[ChaveDeTentativa, str] = {}
         recusas_de_saida = 0
+        # 31.78: releituras de um nome já lido, com o MESMO valor e nada faltando. O ator do 29.30 releu 12 vezes o "0" da
+        # contagem sem chamar `step_done` (r-…-701173); na 1ª o ator é avisado de que é hora de concluir, na 2ª a etapa
+        # vai à verificação. Só uma leitura de valor DIFERENTE zera a conta (a tela pode ter mudado); observar, rolar ou
+        # tocar entre as leituras não zera: quem decide se a tela ainda prova é o juiz da verificação.
+        releituras_iguais = 0
+        relido: str | None = None           # o nome do aviso, que vai só na cópia da decisão do ator (não ao juiz)
+        # 31.78 (C1 da leitura do #413): os nomes cuja ÚLTIMA leitura diverge da anterior. No teto, valor divergente não
+        # vai à verificação: o juiz julga "a contagem foi lida", não qual valor é o certo, e a saída é a base da prova.
+        divergentes: set[str] = set()
 
         def faltam_saidas() -> list[str]:
             return [n for n in saidas_declaradas if n not in lidos]
@@ -1928,6 +2070,16 @@ class StepExecutor:
             if step.side_effect and fired:
                 return StepOutcome(Outcome.uncertain, detail)
             return StepOutcome(Outcome.failed, detail, sem_recuperacao=True)
+
+        def recusas_da_trava() -> int:
+            """31.72, N8 e K3 da leitura do #386: o `errors_in_row` zera em qualquer ação bem-sucedida, então alternar
+            o aceite com `observe_screen` nunca chegaria a 4. Contam as recusas da trava acumuladas na ETAPA (em todas
+            as tentativas dela; uma etapa nova começa do zero): o toque de aceite e o `type_text` fora de campo (B1),
+            que é o mesmo aceite por outro caminho."""
+            return int(repo.db.scalar(
+                "SELECT COUNT(*) FROM actions a JOIN attempts t ON t.id = a.attempt_id WHERE t.step_id = ? "
+                "AND a.status = 'rejected' AND (a.error LIKE ? OR a.error LIKE ?)",
+                (step.id, MOTIVO_ACEITE_RECUSADO + "%", REJEICAO_TYPE_TEXT_FORA_DE_CAMPO + "%")) or 0)
 
         async def dado_ausente(motivo: str, obs: Observation | None) -> StepOutcome:
             """31.38: o que se procurou e onde, para a pessoa, sem nada lido da página (o texto do modelo fica na nota
@@ -2334,9 +2486,11 @@ class StepExecutor:
                                        f"O app pede autenticação e a senha da conta está guardada sem consentimento "
                                        f"({senha_do_app.refusal}): consentimento_pendente.",
                                        needs="Marque o consentimento na conta da persona (guia Contas e acesso da persona) e "
-                                             "retome o item — ou faça o login manualmente e devolva o controle.")
+                                             "retome o item — ou faça o login manualmente e devolva o controle.",
+                                       pede_login=True)
                 return StepOutcome(Outcome.waiting_user, f"O app pede autenticação ({porque}).",
-                                   needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.")
+                                   needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.",
+                                   pede_login=True)
             # ---------- decidir: a receita (se houver e ainda casar) fala primeiro; na divergência a IA assume
             decision: Decision | None = None
             from_recipe = False
@@ -2396,10 +2550,12 @@ class StepExecutor:
                         rr.completed_by_recipe = True          # o aparelho já estava no estado final desta etapa
                         break
                     rr.diverged = str(exc)
+                    rr.partida_diferente = isinstance(exc, AlvoAusente) and rep.done_actions == 0
                     decision = None
                     history.append(f"(executor) a receita desta etapa divergiu: {exc}. Continue a partir da tela atual.")
-                    repo.decision(f"{iid} · {step.title}: receita divergiu — {exc}; a IA assume esta etapa",
-                                  run_id=run_id, instance_id=iid, step_id=step.id)
+                    repo.decision(f"{iid} · {step.title}: receita divergiu — {exc}"
+                                  + ("; tela de partida diferente" if rr.partida_diferente else "")
+                                  + "; a IA assume esta etapa", run_id=run_id, instance_id=iid, step_id=step.id)
             scale = self._image_scale(obs, ai_cfg)
             # 31.51: só no NAVEGADOR (revisão do #308): num app com conta real, um aviso não reconhecido com "Dismiss"
             # não se fecha por regra sem pessoa; ali fica o comportamento de antes.
@@ -2571,6 +2727,18 @@ class StepExecutor:
                 image_requested = False
                 if encadeada is None:          # a ação encadeada não é decisão nova (31.35)
                     if teto_leitura and decisions >= teto_leitura:
+                        if not faltam_saidas() and divergentes:
+                            return await fail_or_retry(
+                                "A IA leu valores divergentes de " + ", ".join(f"'{n}'" for n in sorted(divergentes))
+                                + f" até o teto de {teto_leitura} decisões da leitura; nenhum valor ficou estável para "
+                                  "entregar às seguintes.", obs)
+                        if not faltam_saidas():
+                            # 31.78: com tudo lido, o teto não é "dado ausente" (r-…-701173: 12 leituras do mesmo
+                            # "0" e a etapa falhou dizendo "não encontrei"). Vai à verificação, que julga a pós-condição.
+                            repo.decision(f"{iid} · {step.title}: teto de {teto_leitura} decisões da leitura com todos "
+                                          "os valores lidos; a etapa vai à verificação sem step_done",
+                                          run_id=run_id, instance_id=iid, step_id=step.id)
+                            break
                         return await dado_ausente(f"teto de {teto_leitura} decisões da leitura", obs)
                     decisions += 1
                 # 31.71: o lembrete vai só na cópia desta decisão, em TODA decisão com saída faltando e imagem anexada,
@@ -2579,6 +2747,10 @@ class StepExecutor:
                 lembrete = (lembrete_da_leitura(faltam_saidas(), visual=ai_cfg.leitura_visual.enabled)
                             if ai_cfg.imagem_enquanto_falta_saida and faltam_saidas() and screen.jpeg else None)
                 actor_history = historico_do_ator(history, ai_cfg.actor_history_lines, lembrete)
+                if releituras_iguais and relido is not None:
+                    # 31.78 (C2): instrução ao ator, não fato do executor; por isso fora do `history` (os `facts` do juiz).
+                    actor_history = [*actor_history, f"(executor) '{relido}' já foi lido e entregue, com o mesmo valor; "
+                                                     "todos os valores da etapa estão lidos: a próxima ação é step_done."]
                 rr.exerceu(StrategyKind.ai_actor)
                 if licoes is None:
                     licoes = self._licoes_da_tentativa(run, objective, step, attempt_id, app, rr)
@@ -2833,6 +3005,11 @@ class StepExecutor:
                         if errors_in_row >= 4 or recusas_de_saida >= 4:
                             return await dado_ausente("o valor lido não tinha relação com o pedido", obs)
                         continue
+                repetida = args.name in lidos and lidos[args.name][0] == valor
+                if args.name in lidos and not repetida:
+                    divergentes.add(args.name)
+                elif repetida:
+                    divergentes.discard(args.name)
                 lidos[args.name] = (valor, args.value_kind)
                 origem_dos_lidos[args.name] = (alvo.resource_id or "", not (args.value or "").strip())
                 if lido_da_imagem is not None:
@@ -2875,6 +3052,16 @@ class StepExecutor:
                 if (not faltam and not judged_step and not obs.sensitive
                         and self._postcondition_holds(step, obs, cartao, pacote=app.package)):
                     break              # ler não muda a tela: com tudo lido e a pós-condição valendo, só comprovar
+                # Com outra saída divergente, nem aviso nem verificação: o teto decide (C1), e nada se grava.
+                releituras_iguais = (releituras_iguais + 1 if repetida and not faltam and leitura and not divergentes
+                                     else 0)
+                if releituras_iguais >= 2:
+                    # 31.78: a verificação julga a pós-condição como depois de um `step_done`; nada sai comprovado aqui.
+                    repo.decision(f"{iid} · {step.title}: o ator releu '{args.name}' com o mesmo valor e todos os "
+                                  "valores lidos; a etapa vai à verificação sem step_done",
+                                  run_id=run_id, instance_id=iid, step_id=step.id)
+                    break
+                relido = args.name if releituras_iguais else None
                 if not faltam and prova_da_leitura is not None and not visuais:
                     # 31.61 (A): a prova vale numa árvore lida AGORA, depois da última leitura (não na de antes): a tela
                     # pode ter mudado enquanto se lia. Fechar aqui tira só a volta ao ator; a verificação final roda igual.
@@ -3027,6 +3214,50 @@ class StepExecutor:
                                        quick_tree, profile_id=profile_id, run_id=run_id, step_id=step.id),
                                    allowed_urls=urls_permitidas, allowed_hosts=hosts_das_contas, deadline=deadline,
                                    dormir=self.dormir)
+            no_navegador = e_navegador(obs.package)
+            escreve_em = getattr(args, "element_id", None) if decision.tool == "type_text" else None
+            if (no_navegador and escreve_em and (campo := obs.tree.by_id(escreve_em)) is not None
+                    and not campo.editable):
+                # ---------- 31.72 (B1 da leitura do #386): o `type_text` com `element_id` TOCA o elemento antes de
+                # escrever, sem exigir campo; num botão do aviso seria o aceite por fora da trava. No navegador, só em
+                # campo editável.
+                aid = intencao(decision.tool, args.model_dump(mode="json"), rationale,
+                               side_effect=False, source="recipe" if from_recipe else "ai")
+                repo.finish_action(aid, ActionStatus.rejected,
+                                   error=f"{REJEICAO_TYPE_TEXT_FORA_DE_CAMPO} ({campo.id}, {tipo_do_elemento(campo)})")
+                history.append(f"type_text REJEITADA pelo executor: {REJEICAO_TYPE_TEXT_FORA_DE_CAMPO} "
+                               f"('{rotulo_para_o_ator(campo)}', {campo.id}); toque no campo de texto, não no botão.")
+                if from_recipe:
+                    rr.diverged = f"type_text fora de campo: ({campo.id}, {tipo_do_elemento(campo)})"   # K4
+                errors_in_row += 1
+                if errors_in_row >= 4 or recusas_da_trava() >= LIMITE_DE_RECUSAS_DE_ACEITE:
+                    return await falhar_sem_nova_tentativa("A IA insistiu em type_text fora de campo editável.", obs)
+                continue
+            if (no_navegador and (decision.tool in ("tap", "long_press", "drag") or escreve_em)
+                    and (aceite := self._aceite_do_toque(tool_ctx, args, obs.tree, ai_cfg)) is not None):
+                # ---------- 31.72: a regra do 31.51 vale para o ATOR. Na r-20261005071303-f24955 ele tocou "Aceitar
+                # cookies" duas vezes por conta própria. Recusado ANTES de o toque chegar ao aparelho, por coordenada
+                # também, sem depender de o modelo obedecer ao prompt; nunca vira sucesso por aceite. No `error` (e no
+                # `status_detail`, que chega a aviso e cartão) vão só o id e o tipo; o rótulo, texto da página, fica no
+                # histórico do ator (S1 da leitura).
+                saida = botao_que_fecha(obs.tree)
+                quem = f"({aceite.id}, {tipo_do_elemento(aceite)})"
+                aid = intencao(decision.tool, args.model_dump(mode="json"), rationale,
+                               side_effect=False, source="recipe" if from_recipe else "ai")
+                repo.finish_action(aid, ActionStatus.rejected, error=f"{MOTIVO_ACEITE_RECUSADO} {quem}")
+                metricas.contar("executor.consentimento_recusado", origem="recipe" if from_recipe else "ai")
+                if from_recipe:
+                    rr.diverged = f"toque de aceite: {quem}"
+                history.append(f"{decision.tool} REJEITADA pelo executor: {MOTIVO_ACEITE_RECUSADO} "
+                               f"('{rotulo_para_o_ator(aceite)}', {aceite.id}). Recuse ou feche o aviso"
+                               + (f" ('{rotulo_para_o_ator(saida)}', {saida.id})" if saida is not None else "")
+                               + ", ou siga sem aceitar.")
+                errors_in_row += 1
+                if errors_in_row >= 4 or recusas_da_trava() >= LIMITE_DE_RECUSAS_DE_ACEITE:
+                    # Sem saída que preserve a privacidade, a etapa não tem o que repetir: falha com o motivo.
+                    return await falhar_sem_nova_tentativa(
+                        f"A IA insistiu em aceitar: {MOTIVO_ACEITE_RECUSADO} {quem}; nada foi aceito.", obs)
+                continue
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:
                 target = None
@@ -3901,9 +4132,17 @@ class StepExecutor:
                     if copias_vistas is not None and verdict.copias is not None:
                         copias_vistas.append(verdict.copias)
                     if sobreposicoes is not None and verdict.satisfied in ("no", "uncertain"):
-                        sobreposicoes.append(bool(verdict.sobreposicao))
-                        if (coberturas is not None and verdict.sobreposicao
-                                and (achada := cobertura_na_arvore(obs.tree, verdict.cobre)) is not None):
+                        achada = cobertura_na_arvore(obs.tree, verdict.cobre) if verdict.sobreposicao else None
+                        pequena = bool(verdict.sobreposicao) and not sobreposicao_vale(obs.tree, verdict.cobre,
+                                                                                       obs.width, obs.height)
+                        if pequena:
+                            # 31.73: o juiz marcou sobreposição citando uma faixa que não esconde o alvo (o banner "Abra
+                            # o app" do topo, na f24955: 11,6 %, no fluxo da página), e a causa principal era o conteúdo
+                            # errado. A limpeza seria inserida à toa e o desfecho esconderia a causa: vale como "não"
+                            # comum. A `Cobertura` da limpeza, quando vale, segue sendo o citado (o "X", se for ele).
+                            metricas.contar("juiz.sobreposicao_descartada", motivo="cobertura_pequena")
+                        sobreposicoes.append(bool(verdict.sobreposicao) and not pequena)
+                        if coberturas is not None and achada is not None and not pequena:
                             coberturas.append(achada)
                     ok = verdict.satisfied == "yes"
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:
@@ -4467,6 +4706,8 @@ class _RecipeRun:
     signature: str = ""
     variant: str = ""
     diverged: str | None = None
+    #: 30.80: a divergência foi na AÇÃO 1, antes de a receita agir, por alvo ausente: a tela de partida era outra.
+    partida_diferente: bool = False
     retorno_contado: bool = False      # `receita.retorno_ia` já contado nesta tentativa
     completed_by_recipe: bool = False
     #: A etapa fechou por um atalho do executor (LT-1) SEM o ator decidir nada e sem ação de receita: `driven_by` grava

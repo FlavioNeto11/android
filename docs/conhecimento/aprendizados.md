@@ -267,8 +267,11 @@ parou.
 **Causa.** O `python.exe` dentro de `backend/.venv/Scripts/` no Windows é um launcher que reexecuta o interpretador
 real num processo filho — comum a ambientes virtuais no Windows, não específico deste projeto.
 
-**O que funcionou.** Tratar os dois PIDs como uma unidade (matar pelo supervisor, não por PID isolado);
-`supervisor._matar_filhos` mata `children(recursive=True)`.
+**O que funcionou.** Tratar os dois PIDs como uma unidade (matar pelo supervisor, não por PID isolado).
+**Corrigido em 05/10 (29.125):** o `supervisor._matar_filhos` (`children(recursive=True)`) nunca alcançava nada no
+Windows. O supervisor guarda o PID do lançador; depois do kill, `psutil.Process(pid)` dá `NoSuchProcess`, e o Appium e
+o sing-box do backend morto seguiam vivos com o pai morto (censo de 05/10). A varredura saiu: o supervisor só mata o
+backend, e o Appium que sobra é decidido pelo backend seguinte (`AppiumServer.start`, K-039).
 
 **Aplicabilidade.** Vigente — característica da plataforma, não do código do projeto.
 
@@ -1253,13 +1256,10 @@ efetiva de cada ação, lida da API, e não a do catálogo.
 **Data:** 29/09/2026 · **Área:** parque, processo, Instagram (ADR-055)
 
 **Sintoma.** Em 28/09, das 21:36 às 21:40 (-03:00), um experimento de `hide_error_dialogs` escolheu o android-04 como
-"aparelho sem persona nem conta": `account_label` `qa-user-04` e `/personas` vazio. Mandou 10 entradas por adb (toques e
-arrastos) e aberturas a frio sobre a tela "Confirm you're human" do felipe.nogueira93762026, que abriram "Get support" e
-o assistente da Meta. Nada foi digitado nem enviado; a tela foi fechada com BACK.
+"aparelho sem persona nem conta": `account_label` `qa-user-04` e `/personas` vazio. Nada foi digitado nem enviado; a
+tela foi fechada com BACK.
 
-**Causa.** O rótulo era o da configuração (`qa-user-04`, do QA Messenger), não derivado de conta nenhuma. O perfil
-estava `blocked` pela declaração do dono (23/09; o bloqueio automático do ADR-029 nunca disparou) e o desvínculo de
-27/09 03:10Z tinha tirado a persona do aparelho, mas a sessão do Instagram continuava no disco e na tela. Nada no
+**Causa.** O rótulo era o da configuração (`qa-user-04`, do QA Messenger), não derivado de conta nenhuma. Nada no
 sistema dizia, por aparelho, que ali estava logada uma conta travada.
 
 **O que funcionou.** O marcador por aparelho (`device_locked_accounts`, migração 054), carregado com o android-04;
@@ -1328,28 +1328,6 @@ o módulo vai ao agente do notebook. Prova `simulated`: `backend/tests/test_prov
 
 **Aplicabilidade.** Vigente. Outro `avd_nao_apagado` com o emulador parado: procure o atributo somente-leitura antes de
 suspeitar de processo segurando o arquivo.
-
-### K-057 — Frota coordenada sobre uma pessoa real precede os bloqueios: a resposta é conduta, não disfarce
-
-**Data:** 29/09/2026 · **Área:** perfis, Instagram, política (ADR-055)
-
-**Sintoma.** Cinco de oito contas do Instagram bloqueadas; em três delas o sistema nunca viu o desafio.
-
-**Causa.** Medida, sem prova do motivo do Instagram. As oito contas nasceram no mesmo dia, no mesmo host, com a mesma
-imagem e o mesmo `ro.serialno`, e agiram em três ondas coordenadas sobre as mesmas pessoas: o mesmo comentário de 4
-contas no mesmo post (18/09); 8 follows na mesma pessoa privada em 19m43s (19/09); 7 DMs à mesma pessoa em 8m40s com o
-recado "seu marido mandou um oi", com SEND_MESSAGE `autonomous` (19/09). Nada nos dados separa as vivas das bloqueadas
-(DM 5 de 5 contra 2 de 3, Fisher p = 0,375).
-
-**O que funcionou.** Conduta como regra de código: uma conta por alvo para seguir, DM e comentário, com o excedente
-recusado; DM fria sempre com aprovação; persona que não atribui fala a terceiros; o disjuntor que pausa as contas do
-mesmo alvo quando uma cai; os tetos e o espaçamento do grupo "Recuperação" para as vivas. Nunca disfarce (mascarar
-emulador ou rede, proxy): é evasão, e é proibida.
-
-**Aplicabilidade.** Vigente. Um comando que mande a mesma ação a várias contas do Instagram é, por padrão, coordenação:
-uma conta por alvo, e nunca duas contas no mesmo alvo dentro da janela de 30 dias. Em parte substituído pelo ADR-056
-(29/09, decisão do dono): a rede por aparelho, declarada e medida, deixou de ser proibida; rotação de IP, mascarar
-emulador ou identidade e resolver desafio seguem proibidos, e a conduta acima continua inteira.
 
 ### K-058 — Carga da IDE no central vira "aparelho doente" e dispara a escada de reparo: um trabalho pesado por vez
 
@@ -2356,7 +2334,6 @@ painel, a resposta ia antes ao modelo, pelo `POST /api/commands/refine`.
 - A única triagem era `_recusar_credencial` (`redact(command) != command`), que só pega FORMATO: "senha: …", tokens.
 - Uma palavra sem rótulo não tem formato de segredo. Quem diz que ela é senha é a PERGUNTA a que responde, e a
   triagem não olhava a pergunta.
-- `mentions_credential` pega "senha" e "código de verificação", mas não "qual o código que chegou por SMS?".
 
 **O que funcionou (29.52).**
 - A regra é UMA, na `TriagemDeCredencial`:
@@ -2623,7 +2600,6 @@ arquivo editado. Quem acrescenta um método a um repositório num PR sobre outra
   configuração, também `pytest @scripts/tests/catracas.txt`, da raiz (29.98; regra em `.claude/rules/testes.md`).
 - Catraca nova entra no arquivo de identificadores no mesmo PR; `tests/test_catracas.py` reprova identificador que não
   existe. O arquivo não aceita comentário nem linha em branco: qualquer um dos dois zera a coleta.
-- Catraca que percorre uma lista junta todos os ofensores antes de falhar, para uma falha não esconder a outra.
 - Rodada dirigida vale pela contagem, não pela cor: um caminho de arquivo que não existe na linha de comando do
   `pytest` zera a coleta inteira ("no tests ran", saída 4), como o comentário no arquivo de identificadores.
 - O "final" de um PR diz que as catracas rodaram na ponta final, e o leitor independente cobra essa linha.
@@ -2701,3 +2677,36 @@ push em ramo com PR aberto, e a fila não aparece na lista de processos até o j
 - Medida que cruzou com o CI não se aproveita como comparação: repete-se inteira, com o host quieto.
 
 **Aplicabilidade.** Vigente até o 29.102 tirar o gatilho por PR; depois dele, vale para a volta agendada e para a manual.
+
+### K-102 — Toque só depois de ler o quadro novo: coordenada não se reaproveita às cegas, e o código não pega o toque com quadro novo
+
+**Sintoma.** Na medida do 29.105 (android-09, 05/10), um app que ninguém pediu, o Outlook na tela "Add account",
+apareceu na frente e voltou depois do Início. Parecia haver outra execução mexendo no aparelho; não havia.
+
+**Medição (`real`, 05/10/2026, central, deploy 36 `e5f1b22b`, android-09 sem conta; `data/diag-29-105/a09/`).**
+- O convidado estava sobrecarregado: load average de 18 a 20, com o Chrome numa página de notícias e 21 abas.
+- 10:28:08Z: um toque no menu do Chrome voltou `503 device_error` ("adb shell excedeu 15s"). O Chrome não respondia:
+  ANR às 10:29:03Z, e às 10:29:04Z ele saiu (`am_kill ... user request after error`).
+- No mesmo intervalo, a captura estourou: `DriverTimeout: screencap (na origem) excedeu 25s`. O `x-frame-id` ficou
+  parado por cerca de 30 s, e três toques voltaram `409 stale_frame`. É o caso do `capture_failing` (29.105): quadro
+  parado com a captura falhando, numa página comum, sem tela protegida.
+- 10:29:21Z: o mesmo toque (663,103) foi repetido com um quadro recente que não foi LIDO. A tela já era a inicial, e o
+  toque caiu no widget de data. O launcher (uid 10169) abriu o `CalendarDispatcherActivity` do Outlook, que atende a
+  agenda, e o Outlook foi às boas-vindas. Logcat: `START u0 ... cmp=com.microsoft.office.outlook/.calendar.
+  CalendarDispatcherActivity bnds=[62,86][939,133] ... from uid 10169`.
+- O retorno depois do Início veio do próprio Outlook (uid 10194, `bringingFoundTaskToFront`). Um `am force-stop`
+  único resolveu (10:36:29Z).
+
+**Causa.** A coordenada foi reaproveitada de uma tela que já não existia. O quadro era novo, então nem `stale_frame`
+nem `capture_failing` disparam: o backend confere a idade e o tamanho do quadro, não se alguém olhou para ele.
+
+**O que fazer.**
+- Quem opera pela API de controle manual (sessão, script, subagente) lê o quadro novo, e a árvore quando der, antes de
+  CADA toque. Depois de um 409, um 503 ou de uma espera, a coordenada anterior não vale: lê-se de novo.
+- `toque-agora` em script de diagnóstico busca o quadro e toca sem mostrá-lo: serve para a tela que não muda, não para
+  o primeiro toque depois de uma falha.
+- Toque que voltou `503 device_error` pode ter chegado ao aparelho mais tarde: trate como efeito possível.
+- Aparelho com convidado em load alto fica fora de medida (o 29.105 mediu sobrecarga, não FLAG_SECURE).
+
+**Aplicabilidade.** Toda operação manual por API e todo script de medida. O `capture_failing` cobre o quadro parado; o
+quadro novo não lido só a disciplina cobre.

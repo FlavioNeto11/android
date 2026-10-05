@@ -23,10 +23,18 @@ from app.db import Database
 from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrada import RESPOSTA_IDENTIDADE
 from app.modules.avisos.infrastructure.entrada import (
+    ERRO_CURTO_DEMAIS,
+    JANELA_DA_ESCOLHA_S,
+    MINIMO_DO_PEDIDO,
     OPERADOR_DO_TELEGRAM,
     PRESA_S,
     RESPOSTA_CREDENCIAL,
     RESPOSTA_CREDENCIAL_SEM_APAGAR,
+    RESPOSTA_CURTO_DEMAIS,
+    RESPOSTA_ESCOLHA_AMBIGUA,
+    RESPOSTA_ESCOLHA_CASADA,
+    RESPOSTA_ESCOLHA_REPLY,
+    RESPOSTA_FALHA_INTERNA,
     Pendencia,
     PlanoMudou,
     Previa,
@@ -705,6 +713,132 @@ async def test_desfecho_que_ja_saiu_e_ficou_registrado_nao_repete(c: Cenario) ->
     assert c.bot.chamou("sendMessage") == n and c.linha(5)["resultado_em"] is not None
 
 
+def _desfechos(c: Cenario, inicio: str) -> list[str]:
+    return [t for t in c.bot.textos() if t.startswith(inicio)]
+
+
+async def _parada(c: Cenario) -> None:
+    """A execução criada pela conversa chega a `awaiting_person` e o "parou" sai uma vez."""
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "awaiting_person", "Execução abc123: parou."
+    await c.volta()
+    await c.volta()
+    assert _desfechos(c, "Execução abc123: parou.") == ["Execução abc123: parou."]
+    assert c.linha(5)["resultado_em"] is not None
+
+
+async def test_o_fim_real_depois_do_parou_chega_a_conversa_uma_vez(c: Cenario) -> None:
+    """28.42 (leitura do 29.93): o "parou" não é o fim. Quando a pessoa resolve e a execução conclui, o desfecho se
+    rearma e o fim chega à mesma conversa, uma vez, em resposta à mensagem que a criou."""
+    await _parada(c)
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "completed", "Execução abc123: concluída."
+    await c.volta()
+    await c.volta()
+    [final] = [m for m in c.bot.mensagens() if m["text"] == "Execução abc123: concluída."]
+    assert final["reply_parameters"]["message_id"] == 50                                    # type: ignore[index]
+    assert c.linha(5)["resultado_em"] is not None
+    assert _desfechos(c, "Execução abc123: parou.") == ["Execução abc123: parou."]
+
+
+async def test_parada_que_segue_parada_nao_rearma(c: Cenario) -> None:
+    await _parada(c)
+    for _ in range(3):
+        await c.volta()
+    assert len(_desfechos(c, "Execução abc123:")) == 1
+
+
+async def test_retomada_que_para_de_novo_conta_as_duas_paradas_e_o_fim(c: Cenario) -> None:
+    """A retomada devolve trabalho automático (`running`, sem desfecho): nada sai até ela parar de novo ou acabar."""
+    await _parada(c)
+    c.portas.estados[RUN] = "running"
+    del c.portas.desfechos[RUN]
+    await c.volta()
+    assert len(_desfechos(c, "Execução abc123:")) == 1 and c.linha(5)["resultado_em"] is None
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "awaiting_person", "Execução abc123: parou."
+    await c.volta()
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "failed", "Execução abc123: falhou."
+    await c.volta()
+    await c.volta()
+    assert _desfechos(c, "Execução abc123:") == ["Execução abc123: parou."] * 2 + ["Execução abc123: falhou."]
+
+
+async def test_fim_depois_do_parou_que_ja_saiu_e_ficou_registrado_nao_repete(c: Cenario) -> None:
+    """A anti-repetição do #358 (F2) conta os envios além dos rearmes: o fim registrado e sem marca não sai de novo."""
+    await _parada(c)
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "completed", "Execução abc123: concluída."
+    c.repo.registrar_enviada("999", "resultado", entrada_id=int(str(c.linha(5)["id"])))
+    n = c.bot.chamou("sendMessage")
+    await c.volta()
+    assert c.bot.chamou("sendMessage") == n and c.linha(5)["resultado_em"] is not None
+
+
+async def test_rearmar_duas_vezes_da_um_rearme_so(c: Cenario) -> None:
+    """R1 da leitura do #400: o rearme confere a marca no banco; o segundo não muda nada."""
+    import json
+    await _parada(c)
+    ident = int(str(c.linha(5)["id"]))
+    assert c.repo.rearmar_desfecho(ident) is True
+    assert c.repo.rearmar_desfecho(ident) is False
+    assert json.loads(str(c.linha(5)["previa"]))["desfechos_rearmados"] == 1 and c.linha(5)["resultado_em"] is None
+
+
+async def test_rearme_perde_se_o_previa_mudou_entre_a_leitura_e_a_gravacao(c: Cenario,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    """C1 da leitura do #400: a cláusula `AND previa=?` da troca. Outro líder grava a linha ENTRE a leitura e o
+    UPDATE (a marca ainda lá, o `resultado_em` ainda preenchido): só o `previa` difere, e o rearme perde."""
+    import json
+    await _parada(c)
+    ident = int(str(c.linha(5)["id"]))
+    original = c.repo.db.scalar
+
+    def le_e_outro_grava(sql: str, params: tuple | dict = ()) -> object:
+        valor = original(sql, params)
+        if "resultado_em IS NOT NULL" in sql and sql.lstrip().startswith("SELECT previa"):
+            outra = {**json.loads(str(valor)), "outro_lider": 1}
+            c.db.execute("UPDATE canal_entradas SET previa=? WHERE id=?", (json.dumps(outra), ident))
+        return valor
+
+    monkeypatch.setattr(c.repo.db, "scalar", le_e_outro_grava)
+    assert c.repo.rearmar_desfecho(ident) is False
+    monkeypatch.undo()
+    linha = c.linha(5)
+    previa = json.loads(str(linha["previa"]))
+    assert linha["resultado_em"] is not None and previa["desfecho_parado"] is True and "desfechos_rearmados" not in previa
+
+
+async def test_lider_velho_com_a_foto_antiga_nao_manda_o_fim_duas_vezes(c: Cenario) -> None:
+    """R1: o líder novo rearmou e mandou o fim; o velho, com a foto de `desfechos_parados` de antes, não rearma de
+    novo (a marca já saiu), e o fim não se repete."""
+    await _parada(c)
+    foto = c.repo.desfechos_parados()
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "completed", "Execução abc123: concluída."
+    await c.volta()
+    assert c.repo.rearmar_desfecho(int(str(foto[0]["id"]))) is False
+    await c.volta()
+    assert _desfechos(c, "Execução abc123: concluída.") == ["Execução abc123: concluída."]
+
+
+async def test_a_execucao_em_curso_nao_custa_leitura_de_estado_a_cada_volta(c: Cenario) -> None:
+    """N2 da leitura do #400: sem desfecho (em curso), a volta não lê o estado; só a que chega ao desfecho lê."""
+    lidos: list[str] = []
+    original = c.portas.estado_da_execucao
+
+    def contando(run_id: str) -> str | None:
+        lidos.append(run_id)
+        return original(run_id)
+
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.estado_da_execucao = contando                                              # type: ignore[method-assign]
+    for _ in range(3):
+        await c.volta()
+    assert lidos == []
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "completed", "Execução abc123: concluída."
+    await c.volta()
+    assert lidos == [RUN]
+
+
 async def test_execucao_em_andamento_que_nao_tem_desfecho_nao_e_cancelada(c: Cenario) -> None:
     """Só a `planned` esquecida: a que roda há horas segue (o `_cancelar_plano` confere o estado)."""
     from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
@@ -779,6 +913,21 @@ async def test_texto_livre_sem_destino_recusado_vai_a_orquestradora_sem_o_texto_
     assert c.linha(5)["estado"] == "orquestradora"
     assert "Diga onde ou por quem" not in c.bot.textos()[-1]
     assert "no android-12" in c.bot.textos()[-1]
+
+
+@pytest.mark.parametrize("texto", ["1", "ok"])
+async def test_recado_curto_demais_fica_recusado_e_nao_vira_erro_interno(c: Cenario, texto: str) -> None:
+    """28.43 (o "1" solto do dono, 05/10 10:26Z): o texto livre mais curto que o pedido aceita não chega à prévia.
+    A linha fica `recusada` (não `falhou`), e a resposta diz o que fazer, sem "falhou" nem "erro aqui dentro"."""
+    assert MINIMO_DO_PEDIDO == 3 and len(texto) < MINIMO_DO_PEDIDO
+    await c.volta(msg(5, texto))
+    assert "previa" not in c.portas.nomes()
+    linha = c.linha(5)
+    assert (linha["estado"], linha["erro"]) == ("recusada", ERRO_CURTO_DEMAIS)
+    assert c.bot.textos()[-1] == RESPOSTA_CURTO_DEMAIS != RESPOSTA_FALHA_INTERNA
+    assert "falhou" not in RESPOSTA_CURTO_DEMAIS and "erro" not in RESPOSTA_CURTO_DEMAIS
+    # A volta das recusas sem resposta só repete as de credencial ou de pergunta: esta não volta.
+    assert c.repo.recusadas_sem_resposta(3600) == []
 
 
 async def test_pedido_com_aparelho_segue_para_a_previa_mesmo_com_interrogacao(c: Cenario) -> None:
@@ -1346,3 +1495,218 @@ async def test_erro_depois_do_inicio_nos_outros_caminhos_tambem_nao_diz_que_nao_
     assert "cancelar" not in c.portas.nomes() and c.linha(5)["estado"] == "feita"
     assert c.bot.textos()[-1].startswith("A execução abc123 está em andamento; houve um erro interno")
     assert not any(t.startswith("Não iniciei") for t in c.bot.textos())
+
+
+# ------------------------------------------------------------------ 28.44: a resposta solta casa com a escolha aberta
+#: O que a resposta casada nunca chama. A triagem do curto (`pergunta_sensivel`) só lê, e roda antes de tudo.
+ACOES_DA_PORTA = {"decidir", "responder", "previa", "criar", "aprovar_plano", "iniciar", "cancelar"}
+
+
+def _escolha(tmp_path: Path) -> tuple[Cenario, list[datetime]]:
+    agora = [datetime(2026, 10, 5, 10, 26, 26, tzinfo=timezone.utc)]
+    c = Cenario(tmp_path, relogio=lambda: agora[0])
+    return c, agora
+
+
+def _pergunta(c: Cenario, agora: list[datetime], mid: int, opcoes: str = "1-2-3") -> None:
+    c.repo.registrar_enviada(str(mid), "ana", fato=f"escolha:{mid}:{opcoes}")
+    agora[0] += timedelta(seconds=33)
+
+
+def _dono(uid: int, texto: str, mid: int, **extra: Any) -> dict[str, object]:
+    """A mensagem do dono com o `message_id` explícito: no chat privado ele é a ordem das mensagens (C1 do #412)."""
+    return msg(uid, texto, mid=mid, **extra)
+
+
+def _respondida_a(c: Cenario) -> str | None:
+    ultima = c.bot.mensagens()[-1]
+    return str((ultima.get("reply_parameters") or {}).get("message_id")) if ultima.get("reply_parameters") else None
+
+
+@pytest.mark.parametrize("texto", ["1", "opção 1", "a 1", "1.", "1)", " Opção 1 "])
+async def test_um_solto_casa_com_a_escolha_aberta_e_vai_a_orquestradora(tmp_path: Path, texto: str) -> None:
+    """28.44 (o "1" solto das 10:26:59Z de 05/10, 33 s depois da 294): casa com a pergunta, vai à orquestradora com
+    `casada_com`, sem prévia, sem porta e sem `responde_a`. A resposta diz qual pergunta e sai em reply a ELA (D1)."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    await c.volta(_dono(5, texto, 295))
+    linha = c.linha(5)
+    assert (linha["estado"], linha["alvo"], linha["responde_a"]) == ("orquestradora", "escolha:294", None)
+    previa = json.loads(str(linha["previa"]))
+    assert (previa["repasse"], previa["casada_com"], previa["opcao"]) == ("escolha", "294", "1")
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+    assert c.bot.textos()[-1] == RESPOSTA_ESCOLHA_CASADA.format(texto=texto.strip(), opcao="1", hora="10:26Z")
+    assert _respondida_a(c) == "294"
+
+
+async def test_a_pergunta_mandada_depois_da_resposta_nao_casa(tmp_path: Path) -> None:
+    """C1 da leitura do #412: o dono responde "1" pensando na 294; antes de o laço gravar o "1", a ANA manda a 297, que
+    substitui a 294. Pelo relógio do servidor, a 297 parecia anterior ao "1". Pela ordem do chat, o "1" (296) veio
+    antes da 297: casa com a 294, que ainda estava aberta quando ele escreveu."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    _pergunta(c, agora, 297)
+    c.repo.registrar_substituta("297", "294")
+    await c.volta(_dono(5, "1", 296))
+    assert c.linha(5)["alvo"] == "escolha:294"
+    # Depois da 297, a substituição já vale: o "2" (298) casa com a 297.
+    await c.volta(_dono(6, "2", 298))
+    assert c.linha(6)["alvo"] == "escolha:297"
+
+
+async def test_fora_da_janela_nao_casa_e_cai_na_recusa_do_curto(tmp_path: Path) -> None:
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    agora[0] += timedelta(seconds=JANELA_DA_ESCOLHA_S)
+    await c.volta(_dono(5, "1", 295))
+    assert (c.linha(5)["estado"], c.linha(5)["erro"]) == ("recusada", ERRO_CURTO_DEMAIS)
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+
+
+async def test_duas_abertas_nao_casam_e_vao_como_ambiguas(tmp_path: Path) -> None:
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    _pergunta(c, agora, 297, "A-B")
+    await c.volta(_dono(5, "1", 298))
+    linha = c.linha(5)
+    assert (linha["estado"], linha["alvo"]) == ("orquestradora", None)       # a ambígua não fecha nenhuma
+    previa = json.loads(str(linha["previa"]))
+    assert previa["repasse"] == "escolha_ambigua" and sorted(previa["abertas"]) == ["294", "297"]
+    assert "casada_com" not in previa
+    assert c.bot.textos()[-1] == RESPOSTA_ESCOLHA_AMBIGUA
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+
+
+async def test_a_ja_respondida_nao_casa_de_novo(tmp_path: Path) -> None:
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    await c.volta(_dono(5, "2", 295, reply_to=294))                # o reply de verdade fecha a pergunta
+    assert c.linha(5)["alvo"] == "escolha:294"
+    await c.volta(_dono(6, "1", 296))
+    assert (c.linha(6)["estado"], c.linha(6)["erro"]) == ("recusada", ERRO_CURTO_DEMAIS)
+    # a casada também fecha: o segundo "1" solto não casa
+    _pergunta(c, agora, 300)
+    await c.volta(_dono(7, "1", 301))
+    assert c.linha(7)["alvo"] == "escolha:300"
+    await c.volta(_dono(8, "2", 302))
+    assert c.linha(8)["estado"] == "recusada"
+
+
+async def test_a_substituida_nao_esta_mais_aberta(tmp_path: Path) -> None:
+    """Acréscimo da leitura da orquestradora: a rodada 2 fecha a rodada 1. Com a substituta gravada, só a nova está
+    aberta, e o "1" casa com ela."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    _pergunta(c, agora, 297)
+    c.repo.registrar_substituta("297", "294")
+    await c.volta(_dono(5, "1", 298))
+    assert c.linha(5)["alvo"] == "escolha:297"
+    assert c.repo.enviada("substitui:297") is not None and c.repo.enviada("297")["fato"] == "escolha:297:1-2-3"
+
+
+@pytest.mark.parametrize("texto", ["4", "1 e 3", "sim, a 2"])
+async def test_o_que_nao_e_uma_opcao_da_lista_nao_casa(tmp_path: Path, texto: str) -> None:
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    await c.volta(_dono(5, texto, 295))
+    assert c.linha(5)["alvo"] != "escolha:294"
+    assert c.repo.escolhas_abertas(str(c.linha(5)["recebida_em"]), JANELA_DA_ESCOLHA_S, fora=0,
+                                   ref_da_resposta="295") != []
+
+
+async def test_reply_a_escolha_vai_a_orquestradora_pelo_ramo_novo(tmp_path: Path) -> None:
+    """Sem o ramo `escolha`, o reply caía na regra de fundo do G1 ("só informa")."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    await c.volta(_dono(5, "a segunda, mas só amanhã", 295, reply_to=294))
+    linha = c.linha(5)
+    assert (linha["estado"], linha["alvo"], linha["responde_a"]) == ("orquestradora", "escolha:294", "294")
+    previa = json.loads(str(linha["previa"]))
+    assert previa["repasse"] == "escolha" and "casada_com" not in previa and "a segunda" in previa["texto"]
+    assert c.bot.textos()[-1] == RESPOSTA_ESCOLHA_REPLY
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+
+
+async def test_a_casada_nunca_decide_um_aval_aberto(tmp_path: Path) -> None:
+    """§7 do desenho: com um aviso de aprovação aberto E uma escolha aberta, o "1" solto casa com a escolha e não chama
+    aprovar, vetar, decidir nem criar. O aval só se decide pelo reply ao aviso dele."""
+    c, agora = _escolha(tmp_path)
+    c.repo.registrar_enviada("290", "aviso", fato="approval:apr-0000aa11")
+    _pergunta(c, agora, 294)
+    await c.volta(_dono(5, "1", 295))
+    assert c.linha(5)["alvo"] == "escolha:294"
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+
+
+async def test_sim_solto_com_escolha_e_aval_abertos_vai_a_orquestradora(tmp_path: Path) -> None:
+    """Leitura do #412: escolha aberta + aval aberto + "sim" solto. "sim" nunca é opção (nem que a pergunta o
+    listasse), não casa com a escolha e não decide o aval: sem reply, é texto livre; a prévia não acha destino nele e
+    ele vai à orquestradora."""
+    c, agora = _escolha(tmp_path)
+    c.repo.registrar_enviada("290", "aviso", fato="approval:apr-0000aa11")
+    _pergunta(c, agora, 294, "sim-nao")                 # marca forjada: o `--escolha` recusa, e a conversa também
+    c.portas.recusar_previa = "Diga onde ou por quem."
+    await c.volta(_dono(5, "sim", 295))
+    linha = c.linha(5)
+    assert linha["alvo"] != "escolha:294" and linha["estado"] == "orquestradora"
+    assert json.loads(str(linha["previa"]))["repasse"] == "sem_destino"
+    assert "decidir" not in c.portas.nomes()
+
+
+async def test_curto_solto_com_senha_e_escolha_abertas_segue_a_recusa_por_credencial(tmp_path: Path) -> None:
+    """Leitura do #412: com uma pergunta de senha aberta, o curto solto é tratado como possível senha mesmo com uma
+    escolha aberta. Não casa, não vai à orquestradora com o texto e não guarda o texto."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    c.portas.sensivel_aberta = True
+    await c.volta(_dono(5, "1", 295))
+    linha = c.linha(5)
+    assert linha["estado"] == "recusada" and linha["alvo"] is None and linha["texto"] is None
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+
+
+async def test_comando_solto_nao_casa(tmp_path: Path) -> None:
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    await c.volta(_dono(5, "/status", 295))
+    assert c.linha(5)["intencao"] == "status"
+
+
+# ------------------------------------------------------------------ 28.47: as sobras da leitura do #412
+@pytest.mark.parametrize(("pergunta", "resposta", "casa"), [(99, 100, True), (100, 99, False), (9, 10, True)])
+async def test_a_ordem_do_message_id_e_numerica(tmp_path: Path, pergunta: int, resposta: int, casa: bool) -> None:
+    """Cruza a casa dos dígitos: como texto, "99" < "100" é falso, e a resposta 100 não casaria com a pergunta 99."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, pergunta)
+    await c.volta(_dono(5, "1", resposta))
+    assert (c.linha(5)["alvo"] == f"escolha:{pergunta}") is casa
+
+
+async def test_a_pergunta_gravada_um_pouco_depois_do_recado_ainda_casa(tmp_path: Path) -> None:
+    """A ANA manda a pergunta (294) e o dono responde "1" (295) no mesmo segundo; o script grava a pergunta cerca de 1 s
+    DEPOIS de o laço gravar o "1". A ordem do chat diz que a pergunta veio antes: casa. O teto `enviada_em <=
+    recebida_em` cortava esse caso."""
+    c, agora = _escolha(tmp_path)
+    t0 = agora[0]
+    agora[0] = t0 + timedelta(seconds=1)
+    c.repo.registrar_enviada("294", "ana", fato="escolha:294:1-2-3")
+    agora[0] = t0
+    await c.volta(_dono(5, "1", 295))
+    assert c.linha(5)["alvo"] == "escolha:294"
+
+
+@pytest.mark.parametrize("campo", [{"forward_origin": {"type": "user", "date": 1}}, {"forward_date": 1}])
+async def test_a_mensagem_encaminhada_nao_casa_com_a_escolha(tmp_path: Path, campo: dict[str, object]) -> None:
+    """O dono encaminha um "1" que outra pessoa escreveu: não é a resposta dele. A marca vem da tradução
+    (`forward_origin`, ou o `forward_date` da API antiga) e fica gravada com a linha."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    u = _dono(5, "1", 295)
+    u["message"].update(campo)  # type: ignore[union-attr]
+    await c.volta(u)
+    linha = c.linha(5)
+    assert linha["alvo"] != "escolha:294"
+    assert (linha["estado"], linha["erro"]) == ("recusada", ERRO_CURTO_DEMAIS)
+    # a pergunta segue aberta: o "1" do próprio dono, logo depois, casa
+    await c.volta(_dono(6, "1", 296))
+    assert c.linha(6)["alvo"] == "escolha:294"
