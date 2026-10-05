@@ -66,6 +66,10 @@ class RunStatus(StrEnum):
     running = "running"
     paused = "paused"
     cancelling = "cancelling"
+    # 29.93: o trabalho automático acabou e um objetivo espera um gesto da pessoa no aparelho (`waiting_user`). NÃO é
+    # terminal: a retomada do item reabre a execução, e o vencimento (31.50) fecha o objetivo parado. Diferente de
+    # `needs_input`, que é a pergunta ANTES de agir (o plano ainda não rodou).
+    awaiting_person = "awaiting_person"
     completed = "completed"
     completed_with_issues = "completed_with_issues"
     cancelled = "cancelled"
@@ -73,6 +77,9 @@ class RunStatus(StrEnum):
 
 
 RUN_TERMINAL = {RunStatus.completed, RunStatus.completed_with_issues, RunStatus.cancelled, RunStatus.failed}
+#: 29.93: sem trabalho automático pela frente, terminada ou esperando a pessoa. Grava `finished_at` (o fim do trabalho
+#: automático), é de onde o relógio do vencimento (31.50) conta, e é o que a retomada de um item reabre.
+RUN_SEM_TRABALHO = RUN_TERMINAL | {RunStatus.awaiting_person}
 
 
 class ObjectiveStatus(StrEnum):

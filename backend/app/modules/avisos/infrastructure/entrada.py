@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Protocol
 
 from app.config import Config
-from app.models import RUN_TERMINAL, Problem
+from app.models import RUN_SEM_TRABALHO, Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram, ConflitoDeConsumidor
 from app.modules.avisos.application.entrada import (
     AJUDA,
@@ -89,8 +89,9 @@ log = logging.getLogger("poc.avisos.entrada")
 OPERADOR_DO_TELEGRAM = "telegram:dono"
 #: Estados de uma execução que já iniciou e ainda não acabou: a mensagem ao dono nunca diz "não iniciei" (28.36).
 EM_ANDAMENTO = ("running", "paused")
-#: Estados finais: o desfecho de sempre (`portas.desfecho`) é a linha ao dono, e nenhuma outra (28.36).
-TERMINAIS = frozenset(s.value for s in RUN_TERMINAL)
+#: Estados com desfecho: o de sempre (`portas.desfecho`) é a linha ao dono, e nenhuma outra (28.36). Os finais e, desde
+#: o 29.93, `awaiting_person`: o trabalho automático acabou e a linha diz que a execução espera um gesto dele.
+TERMINAIS = frozenset(s.value for s in RUN_SEM_TRABALHO)
 #: Em `needs_input` a execução para até alguém responder; pelo Telegram não se responde, então o texto aponta o painel.
 RESPONDA_NO_PAINEL = "espera uma resposta sua: responda no painel para ela seguir"
 

@@ -25,7 +25,7 @@ from ..modules.execution.infrastructure.providers import resource_providers
 from ..modules.identity.application.available_data import common_data, missing_secrets, profile_variables
 from ..modules.identity.infrastructure.profile_data import SqlProfileDataStore
 from ..modules.skills.infrastructure.run_planning import RunPlan, SkillRunPlanner
-from ..models import (RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState, MissingInfo,
+from ..models import (RUN_SEM_TRABALHO, RUN_TERMINAL, DistributeSpec, DistributionPick, DistributionPreview, InstanceState, MissingInfo,
                       ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, ResolveBody, ResolvedTargetDTO, RunCreate, RunStatus,
                       RunSummary, RunTarget, RunTargetsPreview, RunTargetsResolveBody, SessionStatus, StepResult,
                       StepStatus)
@@ -1520,6 +1520,7 @@ class RunService:
                     run_id=run_id, status_anterior=RunStatus.planned.value, antes_de_iniciar=True, quem=por,
                     em=now_iso()))
             return self.repo.run_summary(self._run(run_id))
+        # `completed_with_issues` (item incerto) e `awaiting_person` (29.93, item esperando gesto) ainda têm o que fechar.
         if status in RUN_TERMINAL and status != RunStatus.completed_with_issues:
             raise RunError("invalid_state", "A execução já terminou.")
         episodio_novo = status != RunStatus.cancelling and (
@@ -1564,7 +1565,7 @@ class RunService:
             itens.append((str(run["id"]), max(str(entrada), ligado_desde),
                           {"o_que": "execucao", "run_id": str(run["id"]),
                            "aparelhos": loads(str(run["instance_ids"]), [])}))
-        terminais = tuple(s.value for s in RUN_TERMINAL)
+        terminais = tuple(s.value for s in RUN_SEM_TRABALHO)      # 29.93: inclui a execução esperando a pessoa
         marcas = ",".join("?" for _ in terminais)
         for o in db.query("SELECT o.id, o.run_id, o.instance_id, o.blocked_kind, o.finished_at AS espera_desde, "
                           f"r.finished_at AS fim FROM objectives o JOIN runs r ON r.id=o.run_id WHERE o.status=? "
@@ -1712,7 +1713,7 @@ class RunService:
         limite = to_iso(agora - timedelta(hours=horas_cfg))
         if self._ligado_desde() >= limite:          # 31.50: ainda na carência de quando o vencimento foi ligado
             return []
-        terminais = tuple(s.value for s in RUN_TERMINAL)
+        terminais = tuple(s.value for s in RUN_SEM_TRABALHO)      # 29.93: inclui a execução esperando a pessoa
         marcas = ",".join("?" for _ in terminais)
         vencidos: list[str] = []
         candidatos = self.repo.db.query(

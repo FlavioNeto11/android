@@ -783,7 +783,8 @@ class PedidosApi:
         recentes = self.db.query(self._SQL_OCORRENCIA + " WHERE o.pedido_id=? ORDER BY o.previsto_para DESC, o.id DESC"
                                  " LIMIT 20", (pedido_id,))
         em_curso = self.db.query("SELECT r.id AS run_id, r.ocorrencia_id, r.status FROM runs r WHERE r.pedido_id=?"
-                                 " AND r.status NOT IN ('completed','completed_with_issues','cancelled','failed')"
+                                 " AND r.status NOT IN ('completed','completed_with_issues','cancelled','failed',"
+                                 "'awaiting_person')"
                                  " ORDER BY r.created_at", (pedido_id,))
         filhos = self.repo.filhos(pedido_id)
         v.update({

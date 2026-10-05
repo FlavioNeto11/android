@@ -71,8 +71,10 @@ def test_pode_aceita_enum_e_texto_e_recusa_o_desconhecido() -> None:
 def test_mesmo_estado_so_onde_esta_escrito() -> None:
     """`pode(x, x)` não é regra geral: só as reafirmações que o código faz de propósito."""
     reafirma = {(m.nome, e) for m in MAQUINAS for e in m.estados if m.pode(e, e)}
-    assert reafirma == {("run", "cancelling"), ("run", "completed_with_issues"), ("run", "cancelled"),
-                        ("objective", "failed")}
+    # `awaiting_person` (29.93), como o `completed_with_issues`: o `recompute_run` reafirma o estado quando só o detalhe
+    # muda (um objetivo parado resolvido enquanto outro segue esperando a pessoa).
+    assert reafirma == {("run", "cancelling"), ("run", "completed_with_issues"), ("run", "awaiting_person"),
+                        ("run", "cancelled"), ("objective", "failed")}
 
 
 def test_arestas_que_o_dominio_garante() -> None:

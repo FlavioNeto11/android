@@ -68,6 +68,43 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_imagem_enquanto_falta_saida.py`, 8 testes). Real: `not_run`; o A/B é
   janela da orquestradora (`.claude/handoffs/jev-roteiro-31-71-ab.md`).
 
+## 2026-10-05 — 29.93: a execução que espera você não aparece como encerrada (branch fix/29-93-aguardando-pessoa)
+
+- `RunStatus.awaiting_person` (não terminal): o `recompute_run` leva a ele a execução sem trabalho automático com algum
+  objetivo `waiting_user`. Antes ela ia a `completed_with_issues`, que é terminal. Execução só com `uncertain` segue
+  `completed_with_issues`. Conjunto novo `RUN_SEM_TRABALHO` (terminais + o novo): grava `finished_at`, é o que a retomada
+  reabre e o que o vencimento do 31.50 lê (prazo, lembrete, varredura e `vence_em`, sem mudança de comportamento).
+- Tabela de transições (`execution/domain/states.py`), cancelar (aceito) e o corte por idade do
+  `vitrine.objetivo_que_segura` com o estado novo.
+- A purga de eventos por idade (`EventBus.purge_older_than`) poupa a execução aguardando: ela tem `finished_at` e
+  continua aberta.
+- Snapshot: a execução aguardando vem por 7 dias depois de `finished_at` (com o vencimento desligado nada a fecharia). A
+  caixa de Pendências não depende do snapshot para isso: ela conta só `needs_input` (ADR-062).
+- Telegram: o desfecho diz "parou" (redação da Canais; serve à parada no aparelho e à aprovação); a contagem "esperando você" e o gesto são do 28.40. `TERMINAIS`
+  da entrada inclui o estado novo (o desfecho é a única linha, 28.36).
+- Pedidos: a ocorrência fecha como fechava com o `completed_with_issues`, para o domínio da Canais não mudar agora.
+- Assentamento (A1 da leitura): nenhum digest enquanto a execução espera (fora do `ASSENTADAS` e dos conjuntos
+  finais). Na parada, o `_settle_run` solta o que a main soltava nessa hora (o explorador, a trava de rascunho, o
+  acordar dos pedidos) sem o digest (`Scheduler.on_run_parada`). Na saída sem worker (abandonar, vencer, cancelar),
+  `Repository.set_run_status` chama `ao_assentar_sem_worker`: terminal vindo direto de `awaiting_person`, ou de
+  `cancelling` com o `finished_at` da espera ainda gravado. O critério é o estado anterior, porque o `resolve` limpa o
+  `finished_at` antes do `recompute_run`. É o assentamento inteiro, uma vez, agendado no laço por `call_soon_threadsafe` quando vem
+  de uma thread (o vencimento roda em `to_thread`). A retomada limpa o `finished_at` e assenta pelo worker, como
+  antes, sem dobrar. O que o digest conta durante e depois da espera é do 30.69 (Aprendizado), empilhado.
+- Assentamento exatamente uma vez (leitura 2 do #382), pela marca `runs.assentada_em` (migração 113): compare-and-set
+  em `Repository.marcar_assentada`. O worker grava o estado final e a marca na mesma transação e assenta em linha; a
+  rede do `set_run_status` (estado final vindo de estado de trabalho, depois do COMMIT, sem worker vivo) só assenta se
+  ganhar a marca. Isso fecha o D1 (cancelar a `completed_with_issues` já assentada assentava de novo) e entrega o
+  29.103 (a execução cancelada sem worker nunca assentava). O `set_run_status` zera a marca ao reabrir (não no
+  `cancelling`). A 113 marca toda execução já final na hora da migração.
+- A retenção de evidência por idade também poupa a execução aguardando.
+- Painel: rótulo "Aguardando você", grupo "Pede atenção"; Cancelar e o aviso "precisam de você" voltam a valer nela;
+  `isRunSemTrabalho` para repetir, relatório, custo e recarga do detalhe.
+- Migração de dados `111_execucao_aguardando_pessoa`: 0 linhas no central em 05/10. Migração `113_execucao_assentada_em`
+  (coluna e preenchimento). Adendo v1.50 do contrato (números da orquestradora).
+- Prova: `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
+  `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). Real: `not_run`.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro

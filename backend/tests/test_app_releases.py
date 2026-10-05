@@ -697,7 +697,7 @@ async def test_porta_do_app_bloqueia_despacho_quando_o_aplicativo_nao_esta_pront
     bloqueado = state.db.one("SELECT blocked_reason FROM objectives WHERE id=?", (f"{run.id}:android-01",))
     assert "não está pronto" in (bloqueado["blocked_reason"] or "")
     # o outro aparelho, sem linha de estado, segue normalmente
-    await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed"), timeout=90)
+    await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "awaiting_person"), timeout=90)
     assert harness.fakes["android-02"].messages
     assert not harness.fakes["android-01"].messages
 

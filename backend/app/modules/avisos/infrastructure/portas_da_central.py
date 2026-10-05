@@ -38,9 +38,11 @@ from app.taskqueue.perguntas import (
 )
 from app.taskqueue.service import RunError, RunService
 
-#: Como o status de uma execução terminada se lê na conversa.
+#: Como o status de uma execução sem trabalho automático pela frente se lê na conversa. `awaiting_person` (29.93) não é
+#: fim: um objetivo espera um gesto do dono no aparelho, e a linha diz isso em vez de "concluída com problemas".
 _DESFECHO = {RunStatus.completed: "concluída", RunStatus.completed_with_issues: "concluída com problemas",
-             RunStatus.failed: "falhou", RunStatus.cancelled: "cancelada"}
+             RunStatus.failed: "falhou", RunStatus.cancelled: "cancelada",
+             RunStatus.awaiting_person: "parou"}
 _ATIVAS = ("planning", "running", "paused", "cancelling")
 
 

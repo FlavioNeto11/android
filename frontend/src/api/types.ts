@@ -11,7 +11,8 @@ type InstanceState = 'absent' | 'stopped' | 'hibernated' | 'booting' | 'online' 
 type ControlOwner = 'none' | 'ai' | 'user';
 type AutomationState = 'none' | 'starting' | 'ready' | 'error';
 
-type RunStatus = 'planning' | 'needs_input' | 'planned' | 'running' | 'paused' | 'cancelling'
+// awaiting_person (29.93): o trabalho automático acabou e um objetivo espera um gesto da pessoa no aparelho; não é fim.
+type RunStatus = 'planning' | 'needs_input' | 'planned' | 'running' | 'paused' | 'cancelling' | 'awaiting_person'
                | 'completed' | 'completed_with_issues' | 'cancelled' | 'failed';
 type ObjectiveStatus = 'pending' | 'running' | 'waiting_user' | 'succeeded' | 'failed' | 'cancelled' | 'uncertain';
 type StepStatus = 'pending' | 'ready' | 'running' | 'verifying' | 'succeeded' | 'retry_wait'
