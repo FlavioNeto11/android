@@ -157,6 +157,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` e `backend/tests/test_telegram_entrada.py`.
   Real: `not_run`.
 
+## 2026-10-05 — 29.97 (parte da Canais): o aviso do vigia da borda do site (branch canais/29-97-borda-do-portal)
+
+- `avisos/domain/portal.py`: `aviso_da_borda` e `chave_da_borda`. Sete códigos do vigia do Portal, cada um com
+  assunto, o que chegou, o que é crítico e o gesto na zona da Cloudflare. Uma mensagem por código e dia UTC. O achado
+  só sai como host e caminho ou o nome do cookie; query, `=`, espaço e IP nunca saem.
+- `avisos/domain/mensagem.py`: `portal.borda` e `portal.borda_sem_conferir` no nível 2, saindo na hora.
+- `avisos/infrastructure/servico.py`: `avisar_borda_do_portal`, no molde do `avisar_resumo_do_portal` (contrato com
+  o Portal de 05/10 04:25Z).
+- `avisos/application/entrada.py` e `infrastructure/entrada.py`: a resposta do dono ao aviso vai à orquestradora como
+  recado e nunca vira pedido.
+- Leitura do #381: B1, o achado também perde o IP escondido num nome (`10.0.0.5.nip.io`, `10-0-0-5.sslip.io`) e a
+  forma curta ou decimal (`127.1`, `2130706433`); B2, `agora` sem fuso é `campo_invalido`; B3, o `sem_conferir` não
+  diz "Crítico" nem espera o dono (pode ser o caminho do central, e não o site).
+- Prova `simulated`: `backend/tests/test_avisos_portal_borda.py`. Real: `not_run`.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro

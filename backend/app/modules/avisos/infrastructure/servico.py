@@ -43,6 +43,7 @@ from app.modules.avisos.domain.portal import (
     ApagadoNoCanal,
     ContatoAvisado,
     ContatoDoPortal,
+    aviso_da_borda,
     aviso_do_contato,
     aviso_do_resumo,
     chave_do_contato,
@@ -235,6 +236,27 @@ class ServicoDeAvisos:
             return ContatoAvisado(True)
         except Exception as exc:  # noqa: BLE001 - o laço do Portal tenta de novo na hora seguinte
             log.error("avisos: resumo do portal não entrou na fila: %s", type(exc).__name__)
+            return ContatoAvisado(False, FALHA_INTERNA)
+
+    def avisar_borda_do_portal(self, codigo: str, onde: str, agora: datetime, *, achado: str | None = None,
+                               horas_sem_conferir: int | None = None) -> ContatoAvisado:
+        """29.97: o vigia da borda do site (laço do Portal) achou um defeito, ou não consegue conferir há N voltas.
+        Contrato combinado com o Portal em 05/10 04:25Z: ele chama só na TRANSIÇÃO; a chave é por código e dia UTC
+        (`portal-borda:<código>:<AAAA-MM-DD>`), então chamar de novo no mesmo dia devolve `enfileirado=True` sem segunda
+        mensagem. Código ou lugar fora do contrato, ou `sem_conferir` sem as horas: `campo_invalido`. O log leva só o
+        código e o motivo."""
+        try:
+            aviso = aviso_da_borda(codigo, onde, agora, achado=achado, horas_sem_conferir=horas_sem_conferir)
+            if aviso is None:
+                log.info("avisos: borda do portal recusada (%s): %s", codigo if isinstance(codigo, str) else "?",
+                         CAMPO_INVALIDO)
+                return ContatoAvisado(False, CAMPO_INVALIDO)
+            if not self.ligado or self.canal() is None:
+                return ContatoAvisado(False, CANAL_DESLIGADO)
+            self.fila.enfileirar(aviso)
+            return ContatoAvisado(True)
+        except Exception as exc:  # noqa: BLE001 - o laço do Portal tenta de novo na volta seguinte
+            log.error("avisos: borda do portal não entrou na fila: %s", type(exc).__name__)
             return ContatoAvisado(False, FALHA_INTERNA)
 
     async def apagar_avisos_do_portal(self, contato_id: int, agora: datetime) -> ApagadoNoCanal:

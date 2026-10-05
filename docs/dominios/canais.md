@@ -576,8 +576,34 @@ avisos depois da faxina"), e a trava cai no TTL.
     - abaixo disso: "Crítico: nada." e "Nada a fazer: os guardados ficam na Central, sem aviso."
     Nunca "Espera você": não há gesto que o dono faça no aviso, e desligar o contato é configuração do central com
     reinício (orquestradora, 04/10 22:37Z). A resposta do dono a ele só informa e não liga nem desliga o formulário.
+  - O vigia da borda (29.97, contrato com o Portal de 05/10 04:25Z): o laço do Portal confere a página pública como
+    um visitante e, só na TRANSIÇÃO, chama `avisar_borda_do_portal(codigo, onde, agora, *, achado=None,
+    horas_sem_conferir=None)`.
+    - `codigo` é um destes: `script_injetado`, `html_transformado`, `csp_ausente`, `cookie`, `versao_divergente`,
+      `pagina_fora` ou `sem_conferir` (este exige `horas_sem_conferir`). `onde` é `raiz`, `painel`, `css` ou `js`.
+      Fora disso, `campo_invalido`.
+    - O `achado` só sai como host e caminho, ou o nome do cookie: com `?`, `=`, espaço, IP ou mais de 120
+      caracteres, é omitido sem recusa. IP inclui o que está dentro de um nome (`10.0.0.5.nip.io`,
+      `10-0-0-5.sslip.io`) e a forma curta ou decimal: qualquer sequência de quatro números separados por `.` ou `-`,
+      ou rótulo só de dígitos, omite o achado (B1 da leitura do #381).
+    - Quem chama manda SÓ host e caminho, sem query nem credencial: o filtro não reconhece segredo num segmento de
+      caminho (`cdn/token/abc123` passa).
+    - `agora` sem fuso é `campo_invalido`: o dia UTC da chave não pode depender do fuso do processo (B2).
+    - Chave `portal-borda:<código>:<AAAA-MM-DD UTC>`: um defeito que persiste dá uma mensagem por dia. O defeito que
+      some e VOLTA no mesmo dia não manda segunda mensagem (a chave é a mesma, e a fila devolve `enfileirado=True`
+      sem enviar): a reaparição fica na saúde do Portal. Decisão da orquestradora, 05/10 04:59Z.
+    - Tipos `portal.borda` e `portal.borda_sem_conferir`: nível 2, saem na hora (`PARARAM_ALGO`), um a um (o
+      prefixo `portal.` nunca se agrupa, e o corpo agrupado diria "abra a caixa de Pendências"), sem link e fora do
+      Trello.
+    - Corpo no molde: o que chegou, "Crítico: …" e "Espera você: …" com o lugar na zona da Cloudflare. O
+      `sem_conferir` é a exceção (B3, decisão da orquestradora): sem conferir não é defeito visto, então não há
+      "Crítico"; o texto diz há quantas horas a conferência não completa (com o código do vigia, `borda-502`,
+      `tempo-esgotado`, `api-<status>`, pelo mesmo filtro do achado), que pode ser o caminho do central até a
+      internet e não o site, e que não espera o dono. O nível 2 fica.
+    - Achado recusado pelo filtro nunca cala o aviso: ele sai sem o item (pergunta da orquestradora, 05/10 06:51Z).
+    - A resposta do dono vai à orquestradora como recado (repasse `borda`) e nunca vira pedido.
 - **Hoje:** `modules/avisos/domain/portal.py` (montagem e higiene),
-  `infrastructure/servico.py::avisar_contato_do_portal` e `avisar_resumo_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
+  `infrastructure/servico.py::avisar_contato_do_portal`, `avisar_resumo_do_portal` e `avisar_borda_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
   a tabela dos contatos, a taxa e a retenção são da frente Portal (29.77).
 
 **C-26 · O Executar do Telegram mostra as travas do plano antes de começar (28.27).**
