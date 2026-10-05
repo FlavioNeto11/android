@@ -27,6 +27,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   serviço do túnel; responder vai à orquestradora, só com sessão ativa). O achado não entra no texto.
 - `avisos/domain/mensagem.py`: `portal.borda_api` no nível 1, saindo na hora; sem agrupar, sem link e fora do Trello
   pelo prefixo `portal.`.
+- Leitura do #383: o `sem_conferir` com `onde=api` fala da API (horas, motivo, não espera o dono; no `api-500`, um
+  olhar), com chave própria por dia, separada da do site.
 - Prova `simulated`: `backend/tests/test_avisos_portal_borda_api.py`. Real: `not_run`.
 
 ## 2026-10-05 — 29.97 (parte da Canais): o aviso do vigia da borda do site (branch canais/29-97-borda-do-portal)

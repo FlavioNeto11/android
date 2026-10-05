@@ -586,6 +586,9 @@ avisos depois da faxina"), e a trava cai no TTL.
       na hora e espera o dono). Texto fixo: o único caminho citado é `/api/instances`, e o achado não entra. O gesto
       é dele (parar o serviço do túnel no central); responder vai à orquestradora pelo repasse `borda`, o que só
       funciona com uma sessão ativa. Mesma chave por dia, sem reaviso no dia; a saúde do Portal mostra o achado.
+      Quando o vigia não consegue conferir a API (leitura do #383), manda `sem_conferir` com `onde=api` e o motivo
+      (`api-404`, `api-desafio`, `api-500`…): o texto é da API, com as horas e o motivo, não espera o dono, e no
+      `api-500` pede um olhar (a API devia recusar antes da rota). Chave própria, `portal-borda:sem_conferir_api:<dia>`.
 - **Hoje:** `modules/avisos/domain/portal.py` (montagem e higiene),
   `infrastructure/servico.py::avisar_contato_do_portal`, `avisar_resumo_do_portal` e `avisar_borda_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
   a tabela dos contatos, a taxa e a retenção são da frente Portal (29.77).
