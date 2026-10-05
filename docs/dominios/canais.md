@@ -563,9 +563,11 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - **O dono decide sabendo** (orquestradora, 04/10 23:42Z, condição para apagar também a resposta dele): a
     confirmação da exclusão no painel (Configuração → "Site e privacidade", PR #342 do Portal) diz, depois de "Será
     apagado:", que "Também serão apagados do seu Telegram o aviso deste contato e as suas respostas a esse aviso,
-    quando o Telegram ainda permitir (até 48 horas depois do envio). O que não der para apagar sozinho aparece numa
+    quando o Telegram ainda permitir (até 47 horas depois do envio). O que não der para apagar sozinho aparece numa
     lista com a hora, para você apagar à mão." (no plural, "os avisos destes contatos" e "a esses avisos"). Em "Não
-    será apagado:" ficam as cópias de segurança e as mensagens com mais de 48 horas; fecha com "Não há como desfazer."
+    será apagado:" ficam as cópias de segurança e as mensagens com mais de 47 horas; fecha com "Não há como desfazer." A tela diz 47, o mesmo
+    `JANELA_DE_APAGAR` do código, e não as 48 do Telegram: não promete o que o código não cumpre (orquestradora, E3,
+    04/10 23:59Z; #342 `217f621c`).
   - O id do contato nunca se repete (`{{PK_AUTO}}`: AUTOINCREMENT no SQLite, BIGSERIAL no PG; travado pelo teste do
     Portal), senão um contato novo cairia na lápide do excluído e o aviso dele sumiria calado.
 - **Hoje:** `domain/portal.py` (`ApagadoNoCanal`, `JANELA_DE_APAGAR`, `da_para_apagar`),
