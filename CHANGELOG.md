@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.77: uma fração só e a janela flutuante pela raiz do dump (branch feat/31-77-fracao-unica-e-janela-pela-raiz)
+
+- `automation/hierarchy.py`: `UiTree.janela` (novo, `None` por padrão) e `_janela_do_dump`. É a união dos bounds dos
+  nós de topo do dump, lida antes de o leitor descartar o contêiner sem texto, sem os de `com.android.systemui`.
+- `taskqueue/dialogos.py`: `_FRACAO_DA_PAGINA` vira `FRACAO_DA_PAGINA`, pública e única (K2 da leitura do #391).
+- `taskqueue/executor.py`: `_FRACAO_DA_JANELA` sai. O L2 de `sobreposicao_vale` passa a usar `tree.janela` contra
+  `FRACAO_DA_PAGINA`, e não mais a extensão das folhas (L2-a). Sem janela, o L2 não decide.
+- Prova `simulated`: `backend/tests/test_janela_pela_raiz.py` (7 testes; a página esparsa com folhas em 15 % da tela
+  não passa por janela). Os testes do 31.73, com dump plano, não mudam: a união dos nós de topo é a extensão das
+  folhas. `real`: `not_run`, à espera de um dump bruto de um diálogo nativo e de uma página esparsa.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

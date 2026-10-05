@@ -144,8 +144,10 @@ def botao_que_fecha(tree: UiTree, area: tuple[int, int, int, int] | None = None)
 #: que `_PISTAS`: um "OK" de um diálogo qualquer do site não é consentimento.
 _CONSENTIMENTO = re.compile(r"cookie|consent|privacidade|privacy|lgpd|gdpr|rgpd", re.IGNORECASE)
 
-#: Acima desta fração da tela, um elemento marcado é a página (o WebView com "privacidade" no título), não um aviso.
-_FRACAO_DA_PAGINA = 0.6
+#: A fração da tela que separa a página do que flutua sobre ela. Uma só, pública (K2 da leitura do #391), com dois
+#: usos: acima dela, um elemento marcado é a página (o WebView com "privacidade" no título), não um aviso (31.72); e
+#: abaixo dela, a janela inteira do dump é uma janela flutuante, o próprio diálogo (31.73, `executor.sobreposicao_vale`).
+FRACAO_DA_PAGINA = 0.6
 
 #: A faixa do aviso: a altura do elemento marcado mais esta fração da tela acima e abaixo. O leitor da árvore descarta
 #: o contêiner vazio e não clicável, e no Chrome o texto do aviso e os botões costumam ser IRMÃOS nele: sem o
@@ -225,7 +227,7 @@ def toque_que_aceita(tree: UiTree, alvo: UiElement | None,
         return None
     largura = max((e.bounds[2] for e in tree.elements), default=0)
     altura = max((e.bounds[3] for e in tree.elements), default=0)
-    pagina = _FRACAO_DA_PAGINA * largura * altura
+    pagina = FRACAO_DA_PAGINA * largura * altura
     # K2: só a marca que tem cara de aviso (abaixo de 60 % da tela; a interface do navegador já saiu em
     # `_de_consentimento`) liga a trava.
     marcas = [e for e in tree.elements if _de_consentimento(e) and _area(e.bounds) < pagina]

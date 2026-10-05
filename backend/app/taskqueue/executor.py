@@ -73,9 +73,9 @@ from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
-from .dialogos import (FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE, MOTIVO_ACEITE_RECUSADO,
-                       MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha, dialogo_sem_saida,
-                       e_navegador, rotulo_para_o_ator, tipo_do_elemento, toque_que_aceita)
+from .dialogos import (FRACAO_DA_PAGINA, FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE,
+                       MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha,
+                       dialogo_sem_saida, e_navegador, rotulo_para_o_ator, tipo_do_elemento, toque_que_aceita)
 from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -395,11 +395,6 @@ def cobertura_na_arvore(tree: UiTree, ref: str | None) -> Cobertura | None:
 #: conteúdo; a captura de 05/10 08:06Z confirmou os bounds) e 83,8 % como modal (r-20261004190200-5b56e6, cobria).
 FRACAO_DA_SOBREPOSICAO = FRACAO_QUE_COBRE
 
-#: L2 da leitura do #391: abaixo desta fração da tela, a árvore inteira é uma janela flutuante (o dump de um diálogo
-#: nativo), não a página. A mesma fração de 60 % que o 31.72 usa para a página.
-_FRACAO_DA_JANELA = 0.6
-
-
 def _area_de(b: tuple[int, int, int, int]) -> int:
     return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
 
@@ -436,14 +431,12 @@ def sobreposicao_vale(tree: UiTree, ref: str | None, largura: int, altura: int) 
         return True
     # L2 da leitura do #391: no diálogo nativo (AlertDialog) o leitor corta o painel (`android:id/parentPanel`, sem
     # texto) e, com o dump só da janela do diálogo, sobram título, mensagem e botões, todos pequenos e sem pista. A
-    # árvore inteira menor que `_FRACAO_DA_JANELA` da tela é uma janela flutuante: o que se vê é o próprio diálogo.
-    if tree.elements:
-        x1 = min(e.bounds[0] for e in tree.elements)
-        y1 = min(e.bounds[1] for e in tree.elements)
-        x2 = max(e.bounds[2] for e in tree.elements)
-        y2 = max(e.bounds[3] for e in tree.elements)
-        if _area_de((x1, y1, x2, y2)) < _FRACAO_DA_JANELA * tela:
-            return True
+    # JANELA do dump menor que `FRACAO_DA_PAGINA` da tela é uma janela flutuante: o que se vê é o próprio diálogo.
+    # L2-a (31.77): a janela é a dos nós de topo do dump (`UiTree.janela`), não a extensão das folhas que sobraram: a
+    # página esparsa sem ids (Compose, Flutter) fica com folhas abaixo de 60 % e passaria por janela. Sem a janela (árvore
+    # montada fora de `parse_hierarchy`), o L2 não decide: a extensão das folhas é justamente o erro que ele corrige.
+    if tree.janela is not None and _area_de(tree.janela) < FRACAO_DA_PAGINA * tela:
+        return True
     base = caixa or citado
     area = base.bounds
     # Os descendentes da base, sem a relação de pai na árvore: na ordem do documento (a do uiautomator, em
