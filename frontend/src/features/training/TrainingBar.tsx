@@ -16,13 +16,18 @@ import { useAppStore } from '../../store/app';
 import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
 import { TrainingReview } from './TrainingReview';
+import { useTrainingStore } from './trainingStore';
 import styles from './Training.module.css';
 
 const DESCRICAO: Record<string, string> = {
   tap: 'toque', long_press: 'toque longo', swipe: 'deslize', text: 'texto', key: 'tecla', open_app: 'abrir app',
 };
 
-export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; leaseId: string | null; mine: boolean }) {
+export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }: {
+  instance: Instance; leaseId: string | null; mine: boolean;
+  /** Aparelho fora do ar (31.86): sem formulário de iniciar; a lista "Para revisar" e a revisão seguem de pé. */
+  somenteRevisao?: boolean;
+}) {
   const apps = useAppStore((s) => s.apps);
   const [sessoes, setSessoes] = useState<TrainingSession[]>([]);
   const [ativa, setAtiva] = useState<TrainingSession | null>(null);
@@ -31,6 +36,14 @@ export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; l
   // Uma ação em voo por vez; cada botão gira só pela sua e o outro explica por que espera.
   const [ocupado, setOcupado] = useState<'iniciar' | 'concluir' | 'descartar' | null>(null);
   const [revisando, setRevisando] = useState<string | null>(null);
+  const recusadas = useTrainingStore((s) => s.recusadas[instance.id] ?? 0);
+  const definirGravando = useTrainingStore((s) => s.definirGravando);
+  // Só é "gravando" para o Foco (padrão de "Limpar o campo antes", contador de recusas) quando a gravação é desta pessoa.
+  const gravandoMesmo = !!ativa && mine;
+  useEffect(() => {
+    definirGravando(instance.id, gravandoMesmo);
+  }, [instance.id, gravandoMesmo, definirGravando]);
+  useEffect(() => () => definirGravando(instance.id, false), [instance.id, definirGravando]);
 
   const carregar = useCallback(async () => {
     try {
@@ -81,7 +94,7 @@ export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; l
     }
     setOcupado(descartar ? 'descartar' : 'concluir');
     try {
-      const s = descartar ? await api.discardTraining(ativa.id) : await api.stopTraining(ativa.id);
+      const s = descartar ? await api.discardTraining(ativa.id, leaseId) : await api.stopTraining(ativa.id, leaseId);
       setAtiva(null);
       setIntencao('');
       await carregar();
@@ -93,12 +106,32 @@ export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; l
     }
   }
 
+  const botoesDaGravacao = () => (
+    <div className={styles.actions}>
+      <Button size="sm" variant="primary" icon={Square} loading={ocupado === 'concluir'}
+              disabledReason={ocupado === 'descartar' ? 'Descartando a gravação…' : null} onClick={() => void concluir(false)}>Concluir e revisar</Button>
+      <Button size="sm" variant="dangerGhost" icon={Trash2} loading={ocupado === 'descartar'}
+              disabledReason={ocupado === 'concluir' ? 'Concluindo a gravação…' : null} onClick={() => void concluir(true)}>Descartar</Button>
+    </div>
+  );
+
   const pendentes = sessoes.filter((s) => s.status === 'recorded' || s.status === 'proposed');
 
   return (
     <section className={styles.bar} aria-label="Modo treinamento">
       <h3 className={styles.title}><GraduationCap size={15} aria-hidden /> Modo treinamento</h3>
-      {ativa ? (
+      {ativa && !mine && instance.control === 'user' ? (
+        // Gravação viva de quem tem o controle em outra aba (ou depois de um F5: o lease vive só em memória) ou de
+        // outra pessoa: quem só olha não encerra nem descarta a gravação alheia.
+        <p className={styles.hint} role="status">Há uma gravação em andamento neste aparelho por quem está com o controle.</p>
+      ) : ativa && !mine ? (
+        // 31.80: sessão `recording` sem NINGUÉM com o controle é gravação órfã (ex.: o servidor reiniciou); nada mais
+        // é gravado, então a barra não diz "Gravando".
+        <div className={styles.recording}>
+          <p className={styles.hint} role="status">Há uma gravação aberta neste aparelho que não está mais gravando: <strong>{ativa.intent}</strong>.</p>
+          {botoesDaGravacao()}
+        </div>
+      ) : ativa ? (
         <div className={styles.recording}>
           <p className={styles.recLine}>
             <CircleDot size={14} className={styles.recDot} aria-hidden /> Gravando: <strong>{ativa.intent}</strong>
@@ -115,13 +148,13 @@ export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; l
               </li>
             ))}
           </ol>
-          <div className={styles.actions}>
-            <Button size="sm" variant="primary" icon={Square} loading={ocupado === 'concluir'}
-                    disabledReason={ocupado === 'descartar' ? 'Descartando a gravação…' : null} onClick={() => void concluir(false)}>Concluir e revisar</Button>
-            <Button size="sm" variant="dangerGhost" icon={Trash2} loading={ocupado === 'descartar'}
-                    disabledReason={ocupado === 'concluir' ? 'Concluindo a gravação…' : null} onClick={() => void concluir(true)}>Descartar</Button>
-          </div>
+          {/* A região viva nasce vazia com a gravação: o texto que entra depois é anunciado, o que já nasce com ele não. */}
+          <p className={styles.hint} role="status" aria-live="polite">{recusadas ? `${recusadas} entrada(s) recusada(s): refaça` : ''}</p>
+          <p className={styles.hint}>Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.</p>
+          {botoesDaGravacao()}
         </div>
+      ) : somenteRevisao ? (
+        <p className={styles.hint}>Aparelho fora do ar: dá para revisar e salvar o fluxo; as receitas das etapas só são gravadas com o aparelho online.</p>
       ) : mine ? (
         <div className={styles.start}>
           <Field label="O que você vai ensinar?">
@@ -143,6 +176,7 @@ export function TrainingBar({ instance, leaseId, mine }: { instance: Instance; l
             Iniciar treinamento
           </Button>
           <p className={styles.hint}>Senhas e códigos digitados não são gravados. Devolver o controle encerra a gravação.</p>
+          <p className={styles.hint}>Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.</p>
         </div>
       ) : (
         <p className={styles.hint}>Assuma o controle para ensinar uma tarefa: você faz, a IA mapeia o processo e ele vira habilidade para os perfis que você escolher.</p>

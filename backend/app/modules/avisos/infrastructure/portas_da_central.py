@@ -75,6 +75,15 @@ def imagem_da_etapa(db: Database, ler_imagem: Callable[[str], bytes | None] | No
     return (conteudo, "application/octet-stream") if conteudo else None
 
 
+def sha_da_imagem_aprovada(db: Database, run_id: str, step_id: str) -> str | None:
+    """O `midia_sha256` congelado no sim do plano desta etapa (28.48; `ApprovalService.aprovar_no_plano`): a imagem que o
+    dono APROVOU. É a âncora mais forte que o recálculo de `sha_da_imagem_na_porta`; quem manda a foto confere as duas.
+    A decisão mais recente, com desempate pelo id; `None` sem sim com imagem para a etapa."""
+    valor = db.scalar("SELECT midia_sha256 FROM pending_approvals WHERE run_id=? AND step_id=? AND status='approved'"
+                      " AND midia_sha256 IS NOT NULL ORDER BY decided_at DESC, id DESC LIMIT 1", (run_id, step_id))
+    return str(valor) if valor else None
+
+
 def sha_da_imagem_na_porta(db: Database, run_id: str, step_id: str) -> str | None:
     """O `imagem_sha256` que a prévia da porta mostra para a etapa (28.46), pela MESMA conta dela (`porta_do_plano._item`):
     `midia_da_etapa` com o perfil da porta, que é o do objetivo ou, sem ele, o único do aparelho. `None`: etapa que não

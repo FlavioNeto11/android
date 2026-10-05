@@ -1399,7 +1399,8 @@ re-execução.
 - aparece como "Prova de fluxo (validação)" (`RunSummary.prova_fluxo_id`): nunca comando de pessoa, nunca aviso, nunca o
   último comando do cartão;
 - `needs_input`, `approval_required` ou incerteza é infra: o sistema encerra a execução na hora (sem
-  `cancelou_execucao`, sem pergunta pendente, sem aviso) e o pedido fecha `sem_evidencia`.
+  `cancelou_execucao`, sem pergunta pendente, sem aviso) e o pedido fecha `sem_evidencia`. Desde o 30.75, a parada na
+  tela de senha do app fecha `app_sem_sessao`, e o corte pelo teto, `orcamento_da_prova` (seção do 30.75).
 
 **A evidência** (`SombraDosFluxos.minerar`, ramo da prova), UMA linha do fluxo provado, com a marca do conteúdo:
 - a favor: execução `completed` e todas as etapas comprovadas;
@@ -1984,3 +1985,82 @@ anterior contra nem uma classe C.
   - a segunda volta não decidiu nada;
   - os 11 do Instagram ficaram com o dono.
 - `real`: `not_run` até o deploy (entra em `shadow`).
+
+## A prova sem evidência diz a causa (30.75)
+
+A leitura de 05/10 (`.claude/handoffs/aprendizado-sem-evidencia.md`) achou 5 pedidos de fluxo `sem_evidencia`:
+- dois foram o teto do pedido cortando a execução no meio, que gastou US$ 0,157 e 0,159 sem deixar evidência;
+- um foi o QA Messenger do android-02 deslogado: a prova parou na tela de senha, com US$ 0;
+- os outros dois eram de antes do `prova_fluxo_id` e já estavam corrigidos.
+
+Os três primeiros diziam só "sem evidência", e a medida não sabia o que travou nem quanto custou.
+
+- **Motivos novos do pedido** (`domain/validacao.Motivo`), escolhidos pelos campos estruturados, nunca pelo texto
+  (`FontesDaValidacaoSql.causa_sem_evidencia`):
+  - `orcamento_da_prova`: a ÚLTIMA tentativa da execução terminou com `attempts.error_kind='budget'`: um teto de IA
+    a encerrou. `budget` é o tipo de todo teto (o do pedido, o do dia, o de chamadas, o de uma ação); um teto que a
+    execução sobreviveu (o da leitura do 31.38) não é a causa. Quando o teto encerrou, ele vence o login;
+  - `app_sem_sessao`: algum objetivo da execução tem `objectives.blocked_kind='auth'`;
+  - sem nenhum dos dois, `sem_evidencia`, como antes;
+  - só em execução de PROVA (`runs.prova_fluxo_id`). O estoque `sem_evidencia` de execução comum (antes do 30.37)
+    segue `sem_evidencia` e no caminho da reabertura (C1 da leitura do #419).
+- **Onde valem:** no fechamento do pedido de FLUXO (`ServicoDeValidacao.minerar`) e no passo da curadoria que remotiva
+  o estoque `sem_evidencia` (`executar`, só a partir de `sem_evidencia`).
+  - Nenhum dos dois é chegada do curador nem se reabre: não dizem nada sobre o fluxo.
+  - Não são falha do executor, que não ganha texto novo; por isso não há regra nova em `falhas.py`.
+- **A causa estruturada do login:** o executor marca o desfecho da tela de senha com `StepOutcome.pede_login`, e só na
+  execução de PROVA o `Scheduler._prova_sem_pessoa` grava `blocked_kind='auth'` no objetivo que encerra. A execução
+  comum segue como sempre: `waiting_user`, sem essa marca.
+- **O aparelho sai das próximas provas daquele app** (`DespachoDoParque._sem_sessao_no_app`). O aparelho em que uma prova
+  de fluxo do pacote parou no login deixa de ser candidato para os pedidos que exigem o pacote. Ele volta quando:
+  - a verificação do app nele (`device_app_state.verified_at`) é posterior à parada; ou
+  - um objetivo `succeeded` num fluxo do mesmo app (`runs.flow_id` ou `prova_fluxo_id`), no mesmo aparelho, terminou
+    depois da parada. A execução comum que entrou no app prova que a sessão voltou.
+  - Sem outro aparelho que sirva, o pedido espera (`sem_aparelho`), como sempre.
+  - Limites conhecidos (leitura do #419):
+    - a verificação confere a INSTALAÇÃO, não a sessão: a de rotina (ao ligar o aparelho com o `verified_at` de mais de
+      24 h) solta o aparelho ainda deslogado, e a próxima prova nele pode gastar a vaga de novo;
+    - a exclusão usa o app PRINCIPAL do fluxo: o login pedido por um app secundário exclui o app errado;
+    - com `verify_max_age_h=0`, só a verificação manual, a reinstalação ou um sucesso de fluxo soltam.
+- **O estoque de 05/10 não ganha a marca do login:** a parada foi gravada antes do campo. O passo da curadoria passa a
+  `orcamento_da_prova` os dois cortes de 03/10, e o de 05/10 segue `sem_evidencia`.
+- **API:** os dois valores novos de `motivo` em `GET /api/aprendizado/validacoes` (adendo v1.54).
+
+**Prova:** `simulated` em `backend/tests/test_validacao_motivos_da_prova.py` (verificada por mutação: sem a marca no
+scheduler ou sem o filtro do aparelho, os testes reprovam). `real`: `not_run` até o deploy e a primeira prova com essa
+parada.
+
+## A receita que não se aplicou (30.80)
+
+Achado real (05/10, a prova do 31.79): a `r-20261005133833-122345` partiu de dentro de uma conversa no android-12. A
+receita 194, ensinada no modo treinamento, divergiu na ação 1 ("alvo ausente ou ambíguo nesta tela"), a IA comprovou a
+etapa, e a receita saiu com `replay_fail=1`. A falha era da tela de partida, não dela.
+
+- **"Não se aplicou"** (`StepExecutor._after_step` e `RecipeStore.nao_aplicavel`), quando valem as três condições:
+  - a receita divergiu na AÇÃO 1, antes de agir (`Replayer.done_actions == 0`);
+  - a divergência foi alvo AUSENTE (`recipes.AlvoAusente`). O seletor AMBÍGUO, que casa mais de um elemento, fica de
+    fora com a mesma mensagem: deixou de ser único, e isso é defeito da receita;
+  - a etapa TERMINOU comprovada.
+- **Nesse caso:**
+  - nem `replay_ok` nem `replay_fail` sobem, e `consecutive_fail` fica como está;
+  - `steps.driven_by='ai'`, porque nenhuma ação da receita rodou. Por isso a etapa não vira evidência contra no
+    aprendizado (`reproducao_sql.py` só lê `recipe`, `recipe+ai` e `sem_ator`);
+  - `attempts.recipe_id` segue apontando a receita tentada;
+  - a etapa que seria `sem_ator` também fica `ai`. É de propósito (sai da evidência contra), mas soma uma etapa da IA
+    no `/api/usage` sem chamada de IA.
+- **O evento `decision`** da execução diz "tela de partida diferente" e leva o código estável no `data`:
+  `kind='receita_nao_aplicavel'`, `recipe_id`, `step_id` e `contou_como_falha`. Isso dá para contar sem ler texto, e a
+  receita ensinada tentada que não servia aparece já na 1ª vez.
+  - A trilha (`learning_transitions`) fica para mudança de estado.
+- **Contrapeso** (migração 115, `recipes.nao_aplicavel_seguidas`): da 3ª "não se aplicou" SEGUIDA em diante, CADA
+  uma conta como falha comum (`recipe+ai`, `replay_fail`, a quarentena de sempre), sem zerar a série. Assim um 1º
+  seletor quebrado (atualização do app) chega à quarentena na 5ª execução.
+  - Na 1ª versão a 3ª zerava a série, e a quarentena só chegava na 9ª (R1 da segunda leitura).
+  - O ok, a falha comum, o gesto da pessoa na rota `PUT /api/recipes/{id}` e a reativação pelo livro zeram a série.
+- **Continua sendo falha comum:**
+  - a divergência depois da 1ª ação;
+  - "ações reproduzidas, mas a pós-condição não apareceu";
+  - parâmetro ausente;
+  - a etapa que a IA assumiu e que falhou ou ficou incerta.
+- **Prova:** `simulated`, em `tests/test_receita_nao_aplicavel.py`, que parte de dentro de outra conversa como o caso
+  real.

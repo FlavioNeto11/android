@@ -1796,7 +1796,7 @@ class Scheduler:
                                  next_retry_at=iso_in(self.get_settings().retry_backoff_s), level="warn")
             return False
         if o in (Outcome.waiting_user, Outcome.uncertain, Outcome.device_stuck) and self._prova_sem_pessoa(
-                str(obj["run_id"]), oid, step.id, attempt_id, rt, detail, kind):
+                str(obj["run_id"]), oid, step.id, attempt_id, rt, detail, kind, pede_login=out.pede_login):
             return False
         if o == Outcome.waiting_user and out.falta_de_informacao and self._revisao_cabe(obj, step.id, step.side_effect):
             # 29.35 (RA-9): "falta informação" que não é credencial passa pela revisão determinística antes da pessoa.
@@ -2378,7 +2378,7 @@ class Scheduler:
 
     # ------------------------------------------------------------------ cancelamento
     def _prova_sem_pessoa(self, run_id: str, objective_id: str, step_id: str, attempt_id: str, rt: DeviceRuntime,
-                          detail: str, kind: str | None) -> bool:
+                          detail: str, kind: str | None, *, pede_login: bool = False) -> bool:
         """30.37, ajuste (c) da orquestradora: a EXECUÇÃO DE PROVA nunca espera uma pessoa. A etapa que pediria
         (`waiting_user`: pergunta, aprovação, login; `uncertain`; aparelho retido) encerra a execução PELO SISTEMA, na
         hora, antes de o objetivo virar `waiting_user`/`uncertain`, o que soltaria pendência e aviso ao dono. Não passa
@@ -2395,6 +2395,10 @@ class Scheduler:
         repo.db.execute("UPDATE runs SET cancel_requested=1, pause_requested=0 WHERE id=?", (run_id,))
         repo.transition_step(step_id, StepStatus.cancelled, detail=motivo, level="warn")
         repo.set_objective(objective_id, ObjectiveStatus.cancelled, detail=motivo, level="warn", message=f"{rt.id}: {motivo}")
+        if pede_login:
+            # 30.75: a causa ESTRUTURADA da parada (o app pediu login neste aparelho), lida pelo pedido de validação
+            # (`app_sem_sessao`) e pela escolha do aparelho da próxima prova; o texto do motivo não é contrato.
+            repo.db.execute("UPDATE objectives SET blocked_kind='auth' WHERE id=?", (objective_id,))
         # A aprovação da etapa de efeito nasce (`approval.pending`) antes de o desfecho chegar aqui: sem expirar, ela
         # ficaria aberta na caixa de Pendências de uma execução que ninguém pediu.
         self._expirar_aprovacoes(objective_id, "Prova de fluxo (validação): encerrada pelo sistema")

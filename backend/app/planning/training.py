@@ -19,6 +19,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from ..taskqueue.flows import PLACEHOLDER
 from .provider import AIError, validar_saida
 
 TRAINER_SYSTEM = """Você observa uma pessoa ensinando uma tarefa num celular Android e transforma a gravação numa
@@ -28,9 +29,10 @@ digitado (quando pôde ser gravado).
 
 Devolva:
 - `command_template`: o comando em português que alguém digitaria para pedir esta tarefa, com os valores que
-  variam como `{nome}` (ex.: "responda a DM de {contato} com {mensagem}"). Nomes em minúsculas, sem acento. Entre dois
+  variam como `{nome}` (ex.: "responda a DM de {contato} com {mensagem}"). Nomes em minúsculas, sem acento. O comando começa pelo verbo, nunca por um parâmetro. Entre dois
   parâmetros sempre há pelo menos uma palavra fixa (nunca "{a} {b}" colados: não daria para separar os valores).
-- `parameters`: cada `{nome}` do comando, com o valor usado nesta gravação em `example`.
+- `parameters`: cada `{nome}` do comando, com o valor usado nesta gravação em `example`. Todo `{nome}` do comando
+  consta aqui e todo parâmetro daqui aparece no comando; o comando tem também texto fixo (ao menos duas palavras).
 - `steps`: as etapas da tarefa, na ordem, cada uma com UM objetivo verificável. `inputs` lista os números das
   entradas que realizam a etapa. `postcondition` usa, sempre que possível, algo que a tela mostra:
   text_visible (um texto), element_present (um seletor como id=..., text==..., desc==...) ou app_foreground (o
@@ -42,6 +44,14 @@ Devolva:
 - `app_id`: o app da etapa, quando a tarefa atravessa apps (null = o app principal).
 - `discarded`: entradas que NÃO fazem parte da tarefa (toque errado, voltar logo em seguida, rolagem à toa,
   abrir algo por engano), com o motivo.
+  Regras de cobertura e de teclas (a pessoa só salva se elas valerem):
+  * TODA entrada gravada aparece em UMA etapa (`inputs`) ou em `discarded`, com o motivo; nenhuma fica de fora.
+  * Teclas de apagar (`delete`, `del`, backspace) usadas só para limpar um campo antes de digitar vão para
+    `discarded`: a reprodução limpa o campo sozinha. Nunca ponha dezenas de teclas na etapa do texto.
+  * `back` ou `home` que só desfazem um engano de quem ensinou vão para `discarded`. Tecla que faz parte da tarefa
+    (ex.: enter para enviar) fica na etapa.
+  * Toda etapa tem `postcondition` com `description` verificável (o que a tela mostra quando deu certo), mesmo
+    quando o tipo é model_judged.
 - `questions`: dúvidas que só a pessoa responde (ex.: "o texto 'Bom dia' é sempre esse ou muda?"). Não invente.
 
 Nunca trate como parâmetro algo que parece senha ou código; entrada com texto não gravado é sigilosa."""
@@ -108,13 +118,17 @@ def linha_da_entrada(e: dict[str, Any]) -> str:
     if e.get("screen_title"):
         partes.append(f"tela=\"{e['screen_title']}\"")
     alvo = e.get("target") or {}
-    if alvo:
+    if e["type"] in ("tap", "long_press") and e.get("sensitive") and e.get("x") is None and not alvo:
+        # 31.94: tecla de PIN ou tela sensível: o gravador não guardou nem o elemento nem a coordenada
+        partes.append("toque em teclado ou tela sensível (não gravado)")
+    elif alvo:
         rid = (alvo.get("resource_id") or "").rsplit("/", 1)[-1]
         el = ", ".join(x for x in (f"id={rid}" if rid else "", f"texto=\"{alvo.get('text')}\"" if alvo.get("text") else "",
                                    f"desc=\"{alvo.get('desc')}\"" if alvo.get("desc") else "") if x)
         partes.append(f"elemento[{el or alvo.get('class_name', '?')}]")
     elif e["type"] in ("tap", "long_press"):
-        partes.append(f"ponto=({e.get('x')},{e.get('y')}) sem elemento identificado")
+        ponto = f"ponto=({e.get('x')},{e.get('y')}) " if e.get("x") is not None else ""
+        partes.append(f"{ponto}sem elemento identificado")
     if e["type"] == "swipe":
         dy = (e.get("y2") or 0) - (e.get("y") or 0)
         partes.append("rolou para baixo" if dy < 0 else "rolou para cima")
@@ -142,9 +156,32 @@ def trainer_user(req: TrainingRequest) -> str:
             f"Apps configurados:\n{apps}{cat}\n\nGravação ({len(req.inputs)} entradas):\n{entradas}")
 
 
+_TAMANHO_MAX_DA_CHAVE = 40     # o padrão de `PlanStep.key` aceita 41 (`^[a-z][a-z0-9_]{1,40}$`); 40 deixa folga
+
+
 def _chave(k: str) -> str:
-    k = re.sub(r"[^a-z0-9_]+", "_", (k or "").strip().lower()).strip("_")[:40]
-    return k if re.match(r"^[a-z]", k) and len(k) >= 2 else f"etapa_{k or 'x'}"
+    """Chave de etapa válida em `PlanStep.key` (letra, depois letras/dígitos/_), nunca com mais de 40 caracteres."""
+    k = re.sub(r"[^a-z0-9_]+", "_", (k or "").strip().lower()).strip("_")[:_TAMANHO_MAX_DA_CHAVE]
+    if not k:
+        return "etapa"                        # título só com símbolos ou acentos
+    if not re.match(r"^[a-z]", k) or len(k) < 2:
+        return f"etapa_{k}"[:_TAMANHO_MAX_DA_CHAVE]
+    return k
+
+
+def _chave_unica(base: str, vistos: set[str]) -> str:
+    """`base`, ou `base_2`, `base_3`… cortando a base para o sufixo caber. O laço antigo (`f"{k}_2"[:40]`) devolvia a
+    mesma chave quando ela já tinha 40 caracteres e nunca saía, congelando o laço de eventos do backend inteiro (31.93).
+    Aqui o sufixo muda a cada volta e sempre cabe; `vistos` é finito, então termina."""
+    if base not in vistos:
+        return base
+    n = 2
+    while True:
+        sufixo = f"_{n}"
+        k = f"{base[:_TAMANHO_MAX_DA_CHAVE - len(sufixo)]}{sufixo}"
+        if k not in vistos:
+            return k
+        n += 1
 
 
 def proposal_from_json(raw: str, req: TrainingRequest) -> dict[str, Any]:
@@ -171,17 +208,19 @@ def normalizar_proposta(p: dict[str, Any], req: TrainingRequest) -> dict[str, An
     vistos: set[str] = set()
     etapas = []
     for s in p.get("steps") or []:
-        k = _chave(s.get("key") or s.get("title") or "etapa")
-        while k in vistos:
-            k = f"{k}_2"[:40]
+        k = _chave_unica(_chave(s.get("key") or s.get("title") or "etapa"), vistos)
         vistos.add(k)
         etapas.append({**s, "key": k, "inputs": sorted({int(i) for i in s.get("inputs") or [] if int(i) in existentes}),
                        "bindings": [b for b in s.get("bindings") or [] if b.get("name")]})
-    nomes = set(re.findall(r"\{([a-z][a-z0-9_]*)\}", p.get("command_template") or ""))
+    nomes = set(PLACEHOLDER.findall(p.get("command_template") or ""))      # o padrão do fluxo (aceita `_x`)
     parametros = [x for x in p.get("parameters") or [] if x.get("name") in nomes]
+    descartadas: dict[int, dict[str, object]] = {}
+    for d in p.get("discarded") or []:
+        if int(d.get("seq", -1)) in existentes:
+            descartadas.setdefault(int(d["seq"]), d)      # o modelo às vezes repete o descarte: fica o primeiro
     return {"summary": (p.get("summary") or req.intent)[:200], "command_template": (p.get("command_template") or req.intent).strip(),
             "parameters": parametros, "steps": etapas,
-            "discarded": [d for d in p.get("discarded") or [] if int(d.get("seq", -1)) in existentes],
+            "discarded": list(descartadas.values()),
             "questions": [q for q in p.get("questions") or [] if q][:8]}
 
 

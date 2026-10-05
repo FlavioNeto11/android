@@ -30,7 +30,9 @@ async def _aprende_e_diverge(harness: Harness) -> tuple[set[str], list[dict[str,
     run = await harness.wait_run(harness.run(["android-02"]).id)
     assert run.status == "completed" and len(harness.fakes["android-02"].messages) == 1
     driven = {r["key"]: r["driven_by"] for r in db.query("SELECT key, driven_by FROM steps WHERE run_id=?", (run.id,))}
-    assert driven["open_conversation"] == "recipe+ai" and driven["send_message"] == "recipe"   # só AQUELA etapa
+    # 30.80: a 1ª ação sem alvo, com a etapa comprovada pela IA, é "não se aplicou" (`ai`) até a 3ª seguida, que conta
+    # como falha comum (`recipe+ai`); um seletor quebrado como este entra na quarentena com 3 falhas a mais
+    assert driven["open_conversation"] == "ai" and driven["send_message"] == "recipe"   # só AQUELA etapa
     decisoes = [c for c in harness.ai.calls if c["role"] == "decide" and c["instance"] == "android-02"]
     return {"open_conversation"}, decisoes
 
