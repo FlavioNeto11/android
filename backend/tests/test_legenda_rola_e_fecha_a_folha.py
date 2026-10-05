@@ -463,9 +463,11 @@ async def _tres_recusas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
     ator = AtorQueLigaORotulo()
     async with _parque_com_dobra(tmp_path, folha=False, ator=ator) as h:
         etapa = await _publicar(h)
-        erros = [r["error"] for r in _estado(h).db.query("SELECT error FROM attempts WHERE step_id=? ORDER BY number",
-                                                          (etapa["id"],))]
-        return etapa, _fake(h), erros
+        # de TODAS as versões da etapa: o `fail_or_retry` pode levar a uma revisão do plano, e `etapa` é a da última
+        recusas = [r["error"] for r in _estado(h).db.query(
+            "SELECT a.error FROM actions a JOIN attempts t ON t.id=a.attempt_id JOIN steps s ON s.id=t.step_id "
+            "WHERE s.run_id=? AND s.key='publicar' AND a.status='rejected' ORDER BY a.id", (etapa["run_id"],))]
+        return etapa, _fake(h), recusas
 
 
 async def test_tres_coberturas_novas_param_numa_pessoa_como_aviso_do_app(tmp_path: Path,
@@ -481,9 +483,10 @@ async def test_tres_coberturas_novas_param_numa_pessoa_como_aviso_do_app(tmp_pat
 
 async def test_tres_alvos_movidos_falham_e_repetem(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """D5: só o alvo fora do lugar, três vezes, é tela se mexendo: `fail_or_retry`, como antes; nada foi tocado."""
-    from app.taskqueue.executor import MUDANCA_FORA_DO_LUGAR
-    etapa, fake, erros = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_FORA_DO_LUGAR)
-    assert etapa["status"] in ("failed", "uncertain"), (etapa["status"], etapa["status_detail"])
-    # a 1ª tentativa sai pelo `fail_or_retry`; as seguintes podem parar por outro motivo do roteiro
-    assert any("A tela mudou entre a conferência e o toque de efeito" in (e or "") for e in erros), erros
+    from app.taskqueue.executor import LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO, MUDANCA_FORA_DO_LUGAR
+    etapa, fake, recusas = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_FORA_DO_LUGAR)
+    # a 3ª recusa sai pelo `fail_or_retry` (nova tentativa, que o roteiro do ator encerra por outro motivo): o que este
+    # teste guarda é o desfecho NÃO ser a pessoa, e as três recusas terem sido de alvo movido, sem toque
+    assert etapa["status"] != "waiting_user", (etapa["status"], etapa["status_detail"])
+    assert len([e for e in recusas if "[alvo_movido]" in (e or "")]) >= LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO, recusas
     assert fake.shares == []
