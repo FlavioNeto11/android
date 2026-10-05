@@ -401,6 +401,38 @@ def test_teto_geral_barra_o_terceiro_nome(harness: Harness, caplog: pytest.LogCa
     assert servico.buscar(TEL_A, operador="terceira", agora_s=1000.0 + 3600.5 + 30) == []   # a hora passou
 
 
+def test_dono_busca_com_o_teto_geral_esgotado_e_nao_gasta_o_dos_outros(harness: Harness) -> None:
+    """29.89: dois convidados esgotam as 60 da hora; o dono (`pedidos.operadores_do_dono`, comparado como o pedidos
+    compara: sem espaço sobrando e sem caixa) segue buscando, com a cota de um operador, e as buscas dele não entram
+    no teto somado."""
+    assert harness.state is not None
+    harness.cfg.file.pedidos.operadores_do_dono = [" Flavio "]
+    servico = harness.state.portal.exclusao
+    for nome in ("primeira", "segunda"):
+        for i in range(30):
+            servico.buscar(TEL_A, operador=nome, agora_s=1000.0 + i)
+    with pytest.raises(MuitasBuscas):
+        servico.buscar(TEL_A, operador="terceira", agora_s=1100.0)
+    for i in range(30):
+        servico.buscar(TEL_A, operador="flavio" if i % 2 else "FLAVIO", agora_s=1100.0 + i)
+    with pytest.raises(MuitasBuscas):                                   # a cota de um operador vale para o dono
+        servico.buscar(TEL_A, operador="Flavio", agora_s=1200.0)
+    # A hora dos convidados passou e a do dono não: as 30 dele não ocuparam o teto somado.
+    for i in range(60):
+        servico.buscar(TEL_A, operador=f"convidado-{i % 2}", agora_s=1000.0 + 3600.5 + 30 + i / 100)
+
+
+def test_sem_dono_declarado_ninguem_escapa_do_teto_geral(harness: Harness) -> None:
+    assert harness.state is not None
+    assert harness.cfg.file.pedidos.operadores_do_dono == []
+    servico = harness.state.portal.exclusao
+    for nome in ("primeira", "segunda"):
+        for i in range(30):
+            servico.buscar(TEL_A, operador=nome, agora_s=1000.0 + i)
+    with pytest.raises(MuitasBuscas):
+        servico.buscar(TEL_A, operador="Flavio", agora_s=1100.0)
+
+
 def test_duas_threads_no_limite_nao_passam_as_duas() -> None:
     """A rota chama a busca em threads do pool. Com o teto em 1 e a leitura do teto lenta de propósito (abre a janela
     da corrida), oito buscas ao mesmo tempo: só uma passa, e a limpeza não quebra com o dicionário mudando."""

@@ -6073,7 +6073,8 @@ Bearer. Nenhuma entra na exceção do portão. Valem com o site e o contato liga
   - **429** `muitas_buscas` com `Retry-After`. Há dois tetos de buscas válidas na última hora, contados em memória no
     processo (reiniciar zera):
     - `portal.limites.buscas_por_operador_hora` (30) por operador da sessão, com o nome em `casefold`;
-    - `portal.limites.buscas_total_hora` (60) somando todos os operadores.
+    - `portal.limites.buscas_total_hora` (60) somando todos os operadores, menos o dono (`pedidos.operadores_do_dono`,
+      29.89): ele fica fora do teto somado e só tem a cota por operador.
   - O log de cada busca leva o operador e a contagem de achados, nunca o telefone.
 - `POST /api/portal/contatos/excluir`, corpo JSON `{ids: [1..50 inteiros], pedido_por: "formulario" | "telefone" |
   "outro"}`. **200** `{apagados: [id], mantidos: [{id, motivo}], inexistentes: [id], mensagens_apagadas: n,

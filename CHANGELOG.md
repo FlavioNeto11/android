@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.89: o dono busca na exclusão mesmo com o teto geral esgotado (branch feat/29-89-cota-do-dono)
+
+- **O problema** (revisão do #342, E4 baixa): dois operadores esgotam as 60 buscas da hora, e ninguém busca por até
+  1 h, nem o dono.
+- **O que muda:** o dono (`pedidos.operadores_do_dono`, comparado sem espaço sobrando e sem caixa, como o pedidos
+  compara) fica fora do teto somado. Ele tem a cota de um operador (30 por hora), e as buscas dele não gastam o teto
+  dos outros. Com a lista vazia, ninguém escapa do teto. Não há chave nova no config.
+- **Prova:** `simulated` (`tests/test_portal_exclusao.py`: dono com o teto esgotado e sem gastá-lo, e sem dono
+  declarado; o mutante com o dono dentro do teto reprova). `not_run`: o central.
+
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do

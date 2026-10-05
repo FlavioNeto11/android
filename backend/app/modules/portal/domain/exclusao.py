@@ -55,5 +55,11 @@ def mesmo_telefone(informado: str, guardado: str) -> bool:
     return a is not None and a == b
 
 
+def nome_do_operador(nome: str | None) -> str:
+    """O nome da sessão como se compara nos tetos de busca: sem espaço sobrando e sem diferença de caixa. A mesma regra
+    de `pedidos.operadores_do_dono` (`pedidos/domain/autor.py`), para "Flavio " e "flavio" serem o mesmo dono."""
+    return " ".join((nome or "").split()).casefold()
+
+
 def final(telefone: str) -> str:
     return digitos(telefone)[-DIGITOS_DO_FINAL:]
