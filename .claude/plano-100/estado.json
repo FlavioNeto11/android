@@ -8454,6 +8454,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-05T04:16:34+00:00"
+  },
+  "28.33": {
+   "id": "28.33",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Entrou na suíte 33 (merge f1fd80c3, 'merge: 322 (621006ac) na suíte 33') e no deploy 33 (central em a0c9865e, migração 107). PR #322, ponta 621006ac, mesclado em 2026-10-05T01:10:39Z. Simulated: backend/tests/test_decisoes_desfazer.py e backend/tests/test_decisoes_registro_coerente.py (o autor do desligamento da conta aparece certo; o item religado à mão por uma pessoa depois da decisão automática não reabre o botão de desfazer; toda republicação depois da decisão tira o botão; confirmar que fica não é republicação e o botão fica).",
+   "blocker": "Real not_run: não houve desligamento automático de conta seguido de religar à mão nem de confirmação depois do deploy 33. A prova real vem quando o registro de decisões mostrar um caso desses, sem provocar em conta real.",
+   "grupo": "resultado-orquestradora-janela34f",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T04:25:01+00:00"
   }
  },
  "rodadas": [
@@ -11038,6 +11051,15 @@
    ],
    "grupos": [
     "resultado-orquestradora-janela34d"
+   ]
+  },
+  {
+   "quando": "2026-10-05T04:25:01+00:00",
+   "itens": [
+    "28.33"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela34f"
    ]
   }
  ]

@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-477 de 535 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+478 de 535 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -288,7 +288,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.30 | implemented | simulated | claude-fable-5-1 | — | Implantado no deploy 32 (central 2c47b9fa, migrações 104-106, no ar às 2026-10-04T23:09Z; prova de fora e caminhada no navegador sem erro, pela Android/orquestradora; suíte 32 verde: SQLite 10315, PG dirigido 4625). PR… | None |
 | 28.31 | partial | real | claude-fable-5-1 | — | F3 real: o laço do resumo (.claude/canais/resumo_laco.py, último commit 2037f5d4, rodando do checkout central religado em 2026-10-04T23:25:54Z com --intervalo 1200 --piso-rotina 3600, máquina central, um processo) envio… | F2a sem prova real: falta observar um aviso de lote (frente, com a incerta saindo na hora) na fila do produto |
 | 28.32 | partial | real | claude-fable-5-1 | — | Real, 2026-10-05, máquina central, deploy 33 a0c9865e (migração 107), site ligado às 01:19Z. O 1º contato pelo formulário (portal:1) virou o aviso 54 (portal.contato), criado às 01:23:36.955Z e enviado às 01:23:40.657Z… | not_run: a resposta do dono ao contato (só informa, não vira pedido) e o portal.resumo por hora (#335), que só sai com retidos ou descartados |
-| 28.33 | pendente | — | — | — |  |  |
+| 28.33 | implemented | simulated | claude-fable-5-1 | — | Entrou na suíte 33 (merge f1fd80c3, 'merge: 322 (621006ac) na suíte 33') e no deploy 33 (central em a0c9865e, migração 107). PR #322, ponta 621006ac, mesclado em 2026-10-05T01:10:39Z. Simulated: backend/tests/test_decis… | Real not_run: não houve desligamento automático de conta seguido de religar à mão nem de confirmação depois do deploy 33. A prova real vem quando o registro de… |
 | 28.34 | implemented | simulated | claude-fable-5-1 | — | Suíte 34 inteira verde (backend 10748, PostgreSQL dirigido 4965, frontend 1598), deploy 34 no ar às 2026-10-05T03:21Z (central em 584ac9c8, migração 109), main descongelada em aab8e7f0; números da orquestradora. Simulat… | Real not_run: nenhum pedido de exclusão de titular aconteceu depois do deploy 34. Prova real quando o primeiro pedido chegar pela tela 'Site e privacidade', se… |
 | 28.35 | implemented | simulated | claude-fable-5-1 | — | Suíte 34 inteira verde (backend 10748, PostgreSQL dirigido 4965, frontend 1598), deploy 34 no ar às 2026-10-05T03:21Z (central em 584ac9c8, migração 109), main descongelada em aab8e7f0; números da orquestradora. Simulat… | Real not_run: o caso só existe com um backend de canal desligado, e o central tem um backend só, com o aviso ligado. A frota mista é acusada pelo 28.37 (suíte… |
 | 28.36 | implemented | simulated | claude-fable-5-1 | — | Suíte 34 inteira verde (backend 10748, PostgreSQL dirigido 4965, frontend 1598), deploy 34 no ar às 2026-10-05T03:21Z (central em 584ac9c8, migração 109), main descongelada em aab8e7f0; números da orquestradora. Simulat… | Real not_run: a corrida entre dois backends no PostgreSQL não roda num processo só e o central tem um backend. O texto do canal em andamento aparece quando um… |
@@ -542,7 +542,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (58): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.33, 28.37, 28.38, 28.39, 28.40, 29.7, 29.9, 29.13, 29.19, 29.30, 29.38, 29.75, 29.79, 29.83, 29.89, 29.90, 29.91, 29.92, 29.93, 29.94, 29.95, 29.96, 29.97, 30.34, 30.52, 30.69, 30.70, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.55, 31.56, 31.58, 31.64, 31.65, 31.66, 31.67, 31.69, 31.70, 31.71, T.2
+Pendentes (57): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.37, 28.38, 28.39, 28.40, 29.7, 29.9, 29.13, 29.19, 29.30, 29.38, 29.75, 29.79, 29.83, 29.89, 29.90, 29.91, 29.92, 29.93, 29.94, 29.95, 29.96, 29.97, 30.34, 30.52, 30.69, 30.70, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.55, 31.56, 31.58, 31.64, 31.65, 31.66, 31.67, 31.69, 31.70, 31.71, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
