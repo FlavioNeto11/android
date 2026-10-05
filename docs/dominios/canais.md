@@ -812,7 +812,9 @@ Os scripts da operação provisória ficam versionados em `.claude/canais/`, e o
       `test_rotulo_ia.py` prende as duas juntas, inclusive no `None` da imagem de outra persona;
     - com o item já decidido no plano, o `midia_sha256` congelado no sim (`sha_da_imagem_aprovada`) é a âncora:
       se a prévia de agora disser outro sha, nada sai (28.48). Vale a DECISÃO mais recente da etapa, e só se for o
-      sim: um "não" depois do sim tira a âncora, e a foto não sai rotulada "aprovado"; o sim vencido não conta (28.49);
+      sim: um "não" depois do sim tira a âncora, e a foto não sai rotulada "aprovado"; o sim vencido não conta (28.49).
+      Um sim dado na execução, depois que a aprovação do plano deixou de valer, nasce sem `midia_sha256`; sendo a última
+      decisão, também tira a âncora (falha fechada), e o mesmo vale para o `edited`;
     - o `--previa <porta.json>` é opcional e, se vier, também tem de bater com a Central;
     - cada falha diz o seu motivo e nada sai: a Central não lida, a imagem fora do armazém, o sha diferente, o chat
       vazio;
