@@ -162,6 +162,26 @@ def test_l2_o_dialogo_nativo_sem_painel_vale_pela_extensao_da_arvore() -> None:
     assert sobreposicao_vale(com_pagina, _id(com_pagina, "Permitir acesso à localização?"), 720, 1280) is False
 
 
+def test_l2_o_alertdialog_real_do_android_04() -> None:
+    """Captura real (05/10 10:34:35Z, android-04 sem conta, deploy 36, `data/diag-31-73/alertdialog-nativo.json`):
+    "Reset app preferences?" das Configurações, cancelado com BACK. O dump é só a janela do diálogo (36,6 % de
+    720 x 1280), sem id nem pista; o título (6,7 %) e os botões só valem pelo L2."""
+    def no(t: str, b: tuple[int, int, int, int], cls: str, clic: bool = False) -> str:
+        return (f'<node index="0" text="{t}" resource-id="" class="{cls}" package="com.android.settings" '
+                f'content-desc="" clickable="{str(clic).lower()}" enabled="true" '
+                f'bounds="[{b[0]},{b[1]}][{b[2]},{b[3]}]" />')
+    tree = parse_hierarchy('<hierarchy rotation="0">'
+                           + no("Reset app preferences?", (120, 288, 600, 417), "android.widget.TextView")
+                           + no("This will reset all preferences for apps", (120, 449, 597, 847), "android.widget.TextView")
+                           + no("", (224, 895, 373, 991), "android.view.View", True)
+                           + no("Cancel", (248, 922, 349, 965), "android.widget.TextView")
+                           + no("", (389, 895, 600, 991), "android.view.View", True)
+                           + no("Reset apps", (413, 922, 576, 965), "android.widget.TextView")
+                           + "</hierarchy>")
+    for e in tree.elements:
+        assert sobreposicao_vale(tree, e.id, 720, 1280) is True, e.id
+
+
 def test_o_prompt_do_juiz_separa_o_visivel_do_escondido() -> None:
     assert "o que está VISÍVEL fora do aviso já mostra outra causa" in prompts.VERIFIER_SYSTEM
     assert "O que está só escondido pelo aviso não é outra causa." in prompts.VERIFIER_SYSTEM
