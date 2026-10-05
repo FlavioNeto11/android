@@ -1178,8 +1178,8 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
 | `learning.ensinado_rebaixado` | sim | `modules/learning/application/ensinado.py::AvisadorDoEnsinado`, chamado por `LearningService` (`avisar_mudanca_nativa` e `_mover_nativo`) — a receita ou o fluxo ensinado no modo treinamento saiu de uso por decisão do SISTEMA (quarentena, substituição, obsolescência) e outro ativo segura o lugar; 30.80 B |
 | `learning.ensinado_sem_receita` | sim | o mesmo, quando nada ativo ficou no lugar (a etapa voltou para a IA); `warn`; 30.80 B; ver o adendo v1.61 |
-| `learning.ensinado_espera_decisao` | sim | `ServicoDeValidacao` (a volta da validação), via `LearningService.avisar_espera_do_ensinado`. O fluxo ensinado que a prova automática não cobre espera a decisão de uma pessoa; `warn`; 30.81; ver o adendo v1.62 |
-| `learning.ensinado_decidido` | sim | `LearningService` (`confirmar_que_fica`, `_mover_nativo`): uma pessoa decidiu o ensinado que esperava; `info`; 30.81; ver o adendo v1.62 |
+| `learning.ensinado_espera_decisao` | sim | `ServicoDeValidacao` (a volta da validação), via `LearningService.avisar_espera_do_ensinado`. O fluxo ensinado que a prova automática não cobre espera a decisão de uma pessoa; `warn`; 30.81; ver o adendo v1.65 |
+| `learning.ensinado_decidido` | sim | `LearningService` (`confirmar_que_fica`, `_mover_nativo`): uma pessoa decidiu o ensinado que esperava; `info`; 30.81; ver o adendo v1.65 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 
@@ -6486,7 +6486,7 @@ frente Canais (28.50).
   status nativo, e quem avisa o dono não o usa.
 - **Prova:** `simulated` (`backend/tests/test_learning_ensinado_rebaixado.py`).
 
-## Adendo v1.62 (05/10/2026; número a confirmar com a orquestradora; item 30.81) — o fluxo ensinado espera a prova
+## Adendo v1.65 (05/10/2026; número da orquestradora; item 30.81) — o fluxo ensinado espera a prova
 
 Aditivo. O fluxo salvo no modo treinamento segue nascendo `active`, mas até a prova só vale para a persona que ensinou.
 - **`ensinado_em_prova`** (combinado com a Portal): `{"persona": string|null, "sessao": "trn-…"}`, AUSENTE quando não
