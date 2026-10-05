@@ -19,6 +19,32 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.39: sobras do desfecho e do plano esquecido (branch canais/28-39-sobras-do-desfecho)
+
+- G1 da leitura do #358: a primeira vez que a conversa vê a execução em `planned` fica gravada na linha, no `previa`,
+  com a chave `vista_em_planned`, como um `setdefault`. Antes ficava em memória. Um processo que reiniciasse, ou um
+  líder da trava `avisos` que alternasse, a cada menos de 1 h, nunca chegaria à hora. Se a execução sai de `planned`,
+  a vista é apagada.
+- O gesto: só o botão Cancelar do dono cancela COM gesto. O `_cancelar_plano` passa a ter `gesto=False` por padrão.
+  Cancelam sem gesto, sem gravar `cancelou_execucao` em nome de ninguém:
+  - a linha presa;
+  - a recuperação da porta;
+  - a recusa;
+  - o erro interno;
+  - a prévia que não saiu;
+  - a prévia vencida;
+  - o plano esquecido.
+- F3: o lote dos desfechos pendentes gira por cursor (`esperando_desfecho(depois_de=…)`, `LOTE_DESFECHO = 20`). Com
+  20 linhas antigas de execução longa à frente, a linha nova entra na volta seguinte. A falha passageira repete o mesmo
+  lote.
+- O desfecho que saiu sem o id do canal fica registrado por uma referência própria (`resultado:<entrada_id>`). A marca
+  que não gravou não o faz repetir.
+- A mensagem original apagada pelo dono: o desfecho já vai com `allow_sending_without_reply` (adaptador do Telegram),
+  então o 400 não acontece e não há tentativa a fazer sem a referência. No Trello, a referência é o próprio cartão, e não
+  há para onde mandar sem ele. Fica provado por teste.
+- Prova: `simulated`, com 6 testes novos em `tests/test_telegram_entrada.py`; ao todo, 144 passaram em
+  `test_telegram_entrada`, `test_trello_leitor` e `test_telegram_portas`. No ambiente real: `not_run`.
+
 ## 2026-10-05 — 28.38: o canal diz o estado certo e não perde o desfecho (branch canais/28-38-estado-certo)
 
 - A recusa e o erro interno num caminho de início dizem o estado relido. Em `cancelling`, o texto é "está sendo

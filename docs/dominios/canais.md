@@ -564,7 +564,11 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
   - O desfecho só fica marcado quando sai, ou quando a falha do envio é definitiva. Na falha passageira, ele tenta de
     novo na volta seguinte (28.38).
   - Se a linha já tem 1 h (`PLANO_ESQUECIDO_S`) e a conversa vê a execução em `planned` por mais 1 h, a execução é
-    cancelada sem gesto: nada fica em nome do dono. O desfecho fecha a linha (28.38).
+    cancelada sem gesto: nada fica em nome do dono. O desfecho fecha a linha (28.38). A primeira vista em `planned`
+    fica gravada na linha, e um reinício não recomeça a hora (28.39).
+  - Só o botão Cancelar do dono cancela com gesto (o sinal `cancelou_execucao`). Os cancelamentos de consequência ou
+    de faxina não gravam sinal (28.39).
+  - O lote dos desfechos pendentes gira: linhas antigas de execução longa não seguram as novas (28.39).
   - A prévia que não sai inteira marca a linha como falha e avisa o dono uma vez. Uma linha com erro não cala as
     outras da volta do vigia; a linha que caiu no meio do "Executar (aprova N)" é recuperada depois de `PRESA_S`.
   - P1: item que o dono não veria por inteiro (texto com nome de persona, contato ou segredo, texto longo, bloco que não
