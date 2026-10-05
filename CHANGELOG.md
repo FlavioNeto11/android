@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.91 (painel): caminho único de ensino e respostas às perguntas da proposta (branch feat/31-91-painel-ensino)
+
+- Caminho único (decisão do dono de 05/10): a revisão do treino não gera mais candidata de habilidade. "Salvar como fluxo" é sempre o botão principal. Com `features.skills`, o relatório do salvar oferece "Gerar habilidade deste fluxo", que usa a conversão da fase J (`POST /api/flows/{id}/adopt`, com confirmação): a v1 é o plano do fluxo e a v2 fica em rascunho para tipos, riscos e versões.
+- O ensino v2 que a gravação já tinha aparece só para leitura (`TeachingPanel somenteLeitura`), sem responder, gerar, salvar nem descartar. Sem ensino, o painel não aparece. Nada do ensino antigo é apagado.
+- Respostas às perguntas (31.91 F2, adendo v1.63): cada pergunta da proposta ganha um campo, com o aviso fixo de não escrever senha nem código. "Pedir nova proposta com as respostas" manda até 8 respostas aparadas (máximo de 500 caracteres) e diz o custo. As respostas já dadas aparecem abaixo. `resposta_sensivel` fica no campo da pergunta, sem toast, e sai quando a pessoa edita.
+- A lista "Salvas" da barra diz quando mostra só as 5 mais novas (nota da segunda leitura do 31.90-B).
+- Prova `simulated`: `frontend/src/features/training/TrainingReview.test.tsx` e `TrainingBar.test.tsx`; frontend inteiro com 1662 testes; 9 mutações, todas pegas; `real`: `not_run` (o backend do F2 está no ramo da orquestradora).
+
 ## 2026-10-05 — 31.90-B: a revisão do treino mostra a prévia do salvar e oferece "Refazer receitas" (branch feat/31-90-b-revisao-previa)
 
 - Prévia do salvar (adendo v1.58): meio segundo depois da última edição, cada etapa diz "Ao salvar: sem IA/com IA" com o motivo. Os avisos aparecem abaixo das etapas. A resposta velha de uma prévia que outra edição superou é descartada. A prévia só roda quando a tela não tem o que dizer antes (sem destino, duplicada, escopo).
