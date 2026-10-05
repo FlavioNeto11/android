@@ -31,6 +31,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_segredo_na_gravacao.py` (4; sem o conserto os 4 falham) e
   `test_modo_treinamento.py` (7 passed). Real: `not_run`.
 
+## 2026-10-05 — 31.80/31.82, segunda leitura do PR #427 (branch fix/31-80-82-gravacao-do-treino)
+
+- C1 (31.80): `reconcile_after_restart` só fecha sessão de aparelho que NÃO é hospedado por outro dono
+  (`instances.hosted_by`, o padrão de `commands/store.py`); `TrainingRecorder` recebe `owner_id`. O log só sai se o
+  UPDATE mudou linha.
+- S1 (31.82): alvo e filhos com `text`/`desc` de um dígito só (PIN desenhado) perdem esse rótulo e os `unique` dele.
+- S2 (31.82): `parece_linha_com_codigo` (nova, só acréscimo em `redaction.py`) e `parece_codigo` por token valem para
+  linhas, título e alvo da tela.
+- N5 não feito: o motivo da omissão pede coluna nova em `training_inputs` (migração); fica para outro item.
+- Prova `simulated`: `test_treino_gravacao_orfa.py` (6), `test_treino_segredo_na_gravacao.py` (12),
+  `test_redaction_linha_com_codigo.py` (17), `test_modo_treinamento.py` (7). Real: `not_run`.
+
 ## 2026-10-05 — 31.82, achados do revisor de segredos (branch fix/31-80-82-gravacao-do-treino)
 
 - Texto digitado só é guardado com campo editável, não senha, em foco na árvore (antes, só `tree is None` cobria).

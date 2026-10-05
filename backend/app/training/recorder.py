@@ -13,11 +13,12 @@ Regras que valem desde a gravação (a senha não tem caminho para cá):
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from typing import Any
 
 from ..db import dumps, loads
-from ..security.redaction import looks_secret, mentions_credential, parece_codigo, parece_senha_ou_codigo
+from ..security.redaction import looks_secret, mentions_credential, parece_codigo, parece_linha_com_codigo, parece_senha_ou_codigo
 from ..social.observacao import linhas_de_conteudo
 from ..util import new_token, now_iso
 
@@ -31,6 +32,21 @@ def _parece_segredo(texto: str | None) -> bool:
     de 4 a 8 dígitos (com espaço ou hífen: "123 456", "8845-12"; na dúvida, recusa)."""
     return bool(texto) and (looks_secret(texto) or mentions_credential(texto) or parece_senha_ou_codigo(texto or "")
                             or parece_codigo(texto))
+
+
+_UM_DIGITO = re.compile(r"\d")
+_ENFEITE_DE_TOKEN = ".,;:!?()[]{}\"'"
+
+
+def _parece_segredo_de_tela(texto: str | None) -> bool:
+    """O que vem da TELA (linha, título, rótulo de alvo): além dos filtros do texto, `parece_codigo` por token ("Use
+    4821 para entrar") e a linha que fala de código com o número perto ("G-123456 is your ... verification code").
+    Over-filtra de propósito ("Recife 2024" cai pelo token): na dúvida, recusa."""
+    if not texto:
+        return False
+    if _parece_segredo(texto) or parece_linha_com_codigo(texto):
+        return True
+    return any(parece_codigo(t.strip(_ENFEITE_DE_TOKEN)) for t in texto.split())
 
 
 def _classe_de_campo_de_texto(class_name: str | None) -> bool:
@@ -49,7 +65,7 @@ def _alvo_sem_segredo(alvo: dict | None, sensivel: bool = False) -> dict | None:
     (o que a pessoa já digitou), que não identifica o campo: sai (`resource_id`, `desc` de rótulo e classe ficam). Em
     qualquer alvo, `text`/`desc` que casem com os filtros de segredo saem. Os seletores `unique` que dependiam do campo
     removido saem junto (a destilação, em `_combo`, também os ignoraria). Campo editável NUNCA guarda `text`, tenha ou
-    não outro identificador: o conteúdo é o que alguém digitou e não serve de seletor. Sem `resource_id` nem `desc`
+    não outro identificador: o conteúdo é o que alguém digitou e não serve de seletor. Texto ou rótulo de um dígito só (tecla de PIN desenhada) sai em qualquer tela. Sem `resource_id` nem `desc`
     o alvo fica sem seletor e a etapa não vira receita (a IA conduz). Os `filhos` seguem a mesma regra: um filho cuja
     classe é de campo de texto também perde o `text`. Em tela `sensivel` (31.82 item 4) `text` e `desc` saem sempre, do
     alvo e dos filhos, junto com os `unique` que dependiam deles: ficam `resource_id`, `class_name` e o estrutural."""
@@ -59,7 +75,9 @@ def _alvo_sem_segredo(alvo: dict | None, sensivel: bool = False) -> dict | None:
     if limpo.get("editable") or _classe_de_campo_de_texto(limpo.get("class_name")):
         limpo["text"] = ""
     for campo in ("text", "desc"):
-        if sensivel or _parece_segredo(limpo.get(campo)):
+        valor = limpo.get(campo)
+        # S1: o PIN num teclado DESENHADO na tela é uma sequência de alvos "4", "8"...: um dígito só não se guarda.
+        if (sensivel or _parece_segredo_de_tela(valor) or (isinstance(valor, str) and _UM_DIGITO.fullmatch(valor.strip()))):
             limpo[campo] = ""
     if "unique" in limpo:
         limpo["unique"] = [k for k in limpo["unique"] or [] if all(limpo.get(c) for c in _CAMPOS_DO_SELETOR.get(k, ("?",)))]
@@ -84,10 +102,13 @@ def titulo_da_tela(tree: Any) -> str | None:
 
 class TrainingRecorder:
     def __init__(self, db: Any, bus: Any, devices: Any,
-                 personas_do_aparelho: Callable[[str, str | None], list[str]]):
+                 personas_do_aparelho: Callable[[str, str | None], list[str]], owner_id: str | None = None):
         self.db = db
         self.bus = bus
         self.devices = devices
+        #: O backend dono dos aparelhos deste processo (`instances.hosted_by`): a reconciliação da partida só fecha o que
+        #: é dele, e não a gravação VIVA de um aparelho que outra réplica hospeda.
+        self.owner_id = owner_id
         #: `(aparelho, app) -> personas vinculadas` (N:N, migração 051). Com `app`, só as que servem àquele app.
         self._personas_do_aparelho = personas_do_aparelho
 
@@ -163,8 +184,10 @@ class TrainingRecorder:
     def _encerrar_orfa(self, session_id: str, motivo: str) -> None:
         s = self._row(session_id)
         agora = now_iso()
-        self.db.execute("UPDATE training_sessions SET status='recorded', finished_at=?, updated_at=? "
-                        "WHERE id=? AND status='recording'", (agora, agora, session_id))
+        cur = self.db.execute("UPDATE training_sessions SET status='recorded', finished_at=?, updated_at=? "
+                              "WHERE id=? AND status='recording'", (agora, agora, session_id))
+        if getattr(cur, "rowcount", 1) == 0:
+            return                               # outra partida já a encerrou: sem log em dobro
         self.bus.emit("log", f"{s['instance_id']}: gravação do treinamento encerrada — {motivo}; as entradas já gravadas "
                       "foram mantidas", level="warn", instance_id=s["instance_id"],
                       data={"training_session_id": session_id})
@@ -173,7 +196,14 @@ class TrainingRecorder:
         """31.80: na subida do processo dono dos aparelhos (`rt.training_session_id` nasce None), toda sessão
         `recording` ficou órfã: nada mais grava, mas o painel seguiria mostrando "Gravando" e `start` recusaria outra.
         Vira `recorded` (as entradas já gravadas valem). Nunca religa a gravação: gravar sem a pessoa saber é pior."""
-        ids = [r["id"] for r in self.db.query("SELECT id FROM training_sessions WHERE status='recording'")]
+        sql, params = "SELECT t.id FROM training_sessions t WHERE t.status='recording'", ()
+        if self.owner_id:
+            # O mesmo padrão de `commands/store.py` e `releases/repository.py`: com duas réplicas, a partida desta não
+            # encerra a gravação viva de um aparelho que OUTRA hospeda (instances.hosted_by).
+            sql += (" AND NOT EXISTS (SELECT 1 FROM instances i WHERE i.id=t.instance_id"
+                    " AND i.hosted_by IS NOT NULL AND i.hosted_by<>?)")
+            params = (self.owner_id,)
+        ids = [r["id"] for r in self.db.query(sql, params)]
         for sid in ids:
             self._encerrar_orfa(sid, "encerrada pelo reinício do backend")
         return len(ids)
@@ -210,9 +240,9 @@ class TrainingRecorder:
         seq = int(self.db.scalar("SELECT COALESCE(MAX(seq), 0) FROM training_inputs WHERE session_id=?", (sid,)) or 0) + 1
         pacote = next((p for p in (tree.packages if tree is not None else []) if p != "com.android.systemui"), None)
         titulo = titulo_da_tela(tree) if tree is not None and not sensivel else None
-        if _parece_segredo(titulo):
+        if _parece_segredo_de_tela(titulo):
             titulo = None                        # 31.82 (c): a tela com "Seu código é 123456" não vira título
-        linhas = ([ln for ln in linhas_de_conteudo(tree.elements, limite_linhas=24) if not _parece_segredo(ln)][:8]
+        linhas = ([ln for ln in linhas_de_conteudo(tree.elements, limite_linhas=24) if not _parece_segredo_de_tela(ln)][:8]
                   if tree is not None and not sensivel else None)
         self.db.execute(
             "INSERT INTO training_inputs(session_id, seq, ts, type, x, y, x2, y2, key_name, text, has_text, text_len,"

@@ -66,3 +66,46 @@ async def test_start_com_gravacao_viva_continua_recusando(harness: Harness) -> N
         st.training.start("android-01", intent="outra", lease_id=lease)
     assert erro.value.code == "already_recording"
     assert _linha(st, viva["id"])["status"] == "recording" and rt.training_session_id == viva["id"]
+
+
+def _gravacao_de(st, instance_id: str, sid: str) -> None:
+    agora = "2026-10-05T12:00:00+00:00"
+    st.db.execute("INSERT INTO training_sessions(id, instance_id, intent, status, created_at, updated_at)"
+                  " VALUES (?,?,?,?,?,?)", (sid, instance_id, "x", "recording", agora, agora))
+
+
+async def test_reconciliacao_so_fecha_o_que_este_backend_hospeda(harness: Harness) -> None:
+    """Duas réplicas: a partida de uma não encerra a gravação VIVA de um aparelho que a outra hospeda."""
+    st = harness.state
+    assert st.training.owner_id == st.cfg.owner_id and st.cfg.owner_id
+    st.db.execute("UPDATE instances SET hosted_by=? WHERE id='android-01'", (st.cfg.owner_id,))
+    st.db.execute("UPDATE instances SET hosted_by=? WHERE id='android-02'", ("outra-replica",))
+    st.db.execute("UPDATE instances SET hosted_by=NULL WHERE id='android-03'")
+    for iid in ("android-01", "android-02", "android-03"):
+        _gravacao_de(st, iid, f"trn-{iid}")
+
+    assert st.training.reconcile_after_restart() == 2
+
+    assert _linha(st, "trn-android-01")["status"] == "recorded"        # próprio: fecha
+    assert _linha(st, "trn-android-03")["status"] == "recorded"        # sem dono carimbado: como antes
+    assert _linha(st, "trn-android-02")["status"] == "recording"       # alheio: segue viva
+    assert not _eventos_da_sessao(st, "trn-android-02")
+
+
+async def test_encerrar_duas_vezes_nao_repete_o_log(harness: Harness) -> None:
+    st, rt, lease = await _no_controle(harness)
+    s = st.training.start("android-01", intent="x", lease_id=lease)
+    rt.training_session_id = None
+    st.training.reconcile_after_restart()
+    st.training._encerrar_orfa(s["id"], "de novo")                     # noqa: SLF001 - a segunda partida
+    assert len(_eventos_da_sessao(st, s["id"])) == 2                   # o "iniciado" e UM "encerrada"
+
+
+def test_a_subida_do_estado_chama_a_reconciliacao_depois_de_os_aparelhos_existirem() -> None:
+    """N3: a fiação em `AppState.start` (o harness já subiu o estado; inspeciona a ordem das chamadas)."""
+    import inspect
+
+    from app.state import AppState
+    fonte = inspect.getsource(AppState.start)
+    assert "self.training.reconcile_after_restart()" in fonte
+    assert fonte.index("await self.devices.start()") < fonte.index("self.training.reconcile_after_restart()")

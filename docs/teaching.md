@@ -329,9 +329,12 @@ Prova: `test_ensino_v2.py::test_laco_de_perguntas_e_respostas_ate_o_rascunho` (v
   `AutoCompleteTextView` e variantes) perde o `text`; código de 4 a 8 dígitos com espaço ou hífen ("123 456", "8845-12")
   sai do alvo, do título e das linhas; em tela sensível o alvo (e os filhos) guarda só `resource_id`, `class_name` e o
   estrutural, sem `text` nem `desc`.
-- **Limite conhecido do filtro** (não se inventou regra nova): ainda escapam código de 4 a 5 dígitos sozinho no meio de
-  uma frase e palavra-chave longe do número ("código" numa linha, o número na outra); token com hífen, e-mail e senha
-  na mesma linha também passam.
+- **Limite conhecido do filtro** (sem regra nova além de `parece_linha_com_codigo`, em `security/redaction.py`): ainda
+  escapam a palavra-chave longe do número (mais de 40 caracteres, ou o número em outra linha) e o token com hífen ou
+  letras; e-mail e senha na mesma linha também passam. Código de 4 a 8 dígitos sozinho, ou perto de "code", "código",
+  "verify", "senha", "pin", "otp", "token", não é gravado nas linhas, no título nem no alvo (por token também: "Recife
+  2024" cai, de propósito; na dúvida, recusa); dígito único de tecla de PIN desenhada sai do alvo em qualquer tela.
+  Reinício com duas réplicas: a reconciliação só fecha a gravação de aparelho que o próprio backend hospeda.
 
 ## O generalizador e o custo
 
