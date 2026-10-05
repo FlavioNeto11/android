@@ -29,11 +29,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Endurecimentos pedidos na leitura, para falhar fechado: H1 (a identidade da página é o `e.id` eN do leitor, não o
   `id()` do objeto), H2 (a raiz só encerra a página com o id de raiz E a classe `FrameLayout`; uma raiz falsa em `View`
   não encerra) e H3 (com WebView e sem raiz válida, a página vai até o fim do documento: a barra escondida pela
-  rolagem e a árvore truncada). Limites que sobram: sem WebView vale o id; a regra supõe que conteúdo web não expõe
-  `FrameLayout`; marcar a página na leitura pelo ancestral WebView fica para o 31.77.
+  rolagem e a árvore truncada). Limites que sobram: sem WebView (só tela nativa, depois da correção abaixo) vale o
+  id; a regra supõe que conteúdo web não expõe `FrameLayout`; marcar a página pelo ancestral WebView não foi feito.
+- Correções da leitura do 31.75: (2) o leitor guarda SEMPRE a WebView (`parse_hierarchy`): a página com `<title>`
+  vazio e sem rolagem sumia com ela, e o botão com id do Chrome voltava a ganhar a isenção, inclusive com um iframe
+  depois dele; (3) a página é a união dos trechos de TODAS as WebViews, cada um até a primeira raiz válida; (1) nos
+  quatro testes de H1, H2 e H3 o "Aceitar" falso saiu da faixa da marca: antes eles passavam também sem a regra
+  (o ramo K2 recusava pela faixa).
 - Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (5 testes novos do 31.75, com a captura real do
-  gov.br: a barra de tradução do Chrome depois da raiz segue livre); mutações conferidas (desfazer cada regra reprova o
-  teste dela). As árvores reais de `data/diag-31-72/` dão o mesmo antes (152f8b54) e depois (NTP, ml, g1, uol com 0
+  gov.br: a barra de tradução do Chrome depois da raiz segue livre) e 3 da leitura, 54 passed; mutações conferidas
+  depois da correção, cada uma reprova o teste dela: H1, H2, H3, o leitor sem a WebView e só o primeiro trecho. Os
+  vizinhos (`test_dialogos_em_serie`, `test_outlook_declarado`, `test_sensitive_input`, `test_sobreposicao*`,
+  `test_treino_segredo_na_gravacao`, `test_grade_cede_a_arvore`, `test_observacao_arvore_primeiro`) e
+  `test_arquitetura` verdes; `@tests/catracas.txt`, 88 passed. As árvores reais de `data/diag-31-72/` dão o mesmo antes (152f8b54) e depois (NTP, ml, g1, uol com 0
   recusado; gov-3 com 12 clicáveis recusados, nenhum do Chrome; "More options" livre). `real`: `not_run`.
 - N1 (acréscimo da orquestradora, commit à parte): `dialogos._gemeo`/`_clicavel`. O link inline que o Chrome expõe como
   par de nós (mesmo texto e bounds, um clicável e um filho não clicável, visto no gov-3) é um nó só, clicável: não liga

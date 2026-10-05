@@ -1821,10 +1821,14 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   encerra a página com o id de raiz E a classe `android.widget.FrameLayout` (é sempre FrameLayout nas 13 capturas reais
   com raiz; o HTML pode pôr o id da raiz num `View` antes do botão falso); **H3** com WebView e NENHUMA raiz válida
   depois dela (a barra escondida pela rolagem, ml-2, ml-3 e uol-2; a árvore truncada, `tree.truncada`, que deixou a raiz
-  fora do corte), a página vai até o FIM do documento. **Limites que sobram:** (i) sem WebView na árvore vale o id (o
-  leitor descarta a WebView que não é rolável e não tem título); (ii) a regra supõe que o conteúdo web não expõe a
-  classe `FrameLayout`; (iii) o caminho robusto, marcar a página na leitura da árvore pelo ancestral WebView, fica
-  para o 31.77.
+  fora do corte), a página vai até o FIM do documento. Da leitura do 31.75: o leitor (`parse_hierarchy`) guarda
+  SEMPRE a WebView, mesmo sem título e sem rolagem, porque a página conseguia sumir com ela (`<title>` vazio e
+  `overflow: hidden`) e o botão falso voltava a ganhar a isenção; e a página é a UNIÃO dos trechos de todas as
+  WebViews, cada um até a primeira raiz válida (a segunda WebView depois da raiz e o iframe exposto como WebView
+  aninhada também são página). **Limites que sobram:** (i) sem WebView na árvore não há conteúdo web (a página
+  inicial anônima é nativa) e vale o id; (ii) a regra supõe que o conteúdo web não expõe a classe `FrameLayout`;
+  (iii) marcar a página na leitura pelo ancestral WebView não foi feito: a ordem do documento, com a WebView sempre
+  presente, cobre o que as capturas mostram.
 - O recusado vira ação `rejected` com o motivo "o consentimento do site não é aceito pelo ator (eN, Tipo)": no `error`
   e no `status_detail` (que chegam a aviso e cartão) vão só o id e o tipo; o rótulo, texto da página, vai só ao
   histórico do ator, com os espaços normalizados. Quatro recusas somadas na ETAPA (ou quatro erros seguidos) encerram

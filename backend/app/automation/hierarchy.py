@@ -638,7 +638,11 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
         clickable = a.get("clickable") == "true"
         scrollable = a.get("scrollable") == "true"
         editable = eh_campo_de_texto(cls)
-        interesting = bool(text or desc or clickable or scrollable or editable or a.get("checkable") == "true")
+        # 31.75 (leitura): a WebView fica SEMPRE, mesmo sem título e sem rolagem. É ela que marca onde a página começa
+        # (`dialogos._conteudo_web`); descartada, a página com `<title>` vazio e `overflow: hidden` voltaria a se
+        # passar por interface do navegador com o id `com.android.chrome:id/...`.
+        interesting = bool(text or desc or clickable or scrollable or editable or a.get("checkable") == "true"
+                           or cls.endswith(".WebView"))
         if not interesting and not rid:
             continue
         if not interesting and rid.startswith("android:id/"):

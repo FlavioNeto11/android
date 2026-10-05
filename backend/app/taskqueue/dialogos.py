@@ -192,17 +192,23 @@ def _conteudo_web(tree: UiTree) -> frozenset[str]:
       id da raiz num `View`, `Button` ou `TextView` antes do botão falso.
     - H3: com WebView e NENHUMA raiz válida depois dela (a barra escondida pela rolagem; a árvore truncada, que deixou a
       raiz fora do corte), a página vai até o FIM do documento. Prefere-se o toque recusado ao aceite em silêncio.
-    Sem WebView na árvore (o leitor a descarta quando não é rolável e não tem título), não se sabe onde a página começa:
-    vale o id, como antes (limite declarado). O caminho robusto, marcar a página na leitura pelo ancestral WebView, é o
-    31.77."""
-    els = tree.elements
-    i = next((k for k, e in enumerate(els) if "WebView" in (e.class_name or "")), None)
-    if i is None:
-        return frozenset()
+    - Leitura do 31.75: o leitor guarda SEMPRE a WebView (`parse_hierarchy`), então a página não consegue sumir com ela
+      (`<title>` vazio e sem rolagem). E a página é a UNIÃO dos trechos de TODAS as WebViews, cada um até a primeira raiz
+      válida depois dela: uma segunda WebView depois da raiz, ou um iframe exposto como WebView aninhada, não fica fora.
+    Sem WebView na árvore não há conteúdo web (a página inicial anônima, `cookie_controls_card`, é nativa): vale o id."""
     raizes = {f"{p}{r}" for p in _ID_DO_NAVEGADOR for r in _RAIZES_DO_NAVEGADOR}
-    fim = next((k for k in range(i + 1, len(els))
-                if (els[k].resource_id or "") in raizes and (els[k].class_name or "") == _CLASSE_DA_RAIZ), len(els))
-    return frozenset(e.id for e in els[i + 1:fim])
+    pagina: set[str] = set()
+    dentro = False
+    for e in tree.elements:
+        if "WebView" in (e.class_name or ""):
+            if dentro:
+                pagina.add(e.id)                        # a WebView aninhada (iframe) também é da página
+            dentro = True
+        elif dentro and (e.resource_id or "") in raizes and (e.class_name or "") == _CLASSE_DA_RAIZ:
+            dentro = False
+        elif dentro:
+            pagina.add(e.id)
+    return frozenset(pagina)
 
 
 def _do_navegador(e: UiElement, web: frozenset[str] = frozenset()) -> bool:
