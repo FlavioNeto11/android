@@ -64,7 +64,7 @@ def _e_inteiro(v: object) -> bool:
 
 #: A tela de revisão ainda não deixa atribuir nem descartar entrada, nem editar etapa (31.90): nestes códigos a
 #: única saída que existe hoje é pedir outra proposta. O comando é editável na tela, por isso `comando_generico` fica fora.
-_REFAZER_A_PROPOSTA = frozenset({"entradas_sem_etapa", "entrada_duplicada", "proposta_invalida", "parametro_fora_do_comando", "parametro_nao_declarado",
+_REFAZER_A_PROPOSTA = frozenset({"entradas_sem_etapa", "entrada_duplicada", "entrada_inexistente", "proposta_invalida", "parametro_fora_do_comando", "parametro_nao_declarado",
                                  "pos_condicao_vazia", "etapa_invalida"})
 
 
@@ -84,7 +84,8 @@ def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
     `parametro_fora_do_comando`, `parametro_nao_declarado`, `comando_generico`, `pos_condicao_vazia` (etapa com efeito
     externo), `entrada_duplicada` (em duas etapas, ou em etapa e em `discarded`: o `_receitas` tiraria o toque da etapa
     calado), `entradas_sem_etapa` (gravada e sem destino: a receita nasce sem o toque, errada e calada) e
-    `proposta_invalida` (tipo errado: lista que não é lista, texto que não é texto).
+    `entrada_inexistente` (`seq` fora das gravadas) e `proposta_invalida` (tipo errado: lista que não é lista, texto que
+    não é texto).
     `etapa_do_catalogo(etapa)`: a etapa vira a ação do catálogo, que traz a própria pós-condição."""
     comando = (p.get("command_template") or "").strip()
     avisos: list[str] = []
@@ -119,6 +120,8 @@ def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
         if post.get("kind") and post["kind"] not in _KINDS_DE_POSCONDICAO:
             raise _erro("etapa_invalida", f"{rotulo} tem uma pós-condição inválida: o tipo deve ser um de "
                                           f"{', '.join(sorted(_KINDS_DE_POSCONDICAO))}.")
+        if not (st.get("side_effect") is None or isinstance(st["side_effect"], bool)):
+            raise _erro("etapa_invalida", f"{rotulo} tem `side_effect` que não é verdadeiro/falso (o texto “false” contaria como verdadeiro).")
         brutas = st.get("inputs")
         if brutas is None:
             brutas = []
@@ -136,6 +139,11 @@ def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
         raise _erro("parametro_invalido",
                     "O comando tem " + ", ".join(invalidos) + ", que não é um nome de parâmetro válido: use minúsculas, "
                     "sem acento, números e _, começando por letra (ex.: {contato}). Do contrário o fluxo nunca casa.")
+    sobras = _QUALQUER_CHAVE.sub("", comando)
+    if "{" in sobras or "}" in sobras:
+        raise _erro("parametro_invalido",
+                    "O comando tem uma chave `{` ou `}` sem par: feche cada parâmetro (ex.: {contato}) ou tire a chave. "
+                    "Do contrário o fluxo nunca casa.")
     declarados = {str(x["name"]) for x in p.get("parameters") or [] if x.get("name")}
     usados = {m.group(1) for m in PLACEHOLDER.finditer(comando)}
     fora = sorted(n for n in declarados - usados if n not in RESERVED)
@@ -179,11 +187,18 @@ def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
     for st in etapas:
         for i in st["inputs"]:
             por_etapa[i] = por_etapa.get(i, 0) + 1
-    descartes = {d["seq"] for d in descartadas}
-    duplicadas = sorted(i for i, n in por_etapa.items() if n > 1 or i in descartes)
+    seqs_descartados = [d["seq"] for d in descartadas]
+    inexistentes = sorted(({*por_etapa} | {*seqs_descartados}) - seqs_gravados)
+    if inexistentes:
+        raise _erro("entrada_inexistente",
+                    "Entradas que não existem nesta gravação: " + ", ".join(f"#{i}" for i in inexistentes)
+                    + ". Use só os números das entradas gravadas.")
+    descartes = set(seqs_descartados)
+    duplicadas = sorted({*(i for i, n in por_etapa.items() if n > 1 or i in descartes),
+                         *(i for i in descartes if seqs_descartados.count(i) > 1)})
     if duplicadas:
         raise _erro("entrada_duplicada",
-                    "Entradas em mais de um lugar (em duas etapas, ou em uma etapa e em descartadas): "
+                    "Entradas em mais de um lugar (em duas etapas, em uma etapa e em descartadas, ou repetidas em descartadas): "
                     + ", ".join(f"#{i}" for i in duplicadas) + ". Cada entrada fica em UMA etapa ou é descartada, "
                     "senão a receita perde o toque sem avisar.")
     cobertas = {i for st in etapas for i in st["inputs"]} | {d["seq"] for d in descartadas}

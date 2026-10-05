@@ -89,7 +89,37 @@ def _comeca_por_parametro(p: dict[str, Any]) -> None:
     p["command_template"] = "{contato} para o cliente {mensagem}"       # 4 palavras fixas, mas começa por parâmetro
 
 
+def _seq_inexistente_na_etapa(p: dict[str, Any]) -> None:
+    p["steps"][1]["inputs"] = [2, 3, 99]                             # a #99 não foi gravada
+
+
+def _seq_inexistente_no_descarte(p: dict[str, Any]) -> None:
+    p["discarded"].append({"seq": 99, "why": "x"})
+
+
+def _seq_repetida_no_descarte(p: dict[str, Any]) -> None:
+    p["discarded"].append({"seq": 4, "why": "de novo"})              # a #4 duas vezes em `discarded`
+
+
+def _side_effect_em_texto(p: dict[str, Any]) -> None:
+    p["steps"][1]["side_effect"] = "false"                           # verdadeiro para o `bool()` do salvar
+
+
+def _chave_aberta(p: dict[str, Any]) -> None:
+    p["command_template"] = "responda a DM de {contato com {mensagem}"
+
+
+def _chave_fechada(p: dict[str, Any]) -> None:
+    p["command_template"] = "responda a DM de contato} com {mensagem}"
+
+
 CASOS: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
+    ("entrada_inexistente", _seq_inexistente_na_etapa),
+    ("entrada_inexistente", _seq_inexistente_no_descarte),
+    ("entrada_duplicada", _seq_repetida_no_descarte),
+    ("etapa_invalida", _side_effect_em_texto),
+    ("parametro_invalido", _chave_aberta),
+    ("parametro_invalido", _chave_fechada),
     ("entrada_duplicada", _duplicada_em_descartada),
     ("entrada_duplicada", _duplicada_em_duas_etapas),
     ("parametro_invalido", _parametro_com_maiuscula),

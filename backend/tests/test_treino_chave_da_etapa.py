@@ -48,3 +48,11 @@ def test_chaves_distintas_e_validas_no_padrao_do_plan_step(titulos: list[str]) -
 
 def test_titulo_so_com_simbolos_vira_etapa() -> None:
     assert _normalizar_com_prazo(["???"]) == ["etapa"]
+
+
+def test_parametro_com_sublinhado_inicial_fica_na_proposta() -> None:
+    """31.95: o padrão é o `PLACEHOLDER` do fluxo (aceita `{_x}`); antes `{_x}` perdia o parâmetro e o save recusava."""
+    req = TrainingRequest(intent="x", app_id=None, apps=[], inputs=[{"seq": 1}])
+    saida = normalizar_proposta({"command_template": "abra o perfil {_x} agora", "steps": [],
+                                 "parameters": [{"name": "_x", "example": "a"}, {"name": "fora", "example": "b"}]}, req)
+    assert [x["name"] for x in saida["parameters"]] == ["_x"]

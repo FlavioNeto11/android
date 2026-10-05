@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.95: sobras da validação do salvar do treino (branch fix/31-95-sobras-da-validacao-do-salvar)
+
+- `entrada_inexistente` (400): `seq` em etapa ou em `discarded` fora das entradas gravadas. `seq` repetido dentro de
+  `discarded` agora é `entrada_duplicada`.
+- `side_effect` tem de ser booleano (o texto "false" virava verdadeiro): senão `etapa_invalida`.
+- `{` ou `}` sem par no comando é `parametro_invalido`.
+- `normalizar_proposta` acha os parâmetros pelo `PLACEHOLDER` do fluxo (aceita `{_x}`), em vez de uma cópia da expressão.
+- Prova `simulated`: `test_treino_validacao_do_salvar.py` (52) e `test_treino_chave_da_etapa.py` (8), com mutação de cada regra. Real: `not_run`.
+
 ## 2026-10-05 — 31.83 (2ª leitura): duplicadas, comando por posição, tipos errados e parâmetro inválido (branch fix/31-83-validacao-do-salvar-do-treino)
 
 - `entrada_duplicada` (400): entrada em duas etapas ou em etapa e `discarded` (o `_receitas` tirava o toque da etapa calado).
