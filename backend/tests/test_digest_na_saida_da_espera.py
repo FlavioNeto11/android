@@ -13,6 +13,7 @@ from datetime import timedelta
 
 import pytest
 
+from app.modules.learning.application.licoes import PREENCHER_DIAS
 from app.modules.learning.domain.backlog import ESPERANDO_A_PESSOA, SEM_CONDUCAO
 from app.modules.learning.infrastructure.licoes_sql import SqlLicoesRepository
 from app.modules.learning.infrastructure.relatorio_sql import FontesDeFalhaSql
@@ -70,6 +71,35 @@ async def test_a_curadoria_nao_escolhe_a_execucao_que_espera_e_escolhe_quando_el
     assert run_id in licoes.execucoes_a_preencher(desde)
 
 
+async def test_a_espera_mais_longa_que_a_janela_conta_da_saida(harness: Harness) -> None:
+    """30.71, N1 da leitura: o cancelamento (e o vencimento) da espera não limpa o `finished_at`, que guarda a hora da
+    ENTRADA. Com uma espera mais longa que `PREENCHER_DIAS` e o digest da saída perdido, a janela pelo `finished_at`
+    deixaria a exposição de fora para sempre; a janela conta da saída, a marca `assentada_em` do #382."""
+    st = _estado(harness)
+    run_id = await _esperando_login(harness)
+    etapa = st.db.one("SELECT id FROM steps WHERE run_id=? AND status='waiting_user' ORDER BY seq LIMIT 1", (run_id,))
+    assert etapa is not None
+    st.db.execute("UPDATE runs SET simulated=0 WHERE id=?", (run_id,))
+    st.db.execute("INSERT INTO learning_exposures(item_id, unit_id, role, arm, run_id, created_at)"
+                  " VALUES ('item-30-71-n1', ?, 'ator', 'with', ?, ?)", (f"step:{etapa['id']}", run_id, to_iso(now())))
+    entrada = to_iso(now() - timedelta(days=PREENCHER_DIAS + 2))       # a espera começou antes da janela
+    st.db.execute("UPDATE runs SET finished_at=? WHERE id=?", (entrada, run_id))
+    st.runs.cancel(run_id)
+    await harness.wait(lambda: st.repo.run_row(run_id)["status"] == "cancelled", what="execução cancelada")
+    await harness.wait(lambda: not st._digestoes, what="digests do gancho")   # noqa: SLF001
+    linha = st.repo.run_row(run_id)
+    assert linha["finished_at"] == entrada                              # a saída não regrava a hora da entrada
+    assert linha["assentada_em"] is not None and linha["assentada_em"] > entrada
+    # o digest da saída "perdido": a exposição volta a pendente
+    st.db.execute("UPDATE learning_exposures SET filled_at=NULL, outcome=NULL WHERE run_id=?", (run_id,))
+    licoes = SqlLicoesRepository(st.db, precos=dict)
+    desde = to_iso(now() - timedelta(days=PREENCHER_DIAS))
+    assert run_id in licoes.execucoes_a_preencher(desde)
+    # sem a marca da saída, só o `finished_at` velho: fora da janela (é o defeito que o COALESCE fecha)
+    st.db.execute("UPDATE runs SET assentada_em=NULL WHERE id=?", (run_id,))
+    assert run_id not in licoes.execucoes_a_preencher(desde)
+
+
 async def test_cancelar_e_repetir_nao_tocam_etapa_que_ja_teve_veredito(harness: Harness) -> None:
     """D1-N2 da leitura do #374 (a catraca da premissa do 30.70): `cancel_open_steps` e `revise_plan` só pegam etapa
     ABERTA. Se passassem a tocar `failed` ou `uncertain`, o filtro `NOT IN ('waiting_user','cancelled','skipped')` de
@@ -103,19 +133,28 @@ async def test_a_etapa_que_espera_sem_conducao_aparece_como_esperando_a_pessoa(h
     assert saude.intervencoes >= 1
 
 
-_TABELAS_DO_DIGEST = ("learning_items", "learning_evidence", "learning_exposures", "learning_reviews",
-                      "skill_validation_results", "learning_transitions")
+#: 30.71 (T1 da leitura): a medida é DA execução, não da tabela inteira. Uma escrita legítima de fora entre o antes e
+#: o depois (outra execução, a curadoria de fundo) reprovaria à toa. As tabelas com `run_id` se medem por ele; as de
+#: item, pelos itens que esta execução tocou (evidência ou exposição dela).
+_POR_EXECUCAO = ("learning_evidence", "learning_exposures", "skill_validation_results", "learning_transitions")
+_ITENS_DA_EXECUCAO = ("SELECT item_ref FROM learning_evidence WHERE run_id=?"
+                      " UNION SELECT item_id FROM learning_exposures WHERE run_id=?")
+
+#: Além das linhas, os contadores em cache de `learning_items`. Um minerador que somasse de novo no mesmo item (sem linha
+#: nova) passaria pela contagem de linhas. `distinct_devices` entra no mesmo `UPDATE` que os outros três.
+_SOMAS_DOS_ITENS = ("evidence_for", "evidence_against", "distinct_runs", "distinct_devices")
 
 
-#: 30.71: além das linhas, os contadores em cache de `learning_items`. Um minerador que somasse de novo no mesmo item
-#: (sem linha nova) passaria pela contagem de linhas.
-_SOMAS_DOS_ITENS = ("evidence_for", "evidence_against", "distinct_runs")
-
-
-def _contagens(st: AppState) -> dict[str, int]:
-    contagens = {t: int(st.db.scalar(f"SELECT COUNT(*) FROM {t}") or 0) for t in _TABELAS_DO_DIGEST}
+def _contagens(st: AppState, run_id: str) -> dict[str, int]:
+    contagens = {t: int(st.db.scalar(f"SELECT COUNT(*) FROM {t} WHERE run_id=?", (run_id,)) or 0)
+                 for t in _POR_EXECUCAO}
+    contagens["learning_items"] = int(st.db.scalar(
+        f"SELECT COUNT(*) FROM learning_items WHERE id IN ({_ITENS_DA_EXECUCAO})", (run_id, run_id)) or 0)
+    contagens["learning_reviews"] = int(st.db.scalar(
+        f"SELECT COUNT(*) FROM learning_reviews WHERE item_ref IN ({_ITENS_DA_EXECUCAO})", (run_id, run_id)) or 0)
     for coluna in _SOMAS_DOS_ITENS:
-        contagens[f"SUM(learning_items.{coluna})"] = int(st.db.scalar(f"SELECT SUM({coluna}) FROM learning_items") or 0)
+        contagens[f"SUM(learning_items.{coluna})"] = int(st.db.scalar(
+            f"SELECT SUM({coluna}) FROM learning_items WHERE id IN ({_ITENS_DA_EXECUCAO})", (run_id, run_id)) or 0)
     return contagens
 
 
@@ -125,7 +164,10 @@ async def _execucao(h: Harness, caso: str) -> str:
     st = _estado(h)
     if caso == "concluida":
         h.cfg.file.ai.recipes = "replay"
-        return str((await h.wait_run(h.run(["android-01"]).id)).id)
+        run_id = str((await h.wait_run(h.run(["android-01"]).id)).id)
+        # T1: o assentamento em linha do worker também encadeia digest; sem esperar, ele cai entre o antes e o depois
+        await h.wait(lambda: not st._digestoes, what="digests do assentamento")   # noqa: SLF001
+        return run_id
     run_id = await _esperando_login(h)
     st.runs.cancel(run_id)
     await h.wait(lambda: st.repo.run_row(run_id)["status"] == "cancelled", what="execução cancelada")
@@ -143,7 +185,8 @@ async def test_o_digest_rodado_de_novo_na_mesma_execucao_nao_duplica_nada(harnes
     st = _estado(harness)
     run_id = await _execucao(harness, caso)
     st.learning.digerir_execucao(run_id)
-    antes = _contagens(st)
+    antes = _contagens(st, run_id)
+    assert any(antes.values()), antes      # a medida por execução não pode passar de vazio: o digest gravou algo dela
     relatorio = st.learning.digerir_execucao(run_id)
     assert not relatorio.pulado and not relatorio.falhas, relatorio
-    assert _contagens(st) == antes
+    assert _contagens(st, run_id) == antes

@@ -1485,6 +1485,11 @@ A lacuna ("a receita não tem evidência datada") tinha um custo medido em 03/10
   dos 10 mineradores (nota de desenho do 30.69).
   - Desde o 30.71, a curadoria (`execucoes_a_preencher`) também deixa de ESCOLHER a execução `awaiting_person`. Antes
     ela entrava em toda passada sem preencher nada e, com o `LIMIT 200` por `run_id`, podia tirar a vez de quem fecha.
+  - A janela da curadoria (`PREENCHER_DIAS`) conta da SAÍDA da espera: `COALESCE(assentada_em, finished_at)`. O
+    vencimento e o cancelamento não limpam o `finished_at`, que guarda a hora da entrada; uma espera mais longa que a
+    janela, com o digest da saída perdido, deixaria a exposição de fora para sempre (N1 da leitura do 30.71).
+  - Nota (N2 da mesma leitura): a exposição de uma etapa que já tinha concluído ANTES da espera agora só é preenchida
+    na saída da execução, porque a curadoria não escolhe a execução que espera. Atrasa, não perde.
   - No estoque migrado (a 111 levou as `completed_with_issues` com objetivo esperando para `awaiting_person`), as
     exposições que o primeiro digest congelou com `waiting_user`, antes do 30.69, ficam assim: nada as reabre.
   - O relatório de condução, que é recalculado a cada leitura, passa a mostrar `esperando_pessoa` também nas antigas.

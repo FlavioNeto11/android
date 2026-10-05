@@ -364,9 +364,13 @@ class SqlLicoesRepository:
         # 30.71: a execução que espera a pessoa (`awaiting_person`, 29.93) tem `finished_at` (o fim do trabalho
         # automático), mas a exposição da etapa que espera não fecha enquanto ela espera (30.69). Sem o filtro, ela
         # entrava em toda passada sem preencher nada e, com `LIMIT 200` por `run_id`, podia tirar a vez de quem fecha.
+        # A janela conta da SAÍDA (`assentada_em`, #382), não do `finished_at`: o vencimento e o cancelamento da espera
+        # não o limpam, e uma espera de mais de `PREENCHER_DIAS` com o digest da saída perdido deixaria a exposição fora
+        # da janela para sempre (N1 da leitura do 30.71).
         return [linhas.texto(r, "run_id") for r in self._db.query(
             "SELECT DISTINCT e.run_id FROM learning_exposures e JOIN runs r ON r.id = e.run_id"
-            " WHERE e.filled_at IS NULL AND r.simulated = 0 AND r.finished_at IS NOT NULL AND r.finished_at >= ?"
+            " WHERE e.filled_at IS NULL AND r.simulated = 0 AND r.finished_at IS NOT NULL"
+            " AND COALESCE(r.assentada_em, r.finished_at) >= ?"
             " AND r.status <> 'awaiting_person' ORDER BY e.run_id LIMIT 200", (desde,))]
 
     # ================================================================== curadoria
