@@ -347,6 +347,28 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - Prova `simulated`: `backend/tests/test_treino_gravacao_orfa.py` (3), e `test_modo_treinamento.py` (7 passed).
   Real: `not_run` (reinício do central com gravação aberta).
 
+## 2026-10-05 — 31.86 B: prévia do salvar e refazer as receitas do treino (branch feat/31-86-previa-e-refazer-receitas)
+
+- `POST /api/training/{id}/preview` (mesmo corpo do `save`) roda a MESMA conferência (`_preparar`: os mesmos códigos
+  400/409, inclusive `duplicate_command`) e a MESMA destilação, sem escrever nada, e devolve por etapa
+  `{key, title, recipe, reason}` mais `warnings`. A pessoa vê por que uma etapa ficaria sem receita enquanto ainda
+  edita a proposta.
+- `POST /api/training/{id}/recipes` refaz a destilação de uma sessão JÁ salva (plano do fluxo + proposta guardada) e
+  grava as receitas que faltam; idempotente (`recipes.save` segue vetando a chave com receita ativa); 409
+  `sessao_nao_salva` se a sessão não foi salva e 409 `fluxo_desligado` se a habilidade está desligada. Só grava em chave
+  VIRGEM (`RecipeStore.status_da_chave`, só leitura): onde a chave já teve receita de qualquer status o motivo diz o
+  status, porque o `save` do treino trocaria a quarentena por uma ativa nova (revisão #438, C1). O reparo também
+  consulta o veto da pessoa (`RecipeStore.caminho_vetado`, a mesma conta que o `save` aplica a quem não é treino) e não
+  recria a receita vetada, mesmo com a chave virgem.
+- Causa do "salvar offline não gera receita": só duas leituras dependem do aparelho, a versão do app (adb) e a variante
+  idioma/densidade (adb); nenhuma é gravada na sessão. Agora, fora do ar, o save usa o que a última leitura deixou
+  (`rt.app_versions`/`rt.ui_variant` e o inventário `device_app_state`, a fonte do despacho); sem isso o motivo diz
+  o que falta (nada é chutado da configuração: variante errada deixaria a receita morta e "gravada"). A rota
+  `/recipes` repara as sessões antigas quando o aparelho volta.
+- `RecipeStore.chave_ocupada` (só lê) é a conta do veto, usada pelo `save` e pela prévia. `distill_training` e a
+  política de `recipes.save` não mudaram.
+- Prova: `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`, 19 testes); `real`: `not_run`.
+
 ## 2026-10-05 — 31.83 (2ª leitura): duplicadas, comando por posição, tipos errados e parâmetro inválido (branch fix/31-83-validacao-do-salvar-do-treino)
 
 - `entrada_duplicada` (400): entrada em duas etapas ou em etapa e `discarded` (o `_receitas` tirava o toque da etapa calado).

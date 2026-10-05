@@ -37,6 +37,7 @@ from .commands.despacho import (LIFECYCLE_ACTIONS, DespachoRecusado, _abrir_coma
                                 abrir_e_despachar, executar_envelope, pedir_ciclo_de_vida,
                                 reconciliar_estado_desejado, remediar, remediar_reiniciando)
 from .db import Row, loads
+from .training.recorder import TrainingError
 from .devices.adb import AdbError
 from .devices.avd import AvdError
 from .devices import conectividade
@@ -624,6 +625,27 @@ async def save_training(request: Request, session_id: str, body: TrainingSaveBod
     try:
         return await st(request).skills.save(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
                                              group_ids=body.group_ids)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+
+
+@router.post("/training/{session_id}/preview")
+async def preview_training(request: Request, session_id: str, body: TrainingSaveBody) -> dict[str, object]:
+    """O que o `save` faria com esta proposta, sem gravar nada (31.86): os mesmos erros e, por etapa, se vira receita e
+    por que não. A pessoa corrige a proposta ANTES de salvar, em vez de descobrir o motivo depois."""
+    try:
+        return await st(request).skills.preview(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
+                                                group_ids=body.group_ids)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+
+
+@router.post("/training/{session_id}/recipes")
+async def redo_training_recipes(request: Request, session_id: str) -> dict[str, object]:
+    """Refaz a destilação de uma habilidade JÁ salva e grava a receita das etapas que ficaram sem (31.86): o reparo do
+    que foi salvo com o aparelho fora do ar. Idempotente; sessão não salva: 409 `sessao_nao_salva`."""
+    try:
+        return await st(request).skills.refazer_receitas(session_id)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 

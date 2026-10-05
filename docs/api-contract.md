@@ -1098,6 +1098,8 @@ campo.
 | `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
 | `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[]}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo) |
+| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
+| `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
@@ -6391,3 +6393,31 @@ Novos 400, no formato de sempre (`detail: {code, message}`; a mensagem diz o que
 Campo aditivo na resposta de sucesso: `warnings: string[]` (vazio quando não há), com as etapas sem efeito aceitas sem
 descrição de pós-condição (o objetivo serviu de critério). O painel pode ignorá-lo.
 - **Prova:** `simulated` (`backend/tests/test_treino_validacao_do_salvar.py`).
+
+## Adendo v1.58 (05/10/2026; número da orquestradora; item 31.86 B) — prévia do salvar e refazer as receitas do treino
+
+Duas rotas novas e uma regra de gravação; nada muda nas existentes além do `reason` das etapas fora do ar.
+- `POST /api/training/{session_id}/preview`, corpo igual ao do `save` (`TrainingSaveBody`, `extra="forbid"`).
+  - Roda a mesma conferência e a mesma destilação do `save`, e NÃO escreve nada: nem fluxo, escopo, receita, status da
+    sessão nem evento de log. Mesmos erros do `save`: os 400 do adendo v1.57 e os de sempre, o 409 `closed` (já salva) e
+    o 409 `duplicate_command` (comando de fluxo ou habilidade publicada), todos antes de gravar.
+  - 200: `{steps: [{key, title, recipe, reason}], warnings: string[]}`. `recipe: true` quer dizer "seria gravada"
+    (`reason` "receita será gravada ao salvar"); `false` traz o motivo literal da destilação (ex.: tecla que depende
+    do estado de quem ensinou, texto sigiloso, alvo sem seletor estável), ou "já havia receita ativa para esta etapa",
+    ou o que falta do aparelho (abaixo). Nunca leva as ações da receita nem texto digitado.
+  - Com o aparelho no ar, a primeira prévia pode levar o tempo de uma leitura do aparelho (versão do app e variante);
+    as seguintes usam o cache.
+- `POST /api/training/{session_id}/recipes`, sem corpo: refaz a destilação de uma sessão JÁ salva e grava a receita das
+  etapas que ainda não têm (origem `training:<id>`, as mesmas regras e o mesmo veto de receita ativa do `save`).
+  - 200: `{session, flow_id, steps: [{key, title, recipe, reason}], created: int}`; `created` conta as receitas
+    gravadas nesta chamada. Idempotente: a segunda chamada devolve `created: 0` ("já havia receita ativa").
+  - Só grava em chave VIRGEM (nenhuma receita da chave, de qualquer status): onde a chave já teve receita em
+    quarentena, desligada ou substituída, a etapa sai com `recipe: false` e `reason` "a chave já teve receita (status X)",
+    porque o `recipes.save` do treino trocaria a quarentena por uma ativa nova e ressuscitaria o caminho que o
+    aprendizado rebaixou. O `save` normal não muda de política.
+  - 409 `sessao_nao_salva` (sem `flow_id`), 409 `fluxo_inexistente` (a habilidade foi apagada), 409 `fluxo_desligado`
+    (a habilidade está desligada), 404 `not_found`.
+- Aparelho fora do ar no `save`/prévia/reparo: a identidade da receita (versão do app, idioma e densidade) vem do que a
+  última leitura deixou; se faltar, a etapa fica sem receita com o `reason` "aparelho do treinamento fora do ar e <o que
+  falta> ainda não foi lido… Refaça as receitas quando ele voltar". O painel chama `/recipes` nesse caso.
+- **Prova:** `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`); `real`: `not_run`.
