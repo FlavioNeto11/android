@@ -1758,3 +1758,107 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   com a poda. Imprime só números e ids.
 - Prova `simulated`: `backend/tests/test_tamanho_do_prompt_do_ator.py`. `not_run`: o A/B sobre árvores reais. Fica
   para a janela de prova, com o diagnóstico ligado no android-09 ou 10 por config, sem conta real.
+
+## 20. O ator não aceita consentimento do site (item 31.72)
+
+- A regra do 31.51 (a limpeza recusa ou fecha, nunca aceita) vale também para o ATOR. Na r-20261005071303-f24955 ele
+  tocou "Aceitar cookies" duas vezes por conta própria.
+- A trava é do executor, não do prompt. No navegador, antes de o gesto chegar ao aparelho, passam por
+  `dialogos.toque_que_aceita`: `tap` e `long_press` (por elemento ou coordenada, julgados pelo PONTO tocado), o início
+  e o fim do `drag`, e o toque que o `type_text` com `element_id` dá no elemento. O `type_text` em elemento não
+  editável é recusado ("no navegador, type_text só em campo editável").
+- Com qualquer marca de consentimento na tela (cookie, consent, privacidade, privacy, LGPD ou GDPR no rótulo, id ou
+  classe), o rótulo que diz aceitar (aceitar, permitir, concordo, configurar, entendi, OK, allow, agree…) é recusado em
+  qualquer lugar. Na faixa em volta de cada marca (mais 12 % da altura da tela acima e abaixo; a marca com 60 % da tela
+  ou mais é a página) só passam o recusar, o fechar e o campo de texto: "Continuar" e o botão com o texto só na imagem
+  são recusados. O falso positivo vale mais que o aceite em silêncio.
+- Releitura do #386, calibrada nas capturas reais de 05/10 no android-09 (Mercado Livre, g1, gov.br, uol e a página
+  inicial anônima do Chrome), só rolagem e nada aceito:
+  - **K1:** o rótulo EXATO da lista de fechar vence a palavra de aceite no rótulo ("Não aceitar", "Continuar sem
+    aceitar"); a palavra de aceite no id recusa sempre (`cookie-accept-and-close`).
+  - **K2:** a interface do próprio navegador (id `com.android.chrome:id/…`) não vira marca: a página inicial anônima tem
+    "Block third-party cookies". No rótulo, a palavra de aceite só conta no começo de palavra ("inaceitável" não é
+    aceite); no id, sem fronteira (`btnAccept`). O botão do navegador só é julgado pelo rótulo, e só dentro da zona (o
+    menu da barra de tradução por cima da folha de cookies do gov.br passa).
+  - **Regra da caixa:** quando a marca está dentro de uma caixa reconhecida (a maior que a contém, abaixo de 60 %, que
+    é marca ou tem cara de diálogo, e que contém mais que a marca), a zona é a caixa inteira MAIS a faixa (Z1c,
+    abaixo): a folha de 49 % do gov.br recusa a página por baixo dela. Sem caixa, a faixa de antes.
+  - "Rejeitar cookies", "Recusar cookies", "Reject cookies" e "Decline cookies" entraram na lista de fechar (o botão
+    real do gov.br seria recusado).
+  - **K3:** as recusas somam por ETAPA, não por execução; o `type_text` fora de campo (B1) conta no mesmo limite e,
+    no limite, falha sem nova tentativa. **K4:** o B1 vindo de receita marca a divergência dela.
+  - A carga de `ai.consentimento_aceito_em` recusa sufixo público (`com.br`, `gov.br`, `github.io`…): o host vale para
+    os subdomínios. O rótulo que vai ao ator perde caracteres de controle e de formatação (Cc, Cf).
+- 2ª leitura do #386:
+  - **Z1:** só um contêiner DISTINTO da marca é caixa. O parágrafo do aviso com o link "política de cookies" não
+    encolhe a zona para o retângulo dele; a marca que é ela mesma a caixa externa fica com a faixa de 12 % (a linha da
+    página logo acima da folha do gov.br é recusada, do lado seguro).
+  - **K1b:** o `botao_que_fecha` do 31.51 usa o mesmo `_diz_aceitar` ("Continuar sem aceitar" é saída). O rótulo
+    exato de fechar só livra quando o outro campo não diz aceitar: text "X" com desc "Accept" (#308) segue vetado.
+  - **K2b:** a palavra de aceite é recusada em qualquer lugar só com marca que tenha cara de aviso (texto de mais de 30
+    caracteres ou dentro de caixa reconhecida). Com só o link "Política de privacidade" do rodapé, "OK", "Permitir" e
+    "Aceitamos Pix" longe dele passam; na faixa dele, não.
+- Delta da 2ª leitura:
+  - **Z1c:** a caixa SOMA à faixa, não a substitui. Um invólucro só do texto com id de cara de diálogo que não é de
+    consentimento (`banner-content`, `modal-body`) vira a caixa; se a zona fosse só ele, os botões no irmão de baixo
+    ("Estou de acordo", "Prosseguir" a 200 px) passariam.
+  - **K2c:** a marca NÃO clicável também tem cara de aviso: o título "Sua privacidade" (corpo sem a palavra) e a
+    pergunta "Aceitar cookies?" ligam a recusa da palavra de aceite em qualquer lugar. O link do rodapé é clicável e
+    segue fora (o K2b).
+  - Ficam do lado seguro, recusados: "Rejeitar cookies." com ponto e "Rejeitar todos os cookies" (fora da lista
+    exata), e o `type_text(press_enter=True)` com o foco num botão segue sem tratamento.
+- O recusado vira ação `rejected` com o motivo "o consentimento do site não é aceito pelo ator (eN, Tipo)": no `error`
+  e no `status_detail` (que chegam a aviso e cartão) vão só o id e o tipo; o rótulo, texto da página, vai só ao
+  histórico do ator, com os espaços normalizados. Quatro recusas somadas na ETAPA (ou quatro erros seguidos) encerram
+  a etapa sem nova tentativa (`pos_condicao_nao_comprovada` em `falhas.py`). Nunca vira sucesso por aceite.
+- `ai.consentimento_aceito_em`: hosts em que o ator pode aceitar (lido da `url_bar`, com subdomínios). Vazia por padrão;
+  preenchê-la é decisão do dono. A carga recusa `*.loja.com`, `https://…` e caminho, que nunca casariam.
+- O prompt do ator diz "recuse; NUNCA aceite", só para economizar decisões.
+- Limites conhecidos:
+  - a trava só age com o pacote `com.android.chrome` (cobre as Custom Tabs); não cobre WebView embutida de app nem
+    outro navegador;
+  - o título de uma WebView com "privacidade" que ocupe menos de 60 % da árvore vira marca, e um "Salvar" perto dele é
+    recusado;
+  - "privacidad", "Datenschutz" e "confidentialité" não marcam; aviso sem nenhuma dessas palavras na árvore passa;
+  - fora do navegador a trava não age: as folhas de app são declaradas no catálogo e fecham pela regra do 29.87.
+- Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py`. `not_run`: as execuções 2 e 3 do 31.40,
+  depois do deploy.
+
+## 21. A recusa por sobreposição pede cobertura de verdade (item 31.73)
+
+- O 31.40 insere a limpeza opcional quando o juiz recusa com `sobreposicao`. O juiz é um booleano do modelo: na
+  r-20261005071303-f24955 ele o marcou citando o banner "Abra o app" do Mercado Livre e, no próprio texto, disse que a
+  causa principal era o conteúdo errado. A limpeza entrou à toa, falhou, e o desfecho escondeu a causa.
+- Duas camadas:
+  - o prompt do juiz: se o que está VISÍVEL fora do aviso já mostra outra causa (conteúdo errado, outra tela),
+    `sobreposicao` é false; o que está só escondido pelo aviso não é outra causa;
+  - a regra estrutural (`executor.sobreposicao_vale`). Só se julga o elemento que o juiz CITOU e que está na árvore;
+    sem citado, ou sem o tamanho da tela, vale como antes. Vale quando:
+    - o citado cobre ao menos 15 % da tela (`FRACAO_DA_SOBREPOSICAO`, a MESMA constante do 31.51,
+      `dialogos.FRACAO_QUE_COBRE`);
+    - ou a menor caixa com pista de diálogo que o contém cobre 15 % (o juiz pode citar o "X" de um modal);
+    - ou outra folha com texto cruza a área (a faixa FIXA sobre o conteúdo).
+
+    Senão é faixa no fluxo da página, e a recusa vale como "não" comum, com a métrica `juiz.sobreposicao_descartada`.
+- Sem o tamanho da tela a regra vale, e o `dialogos._cobre_a_tela` do 31.51 responde "não": lá a pergunta é outra (há
+  diálogo a fechar?), e na dúvida a limpeza não falha.
+- A árvore não diz quem é filho de quem. Os descendentes do aviso são a sequência contígua logo depois dele na ordem do
+  documento (a do uiautomator, em profundidade), toda contida na área. Uma folha contida na área FORA dessa sequência é
+  a página por baixo de um aviso fixo. Medido no gov.br (05/10, android-09): a folha de cookies de 49 % no rodapé vem no
+  fim do documento, e as linhas da página por baixo dela vêm antes, inteiras dentro da área. No banner do Mercado Livre
+  (f24955), os filhos vêm logo depois dele e nada de fora da sequência fica contido: segue descartado.
+- 2ª leitura do #391:
+  - **L1:** dois elementos com os MESMOS bounds não se contam um ao outro como contêiner (no Chrome, o View com texto e
+    o TextView filho igual); a linha da página por baixo de uma faixa pequena segue folha para o J3.
+  - **L2:** abaixo de 60 % da tela, a árvore inteira é uma janela flutuante (o dump de um diálogo nativo, cujo painel
+    `android:id/parentPanel` sem texto o leitor corta): a recusa vale. Prova `simulated`; o real fica `not_run` até a
+    captura de um AlertDialog. Limite: com a página no MESMO dump, a extensão não acusa a janela.
+  - Nas capturas inteiras (05/10): o banner da f24955 (ml-1-topo, 73 nós) segue descartado; a folha do gov.br e o
+    botão "Rejeitar cookies" dela (gov-3-rodape, 52 nós) valem.
+  - Notas sem conserto agora: o "X" fora da caixa quando só o cartão tem pista; a faixa fixa no rodapé com banner no
+    topo (a métrica não distingue erro do juiz); o aviso fixo que vem PRIMEIRO no documento pode engolir as primeiras
+    folhas da página (L3).
+- Os 15 % foram medidos nas duas ocorrências reais do banner (bounds gravados nas variáveis da limpeza e confirmados
+  pela captura de 05/10, 720 x 1280): 11,6 % como faixa no topo (f24955) e 83,8 % como modal (r-20261004190200-5b56e6,
+  que cobria de fato).
+- Prova `simulated`: `backend/tests/test_sobreposicao_com_duas_causas.py`. `not_run`: uma recusa real com duas causas.

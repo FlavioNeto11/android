@@ -28,6 +28,29 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_telegram_entrada.py`, 113 no arquivo; o teste do teto falhou antes de o
   teto sair). Real: `not_run`.
 
+## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
+
+- X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
+- X2: três amostras seguidas sem o `df` dão uma linha "SEM AMOSTRA do df há 90 s", uma por série.
+- `matar_arvore` confere o `poll()` antes: o pytest que já saiu não vira "kill falhou" na linha do aborto.
+- `recriar` relata o rc e o erro do `docker run` (a imagem que falta, com o `--pull=never`).
+- O teste da árvore real dorme 30 s em vez de 120 e mata o neto no `finally` se falhar no meio.
+- Prova `simulated`: `scripts/tests/test_pg_rapido.py` (4 novos), 15 passed; `pytest @scripts/tests/catracas.txt`,
+  6 passed. Real: `not_run` (a próxima vez do PG da suíte).
+
+## 2026-10-05 — 28.46: a foto da etapa conferida contra a prévia da própria Central (branch canais/28-46-foto-pela-central)
+
+- `telegram_status.py --foto` lê o `imagem_sha256` da Central (`sha_da_imagem_na_porta`, a mesma conta da prévia da
+  porta), e não só de um arquivo. O `--previa` virou opcional e, se vier, tem de bater com a Central.
+- `imagem_da_etapa` saiu da classe `PortasReais` para uma função, e o script a usa sem montar as portas.
+- Cada falha diz o seu motivo, sem traceback. Sem resposta do Telegram, a saída manda conferir o chat antes de
+  repetir.
+- Prova:
+  - `simulated`: `.claude/canais/test_telegram_status.py`, com o envio montado e o sha errado sem chamar o envio, e
+    `backend/tests/test_rotulo_ia.py`, com o sha da foto igual ao da prévia da porta, item a item;
+  - `real`: a leitura do sha e dos bytes no banco do central, em 05/10, deu 5fbf3507… e 166824 bytes na etapa da
+    primeira publicação, sem envio.
+
 ## 2026-10-05 — 28.44: a resposta solta casa com a pergunta de escolha aberta (branch canais/28-44-escolha-solta)
 
 - A pergunta de escolha que a ANA manda leva a marca `escolha:<msg>:<opções>` (`telegram_status.py --escolha 1,2,3`).
@@ -47,6 +70,82 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_telegram_entrada.py` e `test_telegram_portas.py`, com 1 e 2 caracteres).
   Real: `not_run`.
 
+## 2026-10-05 — 31.78: a leitura julgada não gira mais relendo o mesmo valor até o teto (branch fix/31-78-leitura-sem-saida)
+
+- Achado real, 05/10: na prévia do 29.30 (`r-20261005074912-701173`), a `READ_POSTS_COUNT` leu o "0" da contagem 12
+  vezes, sem nenhum toque, e nunca chamou `step_done`. O teto de 12 decisões da leitura (31.38) a encerrou com
+  "procurei 'posts_antes' … e não encontrei", e veio o replano v2. A orquestradora cancelou a execução (US$ 0,249061 por
+  `costs.spent_usd`). É a única tentativa do banco com 3 ou mais releituras do mesmo nome. O "0" nunca foi descartado.
+  Por que o modelo relia não é provável pelo banco: `ai_calls` não guarda a resposta.
+- `taskqueue/executor.py`:
+  - releitura do mesmo nome com o MESMO valor e nada faltando, só em etapa de leitura (sem efeito e sem
+    `commit_guard`):
+    - na 1ª, o ator recebe "é hora do `step_done`", sem o valor. A instrução vai só na cópia da decisão dele, e não
+      aos fatos do juiz (C2 da leitura);
+    - na 2ª, a etapa vai à verificação, que julga a pós-condição como depois de um `step_done`.
+    - Só um valor diferente zera a conta. Outras ações entre as leituras, não.
+  - O teto de decisões da leitura, com tudo lido:
+    - vai à verificação;
+    - se a última leitura de alguma saída diverge da anterior, é falha honesta "A IA leu valores divergentes de …"
+      (C1 da leitura). Regra nova em `falhas.py`: `ia_chamada_invalida`;
+    - com algo faltando, segue `dado_ausente`.
+  - A linha do histórico do ator diz `lido e entregue: "<valor>"`. A hipótese de "lido: 0" soar como "nada lido" não
+    está provada.
+- Prova `simulated`: `test_releitura_do_mesmo_valor.py`, com 10 testes:
+  - "0" e "7" fecham em 3 decisões;
+  - o aviso fica fora dos fatos do juiz;
+  - uma ação entre as leituras não zera a conta;
+  - o "não" do juiz falha sem laço;
+  - teto com leitura única vai à verificação;
+  - leituras divergentes falham sem juiz;
+  - outra saída faltando segue em `dado_ausente`;
+  - `commit_guard` e `side_effect` ficam fora.
+  - Cada uma das 7 regras, revertida, reprova um teste. A frase nova tem caso em `test_learning_falhas.py`.
+- Prova real `not_run`: é a nova prévia do 29.30, com o perfil ainda em 0 publicações.
+
+## 2026-10-05 — 29.116: o lote diz quando a lista não se releu (branch fix/29-116-lote-releitura-falha)
+
+Leitura do 29.114 pela Ferramentas do Claude.
+
+- S1: a releitura que falhava resolvia como a boa. O resumo dizia "Terminado" sobre a lista velha, e reabrir o lote
+  voltava ao defeito do 29.114. Agora `ProfilesPage` tem a leitura `ler()`, que devolve se as personas se releram, e o
+  lote recebe `onConcluido: () => Promise<boolean>`. No resumo, a falha ou a rejeição vira o aviso "A lista de personas
+  não se releu…", que pede "Tentar de novo" antes da próxima ação. A rejeição não prende o diálogo nem some no
+  `void confirmar()`.
+- N2: uma releitura começada depois da do lote (reconexão, fila da pessoa) fazia a do lote voltar pela ficha, sem
+  gravar. Agora quem perde a corrida espera a resposta da mais nova.
+- N: `Dialog` ganha `closeBlockedReason`. Com ele, o X fica indisponível COM o motivo e o Esc e o clique fora não
+  fecham; antes eram ignorados sem dizer por quê. Na troca para o resumo, o foco vai para o Fechar, não para o corpo.
+- Testes: quatro novos em `AcoesEmLote.test.tsx` (falha, rejeição, releitura mais nova, X e Esc), todos falhando no
+  código do 29.114. Prova simulated:
+  - frontend inteiro 1617/1617 sem atraso;
+  - `src/features/profiles` 194/194 com atraso nas sementes 7, 11, 22, 44, 88 e 99.
+
+## 2026-10-05 — 29.114: o lote só diz "Terminado" depois de a lista se reler (branch fix/29-114-lote-espera-releitura)
+
+- `frontend/src/features/profiles/AcoesEmLote.tsx`: o resumo do lote aparecia antes de a lista de personas se reler.
+  Quem fechava e reabria o lote nesse intervalo decidia pela lista velha. Tirar do grupo uma persona recém-posta nele
+  dizia "já estava sem grupo", com ok e sem PATCH, e ela continuava no grupo: um sucesso falso, achado no 29.104.
+  Agora a fase segue "executando" até a releitura voltar, com "Relendo a lista de personas…" e o Cancelar travado.
+- Teste: `AcoesEmLote.test.tsx` segura a releitura e confere que não há "Terminado" nem fechar antes dela, e que tirar
+  do grupo depois manda o PATCH das duas. Falha no código anterior. Prova simulated:
+  - `src/features/profiles` 190/190 sem atraso;
+  - com `ATRASO_DO_FETCH_MS=40`, o AcoesEmLote passa nas sementes 7, 11, 22, 44, 88 e 99.
+
+## 2026-10-05 — 29.112: o bloco que pede atenção abre quando a saúde chega (branch fix/29-112-atencao-aberta)
+
+- `frontend/src/components/Disclosure.tsx`: nova prop `openWhen`. O bloco abre quando ela passa de falso a verdadeiro,
+  também depois de montado, e nunca fecha. Funciona como o `defaultOpen` para o que depende de uma leitura que chega
+  depois do bloco.
+- `frontend/src/features/aprendizado/AplicativosTab.tsx`: o Aprendido por capability decidia abrir na montagem
+  (`defaultOpen`). Com o detalhe do app antes do Livro, a atenção era 0 naquela hora, e o bloco que pede atenção ficava
+  recolhido. Achado do 29.104. Agora abre quando a saúde chega, sem mexer no que a pessoa abriu.
+- Teste: `SaudeDoApp.test.tsx` segura o Livro, abre o Fluxo à mão e solta: a Receita abre e o Fluxo segue aberto.
+  Falha no código anterior. Prova simulated:
+  - frontend inteiro 1615/1615 sem atraso;
+  - `src/features/aprendizado` 199/199 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99, inclusive os
+    dois testes que eram a prova.
+
 ## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)
 
 - Pedido do dono pelo Telegram (entrada 1790, 05/10 09:39:19Z): "o que significa ana? precisa colocar isso no portal
@@ -62,6 +161,165 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - A frase de amostra da mensagem 294 dizia que a ANA "dá voz à sua marca". Ela foi ajustada para não contradizer "a
   ANA rege, as personas dão voz" (ADR-075, "Marca pública"). A orquestradora avisou o dono da diferença pela Canais.
 - `docs/decisoes.md`, ADR-075 ("Marca pública"): uma linha diz que o significado é decisão do dono de 05/10.
+
+## 2026-10-05 — 29.107: o `Location` da prova de fora passa pela limpeza da régua (branch fix/29-107-location-pela-regua)
+
+- `scripts/portal-prova-de-fora.sh`: o destino do redirecionamento de `/central` vem da borda e ia cru para a linha da
+  prova, tanto no `ok` quanto no `FALHOU`. Um `\r\n` ou um ESC de terceiro partiria a linha em duas, a segunda com cara
+  de `ok`, ou apagaria a tela. Agora ele passa por `portal-regua-da-borda.py linha`:
+  - todo caractere fora de 0x21–0x7E vira `?`, sem a dobra do NFKD (L1 da leitura do #396). Um `ｈttps` de largura
+    total ou uma ligadura apareceria igual ao esperado ao lado de um FALHOU;
+  - o corte em 200 caracteres diz o tamanho total;
+  - não há quebra no fim, porque o `print` do Windows poria um CR que o `$(...)` não tira.
+  A decisão (`https://<host>/central/` no começo) continua sobre o valor cru.
+- `scripts/tests/test_portal_prova_de_fora.py`, pelo `curl` falso:
+  - um destino de fora com CR, LF e ESC dá `FALHOU` numa linha só;
+  - um destino certo com lixo atrás dá `ok` numa linha só, com `?`;
+  - largura total, C1 (U+0085) e BiDi (U+202E) chegam como `?`;
+  - o destino longo diz o tamanho.
+  A régua com o NFKD reprova os quatro casos do L1.
+- Prova `simulated` (central, 05/10):
+  - de 09:48Z a 09:52Z: `test_portal_prova_de_fora.py` 28 passed e `test_portal_borda.py` 123 passed;
+  - com o L1, de 10:02Z a 10:06Z: `test_portal_prova_de_fora.py` 32 passed e `docs-check` 0.
+
+## 2026-10-05 — 29.108: o processo que perde a marca de assentamento solta a trava de rascunho (branch fix/29-108-assentamento-perdedor)
+
+- K2 da leitura do #382: com dois processos, o worker que PERDE a marca `runs.assentada_em` voltava do `_settle_run`
+  sem soltar a trava de rascunho, que mora em memória no `AppState` dele. Agora ele chama o `on_run_parada` (solta a
+  trava e acorda os pedidos, tudo idempotente), sem o digest, que foi de quem ganhou a marca.
+- `Database.depois_do_commit` num `savepoint()` desfeito: o efeito pedido dentro do sub-bloco ficava pendente e rodava
+  no COMMIT de fora, embora a escrita que o pediu tivesse saído com o `ROLLBACK TO SAVEPOINT`. Agora sai junto (a lista
+  volta ao tamanho de antes do savepoint), e a docstring diz isso.
+- Prova: `simulated` (`backend/tests/test_aguardando_pessoa.py::test_k2_o_worker_que_perde_a_marca_solta_a_trava_deste_processo_sem_digest`,
+  `backend/tests/test_db.py::test_savepoint_desfeito_descarta_o_efeito_pedido_dentro_dele` e
+  `::test_savepoint_aninhado_descarta_so_o_que_foi_desfeito`, o caso aninhado). Real: `not_run` (pede dois
+  backends).
+
+## 2026-10-05 — 29.105: o controle manual tem saída numa tela protegida contra captura (branch fix/29-105-tela-protegida)
+
+- `DeviceManager.manual_input`: Voltar, Início e Recentes (`TECLAS_DE_NAVEGACAO`) não conferem o quadro (só o lease e
+  o aparelho no ar). Toque, arraste, texto, Enter e Apagar com quadro desconhecido ou velho e a captura falhando
+  recebem `capture_failing`, com o motivo e a saída; sem falha registrada, `stale_frame` como antes (`_quadro_velho`).
+  Antes, com a aba anônima do Chrome na frente, o quadro congelava e nem o Voltar passava (medida do 31.72).
+- Enter e Apagar ficam fora da isenção (decisão da orquestradora na leitura): agem sobre o campo em foco, e às cegas o
+  Enter confirmaria o que a pessoa não vê.
+- **Adendo v1.52.** O painel (`FocusPanel.tsx`, `client.ts`) mostra o aviso próprio de `capture_failing` e manda as
+  três teclas de navegação mesmo sem imagem exibida.
+- O que o screencap faz com a FLAG_SECURE (falha ou sai preto) segue INFERRED; as duas consequências estão no adendo.
+  Medido no android-09 (`real`, 05/10, `e5f1b22b`): o mesmo congelamento SEM tela protegida, por sobrecarga do
+  convidado (K-102, com o toque reaproveitado que abriu o Outlook).
+- Testes: a captura falhando vem do caminho real (o dublê recusa o screencap e uma volta de `_volta_da_previa` registra
+  a falha), sem escrever o contador à mão; a tecla fora do ar; Enter e Apagar; e `test_execution.py` passa a exigir o
+  código `not_controller` da tecla antes do controle.
+- Prova `simulated`, em Idle: `backend/tests/test_tela_protegida.py` (7 testes), `test_execution.py` e `test_contrato_http.py`, 34 passed; `test_tela_protegida.py` repetido 5 vezes, 7 passed em cada; `pytest @tests/catracas.txt -n 4`, 88 passed; `tests/test_arquitetura.py`, 9 passed; painel `npm run typecheck` limpo e `npm test`, 1613 passed; `docs-check`, 0 erros. `not_run`: a tela protegida no aparelho.
+
+## 2026-10-05 — 28.42: o fim real da execução chega à conversa que a criou (branch canais/28-42-desfecho-rearmado)
+
+- O desfecho que sai com a execução em `awaiting_person` ("parou") deixa a marca `desfecho_parado` na linha. Quando
+  a execução sai da espera, a linha volta a esperar desfecho, e a conclusão, a falha, o cancelamento ou a nova parada
+  chegam à mesma conversa, uma vez. Antes, a retomada que concluía ficava muda.
+- O estado é lido antes do texto: a corrida entre as duas leituras pode no máximo repetir o fim, nunca calá-lo. A
+  anti-repetição do #358 conta os envios além dos rearmes (`desfechos_rearmados`).
+- `TERMINAIS` → `COM_DESFECHO` (o conjunto inclui `awaiting_person`, que não é terminal).
+- Leitura do #400:
+  - R1: o rearme só vale para a linha que ainda tem a marca, e uma vez. A troca compara o `previa` e exige
+    `resultado_em`, de modo que um líder velho com a lista antiga não manda o fim duas vezes.
+  - N2: o estado só se lê para a linha que já tem desfecho, e o texto é relido depois dele; as execuções em curso
+    não custam leitura a cada volta.
+  - Os limites conhecidos estão no `canais.md`.
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py`: o fim depois do parou, a parada que segue parada, a
+  retomada que para de novo, a anti-repetição, o rearme duplo, o líder velho e a volta sem leitura de estado). Real:
+  `not_run`.
+
+## 2026-10-05 — 30.71: as sobras da leitura do #390 (branch feat/30-71-sobras-do-digest, sobre o #390)
+
+- `execucoes_a_preencher` deixa de escolher a execução `awaiting_person`, que tem `finished_at` mas cuja exposição não fecha enquanto espera: antes ela entrava em toda passada sem preencher nada e, com `LIMIT 200` por `run_id`, podia tirar a vez de quem fecha.
+- O teste da idempotência do digest compara também os `SUM` de `evidence_for`, `evidence_against`, `distinct_runs` e `distinct_devices` de `learning_items`, além das linhas. Desde o T1 da leitura do 30.71, a medida é DA execução (as tabelas com `run_id` por ele; as de item, pelos itens que ela tocou), e o caso `concluida` também espera os digests do assentamento: uma escrita legítima de fora não reprova à toa.
+- N1 da leitura do 30.71: a janela de `execucoes_a_preencher` conta da saída da espera, `COALESCE(r.assentada_em, r.finished_at)`. O vencimento e o cancelamento não limpam o `finished_at` (a hora da entrada). Teste novo: `test_a_espera_mais_longa_que_a_janela_conta_da_saida`.
+- Doc (`aprendizado.md`): no estoque migrado, as exposições congeladas com `waiting_user` antes do 30.69 ficam assim; o relatório de condução, recalculado, mostra `esperando_pessoa` também nas antigas. Nota N2: a exposição de etapa que concluiu antes da espera só é preenchida na saída (atrasa, não perde).
+- Prova `simulated`: `backend/tests/test_digest_na_saida_da_espera.py` (6 passed na d6409fbe; o novo `test_a_curadoria_nao_escolhe_a_execucao_que_espera_e_escolhe_quando_ela_sai` confere também que a saída da espera preenche a exposição). Na 2ª ponta do 30.71, com o T1 e o N1, SQLite em Idle: dirigidos 78 passed (`-n 2`, digest_na_saida_da_espera, aguardando_pessoa, learning_licoes, aprendizado_backfill_licoes, prompts_licoes) e catracas 86 passed (`-n 4`). No caso `cancelada_na_espera` do T1, a medida é o que o digest da saída ESCREVE: a exposição da etapa que espera, com `filled_at` e `outcome`, que o segundo digest não pode mudar.
+
+## 2026-10-05 — 30.73: o parecer da classe B não pede voto nem decisão da pessoa (branch feat/30-73-curador-na-classe-b)
+
+- Medida do 30.72: 5 fluxos B que já cumpriam os números da autopublicação paravam em `observar` porque o parecer pedia `voto_da_pessoa` e `decisao_da_pessoa` por "efeito sem catálogo", que é a definição da classe B.
+- Dossiê (`modules/learning/domain/curador.py`): o fato `risco.classe_b_e` no item B, e `faltas_do_item` sem as duas faltas da pessoa nas opções e no `validar_saida` do item B. A e C sem mudança; o estoque gravado se lê como foi gravado.
+- Hub (`backend/app/planning/curador.py`, da Jev): uma frase da classe B no `CURADOR_SYSTEM`, `VERSAO_DO_TEMPLATE` `curador-v2` e o hash do texto preso em teste.
+- O descarte fica visível (pedido da Jev): `Parecer.falta_descartada`, na `saida` gravada só quando houve, e uma linha de log em `CuradorPorIA.uma_volta` com o id da revisão e os rótulos. Na API, adendo v1.53.
+- A autopublicação segue em `shadow`. Prova `simulated`: `backend/tests/test_curador_classe_b.py`; dirigidos do curador 207 passed, os que tocam parecer, dossiê e `saida` 330 passed, `scripts/tests` da Jev 50 passed, catracas 86 passed (SQLite, Idle, na 32a326be).
+
+## 2026-10-05 — 30.74: a evidência do fluxo leva a versão do app (branch feat/30-74-versao-na-evidencia-do-fluxo)
+
+- As 113 evidências reais de fluxo do central tinham `app_version` nulo (medida do 30.72), e o curador pedia `reproducao_na_versao_viva` sem prova possível.
+- O digest grava a versão do app do fluxo observada no aparelho da execução (`device_app_state`, `LeituraSql.versao_do_fluxo_no_aparelho`), nos três caminhos: sombra, prova e uso. Sem leitura, nula como antes; o estoque não é refeito.
+- V1 da leitura: a versão é a observada na hora do digest, então só vale se a última atualização do app no aparelho (`last_update_time`, fuso do aparelho, contado no pior caso de +12 h) é com certeza anterior ao início da execução; na dúvida, nula (`versao_estavel_na_execucao`; o método da leitura passa a receber o `run_id`).
+- N2, decidido: as reclassificações (`forma`, `invalida`, `revalidada`) seguem sem versão; não são reprodução. Se um dia precisar, copiar a da original.
+- Prova `simulated`: `backend/tests/test_versao_na_evidencia_do_fluxo.py`.
+
+## 2026-10-05 — 31.72: o ator não aceita consentimento do site (branch feat/31-72-ator-nao-aceita-consentimento)
+
+- Achado real na janela do 31.40 (r-20261005071303-f24955, android-09): o ator tocou "Aceitar cookies" duas vezes; a
+  regra do 31.51 só trancava a limpeza.
+- `taskqueue/dialogos.py`: `toque_que_aceita` (nova). `taskqueue/executor.py`: `_aceite_do_toque` (novo) e a trava no
+  `_run_step`, antes de o toque chegar ao aparelho. `AiCfg.consentimento_aceito_em` (vazia), regra em `falhas.py`,
+  uma linha no prompt do ator (hash em `test_prompts_licoes` atualizado de propósito). `docs/ia.md` § 20.
+- Leitura do #386 (Ferramentas do Claude): o `drag` (início e fim), o `type_text` com `element_id` (B1), o aceite
+  fora da faixa, o ponto tocado (N2), as recusas somadas na execução (N8), o rótulo fora do `error` (S1) e os hosts
+  validados na carga (N6).
+- Releitura do #386, calibrada em capturas reais (05/10, android-09, só rolagem): K1 (o rótulo exato de fechar
+  vence a palavra de aceite no rótulo, nunca no id), K2 (a interface do Chrome não vira marca; fronteira de palavra
+  no rótulo; o botão do Chrome só pelo rótulo e dentro da zona), a regra da caixa (zona = a caixa do aviso), "Rejeitar
+  cookies" na lista de fechar, K3 (recusas por etapa, com o B1 no mesmo limite), K4 (o B1 da receita diverge), sufixo
+  público recusado na carga e Cc/Cf fora do rótulo do ator.
+- 2ª leitura do #386: Z1 (só contêiner distinto da marca é caixa), K1b (`botao_que_fecha` com o mesmo
+  `_diz_aceitar`, sem soltar o caso do #308) e K2b (aceite recusado em qualquer lugar só com marca de cara de aviso).
+- Delta da 2ª leitura, assumido pela frente Android: Z1c (em `_na_zona`, a caixa SOMA à faixa; um invólucro só do
+  texto com id de `_PISTAS`, como `banner-content` ou `modal-body`, não libera mais os botões do irmão de baixo) e K2c
+  (em `_cara_de_aviso`, a marca não clicável, como o título "Sua privacidade" ou a pergunta "Aceitar cookies?",
+  tem cara de aviso; o link do rodapé é clicável e segue fora).
+- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (40), com 13 mutações conferidas e mais as duas
+  do delta (desfazer o Z1c ou o K2c reprova os testes novos); com `test_dialogos_em_serie.py`, 63 passed; catracas
+  88; `test_arquitetura` 9. As árvores reais de `data/diag-31-72/` dão o mesmo antes e depois do delta (NTP, ml, g1
+  e uol com 0 recusado; gov-3 com 12, nenhum do Chrome). `real`: `not_run`.
+
+## 2026-10-05 — 31.73: a recusa por sobreposição pede cobertura de verdade (branch fix/31-73-sobreposicao-com-duas-causas)
+
+- Achado real na janela do 31.40 (r-20261005071303-f24955): o juiz marcou `sobreposicao` com o banner do topo, e o
+  próprio texto dele dizia que a causa era o conteúdo errado; a limpeza entrou à toa e escondeu a causa.
+- Prompt do juiz: outra causa VISÍVEL fora do aviso é `sobreposicao` false; o que só está escondido não é (hash de
+  `VERIFIER_SYSTEM` atualizado de propósito). `executor.sobreposicao_vale`: só o elemento citado e presente na árvore
+  decide; vale com 15 % da tela (a constante do 31.51, uma só), pela caixa com pista que o contém (o "X" de um modal) ou
+  quando outra folha com texto cruza a área (os descendentes vêm pela ordem do documento, medida no gov.br); senão, a
+  recusa vale como "não" comum. `docs/ia.md` § 21.
+- 2ª leitura do #391: L1 (bounds iguais não fazem contêiner) e L2 (árvore inteira abaixo de 60 % da tela é janela
+  flutuante, o diálogo nativo sem painel: a recusa vale; real `not_run`).
+- Os testes do 31.40 e do 31.51 citavam o 1º nó do app de teste (0,5 % da tela); agora citam um aviso que cobre 62,5 %,
+  posto na tela do aparelho falso (`test_sobreposicao._juiz_com_ref`).
+- Prova `simulated`: `tests/test_sobreposicao_com_duas_causas.py` (4), com mutação conferida. `real`: `not_run`.
+
+## 2026-10-05 — 29.109: as notas da leitura do 29.106 no "começar a partir de" (branch fix/29-109-partir-de-notas)
+
+- `frontend/src/features/profiles/PolicyGroups.tsx`:
+  - N1: com a leitura em voo, o campo "Começar a partir de" diz "Lendo o acesso de hoje da persona; salvar e editar
+    esperam a resposta." O botão e os editores travados deixam de ficar sem motivo. M1 da leitura do #398: a dica só
+    aparece se a leitura passar de 300 ms (`DICA_DA_LEITURA_MS`). A comum leva ~40 ms (de 32 a 49 ms no central), e
+    uma linha que surge e some faria o formulário pular duas vezes a cada escolha. A trava continua imediata;
+  - N2: escolher "Padrão do catálogo" também SUBSTITUI o rascunho. Depois de partir de A, voltar ao padrão zera as
+    ações e os limites. Antes, só aposentava a leitura e o grupo levava o que veio de A.
+- O cliente da API tem prazo: `rawRequest` aborta em 30 s (`timeoutMs ?? 30_000`) e devolve `ApiError('timeout')`. Um
+  `getPolicy` que não responde solta a trava em até 30 s, pelo `finally`.
+- `ProfilesPage.test.tsx` (N3): quatro casos:
+  - a leitura que falha solta a trava e avisa;
+  - a troca para o padrão no meio destrava na hora, a dica aparece, e a resposta velha não entra;
+  - o erro de uma leitura aposentada não vira toast;
+  - voltar ao padrão depois de A cria o grupo com `{}`.
+- Prova `simulated` (central, 05/10, 09:53Z–09:55Z, Node 24.19.0):
+  - typecheck limpo;
+  - ProfilesPage 55/55 sem o atraso e com `ATRASO_DO_FETCH_MS=30` nas sementes 11, 44 e 88;
+  - sem a mudança do produto, os casos da dica e do padrão caem; os do erro e do toast protegem o 29.106;
+  - a suíte do frontend inteira deu 1616/1616;
+  - M1 (10:07Z–10:09Z): ProfilesPage 55/55, sem o atraso e com ele (semente 44); com a dica imediata, o caso da
+    troca cai; a suíte do frontend inteira deu 1616/1616;
+  - no navegador: `not_run` até o deploy.
 
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
@@ -354,6 +612,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Nenhum outro texto do site, nem a prova de fora, nem a régua apontava para a seção (conferido por busca).
 - Prova: `not_run` até a bateria de latência acabar; depois, `test_portal_site`, `test_portal_prova_de_fora` e
   `docs-check`, e a página pública no navegador depois de aplicada.
+
+## 2026-10-05 — 29.102: o CI volta a ser rede (branch fix/29-102-ci-rede)
+
+- Sem `pull_request` no `ci.yml`: ficam a corrida diária e o disparo manual. Cada PR custava de 62 a 115 min serial no
+  runner do central, e o `[skip ci]` na ponta falhou três vezes em 05/10. O funil da suíte cobre os PRs.
+- Job `porta`: na corrida agendada, com um `pytest` vivo no runner, os jobs do central são pulados com aviso.
+- `scripts/mypy-catraca.py` e `backend/mypy-teto.txt` (257, medido na 0c264685; o cron de 05/10 na 81f99de3 deu 254):
+  o mypy do código novo vira catraca de contagem; nunca `continue-on-error`.
+- `.claude/handoff-current.md` no `.gitignore` versionado: o docs-check do CI acusava o link do CLAUDE.md toda noite.
+- `test_pausa_de_reparo` compara a saúde antes e depois da pausa; `test_backup::test_copia_a_frio_...` só no Windows.
+- Prova: `simulated` (`scripts/tests/test_mypy_catraca.py`, `scripts/tests/test_docs_check.py::CloneLimpo`); a
+  corrida diária com tudo isso é `not_run` até o primeiro cron depois do merge.
 
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 

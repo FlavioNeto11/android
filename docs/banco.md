@@ -369,7 +369,10 @@ pela regra de saúde. Desde então o portão é este:
   `pg_depend`; a 85 % do tmpfs, mata a árvore do pytest e para com uma linha. A amostra decide pelo `df`: o rc e o
   erro do `du` não contam, porque ele tropeça em arquivo que some no meio, o comum com esquemas criados e apagados;
   `wal` e `base` ilegíveis saem como "?". Fora do Windows, o pytest sobe num grupo de processos próprio, e o aborto
-  mata o grupo inteiro (o K-099); no Windows, `taskkill /T`. Kill que falha aparece na linha do aborto.
+  mata o grupo inteiro (o K-099); no Windows, `taskkill /T`. Kill que falha aparece na linha do aborto; o pytest que
+  já saiu não é morto de novo. Cada comando ao Docker tem prazo de 30 s (estourou: rc 124, a amostra falha e o laço
+  segue); três amostras seguidas sem o `df` dão uma linha "SEM AMOSTRA do df há 90 s", porque o aborto fica cego; e
+  o `docker run` que falha (a imagem que falta, com o `--pull=never`) diz o erro dele antes do "não aceitou conexão".
   - **Por quê.** Na suíte 35, os 467 arquivos juntos encheram os 4 GB: 181 failed, 823 errors, quase todos
     `DiskFull`. Pelos logs do contêiner, o estouro foi na `base/` (3688 erros ali e 1668 em `global/`, nenhum em
     `pg_wal`). O WAL ficou estável perto de 1 GB, com 30 segmentos reciclados por checkpoint, igual nas metades.

@@ -29,6 +29,11 @@ MAX_ERRO = 300
 INICIO = "inicio"
 #: A chave, no `previa` da linha, da primeira vez que a conversa viu a execução em `planned` (28.39, G1).
 VISTA_EM_PLANNED = "vista_em_planned"
+#: 28.42: o desfecho desta linha saiu com a execução em `awaiting_person` ("parou"); quando ela sair dali, o desfecho se
+#: rearma e o fim real (concluída, falhou, cancelada, ou parou de novo) chega à mesma conversa.
+DESFECHO_PARADO = "desfecho_parado"
+#: Quantas vezes o desfecho desta linha se rearmou: o `desfecho_ja_enviado` conta os envios além delas.
+DESFECHOS_REARMADOS = "desfechos_rearmados"
 
 
 def _previa(bruta: object) -> dict[str, object]:
@@ -327,9 +332,44 @@ class EntradasDoCanal:
             (self.canal, int(depois_de), int(limite or self.LOTE_DESFECHO)))]
 
     def desfecho_ja_enviado(self, ident: int) -> bool:
-        """O desfecho desta linha já saiu e ficou registrado (`canal_enviadas`, origem `resultado`): não se repete."""
-        return self.db.one("SELECT 1 AS x FROM canal_enviadas WHERE canal=? AND entrada_id=? AND origem='resultado'"
-                           " LIMIT 1", (self.canal, int(ident))) is not None
+        """O desfecho desta linha já saiu e ficou registrado (`canal_enviadas`, origem `resultado`): não se repete. Com
+        o desfecho rearmado (28.42), cada rearme pede mais um envio: só os envios além dos rearmes contam."""
+        enviados = int(self.db.scalar("SELECT COUNT(*) FROM canal_enviadas WHERE canal=? AND entrada_id=?"
+                                      " AND origem='resultado'", (self.canal, int(ident))) or 0)
+        return enviados > self._rearmes(ident)
+
+    def _rearmes(self, ident: int) -> int:
+        previa = _previa(self.db.scalar("SELECT previa FROM canal_entradas WHERE id=? AND canal=?", (int(ident), self.canal)))
+        valor = previa.get(DESFECHOS_REARMADOS)
+        return valor if isinstance(valor, int) and not isinstance(valor, bool) else 0
+
+    def desfechos_parados(self, limite: int | None = None, *, depois_de: int = 0) -> list[dict[str, object]]:
+        """As linhas cujo desfecho saiu com a execução parada à espera da pessoa (28.42), em lote que gira como o do
+        desfecho. O LIKE só estreita; quem decide é o JSON lido (lição da #314)."""
+        linhas = [dict(r) for r in self.db.query(
+            "SELECT id, run_id, previa FROM canal_entradas WHERE canal=? AND run_id IS NOT NULL"
+            " AND resultado_em IS NOT NULL AND estado='feita' AND previa LIKE ? AND id > ? ORDER BY id LIMIT ?",
+            (self.canal, f"%{DESFECHO_PARADO}%", int(depois_de), int(limite or self.LOTE_DESFECHO)))]
+        return [r for r in linhas if _previa(r.get("previa")).get(DESFECHO_PARADO) is True]
+
+    def rearmar_desfecho(self, ident: int) -> bool:
+        """A execução saiu de `awaiting_person` (28.42): a linha volta a esperar desfecho, e o próximo envio conta.
+
+        Só rearma a linha que AINDA tem a marca, e uma vez (R1 da leitura do #400): um líder velho, com a foto antiga de
+        `desfechos_parados`, rearmaria uma linha que o novo já rearmou e terminou, e o fim sairia duas vezes. A troca
+        compara o `previa` lido (com a marca) e exige `resultado_em` preenchido; quem perde a corrida não muda nada."""
+        bruta = self.db.scalar("SELECT previa FROM canal_entradas WHERE id=? AND canal=? AND resultado_em IS NOT NULL",
+                               (int(ident), self.canal))
+        previa = _previa(bruta)
+        if previa.get(DESFECHO_PARADO) is not True:
+            return False
+        previa.pop(DESFECHO_PARADO)
+        rearmes = previa.get(DESFECHOS_REARMADOS)
+        previa[DESFECHOS_REARMADOS] = (rearmes if isinstance(rearmes, int) and not isinstance(rearmes, bool) else 0) + 1
+        cur = self.db.execute("UPDATE canal_entradas SET previa=?, resultado_em=NULL WHERE id=? AND canal=?"
+                              " AND resultado_em IS NOT NULL AND previa=?",
+                              (json.dumps(previa, ensure_ascii=False), int(ident), self.canal, bruta))
+        return cur.rowcount == 1
 
     def vista_em_planned(self, ident: int) -> datetime:
         """A primeira vez que a conversa viu a execução desta linha em `planned` (28.39, G1), gravada no `previa` da linha
@@ -352,9 +392,16 @@ class EntradasDoCanal:
             self.db.execute("UPDATE canal_entradas SET previa=? WHERE id=? AND canal=?",
                             (json.dumps(previa, ensure_ascii=False), int(ident), self.canal))
 
-    def marcar_desfecho(self, ident: int) -> None:
-        self.db.execute("UPDATE canal_entradas SET resultado_em=? WHERE id=? AND canal=?",
-                        (self._agora(), int(ident), self.canal))
+    def marcar_desfecho(self, ident: int, *, parado: bool = False) -> None:
+        """`parado`: o desfecho saiu com a execução em `awaiting_person`; a marca rearma quando ela sair dali (28.42)."""
+        if not parado:
+            self.db.execute("UPDATE canal_entradas SET resultado_em=? WHERE id=? AND canal=?",
+                            (self._agora(), int(ident), self.canal))
+            return
+        previa = _previa(self.db.scalar("SELECT previa FROM canal_entradas WHERE id=? AND canal=?", (int(ident), self.canal)))
+        previa[DESFECHO_PARADO] = True
+        self.db.execute("UPDATE canal_entradas SET resultado_em=?, previa=? WHERE id=? AND canal=?",
+                        (self._agora(), json.dumps(previa, ensure_ascii=False), int(ident), self.canal))
 
     # ------------------------------------------------------------------ o comentário do dono no Trello (28.30)
     def comentarios_com_pedido(self, *, desde: str, card: str | None = None, exceto: int | None = None) -> list[str]:

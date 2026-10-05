@@ -244,7 +244,8 @@ Como decidir:
   travada; só uma pessoa decide o que fazer com ela.
 - Diálogos inesperados que NÃO são verificação da conta (novidades, permissões, avaliações): dispense-os com
   segurança ("Agora não", "Fechar") e siga.
-- Aviso, banner ou cookies que cobre o ALVO desta etapa: feche-o; se ele não fechar, siga sem ele (não insista).
+- Aviso, banner ou cookies que cobre o ALVO desta etapa: feche-o ou recuse; NUNCA aceite cookies nem
+  consentimento (o executor recusa o toque). Se ele não fechar, siga sem ele (não insista).
 - Se o item procurado não está visível, role a lista antes de desistir.
 - Tela de login com a senha da conta na lista "Dados da persona disponíveis": preencha os campos comuns com
   type_text (o usuário já vem resolvido nos parâmetros, ou nos dados do comando) e o campo de SENHA com
@@ -299,7 +300,9 @@ tela (imagem + hierarquia). Julgue APENAS o que é observável agora:
   antes (horário anterior, mais acima na conversa) não contam. null quando não se aplica ou não dá para contar.
 - `sobreposicao`: true quando o seu "no"/"uncertain" é porque um diálogo, banner, aviso ou pedido de cookies COBRE o
   que a pós-condição pede (o conteúdo existe por baixo, mas não dá para afirmar). Conteúdo parcialmente coberto não
-  satisfaz a pós-condição por isso. null nos outros casos.
+  satisfaz a pós-condição por isso. Se o que está VISÍVEL fora do aviso já mostra outra causa (conteúdo errado, outra
+  tela), `sobreposicao` é false: fechar o aviso não resolveria. O que está só escondido pelo aviso não é outra causa.
+  null nos outros casos.
 - `cobre`: com `sobreposicao` true, o id (eN, da lista de elementos) do elemento que cobre: o diálogo, o banner ou o
   botão de fechar dele. null quando ele não está na lista ou nos outros casos.
 - `evidence` cita, em português, o texto/elemento que fundamenta o julgamento.

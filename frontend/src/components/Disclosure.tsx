@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { cx } from '../lib/format';
 import ui from './ui.module.css';
 
@@ -8,6 +8,12 @@ interface DisclosureProps {
   /** Texto discreto alinhado à direita do resumo (contagens, horários…). */
   meta?: ReactNode;
   defaultOpen?: boolean;
+  /**
+   * Abre quando passa de falso a verdadeiro, depois de montado também; nunca fecha. É o `defaultOpen` para o que
+   * depende de uma leitura que pode chegar depois do bloco (ex.: a saúde do Livro), sem desfazer o que a pessoa
+   * fechou ou abriu (29.112).
+   */
+  openWhen?: boolean;
   /** Sem moldura — para uso dentro de cartões e linhas. */
   bare?: boolean;
   /** Avisado na primeira abertura (carregamento sob demanda). */
@@ -21,9 +27,23 @@ interface DisclosureProps {
 }
 
 /** <details>/<summary> nativo: teclado e leitores de tela funcionam sem código extra. */
-export function Disclosure({ summary, meta, defaultOpen = false, bare, onFirstOpen, onToggle, className, id, children }: DisclosureProps) {
-  const [open, setOpen] = useState(defaultOpen);
-  const [everOpened, setEverOpened] = useState(defaultOpen);
+export function Disclosure({ summary, meta, defaultOpen = false, openWhen = false, bare, onFirstOpen, onToggle, className, id, children }: DisclosureProps) {
+  const [open, setOpen] = useState(defaultOpen || openWhen);
+  const [everOpened, setEverOpened] = useState(defaultOpen || openWhen);
+  const pediaAntes = useRef(openWhen);
+
+  useEffect(() => {
+    const subiu = openWhen && !pediaAntes.current;
+    pediaAntes.current = openWhen;
+    if (!subiu) return;
+    setOpen(true);
+    if (!everOpened) {
+      setEverOpened(true);
+      onFirstOpen?.();
+    }
+    // Só a subida do `openWhen` importa: `everOpened` e `onFirstOpen` mudarem não reabre o que a pessoa fechou.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openWhen]);
 
   return (
     <details

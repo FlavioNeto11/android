@@ -88,6 +88,8 @@ describe('Qual era o pedido? (30.25)', () => {
     await click(responder());
     await waitFor(() => expect(backend.callsTo('POST', /intencao$/)).toHaveLength(1));
     expect(backend.callsTo('POST', /intencao$/)[0]?.body).toEqual({ escolha: 'nenhum' });
+    // Até a resposta chegar: com ela em voo, o handler rodaria já no teste seguinte e marcaria `respondida` lá (29.104).
+    await waitFor(() => expect(text(container)).toContain('Nenhum pedido para identificar'));
   });
 
   it('já respondida (409) avisa e atualiza; fora do catálogo (422) mostra o erro na pergunta', async () => {

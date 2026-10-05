@@ -70,6 +70,9 @@ TEXTOS: list[tuple[str, FailureKind]] = [
     ("A IA não usou collect_list na etapa de coleta.", F.IA_CHAMADA_INVALIDA),
     # Saídas de etapa (item 24.3): o valor que as seguintes usam, não lido pelo ator, e a citação sem leitura anterior.
     ("A IA concluiu a etapa sem ler o valor que ela entrega às seguintes.", F.IA_CHAMADA_INVALIDA),
+    # 31.78: releituras com valores diferentes até o teto da leitura.
+    ("A IA leu valores divergentes de 'contagem' até o teto de 12 decisões da leitura; nenhum valor ficou estável para "
+     "entregar às seguintes.", F.IA_CHAMADA_INVALIDA),
     ("O valor da etapa não foi lido na tela: o elemento e9 não existe nesta tela", F.IA_CHAMADA_INVALIDA),
     ("A lista foi lida, mas o valor 'assunto' que esta etapa entrega às seguintes não foi lido (read_value).",
      F.IA_CHAMADA_INVALIDA),

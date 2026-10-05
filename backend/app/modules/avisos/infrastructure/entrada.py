@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Protocol
 
 from app.config import Config
-from app.models import RUN_SEM_TRABALHO, Problem, RunTargetsResolveBody
+from app.models import RUN_SEM_TRABALHO, Problem, RunStatus, RunTargetsResolveBody
 from app.modules.avisos.adapters.telegram import CanalTelegram, ConflitoDeConsumidor
 from app.modules.avisos.application.entrada import (
     AJUDA,
@@ -92,8 +92,11 @@ OPERADOR_DO_TELEGRAM = "telegram:dono"
 #: Estados de uma execução que já iniciou e ainda não acabou: a mensagem ao dono nunca diz "não iniciei" (28.36).
 EM_ANDAMENTO = ("running", "paused")
 #: Estados com desfecho: o de sempre (`portas.desfecho`) é a linha ao dono, e nenhuma outra (28.36). Os finais e, desde
-#: o 29.93, `awaiting_person`: o trabalho automático acabou e a linha diz que a execução espera um gesto dele.
-TERMINAIS = frozenset(s.value for s in RUN_SEM_TRABALHO)
+#: o 29.93, `awaiting_person`: o trabalho automático acabou e a linha diz que a execução espera um gesto dele. O nome
+#: não é "terminais" (28.42): `awaiting_person` não é fim, e o desfecho dele se rearma quando a execução sai dali.
+COM_DESFECHO = frozenset(s.value for s in RUN_SEM_TRABALHO)
+#: O estado cujo desfecho ("parou") se rearma na saída (28.42).
+PARADA_PELA_PESSOA = RunStatus.awaiting_person.value
 #: Em `needs_input` a execução para até alguém responder; pelo Telegram não se responde, então o texto aponta o painel.
 RESPONDA_NO_PAINEL = "espera uma resposta sua: responda no painel para ela seguir"
 
@@ -582,6 +585,8 @@ class ConversaDoCanal:
         self._desfecho_espera_ate = 0.0
         #: O lote dos desfechos gira (28.39): a próxima volta começa depois desta linha (0 = do começo).
         self._desfecho_depois_de = 0
+        #: O lote das linhas com o desfecho "parou" gira do mesmo jeito (28.42).
+        self._rearme_depois_de = 0
         #: O "sim" ou o "não" do dono a quem chegou (28.18): (chat, autorizar) → o que responder ao dono. Só o leitor do
         #: Telegram com os convidados ligados o põe; sem ele, a resposta diz que o caminho está desligado.
         self.decidir_convidado: Callable[[str, bool], Awaitable[str]] | None = None
@@ -1611,10 +1616,10 @@ class ConversaDoCanal:
 
     async def _seguiu(self, saida: SaidaDaConversa, linha: Linha, de: tuple[str, ...], run_id: str, estado: str,
                       texto: str) -> None:
-        """A execução saiu de `planned` por outro caminho: a linha fica feita, e o desfecho de sempre a conta. Já
-        TERMINAL, o desfecho é a única linha ao dono (sem isto ele leria duas: esta e a do desfecho, na volta seguinte).
-        O envio não sobe: no vigia, um erro aqui calaria as linhas seguintes da volta (revisão do #346, E1)."""
-        if not self.repo.marcar(self._id(linha), "feita", run_id=run_id, de=de) or estado in TERMINAIS:
+        """A execução saiu de `planned` por outro caminho: a linha fica feita, e o desfecho de sempre a conta. Num
+        estado `COM_DESFECHO`, ele é a única linha ao dono (sem isto ele leria duas: esta e a do desfecho, na volta
+        seguinte). O envio não sobe: no vigia, um erro aqui calaria as linhas seguintes da volta (revisão do #346, E1)."""
+        if not self.repo.marcar(self._id(linha), "feita", run_id=run_id, de=de) or estado in COM_DESFECHO:
             return
         try:
             await self._responder(saida, linha, texto)
@@ -1689,6 +1694,7 @@ class ConversaDoCanal:
         falha passageira para a volta (o canal está fora) e a linha tenta de novo na seguinte, nunca antes do que o 429
         pediu (`espera_s`). Sem teto de tentativas: no máximo uma falha por volta, e a linha `feita` sai pela faxina da
         retenção (28.16)."""
+        self._rearmar_desfechos()
         if self._agora() < self._desfecho_espera_ate:
             return
         # O lote gira (28.39): com 20 linhas antigas de execução longa à frente, as novas esperariam para sempre. O cursor
@@ -1699,6 +1705,18 @@ class ConversaDoCanal:
         for linha in linhas:
             run_id = str(linha["run_id"])
             texto = self.portas.desfecho(run_id)
+            parado = False
+            if texto is not None:
+                # 28.42 (N2 da leitura do #400): o estado só se lê quando há desfecho, uma vez por execução que chega a
+                # ele, e não a cada volta para as 20 em curso. Lido ANTES do texto que vale (o texto é relido): se a
+                # execução sair da espera entre as duas leituras, o pior caso é o fim contado duas vezes (o rearme),
+                # nunca calado. Sem a leitura, o desfecho sai sem rearme, como antes. O ideal, para depois: a porta
+                # devolver estado e texto de uma leitura só.
+                try:
+                    parado = self.portas.estado_da_execucao(run_id) == PARADA_PELA_PESSOA
+                except Exception:  # noqa: BLE001 - a leitura do estado não cala o desfecho
+                    parado = False
+                texto = self.portas.desfecho(run_id)
             if texto is None:
                 # A linha fica `feita` ainda em `planning`: antes de 1 h de linha, a execução não pode estar 1 h em
                 # `planned`. Só então se lê o estado (a volta não relê as 20 execuções em curso a cada vez).
@@ -1709,7 +1727,7 @@ class ConversaDoCanal:
                 # Saiu e ficou registrado, mas a marca não gravou (o banco caiu entre os dois): não repete (revisão do
                 # #358, F2). O tempo esgotado DEPOIS de o canal aceitar não deixa registro e ainda pode repetir: a
                 # troca é "pelo menos uma vez", porque na execução terminal esta é a única linha ao dono.
-                self.repo.marcar_desfecho(self._id(linha))
+                self.repo.marcar_desfecho(self._id(linha), parado=parado)
                 continue
             try:
                 await self._responder(saida, linha, self._texto_do_desfecho(texto), origem="resultado", exigir=True)
@@ -1719,8 +1737,26 @@ class ConversaDoCanal:
                         self._desfecho_espera_ate = self._agora() + falha.espera_s
                     return
                 log.warning("telegram: desfecho da mensagem %s não sai nunca (%s)", linha.get("id"), falha.motivo)
-            self.repo.marcar_desfecho(self._id(linha))
+            self.repo.marcar_desfecho(self._id(linha), parado=parado)
         self._desfecho_depois_de = self._id(linhas[-1]) if len(linhas) >= self.repo.LOTE_DESFECHO else 0
+
+    def _rearmar_desfechos(self) -> None:
+        """28.42: o desfecho se marca uma vez por conversa, e o "parou" de `awaiting_person` não é o fim. Quando a
+        execução sai dali (o gesto da pessoa a retomou, concluiu, cancelou, ou ela foi purgada), a linha volta a esperar
+        desfecho e o fim real chega à mesma conversa. Sem envio aqui: quem fala é o `_contar_desfechos`, com as travas
+        de sempre (429, falha passageira, anti-repetição). O lote gira como o do desfecho."""
+        linhas = self.repo.desfechos_parados(depois_de=self._rearme_depois_de)
+        if not linhas and self._rearme_depois_de:
+            linhas = self.repo.desfechos_parados()
+        for linha in linhas:
+            try:
+                estado = self.portas.estado_da_execucao(str(linha["run_id"]))
+            except Exception:  # noqa: BLE001 - sem a leitura, tenta na volta seguinte
+                log.exception("telegram: estado da execução %s parada", linha.get("run_id"))
+                continue
+            if estado != PARADA_PELA_PESSOA:
+                self.repo.rearmar_desfecho(self._id(linha))
+        self._rearme_depois_de = self._id(linhas[-1]) if len(linhas) >= self.repo.LOTE_DESFECHO else 0
 
     def _plano_esquecido(self, linha: Linha, run_id: str) -> None:
         """A hora conta de quando a conversa VIU a execução em `planned` (revisão do #358, F1): `runs` não guarda a hora

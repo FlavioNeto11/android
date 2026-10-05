@@ -209,8 +209,9 @@ async def test_usuario_assume_no_ponto_seguro_e_devolve_para_a_ia(harness: Harne
     await harness.wait(lambda: rt.control == ControlOwner.ai, what="IA no controle")
     status, lease = st.devices.request_control(rt)
     assert status == "pending" and rt.takeover_requested      # a IA termina a ação atual antes de ceder
-    with pytest.raises(ControlError):                          # sem disputa de cliques: ainda não é do usuário
+    with pytest.raises(ControlError) as cedo:                  # sem disputa de cliques: ainda não é do usuário
         await st.devices.manual_input(rt, ManualInput(lease_id=lease, frame_id="x", type="key", key="back"))
+    assert cedo.value.code == "not_controller"                # o lease, não o quadro (a tecla não o confere: 29.105)
     await harness.wait(lambda: rt.control == ControlOwner.user, what="controle concedido")
     assert rt.lease_id == lease and "android-01" not in st.scheduler.workers
     calls_before = len(fake.calls)

@@ -1395,7 +1395,8 @@ class Scheduler:
         """Execução terminou: solta o que era guardado só por causa dela.
 
         `venceu`: este worker gravou a marca `assentada_em` (#382) junto com o estado final. Sem ela, outro já
-        assentou (a rede de quem fecha sem worker, ou outro worker da mesma execução): assentar de novo seria em dobro.
+        assentou (a rede de quem fecha sem worker, ou outro worker da mesma execução): assentar de novo seria em dobro,
+        e este processo só solta o que é dele (`on_run_parada`, 29.108).
 
         `awaiting_person` (29.93) para sem assentar: solta o que a main soltava nessa hora, quando a parada era
         `completed_with_issues` (o explorador, a trava de rascunho, o acordar dos pedidos), mas nenhum digest
@@ -1408,8 +1409,12 @@ class Scheduler:
             return
         self._pathfinders.pop(run_id, None)
         if run["status"] in terminais and not venceu:
-            return
-        gancho = self.on_run_settled if run["status"] in terminais else self.on_run_parada
+            # 29.108 (K2 da leitura do #382): outro assentou (a rede, outro worker, outro backend), mas o que é DESTE
+            # processo ele não soltou: a trava de rascunho mora no dicionário deste `AppState`. Solta o idempotente, o
+            # mesmo da parada, sem o digest (que foi de quem ganhou a marca).
+            gancho = self.on_run_parada
+        else:
+            gancho = self.on_run_settled if run["status"] in terminais else self.on_run_parada
         if gancho is not None:
             try:
                 gancho(run_id)

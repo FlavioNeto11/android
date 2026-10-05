@@ -24,6 +24,8 @@ async function renderSection(status: AiStatus): Promise<HTMLElement> {
     root.render(<AiSection />);
   });
   await waitFor(() => expect(backend.callsTo('GET', /^\/api\/ai$/)).toHaveLength(1));
+  // O pedido registrado não é a resposta: espera a seção sair do "Consultando" (29.104).
+  await waitFor(() => !text(container).includes('Consultando o status da IA'));
   return container;
 }
 
