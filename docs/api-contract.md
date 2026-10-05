@@ -6165,3 +6165,23 @@ repetição não muda a chave do item, então não dava `plano_mudou`.
 - **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_telegram_entrada.py`,
   `backend/tests/test_telegram_portas.py`, `backend/tests/test_executor_honra_o_plano.py`,
   `frontend/src/features/runs/PortaDoPlano.test.tsx`). `not_run`: o gesto no central (depois do deploy 34).
+
+## Adendo v1.46 (05/10/2026; número da orquestradora; item 31.65) — o motivo da recusa da persona fica só no detalhe da etapa
+
+V2 da revisão do 31.63: quando a persona recusava escrever o texto de uma etapa, a dica do bloqueio (`needs` do
+objetivo) era o motivo do modelo, que pode citar o pedido ou o nome de um terceiro. Essa dica viaja ao bloqueio do
+objetivo, às Pendências, ao aviso no Telegram e ao Trello.
+
+- **A dica é fixa:** "A persona se recusou a escrever este texto; o motivo dela está no detalhe da etapa. Reescreva a
+  intenção e retome o item." (`social.approvals.DICA_DA_RECUSA`). O `blocked_reason` segue "a persona se recusou a
+  escrever este texto".
+- **`StepDTO.motivo_da_persona`** (`string | null`, aditivo; `GET /runs/{id}`): o motivo da recusa, guardado na etapa
+  (`steps.draft_meta.motivo_da_recusa`, até 600 caracteres). `null` sem recusa; o texto escrito na retomada o apaga.
+- **Onde o motivo aparece:** só no detalhe da execução (`GET /runs/{id}`) e, no painel, como "Motivo da persona" no
+  detalhe da etapa (sessão logada do dono e dos operadores). NÃO vai ao evento `step.updated` (gravado em `events` e
+  transmitido a todo navegador): sem a chave no evento, o painel mantém o valor do detalhe; com `null`, limpa. Não vai
+  ao relatório da execução, à dica, às Pendências, ao aviso nem ao Trello.
+- **A chave não fecha a escrita:** a marca de rascunho (`draft_meta` preenchido) ignora `motivo_da_recusa`; a retomada
+  escreve de novo.
+- **Prova:** `simulated` (`backend/tests/test_protecao_de_frota.py`, `frontend/src/store/reducer.test.ts`,
+  `frontend/src/features/runs/CorrigirEtapa.test.tsx`). `not_run`: a recusa real no central.

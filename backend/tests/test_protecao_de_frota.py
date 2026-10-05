@@ -434,6 +434,10 @@ async def test_texto_que_fala_por_terceiro_nao_chega_ao_aparelho(harness: Any) -
     assert veredito.hint == DICA_DA_RECUSA
     etapa = state.repo.step_dto(state.db.one("SELECT * FROM steps WHERE id='run-f:android-01:v1:efeito'"))
     assert "terceiro" in (etapa.motivo_da_persona or "")
+    # ...e não viaja em evento (gravado em `events` e transmitido a todo navegador).
+    state.repo.emit_step("run-f:android-01:v1:efeito", "x")
+    gravado = json.loads(state.db.scalar("SELECT data FROM events WHERE kind='step.updated' ORDER BY id DESC LIMIT 1"))
+    assert "motivo_da_persona" not in gravado["step"] and "terceiro" not in json.dumps(gravado)
     bindings = json.loads(state.db.one("SELECT bindings FROM steps WHERE id='run-f:android-01:v1:efeito'")["bindings"])
     assert "content" not in bindings                                     # nada foi escrito na etapa
     assert state.approval_service.list() == []

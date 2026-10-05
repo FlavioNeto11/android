@@ -1569,9 +1569,15 @@ class Repository:
 
     def emit_step(self, step_id: str, message: str, *, level: str = "info") -> None:
         r = self.step_row(step_id)
+        etapa = self.step_dto(r).model_dump(mode="json")
+        if etapa.get("motivo_da_persona"):
+            # 31.65: o motivo da recusa é texto do modelo e pode citar um terceiro. O evento é gravado em `events` e
+            # transmitido a todo navegador conectado: ele não vai. O painel o lê do detalhe da execução
+            # (`GET /runs/{id}`), e sem a chave no evento mantém o que já tinha; `null` (sem recusa) o limpa.
+            del etapa["motivo_da_persona"]
         self.bus.emit("step.updated", f"{r['instance_id']}: {message}", level=level, run_id=r["run_id"],
                       instance_id=r["instance_id"], objective_id=r["objective_id"], step_id=step_id,
-                      data={"step": self.step_dto(r).model_dump(mode="json")})
+                      data={"step": etapa})
 
     def emit_attempt(self, attempt_id: str, step: Row | None) -> None:
         a = self.db.one("SELECT * FROM attempts WHERE id=?", (attempt_id,))
