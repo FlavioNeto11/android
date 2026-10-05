@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import shutil
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -19,7 +20,7 @@ from pydantic import SecretStr
 from app.main import create_app
 from app.modules.portal.application.protecao import cliente_pseudonimo, emitir_token
 from app.modules.portal.infrastructure.contatos_sql import RETENCAO_DIAS
-from app.modules.portal.montagem import RETENCAO_S, EstadoDoLaco
+from app.modules.portal.montagem import RETENCAO_S, EstadoDoLaco, RelogioReal
 from app.util import now
 
 from .conftest import Harness
@@ -84,8 +85,10 @@ def _relogio(h: Harness) -> RelogioParado:
     return h.state.portal.relogio
 
 
-def _cliente(h: Harness, *, ip: str = IP, origem: str | None = f"https://{PUBLICO}") -> httpx.AsyncClient:
-    _relogio(h)
+def _cliente(h: Harness, *, ip: str = IP, origem: str | None = f"https://{PUBLICO}",
+             relogio_real: bool = False) -> httpx.AsyncClient:
+    if not relogio_real:
+        _relogio(h)
     app = create_app(h.cfg, state=h.state)
     app.state.poc = h.state
     cab = {"cf-connecting-ip": ip}
@@ -103,7 +106,9 @@ def _token(h: Harness, idade_s: float = 10) -> str:
 def _corpo(h: Harness, **muda: object) -> dict[str, object]:
     corpo: dict[str, object] = {"nome": "Visitante Fictício", "empresa": "Empresa Fictícia", "telefone": TELEFONE,
                                 "mensagem": "Quero conhecer a ANA.\nPodem ligar à tarde?", "consentimento": True,
-                                "site": "", "token": _token(h)}
+                                "site": ""}
+    # Só emite o token (e para o relógio) se o teste não trouxe o dele: o do relógio real não pode ser trocado aqui.
+    corpo["token"] = muda.pop("token") if "token" in muda else _token(h)
     corpo.update(muda)
     return corpo
 
@@ -566,3 +571,37 @@ def test_uma_volta_do_laco_com_o_relogio_parado(harness: Harness, monkeypatch: p
     relogio.avancar(RETENCAO_S - 60)                                       # 1 h depois da 1ª retenção
     asyncio.run(portal.volta_do_laco(estado))
     assert [f for f, _ in feito[4:]] == ["reenvio", "retencao"]
+
+
+# ---------------------------------------------------------------- T.2, R1 da leitura do #387: o relógio de verdade
+def test_o_relogio_real_e_utc_concorda_com_a_epoca_e_o_monotonico_nao_volta() -> None:
+    """Todo teste de rota troca o relógio pelo parado; este prova o que fica em produção: `agora()` com fuso UTC, a
+    mesma hora de `epoch_s()` (o token guarda uma, a rota confere com a outra) e o monotônico que não volta."""
+    relogio = RelogioReal()
+    agora, epoca = relogio.agora(), relogio.epoch_s()
+    assert agora.tzinfo is not None and agora.utcoffset() == timedelta(0)
+    assert abs(agora.timestamp() - epoca) < 2 and abs(epoca - time.time()) < 2
+    antes = relogio.monotonico_s()
+    assert relogio.monotonico_s() >= antes
+
+
+async def test_a_rota_do_contato_com_o_relogio_real_aceita_o_token_da_pagina(harness: Harness,
+                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sem trocar o relógio: o `AppState` sobe com o `RelogioReal`, o token emitido na hora de parede de verdade (10 s
+    atrás, para passar do mínimo sem esperar) é aceito e gravado, e um token de antes do máximo é `token_expirado`.
+    Um `epoch_s` errado ou um `agora` sem fuso recusaria todo contato no ar; aqui isso reprova."""
+    _ligar(harness, monkeypatch, CanaisFalsa())
+    assert harness.state is not None
+    assert isinstance(harness.state.portal.relogio, RelogioReal)
+    sal = harness.state.portal.contatos.sal()
+    lim = harness.cfg.file.portal.limites
+    async with _cliente(harness, ip="203.0.113.31", relogio_real=True) as c:
+        aceito = await c.post(ROTA, json=_corpo(harness, token=emitir_token(sal, time.time() - 10)))
+        assert aceito.status_code == 202 and len(_linhas(harness)) == 1
+        velho = await c.post(ROTA, json=_corpo(harness, token=emitir_token(sal, time.time() - lim.token_max_s - 60)))
+        # O token que a PÁGINA emite (`epoch_s`) e a rota confere (`agora`): recém-emitido é "cedo" (202 sem gravar),
+        # nunca `token_expirado`, que é o que um `epoch_s` atrasado daria.
+        da_pagina = await c.post(ROTA, json=_corpo(harness, token=harness.state.portal.token()))
+    assert velho.status_code == 400 and velho.json()["detail"]["code"] == "token_expirado"
+    assert da_pagina.status_code == 202 and len(_linhas(harness)) == 1
+    assert isinstance(harness.state.portal.relogio, RelogioReal)                 # ninguém trocou no caminho
