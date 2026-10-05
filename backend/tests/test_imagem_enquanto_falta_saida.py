@@ -97,3 +97,68 @@ def test_a_leitura_visual_e_a_chave_sao_independentes() -> None:
     """A chave do 31.71 não liga a leitura visual (ADR-070) nem depende dela; só muda o texto do lembrete."""
     ai = AiCfg(imagem_enquanto_falta_saida=True)
     assert ai.leitura_visual == LeituraVisualCfg() and ai.leitura_visual.enabled is False
+
+
+# ------------------------------------------------- A2 da leitura do #379: a fiação pelo laço do executor, com o harness
+# O roteiro é o da r-…-2e0775 (o de `test_leitura_sem_step_done`): observar, `step_done` recusado, observar, `step_done`
+# recusado, ler o remetente, observar, ler o assunto, `step_done`. Do índice 0 ao 6 falta saída; do 7 em diante, não.
+from typing import Any  # noqa: E402
+
+import pytest  # noqa: E402
+
+from app.planning.provider import Decision, Usage  # noqa: E402
+
+from .test_leitura_sem_step_done import _plano, _roteiro, caixa  # noqa: E402,F401 - `caixa` é fixture
+
+ULTIMA_COM_SAIDA_FALTANDO = 6                            # a decisão que lê o assunto
+
+
+async def _pelo_laco(harness: Harness, ligada: bool) -> tuple[list[dict[str, Any]], list[str]]:
+    harness.cfg.file.ai.relacao_do_valor = False
+    harness.cfg.file.ai.imagem_enquanto_falta_saida = ligada
+    harness.cfg.file.ai.image_policy = "auto"                 # o harness manda sempre; o 31.71 é regra do `auto`
+    visto: dict[str, Any] = {}
+    roteiro = _roteiro(harness, visto)
+    decisoes: list[dict[str, Any]] = []
+
+    async def decide(req: Any) -> tuple[Decision, Usage]:
+        if req.ctx.step_key == "ler_caixa":
+            decisoes.append({"imagem": req.screen.jpeg is not None,
+                             "lembretes": [h for h in req.history if h.startswith("(executor) a imagem desta observação")]})
+        return await roteiro(req)
+
+    harness.ai.inner.plan, harness.ai.inner.decide = _plano(harness.ai.inner), decide
+    run = harness.run(["android-01"])
+    final = await harness.wait_run(run.id, timeout=90)
+    assert final.status == "completed"
+    db = harness.state.db                                                     # type: ignore[union-attr]
+    motivos = [r["image_reason"] for r in db.query(
+        "SELECT image_reason FROM ai_calls WHERE role = 'decide' AND attempt_id LIKE ? ORDER BY id",
+        ("%:ler_caixa:%",))]
+    return decisoes, motivos
+
+
+async def test_pelo_laco_a_chave_ligada_manda_imagem_e_lembrete_em_toda_decisao_com_saida_faltando(
+        harness: Harness, caixa: None) -> None:
+    decisoes, motivos = await _pelo_laco(harness, ligada=True)
+    assert len(decisoes) > ULTIMA_COM_SAIDA_FALTANDO
+    # a 2ª decisão (depois do `observe_screen`, antes de qualquer recusa) vai por `leitura_pendente`, com a imagem
+    assert motivos[1] == "leitura_pendente" and decisoes[1]["imagem"]
+    for i, d in enumerate(decisoes):
+        if i <= ULTIMA_COM_SAIDA_FALTANDO:
+            # imagem e lembrete juntos em TODA decisão com saída faltando, inclusive a de motivo `problema` (A1);
+            # o lembrete aparece UMA vez: não acumula no histórico durável
+            assert d["imagem"] and len(d["lembretes"]) == 1, (i, d)
+            assert "QA-0" not in d["lembretes"][0]                # só nomes, nunca o valor lido
+        else:
+            assert not d["lembretes"], (i, d)                    # lidas as duas, o lembrete some
+    assert "problema" in motivos                                 # houve decisão logo depois da recusa, e ela levou o lembrete
+
+
+async def test_pelo_laco_a_chave_desligada_nao_muda_nada(harness: Harness, caixa: None) -> None:
+    decisoes, motivos = await _pelo_laco(harness, ligada=False)
+    assert "leitura_pendente" not in motivos
+    assert all(not d["lembretes"] for d in decisoes)
+    assert motivos[1] in ("arvore_rica", "arvore_pobre"), motivos
+    # a imagem da 2ª decisão segue a regra de antes: só vai se a árvore do app de teste for pobre
+    assert decisoes[1]["imagem"] is (motivos[1] == "arvore_pobre")

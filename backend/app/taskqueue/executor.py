@@ -2535,9 +2535,11 @@ class StepExecutor:
                     if teto_leitura and decisions >= teto_leitura:
                         return await dado_ausente(f"teto de {teto_leitura} decisões da leitura", obs)
                     decisions += 1
-                # 31.71: o lembrete vai só na cópia desta decisão, quando a imagem foi por `leitura_pendente`.
+                # 31.71: o lembrete vai só na cópia desta decisão, em TODA decisão com saída faltando e imagem anexada,
+                # qualquer que seja o motivo dela (A1 da leitura do #379): logo depois da recusa do `step_done` o motivo
+                # é `problema`, e é justamente ali que o lembrete mais importa.
                 lembrete = (lembrete_da_leitura(faltam_saidas(), visual=ai_cfg.leitura_visual.enabled)
-                            if motivo_imagem == "leitura_pendente" and screen.jpeg else None)
+                            if ai_cfg.imagem_enquanto_falta_saida and faltam_saidas() and screen.jpeg else None)
                 actor_history = historico_do_ator(history, ai_cfg.actor_history_lines, lembrete)
                 rr.exerceu(StrategyKind.ai_actor)
                 if licoes is None:
