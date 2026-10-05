@@ -98,6 +98,15 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   de `node` de verdade do Appium órfão) e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a
   próxima subida do backend com outro Appium na porta).
 
+## 2026-10-05 — 29.128, o lote "Completar com IA" não diz "completada" sem o modelo chamado (branch fix/29-128-lote-completar-frase)
+
+- A frase comparava o `updated_at` da resposta com o da persona na lista da tela. Com a lista velha, ou com a persona
+  editada noutra aba, ela dizia "completada" quando o servidor devolveu a persona sem chamar o modelo. Agora a
+  persona é relida antes do pedido e a comparação é com ela. Se essa leitura falha, o pedido vai assim mesmo e a
+  frase diz que não dá para saber.
+- Nota P da leitura do #423: a barra conta as releituras pendentes. Com duas, a primeira que assenta não solta a trava.
+- Prova simulated (`AcoesEmLote.test.tsx`, 2 casos novos): três mutações, todas pegas; frontend inteiro 1630/1630.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.

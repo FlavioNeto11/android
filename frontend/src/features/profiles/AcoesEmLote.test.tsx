@@ -98,6 +98,9 @@ async function render(): Promise<void> {
 describe('ações em lote', () => {
   function rotas(pessoas: PersonaDTO[] = [MARIANA, LUCAS, HELENA]) {
     backend.on('GET', /^\/api\/personas$/, () => json(pessoas));
+    // O "Completar" relê a persona antes do pedido (29.128). Uma rota específica registrada depois, no teste, vence esta:
+    // o FakeBackend tenta da mais nova para a mais velha.
+    backend.on('GET', /^\/api\/personas\/[^/]+$/, (c) => json(pessoas.find((p) => c.path.endsWith(`/${p.id}`))));
     backend.on('GET', /\/instagram\/policy-groups$/, () => json([
       { id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [], members: [],
         created_at: '', updated_at: '' },
@@ -173,6 +176,31 @@ describe('ações em lote', () => {
     ]));
     expect(text()).toContain('completada');
     expect(text()).toContain('nada faltava');
+  });
+
+  // 29.128: a frase compara com a persona relida antes do pedido, não com a da lista na tela.
+  it('completar com a lista velha: sem o modelo chamado diz "nada faltava", mesmo com o updated_at da tela antigo', async () => {
+    const agora = { ...MARIANA, updated_at: '2026-09-28T13:00:00Z' };   // editada noutra aba: a tela tem a anterior
+    rotas();
+    backend.on('GET', /^\/api\/ai$/, () => json(IA_PAGA));
+    backend.on('GET', /\/personas\/ig-1$/, () => json(agora));
+    backend.on('GET', /\/personas\/ig-2$/, () => apiError(503, 'unavailable', 'banco ocupado'));
+    backend.on('POST', /\/personas\/ig-1\/enrich$/, () => json(agora));             // sem lacuna: o mesmo de agora
+    backend.on('POST', /\/personas\/ig-2\/enrich$/, () => json({ ...LUCAS, updated_at: '2026-09-28T13:05:00Z' }));
+    await render();
+    await waitFor(() => text().includes('Lucas Almeida'));
+    await selecionar('Mariana Costa', 'Lucas Almeida');
+    await click(byRole('button', /Completar com IA/, barra()));
+    const dialogo = await waitFor(() => byRole('dialog', /Completar/));
+    await click(await waitFor(() => byRole('button', /^Completar 2/, dialogo)));
+    await waitFor(() => text().includes('Terminado: 2 ok · 0 falharam.'));
+    const itens = [...dialogo.querySelectorAll('ul[aria-label="Resultado por persona"] li')].map((li) => text(li));
+    expect(itens).toHaveLength(2);
+    expect(itens.find((t) => t.includes('Mariana'))).toContain('nada faltava: o modelo não foi chamado');
+    expect(text(dialogo)).not.toMatch(/Mariana[^·]*completada/);
+    // Sem a leitura de antes, a frase não afirma nada que não sabe; o pedido ao modelo vai assim mesmo.
+    expect(itens.find((t) => t.includes('Lucas'))).toContain('não dá para dizer se o modelo foi chamado');
+    expect(backend.callsTo('POST', /\/personas\/ig-2\/enrich$/)).toHaveLength(1);
   });
 
   it('grupo de acesso: PATCH do perfil com policy_group_id; sem conta falha com motivo e sem requisição', async () => {
@@ -422,6 +450,40 @@ describe('ações em lote', () => {
     expect(byRole('button', /^Apagar/, barra()).getAttribute('aria-disabled')).toBeNull();
 
     await act(async () => { soltar!(true); });
+    await waitFor(() => byRole('button', /^Grupo de acesso/, barra()).getAttribute('aria-disabled') === null);
+  });
+
+  // 29.128 (nota P do #423): com duas releituras pendentes, a primeira que assenta não solta a trava.
+  it('duas releituras passam do prazo: a trava só sai quando a última assenta', async () => {
+    const soltas: ((relida: boolean) => void)[] = [];
+    rotas([MARIANA, LUCAS]);
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
+    backend.on('DELETE', /\/personas\//, () => new Response(null, { status: 204 }));
+    await act(async () => {
+      root.render(<><BarraDeLote selecionadas={[MARIANA, LUCAS]} grupos={[GRUPO]} onLimpar={() => {}}
+                                 onConcluido={() => new Promise<boolean>((r) => { soltas.push(r); })} prazoDaReleituraMs={50} />
+        <ConfirmHost /></>);
+    });
+    // Lote A (grupo) estoura o prazo.
+    await click(byRole('button', /Grupo de acesso/, barra()));
+    let dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
+    await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
+    await waitFor(() => text(dialogo).includes('Terminado: 2 ok'));
+    await click(byRole('button', /^Fechar$/, dialogo.querySelector('footer')!));
+    // Lote B (apagar, que não decide pela lista e segue livre) também estoura.
+    await click(byRole('button', /Apagar…/, barra()));
+    dialogo = await waitFor(() => byRole('dialog', /Apagar 2 personas/));
+    await setValue(byRole('textbox', /Para confirmar/, dialogo) as HTMLInputElement, 'Apagar 2');
+    await waitFor(() => byRole('button', /^Apagar 2/, dialogo).getAttribute('aria-disabled') === null);
+    await click(byRole('button', /^Apagar 2/, dialogo));
+    await waitFor(() => text(dialogo).includes('Terminado: 2 ok'));
+    await click(byRole('button', /^Fechar$/, dialogo.querySelector('footer')!));
+    expect(soltas).toHaveLength(2);
+
+    await act(async () => { soltas[0]!(true); });
+    expect(text(barra())).toContain(LISTA_RELENDO);
+    expect(byRole('button', /^Grupo de acesso/, barra()).getAttribute('aria-disabled')).toBe('true');
+    await act(async () => { soltas[1]!(true); });
     await waitFor(() => byRole('button', /^Grupo de acesso/, barra()).getAttribute('aria-disabled') === null);
   });
 
