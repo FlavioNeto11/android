@@ -542,7 +542,9 @@ avisos depois da faxina"), e a trava cai no TTL.
       Fora disso, `campo_invalido`.
     - O `achado` só sai como host e caminho, ou o nome do cookie: com `?`, `=`, espaço, IP ou mais de 120
       caracteres, é omitido sem recusa.
-    - Chave `portal-borda:<código>:<AAAA-MM-DD UTC>`: um defeito que persiste dá uma mensagem por dia.
+    - Chave `portal-borda:<código>:<AAAA-MM-DD UTC>`: um defeito que persiste dá uma mensagem por dia. O defeito que
+      some e VOLTA no mesmo dia não manda segunda mensagem (a chave é a mesma, e a fila devolve `enfileirado=True`
+      sem enviar): a reaparição fica na saúde do Portal. Decisão da orquestradora, 05/10 04:59Z.
     - Tipos `portal.borda` e `portal.borda_sem_conferir`: nível 2, saem na hora (`PARARAM_ALGO`), um a um (o
       prefixo `portal.` nunca se agrupa, e o corpo agrupado diria "abra a caixa de Pendências"), sem link e fora do
       Trello.
