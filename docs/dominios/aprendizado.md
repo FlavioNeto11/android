@@ -2032,6 +2032,12 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   (`persona=`, passado pelo executor). Fora dela, a consulta termina `ensino_em_prova` (rótulo novo de
   `receita.consulta`), sem herança, e a etapa vai para a IA. Quem ensinou usa a receita logo depois de salvar. A
   receita que não veio do treino não paga consulta a mais.
+- **O que libera a receita do treino** (N1 e N2 da Reload, decisão da orquestradora): o "Confirmar que fica" explícito
+  de uma pessoa no fluxo da sessão, ou a evidência a favor DA RECEITA (`receita:<id>`, `for`, não simulada, sem
+  `invalida`) numa execução real de prova desse fluxo. A prova aprovada do fluxo sozinha não basta: a receita que não
+  rodou na prova segue só para quem ensinou. A execução de prova do próprio fluxo (`prova_fluxo_id`, passado pelo
+  executor como `prova_fluxo=`) acha as receitas da sessão, para provar o que vai liberar. O fluxo desligado por uma
+  pessoa não solta as receitas dele.
 - **Para a validação** (achado 4), o fluxo ativo do comando é `FlowStore.ativo_para`: o `match` sem aparelhos, sem o
   ensinado em espera (`state.py`, `fluxo_ativo_para` e `plano_ativo_para`).
 - **Quem abre a prova:** a volta da validação, e não o ouvinte do nascimento. O `save` grava a proposta final (com os
@@ -2078,6 +2084,8 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   - Se o barramento falha, o evento `learning.ensinado_espera_decisao` se perde: o pedido recusado que marca a espera
     fica, e o Livro mostra `espera_a_pessoa`, mas a Canais não recebe o cartão (leitura da Reload, item 6).
   - O fluxo desligado pela prova bloqueia o reensino do MESMO comando (a `match_key` é única): fica para o 30.84.
+  - A receita escondida pela espera não cai para a genérica nem para a herança (N3 da Reload): é falha fechada, e a
+    etapa vai para a IA mesmo quando uma receita genérica serviria.
 - **Prova:** `simulated`, em `backend/tests/test_ensinado_em_prova.py`. `real`: `not_run`.
 ## A prova sem evidência diz a causa (30.75)
 

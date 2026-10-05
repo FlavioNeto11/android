@@ -28,11 +28,12 @@ from ..automation.hierarchy import UiElement, UiTree
 from ..db import Database, Row, dumps, loads
 from ..metricas import metricas
 from ..models import PlanStep
+from ..modules.learning.domain.aprovacao_automatica import PLATAFORMA
 from ..modules.learning.domain.causa_do_ausente import ChaveDaReceita, ReceitaVizinha, causa_do_ausente, doadora
-from ..modules.learning.domain.livro import receita_tem_efeito
+from ..modules.learning.domain.livro import CONFIRMADO_QUE_FICA, receita_tem_efeito
 from ..planning.provider import Decision
 from ..util import norm_text, now_iso
-from .flows import PREFIXO_DO_TREINO, ensinado_em_prova
+from .flows import PREFIXO_DO_TREINO, SISTEMA
 
 SENSITIVE_PARAM = re.compile(r"pass|senha|pin\b|otp|token|secret|segredo|c[oó]digo|code", re.IGNORECASE)
 READ_ONLY = {"observe_screen", "find_element", "wait_for", "verify_state"}
@@ -724,7 +725,7 @@ class RecipeStore:
 
     def find(self, package: str | None, app_version: str | None, step_hash: str | None, *,
              signature: str = "", variant: str = "", step_hash_generico: str | None = None,
-             persona: str | None = None) -> Row | None:
+             persona: str | None = None, prova_fluxo: str | None = None) -> Row | None:
         """Identidade da receita: pacote + versão + ASSINATURA + VARIANTE de interface + etapa.
 
         Assinatura entra porque dois APKs podem dizer a mesma versão e não serem o mesmo app; variante entra porque
@@ -749,10 +750,12 @@ class RecipeStore:
         chamou sabe a chave pelo `step_hash` da linha. Iguais (pós-condição vazia) ou sem genérica: uma consulta só.
         A herança tenta a específica e depois a genérica; a causa do ausente é medida uma vez, pela específica.
 
-        30.81: a receita ensinada no modo treinamento cujo fluxo ainda espera a prova (`flows.ensinado_em_prova`) só é
-        achada para a `persona` que ensinou (a do objetivo; `None` = aparelho sem persona, que não a acha). Fora dela, a
-        consulta termina `ensino_em_prova`, sem herança: a etapa vai para a IA. A prova aprovada libera para todas; a
-        reprovada desliga o fluxo e põe a receita em quarentena. A receita que não veio do treino não paga consulta.
+        30.81: a receita ensinada no modo treinamento só é achada para a `persona` que ensinou (a do objetivo; `None` =
+        aparelho sem persona, que não a acha) até ser LIBERADA (`_restrita_ao_ensino`): o "Confirmar que fica" de uma
+        pessoa no fluxo da sessão, ou a evidência a favor DELA numa execução real de prova desse fluxo. Fora disso, a
+        consulta termina `ensino_em_prova`, sem herança nem genérica (falha fechada: a etapa vai para a IA). A execução
+        de prova do próprio fluxo (`prova_fluxo`) a acha, para a prova exercitar o que libera. A receita que não veio
+        do treino não paga consulta.
         """
         if not (package and app_version and step_hash):
             return None
@@ -767,7 +770,7 @@ class RecipeStore:
             if row is not None:
                 resultado = nome
                 break
-        if row is not None and self._restrita_ao_ensino(row, persona):
+        if row is not None and self._restrita_ao_ensino(row, persona, prova_fluxo):
             metricas.contar("receita.consulta", resultado="ensino_em_prova")
             return None
         if row is None:
@@ -790,14 +793,33 @@ class RecipeStore:
         metricas.contar("receita.consulta", resultado=resultado, chave="generica" if generica_casou else None)
         return row
 
-    def _restrita_ao_ensino(self, row: Row, persona: str | None) -> bool:
-        """30.81: a receita do treino cujo fluxo espera a prova, consultada fora da persona que ensinou."""
+    def _restrita_ao_ensino(self, row: Row, persona: str | None, prova_fluxo: str | None = None) -> bool:
+        """30.81: a receita do treino só vale fora da persona que ensinou depois de LIBERADA: o "Confirmar que fica"
+        explícito de uma pessoa no fluxo da sessão, ou uma evidência a favor DELA (etapa conduzida só pela receita e
+        comprovada) numa execução real de prova desse fluxo (N1 da Reload, decisão da orquestradora: a prova só libera o
+        que exercitou). A execução de prova do próprio fluxo a acha (`prova_fluxo`). O fluxo desligado sem isso não
+        solta as receitas (N2). Uma consulta, só na receita do treino."""
         origem = str(row["learned_from_step"] or "")
         if not origem.startswith(PREFIXO_DO_TREINO):
             return False
-        fluxo = self.db.one("SELECT * FROM flows WHERE source=? ORDER BY created_at DESC, id DESC LIMIT 1", (origem,))
-        espera = ensinado_em_prova(self.db, dict(fluxo)) if fluxo is not None else None
-        return espera is not None and (espera["persona"] is None or persona != espera["persona"])
+        fluxo = self.db.one("SELECT id, created_at FROM flows WHERE source=? ORDER BY created_at DESC, id DESC LIMIT 1",
+                            (origem,))
+        if fluxo is None or (prova_fluxo is not None and prova_fluxo == fluxo["id"]):
+            return False
+        ref_do_fluxo, ref_da_receita = f"fluxo:{fluxo['id']}", f"receita:{row['id']}"
+        r = self.db.one(
+            "SELECT (SELECT profile_id FROM training_sessions WHERE id=?) AS persona,"
+            " EXISTS (SELECT 1 FROM learning_transitions t WHERE t.item_ref=? AND t.decided_at>=? AND t.reason LIKE ?"
+            "  AND t.decided_by NOT IN (?,?) AND t.decided_by NOT LIKE ?) AS confirmado,"
+            " EXISTS (SELECT 1 FROM learning_evidence e JOIN runs ru ON ru.id = e.run_id WHERE e.item_ref=?"
+            "  AND e.stance='for' AND e.simulated=0 AND ru.prova_fluxo_id=? AND NOT EXISTS (SELECT 1 FROM"
+            "  learning_evidence i WHERE i.item_ref = e.item_ref AND i.origin_ref = e.origin_ref"
+            "  AND i.stance='invalida')) AS provada",
+            (origem[len(PREFIXO_DO_TREINO):], ref_do_fluxo, fluxo["created_at"], f"{CONFIRMADO_QUE_FICA}%", SISTEMA,
+             PLATAFORMA, f"{PREFIXO_DO_TREINO}%", ref_da_receita, fluxo["id"]))
+        if r is None or bool(r["confirmado"]) or bool(r["provada"]):
+            return False
+        return r["persona"] is None or persona != r["persona"]
 
     def _herdar(self, package: str, app_version: str, step_hash: str, *, signature: str,
                 variant: str, medir: bool = True) -> tuple[str, Row | None]:

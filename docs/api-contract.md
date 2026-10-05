@@ -6573,7 +6573,9 @@ Aditivo. O fluxo salvo no modo treinamento segue nascendo `active`, mas até a p
 - **A espera acaba** com uma prova real a favor (execução com `prova_fluxo_id`, depois do nascimento, sem `invalida`)
   ou com o "Confirmar que fica" explícito de uma pessoa (adotar ou outra linha da pessoa não contam).
 - **Receita do treino:** enquanto o fluxo da mesma sessão espera, a receita `training:<sessão>` só é usada para a
-  persona que ensinou. Em `GET /api/desempenho`, `receita.consulta{resultado}` ganha `ensino_em_prova`.
+  persona que ensinou. Em `GET /api/desempenho`, `receita.consulta{resultado}` ganha `ensino_em_prova`. Ela passa a
+  valer para todos com o "Confirmar que fica" explícito no fluxo, ou quando ela mesma rodou na prova real do fluxo
+  com a etapa comprovada; a prova do fluxo sozinha não a libera, e o fluxo desligado por uma pessoa também não.
 - **Pedidos de validação** (`GET /api/aprendizado/validacoes`):
   - o pedido da prova do ensinado tem `review_id` `ensino:<sessão>` e `run_origem: null`;
   - `motivo` ganha `classe_c` (classe C, ou sem dossiê de agora) e `tentativas_esgotadas` (3 pedidos sem veredito);

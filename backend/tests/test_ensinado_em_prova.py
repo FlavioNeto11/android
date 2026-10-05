@@ -374,8 +374,8 @@ def test_as_tentativas_sem_veredito_esgotam_e_passam_a_pessoa(mundo: Mundo) -> N
                          (f"fluxo:{fid}",))              # o aparelho não apareceu: falha de infraestrutura
     assert mundo.status(fid) == "active"
     mundo.volta()
-    ultimo = mundo.pedidos(fid)[-1]
-    assert (ultimo["estado"], ultimo["motivo"]) == ("recusada", Motivo.TENTATIVAS_ESGOTADAS.value)
+    recusados = [p for p in mundo.pedidos(fid) if p["estado"] == "recusada"]   # no mesmo segundo, o id não ordena
+    assert [p["motivo"] for p in recusados] == [Motivo.TENTATIVAS_ESGOTADAS.value]
     assert len(mundo.bus.do_tipo(TIPO_ESPERA_DECISAO)) == 1
     mundo.volta()
     assert len(mundo.pedidos(fid)) == TETO_DE_TENTATIVAS_DO_ENSINO + 1
@@ -442,14 +442,29 @@ def _acha(mundo: Mundo, persona: str | None) -> bool:
                             persona=persona) is not None
 
 
-def test_a_receita_do_ensinado_em_espera_so_e_achada_para_quem_ensinou(mundo: Mundo) -> None:
+def _evidencia_da_receita(mundo: Mundo, rid: int, run_id: str, stance: str = "for") -> None:
+    mundo.db.execute("INSERT INTO learning_evidence(item_ref, stance, origin_ref, run_id, instance_id, simulated,"
+                     " detail, observed_at) VALUES (?,?,?,?,?,?,?,?)",
+                     (f"receita:{rid}", stance, f"reproducao:{run_id}", run_id, "android-05", 0, "x", now_iso()))
+
+
+def test_a_receita_do_ensinado_so_e_achada_para_quem_ensinou_ate_rodar_na_prova(mundo: Mundo) -> None:
     fid = mundo.ensina()
-    mundo.receita_do_treino()
+    rid = mundo.receita_do_treino()
     assert _acha(mundo, ANA)                             # quem ensinou usa logo depois de salvar
     assert not _acha(mundo, BIA) and not _acha(mundo, None)
     mundo.execucao_de_prova(fid, "r-ok")
     mundo.evidencia(fid, "r-ok", "for")
-    assert _acha(mundo, BIA) and _acha(mundo, None)      # a prova aprovada libera para todas
+    assert not _acha(mundo, BIA)                         # N1: a prova do fluxo não libera a receita que não exercitou
+    _evidencia_da_receita(mundo, rid, "r-ok")
+    assert _acha(mundo, BIA) and _acha(mundo, None)      # rodou na prova, comprovada: vale para todas
+
+
+def test_o_confirmar_que_fica_libera_as_receitas_do_treino(mundo: Mundo) -> None:
+    fid = mundo.ensina()
+    mundo.receita_do_treino()
+    mundo.trilha_de_pessoa(fid, "painel:dono")
+    assert _acha(mundo, BIA)
 
 
 def test_a_receita_que_nao_veio_do_treino_nao_muda(mundo: Mundo) -> None:
@@ -469,3 +484,20 @@ def test_o_ensinado_em_espera_nao_e_o_fluxo_ativo_para_a_validacao(mundo: Mundo)
     mundo.execucao_de_prova(fid, "r-ok")
     mundo.evidencia(fid, "r-ok", "for")
     assert mundo.flows.ativo_para(_comando("@carla")) is not None
+
+
+def test_a_execucao_de_prova_do_fluxo_acha_as_receitas_da_sessao(mundo: Mundo) -> None:
+    fid = mundo.ensina()
+    mundo.receita_do_treino()
+    acha = mundo.store.find("com.instagram.android", "1.0(1)", "h-abrir", signature="", variant="en-US/xhdpi",
+                            persona=BIA, prova_fluxo=fid)
+    assert acha is not None                              # N1 da Reload: a prova prova o que vai ser liberado
+    assert mundo.store.find("com.instagram.android", "1.0(1)", "h-abrir", signature="", variant="en-US/xhdpi",
+                            persona=BIA, prova_fluxo="outro-fluxo") is None
+
+
+def test_desligar_o_fluxo_sem_prova_nao_libera_as_receitas_dele(mundo: Mundo) -> None:
+    fid = mundo.ensina()
+    mundo.receita_do_treino()
+    mundo.servico.mudar_estado(LivroKind.FLUXO, fid, SkillState.DISABLED, by="painel:dono", reason="não serve")
+    assert not _acha(mundo, BIA) and _acha(mundo, ANA)   # N2 da Reload
