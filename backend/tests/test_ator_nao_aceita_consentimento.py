@@ -482,3 +482,39 @@ def test_k2b_com_aviso_de_verdade_a_palavra_de_aceite_e_recusada_em_qualquer_lug
     tree = _xml(("Usamos cookies para melhorar sua experiência", (0, 160, 720, 220), "", "", False),
                 ("ACEITAR TODOS", (120, 1050, 600, 1110), "", "android.widget.Button", True))
     assert _recusa(tree, "ACEITAR TODOS") == "ACEITAR TODOS"
+
+
+# ------------------------------------------------------------- 31.75: a página que imita o id do navegador
+_WEBVIEW = ("Loja | Página", (0, 160, 720, 1232), "", "android.webkit.WebView", False)
+_RAIZ = ("", (0, 48, 720, 160), "com.android.chrome:id/control_container", "android.widget.FrameLayout", True)
+
+
+def test_31_75_a_pagina_com_id_do_chrome_nao_ganha_a_isencao() -> None:
+    """O Chrome expõe o `id` do HTML como `resource-id`: um botão da PÁGINA com `id="com.android.chrome:id/allow"` vem
+    entre a WebView e a raiz da interface e é julgado como página (recusado: diz aceitar com aviso de verdade)."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("Aceitar", (40, 300, 300, 360), "com.android.chrome:id/allow", "android.widget.Button", True),
+                _RAIZ,
+                ("More options", (624, 48, 720, 160), "com.android.chrome:id/menu_button", "android.widget.ImageButton", True))
+    assert _recusa(tree, "Aceitar") == "Aceitar"
+    assert _recusa(tree, "More options") is None                     # a interface de verdade, depois da raiz
+
+
+def test_31_75_o_aviso_da_pagina_com_id_do_chrome_segue_marca() -> None:
+    """Um aviso da página com `id="com.android.chrome:id/cookie_banner"` não escapa da marca."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060),
+                 "com.android.chrome:id/cookie_banner", "", False),
+                ("Continuar", (40, 1080, 300, 1140), "", "android.widget.Button", True),
+                _RAIZ)
+    assert _recusa(tree, "Continuar") == "Continuar"
+
+
+def test_31_75_sem_a_raiz_vale_o_id_como_antes() -> None:
+    """Sem a raiz da interface depois da WebView, não se sabe onde a página termina: vale o id (limite conhecido)."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("More options", (512, 1120, 608, 1232), "com.android.chrome:id/translate_infobar_menu_button",
+                 "android.widget.ImageButton", True))
+    assert _recusa(tree, "More options") is None

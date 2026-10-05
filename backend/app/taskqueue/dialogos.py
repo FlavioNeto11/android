@@ -173,12 +173,34 @@ _NUNCA_NO_ROTULO = re.compile(r"\b(?:" + _NUNCA.pattern + ")", re.IGNORECASE)
 _ID_DO_NAVEGADOR = tuple(f"{p}:id/" for p in NAVEGADORES)
 
 
-def _do_navegador(e: UiElement) -> bool:
-    return (e.resource_id or "").startswith(_ID_DO_NAVEGADOR)
+#: 31.75: as raízes da interface do Chrome que vêm DEPOIS do conteúdo da página na ordem do documento (capturas de
+#: 05/10: `control_container`, a barra de cima, no ML e no g1; `bottom_container`, a barra de tradução, no gov.br).
+_RAIZES_DO_NAVEGADOR = ("control_container", "bottom_container")
 
 
-def _de_consentimento(e: UiElement) -> bool:
-    if _do_navegador(e):
+def _conteudo_web(tree: UiTree) -> frozenset[int]:
+    """31.75: os elementos da PÁGINA (os `id()` deles), sem confiar no id. O Chrome expõe o `id` do HTML como
+    `resource-id`, então uma página pode ter `id="com.android.chrome:id/x"` e se passar por interface. Na ordem do
+    documento, o conteúdo da página vem entre a WebView e a primeira raiz da interface do Chrome; o que tiver id do
+    navegador ali dentro é da página. Sem WebView na árvore (o leitor a corta quando vem sem título) ou sem a raiz, não
+    se sabe onde a página termina: vale o id, como antes (limite conhecido)."""
+    els = tree.elements
+    i = next((k for k, e in enumerate(els) if "WebView" in (e.class_name or "")), None)
+    if i is None:
+        return frozenset()
+    raizes = {f"{p}{r}" for p in _ID_DO_NAVEGADOR for r in _RAIZES_DO_NAVEGADOR}
+    fim = next((k for k in range(i + 1, len(els)) if (els[k].resource_id or "") in raizes), None)
+    if fim is None:
+        return frozenset()
+    return frozenset(id(e) for e in els[i + 1:fim])
+
+
+def _do_navegador(e: UiElement, web: frozenset[int] = frozenset()) -> bool:
+    return (e.resource_id or "").startswith(_ID_DO_NAVEGADOR) and id(e) not in web
+
+
+def _de_consentimento(e: UiElement, web: frozenset[int] = frozenset()) -> bool:
+    if _do_navegador(e, web):
         return False
     return any(_CONSENTIMENTO.search(x) for x in (e.class_name or "", e.resource_id or "", _rotulo(e)[:120]))
 
@@ -228,13 +250,14 @@ def toque_que_aceita(tree: UiTree, alvo: UiElement | None,
     pagina = _FRACAO_DA_PAGINA * largura * altura
     # K2: só a marca que tem cara de aviso (abaixo de 60 % da tela; a interface do navegador já saiu em
     # `_de_consentimento`) liga a trava.
-    marcas = [e for e in tree.elements if _de_consentimento(e) and _area(e.bounds) < pagina]
+    web = _conteudo_web(tree)                       # 31.75: o id do navegador dentro da página não vale
+    marcas = [e for e in tree.elements if _de_consentimento(e, web) and _area(e.bounds) < pagina]
     if not marcas:
         return None
     x = ponto[0] if ponto is not None else (alvo.bounds[0] + alvo.bounds[2]) / 2
     y = ponto[1] if ponto is not None else (alvo.bounds[1] + alvo.bounds[3]) / 2
     na_zona = any(_na_zona(tree, m, x, y, pagina, _MARGEM_DA_FAIXA * altura) for m in marcas)
-    if _do_navegador(alvo):
+    if _do_navegador(alvo, web):
         # K2: o botão do navegador (o menu da barra de tradução por cima da folha de cookies do gov.br, 05/10) não é
         # a página: fora da zona não se julga pelo rótulo; dentro dela, só o que diz aceitar é recusado.
         return alvo if na_zona and _diz_aceitar(alvo) else None
@@ -265,8 +288,9 @@ def _caixa_da_marca(tree: UiTree, marca: UiElement, pagina: float) -> UiElement 
     """A caixa reconhecida da marca, ou `None`. Z1 da releitura: só um contêiner DISTINTO da marca é caixa. O parágrafo
     do aviso com o link "política de cookies" dentro dele não é: a zona encolheria para o retângulo dele e o botão
     100 px abaixo passaria."""
+    web = _conteudo_web(tree)
     caixas = [e for e in tree.elements if e is not marca and _contem(e.bounds, marca.bounds) and _area(e.bounds) < pagina
-              and (_de_consentimento(e) or _PISTAS.search(e.class_name or "") or _PISTAS.search(e.resource_id or ""))]
+              and (_de_consentimento(e, web) or _PISTAS.search(e.class_name or "") or _PISTAS.search(e.resource_id or ""))]
     caixa = max(caixas, key=lambda e: _area(e.bounds), default=None)
     if caixa is not None and any(e is not caixa and _contem(caixa.bounds, e.bounds) for e in tree.elements):
         return caixa
