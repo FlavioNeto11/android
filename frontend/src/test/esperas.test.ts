@@ -186,8 +186,8 @@ function semParentesesDeFora(corpo: string): string {
 }
 
 // O corpo em bloco (`() => { … }`) segue fora: o `return` pode estar em qualquer ponto dele (29.129, F3, anotado).
-// Limites anotados: um `(x as T)!` no MEIO da expressão não é lido como busca, e um operando entre parênteses antes do
-// `&&` (`(itens().find(…)) && !carregando`) escapa do G2.
+// Limite anotado: um `(x as T)!` no MEIO da expressão não é lido como busca. O operando entre parênteses antes do `&&`
+// (`(itens().find(…)) && !carregando`) é lido pelo G2 (29.135).
 function esperasQuePassamSemAchar(codigo: string): number[] {
   return primeirosArgumentos(semComentarios(codigo))
     .filter(({ argumento }) => {
@@ -204,7 +204,12 @@ function esperasQuePassamSemAchar(codigo: string): number[] {
       // hora, por mais que o último operando seja negado (29.129, G2).
       // O operando negado já é booleano, e com ternário no topo o `&&` é só a condição.
       const ternario = temTernarioNoTopo(corpo);
-      if (!ternario && operandos.some((o) => o.depois === '&&' && !o.texto.startsWith('!') && terminaNumaBusca(o.texto))) return true;
+      // O operando entre parênteses vale o de dentro: `(itens().find(…)) && ok` é o mesmo valor (29.135).
+      const valeUmaBusca = (texto: string): boolean => {
+        const dentro = semParentesesDeFora(texto);
+        return !dentro.startsWith('!') && terminaNumaBusca(dentro);
+      };
+      if (!ternario && operandos.some((o) => o.depois === '&&' && valeUmaBusca(o.texto))) return true;
       // Com `&&`, `||` ou `??` no topo, quem decide é o último operando: negado, é booleano. Com ternário no topo, não.
       if (!ternario && operandos[operandos.length - 1]!.texto.startsWith('!')) return false;
       return terminaNumaBusca(corpo);
@@ -257,6 +262,9 @@ describe('catraca das esperas', () => {
       "await waitFor(() => ok ? !a : c.querySelector('x'));",
       // Com ternário no topo a negação da frente é só a condição: o ramo que sobra pode ser null.
       "await waitFor(() => !a ? b : c.querySelector('x'));",
+      // 29.135: o operando entre parênteses antes do `&&` também é lido (G2): o `.find(…)` dentro dele dá `undefined`.
+      "await waitFor(() => (itens().find((i) => i.id === 'x')) && !carregando);",
+      "await waitFor(() => ((itens().find((i) => i.id === 'x'))) && !carregando);",
     ];
     const poupa = [
       "await waitFor(() => container.querySelector('h1')?.textContent === 'Mariana Costa');",
@@ -276,6 +284,8 @@ describe('catraca das esperas', () => {
       // G2 sem falso positivo: o `.find(…)` negado é booleano, e no ternário o `&&` é só a condição.
       "await waitFor(() => !lista.find((i) => i.id === 'x') && pronto);",
       "await waitFor(() => itens().find((i) => i.id === 'x') && ok ? a : b);",
+      // 29.135, sem falso positivo: entre parênteses, o `.find(…)` negado segue booleano.
+      "await waitFor(() => (!lista.find((i) => i.id === 'x')) && pronto);",
     ];
     for (const linha of pega) expect(esperasQuePassamSemAchar(linha), linha).toHaveLength(1);
     for (const linha of poupa) expect(esperasQuePassamSemAchar(linha), linha).toEqual([]);
