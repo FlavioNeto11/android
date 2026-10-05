@@ -595,3 +595,16 @@ async def test_d2_a_execucao_cancelada_sem_worker_assenta_uma_vez(harness: Harne
     await harness.wait_run(run_id, statuses=("cancelled",))
     await _assentou(harness, g, run_id)
     _um_assentamento(st, g, run_id, sem_worker=True)
+
+
+async def test_k2_o_worker_que_perde_a_marca_solta_a_trava_deste_processo_sem_digest(harness: Harness,
+                                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """29.108 (K2): a marca já foi de outro (outro backend, a rede). O `_settle_run` deste processo não assenta de novo,
+    mas solta a trava de rascunho que é dele e acorda os pedidos (o idempotente da parada)."""
+    st = harness.state
+    assert st is not None
+    run_id, g = await _assentada_pelo_worker(harness, monkeypatch)
+    st._draft_locks[run_id] = asyncio.Lock()                    # noqa: SLF001 - a trava que ficaria presa
+    st.scheduler._settle_run(run_id, venceu=False)              # noqa: SLF001
+    assert run_id not in st._draft_locks                         # noqa: SLF001
+    assert g["digest"] == [] and g["pedidos"] == [run_id] and g["sem_worker"] == []
