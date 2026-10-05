@@ -7770,14 +7770,14 @@
    "id": "28.26",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "PR #291, branch canais/28-26-aprovar-id-e-reply @ b7f82be2. Intencao.ref_digitado guarda o id digitado em reply. _decidir confere esse id contra as pendências: id de outra pendência = nada se decide e a resposta diz qual é qual; o mesmo item = segue e o id sai da nota; palavra que não é id = nota. simulated: tests/test_telegram_entrada.py (test_reply_com_id_de_outra_pendencia_nao_decide_nada, test_reply_com_o_mesmo_id_decide_e_o_id_sai_da_nota, test_reply_com_nota_que_nao_e_id_segue_como_antes; os 2 primeiros falham contra o código antigo) e test_telegram_roteador.py; 203 passed nos arquivos de canais tocados; docs-check 0. Doc em canais.md, depois da C-13.",
-   "blocker": "Prova real not_run: um /aprovar <id de outro> em reply, pelo dono, depois do deploy 31. É opcional, porque o caso é defensivo.",
-   "grupo": "resultado-orquestradora-deploy31",
+   "evidence": "Sem mudança no nível do item: o caso do 28.26 (o /aprovar com o id de OUTRA pendência, em reply) segue sem prova real. Medida real anexada, pedida pela orquestradora às 00:18Z: latência do caminho de aprovação pelo Telegram no reply comum. Aviso 53 (approval.pending da prova 31.26, fila do produto no deploy 32 2c47b9fa), criado às 2026-10-04T23:49:00.595Z e enviado às 23:49:01.721Z, em 1,1 s e na 1ª tentativa. O dono aprovou pelo Telegram (entrada 1470, resposta à mensagem 246, telegram:dono) e a execução terminou. Leitura só no data/poc.sqlite3, máquina central, 2026-10-05T00:17Z. Sem conteúdo aqui.",
+   "blocker": "Prova real not_run do caso defensivo: um /aprovar <id de outro> em reply, pelo dono. É opcional.",
+   "grupo": "resultado-orquestradora-suite33",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T19:55:16+00:00"
+   "quando": "2026-10-05T01:26:30+00:00"
   },
   "29.76": {
    "id": "29.76",
@@ -7872,16 +7872,16 @@
   },
   "30.61": {
    "id": "30.61",
-   "status": "partial",
+   "status": "implemented",
    "proof": "simulated",
-   "evidence": "Backend implantado no deploy 32 (central 2c47b9fa, migração 106 no ar, /api/health status ok e problems [] lido às 2026-10-04T23:13:35Z). Entraram: #319 (d5f75004; prévia da porta GET /runs/{id}/porta, gesto POST /runs/{id}/aprovar-plano, POST /porta/renovar, validade, faxina, a trava do sim do plano no _approval_gate, banco 105, adendo v1.32) e o conserto da suíte 32 f1afb489 (teste HTTP do POST /porta/renovar: 200, 409 sim_vencido, 409 invalid_state, 404). Prova simulated: backend/tests/test_porta_do_plano.py, test_chave_da_aprovacao.py e test_cobertura_de_rotas.py na suíte 32 (SQLite e PG verdes, pela orquestradora). Falta o PAINEL: #323 (feat/30-61-painel, rebaseado sobre a main e6372739, ponta fa6460ef), #324 (30.68, ponta 7096baae) e #334 (29.79, sobre o #330 da Jev) vão à suíte 33. Real: not_run (nenhuma execução real com aprovação no plano depois do deploy; o percurso no navegador espera o painel).",
-   "blocker": "painel (#323) na suíte 33",
-   "grupo": "orquestrador-resultado-suite32-a",
+   "evidence": "Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entrou o painel #323 (fa6460ef, merge f801a7de): PortaDoPlano.tsx com a prévia da porta, ValidadeDoPlano e o gesto de aprovar no plano; o backend já estava no deploy 32. Prova simulated: frontend/src/features/runs/PortaDoPlano.test.tsx e backend/tests/test_porta_do_plano.py na suíte 33. Percurso no navegador de 05/10 em painel isolado (backend do worktree com a config do harness, banco temporário): a prévia com três publicações, os selos e o Aprovar, sem clicar. Real: not_run (nenhuma execução real aprovada no plano depois do deploy; o percurso no central depois da janela de provas).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite33",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:43:27+00:00"
+   "quando": "2026-10-05T01:26:30+00:00"
   },
   "30.62": {
    "id": "30.62",
@@ -7964,15 +7964,15 @@
   "28.31": {
    "id": "28.31",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "Implantado no deploy 32 (central 2c47b9fa, migrações 104-106, no ar às 2026-10-04T23:09Z; prova de fora e caminhada no navegador sem erro, pela Android/orquestradora; suíte 32 verde: SQLite 10315, PG dirigido 4625). F1 (PR #310, e3adedff..6cb876d1) e F2a (PR #312, 4ade2da7..80568aae, migração 106) no ar. F3 (resumo de hora no molde do dono) na main fora do deploy: #321 (merge 2e3a099c), #327 (merge e6372739), piso da rotina (842b9814, aba2da84) e gravidade da saúde (0b5f7683); laço religado com o 'liga' da orquestradora em 2026-10-04T23:25:54Z no central (checkout 0b5f7683, máquina central, --intervalo 1200 --piso-rotina 3600; um processo). O aviso do deploy 32 ao dono (Telegram, message_id 245, 23:10:48Z) saiu À MÃO pelo telegram_status.py, no molde; não é prova do produto. Real do produto: not_run (nenhum aviso do montador F1/F2a observado depois do deploy). Primeiro resumo do laço: not_run até ~00:11Z. Simulated: .claude/canais/test_resumo_laco.py (52 passed) e os testes de avisos na suíte 32.",
-   "blocker": "primeiro envio real do laço (~00:11Z)",
-   "grupo": "orquestrador-resultado-suite32-a",
+   "proof": "real",
+   "evidence": "F3 real: o laço do resumo (.claude/canais/resumo_laco.py, último commit 2037f5d4, rodando do checkout central religado em 2026-10-04T23:25:54Z com --intervalo 1200 --piso-rotina 3600, máquina central, um processo) enviou ao dono no Telegram às 2026-10-05T00:10:48Z o message_id 249, com 1104 caracteres (laco.log). Antes dele, duas voltas seguraram pelo piso (23:30:48Z e 23:50:48Z), como manda a cadência. Conteúdo fora daqui. F1 real em parte: aviso 53 (approval.pending, da fila do produto, deploy 32 2c47b9fa), criado às 2026-10-04T23:49:00.595Z e enviado às 23:49:01.721Z, em 1,1 s e na 1ª tentativa: o que sai na hora sai na hora (leitura só no data/poc.sqlite3, 00:17Z). F2a: not_run, nenhum aviso de lote depois do deploy 32 (o aviso 53 é o único em avisos_entregas desde 23:09Z). Simulated: .claude/canais/test_resumo_laco.py (52 passed) e os testes de avisos da suíte 32.",
+   "blocker": "F2a sem prova real: falta observar um aviso de lote (frente, com a incerta saindo na hora) na fila do produto",
+   "grupo": "resultado-orquestradora-suite33",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:43:27+00:00"
+   "quando": "2026-10-05T01:26:30+00:00"
   },
   "31.50": {
    "id": "31.50",
@@ -8056,14 +8056,14 @@
    "id": "31.60",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "#337 mesclado em ed7d8009: latencia-por-etapa usa app.metricas.percentil (posto mais próximo, K-085); linha de base recalculada (jev-latencia-linha-de-base-2026-10-04-posto.md). pytest scripts/tests: 563 passed.",
+   "evidence": "cdeac750 (#337) na main; não estava no deploy 32 (2c47b9fa), entra no deploy 33 (deploy 33 no ar: GET /api/health no central WIN-7S2UASNLFOP responde commit a0c9865e, migração 107_portal_contatos (lido às 01:21Z de 05/10/2026; o 'no ar' às 01:17:42Z é da Orquestradora)). scripts/tests/test_latencia_por_etapa.py (n=2, 6, 10). É script de medida: não há execução real a provar além de rodá-lo sobre as execuções da janela.",
    "blocker": "",
-   "grupo": "orquestrador-resultado-suite32-b",
+   "grupo": "resultado-orquestradora-suite33",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:55:48+00:00"
+   "quando": "2026-10-05T01:26:30+00:00"
   },
   "31.56": {
    "id": "31.56",
@@ -8077,6 +8077,123 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-04T23:55:48+00:00"
+  },
+  "31.54": {
+   "id": "31.54",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#325 na main (9cfee99b, 339f2d45, 697fad6e U1, f912af47 U1b), deploy 33 no ar: GET /api/health no central WIN-7S2UASNLFOP responde commit a0c9865e, migração 107_portal_contatos (lido às 01:21Z de 05/10/2026; o 'no ar' às 01:17:42Z é da Orquestradora). Testes de execução inteira no harness (juiz recusando com ?token=): a recusa e o veredito saem limpos na fonte. Execução real não rodou: a barra tapada liga pelo A/B ao vivo do 31.56, na janela de provas.",
+   "blocker": "prova real espera a janela 'portal ligado' (31.56 A/B)",
+   "grupo": "resultado-orquestradora-suite33",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T01:26:30+00:00"
+  },
+  "31.57": {
+   "id": "31.57",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "65dd6595 na main, deploy 33 no ar: GET /api/health no central WIN-7S2UASNLFOP responde commit a0c9865e, migração 107_portal_contatos (lido às 01:21Z de 05/10/2026; o 'no ar' às 01:17:42Z é da Orquestradora). Marcador de entrega declarado dispensa o primeiro julgamento (tests/test_marcador_de_entrega.py). Medida real só leitura de 04/10 23:50:58Z (android-03): o fio do Direct NÃO tem 'Seen/Delivered' na árvore; o caminho do marcador não foi exercido em real.",
+   "blocker": "sem marcador observável no Direct real; prova real do marcador not_run",
+   "grupo": "resultado-orquestradora-suite33",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T01:26:30+00:00"
+  },
+  "31.59": {
+   "id": "31.59",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "c6a61070, c790a382 (R1, R2), 5ebfbd6d, 01ff5ee0 (#332, bolha sem resource_id) na main, deploy 33 no ar: GET /api/health no central WIN-7S2UASNLFOP responde commit a0c9865e, migração 107_portal_contatos (lido às 01:21Z de 05/10/2026; o 'no ar' às 01:17:42Z é da Orquestradora). Árvore real reduzida do 31.26 (android-03, 04/10 23:50:58Z) prova o envio sem IA em tests/test_bolha_sem_id.py. A medida real (envio com 0 verify) e a contraprova ficam para a janela; o 31.62 (#349) fecha o Q1 da revisão.",
+   "blocker": "medida real e contraprova na janela 'portal ligado' (exigem envio em conta real: autorização do dono pelo orquestrador)",
+   "grupo": "resultado-orquestradora-suite33",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T01:26:30+00:00"
+  },
+  "29.82": {
+   "id": "29.82",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "PR #339 (fix/29-82-vagas-decididas, ponta 757ba4bc, com a W1 da revisão) na suíte 33, no ar em a0c9865e desde 05/10 01:12Z (deploy 33, migração 107). WorkerRegistry.vagas_que_valem é a regra única do agendador (capacidade) e do painel (WorkerDTO.effective_max_slots): no worker remoto, o decidido em worker_limits ou o declarado; neste servidor, o max_online_devices vivo, pelo gancho vagas_do_host. PUT /api/servers/{id}/limits e PUT /api/settings emitem worker.updated. O painel compara a ocupação com effective_max_slots ?? max_slots. Adendo v1.43. Prova simulated: test_limites_por_servidor.py::test_api_lista_e_muda_limites_do_host_e_do_worker (dto == capacidade nos dois tipos de máquina, antes e depois dos PUTs) e frontend/src/store/metricas.test.ts (9 ligados, 9 decididas, 6 declaradas: sem acima); a mutação para a regra antiga derruba o caso. Real (05/10 01:13:44Z, central a0c9865e): GET /api/workers devolve worker-lan-01 com max_slots=6 e effective_max_slots=9, e WIN-7S2UASNLFOP com 4/4. Suíte 33 em a0c9865e: SQLite 10624 passed, PG dirigido 5232 passed (280 arquivos), frontend 1582, docs-check sem erros.",
+   "blocker": "O topo e a Infraestrutura do painel com o notebook em 9 ligados não foram fotografados depois do deploy (a caminhada da orquestradora carregou as telas, sem esse recorte). Fica o 29.84 (suíte 34): três leituras diretas de max_online_devices no scheduler e o efetivo calculado à parte na rota de limites.",
+   "grupo": "resultado-orquestradora-suite33",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T01:26:30+00:00"
+  },
+  "29.78": {
+   "id": "29.78",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #343 (fix/29-78-harness-espera-faxinas, ponta dc2c12f7) na suíte 33, no ar em a0c9865e. Harness.boot espera a primeira volta da retenção, da expiração e da faxina dos canais (AppState.voltas_de_faxina, ServicoDeAvisos.voltas_da_faxina_dos_canais). Produção: com o aviso ligado, a primeira faxina dos canais roda já na subida; desligado, a volta da subida não toma a trava avisos. Dois testes que dependiam do tempo da subida foram ajustados sem afrouxar: test_comandos_de_app (a passagem por verifying vem dos eventos; na main 652773ef passava 3/3, com o harness novo falhava 3/3 antes do ajuste) e test_saude_ao_vivo (capacity_local fixado; já tinha falhado igual em 03/10). Testes novos: test_canais_faxina::test_a_primeira_faxina_do_laco_e_na_subida_so_com_o_aviso_ligado e test_retencao_telemetria::test_o_harness_entrega_o_backend_depois_da_primeira_volta_das_faxinas. A rodada inteira da suíte 33 em a0c9865e (SQLite 10624 e PG dirigido 5232, 0 falhas) passou com o harness novo.",
+   "blocker": "Achado à parte, que virou o 28.35 da Canais (PR #345, suíte 34): fora da subida, faxinar_canais toma a trava avisos com o aviso desligado.",
+   "grupo": "resultado-orquestradora-suite33",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T01:26:30+00:00"
+  },
+  "30.68": {
+   "id": "30.68",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entrou o #324 (7096baae, merge fa7a39aa): POST /runs/{id}/porta/item só de leitura (a prévia do texto editado), o gesto exige a chave do texto editado antes e depois do apply_edit, e o painel trava o Aprovar até a conferência voltar. Adendo v1.38. Prova simulated: backend/tests/test_porta_do_plano.py e PortaDoPlano.test.tsx na suíte 33. Real: not_run.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite33",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T01:26:30+00:00"
+  },
+  "29.79": {
+   "id": "29.79",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entraram o #334 (0d1232c9, merge bf8e5609: commit_switch, commit_switch_mark, StepResult.efeito_comprovado com 409 no retry, rotulo_ia na etapa e na chave, catálogo do CREATE_POST com Share por id=share_footer_button), o teste S3 cdb6b7cd (nenhuma nota, detail ou evento leva a URL com token do juiz) e o conserto 22f641b2 (Approval.to_dict passa a entregar o rotulo_ia; achado no percurso do painel do 29.81; a orquestradora conferiu GET /api/approvals?status=approved com o campo nas 32 linhas depois do deploy). Prova simulated: backend/tests/test_rotulo_ia.py, test_rotulo_ia_no_executor.py, test_rotulo_ia_na_aprovacao.py, frontend execution.test.tsx e PortaDoPlano.test.tsx. not_run: os seletores na tela da legenda do android-13 (leitura só depois do aviso 'portal ligado'; galeria vazia na leitura de 04/10 23:49Z) e a 1ª publicação real com o rótulo (29.30).",
+   "blocker": "leitura da tela da legenda no android-13, na janela de provas do deploy 33",
+   "grupo": "resultado-orquestradora-suite33",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T01:26:30+00:00"
+  },
+  "29.77": {
+   "id": "29.77",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), commit a0c9865e (deploy 33 no ar às 01:17:42Z, migração 107_portal_contatos). Sim do dono para ligar: Telegram 2026-10-05T00:59:01Z (linha 1501 de canal_entradas, do_dono=1, resposta à mensagem 252). Ligado pelo roteiro: cópia data/backups/config.yaml.antes-portal-site-20261005-011833, bloco portal no config.yaml, `pwsh -File scripts\\deploy.ps1 -Ensaio` rc=0 com 'site/: 15 arquivo(s) na lista; portal.site_ligado=True', reinício da farm-central às 01:18:50Z, saúde em 57 s sem problemas. Prova de fora às 01:19:51Z: `SITE=ligado CONTATO=ligado WEBHOOK_DO_TRELLO=ligado bash scripts/portal-prova-de-fora.sh depois` com RESULTADO tudo como esperado (raiz 200 com a CSP do site e sem Set-Cookie; robots barra /central/ e /api/; 404 fora da pasta; contato GET 401, isca 202, tipo errado 415, corpo grande 413; /api/instances 401). portal_contatos vazio depois da isca. Caminhada no navegador (1440 e 360 px, 01:20Z a 01:22Z): menu, âncoras, 5 abas por clique e teclado, 7 perguntas, 2 telefones e 2 WhatsApp, rodapé das três empresas, sem preço, sem e-mail, sem cookie, sem rolagem horizontal; campo inválido não faz pedido à rede; a isca fora da tela. Simulado (sessão Portal, PR 333): tests/test_portal_contato.py, tests/test_portal_site.py e scripts/tests/test_portal_prova_de_fora.py, na suíte 33 inteira verde (SQLite 10624 e PG 5232 na a0c9865e). not_run: o primeiro contato de verdade pelo formulário até o Telegram do dono, o limite por cliente, JS desligado e token expirado.",
+   "blocker": "o primeiro contato real pelo formulário é do dono; achado 29.85 (tag do Web Analytics injetada pela Cloudflare, bloqueada pela CSP)",
+   "grupo": "resultado-orquestradora-suite33",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T01:26:30+00:00"
+  },
+  "29.80": {
+   "id": "29.80",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), commit a0c9865e, site ligado às 01:19Z. Prova de fora às 01:19:51Z: /pagina-que-nao-existe responde 404 com a página própria. Navegador às 01:22Z em https://dev.nvit.com.br/qualquer-coisa: título 'Página não encontrada · ANA · SICAT', meta robots noindex, links 'Ir para a página inicial', 'Entrar na Central' e 'Fale com a gente' (/#contato), sem rolagem horizontal. Em 360 px: botão Menu com aria-expanded, Esc devolve o foco ao botão, escolher item fecha o menu. Simulado (sessão Portal, PR 333): contraste AA, 40 de 40 focos visíveis e peso das imagens, em servidor local com a CSP real. not_run: a prévia de link num chat real do WhatsApp e do Telegram, e a medição de contraste e foco no endereço público.",
+   "blocker": "prévia de link num chat real, que é do dono",
+   "grupo": "resultado-orquestradora-suite33",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T01:26:30+00:00"
   }
  },
  "rodadas": [
@@ -10570,6 +10687,27 @@
    ],
    "grupos": [
     "orquestrador-resultado-suite32-b"
+   ]
+  },
+  {
+   "quando": "2026-10-05T01:26:30+00:00",
+   "itens": [
+    "31.54",
+    "31.57",
+    "31.59",
+    "31.60",
+    "29.82",
+    "29.78",
+    "30.61",
+    "30.68",
+    "29.79",
+    "28.31",
+    "28.26",
+    "29.77",
+    "29.80"
+   ],
+   "grupos": [
+    "resultado-orquestradora-suite33"
    ]
   }
  ]
