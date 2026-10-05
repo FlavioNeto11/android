@@ -117,6 +117,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     da isca.
 - **Prova:** `simulated` (`tests/test_portal_exclusao.py` 24, 1 pula sem o #340; prova de fora 4; Configuração no frontend). `not_run`:
   o 28.34 real, o central, PostgreSQL.
+## 2026-10-05 — 29.84: o agendador e a rota de limites leem as vagas do central pela regra única (branch fix/29-84-vagas-pela-regra)
+
+- Sobra da revisão do 29.82: três caminhos do central no agendador leram `max_online_devices` direto, e a rota de
+  limites calculava o efetivo à parte. Os três caminhos eram a foto do balanceamento e da tela Limites, a reserva do
+  distribuidor e a frase da espera. Hoje o número era o mesmo; se a regra ganhar algo (vaga reservada, piso por RAM),
+  o distribuidor ficaria para trás. Agora `Scheduler._vagas_do_host` lê `capacidade(host).max_slots`, isto é,
+  `WorkerRegistry.vagas_que_valem`, e cai no setting só sem registro de workers. A rota usa `cap.max_slots` no
+  `effective.max_slots` das duas máquinas, com o `max(1, …)` da regra. Sem mudança de contrato.
+- Prova `simulated`: `backend/tests/test_limites_por_servidor.py::test_agendador_e_rota_de_limites_leem_as_vagas_pela_regra_unica`.
+  A regra muda pelo gancho e o setting não: a foto, a frase da espera e a rota acompanham. A mutação para a leitura
+  direta derruba o teste.
 
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 

@@ -265,6 +265,63 @@ async def test_api_lista_e_muda_limites_do_host_e_do_worker(tmp_path: Path) -> N
         await h.crash()
 
 
+async def test_agendador_e_rota_de_limites_leem_as_vagas_pela_regra_unica(tmp_path: Path) -> None:
+    """29.84: o central no agendador (a foto, a reserva do distribuidor, a frase da espera) e a rota de limites leem as
+    vagas por `vagas_que_valem`, não por `max_online_devices` direto. Prova: a regra muda pelo gancho, o setting não,
+    e os três lugares acompanham."""
+    h, reg, _agente = await _com_worker(tmp_path, remotos=["android-03"], max_slots=6)
+    try:
+        assert h.state is not None
+        host, sched = h.cfg.owner_id, h.state.scheduler
+        s = h.state.settings.get()
+        assert int(s.max_online_devices) != 3
+        reg.vagas_do_host = lambda: 3                       # a regra diz 3; o setting segue o que era
+        usadas = h.state.devices.slots_used()
+        assert sched._vagas_do_host(s) == 3                 # noqa: SLF001
+        assert sched.servidores()[host].vagas_livres == max(0, 3 - usadas)
+        assert sched._ocupacao(None, s) == (usadas, 3)      # noqa: SLF001
+        reg.definir_limites(WORKER, {"max_slots": 8}, por="teste")
+        async with await _cliente(h) as c:
+            lista = {x["worker_id"]: x for x in (await c.get("/api/servers/limits")).json()}
+        assert lista[host]["effective"]["max_slots"] == 3 == reg.capacidade(host).max_slots
+        assert lista[WORKER]["effective"]["max_slots"] == 8 == reg.capacidade(WORKER).max_slots
+    finally:
+        await h.crash()
+
+
+async def test_reserva_do_central_no_rodizio_usa_as_vagas_pela_regra_unica(tmp_path: Path) -> None:
+    """29.84 (R3 da revisão): o `livres[None]` do rodízio, que decide quantos aparelhos DESTA máquina ligam, vem
+    da regra única. O setting diz 1 e a regra diz 2: os dois aparelhos do central com tarefa na fila ligam."""
+    h, reg, _agente = await _com_worker(tmp_path, remotos=["android-03"])
+    try:
+        assert h.state is not None
+        s = _rodizio(h, max_online_devices=1)
+        devs, sched = h.state.devices, h.state.scheduler
+        reg.vagas_do_host = lambda: 2
+        for rt in devs.devices.values():
+            rt.state = InstanceState.stopped
+        ligados: list[str] = []
+
+        def ligar_falso(rt: Any, why: str) -> bool:
+            ligados.append(rt.id)
+            rt.state = InstanceState.booting
+            return True
+
+        devs.request_start = ligar_falso                                                    # type: ignore[assignment]
+        sched.repo.note_waiting = lambda *a, **k: None                                      # type: ignore[assignment]
+        sched.repo.instances_with_open_work = lambda: set()                                 # type: ignore[assignment]
+        sched.repo.instances_needing_user = lambda: set()                                   # type: ignore[assignment]
+        sched.repo.dispatchable_objectives = lambda: [                                      # type: ignore[assignment]
+            {"id": "o-1", "instance_id": "android-01", "run_id": "r000001"},
+            {"id": "o-2", "instance_id": "android-02", "run_id": "r000002"}]
+
+        sched._rotate(s)                                                                    # noqa: SLF001
+
+        assert ligados == ["android-01", "android-02"]      # com o setting direto, só o primeiro ligaria
+    finally:
+        await h.crash()
+
+
 async def test_distribuicao_pela_api_previa_e_execucao(tmp_path: Path) -> None:
     h, _reg, _agente = await _com_worker(tmp_path, remotos=["android-03", "android-04"], count=4)
     try:

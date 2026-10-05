@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Protocol
 
-from ..config import Config
+from ..config import Config, LimitsCfg
 from ..shared.vinculos import aparelhos_com_vinculo_ativo
 from ..contracts.origem import eh_ensaio_de_leitura, eh_execucao_de_validacao
 from ..db import Row, dumps, loads
@@ -839,7 +839,7 @@ class Scheduler:
             cap = self._capacidade(sid)
             host = sid == self.cfg.owner_id
             vagas_max = (cap.max_slots if cap is not None else int(s.max_online_devices)) if not host \
-                else int(s.max_online_devices)
+                else self._vagas_do_host(s)
             usadas = devs.slots_used() if host else devs.slots_used_of(sid)
             motivo: str | None = None
             if cap is None and not host:
@@ -904,6 +904,13 @@ class Scheduler:
     # ------------------------------------------------------------------ aparelho que mora em outra máquina
     def _capacidade(self, worker_id: str | None) -> Any:
         return self.worker_capacity(worker_id) if (worker_id and self.worker_capacity) else None
+
+    def _vagas_do_host(self, s: LimitsCfg) -> int:
+        """29.84: as vagas DESTE servidor pela regra única (`WorkerRegistry.vagas_que_valem`, a do painel e do
+        `capacidade`), não pela leitura direta de `max_online_devices`: se a regra ganhar algo, o distribuidor e a
+        reserva do central acompanham. Sem registro de workers (agendador isolado em teste), o valor vivo."""
+        cap = self._capacidade(self.cfg.owner_id)
+        return int(cap.max_slots) if cap is not None else int(s.max_online_devices)
 
     def _sem_recurso(self, cap: _ComSemRecurso) -> str | None:
         """O piso de RAM/disco da batida E o limiar de CPU (29.33, RA-4, `android.max_cpu_percent_before_boot`).
@@ -975,10 +982,10 @@ class Scheduler:
             if (rt is not None and rodiziavel(rt) and rt.state in WAKEABLE
                     and all(rt is not d for d, _ in demand)):
                 demand.append((rt, None))
-        # Vagas por conjunto. O host continua com o seu teto (`max_online_devices`, que é o `max_slots` que o
-        # worker local declara); cada outra máquina passa a ter o DELA, então capacidade cresce com worker novo
+        # Vagas por conjunto. O host continua com o seu teto (`_vagas_do_host`: a regra única, hoje o
+        # `max_online_devices` vivo); cada outra máquina passa a ter o DELA, então capacidade cresce com worker novo
         # em vez de esbarrar num teto global de 10 que o código carregava.
-        livres: dict[str | None, int] = {None: s.max_online_devices - devs.slots_used()}
+        livres: dict[str | None, int] = {None: self._vagas_do_host(s) - devs.slots_used()}
         impedido: dict[str | None, str] = {}
 
         def vagas(p: str | None) -> int:
@@ -1085,7 +1092,7 @@ class Scheduler:
     def _ocupacao(self, p: str | None, s: Any) -> tuple[int, int]:
         """`(ligados, teto)` daquele conjunto de vagas, para a frase da espera dizer de qual máquina se fala."""
         if p is None:
-            return self.devices.slots_used(), s.max_online_devices
+            return self.devices.slots_used(), self._vagas_do_host(s)
         cap = self._capacidade(p)
         return self.devices.slots_used_of(p), (cap.max_slots if cap is not None else 0)
 
