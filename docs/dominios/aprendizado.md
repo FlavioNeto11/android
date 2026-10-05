@@ -1468,6 +1468,12 @@ A lacuna ("a receita não tem evidência datada") tinha um custo medido em 03/10
   `simulated` da execução e a data do fim da etapa. A favor: a etapa com `steps.driven_by = 'recipe'` e `succeeded`. Contra:
   `recipe+ai` ou `sem_ator`. Em ambos, a ÚLTIMA tentativa da etapa é a que carrega `attempts.recipe_id` (é ela que escreve
   `driven_by`). Etapas da mesma receita na mesma execução (`for_each`) viram uma linha, com a contagem no `detail`.
+- **A espera por uma pessoa não é veredito (30.70).** A etapa que para em `waiting_user` (aviso do app, autenticação,
+  conta errada, falta de informação) não conta contra a receita. No executor (`_after_step`), `waiting_user` está
+  ao lado de `retry`, defeito do plano e trava da conta fora do `veredito`: não soma `replay_fail` nem
+  `consecutive_fail` (quarentena) e não grava `driven_by`. Na leitura, a etapa em `waiting_user` fica de fora,
+  o que cobre as gravadas antes. A etapa retomada que terminar dá o veredito no digest seguinte. A divergência
+  vista na SOMBRA continua contando, como na nova tentativa: segura a promoção.
 - **Não decide nada.** Só grava evidência; o D1, a quarentena e os contadores seguem donos do estado da receita.
 - **Retrocarga** `RetrocargaDaReceita`, passo da curadoria (e não função única na montagem): a cada volta completa as
   reproduções de execuções já terminadas que ainda não têm linha (as de antes do 30.39, um digest que falhou), datadas
