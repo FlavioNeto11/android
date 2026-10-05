@@ -215,6 +215,15 @@ def _conteudo_web(tree: UiTree) -> frozenset[str]:
     return frozenset(pagina)
 
 
+def texto_da_barra(tree: UiTree, barras: set[str]) -> str:
+    """31.103: o texto da barra de endereço DE VERDADE, o primeiro nó com o id da barra FORA do conteúdo da página
+    (`_conteudo_web`, a régua do 31.75). A página pode pôr `id="com.android.chrome:id/url_bar"` num elemento antes da
+    barra real, e o primeiro na ordem do documento seria o dela. Sem barra fora da página, `""`: sem barra confiável
+    não há isenção de host (o lado que trava)."""
+    web = _conteudo_web(tree)
+    return next((e.text or "" for e in tree.elements if e.resource_id in barras and e.id not in web), "")
+
+
 def _do_navegador(e: UiElement, web: frozenset[str] = frozenset()) -> bool:
     return (e.resource_id or "").startswith(_ID_DO_NAVEGADOR) and e.id not in web
 

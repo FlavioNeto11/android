@@ -1834,7 +1834,10 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   histórico do ator, com os espaços normalizados. Quatro recusas somadas na ETAPA (ou quatro erros seguidos) encerram
   a etapa sem nova tentativa (`pos_condicao_nao_comprovada` em `falhas.py`). Nunca vira sucesso por aceite.
 - `ai.consentimento_aceito_em`: hosts em que o ator pode aceitar (lido da `url_bar`, com subdomínios). Vazia por padrão;
-  preenchê-la é decisão do dono. A carga recusa `*.loja.com`, `https://…` e caminho, que nunca casariam.
+  preenchê-la é decisão do dono. A carga recusa `*.loja.com`, `https://…` e caminho, que nunca casariam. **31.103:** a
+  barra lida é a de verdade, o primeiro nó com o id da `url_bar` FORA do trecho da página (`dialogos.texto_da_barra`,
+  com a régua do 31.75): a página que põe esse id num elemento antes da barra real não escolhe o host. Sem barra fora
+  da página (H3, árvore truncada), não há isenção. Prova `simulated`; o real fica `not_run`.
 - O prompt do ator diz "recuse; NUNCA aceite", só para economizar decisões.
 - Limites conhecidos:
   - a trava só age com o pacote `com.android.chrome` (cobre as Custom Tabs); não cobre WebView embutida de app nem

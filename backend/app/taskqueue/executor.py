@@ -76,7 +76,8 @@ from .recipes import (NAO_APLICAVEL_CONTA_APOS, READ_ONLY, AlvoAusente, RecipeDi
 from .repository import Repository
 from .dialogos import (FRACAO_DA_PAGINA, FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE,
                        MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha,
-                       dialogo_sem_saida, e_navegador, rotulo_para_o_ator, tipo_do_elemento, toque_que_aceita)
+                       dialogo_sem_saida, e_navegador, rotulo_para_o_ator, texto_da_barra, tipo_do_elemento,
+                       toque_que_aceita)
 from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -1272,9 +1273,8 @@ class StepExecutor:
                 continue                               # o gesto falharia na execução, como antes
             alvos.append((el, (px, py)))
         if ai.consentimento_aceito_em:
-            barras = set(BARRA_DE_ENDERECO.values())
-            texto = next((e.text for e in tree.elements if e.resource_id in barras), "")
-            host = _host(texto or "")
+            # 31.103: a barra de verdade, fora do trecho da página; a página com o id da barra não escolhe o host.
+            host = _host(texto_da_barra(tree, set(BARRA_DE_ENDERECO.values())))
             if host and any(host == h or host.endswith("." + h) for h in map(str.casefold, ai.consentimento_aceito_em)):
                 return None
         tela = (tool_ctx.width, tool_ctx.height)        # 31.104: a terceira medida da tela, vale mesmo sem janela

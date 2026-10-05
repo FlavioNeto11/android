@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.103: o host do aceite vem da barra de verdade (branch fix/31-103-barra-fora-da-pagina, sobre 31.75 + 31.104)
+
+- `taskqueue/dialogos.py`: `texto_da_barra(tree, barras)`, o texto do primeiro nó com o id da barra de endereço FORA do
+  conteúdo da página (`_conteudo_web`, a régua do 31.75); sem barra fora da página, `""`.
+- `taskqueue/executor.py`: `_aceite_do_toque` lê o host de `ai.consentimento_aceito_em` por ela. Antes, o primeiro nó
+  com o id na ordem do documento: a página com `id="com.android.chrome:id/url_bar"` antes da barra real escolhia o
+  host e liberava o "Aceitar". Sem barra confiável, não há isenção (o lado que trava). Os outros leitores da barra
+  (`BARRA_DE_ENDERECO` fora do aceite) não mudam.
+- Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py`, os três `test_31_103_…` (unidade) e
+  `test_pelo_laco_31_103_a_barra_falsa_da_pagina_nao_libera_o_aceite` (pelo laço, reprova o código anterior, conferido
+  por mutação). `real`: `not_run`.
+
 ## 2026-10-05 — 31.75: a página com id do navegador não ganha a isenção do K2 (branch feat/31-75-pagina-com-id-do-navegador)
 
 - Furo do 31.72: o Chrome expõe o `id` do HTML como `resource-id`; um botão da página com
