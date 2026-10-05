@@ -5,7 +5,7 @@
  */
 import { CircleDot, GraduationCap, Square, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { api } from '../../api/client';
+import { api, toApiError } from '../../api/client';
 import type { Instance, TrainingSession } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
@@ -101,7 +101,12 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
       await carregar();
       if (!descartar) setRevisando(s.id);
     } catch (e) {
-      toastError('Não foi possível encerrar o treinamento', e);
+      // 31.92 (v1.64): parar ou descartar a gravação viva exige o controle atual do aparelho. A recusa não muda nada:
+      // a gravação segue, e a barra se relê para mostrar quem está com ela agora.
+      if (toApiError(e).code === 'control_required') {
+        toastError('A gravação continua', e);
+        await carregar();
+      } else toastError('Não foi possível encerrar o treinamento', e);
     } finally {
       setOcupado(null);
     }
