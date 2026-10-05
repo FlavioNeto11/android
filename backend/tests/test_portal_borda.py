@@ -6,6 +6,7 @@ dia, e a saúde lendo só o estado. Nenhum pedido sai da máquina: o nome públi
 """
 from __future__ import annotations
 
+import contextlib
 import gzip
 import hashlib
 import re
@@ -94,6 +95,10 @@ def _borda(quebra: str = "") -> httpx.MockTransport:
                 cab["cache-control"] = "no-store"
             if quebra == "cookie":
                 cab["set-cookie"] = "__cf_bm=valor-secreto; Path=/"
+            if quebra.startswith("cookie_nome:"):                     # o nome em bytes, como a borda o mandaria
+                bruto = [(k.encode(), v.encode()) for k, v in cab.items()]
+                bruto.append((b"set-cookie", quebra.split(":", 1)[1].encode("latin-1") + b"=v; Path=/"))
+                return httpx.Response(200, headers=bruto, content=gzip.compress(corpo))
             if quebra == "recomprimido":
                 cab["content-encoding"] = "br"
                 return httpx.Response(200, headers=cab, content=b"\x8b\x00corpo-br")
@@ -598,7 +603,7 @@ async def test_o_laco_do_vigia_sobe_com_o_backend_e_da_a_volta_na_hora_utc(harne
                 break
             await asyncio.sleep(0.01)
     finally:
-        tarefa.cancel()
+        await _parar(tarefa)
     [agora] = voltas
     assert agora.tzinfo is not None and agora.utcoffset() == timedelta(0)
     assert abs((agora - datetime.now(timezone.utc)).total_seconds()) < 60
@@ -606,8 +611,48 @@ async def test_o_laco_do_vigia_sobe_com_o_backend_e_da_a_volta_na_hora_utc(harne
     monkeypatch.setattr(portal.vigia, "volta", sem_lider.append)
     tarefa = asyncio.create_task(portal.laco_da_borda(lambda: None))      # sem a trava: nenhuma volta
     await asyncio.sleep(0.1)
-    tarefa.cancel()
+    await _parar(tarefa)
     assert sem_lider == []
+
+
+async def _parar(tarefa: "asyncio.Task[None]") -> None:
+    """Cancela e espera a tarefa acabar: sem o `await`, o fim do teste deixa "Task was destroyed but it is pending"."""
+    import asyncio
+
+    tarefa.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await tarefa
+
+
+async def test_volta_que_levanta_nao_derruba_o_laco_e_a_seguinte_acontece(harness: Harness,
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """O laço nunca derruba o processo: a 1ª volta levanta, fica no log, e a 2ª acontece no intervalo seguinte."""
+    import asyncio
+
+    from app.modules.portal import montagem
+
+    assert harness.state is not None
+    portal = harness.state.portal
+    voltas: list[datetime] = []
+
+    def volta(agora: datetime) -> None:
+        voltas.append(agora)
+        if len(voltas) == 1:
+            raise RuntimeError("a borda caiu no meio da volta")
+
+    monkeypatch.setattr(montagem, "PRIMEIRA_VOLTA_DO_VIGIA_S", 0)
+    monkeypatch.setattr(portal.cfg.file.portal.vigia, "intervalo_s", 0)
+    monkeypatch.setattr(portal, "nome_do_vigia", lambda: HOST)
+    monkeypatch.setattr(portal.vigia, "volta", volta)
+    tarefa = asyncio.create_task(portal.laco_da_borda(lambda: 1))
+    try:
+        for _ in range(200):
+            if len(voltas) >= 2:
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        await _parar(tarefa)
+    assert len(voltas) >= 2
 
 
 @pytest.mark.parametrize("perigoso", _UNICODE_PERIGOSO)
@@ -633,3 +678,10 @@ def test_unicode_que_quebra_ou_vira_a_linha_nao_chega_a_saude(perigoso: str) -> 
         vigia.volta(AGORA)
         [(codigo, mensagem, _)] = vigia.problemas()
         assert codigo == "portal_borda_defeito" and "no-store?x" in mensagem and perigoso not in mensagem
+        # Pelo NOME do `Set-Cookie` da raiz, que passa pelo mesmo filtro (nota da leitura do V1).
+        vigia = Vigia(BuscarPelaBorda(lambda: 5, _borda(f"cookie_nome:x{perigoso}y")), host=lambda: HOST,
+                      site_ligado=lambda: True, csp_do_painel=lambda: "aplicar", voltas_sem_conferir=lambda: 3,
+                      intervalo_s=lambda: 3600, avisar=lambda: None)
+        vigia.volta(AGORA)
+        [(codigo, mensagem, _)] = vigia.problemas()
+        assert codigo == "portal_borda_defeito" and "cookie (x?y)" in mensagem and perigoso not in mensagem
