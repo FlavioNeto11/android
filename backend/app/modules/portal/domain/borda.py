@@ -137,8 +137,25 @@ def conferir_html(onde: str, status: int, html: str, *, host: str) -> Desfecho:
     if not html.strip():
         return _defeito(Achado(PAGINA_FORA, onde, "corpo vazio pedido como navegador"))
     # O detalhe vai à saúde e à linha da prova: um `data:` de 1 MB não pode aparecer inteiro (N1 da leitura do #378).
-    return _defeito(*(Achado(SCRIPT_INJETADO, onde, src[:ITEM_MAX], src.split("//", 1)[-1][:ITEM_MAX])
+    return _defeito(*(Achado(SCRIPT_INJETADO, onde, src[:ITEM_MAX], item_do_script(src))
                       for src in scripts_de_fora(html, host)))
+
+
+def item_do_script(src: str) -> str:
+    """O que vai à Canais no `achado`: só host e caminho, sem query, fragmento, credencial nem porta, no alfabeto do
+    filtro dela (`[A-Za-z0-9._/-]`), com teto. O filtro não reconhece segredo em segmento de caminho, então o corte é
+    aqui. `data:` e `javascript:` vão só pelo esquema; o script embutido, como `embutido`."""
+    if src == "(embutido)":
+        return "embutido"
+    limpo = _sem_query(re.sub(r"[\t\n\r]", "", src).replace("\\", "/"))
+    esquema = re.split(r"[/?#]", limpo.lower(), maxsplit=1)[0]
+    if limpo.startswith("//") or esquema in ("http:", "https:"):
+        autoridade, _, caminho = limpo.split("//", 1)[-1].partition("/")
+        nome = autoridade.rsplit("@", 1)[-1].split(":", 1)[0]
+        limpo = nome + ("/" + caminho if caminho else "")
+    elif ":" in esquema:
+        limpo = esquema.split(":", 1)[0]
+    return re.sub(r"[^A-Za-z0-9._/-]", "", limpo)[:ITEM_MAX]
 
 
 def conferir_cabecalhos(onde: str, status: int, cabecalhos: Mapping[str, str], *, sem_transformar: bool = False,

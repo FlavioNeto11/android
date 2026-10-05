@@ -7,6 +7,7 @@ dia, e a saúde lendo só o estado. Nenhum pedido sai da máquina: o nome públi
 from __future__ import annotations
 
 import gzip
+import re
 import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -323,7 +324,25 @@ def test_css_e_js_pedidos_so_com_gzip() -> None:
 def test_versao_e_a_primeira_apontada_e_o_item_tem_teto() -> None:
     html = '<link href="/assets/site.css?v=aaaaaaaaaaaa"><link href="/assets/site.css?v=bbbbbbbbbbbb">'
     assert borda.versoes_pedidas(html) == {"/assets/site.css": "aaaaaaaaaaaa"}            # V8, como a prova antiga
-    enorme = "data:text/javascript," + "x" * 500
+    enorme = "https://cdn.exemplo.invalid/" + "x" * 500 + ".js"
     [achado] = borda.conferir_html("/", 200, f'<script src="{enorme}"></script>', host=HOST).achados
     assert len(achado.item) == borda.ITEM_MAX                                             # V12
+    enorme = "data:text/javascript," + "x" * 500
+    [achado] = borda.conferir_html("/", 200, f'<script src="{enorme}"></script>', host=HOST).achados
+    assert achado.item == "data"
     assert len(achado.detalhe) == borda.ITEM_MAX and achado.detalhe.startswith("data:")  # N1: a saúde mostra
+
+
+@pytest.mark.parametrize(("src", "item"), [
+    ("https://usuario:senha@cdn.exemplo.invalid:8443/a/b.js?token=x#frag", "cdn.exemplo.invalid/a/b.js"),
+    ("//cdn.exemplo.invalid/b.js", "cdn.exemplo.invalid/b.js"),
+    ("/cdn-cgi/scripts/x/rocket-loader.min.js?v=1", "/cdn-cgi/scripts/x/rocket-loader.min.js"),
+    ("javascript:alert(1)", "javascript"),
+    ("data:text/javascript,alert(1)", "data"),
+    ("(embutido)", "embutido"),
+])
+def test_o_achado_da_canais_e_so_host_e_caminho_no_alfabeto_dela(src: str, item: str) -> None:
+    """Contrato com a Canais (leitura do #381): o filtro dela não acha segredo em segmento de caminho; o vigia manda só
+    host e caminho, sem query, fragmento, credencial nem porta, e no alfabeto `[A-Za-z0-9._/-]`."""
+    assert borda.item_do_script(src) == item
+    assert re.fullmatch(r"[A-Za-z0-9._/-]{1,120}", borda.item_do_script(src))
