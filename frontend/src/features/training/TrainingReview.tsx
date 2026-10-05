@@ -6,7 +6,7 @@
  * só a versionada (ensino v2, `TeachingPanel`), que com `features.skills` ligado é o caminho principal.
  */
 import { RefreshCw, ServerCrash, Sparkles, WandSparkles } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
 import type { Capability, InstagramProfile, PolicyGroup, TrainingInput, TrainingProposal, TrainingSaveResult, TrainingSession, TrainingStep } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -55,12 +55,47 @@ function devolverEntrada(p: TrainingProposal, seq: number, etapa: number): Train
 
 const listaDeSeqs = (seqs: number[]) => seqs.map((n) => `#${n}`).join(', ');
 
+/** Toque sem alvo, nas mesmas palavras de `linha_da_entrada` (backend, #440): é o que a IA leu ao propor. */
+export function toqueSemAlvo(e: TrainingInput): string | null {
+  if ((e.type !== 'tap' && e.type !== 'long_press') || (e.target && Object.keys(e.target).length)) return null;
+  return e.sensitive && e.x === null ? 'em teclado ou tela sensível (não gravado)' : 'sem elemento identificado';
+}
+
+/** O que a etapa confere, em palavras da pessoa; o tipo cru só aparece se o backend mandar um que a tela não conhece. */
+export function textoDoConfere(pc: TrainingStep['postcondition']): string {
+  const valor = pc.value ? `“${pc.value}”` : '';
+  const frase = pc.kind === 'text_visible' ? `aparece o texto ${valor || 'esperado'}`
+    : pc.kind === 'element_present' ? `existe o elemento ${valor || 'esperado'}`
+      : pc.kind === 'app_foreground' ? `o app ${valor || 'certo'} está na frente`
+        : pc.kind === 'model_judged' ? 'a IA julga pela tela'
+          : `${pc.kind} ${valor}`.trim();
+  return pc.description ? `${frase} (${pc.description})` : frase;
+}
+
+/**
+ * Teclas iguais e seguidas viram uma linha só na coluna da gravação (apagar um campo grava uma "tecla delete" por
+ * letra). Só na exibição: nas etapas cada entrada segue com o seu Descartar.
+ */
+function agruparTeclas(entradas: TrainingInput[], descartadas: Set<number>): TrainingInput[][] {
+  const grupos: TrainingInput[][] = [];
+  for (const e of entradas) {
+    const ultimo = grupos[grupos.length - 1];
+    const a = ultimo?.[ultimo.length - 1];
+    if (ultimo && a && e.type === 'key' && a.type === 'key' && a.key_name === e.key_name && a.seq + 1 === e.seq
+        && descartadas.has(a.seq) === descartadas.has(e.seq)) ultimo.push(e);
+    else grupos.push([e]);
+  }
+  return grupos;
+}
+
 /** O que a entrada foi. Texto não gravado (tela sensível, senha, cara de segredo) nunca tem valor na tela. */
 function DescricaoEntrada({ e }: { e: TrainingInput }) {
+  const semAlvo = toqueSemAlvo(e);
   return (
     <>
       {TIPO[e.type] ?? e.type}
       {e.target?.text || e.target?.desc ? <> em <strong>{e.target.text || e.target.desc}</strong></> : null}
+      {semAlvo ? <span className={styles.muted}> {semAlvo}</span> : null}
       {e.type === 'text' ? (e.text !== null && !e.sensitive ? <> “{e.text}”</> : <span className={styles.muted}> (texto não gravado)</span>) : null}
       {e.type === 'open_app' ? <> {e.app_id}</> : null}
       {e.type === 'key' ? <> {e.key_name}</> : null}
@@ -100,9 +135,21 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   const [escolhidosP, setEscolhidosP] = useState<Set<string>>(new Set());
   const [escolhidosG, setEscolhidosG] = useState<Set<string>>(new Set());
   // Edições da pessoa: na proposta (comando, etapas, destino das entradas, ações do catálogo) e no escopo. Outra proposta substitui só a
-  // primeira; fechar perde as duas. Descartá-las sem perguntar é o que P2.6 proíbe.
-  const [editado, setEditado] = useState(false);
+  // primeira; fechar perde as duas. Descartá-las sem perguntar é o que P2.6 proíbe. A da proposta compara com a que
+  // chegou: descartar e devolver a mesma entrada volta ao que era, e aí não há o que perder.
+  const [original, setOriginal] = useState<TrainingProposal | null>(null);
+  const editado = proposta !== null && JSON.stringify(proposta) !== JSON.stringify(original);
   const [escopoMudou, setEscopoMudou] = useState(false);
+  // R1/R2 (#436): a etapa escolhida para devolver cada entrada, o que a última ação fez (anunciado) e para onde o foco
+  // vai depois dela; o controle de onde a entrada estava some no re-render.
+  const [destino, setDestino] = useState<Record<number, string>>({});
+  const [aviso, setAviso] = useState('');
+  const alvos = useRef(new Map<string, HTMLElement>());
+  const [focar, setFocar] = useState<string | null>(null);
+  const alvo = (chave: string) => (el: HTMLElement | null) => {
+    if (el) alvos.current.set(chave, el);
+    else alvos.current.delete(chave);
+  };
   const [pensando, setPensando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [resultado, setResultado] = useState<TrainingSaveResult | null>(null);
@@ -114,6 +161,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       if (!vivo) return;
       setSessao(s);
       setProposta(s.proposal);
+      setOriginal(s.proposal);
       if (s.profile_id) setEscolhidosP(new Set([s.profile_id]));
     }).catch((e) => { if (vivo) setFalhaSessao(falhaDe(e)); });
     return () => { vivo = false; };
@@ -155,12 +203,20 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   const porSeq = useMemo(() => new Map((sessao?.inputs ?? []).map((e) => [e.seq, e])), [sessao]);
   const descartadas = new Set((proposta?.discarded ?? []).map((d) => d.seq));
   // Quantos lugares cada entrada ocupa na proposta: zero é "sem destino", mais de um é duplicada.
+  // O descarte conta uma vez só: repetida dentro de `discarded` o save aceita e fica a primeira (#442).
   const lugares = useMemo(() => {
     const m = new Map<number, number>();
     for (const s of proposta?.steps ?? []) for (const n of s.inputs) m.set(n, (m.get(n) ?? 0) + 1);
-    for (const d of proposta?.discarded ?? []) m.set(d.seq, (m.get(d.seq) ?? 0) + 1);
+    for (const seq of new Set((proposta?.discarded ?? []).map((d) => d.seq))) m.set(seq, (m.get(seq) ?? 0) + 1);
     return m;
   }, [proposta]);
+  const descarteUnico = (proposta?.discarded ?? []).filter((d, k, todas) => todas.findIndex((x) => x.seq === d.seq) === k);
+
+  useEffect(() => {
+    if (!focar) return;
+    alvos.current.get(focar)?.focus();
+    setFocar(null);
+  }, [focar, proposta]);
   const semDestino = proposta ? (sessao?.inputs ?? []).filter((e) => !lugares.has(e.seq)) : [];
   const duplicadas = [...lugares].filter(([, n]) => n > 1).map(([seq]) => seq).sort((a, b) => a - b);
 
@@ -179,7 +235,9 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       const s = await api.proposeTraining(sessionId);
       setSessao(s);
       setProposta(s.proposal);
-      setEditado(false);
+      setOriginal(s.proposal);
+      setDestino({});
+      setAviso('');
     } catch (e) {
       toastError('A IA não conseguiu propor o fluxo', e);
     } finally {
@@ -189,22 +247,28 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
 
   function mudarProposta(parcial: Partial<TrainingProposal>) {
     setProposta((p) => (p ? { ...p, ...parcial } : p));
-    setEditado(true);
   }
 
   function mudarEtapa(i: number, parcial: Partial<TrainingStep>) {
     setProposta((p) => (p ? { ...p, steps: p.steps.map((s, k) => (k === i ? { ...s, ...parcial } : s)) } : p));
-    setEditado(true);
   }
 
-  function descartar(seq: number) {
+  // Depois de mover, o foco vai para o controle da entrada no lugar novo e a região de status diz para onde ela foi.
+  function descartar(seq: number, frase = `#${seq} foi para Descartadas; para desfazer, devolva a uma etapa.`) {
     setProposta((p) => (p ? descartarEntrada(p, seq) : p));
-    setEditado(true);
+    setAviso(frase);
+    setFocar(`descartada-${seq}`);
   }
 
   function devolver(seq: number, etapa: number) {
     setProposta((p) => (p ? devolverEntrada(p, seq, etapa) : p));
-    setEditado(true);
+    setDestino((d) => {
+      const n = { ...d };
+      delete n[seq];
+      return n;
+    });
+    setAviso(`#${seq} voltou à etapa ${etapa + 1}${proposta?.steps[etapa] ? ` (${proposta.steps[etapa].title})` : ''}.`);
+    setFocar(`etapa-${seq}`);
   }
 
   async function salvar() {
@@ -266,17 +330,29 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     );
   };
 
-  const acoesDaEntrada = (seq: number, comDevolver: boolean, comDescartar = true) => (
+  // `onde` é o lugar desta linha (`etapa`, `descartada`, `sem-destino`): é a chave do foco depois de mover a entrada.
+  const acoesDaEntrada = (seq: number, onde: 'etapa' | 'descartada' | 'sem-destino') => (
     <span className={styles.entryActions}>
-      {comDescartar ? (
-        <Button size="sm" variant="ghost" label={`Descartar a entrada #${seq}`} onClick={() => descartar(seq)}>Descartar</Button>
+      {onde !== 'descartada' ? (
+        <Button ref={onde === 'etapa' ? alvo(`etapa-${seq}`) : undefined} size="sm" variant="ghost"
+                label={`Descartar a entrada #${seq}`} onClick={() => descartar(seq)}>Descartar</Button>
+      ) : duplicada.has(seq) ? (
+        <Button size="sm" variant="ghost" label={`Manter a entrada #${seq} só em Descartadas`}
+                onClick={() => descartar(seq, `#${seq} ficou só em Descartadas.`)}>Manter descartada</Button>
       ) : null}
-      {comDevolver && proposta?.steps.length ? (
-        <Select small aria-label={`Devolver a entrada #${seq} à etapa`} value=""
-                onChange={(ev) => { if (ev.target.value !== '') devolver(seq, Number(ev.target.value)); }}>
-          <option value="">Devolver à etapa…</option>
-          {proposta.steps.map((s, i) => <option key={s.key} value={i}>{`${i + 1}. ${s.title}`}</option>)}
-        </Select>
+      {onde !== 'etapa' && proposta?.steps.length ? (
+        <>
+          {/* R1: escolher a etapa não move nada; quem move é o botão (antes, o select movia na troca de opção). */}
+          <Select ref={onde === 'descartada' ? alvo(`descartada-${seq}`) : undefined} small
+                  aria-label={`Devolver a entrada #${seq} à etapa`} value={destino[seq] ?? ''}
+                  onChange={(ev) => { const v = ev.target.value; setDestino((d) => ({ ...d, [seq]: v })); }}>
+            <option value="">Escolha a etapa…</option>
+            {proposta.steps.map((s, i) => <option key={s.key} value={i}>{`${i + 1}. ${s.title}`}</option>)}
+          </Select>
+          <Button size="sm" variant="ghost" label={`Devolver a entrada #${seq}`}
+                  disabledReason={destino[seq] ? null : 'Escolha a etapa primeiro.'}
+                  onClick={() => devolver(seq, Number(destino[seq]))}>Devolver</Button>
+        </>
       ) : null}
     </span>
   );
@@ -324,19 +400,26 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           <div className={styles.recordingCol}>
             <h4 className={styles.sub}>O que você fez ({sessao.inputs?.length ?? 0} entradas)</h4>
             <ol className={styles.inputList}>
-              {(sessao.inputs ?? []).map((e) => (
-                <li key={e.seq} className={descartadas.has(e.seq) ? styles.discarded : undefined}>
-                  <span className={styles.seq}>#{e.seq}</span>
-                  <span>
-                    <DescricaoEntrada e={e} />
-                    {e.screen_title ? <span className={styles.muted}> · tela {e.screen_title}</span> : null}
-                  </span>
-                </li>
-              ))}
+              {agruparTeclas(sessao.inputs ?? [], descartadas).map((g) => {
+                const e = g[0]!;
+                const fim = g[g.length - 1]!;
+                return (
+                  <li key={e.seq} className={descartadas.has(e.seq) ? styles.discarded : undefined}>
+                    <span className={styles.seq}>{g.length > 1 ? `#${e.seq}–#${fim.seq}` : `#${e.seq}`}</span>
+                    <span>
+                      <DescricaoEntrada e={e} />
+                      {g.length > 1 ? <> ×{g.length}</> : null}
+                      {e.screen_title ? <span className={styles.muted}> · tela {e.screen_title}</span> : null}
+                    </span>
+                  </li>
+                );
+              })}
             </ol>
           </div>
 
           <div className={styles.proposalCol}>
+            {/* Nasce vazia: só o que entra depois (a última entrada movida) é anunciado. */}
+            <p className={styles.muted} role="status" aria-live="polite">{aviso}</p>
             {!proposta ? (
               <div className={styles.ask}>
                 <p>A IA vai ler a gravação e propor o fluxo: o comando com o que varia, as etapas com o objetivo de cada
@@ -354,7 +437,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                         <li key={e.seq}>
                           <span className={styles.seq}>#{e.seq}</span>
                           <span className={styles.entryText}><DescricaoEntrada e={e} /></span>
-                          {acoesDaEntrada(e.seq, true)}
+                          {acoesDaEntrada(e.seq, 'sem-destino')}
                         </li>
                       ))}
                     </ul>
@@ -388,12 +471,12 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                             <li key={`${n}-${k}`}>
                               <span className={styles.seq}>#{n}</span>
                               <span className={styles.entryText}>{linhaDaEntrada(n)}</span>
-                              {acoesDaEntrada(n, false)}
+                              {acoesDaEntrada(n, 'etapa')}
                             </li>
                           ))}
                         </ul>
                       ) : null}
-                      <p className={styles.muted}>Confere: {s.postcondition.kind} {s.postcondition.value ? `“${s.postcondition.value}”` : ''}
+                      <p className={styles.muted}>Confere: {textoDoConfere(s.postcondition)}
                         {s.inputs.map((n) => porSeq.get(n)).filter(Boolean).length ? '' : ' · sem entradas: a IA conduz esta etapa'}</p>
                       {acoes.length && (s.side_effect || s.capability) ? (
                         <Select aria-label={`Ação do catálogo da etapa ${i + 1}`} value={s.capability ?? ''}
@@ -405,15 +488,15 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                     </li>
                   ))}
                 </ol>
-                {proposta.discarded.length ? (
+                {descarteUnico.length ? (
                   <section aria-label="Descartadas">
-                    <h4 className={styles.sub}>Descartadas ({proposta.discarded.length})</h4>
+                    <h4 className={styles.sub}>Descartadas ({descarteUnico.length})</h4>
                     <ul className={styles.entryList}>
-                      {proposta.discarded.map((d, k) => (
-                        <li key={`${d.seq}-${k}`}>
+                      {descarteUnico.map((d) => (
+                        <li key={d.seq}>
                           <span className={styles.seq}>#{d.seq}</span>
                           <span className={styles.entryText}>{linhaDaEntrada(d.seq)} <span className={styles.muted}>— {d.why}</span></span>
-                          {acoesDaEntrada(d.seq, true, false)}
+                          {acoesDaEntrada(d.seq, 'descartada')}
                         </li>
                       ))}
                     </ul>

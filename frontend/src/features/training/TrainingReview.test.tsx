@@ -265,7 +265,10 @@ it('entrada sem etapa e sem descarte: bloco "Sem destino" no topo, Salvar travad
   expect(regiao('Sem destino').textContent).not.toContain('#2');
   expect(salvar().getAttribute('aria-disabled')).toBe('true');                 // ainda falta o #3
 
+  // R1: escolher a etapa não move; quem move é o "Devolver".
   await setValue(byRole('combobox', /Devolver a entrada #3 à etapa/, regiao('Sem destino')) as HTMLSelectElement, '0');
+  expect(regiao('Sem destino').textContent).toContain('#3');
+  await click(byRole('button', /^Devolver a entrada #3$/, regiao('Sem destino')));
   await waitFor(() => expect(rotulados('section', 'Sem destino')).toHaveLength(0));
   expect(regiao('Entradas da etapa 1', 'ul').textContent).toContain('Enviar');
   expect(salvar().getAttribute('aria-disabled')).toBeNull();
@@ -299,7 +302,10 @@ it('Descartar tira da etapa e Devolver tira do descarte: a entrada nunca fica em
   expect(rotulados('ul', 'Entradas da etapa 1')).toHaveLength(0);           // etapa vazia: a IA conduz
   expect(text()).toContain('sem entradas: a IA conduz esta etapa');
   await setValue(byRole('combobox', /Devolver a entrada #1 à etapa/) as HTMLSelectElement, '1');
+  await click(byRole('button', /^Devolver a entrada #1$/));
+  await waitFor(() => expect(regiao('Entradas da etapa 2', 'ul').textContent).toContain('#1'));
   await setValue(byRole('combobox', /Devolver a entrada #4 à etapa/) as HTMLSelectElement, '1');
+  await click(byRole('button', /^Devolver a entrada #4$/));
   await waitFor(() => expect(regiao('Entradas da etapa 2', 'ul').textContent).toContain('Voltar'));
   expect(regiao('Descartadas').textContent).not.toContain('#1');
   expect(regiao('Descartadas').textContent).not.toContain('#4');
@@ -330,4 +336,65 @@ it('texto não gravado nunca aparece, nem marcado como sensível com valor; os a
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   const sucesso = useToastStore.getState().toasts.find((t) => t.tone === 'success');
   expect(sucesso?.message).toContain('A etapa "Abrir" não confere o efeito no servidor.');
+});
+
+// ---------------------------------------------------------------- 31.90-B: foco, anúncio e "editado" que compara
+it('descartar e devolver: o foco vai para a entrada no lugar novo, o status diz para onde, e voltar ao que era não pede "Sair sem salvar"', async () => {
+  let fechado = 0;
+  const sessao = { ...SESSAO, inputs: [...SESSAO.inputs, toque(3, 'Enviar')] };
+  const proposta = { ...PROPOSTA, steps: [etapa('abrir', 'Abrir', [1, 2]), etapa('enviar', 'Enviar', [3])] };
+  backend.on('GET', /\/training\/trn-1$/, () => json(sessao));
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => json({ ...sessao, status: 'proposed', proposal: proposta }));
+  await act(async () => root.render(<><TrainingReview sessionId="trn-1" onClose={() => { fechado += 1; }} /><ConfirmHost /></>));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  const status = () => [...document.querySelectorAll('[role="status"]')].map((s) => s.textContent).join(' | ');
+
+  await click(byRole('button', /^Descartar a entrada #3$/, regiao('Entradas da etapa 2', 'ul')));
+  await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Devolver a entrada #3 à etapa'));
+  expect(regiao('Descartadas').contains(document.activeElement)).toBe(true);
+  expect(status()).toContain('#3 foi para Descartadas');
+
+  await setValue(byRole('combobox', /Devolver a entrada #3 à etapa/) as HTMLSelectElement, '1');
+  await click(byRole('button', /^Devolver a entrada #3$/));
+  await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Descartar a entrada #3'));
+  expect(regiao('Entradas da etapa 2', 'ul').contains(document.activeElement)).toBe(true);
+  expect(status()).toContain('#3 voltou à etapa 2 (Enviar)');
+
+  // A proposta voltou a ser a que a IA mandou: não há o que perder, e "Depois" fecha sem perguntar.
+  await click(byRole('button', /^Depois$/));
+  await waitFor(() => expect(fechado).toBe(1));
+  expect(text()).not.toContain('Sair sem salvar o fluxo?');
+});
+
+it('descarte repetido conta uma vez (#442); a entrada na etapa e no descarte sai da etapa com "Manter descartada"', async () => {
+  const sessao = { ...SESSAO, inputs: [...SESSAO.inputs, toque(3, 'Enviar')] };
+  await abrirComProposta(sessao, {
+    ...PROPOSTA, steps: [etapa('abrir', 'Abrir', [1, 2, 3])],
+    discarded: [{ seq: 3, why: 'engano' }, { seq: 3, why: 'engano de novo' }],
+  });
+  expect(regiao('Descartadas').textContent).toContain('Descartadas (1)');
+  const salvar = () => byRole('button', /^Salvar como fluxo/);
+  expect(salvar().getAttribute('aria-label') ?? salvar().textContent).toContain('#3 está em mais de um lugar');
+
+  await click(byRole('button', /^Manter a entrada #3 só em Descartadas$/, regiao('Descartadas')));
+  await waitFor(() => expect(regiao('Entradas da etapa 1', 'ul').textContent).not.toContain('#3'));
+  // O descarte segue com as duas linhas da IA, e isso não trava o salvar.
+  expect(salvar().getAttribute('aria-disabled')).toBeNull();
+  expect(allByRole('button', /^Manter a entrada #3/)).toHaveLength(0);
+});
+
+it('toque sem alvo nas palavras do backend (#440), o "Confere" em português e a mesma tecla seguida numa linha só', async () => {
+  const tecla = (seq: number) => ({ ...SESSAO.inputs[1]!, seq, type: 'key', key_name: 'delete', has_text: false, text_len: null });
+  const pin = { ...SESSAO.inputs[0]!, seq: 3, target: null, x: null, y: null, sensitive: true };
+  const solto = { ...SESSAO.inputs[0]!, seq: 4, target: null, x: 50, y: 60 };
+  const sessao = { ...SESSAO, inputs: [...SESSAO.inputs, pin, solto, tecla(5), tecla(6), tecla(7)] };
+  await abrirComProposta(sessao, { ...PROPOSTA, steps: [etapa('abrir', 'Abrir', [1, 2, 3, 4, 5, 6, 7])] });
+  expect(text()).toContain('toque em teclado ou tela sensível (não gravado)');
+  expect(text()).toContain('toque sem elemento identificado');
+  expect(text()).toContain('Confere: aparece o texto “{contato}” (aberta)');
+  // Na coluna da gravação, uma linha; na etapa, cada uma com o seu Descartar.
+  expect(text()).toContain('#5–#7');
+  expect(text()).toContain('tecla delete ×3');
+  for (const n of [5, 6, 7]) expect(byRole('button', new RegExp(`^Descartar a entrada #${n}$`), regiao('Entradas da etapa 1', 'ul'))).toBeTruthy();
 });

@@ -107,6 +107,8 @@ it('órfã: com o controle em "none" também avisa e oferece Concluir e Descarta
 it('gravação viva de quem tem o controle em outra aba: aviso certo, sem Concluir nem Descartar', async () => {
   await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId={null} mine={false} />));
   await waitFor(() => expect(text()).toContain('Há uma gravação em andamento neste aparelho por quem está com o controle.'));
+  // B1 (#428): a quem recarregou a página, o aviso diz a saída.
+  expect(text()).toMatch(/Se a gravação é sua.*clique em Retomar controle/s);
   expect(text()).not.toContain('não está mais gravando');
   expect(text()).not.toContain('Gravando:');
   expect(allByRole('button', /^Concluir e revisar$/)).toHaveLength(0);
