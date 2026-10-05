@@ -70,7 +70,10 @@ def test_foto_nao_vai_a_convidado(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
 def test_opcoes_da_escolha_viram_o_detalhe_do_fato() -> None:
     assert t.opcoes_da_escolha("1,2,3") == "1-2-3"
     assert t.opcoes_da_escolha(" A , B ,C,D ") == "A-B-C-D"
-    for ruim in ("1", "1,1", "1,a-b", "1,x:y", "1,,", "1,opcao-muito-longa-demais"):
+    assert t.opcoes_da_escolha("10,20") == "10-20"
+    # Leitura do #412: opção é número ou UMA letra; palavra de aval e as letras S e N não servem.
+    for ruim in ("1", "1,1", "1,a-b", "1,x:y", "1,,", "1,opcao-muito-longa-demais", "sim,nao", "ok,pode",
+                 "publica,1", "aprovar,vetar", "S,N", "A,s", "1,2,1000"):
         with pytest.raises(ValueError):
             t.opcoes_da_escolha(ruim)
 
@@ -206,3 +209,28 @@ def test_chat_vazio_nada_envia(monkeypatch: pytest.MonkeyPatch, gravadas: list[o
     sha = hashlib.sha256(PNG).hexdigest()
     assert asyncio.run(t._enviar_foto("Imagem.", None, ETAPA, None, central=_central(sha))) == 2
     assert "TELEGRAM_CHAT_ID vazio" in capsys.readouterr().out and gravadas == []
+
+def test_marca_da_escolha_que_nao_grava_sai_com_erro(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                                     capsys: pytest.CaptureFixture[str]) -> None:
+    """Leitura do #412: se a marca da pergunta nova não grava, a resposta solta não casa e a antiga segue aberta. O
+    script sai com erro visível (3), e não com o 0 de "enviado"."""
+    class _Resposta:
+        status_code = 200
+
+    class _CanalOk:
+        def __init__(self, *_a: object) -> None: ...
+
+        async def _chamar(self, *_a: object, **_k: object) -> _Resposta:
+            return _Resposta()
+
+    from types import SimpleNamespace
+
+    from pydantic import SecretStr
+    monkeypatch.setattr(t, "EnvSettings", lambda: SimpleNamespace(telegram_chat_id=SecretStr("1"),
+                                                                   telegram_bot_token=SecretStr("x")))
+    monkeypatch.setattr(t, "CanalTelegram", _CanalOk)
+    monkeypatch.setattr(t, "_json", lambda _r: {"ok": True, "result": {"message_id": 297}})
+    monkeypatch.setattr(t, "_gravar_enviada", lambda *_a, **_k: False)
+    assert asyncio.run(t._enviar("Responda 1 ou 2.", None, escolha="1-2")) == 3
+    assert "ERRO" in capsys.readouterr().out
+    assert asyncio.run(t._enviar("Sem escolha.", None)) == 0              # sem a marca, a falha do registro só avisa

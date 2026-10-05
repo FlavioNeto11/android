@@ -146,7 +146,9 @@ REPASSES_DA_ESCOLHA = ("escolha", "escolha_ambigua")
 #: Quanto tempo depois da pergunta de escolha a resposta solta ainda casa com ela (28.44). Constante, sem chave de config.
 JANELA_DA_ESCOLHA_S = 1800
 RESPOSTA_ESCOLHA_REPLY = "Recebi a sua resposta. A orquestradora confere e segue."
-RESPOSTA_ESCOLHA_CASADA = "Recebi a opção {opcao}, como resposta à sua mensagem anterior. A orquestradora confere e segue."
+#: D1 da leitura do #412: diz QUAL pergunta (a hora dela) e sai em reply a ela, para um casamento errado ficar à vista.
+RESPOSTA_ESCOLHA_CASADA = ("Li o seu \"{texto}\" como a opção {opcao} da minha pergunta das {hora}. Se não era isso, "
+                           "responda nela com Responder.")
 RESPOSTA_ESCOLHA_AMBIGUA = ("Tenho mais de uma pergunta aberta para você: toque em Responder na mensagem certa e mande a "
                             "opção de novo.")
 RESPOSTA_COMENTARIO_MUDOU = "O comentário mudou depois do pedido: nada foi repassado. Comente de novo no cartão."
@@ -1052,7 +1054,7 @@ class ConversaDoCanal:
         if not texto.strip() or texto.strip().startswith("/"):
             return None
         abertas = self.repo.escolhas_abertas(str(linha.get("recebida_em") or ""), JANELA_DA_ESCOLHA_S,
-                                             fora=self._id(linha))
+                                             fora=self._id(linha), ref_da_resposta=_texto(linha.get("ref_mensagem")))
         casam = [(f, op) for f in (Fato.de(str(a.get("fato") or "")) for a in abertas) if f is not None
                  for op in [opcao_da_escolha(texto, f.opcoes)] if op is not None]
         if not casam:
@@ -1155,9 +1157,17 @@ class ConversaDoCanal:
             alvo = f"escolha:{i.ref}"
             if i.opcao is not None:
                 previa.update(casada_com=i.ref, opcao=i.opcao)
-                resposta = RESPOSTA_ESCOLHA_CASADA.format(opcao=i.opcao)
-            else:
-                resposta = RESPOSTA_ESCOLHA_REPLY
+                pergunta = self.repo.enviada(i.ref or "")
+                quando = parse_iso(str((pergunta or {}).get("enviada_em") or ""))
+                escrito = str(linha.get("texto") or i.opcao).strip()[:40]
+                resposta = RESPOSTA_ESCOLHA_CASADA.format(texto=escrito, opcao=i.opcao,
+                                                          hora=f"{quando:%H:%M}Z" if quando else "de há pouco")
+                self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora", alvo=alvo,
+                                 previa=previa, de=("recebida", "pergunta"))
+                # Em reply à PERGUNTA casada, não ao "1": o dono vê de cara a qual mensagem a resposta foi ligada.
+                await self._enviar(saida, resposta, origem="resposta", responde_a=i.ref, entrada_id=self._id(linha))
+                return
+            resposta = RESPOSTA_ESCOLHA_REPLY
         self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora", alvo=alvo,
                          previa=previa, de=("recebida", "pergunta"))
         await self._responder(saida, linha, resposta)
