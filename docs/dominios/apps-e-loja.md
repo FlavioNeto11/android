@@ -92,10 +92,12 @@ dela, a etapa para em `waiting_user` sem mais toque. O Instagram declara a "Shar
 ("OK" e "Manage settings" são aceitar um aviso numa conta real). Na mesma tela, a linha de um `commit_switch` exigido e
 ausente (o "Add AI label" fica abaixo da dobra) é trazida à tela pela regra, em passos de 25 % da área rolável, antes de o
 ator decidir (`rolagem_ate_o_interruptor`). Item 29.90: o `nunca` vale também para a dispensa da sessão
-(`proibido_na_tela`, em todos os idiomas declarados), e "ok" não é rótulo global de recusa ("OK" é aceite). Logo antes de
-todo toque de efeito, o executor relê a árvore (`cobertura_nova_no_ponto`): um clicável novo por cima do ponto (a folha
-que abriu depois da conferência) ou o alvo fora do lugar seguram o toque, e o laço observa de novo. A folha que não fecha
-é a falha `aviso_do_app` (da pessoa, nunca vira lição).
+(`proibido_na_tela`), a folha de `fechar` é reconhecida em todos os idiomas declarados (`regra_de_fechar`), e nenhum app
+declara "ok" como rótulo global de recusa ("OK" é aceite). Logo antes do toque de efeito (`tap`/`long_press`; `type_text`
+e `drag` ficam fora por escopo), o executor relê a árvore (`cobertura_nova_no_ponto`): um clicável novo por cima do ponto
+(a folha que abriu depois da conferência) ou o alvo fora do lugar seguram o toque, e o laço observa de novo. Em 3 no total
+da tentativa, com alguma cobertura nova a etapa para numa pessoa (`aviso_do_app`); só alvo movido, `fail_or_retry`. A
+folha que não fecha também é `aviso_do_app` (da pessoa, nunca vira lição).
 
 **Dica de tela ao juiz** (item 31.46): o `telas.yaml` aceita `dicas_ao_juiz: [{texto, telas?}]`, um fato sobre como a árvore
 do app é desenhada (o Outlook: a linha da lista é um `ComposeView` sem texto, então a árvore não mostra remetente nem

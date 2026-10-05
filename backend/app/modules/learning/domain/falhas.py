@@ -120,7 +120,7 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
                           "sem endpoint configurado")),
     # 29.87/29.90 (D4): a folha de aviso declarada que não fechou com o toque fora dela. Responder ao aviso ("OK" numa
     # conta real) é da pessoa: não é o aparelho, e nunca vira lição.
-    (_F.AVISO_DO_APP, ("nao fechou com um toque fora dela",)),
+    (_F.AVISO_DO_APP, ("nao fechou com um toque fora dela", "um aviso cobre o botao de efeito")),
     # 29.90: a tela que segue mudando entre a conferência do efeito e o toque (nada foi tocado).
     (_F.UI_OCUPADA, ("interface do aparelho seguiu ocupada", "leitura da tela seguiu falhando",
                      "a tela mudou entre a conferencia e o toque")),
@@ -258,6 +258,7 @@ _DO_RETORNO_DE_RECEITA: Mapping[str, FailureKind] = {
     "acao_invalida": _F.IA_CHAMADA_INVALIDA,
     "alvo_do_efeito": _F.EFEITO_ALVO_ERRADO,
     "guarda_do_efeito": _F.EFEITO_GUARDA_NAO_ATENDIDA,
+    "tela_mudou": _F.UI_OCUPADA,
     "parametro_ausente": _F.FALTA_INFORMACAO,
     "pos_condicao": _F.POS_CONDICAO_NAO_COMPROVADA,
     "alvo_ausente": _F.ALVO_AUSENTE,

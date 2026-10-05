@@ -540,6 +540,17 @@ def proibido_na_tela(k: ConhecimentoDeTelas, tree: UiTree, elemento: UiElement) 
     return False
 
 
+def regra_de_fechar(k: ConhecimentoDeTelas, tree: UiTree, *, package: str | None) -> RegraDeTela | None:
+    """29.90 (D1c da revisão): a regra com `fechar` que reconhece esta tela em QUALQUER idioma declarado, ou `None`.
+    Quem fecha a folha não sabe o idioma da tela; só pela tabela padrão, a folha em português iria à receita ou ao
+    ator, onde o `nunca` não protege."""
+    for idioma in k.sinais:
+        regra = k.regra(classificar(k, tree, package=package, locale=idioma).tela)
+        if regra is not None and regra.fechar_fora is not None:
+            return regra
+    return None
+
+
 def toque_fora_da_folha(regra: RegraDeTela, tree: UiTree) -> tuple[int, int] | None:
     """29.87: o ponto (do aparelho) que fecha a folha da `regra` sem escolher nada: no fundo escurecido, no meio da
     faixa que sobra ACIMA da folha (medido no android-13 em 05/10: a folha "Sharing posts" começa em y=260 e o fundo
@@ -748,9 +759,10 @@ def _da_pasta_com_data(caminho: str, mtime_ns: int) -> ConhecimentoDeTelas:
 @lru_cache(maxsize=32)
 def _da_pasta_ou_aviso(caminho: str, mtime_ns: int) -> ConhecimentoDeTelas | None:
     # O inválido também fica no cache: o aviso sai uma vez por modificação do arquivo, não a cada volta (29.90, L2).
+    # Só o conteúdo inválido: um `OSError` passageiro sobe sem entrar no cache (a próxima volta lê de novo).
     try:
         return carregar(Path(caminho))
-    except (ConhecimentoInvalido, OSError) as exc:
+    except (ConhecimentoInvalido, UnicodeDecodeError) as exc:
         log.warning("conhecimento de telas inválido em %s; segue sem ele até o arquivo mudar: %s", caminho, exc)
         return None
 
@@ -763,7 +775,7 @@ def da_pasta_por_data(pasta: Path) -> ConhecimentoDeTelas | None:
         if not caminho.is_file():
             return None
         return _da_pasta_ou_aviso(str(caminho), caminho.stat().st_mtime_ns)
-    except OSError as exc:                          # o arquivo sumiu entre a pergunta e a leitura da data
+    except OSError as exc:                          # passageiro (o arquivo sumiu, travado): fora do cache
         log.warning("conhecimento de telas ilegível em %s: %s", caminho, exc)
         return None
 

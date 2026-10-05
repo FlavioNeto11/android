@@ -2135,6 +2135,7 @@ class StepExecutor:
         folhas_fechadas = 0
         rolagens_ate_o_interruptor = 0
         releituras_antes_do_efeito = 0
+        coberturas_antes_do_efeito = 0
         # Um texto só para as duas saídas do teto: `falhas.py` o classifica como ciclo sem progresso.
         motivo_do_teto = f"Limite de {max_actions} ações por etapa atingido sem concluir."
         for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0) + LIMITE_DE_FOLHAS
@@ -2288,9 +2289,8 @@ class StepExecutor:
             conhecimento_da_tela = (telas_do_app.da_pasta_por_data(CONHECIMENTO_DE_APPS / app.package)
                                     if app.package and app.package.replace(".", "").replace("_", "").isalnum()
                                     else None)
-            if conhecimento_da_tela is not None:
-                vista = telas_do_app.classificar(conhecimento_da_tela, obs.tree, package=obs.package)
-                regra_da_folha = conhecimento_da_tela.regra(vista.tela)
+            if conhecimento_da_tela is not None:      # D1c: em qualquer idioma declarado
+                regra_da_folha = telas_do_app.regra_de_fechar(conhecimento_da_tela, obs.tree, package=obs.package)
             if regra_da_folha is not None and regra_da_folha.fechar_fora is not None:
                 ponto = telas_do_app.toque_fora_da_folha(regra_da_folha, obs.tree)
                 if ponto is None or folhas_fechadas >= LIMITE_DE_FOLHAS:
@@ -3078,27 +3078,50 @@ class StepExecutor:
                     continue
                 await evidence(obs, "Conferência antes do efeito externo: " +
                                (", ".join(step.commit_guard) or "sem textos de guarda") + " visíveis")
-                if decision.tool in ("tap", "long_press") and target is not None:
+                if decision.tool in ("tap", "long_press"):
                     # ---------- 29.90: a tela pode mudar entre a leitura conferida e o toque (a folha "Sharing
                     # posts" abre por cima do Share). Relida AGORA: algo novo por cima do ponto, ou o alvo fora do
-                    # lugar, e o toque não sai; o laço observa de novo, e a folha declarada fecha pela regra.
+                    # lugar, e o toque não sai; o laço observa de novo, e a folha declarada fecha pela regra. Só no
+                    # toque: `type_text` e `drag` de efeito ficam fora por escopo (nenhuma folha medida os cobre).
+                    # A releitura conta no prazo da etapa e é medida à parte (`executor.releitura_antes_do_efeito_ms`).
+                    t_releitura = time.monotonic()
                     try:
                         px, py, _ = resolve_point(tool_ctx, getattr(args, "element_id", None),
                                                   getattr(args, "x", None), getattr(args, "y", None))
                         mudou = cobertura_nova_no_ponto(obs.tree, await quick_tree(), (px, py), target)
                     except (DriverError, TelaDeContaTravada) as exc:
-                        mudou = f"a releitura antes do toque falhou ({exc})"
+                        mudou = (MUDANCA_RELEITURA_FALHOU, f"a releitura antes do toque falhou ({exc})")
+                    metricas.observar("executor.releitura_antes_do_efeito_ms", ms_desde(t_releitura),
+                                      resultado=mudou[0] if mudou else "tocou")
                     if mudou:
+                        tipo_da_mudanca, mudanca = mudou
                         releituras_antes_do_efeito += 1
+                        coberturas_antes_do_efeito += tipo_da_mudanca == MUDANCA_POR_CIMA
+                        metricas.contar("executor.tela_mudou_antes_do_efeito", motivo=tipo_da_mudanca,
+                                        origem="receita" if from_recipe else "ator")
+                        await evidence(obs, f"Toque de efeito segurado [{tipo_da_mudanca}]: {mudanca}")
                         aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=True,
                                        source="recipe" if from_recipe else "ai")
-                        repo.finish_action(aid, ActionStatus.rejected, error=f"tela mudou antes do toque: {mudou}")
+                        repo.finish_action(aid, ActionStatus.rejected,
+                                           error=f"tela mudou antes do toque [{tipo_da_mudanca}]: {mudanca}")
+                        if from_recipe:   # D2-R1: o cursor da receita já passou desta ação; quem decide agora é a IA
+                            rr.diverged = f"tela mudou antes do toque: {mudanca}"
                         if releituras_antes_do_efeito >= LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO:
+                            if coberturas_antes_do_efeito:
+                                # D5: um clicável NOVO por cima do botão de efeito é um aviso que o conhecimento do
+                                # app não declara; responder a ele é da pessoa (como a folha que não fecha). Sem
+                                # nova navegação: a etapa para e a pessoa olha a tela.
+                                return StepOutcome(Outcome.waiting_user, (
+                                    "Um aviso cobre o botão de efeito e não é declarado no conhecimento do app: "
+                                    f"{mudanca}; nada foi tocado."),
+                                    needs="Veja o aviso na tela, feche-o sem aceitar nada se for o caso e retome o "
+                                          "item; nada foi publicado.")
+                            # Só o alvo se mexendo (ou a releitura falhando): tela instável, repetir é o certo.
                             return await fail_or_retry(
-                                f"A tela mudou entre a conferência e o toque de efeito: {mudou}; nada foi tocado.",
+                                f"A tela mudou entre a conferência e o toque de efeito: {mudanca}; nada foi tocado.",
                                 obs)
                         history.append(f"{decision.tool} NÃO SAIU: a tela mudou entre a conferência e o toque "
-                                       f"({mudou}); olhe de novo")
+                                       f"({mudanca}); olhe de novo")
                         continue
 
             # ---------- detectar ciclo sem progresso
@@ -4111,20 +4134,29 @@ PASSO_DA_ROLAGEM = 0.25
 DURACAO_DA_ROLAGEM_MS = 600
 #: 29.87: quantas folhas declaradas (`fechar: toque_fora`) a regra fecha por tentativa antes de chamar uma pessoa.
 LIMITE_DE_FOLHAS = 2
-#: 29.90: quantas vezes seguidas, por tentativa, a releitura logo antes do toque de efeito pode achar a tela mudada
-#: (algo novo por cima do alvo, ou o alvo fora do lugar) antes de a tentativa falhar sem tocar.
+#: 29.90: quantas vezes, NO TOTAL da tentativa, a releitura logo antes do toque de efeito pode achar a tela mudada
+#: (algo novo por cima do ponto, ou o alvo fora do lugar) antes de a tentativa falhar sem tocar. Não zera: depois do
+#: toque que saiu, `fired` não deixa sair outro toque de efeito.
 LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO = 3
+#: 29.90: os tipos de mudança que seguram o toque, no motivo e na métrica `executor.tela_mudou_antes_do_efeito`
+#: (D2-M1): para a janela do deploy 35 contar quantas foram só mudança de posição.
+MUDANCA_POR_CIMA = "cobertura"
+MUDANCA_FORA_DO_LUGAR = "alvo_movido"
+MUDANCA_RELEITURA_FALHOU = "releitura_falhou"
 
 
-def cobertura_nova_no_ponto(antes: UiTree, depois: UiTree, ponto: tuple[int, int], alvo: UiElement) -> str | None:
+def cobertura_nova_no_ponto(antes: UiTree, depois: UiTree, ponto: tuple[int, int],
+                            alvo: UiElement | None) -> tuple[str, str] | None:
     """29.90: o que mudou, entre a árvore em que a guarda conferiu o efeito (`antes`) e a releitura logo antes do toque
-    (`depois`), que faria o toque não cair no alvo; `None` = pode tocar. Medido no android-13: a folha "Sharing posts"
-    abre por cima do Share, e o acerto por área (`resolve_point`, o menor elemento que contém o ponto, sem ordem de
-    camadas) seguiria achando o texto "Share" embaixo dela. Por isso o critério é o que APARECEU: um clicável que não
-    estava na árvore de antes e cobre o ponto. Pura."""
-    if not any(e.resource_id == alvo.resource_id and e.bounds == alvo.bounds and e.text == alvo.text
-               and e.desc == alvo.desc for e in depois.elements):
-        return "o alvo do efeito não está mais no mesmo lugar"
+    (`depois`), que faria o toque não cair no alvo: `(tipo, texto)`, ou `None` = pode tocar. Medido no android-13: a
+    folha "Sharing posts" abre por cima do Share, e o acerto por área (`resolve_point`, o menor elemento que contém o
+    ponto, sem ordem de camadas) seguiria achando o texto "Share" embaixo dela. Por isso o critério é o que APARECEU:
+    um clicável que não estava na árvore de antes e cobre o ponto (por área: um clicável redimensionado por baixo
+    também conta, e custa uma volta, nunca um toque errado). Sem elemento no ponto (`alvo` `None`, toque por x,y), só a
+    cobertura vale. Pura."""
+    if alvo is not None and not any(e.resource_id == alvo.resource_id and e.bounds == alvo.bounds
+                                    and e.text == alvo.text and e.desc == alvo.desc for e in depois.elements):
+        return MUDANCA_FORA_DO_LUGAR, "o alvo do efeito não está mais no mesmo lugar"
     x, y = ponto
 
     def chave(e: UiElement) -> tuple[str, str, tuple[int, int, int, int]]:
@@ -4134,7 +4166,7 @@ def cobertura_nova_no_ponto(antes: UiTree, depois: UiTree, ponto: tuple[int, int
     novo = next((e for e in depois.elements if e.clickable and chave(e) not in vistos
                  and e.bounds[0] <= x <= e.bounds[2] and e.bounds[1] <= y <= e.bounds[3]), None)
     if novo is not None:
-        return f"apareceu por cima do alvo ({novo.resource_id.rsplit('/', 1)[-1] or novo.class_name})"
+        return MUDANCA_POR_CIMA, f"apareceu por cima do alvo ({novo.resource_id.rsplit('/', 1)[-1] or novo.class_name})"
     return None
 
 

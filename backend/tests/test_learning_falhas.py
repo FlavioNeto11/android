@@ -88,8 +88,10 @@ TEXTOS: list[tuple[str, FailureKind]] = [
     ("Pré-condições do efeito externo não foram atendidas.", F.EFEITO_GUARDA_NAO_ATENDIDA),
     ("Limite de 40 ações por etapa atingido sem concluir.", F.CICLO_SEM_PROGRESSO),
     ('A folha "Sharing posts" não fechou com um toque fora dela; nada foi tocado nela.', F.AVISO_DO_APP),
-    ("A tela mudou entre a conferência e o toque de efeito: apareceu por cima do alvo (x); nada foi tocado.",
-     F.UI_OCUPADA),
+    ("A tela mudou entre a conferência e o toque de efeito: o alvo do efeito não está mais no mesmo lugar; nada foi "
+     "tocado.", F.UI_OCUPADA),
+    ("Um aviso cobre o botão de efeito e não é declarado no conhecimento do app: apareceu por cima do alvo (x); nada "
+     "foi tocado.", F.AVISO_DO_APP),
     ("A coleta não encontrou nenhum item na lista.", F.COLETA_VAZIA),
     ("A lista não chegou ao fim dentro do limite de páginas da coleta.", F.COLETA_INCOMPLETA),
     ("A lista tem 80 itens; o limite é 50.", F.COLETA_INCOMPLETA),

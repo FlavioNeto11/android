@@ -18,9 +18,9 @@ from __future__ import annotations
 import json
 import re
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 import pytest
 import yaml
@@ -277,10 +277,12 @@ class AtorQueLigaORotulo(AtorQueTocaNoShare):
 
 @asynccontextmanager
 async def _parque_com_dobra(tmp_path: Path, *, folha: bool, teimosa: bool = False,
-                            ator: AtorQueLigaORotulo) -> AsyncIterator[Harness]:
+                            ator: AtorQueLigaORotulo, classe: type[InstagramComDobra] | None = None,
+                            ) -> AsyncIterator[Harness]:
     """O `_parque` do 29.79, com a tela da legenda medida no android-13."""
-    h = Harness(tmp_path, 1, factory=lambda rt: InstagramComDobra(account="eu.teste", screen="legenda",
-                                                                  folha=folha, teimosa=teimosa))
+    fabrica = classe or InstagramComDobra
+    h = Harness(tmp_path, 1, factory=lambda rt: fabrica(account="eu.teste", screen="legenda",
+                                                        folha=folha, teimosa=teimosa))
     h.ai = CountingProvider(ator)
     h.encurtar_verificacao()
     await h.boot()
@@ -389,16 +391,85 @@ async def test_a_folha_que_abre_entre_a_guarda_e_o_share_nao_recebe_o_toque(tmp_
         assert fake.toques_na_folha == []                           # nada caiu na folha (nem no OK)
         assert len(fake.toques_fora) == 1 and len(fake.shares) == 1 and fake.rotulo_ligado
         recusadas = [a for a in _acoes(h, etapa["id"]) if a["status"] == "rejected"]
-        assert len(recusadas) == 1 and "tela mudou antes do toque" in (recusadas[0]["error"] or "")
+        assert len(recusadas) == 1 and "tela mudou antes do toque [cobertura]" in (recusadas[0]["error"] or "")
 
 
 def test_cobertura_nova_no_ponto_e_pela_arvore_medida() -> None:
     """A folha real por cima do Share: o acerto por área ainda acharia o texto "Share" embaixo; o critério é o
     clicável que apareceu. A mesma árvore relida, sem nada novo, deixa tocar."""
-    from app.taskqueue.executor import cobertura_nova_no_ponto
+    from dataclasses import replace
+    from app.taskqueue.executor import MUDANCA_FORA_DO_LUGAR, MUDANCA_POR_CIMA, cobertura_nova_no_ponto
     antes = _arvore("legenda_linha_visivel")
     depois = _arvore("legenda_com_folha_sharing_posts")
     share = next(e for e in antes.elements if e.resource_id.endswith("share_footer_button"))
     assert cobertura_nova_no_ponto(antes, antes, share.center, share) is None
-    motivo = cobertura_nova_no_ponto(antes, depois, share.center, share)
-    assert motivo is not None and "por cima" in motivo
+    assert cobertura_nova_no_ponto(antes, depois, share.center, share)[0] == MUDANCA_POR_CIMA
+    # D2-B1: toque por x,y sem elemento no ponto: a cobertura nova ainda segura o toque
+    assert cobertura_nova_no_ponto(antes, depois, share.center, None)[0] == MUDANCA_POR_CIMA
+    assert cobertura_nova_no_ponto(antes, antes, share.center, None) is None
+    # o alvo que só mudou de lugar (1 px) tem motivo próprio, para a contagem da janela do deploy 35
+    x1, y1, x2, y2 = share.bounds
+    movido = UiTree(elements=[replace(e, bounds=(x1, y1 + 1, x2, y2 + 1)) if e is share else e
+                              for e in antes.elements], packages=antes.packages, sensitive=False)
+    assert cobertura_nova_no_ponto(antes, movido, share.center, share)[0] == MUDANCA_FORA_DO_LUGAR
+
+
+_EM_PORTUGUES = {"Sharing posts": "Compartilhamento de publicações", "Manage settings": "Gerenciar configurações"}
+
+
+@dataclass
+class InstagramComFolhaEmPortugues(InstagramComDobra):
+    """A mesma folha, com os textos em português: só a tabela `pt` do `telas.yaml` a reconhece."""
+
+    def _build(self) -> list[Node]:
+        return [replace(n, text=_EM_PORTUGUES.get(n.text, n.text)) for n in super()._build()]
+
+
+def test_a_regra_de_fechar_reconhece_a_folha_em_qualquer_idioma() -> None:
+    """D1c: quem fecha a folha não sabe o idioma da tela; a tabela padrão (`en`) não reconhece a folha em português."""
+    folha = _arvore("legenda_com_folha_sharing_posts")
+    em_pt = UiTree(elements=[replace(e, text=_EM_PORTUGUES.get(e.text, e.text)) for e in folha.elements],
+                   packages=folha.packages, sensitive=False)
+    regra = telas.regra_de_fechar(_conhecimento(), em_pt, package=PKG)
+    assert regra is not None and regra.tela == "aviso_de_compartilhar"
+    assert telas.regra_de_fechar(_conhecimento(), _arvore("legenda_linha_visivel"), package=PKG) is None
+
+
+async def test_a_folha_em_portugues_fecha_pela_regra_sem_o_ator_a_ver(tmp_path: Path) -> None:
+    """D1c no laço: a folha em português fecha com o toque fora dela, antes da receita e do ator."""
+    ator = AtorQueLigaORotulo()
+    async with _parque_com_dobra(tmp_path, folha=True, ator=ator, classe=InstagramComFolhaEmPortugues) as h:
+        await _publicar(h)
+        fake = _fake(h)
+        assert len(fake.toques_fora) == 1 and fake.toques_na_folha == []
+        assert fake.rotulo_ligado and len(fake.shares) == 1
+
+
+async def _tres_recusas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tipo: str) -> tuple[Any, InstagramComDobra]:
+    """A releitura antes do toque acha SEMPRE a mesma mudança (`tipo`): a 3ª recusa decide o desfecho (D5)."""
+    from app.taskqueue import executor as modulo
+    monkeypatch.setattr(modulo, "cobertura_nova_no_ponto", lambda antes, depois, ponto, alvo: (tipo, f"[simulado] {tipo}"))
+    ator = AtorQueLigaORotulo()
+    async with _parque_com_dobra(tmp_path, folha=False, ator=ator) as h:
+        etapa = await _publicar(h)
+        return etapa, _fake(h)
+
+
+async def test_tres_coberturas_novas_param_numa_pessoa_como_aviso_do_app(tmp_path: Path,
+                                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    """D5: um clicável NOVO por cima do botão de efeito, três vezes, é um aviso que o app não declara. A etapa para em
+    `waiting_user` sem nova navegação, com o tipo `aviso_do_app`; nada foi tocado."""
+    from app.taskqueue.executor import MUDANCA_POR_CIMA
+    etapa, fake = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_POR_CIMA)
+    assert etapa["status"] == "waiting_user", (etapa["status"], etapa["status_detail"])
+    assert "Um aviso cobre o botão de efeito" in (etapa["status_detail"] or "")
+    assert fake.shares == []
+
+
+async def test_tres_alvos_movidos_falham_e_repetem(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """D5: só o alvo fora do lugar, três vezes, é tela se mexendo: `fail_or_retry`, como antes; nada foi tocado."""
+    from app.taskqueue.executor import MUDANCA_FORA_DO_LUGAR
+    etapa, fake = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_FORA_DO_LUGAR)
+    assert etapa["status"] in ("failed", "uncertain"), (etapa["status"], etapa["status_detail"])
+    assert "A tela mudou entre a conferência e o toque de efeito" in (etapa["status_detail"] or "")
+    assert fake.shares == []
