@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.101 (parte da Canais): o aviso da API aberta pelo endereço público (branch canais/29-101-api-aberta)
+
+- `avisos/domain/portal.py`: o oitavo código do vigia, `api_aberta` (só com `onde=api`), no tipo próprio
+  `portal.borda_api`, com o texto aprovado pela orquestradora: o que chegou (um pedido sem login a `/api/instances`
+  foi atendido), o crítico (dados do central legíveis sem senha; escrita não testada) e o gesto do dono (parar o
+  serviço do túnel; responder vai à orquestradora, só com sessão ativa). O achado não entra no texto.
+- `avisos/domain/mensagem.py`: `portal.borda_api` no nível 1, saindo na hora; sem agrupar, sem link e fora do Trello
+  pelo prefixo `portal.`.
+- Prova `simulated`: `backend/tests/test_avisos_portal_borda_api.py`. Real: `not_run`.
+
 ## 2026-10-05 — 29.97 (parte da Canais): o aviso do vigia da borda do site (branch canais/29-97-borda-do-portal)
 
 - `avisos/domain/portal.py`: `aviso_da_borda` e `chave_da_borda`. Sete códigos do vigia do Portal, cada um com

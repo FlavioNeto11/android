@@ -319,6 +319,19 @@ def aviso_do_resumo(retidos: int, descartados: int, janela_h: int, agora: dateti
 TIPO_DA_BORDA = "portal.borda"
 TIPO_DA_BORDA_SEM_CONFERIR = "portal.borda_sem_conferir"
 SEM_CONFERIR = "sem_conferir"
+#: 29.101 (contrato com o Portal e texto aprovado pela orquestradora, 05/10 06:56Z): a API do central respondeu sem
+#: login pelo endereço público. Tipo próprio no nível 1: sai na hora e espera o dono, cujo gesto é parar o túnel. A
+#: chave segue a da borda (`portal-borda:api_aberta:<dia UTC>`, sem reaviso no dia) e a resposta dele vai à
+#: orquestradora pelo mesmo repasse `borda`.
+TIPO_DA_BORDA_API = "portal.borda_api"
+API_ABERTA = "api_aberta"
+ONDE_DA_API = "api"
+TITULO_DA_API = "🔓 Site: a API do central respondeu sem login pelo endereço público"
+CORPO_DA_API = (
+    "Chegou: um pedido sem login a /api/instances, pelo nome público, foi atendido.",
+    "Crítico: quem estiver na internet consegue ler dados do central sem senha. Escrita não foi testada.",
+    "Espera você: pare o serviço do túnel (Cloudflared) no central. Se preferir, responda a esta mensagem: a ANA "
+    "repassa à orquestradora, que confere de fora e para o túnel, mas isso só funciona com uma sessão ativa.")
 #: Onde o vigia achou o defeito, dito ao dono.
 ONDE_DA_BORDA: dict[str, str] = {"raiz": "A página inicial do site", "painel": "O painel", "css": "O estilo do site",
                                  "js": "O script do site"}
@@ -413,6 +426,13 @@ def aviso_da_borda(codigo: object, onde: object, agora: datetime, *, achado: obj
         return Aviso(chave=chave_da_borda(codigo, agora), tipo=TIPO_DA_BORDA_SEM_CONFERIR,
                      titulo=titulo_do_aviso(f"🌐 Site: não consigo conferir a página há {h} h"), corpo=corpo, link=None,
                      nivel=nivel_do_tipo(TIPO_DA_BORDA_SEM_CONFERIR))
+    if codigo == API_ABERTA:
+        # 29.101: o lugar é só a API, e o texto é fixo: o único caminho citado é `/api/instances`, e o achado do vigia
+        # não entra (nada de host nem IP).
+        if onde != ONDE_DA_API:
+            return None
+        return Aviso(chave=chave_da_borda(codigo, agora), tipo=TIPO_DA_BORDA_API, titulo=titulo_do_aviso(TITULO_DA_API),
+                     corpo="\n".join(CORPO_DA_API), link=None, nivel=nivel_do_tipo(TIPO_DA_BORDA_API))
     borda = BORDA.get(codigo)
     lugar = ONDE_DA_BORDA.get(onde) if isinstance(onde, str) else None
     if borda is None or lugar is None:
