@@ -1647,6 +1647,22 @@ mesmo aparelho; falta reprodução em outro aparelho", mas a reprodução já ex
 
 **Prova:** `simulated` em `backend/tests/test_learning_dossie_pela_marca.py` (3 testes; mutação conferida no separador
 das versões). `real`: `not_run` até o deploy.
+## A versão do app na evidência do fluxo (30.74)
+
+A medida do 30.72 (05/10) achou as 113 evidências reais de fluxo do central com `app_version` nulo. As de receita levam
+a versão (`recipes.app_version`). Por isso o parecer do curador dizia "sem versão do app registrada" e pedia
+`reproducao_na_versao_viva`, que nenhuma prova satisfazia.
+
+- **Quem grava:** o digest, nos três caminhos que gravam evidência de fluxo: a sombra (`run:`), a prova (30.37) e o uso
+  (30.51, `uso:`).
+- **De onde vem a versão:** do app do fluxo (o principal: `flows.app_id`, depois `apps.package`), lida em
+  `device_app_state` do aparelho da execução (`LeituraSql.versao_do_fluxo_no_aparelho`).
+- **Sem leitura do aparelho, ou com a versão vazia:** fica nula, como antes.
+- **O estoque não é refeito:** as evidências antigas seguem nulas.
+
+**Prova:** `simulated` em `backend/tests/test_versao_na_evidencia_do_fluxo.py`. `real`: `not_run` até o deploy e a
+primeira evidência de fluxo depois dele.
+
 ## A prova de fluxo por amostra (30.48)
 
 O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 e o fluxo nunca se validava por pedido: o

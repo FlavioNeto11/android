@@ -257,6 +257,8 @@ class LeituraNativa(Protocol):
     def fors_de_prova(self) -> list[ForDeProva]: ...
     def efeito_repetido_da_execucao(self, run_id: str) -> int | None: ...
     def invalidas_a_revalidar(self) -> list[InvalidaARevalidar]: ...
+    #: 30.74: a versão do app do fluxo (o principal) observada NESTE aparelho (`device_app_state`); `None` sem leitura.
+    def versao_do_fluxo_no_aparelho(self, fluxo_id: str, aparelho: str | None) -> str | None: ...
 
 
 class PortaDeValidacao(Protocol):
@@ -383,6 +385,7 @@ class SombraDosFluxos:
             nova = self._repo.registrar_evidencia(NovaEvidencia(
                 item_ref=ref_da_trilha(LivroKind.FLUXO, fluxo.id), stance=stance, origin_ref=f"run:{run_id}",
                 simulated=execucao.simulada, run_id=run_id, instance_id=execucao.aparelho,
+                app_version=self._leitura.versao_do_fluxo_no_aparelho(fluxo.id, execucao.aparelho),
                 detail=f"{marca_do_conteudo(fluxo.content_hash)} {detalhe}"))
             if not nova:
                 continue                                  # o digest desta execução já passou por aqui
@@ -404,7 +407,9 @@ class SombraDosFluxos:
         nova = self._repo.registrar_evidencia(NovaEvidencia(
             item_ref=ref_da_trilha(LivroKind.FLUXO, prova.fluxo_id), stance=prova.posicao,
             origin_ref=f"run:{execucao.run_id}", simulated=execucao.simulada, run_id=execucao.run_id,
-            instance_id=execucao.aparelho, detail=f"{marca_do_conteudo(prova.content_hash)} {prova.detalhe}"))
+            instance_id=execucao.aparelho,
+            app_version=self._leitura.versao_do_fluxo_no_aparelho(prova.fluxo_id, execucao.aparelho),
+            detail=f"{marca_do_conteudo(prova.content_hash)} {prova.detalhe}"))
         if not nova:
             return 0                                      # o digest desta execução já passou por aqui
         em_prova = next((f for f in self._leitura.fluxos_em_prova() if f.id == prova.fluxo_id), None)
@@ -428,6 +433,7 @@ class SombraDosFluxos:
         nova = self._repo.registrar_evidencia(NovaEvidencia(
             item_ref=ref, stance=uso.posicao, origin_ref=f"{ORIGEM_DO_USO}{execucao.run_id}",
             simulated=execucao.simulada, run_id=execucao.run_id, instance_id=execucao.aparelho,
+            app_version=self._leitura.versao_do_fluxo_no_aparelho(uso.fluxo_id, execucao.aparelho),
             detail=f"{marca_do_conteudo(uso.content_hash)} {uso.detalhe}"))
         return 1 if nova else 0                           # sem `nova`: o digest desta execução já passou por aqui
 

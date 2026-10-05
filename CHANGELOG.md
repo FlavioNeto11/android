@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.74: a evidência do fluxo leva a versão do app (branch feat/30-74-versao-na-evidencia-do-fluxo)
+
+- As 113 evidências reais de fluxo do central tinham `app_version` nulo (medida do 30.72), e o curador pedia `reproducao_na_versao_viva` sem prova possível.
+- O digest grava a versão do app do fluxo observada no aparelho da execução (`device_app_state`, `LeituraSql.versao_do_fluxo_no_aparelho`), nos três caminhos: sombra, prova e uso. Sem leitura, nula como antes; o estoque não é refeito.
+- Prova `simulated`: `backend/tests/test_versao_na_evidencia_do_fluxo.py`.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro

@@ -162,6 +162,21 @@ class LeituraSql:
                                  prova=self._prova(run_id, prova, linhas.texto(row, "status")) if prova else None,
                                  uso=self._uso(row) if not prova else None)
 
+    def versao_do_fluxo_no_aparelho(self, fluxo_id: str, aparelho: str | None) -> str | None:
+        """30.74: a versão do app do fluxo observada no aparelho da execução, para a evidência do fluxo levar a versão
+        como a da receita leva (`recipes.app_version`). Sem ela, o parecer do curador dizia "sem versão do app
+        registrada" e pedia `reproducao_na_versao_viva`, que nenhuma prova satisfazia: as 113 evidências reais de fluxo
+        do central tinham `app_version` nulo (05/10). Lida no digest, logo depois da execução; sem leitura do
+        aparelho, `None`, como antes."""
+        if not aparelho:
+            return None
+        linha = self._db.one(
+            "SELECT d.observed_version_name AS v FROM flows f JOIN apps a ON a.id = f.app_id"
+            " JOIN device_app_state d ON d.package_name = a.package AND d.instance_id = ?"
+            " WHERE f.id = ? AND d.observed_version_name IS NOT NULL AND d.observed_version_name <> ''",
+            (aparelho, fluxo_id))
+        return linhas.texto_ou_nulo(linha, "v") if linha is not None else None
+
     def _uso(self, row: Row) -> ProvaDaExecucao | None:
         """30.51: a execução comum que usou o fluxo (`runs.flow_id`) pela regra da prova (`_prova`). Ensaio, lote de teste
         e execução com cancelamento pedido (pela pessoa ou pelo sistema) não contam contra (`evidencia_de_uso`)."""
