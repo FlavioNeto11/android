@@ -23,9 +23,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - Nas listas de perguntas, o comentário com 🤖 segue sem valer nada, mas a linha guarda a autoria da action em
   `responde_a` (`;autoria=app|digitado|nao_confirmada`). Serve para medir se o conector do Trello leva `appCreator`.
-- `canais.md`: a regra R1 da revisão do #447 (sessão só escreve nas listas de perguntas pela API e com 🤖) e o sinal
-  de alerta se uma resposta digitada pelo dono vier marcada "escrita por app".
-- Prova: `simulated` (`backend/tests/test_canais_respostas_as_perguntas.py`, 21 passaram). Real: `not_run`.
+- `canais.md`: a regra R1 da revisão do #447 virou proibição (N1 da revisão do 28.52, decisão da orquestradora):
+  nenhuma sessão comenta nas listas de perguntas pelo conector do Trello nem pela tela, com ou sem 🤖; só a Canais,
+  pela API da Central e com 🤖. Fica também o sinal de alerta se uma resposta digitada pelo dono vier marcada
+  "escrita por app".
+- Testes novos (N2 e N3): o comentário da Central reconhecido sem 🤖 não vale e guarda a autoria; o cartão sem
+  `P-NNN` guarda a pergunta vazia (`pergunta:;autoria=…`).
+- Prova: `simulated` (`backend/tests/test_canais_respostas_as_perguntas.py`, 26 passaram). Real da medida do
+  conector: `not_run`.
+- Prova `real` do 28.51 A, que já estava no ar: em 05/10, no central, no deploy 39 (9f9e2b39), o dono respondeu
+  P-006 às 18:49Z e P-007 às 18:50Z por comentário. As entradas 2157 e 2161 foram à orquestradora com o repasse
+  `resposta_a_pergunta` e sem sufixo de autoria. As enviadas 141 e 142 foram só a resposta no cartão, sem pedido
+  no Telegram, e os ecos da Central (entradas 2159 e 2163) ficaram `ignorada`.
 
 
 ## 2026-10-05 — 29.131 e 29.138: as sobras das leituras do #433, #435, #441 e #443, e os achados das revisões automáticas do #443 (branch fix/29-131-sobras-supervisor-readocao)
