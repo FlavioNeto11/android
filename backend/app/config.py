@@ -1066,6 +1066,11 @@ class SkillsCfg(BaseModel):
     """
 
     enabled: bool = False
+    #: 31.91 F1 (ADR-077): a TELA do ensino v2 (a revisão só para leitura e o "Corrigir etapa", que abre um ensino de
+    #: habilidade). Desligada por padrão e reversível: nenhum dado se apaga, a API e o resolvedor seguem como camada
+    #: interna do Modo treinamento. Só aparece com `enabled` também ligado; a conversão de um fluxo em habilidade
+    #: ("Gerar habilidade deste fluxo") não depende desta chave.
+    ensino_v2_na_tela: bool = False
 
 
 class LicoesDoPapelCfg(BaseModel):

@@ -1752,7 +1752,9 @@ interface Health   { /* + */ features: { hibernation: boolean; recipes: string; 
                                           skills?: boolean } }   // v0.23: skills.enabled; ausente = desligado
 ```
 
-- `features.skills` é `skills.enabled`, lido a cada `GET /api/health` (`state.py`, `Health.features`).
+- `features.skills` é `skills.enabled`, lido a cada `GET /api/health` (`state.py`, `Health.features`). `features.ensino_v2` é
+  `skills.ensino_v2_na_tela` (31.91 F1, padrão `false`): a TELA do ensino v2 (a revisão só para leitura e o "Corrigir etapa")
+  só aparece com `skills` E `ensino_v2` ligados; as rotas não dependem dele.
 - Opcional no painel: backend anterior à fase F não manda o campo, e o painel o trata como desligado.
 - O painel só chama as rotas abaixo com ele `true` ([produto](produto.md#3-fluxos-do-usuário)).
 

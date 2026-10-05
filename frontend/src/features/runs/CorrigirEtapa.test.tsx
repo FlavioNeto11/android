@@ -23,9 +23,9 @@ let backend: FakeBackend;
 let root: Root;
 let container: HTMLDivElement;
 
-function ligarHabilidades(ligado = true): void {
+function ligarHabilidades(ligado = true, ensinoV2: boolean | 'ausente' = ligado): void {
   const health = makeSnapshot().health;
-  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado } } });
+  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado, ensino_v2: ensinoV2 === 'ausente' ? undefined : ensinoV2 } } });
 }
 
 /** A execução de sempre, com a etapa `open_app` do android-01 no estado pedido e (ou não) vinda da habilidade. */
@@ -158,6 +158,20 @@ describe('Corrigir esta etapa (plano 22.7)', () => {
     await remontar();
 
     ligarHabilidades(false);
+    await abrir(detalhe('failed'));
+    expect(botoes()).toHaveLength(0);
+    expect(marcadas()).toHaveLength(0);
+    expect(backend.calls.filter((c) => c.path.startsWith('/api/teaching-sessions'))).toHaveLength(0);
+  });
+
+  it('31.91 F1: com skills ligado e a tela do ensino v2 desligada (ou o campo ausente), nada aparece e nada é pedido', async () => {
+    ligarHabilidades(true, false);
+    await abrir(detalhe('failed'));
+    expect(botoes()).toHaveLength(0);
+    expect(marcadas()).toHaveLength(0);
+    await remontar();
+
+    ligarHabilidades(true, 'ausente');
     await abrir(detalhe('failed'));
     expect(botoes()).toHaveLength(0);
     expect(marcadas()).toHaveLength(0);

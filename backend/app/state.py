@@ -3749,6 +3749,8 @@ class AppState:
                                 "system_image": self.cfg.file.android.system_image,
                                 # Fase F: o painel só oferece o ensino v2 e a lista de habilidades com isto ligado.
                                 "skills": self.cfg.file.skills.enabled,
+                                # 31.91 F1: a TELA do ensino v2 (o painel exige `skills` também). Desligada por padrão.
+                                "ensino_v2": self.cfg.file.skills.ensino_v2_na_tela,
                                 # Aparelhos com o reparo automático PAUSADO (experimento/manutenção): `{id: {until, reason, by,
                                 # remaining_s}}`; vazio = nenhum. Informativo: não é problema de saúde.
                                 "repair_pause": {rt.id: dto.model_dump(mode="json") for rt in self.devices.devices.values()

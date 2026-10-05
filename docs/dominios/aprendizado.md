@@ -462,7 +462,8 @@ com o banco aberto só para leitura.
 
 - **Correção de ensino na execução (22.7).** Na aba "Por aparelho", a etapa `failed` ou `uncertain` que veio de uma
   habilidade ganha "Corrigir esta etapa" no detalhe, e a linha recolhida leva a marca "corrigível". A regra é a mesma
-  da rota: habilidades ligadas (`features.skills`), status em `CORRECTABLE_STEP` e a origem do passo (`origin`, lida
+  da rota: habilidades ligadas (`features.skills`) e a tela do ensino v2 ligada (`features.ensino_v2`, 31.91 F1, padrão
+  `false`), status em `CORRECTABLE_STEP` e a origem do passo (`origin`, lida
   em `plan_versions` pela mesma versão do mesmo objetivo). O envio acha um ensino aberto da mesma habilidade e versão
   que já corrige esta execução (ou um vazio aberto por esta ação), ou abre um com instrução fixa ("Corrigir a
   habilidade <id> (versão N)."), e posta a correção com `step_id` = `steps.id`, não a key. O ensino que fica aberto e

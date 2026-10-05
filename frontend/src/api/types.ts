@@ -495,7 +495,10 @@ interface Health {
               system_image: string;
               // fase F — `skills.enabled`: o ensino v2 e a lista de habilidades só aparecem com isto ligado.
               // Ausente = backend anterior à fase F = desligado.
-              skills?: boolean };
+              skills?: boolean;
+              // 31.91 F1 — `skills.ensino_v2_na_tela`: a TELA do ensino v2 (revisão só para leitura e "Corrigir etapa").
+              // Só vale com `skills` também ligado. Ausente = desligado.
+              ensino_v2?: boolean };
 }
 
 interface Metrics {

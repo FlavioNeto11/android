@@ -277,9 +277,11 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     void carregarEscopo();
   }, [carregarEscopo]);
 
-  // Com `features.skills` ligado, o relatório do salvar oferece gerar a habilidade do fluxo e a revisão mostra (só
-  // leitura) o ensino v2 antigo da gravação. Desligado (ou backend sem o campo), nada disso aparece.
-  const ensinoV2 = useAppStore((st) => st.health?.features?.skills === true);
+  // Com `features.skills` ligado, o relatório do salvar oferece gerar a habilidade do fluxo. A revisão só mostra (só
+  // leitura) o ensino v2 antigo da gravação com a tela do ensino v2 também ligada (`features.ensino_v2`, 31.91 F1,
+  // desligada por padrão e reversível). Desligado (ou backend sem o campo), nada disso aparece.
+  const habilidades = useAppStore((st) => st.health?.features?.skills === true);
+  const ensinoV2 = useAppStore((st) => st.health?.features?.skills === true && st.health?.features?.ensino_v2 === true);
 
   // Catálogo do app (se houver): etapa com efeito num app com catálogo precisa dizer QUAL ação ela é.
   const appsDoStore = useAppStore((st) => st.apps);
@@ -582,7 +584,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           {semReceitaAoSalvar ? (
             <RefazerReceitas sessionId={sessionId} onFeito={(r) => setResultado((x) => (x ? { ...x, steps: r.steps, ensinado_em_prova: r.ensinado_em_prova } : x))} />
           ) : null}
-          {ensinoV2 ? (
+          {habilidades ? (
             conversao ? (
               <p role="status">
                 Habilidade <strong>{conversao.skill_id}</strong>: {conversao.published.ref} publicada (o plano deste fluxo) e
