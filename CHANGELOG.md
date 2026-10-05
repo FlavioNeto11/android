@@ -51,6 +51,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   na lista relida não confirma "QA-001".
 - Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`; o `_prova_local` é dublê por árvore). Real:
   `not_run`, janela depois do deploy 34.
+## 2026-10-05 — 31.62: bolha sem id, o "abaixo" em todos os contêineres de lista, pelo centro (branch feat/31-62-lista-de-todos-os-conteineres)
+
+- **Todos os contêineres:** `UiTree._ultima_sem_tipo` confere "mensagem abaixo" em TODOS os contêineres de lista que
+  contêm a bolha, não só no menor. Uma lista interna justa em volta da bolha escondia as mensagens mais novas da lista
+  de fora (Q1 da revisão do 31.59).
+- **Regra do centro:** "dentro da lista" passa a ser o centro do elemento dentro dela (`_na_faixa`); a contenção
+  inteira perdia a mensagem nova que vaza da lista.
+- **Desvio da revisão:** a revisão sugeria "topo na faixa e sobreposição horizontal". No Direct medido (31.26), o botão
+  "Send" da barra de escrita começa em y=1132, antes do fim da lista (1166), e contaria como "abaixo": o envio provado
+  iria ao juiz. Pelo centro (y=1168), ele fica fora.
+- Prova: `simulated` (`backend/tests/test_bolha_sem_id.py`, 2 testes novos que falham no código anterior). Real:
+  `not_run`.
 
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
