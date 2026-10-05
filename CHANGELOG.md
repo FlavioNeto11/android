@@ -23,6 +23,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - As 113 evidências reais de fluxo do central tinham `app_version` nulo (medida do 30.72), e o curador pedia `reproducao_na_versao_viva` sem prova possível.
 - O digest grava a versão do app do fluxo observada no aparelho da execução (`device_app_state`, `LeituraSql.versao_do_fluxo_no_aparelho`), nos três caminhos: sombra, prova e uso. Sem leitura, nula como antes; o estoque não é refeito.
+- V1 da leitura: a versão é a observada na hora do digest, então só vale se a última atualização do app no aparelho (`last_update_time`, fuso do aparelho, contado no pior caso de +12 h) é com certeza anterior ao início da execução; na dúvida, nula (`versao_estavel_na_execucao`; o método da leitura passa a receber o `run_id`).
+- N2, decidido: as reclassificações (`forma`, `invalida`, `revalidada`) seguem sem versão; não são reprodução. Se um dia precisar, copiar a da original.
 - Prova `simulated`: `backend/tests/test_versao_na_evidencia_do_fluxo.py`.
 
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)

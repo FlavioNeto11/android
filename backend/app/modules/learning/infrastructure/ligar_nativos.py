@@ -25,7 +25,7 @@ import json
 import logging
 import re
 from collections.abc import Callable, Mapping
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pydantic import ValidationError
 
@@ -60,7 +60,7 @@ from app.modules.skills.domain.document import content_hash
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from app.taskqueue.flows import RESERVED, FlowStore, MudancaDoFluxo, NascimentoDoFluxo, confirmada_a_mao
 from app.taskqueue.recipes import MudancaDaReceita, ReceitaVista, RecipeStore, para_hash
-from app.util import now, now_iso
+from app.util import now, now_iso, parse_iso
 
 log = logging.getLogger("poc.aprendizado")
 
@@ -140,6 +140,31 @@ def _primeiro_aparelho(bruto: str | None) -> str | None:
     return None
 
 
+#: O `lastUpdateTime` do `dumpsys` vem no fuso DO APARELHO, sem fuso escrito (`2026-10-04 20:08:02`), e o fuso de cada
+#: emulador não está no banco. Em UTC, a hora verdadeira fica entre a lida −14 h e a lida +12 h (os fusos vão de −12 a
+#: +14). Para afirmar que a atualização foi ANTES do início, conta-se o pior caso, a lida +12 h.
+_FOLGA_DO_FUSO = timedelta(hours=12)
+_FORMATO_DO_DUMPSYS = "%Y-%m-%d %H:%M:%S"
+
+
+def versao_estavel_na_execucao(versao: str | None, atualizado: str | None, inicio: str | None) -> str | None:
+    """30.74 (V1 da leitura): a versão observada AGORA só vale para a execução se o app não pode ter mudado depois do
+    início dela. Sem a hora da última atualização, sem o início, ou com qualquer uma ilegível: `None` (na dúvida, a
+    evidência fica sem versão, como antes do 30.74; uma versão errada seria prova falsa de "versão viva").
+    O preço da folga do fuso: a execução que começa até ~12 h depois de uma atualização fica sem versão."""
+    if not versao or not atualizado or not inicio:
+        return None
+    try:
+        lida = datetime.strptime(atualizado.strip(), _FORMATO_DO_DUMPSYS)
+        comeco = parse_iso(inicio)
+    except ValueError:
+        return None
+    if comeco is None:
+        return None
+    pior_caso = lida.replace(tzinfo=comeco.tzinfo) + _FOLGA_DO_FUSO
+    return versao if pior_caso < comeco else None
+
+
 class LeituraSql:
     def __init__(self, db: Database) -> None:
         self._db = db
@@ -162,20 +187,29 @@ class LeituraSql:
                                  prova=self._prova(run_id, prova, linhas.texto(row, "status")) if prova else None,
                                  uso=self._uso(row) if not prova else None)
 
-    def versao_do_fluxo_no_aparelho(self, fluxo_id: str, aparelho: str | None) -> str | None:
+    def versao_do_fluxo_no_aparelho(self, fluxo_id: str, aparelho: str | None, run_id: str) -> str | None:
         """30.74: a versão do app do fluxo observada no aparelho da execução, para a evidência do fluxo levar a versão
         como a da receita leva (`recipes.app_version`). Sem ela, o parecer do curador dizia "sem versão do app
         registrada" e pedia `reproducao_na_versao_viva`, que nenhuma prova satisfazia: as 113 evidências reais de fluxo
-        do central tinham `app_version` nulo (05/10). Lida no digest, logo depois da execução; sem leitura do
-        aparelho, `None`, como antes."""
+        do central tinham `app_version` nulo (05/10).
+
+        A observação é a de AGORA (a do digest), não a da execução. Se o app pode ter mudado depois do início da
+        execução (digest atrasado, a primeira passada depois de um deploy), a evidência velha levaria a versão nova:
+        uma prova falsa de "versão viva" (V1 da leitura do 30.74). Por isso só vale a versão cuja última atualização
+        no aparelho é COM CERTEZA anterior ao início (`versao_estavel_na_execucao`); na dúvida, `None`, como antes."""
         if not aparelho:
             return None
         linha = self._db.one(
-            "SELECT d.observed_version_name AS v FROM flows f JOIN apps a ON a.id = f.app_id"
+            "SELECT d.observed_version_name AS v, d.last_update_time AS atualizado, r.started_at AS inicio"
+            " FROM flows f JOIN apps a ON a.id = f.app_id"
             " JOIN device_app_state d ON d.package_name = a.package AND d.instance_id = ?"
+            " JOIN runs r ON r.id = ?"
             " WHERE f.id = ? AND d.observed_version_name IS NOT NULL AND d.observed_version_name <> ''",
-            (aparelho, fluxo_id))
-        return linhas.texto_ou_nulo(linha, "v") if linha is not None else None
+            (aparelho, run_id, fluxo_id))
+        if linha is None:
+            return None
+        return versao_estavel_na_execucao(linhas.texto_ou_nulo(linha, "v"), linhas.texto_ou_nulo(linha, "atualizado"),
+                                          linhas.texto_ou_nulo(linha, "inicio"))
 
     def _uso(self, row: Row) -> ProvaDaExecucao | None:
         """30.51: a execução comum que usou o fluxo (`runs.flow_id`) pela regra da prova (`_prova`). Ensaio, lote de teste
@@ -575,4 +609,4 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
 
 
 __all__ = ["LeituraSql", "OuvinteD1DasReceitas", "PoliticaD1DoFluxo", "TrilhaDaAdocao", "TrilhaDasLojas", "assinatura",
-           "ligar"]
+           "ligar", "versao_estavel_na_execucao"]

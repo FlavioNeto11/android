@@ -1658,6 +1658,20 @@ a versão (`recipes.app_version`). Por isso o parecer do curador dizia "sem vers
 - **De onde vem a versão:** do app do fluxo (o principal: `flows.app_id`, depois `apps.package`), lida em
   `device_app_state` do aparelho da execução (`LeituraSql.versao_do_fluxo_no_aparelho`).
 - **Sem leitura do aparelho, ou com a versão vazia:** fica nula, como antes.
+- **Só a versão que valia NA execução (V1 da leitura).** A leitura é a da hora do digest, não a da execução. Se o app
+  pode ter sido atualizado depois do início dela (um digest atrasado, a primeira passada depois de um deploy), a
+  evidência velha levaria a versão nova, uma prova falsa de "versão viva". Por isso a versão só vale quando a última
+  atualização do app no aparelho (`device_app_state.last_update_time`) é COM CERTEZA anterior ao início da execução
+  (`runs.started_at`); senão, nula.
+  - O `last_update_time` vem do `dumpsys` no fuso DO APARELHO, sem fuso escrito, e o fuso de cada emulador não está no
+    banco. A conta usa o pior caso (a hora lida + 12 h, `versao_estavel_na_execucao`).
+  - O preço: a execução que começa até ~12 h depois de uma atualização do app fica sem versão.
+  - Sem `last_update_time`, sem `started_at`, ou com uma hora ilegível: nula.
+- **As reclassificações ficam sem versão (N2 da leitura, decidido):** as linhas `forma` (30.36), `invalida` por efeito
+  repetido (30.42) e `revalidada` (30.53) são gravadas por cima de uma evidência de execução e não levam `app_version`.
+  - O certo, se um dia precisar, é COPIAR a versão da evidência original, nunca ler de novo.
+  - Não entra agora porque nenhuma delas é reprodução: não satisfazem `reproducao_na_versao_viva`, e o dossiê as casa
+    com a original pela origem e pela marca do conteúdo, não pela versão.
 - **O estoque não é refeito:** as evidências antigas seguem nulas.
 
 **Prova:** `simulated` em `backend/tests/test_versao_na_evidencia_do_fluxo.py`. `real`: `not_run` até o deploy e a
