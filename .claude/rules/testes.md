@@ -18,6 +18,7 @@ paths:
 - **PostgreSQL na suíte = PG dirigido** (29.53, `docs/banco.md`, "O portão de PostgreSQL de uma suíte"): só os
   arquivos que o lote toca, `-n 8` (exceção medida: é só o lote, no contêiner de PG; a suíte inteira em SQLite fica em `-n 6`), Idle, no `farm-pg-rapido` (tmpfs, porta 55434), depois de ele aceitar conexão. A suíte inteira em PG roda só em janela
   sem aparelho com conta subindo, e nunca colada num deploy.
+- **Mudou a assinatura de um método? Rode os testes de TODA subclasse que o sobrescreve** (`grep -rn "def <método>(" backend/app`) e ponha `tests/test_arquitetura.py` em toda validação dirigida que toca `backend/app`. A leitura independente não executa teste e não vê a subclasse que o diff não tocou: a suíte 33 ficou vermelha com 24 falhas assim (K-094).
 - **Nunca enfraqueça nem apague um teste** para fazer a suíte passar.
 - Teste multi-banco abre o banco pela fábrica configurada, nunca `Database(caminho)` direto.
 - Teste de tempo real usa relógio **injetável**, não `time.sleep`/`datetime.now()` direto.

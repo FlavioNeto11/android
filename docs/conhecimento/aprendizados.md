@@ -2474,3 +2474,38 @@ modo usuário e tem gatilho.
 `worker_id` com portas nulas, a adoção do inventário, o deploy) não reinicia o ssh e não dispara o giro, porque o
 `worker-tunnel.ps1` só reinicia quando o conteúdo do mapa muda. No deploy 32 o hash do mapa ficou igual antes e
 depois.
+
+### K-094 — Mudar a assinatura de um método sobrescrito passa pela leitura e só quebra na suíte inteira: rode os testes de toda subclasse e o `test_arquitetura`
+
+**Sintoma.** Na suíte 33 (05/10), a primeira rodada SQLite da integração `cdb6b7cd` deu 10599 passed, 24 failed e
+13 skipped. As 24 vieram de um PR só (28.27):
+
+- 23 com `TypeError: ConversaDoTrello._enviar() got an unexpected keyword argument 'exigir'` (17 em
+  `test_trello_leitor.py`, 6 em `test_canais_comentario_do_dono.py`);
+- 1 em `test_arquitetura::test_imports_tardios_so_diminuem`, por um `import` novo dentro de função em
+  `app/porta_do_plano.py`.
+
+O PR tinha passado por duas leituras independentes e pelos testes dirigidos da autora, todos verdes.
+
+**Medição (`simulated`, 05/10/2026, central, `backend/tests`, SQLite `-n 6`).** Rodada 1 na `cdb6b7cd`, de 00:11:12Z
+a 00:25:16Z: as 24 falhas acima. Conserto de um commit (`5af9634a`): a subclasse passa a aceitar e repassar o
+parâmetro, e o `import` sobe para o topo do módulo. Na ponta `a0c9865e` os três arquivos vermelhos deram 93 passed.
+A rodada inteira de confirmação na `a0c9865e`, de 00:34:47Z a 00:47:03Z: 10624 passed, 0 failed, 13 skipped.
+
+**Causa.** O `_enviar` da classe base ganhou o parâmetro `exigir`, e o chamador comum passou a mandá-lo. A subclasse
+do Trello sobrescreve o método com a assinatura antiga. A autora rodou os testes da classe que mudou, não os da
+subclasse. Quem revisou leu o diff, e o diff não mostra a subclasse, porque ela não foi tocada. O `import` tardio
+tem a mesma forma: a regra que o barra vive num teste de arquitetura que não estava na lista dirigida.
+
+**O que fazer.**
+
+- Toda mudança de assinatura de método procura as subclasses que o sobrescrevem
+  (`grep -rn "def <método>(" backend/app`) e roda os testes de TODAS elas antes do PR.
+- `tests/test_arquitetura.py` entra em toda validação dirigida que toca `backend/app`. Ele roda em segundos.
+- A leitura independente não executa teste. O pedido de leitura que muda assinatura diz isso e pede a busca das
+  sobrescritas como item próprio.
+- Suíte vermelha por um PR só: conserto de um commit sobre a integração, lido por quem orquestra, e a rodada
+  inteira de novo. Tirar o PR do corte custa mais do que consertar quando outros já foram empilhados nele.
+
+**Aplicabilidade.** Vigente. Vale para qualquer hierarquia com método sobrescrito; hoje as conversas dos canais
+(`ConversaDoTrello` sobre a conversa do Telegram) são o caso com mais sobrescritas.
