@@ -80,6 +80,23 @@ def test_bolha_fora_de_contener_de_lista_nao_prova() -> None:
     assert parse_hierarchy(_fio(BOLHA, lista=False)).sent_as_message(TEXTO, antes=0) is False
 
 
+def test_lista_interna_justa_nao_esconde_a_mensagem_mais_nova_da_lista_de_fora() -> None:
+    """31.62: a bolha dentro de um rolável justo (uma lista horizontal em volta dela); a resposta mais nova está na lista
+    de FORA, fora do justo. Com só o menor contêiner, a bolha antiga passava como a última; com todos, vai ao juiz."""
+    justa = _no("[220,1036][700,1086]", classe="android.widget.HorizontalScrollView", rid="justa").replace(
+        'scrollable="false"', 'scrollable="true"')
+    arvore = parse_hierarchy(_fio(justa, BOLHA, _no("[40,1092][300,1112]", texto="ok")))
+    assert arvore.ultima_bolha_igual(TEXTO) is None
+    assert arvore.sent_as_message(TEXTO, antes=0) is False
+
+
+def test_mensagem_nova_que_vaza_da_lista_ainda_conta_como_abaixo() -> None:
+    """31.62: o centro dentro da lista basta; o retângulo não precisa caber inteiro nela. O botão "Send" da barra de
+    escrita, que começa antes do fim da lista mas tem o centro fora, segue fora da conta (a árvore real acima prova)."""
+    vazada = _no("[40,1100][300,1180]", texto="ok")             # o fundo passa do fim da lista (1166)
+    assert parse_hierarchy(_fio(BOLHA, vazada)).ultima_bolha_igual(TEXTO) is None
+
+
 def test_texto_ainda_no_campo_nao_prova() -> None:
     xml = _fio(BOLHA).replace('class="android.widget.EditText" package="com.exemplo.chat" content-desc=""',
                               'class="android.widget.EditText" package="com.exemplo.chat" content-desc=""', 1)

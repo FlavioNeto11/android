@@ -229,6 +229,14 @@ def _dentro(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
     return b[0] <= a[0] and b[1] <= a[1] and a[2] <= b[2] and a[3] <= b[3]
 
 
+def _na_faixa(a: tuple[int, int, int, int], lista: tuple[int, int, int, int]) -> bool:
+    """31.62: `a` pertence à `lista` quando o CENTRO dele cai dentro dela. A contenção inteira perdia a mensagem nova cujo
+    retângulo vaza da lista (o dump nem sempre recorta pelo pai); só o topo na faixa puxaria para dentro o botão "Send"
+    da barra de escrita, que no Direct medido (31.26) começa 34 px antes do fim da lista."""
+    cx, cy = (a[0] + a[2]) / 2, (a[1] + a[3]) / 2
+    return lista[0] <= cx < lista[2] and lista[1] <= cy < lista[3]
+
+
 @dataclass(slots=True)
 class UiTree:
     elements: list[UiElement]
@@ -313,9 +321,10 @@ class UiTree:
 
     def _ultima_sem_tipo(self, bolhas: list[UiElement]) -> UiElement | None:
         """31.59 (bolha sem `resource_id`): sem o tipo da bolha, "mensagem abaixo" é QUALQUER elemento não editável com
-        texto ou descrição dentro do menor contêiner de lista que contém a bolha (rolável, ou de classe de lista do
-        Android: não depende de app) e com o topo depois do fim dela. Na dúvida, `None` e o modelo julga, nunca
-        "enviado":
+        texto ou descrição em QUALQUER contêiner de lista que contém a bolha (rolável, ou de classe de lista do Android:
+        não depende de app) e com o topo depois do fim dela. 31.62: todos os contêineres, não só o menor (uma lista
+        interna justa em volta da bolha escondia as mensagens mais novas da lista de fora), e "dentro da lista" é o topo
+        o centro do elemento dentro dela (`_na_faixa`). Na dúvida, `None` e o modelo julga, nunca "enviado":
 
         - mais de uma bolha igual (sem tipo não se diz qual é a nova);
         - bolha fora de contêiner de lista;
@@ -325,15 +334,14 @@ class UiTree:
         if len(bolhas) != 1:
             return None
         bolha = bolhas[0]
-        lista = min((e for e in self.elements
-                     if e is not bolha and _dentro(bolha.bounds, e.bounds) and e.bounds != bolha.bounds
-                     and (e.scrollable or e.class_name.rsplit(".", 1)[-1] in _CLASSES_DE_LISTA)),
-                    key=lambda e: (e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1]), default=None)
-        if lista is None:
+        listas = [e.bounds for e in self.elements
+                  if e is not bolha and _dentro(bolha.bounds, e.bounds) and e.bounds != bolha.bounds
+                  and (e.scrollable or e.class_name.rsplit(".", 1)[-1] in _CLASSES_DE_LISTA)]
+        if not listas:
             return None
         abaixo = any(not e.editable and (e.text.strip() or e.desc.strip()) and e is not bolha
-                     and not _dentro(e.bounds, bolha.bounds) and _dentro(e.bounds, lista.bounds)
-                     and e.bounds[1] >= bolha.bounds[3] for e in self.elements)
+                     and not _dentro(e.bounds, bolha.bounds) and e.bounds[1] >= bolha.bounds[3]
+                     and any(_na_faixa(e.bounds, lista) for lista in listas) for e in self.elements)
         return None if abaixo else bolha
 
     def sent_as_message(self, content: str, *, antes: int | None = None) -> bool | None:
