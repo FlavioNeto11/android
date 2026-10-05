@@ -143,6 +143,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   duas mutações reprovadas: `para_hash` com `str.replace` e a borda antiga do dígito), mais 261 testes de fluxo, receita,
   catracas e arquitetura verdes. Real: `not_run`.
 
+## 2026-10-05 — 29.135: a catraca de esperas lê o operando entre parênteses antes do `&&` (branch fix/29-135-operando-entre-parenteses)
+
+- Só teste (`frontend/src/test/esperas.test.ts`). A regra G2 (`X && …` devolve X quando ele é falso, e `X` terminando num `.find(…)` dá `undefined`) agora passa cada operando por `semParentesesDeFora` antes de decidir se ele é negado ou termina numa busca. `(itens().find(…)) && !carregando` deixa de escapar. A anotação do limite no comentário foi atualizada.
+- Casos novos: dois `pega` (um e dois níveis de parênteses) e um `poupa` (`(!lista.find(…)) && pronto`, a negação dentro dos parênteses segue booleana).
+- Prova `simulated`: `esperas.test.ts` 4/4; sem tirar os parênteses o primeiro caso falha. Typecheck verde, em 05/10 sobre `65452966`. Leitura do Codex no PR 455 (procedeu): o desembrulhar criava falso positivo para `(sel === itens.find(…)) && ok`, que é booleano; o operando só vale como busca quando não tem operador de valor (comparação, aritmética, vírgula, ternário, `in`, `instanceof`) no nível de fora, `temOperadorDeValorNoTopo`. Isso também poupa a forma sem parênteses `sel === itens.find(…) && ok`, que já era falso positivo. Casos novos no `poupa`; sem a guarda o caso com parênteses falha. Parênteses com operador dentro (`(a && !x.find(…))`) ficam poupados, como antes.
+
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
 - **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).
