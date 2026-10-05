@@ -5572,11 +5572,64 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
     rotina, a última cópia fica.
 - O `cliente_hash` (HMAC do IP, ou do /64 no IPv6, com o sal que não gira) fica na linha pelos mesmos 180 dias, contra
   abuso; a página diz isso. O IP em si não é guardado em lugar nenhum do portal.
-- **Exclusão a pedido**: hoje é o procedimento manual de `docs/operacao.md` ("Pedido de exclusão de um contato do site"),
-  com o sim do dono porque apaga dado. A ação de produto (rota e botão no painel) é o 29.83.
+- **Exclusão a pedido**: a ação de produto é o 29.83 (abaixo); o procedimento manual de `docs/operacao.md` ("Pedido
+  de exclusão de um contato do site") fica de reserva, com o sim do dono porque apaga dado.
 - Um contato `retido` que depois volta a `pendente` (o canal caiu antes da entrega) perde o motivo `teto_por_hora` e
   fica de fora do resumo: o resumo pode subcontar. E uma virada de hora sem líder da trava `avisos` (o backend caído
   ou a trava trocando de dono) não é resumida: aquela hora fica sem resumo.
+
+**Exclusão a pedido do titular** (item 29.83; decisões da orquestradora de 04/10, 23:20Z).
+- Na Configuração, seção "Site e privacidade": busca pelo telefone como a pessoa escreveu, lista só com id, data, estado e os 4
+  dígitos finais (nome, empresa e mensagem nunca aparecem), escolha de por onde o pedido chegou e confirmação explícita
+  que diz o que SERÁ apagado (as linhas, as mensagens do bot e as respostas do dono com menos de 47 h, a janela da Canais) e o que NÃO será
+  (as cópias de segurança, o histórico do Telegram mais velho).
+- Rotas `POST /api/portal/contatos/busca` e `POST /api/portal/contatos/excluir` (adendo v1.42), atrás de sessão e
+  com uma PESSOA nela: sem `request.state.operador`, 401, mesmo no loopback e com o Bearer (que é anônimo). Nenhuma
+  automação chama. A busca é `POST` para o telefone não ir para a URL nem para o log de acesso.
+- **Como a busca compara.**
+  - Compara o número INTEIRO, nunca prefixo nem finais.
+  - Aceita de 8 a 30 dígitos, contados COM os zeros da frente, como o formulário conta (revisão E3-b). Na comparação,
+    os zeros da frente saem.
+  - No brasileiro completo, o `55` é opcional dos dois lados. Fora dele (sem DDD, internacional), vale a igualdade
+    exata de todos os dígitos.
+  - Tudo o que o formulário aceitou é achável (revisão do #342, E1).
+  - Bordas aceitas e não tratadas (revisão E3):
+    - "+55" sem DDD tem 10 ou 11 dígitos e é lido como brasileiro com DDD 55. Pode casar com um número real do RS de
+      mesmo final, e o operador vê as datas e os 4 finais antes de marcar.
+    - Com o código de operadora (`0 15 11 …`), o número não casa com a forma só com DDD: busque como a pessoa escreveu.
+- **Dois tetos de busca, ambos em memória e com 429 `muitas_buscas`**, porque a busca acha contatos e não pode virar
+  varredura.
+  - 30 buscas válidas por hora por operador (`portal.limites.buscas_por_operador_hora`). A chave é o nome da sessão em
+    `casefold`, então "Ana" e "ana" dividem o balde.
+  - 60 por hora somando todos (`portal.limites.buscas_total_hora`). É este que limita a varredura: o nome é declarado
+    no login, e um nome novo ganharia outro balde por operador, mas não outro balde geral (revisão E4).
+  - A contagem é feita sob trava, porque a rota busca em threads do pool.
+  - Reiniciar o central zera os dois, e isso fica aceito: a busca exige o número inteiro e uma pessoa logada.
+  - Cada busca deixa no log o operador e a contagem, sem o telefone.
+- **O bloco `portal` do `config.yaml` recusa chave desconhecida** (`extra="forbid"` em `PortalCfg`, nos limites e
+  nos contatos; o resto do arquivo segue aceitando).
+  - Motivo: é o bloco que mexe com o que a página promete e com a exclusão, e um nome errado não pode valer o padrão
+    em silêncio.
+  - O erro nomeia o caminho e a chave, nunca o valor: `hide_input_in_errors` no `AppConfigFile`, o modelo raiz que o
+    pydantic consulta. Sem isso, um `telefon:` digitado errado poria o telefone no console do deploy e no log da
+    subida (revisão E5).
+  - Coberto por `tests/test_configuracao_de_exemplo.py`.
+- Uma falha do Portal DEPOIS do `ok` da Canais deixa a linha e o registro como estavam (a lápide já segura o aviso);
+  repetir a exclusão resolve, porque a Canais é idempotente na chave. Coberto por teste.
+- **A Canais antes do DELETE** (`apagar_avisos_do_portal`, 28.34, contrato fora do Git em
+  `.claude/handoffs/portal-exclusao-contrato.md`): ela tira o aviso da fila para sempre (lápide na chave
+  `portal:<id>`, que faz qualquer reenfileirar virar no-op e fecha a corrida com o laço de reenvio), apaga o texto
+  das respostas do dono e tenta apagar no chat as mensagens com menos de 47 h. Só com `ok` dela a linha sai; com
+  `em_envio` ou `falhou` a linha fica e a resposta diz por quê. Sem a função na base e com o aviso do 28.32 presente,
+  nada é apagado (`canal_sem_exclusao`); sem aviso nenhum, não há fila e a exclusão segue (`sem_canal`).
+- **O id de contato nunca se repete** (`AUTOINCREMENT` no SQLite, `BIGSERIAL` no PostgreSQL): é o que deixa a
+  lápide da Canais valer só para o contato excluído. Travado por teste.
+- **Registro `portal_exclusoes`** (migração 109): quando, quem executou (o operador da sessão), por onde o pedido
+  chegou (`formulario`, `telefone` ou `outro`, sem texto livre), os ids apagados, os mantidos com o motivo e as
+  contagens de mensagens. **Sem prazo de retenção**: é a prova do atendimento, e não guarda NADA do titular (nem nome,
+  nem telefone, nem hash dele, nem a mensagem); guardar uma identidade de quem pediu seria guardar o dado que ele
+  mandou apagar. O DELETE e o registro vão numa transação, e o registro e a resposta levam só o que aquele DELETE
+  apagou (`RETURNING`; revisão do #342, E2).
 
 **Marca pública** (o que a página diz é parte da decisão).
 - A página apresenta a **ANA** como a inteligência da SICAT que rege a presença digital de quem contrata. As **personas**

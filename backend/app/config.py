@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import AliasChoices, BaseModel, Field, SecretStr, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Só stdlib e sem import de `app` (vai ao agente do worker junto com este arquivo): não fecha ciclo.
@@ -1531,9 +1531,20 @@ class ExecucaoCfg(BaseModel):
 TELEFONE_PUBLICO = re.compile(r"^[0-9+()\- ]{8,30}$")
 
 
+#: O bloco `portal` recusa chave desconhecida (o resto do arquivo aceita): um nome errado ali (`buscas_por_operador_hor`)
+#: valeria o padrão em silêncio, e é o bloco que mexe com o que a página promete ao visitante e com a exclusão a pedido
+#: do titular. A subida falha dizendo qual chave (pedido da orquestradora no 29.83). O erro nomeia a chave e o caminho,
+#: nunca o valor: um `telefon:` digitado errado em `portal.contatos` poria o telefone no console do deploy e no log
+#: da subida (revisão do #342, E5). Aqui vale quando o modelo é validado sozinho; pelo arquivo inteiro, quem decide é
+#: o `AppConfigFile` (o pydantic usa a configuração do modelo raiz), que esconde o valor também.
+_PORTAL_ESTRITO = ConfigDict(extra="forbid", hide_input_in_errors=True)
+
+
 class ContatoPublicoCfg(BaseModel):
     """Um contato comercial mostrado no site, com toque para ligar e link de WhatsApp. Vem do config de cada
     instalação, nunca do código: o repositório não carrega telefone pessoal, e trocar um número não pede mudança."""
+
+    model_config = _PORTAL_ESTRITO
 
     nome: str = Field(min_length=1, max_length=80)
     telefone: str
@@ -1550,6 +1561,8 @@ class ContatoPublicoCfg(BaseModel):
 class PortalContatoLimitesCfg(BaseModel):
     """Os tetos do formulário de contato (29.77, ADR-075). A Cloudflare não é a defesa: tudo isto vale no backend."""
 
+    model_config = _PORTAL_ESTRITO
+
     por_cliente_hora: int = Field(3, ge=1, le=100)
     por_cliente_dia: int = Field(10, ge=1, le=1000)
     #: Mensagens ao Telegram por hora, somando todos os visitantes. Acima disso o contato fica `retido` e sai na hora
@@ -1564,6 +1577,12 @@ class PortalContatoLimitesCfg(BaseModel):
     #: tempo demais e o visitante recarrega.
     token_min_s: int = Field(3, ge=1, le=60)
     token_max_s: int = Field(7200, ge=600, le=86_400)
+    #: Buscas por telefone na exclusão a pedido do titular (29.83), por operador da sessão e por hora, contadas em
+    #: memória no processo. Não é o formulário: é o painel, mas a busca acha contatos e não pode virar varredura.
+    buscas_por_operador_hora: int = Field(30, ge=1, le=1000)
+    #: As mesmas buscas somando todos os operadores. É este que limita a varredura: o nome do operador é declarado
+    #: no login, e um nome novo ganharia outro balde por operador, mas não outro balde geral (revisão do #342, E4).
+    buscas_total_hora: int = Field(60, ge=1, le=10_000)
 
 
 class PortalCfg(BaseModel):
@@ -1573,6 +1592,8 @@ class PortalCfg(BaseModel):
     segue no 307 para `/central/` (ADR-073); desligado o contato, a rota responde 404. Quem liga é a orquestradora, no
     `config.yaml` do central, depois do sim do dono às capturas. O prazo de guarda do contato (180 dias) é fixo e está
     escrito na própria página: mudar o prazo é mudar a página, não um número aqui."""
+
+    model_config = _PORTAL_ESTRITO
 
     site_ligado: bool = False
     contato_ligado: bool = False
@@ -1589,6 +1610,10 @@ class PortalCfg(BaseModel):
 
 
 class AppConfigFile(BaseModel):
+    # O erro de validação nomeia a chave e o caminho, sem ecoar o valor lido do arquivo: o config de cada instalação
+    # carrega telefones e nomes (portal.contatos), e a mensagem vai ao console do deploy e ao log da subida (E5).
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     server: ServerCfg = ServerCfg()
     paths: PathsCfg = PathsCfg()
     android: AndroidCfg = AndroidCfg()

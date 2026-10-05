@@ -6055,6 +6055,40 @@ Sem rota HTTP nova. A conversa do Telegram usa os MESMOS serviços das rotas do 
   `backend/tests/test_telegram_portas.py` (as portas reais no harness) e `backend/tests/test_avisos_porta.py` (domínio).
   `not_run`: o Telegram real e um plano real com item que pede o sim.
 
+## Adendo v1.42 (04/10/2026; número da orquestradora; item 29.83) — exclusão de contatos do site a pedido do titular
+
+Duas rotas novas, **atrás de sessão e só para uma pessoa nela** (ADR-075, "Exclusão a pedido do titular"). Sem
+`request.state.operador` (sem o cookie de sessão do painel), **401** `sessao_exigida`, inclusive no loopback e com o
+Bearer. Nenhuma entra na exceção do portão. Valem com o site e o contato ligados ou não. Migração `109_portal_exclusoes`.
+
+- `POST /api/portal/contatos/busca`, corpo JSON `{telefone}` (é `POST` para o telefone não ir para a URL). Compara
+  o número INTEIRO, nunca prefixo nem finais.
+  - Aceita de 8 a 30 dígitos, contados com os zeros da frente, como o formulário conta. Na comparação, os zeros da
+    frente saem.
+  - No brasileiro completo (DDD + número), o `55` é opcional dos dois lados. Fora dele (sem DDD, internacional), vale
+    a igualdade exata de todos os dígitos.
+  - **200** `{"contatos": [{id, criado_em, estado, final}]}`, com `final` = os 4 dígitos finais do telefone guardado.
+    Nome, empresa, mensagem e o número inteiro nunca saem.
+  - **422** `telefone_invalido`.
+  - **429** `muitas_buscas` com `Retry-After`. Há dois tetos de buscas válidas na última hora, contados em memória no
+    processo (reiniciar zera):
+    - `portal.limites.buscas_por_operador_hora` (30) por operador da sessão, com o nome em `casefold`;
+    - `portal.limites.buscas_total_hora` (60) somando todos os operadores.
+  - O log de cada busca leva o operador e a contagem de achados, nunca o telefone.
+- `POST /api/portal/contatos/excluir`, corpo JSON `{ids: [1..50 inteiros], pedido_por: "formulario" | "telefone" |
+  "outro"}`. **200** `{apagados: [id], mantidos: [{id, motivo}], inexistentes: [id], mensagens_apagadas: n,
+  mensagens_a_mao: [{contato_id, enviada_em}], sem_canal: bool}`. `apagados` e o registro levam só o que ESTE DELETE
+  apagou: um id que outra exclusão ou a faxina levou no meio vem em `inexistentes`.
+  - `motivo`: `em_envio` (a mensagem estava saindo; tentar de novo em um minuto), `falhou` (a Canais não confirmou a
+    fila; nada apagado daquele contato) ou `canal_sem_exclusao` (o aviso do 28.32 está na base sem o 28.34: use o
+    procedimento manual de `docs/operacao.md`).
+  - `mensagens_a_mao`: as mensagens (do bot ou respostas do dono, ou a hora em que uma pode ter saído sem registro) que
+    o dono apaga no chat; só ids e horas.
+  - Erros: **422** `ids_invalidos` ou `pedido_por_invalido`; **415** sem JSON; **413** acima de 4096 bytes.
+- O registro em `portal_exclusoes` guarda só ids, motivos, contagens, o operador e o `pedido_por`; sem prazo.
+- Prova: `simulated` (`backend/tests/test_portal_exclusao.py`, com uma Canais falsa no lugar do 28.34). `not_run`: o
+  28.34 real e o central.
+
 ## Adendo v1.43 (04/10/2026; número da orquestradora; item 29.82) — o worker traz as vagas que valem
 
 Sem migração. Muda o `Worker` da v0.8 (`GET /api/workers`, `GET /api/workers/{id}`, snapshot e `worker.updated`).

@@ -435,6 +435,10 @@ em `/central/`. O formulário de contato manda a mensagem ao Telegram do dono pe
          telefone: "<+55 (DDD) número>"
    ```
 
+   O bloco `portal` recusa chave desconhecida (desde o 29.83): um nome errado (`site_ligad`, `telefon`,
+   `buscas_por_operador_hor`) faz a subida falhar dizendo qual é, em vez de valer o padrão calado. Rode o
+   `deploy.ps1 -Ensaio` depois de editar.
+
 2. Conferir que `https://dev.nvit.com.br` está em `server.allowed_origins` (está desde o ADR-073; sem ela todo envio
    leva 403) e que o aviso do Telegram está pronto (`GET /api/canais/estado`). Depois do reinício, o `GET /api/health`
    não pode trazer `portal_contato_sem_ip_da_borda` (falta `tls_behind_proxy` ou o nome público: a taxa por cliente
@@ -466,10 +470,15 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
   cerca de 195 dias;
 - o `cliente_hash` (código do endereço de rede, nunca o IP) fica os mesmos 180 dias.
 
-**Pedido de exclusão de um contato do site** (o visitante pede pelo formulário ou por telefone). Quem executa é o
-operador, com o sim do dono no chat, porque apaga dado; a ação no painel é o 29.83. O pedido feito pelo formulário é
-ele mesmo um contato que chegou ao chat: são duas ou mais linhas e duas ou mais mensagens a apagar. Nada do conteúdo
-vai para chat, cartão ou log.
+**Pedido de exclusão de um contato do site** (o visitante pede pelo formulário ou por telefone).
+- **Pelo painel (29.83):** Configuração → "Site e privacidade". Busque pelo telefone como a pessoa escreveu (com DDD, se ela usou), marque as linhas
+  (inclusive a do próprio pedido, quando ele veio pelo formulário), diga por onde o pedido chegou e confirme "Apagar
+  definitivamente". Quem aperta é uma pessoa logada; o resultado lista as mensagens que ficaram para apagar à mão no
+  chat. Uma linha `mantida` com `em_envio` pede outra tentativa em um minuto; com `falhou`, ver o log `poc.portal` e o
+  da Canais; com `canal_sem_exclusao`, o 28.34 ainda não está na base: use o procedimento manual abaixo.
+- **Manual (reserva, quando o painel não serve):** quem executa é o operador, com o sim do dono no chat, porque apaga
+  dado. O pedido feito pelo formulário é ele mesmo um contato que chegou ao chat: são duas ou mais linhas e duas ou
+  mais mensagens a apagar. Nada do conteúdo vai para chat, cartão ou log.
 1. Achar as linhas comparando TODOS os dígitos que o visitante informou, com DDD (troque `<DIGITOS>`, por exemplo
    `11987654321`; com o `55` na frente, use o número inteiro como ele veio). O SELECT mostra os dígitos para conferir
    antes de apagar:

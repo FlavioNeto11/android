@@ -68,10 +68,10 @@ function titulosDeCartao(): string[] {
 }
 
 describe('Configuração no contrato de página', () => {
-  it('as cinco abas continuam role=tab com os mesmos nomes, direto na página (sem Card em volta)', async () => {
+  it('as seis abas continuam role=tab com os mesmos nomes, direto na página (sem Card em volta)', async () => {
     await render();
     const abas = allByRole('tab', /.+/, container).map((t) => (t.textContent ?? '').trim());
-    expect(abas).toEqual(['Aplicativos', 'Aparelhos e contas', 'IA', 'Fluxos e receitas', 'Limites']);
+    expect(abas).toEqual(['Aplicativos', 'Aparelhos e contas', 'IA', 'Fluxos e receitas', 'Limites', 'Site e privacidade']);
     const lista = byRole('tablist', 'Seções de configuração', container);
     // A lista de abas é filha da página, como em Aplicativos — não mais de um cartão (`section`) que envolvia tudo.
     expect(lista.closest('section')).toBeNull();
@@ -134,5 +134,17 @@ describe('Configuração no contrato de página', () => {
     // "Aplicativos" é a padrão: não aparece no link, e o link antigo `#/configuracao` continua abrindo nela.
     await click(byRole('tab', /^Aplicativos/, container));
     expect(useUiStore.getState().rota.query.aba).toBeUndefined();
+  });
+
+  it('Site e privacidade: abre pelo link ?aba=privacidade e mostra a exclusão a pedido do titular', async () => {
+    useUiStore.getState().navegar({ tela: 'configuracao', query: { aba: 'privacidade' } }, 'replace');
+    await render();
+    expect(byRole('tab', /^Site e privacidade/, container).getAttribute('aria-selected')).toBe('true');
+    expect(titulosDeCartao()).toContain('Exclusão a pedido do titular');
+    expect(byRole('textbox', /Telefone/, container)).toBeTruthy();
+    // Clicar na aba também leva o link junto.
+    await click(byRole('tab', /^Limites/, container));
+    await click(byRole('tab', /^Site e privacidade/, container));
+    expect(useUiStore.getState().rota.query.aba).toBe('privacidade');
   });
 });

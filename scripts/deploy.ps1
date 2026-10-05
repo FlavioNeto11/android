@@ -104,7 +104,11 @@ import sys
 from pathlib import Path
 from app.config import get_config
 from app.modules.portal.presentation.site import SiteInvalido, ler_site
-ligado = get_config().file.portal.site_ligado
+try:
+    ligado = get_config().file.portal.site_ligado
+except Exception as e:  # o bloco `portal` recusa chave desconhecida (29.83): a subida falharia do mesmo jeito
+    print(f"    config.yaml: {e}")
+    sys.exit(2)
 try:
     print(f"    site/: {len(ler_site(Path('..') / 'site'))} arquivo(s) na lista; portal.site_ligado={ligado}")
 except (SiteInvalido, OSError) as e:
@@ -112,6 +116,9 @@ except (SiteInvalido, OSError) as e:
     sys.exit(1 if ligado else 0)
 '@
 } finally { Pop-Location }
+if ($LASTEXITCODE -eq 2) {
+  throw 'o config.yaml não carrega (acima, a chave): o central não subiria. Corrija o arquivo antes de parar qualquer coisa.'
+}
 if ($LASTEXITCODE -ne 0) {
   throw 'a pasta site/ tem arquivo fora da lista e portal.site_ligado está ligado: o central não subiria. Limpe a pasta.'
 }

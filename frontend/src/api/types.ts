@@ -2966,3 +2966,32 @@ export interface AprovarPlanoResultado {
   validade_ate: string;
 }
 
+/** 29.83: um contato do site achado pelo telefone. Só o final do número: nome, empresa e mensagem nunca saem da API. */
+export interface PortalContatoAchado {
+  id: number;
+  /** ISO UTC. */
+  criado_em: string;
+  estado: 'pendente' | 'entregue' | 'retido' | 'descartado';
+  /** Os 4 últimos dígitos do telefone guardado. */
+  final: string;
+}
+
+export interface PortalContatosBusca {
+  contatos: PortalContatoAchado[];
+}
+
+export type PortalPedidoPor = 'formulario' | 'telefone' | 'outro';
+
+export type PortalMotivoMantido = 'em_envio' | 'falhou' | 'canal_sem_exclusao';
+
+/** 29.83: resposta de `POST /api/portal/contatos/excluir`. */
+export interface PortalExclusaoResultado {
+  apagados: number[];
+  mantidos: { id: number; motivo: PortalMotivoMantido }[];
+  inexistentes: number[];
+  /** Mensagens do bot no Telegram que o próprio bot apagou (enviadas há menos de 48 h). */
+  mensagens_apagadas: number;
+  /** As que o bot não pode apagar (mais de 48 h): a pessoa apaga à mão no chat. */
+  mensagens_a_mao: { contato_id: number; enviada_em: string }[];
+  sem_canal: boolean;
+}

@@ -142,6 +142,9 @@ import type {
   AiBalanceRuleIn,
   AiBalancesReport,
   ContextRetrievalStatus,
+  PortalContatosBusca,
+  PortalExclusaoResultado,
+  PortalPedidoPor,
   RunTargetsSuggestRequest,
   RunTargetsSuggestion,
 } from './types';
@@ -514,6 +517,13 @@ export const api = {
   ai: () => request<AiStatus>('GET', '/ai'),
   /** Estado do retrieval de contexto (ADR-063): só leitura, sem rede e sem gasto. */
   contextRetrievalStatus: (signal?: AbortSignal) => request<ContextRetrievalStatus>('GET', '/context-retrieval/status', { signal }),
+  /** 29.83: contatos do site por telefone, para a exclusão a pedido do titular. POST (e não GET) para o telefone não
+   *  ir na URL, que vira linha de log de acesso. Devolve só o final do número, nunca nome nem mensagem. */
+  portalBuscarContatos: (telefone: string) =>
+    request<PortalContatosBusca>('POST', '/portal/contatos/busca', { body: { telefone } }),
+  /** 29.83: apaga os contatos escolhidos (e as mensagens do bot de menos de 48 h). Irreversível. */
+  portalExcluirContatos: (ids: number[], pedido_por: PortalPedidoPor) =>
+    request<PortalExclusaoResultado>('POST', '/portal/contatos/excluir', { body: { ids, pedido_por } }),
   /** Saldo estimado das contas de IA (ADR-051) e os dois ajustes: nova leitura do console e limites. */
   aiBalances: (refresh = false, signal?: AbortSignal) =>
     request<AiBalancesReport>('GET', '/ai/balances', { query: refresh ? { refresh: 1 } : undefined, signal, timeoutMs: 45_000 }),
