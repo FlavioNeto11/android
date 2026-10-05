@@ -277,7 +277,7 @@ def test_o_html_aponta_a_versao_que_a_borda_entrega(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(("quebra", "linha", "motivo"), [
-    ("versao_velha", "FALHOU /assets/site.css (versao)", "a pagina pede ?v="),   # a borda guardou sem olhar a query
+    ("versao_velha", "FALHOU /assets/site.css (versao)", "ALTEROU o arquivo no caminho"),   # V4: as três causas
     ("sem_versao", "FALHOU /assets/site.js (versao)", "a pagina aponta o arquivo sem ?v="),
 ])
 def test_arquivo_sem_versao_ou_com_a_velha_reprova(tmp_path: Path, quebra: str, linha: str, motivo: str) -> None:

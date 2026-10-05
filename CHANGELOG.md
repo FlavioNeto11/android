@@ -34,8 +34,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Nada muda na Cloudflare.
 - **Prova:**
   - `simulated`: `tests/test_portal_site.py` (a raiz e a 404 apontam a versão que a origem serve; conteúdo novo muda
-    o endereço e a ETag da página; página, arquivo ausente e âncora ficam intactos) e
-    `scripts/tests/test_portal_prova_de_fora.py` (22, com a versão velha e o arquivo sem `?v=` reprovando);
+    o endereço e a ETag da página; página, arquivo ausente e âncora ficam intactos; a guarda do teste reprova
+    qualquer citação a arquivo da pasta sem `?v=`, em aspas simples, sem aspas, maiúscula, `srcset`, `use href`,
+    caminho relativo ou `url()` no CSS, com um caso que prova que ela acha) e
+    `scripts/tests/test_portal_prova_de_fora.py` (22, com a versão velha e o arquivo sem `?v=` reprovando, e a
+    mensagem com as três causas: query ignorada, cópia velha ou arquivo alterado no caminho);
+  - a subida NÃO recusa um atributo fora dessas formas: derrubaria o central por um detalhe de HTML. Quem garante é
+    a guarda do teste;
   - `real` (05/10 03:43:46Z, só GET): `/assets/site.css?v=<novo>` deu `cf-cache-status: MISS` e, na segunda vez,
     `REVALIDATED`: a borda guarda separado por query, e o endereço novo não herda o guardado;
   - `not_run`: o central depois do deploy e a prova de fora com as linhas novas.

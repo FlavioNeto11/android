@@ -334,9 +334,50 @@ async def test_paginas_apontam_para_a_versao_que_a_origem_serve(harness: Harness
                 r = await c.get(f"{caminho}?v={versao}")
                 assert r.status_code == 200, caminho
                 assert hashlib.sha256(r.content).hexdigest()[:DIGITOS_DA_VERSAO] == versao, caminho
-            # Nada da pasta fica sem versão; o que não é arquivo do site (painel, raiz, âncora) fica como está.
-            assert not re.search(r'\s(?:href|src)="/(?:assets/|favicon)[^"?]*"', html), pagina
+            # Nada da pasta fica sem versão, em forma nenhuma; painel, raiz e âncora não são arquivo do site.
+            assert _referencias_sem_versao(html, set(ARQUIVOS_DO_SITE)) == [], pagina
+        assert _referencias_sem_versao((await c.get("/assets/site.css")).text, set(ARQUIVOS_DO_SITE)) == []
         assert 'href="/central/"' in (await c.get("/")).text
+
+
+#: Os arquivos da pasta do site que não são página: o que tem de ir com `?v=` quando uma página ou o CSS o cita.
+ARQUIVOS_DO_SITE = [p for p in ler_site(SITE) if not p.endswith(".html")]
+#: Toda forma de citar um arquivo (V1 da leitura do #369): `href`, `src`, `srcset` e `xlink:href` em qualquer caixa,
+#: com espaço em volta do `=`, aspas duplas, simples ou nenhuma; e `url(...)` no CSS.
+_ATRIBUTO = re.compile(r"""(?:\s|^)(?:xlink:href|href|srcset|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))""",
+                       re.IGNORECASE)
+_URL_DO_CSS = re.compile(r"""url\(\s*["']?([^"')\s]+)""", re.IGNORECASE)
+
+
+def _referencias_sem_versao(texto: str, arquivos: set[str]) -> list[str]:
+    """Cada citação a um arquivo de `arquivos` sem `?v=`, com caminho absoluto ou relativo à raiz."""
+    valores = [next(g for g in m.groups() if g is not None) for m in _ATRIBUTO.finditer(texto)]
+    valores += _URL_DO_CSS.findall(texto)
+    candidatos = []
+    for valor in valores:
+        candidatos += [parte.strip().split(" ")[0] for parte in valor.split(",")]   # srcset: "a.svg 1x, b.svg 2x"
+    sem_versao = []
+    for endereco in candidatos:
+        if "?v=" in endereco or "://" in endereco:
+            continue
+        caminho = "/" + endereco.split("#")[0].split("?")[0].lstrip("./")
+        if caminho in arquivos:
+            sem_versao.append(endereco)
+    return sem_versao
+
+
+def test_a_guarda_da_versao_acha_toda_forma_de_citar_um_arquivo() -> None:
+    """A guarda de cima só vale se acha: aspas simples, sem aspas, maiúscula, espaço no `=`, `srcset`, `use href` com
+    âncora, caminho relativo e `url()` no CSS, todos sem `?v=`, aparecem; com `?v=`, âncora pura e o painel, não."""
+    arquivos = {"/assets/site.css", "/assets/a.svg", "/assets/b.svg", "/favicon.svg"}
+    html = ("<link rel=stylesheet href='/assets/site.css'><img SRC = /assets/a.svg>"
+            '<img srcset="/assets/a.svg 1x, assets/b.svg 2x"><svg><use href="/assets/a.svg#i"></use></svg>'
+            '<link rel="icon" HREF="favicon.svg"><a href="#contato">c</a><a href="/central/">p</a>'
+            '<img src="/assets/a.svg?v=abc">')
+    assert _referencias_sem_versao(html, arquivos) == [
+        "/assets/site.css", "/assets/a.svg", "/assets/a.svg", "assets/b.svg", "/assets/a.svg#i", "favicon.svg"]
+    assert _referencias_sem_versao("a{background:url( '/assets/a.svg' )}b{background:url(x.png)}", arquivos) == [
+        "/assets/a.svg"]
 
 
 def test_versionar_muda_o_endereco_so_quando_o_conteudo_muda() -> None:
