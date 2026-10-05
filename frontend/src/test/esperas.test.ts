@@ -201,9 +201,11 @@ function esperasQuePassamSemAchar(codigo: string): number[] {
       const operandos = operandosDoTopo(corpo);
       // No `X && …` o valor é X quando ele é falso: um X que termina numa busca (o `undefined` do `.find(…)`) passa na
       // hora, por mais que o último operando seja negado (29.129, G2).
-      if (operandos.some((o) => o.depois === '&&' && terminaNumaBusca(o.texto))) return true;
+      // O operando negado já é booleano, e com ternário no topo o `&&` é só a condição.
+      const ternario = temTernarioNoTopo(corpo);
+      if (!ternario && operandos.some((o) => o.depois === '&&' && !o.texto.startsWith('!') && terminaNumaBusca(o.texto))) return true;
       // Com `&&`, `||` ou `??` no topo, quem decide é o último operando: negado, é booleano. Com ternário no topo, não.
-      if (!temTernarioNoTopo(corpo) && operandos[operandos.length - 1]!.texto.startsWith('!')) return false;
+      if (!ternario && operandos[operandos.length - 1]!.texto.startsWith('!')) return false;
       return terminaNumaBusca(corpo);
     })
     .map(({ indice }) => indice);
@@ -270,6 +272,9 @@ describe('catraca das esperas', () => {
       "await waitFor(() => !a || !c.querySelector('x'));",
       "await waitFor(() => ok && !c.querySelector('x'));",
       "await waitFor(() => (ok && !c.querySelector('x')));",
+      // G2 sem falso positivo: o `.find(…)` negado é booleano, e no ternário o `&&` é só a condição.
+      "await waitFor(() => !lista.find((i) => i.id === 'x') && pronto);",
+      "await waitFor(() => itens().find((i) => i.id === 'x') && ok ? a : b);",
     ];
     for (const linha of pega) expect(esperasQuePassamSemAchar(linha), linha).toHaveLength(1);
     for (const linha of poupa) expect(esperasQuePassamSemAchar(linha), linha).toEqual([]);
