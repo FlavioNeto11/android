@@ -6663,8 +6663,10 @@ Muda o VALOR de `ref` nos eventos de fluxo e passa a aceitar a referência nova 
 Nenhuma rota nova e nenhum campo novo; muda o CONTEÚDO de três respostas do modo treinamento quando a sessão tem
 persona e a pessoa digitou, como uma entrada inteira, um dado não sigiloso dela (`profile_variables`, genérico por chave).
 - `POST /api/training/{session_id}/propose`: o parâmetro do comando cujo exemplo é esse dado sai de `parameters` e de
-  `command_template`. Nas etapas (`title`, `goal`, `precondition`, `postcondition.value|description`, `bindings[].value`),
-  `{param}` e o valor literal viram o marcador `{perfil_x}`.
+  `command_template`, com a palavra de ligação antes dele (lista fechada: "com", "para", "de"…). Nas etapas, `{param}`
+  vira o marcador `{perfil_x}` em todo campo de texto. O valor literal vira o marcador por palavra em `title`, `goal`,
+  `precondition` e `postcondition.description`, e em `bindings[].value` e `postcondition.value` só quando é o campo
+  inteiro (casefold): dentro de uma frase, fica literal.
 - `POST /api/training/{session_id}/save` e `/preview`: a mesma troca na proposta enviada (a editada à mão também), e
   `warnings` ganha uma linha "{perfil_x}: vem do perfil da persona de cada aparelho (o aparelho sem esse dado não roda o
   fluxo)." A proposta guardada na sessão é a trocada.

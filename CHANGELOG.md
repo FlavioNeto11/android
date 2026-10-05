@@ -24,7 +24,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Decisão do dono (05/10 15:13Z): todos os campos de perfil viram variável no ensinado; senha, código e 2FA só pelo
   cofre. A identidade (chaves novas) é da Jev; aqui, o ensino.
 - O dado da persona digitado como entrada inteira vira `{perfil_x}` na proposta (o parâmetro do comando com esse
-  exemplo sai do comando) e na receita destilada; a reprodução recebe os dados da persona do objetivo. O `save` e a
+  exemplo sai do comando, com a palavra de ligação) e na receita destilada. No que a etapa digita ou confere, só o campo
+  inteiro troca (C1 da leitura da Ferramentas); a reprodução recebe os dados da persona do objetivo. O `save` e a
   prévia avisam o que vem do perfil.
 - Contrato: a proposta guardada pode perder um parâmetro e ganhar marcadores nas etapas, e os `warnings` do `save` e
   da prévia ganham uma linha (adendo v1.69).

@@ -55,12 +55,39 @@ def test_so_entra_o_dado_digitado_inteiro_numa_entrada_e_com_tamanho() -> None:
 
 def test_a_proposta_troca_o_parametro_e_o_literal_pelo_marcador() -> None:
     nova, usados = dp.na_proposta(_proposta(), {"perfil_email": EMAIL})
-    assert nova["command_template"] == "entre no app com e mande {mensagem}"
+    assert nova["command_template"] == "entre no app e mande {mensagem}"
     assert [x["name"] for x in nova["parameters"]] == ["mensagem"]
     (st,) = nova["steps"]
     assert st["bindings"] == [{"name": "texto", "value": "{perfil_email}"}]
     assert st["goal"] == "digitar {perfil_email} no campo"
     assert usados == ["perfil_email"] and "{perfil_email}" in dp.aviso(usados)[0]
+
+
+def test_no_que_a_etapa_digita_ou_confere_so_o_campo_inteiro_vira_marcador() -> None:
+    """C1 da leitura: o nome da persona dentro da frase de outra binding (uma destinatária homônima) ou da conferência
+    fica literal; trocar mandaria a terceiros o nome da persona de cada aparelho. O campo que É o valor vira o marcador,
+    e o título e o objetivo, que só descrevem, trocam por palavra."""
+    p = _proposta("fale com a cliente")
+    p["parameters"] = []
+    st = p["steps"][0]
+    st["title"] = "falar como Ana"
+    st["bindings"] = [{"name": "texto", "value": "Oi Ana, tudo bem?"}, {"name": "assinatura", "value": " ana "}]
+    st["postcondition"] = {"kind": "text_visible", "value": "conversa com Ana aberta", "description": "Ana respondeu"}
+    nova, usados = dp.na_proposta(p, {"perfil_nome": "Ana"})
+    (st2,) = nova["steps"]
+    assert st2["bindings"] == [{"name": "texto", "value": "Oi Ana, tudo bem?"},
+                               {"name": "assinatura", "value": "{perfil_nome}"}]
+    assert st2["postcondition"]["value"] == "conversa com Ana aberta"
+    assert st2["postcondition"]["description"] == "{perfil_nome} respondeu" and st2["title"] == "falar como {perfil_nome}"
+    assert usados == ["perfil_nome"]
+
+
+def test_a_palavra_de_ligacao_sai_com_o_parametro_e_outra_palavra_fica() -> None:
+    """N1 da leitura: "com {email}" sai inteiro; uma palavra fora da lista fechada antes do parâmetro fica."""
+    nova, _ = dp.na_proposta(_proposta("mande {mensagem} para {email}"), {"perfil_email": EMAIL})
+    assert nova["command_template"] == "mande {mensagem}"
+    nova, _ = dp.na_proposta(_proposta("entre usando {email} agora"), {"perfil_email": EMAIL})
+    assert nova["command_template"] == "entre usando agora"
 
 
 def test_sem_persona_ou_com_outro_valor_a_proposta_nao_muda() -> None:
@@ -125,7 +152,7 @@ async def test_a_previa_e_o_save_levam_o_marcador_e_avisam(harness: Harness) -> 
     salvo = await st.skills.save(sid, proposal=_proposta(), profile_ids=[], group_ids=[])
     assert any("{perfil_email}" in a for a in salvo["warnings"])
     guardada = st.training.get(sid)["proposal"]
-    assert guardada["command_template"] == "entre no app com e mande {mensagem}"
+    assert guardada["command_template"] == "entre no app e mande {mensagem}"
     plano = st.db.scalar("SELECT plan FROM flows WHERE id=?", (salvo["flow_id"],))
     assert "{perfil_email}" in plano and EMAIL not in plano           # o e-mail de quem ensinou não fica no fluxo
     assert set(json.loads(plano)["parameters"]) == {"mensagem"}      # o marcador não é parâmetro do comando

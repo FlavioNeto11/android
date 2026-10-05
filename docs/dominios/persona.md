@@ -300,8 +300,10 @@ junta destino e dado da persona, e a sucessora recusa a resposta por texto quand
 persona que a pessoa DIGITOU como uma entrada inteira (o campo recebeu exatamente o valor) vira o marcador
 (`training/dado_da_persona.py`):
 - na proposta (`propose`, e de novo no `save` e na prévia, para a proposta editada à mão): o parâmetro do comando cujo
-  exemplo é esse dado sai do comando e da lista, e `{param}` vira `{perfil_x}` nas etapas; o valor literal numa etapa
-  também vira o marcador;
+  exemplo é esse dado sai do comando e da lista, com a palavra de ligação antes dele ("com", "para", lista fechada), e
+  `{param}` vira `{perfil_x}` nas etapas. O valor literal vira o marcador por palavra no título, no objetivo e na
+  descrição; no que a etapa digita ou confere (`bindings[].value`, `postcondition.value`), só quando é o campo inteiro.
+  Dentro de uma frase ("Oi Ana, tudo bem?" para uma destinatária homônima) fica literal;
 - na destilação: a receita digita `{perfil_email}`, não o e-mail de quem ensinou (os parâmetros da pessoa vencem no
   mesmo valor);
 - na reprodução: o executor passa os dados da persona do objetivo ao `Replayer` (os do objetivo vencem).

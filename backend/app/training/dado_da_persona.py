@@ -17,6 +17,9 @@ from collections.abc import Iterable, Mapping
 #: Abaixo disto o valor casaria com pedaço de outra palavra ("Ana" em "banana"): o mesmo piso de `learn_from_run`.
 MINIMO = 3
 _CAMPOS_DE_TEXTO = ("title", "goal", "precondition")
+#: A palavra de ligação que sai do comando junto com o parâmetro ("entre com {email} e…" → "entre e…"; N1 da leitura).
+#: Lista fechada: outra palavra antes do parâmetro fica.
+_LIGACOES = ("com", "de", "do", "da", "para", "pra", "em", "no", "na", "por", "pelo", "pela", "ao", "à", "a", "o")
 
 
 def _palavra(valor: str) -> re.Pattern[str]:
@@ -34,9 +37,23 @@ def demonstrados(persona: Mapping[str, str], entradas: Iterable[Mapping[str, obj
 
 
 def _trocar(texto: str, trocas: Mapping[str, str]) -> str:
-    """`trocas`: valor ou `{param}` → `{marcador}`; o mais longo primeiro, para um valor não comer o outro."""
+    """`trocas`: valor ou `{param}` → `{marcador}`; o mais longo primeiro, para um valor não comer o outro. Troca o valor
+    como PALAVRA dentro do texto: só para o que descreve a etapa (título, objetivo, descrição)."""
     for de, para in sorted(trocas.items(), key=lambda kv: -len(kv[0])):
         texto = texto.replace(de, para) if de.startswith("{") else _palavra(de).sub(para, texto)
+    return texto
+
+
+def _trocar_o_campo_inteiro(texto: str, trocas: Mapping[str, str]) -> str:
+    """O que a etapa DIGITA ou CONFERE (`bindings[].value`, `postcondition.value`): o `{param}` vira o marcador em
+    qualquer lugar, mas o valor literal só quando é o campo INTEIRO (casefold). Dentro de uma frase ("Oi Ana, tudo bem?"
+    para uma destinatária homônima, "conversa com Ana aberta") ele fica literal: trocar mandaria a terceiros o nome da
+    persona de cada aparelho, e a conferência olharia o nome errado (C1 da leitura do 31.87 F2)."""
+    for de, para in sorted(trocas.items(), key=lambda kv: -len(kv[0])):
+        if de.startswith("{"):
+            texto = texto.replace(de, para)
+        elif texto.strip().casefold() == de.strip().casefold():
+            return para
     return texto
 
 
@@ -52,11 +69,11 @@ def _no_passo(st: Mapping[str, object], trocas: Mapping[str, str]) -> dict[str, 
         for campo in ("value", "description"):
             texto = post.get(campo)
             if isinstance(texto, str):
-                post[campo] = _trocar(texto, trocas)
+                post[campo] = (_trocar_o_campo_inteiro if campo == "value" else _trocar)(texto, trocas)
         novo["postcondition"] = post
     ligacoes = novo.get("bindings")
     if isinstance(ligacoes, list):
-        novo["bindings"] = [{**b, "value": _trocar(b["value"], trocas)}
+        novo["bindings"] = [{**b, "value": _trocar_o_campo_inteiro(b["value"], trocas)}
                             if isinstance(b, dict) and isinstance(b.get("value"), str) else b
                             for b in ligacoes]
     return novo
@@ -87,7 +104,8 @@ def na_proposta(p: Mapping[str, object], persona: Mapping[str, str]) -> tuple[di
             params.append(x)
             continue
         trocas["{" + str(nome) + "}"] = "{" + marcador + "}"
-        comando = re.sub(r"\s*\{" + re.escape(str(nome)) + r"\}", "", comando)
+        comando = re.sub(r"(?:\s+(?:" + "|".join(_LIGACOES) + r"))?\s*\{" + re.escape(str(nome)) + r"\}", "", comando,
+                         flags=re.IGNORECASE)
     for nome, valor in persona.items():
         trocas.setdefault(valor, "{" + nome + "}")
     passos = [_no_passo(st, trocas) if isinstance(st, dict) else st for st in _lista(p.get("steps"))]
