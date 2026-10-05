@@ -2000,5 +2000,15 @@ e `RecipeStore.save` descartava a demonstração em silêncio ("a ativa só sai 
 - **O mesmo caminho** não grava nada: `save` devolve o id da que já vale. Ao substituir, devolve o id novo.
 - **Fora do treino nada muda:** a ativa e a `validated` seguram a chave, e a herança (RA-20) segue sendo do sistema
   mesmo vinda de receita ensinada.
+- **A trilha da substituída** é assinada pela sessão de treino em qualquer status (ativa, `validated`, candidata,
+  quarentena): a causa foi a demonstração.
+- **Prévia e salvar do treino (junção com o 31.86):** os dois leem `RecipeStore.previa_do_treino`, a mesma conta do
+  `save`.
+  - O mesmo caminho dá "já havia receita", e outro caminho dá "…, substituindo a vN (receita N)".
+  - `chave_ocupada` é `viva(...) is not None`.
+- **O reparo** (`POST /api/training/{id}/recipes`) não herda esse poder: passa `so_em_chave_virgem=True`, e o `save`
+  grava só em chave que nunca teve receita e sem veto da pessoa. A conferência se repete DENTRO da transação.
+  - O prefixo continua `training:`: a receita refeita segue ensinada para a origem no painel, para `Origem.TREINO`,
+    para as genéricas e para o aviso do 30.80 B.
 - A demonstração ainda nasce ativa e não passa pela prova; isso é o 30.81.
 - **Prova:** `simulated`, em `backend/tests/test_treino_substitui_receita.py`. `real`: `not_run`.

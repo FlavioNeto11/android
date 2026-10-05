@@ -34,6 +34,71 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Sem migração e sem rota nova.
 - Prova `simulated`: `backend/tests/test_treino_substitui_receita.py` (6), verificado por mutação com 5 regras.
   Real: `not_run` (a próxima sessão de treino numa etapa que já tinha receita).
+- Junção com o 31.86 (#438):
+  - a prévia e o relatório do salvar leem `RecipeStore.previa_do_treino` (a mesma conta do `save`). Com o mesmo
+    caminho, "já havia receita". Com outro, "receita gravada, substituindo a vN (receita N)";
+  - `chave_ocupada` virou `viva(...) is not None`;
+  - o reparo (`POST /api/training/{id}/recipes`) passa `so_em_chave_virgem=True` ao `save`, que repete DENTRO da `tx`
+    a conferência de chave virgem e do veto da pessoa: o reparo não herda o poder da demonstração;
+  - o prefixo `training:` fica no reparo, porque os leitores dele (a origem no painel, `Origem.TREINO`, as genéricas,
+    o aviso do 30.80 B) seguem tratando a receita refeita como ensinada.
+
+## 2026-10-05 — 31.86 B: prévia do salvar e refazer as receitas do treino (branch feat/31-86-previa-e-refazer-receitas)
+
+- `POST /api/training/{id}/preview` (mesmo corpo do `save`) roda a MESMA conferência (`_preparar`: os mesmos códigos
+  400/409, inclusive `duplicate_command`) e a MESMA destilação, sem escrever nada, e devolve por etapa
+  `{key, title, recipe, reason}` mais `warnings`. A pessoa vê por que uma etapa ficaria sem receita enquanto ainda
+  edita a proposta.
+- `POST /api/training/{id}/recipes` refaz a destilação de uma sessão JÁ salva (plano do fluxo + proposta guardada) e
+  grava as receitas que faltam; idempotente (`recipes.save` segue vetando a chave com receita ativa); 409
+  `sessao_nao_salva` se a sessão não foi salva e 409 `fluxo_desligado` se a habilidade está desligada. Só grava em chave
+  VIRGEM (`RecipeStore.status_da_chave`, só leitura): onde a chave já teve receita de qualquer status o motivo diz o
+  status, porque o `save` do treino trocaria a quarentena por uma ativa nova (revisão #438, C1). O reparo também
+  consulta o veto da pessoa (`RecipeStore.caminho_vetado`, a mesma conta que o `save` aplica a quem não é treino) e não
+  recria a receita vetada, mesmo com a chave virgem.
+- Causa do "salvar offline não gera receita": só duas leituras dependem do aparelho, a versão do app (adb) e a variante
+  idioma/densidade (adb); nenhuma é gravada na sessão. Agora, fora do ar, o save usa o que a última leitura deixou
+  (`rt.app_versions`/`rt.ui_variant` e o inventário `device_app_state`, a fonte do despacho); sem isso o motivo diz
+  o que falta (nada é chutado da configuração: variante errada deixaria a receita morta e "gravada"). A rota
+  `/recipes` repara as sessões antigas quando o aparelho volta.
+- `RecipeStore.chave_ocupada` (só lê) é a conta do veto, usada pelo `save` e pela prévia. `distill_training` e a
+  política de `recipes.save` não mudaram.
+- Prova: `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`, 19 testes); `real`: `not_run`.
+
+## 2026-10-05 — 31.83 (2ª leitura): duplicadas, comando por posição, tipos errados e parâmetro inválido (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `entrada_duplicada` (400): entrada em duas etapas ou em etapa e `discarded` (o `_receitas` tirava o toque da etapa calado).
+- `comando_generico` passa a olhar a posição: o comando começa por palavra fixa e tem 2 palavras e 6 letras fixas (era 10).
+  Barra `{pedido} no instagram` e `{acao} para o cliente`; passa `envie {mensagem} para {contato}` e `ligue para {contato}`.
+  `TRAINER_SYSTEM`: o comando começa pelo verbo.
+- Tipo errado vira 400 (`etapa_invalida`/`proposta_invalida`) em vez de 500: `title`/`goal`/`value`, `bindings`,
+  `inputs` que não é lista de inteiros (`"12"` virava `[1, 2]` calado), `discarded`, `parameters`, `summary`, `app_id` e
+  comando que não é texto.
+- `parametro_invalido`: `{Contato}`/`{endereço}` no comando não casam o padrão e ficavam literais.
+- Adendo v1.57 e doc do domínio atualizados. Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (46),
+  com mutação (S1 3 falham, S2 3 + 2, N3 2). Real: `not_run`.
+
+## 2026-10-05 — 31.93: chave repetida de 40 caracteres não trava mais o `propose` (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `normalizar_proposta` repetia `f"{k}_2"[:40]` até a chave ser nova; com 40 caracteres o corte devolvia a mesma chave e o
+  laço nunca saía, congelando o laço de eventos do backend inteiro. `_chave_unica` usa `_2`, `_3`… cortando a base para o
+  sufixo caber (termina sempre).
+- `_chave`: título só com símbolos vira `etapa`, e a chave nunca passa de 40 caracteres (antes `etapa_<40>` dava 46 e
+  500 no `PlanStep`).
+- Prova `simulated`: `backend/tests/test_treino_chave_da_etapa.py` (7, com prazo de 2 s numa thread); com o código antigo
+  5 falham (4 por laço infinito). Real: `not_run`.
+
+## 2026-10-05 — 31.83: o `save` do modo treinamento valida a proposta antes de escrever (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `validar_proposta_para_salvar` (`training/skills.py`) roda antes de qualquer escrita e recusa com 400 e mensagem em
+  português: `etapa_invalida` (sem chave, chave repetida, sem título/objetivo; antes `KeyError`/500),
+  `parametro_fora_do_comando`, `parametro_nao_declarado`, `comando_generico` (menos de 2 palavras/10 letras fixas),
+  `pos_condicao_vazia` (etapa com efeito) e `entradas_sem_etapa` (gravada fora de etapa e de `discarded`).
+  Etapa sem efeito e sem pós-condição segue aceita; a resposta traz `warnings`.
+- `TRAINER_SYSTEM` manda toda entrada para uma etapa ou `discarded`, teclas de apagar de limpeza e `back`/`home` de
+  engano para `discarded`, e pós-condição sempre descrita. Esquema de saída igual.
+- Adendo v1.57 no contrato; doc em `docs/dominios/perfis-e-instagram.md`.
+- Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (13), com mutação por código; `real`: `not_run`.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 

@@ -396,6 +396,32 @@ A pessoa faz a tarefa no aparelho, pelo Foco, e a IA generaliza a gravação em 
   `capability_required`) e grava via `FlowStore.learn_from_plan` + `flow_scope` (escopo por perfis/grupos —
   sem linha, vale para todos). Rotas: `GET /api/training`, `GET/POST /api/training/{session_id}` e
   `/stop`/`/propose`/`/save`/`/discard` (`backend/app/api.py:342-410`).
+- **Validação do `save` (item 31.83).** O `propose` normaliza a proposta; o `save` aceita a que o cliente manda, por
+  isso `validar_proposta_para_salvar` (`training/skills.py`) a confere ANTES de qualquer escrita (fluxo, escopo,
+  receita, status da sessão) e recusa com 400 e a mensagem do que corrigir. Códigos, além dos de sempre:
+  - `etapa_invalida`: etapa sem chave (ou com chave fora de `^[a-z][a-z0-9_]{1,40}$`), chave repetida, sem título e
+    objetivo, ou pós-condição de tipo inválido (antes era `KeyError`/500).
+  - `parametro_fora_do_comando`: declarado em `parameters` e ausente do comando; o fluxo nunca casaria.
+  - `parametro_nao_declarado`: `{x}` no comando sem parâmetro declarado (marcadores reservados não contam).
+  - `comando_generico`: o comando tem de COMEÇAR por palavra fixa (o fluxo casa com `.+?` e `fullmatch`, então `{pedido} no instagram` sequestraria todo pedido que termine assim) e ter ao menos 2 palavras e 6 letras fixas fora das chaves (`ligue para {contato}` passa; `siga {perfil}` não).
+  - `parametro_invalido`: `{…}` no comando que não é nome válido (maiúscula, acento): ficaria literal e o fluxo nunca casaria.
+  - `entrada_duplicada`: entrada em duas etapas, ou em etapa e em `discarded` (o `_receitas` tiraria o toque da etapa calado).
+  - `pos_condicao_vazia`: etapa com efeito externo sem `postcondition.value` nem `description` (e sem ação de
+    catálogo, que traz a sua). Sem efeito, o objetivo serve de critério e o `save` devolve o aviso em `warnings`.
+  - `entradas_sem_etapa`: entrada gravada que não está em nenhuma etapa nem em `discarded` (a lista `#n` vem na
+    mensagem); `proposta_invalida`: tipo errado (lista que não é lista, descarte sem `seq` inteiro, `summary`/`app_id`/`parameters`).
+  - `inputs` e `discarded` são listas de inteiros; `title`, `goal`, `value`, `bindings` com tipo errado são `etapa_invalida` (400, não 500).
+  - A chave de etapa do `propose` (`normalizar_proposta`) é única e sempre cabe no padrão de `PlanStep.key` (31.93: o laço
+    antigo não terminava com chave de 40 caracteres repetida).
+  - O `TRAINER_SYSTEM` pede cobertura total das entradas e manda para `discarded` as teclas de apagar que só limpam
+    o campo e o `back`/`home` que desfazem engano (a reprodução limpa o campo; tecla na etapa derruba a receita).
+
+- **Prévia e reparo das receitas (31.86 B).** `POST /api/training/{id}/preview` (corpo do `save`) devolve, sem
+  gravar, o que o `save` faria: por etapa `recipe` e o `reason` literal, e os `warnings`; usa `_preparar`, a mesma
+  conferência do `save`. `POST /api/training/{id}/recipes` refaz as receitas de uma sessão já salva (o plano vem do
+  fluxo, as entradas da proposta guardada). Fora do ar, o save só grava receita se a versão do app e a variante de
+  interface ainda estão lembradas (cache do executor/inventário); senão o motivo diz o que falta e o reparo roda
+  quando o aparelho volta. Contrato: adendo v1.58.
 
 Migração `038_modo_treinamento.sql`: `training_sessions` (`status`: `recording|recorded|proposed|saved|discarded`),
 `training_inputs` (`type`: `tap|long_press|swipe|text|key|open_app`), `flow_scope`, `flows.source` (`'run'` ou
