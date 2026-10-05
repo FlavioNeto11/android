@@ -5687,6 +5687,10 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 - A página apresenta a **ANA** como a inteligência da SICAT que rege a presença digital de quem contrata. As **personas**
   são a identidade DECLARADA de quem contrata (a voz da marca, do atendimento, do porta-voz), com tom, memória e limites
   próprios; a ANA conduz e as personas falam, e a ANA não entra no conteúdo delas.
+- **O significado de ANA** é decisão do dono de 05/10/2026 (entradas 1790 e 1861 a 1865; mensagens 282 a 294; item
+  29.111): **Agente Neural Avançada**. A página diz "A ANA é a sua Agente Neural Avançada: a inteligência artificial
+  que comanda a plataforma e rege as personas que dão voz à sua marca", e mantém a divisão de cima: a ANA conduz e as
+  personas falam.
 - A seção **"O que a ANA não faz"** fica na página: sem perfis falsos, sem simular opinião espontânea, sem se passar por
   pessoa real, sem deepfake, notícia falsa nem ofensa, sem burlar regras de plataforma nem mecanismos de detecção, e
   CAPTCHA e códigos ficam com uma pessoa (ADR-009). O conteúdo feito com IA é identificado onde a plataforma ou a regra
