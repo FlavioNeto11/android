@@ -198,3 +198,38 @@ async def test_a_rota_das_aprovacoes_entrega_o_porque(tmp_path: Path) -> None:
             lista = (await c.get("/api/approvals", params={"profile_id": pid})).json()
             vistos = {a["image_id"]: (a["rotulo_ia"], a["rotulo_ia_motivo"]) for a in lista}
             assert vistos == {"img-1": (True, "ia"), "img-2": (False, "nao_informado"), "img-3": (False, "foto_real")}
+
+
+async def test_mesma_resposta_nao_mexe_e_falha_no_meio_nao_grava_nada(tmp_path: Path) -> None:
+    """Revisão da Ferramentas (05/10). N3: remarcar com a MESMA resposta não é correção — a etapa aberta segue como
+    estava (sem regravar nem mudar a chave do sim já dado). N2: a marca e a regravação das etapas vão numa transação
+    só; se a regravação falha no meio, a marca também não fica (o selo não mente)."""
+    cfg = make_config(tmp_path)
+    cfg.ensure_dirs()
+    app = create_app(cfg)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        async with app.router.lifespan_context(app):
+            state = app.state.poc
+            pid = _plano(state, [{"key": "pub", "cap": "CREATE_POST",
+                                  "bindings": {"image_id": "img-u", "content": "praia", "content_verbatim": "true",
+                                               "rotulo_ia": "false"}}])     # etapa gravada antes do porquê
+            _imagem(state, "img-u", pid, "upload")
+            antes = state.db.scalar("SELECT bindings FROM steps WHERE key='pub'")
+            url = f"/api/personas/{pid}/images/img-u/feita-por-ia"
+            assert (await c.put(url, json={"feita_por_ia": None})).status_code == 200      # já era "não informado"
+            assert state.db.scalar("SELECT bindings FROM steps WHERE key='pub'") == antes
+
+            def quebra(_image_id: str) -> int:
+                raise RuntimeError("falhou no meio")
+            original = state.repo.ressincronizar_rotulo_ia
+            state.repo.ressincronizar_rotulo_ia = quebra
+            try:
+                with pytest.raises(RuntimeError):
+                    await c.put(url, json={"feita_por_ia": True})
+            finally:
+                state.repo.ressincronizar_rotulo_ia = original
+            assert state.db.scalar("SELECT feita_por_ia FROM persona_images WHERE id='img-u'") is None
+            assert state.db.scalar("SELECT bindings FROM steps WHERE key='pub'") == antes
+
+            assert (await c.put(url, json={"feita_por_ia": True})).json()["feita_por_ia"] is True
+            assert json.loads(state.db.scalar("SELECT bindings FROM steps WHERE key='pub'"))["rotulo_ia"] == "true"

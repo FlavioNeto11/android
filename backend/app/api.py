@@ -1503,13 +1503,19 @@ async def set_persona_image_feita_por_ia(request: Request, persona_id: str, imag
     """29.81: o dono diz (ou corrige) se a foto que enviou foi feita por IA. As etapas abertas que publicam a imagem
     regravam o `rotulo_ia`, e o sim dado antes deixa de cobrir a publicação (a chave muda)."""
     s = st(request)
-    try:
-        registro = s.persona_images.marcar_feita_por_ia(_pessoa(s, persona_id).id, image_id, body.feita_por_ia)
-    except KeyError:
-        raise err(404, "not_found", "Imagem não encontrada nesta persona.") from None
-    except ValueError as exc:
-        raise err(409, "nao_e_upload", str(exc)) from None
-    s.repo.ressincronizar_rotulo_ia(image_id)
+    pid = _pessoa(s, persona_id).id
+    anterior = s.persona_images.obter(pid, image_id)
+    # N2 da revisão: a marca e as etapas abertas mudam juntas; se a regravação falhar no meio, nenhuma das duas fica.
+    with s.db.tx():
+        try:
+            registro = s.persona_images.marcar_feita_por_ia(pid, image_id, body.feita_por_ia)
+        except KeyError:
+            raise err(404, "not_found", "Imagem não encontrada nesta persona.") from None
+        except ValueError as exc:
+            raise err(409, "nao_e_upload", str(exc)) from None
+        # N3: a mesma resposta não regrava as etapas abertas nem invalida o sim dado a elas.
+        if anterior is None or anterior.feita_por_ia != registro.feita_por_ia:
+            s.repo.ressincronizar_rotulo_ia(image_id)
     return imagens_dto([registro])[0]
 
 

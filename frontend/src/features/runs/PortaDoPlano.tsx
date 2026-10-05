@@ -10,6 +10,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { TextArea } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import type { Tone } from '../../lib/status';
+import { plural } from '../../lib/format';
 import { formatClock, formatDateTime } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { SeloRotuloIa } from '../profiles/SeloRotuloIa';
@@ -276,18 +277,18 @@ export function PortaDoPlano({ runId }: { runId: string }) {
   const aparelhos = new Set(itens.map((i) => i.aparelho)).size;
   const naExecucao = itens.filter((i) => i.selo === 'na_execucao');
   const partes = [
-    contagem('permitido') ? `${contagem('permitido')} liberada(s)` : '',
-    contagem('aprovacao') ? `${contagem('aprovacao')} pede(m) seu aval` : '',
-    contagem('adiado') ? `${contagem('adiado')} espera(m)` : '',
-    contagem('recusado') ? `${contagem('recusado')} não será(ão) feita(s)` : '',
-    naExecucao.length ? `${naExecucao.length} decide(m) na execução` : '',
+    contagem('permitido') ? plural(contagem('permitido'), 'liberada', 'liberadas') : '',
+    contagem('aprovacao') ? plural(contagem('aprovacao'), 'pede seu aval', 'pedem seu aval') : '',
+    contagem('adiado') ? plural(contagem('adiado'), 'espera', 'esperam') : '',
+    contagem('recusado') ? plural(contagem('recusado'), 'não será feita', 'não serão feitas') : '',
+    naExecucao.length ? plural(naExecucao.length, 'decide na execução', 'decidem na execução') : '',
   ].filter(Boolean);
 
   return (
     <section className={styles.stack} aria-label="Prévia da porta">
       <Banner tone="info" icon={Lock} title={itens.length === 0
         ? 'Nenhuma etapa com efeito neste plano'
-        : `${itens.length} ação(ões) em ${aparelhos} aparelho(s): ${partes.join(', ')}`} role="status">
+        : `${plural(itens.length, 'ação', 'ações')} em ${plural(aparelhos, 'aparelho', 'aparelhos')}: ${partes.join(', ')}`} role="status">
         É uma estimativa: a porta confere tudo de novo na hora de cada efeito. O que você aprovar aqui vale só para o item
         idêntico (mesma conta, alvo e texto) e até {formatDateTime(previa.validade_ate)}.
       </Banner>

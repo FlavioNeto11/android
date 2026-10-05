@@ -505,6 +505,9 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   rótulo de IA (foto real)" ou, em aviso, "rótulo de IA não informado") e a correção na própria foto enviada. No cartão
   do plano, na aba Textos e na guia Aprovações: "sem rótulo de IA (foto real, informado por você)" ou, em aviso, "sem
   rótulo de IA: ninguém informou se a foto é de IA", com o link para a guia Imagens da persona. Adendo v1.44.
+- Revisão da Ferramentas: a marca e a regravação das etapas abertas vão numa transação só (N2); remarcar com a mesma
+  resposta não regrava nem invalida o sim já dado (N3). A Prévia da porta passa a dizer o plural de verdade ("1 ação em
+  1 aparelho: 1 liberada", "4 ações…") em vez de "ação(ões)".
 - `GET /approvals` entrega o `rotulo_ia_motivo`. O `rotulo_ia`, achado faltando no percurso do painel deste item (o
   selo da aba Textos e da guia Aprovações nunca aparecia), entrou como conserto na suíte 33 (`22f641b2`).
 - Prova: `simulated` (`backend/tests/test_upload_feito_por_ia.py`, `GuiaImagens.test.tsx`, `SeloRotuloIa.test.tsx`,

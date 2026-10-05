@@ -80,7 +80,7 @@ describe('PortaDoPlano (30.61)', () => {
   it('resume os selos, mostra o recusado em cinza e o que fica para a execução', async () => {
     await montar();
     const t = text(container);
-    expect(t).toContain('4 ação(ões) em 1 aparelho(s): 1 liberada(s), 1 pede(m) seu aval, 1 não será(ão) feita(s), 1 decide(m) na execução');
+    expect(t).toContain('4 ações em 1 aparelho: 1 liberada, 1 pede seu aval, 1 não será feita, 1 decide na execução');
     expect(t).toContain('não será feita');
     expect(t).toContain('Ainda vão pedir você na execução');
     expect(t).toContain('Sempre com você: desafio, 2FA, CAPTCHA');
