@@ -6334,3 +6334,17 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
 - O mesmo descarte sai numa linha de log do curador, com o id da revisão, a classe e os rótulos.
 - O painel pode ignorar a chave. Ausente também quer dizer backend de antes do 30.73.
 - **Prova:** `simulated` (`backend/tests/test_curador_classe_b.py`).
+
+## Adendo v1.60 (05/10/2026; número da orquestradora; item 30.80) — a receita que não se aplicou não conta como falha dela
+
+Mudanças aditivas; o painel não muda.
+- `GET /api/recipes` (e toda leitura que devolve a linha da receita) ganha `nao_aplicavel_seguidas: integer`
+  (migração 115, padrão `0`).
+  - Conta as vezes seguidas em que a receita "não se aplicou": divergiu na AÇÃO 1, antes de agir, por alvo ausente
+    na tela, e a etapa terminou comprovada pela IA. Nesses casos nem `replay_ok` nem `replay_fail` mudam.
+  - A 3ª seguida conta como falha comum (`replay_fail`, `consecutive_fail` e a quarentena de sempre) e zera a série.
+  - O ok, a falha e o `PUT /api/recipes/{id}` também zeram.
+- O evento `decision` desse caso diz "tela de partida diferente" e leva no `data`, além de `text`:
+  `kind: "receita_nao_aplicavel"`, `recipe_id`, `step_id` e `contou_como_falha: boolean` (`true` na 3ª seguida).
+- A etapa fica com `driven_by: "ai"` quando não contou (nenhuma ação da receita rodou), e `"recipe+ai"` quando contou.
+- **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).
