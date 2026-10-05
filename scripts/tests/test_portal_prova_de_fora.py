@@ -73,12 +73,15 @@ fi
 if [[ "$caminho" == / && "$codigo" == 200 && "$navegador" == 1 ]]; then
   # O script do próprio site, relativo e absoluto (com o nome em maiúscula: é o mesmo endereço).
   corpo='<!doctype html><html><head><script src="/assets/site.js" defer></script>'
-  corpo="$corpo<script src=\"HTTPS://PROVA.INVALID/assets/site.js\" defer></script></head><body><main></main>"
+  corpo="$corpo<script src=\"HTTPS://PROVA.INVALID/assets/site.js\" defer></script>"
+  # Y1: dois-pontos DEPOIS do primeiro / (versão com hora) não é esquema: segue relativo.
+  corpo="$corpo<script src=\"/assets/site.js?v=2026-10-05T01:00\" defer></script></head><body><main></main>"
   case "$QUEBRA" in
     beacon) corpo="$corpo<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{\"token\": \"x\"}'></script>" ;;
     script_de_fora) corpo="$corpo<script src=\"https://cdn.exemplo.invalid/x.js\"></script>" ;;
     src_espacado) corpo="$corpo<script"$'\n'"  defer"$'\n'"  src = \"https://cdn.exemplo.invalid/y.js\"></script>" ;;
     maiuscula) corpo="$corpo<SCRIPT SRC='HTTPS://cdn.exemplo.invalid/z.js'></SCRIPT>" ;;
+    src_na_query) corpo="$corpo<script defer src=\"https://cdn.exemplo.invalid/a.js?src=b\"></script>" ;;
     cdn_cgi) corpo="$corpo<script src=\"/cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js\" defer></script>" ;;
     desafio_embutido) corpo="$corpo<script>(function(){var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';})();</script>" ;;
     desafio) codigo=403; corpo='<!doctype html><html><head><title>Just a moment...</title></head><body></body>' ;;
@@ -187,6 +190,7 @@ def test_a_raiz_e_pedida_como_navegador_e_o_script_proprio_passa(tmp_path: Path)
     ("script_de_fora", "https://cdn.exemplo.invalid/x.js"),
     ("src_espacado", "https://cdn.exemplo.invalid/y.js"),                # X1: tag em linhas, `src = "…"`
     ("maiuscula", "HTTPS://cdn.exemplo.invalid/z.js"),                    # X2: SCRIPT SRC e HTTPS:// em maiúscula
+    ("src_na_query", "https://cdn.exemplo.invalid/a.js?src=b"),          # Y2: `?src=` dentro da URL não é o valor
     ("cdn_cgi", "/cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js"),   # X3: a própria origem
     ("desafio_embutido", "(embutido)"),                                   # X3: /cdn-cgi/ em script sem src
 ])

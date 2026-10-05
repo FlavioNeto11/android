@@ -35,8 +35,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - X4: o pedido como navegador exige 200; um desafio 403 ou 503 não dá `ok`.
   - X5: todo `curl` do script leva `-q`, para o `~/.curlrc` de quem roda não entrar no pedido. Um teste confere todo
     `curl` do arquivo, inclusive os de outro PR.
+  - Y1: o esquema só conta antes do primeiro `/`, `?` ou `#`, então `/assets/site.js?v=…T01:00` segue relativo.
+  - Y2: o valor é o do último `<espaço>src=` da tag, então um `?src=b` dentro da URL não vira o valor (era um falso
+    negativo).
 - **Prova:**
-  - `simulated`: `scripts/tests/test_portal_prova_de_fora.py`, 13 testes. O `curl` falso injeta o beacon (aspas
+  - `simulated`: `scripts/tests/test_portal_prova_de_fora.py`, 14 testes. O `curl` falso injeta o beacon (aspas
     simples, como a Cloudflare), um script de outra origem, a tag em linhas, a maiúscula, o Rocket Loader, o
     challenge-platform embutido e um desafio 403.
   - `real` (05/10 01:31Z, máquina do central, só GET): a raiz pedida como navegador traz `/assets/site.js` e o beacon;

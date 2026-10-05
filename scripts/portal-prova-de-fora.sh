@@ -113,15 +113,22 @@ else
         de_fora=""
         shopt -s nocasematch                   # HTTPS:// e o nome publico em maiuscula sao o mesmo endereco
         while IFS= read -r src; do
+            # O esquema so conta ANTES do primeiro / ? ou #: `/assets/site.js?v=T01:00` e relativo, nao "de fora".
+            esquema="${src%%[/?#]*}"
             case "$src" in
                 *"/cdn-cgi/"*) de_fora="$de_fora $src" ;;
                 "https://$H/"*|"//$H/"*) ;;
-                //*|*:*) de_fora="$de_fora $src" ;;
-                /*|[a-z0-9._~-]*) ;;           # relativo a propria origem
-                *) de_fora="$de_fora $src" ;;  # o que nao se reconhece reprova
+                //*) de_fora="$de_fora $src" ;;
+                *) case "$esquema" in
+                       *:*) de_fora="$de_fora $src" ;;   # https:, data:, javascript:
+                       ""|[a-z0-9._~%-]*) ;;             # relativo a propria origem
+                       *) de_fora="$de_fora $src" ;;     # o que nao se reconhece reprova
+                   esac ;;
             esac
+        # O valor do atributo nunca tem espaco, entao o ultimo "<espaco>src=" da casada e o atributo de verdade: um
+        # `?src=b` DENTRO da URL nao e precedido de espaco e nao vira o valor (um `.*src=` guloso o pegava).
         done < <(grep -oiE "<script[^>]*[[:space:]]src[[:space:]]*=[[:space:]]*[\"']?[^\"' >]+" <<< "$html_linha" |
-                 sed -E "s/.*[sS][rR][cC][[:space:]]*=[[:space:]]*[\"']?//")
+                 sed -E "s/.*[[:space:]][sS][rR][cC][[:space:]]*=[[:space:]]*[\"']?//")
         shopt -u nocasematch
         if [[ "$codigo_nav" != 200 ]]; then
             printf 'FALHOU %-28s %s  esperado 200: sem ver a pagina nao ha o que conferir (desafio da Cloudflare?)\n' \
