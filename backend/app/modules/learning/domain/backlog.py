@@ -99,6 +99,7 @@ ROTULO: Mapping[str, str] = {
     FailureKind.DEFEITO_DO_PLANO.value: "defeito do plano",
     FailureKind.SELETOR_EM_ELEMENTOS_DIFERENTES.value: "seletor com as partes em elementos diferentes",
     FailureKind.FALTA_INFORMACAO.value: "falta informação de quem pediu",
+    FailureKind.AVISO_DO_APP.value: "aviso do app que só a pessoa responde",
     FailureKind.OUTRO.value: "outro (o classificador não tem regra)",
     TipoDeVerificacao.FALSO_POSITIVO.value: "falso positivo do verificador (sucesso mascarado)",
     TipoDeVerificacao.FALSO_NEGATIVO.value: "falso negativo do verificador",

@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.90: "OK" é aceite, não dispensa; a folha entre a guarda e o Share não recebe o toque (branch feat/29-90-ok-e-aceite)
+
+- Sobras das leituras do 29.87 (#355). O rótulo `ok` sai dos rótulos GLOBAIS de dispensa da sessão do Instagram
+  (`sessao.yaml`); medido: nenhuma tela dos testes do Instagram dependia dele, e o "OK" do Outlook é botão só da tela dele.
+- Releitura logo antes do toque de efeito (`cobertura_nova_no_ponto`): se um clicável novo cobre o ponto ou o alvo saiu
+  do lugar, o toque não sai e o laço observa de novo; a folha declarada fecha pela regra e o Share sai depois, uma vez.
+  Em `LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO` (3) seguidas, a tentativa falha sem tocar. Fecha o limite conhecido do 29.87.
+- `proibido_na_tela` casa o `nunca` em todos os idiomas declarados (D1b); `telas.yaml` inválido avisa no log uma vez por
+  modificação do arquivo (L2); tipo de falha novo `aviso_do_app` (camada pessoa, nunca vira lição) para a folha que não
+  fecha, no lugar de `ui_ocupada` (D4); o teto de ações numa etapa de limpeza tem teste (L1).
+- Prova: `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py`, `test_sobreposicao.py`,
+  `test_learning_falhas.py`, `test_learning_diagnostico.py`); o teste da folha entre a guarda e o Share falha com a
+  releitura desligada (o toque cai na folha em 360,1188). `not_run`: aparelho real.
+
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do

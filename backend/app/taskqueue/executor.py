@@ -2134,6 +2134,7 @@ class StepExecutor:
         # gastam as ações do ator.
         folhas_fechadas = 0
         rolagens_ate_o_interruptor = 0
+        releituras_antes_do_efeito = 0
         # Um texto só para as duas saídas do teto: `falhas.py` o classifica como ciclo sem progresso.
         motivo_do_teto = f"Limite de {max_actions} ações por etapa atingido sem concluir."
         for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0) + LIMITE_DE_FOLHAS
@@ -2282,14 +2283,11 @@ class StepExecutor:
             # conta real é aceitar, e isso é do dono (`nunca`). Antes da receita e do ator: por cima da folha, nenhum
             # toque deles chega aonde miram. Sem ponto seguro, ou de volta depois do teto: uma pessoa, sem mais toque.
             regra_da_folha = None
-            try:
-                # E2 da revisão: lido uma vez por modificação (roda a cada volta); inválido não derruba a etapa.
-                conhecimento_da_tela = (telas_do_app.da_pasta_por_data(CONHECIMENTO_DE_APPS / app.package)
-                                        if app.package and app.package.replace(".", "").replace("_", "").isalnum()
-                                        else None)
-            except (telas_do_app.ConhecimentoInvalido, OSError) as exc:
-                log.warning("conhecimento de telas de %s inválido; sem a folha declarada: %s", app.package, exc)
-                conhecimento_da_tela = None
+            # E2 da revisão: lido uma vez por modificação (roda a cada volta); inválido não derruba a etapa e é
+            # avisado no log uma vez por modificação do arquivo (29.90, L2).
+            conhecimento_da_tela = (telas_do_app.da_pasta_por_data(CONHECIMENTO_DE_APPS / app.package)
+                                    if app.package and app.package.replace(".", "").replace("_", "").isalnum()
+                                    else None)
             if conhecimento_da_tela is not None:
                 vista = telas_do_app.classificar(conhecimento_da_tela, obs.tree, package=obs.package)
                 regra_da_folha = conhecimento_da_tela.regra(vista.tela)
@@ -3080,6 +3078,28 @@ class StepExecutor:
                     continue
                 await evidence(obs, "Conferência antes do efeito externo: " +
                                (", ".join(step.commit_guard) or "sem textos de guarda") + " visíveis")
+                if decision.tool in ("tap", "long_press") and target is not None:
+                    # ---------- 29.90: a tela pode mudar entre a leitura conferida e o toque (a folha "Sharing
+                    # posts" abre por cima do Share). Relida AGORA: algo novo por cima do ponto, ou o alvo fora do
+                    # lugar, e o toque não sai; o laço observa de novo, e a folha declarada fecha pela regra.
+                    try:
+                        px, py, _ = resolve_point(tool_ctx, getattr(args, "element_id", None),
+                                                  getattr(args, "x", None), getattr(args, "y", None))
+                        mudou = cobertura_nova_no_ponto(obs.tree, await quick_tree(), (px, py), target)
+                    except (DriverError, TelaDeContaTravada) as exc:
+                        mudou = f"a releitura antes do toque falhou ({exc})"
+                    if mudou:
+                        releituras_antes_do_efeito += 1
+                        aid = intencao(decision.tool, args.model_dump(mode="json"), rationale, side_effect=True,
+                                       source="recipe" if from_recipe else "ai")
+                        repo.finish_action(aid, ActionStatus.rejected, error=f"tela mudou antes do toque: {mudou}")
+                        if releituras_antes_do_efeito >= LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO:
+                            return await fail_or_retry(
+                                f"A tela mudou entre a conferência e o toque de efeito: {mudou}; nada foi tocado.",
+                                obs)
+                        history.append(f"{decision.tool} NÃO SAIU: a tela mudou entre a conferência e o toque "
+                                       f"({mudou}); olhe de novo")
+                        continue
 
             # ---------- detectar ciclo sem progresso
             if decision.tool not in FORA_DO_CICLO:        # item 31.37: só ler a tela não é ciclo
@@ -4091,6 +4111,31 @@ PASSO_DA_ROLAGEM = 0.25
 DURACAO_DA_ROLAGEM_MS = 600
 #: 29.87: quantas folhas declaradas (`fechar: toque_fora`) a regra fecha por tentativa antes de chamar uma pessoa.
 LIMITE_DE_FOLHAS = 2
+#: 29.90: quantas vezes seguidas, por tentativa, a releitura logo antes do toque de efeito pode achar a tela mudada
+#: (algo novo por cima do alvo, ou o alvo fora do lugar) antes de a tentativa falhar sem tocar.
+LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO = 3
+
+
+def cobertura_nova_no_ponto(antes: UiTree, depois: UiTree, ponto: tuple[int, int], alvo: UiElement) -> str | None:
+    """29.90: o que mudou, entre a árvore em que a guarda conferiu o efeito (`antes`) e a releitura logo antes do toque
+    (`depois`), que faria o toque não cair no alvo; `None` = pode tocar. Medido no android-13: a folha "Sharing posts"
+    abre por cima do Share, e o acerto por área (`resolve_point`, o menor elemento que contém o ponto, sem ordem de
+    camadas) seguiria achando o texto "Share" embaixo dela. Por isso o critério é o que APARECEU: um clicável que não
+    estava na árvore de antes e cobre o ponto. Pura."""
+    if not any(e.resource_id == alvo.resource_id and e.bounds == alvo.bounds and e.text == alvo.text
+               and e.desc == alvo.desc for e in depois.elements):
+        return "o alvo do efeito não está mais no mesmo lugar"
+    x, y = ponto
+
+    def chave(e: UiElement) -> tuple[str, str, tuple[int, int, int, int]]:
+        return e.resource_id, e.class_name, tuple(e.bounds)       # os ids `eN` mudam a cada leitura
+
+    vistos = {chave(e) for e in antes.elements}
+    novo = next((e for e in depois.elements if e.clickable and chave(e) not in vistos
+                 and e.bounds[0] <= x <= e.bounds[2] and e.bounds[1] <= y <= e.bounds[3]), None)
+    if novo is not None:
+        return f"apareceu por cima do alvo ({novo.resource_id.rsplit('/', 1)[-1] or novo.class_name})"
+    return None
 
 
 def rolagem_ate_o_interruptor(commit_switch: Sequence[str], commit_selector: str | None,

@@ -53,6 +53,7 @@ class FailureKind(StrEnum):
     #: 31.32: o seletor composto da pós-condição pede no mesmo elemento partes que a tela tem em elementos diferentes.
     SELETOR_EM_ELEMENTOS_DIFERENTES = "seletor_em_elementos_diferentes"
     FALTA_INFORMACAO = "falta_informacao"
+    AVISO_DO_APP = "aviso_do_app"
     OUTRO = "outro"
 
 
@@ -66,7 +67,8 @@ STATUS_SEM_FALHA = frozenset({"succeeded", "running", "pending", "ready", "verif
 #: ou é evasão (desafio, 2FA, CAPTCHA seguem com a pessoa — ADR-009) ou não ensina navegação nenhuma.
 NUNCA_VIRA_LICAO = frozenset({_F.AUTENTICACAO, _F.CONTA_ERRADA, _F.IA_INDISPONIVEL, _F.IA_RECUSA, _F.IA_ORCAMENTO,
                               _F.IA_SALDO, _F.IA_CHAMADA_INVALIDA, _F.IA_DECLAROU_BLOQUEIO, _F.SESSAO_DE_AUTOMACAO,
-                              _F.APP_ANR, _F.UI_OCUPADA, _F.APARELHO_TRAVADO, _F.INTERROMPIDA, _F.OUTRO})
+                              _F.APP_ANR, _F.UI_OCUPADA, _F.APARELHO_TRAVADO, _F.INTERROMPIDA, _F.OUTRO,
+                              _F.AVISO_DO_APP})
 
 
 def _normal(texto: str) -> str:
@@ -116,9 +118,12 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
                           "chave da anthropic invalida", "credencial recusada por", "falha de rede ao contatar",
                           "limite de requisicoes", "resposta do modelo truncada", "sem chamar nenhuma ferramenta",
                           "sem endpoint configurado")),
-    # 29.87: a folha de aviso declarada que não fechou com o toque fora dela segue cobrindo a tela.
+    # 29.87/29.90 (D4): a folha de aviso declarada que não fechou com o toque fora dela. Responder ao aviso ("OK" numa
+    # conta real) é da pessoa: não é o aparelho, e nunca vira lição.
+    (_F.AVISO_DO_APP, ("nao fechou com um toque fora dela",)),
+    # 29.90: a tela que segue mudando entre a conferência do efeito e o toque (nada foi tocado).
     (_F.UI_OCUPADA, ("interface do aparelho seguiu ocupada", "leitura da tela seguiu falhando",
-                     "nao fechou com um toque fora dela")),
+                     "a tela mudou entre a conferencia e o toque")),
     (_F.APARELHO_TRAVADO, ("chamada ao aparelho travada", "tempo esgotado numa chamada ao aparelho")),
     (_F.SESSAO_DE_AUTOMACAO, ("sessao de automacao indisponivel", "nao foi possivel observar a tela",
                               "falhas consecutivas do driver")),
@@ -294,7 +299,7 @@ CAMADA: Mapping[FailureKind, Camada] = {
     _F.EFEITO_NAO_COMPROVADO: _C.VERIFICACAO, _F.POS_CONDICAO_NAO_COMPROVADA: _C.VERIFICACAO,
     _F.COLETA_VAZIA: _C.CONHECIMENTO_DO_APP, _F.COLETA_INCOMPLETA: _C.CONHECIMENTO_DO_APP,
     _F.DEFEITO_DO_PLANO: _C.PLANO, _F.SELETOR_EM_ELEMENTOS_DIFERENTES: _C.PLANO,
-    _F.FALTA_INFORMACAO: _C.PESSOA,
+    _F.FALTA_INFORMACAO: _C.PESSOA, _F.AVISO_DO_APP: _C.PESSOA,
     _F.OUTRO: _C.INDEFINIDA,
 }
 
