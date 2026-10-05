@@ -8,7 +8,7 @@ import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { aplicarHash, useUiStore } from '../../store/ui';
 import { makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, byRole, click, esperarElemento, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { ProfilesPage } from './ProfilesPage';
 
 /** A pessoa como `GET /personas` a devolve (v0.27): `username` nulo quando ainda não tem conta de cadastro. */
@@ -198,7 +198,7 @@ describe('personas', () => {
     await waitFor(() => byRole('tab', /Contas e acesso/i).getAttribute('aria-selected') === 'true');
     // O pedido chega pelo id; a tela o troca pelo nome legível (mesmo lugar, sem empilhar).
     expect(window.location.hash).toBe('#/personas/helena-prado/contas');
-    expect(text()).toContain('ainda não tem @ de cadastro');
+    await waitFor(() => text().includes('ainda não tem @ de cadastro'));             // a guia lê as contas pelo fetch
   });
 
   it('guia pedida que não existe cai na Visão geral', async () => {
@@ -489,6 +489,8 @@ describe('nova persona', () => {
     expect(backend.callsTo('POST', /^\/api\/personas$/)[0]?.body)
       .toEqual({ name: 'Helena Prado', birth_date: '1996-03-02', gender: null, summary: null });
     expect(container.ownerDocument.querySelector('input[type="password"]')).toBeNull();
+    // Até a tela abrir a criada: com a resposta em voo, ela navegaria já dentro do teste seguinte.
+    await waitFor(() => /^#\/personas\/./.test(window.location.hash));
   });
 });
 
@@ -595,6 +597,13 @@ describe('onde a persona vive', () => {
 });
 
 describe('grupos de acesso', () => {
+  // A política que o editor mostra marcada numa ação: o pedido registrado no backend falso ainda não é a resposta
+  // aplicada, e o "começar a partir de" só vale quando a escolha do perfil aparece aqui.
+  function marcada(politica: RegExp, acao: RegExp): boolean {
+    const radio = byRole('radio', politica, byRole('radiogroup', acao));
+    return radio.getAttribute('aria-checked') === 'true' || (radio as HTMLInputElement).checked === true;
+  }
+
   function rotasBase(grupos: unknown[]) {
     backend.on('GET', /^\/api\/personas$/, () => json([
       pessoa({ id: 'ig-1', name: 'André Carvalho', username: 'andre.carvalho9543', policy_group_id: 'grp-1',
@@ -635,7 +644,7 @@ describe('grupos de acesso', () => {
                            { id: 'ig-8', username: null, name: null }],
                  created_at: '', updated_at: '' }]);
     await render();
-    const chips = await waitFor(() => document.querySelector('[aria-label="Personas no grupo Cautelosos"]') as HTMLElement);
+    const chips = await esperarElemento('[aria-label="Personas no grupo Cautelosos"]');
     const textos = Array.from(chips.querySelectorAll('span[data-sem-conta], span[class*="memberChip"]')).map((e) => e.textContent);
     expect(textos).toContain('@andre.carvalho9543');
     expect(textos).toContain('Beatriz Rocha · sem conta');
@@ -658,6 +667,7 @@ describe('grupos de acesso', () => {
     const beatriz = await waitFor(() => byRole('checkbox', /^Beatriz Rocha · sem conta$/) as HTMLInputElement);
     expect(beatriz.checked).toBe(true);                                    // a contagem (2) bate com o que se vê
     await click(beatriz);
+    await waitFor(() => !(byRole('button', /Salvar grupo/i) as HTMLButtonElement).disabled);    // preso até o catálogo
     await click(byRole('button', /Salvar grupo/i));
     await waitFor(() => expect(backend.callsTo('PUT', /policy-groups\/grp-1$/)).toHaveLength(1));
     expect((backend.callsTo('PUT', /policy-groups\/grp-1$/)[0]!.body as { profile_ids: string[] }).profile_ids)
@@ -780,8 +790,46 @@ describe('grupos de acesso', () => {
     const partir = byRole('combobox', /Começar a partir de/i) as HTMLSelectElement;
     await setValue(partir, 'ig-1');
     await waitFor(() => expect(backend.callsTo('GET', /ig-1\/policy$/)).toHaveLength(1));
+    await waitFor(() => marcada(/Sozinho/i, /Política de Seguir/i));
     await setValue(partir, 'ig-2');
     await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    await waitFor(() => !marcada(/Sozinho/i, /Política de Seguir/i));
+    await click(byRole('button', /Criar grupo/i));
+    await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
+    expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
+      .toEqual({});
+  });
+
+  // 29.106 (W2 da leitura do #392): o teste acima espera A aplicado antes de trocar, então não vê a corrida. Este
+  // força a ordem (A responde DEPOIS de B) e falha enquanto o defeito vive; o conserto do 29.106 o vira em `it`.
+  it.fails('29.106: escolher A e logo B, com A respondendo depois de B, parte de B', async () => {
+    rotasBase([]);
+    let soltarA: () => void = () => undefined;
+    const aSegura = new Promise<void>((r) => { soltarA = r; });
+    backend.on('GET', /\/instagram\/profiles\/ig-1\/policy$/, async () => {
+      await aSegura;
+      return json({ limits: {}, capabilities: {}, defaults: {}, loosened: [], own: { FOLLOW: 'autonomous' }, group: {},
+                    own_limits: {}, group_limits: {} });
+    });
+    backend.on('GET', /\/instagram\/profiles\/ig-2\/policy$/, () => json({
+      limits: {}, capabilities: {}, defaults: {}, loosened: [], own: {}, group: {}, own_limits: {}, group_limits: {},
+    }));
+    backend.on('POST', /\/instagram\/policy-groups$/,
+      (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(byRole('radiogroup', /Política de Seguir/i)).toBeTruthy());
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Do Bruno');
+    const partir = byRole('combobox', /Começar a partir de/i) as HTMLSelectElement;
+    await setValue(partir, 'ig-1');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-1\/policy$/)).toHaveLength(1));
+    await setValue(partir, 'ig-2');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    await flush(30);                                                      // B aplicada
+    await act(async () => { soltarA(); });
+    await flush(30);                                                      // A chega por último
+    expect(marcada(/Sozinho/i, /Política de Seguir/i)).toBe(false);
+    await waitFor(() => !(byRole('button', /Criar grupo/i) as HTMLButtonElement).disabled);
     await click(byRole('button', /Criar grupo/i));
     await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
     expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
@@ -819,6 +867,7 @@ describe('grupos de acesso', () => {
     await waitFor(() => expect((byRole('combobox', /Começar a partir de/i) as HTMLSelectElement).disabled).toBe(false));
     await setValue(byRole('combobox', /Começar a partir de/i) as HTMLSelectElement, 'ig-2');
     await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    await waitFor(() => marcada(/Só manual/i, /Política de Curtir a publicação/i));
     await click(byRole('button', /Criar grupo/i));
     await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
     const post = backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!;
