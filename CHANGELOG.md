@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.141: o lote de grupo de acesso não oferece o que daria "0 ok" (branch fix/29-141-lote-grupo-sem-conta)
+
+- Quando todas as personas selecionadas estão sem conta, "Pôr no grupo" fica travado com o motivo, e o aviso deixa de dizer que "as outras entram no grupo". Antes o botão ficava ativo, e o resultado garantido era "0 ok · N falharam". Achado 5 da volta no navegador do deploy 38.
+- A recusa do lote para persona sem conta continua, agora com o motivo verdadeiro no comentário. O backend aceita o membro sem conta, e o editor de grupos o mostra e preserva desde o 29.25. A recusa é de produto: o grupo governa o que a conta faz no app. O comentário antigo dizia que o editor apagaria o membro, o que deixou de ser verdade com o 29.25.
+- Sem mudança de backend. "Tirar do grupo" segue livre para quem não tem conta.
+- Prova `simulated`: `frontend/src/features/profiles/AcoesEmLote.test.tsx`; `real`: `not_run`.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.

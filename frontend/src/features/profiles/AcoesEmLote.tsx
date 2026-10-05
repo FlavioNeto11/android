@@ -33,8 +33,9 @@ export const CONCORRENCIA_DO_LOTE = 3;
 const MAX_FOTOS = 3;
 const MAX_INSTRUCOES = 500;
 
-/** O motivo que vira "falhou" sem requisição: o grupo de acesso governa o que a CONTA faz (o editor de grupos nem
- *  lista quem não tem @), e atribuir a quem não tem conta deixaria um membro que o editor apagaria sem avisar. */
+/** O motivo que vira "falhou" sem requisição. O backend aceita persona sem conta no grupo, e o editor de grupos mostra e
+ *  preserva quem já é membro assim (29.25). A recusa é de produto: o grupo governa o que a CONTA faz no app, e sem conta
+ *  não há o que governar; a persona entra no grupo quando ganhar a conta (o editor também só oferece quem tem conta). */
 export const SEM_CONTA_NO_GRUPO = 'Sem conta de cadastro: o grupo de acesso governa o que a conta faz. '
   + 'Crie a conta na guia Contas e acesso antes de pôr a persona num grupo.';
 
@@ -274,6 +275,8 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
       titulo = `Grupo de acesso de ${plural(n, 'persona', 'personas')}`;
       icone = ShieldCheck;
       rotulo = grupoId ? `Pôr no grupo ${nomeDoGrupo ?? ''}`.trim() : 'Tirar do grupo';
+      // Todas sem conta: o resultado seria "0 ok", então nem começa (achado 5 da volta da 38).
+      if (grupoId && semConta === n) motivo = 'Nenhuma das selecionadas tem conta: crie a conta na guia Contas e acesso antes.';
       corpo = (
         <>
           <Field label="Grupo" hint="O grupo decide o que a conta pode fazer sozinha, com aprovação ou só à mão.">
@@ -286,7 +289,7 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
           </Field>
           {grupoId && semConta > 0 ? (
             <Banner tone="info" icon={TriangleAlert} role="status" title={`${plural(semConta, 'selecionada não tem', 'selecionadas não têm')} conta`}>
-              {SEM_CONTA_NO_GRUPO} Elas aparecem como falha no resumo; as outras entram no grupo.
+              {SEM_CONTA_NO_GRUPO}{semConta < n ? ' Elas aparecem como falha no resumo; as outras entram no grupo.' : ''}
             </Banner>
           ) : null}
         </>
