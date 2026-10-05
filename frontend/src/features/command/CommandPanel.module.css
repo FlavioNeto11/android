@@ -178,6 +178,33 @@
   min-width: 0;
 }
 
+.parecidos {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.parecidosTexto {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+
+.parecido {
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  color: var(--text-1);
+  font: inherit;
+  font-size: var(--fs-sm);
+  padding: var(--sp-1) var(--sp-2);
+  cursor: pointer;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.parecido:hover { background: var(--surface-3); }
+
 .shortcut {
   color: var(--text-3);
   font-size: var(--fs-xs);

@@ -8,7 +8,7 @@ import { useUiStore } from '../../store/ui';
 import type { ResolveTargetsRequest, ResolveTargetsResponse } from '../../api/types';
 import { makeBinding, makePersona, makeRun, makeSnapshot } from '../../test/fixtures';
 import {
-  FakeBackend, allByRole, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor,
+  FakeBackend, allByRole, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor,
 } from '../../test/harness';
 import { CommandPanel, SENHA_NO_COMANDO } from './CommandPanel';
 
@@ -343,3 +343,63 @@ describe('Comando — controle segmentado e etapas', () => {
     await waitFor(() => expect(allByRole('tooltip', motivo).length).toBeGreaterThan(0));
   });
 });
+
+// ---------------------------------------------------------------- 31.89 (adendo v1.72): "isto parece com…"
+describe('Comando: fluxos parecidos quando nenhum casa (31.89)', () => {
+  const campo = () => byRole('textbox', 'Comando em linguagem natural') as HTMLTextAreaElement;
+  const parecidos = () => document.querySelector('[aria-label="Fluxos parecidos com o comando"]');
+  const SUGESTOES = [
+    { ref: 'f-0a1b2c3d4e5f', template: 'mande {mensagem} para {contato}', score: 0.97 },
+    { ref: 'f-aaaaaaaaaaaa', template: 'envie {mensagem} a {contato}', score: 0.93 },
+  ];
+
+  it('com o match nulo, mostra os moldes; clicar só reescreve o comando e não executa nada', async () => {
+    backend.on('POST', /^\/api\/flows\/similar$/, () => json({ matches: false, suggestions: SUGESTOES }));
+    await setValue(campo(), 'mande oi para a Ana');
+    await waitFor(() => expect(parecidos()).not.toBeNull());
+    expect(text(parecidos() as HTMLElement)).toContain('Isto parece com');
+    expect(allByRole('button', /mande \{mensagem\} para \{contato\}/)).toHaveLength(1);
+    expect(allByRole('button', /envie \{mensagem\} a \{contato\}/)).toHaveLength(1);
+    expect(backend.callsTo('POST', /^\/api\/flows\/similar$/)[0]!.body).toEqual({ command: 'mande oi para a Ana' });
+
+    await click(byRole('button', /envie \{mensagem\} a \{contato\}/));
+    expect(campo().value).toBe('envie {mensagem} a {contato}');
+    expect(backend.callsTo('POST', /^\/api\/runs/)).toHaveLength(0);          // só pergunta: nada é executado
+  });
+
+  it('mostra no máximo 3 moldes, mesmo que a API mande mais', async () => {
+    const quatro = [...SUGESTOES, { ref: 'f-bbbbbbbbbbbb', template: 'diga {mensagem} a {contato}', score: 0.92 },
+                    { ref: 'f-cccccccccccc', template: 'fale {mensagem} com {contato}', score: 0.91 }];
+    backend.on('POST', /^\/api\/flows\/similar$/, () => json({ matches: false, suggestions: quatro }));
+    await setValue(campo(), 'mande oi para a Ana');
+    await waitFor(() => expect(parecidos()).not.toBeNull());
+    expect(parecidos()!.querySelectorAll('button')).toHaveLength(3);
+  });
+
+  it('com um fluxo que já casa (match não nulo) a rota nem é chamada, e com matches true não sobra sugestão', async () => {
+    backend.on('POST', /^\/api\/flows\/match$/, () => json({ flow_id: 'f-oi', name: 'Enviar oi', command_template: 'enviar oi', package: null,
+                                                         target_version: null, steps_total: 3, steps_with_recipe: 1, ai_cost: 'parcial', estimated_usd: 0.12 }));
+    backend.on('POST', /^\/api\/flows\/similar$/, () => json({ matches: false, suggestions: SUGESTOES }));
+    await setValue(campo(), 'enviar oi');
+    await waitFor(() => expect(text(container)).toContain('estimativa: US$ 0.12 por aparelho'));
+    expect(backend.callsTo('POST', /^\/api\/flows\/similar$/)).toHaveLength(0);
+    expect(parecidos()).toBeNull();
+
+    backend.on('POST', /^\/api\/flows\/match$/, () => json(null));
+    backend.on('POST', /^\/api\/flows\/similar$/, () => json({ matches: true, suggestions: [] }));
+    await setValue(campo(), 'enviar oi agora');
+    await waitFor(() => expect(backend.callsTo('POST', /^\/api\/flows\/similar$/)).toHaveLength(1));
+    await flush(30);
+    expect(parecidos()).toBeNull();
+  });
+
+  it('a rota que falha (backend antigo) não mostra nada nem atrapalha o comando', async () => {
+    await setValue(campo(), 'mande oi para a Ana');                               // /flows/similar não simulada: 404
+    await waitFor(() => expect(backend.callsTo('POST', /^\/api\/flows\/similar$/)).toHaveLength(1));
+    await flush(30);
+    expect(parecidos()).toBeNull();
+    await click(await botaoPronto(/^Executar/));
+    await waitFor(() => expect(backend.callsTo('POST', /^\/api\/runs$/)).toHaveLength(1));
+  });
+});
+

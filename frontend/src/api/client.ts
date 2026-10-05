@@ -54,6 +54,7 @@ import type {
   Evidence,
   Flow,
   FlowCoverage,
+  FlowSimilar,
   FlowStatusUpdate,
   FrameHeaders,
   Health,
@@ -549,6 +550,9 @@ export const api = {
    *  texto no corpo (29.25): o rascunho pode ter e-mail e query string vira linha de log de acesso. */
   flowsMatch: (command: string, signal?: AbortSignal) =>
     request<FlowCoverage | null>('POST', '/flows/match', { body: { command }, signal }),
+  /** Adendo v1.72 (31.89): "isto parece com…" quando `flowsMatch` volta `null`. Sem execução e sem IA. */
+  flowsSimilar: (command: string, signal?: AbortSignal) =>
+    request<FlowSimilar>('POST', '/flows/similar', { body: { command }, signal }),
   profileCapabilities: (profileId: string) =>
     request<ProfileCapabilities>('GET', `/instagram/profiles/${enc(profileId)}/capacidades`),
   updateFlow: (id: string, body: FlowStatusUpdate) => request<Flow>('PUT', `/flows/${enc(id)}`, { body }),

@@ -1808,6 +1808,13 @@ export interface PanelSession {
 
 /** `GET /api/flows/cobertura` e o campo `flows[]` de `GET /api/instagram/profiles/{id}/capacidades`: quantas
  * etapas do plano-modelo têm receita ativa para a versão promovida do app — os "caminhos mapeados". */
+/** `POST /api/flows/similar` (adendo v1.72): só pergunta. `matches` = algum fluxo ativo já casa o comando por inteiro (e então não há sugestão). */
+export interface FlowSimilar {
+  matches: boolean;
+  /** Até 3, nota de 0 a 1 (mínimo 0,9). Nunca o nome do fluxo: o resumo do treino pode trazer o valor demonstrado. */
+  suggestions: { ref: string; template: string; score: number }[];
+}
+
 export interface FlowCoverage {
   flow_id: string;
   name: string;

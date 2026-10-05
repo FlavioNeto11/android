@@ -7,7 +7,7 @@ import { initialDataState } from '../../store/reducer';
 import { makeSnapshot } from '../../test/fixtures';
 import { ConfirmHost } from '../../components/Confirm';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
 
 /** O atraso máximo do fetch falso (modo ATRASO_DO_FETCH_MS): a resposta que o teste solta depois ainda pode estar a caminho. */
@@ -580,3 +580,20 @@ it('mais de 8 respostas: o pedido trava com o motivo em vez de cortar a 9ª', as
   await setValue(byRole('textbox', /^Pergunta 9$/) as HTMLInputElement, '');
   expect(byRole('button', /^Pedir nova proposta com as respostas/).getAttribute('aria-disabled')).toBeNull();
 });
+
+// ---------------------------------------------------------------- 31.89 (adendo v1.72): colisão de comando ao salvar
+it('31.89: o aviso de colisão do comando aparece na prévia e no resultado como AVISO: não trava o Salvar e não vira recusa', async () => {
+  const colisao = 'O comando “mande {mensagem} para {contato}” colide com a habilidade “enviar mensagem” (f-0a1b2c3d4e5f): os dois casam o mesmo texto e o novo passa na frente.';
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, warnings: [colisao] }));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'f-0a1b2c3d4e5f',
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }], warnings: [colisao],
+  }));
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(regiao('Avisos da prévia', 'ul').textContent).toContain('colide com a habilidade “enviar mensagem”'));
+  expect(byRole('textbox', /Comando/).getAttribute('aria-invalid')).toBeNull();      // aviso, não recusa do comando
+  expect(byRole('button', /^Salvar como fluxo/).getAttribute('aria-disabled')).toBeNull();
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(regiao('Avisos do salvar', 'ul').textContent).toContain('colide com a habilidade “enviar mensagem”'));
+});
+
