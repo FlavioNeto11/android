@@ -67,6 +67,15 @@ async def test_aparelho_desconhecido_volta_como_recusa(harness: Harness, como_te
         portas.criar("abrir o QA", [{"instance_id": "android-99", "profile_id": None}], "telegram:901")
 
 
+@pytest.mark.parametrize("texto", ["1", "ok"])
+async def test_previa_de_pedido_curto_demais_e_recusa_e_nao_falha_interna(harness: Harness, como_telegram: None,
+                                                                        texto: str) -> None:
+    """28.43: o pedido fora do formato (`min_length` do `RunTargetsResolveBody`) volta como recusa da Central, não como
+    `ValidationError` (que a conversa contava como "erro aqui dentro")."""
+    with pytest.raises(RecusaDaCentral):
+        _portas(harness).previa(texto)
+
+
 async def test_decidir_e_o_servico_do_painel_e_quem_decide_e_telegram_dono(harness: Harness,
                                                                            como_telegram: None) -> None:
     st = harness.state

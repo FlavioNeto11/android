@@ -781,6 +781,27 @@ async def test_texto_livre_sem_destino_recusado_vai_a_orquestradora_sem_o_texto_
     assert "no android-12" in c.bot.textos()[-1]
 
 
+@pytest.mark.parametrize("texto", ["1", "ok"])
+async def test_recado_curto_demais_fica_recusado_e_nao_vira_erro_interno(c: Cenario, texto: str) -> None:
+    """28.43 (o "1" solto do dono, 05/10 10:26Z): o texto livre mais curto que o pedido aceita não chega à prévia.
+    A linha fica `recusada` (não `falhou`), e a resposta diz o que fazer, sem "falhou" nem "erro aqui dentro"."""
+    from app.modules.avisos.infrastructure.entrada import (
+        ERRO_CURTO_DEMAIS,
+        MINIMO_DO_PEDIDO,
+        RESPOSTA_CURTO_DEMAIS,
+        RESPOSTA_FALHA_INTERNA,
+    )
+    assert MINIMO_DO_PEDIDO == 3 and len(texto) < MINIMO_DO_PEDIDO
+    await c.volta(msg(5, texto))
+    assert "previa" not in c.portas.nomes()
+    linha = c.linha(5)
+    assert (linha["estado"], linha["erro"]) == ("recusada", ERRO_CURTO_DEMAIS)
+    assert c.bot.textos()[-1] == RESPOSTA_CURTO_DEMAIS != RESPOSTA_FALHA_INTERNA
+    assert "falhou" not in RESPOSTA_CURTO_DEMAIS and "erro" not in RESPOSTA_CURTO_DEMAIS
+    # A volta das recusas sem resposta só repete as de credencial ou de pergunta: esta não volta.
+    assert c.repo.recusadas_sem_resposta(3600) == []
+
+
 async def test_pedido_com_aparelho_segue_para_a_previa_mesmo_com_interrogacao(c: Cenario) -> None:
     # Contraprova: citar o aparelho faz da frase um pedido.
     await c.volta(msg(5, "pode abrir o QA Messenger no android-09?"))

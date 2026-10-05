@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Mapping
 
+from pydantic import ValidationError
+
 from app.db import Database, loads
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
 from app.modules.avisos.application.entrada import casar_ref
@@ -227,6 +229,10 @@ class PortasReais:
             p = self.runs.previa_de_alvos(RunTargetsResolveBody(command=texto, instance_ids=instance_ids or []))
         except RunError as exc:
             raise RecusaDaCentral(exc.message) from None
+        except ValidationError:
+            # 28.43: o pedido fora do formato (curto ou longo demais) é recusa, não falha interna. A conversa já recusa
+            # o curto antes; esta é a rede para o que escapar.
+            raise RecusaDaCentral("O pedido não cabe no formato de uma execução; diga o que fazer e em qual aparelho.") from None
         return Previa(alvos=[t.model_dump() for t in p.targets],
                       perguntas=[str(q.get("question") or "") for q in p.questions if q.get("question")],
                       comando=p.command_sem_destinos, avisos=list(p.warnings))

@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.43: recado curto demais não vira "erro aqui dentro" (branch canais/28-43-recado-curto)
+
+- O texto livre mais curto que o pedido aceita (o `min_length` lido do `RunTargetsResolveBody`) fica `recusada`, com
+  uma frase que diz o que fazer e sem "falhou". Antes ele chegava à prévia, estourava `ValidationError` e o dono lia
+  "erro aqui dentro" (o "1" solto de 05/10, 10:26Z).
+- `PortasReais.previa`: o `ValidationError` do pedido vira `RecusaDaCentral`.
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py` e `test_telegram_portas.py`, com 1 e 2 caracteres).
+  Real: `not_run`.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,

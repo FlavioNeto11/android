@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Protocol
 
 from app.config import Config
-from app.models import RUN_SEM_TRABALHO, Problem
+from app.models import RUN_SEM_TRABALHO, Problem, RunTargetsResolveBody
 from app.modules.avisos.adapters.telegram import CanalTelegram, ConflitoDeConsumidor
 from app.modules.avisos.application.entrada import (
     AJUDA,
@@ -152,6 +152,17 @@ class ConferenciaDeComentario(Protocol):
 
 
 #: 28.30 e a entrada 1256 de 04/10: o recado que a Central não conseguiu tratar não fica mudo. Frase fixa, sem eco.
+#: 28.43: o texto livre mais curto que o pedido de execução aceita (o `min_length` de `RunTargetsResolveBody.command`).
+#: Lido do modelo, para não divergir dele: abaixo disso a prévia estourava `ValidationError` e virava "erro aqui dentro".
+MINIMO_DO_PEDIDO = next((int(m.min_length) for m in RunTargetsResolveBody.model_fields["command"].metadata
+                         if getattr(m, "min_length", None)), 1)
+#: O que o dono lê quando o recado é curto demais para ser um pedido (28.43, o "1" solto das 10:26Z de 05/10). A linha
+#: fica `recusada`, não `falhou`: não é falha interna. O `erro` não diz "credencial" nem "pergunta" (a volta das
+#: recusas sem resposta só repete essas).
+RESPOSTA_CURTO_DEMAIS = ("Recado curto demais para virar um pedido. Se é a resposta a uma mensagem minha, toque em "
+                         "\"Responder\" nela e mande de novo; se é um pedido, diga o que fazer e em qual aparelho "
+                         "(ex.: \"no android-12\").")
+ERRO_CURTO_DEMAIS = "curto demais para um pedido"
 RESPOSTA_FALHA_INTERNA = ("Não consegui tratar este recado por um erro aqui dentro; ele ficou guardado e a orquestradora vai "
                           "olhar. /ajuda mostra os comandos.")
 #: A credencial é recusada sem guardar e apagada do canal quando ele deixa (contrato dos canais, §7); a resposta nunca
@@ -1246,6 +1257,11 @@ class ConversaDoCanal:
     async def _previa(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, texto: str,
                       instance_ids: list[str] | None) -> None:
         ident = self._id(linha)
+        if len(texto.strip()) < MINIMO_DO_PEDIDO:
+            self.repo.marcar(ident, "recusada", intencao=i.tipo, erro=ERRO_CURTO_DEMAIS, resposta=RESPOSTA_CURTO_DEMAIS,
+                             de=("recebida", "pergunta"))
+            await self._responder(saida, linha, RESPOSTA_CURTO_DEMAIS)
+            return
         p = self.portas.previa(texto, instance_ids)
         if p.perguntas or not p.alvos:
             online = self.portas.online()[:8]
