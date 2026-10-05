@@ -5822,6 +5822,19 @@ texto ainda por escrever (briefing) fica para a execução: aprovar no plano exi
   migra para a etapa revisada (`acompanhar_revisao`), e o de versão anterior do plano do objetivo não conta como pedido em
   aberto (frota, 30.56, 30.57). O objetivo encerrado (cancelado, vencido, abandonado) encerra o sim sem efeito, e a faxina
   periódica marca `expired` o que passou da validade; a execução `planned` em si não é cancelada.
+- **O executor honra o plano (31.49):** a chave da etapa relida sai só de `chave_da_aprovacao`, depois de
+  `resolver_saidas`; a execução para só pelo que só existe lá (texto gerado, item coletado em tempo de execução, estado
+  mudado), e item diferente pergunta de novo. Três regras a mais: (1) depois da chave, o sim do plano de uma capacidade
+  com texto só vale se o `content` gravado for o texto exato que vai sair ("o sim do plano não traz o texto que vai
+  sair"): aprovação sem texto nunca libera escrita; (2) o `_draft_gate` não trata o sim de origem `plano` como texto
+  já mostrado, então a etapa com briefing escreve o texto e a execução pergunta COM ele; (3) o pedido novo de origem
+  `execucao` leva no `summary` "o sim dado no plano não vale: <porquê>"; (4) a mensagem repetida que surge DEPOIS do
+  `decided_at` do sim (`mensagem_repetida(..., desde=)`: outra execução mandou ou teve aprovado o mesmo texto ao mesmo
+  alvo; o pedido de outra etapa conta pela decisão) descarta o sim ("a repetição surgiu depois do sim"); a que já
+  existia antes estava no motivo da prévia e segue coberta. O sim do
+  plano anterior à exceção 30.65 presa sai como `expired`, não fica `approved`. Prova `simulated`:
+  `backend/tests/test_executor_honra_o_plano.py` e
+  `test_porta_do_plano.py::test_chave_solta_aprovada_no_plano_e_honrada_pela_porta_na_execucao` (`:-{`).
 - **`Approval`** (lista de aprovações, eventos) ganha `origem`, `expires_at` e `plan_version`.
 - **Painel** (`frontend/src/features/runs/PortaDoPlano.tsx`): na execução `planned`, a prévia em cartões por aparelho e
   persona, com o selo, "Saiba mais", o texto editável no 🔒, "Não fazer esta" (as dependentes saem junto), a seção
