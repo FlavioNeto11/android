@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.93: a execução que espera você não aparece como encerrada (branch fix/29-93-aguardando-pessoa)
+
+- `RunStatus.awaiting_person` (não terminal): o `recompute_run` leva a ele a execução sem trabalho automático com algum
+  objetivo `waiting_user`. Antes ela ia a `completed_with_issues`, que é terminal. Execução só com `uncertain` segue
+  `completed_with_issues`. Conjunto novo `RUN_SEM_TRABALHO` (terminais + o novo): grava `finished_at`, é o que a retomada
+  reabre e o que o vencimento do 31.50 lê (prazo, lembrete, varredura e `vence_em`, sem mudança de comportamento).
+- Tabela de transições (`execution/domain/states.py`), cancelar (aceito), `_settle_run` e o corte por idade do
+  `vitrine.objetivo_que_segura` com o estado novo.
+- Snapshot: a execução aguardando vem por 7 dias depois de `finished_at` (com o vencimento desligado nada a fecharia). A
+  caixa de Pendências não depende do snapshot para isso: ela conta só `needs_input` (ADR-062).
+- Telegram: o desfecho diz "espera você no aparelho" e conta os objetivos esperando um gesto; `TERMINAIS` da entrada
+  inclui o estado novo (o desfecho é a única linha, 28.36).
+- Pedidos: a ocorrência fecha como fechava com o `completed_with_issues`, para o domínio da Canais não mudar agora.
+- Aprendizado: lê o estado novo como lia o `completed_with_issues` de antes (o digest roda uma vez, no assentamento):
+  o que ele vê é igual ao de hoje.
+- Painel: rótulo "Aguardando você", grupo "Pede atenção"; Cancelar e o aviso "precisam de você" voltam a valer nela;
+  `isRunSemTrabalho` para repetir, relatório, custo e recarga do detalhe.
+- Migração de dados com número provisório (999, renomeada no corte): 0 linhas no central em 05/10. Adendo do contrato
+  com número provisório (v1.XX).
+- Prova: `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
+  `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). Real: `not_run`.
+
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do

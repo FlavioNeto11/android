@@ -27,7 +27,11 @@ from app.util import parse_iso, to_iso
 #: O pedido `rodando` cuja execução não assentou neste prazo (ficou em `needs_input`, o digest não passou) expira.
 RODANDO_NO_MAXIMO_H = 6
 #: A execução que já assentou (o digest roda depois disso; `needs_input` também encerra a execução).
-ASSENTADAS = frozenset({"completed", "completed_with_issues", "failed", "cancelled", "needs_input"})
+#: 29.93: `awaiting_person` também (o trabalho automático acabou; antes era `completed_with_issues`). Diferente do
+#: `needs_input`, que só vai a `cancelled`, ele pode voltar a `running` e concluir, e a validação já teria fechado como
+#: "não comprovou". Na prática execução de validação não para nele: `Scheduler._prova_sem_pessoa` encerra o
+#: `waiting_user` sem esperar ninguém (o teste `test_execucao_de_validacao_nunca_fica_aguardando_pessoa` trava isso).
+ASSENTADAS = frozenset({"completed", "completed_with_issues", "failed", "cancelled", "needs_input", "awaiting_person"})
 
 
 def _falta(r: Row) -> tuple[str, ...]:

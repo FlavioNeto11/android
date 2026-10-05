@@ -181,6 +181,22 @@ async def test_prova_com_etapa_que_pede_pessoa_e_cancelada_pelo_sistema(real: Re
                           (comum.id,)) == 1
 
 
+async def test_execucao_de_validacao_nunca_fica_aguardando_pessoa(real: Real) -> None:
+    """29.93: `awaiting_person` está no `ASSENTADAS` da validação, e ele pode voltar a `running`. A validação não para
+    nele porque `_prova_sem_pessoa` encerra o `waiting_user` sem esperar ninguém; a execução comum, sim, fica nele."""
+    real.h.fakes["android-01"].screen = "launcher"
+    real.h.fakes["android-01"].require_login = True                      # a etapa daria `waiting_user`
+    run = real.prova("prova-caso-29-93")
+    await real.h.wait_run(run)
+    assert real.db.scalar("SELECT status FROM runs WHERE id=?", (run,)) != "awaiting_person"
+    assert real.db.scalar("SELECT COUNT(*) FROM events WHERE run_id=? AND kind='run.updated' AND data LIKE ?",
+                          (run, "%awaiting_person%")) == 0
+    real.h.fakes["android-01"].screen = "launcher"
+    comum = real.h.run(["android-01"])                                    # o controle: a comum espera a pessoa
+    await real.h.wait_run(comum.id)
+    assert real.db.scalar("SELECT status FROM runs WHERE id=?", (comum.id,)) == "awaiting_person"
+
+
 async def test_prova_com_resultado_incerto_e_cancelada_pelo_sistema(real: Real) -> None:
     real.h.encurtar_verificacao()
     real.h.fakes["android-01"].screen = "launcher"

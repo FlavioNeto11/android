@@ -17,7 +17,7 @@ from typing import Any
 from ..contracts.origem import origem_da_execucao
 from ..db import Database, INTEGRITY_ERRORS, Row, dumps, loads
 from ..events import EventBus
-from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, AttemptStatus, DecisionDTO, DeliveryLevel,
+from ..models import (RUN_SEM_TRABALHO, RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, AttemptStatus, DecisionDTO, DeliveryLevel,
                       EvidenceDTO, ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, PlanVersionDTO, Postcondition,
                       RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, SAIDA_NOME_RE, SAIDA_VALOR_MAX,
                       SAIDA_ORIGENS, SAIDA_VALUE_KINDS, StepDTO, StepResult, StepStatus)
@@ -271,7 +271,7 @@ class Repository:
         if status == RunStatus.running:
             fields.append("started_at=COALESCE(started_at, ?)")
             params.append(now_iso())
-        if status in RUN_TERMINAL:
+        if status in RUN_SEM_TRABALHO:          # 29.93: esperar a pessoa também é o fim do trabalho automático
             fields.append("finished_at=COALESCE(finished_at, ?)")
             params.append(now_iso())
         if so_se:
@@ -1160,15 +1160,20 @@ class Repository:
                 new = RunStatus.completed
             else:
                 new = RunStatus.completed_with_issues
-            if counts.waiting_user or counts.uncertain:
-                # há itens aguardando decisão do usuário: a execução segue "em aberto" para permitir retomada
+            if counts.waiting_user:
+                # 29.93: um item espera um gesto da pessoa no aparelho. Não é fim: a execução fica `awaiting_person`
+                # (não terminal) até a retomada reabrir ou o vencimento (31.50) fechar o objetivo parado.
+                new = RunStatus.awaiting_person
+            elif counts.uncertain:
+                # item incerto, sem ninguém esperando gesto: `completed_with_issues`, que já diz "com problemas" e
+                # permite a retomada. Vale também com cancelamento pedido (o item incerto que `_finish_cancel` não fecha).
                 new = RunStatus.completed_with_issues
             detail = self._status_detail(counts, total)
             if new != current or detail != run["status_detail"]:
                 self.set_run_status(run_id, new, detail, message=f"Execução {run_id} finalizada: {detail}",
                                     level="info" if new == RunStatus.completed else "warn")
             return new
-        if current in RUN_TERMINAL and active > 0:          # retomada de itens
+        if current in RUN_SEM_TRABALHO and active > 0:      # retomada de itens
             self.db.execute("UPDATE runs SET finished_at=NULL WHERE id=?", (run_id,))
             self.set_run_status(run_id, RunStatus.paused if run["pause_requested"] else RunStatus.running,
                                 "itens retomados")
@@ -1451,7 +1456,7 @@ class Repository:
         if not ids or self.prazo_do_vencimento is None:
             return {}
         marcas = ",".join("?" for _ in ids)
-        terminais = {s.value for s in RUN_TERMINAL}
+        terminais = {s.value for s in RUN_SEM_TRABALHO}
         return {str(o["id"]): self._vence_em(max(str(o["finished_at"] or ""), str(o["fim"] or "")))
                 if o["status"] == ObjectiveStatus.waiting_user.value and o["run_status"] in terminais else None
                 for o in self.db.query(f"SELECT o.id, o.status, o.finished_at, r.status AS run_status, "
@@ -1462,8 +1467,8 @@ class Repository:
         if row["status"] != ObjectiveStatus.waiting_user.value or self.prazo_do_vencimento is None:
             return None
         run = self.db.one("SELECT status, finished_at FROM runs WHERE id=?", (row["run_id"],))
-        if run is None or RunStatus(run["status"]) not in RUN_TERMINAL:
-            return None                               # execução viva: o relógio só começa quando ela termina
+        if run is None or RunStatus(run["status"]) not in RUN_SEM_TRABALHO:
+            return None                               # execução viva: o relógio só começa quando o trabalho dela acaba
         return self._vence_em(max(str(row["finished_at"] or ""), str(run["finished_at"] or "")))
 
     def objective_dto(self, row: Row) -> ObjectiveDTO:

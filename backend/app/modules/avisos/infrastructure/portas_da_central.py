@@ -37,9 +37,11 @@ from app.taskqueue.perguntas import (
 )
 from app.taskqueue.service import RunError, RunService
 
-#: Como o status de uma execução terminada se lê na conversa.
+#: Como o status de uma execução sem trabalho automático pela frente se lê na conversa. `awaiting_person` (29.93) não é
+#: fim: um objetivo espera um gesto do dono no aparelho, e a linha diz isso em vez de "concluída com problemas".
 _DESFECHO = {RunStatus.completed: "concluída", RunStatus.completed_with_issues: "concluída com problemas",
-             RunStatus.failed: "falhou", RunStatus.cancelled: "cancelada"}
+             RunStatus.failed: "falhou", RunStatus.cancelled: "cancelada",
+             RunStatus.awaiting_person: "espera você no aparelho"}
 _ATIVAS = ("planning", "running", "paused", "cancelling")
 
 
@@ -169,7 +171,8 @@ class PortasReais:
         if total:
             linhas.append(f"Objetivos: {c.succeeded} de {total} com sucesso"
                           + (f", {c.failed} com falha" if c.failed else "")
-                          + (f", {c.uncertain} sem confirmação" if c.uncertain else "") + ".")
+                          + (f", {c.uncertain} sem confirmação" if c.uncertain else "")
+                          + (f", {c.waiting_user} esperando um gesto seu" if c.waiting_user else "") + ".")
         evidencia = self.db.scalar("SELECT status_detail FROM objectives WHERE run_id=? AND status_detail IS NOT NULL"
                                    " ORDER BY finished_at DESC LIMIT 1", (run_id,))
         detalhe = evidencia or resumo.status_detail

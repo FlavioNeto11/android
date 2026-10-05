@@ -96,6 +96,7 @@ export const RUN_STATUS: Record<RunStatus, StatusMeta> = {
   running: { label: 'Em execução', tone: 'accent', icon: LoaderCircle, spin: true },
   paused: { label: 'Pausada', tone: 'warning', icon: CirclePause },
   cancelling: { label: 'Cancelando', tone: 'warning', icon: LoaderCircle, spin: true },
+  awaiting_person: { label: 'Aguardando você', tone: 'warning', icon: Hand },
   completed: { label: 'Concluída', tone: 'success', icon: CircleCheck },
   completed_with_issues: { label: 'Concluída com problemas', tone: 'warning', icon: TriangleAlert },
   cancelled: { label: 'Cancelada', tone: 'muted', icon: Ban },
@@ -325,6 +326,15 @@ export function isRunActive(status: RunStatus): boolean {
 
 export function isRunTerminal(status: RunStatus): boolean {
   return TERMINAL_RUN.has(status);
+}
+
+/**
+ * Sem trabalho automático pela frente: terminada ou `awaiting_person` (29.93, o `RUN_SEM_TRABALHO` do backend). É o
+ * que valia para o `completed_with_issues` com objetivo esperando: repetir, relatório e custo finais, recarga do
+ * detalhe. Cancelar e o aviso "precisam de você" seguem em `isRunTerminal`: a execução esperando a pessoa não acabou.
+ */
+export function isRunSemTrabalho(status: RunStatus): boolean {
+  return TERMINAL_RUN.has(status) || status === 'awaiting_person';
 }
 
 /**

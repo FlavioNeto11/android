@@ -6,7 +6,7 @@ import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
-import { isRunTerminal } from '../../lib/status';
+import { isRunSemTrabalho } from '../../lib/status';
 import usageStyles from '../usage/Usage.module.css';
 import { isUsageEmpty, usageTotals } from '../usage/usage';
 import { RunUsageTotals, UsageTable } from '../usage/UsageView';
@@ -40,7 +40,7 @@ export function RunUsageCard({ run }: { run: RunRef }) {
 }
 
 function RunUsageBody({ run, onTotal }: { run: RunRef; onTotal: (text: string | null) => void }) {
-  const terminal = isRunTerminal(run.status);
+  const terminal = isRunSemTrabalho(run.status);       // 29.93: o custo para de crescer na espera pela pessoa
   // `terminal` como chave de recarga: false → true = a execução acabou de terminar.
   const { report, error, loading, reload } = useUsage({ run_id: run.id }, terminal);
 

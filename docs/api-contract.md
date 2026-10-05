@@ -6165,3 +6165,33 @@ repetição não muda a chave do item, então não dava `plano_mudou`.
 - **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_telegram_entrada.py`,
   `backend/tests/test_telegram_portas.py`, `backend/tests/test_executor_honra_o_plano.py`,
   `frontend/src/features/runs/PortaDoPlano.test.tsx`). `not_run`: o gesto no central (depois do deploy 34).
+
+## Adendo v1.XX (05/10/2026; número da orquestradora no corte da suíte 36; item 29.93) — a execução que espera você não aparece como encerrada
+
+Antes, quando o trabalho automático acabava com um objetivo em `waiting_user` (um gesto da pessoa no aparelho: login,
+desafio, aprovação), a execução ia a `completed_with_issues`, que é terminal, e grava `finished_at`: o painel, o Telegram
+e quem lê o contrato a davam por encerrada, e a retomada do item a "reabria".
+
+- **`RunStatus.awaiting_person`** (valor novo, aditivo): o trabalho automático acabou e pelo menos um objetivo está em
+  `waiting_user`. NÃO é terminal. Grava `finished_at` (o fim do trabalho automático; o vencimento do 31.50 conta dali,
+  como antes). Sai para `running`/`paused` (retomada do item, `finished_at` volta a nulo), `completed` (a pessoa confirma o
+  último item), `completed_with_issues` (o vencimento do 31.50 cancela o objetivo parado), ou `cancelling`/`cancelled`
+  (`POST /runs/{id}/cancel`, aceito como no `completed_with_issues`).
+- **Só `waiting_user`:** a execução só com objetivo `uncertain` (sem ninguém esperando um gesto) segue
+  `completed_with_issues`, como hoje.
+- **Diferença para `needs_input`:** `needs_input` é a pergunta ANTES de agir (o plano não rodou e só sai para `cancelled`);
+  `awaiting_person` é o objetivo parado depois de agir, esperando um gesto no aparelho. Nenhum consumidor do
+  `needs_input` (a expiração do 29.50/31.43, o lembrete da pergunta, a caixa de Pendências) pega o estado novo.
+- **`GET /snapshot`:** traz a execução `awaiting_person` enquanto `finished_at` tiver até 7 dias; mais velha, só entre as
+  20 mais recentes (com o vencimento desligado nada a fecharia). As outras não terminais seguem sem corte.
+- **`run.updated`:** passa a dizer `awaiting_person` onde dizia `completed_with_issues`. O `objective.updated` não muda (o
+  objetivo continua `waiting_user`).
+- **Cliente com `switch` exaustivo sobre `RunStatus`** precisa do caso novo (o painel é o único hoje: rótulo "Aguardando
+  você", grupo "Pede atenção", e os botões de cancelar e o aviso "precisam de você" voltam a valer nela).
+- **Telegram:** o desfecho diz "espera você no aparelho" e conta os objetivos esperando um gesto.
+- **Pedidos:** a ocorrência fecha como fechava com o `completed_with_issues` (`incerta` ou `falhou`); o "esperando você"
+  na ocorrência, se vier, é do 28.40.
+- **Migração de dados** (número da orquestradora): leva a `awaiting_person` as execuções já paradas em
+  `completed_with_issues` com objetivo `waiting_user`. Idempotente; 0 linhas no banco do central em 05/10.
+- **Prova:** `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
+  `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). `not_run`: o central.

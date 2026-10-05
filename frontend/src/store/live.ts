@@ -3,7 +3,7 @@ import type { Command, EventRecord, RunSummary } from '../api/types';
 import { EMPTY_WATCH, LiveSocket, type WatchInterest } from '../api/ws';
 import { backoffDelay } from '../lib/backoff';
 import { isRecord } from '../lib/format';
-import { isRunTerminal } from '../lib/status';
+import { isRunSemTrabalho } from '../lib/status';
 import { setServerTime } from '../lib/time';
 import { useAppStore } from './app';
 import { releaseAllLeasesOnUnload, useControlStore } from './control';
@@ -178,7 +178,7 @@ function autoSelectRun(runs: RunSummary[]): void {
   // Só entre as 20 mais recentes: o snapshot também leva as execuções em andamento e as `needs_input` antigas (para
   // os contadores), e abrir a de semanas atrás no detalhe ao carregar seria uma surpresa. Comportamento de antes do RF-05.
   const recentes = [...runs].sort((a, b) => (b.created_at > a.created_at ? 1 : b.created_at < a.created_at ? -1 : 0)).slice(0, 20);
-  const active = recentes.find((r) => !isRunTerminal(r.status));
+  const active = recentes.find((r) => !isRunSemTrabalho(r.status));
   if (active) ui.selectRun(active.id);
 }
 
@@ -215,7 +215,7 @@ function handleEvent(ev: EventRecord): void {
     if (ev.kind === 'run.updated') {
       const run = isRecord(ev.data) && isRecord(ev.data.run) ? (ev.data.run as unknown as RunSummary) : null;
       // Rede de segurança: ao terminar, recarrega o detalhe uma vez (com debounce).
-      if (run && isRunTerminal(run.status) && (!prevRunStatus || !isRunTerminal(prevRunStatus))) scheduleDetailRefetch(1500);
+      if (run && isRunSemTrabalho(run.status) && (!prevRunStatus || !isRunSemTrabalho(prevRunStatus))) scheduleDetailRefetch(1500);
       // Saiu do planejamento: o plano só vem no detalhe.
       if (run && prevRunStatus === 'planning' && run.status !== 'planning') scheduleDetailRefetch(200);
     }

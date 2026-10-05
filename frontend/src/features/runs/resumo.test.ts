@@ -34,6 +34,8 @@ describe('resultadoDaExecucao', () => {
   it('as demais situações dizem o que aconteceu', () => {
     expect(resultadoDaExecucao({ status: 'completed_with_issues', started_at: T0, finished_at: mais(5) }, agora)).toBe('Concluída com problemas em 5 s');
     expect(resultadoDaExecucao({ status: 'failed', started_at: T0, finished_at: mais(60) }, agora)).toBe('Falhou após 1 min');
+    // 29.93: o fim do trabalho automático, e ela espera um gesto da pessoa (não "concluída").
+    expect(resultadoDaExecucao({ status: 'awaiting_person', started_at: T0, finished_at: mais(60) }, agora)).toBe('Aguardando você após 1 min');
     expect(resultadoDaExecucao({ status: 'planned', started_at: null, finished_at: null }, agora)).toContain('Nada foi executado');
     expect(resultadoDaExecucao({ status: 'needs_input', started_at: null, finished_at: null }, agora)).toContain('pedindo informação');
   });

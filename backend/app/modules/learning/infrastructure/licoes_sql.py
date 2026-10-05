@@ -42,7 +42,9 @@ from app.util import to_iso
 #: Status de etapa que fecham o desfecho da unidade do ator.
 _ETAPA_FINAL = frozenset({"succeeded", "failed", "uncertain", "waiting_user", "cancelled", "skipped"})
 #: Status de execução que fecham o desfecho da unidade do planejador.
-_EXECUCAO_FINAL = frozenset({"completed", "completed_with_issues", "failed", "cancelled"})
+# 29.93: `awaiting_person` é o `completed_with_issues` de antes com objetivo esperando a pessoa; o digest roda uma vez,
+# quando a execução assenta, então o aprendizado a lê do mesmo jeito.
+_EXECUCAO_FINAL = frozenset({"completed", "completed_with_issues", "failed", "cancelled", "awaiting_person"})
 _TOQUES = ("tap", "long_press")
 #: Janela em que um defeito do plano ainda conta como "seguido de" um plano que comprovou.
 DEFEITO_DIAS = 30
