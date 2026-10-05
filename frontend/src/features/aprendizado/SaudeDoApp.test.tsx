@@ -254,7 +254,7 @@ describe('falhas e capability no detalhe do app', () => {
       expect.stringContaining('Fluxo'), expect.stringContaining('Lição'), expect.stringContaining('Receita'),
     ]);
     // O grupo com item pedindo atenção já abre; o resto fica recolhido até a pessoa abrir.
-    expect(container.querySelector('ul[aria-label="Aprendido: Receita"]')).toBeTruthy();
+    await waitFor(() => expect(container.querySelector('ul[aria-label="Aprendido: Receita"]')).toBeTruthy());
   });
 
   it('quando a linha traz `capability`, o aprendido é agrupado por ela', async () => {
