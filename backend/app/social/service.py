@@ -1312,7 +1312,8 @@ class SocialService:
                 observed_username=sessao["observed_username"] if sessao else None,
                 verified_at=sessao["verified_at"] if sessao else None, detail=sessao["detail"] if sessao else None,
                 stale=sessao_vencida(sessao, self.repo.session_max_age_s),
-                unknown_at_cap=self.repo.parada_no_teto(sessao)),
+                unknown_at_cap=self.repo.parada_no_teto(sessao),
+                status_since=sessao["status_since"] if sessao else None),
             session_actions=acoes, automated_login=automatico, credential_configured=cred is not None,
             credential=CredentialInfo(
                 configured=cred is not None, login_identifier=cred["login_identifier"] if cred else None,

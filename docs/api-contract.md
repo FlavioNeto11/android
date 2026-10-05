@@ -6266,3 +6266,32 @@ e quem lê o contrato a davam por encerrada, e a retomada do item a "reabria".
   e nenhuma assenta em dobro.
 - **Prova:** `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
   `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). `not_run`: o central.
+
+## Adendo v1.51 (05/10/2026; número da orquestradora; item 29.100) — a hora em que o estado da sessão começou
+
+Migração 112. Campo aditivo em `SessionInfo`, nos mesmos cinco DTOs do adendo v1.48:
+- `status_since: string | null`: ISO-8601 UTC de desde quando a sessão está assim.
+  - É a hora da mudança de estado (ou da linha nova).
+  - No `unknown`, é também a hora em que a série de reobservações CHEGOU ao teto do aparelho (`unknown_at_cap`,
+    v1.48): a parada.
+  - Por isso a sessão parada mostra a hora da parada, mesmo quando o `unknown` começou dias antes por um gesto
+    administrativo (vínculo, wipe, logout).
+- Fora disso, regravar o mesmo estado não move a hora: a reobservação abaixo do teto, o "Verificar conta" no teto e a
+  invalidação de quem já estava `unknown`.
+- `verified_at` continua sendo a última verificação.
+- A decisão é tomada dentro do próprio upsert, contra a linha que o comando encontra, então duas gravações concorrentes
+  não deixam a hora velha.
+- Caso raro: a sessão pode entrar no teto SEM gravação, porque `unknown_at_cap` é lido contra o teto de agora.
+  - Acontece quando o teto cai até uma série que ainda não estava parada (de 3 para 2, com a série em 2), ou quando
+    outra conta no aparelho ganha vínculo ativo (o teto vira 1).
+  - Nesse caso, Pendências mostra a hora do começo do `unknown` (ou do gesto), e a gravação seguinte no teto não a
+    corrige.
+  - Só afeta a hora mostrada.
+- A invalidação e o "Verificar conta" sem `reobserved` tiram a sessão do teto, porque a série volta a zero, e ela some
+  de Pendências. É assim desde antes do 29.100.
+- Nulo quando a sessão não existe, ou quando era `session_ready` antes da migração 112 e não mudou de estado desde
+  então. A migração preenche as outras com a última gravação. Em `session_ready` gravada depois da 112, é a hora em que
+  ficou pronta.
+- O painel usa `status_since` como o "desde" do item da sessão em Pendências e cai em `verified_at` quando ele falta.
+  Ausente = backend de antes do 29.100.
+- **Prova:** `simulated` (`backend/tests/test_sessao_status_since.py`, `frontend/src/features/pendencias/PendenciasPage.test.tsx`).

@@ -34,6 +34,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated`, em Idle, sobre d025b671: `backend/tests/test_causa_sem_texto_resto.py` (3 testes novos) e os
   dirigidos dos chamadores, 178 passed; `pytest @tests/catracas.txt -n 4`, 87 passed; scripts, 6 passed.
 
+## 2026-10-05 — 29.100: Pendências mostra a hora da parada, não a da última verificação (branch feat/29-100-pendencias-hora-da-parada)
+
+- **Migração 112** (`account_sessions.status_since`): desde quando a sessão está assim. `SocialRepository.set_account_session` troca a hora na mudança de estado e, no `unknown`, quando a série chega ao teto do aparelho (P1 da leitura: um `unknown` administrativo de dias atrás que para hoje mostra hoje). Fora disso, regravar o mesmo estado a mantém. A decisão vai num `CASE` dentro do upsert, contra a linha que o comando encontra (P2: sem corrida entre o "Verificar conta" e o motor). O preenchimento usa `updated_at` onde o estado não é `session_ready`; a pronta fica nula.
+- **Adendo v1.51:** `SessionInfo.status_since`, nos três montadores do 29.96 (`profile_dto`, `sessao_no_aparelho`, `_account_dto`).
+- **Painel:** `desdeDaSessao` (`pendencias/modelo.ts`) é o "desde" do item em Pendências e a hora e a ordem de "Aguardando intervenção" (`ProfilesPage.tsx`), com `verified_at` como reserva. Antes, a parada de agora aparecia como de dias atrás e ia para o topo da fila como a mais antiga.
+- Prova `simulated`: `backend/tests/test_sessao_status_since.py`, `PendenciasPage.test.tsx` e `ProfilesPage.test.tsx` (os resultados no PR). `not_run`: o painel do central, até o deploy.
+
 ## 2026-10-05 — 29.96: a sessão parada no teto aparece em Pendências e em "Aguardando intervenção" (branch feat/29-96-parada-no-teto-em-pendencias)
 
 - Achado da leitura do #371 (S): o `unknown` no teto abre o aviso `session.needs_person`, mas as duas filas do painel
