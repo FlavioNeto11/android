@@ -39,8 +39,10 @@ from app.planning import costs
 from app.taskqueue.projecao import QUALQUER, app_da_etapa
 from app.util import to_iso
 
-#: Status de etapa que fecham o desfecho da unidade do ator.
-_ETAPA_FINAL = frozenset({"succeeded", "failed", "uncertain", "waiting_user", "cancelled", "skipped"})
+#: Status de etapa que fecham o desfecho da unidade do ator. 30.69: `waiting_user` NÃO fecha. Esperar a pessoa não é
+#: desfecho do ator, e o desfecho gravado congela (`filled_at IS NULL`): a etapa retomada que concluísse nunca o
+#: corrigiria. A exposição fica pendente até a etapa sair da espera; quem sai sem retomar vai a `cancelled`.
+_ETAPA_FINAL = frozenset({"succeeded", "failed", "uncertain", "cancelled", "skipped"})
 #: Status de execução que fecham o desfecho da unidade do planejador.
 _EXECUCAO_FINAL = frozenset({"completed", "completed_with_issues", "failed", "cancelled"})
 _TOQUES = ("tap", "long_press")
