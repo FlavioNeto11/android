@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
+
+- O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
+  segundo, sem parar nada, com "Cannot convert value System.IO.DirectoryInfo to type SwitchParameter".
+  - Causa: `scripts/deploy.ps1:81` atribuía `$ensaio = Find-EnsaioRecente ...`. Variável no PowerShell não diferencia
+    caixa, então era o próprio `[switch]$Ensaio` do `param`.
+  - O caminho vinha do 29.38 e nunca tinha rodado de verdade. O deploy 34 subiu sem `-PularBackup`, com cópia nova.
+  - Se a conversão passasse, o `if ($Ensaio)` adiante trataria a subida como ensaio.
+- `scripts/deploy.ps1`: a variável virou `$copiaDoEnsaio`. O portão do `-PularBackup` fica entre os marcadores
+  `# >>> portão do -PularBackup` e `# <<< portão do -PularBackup`.
+- `scripts/backup.ps1`: `$podar` virou `$podarDeVerdade`. A varredura achou o mesmo erro contra `[switch]$Podar`; ali
+  ele só funcionava porque um booleano converte em switch.
+- `scripts/tests/test_deploy_portao_do_ensaio.py`:
+  - roda O TRECHO do portão, recortado pelos marcadores, debaixo do mesmo `param` do deploy, com a biblioteca de verdade
+    e uma cópia de ensaio de mentira. Três casos: ensaio do mesmo commit (usa a cópia e o switch continua `False`),
+    ensaio de outro commit (recusa com a mensagem) e `-Ensaio -PularBackup` (o portão não roda);
+  - varre todos os `.ps1` com `param`, pela árvore de sintaxe do PowerShell: no escopo do script, nenhuma atribuição
+    pode usar o nome de um parâmetro escrito com outra caixa;
+  - um caso garante que a varredura acha o defeito quando ele existe.
+- Prova simulated: os 5 casos do arquivo novo. A mutação de volta para `$ensaio` reproduz no teste a mensagem exata
+  do deploy 34, e a varredura acusa os dois arquivos. `backend/tests/test_backup.py` segue com 12 testes.
+
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do
