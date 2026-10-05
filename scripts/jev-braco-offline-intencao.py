@@ -51,7 +51,7 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "backend"))
 
 from app.config import DecisaoFechadaCfg, load_config  # noqa: E402
-from app.planning.decisao_fechada.apps import NAO, SIM  # noqa: E402
+from app.planning.decisao_fechada.apps import LIMIAR, NAO, SIM  # noqa: E402
 from app.planning.decisao_fechada.decisores import Decisor  # noqa: E402
 from app.planning.decisao_fechada.intencao import PERGUNTA_CATALOGO, id_opaco  # noqa: E402
 from app.planning.decisao_fechada.porta import TIMEOUT_SHADOW_S, Porta, RegistroDeDecisao  # noqa: E402
@@ -92,6 +92,9 @@ CFG_DA_INTENCAO: Final = DecisaoFechadaCfg(enabled=True, consumidores={"intencao
 CFG_COM_A_R5: Final = DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow", "apps": "shadow"},
                                         classes_permitidas=["C3"], decisor="jev")
 IDIOMAS: Final = ("en", "pt")
+#: 31.13: o limiar da sombra baixou para `apps.LIMIAR` (0,5); a métrica pré-registrada da R5 é no 0,85 (golden set §9).
+#: O relatório mede nos dois: as colunas `_0_85` contam o `sim` pelo `p_sim` da linha, que a sombra grava sempre.
+LIMIAR_PRE_REGISTRADO: Final = 0.85
 AVISO: Final = "acompanhamento; nenhum número aqui vale para GO (rótulos = {n})"
 
 
@@ -211,6 +214,12 @@ def _resposta_r5(registro: RegistroDeDecisao | None, pergunta: str) -> tuple[str
     return (resposta.escolha if resposta else None), p, motivo
 
 
+def _sim_no_pre_registro(item: Mapping[str, Any]) -> bool:
+    """O `sim` que o limiar pré-registrado aceitaria: a escolha é `sim` E o `p_sim` alcança 0,85."""
+    p = item.get("p_sim")
+    return item.get("escolha") == SIM and p is not None and float(p) >= LIMIAR_PRE_REGISTRADO
+
+
 def _fracao(n: int, d: int) -> dict[str, Any]:
     return {"n": n, "de": d, "taxa": rel._taxa(n, d)}
 
@@ -285,13 +294,20 @@ def montar_r5(leitura: LeituraDoLote, enviaveis: Sequence[CasoDaIntencao],
             "cobertura_do_jev": _fracao(sum(1 for i in exigidos if i["escolha"] == SIM), len(exigidos)),
             "controle": {"precisao": _fracao(sum(1 for i in controle_sim if i["rotulo"] == SIM), len(controle_sim)),
                          "cobertura": _fracao(sum(1 for i in exigidos if i["controle"] == SIM), len(exigidos))},
+            # as mesmas medidas no limiar pré-registrado (0,85), para a métrica do golden set não sumir com o 0,5
+            "respondidas_0_85": sum(1 for i in itens if _sim_no_pre_registro(i)),
+            "precisao_do_sim_0_85": _fracao(sum(1 for i in rotulados if _sim_no_pre_registro(i) and i["rotulo"] == SIM),
+                                            sum(1 for i in rotulados if _sim_no_pre_registro(i))),
+            "parafrases_pegas_0_85": _fracao(sum(1 for i in parafrases if _sim_no_pre_registro(i)), len(parafrases)),
+            "cobertura_do_jev_0_85": _fracao(sum(1 for i in exigidos if _sim_no_pre_registro(i)), len(exigidos)),
         }
     pares = [(i["escolha"] or "sem_resposta", j["escolha"] or "sem_resposta")
              for i, j in zip(por_idioma["en"], por_idioma["pt"], strict=True) if i["fallback"] != "sem_registro"
              and j["fallback"] != "sem_registro"]
     return {
         "casos_com_r5": sum(1 for c in enviaveis if c.r5 is not None), "fora_r5": dict(leitura.fora_r5),
-        "pedidos_secos": pedidos_secos, "limiar": 0.85, "medidas": medidas, "custo": custo_r5(enviaveis, registros),
+        "pedidos_secos": pedidos_secos, "limiar": LIMIAR,
+        "limiar_pre_registrado": LIMIAR_PRE_REGISTRADO, "medidas": medidas, "custo": custo_r5(enviaveis, registros),
         "en_x_pt": {"comparaveis": len(pares), "iguais": sum(1 for a, b in pares if a == b),
                     "taxa": rel._taxa(sum(1 for a, b in pares if a == b), len(pares)),
                     "nota": "sem resposta (abaixo do limiar) conta como valor: `sim` × sem resposta é diferença"},
@@ -429,7 +445,8 @@ def em_markdown(r: Mapping[str, Any]) -> str:
     if "r5" in r:
         r5 = r["r5"]
         linhas += ["", "## R5 — apps do comando (31.13)", "",
-                   f"- Casos com R5 {r5['casos_com_r5']}; fora {r5['fora_r5'] or '—'}; limiar {r5['limiar']}.",
+                   f"- Casos com R5 {r5['casos_com_r5']}; fora {r5['fora_r5'] or '—'}; limiar {r5['limiar']} (sombra);"
+                   f" pré-registrado {r5['limiar_pre_registrado']}.",
                    f"- Inglês × português: {r5['en_x_pt']['iguais']} de {r5['en_x_pt']['comparaveis']}.",
                    f"- Custo (com POST): {r5['custo']['total']['comandos']} comandos, {r5['custo']['total']['perguntas']}"
                    f" perguntas, US$ {r5['custo']['total']['usd']}; por comando {r5['custo']['total']['por_comando']};"
@@ -437,7 +454,8 @@ def em_markdown(r: Mapping[str, Any]) -> str:
         for idioma, m in r5["medidas"].items():
             linhas.append(f"- {idioma}: perguntas {m['perguntas']}, rotuladas {m['rotuladas']}, `sim` {m['respondidas']};"
                           f" precisão do sim {m['precisao_do_sim']}; paráfrases pegas {m['parafrases_pegas']};"
-                          f" controle {m['controle']}.")
+                          f" controle {m['controle']}. No 0,85: `sim` {m['respondidas_0_85']}; precisão do sim"
+                          f" {m['precisao_do_sim_0_85']}; paráfrases pegas {m['parafrases_pegas_0_85']}.")
     for origem, o in r.get("por_origem", {}).items():
         linhas += ["", f"## Origem: {origem}", "",
                    f"- Casos {o['casos']}, distintos {o['distintos']}; inglês × português {o['en_x_pt']['escolha']};"

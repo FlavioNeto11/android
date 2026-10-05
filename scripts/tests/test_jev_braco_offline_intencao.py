@@ -239,7 +239,7 @@ def test_r5_seco_conta_os_apps_sem_vazar_o_comando(mundo: Mundo, tmp_path: Path)
     r = _saida(tmp_path)
     assert r["pedidos_secos"] == 2 and r["r5"]["pedidos_secos"] == 2         # intenção e R5, inglês e português
     r5 = r["r5"]
-    assert r5["casos_com_r5"] == 1 and r5["fora_r5"] == {} and r5["limiar"] == 0.85
+    assert r5["casos_com_r5"] == 1 and r5["fora_r5"] == {} and r5["limiar"] == 0.5     # 31.13: o relatório diz o limiar do código (só sombra)
     assert {(l["app_da_pergunta"], l["controle"]) for l in r5["linhas"]} == {("instagram", "sim"), ("outlook", "nao")}
     assert all(l["rotulo"] is None for l in r5["linhas"])                     # sem sucesso comprovado, sem rótulo
     assert r5["medidas"]["en"]["rotuladas"] == 0 and r5["medidas"]["en"]["fallbacks"] == {"desligado": 2}
@@ -284,6 +284,34 @@ def test_r5_enviar_mede_precisao_e_parafrase_com_o_estado_so_do_comando(mundo: M
     assert custo["por_comando"]["perguntas"] == 2.0 and custo["por_comando"]["tokens"] == 105.0
     assert custo["por_comando"]["usd"] == pytest.approx(0.00005) and custo["por_app"]["usd"] == pytest.approx(0.000025)
     assert r["r5"]["custo"]["idiomas"]["pt"]["comandos"] == 1
+
+
+def test_r5_mede_tambem_no_limiar_pre_registrado(mundo: Mundo, tmp_path: Path,
+                                                monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão do 31.13: com a sombra em 0,5, um `sim` de p=0,6 conta na coluna nova e NÃO conta na do 0,85; com
+    p=0,92 as duas batem. A métrica pré-registrada (golden set §9) não some."""
+    _com_outlook(mundo)
+    monkeypatch.setattr(lote, "MIN_COMANDOS_REAIS", 1)
+    monkeypatch.setattr(lote.rel, "RotulosSql", _FatosFalsos)
+    monkeypatch.setattr(lote.rel, "sucesso_comprovado", lambda fatos: True)
+    medidas = {}
+    for p in (0.6, 0.92):
+        transporte = TransporteFalso(noul=p)
+        monkeypatch.setattr(lote.braco, "decisor_real",
+                            lambda teto, t=transporte: DecisorJev(t, conferir_gasto=teto.conferir,
+                                                                  registrar=teto.registrar))
+        saida = tmp_path / str(p)
+        saida.mkdir()
+        assert lote.main(mundo.argv(saida, "--r5", "--enviar", "--teto", "0.05")) == 0
+        r5 = _saida(saida)["r5"]
+        assert (r5["limiar"], r5["limiar_pre_registrado"]) == (0.5, 0.85)
+        medidas[p] = r5["medidas"]["en"]
+    assert medidas[0.6]["respondidas"] == 2 and medidas[0.6]["respondidas_0_85"] == 0
+    assert medidas[0.6]["precisao_do_sim"] == {"n": 2, "de": 2, "taxa": 1.0}
+    assert medidas[0.6]["precisao_do_sim_0_85"]["de"] == 0 and medidas[0.6]["parafrases_pegas_0_85"]["n"] == 0
+    assert medidas[0.92]["respondidas_0_85"] == medidas[0.92]["respondidas"] == 2
+    assert medidas[0.92]["precisao_do_sim_0_85"] == medidas[0.92]["precisao_do_sim"]
+    assert medidas[0.92]["parafrases_pegas_0_85"] == medidas[0.92]["parafrases_pegas"]
 
 
 def test_r5_abaixo_do_limiar_e_sem_resposta_nunca_nao(mundo: Mundo, tmp_path: Path,

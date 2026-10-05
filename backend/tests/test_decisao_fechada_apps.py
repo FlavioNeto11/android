@@ -104,7 +104,7 @@ def test_uma_pergunta_noul_por_app_com_id_opaco_e_o_nome_so_no_texto() -> None:
     [instagram, outlook] = perguntas_dos_apps([OUTLOOK, INSTAGRAM, OUTLOOK])     # ordem de id, sem repetir
     assert (instagram.id, outlook.id) == (id_da_pergunta("instagram"), id_da_pergunta("outlook"))
     assert outlook.id.startswith("app:") and len(outlook.id) == 16 and "outlook" not in outlook.id
-    assert outlook.tipo == "noul" and outlook.limiar == 0.85
+    assert outlook.tipo == "noul" and outlook.limiar == 0.5          # 31.13: 0,5 só em sombra (era 0,85)
     assert "Microsoft Outlook / Outlook" in outlook.instrucoes and set(outlook.opcoes) == {"true", "false"}
     assert "Microsoft Outlook / Outlook" in outlook.opcoes["true"] and "without" in outlook.opcoes["false"]
     pt = pergunta_do_app(OUTLOOK, pt=True)
@@ -202,6 +202,22 @@ class _Lista:
 
 CADASTRO = [{"id": "instagram", "name": "Instagram", "package": "com.instagram.android"},
             {"id": "outlook", "name": "Microsoft Outlook", "package": "com.microsoft.office.outlook"}]
+
+
+def test_31_13_na_sombra_0_6_ja_e_sim_e_a_probabilidade_fica_gravada(tmp_path: Path, r5_liberada: None) -> None:
+    """31.13/29.75: com o limiar da sombra em 0,5, a paráfrase com p=0,6 (abaixo do 0,85 pré-registrado) já é `sim`; a
+    probabilidade fica na linha, e o relatório ainda pode medir em 0,85."""
+    decisor = DecisorFalso({id_da_pergunta("outlook"): _noul(0.6), id_da_pergunta("instagram"): _noul(0.49)})
+    db = banco(tmp_path, "r5_limiar.sqlite3")
+    sombra = RepositorioDeSombra(db)
+    porta = Porta(decisor, cfg=CFG_APPS, observador=observador_de_sombra(sombra))
+    ConsumidorDeApps(porta, sombra).observar(run_id="r1", comando="leia o meu e-mail", apps=[OUTLOOK, INSTAGRAM],
+                                             citados=["instagram"])
+    porta.aguardar_sombras()
+    linhas = {r["pergunta_id"]: dict(r) for r in db.query("SELECT * FROM decisao_fechada_sombra")}
+    assert linhas[id_da_pergunta("outlook")]["escolha"] == SIM
+    assert linhas[id_da_pergunta("instagram")]["fallback_reason"] == "abaixo_do_limiar"
+    db.close()
 
 
 def test_ligada_e_travada_a_sombra_nao_le_o_cadastro(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
