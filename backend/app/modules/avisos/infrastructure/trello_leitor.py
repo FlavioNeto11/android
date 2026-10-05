@@ -66,6 +66,13 @@ PREFIXO_DO_FATO = "fato:"
 #: `responde_a`, seguida do número da pergunta tirado do nome do cartão ("P-006 · …"), ou nada se o nome não o trouxer.
 MARCA_DA_PERGUNTA = "pergunta:"
 PAPEIS_DAS_PERGUNTAS = ("perguntas", "perguntas_respondidas")
+#: Segundo fator da resposta num cartão de pergunta (revisão do #447): a Central e as sessões escrevem com o token do
+#: dono, e só o 🤖 os separava. O que ele digita no aplicativo ou no site vem sem `appCreator`; o que sai pela API leva
+#: o app (medido em 05/10 nas 9 respostas dele e nos comentários da Central). Com o app, a resposta não conta; sem o
+#: campo no retorno, não dá para confirmar a autoria e ela também não conta (falha fechada).
+AUTORIA_DE_APP = "app"
+AUTORIA_NAO_CONFIRMADA = "nao_confirmada"
+_SEPARADOR_DA_AUTORIA = ";autoria="
 _NUMERO_DA_PERGUNTA = re.compile(r"^\s*(P-\d{3,})(?!\d)")
 #: Comentário que começa com isto é de uma IA (a Central ou uma sessão), nunca um pedido do dono, que não usa 🤖.
 MARCA_DE_IA = "🤖"
@@ -184,6 +191,10 @@ def recebida_da_action(action: Mapping[str, object], cfg: TrelloCfg, *,
         if fato is None and lista is not None and lista in das_perguntas:
             numero = _NUMERO_DA_PERGUNTA.match(str((_mapa(dados.get("card")) or {}).get("name") or ""))
             fato = f"{MARCA_DA_PERGUNTA}{numero.group(1) if numero else ''}"
+            if "appCreator" not in action:
+                fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_NAO_CONFIRMADA}"
+            elif action.get("appCreator") is not None:
+                fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_DE_APP}"
         # Qualquer 🤖 no começo é de IA, não do dono: a Central, a sessão Canais, a orquestradora (`🤖 ORQ`) e os comentários
         # antigos (`🤖 HH:MMZ ·`) escrevem todos com o token dele. Regra C-07 de docs/dominios/canais.md.
         if texto.lstrip().startswith((PREFIXO_DA_IA, MARCA_DE_IA)) or (da_central is not None and da_central(ident)):
@@ -251,6 +262,11 @@ REPASSE_COMENTARIO = "comentario"
 #: sim do 28.30 na hora da ação.
 REPASSE_RESPOSTA_A_PERGUNTA = "resposta_a_pergunta"
 RESPOSTA_A_PERGUNTA = "Recebi. A ANA repassa à frente que perguntou."
+#: O cartão cujo nome não começa por `P-NNN` (minúscula, "Re: P-006", "P-06"): a resposta segue, marcada para a
+#: orquestradora conferir o cartão antes de registrar a decisão (revisão do #447).
+SEM_NUMERO_DA_PERGUNTA = "sem número: conferir o cartão antes de registrar decisão"
+MOTIVO_ESCRITA_POR_APP = "escrita por app"
+AUTORIA_NAO_CONFIRMADA_TEXTO = "autoria não confirmada: não registrar decisão"
 #: O operador da linha sem autor lido: não casa com nenhum `membro_dono` (os ids do Trello são hexadecimais).
 AUTOR_DESCONHECIDO = "desconhecido"
 TIPO_DO_COMENTARIO = "trello.comentario"
@@ -332,7 +348,8 @@ class ConversaDoTrello(ConversaDoCanal):
             # 28.51: a resposta do dono a uma pergunta da lista de perguntas, não um comentário de cartão do plano.
             if not texto.strip():
                 return Intencao("vazia")
-            return Intencao("orquestradora", ref=responde_a[len(MARCA_DA_PERGUNTA):] or None, texto=texto.strip(),
+            numero, _, autoria = responde_a[len(MARCA_DA_PERGUNTA):].partition(_SEPARADOR_DA_AUTORIA)
+            return Intencao("orquestradora", ref=numero or None, texto=texto.strip(), alvo=autoria or None,
                             repasse=REPASSE_RESPOSTA_A_PERGUNTA)
         if fato is None and not texto.lstrip().startswith("/"):
             # Comentário num cartão que não é de aviso da Central (os cartões do plano, 28.30): não é pedido nem comando,
@@ -387,8 +404,19 @@ class ConversaDoTrello(ConversaDoCanal):
     async def _resposta_a_pergunta(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         """28.51: o comentário do dono num cartão da lista de perguntas é a resposta dele. Vai à orquestradora com o
         número da pergunta e o texto, sem pedido de confirmação no Telegram, e o cartão recebe uma linha só."""
-        self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora",
-                         previa={"repasse": REPASSE_RESPOSTA_A_PERGUNTA, "texto": i.texto, "pergunta": i.ref},
+        if i.alvo == AUTORIA_DE_APP:
+            # Escrita por app (a Central, um script ou uma sessão com o token dele), não digitada por ele: não conta.
+            self.repo.marcar(self._id(linha), "ignorada", intencao="vazia", destino="central",
+                             previa={"repasse": REPASSE_RESPOSTA_A_PERGUNTA, "motivo": MOTIVO_ESCRITA_POR_APP},
+                             de=("recebida",))
+            return
+        previa: dict[str, object] = {"repasse": REPASSE_RESPOSTA_A_PERGUNTA, "texto": i.texto, "pergunta": i.ref}
+        marcas = [AUTORIA_NAO_CONFIRMADA_TEXTO] if i.alvo == AUTORIA_NAO_CONFIRMADA else []
+        if i.ref is None:
+            marcas.append(SEM_NUMERO_DA_PERGUNTA)
+        if marcas:
+            previa["aviso"] = "; ".join(marcas)
+        self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora", previa=previa,
                          de=("recebida", "pergunta"))
         await self._responder(saida, linha, RESPOSTA_A_PERGUNTA)
 

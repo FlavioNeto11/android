@@ -269,6 +269,10 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   vai à orquestradora com o número da pergunta (`previa.pergunta`, tirado do nome `P-NNN`), sem pedido no Telegram, e o
   cartão recebe uma linha só. O resto do 28.30 não muda.
 - A instalação precisa dos dois ids em `trello.listas` do `config.yaml` (vale na subida); sem eles nada muda.
+- Revisão do #447: só conta como resposta do dono a action do membro dele, sem 🤖 e sem `appCreator` (o que sai pela
+  API com o token dele leva o app; medido em 05/10). Com o app, `ignorada` ("escrita por app"). Sem o campo, chega
+  marcada "autoria não confirmada". Nome sem `P-NNN` chega marcado "sem número". Testes do 🤖 e do "sim" com aprovação
+  aberta.
 - Prova: `simulated` (`backend/tests/test_canais_respostas_as_perguntas.py`). Real: `not_run`.
 
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
