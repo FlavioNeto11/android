@@ -225,6 +225,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Prova:** `simulated`. `backend/tests/test_causa_sem_texto_resto.py` (8 casos) e
   `test_openai_provider.py::test_argumentos_ilegiveis_da_ferramenta_viram_erro_sem_o_texto_na_causa`. O segredo vai num
   valor que a mensagem antiga mostrava, e os testes conferem a mensagem, `__cause__` e `__context__`. Real: `not_run`.
+## 2026-10-05 — 29.98: o conjunto das catracas em arquivo de ids (branch test/29-98-catracas)
+
+- `backend/tests/catracas.txt` (53 ids) e `scripts/tests/catracas.txt` (6 ids): os testes que inspecionam o código
+  inteiro ou assinaturas, fora do dirigido comum. Uso: `pytest @tests/catracas.txt -n 4` (de `backend/`) e
+  `pytest @scripts/tests/catracas.txt` (da raiz).
+- `backend/tests/test_catracas.py` trava o formato (só id por linha; um `#` ou uma linha vazia faz a coleta voltar
+  vazia) e a existência de cada id, lida por `ast` sem importar os módulos.
+- Regra em `.claude/rules/testes.md`: todo dirigido que toque `backend/app` roda o conjunto inteiro.
+- Prova: `simulated`, em Idle, na máquina central: o backend deu 86 passed em 30,8 s com `-n 4` (37 s de parede); os
+  scripts, 6 passed em 0,4 s; `test_catracas`, 6 passed. Real: não se aplica.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
