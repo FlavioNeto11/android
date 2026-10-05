@@ -19,6 +19,85 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+
+## 2026-10-05 — 29.131 e 29.138: as sobras das leituras do #433, #435, #441 e #443, e os achados das revisões automáticas do #443 (branch fix/29-131-sobras-supervisor-readocao)
+
+Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
+
+- #433 (29.124):
+  - R1: a marca da partida anda DENTRO do `AppState`. O `Database.migrate(ao_aplicar=)` avisa a cada migração
+    aplicada (um erro de quem acompanha não interrompe nada), e o `AppState` grava `migrando` e, depois dos aparelhos,
+    `aparelhos`. Os 240 s passam a valer por passo, e os 600 s pela partida inteira (o `docs/operacao.md` diz isso;
+    antes, uma migração lenta passava dos 240 s e era morta no meio).
+  - O `main()` grava `antes_do_estado` e `estado_pronto` pela nova `estado_com_marca(cfg, fabrica)`, testável.
+  - N1: a linha do kill diz há quanto tempo a pilha citada foi gravada, e na partida o vigia espaça os despejos em
+    120 s (aos 60, 180 e 300 s), em vez de 30 s.
+  - A recusa por backend alheio respondendo zera `reinicios_seguidos`.
+- #435 (29.125):
+  - o docstring do `_kill_orphan` cita `supervisor.e_emulador`;
+  - sai a lista decorativa do teste;
+  - o `signal` deixa de ser proibido (um CTRL_BREAK ao próprio backend não é matar outro processo);
+  - o `aprendizados.md` marca o `_matar_filhos` como removido.
+- #441 (29.127):
+  - o `_offset_do_spawn(log_path)` serve ao spawn e à retentativa a frio, e o teste confere os dois sites;
+  - as guardas do offset -1 são discriminadas por um `Path.open` que reprova se for chamado;
+  - o `_termina_em_quebra` dá False num erro de leitura com o arquivo existindo (o `\n` a mais é o lado seguro).
+- #443 (29.132):
+  - S1: o Appium novo que morre sem ligar a porta devolve a decisão ao reaproveitamento também quando o `is_up` de
+    2 s falha, se alguém escuta na porta;
+  - o `start()` pergunta o dono da porta antes de subir outro processo;
+  - a porta ser do processo novo prova a subida, sem depender da frase `listener started on` de uma versão;
+  - o `_donos_da_porta` lista TODOS os ouvintes;
+  - sai o `_confirm_masking`, que ficou sem chamador.
+- 29.138, achados das revisões automáticas do #443, conferidos e todos procedentes:
+  - supervisor (Copilot): a saúde que respondeu prova que ESTE processo acabou a partida. O `respondeu_nesta_subida`
+    desliga a tolerância da partida até a próxima subida (zera em `_subir`). Antes, com a marca final sem gravar (a
+    escrita engole o erro), um laço travado depois do "no ar" era tolerado como partida lenta por até 240/600 s;
+  - `_own_orphan` (Copilot): o dono da porta conhecido e alheio é externo; o `appium.pid` só vale quando o sistema
+    não diz quem escuta. O teste que esperava o arquivo valendo passa a afirmar `None`;
+  - `_subir` (Codex, P1): com os donos da porta visíveis, só a porta ser do processo novo prova a subida. Um Appium
+    anterior ainda subindo escreve no mesmo `appium.log` (append) e podia pôr a frase do ouvinte depois do `offset`;
+    a frase só vale sem visibilidade dos donos;
+  - limite que fica: a linha das regras de mascaramento no log não se atribui a um processo (o log do Appium não traz
+    pid); com a porta provada deste processo, o resto do risco é o anterior, do mesmo projeto e com as mesmas regras,
+    ter escrito a linha.
+- Prova `simulated`, em Idle, -n 2, um arquivo por vez:
+  - `backend/tests/test_sobras_29_131.py` 13, `test_achados_29_138.py` 5, `test_appium_start_pid_novo.py` 7,
+    `test_supervisor_partida.py` 22, `test_saude_do_appium.py` 9, `test_supervisao_do_central.py` 20 (1 skipped),
+    `test_vigia_do_laco.py` 15, `test_readocao_marco.py` 13, `test_readocao_sem_log_antigo.py` 4,
+    `test_arquitetura.py` 9; `@tests/catracas.txt` 88 passed;
+  - 14 mutações, cada uma reprovada. As 9 do 29.131: migrate sem aviso; `AppState` sem `aparelhos`; recusa que não
+    zera; kill sem idade; partida com redespejo de 30 s; erro de leitura dando True; S1 só pelo `is_up`; `start` sem
+    o dono da porta; sem a prova pela porta. As 5 do 29.138: sem a guarda da resposta; sem marcar a resposta; sem
+    zerar na subida; o arquivo valendo com o dono conhecido; a frase valendo com o dono visível.
+- Mypy `real` (05/10, central, mypy 2.3.1 num venv isolado): 257 = teto. Os arquivos deste ramo ficam fora dos
+  pacotes da catraca (`app.contracts`, `app.modules`, `app.shared`).
+- `not_run`: a prova real (a próxima partida do central e a próxima subida do Appium depois do deploy).
+
+## 2026-10-05 — 29.132: o `start()` do Appium só dá "subiu" quando é ele que liga a porta (branch fix/29-132-appium-start-pid-novo)
+
+- Medido em 05/10 (29.126). Às 13:10Z, com a máquina saturada:
+  - o `is_up` de 2 s não viu o Appium anterior (13056, nosso, com as regras), e o backend subiu outro (36048);
+  - o `is_up` seguinte foi respondido pelo 13056, e o `_confirm_masking` leu o log do 36048 antes de ele carregar as
+    regras (13:11:54Z), daí o "não confirmado";
+  - o `appium.pid` virou 36048, que nunca ligou a porta e sumiu;
+  - às 13:12:50Z, o backend seguinte chamou o 13056 de "servidor externo", e o `type_secret` ficou bloqueado em
+    todos os aparelhos.
+- `backend/app/automation/appium_server.py`:
+  - "subiu" só quando o log DESTE processo diz `listener started on` e a porta responde; o mascaramento é lido no
+    mesmo texto;
+  - o `appium.pid` só é gravado nessa hora;
+  - se o novo morre sem ligar a porta e alguém responde nela, a decisão volta ao `_reuse_running`, uma vez;
+  - o `_own_orphan` procura primeiro o DONO DA PORTA (`psutil.net_connections`) e depois o PID gravado, com o mesmo
+    critério de "é nosso" (linha de comando em `tools/appium`), e a prova da máscara segue a mesma.
+- O Appium falso de `test_supervisao_do_central.py` passa a escrever a linha `listener started on` ao ligar a porta,
+  como o de verdade (`appium.log`, 09:38:54 local).
+- Prova `simulated`: `backend/tests/test_appium_start_pid_novo.py`, 7 testes, com `test_saude_do_appium.py`: 16
+  passed. Mutações, cada uma reprovada: "subiu" só pelo `is_up` (2); `appium.pid` antes de ligar (2); morto com outro
+  na porta dado como falha (1); sem o dono da porta (2); dono alheio aceito (1). Vizinhos: 59 passed (com os testes
+  de `node` de verdade do Appium órfão) e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a
+  próxima subida do backend com outro Appium na porta).
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.
@@ -135,6 +214,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   de `node` de verdade do Appium órfão) e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a
   próxima subida do backend com outro Appium na porta).
 
+
 ## 2026-10-05 — 29.125: o supervisor só mata o backend (branch fix/29-125-supervisor-so-o-backend)
 
 - Censo de 05/10: o Appium e o sing-box do backend do deploy 37 seguiam vivos com o pai morto. A varredura de filhos
@@ -203,6 +283,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   central, compartilhado com o backend no ar) e a prova real, que só vem com um travamento de verdade depois do
   deploy.
 
+## 2026-10-05 — 29.127: o marco da subida no log do emulador e o offset que nunca lê o histórico (branch fix/29-127-readocao-marco)
+
+
 ## 2026-10-05 — 29.120: a corrida do teste da segunda leitura do log do snapshot (branch fix/29-120-corrida-releitura)
 
 - `test_wake_relogio_do_snapshot.py::test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura` reprovou
@@ -216,6 +299,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   chega. O código do central não muda.
 - Prova `simulated`: `backend/tests/test_wake_relogio_do_snapshot.py`, 12 passed. O teste antigo com o prazo em 0 s
   reprova sempre (o disparo dentro do `_wait_boot`); o novo não depende do prazo, porque captura a releitura.
+
+- O incidente de 05/10 (29.122): às 12:56:52Z, um backend recém-subido readotou 01, 03 e 06. Com o host saturado,
+  a sonda não fechou e a readoção caiu no `_wait_boot`, que procura o diálogo de relatório de falha (29.55 c) a
+  partir de `boot_log_offset`. Esse offset só era gravado no spawn, e um backend novo tem 0. O detector leu o log
+  inteiro, achou `Showing crashdialog` de boots antigos (três vezes no log do 03 e três no do 06, nenhuma no do
+  01) e encerrou o 03 e o 06, ambos com conta real, às 12:57:05Z e 12:57:29Z.
+- `DeviceManager._adopt` (local) grava como offset o começo da subida em curso, a última linha `emuglConfig_init`
+  (`emu.inicio_da_subida_atual`, fora do laço): o diálogo de uma subida vem depois das linhas dela (medido nos logs do
+  03 e do 06). O diálogo desta subida segue visto, mesmo escrito antes do reinício do backend; os das anteriores, não.
+  Sem a linha, vale o fim do arquivo (aí um diálogo já na tela não é visto, e a espera vai até o prazo do boot); o
+  arquivo que some no meio dá 0, não uma exceção na partida. Na readoção, o veredito do snapshot e a releitura do
+  29.76 (d) nem rodam (o `_wait_boot` adotado não é wake).
+- Prova `simulated`: `backend/tests/test_readocao_sem_log_antigo.py`, 4 passed: o diálogo antigo não para; o escrito
+  depois da readoção para; o desta subida, escrito antes da readoção, para (M1); log sem a linha vai ao fim; arquivo
+  que some vira 0. Mutações: sem o conserto reprova o do incidente; o offset no fim do arquivo (sem o M1) reprova 2.
+  Vizinhos: 233 passed (prontidão, readoção, wake, apps de fundo, arquitetura, ciclo de vida do emulador, relatório
+  de falha, veredito do snapshot, executor do worker, pacote do agente, log do emulador) e `@tests/catracas.txt` 88
+  passed. `real`: `not_run` até o deploy (o Orquestrador religa 01, 03 e 06 por `start`).
 
 ## 2026-10-05 — 29.117: a árvore do pytest num Job Object e uma rodada por vez no `pg-rapido.py` (branch fix/29-117-job-object, sobre o 29.113)
 
