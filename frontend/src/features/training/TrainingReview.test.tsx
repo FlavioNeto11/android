@@ -532,6 +532,7 @@ it('resposta com cara de senha (resposta_sensivel) fica no campo da pergunta, se
   // Mexer na resposta tira o aviso.
   await setValue(campo(), 'Muda a cada cliente.');
   expect(campo().getAttribute('aria-invalid')).toBeNull();
+});
 
 it('com entrada sem destino a prévia não é pedida (a tela já diz o motivo); dado o destino, ela roda', async () => {
   backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
