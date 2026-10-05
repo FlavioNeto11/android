@@ -668,14 +668,17 @@ avisos depois da faxina"), e a trava cai no TTL.
       pergunta sensível, e é recusada como possível credencial. O reply à pergunta de escolha passa.
     - **A ordem é a do chat** (C1 da leitura do #412): só casa a pergunta de `message_id` menor que o da resposta, e a
       substituição só fecha a antiga se a nova veio antes da resposta. O `recebida_em` é a hora em que o nosso laço
-      gravou, e uma pergunta mandada nessa brecha parecia anterior ao "1".
+      gravou, e uma pergunta mandada nessa brecha parecia anterior ao "1". A comparação é numérica, e não há teto pelo
+      relógio (28.47): a pergunta que o script gravou um instante depois do "1", mas que veio antes dele no chat, casa.
     - **A resposta diz qual pergunta** (D1): "Li o seu "1" como a opção 1 da minha pergunta das HH:MMZ. Se não era
       isso, responda nela com Responder.", em reply à pergunta casada, não ao "1".
     - **Opção é número ou uma letra:** o `--escolha` recusa palavra ("sim", "ok", "pode", "publica") e as letras S e N.
       A conversa nunca lê palavra de aval como opção, mesmo com a marca forjada.
-    - **Limites conhecidos, sem conserto agora:**
-      - a mensagem encaminhada pelo dono conta como dele;
-      - se a marca da pergunta nova não grava, a antiga segue aberta, e o script sai com erro visível (código 3).
+    - **A mensagem encaminhada não casa** (28.47): a tradução marca o `forward_origin` (ou o `forward_date` da API
+      antiga), e a marca vai gravada na `previa` da linha (`{"encaminhada": true}`). O texto é de outra pessoa,
+      mesmo que quem encaminhou seja o dono. Fora da escolha, ela segue o caminho de sempre.
+    - **Limite conhecido:** se a marca da pergunta nova não grava, a antiga segue aberta, e o script sai com erro
+      visível (código 3).
     - **Fora do escopo:** o Trello e o convidado ficam fora.
   - O texto da recusa ou do erro ao iniciar segue o estado relido (28.38):
     - `running` ou `paused`: "em andamento";
@@ -729,7 +732,6 @@ avisos depois da faxina"), e a trava cai no TTL.
   - P1: item que o dono não veria por inteiro (texto com nome de persona, contato ou segredo, texto longo, bloco que não
     cabe inteiro numa mensagem, imagem que não confere) fica FORA do sim pelo canal. Ele pede o dono no painel ou na
     execução, e a prévia diz quantos são. A imagem só sai para o item que fica no sim pelo canal.
-  - Desafio, 2FA e CAPTCHA seguem com a pessoa na execução (ADR-009); a prévia lembra disso no rodapé.
   - Texto puro (R2): o adaptador não usa `parse_mode`, e o texto do item chega como é.
   - A porta ilegível não trava o pedido: a execução inicia e a porta decide no despacho, como antes do 28.27.
   - Nada disso vai ao Trello: a prévia da porta não é pendência.
@@ -806,6 +808,8 @@ Os scripts da operação provisória ficam versionados em `.claude/canais/`, e o
     - a imagem só sai se o sha256 dos bytes bater com o `imagem_sha256` que a prévia da porta mostra. Esse sha é lido
       da própria Central (`sha_da_imagem_na_porta`, a mesma conta do `porta_do_plano._item`). Um teste em
       `test_rotulo_ia.py` prende as duas juntas, inclusive no `None` da imagem de outra persona;
+    - com o item já decidido no plano, o `midia_sha256` congelado no sim (`sha_da_imagem_aprovada`) é a âncora:
+      se a prévia de agora disser outro sha, nada sai (28.48);
     - o `--previa <porta.json>` é opcional e, se vier, também tem de bater com a Central;
     - cada falha diz o seu motivo e nada sai: a Central não lida, a imagem fora do armazém, o sha diferente, o chat
       vazio;

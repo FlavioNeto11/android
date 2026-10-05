@@ -1,10 +1,43 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `7d104faa` (migração 113, deploy 36 mais a subida a quente do 29.111); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 05/10/2026: runtime do backend em `86afe1b5` (migração 115, deploy 38); `main` em `f5d9a096`; site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 38 no ar (05/10/2026, 16:02Z, central `86afe1b5`, migração `115_receita_nao_aplicavel`).** Vinte e quatro
+  merges sobre `ebc316f9`. Itens: 29.113, 29.117, 29.120, 29.121, 29.123, 29.124, 29.125, 29.127, 29.115, 29.118,
+  29.119, 28.47, 28.48, 30.75, 30.80, 31.80, 31.82, 31.83, 31.84, 31.85, 31.94 e 31.95; em parte, 31.86 (B), 31.89
+  (F1 e F6) e 31.90 (A). O detalhe de cada um está no [CHANGELOG](../CHANGELOG.md) e no
+  [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): avanço direto de `ebc316f9` para `86afe1b5`, com push; ensaio com a cópia
+    `data\backups\20261005-125938` (192,7 MB, íntegra), que aplicou só a migração 115 numa cópia restaurada;
+    `scripts/deploy.ps1 -PularBackup` com `rc=0`; `GET /api/health` ok e sem problemas (o `appium_log_masking_off`
+    sumiu); prova de fora de 16:03:35Z a 16:03:43Z com `rc=0` e 46 linhas ok (`/api/instances` 401, e 403 com Host
+    forjado); agente do notebook em `0.1.0+86afe1b` às 16:09Z (procedimento A10 de [`worker.md`](worker.md)).
+  - `real`: android-01, android-03 e android-06, parados desde o incidente das 13:15Z, religados um por vez pela API
+    local de 16:06:49Z a 16:18:53Z; na leitura de 16:23:47Z os três estavam `online`, com automação `ready` e
+    internet `healthy`. A subida do 01 pegou a máquina a 92 % de CPU (testes das frentes ao mesmo tempo); os testes
+    pararam e a pausa de reparo cobriu os três durante a subida.
+  - `simulated` (suíte 38 sobre `86afe1b5`, em Idle): `scripts/tests` 669 passed; backend em SQLite com `-n 6`,
+    11689 passed, 13 skipped e 1 failed (a catraca do `Any` do #442, consertada no `97dbf664`; dirigidos depois, 71
+    passed); frontend com typecheck limpo, 1650 passed e build; catracas 88 + 6 passed; mypy 257, igual ao teto;
+    PostgreSQL dirigido (473 arquivos, `-n 8`) com 9824 passed e **5 failed conhecidas** em `test_sobreposicao*.py`
+    (8 com `-n 1`; 25 passed sem xdist, no PostgreSQL e no SQLite). **A etapa do PostgreSQL não passou inteira**; a
+    causa está aberta no item 29.139.
+  - `real` (volta no navegador pela frente do painel, ~16:20Z, só leitura e estado de tela): lote de Personas,
+    Limites, Rede e revisão do ensino funcionam; oito achados viraram trabalho (31.90-B, 29.141 e 29.142).
+  - `not_run`: os estados do ensino com o controle assumido (gravando, recusas, "Limpar o campo") no navegador; a
+    prova real do ensino num aparelho de teste, autorizada às 16:25Z e ainda sem resultado.
+- **GitHub Copilot no repositório (05/10/2026, item 29.134, `f5d9a096`).** Pedido do dono: usar o Copilot Pro+ para
+  aliviar a carga das sessões e desta máquina. Instruções do repositório e ambiente do agente de nuvem no lugar; a
+  revisão de PR é pedida PR a PR pela orquestradora. Como operar: [`operacao.md` § 5](operacao.md#5-ci).
+  - `real`: três revisões em 05/10 (PRs de 756 a 1.549 linhas), 566,87 créditos (US$ 5,67), de 4 a 6 minutos cada, em
+    runner hospedado; 10 achados, 9 confirmados pelas frentes. Por esse custo a revisão automática ficou desligada.
+  - `not_run`: o agente de nuvem (a primeira tarefa ainda não foi atribuída).
+- **Plano-100 em 636 itens, 535 implementados (05/10/2026, 16:25Z).** Entraram os 78 IDs das janelas 37 e 38, entre
+  eles a Fase 33 (integração com serviço externo de autorização, 8 itens). As linhas 3.3, 6.2, 6.4 e 8.3 deixaram de
+  citar quatro achados cujo texto saiu do apêndice no `ebc316f9`.
 - **Subida a quente do 29.111 (05/10/2026, 10:40Z, central `7d104faa`).** A pedido do dono, o site público diz o que o
   nome ANA significa: **Agente Neural Avançada** (escolha dele, 05/10; registrada no ADR-075). A frase segue a regra da
   página: a ANA rege, as personas dão voz. Sem a forma em inglês; título, descrição e imagem social não mudaram.
@@ -41,10 +74,9 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     (29.103); no editor de grupo, "só vale a última" e a trava durante a leitura com dado real (29.106: os perfis do
     central rendem o mesmo rascunho); defeito de borda ou API aberta de verdade, que não se provocam (29.97, 29.101);
     o A/B da imagem enquanto falta saída (31.71) e o `wait_for` numa tela lenta (31.74).
-- **Subida a quente do 29.110 (05/10/2026, 08:47Z, central `9f00c122`).** Por ordem do dono, a seção "O que a ANA não
-  faz" saiu do site público (ADR-076); os limites de comportamento do produto não mudaram. `real`: `deploy.ps1 -Ensaio`
+- **Subida a quente do 29.110 (05/10/2026, 08:47Z, central `9f00c122`).** `real`: `deploy.ps1 -Ensaio`
   às 08:45:50Z e `deploy.ps1 -PularDependencias` de 08:45:54Z a 08:47:31Z; prova de fora de 08:47:39Z a 08:47:46Z com
-  `rc=0` e 46 linhas ok; página pública conferida no navegador às 08:48Z, sem a seção, com 9 seções e 5 recursos,
+  `rc=0` e 46 linhas ok; página pública conferida no navegador às 08:48Z, com 9 seções e 5 recursos,
   nenhum de fora.
 - **Deploy 35 no ar (05/10/2026, 06:28Z, central `d025b671`, migração `110_passou_a_porta`).** Dezenove PRs: avisos e
   canais (28.37 a 28.40), execução e planejamento (31.56, 31.64 a 31.67, 31.69, 31.70), portal (29.89, 29.91, 29.95),
@@ -239,7 +271,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
 - **Rodada de 29/09 — proteção de contas (ADR-055, Fase 21) e aprendizado contínuo (ADR-054, Fase 20): IMPLANTADA.**
   - **No ar:** `f497075` desde 29/09 ~07:38Z (sem migração nova; `/api/health` `ok`, `problems: []`; agente do
     notebook em `0.1.0+f497075`). Antes: `9348e9c` às ~04:17Z (o reparo espera a máquina aliviar); `c359f65` +
-    `2511b12` às ~03:55Z (migrações 054 e 055; detector de conta travada, quarentena, uma conta por alvo, disjuntor,
+    `2511b12` às ~03:55Z (migrações 054 e 055; quarentena, uma conta por alvo, disjuntor,
     verificador de DM, fundação do aprendizado); a leva aberta `7a02491` e `e9da86e`.
   - **Aprendizado (20.3–20.10):** costuras e `failure_kind` gravado, "o que mais falha" com backlog, botão "Deu certo /
     Deu errado", D1 no fluxo e na receita, página Aprendizado, lições medidas (`shadow`), telas aprendidas (`observe`),
@@ -262,8 +294,8 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     - remover ou não do cofre as credenciais das 5 contas bloqueadas;
     - as escolhas do pacote frota (ADR-055).
   - **Atenção:** antes de qualquer experimento num aparelho com Instagram, screencap e conta logada; `account_label` e
-    `/personas` não bastam (K-053). `hide_error_dialogs` fica em 1 (K-054). Não mirar de novo a mesma pessoa com mais de
-    uma conta (K-057). Um trabalho pesado por vez no central (K-058).
+    `/personas` não bastam (K-053). `hide_error_dialogs` fica em 1 (K-054). Um trabalho pesado por vez no central
+    (K-058).
   - **Próxima ação:** as propostas ao dono (as Fases 20 e 21 já estão no estado do plano, `b70fba0` e `a98044c`):
     o 18.9 (nomes históricos: a tabela `instagram_profiles` e as rotas `/api/instagram/…`) e o 12.3 (apps novos
     operando de verdade: a persona com mais de um app com login gerenciado; qual app vem primeiro é do dono). Seguem
@@ -417,7 +449,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
     ciclo.
   - O checkout do ambiente central fica no commit implantado. Commits só de docs depois dele não pedem pull: um pull muda
     a versão que o agente compara.
-- **Implantado em 27/09 ~03:28 UTC (`8f7b94c`):** o bloqueio do perfil por desafio (ADR-029) e o CI com `npm run build`
+- **Implantado em 27/09 ~03:28 UTC (`8f7b94c`):** o CI com `npm run build`
   (B7), sobre a evolução de desempenho.
   - Central e agente do worker em `0.1.0+8f7b94c`, health `ok`, `problems: []`, sem migração, backup em
     `data/backups/20260927-002826`.
@@ -619,11 +651,9 @@ por decisão do dono.
 1a. **Evolução de desempenho: implantada e provada em 27/09.**
     - **Contas do Instagram (27/09, pedido do dono):** só `lucas.almeida9484` (android-01), `bruno.ferreira9267`
       (android-03) e `andre.carvalho9543` (android-06) funcionam.
-      - As outras cinco estão travadas e foram desatreladas: `blocked`, sem persona e sem aparelho. A tabela está
+      - As outras cinco foram desatreladas: `blocked`, sem persona e sem aparelho. A tabela está
         em [`relatorio-desempenho.md`](relatorio-desempenho.md) §10.
-      - Desafio de segurança passou a bloquear o perfil sozinho (ADR-029).
-      - O desafio do android-04 fica encerrado: a conta dele (`felipe.nogueira93762026`) é uma das travadas.
-      O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia. Depois que o desafio apareceu, não houve nenhuma interação.
+      O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia.
     - **Pesos em aberto, só com dado novo:** escalar receita divergida (reabre com n ≥ 30); renderer (reabre com
       emulador novo).
     - **Monitorar em uma semana:** `scripts/bench.py leitura --dias 7` contra

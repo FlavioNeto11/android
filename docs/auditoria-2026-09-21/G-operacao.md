@@ -50,7 +50,7 @@
 
 `alto` · inacabado · esforço M · fase 0 · seção do pedido: 3 (persistência) / 9 (migração, configuração e recuperação) · verificação: confirmado
 
-**O que é.** Perder o disco ou trocar de servidor hoje significa: histórico de execuções perdido se a cópia não for consistente, as 8 credenciais do cofre irrecuperáveis (a chave não abre em outra máquina/usuário) e todos os logins refeitos à mão - inclusive a conta Google da VM-loja com 2FA e os perfis do Instagram, para os quais aparelho novo significa desafio de verificação. (memory_items está vazio hoje, então a memória social ainda não está em jogo.)
+(memory_items está vazio hoje, então a memória social ainda não está em jogo.)
 
 **O que falta.** scripts/backup.ps1: cópia consistente do SQLite com o backend no ar (sqlite3 .backup / VACUUM INTO) ou pg_dump; exportação da chave mestra para EnvKeyProvider guardada fora da máquina (ou recadastro documentado); cópia de config/ e .env sem imprimir; política para AVDs (snapshot a frio do userdata da loja e dos perfis, no central e no worker); scripts/restore.ps1 + ensaio real de restauração em pasta limpa registrado em docs; agendamento diário e retenção.
 

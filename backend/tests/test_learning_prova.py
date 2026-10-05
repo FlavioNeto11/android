@@ -133,8 +133,10 @@ async def test_depois_da_prova_nao_ha_reuso_nem_fluxo_novo(real: Real) -> None:
 
 
 # ------------------------------------------------------------------ 4. a prova nunca espera uma pessoa
-def _nada_para_a_pessoa(db: Database, run_id: str) -> None:
-    """Nenhum rastro que chamaria uma pessoa, nem o gesto que ninguém fez."""
+def _nada_para_a_pessoa(db: Database, run_id: str, *, causa: str | None = None) -> None:
+    """Nenhum rastro que chamaria uma pessoa, nem o gesto que ninguém fez. 30.75: a parada no login grava a `causa`
+    (`blocked_kind='auth'`) no objetivo CANCELADO; quem chama a pessoa lê só `status='waiting_user'` (os avisos, a
+    fila de Pendências), e a parada que não é de login segue sem nada."""
     assert db.scalar("SELECT COUNT(*) FROM learning_signals WHERE kind='cancelou_execucao' AND run_id=?",
                      (run_id,)) == 0
     assert db.scalar("SELECT COUNT(*) FROM avisos_entregas") == 0
@@ -143,7 +145,7 @@ def _nada_para_a_pessoa(db: Database, run_id: str) -> None:
         dados = json.loads(e["data"]) if e["data"] else None
         assert aviso_de_evento(str(e["kind"]), dados, int(e["id"])) is None, e["kind"]
     obj = db.one("SELECT needs, blocked_reason, blocked_kind FROM objectives WHERE run_id=?", (run_id,))
-    assert obj is not None and obj["needs"] is None and obj["blocked_kind"] is None
+    assert obj is not None and obj["needs"] is None and obj["blocked_kind"] == causa
     assert db.scalar("SELECT COUNT(*) FROM events WHERE run_id=? AND kind='question.asked'", (run_id,)) == 0
 
 
@@ -168,7 +170,7 @@ async def test_prova_com_etapa_que_pede_pessoa_e_cancelada_pelo_sistema(real: Re
     run = real.prova("prova-caso-4a")
     await real.h.wait_run(run)
     _encerrada_pelo_sistema(real.db, run)
-    _nada_para_a_pessoa(real.db, run)
+    _nada_para_a_pessoa(real.db, run, causa="auth")
     # O controle: a MESMA situação numa execução comum segue o caminho de sempre (e o gesto de cancelar, sim, é sinal).
     comum = real.h.run(["android-01"])
     await real.h.wait_run(comum.id)

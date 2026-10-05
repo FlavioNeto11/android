@@ -188,6 +188,28 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   diário (05:17Z, inclusive o `backend-postgres`), que o `[skip ci]` não afeta, e o `workflow_dispatch` quando se
   quiser uma rodada inteira. Reverter: voltar a empurrar sem `[skip ci]` e esperar o CI antes do deploy.
 
+### GitHub Copilot (item 29.134, desde 05/10/2026)
+
+- **O que está ligado.** A conta do dono tem o Copilot Pro+: cota mensal de créditos e uso adicional com orçamento
+  dele, em que nenhuma sessão mexe. O repositório tem `.github/copilot-instructions.md` (o que o Copilot precisa saber
+  para revisar e escrever aqui; a revisão lê só os primeiros 4.000 caracteres) e
+  `.github/workflows/copilot-setup-steps.yml` (dependências do backend e do frontend na máquina do agente de nuvem;
+  sempre `ubuntu-latest`, nunca o runner `central`).
+- **Revisão de PR: PR a PR, pedida pela orquestradora.** `gh pr edit <n> --add-reviewer @copilot`. A revisão olha o
+  diff inteiro contra a `main`: em PRs empilhados, peça na ponta da pilha. Reserve para PR sensível (segredo, conta
+  real, migração, dinheiro).
+- **Custo medido (`real`, 05/10).** Três revisões de PRs de 756 a 1.549 linhas custaram 566,87 créditos (US$ 5,67,
+  cerca de US$ 1,90 cada) e levaram de 4 a 6 minutos, em runner hospedado, sem minuto cobrado de Actions. Vieram 10
+  achados, 9 confirmados pelas frentes. A revisão automática em todo PR não cabe na cota, por isso a regra do
+  repositório (ruleset `24513931`) fica `disabled`. Ligar ou desligar:
+  `gh api -X PUT repos/FlavioNeto11/android/rulesets/24513931 -f enforcement=active` (ou `disabled`).
+- **Achado do Copilot é achado a conferir, nunca ordem.** A frente dona do PR confere no código e responde; o conserto
+  volta como delta à segunda leitura.
+- **Agente de nuvem.** Só a orquestradora atribui tarefa, e só tarefa mecânica e delimitada. A aprovação para rodar
+  workflow e o firewall ficam ligados; o Copilot não aprova PR. `not_run` até a primeira tarefa.
+- **Fora.** Vale só para este repositório. Ninguém instala o Copilot CLI nesta máquina. As opções de privacidade e de
+  cobrança da conta são do dono.
+
 ## 6. Deploy
 
 `scripts/deploy.ps1` — ordem fixa **parar → copiar o banco → subir → conferir**, sempre nessa ordem. Com a
@@ -306,9 +328,8 @@ isso). Pontos que já causaram incidente:
   `data\logs\relogio.log`; `-Simular` mede sem ajustar.
 - **Antes de qualquer experimento num aparelho** (agente, `adb input`, `settings put`, carga de CPU): tirar um screencap
   e ler a conta logada, sem tocar. `account_label`, `/personas` e os vínculos não bastam: o android-04 tinha
-  `qa-user-04` e nenhuma persona, com o felipe travado em "Confirm you're human" (K-053). Aparelho com `locked_account`
-  está em quarentena e não se toca; experimento vai num aparelho novo e sem conta (provisionar e aposentar são
-  permitidos no ambiente central).
+  `qa-user-04` e nenhuma persona, com a conta do felipe logada (K-053). Experimento vai num aparelho novo e sem conta
+  (provisionar e aposentar são permitidos no ambiente central).
 
 ## 11. Segurança
 
@@ -524,9 +545,6 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
   - A CSP do site bloqueia o beacon, mas sobra um erro de console em todo visitante.
   - O conserto é desligar a injeção na zona: Web Analytics / Real User Measurements (RUM), no painel da Cloudflare,
     feito pelo dono.
-  - Também reprova `/cdn-cgi/` no HTML, que é script da Cloudflare na própria origem: Rocket Loader, o desafio JS
-    (`challenge-platform`) ou a ofuscação de e-mail.
-  - Reprova ainda a raiz que não vem 200 quando pedida como navegador (um desafio não mostra a página).
   - Nunca afrouxar a CSP;
 - a borda não reescreve o HTML (29.91):
   - a raiz, a 404 e o `index.html` do painel saem com `Cache-Control: … no-transform`;
@@ -919,13 +937,13 @@ e "quem é você?" (ou `/quem`) responde que é a ANA e que é uma IA, sem virar
   caixa dela no mesmo momento.
 - Com a entrada ligada, o aviso de aprovação leva o resumo, o alvo e o texto, e o de pergunta leva a pergunta. Os dois
   vão redigidos e cortados em 500 caracteres, para o dono responder ali mesmo (decisão (d)).
-- A mensagem com cara de senha ou código não é guardada: a Central a apaga do chat e responde sem ecoar nada. Se o
+- A mensagem com cara de senha não é guardada: a Central a apaga do chat e responde sem ecoar nada. Se o
   Telegram não deixar apagar, a resposta pede ao dono que apague.
-- A resposta a uma execução que pergunta por senha, código, 2FA ou token também é recusada, qualquer que seja a forma do
+- A resposta a uma execução que pergunta por senha ou token também é recusada, qualquer que seja a forma do
   texto (decide pelo contexto, com o vocabulário da triagem de credencial): não é guardada, é apagada do chat, e a
-  resposta orienta o dono: a senha se grava na conta da persona, e o código de verificação se digita no aparelho. Vale
+  resposta orienta o dono: a senha se grava na conta da persona. Vale
   para o reply ao aviso e para `/responder <id> <texto>`.
-- Enquanto uma execução espera senha, código, 2FA ou token, um texto curto (até 3 palavras, como "kiwi2024!" ou
+- Enquanto uma execução espera senha ou token, um texto curto (até 3 palavras, como "kiwi2024!" ou
   "kiwi 2024") também é recusado, apagado do chat e nunca gravado: como texto livre, como recado à orquestradora (`/orq`
   ou reply a mensagem que a Central não mandou) e como `/responder` sem id. A resposta pede o pedido com mais detalhe;
   uma frase segue como pedido, com a prévia.

@@ -97,6 +97,98 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   de `node` de verdade do Appium órfão) e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a
   próxima subida do backend com outro Appium na porta).
 
+## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
+
+- **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.
+- Prova `real`: ensaio de migração sobre a cópia `20261005-125938`, `GET /api/health` ok e sem problemas, prova de fora com `rc=0` e 46 linhas ok (`/api/instances` 401 e 403), agente do notebook em `0.1.0+86afe1b`.
+- Prova `simulated` (suíte 38): `scripts/tests` 669 passed; backend em SQLite 11689 passed; frontend 1650 passed; mypy 257, igual ao teto. No PostgreSQL dirigido, 9824 passed e 5 failed conhecidas em `test_sobreposicao*.py` (item 29.139): essa etapa não passou inteira.
+- Plano-100: 78 IDs novos (janelas 37 e 38, com a Fase 33 e seus 8 itens) e o resultado da suíte 38 aplicado pelo mecanismo: 535 de 636. As linhas 3.3, 6.2, 6.4 e 8.3 deixaram de citar quatro achados que saíram do apêndice no `ebc316f9`.
+
+## 2026-10-05 — 29.134: GitHub Copilot no repositório (revisão de PR sob pedido e ambiente do agente de nuvem)
+
+- Pedido do dono de 05/10: usar o Copilot Pro+ para aliviar a carga das sessões e desta máquina.
+- `.github/copilot-instructions.md` e `.github/workflows/copilot-setup-steps.yml` (`f5d9a096`); o ambiente do agente roda sempre em `ubuntu-latest`, nunca no runner `central`.
+- A revisão de PR é pedida PR a PR pela orquestradora; a regra automática do repositório fica desligada. Operação em `docs/operacao.md` § 5.
+- Prova `real` para a revisão: três PRs em 05/10, 566,87 créditos (US$ 5,67), 10 achados e 9 confirmados pelas frentes. Prova `not_run` para o agente de nuvem.
+
+## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
+
+- Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.
+- Motivos novos do pedido, pelos campos estruturados: `orcamento_da_prova` (`attempts.error_kind='budget'`) e `app_sem_sessao` (`objectives.blocked_kind='auth'`, gravado só na execução de prova a partir de `StepOutcome.pede_login`). Valem no fechamento e na remotivação do estoque; nenhum é chegada do curador. Adendo v1.54.
+- O aparelho em que a prova parou no login sai dos candidatos daquele app até a verificação nova do app nele, ou até um objetivo concluído num fluxo do mesmo app ali.
+- Não é falha do executor: sem regra nova em `falhas.py`.
+- Prova `simulated`: `backend/tests/test_validacao_motivos_da_prova.py` (9 passed, verificado por mutação).
+
+## 2026-10-05 — 30.80: a receita que não se aplicou não conta como falha dela (branch feat/30-80-receita-nao-aplicavel)
+
+- Achado real, 05/10 (prova do 31.79, `r-20261005133833-122345`):
+  - a execução partiu de dentro de uma conversa, e a receita ensinada 194 divergiu na ação 1 ("alvo ausente");
+  - a IA comprovou a etapa, mas a receita saiu com `replay_fail=1`.
+- `taskqueue/recipes.py`:
+  - `AlvoAusente` (subclasse de `RecipeDiverged`);
+  - `RecipeStore.nao_aplicavel`, com `NAO_APLICAVEL_CONTA_APOS=3`;
+  - `result` zera a série; a falha que vem da série (`_falhou(…, zera_serie=False)`) não zera.
+- `taskqueue/executor.py` (`_after_step`):
+  - divergência na ação 1, antes de agir, por alvo ausente, com a etapa COMPROVADA: não é veredito sobre a receita, e
+    `driven_by='ai'` a mantém fora da evidência contra;
+  - o evento leva o código `receita_nao_aplicavel` e os ids;
+  - da 3ª seguida em diante, cada uma conta como falha comum, sem zerar a série: a quarentena chega na 5ª;
+  - o seletor ambíguo (casa mais de um elemento) segue como falha comum.
+- Migração 115: `recipes.nao_aplicavel_seguidas`.
+- `PUT /api/recipes/{id}` e a reativação pelo livro também a zeram.
+- `GET /api/recipes` passa a trazer o campo.
+- Prova `simulated`:
+  - `test_receita_nao_aplicavel.py` (4 testes, verificado por mutação);
+  - `test_receita_divergida_escala.py` ajustado ao critério novo;
+  - `test_d1_receitas.py` cobre a rota.
+
+## 2026-10-05 — 29.127: o marco da subida no log do emulador e o offset que nunca lê o histórico (branch fix/29-127-readocao-marco)
+
+- Sobras das leituras do #420 (29.123).
+- R1: o `start_process` escreve `[central] subida do emulador: <avd> <hora UTC>` no log antes do `Popen` (descritor
+  sem buffer). A readoção usa a última linha que é marco ou `emuglConfig_init` (esta de reserva, para subidas de um
+  agente anterior ao marco). Fecha a janela residual do 29.123: nos primeiros segundos de uma subida, antes de o
+  emulador descarregar a saída bufferizada (29.34), a última `emuglConfig_init` era a da subida anterior, e um
+  diálogo dela pararia o aparelho. Vale no central agora e no notebook depois da atualização do agente.
+- M1 da leitura: quando o emulador anterior morreu no meio de uma linha (sem `\n`), o `start_process` escreve um `\n`
+  antes do marco; colado na linha cortada, o marco faria a readoção começar no pedaço final da subida anterior (e um
+  "Showing crashdialog" nele pararia o aparelho). Log que já termina em `\n` não ganha linha vazia. Prova
+  `simulated`: `test_marco_nao_cola_na_linha_cortada_da_subida_anterior` e `test_log_que_termina_em_quebra_nao_ganha_linha_vazia`;
+  sem o `\n`, o primeiro reprova. Dirigidos e vizinhos: 67 passed; catracas 88.
+- R2: só "o arquivo não existe" dá offset 0. Erro passageiro com o arquivo existindo tenta de novo (3 vezes); depois,
+  o fim do arquivo se o `stat` responder; senão, offset desconhecido (`-1`), e nem o detector de diálogo nem o
+  veredito do snapshot leem o log nessa readoção.
+- N3: o veredito do snapshot lê do começo quando o log foi rotacionado no spawn (como o `dialogo_de_crash`).
+- N1: a retentativa a frio grava o offset dela antes do segundo `_spawn`.
+- N5: o texto do `docs/dominios/parque.md` diz quando vale o fim do arquivo.
+- Prova `simulated`: `backend/tests/test_readocao_marco.py` (11) e `test_readocao_sem_log_antigo.py` (4): 15 passed.
+  Mutações: sem o marco no `start_process` reprova 2; a readoção ignorando o marco, 3; erro passageiro virando 0, 3;
+  o veredito sem a rotação, 1; a retentativa a frio sem offset, 1. As guardas explícitas do offset desconhecido no
+  `dialogo_de_crash` e no `_snapshot_verdict` NÃO são discriminadas: sem elas, o `seek(-1)` levanta `OSError`, já
+  tratado, com o mesmo resultado; ficam como documentação. Vizinhos: 161 passed (veredito do snapshot, relatório de
+  falha, log do emulador, instalação do worker, executor do worker, pacote do agente, prontidão, wake, arquitetura)
+  e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a próxima readoção depois do deploy).
+
+## 2026-10-05 — 29.123: a readoção não lê o histórico do log do emulador (branch fix/29-123-readocao-sem-log-antigo)
+
+- O incidente de 05/10 (29.122): às 12:56:52Z, um backend recém-subido readotou 01, 03 e 06. Com o host saturado,
+  a sonda não fechou e a readoção caiu no `_wait_boot`, que procura o diálogo de relatório de falha (29.55 c) a
+  partir de `boot_log_offset`. Esse offset só era gravado no spawn, e um backend novo tem 0. O detector leu o log
+  inteiro, achou `Showing crashdialog` de boots antigos (três vezes no log do 03 e três no do 06, nenhuma no do
+  01) e encerrou o 03 e o 06, ambos com conta real, às 12:57:05Z e 12:57:29Z.
+- `DeviceManager._adopt` (local) grava como offset o começo da subida em curso, a última linha `emuglConfig_init`
+  (`emu.inicio_da_subida_atual`, fora do laço): o diálogo de uma subida vem depois das linhas dela (medido nos logs do
+  03 e do 06). O diálogo desta subida segue visto, mesmo escrito antes do reinício do backend; os das anteriores, não.
+  Sem a linha, vale o fim do arquivo (aí um diálogo já na tela não é visto, e a espera vai até o prazo do boot); o
+  arquivo que some no meio dá 0, não uma exceção na partida. Na readoção, o veredito do snapshot e a releitura do
+  29.76 (d) nem rodam (o `_wait_boot` adotado não é wake).
+- Prova `simulated`: `backend/tests/test_readocao_sem_log_antigo.py`, 4 passed: o diálogo antigo não para; o escrito
+  depois da readoção para; o desta subida, escrito antes da readoção, para (M1); log sem a linha vai ao fim; arquivo
+  que some vira 0. Mutações: sem o conserto reprova o do incidente; o offset no fim do arquivo (sem o M1) reprova 2.
+  Vizinhos: 233 passed (prontidão, readoção, wake, apps de fundo, arquitetura, ciclo de vida do emulador, relatório
+  de falha, veredito do snapshot, executor do worker, pacote do agente, log do emulador) e `@tests/catracas.txt` 88
+  passed. `real`: `not_run` até o deploy (o Orquestrador religa 01, 03 e 06 por `start`).
+
 ## 2026-10-05 — 29.125: o supervisor só mata o backend (branch fix/29-125-supervisor-so-o-backend)
 
 - Censo de 05/10: o Appium e o sing-box do backend do deploy 37 seguiam vivos com o pai morto. A varredura de filhos
@@ -167,32 +259,20 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
 
 ## 2026-10-05 — 29.127: o marco da subida no log do emulador e o offset que nunca lê o histórico (branch fix/29-127-readocao-marco)
 
-- Sobras das leituras do #420 (29.123).
-- R1: o `start_process` escreve `[central] subida do emulador: <avd> <hora UTC>` no log antes do `Popen` (descritor
-  sem buffer). A readoção usa a última linha que é marco ou `emuglConfig_init` (esta de reserva, para subidas de um
-  agente anterior ao marco). Fecha a janela residual do 29.123: nos primeiros segundos de uma subida, antes de o
-  emulador descarregar a saída bufferizada (29.34), a última `emuglConfig_init` era a da subida anterior, e um
-  diálogo dela pararia o aparelho. Vale no central agora e no notebook depois da atualização do agente.
-- M1 da leitura: quando o emulador anterior morreu no meio de uma linha (sem `\n`), o `start_process` escreve um `\n`
-  antes do marco; colado na linha cortada, o marco faria a readoção começar no pedaço final da subida anterior (e um
-  "Showing crashdialog" nele pararia o aparelho). Log que já termina em `\n` não ganha linha vazia. Prova
-  `simulated`: `test_marco_nao_cola_na_linha_cortada_da_subida_anterior` e `test_log_que_termina_em_quebra_nao_ganha_linha_vazia`;
-  sem o `\n`, o primeiro reprova. Dirigidos e vizinhos: 67 passed; catracas 88.
-- R2: só "o arquivo não existe" dá offset 0. Erro passageiro com o arquivo existindo tenta de novo (3 vezes); depois,
-  o fim do arquivo se o `stat` responder; senão, offset desconhecido (`-1`), e nem o detector de diálogo nem o
-  veredito do snapshot leem o log nessa readoção.
-- N3: o veredito do snapshot lê do começo quando o log foi rotacionado no spawn (como o `dialogo_de_crash`).
-- N1: a retentativa a frio grava o offset dela antes do segundo `_spawn`.
-- N5: o texto do `docs/dominios/parque.md` diz quando vale o fim do arquivo.
-- Prova `simulated`: `backend/tests/test_readocao_marco.py` (11) e `test_readocao_sem_log_antigo.py` (4): 15 passed.
-  Mutações: sem o marco no `start_process` reprova 2; a readoção ignorando o marco, 3; erro passageiro virando 0, 3;
-  o veredito sem a rotação, 1; a retentativa a frio sem offset, 1. As guardas explícitas do offset desconhecido no
-  `dialogo_de_crash` e no `_snapshot_verdict` NÃO são discriminadas: sem elas, o `seek(-1)` levanta `OSError`, já
-  tratado, com o mesmo resultado; ficam como documentação. Vizinhos: 161 passed (veredito do snapshot, relatório de
-  falha, log do emulador, instalação do worker, executor do worker, pacote do agente, prontidão, wake, arquitetura)
-  e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a próxima readoção depois do deploy).
 
-## 2026-10-05 — 29.123: a readoção não lê o histórico do log do emulador (branch fix/29-123-readocao-sem-log-antigo)
+## 2026-10-05 — 29.120: a corrida do teste da segunda leitura do log do snapshot (branch fix/29-120-corrida-releitura)
+
+- `test_wake_relogio_do_snapshot.py::test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura` reprovou
+  no PG dirigido da suíte 37 (1 failed, 9600 passed) e passou sozinho no PG. A causa estava no teste, não no código:
+  ele punha `LOG_CONTRADIZ_RELEITURA_S` em 10 ms, e a releitura, agendada dentro do `_wait_boot`, disparava em
+  qualquer `await` que ele ainda fizesse depois disso, antes de o teste ligar a recusa do log. Com a máquina cheia,
+  essas esperas passaram de 10 ms, e a releitura leu o veredito ainda `None`. Não era o `db.query` síncrono do teste
+  (um `time.sleep` de 50 ms ali não reprova: o laço não roda o temporizador durante ele).
+- Agora o teste captura a releitura no `call_later` do laço (só ela; o resto, o `asyncio.sleep` inclusive, segue no
+  laço de verdade), confere que o prazo é o `LOG_CONTRADIZ_RELEITURA_S` real e a dispara à mão depois que a recusa
+  chega. O código do central não muda.
+- Prova `simulated`: `backend/tests/test_wake_relogio_do_snapshot.py`, 12 passed. O teste antigo com o prazo em 0 s
+  reprova sempre (o disparo dentro do `_wait_boot`); o novo não depende do prazo, porque captura a releitura.
 
 - O incidente de 05/10 (29.122): às 12:56:52Z, um backend recém-subido readotou 01, 03 e 06. Com o host saturado,
   a sonda não fechou e a readoção caiu no `_wait_boot`, que procura o diálogo de relatório de falha (29.55 c) a
@@ -211,6 +291,337 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   Vizinhos: 233 passed (prontidão, readoção, wake, apps de fundo, arquitetura, ciclo de vida do emulador, relatório
   de falha, veredito do snapshot, executor do worker, pacote do agente, log do emulador) e `@tests/catracas.txt` 88
   passed. `real`: `not_run` até o deploy (o Orquestrador religa 01, 03 e 06 por `start`).
+
+## 2026-10-05 — 29.117: a árvore do pytest num Job Object e uma rodada por vez no `pg-rapido.py` (branch fix/29-117-job-object, sobre o 29.113)
+
+- Windows: `lancar_em_job` cria o pytest SUSPENSO, põe no Job Object (KILL_ON_JOB_CLOSE) e só então retoma a thread
+  principal; todo worker do xdist nasce dentro. O `matar_arvore` termina o job; o `taskkill /T` saiu (pegava processo
+  alheio cujo pai morto tinha o PID do pytest). O pai morto de fora leva a árvore junto. Fora do Windows, o grupo.
+- Sem job (o script já num job que não aceita aninhamento): a parte diz em uma linha e, no aborto, só o PID do pytest
+  morre. O `ResumeThread` que falha mata o processo suspenso, e a parte sai com rc 11 e a linha do erro.
+- Uma rodada por vez: mutex nomeado `Global\farm-pg-rapido` ou `flock`; a segunda rodada sai com rc 10 antes do
+  `docker rm -f`; a trava que não se cria sai com rc 12. O erro 5 no `Global\` é o mutex de outra rodada (de outra
+  sessão ou usuário, com uma DACL que nos nega acesso) e também sai com rc 10, dito na linha; sem recuo ao `Local\`,
+  que deixaria as duas rodadas correrem (M1 da leitura).
+- Leitura do 29.117: o job terminado (aborto, interrupção, "já saiu") tem o handle fechado na hora (N1); os testes reais
+  fecham o job no `finally` (N2); nenhum teste usa a trava da rodada real, que tem nome de teste por fixture (N3).
+- N4 da leitura do 29.113: o `parar` que levanta no `finally` do `main` não troca a exceção original (vai ao stderr); o
+  `docker stop` sem contêiner (o `docker run` não subiu) não dá mais o ATENÇÃO falso.
+- Prova `simulated`: `scripts/tests/test_pg_rapido.py`, 35 passed (13 novos, os de árvore com processos REAIS criados
+  pelo teste: o neto morto pelo job, o lançador morto de fora levando o neto, um processo de fora do job intocado); a
+  mutação "sem entrar no job" reprova 4. Depois da leitura: 38 passed, e as mutações do M1 (sem tratar o erro 5) e do
+  N1 (sem fechar o handle no aborto) reprovam um teste cada; o do M1 usa um mutex REAL com DACL que nega tudo.
+  `pytest @scripts/tests/catracas.txt`, 6 passed. Real (05/10, central,
+  11:37Z, ponta deste ramo): o `_lancar_pytest` com `-n 8` subiu dentro do job e saiu com rc 0 (`test_catracas.py`,
+  6 passed). O PG de verdade: `not_run`.
+
+## 2026-10-05 — 29.113: o `pg-rapido.py` não deixa o pytest rodando quando é interrompido (branch fix/29-113-pg-rapido, sobre o #410)
+
+- O1: `rodar_parte` mata a árvore do pytest quando algo interrompe a parte (Ctrl-C, `OSError` do `--resumo`, qualquer
+  exceção) e relata "INTERROMPIDA"; o laço das amostras foi para `_acompanhar`. O pai morto de fora (Job Object com
+  KILL_ON_JOB_CLOSE) fica para item próprio.
+- N1: `parar` relata o `docker stop` que falha e SUGERE na linha o `docker rm -f` (não o executa).
+- Q2 da leitura: o `main` para o contêiner num `finally` em volta do laço das partes; interrompido, o tmpfs de 4 GB
+  não fica mais preso na RAM até a próxima rodada. Sem parte iniciada (RAM baixa), não há o que parar.
+- N3: o pytest que saiu sozinho entre a amostra e o aborto fica com o rc dele, não com "ABORTADA" (rc 3).
+- O teste da árvore real só mata o neto quando não passou (o PID pode ter sido reusado).
+- Prova `simulated`: `scripts/tests/test_pg_rapido.py` (7 novos), 22 passed, com as mutações do O1, do N3 e do
+  Q2 reprovando;
+  `pytest @scripts/tests/catracas.txt`, 6 passed. Real: `not_run`.
+
+## 2026-10-05 — 29.118: com a lista velha, os lotes que decidem por ela ficam indisponíveis (branch fix/29-118-lote-lista-velha)
+
+Leitura do 29.116 pela Ferramentas do Claude.
+
+- B1: depois do aviso "a lista não se releu", nada barrava. Grupo, bloquear e reativar decidem pelo estado da lista na
+  tela ("já estava…", ok e sem PATCH), então um lote sobre a lista velha relatava sucesso sem mudar nada, o defeito do
+  29.114. Agora `ProfilesPage` passa `listaVelha` à barra, e os três ficam indisponíveis com o motivo "A lista não se
+  releu: use “Tentar de novo”." até a leitura dar certo. Apagar, fotos e completar seguem livres.
+- N: o `confirmar` espera a releitura até `PRAZO_DA_RELEITURA_MS` (45 s). Passado o prazo, conta como não relida: uma
+  rajada de releituras não prende o diálogo em "executando".
+- C1 (leitura do #423): a releitura que perde para o prazo segue em voo, e o erro da página ainda é nulo. Agora ela vai
+  à barra, que trava grupo, bloquear e reativar com "A lista ainda está se relendo: aguarde." até ela assentar.
+- A1: o `aria-busy` sai do `<dialog>` inteiro, onde podia fazer o leitor de tela segurar o "Executando…/Relendo…" do
+  status, e fica só na lista "Resultado por persona".
+- Testes novos em `AcoesEmLote.test.tsx`: B1, o clique fora com o `aria-busy` só na lista, e o prazo. Os três falham
+  no código do 29.116. Prova simulated, em Idle:
+  - `src/features/profiles` e `src/components` 226/226 sem atraso;
+  - `src/features/profiles` 201/201 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99;
+
+## 2026-10-05 — 29.119: a catraca das esperas lê comentário, string e negação como o código (branch fix/29-119-catraca-k)
+
+Leitura do W1 e do 29.112 pelas revisoras.
+
+- `frontend/src/test/esperas.test.ts`:
+  - K2: o comentário sai com um varredor que copia as strings como estão, e o `//` de `'https://…'` deixa de esconder
+    o resto da linha. Cada caractere fica na mesma posição, então as linhas dos achados não mudam.
+  - K1: a negação da frente só poupa o corpo sem `&&`, `||`, `??` nem `?` de ternário no nível de fora
+    (`!carregando && c.querySelector(…)` devolve o elemento).
+  - K3: o `\/` escapado de um regex literal não abre comentário nem nível. A aspa sem escape dentro de um regex segue
+    como limite anotado.
+  - N1: os parênteses da busca são lidos balanceados (`:not(…)`, `:has(…)`), e o fim em `closest(…)` e `find(…)`
+    também conta. `undefined`, `0` e `''` seguem passando no `waitFor`; o limite está anotado no cabeçalho.
+- `GuiaImagens.test.tsx` afirma o selo "simulado" pelo elemento, não pela palavra, que também está no aviso do gerador.
+- `frontend/src/components/Disclosure.test.tsx` (novo): o bloco fechado à mão segue fechado com o `openWhen` parado em
+  verdadeiro e só reabre numa nova subida.
+- Prova simulated, em Idle:
+  - `src/test`, `src/components` e `GuiaImagens.test.tsx` 37/37; a catraca varre todos os testes sem achado novo;
+  - os casos novos falham na catraca anterior (o primeiro a cair é o K1);
+  - o GuiaImagens passa com `ATRASO_DO_FETCH_MS=40` na semente 88, onde caía;
+  - typecheck limpo.
+
+## 2026-10-05 — 29.115: o formulário trava enquanto envia, em vez de apagar o que a pessoa mexeu (branch fix/29-115-form-trava-ao-enviar)
+
+- `frontend/src/features/settings/LimitsSection.tsx` e `frontend/src/features/rede/RedePage.tsx`: a resposta do envio
+  zera o formulário (`setDrafts({})`; `setNome('')`…). O que a pessoa mexia com o PUT ou o POST em voo sumia sem ser
+  salvo nem avisado. Achado do 29.104. Seguindo o que o painel já faz (perfis, imagens, editor de política), os campos
+  ficam desabilitados enquanto envia: nos Limites, o `fieldset` de cada grupo; no cadastro de VPN e proxy, cada campo.
+- `frontend/src/test/harness.ts`: o `setValue` recusa campo `:disabled`, inclusive o de `fieldset` desabilitado. Um
+  teste que digitasse ali provaria um gesto que a tela não permite. Nenhum teste existente dependia disso.
+- Testes: `LimitsSection.test.tsx` (novo) e um caso novo em `RedePage.test.tsx` seguram o pedido e conferem os campos
+  desabilitados e livres depois. Os dois falham no código anterior. Os dois testes que eram a prova esperam o campo
+  livre antes de digitar, como a pessoa. Prova simulated:
+  - frontend inteiro 1617/1617 sem atraso;
+  - app.integration, rede e settings 174/174 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99.
+
+## 2026-10-05 — 28.47: as sobras da leitura do #412 na resposta solta à escolha (branch canais/28-47-escolha-sobras)
+
+- A mensagem encaminhada (`forward_origin`, ou `forward_date`) não casa com a pergunta de escolha. A marca é gravada
+  na `previa` da linha, sem migração.
+- O teto pelo relógio saiu: a pergunta gravada um instante depois do "1", mas anterior a ele no chat, casa.
+- O `message_id` é comparado como número (`isdecimal`), com teste que cruza a casa dos dígitos (99 contra 100).
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py`, 113 no arquivo; o teste do teto falhou antes de o
+  teto sair). Real: `not_run`.
+
+## 2026-10-05 — 28.48: a foto do item já decidido conferida pela âncora do sim (branch canais/28-48-foto-pela-aprovacao)
+
+- `telegram_status.py --foto`: com o item já aprovado na prévia da porta, o `midia_sha256` gravado no sim
+  (`sha_da_imagem_aprovada`) é a âncora. Se o sha da prévia de agora divergir dele, nada sai.
+- Prova: `simulated` (`.claude/canais/test_telegram_status.py` e
+  `backend/tests/test_rotulo_ia.py::test_o_sha_aprovado_no_plano_e_a_ancora_da_foto`). Real: `not_run`.
+
+## 2026-10-05 — 31.82, segredo na gravação do treinamento (branch fix/31-80-82-gravacao-do-treino)
+
+- Achados da auditoria, conferidos no código: sem árvore (leitura falhou ou estourou o prazo) um texto digitado só
+  dependia das heurísticas; o alvo de um toque levava o conteúdo do campo editável; `screen_lines`/`screen_title`
+  não passavam por filtro.
+- `recorder.py`: sem árvore o texto não é gravado (`has_text` e `text_len` ficam); no alvo, campo editável perde o
+  `text` (e os `unique` que dependiam dele) e qualquer `text`/`desc` que case com `looks_secret`, `mentions_credential`
+  ou `parece_senha_ou_codigo` sai; linhas e título de tela com esses formatos saem. A receita segue por `resource_id`
+  (`build_selectors` dá o seletor `rid`). Campo editável nunca guarda `text`; sem `resource_id` e sem `desc` o alvo fica sem seletor e a etapa não vira receita.
+- Prova `simulated`: `backend/tests/test_treino_segredo_na_gravacao.py` (4; sem o conserto os 4 falham) e
+  `test_modo_treinamento.py` (7 passed). Real: `not_run`.
+
+## 2026-10-05 — 31.94, teclado de PIN na gravação do treinamento (branch fix/31-94-teclado-de-pin-na-gravacao)
+
+- Tirar o rótulo "4" não bastava: o `resource_id` (`key4`) e o x/y de cada toque num teclado fixo são o dígito.
+- Toque em tecla de teclado numérico (rótulo `text` ou `desc` de um dígito ou "2,ABC"; sem rótulo e rid terminado em
+  dígito; alvo sem rótulo cujo rid ou classe nomeia teclado: `pin_pad`, `PinKeypadView`...) é gravado sem alvo e sem
+  x/y, com `sensitive=1` (a coluna que já existia; sem migração). `android:id/button1` com rótulo segue gravado.
+- Em tela sensível, o toque sem id estrutural (nem do alvo nem de filho) também sai sem x/y.
+- A destilação não muda: coordenada solta já não vira receita (teste com `distill_training`).
+- `linha_da_entrada` (`planning/training.py`, só esse trecho): toque com `sensitive` e sem x diz "toque em teclado ou tela sensível (não gravado)" e `ponto=(x,y)` só sai com x (nunca "ponto=(None,None)").
+- Segunda leitura do #440: toque sem seletor utilizável (alvo None, ou sem `unique` e sem filhos) sai sem x/y em qualquer
+  tela, sem marcar `sensitive`; nomes de teclado novos (`pincode`, `pinview`, `pinentry`, `pinlock`, `numberpad`,
+  `patternlock`, `lockview`, `dialpad`); a tecla telefônica só com as letras do próprio dígito ("5G", "2FA", "4K" seguem
+  gravados). Fora: arraste em padrão de bloqueio e o significado da coluna `sensitive`.
+- Prova `simulated`: `test_treino_segredo_na_gravacao.py` (24). Real: `not_run`.
+
+## 2026-10-05 — 31.80/31.82, segunda leitura do PR #427 (branch fix/31-80-82-gravacao-do-treino)
+
+- C1 (31.80): `reconcile_after_restart` só fecha sessão de aparelho que NÃO é hospedado por outro dono
+  (`instances.hosted_by`, o padrão de `commands/store.py`); `TrainingRecorder` recebe `owner_id`. O log só sai se o
+  UPDATE mudou linha.
+- S1 (31.82): alvo e filhos com `text`/`desc` de um dígito só (PIN desenhado) perdem esse rótulo e os `unique` dele.
+- S2 (31.82): `parece_linha_com_codigo` (nova, só acréscimo em `redaction.py`) e `parece_codigo` por token valem para
+  linhas, título e alvo da tela.
+- N5 não feito: o motivo da omissão pede coluna nova em `training_inputs` (migração); fica para outro item.
+- Prova `simulated`: `test_treino_gravacao_orfa.py` (6), `test_treino_segredo_na_gravacao.py` (12),
+  `test_redaction_linha_com_codigo.py` (17), `test_modo_treinamento.py` (7). Real: `not_run`.
+
+## 2026-10-05 — 31.82, achados do revisor de segredos (branch fix/31-80-82-gravacao-do-treino)
+
+- Texto digitado só é guardado com campo editável, não senha, em foco na árvore (antes, só `tree is None` cobria).
+- `filhos` do alvo cujo `class_name` é de campo de texto perdem o `text` e os `unique` que dependiam dele.
+- `parece_codigo` entra no filtro de segredo da gravação (alvo, título, linhas): "123 456", "8845-12".
+- Em tela `sensitive` o alvo e os filhos perdem `text` e `desc` (ficam `resource_id`, classe, `unique` por id).
+- Limite conhecido em `docs/teaching.md`. Prova `simulated`: `test_treino_segredo_na_gravacao.py` (9; cada conserto tem
+  um teste que falha sem ele). Real: `not_run`.
+
+## 2026-10-05 — 31.80, gravação do treinamento órfã depois do reinício (branch fix/31-80-82-gravacao-do-treino)
+
+- Medido no real (05/10): o reinício no meio de uma gravação deixava `training_sessions.status='recording'`, o aparelho
+  nascia sem `training_session_id`, `record` saía calado, o painel seguia "Gravando" e `start` recusava com
+  `already_recording`.
+- `TrainingRecorder.reconcile_after_restart` (chamado na subida, junto das outras reconciliações): toda sessão
+  `recording` vira `recorded` (entradas valem), com `finished_at` e um evento `log` por sessão. Não religa gravação.
+- `start` com sessão ativa no banco mas sem gravador vivo no aparelho encerra a órfã como `recorded` e segue;
+  `already_recording` só vale para a gravação viva.
+- Prova `simulated`: `backend/tests/test_treino_gravacao_orfa.py` (3), e `test_modo_treinamento.py` (7 passed).
+  Real: `not_run` (reinício do central com gravação aberta).
+
+## 2026-10-05 — 31.86 B: prévia do salvar e refazer as receitas do treino (branch feat/31-86-previa-e-refazer-receitas)
+
+- `POST /api/training/{id}/preview` (mesmo corpo do `save`) roda a MESMA conferência (`_preparar`: os mesmos códigos
+  400/409, inclusive `duplicate_command`) e a MESMA destilação, sem escrever nada, e devolve por etapa
+  `{key, title, recipe, reason}` mais `warnings`. A pessoa vê por que uma etapa ficaria sem receita enquanto ainda
+  edita a proposta.
+- `POST /api/training/{id}/recipes` refaz a destilação de uma sessão JÁ salva (plano do fluxo + proposta guardada) e
+  grava as receitas que faltam; idempotente (`recipes.save` segue vetando a chave com receita ativa); 409
+  `sessao_nao_salva` se a sessão não foi salva e 409 `fluxo_desligado` se a habilidade está desligada. Só grava em chave
+  VIRGEM (`RecipeStore.status_da_chave`, só leitura): onde a chave já teve receita de qualquer status o motivo diz o
+  status, porque o `save` do treino trocaria a quarentena por uma ativa nova (revisão #438, C1). O reparo também
+  consulta o veto da pessoa (`RecipeStore.caminho_vetado`, a mesma conta que o `save` aplica a quem não é treino) e não
+  recria a receita vetada, mesmo com a chave virgem.
+- Causa do "salvar offline não gera receita": só duas leituras dependem do aparelho, a versão do app (adb) e a variante
+  idioma/densidade (adb); nenhuma é gravada na sessão. Agora, fora do ar, o save usa o que a última leitura deixou
+  (`rt.app_versions`/`rt.ui_variant` e o inventário `device_app_state`, a fonte do despacho); sem isso o motivo diz
+  o que falta (nada é chutado da configuração: variante errada deixaria a receita morta e "gravada"). A rota
+  `/recipes` repara as sessões antigas quando o aparelho volta.
+- `RecipeStore.chave_ocupada` (só lê) é a conta do veto, usada pelo `save` e pela prévia. `distill_training` e a
+  política de `recipes.save` não mudaram.
+- Prova: `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`, 19 testes); `real`: `not_run`.
+
+## 2026-10-05 — 31.95: sobras da validação do salvar do treino (branch fix/31-95-sobras-da-validacao-do-salvar)
+
+- `entrada_inexistente` (400): `seq` em etapa ou em `discarded` fora das entradas gravadas. `seq` repetido dentro de
+  `discarded` não recusa: fica o primeiro, no `normalizar_proposta` e no salvar (o modelo às vezes repete, e isso não
+  muda a receita); em etapa e em `discarded` ao mesmo tempo segue `entrada_duplicada`.
+- `side_effect` tem de ser booleano (o texto "false" virava verdadeiro): senão `etapa_invalida`.
+- `{` ou `}` sem par no comando é `parametro_invalido`.
+- `normalizar_proposta` acha os parâmetros pelo `PLACEHOLDER` do fluxo (aceita `{_x}`), em vez de uma cópia da expressão.
+- Prova `simulated`: `test_treino_validacao_do_salvar.py` (52) e `test_treino_chave_da_etapa.py` (8), com mutação de cada regra. Real: `not_run`.
+
+## 2026-10-05 — 31.83 (2ª leitura): duplicadas, comando por posição, tipos errados e parâmetro inválido (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `entrada_duplicada` (400): entrada em duas etapas ou em etapa e `discarded` (o `_receitas` tirava o toque da etapa calado).
+- `comando_generico` passa a olhar a posição: o comando começa por palavra fixa e tem 2 palavras e 6 letras fixas (era 10).
+  Barra `{pedido} no instagram` e `{acao} para o cliente`; passa `envie {mensagem} para {contato}` e `ligue para {contato}`.
+  `TRAINER_SYSTEM`: o comando começa pelo verbo.
+- Tipo errado vira 400 (`etapa_invalida`/`proposta_invalida`) em vez de 500: `title`/`goal`/`value`, `bindings`,
+  `inputs` que não é lista de inteiros (`"12"` virava `[1, 2]` calado), `discarded`, `parameters`, `summary`, `app_id` e
+  comando que não é texto.
+- `parametro_invalido`: `{Contato}`/`{endereço}` no comando não casam o padrão e ficavam literais.
+- Adendo v1.57 e doc do domínio atualizados. Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (46),
+  com mutação (S1 3 falham, S2 3 + 2, N3 2). Real: `not_run`.
+
+## 2026-10-05 — 31.93: chave repetida de 40 caracteres não trava mais o `propose` (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `normalizar_proposta` repetia `f"{k}_2"[:40]` até a chave ser nova; com 40 caracteres o corte devolvia a mesma chave e o
+  laço nunca saía, congelando o laço de eventos do backend inteiro. `_chave_unica` usa `_2`, `_3`… cortando a base para o
+  sufixo caber (termina sempre).
+- `_chave`: título só com símbolos vira `etapa`, e a chave nunca passa de 40 caracteres (antes `etapa_<40>` dava 46 e
+  500 no `PlanStep`).
+- Prova `simulated`: `backend/tests/test_treino_chave_da_etapa.py` (7, com prazo de 2 s numa thread); com o código antigo
+  5 falham (4 por laço infinito). Real: `not_run`.
+
+## 2026-10-05 — 31.83: o `save` do modo treinamento valida a proposta antes de escrever (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `validar_proposta_para_salvar` (`training/skills.py`) roda antes de qualquer escrita e recusa com 400 e mensagem em
+  português: `etapa_invalida` (sem chave, chave repetida, sem título/objetivo; antes `KeyError`/500),
+  `parametro_fora_do_comando`, `parametro_nao_declarado`, `comando_generico` (menos de 2 palavras/10 letras fixas),
+  `pos_condicao_vazia` (etapa com efeito) e `entradas_sem_etapa` (gravada fora de etapa e de `discarded`).
+  Etapa sem efeito e sem pós-condição segue aceita; a resposta traz `warnings`.
+- `TRAINER_SYSTEM` manda toda entrada para uma etapa ou `discarded`, teclas de apagar de limpeza e `back`/`home` de
+  engano para `discarded`, e pós-condição sempre descrita. Esquema de saída igual.
+- Adendo v1.57 no contrato; doc em `docs/dominios/perfis-e-instagram.md`.
+- Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (13), com mutação por código; `real`: `not_run`.
+
+## 2026-10-05 — 31.84: as teclas de quem ensina não derrubam mais a receita da etapa (branch fix/31-84-85-entrada-manual-no-treino)
+
+- `distill_training`: `delete` COLADO ao `text` seguinte (sequência contígua de `delete` e depois o `text`, sem toque,
+  arraste ou outra tecla no meio) é ruído (a receita já limpa o campo); `enter` colado ao `text`
+  vira `press_enter`; `back`, `home`, `recents`, `delete` depois do texto e `enter` solto seguem recusando.
+- `ManualInput.clear_first` (só `type='text'`, padrão `false`) chega ao `type_text`; pelo ADB puro recusa `bad_input`.
+  Adendo v1.56 do contrato.
+- Prova `simulated`: `backend/tests/test_treino_teclas_na_destilacao.py` (11 passed; sem o conserto, 3 falham; o `delete` solto em outro campo recusa).
+  Real: `not_run`.
+
+## 2026-10-05 — 31.85: gravando, o quadro mais recente não é recusado por idade (branch fix/31-84-85-entrada-manual-no-treino)
+
+- `manual_input`: com gravação do treinamento, o quadro informado igual ao mais recente do backend vale acima da idade
+  máxima (captura sã, teto de 60 s); quadro antigo com um mais novo disponível e todo quadro velho fora da gravação
+  seguem em `stale_frame`. Motivo: a leitura de hierarquia da própria gravação deixava o aparelho lento (toque de
+  24 s) e as 15 teclas seguintes foram recusadas em série.
+- Pela folga, texto, `enter` e `delete` exigem a hierarquia lida antes da ação sem tela sensível nem foco em senha; senão
+  `stale_frame` (revisão de segredos). Falha ao gravar a entrada loga só o tipo da exceção, não a mensagem.
+- Prova `simulated`: `backend/tests/test_treino_quadro_velho.py` (10 passed; sem a guarda da folga, 3 falham; com o log
+  antigo, 1 falha). Real: `not_run`.
+
+## 2026-10-05 — 31.85: o carimbo da última entrada vale também quando a ação levanta (C2 do #430)
+
+- `manual_input`: `rt.ultima_entrada_mono` passa a ser posto num `finally` em volta do despacho. O toque que estoura o prazo
+  (24 s medidos) levanta, mas segue rodando no aparelho; sem carimbo o 2º toque sobre o mesmo quadro passava pela folga.
+  Carimba também a recusa anterior ao despacho (lado seguro: uma recusa a mais sob a folga).
+- Docs: `key_name = 'clear_first'` na leitura das sessões de treino (coluna própria numa migração futura); a linha
+  `recording` órfã se o `stop` falhar.
+- Prova `simulated`: `test_treino_quadro_velho.py` (15 passed); com o carimbo fora do `finally`, o teste novo falha. Real: `not_run`.
+
+## 2026-10-05 — 31.84/31.85: correções da segunda leitura do PR #430 (branch fix/31-84-85-entrada-manual-no-treino)
+
+- 31.85 (C1): `rt.ultima_entrada_mono` carimbado em cada entrada manual com efeito; sob a folga, toque, toque longo e arraste
+  só passam com quadro capturado DEPOIS dela (o segundo toque sobre o mesmo quadro caía na tela nova com a coordenada da
+  velha). C1b: quadro novo durante a leitura da árvore recusa qualquer entrada sob a folga.
+- 31.85 (R1): o fim (e o início) do controle zera `rt.training_session_id`; o gravador falhar no encerramento não prende a folga.
+- 31.84 (N1): o gravador marca o texto enviado com `clear_first` em `key_name` (sem migração); a destilação só trata o
+  `delete` colado como ruído se aquele texto foi limpando o campo (apagar parcial recusa a receita). `ManualInput`
+  recusa `clear_first` fora de `type='text'` (422). N2: o `type_text` do Appium engole a falha do `clear()`.
+- Prova `simulated`: `test_treino_quadro_velho.py` (14 passed), `test_treino_teclas_na_destilacao.py` (16 passed); cada
+  mutação (C1, C1b, R1, N1) derruba um teste. Real: `not_run`.
+
+## 2026-10-05 — 31.80, 31.84, 31.85, 31.86, tela do Modo treinamento (branch fix/31-80-86-painel-do-treino)
+
+- 31.80: a barra só diz "Gravando" com o controle na mão; sessão `recording` sem ele (gravação órfã) vira aviso com
+  "Concluir e revisar" e "Descartar".
+- 31.84: "Limpar o campo antes" ao lado de Enviar (marcada enquanto grava, desmarcada fora); o texto vai com
+  `clear_first: true` (contrato v1.56, `ManualInput.clear_first`); a dica do treino ganhou a linha sobre ela.
+- 31.85: "Enviando ao aparelho…" (`aria-live="polite"`) enquanto uma entrada está em voo; a barra conta as entradas
+  recusadas (`stale_frame`/`frame_mismatch`) durante a gravação ("N entrada(s) recusada(s): refaça"). Sem fila de entradas.
+- 31.86: aparelho fora do ar (e que não é a loja) mostra a barra em "só revisão": "Para revisar" e a revisão
+  funcionam, sem o formulário de iniciar.
+- Estado compartilhado em `frontend/src/features/training/trainingStore.ts` (só memória).
+- Correção da revisão do PR #428: o aviso de "não está mais gravando" e os botões só valem sem ninguém no controle
+  (`control !== 'user'`); com outra pessoa ou aba no controle o aviso é "gravação em andamento por quem está com o
+  controle", sem Concluir nem Descartar. `stop`/`discard` mandam o `lease_id` da aba quando há (as rotas de hoje não
+  declaram corpo, então o campo é ignorado; o 31.92 passa a exigi-lo). "Limpar o campo antes" volta ao padrão a cada
+  gravação; `bad_input` com `clear_first` ganha a dica de desmarcar; a região viva do contador nasce vazia.
+- Prova `simulated`: `FocusPanel.test.tsx` (8 novos, 37 passed) e `TrainingBar.test.tsx` (7 novos, 8 passed) e `trainingStore.test.ts` (1); cada
+  teste novo falha sem a mudança (mutação conferida). `npm run typecheck` limpo. Real: `not_run` (depende do backend
+  em paralelo, `clear_first`, e da implantação).
+
+## 2026-10-05 — 31.90-A, a revisão do treino deixa quem ensinou corrigir as entradas (branch feat/31-90-a-revisao-corrige-entradas)
+
+- Cada entrada de etapa ganha "Descartar", que a leva ao `discarded` com `why: "descartada por quem ensinou"`. Cada
+  descartada ganha "Devolver à etapa…". As duas tiram a entrada de todo outro lugar: nada fica em dois lugares, que o
+  save recusaria (`entrada_duplicada`).
+- A entrada gravada que não está em nenhuma etapa nem no descarte aparece no bloco "Sem destino", no topo, com as duas
+  ações. O "Salvar como fluxo" fica travado, com o motivo escrito, enquanto houver alguma (o save diria
+  `entradas_sem_etapa`). Também fica travado quando a proposta da IA já vem com uma entrada em dois lugares.
+- Os `warnings` da resposta do save (adendo v1.57) vão no toast de sucesso e na tela de resultado.
+- O texto não gravado aparece como "texto não gravado", e nunca com valor, nem quando a entrada vem marcada como
+  sensível.
+- Prova simulated (`TrainingReview.test.tsx`, 3 casos novos): nove mutações, uma por parte, todas pegas. Navegador
+  `not_run`.
+
+## 2026-10-05 — 31.89 F1 e F6: o casamento do comando por fluxo vai do mais específico, e a troca de valor por palavra inteira (branch fix/31-89-casamento-mais-especifico)
+
+- F1: `FlowStore.match` ordena os fluxos ativos por `matching.specificity` (a do resolvedor v2: mais texto fixo, menos
+  parâmetros), depois `uses` desc, depois `created_at`. Antes ganhava o de mais usos e "curtir {x}" engolia "curtir o
+  post de {p}". O filtro de escopo por perfil segue antes da ordem e o empate de tudo segue como antes (a pergunta ao
+  dono é outra fatia).
+- F6: `_sub_values` troca o valor de exemplo só como palavra inteira ("Ana" não mexe em "Banana"); borda que é símbolo
+  ou espaço ("@fulano", "R$ 10") continua trocada; um valor curto não reescreve o `{nome}` já posto.
+- F6, segunda leitura: a borda é por CLASSE. Valor que começa ou termina em dígito exige só um não-dígito do lado de fora
+  ("10" troca em "esperar 10min" e "v10", não em "100" nem "110"); letra ou `_` segue exigindo não-palavra ("posts",
+  "ana_silva", "fulano123" e "#tag2026" não perdem pedaço). Antes, "10min" ficava sem troca e o plano reaproveitado com
+  outro número dizia "10min" calado.
+- N2 (só teste, sem mudar código): molde com parâmetro reservado conta como buraco na especificidade e é literal no
+  `_extract`; a ordem de hoje nesse caso está fixada como limite conhecido.
+- Medido no banco real em 05/10 (só leitura): 0 comandos de 30 dias casam com 2 ou mais fluxos ativos e 0 fluxos ativos
+  têm valor de exemplo que é substring de outra palavra; as duas mudanças não alteram resultado de hoje.
+- `test_intencao_resolucao.py::test_empate_entre_fluxos...` afirmava a ordem antiga (o mais usado vence); virou "o mais específico vence".
+- Prova: `simulated`: `backend/tests/test_fluxo_casamento_especifico.py` (35 testes, incluindo a paridade com
+  `SqlSkillRepository.candidates`); revertidos F1 e F6 um por vez, falham 4 e 7 deles. Real: `not_run`.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
@@ -529,9 +940,7 @@ Leitura do 29.114 pela Ferramentas do Claude.
 
 ## 2026-10-05 — 29.96: a sessão parada no teto aparece em Pendências e em "Aguardando intervenção" (branch feat/29-96-parada-no-teto-em-pendencias)
 
-- Achado da leitura do #371 (S): o `unknown` no teto abre o aviso `session.needs_person`, mas as duas filas do painel
-  filtravam só por estado (`auth_challenge`, `wrong_account`, `needs_person`), e a sessão parada continua `unknown`. O
-  dono recebia o aviso e não achava o item.
+- O dono recebia o aviso e não achava o item.
 - `SessionInfo.unknown_at_cap` (adendo v1.48), preenchido nos três montadores (persona, persona no aparelho, conta) por
   `SocialRepository.parada_no_teto`, com a mesma regra do aviso (`unknown_no_teto`).
 - A regra do teto mora num lugar só, `shared.vinculos.teto_de_unknown`, chamado pela porta (via repositório), pela
@@ -700,10 +1109,7 @@ Leitura do 29.114 pela Ferramentas do Claude.
     separado e antes do `portal_borda_defeito`, com o gesto: tirar o nome público do ar e conferir
     `server.public_hosts` e o token.
   - 502, 504, 52x, 530, rede ou tempo esgotado: "não consegui conferir", como o resto da volta.
-  - O desafio da borda (403 com `cf-mitigated: challenge`) e outro status (404, 3xx, 500): "não consegui conferir"
-    DA API, com o código (`api-desafio`, `api-404`), contado e avisado à parte do site (`onde=api`, saúde
-    `portal_api_sem_conferir`), para não gritar crítico à toa nem dizer que a página está fora; avisa depois de
-    `voltas_sem_conferir` voltas. O 500 diz na saúde que o pedido pode ter passado do portão.
+  - O 500 diz na saúde que o pedido pode ter passado do portão.
   - A API sem resposta (rede, 52x, tempo esgotado) com o site TAMBÉM sem conferir é a mesma queda e conta só pelo site;
     com o site conferido na mesma volta (rota lenta, regra da zona só em `/api/*`), conta e avisa como da API.
   - Quem liga o vigia é a subida do backend (`state.py`, tarefa `portal-borda`), no líder da trava `avisos`, com a hora
@@ -786,17 +1192,6 @@ Leitura do 29.114 pela Ferramentas do Claude.
   - a suíte do frontend inteira deu 1605/1605;
   - no navegador: `not_run` até o deploy.
 
-## 2026-10-05 — 29.110: a seção "O que a ANA não faz" sai do site público (branch fix/portal-sem-o-que-a-ana-nao-faz)
-
-- Ordem do dono em chat, 05/10, na sessão do Portal: "tire o trecho abaixo agora do portal".
-- `site/index.html`: sai o bloco `<aside class="limites">`, com o título e o parágrafo. `site/assets/site.css`: sai o
-  `.limites`, que ficou sem uso; a versão `?v=` do CSS muda sozinha.
-- ADR-076 (emenda ao ADR-075): só o texto público sai. Os limites de comportamento seguem valendo no produto
-  (invariantes, ADR-009, ADR-040, rótulo de IA do Instagram).
-- Nenhum outro texto do site, nem a prova de fora, nem a régua apontava para a seção (conferido por busca).
-- Prova: `not_run` até a bateria de latência acabar; depois, `test_portal_site`, `test_portal_prova_de_fora` e
-  `docs-check`, e a página pública no navegador depois de aplicada.
-
 ## 2026-10-05 — 29.102: o CI volta a ser rede (branch fix/29-102-ci-rede)
 
 - Sem `pull_request` no `ci.yml`: ficam a corrida diária e o disparo manual. Cada PR custava de 62 a 115 min serial no
@@ -875,10 +1270,8 @@ Leitura do 29.114 pela Ferramentas do Claude.
 - Agora, no fim do `_work`, com o objetivo TERMINAL (concluído, falho ou cancelado), o scheduler chama
   `DeviceManager.tirar_da_frente`: se o app na frente é um navegador (`dialogos.NAVEGADORES`), HOME. Em `waiting_user`
   a tela fica como está, para a pessoa. Falha de ADB não pesa na execução.
-- Leitura do #368: com controle manual pedido (`takeover_requested`) ou tomado pela pessoa, nada sai (H1); com a
-  tela de verificação ou desafio na última árvore lida (`detectar_conta_travada`), nem HOME (H2, ADR-055).
-  Testes que discriminam (H3): `waiting_user` e `uncertain`, controle pedido e tomado, trava na frente e falha
-  do ADB no fim (o desfecho segue `succeeded`).
+- Testes que discriminam (H3): `waiting_user` e `uncertain`, controle pedido e tomado, trava na frente e falha do ADB no
+  fim (o desfecho segue `succeeded`).
 - Um objetivo por aparelho por execução (`{run_id}:{instance_id}`): o HOME é sempre o último gesto daquele aparelho
   na execução. A próxima execução abre o navegador como já abria (o `open_app` já manda HOME quando outro app está na
   frente); o HOME não encerra o Chrome, então a volta é morna.
@@ -1309,18 +1702,13 @@ Leitura do 29.114 pela Ferramentas do Claude.
 - **Revisão do #353 (X1 a X5):**
   - X1: o extrator pega a tag quebrada em linhas e o `src = "…"`.
   - X2: `HTTPS://` e `SCRIPT SRC` em maiúscula reprovam; o que o extrator não reconhece também reprova.
-  - X3: `/cdn-cgi/` reprova, inclusive em script sem `src`, e a mensagem diz o recurso da zona (Rocket Loader,
-    challenge-platform, ofuscação de e-mail).
-  - X4: o pedido como navegador exige 200; um desafio 403 ou 503 não dá `ok`.
   - X5: todo `curl` do script leva `-q`, para o `~/.curlrc` de quem roda não entrar no pedido. Um teste confere todo
     `curl` do arquivo, inclusive os de outro PR.
   - Y1: o esquema só conta antes do primeiro `/`, `?` ou `#`, então `/assets/site.js?v=…T01:00` segue relativo.
   - Y2: o valor é o do último `<espaço>src=` da tag, então um `?src=b` dentro da URL não vira o valor (era um falso
     negativo).
 - **Prova:**
-  - `simulated`: `scripts/tests/test_portal_prova_de_fora.py`, 14 testes. O `curl` falso injeta o beacon (aspas
-    simples, como a Cloudflare), um script de outra origem, a tag em linhas, a maiúscula, o Rocket Loader, o
-    challenge-platform embutido e um desafio 403.
+  - `simulated`: `scripts/tests/test_portal_prova_de_fora.py`, 14 testes.
   - `real` (05/10 01:31Z, máquina do central, só GET): a raiz pedida como navegador traz `/assets/site.js` e o beacon;
     pedida pelo `curl` puro, 0 ocorrências. A prova de fora vai reprovar até o dono desligar o recurso na zona.
 
@@ -1726,8 +2114,7 @@ Lado Jev do 28.10 F5, sobre o 31.49 (#330).
 ## 2026-10-04 — 29.77: site institucional na raiz e contato que chega ao Telegram do dono (branch feat/29-77-portal-institucional)
 
 - **O pedido:** o dono quer um site público na raiz de `dev.nvit.com.br`, com link para o painel e um formulário cuja
-  mensagem chega ao Telegram dele, e os telefones na página com WhatsApp. O site apresenta a ANA e as personas como
-  identidade declarada de quem contrata, e traz a seção "O que a ANA não faz".
+  mensagem chega ao Telegram dele, e os telefones na página com WhatsApp.
 - **O que muda (tudo desligado de fábrica, `portal.site_ligado` e `portal.contato_ligado`):**
   - `site/` (HTML, CSS, JS e SVG próprios) servido da memória na raiz, montado por último; lista fechada de extensões
     (arquivo fora dela derruba a subida, e o `deploy.ps1` confere antes de parar o central); CSP sem `unsafe-inline`,
@@ -2313,10 +2700,8 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   na pasta Enviados: `not_run` (exige chamada paga de IA e enviar e-mail é efeito externo não autorizado).
 ## 2026-10-04 — 29.74: a tentativa interrompida que esperou a pessoa diz por quê (branch fix/29-74-interrompida-pela-pessoa)
 
-- `classificar_falha(…, recovery)`: a tentativa `interrupted` com o `recovery` do `waiting_user` ou da prova de fluxo
-  é classificada pelo texto. Sem regra, vira `ia_declarou_bloqueio`. Pausa, tomada e reconciliação seguem
-  `interrompida`. Regras novas: `auth_challenge` (trava da conta) → `autenticacao`, e a recusa da triagem de valor
-  sensível → `falta_informacao`.
+- `classificar_falha(…, recovery)`: a tentativa `interrupted` com o `recovery` do `waiting_user` ou da prova de fluxo é
+  classificada pelo texto. Sem regra, vira `ia_declarou_bloqueio`. Pausa, tomada e reconciliação seguem `interrompida`.
 - `finish_attempt` grava com o `recovery`. A leitura retroativa (`tipo_da_tentativa`) relê o `interrompida` gravado
   antes, sem migração. Nos dados do central (04/10), as 77 que esperaram a pessoa se repartem em 42 `autenticacao`,
   6 `ia_saldo`, 1 `sessao_de_automacao` e 28 sem regra (relatos da IA).
@@ -3209,14 +3594,13 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 ## 2026-10-04 — 29.35: falta de informação do ator passa pela revisão determinística (branch fix/29-35-falta-de-informacao-revisa, sem migração)
 
 - Executor: `step_blocked kind=missing_info` sai com `StepOutcome.falta_de_informacao` quando a razão NÃO é credencial
-  (`TriagemDeCredencial.pergunta_sensivel`). Senha, código e 2FA seguem direto para a pessoa (ADR-009).
+  (`TriagemDeCredencial.pergunta_sensivel`). Senha e código seguem direto para a pessoa (ADR-009).
 - Scheduler: antes do `waiting_user`, `_revisao_cabe` (só leitura, as portas do `_try_recover`) e uma revisão com o
   motivo `Recuperação automática (falta de informação) …`. A revisão entra no mesmo teto por objetivo, sem laço; a
   tentativa conta como falha. Marca `MOTIVO_FALTA_DE_INFORMACAO` em `plan_versions.reason` e em `plan.revised.data.reason`
   para Aprendizado e Jev.
-- Testes: `test_falta_de_informacao.py` (falta comum revisa e conclui, com o evento marcado; falta de senha vai à
-  pessoa sem revisão). `test_cascata_ator_barato.py` passa a esperar uma revisão antes da pessoa (`[0, 1, 0, 1]` e
-  `[0, 0]`). `test_desbravador.py`: o líder que para pede o código de verificação (credencial), não um dado comum.
+- Testes: `test_falta_de_informacao.py` (falta comum revisa e conclui, com o evento marcado; falta de senha vai à pessoa
+  sem revisão). `test_cascata_ator_barato.py` passa a esperar uma revisão antes da pessoa (`[0, 1, 0, 1]` e `[0, 0]`).
 - Prova `simulated`. A meta (waiting_user do QA de 11 para no máximo 5 em 7 dias) é `not_run`.
 
 ## 2026-10-04 — 29.33 (RA-4): admissão de boot por CPU e prazo do preparo pela carga (branch fix/29-33-admissao-por-cpu, sem migração)
@@ -3402,8 +3786,8 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   vizinhos do login 270 passed. Real `not_run` (o toque perdido não se reproduz de propósito; nenhum login real nesta noite).
 - Revisão da orquestradora (01:31Z): a releitura confere de forma explícita `estado.trava` e a classificação da tela
   (erro de credencial); a reconciliação mantém `blocked_until` e vale no `observe_only`; testes dos negativos (botão
-  desabilitado, identificador trocado, erro/desafio/outra tela na releitura, outro pacote, conta parada no meio) e da
-  senha que não vaza (banco, log, resultado). 16 testes no arquivo.
+  desabilitado, identificador trocado, erro/outra tela na releitura, outro pacote, conta parada no meio) e da senha que
+  não vaza (banco, log, resultado). 16 testes no arquivo.
 
 ## 2026-10-04 — 29.56: tranca de login por cliente, limite no Bearer e cabeçalhos de segurança (branch fix/29-56-tranca-por-cliente, sem migração)
 
@@ -3845,9 +4229,9 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   `config.example.yaml`.
 - Correções da revisão do PR #166 (`test_telegram_correcoes.py`, `simulated`):
   - B1: na 1ª subida o histórico do chat é descartado (`getUpdates` com `offset=-1` e uma linha-marco), não executado;
-  - B2: a resposta a uma pergunta que pede senha, código, 2FA ou token é recusada pelo contexto (vocabulário da triagem de
+  - B2: a resposta a uma pergunta que pede senha, código ou token é recusada pelo contexto (vocabulário da triagem de
     credencial), apagada do chat e nunca gravada; o 409 `credencial_na_resposta` do caminho comum é final;
-  - B2 (canal): com uma execução esperando senha, código, 2FA ou token, a palavra solta (sem reply e sem `/responder`) é
+  - B2 (canal): com uma execução esperando senha, código ou token, a palavra solta (sem reply e sem `/responder`) é
     recusada, apagada do chat e não gravada; sem poder ler as perguntas, falha fechada;
   - I3: a update que não grava vira `falhou` sem texto e o offset anda; I4: a prévia vence em `ttl_previa_s` (900 s);
   - I5: o dono é `chat.type = private` com `from.id` igual ao chat, na mensagem e no botão;
@@ -5848,11 +6232,11 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
   número vira `[numero]`, e endereço, e-mail ofuscado, algarismos por extenso ou excesso de palavras desconhecidas devolvem `None`
   (o pedido não sai, `fallback_reason='privacidade'`). Correção da revisão independente: a versão por detector deixava passar nome em
   minúsculas, nome no começo de frase e os destinos que o TargetExtractor não pega.
-- `planning/decisao_fechada/intencao.py` e `taskqueue/sombra_intencao.py`: consumidor de sombra da origem `intencao` (C3, sempre
-  `shadow`) com R2 (`choice` sobre o catálogo inteiro, ids opacos, até 254 + `nenhuma`) e R3 (`choice` entre os empatados), numa
-  chamada. C7 em prosa (senha, código, 2FA, captcha…) marca `credencial` e a porta recusa o pedido inteiro. Desligado (inclusive com
-  `JEV_RUNTIME_SEND_APPROVED=False`) não lê, não resolve e não grava nada. Só a R2 tem decisão real; a R3 e o `casar_desfecho`
-  ficam para o 31.10. `CAMPOS_POR_ORIGEM["intencao"]` registra `comando` e `app`.
+- `planning/decisao_fechada/intencao.py` e `taskqueue/sombra_intencao.py`: consumidor de sombra da origem `intencao`
+  (C3, sempre `shadow`) com R2 (`choice` sobre o catálogo inteiro, ids opacos, até 254 + `nenhuma`) e R3 (`choice` entre
+  os empatados), numa chamada. Desligado (inclusive com `JEV_RUNTIME_SEND_APPROVED=False`) não lê, não resolve e não
+  grava nada. Só a R2 tem decisão real; a R3 e o `casar_desfecho` ficam para o 31.10. `CAMPOS_POR_ORIGEM["intencao"]`
+  registra `comando` e `app`.
 - `planning/decisao_fechada/porta.py`: `consultar(pedido, *, ao_registrar=None)`, chamado depois de o observador gravar (o casamento
   da decisão real sem polling).
 - Enxerto mínimo em `taskqueue/service.py` (um `add_done_callback` em `_spawn_planning`; só plano bem-sucedido: cancelado, com
@@ -5954,8 +6338,8 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
 
 - Bloqueio confirmado retira a conta numa transação: credencial da conta, a legada e o ciphertext do cofre, sessões, vínculo de aparelho e a linha da conta (inclusive a âncora); a persona volta a `active`, sem @. `POST /api/instagram/profiles/{id}/accounts/{conta}/retire`; gatilho em `marcar_conta_travada`; o disjuntor de conta (ADR-055) é acionado direto.
 - Migração 071 `contas_retiradas`: lápide só com o hash do @; `eh_conta_nossa()` e o filtro de frota recusam ação sobre conta nossa (ADR-050). `memory_items` reescritos para "[conta removida]"; gancho `limpezas_ao_retirar` para outros módulos. Histórico intacto (opção A do dono).
-- Testes: `test_conta_bloqueada_sai.py` (16); asserções de bloqueio em `test_detector_conta_travada`, `test_quarentena_de_conta`, `test_escopo_do_desafio` e `test_sessao_declarada` atualizadas de propósito (o bloqueio agora retira a conta e devolve a persona a `active`). Prova `simulated`; real e PostgreSQL `not_run`.
-- Retirada AUTOMÁTICA só no Instagram (conta âncora) e só com sinal forte: `ChallengeActivity` em foco (`DeviceManager.observe` lê o foco quando a árvore já parece conta travada) ou declaração do dono. Texto sozinho e conta de outro app ficam `blocked`/marcadas para a pessoa; a rota manual retira qualquer conta. Testes: só texto não retira, atividade retira, dois sinais retiram, outro app não retira sozinho, responder a terceiro num post nosso segue permitido no `_fleet_gate` (29.23, ADR-068).
+- Prova `simulated`; real e PostgreSQL `not_run`.
+- Texto sozinho e conta de outro app ficam `blocked`/marcadas para a pessoa; a rota manual retira qualquer conta. Testes: só texto não retira, atividade retira, dois sinais retiram, outro app não retira sozinho, responder a terceiro num post nosso segue permitido no `_fleet_gate` (29.23, ADR-068).
 
 ## 2026-10-03 — Aprendizado: versão viva comparada no formato da receita (fix, branch fix/aprendizado-versao-nome-codigo)
 
@@ -6306,13 +6690,7 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
 
 ## 2026-10-02 — 8.3 Sinais e limites: o que já estava feito, o que faltava
 
-- Simulado (`tests/test_capabilities.py::test_abandonar_o_item_expira_a_aprovacao_pendente`,
-  `tests/test_detector_conta_travada.py`, `tests/test_sensitive_input.py`): conferido contra o código de hoje, o
-  grosso do 8.3 já estava na `main` (f5015a6 e ADR-055): "confirm you're human" no classificador, teto de
-  reobservação `unknown` (`session_unknown_retry_cap`), teto por dia por balde, uma conta por alvo com espaçamento e
-  expiração da aprovação ao cancelar. Faltava: `resolve(abandon)` e o cancelamento antes de iniciar não expiravam o
-  pedido pendente (agora expiram); o classificador aceita "verify/prove you're human", "comprove/confirmar que você
-  é humano/uma pessoa (real)". Hierarquia SINTÉTICA — a tela real não existe, a conta foi perdida.
+- Hierarquia SINTÉTICA — a tela real não existe, a conta foi perdida.
 - `not_run`: `REPLY_COMMENT` e "editar" em aparelho real (conta real de terceiro; roteiro em
   [`perfis-e-instagram.md`](docs/dominios/perfis-e-instagram.md)). Pendente do dono: afrouxar a política do catálogo
   (#114 item 3), troca de conta (#115: a flag já não existe; implementar ou assumir que conta errada é sempre pessoa).
@@ -6535,7 +6913,7 @@ Módulo puro `backend/app/modules/pedidos/domain/recorrencia.py`: parser do subc
 
 ## 2026-10-02 — IA: cascata para ator barato (17.10)
 
-- `backend/app/taskqueue/executor.py`: (1) `step_blocked` do tier 0 sobe UMA vez ao modelo de escalonamento, na mesma tela, antes de pedir uma pessoa (não vale para `challenge`/`auth_required`/`wrong_account`, nem com efeito já disparado, nem em receita); (2) o "sim" do verificador barato em etapa com efeito externo (ou que confirma o nível de entrega) é conferido UMA vez pelo escalonamento, e vale o veredito mais forte (só age se os modelos diferem). Chaves `ai.cascade_blocked_to_tier1` e `ai.rejudge_yes_on_side_effect`, ambas `true` por padrão; exemplo e `docs/ia.md` §10b. `simulated`: 12 testes em `test_cascata_ator_barato.py`; mutações derrubam. `real`: `not_run` (a bateria paga do `gpt-6-luna` é a próxima). Sem deploy: o ambiente central só muda quando a sessão Android implantar.
+- Chaves `ai.cascade_blocked_to_tier1` e `ai.rejudge_yes_on_side_effect`, ambas `true` por padrão; exemplo e `docs/ia.md` §10b. `simulated`: 12 testes em `test_cascata_ator_barato.py`; mutações derrubam. `real`: `not_run` (a bateria paga do `gpt-6-luna` é a próxima). Sem deploy: o ambiente central só muda quando a sessão Android implantar.
 
 ## 2026-10-02 — Retrieval: orçamento padrão novo e rodízio de chunks (J13)
 
@@ -6675,11 +7053,7 @@ Integrado na `main`; **não implantado** (exige reiniciar o backend: o `GET /api
 Feito num branch de worktree; entra na `main` pela sessão que coordena a onda. Prova `simulated`; aparelho e conta
 Microsoft reais, `not_run` (29.12, 23.13).
 
-- **Login gerenciado do Outlook** (`app/conhecimento/apps/com.microsoft.office.outlook/`): `telas.yaml` e
-  `sessao.yaml` com o login em etapas observado no android-10 (boas-vindas → "Add account" → e-mail → "Continue" →
-  WebView da Microsoft → "Use your password" → senha pelo canal sensível → "Next"); tudo depois da senha e os
-  desafios da Microsoft são suposição marcada nos arquivos e terminam incertos quando não casam. `app.yaml` ganha
-  `provedor_de_sessao: microsoft` (segue sem ser âncora).
+- `app.yaml` ganha `provedor_de_sessao: microsoft` (segue sem ser âncora).
 - **Catálogo só de leitura preparado e mantido fora da `main`** (commit `806eed9` do branch do agente): com ele, o
   Outlook deixaria de ser app de etapa livre no plano entre apps (ADR-058) e não leria valor para outra etapa (24.3) —
   o C1 do dono depende disso, e 16 testes do plano entre apps ficariam vermelhos.
@@ -6777,9 +7151,9 @@ pendências em [handoffs/terceira-evolucao.md](docs/handoffs/terceira-evolucao.m
   `{{saida:nome}}`, migração 056), conta e portas do app da etapa, roteamento por conjunto de apps, etapa de outro app
   não conclui com o app errado na frente. **Real:** QA Messenger → Chrome no android-05, conta indisponível e reinício
   do backend no meio sem repetir etapa.
-- **Contas por app (ADR-057, Fase 23):** sessão por conta (fim da âncora única), desafio só na conta do app, formulário
-  em etapas, senha clonada no cofre, painel de contas por app. **Real:** contas Outlook de André, Bruno e Lucas com a
-  senha clonada (consentimento pendente do dono).
+- **Contas por app (ADR-057, Fase 23):** sessão por conta (fim da âncora única) só na conta do app, formulário em
+  etapas, senha clonada no cofre, painel de contas por app. **Real:** contas Outlook de André, Bruno e Lucas com a senha
+  clonada (consentimento pendente do dono).
 - **Outlook (bloqueado, P15):** importado da loja depois de corrigir o inspetor (split sem esquema v1), mas o Outlook
   5.2635.3 derruba o emulador 37.1.11/37.2.11 e, no 37.3.2, morre numa armadilha proposital (`UD2`) da `libhxcomm.so`.
 - **Pedidos persistentes (Fase 26):** pesquisa e desenho completos; Fase 28 registrada para a implementação.
@@ -6788,13 +7162,6 @@ pendências em [handoffs/terceira-evolucao.md](docs/handoffs/terceira-evolucao.m
 ## 2026-09-29 (noite) — Planejamento da terceira evolução: Outlook, comando entre apps, rede por aparelho, pedidos persistentes
 
 Só documentação e processo; nenhum código, nenhum aparelho tocado, nenhuma chamada paga. Pedido do dono de 29/09.
-
-- Documentação e processo: diagnóstico e desenho em `docs/design/terceira-evolucao.md` (novo); esqueleto da pesquisa
-  em `docs/design/pedidos-persistentes.md` (novo); coordenação em `docs/handoffs/terceira-evolucao.md` (novo); Fases
-  23–27 do plano-100 (43 itens, blocos novos no mapa e Opus forçado nos itens delicados); ADR-056 (rede por aparelho,
-  revisa a cláusula de rede do ADR-055, decisão do dono) e ADR-057 (Outlook, sessão por conta, credencial clonada no
-  cofre, decisão do dono), ADR-058 e ADR-059 propostos; 12.3 decidido no roadmap; invariante do `CLAUDE.md` e K-057
-  com a ressalva do ADR-056.
 
 ## 2026-09-29 (noite) — Fase 22: as pendências da rodada (ADR-054)
 
@@ -6919,10 +7286,6 @@ tarefa `farm-relogio` (`b25957e`). **Implantado em 29/09 ~03:55Z:** `c359f65` (p
 aprendizado, migrações 054 e 055 ensaiadas antes) e `2511b12`, com o frontend no mesmo deploy
 ([relatório §22](docs/relatorio-validacao.md)).
 
-Origem: o dono pediu em 28/09 para "resolver tudo o que ficou em aberto" (autorizou tudo) e, em 29/09, deu a regra de
-que parar em "Confirm you're human" é conta perdida. Cinco das oito contas do Instagram estão bloqueadas; a investigação
-mostrou uma frota coordenada sobre as mesmas pessoas, e o código não aplicava a regra (Fases 20 e 21 do plano-100).
-
 - **Escada sem reset com conta (21.6, `e9da86e`).** O reinício por irq e o religar da reconciliação não contam mais como
   degrau da escada de reparo (`requested_by` `saude` e `reconciliacao`); com vínculo ou conta travada, o 3º degrau é
   "Precisa do dono" + `stop`, nunca `reset`.
@@ -6943,12 +7306,10 @@ mostrou uma frota coordenada sobre as mesmas pessoas, e o código não aplicava 
   `system_server` prende o aparelho, K-054); aposentar apaga o AVD mesmo com o `pstore.bin` somente-leitura (`2511b12`,
   K-056).
 - Operação (29/09, reversível): SEND_MESSAGE do grupo "Operação" de volta a `approval_required`, com os limites do grupo
-  "Recuperação"; o `CREATE_COMMENT` autônomo do andre removido; o android-04, com o felipe no desafio, desligado.
+  "Recuperação"; o `CREATE_COMMENT` autônomo do andre removido; o android-04, com o felipe no desligado.
 - Prova: `real` no diagnóstico, nas proteções operacionais, no relógio e nos experimentos; `simulated` nos testes de
   cada pacote e na integração (SQLite, PostgreSQL 17, mypy, frontend 660 ok); `not_run`: as provas com efeito em conta
   real (o deploy da integração veio depois, às 03:55Z).
-- Documentação e processo: ADR-054 e ADR-055, K-053 a K-057, relatório §22, Fases 20 e 21 do plano-100, adendo v0.37,
-  banco (054 e 055).
 
 ## 2026-09-28 (noite) — Falhas reiteradas do Instagram: diagnóstico medido, 9 correções e prova real (ADR-053)
 
@@ -7111,9 +7472,7 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
 - **Aparelho real pela plataforma:** `android-16` criado, ligado (241 s), parado e aposentado (AVD removido).
 - **CI sem pagar:** runner próprio `central` (tarefa `farm-ci-runner`, variável `CI_RUNS_ON`), venv por job, `pwsh`
   como shell (o `bash` do Windows resolvia para o WSL), cancelamento por ref; PostgreSQL na GitHub até a cota nova.
-- **Crenças ricas (ADR-048):** religião e política como objetos (biografia v2, normalizada na leitura, sem SQL), no
-  bloco `<persona>` com a regra de conduta (sem propaganda, pedido de voto, desinformação ou ataque a grupos), na
-  geração por prompt e em dois cartões no painel (barra de espectro neutra). Prova real no relatório de validação §17.
+- Prova real no relatório de validação §17.
 - **Completar com IA com instruções** (adendo v0.32): `POST /personas/{id}/enrich` aceita `{instructions}` e o cartão
   "Completar com IA" fica no topo da guia Persona — o gerar-por-prompt aplicado a quem já existe, só no vazio;
   prova real no relatório §17.
@@ -7461,17 +7820,6 @@ Prova:
 ### Documentação e processo
 - K-035 em `conhecimento/aprendizados.md`; nota do campo no §9 de `relatorio-desempenho.md`.
 
-## 2026-09-27 — desafio bloqueia o perfil (ADR-029), contas travadas desatreladas, B20 e B7 (implantado: `8f7b94c` em 27/09 ~03:28 UTC, central e agente do worker, conferido em `/api/health`)
-
-- **Instagram:** na entrada da sessão em `auth_challenge`, o perfil passa sozinho de `active` a `blocked`
-  (`bloquear_por_desafio`, nos dois caminhos que gravam o desafio). A porta de sessão e a distribuição já recusavam
-  perfil fora de `active`. Pausa do dono não é reescrita. Resolver a tela não reativa.
-- **Dados de produção, a pedido do dono:**
-  - cinco contas travadas desatreladas de persona e aparelho, mantidas como `blocked`;
-  - 29 objetivos da bateria de 24–25/09 abandonados no android-09 (B20).
-- **CI:** `npm run build` no job do painel (B7).
-- **`probe-image.ps1`:** snapshot restaurado provado pelo uptime (K-035, `cfb8b43`).
-
 ## 2026-09-26 — evolução de desempenho: prévia e observação sob demanda, medição, reserva de RAM (ADR-027, ADR-028) (implantado: `a90a6e1` em 27/09 ~01:35 UTC, central e agente do worker, conferido em `/api/health`)
 
 Pedido do dono de 26/09 (coordenação multiagente, frentes F1 a F8). O relatório está em
@@ -7638,9 +7986,6 @@ Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `sim
 - `POST /api/runs`: campo `credentials` (cofre, apagado no fim da execução) e consentimento explícito
   (`consentimento_de_credencial`); comando com senha no texto é recusado antes de gravar (`credencial_no_comando`) e
   `runs.command` passa pela redação. Origem: execução `22d65f`, cuja senha ficou em claro no banco e foi ao planejador.
-- Ferramentas `type_secret` (canal sensível, só campo de senha, só no app da etapa e no site pedido) e `open_url` (só
-  endereço do comando); tela de senha não para a execução que tem credencial; desafio e CAPTCHA continuam com a
-  pessoa.
 - Revisão local (code-review xhigh): credencial mantida em `completed_with_issues` e varrida após 24 h parada; 422 sem
   eco de valor sensível; cofre antes da execução (nada órfão); `usuário:senha@` em URL recusado; texto citado não
   tira o comando do catálogo; painel não guarda nem envia comando com senha e limpa o histórico antigo.
@@ -7648,7 +7993,7 @@ Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `sim
   `)` que faz parte da URL fica; "página" não tira comando do Instagram do catálogo; execução cuja credencial não
   se ligou vai a `failed` em vez de ficar em `planning`.
 - O planejador não fica preso ao catálogo do app do aparelho quando o comando pede site ou outro app; Chrome no
-  `config.example.yaml`. Prompts: regra de conduta (sem desinformação, sem ofensa explícita).
+  `config.example.yaml`.
 - Painel: campo "Senha para a automação" (só em memória) e confirmação antes de criar a execução.
 
 ### Operação

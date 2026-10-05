@@ -1,8 +1,8 @@
 """O fluxo legado visto como habilidade: `flow:<flows.id>@1`, só leitura (§15.1, ADR-034).
 
 Embrulha o `FlowStore` em vez de reimplementá-lo: a resolução DELEGA a `FlowStore.match`, e com isso a ordem
-(`uses DESC, created_at`), o escopo por perfil e grupo (`flow_scope`), a extração dos valores e o "faltou valor,
-não é este fluxo" são exatamente os de hoje. Nada aqui escreve em `flows`.
+(especificidade, depois `uses DESC`, depois `created_at`; 31.89 F1), o escopo por perfil e grupo (`flow_scope`), a
+extração dos valores e o "faltou valor, não é este fluxo" são exatamente os de hoje. Nada aqui escreve em `flows`.
 
 Como o fluxo vira versão:
 - estado `published` se `flows.status='active'`; `candidate` e `validated` são os do D1 do livro de aprendizado
@@ -76,8 +76,9 @@ class LegacyFlowAdapter:
         return ResolvedSkill(definition=self._definition(row), version=versao, parameters=valores)
 
     def candidates(self, command: str, profile_ids: Sequence[str | None] | None) -> tuple[SkillMatch, ...]:
-        """O fluxo que o `FlowStore.match` escolheria, e só ele: entre fluxos que casam, a ordem por uso (`uses DESC,
-        created_at`) é a de hoje, e a paridade com o legado vale mais que um empate que o fluxo nunca teve. Fluxo
+        """O fluxo que o `FlowStore.match` escolheria, e só ele: entre fluxos que casam, a ordem do `FlowStore`
+        (especificidade, depois `uses DESC`, depois `created_at`; 31.89 F1) é a de hoje, e a paridade com o legado vale
+        mais que um empate que o fluxo nunca teve. Fluxo
         não tem tipo nem casa com buraco vazio: o comando pela metade continua indo ao planejador."""
         achado = self.resolve(command, profile_ids)
         return (SkillMatch(achado),) if achado is not None else ()
