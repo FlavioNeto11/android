@@ -335,6 +335,7 @@ class Harness:
         if self.relogio is not None:                      # o executor do backend NOVO (reinício) pula o tempo também
             self.state.scheduler.executor.dormir = self.relogio.dormir
         await self.state.start()
+        await self._esperar_faxinas_da_subida()
         # A variante de interface (idioma/densidade) é a única parte da identidade da receita que `variant_of` lê do
         # aparelho REAL, por adb — todo o resto passa pelo IO falso. Sem declará-la aqui, a suíte fica presa a quais
         # emuladores estão ligados na máquina: com o aparelho desligado o adb falha, o executor desliga a receita
@@ -345,6 +346,25 @@ class Harness:
         if self.internet_medida:
             await self._medir_a_internet()
         return self.state
+
+    async def _esperar_faxinas_da_subida(self) -> None:
+        """29.78: a retenção, a expiração e a faxina dos canais dão a primeira volta já na subida, em segundo plano. O
+        teste que grava linha "velha" logo depois do `boot` corria com elas: a retenção levava parte dos eventos que
+        o teste ia purgar, ou a evidência que ele ia conferir. Esperar a primeira volta de cada uma tira a corrida, e
+        a próxima só vem depois de 10 min (expiração), 1 h (canais) ou 6 h (retenção). Só espera o laço que subiu:
+        `ROLE=api` não sobe nenhum deles."""
+        assert self.state is not None
+        s = self.state
+        subiram = {t.get_name() for t in s._bg}
+        faltam: list[tuple[str, Callable[[], bool]]] = []
+        if "retention" in subiram:
+            faltam.append(("retenção", lambda: s.voltas_de_faxina["retencao"] > 0))
+        if "expiracao-needs-input" in subiram:
+            faltam.append(("expiração", lambda: s.voltas_de_faxina["expiracao"] > 0))
+        if "avisos-fora-do-painel" in subiram:
+            faltam.append(("faxina dos canais", lambda: s.avisos.voltas_da_faxina_dos_canais > 0))
+        for nome, pronto in faltam:
+            await self.wait(pronto, 20.0, f"primeira volta da {nome} na subida")
 
     async def crash(self) -> None:
         """Simula a queda do processo: tarefas canceladas sem nenhum encerramento gracioso de etapas."""

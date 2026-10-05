@@ -169,6 +169,29 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - os novos: 13 na conversa (`test_telegram_entrada.py`, com o falso da porta), 2 nas portas reais no harness
     (`test_telegram_portas.py`) e 5 no domínio (`test_avisos_porta.py`).
 - `not_run`: o Telegram real e um plano real com item que pede o sim.
+## 2026-10-04 — 29.78: o harness entrega o backend só depois da primeira volta das faxinas (branch fix/29-78-harness-espera-faxinas)
+
+- A retenção, a expiração e a faxina dos canais dão a primeira volta na subida, em segundo plano. O teste que gravava
+  linha "velha" logo depois do `boot` corria com elas: a retenção levava eventos que o teste ia purgar
+  (`test_purga_em_lotes_leva_tudo_e_poupa_execucao_aberta`) ou a evidência que ele ia conferir
+  (`test_storage_de_evidencias`, as duas de retenção). O `Harness.boot` agora espera a primeira volta de cada laço que
+  subiu (`AppState.voltas_de_faxina`, `ServicoDeAvisos.voltas_da_faxina_dos_canais`). Os testes de retenção ficaram
+  como estavam: já conferem o estado final, e com a espera as contagens deixam de ter corrida.
+- Produção: com o aviso ligado, a primeira faxina dos canais é já na subida, e não depois do primeiro `intervalo_s` sem
+  evento (o mesmo molde da expiração do 29.50). Com o aviso desligado, a volta da subida não toma a trava `avisos` (28.4).
+  Achado à parte, levado à orquestradora para a Canais: fora da subida, `faxinar_canais` toma a trava `avisos` mesmo
+  com o aviso desligado, e essa trava o `_manter_travas` não renova (vale conferir o mesmo formato no espelho e no leitor
+  do Trello).
+- Dois testes que dependiam do tempo da subida, achados na rodada inteira (SQLite `-n 6`, 23:33Z, 10313 passed e 2 failed):
+  - `test_comandos_de_app::test_instalacao_interrompida_por_reinicio_sai_de_verifying_sozinha` lia `verifying` logo
+    depois do `boot`, antes da releitura automática. Com a espera, a releitura já passou: o teste confere a passagem
+    por `verifying` nos eventos (`pending_op` nulo), espera a saída automática para `missing` e mantém a releitura
+    por `_reverificar_interrompidas` com a dívida criada à mão. Na `main` (652773ef) passava 3 de 3; aqui falhava 3 de 3.
+  - `test_saude_ao_vivo::test_check_health_emite_apenas_quando_o_resultado_muda`: a mensagem do `capacity_local` traz
+    a RAM livre do host, que anda entre duas checagens com a suíte em paralelo. Já tinha falhado assim em 03/10, antes
+    do 29.78. O teste fixa esse problema como fixa o Appium; os testes do `capacity_local` seguem no mesmo arquivo.
+- Prova `simulated`: `backend/tests/test_canais_faxina.py::test_a_primeira_faxina_do_laco_e_na_subida_so_com_o_aviso_ligado`
+  e `backend/tests/test_retencao_telemetria.py::test_o_harness_entrega_o_backend_depois_da_primeira_volta_das_faxinas`.
 
 ## 2026-10-04 — 28.31 F3: a rotina do resumo sai no máximo uma vez por hora; "Precisa de você" que muda sai já (branch canais/28-31-piso-da-rotina)
 

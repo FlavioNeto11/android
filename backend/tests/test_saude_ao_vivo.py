@@ -19,6 +19,10 @@ async def test_check_health_emite_apenas_quando_o_resultado_muda(harness: Harnes
 
     state.bus.emit = espiao  # type: ignore[method-assign]
     state.appium.is_up = lambda timeout=1.0: True  # type: ignore[assignment]  # ponto de partida estável
+    # Também estável: `capacity_local` traz a RAM livre do host (de 100 em 100 MB) na mensagem, e com a suíte em
+    # paralelo ela anda entre as duas checagens — o teste via uma "mudança" que não era do backend (falhou assim em
+    # 03/10 e na rodada do 29.78). O próprio `capacity_local` tem os testes dele mais abaixo neste arquivo.
+    state._problema_de_capacidade_local = lambda: None  # type: ignore[method-assign]
 
     state._check_health()
     assert len(vistos) == 1
