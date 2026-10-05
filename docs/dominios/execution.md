@@ -139,8 +139,8 @@ Uma execução em `needs_input` há `NEEDS_INPUT_EXPIRA_H` (24 h) sem resposta �
 O prazo da 29.50 deixa de ser a constante e passa ao config (`execucao.pergunta_vence_h`, 24 h por padrão; a chave
 `execucao.vencimento_ligado`, ligada de fábrica, desliga os dois vencimentos). `NEEDS_INPUT_EXPIRA_H` fica como o padrão.
 
-- Segundo caso: o objetivo em `waiting_user` de uma execução JÁ TERMINADA (na prática `completed_with_issues`, onde
-  `recompute_run` deixa a execução "para permitir retomada"). Ele ficava `waiting_user` para sempre; no central eram 22.
+- Segundo caso: o objetivo em `waiting_user` de uma execução sem trabalho automático (`awaiting_person` desde o 29.93;
+  antes, `completed_with_issues`, onde `recompute_run` deixava a execução "para permitir retomada"). Ele ficava `waiting_user` para sempre; no central eram 22.
   `RunService.vencer_objetivos_parados(agora)` roda no mesmo laço (`_expiracao_uma_vez`) e o fecha PELO SISTEMA:
   - o relógio é o mais tardio entre `objectives.finished_at` (a entrada em `waiting_user`) e `runs.finished_at`:
     nunca adianta, e a retomada de outro item da execução recomeça o prazo;
@@ -1213,13 +1213,18 @@ Contexto: design §2.4; decisão: [ADR-038](../decisoes.md#adr-038--máquinas-de
 
 | Máquina | Estados | Nasce | Resumo das saídas |
 |---|---|---|---|
-| `RUN` (`runs.status`) | 10 | `planning` (`create_run`) | `planning → needs_input, planned, running, failed, cancelled`; `needs_input → cancelled`; `planned → running, cancelled`; `running`/`paused` → pausar/retomar, `cancelling` e os três fechamentos; `cancelling → cancelled, completed, completed_with_issues` (e reafirma); `completed` e `failed` terminais |
+| `RUN` (`runs.status`) | 11 | `planning` (`create_run`) | `planning → needs_input, planned, running, failed, cancelled`; `needs_input → cancelled`; `planned → running, cancelled`; `running`/`paused` → pausar/retomar, `cancelling` e os três fechamentos; `cancelling → cancelled, completed, completed_with_issues` (e reafirma); `running`/`paused`/`cancelling` → `awaiting_person` e `awaiting_person → running, paused, completed, completed_with_issues, cancelling, cancelled` (e reafirma; 29.93); `completed` e `failed` terminais |
 | `OBJECTIVE` (`objectives.status`) | 7 | `pending` (`materialize`) | `pending → running, waiting_user, succeeded, failed, cancelled`; `running → waiting_user, uncertain, succeeded, failed, cancelled`; `waiting_user → pending, running, failed, cancelled`; `uncertain → pending, running, failed` (só por decisão de pessoa); `failed → pending` (e reafirma); `succeeded` e `cancelled` terminais |
 | `STEP` (`steps.status`) | 11 | `pending` (`_insert_steps`) | a tabela que já existia em `taskqueue/states.py`, sem mudança |
 | `ATTEMPT` (`attempts.status`) | 6 | `running` (`claim_step`) | `running → succeeded, failed, interrupted, uncertain, cancelled`; os cinco são terminais: nenhuma tentativa reabre |
 
-- **Reafirmação (`x → x`) só onde o código a faz:** execução em `cancelling`, `completed_with_issues` e `cancelled`;
+- **Reafirmação (`x → x`) só onde o código a faz:** execução em `cancelling`, `awaiting_person`, `completed_with_issues` e `cancelled`;
   objetivo `failed`. Liberar `pode(x, x)` em geral esconderia o erro que a tabela existe para mostrar.
+- **`awaiting_person` (29.93):** o trabalho automático acabou e um objetivo espera um gesto da pessoa (`waiting_user`).
+  Não é terminal, mas está em `RUN_SEM_TRABALHO` (`app/models.py`): grava `finished_at`, é de onde o vencimento do 31.50
+  conta e é o que a retomada reabre. Só `waiting_user` leva a ele; execução só com `uncertain` segue
+  `completed_with_issues`. O aprendizado e o fechamento de pedido o leem como o `completed_with_issues` de antes; o
+  snapshot o traz por 7 dias depois de `finished_at`. Diferente de `needs_input`, a pergunta antes de agir.
 - **Reabertura registrada como é:** `completed_with_issues → running, paused, completed, cancelling` e
   `cancelled → running, paused` (`recompute_run` reabre quando um item é retomado). É a reabertura que o design §2.4
   aponta; ela entra na tabela para ser revista no passo "impor", não aprovada.
