@@ -24,6 +24,7 @@ from collections.abc import Callable, Iterable
 from datetime import datetime
 
 from app.config import Config
+from app.db import loads
 from app.contracts.origem import PREFIXO_LOTE, e_execucao_do_sistema
 from app.events import EventBus
 from app.models import Problem
@@ -56,7 +57,7 @@ log = logging.getLogger("poc.avisos")
 
 #: Eventos que podem virar aviso. O filtro barato antes de montar a mensagem.
 KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_person", "pedido.aviso",
-                              "learning.needs_person", "pendencia.vence_em"})
+                              "learning.needs_person", "pendencia.vence_em", "objective.updated"})
 #: De quanto em quanto tempo o laço varre incertos, vencidos e purga (a entrega roda a cada volta).
 FAXINA_S = 3600.0
 #: De quanto em quanto tempo, com o canal desligado, vencem os contatos do site pendentes (28.32).
@@ -153,6 +154,14 @@ class ServicoDeAvisos:
                 # O montador devolve None sem a chave do produtor: o lembrete não sairia calado.
                 log.warning("avisos: pendencia.vence_em sem a chave do produtor (evento %s): o lembrete não sai", evento_id)
             data = self._com_nome_da_acao(data)
+        if kind == "objective.updated":
+            # 28.40: o filtro barato antes de ler o banco; o montador confere de novo.
+            obj = (data or {}).get("objective")
+            if not isinstance(obj, dict) or obj.get("status") != "waiting_user" or obj.get("blocked_kind") == "approval":
+                return False
+            if self._conta_ja_avisou(obj, data):
+                return False
+            data = self._com_nome_da_acao(self._com_a_etapa_que_espera(data, obj))
         aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir,
                                 nomes=nomes, conversa=conversa)
         if aviso is None or self._e_de_prova(kind, data):
@@ -293,6 +302,78 @@ class ServicoDeAvisos:
             return data
         return {**(data or {}), "acao_nome": nome} if nome else data
 
+    def _com_a_etapa_que_espera(self, data: dict[str, object] | None, obj: dict[str, object]) -> dict[str, object] | None:
+        """28.40: põe em `acao` a capability da etapa em `waiting_user` do objetivo (a mesma leitura do lembrete do 31.50,
+        `taskqueue/service.py`). Só a chave do catálogo; o título da etapa não sai. Sem etapa esperando (a política e o
+        pré-voo param antes da etapa) ou com a leitura falhando, a mensagem sai sem a linha da etapa."""
+        try:
+            etapa = self.fila.db.one("SELECT capability FROM steps WHERE objective_id=? AND status='waiting_user' "
+                                     "ORDER BY seq DESC, id DESC LIMIT 1", (obj.get("id"),))
+        except Exception:  # noqa: BLE001 - o aviso sai sem a etapa
+            log.exception("avisos: etapa do objetivo %s não lida", obj.get("id"))
+            return data
+        if etapa is None or not etapa["capability"]:
+            return data
+        return {**(data or {}), "acao": str(etapa["capability"])}
+
+    def _conta_ja_avisou(self, obj: dict[str, object], data: dict[str, object] | None) -> bool:
+        """28.40: o objetivo parou porque a CONTA pede a pessoa, e o `session.needs_person` já avisou: uma mensagem só.
+
+        O evento da conta não leva a execução (`identity/application/session_rules.py`), só o aparelho, a persona e,
+        quando quem emite sabe, a conta (`account_id`). A regra é uma APROXIMAÇÃO de "a mesma execução", aceita pela
+        orquestradora (05/10): o último `session.needs_person` do mesmo aparelho está ativo e saiu depois de a execução
+        do objetivo ser criada. O aviso de conta de uma execução ANTERIOR não cala o objetivo novo. Além disso (revisão
+        do #372, O1, regra da orquestradora às 04:09Z), a conta tem de ser a do objetivo:
+
+        - com `account_id` no aviso: só cala quando é a conta do objetivo (`_conta_do_objetivo`). A outra persona no
+          mesmo aparelho e o outro app da mesma persona (o Outlook junto do Instagram) avisam;
+        - só com `profile_id`: só cala quando a persona é a mesma E o objetivo parou por motivo de conta
+          (`failure_kind` `autenticacao` ou `conta_errada`, ou o bloqueio sem etapa da porta de sessão).
+
+        Faltando a conta ou a persona de um dos lados, não cala: um aviso em dobro custa menos que uma parada muda.
+        Limites conhecidos: se o objetivo parar ANTES de a conta mudar de estado, saem as duas mensagens; e outra
+        execução no mesmo aparelho e na mesma conta, criada antes de a conta pedir a pessoa, fica calada. Leitura
+        falhando: avisa."""
+        aparelho, run_id, oid = obj.get("instance_id"), obj.get("run_id"), obj.get("id")
+        if not isinstance(aparelho, str) or not isinstance(run_id, str) or not isinstance(oid, str):
+            return False
+        try:
+            aviso = self.fila.db.one("SELECT ts, data FROM events WHERE kind='session.needs_person' AND instance_id=? "
+                                     "ORDER BY id DESC LIMIT 1", (aparelho,))
+            criada = self.fila.db.scalar("SELECT created_at FROM runs WHERE id=?", (run_id,))
+            persona = self.fila.db.scalar("SELECT profile_id FROM objectives WHERE id=?", (oid,))
+            if aviso is None or criada is None or not persona:
+                return False
+            dados = loads(aviso["data"], {})
+            if not (isinstance(dados, dict) and dados.get("active") is True and str(aviso["ts"]) >= str(criada)):
+                return False
+            if dados.get("account_id"):
+                return self._conta_do_objetivo(oid, str(persona)) == dados["account_id"]
+            if dados.get("profile_id") != persona:
+                return False
+            if (data or {}).get("failure_kind") in ("autenticacao", "conta_errada"):
+                return True
+            # O bloqueio da porta de sessão (`Scheduler._portas_do_app`) para o objetivo ANTES de a etapa rodar: não há
+            # etapa em `waiting_user`.
+            return self.fila.db.scalar("SELECT 1 FROM steps WHERE objective_id=? AND status='waiting_user' LIMIT 1",
+                                       (oid,)) is None
+        except Exception:  # noqa: BLE001 - ver a docstring: na dúvida, avisa
+            log.exception("avisos: não foi possível conferir o aviso de conta do objetivo %s", oid)
+            return False
+
+    def _conta_do_objetivo(self, oid: str, persona: str) -> str | None:
+        """A conta (`profile_accounts.id`) em que o objetivo parou: a da persona no app da etapa que espera ou, sem ela (a
+        porta de sessão para antes da etapa), no app da próxima etapa a rodar. Só quando a etapa DECLARA o app e a persona
+        tem UMA conta ativa nele; senão `None` (o app herdado do plano ou do aparelho não é adivinhado aqui)."""
+        etapa = self.fila.db.one("SELECT app_id FROM steps WHERE objective_id=? AND status IN "
+                                 "('waiting_user', 'pending', 'ready', 'retry_wait') "
+                                 "ORDER BY CASE WHEN status='waiting_user' THEN 0 ELSE 1 END, seq, id LIMIT 1", (oid,))
+        if etapa is None or not etapa["app_id"]:
+            return None
+        contas = self.fila.db.query("SELECT id FROM profile_accounts WHERE profile_id=? AND app_id=? AND status='active'",
+                                    (persona, etapa["app_id"]))
+        return str(contas[0]["id"]) if len(contas) == 1 else None
+
     def _e_de_prova(self, kind: str, data: dict[str, object] | None) -> bool:
         """30.37 e 28.19: a execução do SISTEMA não é de uma pessoa: a pergunta dela (`run.updated` em `needs_input`)
         não vira aviso ao dono. São a prova de fluxo (`runs.prova_fluxo_id`), a validação do QA e o lote de uma frente
@@ -302,14 +383,17 @@ class ServicoDeAvisos:
         A APROVAÇÃO é diferente: só o dono decide (orquestradora, 04/10 01:20Z). A aprovação que um LOTE abre segue
         avisando (agrupada, se vier em série, pela regra da rajada). A da prova e a da validação seguem caladas, como o
         30.37 decidiu.
+        O objetivo parado (`objective.updated`, 28.40) segue a regra da pergunta: o do lote de uma frente é calado
+        (orquestradora, 05/10). É o MESMO predicado, sem cópia: se ele mudar, as duas regras mudam juntas.
         Só consulto o banco para o evento que AVISARIA; falha na consulta deixa o aviso seguir (o dono recebe um aviso
         a mais, nunca perde um de pessoa)."""
-        if kind not in ("run.updated", "approval.pending", "pendencia.vence_em"):
+        if kind not in ("run.updated", "approval.pending", "pendencia.vence_em", "objective.updated"):
             return False
         # 31.50: o lembrete do vencimento segue a regra do item que lembra (a aprovação de lote avisa; o resto do sistema não).
         lembrete = kind == "pendencia.vence_em"
         aprovacao = kind == "approval.pending" or (lembrete and (data or {}).get("o_que") == "aprovacao")
-        filho = (data or {}) if lembrete else (data or {}).get("run" if kind == "run.updated" else "approval")
+        filho = (data or {}) if lembrete else (data or {}).get(
+            {"run.updated": "run", "objective.updated": "objective"}.get(kind, "approval"))
         run_id = filho.get("id" if kind == "run.updated" else "run_id") if isinstance(filho, dict) else None
         if isinstance(filho, dict) and filho.get("prova_fluxo_id"):
             return True

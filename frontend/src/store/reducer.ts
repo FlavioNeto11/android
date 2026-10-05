@@ -371,7 +371,11 @@ export function reduceDetail(detail: RunDetail, ev: EventRecord): RunDetail {
     case 'step.updated': {
       const step = obj<Step>(data, 'step');
       if (!step || step.run_id !== detail.id) return detail;
-      return { ...detail, steps: upsertBy(detail.steps, step, (s) => s.id) };
+      // 31.65: o motivo da persona não viaja em evento (é texto do modelo); sem a chave, fica o do detalhe carregado.
+      const antes = detail.steps.find((s) => s.id === step.id);
+      const novo = !('motivo_da_persona' in step) && antes?.motivo_da_persona
+        ? { ...step, motivo_da_persona: antes.motivo_da_persona } : step;
+      return { ...detail, steps: upsertBy(detail.steps, novo, (s) => s.id) };
     }
     case 'attempt.updated': {
       const attempt = obj<Attempt>(data, 'attempt');

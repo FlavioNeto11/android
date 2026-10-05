@@ -40,6 +40,7 @@ from .devices.sdk import SdkTools
 from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
+from .modules.avisos.infrastructure.canais_frota import CanaisDaFrota
 from .modules.avisos.infrastructure.contatos_sql import ContatosDoCanal
 from .modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from .modules.avisos.infrastructure.entrada import ServicoDeEntrada, parece_codigo
@@ -114,8 +115,8 @@ from .releases.service import InstalacaoIncerta, ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .social.contas_nossas import MARCADOR
 from .social.repository import SocialRepository, frase_da_quarentena, sessao_vencida
-from .social.approvals import (Approval, ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
-                               textos_irmaos)
+from .social.approvals import (DICA_DA_RECUSA, Approval, ApprovalService, ApprovalStore, definir_texto,
+                               guardar_rascunho, guardar_recusa, ler_rascunho, rascunho_fechado, textos_irmaos)
 from .social.persona_batch import LotesDePersona
 from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
@@ -344,6 +345,8 @@ class AppState:
         # Trava de líder dos laços de fundo (item 28.1): com dois backends com scheduler no mesmo banco, só um roda
         # saldos, curadoria e retenção; os outros pulam a volta sem erro.
         self.lideranca = Lideranca(self.db, dono=cfg.owner_id)
+        # Quais canais cada backend liga (28.37): a saúde acusa quando o líder da trava `avisos` não liga um deles.
+        self.canais_da_frota = CanaisDaFrota(self.db, cfg, dono=cfg.owner_id, roda=cfg.roda_scheduler)
         # Os anexos dos canais (28.24): o arquivo em `data/anexos/` (fora do Git), pelo sha256; a faxina do 28.16 os apaga.
         self.anexos_canal = ArmazemDeAnexos(self.db, cfg.data_dir / "anexos")
         # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
@@ -1194,7 +1197,8 @@ class AppState:
             return          # a trava confirmada retirou a conta (29.23): não há item de fila para uma conta que saiu
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=atual["status"] if atual is not None else None,
-                                 detail=detail[:300], account_id=str(conta["id"]))
+                                 detail=detail[:300], account_id=str(conta["id"]),
+                                 anterior_no_teto=self.social_repo.unknown_no_teto(atual, instance_id))
 
     def _pacote_em_curso(self, instance_id: str) -> str | None:
         """O pacote do app da etapa que o worker deste aparelho executa agora (o dela, senão o do plano, senão o do
@@ -1260,7 +1264,9 @@ class AppState:
 
         async def reobservar_todas() -> None:
             for provedor, pid, conta_id in pendentes:
-                await provedor.ensure_session(rt, pid, account_id=conta_id, observe_only=True)
+                await self._medindo_a_parada(
+                    "pessoa_devolveu", rt.id, pid, conta_id,
+                    lambda p=provedor, i=pid, c=conta_id: p.ensure_session(rt, i, account_id=c, observe_only=True))
 
         self.scheduler.run_device_job(rt, reobservar_todas, label="reobservação após devolver o controle")
 
@@ -1443,7 +1449,10 @@ class AppState:
                   else "a sessão deste perfil ainda não foi verificada")
         if session and session["status"] in self._SESSAO_PRECISA_DE_PESSOA:
             return motivo, None
-        teto = self.settings.get().session_unknown_retry_cap
+        # 29.92: teto por aparelho. Com vínculo ativo (conta real) é 1: o primeiro `unknown` de um `ensure_session` já
+        # para, porque a rodada seguinte pode cair no login e digitar a senha guardada em cima de uma tela que ninguém
+        # reconheceu. A tela classificada direto como login segue para o `_login` com consentimento (ADR-040).
+        teto = self.social_repo.teto_de_unknown(rt.id) or self.settings.get().session_unknown_retry_cap
         if (session and session["status"] == SessionStatus.unknown.value
                 and int(session["unknown_streak"] or 0) >= teto):
             # Achado #104: sem este teto, uma tela que `classify()` nunca reconhece (sinal ausente da tabela,
@@ -1509,10 +1518,28 @@ class AppState:
             # Marca ao começar, não ao pedir: se o aparelho estiver ocupado, `run_device_job` recusa o trabalho e a
             # releitura continua devida no próximo tick.
             self._releituras_do_teto[chave] = now_iso()
-            await provedor.ensure_session(rt, profile_id, account_id=conta_id, observe_only=True)
+            await self._medindo_a_parada("releitura_sem_toque", rt.id, profile_id, conta_id,
+                                         lambda: provedor.ensure_session(rt, profile_id, account_id=conta_id,
+                                                                         observe_only=True))
 
         return ("a tela não reconhecida foi registrada antes de o aparelho entrar no ar (ou passou da validade); o "
                 "aparelho vai ser relido antes da tarefa"), reler
+
+    async def _medindo_a_parada(self, via: str, instance_id: str, profile_id: str, conta_id: str | None,
+                                chamada: Callable[[], Awaitable[object]]) -> None:
+        """29.92: roda a releitura e, se ela tirou do teto uma sessão parada (`unknown` no teto deste aparelho) para
+        `session_ready`, conta `sessao.parada_resolvida{via}`. `releitura_sem_toque`: ninguém tocou no aparelho (a
+        releitura única do teto); `pessoa_devolveu`: a pessoa assumiu e devolveu o controle. É o que decide se vale
+        uma rodada automática só de observar, sem login."""
+        def sessao() -> Row | None:
+            return (self.social_repo.account_session_row(profile_id, conta_id, instance_id)
+                    if conta_id is not None else None)
+
+        parada = self.social_repo.unknown_no_teto(sessao(), instance_id)
+        await chamada()
+        depois = sessao()
+        if parada and depois is not None and depois["status"] == SessionStatus.session_ready.value:
+            metricas.contar("sessao.parada_resolvida", instancia=instance_id, via=via)
 
     def _entrada_no_ar(self, rt: DeviceRuntime) -> str | None:
         """Quando o aparelho entrou no ar pela última vez, em ISO: o mais recente entre o início do processo do
@@ -2168,8 +2195,14 @@ class AppState:
             nova = repetida if repetida and repetida not in (veredito.reason or "") else ""
             motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, nova, citada, objeto_ambiguo) if m)
             # 30.65: a etapa que usa a exceção sempre pede decisão nova; o aprovado de outra versão não vale para ela.
-            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao,
-                                       pacote=pacote, app_id=app_da_etapa_id)
+            parada = self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao,
+                                         pacote=pacote, app_id=app_da_etapa_id)
+            if parada is not None:
+                return parada
+        if cap.side_effect:
+            # 31.64 S1 (migração 110): a porta liberou o efeito. Na mesma passada sem `await` da regra do objeto na família
+            # (acima): a irmã que chegar depois vê esta marca e é recusada, qualquer que seja a ordem das tomadas.
+            self.social_repo.marcar_passou_a_porta(srow["id"])
         return None
 
     def vereditos_da_porta(self, obj: Row, srow: Row, run: Row) -> "PortaDaEtapa":
@@ -2383,7 +2416,8 @@ class AppState:
             # tem chave), então se a etapa chegou aqui com briefing, aquele sim não a cobre: pular a escrita deixaria
             # a etapa sem texto, e o pedido da execução sairia sem o que vai ser enviado.
             pedido = self.approvals.for_step(srow["id"])
-            if ler_rascunho(self.db, srow["id"]) or (pedido is not None and pedido.origem != "plano"):
+            if rascunho_fechado(ler_rascunho(self.db, srow["id"])) or (pedido is not None
+                                                                       and pedido.origem != "plano"):
                 return None
             # O tipo de texto e as leituras de tela são do APP da etapa (o manifesto dele no registro de apps).
             tipo = capabilities_of(pacote).text_kind(cap.key) or "dm_initiate"
@@ -2442,10 +2476,10 @@ class AppState:
             if draft.refused or not (draft.content or "").strip():
                 # O motivo da recusa vem antes da justificativa: é ele que diz o que mudar na intenção (ex.: o
                 # texto atribuía um recado a um terceiro, ADR-055) — a justificativa só explica a escolha do texto.
+                # 31.65: o motivo do modelo é texto livre dele e fica só na etapa; a dica viaja e é fixa.
+                guardar_recusa(self.db, srow["id"], draft.refusal_reason or draft.rationale or "sem justificativa")
                 return Verdict(allowed=False, policy=cap.default_policy,
-                               reason="a persona se recusou a escrever este texto",
-                               hint=f"{draft.refusal_reason or draft.rationale or 'sem justificativa'}. Reescreva a "
-                                    "intenção e retome o item.")
+                               reason="a persona se recusou a escrever este texto", hint=DICA_DA_RECUSA)
             # Texto e marca na MESMA transação: um crash entre os dois deixaria a etapa com texto novo e sem
             # marca, e a retomada geraria outro por cima — pago, e por cima do que já estava escrito.
             with self.db.tx():
@@ -2869,6 +2903,12 @@ class AppState:
                 self.lideranca.soltar_todas()
             except Exception:  # noqa: BLE001 - devolver a trava nunca impede fechar o banco; ela vence sozinha
                 log.exception("encerramento: falha ao soltar as travas de líder")
+            try:
+                # Num `try` próprio: se as travas falharem, a publicação dos canais ainda sai (28.37), e os outros não
+                # acusam divergência por uma publicação que ficaria até envelhecer.
+                self.canais_da_frota.retirar()
+            except Exception:  # noqa: BLE001 - a publicação vence sozinha (FRESCA_S); nunca impede fechar o banco
+                log.exception("encerramento: falha ao retirar a publicação dos canais")
             self.db.close()
 
     async def _esperar_o_que_grava_sombra(self, sombra_intencao: SombraDaIntencao | None) -> None:
@@ -2962,6 +3002,10 @@ class AppState:
             self.lideranca.manter([n for n in TRAVAS_DOS_LACOS if n not in desligadas])
         except Exception:  # noqa: BLE001 - banco fora do ar: os laços pulam a volta, e a próxima tentativa refaz
             log.exception("travas de líder: renovação")
+        try:
+            self.canais_da_frota.publicar()   # só escreve quando mudou ou a cada 120 s (28.37)
+        except Exception:  # noqa: BLE001 - a publicação é para a saúde; nunca atrapalha a renovação
+            log.exception("canais da frota: publicação")
 
     async def _laco_das_travas(self) -> None:
         """Renova o mandato do líder e deixa o seguidor assumir a trava vencida. Os laços dormem de 10 min a 6 h; o
@@ -3583,6 +3627,7 @@ class AppState:
                                          "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
         problems.extend(self._problemas_de_saldo())
         problems.extend(self.avisos.problemas())
+        problems.extend(self.canais_da_frota.problemas())
         problems.extend(self.telegram_entrada.problemas())
         achados_do_espelho = self.trello_espelho.problemas()
         problems.extend(achados_do_espelho)

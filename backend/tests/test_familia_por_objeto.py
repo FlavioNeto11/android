@@ -13,12 +13,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from app.models import InteractionStatus
+import pytest
+
+from app.models import InteractionStatus, ProfileCreate
 from app.planning.capabilities import capability_of
 from app.social.approvals import ApprovalStore
 from app.social.policy import MOTIVO_CITA_A_FAMILIA, ContextoDoPedido, PolicyEngine
 
-from .test_capabilities import IG, perfil
+from .test_capabilities import IG, SENHA, perfil
 from .test_repetido_entre_execucoes import _SERVICOS, _conta, _etapa
 
 POST_A = {"image_id": "img-1", "content": "Fim de tarde"}
@@ -59,6 +61,114 @@ def test_a_mesma_imagem_ja_publicada_por_outra_persona_do_pedido_tambem(tmp_path
                             outgoing_content=None, app_id="instagram", run_id="r-a", step_id=sid)
     pedido = ContextoDoPedido(raiz="r-b", familia=frozenset({a, b}))
     veredito = policies.check(b, publicar, step_id="r-b:x", pedido=pedido, bindings={"image_id": "img-1"})
+    assert not veredito.allowed and "31.53" in veredito.reason
+
+
+def test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem(tmp_path: Path) -> None:
+    """31.64: com `publicar_sem_aprovacao` a etapa da irmã passa a porta sem pedido e sem saída até o commit; enquanto
+    ela roda ou verifica, a mesma imagem é recusada. Pronta (ainda não passou a porta) ou já falha, não conta."""
+    _repo, policies, db, a, b = _familia(tmp_path)
+    publicar = capability_of(IG, "CREATE_POST")
+    sid = _etapa(db, "r-a", "CREATE_POST", POST_A)
+    db.execute("UPDATE objectives SET profile_id=? WHERE id='r-a:android-01'", (a,))
+    pedido = ContextoDoPedido(raiz="r-b", familia=frozenset({a, b}))
+    for status, recusa in (("ready", False), ("running", True), ("verifying", True), ("failed", False)):
+        db.execute("UPDATE steps SET status=? WHERE id=?", (status, sid))
+        veredito = policies.check(b, publicar, step_id="r-b:x", pedido=pedido, bindings={"image_id": "img-1"})
+        assert ("31.53" in veredito.reason and not veredito.allowed) is recusa, (status, veredito.reason)
+    db.execute("UPDATE steps SET status='running' WHERE id=?", (sid,))
+    outra = policies.check(b, publicar, step_id="r-b:x", pedido=pedido, bindings={"image_id": "img-2"})
+    assert "31.53" not in outra.reason
+
+
+def _etapa_tomada(db: Any, run: str, pid: str, quando: str, aparelho: str) -> str:
+    """Uma etapa de publicação com a mesma imagem, já TOMADA (`running`, `started_at`), da persona `pid` (um aparelho por
+    etapa em curso: o banco não deixa duas `running` no mesmo)."""
+    sid = _etapa(db, run, "CREATE_POST", POST_A)
+    db.execute("UPDATE objectives SET profile_id=? WHERE id=?", (pid, f"{run}:android-01"))
+    db.execute("UPDATE steps SET status='running', started_at=?, instance_id=? WHERE id=?", (quando, aparelho, sid))
+    return sid
+
+
+def test_irmas_tomadas_juntas_com_a_mesma_imagem_exatamente_uma_passa(tmp_path: Path) -> None:
+    """F1 da revisão do #350: a etapa vira `running` na tomada, antes da porta. Duas irmãs em `running` com a mesma
+    imagem: a mais antiga passa e a outra é recusada (antes do conserto, as duas eram recusadas). Mesmo `started_at`:
+    o `id` desempata."""
+    _repo, policies, db, a, b = _familia(tmp_path)
+    publicar = capability_of(IG, "CREATE_POST")
+    pedido = ContextoDoPedido(raiz="r-a", familia=frozenset({a, b}))
+    for quando_a, quando_b in (("2026-10-05T01:00:00Z", "2026-10-05T01:00:05Z"),
+                               ("2026-10-05T01:00:00Z", "2026-10-05T01:00:00Z")):
+        db.execute("DELETE FROM steps")
+        sa = _etapa_tomada(db, "r-a", a, quando_a, "android-01")
+        sb = _etapa_tomada(db, "r-b", b, quando_b, "android-02")
+        recusadas = [sid for pid, sid in ((a, sa), (b, sb))
+                     if "31.53" in policies.check(pid, publicar, step_id=sid, pedido=pedido,
+                                                  bindings={"image_id": "img-1"}).reason]
+        assert recusadas == [sb], (quando_a, quando_b, recusadas)       # "r-a…" < "r-b…" no desempate
+
+
+def test_tres_irmas_tomadas_juntas_so_a_mais_antiga_passa(tmp_path: Path) -> None:
+    repo, policies, db, a, b = _familia(tmp_path)
+    c = _SERVICOS[a].create_profile(ProfileCreate(username="carla.dias7781", password=SENHA)).id   # sem aparelho
+    repo.update_profile(c, {"automation_policy": '{"limits": {"warmup_days": 0, '
+                                                 '"cooldown_between_external_actions_s": 0}}'})
+    publicar = capability_of(IG, "CREATE_POST")
+    pedido = ContextoDoPedido(raiz="r-a", familia=frozenset({a, b, c}))
+    etapas = {c: _etapa_tomada(db, "r-c", c, "2026-10-05T01:00:01Z", "android-03"),
+              a: _etapa_tomada(db, "r-a", a, "2026-10-05T01:00:03Z", "android-01"),
+              b: _etapa_tomada(db, "r-b", b, "2026-10-05T01:00:02Z", "android-02")}
+    passaram = [pid for pid, sid in etapas.items()
+                if "31.53" not in policies.check(pid, publicar, step_id=sid, pedido=pedido,
+                                                 bindings={"image_id": "img-1"}).reason]
+    assert passaram == [c]
+
+
+@pytest.mark.parametrize("parada", ["retry_wait", "waiting_user"])
+def test_s1_a_que_volta_com_a_tomada_antiga_nao_passa_a_irma_que_ja_passou(tmp_path: Path, parada: str) -> None:
+    """S1 da revisão do #350: A é tomada primeiro e para (`retry_wait` ou `waiting_user`) antes da porta; B é tomada
+    depois, PASSA a porta e publica; A volta a `ready`, é retomada com o `started_at` da primeira tomada e chega à porta.
+    Pela ordem das tomadas A seria a mais antiga e as duas publicariam; com a marca de B, A é recusada."""
+    _repo, policies, db, a, b = _familia(tmp_path)
+    publicar = capability_of(IG, "CREATE_POST")
+    pedido = ContextoDoPedido(raiz="r-a", familia=frozenset({a, b}))
+    sa = _etapa_tomada(db, "r-a", a, "2026-10-05T01:00:00Z", "android-01")
+    db.execute("UPDATE steps SET status=? WHERE id=?", (parada, sa))
+    sb = _etapa_tomada(db, "r-b", b, "2026-10-05T01:00:30Z", "android-02")
+    assert "31.53" not in policies.check(b, publicar, step_id=sb, pedido=pedido, bindings={"image_id": "img-1"}).reason
+    db.execute("UPDATE steps SET passou_a_porta=1 WHERE id=?", (sb,))            # o que a porta grava ao liberar B
+    db.execute("UPDATE steps SET status='ready' WHERE id=?", (sa,))
+    db.execute("UPDATE steps SET status='running' WHERE id=?", (sa,))            # retomada: `started_at` fica o de t0
+    veredito = policies.check(a, publicar, step_id=sa, pedido=pedido, bindings={"image_id": "img-1"})
+    assert not veredito.allowed and "31.53" in veredito.reason
+
+
+def test_s1_a_irma_que_passou_e_falhou_nao_conta_mais(tmp_path: Path) -> None:
+    _repo, policies, db, a, b = _familia(tmp_path)
+    publicar = capability_of(IG, "CREATE_POST")
+    pedido = ContextoDoPedido(raiz="r-a", familia=frozenset({a, b}))
+    sb = _etapa_tomada(db, "r-b", b, "2026-10-05T01:00:00Z", "android-02")
+    db.execute("UPDATE steps SET passou_a_porta=1, status='failed' WHERE id=?", (sb,))
+    sa = _etapa_tomada(db, "r-a", a, "2026-10-05T01:00:30Z", "android-01")
+    assert "31.53" not in policies.check(a, publicar, step_id=sa, pedido=pedido, bindings={"image_id": "img-1"}).reason
+
+
+def test_s2_marcas_antigas_concluidas_nao_tiram_a_irma_em_curso_do_lote(tmp_path: Path) -> None:
+    """S2 da revisão do #350: 201 etapas da irmã já concluídas (`succeeded`) e marcadas, com outras imagens, e 1 em curso
+    marcada com a mesma imagem. Antes, as marcas concluídas entravam sem janela e o lote (`ORDER BY id LIMIT 200`) trazia
+    as mais antigas: a em curso ficava de fora e a mesma imagem passava. Agora a recusa sai."""
+    _repo, policies, db, a, b = _familia(tmp_path)
+    publicar = capability_of(IG, "CREATE_POST")
+    pedido = ContextoDoPedido(raiz="r-a", familia=frozenset({a, b}))
+    for n in range(201):
+        run = f"r-b{n:03d}"
+        sid = _etapa(db, run, "CREATE_POST", {"image_id": f"img-velha-{n}"})
+        db.execute("UPDATE objectives SET profile_id=? WHERE id=?", (b, f"{run}:android-01"))
+        db.execute("UPDATE steps SET status='succeeded', passou_a_porta=1 WHERE id=?", (sid,))
+    sb = _etapa_tomada(db, "r-zz", b, "2026-10-05T01:00:00Z", "android-02")
+    db.execute("UPDATE steps SET passou_a_porta=1 WHERE id=?", (sb,))
+    sa = _etapa_tomada(db, "r-a", a, "2026-10-05T01:00:30Z", "android-01")
+    veredito = policies.check(a, publicar, step_id=sa, pedido=pedido, bindings={"image_id": "img-1"})
     assert not veredito.allowed and "31.53" in veredito.reason
 
 

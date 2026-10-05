@@ -4798,16 +4798,16 @@
   },
   "29.21": {
    "id": "29.21",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "04/10/2026, central, main 24da29ef: android-05 (QA, rede exigida_com_bloqueio, trafego_verificado rev 1) parado às 12:31:24Z (snapshot descartado) e ligado a frio (c-20261004123129-561e24), online às 12:33:05Z. A rede não regrediu para 'configurado'; a convergência remediu às 12:34:57Z (device.network succeeded, medição #1215) sem pedir reinício. Nenhuma linha de reinício segurado no backend.log desde 00:04Z. O cenário de 02/10 não se reproduziu.",
-   "blocker": "Causa exata do 'ocupado' de 02/10 segue não provada; os termos do 29.21 ficam no detail da linha de rede quando ocorrer.",
-   "grupo": "android-suite26",
-   "modelo": "claude-opus-5-5",
-   "esforco": "sessao executora",
+   "evidence": "Real parcial (máquina central, backend no ar em 0ede1860, implantado em 04/10 às 19:50Z, que contém o conserto c7f799c5 do PR #81): data/logs/backend.log.2026-10-04 tem 'android-02: reinício da rede aguarda o aparelho: worker no scheduler' às 21:52:17Z e 'reinício da rede não saiu em 25 tentativas: worker no scheduler; a varredura tenta de novo em 5 min' às 21:54:17Z (o log grava hora local, -03:00; os ids de comando confirmam o UTC). Isso prova que o termo é dito, uma vez por termo, e que a espera de 5 min funciona. O contexto foi o incidente 29.41 do notebook: o aparelho físico atrás do android-02 trocou às 21:50Z (start c-20261004214843-aa192a, que acabou às 21:50:12Z). O termo veio sem '(objetivo …)' e no banco nenhum objetivo do android-02 estava aberto entre 21:45Z e 22:00Z. Quem segurou foi o trabalho de aparelho que liga junto com o boot (`AppState._reobservar_se_velho` → `run_device_job`, rótulo 'reobservação e entrega do que foi distribuído'; o código põe a rede antes dos apps em `vitrine.trabalho_ao_ligar`). O comando device.network c-20261004215157-670114 acabou às 21:52:16Z e pediu o reinício 1 s depois, de dentro do próprio trabalho. Em seguida veio a entrega dos 4 apps, que o aparelho novo não tinha (app_state 'verifying' das 21:54:51Z às 21:57:45Z). O túnel voltou pela interface às 22:00:10Z (device.network c-20261004215957-e6aeb3), sem reinício, e nenhuma execução ficou presa: a espera de 5 min, em vez da de 30 s, mostra que não havia objetivo em wait_reason='rede'. Leitura de código sobre o limite (main baae3724): o trabalho de aparelho não tem teto global (`Scheduler._device_job` só faz await na fábrica), mas cada passo tem prazo: `installer.inspect` 40 s por pacote (`inspect_timeout_s`), instalação 900 s por app (`install_timeout_s`), leitura da rede pelo `AparelhoPeloAdb.shell` com prazo (`timeout=None` vira `rede.sonda.prazo_leitura_s` mais `FOLGA_DA_FILA_S`), e os laços de espera do tun0 e do botão do cliente com prazo monotônico. Os laços correm sobre listas finitas (pacotes e entregas). A recusa por aparelho ocupado não conta para `rede.reinicios_max`: só o pedido que sai conta. A varredura volta depois de `_ESPERA_DA_RELEITURA_S`. Então o reinício sai na primeira passada depois que o trabalho solta o aparelho. Prova simulated, que continua valendo: `backend/tests/test_rede_aplicacao.py::test_reinicio_com_objetivo_esperando_a_rede` e `::test_reinicio_que_nao_sai_diz_qual_termo_segurou`.",
+   "blocker": "A retentativa de 30 s com objetivo esperando a rede não teve caso real (segue simulated). A causa do 'ocupado' do android-05 em 02/10 não está provada. Há um suspeito com evidência: o mesmo trabalho de aparelho do boot, também num frio, que pede o reinício de dentro e o segura até acabar a entrega dos apps. Fica como observação. O pior caso do trabalho é longo, mas finito: rede, proxy, 40 s por pacote relido e 900 s por app entregue. Reabrir se aparecer no backend.log 'reinício da rede não saiu … o objetivo <id> espera a rede' repetido por mais tempo que esse pior caso, ou com execução presa.",
+   "grupo": "resultado-orquestradora-janela34c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:17:24+00:00"
+   "quando": "2026-10-05T04:06:12+00:00"
   },
   "17.8": {
    "id": "17.8",
@@ -8160,40 +8160,40 @@
    "id": "29.79",
    "status": "partial",
    "proof": "real",
-   "evidence": "Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entraram o #334 (0d1232c9, merge bf8e5609: commit_switch, commit_switch_mark, StepResult.efeito_comprovado com 409 no retry, rotulo_ia na etapa e na chave, catálogo do CREATE_POST com Share por id=share_footer_button), o teste S3 cdb6b7cd (nenhuma nota, detail ou evento leva a URL com token do juiz) e o conserto 22f641b2 (Approval.to_dict passa a entregar o rotulo_ia; achado no percurso do painel do 29.81; a orquestradora conferiu GET /api/approvals?status=approved com o campo nas 32 linhas depois do deploy). Prova simulated: backend/tests/test_rotulo_ia.py, test_rotulo_ia_no_executor.py, test_rotulo_ia_na_aprovacao.py, frontend execution.test.tsx e PortaDoPlano.test.tsx. not_run: os seletores na tela da legenda do android-13 (leitura só depois do aviso 'portal ligado'; galeria vazia na leitura de 04/10 23:49Z) e a 1ª publicação real com o rótulo (29.30). REAL (leitura, 2026-10-05, central a0c9865e, android-13 pelo worker-lan-01): cópia única para a galeria 01:24:21Z–01:24:28Z por Adb.enviar_midia_para_galeria (1ª prova real do push remoto; /sdcard/Pictures/Central/img_img-OWR4FWBMRf32i42n.jpg); controle manual lease DGDGQPxXKHBuz9bT 01:24:35Z–01:30:47Z até a tela da legenda, sem Share e sem tocar no interruptor; capturas em data/diag-29-79-pos-33/b13-00..13. Árvore: 'Add AI label' TextView sem id, abaixo da dobra; interruptor android.view.View clickable/checkable, checked=false, [584,1011,688,1107], candidato único; estado_do_interruptor(tree,'text==Add AI label') sobre a árvore real = 'desligado'; share_footer_button e caption_input_text_view confirmados. Folha 'Sharing posts' fechada por toque fora (OK não tocado). Publicação: not_run.",
-   "blocker": "29.87 (rolar até 'Add AI label' e a folha 'Sharing posts' no conhecimento do app), suíte 34; a 1ª publicação real (29.30) só depois do deploy 34",
-   "grupo": "resultado-orquestradora-janela33b",
+   "evidence": "Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entraram o #334 (0d1232c9, merge bf8e5609: commit_switch, commit_switch_mark, StepResult.efeito_comprovado com 409 no retry, rotulo_ia na etapa e na chave, catálogo do CREATE_POST com Share por id=share_footer_button), o teste S3 cdb6b7cd (nenhuma nota, detail ou evento leva a URL com token do juiz) e o conserto 22f641b2 (Approval.to_dict passa a entregar o rotulo_ia; achado no percurso do painel do 29.81; a orquestradora conferiu GET /api/approvals?status=approved com o campo nas 32 linhas depois do deploy). Prova simulated: backend/tests/test_rotulo_ia.py, test_rotulo_ia_no_executor.py, test_rotulo_ia_na_aprovacao.py, frontend execution.test.tsx e PortaDoPlano.test.tsx. not_run: os seletores na tela da legenda do android-13 (leitura só depois do aviso 'portal ligado'; galeria vazia na leitura de 04/10 23:49Z) e a 1ª publicação real com o rótulo (29.30). REAL (leitura, 2026-10-05, central a0c9865e, android-13 pelo worker-lan-01): cópia única para a galeria 01:24:21Z–01:24:28Z por Adb.enviar_midia_para_galeria (1ª prova real do push remoto; /sdcard/Pictures/Central/img_img-OWR4FWBMRf32i42n.jpg); controle manual lease DGDGQPxXKHBuz9bT 01:24:35Z–01:30:47Z até a tela da legenda, sem Share e sem tocar no interruptor; capturas em data/diag-29-79-pos-33/b13-00..13. Árvore: 'Add AI label' TextView sem id, abaixo da dobra; interruptor android.view.View clickable/checkable, checked=false, [584,1011,688,1107], candidato único; estado_do_interruptor(tree,'text==Add AI label') sobre a árvore real = 'desligado'; share_footer_button e caption_input_text_view confirmados. Folha 'Sharing posts' fechada por toque fora (OK não tocado). Publicação: not_run. ATUALIZAÇÃO (05/10): o 29.87 (#355, ponta a6b1680b: rolar até 'Add AI label' e fechar a folha 'Sharing posts' pelo conhecimento do app) entrou na suíte 34 e está no ar desde o deploy 34 (central 584ac9c8, migração 109). O bloqueio que sobra é só a 1ª publicação real com o rótulo (29.30), que espera a ordem da orquestradora e o toque do dono na prévia. Publicação: not_run.",
+   "blocker": "29.30: a 1ª publicação real com o rótulo (uma execução, prévia ao dono, nada sai sem o toque dele)",
+   "grupo": "resultado-orquestradora-janela34d",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T02:07:45+00:00"
+   "quando": "2026-10-05T04:16:34+00:00"
   },
   "29.77": {
    "id": "29.77",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), commit a0c9865e (deploy 33 no ar às 01:17:42Z, migração 107_portal_contatos). Sim do dono para ligar: Telegram 2026-10-05T00:59:01Z (linha 1501 de canal_entradas, do_dono=1, resposta à mensagem 252). Ligado pelo roteiro: cópia data/backups/config.yaml.antes-portal-site-20261005-011833, bloco portal no config.yaml, `pwsh -File scripts\\deploy.ps1 -Ensaio` rc=0 com 'site/: 15 arquivo(s) na lista; portal.site_ligado=True', reinício da farm-central às 01:18:50Z, saúde em 57 s sem problemas. Prova de fora às 01:19:51Z: `SITE=ligado CONTATO=ligado WEBHOOK_DO_TRELLO=ligado bash scripts/portal-prova-de-fora.sh depois` com RESULTADO tudo como esperado (raiz 200 com a CSP do site e sem Set-Cookie; robots barra /central/ e /api/; 404 fora da pasta; contato GET 401, isca 202, tipo errado 415, corpo grande 413; /api/instances 401). portal_contatos vazio depois da isca. Caminhada no navegador (1440 e 360 px, 01:20Z a 01:22Z): menu, âncoras, 5 abas por clique e teclado, 7 perguntas, 2 telefones e 2 WhatsApp, rodapé das três empresas, sem preço, sem e-mail, sem cookie, sem rolagem horizontal; campo inválido não faz pedido à rede; a isca fora da tela. Simulado (sessão Portal, PR 333): tests/test_portal_contato.py, tests/test_portal_site.py e scripts/tests/test_portal_prova_de_fora.py, na suíte 33 inteira verde (SQLite 10624 e PG 5232 na a0c9865e). not_run: o primeiro contato de verdade pelo formulário até o Telegram do dono, o limite por cliente, JS desligado e token expirado.",
-   "blocker": "o primeiro contato real pelo formulário é do dono; achado 29.85 (tag do Web Analytics injetada pela Cloudflare, bloqueada pela CSP)",
-   "grupo": "resultado-orquestradora-suite33",
+   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP, endereço público https://dev.nvit.com.br, site e contato ligados desde o deploy 33 (central a0c9865e; desde 03:27Z em 584ac9c8, deploy 34). (1) Dois contatos entregues pelo formulário de verdade: ids 1 (01:23:36Z) e 2 (01:29:59Z, do dono), os dois em estado entregue, com 2 avisos do portal na Canais (contagem por id e instante, sem ler conteúdo). (2) Envios inválidos, sem efeito, todos com telefone de um dígito: token falso 202 {ok:true} às 01:59:57.795Z e token cedo 202 às 01:59:58.238Z (os dois descartados em silêncio, sem gravar nem avisar, como a página promete ao robô); token válido com campo inválido 422 campo_invalido [telefone] às 02:00:03.656Z; token vencido 400 token_expirado às 04:02:14.598Z, com o token emitido às ~02:00Z sob a a0c9865e e conferido sob a 584ac9c8 (o sal está no banco, settings portal.sal; o deploy 34 não tocou protecao.py nem contato.py). Leituras antes e depois de cada rodada (01:59:52Z, 02:00:07Z, 02:27:50Z, 02:27:59Z, 04:02:14Z, 04:02:17Z): max_id=2, contatos=2, avisos_portal=2, nada gravado nem avisado. (3) Prova de fora: 02:27:50Z com SITE e CONTATO ligados (o #353, portal-resultado-2985-real.json); 03:21:37Z pela orquestradora, rc=0 e 41 ok; 03:30:23Z por mim, SITE=ligado: CSP do site, sem cookie, robots, nada fora da pasta, 404 própria, e a isca do contato 202 sem gravar. POSTs no público por esta frente: 5 de 6 (os 3 inválidos, a isca de 03:30Z, o vencido). Simulado: backend/tests/test_portal_contato.py (consentimento ausente 422, limite por cliente 3/h e 10/dia pelo cf-connecting-ip, teto global, retido e pendente, isca), test_portal_site.py, scripts/tests/test_portal_prova_de_fora.py. Ficaram só simulated, de propósito no público: o consentimento ausente (pediria um envio com campos válidos) e o limite por cliente (teste de carga no endereço público, proibido).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela34c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T01:26:30+00:00"
+   "quando": "2026-10-05T04:06:12+00:00"
   },
   "29.80": {
    "id": "29.80",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real em 05/10/2026, 01:48Z a 01:52Z, máquina WIN-7S2UASNLFOP, endereço público https://dev.nvit.com.br/ servido pelo deploy 33 (a0c9865e, site e contato ligados às 01:19Z); navegador embutido e curl, só GET (nenhum POST). Prévia de link: canonical, og:url e og:image no mesmo endereço público; og:title, og:type website, og:locale pt_BR, og:image:width/height 1200x630, twitter:card summary_large_image (twitter:image ausente: o cartão usa a og:image); assets/previa.png 200, PNG 1200x630, 140932 bytes. Ícones: favicon.ico 48x48 4037 B, favicon.svg 281 B, assets/icone-180.png 2265 B. 404: GET /pagina-que-nao-existe deu HTTP 404 com a página própria ('Página não encontrada · ANA · SICAT') e meta robots noindex; fetch no navegador também 404. Contraste AA (estilos computados, fundo composto pelos ancestrais, inclusive gradientes; texto grande 3, demais 4,5): 255 linhas de texto em 1440 px e 248 em 360 px; reprovaram só textos com aria-hidden: os números 01/02/03 dos pilares (decorativos) e as iniciais do avatar (fundo de gradiente claro, contraste alto), e o rótulo 'Ilustração' do console (3,9 a 4,34) e da ficha de persona (2,98), que quem enxerga lê -> corrigido no PR #356 (fix/29-80-contraste-ilustracao, 31eee4bc: #6a8198 para #91a2b3, 6,01 a 6,70 e 4,59; teste em test_portal_site.py que reprova a cor antiga). Foco: Tab real 40 vezes (33 elementos distintos, do 'Pular para o conteúdo' ao rodapé, incluindo abas, FAQ, telefones, WhatsApp e os campos do formulário): 40/40 com :focus-visible e anel sólido de 3 px (#22d3ee no escuro, #0e7490 no claro), menor contraste do anel com o fundo 4,94 (mínimo 3). Sem rolagem horizontal em 1440 e 360 px; document.cookie vazio; o beacon da Cloudflare aparece e é bloqueado pela CSP (status 0), o que é o 29.85.",
-   "blocker": "PR #356 (contraste do rótulo 'Ilustração') no deploy, e a prévia num chat real do WhatsApp e do Telegram (do dono)",
-   "grupo": "resultado-orquestradora-janela33c",
+   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP, central em 584ac9c8 (deploy 34, /api/health às 03:31:03Z), endereço público https://dev.nvit.com.br, só GET. 03:30:43Z: /assets/site.css pela borda traz a cor nova do rótulo 'Ilustração' (#91a2b3 nas 2 ocorrências, nenhuma #6a8198; contraste 7,25 e 6,70, medido pela orquestradora no Chrome do dono depois da recarga forçada); /pagina-que-nao-existe 404 text/html (a página 404 própria); a raiz com og:type, og:locale, og:url, og:title, og:description, og:image (https://dev.nvit.com.br/assets/previa.png, 1200 de largura, image/png) e os ícones /favicon.ico 48x48 e /favicon.svg. Prova de fora (SITE=ligado) às 03:30:23Z: '/pagina-que-nao-existe 404 (a página 404 própria, com status 404)' ok. Antes, real em .claude/handoffs/portal-resultado-2980-real.json (teclado, foco 40/40 com Tab real, movimento reduzido, peso das imagens). Simulado: tests/test_portal_site.py. not_run: a prévia do link renderizada num chat real do WhatsApp e do Telegram (pede o celular do dono). Observação que virou o 29.95: a borda entrega site.css e site.js com Cache-Control max-age=14400 (a origem manda no-cache), e quem já tinha visitado viu a cor antiga até forçar a recarga. Não executado e fora do aceite do item: a prévia do link num aplicativo de conversa real, que depende de alguém colar o endereço num chat.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite34a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T02:30:11+00:00"
+   "quando": "2026-10-05T03:46:54+00:00"
   },
   "28.27": {
    "id": "28.27",
@@ -8236,16 +8236,237 @@
   },
   "29.85": {
    "id": "29.85",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "PR #353, ponta final 5dd09934 (branch feat/29-85-prova-sem-script-de-fora; revisões X1-X5 e Y1-Y2 fechadas pela Ferramentas e pela Reload plugins). Real em 05/10/2026, máquina WIN-7S2UASNLFOP, do worktree C:\\git\\portal-29-85 na 5dd09934, contra https://dev.nvit.com.br (deploy 33, a0c9865e, site e contato ligados): (1) 01:31:46Z, antes do desligamento, a raiz pedida como navegador trazia /assets/site.js e https://static.cloudflareinsights.com/beacon.min.js/v31edd6df…, e pelo curl puro 0 ocorrências (o achado que a prova nova pega); (2) o dono liberou a Cloudflare às 02:15:13Z (Telegram, linha 1565) e a orquestradora desligou o Web Analytics/RUM da zona às 02:23-02:25Z; (3) 02:27:50Z: `SITE=ligado CONTATO=ligado WEBHOOK_DO_TRELLO=ligado bash scripts/portal-prova-de-fora.sh depois` -> 'RESULTADO: tudo como esperado', saída 0, 39 linhas ok, incluindo 'ok / (como navegador) (nenhum script de fora nem da Cloudflare no HTML)', CSP do site, sem Set-Cookie, 404s da lista fechada, webhook do Trello ligado, 429 do login na borda, isca 202, 415, 413 e Host forjado 403. Leituras só leitura antes (02:27:50Z) e depois (02:27:59Z): portal_contatos max_id=2 e contagem 2, avisos_entregas tipo portal.contato 2, sem mudança. Simulated: scripts/tests/test_portal_prova_de_fora.py, 14 testes (beacon, outra origem, tag em linhas, maiúscula, ?src= na URL, versão com dois-pontos, Rocket Loader, challenge-platform embutido, desafio 403, curl -q em toda chamada).",
-   "blocker": "merge do #353 na suíte 34 (junto do fix/29-83-curl-q 1fc0fad8, que põe -q no curl da isca do #342)",
-   "grupo": "resultado-orquestradora-janela33c",
+   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP, central em 584ac9c8 (deploy 34, #353 na main). Web Analytics / RUM desligado na zona às 02:23Z (com o sim do dono). Prova de fora nova (SITE=ligado SEM_LIMITE_DE_TAXA=1) às 03:30:23Z: '/ (como navegador): nenhum script de fora nem da Cloudflare no HTML' ok, '/ (cabeçalhos): CSP do site' ok, '/ (sem cookie)' ok, 33 linhas ok. As 2 'FALHOU' da rodada são só as chaves da prova que não passei (WEBHOOK_DO_TRELLO e CONTATO, ligados no central: HEAD do webhook 200 e a isca do contato 202, sem gravar nem avisar). A rodada da orquestradora às 03:21:37Z, com todas as chaves, deu rc=0 e 41 ok. Antes: .claude/handoffs/portal-resultado-2985-real.json (o beacon some depois do desligamento). Simulado: scripts/tests/test_portal_prova_de_fora.py. A defesa do nosso lado (no-transform e CSP no painel) é o 29.91.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite34a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T02:30:11+00:00"
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "29.84": {
+   "id": "29.84",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #352 (fix/29-84-vagas-pela-regra, ponta 7c226593) na suíte 34, no ar em 584ac9c8 desde 05/10 às 03:21:23Z (deploy 34, migração 109; 'no ar' da orquestradora às 03:27Z). Mudanças: `Scheduler._vagas_do_host(s: LimitsCfg)` lê `capacidade(central).max_slots` (`vagas_que_valem`) na foto `servidores()`, na reserva do rodízio (`livres[None]`) e no `_ocupacao(None)`; a rota `_limites_dos_servidores` usa `cap.max_slots` no efetivo do central e do remoto. Prova simulated: `test_limites_por_servidor.py::test_agendador_e_rota_de_limites_leem_as_vagas_pela_regra_unica` e `::test_reserva_do_central_no_rodizio_usa_as_vagas_pela_regra_unica` (R3); a mutação para a leitura direta derruba os dois. Suíte 34 na 584ac9c8: scripts 602, SQLite 10748 passed e 13 skipped, PG dirigido 4965 passed (282 arquivos), front 1598, docs-check 0/0. A catraca do Any (`test_any_so_diminui`) só passou depois da 7c226593.",
+   "blocker": "Sem prova real própria: com a regra única dando hoje o mesmo número do setting no central, o comportamento no ar não muda, e não há leitura que separe o antes do depois.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "29.86": {
+   "id": "29.86",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #354 (fix/29-86-vagas-restantes, ponta c9507d3e, empilhado no #352) na suíte 34, no ar em 584ac9c8 desde 05/10 às 03:21:23Z. R1: um worker remoto não inscrito sai com 0 vagas livres na foto (`Scheduler.servidores`), e não com o setting do central. R2: o aviso `capacity_local` compara a RAM com `capacidade(central).max_slots`; sem a linha no registro, vale o setting vivo. Z1/Z2: as docstrings e o texto do aviso citam a regra única. Prova simulated: `test_limites_por_servidor.py::test_remoto_nao_inscrito_nao_mostra_vaga_livre_na_foto` e `test_saude_ao_vivo.py::test_aviso_de_capacidade_compara_com_as_vagas_pela_regra_unica`; cada um cai na mutação. Suíte 34 na 584ac9c8, com os mesmos números do 29.84.",
+   "blocker": "Sem prova real: hoje nenhum remoto está fora do registro, e a regra do central dá o mesmo número do setting.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "28.34": {
+   "id": "28.34",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 34 inteira verde (backend 10748, PostgreSQL dirigido 4965, frontend 1598), deploy 34 no ar às 2026-10-05T03:21Z (central em 584ac9c8, migração 109), main descongelada em aab8e7f0; números da orquestradora. Simulated: backend/tests/test_avisos_portal_exclusao.py e backend/tests/test_portal_exclusao.py (a exclusão do contato do site a pedido do titular apaga a mensagem do bot quando o Telegram deixa, cancela o aviso na fila e limpa a resposta; contato excluído antes da entrega não sai depois). PR #340, ponta b142e8b7.",
+   "blocker": "Real not_run: nenhum pedido de exclusão de titular aconteceu depois do deploy 34. Prova real quando o primeiro pedido chegar pela tela 'Site e privacidade', sem provocar com contato de verdade.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "28.35": {
+   "id": "28.35",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 34 inteira verde (backend 10748, PostgreSQL dirigido 4965, frontend 1598), deploy 34 no ar às 2026-10-05T03:21Z (central em 584ac9c8, migração 109), main descongelada em aab8e7f0; números da orquestradora. Simulated: backend/tests/test_avisos_servico.py e backend/tests/test_canais_faxina.py (trava_de_avisos_em_uso(cfg) = avisos.enabled or trello.enabled; o backend desligado não toma a trava avisos e a faxina a solta no finally). PR #345, ponta c909b668.",
+   "blocker": "Real not_run: o caso só existe com um backend de canal desligado, e o central tem um backend só, com o aviso ligado. A frota mista é acusada pelo 28.37 (suíte 35).",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "28.36": {
+   "id": "28.36",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 34 inteira verde (backend 10748, PostgreSQL dirigido 4965, frontend 1598), deploy 34 no ar às 2026-10-05T03:21Z (central em 584ac9c8, migração 109), main descongelada em aab8e7f0; números da orquestradora. Simulated: backend/tests/test_telegram_portas.py (o UPDATE que trava a linha da execução antes do primeiro sim; o início que perde para outro início devolve INICIADA_POR_OUTRO_GESTO) e backend/tests/test_telegram_entrada.py (nunca 'Não iniciei' com a execução em andamento; terminal deixa só o desfecho). PR #346, ponta ccca8050.",
+   "blocker": "Real not_run: a corrida entre dois backends no PostgreSQL não roda num processo só e o central tem um backend. O texto do canal em andamento aparece quando um gesto do dono perder para outro, sem provocar.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "31.53": {
+   "id": "31.53",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#344 (9da01945) na main; deploy 34 no ar: GET /api/health do central WIN-7S2UASNLFOP responde commit 584ac9c8, migração 109_portal_exclusoes, status ok (lido às 03:42:19Z de 05/10/2026; o 'no ar' às 03:27Z é da Orquestradora). Regra do objeto na família e piso do handle de outro app na citação (só ativo, 3+), em tests/test_familia_no_rascunho.py. Execução real não rodou.",
+   "blocker": "prova real pede execução com duas personas do mesmo pedido e o mesmo objeto; sem janela marcada",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "31.61": {
+   "id": "31.61",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#348 (1be22cf8 A, c7473d7e L1, d97c8b52 L2) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). Roteiro das 8 decisões da r-20261004232524-2e0775: 8 → 7 decide no harness; negativos de tela que muda, mesma tela com outros valores (L1) e valor só contido (L2) em tests/test_leitura_sem_step_done.py. Medida real das decisões não rodou.",
+   "blocker": "medida real (decides por etapa de leitura) na janela do 31.58, que espera a vez da Orquestradora",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "31.62": {
+   "id": "31.62",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#349 (e43778fa, 7cb7133c) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). _ultima_sem_tipo confere 'abaixo' em todos os contêineres de lista que contêm a bolha, pela posição do centro (_na_faixa); o botão Enviar sobreposto à lista não conta. Árvores sintéticas em tests/test_bolha_sem_id.py. Execução real não rodou.",
+   "blocker": "prova real pede conversa com bolha sem id numa lista interna; sem janela marcada",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "31.63": {
+   "id": "31.63",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#347 (c46a02bc) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). O texto do rascunho saiu do evento 'texto escrito na voz do perfil' (só o tamanho), do log da reescrita e do motivo de recusa montado em código; a AIError de saída inválida sai fora do except, sem input_value e sem __cause__/__context__ (V1a), e training.proposal_from_json igual (V3). tests/test_rascunho_fora_do_log.py. Os resíduos V1b/V4 viraram o 31.67 (#365) e o V2 o 31.65 (#364), suíte 35.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "31.68": {
+   "id": "31.68",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#359 (a96fb8bd) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). Prévia da porta e do item com vista_em; aprovar sem vista_em legível com item a aprovar dá 409 plano_mudou; DM igual depois do vista_em entra em mudaram. tests/test_porta_do_plano.py (10 novos), test_telegram_entrada.py (T2), test_telegram_portas.py, test_executor_honra_o_plano.py, frontend PortaDoPlano.test.tsx. Percurso no navegador em servidor simulado do worktree (porta 8765, a96fb8bd, 05/10 02:20Z): 409 com 'depois da prévia que você viu' e nada gravado; reaprovar na prévia nova deu 200 com 2 aprovações. A Orquestradora fez a caminhada no central depois do deploy 34. Janela real só de plano (05/10 03:48Z, central 584ac9c8, lote:jev:31.68-1, r-20261005034820-b565c5, android-03): GET /runs/{id}/porta 200 com vista_em presente; o comentário em post nosso deu 4 itens sem nenhum 'pede seu aval' (na_execucao, permitido), então as recusas sem vista_em não rodaram; execução cancelada (cancelled), 0 aprovações, US$ 0,01967 por costs.spent_usd.",
+   "blocker": "recusa sem vista_em e aprovação com vista_em em real saem do uso: a primeira publicação (29.30) é approval_required e passa pela porta com item de aval, com o dono aprovando. Sem segunda execução com DM (decisão da Orquestradora, 05/10 03:49Z; ADR-055). Comentário cai em 'na_execucao' na prévia (o post só se resolve na execução): nunca mostra 'pede seu aval'.",
+   "grupo": "resultado-orquestradora-janela34c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T04:06:12+00:00"
+  },
+  "29.83": {
+   "id": "29.83",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP, central em 584ac9c8 com a migração 109_portal_exclusoes (/api/health às 03:31:03Z, deploy 34). Prova de fora às 03:30:23Z contra https://dev.nvit.com.br: POST /api/portal/contatos/busca 401 e POST /api/portal/contatos/excluir 401 sem sessão (corpos inválidos de propósito), nenhum Set-Cookie na raiz. A prova de fora da orquestradora às 03:21:37Z (rc=0, 41 ok) cobre as mesmas linhas. Simulado: ver .claude/handoffs/portal-resultado-suite34.json (test_portal_exclusao, test_configuracao_de_exemplo, painel isolado no navegador). not_run: a caminhada pós-deploy no painel logado (.claude/handoffs/portal-caminhada-2983.md) e a exclusão de verdade com um contato de TESTE (pede o sim do dono). Caminhada da orquestradora no painel logado (real, 05/10/2026 de 03:24Z a 03:26Z, Chrome do dono, central em 584ac9c8): Configuração, 'Site e privacidade', 'Exclusão a pedido do titular': número só de zeros é recusado no navegador sem ir à rede; a busca com um número fictício respondeu 200 em 61 ms com 'Nenhum contato com esse telefone'; nenhum controle de apagar aparece sem resultado; nada foi apagado.",
+   "blocker": "Falta a exclusão de verdade de um contato, que só acontece a pedido de um titular ou com um contato de teste autorizado pelo dono (envio válido pelo formulário e exclusão de dado pedem o sim dele).",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "29.81": {
+   "id": "29.81",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #351 (ponta 24b5f179, migração 108) na suíte 34, no ar em 584ac9c8 desde 05/10/2026 às 03:21:23Z (suíte: SQLite 10748 passed, PG dirigido 4965 passed com test_upload_feito_por_ia.py, frontend 1598 passed). Leitura real, sem envio (05/10 ~03:25Z, Chrome do dono, painel do central): a guia de imagens da persona mostra 'Esta foto foi feita por IA?' com três opções e padrão 'Não informado (sai sem rótulo de IA)', o campo de arquivo aceita jpeg e png, e o contrato publica a rota feita-por-ia. Decisão do dono de 05/10 (Telegram 02:15:13Z): a resposta não é obrigatória no envio.",
+   "blocker": "Real not_run: o envio de uma foto com a resposta e a correção depois, na foto, mudam dado de persona e ficam com o dono no uso.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "29.87": {
+   "id": "29.87",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #355 (ponta a6b1680b) na suíte 34, no ar em 584ac9c8 desde 05/10/2026 às 03:21:23Z (suíte: SQLite 10748 passed, PG dirigido 4965 passed, scripts 602 passed). A tela da legenda rola até o rótulo de IA e a folha de aviso do Instagram fecha por toque fora, sem tocar em OK nem em 'Manage settings'; se não fechar, a etapa para em waiting_user.",
+   "blocker": "Real not_run: só se prova num fluxo de publicação em aparelho real, que é a primeira publicação (29.30), pedida ao dono depois do deploy 35.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "30.67": {
+   "id": "30.67",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Commit 8a54d960 (fix(painel): 30.67 Button sem iconOnly), entrou pelo PR https://github.com/FlavioNeto11/android/pull/323 (ramo feat/30-61-painel, ponta fa6460ef, merge f801a7de) na suíte 33. No ar desde o deploy 33 (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z) e segue no deploy 34 (584ac9c8; git merge-base --is-ancestor confere os dois). O que mudou: frontend/src/components/Button.tsx — sem iconOnly, o `label` vira o nome acessível (aria-label) e o texto visível continua; com disabledReason, o nome leva o label e o motivo. frontend/src/features/runs/TextsTab.tsx: o 'Não enviar este' diz de qual aparelho é. Prova simulated: frontend/src/components/Button.test.tsx (2 testes '30.67: …') na suíte 33. Real not_run: leitor de tela no painel do central.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela34d",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T04:16:34+00:00"
+  },
+  "31.49": {
+   "id": "31.49",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #330 (ponta 1bbffb27), mesclado na suíte 33 (merge ed49da49 na origin/main) e no ar desde o deploy 33 (a0c9865e). O complemento G1b, o vista_em no sim do plano (31.68), é o #359 (a96fb8bd): suíte 34, merge 90e4f3cd, deploy 34 no ar em 584ac9c8 com a migração 109. Simulado: backend/tests/test_executor_honra_o_plano.py (8 testes), com test_porta_do_plano, test_chave_da_aprovacao, test_repetido_entre_execucoes e test_arquitetura (68 verdes no PR). Parte real: só a prévia; a janela do 31.68 (deploy 34, custo US$ 0,01967) mostrou o vista_em e o selo na prévia real. Real not_run: a execução que honra um sim dado no plano, porque nenhum sim de plano foi dado numa execução real.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela34d",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T04:16:34+00:00"
+  },
+  "31.51": {
+   "id": "31.51",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #308 (ponta 3927763e), mesclado na suíte 32 (merge 6f240e12 na origin/main) e no ar desde o deploy 32 (2c47b9fa, migração 106_pedidos_autor). O executor toca, antes do ator, o botão que fecha os diálogos do site em série (até 4), pela árvore, sem aceitar, permitir nem configurar. Sem saída que preserve a privacidade, falha com motivo literal (regra em learning/domain/falhas.py), nunca com sucesso. Simulado: backend/tests/test_dialogos_em_serie.py (22 testes, árvores remontadas do que a r-20261004190200-5b56e6 gravou, incluindo um de ponta a ponta no harness), 119 na regressão. Real not_run: o 28.12 não foi refeito depois do deploy 32.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela34d",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T04:16:34+00:00"
+  },
+  "28.33": {
+   "id": "28.33",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Entrou na suíte 33 (merge f1fd80c3, 'merge: 322 (621006ac) na suíte 33') e no deploy 33 (central em a0c9865e, migração 107). PR #322, ponta 621006ac, mesclado em 2026-10-05T01:10:39Z. Simulated: backend/tests/test_decisoes_desfazer.py e backend/tests/test_decisoes_registro_coerente.py (o autor do desligamento da conta aparece certo; o item religado à mão por uma pessoa depois da decisão automática não reabre o botão de desfazer; toda republicação depois da decisão tira o botão; confirmar que fica não é republicação e o botão fica).",
+   "blocker": "Real not_run: não houve desligamento automático de conta seguido de religar à mão nem de confirmação depois do deploy 33. A prova real vem quando o registro de decisões mostrar um caso desses, sem provocar em conta real.",
+   "grupo": "resultado-orquestradora-janela34f",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T04:25:01+00:00"
   }
  },
  "rodadas": [
@@ -10784,6 +11005,61 @@
    ],
    "grupos": [
     "resultado-orquestradora-janela33c"
+   ]
+  },
+  {
+   "quando": "2026-10-05T03:46:54+00:00",
+   "itens": [
+    "29.84",
+    "29.86",
+    "28.34",
+    "28.35",
+    "28.36",
+    "31.53",
+    "31.61",
+    "31.62",
+    "31.63",
+    "31.68",
+    "29.80",
+    "29.83",
+    "29.85",
+    "29.81",
+    "29.87"
+   ],
+   "grupos": [
+    "resultado-orquestradora-suite34a"
+   ]
+  },
+  {
+   "quando": "2026-10-05T04:06:12+00:00",
+   "itens": [
+    "29.21",
+    "29.77",
+    "31.68"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela34c"
+   ]
+  },
+  {
+   "quando": "2026-10-05T04:16:34+00:00",
+   "itens": [
+    "30.67",
+    "29.79",
+    "31.49",
+    "31.51"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela34d"
+   ]
+  },
+  {
+   "quando": "2026-10-05T04:25:01+00:00",
+   "itens": [
+    "28.33"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela34f"
    ]
   }
  ]

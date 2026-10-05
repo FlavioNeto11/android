@@ -20,6 +20,7 @@ from app.modules.portal.application.exclusao import ApagarNoCanal, ServicoDeExcl
 from app.modules.portal.application.protecao import emitir_token
 from app.modules.portal.application.vigia import AvisarBorda, Vigia
 from app.modules.portal.adapters.borda_http import BuscarPelaBorda
+from app.modules.portal.domain.exclusao import nome_do_operador
 from app.modules.portal.infrastructure.contatos_sql import ContatosSql
 from app.security.access import publicos_de
 from app.util import now
@@ -73,7 +74,9 @@ class Portal:
         self.exclusao = ServicoDeExclusao(self.repo, apagar_no_canal=apagar_no_canal,
                                           canal_presente=lambda: avisar() is not None,
                                           buscas_por_hora=lambda: cfg.file.portal.limites.buscas_por_operador_hora,
-                                          buscas_no_total=lambda: cfg.file.portal.limites.buscas_total_hora)
+                                          buscas_no_total=lambda: cfg.file.portal.limites.buscas_total_hora,
+                                          donos=lambda: frozenset(
+                                              n for n in map(nome_do_operador, cfg.file.pedidos.operadores_do_dono) if n))
         self.vigia = Vigia(BuscarPelaBorda(lambda: cfg.file.portal.vigia.prazo_s), host=self.nome_do_vigia,
                            site_ligado=lambda: cfg.file.portal.site_ligado and self.site_presente,
                            csp_do_painel=lambda: cfg.file.server.csp_do_painel,

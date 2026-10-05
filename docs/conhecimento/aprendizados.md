@@ -2509,3 +2509,93 @@ tem a mesma forma: a regra que o barra vive num teste de arquitetura que não es
 
 **Aplicabilidade.** Vigente. Vale para qualquer hierarquia com método sobrescrito; hoje as conversas dos canais
 (`ConversaDoTrello` sobre a conversa do Telegram) são o caso com mais sobrescritas.
+
+### K-095 — Dois PRs lidos em separado que tocam a mesma função só mostram a quebra quando os testes dirigidos dos dois rodam juntos
+
+**Sintoma.** Antes do corte da suíte 34 (05/10), o ensaio de integração juntou o 28.36 (#346, a aprovação no plano
+trava a linha da execução) e o 31.68 (#359, o sim do plano só cobre a repetição vista na prévia). Os dois mexem em
+`aprovar_plano` (`app/porta_do_plano.py`). Cada PR tinha passado pelos próprios testes dirigidos e por leitura
+independente. Juntos, os testes do #346 quebraram: chamavam a aprovação sem o `vista_em` que o #359 passou a exigir.
+
+**Medição (`simulated`, 05/10/2026, central, worktree do ensaio).** Conserto de teste de um commit (`c7c721d7`, 2
+arquivos, +6 −3: `test_telegram_entrada.py` e `test_telegram_portas.py` passam `vista_em` no corpo e no duplo).
+Depois dele, `test_porta_do_plano`, `test_telegram_entrada`, `test_telegram_portas` e `test_arquitetura` juntos:
+133 passed. O commit entrou na integração por cherry-pick (`4e5bbbe6`) e a suíte 34 fechou verde na primeira rodada
+(SQLite 10748 passed; PG dirigido 4965 passed).
+
+**Causa.** A leitura independente vê um diff por vez, e cada autora roda os testes do próprio ramo. O contrato novo de
+um PR (um campo obrigatório) só encontra os testes do outro na integração. É o mesmo desenho de falha do K-094, um
+nível acima: lá a subclasse que o diff não tocou; aqui o PR vizinho que o diff não conhece.
+
+**O que fazer.**
+
+- Quem orquestra o corte lista, por PR, as funções tocadas (a descrição do PR traz a lista) e cruza as listas.
+- PRs que tocam a mesma função ou o mesmo contrato entram cedo num ramo de ensaio, e os testes dirigidos dos dois
+  rodam JUNTOS antes do corte, com `tests/test_arquitetura.py`.
+- Conserto que nasce do ensaio é commit próprio, lido por quem orquestra, e entra na integração por cherry-pick.
+- Conserto de achado de leitura volta a uma leitora. Só diferença miúda de texto ou comentário quem orquestra confere.
+
+**Aplicabilidade.** Vigente. Vale para todo corte de suíte com mais de uma frente no mesmo arquivo; `porta_do_plano.py`,
+`state.py`, `sessao.py`, `executor.py` e `conhecimento_de_telas.py` são os que mais se cruzam.
+
+### K-096 — Caminho opcional de script que nunca rodou de verdade: `$ensaio` era o próprio `[switch]$Ensaio`
+
+**Sintoma.** No deploy 34 (05/10, 03:19:01Z), `scripts\deploy.ps1 -PularBackup -PularDependencias` recusou no primeiro
+segundo, com `rc=1`, antes de parar qualquer serviço: `Cannot convert value "System.IO.DirectoryInfo" to type
+"System.Management.Automation.SwitchParameter"`. O `-Ensaio` no mesmo commit tinha saído limpo dez segundos antes.
+
+**Medição (`real`, 05/10/2026, central WIN-7S2UASNLFOP, `584ac9c8`).** A recusa acima. A subida seguiu pelo caminho
+antigo, `scripts\deploy.ps1 -PularDependencias`, de 03:19:59Z a 03:21:23Z, com cópia nova (`20261005-002000`), e a
+saúde voltou ok na migração 109.
+
+**Causa.** PowerShell não diferencia maiúscula de minúscula em nome de variável. O trecho do `-PularBackup` (29.38)
+guardava a cópia do ensaio em `$ensaio`, que é o parâmetro `[switch]$Ensaio` do próprio script. A atribuição tenta
+converter a pasta achada em `switch` e quebra. O caminho nunca tinha sido exercitado: os testes cobriam a função que
+acha a cópia, não o trecho do script que usa o resultado. Se a conversão passasse, seria pior: a linha `if ($Ensaio)`
+mais abaixo trataria a subida de verdade como ensaio. A varredura do conserto achou a mesma forma em
+`scripts\backup.ps1` (`$podar` contra `[switch]$Podar`), que só funcionava porque booleano converte em `switch`.
+
+**O que fazer.**
+
+- Em script com `param`, variável local nunca repete nome de parâmetro, nem com outra caixa. O teste de
+  `scripts/tests` varre os `.ps1` por AST e reprova a colisão (29.94).
+- Opção nova de script de implantação ganha teste que roda o TRECHO REAL do script com uma cópia de mentira, e não só
+  a função auxiliar.
+- Opção de implantação que ainda não rodou de verdade é dita como `not_run` na doc até a primeira subida com ela.
+- Recusa no deploy: parar, mandar a linha literal, não contornar e não consertar na main congelada. O caminho antigo
+  e provado sobe; o conserto vai para a suíte seguinte.
+
+**Aplicabilidade.** Vigente. Vale para todo `.ps1` do repositório com bloco `param`.
+
+### K-097 — A borda troca o `no-cache` da origem por quatro horas de cache: arquivo do site sem versão no endereço fica velho no navegador de quem volta
+
+**Sintoma.** Na caminhada do deploy 34 (05/10, ~03:22Z), o navegador que já tinha visitado o site mostrava o rótulo
+"Ilustração" na cor antiga (`#6a8198`, contraste 4,34), embora a origem e a borda já servissem a nova (`#91a2b3`).
+A prova de fora tinha passado: ela pede os arquivos de novo, sem cache de navegador.
+
+**Medição (`real`, 05/10/2026 03:23:10Z, `https://dev.nvit.com.br`, central em `584ac9c8`).**
+
+| Endereço | Origem (`127.0.0.1:8000`) | Borda |
+|---|---|---|
+| `/` | `cache-control: no-store` | `no-store` |
+| `/assets/site.css` | `no-cache` | `max-age=14400` |
+| `/assets/site.js` | `no-cache` | `max-age=14400` |
+| `/central/` | `no-cache, must-revalidate` | igual |
+
+Depois de forçar a recarga dos dois arquivos no navegador, o mesmo rótulo mediu 7,25 e 6,70.
+
+**Causa.** O tempo de cache de navegador da zona na borda vale quatro horas e se sobrepõe ao cabeçalho da origem nos
+arquivos estáticos. Os arquivos do painel têm hash no nome e escapam; os do site (`/assets/site.css` e
+`/assets/site.js`) têm endereço fixo. Quem visitou o site antes do deploy fica até quatro horas com o estilo e o
+script antigos, e o HTML novo (que é `no-store`) pode encontrar o script velho.
+
+**O que fazer.**
+
+- Arquivo estático público sem hash no nome leva a versão no endereço que o HTML escreve (29.95), e a prova de fora
+  confere que o HTML aponta para a versão que a origem serve.
+- Validação de mudança visual no endereço público se faz com recarga forçada dos arquivos, ou em perfil sem cache, e
+  diz qual das duas usou.
+- Cabeçalho medido só na origem não prova o que o visitante recebe: a medida vale na borda.
+- Mexer na configuração da borda continua pedindo o sim do dono; o conserto é do nosso lado.
+
+**Aplicabilidade.** Vigente enquanto o site público passar pela borda com endereços de arquivo sem versão.

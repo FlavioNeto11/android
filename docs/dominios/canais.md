@@ -190,8 +190,12 @@ desligados (o harness, um ensaio) ainda faz a faxina dos canais, inclusive a pri
 faxina e a solta no `finally`, mesmo com erro no meio. Se a trava já é de outro backend (o líder ligado), o desligado
 não a toma e não faxina. O resumo das decisões só sai com `avisos.enabled`.
 `avisos.enabled` e `trello.enabled` têm de ser iguais em todos os backends: numa frota misturada (um só com aviso,
-outro só com Trello), quem pega a trava primeiro fica com ela, e o canal do outro para de vez. Hoje nada avisa disso
-na saúde; o backend não sabe o que o líder liga. A falha ao soltar a trava sai no log à parte ("canais: soltar a trava
+outro só com Trello), quem pega a trava primeiro fica com ela, e o canal do outro para de vez. A saúde acusa isso
+(28.37): cada backend publica os canais que liga na tabela `settings`, chave `canais.config:<OWNER_ID>`, só com
+booleanos e a hora, quando muda ou a cada 120 s. O problema `canais_divergentes` aparece quando um canal ligado em
+algum backend com publicação fresca (menos de 240 s) não está ligado no líder. O texto não leva o nome de nenhum
+backend. A publicação sai no encerramento limpo, e a de backend sumido há mais de 1 h é varrida. A tela de
+Configuração não a mostra, e o `PUT /api/settings` não a aceita. Só publica e só se conta quem roda o scheduler: uma réplica só de API não acusa um canal que nunca roda nela. A varredura apaga pelo valor lido, e a publicação regravada no meio fica. O backup do banco inteiro leva essa linha, como leva toda a tabela `settings`. A falha ao soltar a trava sai no log à parte ("canais: soltar a trava
 avisos depois da faxina"), e a trava cai no TTL.
 
 ## 4. Pedidos, autorizações e decisões
@@ -377,12 +381,29 @@ avisos depois da faxina"), e a trava cai no TTL.
     - O lembrete de vencimento (`pendencia.vence_em`, 2 h antes) diz o que vence (aprovação, objetivo parado ou pergunta
       da execução), o aparelho, "em até 2 h" e a hora UTC, a etapa que espera (o nome do catálogo, ou a chave da capability; nunca texto livre) e o que acontece
       se vencer. A chave é a do produtor, uma por espera. O lembrete de execução do sistema (prova, validação, lote)
-      cala pela mesma regra do `run.updated`; o de aprovação de lote avisa. Responder a ele não vira pedido.
+      cala pela mesma regra do `run.updated`; o de aprovação de lote avisa. Responder a ele não vira pedido. O do
+      objetivo parado leva à própria execução (`#/execucoes/<id>`) com o gesto do item parado, como o aviso do 28.40;
+      a aprovação e a pergunta seguem com a caixa.
+    - O objetivo parado (28.40, `objective.updated` que entra em `waiting_user`, tipo `objective.waiting_user`) avisa
+      uma vez por espera, de qualquer origem, com a chave `objective:<id>:<entrada na espera>`. A aprovação fica de
+      fora (já sai como `approval.pending`). O texto diz o aparelho, a etapa que espera (nome do catálogo ou chave), o
+      motivo pelo `failure_kind` (29.90) ou pelo `blocked_kind`, quando há um conhecido, e o gesto: abrir a execução
+      e, no item parado, escolher Assumir controle, Tentar novamente ou Abandonar. O link é a própria execução
+      (`#/execucoes/<id>`), porque o objetivo parado não está na caixa de Pendências (ADR-062, D1). O detalhe e o `needs` nunca saem. O lote de frente cala pela mesma regra do `run.updated`. O aviso
+      de conta do mesmo aparelho, ativo e posterior à criação da execução, cala o objetivo só quando é da MESMA conta
+      (com `account_id`: a conta da persona no app da etapa) ou, sem a conta, da mesma persona e por motivo de conta:
+      é uma aproximação de "a mesma execução", porque o evento da conta não leva a execução; na dúvida, avisa. O
+      desfecho nos canais diz "N esperando você" e o mesmo gesto, e a "Evidência" nunca é o motivo livre de um
+      objetivo parado. A conta em tela não reconhecida (`unknown`, 29.92) tem frase e três linhas próprias, e o link abre o Foco
+      do aparelho (`#/painel?foco=<id>`), onde fica o "Assumir controle". Toda tela de link de aviso está em `TELAS`
+      de `frontend/src/lib/rotas.ts` (catraca em `test_avisos_objetivo_parado.py`).
     - **2, algo falhou:** a pausa e o orçamento esgotado pararam algo do dono e saem na hora. A ocorrência perdida e
       os eventos perdidos não pararam nada e esperam a janela.
     - **3, rotina** (relatório, encerramento, 80% do orçamento, condição atendida, aprendizado): nunca sai sozinha. Vai
       na mensagem da janela de 1 h, uma linha cada.
-  - A rajada (vários do mesmo tipo seguidos) lista uma linha por item, até 5, mais "+N no painel".
+  - A rajada (vários do mesmo tipo seguidos) lista uma linha por item, até 5, mais "+N no painel". O gesto e o link
+    do agrupado são do tipo: a caixa de Pendências, ou, no objetivo parado, Execuções (`#/execucoes`, sem o id de um
+    item só), porque ele não está na caixa (revisão do #372, G1).
   - O rótulo do pedido é texto da pessoa: só sai quando o pedido foi criado pelo dono (o de convidado, de frente ou
     de IA sai sempre pelo id curto; desde a F2a, migração 106, o pedido guarda quem o criou: `dono` só para o
     operador da lista `pedidos.operadores_do_dono` ou o `trello:<membro_dono>`, e o anterior à 106 sai pelo id curto) e
@@ -566,6 +587,19 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Na transação do gesto, a execução é conferida por um `UPDATE` que trava a linha, e não por um `SELECT`. Com dois
     backends no PostgreSQL, o cancelamento do outro espera o COMMIT e enxerga os sins, que expira junto; sem isso,
     sobravam sins `approved` numa execução cancelada (28.36).
+  - O texto da recusa ou do erro ao iniciar segue o estado relido (28.38):
+    - `running` ou `paused`: "em andamento";
+    - `cancelling`: "está sendo cancelada";
+    - `needs_input`: responda no painel;
+    - `planning` ou `planned`: "ainda não começou" ou "não iniciei".
+  - O desfecho só fica marcado quando sai, ou quando a falha do envio é definitiva. Na falha passageira, ele tenta de
+    novo na volta seguinte (28.38).
+  - Se a linha já tem 1 h (`PLANO_ESQUECIDO_S`) e a conversa vê a execução em `planned` por mais 1 h, a execução é
+    cancelada sem gesto: nada fica em nome do dono. O desfecho fecha a linha (28.38). A primeira vista em `planned`
+    fica gravada na linha, e um reinício não recomeça a hora (28.39).
+  - Só o botão Cancelar do dono cancela com gesto (o sinal `cancelou_execucao`). Os cancelamentos de consequência ou
+    de faxina não gravam sinal (28.39).
+  - O lote dos desfechos pendentes gira: linhas antigas de execução longa não seguram as novas (28.39).
   - A prévia que não sai inteira marca a linha como falha e avisa o dono uma vez. Uma linha com erro não cala as
     outras da volta do vigia; a linha que caiu no meio do "Executar (aprova N)" é recuperada depois de `PRESA_S`.
   - P1: item que o dono não veria por inteiro (texto com nome de persona, contato ou segredo, texto longo, bloco que não

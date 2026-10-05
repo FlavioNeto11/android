@@ -57,6 +57,7 @@ class BotFalso:
         self.conflito = False
         self.apagar_falha = False
         self.falha: tuple[int, dict[str, object]] | None = None     # a resposta de erro do getUpdates (401, 429...)
+        self.envio_falha: list[int] = []        # o status de erro dos próximos sendMessage, um por envio (28.38)
 
     def handler(self, req: httpx.Request) -> httpx.Response:
         metodo = req.url.path.rsplit("/", 1)[-1]
@@ -74,6 +75,8 @@ class BotFalso:
             self.guardadas = [u for u in self.guardadas if int(str(u["update_id"])) >= offset]
             return httpx.Response(200, json={"ok": True, "result": self.guardadas[:50]})
         if metodo == "sendMessage":
+            if self.envio_falha:
+                return httpx.Response(self.envio_falha.pop(0), json={"ok": False, "description": "falha de teste"})
             self.mid += 1
             return httpx.Response(200, json={"ok": True, "result": {"message_id": self.mid}})
         if metodo == "deleteMessage" and self.apagar_falha:
@@ -113,6 +116,7 @@ class PortasFalsas:
         self.perguntas: list[str] = []
         self.recusar_criar = False
         self.desfechos: dict[str, str] = {}
+        self.sem_gesto: list[str] = []          # os cancelamentos que ninguém fez (a faxina do plano esquecido, 28.38)
         self.pergunta = "Para qual contato?"        # o que a execução em needs_input pergunta (B2)
         self.sensivel_aberta = False                # há execução esperando senha/código/2FA/token (palavra solta)
         self.sensivel_quebra = False
@@ -210,8 +214,10 @@ class PortasFalsas:
         self._anota("iniciar", run_id)
         self.estados[run_id] = "running"
 
-    def cancelar(self, run_id: str) -> None:
+    def cancelar(self, run_id: str, *, gesto: bool = True) -> None:
         self._anota("cancelar", run_id)
+        if not gesto:
+            self.sem_gesto.append(run_id)
         self.estados[run_id] = "cancelled"
 
     def imagem_da_etapa(self, run_id: str, step_id: str) -> tuple[bytes, str] | None:
@@ -519,6 +525,199 @@ async def test_desfecho_na_thread_uma_vez(c: Cenario) -> None:
     assert c.linha(5)["resultado_em"] is not None
 
 
+async def test_desfecho_que_nao_saiu_tenta_de_novo_na_volta_seguinte(c: Cenario) -> None:
+    """28.38: na execução terminal o desfecho pode ser a única linha ao dono (28.36). A falha passageira do envio não o
+    marca: a volta seguinte manda de novo. A definitiva marca (repetir não adianta) e não repete."""
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.desfechos[RUN] = "Execução abc123: concluída."
+    c.bot.envio_falha = [502]
+    await c.volta()
+    assert c.linha(5)["resultado_em"] is None
+    await c.volta()
+    assert c.linha(5)["resultado_em"] is not None
+    await c.volta()
+    assert c.bot.textos().count("Execução abc123: concluída.") == 2      # a tentativa que falhou e a que saiu
+
+
+async def test_desfecho_com_429_espera_o_que_o_telegram_pediu(tmp_path: Path) -> None:
+    """28.38: o 429 traz o `retry_after`; as voltas no meio não reenviam o desfecho (nem a ida ao plano esquecido)."""
+    agora = [1_000_000.0]
+    c = Cenario(tmp_path)
+    c.servico.conversa._agora = lambda: agora[0]                 # noqa: SLF001
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.desfechos[RUN] = "Execução abc123: concluída."
+    c.bot.envio_falha = [429]
+    await c.volta()
+    n = c.bot.chamou("sendMessage")
+    agora[0] += 10
+    await c.volta()
+    assert c.bot.chamou("sendMessage") == n and c.linha(5)["resultado_em"] is None
+    agora[0] += 30
+    await c.volta()
+    assert c.linha(5)["resultado_em"] is not None
+
+
+async def test_desfecho_com_falha_definitiva_marca_e_nao_repete(c: Cenario) -> None:
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.desfechos[RUN] = "Execução abc123: concluída."
+    c.bot.envio_falha = [403]
+    await c.volta()
+    assert c.linha(5)["resultado_em"] is not None
+    n = c.bot.chamou("sendMessage")
+    await c.volta()
+    assert c.bot.chamou("sendMessage") == n
+
+
+def _envelhecer_a_vista(c: Cenario, update_id: int, segundos: float) -> None:
+    """A primeira vista em `planned` gravada na linha (28.39, G1), puxada para trás no relógio do banco."""
+    from app.modules.avisos.infrastructure.entrada_sql import VISTA_EM_PLANNED
+    from app.util import to_iso
+
+    linha = c.linha(update_id)
+    previa = json.loads(str(linha["previa"] or "{}"))
+    assert VISTA_EM_PLANNED in previa
+    previa[VISTA_EM_PLANNED] = to_iso(c.repo.relogio() - timedelta(seconds=segundos))
+    c.db.execute("UPDATE canal_entradas SET previa=? WHERE id=?", (json.dumps(previa), linha["id"]))
+
+
+async def test_plano_esquecido_com_a_linha_feita_e_cancelado(c: Cenario) -> None:
+    """28.38: a linha ficou feita e a execução voltou a `planned` (o `planning` de uma prévia termina ali) sem ninguém
+    iniciar nem cancelar. A hora conta de quando a conversa a VIU em `planned` (F1: a linha fica feita ainda em
+    `planning`), e essa vista fica na linha (28.39, G1); passada a hora, é cancelada SEM gesto (F4), e o desfecho fecha a
+    linha."""
+    from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
+    from app.util import to_iso
+
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    assert c.linha(5)["estado"] == "feita"
+    c.portas.estados[RUN] = "planned"
+    await c.volta()
+    assert "cancelar" not in c.portas.nomes()                     # a linha é nova: nem lê o estado
+    velha = to_iso(c.repo.relogio() - timedelta(seconds=PLANO_ESQUECIDO_S + 60))
+    c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
+    await c.volta()
+    assert "cancelar" not in c.portas.nomes()                     # a linha é velha, mas `planned` acabou de ser visto
+    _envelhecer_a_vista(c, 5, PLANO_ESQUECIDO_S - 60)
+    await c.volta()
+    assert "cancelar" not in c.portas.nomes()
+    _envelhecer_a_vista(c, 5, PLANO_ESQUECIDO_S + 60)
+    await c.volta()
+    assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and c.portas.estados[RUN] == "cancelled"
+    assert c.portas.sem_gesto == [RUN]
+    c.portas.desfechos[RUN] = "Execução abc123: cancelada."
+    await c.volta()
+    assert c.bot.textos()[-1] == "Execução abc123: cancelada." and c.linha(5)["resultado_em"] is not None
+
+
+async def test_a_vista_em_planned_sobrevive_ao_reinicio(c: Cenario) -> None:
+    """28.39, G1: um processo novo (ou outro líder da trava `avisos`) lê a mesma vista na linha e não recomeça a hora."""
+    from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
+    from app.util import to_iso
+
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.estados[RUN] = "planned"
+    velha = to_iso(c.repo.relogio() - timedelta(seconds=PLANO_ESQUECIDO_S + 60))
+    c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
+    await c.volta()                                               # grava a vista
+    _envelhecer_a_vista(c, 5, PLANO_ESQUECIDO_S + 60)
+    c.servico = c.novo_servico()                                  # o processo reiniciou: nada em memória
+    await c.volta()
+    assert c.portas.estados[RUN] == "cancelled" and c.portas.sem_gesto == [RUN]
+
+
+async def test_a_vista_some_quando_a_execucao_sai_de_planned(c: Cenario) -> None:
+    from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
+    from app.modules.avisos.infrastructure.entrada_sql import VISTA_EM_PLANNED
+    from app.util import to_iso
+
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.estados[RUN] = "planned"
+    velha = to_iso(c.repo.relogio() - timedelta(seconds=PLANO_ESQUECIDO_S + 60))
+    c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
+    await c.volta()
+    assert VISTA_EM_PLANNED in json.loads(str(c.linha(5)["previa"]))
+    c.portas.estados[RUN] = "running"
+    await c.volta()
+    assert VISTA_EM_PLANNED not in json.loads(str(c.linha(5)["previa"] or "{}"))
+    assert "cancelar" not in c.portas.nomes()
+
+
+async def test_lote_de_desfechos_gira_e_a_linha_nova_nao_espera_para_sempre(c: Cenario) -> None:
+    """28.39 (F3 da revisão do #358): com o lote cheio de linhas de execução longa, a linha nova entra na volta
+    seguinte, e não depois que as antigas acabarem."""
+    from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
+
+    lote = EntradasDoCanal.LOTE_DESFECHO
+    agora = c.repo._agora()                                       # noqa: SLF001 - o ISO do relógio do banco
+    for n in range(lote):
+        c.db.execute("INSERT INTO canal_entradas(canal, id_externo, tipo, ref_mensagem, estado, run_id, do_dono,"
+                     " recebida_em, tratada_em) VALUES ('telegram', ?, 'mensagem', ?, 'feita', ?, 1, ?, ?)",
+                     (f"longa-{n}", str(9000 + n), f"r-longa-{n:04d}", agora, agora))
+    c.db.execute("INSERT INTO canal_entradas(canal, id_externo, tipo, ref_mensagem, estado, run_id, do_dono,"
+                 " recebida_em, tratada_em) VALUES ('telegram', 'nova', 'mensagem', '9999', 'feita', 'r-nova-0001', 1,"
+                 " ?, ?)", (agora, agora))
+    c.portas.desfechos["r-nova-0001"] = "Execução 000001: concluída."
+    await c.volta()
+    assert "Execução 000001: concluída." not in c.bot.textos()   # o lote desta volta é o das 20 antigas
+    await c.volta()
+    assert "Execução 000001: concluída." in c.bot.textos()
+
+
+async def test_desfecho_sem_id_do_canal_fica_registrado_e_nao_repete(c: Cenario) -> None:
+    """28.39: o canal aceitou, mas a resposta não trouxe o `message_id`. O desfecho fica registrado por uma referência
+    própria, e a marca que não gravou não o faz repetir."""
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    ident = int(str(c.linha(5)["id"]))
+    c.repo.registrar_enviada(None, "resultado", entrada_id=ident)
+    assert c.repo.desfecho_ja_enviado(ident)
+    c.repo.registrar_enviada(None, "resposta", entrada_id=ident)     # só o desfecho ganha a referência própria
+    assert c.db.scalar("SELECT COUNT(*) FROM canal_enviadas WHERE entrada_id=? AND ref_mensagem LIKE 'resultado:%'",
+                       (ident,)) == 1
+
+
+async def test_desfecho_responde_mesmo_com_a_mensagem_original_apagada(c: Cenario) -> None:
+    """28.39: o dono apagou a mensagem que pediu a execução. O desfecho vai em resposta a ela com
+    `allow_sending_without_reply`, então o Telegram não recusa com 400 e não há o que tentar sem a referência."""
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.desfechos[RUN] = "Execução abc123: concluída."
+    await c.volta()
+    [final] = [m for m in c.bot.mensagens() if m["text"] == "Execução abc123: concluída."]
+    assert final["reply_parameters"] == {"message_id": 50, "allow_sending_without_reply": True}
+
+
+async def test_desfecho_que_ja_saiu_e_ficou_registrado_nao_repete(c: Cenario) -> None:
+    """Revisão do #358, F2: o desfecho saiu e ficou em `canal_enviadas`, mas a marca não gravou (o banco caiu entre
+    os dois). A volta seguinte marca sem mandar de novo."""
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.repo.registrar_enviada("999", "resultado", entrada_id=int(str(c.linha(5)["id"])))
+    c.portas.desfechos[RUN] = "Execução abc123: concluída."
+    n = c.bot.chamou("sendMessage")
+    await c.volta()
+    assert c.bot.chamou("sendMessage") == n and c.linha(5)["resultado_em"] is not None
+
+
+async def test_execucao_em_andamento_que_nao_tem_desfecho_nao_e_cancelada(c: Cenario) -> None:
+    """Só a `planned` esquecida: a que roda há horas segue (o `_cancelar_plano` confere o estado)."""
+    from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
+    from app.util import to_iso
+
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    velha = to_iso(c.repo.relogio() - timedelta(seconds=PLANO_ESQUECIDO_S + 60))
+    c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
+    await c.volta()
+    assert "cancelar" not in c.portas.nomes() and c.portas.estados[RUN] == "running"
+
+
 async def test_sem_lideranca_ou_desligada_nao_le_o_bot(tmp_path: Path) -> None:
     for nome, kwargs in (("sem-lider", {"lider": False}), ("desligada", {"entrada": False})):
         c = Cenario(tmp_path / nome, **kwargs)                                       # type: ignore[arg-type]
@@ -815,7 +1014,8 @@ async def test_item_cujo_bloco_nao_cabe_inteiro_fica_fora_do_sim(c: Cenario) -> 
 
 async def test_erro_interno_ao_iniciar_sem_sim_pendente_nao_fica_em_laco(c: Cenario,
                                                                        monkeypatch: pytest.MonkeyPatch) -> None:
-    def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+    def quebra(run_id: str, aprovar: list[tuple[str, str]], *,
+               vista_em: str | None = None) -> dict[str, object]:
         raise RuntimeError("banco fora")
 
     monkeypatch.setattr(c.portas, "aprovar_plano", quebra)
@@ -998,12 +1198,16 @@ async def test_todo_caminho_que_abandona_a_porta_cancela_a_execucao_planned(c: C
     ident = await _executar(c)
     if caminho == "recusa":
         c.portas.recusar_aprovar = "O plano desta execução não pode ser aprovado agora."
+    quebrou: list[str] = []
     if caminho == "erro":
-        def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+        def quebra(run_id: str, aprovar: list[tuple[str, str]], *,
+                   vista_em: str | None = None) -> dict[str, object]:
+            quebrou.append(run_id)            # o dublê rodou: o erro é o "banco fora", não a assinatura
             raise RuntimeError("banco fora")
         monkeypatch.setattr(c.portas, "aprovar_plano", quebra)
     gesto = f"c:{ident}" if caminho == "cancelar" else _p(c, ident)
     await c.volta(botao(7, gesto, mid=c.bot.mid))
+    assert quebrou == ([RUN] if caminho == "erro" else [])
     assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and c.portas.estados[RUN] == "cancelled"
     assert c.linha(5)["estado"] in ("cancelada", "falhou")
 
@@ -1019,6 +1223,43 @@ async def test_recusa_de_plano_ja_iniciado_nao_cancela(c: Cenario) -> None:
     # 28.36: nunca "não iniciei" quando a execução está em andamento.
     assert c.bot.textos()[-1] == ("A execução abc123 já estava em andamento: O plano desta execução já foi aprovado ou "
                                   "iniciado.")
+
+
+@pytest.mark.parametrize(("estado", "esperado"), [
+    ("cancelling", "A execução abc123 está sendo cancelada: Recusa de teste."),
+    ("needs_input", "A execução abc123 espera uma resposta sua: responda no painel para ela seguir (Recusa de teste.)."),
+])
+async def test_recusa_em_cancelamento_ou_pergunta_diz_o_estado_certo(c: Cenario, estado: str, esperado: str) -> None:
+    """28.38: em `cancelling` ela podia estar rodando ("não iniciei" seria falso); em `needs_input` só o painel a destrava."""
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    c.portas.recusar_aprovar = "Recusa de teste."
+    c.portas.estados[RUN] = estado
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    assert "cancelar" not in c.portas.nomes() and c.linha(5)["estado"] == "feita"
+    assert c.bot.textos()[-1] == esperado
+
+
+@pytest.mark.parametrize(("estado", "comeco"), [
+    ("cancelling", "A execução abc123 está sendo cancelada; houve um erro interno ao iniciar"),
+    ("needs_input", "A execução abc123 espera uma resposta sua: responda no painel para ela seguir; houve um erro"),
+    ("planning", "A execução abc123 ainda não começou, depois de um erro interno ao iniciar"),
+])
+async def test_erro_ao_iniciar_diz_o_estado_certo(c: Cenario, monkeypatch: pytest.MonkeyPatch, estado: str,
+                                                  comeco: str) -> None:
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+
+    def quebra(run_id: str, aprovar: list[tuple[str, str]], *,
+               vista_em: str | None = None) -> dict[str, object]:
+        c.portas.estados[run_id] = estado
+        raise RuntimeError("erro de teste")
+
+    monkeypatch.setattr(c.portas, "aprovar_plano", quebra)
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    assert "cancelar" not in c.portas.nomes() and c.linha(5)["estado"] == "feita"
+    assert c.bot.textos()[-1].startswith(comeco), c.bot.textos()[-1]
+    assert not any(t.startswith("Não iniciei") for t in c.bot.textos())
 
 
 async def test_erro_depois_do_inicio_nao_diz_que_nao_iniciou(c: Cenario, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1083,7 +1324,8 @@ async def test_erro_depois_do_inicio_nos_outros_caminhos_tambem_nao_diz_que_nao_
     if caminho == "sem_sim":
         c.portas.previa_da_porta = _porta(_item("s1", selo="permitido"), total=True)
 
-        def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+        def quebra(run_id: str, aprovar: list[tuple[str, str]], *,
+                   vista_em: str | None = None) -> dict[str, object]:
             c.portas.estados[run_id] = "running"
             raise RuntimeError("agendador fora")
 

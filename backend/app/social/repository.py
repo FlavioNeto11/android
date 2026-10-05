@@ -21,6 +21,8 @@ from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_
                       SessionActions, SessionInfo, SessionStatus)
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
 from ..planning.catalog import pacote_ancora
+from ..metricas import metricas
+from ..shared.vinculos import tem_vinculo_ativo
 from ..util import new_token, now, now_iso, to_iso
 from .contas_nossas import hash_do_handle, citacao_da_conta, foi_retirada, registrar_lapide, rotulo_da_conta, MARCADOR
 from .limpeza_de_conta import AparelhoDaLimpeza
@@ -1067,6 +1069,21 @@ class SocialRepository:
                            " (SELECT id FROM profile_accounts WHERE profile_id=?) ORDER BY updated_at DESC LIMIT 1",
                            (account_id, profile_id))
 
+    def teto_de_unknown(self, instance_id: str) -> int | None:
+        """29.92: quantas reobservações seguidas em `unknown` a porta aceita neste aparelho antes de parar e chamar uma
+        pessoa. Aparelho com vínculo ativo (conta real, `shared.vinculos`) tem teto 1: a rodada seguinte reabre o app
+        e, se cair na tela de login, digita a senha guardada (`_login(automatic=True)`) — em cima de uma tela que
+        ninguém reconheceu. Nos demais, o teto global (`session_unknown_retry_cap`). `None` sem teto configurado."""
+        if tem_vinculo_ativo(self.db, instance_id):
+            return 1
+        return self.teto_de_reobservacao() if self.teto_de_reobservacao is not None else None
+
+    def unknown_no_teto(self, sessao: Row | None, instance_id: str) -> bool:
+        """29.92: a sessão gravada está em `unknown` no teto deste aparelho, isto é, parada esperando uma pessoa."""
+        teto = self.teto_de_unknown(instance_id)
+        return (sessao is not None and teto is not None and sessao["status"] == SessionStatus.unknown.value
+                and int(sessao["unknown_streak"] or 0) >= teto)
+
     def set_account_session(self, profile_id: str, account_id: str, instance_id: str, *, status: SessionStatus,
                             observed_handle: str | None = None, verified_at: str | None = None,
                             detail: str | None = None, reobserved: bool = False) -> None:
@@ -1083,13 +1100,19 @@ class SocialRepository:
         if self.account_row(profile_id, account_id) is None:
             raise KeyError(account_id)
         streak = 0
+        anterior = self.db.one("SELECT status, unknown_streak FROM account_sessions WHERE account_id=?"
+                               " AND instance_id=?", (account_id, instance_id))
+        estava_em_unknown = anterior is not None and anterior["status"] == SessionStatus.unknown.value
         if status is SessionStatus.unknown and reobserved:
-            anterior = self.db.one("SELECT status, unknown_streak FROM account_sessions WHERE account_id=?"
-                                   " AND instance_id=?", (account_id, instance_id))
-            streak = int(anterior["unknown_streak"] or 0) + 1 if (anterior and
-                       anterior["status"] == SessionStatus.unknown.value) else 1
+            streak = int(anterior["unknown_streak"] or 0) + 1 if estava_em_unknown else 1
             if self.teto_de_reobservacao is not None:
                 streak = min(streak, self.teto_de_reobservacao())
+            # 29.92: a rodada do `unknown` vira dado (antes só o valor atual ficava, sobrescrito): quantas resolvem
+            # na 1ª, 2ª e 3ª rodada decide o teto. Só métrica, sem coluna.
+            metricas.contar("sessao.unknown_rodada", instancia=instance_id, rodada=streak)
+        elif status is SessionStatus.session_ready and estava_em_unknown and int(anterior["unknown_streak"] or 0):
+            metricas.contar("sessao.unknown_resolvida", instancia=instance_id,
+                            rodada_antes=int(anterior["unknown_streak"] or 0))
         self.db.execute(
             "INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at, detail,"
             " updated_at, unknown_streak) VALUES (?,?,?,?,?,?,?,?)"
@@ -1608,6 +1631,53 @@ class SocialRepository:
             saida.append((str(r["id"]), str(r["occurred_at"]), r["counterparty"],
                           argumentos if isinstance(argumentos, dict) else None, r["outgoing_content"]))
         return saida
+
+    def etapas_em_curso_da_acao(self, profile_id: str, capability: str, *, app_id: str | None = None,
+                                exclude_step_id: str | None = None) -> list[tuple[str, dict[str, object] | None]]:
+        """31.64: as etapas deste perfil e desta ação que já passaram a porta e ainda não deixaram rastro (`running` ou
+        `verifying`): `(id, argumentos)`. Com `publicar_sem_aprovacao` ligado e nenhum outro motivo de aprovação, a porta
+        não grava pedido, e a saída só nasce no commit; sem isto, a outra persona do pedido passava com a mesma imagem
+        enquanto a primeira ainda publicava.
+
+        F1 da revisão do #350: a etapa vira `running` na TOMADA, antes da porta. Duas irmãs tomadas juntas se veriam em
+        `running` e as duas seriam recusadas. Com a etapa `exclude_step_id` já tomada, das que AINDA NÃO passaram a porta
+        só contam as MAIS ANTIGAS que ela (`started_at`, com o `id` no desempate): das que correm juntas, exatamente uma
+        passa. Sem `started_at` (a prévia, a etapa ainda não tomada), todas as em curso contam.
+
+        S1 da mesma revisão (migração 110): a que já PASSOU a porta (`passou_a_porta = 1`) conta SEMPRE, em qualquer
+        estado que não seja falha nem cancelamento. Sem isso, a etapa que voltava de `retry_wait` ou `waiting_user` com o
+        `started_at` da primeira tomada era "mais antiga" que a irmã que já publicava, e as duas publicavam; e a ordem
+        pelo relógio de cada máquina se invertia com dois backends.
+
+        S2 da mesma revisão: a marca conta só nos estados ABERTOS. A `succeeded` já é coberta pela saída gravada (com a
+        janela de 30 dias da regra) e, contada aqui sem janela, enchia o lote: com mais de 200 marcas antigas na persona
+        irmã, a etapa em curso ficava fora do `LIMIT` e a S1 e a F1 reabriam. Pelo mesmo motivo o lote vem das MAIS
+        NOVAS (`id` começa pelo `run_id` datado)."""
+        por_app = " AND (e.app_id=? OR e.app_id IS NULL)" if app_id else ""
+        sem_a_etapa = " AND e.id<>?" if exclude_step_id else ""
+        minha = (self.db.scalar("SELECT started_at FROM steps WHERE id=?", (exclude_step_id,))
+                 if exclude_step_id else None)
+        mais_antigas = (" AND (COALESCE(e.started_at, '')<? OR (COALESCE(e.started_at, '')=? AND e.id<?))"
+                        if minha else "")
+        linhas = self.db.query(
+            "SELECT e.id, e.bindings FROM steps e JOIN objectives o ON o.id=e.objective_id"
+            " WHERE o.profile_id=? AND e.capability=?"
+            " AND ((e.passou_a_porta=1 AND e.status IN ('pending','ready','running','verifying','retry_wait',"
+            "'waiting_user','uncertain'))"
+            f" OR (e.passou_a_porta=0 AND e.status IN ('running','verifying'){mais_antigas}))"
+            f"{por_app}{sem_a_etapa} ORDER BY e.id DESC LIMIT 200",
+            (profile_id, capability, *((str(minha), str(minha), exclude_step_id) if minha else ()),
+             *((app_id,) if app_id else ()), *((exclude_step_id,) if exclude_step_id else ())))
+        saida: list[tuple[str, dict[str, object] | None]] = []
+        for r in linhas:
+            argumentos = loads(r["bindings"], None)
+            saida.append((str(r["id"]), argumentos if isinstance(argumentos, dict) else None))
+        return saida
+
+    def marcar_passou_a_porta(self, step_id: str) -> None:
+        """31.64 S1 (migração 110): a porta liberou o efeito desta etapa. Gravado na passada sem `await` da decisão; nunca
+        volta a 0 (a etapa que passou e falhou sai da conta pelo estado)."""
+        self.db.execute("UPDATE steps SET passou_a_porta=1 WHERE id=?", (step_id,))
 
     def pedidos_da_acao(self, profile_id: str, capability: str, *, since: str, app_id: str | None = None,
                         exclude_step_id: str | None = None, decidido_desde: str | None = None
