@@ -34,6 +34,9 @@ import { Screen, type ScreenHandle, type ShownFrame } from './Screen';
 
 type InputPayload = Omit<ManualInput, 'lease_id' | 'frame_id'>;
 
+/** As teclas que saem sem imagem (29.105): o backend só dispensa o quadro destas. */
+const TECLAS_DE_NAVEGACAO: ReadonlySet<string> = new Set(['back', 'home', 'recents']);
+
 /** O mesmo limiar do `@media` em Focus.module.css: abaixo dele o painel é tela cheia e "Voltar" é a saída. */
 const TELA_ESTREITA = '(max-width: 720px)';
 
@@ -96,9 +99,10 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
         toast({ tone: 'warning', title: 'Você não está no controle', hint: 'Clique em “Assumir controle” antes de interagir.' });
         return false;
       }
-      // 29.105: a tecla não aponta para nada na tela e o backend não confere o quadro dela; é a saída quando a imagem
-      // não chega (tela protegida contra captura).
-      if (!displayed && payload.type !== 'key') {
+      // 29.105: as teclas de navegação não apontam para nada na tela e o backend não confere o quadro delas; são a
+      // saída quando a imagem não chega (tela protegida contra captura). Enter e Apagar agem sobre o campo em foco
+      // e seguem pedindo imagem.
+      if (!displayed && !(payload.type === 'key' && payload.key != null && TECLAS_DE_NAVEGACAO.has(payload.key))) {
         toast({ tone: 'warning', title: 'Ainda não há imagem na tela', hint: 'Aguarde a imagem carregar e tente de novo.' });
         return false;
       }
@@ -113,12 +117,13 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
           toast({ tone: 'warning', title: 'A tela mudou — aguarde a nova imagem e tente de novo', message: 'Nada foi enviado ao aparelho.', key: `stale-${instanceId}` });
           screenRef.current?.refresh();
         } else if (err.code === 'capture_failing') {
-          // 29.105: esperar a imagem nova não resolve; a mensagem do backend diz o motivo e que as teclas passam.
+          // 29.105: esperar a imagem nova não resolve; a mensagem do backend diz o motivo e que Voltar, Início e
+          // Recentes passam.
           toast({
             tone: 'warning',
             title: 'A captura da tela está falhando',
             message: err.message,
-            hint: 'Use Voltar ou Início para sair desta tela; toque e texto voltam quando a imagem voltar.',
+            hint: 'Use Voltar, Início ou Recentes para sair desta tela; toque, texto, Enter e Apagar voltam quando a imagem voltar.',
             key: `captura-${instanceId}`,
           });
         } else if (err.code === 'not_controller') {

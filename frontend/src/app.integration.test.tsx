@@ -445,7 +445,7 @@ describe('Central de Aparelhos — sessão completa', () => {
     await pointer(box, 'pointerdown', 500, 600);
     await pointer(box, 'pointerup', 500, 600);
     await waitFor(() => expect(text()).toContain('A captura da tela está falhando'));
-    expect(text()).toContain('Use Voltar ou Início para sair desta tela');
+    expect(text()).toContain('Use Voltar, Início ou Recentes para sair desta tela');
 
     await click(byRole('button', /^Devolver à IA/, panel));
     await waitFor(() => expect(backend.callsTo('POST', /release$/)).toHaveLength(1));
@@ -454,6 +454,42 @@ describe('Central de Aparelhos — sessão completa', () => {
     await click(byRole('button', /^Fechar/, panel));
     await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));
     await waitFor(() => expect(ws.sent[ws.sent.length - 1]).toMatchObject({ type: 'watch', focus: null }));
+  });
+
+  it('foco sem imagem (29.105): Voltar, Início e Recentes saem com frame_id vazio; Enter e Apagar esperam a imagem', async () => {
+    const ws = FakeWebSocket.last;
+    // a captura não traz imagem nenhuma (tela protegida): o painel nunca tem um quadro exibido
+    backend.on('GET', /^\/api\/instances\/android-01\/frame$/, () => apiError(404, 'no_frame', 'Ainda não há frame deste aparelho.'));
+    backend.on('POST', /^\/api\/instances\/[^/]+\/input$/, () => json({ ok: true }));
+    const entradas = () => backend.callsTo('POST', /android-01\/input$/);
+    const antes = entradas().length;
+    // O "Fechar" do teste anterior volta no histórico, e o popstate do jsdom chega depois: abrir antes dele faria o
+    // painel novo fechar sozinho.
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await click(byRole('button', 'Abrir android-01 na visão de foco'));
+    const panel = await waitFor(() => byRole('dialog', /Visão de foco: android-01/));
+    await waitFor(() => expect(backend.callsTo('GET', /android-01\/frame$/).length).toBeGreaterThan(0));
+    // o teste anterior deixou o android-01 como controle de usuário (sem lease nesta aba): o botão é "Retomar"
+    await click(byRole('button', /^(Assumir|Retomar) controle/, panel));
+    await waitFor(() => expect(text(panel)).toContain('Controle: Você'));
+    await act(async () => ws.serverSend({ type: 'event', event: makeEvent(121, 'control.changed', { instance_id: 'android-01', control: 'user', pending: false }, { instance_id: 'android-01' }) }));
+
+    await click(byRole('button', 'Voltar', panel));
+    await waitFor(() => expect(entradas()).toHaveLength(antes + 1));
+    expect(entradas().at(-1)?.body).toMatchObject({ type: 'key', key: 'back', frame_id: '' });
+    await click(byRole('button', 'Recentes', panel));
+    await waitFor(() => expect(entradas()).toHaveLength(antes + 2));
+    expect(entradas().at(-1)?.body).toMatchObject({ type: 'key', key: 'recents', frame_id: '' });
+
+    // Enter age sobre o campo em foco: às cegas confirmaria o que a pessoa não vê; não sai sem imagem
+    await click(byRole('button', 'Enter', panel));
+    await waitFor(() => expect(text()).toContain('Ainda não há imagem na tela'));
+    expect(entradas()).toHaveLength(antes + 2);
+
+    await click(byRole('button', /^Devolver à IA/, panel));
+    await click(byRole('button', /^Fechar/, panel));
+    await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });   // o popstate do Fechar, antes do próximo
   });
 
   it('foco: pedido de controle "pending" espera a IA e só libera a interação após control.changed', async () => {

@@ -2701,3 +2701,36 @@ push em ramo com PR aberto, e a fila não aparece na lista de processos até o j
 - Medida que cruzou com o CI não se aproveita como comparação: repete-se inteira, com o host quieto.
 
 **Aplicabilidade.** Vigente até o 29.102 tirar o gatilho por PR; depois dele, vale para a volta agendada e para a manual.
+
+### K-102 — Toque só depois de ler o quadro novo: coordenada não se reaproveita às cegas, e o código não pega o toque com quadro novo
+
+**Sintoma.** Na medida do 29.105 (android-09, 05/10), um app que ninguém pediu, o Outlook na tela "Add account",
+apareceu na frente e voltou depois do Início. Parecia haver outra execução mexendo no aparelho; não havia.
+
+**Medição (`real`, 05/10/2026, central, deploy 36 `e5f1b22b`, android-09 sem conta; `data/diag-29-105/a09/`).**
+- O convidado estava sobrecarregado: load average de 18 a 20, com o Chrome numa página de notícias e 21 abas.
+- 10:28:08Z: um toque no menu do Chrome voltou `503 device_error` ("adb shell excedeu 15s"). O Chrome não respondia:
+  ANR às 10:29:03Z, e às 10:29:04Z ele saiu (`am_kill ... user request after error`).
+- No mesmo intervalo, a captura estourou: `DriverTimeout: screencap (na origem) excedeu 25s`. O `x-frame-id` ficou
+  parado por cerca de 30 s, e três toques voltaram `409 stale_frame`. É o caso do `capture_failing` (29.105): quadro
+  parado com a captura falhando, numa página comum, sem tela protegida.
+- 10:29:21Z: o mesmo toque (663,103) foi repetido com um quadro recente que não foi LIDO. A tela já era a inicial, e o
+  toque caiu no widget de data. O launcher (uid 10169) abriu o `CalendarDispatcherActivity` do Outlook, que atende a
+  agenda, e o Outlook foi às boas-vindas. Logcat: `START u0 ... cmp=com.microsoft.office.outlook/.calendar.
+  CalendarDispatcherActivity bnds=[62,86][939,133] ... from uid 10169`.
+- O retorno depois do Início veio do próprio Outlook (uid 10194, `bringingFoundTaskToFront`). Um `am force-stop`
+  único resolveu (10:36:29Z).
+
+**Causa.** A coordenada foi reaproveitada de uma tela que já não existia. O quadro era novo, então nem `stale_frame`
+nem `capture_failing` disparam: o backend confere a idade e o tamanho do quadro, não se alguém olhou para ele.
+
+**O que fazer.**
+- Quem opera pela API de controle manual (sessão, script, subagente) lê o quadro novo, e a árvore quando der, antes de
+  CADA toque. Depois de um 409, um 503 ou de uma espera, a coordenada anterior não vale: lê-se de novo.
+- `toque-agora` em script de diagnóstico busca o quadro e toca sem mostrá-lo: serve para a tela que não muda, não para
+  o primeiro toque depois de uma falha.
+- Toque que voltou `503 device_error` pode ter chegado ao aparelho mais tarde: trate como efeito possível.
+- Aparelho com convidado em load alto fica fora de medida (o 29.105 mediu sobrecarga, não FLAG_SECURE).
+
+**Aplicabilidade.** Toda operação manual por API e todo script de medida. O `capture_failing` cobre o quadro parado; o
+quadro novo não lido só a disciplina cobre.
