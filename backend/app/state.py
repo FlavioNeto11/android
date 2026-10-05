@@ -2171,8 +2171,14 @@ class AppState:
             nova = repetida if repetida and repetida not in (veredito.reason or "") else ""
             motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, nova, citada, objeto_ambiguo) if m)
             # 30.65: a etapa que usa a exceção sempre pede decisão nova; o aprovado de outra versão não vale para ela.
-            return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao,
-                                       pacote=pacote, app_id=app_da_etapa_id)
+            parada = self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao,
+                                         pacote=pacote, app_id=app_da_etapa_id)
+            if parada is not None:
+                return parada
+        if cap.side_effect:
+            # 31.64 S1 (migração 110): a porta liberou o efeito. Na mesma passada sem `await` da regra do objeto na família
+            # (acima): a irmã que chegar depois vê esta marca e é recusada, qualquer que seja a ordem das tomadas.
+            self.social_repo.marcar_passou_a_porta(srow["id"])
         return None
 
     def vereditos_da_porta(self, obj: Row, srow: Row, run: Row) -> "PortaDaEtapa":

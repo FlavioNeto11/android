@@ -499,6 +499,11 @@ class PolicyEngine:
             achou += [quando for _p, quando, _q, argumentos, _s, _t in self.repo.pedidos_da_acao(
                 outra, cap.key, since=since, app_id=app_id, exclude_step_id=step_id)
                 if argumentos is not None and objeto_da_acao(cap, argumentos) == objeto]
+            # 31.64: a etapa da outra persona que já passou a porta sem pedido de aprovação (`publicar_sem_aprovacao`)
+            # e ainda está publicando: não há pedido nem saída dela até o commit.
+            achou += [since for _s, argumentos in self.repo.etapas_em_curso_da_acao(
+                outra, cap.key, app_id=app_id, exclude_step_id=step_id)
+                if argumentos is not None and objeto_da_acao(cap, argumentos) == objeto]
             if not achou:
                 continue
             if ambiguo:

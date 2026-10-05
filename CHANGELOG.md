@@ -256,6 +256,26 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   chave repetida no `avisar_contato_do_portal` registra aviso no log, só com o id; N2 e N3 escritos na C-27. Prova
   `simulated`: 17 passed (o `enfileirar` concorrente antes e depois da lápide, a falha depois do `incerto`, o canal
   ilegível, o aviso da chave repetida).
+## 2026-10-05 — 31.64: a etapa da irmã em curso conta no objeto da família (branch feat/31-64-imagem-sem-aprovacao-na-familia)
+
+- **O furo:** com `publicar_sem_aprovacao` ligado (padrão desligado), persona `autonomous` e nenhum outro motivo de
+  aprovação, a porta não grava pedido, e a saída só nasce no commit. A segunda persona do mesmo pedido passava com a
+  mesma imagem enquanto a primeira publicava (sobra do 31.53).
+- **O conserto:** `_mesmo_objeto_na_familia` conta também as etapas das outras personas do pedido em `running` ou
+  `verifying`, com a mesma capability e o mesmo objeto (`SocialRepository.etapas_em_curso_da_acao`). Etapas em
+  `ready` e `failed` não contam.
+- **F1 da revisão:** a etapa vira `running` na tomada, antes da porta; duas irmãs tomadas juntas se viam e as duas
+  eram recusadas. Agora só contam as MAIS ANTIGAS que a etapa da porta (`started_at`, `id` no desempate): das
+  que correm juntas, exatamente uma passa (testes de duas e de três irmãs).
+- **S1 da revisão (migração 110):** a ordem das tomadas não basta (a retomada de `retry_wait`/`waiting_user` mantém o
+  `started_at` da primeira tomada; o relógio varia por máquina). A porta marca `steps.passou_a_porta` ao liberar o
+  efeito; quem passou conta sempre (fora de falha e cancelamento), e "só as mais antigas" vale só entre as que não
+  passaram. Testes: retomada de `retry_wait` e de `waiting_user` recusada; a que passou e falhou não conta.
+- **S2 da revisão:** a marca conta só nos estados abertos (a concluída já sai pela saída gravada, com janela) e o lote da
+  consulta vem pelo `id` DESC. Antes, mais de 200 marcas concluídas na persona irmã tiravam a etapa em curso do
+  `LIMIT 200` e a mesma imagem passava. Teste: 201 concluídas + 1 em curso, recusa sai.
+- Prova: `simulated` (`backend/tests/test_familia_por_objeto.py::test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem`,
+  falha no código anterior). Real: `not_run`.
 
 ## 2026-10-04 — 31.53: a família do pedido também se compara pelo objeto, e o texto que cita outra conta dela passa por aprovação (branch feat/31-53-objeto-alvo-na-familia)
 
