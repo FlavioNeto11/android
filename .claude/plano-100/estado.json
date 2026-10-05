@@ -8068,15 +8068,15 @@
   "31.56": {
    "id": "31.56",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "#338 mesclado em f6387984: veredito mecânico pré-registrado (V1-V3 e N1), 17 testes.",
-   "blocker": "A/B ao vivo not_run: só depois do deploy 33.",
-   "grupo": "orquestrador-resultado-suite32-b",
+   "proof": "real",
+   "evidence": "Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), saúde no commit cb5848d8 com o mesmo código da a0c9865e do deploy 33 (o diff entre as duas em backend, frontend, site, scripts e config é vazio). A/B ao vivo no android-09 (worker-lan-01, sem conta real), mesmos pedidos de navegador, HOME e load abaixo de 2 antes de cada execução, uma por vez. Braço desligado, 01:37Z a 01:44Z: r-20261005013711-82f9e6, r-20261005014042-e546be, r-20261005014402-e2ea36. Chave ai.tapar_barra_de_endereco ligada no config.yaml do central às 01:47:46Z (cópia data/backups/config.yaml.antes-31-56-ligar-20261005-014746), reinício da farm-central às 01:47:55Z, saúde em 38 s. Braço ligado, 01:50Z a 01:58Z: r-20261005015052-273884, r-20261005015422-3f7364, r-20261005015713-359c5e. Chaves lote:jev:31.56-off-01 a 03 e lote:jev:31.56-on-01 a 03, cada uma criou execução nova. Veredito mecânico de scripts/jev-veredito-31-56.py (critério registrado em 04/10 22:49Z, antes de qualquer execução): LIGA. 3 pares completos; sucesso 3 de 3 nos dois braços; decisões por etapa 14 em 6 contra 16 em 6, 14,3 por cento a mais, dentro do limite de 20; tokens 251631 contra 273703. Custo por spent_usd: US$ 0,24185 desligado e US$ 0,254863 ligado, total US$ 0,496713 de um teto de US$ 1,00; nenhuma execução passou de US$ 0,25. Saída inteira em .claude/handoffs/jev-veredito-31-56-2026-10-05.json (fora do Git), conferida pela orquestradora contra o banco. Ressalvas: n=3 por braço; a latência por etapa não entra no critério e variou muito. A chave fica ligada no central.",
+   "blocker": "o padrão segue desligado em config.py e no config.example.yaml; virar padrão é PR do Jev na suíte 35",
+   "grupo": "resultado-orquestradora-janela33b",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:55:48+00:00"
+   "quando": "2026-10-05T02:07:45+00:00"
   },
   "31.54": {
    "id": "31.54",
@@ -8159,15 +8159,15 @@
   "29.79": {
    "id": "29.79",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entraram o #334 (0d1232c9, merge bf8e5609: commit_switch, commit_switch_mark, StepResult.efeito_comprovado com 409 no retry, rotulo_ia na etapa e na chave, catálogo do CREATE_POST com Share por id=share_footer_button), o teste S3 cdb6b7cd (nenhuma nota, detail ou evento leva a URL com token do juiz) e o conserto 22f641b2 (Approval.to_dict passa a entregar o rotulo_ia; achado no percurso do painel do 29.81; a orquestradora conferiu GET /api/approvals?status=approved com o campo nas 32 linhas depois do deploy). Prova simulated: backend/tests/test_rotulo_ia.py, test_rotulo_ia_no_executor.py, test_rotulo_ia_na_aprovacao.py, frontend execution.test.tsx e PortaDoPlano.test.tsx. not_run: os seletores na tela da legenda do android-13 (leitura só depois do aviso 'portal ligado'; galeria vazia na leitura de 04/10 23:49Z) e a 1ª publicação real com o rótulo (29.30).",
-   "blocker": "leitura da tela da legenda no android-13, na janela de provas do deploy 33",
-   "grupo": "resultado-orquestradora-suite33",
+   "proof": "real",
+   "evidence": "Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entraram o #334 (0d1232c9, merge bf8e5609: commit_switch, commit_switch_mark, StepResult.efeito_comprovado com 409 no retry, rotulo_ia na etapa e na chave, catálogo do CREATE_POST com Share por id=share_footer_button), o teste S3 cdb6b7cd (nenhuma nota, detail ou evento leva a URL com token do juiz) e o conserto 22f641b2 (Approval.to_dict passa a entregar o rotulo_ia; achado no percurso do painel do 29.81; a orquestradora conferiu GET /api/approvals?status=approved com o campo nas 32 linhas depois do deploy). Prova simulated: backend/tests/test_rotulo_ia.py, test_rotulo_ia_no_executor.py, test_rotulo_ia_na_aprovacao.py, frontend execution.test.tsx e PortaDoPlano.test.tsx. not_run: os seletores na tela da legenda do android-13 (leitura só depois do aviso 'portal ligado'; galeria vazia na leitura de 04/10 23:49Z) e a 1ª publicação real com o rótulo (29.30). REAL (leitura, 2026-10-05, central a0c9865e, android-13 pelo worker-lan-01): cópia única para a galeria 01:24:21Z–01:24:28Z por Adb.enviar_midia_para_galeria (1ª prova real do push remoto; /sdcard/Pictures/Central/img_img-OWR4FWBMRf32i42n.jpg); controle manual lease DGDGQPxXKHBuz9bT 01:24:35Z–01:30:47Z até a tela da legenda, sem Share e sem tocar no interruptor; capturas em data/diag-29-79-pos-33/b13-00..13. Árvore: 'Add AI label' TextView sem id, abaixo da dobra; interruptor android.view.View clickable/checkable, checked=false, [584,1011,688,1107], candidato único; estado_do_interruptor(tree,'text==Add AI label') sobre a árvore real = 'desligado'; share_footer_button e caption_input_text_view confirmados. Folha 'Sharing posts' fechada por toque fora (OK não tocado). Publicação: not_run.",
+   "blocker": "29.87 (rolar até 'Add AI label' e a folha 'Sharing posts' no conhecimento do app), suíte 34; a 1ª publicação real (29.30) só depois do deploy 34",
+   "grupo": "resultado-orquestradora-janela33b",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T01:26:30+00:00"
+   "quando": "2026-10-05T02:07:45+00:00"
   },
   "29.77": {
    "id": "29.77",
@@ -8194,6 +8194,45 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-05T01:26:30+00:00"
+  },
+  "28.27": {
+   "id": "28.27",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 2026-10-05, máquina central, deploy 33 a0c9865e (migração 107): a execução r-20261005012100-9e0810 (mode=plan, android-12, app de teste, idempotency_key lote:canais:28.27-porta) foi criada às 01:21:00Z e ficou planned às 01:21:13Z. GET /api/runs/{id}/porta: 1 item send_message com selo permitido, N=0, parcial=False, hash 84e0073d341e. A orquestradora viu o painel no navegador às 01:22Z sem clicar: 'Prévia da porta', '1 liberada(s)', '0 para aprovar', 'Iniciar e decidir na execução', sem alerta. Cancelada às 01:27:23Z, sem nada enviado. Custo por spent_usd: US$ 0,0471 em 2 chamadas. Simulated: test_telegram_portas, test_telegram_entrada, test_avisos_porta, test_porta_do_plano.",
+   "blocker": "Real do item com cadeado (N>0) e do Executar pelo Telegram do dono: not_run; vem na 1ª publicação real (29.30), levada pela orquestradora",
+   "grupo": "resultado-orquestradora-janela33b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T02:07:45+00:00"
+  },
+  "28.32": {
+   "id": "28.32",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 2026-10-05, máquina central, deploy 33 a0c9865e (migração 107), site ligado às 01:19Z. O 1º contato pelo formulário (portal:1) virou o aviso 54 (portal.contato), criado às 01:23:36.955Z e enviado às 01:23:40.657Z (3,7 s, 1ª tentativa), message_id 257 no Telegram do dono (canal_enviadas 66, fato portal:1). No estado final o corpo da linha está vazio (length 0), como manda a regra. Nenhuma execução foi criada depois disso. Leitura só, sem conteúdo, às 01:29Z. Simulated: test_avisos_portal_contato e test_avisos_portal_servico.",
+   "blocker": "not_run: a resposta do dono ao contato (só informa, não vira pedido) e o portal.resumo por hora (#335), que só sai com retidos ou descartados",
+   "grupo": "resultado-orquestradora-janela33b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T02:07:45+00:00"
+  },
+  "29.88": {
+   "id": "29.88",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), commit a0c9865e (deploy 33). Conferido sem defeito e sem mudança de código. Sessão Android, 01:34Z a 01:35Z, no android-04 (worker remoto, sem conta real, lease próprio): a rota de entrada do controle manual com key=back respondeu 200 em 0,13 s e a tela voltou (árvore antes e depois); o comando cru de tecla voltar pelo ADB teve o mesmo efeito. Causa do achado original (sessão Aprendizado, 01:40Z): o auxiliar da leitura mandou a tecla como número e com um campo a mais; o corpo do controle manual exige key 'back' e proíbe campo extra, então as duas tentativas no android-13 deram 422 e nada chegou ao aparelho. O controle manual usa a tecla pelo ADB (manager.py:4445) e o voltar do executor usa o pressKey do Appium (appium_driver.py:287 e 363): o que se viu no android-13 não vem do caminho do executor.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela33b",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T02:07:45+00:00"
   }
  },
  "rodadas": [
@@ -10708,6 +10747,19 @@
    ],
    "grupos": [
     "resultado-orquestradora-suite33"
+   ]
+  },
+  {
+   "quando": "2026-10-05T02:07:45+00:00",
+   "itens": [
+    "29.79",
+    "28.27",
+    "28.32",
+    "29.88",
+    "31.56"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela33b"
    ]
   }
  ]
