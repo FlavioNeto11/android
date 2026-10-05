@@ -456,6 +456,26 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - Prova `simulated`: `test_treino_quadro_velho.py` (14 passed), `test_treino_teclas_na_destilacao.py` (16 passed); cada
   mutação (C1, C1b, R1, N1) derruba um teste. Real: `not_run`.
 
+## 2026-10-05 — 31.80, 31.84, 31.85, 31.86, tela do Modo treinamento (branch fix/31-80-86-painel-do-treino)
+
+- 31.80: a barra só diz "Gravando" com o controle na mão; sessão `recording` sem ele (gravação órfã) vira aviso com
+  "Concluir e revisar" e "Descartar".
+- 31.84: "Limpar o campo antes" ao lado de Enviar (marcada enquanto grava, desmarcada fora); o texto vai com
+  `clear_first: true` (contrato v1.56, `ManualInput.clear_first`); a dica do treino ganhou a linha sobre ela.
+- 31.85: "Enviando ao aparelho…" (`aria-live="polite"`) enquanto uma entrada está em voo; a barra conta as entradas
+  recusadas (`stale_frame`/`frame_mismatch`) durante a gravação ("N entrada(s) recusada(s): refaça"). Sem fila de entradas.
+- 31.86: aparelho fora do ar (e que não é a loja) mostra a barra em "só revisão": "Para revisar" e a revisão
+  funcionam, sem o formulário de iniciar.
+- Estado compartilhado em `frontend/src/features/training/trainingStore.ts` (só memória).
+- Correção da revisão do PR #428: o aviso de "não está mais gravando" e os botões só valem sem ninguém no controle
+  (`control !== 'user'`); com outra pessoa ou aba no controle o aviso é "gravação em andamento por quem está com o
+  controle", sem Concluir nem Descartar. `stop`/`discard` mandam o `lease_id` da aba quando há (as rotas de hoje não
+  declaram corpo, então o campo é ignorado; o 31.92 passa a exigi-lo). "Limpar o campo antes" volta ao padrão a cada
+  gravação; `bad_input` com `clear_first` ganha a dica de desmarcar; a região viva do contador nasce vazia.
+- Prova `simulated`: `FocusPanel.test.tsx` (8 novos, 37 passed) e `TrainingBar.test.tsx` (7 novos, 8 passed) e `trainingStore.test.ts` (1); cada
+  teste novo falha sem a mudança (mutação conferida). `npm run typecheck` limpo. Real: `not_run` (depende do backend
+  em paralelo, `clear_first`, e da implantação).
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

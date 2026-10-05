@@ -523,6 +523,8 @@ interface ManualInput {
   x?: number; y?: number;           // pixels do aparelho (FrameInfo.width/height), já convertidos pelo frontend
   x2?: number; y2?: number; duration_ms?: number;
   text?: string;
+  /** Só com `type: 'text'` (contrato v1.56): limpa o campo em foco antes de digitar. Padrão false. */
+  clear_first?: boolean;
   key?: 'back' | 'home' | 'recents' | 'enter' | 'delete';
 }
 
