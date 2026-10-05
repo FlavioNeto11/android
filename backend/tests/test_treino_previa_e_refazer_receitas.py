@@ -290,3 +290,32 @@ async def test_rotas_http_previa_e_refazer(harness: Harness) -> None:
         r = await c.post(f"/api/training/{sid}/recipes")
         assert r.status_code == 200 and r.json()["created"] == 0
         assert st.db.scalar("SELECT COUNT(*) FROM recipes") == corpo["created"]
+
+
+@pytest.mark.parametrize("status", ["quarantined", "superseded"])
+async def test_refazer_nao_ressuscita_a_chave_que_o_aprendizado_rebaixou_ou_uma_pessoa_desligou(
+        harness: Harness, status: str) -> None:
+    st, rt, lease, sid = await _sessao_mista(harness)
+    await st.skills.save(sid, proposal=_proposta(), profile_ids=[], group_ids=[])     # no ar: já grava
+    antes = st.db.scalar("SELECT COUNT(*) FROM recipes")
+    assert antes >= 2
+    st.db.execute("UPDATE recipes SET status=?", (status,))                          # rebaixada / desligada
+    de_novo = await st.skills.refazer_receitas(sid)
+    assert de_novo["created"] == 0
+    assert st.db.scalar("SELECT COUNT(*) FROM recipes") == antes
+    assert st.db.scalar("SELECT COUNT(*) FROM recipes WHERE status='active'") == 0   # nada de ativa nova
+    razoes = _por_chave(de_novo["steps"])
+    assert f"a chave já teve receita (status {status})" in razoes["abrir"]["reason"]
+    assert razoes["abrir"]["recipe"] is False
+
+
+async def test_refazer_com_o_fluxo_desligado_e_409(harness: Harness) -> None:
+    st, rt, lease, sid = await _sessao_mista(harness)
+    _esquecer_o_aparelho(rt)
+    salvo = await st.skills.save(sid, proposal=_proposta(), profile_ids=[], group_ids=[])
+    st.db.execute("UPDATE flows SET status='disabled' WHERE id=?", (salvo["flow_id"],))
+    rt.state = InstanceState.online
+    with pytest.raises(TrainingError) as erro:
+        await st.skills.refazer_receitas(sid)
+    assert (erro.value.code, erro.value.status) == ("fluxo_desligado", 409)
+    assert st.db.scalar("SELECT COUNT(*) FROM recipes") == 0

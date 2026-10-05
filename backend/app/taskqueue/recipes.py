@@ -791,6 +791,15 @@ class RecipeStore:
                 or self._com_status("validated", package, app_version, step_hash, signature=signature,
                                     variant=variant) is not None)
 
+    def status_da_chave(self, package: str, app_version: str, step_hash: str, *, signature: str = "",
+                        variant: str = "") -> str | None:
+        """O status da versão mais nova que a chave já teve, de QUALQUER status (`None`: chave virgem). Só lê. O
+        reparo do treino (31.86) só grava em chave virgem: o `save` do treino pula o veto e põe uma ativa nova no lugar
+        da quarentena, o que ressuscitaria o caminho que o aprendizado rebaixou ou que uma pessoa desligou."""
+        return self.db.scalar("SELECT status FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
+                              " AND variant=? AND step_hash=? ORDER BY version DESC, id DESC LIMIT 1",
+                              (package, app_version, signature, variant, step_hash))
+
     def save(self, *, package: str, app_version: str, step_hash: str, step_key: str, actions: list[dict[str, Any]],
              learned_from: str, signature: str = "", variant: str = "", candidate: bool = False,
              replaces: int | None = None, heranca: str | None = None) -> int | None:
@@ -827,7 +836,7 @@ class RecipeStore:
                     replaces = None
             if self.chave_ocupada(package, app_version, step_hash, signature=signature, variant=variant):
                 return None
-            em_prova =self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
+            em_prova = self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
             if candidate and em_prova is not None and em_prova["id"] != replaces:
                 return None
             if (candidate and em_prova is not None

@@ -385,9 +385,12 @@ class TrainingSkills:
         if sess["status"] != "saved" or not sess.get("flow_id"):
             raise TrainingError("sessao_nao_salva", "Este treinamento ainda não virou habilidade: salve-o antes de "
                                                     "refazer as receitas.", 409)
-        fluxo = self.s.db.one("SELECT plan FROM flows WHERE id=?", (sess["flow_id"],))
+        fluxo = self.s.db.one("SELECT plan, status FROM flows WHERE id=?", (sess["flow_id"],))
         if fluxo is None:
             raise TrainingError("fluxo_inexistente", "A habilidade salva deste treinamento não existe mais.", 409)
+        if fluxo["status"] == "disabled":
+            raise TrainingError("fluxo_desligado", "A habilidade deste treinamento está desligada: ligue-a antes de "
+                                                   "refazer as receitas.", 409)
         # As etapas vêm do PLANO DO FLUXO (a chave da receita é o hash delas, igual ao que o executor calcula na
         # reprodução); as entradas de cada etapa vêm da proposta guardada. Casam pela chave da etapa.
         plano = Plan.model_validate_json(fluxo["plan"])
@@ -399,7 +402,7 @@ class TrainingSkills:
         prep = _Preparo({**p, "steps": etapas}, [], "", plano, exemplos, apps, plano.app_id)
         relatorio = await self._relatorio(
             sess, _destilar(sess, prep.p, [por_chave[st["key"]] for st in etapas], exemplos, apps), prep, session_id,
-            gravar=True)
+            gravar=True, so_chave_virgem=True)
         return {"session": self.s.training.get(session_id), "flow_id": sess["flow_id"], "steps": relatorio,
                 "created": sum(1 for linha in relatorio if linha["recipe"])}
 
@@ -430,9 +433,10 @@ class TrainingSkills:
         return versao, variante, assinatura
 
     async def _relatorio(self, sess: Sessao, destiladas: list[_Destilada], prep: _Preparo, session_id: str,
-                         *, gravar: bool) -> list[dict[str, object]]:
+                         *, gravar: bool, so_chave_virgem: bool = False) -> list[dict[str, object]]:
         """Uma linha por etapa: virou receita ou não, e o porquê. `gravar=False` (a prévia) responde o mesmo sem gravar:
-        `recipe: true` quer dizer "seria gravada"."""
+        `recipe: true` quer dizer "seria gravada". `so_chave_virgem` (o reparo): não grava onde a chave já teve receita
+        de qualquer status, porque o `recipes.save` do treino substituiria a quarentena por uma ativa nova."""
         pacotes = {a["id"]: a["package"] for a in prep.apps.values()}
         relatorio: list[dict[str, object]] = []
         for d in destiladas:
@@ -448,6 +452,13 @@ class TrainingSkills:
                 continue
             versao, variante, assinatura = identidade
             hash_da_etapa = step_template_hash(passo)
+            if so_chave_virgem:
+                antes = self.s.scheduler.executor.recipes.status_da_chave(
+                    pkg, versao, hash_da_etapa, signature=assinatura, variant=variante)
+                if antes is not None:
+                    linha["reason"] = (JA_HAVIA_RECEITA if antes in ("active", "validated")
+                                       else f"a chave já teve receita (status {antes}): o reparo não a ressuscita")
+                    continue
             if not gravar:
                 ocupada = self.s.scheduler.executor.recipes.chave_ocupada(
                     pkg, versao, hash_da_etapa, signature=assinatura, variant=variante)
