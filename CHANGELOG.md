@@ -25,7 +25,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `responde_a` (`;autoria=app|digitado|nao_confirmada`). Serve para medir se o conector do Trello leva `appCreator`.
 - `canais.md`: a regra R1 da revisão do #447 (sessão só escreve nas listas de perguntas pela API e com 🤖) e o sinal
   de alerta se uma resposta digitada pelo dono vier marcada "escrita por app".
-- Prova: `simulated` (`backend/tests/test_canais_respostas_as_perguntas.py`), ainda não rodada. Real: `not_run`.
+- Prova: `simulated` (`backend/tests/test_canais_respostas_as_perguntas.py`, 21 passaram). Real: `not_run`.
 
 
 ## 2026-10-05 — 29.131 e 29.138: as sobras das leituras do #433, #435, #441 e #443, e os achados das revisões automáticas do #443 (branch fix/29-131-sobras-supervisor-readocao)
