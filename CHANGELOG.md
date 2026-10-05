@@ -96,6 +96,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   código `not_controller` da tecla antes do controle.
 - Prova `simulated`, em Idle: `backend/tests/test_tela_protegida.py` (7 testes), `test_execution.py` e `test_contrato_http.py`, 34 passed; `test_tela_protegida.py` repetido 5 vezes, 7 passed em cada; `pytest @tests/catracas.txt -n 4`, 88 passed; `tests/test_arquitetura.py`, 9 passed; painel `npm run typecheck` limpo e `npm test`, 1613 passed; `docs-check`, 0 erros. `not_run`: a tela protegida no aparelho.
 
+## 2026-10-05 — 28.42: o fim real da execução chega à conversa que a criou (branch canais/28-42-desfecho-rearmado)
+
+- O desfecho que sai com a execução em `awaiting_person` ("parou") deixa a marca `desfecho_parado` na linha. Quando
+  a execução sai da espera, a linha volta a esperar desfecho, e a conclusão, a falha, o cancelamento ou a nova parada
+  chegam à mesma conversa, uma vez. Antes, a retomada que concluía ficava muda.
+- O estado é lido antes do texto: a corrida entre as duas leituras pode no máximo repetir o fim, nunca calá-lo. A
+  anti-repetição do #358 conta os envios além dos rearmes (`desfechos_rearmados`).
+- `TERMINAIS` → `COM_DESFECHO` (o conjunto inclui `awaiting_person`, que não é terminal).
+- Leitura do #400:
+  - R1: o rearme só vale para a linha que ainda tem a marca, e uma vez. A troca compara o `previa` e exige
+    `resultado_em`, de modo que um líder velho com a lista antiga não manda o fim duas vezes.
+  - N2: o estado só se lê para a linha que já tem desfecho, e o texto é relido depois dele; as execuções em curso
+    não custam leitura a cada volta.
+  - Os limites conhecidos estão no `canais.md`.
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py`: o fim depois do parou, a parada que segue parada, a
+  retomada que para de novo, a anti-repetição, o rearme duplo, o líder velho e a volta sem leitura de estado). Real:
+  `not_run`.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,

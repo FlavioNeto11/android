@@ -25,7 +25,7 @@ import pytest
 
 from app.api import _SQL_RUNS_DO_SNAPSHOT, _STATUS_DO_SNAPSHOT, AGUARDANDO_NO_SNAPSHOT_D
 from app.models import RUN_SEM_TRABALHO, RUN_TERMINAL, ResolveBody, RunStatus
-from app.modules.avisos.infrastructure.entrada import TERMINAIS
+from app.modules.avisos.infrastructure.entrada import COM_DESFECHO
 from app.modules.avisos.infrastructure.portas_da_central import _DESFECHO
 from app.modules.execution.domain.states import RUN_TRANSITIONS
 from app.modules.pedidos.domain.fechamento import Fechamento, ObjetivoVisto, fechar
@@ -199,7 +199,7 @@ async def test_consumidores_do_needs_input_nao_pegam_a_execucao_aguardando(harne
 
 # ------------------------------------------------------------------ Telegram e pedidos
 def test_o_telegram_conta_a_execucao_aguardando_como_desfecho_com_frase_propria() -> None:
-    assert "awaiting_person" in TERMINAIS                 # o desfecho é a única linha (28.36), como no terminal
+    assert "awaiting_person" in COM_DESFECHO                 # o desfecho é a única linha (28.36), como no terminal
     assert _DESFECHO[RunStatus.awaiting_person] == "parou"
     assert all(v != _DESFECHO[RunStatus.awaiting_person] for k, v in _DESFECHO.items() if k != RunStatus.awaiting_person)
 
