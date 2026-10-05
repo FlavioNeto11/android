@@ -24,6 +24,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Em `docs/` (8 arquivos, 40 ocorrências), cada @ de conta real virou a referência ao aparelho, `«conta do android-NN»`;
   o "@" da frase original ficou onde estava, porque em alguns exemplos é ele o sentido ("entre como @…", "digitou sem
   arroba"). Só texto: nenhuma decisão, ADR ou prova muda de sentido.
+- `README.md`: os exemplos de comando do `instagram.ps1` usam `-Perfil @<usuario-do-perfil>`.
 - Fora, de propósito: `docs/execucao-plano-100-runner.md` (gerado pelo mecanismo do plano-100 a partir do estado) e
   arquivos fora de `docs/`; os pedaços de nome em prosa ficam para a troca ampla.
 - Prova: `not_run` (docs-check depois do "no ar" da suíte 39). Real: `not_run`.
