@@ -10,12 +10,13 @@ Duas regras do executor, sem IA:
   ligá-la e para a guarda do Share (29.79) não ler "ausente". O passo não tira a legenda da tela (a guarda `{content}`).
 
 As funções puras batem nas árvores REAIS do 13 (`tests/fixtures/instagram_legenda/`, só ids, textos de interface e
-coordenadas; a sugestão de música trocada por "Música sugerida"). O laço do executor roda no Harness (porta base 5640)
+coordenadas; as sugestões de música trocadas por "Artista · Faixa"). O laço do executor roda no Harness (porta base 5640)
 com um Instagram falso de geometria igual à medida. Nível `simulated`; nada foi publicado.
 """
 from __future__ import annotations
 
 import json
+import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -58,7 +59,8 @@ def test_as_arvores_reais_nao_trazem_dado_de_persona() -> None:
     for arquivo in FIXTURES.glob("*.json"):
         texto = arquivo.read_text(encoding="utf-8")
         assert "@" not in texto.replace("@2131955697", ""), arquivo.name      # o desc sem resolver do fundo, só
-        assert "Seduce" not in texto and "Carvalho" not in texto, arquivo.name
+        for fora in ("Seduce", "Drake", "God's Plan", "Carvalho", "Andr"):       # música sugerida e conta do 13
+            assert fora not in texto, (arquivo.name, fora)
 
 
 def test_a_folha_real_e_reconhecida_e_fecha_fora_dela_longe_do_ok() -> None:
@@ -81,6 +83,23 @@ def test_a_folha_real_e_reconhecida_e_fecha_fora_dela_longe_do_ok() -> None:
 def test_a_folha_real_em_portugues_tambem_casa_pelos_ids_e_pelo_texto_de_hoje() -> None:
     assert telas.classificar(_conhecimento(), _arvore("legenda_com_folha_sharing_posts"), package=PKG,
                              locale="pt").tela == "aviso_de_compartilhar"
+
+
+def test_a_sessao_nao_toca_no_ok_da_folha_nem_quando_ele_e_clicavel() -> None:
+    """D1 da revisão: o rótulo global de recusa da sessão tem "ok". Numa variante da folha real em que o "OK" é um botão
+    CLICÁVEL, a dispensa não o toca (a regra da tela declara `nunca`). Fora da folha, o mesmo "OK" segue dispensável."""
+    from dataclasses import replace
+    from app.integrations.app_declarado import conhecimento as app_declarado
+    k = app_declarado.do_app(PKG)
+    folha = _arvore("legenda_com_folha_sharing_posts")
+    com_ok_clicavel = UiTree(elements=[replace(e, clickable=True) if e.text == "OK" else e for e in folha.elements],
+                             packages=folha.packages, sensitive=False)
+    assert any(e.text == "OK" and e.clickable for e in com_ok_clicavel.elements)
+    assert k.botao_de_dispensa(com_ok_clicavel) is None
+    so_o_ok = UiTree(elements=[e for e in com_ok_clicavel.elements if e.text == "OK"], packages=folha.packages,
+                     sensitive=False)
+    botao = k.botao_de_dispensa(so_o_ok)                 # sem a folha reconhecida: a regra global de antes vale
+    assert botao is not None and botao.text == "OK"
 
 
 def test_a_sessao_nao_acharia_botao_para_dispensar_a_folha() -> None:
@@ -291,3 +310,22 @@ async def test_a_folha_que_nao_fecha_para_numa_pessoa_sem_mais_toque(tmp_path: P
         assert len(fake.toques_fora) == LIMITE_DE_FOLHAS and fake.toques_na_folha == []
         assert fake.shares == [] and not fake.rotulo_ligado
         assert h.ai.count("decide") == 0 and not ator.viu_a_folha
+
+
+class AtorQueSoObserva(AtorQueLigaORotulo):
+    """Nunca conclui: só olha a tela (`observe_screen`, fora do detector de ciclo), gastando as ações da etapa."""
+
+    async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
+        return Decision(tool="observe_screen", args={"rationale": "[roteiro] só olhar"}), Usage()
+
+
+async def test_o_teto_de_acoes_do_ator_falha_a_etapa_sem_ir_a_verificacao(tmp_path: Path) -> None:
+    """E1 da revisão do 29.87: o laço ganhou voltas para as ações da regra, e o `break` do teto do ator saía dele sem
+    passar pelo `else`. A etapa que esgota as ações tem de falhar com o motivo do teto, sem verificação nenhuma."""
+    ator = AtorQueSoObserva()
+    async with _parque_com_dobra(tmp_path, folha=False, ator=ator) as h:
+        etapa = await _publicar(h)
+        assert etapa["status"] in ("failed", "waiting_user"), (etapa["status"], etapa["status_detail"])
+        assert re.search(r"Limite de \d+ ações por etapa", etapa["status_detail"] or ""), etapa["status_detail"]
+        assert h.ai.count("verify") == 0                         # nada de juiz para a etapa que não disse "pronto"
+        assert _fake(h).shares == []

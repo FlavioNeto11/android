@@ -339,7 +339,12 @@ class ConhecimentoDeSessao:
         return Dispensar(onde=r.tela, botao=botao) if botao is not None else None
 
     def botao_de_dispensa(self, tree: UiTree) -> UiElement | None:
-        return geometria.dismiss_button(tree, rotulos=self.dispensa.rotulos, ids=self.dispensa.ids)
+        botao = geometria.dismiss_button(tree, rotulos=self.dispensa.rotulos, ids=self.dispensa.ids)
+        # 29.87 (D1 da revisão): na tela cuja regra declara `nunca` (o "OK" de uma folha de aviso numa conta real), a
+        # dispensa não toca nesses rótulos, nem pelo rótulo global de recusa ("ok" está entre eles): não dispensa nada.
+        if botao is not None and telas_.proibido_na_tela(self.telas, tree, botao):
+            return None
+        return botao
 
     def botao_de_nao_salvar_login(self, tree: UiTree, locale: str | None) -> UiElement | None:
         return geometria.save_login_dismiss(

@@ -524,6 +524,14 @@ def _rotulo_normal(e: UiElement) -> str:
     return " ".join(f"{e.text} {e.desc}".split()).casefold()
 
 
+def proibido_na_tela(k: ConhecimentoDeTelas, tree: UiTree, elemento: UiElement) -> bool:
+    """29.87 (D1 da revisão): o `elemento` leva um rótulo do `nunca` da regra que reconhece esta tela? Para quem toca
+    sem IA por rótulo genérico (a dispensa da sessão tem "ok" entre os de recusa) não tocar no que o app declarou
+    intocável ("OK" de um aviso numa conta real)."""
+    regra = k.regra(classificar(k, tree, package=None).tela)
+    return regra is not None and bool(regra.nunca) and _rotulo_normal(elemento) in {n.casefold() for n in regra.nunca}
+
+
 def toque_fora_da_folha(regra: RegraDeTela, tree: UiTree) -> tuple[int, int] | None:
     """29.87: o ponto (do aparelho) que fecha a folha da `regra` sem escolher nada: no fundo escurecido, no meio da
     faixa que sobra ACIMA da folha (medido no android-13 em 05/10: a folha "Sharing posts" começa em y=260 e o fundo
@@ -602,7 +610,11 @@ def _regioes_visuais(bruto: object, telas: set[str]) -> tuple[RegiaoVisual, ...]
 
 
 def carregar(caminho: Path) -> ConhecimentoDeTelas:
-    return de_dados(yaml.safe_load(caminho.read_text(encoding="utf-8")) or {})
+    try:
+        bruto = yaml.safe_load(caminho.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:      # 29.87 (E2): YAML quebrado é conhecimento inválido, a mesma exceção para quem chama
+        raise ConhecimentoInvalido(f"{caminho.name}: YAML ilegível ({exc})") from None
+    return de_dados(bruto or {})
 
 
 # ---------------------------------------------------------------------------------------------------- aprendidas
@@ -723,6 +735,15 @@ def da_pasta(pasta: Path) -> ConhecimentoDeTelas | None:
 @lru_cache(maxsize=32)
 def _da_pasta_com_data(caminho: str, mtime_ns: int) -> ConhecimentoDeTelas:
     return carregar(Path(caminho))
+
+
+def da_pasta_por_data(pasta: Path) -> ConhecimentoDeTelas | None:
+    """`da_pasta` lido uma vez por modificação do arquivo: para quem consulta a cada volta do laço (29.87, E2 da
+    revisão). `None` sem `telas.yaml`; arquivo inválido levanta `ConhecimentoInvalido` (quem chama decide)."""
+    caminho = pasta / "telas.yaml"
+    if not caminho.is_file():
+        return None
+    return _da_pasta_com_data(str(caminho), caminho.stat().st_mtime_ns)
 
 
 def dicas_da_tela(pasta: Path, tree: UiTree, *, package: str | None) -> list[str]:

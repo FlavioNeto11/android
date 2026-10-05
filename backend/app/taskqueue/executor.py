@@ -2095,10 +2095,14 @@ class StepExecutor:
         # gastam as ações do ator.
         folhas_fechadas = 0
         rolagens_ate_o_interruptor = 0
+        # Um texto só para as duas saídas do teto: `falhas.py` o classifica como ciclo sem progresso.
+        motivo_do_teto = f"Limite de {max_actions} ações por etapa atingido sem concluir."
         for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0) + LIMITE_DE_FOLHAS
                            + LIMITE_DE_ROLAGENS_ATE_O_INTERRUPTOR):
             if volta - fechados_pela_regra - folhas_fechadas - rolagens_ate_o_interruptor > max_actions:
-                break
+                # E1 da revisão do 29.87: o teto do ator, não o fim do laço. Sair com `break` pularia o `else` e levaria
+                # a etapa à verificação como se ela tivesse dito `step_done`.
+                return await fail_or_retry(motivo_do_teto, last_obs)
             pela_regra = False
             chamada_do_ator = None
             settle_da_volta, settle_pendente = settle_pendente, None
@@ -2238,9 +2242,15 @@ class StepExecutor:
             # árvore, sem IA e sem escolher nada: o toque cai no fundo escurecido acima dela. "OK" de um aviso numa
             # conta real é aceitar, e isso é do dono (`nunca`). Antes da receita e do ator: por cima da folha, nenhum
             # toque deles chega aonde miram. Sem ponto seguro, ou de volta depois do teto: uma pessoa, sem mais toque.
-            conhecimento_da_tela = (telas_do_app.da_pasta(CONHECIMENTO_DE_APPS / app.package)
-                                    if app.package else None)
             regra_da_folha = None
+            try:
+                # E2 da revisão: lido uma vez por modificação (roda a cada volta); inválido não derruba a etapa.
+                conhecimento_da_tela = (telas_do_app.da_pasta_por_data(CONHECIMENTO_DE_APPS / app.package)
+                                        if app.package and app.package.replace(".", "").replace("_", "").isalnum()
+                                        else None)
+            except (telas_do_app.ConhecimentoInvalido, OSError) as exc:
+                log.warning("conhecimento de telas de %s inválido; sem a folha declarada: %s", app.package, exc)
+                conhecimento_da_tela = None
             if conhecimento_da_tela is not None:
                 vista = telas_do_app.classificar(conhecimento_da_tela, obs.tree, package=obs.package)
                 regra_da_folha = conhecimento_da_tela.regra(vista.tela)
@@ -3160,7 +3170,7 @@ class StepExecutor:
                 if r:
                     break
         else:
-            return await fail_or_retry(f"Limite de {max_actions} ações por etapa atingido sem concluir.", last_obs)
+            return await fail_or_retry(motivo_do_teto, last_obs)
 
         if collecting and collected is not None:
             if faltam_saidas():

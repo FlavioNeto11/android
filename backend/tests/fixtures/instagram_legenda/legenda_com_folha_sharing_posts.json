@@ -548,7 +548,7 @@
 },
 {
 "id": "e27",
-"text": "Drake · God's Plan",
+"text": "Artista · Faixa",
 "desc": "",
 "resource_id": "com.instagram.android:id/suggestion_text",
 "class_name": "android.widget.TextView",
@@ -611,7 +611,7 @@
 },
 {
 "id": "e30",
-"text": "Música sugerida",
+"text": "Artista · Faixa",
 "desc": "",
 "resource_id": "com.instagram.android:id/suggestion_text",
 "class_name": "android.widget.TextView",
