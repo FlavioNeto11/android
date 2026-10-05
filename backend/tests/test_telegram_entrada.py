@@ -568,16 +568,26 @@ async def test_desfecho_com_falha_definitiva_marca_e_nao_repete(c: Cenario) -> N
     assert c.bot.chamou("sendMessage") == n
 
 
-async def test_plano_esquecido_com_a_linha_feita_e_cancelado(tmp_path: Path) -> None:
+def _envelhecer_a_vista(c: Cenario, update_id: int, segundos: float) -> None:
+    """A primeira vista em `planned` gravada na linha (28.39, G1), puxada para trás no relógio do banco."""
+    from app.modules.avisos.infrastructure.entrada_sql import VISTA_EM_PLANNED
+    from app.util import to_iso
+
+    linha = c.linha(update_id)
+    previa = json.loads(str(linha["previa"] or "{}"))
+    assert VISTA_EM_PLANNED in previa
+    previa[VISTA_EM_PLANNED] = to_iso(c.repo.relogio() - timedelta(seconds=segundos))
+    c.db.execute("UPDATE canal_entradas SET previa=? WHERE id=?", (json.dumps(previa), linha["id"]))
+
+
+async def test_plano_esquecido_com_a_linha_feita_e_cancelado(c: Cenario) -> None:
     """28.38: a linha ficou feita e a execução voltou a `planned` (o `planning` de uma prévia termina ali) sem ninguém
     iniciar nem cancelar. A hora conta de quando a conversa a VIU em `planned` (F1: a linha fica feita ainda em
-    `planning`); passada, é cancelada SEM gesto (F4: nada em nome do dono), e o desfecho fecha a linha."""
+    `planning`), e essa vista fica na linha (28.39, G1); passada a hora, é cancelada SEM gesto (F4), e o desfecho fecha a
+    linha."""
     from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
     from app.util import to_iso
 
-    agora = [1_000_000.0]
-    c = Cenario(tmp_path)
-    c.servico.conversa._agora = lambda: agora[0]                 # noqa: SLF001
     await c.volta(msg(5, "abra o Chrome no android-09"))
     await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
     assert c.linha(5)["estado"] == "feita"
@@ -588,16 +598,96 @@ async def test_plano_esquecido_com_a_linha_feita_e_cancelado(tmp_path: Path) -> 
     c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
     await c.volta()
     assert "cancelar" not in c.portas.nomes()                     # a linha é velha, mas `planned` acabou de ser visto
-    agora[0] += PLANO_ESQUECIDO_S - 60
+    _envelhecer_a_vista(c, 5, PLANO_ESQUECIDO_S - 60)
     await c.volta()
     assert "cancelar" not in c.portas.nomes()
-    agora[0] += 120
+    _envelhecer_a_vista(c, 5, PLANO_ESQUECIDO_S + 60)
     await c.volta()
     assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and c.portas.estados[RUN] == "cancelled"
     assert c.portas.sem_gesto == [RUN]
     c.portas.desfechos[RUN] = "Execução abc123: cancelada."
     await c.volta()
     assert c.bot.textos()[-1] == "Execução abc123: cancelada." and c.linha(5)["resultado_em"] is not None
+
+
+async def test_a_vista_em_planned_sobrevive_ao_reinicio(c: Cenario) -> None:
+    """28.39, G1: um processo novo (ou outro líder da trava `avisos`) lê a mesma vista na linha e não recomeça a hora."""
+    from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
+    from app.util import to_iso
+
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.estados[RUN] = "planned"
+    velha = to_iso(c.repo.relogio() - timedelta(seconds=PLANO_ESQUECIDO_S + 60))
+    c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
+    await c.volta()                                               # grava a vista
+    _envelhecer_a_vista(c, 5, PLANO_ESQUECIDO_S + 60)
+    c.servico = c.novo_servico()                                  # o processo reiniciou: nada em memória
+    await c.volta()
+    assert c.portas.estados[RUN] == "cancelled" and c.portas.sem_gesto == [RUN]
+
+
+async def test_a_vista_some_quando_a_execucao_sai_de_planned(c: Cenario) -> None:
+    from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
+    from app.modules.avisos.infrastructure.entrada_sql import VISTA_EM_PLANNED
+    from app.util import to_iso
+
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.estados[RUN] = "planned"
+    velha = to_iso(c.repo.relogio() - timedelta(seconds=PLANO_ESQUECIDO_S + 60))
+    c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
+    await c.volta()
+    assert VISTA_EM_PLANNED in json.loads(str(c.linha(5)["previa"]))
+    c.portas.estados[RUN] = "running"
+    await c.volta()
+    assert VISTA_EM_PLANNED not in json.loads(str(c.linha(5)["previa"] or "{}"))
+    assert "cancelar" not in c.portas.nomes()
+
+
+async def test_lote_de_desfechos_gira_e_a_linha_nova_nao_espera_para_sempre(c: Cenario) -> None:
+    """28.39 (F3 da revisão do #358): com o lote cheio de linhas de execução longa, a linha nova entra na volta
+    seguinte, e não depois que as antigas acabarem."""
+    from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
+
+    lote = EntradasDoCanal.LOTE_DESFECHO
+    agora = c.repo._agora()                                       # noqa: SLF001 - o ISO do relógio do banco
+    for n in range(lote):
+        c.db.execute("INSERT INTO canal_entradas(canal, id_externo, tipo, ref_mensagem, estado, run_id, do_dono,"
+                     " recebida_em, tratada_em) VALUES ('telegram', ?, 'mensagem', ?, 'feita', ?, 1, ?, ?)",
+                     (f"longa-{n}", str(9000 + n), f"r-longa-{n:04d}", agora, agora))
+    c.db.execute("INSERT INTO canal_entradas(canal, id_externo, tipo, ref_mensagem, estado, run_id, do_dono,"
+                 " recebida_em, tratada_em) VALUES ('telegram', 'nova', 'mensagem', '9999', 'feita', 'r-nova-0001', 1,"
+                 " ?, ?)", (agora, agora))
+    c.portas.desfechos["r-nova-0001"] = "Execução 000001: concluída."
+    await c.volta()
+    assert "Execução 000001: concluída." not in c.bot.textos()   # o lote desta volta é o das 20 antigas
+    await c.volta()
+    assert "Execução 000001: concluída." in c.bot.textos()
+
+
+async def test_desfecho_sem_id_do_canal_fica_registrado_e_nao_repete(c: Cenario) -> None:
+    """28.39: o canal aceitou, mas a resposta não trouxe o `message_id`. O desfecho fica registrado por uma referência
+    própria, e a marca que não gravou não o faz repetir."""
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    ident = int(str(c.linha(5)["id"]))
+    c.repo.registrar_enviada(None, "resultado", entrada_id=ident)
+    assert c.repo.desfecho_ja_enviado(ident)
+    c.repo.registrar_enviada(None, "resposta", entrada_id=ident)     # só o desfecho ganha a referência própria
+    assert c.db.scalar("SELECT COUNT(*) FROM canal_enviadas WHERE entrada_id=? AND ref_mensagem LIKE 'resultado:%'",
+                       (ident,)) == 1
+
+
+async def test_desfecho_responde_mesmo_com_a_mensagem_original_apagada(c: Cenario) -> None:
+    """28.39: o dono apagou a mensagem que pediu a execução. O desfecho vai em resposta a ela com
+    `allow_sending_without_reply`, então o Telegram não recusa com 400 e não há o que tentar sem a referência."""
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.desfechos[RUN] = "Execução abc123: concluída."
+    await c.volta()
+    [final] = [m for m in c.bot.mensagens() if m["text"] == "Execução abc123: concluída."]
+    assert final["reply_parameters"] == {"message_id": 50, "allow_sending_without_reply": True}
 
 
 async def test_desfecho_que_ja_saiu_e_ficou_registrado_nao_repete(c: Cenario) -> None:
