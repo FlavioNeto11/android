@@ -3515,8 +3515,9 @@ async def put_server_limits(request: Request, worker_id: str, body: ServerLimits
         raise err(404, "not_found", f"Servidor {worker_id} não existe.")
     if worker_id == host:
         if "min_free_ram_mb" in patch:
-            raise err(400, "locked_limit", "O piso de RAM deste servidor é a guarda do boot local "
-                                           "(`android.min_free_ram_mb_after_boot` no config.yaml).")
+            # 29.142: frase para a pessoa; a chave é `android.min_free_ram_mb_after_boot` no config.yaml.
+            raise err(400, "locked_limit", "A RAM livre depois de ligar um aparelho neste servidor muda só na "
+                                           "configuração da instalação, com reinício.")
         base = s.cfg.file.limits
         vivos: dict[str, Any] = {}
         if "max_slots" in patch:

@@ -884,7 +884,8 @@ def _julgar(st: AppState, item: _Item, confirmados: set[str], dry_run: bool) -> 
         item.outcome, item.reason = "unchanged", "já é o pedido"
     elif item.reapply and conta and item.id not in confirmados:
         item.recusar("real_account_confirm_required",
-                     f"{item.id} tem conta real vinculada ({conta}): mudar a saída de uma conta logada pede a "
+                     # 29.142: a conta vem com os apps entre parênteses; o texto não a cerca de parênteses de novo.
+                     f"{item.id} tem conta real vinculada: {conta}. Mudar a saída de uma conta logada pede a "
                      "confirmação da pessoa para ESTE aparelho (confirm_real_account; ADR-056 §7)")
     else:
         item.outcome = "would_assign" if dry_run else "assigned"
