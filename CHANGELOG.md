@@ -28,6 +28,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_teclas_na_destilacao.py` (10 passed; sem o conserto, 3 falham).
   Real: `not_run`.
 
+## 2026-10-05 — 31.85: gravando, o quadro mais recente não é recusado por idade (branch fix/31-84-85-entrada-manual-no-treino)
+
+- `manual_input`: com gravação do treinamento, o quadro informado igual ao mais recente do backend vale acima da idade
+  máxima (captura sã, teto de 60 s); quadro antigo com um mais novo disponível e todo quadro velho fora da gravação
+  seguem em `stale_frame`. Motivo: a leitura de hierarquia da própria gravação deixava o aparelho lento (toque de
+  24 s) e as 15 teclas seguintes foram recusadas em série.
+- Prova `simulated`: `backend/tests/test_treino_quadro_velho.py` (4 passed; sem o conserto, 1 falha). Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

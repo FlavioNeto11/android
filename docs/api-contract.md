@@ -6347,4 +6347,11 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
   `text` como ruído e `enter` logo após o `text` como `press_enter` (ver "Teclas ao ensinar" em
   `docs/dominios/perfis-e-instagram.md`).
 - O painel pode ignorar o campo. Ausente também quer dizer backend de antes do 31.84.
-- **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`). `real`: `not_run`.
+- Item 31.85, sem campo novo: ENQUANTO HÁ GRAVAÇÃO do treinamento, o quadro informado que é o MAIS RECENTE do backend
+  é aceito mesmo acima da idade máxima (cada entrada gravada lê a hierarquia antes de agir e deixa o aparelho lento; na
+  medida de 05/10 as 15 teclas seguintes a um toque de 24 s voltaram `stale_frame`). Continuam em `409 stale_frame` (ou
+  `capture_failing`): quadro velho quando já existe um mais novo (a pessoa clicou numa imagem antiga), a captura com falha
+  registrada, quadro com mais de 60 s (captura travada) e TODO quadro velho fora da gravação. `frame_mismatch` e quadro
+  desconhecido não mudaram.
+- **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`, `backend/tests/test_treino_quadro_velho.py`).
+  `real`: `not_run`.

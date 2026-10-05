@@ -411,6 +411,12 @@ apagava um caractere por vez com "Apagar". Como a receita digita com `clear_firs
 `ManualInput.clear_first` (só `type='text'`) deixa o painel limpar o campo antes de digitar, sem N toques em Apagar;
 pelo ADB puro, sem sessão Appium, recusa com `bad_input` (o `input text` só acrescenta). O gravador não mudou.
 
+**Quadro velho ao gravar (31.85).** Gravando, cada entrada lê a hierarquia antes de agir e o aparelho fica lento; o quadro
+que a pessoa vê passava da idade máxima e as teclas seguintes eram recusadas em série (`stale_frame`). Em
+`DeviceManager.manual_input`, com gravação ativa, o quadro igual a `rt.frame.info.id` (o mais recente) vale mesmo acima
+da idade, com a captura sã e até `TETO_QUADRO_NA_GRAVACAO_MS` (60 s). Quadro antigo com um mais novo disponível, e todo
+quadro velho fora da gravação, seguem recusados.
+
 ## O Instagram como dado (ADR-052)
 
 O dono pediu "zero Python por app", e o Instagram deixou de ter código: `integrations/instagram/` e

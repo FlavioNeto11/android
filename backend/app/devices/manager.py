@@ -64,6 +64,9 @@ CLASSIFICACAO_FRESCA_S = 2.0
 MANUAL_LEASE_TTL_S = 600
 #: As teclas do controle manual que não conferem o quadro (29.105): só as de navegação, que saem da tela.
 TECLAS_DE_NAVEGACAO = frozenset({"back", "home", "recents"})
+#: Teto do quadro que a gravação do treinamento ainda aceita por ser o mais recente (31.85): a lentidão da própria
+#: gravação explica dezenas de segundos (um toque levou 24 s); mais que isto é captura travada, e a recusa volta.
+TETO_QUADRO_NA_GRAVACAO_MS = 60_000
 #: Interesse em prévia (contrato C2): o painel renova antes de vencer. Abaixo de 5 s, uma aba lenta piscaria entre
 #: ao vivo e suspensa; acima de 60 s, uma aba que fechou sem avisar manteria o aparelho sendo capturado à toa.
 TTL_INTERESSE_MIN_S = 5.0
@@ -4226,8 +4229,16 @@ class DeviceManager:
             if seen is None or rt.frame is None:
                 raise self._quadro_velho(rt, "A interação se refere a um frame que o backend não reconhece mais.")
             mono, fw, fh = seen
-            if (time.monotonic() - mono) * 1000 > max(s.frame_max_age_ms, s.capture_focus_interval_s * 3000):
-                raise self._quadro_velho(rt, "O frame exibido está antigo demais para uma ação segura.")
+            idade_ms = (time.monotonic() - mono) * 1000
+            if idade_ms > max(s.frame_max_age_ms, s.capture_focus_interval_s * 3000):
+                # 31.85: gravando, cada entrada lê a hierarquia ANTES de agir e deixa o aparelho lento; o quadro que a
+                # pessoa vê passava da idade e as teclas seguintes eram recusadas em série (15 de 15, 05/10). O quadro
+                # MAIS RECENTE que o backend tem é o que ela está olhando, então vale (com a captura sã e até um teto);
+                # se já existe um mais novo, ela clicou numa imagem antiga e a recusa fica. Fora da gravação, como antes.
+                e_o_mais_recente = (rt.training_session_id and inp.frame_id == rt.frame.info.id
+                                    and rt.capture_failures == 0 and idade_ms <= TETO_QUADRO_NA_GRAVACAO_MS)
+                if not e_o_mais_recente:
+                    raise self._quadro_velho(rt, "O frame exibido está antigo demais para uma ação segura.")
             if (fw, fh) != (rt.frame.info.width, rt.frame.info.height):
                 raise ControlError("frame_mismatch", "A orientação/tamanho da tela mudou desde o frame exibido.")
 
