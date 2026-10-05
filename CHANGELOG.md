@@ -49,6 +49,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `backend/tests/test_backup.py` segue com 12 testes.
 - Real: `not_run` para o conserto. O único dado real é a recusa das 03:19:01Z, que prova o DEFEITO; o conserto se
   prova no próximo deploy com `-Ensaio` seguido de `-PularBackup`.
+## 2026-10-05 — 31.65: o motivo livre da recusa da persona sai da dica que viaja (branch feat/31-65-motivo-do-modelo-fora-da-dica)
+
+- V2 da revisão do 31.63: quando a persona recusava escrever, a dica do bloqueio era o `refusal_reason` (ou o
+  `rationale`) do modelo, que pode citar o pedido ou o nome de um terceiro. Essa
+  dica viaja ao bloqueio do objetivo, às Pendências, ao aviso no Telegram e ao Trello.
+- Agora a dica é fixa (`DICA_DA_RECUSA`, "o motivo dela está no detalhe da etapa"), e o motivo fica só na etapa
+  (`draft_meta.motivo_da_recusa`), exposto em `StepDTO.motivo_da_persona` e mostrado como "Motivo da persona" no
+  detalhe da etapa no painel. A chave não fecha a escrita (`rascunho_fechado`): a retomada escreve de novo e o texto
+  escrito a substitui.
+- O motivo NÃO vai ao evento `step.updated` (gravado em `events` e transmitido a todo navegador): o painel
+  mantém o do detalhe da execução; `null` limpa. Contrato: adendo v1.46.
+- Leitura do #364: a etapa replanejada (`Scheduler.herdar_textos`) herda o rascunho da anterior, mas não o motivo de
+  uma recusa passada (M3). Limitação aceita (M2): o motivo novo aparece no painel quando o detalhe recarrega, não
+  ao vivo (o evento não o carrega de propósito).
+- Prova: `simulated` (`backend/tests/test_protecao_de_frota.py`, teste da retomada novo, que falha com a marca antiga,
+  e a ausência no evento gravado; `frontend/src/features/runs/CorrigirEtapa.test.tsx`, 2 testes novos;
+  `frontend/src/store/reducer.test.ts`, 1 novo). Real: `not_run`.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
