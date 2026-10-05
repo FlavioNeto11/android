@@ -6339,7 +6339,9 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
 
 `POST /api/instances/{id}/input` (`ManualInput`), campo aditivo:
 - `clear_first: boolean` (padrão `false`), só para `type:'text'`; nos outros tipos é ignorado. Com `true`, o campo em
-  foco é limpo antes de digitar (o mesmo `type_text(clear_first=True)` da reprodução da receita). Com `false` ou
+  foco é limpo antes de digitar (o mesmo `type_text(clear_first=True)` da reprodução da receita; o `type_text` da sessão
+  de automação engole a falha do `clear()` e acaba acrescentando, e quem pega isso é a pós-condição da etapa). Com
+  `clear_first:true` e `type` diferente de `text`: `422` (validação do corpo). Com `false` ou
   ausente, o comportamento é o de antes: o texto acrescenta ao que já está no campo.
 - Sem a sessão de automação do aparelho conectada (caminho do ADB `input text`, que só acrescenta), `clear_first:true`
   responde `400 {code:'bad_input'}` em vez de digitar sem limpar. A recusa da senha na loja continua antes de tudo.
@@ -6355,6 +6357,10 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
   desconhecido não mudaram.
   - A folga NÃO vale às cegas para o que age no campo em foco: com o quadro aceito só por ela, `type:'text'` e as teclas
     `enter`/`delete` voltam `409 stale_frame` se a hierarquia lida antes da ação faltar, for de tela sensível ou tiver
-    campo de senha em foco (a pessoa vê o quadro novo e repete). Toque, toque longo e arraste seguem como estavam.
+    campo de senha em foco (a pessoa vê o quadro novo e repete). Se chegou quadro novo enquanto essa hierarquia era lida,
+    qualquer entrada sob a folga volta `409 stale_frame`.
+  - Toque, toque longo e arraste sob a folga só passam se o quadro informado foi capturado DEPOIS da última entrada
+    manual com efeito (o quadro só é o "mais recente" porque a captura ainda não rodou depois dela; o segundo toque sobre
+    ele cairia na tela nova com a coordenada da velha): senão `409 stale_frame`, e a pessoa espera a imagem nova.
 - **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`, `backend/tests/test_treino_quadro_velho.py`).
   `real`: `not_run`.

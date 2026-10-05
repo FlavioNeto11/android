@@ -405,11 +405,14 @@ Migração `038_modo_treinamento.sql`: `training_sessions` (`status`: `recording
 apagava um caractere por vez com "Apagar". Como a receita digita com `clear_first=True`, que já limpa o campo,
 `distill_training` trata assim as teclas gravadas na etapa:
 - `delete` é ruído só quando COLADO ao `text` que vem depois (sequência contígua de `delete` e então o `text`, sem
-  toque, arraste ou outra tecla no meio: o apagar pode ter sido em outro campo); nos demais casos muda o resultado e a
-  etapa segue sem receita;
+  toque, arraste ou outra tecla no meio: o apagar pode ter sido em outro campo) E esse texto foi gravado com
+  `clear_first` (o gravador marca em `training_inputs.key_name = 'clear_first'`, sem coluna nova; sem a marca o apagar
+  pode ter sido parcial e a receita, que limpa tudo, divergiria); nos demais casos muda o resultado e a etapa segue
+  sem receita;
 - `enter` imediatamente depois de um `text` vira `press_enter=True` da própria ação `type_text`; `enter` solto recusa;
 - `back`, `home` e `recents` dependem do estado de quem ensinou e recusam, como antes.
-`ManualInput.clear_first` (só `type='text'`) deixa o painel limpar o campo antes de digitar, sem N toques em Apagar;
+`ManualInput.clear_first` (só `type='text'`; o `type_text` do Appium engole a falha do `clear()` e acrescenta, e a
+pós-condição da etapa é quem pega) deixa o painel limpar o campo antes de digitar, sem N toques em Apagar;
 pelo ADB puro, sem sessão Appium, recusa com `bad_input` (o `input text` só acrescenta). O gravador não mudou.
 
 **Quadro velho ao gravar (31.85).** Gravando, cada entrada lê a hierarquia antes de agir e o aparelho fica lento; o quadro
@@ -417,7 +420,8 @@ que a pessoa vê passava da idade máxima e as teclas seguintes eram recusadas e
 `DeviceManager.manual_input`, com gravação ativa, o quadro igual a `rt.frame.info.id` (o mais recente) vale mesmo acima
 da idade, com a captura sã e até `TETO_QUADRO_NA_GRAVACAO_MS` (60 s). Quadro antigo com um mais novo disponível, e todo
 quadro velho fora da gravação, seguem recusados.
-Pela folga, texto, Enter e Apagar ainda exigem a hierarquia lida antes da ação: sem ela, com tela sensível ou foco em senha,
+Pela folga, toque e arraste só passam com quadro capturado depois da última entrada (`rt.ultima_entrada_mono`); texto,
+Enter e Apagar ainda exigem a hierarquia lida antes da ação: sem ela, com tela sensível ou foco em senha,
 voltam `stale_frame`. Falha ao gravar a entrada loga só o tipo da exceção (o DETAIL do PostgreSQL pode trazer o texto).
 
 ## O Instagram como dado (ADR-052)

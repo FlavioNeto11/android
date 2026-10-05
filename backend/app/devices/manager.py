@@ -352,6 +352,9 @@ class DeviceRuntime:
         #: Sessão de treinamento aberta neste aparelho (item 13.1). A verdade é `training_sessions`; isto só evita
         #: consultar o banco a cada toque.
         self.training_session_id: str | None = None
+        #: Instante (monotônico) em que a última entrada manual COM efeito terminou de rodar no aparelho (31.85): um quadro
+        #: capturado antes dele já não mostra a tela de agora, e a folga da gravação não vale para toque sobre ele.
+        self.ultima_entrada_mono: float = 0.0
         self.serial = ext or f"emulator-{self.console_port}"
         self.ports = InstancePorts(system=row["system_port"], mjpeg=row["mjpeg_port"],
                                    chromedriver=row["chromedriver_port"])
@@ -4143,6 +4146,7 @@ class DeviceManager:
     def _grant_user(self, rt: DeviceRuntime, lease_id: str) -> None:
         rt.control, rt.control_since = ControlOwner.user, now_iso()
         rt.lease_id, rt.pending_lease_id, rt.takeover_requested = lease_id, None, False
+        rt.training_session_id = None              # gravação só começa depois do controle (training.start)
         rt.lease_expires_mono = time.monotonic() + MANUAL_LEASE_TTL_S
         rt.attention = "Controle manual ativo — a execução automática deste aparelho está suspensa."
         self._control_event(rt, "Controle manual concedido ao usuário")
@@ -4188,6 +4192,9 @@ class DeviceManager:
 
     def _end_user_control(self, rt: DeviceRuntime, message: str | None) -> None:
         rt.control, rt.control_since, rt.lease_id = ControlOwner.none, None, None
+        # Fim do controle é fim da gravação. Se o encerramento no gravador falhar (state.py engole), o id preso valeria
+        # a folga do quadro velho no PRÓXIMO controle, fora de gravação.
+        rt.training_session_id = None
         rt.attention = None
         if message:
             self._control_event(rt, message)
@@ -4241,6 +4248,11 @@ class DeviceManager:
                 if not e_o_mais_recente:
                     raise self._quadro_velho(rt, "O frame exibido está antigo demais para uma ação segura.")
                 so_pela_folga = True
+                # O quadro "mais recente" só é o mais recente porque a captura (no mesmo executor das ações) ainda não
+                # rodou depois da entrada ANTERIOR. Toque e arraste miram coordenada: sobre um quadro anterior à última
+                # entrada cairiam na tela nova com a coordenada da velha. Só passam com um quadro capturado depois dela.
+                if inp.type in ("tap", "long_press", "swipe") and mono <= rt.ultima_entrada_mono:
+                    raise self._quadro_velho(rt, "O frame exibido é anterior à última entrada; aguarde a imagem nova.")
             if (fw, fh) != (rt.frame.info.width, rt.frame.info.height):
                 raise ControlError("frame_mismatch", "A orientação/tamanho da tela mudou desde o frame exibido.")
 
@@ -4252,6 +4264,9 @@ class DeviceManager:
         # Modo treinamento: a tela de ANTES do toque é o que diz QUAL elemento a pessoa escolheu. Custa uma leitura
         # de hierarquia por entrada (~0,5 s) — só enquanto grava, e a tela avisa que o treinamento é mais lento.
         arvore_antes = await self._arvore_para_treino(rt) if rt.training_session_id else None
+        if so_pela_folga and (rt.frame is None or rt.frame.info.id != inp.frame_id):
+            # Chegou quadro novo enquanto a árvore era lida: a pessoa agiu sobre uma imagem que já não é a atual.
+            raise self._quadro_velho(rt, "A tela mudou enquanto a entrada era preparada; confira o quadro novo e repita.")
         if so_pela_folga and (inp.type == "text" or (inp.type == "key" and inp.key in ("enter", "delete"))):
             # Com a folga a pessoa olha um quadro de até 60 s, e nesse tempo a tela pode ter virado um diálogo ou um campo
             # de senha. Texto, Enter e Apagar agem sobre o campo em foco: sem a árvore real (ou com tela sensível ou foco
@@ -4305,12 +4320,14 @@ class DeviceManager:
             except AdbError as exc:
                 raise ControlError("bad_input", str(exc)) from exc
             desc = f"digitação de {len(text)} caractere(s)"
+        rt.ultima_entrada_mono = time.monotonic()
         self.bus.emit("log", f"{rt.id}: entrada manual — {desc}", instance_id=rt.id)
         rt.capture_now.set()
         if rt.training_session_id and self.on_training_input is not None:
             try:
                 self.on_training_input(rt, {"type": t, "x": inp.x, "y": inp.y, "x2": inp.x2, "y2": inp.y2,
-                                            "key": inp.key, "text": inp.text if t == "text" else None}, arvore_antes)
+                                            "key": inp.key, "text": inp.text if t == "text" else None,
+                                            "clear_first": bool(t == "text" and inp.clear_first)}, arvore_antes)
             except Exception as exc:  # noqa: BLE001 - gravar é acessório: a entrada já aconteceu no aparelho
                 # Sem a mensagem nem o traceback: o DETAIL de uma falha de constraint do PostgreSQL pode trazer a linha
                 # inteira, com o texto digitado (que pode ser credencial).

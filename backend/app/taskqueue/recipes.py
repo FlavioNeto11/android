@@ -508,7 +508,10 @@ def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *,
                 j = i + 1
                 while j < len(inputs) and inputs[j]["type"] == "key" and inputs[j].get("key_name") == "delete":
                     j += 1
-                if j < len(inputs) and inputs[j]["type"] == "text":
+                # ...e só quando AQUELE texto foi enviado limpando o campo (`key_name == "clear_first"`, ver o gravador):
+                # aí os apagar de antes não mudam o resultado. Sem isso o apagar foi parcial ("Olá Maria" → apaga 5 →
+                # nome) e a receita, que limpa tudo, divergiria do ensinado: depende do conteúdo anterior.
+                if j < len(inputs) and inputs[j]["type"] == "text" and inputs[j].get("key_name") == "clear_first":
                     continue
             # Enter colado ao texto que acabou de ser digitado é o "enviar" daquele campo: vira `press_enter` da própria
             # ação de digitar. Enter solto age sobre um campo que a receita não conhece e segue recusando.

@@ -40,6 +40,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_quadro_velho.py` (10 passed; sem a guarda da folga, 3 falham; com o log
   antigo, 1 falha). Real: `not_run`.
 
+## 2026-10-05 — 31.84/31.85: correções da segunda leitura do PR #430 (branch fix/31-84-85-entrada-manual-no-treino)
+
+- 31.85 (C1): `rt.ultima_entrada_mono` carimbado em cada entrada manual com efeito; sob a folga, toque, toque longo e arraste
+  só passam com quadro capturado DEPOIS dela (o segundo toque sobre o mesmo quadro caía na tela nova com a coordenada da
+  velha). C1b: quadro novo durante a leitura da árvore recusa qualquer entrada sob a folga.
+- 31.85 (R1): o fim (e o início) do controle zera `rt.training_session_id`; o gravador falhar no encerramento não prende a folga.
+- 31.84 (N1): o gravador marca o texto enviado com `clear_first` em `key_name` (sem migração); a destilação só trata o
+  `delete` colado como ruído se aquele texto foi limpando o campo (apagar parcial recusa a receita). `ManualInput`
+  recusa `clear_first` fora de `type='text'` (422). N2: o `type_text` do Appium engole a falha do `clear()`.
+- Prova `simulated`: `test_treino_quadro_velho.py` (14 passed), `test_treino_teclas_na_destilacao.py` (16 passed); cada
+  mutação (C1, C1b, R1, N1) derruba um teste. Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

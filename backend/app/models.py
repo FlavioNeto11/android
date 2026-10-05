@@ -1645,6 +1645,12 @@ class ManualInput(BaseModel):
     # N toques em "Apagar". Padrão False: quem digita pelo painel quer acrescentar ao que já está lá.
     clear_first: bool = False
 
+    @model_validator(mode="after")
+    def _clear_first_so_no_texto(self) -> "ManualInput":
+        if self.clear_first and self.type != "text":
+            raise ValueError("clear_first só vale para type='text'")
+        return self
+
 
 class DistributeSpec(BaseModel):
     """"Distribuir entre servidores": quantos aparelhos de um app, escolhidos pela carga de cada máquina

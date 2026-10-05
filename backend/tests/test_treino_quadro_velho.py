@@ -162,3 +162,67 @@ async def test_falha_ao_gravar_a_entrada_nao_loga_o_texto_da_excecao(harness: Ha
                and rt.training_session_id in r.getMessage() and r.levelno == logging.ERROR for r in caplog.records)
     assert sentinela not in caplog.text
     assert all(r.exc_info is None for r in caplog.records if "não gravada" in r.getMessage())
+
+
+# ---- revisão independente do PR #430 -------------------------------------------------------------------------------
+async def test_folga_com_a_captura_falhando_recusa(harness: Harness) -> None:
+    st, rt, lease, frame = await _no_controle(harness, gravando=True)
+    _envelhecer(rt, frame, 20)
+    rt.capture_failures, rt.capture_error = 1, "screencap estourou"
+    with pytest.raises(ControlError) as recusa:
+        await st.devices.manual_input(rt, _toque(lease, frame))
+    assert recusa.value.code == "capture_failing"
+
+
+async def test_folga_o_segundo_toque_sobre_o_mesmo_quadro_recusa(harness: Harness) -> None:
+    """C1: o quadro só é o 'mais recente' porque a captura ainda não rodou depois do toque anterior."""
+    st, rt, lease, frame = await _no_controle(harness, gravando=True)
+    _envelhecer(rt, frame, 20)
+    await st.devices.manual_input(rt, _toque(lease, frame))                       # passa pela folga e carimba a entrada
+    assert rt.ultima_entrada_mono > rt.recent_frames[frame][0]
+    for tipo in ("tap", "long_press", "swipe"):
+        with pytest.raises(ControlError) as recusa:
+            await st.devices.manual_input(rt, ManualInput(lease_id=lease, frame_id=frame, type=tipo, x=10, y=10, x2=20, y2=20))
+        assert recusa.value.code == "stale_frame", tipo
+    # com um quadro capturado DEPOIS da última entrada (e ainda acima da idade), o toque passa de novo
+    rt.ultima_entrada_mono = time.monotonic() - 40
+    await st.devices.manual_input(rt, _toque(lease, frame))
+
+
+async def test_folga_quadro_novo_durante_a_leitura_da_arvore_recusa(harness: Harness) -> None:
+    """C1b: chegou quadro novo enquanto a hierarquia era lida; a pessoa agiu sobre uma imagem que já não é a atual."""
+    st, rt, lease, frame = await _no_controle(harness, gravando=True)
+    _envelhecer(rt, frame, 20)
+    _, w, h = rt.recent_frames[frame]
+    original = st.devices._arvore_para_treino
+
+    async def lendo(rt_: object) -> object:
+        st.devices._registrar_frame(rt_, w, h, b"", b"")             # a captura roda no meio da leitura
+        return await original(rt_)
+
+    st.devices._arvore_para_treino = lendo
+    digitado = _espiar_digitacao(harness)
+    with pytest.raises(ControlError) as recusa:
+        await st.devices.manual_input(rt, ManualInput(lease_id=lease, frame_id=frame, type="text", text="oi"))
+    assert recusa.value.code == "stale_frame" and digitado == []
+
+
+async def test_fim_do_controle_zera_a_gravacao_mesmo_se_o_gravador_falhar(harness: Harness) -> None:
+    """R1: se o encerramento no gravador falhar (engolido em state.py), o id não pode ficar preso para o próximo controle."""
+    st, rt, lease, frame = await _no_controle(harness, gravando=True)
+
+    def falha(_id: str) -> None:
+        raise RuntimeError("banco indisponível")
+
+    st.training.stop_for_instance = falha
+    st.devices.release_control(rt, lease)
+    assert rt.training_session_id is None
+    _, lease2 = st.devices.request_control(rt)
+    rt.training_session_id = "preso"                                   # id preso de antes
+    st.devices.release_control(rt, lease2)
+    assert rt.training_session_id is None
+    _, lease3 = st.devices.request_control(rt)
+    rt.training_session_id = "preso"
+    st.devices._end_user_control(rt, None)
+    status, lease4 = st.devices.request_control(rt)
+    assert status == "granted" and rt.training_session_id is None
