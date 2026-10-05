@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.36: a aprovação no plano trava a linha da execução (branch canais/28-36-trava-na-aprovacao)
+
+- `aprovar_plano` conferia a execução com um `SELECT`. Com dois backends no PostgreSQL (read committed), o cancelamento
+  do canal no outro backend fazia o compare-and-set e o `expire_for_objective` sem enxergar os sins ainda não
+  confirmados, e sobravam sins `approved` numa execução `cancelled`. Agora a conferência é
+  `UPDATE runs SET cancel_requested=cancel_requested WHERE id=? AND status='planned' AND cancel_requested=0`, que trava
+  a linha até o COMMIT (o SQLite não aceita `FOR UPDATE`). Com `rowcount != 1`, a recusa sai pelo `_exigir_na_porta`
+  relido.
+- O início que perde para OUTRO início (estado relido `running` ou `paused`, sem cancelamento) devolve
+  `invalid_state` com texto próprio, `INICIADA_POR_OUTRO_GESTO`: os sins valeram. Antes, o dono lia um texto de
+  cancelamento por um gesto que tinha valido.
+- Prova: `simulated` para o caminho de um processo, em `tests/test_telegram_portas.py` (o início que perde para outro
+  início; a trava da linha antes do primeiro sim). Ao todo 124 passaram (`test_telegram_portas`, `test_porta_do_plano`,
+  `test_avisos_porta`, `test_executor_honra_o_plano`, `test_telegram_entrada`, `test_cobertura_de_rotas`), em Idle e
+  sem `-n`. A corrida entre dois backends no PostgreSQL: `not_run` (não roda num processo só).
+
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
 - `scripts/tests/test_poda_ab_offline.py` confere `scripts/poda-ab-offline.py`: só a UI do Chrome sai, a `url_bar` fica,
