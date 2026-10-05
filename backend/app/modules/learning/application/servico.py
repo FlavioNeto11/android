@@ -15,10 +15,12 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
 
+from app.modules.learning.application.ensinado import AvisadorDoEnsinado
 from app.modules.learning.application.espera import AvisadorDeEspera, RiscoDoNativo
 from app.modules.learning.application.obsolescencia import ContextoDeObsolescencia, LeitorDeObsolescencia
-from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, Minerador, MudancaNativa,
-                                                    LacoPeriodico, NovoSinal, PassoDeCuradoria, PortaDeEventos,
+from app.modules.learning.application.ports import (Ajustes, CatalogoDeRisco, FontesDoLivro, LeitorDoEnsinado,
+                                                    Minerador, MudancaNativa, LacoPeriodico, NovoSinal,
+                                                    PassoDeCuradoria, PortaDeEventos, PortaDoEnsinado,
                                                     RepositorioDeAprendizado, TitulosDoCatalogo, TriagemDeTexto)
 from app.modules.learning.domain import relacoes as rel
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ConflitoDeEstado, EntradaInvalida, NaoEncontrado,
@@ -148,12 +150,14 @@ class LearningService:
                  mineradores: Sequence[Minerador] = (), passos: Sequence[PassoDeCuradoria] = (),
                  eventos: PortaDeEventos | None = None, catalogo_de_risco: CatalogoDeRisco | None = None,
                  titulos: TitulosDoCatalogo | None = None,
-                 risco_do_nativo: RiscoDoNativo | None = None) -> None:
+                 risco_do_nativo: RiscoDoNativo | None = None,
+                 ensinado: PortaDoEnsinado | None = None, leitor_do_ensinado: LeitorDoEnsinado | None = None) -> None:
         """`retencao_de_logs_dias`: o `log_retention_days` VIGENTE (muda com o processo no ar); é o que diz até
         onde `ai_calls` ainda está inteiro. `eventos`: a porta do `learning.needs_person` (30.21; sem ela, nada é
         publicado); `catalogo_de_risco`: os fatos do catálogo do app para a faixa B ou C; `titulos`: o nome da
         capability no catálogo (sem ele, o painel mostra o código); `risco_do_nativo`: a capability da receita e as
-        etapas do fluxo, lidas como o dossiê as lê, para a faixa do aviso ser a do parecer (30.33)."""
+        etapas do fluxo, lidas como o dossiê as lê, para a faixa do aviso ser a do parecer (30.33).
+        `ensinado`/`leitor_do_ensinado` (30.80 B): o aviso do ensinado que o sistema tirou de uso; sem os dois, nada."""
         self._repo = repo
         self._fontes = fontes
         self._triagem = triagem
@@ -165,6 +169,7 @@ class LearningService:
         self._extensoes: list[object] = []
         self._lacos: list[LacoPeriodico] = []
         self._espera = AvisadorDeEspera(eventos, catalogo_de_risco, relogio, risco_do_nativo)
+        self._ensinado = AvisadorDoEnsinado(ensinado, leitor_do_ensinado, relogio)
         self._titulos = titulos
 
     @property
@@ -632,8 +637,9 @@ class LearningService:
             MudancaNativa(kind=e.kind, ref=e.ref, de_status=e.native_status, para_status=para_status,
                           de_estado=e.state, para_estado=para, content_hash=e.content_hash, scope_key=e.scope_key,
                           app_version=e.app_version), by=by, reason=reason, run_id=run_id, emenda_b=emenda_b)
-        self._espera.mudou_sem_falhar(e, replace(e, state=para, native_status=para_status),
-                                      por_sistema=by == SYSTEM_ACTOR)
+        depois = replace(e, state=para, native_status=para_status)
+        self._espera.mudou_sem_falhar(e, depois, por_sistema=by == SYSTEM_ACTOR)
+        self._ensinado.mudou_sem_falhar(e, depois, por_sistema=by == SYSTEM_ACTOR)   # 30.80 B: a obsolescência
 
     def invalidar_evidencia(self, kind: LivroKind, ref: str, run_id: str, *, by: str) -> EntradaDoLivro:
         """30.23: a receita ou o fluxo foi aprendido de um sucesso falso (a execução `run_id` terminou como sucesso sem
@@ -748,6 +754,7 @@ class LearningService:
         if de_status is not None:
             antes = replace(depois, state=estado_nativo(kind, de_status), native_status=de_status)
         self._espera.mudou(antes, depois, por_sistema=by == SYSTEM_ACTOR)
+        self._ensinado.mudou(antes, depois, por_sistema=by == SYSTEM_ACTOR)          # 30.80 B: quarentena, troca
 
     def registrar_sinal(self, sinal: NovoSinal, *, recusar_nota: bool = False, substituir: bool = False,
                         um_por_evento: bool = False) -> int | None:

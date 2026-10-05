@@ -32,6 +32,7 @@ from app.modules.learning.infrastructure import (ligar_aprovacao_automatica, lig
                                                  ligar_curador, ligar_licoes, ligar_nativos, ligar_obsolescencia, ligar_telas,
                                                  ligar_voz)
 from app.modules.learning.infrastructure.declarados import DeclaradosDoRegistro, LojaSql
+from app.modules.learning.infrastructure.ensinado_sql import LeitorDoEnsinadoSql
 from app.modules.learning.infrastructure.eventos import (Barramento, EventosNoBarramento, RiscoDoRegistro,
                                                          TitulosDoRegistro)
 from app.modules.learning.infrastructure.fontes import FontesSql
@@ -127,12 +128,13 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     fontes = FontesSql(db, pacotes_do_registro=pacotes_do_registro)
     # 30.33: o aviso `learning.needs_person` lê a receita e o fluxo pelo mesmo leitor do dossiê do curador.
     lido = RiscoDoConteudo(db, risco)
+    porta = EventosNoBarramento(eventos) if eventos is not None else None
     servico = LearningService(repo, fontes,
                               TriagemDeCredencial(), ajustes=lambda: ajustes_do_config(config()),
                               relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias,
-                              eventos=EventosNoBarramento(eventos) if eventos is not None else None,
-                              catalogo_de_risco=risco, titulos=TitulosDoRegistro(),
-                              risco_do_nativo=lambda e: lido.do_nativo(e, fontes.conteudo(e.kind, e.ref)))
+                              eventos=porta, catalogo_de_risco=risco, titulos=TitulosDoRegistro(),
+                              risco_do_nativo=lambda e: lido.do_nativo(e, fontes.conteudo(e.kind, e.ref)),
+                              ensinado=porta, leitor_do_ensinado=LeitorDoEnsinadoSql(db))     # 30.80 B
     # Pacote A3: o que mais falha e o backlog. A apresentação o acha pelo tipo; a curadoria roda o passo dele.
     falhas = ServicoDeFalhas(FontesDeFalhaSql(db, precos=precos), SqlBacklogRepository(db), repo,
                              TriagemDeCredencial(), regras=lambda: regras_do_backlog(config().backlog),

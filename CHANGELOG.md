@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.80 parte B: o ensinado que o sistema tirou de uso avisa (branch feat/30-80b-aviso-do-ensinado)
+
+- Eventos novos `learning.ensinado_rebaixado` (`info`) e `learning.ensinado_sem_receita` (`warn`). Saem quando a receita
+  ou o fluxo ensinado no modo treinamento (`training:<sessão>`), em uso, sai de uso por decisão do SISTEMA:
+  quarentena por falhas seguidas, substituição ou obsolescência. Um por transição: "sem receita" quando nada ativo
+  ficou no lugar.
+- O payload é a lista fechada combinada com a Canais (28.50): `kind`, `ref`, `app`, `treino`, `sem_receita_ativa`,
+  `para` (status nativo) e `desde` (o instante da transição NA TRILHA, estável numa reemissão).
+- Não avisam: o gesto de uma pessoa, outra demonstração, o item que a IA aprendeu e o nascimento.
+- `domain/ensinado.py` (a regra e o payload), `application/ensinado.py` (`AvisadorDoEnsinado`, chamado nos dois
+  caminhos: a loja via `avisar_mudanca_nativa` e o Livro via `_mover_nativo`), `infrastructure/ensinado_sql.py`
+  (`LeitorDoEnsinadoSql`) e `EventosNoBarramento.ensinado_rebaixado`.
+- Prova `simulated`: `backend/tests/test_learning_ensinado_rebaixado.py` (7), verificado por mutação com 7 regras.
+  Real: `not_run` (a próxima quarentena de receita ensinada).
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
