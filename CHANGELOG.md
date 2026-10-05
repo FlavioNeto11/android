@@ -37,6 +37,10 @@ Lado Jev do 28.10 F5, sobre o 31.49 (#330).
   `test_repetido_entre_execucoes`, `test_pedidos_colaboracao_para_fora`, `test_executor_honra_o_plano`,
   `test_porta_do_plano`, `test_chave_da_aprovacao`, `test_objeto_alvo`, arquitetura, rotas e falhas: 236 passed).
   `not_run`: pedido real entre personas depois do deploy.
+- Revisão (antes da leitura): o texto LITERAL que cita outra conta do pedido já pede aprovação no `check`, então a
+  prévia do plano mostra o mesmo selo da execução; o texto GERADO é pego na porta depois do rascunho, com o motivo uma
+  vez só (`backend/tests/test_familia_no_rascunho.py`, harness, com contraprova). O @ da família vem também de
+  `profile_accounts.handle` (a conta da persona em cada app).
 
 ## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
 

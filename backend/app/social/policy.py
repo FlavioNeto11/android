@@ -631,8 +631,8 @@ class PolicyEngine:
         recusa (não há efeito em dobro). O motivo NÃO leva o @ nem o texto: ele viaja para decisão, evento, aviso e
         resumo, e o dono vê o @ no próprio texto do item que aprova. Sem pedido, nada. Só lê.
 
-        O @ vem de `instagram_profiles.username` das personas da família; casa com ou sem `@`, inteiro (não dentro de
-        outro nome)."""
+        O @ vem de `instagram_profiles.username` e de `profile_accounts.handle` (a conta da persona em cada app) das
+        personas da família; casa com ou sem `@`, inteiro (não dentro de outro nome)."""
         if pedido is None or not cap.side_effect:
             return None
         outras = sorted(pedido.familia - {profile_id})
@@ -640,8 +640,10 @@ class PolicyEngine:
         if not outras or not textos:
             return None
         marcas = ",".join("?" * len(outras))
-        nomes = [str(r["username"]).strip().lstrip("@") for r in self.repo.db.query(
-            f"SELECT username FROM instagram_profiles WHERE id IN ({marcas}) AND username <> ''", tuple(outras))]
+        nomes = {str(r["nome"]).strip().lstrip("@") for r in self.repo.db.query(
+            f"SELECT username AS nome FROM instagram_profiles WHERE id IN ({marcas}) AND username <> ''"
+            f" UNION SELECT handle AS nome FROM profile_accounts WHERE profile_id IN ({marcas}) AND handle <> ''",
+            (*outras, *outras))}
         texto = " ".join(textos)
         for nome in (n for n in nomes if n):
             if re.search(rf"(?<![\w.])@?{re.escape(nome)}(?![\w])", texto, flags=re.IGNORECASE):
