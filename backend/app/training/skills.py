@@ -27,6 +27,7 @@ from ..planning.training import TrainingRequest
 from ..taskqueue.flows import PLACEHOLDER, RESERVED, _norm, ensinado_em_prova  # noqa: PLC2701 - a MESMA normalização da `match_key`
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..util import now_iso
+from . import dado_da_persona
 from .recorder import TrainingError
 from .respostas import acumular, guardadas, sem_as_respondidas, validar_respostas
 
@@ -311,6 +312,8 @@ class TrainingSkills:
             pass
         proposta["app_id"] = app_id
         proposta.pop("answers", None)
+        # 31.87 F2: o dado da persona que a pessoa digitou vira o marcador, não parâmetro do comando nem literal.
+        proposta, _ = dado_da_persona.na_proposta(proposta, self._persona_demonstrada(sess))
         if respostas:           # sem resposta nenhuma a proposta fica como sempre foi (sem a chave)
             proposta["questions"] = sem_as_respondidas([q for q in proposta.get("questions") or [] if isinstance(q, str)],
                                                        respostas)
@@ -337,6 +340,9 @@ class TrainingSkills:
                 p["answers"] = resp
         if not p or not p.get("steps"):
             raise TrainingError("no_proposal", "Peça a proposta da IA (ou monte as etapas) antes de salvar.", 400)
+        # 31.87 F2: a mesma troca da proposta, para a que a pessoa editou à mão; antes de conferir o comando.
+        persona = self._persona_demonstrada(sess)
+        p, marcadores = dado_da_persona.na_proposta(p, persona)
         if not isinstance(p.get("command_template"), (str, type(None))):
             raise TrainingError("invalid_command", "O comando da habilidade tem de ser um texto.", 400)
         comando = (p.get("command_template") or "").strip()
@@ -392,7 +398,10 @@ class TrainingSkills:
         plano = Plan(summary=(p.get("summary") or sess["intent"])[:200], app_id=app_id, app_package=pacote,
                      parameters={n: "{" + n + "}" for n in exemplos}, steps=passos,
                      planner=PlannerInfo(provider="treinamento", model=f"treinamento:{session_id}", simulated=False))
-        return _Preparo({**p, "app_id": app_id}, avisos, comando, plano, exemplos, apps, app_id)
+        # A destilação troca o valor digitado pelo nome: os parâmetros da pessoa primeiro, a persona no que sobrar.
+        variaveis = {**exemplos, **{k: v for k, v in persona.items() if k not in exemplos}}
+        return _Preparo({**p, "app_id": app_id}, [*avisos, *dado_da_persona.aviso(marcadores)], comando, plano,
+                        variaveis, apps, app_id)
 
     async def save(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],
                    group_ids: list[str]) -> dict[str, object]:
@@ -452,6 +461,7 @@ class TrainingSkills:
         por_chave = {s.key: s for s in plano.steps}
         etapas = [st for st in p.get("steps") or [] if isinstance(st, dict) and st.get("key") in por_chave]
         exemplos = {str(x["name"]): str(x.get("example") or "") for x in p.get("parameters") or [] if x.get("name")}
+        exemplos |= {k: v for k, v in self._persona_demonstrada(sess).items() if k not in exemplos}     # 31.87 F2
         apps = self._apps()
         prep = _Preparo({**p, "steps": etapas}, [], "", plano, exemplos, apps, plano.app_id)
         relatorio = await self._relatorio(
@@ -459,6 +469,10 @@ class TrainingSkills:
             gravar=True, so_chave_virgem=True)
         return {"session": self.s.training.get(session_id), "flow_id": sess["flow_id"], "steps": relatorio,
                 "created": sum(1 for linha in relatorio if linha["recipe"]), **self._em_prova(sess["flow_id"])}
+
+    def _persona_demonstrada(self, sess: Sessao) -> dict[str, str]:
+        """31.87 F2: os dados (não sigilosos) da persona do treino que a pessoa digitou na demonstração."""
+        return dado_da_persona.demonstrados(self.s.repo.variaveis_da_persona(sess.get("profile_id")), sess["inputs"])
 
     def _em_prova(self, flow_id: str) -> dict[str, object]:
         """30.81: `ensinado_em_prova` `{persona, sessao}` no topo da resposta enquanto a habilidade espera a prova (só
