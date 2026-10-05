@@ -323,7 +323,7 @@ class UiTree:
         """31.59 (bolha sem `resource_id`): sem o tipo da bolha, "mensagem abaixo" é QUALQUER elemento não editável com
         texto ou descrição em QUALQUER contêiner de lista que contém a bolha (rolável, ou de classe de lista do Android:
         não depende de app) e com o topo depois do fim dela. 31.62: todos os contêineres, não só o menor (uma lista
-        interna justa em volta da bolha escondia as mensagens mais novas da lista de fora), e "dentro da lista" é o topo
+        interna justa em volta da bolha escondia as mensagens mais novas da lista de fora), e "dentro da lista" é ter
         o centro do elemento dentro dela (`_na_faixa`). Na dúvida, `None` e o modelo julga, nunca "enviado":
 
         - mais de uma bolha igual (sem tipo não se diz qual é a nova);
