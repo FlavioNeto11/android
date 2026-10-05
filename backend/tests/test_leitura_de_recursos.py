@@ -306,7 +306,7 @@ def test_app_session_le_provedor_conta_localidade_validade_e_teto(banco: Databas
     assert bruno.provider is not None and bruno.provider.status is None             # sem linha de sessão
 
     andre = ler(SESSAO, "android-03")
-    assert andre.provider is not None and andre.provider.unknown_capped             # teto 3, três leituras
+    assert andre.provider is not None and andre.provider.unknown_capped             # vinculado: teto 1 (29.92)
     assert p.diff(SESSAO, andre).code == SessionCode.unrecognized_screen
 
     ana = ler(SESSAO, "android-04")
@@ -338,6 +338,24 @@ def test_app_session_validade_e_teto_vem_de_quem_compoe(banco: Database) -> None
     # android-03 tem vínculo ativo (conta real), e aí o teto é 1, o mesmo da porta (29.92).
     frouxo = _sessoes(banco, validade_s=0, teto=10)
     assert frouxo.read_current_state(SESSAO.ref, Target("android-03")).provider.unknown_capped is True  # type: ignore[union-attr]
+
+
+def test_app_session_sem_vinculo_no_aparelho_da_sessao_usa_o_teto_de_quem_compoe(banco: Database) -> None:
+    """T1 da leitura do #371: o teto global (o de quem compõe) ainda vale onde a SESSÃO lida está num aparelho sem
+    vínculo — o caminho do "a sessão é de outro aparelho": o andre está vinculado ao android-03, mas a única linha de
+    sessão dele é do android-05, que não tem vínculo. Lá o teto é o global, não 1."""
+    _identidades(banco)
+    banco.execute("DELETE FROM account_sessions WHERE account_id='acc-p-andre'")
+    _sessao(banco, "p-andre", "unknown", iid="android-05", username=None, verificada=None, streak=2)
+
+    def capped(teto: int) -> bool | None:
+        obs = _sessoes(banco, teto=teto).read_current_state(SESSAO.ref, Target("android-03"))
+        assert obs.provider is not None and obs.provider.instance_id == "android-05"
+        return obs.provider.unknown_capped
+
+    assert capped(10) is False                        # duas leituras, teto 10: não para
+    assert capped(3) is False                         # nem com o teto 3
+    assert capped(2) is True                          # no teto global: para
 
 
 def test_app_session_com_vinculo_para_no_primeiro_unknown_como_a_porta(banco: Database) -> None:

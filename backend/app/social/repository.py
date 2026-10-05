@@ -22,7 +22,7 @@ from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
 from ..planning.catalog import pacote_ancora
 from ..metricas import metricas
-from ..shared.vinculos import tem_vinculo_ativo
+from ..shared.vinculos import teto_de_unknown
 from ..util import new_token, now, now_iso, to_iso
 from .contas_nossas import hash_do_handle, citacao_da_conta, foi_retirada, registrar_lapide, rotulo_da_conta, MARCADOR
 from .limpeza_de_conta import AparelhoDaLimpeza
@@ -31,7 +31,11 @@ from .sessao_gate import acoes_de_sessao, app_on_device
 #: As colunas de `account_sessions` com o apelido que os leitores antigos esperam: `observed_username` era o nome em
 #: `instagram_sessions`, e o motor de sessão, `state.py` e o DTO do perfil continuam lendo por ele.
 _SESSAO = ("account_id, instance_id, status, observed_handle, observed_handle AS observed_username, verified_at,"
-           " detail, unknown_streak, updated_at")
+           " detail, unknown_streak, updated_at, status_since")
+
+
+#: 29.100: o "teto" de quem não tem teto configurado, no SQL do `status_since`: nenhuma série chega a ele.
+_SEM_TETO = 2**31 - 1
 
 
 def sessao_vencida(session: Row | None, max_age_s: int) -> bool:
@@ -1074,9 +1078,13 @@ class SocialRepository:
         pessoa. Aparelho com vínculo ativo (conta real, `shared.vinculos`) tem teto 1: a rodada seguinte reabre o app
         e, se cair na tela de login, digita a senha guardada (`_login(automatic=True)`) — em cima de uma tela que
         ninguém reconheceu. Nos demais, o teto global (`session_unknown_retry_cap`). `None` sem teto configurado."""
-        if tem_vinculo_ativo(self.db, instance_id):
-            return 1
-        return self.teto_de_reobservacao() if self.teto_de_reobservacao is not None else None
+        return teto_de_unknown(self.db, instance_id,
+                               self.teto_de_reobservacao() if self.teto_de_reobservacao is not None else None)
+
+    def parada_no_teto(self, sessao: Row | None) -> bool:
+        """29.96: `SessionInfo.unknown_at_cap` — a sessão lida (`_SESSAO`) está em `unknown` no teto do aparelho DELA
+        (a coluna `instance_id`; a sessão de outro aparelho responde pelo teto de lá)."""
+        return sessao is not None and self.unknown_no_teto(sessao, str(sessao["instance_id"]))
 
     def unknown_no_teto(self, sessao: Row | None, instance_id: str) -> bool:
         """29.92: a sessão gravada está em `unknown` no teto deste aparelho, isto é, parada esperando uma pessoa."""
@@ -1113,13 +1121,30 @@ class SocialRepository:
         elif status is SessionStatus.session_ready and estava_em_unknown and int(anterior["unknown_streak"] or 0):
             metricas.contar("sessao.unknown_resolvida", instancia=instance_id,
                             rodada_antes=int(anterior["unknown_streak"] or 0))
+        # 29.100: `status_since` é desde quando a sessão está ASSIM: a hora da mudança de estado e, no `unknown`, a hora
+        # em que a série CHEGOU ao teto do aparelho (a parada). Reescrever o mesmo estado (a reobservação abaixo do teto,
+        # o "Verificar conta" no teto, a invalidação de quem já estava `unknown`) mantém a hora. Sem a troca no teto, um
+        # `unknown` administrativo (vínculo, wipe, logout) de dias atrás que depois parasse na reobservação mostraria a
+        # hora do gesto em Pendências, e não a da parada.
+        #
+        # A decisão vai DENTRO do upsert, contra a linha que o comando encontra: duas gravações concorrentes ("Verificar
+        # conta" e o motor) não deixam a hora velha por terem lido a linha antes. O NÚMERO do teto vem da regra única
+        # (`teto_de_unknown`, que não depende da linha); só a comparação `unknown_streak >= teto` de `unknown_no_teto`
+        # se repete no SQL, porque é ela que precisa ser atômica. Sem teto configurado, nada chega a ele.
+        teto = self.teto_de_unknown(instance_id)
+        teto_sql = teto if teto is not None else _SEM_TETO
+        agora = now_iso()
         self.db.execute(
             "INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at, detail,"
-            " updated_at, unknown_streak) VALUES (?,?,?,?,?,?,?,?)"
+            " updated_at, unknown_streak, status_since) VALUES (?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(account_id, instance_id) DO UPDATE SET status=excluded.status,"
             " observed_handle=excluded.observed_handle, verified_at=excluded.verified_at,"
-            " detail=excluded.detail, updated_at=excluded.updated_at, unknown_streak=excluded.unknown_streak",
-            (account_id, instance_id, status.value, observed_handle, verified_at, detail, now_iso(), streak))
+            " detail=excluded.detail, updated_at=excluded.updated_at, unknown_streak=excluded.unknown_streak,"
+            " status_since=CASE WHEN account_sessions.status = excluded.status"
+            " AND NOT (excluded.status = ? AND excluded.unknown_streak >= ? AND account_sessions.unknown_streak < ?)"
+            " THEN account_sessions.status_since ELSE excluded.status_since END",
+            (account_id, instance_id, status.value, observed_handle, verified_at, detail, agora, streak, agora,
+             SessionStatus.unknown.value, teto_sql, teto_sql))
 
     def session_row(self, profile_id: str, instance_id: str | None = None) -> Row | None:
         """A sessão da conta âncora do perfil: NESTE aparelho quando ele é dito; senão a do aparelho vinculado, ou a
@@ -1261,7 +1286,8 @@ class SocialRepository:
                 observed_username=session["observed_username"] if session else None,
                 verified_at=session["verified_at"] if session else None,
                 detail=session["detail"] if session else None,
-                stale=sessao_vencida(session, self.session_max_age_s)),
+                stale=sessao_vencida(session, self.session_max_age_s), unknown_at_cap=self.parada_no_teto(session),
+                status_since=session["status_since"] if session else None),
             app_on_device=app, session_actions=acoes,
             last_verified_at=row["last_verified_at"], last_activity_at=row["last_activity_at"])
 
@@ -1275,7 +1301,8 @@ class SocialRepository:
         return SessionInfo(
             status=SessionStatus(s["status"]) if s else SessionStatus.unknown, instance_id=instance_id,
             observed_username=s["observed_username"] if s else None, verified_at=s["verified_at"] if s else None,
-            detail=s["detail"] if s else None, stale=sessao_vencida(s, self.session_max_age_s))
+            detail=s["detail"] if s else None, stale=sessao_vencida(s, self.session_max_age_s),
+            unknown_at_cap=self.parada_no_teto(s), status_since=s["status_since"] if s else None)
 
     def devices_de(self, profile_id: str) -> list[PersonaDeviceDTO]:
         """`PersonaDTO.devices` (051): cada vínculo ativo, o principal primeiro, com o estado do aparelho quando o

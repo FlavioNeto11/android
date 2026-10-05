@@ -9,7 +9,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { CodeBlock, JsonTree } from '../../components/JsonTree';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { copyText, humanizeKey, isRecord, scalarToText } from '../../lib/format';
-import { isRunTerminal } from '../../lib/status';
+import { isRunSemTrabalho } from '../../lib/status';
 import { useSessionStore } from '../../store/session';
 import { toast } from '../../store/toasts';
 import {
@@ -34,7 +34,7 @@ export function ReportTab({ run }: { run: RunSummary }) {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const token = useRef(0);
-  const terminal = isRunTerminal(run.status);
+  const terminal = isRunSemTrabalho(run.status);       // 29.93: o relatório final já sai na espera pela pessoa
   // D2 (ADR-054): o voto da execução inteira e o que ela ensinou; relido quando a situação muda (ex.: terminou).
   const feedback = useFeedbackDaExecucao(run.id, run.status);
   const operador = useSessionStore((s) => s.operator);

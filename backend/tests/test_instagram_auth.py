@@ -714,7 +714,7 @@ async def test_item_fica_bloqueado_no_painel_quando_depende_de_pessoa(harness: A
     await harness.wait(bloqueado, timeout=30, what="android-01 bloqueado pela porta da sessão")
     motivo = state.db.one("SELECT blocked_reason FROM objectives WHERE id=?", (f"{run.id}:android-01",))
     assert "confirmação adicional" in (motivo["blocked_reason"] or "")
-    await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed"), timeout=90)
+    await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "awaiting_person"), timeout=90)
     assert not harness.fakes["android-01"].messages      # nada foi enviado pelo aparelho bloqueado
 
 

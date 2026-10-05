@@ -139,8 +139,8 @@ Uma execução em `needs_input` há `NEEDS_INPUT_EXPIRA_H` (24 h) sem resposta �
 O prazo da 29.50 deixa de ser a constante e passa ao config (`execucao.pergunta_vence_h`, 24 h por padrão; a chave
 `execucao.vencimento_ligado`, ligada de fábrica, desliga os dois vencimentos). `NEEDS_INPUT_EXPIRA_H` fica como o padrão.
 
-- Segundo caso: o objetivo em `waiting_user` de uma execução JÁ TERMINADA (na prática `completed_with_issues`, onde
-  `recompute_run` deixa a execução "para permitir retomada"). Ele ficava `waiting_user` para sempre; no central eram 22.
+- Segundo caso: o objetivo em `waiting_user` de uma execução sem trabalho automático (`awaiting_person` desde o 29.93;
+  antes, `completed_with_issues`, onde `recompute_run` deixava a execução "para permitir retomada"). Ele ficava `waiting_user` para sempre; no central eram 22.
   `RunService.vencer_objetivos_parados(agora)` roda no mesmo laço (`_expiracao_uma_vez`) e o fecha PELO SISTEMA:
   - o relógio é o mais tardio entre `objectives.finished_at` (a entrada em `waiting_user`) e `runs.finished_at`:
     nunca adianta, e a retomada de outro item da execução recomeça o prazo;
@@ -1213,13 +1213,43 @@ Contexto: design §2.4; decisão: [ADR-038](../decisoes.md#adr-038--máquinas-de
 
 | Máquina | Estados | Nasce | Resumo das saídas |
 |---|---|---|---|
-| `RUN` (`runs.status`) | 10 | `planning` (`create_run`) | `planning → needs_input, planned, running, failed, cancelled`; `needs_input → cancelled`; `planned → running, cancelled`; `running`/`paused` → pausar/retomar, `cancelling` e os três fechamentos; `cancelling → cancelled, completed, completed_with_issues` (e reafirma); `completed` e `failed` terminais |
+| `RUN` (`runs.status`) | 11 | `planning` (`create_run`) | `planning → needs_input, planned, running, failed, cancelled`; `needs_input → cancelled`; `planned → running, cancelled`; `running`/`paused` → pausar/retomar, `cancelling` e os três fechamentos; `cancelling → cancelled, completed, completed_with_issues` (e reafirma); `running`/`paused`/`cancelling` → `awaiting_person` e `awaiting_person → running, paused, completed, completed_with_issues, cancelling, cancelled` (e reafirma; 29.93); `completed` e `failed` terminais |
 | `OBJECTIVE` (`objectives.status`) | 7 | `pending` (`materialize`) | `pending → running, waiting_user, succeeded, failed, cancelled`; `running → waiting_user, uncertain, succeeded, failed, cancelled`; `waiting_user → pending, running, failed, cancelled`; `uncertain → pending, running, failed` (só por decisão de pessoa); `failed → pending` (e reafirma); `succeeded` e `cancelled` terminais |
 | `STEP` (`steps.status`) | 11 | `pending` (`_insert_steps`) | a tabela que já existia em `taskqueue/states.py`, sem mudança |
 | `ATTEMPT` (`attempts.status`) | 6 | `running` (`claim_step`) | `running → succeeded, failed, interrupted, uncertain, cancelled`; os cinco são terminais: nenhuma tentativa reabre |
 
-- **Reafirmação (`x → x`) só onde o código a faz:** execução em `cancelling`, `completed_with_issues` e `cancelled`;
+- **Reafirmação (`x → x`) só onde o código a faz:** execução em `cancelling`, `awaiting_person`, `completed_with_issues` e `cancelled`;
   objetivo `failed`. Liberar `pode(x, x)` em geral esconderia o erro que a tabela existe para mostrar.
+- **`awaiting_person` (29.93):** o trabalho automático acabou e um objetivo espera um gesto da pessoa (`waiting_user`).
+  Não é terminal, mas está em `RUN_SEM_TRABALHO` (`app/models.py`): grava `finished_at`, é de onde o vencimento do 31.50
+  conta e é o que a retomada reabre. Só `waiting_user` leva a ele; execução só com `uncertain` segue
+  `completed_with_issues`. O fechamento de pedido o lê como o `completed_with_issues` de antes; o snapshot o traz por 7
+  dias depois de `finished_at`. A purga de eventos e a retenção de evidência por idade o poupam como aberto, mesmo com
+  `finished_at`; o `recompute_run` o reafirma quando só o detalhe muda (como o `completed_with_issues`). Diferente de
+  `needs_input`, a pergunta antes de agir.
+  - **Parada sem digest:** ao parar, o `_settle_run` do worker solta o explorador, a trava de rascunho e acorda os
+    pedidos (`Scheduler.on_run_parada` → `AppState._execucao_parada`), na mesma hora em que a main soltava ao parar
+    em `completed_with_issues`.
+  - **Assentamento exatamente uma vez, pela marca `runs.assentada_em` (#382, migração 113):**
+    - Quem assenta grava a marca por compare-and-set (`Repository.marcar_assentada`: `WHERE assentada_em IS NULL` e
+      estado final). Só quem gravou assenta; o outro não faz nada, mesmo em outro backend.
+    - **Execução comum, pelo worker, em linha:** no `finally` do `Scheduler._work`, o `recompute_run` e a marca vão
+      na MESMA `tx()`, e o `_settle_run(venceu=...)` chama o `on_run_settled` só se este worker gravou.
+    - **A rede, para quem fecha sem worker:** `Repository.set_run_status`, ao gravar um estado final vindo de um
+      estado de trabalho (não de `planning`/`needs_input`/`planned`), agenda `_assentar_sem_worker` para depois do
+      COMMIT (`Database.depois_do_commit`). Ele não assenta se há worker deste backend num objetivo da execução
+      (`Scheduler._tem_worker_da_execucao`) e só assenta se ganhar a marca. No caminho comum ele chega depois do
+      COMMIT do worker, já com a marca, e não faz nada. Sobra para ele a saída da espera da pessoa (abandonar,
+      vencer, cancelar) e o cancelamento órfão (29.103: `running`/`paused` sem worker vivo, fechada pelo
+      `_finish_cancel`). De outra thread (o vencimento roda em `to_thread`), o gancho é agendado no laço por
+      `call_soon_threadsafe`, com a marca já gravada na thread.
+    - **Zerar:** só o `set_run_status` grava `runs.status`, e ele zera a marca ao ir a qualquer estado não final que
+      não seja `cancelling` (a retomada, a volta a esperar a pessoa): a execução reaberta assenta de novo ao fechar,
+      como antes. Cancelar uma execução já assentada (a `completed_with_issues` incerta) não zera e não assenta de
+      novo (o D1).
+    - **Falha depois de marcar:** o assentamento que estoura depois da marca não se repete (como antes da marca, no
+      `_settle_run`): o log diz a execução, e o digest se recupera pelo `backfill_licoes` manual.
+    - Confirmar a etapa parada devolve o objetivo às etapas seguintes, e quem fecha é o worker.
 - **Reabertura registrada como é:** `completed_with_issues → running, paused, completed, cancelling` e
   `cancelled → running, paused` (`recompute_run` reabre quando um item é retomado). É a reabertura que o design §2.4
   aponta; ela entra na tabela para ser revista no passo "impor", não aprovada.

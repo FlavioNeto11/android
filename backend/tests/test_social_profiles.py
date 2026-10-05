@@ -257,6 +257,9 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                # 29.92: `teto_de_unknown` lê o teto do APARELHO (vínculo ativo dá 1, `shared.vinculos`), não conteúdo de
                # perfil; `unknown_no_teto` só confere a linha de sessão que quem chama já buscou com o `profile_id`.
                "teto_de_unknown", "unknown_no_teto",
+               # 29.96: `parada_no_teto` confere a linha de sessão que quem chama já buscou com o `profile_id`, pelo
+               # teto do aparelho dela (`unknown_no_teto`).
+               "parada_no_teto",
                # `app_e_acoes_do_pacote` lê `device_app_state` e `commands` — do aparelho — e recebe de quem chama as
                # linhas do perfil já buscadas com o `profile_id` (ADR-040: as ações de sessão são por conta).
                "app_e_acoes_do_pacote",

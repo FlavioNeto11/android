@@ -228,7 +228,9 @@ function sortRuns(runs: RunSummary[]): RunSummary[] {
     .sort((a, b) => (b.created_at > a.created_at ? 1 : b.created_at < a.created_at ? -1 : 0));
   if (ordenadas.length <= MAX_RUNS) return ordenadas;
   const cabem = ordenadas.slice(0, MAX_RUNS);
-  const foraDoTeto = ordenadas.slice(MAX_RUNS).filter((r) => grupoDoStatus(r.status) === 'andamento' || r.status === 'needs_input');
+  // `awaiting_person` (29.93) também: o snapshot a traz por 7 dias depois do fim do trabalho automático.
+  const foraDoTeto = ordenadas.slice(MAX_RUNS).filter((r) => grupoDoStatus(r.status) === 'andamento'
+    || r.status === 'needs_input' || r.status === 'awaiting_person');
   return foraDoTeto.length > 0 ? [...cabem, ...foraDoTeto] : cabem;
 }
 

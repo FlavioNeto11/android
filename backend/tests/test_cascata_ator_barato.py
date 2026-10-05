@@ -23,7 +23,7 @@ def _pular_o_tempo(request: pytest.FixtureRequest) -> None:
     if "harness" in request.fixturenames:
         request.getfixturevalue("harness").pular_o_tempo()
 
-TERMINAIS = ("completed", "completed_with_issues", "failed", "waiting_user")
+TERMINAIS = ("completed", "completed_with_issues", "failed", "waiting_user", "awaiting_person")
 
 
 def _bloqueio(kind: str, needs_user: bool) -> Decision:
