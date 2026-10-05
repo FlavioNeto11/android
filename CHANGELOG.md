@@ -27,6 +27,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   diagnóstico do 31.52): 5 árvores. Redução dos caracteres do prompt do ator com a poda: 0,533, 0,273, 0,182, 0,149 e
   0,141; mediana 0,182 (3964 → 3243 caracteres). Sem IA, só leitura.
 - Prova do script: `simulated` (`scripts/tests/test_poda_ab_offline.py`).
+
 ## 2026-10-04 — 28.33: quem desligou conta, e o religar à mão não reabre o botão (branch canais/28-33-autor-do-desligar)
 
 - Achado 5 do 28.29: o desligamento por regra automática (`sistema`, `plataforma`) não é mais registrado como "desfeita".
@@ -73,6 +74,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   continua lendo o estado de agora.
 - Prova `simulated`: dois testes novos em `tests/test_decisoes_registro_coerente.py`, que falham com a memória desligada
   (as leituras se repetiam por item) e passam com ela. 86 passed nos cinco arquivos de decisões.
+
 ## 2026-10-04 — 28.32: a mensagem do visitante do site chega ao Telegram do dono (branch canais/28-32-contato-do-portal)
 
 - `backend/app/modules/avisos/domain/portal.py`: `ContatoDoPortal`, `ContatoAvisado`, a defesa dos tetos, a higiene dos
@@ -116,6 +118,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Testes: 132 passed nos arquivos tocados (`test_avisos_portal_*`, `test_avisos_telegram`, `test_avisos_servico`,
     `test_avisos_fila`), em série e em Idle.
 - `not_run`: envio real e a rota do Portal.
+
 ## 2026-10-04 — 28.27: o Executar do Telegram mostra as travas do plano antes de começar (branch canais/28-27-porta-no-telegram)
 
 - O Executar do canal cria a execução só de plano (`mode="plan"`). Um vigia da conversa, com o operador do canal, lê a
@@ -169,6 +172,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - os novos: 13 na conversa (`test_telegram_entrada.py`, com o falso da porta), 2 nas portas reais no harness
     (`test_telegram_portas.py`) e 5 no domínio (`test_avisos_porta.py`).
 - `not_run`: o Telegram real e um plano real com item que pede o sim.
+
 ## 2026-10-04 — 29.78: o harness entrega o backend só depois da primeira volta das faxinas (branch fix/29-78-harness-espera-faxinas)
 
 - A retenção, a expiração e a faxina dos canais dão a primeira volta na subida, em segundo plano. O teste que gravava
@@ -212,6 +216,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Gravidade (orquestradora, 23:21Z):** piorar fura o piso sempre. A saúde se compara por gravidade (🟢 < 🟡 < 🔴):
   a que SOBE, ou volta ao 🟢, sai na volta; a que desce sem chegar ao 🟢 espera o piso. Texto sem marca conta como o
   pior. Prova `simulated`: 52 passed (sobe entre ruins, desce entre ruins, volta ao verde, texto sem marca).
+
 ## 2026-10-04 — 29.82: as vagas do notebook são as decididas no painel, não as do `worker.yaml` (branch fix/29-82-vagas-decididas)
 
 - O topo e a Infraestrutura diziam "Notebook da LAN: 9 aparelhos ligados para 6 vagas" com 9 vagas decididas:
@@ -302,6 +307,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Prova:** `simulated` (`backend/tests/test_portal_site.py`, 12; `backend/tests/test_portal_contato.py`, 19; mais
   `test_arquitetura`, `test_cobertura_de_rotas`, `test_portal_publico_central` e `scripts/tests`). `not_run`: ligado
   no central e a prova de fora com o site no ar.
+
 ## 2026-10-04 — 31.59: a prova de envio pela árvore exige linha de base e texto igual (branch feat/31-57-marcador-de-entrega)
 
 - Achado A1 da revisão do 31.57, que vale também para o `sent_text` do 31.26, já na `main`: a bolha ANTIGA com o mesmo
@@ -599,6 +605,7 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Fica com o ator: os 19 casos em que o app já estava na frente, dentro de uma conversa. Voltar por regra pede uma
   árvore real para medir.
 - Teste: `tests/test_caminho_rapido_2.py`, com os dois modelos e o aviso, `simulated`. `real`: not_run.
+
 ## 2026-10-04 — 31.54: URL fora do prompt — imagem, observed_result e read_value (branch feat/31-54-url-fora-do-prompt)
 
 - O `observed_result` grava cada endereço já limpo, e o valor lido que é URL vai limpo ao histórico do ator.
@@ -635,6 +642,7 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Revisão curta: o vazio cita a aprovação automática quando ela está ligada; o topo só afirma o vazio com as duas listas
   lidas (Revisar em falha ou carregando é dito); o título da decisão usa o nome do catálogo (`capability_nome`, que a
   rota `aprovacao-automatica` passa a mandar com `capability` e `etapa`; adendo v1.34).
+
 ## 2026-10-04 — 31.50 (contagens em lote) e 31.13 (limiar da sombra dos apps) (branch perf/31-50-counts-em-lote)
 
 - A lista de execuções conta os objetivos de todas numa consulta só (`Repository.run_summaries`); antes era uma
