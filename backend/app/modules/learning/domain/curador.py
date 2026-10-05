@@ -66,9 +66,10 @@ OUTRA_VERSAO_DA_EVIDENCIA = ("`de_versoes_anteriores`: evidências de uma versã
 #: 30.73: só no dossiê de item de classe B. A classe B É o `commit` em app sem catálogo (`politica_de_risco`); pedir o voto
 #: ou a decisão da pessoa por "efeito sem catálogo" é pedir o que a classe já diz, e nenhuma execução o produz. A medida
 #: do 30.72 (05/10): 5 fluxos B com ≥ 2 execuções reais em ≥ 2 aparelhos pararam em `observar` por isso.
-CLASSE_B_DO_ITEM = ("classe B: o efeito em app sem catálogo é o que DEFINE a classe, não um defeito do item. Não peça "
-                    "voto nem decisão da pessoa por isso (não estão nas opções de `falta`): quem decide publicar um "
-                    "fluxo B é a regra da autopublicação, com os limiares dela; julgue pelas evidências")
+CLASSE_B_DO_ITEM = ("classe B: o efeito sem entrada no catálogo é o que DEFINE a classe, não uma lacuna do item; por "
+                    "isso `voto_da_pessoa` e `decisao_da_pessoa` não estão nas opções de `falta`. Julgue pelas "
+                    "evidências citáveis; a publicação de um fluxo B segue a regra da autopublicação, e o aceite "
+                    "continua sendo da pessoa")
 REVALIDADA_DA_EVIDENCIA = ("posicao `revalidada`: a regra de hoje desfez a `invalida` da mesma execução (30.53: a "
                            "conferência do QA contava uma mensagem por item do laço como repetição); não conta a favor "
                            "nem contra, e a linha que a `invalida` tirava volta a valer")

@@ -1657,8 +1657,8 @@ nenhuma evidência contra) e paravam em `observar`, porque o parecer pedia `voto
 (`politica_de_risco`), e nenhuma execução produz essas duas faltas.
 
 - **Dossiê:** o item B leva o fato `risco.classe_b_e` (`CLASSE_B_DO_ITEM`).
-  - Diz que "sem catálogo" define a classe, que publicar um fluxo B é da regra da autopublicação e que o parecer
-    julga pelas evidências.
+  - Diz que "sem entrada no catálogo" define a classe e não é lacuna, que o parecer julga pelas evidências citáveis,
+    que publicar um fluxo B segue a regra da autopublicação e que o aceite continua sendo da pessoa.
   - O dossiê A e o C não mudam.
   - A `VERSAO_DO_DOSSIE` continua 1: é uma chave condicional, como `sem_caminho`. O hash do dossiê B muda, e cada
     item B fica elegível para UMA revisão nova depois do cooldown, dentro da fatia do curador.
@@ -1668,8 +1668,10 @@ nenhuma evidência contra) e paravam em `observar`, porque o parecer pedia `voto
   - Se um provedor sem esquema estrito as devolver mesmo assim, o `validar_saida` as tira do parecer, que segue
     válido.
   - Na A e na C, as opções são todas, como antes.
-- **Instrução do hub:** a frase da B no `CURADOR_SYSTEM` (`backend/app/planning/curador.py`, hub da Jev), com
-  `VERSAO_DO_TEMPLATE` em `curador-v2` e o hash do texto preso num teste.
+- **Instrução do hub:** a frase da B no `CURADOR_SYSTEM` (`backend/app/planning/curador.py`, hub da Jev), na redação
+  dela (05/10 08:45Z). Ela nomeia os rótulos (`voto_da_pessoa`, `decisao_da_pessoa`) em vez de "não peça decisão da
+  pessoa", que contradiria o "quem aceita é a pessoa" do mesmo texto, e termina com "O aceite continua sendo da
+  pessoa". `VERSAO_DO_TEMPLATE` passa a `curador-v2`, e o hash do texto fica preso num teste.
 - **Estoque:** o parecer gravado com `voto_da_pessoa` se lê como foi gravado (`parecer_gravado` não filtra).
 - **A autopublicação continua em `shadow`.** Ligar o `on` não faz parte deste item.
 

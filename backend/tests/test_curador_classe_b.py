@@ -28,7 +28,7 @@ from .test_learning_curador_dominio import A, B, C, _dossie, _saida
 PESSOA = {Falta.VOTO_DA_PESSOA.value, Falta.DECISAO_DA_PESSOA.value}
 #: O hash do `CURADOR_SYSTEM` da `curador-v2`. Mudou o texto: suba a `VERSAO_DO_TEMPLATE` e troque o hash aqui. É o
 #: que liga o parecer gravado (`learning_reviews.template_versao`) ao texto que a IA leu.
-HASH_DO_CURADOR_V2 = "eb642423c5281faebed67e134689877f902019e745e3799a2cd3274c96de658e"
+HASH_DO_CURADOR_V2 = "7c0916f1a669275cc92ada31ef5027cdd56b00738741566ac45231a6666b185b"
 
 
 def test_o_dossie_b_leva_o_fato_da_classe_e_o_a_e_o_c_nao() -> None:
@@ -81,5 +81,6 @@ def test_o_parecer_ja_gravado_com_voto_da_pessoa_se_le_como_foi_gravado() -> Non
 
 def test_a_instrucao_do_hub_tem_a_frase_da_b_e_esta_presa_a_versao() -> None:
     assert VERSAO_DO_TEMPLATE == "curador-v2"
-    assert "Na classe B, o efeito em app sem catálogo é o que define a classe" in CURADOR_SYSTEM
+    assert "Na classe B, o efeito sem entrada no catálogo é o que define a classe" in CURADOR_SYSTEM
+    assert "O aceite continua sendo da pessoa." in CURADOR_SYSTEM            # a redação da Jev: o parecer não decide
     assert hashlib.sha256(CURADOR_SYSTEM.encode()).hexdigest() == HASH_DO_CURADOR_V2
