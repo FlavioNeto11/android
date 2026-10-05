@@ -212,6 +212,11 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
     const minha = ++leituraDoPerfil.current;    // a escolha nova, mesmo a do padrão, aposenta a leitura em voo
     if (!profileId || !pronto) {                // sem o catálogo, o rascunho ficaria sem app (chave '')
       setLendoPerfil(false);
+      // "Padrão do catálogo" também SUBSTITUI: depois de partir de A, voltar ao padrão tira o que veio de A (29.109).
+      if (!profileId) {
+        setRascunhos({});
+        setLimites({});
+      }
       return;
     }
     setLendoPerfil(true);
@@ -319,7 +324,8 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
                                     placeholder="Para que serve este grupo" />}
           </Field>
           {grupo === null ? (
-            <Field label="Começar a partir de" unit="opcional">
+            <Field label="Começar a partir de" unit="opcional"
+                   hint={lendoPerfil ? 'Lendo o acesso de hoje da persona; salvar e editar esperam a resposta.' : undefined}>
               {({ id }) => (
                 <Select id={id} defaultValue="" disabled={!pronto} onChange={(e) => void partirDe(e.target.value)}>
                   <option value="">Padrão do catálogo</option>
