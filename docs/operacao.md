@@ -220,8 +220,12 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   workflow e o firewall ficam ligados; o Copilot não aprova PR.
   Primeira tarefa (`real`, 05/10/2026 18:14Z, item 29.137, PR 449 em rascunho): o agente parou sem alterar nada, com
   `hook errored`. Os hooks de `.claude/settings.json` chamam o Python por um caminho do Windows, que não existe na
-  máquina Linux do agente, e ele honra esses hooks. O conserto é o item 29.147; até lá o agente de nuvem não
-  funciona neste repositório. A revisão de PR não é afetada.
+  máquina Linux do agente, e ele honra esses hooks. O conserto é o item 29.147 (ramo `fix/29-147-hooks-portateis`):
+  cada hook chama `.claude/hooks/python.sh <script>`, que usa o Python do dono se ele existir e, senão, o `python3` ou
+  o `python` do PATH, com o mesmo `-S -E` e o mesmo código de saída (2 bloqueia). Enquanto o conserto não estiver na
+  `main`, o agente de nuvem não funciona neste repositório. Prova `simulated`:
+  `scripts/tests/test_hooks_portateis.py` (10 testes, os hooks rodando pelo bash); `real` em Linux, com o agente do
+  Copilot assumindo uma tarefa, fica `not_run`. A revisão de PR não é afetada.
 - **Fora.** Vale só para este repositório. Ninguém instala o Copilot CLI nesta máquina. As opções de privacidade e de
   cobrança da conta são do dono.
 
