@@ -27,14 +27,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `devices/manager.py`: `observe(tolerar_falha_da_imagem=False)`. Ligado, com a árvore lida e o tamanho da tela lembrado
   (`_dimensoes_lembradas`, sem tocar o executor), a falha da imagem (`DriverTimeout` ou `FalhaDeLeitura`) volta como
   `jpeg=None`, `image_omitted="capture_failed"`, `captura_falha` e `captura_excedeu_prazo`, e conta `captura.total`
-  `resultado=falha`. Sem dimensões, ou desligado, a exceção sobe como antes. `completar_imagem` refaz a captura de uma
-  observação `capture_failed` (verificador e evidência não aceitam a falha tolerada).
+  `resultado=falha` (a série da prévia, `capture_failures`, não é tocada). Sem dimensões, ou desligado, a exceção sobe
+  como antes. `completar_imagem` refaz a captura de uma observação `capture_failed` (verificador e evidência não
+  aceitam a falha tolerada).
 - `taskqueue/executor.py`: só o laço do ator liga o parâmetro. Em `capture_failed`: sem `_stuck`, sem `errors_in_row`, sem
   recriar sessão; segue pela árvore. No timeout, espera o executor do aparelho ficar livre (`drain`, limitado pelo prazo
   da etapa) e relê só a árvore. Se o ator PEDIU a imagem e a captura falha 2 vezes seguidas, vale o caminho de antes
   (`fail_or_retry`, "A captura da tela seguiu falhando").
 - Prova `simulated`: `backend/tests/test_falha_so_da_imagem.py` (11 testes, aparelho falso). `real`: `not_run`.
-  `docs/api-contract.md` (C1, linha de `image_omitted`) NÃO foi ajustado: pede número de adendo da coordenação.
+  Contrato: adendo v1.55 em `docs/api-contract.md` (`image_omitted` ganha `capture_failed`; campo interno, fora de DTO,
+  evento e evidência da API). Parágrafo em `docs/ia.md` ("Imagem sob demanda").
 
 ## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)
 

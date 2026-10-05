@@ -32,18 +32,24 @@ ERRO = "screencap falhou em emulator-5554"
 
 
 def _screencap_que_falha(fake: Any, *, depois: int = 1, vezes: int | None = None, travar_s: float = 0.0,
-                         enquanto: Callable[[], bool] | None = None) -> dict[str, int]:
+                         enquanto: Callable[[], bool] | None = None,
+                         nas_chamadas: set[int] | None = None) -> dict[str, int]:
     """Troca o `screenshot_png` do aparelho falso: as `depois` primeiras capturas saem, e as `vezes` seguintes (todas,
     se `None`) falham — com `FalhaDeLeitura` ou, com `travar_s`, ficando presas na thread do aparelho por esse tempo
     (o executor estoura o prazo antes e o screencap vira zumbi). A primeira que sai é o que ensina o tamanho da tela.
-    `enquanto`: só falha enquanto for verdadeiro (ex.: antes de a mensagem sair, para a verificação final ter imagem)."""
+    `enquanto`: só falha enquanto for verdadeiro (ex.: antes de a mensagem sair, para a verificação final ter imagem).
+    `nas_chamadas`: falha exatamente nas chamadas de número N (1 = a primeira) e sai nas outras; ignora o resto."""
     original = fake.screenshot_png
     contagem = {"chamadas": 0, "falhas": 0}
 
     def screenshot_png() -> bytes:
         contagem["chamadas"] += 1
-        if (contagem["chamadas"] > depois and (vezes is None or contagem["falhas"] < vezes)
-                and (enquanto is None or enquanto())):
+        if nas_chamadas is not None:
+            falha = contagem["chamadas"] in nas_chamadas
+        else:
+            falha = (contagem["chamadas"] > depois and (vezes is None or contagem["falhas"] < vezes)
+                     and (enquanto is None or enquanto()))
+        if falha:
             contagem["falhas"] += 1
             fake._enter("screenshot")
             try:
@@ -71,7 +77,7 @@ async def test_observe_tolerante_devolve_a_arvore_sem_imagem_quando_o_screencap_
     assert obs.captura_falha is not None and obs.captura_falha.startswith("FalhaDeLeitura")
     assert obs.captura_excedeu_prazo is False and not obs.sensitive
     assert metricas.valor("captura.total", origem="observacao", resultado="falha") == 1
-    assert rt.capture_failures == 1                           # a captura fica registrada como falhando
+    assert rt.capture_failures == 0                           # a série da PRÉVIA do painel não é da observação
 
 
 async def test_observe_tolerante_marca_o_prazo_estourado_quando_o_screencap_trava(harness: Harness) -> None:
@@ -229,20 +235,24 @@ async def test_arvore_falhando_segue_o_caminho_de_antes(harness: Harness, _rapid
     assert detail.status == "completed" and len(fake.messages) == 1
 
 
-def _ator_pede_a_imagem(harness: Harness, vezes: int) -> None:
-    """As `vezes` primeiras decisões do ator são `observe_screen(need_image=true)`: o ator PEDIU a imagem."""
+def _ator_pede_a_imagem(harness: Harness, vezes: int, *, need_image: bool = True) -> list[int]:
+    """As `vezes` primeiras decisões do ator são `observe_screen(need_image=...)`: com `True`, o ator PEDIU a imagem.
+    Devolve o `tier` de cada uma dessas decisões, na ordem (o escalonamento por erros seguidos sobe para 1)."""
     inner = harness.ai.inner
     original = inner.decide
     restantes = {"n": vezes}
+    tiers: list[int] = []
 
     async def decide(req: Any) -> Any:
         if restantes["n"] > 0:
             restantes["n"] -= 1
-            return Decision(tool="observe_screen", args={"rationale": "[teste] preciso da imagem",
-                                                         "need_image": True}), Usage()
+            tiers.append(req.tier)
+            return Decision(tool="observe_screen", args={"rationale": "[teste] olhar de novo",
+                                                         "need_image": need_image}), Usage()
         return await original(req)
 
     inner.decide = decide
+    return tiers
 
 
 async def test_ator_pede_a_imagem_e_a_captura_falha_duas_vezes_cai_no_caminho_de_antes(
@@ -270,4 +280,38 @@ async def test_ator_pede_a_imagem_e_a_captura_falha_uma_vez_segue_pela_arvore(
     run = harness.run(["android-01"])
     detail = await harness.wait_run(run.id)
     assert contagem["falhas"] == 1
+    assert detail.status == "completed" and len(fake.messages) == 1, _detalhes(detail)
+
+
+async def test_falhas_toleradas_sem_imagem_pedida_nao_contam_como_erro_seguido(
+        harness: Harness, caplog: pytest.LogCaptureFixture, _rapido: None) -> None:
+    """A falha tolerada não entra em `errors_in_row`: 5 decisões seguidas só de `observe_screen` (que não zera o
+    contador), cada uma depois de uma captura que falhou, seguem no modelo barato e a etapa não falha por erro seguido
+    (o escalonamento por `errors_in_row >= 2` e as falhas por 3 ou 4 erros seguidos são o que contaria)."""
+    harness.pular_o_tempo()
+    fake = harness.fakes["android-01"]
+    tiers = _ator_pede_a_imagem(harness, 5, need_image=False)
+    contagem = _screencap_que_falha(fake, depois=1, enquanto=lambda: not fake.messages)
+    with caplog.at_level(logging.WARNING):
+        run = harness.run(["android-01"])
+        detail = await harness.wait_run(run.id)
+    assert contagem["falhas"] >= 5, contagem                               # mais que o limite de erros seguidos (4)
+    assert tiers == [0] * 5, tiers                                         # nenhum escalonamento por erro seguido
+    assert "seguiu falhando" not in caplog.text and "leitura da tela" not in _detalhes(detail)
+    assert detail.status == "completed" and len(fake.messages) == 1, _detalhes(detail)
+
+
+async def test_contador_de_falhas_zera_quando_a_observacao_volta_com_imagem(
+        harness: Harness, caplog: pytest.LogCaptureFixture, _rapido: None) -> None:
+    """Falha, imagem ok, falha COM imagem pedida: o contador zerou na imagem ok, então a 2ª falha é a primeira da série
+    nova e não cai no caminho das duas falhas (o ator pediu a imagem nas três voltas)."""
+    harness.pular_o_tempo()
+    fake = harness.fakes["android-01"]
+    _ator_pede_a_imagem(harness, 3)
+    contagem = _screencap_que_falha(fake, nas_chamadas={2, 4})            # 1ª sai (tamanho); falha, ok, falha, ok...
+    with caplog.at_level(logging.WARNING):
+        run = harness.run(["android-01"])
+        detail = await harness.wait_run(run.id)
+    assert contagem["falhas"] == 2, contagem
+    assert "A captura da tela seguiu falhando" not in caplog.text
     assert detail.status == "completed" and len(fake.messages) == 1, _detalhes(detail)

@@ -3904,8 +3904,9 @@ class DeviceManager:
                 lembradas = self._dimensoes_lembradas(rt, xml) if tolerar_falha_da_imagem else None
                 if lembradas is None:
                     raise
+                # Só a métrica: `rt.capture_failures` é a série da PRÉVIA do painel (estado do stream e recuo do
+                # intervalo) e só zera quando a prévia captura de novo; a observação nunca mexeu nela.
                 metricas.contar("captura.total", origem="observacao", resultado="falha")
-                self._falha_de_captura(rt, f"{type(exc).__name__}: {exc}")
                 return Observation(frame_id=self._novo_frame_id(rt), ts=tree_at, width=lembradas[0],
                                    height=lembradas[1], jpeg=None, tree=tree, package=pkg, sensitive=tree.sensitive,
                                    tree_at=tree_at, image_at=None, image_omitted="capture_failed",
