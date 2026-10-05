@@ -20,6 +20,7 @@ Prova: `simulated` (harness com aparelho falso). A migração roda em SQLite de 
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from pathlib import Path
 from typing import AsyncIterator
@@ -48,6 +49,10 @@ NOVA = "054_protecao_de_contas"
 ORIGEM = Path(db_mod.__file__).resolve().parents[1] / "migrations"
 TS = "2026-09-28T12:00:00.000Z"
 FELIPE = "gilberto.vasconcelos517"
+#: 31.101: a 054 é migração aplicada (não se edita) e traz a conta do android-04 como literal. O teste da carga lê a
+#: conta da própria migração, para o nome real não voltar a este arquivo.
+HANDLE_DA_054 = re.search(r"SELECT 'android-04', '([^']+)'",
+                          (ORIGEM / f"{NOVA}.sql").read_text(encoding="utf-8"))[1]
 #: 28/09/2026 21:36 no horário da máquina central (E. South America, -03:00): o instante em que o dono viu o desafio.
 VISTO_PELO_DONO = "2026-09-29T00:36:00.000Z"
 
@@ -58,7 +63,7 @@ def _anterior() -> str:
 
 
 # ============================================================ 0) a migração 054, nos dois bancos
-def _semear_central(db: Database) -> None:
+def _semear_central(db: Database, handle: str) -> None:
     """O retrato do ambiente central antes da 054: o android-04 no parque, o felipe bloqueado e sem vínculo."""
     db.execute("INSERT INTO apps(id, name, package, builtin)"
                " VALUES ('instagram','Instagram','com.instagram.android',1)")
@@ -66,9 +71,9 @@ def _semear_central(db: Database) -> None:
                " app_id, account_label) VALUES (?,?,?,?,?,?,?,?,?)",
                ("android-04", 4, "android-04", 5560, 8203, 9203, 9518, "instagram", "qa-user-04"))
     db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at) VALUES (?,?,?,?,?)",
-               ("ig-felipe", FELIPE, "blocked", TS, TS))
+               ("ig-felipe", handle, "blocked", TS, TS))
     db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
-               " VALUES (?,?,?,?,?,?,?)", ("c-felipe", "ig-felipe", "instagram", FELIPE, "active", TS, TS))
+               " VALUES (?,?,?,?,?,?,?)", ("c-felipe", "ig-felipe", "instagram", handle, "active", TS, TS))
 
 
 def test_atualizacao_para_054_registra_o_marcador_do_android_04(tmp_path: Path,
@@ -79,7 +84,7 @@ def test_atualizacao_para_054_registra_o_marcador_do_android_04(tmp_path: Path,
     try:
         assert db.migrate()[-1] == anterior
         assert "device_locked_accounts" not in db.tables()
-        _semear_central(db)
+        _semear_central(db, HANDLE_DA_054)
         shutil.copy2(ORIGEM / f"{NOVA}.sql", destino / f"{NOVA}.sql")
         assert db.migrate() == [NOVA]
         assert db.divergencias() == []
@@ -88,8 +93,8 @@ def test_atualizacao_para_054_registra_o_marcador_do_android_04(tmp_path: Path,
         marcadores = db.query("SELECT * FROM device_locked_accounts")
         assert len(marcadores) == 1
         m = marcadores[0]
-        assert (m["instance_id"], m["handle"], m["profile_id"], m["app_id"]) == ("android-04", FELIPE, "ig-felipe",
-                                                                                 "instagram")
+        assert (m["instance_id"], m["handle"], m["profile_id"], m["app_id"]) == ("android-04", HANDLE_DA_054,
+                                                                                 "ig-felipe", "instagram")
         assert (m["origin"], m["seen_by"], m["since"]) == ("declarado", "dono", VISTO_PELO_DONO)
         assert m["resolved_at"] is None and "Confirm you are human" in (m["evidence"] or "")
         # O perfil já bloqueado NÃO ganha data inventada: quando o bloqueio aconteceu ninguém registrou.
