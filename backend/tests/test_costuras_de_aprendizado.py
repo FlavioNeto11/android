@@ -235,7 +235,7 @@ async def test_com_costuras_no_op_quebradas_ou_ligadas_os_desfechos_ficam_identi
 
     base = await cenario("sem", SEM_COSTURAS)
     outro = await cenario(quais, Explode() if quais == "explode" else None)   # None: o livro que o AppState liga
-    assert base["run"] == "completed_with_issues"
+    assert base["run"] == "awaiting_person"                 # 29.93: o item parado na pessoa não encerra a execução
     assert outro == base
 
 
@@ -542,12 +542,12 @@ async def test_cancelar_pela_rota_grava_o_sinal_com_o_operador_da_sessao(harness
     # com trabalho feito e um item parado na pessoa: fechar o que ficou pendente é negativo; sem sessão, `panel`
     harness.fakes["android-02"].require_login = True
     parada = harness.run(["android-02"])
-    assert (await harness.wait_run(parada.id)).status == "completed_with_issues"
+    assert (await harness.wait_run(parada.id)).status == "awaiting_person"        # 29.93
     async with _cliente(harness) as c:
         assert (await c.post(f"/api/runs/{parada.id}/cancel")).status_code == 200
     [s2] = [s for s in _sinais(harness, "cancelou_execucao") if s["run_id"] == parada.id]
     assert (s2["created_by"], s2["polarity"], s2["app_package"]) == ("panel", "negative", PKG)
-    assert json.loads(s2["data"]) == {"status_anterior": "completed_with_issues"}
+    assert json.loads(s2["data"]) == {"status_anterior": "awaiting_person"}
     # sem `por` (quem chama por dentro, como a sucessora) não há gesto e não há sinal
     outra = harness.run(["android-03"], mode="plan")
     await harness.wait_run(outra.id, statuses=("planned",))
@@ -564,7 +564,7 @@ async def test_cancelamento_e_um_sinal_por_episodio(harness: Harness) -> None:
     assert st is not None
     harness.fakes["android-02"].require_login = True
     run = harness.run(["android-02"])
-    assert (await harness.wait_run(run.id)).status == "completed_with_issues"
+    assert (await harness.wait_run(run.id)).status == "awaiting_person"           # 29.93
     oid = f"{run.id}:android-02"
     # o item abandonado fica `failed`: a execução segue em aberto, e repetir o item a reabre depois
     st.runs.resolve(run.id, oid, ResolveBody(resolution="abandon", note="sem jeito"))

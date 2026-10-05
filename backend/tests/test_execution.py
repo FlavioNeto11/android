@@ -46,7 +46,7 @@ async def test_falha_e_tela_inesperada_em_um_aparelho_nao_param_os_demais(harnes
     assert by["android-01"].status == "succeeded" and not harness.fakes["android-01"].interstitial
     assert by["android-03"].status == "succeeded"
     assert by["android-02"].status == "waiting_user" and "autentica" in (by["android-02"].blocked_reason or "").lower()
-    assert detail.status == "completed_with_issues"          # 2 sucessos + 1 bloqueio ≠ sucesso total
+    assert detail.status == "awaiting_person"                # 2 sucessos + 1 bloqueio ≠ sucesso total (29.93)
     assert (detail.counts.succeeded, detail.counts.waiting_user) == (2, 1)
     assert not harness.fakes["android-02"].messages
     # evidência da tela de login é registrada SEM imagem
