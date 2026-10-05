@@ -35,6 +35,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     DA API, com o código (`api-desafio`, `api-404`), contado e avisado à parte do site (`onde=api`, saúde
     `portal_api_sem_conferir`), para não gritar crítico à toa nem dizer que a página está fora; avisa depois de
     `voltas_sem_conferir` voltas. O 500 diz na saúde que o pedido pode ter passado do portão.
+  - A API sem resposta (rede, 52x, tempo esgotado) com o site TAMBÉM sem conferir é a mesma queda e conta só pelo site;
+    com o site conferido na mesma volta (rota lenta, regra da zona só em `/api/*`), conta e avisa como da API.
+  - Quem liga o vigia é a subida do backend (`state.py`, tarefa `portal-borda`), no líder da trava `avisos`, com a hora
+    do projeto em UTC; há teste do laço ligado, não só da volta isolada.
   - O vigia só avisa: não para serviço, não toca túnel nem configuração.
 - **Contrato com a Canais:** código `api_aberta`, `onde` `api`, `achado` fixo `/api/instances`. A parte dela vem em PR
   próprio, empilhado sobre o #381.

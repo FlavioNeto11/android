@@ -5511,7 +5511,8 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
        navegador passa, e atrás dele a API pode estar aberta. Ele e outro status (404, 3xx, 500) não provam nem um nem
        outro e entram como "não consegui conferir" DA API, contado e avisado à parte do site (`onde=api`,
        `api-desafio`, `api-404`; na saúde `portal_api_sem_conferir`), para uma API em 404 com o site perfeito não
-       virar aviso de página fora. O 500 leva uma frase a mais: o portão recusa antes da rota, então um 500 sem
+       virar aviso de página fora (a API sem resposta só conta à parte quando o site foi conferido na mesma
+       volta; com os dois fora, é a queda do túnel e conta pelo site). O 500 leva uma frase a mais: o portão recusa antes da rota, então um 500 sem
        credencial sugere que o pedido passou do portão ou que o portão quebrou. O vigia só avisa: tirar o nome
        público do ar é decisão do dono;
      - três desfechos: ok, defeito e "não consegui conferir" (rede, tempo esgotado, a borda sem alcançar o central).

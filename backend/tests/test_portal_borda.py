@@ -56,6 +56,10 @@ def _borda(quebra: str = "") -> httpx.MockTransport:
                 return httpx.Response(404)
             if quebra == "api_500":
                 return httpx.Response(500)
+            if quebra == "api_522":                                   # E1: só a API sem alcançar a origem
+                return httpx.Response(522)
+            if quebra == "api_tempo":
+                raise httpx.ReadTimeout("tempo", request=pedido)
             if quebra == "api_desafio":
                 # O desafio da borda em /api/*: 403, mas não é a recusa do central (C1 da leitura do #383).
                 return httpx.Response(403, headers={"cf-mitigated": "challenge", "set-cookie": "__cf_bm=segredo-cf"},
@@ -411,6 +415,8 @@ def test_o_achado_da_canais_e_so_host_e_caminho_no_alfabeto_dela(src: str, item:
 #: Cada marcador é um pedaço que NUNCA pode sair no item nem no detalhe (leitura do #378, Q1 a Q4). A porta só não
 #: pode sair no item: o detalhe da saúde e da prova mostra esquema, host, porta e caminho.
 _MARCAS = ("USUARIO", "SENHA", "QUERY", "FRAG", "SESSAO", "1234", "10.0.0.5", "%31%30", "2001", "db8", "c0a8")
+#: V1: o que a lista do proibido deixava passar (NEL, separador de linha e de parágrafo, C1, largura zero, bidi).
+_UNICODE_PERIGOSO = ("\u0085", " ", " ", "\u009b", "​", "‮")
 _PORTA = "8443"
 _CDN = "cdn.exemplo.invalid"
 _SRCS_ADVERSARIOS = [
@@ -442,6 +448,8 @@ _SRCS_ADVERSARIOS = [
     "1USUARIO:SENHA@evil.invalid/a.js",
     "https://%31%30.0.0.5/a.js",                              # R3: IP codificado
     f"https://{_CDN}%0d%0a-%3E%20x/a.js",                     # U1: quebra de linha codificada no host
+    *(f"https://{_CDN}/a{c}b.js" for c in _UNICODE_PERIGOSO),  # V1: NEL, separadores, C1, largura zero, bidi
+    *(f"https://cdn{c}x.invalid/a.js" for c in _UNICODE_PERIGOSO),
     f"https://USUARIO:SENHA@{_CDN}/a\x00b.js",                # controle cru no caminho
     "\x01 https://USUARIO:SENHA@evil.invalid/a.js",
 ]
@@ -457,7 +465,7 @@ def test_nenhum_pedaco_de_credencial_porta_query_ou_ip_sai_no_item_nem_no_detalh
         assert marca.lower() not in detalhe.lower(), (marca, detalhe)
     assert _PORTA not in item, item
     # U1: nada abaixo de 0x21 (controle, quebra, espaço) nem DEL no item e no detalhe.
-    assert all(0x21 <= ord(c) != 0x7F for c in item + detalhe), (item, detalhe)
+    assert all(0x21 <= ord(c) <= 0x7E for c in item + detalhe), (item, detalhe)        # V1: só ASCII imprimível
     assert re.fullmatch(r"[A-Za-z0-9._/-]{0,120}", item)
     [achado] = borda.conferir_html("/", 200, f'<script src="{src}"></script>', host=HOST).achados
     assert (achado.item, achado.detalhe) == (item, detalhe)
@@ -570,3 +578,76 @@ def test_tunel_fora_avisa_uma_vez_pelo_site_e_nao_pela_api() -> None:
     vigia.volta(AGORA)
     assert canais.chamadas == [("sem_conferir", "raiz", "borda-522", 1)]
     assert vigia.seguidas_sem_conferir_api == 0
+
+
+@pytest.mark.parametrize(("quebra", "codigo"), [("api_522", "borda-522"), ("api_tempo", "tempo-esgotado")])
+def test_api_sem_resposta_com_o_site_conferido_conta_para_a_api(quebra: str, codigo: str) -> None:
+    """E1 da leitura do #383: a API que demora ou não alcança a origem com o site 200 na mesma volta (rota lenta,
+    regra da zona só em /api/*) é contada e avisada como da API, e nunca some."""
+    canais = CanaisFalsa()
+    vigia = _vigia(lambda: quebra, canais, n=3)
+    for h in range(2):
+        vigia.volta(AGORA + timedelta(hours=h))
+    assert canais.chamadas == [] and vigia.seguidas_sem_conferir == 0 and vigia.seguidas_sem_conferir_api == 2
+    vigia.volta(AGORA + timedelta(hours=2))
+    assert canais.chamadas == [("sem_conferir", "api", codigo, 3)]
+    assert [p[0] for p in vigia.problemas()] == ["portal_api_sem_conferir"]
+
+
+async def test_o_laco_do_vigia_sobe_com_o_backend_e_da_a_volta_na_hora_utc(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """Quem liga o vigia é a subida do backend (`state.py`, tarefa `portal-borda`), no líder da trava `avisos`; a volta
+    recebe a hora do projeto em UTC, a mesma em que o vigia e a Canais contam o dia do aviso."""
+    import asyncio
+
+    from app.modules.portal import montagem
+
+    assert harness.state is not None
+    assert "portal-borda" in {t.get_name() for t in harness.state._bg}
+    portal = harness.state.portal
+    voltas: list[datetime] = []
+    monkeypatch.setattr(montagem, "PRIMEIRA_VOLTA_DO_VIGIA_S", 0)
+    monkeypatch.setattr(portal, "nome_do_vigia", lambda: HOST)
+    monkeypatch.setattr(portal.vigia, "volta", voltas.append)
+    tarefa = asyncio.create_task(portal.laco_da_borda(lambda: 1))
+    try:
+        for _ in range(200):
+            if voltas:
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        tarefa.cancel()
+    [agora] = voltas
+    assert agora.tzinfo is not None and agora.utcoffset() == timedelta(0)
+    assert abs((agora - datetime.now(timezone.utc)).total_seconds()) < 60
+    sem_lider: list[datetime] = []
+    monkeypatch.setattr(portal.vigia, "volta", sem_lider.append)
+    tarefa = asyncio.create_task(portal.laco_da_borda(lambda: None))      # sem a trava: nenhuma volta
+    await asyncio.sleep(0.1)
+    tarefa.cancel()
+    assert sem_lider == []
+
+
+@pytest.mark.parametrize("perigoso", _UNICODE_PERIGOSO)
+def test_unicode_que_quebra_ou_vira_a_linha_nao_chega_a_saude(perigoso: str) -> None:
+    """V1: pelo detalhe direto e por um cabeçalho de verdade (o httpx lê em latin-1: o byte 0x85 vira U+0085), nenhum
+    desses chega à linha da saúde; o português da frase fica."""
+    assert perigoso not in borda.linha_sem_controle(f"a{perigoso}b") and "ação" in borda.linha_sem_controle("ação")
+    vigia = _vigia(lambda: "cookie", CanaisFalsa())
+    vigia.volta(AGORA)
+    vigia.ultima = borda.Desfecho(borda.DEFEITO, (borda.Achado(borda.COOKIE, "/", f"cookie (x{perigoso}y)"),))
+    [(_, mensagem, _)] = vigia.problemas()
+    assert perigoso not in mensagem and "cookie (x?y)" in mensagem
+    if perigoso in ("\u0085", "\u009b"):                             # os que cabem num byte de cabeçalho
+        def responder(pedido: httpx.Request) -> httpx.Response:
+            if pedido.url.path == "/api/instances":
+                return httpx.Response(401)
+            cab = [(b"cache-control", b"no-store" + perigoso.encode("latin-1") + b"x"),
+                   (b"content-security-policy", CSP_SITE.encode())]
+            return httpx.Response(200, headers=cab, content=b"<!doctype html><div id='root'>")
+        vigia = Vigia(BuscarPelaBorda(lambda: 5, httpx.MockTransport(responder)), host=lambda: HOST,
+                      site_ligado=lambda: False, csp_do_painel=lambda: "aplicar", voltas_sem_conferir=lambda: 3,
+                      intervalo_s=lambda: 3600, avisar=lambda: None)
+        vigia.volta(AGORA)
+        [(codigo, mensagem, _)] = vigia.problemas()
+        assert codigo == "portal_borda_defeito" and "no-store?x" in mensagem and perigoso not in mensagem
