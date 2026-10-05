@@ -552,6 +552,9 @@ export const api = {
   profileCapabilities: (profileId: string) =>
     request<ProfileCapabilities>('GET', `/instagram/profiles/${enc(profileId)}/capacidades`),
   updateFlow: (id: string, body: FlowStatusUpdate) => request<Flow>('PUT', `/flows/${enc(id)}`, { body }),
+  /** Adendo v1.71 (31.88 F2): a quem o fluxo vale, depois de salvo. Vazio nos dois = todos. Gesto de pessoa; 400 `unknown_profile` / `unknown_group`. */
+  setFlowScope: (id: string, body: { profile_ids: string[]; group_ids: string[] }) =>
+    request<{ flow_id: string; profile_ids: string[]; group_ids: string[] }>('PUT', `/flows/${enc(id)}/scope`, { body }),
   deleteFlow: (id: string) => request<void>('DELETE', `/flows/${enc(id)}`),
 
   listRecipes: (signal?: AbortSignal) => request<Recipe[]>('GET', '/recipes', { signal }),
@@ -757,10 +760,10 @@ export const api = {
   /** Adendo v1.63: com `answers`, a IA propõe de novo levando as respostas da pessoa; sem elas, o corpo não vai (igual a antes). */
   proposeTraining: (id: string, answers?: TrainingAnswer[]) =>
     request<TrainingSession>('POST', `/training/${enc(id)}/propose`, answers?.length ? { body: { answers } } : {}),
-  saveTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[] }) =>
+  saveTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[]; scope_on_proof?: 'todos' | 'quem_ensinou' }) =>
     request<TrainingSaveResult>('POST', `/training/${enc(id)}/save`, { body }),
   /** Adendo v1.58: a mesma conferência e destilação do salvar, sem gravar nada. */
-  previewTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[] }) =>
+  previewTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[]; scope_on_proof?: 'todos' | 'quem_ensinou' }) =>
     request<TrainingPreview>('POST', `/training/${enc(id)}/preview`, { body }),
   /** Adendo v1.58: refaz as receitas das etapas que ficaram sem receita numa sessão já salva. */
   redoTrainingRecipes: (id: string) => request<TrainingRecipesResult>('POST', `/training/${enc(id)}/recipes`),

@@ -68,6 +68,26 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: suíte inteira 1686/1686 sem atraso e nas sementes e atrasos 1/100, 3/200, 5/300, 7/200, 13/100, 21/150, 77/60, 88/40 e 99/100;
   typecheck limpo. O conserto de cada teste falhava antes na semente que o achou. `not_run`: o Node 22 do CI.
 
+## 2026-10-05 — 31.88 F2 (painel): "Vale para" na revisão do ensino e "Mudar a quem vale" no Livro (branch feat/31-88-f2-vale-para)
+
+- Só frontend, contra o adendo v1.71 (backend `feat/31-88-escopo-ao-provar`, ponta f75b3b97, ainda sem merge): o painel não funciona de
+  ponta a ponta antes de ele entrar; pela API real o salvar com `scope_on_proof` seria recusado como campo extra.
+- **Revisão do salvar** (`TrainingReview`, `ValePara.tsx`): o fieldset "Quem recebe o fluxo" virou "Vale para", com três opções: "Todos, depois
+  de provado" (padrão: `scope_on_proof: "todos"` e listas vazias), "Só quem ensinou" (`scope_on_proof: "quem_ensinou"`, sem lista, que junto de
+  lista a API recusa com 400 `scope_ambiguous`) e "Escolher perfis e grupos" (as caixas de antes, com o perfil do aparelho já marcado, e
+  `scope_on_proof: "todos"`). "Só quem ensinou" sai desabilitada, com o motivo, quando o treino não teve persona (a API recusa com 409
+  `no_teacher_persona`). A lista de perfis e grupos só trava o Salvar em "Escolher". A prévia e o resultado do salvar mostram o `scope`
+  devolvido ("Ao salvar vale para …", "Vale para …") e a frase de que, até a prova, só a persona que ensinou usa o fluxo.
+- **Mudança de padrão a saber:** antes o salvar mandava só o perfil do aparelho marcado; agora o padrão é "todos, depois de provado", como o
+  contrato manda (e, na prova, o fluxo só casa para a persona que ensinou).
+- **Livro** (`EscopoDoFluxo.tsx`, `DetalheRico.tsx`): no fluxo que nasceu no treino, a seção "A quem vale" tem "Mudar a quem vale", que carrega
+  perfis e grupos ao abrir e chama `PUT /api/flows/{id}/scope`. O Livro não tem o escopo de agora, então a tela diz que o que for marcado
+  substitui e mostra o que o servidor devolveu. Recusa (`unknown_profile`, `unknown_group`) vira aviso.
+- Harness: `radio` passa a ser um papel conhecido do `byRole`.
+- Prova `simulated`: `TrainingReview.test.tsx::31.88 F2` (4 testes) e `DetalheRico.test.tsx::a quem o fluxo ensinado vale` (4 testes); sem o
+  `sort` das listas e com lista junto de `quem_ensinou` os testes falham. Frontend inteiro 1694/1694 e typecheck limpos (4 workers, Idle); com
+  atraso do fetch só falham os dois testes que o 29.104 conserta noutro ramo. `not_run`: o percurso real (depois do deploy com o backend).
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a

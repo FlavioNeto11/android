@@ -2051,18 +2051,28 @@ export interface TrainingStepReport {
   reason: string;
 }
 
+/** 31.88 F2 (adendo v1.71): o escopo que o salvar gravou (ou a prévia gravaria). `on_proof` é a escolha "Vale para". */
+export interface TrainingScope {
+  on_proof: 'todos' | 'quem_ensinou';
+  profile_ids: string[];
+  group_ids: string[];
+}
+
 export interface TrainingSaveResult {
   session: TrainingSession;
   flow_id: string;
   steps: TrainingStepReport[];
   /** 31.83 (adendo v1.57): o que o salvar aceitou mas vale avisar; backend anterior não manda. */
   warnings?: string[];
+  scope?: TrainingScope;
 }
 
 /** `POST /training/{id}/preview` (adendo v1.58): o que o salvar faria, sem gravar. */
 export interface TrainingPreview {
   steps: TrainingStepReport[];
   warnings: string[];
+  /** Adendo v1.71; backend anterior não manda. */
+  scope?: TrainingScope;
 }
 
 /** `POST /training/{id}/recipes` (adendo v1.58): `created` conta as receitas gravadas nesta chamada. */
