@@ -154,8 +154,9 @@ it('sessão salva aparece em "Salvas" com "Refazer receitas", que só chama /rec
   await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
   await waitFor(() => expect(text()).toContain('Salvas (1)'));
   expect(text()).not.toContain('Para revisar');
-  await click(byRole('button', /Salvas \(1\)/));
-  await click(await waitFor(() => byRole('button', /^Refazer receitas de “Abrir o perfil”$/)));
+  // A lista fica num Disclosure recolhido (<details>), que mantém o conteúdo no DOM.
+  expect(byRole('button', /^Refazer receitas de “Abrir o perfil”$/).closest('details')).not.toBeNull();
+  await click(byRole('button', /^Refazer receitas de “Abrir o perfil”$/));
   await waitFor(() => expect(text()).toContain('Nenhuma receita nova.'));
   expect(text()).toContain('Abrir (já havia receita ativa para esta etapa)');
   expect(backend.callsTo('POST', /\/training\/trn-7\/recipes$/)).toHaveLength(1);
