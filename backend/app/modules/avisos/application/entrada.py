@@ -172,6 +172,16 @@ class Fato:
         return self.tipo == "convidado"
 
     @property
+    def objetivo_parado(self) -> bool:
+        """O aviso do objetivo parado (28.40): `objective:<id>:<entrada na espera>`. Só informa; o gesto é no painel."""
+        return self.tipo == "objective"
+
+    @property
+    def conta(self) -> bool:
+        """O aviso da conta que pede a pessoa: `session:<id do evento>`. Só informa; o gesto é no painel."""
+        return self.tipo == "session"
+
+    @property
     def resumo_do_portal(self) -> bool:
         """O resumo dos contatos do site acima dos tetos (28.32): `portal-resumo:<hora>`. Só informa."""
         return self.tipo == "portal-resumo"
@@ -180,6 +190,10 @@ class Fato:
     def portal(self) -> bool:
         """A mensagem de um visitante do site (28.32): `portal:<contato_id>`. Só informa."""
         return self.tipo == "portal"
+
+
+#: A resposta a um aviso que só informa e se resolve pelo link dele (28.41).
+SO_INFORMA_PELO_LINK = "Este aviso só informa: para resolver, toque no link dele."
 
 
 def _sem_acento(s: str) -> str:
@@ -274,6 +288,10 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         # caixa de Pendências (revisão do #372): a frase manda ao link do próprio lembrete, que é o lugar certo.
         return Intencao("desconhecida", motivo="Este lembrete só avisa: para resolver, toque no link dele ou responda "
                                                "ao aviso original.")
+    if f.objetivo_parado or f.conta:
+        # 28.41 (R1 da leitura do #372): nada se responde a esses avisos; o gesto é no aparelho, pelo link. Sem este
+        # ramo, a resposta cairia no texto livre e poderia virar a prévia de uma execução NOVA.
+        return Intencao("desconhecida", motivo=SO_INFORMA_PELO_LINK)
     if f.anexo:
         # Só o pedido de leitura é do anexo; "sim", um objetivo ou qualquer outra frase seguem a gramática comum (None).
         return Intencao("ler_anexo", ref=f.ident) if _LER.match(" ".join(_sem_acento(t).split())) else None

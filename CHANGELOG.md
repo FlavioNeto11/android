@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.41: sobras das leituras do #361 e do #372 (branch canais/28-41-sobras)
+
+- R1: a resposta do dono ao aviso de objetivo parado ou de conta (`objective:` e `session:`) só informa ("Este aviso
+  só informa: para resolver, toque no link dele.") e nunca vira prévia de execução nova.
+- R2: o `/status` conta os objetivos parados (sem contar duas vezes o que espera uma aprovação) e diz que eles estão
+  em Execuções.
+- N1 do #372: com a conta igual, o aviso de conta só cala o objetivo que parou por motivo de conta, como no ramo só
+  da persona.
+- N4: o desfecho da execução recusada no planejamento diz o motivo por uma frase fixa (`plan.refused`), sem o trecho
+  do comando que o `status_detail` traz; sem recusa e sem evidência, só o estado.
+- Agrupados: a conta que pede a pessoa vai sempre à caixa (o avulso em tela não reconhecida abre o Foco de UM
+  aparelho); o lembrete agrupado diz onde ficam a aprovação, a pergunta e o objetivo parado.
+- N1 do #361: os testes provam que só o Cancelar do dono leva o gesto, e que os cancelamentos automáticos não.
+- Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` e `backend/tests/test_telegram_entrada.py`.
+  Real: `not_run`.
+
 ## 2026-10-05 — 28.40: aviso para todo objetivo parado esperando a pessoa (branch canais/28-40-objetivo-parado)
 
 - `avisos/domain/mensagem.py`: tipo `objective.waiting_user` (nível 1, sai na hora, com rajada). O objetivo que entra
@@ -87,6 +103,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   iria ao juiz. Pelo centro (y=1168), ele fica fora.
 - Prova: `simulated` (`backend/tests/test_bolha_sem_id.py`, 2 testes novos que falham no código anterior). Real:
   `not_run`.
+
 ## 2026-10-05 — 28.39: sobras do desfecho e do plano esquecido (branch canais/28-39-sobras-do-desfecho)
 
 - G1 da leitura do #358: a primeira vez que a conversa vê a execução em `planned` fica gravada na linha, no `previa`,
@@ -109,7 +126,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   que não gravou não o faz repetir.
 - A mensagem original apagada pelo dono: o desfecho já vai com `allow_sending_without_reply` (adaptador do Telegram),
   então o 400 não acontece e não há tentativa a fazer sem a referência. No Trello, a referência é o próprio cartão, e não
-  há para onde mandar sem ele. Fica provado por teste.
+  há para onde mandar sem ele. O teste é de caracterização: o código já mandava isso desde o 28.15 (nota da leitura do
+  #361).
 - Prova: `simulated`, com 6 testes novos em `tests/test_telegram_entrada.py`; ao todo, 144 passaram em
   `test_telegram_entrada`, `test_trello_leitor` e `test_telegram_portas`. No ambiente real: `not_run`.
 

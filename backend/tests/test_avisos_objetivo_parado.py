@@ -316,7 +316,26 @@ def test_com_a_conta_no_aviso_so_a_mesma_conta_cala_o_objetivo(tmp_path: Path, c
     for seq, (status, app) in enumerate(etapas, start=1):
         _etapa(banco, "rc", seq, status, app)
     _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)), conta=conta_do_aviso)
-    assert _parou(servico, "rc") is (not cala)
+    # A etapa que espera parou pela conta (28.41, N1: o motivo vale também neste ramo); a porta de sessão, sem etapa
+    # esperando, já é motivo de conta.
+    parou_na_etapa = any(status == "waiting_user" for status, _app in etapas)
+    assert _parou(servico, "rc", failure_kind="autenticacao" if parou_na_etapa else None) is (not cala)
+
+
+@pytest.mark.parametrize(("failure_kind", "cala"), [
+    ("autenticacao", True), ("conta_errada", True),
+    ("falta_informacao", False), ("aviso_do_app", False), ("ui_ocupada", False), (None, False)])
+def test_com_a_mesma_conta_so_o_motivo_de_conta_cala(tmp_path: Path, failure_kind: str | None, cala: bool) -> None:
+    """28.41, N1 da leitura do #372: com a conta igual, o objetivo que parou por outro motivo (falta de informação, um
+    aviso do app) ainda é outra notícia, como já era no ramo só da persona."""
+    servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
+    _personas_e_contas(banco)
+    criada = now()
+    _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _objetivo(banco, "rc")
+    _etapa(banco, "rc", 1, "waiting_user", "instagram")
+    _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)), conta="c-ig-p1")
+    assert _parou(servico, "rc", failure_kind=failure_kind) is (not cala)
 
 
 @pytest.mark.parametrize(("failure_kind", "com_etapa", "cala"), [
@@ -502,3 +521,61 @@ def test_responder_a_um_lembrete_nao_manda_a_caixa() -> None:
     i = rotear("ok, vou ver", fato="vencimento:lembrete:r1:o1:2026-10-05T03:40:00.000Z")
     assert i.tipo == "desconhecida" and i.motivo is not None
     assert "Pendências" not in i.motivo and "link" in i.motivo
+
+
+# ===================================================================== 6. o 28.41 (sobras das leituras do #372)
+@pytest.mark.parametrize("fato", ["objective:r1:o1:2026-10-05T03:40:00.000Z", "session:4412"])
+@pytest.mark.parametrize("texto", ["sim", "abre o instagram no android-13", "o que houve?"])
+def test_responder_ao_aviso_de_objetivo_ou_de_conta_nao_vira_execucao(fato: str, texto: str) -> None:
+    """R1: sem o ramo, "abre o instagram no android-13" em resposta ao aviso cairia no texto livre e viraria a prévia de
+    uma execução NOVA."""
+    from app.modules.avisos.application.entrada import SO_INFORMA_PELO_LINK, rotear
+    i = rotear(texto, fato=fato)
+    assert i.tipo == "desconhecida" and i.motivo == SO_INFORMA_PELO_LINK
+
+
+def test_o_status_conta_o_objetivo_parado_sem_contar_a_aprovacao_duas_vezes(tmp_path: Path) -> None:
+    """R2: o `/status` dizia só aprovações e perguntas."""
+    _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
+    _run(banco, "r1", chave="k-comum")
+    for oid, aparelho, bloqueio in (("r1:o1", "android-12", None), ("r1:o2", "android-13", "approval"),
+                                    ("r1:o3", "android-14", "ai")):
+        banco.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, blocked_kind)"
+                      " VALUES (?,?,?,?,?,?)", (oid, "r1", aparelho, "waiting_user", 1, bloqueio))
+    portas = _portas(RunStatus.running)
+    portas.db = banco
+    portas._saude = lambda: SimpleNamespace(status="ok", problems=[])            # noqa: SLF001
+    portas.aprovacoes_pendentes = lambda: []                                     # type: ignore[method-assign]
+    texto = portas.status()
+    assert "2 objetivo(s) parado(s)" in texto and "os objetivos parados estão em Execuções" in texto
+
+
+def test_a_recusa_no_planejamento_nao_leva_o_texto_do_pedido(tmp_path: Path) -> None:
+    """N4: o `status_detail` da execução recusada fora do catálogo traz um trecho do comando. Ao canal vai a frase fixa
+    do motivo, e o texto do pedido nunca."""
+    from app.modules.avisos.infrastructure.portas_da_central import MOTIVO_DA_RECUSA, MOTIVO_DA_RECUSA_GENERICO
+    _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
+    _run(banco, "r1", chave="k-comum")
+    banco.execute("INSERT INTO events(ts, kind, level, run_id, message, data) VALUES (?,?,?,?,?,?)",
+                  (to_iso(now()), "plan.refused", "warn", "r1", "MARCADOR do pedido",
+                   json.dumps({"motivo": "sem_acao_do_catalogo", "pedidos": [{"pedido": "MARCADOR do pedido"}]})))
+    portas = _portas(RunStatus.failed)
+    portas.db = banco
+    portas.runs.repo.run_summary = lambda _row: SimpleNamespace(                 # type: ignore[attr-defined]
+        counts=SimpleNamespace(succeeded=0, failed=0, waiting_user=0, uncertain=0, cancelled=0, running=0, pending=0),
+        short_id="abc123", status_detail="Nenhuma ação faz 'MARCADOR do pedido'")
+    texto = portas.desfecho("r1") or ""
+    assert "MARCADOR" not in texto and texto.endswith(MOTIVO_DA_RECUSA["sem_acao_do_catalogo"])
+    banco.execute("UPDATE events SET data=? WHERE kind='plan.refused'", (json.dumps({"motivo": "outro"}),))
+    assert (portas.desfecho("r1") or "").endswith(MOTIVO_DA_RECUSA_GENERICO)
+    banco.execute("DELETE FROM events WHERE kind='plan.refused'")
+    assert (portas.desfecho("r1") or "") == "Execução abc123: falhou.", "sem recusa e sem evidência, só o estado"
+
+
+def test_o_agrupado_de_conta_e_o_de_lembrete_vao_a_caixa_sem_o_id_de_um_item() -> None:
+    from app.modules.avisos.domain.mensagem import corpo_agrupado, link_agrupado
+    foco = f"{PAINEL}/#/painel?foco=android-13"
+    assert link_agrupado("session.needs_person", [foco, f"{PAINEL}/#/pendencias"]) == f"{PAINEL}/#/pendencias"
+    lembrete = corpo_agrupado(["⏳ O objetivo parado no android-13 vence em até 2 h"], "pendencia.vence_em")
+    assert "Execuções" in lembrete and "Pendências" in lembrete
+    assert link_agrupado("pendencia.vence_em", [f"{PAINEL}/#/execucoes/{RUN}"]) == f"{PAINEL}/#/pendencias"

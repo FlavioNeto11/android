@@ -584,8 +584,14 @@ GESTO_AGRUPADO_PADRAO = "Espera você: abra a caixa de Pendências do painel par
 GESTO_AGRUPADO: dict[str, str] = {
     "objective.waiting_user": ("Espera você: abra Execuções no painel e, em cada item parado, escolha Assumir controle, "
                                "Tentar novamente ou Abandonar."),
+    # 28.41: o lembrete agrupado pode misturar aprovação, pergunta e objetivo parado, que não estão no mesmo lugar.
+    "pendencia.vence_em": ("Espera você: antes de vencer, decida as aprovações e responda as perguntas na caixa de "
+                           "Pendências; os objetivos parados estão em Execuções."),
 }
-CAMINHO_AGRUPADO: dict[str, str] = {"objective.waiting_user": "#/execucoes"}
+#: A tela do agrupado. A conta que pede a pessoa vai sempre à caixa (28.41): o link do avulso em tela não reconhecida
+#: é o Foco de UM aparelho, e o agrupado é de vários; com o 29.96 (suíte 36) o `unknown` aparece na caixa.
+CAMINHO_AGRUPADO: dict[str, str] = {"objective.waiting_user": "#/execucoes", "session.needs_person": "#/pendencias",
+                                    "pendencia.vence_em": "#/pendencias"}
 
 
 def corpo_agrupado(titulos: Sequence[str], tipo: str | None = None) -> str:

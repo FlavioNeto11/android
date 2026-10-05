@@ -42,6 +42,13 @@ from app.taskqueue.service import RunError, RunService
 _DESFECHO = {RunStatus.completed: "concluída", RunStatus.completed_with_issues: "concluída com problemas",
              RunStatus.failed: "falhou", RunStatus.cancelled: "cancelada"}
 _ATIVAS = ("planning", "running", "paused", "cancelling")
+#: 28.41 (N4): a recusa no planejamento dita sem texto do pedido, pelo `motivo` do evento `plan.refused`.
+MOTIVO_DA_RECUSA = {
+    "sem_acao_do_catalogo": "Motivo: nenhuma ação do catálogo do app faz o que foi pedido. Nada foi executado; o detalhe "
+                            "está no painel.",
+    "acima_da_autonomia": "Motivo: o plano tinha etapas com efeito, e esta execução só podia observar. Nada foi feito.",
+}
+MOTIVO_DA_RECUSA_GENERICO = "Motivo: o plano foi recusado antes de começar. Nada foi executado; o detalhe está no painel."
 
 
 class PortasReais:
@@ -94,13 +101,18 @@ class PortasReais:
         marcas = ",".join("?" * len(_ATIVAS))
         ativas = int(self.db.scalar(f"SELECT COUNT(*) FROM runs WHERE status IN ({marcas})", _ATIVAS) or 0)
         esperando = int(self.db.scalar("SELECT COUNT(*) FROM runs WHERE status='needs_input'") or 0)
+        # 28.41 (R2 da leitura do #372): o objetivo parado também espera o dono. A aprovação já conta acima; o objetivo
+        # que espera uma aprovação (`blocked_kind='approval'`) não conta duas vezes.
+        parados = int(self.db.scalar("SELECT COUNT(*) FROM objectives WHERE status='waiting_user'"
+                                     " AND blocked_kind IS DISTINCT FROM 'approval'") or 0)
         aprovar = len(self.aprovacoes_pendentes())
         problemas = len(h.problems)
         linhas = [f"Central: {'ok' if h.status == 'ok' else h.status}"
                   + (f", {problemas} problema(s) no painel" if problemas else ""),
                   f"Aparelhos online: {len(online)}" + (f" ({', '.join(online[:10])})" if online else ""),
                   f"Execuções em andamento: {ativas}",
-                  f"Esperando você: {aprovar} aprovação(ões) e {esperando} pergunta(s). /pendencias mostra."]
+                  f"Esperando você: {aprovar} aprovação(ões), {esperando} pergunta(s) e {parados} objetivo(s) parado(s)."
+                  " /pendencias mostra as aprovações e as perguntas; os objetivos parados estão em Execuções, no painel."]
         return "\n".join(linhas)
 
     def status_para_convidado(self) -> str:
@@ -181,10 +193,22 @@ class PortasReais:
         evidencia = self.db.scalar("SELECT status_detail FROM objectives WHERE run_id=? AND status_detail IS NOT NULL"
                                    " AND status <> 'waiting_user' AND finished_at IS NOT NULL"
                                    " ORDER BY finished_at DESC, id DESC LIMIT 1", (run_id,))
-        detalhe = evidencia or resumo.status_detail
-        if detalhe:
-            linhas.append(f"Evidência: {str(detalhe)[:300]}")
+        if evidencia:
+            linhas.append(f"Evidência: {str(evidencia)[:300]}")
+        elif (motivo := self._motivo_da_recusa(run_id)) is not None:
+            # 28.41 (N4 da leitura do #372): o `status_detail` da execução recusada no planejamento traz um trecho do
+            # comando (`texto_fora_do_catalogo`, com o `pedido`) ou o erro cru do planejador. Ao canal vai só a frase
+            # fixa do motivo; o detalhe fica no painel.
+            linhas.append(motivo)
         return "\n".join(linhas)
+
+    def _motivo_da_recusa(self, run_id: str) -> str | None:
+        """A frase fixa do `plan.refused` mais recente da execução, ou `None` sem recusa no planejamento."""
+        dados = loads(self.db.scalar("SELECT data FROM events WHERE run_id=? AND kind='plan.refused'"
+                                     " ORDER BY id DESC LIMIT 1", (run_id,)), {})
+        if not isinstance(dados, dict) or not dados:
+            return None
+        return MOTIVO_DA_RECUSA.get(str(dados.get("motivo") or ""), MOTIVO_DA_RECUSA_GENERICO)
 
     # ------------------------------------------------------------------ ação (os serviços das rotas)
     def previa(self, texto: str, instance_ids: list[str] | None = None) -> Previa:
