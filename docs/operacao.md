@@ -431,6 +431,10 @@ em `/central/`. O formulário de contato manda a mensagem ao Telegram do dono pe
          telefone: "<+55 (DDD) número>"
    ```
 
+   O bloco `portal` recusa chave desconhecida (desde o 29.83): um nome errado (`site_ligad`, `telefon`,
+   `buscas_por_operador_hor`) faz a subida falhar dizendo qual é, em vez de valer o padrão calado. Rode o
+   `deploy.ps1 -Ensaio` depois de editar.
+
 2. Conferir que `https://dev.nvit.com.br` está em `server.allowed_origins` (está desde o ADR-073; sem ela todo envio
    leva 403) e que o aviso do Telegram está pronto (`GET /api/canais/estado`). Depois do reinício, o `GET /api/health`
    não pode trazer `portal_contato_sem_ip_da_borda` (falta `tls_behind_proxy` ou o nome público: a taxa por cliente

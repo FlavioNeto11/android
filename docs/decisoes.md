@@ -5591,6 +5591,9 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
   igualdade exata de todos os dígitos. Tudo o que o formulário aceitou é achável (revisão do #342, E1). Teto de 30 buscas
   válidas por hora por operador (`portal.limites.buscas_por_operador_hora`, em memória; 429 `muitas_buscas`): a busca
   acha contatos e não pode virar varredura. Cada busca deixa no log o operador e a contagem, sem o telefone.
+- O bloco `portal` do `config.yaml` recusa chave desconhecida (`extra="forbid"` em `PortalCfg`, nos limites e nos
+  contatos; o resto do arquivo segue aceitando): é o bloco que mexe com o que a página promete e com a exclusão, e um
+  nome errado não pode valer o padrão em silêncio. Coberto por `tests/test_configuracao_de_exemplo.py`.
 - Uma falha do Portal DEPOIS do `ok` da Canais deixa a linha e o registro como estavam (a lápide já segura o aviso);
   repetir a exclusão resolve, porque a Canais é idempotente na chave. Coberto por teste.
 - **A Canais antes do DELETE** (`apagar_avisos_do_portal`, 28.34, contrato fora do Git em

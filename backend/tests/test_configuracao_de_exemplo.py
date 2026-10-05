@@ -102,3 +102,25 @@ def test_a_partida_copia_o_exemplo_e_nunca_sobrescreve_o_que_ja_existe() -> None
     assert "(Test-Path $banco) -or (Test-Path $chave)" in texto
     corpo = texto.split("function Semear")[1].split("Copy-Item $exemplo")[0]
     assert "throw (" in corpo, "o guard precisa parar, não avisar"
+
+
+# ------------------------------------------------------------------ o bloco `portal` (29.77, 29.83)
+def test_o_teto_de_buscas_da_exclusao_vem_do_yaml_pelo_nome_exato(tmp_path: Path) -> None:
+    """`portal.limites.buscas_por_operador_hora` é lido pelo `load_config` com esse nome, e o exemplo traz o padrão."""
+    assert load_config(EXEMPLO).file.portal.limites.buscas_por_operador_hora == 30
+    alvo = tmp_path / "config.yaml"
+    alvo.write_text("portal:\n  limites:\n    buscas_por_operador_hora: 12\n", encoding="utf-8")
+    assert load_config(alvo).file.portal.limites.buscas_por_operador_hora == 12
+
+
+@pytest.mark.parametrize("bloco", [
+    "portal:\n  limites:\n    buscas_por_operador_hor: 12\n",          # o nome do teto com erro de digitação
+    "portal:\n  site_ligad: true\n",                                     # a bandeira com erro
+    "portal:\n  contatos:\n    - nome: Fulano\n      telefon: '+55 10 90000-0001'\n",
+])
+def test_chave_errada_no_bloco_portal_nao_passa_calada(tmp_path: Path, bloco: str) -> None:
+    alvo = tmp_path / "config.yaml"
+    alvo.write_text(bloco, encoding="utf-8")
+    errada = bloco.split(":")[-2].split()[-1].lstrip("- ")
+    with pytest.raises(Exception, match=errada):
+        load_config(alvo)

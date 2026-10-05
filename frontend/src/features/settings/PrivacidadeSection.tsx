@@ -1,4 +1,4 @@
-import { CheckCircle2, Search, ServerCrash, ShieldCheck, Trash2 } from 'lucide-react';
+import { CheckCircle2, Search, ServerCrash, ShieldCheck, Trash2, TriangleAlert } from 'lucide-react';
 import { useCallback, useId, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
 import type { PortalContatoAchado, PortalExclusaoResultado, PortalMotivoMantido, PortalPedidoPor } from '../../api/types';
@@ -270,8 +270,9 @@ function Resultado({ r }: { r: PortalExclusaoResultado }) {
   const incompleto = r.mantidos.length > 0 || r.mensagens_a_mao.length > 0;
   return (
     <Banner
-      tone={incompleto ? 'warning' : 'success'} icon={CheckCircle2} role="status"
-      title={r.apagados.length === 1 ? '1 contato apagado' : `${r.apagados.length} contatos apagados`}
+      tone={incompleto ? 'warning' : 'success'} icon={incompleto ? TriangleAlert : CheckCircle2} role="status"
+      title={r.apagados.length === 0 ? 'Nenhum contato apagado'
+        : r.apagados.length === 1 ? '1 contato apagado' : `${r.apagados.length} contatos apagados`}
     >
       <p className={styles.paragrafo}>
         {r.mensagens_apagadas === 1 ? '1 mensagem do bot apagada' : `${r.mensagens_apagadas} mensagens do bot apagadas`} no Telegram.

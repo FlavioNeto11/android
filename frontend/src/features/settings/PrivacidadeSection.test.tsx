@@ -209,7 +209,7 @@ describe('Exclusão a pedido do titular', () => {
     await click(byRole('button', /Excluir selecionados/, container));
     const dialogo = await waitFor(() => byRole('dialog', /Apagar definitivamente\?/));
     await click(byRole('button', /^Apagar definitivamente$/, dialogo));
-    const estado = await waitFor(() => byRole('status', /0 contatos apagados/, container));
+    const estado = await waitFor(() => byRole('status', /Nenhum contato apagado/, container));
     const t = text(estado);
     expect(t).toContain('use o procedimento manual de docs/operacao.md');
     expect(t).toContain('nada foi apagado deste contato, tente de novo');
