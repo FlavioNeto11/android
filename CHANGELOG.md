@@ -25,15 +25,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   objetivo `waiting_user`. Antes ela ia a `completed_with_issues`, que é terminal. Execução só com `uncertain` segue
   `completed_with_issues`. Conjunto novo `RUN_SEM_TRABALHO` (terminais + o novo): grava `finished_at`, é o que a retomada
   reabre e o que o vencimento do 31.50 lê (prazo, lembrete, varredura e `vence_em`, sem mudança de comportamento).
-- Tabela de transições (`execution/domain/states.py`), cancelar (aceito), `_settle_run` e o corte por idade do
+- Tabela de transições (`execution/domain/states.py`), cancelar (aceito) e o corte por idade do
   `vitrine.objetivo_que_segura` com o estado novo.
 - Snapshot: a execução aguardando vem por 7 dias depois de `finished_at` (com o vencimento desligado nada a fecharia). A
   caixa de Pendências não depende do snapshot para isso: ela conta só `needs_input` (ADR-062).
 - Telegram: o desfecho diz "espera você no aparelho" e conta os objetivos esperando um gesto; `TERMINAIS` da entrada
   inclui o estado novo (o desfecho é a única linha, 28.36).
 - Pedidos: a ocorrência fecha como fechava com o `completed_with_issues`, para o domínio da Canais não mudar agora.
-- Aprendizado: lê o estado novo como lia o `completed_with_issues` de antes (o digest roda uma vez, no assentamento):
-  o que ele vê é igual ao de hoje.
+- Aprendizado: nenhum digest enquanto a execução espera (`_settle_run` não a assenta; fora do `ASSENTADAS` e dos
+  conjuntos finais). Toda saída do estado passa por `Repository.set_run_status`, onde o 30.69 (PR empilhado da
+  Aprendizado) liga o digest. Os dois PRs entram juntos.
 - Painel: rótulo "Aguardando você", grupo "Pede atenção"; Cancelar e o aviso "precisam de você" voltam a valer nela;
   `isRunSemTrabalho` para repetir, relatório, custo e recarga do detalhe.
 - Migração de dados com número provisório (999, renomeada no corte): 0 linhas no central em 05/10. Adendo do contrato

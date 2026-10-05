@@ -51,8 +51,7 @@ class Desfecho(StrEnum):
 _DO_OBJETIVO: Mapping[str, Desfecho] = {"succeeded": Desfecho.SUCESSO, "failed": Desfecho.FALHA,
                                         "uncertain": Desfecho.FALHA}
 _DA_EXECUCAO: Mapping[str, Desfecho] = {"completed": Desfecho.SUCESSO, "failed": Desfecho.FALHA,
-                                        "completed_with_issues": Desfecho.FALHA,
-                                        "awaiting_person": Desfecho.FALHA}      # 29.93: não é sucesso comprovado
+                                        "completed_with_issues": Desfecho.FALHA}
 
 
 def desfecho(status: str, *, da_execucao: bool) -> Desfecho:

@@ -41,9 +41,7 @@ from app.util import now, parse_iso
 #: de fora de propósito.
 MINERADORES = ("licoes.contraste", "licoes.plano")
 #: O estado terminal da execução (os mesmos que o escalonador usa para assentar).
-# 29.93: `awaiting_person` é o `completed_with_issues` de antes com objetivo esperando a pessoa; o digest roda uma vez,
-# quando a execução assenta, então o aprendizado a lê do mesmo jeito.
-TERMINAIS = ("completed", "completed_with_issues", "failed", "cancelled", "awaiting_person")
+TERMINAIS = ("completed", "completed_with_issues", "failed", "cancelled")
 
 
 class BancoDiferenteDoCodigo(RuntimeError):

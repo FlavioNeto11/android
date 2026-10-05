@@ -662,9 +662,8 @@ def _ultimo_motivo(evidencias: Sequence[Evidencia]) -> str:
 
 # ------------------------------------------------------------------ habilidades: o escritor real de 043
 #: Desfecho da execução → resultado do caso. Cancelada não é veredito sobre a versão.
-#: 29.93: `awaiting_person` (objetivo esperando a pessoa) é incerto como o `completed_with_issues` que ele substitui.
 _DESFECHO: Mapping[str, Outcome] = {"completed": Outcome.PASSED, "completed_with_issues": Outcome.UNCERTAIN,
-                                    "awaiting_person": Outcome.UNCERTAIN, "failed": Outcome.FAILED}
+                                    "failed": Outcome.FAILED}
 
 
 class ValidacaoPorExecucao:

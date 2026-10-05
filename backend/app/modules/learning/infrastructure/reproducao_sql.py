@@ -20,7 +20,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from app.db import Database, Row
-from app.models import RUN_SEM_TRABALHO
+from app.models import RUN_TERMINAL
 from app.modules.learning.application.evidencia_da_receita import ReproducaoDaReceita
 from app.modules.learning.domain.vocabulario import Posicao
 from app.modules.learning.infrastructure import linhas
@@ -78,8 +78,7 @@ class ReproducoesSql:
         return agrupar(self._db.query(_ETAPAS + " AND s.run_id = ?" + _ORDEM, (run_id,)))
 
     def faltantes(self) -> list[ReproducaoDaReceita]:
-        # 29.93: com `awaiting_person`, que antes era `completed_with_issues` e entrava aqui do mesmo jeito.
-        terminais = tuple(sorted(str(x.value) for x in RUN_SEM_TRABALHO))
+        terminais = tuple(sorted(str(x.value) for x in RUN_TERMINAL))
         achadas = agrupar(self._db.query(
             _ETAPAS + f" AND r.status IN ({linhas.marcas(len(terminais))})" + _SEM_LINHA + _ORDEM, terminais))
         # as mais novas primeiro, sem data por último: é com elas que o passo gasta a folga da retenção

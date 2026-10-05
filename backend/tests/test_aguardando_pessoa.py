@@ -7,8 +7,8 @@ terminal e grava `finished_at` (o fim do trabalho automático, de onde o vencime
 
 Decisões da orquestradora (05/10): só `waiting_user` leva ao estado novo; execução só com `uncertain` segue
 `completed_with_issues`. O snapshot traz `awaiting_person` por 7 dias depois de `finished_at` (com o vencimento
-desligado nada a fecharia). O aprendizado a lê como lia o `completed_with_issues` de antes (o digest roda uma vez, no
-assentamento). A ocorrência de pedido fecha igual (o domínio da Canais não muda neste item).
+desligado nada a fecharia). Nenhum digest do aprendizado enquanto ela espera: ele roda na saída do estado (30.69, PR
+empilhado da Aprendizado). A ocorrência de pedido fecha como antes (o domínio da Canais não muda neste item).
 
 Diferença para `needs_input` (condição C): `needs_input` é a pergunta ANTES de agir (o plano não rodou); `awaiting_person`
 é o objetivo parado esperando um gesto depois de agir. Nenhum consumidor do `needs_input` pega o estado novo.
@@ -213,18 +213,43 @@ def test_a_ocorrencia_do_pedido_fecha_como_o_completed_with_issues_de_antes() ->
     assert isinstance(depois, Fechamento) and depois == antes
 
 
-# ------------------------------------------------------------------ aprendizado: paridade
-async def test_o_digest_da_execucao_aguardando_e_o_mesmo_do_completed_with_issues_de_antes(harness: Harness) -> None:
-    """O digest roda uma vez, no assentamento: com o estado novo fora dos conjuntos finais, a execução que o vencimento
-    fecha depois nunca seria digerida. A mesma execução produz o mesmo digest antes (como `completed_with_issues`) e
-    depois (como `awaiting_person`)."""
+# ------------------------------------------------------------------ aprendizado: nada de digest enquanto espera (30.69)
+async def test_a_execucao_aguardando_nao_assenta_e_nao_e_digerida_enquanto_espera(harness: Harness) -> None:
+    """O digest roda no assentamento (`Scheduler._settle_run` → `on_run_settled`). `awaiting_person` não assenta: o
+    aprendizado digere na SAÍDA do estado (30.69, o gancho em `Repository.set_run_status`, num PR empilhado)."""
     st = harness.state
     assert st is not None
-    st.scheduler.on_run_settled = None                    # o digest automático sairia em thread, no meio da comparação
-    agora_aguardando = await _esperando_login(harness, "android-01")
-    como_antes = await _esperando_login(harness, "android-02")
-    assert _status_da_execucao(harness, agora_aguardando) == _status_da_execucao(harness, como_antes) == "awaiting_person"
-    st.db.execute("UPDATE runs SET status='completed_with_issues' WHERE id=?", (como_antes,))
-    novo, velho = st.learning.digerir_execucao(agora_aguardando), st.learning.digerir_execucao(como_antes)
-    assert not novo.pulado and not novo.falhas
-    assert novo.feito == velho.feito
+    assentadas: list[str] = []
+    st.scheduler.on_run_settled = assentadas.append
+    run_id = await _esperando_login(harness)
+    assert _status_da_execucao(harness, run_id) == "awaiting_person"
+    assert run_id not in assentadas
+
+
+async def test_toda_saida_da_execucao_aguardando_passa_por_set_run_status(harness: Harness,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    """O ponto único onde o 30.69 liga o digest: o vencimento (31.50) e o cancelamento saem de `awaiting_person` por
+    `Repository.set_run_status`, que lê o estado anterior. Nenhum `UPDATE runs SET status` fora dele no código."""
+    st = harness.state
+    assert st is not None
+    saidas: list[tuple[str, str]] = []
+    original = st.repo.set_run_status
+
+    def espiao(run_id: str, status: RunStatus, *args: Any, **kwargs: Any) -> bool:
+        anterior = str(st.repo.run_row(run_id)["status"])
+        if anterior == "awaiting_person":
+            saidas.append((run_id, str(status.value)))
+        return original(run_id, status, *args, **kwargs)
+
+    monkeypatch.setattr(st.repo, "set_run_status", espiao)
+    vence = await _esperando_login(harness, "android-01")
+    oid = str(st.db.scalar("SELECT id FROM objectives WHERE run_id=?", (vence,)))
+    velho = to_iso(now() - timedelta(hours=30))
+    st.db.execute("UPDATE objectives SET finished_at=? WHERE id=?", (velho, oid))
+    st.db.execute("UPDATE runs SET finished_at=? WHERE id=?", (velho, vence))
+    ligado_ha_muito(harness)
+    assert st.runs.vencer_objetivos_parados(now()) == [oid]
+    cancela = await _esperando_login(harness, "android-02")
+    st.runs.cancel(cancela, por="operador-teste")
+    assert (vence, "completed_with_issues") in saidas
+    assert (cancela, "cancelling") in saidas

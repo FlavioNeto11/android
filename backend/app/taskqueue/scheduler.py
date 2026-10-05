@@ -1365,11 +1365,11 @@ class Scheduler:
             self.wake()
 
     def _settle_run(self, run_id: str) -> None:
-        """Execução terminou: solta o que era guardado só por causa dela. `awaiting_person` (29.93) também: o trabalho
-        automático acabou como no `completed_with_issues` de antes, e a retomada de um item reabre a execução."""
+        """Execução terminou: solta o que era guardado só por causa dela. `awaiting_person` (29.93) não assenta: nenhum
+        digest enquanto a execução espera a pessoa; o aprendizado digere na saída do estado (30.69)."""
         run = self.repo.run_row(run_id)
         terminais = (RunStatus.completed.value, RunStatus.completed_with_issues.value, RunStatus.failed.value,
-                     RunStatus.cancelled.value, RunStatus.awaiting_person.value)
+                     RunStatus.cancelled.value)
         if run is None or run["status"] not in terminais:
             return
         self._pathfinders.pop(run_id, None)

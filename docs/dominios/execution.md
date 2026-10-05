@@ -1223,8 +1223,9 @@ Contexto: design §2.4; decisão: [ADR-038](../decisoes.md#adr-038--máquinas-de
 - **`awaiting_person` (29.93):** o trabalho automático acabou e um objetivo espera um gesto da pessoa (`waiting_user`).
   Não é terminal, mas está em `RUN_SEM_TRABALHO` (`app/models.py`): grava `finished_at`, é de onde o vencimento do 31.50
   conta e é o que a retomada reabre. Só `waiting_user` leva a ele; execução só com `uncertain` segue
-  `completed_with_issues`. O aprendizado e o fechamento de pedido o leem como o `completed_with_issues` de antes; o
-  snapshot o traz por 7 dias depois de `finished_at`. Diferente de `needs_input`, a pergunta antes de agir.
+  `completed_with_issues`. Não assenta (nenhum digest enquanto espera; o 30.69 digere na saída, em
+  `Repository.set_run_status`); o fechamento de pedido o lê como o `completed_with_issues` de antes; o snapshot o traz
+  por 7 dias depois de `finished_at`. Diferente de `needs_input`, a pergunta antes de agir.
 - **Reabertura registrada como é:** `completed_with_issues → running, paused, completed, cancelling` e
   `cancelled → running, paused` (`recompute_run` reabre quando um item é retomado). É a reabertura que o design §2.4
   aponta; ela entra na tabela para ser revista no passo "impor", não aprovada.
