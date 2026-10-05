@@ -914,8 +914,9 @@ async def update_recipe(request: Request, recipe_id: int, patch: dict[str, Any])
         mudar_status_legado(request, LivroKind.RECEITA, str(recipe_id), patch["status"],
                             reason="reativada na lista de receitas do painel" if patch["status"] == "active"
                             else "posta em quarentena na lista de receitas do painel")
-        # O que a rota sempre fez, e não é status: a pessoa que mexe na receita zera a sequência de falhas.
-        s.db.execute("UPDATE recipes SET consecutive_fail=0 WHERE id=?", (recipe_id,))
+        # O que a rota sempre fez, e não é status: a pessoa que mexe na receita zera a sequência de falhas (e, desde o
+        # 30.80, a de "não se aplicou").
+        s.db.execute("UPDATE recipes SET consecutive_fail=0, nao_aplicavel_seguidas=0 WHERE id=?", (recipe_id,))
     return {"id": recipe_id, "status": patch["status"]}
 
 

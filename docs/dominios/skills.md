@@ -219,7 +219,8 @@ o `AppState.skill_planner` (`infrastructure/run_planning.py::SkillRunPlanner`), 
 - **Entre várias publicadas que casam** (`SqlSkillRepository.candidates`), só as da força mais alta são candidatas
   (`matching.py::specificity`: mais texto fixo, depois menos buracos), em ordem de `skill_id`. O empate não se
   decide mais pelo id: vira pergunta, a menos que os tipos o desfaçam.
-  - O fluxo ordena por `uses DESC`. A skill não tem contador de uso, e por isso a resposta não muda com o tempo.
+  - O fluxo (`FlowStore.match`, 31.89 F1) usa a MESMA `specificity` (importada de `matching.py`): especificidade desc, depois `uses` desc, depois `created_at`. "curtir o post de {p}" vence "curtir {x}" mesmo com menos usos; o empate de tudo segue como antes (não pergunta). A skill não tem contador de uso, e por isso a resposta não muda com o tempo.
+  - `_sub_values` (o valor de exemplo vira `{nome}` no plano aprendido, 31.89 F6) troca só o valor inteiro, com fronteira de palavra: "Ana" não mexe em "Banana"; valor que começa ou termina em símbolo ("@fulano") segue sendo trocado.
 - Uma publicada adulterada **entre as devolvidas** é recusa (`ContentTampered`), inclusive no empate
   (`backend/tests/test_intencao_resolucao.py::test_adulterada_entre_as_empatadas_e_recusa`). O registro não pula para
   a próxima: executar outra coisa em silêncio seria pior. A que perderia pela força nem é lida.

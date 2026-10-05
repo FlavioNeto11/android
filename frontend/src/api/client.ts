@@ -744,8 +744,11 @@ export const api = {
   listTraining: (instanceId?: string) =>
     request<TrainingSession[]>('GET', '/training', { query: { instance_id: instanceId } }),
   getTraining: (id: string) => request<TrainingSession>('GET', `/training/${enc(id)}`),
-  stopTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/stop`),
-  discardTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/discard`),
+  // O `lease_id` vai quando a aba tem um (31.92: o backend passa a exigi-lo para encerrar gravação viva); sem lease, o corpo não vai.
+  stopTraining: (id: string, leaseId?: string | null) =>
+    request<TrainingSession>('POST', `/training/${enc(id)}/stop`, leaseId ? { body: { lease_id: leaseId } } : {}),
+  discardTraining: (id: string, leaseId?: string | null) =>
+    request<TrainingSession>('POST', `/training/${enc(id)}/discard`, leaseId ? { body: { lease_id: leaseId } } : {}),
   proposeTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/propose`),
   saveTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[] }) =>
     request<TrainingSaveResult>('POST', `/training/${enc(id)}/save`, { body }),

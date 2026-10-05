@@ -19,6 +19,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from ..taskqueue.flows import PLACEHOLDER
 from .provider import AIError, validar_saida
 
 TRAINER_SYSTEM = """Você observa uma pessoa ensinando uma tarefa num celular Android e transforma a gravação numa
@@ -117,13 +118,17 @@ def linha_da_entrada(e: dict[str, Any]) -> str:
     if e.get("screen_title"):
         partes.append(f"tela=\"{e['screen_title']}\"")
     alvo = e.get("target") or {}
-    if alvo:
+    if e["type"] in ("tap", "long_press") and e.get("sensitive") and e.get("x") is None and not alvo:
+        # 31.94: tecla de PIN ou tela sensível: o gravador não guardou nem o elemento nem a coordenada
+        partes.append("toque em teclado ou tela sensível (não gravado)")
+    elif alvo:
         rid = (alvo.get("resource_id") or "").rsplit("/", 1)[-1]
         el = ", ".join(x for x in (f"id={rid}" if rid else "", f"texto=\"{alvo.get('text')}\"" if alvo.get("text") else "",
                                    f"desc=\"{alvo.get('desc')}\"" if alvo.get("desc") else "") if x)
         partes.append(f"elemento[{el or alvo.get('class_name', '?')}]")
     elif e["type"] in ("tap", "long_press"):
-        partes.append(f"ponto=({e.get('x')},{e.get('y')}) sem elemento identificado")
+        ponto = f"ponto=({e.get('x')},{e.get('y')}) " if e.get("x") is not None else ""
+        partes.append(f"{ponto}sem elemento identificado")
     if e["type"] == "swipe":
         dy = (e.get("y2") or 0) - (e.get("y") or 0)
         partes.append("rolou para baixo" if dy < 0 else "rolou para cima")
@@ -207,11 +212,15 @@ def normalizar_proposta(p: dict[str, Any], req: TrainingRequest) -> dict[str, An
         vistos.add(k)
         etapas.append({**s, "key": k, "inputs": sorted({int(i) for i in s.get("inputs") or [] if int(i) in existentes}),
                        "bindings": [b for b in s.get("bindings") or [] if b.get("name")]})
-    nomes = set(re.findall(r"\{([a-z][a-z0-9_]*)\}", p.get("command_template") or ""))
+    nomes = set(PLACEHOLDER.findall(p.get("command_template") or ""))      # o padrão do fluxo (aceita `_x`)
     parametros = [x for x in p.get("parameters") or [] if x.get("name") in nomes]
+    descartadas: dict[int, dict[str, object]] = {}
+    for d in p.get("discarded") or []:
+        if int(d.get("seq", -1)) in existentes:
+            descartadas.setdefault(int(d["seq"]), d)      # o modelo às vezes repete o descarte: fica o primeiro
     return {"summary": (p.get("summary") or req.intent)[:200], "command_template": (p.get("command_template") or req.intent).strip(),
             "parameters": parametros, "steps": etapas,
-            "discarded": [d for d in p.get("discarded") or [] if int(d.get("seq", -1)) in existentes],
+            "discarded": list(descartadas.values()),
             "questions": [q for q in p.get("questions") or [] if q][:8]}
 
 
