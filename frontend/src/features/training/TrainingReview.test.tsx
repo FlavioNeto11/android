@@ -596,6 +596,10 @@ it('31.90-F: alvoReconhecido cobre cada seletor, o alvo sem identificador e o qu
   expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/ok', unique: ['rid', 'text'], text: 'OK' } }))).toBe('reconhecido por id (ou texto), id ok');
   expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [] } }))).toBe('sem identificador único: este toque não vira receita');
   expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [], filhos: [{}] } }))).toBe('reconhecido pelo que o elemento contém');
+  // O contêiner sem identidade: a pessoa vê o filho rotulado (e o id) pelo qual a receita o acha, até três.
+  expect(alvoReconhecido(entrada({ target: { unique: [], filhos: [
+    { text: 'Fulano', resource_id: 'a:id/row_name', unique: ['text'] }, { desc: 'Foto', unique: ['desc'] }, { resource_id: 'a:id/so_id' }, { text: 'quarto' }] } })))
+    .toBe('reconhecido pelo que o elemento contém: “Fulano”, id row_name; “Foto”; id so_id');
   expect(alvoReconhecido(entrada({ target: null }))).toBeNull();                      // sem alvo: a frase é de toqueSemAlvo
   expect(alvoReconhecido(entrada({ type: 'text', target: { unique: ['text'], text: 'x' } }))).toBeNull();
 });

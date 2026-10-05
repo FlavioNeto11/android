@@ -1971,6 +1971,12 @@ export interface AppDetail {
 
 
 // ---------------------------------------------------------------- modo treinamento (itens 13.1–13.3)
+/** O alvo do toque (`recorder`): o elemento, e os filhos rotulados quando o contêiner não tem identidade própria. */
+export interface TrainingTarget {
+  text?: string; desc?: string; resource_id?: string; class_name?: string; unique?: string[];
+  filhos?: TrainingTarget[];
+}
+
 export interface TrainingInput {
   session_id: string;
   seq: number;
@@ -1984,7 +1990,7 @@ export interface TrainingInput {
   text_len: number | null;
   package: string | null;
   app_id: string | null;
-  target: { text?: string; desc?: string; resource_id?: string; class_name?: string; unique?: string[]; filhos?: unknown[] } | null;
+  target: TrainingTarget | null;
   screen_title: string | null;
   screen_lines: string[];
   sensitive: boolean;

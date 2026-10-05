@@ -105,7 +105,16 @@ export function alvoReconhecido(e: TrainingInput): string | null {
   if ((e.type !== 'tap' && e.type !== 'long_press') || !t || !Object.keys(t).length) return null;
   const como = (t.unique ?? []).map((u) => SELETOR[u] ?? u);
   const id = t.resource_id ? t.resource_id.split('/').pop() : '';
-  if (!como.length) return t.filhos?.length ? 'reconhecido pelo que o elemento contém' : 'sem identificador único: este toque não vira receita';
+  if (!como.length) {
+    if (!t.filhos?.length) return 'sem identificador único: este toque não vira receita';
+    // Contêiner sem identidade: a receita acha o elemento por um filho rotulado (até três gravados); a pessoa vê quais.
+    const filhos = t.filhos.slice(0, 3).map((f) => {
+      const rotulo = f.text || f.desc;
+      const fid = f.resource_id ? f.resource_id.split('/').pop() : '';
+      return [rotulo ? `“${rotulo}”` : '', fid ? `id ${fid}` : ''].filter(Boolean).join(', ');
+    }).filter(Boolean);
+    return `reconhecido pelo que o elemento contém${filhos.length ? `: ${filhos.join('; ')}` : ''}`;
+  }
   return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `, id ${id}` : ''}`;
 }
 
