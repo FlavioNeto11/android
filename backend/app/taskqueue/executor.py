@@ -2870,7 +2870,9 @@ class StepExecutor:
                 if (not faltam and not judged_step and not obs.sensitive
                         and self._postcondition_holds(step, obs, cartao, pacote=app.package)):
                     break              # ler não muda a tela: com tudo lido e a pós-condição valendo, só comprovar
-                releituras_iguais = releituras_iguais + 1 if repetida and not faltam and leitura else 0
+                # Com outra saída divergente, nem aviso nem verificação: o teto decide (C1), e nada se grava.
+                releituras_iguais = (releituras_iguais + 1 if repetida and not faltam and leitura and not divergentes
+                                     else 0)
                 if releituras_iguais >= 2:
                     # 31.78: a verificação julga a pós-condição como depois de um `step_done`; nada sai comprovado aqui.
                     repo.decision(f"{iid} · {step.title}: o ator releu '{args.name}' com o mesmo valor e todos os "

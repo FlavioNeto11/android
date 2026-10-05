@@ -57,8 +57,8 @@ def _catalogo(*saidas: str) -> None:
 
 
 def _ator(inner: Any, roteiro: list[str], visto: dict[str, Any]) -> None:
-    """O ator da etapa `ler`, em ciclo pelo `roteiro`: "0"/"7" relê a contagem com esse valor, "olhar" observa a tela,
-    "fim" conclui. Nunca conclui se o roteiro não tiver "fim"."""
+    """O ator da etapa `ler`, em ciclo pelo `roteiro`: "0"/"7" relê a contagem com esse valor, "outro:7" lê `outro` com
+    esse valor, "olhar" observa a tela, "fim" conclui. Nunca conclui se o roteiro não tiver "fim"."""
     decide0 = inner.decide
 
     async def decide(req: Any) -> Any:
@@ -73,9 +73,10 @@ def _ator(inner: Any, roteiro: list[str], visto: dict[str, Any]) -> None:
         if passo == "fim":
             return Decision(tool="step_done", args={"rationale": "pronto", "evidence": "contagem",
                                                     "delivery_level": None}), Usage()
-        alvo = next(e for e in req.screen.tree.elements if e.text == passo)
-        return Decision(tool="read_value", args={"rationale": "a contagem", "name": "contagem", "element_id": alvo.id,
-                                                 "value": None, "value_kind": "number"}), Usage()
+        nome, _, texto = passo.rpartition(":")
+        alvo = next(e for e in req.screen.tree.elements if e.text == texto)
+        return Decision(tool="read_value", args={"rationale": "a contagem", "name": nome or "contagem",
+                                                 "element_id": alvo.id, "value": None, "value_kind": "number"}), Usage()
 
     inner.decide = decide
 
@@ -206,6 +207,19 @@ async def test_leituras_divergentes_ate_o_teto_falham_sem_ir_ao_juiz(harness: Ha
     assert tipos == {"ia_chamada_invalida"}
     eventos = _eventos(harness, run.id)
     assert not any(RELEU in m or TETO_COM_TUDO_LIDO in m for m in eventos)
+
+
+async def test_saida_estavel_nao_leva_a_verificacao_com_outra_divergente(harness: Harness, contagem: None) -> None:
+    """Duas saídas: `outro` diverge (0, depois 7) e a contagem se repete. A repetição da contagem não vai à verificação
+    (gravaria o `outro` = 7, o último), nem avisa o ator; o teto falha como divergente e nada se grava."""
+    visto, run = await _rodar(harness, ["outro:0", "outro:7", "0", "0", "0", "0"], "contagem", "outro")
+    db = harness.state.db                                                     # type: ignore[union-attr]
+    assert harness.state.repo.run_row(run.id)["status"] != "completed"         # type: ignore[union-attr]
+    assert "verificacoes" not in visto and _avisos(visto) == []
+    assert db.scalar("SELECT COUNT(*) FROM step_outputs") == 0
+    detalhes = _detalhes(harness)
+    assert detalhes and all("leu valores divergentes de 'outro'" in d and "'contagem'" not in d for d in detalhes)
+    assert not any(RELEU in m for m in _eventos(harness, run.id))
 
 
 async def test_com_outra_saida_faltando_nao_vai_a_verificacao(harness: Harness, contagem: None) -> None:
