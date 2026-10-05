@@ -253,3 +253,19 @@ async def test_toda_saida_da_execucao_aguardando_passa_por_set_run_status(harnes
     st.runs.cancel(cancela, por="operador-teste")
     assert (vence, "completed_with_issues") in saidas
     assert (cancela, "cancelling") in saidas
+
+
+async def test_a_purga_de_eventos_poupa_a_execucao_aguardando(harness: Harness) -> None:
+    """A purga por idade (`log_retention_days`) poupava só execução com `finished_at` nulo; a aguardando tem
+    `finished_at` e segue aberta. A linha do tempo dela fica; a da execução que fechou de verdade sai, como antes."""
+    st = harness.state
+    assert st is not None
+    espera = await _esperando_login(harness, "android-01")
+    fechada = await _esperando_login(harness, "android-02")
+    st.runs.cancel(fechada, por="operador-teste")
+    await harness.wait_run(fechada, statuses=("cancelled",))
+    velho = to_iso(now() - timedelta(days=30))
+    st.db.execute("UPDATE events SET ts=? WHERE run_id IN (?, ?)", (velho, espera, fechada))
+    st.bus.purge_older_than(to_iso(now() - timedelta(days=14)))
+    assert st.db.scalar("SELECT COUNT(*) FROM events WHERE run_id=?", (espera,)) > 0
+    assert st.db.scalar("SELECT COUNT(*) FROM events WHERE run_id=?", (fechada,)) == 0

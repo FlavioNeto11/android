@@ -6221,6 +6221,8 @@ e quem lê o contrato a davam por encerrada, e a retomada do item a "reabria".
   `needs_input` (a expiração do 29.50/31.43, o lembrete da pergunta, a caixa de Pendências) pega o estado novo.
 - **`GET /snapshot`:** traz a execução `awaiting_person` enquanto `finished_at` tiver até 7 dias; mais velha, só entre as
   20 mais recentes (com o vencimento desligado nada a fecharia). As outras não terminais seguem sem corte.
+- **Purga de eventos por idade** (`log_retention_days`): a execução `awaiting_person` é poupada como aberta, embora
+  tenha `finished_at`.
 - **`run.updated`:** passa a dizer `awaiting_person` onde dizia `completed_with_issues`. O `objective.updated` não muda (o
   objetivo continua `waiting_user`).
 - **Cliente com `switch` exaustivo sobre `RunStatus`** precisa do caso novo (o painel é o único hoje: rótulo "Aguardando

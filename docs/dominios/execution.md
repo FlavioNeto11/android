@@ -1225,7 +1225,9 @@ Contexto: design §2.4; decisão: [ADR-038](../decisoes.md#adr-038--máquinas-de
   conta e é o que a retomada reabre. Só `waiting_user` leva a ele; execução só com `uncertain` segue
   `completed_with_issues`. Não assenta (nenhum digest enquanto espera; o 30.69 digere na saída, em
   `Repository.set_run_status`); o fechamento de pedido o lê como o `completed_with_issues` de antes; o snapshot o traz
-  por 7 dias depois de `finished_at`. Diferente de `needs_input`, a pergunta antes de agir.
+  por 7 dias depois de `finished_at`. A purga de eventos por idade a poupa como aberta, mesmo com `finished_at`; o
+  `recompute_run` a reafirma quando só o detalhe muda (como o `completed_with_issues`). Diferente de `needs_input`, a pergunta antes de
+  agir.
 - **Reabertura registrada como é:** `completed_with_issues → running, paused, completed, cancelling` e
   `cancelled → running, paused` (`recompute_run` reabre quando um item é retomado). É a reabertura que o design §2.4
   aponta; ela entra na tabela para ser revista no passo "impor", não aprovada.

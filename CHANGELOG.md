@@ -27,6 +27,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   reabre e o que o vencimento do 31.50 lê (prazo, lembrete, varredura e `vence_em`, sem mudança de comportamento).
 - Tabela de transições (`execution/domain/states.py`), cancelar (aceito) e o corte por idade do
   `vitrine.objetivo_que_segura` com o estado novo.
+- A purga de eventos por idade (`EventBus.purge_older_than`) poupa a execução aguardando: ela tem `finished_at` e
+  continua aberta.
 - Snapshot: a execução aguardando vem por 7 dias depois de `finished_at` (com o vencimento desligado nada a fecharia). A
   caixa de Pendências não depende do snapshot para isso: ela conta só `needs_input` (ADR-062).
 - Telegram: o desfecho diz "espera você no aparelho"; a contagem "esperando você" e o gesto são do 28.40. `TERMINAIS`
