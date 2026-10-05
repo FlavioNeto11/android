@@ -21,6 +21,11 @@ from app.taskqueue import scheduler as modulo_scheduler
 from .conftest import Harness
 from .fake_device import LAUNCHER, PKG
 
+#: Uma tela qualquer, sem verificação: com ela lida, o HOME pode sair.
+_ARVORE_COMUM = parse_hierarchy(
+    '<hierarchy rotation="0"><node index="0" text="Página" resource-id="" class="android.widget.TextView" package="p" '
+    'content-desc="" bounds="[0,0][720,100]" /></hierarchy>')
+
 
 async def test_o_navegador_na_frente_volta_a_tela_inicial(harness: Harness) -> None:
     st = harness.state
@@ -29,6 +34,7 @@ async def test_o_navegador_na_frente_volta_a_tela_inicial(harness: Harness) -> N
     falso = harness.fakes.get(rt.id)
     assert falso is not None
     falso.screen, falso.foreground = "home", PKG
+    rt.last_tree = _ARVORE_COMUM
     assert await st.devices.tirar_da_frente(rt, {PKG}) == PKG
     assert falso.current_focus()[0] == LAUNCHER
 
@@ -40,6 +46,7 @@ async def test_outro_app_na_frente_fica_como_esta(harness: Harness) -> None:
     falso = harness.fakes.get(rt.id)
     assert falso is not None
     falso.screen, falso.foreground = "home", PKG
+    rt.last_tree = _ARVORE_COMUM
     assert await st.devices.tirar_da_frente(rt, {"com.android.chrome"}) is None
     assert falso.current_focus()[0] == PKG
 
@@ -142,3 +149,13 @@ def _no_navegador(harness: Harness, rt: Any) -> Any:
     assert falso is not None
     falso.screen, falso.foreground = "home", PKG
     return falso
+
+async def test_sem_arvore_lida_nao_recebe_home(harness: Harness) -> None:
+    """V1 da leitura do #368: sem nenhuma leitura da tela, nada toca no aparelho, nem HOME."""
+    st = harness.state
+    assert st is not None
+    rt = st.devices.get("android-01")
+    falso = _no_navegador(harness, rt)
+    rt.last_tree = None
+    assert await st.devices.tirar_da_frente(rt, {PKG}) is None
+    assert falso.current_focus()[0] == PKG

@@ -4329,7 +4329,8 @@ class DeviceManager:
             return None
         # H2: com a tela de verificação ou desafio na frente nada toca, nem HOME (ADR-055: quem ouve "travada" sai sem
         # tocar, teclar nem reabrir). A última árvore lida é a que a execução viu por último.
-        if rt.last_tree is not None and detectar_conta_travada(rt.last_tree) is not None:
+        # V1 da leitura do #368: sem árvore nenhuma, também nada: sem ler a tela não se toca no aparelho.
+        if rt.last_tree is None or detectar_conta_travada(rt.last_tree) is not None:
             return None
         if self.io_factory is not None:
             foco, tecla = getattr(rt.io, "current_focus", None), getattr(rt.io, "press_key", None)
