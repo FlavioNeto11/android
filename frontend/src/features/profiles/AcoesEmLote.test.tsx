@@ -235,6 +235,28 @@ describe('ações em lote', () => {
     expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-9$/)).toHaveLength(0);   // já estava sem grupo
   });
 
+  // 29.141 (achado 5 da volta da 38): todas sem conta dariam "0 ok"; o botão nem começa, e o texto não fala de "outras".
+  it('grupo de acesso com todas as selecionadas sem conta: "Pôr no grupo" travado com o motivo, sem requisição', async () => {
+    rotas();
+    backend.on('GET', /^\/api\/personas$/, () => json([MARIANA, HELENA]));
+    await render();
+    await waitFor(() => text().includes('Helena Prado'));
+    await selecionar('Helena Prado');
+    await click(byRole('button', /Grupo de acesso/, barra()));
+    const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
+    await waitFor(() => text(dialogo).includes('1 selecionada não tem conta'));
+    expect(text(dialogo)).not.toContain('as outras entram no grupo');
+    const por = byRole('button', /Pôr no grupo Cautelosos/, dialogo);
+    expect(por.getAttribute('aria-disabled')).toBe('true');
+    expect(por.getAttribute('aria-label') ?? por.textContent).toContain('Nenhuma das selecionadas tem conta');
+    await click(por);
+    expect(backend.callsTo('PATCH', /\/instagram\/profiles\//)).toHaveLength(0);
+
+    // Tirar do grupo continua livre para quem não tem conta.
+    await setValue(byRole('combobox', /^Grupo/, dialogo) as HTMLSelectElement, '');
+    expect(byRole('button', /Tirar do grupo/, dialogo).getAttribute('aria-disabled')).toBeNull();
+  });
+
   // 29.114: com o "Terminado" na tela antes de a lista se reler, quem fechava e reabria o lote decidia pela lista
   // velha: "já estava sem grupo", ok e sem PATCH, com a persona ainda no grupo.
   it('o resumo só aparece depois de a lista se reler; até lá o diálogo não fecha', async () => {
