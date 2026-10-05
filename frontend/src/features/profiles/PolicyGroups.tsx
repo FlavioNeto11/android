@@ -180,6 +180,17 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
   // chegasse depois, por cima de B; e salvar nesse meio criava o grupo sem a escolha.
   const leituraDoPerfil = useRef(0);
   const [lendoPerfil, setLendoPerfil] = useState(false);
+  // A dica só aparece se a leitura demorar: a comum leva ~40 ms, e uma linha que surge e some empurraria o formulário
+  // duas vezes a cada escolha (M1 da leitura do #398). A trava continua imediata.
+  const [dicaDaLeitura, setDicaDaLeitura] = useState(false);
+  useEffect(() => {
+    if (!lendoPerfil) {
+      setDicaDaLeitura(false);
+      return undefined;
+    }
+    const espera = setTimeout(() => setDicaDaLeitura(true), DICA_DA_LEITURA_MS);
+    return () => clearTimeout(espera);
+  }, [lendoPerfil]);
   const [pacoteEscolhido, setPacoteEscolhido] = useState<string | null>(null);
   const { acoes, apps, pacoteEfetivo, pronto } = useAcoesDoApp(pacoteEscolhido);
   const chave = pacoteEfetivo ?? '';
@@ -325,7 +336,7 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
           </Field>
           {grupo === null ? (
             <Field label="Começar a partir de" unit="opcional"
-                   hint={lendoPerfil ? 'Lendo o acesso de hoje da persona; salvar e editar esperam a resposta.' : undefined}>
+                   hint={dicaDaLeitura ? 'Lendo o acesso de hoje da persona; salvar e editar esperam a resposta.' : undefined}>
               {({ id }) => (
                 <Select id={id} defaultValue="" disabled={!pronto} onChange={(e) => void partirDe(e.target.value)}>
                   <option value="">Padrão do catálogo</option>
@@ -414,5 +425,8 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
     </Dialog>
   );
 }
+
+/** Quanto a leitura do "começar a partir de" espera antes de mostrar a dica (M1 da leitura do #398). */
+const DICA_DA_LEITURA_MS = 300;
 
 const RANK: Record<PolicyName, number> = { disabled: 0, manual_only: 1, approval_required: 2, autonomous: 3 };

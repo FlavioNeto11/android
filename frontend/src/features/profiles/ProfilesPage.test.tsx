@@ -908,9 +908,14 @@ describe('grupos de acesso', () => {
     const partir = await abrirNovoGrupo();
     await setValue(partir, 'ig-1');
     await waitFor(() => expect(backend.callsTo('GET', /ig-1\/policy$/)).toHaveLength(1));
-    expect(criarTravado()).toBe(true);
-    expect(text()).toContain('Lendo o acesso de hoje da persona');           // N1: a trava diz por quê
+    expect(criarTravado()).toBe(true);                                    // a trava é imediata
+    // M1: a dica não pisca numa leitura comum (~40 ms); só aparece se a leitura demorar (N1: a trava diz por quê).
+    expect(text()).not.toContain('Lendo o acesso de hoje da persona');
+    await flush(100);
+    expect(text()).not.toContain('Lendo o acesso de hoje da persona');
+    await waitFor(() => text().includes('Lendo o acesso de hoje da persona'));
     await setValue(partir, '');
+    expect(text()).not.toContain('Lendo o acesso de hoje da persona');
     expect(criarTravado()).toBe(false);
     await act(async () => { soltarA(); });
     await flush(30);
