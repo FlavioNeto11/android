@@ -65,7 +65,6 @@ from ...models import SessionStatus
 from ...modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
                                                            emit_needs_person_change, motivo_do_login_parado)
 from ...security.sensitive_input import SensitiveInputError, SensitiveInputUnavailable
-from ...metricas import metricas
 from ...shared.vinculos import tem_vinculo_ativo
 from ...util import now, now_iso, parse_iso
 from . import formulario as geometria
@@ -722,11 +721,6 @@ class SessaoDeclarada:
                                                     f"{check.detail}; o app saiu da frente durante a leitura")
             self._app_voltou_a_frente(rt)
             if check.matches:
-                if self.repo.unknown_no_teto(self._sessao(conta, rt.id), rt.id):
-                    # 29.92: a parada no teto se resolveu. Por qual chamada: a releitura só de observação (sem
-                    # ninguém tocar) responde se vale uma rodada automática só de observar, sem login.
-                    metricas.contar("sessao.parada_resolvida", instancia=rt.id,
-                                    via="observacao" if observe_only else ("automatica" if automatic else "pessoa"))
                 self._save(conta, rt.id, SessionStatus.session_ready, observed=check.observed,
                            verified_at=now_iso(), detail=check.detail)
                 self._reconciliar_revisao(conta, rt.id)

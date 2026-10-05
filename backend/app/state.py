@@ -1261,7 +1261,9 @@ class AppState:
 
         async def reobservar_todas() -> None:
             for provedor, pid, conta_id in pendentes:
-                await provedor.ensure_session(rt, pid, account_id=conta_id, observe_only=True)
+                await self._medindo_a_parada(
+                    "pessoa_devolveu", rt.id, pid, conta_id,
+                    lambda p=provedor, i=pid, c=conta_id: p.ensure_session(rt, i, account_id=c, observe_only=True))
 
         self.scheduler.run_device_job(rt, reobservar_todas, label="reobservação após devolver o controle")
 
@@ -1513,10 +1515,28 @@ class AppState:
             # Marca ao começar, não ao pedir: se o aparelho estiver ocupado, `run_device_job` recusa o trabalho e a
             # releitura continua devida no próximo tick.
             self._releituras_do_teto[chave] = now_iso()
-            await provedor.ensure_session(rt, profile_id, account_id=conta_id, observe_only=True)
+            await self._medindo_a_parada("releitura_sem_toque", rt.id, profile_id, conta_id,
+                                         lambda: provedor.ensure_session(rt, profile_id, account_id=conta_id,
+                                                                         observe_only=True))
 
         return ("a tela não reconhecida foi registrada antes de o aparelho entrar no ar (ou passou da validade); o "
                 "aparelho vai ser relido antes da tarefa"), reler
+
+    async def _medindo_a_parada(self, via: str, instance_id: str, profile_id: str, conta_id: str | None,
+                                chamada: Callable[[], Awaitable[object]]) -> None:
+        """29.92: roda a releitura e, se ela tirou do teto uma sessão parada (`unknown` no teto deste aparelho) para
+        `session_ready`, conta `sessao.parada_resolvida{via}`. `releitura_sem_toque`: ninguém tocou no aparelho (a
+        releitura única do teto); `pessoa_devolveu`: a pessoa assumiu e devolveu o controle. É o que decide se vale
+        uma rodada automática só de observar, sem login."""
+        def sessao() -> Row | None:
+            return (self.social_repo.account_session_row(profile_id, conta_id, instance_id)
+                    if conta_id is not None else None)
+
+        parada = self.social_repo.unknown_no_teto(sessao(), instance_id)
+        await chamada()
+        depois = sessao()
+        if parada and depois is not None and depois["status"] == SessionStatus.session_ready.value:
+            metricas.contar("sessao.parada_resolvida", instancia=instance_id, via=via)
 
     def _entrada_no_ar(self, rt: DeviceRuntime) -> str | None:
         """Quando o aparelho entrou no ar pela última vez, em ISO: o mais recente entre o início do processo do

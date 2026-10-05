@@ -461,8 +461,9 @@ async def test_outro_app_sem_verificacao_reabre_como_antes(harness: Harness) -> 
 
 @pytest.mark.asyncio
 async def test_parada_resolvida_na_releitura_conta_pela_via(harness: Harness) -> None:
-    """29.92: a parada no teto que se resolve na releitura só de observação é contada como `via=observacao` — o dado
-    que decide se vale uma rodada automática só de observar."""
+    """29.92: a parada no teto que uma releitura tira para `session_ready` conta em `sessao.parada_resolvida{via}`, pela
+    origem da releitura (o motor não a sabe: as duas são `observe_only`). `releitura_sem_toque` responde se vale uma
+    rodada automática só de observar; `pessoa_devolveu` não conta como "sozinha"."""
     from app.metricas import metricas
     s = _estado(harness)
     s.appium.log_masking_active = True
@@ -471,9 +472,13 @@ async def test_parada_resolvida_na_releitura_conta_pela_via(harness: Harness) ->
     await _motor(s, estranha).ensure_session(FakeRt(estranha, IID), pid, automatic=True)
     metricas.limpar()
     logado = FakeInstagram(account=USUARIO, screen="feed", stored_password=SENHA)
-    r = await _motor(s, logado).ensure_session(FakeRt(logado, IID), pid, observe_only=True)
-    assert r.outcome is Outcome.SESSION_READY, r.detail
-    assert metricas.valor("sessao.parada_resolvida", instancia=IID, via="observacao") == 1
+    conta_id = str(s.social_repo.session_row(pid, IID)["account_id"])  # type: ignore[index]
+    await s._medindo_a_parada("releitura_sem_toque", IID, pid, conta_id,
+                              lambda: _motor(s, logado).ensure_session(FakeRt(logado, IID), pid, observe_only=True))
+    assert metricas.valor("sessao.parada_resolvida", instancia=IID, via="releitura_sem_toque") == 1
+    await s._medindo_a_parada("pessoa_devolveu", IID, pid, conta_id,                # já resolvida: não conta de novo
+                              lambda: _motor(s, logado).ensure_session(FakeRt(logado, IID), pid, observe_only=True))
+    assert metricas.valor("sessao.parada_resolvida", instancia=IID, via="pessoa_devolveu") == 0
     assert metricas.valor("sessao.unknown_resolvida", instancia=IID, rodada_antes=1) == 1
     saidas = [e for e in _eventos_de_pessoa(s) if e.get("active") is False]
     assert len(saidas) == 1                                            # a saída da fila também sai uma vez
