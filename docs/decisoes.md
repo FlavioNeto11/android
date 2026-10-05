@@ -330,20 +330,13 @@ worker remoto"); commits da série `feat(loja)` de 18/09.
 ## ADR-009 — Desafio, 2FA, CAPTCHA e senha sempre pela pessoa
 
 **Data:** 17/09/2026, reafirmada 18/09/2026 · **Estado:** substituída em parte por ADR-025 (26/09): a senha que a
-pessoa fornece passa a ser digitada pela automação, com consentimento; desafio, 2FA e CAPTCHA continuam aqui.
+pessoa fornece passa a ser digitada pela automação, com consentimento.
 
 **Contexto.** Automatizar login completo (incluindo resolver checkpoint por e-mail/SMS ou digitar senha via IA)
-reduziria fricção operacional, mas cruza a linha entre "operar uma conta autorizada" e "burlar proteção da
-plataforma".
-
-**Alternativas.** Instalar cliente de e-mail nos aparelhos e ler o código de verificação automaticamente, ou digitar
-a senha por uma ferramenta do modelo — **pedido explicitamente pelo dono em 18/09 e recusado**: digitar senha de
-conta é linha dura; ler/inserir código de verificação é bypass de challenge/2FA, proibido pelas regras do próprio
-projeto e as do agente.
+reduziria fricção operacional.
 
 **Escolha.** Um `SensitiveInputChannel` dedicado, em memória, do cofre direto ao driver — nunca pelo caminho normal
-de digitação (não fica no histórico de ações, nunca chega ao LLM). Desafio, 2FA e CAPTCHA sempre resolvidos pela
-pessoa na janela do emulador; a senha só entra pelo portal, nunca é lida nem escrita pelo agente de IA.
+de digitação (não fica no histórico de ações, nunca chega ao LLM). A senha só entra pelo portal, nunca é lida nem escrita pelo agente de IA.
 
 **Consequências.** O login completo de um perfil é sequencial, nunca em lote: 8 logins reais em paralelo fariam o
 Instagram sinalizar todas as contas de uma vez, e cada conta bate no mesmo checkpoint por e-mail no primeiro login.

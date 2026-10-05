@@ -324,8 +324,7 @@ aparelho como *não verificada*. Isso significa **observar antes de pedir a senh
 o login, a verificação termina sozinha sem digitar nada. Memória, histórico, persona e vínculo são do perfil e não
 são tocados por instalação nenhuma.
 
-Três coisas que o sistema **não** faz, de propósito: não contorna CAPTCHA, 2FA nem desafio de segurança (isso vira
-`AUTH_CHALLENGE` e espera uma pessoa); não baixa APK de lugar nenhum; e não repete efeito externo por timeout —
+Duas coisas que o sistema **não** faz, de propósito: Não baixa APK de lugar nenhum; e não repete efeito externo por timeout —
 ele observa a tela e reconcilia. Automatizar conta de Instagram contraria os termos da plataforma e pode levar a
 bloqueio: os limites por perfil existem para reduzir risco, não para contorná-los.
 
