@@ -73,8 +73,8 @@ if ($antes) {
 # ------------------------------------------------------------------ 1. cópia, ANTES de qualquer coisa
 # Teto de 10 cópias de deploy (29.38): eram 161 cópias e 23 GB em 04/10, com dez deploys num dia.
 $tetoDeCopias = 10
-$minutosDoEnsaio = 60
 # >>> portão do -PularBackup (29.94: `scripts/tests/test_deploy_portao_do_ensaio.py` roda este trecho de verdade)
+$minutosDoEnsaio = 60
 if ($PularBackup -and -not $Ensaio) {
   # Subida sem cópia própria só logo depois de um `-Ensaio` da MESMA árvore: a cópia dele é a cópia desta subida.
   # Sem esse ensaio, recusa antes de parar qualquer coisa.

@@ -40,6 +40,13 @@ def _trecho_do_portao() -> tuple[str, str]:
     return param.group(0), texto[ini:fim]
 
 
+def _minutos_do_ensaio() -> int:
+    """O prazo do ensaio como está no deploy, de dentro dos marcadores: mudou o número lá, o teste acompanha."""
+    m = re.search(r"(?m)^\$minutosDoEnsaio = (\d+)\s*$", _trecho_do_portao()[1])
+    assert m, "o `$minutosDoEnsaio = N` tem de ficar DENTRO dos marcadores do portão"
+    return int(m.group(1))
+
+
 def _arvore_falsa(tmp: Path, copias: dict[str, dict[str, str]]) -> Path:
     """`<tmp>/scripts/portao.ps1` com o trecho do deploy, a biblioteca de verdade e as cópias pedidas em
     `<tmp>/data/backups`. O `$root` do trecho é `<tmp>`, como no deploy (`Split-Path -Parent $PSScriptRoot`)."""
@@ -57,8 +64,7 @@ def _arvore_falsa(tmp: Path, copias: dict[str, dict[str, str]]) -> Path:
         "$PSStyle.OutputRendering = 'PlainText'",
         "$root = Split-Path -Parent $PSScriptRoot",
         "$esperadoCommit = $env:COMMIT_DO_TESTE",
-        "$minutosDoEnsaio = 60",
-        trecho,
+        trecho,                                # o `$minutosDoEnsaio` vem dele, como no deploy
         # O que vem depois do portão no deploy decide pelo switch: ele tem de continuar sendo o que se passou.
         "Write-Host \"Ensaio=$([bool]$Ensaio) PularBackup=$([bool]$PularBackup)\"",
     ])
@@ -94,7 +100,7 @@ def test_pular_backup_sem_ensaio_do_mesmo_commit_recusa_com_a_mensagem(tmp_path:
     assert r.returncode != 0
     # O erro do pwsh vem com moldura ("Line | 12 | ...") que parte a mensagem: junta tudo antes de procurar.
     saida = re.sub(r"\s+", " ", re.sub(r"\s*\n\s*(?:\d+\s*)?\|\s*", " ", r.stdout + r.stderr))
-    assert "-PularBackup só vale até 60 min" in saida and "abc123" in saida
+    assert f"-PularBackup só vale até {_minutos_do_ensaio()} min" in saida and "abc123" in saida
     assert "SwitchParameter" not in saida
 
 
@@ -113,18 +119,28 @@ Get-ChildItem -Path $Raiz -Recurse -Filter *.ps1 | ForEach-Object {
   $erros = $null; $tokens = $null
   $ast = [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$erros)
   if (-not $ast.ParamBlock) { return }
-  $params = @($ast.ParamBlock.Parameters | ForEach-Object { $_.Name.VariablePath.UserPath })
-  $atribs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true)
-  foreach ($a in $atribs) {
-    $p = $a.Parent; $emFuncao = $false
-    while ($p) { if ($p -is [System.Management.Automation.Language.FunctionDefinitionAst]) { $emFuncao = $true; break }; $p = $p.Parent }
-    if ($emFuncao) { continue }
+  $params = @($ast.ParamBlock.Parameters | ForEach-Object {
+    [pscustomobject]@{ nome = $_.Name.VariablePath.UserPath; switch = ($_.StaticType -eq [System.Management.Automation.SwitchParameter]) } })
+  $alvos = @()
+  foreach ($a in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.AssignmentStatementAst] }, $true)) {
     $esq = $a.Left
     if ($esq -is [System.Management.Automation.Language.ConvertExpressionAst]) { $esq = $esq.Child }
-    if ($esq -isnot [System.Management.Automation.Language.VariableExpressionAst]) { continue }
-    $nome = $esq.VariablePath.UserPath
+    if ($esq -is [System.Management.Automation.Language.VariableExpressionAst]) { $alvos += ,@($a, $esq) }
+  }
+  foreach ($f in $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.ForEachStatementAst] }, $true)) {
+    $alvos += ,@($f, $f.Variable)
+  }
+  foreach ($par in $alvos) {
+    $no, $var = $par
+    $p = $no.Parent; $emFuncao = $false
+    while ($p) { if ($p -is [System.Management.Automation.Language.FunctionDefinitionAst]) { $emFuncao = $true; break }; $p = $p.Parent }
+    if ($emFuncao) { continue }
+    $nome = $var.VariablePath.UserPath
     foreach ($q in $params) {
-      if ($nome -ieq $q -and $nome -cne $q) { '{0}:{1}: ${2} -> parametro ${3}' -f $_.Name, $a.Extent.StartLineNumber, $nome, $q }
+      if ($nome -ine $q.nome) { continue }
+      if ($q.switch -or $nome -cne $q.nome) {
+        '{0}:{1}: ${2} -> parametro ${3}' -f $_.Name, $no.Extent.StartLineNumber, $nome, $q.nome
+      }
     }
   }
 }
@@ -135,9 +151,13 @@ Get-ChildItem -Path $Raiz -Recurse -Filter *.ps1 | ForEach-Object {
 def test_nenhum_ps1_atribui_a_um_parametro_com_outra_caixa(tmp_path: Path) -> None:
     """A classe do defeito: no escopo do script (fora de função), atribuir a uma variável que é um parâmetro do mesmo
     script escrito com outra caixa (`$ensaio` contra `[switch]$Ensaio`). Mesma caixa é reatribuição de propósito
-    (`if (-not $Destino) { $Destino = ... }`); outra caixa é quem achou que criava uma variável nova. Na varredura de
-    05/10 eram duas: o `deploy.ps1` (o que derrubou o deploy 34) e o `backup.ps1` (`$podar` contra `[switch]$Podar`,
-    que só funcionava porque um booleano converte em switch)."""
+    (`if (-not $Destino) { $Destino = ... }`); outra caixa é quem achou que criava uma variável nova. Parâmetro
+    `[switch]` não se reatribui com caixa NENHUMA: o que vem depois decide por ele (`if ($Ensaio)`), e uma cópia ou um
+    número no lugar viraria subida tratada como ensaio. A variável do `foreach ($x in ...)` conta como atribuição.
+    Ficam DE FORA (não é atribuição que o parser mostra como tal, ou é escopo de propósito): `Set-Variable`,
+    `-OutVariable`, `$script:`/`$global:` e `++`/`--`. Na varredura de 05/10 eram duas: o `deploy.ps1` (o que derrubou
+    o deploy 34) e o `backup.ps1` (`$podar` contra `[switch]$Podar`, que só funcionava porque um booleano converte em
+    switch)."""
     varredura = tmp_path / "varredura.ps1"
     varredura.write_text(_VARREDURA, encoding="utf-8-sig")
     r = subprocess.run([PWSH or "pwsh", "-NoProfile", "-NonInteractive", "-File", str(varredura), "-Raiz", str(SCRIPTS)],
@@ -152,11 +172,22 @@ def test_a_varredura_acha_o_defeito_quando_ele_existe(tmp_path: Path) -> None:
     """Sem isto, uma varredura que nunca acha nada passaria igual."""
     (tmp_path / "s").mkdir()
     (tmp_path / "s" / "ruim.ps1").write_text("param([switch]$Ensaio)\n$ensaio = Get-Item .\n", encoding="utf-8")
+    # Switch reatribuído com a MESMA caixa também reprova (N2 da revisão do 29.94).
+    (tmp_path / "s" / "ruim_mesma_caixa.ps1").write_text("param([switch]$Ensaio)\n$Ensaio = Get-Item .\n",
+                                                          encoding="utf-8")
+    # A variável do `foreach` conta como atribuição (N1).
+    (tmp_path / "s" / "ruim_laco.ps1").write_text("param([string]$Destino)\nforeach ($destino in 1, 2) { }\n",
+                                                   encoding="utf-8")
     (tmp_path / "s" / "bom.ps1").write_text(
-        "param([string]$Destino)\nif (-not $Destino) { $Destino = 'x' }\nfunction f { $destino = 1 }\n", encoding="utf-8")
+        "param([string]$Destino, [switch]$Podar)\nif (-not $Destino) { $Destino = 'x' }\nfunction f { $destino = 1 }\n"
+        "$podarDeVerdade = $Podar\nfunction g { foreach ($podar in 1) { } }\n", encoding="utf-8")
     varredura = tmp_path / "varredura.ps1"
     varredura.write_text(_VARREDURA, encoding="utf-8-sig")
     r = subprocess.run([PWSH or "pwsh", "-NoProfile", "-NonInteractive", "-File", str(varredura), "-Raiz",
                         str(tmp_path / "s")], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
     assert r.returncode == 0, r.stderr
-    assert [linha.strip() for linha in r.stdout.splitlines() if linha.strip()] == ["ruim.ps1:2: $ensaio -> parametro $Ensaio"]
+    assert sorted(linha.strip() for linha in r.stdout.splitlines() if linha.strip()) == [
+        "ruim.ps1:2: $ensaio -> parametro $Ensaio",
+        "ruim_laco.ps1:2: $destino -> parametro $Destino",
+        "ruim_mesma_caixa.ps1:2: $Ensaio -> parametro $Ensaio",
+    ]

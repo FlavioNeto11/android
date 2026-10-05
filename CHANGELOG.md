@@ -38,8 +38,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - varre todos os `.ps1` com `param`, pela árvore de sintaxe do PowerShell: no escopo do script, nenhuma atribuição
     pode usar o nome de um parâmetro escrito com outra caixa;
   - um caso garante que a varredura acha o defeito quando ele existe.
-- Prova simulated: os 5 casos do arquivo novo. A mutação de volta para `$ensaio` reproduz no teste a mensagem exata
-  do deploy 34, e a varredura acusa os dois arquivos. `backend/tests/test_backup.py` segue com 12 testes.
+- Revisão (N1, N2, N4, N5):
+  - parâmetro `[switch]` reprova em qualquer atribuição no escopo do script, com qualquer caixa;
+  - a variável do `foreach` conta como atribuição (`Set-Variable`, `-OutVariable`, `$script:` e `++` ficam de fora,
+    escrito no teste);
+  - o `$minutosDoEnsaio` entrou nos marcadores e o teste lê o número de lá;
+  - `scripts/testes-afetados.py` liga todo `scripts/**/*.ps1` a este teste.
+- Prova simulated: os 5 casos do arquivo novo e o caso novo de `test_testes_afetados.py`. A mutação de volta para
+  `$ensaio` reproduz no teste a mensagem exata do deploy 34, e a varredura acusa os dois arquivos.
+  `backend/tests/test_backup.py` segue com 12 testes.
+- Real: `not_run` para o conserto. O único dado real é a recusa das 03:19:01Z, que prova o DEFEITO; o conserto se
+  prova no próximo deploy com `-Ensaio` seguido de `-PularBackup`.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
