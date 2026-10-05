@@ -94,6 +94,46 @@ segurança é a corrida diária das 05:17 UTC (conjunto inteiro, com PostgreSQL)
 trabalho é `scripts/testes-afetados.py` (§4). Não é mais preciso `[skip ci]` nos commits. Para voltar: devolver
 `push: branches: [main]` ao `on:` do `ci.yml` (e esperar o CI antes do deploy).
 
+**Desde 05/10/2026 também não roda em pull request** (29.102, decisão da orquestradora): cada PR custava de 62 a 115 min
+serial no runner do central, que é a máquina das suítes e das medidas de latência, e o `[skip ci]` na ponta falhou
+três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que restou para a corrida diária voltar a ser rede:
+
+- **Porta do runner:** o job `porta` olha se o runner já tem um `pytest` vivo; na corrida agendada, com um vivo, os
+  jobs do central são pulados com um aviso (`::warning::`). O disparo manual roda sempre. Em 05/10 o SQLite do cron
+  disputou a máquina com a suíte 35 e caiu no limite de 60 min.
+  - **Rede parcial:** quando a porta pula, o job de PostgreSQL, hospedado na GitHub, roda assim mesmo.
+  - **Órfão:** `pytest` vivo há mais de 6 h não conta e sai como `::error::` com o PID (encerre-o). O `::error::` não
+    reprova nada: o sinal fica só na página do run. O corte de 6 h vale porque nenhuma medida ou suíte nossa dura isso
+    (a maior é o funil inteiro, perto de 1 h 50; o PG, 30 a 50 min; as baterias, até 15 min). Uma medida que um dia
+    passe de 6 h tem de subir o corte, senão o CI roda junto com ela (K-101).
+  - **48 h:** a porta grava a hora de cada corrida de verdade em `farm-porta-ultima-corrida.txt`, na pasta de trabalho
+    do runner. Pulando com mais de 48 h desde a última, ela reprova e o run fica vermelho, em vez de pular calado.
+    - A marca quer dizer "a corrida INICIOU", não "terminou bem".
+    - O disparo manual só-PG (`somente_postgres`) não grava a marca, porque não roda nada no central.
+    - Marca ilegível é regravada com a hora de agora, com `::warning::`. Como na pasta limpa (abaixo), isso também
+      pode atrasar o vermelho em até 48 h: o aviso no run é o único sinal até lá.
+    - Se a pasta `_work` do runner for limpa, a primeira pulada regrava a marca com a hora de agora: nunca reprova à
+      toa, mas pode atrasar o vermelho em até 48 h.
+  - **Premissa:** a porta lê o `CommandLine` dos processos, que para processo de outro usuário só vem a quem está
+    elevado. O runner roda como Administrator, nível Highest (tarefa `farm-ci-runner`), e as suítes e medidas também:
+    hoje ela vê todos. Runner sem elevação veria zero e nunca pularia. A forma robusta seria uma trava de PID num
+    caminho fixo, gravada pelo funil e pelas medidas; ficou de fora porque cada sessão roda os seus scripts.
+- **Catraca do mypy:** o código novo (`app.contracts`, `app.modules`, `app.shared`) nasceu com zero erro e derivou até
+  254 no cron de 05/10 (257 na base do 29.102, depois da suíte 35); o job reprovava toda noite. Agora `scripts/mypy-catraca.py` reprova só se a contagem passa do teto em
+  `backend/mypy-teto.txt`; quem baixa a contagem baixa o teto no mesmo commit. Sem o `pull_request`, o cron só a veria
+  DEPOIS do merge e reprovaria para todos sem dizer quem subiu: por isso ela roda também no funil, junto das catracas,
+  e no dirigido de quem toca `backend/app` (`.claude/rules/testes.md`). Leva ~1 min e pede o mypy do
+  `requirements-dev.txt` no Python que a roda. O teto é do Windows, a plataforma do runner: o mypy avalia os ramos de
+  `sys.platform`, e em Linux a contagem pode ser outra.
+- **docs-check em clone limpo:** `.claude/handoff-current.md` entrou no `.gitignore` versionado (estava só no
+  `.git/info/exclude`, que não vem num clone).
+- **Testes que dependiam do host:** `test_pausa_de_reparo` compara a saúde antes e depois da pausa, não um valor
+  absoluto (hermético). `test_backup::test_copia_a_frio_...` NÃO ficou hermético: roda só no Windows (a lib de cópia
+  de AVD é do Windows) e pula no Linux.
+- **"Nada dispara em push" não é literal:** o `conteiner.yml` ainda roda em push de qualquer ramo que toque
+  `deploy/**`, `.dockerignore`, `backend/requirements.txt`, `backend/app/main.py` ou `frontend/package*.json`. Ele é
+  hospedado e não ocupa o central.
+
 `.github/workflows/ci.yml` — **6 jobs** (até 24/09 eram 5, e o cabeçalho do arquivo dizia 4):
 
 | Job | Quando | O que faz |
@@ -132,8 +172,8 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   `gh api repos/FlavioNeto11/android/actions/runners`; pausar de verdade é `Stop-ScheduledTask` e encerrar
   `Runner.Listener`/`Runner.Worker` (de preferência com `busy=false`). Primeira corrida inteira verde no runner
   próprio: `69bba2d` e `0d2a508` (28/09).
-- **Gatilhos:** push só na `main`; branch com pull request roda pelo `pull_request` (antes eram duas corridas por
-  commit na mesma fila de um runner só). Um push novo no mesmo ref cancela a corrida anterior.
+- **Gatilhos:** só a corrida diária (`schedule`) e o disparo manual (`workflow_dispatch`); push e `pull_request`
+  estão desligados (30/09 e 05/10). Um disparo novo no mesmo ref cancela a corrida anterior.
 - **Isolamento:** cada job de Python tem venv próprio (`.github/actions/python-isolado`), porque no runner próprio o
   Python do toolcache é compartilhado; `shell: pwsh` nos dois sistemas (no Windows o runner resolve `bash` para o do WSL); um push novo no
   mesmo ref cancela o CI anterior (`concurrency`).

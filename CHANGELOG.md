@@ -327,6 +327,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `not_run` até a bateria de latência acabar; depois, `test_portal_site`, `test_portal_prova_de_fora` e
   `docs-check`, e a página pública no navegador depois de aplicada.
 
+## 2026-10-05 — 29.102: o CI volta a ser rede (branch fix/29-102-ci-rede)
+
+- Sem `pull_request` no `ci.yml`: ficam a corrida diária e o disparo manual. Cada PR custava de 62 a 115 min serial no
+  runner do central, e o `[skip ci]` na ponta falhou três vezes em 05/10. O funil da suíte cobre os PRs.
+- Job `porta`: na corrida agendada, com um `pytest` vivo no runner, os jobs do central são pulados com aviso.
+- `scripts/mypy-catraca.py` e `backend/mypy-teto.txt` (257, medido na 0c264685; o cron de 05/10 na 81f99de3 deu 254):
+  o mypy do código novo vira catraca de contagem; nunca `continue-on-error`.
+- `.claude/handoff-current.md` no `.gitignore` versionado: o docs-check do CI acusava o link do CLAUDE.md toda noite.
+- `test_pausa_de_reparo` compara a saúde antes e depois da pausa; `test_backup::test_copia_a_frio_...` só no Windows.
+- Prova: `simulated` (`scripts/tests/test_mypy_catraca.py`, `scripts/tests/test_docs_check.py::CloneLimpo`); a
+  corrida diária com tudo isso é `not_run` até o primeiro cron depois do merge.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
