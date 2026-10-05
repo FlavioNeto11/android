@@ -8,7 +8,7 @@
 import { RefreshCw, ServerCrash, Sparkles, WandSparkles } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
-import type { Capability, InstagramProfile, PolicyGroup, TrainingProposal, TrainingSaveResult, TrainingSession, TrainingStep } from '../../api/types';
+import type { Capability, InstagramProfile, PolicyGroup, TrainingInput, TrainingProposal, TrainingSaveResult, TrainingSession, TrainingStep } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -23,6 +23,50 @@ import { TeachingPanel } from './TeachingPanel';
 import styles from './Training.module.css';
 
 const TIPO: Record<string, string> = { tap: 'toque', long_press: 'toque longo', swipe: 'deslize', text: 'texto', key: 'tecla', open_app: 'abrir app' };
+
+/** O motivo que vai no `discarded[].why` quando é a pessoa, e não a IA, que tira a entrada da etapa. */
+export const MOTIVO_DE_QUEM_ENSINOU = 'descartada por quem ensinou';
+
+// 31.90-A: cada entrada tem um lugar só, numa etapa OU no descarte. O save recusa entrada sem destino
+// (`entradas_sem_etapa`) e entrada em dois lugares (`entrada_duplicada`); por isso as duas ações tiram a entrada de
+// todo outro lugar antes de pô-la no novo.
+function descartarEntrada(p: TrainingProposal, seq: number): TrainingProposal {
+  return {
+    ...p,
+    steps: p.steps.map((s) => (s.inputs.includes(seq) ? { ...s, inputs: s.inputs.filter((n) => n !== seq) } : s)),
+    discarded: p.discarded.some((d) => d.seq === seq)
+      ? p.discarded
+      : [...p.discarded, { seq, why: MOTIVO_DE_QUEM_ENSINOU }].sort((a, b) => a.seq - b.seq),
+  };
+}
+
+function devolverEntrada(p: TrainingProposal, seq: number, etapa: number): TrainingProposal {
+  return {
+    ...p,
+    steps: p.steps.map((s, k) => {
+      const sem = s.inputs.filter((n) => n !== seq);
+      // A ordem das entradas na etapa é a ordem em que foram feitas: a devolvida entra no lugar dela.
+      if (k === etapa) return { ...s, inputs: [...sem, seq].sort((a, b) => a - b) };
+      return sem.length === s.inputs.length ? s : { ...s, inputs: sem };
+    }),
+    discarded: p.discarded.filter((d) => d.seq !== seq),
+  };
+}
+
+const listaDeSeqs = (seqs: number[]) => seqs.map((n) => `#${n}`).join(', ');
+
+/** O que a entrada foi. Texto não gravado (tela sensível, senha, cara de segredo) nunca tem valor na tela. */
+function DescricaoEntrada({ e }: { e: TrainingInput }) {
+  return (
+    <>
+      {TIPO[e.type] ?? e.type}
+      {e.target?.text || e.target?.desc ? <> em <strong>{e.target.text || e.target.desc}</strong></> : null}
+      {e.type === 'text' ? (e.text !== null && !e.sensitive ? <> “{e.text}”</> : <span className={styles.muted}> (texto não gravado)</span>) : null}
+      {e.type === 'open_app' ? <> {e.app_id}</> : null}
+      {e.type === 'key' ? <> {e.key_name}</> : null}
+    </>
+  );
+}
 
 interface Falha {
   message: string;
@@ -110,6 +154,15 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
 
   const porSeq = useMemo(() => new Map((sessao?.inputs ?? []).map((e) => [e.seq, e])), [sessao]);
   const descartadas = new Set((proposta?.discarded ?? []).map((d) => d.seq));
+  // Quantos lugares cada entrada ocupa na proposta: zero é "sem destino", mais de um é duplicada.
+  const lugares = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const s of proposta?.steps ?? []) for (const n of s.inputs) m.set(n, (m.get(n) ?? 0) + 1);
+    for (const d of proposta?.discarded ?? []) m.set(d.seq, (m.get(d.seq) ?? 0) + 1);
+    return m;
+  }, [proposta]);
+  const semDestino = proposta ? (sessao?.inputs ?? []).filter((e) => !lugares.has(e.seq)) : [];
+  const duplicadas = [...lugares].filter(([, n]) => n > 1).map(([seq]) => seq).sort((a, b) => a - b);
 
   async function pedirProposta() {
     if (editado) {
@@ -144,13 +197,25 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     setEditado(true);
   }
 
+  function descartar(seq: number) {
+    setProposta((p) => (p ? descartarEntrada(p, seq) : p));
+    setEditado(true);
+  }
+
+  function devolver(seq: number, etapa: number) {
+    setProposta((p) => (p ? devolverEntrada(p, seq, etapa) : p));
+    setEditado(true);
+  }
+
   async function salvar() {
     if (!proposta) return;
     setSalvando(true);
     try {
       const r = await api.saveTraining(sessionId, { proposal: proposta, profile_ids: [...escolhidosP], group_ids: [...escolhidosG] });
       setResultado(r);
-      toast({ tone: 'success', title: 'Fluxo salvo', message: `${r.steps.filter((x) => x.recipe).length} de ${r.steps.length} etapas já rodam sem IA.` });
+      const avisos = r.warnings ?? [];
+      toast({ tone: 'success', title: 'Fluxo salvo',
+              message: `${r.steps.filter((x) => x.recipe).length} de ${r.steps.length} etapas já rodam sem IA.${avisos.length ? ` Avisos: ${avisos.join(' · ')}` : ''}` });
     } catch (e) {
       toastError('Não foi possível salvar o fluxo', e);
     } finally {
@@ -180,13 +245,41 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     return n;
   };
 
-  const motivoNaoSalvar = !proposta
-    ? 'Peça a proposta da IA primeiro.'
-    : escopo.carregando
-      ? 'Aguarde a lista de perfis e grupos.'
-      : escopo.erro
-        ? 'A lista de perfis e grupos não carregou: sem ela, "nada marcado" não quer dizer "todos". Tente de novo.'
-        : null;
+  function motivoNaoSalvar(): string | null {
+    if (!proposta) return 'Peça a proposta da IA primeiro.';
+    // O save recusaria as duas (`entradas_sem_etapa`, `entrada_duplicada`): a tela diz antes e diz como resolver.
+    if (semDestino.length) return `Falta destino para ${listaDeSeqs(semDestino.map((e) => e.seq))}: descarte ou devolva a uma etapa.`;
+    if (duplicadas.length) return `${listaDeSeqs(duplicadas)} está em mais de um lugar: descarte ou devolva a uma etapa só.`;
+    if (escopo.carregando) return 'Aguarde a lista de perfis e grupos.';
+    if (escopo.erro) return 'A lista de perfis e grupos não carregou: sem ela, "nada marcado" não quer dizer "todos". Tente de novo.';
+    return null;
+  }
+
+  const duplicada = new Set(duplicadas);
+  const linhaDaEntrada = (seq: number) => {
+    const e = porSeq.get(seq);
+    return (
+      <>
+        {e ? <DescricaoEntrada e={e} /> : <span className={styles.muted}>entrada que a gravação não tem</span>}
+        {duplicada.has(seq) ? <> <Badge size="sm" tone="warning">em mais de um lugar</Badge></> : null}
+      </>
+    );
+  };
+
+  const acoesDaEntrada = (seq: number, comDevolver: boolean, comDescartar = true) => (
+    <span className={styles.entryActions}>
+      {comDescartar ? (
+        <Button size="sm" variant="ghost" label={`Descartar a entrada #${seq}`} onClick={() => descartar(seq)}>Descartar</Button>
+      ) : null}
+      {comDevolver && proposta?.steps.length ? (
+        <Select small aria-label={`Devolver a entrada #${seq} à etapa`} value=""
+                onChange={(ev) => { if (ev.target.value !== '') devolver(seq, Number(ev.target.value)); }}>
+          <option value="">Devolver à etapa…</option>
+          {proposta.steps.map((s, i) => <option key={s.key} value={i}>{`${i + 1}. ${s.title}`}</option>)}
+        </Select>
+      ) : null}
+    </span>
+  );
 
   return (
     <Dialog open onClose={() => void fechar()} title={sessao ? `Treinamento: ${sessao.intent}` : 'Treinamento'} icon={WandSparkles} size="lg"
@@ -194,7 +287,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
               <>
                 <Button variant="ghost" onClick={() => void fechar()}>Depois</Button>
                 <Button variant={proposta && !ensinoV2 ? 'primary' : 'secondary'} icon={Sparkles} loading={salvando}
-                        disabledReason={motivoNaoSalvar} onClick={() => void salvar()}>
+                        disabledReason={motivoNaoSalvar()} onClick={() => void salvar()}>
                   Salvar como fluxo
                 </Button>
               </>
@@ -222,6 +315,9 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
               </li>
             ))}
           </ul>
+          {resultado.warnings?.length ? (
+            <ul className={styles.questions} aria-label="Avisos do salvar">{resultado.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+          ) : null}
         </div>
       ) : (
         <div className={styles.review}>
@@ -232,11 +328,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                 <li key={e.seq} className={descartadas.has(e.seq) ? styles.discarded : undefined}>
                   <span className={styles.seq}>#{e.seq}</span>
                   <span>
-                    {TIPO[e.type] ?? e.type}
-                    {e.target?.text || e.target?.desc ? <> em <strong>{e.target.text || e.target.desc}</strong></> : null}
-                    {e.type === 'text' ? (e.text !== null ? <> “{e.text}”</> : <> (sigiloso)</>) : null}
-                    {e.type === 'open_app' ? <> {e.app_id}</> : null}
-                    {e.type === 'key' ? <> {e.key_name}</> : null}
+                    <DescricaoEntrada e={e} />
                     {e.screen_title ? <span className={styles.muted}> · tela {e.screen_title}</span> : null}
                   </span>
                 </li>
@@ -253,6 +345,21 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
               </div>
             ) : (
               <>
+                {semDestino.length ? (
+                  <section className={styles.semDestino} aria-label="Sem destino">
+                    <h4 className={styles.sub}>Sem destino ({semDestino.length})</h4>
+                    <p className={styles.muted}>Entradas gravadas que não estão em nenhuma etapa nem no descarte. Dê um destino a cada uma para salvar.</p>
+                    <ul className={styles.entryList}>
+                      {semDestino.map((e) => (
+                        <li key={e.seq}>
+                          <span className={styles.seq}>#{e.seq}</span>
+                          <span className={styles.entryText}><DescricaoEntrada e={e} /></span>
+                          {acoesDaEntrada(e.seq, true)}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                ) : null}
                 <Field label="Comando (o que varia fica entre chaves)">
                   {({ id }) => (
                     <TextInput id={id} value={proposta.command_template}
@@ -273,9 +380,19 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       <div className={styles.stepHead}>
                         <TextInput aria-label={`Título da etapa ${i + 1}`} value={s.title} onChange={(e) => mudarEtapa(i, { title: e.target.value })} />
                         {s.side_effect ? <Badge size="sm" tone="warning">efeito externo</Badge> : null}
-                        <span className={styles.muted}>{s.inputs.map((n) => `#${n}`).join(' ')}</span>
                       </div>
                       <TextInput aria-label={`Objetivo da etapa ${i + 1}`} value={s.goal} onChange={(e) => mudarEtapa(i, { goal: e.target.value })} />
+                      {s.inputs.length ? (
+                        <ul className={styles.entryList} aria-label={`Entradas da etapa ${i + 1}`}>
+                          {s.inputs.map((n, k) => (
+                            <li key={`${n}-${k}`}>
+                              <span className={styles.seq}>#{n}</span>
+                              <span className={styles.entryText}>{linhaDaEntrada(n)}</span>
+                              {acoesDaEntrada(n, false)}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                       <p className={styles.muted}>Confere: {s.postcondition.kind} {s.postcondition.value ? `“${s.postcondition.value}”` : ''}
                         {s.inputs.map((n) => porSeq.get(n)).filter(Boolean).length ? '' : ' · sem entradas: a IA conduz esta etapa'}</p>
                       {acoes.length && (s.side_effect || s.capability) ? (
@@ -289,7 +406,18 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                   ))}
                 </ol>
                 {proposta.discarded.length ? (
-                  <p className={styles.muted}>Descartadas: {proposta.discarded.map((d) => `#${d.seq} (${d.why})`).join(' · ')}</p>
+                  <section aria-label="Descartadas">
+                    <h4 className={styles.sub}>Descartadas ({proposta.discarded.length})</h4>
+                    <ul className={styles.entryList}>
+                      {proposta.discarded.map((d, k) => (
+                        <li key={`${d.seq}-${k}`}>
+                          <span className={styles.seq}>#{d.seq}</span>
+                          <span className={styles.entryText}>{linhaDaEntrada(d.seq)} <span className={styles.muted}>— {d.why}</span></span>
+                          {acoesDaEntrada(d.seq, true, false)}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 ) : null}
                 <fieldset className={styles.scope}>
                   <legend>Quem recebe o fluxo</legend>

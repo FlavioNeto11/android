@@ -2031,6 +2031,8 @@ export interface TrainingSaveResult {
   session: TrainingSession;
   flow_id: string;
   steps: { key: string; title: string; recipe: boolean; reason: string }[];
+  /** 31.83 (adendo v1.57): o que o salvar aceitou mas vale avisar; backend anterior não manda. */
+  warnings?: string[];
 }
 
 // ---------------------------------------------------------------- ensino v2 e habilidades (fase F, `features.skills`)
