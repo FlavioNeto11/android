@@ -59,6 +59,19 @@ MOTIVOS_DE_ORCAMENTO: tuple[str, ...] = ("saldo", "dia", "fatia_curador", "fatia
                                          "pedido")
 
 
+def erro_de_validacao_sem_entrada(exc: ValidationError, limite: int = 6) -> str:
+    """31.63 (V1): a `ValidationError` da saída do modelo em texto SEM a entrada. O `str(exc)` do pydantic v2 traz
+    `input_value=`, isto é, o pedaço do JSON do modelo (o rascunho, o plano); a mensagem vai ao `AIError`, daí a
+    `ai_calls.error_message`, ao log e ao motivo da etapa (espera, aviso, resumo). Aqui só o lugar e o tipo de cada erro.
+    Quem levanta o `AIError` com isto usa `from None`: o `log.warning(..., exc_info=True)` do `_ai` imprime a causa
+    encadeada, e a causa é a própria `ValidationError` com a entrada."""
+    erros = exc.errors(include_input=False, include_url=False, include_context=False)
+    partes = [f"{'.'.join(map(str, e['loc'])) or '(raiz)'}: {e['type']}" for e in erros[:limite]]
+    if len(erros) > limite:
+        partes.append(f"e mais {len(erros) - limite}")
+    return f"{len(erros)} erro(s) de validação ({'; '.join(partes)})"
+
+
 class AIError(RuntimeError):
     def __init__(self, message: str, *, retryable: bool = False, kind: str = "error",
                  status: int | None = None, model: str = "", motivo: MotivoDeOrcamento | None = None):
@@ -484,7 +497,8 @@ def persona_draft_from_json(raw: str) -> PersonaDraft:
     try:
         return PersonaDraft.model_validate(_vazio_e_nulo(dados))
     except ValidationError as exc:
-        raise AIError(f"Rascunho de persona inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+        raise AIError(f"Rascunho de persona inválido devolvido pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
+                      kind="invalid_output") from None
 
 
 def _vazio_e_nulo(valor: object) -> object:

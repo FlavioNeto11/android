@@ -50,3 +50,40 @@ async def test_a_reescrita_e_a_recusa_por_fala_de_terceiro_nao_levam_o_trecho(tm
     assert draft.refused and "terceiro" in (draft.refusal_reason or "")
     assert "marido" not in (draft.refusal_reason or "")
     assert "trecho de" in caplog.text and "marido" not in caplog.text
+
+
+MARCA = "MARCA-r3163-rascunho"
+#: Saída inválida do modelo com o rascunho dentro: `content` deveria ser texto e veio objeto.
+INVALIDA = '{"content": {"texto": "' + MARCA + '"}, "rationale": "' + MARCA + '", "refused": "talvez"}'
+
+
+def test_saida_social_invalida_vira_erro_sem_a_entrada() -> None:
+    """31.63 (V1): o `str` da `ValidationError` do pydantic v2 traz `input_value=`; o `AIError` fica com lugar e tipo."""
+    from app.planning.parsing import social_from_json
+    from app.planning.provider import AIError
+    with pytest.raises(AIError) as caught:
+        social_from_json(INVALIDA, 500)
+    texto = str(caught.value)
+    assert MARCA not in texto and "input_value" not in texto
+    assert "content: string_type" in texto and "refused: bool_parsing" in texto
+
+
+async def test_saida_social_invalida_nao_leva_o_rascunho_ao_motivo_ao_evento_nem_ao_log(
+        harness: Any, monkeypatch: Any, caplog: pytest.LogCaptureFixture) -> None:
+    from app.planning.parsing import social_from_json
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    _plano(state, [{"key": "dm", "cap": "SEND_MESSAGE", "bindings": {"username": DM["username"],
+                                                                     "content": "cumprimente a pessoa"}}])
+
+    async def generate_social_response(*_a: Any, **_k: Any) -> Any:
+        return social_from_json(INVALIDA, 500), None
+
+    monkeypatch.setattr(state.social.provider, "generate_social_response", generate_social_response)
+    with caplog.at_level(logging.DEBUG):
+        veredito = await _gate(state, "dm")
+    assert veredito is not None and not veredito.allowed
+    assert "não foi possível escrever o texto desta etapa" in (veredito.reason or "")
+    mensagens = [str(r["message"] or "") + str(r["data"] or "") for r in state.db.query("SELECT message, data FROM events")]
+    for onde in (veredito.reason or "", veredito.hint or "", caplog.text, *mensagens):
+        assert MARCA not in onde, onde

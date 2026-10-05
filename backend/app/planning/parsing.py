@@ -21,7 +21,7 @@ from ..models import (DeliveryLevel, ForaDoCatalogo, MissingInfo, Plan, PlannerI
 from ..taskqueue.saidas import referencias
 from .capabilities import (CapabilityCatalog, CapabilityNode, compose, herdar_argumentos, load_catalog,
                            montar_etapa)
-from .provider import AIError, PlanRequest, Verdict
+from .provider import AIError, PlanRequest, Verdict, erro_de_validacao_sem_entrada
 
 
 # ---- formatos de saída estruturada (compatíveis com strict) -------------------
@@ -226,6 +226,11 @@ def norm_key(key: str) -> str:
     return k if re.match(r"^[a-z]", k) and len(k) >= 2 else f"step_{k or 'x'}"
 
 
+def _sem_entrada(exc: Exception) -> str:
+    """`ValueError` dos `except` mistos é do nosso código (frase do sistema); a `ValidationError`, sem a entrada."""
+    return erro_de_validacao_sem_entrada(exc) if isinstance(exc, ValidationError) else str(exc)
+
+
 def loads_json(raw: str, what: str) -> Any:
     """JSON do modelo. Um provedor sem `json_schema` costuma embrulhar em cerca de código — desembrulhar aqui é
     mais barato e muito mais previsível do que pedir de novo."""
@@ -317,7 +322,8 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
     try:
         out = (_PlanCurtoOut if curto else _PlanOut).model_validate(loads_json(raw, "Plano"))
     except ValidationError as exc:
-        raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+        raise AIError(f"Plano inválido devolvido pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
+                      kind="invalid_output") from None
     app = next((a for a in req.apps if a.id == out.app_id), None)
     conhecidos = {a.id for a in req.apps}
     desconhecidos = sorted({s.app_id for s in out.steps if s.app_id and s.app_id not in conhecidos})
@@ -334,7 +340,7 @@ def plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: str, max
                    for s in out.steps[:max_steps]],
             missing=out.missing, planner=PlannerInfo(provider=provider, model=model, simulated=False))
     except (ValidationError, ValueError) as exc:
-        raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+        raise AIError(f"Plano inválido devolvido pelo modelo: {_sem_entrada(exc)}", kind="invalid_output") from None
     for desconhecido in desconhecidos:
         plan.missing.append(MissingInfo(field="app", question=f"O app '{desconhecido}' (de uma das etapas) não está "
                                                               "configurado. Qual aplicativo configurado deve ser usado?"))
@@ -399,7 +405,8 @@ def catalog_plan_from_json(raw: str, req: PlanRequest, *, provider: str, model: 
     try:
         out = _CapPlanOut.model_validate(loads_json(raw, "Plano"))
     except ValidationError as exc:
-        raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+        raise AIError(f"Plano inválido devolvido pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
+                      kind="invalid_output") from None
     app = next((a for a in req.apps if a.package == req.catalog.package), None)
     nodes = [CapabilityNode(key=norm_key(s.key), capability=s.capability,
                             depends_on=[norm_key(d) for d in s.depends_on],
@@ -435,7 +442,8 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
     try:
         out = (_MultiPlanCurtoOut if curto else _MultiPlanOut).model_validate(loads_json(raw, "Plano"))
     except ValidationError as exc:
-        raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+        raise AIError(f"Plano inválido devolvido pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
+                      kind="invalid_output") from None
     conhecidos = {a.id: a for a in req.apps if a.id}
     catalogos: Mapping[str, CapabilityCatalog] = req.catalogs
     etapas = out.steps[:max_steps]
@@ -514,7 +522,7 @@ def _plano_entre_apps(raw: str, req: PlanRequest, *, provider: str, model: str, 
         if fora:
             plan.steps, plan.missing, plan.fora_do_catalogo = [], [], fora
     except (ValidationError, ValueError) as exc:
-        raise AIError(f"Plano inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+        raise AIError(f"Plano inválido devolvido pelo modelo: {_sem_entrada(exc)}", kind="invalid_output") from None
     plan.required_apps = apps_do_plano(plan, getattr(req, "instances", ()))
     return plan
 
@@ -523,14 +531,17 @@ def verdict_from_json(raw: str) -> Verdict:
     try:
         return Verdict.model_validate(loads_json(raw, "Veredito"))
     except ValidationError as exc:
-        raise AIError(f"Veredito inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+        raise AIError(f"Veredito inválido devolvido pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
+                      kind="invalid_output") from None
 
 
 def social_from_json(raw: str, max_length: int) -> SocialDraftDTO:
     try:
         draft = SocialDraftDTO.model_validate(loads_json(raw, "Resposta social"))
     except ValidationError as exc:
-        raise AIError(f"Resposta social inválida devolvida pelo modelo: {exc}", kind="invalid_output") from exc
+        # 31.63 (V1): sem a entrada; o `content` do modelo é o rascunho e esta mensagem chega ao motivo da etapa.
+        raise AIError(f"Resposta social inválida devolvida pelo modelo: {erro_de_validacao_sem_entrada(exc)}",
+                      kind="invalid_output") from None
     if len(draft.content) > max_length:
         # Cortar aqui é mais barato e mais previsível do que pedir de novo; o limite é do app, não do modelo.
         draft.content = draft.content[:max_length].rstrip()
