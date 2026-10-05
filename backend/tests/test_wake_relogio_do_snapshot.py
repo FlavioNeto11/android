@@ -234,8 +234,9 @@ async def test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura(harn
     medição sai sem `log_contradiz`, e a segunda leitura (`LOG_CONTRADIZ_RELEITURA_S` depois) avisa.
 
     29.120: a releitura agendada é capturada e disparada à mão depois que a recusa chega. Antes, o teste punha a
-    releitura em 10 ms e ligava a recusa só depois de um `db.query`: com a máquina cheia (o PG dirigido da suíte 37),
-    a consulta passou de 10 ms, a releitura leu o veredito ainda `None`, e o aviso não saiu."""
+    releitura em 10 ms, e ela disparava em qualquer `await` que o `_wait_boot` ainda fizesse depois de agendá-la,
+    antes de o teste ligar a recusa: com a máquina cheia (o PG dirigido da suíte 37), essas esperas passaram de 10 ms,
+    a releitura leu o veredito ainda `None`, e o aviso não saiu. Com o prazo em 0 s, o teste antigo reprova sempre."""
     relogio = _RelogioInjetavel()
     rt, _ = _preparar(harness, monkeypatch, relogio, carregado_em=None, boot_ok_em=relogio.agora + 120,
                       ui=lambda _agora: True, uptime=3728.0)
