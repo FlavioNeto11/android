@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.89 F1 e F6: o casamento do comando por fluxo vai do mais específico, e a troca de valor por palavra inteira (branch fix/31-89-casamento-mais-especifico)
+
+- F1: `FlowStore.match` ordena os fluxos ativos por `matching.specificity` (a do resolvedor v2: mais texto fixo, menos
+  parâmetros), depois `uses` desc, depois `created_at`. Antes ganhava o de mais usos e "curtir {x}" engolia "curtir o
+  post de {p}". O filtro de escopo por perfil segue antes da ordem e o empate de tudo segue como antes (a pergunta ao
+  dono é outra fatia).
+- F6: `_sub_values` troca o valor de exemplo só como palavra inteira ("Ana" não mexe em "Banana"); borda que é símbolo
+  ou espaço ("@fulano", "R$ 10") continua trocada; um valor curto não reescreve o `{nome}` já posto.
+- Medido no banco real em 05/10 (só leitura): 0 comandos de 30 dias casam com 2 ou mais fluxos ativos e 0 fluxos ativos
+  têm valor de exemplo que é substring de outra palavra; as duas mudanças não alteram resultado de hoje.
+- `test_intencao_resolucao.py::test_empate_entre_fluxos...` afirmava a ordem antiga (o mais usado vence); virou "o mais específico vence".
+- Prova: `simulated`: `backend/tests/test_fluxo_casamento_especifico.py` (23 testes, incluindo a paridade com
+  `SqlSkillRepository.candidates`); revertidos F1 e F6 um por vez, falham 4 e 7 deles. Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

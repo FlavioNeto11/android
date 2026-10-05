@@ -23,6 +23,7 @@ from typing import Any, Protocol
 from ..db import Database, Row
 from ..modules.learning.domain.livro import apps_na_ordem_do_plano
 from ..modules.skills.domain.document import JsonValue
+from ..modules.skills.domain.matching import specificity
 from ..models import Plan, PlannerInfo, StepResult
 from ..util import now_iso
 
@@ -98,11 +99,38 @@ def _com_valores(text: str, values: dict[str, str]) -> str:
 
 
 def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
+    """Troca cada valor de exemplo por `{nome}` no texto do plano, valores mais longos primeiro.
+
+    F6 (31.89): o valor só é trocado INTEIRO. Com "Ana" de exemplo, "Banana" não vira "B{nome}na": a borda do valor
+    que é letra, dígito ou `_` exige, do lado de fora, início/fim do texto ou um caractere que não seja desses. Borda
+    que é símbolo ou espaço ("@fulano", "R$ 10") não exige nada: o símbolo já delimita, e o valor continua sendo
+    trocado colado no que vem antes ou depois. Cada troca só olha o texto que ainda não é `{nome}`: um valor curto
+    ("nome") não reescreve o marcador que um valor anterior acabou de pôr.
+    """
     if not text:
         return text
+    pedacos: list[tuple[str, bool]] = [(text, False)]          # (texto, já é marcador)
     for name, value in sorted(values.items(), key=lambda kv: -len(kv[1])):
-        text = text.replace(value, "{" + name + "}")
-    return text
+        if not value:
+            continue
+        antes = r"(?<!\w)" if re.match(r"\w", value[0]) else ""
+        depois = r"(?!\w)" if re.match(r"\w", value[-1]) else ""
+        achar = re.compile(antes + re.escape(value) + depois)
+        novos: list[tuple[str, bool]] = []
+        for trecho, feito in pedacos:
+            if feito:
+                novos.append((trecho, True))
+                continue
+            pos = 0
+            for m in achar.finditer(trecho):
+                if m.start() > pos:
+                    novos.append((trecho[pos:m.start()], False))
+                novos.append(("{" + name + "}", True))
+                pos = m.end()
+            if pos < len(trecho):
+                novos.append((trecho[pos:], False))
+        pedacos = novos
+    return "".join(t for t, _ in pedacos)
 
 
 class FlowStore:
@@ -283,7 +311,13 @@ class FlowStore:
         perfis/grupos) só casa quando TODOS eles estão no escopo — um aparelho fora dele planejaria sozinho, e o
         plano é um só por execução. `None` = prévia sem aparelhos (custo, apps exigidos): qualquer fluxo serve.
         """
-        for row in self.db.query("SELECT * FROM flows WHERE status='active' ORDER BY uses DESC, created_at"):
+        # F1 (31.89): entre moldes que casam o mesmo comando ganha o MAIS ESPECÍFICO (o critério do resolvedor v2,
+        # `matching.specificity`: mais texto fixo, depois menos parâmetros), não o mais usado: "curtir o post de {p}"
+        # vence "curtir {x}" mesmo com menos usos. A ordem do SQL (`uses DESC, created_at`) fica como desempate: o
+        # `sorted` é estável, então só a especificidade a reordena (empate de tudo segue o comportamento de antes).
+        ativos = sorted(self.db.query("SELECT * FROM flows WHERE status='active' ORDER BY uses DESC, created_at"),
+                        key=lambda r: specificity(r["command_template"]), reverse=True)
+        for row in ativos:
             if profile_ids is not None and not self._no_escopo(row["id"], profile_ids):
                 continue
             values = self._extract(row["command_template"], command)

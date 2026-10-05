@@ -221,14 +221,15 @@ def test_paridade_com_o_flowstore_match(db: Database, fluxos: Mundo, comando: st
     assert all(p.type is None for p in rp.resolution.intent.parameters)       # fluxo não tem tipo
 
 
-def test_empate_entre_fluxos_continua_decidido_pelo_uso(db: Database, fluxos: Mundo) -> None:
-    """Os dois fluxos casam "curtir o post de @nasa"; o `FlowStore` fica com o mais usado, e a cadeia também."""
+def test_entre_fluxos_que_casam_vence_o_mais_especifico_e_a_cadeia_acompanha(db: Database, fluxos: Mundo) -> None:
+    """Os dois fluxos casam "curtir o post de @nasa". 31.89 F1: o `FlowStore` fica com o mais específico (o molde com
+    mais texto fixo), não com o mais usado; a cadeia, que delega a ele, também."""
     assert FlowStore._extract("curtir {perfil}", "curtir o post de @nasa") == {"perfil": "o post de @nasa"}
     rp = fluxos.planejador.for_command("curtir o post de @nasa", None)
     assert rp is not None and rp.legacy_flow_id == "curtir-post"
-    db.execute("UPDATE flows SET uses=9 WHERE id='curtir'")
+    db.execute("UPDATE flows SET uses=9 WHERE id='curtir'")           # o genérico passa a ser o mais usado: não vence
     rp = fluxos.planejador.for_command("curtir o post de @nasa", None)
-    assert rp is not None and rp.legacy_flow_id == "curtir" and rp.plan is not None
+    assert rp is not None and rp.legacy_flow_id == "curtir-post" and rp.plan is not None
     assert rp.plan == FlowStore(db).match("curtir o post de @nasa")[1]  # type: ignore[index]
 
 
@@ -237,7 +238,7 @@ def test_skill_publicada_ganha_do_fluxo_e_buraco_vazio_perde_para_fluxo_inteiro(
     # a skill casa com buraco vazio ("curtir o post de agora"), mas o fluxo "curtir {perfil}" casa inteiro: o fluxo
     r = fluxos.planejador.resolve_intent("curtir o post de agora", None)
     assert r.status is ResolutionStatus.RESOLVED and r.intent is not None
-    assert str(r.intent.ref) == "flow:curtir-post@1"            # o mais usado dos dois que casam, como hoje
+    assert str(r.intent.ref) == "flow:curtir-post@1"            # o mais específico dos dois que casam (31.89 F1)
     # com o fluxo desligado, sobra a pergunta da skill
     fluxos.flows_on = False
     r = fluxos.planejador.resolve_intent("curtir o post de agora", None)
