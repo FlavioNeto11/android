@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.56: a barra de endereço tapada vira o padrão (branch feat/31-56-tapar-barra-ligado)
+
+- O A/B ao vivo do 31.56 deu LIGA (05/10, android-09, deploy 33, 3 execuções por braço): sucesso 3/3 nos dois braços,
+  16 decisões ligada contra 14 desligada (+14,3 %, teto 20 %), US$ 0,496713 no total. O padrão de
+  `ai.tapar_barra_de_endereco` passa a `true` em `config.py` e em `config.example.yaml`; o central já está ligado pela
+  config dele.
+- Prova: `real` do A/B (acima); `simulated` do padrão (`backend/tests/test_url_fora_do_prompt.py`).
+
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
 - `scripts/tests/test_poda_ab_offline.py` confere `scripts/poda-ab-offline.py`: só a UI do Chrome sai, a `url_bar` fica,
