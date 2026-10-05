@@ -1781,8 +1781,8 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
     aceite); no id, sem fronteira (`btnAccept`). O botão do navegador só é julgado pelo rótulo, e só dentro da zona (o
     menu da barra de tradução por cima da folha de cookies do gov.br passa).
   - **Regra da caixa:** quando a marca está dentro de uma caixa reconhecida (a maior que a contém, abaixo de 60 %, que
-    é marca ou tem cara de diálogo, e que contém mais que a marca), a zona é a caixa inteira, sem a margem: a folha de
-    49 % do gov.br recusa a página por baixo dela. Sem caixa, a faixa de antes.
+    é marca ou tem cara de diálogo, e que contém mais que a marca), a zona é a caixa inteira MAIS a faixa (Z1c,
+    abaixo): a folha de 49 % do gov.br recusa a página por baixo dela. Sem caixa, a faixa de antes.
   - "Rejeitar cookies", "Recusar cookies", "Reject cookies" e "Decline cookies" entraram na lista de fechar (o botão
     real do gov.br seria recusado).
   - **K3:** as recusas somam por ETAPA, não por execução; o `type_text` fora de campo (B1) conta no mesmo limite e,
@@ -1798,6 +1798,13 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   - **K2b:** a palavra de aceite é recusada em qualquer lugar só com marca que tenha cara de aviso (texto de mais de 30
     caracteres ou dentro de caixa reconhecida). Com só o link "Política de privacidade" do rodapé, "OK", "Permitir" e
     "Aceitamos Pix" longe dele passam; na faixa dele, não.
+- Delta da 2ª leitura:
+  - **Z1c:** a caixa SOMA à faixa, não a substitui. Um invólucro só do texto com id de cara de diálogo que não é de
+    consentimento (`banner-content`, `modal-body`) vira a caixa; se a zona fosse só ele, os botões no irmão de baixo
+    ("Estou de acordo", "Prosseguir" a 200 px) passariam.
+  - **K2c:** a marca NÃO clicável também tem cara de aviso: o título "Sua privacidade" (corpo sem a palavra) e a
+    pergunta "Aceitar cookies?" ligam a recusa da palavra de aceite em qualquer lugar. O link do rodapé é clicável e
+    segue fora (o K2b).
   - Ficam do lado seguro, recusados: "Rejeitar cookies." com ponto e "Rejeitar todos os cookies" (fora da lista
     exata), e o `type_text(press_enter=True)` com o foco num botão segue sem tratamento.
 - O recusado vira ação `rejected` com o motivo "o consentimento do site não é aceito pelo ator (eN, Tipo)": no `error`
