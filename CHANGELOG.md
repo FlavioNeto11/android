@@ -24,8 +24,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `learning.ensinado_sem_receita` (precisa de você, na hora) e `learning.ensinado_rebaixado` (rotina), os eventos da
   Aprendizado (30.80 B), entram em `KINDS_QUE_AVISAM`, `NIVEL_POR_TIPO`, `ROTULOS`, `ROTULOS_AGRUPADOS`,
   `GESTO_AGRUPADO`, `CAMINHO_AGRUPADO` e `aviso_de_evento`.
-- Sem identificador do item no texto; o link vai ao detalhe na aba Aprendizado. O slug do fluxo só entra no link se
-  passar nos filtros. Payload fora do contrato não vira aviso.
+- Sem identificador do item no texto; o link vai ao detalhe na aba Aprendizado. O id de fluxo, que pode carregar
+  conta ou nome (leitura do 30.80 B), não sai para fora: nem no texto, nem no link, e na chave entra só um resumo
+  dele; o `message` do evento não é lido. Vale até o 30.83. Payload fora do contrato não vira aviso.
 - Prova: `simulated` (`backend/tests/test_avisos_ensinado.py`). Real: `not_run`; depende do PR da Aprendizado.
 
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)

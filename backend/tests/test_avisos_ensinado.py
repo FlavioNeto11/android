@@ -2,9 +2,12 @@
 
 Prova `simulated`: o `data` é o do contrato (kind, ref, app, treino, sem_receita_ativa, para, desde), sem Telegram.
 Rebaixado com outra receita segurando a etapa é rotina; sem nenhuma ativa, a etapa voltou para a IA e sai na hora. No
-texto não vai identificador do item (como no 28.14); o id vai só ao link do detalhe na aba Aprendizado.
+texto não vai identificador do item (como no 28.14); o número da receita vai só ao link do detalhe na aba Aprendizado,
+e o id do fluxo não sai em lugar nenhum (pode carregar conta ou nome, leitura do 30.80 B).
 """
 from __future__ import annotations
+
+import pytest
 
 from app.modules.avisos.domain.mensagem import (AGORA, JANELA, PRECISA_DE_VOCE, ROTINA, ROTULOS, ROTULOS_AGRUPADOS,
                                                 aviso_de_evento, corpo_agrupado, entrega_do_tipo, link_agrupado)
@@ -63,17 +66,30 @@ def test_o_para_vira_frase_fixa_e_o_desconhecido_a_generica() -> None:
         assert aviso is not None and frase in aviso.corpo and para not in aviso.corpo
 
 
-def test_o_slug_do_fluxo_so_vai_ao_link_se_passar_nos_filtros() -> None:
-    dados = _dados(kind="fluxo", ref="abrir-conversa-com-qa-001-2")
-    sem_redator = aviso_de_evento(REBAIXADO, dados, 8, PAINEL)
-    assert sem_redator is not None and sem_redator.link == PAINEL + "/#/aprendizado?aba=aprendido"
-    assert "Um fluxo que você ensinou" in sem_redator.corpo and "abrir-conversa" not in sem_redator.corpo
-    limpo = aviso_de_evento(REBAIXADO, dados, 9, PAINEL, redigir=_sem_filtro, nomes=())
-    assert limpo is not None
-    assert limpo.link == PAINEL + "/#/aprendizado?aba=aprendido&item=fluxo:abrir-conversa-com-qa-001-2"
-    com_persona = aviso_de_evento(REBAIXADO, _dados(kind="fluxo", ref="responder-a-marina-2"), 10, PAINEL,
-                                  redigir=_sem_filtro, nomes=("Marina",))
-    assert com_persona is not None and com_persona.link == PAINEL + "/#/aprendizado?aba=aprendido"
+@pytest.mark.parametrize("ref", ["abrir-conversa-com-qa-001-2", "responder-a-marina-2", "entrar-na-conta-fulano-1987",
+                                 "mandar-dm-para-o-perfil-loja-x"])
+@pytest.mark.parametrize("kind", [REBAIXADO, SEM_RECEITA])
+def test_o_id_do_fluxo_nao_sai_em_lugar_nenhum(ref: str, kind: str) -> None:
+    """Orquestradora, leitura do 30.80 B: o id do fluxo é o slug do pedido e pode trazer conta ou nome. Até o 30.83,
+    ele não vai ao título, ao corpo, ao link nem à chave, nem com os filtros desligados; o `message` nunca é lido."""
+    dados = {**_dados(kind="fluxo", ref=ref, sem=kind == SEM_RECEITA), "message": f"fluxo {ref} rebaixado"}
+    for aviso in (aviso_de_evento(kind, dados, 8, PAINEL),
+                  aviso_de_evento(kind, dados, 9, PAINEL, redigir=_sem_filtro, nomes=())):
+        assert aviso is not None
+        assert aviso.link == PAINEL + "/#/aprendizado?aba=aprendido"
+        assert "Um fluxo que você ensinou" in aviso.corpo
+        tudo = " ".join([aviso.titulo, aviso.corpo, aviso.link or "", aviso.chave])
+        assert ref not in tudo
+        assert not any(pedaco in tudo.lower() for pedaco in ("marina", "fulano", "loja-x", "qa-001"))
+
+
+def test_a_chave_do_fluxo_e_estavel_e_a_da_receita_leva_o_numero() -> None:
+    a = aviso_de_evento(REBAIXADO, _dados(kind="fluxo", ref="um-fluxo-qualquer"), 1, PAINEL)
+    b = aviso_de_evento(REBAIXADO, _dados(kind="fluxo", ref="um-fluxo-qualquer"), 2, PAINEL)
+    r = aviso_de_evento(REBAIXADO, _dados(kind="receita", ref="194"), 3, PAINEL)
+    assert a is not None and b is not None and r is not None
+    assert a.chave == b.chave and "um-fluxo" not in a.chave
+    assert ":194:" in r.chave and r.link == PAINEL + "/#/aprendizado?aba=aprendido&item=receita:194"
 
 
 def test_payload_fora_do_contrato_nao_vira_aviso() -> None:

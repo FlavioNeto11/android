@@ -46,6 +46,7 @@ constante de contrato (`app.contracts.identidade`). Só texto: nenhuma regra de 
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -558,8 +559,8 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
     elif kind in ("learning.ensinado_rebaixado", "learning.ensinado_sem_receita"):
         # 28.50 (30.80 B): um evento por transição da trilha, e o `desde` é o instante gravado nela, então a reemissão
         # da mesma transição dá a mesma chave. No texto, como no 28.14, nenhum identificador do item: nem o número, nem
-        # o pacote, só se é receita ou fluxo e a tradução do `para`. O id vai só ao link do painel (como o da execução),
-        # e o slug do fluxo, que pode trazer texto da pessoa, só se passar nos filtros. O item não está na caixa de
+        # o pacote, só se é receita ou fluxo e a tradução do `para`. O número da receita vai só ao link do painel (como o
+        # da execução); o id do fluxo não vai a lugar nenhum fora, e o `message` do evento nunca é lido. O item não está na caixa de
         # Pendências: o link é o detalhe dele na aba Aprendizado. `ref` e `app` fora do formato: nada sai.
         d = dados or {}
         item = _texto(d.get("kind"))
@@ -569,7 +570,11 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         desde = _texto(d.get("desde"))
         if item is None or ref is None or app is None or desde is None:
             return None
-        tipo, chave = kind, chave_do_fato("learning", "ensinado", item, ref, desde)
+        # O id de um FLUXO é hoje o slug do resumo do pedido e pode carregar identificador de conta ou nome (leitura do
+        # 30.80 B): até o 30.83 tirar o pedido do id, ele não sai para fora nem na chave, que vai como resumo do ref. O
+        # ref de receita é só dígitos e vai.
+        ref_da_chave = ref if item == "receita" else "h" + hashlib.sha256(ref.encode()).hexdigest()[:16]
+        tipo, chave = kind, chave_do_fato("learning", "ensinado", item, ref_da_chave, desde)
         o_que = "Uma receita que você ensinou" if item == "receita" else "Um fluxo que você ensinou"
         para = PARA_DO_ENSINADO.get(_texto(d.get("para")) or "", PARA_DO_ENSINADO_GENERICO)
         assunto = ("🧩 " if tipo == "learning.ensinado_sem_receita" else "📚 ") + ROTULOS[tipo]
@@ -578,8 +583,7 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
             linhas += ["Nada ativo ficou para essa etapa: a IA volta a conduzi-la sozinha.", GESTO_DO_ENSINADO]
         else:
             linhas += ["Outra receita ainda segura a etapa.", NADA_A_FAZER]
-        seguro = ref if item == "receita" else texto_seguro(ref.replace("-", " "), nomes, redigir) and ref
-        caminho = f"#/aprendizado?aba=aprendido&item={item}:{seguro}" if seguro else "#/aprendizado?aba=aprendido"
+        caminho = f"#/aprendizado?aba=aprendido&item=receita:{ref}" if item == "receita" else "#/aprendizado?aba=aprendido"
         link = link_da_tela(url_painel, caminho)
     else:
         return None
