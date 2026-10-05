@@ -407,8 +407,12 @@ avisos depois da faxina"), e a trava cai no TTL.
     caixa, e o lembrete agrupado diz onde fica cada coisa (28.41).
   - Responder ao aviso de objetivo parado ou de conta só informa: "Este aviso só informa: para resolver, toque no
     link dele." (28.41). O `/status` conta também os objetivos parados.
-  - Regra de fundo da resposta (28.41; orquestradora 05/10 06:53Z, G1 às 07:50Z): **resposta a aviso nunca vira
-    COMANDO; pergunta não executa nada.** Na resposta a uma mensagem nossa cujo fato não tem ramo próprio (o pedido,
+  - Regra de fundo da resposta (28.41; orquestradora 05/10 06:53Z, G1 às 07:50Z): **resposta a aviso, no que não tem
+    barra, nunca vira COMANDO; pergunta não executa nada.** Vale nos dois canais para o texto sem barra. O comando com
+    barra é explícito e fica como está (G3): no Telegram, `/para android-09 x` em resposta a um aviso vai pelo
+    `_rotear_comando` e vira a prévia com o botão de executar; no Trello, ver o limite G2 abaixo. Nenhuma chave de aviso
+    fica sem `:`; sem ele, a resposta teria a gramática inteira, e um teste percorre os `Aviso(...)` de `backend/app`
+    (catraca). Na resposta a uma mensagem nossa cujo fato não tem ramo próprio (o pedido,
     o aprendizado, os espelhos, o `run:` que não é pergunta e qualquer família nova), a gramática comum vale, mas o
     texto livre (a prévia de execução) e o `para` só informam ("mande uma mensagem nova, sem responder a um aviso");
     a pergunta vai à orquestradora (28.28), e a captura e a identidade seguem. O texto livre e o `para` completos ficam

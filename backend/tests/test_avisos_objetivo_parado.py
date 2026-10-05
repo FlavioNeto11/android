@@ -615,6 +615,39 @@ def test_resposta_a_fato_sem_ramo_nunca_vira_comando(fato: str, texto: str, tipo
             assert i.repasse == "pergunta"
 
 
+def test_toda_chave_de_aviso_tem_familia_e_identidade() -> None:
+    """Nota da releitura do #380: um fato cuja chave não tivesse `:` daria `Fato.de(...) is None`, e a resposta a ele
+    teria a gramática inteira, com o texto livre e o `para`. Toda chave de `Aviso(...)` em `backend/app` sai de um
+    `chave_do_*` ou de uma variável `chave*`, e cada construtor devolve `<família>:<identidade>`."""
+    import ast
+    from datetime import datetime, timezone
+
+    from app.modules.avisos.application.entrada import Fato
+    from app.modules.avisos.domain import portal
+    from app.modules.avisos.domain.mensagem import chave_do_fato
+    from app.modules.decisoes.domain import resumo
+    raiz = Path(__file__).resolve().parents[1] / "app"
+    fora: list[str] = []
+    vistas = 0
+    for arquivo in raiz.rglob("*.py"):
+        for no in ast.walk(ast.parse(arquivo.read_text(encoding="utf-8"))):
+            if not (isinstance(no, ast.Call) and getattr(no.func, "id", None) == "Aviso"):
+                continue
+            for kw in no.keywords:
+                if kw.arg != "chave":
+                    continue
+                vistas += 1
+                v = kw.value
+                nome = (getattr(v.func, "id", "") or getattr(v.func, "attr", "")) if isinstance(v, ast.Call) else                     getattr(v, "id", "")
+                if not nome.startswith("chave"):
+                    fora.append(f"{arquivo.relative_to(raiz)}:{no.lineno}")
+    assert vistas >= 10 and fora == []
+    agora = datetime(2026, 10, 5, 8, 0, tzinfo=timezone.utc)
+    for chave in (chave_do_fato("run", "r1", "needs_input"), chave_do_fato("comentario", "c1"),
+                  portal.chave_do_contato(1), portal.chave_do_resumo(agora), resumo.chave_do_resumo(1, 2)):
+        assert Fato.de(chave) is not None, chave
+
+
 @pytest.mark.parametrize("texto", ["sim", "abre o instagram no android-13", "o que houve?"])
 def test_o_anexo_segue_a_gramatica_comum_de_proposito(texto: str) -> None:
     """28.24: no anexo só o pedido de leitura é dele; o resto é a gramática comum (a única exceção à regra de fundo)."""

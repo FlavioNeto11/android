@@ -34,6 +34,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   nada. Na resposta a um fato sem ramo, só o texto livre e o `para` viram "só informa"; a pergunta volta a ir à
   orquestradora, e a captura e a identidade seguem (no Trello também). G2, no contrato: `/para` com barra num
   cartão-espelho, com o comando livre ligado, ainda mostra a prévia de leitura.
+- Fecho do G1 (orquestradora, 05/10 08:00Z): a regra vale nos dois canais para o texto sem barra. O comando com barra
+  é explícito e fica como está (G3: no Telegram, `/para` em resposta a um aviso vira a prévia com o botão de
+  executar). Teste de ponta a ponta: a pergunta no espelho do deploy chega à orquestradora com a frase do repasse.
+  Catraca nova: toda chave de `Aviso(...)` em `backend/app` sai de um `chave_do_*` e tem `<família>:<identidade>`.
 - Leitura do #382: o gesto do desfecho segue o `blocked_kind` dos objetivos parados (aparelho: abrir a execução;
   aprovação: a caixa de Pendências; os dois: as duas linhas).
 - R2: o `/status` conta os objetivos parados (sem contar duas vezes o que espera uma aprovação) e diz que eles estão

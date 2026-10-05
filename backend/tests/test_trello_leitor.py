@@ -19,7 +19,7 @@ from app.db import Database
 from app.modules.avisos.adapters.trello import BaldeDeRequisicoes, ClienteTrello
 from app.modules.avisos.application.entrada import RESPOSTA_IDENTIDADE
 from app.modules.avisos.domain.mensagem import Aviso
-from app.modules.avisos.infrastructure.entrada import ConversaDoCanal, Recebida
+from app.modules.avisos.infrastructure.entrada import RESPOSTA_DO_REPASSE, ConversaDoCanal, Recebida
 from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
 from app.modules.avisos.infrastructure.espelho_sql import CartoesDoTrello, CursorDoTrello
 from app.modules.avisos.infrastructure.trello_leitor import (
@@ -500,6 +500,16 @@ async def test_com_comando_livre_o_espelho_do_deploy_nao_vira_previa(tmp_path: P
     await cen.volta()
     assert cen.acoes_da_central() == []
     assert cen.trello.textos() == [PREFIXO + RESPOSTA_COMANDO_LIVRE]
+
+
+async def test_pergunta_no_espelho_do_deploy_chega_a_orquestradora(c: Cenario) -> None:
+    """28.41, G1 de ponta a ponta: a pergunta num cartão cujo fato não tem ramo não é texto livre; a linha fica para a
+    orquestradora (28.28) e o cartão ouve a frase do repasse, sem nada na Central."""
+    c.trello.comenta(DONO, C_DEPLOY, "o que houve?")
+    await c.volta()
+    assert c.acoes_da_central() == []
+    assert c.repo.contagens() == {"orquestradora": 1}
+    assert c.trello.textos() == [PREFIXO + RESPOSTA_DO_REPASSE["pergunta"]]
 
 
 async def test_comentario_do_dono_num_cartao_sem_aviso_nao_fica_mudo(c: Cenario) -> None:
