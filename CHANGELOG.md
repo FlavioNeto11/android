@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.87 F1: pré-voo do dado da persona ausente (branch fix/31-87-prevoo-dado-da-persona)
+
+- O plano que cita `{perfil_*}` ou `{conta_<app>_usuario}` e a persona de algum aparelho-alvo não resolve (dado ausente,
+  vazio ou aparelho sem persona) deixava a variável CRUA no objetivo da etapa: a receita divergia e a IA assumia com
+  `{perfil_sobrenome}` escrito. Agora `RunService._plan` pede resposta (`needs_input`) antes de materializar: zero
+  objetivos, zero etapas, nada despachado; uma frase por aparelho, só com id do aparelho e rótulo do campo.
+- Defesa em profundidade: `Repository.materialize` recusa (`DadoDaPersonaAusente`, só nomes de variável) e o `_plan` fecha
+  a execução em `failed` com o motivo em vez de deixá-la presa em `planning`. Caminho feliz idêntico; sem campo novo.
+- Prova `simulated`: `tests/test_prevoo_dado_da_persona.py` (14 passed); vizinhos e `test_arquitetura.py` verdes;
+  `pytest @tests/catracas.txt`, 88 passed. `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

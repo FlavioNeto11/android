@@ -284,6 +284,12 @@ de portal (`ToolContext.allowed_hosts`). O contexto social (`social/context.py`)
 dele ao cofre (`backend/tests/test_social_memory.py`). A execução **não** carrega credencial: `RunCreate.credentials`
 e `consent_credentials` saíram (422 por `extra="forbid"`), e `run_secrets` ficou sem escritor.
 
+**Pré-voo do dado da persona (31.87, F1).** Antes de `materialize`, `RunService._plan` varre o plano (objetivo, pré e
+pós-condição, guardas, `bindings` e `parameters`) atrás de `{perfil_*}` e `{conta_<app>_usuario}`
+(`taskqueue/dado_da_persona.py`). Aparelho cuja persona não resolve algum (ausente, vazio, ou sem persona vinculada):
+a execução vai a `needs_input`, sem etapas, com uma frase por aparelho (só id e rótulo do campo, nunca valor, nome ou
+e-mail). `materialize` repete a conferência e recusa com `DadoDaPersonaAusente`; nunca grava a variável crua.
+
 **Rotas por conta** (`api.py`; as antigas por perfil são apelidos da conta âncora):
 
 | Rota | Faz |

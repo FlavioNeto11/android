@@ -43,6 +43,7 @@ from ..util import now_iso, parse_iso, to_iso
 from .balanceamento import Candidato, Distribuicao, Servidor, distribuir
 from .costuras import (SEM_COSTURAS, CancelamentoDeExecucao, CosturasDeAprendizado, PedidoDeLicoes,
                        RepeticaoDeExecucao, ResolucaoDeItem, avisar, pedir_licoes)
+from .dado_da_persona import DadoDaPersonaAusente, faltas_por_aparelho, perguntas as perguntas_do_dado
 from .perguntas import mensagem_da_palavra_solta, pergunta_sensivel_aberta, tipo_sensivel
 from .projecao import HistoricoDeAcoes, projetar, resumo
 from .repository import Repository
@@ -499,9 +500,10 @@ class RunService:
             self._pedir_resposta(row["id"], [p.as_dict() for p in resolucao.perguntas])
         return self.repo.run_summary(self.repo.run_row(row["id"]), deduplicated=not created)
 
-    def _pedir_resposta(self, run_id: str, perguntas: list[dict[str, object]]) -> None:
+    def _pedir_resposta(self, run_id: str, perguntas: list[dict[str, object]],
+                        assunto: str = "os destinos precisam de resposta antes de planejar") -> None:
         texto = " | ".join(str(p["question"]) for p in perguntas)
-        self.repo.bus.emit("log", f"Execução {run_id}: os destinos precisam de resposta antes de planejar",
+        self.repo.bus.emit("log", f"Execução {run_id}: {assunto}",
                            level="warn", run_id=run_id, data={"questions": perguntas})
         self.repo.set_run_status(run_id, RunStatus.needs_input, texto, level="warn",
                                  message=f"Execução {run_id}: faltam informações — {texto}")
@@ -1179,7 +1181,22 @@ class RunService:
             repo.set_run_status(run_id, RunStatus.needs_input, questions, level="warn",
                                 message=f"Execução {run_id}: faltam informações — {questions}")
             return
-        repo.materialize(run_id, plan, instances)      # persistido ANTES de executar
+        # Item 31.87 (F1): `{perfil_*}` e `{conta_*_usuario}` que a persona de algum aparelho não resolve. Sem isto o
+        # texto cru ia ao objetivo da etapa (receita diverge, a IA assume com `{perfil_sobrenome}` escrito). Nada é
+        # materializado nem despachado: a pessoa cadastra o dado ou o diz no comando. Só ids e rótulos na mensagem.
+        if faltas := faltas_por_aparelho(plan, instances):
+            sem_persona = frozenset(str(i["instance_id"]) for i in instances if not i.get("profile_id"))
+            self._pedir_resposta(run_id, perguntas_do_dado(faltas, sem_persona),
+                                 "falta dado da persona para o plano; nada foi materializado")
+            return
+        try:
+            repo.materialize(run_id, plan, instances)      # persistido ANTES de executar
+        except DadoDaPersonaAusente as exc:
+            # Rede de segurança: o pré-voo acima devia ter pedido a resposta. Sem este desvio a exceção sairia da tarefa
+            # de planejamento e a execução ficaria em `planning` para sempre. `failed`, não `needs_input`: chegar aqui é
+            # defeito nosso, e a mensagem só tem nomes de variável.
+            repo.set_run_status(run_id, RunStatus.failed, f"Materialização recusada: {exc}", level="error")
+            return
         self._fotografar_recursos(run_id, known, instances)
         run = repo.run_row(run_id)
         if run and run["cancel_requested"]:

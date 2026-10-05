@@ -37,6 +37,7 @@ from ..social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_MOTIV
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, parse_iso, to_iso, truncate
 from .latencia import TemposDaTentativa, motivo_da_espera
+from .dado_da_persona import exigir_resolvido
 from .recipes import para_hash, step_template_hash
 from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
@@ -381,6 +382,9 @@ class Repository:
                 variaveis = inst.get("variables")
                 if variaveis is None:
                     variaveis = self._variaveis_da_persona(inst.get("profile_id"))
+                # Defesa em profundidade (31.87): o pré-voo de `RunService._plan` já recusou; quem chegar aqui sem ele
+                # (outro chamador, plano reaproveitado) não grava `{perfil_x}` cru no texto que vai ao aparelho.
+                exigir_resolvido(plan, variaveis)
                 base = {"instance_id": iid, "run_id": run_id, "account_label": inst.get("account_label") or "",
                         **variaveis}
                 params = {k: resolve_templates(v, base) or "" for k, v in plan.parameters.items()}
