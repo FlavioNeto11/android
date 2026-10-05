@@ -32,6 +32,7 @@ from ..modules.learning.domain.aprovacao_automatica import PLATAFORMA
 from ..modules.learning.domain.causa_do_ausente import ChaveDaReceita, ReceitaVizinha, causa_do_ausente, doadora
 from ..modules.learning.domain.livro import CONFIRMADO_QUE_FICA, receita_tem_efeito
 from ..planning.provider import Decision
+from .flows import trocar_valores_por_nomes
 from ..util import norm_text, now_iso
 from .flows import PREFIXO_DO_TREINO, SISTEMA
 
@@ -113,9 +114,9 @@ def para_hash(step: PlanStep, variables: dict[str, str] | None) -> PlanStep:
     def troca(texto: str | None) -> str | None:
         if not texto:
             return texto
-        for nome, valor in sorted(valores.items(), key=lambda kv: -len(kv[1])):
-            texto = texto.replace(valor, "{" + nome + "}")
-        return texto
+        # A mesma troca, com a mesma borda, de quando o fluxo aprende (31.96): `str.replace` partia "nasal" por "nasa"
+        # e dava ao hash da receita uma identidade que o fluxo-modelo não tem.
+        return trocar_valores_por_nomes(texto, valores)
 
     return step.model_copy(update={
         "postcondition": step.postcondition.model_copy(update={"value": troca(step.postcondition.value) or ""}),

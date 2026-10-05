@@ -102,49 +102,60 @@ def _com_valores(text: str, values: dict[str, str]) -> str:
     return PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), text)
 
 
-def _borda(caractere: str, molde: str) -> str:
-    """O lookaround que a borda do valor exige (`molde` é o lookbehind ou o lookahead): dígito pede um não-dígito,
-    letra ou `_` pede um que não seja letra, dígito nem `_`, símbolo e espaço não pedem nada."""
+def _borda(caractere: str, *, esquerda: bool) -> str:
+    """O lookaround que a borda do valor exige, pelo caractere do EXTREMO do valor (31.96).
+
+    Letra ou `_` pede, do lado de fora, algo que não seja letra, dígito nem `_`. Dígito é mais conservador do que era:
+    à esquerda não pode haver caractere de palavra (um nome de imagem ou de botão como `btn10`, `img_10` ou `v10` não
+    é o valor), e à direita não pode haver dígito nem `_` (`10_2` e `100` não são o valor), mas uma letra colada à
+    direita segue valendo, a unidade (`10min`). Símbolo e espaço não pedem nada: o símbolo já delimita."""
     if re.fullmatch(r"\d", caractere):
-        return molde.format(r"\d")
-    return molde.format(r"\w") if re.fullmatch(r"\w", caractere) else ""
+        return r"(?<!\w)" if esquerda else r"(?![\d_])"
+    if re.fullmatch(r"\w", caractere):
+        return r"(?<!\w)" if esquerda else r"(?!\w)"
+    return ""
 
 
 def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
     """Troca cada valor de exemplo por `{nome}` no texto do plano, valores mais longos primeiro.
 
-    F6 (31.89): o valor só é trocado INTEIRO, e a borda se confere por CLASSE de caractere. Borda que é letra ou `_`
-    exige, do lado de fora, algo que não seja letra, dígito nem `_`: com "Ana" de exemplo, "Banana", "Ana2" e "a_Ana"
-    ficam como estão, e "posts", "ana_silva" e "fulano123" não perdem um pedaço para "post", "ana" e "fulano". Borda
-    que é DÍGITO exige só um não-dígito: com "10" de exemplo, "esperar 10min" vira "esperar {n}min" e "v10" vira "v{n}",
-    mas "100" e "110" ficam (exigir também não-letra aqui deixava "10min" sem troca, e o plano reaproveitado com outro número
-    dizia "10min" calado). Borda que é símbolo ou espaço ("@fulano", "R$ 10") não exige nada: o símbolo já delimita.
-    Cada troca só olha o texto que ainda não é `{nome}`: um valor curto ("nome") não reescreve o marcador que um
-    valor anterior acabou de pôr.
+    F6 (31.89): o valor só é trocado INTEIRO, e a borda se confere por CLASSE de caractere (`_borda`). Com "Ana" de
+    exemplo, "Banana", "Ana2" e "a_Ana" ficam como estão, e "posts", "ana_silva" e "fulano123" não perdem um pedaço
+    para "post", "ana" e "fulano". Com "10", "esperar 10min" vira "esperar {n}min", mas "100", "110", "v10" e "10_2"
+    ficam (31.96: a esquerda sem caractere de palavra, a direita sem dígito nem `_`). Contrapartida: número colado a
+    letra à ESQUERDA não troca ("10h30" vira "{n}h30", o "30" fica; "10x10" e "nº10" idem), o preço de não partir
+    "v10". Borda que é símbolo ou espaço ("@fulano", "R$ 10") não exige nada: o símbolo já delimita.
+
+    31.96, a fronteira entre pedaços já trocados: a borda se confere no texto ORIGINAL, não no resto que sobrou
+    entre dois marcadores. Antes, "10min" com "10" e "min" de exemplo virava "{n}{m}": o "min" começava um pedaço novo,
+    sem o "0" que o precede, e passava na borda. Um valor curto também nunca reescreve o marcador que um valor
+    anterior acabou de pôr, nem toma um pedaço dele.
     """
     if not text:
         return text
-    pedacos: list[tuple[str, bool]] = [(text, False)]          # (texto, já é marcador)
+    ocupado = [False] * len(text)
+    trocas: list[tuple[int, int, str]] = []
     for name, value in sorted(values.items(), key=lambda kv: -len(kv[1])):
         if not value:
             continue
-        antes, depois = _borda(value[0], "(?<!{})"), _borda(value[-1], "(?!{})")
-        achar = re.compile(antes + re.escape(value) + depois)
-        novos: list[tuple[str, bool]] = []
-        for trecho, feito in pedacos:
-            if feito:
-                novos.append((trecho, True))
+        achar = re.compile(_borda(value[0], esquerda=True) + re.escape(value) + _borda(value[-1], esquerda=False))
+        pos = 0
+        while (m := achar.search(text, pos)) is not None:
+            if any(ocupado[m.start():m.end()]):
+                pos = m.start() + 1                  # cruza um valor já trocado: tenta de novo logo depois
                 continue
-            pos = 0
-            for m in achar.finditer(trecho):
-                if m.start() > pos:
-                    novos.append((trecho[pos:m.start()], False))
-                novos.append(("{" + name + "}", True))
-                pos = m.end()
-            if pos < len(trecho):
-                novos.append((trecho[pos:], False))
-        pedacos = novos
-    return "".join(t for t, _ in pedacos)
+            ocupado[m.start():m.end()] = [True] * (m.end() - m.start())
+            trocas.append((m.start(), m.end(), "{" + name + "}"))
+            pos = m.end()
+    saida, fim = [], 0
+    for ini, f, marcador in sorted(trocas):
+        saida += [text[fim:ini], marcador]
+        fim = f
+    return "".join(saida) + text[fim:]
+
+
+#: O nome público da troca, para quem a usa fora deste módulo (a identidade da etapa em `recipes.para_hash`).
+trocar_valores_por_nomes = _sub_values
 
 
 #: 30.83: a referência pública do fluxo, `f-` mais 12 hex ALEATÓRIOS. Nunca derivada do resumo, do comando nem do
