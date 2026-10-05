@@ -36,16 +36,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   a varredura do pré-voo do F1 (a pergunta leva rótulo) e a coluna lida pelo adaptador (`biography` entrou no SELECT).
   Contrato para o ensino (Aprendizado): `identity.application.available_data.profile_variables(store, profile_id)`; só a
   forma do dicionário ganhou chaves. Senha, código e 2FA seguem só pelo cofre.
-- C1 da leitura (Ferramentas): o valor resolvido vai aonde o texto da etapa vai, inclusive o aviso e a pergunta do Telegram.
-  `nomes_de_persona` (a porta da Canais) passa a ler também os valores de TEXTO LIVRE da biografia, um por item
-  (`textos_da_biografia_para_filtro`, no domínio da identidade): cidades, estado, país, empregador, profissão, formação,
-  religião, estado civil, gostos…; ficam de fora só as enumerações curtas (prática, orientação, envolvimento) e o número de
-  filhos. Excesso de redação é falha segura. O teste usa a porta real sobre o banco e prova que um título de etapa com
-  valor de biografia não sai em `approval.pending` nem em `run.needs_input` (com e sem conversa); sem os textos no filtro,
-  o mesmo título vaza, e o teste também confere isso. N1: a profissão inventada do teste deixou de coincidir com um pedaço
-  de nome real.
-- Prova `simulated`: `backend/tests/test_perfil_variaveis_da_persona.py::*` (9 testes, valores sintéticos, mutação do SELECT
-  reprovada), mais 166 de pré-voo, credenciais, catracas e arquitetura e 1184 de avisos, canais, Telegram e Trello verdes. Real: `not_run`.
+- C1 da leitura (Ferramentas), no desenho da orquestradora (22:26Z): o valor resolvido vai aonde o texto da etapa vai,
+  inclusive o aviso e a pergunta do Telegram. Os valores de TEXTO LIVRE da biografia, um por item
+  (`textos_da_biografia_para_filtro`, no domínio da identidade), entram no filtro SÓ do caminho de EVENTO (título de etapa em
+  `approval.pending`, `run.needs_input` e afins) por `nomes_e_dados_da_persona`, como `DadoDaPersona`, que sai como
+  `<dado da persona>` (não `<persona>`). A resposta composta pela ANA, o eco de comentário do Trello e a prévia continuam com
+  `nomes_de_persona`, só nomes: "São Paulo" ou "música" passam. Ficam fora da lista as enumerações curtas, o número de filhos,
+  o país e a sigla de estado; se um texto é nome e dado ao mesmo tempo, o nome vence. Teste com a função real sobre o banco,
+  dos dois lados (o evento mascara, a conversa passa), e da ligação em `state.py`; sem os dados no filtro, o mesmo título
+  vaza, e o teste confere isso. N1: a profissão inventada do teste deixou de coincidir com um pedaço de nome real.
+- Prova `simulated`: `backend/tests/test_perfil_variaveis_da_persona.py::*` (12 testes, valores sintéticos, mutação do SELECT
+  reprovada), mais 1360 de avisos, canais, Telegram, Trello, pré-voo, credenciais, catracas e arquitetura verdes. Real: `not_run`.
 
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 

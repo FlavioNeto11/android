@@ -180,14 +180,16 @@ def _biografia(fields: Mapping[str, object] | None) -> dict[str, str]:
 #: Marcadores da biografia que NÃO entram no filtro dos canais: enumerações curtas e genéricas ("centro", "baixo") e o
 #: número de filhos. Todo o resto é texto livre da pessoa (cidade, empregador, profissão, religião, gostos…).
 _FORA_DO_FILTRO_DOS_CANAIS = frozenset({"perfil_pratica_religiosa", "perfil_orientacao_politica",
-                                        "perfil_engajamento_politico", "perfil_filhos"})
+                                        "perfil_engajamento_politico", "perfil_filhos", "perfil_pais"})
+#: A sigla de estado ("SP") é curta e genérica demais para o filtro de texto; o nome por extenso ("São Paulo") entra.
+_SIGLA_MAX = 3
 
 
 def textos_da_biografia_para_filtro(fields: Mapping[str, object] | None) -> list[str]:
     """Os valores de texto livre da biografia, UM POR ITEM (uma lista de gostos vira vários), para o filtro dos canais
     (31.87 F2, C1 da leitura): o valor de um marcador vai aonde o texto da etapa vai, e isso inclui o aviso e a
-    pergunta que saem pelo Telegram. Quem lê é a porta `nomes_de_persona` da Canais, que os põe na mesma lista dos nomes.
-    Excesso de redação é falha segura; por isso, tudo que é texto da pessoa entra."""
+    pergunta que saem pelo Telegram. Só o caminho de EVENTO os usa (`nomes_e_dados_da_persona`, da Canais); a conversa da
+    ANA e o eco do Trello ficam só com nomes. Fora: enumerações curtas, o número de filhos, o país e a sigla de estado."""
     bruto = None if fields is None else fields.get("biography")
     if isinstance(bruto, str):
         try:
@@ -205,7 +207,8 @@ def textos_da_biografia_para_filtro(fields: Mapping[str, object] | None) -> list
         for chave in caminho:
             atual = atual.get(chave) if isinstance(atual, Mapping) else None
         itens = atual if isinstance(atual, list) else [atual]
-        saida.extend(t for x in itens if isinstance(x, str) and (t := _texto(x)))
+        saida.extend(t for x in itens if isinstance(x, str) and (t := _texto(x))
+                     and not (nome == "perfil_estado" and len(t) <= _SIGLA_MAX))
     return saida
 
 

@@ -137,17 +137,18 @@ def test_textos_da_biografia_para_o_filtro_sao_um_por_item_e_sem_enumeracao() ->
 
 def test_valor_da_biografia_num_titulo_de_etapa_nao_sai_pelo_telegram(harness: Harness) -> None:
     """A orquestradora pediu a prova: um título de etapa com valor de biografia (agora variável da persona) não sai no
-    `approval.pending` nem no `run.needs_input`, que o Telegram carrega. A porta REAL (`nomes_de_persona`) lê o banco."""
+    `approval.pending` nem no `run.needs_input`, que o Telegram carrega, e o dado vira `<dado da persona>`. A função REAL
+    do caminho de evento (`nomes_e_dados_da_persona`) lê o banco."""
     from app.modules.avisos.domain.mensagem import aviso_de_evento, texto_da_mensagem
-    from app.modules.avisos.infrastructure.portas_da_central import nomes_de_persona
+    from app.modules.avisos.domain.privacidade import DADO_OCULTO
+    from app.modules.avisos.infrastructure.portas_da_central import nomes_e_dados_da_persona
     from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 
     s = harness.state
-    pid = s.social.create_profile(ProfileCreate(username="zelda.teste", instance_id="android-01",
-                                                email="zelda@exemplo.test", first_name="Zelda")).id
-    s.db.execute("UPDATE instagram_profiles SET biography=? WHERE id=?", (json.dumps(BIOGRAFIA), pid))
-    nomes = nomes_de_persona(s.db)
-    assert "Cidadela" in nomes and "Oficina Exemplo" in nomes and "armeira" in nomes
+    _persona_com_biografia(s)
+    nomes = nomes_e_dados_da_persona(s.db)
+    assert {"Cidadela", "Oficina Exemplo", "armeira"} <= set(nomes)
+    assert "Hyrule" not in nomes                                   # país fica fora da lista
     titulo = "Digitar Cidadela e armeira na Oficina Exemplo, com curso de forja"
     proibidos = ("Cidadela", "armeira", "Oficina Exemplo", "forja")
     redigir = TriagemDeCredencial().redigir
@@ -163,14 +164,65 @@ def test_valor_da_biografia_num_titulo_de_etapa_nao_sai_pelo_telegram(harness: H
             texto = texto_da_mensagem(aviso.titulo, aviso.corpo, aviso.link)
             for proibido in proibidos:
                 assert proibido.casefold() not in texto.casefold(), (kind, conversa, proibido, texto)
-    # sem o filtro, o mesmo texto SAIA: é o que a prova pega (mutação: nomes sem a biografia)
-    sem = [n for n in nomes if n not in textos_da_biografia(s.db)]
-    vazou = aviso_de_evento("run.updated", parada, 9, "https://painel.exemplo/central", redigir=redigir, nomes=sem,
-                            conversa=True)
+            if conversa:
+                assert DADO_OCULTO in texto and "<persona>" not in texto, texto
+    # sem os dados no filtro, o mesmo título SAIA: é o que a prova pega (mutação: só os nomes)
+    vazou = aviso_de_evento("run.updated", parada, 9, "https://painel.exemplo/central", redigir=redigir,
+                            nomes=[n for n in nomes if n not in textos_da_biografia(s.db)], conversa=True)
     assert vazou is not None and "Cidadela" in texto_da_mensagem(vazou.titulo, vazou.corpo, vazou.link)
+
+
+def test_a_resposta_da_ana_e_o_eco_do_trello_nao_mascaram_o_dado_da_persona(harness: Harness) -> None:
+    """O outro lado (decisão da orquestradora, 05/10 22:26Z): a conversa composta pela ANA e o eco do Trello usam só
+    NOMES. "São Paulo", "música" ou "armeira" são texto comum e passam; o nome da persona continua mascarado."""
+    from app.modules.avisos.domain.privacidade import menciona_persona, sem_nome_de_persona, texto_seguro
+    from app.modules.avisos.infrastructure.portas_da_central import nomes_de_persona
+    from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
+
+    s = harness.state
+    _persona_com_biografia(s)
+    nomes = nomes_de_persona(s.db)
+    assert "Cidadela" not in nomes and "Oficina Exemplo" not in nomes and "zelda.teste" in nomes
+    resposta = "Fica em Cidadela, uma armeira da Oficina Exemplo; gosta de música e de São Paulo."
+    assert sem_nome_de_persona(resposta, nomes) == resposta                      # a resposta da ANA passa inteira
+    assert sem_nome_de_persona("falei com zelda.teste", nomes) == "falei com <persona>"
+    redigir = TriagemDeCredencial().redigir
+    assert texto_seguro(resposta, nomes, redigir) == resposta                    # o eco do Trello passa
+    assert not menciona_persona(resposta, nomes)
+
+
+def test_dado_e_nome_iguais_saem_como_nome_e_estado_so_pelo_nome_por_extenso() -> None:
+    from app.modules.avisos.domain.privacidade import DadoDaPersona, sem_nome_de_persona
+    from app.modules.identity.domain.available_data import textos_da_biografia_para_filtro
+
+    # o mesmo texto como nome e como dado: o nome vence
+    assert sem_nome_de_persona("oi Cidadela", ["Cidadela", DadoDaPersona("Cidadela")]) == "oi <persona>"
+    assert sem_nome_de_persona("oi Cidadela", [DadoDaPersona("Cidadela")]) == "oi <dado da persona>"
+    bio = {"home": {"city": "Sao Paulo", "state": "SP", "country": "Brasil"}}
+    assert textos_da_biografia_para_filtro({"biography": bio}) == ["Sao Paulo"]      # sem a sigla e sem o país
+    assert "São Paulo" in textos_da_biografia_para_filtro({"biography": {"home": {"state": "São Paulo"}}})
+
+
+def _persona_com_biografia(s) -> None:
+    pid = s.social.create_profile(ProfileCreate(username="zelda.teste", instance_id="android-01",
+                                                email="zelda@exemplo.test", first_name="Zelda")).id
+    s.db.execute("UPDATE instagram_profiles SET biography=? WHERE id=?", (json.dumps(BIOGRAFIA), pid))
 
 
 def textos_da_biografia(db) -> set[str]:
     from app.modules.identity.domain.available_data import textos_da_biografia_para_filtro
     return {t for r in db.query("SELECT biography FROM instagram_profiles")
             for t in textos_da_biografia_para_filtro({"biography": r["biography"]})}
+
+
+def test_o_servico_de_avisos_real_leva_os_dados_e_a_conversa_leva_so_os_nomes(harness: Harness) -> None:
+    """A ligação em `state.py`: o serviço de eventos usa `nomes_e_dados_da_persona`; a porta da conversa (entrada),
+    `nomes_de_persona`. Mutação: trocar uma pela outra quebra um dos dois asserts."""
+    from app.modules.avisos.infrastructure.portas_da_central import PortasReais
+
+    s = harness.state
+    _persona_com_biografia(s)
+    do_servico = s.avisos._nomes() or []
+    assert "Cidadela" in do_servico and "zelda.teste" in do_servico
+    da_conversa = PortasReais.nomes_de_persona.__get__(type("P", (), {"db": s.db})())()
+    assert "Cidadela" not in da_conversa and "zelda.teste" in da_conversa

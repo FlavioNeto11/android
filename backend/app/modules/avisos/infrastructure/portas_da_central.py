@@ -24,6 +24,7 @@ from app.db import Database, loads
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
 from app.modules.avisos.application.entrada import casar_ref
 from app.modules.avisos.domain.mensagem import GESTO_DA_APROVACAO_NO_DESFECHO, GESTO_DO_OBJETIVO
+from app.modules.avisos.domain.privacidade import DadoDaPersona
 from app.modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo, LeituraRecusada
 from app.modules.avisos.infrastructure.entrada import Captura, Pendencia, PlanoMudou, Previa, RecusaDaCentral
 from app.modules.identity.domain.available_data import textos_da_biografia_para_filtro
@@ -389,13 +390,20 @@ def _resumo_da_aprovacao(a: dict[str, object]) -> str:
 
 def nomes_de_persona(db: Database) -> list[str]:
     """Nome de exibição, primeiro e último nome e @ das personas: o que a conversa (28.28) e o aviso (28.31) tiram de
-    todo texto que mandam pelo canal. Inclui as aposentadas: o nome continua sendo de uma pessoa da plataforma.
-
-    31.87 F2 (C1 da leitura): também os valores de texto livre da biografia (cidade, empregador, profissão, religião,
-    gostos…), porque agora são variáveis da persona e o valor resolvido vai aonde o texto da etapa vai, aviso e pergunta
-    do Telegram inclusive."""
+    todo texto que mandam pelo canal. Inclui as aposentadas: o nome continua sendo de uma pessoa da plataforma."""
     nomes: list[str] = []
-    for r in db.query("SELECT display_name, first_name, last_name, username, biography FROM instagram_profiles"):
+    for r in db.query("SELECT display_name, first_name, last_name, username FROM instagram_profiles"):
         nomes.extend(str(v) for v in (r["display_name"], r["first_name"], r["last_name"], r["username"]) if v)
-        nomes.extend(textos_da_biografia_para_filtro({"biography": r["biography"]}))
     return nomes
+
+
+def nomes_e_dados_da_persona(db: Database) -> list[str]:
+    """Os nomes de `nomes_de_persona` MAIS os valores de texto livre da biografia como `DadoDaPersona` (31.87 F2, C1 da
+    leitura): são variáveis da persona, e o valor resolvido vai aonde o texto da etapa vai, aviso e pergunta do Telegram
+    inclusive. É o que o caminho de EVENTO usa (título de etapa em `approval.pending`, `run.needs_input` e afins); a
+    resposta composta pela ANA e o eco do Trello seguem com `nomes_de_persona`, só nomes (decisão da orquestradora,
+    05/10 22:26Z). O dado sai como `<dado da persona>`, não como `<persona>`."""
+    saida = nomes_de_persona(db)
+    for r in db.query("SELECT biography FROM instagram_profiles"):
+        saida.extend(DadoDaPersona(t) for t in textos_da_biografia_para_filtro({"biography": r["biography"]}))
+    return saida
