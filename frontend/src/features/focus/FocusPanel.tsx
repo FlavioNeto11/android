@@ -3,6 +3,7 @@ import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { api, toApiError } from '../../api/client';
 import { useOperationalContext } from '../devices/OperationalContextCard';
 import { TrainingBar } from '../training/TrainingBar';
+import { useTrainingStore } from '../training/trainingStore';
 import type { ManualInput } from '../../api/types';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -85,6 +86,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const screenRef = useRef<ScreenHandle>(null);
   const panelRef = useRef<HTMLElement>(null);
   const [sending, setSending] = useState(false);
+  const gravando = useTrainingStore((s) => !!s.gravando[instanceId]);
+  const registrarRecusa = useTrainingStore((s) => s.registrarRecusa);
   const [shown, setShown] = useState<ShownFrame | null>(null);
   const [highlight, setHighlight] = useState<[number, number, number, number] | null>(null);
   const [hierarquiaAberta, setHierarquiaAberta] = useState(false);
@@ -114,6 +117,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
       } catch (e) {
         const err = toApiError(e);
         if (err.code === 'stale_frame' || err.code === 'frame_mismatch') {
+          // 31.85: o aviso é um só (chave fixa), mas a gravação conta cada entrada recusada para a pessoa refazê-las.
+          registrarRecusa(instanceId);
           toast({ tone: 'warning', title: 'A tela mudou — aguarde a nova imagem e tente de novo', message: 'Nada foi enviado ao aparelho.', key: `stale-${instanceId}` });
           screenRef.current?.refresh();
         } else if (err.code === 'capture_failing') {
@@ -143,7 +148,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
         setSending(false);
       }
     },
-    [instanceId, dropLease],
+    [instanceId, dropLease, registrarRecusa],
   );
 
   const onGesture = useCallback(
@@ -275,7 +280,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
             <Banner tone="warning" icon={Hand} role="alert" title="Atenção necessária">{instance.attention}</Banner>
           ) : null}
 
-          {online && !loja ? <TrainingBar instance={instance} leaseId={lease?.leaseId ?? null} mine={mine} /> : null}
+          {/* 31.86: fora do ar a barra segue de pé só para revisar; sem ela, as gravações ficavam inalcançáveis. */}
+          {!loja ? <TrainingBar instance={instance} leaseId={lease?.leaseId ?? null} mine={mine} somenteRevisao={!online} /> : null}
 
           <IdentitySection instance={instance} server={server} appName={defaultApp?.name ?? instance.app_id} />
           <HealthSection instance={instance} selo={selo} desconhecido={desconhecido} />
@@ -295,11 +301,12 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
             mine={mine}
             pending={!!pending}
             sending={sending}
+            gravando={gravando}
             defaultApp={defaultApp}
             desconhecido={desconhecido}
             contextLoading={contexto.carregando}
             onKey={(key: ManualKey) => void sendInput({ type: 'key', key })}
-            onText={(text) => sendInput({ type: 'text', text })}
+            onText={(text, clearFirst) => sendInput(clearFirst ? { type: 'text', text, clear_first: true } : { type: 'text', text })}
             onRefreshFrame={() => screenRef.current?.refresh()}
             onReloadContext={() => void contexto.carregar()}
             onShowHierarchy={mostrarHierarquia}

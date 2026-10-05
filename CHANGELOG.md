@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.80, 31.84, 31.85, 31.86, tela do Modo treinamento (branch fix/31-80-86-painel-do-treino)
+
+- 31.80: a barra só diz "Gravando" com o controle na mão; sessão `recording` sem ele (gravação órfã) vira aviso com
+  "Concluir e revisar" e "Descartar".
+- 31.84: "Limpar o campo antes" ao lado de Enviar (marcada enquanto grava, desmarcada fora); o texto vai com
+  `clear_first: true` (contrato v1.56, `ManualInput.clear_first`); a dica do treino ganhou a linha sobre ela.
+- 31.85: "Enviando ao aparelho…" (`aria-live="polite"`) enquanto uma entrada está em voo; a barra conta as entradas
+  recusadas (`stale_frame`/`frame_mismatch`) durante a gravação ("N entrada(s) recusada(s): refaça"). Sem fila de entradas.
+- 31.86: aparelho fora do ar (e que não é a loja) mostra a barra em "só revisão": "Para revisar" e a revisão
+  funcionam, sem o formulário de iniciar.
+- Estado compartilhado em `frontend/src/features/training/trainingStore.ts` (só memória).
+- Prova `simulated`: `FocusPanel.test.tsx` (6 novos, 35 passed) e `TrainingBar.test.tsx` (3 novos, 4 passed); cada
+  teste novo falha sem a mudança (mutação conferida). `npm run typecheck` limpo. Real: `not_run` (depende do backend
+  em paralelo, `clear_first`, e da implantação).
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
