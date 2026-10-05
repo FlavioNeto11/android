@@ -320,6 +320,9 @@ export function allByRole(role: string, name: RegExp | string, root: ParentNode 
 }
 
 export async function click(el: Element, init: MouseEventInit = {}): Promise<void> {
+  // Como o `setValue`: ninguém clica num controle desabilitado (nem no de um `fieldset` desabilitado), e no navegador
+  // o clique nele não chega ao React. O `aria-disabled` do `Button` segue clicável: ele explica o motivo (29.130).
+  if (el.matches(':disabled')) throw new Error(`click: ${el.getAttribute('aria-label') || el.id || el.tagName} está desabilitado`);
   await act(async () => {
     el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, ...init }));
   });
@@ -344,7 +347,7 @@ export async function setValue(el: HTMLInputElement | HTMLTextAreaElement | HTML
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
   // Ninguém digita num campo desabilitado (nem no de um `fieldset` desabilitado): o teste que o fizesse provaria um
   // gesto que a tela não permite (29.115).
-  if (el.matches(':disabled')) throw new Error(`setValue: o campo ${el.getAttribute('aria-label') ?? el.id ?? el.tagName} está desabilitado`);
+  if (el.matches(':disabled')) throw new Error(`setValue: o campo ${el.getAttribute('aria-label') || el.id || el.tagName} está desabilitado`);
   await act(async () => {
     setter?.call(el, value);
     el.dispatchEvent(new Event(el instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));

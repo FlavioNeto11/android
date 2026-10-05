@@ -477,6 +477,9 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
 
   async function criar() {
     setOcupado(true);
+    // A releitura da lista fica fora do try: ela não trava o cadastro, e a falha dela não vira "Não foi possível
+    // criar" sobre um perfil criado (29.130).
+    let criado = false;
     try {
       await api.createNetworkProfile({
         name: nome.trim(), kind, protocol, endpoint_host: host.trim(), endpoint_port: Number(porta),
@@ -485,12 +488,13 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
       });
       toast({ tone: 'success', title: `Perfil ${nome.trim()} criado` });
       setNome(''); setHost(''); setSecret(''); setSaida('');
-      await onCriado();
+      criado = true;
     } catch (e) {
       toastError('Não foi possível criar o perfil', e);
     } finally {
       setOcupado(false);
     }
+    if (criado) await onCriado();
   }
 
   const faltando = !nome.trim() || !host.trim() || !Number(porta) ? 'Preencha nome, host e porta.' : null;

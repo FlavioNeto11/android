@@ -33,6 +33,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - frontend inteiro 1617/1617 sem atraso;
   - app.integration, rede e settings 174/174 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99.
 
+## 2026-10-05 — 29.130, sobras da leitura do 29.115 (branch fix/29-130-sobras-da-leitura-29-115)
+
+- N1: o `click` do harness recusa controle `:disabled`, também dentro de `fieldset` desabilitado, como o `setValue`.
+  O `aria-disabled` do `Button` segue clicável. O teste do 29.106 que clicava no "Criar grupo" desabilitado passa a
+  afirmar a recusa.
+- N2: nos Limites, o Enter num campo envia e o foco vai para o "Salvar limites", que segue focável enquanto envia.
+  Antes, o fieldset desabilitado mandava o foco para o body.
+- N3: a mensagem do harness usa `||`: um `id` vazio não vale como nome, e a mensagem cai na tag.
+- N4: no cadastro de rede, a releitura da lista sai do `try` do criar. Ela não trava mais os campos, e a falha dela
+  não diria "Não foi possível criar" sobre um perfil criado.
+- Prova simulated: `src/test/harness.test.ts` (novo), 1 caso novo em `LimitsSection.test.tsx` e 1 em
+  `RedePage.test.tsx`. Quatro mutações, todas pegas. Frontend inteiro: 1631/1631. Settings, rede e `src/test` com
+  `ATRASO_DO_FETCH_MS=40` nas sementes 7 e 88: 156/156.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

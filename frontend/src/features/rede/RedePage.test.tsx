@@ -742,3 +742,25 @@ it('enquanto cria o perfil, o cadastro fica desabilitado; com a resposta, volta 
   await waitFor(() => !nome().matches(':disabled'));
   expect(nome().value).toBe('');
 });
+
+// 29.130: a releitura da lista depois de criar não trava o cadastro (ela ficava dentro do try do criar).
+it('criado o perfil, o cadastro volta livre já com a releitura da lista em voo', async () => {
+  let soltarLista: (() => void) | null = null;
+  backend.on('POST', /\/network\/profiles$/, (call) => json(perfil({ id: 'vpn-9', name: (call.body as { name: string }).name })));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('WireGuard escritório'));
+  const lista = backend.callsTo('GET', /\/network\/profiles$/).length;
+  backend.on('GET', /\/network\/profiles$/, () => new Promise<Response>((r) => {
+    soltarLista = () => r(json({ profiles: [] }));
+  }));
+  const nome = () => byRole('textbox', /^Nome do perfil$/) as HTMLInputElement;
+  await setValue(nome(), 'Dedicada-01');
+  await setValue(byRole('textbox', /^Host$/) as HTMLInputElement, 'vpn.provedor.example');
+  await click(await botaoPronto(/^Criar$/));
+  await waitFor(() => soltarLista !== null);
+  expect(backend.callsTo('GET', /\/network\/profiles$/).length).toBe(lista + 1);
+  await waitFor(() => !nome().matches(':disabled'));
+  await setValue(nome(), 'Dedicada-02');                                  // a pessoa já começa o próximo
+  await act(async () => { soltarLista!(); });
+  expect(nome().value).toBe('Dedicada-02');
+});
