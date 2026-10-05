@@ -241,7 +241,10 @@ def loads_json(raw: str, what: str) -> Any:
     try:
         return json.loads(texto)
     except json.JSONDecodeError as exc:
-        raise AIError(f"{what} inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+        falha = str(exc)
+    # 31.67 (V1b da revisão do 31.63): levantado FORA do `except`. Com `from exc` (ou dentro dele), o `JSONDecodeError`
+    # ficava em `__cause__`/`__context__`, e o `.doc` dele é o texto inteiro do modelo. O `str` diz linha e coluna.
+    raise AIError(f"{what} inválido devolvido pelo modelo: {falha}", kind="invalid_output")
 
 
 def apps_do_plano(plan: Plan, instances: Iterable[Mapping[str, object]] = ()) -> list[str]:

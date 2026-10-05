@@ -504,10 +504,14 @@ def persona_draft_from_json(raw: str) -> PersonaDraft:
     if texto.startswith("```"):
         texto = re.sub(r"^```[a-zA-Z]*\s*", "", texto)
         texto = re.sub(r"\s*```$", "", texto).strip()
+    falha: str | None = None
     try:
         dados = json.loads(texto)
     except ValueError as exc:
-        raise AIError(f"Rascunho de persona não é JSON: {exc}", kind="invalid_output") from exc
+        falha = str(exc)
+    if falha is not None:
+        # 31.67 (V1b): fora do `except`, sem a causa (o `.doc` do `JSONDecodeError` é o texto inteiro do modelo).
+        raise AIError(f"Rascunho de persona não é JSON: {falha}", kind="invalid_output")
     return validar_saida(PersonaDraft, _vazio_e_nulo(dados), "Rascunho de persona inválido devolvido pelo modelo")
 
 

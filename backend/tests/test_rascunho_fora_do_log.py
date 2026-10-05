@@ -99,3 +99,32 @@ async def test_saida_social_invalida_nao_leva_o_rascunho_ao_motivo_ao_evento_nem
     mensagens = [str(r["message"] or "") + str(r["data"] or "") for r in state.db.query("SELECT message, data FROM events")]
     for onde in (veredito.reason or "", veredito.hint or "", caplog.text, *mensagens):
         assert MARCA not in onde, onde
+
+
+# ----------------------------------------------------------------------- 31.67: a causa não guarda o texto (V1b, V4)
+SEGREDO_DO_MODELO = "texto-do-modelo-que-nao-pode-ficar-na-causa"
+
+
+def _sem_causa(exc: BaseException) -> None:
+    assert exc.__cause__ is None and exc.__context__ is None
+    assert SEGREDO_DO_MODELO not in str(exc)
+
+
+@pytest.mark.parametrize("ler", ["loads_json", "persona_draft_from_json", "proposal_from_json"])
+def test_json_ilegivel_do_modelo_vira_erro_sem_o_documento_na_causa(ler: str) -> None:
+    from app.planning import parsing, provider, training
+    from app.planning.provider import AIError
+    bruto = '{"conteudo": "' + SEGREDO_DO_MODELO + '" '                     # JSON cortado: JSONDecodeError
+    chamada = {"loads_json": lambda: parsing.loads_json(bruto, "Plano"),
+               "persona_draft_from_json": lambda: provider.persona_draft_from_json(bruto),
+               "proposal_from_json": lambda: training.proposal_from_json(bruto, SimpleNamespace())}[ler]
+    with pytest.raises(AIError) as erro:
+        chamada()
+    _sem_causa(erro.value)
+
+
+def test_argumentos_invalidos_da_ferramenta_sem_os_argumentos_na_causa() -> None:
+    from app.automation.tools import ToolValidationError, validate_call
+    with pytest.raises(ToolValidationError) as erro:
+        validate_call("type_text", {"text": 123, "extra": SEGREDO_DO_MODELO})
+    _sem_causa(erro.value)
