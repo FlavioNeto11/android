@@ -1,7 +1,8 @@
 """Troca, nos TESTES, identificadores e nomes de contas reais por valores de exemplo fixos (31.101).
 
 A tabela real → exemplo NUNCA entra no Git: este script a lê de um arquivo local fora do repositório versionado
-(`--tabela` ou a variável `TROCA_DE_NOMES_TABELA`, JSON com `handles`, `pedacos`, `fora` e `simulados`). Não há
+(`--tabela` ou a variável `TROCA_DE_NOMES_TABELA`, JSON com `handles`, `pedacos`, `fora`, `simulados` e, opcionais,
+`pares` e `ids`). Não há
 caminho padrão: um padrão dentro do repositório deixaria a tabela a um `git add` de um commit. A do parque fica em
 `C:/farm/privado/`, fora de qualquer checkout. Um script com os nomes como chave guardaria
 justamente o que o item tira.
@@ -60,9 +61,14 @@ def _caixa(original: str, novo: str) -> str:
 
 
 def trocador(tabela: dict, amplo: bool):
-    """O handle inteiro primeiro (com o número trocado); com `amplo`, depois os `pares` (nome.sobrenome sem o número,
-    inclusive colado a um dígito, e o handle de exemplo que repetia o sufixo de uma conta real) e cada pedaço de nome
-    por palavra inteira."""
+    """Os `ids` primeiro, depois o handle inteiro (com o número trocado); com `amplo`, depois os `pares`
+    (nome.sobrenome sem o número, inclusive colado a um dígito, e o handle de exemplo que repetia o sufixo de uma
+    conta real) e cada pedaço de nome por palavra inteira."""
+    # 31.105: `ids` é o identificador interno de uma persona real e o de exemplo, no mesmo formato. É troca LITERAL,
+    # com a caixa exata e sempre (não só no `--amplo`): o id é um valor opaco, não tem caixa nem palavra a respeitar.
+    # Fica fora dos `novos` de propósito: os trechos curtos de um id de exemplo seriam "pedaços" que fazem o
+    # `--amplo` abortar sem que nenhum nome esteja em jogo.
+    ids = sorted(tabela.get("ids", {}).items(), key=lambda par: len(par[0]), reverse=True)
     # 31.101: o handle também aparece com o ponto escapado, numa expressão regular do teste (`/nome\.sobrenome1234/`);
     # essa forma se troca pela de exemplo com o ponto escapado do mesmo jeito.
     def _com_escape(pares: dict) -> list[tuple[str, str]]:
@@ -77,6 +83,8 @@ def trocador(tabela: dict, amplo: bool):
                       re.IGNORECASE) if pedacos else None)
 
     def trocar(texto: str) -> str:
+        for velho, novo in ids:
+            texto = texto.replace(velho, novo)
         for rx, novo in handles:
             texto = rx.sub(lambda m, novo=novo: _caixa(m.group(0), novo), texto)
         return pad.sub(lambda m: _caixa(m.group(0), pedacos[m.group(0).lower()]), texto) if pad else texto
@@ -136,6 +144,9 @@ def main() -> int:
     # nomes de exemplo que já estavam nos testes.
     novos |= {p for velho, novo in tabela.get("pares", {}).items() for p in pedacos_de(novo) - pedacos_de(velho)}
     feitos = [*tabela["handles"].values(), *tabela.get("pares", {}).values()]
+    # 31.105: o handle já trocado também fica com o ponto escapado numa regex de teste (`/nome\.sobrenome1234/`);
+    # sem essa forma, o pedaço dele sobrava e o `--amplo` abortava pelo próprio valor de exemplo.
+    feitos += [f.replace(".", "\\.") for f in feitos if "." in f]
     if novos & {s.lower() for s in tabela.get("simulados", [])}:
         raise SystemExit("um valor de exemplo coincide com um nome do simulated_provider")
     if args.banco:
