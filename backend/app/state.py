@@ -2128,10 +2128,12 @@ class AppState:
         repetida = self.policies.mensagem_repetida(profile_id, cap, loads(srow["bindings"], {}) or {},
                                                    app_id=app_da_etapa_id, step_id=srow["id"])
         # 31.53: com o texto escrito, a conta nossa que cita OUTRA conta do mesmo pedido entre personas passa por
-        # aprovação. Sem pedido, `None` e nada muda.
+        # aprovação. O texto literal o `check` já pegou (e o motivo está no `reason`); aqui é o texto gerado. Sem pedido,
+        # `None` e nada muda.
         citada = self.policies.cita_a_familia(
             profile_id, cap, loads(srow["bindings"], {}) or {},
             contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None)
+        citada = citada if citada and citada not in (veredito.reason or "") else None
         # Aprovação por política, por DM fria (o porquê vem no `reason` do veredito que libera) ou pela confirmação
         # do mesmo pedido a várias contas — nenhum grupo nem perfil afrouxa as duas últimas.
         # 28.23: com o teto `preparar`, o efeito exige aprovação qualquer que seja a política da persona.

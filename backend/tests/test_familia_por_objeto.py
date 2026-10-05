@@ -105,6 +105,19 @@ def test_texto_que_cita_outra_persona_do_pedido_pede_aprovacao_sem_o_arroba_no_m
     assert policies.cita_a_familia(b, comentar, {"content": "@lucas.almeida94845 e @xlucas.almeida9484"}, pedido) is None
 
 
+def test_o_check_ja_pede_aprovacao_pelo_texto_literal_e_a_previa_ve_o_mesmo(tmp_path: Path) -> None:
+    """A prévia do plano só chama o `check`: o texto literal que cita outra conta do pedido tem de aparecer nela com o
+    mesmo selo da execução (31.53, revisão; a regra da aprovação no planejamento)."""
+    _repo, policies, _db, a, b = _familia(tmp_path)
+    comentar = capability_of(IG, "CREATE_COMMENT")
+    argumentos = {"post_author": "@fulana.real", "content": "Olha o que o @lucas.almeida9484 achou"}
+    pedido = ContextoDoPedido(raiz="r-b", familia=frozenset({a, b}))
+    com = policies.check(b, comentar, counterparty="@fulana.real", pedido=pedido, bindings=argumentos)
+    assert MOTIVO_CITA_A_FAMILIA in com.reason and (com.needs_approval or not com.allowed)
+    sem = policies.check(b, comentar, counterparty="@fulana.real", bindings=argumentos)
+    assert MOTIVO_CITA_A_FAMILIA not in sem.reason
+
+
 def test_citar_a_si_mesma_quem_esta_fora_ou_sem_pedido_nao_pede(tmp_path: Path) -> None:
     _repo, policies, _db, a, b = _familia(tmp_path)
     comentar = capability_of(IG, "CREATE_COMMENT")

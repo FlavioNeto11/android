@@ -701,6 +701,13 @@ class PolicyEngine:
             politica = "approval_required"
             nota = "; ".join(t for t in (nota, f"{cap.key} para {alvo_real}, pessoa real sem conversa prévia com esta conta, "
                                          "dentro de um pedido entre personas: passa por aprovação (30.62)") if t)
+        # 31.53: o texto literal do plano que cita outra conta do mesmo pedido passa por aprovação JÁ AQUI, para a prévia
+        # do plano (que só chama o `check`) mostrar o mesmo selo da execução. O texto gerado só existe depois do
+        # rascunho: a porta pergunta de novo então (`_policy_gate`).
+        if pedido is not None and (citada := self.cita_a_familia(profile_id, cap, bindings, pedido)) is not None:
+            if politica == "autonomous":
+                politica = "approval_required"
+            nota = "; ".join(t for t in (nota, citada) if t)
         if not cap.side_effect or not cap.limit_bucket:
             return Verdict(policy=politica, needs_approval=politica == "approval_required", reason=nota)
 
