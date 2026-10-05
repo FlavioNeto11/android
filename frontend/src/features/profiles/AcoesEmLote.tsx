@@ -9,7 +9,7 @@
  * só as repete. Nenhuma operação paga sai sem a pessoa ver o custo ou o aviso e confirmar.
  */
 import { Ban, CheckCheck, ImagePlus, Layers, RotateCcw, ShieldCheck, Sparkles, Trash2, TriangleAlert, X } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client';
 import type { PersonaDTO, PolicyGroup } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -44,6 +44,9 @@ export const SEM_CONTA_NO_GRUPO = 'Sem conta de cadastro: o grupo de acesso gove
  */
 export const LISTA_VELHA = 'A lista não se releu: use “Tentar de novo”.';
 
+/** A releitura passou do prazo e segue em voo: até ela assentar, a lista na tela ainda é a velha (29.118, C1). */
+export const LISTA_RELENDO = 'A lista ainda está se relendo: aguarde.';
+
 /** Quanto o lote espera a releitura antes de mostrar o resumo dizendo que a lista não se releu (29.118). */
 export const PRAZO_DA_RELEITURA_MS = 45_000;
 
@@ -59,8 +62,14 @@ export function BarraDeLote({
   listaVelha?: boolean;
   prazoDaReleituraMs?: number;
 }) {
-  const decidePelaLista = listaVelha ? LISTA_VELHA : null;
   const [operacao, setOperacao] = useState<OperacaoDeLote | null>(null);
+  // A releitura que perdeu a corrida para o prazo ainda está em voo: o erro da página segue nulo, mas a lista é a velha.
+  const [relendo, setRelendo] = useState(false);
+  const aguardarReleitura = useCallback((releitura: Promise<boolean>) => {
+    setRelendo(true);
+    void releitura.finally(() => setRelendo(false));
+  }, []);
+  const decidePelaLista = listaVelha ? LISTA_VELHA : relendo ? LISTA_RELENDO : null;
   const n = selecionadas.length;
   if (n === 0 && operacao === null) return null;
   return (
@@ -84,7 +93,8 @@ export function BarraDeLote({
       ) : null}
       {operacao ? (
         <DialogoDeLote key={operacao} operacao={operacao} pessoas={selecionadas} grupos={grupos}
-                       onFechar={() => setOperacao(null)} onConcluido={onConcluido} prazoDaReleituraMs={prazoDaReleituraMs} />
+                       onFechar={() => setOperacao(null)} onConcluido={onConcluido} prazoDaReleituraMs={prazoDaReleituraMs}
+                       onReleituraPendente={aguardarReleitura} />
       ) : null}
     </>
   );
@@ -92,13 +102,15 @@ export function BarraDeLote({
 
 type Fase = 'parametros' | 'executando' | 'resumo';
 
-function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConcluido, prazoDaReleituraMs }: {
+function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConcluido, prazoDaReleituraMs, onReleituraPendente }: {
   operacao: OperacaoDeLote;
   pessoas: PersonaDTO[];
   grupos: PolicyGroup[];
   onFechar: () => void;
   onConcluido: () => Promise<boolean>;
   prazoDaReleituraMs: number;
+  /** A releitura passou do prazo: a barra trava o que decide pela lista até ela assentar. */
+  onReleituraPendente: (releitura: Promise<boolean>) => void;
 }) {
   const { ai, falhou: aiFalhou } = useAiStatus();
   // A seleção é FOTOGRAFADA ao abrir: a lista se relê no fim (apagadas somem) e o resumo precisa continuar dizendo
@@ -169,18 +181,21 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
     // que a lista na tela ficou velha, para ninguém decidir o próximo lote por ela.
     // O prazo cobre a rajada de releituras (cada uma mais nova espera a seguinte): o diálogo nunca fica preso em
     // "executando"; passado o prazo, conta como não relida (29.118).
-    let relida = false;
+    // A releitura que perde para o prazo segue em voo: vai à barra, que trava grupo, bloquear e reativar até ela
+    // assentar (C1). Sem isso, o resumo dizia "não se releu" e os três ficavam livres sobre a lista velha.
+    const releitura = Promise.resolve().then(onConcluido).catch(() => false);
+    let estourou = false;
     let prazo: ReturnType<typeof setTimeout> | undefined;
+    let relida = false;
     try {
       relida = await Promise.race([
-        onConcluido(),
-        new Promise<boolean>((r) => { prazo = setTimeout(() => r(false), prazoDaReleituraMs); }),
+        releitura,
+        new Promise<boolean>((r) => { prazo = setTimeout(() => { estourou = true; r(false); }, prazoDaReleituraMs); }),
       ]);
-    } catch {
-      relida = false;
     } finally {
       clearTimeout(prazo);
     }
+    if (estourou) onReleituraPendente(releitura);
     setListaVelha(!relida);
     setFase('resumo');
   }

@@ -29,6 +29,8 @@ Leitura do 29.116 pela Ferramentas do Claude.
   releu: use “Tentar de novo”." até a leitura dar certo. Apagar, fotos e completar seguem livres.
 - N: o `confirmar` espera a releitura até `PRAZO_DA_RELEITURA_MS` (45 s). Passado o prazo, conta como não relida: uma
   rajada de releituras não prende o diálogo em "executando".
+- C1 (leitura do #423): a releitura que perde para o prazo segue em voo, e o erro da página ainda é nulo. Agora ela vai
+  à barra, que trava grupo, bloquear e reativar com "A lista ainda está se relendo: aguarde." até ela assentar.
 - A1: o `aria-busy` sai do `<dialog>` inteiro, onde podia fazer o leitor de tela segurar o "Executando…/Relendo…" do
   status, e fica só na lista "Resultado por persona".
 - Testes novos em `AcoesEmLote.test.tsx`: B1, o clique fora com o `aria-busy` só na lista, e o prazo. Os três falham

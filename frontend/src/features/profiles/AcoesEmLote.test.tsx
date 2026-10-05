@@ -16,7 +16,7 @@ import { makeSnapshot } from '../../test/fixtures';
 import {
   FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor,
 } from '../../test/harness';
-import { BarraDeLote, LISTA_VELHA, SEM_CONTA_NO_GRUPO } from './AcoesEmLote';
+import { BarraDeLote, LISTA_RELENDO, LISTA_VELHA, SEM_CONTA_NO_GRUPO } from './AcoesEmLote';
 import { ProfilesPage } from './ProfilesPage';
 
 function pessoa(over: Partial<PersonaDTO> = {}): PersonaDTO {
@@ -397,12 +397,15 @@ describe('ações em lote', () => {
 
   // 29.118 (N): uma rajada de releituras não prende o diálogo em "executando": passado o prazo, o resumo sai dizendo que
   // a lista não se releu.
-  it('a releitura que não volta no prazo: o resumo sai com o aviso', async () => {
+  // C1: passado o prazo a releitura segue em voo e o erro da página ainda é nulo; a barra trava o que decide pela lista
+  // até ela assentar, senão o resumo avisava e os três ficavam livres sobre a lista velha.
+  it('a releitura que não volta no prazo: o resumo sai com o aviso, e a barra trava até ela assentar', async () => {
+    let soltar: ((relida: boolean) => void) | null = null;
     rotas([MARIANA, LUCAS]);
     backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
     await act(async () => {
       root.render(<><BarraDeLote selecionadas={[MARIANA, LUCAS]} grupos={[GRUPO]} onLimpar={() => {}}
-                                 onConcluido={() => new Promise<boolean>(() => undefined)} prazoDaReleituraMs={50} />
+                                 onConcluido={() => new Promise<boolean>((r) => { soltar = r; })} prazoDaReleituraMs={50} />
         <ConfirmHost /></>);
     });
     await click(byRole('button', /Grupo de acesso/, barra()));
@@ -410,6 +413,16 @@ describe('ações em lote', () => {
     await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
     await waitFor(() => text(dialogo).includes('Terminado: 2 ok'));
     expect(text(dialogo)).toContain('A lista de personas não se releu');
+    await click(byRole('button', /^Fechar$/, dialogo.querySelector('footer')!));
+
+    for (const nome of [/^Grupo de acesso/, /^Bloquear/, /^Reativar/]) {
+      expect(byRole('button', nome, barra()).getAttribute('aria-disabled'), String(nome)).toBe('true');
+    }
+    expect(text(barra())).toContain(LISTA_RELENDO);
+    expect(byRole('button', /^Apagar/, barra()).getAttribute('aria-disabled')).toBeNull();
+
+    await act(async () => { soltar!(true); });
+    await waitFor(() => byRole('button', /^Grupo de acesso/, barra()).getAttribute('aria-disabled') === null);
   });
 
   it('bloquear e reativar: PATCH status por persona; quem já está no status não é chamado', async () => {
