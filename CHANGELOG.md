@@ -179,6 +179,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_wake_relogio_do_snapshot.py`, 12 passed. O teste antigo com o prazo em 0 s
   reprova sempre (o disparo dentro do `_wait_boot`); o novo não depende do prazo, porque captura a releitura.
 
+## 2026-10-05 — 29.113: o `pg-rapido.py` não deixa o pytest rodando quando é interrompido (branch fix/29-113-pg-rapido, sobre o #410)
+
+- O1: `rodar_parte` mata a árvore do pytest quando algo interrompe a parte (Ctrl-C, `OSError` do `--resumo`, qualquer
+  exceção) e relata "INTERROMPIDA"; o laço das amostras foi para `_acompanhar`. O pai morto de fora (Job Object com
+  KILL_ON_JOB_CLOSE) fica para item próprio.
+- N1: `parar` relata o `docker stop` que falha e SUGERE na linha o `docker rm -f` (não o executa).
+- Q2 da leitura: o `main` para o contêiner num `finally` em volta do laço das partes; interrompido, o tmpfs de 4 GB
+  não fica mais preso na RAM até a próxima rodada. Sem parte iniciada (RAM baixa), não há o que parar.
+- N3: o pytest que saiu sozinho entre a amostra e o aborto fica com o rc dele, não com "ABORTADA" (rc 3).
+- O teste da árvore real só mata o neto quando não passou (o PID pode ter sido reusado).
+- Prova `simulated`: `scripts/tests/test_pg_rapido.py` (7 novos), 22 passed, com as mutações do O1, do N3 e do
+  Q2 reprovando;
+  `pytest @scripts/tests/catracas.txt`, 6 passed. Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
