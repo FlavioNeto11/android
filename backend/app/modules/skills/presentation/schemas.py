@@ -12,3 +12,11 @@ class TrainingStopBody(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     lease_id: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+class EscopoDoFluxoBody(BaseModel):
+    """Ampliar ou restringir a quem a habilidade (fluxo) vale, depois de salva (31.88 F2). Vazio nos dois = todos."""
+
+    model_config = ConfigDict(extra="forbid")
+    profile_ids: list[str] = Field(default_factory=list, max_length=500)
+    group_ids: list[str] = Field(default_factory=list, max_length=100)

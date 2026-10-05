@@ -77,7 +77,7 @@ from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
-from .modules.skills.presentation.schemas import TrainingStopBody
+from .modules.skills.presentation.schemas import EscopoDoFluxoBody, TrainingStopBody
 from .planning import conciliacao, costs, saldos
 from .porta_do_plano import (AprovarPlanoBody, PortaIndisponivel, PreviaDoItemBody, aprovar_plano, previa_da_porta,
                              previa_do_item, renovar_plano)
@@ -636,7 +636,7 @@ async def save_training(request: Request, session_id: str, body: TrainingSaveBod
     from .training.recorder import TrainingError  # noqa: PLC0415
     try:
         return await st(request).skills.save(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
-                                             group_ids=body.group_ids)
+                                             group_ids=body.group_ids, scope_on_proof=body.scope_on_proof)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -647,7 +647,7 @@ async def preview_training(request: Request, session_id: str, body: TrainingSave
     por que não. A pessoa corrige a proposta ANTES de salvar, em vez de descobrir o motivo depois."""
     try:
         return await st(request).skills.preview(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
-                                                group_ids=body.group_ids)
+                                                group_ids=body.group_ids, scope_on_proof=body.scope_on_proof)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -895,6 +895,31 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> 
                             reason="ligado na lista de fluxos do painel" if patch["status"] == "active"
                             else "desligado na lista de fluxos do painel")
     return next(f for f in s.scheduler.flows.list() if f["id"] == flow_id)
+
+
+@router.put("/flows/{flow_id}/scope")
+async def set_flow_scope(request: Request, flow_id: str, body: EscopoDoFluxoBody) -> dict[str, object]:
+    """31.88 F2: a pessoa amplia ou restringe a quem o fluxo vale (vazio = todos). O escopo é distribuição, não
+    conteúdo: não muda o status nem passa pelo livro (a decisão da prova é outra). A trilha é o evento `log` com o
+    antes e o depois e quem decidiu."""
+    s = st(request)
+    if s.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)) is None:
+        raise err(404, "not_found", "Fluxo não encontrado.")
+    for pid in body.profile_ids:
+        if s.social_repo.profile_row(pid) is None:
+            raise err(400, "unknown_profile", f"Perfil inexistente: {pid}.")
+    for gid in body.group_ids:
+        if s.social_repo.policy_group_row(gid) is None:
+            raise err(400, "unknown_group", f"Grupo de acesso inexistente: {gid}.")
+    antes = s.scheduler.flows.scope(flow_id)
+    s.scheduler.flows.set_scope(flow_id, profile_ids=body.profile_ids, group_ids=body.group_ids)
+    depois = s.scheduler.flows.scope(flow_id)
+    quem = autor_do_gesto(getattr(request.state, "operador", None))
+    s.bus.emit("log", "Escopo da habilidade mudou", data={
+        "flow_id": flow_id, "por": quem,
+        "antes": {"profile_ids": antes["profile_ids"], "group_ids": antes["group_ids"]},
+        "depois": {"profile_ids": depois["profile_ids"], "group_ids": depois["group_ids"]}})
+    return {"flow_id": flow_id, **depois}
 
 
 @router.delete("/flows/{flow_id}", status_code=204)
