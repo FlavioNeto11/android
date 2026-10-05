@@ -54,7 +54,7 @@ from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais, nomes_de_persona
 from .porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano, previa_da_porta
-from .modules.avisos.infrastructure.servico import ServicoDeAvisos
+from .modules.avisos.infrastructure.servico import ServicoDeAvisos, trava_de_avisos_em_uso
 from .decisoes_inversas import inversas_das_filas
 from .modules.decisoes.application.desfazer import DesfazerDecisoes
 from .modules.decisoes.infrastructure.adaptador_sql import AdaptadorDeDecisoes
@@ -2937,7 +2937,7 @@ class AppState:
             # `pedidos` e `avisos` só com o laço ligado: um backend com ele desligado não pode segurar a trava e deixar
             # o ligado sem líder (28.4, 28.11).
             desligadas = {PEDIDOS} if not self.cfg.file.pedidos.enabled else set()
-            if not self.cfg.file.avisos.enabled:
+            if not trava_de_avisos_em_uso(self.cfg):   # o aviso OU o Trello (28.35: o espelho e o leitor também a usam)
                 desligadas.add(AVISOS)
             self.lideranca.manter([n for n in TRAVAS_DOS_LACOS if n not in desligadas])
         except Exception:  # noqa: BLE001 - banco fora do ar: os laços pulam a volta, e a próxima tentativa refaz

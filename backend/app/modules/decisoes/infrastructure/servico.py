@@ -30,7 +30,8 @@ class ServicoDeDecisoes:
         """Recolhe e, se sou o líder, resume. Devolve (decisões novas, aviso enfileirado)."""
         novas = self.adaptador.varrer()
         aviso: Aviso | None = None
-        if self._lider(AVISOS) is not None:
+        # Com o aviso desligado o resumo não tem para onde ir, e a trava não seria renovada (28.35): nem a toma.
+        if self.cfg.file.avisos.enabled and self._lider(AVISOS) is not None:
             cfg = self.cfg.file.avisos
             try:
                 aviso = self.resumo.resumir(janela_min=cfg.decisoes_automaticas.janela_min,

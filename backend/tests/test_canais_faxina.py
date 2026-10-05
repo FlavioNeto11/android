@@ -175,10 +175,11 @@ def test_o_servico_faxina_sem_o_telegram_pronto_so_no_lider_e_de_hora_em_hora(c:
 
 
 @pytest.mark.parametrize("ligado", [True, False])
-async def test_a_primeira_faxina_do_laco_e_na_subida_so_com_o_aviso_ligado(c: Cena, ligado: bool) -> None:
-    """29.78: ligado, a primeira volta não espera o primeiro `intervalo_s` sem evento (nem um evento): o que venceu com o
-    processo parado sai na subida. Desligado, a volta da subida não toma a trava `avisos` (28.4) e não apaga nada. Nos dois
-    casos o contador sai do zero, que é o que o harness espera antes de entregar o backend."""
+async def test_a_primeira_faxina_do_laco_e_na_subida_e_o_desligado_solta_a_trava(c: Cena, ligado: bool) -> None:
+    """29.78: a primeira volta não espera o primeiro `intervalo_s` sem evento (nem um evento): o que venceu com o processo
+    parado sai na subida. 28.35: desligado, a faxina da subida roda do mesmo jeito (a retenção não para com os canais
+    desligados) e SOLTA a trava `avisos`, que este backend não renova. Nos dois casos o contador sai do zero, que é o que
+    o harness espera antes de entregar o backend."""
     c.cfg.file.avisos.enabled = ligado
     c.cfg.file.avisos.intervalo_s = 3600                             # o laço não acorda sozinho durante o teste
     lid = Lideranca(c.db, dono=AQUI, relogio=c.r)
@@ -194,10 +195,8 @@ async def test_a_primeira_faxina_do_laco_e_na_subida_so_com_o_aviso_ligado(c: Ce
                 break
             await asyncio.sleep(0.01)
         assert servico.voltas_da_faxina_dos_canais == 1
-        if ligado:
-            assert set(c.linhas("trello")) == {"a2"}
-        else:
-            assert set(c.linhas("trello")) == {"a1", "a2"}
+        assert set(c.linhas("trello")) == {"a2"}
+        if not ligado:
             assert c.db.one("SELECT dono FROM travas WHERE nome='avisos' AND dono IS NOT NULL") is None
     finally:
         laco.cancel()

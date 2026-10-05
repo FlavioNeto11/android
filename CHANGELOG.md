@@ -184,6 +184,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - os novos: 13 na conversa (`test_telegram_entrada.py`, com o falso da porta), 2 nas portas reais no harness
     (`test_telegram_portas.py`) e 5 no domínio (`test_avisos_porta.py`).
 - `not_run`: o Telegram real e um plano real com item que pede o sim.
+## 2026-10-05 — 28.35: a trava `avisos` só fica com quem usa um canal (branch canais/28-35-trava-so-com-aviso)
+
+- Antes, `faxinar_canais` tomava a trava `avisos` sem olhar `avisos.enabled`, e o backend desligado a segurava até o
+  prazo. Agora um predicado só, `trava_de_avisos_em_uso(cfg)` (`avisos.enabled or trello.enabled`), decide a
+  renovação em `_manter_travas` e a faxina. Com os dois desligados a faxina toma a trava, faxina e a solta no
+  `finally`, mesmo com erro no meio. Quando a trava já é de outro backend, o desligado não a toma. O resumo das
+  decisões só sai com `avisos.enabled`.
+- A subida segue a mesma regra: a primeira faxina do laço roda sempre, e o desligado solta a trava no fim. O teste do
+  29.78 (`test_canais_faxina.py`) muda junto e espera a faxina também com tudo desligado.
+- Prova: `simulated`. `tests/test_avisos_servico.py` (faxina desligada solta; erro no meio solta; o desligado não toma
+  do ligado; só Trello segura) e `tests/test_canais_faxina.py`; 650 passaram nos arquivos de avisos, decisões, Trello,
+  travas e canais, mais os que dependem do harness (`test_comandos_de_app`, `test_retencao_telemetria`,
+  `test_saude_ao_vivo`), em Idle e sem `-n`.
 
 ## 2026-10-04 — 29.78: o harness entrega o backend só depois da primeira volta das faxinas (branch fix/29-78-harness-espera-faxinas)
 

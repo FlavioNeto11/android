@@ -281,12 +281,124 @@ async def test_trava_de_avisos_so_com_o_aviso_ligado(tmp_path: Path, ligado: boo
     hh.cfg.file.avisos.enabled = ligado
     await hh.boot()
     try:
+        # 28.35: os que tomam a trava sem renovar rodam ANTES da conferência, e não por tempo (antes, o teste só passava
+        # porque a faxina e o resumo das decisões ainda não tinham dado a primeira volta).
+        hh.state.avisos.faxinar_canais()
+        hh.state.decisoes.uma_volta()
         hh.state._manter_travas()
         trava = hh.state.db.one("SELECT dono FROM travas WHERE nome=?", (AVISOS,))
         if ligado:
             assert trava is not None and trava["dono"] is not None
         else:
             assert trava is None or trava["dono"] is None, "desligado: não segura a trava"
+    finally:
+        await hh.state.stop()
+
+
+async def _desligado(tmp_path: Path, *, trello: bool = False):  # type: ignore[no-untyped-def]
+    from .conftest import Harness
+
+    hh = Harness(tmp_path, 1)
+    hh.cfg.file.avisos.enabled = False
+    await hh.boot()
+    # A faxina da subida (29.78) já rodou e soltou a trava; o prazo de uma hora volta a zero para o teste chamar de novo.
+    assert _dono_da_trava(hh) is None
+    hh.state.avisos._faxina_canais_em = 0.0  # noqa: SLF001
+    hh.cfg.file.trello.enabled = trello      # depois da subida: sem segredo, o espelho e o leitor não chamam nada
+    return hh
+
+
+def _dono_da_trava(hh) -> object:  # type: ignore[no-untyped-def]
+    from app.taskqueue.travas import AVISOS
+
+    linha = hh.state.db.one("SELECT dono FROM travas WHERE nome=?", (AVISOS,))
+    return linha["dono"] if linha is not None else None
+
+
+async def test_faxina_com_os_canais_desligados_roda_e_solta_a_trava(tmp_path: Path) -> None:
+    """28.35: a retenção das tabelas de canal não para com tudo desligado (é ela que apaga o dado de visitante no
+    prazo), mas a trava `avisos` é solta logo depois: ninguém deste backend a renova."""
+    hh = await _desligado(tmp_path)
+    try:
+        assert len(hh.state.avisos.faxinar_canais()) == 2                  # telegram e trello
+        assert _dono_da_trava(hh) is None
+    finally:
+        await hh.state.stop()
+
+
+async def test_erro_no_meio_da_faxina_tambem_solta_a_trava(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    hh = await _desligado(tmp_path)
+    try:
+        def quebra(**kw: object) -> object:
+            raise RuntimeError("banco fora")
+
+        monkeypatch.setattr(hh.state.avisos._faxina_canais, "faxinar", quebra)  # noqa: SLF001
+        with pytest.raises(RuntimeError):
+            hh.state.avisos.faxinar_canais()
+        assert _dono_da_trava(hh) is None
+    finally:
+        await hh.state.stop()
+
+
+async def test_soltar_que_falha_sai_registrado_a_parte(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                                                      caplog: pytest.LogCaptureFixture) -> None:
+    """Revisão do #345: a falha do `soltar` não se confunde com erro da faxina (a trava fica até o TTL) e não troca a
+    exceção da faxina pela dela."""
+    hh = await _desligado(tmp_path)
+    try:
+        def nao_solta(nome: str) -> None:
+            raise RuntimeError("soltar fora")
+
+        monkeypatch.setattr(hh.state.avisos.lideranca, "soltar", nao_solta)
+        with caplog.at_level(logging.ERROR):
+            assert len(hh.state.avisos.faxinar_canais()) == 2
+        assert [r.getMessage() for r in caplog.records if "soltar a trava" in r.getMessage()] == [
+            "canais: soltar a trava avisos depois da faxina"]
+        assert not [r for r in caplog.records if r.getMessage() == "canais: faxina"]
+
+        def quebra(**kw: object) -> object:
+            raise ValueError("banco fora")
+
+        hh.state.avisos._faxina_canais_em = 0.0  # noqa: SLF001
+        monkeypatch.setattr(hh.state.avisos._faxina_canais, "faxinar", quebra)  # noqa: SLF001
+        with pytest.raises(ValueError):
+            hh.state.avisos.faxinar_canais()
+    finally:
+        monkeypatch.undo()
+        await hh.state.stop()
+
+
+async def test_o_desligado_nunca_tira_a_trava_do_ligado(tmp_path: Path) -> None:
+    """Com a trava de outro backend vivo (o líder com o aviso ligado), o desligado não toma, não faz a faxina e não a
+    solta: o líder faz."""
+    from app.taskqueue.travas import AVISOS, Lideranca
+
+    hh = await _desligado(tmp_path)
+    try:
+        ligado = Lideranca(hh.state.db, dono="backend-ligado")
+        assert ligado.tomar(AVISOS) is not None
+        assert hh.state.avisos.faxinar_canais() == []
+        hh.state.decisoes.uma_volta()
+        hh.state._manter_travas()
+        assert _dono_da_trava(hh) == "backend-ligado"
+    finally:
+        await hh.state.stop()
+
+
+async def test_backend_so_com_trello_mantem_a_trava(tmp_path: Path) -> None:
+    """O espelho e o leitor do Trello rodam no líder da trava `avisos`: com o Trello ligado e o aviso desligado, a
+    renovação a mantém (antes, eles a tomavam e ninguém a renovava)."""
+    from app.modules.avisos.infrastructure.servico import trava_de_avisos_em_uso
+    from app.taskqueue.travas import AVISOS
+
+    hh = await _desligado(tmp_path, trello=True)
+    try:
+        assert trava_de_avisos_em_uso(hh.cfg)
+        assert hh.state.lideranca.tomar(AVISOS) is not None
+        hh.state._manter_travas()
+        assert _dono_da_trava(hh) is not None
+        hh.state.avisos.faxinar_canais()                                   # em uso: a faxina não solta
+        assert _dono_da_trava(hh) is not None
     finally:
         await hh.state.stop()
 

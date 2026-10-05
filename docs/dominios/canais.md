@@ -184,6 +184,16 @@ Cada regra tem um identificador `C-NN`, que nunca se reaproveita, e cinco campos
 - **Hoje:** `.claude/handoffs/canais/conhecimento-convidados.md`, fora do Git e do Trello, mais o histórico da C-08.
 - **No produto:** junto do 28.18, no banco, com a retenção do 28.16; a forma fica a numerar pela orquestradora.
 
+**Quem segura a trava `avisos` (28.35).** Só o backend que usa um canal: `trava_de_avisos_em_uso(cfg)`, que vale
+`avisos.enabled or trello.enabled`, é a única fonte, na renovação das travas e na faxina. O backend com os dois
+desligados (o harness, um ensaio) ainda faz a faxina dos canais, inclusive a primeira, na subida: toma a trava,
+faxina e a solta no `finally`, mesmo com erro no meio. Se a trava já é de outro backend (o líder ligado), o desligado
+não a toma e não faxina. O resumo das decisões só sai com `avisos.enabled`.
+`avisos.enabled` e `trello.enabled` têm de ser iguais em todos os backends: numa frota misturada (um só com aviso,
+outro só com Trello), quem pega a trava primeiro fica com ela, e o canal do outro para de vez. Hoje nada avisa disso
+na saúde; o backend não sabe o que o líder liga. A falha ao soltar a trava sai no log à parte ("canais: soltar a trava
+avisos depois da faxina"), e a trava cai no TTL.
+
 ## 4. Pedidos, autorizações e decisões
 
 **C-12 · Comentário do dono é pedido, não autorização de ação real.**
