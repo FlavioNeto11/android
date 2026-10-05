@@ -17,14 +17,15 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from typing import Any, get_args
+from dataclasses import dataclass
+from typing import Any, NamedTuple, get_args
 
 from ..db import dumps
 from ..models import Plan, PlannerInfo, PlanStep, Postcondition
 from ..planning.capabilities import CapabilityCatalog, CapabilityNode, load_catalog
 from ..planning.training import TrainingRequest
-from ..taskqueue.flows import PLACEHOLDER, RESERVED
-from ..taskqueue.recipes import distill_training, step_template_hash
+from ..taskqueue.flows import PLACEHOLDER, RESERVED, _norm  # noqa: PLC2701 - a MESMA normalização da `match_key`
+from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..util import now_iso
 from .recorder import TrainingError
 
@@ -37,6 +38,7 @@ from .recorder import TrainingError
 COMANDO_PALAVRAS_FIXAS_MIN = 2
 COMANDO_CARACTERES_FIXOS_MIN = 6
 _KINDS_DE_POSCONDICAO = frozenset(get_args(Postcondition.model_fields["kind"].annotation))
+Sessao = dict[str, Any]         # linha de `training_sessions` com `inputs` e `proposal` já lidos
 Proposta = dict[str, Any]       # proposta e etapa: JSON livre vindo do cliente, validado à mão abaixo
 
 
@@ -221,6 +223,29 @@ def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
     return {**p, "steps": etapas, "discarded": descartadas}, avisos
 
 
+JA_HAVIA_RECEITA = "já havia receita ativa para esta etapa"
+Acoes = list[dict[str, Any]]    # o que `distill_training` devolve: as ações da receita (nunca vão ao cliente)
+
+
+@dataclass
+class _Preparo:
+    """A proposta já conferida e o plano montado, ainda sem gravar nada: o miolo comum do `save`, da prévia e do
+    reparo (31.86)."""
+    p: Proposta
+    avisos: list[str]
+    comando: str
+    plano: Plan
+    exemplos: dict[str, str]
+    apps: dict[str, dict[str, str]]
+    app_id: str | None
+
+
+class _Destilada(NamedTuple):
+    passo: PlanStep
+    acoes: Acoes | None
+    motivo: str
+
+
 class TrainingSkills:
     def __init__(self, state: Any):
         self.s = state
@@ -230,7 +255,7 @@ class TrainingSkills:
         return {r["id"]: {"id": r["id"], "name": r["name"], "package": r["package"]}
                 for r in self.s.db.query("SELECT id, name, package FROM apps ORDER BY name")}
 
-    def _app_da_sessao(self, sess: dict[str, Any], apps: dict[str, dict[str, str]]) -> str | None:
+    def _app_da_sessao(self, sess: Sessao, apps: dict[str, dict[str, str]]) -> str | None:
         if sess.get("app_id"):
             return sess["app_id"]
         for e in sess["inputs"]:
@@ -274,10 +299,11 @@ class TrainingSkills:
                           (dumps(proposta), now_iso(), session_id))
         return self.s.training.get(session_id)
 
-    # ------------------------------------------------------------------ salvar
-    async def save(self, session_id: str, *, proposal: dict[str, Any] | None, profile_ids: list[str],
-                   group_ids: list[str]) -> dict[str, Any]:
-        sess = self.s.training.get(session_id)
+    # ------------------------------------------------------------------ salvar, prévia e refazer (31.83, 31.86)
+    def _preparar(self, sess: Sessao, session_id: str, proposal: Proposta | None, profile_ids: list[str],
+                  group_ids: list[str]) -> _Preparo:
+        """Tudo que o `save` confere e monta ANTES da primeira escrita; a prévia chama a mesma função, então os dois
+        recusam com os mesmos códigos. Não escreve nada."""
         if sess["status"] == "saved":
             raise TrainingError("closed", "Este treinamento já virou habilidade.", 409)
         p = proposal or sess.get("proposal")
@@ -338,49 +364,164 @@ class TrainingSkills:
         plano = Plan(summary=(p.get("summary") or sess["intent"])[:200], app_id=app_id, app_package=pacote,
                      parameters={n: "{" + n + "}" for n in exemplos}, steps=passos,
                      planner=PlannerInfo(provider="treinamento", model=f"treinamento:{session_id}", simulated=False))
+        return _Preparo({**p, "app_id": app_id}, avisos, comando, plano, exemplos, apps, app_id)
+
+    async def save(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],
+                   group_ids: list[str]) -> dict[str, object]:
+        sess = self.s.training.get(session_id)
+        prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids)
         try:
-            flow_id = self.s.scheduler.flows.learn_from_plan(plano, comando, source=f"training:{session_id}")
+            flow_id = self.s.scheduler.flows.learn_from_plan(prep.plano, prep.comando, source=f"training:{session_id}")
         except ValueError as exc:
             raise TrainingError("duplicate_command", str(exc), 409) from None
         self.s.scheduler.flows.set_scope(flow_id, profile_ids=profile_ids, group_ids=group_ids)
-        relatorio = await self._receitas(sess, p, passos, exemplos, apps, app_id, session_id)
+        relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
+                                          prep, session_id, gravar=True)
         self.s.db.execute("UPDATE training_sessions SET status='saved', flow_id=?, proposal=?, updated_at=? WHERE id=?",
-                          (flow_id, dumps({**p, "app_id": app_id}), now_iso(), session_id))
-        self.s.bus.emit("log", f"Habilidade “{plano.summary[:60]}” salva a partir do treinamento",
+                          (flow_id, dumps(prep.p), now_iso(), session_id))
+        self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento",
                         data={"training_session_id": session_id, "flow_id": flow_id})
-        return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio, "warnings": avisos}
+        return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio, "warnings": prep.avisos}
 
-    async def _receitas(self, sess: dict[str, Any], p: dict[str, Any], passos: list[PlanStep], exemplos: dict[str, str],
-                        apps: dict[str, dict[str, str]], app_id: str | None, session_id: str) -> list[dict[str, Any]]:
-        """Uma receita por etapa, destilada das entradas da pessoa. Precisa do aparelho online (versão do app e
-        variante de interface fazem parte da identidade); sem ele, o fluxo vale e a IA conduz as etapas."""
-        por_seq = {int(e["seq"]): e for e in sess["inputs"]}
-        descartadas = {int(d["seq"]) for d in p.get("discarded") or []}
-        pacotes = {a["id"]: a["package"] for a in apps.values()}
+    async def preview(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],
+                      group_ids: list[str]) -> dict[str, object]:
+        """O que o `save` faria com esta proposta, SEM escrever (31.86): a mesma conferência (mesmos códigos), a mesma
+        destilação e o mesmo relatório por etapa. É para a pessoa ver por que uma etapa ficaria sem receita enquanto
+        ainda dá para corrigir a proposta. Nada vai ao banco: nem fluxo, escopo, receita, status ou evento."""
+        sess = self.s.training.get(session_id)
+        prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids)
+        # A única recusa do `save` que só aparece ao gravar (`learn_from_plan`): o comando repetido. Lida sem escrever.
+        chave = _norm(prep.comando)
+        if self.s.db.one("SELECT id FROM flows WHERE match_key=?", (chave,)):
+            raise TrainingError("duplicate_command", "Já existe uma habilidade para este comando. Mude o comando ou "
+                                                     "desative a outra.", 409)
+        if self.s.db.one("SELECT id FROM skill_versions WHERE state='published' AND match_key=?", (chave,)):
+            raise TrainingError("duplicate_command", "Já existe uma habilidade versionada publicada para este comando. "
+                                                     "Mude o comando ou desabilite a habilidade.", 409)
+        relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
+                                          prep, session_id, gravar=False)
+        return {"steps": relatorio, "warnings": prep.avisos}
+
+    async def refazer_receitas(self, session_id: str) -> dict[str, object]:
+        """Repara uma sessão JÁ salva: destila de novo (com a proposta guardada) e grava a receita das etapas que ainda
+        não têm (31.86). Serve ao fluxo salvo com o aparelho fora do ar, ou antes de uma regra de destilação mudar.
+        Idempotente: onde já há receita ativa o `recipes.save` não grava outra (a política é a de sempre)."""
+        sess = self.s.training.get(session_id)
+        if sess["status"] != "saved" or not sess.get("flow_id"):
+            raise TrainingError("sessao_nao_salva", "Este treinamento ainda não virou habilidade: salve-o antes de "
+                                                    "refazer as receitas.", 409)
+        fluxo = self.s.db.one("SELECT plan, status FROM flows WHERE id=?", (sess["flow_id"],))
+        if fluxo is None:
+            raise TrainingError("fluxo_inexistente", "A habilidade salva deste treinamento não existe mais.", 409)
+        if fluxo["status"] == "disabled":
+            raise TrainingError("fluxo_desligado", "A habilidade deste treinamento está desligada: ligue-a antes de "
+                                                   "refazer as receitas.", 409)
+        # As etapas vêm do PLANO DO FLUXO (a chave da receita é o hash delas, igual ao que o executor calcula na
+        # reprodução); as entradas de cada etapa vêm da proposta guardada. Casam pela chave da etapa.
+        plano = Plan.model_validate_json(fluxo["plan"])
+        p = sess.get("proposal") or {}
+        por_chave = {s.key: s for s in plano.steps}
+        etapas = [st for st in p.get("steps") or [] if isinstance(st, dict) and st.get("key") in por_chave]
+        exemplos = {str(x["name"]): str(x.get("example") or "") for x in p.get("parameters") or [] if x.get("name")}
+        apps = self._apps()
+        prep = _Preparo({**p, "steps": etapas}, [], "", plano, exemplos, apps, plano.app_id)
+        relatorio = await self._relatorio(
+            sess, _destilar(sess, prep.p, [por_chave[st["key"]] for st in etapas], exemplos, apps), prep, session_id,
+            gravar=True, so_chave_virgem=True)
+        return {"session": self.s.training.get(session_id), "flow_id": sess["flow_id"], "steps": relatorio,
+                "created": sum(1 for linha in relatorio if linha["recipe"])}
+
+    async def _identidade(self, sess: Sessao, pacote: str) -> tuple[str, str, str] | str:
+        """`(versão do app, variante de interface, assinatura)` que identificam a receita NESTE aparelho, ou o MOTIVO de
+        não dar para saber agora. Versão e variante são a chave que o replay procura: se não forem as certas a receita
+        nasce morta e o relatório diria "gravada" — por isso nada é chutado (nem da configuração do aparelho).
+
+        Aparelho no ar: leitura de sempre. Fora do ar: o que a última leitura deixou (cache do executor e inventário do
+        app, a mesma fonte do despacho); sem isso, o motivo diz o que falta e `refazer_receitas` repara depois."""
         rt = self.s.devices.devices.get(sess["instance_id"])
-        online = rt is not None and str(getattr(rt.state, "value", rt.state)) == "online"
-        relatorio = []
-        for st, passo in zip(p["steps"], passos):
-            entradas = [por_seq[i] for i in st.get("inputs") or [] if i in por_seq and i not in descartadas]
-            acoes, motivo = distill_training(entradas, exemplos, side_effect=passo.side_effect, app_packages=pacotes)
-            linha = {"key": passo.key, "title": passo.title, "recipe": False, "reason": motivo}
-            if acoes and not online:
-                linha["reason"] = "aparelho do treinamento fora do ar: a etapa fica com a IA até uma execução aprender"
-            elif acoes:
-                pkg = pacotes.get(passo.app_id or app_id or "") or ""
-                try:
-                    versao = await self.s.devices.app_version(rt, pkg)
-                    variante = await self.s.devices.variant_of(rt)
-                except Exception as exc:  # noqa: BLE001
-                    linha["reason"] = f"não foi possível ler a versão do app no aparelho: {exc}"
-                    relatorio.append(linha)
-                    continue
-                assinatura = self.s.db.scalar(
-                    "SELECT r.signature_sha256 FROM device_app_state d JOIN app_releases r ON r.id = d.installed_release_id"
-                    " WHERE d.instance_id=? AND d.package_name=?", (sess["instance_id"], pkg)) or ""
-                rid = self.s.scheduler.executor.recipes.save(
-                    package=pkg, app_version=versao, step_hash=step_template_hash(passo), step_key=passo.key,
-                    actions=acoes, learned_from=f"training:{session_id}", signature=assinatura, variant=variante)
-                linha.update({"recipe": bool(rid), "reason": "receita gravada" if rid else "já havia receita ativa para esta etapa"})
+        if rt is None:
+            return "o aparelho do treinamento não existe mais: a etapa fica com a IA até uma execução aprender"
+        assinatura = self.s.db.scalar(
+            "SELECT r.signature_sha256 FROM device_app_state d JOIN app_releases r ON r.id = d.installed_release_id"
+            " WHERE d.instance_id=? AND d.package_name=?", (sess["instance_id"], pacote)) or ""
+        if str(getattr(rt.state, "value", rt.state)) == "online":
+            try:
+                return await self.s.devices.app_version(rt, pacote), await self.s.devices.variant_of(rt), assinatura
+            except Exception as exc:  # noqa: BLE001
+                return f"não foi possível ler a versão do app no aparelho: {exc}"
+        _, versao, _, variante = self.s.scheduler._chave_de_compatibilidade(rt, pacote)  # noqa: SLF001 - só lê
+        if not versao or not variante:
+            faltam = " e ".join(nome for nome, valor in (("a versão do app", versao), ("o idioma e a densidade da tela", variante))
+                                if not valor)
+            return (f"aparelho do treinamento fora do ar e {faltam} ainda não foi lido: a receita nasceria com a "
+                    "identidade errada. Refaça as receitas quando ele voltar")
+        return versao, variante, assinatura
+
+    async def _relatorio(self, sess: Sessao, destiladas: list[_Destilada], prep: _Preparo, session_id: str,
+                         *, gravar: bool, so_chave_virgem: bool = False) -> list[dict[str, object]]:
+        """Uma linha por etapa: virou receita ou não, e o porquê. `gravar=False` (a prévia) responde o mesmo sem gravar:
+        `recipe: true` quer dizer "seria gravada". `so_chave_virgem` (o reparo): não grava onde a chave já teve receita
+        de qualquer status, porque o `recipes.save` do treino substituiria a quarentena por uma ativa nova."""
+        pacotes = {a["id"]: a["package"] for a in prep.apps.values()}
+        relatorio: list[dict[str, object]] = []
+        for d in destiladas:
+            passo = d.passo
+            linha: dict[str, object] = {"key": passo.key, "title": passo.title, "recipe": False, "reason": d.motivo}
             relatorio.append(linha)
+            if not d.acoes:
+                continue
+            pkg = pacotes.get(passo.app_id or prep.app_id or "") or ""
+            identidade = await self._identidade(sess, pkg)
+            if isinstance(identidade, str):
+                linha["reason"] = identidade
+                continue
+            versao, variante, assinatura = identidade
+            hash_da_etapa = step_template_hash(passo)
+            if so_chave_virgem:
+                antes = self.s.scheduler.executor.recipes.status_da_chave(
+                    pkg, versao, hash_da_etapa, signature=assinatura, variant=variante)
+                if antes is not None:
+                    linha["reason"] = (JA_HAVIA_RECEITA if antes in ("active", "validated")
+                                       else f"a chave já teve receita (status {antes}): o reparo não a ressuscita")
+                    continue
+            if so_chave_virgem and self.s.scheduler.executor.recipes.caminho_vetado(ReceitaVista(
+                    package=pkg, app_version=versao, signature=assinatura, variant=variante, step_hash=hash_da_etapa,
+                    actions=dumps(d.acoes), learned_from=f"training:{session_id}")):
+                # O `save` do treino pula este veto (a pessoa ensina agora); o reparo roda sem ela, então o respeita.
+                linha["reason"] = "a pessoa vetou esta receita: o reparo não a recria"
+                continue
+            if not gravar:
+                ocupada = self.s.scheduler.executor.recipes.chave_ocupada(
+                    pkg, versao, hash_da_etapa, signature=assinatura, variant=variante)
+                linha.update({"recipe": not ocupada,
+                              "reason": JA_HAVIA_RECEITA if ocupada else "receita será gravada ao salvar"})
+                continue
+            rid = self.s.scheduler.executor.recipes.save(
+                package=pkg, app_version=versao, step_hash=hash_da_etapa, step_key=passo.key,
+                actions=d.acoes, learned_from=f"training:{session_id}", signature=assinatura, variant=variante)
+            linha.update({"recipe": bool(rid), "reason": "receita gravada" if rid else JA_HAVIA_RECEITA})
         return relatorio
+
+
+def _inteiros(valores: object) -> list[int]:
+    saida: list[int] = []
+    for v in valores if isinstance(valores, list) else []:
+        try:
+            saida.append(int(v))
+        except (TypeError, ValueError):
+            continue
+    return saida
+
+
+def _destilar(sess: Sessao, p: Proposta, passos: list[PlanStep], exemplos: dict[str, str],
+              apps: dict[str, dict[str, str]]) -> list[_Destilada]:
+    """Uma destilação por etapa, das entradas da pessoa (só lê; o aparelho não entra aqui)."""
+    por_seq = {int(e["seq"]): e for e in sess["inputs"]}
+    descartadas = set(_inteiros([d.get("seq") for d in p.get("discarded") or [] if isinstance(d, dict)]))
+    pacotes = {a["id"]: a["package"] for a in apps.values()}
+    saida: list[_Destilada] = []
+    for st, passo in zip(p["steps"], passos):
+        entradas = [por_seq[i] for i in _inteiros(st.get("inputs")) if i in por_seq and i not in descartadas]
+        acoes, motivo = distill_training(entradas, exemplos, side_effect=passo.side_effect, app_packages=pacotes)
+        saida.append(_Destilada(passo, acoes, motivo))
+    return saida

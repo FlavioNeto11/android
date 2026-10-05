@@ -150,8 +150,8 @@ class AppiumServer:
         """Já há um Appium respondendo na porta: reutilizá-lo (True) ou liberar a porta para `start` subir outro.
 
         O órfão DESTE projeto sem mascaramento comprovado é trocado, não readotado (K-039 fora do deploy). Um backend
-        que morre sozinho (crash, Windows Update) não deixa pai para o `supervisor._matar_filhos` varrer; o Appium
-        que ele subiu fica na porta, e readotá-lo sem prova subia o backend seguinte `degraded`, com o preenchimento
+        que morre, sozinho (crash, Windows Update) ou pelo supervisor (que só mata o backend, 29.125), deixa na porta
+        o Appium que ele subiu, e readotá-lo sem prova subia o backend seguinte `degraded`, com o preenchimento
         de credencial bloqueado. Trocar aqui, e não no supervisor, cobre todo caminho até esta subida (supervisor,
         `start.ps1`, `deploy.ps1` cujo `stop.ps1` não leu a linha de comando). E é seguro por construção: `main()`
         liga a porta da Farm ANTES do lifespan, então nenhum outro backend desta árvore está vivo usando esse Appium.

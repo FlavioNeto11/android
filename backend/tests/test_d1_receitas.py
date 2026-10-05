@@ -291,7 +291,7 @@ async def test_pela_rota_antiga_a_quarentena_da_pessoa_veta_o_caminho(tmp_path: 
         mundo = Mundo(s.db)
         rid = mundo.salva(commit=False)                                      # candidata em prova
         assert rid and mundo.status(rid) == "candidate"
-        s.db.execute("UPDATE recipes SET consecutive_fail=2 WHERE id=?", (rid,))
+        s.db.execute("UPDATE recipes SET consecutive_fail=2, nao_aplicavel_seguidas=2 WHERE id=?", (rid,))
         async with _cliente(h) as c:
             r = await c.put(f"/api/recipes/{rid}", json={"status": "quarantined"})
             assert r.status_code == 200 and r.json() == {"id": rid, "status": "quarantined"}   # a resposta de sempre
@@ -300,6 +300,7 @@ async def test_pela_rota_antiga_a_quarentena_da_pessoa_veta_o_caminho(tmp_path: 
             assert nada.status_code == 404 and nada.json()["detail"]["code"] == "not_found"
         assert mundo.status(rid) == "quarantined"
         assert s.db.scalar("SELECT consecutive_fail FROM recipes WHERE id=?", (rid,)) == 0   # o que a rota sempre fez
+        assert s.db.scalar("SELECT nao_aplicavel_seguidas FROM recipes WHERE id=?", (rid,)) == 0   # 30.80
         assert mundo.trilha(rid)[-1] == ("candidate", "disabled", "panel")
         # a IA comprova de novo o MESMO caminho: não renasce candidata (veto da pessoa)
         assert mundo.salva(commit=False, learned_from="s2") is None

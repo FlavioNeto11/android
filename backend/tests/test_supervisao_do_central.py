@@ -17,6 +17,7 @@ O que este arquivo trava, sem subir processo nenhum (tudo entra pelo construtor 
 """
 from __future__ import annotations
 
+import ast
 import os
 import shutil
 import subprocess
@@ -377,31 +378,37 @@ class _FilhoFalso:
         self.morto = True
 
 
-def test_a_varredura_de_filhos_mata_o_appium_e_poupa_os_emuladores(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`children(recursive=True)` alcançava os emuladores e a docstring só falava do Appium: cada reinício por falha
-    de saúde derrubava o parque local inteiro — e o backend seguinte READOTA emulador vivo pelo PID. Matar era
-    perder boot e estado à toa."""
+def test_o_supervisor_nao_mata_nada_alem_do_processo_do_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """29.125. Emulador, Appium, servidor de rede e adb ficam vivos no reinício: são do backend seguinte, que
+    readota o emulador pelo PID e decide o Appium da porta (K-039). A varredura de filhos que existia aqui mataria o
+    Appium e o adb e só poupava os emuladores pelo nome; no Windows ela nem rodava (o filho direto é o lançador do
+    venv, e o `psutil.Process(pid)` do morto dá `NoSuchProcess`). Este teste prende o que vale: o encerramento só
+    toca o processo que recebeu, e o supervisor nem conhece outro."""
     import psutil
 
-    from app.supervisor import _matar_filhos
+    from app import supervisor
 
-    filhos = [_FilhoFalso("node.exe"), _FilhoFalso("emulator.exe"), _FilhoFalso("qemu-system-x86_64.exe"),
-              _FilhoFalso("adb.exe")]
+    def proibido(*_a: object, **_k: object) -> None:
+        raise AssertionError("o supervisor procurou outro processo além do backend")
 
-    class _PaiFalso:
-        def __init__(self, _pid: int) -> None: ...
-        def children(self, recursive: bool = False) -> list[_FilhoFalso]:
-            assert recursive
-            return filhos
-
-    monkeypatch.setattr(psutil, "Process", _PaiFalso)
-    _matar_filhos(4242)
-    assert [f.morto for f in filhos] == [True, False, False, True]
+    for nome in ("Process", "process_iter", "pids"):
+        monkeypatch.setattr(psutil, nome, proibido)
+    monkeypatch.setattr(os, "kill", proibido)
+    filhos = [_FilhoFalso("node.exe"), _FilhoFalso("emulator.exe"), _FilhoFalso("sing-box.exe"), _FilhoFalso("adb.exe")]
+    backend = ProcessoFalso(pid=4242)
+    supervisor.encerrar_processo(backend, prazo_s=0.01)
+    assert backend.encerrado and not any(f.morto for f in filhos)
+    arvore = ast.parse(Path(supervisor.__file__).read_text(encoding="utf-8"))
+    importados = {a.name for n in ast.walk(arvore) if isinstance(n, ast.Import) for a in n.names}
+    importados |= {n.module or "" for n in ast.walk(arvore) if isinstance(n, ast.ImportFrom)}
+    assert not importados & {"psutil", "signal"}, "o supervisor não procura nem sinaliza outro processo"
+    chamadas = {n.func.attr for n in ast.walk(arvore) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
+    assert not chamadas & {"children", "process_iter", "killpg"}
 
 
 # ---------------------------------------------------------------- o Appium órfão de um backend que morreu sozinho
-# K-039 fora do deploy. Quando o backend morre sozinho (crash, Windows Update), `ciclo` só sobe outro: não há pai
-# para `_matar_filhos` varrer, e o Appium que o morto subiu fica na porta. O backend seguinte o readotava pelo
+# K-039 fora do deploy. Quando o backend morre sozinho (crash, Windows Update), `ciclo` só sobe outro, e o Appium
+# que o morto subiu fica na porta (o supervisor não mata nada além do backend, 29.125). O backend seguinte o readotava pelo
 # `data/appium.pid` e, sem prova de mascaramento, subia `degraded` com a credencial bloqueada. Decisão: quem troca
 # esse órfão é o `AppiumServer.start` do backend seguinte, não o supervisor (ver `_reuse_running`). Estes testes
 # usam processos `node` de verdade, com um Appium falso que responde `/status` como o de verdade.
@@ -505,7 +512,7 @@ def test_backend_que_morre_sozinho_nao_deixa_o_seguinte_readotar_o_appium_sem_pr
     sup = Supervisor(iniciar=iniciar, saudavel=lambda: bool(backends) and backends[-1].poll() is None,
                      dormir=lambda _s: None)
     sup.run(ciclos=1)
-    backends[0].morrer()                            # crash: sem `terminate`, sem `_matar_filhos`
+    backends[0].morrer()                            # crash: sem `terminate`
     sup.run(ciclos=1)
 
     assert sup.relatorio.reiniciou_por_morte == 1 and len(backends) == 2
