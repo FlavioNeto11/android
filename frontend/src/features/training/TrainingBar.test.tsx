@@ -180,3 +180,18 @@ it('Concluir recusado por control_required: a gravação continua na barra, com 
   expect(text()).toContain('Gravando: Responder a DM');
   expect(allByRole('dialog', /Treinamento:/)).toHaveLength(0);          // não abre a revisão
 });
+
+it('Descartar recusado por control_required: a gravação continua, sem perder nada, e a lista se relê', async () => {
+  useToastStore.setState({ toasts: [] });
+  backend.on('POST', /\/training\/trn-9\/discard$/, () => apiError(409, 'control_required', 'Só quem está com o controle do aparelho descarta esta gravação.'));
+  await act(async () => root.render(<><TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-velho" mine /><ConfirmHost /></>));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  const leituras = backend.callsTo('GET', /\/training$/).length;
+  await click(byRole('button', /^Descartar$/));
+  await click(byRole('button', /^Descartar gravação$/, byRole('dialog', /Descartar a gravação/)));
+  await waitFor(() => expect(useToastStore.getState().toasts.find((t) => t.title === 'A gravação continua')?.message)
+    .toContain('Só quem está com o controle do aparelho descarta esta gravação.'));
+  await waitFor(() => expect(backend.callsTo('GET', /\/training$/).length).toBeGreaterThan(leituras));
+  expect(backend.callsTo('POST', /\/discard$/)[0]!.body).toEqual({ lease_id: 'lease-velho' });
+  expect(text()).toContain('Gravando: Responder a DM');
+});
