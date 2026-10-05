@@ -251,7 +251,8 @@ class Vigia:
                 borda.GESTOS[borda.API_ABERTA]))
         defeitos = tuple(a for a in defeitos if a.codigo != borda.API_ABERTA)
         if defeitos:
-            detalhes = "; ".join(f"{a.onde}: {a.detalhe}" for a in defeitos)
+            # O detalhe pode trazer valor de terceiro (cabeçalho, nome de cookie): nenhum controle entra na saúde (U1).
+            detalhes = borda.linha_sem_controle("; ".join(f"{a.onde}: {a.detalhe}" for a in defeitos))
             codigos = list(dict.fromkeys(a.codigo for a in defeitos))
             achados.append((
                 "portal_borda_defeito",
