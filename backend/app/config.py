@@ -144,6 +144,11 @@ class EnvSettings(BaseSettings):
         return os.environ.get(nome, "")
 
 
+#: Os modos de `server.csp_do_painel` (29.91). Um tipo só para a configuração e para o `PainelEstatico`: um valor
+#: digitado errado no código não passa no mypy em vez de falhar aberto.
+ModoDaCspDoPainel = Literal["aplicar", "so_relatar", "desligada"]
+
+
 class ServerCfg(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
@@ -172,6 +177,11 @@ class ServerCfg(BaseModel):
     #: `http`, então o processo não tem como descobrir isto sozinho — e adivinhar errado põe `Secure` num cookie
     #: que nunca chegaria, ou deixa de pô-lo onde deveria.
     tls_behind_proxy: bool = False
+    #: A CSP do `index.html` do painel (29.91). `aplicar` barra o que não for do próprio painel; `so_relatar` manda o
+    #: mesmo texto como `Content-Security-Policy-Report-Only` (nada é barrado, e cada violação aparece no console do
+    #: navegador); `desligada` não manda nenhuma. Existe para desfazer sem deploy, só com o reinício da `farm-central`,
+    #: se a CSP quebrar uma tela no central.
+    csp_do_painel: ModoDaCspDoPainel = "aplicar"
 
 
 class PathsCfg(BaseModel):

@@ -17,6 +17,7 @@ revalida e recebe 304).
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import html
 import re
@@ -145,22 +146,50 @@ class SitePublico:
             return
         caminho = scope["path"]
         if caminho in ("/", "/index.html"):
-            await _responder(send, 200, self.index(scope), EXTENSOES_DO_SITE[".html"],
-                             {"Cache-Control": "no-store"}, metodo)
+            await _responder_html(scope, send, 200, self.index(scope), "no-store", metodo)
             return
-        arquivo = self.arquivos.get(caminho)
+        arquivo = None if caminho == "/404.html" else self.arquivos.get(caminho)   # só pelo caminho 404 (N5 do #366)
         if arquivo is None:
             # A página 404 do site (29.80), com o status 404; sem ela na pasta, o texto curto de sempre.
             pagina = self.arquivos.get("/404.html")
-            corpo, tipo = ((pagina.corpo, pagina.tipo) if pagina is not None
-                           else ("Não encontrado.".encode("utf-8"), "text/plain; charset=utf-8"))
-            await _responder(send, 404, corpo, tipo, {"Cache-Control": "no-cache"}, metodo)
+            if pagina is not None:
+                await _responder_html(scope, send, 404, pagina.corpo, "no-cache", metodo)
+            else:
+                await _responder(send, 404, "Não encontrado.".encode("utf-8"), "text/plain; charset=utf-8",
+                                 {"Cache-Control": "no-cache"}, metodo)
             return
         cabecalhos = {"Cache-Control": "no-cache", "ETag": arquivo.etag}
         if _cabecalho(scope, b"if-none-match") == arquivo.etag:
             await _responder(send, 304, b"", arquivo.tipo, cabecalhos, metodo)
             return
         await _responder(send, 200, arquivo.corpo, arquivo.tipo, cabecalhos, metodo)
+
+
+#: Abaixo disto o gzip não compensa o cabeçalho e o tempo (a 404 e a raiz passam bem acima).
+GZIP_MIN_BYTES = 1024
+
+
+def _aceita_gzip(scope: Scope) -> bool:
+    """O cliente aceita gzip, e não com `q=0`. Sem o cabeçalho, nada é comprimido (o `curl` puro recebe o HTML cru)."""
+    for parte in (_cabecalho(scope, b"accept-encoding") or "").lower().split(","):
+        nome, _, parametros = parte.strip().partition(";")
+        if nome.strip() in ("gzip", "*"):
+            return parametros.replace(" ", "") not in ("q=0", "q=0.0", "q=0.00", "q=0.000")
+    return False
+
+
+async def _responder_html(scope: Scope, send: Send, status: int, corpo: bytes, cache: str, metodo: str) -> None:
+    """As páginas HTML do site (29.91). `no-transform` impede a borda de REESCREVER o HTML: a Cloudflare injetou o
+    beacon do Web Analytics (29.85) e pode injetar o Rocket Loader ou a ofuscação de e-mail, e o painel dela pode ser
+    religado por engano. O mesmo `no-transform` tira da borda a compressão, então a página sai comprimida daqui: sem
+    isso, cada visita pagaria ~40 KB em vez de ~10 KB (medido em 05/10). Só o HTML: o CSS e o JS seguem comprimidos
+    pela borda, que não mexe no conteúdo deles. Não há segredo nem eco do visitante no HTML (o token anti-robô não abre
+    nada), então comprimir não abre BREACH."""
+    extras = {"Cache-Control": f"{cache}, no-transform", "Vary": "Accept-Encoding"}
+    if len(corpo) >= GZIP_MIN_BYTES and _aceita_gzip(scope):
+        corpo = gzip.compress(corpo, compresslevel=6, mtime=0)
+        extras["Content-Encoding"] = "gzip"
+    await _responder(send, status, corpo, EXTENSOES_DO_SITE[".html"], extras, metodo)
 
 
 def _cabecalho(scope: Scope, nome: bytes) -> str | None:

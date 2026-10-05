@@ -69,7 +69,7 @@ async def test_ligado_a_raiz_e_do_site_e_o_painel_segue_em_central(harness: Harn
         pagina = await c.get("/")
         assert pagina.status_code == 200 and pagina.headers["content-type"].startswith("text/html")
         assert "ANA" in pagina.text and "/central/" in pagina.text
-        assert pagina.headers["cache-control"] == "no-store"
+        assert pagina.headers["cache-control"] == "no-store, no-transform"
         for nome, valor in CABECALHOS_DO_SITE.items():
             assert pagina.headers[nome] == valor
         assert pagina.headers["x-content-type-options"] == "nosniff"      # os de sempre, pelo `guarda`
@@ -220,6 +220,36 @@ async def test_pagina_404_propria_com_status_404_e_a_csp(harness: Harness) -> No
         assert r.headers["content-security-policy"] == CABECALHOS_DO_SITE["Content-Security-Policy"]
         assert (await c.post("/pagina-que-nao-existe", content=b"x")).status_code in (403, 405)
         assert (await c.head("/pagina-que-nao-existe")).status_code == 404
+        # Pedida pelo nome, a 404 é a mesma resposta: status 404 e `no-transform` (N5 da leitura do #366).
+        pelo_nome = await c.get("/404.html")
+        assert pelo_nome.status_code == 404 and "no-transform" in pelo_nome.headers["cache-control"]
+
+
+# ---------------------------------------------------------------- a borda não reescreve o HTML (29.91)
+@pytest.mark.parametrize("caminho", ["/", "/pagina-que-nao-existe"])
+async def test_html_do_site_sai_sem_transformar_e_comprimido_daqui(harness: Harness, caminho: str) -> None:
+    """`no-transform` impede a Cloudflare de reescrever o HTML (o beacon do 29.85); como ele também tira a compressão
+    da borda, a página sai comprimida daqui quando o cliente aceita gzip. O mesmo HTML nos dois jeitos."""
+    _preparar(harness, site=True)
+    async with _cliente(harness) as c:
+        cru = await c.get(caminho, headers={"Accept-Encoding": "identity"})
+        gz = await c.get(caminho, headers={"Accept-Encoding": "gzip, br"})
+        for r in (cru, gz):
+            assert "no-transform" in r.headers["cache-control"] and "accept-encoding" in r.headers["vary"].lower()
+        assert "content-encoding" not in cru.headers
+        assert gz.headers["content-encoding"] == "gzip"
+        assert int(gz.headers["content-length"]) < int(cru.headers["content-length"]) / 2      # medido: ~4x menor
+        assert gz.text == cru.text and gz.status_code == cru.status_code
+
+
+async def test_gzip_recusado_com_q0_e_o_estilo_fica_com_a_borda(harness: Harness) -> None:
+    _preparar(harness, site=True)
+    async with _cliente(harness) as c:
+        r = await c.get("/", headers={"Accept-Encoding": "gzip;q=0, identity"})
+        assert "content-encoding" not in r.headers and "<html" in r.text.lower()
+        # O CSS e o JS não levam `no-transform`: a borda segue comprimindo, e não injeta nada neles.
+        estilo = await c.get("/assets/site.css", headers={"Accept-Encoding": "gzip"})
+        assert "no-transform" not in estilo.headers["cache-control"] and "content-encoding" not in estilo.headers
 
 
 def _png(corpo: bytes) -> tuple[int, int]:

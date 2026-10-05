@@ -140,6 +140,46 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   registra as duas exceções de propósito: o app fora do primeiro plano não soma, e o login acontece na mesma rodada (U3/U4).
 - Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py`,
   `test_conta_bloqueada_sai.py`). `not_run`: aparelho real.
+## 2026-10-05 — 29.91: a borda não reescreve o HTML do site nem o do painel (branch feat/29-91-html-sem-injecao)
+
+- **Por quê:** em 05/10 a Cloudflare injetava o beacon do Web Analytics também no painel (`/central/`), que não tinha
+  CSP. 244 páginas em 24 h foram à conta de análise, com seletores e ids de execução. O recurso foi desligado na zona,
+  mas pode ser religado por engano.
+- **O que muda:**
+  - o HTML do site (raiz e 404) sai com `no-transform`, e comprimido em gzip pela origem quando o cliente aceita e
+    acima de 1 KB. Sem isso a borda deixaria de comprimir e a raiz iria de ~10 KB a ~40 KB;
+  - o `index.html` do painel sai com `no-transform` e com a CSP do painel (`CSP_DO_PAINEL`): script, estilo e conexão
+    só da própria origem, e imagem também de `blob:` e `data:`;
+  - o CSS e o JS do site seguem comprimidos pela borda;
+  - `server.csp_do_painel` (`aplicar` de fábrica, `so_relatar` ou `desligada`) desfaz a CSP sem deploy, só com o
+    reinício da `farm-central`, se uma tela quebrar no central;
+  - leitura do #366: o `connect-src` lista também o `wss://` de cada `server.public_hosts` e o `ws://`/`wss://` de
+    cada `server.allowed_origins` (Safari e iOS antigos, só com CSP 2, não cobrem WebSocket pelo `'self'`); o modo é
+    tipado com o mesmo `Literal` da configuração; `/404.html` pedido pelo nome sai como a 404 (status 404 e
+    `no-transform`); o arquivo de teste da prova de fora volta a LF.
+- **Estilos:** nenhum componente escreve `style=""` no HTML nem injeta `<style>`. No `src`, nada de `innerHTML`,
+  `setAttribute('style')`, `cssText` nem `<style>`. No bundle, os três `innerHTML` são internos do react-dom (o caminho
+  do `dangerouslySetInnerHTML`, que o código não usa). O `style={...}` do React vai pelo CSSOM, que a CSP não barra.
+- **Prova:**
+  - `simulated`: `tests/test_portal_site.py` (gzip só quando o cliente aceita, `q=0` respeitado, o mesmo HTML nos dois
+    jeitos, a 404 também, o CSS sem `no-transform`) e `tests/test_painel_estatico.py` (CSP e `no-transform` no
+    `index.html`, o bundle sem, e os três valores da chave);
+  - navegador num painel isolado (harness, porta 8794):
+    - sem aparelho: 11 telas sem nenhuma violação de CSP, o WebSocket da mesma origem aberto e o de outra origem
+      barrado pela CSP;
+    - com o aparelho falso do harness: a prévia do cartão vinda da API (`/frame?mode=thumb`, 360x640), o quadro do
+      foco como `blob:` (720x1280), o anexo PNG na aba Anexos como `blob:` e o upload de foto da persona (o arquivo
+      posto no campo, enviado e mostrado pela API). Tudo carregou, sem nenhuma violação; no console, a única
+      mensagem de CSP é a do teste proposital com `wss://exemplo.invalid`;
+  - a prova de fora (`scripts/portal-prova-de-fora.sh`) passa a pedir também `/central/` como navegador e a conferir
+    `no-transform` na raiz e no painel, o gzip da origem na raiz (pedida com gzip, br e zstd: br ou zstd quer dizer
+    que a borda abriu o corpo) e a CSP do painel. `simulated`: `scripts/tests/test_portal_prova_de_fora.py` (19, com o
+    beacon no painel, o HTML sem `no-transform`, o corpo recomprimido e o painel em Report-Only reprovando);
+  - `real`, antes do deploy (05/10 03:35:48Z, central em `584ac9c8`, só GET): a raiz chega em zstd com 11.355 B no fio
+    e `Cache-Control: no-store`; o `/central/` em zstd, sem `no-transform` e sem CSP; nenhum beacon (o RUM está
+    desligado na zona desde as 02:23Z);
+  - `not_run`: o central depois do deploy 35 (o peso da raiz no gzip da origem, perto de 10,6 KB, e a prova de fora
+    com as linhas novas). Não se religa o Web Analytics para provar.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 

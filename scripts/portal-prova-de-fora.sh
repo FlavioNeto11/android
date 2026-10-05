@@ -46,6 +46,85 @@ confere() { # caminho esperado descricao [args extras]
     fi
 }
 
+confere_como_navegador() { # caminho rotulo  -> o HTML pedido como navegador nao tem script injetado
+    local caminho="$1" rotulo="$2"
+    # 29.85: a borda da Cloudflare injeta o beacon do Web Analytics (static.cloudflareinsights.com) no HTML so
+    # quando o pedido parece de navegador; o curl puro nao ve (medido em 05/10). A CSP do site bloqueia e o script
+    # nao roda, mas sobra um erro de console em todo visitante, e a pagina promete "sem rastreadores". Por isso a
+    # raiz e baixada COMO navegador, e qualquer <script src> de outra origem reprova. A CSP nao muda: o conserto e
+    # desligar o recurso na zona. A Cloudflare tambem injeta script na PROPRIA origem, sob /cdn-cgi/ (Rocket Loader,
+    # challenge-platform, ofuscacao de e-mail): relativo, passa na CSP, e tambem reprova.
+    local ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
+    local nav codigo_nav html html_linha de_fora src esquema
+    nav="$(curl -q -s -m 20 -w '\n%{http_code}' -H 'Accept: text/html,application/xhtml+xml' -H "User-Agent: $ua" \
+        "https://$H$caminho")"
+    codigo_nav="${nav##*$'\n'}"; html="${nav%$'\n'*}"
+    # Uma linha so: a tag pode vir quebrada em linhas, e o `=` com espaco em volta.
+    html_linha="$(tr '\r\n\t' '   ' <<< "$html")"
+    de_fora=""
+    shopt -s nocasematch                   # HTTPS:// e o nome publico em maiuscula sao o mesmo endereco
+    while IFS= read -r src; do
+        # O esquema so conta ANTES do primeiro / ? ou #: `/assets/site.js?v=T01:00` e relativo, nao "de fora".
+        esquema="${src%%[/?#]*}"
+        case "$src" in
+            *"/cdn-cgi/"*) de_fora="$de_fora $src" ;;
+            "https://$H/"*|"//$H/"*) ;;
+            //*) de_fora="$de_fora $src" ;;
+            *) case "$esquema" in
+                   *:*) de_fora="$de_fora $src" ;;   # https:, data:, javascript:
+                   ""|[a-z0-9._~%-]*) ;;             # relativo a propria origem
+                   *) de_fora="$de_fora $src" ;;     # o que nao se reconhece reprova
+               esac ;;
+        esac
+    # O valor do atributo nunca tem espaco, entao o ultimo "<espaco>src=" da casada e o atributo de verdade: um
+    # `?src=b` DENTRO da URL nao e precedido de espaco e nao vira o valor (um `.*src=` guloso o pegava).
+    done < <(grep -oiE "<script[^>]*[[:space:]]src[[:space:]]*=[[:space:]]*[\"']?[^\"' >]+" <<< "$html_linha" |
+             sed -E "s/.*[[:space:]][sS][rR][cC][[:space:]]*=[[:space:]]*[\"']?//")
+    shopt -u nocasematch
+    if [[ "$codigo_nav" != 200 ]]; then
+        printf 'FALHOU %-28s %s  esperado 200: sem ver a pagina nao ha o que conferir (desafio da Cloudflare?)\n' \
+            "$rotulo" "$codigo_nav"; FALHAS=$((FALHAS + 1))
+    elif [[ -z "$html" ]]; then
+        printf 'FALHOU %-28s      a raiz veio vazia pedida como navegador\n' "$rotulo"; FALHAS=$((FALHAS + 1))
+    elif [[ -n "$de_fora" || "$html_linha" == *cloudflareinsights* || "$html_linha" == *"/cdn-cgi/"* ]]; then
+        printf 'FALHOU %-28s      script que a pagina nao tem no HTML:%s\n' "$rotulo" "${de_fora:- (embutido)}"
+        echo '       -> desligue na Cloudflare, na zona do nome publico, o recurso que injeta:'
+        echo '          cloudflareinsights = Web Analytics / Real User Measurements (RUM), a injecao automatica do beacon;'
+        echo '          /cdn-cgi/scripts = Rocket Loader (Speed > Optimization); /cdn-cgi/challenge-platform = desafio'
+        echo '          JS / Bot Fight Mode; /cdn-cgi/l/email-protection = Email Address Obfuscation (Scrape Shield).'
+        echo '          Nao afrouxe a CSP: a pagina promete que nao usa rastreadores.'
+        FALHAS=$((FALHAS + 1))
+    else
+        printf 'ok     %-28s      (nenhum script de fora nem da Cloudflare no HTML)\n' "$rotulo"
+    fi
+}
+
+confere_html_intocado() { # caminho rotulo gzip|csp  -> a borda nao pode reescrever este HTML (29.91)
+    # `no-transform` proibe a borda de mexer no HTML (beacon, Rocket Loader, e-mail ofuscado), e tambem de recomprimir.
+    # Por isso o pedido aceita gzip, br e zstd: se a borda respeita, o site chega no gzip que a ORIGEM fez; br ou zstd
+    # quer dizer que a borda abriu o corpo. O painel nao e comprimido na origem; nele vale a CSP do painel.
+    local caminho="$1" rotulo="$2" modo="$3" ua cab guarda cod csp
+    ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
+    cab="$(curl -q -s -o /dev/null -D - -m 20 -H 'Accept: text/html' -H 'Accept-Encoding: gzip, br, zstd' \
+        -H "User-Agent: $ua" "https://$H$caminho" | tr -d '\r')"
+    guarda="$(grep -i '^cache-control:' <<< "$cab")"
+    cod="$(grep -i '^content-encoding:' <<< "$cab" | tr 'A-Z' 'a-z')"
+    csp="$(grep -i '^content-security-policy:' <<< "$cab")"
+    if [[ "$guarda" != *no-transform* ]]; then
+        printf 'FALHOU %-28s      sem no-transform no Cache-Control (%s)\n' "$rotulo" "${guarda:-nenhum}"
+        FALHAS=$((FALHAS + 1))
+    elif [[ "$modo" == gzip && "$cod" != *gzip* ]]; then
+        printf 'FALHOU %-28s      esperado o gzip da origem; veio %s\n' "$rotulo" "${cod:-sem compressao}"
+        FALHAS=$((FALHAS + 1))
+    elif [[ "$modo" == csp && ( "$csp" != *"script-src 'self'"* || "$csp" != *"frame-ancestors 'none'"* ) ]]; then
+        # Report-Only ou nada: `server.csp_do_painel` fora de `aplicar` no config.yaml do central.
+        printf 'FALHOU %-28s      sem a CSP do painel (server.csp_do_painel em aplicar?)\n' "$rotulo"
+        FALHAS=$((FALHAS + 1))
+    else
+        printf 'ok     %-28s      (no-transform%s)\n' "$rotulo" "$([[ "$modo" == gzip ]] && echo ', gzip da origem' || echo ', CSP do painel')"
+    fi
+}
+
 echo "prova de fora de https://$H  modo=$MODO  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # Vale nos dois modos: o canal do worker nunca sai pelo tunel (regra do ingress), e http vira https na borda.
@@ -68,6 +147,9 @@ else
     confere /api/workers        "401" "tela de workers e /api: sem credencial"
     confere /api/session        "200" "rota de sessao: aberta, diz que nao ha sessao"
     confere /central/           "200" "painel estatico"
+    # 29.91: o painel nao tinha CSP, e a borda injetou nele o beacon do Web Analytics em 05/10.
+    confere_como_navegador /central/ "/central/ (como navegador)"
+    confere_html_intocado /central/ "/central/ (sem transformar)" csp
     confere /central            "301 302 307 308" "sem a barra final: redireciona"
     if [[ "${SITE:-}" == "ligado" ]]; then
         confere /                   "200" "raiz: o site institucional (29.77)"
@@ -98,54 +180,8 @@ else
         else
             printf 'ok     %-28s      (nenhum Set-Cookie, como a pagina promete)\n' "/ (sem cookie)"
         fi
-        # 29.85: a borda da Cloudflare injeta o beacon do Web Analytics (static.cloudflareinsights.com) no HTML so
-        # quando o pedido parece de navegador; o curl puro nao ve (medido em 05/10). A CSP do site bloqueia e o script
-        # nao roda, mas sobra um erro de console em todo visitante, e a pagina promete "sem rastreadores". Por isso a
-        # raiz e baixada COMO navegador, e qualquer <script src> de outra origem reprova. A CSP nao muda: o conserto e
-        # desligar o recurso na zona. A Cloudflare tambem injeta script na PROPRIA origem, sob /cdn-cgi/ (Rocket Loader,
-        # challenge-platform, ofuscacao de e-mail): relativo, passa na CSP, e tambem reprova.
-        ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
-        nav="$(curl -q -s -m 20 -w '\n%{http_code}' -H 'Accept: text/html,application/xhtml+xml' -H "User-Agent: $ua" \
-            "https://$H/")"
-        codigo_nav="${nav##*$'\n'}"; html="${nav%$'\n'*}"
-        # Uma linha so: a tag pode vir quebrada em linhas, e o `=` com espaco em volta.
-        html_linha="$(tr '\r\n\t' '   ' <<< "$html")"
-        de_fora=""
-        shopt -s nocasematch                   # HTTPS:// e o nome publico em maiuscula sao o mesmo endereco
-        while IFS= read -r src; do
-            # O esquema so conta ANTES do primeiro / ? ou #: `/assets/site.js?v=T01:00` e relativo, nao "de fora".
-            esquema="${src%%[/?#]*}"
-            case "$src" in
-                *"/cdn-cgi/"*) de_fora="$de_fora $src" ;;
-                "https://$H/"*|"//$H/"*) ;;
-                //*) de_fora="$de_fora $src" ;;
-                *) case "$esquema" in
-                       *:*) de_fora="$de_fora $src" ;;   # https:, data:, javascript:
-                       ""|[a-z0-9._~%-]*) ;;             # relativo a propria origem
-                       *) de_fora="$de_fora $src" ;;     # o que nao se reconhece reprova
-                   esac ;;
-            esac
-        # O valor do atributo nunca tem espaco, entao o ultimo "<espaco>src=" da casada e o atributo de verdade: um
-        # `?src=b` DENTRO da URL nao e precedido de espaco e nao vira o valor (um `.*src=` guloso o pegava).
-        done < <(grep -oiE "<script[^>]*[[:space:]]src[[:space:]]*=[[:space:]]*[\"']?[^\"' >]+" <<< "$html_linha" |
-                 sed -E "s/.*[[:space:]][sS][rR][cC][[:space:]]*=[[:space:]]*[\"']?//")
-        shopt -u nocasematch
-        if [[ "$codigo_nav" != 200 ]]; then
-            printf 'FALHOU %-28s %s  esperado 200: sem ver a pagina nao ha o que conferir (desafio da Cloudflare?)\n' \
-                "/ (como navegador)" "$codigo_nav"; FALHAS=$((FALHAS + 1))
-        elif [[ -z "$html" ]]; then
-            printf 'FALHOU %-28s      a raiz veio vazia pedida como navegador\n' "/ (como navegador)"; FALHAS=$((FALHAS + 1))
-        elif [[ -n "$de_fora" || "$html_linha" == *cloudflareinsights* || "$html_linha" == *"/cdn-cgi/"* ]]; then
-            printf 'FALHOU %-28s      script que a pagina nao tem no HTML:%s\n' "/ (como navegador)" "${de_fora:- (embutido)}"
-            echo '       -> desligue na Cloudflare, na zona do nome publico, o recurso que injeta:'
-            echo '          cloudflareinsights = Web Analytics / Real User Measurements (RUM), a injecao automatica do beacon;'
-            echo '          /cdn-cgi/scripts = Rocket Loader (Speed > Optimization); /cdn-cgi/challenge-platform = desafio'
-            echo '          JS / Bot Fight Mode; /cdn-cgi/l/email-protection = Email Address Obfuscation (Scrape Shield).'
-            echo '          Nao afrouxe a CSP: a pagina promete que nao usa rastreadores.'
-            FALHAS=$((FALHAS + 1))
-        else
-            printf 'ok     %-28s      (nenhum script de fora nem da Cloudflare no HTML)\n' "/ (como navegador)"
-        fi
+        confere_como_navegador / "/ (como navegador)"
+        confere_html_intocado / "/ (sem transformar)" gzip
     else
         confere /                   "301 302 307 308" "raiz: redireciona para o painel"
     fi
