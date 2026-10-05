@@ -28,6 +28,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_telegram_entrada.py` e `test_telegram_portas.py`, com 1 e 2 caracteres).
   Real: `not_run`.
 
+## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)
+
+- Pedido do dono pelo Telegram (entrada 1790, 05/10 09:39:19Z): "o que significa ana? precisa colocar isso no portal
+  tambem". Houve rodadas de opções pela Canais (entradas 1861, 1862, 1863 e 1864). Depois, ele respondeu "1" à proposta
+  da mensagem 294 (entrada 1865, 10:26:59Z): **Agente Neural Avançada**.
+- `site/index.html`, sem seção nova e sem CSS:
+  - 1º parágrafo de "Conheça a ANA": "A ANA é a sua **A**gente **N**eural **A**vançada: a inteligência artificial que
+    comanda a plataforma e rege as personas que dão voz à sua marca.", com as iniciais em negrito; o parágrafo segue
+    como antes;
+  - resposta do FAQ "Quem é a ANA?": "É a sua Agente Neural Avançada, de onde vem o nome: a inteligência artificial que
+    comanda a plataforma. Ela recebe os seus pedidos…", com o resto igual;
+  - sem a forma em inglês; o `<title>`, a descrição, o `og:*` e a imagem social ficam como estão.
+- A frase de amostra da mensagem 294 dizia que a ANA "dá voz à sua marca". Ela foi ajustada para não contradizer "a
+  ANA rege, as personas dão voz" (ADR-075, "Marca pública"). A orquestradora avisou o dono da diferença pela Canais.
+- `docs/decisoes.md`, ADR-075 ("Marca pública"): uma linha diz que o significado é decisão do dono de 05/10.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,
