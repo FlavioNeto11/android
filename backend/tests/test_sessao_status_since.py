@@ -10,6 +10,9 @@ Prova `simulated`: harness com aparelho falso, gravações direto no repositóri
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 from app.models import ProfileCreate, SessionStatus
 from app.state import AppState
@@ -98,6 +101,30 @@ async def test_regravar_o_mesmo_estado_mantem_a_hora_e_mudar_troca(harness: Harn
 
     st.social_repo.invalidate_sessions_of_instance(IID, reason="wipe", todos_os_apps=True)
     assert _desde(st, pid) not in (None, MARCA)
+
+
+async def test_a_decisao_segue_a_linha_real_e_nao_a_leitura_anterior(harness: Harness,
+                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """P2 da leitura do #384: manter ou trocar a hora é decidido DENTRO do upsert, contra a linha que o comando encontra.
+    Aqui a leitura anterior (`SELECT status, unknown_streak`) devolve um estado velho, como se outra gravação tivesse
+    passado no meio: ela diz `session_ready`, a linha real está `unknown`. Uma decisão tomada no Python, com a leitura,
+    trocaria a hora; a do upsert vê `unknown` igual a `unknown`, abaixo do teto, e mantém."""
+    st = _estado(harness)
+    pid = st.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+    st.social_repo.set_session(pid, status=SessionStatus.unknown, instance_id=IID)
+    _marcar(st)
+    db = st.social_repo.db
+    original = db.one
+
+    def leitura_velha(sql: str, params: Any = ()) -> Any:
+        if sql.startswith("SELECT status, unknown_streak FROM account_sessions"):
+            return {"status": SessionStatus.session_ready.value, "unknown_streak": 0}
+        return original(sql, params)
+
+    monkeypatch.setattr(db, "one", leitura_velha)
+    st.social_repo.set_session(pid, status=SessionStatus.unknown, instance_id=IID)       # sem `reobserved`: série 0
+    monkeypatch.undo()
+    assert _desde(st, pid) == MARCA
 
 
 async def test_os_tres_montadores_levam_a_hora_ao_rest(harness: Harness) -> None:

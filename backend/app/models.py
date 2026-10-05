@@ -542,8 +542,9 @@ class SessionInfo(BaseModel):
     #: e põe a sessão nas filas "Aguardando intervenção" e Pendências, que filtram por estado.
     unknown_at_cap: bool = False
     #: 29.100: desde quando a sessão está assim (`account_sessions.status_since`): a mudança de estado e, no `unknown`, a
-    #: chegada ao teto (a parada); fora disso, regravar o mesmo estado não a move. É a hora que Pendências mostra. `None` em sessão gravada só antes da migração
-    #: e já `session_ready` nela (a migração preenche as demais com a última gravação).
+    #: chegada ao teto (a parada); fora disso, regravar o mesmo estado não a move. É a hora que Pendências mostra.
+    #: `None` em sessão gravada só antes da migração e já `session_ready` nela (a migração preenche as demais com a
+    #: última gravação).
     status_since: str | None = None
 
 

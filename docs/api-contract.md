@@ -6234,6 +6234,14 @@ Migração 112. Campo aditivo em `SessionInfo`, nos mesmos cinco DTOs do adendo 
 - `verified_at` continua sendo a última verificação.
 - A decisão é tomada dentro do próprio upsert, contra a linha que o comando encontra, então duas gravações concorrentes
   não deixam a hora velha.
+- Caso raro: a sessão pode entrar no teto SEM gravação, porque `unknown_at_cap` é lido contra o teto de agora.
+  - Acontece quando o teto cai até uma série que ainda não estava parada (de 3 para 2, com a série em 2), ou quando
+    outra conta no aparelho ganha vínculo ativo (o teto vira 1).
+  - Nesse caso, Pendências mostra a hora do começo do `unknown` (ou do gesto), e a gravação seguinte no teto não a
+    corrige.
+  - Só afeta a hora mostrada.
+- A invalidação e o "Verificar conta" sem `reobserved` tiram a sessão do teto, porque a série volta a zero, e ela some
+  de Pendências. É assim desde antes do 29.100.
 - Nulo quando a sessão não existe, ou quando era `session_ready` antes da migração 112 e não mudou de estado desde
   então. A migração preenche as outras com a última gravação. Em `session_ready` gravada depois da 112, é a hora em que
   ficou pronta.

@@ -50,9 +50,10 @@ export function precisaDePessoa(session: { status: string; unknown_at_cap?: bool
 }
 
 /**
- * Desde quando a sessão espera (29.100): a hora da mudança de estado ou, no `unknown`, a da parada no teto. `verified_at` é a última verificação,
- * que na parada fica vazia ou de dias atrás, e fazia uma parada de agora parecer antiga. Ele só vale quando o
- * backend não manda `status_since` (anterior ao 29.100, ou `session_ready` de antes da migração 112).
+ * Desde quando a sessão espera (29.100): a hora da mudança de estado ou, no `unknown`, a da parada no teto.
+ * `verified_at` é a última verificação, que na parada fica vazia ou de dias atrás, e fazia uma parada de agora parecer
+ * antiga. Ele só vale quando o backend não manda `status_since` (anterior ao 29.100, ou `session_ready` de antes da
+ * migração 112).
  */
 export function desdeDaSessao(session: { status_since?: string | null; verified_at: string | null }): string | null {
   return session.status_since ?? session.verified_at;
