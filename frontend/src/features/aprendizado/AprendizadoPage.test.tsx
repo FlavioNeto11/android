@@ -427,7 +427,9 @@ describe('página Aprendizado', () => {
     await click(byRole('tab', /^Aprendido/, container));
     await waitFor(() => expect(item('fluxo:f-30')).toBeTruthy());
     const ensinado = item('fluxo:f-30');
-    expect(text(ensinado)).toContain('Ensinado, ainda em prova: só vale para a persona que ensinou.');
+    expect(text(ensinado)).toContain('Ensinado, ainda em prova: o uso fica restrito até ela passar');
+    // o Livro não sabe se a gravação tinha persona: a frase cobre os dois casos, sem afirmar que existe uma que ensinou
+    expect(text(ensinado)).toContain('sem persona na gravação, nenhum aparelho');
     expect(text(ensinado)).toContain('tentou 3 vezes sem veredito');
     expect(text(ensinado)).not.toContain('tentativas_esgotadas');           // o código fica no title, nunca na tela
     expect(allByRole('button', /^(Confirmar que fica|Desligar)$/, ensinado).map(text)).toEqual(['Confirmar que fica', 'Desligar']);

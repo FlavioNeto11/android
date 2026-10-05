@@ -196,8 +196,8 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
       {/* 30.81: o ensinado que a prova automática passou à pessoa. Até ela decidir, só vale para a persona que ensinou. */}
       {e.kind === 'fluxo' && e.espera_a_pessoa ? (
         <p className={styles.avisoDoItem} title={`motivo: ${e.espera_a_pessoa}`}>
-          Ensinado, ainda em prova: só vale para a persona que ensinou. {textoDaEsperaDaPessoa(e.espera_a_pessoa)}{' '}
-          “Confirmar que fica” libera o fluxo para quem estiver no escopo.
+          Ensinado, ainda em prova: o uso fica restrito até ela passar (só a persona que ensinou; sem persona na gravação,
+          nenhum aparelho). {textoDaEsperaDaPessoa(e.espera_a_pessoa)} “Confirmar que fica” libera o fluxo para quem estiver no escopo.
         </p>
       ) : null}
       {e.confirmado ? (

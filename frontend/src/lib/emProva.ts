@@ -13,6 +13,15 @@ export function explicacaoEmProva(e: Pick<EnsinadoEmProva, 'persona'>): string {
     : 'Ensinado e ainda sem prova, e a gravação não tinha persona: não vale em aparelho nenhum até uma prova real dar certo ou uma pessoa confirmar que fica.';
 }
 
+/** A frase curta de quem pode usar o fluxo até a prova, para a linha que apresenta o comando e para a das receitas. */
+export function quemUsaEmProva(e: Pick<EnsinadoEmProva, 'persona'>): { comando: string; receitas: string } {
+  return e.persona
+    ? { comando: 'Até a prova, só a persona que ensinou pode pedir pelo comando:',
+        receitas: 'Em prova: as receitas só valem para a persona que ensinou.' }
+    : { comando: 'Até a prova, o comando não vale em aparelho nenhum (a gravação não tinha persona):',
+        receitas: 'Em prova: a gravação não tinha persona, então as receitas não valem em aparelho nenhum.' };
+}
+
 /** Por que a prova automática não decide e o "Confirmar que fica" é da pessoa (`espera_a_pessoa` do Livro). Um texto por
  *  motivo do contrato; o código fica no `title`, nunca sai cru na tela. */
 const ESPERA_DA_PESSOA: Readonly<Record<string, string>> = {

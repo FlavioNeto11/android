@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { explicacaoEmProva, textoDaEsperaDaPessoa } from './emProva';
+import { explicacaoEmProva, quemUsaEmProva, textoDaEsperaDaPessoa } from './emProva';
 
 describe('30.81: o texto do ensinado em prova', () => {
   it('a explicação diferencia a persona que ensinou da gravação sem persona e nunca cita o id', () => {
@@ -7,6 +7,15 @@ describe('30.81: o texto do ensinado em prova', () => {
     expect(com).toContain('só vale para a persona que ensinou');
     expect(com).not.toContain('ig-7');
     expect(explicacaoEmProva({ persona: null })).toContain('não tinha persona: não vale em aparelho nenhum');
+  });
+
+  it('quem usa até a prova: a persona que ensinou, ou ninguém quando a gravação não tinha persona', () => {
+    expect(quemUsaEmProva({ persona: 'ig-7' }).comando).toContain('só a persona que ensinou');
+    expect(quemUsaEmProva({ persona: 'ig-7' }).receitas).toContain('só valem para a persona que ensinou');
+    const sem = quemUsaEmProva({ persona: null });
+    expect(sem.comando).toContain('não vale em aparelho nenhum');
+    expect(sem.receitas).toContain('não valem em aparelho nenhum');
+    expect(`${sem.comando} ${sem.receitas}`).not.toContain('só a persona que ensinou');
   });
 
   it('cada motivo do contrato tem frase própria, e um código novo cai na frase geral sem ecoar o código', () => {

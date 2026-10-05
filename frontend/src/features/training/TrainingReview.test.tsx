@@ -535,6 +535,18 @@ it('30.81: a gravação sem persona diz que o fluxo não vale em aparelho nenhum
   await click(byRole('button', /^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   expect(text()).toContain('a gravação não tinha persona: não vale em aparelho nenhum até uma prova real dar certo');
+  // a linha que apresenta o comando não diz que uma persona que ensinou pode pedir: não há nenhuma
+  expect(text()).toContain('Até a prova, o comando não vale em aparelho nenhum');
+  expect(text()).not.toContain('só a persona que ensinou pode pedir');
+
+  backend.on('POST', /\/training\/trn-1\/recipes$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', created: 1,
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
+    ensinado_em_prova: { persona: null, sessao: 'trn-1' },
+  }));
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('a gravação não tinha persona, então as receitas não valem em aparelho nenhum.'));
+  expect(text()).not.toContain('as receitas só valem para a persona que ensinou');
 });
 
 // ---------------------------------------------------------------- 31.91 F2 (v1.63): responder às perguntas da proposta

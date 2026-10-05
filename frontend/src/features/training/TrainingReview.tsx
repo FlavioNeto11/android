@@ -16,7 +16,7 @@ import type {
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { SeloEmProva } from '../../components/SeloEmProva';
-import { explicacaoEmProva } from '../../lib/emProva';
+import { explicacaoEmProva, quemUsaEmProva } from '../../lib/emProva';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
@@ -194,7 +194,7 @@ export function RefazerReceitas({ sessionId, intent, onFeito }: {
           : `${feito.created ? `${plural(feito.created, 'receita gravada', 'receitas gravadas')} agora.` : 'Nenhuma receita nova.'}`
             + (semReceita.length ? ` Sem receita: ${semReceita.map((x) => `${x.title} (${x.reason})`).join('; ')}.` : '')
             // 30.81: a receita da gravação espera junto do fluxo; só a persona que ensinou a usa até a prova.
-            + (feito.ensinado_em_prova ? ' Em prova: as receitas só valem para a persona que ensinou.' : '')}
+            + (feito.ensinado_em_prova ? ` ${quemUsaEmProva(feito.ensinado_em_prova).receitas}` : '')}
       </span>
     </span>
   );
@@ -562,7 +562,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           <p>
             Fluxo <strong>{resultado.flow_id}</strong> salvo
             {resultado.ensinado_em_prova ? <> <SeloEmProva ensinado={resultado.ensinado_em_prova} /></> : null}
-            . {resultado.ensinado_em_prova ? 'Até a prova, só a persona que ensinou pode pedir pelo comando:' : 'Quem estiver no escopo pode pedir pelo comando:'}
+            . {resultado.ensinado_em_prova ? quemUsaEmProva(resultado.ensinado_em_prova).comando : 'Quem estiver no escopo pode pedir pelo comando:'}
           </p>
           {resultado.ensinado_em_prova ? (
             <p className={styles.muted} role="status">{explicacaoEmProva(resultado.ensinado_em_prova)}</p>

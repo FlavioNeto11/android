@@ -26,7 +26,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Selo "em prova" (com a explicação no `title`) no relatório do salvar do treino, no "Refazer receitas" (a frase diz que as receitas só valem para a persona que ensinou e o selo some quando a espera acaba), na estimativa do comando que casa um fluxo ensinado, nos caminhos da persona e na lista de fluxos de Configuração. A gravação sem persona diz que o fluxo não vale em aparelho nenhum até a prova.
   - No Livro, o fluxo com `espera_a_pessoa` mostra o porquê em português (um texto por motivo do contrato; o código fica no `title`, e um motivo novo cai numa frase geral) e oferece "Confirmar que fica" na frente de "Desligar", pela rota própria `…/confirmar`. Com `null` ou em outro tipo de item, nada muda.
   - Nenhuma frase leva o id da persona.
-- Prova `simulated`: `TrainingReview.test.tsx` (2 testes novos), `AprendizadoPage.test.tsx` (2), `model.test.ts` (1), `emProva.test.ts` (2). Frontend inteiro 1685/1685 com 4 workers em Idle e typecheck verde, em 05/10 sobre `65452966`. `real`: `not_run` até o backend do 30.81 entrar e o percurso no navegador.
+  - Leitura do Codex no PR 451, os dois achados procederam: com `persona: null` o relatório do salvar e o do "Refazer receitas" dizem que o comando e as receitas não valem em aparelho nenhum (e não "só a persona que ensinou"), e a nota do Livro, que não sabe se a gravação tinha persona, usa frase neutra para os dois casos.
+- Prova `simulated`: `TrainingReview.test.tsx` (2 testes novos), `AprendizadoPage.test.tsx` (2), `model.test.ts` (1), `emProva.test.ts` (3). Frontend inteiro 1686/1686 com 4 workers em Idle e typecheck verde, em 05/10 sobre `65452966`. `real`: `not_run` até o backend do 30.81 entrar e o percurso no navegador.
 
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
