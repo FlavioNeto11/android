@@ -744,7 +744,7 @@ export const api = {
   accountAuthAttempts: (profileId: string, accountId: string, limit = 20) =>
     request<AuthAttempt[]>('GET', `/instagram/profiles/${enc(profileId)}/accounts/${enc(accountId)}/auth-attempts`,
       { query: { limit } }),
-  startTraining: (instanceId: string, body: { intent: string; lease_id: string; app_id?: string | null }) =>
+  startTraining: (instanceId: string, body: { intent: string; lease_id: string; app_id?: string | null; profile_id?: string | null }) =>
     request<TrainingSession>('POST', `/instances/${enc(instanceId)}/training`, { body }),
   listTraining: (instanceId?: string) =>
     request<TrainingSession[]>('GET', '/training', { query: { instance_id: instanceId } }),

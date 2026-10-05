@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.90-C: o treino pergunta de quem é o ensino, quando o aparelho tem mais de uma persona (branch feat/31-90-c-persona-ao-iniciar)
+
+- Só frontend; o backend já aceitava `profile_id` no início da gravação e recusava com 409 `persona_ambigua` quando o aparelho tem duas personas para o app e nenhuma é escolhida. O painel não mandava o campo, então esse aparelho não conseguia ensinar nada pelo painel (e, com o 30.81, um treino sem persona gera um fluxo que não vale em aparelho nenhum).
+  - `TrainingBar` lê as personas do aparelho (`GET /instances/{id}/personas`) quando o formulário de iniciar está à vista. Com mais de uma persona para o app escolhido (`personasDoEnsino`: uma por pessoa, as vinculadas ao app ou sem app no vínculo; sem app escolhido, todas), aparece "De quem é o ensino?", o "Iniciar treinamento" fica indisponível com o motivo até a escolha e o corpo leva `profile_id`.
+  - Com uma só, o texto diz de quem é o ensino e o corpo segue como era. Sem nenhuma, o texto avisa que o fluxo fica sem persona e não vale em aparelho nenhum até uma prova real ou a sua confirmação. Se a leitura das personas falhar, o formulário segue como era e o backend decide.
+- Prova `simulated`: `TrainingBar.test.tsx` (5 testes novos, um deles da regra por app); sem o `profile_id` no corpo o teste da escolha falha. Frontend inteiro 1691/1691 com 4 workers em Idle e typecheck verde, em 05/10 sobre `095a43b6`. `real`: `not_run` (o percurso com um aparelho de duas personas fica para depois do deploy).
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
