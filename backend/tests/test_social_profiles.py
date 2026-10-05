@@ -182,7 +182,7 @@ def test_username_duplicado_e_recusado(tmp_path: Path) -> None:
     try:
         svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS))
         with pytest.raises(SocialError, match="Já existe"):
-            svc.create_profile(novo("Tadeu.quintela4821", "outra"))   # maiúsculas não criam outro perfil
+            svc.create_profile(novo("TADEU.quintela4821", "outra"))   # maiúsculas não criam outro perfil
     finally:
         db.close()
 

@@ -46,10 +46,10 @@ def _respondeu(repo: Any, pid: str, alvo: str = BRUNO, *, dias_atras: float = 1.
 
 def test_o_caso_real_resposta_repetida_e_recusada_sem_retry_at(tmp_path: Path) -> None:
     _svc, repo, policies, _db, pid = _lucas(tmp_path)
-    assert normalizar_alvo("@Valdir.teixeira6352") == BRUNO          # o que a porta compara é o que o histórico grava
+    assert normalizar_alvo("@Valdir.Teixeira6352") == BRUNO          # o que a porta compara é o que o histórico grava
     interacao = _respondeu(repo, pid)
     veredito = policies.check(pid, capability_of(IG, "REPLY_COMMENT"), run_id="r-hoje",
-                              counterparty="@Valdir.teixeira6352", app_id="instagram")
+                              counterparty="@Valdir.Teixeira6352", app_id="instagram")
     assert not veredito.allowed and veredito.retry_at is None
     assert interacao in veredito.reason and BRUNO in veredito.reason and "antes da aprovação" in veredito.reason
     assert veredito.hint and "à mão" in veredito.hint

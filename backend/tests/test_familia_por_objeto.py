@@ -206,7 +206,7 @@ def test_texto_que_cita_outra_persona_do_pedido_pede_aprovacao_sem_o_arroba_no_m
     _repo, policies, _db, a, b = _familia(tmp_path)
     comentar = capability_of(IG, "CREATE_COMMENT")
     pedido = ContextoDoPedido(raiz="r-b", familia=frozenset({a, b}))
-    texto = "Concordo com o @Tadeu.quintela4821, que lugar lindo"
+    texto = "Concordo com o @Tadeu.Quintela4821, que lugar lindo"
     motivo = policies.cita_a_familia(b, comentar, {"content": texto}, pedido)
     assert motivo == MOTIVO_CITA_A_FAMILIA
     assert "@" not in motivo and "lucas" not in motivo.lower() and texto not in motivo

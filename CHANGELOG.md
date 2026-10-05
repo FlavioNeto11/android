@@ -23,7 +23,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - Os três @ com número de contas reais que os testes usavam como dado viraram valores de exemplo fixos, o mesmo para o
   mesmo papel (36 arquivos de teste, 208 linhas). A troca é `scripts/trocar-nomes-nos-testes.py`, que lê a tabela de
-  um arquivo local FORA do Git (o script não guarda nome nenhum) e só imprime contagens.
+  um arquivo local fora de qualquer checkout (`--tabela` ou `TROCA_DE_NOMES_TABELA`, sem caminho padrão; recusa tabela
+  dentro do repositório). O script não guarda nome nenhum e só imprime contagens. A caixa vai trecho a trecho, para os
+  testes de caixa ("Nome.Sobrenome…", "NOME.sobrenome…") manterem a força.
 - `--amplo` troca também os pedaços de nome (ensaio: 124 arquivos, 1594 linhas). Não aplicado: roda como última junção
   no corte de uma suíte, quando a orquestradora marcar, para não conflitar com os ramos da fila.
 - Sem catraca nesta rodada: hash de identificador curto num teste versionado se reverte por dicionário; se houver

@@ -1,7 +1,9 @@
 """Troca, nos TESTES, identificadores e nomes de contas reais por valores de exemplo fixos (31.101).
 
 A tabela real → exemplo NUNCA entra no Git: este script a lê de um arquivo local fora do repositório versionado
-(`--tabela`, JSON com `handles`, `pedacos`, `fora` e `simulados`). Um script com os nomes como chave guardaria
+(`--tabela` ou a variável `TROCA_DE_NOMES_TABELA`, JSON com `handles`, `pedacos`, `fora` e `simulados`). Não há
+caminho padrão: um padrão dentro do repositório deixaria a tabela a um `git add` de um commit. A do parque fica em
+`C:/farm/privado/`, fora de qualquer checkout. Um script com os nomes como chave guardaria
 justamente o que o item tira.
 
     python scripts/trocar-nomes-nos-testes.py --tabela <arquivo.json>             # ensaio: só contagens
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sqlite3
 import subprocess
@@ -34,11 +37,26 @@ def arquivos(raiz: Path) -> list[Path]:
     return [raiz / f for f in nomes if re.search(r"(^|/)tests/|\.test\.tsx?$", f) and f.endswith(_SUFIXOS)]
 
 
-def _caixa(original: str, novo: str) -> str:
-    """A caixa do original: TUDO MAIÚSCULO, Primeira maiúscula ou minúsculo."""
+def _caixa_do_trecho(original: str, novo: str) -> str:
     if original.isupper():
         return novo.upper()
     return novo[0].upper() + novo[1:] if original[0].isupper() else novo
+
+
+_TRECHO = re.compile(r"[^\W\d_]+")
+
+
+def _caixa(original: str, novo: str) -> str:
+    """A caixa do original, TRECHO a trecho de letras: num handle, "Nome.Sobrenome1234" e "NOME.sobrenome1234" seguem
+    assim (os testes de caixa provam com as duas partes). Com número de trechos diferente, vale a do primeiro."""
+    velhos, novos = _TRECHO.findall(original), list(_TRECHO.finditer(novo))
+    if len(velhos) != len(novos):
+        return _caixa_do_trecho(original, novo)
+    saida, fim = [], 0
+    for velho, m in zip(velhos, novos):
+        saida += [novo[fim:m.start()], _caixa_do_trecho(velho, m.group(0))]
+        fim = m.end()
+    return "".join(saida) + novo[fim:]
 
 
 def trocador(tabela: dict, amplo: bool):
@@ -63,17 +81,22 @@ def nomes_do_banco(banco: Path, fora: set[str]) -> set[str]:
                 "SELECT name FROM personas"):
         for (v,) in db.execute(sql):
             reais |= {p for p in re.split(r"[\s._\-0-9]+", (v or "").lower()) if len(p) >= 4}
+    db.close()
     return reais - fora
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--tabela", type=Path, required=True)
+    ap.add_argument("--tabela", type=Path, default=os.environ.get("TROCA_DE_NOMES_TABELA") or None)
     ap.add_argument("--raiz", type=Path, default=RAIZ)
     ap.add_argument("--banco", type=Path)
     ap.add_argument("--amplo", action="store_true")
     ap.add_argument("--aplicar", action="store_true")
     args = ap.parse_args()
+    if args.tabela is None:
+        raise SystemExit("diga a tabela: --tabela <arquivo.json> ou TROCA_DE_NOMES_TABELA (fora do repositório)")
+    if RAIZ in args.tabela.resolve().parents:
+        raise SystemExit("a tabela não pode ficar dentro do repositório")
     tabela = json.loads(args.tabela.read_text(encoding="utf-8"))
     trocar = trocador(tabela, args.amplo)
     novos = {p for v in [*tabela["pedacos"].values(), *tabela["handles"].values()]
@@ -89,6 +112,8 @@ def main() -> int:
     textos = {f: f.read_bytes().decode("utf-8") for f in arquivos(args.raiz)}
     if args.amplo:
         juntos = "\n".join(textos.values())
+        for feito in tabela["handles"].values():      # o handle já trocado numa rodada anterior não conta
+            juntos = re.sub(re.escape(feito), " ", juntos, flags=re.IGNORECASE)
         if any(re.search(r"\b" + re.escape(n) + r"\b", juntos, re.IGNORECASE) for n in novos):
             raise SystemExit("um valor de exemplo já existe nos testes: troque-o na tabela")
     mudados = linhas = 0
