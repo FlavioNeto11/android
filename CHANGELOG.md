@@ -98,27 +98,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `test_telegram_portas`, `test_executor_honra_o_plano`; `frontend/src/features/runs/PortaDoPlano.test.tsx`). Real:
   `not_run`, gesto no central depois do deploy 34.
 
-## 2026-10-04 — 29.83: exclusão de contatos do site a pedido do titular (branch feat/29-83-exclusao-de-contato)
-
-- **O pedido:** o aviso de privacidade do site oferece a exclusão; até aqui só havia o procedimento manual. A
-  orquestradora aprovou o desenho às 23:20Z (Configuração, migração 109, adendo v1.42, o lado da Canais no 28.34).
-- **O que muda:**
-  - Configuração ganha a seção "Site e privacidade" (`?aba=privacidade`): busca pelo número inteiro como a pessoa escreveu, lista só com
-    id, data, estado e os 4 dígitos finais, "o pedido chegou por" sem texto livre e a confirmação com o que será e o
-    que não será apagado;
-  - `POST /api/portal/contatos/busca` e `POST /api/portal/contatos/excluir`, só para uma pessoa na sessão (401 sem
-    ela, mesmo no loopback e com o Bearer). Há dois tetos com 429 `muitas_buscas`:
-    - 30 buscas por hora por operador (`portal.limites.buscas_por_operador_hora`, nome em `casefold`);
-    - 60 por hora somando todos (`buscas_total_hora`), contados sob trava;
-  - o bloco `portal` do `config.yaml` passa a recusar chave desconhecida, para um nome errado não valer o padrão calado.
-    O erro diz a chave e não ecoa o valor;
-  - a Canais primeiro (`apagar_avisos_do_portal`, 28.34, pelo `getattr`), o DELETE só com `ok` dela; registro em
-    `portal_exclusoes` (migração 109) sem dado do titular e sem prazo;
-  - a prova de fora confere 401 nas duas rotas (com corpo inválido de propósito) e nenhum `Set-Cookie` na resposta
-    da isca.
-- **Prova:** `simulated` (`tests/test_portal_exclusao.py` 24, 1 pula sem o #340; prova de fora 4; Configuração no frontend). `not_run`:
-  o 28.34 real, o central, PostgreSQL.
-
 ## 2026-10-05 — 29.86: as duas últimas leituras de vagas fora da regra única (branch fix/29-86-vagas-restantes)
 
 - R1 e R2 da revisão do 29.84 (`C:\claude-ferramentas\revisao-29-84.md`), em cima do #352.
@@ -201,6 +180,122 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   em `tests/fixtures/instagram_legenda/`, e o laço do executor com a geometria medida). `not_run`: a 1ª publicação real
   (29.30), depois do deploy 34.
 
+## 2026-10-05 — 28.35: a trava `avisos` só fica com quem usa um canal (branch canais/28-35-trava-so-com-aviso)
+
+- Antes, `faxinar_canais` tomava a trava `avisos` sem olhar `avisos.enabled`, e o backend desligado a segurava até o
+  prazo. Agora um predicado só, `trava_de_avisos_em_uso(cfg)` (`avisos.enabled or trello.enabled`), decide a
+  renovação em `_manter_travas` e a faxina. Com os dois desligados a faxina toma a trava, faxina e a solta no
+  `finally`, mesmo com erro no meio. Quando a trava já é de outro backend, o desligado não a toma. O resumo das
+  decisões só sai com `avisos.enabled`.
+- A subida segue a mesma regra: a primeira faxina do laço roda sempre, e o desligado solta a trava no fim. O teste do
+  29.78 (`test_canais_faxina.py`) muda junto e espera a faxina também com tudo desligado.
+- Prova: `simulated`. `tests/test_avisos_servico.py` (faxina desligada solta; erro no meio solta; o desligado não toma
+  do ligado; só Trello segura) e `tests/test_canais_faxina.py`; 650 passaram nos arquivos de avisos, decisões, Trello,
+  travas e canais, mais os que dependem do harness (`test_comandos_de_app`, `test_retencao_telemetria`,
+  `test_saude_ao_vivo`), em Idle e sem `-n`.
+
+## 2026-10-04 — 29.83: exclusão de contatos do site a pedido do titular (branch feat/29-83-exclusao-de-contato)
+
+- **O pedido:** o aviso de privacidade do site oferece a exclusão; até aqui só havia o procedimento manual. A
+  orquestradora aprovou o desenho às 23:20Z (Configuração, migração 109, adendo v1.42, o lado da Canais no 28.34).
+- **O que muda:**
+  - Configuração ganha a seção "Site e privacidade" (`?aba=privacidade`): busca pelo número inteiro como a pessoa escreveu, lista só com
+    id, data, estado e os 4 dígitos finais, "o pedido chegou por" sem texto livre e a confirmação com o que será e o
+    que não será apagado;
+  - `POST /api/portal/contatos/busca` e `POST /api/portal/contatos/excluir`, só para uma pessoa na sessão (401 sem
+    ela, mesmo no loopback e com o Bearer). Há dois tetos com 429 `muitas_buscas`:
+    - 30 buscas por hora por operador (`portal.limites.buscas_por_operador_hora`, nome em `casefold`);
+    - 60 por hora somando todos (`buscas_total_hora`), contados sob trava;
+  - o bloco `portal` do `config.yaml` passa a recusar chave desconhecida, para um nome errado não valer o padrão calado.
+    O erro diz a chave e não ecoa o valor;
+  - a Canais primeiro (`apagar_avisos_do_portal`, 28.34, pelo `getattr`), o DELETE só com `ok` dela; registro em
+    `portal_exclusoes` (migração 109) sem dado do titular e sem prazo;
+  - a prova de fora confere 401 nas duas rotas (com corpo inválido de propósito) e nenhum `Set-Cookie` na resposta
+    da isca.
+- **Prova:** `simulated` (`tests/test_portal_exclusao.py` 24, 1 pula sem o #340; prova de fora 4; Configuração no frontend). `not_run`:
+  o 28.34 real, o central, PostgreSQL.
+
+## 2026-10-04 — 28.34: contato do site excluído a pedido do titular some do canal (branch canais/28-34-exclusao-do-contato)
+
+- **Por quê:** o 29.83 do Portal apaga um contato do site a pedido de quem escreveu. Sem o lado do canal, o aviso
+  ainda na fila sairia depois da exclusão, e a mensagem e a resposta do dono ficariam no chat.
+- **O quê:** `state.avisos.apagar_avisos_do_portal(contato_id, agora) -> ApagadoNoCanal(estado, apagadas, a_mao)`, no
+  contrato combinado com a sessão Portal (regra C-27 em `docs/dominios/canais.md`):
+  - a fila primeiro: `enviando` devolve `em_envio`; `pendente`, `falhou` e `incerto` viram `descartado` sem corpo; sem
+    linha, uma lápide pela chave, e o reenvio de depois vira no-op;
+  - o texto das respostas do dono sai do banco;
+  - as mensagens do bot e as respostas do dono com menos de 47 h saem do chat (`deleteMessage`); o resto vai para
+    `a_mao` com a hora, inclusive a `incerto` e a `enviado` sem `message_id`;
+  - `falhou` só com erro de banco; o log leva só o id e as contagens.
+- **Prova:** `simulated`, `backend/tests/test_avisos_portal_exclusao.py` (12 passed: pendente, lápide e reenvio no-op,
+  enviado com a mensagem e a resposta apagadas, 47 h e canal desligado, recusa e rede, enviando, incerto e falhou,
+  enviado sem id, erro de banco sem conteúdo no log, só a chave do contato, a janela); 242 passed em todos os
+  `test_avisos_*`. Real: `not_run` (nenhuma exclusão real; o Telegram de verdade não foi chamado).
+- **Revisão independente do #340 (orquestradora, 04/10 23:49Z):** E1, a lápide entra antes dos UPDATEs, e só
+  `enviado` ou `descartado` relidos dão `ok` (o reenvio concorrente do Portal não fura mais a exclusão); E2, os passos 1
+  e 2 numa transação (a hora do `incerto` não se perde numa falha parcial); N1, o canal ilegível vai para `a_mao`; a
+  chave repetida no `avisar_contato_do_portal` registra aviso no log, só com o id; N2 e N3 escritos na C-27. Prova
+  `simulated`: 17 passed (o `enfileirar` concorrente antes e depois da lápide, a falha depois do `incerto`, o canal
+  ilegível, o aviso da chave repetida).
+
+## 2026-10-04 — 31.53: a família do pedido também se compara pelo objeto, e o texto que cita outra conta dela passa por aprovação (branch feat/31-53-objeto-alvo-na-familia)
+
+Lado Jev do 28.10 F5, sobre o 31.49 (#330).
+
+- `PolicyEngine._mesmo_objeto_na_familia` (`app/social/policy.py`): a regra da família do 30.62 compara pela pessoa e não via
+  o efeito sem pessoa como alvo (no catálogo de hoje, o `CREATE_POST`, `objeto_alvo: [image_id]`). Agora o objeto do catálogo
+  (30.64) é comparado com as saídas e os pedidos em aberto das OUTRAS personas do pedido, na janela da frota:
+  - mesma imagem: recusado, não adiado;
+  - objeto ambíguo: passa por aprovação;
+  - sem pedido, nada muda.
+- `PolicyEngine.cita_a_familia`, chamado no `check` (texto literal do plano: a prévia mostra o mesmo selo da execução) e
+  de novo pela porta (`_policy_gate`, `app/state.py`) depois do rascunho (texto gerado): o texto que cita o @ de OUTRA
+  persona do mesmo pedido (com ou sem `@`, inteiro) passa por aprovação. O motivo
+  (`MOTIVO_CITA_A_FAMILIA`) não leva o @ nem o texto: ele viaja para decisão, evento, aviso e resumo.
+- Plano e porta passam pelo mesmo `PolicyEngine.check`; `porta_do_plano.py` não muda. Sem migração e sem forma nova na API.
+- Prova: `simulated` (`backend/tests/test_familia_por_objeto.py`, 7 testes; mais `test_contexto_do_pedido`,
+  `test_repetido_entre_execucoes`, `test_pedidos_colaboracao_para_fora`, `test_executor_honra_o_plano`,
+  `test_porta_do_plano`, `test_chave_da_aprovacao`, `test_objeto_alvo`, arquitetura, rotas e falhas: 236 passed).
+  `not_run`: pedido real entre personas depois do deploy.
+- Revisão (antes da leitura): o texto LITERAL que cita outra conta do pedido já pede aprovação no `check`, então a
+  prévia do plano mostra o mesmo selo da execução; o texto GERADO é pego na porta depois do rascunho, com o motivo uma
+  vez só (`backend/tests/test_familia_no_rascunho.py`, harness, com contraprova). O @ da família vem também de
+  `profile_accounts.handle` (a conta da persona em cada app), com piso: só a conta ATIVA, com 3 ou mais caracteres e
+  sem espaço (um handle de 1 ou 2 letras casaria com quase todo texto).
+- Revisão F2 (corrida com legenda gerada): a porta roda `mesmo_objeto_na_familia` de novo depois do rascunho, sem `await`
+  até gravar o pedido; entre duas personas do pedido com a mesma imagem, uma segue e a outra é recusada
+  (`backend/tests/test_familia_corrida_da_imagem.py`, com contraprova). Com `publicar_sem_aprovacao` ligado não há pedido
+  a ver, e a janela até a interação gravada continua (o piso de aprovação do 30.60 vem ligado).
+
+## 2026-10-04 — 29.81: o dono diz se a foto que enviou foi feita por IA (branch feat/29-81-upload-feito-por-ia)
+
+- Migração 108: `persona_images.feita_por_ia` (nula). As linhas antigas ficam "não informado", e o rótulo de cada uma é o
+  de antes da migração (upload sem, gerada e importada com).
+- O rótulo de IA da publicação (29.79) segue a resposta. O upload marcado "feita por IA" sai com o rótulo; "foto real" e
+  "não informado" saem sem. A gerada e a importada saem sempre com o rótulo, e só o upload se marca (409 `nao_e_upload`).
+- Envio: `POST /personas/{id}/images?feita_por_ia=true|false` (sem o parâmetro: não informado; outro valor: 422).
+  Correção: `PUT /personas/{id}/images/{image_id}/feita-por-ia` `{feita_por_ia: true|false|null}`. As etapas abertas
+  que publicam a imagem regravam o `rotulo_ia`, a chave da aprovação muda, e o sim dado antes deixa de cobrir a
+  publicação.
+- Três estados, não dois: `rotulo_ia_motivo` (`ia`, `foto_real`, `nao_informado`) é argumento da etapa, gravado junto do
+  `rotulo_ia`, e entra na chave da aprovação. "Foto real" (o dono disse) e "não informado" (ninguém disse) saem iguais no
+  Instagram, mas são itens diferentes para quem aprova: responder depois muda a chave e pede o sim de novo.
+- Painel: na guia Imagens, "Esta foto foi feita por IA?" no envio, o selo de cada foto ("com rótulo de IA", "sem
+  rótulo de IA (foto real)" ou, em aviso, "rótulo de IA não informado") e a correção na própria foto enviada. No cartão
+  do plano, na aba Textos e na guia Aprovações: "sem rótulo de IA (foto real, informado por você)" ou, em aviso, "sem
+  rótulo de IA: ninguém informou se a foto é de IA", com o link para a guia Imagens da persona. Adendo v1.44.
+- Revisão da Ferramentas: a marca e a regravação das etapas abertas vão numa transação só (N2); remarcar com a mesma
+  resposta não regrava nem invalida o sim já dado (N3). A Prévia da porta passa a dizer o plural de verdade ("1 ação em
+  1 aparelho: 1 liberada", "4 ações…") em vez de "ação(ões)".
+- `GET /approvals` entrega o `rotulo_ia_motivo`. O `rotulo_ia`, achado faltando no percurso do painel deste item (o
+  selo da aba Textos e da guia Aprovações nunca aparecia), entrou como conserto na suíte 33 (`22f641b2`).
+- Prova: `simulated` (`backend/tests/test_upload_feito_por_ia.py`, `GuiaImagens.test.tsx`, `SeloRotuloIa.test.tsx`,
+  `PortaDoPlano.test.tsx`) e o percurso no navegador, em painel isolado (backend do worktree com a config do harness,
+  banco temporário, 05/10): os três selos da galeria, a correção na própria foto mudando o selo e a chave, os três
+  textos no cartão do plano, na aba Textos e na guia Aprovações e o link até a guia Imagens. As fotos do percurso
+  entraram pela API: `not_run` o envio pelo painel (o seletor "Esta foto foi feita por IA?" com o arquivo; só
+  `GuiaImagens.test.tsx`) e a publicação real.
+
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
 - `scripts/tests/test_poda_ab_offline.py` confere `scripts/poda-ab-offline.py`: só a UI do Chrome sai, a `url_bar` fica,
@@ -256,29 +351,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   continua lendo o estado de agora.
 - Prova `simulated`: dois testes novos em `tests/test_decisoes_registro_coerente.py`, que falham com a memória desligada
   (as leituras se repetiam por item) e passam com ela. 86 passed nos cinco arquivos de decisões.
-
-## 2026-10-04 — 28.34: contato do site excluído a pedido do titular some do canal (branch canais/28-34-exclusao-do-contato)
-
-- **Por quê:** o 29.83 do Portal apaga um contato do site a pedido de quem escreveu. Sem o lado do canal, o aviso
-  ainda na fila sairia depois da exclusão, e a mensagem e a resposta do dono ficariam no chat.
-- **O quê:** `state.avisos.apagar_avisos_do_portal(contato_id, agora) -> ApagadoNoCanal(estado, apagadas, a_mao)`, no
-  contrato combinado com a sessão Portal (regra C-27 em `docs/dominios/canais.md`):
-  - a fila primeiro: `enviando` devolve `em_envio`; `pendente`, `falhou` e `incerto` viram `descartado` sem corpo; sem
-    linha, uma lápide pela chave, e o reenvio de depois vira no-op;
-  - o texto das respostas do dono sai do banco;
-  - as mensagens do bot e as respostas do dono com menos de 47 h saem do chat (`deleteMessage`); o resto vai para
-    `a_mao` com a hora, inclusive a `incerto` e a `enviado` sem `message_id`;
-  - `falhou` só com erro de banco; o log leva só o id e as contagens.
-- **Prova:** `simulated`, `backend/tests/test_avisos_portal_exclusao.py` (12 passed: pendente, lápide e reenvio no-op,
-  enviado com a mensagem e a resposta apagadas, 47 h e canal desligado, recusa e rede, enviando, incerto e falhou,
-  enviado sem id, erro de banco sem conteúdo no log, só a chave do contato, a janela); 242 passed em todos os
-  `test_avisos_*`. Real: `not_run` (nenhuma exclusão real; o Telegram de verdade não foi chamado).
-- **Revisão independente do #340 (orquestradora, 04/10 23:49Z):** E1, a lápide entra antes dos UPDATEs, e só
-  `enviado` ou `descartado` relidos dão `ok` (o reenvio concorrente do Portal não fura mais a exclusão); E2, os passos 1
-  e 2 numa transação (a hora do `incerto` não se perde numa falha parcial); N1, o canal ilegível vai para `a_mao`; a
-  chave repetida no `avisar_contato_do_portal` registra aviso no log, só com o id; N2 e N3 escritos na C-27. Prova
-  `simulated`: 17 passed (o `enfileirar` concorrente antes e depois da lápide, a falha depois do `incerto`, o canal
-  ilegível, o aviso da chave repetida).
 
 ## 2026-10-04 — 28.32: a mensagem do visitante do site chega ao Telegram do dono (branch canais/28-32-contato-do-portal)
 
@@ -378,20 +450,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     (`test_telegram_portas.py`) e 5 no domínio (`test_avisos_porta.py`).
 - `not_run`: o Telegram real e um plano real com item que pede o sim.
 
-## 2026-10-05 — 28.35: a trava `avisos` só fica com quem usa um canal (branch canais/28-35-trava-so-com-aviso)
-
-- Antes, `faxinar_canais` tomava a trava `avisos` sem olhar `avisos.enabled`, e o backend desligado a segurava até o
-  prazo. Agora um predicado só, `trava_de_avisos_em_uso(cfg)` (`avisos.enabled or trello.enabled`), decide a
-  renovação em `_manter_travas` e a faxina. Com os dois desligados a faxina toma a trava, faxina e a solta no
-  `finally`, mesmo com erro no meio. Quando a trava já é de outro backend, o desligado não a toma. O resumo das
-  decisões só sai com `avisos.enabled`.
-- A subida segue a mesma regra: a primeira faxina do laço roda sempre, e o desligado solta a trava no fim. O teste do
-  29.78 (`test_canais_faxina.py`) muda junto e espera a faxina também com tudo desligado.
-- Prova: `simulated`. `tests/test_avisos_servico.py` (faxina desligada solta; erro no meio solta; o desligado não toma
-  do ligado; só Trello segura) e `tests/test_canais_faxina.py`; 650 passaram nos arquivos de avisos, decisões, Trello,
-  travas e canais, mais os que dependem do harness (`test_comandos_de_app`, `test_retencao_telemetria`,
-  `test_saude_ao_vivo`), em Idle e sem `-n`.
-
 ## 2026-10-04 — 29.78: o harness entrega o backend só depois da primeira volta das faxinas (branch fix/29-78-harness-espera-faxinas)
 
 - A retenção, a expiração e a faxina dos canais dão a primeira volta na subida, em segundo plano. O teste que gravava
@@ -448,35 +506,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_limites_por_servidor.py::test_api_lista_e_muda_limites_do_host_e_do_worker`
   e `frontend/src/store/metricas.test.ts` (9 ligados, 9 decididas, 6 declaradas: sem "acima"; backend antigo segue o
   declarado). A mutação para a regra antiga derruba o caso novo. `not_run`: a leitura no painel do central depois do deploy.
-
-## 2026-10-04 — 31.53: a família do pedido também se compara pelo objeto, e o texto que cita outra conta dela passa por aprovação (branch feat/31-53-objeto-alvo-na-familia)
-
-Lado Jev do 28.10 F5, sobre o 31.49 (#330).
-
-- `PolicyEngine._mesmo_objeto_na_familia` (`app/social/policy.py`): a regra da família do 30.62 compara pela pessoa e não via
-  o efeito sem pessoa como alvo (no catálogo de hoje, o `CREATE_POST`, `objeto_alvo: [image_id]`). Agora o objeto do catálogo
-  (30.64) é comparado com as saídas e os pedidos em aberto das OUTRAS personas do pedido, na janela da frota:
-  - mesma imagem: recusado, não adiado;
-  - objeto ambíguo: passa por aprovação;
-  - sem pedido, nada muda.
-- `PolicyEngine.cita_a_familia`, chamado no `check` (texto literal do plano: a prévia mostra o mesmo selo da execução) e
-  de novo pela porta (`_policy_gate`, `app/state.py`) depois do rascunho (texto gerado): o texto que cita o @ de OUTRA
-  persona do mesmo pedido (com ou sem `@`, inteiro) passa por aprovação. O motivo
-  (`MOTIVO_CITA_A_FAMILIA`) não leva o @ nem o texto: ele viaja para decisão, evento, aviso e resumo.
-- Plano e porta passam pelo mesmo `PolicyEngine.check`; `porta_do_plano.py` não muda. Sem migração e sem forma nova na API.
-- Prova: `simulated` (`backend/tests/test_familia_por_objeto.py`, 7 testes; mais `test_contexto_do_pedido`,
-  `test_repetido_entre_execucoes`, `test_pedidos_colaboracao_para_fora`, `test_executor_honra_o_plano`,
-  `test_porta_do_plano`, `test_chave_da_aprovacao`, `test_objeto_alvo`, arquitetura, rotas e falhas: 236 passed).
-  `not_run`: pedido real entre personas depois do deploy.
-- Revisão (antes da leitura): o texto LITERAL que cita outra conta do pedido já pede aprovação no `check`, então a
-  prévia do plano mostra o mesmo selo da execução; o texto GERADO é pego na porta depois do rascunho, com o motivo uma
-  vez só (`backend/tests/test_familia_no_rascunho.py`, harness, com contraprova). O @ da família vem também de
-  `profile_accounts.handle` (a conta da persona em cada app), com piso: só a conta ATIVA, com 3 ou mais caracteres e
-  sem espaço (um handle de 1 ou 2 letras casaria com quase todo texto).
-- Revisão F2 (corrida com legenda gerada): a porta roda `mesmo_objeto_na_familia` de novo depois do rascunho, sem `await`
-  até gravar o pedido; entre duas personas do pedido com a mesma imagem, uma segue e a outra é recusada
-  (`backend/tests/test_familia_corrida_da_imagem.py`, com contraprova). Com `publicar_sem_aprovacao` ligado não há pedido
-  a ver, e a janela até a interação gravada continua (o piso de aprovação do 30.60 vem ligado).
 
 ## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
 
@@ -735,35 +764,6 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Limite conhecido: o nome de um terceiro escrito por extenso, sem @, e-mail ou telefone, não é detectável; ele só sai
   no texto que a pessoa escreveu e que a conversa já mostrava.
 - `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
-
-## 2026-10-04 — 29.81: o dono diz se a foto que enviou foi feita por IA (branch feat/29-81-upload-feito-por-ia)
-
-- Migração 108: `persona_images.feita_por_ia` (nula). As linhas antigas ficam "não informado", e o rótulo de cada uma é o
-  de antes da migração (upload sem, gerada e importada com).
-- O rótulo de IA da publicação (29.79) segue a resposta. O upload marcado "feita por IA" sai com o rótulo; "foto real" e
-  "não informado" saem sem. A gerada e a importada saem sempre com o rótulo, e só o upload se marca (409 `nao_e_upload`).
-- Envio: `POST /personas/{id}/images?feita_por_ia=true|false` (sem o parâmetro: não informado; outro valor: 422).
-  Correção: `PUT /personas/{id}/images/{image_id}/feita-por-ia` `{feita_por_ia: true|false|null}`. As etapas abertas
-  que publicam a imagem regravam o `rotulo_ia`, a chave da aprovação muda, e o sim dado antes deixa de cobrir a
-  publicação.
-- Três estados, não dois: `rotulo_ia_motivo` (`ia`, `foto_real`, `nao_informado`) é argumento da etapa, gravado junto do
-  `rotulo_ia`, e entra na chave da aprovação. "Foto real" (o dono disse) e "não informado" (ninguém disse) saem iguais no
-  Instagram, mas são itens diferentes para quem aprova: responder depois muda a chave e pede o sim de novo.
-- Painel: na guia Imagens, "Esta foto foi feita por IA?" no envio, o selo de cada foto ("com rótulo de IA", "sem
-  rótulo de IA (foto real)" ou, em aviso, "rótulo de IA não informado") e a correção na própria foto enviada. No cartão
-  do plano, na aba Textos e na guia Aprovações: "sem rótulo de IA (foto real, informado por você)" ou, em aviso, "sem
-  rótulo de IA: ninguém informou se a foto é de IA", com o link para a guia Imagens da persona. Adendo v1.44.
-- Revisão da Ferramentas: a marca e a regravação das etapas abertas vão numa transação só (N2); remarcar com a mesma
-  resposta não regrava nem invalida o sim já dado (N3). A Prévia da porta passa a dizer o plural de verdade ("1 ação em
-  1 aparelho: 1 liberada", "4 ações…") em vez de "ação(ões)".
-- `GET /approvals` entrega o `rotulo_ia_motivo`. O `rotulo_ia`, achado faltando no percurso do painel deste item (o
-  selo da aba Textos e da guia Aprovações nunca aparecia), entrou como conserto na suíte 33 (`22f641b2`).
-- Prova: `simulated` (`backend/tests/test_upload_feito_por_ia.py`, `GuiaImagens.test.tsx`, `SeloRotuloIa.test.tsx`,
-  `PortaDoPlano.test.tsx`) e o percurso no navegador, em painel isolado (backend do worktree com a config do harness,
-  banco temporário, 05/10): os três selos da galeria, a correção na própria foto mudando o selo e a chave, os três
-  textos no cartão do plano, na aba Textos e na guia Aprovações e o link até a guia Imagens. As fotos do percurso
-  entraram pela API: `not_run` o envio pelo painel (o seletor "Esta foto foi feita por IA?" com o arquivo; só
-  `GuiaImagens.test.tsx`) e a publicação real.
 
 ## 2026-10-04 — 29.79: a foto realista de IA sai SEMPRE com o rótulo de IA do Instagram (branch feat/29-79-rotulo-ia)
 
