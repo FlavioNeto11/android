@@ -185,6 +185,24 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
 - Prova `simulated`: `backend/tests/test_treino_proposta_com_respostas.py` (35 passed), com mutação (respostas no texto, perguntas respondidas, recusa de segredo, pergunta conhecida, `answers` do cliente no salvar, corrida) reprovando o teste; provedor simulado com espião. Prova `not_run` com IA real.
 - Revisão independente (delta): a `question` só vale se for das `questions` da proposta guardada ou já respondida (sem proposta guardada, 400 `invalid_answers`; sem teto de tamanho na pergunta conhecida) e a pergunta também passa pela checagem de segredo; o `save` e a `/preview` ignoram o `answers` do cliente e usam o da sessão; o `propose` só grava se a sessão não mudou desde a leitura (409 `proposta_concorrente`). Prova `real`: `mypy-catraca` 257, igual ao teto (rodado pela orquestradora na ponta `7583f3f6`).
 
+## 2026-10-05 — 31.97, arraste sem coordenada na gravação do treinamento (branch fix/31-97-arraste-sem-coordenada)
+
+- O padrão de bloqueio se desenha ARRASTANDO e o `swipe` não procurava o alvo: começo e fim do arraste ficavam no banco e
+  saíam pela API. Agora o `swipe` segue a regra do toque (31.94) pela ORIGEM: origem dentro de um contêiner de
+  teclado/padrão de bloqueio (`pin_pad`, `lockPatternView`, `PinKeypadView`...; vale o ancestral por área) ou em tela
+  sensível é gravado sem `x`, `y`, `x2`, `y2` e com `sensitive=1`. Sem árvore da tela, segue o toque: perde as
+  coordenadas e fica sem marca. A rolagem comum (origem em tela comum, com ou sem seletor, inclusive a partir de um item
+  de rótulo "5" ou de id `item1`: a regra de tecla isolada é só do toque) guarda as quatro coordenadas.
+- A coluna `sensitive` segue com os dois sentidos ("tela sensível" e "entrada que não se guarda"); separar fica para a
+  migração futura do ensino. Sem migração e sem mudança na forma da resposta da API (só `x`/`y`/`x2`/`y2` nulos).
+- Leitores: `linha_da_entrada` diz "arraste em teclado, padrão de bloqueio ou tela sensível (não gravado)" (nada de "rolou");
+  `distill_training` recusa a etapa ("arraste não gravado": antes `dy=0` virava "rolar para cima", um gesto inventado);
+  `proposta_simulada` descarta o arraste com o motivo; `_entrada_legada` e `inputs()` carregam os nulos sem quebrar.
+- Dígito por extenso ("um" a "nove", "zero", "one" a "nine") passa a ser tecla SÓ com o ponto dentro de um contêiner de
+  teclado (toque e arraste); fora dele, um botão "Um" segue comum.
+- Prova `simulated`: `backend/tests/test_treino_arraste_sem_coordenada.py`, 10 passed; mutação nos casos (a)/(b), (d) e
+  nos dois de rolagem a partir de item de um dígito derruba os testes certos. `not_run`: aparelho real com padrão de bloqueio.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.
