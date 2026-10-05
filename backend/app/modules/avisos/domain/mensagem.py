@@ -67,6 +67,7 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "approval.pending": PRECISA_DE_VOCE,
     "run.needs_input": PRECISA_DE_VOCE,
     "session.needs_person": PRECISA_DE_VOCE,
+    "objective.waiting_user": PRECISA_DE_VOCE,     # 28.40: o objetivo parado esperando a pessoa, de qualquer origem
     "pedido.aprovacao_pendente": PRECISA_DE_VOCE,
     "pedido.pergunta": PRECISA_DE_VOCE,
     "pedido.ocorrencia_incerta": PRECISA_DE_VOCE,
@@ -110,6 +111,7 @@ ROTULOS: dict[str, str] = {
     "pendencia.vence_em": "Uma pendência vence em breve",
     "run.needs_input": "Uma execução parou pedindo informação",
     "session.needs_person": "Uma conta pede intervenção humana",
+    "objective.waiting_user": "Um objetivo parou esperando você",
     "pedido.pausa_automatica": "Um pedido foi pausado automaticamente",
     "pedido.orcamento_80": "Um pedido usou 80% do orçamento",
     "pedido.orcamento_esgotado": "Um pedido esgotou o orçamento",
@@ -135,6 +137,30 @@ NADA_A_FAZER = "Nada a fazer."
 SITUACAO_DA_CONTA: dict[str, str] = {
     "auth_challenge": "a conta pediu uma verificação (desafio)",
     "wrong_account": "o aparelho está numa conta diferente da esperada",
+    # 29.92 (texto revisado pela Aprendizado): a tela que o sistema não reconhece num aparelho com conta real.
+    "unknown": "tela de app não reconhecida; a automação parou sem tocar nela",
+}
+#: As linhas de cada situação da conta (28.40). Fora do mapa, as de sempre. O "Devolver à IA" relê a sessão no `unknown`
+#: (`_SESSAO_PARA_REOBSERVAR`, `state.py`) em modo só observação: nunca entra com a senha.
+LINHAS_DA_CONTA: dict[str, list[str]] = {
+    "unknown": ["Nada foi tentado: nem voltar, nem entrar com a senha.",
+                "A conta é real; a tela pode ser um aviso ou uma verificação.",
+                "Espera você: no painel, use Assumir controle, resolva a tela e toque em Devolver à IA; a automação relê "
+                "a sessão e segue."],
+}
+LINHAS_DA_CONTA_PADRAO = ["Nada é tentado na tela até alguém resolver.", "Espera você: resolva no aparelho pelo painel."]
+#: 28.40: o gesto do objetivo parado. Quem decide é a caixa de Pendências (retomar, ajustar ou abandonar o item).
+GESTO_DO_OBJETIVO = "Espera você: veja o motivo e decida na caixa de Pendências."
+#: O que parou o objetivo, pelo `failure_kind` do `objective.updated` (29.90) ou, sem ele, pelo `blocked_kind`. Texto fixo:
+#: o `status_detail` e o `needs` nunca saem (podem trazer tela, conta ou texto do comando). Fora do mapa (o `ui_ocupada`
+#: do 29.87, nulo antes da classificação), a mensagem fica sem a linha do motivo.
+MOTIVO_DA_PARADA: dict[str, str] = {
+    "aviso_do_app": "O app mostrou um aviso que pede uma pessoa.",
+    "autenticacao": "A conta pediu uma verificação ou um novo login.",
+    "conta_errada": "O aparelho está numa conta diferente da esperada.",
+    "falta_informacao": "Falta uma informação para a etapa seguir.",
+    "ai": "A IA ficou indisponível para esta etapa (chave, saldo ou recusa).",
+    "policy": "A política do perfil barrou a etapa.",
 }
 #: O motivo do encerramento (`pedidos/domain/estados.MOTIVOS_DE_ENCERRAMENTO`) dito em português.
 MOTIVO_DO_ENCERRAMENTO: dict[str, str] = {
@@ -390,9 +416,31 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         tipo, chave = "session.needs_person", chave_do_fato("session", str(evento_id))
         d = dados or {}
         aparelho = _texto(d.get("instance_id"))
-        situacao = SITUACAO_DA_CONTA.get(_texto(d.get("status")) or "", "uma conta pede intervenção humana")
+        status = _texto(d.get("status")) or ""
+        situacao = SITUACAO_DA_CONTA.get(status, "uma conta pede intervenção humana")
         assunto = f"🔐 {aparelho}: {situacao}" if aparelho else f"🔐 {situacao[0].upper()}{situacao[1:]}"
-        linhas = ["Nada é tentado na tela até alguém resolver.", "Espera você: resolva no aparelho pelo painel."]
+        linhas = list(LINHAS_DA_CONTA.get(status, LINHAS_DA_CONTA_PADRAO))
+    elif kind == "objective.updated":
+        # 28.40: o objetivo que ENTRA em `waiting_user` pedindo a pessoa, de qualquer origem (a folha de tela não
+        # reconhecida do 29.87, a falta de informação, a política, a IA indisponível, o pré-voo). A aprovação fica de
+        # fora: ela já sai como `approval.pending`. O `finished_at` é a entrada na espera (`set_objective`), e a
+        # reemissão sem mudança de estado (`emit_objective`) repete o mesmo: uma espera, uma mensagem; o objetivo
+        # retomado que volta a esperar é outra. `waiting_user` → `waiting_user` está fora da tabela de transições.
+        o = _filho(dados, "objective")
+        ident, desde = _texto(o.get("id")), _texto(o.get("finished_at"))
+        if o.get("status") != "waiting_user" or o.get("blocked_kind") == "approval" or ident is None or desde is None:
+            return None
+        tipo, chave = "objective.waiting_user", chave_do_fato("objective", ident, desde)
+        d = dados or {}
+        aparelho = _texto(o.get("instance_id"))
+        # Como no lembrete do 31.50: só o NOME da ação no catálogo (o serviço o põe em `acao_nome`) ou a chave dela;
+        # nunca o título da etapa nem o comando.
+        acao = _texto(d.get("acao"))
+        nome_da_acao = texto_seguro(_texto(d.get("acao_nome")), nomes, redigir) if redigir is not None else None
+        etapa = nome_da_acao or (acao if acao and _CHAVE_DE_CATALOGO.match(acao) else None)
+        motivo = MOTIVO_DA_PARADA.get(_texto(d.get("failure_kind")) or _texto(o.get("blocked_kind")) or "")
+        assunto = f"✋ {f'O objetivo no {aparelho}' if aparelho else 'Um objetivo'} parou esperando você"
+        linhas = [x for x in (f"Etapa que espera: {etapa}." if etapa else None, motivo, GESTO_DO_OBJETIVO) if x]
     elif kind == "pedido.aviso":
         aviso = _filho(dados, "aviso")
         ident = _texto(aviso.get("id")) or (f"evento-{evento_id}" if evento_id else None)
@@ -464,6 +512,7 @@ ROTULOS_AGRUPADOS: dict[str, str] = {
     "approval.pending": "{n} aprovações aguardando a sua decisão",
     "run.needs_input": "{n} execuções pararam pedindo informação",
     "session.needs_person": "{n} contas pedem intervenção humana",
+    "objective.waiting_user": "{n} objetivos pararam esperando você",
     "learning.needs_person": "{n} conhecimentos aprendidos esperam a sua revisão",
     "pendencia.vence_em": "{n} pendências vencem nas próximas 2 h",
 }

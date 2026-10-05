@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.40: aviso para todo objetivo parado esperando a pessoa (branch canais/28-40-objetivo-parado)
+
+- `avisos/domain/mensagem.py`: tipo `objective.waiting_user` (nível 1, sai na hora, com rajada). O objetivo que entra
+  em `waiting_user` pedindo a pessoa, de qualquer origem, avisa uma vez por espera (`objective:<id>:<finished_at>`); a
+  aprovação fica de fora. Texto fixo: aparelho, etapa que espera (nome do catálogo ou chave), motivo pelo
+  `failure_kind` do 29.90 ou pelo `blocked_kind`, e o gesto da caixa de Pendências; nunca o detalhe, o `needs` nem o
+  título da etapa. A conta em tela não reconhecida (`unknown`, 29.92) ganha a frase e as três linhas revisadas pela
+  Aprendizado.
+- `avisos/infrastructure/servico.py`: `objective.updated` entra nos eventos que avisam; o serviço põe a capability da
+  etapa em `waiting_user` e o nome dela; o lote de frente cala pelo mesmo `_e_de_prova` do `run.updated`; o aviso de
+  conta do mesmo aparelho, ativo e posterior à criação da execução, cala o objetivo (aproximação documentada).
+- `avisos/infrastructure/portas_da_central.py`: o desfecho nos canais diz "N esperando você" e o gesto.
+- Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` (33 testes); rede dirigida dos canais com 1025
+  passed. Real: `not_run`.
+
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do
