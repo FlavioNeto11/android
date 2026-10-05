@@ -117,6 +117,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     da isca.
 - **Prova:** `simulated` (`tests/test_portal_exclusao.py` 24, 1 pula sem o #340; prova de fora 4; Configuração no frontend). `not_run`:
   o 28.34 real, o central, PostgreSQL.
+## 2026-10-05 — 29.86: as duas últimas leituras de vagas fora da regra única (branch fix/29-86-vagas-restantes)
+
+- R1 e R2 da revisão do 29.84 (`C:\claude-ferramentas\revisao-29-84.md`), em cima do #352.
+- R1: a foto de um worker remoto NÃO inscrito (`Scheduler.servidores`) mostrava `vagas_livres` calculadas com o
+  `max_online_devices` do central. Sem inscrição não há vaga: agora são 0 (ele já saía indisponível, com o motivo).
+- R2: o aviso `capacity_local` da saúde compara a RAM livre com `capacidade(central).max_slots`
+  (`vagas_que_valem`), o mesmo número do agendador e do painel. Sem a linha do central no registro, vale o setting
+  vivo. Hoje dá o mesmo número; se a regra ganhar algo, o aviso acompanha.
+- Junto, no #352 (7c226593): `_vagas_do_host` tipado com `LimitsCfg`. O `Any` dele subia a catraca de
+  `app.taskqueue` (121 contra 120) em `test_arquitetura::test_any_so_diminui`.
+- Prova simulated:
+  - `test_limites_por_servidor.py::test_remoto_nao_inscrito_nao_mostra_vaga_livre_na_foto`;
+  - `test_saude_ao_vivo.py::test_aviso_de_capacidade_compara_com_as_vagas_pela_regra_unica`;
+  - cada um cai quando o código volta à leitura antiga.
+
 ## 2026-10-05 — 29.84: o agendador e a rota de limites leem as vagas do central pela regra única (branch fix/29-84-vagas-pela-regra)
 
 - Sobra da revisão do 29.82: três caminhos do central no agendador leram `max_online_devices` direto, e a rota de
