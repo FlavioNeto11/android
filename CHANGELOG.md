@@ -244,6 +244,31 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   posto na tela do aparelho falso (`test_sobreposicao._juiz_com_ref`).
 - Prova `simulated`: `tests/test_sobreposicao_com_duas_causas.py` (4), com mutação conferida. `real`: `not_run`.
 
+## 2026-10-05 — 29.109: as notas da leitura do 29.106 no "começar a partir de" (branch fix/29-109-partir-de-notas)
+
+- `frontend/src/features/profiles/PolicyGroups.tsx`:
+  - N1: com a leitura em voo, o campo "Começar a partir de" diz "Lendo o acesso de hoje da persona; salvar e editar
+    esperam a resposta." O botão e os editores travados deixam de ficar sem motivo. M1 da leitura do #398: a dica só
+    aparece se a leitura passar de 300 ms (`DICA_DA_LEITURA_MS`). A comum leva ~40 ms (de 32 a 49 ms no central), e
+    uma linha que surge e some faria o formulário pular duas vezes a cada escolha. A trava continua imediata;
+  - N2: escolher "Padrão do catálogo" também SUBSTITUI o rascunho. Depois de partir de A, voltar ao padrão zera as
+    ações e os limites. Antes, só aposentava a leitura e o grupo levava o que veio de A.
+- O cliente da API tem prazo: `rawRequest` aborta em 30 s (`timeoutMs ?? 30_000`) e devolve `ApiError('timeout')`. Um
+  `getPolicy` que não responde solta a trava em até 30 s, pelo `finally`.
+- `ProfilesPage.test.tsx` (N3): quatro casos:
+  - a leitura que falha solta a trava e avisa;
+  - a troca para o padrão no meio destrava na hora, a dica aparece, e a resposta velha não entra;
+  - o erro de uma leitura aposentada não vira toast;
+  - voltar ao padrão depois de A cria o grupo com `{}`.
+- Prova `simulated` (central, 05/10, 09:53Z–09:55Z, Node 24.19.0):
+  - typecheck limpo;
+  - ProfilesPage 55/55 sem o atraso e com `ATRASO_DO_FETCH_MS=30` nas sementes 11, 44 e 88;
+  - sem a mudança do produto, os casos da dica e do padrão caem; os do erro e do toast protegem o 29.106;
+  - a suíte do frontend inteira deu 1616/1616;
+  - M1 (10:07Z–10:09Z): ProfilesPage 55/55, sem o atraso e com ele (semente 44); com a dica imediata, o caso da
+    troca cai; a suíte do frontend inteira deu 1616/1616;
+  - no navegador: `not_run` até o deploy.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,

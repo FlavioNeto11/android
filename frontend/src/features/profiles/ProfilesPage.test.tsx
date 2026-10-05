@@ -5,6 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { PersonaDTO } from '../../api/types';
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
+import { useToastStore } from '../../store/toasts';
 import { initialDataState } from '../../store/reducer';
 import { aplicarHash, useUiStore } from '../../store/ui';
 import { makeSnapshot } from '../../test/fixtures';
@@ -867,6 +868,92 @@ describe('grupos de acesso', () => {
     await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
     expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
       .toEqual({ LIKE_POST: 'manual_only' });
+  });
+
+  // 29.109 (notas da leitura do #393): o erro solta a trava, a troca para o padrão no meio aposenta a leitura, o erro
+  // de uma leitura aposentada não vira toast, e voltar ao padrão depois de A tira o que veio de A.
+  const POLITICA_DE_A = { limits: {}, capabilities: {}, defaults: {}, loosened: [], own: { FOLLOW: 'autonomous' },
+                          group: {}, own_limits: {}, group_limits: {} };
+  const NAO_LEU = 'Não foi possível ler o acesso da persona';
+
+  async function abrirNovoGrupo(): Promise<HTMLSelectElement> {
+    backend.on('POST', /\/instagram\/policy-groups$/,
+      (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    useToastStore.setState({ toasts: [] });
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(byRole('radiogroup', /Política de Seguir/i)).toBeTruthy());
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Do Bruno');
+    return byRole('combobox', /Começar a partir de/i) as HTMLSelectElement;
+  }
+
+  const criarTravado = () => (byRole('button', /Criar grupo/i) as HTMLButtonElement).disabled;
+  const avisou = () => useToastStore.getState().toasts.some((t) => t.title === NAO_LEU);
+
+  it('29.109: a leitura que falha solta a trava e avisa', async () => {
+    rotasBase([]);
+    backend.on('GET', /\/instagram\/profiles\/ig-2\/policy$/, () => apiError(500, 'falhou', 'O servidor caiu.'));
+    const partir = await abrirNovoGrupo();
+    await setValue(partir, 'ig-2');
+    await waitFor(() => avisou());
+    await waitFor(() => !criarTravado());
+    expect(text()).not.toContain('Lendo o acesso de hoje da persona');
+  });
+
+  it('29.109: trocar para o padrão no meio da leitura destrava na hora e a resposta velha não entra', async () => {
+    rotasBase([]);
+    let soltarA: () => void = () => undefined;
+    const aSegura = new Promise<void>((r) => { soltarA = r; });
+    backend.on('GET', /\/instagram\/profiles\/ig-1\/policy$/, async () => { await aSegura; return json(POLITICA_DE_A); });
+    const partir = await abrirNovoGrupo();
+    await setValue(partir, 'ig-1');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-1\/policy$/)).toHaveLength(1));
+    expect(criarTravado()).toBe(true);                                    // a trava é imediata
+    // M1: a dica não pisca numa leitura comum (~40 ms); só aparece se a leitura demorar (N1: a trava diz por quê).
+    expect(text()).not.toContain('Lendo o acesso de hoje da persona');
+    await flush(100);
+    expect(text()).not.toContain('Lendo o acesso de hoje da persona');
+    await waitFor(() => text().includes('Lendo o acesso de hoje da persona'));
+    await setValue(partir, '');
+    expect(text()).not.toContain('Lendo o acesso de hoje da persona');
+    expect(criarTravado()).toBe(false);
+    await act(async () => { soltarA(); });
+    await flush(30);
+    expect(marcada(/Sozinho/i, /Política de Seguir/i)).toBe(false);
+  });
+
+  it('29.109: o erro de uma leitura aposentada não vira toast', async () => {
+    rotasBase([]);
+    let soltarA: () => void = () => undefined;
+    const aSegura = new Promise<void>((r) => { soltarA = r; });
+    backend.on('GET', /\/instagram\/profiles\/ig-1\/policy$/, async () => {
+      await aSegura;
+      return apiError(500, 'falhou', 'O servidor caiu.');
+    });
+    backend.on('GET', /\/instagram\/profiles\/ig-2\/policy$/, () => json({ ...POLITICA_DE_A, own: {} }));
+    const partir = await abrirNovoGrupo();
+    await setValue(partir, 'ig-1');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-1\/policy$/)).toHaveLength(1));
+    await setValue(partir, 'ig-2');
+    await waitFor(() => !criarTravado());
+    await act(async () => { soltarA(); });
+    await flush(30);
+    expect(avisou()).toBe(false);
+    expect(criarTravado()).toBe(false);
+  });
+
+  it('29.109: voltar ao "Padrão do catálogo" depois de partir de A tira o que veio de A', async () => {
+    rotasBase([]);
+    backend.on('GET', /\/instagram\/profiles\/ig-1\/policy$/, () => json(POLITICA_DE_A));
+    const partir = await abrirNovoGrupo();
+    await setValue(partir, 'ig-1');
+    await waitFor(() => marcada(/Sozinho/i, /Política de Seguir/i));
+    await setValue(partir, '');
+    await waitFor(() => !marcada(/Sozinho/i, /Política de Seguir/i));
+    await click(byRole('button', /Criar grupo/i));
+    await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
+    expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
+      .toEqual({});
   });
 
   it('antes de o catálogo chegar, "começar a partir de" e salvar esperam: o grupo nasce com as escolhas do perfil', async () => {
