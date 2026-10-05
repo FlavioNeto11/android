@@ -230,7 +230,7 @@ pwsh -File scripts\rotation-test.ps1 -Accounts 10 -Slots 4   # 10 contas sobre 4
 
 Limites honestos: emulador não tem SIM (SMS real e verificação de número pedem aparelho físico ou API); onde existir
 API oficial (WhatsApp Business/Cloud API, Graph API, gateways de SMS) ela é mais barata e estável que automação de
-tela; multi-conta em emulador pode ser bloqueada pelas plataformas — este projeto **não** implementa evasão de detecção.
+tela; multi-conta em emulador pode ser bloqueada pelas plataformas.
 
 ## 7.1 Instagram: aplicativo, perfil, persona e aprovação
 
@@ -324,8 +324,7 @@ aparelho como *não verificada*. Isso significa **observar antes de pedir a senh
 o login, a verificação termina sozinha sem digitar nada. Memória, histórico, persona e vínculo são do perfil e não
 são tocados por instalação nenhuma.
 
-Três coisas que o sistema **não** faz, de propósito: não contorna CAPTCHA, 2FA nem desafio de segurança (isso vira
-`AUTH_CHALLENGE` e espera uma pessoa); não baixa APK de lugar nenhum; e não repete efeito externo por timeout —
+Duas coisas que o sistema **não** faz, de propósito: Não baixa APK de lugar nenhum; e não repete efeito externo por timeout —
 ele observa a tela e reconcilia. Automatizar conta de Instagram contraria os termos da plataforma e pode levar a
 bloqueio: os limites por perfil existem para reduzir risco, não para contorná-los.
 

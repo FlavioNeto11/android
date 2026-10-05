@@ -467,9 +467,7 @@ drift_kind, detail}`. Nenhum APK é baixado pelo sistema: os arquivos entram pel
 | `POST /api/instagram/profiles/{id}/connect\|verify\|logout` | – | 202 `{accepted, command_id, state, profile_id, instance_id}` — verbos `session.connect/verify/logout` na tabela `commands`; acompanhe por `GET /api/commands/{id}` |
 
 `InstagramProfile` **não tem campo de senha** — nem em resposta, nem em erro de validação. `credential` traz só
-metadados (`configured`, `status`, `failed_attempts`, `blocked_until`). `session`:
-`{status:'unknown'|'auth_required'|'auth_challenge'|'wrong_account'|'session_ready', instance_id,
-observed_username, verified_at, detail}`.
+metadados (`configured`, `status`, `failed_attempts`, `blocked_until`).
 
 ### Persona, memória, histórico e contexto
 
@@ -1174,7 +1172,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `politica.excecao_sem_efeito` | sim | `social/excecoes.py` — reservada, o gesto terminou sem efeito; ela fecha e não volta a aberta (30.65) |
 | `politica.excecao_incerta` | sim | `social/excecoes.py` — reservada, e a etapa terminou sem liquidação; o efeito pode ter saído e conta como usada (30.65) |
 | `app_state.updated` | sim | `state.py` |
-| `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
+| `session.needs_person` | sim | — |
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
@@ -1285,8 +1283,6 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   a mantém (item aguardando a pessoa ainda será retomado).
 - 422 de qualquer rota: erro cujo caminho passa por um nome sensível (credencial, senha, token…) sai sem `input` e sem
   `ctx`.
-- Com credencial, a tela de senha deixa de pôr a etapa em `waiting_user`; desafio (código não fornecido, CAPTCHA)
-  continua pedindo a pessoa.
 - Comando que pede site/navegador ou nomeia outro app registrado não fica preso ao catálogo do app da conta do
   aparelho: o plano é livre.
 
@@ -2424,12 +2420,8 @@ de orçamento do executor cita a janela efetiva.
     autor, evidencia}`;
   - `device.locked_account`: `{instance_id, handle, profile_id, app_id, origem, acao: marcado|resolvido, autor,
     evidencia}`;
-  - `decision` do executor na trava: `data {kind: "auth_challenge", subtipo: conta_travada|codigo|verificacao, trecho,
-    tela, package}`; o motivo em `objectives.blocked_reason` e `attempts.error` é `auth_challenge (<subtipo>): …
-    "<trecho>"`;
   - `log` com `data.reason = "disjuntor_de_conta"` (`{profile_id, related_profile_ids, run_ids}`) e com `data.reason =
     "login_parado"`.
-- `StepBlocked.kind` ganha `challenge` (vira `auth_challenge`, subtipo `verificacao`, que pede pessoa sem bloquear).
 - Sessão: a credencial da conta ganha o estado `review` depois de um envio de senha sem sucesso; o login automático é
   recusado sem tocar, e só o Conectar (a pessoa) tenta. Ajuste novo `max_logins_per_day` no `sessao.yaml` (3 no
   Instagram), sobrescrevível em `contas.sessao.<pacote>.max_logins_per_day`.
@@ -2679,8 +2671,6 @@ e o pedido de controle do aparelho levam o operador da sessão ao sinal do apren
 gesto é um por `(kind, source_ref)`: o primeiro autor fica. Nenhum corpo ou resposta mudou.
 
 **Tela da falha (22.3).** `attempts.failure_screen` passa a ser gravado:
-- é o nome de uma regra declarada no `telas.yaml` do app da etapa, ou o tipo do motor nas telas protegidas
-  (`desafio|dois_fatores|login`);
 - é NULL quando a tela é desconhecida, outro app está na frente ou não houve observação;
 - só é gravado com `failure_kind`;
 - nunca é texto da tela.
@@ -2813,9 +2803,7 @@ seguem `not_run` (24.9, 25.4, 25.5).
 - `POST …/accounts/{aid}/session/connect` e `…/session/verify` operam a CONTA do caminho (`ensure_session(…,
   account_id=aid)`). Conta de site (com `host`) é recusada com 409 `conta_de_site`: o login gerenciado é o da conta do
   app, sem site.
-- Desafio numa conta de outro app para só aquela conta (credencial em `review`), sem bloquear a persona; a conta
-  travada põe o aparelho em quarentena. O marcador da quarentena usa o @ da conta, ou o identificador de login quando
-  ela não tem @.
+- O marcador da quarentena usa o @ da conta, ou o identificador de login quando ela não tem @.
 - Trocar o servidor de um aparelho pede confirmação quando QUALQUER conta de uma persona vinculada tem sessão pronta
   nele, não só a âncora.
 
@@ -2849,29 +2837,29 @@ com "credencial" é tratado como segredo pela redação.
     nome que nenhuma etapa anterior lê vira `missing` com `field: "saida"`, e o plano sai sem etapas.
   - O despacho troca a referência pelo valor na linha da etapa antes da porta de política. A ferramenta `read_value`
     lê o valor do texto do elemento, e `step_done` sem a leitura é recusado.
-  - Código de verificação, senha e token nunca são saída.
+  - senha e token nunca são saída.
   - Ação de catálogo também entrega valor (ADR-065): a capability declara `saidas` (nomes que pode entregar), a etapa
     de catálogo do plano entre apps leva `saidas` com um subconjunto delas, e o `PlanStep.saidas` gravado é o mesmo
     da etapa livre. Nome fora do declarado vira `missing` (`field` = a ação em minúsculas). Sem mudança de rota,
     de DTO ou de migração.
 - **Relatório:** `per_instance[].values_read: [{name, value, value_kind, step_title, app, read_at}]` em
   `GET /api/runs/{id}/report`, e a seção "Valores lidos entre etapas" no markdown.
-- **Origem do valor (item 12.5, ADR-070; adendo provisório):** cada item de `values_read` ganha `origem` (`arvore`|`visual`),
-  `leitor` (`provedor/modelo`), `frame_sha256` e `evidence_id` (os três nulos quando `origem=arvore`). O markdown traz, para
-  cada valor visual, a linha "lido da imagem; conferido às cegas por <leitor> no recorte da captura <sha8>". A ferramenta
-  `read_value` ganha `source` (`tree` padrão | `visual`; `visual` exige `value` e só vale com `value_kind=text`). A ação
-  `read_value` visual registra `{name, value_kind, chars, origem, frame_id, evidence_id, leitor}` e `args.value` fica
-  `**OMITIDO**`; a recusa é uma ação `rejected` cujo `error` é só um código do vocabulário fechado (`desligado`,
-  `elemento_com_texto`, `regiao_nao_declarada`, `arvore_truncada`, `tela_sensivel`, `fora_do_app`, `sem_ancora`,
-  `captura_mudou`, `repetida`, `sem_leitor`, `leitor_falhou`, `ilegivel`, `truncado`, `nao_confere`, `triagem:<motivo>`; o
-  vocabulário é fechado e inclui `tela_sensivel` e `leitor_falhou`, que o orquestrador também aceita). A triagem (código de
-  verificação, senha, token) NÃO é erro de chamada: como no caminho da árvore, a ação fica `rejected` com
-  `valor recusado pela triagem: <motivo>` e a etapa vai para `waiting_user`, sem nova tentativa do ator. O valor gravado é o do
-  leitor (limpo); as saídas `origem=visual` não entram nas variáveis de receita; orçamento, prazo e crédito do leitor seguem o
-  desfecho do ator e não viram `leitor_falhou`.
-  `GET /api/ai` lista a função `leitura` em `roles` e `models` quando `ai.roles.leitura` está escrito, e o `notice` nomeia
-  provedor, modelo e os apps que declaram a região. `GET /api/usage` agrupa as chamadas pelo `role` `leitura`, e `ai_calls.origem`
-  é `leitura`. Sem rota nova; migração 078.
+- **Origem do valor (item 12.5, ADR-070; adendo provisório):** cada item de `values_read` ganha `origem`
+  (`arvore`|`visual`), `leitor` (`provedor/modelo`), `frame_sha256` e `evidence_id` (os três nulos quando
+  `origem=arvore`). O markdown traz, para cada valor visual, a linha "lido da imagem; conferido às cegas por <leitor> no
+  recorte da captura <sha8>". A ferramenta `read_value` ganha `source` (`tree` padrão | `visual`; `visual` exige `value`
+  e só vale com `value_kind=text`). A ação `read_value` visual registra `{name, value_kind, chars, origem, frame_id,
+  evidence_id, leitor}` e `args.value` fica `**OMITIDO**`; a recusa é uma ação `rejected` cujo `error` é só um código do
+  vocabulário fechado (`desligado`, `elemento_com_texto`, `regiao_nao_declarada`, `arvore_truncada`, `tela_sensivel`,
+  `fora_do_app`, `sem_ancora`, `captura_mudou`, `repetida`, `sem_leitor`, `leitor_falhou`, `ilegivel`, `truncado`,
+  `nao_confere`, `triagem:<motivo>`; o vocabulário é fechado e inclui `tela_sensivel` e `leitor_falhou`, que o
+  orquestrador também aceita). A triagem (senha, token) NÃO é erro de chamada: como no caminho da árvore, a ação fica
+  `rejected` com `valor recusado pela triagem: <motivo>` e a etapa vai para `waiting_user`, sem nova tentativa do ator.
+  O valor gravado é o do leitor (limpo); as saídas `origem=visual` não entram nas variáveis de receita; orçamento, prazo
+  e crédito do leitor seguem o desfecho do ator e não viram `leitor_falhou`. `GET /api/ai` lista a função `leitura` em
+  `roles` e `models` quando `ai.roles.leitura` está escrito, e o `notice` nomeia provedor, modelo e os apps que declaram
+  a região. `GET /api/usage` agrupa as chamadas pelo `role` `leitura`, e `ai_calls.origem` é `leitura`. Sem rota nova;
+  migração 078.
 
 ## Adendo v0.43 (30/09/2026) — Fase 29: prova de vazamento na linha do aparelho e leitura do firewall por interface (ADR-056, ADR-061)
 
@@ -4902,12 +4890,11 @@ revisões do PR #166). `not_run`: a conversa real.
 
 Nenhuma rota nova e nenhuma migração. Um código de erro novo, um evento novo e duas leituras públicas no caminho comum
 (painel e canais). O ADR-040 continua valendo: a senha mora na conta da persona e a automação a digita por
-`type_secret`. O código de verificação, a pessoa digita no aparelho (ADR-009). A resposta a uma pergunta vira comando de
+`type_secret`. A resposta a uma pergunta vira comando de
 uma execução sucessora, que vai ao prompt do planejador e ao histórico; por isso a credencial não entra por ali. Na
 dúvida, recusa.
 
-- **409 `credencial_na_resposta`**, com `tipo` no `detail` (`senha`, `2fa`, `codigo`, `token`, `credencial` ou
-  `formato`). A mensagem aponta o caminho certo e nunca repete a resposta. Sai em:
+- A mensagem aponta o caminho certo e nunca repete a resposta. Sai em:
   - `POST /api/runs/{id}/successor`, antes de qualquer gravação: nenhuma execução nova nasce e a antiga segue em
     `needs_input`. Recusa quando:
     - alguma pergunta aberta da execução pede credencial, seja qual for a resposta;
@@ -5772,15 +5759,11 @@ de efeito, e aprova antes de iniciar o que pede o aval dele. O sim do plano só 
 texto ainda por escrever (briefing) fica para a execução: aprovar no plano exige texto final (`content_verbatim`).
 
 - **`GET /api/runs/{id}/porta`** (200), só leitura: não grava decisão, não abre pedido, não prende exceção, não escreve
-  rascunho, não chama IA. 404 `not_found`; 409 `invalid_state` fora de `planned`; 409 `no_plan` sem etapas. Corpo:
-  `run_id`, `hash_do_plano` (atalho, não prova), `validade_ate`, `custo_rascunhos_usd` (0 nesta fatia), `estimativa`
-  (sempre `true`: a execução é paralela e a porta roda de novo no despacho; os tetos por balde não somam os itens
-  anteriores do plano), `parcial`/`total` (itens cuja porta não pôde ser calculada), `itens` e `na_execucao`
-  (`textos_da_tela`, `itens_for_each` — as etapas-modelo, cujos itens nascem da coleta —, `sempre`: desafio, 2FA,
-  CAPTCHA). Cada item: `objective_id`, `step_id`, `aparelho`, `titulo`, `persona_rotulo`, `profile_id`, `app`, `acao`,
-  `alvo`, `objeto_alvo`, `selo`, `motivo`, `dica`, `retry_at`, `texto` (o literal, quando final), `texto_na_execucao`,
-  `tem_imagem`, `imagem_sha256`, `chave` (só no selo `aprovacao`), `dependentes` (as etapas do mesmo objetivo que
-  dependem desta, transitivas) e `falhou`. Selos, pela MESMA conta do despacho (`AppState.vereditos_da_porta`):
+  rascunho, não chama IA. 404 `not_found`; 409 `invalid_state` fora de `planned`; 409 `no_plan` sem etapas. Cada item:
+  `objective_id`, `step_id`, `aparelho`, `titulo`, `persona_rotulo`, `profile_id`, `app`, `acao`, `alvo`, `objeto_alvo`,
+  `selo`, `motivo`, `dica`, `retry_at`, `texto` (o literal, quando final), `texto_na_execucao`, `tem_imagem`,
+  `imagem_sha256`, `chave` (só no selo `aprovacao`), `dependentes` (as etapas do mesmo objetivo que dependem desta,
+  transitivas) e `falhou`. Selos, pela MESMA conta do despacho (`AppState.vereditos_da_porta`):
   - `permitido`: segue sem parar;
   - `aprovacao`: pede o aval (política, DM fria, o mesmo pedido a várias contas, teto `preparar`, mensagem repetida), com
     chave;
@@ -6235,8 +6218,8 @@ Sem migração: `ai_calls.image_reason` é `TEXT` sem `CHECK` (migração 080). 
 ## Adendo v1.50 (05/10/2026; número da orquestradora; item 29.93) — a execução que espera você não aparece como encerrada
 
 Antes, quando o trabalho automático acabava com um objetivo em `waiting_user` (um gesto da pessoa no aparelho: login,
-desafio, aprovação), a execução ia a `completed_with_issues`, que é terminal, e grava `finished_at`: o painel, o Telegram
-e quem lê o contrato a davam por encerrada, e a retomada do item a "reabria".
+aprovação), a execução ia a `completed_with_issues`, que é terminal, e grava `finished_at`: o painel, o Telegram e quem
+lê o contrato a davam por encerrada, e a retomada do item a "reabria".
 
 - **`RunStatus.awaiting_person`** (valor novo, aditivo): o trabalho automático acabou e pelo menos um objetivo está em
   `waiting_user`. NÃO é terminal. Grava `finished_at` (o fim do trabalho automático; o vencimento do 31.50 conta dali,

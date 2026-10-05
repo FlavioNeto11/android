@@ -504,15 +504,15 @@ Prova `simulated` (`backend/tests/test_pedidos_memoria.py`, `test_pedidos_relato
 | Ligação ao laço e ao cancelamento | `laco.py` (`_fechar_uma`, `_observar`, `_agendar_pedido`, `_relatorio_final`), `acoes.py` (`cancelar`) |
 | Configuração | `config.py::PedidosCfg` (`resumo_ia: false`, `resumo_ia_teto_usd`), bloco `pedidos:` do exemplo |
 
-**Observação no fechamento.** Ao fechar uma ocorrência (`_fechar_uma`), o laço lê as saídas da execução (`step_outputs`, 056, o
-"valor lido entre etapas" do 12.3) ANTES de a purga apagá-la e grava as observações na MESMA transação cercada do `mover`: ou a
-ocorrência fecha com as observações dela, ou nada muda e a varredura repete (`UNIQUE (ocorrencia_id, alvo, nome)` + `ON CONFLICT
-DO NOTHING`). Valor lido numa ocorrência `concluida` é `observado`; em qualquer outro fim (`falhou`, `incerta`, `cancelada`…) é
-`incerto`; sem saída estruturada (ou execução já purgada) grava UMA observação `resultado` com valor ausente e o motivo do
-fechamento em `trecho`. O valor com formato de credencial ou de código de verificação (ADR-009) é recusado e vira `ausente`. Quando
-o valor é comprovado, a memória guarda `fonte:<nome>[:<alvo>]` com os 16 primeiros caracteres do `sha256` (a base do espaçamento
-adaptativo do §8.2; o código que espaça é do 28.5/28.6). Se ler a saída falhar, a ocorrência fecha sem observação e o relatório a
-lista como `sem_observacao`.
+**Observação no fechamento.** Ao fechar uma ocorrência (`_fechar_uma`), o laço lê as saídas da execução (`step_outputs`,
+056, o "valor lido entre etapas" do 12.3) ANTES de a purga apagá-la e grava as observações na MESMA transação cercada do
+`mover`: ou a ocorrência fecha com as observações dela, ou nada muda e a varredura repete (`UNIQUE (ocorrencia_id, alvo,
+nome)` + `ON CONFLICT DO NOTHING`). Valor lido numa ocorrência `concluida` é `observado`; em qualquer outro fim
+(`falhou`, `incerta`, `cancelada`…) é `incerto`; sem saída estruturada (ou execução já purgada) grava UMA observação
+`resultado` com valor ausente e o motivo do fechamento em `trecho`. Quando o valor é comprovado, a memória guarda
+`fonte:<nome>[:<alvo>]` com os 16 primeiros caracteres do `sha256` (a base do espaçamento adaptativo do §8.2; o código
+que espaça é do 28.5/28.6). Se ler a saída falhar, a ocorrência fecha sem observação e o relatório a lista como
+`sem_observacao`.
 
 **Relatório.** Três blocos que não se misturam. *Observado*: só valor com fonte e instante de ocorrência `concluida` E observação
 gravada `observado` (o domínio rebaixa o resto a incerto, mesmo que a linha diga o contrário). *Conclusão*: contagem da amostra,

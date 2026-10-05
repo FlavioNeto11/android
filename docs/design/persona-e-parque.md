@@ -49,7 +49,7 @@ arquitetura interna. O pedido, em treze pontos, com a seção que responde a cad
 | 13 | Coerência ponta a ponta, migrações validadas, dados preservados, testes | §10, §11, §13, §17 |
 
 O que não muda: os invariantes do `CLAUDE.md` (segredo nunca em prompt, log, evento, evidência, memória, fixture ou
-Git; desafio, 2FA e CAPTCHA com a pessoa, ADR-009; nenhuma evasão de detecção; mundo real só com autorização em
+Git; mundo real só com autorização em
 chat). O que muda de regra escrita está na §16 (ADR-040 substitui em parte o ADR-025).
 
 ---
@@ -94,8 +94,6 @@ Código que sustenta o modelo: `social/repository.py` (`create_profile:48`, `cre
 ### 2.2 As duas fontes de verdade da sessão
 
 - `profile_accounts.session_status` é a cópia da carga da 037: em produção, 8 de 8 `session_ready`.
-  `instagram_sessions` diz 7 `session_ready` e 1 `unknown`, e 5 desses perfis estão `blocked` desde o ADR-029: são
-  **sessões fantasmas** (sem vínculo ativo, sem aparelho).
 - `apps_overview.py:80-81` conta "contas prontas" pela cópia; `:103` lista por ela.
 - O login lê `instagram_profiles.username` (`integrations/instagram/authentication.py:98`) e
   `instagram_credentials` (`:163`), nunca `profile_accounts.handle`, que é editável pela aba Contas
@@ -181,8 +179,6 @@ nenhuma. `birth_date` está vazio em 8 de 8 perfis.
 
 ### 2.7 Dados de produção (leitura em 27/09)
 
-- **Personas:** 14 (todas com `persona_prompt`, `summary`, `traits`; voz 14/14, visuais 8/14). 3 vinculadas
-  (`lucas`, `bruno`, `andre`), 5 desvinculadas pelo ADR-029 em 27/09, 6 criadas em 23/09 sem perfil.
 - **Perfis:** 8 (`active` 3, `blocked` 5); nome, sobrenome e e-mail 8/8; `birth_date` 0/8; `persona_id` 3/8.
 - **Contas:** `profile_accounts` 8 (todas Instagram, `session_status` `session_ready` 8/8, a cópia);
   `account_credentials` **0**; `instagram_credentials` 8 (`login_identifier` = e-mail 8/8); `secrets` 8.
@@ -247,13 +243,9 @@ app → sessão neste aparelho. A conta é a ponte entre persona e app; a sessã
 | **`consent_at`**, **`consent_by`** | `account_credentials` | "autorizo a automação a digitar esta senha" |
 | `session_status`, `session_detail`, `session_verified_at` | `profile_accounts` | passam a **derivados** de `account_sessions` (a cópia deixa de ser escrita) |
 
-**Sessão** (`account_sessions`, nova, 049): `account_id`, `instance_id`, `status`, `observed_handle`,
-`verified_at`, `detail`, `unknown_streak`, `updated_at`, `PK (account_id, instance_id)`. Vocabulário **único**:
-`unknown | session_ready | logged_out | auth_required | auth_challenge | wrong_account | needs_person`, a união de
-`SessionStatus` (`resources.py:51-58`: `unknown`, `auth_required`, `auth_challenge`, `wrong_account`,
-`session_ready`) com `AccountSessionStatus` (`:61-67`: `unknown`, `session_ready`, `logged_out`, `needs_person`),
-num só `SessionStatus`. "Sessão é cache do observado" (`008:75`) continua
-valendo.
+**Sessão** (`account_sessions`, nova, 049): `account_id`, `instance_id`, `status`, `observed_handle`, `verified_at`,
+`detail`, `unknown_streak`, `updated_at`, `PK (account_id, instance_id)`. "Sessão é cache do observado" (`008:75`)
+continua valendo.
 
 **Vínculo** (`device_profile_bindings`, 051): `profile_id`, `instance_id`, **`app_id`** (NULL = apps sem conta
 gerenciada), **`is_primary`**, `active`, `bound_at`, `unbound_at`, `reason`, `worker_id`, `physical_id`,
@@ -287,7 +279,6 @@ gerenciada), **`is_primary`**, `active`, `bound_at`, `unbound_at`, `reason`, `wo
 | Uma conta por (persona, app, host) | `ux_profile_accounts_app_host` (049) | `037:31` sem host |
 | Credencial pertence à conta; sem conta não há credencial | `account_credentials.account_id` PK/FK; `instagram_credentials` só leitura até sair | duas tabelas |
 | Sessão é por (conta, aparelho) | PK de `account_sessions` | PK `profile_id` |
-| Persona fora de `active` não recebe tarefa; desafio → `blocked` sem reativação automática (ADR-029) | `_session_gate`; `session_rules.py::bloquear_por_desafio` | igual |
 | Um vínculo ativo por (persona, aparelho, app) | `ux_binding_par_ativo` (051) | 1:1 |
 | No mesmo aparelho, uma conta por app (D2-a) | `ux_binding_conta_do_app_no_aparelho` (051) | implícito no 1:1 |
 | Uma persona tem no máximo um aparelho principal | `ux_binding_principal` (051) | — |
@@ -600,8 +591,6 @@ is_primary=1`. A sessão por aparelho é `account_sessions` (049, §3.2): conta 
 - **D2-a:** duas contas do mesmo app no mesmo aparelho ficam **proibidas** enquanto a troca de conta no Instagram for
   manual (`authentication.py:256-267`, achado #115). N:N vale entre apps diferentes (persona A no Instagram e persona
   B no Chrome do mesmo aparelho) e uma persona em N aparelhos.
-- **D3:** a mesma conta em N aparelhos é **permitida**, com aviso na interface ("o Instagram pode pedir verificação;
-  o ADR-029 bloqueia a persona se isso acontecer"); o dono decide caso a caso.
 - Localidade continua por linha (023): `_porta_da_localidade` (`state.py:750`) lê o vínculo `(profile_id, rt.id)`.
 
 Repositório (`social/repository.py`): `bind(profile_id, instance_id, *, app_id=None, primary=False, reason=None)`
@@ -883,11 +872,8 @@ CREATE UNIQUE INDEX ux_instagram_profiles_username ON instagram_profiles(lower(u
      visuais), persona_prompt FROM personas WHERE personas.id = persona_id`; `persona_id` já aponta. A separação das
      chaves em SQL usa `json_extract`/`json_object` no SQLite e `jsonb` no PostgreSQL: **bloco `-- @dialect:`**; o
      teste confere que os dois produzem o mesmo JSON canônico.
-  2. **Desvinculadas do ADR-029 (5):** casam por nome com os perfis `blocked` sem `persona_id`
-     (`lower(trim(personas.name)) = lower(trim(first_name || ' ' || last_name))`), mesmo `UPDATE`, gravando também
-     `persona_id = personas.id` (a FK aceita, porque a linha de `personas` fica). Decisão a confirmar com o dono
-     (§15); `persona_id` apontando para a linha dobrada e a tabela `personas` preservada permitem desfazer por
-     script sem perda.
+  2. Decisão a confirmar com o dono (§15); `persona_id` apontando para a linha dobrada e a tabela `personas` preservada
+     permitem desfazer por script sem perda.
   3. **Restantes (6):** `INSERT INTO instagram_profiles (id, username, first_name, last_name, display_name, status,
      summary, traits, visual, persona_prompt, persona_id, generation, created_at, updated_at) SELECT …` para
      toda persona sem perfil depois dos passos 1 e 2: `id = 'ig-' || substr(personas.id, 9)`, `username = ''`,
@@ -1087,7 +1073,7 @@ tabelas não tocadas; `docs/banco.md` cita o número (`docs-check`); PostgreSQL 
 | R9 | Portal `22d65f` regride sem URL no comando | hosts das contas do app navegador entram em `allowed_urls` (§4.4) |
 | R10 | Ambiguidade silenciosa ao derrubar os índices 1:1 | ordem segura (§7.2) com a suíte verde antes da 051 |
 | R11 | `device_policy: all` duplica efeito externo (a pessoa "curte" duas vezes) | `all` só explícito; aviso na prévia; política do perfil (`PolicyEngine`) já conta por conta |
-| R12 | Mesma conta em dois aparelhos dispara desafio (ADR-029) | permitido com aviso; o bloqueio automático protege; principal como padrão |
+| R12 | — | permitido com aviso; o bloqueio automático protege; principal como padrão |
 | R13 | Extrator de destinos casa nome comum no texto ("pelo André" quando André é o destinatário da mensagem) | dica nunca executa sem prévia (409 `alvos_nao_confirmados`); seleção da interface manda; teste em tabela com frases negativas |
 | R14 | Imagens: chave paga ausente cai no simulado sem ninguém perceber | 409 `image_not_configured`; selo "simulado" no painel; `provider` na linha |
 | R15 | Nome da persona ou dado de tela vaza no prompt de imagem | o prompt sai só da receita; teste de que `first_name`, `last_name`, `username`, memória e handle não aparecem no prompt |
@@ -1219,14 +1205,11 @@ aplicada no ensaio da 13.1 sobre a cópia do backup. Criar ou apagar um AVD no h
 As decisões vêm do coordenador, com as alternativas que os relatórios propuseram.
 
 1. **A persona é a linha de `instagram_profiles`.** Nome de tabela mantido; na API e na interface passa a se chamar
-   Persona; `/api/personas` vira a rota canônica e `/api/instagram/profiles*` fica como apelido. A tabela `personas`
-   (só voz) é dobrada para dentro do perfil pela 047; `username` passa a ser opcional (`''`); as 3 vinculadas são
-   dobradas; as 5 do ADR-029 são dobradas por nome nos perfis bloqueados que ainda têm as fotos (a confirmar com o
-   dono); as 6 restantes viram personas sem conta; `test_social_memory.py:274` se aposenta de propósito.
-   Alternativas: (a) manter as duas tabelas com o perfil dono de nome e nascimento e a persona dona da biografia
-   (relatório 01, §8.i); (b) mudar a raiz para `personas.id` (implícito no vocabulário do dono). Fica a dobra porque
-   **todo consumidor** (vínculos, sessões, memória, aprovações, `objectives.profile_id`, escopo de skill, treino,
-   rotas) já é por `profile_id`; (b) rechavearia tudo e (a) mantém dois donos para a mesma pessoa.
+   Persona; `/api/personas` vira a rota canônica e `/api/instagram/profiles*` fica como apelido. Alternativas: (a)
+   manter as duas tabelas com o perfil dono de nome e nascimento e a persona dona da biografia (relatório 01, §8.i); (b)
+   mudar a raiz para `personas.id` (implícito no vocabulário do dono). Fica a dobra porque **todo consumidor**
+   (vínculos, sessões, memória, aprovações, `objectives.profile_id`, escopo de skill, treino, rotas) já é por
+   `profile_id`; (b) rechavearia tudo e (a) mantém dois donos para a mesma pessoa.
 2. **Modelo rico híbrido.** Colunas para identidade estável, `biography` JSON por seção, `traits` só voz, `visual`
    JSON, `generation` JSON; idade calculada; `biography` entra no prompt só em linhas curtas com `sem_marcacao`;
    religião e política guardadas e **não enviadas** até decisão do dono; backfill determinístico na migração;
@@ -1253,11 +1236,8 @@ As decisões vêm do coordenador, com as alternativas que os relatórios propuse
    com as 8 existentes marcadas pela 049 (§4.3); trava de site pelo `host` da conta, inclusive para `open_url`.
    Alternativa (B) do relatório 03: manter `credentials` só por API. Fica (A): "sem soluções paralelas" é o pedido, e
    a conta de portal ganha casa (`host`). Substitui em parte o ADR-025 (ADR-040); o ADR-025 não se reescreve.
-6. **N:N evoluindo `device_profile_bindings` (051)**, com `app_id`, `is_primary`, os três índices novos, D2-a
-   (duas contas do mesmo app no mesmo aparelho proibidas, achado #115), D3 (mesma conta em N aparelhos permitida com
-   aviso; o ADR-029 protege), e a **ordem segura** (chamadores primeiro, índices depois). Alternativas do relatório
-   02: tabela nova de vínculo (perderia localidade e histórico), troca de conta automática no Instagram (nunca foi
-   implementada, de propósito), usuários Android múltiplos (não).
+6. Alternativas do relatório 02: tabela nova de vínculo (perderia localidade e histórico), troca de conta automática no
+   Instagram (nunca foi implementada, de propósito), usuários Android múltiplos (não).
 7. **Roteamento estendendo `RunCreate`**, sem forquilha: interseção, `targets`, `device_policy` padrão `one` (D4),
    `resolver_alvos` pura em tabela, `TargetExtractor` determinístico antes do `TemplateStage`, contradição vira
    pergunta, prévia obrigatória com origem por alvo e 409 `alvos_nao_confirmados`, fase 1 recusa o mesmo aparelho
@@ -1298,8 +1278,6 @@ As decisões vêm do coordenador, com as alternativas que os relatórios propuse
    `medium`; US$ 0,4 para 14 enriquecimentos).
 3. **Branch `claude/android-multiagentes-session-cvv1rp`** (23 commits sobre `5c98735`): integrar antes da WE,
    descartar, ou aproveitar por partes. A WE espera.
-4. **Dobrar as 5 personas do ADR-029 por nome** nos perfis bloqueados que têm as fotos (o que a 047 faz), ou
-   deixá-las como personas sem conta e as fotos com os perfis bloqueados (desfazer por script).
 5. **Religião e posicionamento político:** só guardar (o que este desenho faz) ou também enviar ao modelo
    (`social`, planejador) e em que forma.
 6. **Perfil sem conta Instagram** é aceito (é o que a decisão 1 supõe); confirmar que o Instagram deixa de ser
@@ -1324,7 +1302,7 @@ Cada um entra em `docs/decisoes.md` quando a onda correspondente é integrada.
   por conta; `type_secret` por (perfil do objetivo, conta: pacote e host); ref nunca em `run_secrets`; `open_url` e a
   trava de site pelos hosts da conta; apps com `SessionProvider` continuam determinísticos e exigem o mesmo
   consentimento. O que continua do ADR-025: o valor nunca vai ao modelo, a log, a evento, a evidência ou a memória;
-  três travas; desafio, 2FA e CAPTCHA com a pessoa (ADR-009).
+  três travas.
 - **ADR-041 — A persona é a pessoa** (WA; **registrado** em 27/09:
   [decisões](../decisoes.md#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off)).
   `instagram_profiles` como raiz; `personas` dobrada; modelo rico híbrido; religião e política guardadas e não
