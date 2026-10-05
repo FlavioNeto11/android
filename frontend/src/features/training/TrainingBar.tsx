@@ -10,12 +10,13 @@ import type { Instance, TrainingSession } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
+import { Disclosure } from '../../components/Disclosure';
 import { Field, Select, TextInput } from '../../components/Field';
 import { isRecord, plural } from '../../lib/format';
 import { useAppStore } from '../../store/app';
 import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
-import { TrainingReview, toqueSemAlvo } from './TrainingReview';
+import { RefazerReceitas, TrainingReview, toqueSemAlvo } from './TrainingReview';
 import { useTrainingStore } from './trainingStore';
 import styles from './Training.module.css';
 
@@ -116,6 +117,9 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   );
 
   const pendentes = sessoes.filter((s) => s.status === 'recorded' || s.status === 'proposed');
+  // v1.58: a sessão salva some de "Para revisar", mas a etapa que ficou sem receita (aparelho fora do ar no salvar)
+  // ainda pode ganhá-la; daqui a pessoa refaz quando o aparelho voltar, sem reabrir a revisão.
+  const salvas = sessoes.filter((s) => s.status === 'saved').slice(0, 5);
 
   return (
     <section className={styles.bar} aria-label="Modo treinamento">
@@ -192,6 +196,18 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             </Button>
           ))}
         </div>
+      ) : null}
+      {salvas.length ? (
+        <Disclosure summary={`Salvas (${salvas.length})`} bare>
+          <ul className={styles.salvas}>
+            {salvas.map((s) => (
+              <li key={s.id}>
+                <span>{s.intent}</span>
+                <RefazerReceitas sessionId={s.id} intent={s.intent} />
+              </li>
+            ))}
+          </ul>
+        </Disclosure>
       ) : null}
       {revisando ? (
         <TrainingReview sessionId={revisando} onClose={() => { setRevisando(null); void carregar(); }} />

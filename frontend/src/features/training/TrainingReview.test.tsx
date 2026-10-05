@@ -7,8 +7,11 @@ import { initialDataState } from '../../store/reducer';
 import { makeSnapshot } from '../../test/fixtures';
 import { ConfirmHost } from '../../components/Confirm';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { TrainingReview } from './TrainingReview';
+
+/** O atraso máximo do fetch falso (modo ATRASO_DO_FETCH_MS): a resposta que o teste solta depois ainda pode estar a caminho. */
+const ATRASO_MAXIMO = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
 
 let root: Root;
 let container: HTMLElement;
@@ -397,4 +400,99 @@ it('toque sem alvo nas palavras do backend (#440), o "Confere" em português e a
   expect(text()).toContain('#5–#7');
   expect(text()).toContain('tecla delete ×3');
   for (const n of [5, 6, 7]) expect(byRole('button', new RegExp(`^Descartar a entrada #${n}$`), regiao('Entradas da etapa 1', 'ul'))).toBeTruthy();
+});
+
+// ---------------------------------------------------------------- 31.90-B: prévia do salvar (v1.58), recusas no campo e refazer receitas
+const PREVIA_OK = { steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita será gravada ao salvar' }], warnings: [] };
+const reasonDa = (reason: string) => ({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, reason }] });
+
+async function abrirEProporComPrevia() {
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+}
+
+it('a prévia mostra o que cada etapa vira; a recusa do comando vai no campo e trava o Salvar até corrigir', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, (c) => {
+    const comando = (c.body as { proposal: { command_template: string } }).proposal.command_template;
+    return comando.startsWith('{') ? apiError(400, 'comando_generico', 'O comando precisa começar por palavra fixa.') : json(PREVIA_OK);
+  });
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(text()).toContain('Ao salvar: receita será gravada ao salvar'));
+  const comando = () => byRole('textbox', /Comando/) as HTMLInputElement;
+  const salvar = () => byRole('button', /^Salvar como fluxo/);
+  expect(comando().getAttribute('aria-invalid')).toBeNull();
+  // O corpo da prévia é o do salvar (v1.58: `extra="forbid"`).
+  expect(Object.keys(backend.callsTo('POST', /\/preview$/)[0]!.body as object).sort()).toEqual(['group_ids', 'profile_ids', 'proposal']);
+
+  await setValue(comando(), '{contato} mande');
+  await waitFor(() => expect(comando().getAttribute('aria-invalid')).toBe('true'));
+  expect(text()).toContain('O comando precisa começar por palavra fixa.');
+  expect(salvar().getAttribute('aria-label') ?? salvar().textContent).toContain('Corrija o comando');
+  expect(text()).not.toContain('Ao salvar:');                      // a prévia velha não fica ao lado da recusa
+
+  await setValue(comando(), 'mande para {contato}');
+  await waitFor(() => expect(text()).toContain('Ao salvar: receita será gravada ao salvar'));
+  expect(comando().getAttribute('aria-invalid')).toBeNull();
+  expect(salvar().getAttribute('aria-disabled')).toBeNull();
+});
+
+it('salvar recusado por parâmetro reservado (v1.62) fica no campo e sem toast; entrada_inexistente vira o motivo do Salvar', async () => {
+  useToastStore.setState({ toasts: [] });
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => apiError(400, 'parametro_reservado', 'O nome {run_id} é reservado: escolha outro.'));
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(text()).toContain('Ao salvar:'));
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(byRole('textbox', /Comando/).getAttribute('aria-invalid')).toBe('true'));
+  expect(text()).toContain('O nome {run_id} é reservado: escolha outro.');
+  expect(useToastStore.getState().toasts.filter((t) => t.title === 'Não foi possível salvar o fluxo')).toHaveLength(0);
+
+  // Recusa que não é do comando: vira o motivo do "Salvar" travado, com a mensagem literal.
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => apiError(400, 'entrada_inexistente', 'As entradas #9 não existem na gravação. Peça uma nova proposta à IA.'));
+  await setValue(byRole('textbox', /Título da etapa 1/) as HTMLInputElement, 'Abrir');
+  const salvar = () => byRole('button', /^Salvar como fluxo/);
+  await waitFor(() => expect(salvar().getAttribute('aria-label') ?? salvar().textContent).toContain('As entradas #9 não existem'));
+  expect(byRole('textbox', /Comando/).getAttribute('aria-invalid')).toBeNull();
+});
+
+it('duas prévias fora de ordem: vale a da última edição', async () => {
+  let soltarPrimeira: (r: Response) => void = () => {};
+  let pedidas = 0;
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => {
+    pedidas += 1;
+    if (pedidas === 1) return new Promise<Response>((r) => { soltarPrimeira = r; });
+    return json(reasonDa('da segunda'));
+  });
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(pedidas).toBe(1));
+  await setValue(byRole('textbox', /Título da etapa 1/) as HTMLInputElement, 'Abrir de novo');
+  await waitFor(() => expect(text()).toContain('Ao salvar: da segunda'));
+  soltarPrimeira(json(reasonDa('da primeira')));
+  await flush(ATRASO_MAXIMO + 30);
+  expect(text()).toContain('Ao salvar: da segunda');
+  expect(text()).not.toContain('da primeira');
+});
+
+it('etapa sem receita no salvar: "Refazer receitas" só com o clique, chama /recipes e diz quantas gravou', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', warnings: [],
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: false,
+              reason: 'aparelho do treinamento fora do ar e a versão do app ainda não foi lida. Refaça as receitas quando ele voltar' }],
+  }));
+  backend.on('POST', /\/training\/trn-1\/recipes$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', created: 1,
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
+  }));
+  await abrirEProporComPrevia();
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  expect(text()).toContain('com IA');
+  expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(0);       // quem aciona é a pessoa
+
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('1 receita gravada agora.'));
+  expect(text()).toContain('— receita gravada');                        // o relatório troca pelo do refazer
+  expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(1);
 });

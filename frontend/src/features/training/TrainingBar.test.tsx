@@ -142,3 +142,21 @@ it('A6: a região viva do contador nasce vazia com a gravação e o texto entra 
   expect(viva.isConnected).toBe(true);
   expect(viva.textContent).toBe('1 entrada(s) recusada(s): refaça');
 });
+
+// 31.90-B (v1.58): a sessão salva sai de "Para revisar", mas a etapa sem receita ainda pode ganhá-la daqui.
+it('sessão salva aparece em "Salvas" com "Refazer receitas", que só chama /recipes no clique', async () => {
+  const SALVA = { ...GRAVANDO, id: 'trn-7', intent: 'Abrir o perfil', status: 'saved', flow_id: 'abrir-perfil' };
+  backend.on('GET', /\/training$/, () => json([SALVA]));
+  backend.on('POST', /\/training\/trn-7\/recipes$/, () => json({
+    session: SALVA, flow_id: 'abrir-perfil', created: 0,
+    steps: [{ key: 'abrir', title: 'Abrir', recipe: false, reason: 'já havia receita ativa para esta etapa' }],
+  }));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Salvas (1)'));
+  expect(text()).not.toContain('Para revisar');
+  await click(byRole('button', /Salvas \(1\)/));
+  await click(await waitFor(() => byRole('button', /^Refazer receitas de “Abrir o perfil”$/)));
+  await waitFor(() => expect(text()).toContain('Nenhuma receita nova.'));
+  expect(text()).toContain('Abrir (já havia receita ativa para esta etapa)');
+  expect(backend.callsTo('POST', /\/training\/trn-7\/recipes$/)).toHaveLength(1);
+});

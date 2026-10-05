@@ -8,7 +8,10 @@
 import { RefreshCw, ServerCrash, Sparkles, WandSparkles } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, hintForError, toApiError } from '../../api/client';
-import type { Capability, InstagramProfile, PolicyGroup, TrainingInput, TrainingProposal, TrainingSaveResult, TrainingSession, TrainingStep } from '../../api/types';
+import type {
+  Capability, InstagramProfile, PolicyGroup, TrainingInput, TrainingPreview, TrainingProposal, TrainingRecipesResult, TrainingSaveResult,
+  TrainingSession, TrainingStep,
+} from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -18,6 +21,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextInput } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { useAppStore } from '../../store/app';
+import { plural } from '../../lib/format';
 import { toast, toastError } from '../../store/toasts';
 import { TeachingPanel } from './TeachingPanel';
 import styles from './Training.module.css';
@@ -54,6 +58,27 @@ function devolverEntrada(p: TrainingProposal, seq: number, etapa: number): Train
 }
 
 const listaDeSeqs = (seqs: number[]) => seqs.map((n) => `#${n}`).join(', ');
+
+/** Espera depois da última edição antes de pedir a prévia (v1.58); exportada para o teste esperar sem número mágico. */
+export const ESPERA_DA_PREVIA_MS = 500;
+
+/** Recusas que falam do comando: vão no campo "Comando" (aria-invalid + a mensagem do backend), no salvar e na prévia. */
+const CODIGOS_DO_COMANDO = new Set([
+  'comando_generico', 'parametro_invalido', 'parametro_fora_do_comando', 'parametro_nao_declarado', 'parametro_reservado',
+  'duplicate_command', 'invalid_command', 'ambiguous_command',
+]);
+
+/** A recusa do salvar ou da prévia que trava o "Salvar" até a próxima edição: as 400 da conferência e as 409 de antes de gravar. */
+interface Recusa {
+  code: string;
+  message: string;
+}
+
+function recusaDe(e: unknown): Recusa | null {
+  const err = toApiError(e);
+  return err.status === 400 || (err.status === 409 && (err.code === 'duplicate_command' || err.code === 'closed'))
+    ? { code: err.code, message: err.message } : null;
+}
 
 /** Toque sem alvo, nas mesmas palavras de `linha_da_entrada` (backend, #440): é o que a IA leu ao propor. */
 export function toqueSemAlvo(e: TrainingInput): string | null {
@@ -125,6 +150,46 @@ interface Escopo {
   erro: Falha | null;
 }
 
+/**
+ * "Refazer receitas" (v1.58): a etapa que ficou sem receita porque o aparelho estava fora do ar ganha a receita quando
+ * ele volta. Quem decide a hora é a pessoa; a chamada só grava em etapa sem receita e é idempotente (`created: 0`).
+ */
+export function RefazerReceitas({ sessionId, intent, onFeito }: {
+  sessionId: string;
+  /** Na lista de sessões salvas, o nome no rótulo distingue um botão do outro. */
+  intent?: string;
+  onFeito?: (r: TrainingRecipesResult) => void;
+}) {
+  const [refazendo, setRefazendo] = useState(false);
+  const [feito, setFeito] = useState<TrainingRecipesResult | null>(null);
+
+  async function refazer() {
+    setRefazendo(true);
+    try {
+      const r = await api.redoTrainingRecipes(sessionId);
+      setFeito(r);
+      onFeito?.(r);
+    } catch (e) {
+      toastError('Não foi possível refazer as receitas', e);
+    } finally {
+      setRefazendo(false);
+    }
+  }
+
+  const semReceita = feito?.steps.filter((x) => !x.recipe) ?? [];
+  return (
+    <span className={styles.actions}>
+      <Button size="sm" variant="outline" icon={RefreshCw} loading={refazendo}
+              label={intent ? `Refazer receitas de “${intent}”` : undefined} onClick={() => void refazer()}>Refazer receitas</Button>
+      <span className={styles.muted} role="status">
+        {!feito ? 'Etapa sem receita porque o aparelho estava fora do ar? Com ele de volta, refaça.'
+          : `${feito.created ? `${plural(feito.created, 'receita gravada', 'receitas gravadas')} agora.` : 'Nenhuma receita nova.'}`
+            + (semReceita.length ? ` Sem receita: ${semReceita.map((x) => `${x.title} (${x.reason})`).join('; ')}.` : '')}
+      </span>
+    </span>
+  );
+}
+
 export function TrainingReview({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
   const [sessao, setSessao] = useState<TrainingSession | null>(null);
   const [falhaSessao, setFalhaSessao] = useState<Falha | null>(null);
@@ -153,6 +218,14 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   const [pensando, setPensando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [resultado, setResultado] = useState<TrainingSaveResult | null>(null);
+  // Prévia do salvar (v1.58): o que cada etapa vira e a recusa, antes de clicar. `leitura` descarta a resposta de uma
+  // prévia que outra edição já tornou velha (a primeira pode esperar a leitura do aparelho e chegar depois da segunda).
+  const [previa, setPrevia] = useState<TrainingPreview | null>(null);
+  const [recusa, setRecusa] = useState<Recusa | null>(null);
+  const [previaFora, setPreviaFora] = useState<string | null>(null);
+  const leitura = useRef(0);
+  // O relatório do salvar oferece "Refazer receitas" se alguma etapa saiu sem receita; fica depois de refazer, com o resultado.
+  const [semReceitaAoSalvar, setSemReceitaAoSalvar] = useState(false);
 
   useEffect(() => {
     let vivo = true;
@@ -211,14 +284,46 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     return m;
   }, [proposta]);
   const descarteUnico = (proposta?.discarded ?? []).filter((d, k, todas) => todas.findIndex((x) => x.seq === d.seq) === k);
+  const semDestino = proposta ? (sessao?.inputs ?? []).filter((e) => !lugares.has(e.seq)) : [];
+  const duplicadas = [...lugares].filter(([, n]) => n > 1).map(([seq]) => seq).sort((a, b) => a - b);
 
   useEffect(() => {
     if (!focar) return;
     alvos.current.get(focar)?.focus();
     setFocar(null);
   }, [focar, proposta]);
-  const semDestino = proposta ? (sessao?.inputs ?? []).filter((e) => !lugares.has(e.seq)) : [];
-  const duplicadas = [...lugares].filter(([, n]) => n > 1).map(([seq]) => seq).sort((a, b) => a - b);
+
+  // A prévia só roda quando a tela não tem o que dizer antes (sem destino, duplicada, escopo): essas o save recusaria
+  // com a mesma mensagem, e a tela já as explica. Sessão que a prévia achou salva (409 `closed`) não se pergunta mais.
+  const bloqueioLocal = motivoLocal();
+  const [fechada, setFechada] = useState(false);
+  const corpoDoSalvar = useMemo(
+    () => (proposta ? { proposal: proposta, profile_ids: [...escolhidosP].sort(), group_ids: [...escolhidosG].sort() } : null),
+    [proposta, escolhidosP, escolhidosG],
+  );
+  useEffect(() => {
+    if (fechada) return;
+    const minha = ++leitura.current;
+    setRecusa(null);
+    setPreviaFora(null);
+    if (!corpoDoSalvar || bloqueioLocal || resultado) {
+      setPrevia(null);
+      return;
+    }
+    const espera = setTimeout(() => {
+      api.previewTraining(sessionId, corpoDoSalvar).then((r) => {
+        if (minha === leitura.current) setPrevia(r);
+      }).catch((e) => {
+        if (minha !== leitura.current) return;
+        setPrevia(null);
+        const r = recusaDe(e);
+        if (r?.code === 'closed') setFechada(true);
+        if (r) setRecusa(r);
+        else setPreviaFora(toApiError(e).message);
+      });
+    }, ESPERA_DA_PREVIA_MS);
+    return () => clearTimeout(espera);
+  }, [corpoDoSalvar, bloqueioLocal, resultado, fechada, sessionId]);
 
   async function pedirProposta() {
     if (editado) {
@@ -277,15 +382,21 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     try {
       const r = await api.saveTraining(sessionId, { proposal: proposta, profile_ids: [...escolhidosP], group_ids: [...escolhidosG] });
       setResultado(r);
+      setSemReceitaAoSalvar(r.steps.some((x) => !x.recipe));
       const avisos = r.warnings ?? [];
       toast({ tone: 'success', title: 'Fluxo salvo',
               message: `${r.steps.filter((x) => x.recipe).length} de ${r.steps.length} etapas já rodam sem IA.${avisos.length ? ` Avisos: ${avisos.join(' · ')}` : ''}` });
     } catch (e) {
-      toastError('Não foi possível salvar o fluxo', e);
+      // A recusa da conferência trava o "Salvar" com o motivo até a próxima edição; a do comando fica só no campo.
+      const r = recusaDe(e);
+      if (r?.code === 'closed') setFechada(true);
+      if (r) setRecusa(r);
+      if (!r || !CODIGOS_DO_COMANDO.has(r.code)) toastError('Não foi possível salvar o fluxo', e);
     } finally {
       setSalvando(false);
     }
   }
+
 
   // "Depois", Esc e o clique no fundo passam por aqui: com edição pendente, a pessoa confirma antes de perder.
   async function fechar() {
@@ -310,6 +421,13 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   };
 
   function motivoNaoSalvar(): string | null {
+    const local = motivoLocal();
+    if (local) return local;
+    if (recusa) return CODIGOS_DO_COMANDO.has(recusa.code) ? 'Corrija o comando: o motivo está no campo.' : recusa.message;
+    return null;
+  }
+
+  function motivoLocal(): string | null {
     if (!proposta) return 'Peça a proposta da IA primeiro.';
     // O save recusaria as duas (`entradas_sem_etapa`, `entrada_duplicada`): a tela diz antes e diz como resolver.
     if (semDestino.length) return `Falta destino para ${listaDeSeqs(semDestino.map((e) => e.seq))}: descarte ou devolva a uma etapa.`;
@@ -320,6 +438,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   }
 
   const duplicada = new Set(duplicadas);
+  const previaPorEtapa = new Map((previa?.steps ?? []).map((x) => [x.key, x]));
   const linhaDaEntrada = (seq: number) => {
     const e = porSeq.get(seq);
     return (
@@ -394,6 +513,9 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           {resultado.warnings?.length ? (
             <ul className={styles.questions} aria-label="Avisos do salvar">{resultado.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
           ) : null}
+          {semReceitaAoSalvar ? (
+            <RefazerReceitas sessionId={sessionId} onFeito={(r) => setResultado((x) => (x ? { ...x, steps: r.steps } : x))} />
+          ) : null}
         </div>
       ) : (
         <div className={styles.review}>
@@ -443,9 +565,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                     </ul>
                   </section>
                 ) : null}
-                <Field label="Comando (o que varia fica entre chaves)">
-                  {({ id }) => (
-                    <TextInput id={id} value={proposta.command_template}
+                <Field label="Comando (o que varia fica entre chaves)"
+                       error={recusa && CODIGOS_DO_COMANDO.has(recusa.code) ? recusa.message : null}>
+                  {({ id, describedBy, invalid }) => (
+                    <TextInput id={id} value={proposta.command_template} aria-describedby={describedBy} invalid={invalid}
                                onChange={(e) => mudarProposta({ command_template: e.target.value })} />
                   )}
                 </Field>
@@ -478,6 +601,13 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       ) : null}
                       <p className={styles.muted}>Confere: {textoDoConfere(s.postcondition)}
                         {s.inputs.map((n) => porSeq.get(n)).filter(Boolean).length ? '' : ' · sem entradas: a IA conduz esta etapa'}</p>
+                      {previaPorEtapa.get(s.key) ? (
+                        <p className={styles.muted}>
+                          <Badge size="sm" tone={previaPorEtapa.get(s.key)!.recipe ? 'success' : 'neutral'}>
+                            {previaPorEtapa.get(s.key)!.recipe ? 'sem IA' : 'com IA'}
+                          </Badge> Ao salvar: {previaPorEtapa.get(s.key)!.reason}
+                        </p>
+                      ) : null}
                       {acoes.length && (s.side_effect || s.capability) ? (
                         <Select aria-label={`Ação do catálogo da etapa ${i + 1}`} value={s.capability ?? ''}
                                 onChange={(e) => mudarEtapa(i, { capability: e.target.value || null })}>
@@ -488,6 +618,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                     </li>
                   ))}
                 </ol>
+                {previa?.warnings.length ? (
+                  <ul className={styles.questions} aria-label="Avisos da prévia">{previa.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+                ) : null}
+                {previaFora ? <p className={styles.muted}>Prévia indisponível: {previaFora} O salvar confere de novo.</p> : null}
                 {descarteUnico.length ? (
                   <section aria-label="Descartadas">
                     <h4 className={styles.sub}>Descartadas ({descarteUnico.length})</h4>

@@ -6438,7 +6438,8 @@ Duas rotas novas e uma regra de gravação; nada muda nas existentes além do `r
     (a habilidade está desligada), 404 `not_found`.
 - Aparelho fora do ar no `save`/prévia/reparo: a identidade da receita (versão do app, idioma e densidade) vem do que a
   última leitura deixou; se faltar, a etapa fica sem receita com o `reason` "aparelho do treinamento fora do ar e <o que
-  falta> ainda não foi lido… Refaça as receitas quando ele voltar". O painel chama `/recipes` nesse caso.
+  falta> ainda não foi lido… Refaça as receitas quando ele voltar". O painel oferece "Refazer receitas" nesse caso (31.90-B): a pessoa aciona
+  `/recipes` no relatório do salvar ou na lista "Salvas" da barra de treinamento; nada chama sozinho.
 - **Prova:** `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`); `real`: `not_run`.
 
 ## Adendo v1.60 (05/10/2026; número da orquestradora; item 30.80) — a receita que não se aplicou não conta como falha dela
