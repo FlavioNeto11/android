@@ -359,3 +359,34 @@ async def test_o_sha_da_foto_do_canal_e_o_mesmo_da_previa_da_porta(harness: Any)
         assert sha_da_imagem_na_porta(state.db, "run-p", str(itens[chave]["step_id"])) == itens[chave]["imagem_sha256"]
     assert itens["minha"]["imagem_sha256"] and itens["pub"]["imagem_sha256"] is None
     assert sha_da_imagem_na_porta(state.db, "run-p", "etapa-que-nao-existe") is None
+
+
+async def test_o_sha_aprovado_no_plano_e_a_ancora_da_foto(harness: Any, monkeypatch: Any) -> None:
+    """28.48 (leitura do #417): depois do sim na prévia da porta, `sha_da_imagem_aprovada` devolve o `midia_sha256`
+    congelado no sim, igual ao `imagem_sha256` que o dono viu. A etapa sem sim não tem âncora."""
+    from app.modules.avisos.infrastructure.portas_da_central import sha_da_imagem_aprovada
+    from app.porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano
+    from app.util import now_iso
+
+    from .test_porta_do_plano import _sem_iniciar
+
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    pid = _plano(state, [{"key": "minha", "cap": "CREATE_POST",
+                          "bindings": {"image_id": "img-m", "content": "praia", "content_verbatim": "true"}},
+                         {"key": "outra", "cap": "CREATE_POST",
+                          "bindings": {"image_id": "img-n", "content": "praia 2", "content_verbatim": "true"}}])
+    _imagem(state, "img-m", pid)
+    _imagem(state, "img-n", pid)
+    for chave in ("minha", "outra"):         # o `_plano` do teste não passa pelo materialize: grava como a central
+        linha = state.db.scalar("SELECT bindings FROM steps WHERE key=?", (chave,))
+        state.db.execute("UPDATE steps SET bindings=? WHERE key=?",
+                         (json.dumps(state.repo._com_rotulo_ia(json.loads(linha))), chave))  # noqa: SLF001
+    itens = _por_chave(previa_da_porta(state, "run-p"))
+    minha, outra = itens["minha"], itens["outra"]
+    assert minha["selo"] == "aprovacao" and minha["chave"] and minha["imagem_sha256"]
+    assert sha_da_imagem_aprovada(state.db, "run-p", str(minha["step_id"])) is None      # antes do sim, sem âncora
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[
+        ItemAprovado(step_id=str(minha["step_id"]), chave=str(minha["chave"]))]), por="flavio")
+    assert sha_da_imagem_aprovada(state.db, "run-p", str(minha["step_id"])) == minha["imagem_sha256"]
+    assert sha_da_imagem_aprovada(state.db, "run-p", str(outra["step_id"])) is None      # sem sim, sem âncora

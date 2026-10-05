@@ -126,11 +126,12 @@ class _CanalFalso:
         return 999
 
 
-def _central(sha: str | None, *, ler=None, quebra: Exception | None = None):  # noqa: ANN001, ANN202
+def _central(sha: str | None, *, ler=None, quebra: Exception | None = None,  # noqa: ANN001, ANN202
+             aprovado: str | None = None):
     def montar():  # noqa: ANN202
         if quebra is not None:
             raise quebra
-        return (ler or (lambda _r, _s: (PNG, ""))), (lambda _r, _s: sha)
+        return (ler or (lambda _r, _s: (PNG, ""))), (lambda _r, _s: sha), (lambda _r, _s: aprovado)
     return montar
 
 
@@ -234,3 +235,18 @@ def test_marca_da_escolha_que_nao_grava_sai_com_erro(monkeypatch: pytest.MonkeyP
     assert asyncio.run(t._enviar("Responda 1 ou 2.", None, escolha="1-2")) == 3
     assert "ERRO" in capsys.readouterr().out
     assert asyncio.run(t._enviar("Sem escolha.", None)) == 0              # sem a marca, a falha do registro só avisa
+
+
+# ------------------------------------------------------------------ 28.48: o item já decidido, pela âncora do sim
+def test_com_o_sim_dado_a_foto_so_sai_se_for_a_aprovada(gravadas: list[object],
+                                                        capsys: pytest.CaptureFixture[str]) -> None:
+    """Leitura do #417: com o item já decidido no plano, o `midia_sha256` congelado no sim é a âncora. A prévia de agora
+    diz o mesmo sha: sai, e a saída diz que é o aprovado. A prévia diz outro: nada sai."""
+    sha = hashlib.sha256(PNG).hexdigest()
+    canal = _CanalFalso()
+    assert _foto(_central(sha, aprovado=sha), canal) == 0
+    assert len(canal.enviadas) == 1 and "aprovado e da prévia" in capsys.readouterr().out
+    canal = _CanalFalso()
+    assert _foto(_central(sha, aprovado="2" * 64), canal) == 2
+    assert canal.enviadas == [] and "não é mais a que o dono aprovou" in capsys.readouterr().out
+    assert gravadas == [999]

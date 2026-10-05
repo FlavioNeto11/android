@@ -280,6 +280,13 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - Prova: `simulated` (`backend/tests/test_telegram_entrada.py`, 113 no arquivo; o teste do teto falhou antes de o
   teto sair). Real: `not_run`.
 
+## 2026-10-05 — 28.48: a foto do item já decidido conferida pela âncora do sim (branch canais/28-48-foto-pela-aprovacao)
+
+- `telegram_status.py --foto`: com o item já aprovado na prévia da porta, o `midia_sha256` gravado no sim
+  (`sha_da_imagem_aprovada`) é a âncora. Se o sha da prévia de agora divergir dele, nada sai.
+- Prova: `simulated` (`.claude/canais/test_telegram_status.py` e
+  `backend/tests/test_rotulo_ia.py::test_o_sha_aprovado_no_plano_e_a_ancora_da_foto`). Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
