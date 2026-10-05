@@ -341,6 +341,12 @@ async def test_a_folha_que_nao_fecha_para_numa_pessoa_sem_mais_toque(tmp_path: P
         assert len(fake.toques_fora) == LIMITE_DE_FOLHAS and fake.toques_na_folha == []
         assert fake.shares == [] and not fake.rotulo_ligado
         assert h.ai.count("decide") == 0 and not ator.viu_a_folha
+        # 29.90: a parada sai num `step.updated` com o tipo de falha estável, para a regra de aviso consumir
+        import json
+        tipos = [json.loads(r["data"] or "{}").get("failure_kind")
+                 for r in _estado(h).db.query("SELECT data FROM events WHERE kind='step.updated' AND step_id=?",
+                                              (etapa["id"],))]
+        assert "aviso_do_app" in tipos, tipos
 
 
 class AtorQueSoObserva(AtorQueLigaORotulo):
