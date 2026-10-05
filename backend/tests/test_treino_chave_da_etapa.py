@@ -50,6 +50,14 @@ def test_titulo_so_com_simbolos_vira_etapa() -> None:
     assert _normalizar_com_prazo(["???"]) == ["etapa"]
 
 
+def test_descarte_repetido_pelo_modelo_fica_uma_vez() -> None:
+    """31.95 (leitura do #442): o descarte repetido sai deduplicado da proposta, na ordem, ficando o primeiro."""
+    req = TrainingRequest(intent="x", app_id=None, apps=[], inputs=[{"seq": 1}, {"seq": 2}])
+    saida = normalizar_proposta({"steps": [], "discarded": [{"seq": 2, "why": "a"}, {"seq": 1, "why": "b"},
+                                                           {"seq": 2, "why": "c"}, {"seq": 9, "why": "fora"}]}, req)
+    assert saida["discarded"] == [{"seq": 2, "why": "a"}, {"seq": 1, "why": "b"}]
+
+
 def test_parametro_com_sublinhado_inicial_fica_na_proposta() -> None:
     """31.95: o padrão é o `PLACEHOLDER` do fluxo (aceita `{_x}`); antes `{_x}` perdia o parâmetro e o save recusava."""
     req = TrainingRequest(intent="x", app_id=None, apps=[], inputs=[{"seq": 1}])

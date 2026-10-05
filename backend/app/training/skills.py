@@ -182,6 +182,8 @@ def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
     for d in p.get("discarded") or []:
         if not isinstance(d, dict) or not _e_inteiro(d.get("seq")):
             raise _erro("proposta_invalida", "Há uma entrada descartada sem o número da entrada (`seq`).")
+        if any(d["seq"] == outra["seq"] for outra in descartadas):
+            continue    # o mesmo descarte duas vezes não muda a receita: fica o primeiro, como a etapa faz com `inputs`
         descartadas.append(d)
     por_etapa: dict[int, int] = {}
     for st in etapas:
@@ -194,11 +196,10 @@ def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
                     "Entradas que não existem nesta gravação: " + ", ".join(f"#{i}" for i in inexistentes)
                     + ". Use só os números das entradas gravadas.")
     descartes = set(seqs_descartados)
-    duplicadas = sorted({*(i for i, n in por_etapa.items() if n > 1 or i in descartes),
-                         *(i for i in descartes if seqs_descartados.count(i) > 1)})
+    duplicadas = sorted(i for i, n in por_etapa.items() if n > 1 or i in descartes)
     if duplicadas:
         raise _erro("entrada_duplicada",
-                    "Entradas em mais de um lugar (em duas etapas, em uma etapa e em descartadas, ou repetidas em descartadas): "
+                    "Entradas em mais de um lugar (em duas etapas, ou em uma etapa e em descartadas): "
                     + ", ".join(f"#{i}" for i in duplicadas) + ". Cada entrada fica em UMA etapa ou é descartada, "
                     "senão a receita perde o toque sem avisar.")
     cobertas = {i for st in etapas for i in st["inputs"]} | {d["seq"] for d in descartadas}

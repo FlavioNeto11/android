@@ -6347,7 +6347,7 @@ Novos 400, no formato de sempre (`detail: {code, message}`; a mensagem diz o que
 - `parametro_nao_declarado`: `{x}` no comando sem parâmetro declarado (`instance_id`, `run_id` e `account_label` não contam).
 - `comando_generico`: o comando não começa por palavra fixa (ex.: `{pedido} no instagram`), ou tem menos de 2 palavras ou de 6 letras/dígitos fixos fora das chaves. `ligue para {contato}` passa; `siga {perfil}` não.
 - `parametro_invalido`: `{…}` no comando que não é nome válido (minúsculas, sem acento, números e `_`), ou `{`/`}` sem par (`abra {contato`).
-- `entrada_duplicada`: entrada em duas etapas, em uma etapa e em `discarded`, ou repetida dentro de `discarded`; a mensagem lista os `#seq`.
+- `entrada_duplicada`: entrada em duas etapas, ou em uma etapa e em `discarded`; a mensagem lista os `#seq`. Repetida só dentro de `discarded` não recusa: fica a primeira.
 - `entrada_inexistente`: `seq` numa etapa ou em `discarded` que não está entre as entradas gravadas (31.95); a mensagem lista os `#seq`.
 - `pos_condicao_vazia`: etapa com `side_effect` sem `postcondition.value` nem `description` (salvo ação de catálogo).
 - `entradas_sem_etapa`: entrada gravada fora de `steps[].inputs` e de `discarded`; a mensagem lista os `#seq`.

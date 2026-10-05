@@ -210,9 +210,13 @@ def normalizar_proposta(p: dict[str, Any], req: TrainingRequest) -> dict[str, An
                        "bindings": [b for b in s.get("bindings") or [] if b.get("name")]})
     nomes = set(PLACEHOLDER.findall(p.get("command_template") or ""))      # o padrão do fluxo (aceita `_x`)
     parametros = [x for x in p.get("parameters") or [] if x.get("name") in nomes]
+    descartadas: dict[int, dict[str, Any]] = {}
+    for d in p.get("discarded") or []:
+        if int(d.get("seq", -1)) in existentes:
+            descartadas.setdefault(int(d["seq"]), d)      # o modelo às vezes repete o descarte: fica o primeiro
     return {"summary": (p.get("summary") or req.intent)[:200], "command_template": (p.get("command_template") or req.intent).strip(),
             "parameters": parametros, "steps": etapas,
-            "discarded": [d for d in p.get("discarded") or [] if int(d.get("seq", -1)) in existentes],
+            "discarded": list(descartadas.values()),
             "questions": [q for q in p.get("questions") or [] if q][:8]}
 
 

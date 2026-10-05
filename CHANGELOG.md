@@ -22,7 +22,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-05 — 31.95: sobras da validação do salvar do treino (branch fix/31-95-sobras-da-validacao-do-salvar)
 
 - `entrada_inexistente` (400): `seq` em etapa ou em `discarded` fora das entradas gravadas. `seq` repetido dentro de
-  `discarded` agora é `entrada_duplicada`.
+  `discarded` não recusa: fica o primeiro, no `normalizar_proposta` e no salvar (o modelo às vezes repete, e isso não
+  muda a receita); em etapa e em `discarded` ao mesmo tempo segue `entrada_duplicada`.
 - `side_effect` tem de ser booleano (o texto "false" virava verdadeiro): senão `etapa_invalida`.
 - `{` ou `}` sem par no comando é `parametro_invalido`.
 - `normalizar_proposta` acha os parâmetros pelo `PLACEHOLDER` do fluxo (aceita `{_x}`), em vez de uma cópia da expressão.

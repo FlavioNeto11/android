@@ -97,10 +97,6 @@ def _seq_inexistente_no_descarte(p: dict[str, Any]) -> None:
     p["discarded"].append({"seq": 99, "why": "x"})
 
 
-def _seq_repetida_no_descarte(p: dict[str, Any]) -> None:
-    p["discarded"].append({"seq": 4, "why": "de novo"})              # a #4 duas vezes em `discarded`
-
-
 def _side_effect_em_texto(p: dict[str, Any]) -> None:
     p["steps"][1]["side_effect"] = "false"                           # verdadeiro para o `bool()` do salvar
 
@@ -116,7 +112,6 @@ def _chave_fechada(p: dict[str, Any]) -> None:
 CASOS: list[tuple[str, Callable[[dict[str, Any]], None]]] = [
     ("entrada_inexistente", _seq_inexistente_na_etapa),
     ("entrada_inexistente", _seq_inexistente_no_descarte),
-    ("entrada_duplicada", _seq_repetida_no_descarte),
     ("etapa_invalida", _side_effect_em_texto),
     ("parametro_invalido", _chave_aberta),
     ("parametro_invalido", _chave_fechada),
@@ -239,6 +234,23 @@ def test_comando_que_sequestra_pedido_alheio_e_recusado(comando: str) -> None:
 def test_molde_curto_e_legitimo_passa(comando: str, nomes: list[str]) -> None:
     p = _com(command_template=comando, parameters=[{"name": n, "example": "x"} for n in nomes])
     validar_proposta_para_salvar(p, {1, 2, 3, 4})
+
+
+def test_descarte_repetido_fica_uma_vez_e_nao_recusa() -> None:
+    """31.95 (leitura do #442): o modelo pode repetir um descarte; isso não muda a receita e não pode parar o salvar.
+    Fica o primeiro, como a etapa já faz com `inputs` repetidos."""
+    p = _valida()
+    p["discarded"].append({"seq": 4, "why": "de novo"})              # a #4 duas vezes em `discarded`
+    saida, avisos = validar_proposta_para_salvar(p, {1, 2, 3, 4})
+    assert avisos == [] and saida["discarded"] == [{"seq": 4, "why": "engano"}]
+
+
+def test_descarte_repetido_que_tambem_esta_em_etapa_segue_recusado() -> None:
+    p = _valida()
+    p["discarded"] += [{"seq": 4, "why": "de novo"}, {"seq": 3, "why": "x"}, {"seq": 3, "why": "y"}]
+    with pytest.raises(TrainingError) as erro:
+        validar_proposta_para_salvar(p, {1, 2, 3, 4})
+    assert erro.value.code == "entrada_duplicada" and "#3" in erro.value.message and "#4" not in erro.value.message
 
 
 def test_mensagem_da_duplicada_lista_os_numeros() -> None:
