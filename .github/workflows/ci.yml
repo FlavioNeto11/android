@@ -97,7 +97,13 @@ jobs:
           }
           if ($vivos.Count -gt 0 -and '${{ github.event_name }}' -eq 'schedule') {
             if (-not (Test-Path $marca)) { $agora.ToString('o') | Set-Content $marca }   # primeira vez: começa a contar
-            $ultima = [datetime]::Parse((Get-Content $marca -Raw).Trim(), $null, 'RoundtripKind').ToUniversalTime()
+            try {
+              $ultima = [datetime]::Parse((Get-Content $marca -Raw).Trim(), $null, 'RoundtripKind').ToUniversalTime()
+            } catch {
+              Write-Host "::warning::marca da porta ilegível ($marca): regravada com a hora de agora"
+              $agora.ToString('o') | Set-Content $marca
+              $ultima = $agora
+            }
             $horas = [int]($agora - $ultima).TotalHours
             $pids = ($vivos | ForEach-Object { $_.ProcessId }) -join ', '
             "livre=false" >> $env:GITHUB_OUTPUT
@@ -108,7 +114,11 @@ jobs:
             Write-Host "::warning::corrida diária pulada: pytest vivo no runner (PID $pids); última corrida de verdade há $horas h"
           } else {
             "livre=true" >> $env:GITHUB_OUTPUT
-            $agora.ToString('o') | Set-Content $marca
+            # O disparo só-PG não roda nada no central: não conta como corrida de verdade (senão um por dia mantinha a
+            # marca fresca e o central podia pular por dias sem o vermelho das 48 h).
+            if (-not ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.somente_postgres }}' -eq 'true')) {
+              $agora.ToString('o') | Set-Content $marca
+            }
           }
 
   backend-sqlite:
