@@ -196,8 +196,12 @@ def test_falha_do_agrupado_vale_para_todas_as_linhas(tmp_path: Path) -> None:
 
 
 def test_reply_ao_agrupado_nao_responde_a_fato_nenhum() -> None:
+    """28.19: o agrupado não diz a qual item se responde, então nada se aprova, veta ou responde por ele. Desde o 28.41
+    (F1 da leitura do #380) ele também não vira texto livre (a prévia de uma execução nova): só informa."""
+    from app.modules.avisos.application.entrada import SO_INFORMA_O_AGRUPADO
     for texto in ("sim", "não", "o perfil é o segundo"):
-        assert rotear(texto, fato="grupo:run.needs_input") == rotear(texto), texto
+        i = rotear(texto, fato="grupo:run.needs_input")
+        assert i.tipo == "desconhecida" and i.motivo == SO_INFORMA_O_AGRUPADO and i.ref is None, texto
 
 
 # ===================================================================== 2. a origem

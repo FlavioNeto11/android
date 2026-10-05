@@ -2675,3 +2675,29 @@ limpeza automática atrasada, e esquema criado fora do caminho que a faxina por 
   inteira depois de liberar o espaço.
 
 **Aplicabilidade.** Provisória: vale até a medida do 29.99, que troca a causa e pode trocar a regra.
+
+### K-101 — O CI no runner do central disputa a máquina com as medidas: uma janela de latência saiu contaminada
+
+**Sintoma.** Na bateria do 31.58 de 05/10, nove das dez execuções saíram mais lentas que a base de 04/10 (parede das
+normais com p50 de 13,3 s para 15,7 s), sem mudança de código que explicasse o tamanho da diferença. A conferência do
+host, feita antes de abrir a janela, não mostrava nenhum processo de teste.
+
+**Medição (`real`, 05/10/2026, central WIN-7S2UASNLFOP, `d025b671`).** A conferência das 06:57:20Z deu zero processo de
+teste e zero contêiner. Havia duas rodadas de CI de PR na fila do runner `central`; ele começou o `pytest -q` serial às
+06:58:38Z, 35 s depois do começo da bateria (06:58:03Z), e seguiu até o cancelamento das duas, às 07:06Z. Uma rodada de
+PR leva de 62 a 115 min. A análise só de leitura atribuiu cerca de 2 s à releitura antes do toque de efeito (29.90) e o
+resto à carga do host: `type_text` em 6,66 s contra 1,53 s, e o preparo da observação em 2,3 a 3,0 s contra 0,4 a 0,6 s.
+
+**Causa.** O runner próprio mora na máquina do parque e das medidas. O gatilho por PR enfileira uma suíte serial a cada
+push em ramo com PR aberto, e a fila não aparece na lista de processos até o job começar.
+
+**O que fazer.**
+
+- Antes de abrir janela de medida, conferir quatro coisas: processo de teste vivo, contêiner de teste, fila do CI vazia
+  (`gh run list --status queued`) e runner sem job (`gh run list --status in_progress`).
+- Todo push em ramo com PR leva `[skip ci]` no commit da ponta, inclusive o de merge; conferir com
+  `git log -1 --format=%s` antes do `gh pr create`.
+- Rodada de CI que comece durante medida ou suíte se cancela com `gh run cancel <id>`.
+- Medida que cruzou com o CI não se aproveita como comparação: repete-se inteira, com o host quieto.
+
+**Aplicabilidade.** Vigente até o 29.102 tirar o gatilho por PR; depois dele, vale para a volta agendada e para a manual.

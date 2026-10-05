@@ -10,6 +10,7 @@ import shutil
 import threading
 import time
 from dataclasses import asdict
+from datetime import timedelta
 from time import monotonic
 from pathlib import PurePosixPath
 from typing import Any, Literal
@@ -100,7 +101,7 @@ from .modules.execution.domain.command_refinement import CommandRefinement
 from .taskqueue.assistente import CommandRefineBody, ComandoAssistido, RunSuccessorBody
 from .taskqueue.orquestrador import Orquestrador, RunTargetsSuggestBody, RunTargetsSuggestion
 from .taskqueue.service import RunError
-from .util import iso_in, new_token, now_iso, parse_iso, to_iso
+from .util import iso_in, new_token, now, now_iso, parse_iso, to_iso
 from .vitrine import _apps_changed, app_dto, apps_list, convergir_o_parque, vitrine
 
 from .devices.verbs import sem_hibernacao
@@ -302,16 +303,23 @@ async def health(request: Request) -> Any:
 # da revisão de UX). `planned` é um plano pronto para inspeção, que ninguém mandou executar: não é "em andamento"
 # (decisão D2) e nenhum contador a lê, então só vem se estiver entre as 20 recentes. Custo: uma linha por execução
 # parada em `needs_input` ou em andamento (27 + 0 no parque real em 30/09).
-_STATUS_DO_SNAPSHOT = tuple(sorted(str(x.value) for x in RunStatus if x not in RUN_TERMINAL and x != RunStatus.planned))
+# `awaiting_person` (29.93) não é terminal, mas só vem por `AGUARDANDO_NO_SNAPSHOT_D` dias depois do fim do trabalho
+# automático (`finished_at`); mais velha, só se estiver entre as 20 recentes. Com o vencimento do 31.50 desligado nada a
+# fecha, e sem o corte o snapshot cresceria sem limite. A caixa de Pendências não depende disto: ela conta só
+# `needs_input` (ADR-062, D1), e o objetivo esperando segue no detalhe da execução e no chip "Pede atenção".
+AGUARDANDO_NO_SNAPSHOT_D = 7
+_STATUS_DO_SNAPSHOT = tuple(sorted(str(x.value) for x in RunStatus
+                                   if x not in RUN_TERMINAL and x not in (RunStatus.planned, RunStatus.awaiting_person)))
 _SQL_RUNS_DO_SNAPSHOT = (
     "SELECT * FROM runs WHERE status IN (" + ",".join(f"'{x}'" for x in _STATUS_DO_SNAPSHOT) + ")"
+    f" OR (status='{RunStatus.awaiting_person.value}' AND finished_at >= ?)"
     " OR id IN (SELECT id FROM runs ORDER BY created_at DESC LIMIT 20) ORDER BY created_at DESC")
 
 
 @router.get("/snapshot")
 async def snapshot(request: Request) -> Any:
     s = st(request)
-    runs = s.db.query(_SQL_RUNS_DO_SNAPSHOT)
+    runs = s.db.query(_SQL_RUNS_DO_SNAPSHOT, (to_iso(now() - timedelta(days=AGUARDANDO_NO_SNAPSHOT_D)),))
     return {"last_event_id": s.bus.last_id(), "server_time": now_iso(), "health": s.health(),
             "metrics": s.devices.last_metrics, "instances": s.devices.list_dtos(), "apps": apps_list(s),
             "runs": s.repo.run_summaries(runs), "settings": s.settings.get(),

@@ -316,7 +316,26 @@ def test_com_a_conta_no_aviso_so_a_mesma_conta_cala_o_objetivo(tmp_path: Path, c
     for seq, (status, app) in enumerate(etapas, start=1):
         _etapa(banco, "rc", seq, status, app)
     _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)), conta=conta_do_aviso)
-    assert _parou(servico, "rc") is (not cala)
+    # A etapa que espera parou pela conta (28.41, N1: o motivo vale também neste ramo); a porta de sessão, sem etapa
+    # esperando, já é motivo de conta.
+    parou_na_etapa = any(status == "waiting_user" for status, _app in etapas)
+    assert _parou(servico, "rc", failure_kind="autenticacao" if parou_na_etapa else None) is (not cala)
+
+
+@pytest.mark.parametrize(("failure_kind", "cala"), [
+    ("autenticacao", True), ("conta_errada", True),
+    ("falta_informacao", False), ("aviso_do_app", False), ("ui_ocupada", False), (None, False)])
+def test_com_a_mesma_conta_so_o_motivo_de_conta_cala(tmp_path: Path, failure_kind: str | None, cala: bool) -> None:
+    """28.41, N1 da leitura do #372: com a conta igual, o objetivo que parou por outro motivo (falta de informação, um
+    aviso do app) ainda é outra notícia, como já era no ramo só da persona."""
+    servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
+    _personas_e_contas(banco)
+    criada = now()
+    _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _objetivo(banco, "rc")
+    _etapa(banco, "rc", 1, "waiting_user", "instagram")
+    _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)), conta="c-ig-p1")
+    assert _parou(servico, "rc", failure_kind=failure_kind) is (not cala)
 
 
 @pytest.mark.parametrize(("failure_kind", "com_etapa", "cala"), [
@@ -398,7 +417,7 @@ def _portas(status: RunStatus, **contagens: int) -> PortasReais:
                                 ("succeeded", "failed", "waiting_user", "uncertain", "cancelled", "running", "pending")})
     repo = SimpleNamespace(run_row=lambda _rid: {"status": status.value},
                            run_summary=lambda _row: SimpleNamespace(counts=counts, short_id="abc123", status_detail=None))
-    db = SimpleNamespace(scalar=lambda *_a, **_k: None)
+    db = SimpleNamespace(scalar=lambda *_a, **_k: None, query=lambda *_a, **_k: [])
     return PortasReais(db=db, runs=SimpleNamespace(repo=repo), aprovacoes=None, saude=lambda: None,  # type: ignore[arg-type]
                        online=lambda: [])
 
@@ -502,3 +521,172 @@ def test_responder_a_um_lembrete_nao_manda_a_caixa() -> None:
     i = rotear("ok, vou ver", fato="vencimento:lembrete:r1:o1:2026-10-05T03:40:00.000Z")
     assert i.tipo == "desconhecida" and i.motivo is not None
     assert "Pendências" not in i.motivo and "link" in i.motivo
+
+
+# ===================================================================== 6. o 28.41 (sobras das leituras do #372)
+@pytest.mark.parametrize("fato", ["objective:r1:o1:2026-10-05T03:40:00.000Z", "session:4412"])
+@pytest.mark.parametrize("texto", ["sim", "abre o instagram no android-13", "o que houve?"])
+def test_responder_ao_aviso_de_objetivo_ou_de_conta_nao_vira_execucao(fato: str, texto: str) -> None:
+    """R1: sem o ramo, "abre o instagram no android-13" em resposta ao aviso cairia no texto livre e viraria a prévia de
+    uma execução NOVA."""
+    from app.modules.avisos.application.entrada import SO_INFORMA_PELO_LINK, rotear
+    i = rotear(texto, fato=fato)
+    assert i.tipo == "desconhecida" and i.motivo == SO_INFORMA_PELO_LINK
+
+
+@pytest.mark.parametrize("tipo", ["objective.waiting_user", "session.needs_person", "approval.pending",
+                                  "pendencia.vence_em", "rotina"])
+@pytest.mark.parametrize("texto", ["sim", "abre o instagram no android-13", "o que houve?"])
+def test_responder_ao_agrupado_nao_vira_execucao_nem_decide(tipo: str, texto: str) -> None:
+    """F1 da leitura do #380: a mensagem agrupada leva `grupo:<tipo>` (`entrega.py`), não a chave de um aviso. Sem o
+    ramo, "abre o instagram no android-13" em resposta a "3 objetivos pararam" virava prévia de execução nova, e o "sim"
+    ao agrupado de aprovações virava texto livre."""
+    from app.modules.avisos.application.entrada import SO_INFORMA_O_AGRUPADO, rotear
+    from app.modules.avisos.domain.mensagem import FAMILIA_DO_GRUPO
+    i = rotear(texto, fato=f"{FAMILIA_DO_GRUPO}:{tipo}")
+    assert i.tipo == "desconhecida" and i.motivo == SO_INFORMA_O_AGRUPADO
+
+
+def test_o_status_conta_o_objetivo_parado_sem_contar_a_aprovacao_duas_vezes(tmp_path: Path) -> None:
+    """R2: o `/status` dizia só aprovações e perguntas."""
+    _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
+    _run(banco, "r1", chave="k-comum")
+    for oid, aparelho, bloqueio in (("r1:o1", "android-12", None), ("r1:o2", "android-13", "approval"),
+                                    ("r1:o3", "android-14", "ai")):
+        banco.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, blocked_kind)"
+                      " VALUES (?,?,?,?,?,?)", (oid, "r1", aparelho, "waiting_user", 1, bloqueio))
+    portas = _portas(RunStatus.running)
+    portas.db = banco
+    portas._saude = lambda: SimpleNamespace(status="ok", problems=[])            # noqa: SLF001
+    portas.aprovacoes_pendentes = lambda: []                                     # type: ignore[method-assign]
+    texto = portas.status()
+    assert "2 objetivo(s) parado(s)" in texto and "os objetivos parados estão em Execuções" in texto
+
+
+def test_a_recusa_no_planejamento_nao_leva_o_texto_do_pedido(tmp_path: Path) -> None:
+    """N4: o `status_detail` da execução recusada fora do catálogo traz um trecho do comando. Ao canal vai a frase fixa
+    do motivo, e o texto do pedido nunca."""
+    from app.modules.avisos.infrastructure.portas_da_central import MOTIVO_DA_RECUSA, MOTIVO_DA_RECUSA_GENERICO
+    _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
+    _run(banco, "r1", chave="k-comum")
+    banco.execute("INSERT INTO events(ts, kind, level, run_id, message, data) VALUES (?,?,?,?,?,?)",
+                  (to_iso(now()), "plan.refused", "warn", "r1", "MARCADOR do pedido",
+                   json.dumps({"motivo": "sem_acao_do_catalogo", "pedidos": [{"pedido": "MARCADOR do pedido"}]})))
+    portas = _portas(RunStatus.failed)
+    portas.db = banco
+    portas.runs.repo.run_summary = lambda _row: SimpleNamespace(                 # type: ignore[attr-defined]
+        counts=SimpleNamespace(succeeded=0, failed=0, waiting_user=0, uncertain=0, cancelled=0, running=0, pending=0),
+        short_id="abc123", status_detail="Nenhuma ação faz 'MARCADOR do pedido'")
+    texto = portas.desfecho("r1") or ""
+    assert "MARCADOR" not in texto and texto.endswith(MOTIVO_DA_RECUSA["sem_acao_do_catalogo"])
+    banco.execute("UPDATE events SET data=? WHERE kind='plan.refused'", (json.dumps({"motivo": "outro"}),))
+    assert (portas.desfecho("r1") or "").endswith(MOTIVO_DA_RECUSA_GENERICO)
+    banco.execute("DELETE FROM events WHERE kind='plan.refused'")
+    assert (portas.desfecho("r1") or "") == "Execução abc123: falhou.", "sem recusa e sem evidência, só o estado"
+
+
+def test_o_agrupado_de_conta_e_o_de_lembrete_vao_a_caixa_sem_o_id_de_um_item() -> None:
+    from app.modules.avisos.domain.mensagem import corpo_agrupado, link_agrupado
+    foco = f"{PAINEL}/#/painel?foco=android-13"
+    assert link_agrupado("session.needs_person", [foco, f"{PAINEL}/#/pendencias"]) == f"{PAINEL}/#/pendencias"
+    lembrete = corpo_agrupado(["⏳ O objetivo parado no android-13 vence em até 2 h"], "pendencia.vence_em")
+    assert "Execuções" in lembrete and "Pendências" in lembrete
+    assert link_agrupado("pendencia.vence_em", [f"{PAINEL}/#/execucoes/{RUN}"]) == f"{PAINEL}/#/pendencias"
+
+
+# ===================================================================== 7. o 28.41 (leitura do #380 e do #382)
+@pytest.mark.parametrize("fato", ["pedido:p1", "learning:r1:o1", "trello-convidado:c1", "deploy:d025b671:110",
+                                  "run:r1:running", "familia-nova:x1"])
+@pytest.mark.parametrize(("texto", "tipo"), [
+    ("sim", "so_informa"), ("abre o instagram no android-13", "so_informa"),
+    ("para android-09: abrir o QA Messenger", "so_informa"),
+    ("o que houve?", "orquestradora"), ("manda um print do android-13", "captura"), ("quem é você?", "identidade")])
+def test_resposta_a_fato_sem_ramo_nunca_vira_comando(fato: str, texto: str, tipo: str) -> None:
+    """Regra de fundo (orquestradora, 05/10 06:53Z; G1 da releitura do #380, 07:50Z): resposta a aviso nunca vira
+    COMANDO. O texto livre (a prévia) e o `para` só informam; a pergunta vai à orquestradora, e a captura e a
+    identidade, que não executam nada, seguem. Um tipo novo de aviso (`familia-nova`) não reabre a lacuna."""
+    from app.modules.avisos.application.entrada import SO_INFORMA_SEM_RAMO, rotear
+    i = rotear(texto, fato=fato)
+    if tipo == "so_informa":
+        assert i.tipo == "desconhecida" and i.motivo == SO_INFORMA_SEM_RAMO
+    else:
+        assert i.tipo == tipo and i.tipo == rotear(texto).tipo
+        if tipo == "orquestradora":
+            assert i.repasse == "pergunta"
+
+
+def test_toda_chave_de_aviso_tem_familia_e_identidade() -> None:
+    """Nota da releitura do #380: um fato cuja chave não tivesse `:` daria `Fato.de(...) is None`, e a resposta a ele
+    teria a gramática inteira, com o texto livre e o `para`. Toda chave de `Aviso(...)` em `backend/app` sai de um
+    `chave_do_*` ou de uma variável `chave*`, e cada construtor devolve `<família>:<identidade>`."""
+    import ast
+    from datetime import datetime, timezone
+
+    from app.modules.avisos.application.entrada import Fato
+    from app.modules.avisos.domain import portal
+    from app.modules.avisos.domain.mensagem import chave_do_fato
+    from app.modules.decisoes.domain import resumo
+    raiz = Path(__file__).resolve().parents[1] / "app"
+    fora: list[str] = []
+    vistas = 0
+    for arquivo in raiz.rglob("*.py"):
+        for no in ast.walk(ast.parse(arquivo.read_text(encoding="utf-8"))):
+            if not (isinstance(no, ast.Call) and getattr(no.func, "id", None) == "Aviso"):
+                continue
+            for kw in no.keywords:
+                if kw.arg != "chave":
+                    continue
+                vistas += 1
+                v = kw.value
+                nome = (getattr(v.func, "id", "") or getattr(v.func, "attr", "")) if isinstance(v, ast.Call) else                     getattr(v, "id", "")
+                if not nome.startswith("chave"):
+                    fora.append(f"{arquivo.relative_to(raiz)}:{no.lineno}")
+    assert vistas >= 10 and fora == []
+    agora = datetime(2026, 10, 5, 8, 0, tzinfo=timezone.utc)
+    for chave in (chave_do_fato("run", "r1", "needs_input"), chave_do_fato("comentario", "c1"),
+                  portal.chave_do_contato(1), portal.chave_do_resumo(agora), resumo.chave_do_resumo(1, 2)):
+        assert Fato.de(chave) is not None, chave
+
+
+@pytest.mark.parametrize("texto", ["sim", "abre o instagram no android-13", "o que houve?"])
+def test_o_anexo_segue_a_gramatica_comum_de_proposito(texto: str) -> None:
+    """28.24: no anexo só o pedido de leitura é dele; o resto é a gramática comum (a única exceção à regra de fundo)."""
+    from app.modules.avisos.application.entrada import rotear
+    assert rotear(texto, fato="anexo:7") == rotear(texto)
+
+
+@pytest.mark.parametrize("fato", ["deploy:d025b671:110", "livro:l1", "custo:2026-10-05", "trello-convidado:c1",
+                                  "pedido:p1", "familia-nova:x1"])
+def test_no_trello_o_fato_sem_ramo_responde_o_comando_livre_desligado(fato: str) -> None:
+    """Regra de fundo no Trello (orquestradora, 05/10 07:24Z): lá o texto livre nunca executou; o comentário num cartão
+    cujo fato não tem ramo segue para a resposta de sempre (`RESPOSTA_COMANDO_LIVRE`), marcado para nunca virar
+    prévia. O cartão do plano (sem fato) segue à orquestradora (28.30)."""
+    from app.modules.avisos.application.entrada import SO_INFORMA_SEM_RAMO
+    from app.modules.avisos.infrastructure.trello_leitor import PREFIXO_DO_FATO, REPASSE_COMENTARIO, ConversaDoTrello
+    texto = "abre o instagram no android-13"
+    i = ConversaDoTrello._intencao(SimpleNamespace(), {"texto": texto, "responde_a": f"{PREFIXO_DO_FATO}{fato}"})  # type: ignore[arg-type]
+    assert i.tipo == "livre" and i.motivo == SO_INFORMA_SEM_RAMO
+    # G1: a pergunta no cartão-espelho volta a ir à orquestradora (28.28).
+    pergunta = ConversaDoTrello._intencao(SimpleNamespace(),  # type: ignore[arg-type]
+                                          {"texto": "o que houve?", "responde_a": f"{PREFIXO_DO_FATO}{fato}"})
+    assert pergunta.tipo == "orquestradora" and pergunta.repasse == "pergunta"
+    plano = ConversaDoTrello._intencao(SimpleNamespace(), {"texto": texto, "responde_a": ""})  # type: ignore[arg-type]
+    assert plano.tipo == "orquestradora" and plano.repasse == REPASSE_COMENTARIO
+
+
+@pytest.mark.parametrize(("bloqueios", "gestos"), [
+    ([None], ["objetivo"]), (["approval"], ["aprovacao"]), (["ai", "approval"], ["objetivo", "aprovacao"])])
+def test_o_gesto_do_desfecho_segue_o_motivo_da_parada(tmp_path: Path, bloqueios: list[str | None],
+                                                      gestos: list[str]) -> None:
+    """Leitura do #382: o objetivo parado numa aprovação se resolve na caixa de Pendências, não no aparelho."""
+    from app.modules.avisos.domain.mensagem import GESTO_DA_APROVACAO_NO_DESFECHO
+    _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
+    _run(banco, "r1", chave="k-comum")
+    for n, bloqueio in enumerate(bloqueios):
+        banco.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, blocked_kind)"
+                      " VALUES (?,?,?,?,?,?)", (f"r1:o{n}", "r1", f"android-1{n}", "waiting_user", 1, bloqueio))
+    portas = _portas(RunStatus.completed_with_issues, waiting_user=len(bloqueios))
+    portas.db = banco
+    linhas = (portas.desfecho("r1") or "").split("\n")
+    nomes = {GESTO_DO_OBJETIVO: "objetivo", GESTO_DA_APROVACAO_NO_DESFECHO: "aprovacao"}
+    assert [nomes[x] for x in linhas if x in nomes] == gestos

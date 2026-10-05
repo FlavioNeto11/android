@@ -129,7 +129,8 @@ def objetivo_em_andamento(state: AppState, instance_id: str, *, exceto_quem_espe
     `uncertain` entra pelo mesmo motivo (revisão do PR #13): a tela dele é a evidência de que o operador precisa para
     decidir se o efeito aconteceu, e instalar e abrir o app por cima a apagaria.
 
-    Idade (item 25.12): o objetivo `waiting_user`/`uncertain` de uma execução em `completed_with_issues` só segura por
+    Idade (item 25.12): o objetivo `waiting_user`/`uncertain` de uma execução em `completed_with_issues` (ou em
+    `awaiting_person`, o estado em que o `waiting_user` deixa a execução desde o 29.93) só segura por
     `OBJETIVO_PARADO_SEGURA_POR_S` depois de ter parado (`objectives.finished_at`, que `set_objective` grava ao entrar
     nesses estados; sem ele, `runs.finished_at` e `runs.created_at`). Execução VIVA (`running`, `paused`, `planned`,
     `needs_input`, `cancelling`) segura sem limite de idade. A execução que a pessoa reabre volta a `running`.
@@ -149,7 +150,7 @@ def objetivo_que_segura(state: AppState, instance_id: str, *, exceto_quem_espera
     row = state.db.one(
         "SELECT o.id FROM objectives o JOIN runs r ON r.id = o.run_id WHERE o.instance_id=?"
         " AND o.status IN ('running','waiting_user','uncertain') AND r.status NOT IN ('completed','cancelled','failed')"
-        " AND NOT (r.status='completed_with_issues' AND o.status IN ('waiting_user','uncertain')"
+        " AND NOT (r.status IN ('completed_with_issues','awaiting_person') AND o.status IN ('waiting_user','uncertain')"
         " AND COALESCE(o.finished_at, r.finished_at, r.created_at) < ?)"
         + (" AND NOT (o.status='running' AND COALESCE(o.wait_reason,'')='rede')" if exceto_quem_espera_a_rede else "")
         + " ORDER BY o.id LIMIT 1",

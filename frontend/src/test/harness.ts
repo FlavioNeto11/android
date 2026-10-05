@@ -1,5 +1,5 @@
 import { act } from 'react';
-import { vi } from 'vitest';
+import { expect, onTestFailed, vi } from 'vitest';
 import { esquecerLeituraDosPendentes } from '../features/aprendizado/api';
 
 /** Backend falso: responde às rotas do contrato e registra tudo o que o frontend pediu. */
@@ -20,6 +20,38 @@ export function apiError(status: number, code: string, message: string): Respons
   return json({ detail: { code, message } }, status);
 }
 
+/**
+ * Modo do harness que acha o teste que corre contra a tela de antes (item 29.104): com `ATRASO_DO_FETCH_MS=N`, cada
+ * resposta do backend falso demora de 0 a N ms, como no runner carregado do CI. Desligado por padrão. O sorteio é
+ * semeado (`SEMENTE_DO_ATRASO`, ou a hora se faltar) e, dentro de um teste, depende só da semente e do nome dele: o
+ * teste que falhar diz a semente, e a rodada se repete com ela.
+ */
+const ATRASO_MAXIMO_MS = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
+const SEMENTE_DO_ATRASO = process.env.SEMENTE_DO_ATRASO ?? String(Date.now());
+
+function sorteioDoAtraso(): (() => number) | null {
+  if (!(ATRASO_MAXIMO_MS > 0)) return null;
+  const teste = expect.getState().currentTestName ?? '';
+  try {
+    onTestFailed(() => {
+      console.warn(`[harness] falhou com o fetch falso atrasado: ATRASO_DO_FETCH_MS=${ATRASO_MAXIMO_MS} SEMENTE_DO_ATRASO=${SEMENTE_DO_ATRASO} (${teste})`);
+    });
+  } catch {
+    console.warn(`[harness] fetch falso atrasado fora de um teste: SEMENTE_DO_ATRASO=${SEMENTE_DO_ATRASO}`);
+  }
+  // FNV-1a da semente com o nome do teste, e o mulberry32 por cima: a sequência não depende de quais testes rodaram antes.
+  let h = 2166136261;
+  for (const c of `${SEMENTE_DO_ATRASO}|${teste}`) h = Math.imul(h ^ c.charCodeAt(0), 16777619);
+  let a = h >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return Math.floor((((t ^ (t >>> 14)) >>> 0) / 4294967296) * (ATRASO_MAXIMO_MS + 1));
+  };
+}
+
 export class FakeBackend {
   calls: RecordedCall[] = [];
   private handlers: { method: string; pattern: RegExp; handler: Handler }[] = [];
@@ -36,6 +68,7 @@ export class FakeBackend {
 
   install(): void {
     esquecerLeituraDosPendentes();          // a leitura dividida da fila não atravessa testes
+    const atraso = sorteioDoAtraso();
     const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://localhost');
       const method = (init?.method ?? 'GET').toUpperCase();
@@ -49,6 +82,8 @@ export class FakeBackend {
       }
       const call: RecordedCall = { method, path: url.pathname, query: url.searchParams, body };
       this.calls.push(call);
+      const ms = atraso?.();
+      if (ms) await new Promise((r) => setTimeout(r, ms));
       const match = this.handlers.find((h) => h.method === method && h.pattern.test(url.pathname));
       if (!match) return apiError(404, 'not_found', `Rota não simulada: ${method} ${url.pathname}`);
       return match.handler(call);
@@ -139,6 +174,23 @@ export async function waitFor<T>(check: () => T, timeoutMs = 4000): Promise<T> {
     if (Date.now() - start > timeoutMs) throw lastError;
     await flush(15);
   }
+}
+
+/**
+ * Espera um elemento aparecer e o devolve. O `waitFor(() => raiz.querySelector(…))` passava na hora com `null` (só
+ * `false` e exceção são "ainda não"); aqui `null` também é, até o prazo. A catraca `src/test/esperas.test.ts` barra a
+ * forma antiga.
+ */
+export async function esperarElemento<E extends Element = HTMLElement>(
+  seletor: string,
+  raiz: ParentNode = document,
+  timeoutMs = 4000,
+): Promise<E> {
+  return waitFor(() => {
+    const el = raiz.querySelector<E>(seletor);
+    if (el == null) throw new Error(`esperarElemento: nada com "${seletor}" ainda`);
+    return el;
+  }, timeoutMs);
 }
 
 // ---- consultas e interações mínimas (sem dependências extras) ----

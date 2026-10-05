@@ -242,6 +242,9 @@ TOOLS: dict[str, type[_Args]] = {
 CONTROL_TOOLS = {"step_done", "step_blocked"}
 EFFECT_CAPABLE = {"tap", "long_press", "drag", "type_text"}     # podem disparar um efeito externo
 READ_ONLY = {"observe_screen", "find_element", "wait_for", "verify_state"}
+
+#: 31.74: o relógio que mede a leitura da árvore no `wait_for` (o teste injeta um falso, com leitura lenta).
+_relogio: Callable[[], float] = time.monotonic
 STRICT_TOOLS = EFFECT_CAPABLE | CONTROL_TOOLS
 
 
@@ -781,12 +784,21 @@ async def execute_tool(ctx: ToolContext, name: str, args: _Args) -> ToolOutcome:
         if not args.text or ctx.observe is None:
             await ctx.dormir(total)
             return ToolOutcome({"waited_s": total})
-        waited = 0.0
-        while waited < total:
+        # 31.74: o prazo conta o SONO e a LEITURA da árvore. Antes contava só o sono: com 8 s pedidos, as 8 leituras do
+        # Chrome a ~4 s cada fizeram o `wait_for` durar 40,9 s (r-20261005071303-f24955). O sono conta pelo valor pedido
+        # (o `dormir` da suíte pula o tempo); a leitura, pelo relógio. Depois do último sono vem uma última leitura, então a
+        # parede não passa do pedido mais uma leitura.
+        dormido = lendo = 0.0
+        while True:
+            t0 = _relogio()
             tree = await ctx.observe()
+            lendo += _relogio() - t0
             if tree.contains_text(args.text):
-                return ToolOutcome({"found": True, "waited_s": round(waited, 1)})
-            await ctx.dormir(1.0)
-            waited += 1.0
-        return ToolOutcome({"found": False, "waited_s": total})
+                return ToolOutcome({"found": True, "waited_s": round(dormido + lendo, 1)})
+            restante = total - dormido - lendo
+            if restante <= 0:
+                return ToolOutcome({"found": False, "waited_s": round(dormido + lendo, 1)})
+            pausa = min(1.0, restante)
+            await ctx.dormir(pausa)
+            dormido += pausa
     raise DriverError(f"Ferramenta {name} não é executável.", effect_possible=False)

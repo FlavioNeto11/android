@@ -90,6 +90,37 @@ describe('montarPendencias (puro)', () => {
     expect([...PRECISA_DE_PESSOA].sort()).toEqual(['auth_challenge', 'needs_person', 'wrong_account']);
   });
 
+  it('29.96: a sessão `unknown` NO TETO entra, com rótulo próprio; o `unknown` comum não', () => {
+    const lista = montarPendencias({
+      aprendizado: [], aprovacoes: [], execucoes: [],
+      personas: [
+        makePersona('p6', 'Eva Lima', { username: 'eva',
+                                       session: { ...makeSession('unknown', 'android-01'), unknown_at_cap: true } }),
+        makePersona('p7', 'Fabio Reis', { username: 'fabio', session: makeSession('unknown', 'android-03') }),
+      ],
+    });
+    expect(lista.map((p) => p.chave)).toEqual(['intervencao:p6']);
+    expect(lista[0]).toMatchObject({ origem: 'intervencao', acao: 'Resolver', destino: { tela: 'personas' } });
+    expect(lista[0]?.detalhe).toContain('Tela não reconhecida');
+    expect(lista[0]?.detalhe).toContain('android-01');
+    expect(lista[0]?.detalhe).not.toContain('Não verificada');
+  });
+
+  it('29.100: o `desde` da sessão é a hora em que o estado começou; sem ela, a última verificação', () => {
+    const lista = montarPendencias({
+      aprendizado: [], aprovacoes: [], execucoes: [],
+      personas: [
+        makePersona('p8', 'Gil Souza', { username: 'gil', session: {
+          ...makeSession('unknown', 'android-01'), unknown_at_cap: true, verified_at: '2026-09-20T10:00:00Z',
+          status_since: '2026-10-05T06:30:00Z' } }),
+        makePersona('p9', 'Ana Paz', { username: 'ana', session: {
+          ...makeSession('auth_challenge', 'android-02'), verified_at: '2026-10-01T09:00:00Z' } }),
+      ],
+    });
+    const desde = Object.fromEntries(lista.map((p) => [p.chave, p.desde]));
+    expect(desde).toEqual({ 'intervencao:p8': '2026-10-05T06:30:00Z', 'intervencao:p9': '2026-10-01T09:00:00Z' });
+  });
+
   it('D1: toda execução em `needs_input` é pendência, por mais antiga; objetivo esperando em execução terminada não', () => {
     // O parque real: 27 `needs_input` de 17/09 a 28/09, quase todas fora das 20 mais recentes. Antes a caixa mostrava
     // só as da janela (4), e contava `completed_with_issues` com objetivo `waiting_user`, que já terminaram.
