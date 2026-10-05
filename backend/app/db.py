@@ -334,8 +334,10 @@ class Database:
 
     def depois_do_commit(self, fn: Callable[[], None]) -> None:
         """Roda `fn` depois do `COMMIT` da transação aberta NESTA thread, fora da trava; sem transação, roda já. No
-        `ROLLBACK`, não roda. Existe para o efeito que outra thread vai ler (o assentamento de uma execução, 29.93):
-        disparado dentro da transação, ele podia esperar a trava no laço de eventos, ou ler o estado de antes."""
+        `ROLLBACK`, não roda; num `savepoint()` desfeito, o que foi pedido dentro dele também não (29.108: a escrita
+        que o pediu saiu com o `ROLLBACK TO SAVEPOINT`). Existe para o efeito que outra thread vai ler (o assentamento
+        de uma execução, 29.93): disparado dentro da transação, ele podia esperar a trava no laço de eventos, ou ler o
+        estado de antes."""
         with self._lock:
             if self._tx_depth > 0:
                 self._depois_do_commit.append(fn)
@@ -418,9 +420,12 @@ class Database:
             self._conn.execute(f"SAVEPOINT {nome}")
             self._tx_depth += 1
             suspeita_antes = self._suspeita
+            pendentes_antes = len(self._depois_do_commit)
             try:
                 yield
             except BaseException:
+                # 29.108: o efeito pedido dentro do sub-bloco desfeito sai com ele (a escrita que o pediu foi desfeita).
+                del self._depois_do_commit[pendentes_antes:]
                 try:
                     self._conn.execute(f"ROLLBACK TO SAVEPOINT {nome}")
                     self._conn.execute(f"RELEASE SAVEPOINT {nome}")

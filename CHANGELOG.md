@@ -55,6 +55,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - de 09:48Z a 09:52Z: `test_portal_prova_de_fora.py` 28 passed e `test_portal_borda.py` 123 passed;
   - com o L1, de 10:02Z a 10:06Z: `test_portal_prova_de_fora.py` 32 passed e `docs-check` 0.
 
+## 2026-10-05 — 29.108: o processo que perde a marca de assentamento solta a trava de rascunho (branch fix/29-108-assentamento-perdedor)
+
+- K2 da leitura do #382: com dois processos, o worker que PERDE a marca `runs.assentada_em` voltava do `_settle_run`
+  sem soltar a trava de rascunho, que mora em memória no `AppState` dele. Agora ele chama o `on_run_parada` (solta a
+  trava e acorda os pedidos, tudo idempotente), sem o digest, que foi de quem ganhou a marca.
+- `Database.depois_do_commit` num `savepoint()` desfeito: o efeito pedido dentro do sub-bloco ficava pendente e rodava
+  no COMMIT de fora, embora a escrita que o pediu tivesse saído com o `ROLLBACK TO SAVEPOINT`. Agora sai junto (a lista
+  volta ao tamanho de antes do savepoint), e a docstring diz isso.
+- Prova: `simulated` (`backend/tests/test_aguardando_pessoa.py::test_k2_o_worker_que_perde_a_marca_solta_a_trava_deste_processo_sem_digest`,
+  `backend/tests/test_db.py::test_savepoint_desfeito_descarta_o_efeito_pedido_dentro_dele` e
+  `::test_savepoint_aninhado_descarta_so_o_que_foi_desfeito`, o caso aninhado). Real: `not_run` (pede dois
+  backends).
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,
