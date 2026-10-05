@@ -216,6 +216,26 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   Q2 reprovando;
   `pytest @scripts/tests/catracas.txt`, 6 passed. Real: `not_run`.
 
+## 2026-10-05 — 29.118: com a lista velha, os lotes que decidem por ela ficam indisponíveis (branch fix/29-118-lote-lista-velha)
+
+Leitura do 29.116 pela Ferramentas do Claude.
+
+- B1: depois do aviso "a lista não se releu", nada barrava. Grupo, bloquear e reativar decidem pelo estado da lista na
+  tela ("já estava…", ok e sem PATCH), então um lote sobre a lista velha relatava sucesso sem mudar nada, o defeito do
+  29.114. Agora `ProfilesPage` passa `listaVelha` à barra, e os três ficam indisponíveis com o motivo "A lista não se
+  releu: use “Tentar de novo”." até a leitura dar certo. Apagar, fotos e completar seguem livres.
+- N: o `confirmar` espera a releitura até `PRAZO_DA_RELEITURA_MS` (45 s). Passado o prazo, conta como não relida: uma
+  rajada de releituras não prende o diálogo em "executando".
+- C1 (leitura do #423): a releitura que perde para o prazo segue em voo, e o erro da página ainda é nulo. Agora ela vai
+  à barra, que trava grupo, bloquear e reativar com "A lista ainda está se relendo: aguarde." até ela assentar.
+- A1: o `aria-busy` sai do `<dialog>` inteiro, onde podia fazer o leitor de tela segurar o "Executando…/Relendo…" do
+  status, e fica só na lista "Resultado por persona".
+- Testes novos em `AcoesEmLote.test.tsx`: B1, o clique fora com o `aria-busy` só na lista, e o prazo. Os três falham
+  no código do 29.116. Prova simulated, em Idle:
+  - `src/features/profiles` e `src/components` 226/226 sem atraso;
+  - `src/features/profiles` 201/201 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99;
+  - typecheck limpo.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
