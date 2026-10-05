@@ -73,7 +73,8 @@ from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
-from .dialogos import LIMITE_DE_DIALOGOS, MOTIVO_SEM_SAIDA, botao_que_fecha, dialogo_sem_saida, e_navegador
+from .dialogos import (LIMITE_DE_DIALOGOS, MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA, botao_que_fecha,
+                       dialogo_sem_saida, e_navegador, toque_que_aceita)
 from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -1164,6 +1165,23 @@ class StepExecutor:
             return "primeira_da_leitura"
         informative = sum(1 for e in tree.elements if e.text or e.desc or e.clickable or e.editable)
         return "arvore_pobre" if informative < ai.rich_tree_min_elements else "arvore_rica"
+
+    def _aceite_do_toque(self, tool_ctx: ToolContext, args: object, tree: UiTree, ai: AiCfg) -> str | None:
+        """31.72: o rótulo do toque do ator que aceitaria um aviso de consentimento (`dialogos.toque_que_aceita`), pelo
+        elemento ou pela coordenada; `None` se o toque pode seguir. Um host em `ai.consentimento_aceito_em` (vazia por
+        padrão; preenchê-la é decisão do dono) libera o aceite ali."""
+        try:
+            alvo = resolve_point(tool_ctx, getattr(args, "element_id", None), getattr(args, "x", None),
+                                 getattr(args, "y", None))[2]
+        except DriverError:
+            return None                                # o toque falharia na execução, como antes
+        if ai.consentimento_aceito_em:
+            barras = set(BARRA_DE_ENDERECO.values())
+            texto = next((e.text for e in tree.elements if e.resource_id in barras), "")
+            host = _host(texto or "")
+            if host and any(host == h or host.endswith("." + h) for h in map(str.casefold, ai.consentimento_aceito_em)):
+                return None
+        return toque_que_aceita(tree, alvo)
 
     def _image_scale(self, obs: Observation, ai: AiCfg | None = None) -> float:
         """Pixels do aparelho por pixel do espaço de coordenadas que o modelo enxerga."""
@@ -2976,6 +2994,29 @@ class StepExecutor:
                                        quick_tree, profile_id=profile_id, run_id=run_id, step_id=step.id),
                                    allowed_urls=urls_permitidas, allowed_hosts=hosts_das_contas, deadline=deadline,
                                    dormir=self.dormir)
+            if (decision.tool in ("tap", "long_press") and e_navegador(obs.package)
+                    and (aceite := self._aceite_do_toque(tool_ctx, args, obs.tree, ai_cfg)) is not None):
+                # ---------- 31.72: a regra do 31.51 vale para o ATOR. Na r-20261005071303-f24955 ele tocou "Aceitar
+                # cookies" duas vezes por conta própria. Recusado ANTES de o toque chegar ao aparelho, por coordenada
+                # também, sem depender de o modelo obedecer ao prompt; nunca vira sucesso por aceite.
+                saida = botao_que_fecha(obs.tree)
+                motivo_aceite = (f"{MOTIVO_ACEITE_RECUSADO} ('{aceite}'). Recuse ou feche o aviso"
+                                 + (f" ('{(saida.text or saida.desc or saida.resource_id)[:60]}', {saida.id})"
+                                    if saida is not None else "")
+                                 + ", ou siga sem aceitar.")
+                aid = intencao(decision.tool, args.model_dump(mode="json"), rationale,
+                               side_effect=False, source="recipe" if from_recipe else "ai")
+                repo.finish_action(aid, ActionStatus.rejected, error=motivo_aceite)
+                metricas.contar("executor.consentimento_recusado", origem="recipe" if from_recipe else "ai")
+                if from_recipe:
+                    rr.diverged = f"toque de aceite: {aceite}"
+                history.append(f"{decision.tool} REJEITADA pelo executor: {motivo_aceite}")
+                errors_in_row += 1
+                if errors_in_row >= 4:
+                    # Sem saída que preserve a privacidade, a etapa não tem o que repetir: falha com o motivo.
+                    return await falhar_sem_nova_tentativa(
+                        f"A IA insistiu em aceitar: {MOTIVO_ACEITE_RECUSADO} ('{aceite}'); nada foi aceito.", obs)
+                continue
             is_commit = False
             if step.side_effect and decision.tool in EFFECT_CAPABLE:
                 target = None

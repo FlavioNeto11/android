@@ -134,3 +134,65 @@ def botao_que_fecha(tree: UiTree, area: tuple[int, int, int, int] | None = None)
     if not candidatos:
         return None
     return min(candidatos, key=lambda par: par[0])[1]
+
+
+# ------------------------------------------------------------------------------- 31.72: a regra vale para o ATOR
+#: O que tem cara de aviso de CONSENTIMENTO (cookies, privacidade, LGPD), no rótulo, no id ou na classe. Mais estreito
+#: que `_PISTAS`: um "OK" de um diálogo qualquer do site não é consentimento.
+_CONSENTIMENTO = re.compile(r"cookie|consent|privacidade|privacy|lgpd|gdpr|rgpd", re.IGNORECASE)
+
+#: Acima desta fração da tela, um elemento marcado é a página (o WebView com "privacidade" no título), não um aviso.
+_FRACAO_DA_PAGINA = 0.6
+
+#: A faixa do aviso: a altura do elemento marcado mais esta fração da tela acima e abaixo. O leitor da árvore descarta
+#: o contêiner vazio e não clicável, e no Chrome o texto do aviso e os botões costumam ser IRMÃOS nele: sem o
+#: contêiner, a zona é a faixa em volta do texto (o aviso de cookies do ML: texto e botões em ~230 px de 1280).
+_MARGEM_DA_FAIXA = 0.12
+
+#: O motivo literal do toque recusado (regra em `learning/domain/falhas.py`).
+MOTIVO_ACEITE_RECUSADO = "o consentimento do site não é aceito pelo ator"
+
+
+def _de_consentimento(e: UiElement) -> bool:
+    return any(_CONSENTIMENTO.search(x) for x in (e.class_name or "", e.resource_id or "", _rotulo(e)[:120]))
+
+
+def _area(caixa: tuple[int, int, int, int]) -> int:
+    return max(0, caixa[2] - caixa[0]) * max(0, caixa[3] - caixa[1])
+
+
+def _fecha_ou_recusa(e: UiElement) -> bool:
+    """O mesmo critério de `botao_que_fecha`, para um elemento só: rótulo da lista fechada, ou ícone sem rótulo com id
+    de fechar; nunca o que tem `_NUNCA` no text, no desc ou no id."""
+    if any(_NUNCA.search(x) for x in (e.text or "", e.desc or "", e.resource_id or "")):
+        return False
+    rotulo = _rotulo(e)
+    return _normal(rotulo) in _ROTULOS_QUE_FECHAM or (not rotulo and bool(_ID_QUE_FECHA.search(e.resource_id or "")))
+
+
+def toque_que_aceita(tree: UiTree, alvo: UiElement | None) -> str | None:
+    """O rótulo do toque que ACEITARIA um aviso de consentimento do site; `None` quando o toque pode seguir.
+
+    Na zona de um aviso de consentimento só passam o recusar e o fechar de `botao_que_fecha`; todo o resto é recusado,
+    inclusive o que não tem a palavra (um "Continuar", um "Fechar e aceitar", um botão com o texto só na imagem). A zona
+    é a faixa da tela em volta de cada elemento marcado que não seja a página (`_MARGEM_DA_FAIXA`). Fora da zona, só o
+    alvo que diz aceitar E consentimento no próprio rótulo ("Aceitar cookies"). Prefere o falso positivo (o toque
+    recusado; um link do rodapé perto de "Política de privacidade") ao aceite em silêncio."""
+    if alvo is None:
+        return None
+    rotulo = (_rotulo(alvo) or alvo.resource_id or alvo.class_name.rsplit(".", 1)[-1])[:60]
+    marcas = [e for e in tree.elements if _de_consentimento(e)]
+    if not marcas:
+        return None
+    if _de_consentimento(alvo) and any(_NUNCA.search(x) for x in (alvo.text or "", alvo.desc or "",
+                                                                  alvo.resource_id or "")):
+        return rotulo
+    largura = max((e.bounds[2] for e in tree.elements), default=0)
+    altura = max((e.bounds[3] for e in tree.elements), default=0)
+    margem = _MARGEM_DA_FAIXA * altura
+    centro = (alvo.bounds[1] + alvo.bounds[3]) / 2
+    na_zona = any(_area(m.bounds) < _FRACAO_DA_PAGINA * largura * altura
+                  and m.bounds[1] - margem <= centro <= m.bounds[3] + margem for m in marcas)
+    if na_zona and not _fecha_ou_recusa(alvo):
+        return rotulo
+    return None

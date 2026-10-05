@@ -663,6 +663,9 @@ class AiCfg(BaseModel):
     #: Item 31.40: a recusa do juiz por SOBREPOSIÇÃO (diálogo, banner, cookies cobrindo o alvo) numa etapa sem efeito
     #: não repete a etapa: a recuperação insere uma limpeza opcional (31.36) antes dela, uma vez por objetivo.
     limpeza_apos_sobreposicao: bool = True
+    #: Item 31.72: hosts em que o ATOR pode aceitar um aviso de consentimento (cookies, privacidade). Vazia, nenhum: o
+    #: toque de aceite é recusado antes de chegar ao aparelho. Preencher é decisão do dono, não de frente.
+    consentimento_aceito_em: list[str] = Field(default_factory=list)
     #: Item 31.41: o valor lido só é gravado com evidência de RELAÇÃO com o nome pedido (seletor do catálogo, rótulo
     #: vizinho ou forma fechada; da imagem, um "sim" do verificador). Dúvida recusa a leitura (`leitura.sem_relacao`).
     relacao_do_valor: bool = True

@@ -244,7 +244,8 @@ Como decidir:
   travada; só uma pessoa decide o que fazer com ela.
 - Diálogos inesperados que NÃO são verificação da conta (novidades, permissões, avaliações): dispense-os com
   segurança ("Agora não", "Fechar") e siga.
-- Aviso, banner ou cookies que cobre o ALVO desta etapa: feche-o; se ele não fechar, siga sem ele (não insista).
+- Aviso, banner ou cookies que cobre o ALVO desta etapa: feche-o ou recuse; NUNCA aceite cookies nem
+  consentimento (o executor recusa o toque). Se ele não fechar, siga sem ele (não insista).
 - Se o item procurado não está visível, role a lista antes de desistir.
 - Tela de login com a senha da conta na lista "Dados da persona disponíveis": preencha os campos comuns com
   type_text (o usuário já vem resolvido nos parâmetros, ou nos dados do comando) e o campo de SENHA com

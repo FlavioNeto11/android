@@ -1758,3 +1758,21 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   com a poda. Imprime só números e ids.
 - Prova `simulated`: `backend/tests/test_tamanho_do_prompt_do_ator.py`. `not_run`: o A/B sobre árvores reais. Fica
   para a janela de prova, com o diagnóstico ligado no android-09 ou 10 por config, sem conta real.
+
+## 20. O ator não aceita consentimento do site (item 31.72)
+
+- A regra do 31.51 (a limpeza recusa ou fecha, nunca aceita) vale também para o ATOR. Na r-20261005071303-f24955 ele
+  tocou "Aceitar cookies" duas vezes por conta própria.
+- A trava é do executor, não do prompt: no navegador, todo `tap` e `long_press` do ator, por elemento ou por coordenada,
+  passa por `dialogos.toque_que_aceita` ANTES de chegar ao aparelho. O que aceitaria vira ação `rejected` com o motivo
+  "o consentimento do site não é aceito pelo ator", conta como erro e, na 4ª insistência, a etapa falha sem nova
+  tentativa (`pos_condicao_nao_comprovada` em `falhas.py`). Nunca vira sucesso por aceite.
+- Na faixa de um aviso de consentimento (rótulo, id ou classe com cookie, consent, privacidade, privacy, LGPD ou GDPR,
+  mais 12 % da altura da tela acima e abaixo) só passam o recusar e o fechar de `botao_que_fecha`. "Continuar",
+  "Fechar e aceitar" e o botão com o texto só na imagem são recusados: o falso positivo vale mais que o aceite em
+  silêncio.
+- `ai.consentimento_aceito_em`: hosts em que o ator pode aceitar. Vazia por padrão; preenchê-la é decisão do dono.
+- O prompt do ator diz "recuse; NUNCA aceite", só para economizar decisões.
+- Fora do navegador a trava não age: as folhas de app são declaradas no catálogo e fecham pela regra do 29.87.
+- Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py`. `not_run`: as execuções 2 e 3 do 31.40,
+  depois do deploy.

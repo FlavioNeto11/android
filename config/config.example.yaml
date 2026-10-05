@@ -248,6 +248,7 @@ ai:
   rich_tree_min_elements: 8
   limpeza_opcional: true        # 31.36: etapa que só limpa a tela é pulada se não se comprova (false = a de sempre)
   limpeza_apos_sobreposicao: true   # 31.40: recusa do juiz por sobreposição insere a limpeza opcional (uma vez)
+  consentimento_aceito_em: []   # 31.72: hosts onde o ator pode aceitar cookies/consentimento; vazia = nenhum (decisão do dono)
   relacao_do_valor: true        # 31.41: só grava o valor lido com relação ao pedido (seletor, rótulo, forma ou o juiz)
   max_decisoes_leitura: 12      # 31.38: teto de decisões por tentativa em etapa de leitura (p95 medido 8 + folga; 0 desliga)
   podar_ui_do_navegador: true    # 31.35: a barra do Chrome não vai à árvore do prompt do ator (a url_bar fica, 31.52)
