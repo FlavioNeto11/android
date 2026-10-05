@@ -21,6 +21,7 @@ import { confirm } from '../../components/Confirm';
 import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextInput } from '../../components/Field';
+import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { useAppStore } from '../../store/app';
 import { plural } from '../../lib/format';
@@ -643,9 +644,12 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                   )}
                 </Field>
                 {proposta.parameters.length ? (
-                  <p className={styles.params}>
-                    {proposta.parameters.map((p) => <Badge key={p.name} size="sm" tone="accent">{`{${p.name}}`} = {p.example}</Badge>)}
-                  </p>
+                  <>
+                    <p className={styles.params}>
+                      {proposta.parameters.map((p) => <Badge key={p.name} size="sm" tone="accent">{`{${p.name}}`} = {p.example}</Badge>)}
+                    </p>
+                    <EditorDosParametros parametros={proposta.parameters} onChange={(parameters) => mudarProposta({ parameters })} />
+                  </>
                 ) : null}
                 {proposta.questions.length ? (
                   <section className={styles.questions} aria-label="Perguntas da IA">
@@ -687,6 +691,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       ) : null}
                       <p className={styles.muted}>Confere: {textoDoConfere(s.postcondition)}
                         {s.inputs.map((n) => porSeq.get(n)).filter(Boolean).length ? '' : ' · sem entradas: a IA conduz esta etapa'}</p>
+                      <EditorDaPosCondicao indice={i} etapa={s} onChange={(postcondition) => mudarEtapa(i, { postcondition })} />
                       {previaPorEtapa.get(s.key) ? (
                         <p className={styles.muted}>
                           <Badge size="sm" tone={previaPorEtapa.get(s.key)!.recipe ? 'success' : 'neutral'}>

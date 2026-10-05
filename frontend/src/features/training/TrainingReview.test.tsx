@@ -580,3 +580,62 @@ it('mais de 8 respostas: o pedido trava com o motivo em vez de cortar a 9ª', as
   await setValue(byRole('textbox', /^Pergunta 9$/) as HTMLInputElement, '');
   expect(byRole('button', /^Pedir nova proposta com as respostas/).getAttribute('aria-disabled')).toBeNull();
 });
+
+// ---------------------------------------------------------------- 31.90-E: corrigir o que a etapa confere e os parâmetros
+const abrirResumo = async (nome: RegExp) => {
+  const resumo = Array.from(document.querySelectorAll('summary')).find((s) => nome.test(s.textContent ?? ''));
+  expect(resumo, `resumo ${nome}`).toBeTruthy();
+  await click(resumo!);
+};
+const corpoDoSave = () => backend.callsTo('POST', /\/save$/)[0]!.body as { proposal: { parameters: { name: string; example: string; description: string }[];
+  steps: { postcondition: { kind: string; value: string; description: string } }[] } };
+
+it('31.90-E: o que a etapa confere se edita (tipo, valor, descrição) e o save leva a proposta editada', async () => {
+  await abrirComProposta(SESSAO, PROPOSTA);
+  await abrirResumo(/Editar o que a etapa confere/);
+  const tipo = byRole('combobox', /Tipo de conferência da etapa 1/) as HTMLSelectElement;
+  expect(tipo.value).toBe('text_visible');
+  await setValue(byRole('textbox', /Texto que aparece \(etapa 1\)/) as HTMLInputElement, 'Mensagem enviada');
+  await setValue(byRole('textbox', /O que a tela mostra depois \(etapa 1\)/) as HTMLInputElement, 'a bolha aparece');
+  await setValue(tipo, 'element_present');
+  expect(byRole('textbox', /Elemento \(id ou texto\) \(etapa 1\)/)).toBeTruthy();   // o rótulo do valor acompanha o tipo
+  await setValue(tipo, 'model_judged');
+  expect(allByRole('textbox', /\(etapa 1\)$/).map((e) => e.getAttribute('aria-label'))).toEqual(['O que a tela mostra depois (etapa 1)']); // a IA julga: só a descrição
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/save$/)).toHaveLength(1));
+  expect(corpoDoSave().proposal.steps[0]!.postcondition).toEqual({ kind: 'model_judged', value: 'Mensagem enviada', description: 'a bolha aparece' });
+});
+
+it('31.90-E: exemplo e descrição do parâmetro se editam; o nome não, e o save leva os dois', async () => {
+  await abrirComProposta(SESSAO, PROPOSTA);
+  await abrirResumo(/Editar exemplos e descrições/);
+  expect(allByRole('textbox', /Nome de \{contato\}/)).toHaveLength(0);
+  await setValue(byRole('textbox', /Exemplo de \{contato\}/) as HTMLInputElement, 'QA-002');
+  await setValue(byRole('textbox', /Descrição de \{contato\}/) as HTMLInputElement, 'o nome na lista de conversas');
+  await waitFor(() => expect(text()).toContain('{contato} = QA-002'));
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/save$/)).toHaveLength(1));
+  expect(corpoDoSave().proposal.parameters).toEqual([{ name: 'contato', example: 'QA-002', description: 'o nome na lista de conversas' }]);
+});
+
+it('31.90-E: a etapa com efeito e sem comprovação já abre o editor; a que comprova, não', async () => {
+  const comEfeito = { ...PROPOSTA.steps[0]!, side_effect: true, postcondition: { kind: 'model_judged', value: '', description: '' } };
+  await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [comEfeito] });
+  const editor = () => Array.from(document.querySelectorAll('details')).find((d) => /Editar o que a etapa confere/.test(d.textContent ?? ''))!;
+  expect(editor().open).toBe(true);
+  await setValue(byRole('textbox', /O que a tela mostra depois \(etapa 1\)/) as HTMLInputElement, 'a bolha aparece');
+  expect(editor().open).toBe(true);                                                    // preencher não fecha o que está sendo digitado
+});
+
+it('31.90-E: a etapa que já comprova (ou sem efeito) deixa o editor fechado', async () => {
+  await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, side_effect: true }] });
+  const editor = Array.from(document.querySelectorAll('details')).find((d) => /Editar o que a etapa confere/.test(d.textContent ?? ''))!;
+  expect(editor.open).toBe(false);
+});
+
+it('31.90-E: a recusa do servidor (pos_condicao_vazia) aparece no Salvar, como as outras', async () => {
+  backend.on('POST', /\/training\/trn-1\/save$/, () => apiError(400, 'pos_condicao_vazia', 'A etapa com efeito precisa dizer como comprovar.'));
+  await abrirComProposta(SESSAO, PROPOSTA);
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('A etapa com efeito precisa dizer como comprovar.'));
+});
