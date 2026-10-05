@@ -429,9 +429,12 @@ async def test_a_ancora_da_foto_segue_a_decisao_mais_recente(harness: Any, monke
     assert sha_da_imagem_aprovada(state.db, "run-p", sid) == "e" * 64           # dois sins: vence o mais recente
     _decisao("apr-nao", "rejected", "2999-01-03T00:00:00Z", None)
     assert sha_da_imagem_aprovada(state.db, "run-p", sid) is None               # "não" depois do sim: sem âncora
-    # Revisão do #445 (N1): o sim dado na execução nasce sem mídia (approvals.py) e, sendo o último, falha fechado; o
-    # `edited` mais novo, mesmo com mídia, também não é o sim.
-    _decisao("apr-sim-sem-midia", "approved", "2999-01-04T00:00:00Z", None)
+    # Revisão do #445 (N1): o sim dado na execução nasce sem mídia (approvals.py) e, sendo o último, falha fechado,
+    # mesmo logo depois de um sim COM mídia; o `edited` mais novo, mesmo com mídia, também não é o sim.
+    _decisao("apr-sim-de-novo", "approved", "2999-01-04T00:00:00Z", "a" * 64)
+    assert sha_da_imagem_aprovada(state.db, "run-p", sid) == "a" * 64
+    _decisao("apr-sim-sem-midia", "approved", "2999-01-05T00:00:00Z", None)
     assert sha_da_imagem_aprovada(state.db, "run-p", sid) is None
-    _decisao("apr-editado", "edited", "2999-01-05T00:00:00Z", "f" * 64)
+    _decisao("apr-sim-de-novo-2", "approved", "2999-01-06T00:00:00Z", "b" * 64)
+    _decisao("apr-editado", "edited", "2999-01-07T00:00:00Z", "f" * 64)
     assert sha_da_imagem_aprovada(state.db, "run-p", sid) is None
