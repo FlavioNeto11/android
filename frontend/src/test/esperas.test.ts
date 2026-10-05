@@ -186,7 +186,8 @@ function semParentesesDeFora(corpo: string): string {
 }
 
 // O corpo em bloco (`() => { … }`) segue fora: o `return` pode estar em qualquer ponto dele (29.129, F3, anotado).
-// Limite anotado: um `(x as T)!` no MEIO da expressão não é lido como busca.
+// Limites anotados: um `(x as T)!` no MEIO da expressão não é lido como busca, e um operando entre parênteses antes do
+// `&&` (`(itens().find(…)) && !carregando`) escapa do G2.
 function esperasQuePassamSemAchar(codigo: string): number[] {
   return primeirosArgumentos(semComentarios(codigo))
     .filter(({ argumento }) => {
