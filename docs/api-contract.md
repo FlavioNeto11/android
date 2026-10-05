@@ -6358,3 +6358,14 @@ Novos 400, no formato de sempre (`detail: {code, message}`; a mensagem diz o que
 Campo aditivo na resposta de sucesso: `warnings: string[]` (vazio quando não há), com as etapas sem efeito aceitas sem
 descrição de pós-condição (o objetivo serviu de critério). O painel pode ignorá-lo.
 - **Prova:** `simulated` (`backend/tests/test_treino_validacao_do_salvar.py`).
+
+## Adendo v1.62 (05/10/2026; número da orquestradora; item 31.100) — o `save` do treinamento recusa marcador reservado no comando
+
+`POST /api/training/{session_id}/save` ganha um 400 novo, no formato do adendo v1.57 (`detail: {code, message}`):
+- `parametro_reservado`: o `command_template` usa `{instance_id}`, `{run_id}` ou `{account_label}`. No casamento do pedido
+  (`FlowStore._extract`) eles valem como texto literal, e o fluxo só casaria com quem digitasse as chaves. A mensagem
+  diz quais e sugere texto fixo ou um parâmetro próprio. Não termina com "Peça uma nova proposta à IA.": o comando é
+  editável na tela.
+- Muda uma regra do v1.57: antes o reservado no comando passava (`parametro_nao_declarado` não o contava). Declarado em
+  `parameters`, fora do comando, continua aceito: o plano o usa e a materialização o resolve.
+- **Prova:** `simulated` (`backend/tests/test_treino_validacao_do_salvar.py`).

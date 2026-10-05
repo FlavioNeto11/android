@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.100: o salvar do treino recusa marcador reservado no comando (branch fix/31-100-placeholder-reservado-no-comando)
+
+- `training/skills.validar_proposta_para_salvar`: `{instance_id}`, `{run_id}` ou `{account_label}` no `command_template`
+  recusa com `parametro_reservado` (400, adendo v1.62). O `FlowStore._extract` os trata como texto literal, e o fluxo
+  só casaria com quem digitasse as chaves. Nos `parameters` do plano continuam aceitos. Achado da revisão automática do
+  #442, conferido pela Aprendizado.
+- Prova `simulated`: `tests/test_treino_validacao_do_salvar.py` (o caso na tabela de recusas, os três reservados pelo
+  nome, o reservado nos parâmetros que segue valendo; o teste que aceitava o reservado no comando ficou só com a chave
+  de catálogo). Real: `not_run`.
+
 ## 2026-10-05 — 31.95: sobras da validação do salvar do treino (branch fix/31-95-sobras-da-validacao-do-salvar)
 
 - `entrada_inexistente` (400): `seq` em etapa ou em `discarded` fora das entradas gravadas. `seq` repetido dentro de
