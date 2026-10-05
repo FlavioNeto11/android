@@ -31,6 +31,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `domain/ensinado.py` (a regra e o payload), `application/ensinado.py` (`AvisadorDoEnsinado`, chamado nos dois
   caminhos: a loja via `avisar_mudanca_nativa` e o Livro via `_mover_nativo`), `infrastructure/ensinado_sql.py`
   (`LeitorDoEnsinadoSql`) e `EventosNoBarramento.ensinado_rebaixado`.
+- Condição da leitura do 28.50 pela Reload: o id do FLUXO não vai ao `backend.log`. O `message` do fluxo fica só com
+  o tipo e o app (`AvisoDoEnsinado.mensagem`), e o `log.exception` do aviso que falha também (`_no_log` em
+  `AvisadorDoEnsinado.mudou_isolado` e `mudou_sem_falhar`). O id segue em `data.ref`; o id opaco é o 30.83.
 - Prova `simulated`: `backend/tests/test_learning_ensinado_rebaixado.py` (7), verificado por mutação com 7 regras.
   Real: `not_run` (a próxima quarentena de receita ensinada).
 

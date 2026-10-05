@@ -17,6 +17,7 @@ from datetime import datetime
 from app.modules.learning.application.ports import LeitorDoEnsinado, PortaDoEnsinado
 from app.modules.learning.domain.ensinado import AvisoDoEnsinado, rebaixado_pelo_sistema
 from app.modules.learning.domain.livro import EntradaDoLivro
+from app.modules.learning.domain.vocabulario import LivroKind
 from app.util import to_iso
 
 log = logging.getLogger(__name__)
@@ -59,13 +60,19 @@ class AvisadorDoEnsinado:
             with self._isolar():
                 self.mudou(antes, depois, por_sistema=por_sistema)
         except Exception:  # noqa: BLE001 - o savepoint já desfez o aviso; a transição e a trilha ficam
-            log.exception("aprendizado: aviso do ensinado de %s %s", depois.kind.value, depois.ref)
+            log.exception("aprendizado: aviso do ensinado de %s", _no_log(depois))
 
     def mudou_sem_falhar(self, antes: EntradaDoLivro | None, depois: EntradaDoLivro, *, por_sistema: bool) -> None:
         try:
             self.mudou(antes, depois, por_sistema=por_sistema)
         except Exception:  # noqa: BLE001 - o aviso informa; a transição já foi gravada e não cai por causa dele
-            log.exception("aprendizado: aviso do ensinado de %s %s", depois.kind.value, depois.ref)
+            log.exception("aprendizado: aviso do ensinado de %s", _no_log(depois))
+
+
+def _no_log(e: EntradaDoLivro) -> str:
+    """O id do fluxo não vai ao backend.log (o slug do resumo literal pode trazer nome; leitura do 28.50); o da receita
+    é só dígitos."""
+    return e.kind.value if e.kind is LivroKind.FLUXO else f"{e.kind.value} {e.ref}"
 
 
 __all__ = ["AvisadorDoEnsinado"]

@@ -11,6 +11,7 @@ Nível de prova: `simulated` (banco de teste migrado pela fábrica da suíte; ba
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -157,9 +158,10 @@ def test_fluxo_ensinado_desligado_pelo_sistema_avisa(mundo: Mundo) -> None:
     fluxo(mundo.db, "curtir-da-ia", "curtar {perfil}")
     for ref in ("curtir-ensinado", "curtir-da-ia"):
         mundo.servico.mudar_estado(LivroKind.FLUXO, ref, SkillState.DISABLED, by="sistema", reason="obsoleto")
-    [(tipo, _, _, dados)] = mundo.bus.do_ensinado()
+    [(tipo, mensagem, _, dados)] = mundo.bus.do_ensinado()
     assert (tipo, dados["kind"], dados["ref"], dados["treino"], dados["para"]) == (
         TIPO_SEM_RECEITA, "fluxo", "curtir-ensinado", "trn-2", "disabled")
+    assert "curtir" not in mensagem and "fluxo" in mensagem             # o id do fluxo não vai ao backend.log
 
 
 def test_o_barramento_fora_nao_derruba_a_transicao_do_livro(mundo: Mundo) -> None:
@@ -230,3 +232,12 @@ def test_a_regra_so_olha_o_ensinado_em_uso_que_o_sistema_tirou() -> None:
     assert not rebaixado_pelo_sistema(em_uso, em_uso, por_sistema=True)                      # segue em uso
     assert sessao_de_treino("training:trn-x") == "trn-x"
     assert sessao_de_treino("s1") is None and sessao_de_treino("training:") is None and sessao_de_treino(None) is None
+
+
+def test_a_falha_do_aviso_do_fluxo_nao_leva_o_id_ao_log(mundo: Mundo, caplog: pytest.LogCaptureFixture) -> None:
+    fluxo(mundo.db, "falar-com-maria-souza", "falar com {perfil}", source="training:trn-3", source_run_id=None)
+    mundo.bus.falha = True
+    with caplog.at_level(logging.ERROR):
+        mundo.servico.mudar_estado(LivroKind.FLUXO, "falar-com-maria-souza", SkillState.DISABLED, by="sistema",
+                                   reason="obsoleto")
+    assert "aviso do ensinado" in caplog.text and "maria" not in caplog.text   # leitura do 28.50 pela Reload

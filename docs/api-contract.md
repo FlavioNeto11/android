@@ -6482,7 +6482,8 @@ frente Canais (28.50).
   - `desde`: ISO UTC, o instante da transição gravado na trilha (`learning_transitions.decided_at`), estável numa
     reemissão.
 - Nunca conteúdo da receita ou do fluxo, seletor, conta ou texto de tela. O `message` só leva tipo, id, pacote e o
-  status nativo, e quem avisa o dono não o usa.
+  status nativo, e quem avisa o dono não o usa. No fluxo, o `message` não leva o id (hoje o slug do resumo literal, que
+  vai ao `backend.log` no `warn`); ele segue só em `data.ref` (leitura do 28.50 pela Reload).
 - **Prova:** `simulated` (`backend/tests/test_learning_ensinado_rebaixado.py`).
 
 ## Adendo v1.62 (05/10/2026; número da orquestradora; item 31.100) — o `save` do treinamento recusa marcador reservado no comando
