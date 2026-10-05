@@ -254,6 +254,34 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_limites_por_servidor.py::test_api_lista_e_muda_limites_do_host_e_do_worker`
   e `frontend/src/store/metricas.test.ts` (9 ligados, 9 decididas, 6 declaradas: sem "acima"; backend antigo segue o
   declarado). A mutação para a regra antiga derruba o caso novo. `not_run`: a leitura no painel do central depois do deploy.
+## 2026-10-04 — 31.53: a família do pedido também se compara pelo objeto, e o texto que cita outra conta dela passa por aprovação (branch feat/31-53-objeto-alvo-na-familia)
+
+Lado Jev do 28.10 F5, sobre o 31.49 (#330).
+
+- `PolicyEngine._mesmo_objeto_na_familia` (`app/social/policy.py`): a regra da família do 30.62 compara pela pessoa e não via
+  o efeito sem pessoa como alvo (no catálogo de hoje, o `CREATE_POST`, `objeto_alvo: [image_id]`). Agora o objeto do catálogo
+  (30.64) é comparado com as saídas e os pedidos em aberto das OUTRAS personas do pedido, na janela da frota:
+  - mesma imagem: recusado, não adiado;
+  - objeto ambíguo: passa por aprovação;
+  - sem pedido, nada muda.
+- `PolicyEngine.cita_a_familia`, chamado no `check` (texto literal do plano: a prévia mostra o mesmo selo da execução) e
+  de novo pela porta (`_policy_gate`, `app/state.py`) depois do rascunho (texto gerado): o texto que cita o @ de OUTRA
+  persona do mesmo pedido (com ou sem `@`, inteiro) passa por aprovação. O motivo
+  (`MOTIVO_CITA_A_FAMILIA`) não leva o @ nem o texto: ele viaja para decisão, evento, aviso e resumo.
+- Plano e porta passam pelo mesmo `PolicyEngine.check`; `porta_do_plano.py` não muda. Sem migração e sem forma nova na API.
+- Prova: `simulated` (`backend/tests/test_familia_por_objeto.py`, 7 testes; mais `test_contexto_do_pedido`,
+  `test_repetido_entre_execucoes`, `test_pedidos_colaboracao_para_fora`, `test_executor_honra_o_plano`,
+  `test_porta_do_plano`, `test_chave_da_aprovacao`, `test_objeto_alvo`, arquitetura, rotas e falhas: 236 passed).
+  `not_run`: pedido real entre personas depois do deploy.
+- Revisão (antes da leitura): o texto LITERAL que cita outra conta do pedido já pede aprovação no `check`, então a
+  prévia do plano mostra o mesmo selo da execução; o texto GERADO é pego na porta depois do rascunho, com o motivo uma
+  vez só (`backend/tests/test_familia_no_rascunho.py`, harness, com contraprova). O @ da família vem também de
+  `profile_accounts.handle` (a conta da persona em cada app), com piso: só a conta ATIVA, com 3 ou mais caracteres e
+  sem espaço (um handle de 1 ou 2 letras casaria com quase todo texto).
+- Revisão F2 (corrida com legenda gerada): a porta roda `mesmo_objeto_na_familia` de novo depois do rascunho, sem `await`
+  até gravar o pedido; entre duas personas do pedido com a mesma imagem, uma segue e a outra é recusada
+  (`backend/tests/test_familia_corrida_da_imagem.py`, com contraprova). Com `publicar_sem_aprovacao` ligado não há pedido
+  a ver, e a janela até a interação gravada continua (o piso de aprovação do 30.60 vem ligado).
 
 ## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
 
