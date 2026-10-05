@@ -75,6 +75,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Agora os quatro são levantados FORA do `except` (sem `__cause__` nem `__context__`), com a mensagem de antes (linha e
   coluna; `loc: msg`, e os erros da ferramenta lidos sem a entrada).
 - Prova: `simulated` (`backend/tests/test_rascunho_fora_do_log.py`, 4 testes novos). Real: `not_run`.
+## 2026-10-05 — 31.66: o navegador sai do primeiro plano ao fechar o objetivo (branch feat/31-66-navegador-fora-da-frente)
+
+- Achado da janela de provas do deploy 33: o fim de uma execução de navegador deixava o Chrome na frente redesenhando
+  a página, e o convidado ficava com carga de 3 a 10 em 2 vCPU (android-09), o que parou a medição do 31.56.
+- Agora, no fim do `_work`, com o objetivo TERMINAL (concluído, falho ou cancelado), o scheduler chama
+  `DeviceManager.tirar_da_frente`: se o app na frente é um navegador (`dialogos.NAVEGADORES`), HOME. Em `waiting_user`
+  a tela fica como está, para a pessoa. Falha de ADB não pesa na execução.
+- Leitura do #368: com controle manual pedido (`takeover_requested`) ou tomado pela pessoa, nada sai (H1); com a
+  tela de verificação ou desafio na última árvore lida (`detectar_conta_travada`), nem HOME (H2, ADR-055).
+  Testes que discriminam (H3): `waiting_user` e `uncertain`, controle pedido e tomado, trava na frente e falha
+  do ADB no fim (o desfecho segue `succeeded`).
+- Um objetivo por aparelho por execução (`{run_id}:{instance_id}`): o HOME é sempre o último gesto daquele aparelho
+  na execução. A próxima execução abre o navegador como já abria (o `open_app` já manda HOME quando outro app está na
+  frente); o HOME não encerra o Chrome, então a volta é morna.
+- Prova: `simulated` (`backend/tests/test_navegador_fora_da_frente.py`). `not_run`: a carga real no android-09 com o
+  pedido de navegador do A/B, logo depois do fim e em 1 minuto, contra o "antes" do 31.56 (3,1 a 7,5; abaixo de 2 em
+  1,5 a 2,3 min depois de um HOME), na janela do deploy 35.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
