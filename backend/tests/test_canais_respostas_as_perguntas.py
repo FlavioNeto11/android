@@ -97,6 +97,30 @@ async def test_comentario_com_robo_no_cartao_de_pergunta_e_ignorado(tmp_path: Pa
     linha = c.linha(str(acao["id"]))
     assert linha["tipo"] == "outro" and not linha["do_dono"]
     assert c.avisos == [] and c.trello.comentarios == [] and c.acoes_da_central() == []
+    # 28.52: a linha guarda a autoria da action, para medir que caminho de escrita leva `appCreator`.
+    assert linha["responde_a"] == f"{MARCA_DA_PERGUNTA}P-006;autoria=digitado"
+
+
+@pytest.mark.parametrize(("kw", "autoria"), [({"app": {"id": "x", "authType": "appKeyToken"}}, "app"),
+                                             ({"sem_app": True}, "nao_confirmada")])
+async def test_comentario_com_robo_guarda_a_autoria_e_nao_vale(tmp_path: Path, kw: dict[str, object],
+                                                                 autoria: str) -> None:
+    """28.52: o comentário de IA numa lista de perguntas segue `outro`, sem dono, e a linha diz de onde veio."""
+    c = await _cenario(tmp_path)
+    acao = c.trello.comenta(DONO, C_MANUAL, "🤖 teste de autoria", lista=L_PERGUNTAS,
+                            nome="P-006. Uma pergunta de teste?", **kw)  # type: ignore[arg-type]
+    await c.volta()
+    linha = c.linha(str(acao["id"]))
+    assert (linha["tipo"], bool(linha["do_dono"]), linha["estado"]) == ("outro", False, "ignorada")
+    assert linha["responde_a"] == f"{MARCA_DA_PERGUNTA}P-006;autoria={autoria}"
+    assert c.avisos == [] and c.trello.comentarios == [] and c.acoes_da_central() == []
+
+
+async def test_comentario_com_robo_fora_das_listas_nao_guarda_nada(tmp_path: Path) -> None:
+    c = await _cenario(tmp_path)
+    acao = c.trello.comenta(DONO, C_MANUAL, "🤖 nota", lista="lista-de-outra-coisa", nome="P-006. Nome parecido")
+    await c.volta()
+    assert c.linha(str(acao["id"]))["responde_a"] is None
 
 
 async def test_sim_no_cartao_de_pergunta_nao_aprova_a_pendencia_aberta(tmp_path: Path) -> None:

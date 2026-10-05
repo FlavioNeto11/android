@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.52: a autoria dos comentários de IA nas listas de perguntas (branch canais/28-52-autoria-nos-comentarios-de-ia)
+
+- Nas listas de perguntas, o comentário com 🤖 segue sem valer nada, mas a linha guarda a autoria da action em
+  `responde_a` (`;autoria=app|digitado|nao_confirmada`). Serve para medir se o conector do Trello leva `appCreator`.
+- `canais.md`: a regra R1 da revisão do #447 (sessão só escreve nas listas de perguntas pela API e com 🤖) e o sinal
+  de alerta se uma resposta digitada pelo dono vier marcada "escrita por app".
+- Prova: `simulated` (`backend/tests/test_canais_respostas_as_perguntas.py`), ainda não rodada. Real: `not_run`.
+
 
 ## 2026-10-05 — 29.131 e 29.138: as sobras das leituras do #433, #435, #441 e #443, e os achados das revisões automáticas do #443 (branch fix/29-131-sobras-supervisor-readocao)
 
