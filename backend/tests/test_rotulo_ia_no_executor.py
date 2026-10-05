@@ -342,7 +342,13 @@ async def test_sem_a_marca_no_post_publicado_rotulo_nao_confirmado(tmp_path: Pat
         assert "SEGREDO1" not in (etapa["status_detail"] or "")                 # S3: o texto do juiz fica de fora
         assert "SEGREDO1" not in json.loads(etapa["result"])["evidence_text"]
         notas = [r["note"] or "" for r in _estado(h).db.query("SELECT note FROM evidence WHERE step_id=?", (etapa["id"],))]
-        assert all("SEGREDO1" not in n for n in notas if n.startswith("publicado;"))
+        assert all("SEGREDO1" not in n for n in notas)       # S3 com o U1b do #325: também a nota do verificador
+        s = _estado(h)
+        objetivo_bruto = s.db.one("SELECT status_detail, blocked_reason, needs FROM objectives WHERE id=?",
+                                  (etapa["objective_id"],))
+        assert objetivo_bruto is not None and all("SEGREDO1" not in (v or "") for v in tuple(objetivo_bruto))
+        eventos = s.db.query("SELECT message, data FROM events WHERE run_id=?", (etapa["run_id"],))
+        assert eventos and all("SEGREDO1" not in f"{e['message']} {e['data'] or ''}" for e in eventos)
         objetivo = _estado(h).db.one("SELECT needs FROM objectives WHERE id=?", (etapa["objective_id"],))
         assert objetivo is not None and "repetir" not in (objetivo["needs"] or "").lower().split("repetir faria")[0]
         assert "confirmar (com o print) ou abandonar" in (objetivo["needs"] or "")
