@@ -130,8 +130,12 @@ def linha_da_entrada(e: dict[str, Any]) -> str:
         ponto = f"ponto=({e.get('x')},{e.get('y')}) " if e.get("x") is not None else ""
         partes.append(f"{ponto}sem elemento identificado")
     if e["type"] == "swipe":
-        dy = (e.get("y2") or 0) - (e.get("y") or 0)
-        partes.append("rolou para baixo" if dy < 0 else "rolou para cima")
+        if e.get("y") is None or e.get("y2") is None:
+            # 31.97: arraste sobre teclado, padrão de bloqueio ou tela sensível: sem as coordenadas; não há direção a inventar
+            partes.append("arraste em teclado, padrão de bloqueio ou tela sensível (não gravado)")
+        else:
+            dy = e["y2"] - e["y"]
+            partes.append("rolou para baixo" if dy < 0 else "rolou para cima")
     if e["type"] == "text":
         partes.append(f"digitou \"{e['text']}\"" if e.get("text") is not None
                       else f"digitou {e.get('text_len') or '?'} caractere(s) SIGILOSOS (não gravados)")
@@ -251,6 +255,9 @@ def proposta_simulada(req: TrainingRequest) -> dict[str, Any]:
             etapas.append({"key": "escrever", "title": "Escrever {mensagem}", "goal": "Digitar {mensagem} no campo",
                            "inputs": [seq], "side_effect": False, "capability": None, "bindings": [], "app_id": None,
                            "postcondition": {"kind": "text_visible", "value": "{mensagem}", "description": "texto no campo"}})
+            continue
+        if tipo == "swipe" and (e.get("y") is None or e.get("y2") is None):
+            descartes.append({"seq": seq, "why": "arraste não gravado (teclado, padrão de bloqueio ou tela sensível)"})
             continue
         texto = (alvo.get("text") or alvo.get("desc") or "").strip()
         rid = (alvo.get("resource_id") or "").rsplit("/", 1)[-1]

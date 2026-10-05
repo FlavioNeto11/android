@@ -429,6 +429,14 @@ Migração `038_modo_treinamento.sql`: `training_sessions` (`status`: `recording
 `training_inputs` (`type`: `tap|long_press|swipe|text|key|open_app`), `flow_scope`, `flows.source` (`'run'` ou
 `'training:<sessão>'`).
 
+**O que o gravador não guarda (31.94, 31.97).** `training_inputs.sensitive` quer dizer "tela sensível OU entrada que não
+se guarda" (uma coluna para os dois sentidos até a migração futura do ensino separá-los). Toque em tecla de teclado numérico
+ou em tela sensível sem id estrutural, e arraste (`swipe`) com a ORIGEM em teclado numérico, em contêiner de teclado ou
+padrão de bloqueio, ou em tela sensível, saem sem `x`/`y` (e `x2`/`y2`) e com `sensitive=1`: o padrão de bloqueio se desenha
+arrastando e a posição da tecla é o dígito. A rolagem comum guarda as quatro coordenadas. Sem árvore da tela, toque e
+arraste perdem as coordenadas. Os leitores (`linha_da_entrada`, `distill_training`, `proposta_simulada`) tratam o arraste sem
+coordenada como entrada não gravada: a etapa não vira receita.
+
 **Teclas ao ensinar (31.84).** O texto digitado pelo painel acrescenta ao campo (`clear_first=false`), e quem ensina
 apagava um caractere por vez com "Apagar". Como a receita digita com `clear_first=True`, que já limpa o campo,
 `distill_training` trata assim as teclas gravadas na etapa:
