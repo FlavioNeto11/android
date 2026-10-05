@@ -412,3 +412,15 @@ async def test_5xx_tambem_e_repetido(tmp_path: Path, esperas: list[float]) -> No
     veredito, _ = await p.verify(_REQ())
     assert veredito.satisfied == "yes" and len(vistos) == 2 and esperas == [5.0]
     await p.aclose()
+
+async def test_argumentos_ilegiveis_da_ferramenta_viram_erro_sem_o_texto_na_causa(tmp_path: Path) -> None:
+    """31.70 (G1): o `.doc` do `JSONDecodeError` é o argumento inteiro; o `AIError` sai sem `__cause__`/`__context__`."""
+    segredo = "texto-que-o-ator-ia-digitar-31-70"
+    tool = {"name": "type_text", "arguments": '{"text": ["' + segredo + '"]'}   # JSON cortado
+    p, _ = provider(tmp_path, [_resposta(tool=tool, finish="tool_calls")])
+    with pytest.raises(AIError) as e:
+        await p.decide(DecisionRequest(ctx=ctx(), screen=SCREEN))
+    assert e.value.kind == "invalid_output" and "Argumentos de ferramenta inválidos" in str(e.value)
+    assert segredo not in str(e.value)
+    assert e.value.__cause__ is None and e.value.__context__ is None
+    await p.aclose()

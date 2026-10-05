@@ -220,13 +220,25 @@ def linha_da_recusa_do_juiz(onde: str, texto: str) -> str:
             f"{enderecos_limpos(texto)[:300]}. Continue a partir da tela atual.")
 
 
+#: 31.69: abaixo disto (caracteres normalizados) o valor é curto demais para se reconhecer sozinho ("1", "Sim", "OK").
+VALOR_CURTO = 4
+
+
 def valor_segue_na_tela(tree: UiTree, valor: str, resource_id: str, exato: bool) -> bool:
     """31.61, L2 da revisão do #348: o valor lido ainda está na tela relida, no MESMO elemento (o `resource_id` dele,
     quando tem) e, lido sem trecho, com o texto ou a descrição IGUAL (normalizado). Por contenção, um valor curto ou
     comum ("1", "Sim") casaria em outra tela do mesmo tipo e a etapa fecharia com o valor velho. Com trecho, o valor é
-    parte do elemento: basta estar contido nele."""
+    parte do elemento: basta estar contido nele.
+
+    31.69 (L3 da mesma leitura): o valor CURTO só fecha por aqui vindo de um elemento com `resource_id` que seja o
+    ÚNICO com esse id na tela relida. Sem id (Compose, WebView), qualquer outro elemento que seja só "1" casaria; com o
+    id repetido (linhas de lista), outra linha com o mesmo valor curto também. Nesses casos a etapa volta ao ator, que
+    é só uma volta a mais."""
     n = norm_text(valor)
     if not n:
+        return False
+    if len(n) < VALOR_CURTO and (not resource_id
+                                 or sum(1 for e in tree.elements if e.resource_id == resource_id) != 1):
         return False
     for e in tree.elements:
         if resource_id and e.resource_id != resource_id:
@@ -1475,8 +1487,12 @@ class StepExecutor:
         replayed = rr.mode == "replay" and rr.replayer is not None and rr.replayer.done_actions + int(rr.completed_by_recipe) > 0
         # `retry` não é veredito sobre a receita: só o desfecho da etapa (ou a divergência) entra na conta — senão um
         # aparelho com problema próprio poria em quarentena, sozinho, uma receita que funciona nos demais. Defeito do
-        # plano também não é veredito sobre ela.
-        veredito = not (outcome.plan_defect or outcome.outcome == Outcome.retry or outcome.trava_da_conta)
+        # plano também não é veredito sobre ela. Nem a espera por uma pessoa (30.70): aviso do app, autenticação,
+        # conta errada ou falta de informação param a etapa por um motivo que não é da receita — contá-la como falha
+        # punha uma receita boa em quarentena e gravava evidência contra ela no aprendizado. A etapa retomada que
+        # terminar dá o veredito de verdade.
+        veredito = not (outcome.plan_defect or outcome.outcome in (Outcome.retry, Outcome.waiting_user)
+                        or outcome.trava_da_conta)
         na_receita = rr.mode == "replay" and rr.row is not None and veredito and (replayed or rr.diverged)
         if rr.mode == "replay" and rr.row is not None and not na_receita:
             # Funil de receitas (C5) contado por TENTATIVA, nas três pontas: a consulta (`RecipeStore.find`) e o

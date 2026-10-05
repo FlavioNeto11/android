@@ -31,6 +31,7 @@ from app.modules.avisos.domain.mensagem import (
     Aviso,
     corpo_agrupado,
     corpo_da_rotina,
+    link_agrupado,
     titulo_agrupado,
     titulo_da_rotina,
 )
@@ -144,11 +145,13 @@ class FilaDeAvisos:
                            titulo=titulo_da_rotina(len(linhas)), corpo=corpo_da_rotina(titulos),
                            link=next((str(x["link"]) for x in linhas if x["link"]), None),
                            tentativas=max(int(x["tentativas"]) for x in linhas), ids=tuple(int(x["id"]) for x in linhas))
-        # O link do agrupado é o da CAIXA, que o corpo manda abrir: todo link da fila é `link_da_caixa` (ou nenhum, no
-        # aviso de pedido que não pede pessoa), então vale o primeiro que houver no grupo, e não o da primeira linha.
-        link = next((str(x["link"]) for x in linhas if x["link"]), None)
-        return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=str(r["tipo"]),
-                       titulo=titulo_agrupado(str(r["tipo"]), len(linhas)), corpo=corpo_agrupado(titulos),
+        # O link e o gesto do agrupado são do TIPO (revisão do #372, G1): a caixa de Pendências, onde o corpo manda, ou
+        # a tela própria do tipo (o objetivo parado vai a Execuções, porque não está na caixa). O link é o primeiro que
+        # houver no grupo, e não o da primeira linha (o aviso de pedido que não pede pessoa vai sem link).
+        tipo = str(r["tipo"])
+        link = link_agrupado(tipo, [str(x["link"]) if x["link"] else None for x in linhas])
+        return Entrega(id=int(r["id"]), chave=str(r["chave"]), tipo=tipo,
+                       titulo=titulo_agrupado(tipo, len(linhas)), corpo=corpo_agrupado(titulos, tipo),
                        link=link, tentativas=max(int(x["tentativas"]) for x in linhas),
                        ids=tuple(int(x["id"]) for x in linhas))
 

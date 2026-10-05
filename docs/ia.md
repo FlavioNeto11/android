@@ -1717,10 +1717,12 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
     do driver (`enderecos_limpos`).
   - A árvore local segue crua: é por ela que o `type_secret` confere o site.
   - A imagem da tela, quando vai, ainda mostra a barra. O 31.54 põe um retângulo opaco sobre ela atrás da chave
-    `ai.tapar_barra_de_endereco`, **desligada por padrão**: tapar pode tirar do ator e do juiz uma evidência que eles
-    usam, e o risco medido foi baixo (7 dias até 04/10: nenhum `code`, `token` ou e-mail nas URLs abertas, só busca).
-    Liga só pelo A/B ao vivo do 31.56 (android-09, sites públicos, braço desligado × ligado, teto US$ 1,00): sucesso
-    igual e não mais de 20 % de decisões a mais. O retângulo segue os bounds da
+    `ai.tapar_barra_de_endereco`, **ligada por padrão** desde o A/B ao vivo do 31.56 (05/10, android-09, deploy 33,
+    sites públicos, braço desligado × ligado, 3 execuções por braço, US$ 0,50 no total): sucesso 3/3 nos dois braços e
+    16 decisões contra 14 (+14,3 %, dentro do teto de 20 %). Tapar podia tirar do ator e do juiz uma evidência que eles
+    usam; o A/B não mostrou essa perda nos sites medidos. Ressalva: n = 3 por braço. O veredito é o do critério
+    pré-registrado (sucesso igual, até 20 % de decisões a mais), não uma estimativa do efeito; a métrica
+    `executor.barra_tapada` e as decisões por etapa de navegador seguem acompanhadas. `false` volta à imagem como está. O retângulo segue os bounds da
     `url_bar` na árvore; sem eles, a imagem vai como está e a métrica `executor.barra_tapada` conta `sem_bounds`.
   - 31.54: o `observed_result` grava cada endereço já limpo (`Repository.finish_attempt`); ele não vai a prompt, mas
     volta no DTO e no painel. O valor lido (`read_value`) que é URL vai limpo ao histórico do ator

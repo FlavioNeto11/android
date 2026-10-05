@@ -36,25 +36,92 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   compõe sem vínculo), `test_social_profiles.py`; `frontend/src/features/pendencias/PendenciasPage.test.tsx`,
   `profiles/ProfilesPage.test.tsx`, `profiles/estadoSessao.test.ts`). `not_run`: aparelho real.
 
-## 2026-10-05 — 29.92: a sessão `unknown` em aparelho com conta real para na primeira e chama a pessoa (branch fix/29-92-sessao-unknown-pede-a-pessoa)
+## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
-- Achado do rastro do 29.90: abaixo do teto, a porta de sessão devolvia `ensure_session(automatic=True)` a cada tick; a
-  rodada seguinte reabria o app e, caindo na tela de login, digitava a senha guardada em cima de uma tela que ninguém
-  reconheceu. No teto, o objetivo parava sem aviso nenhum ao dono.
-- Na porta, aparelho com vínculo ativo (`shared.vinculos.tem_vinculo_ativo`) tem teto 1 (`SocialRepository.teto_de_unknown`):
-  o primeiro `unknown` já para. Como a porta só existe com vínculo, o `session_unknown_retry_cap` deixou de agir nela
-  (a chave fica). A tela classificada direto como login segue para o login com consentimento (ADR-040).
-- `session.needs_person` cobre o `unknown` no teto, uma vez na entrada e uma na saída (`emit_needs_person_change`,
-  `no_teto`/`anterior_no_teto`).
-- Ressalva (b): com vínculo, tela de OUTRO pacote que casa com o detector de verificação humana não leva o app reaberto
-  por cima (`voltar_ao_estado_conhecido(nao_reabrir_sobre=…)`); vira `unknown` com motivo próprio, sem marcar conta travada.
-- Métricas, sem coluna: `sessao.unknown_rodada{instancia, rodada}`, `sessao.unknown_resolvida{instancia, rodada_antes}`
-  e `sessao.parada_resolvida{instancia, via}` (`releitura_sem_toque` = a releitura única do teto, sem ninguém tocar; `pessoa_devolveu` = depois de a pessoa devolver o controle).
-- Leitura do #371: a prévia de recursos (`AppSessionProvider`) usa o mesmo teto por aparelho e não planeja
-  `session.verify` sobre a parada (U1). A retirada de conta fecha o item da fila do `unknown` no teto (U2). A doc
-  registra as duas exceções de propósito: o app fora do primeiro plano não soma, e o login acontece na mesma rodada (U3/U4).
-- Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py`,
-  `test_conta_bloqueada_sai.py`). `not_run`: aparelho real.
+- O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
+  segundo, sem parar nada, com "Cannot convert value System.IO.DirectoryInfo to type SwitchParameter".
+  - Causa: `scripts/deploy.ps1:81` atribuía `$ensaio = Find-EnsaioRecente ...`. Variável no PowerShell não diferencia
+    caixa, então era o próprio `[switch]$Ensaio` do `param`.
+  - O caminho vinha do 29.38 e nunca tinha rodado de verdade. O deploy 34 subiu sem `-PularBackup`, com cópia nova.
+  - Se a conversão passasse, o `if ($Ensaio)` adiante trataria a subida como ensaio.
+- `scripts/deploy.ps1`: a variável virou `$copiaDoEnsaio`. O portão do `-PularBackup` fica entre os marcadores
+  `# >>> portão do -PularBackup` e `# <<< portão do -PularBackup`.
+- `scripts/backup.ps1`: `$podar` virou `$podarDeVerdade`. A varredura achou o mesmo erro contra `[switch]$Podar`; ali
+  ele só funcionava porque um booleano converte em switch.
+- `scripts/tests/test_deploy_portao_do_ensaio.py`:
+  - roda O TRECHO do portão, recortado pelos marcadores, debaixo do mesmo `param` do deploy, com a biblioteca de verdade
+    e uma cópia de ensaio de mentira. Três casos: ensaio do mesmo commit (usa a cópia e o switch continua `False`),
+    ensaio de outro commit (recusa com a mensagem) e `-Ensaio -PularBackup` (o portão não roda);
+  - varre todos os `.ps1` com `param`, pela árvore de sintaxe do PowerShell: no escopo do script, nenhuma atribuição
+    pode usar o nome de um parâmetro escrito com outra caixa;
+  - um caso garante que a varredura acha o defeito quando ele existe.
+- Revisão (N1, N2, N4, N5):
+  - parâmetro `[switch]` reprova em qualquer atribuição no escopo do script, com qualquer caixa;
+  - a variável do `foreach` conta como atribuição (`Set-Variable`, `-OutVariable`, `$script:` e `++` ficam de fora,
+    escrito no teste);
+  - o `$minutosDoEnsaio` entrou nos marcadores e o teste lê o número de lá;
+  - `scripts/testes-afetados.py` liga todo `scripts/**/*.ps1` a este teste.
+- Prova simulated: os 5 casos do arquivo novo e o caso novo de `test_testes_afetados.py`. A mutação de volta para
+  `$ensaio` reproduz no teste a mensagem exata do deploy 34, e a varredura acusa os dois arquivos.
+  `backend/tests/test_backup.py` segue com 12 testes.
+- Real: `not_run` para o conserto. O único dado real é a recusa das 03:19:01Z, que prova o DEFEITO; o conserto se
+  prova no próximo deploy com `-Ensaio` seguido de `-PularBackup`.
+
+## 2026-10-05 — 31.65: o motivo livre da recusa da persona sai da dica que viaja (branch feat/31-65-motivo-do-modelo-fora-da-dica)
+
+- V2 da revisão do 31.63: quando a persona recusava escrever, a dica do bloqueio era o `refusal_reason` (ou o
+  `rationale`) do modelo, que pode citar o pedido ou o nome de um terceiro. Essa
+  dica viaja ao bloqueio do objetivo, às Pendências, ao aviso no Telegram e ao Trello.
+- Agora a dica é fixa (`DICA_DA_RECUSA`, "o motivo dela está no detalhe da etapa"), e o motivo fica só na etapa
+  (`draft_meta.motivo_da_recusa`), exposto em `StepDTO.motivo_da_persona` e mostrado como "Motivo da persona" no
+  detalhe da etapa no painel. A chave não fecha a escrita (`rascunho_fechado`): a retomada escreve de novo e o texto
+  escrito a substitui.
+- O motivo NÃO vai ao evento `step.updated` (gravado em `events` e transmitido a todo navegador): o painel
+  mantém o do detalhe da execução; `null` limpa. Contrato: adendo v1.46.
+- Leitura do #364: a etapa replanejada (`Scheduler.herdar_textos`) herda o rascunho da anterior, mas não o motivo de
+  uma recusa passada (M3). Limitação aceita (M2): o motivo novo aparece no painel quando o detalhe recarrega, não
+  ao vivo (o evento não o carrega de propósito).
+- Prova: `simulated` (`backend/tests/test_protecao_de_frota.py`, teste da retomada novo, que falha com a marca antiga,
+  e a ausência no evento gravado; `frontend/src/features/runs/CorrigirEtapa.test.tsx`, 2 testes novos;
+  `frontend/src/store/reducer.test.ts`, 1 novo). Real: `not_run`.
+
+## 2026-10-05 — 31.67: causa de exceção sem texto do modelo nem argumentos de ferramenta (branch fix/31-67-causa-sem-texto)
+
+- V1b e V4 da revisão do 31.63. Três erros de IA (`parsing.loads_json`, `provider.persona_draft_from_json`,
+  `training.proposal_from_json`) eram levantados com `from exc` sobre o `JSONDecodeError`, cujo `.doc` é o texto
+  inteiro do modelo; `tools.validate_call` guardava na causa a `ValidationError` com os argumentos que o ator escolheu.
+  Hoje não vazava (ninguém percorre a cadeia), mas um serializador que seguisse `__cause__` veria o texto.
+- Agora os quatro são levantados FORA do `except` (sem `__cause__` nem `__context__`), com a mensagem de antes (linha e
+  coluna; `loc: msg`, e os erros da ferramenta lidos sem a entrada).
+- Prova: `simulated` (`backend/tests/test_rascunho_fora_do_log.py`, 4 testes novos). Real: `not_run`.
+
+## 2026-10-05 — 31.66: o navegador sai do primeiro plano ao fechar o objetivo (branch feat/31-66-navegador-fora-da-frente)
+
+- Achado da janela de provas do deploy 33: o fim de uma execução de navegador deixava o Chrome na frente redesenhando
+  a página, e o convidado ficava com carga de 3 a 10 em 2 vCPU (android-09), o que parou a medição do 31.56.
+- Agora, no fim do `_work`, com o objetivo TERMINAL (concluído, falho ou cancelado), o scheduler chama
+  `DeviceManager.tirar_da_frente`: se o app na frente é um navegador (`dialogos.NAVEGADORES`), HOME. Em `waiting_user`
+  a tela fica como está, para a pessoa. Falha de ADB não pesa na execução.
+- Leitura do #368: com controle manual pedido (`takeover_requested`) ou tomado pela pessoa, nada sai (H1); com a
+  tela de verificação ou desafio na última árvore lida (`detectar_conta_travada`), nem HOME (H2, ADR-055).
+  Testes que discriminam (H3): `waiting_user` e `uncertain`, controle pedido e tomado, trava na frente e falha
+  do ADB no fim (o desfecho segue `succeeded`).
+- Um objetivo por aparelho por execução (`{run_id}:{instance_id}`): o HOME é sempre o último gesto daquele aparelho
+  na execução. A próxima execução abre o navegador como já abria (o `open_app` já manda HOME quando outro app está na
+  frente); o HOME não encerra o Chrome, então a volta é morna.
+- Prova: `simulated` (`backend/tests/test_navegador_fora_da_frente.py`). `not_run`: a carga real no android-09 com o
+  pedido de navegador do A/B, logo depois do fim e em 1 minuto, contra o "antes" do 31.56 (3,1 a 7,5; abaixo de 2 em
+  1,5 a 2,3 min depois de um HOME), na janela do deploy 35.
+
+## 2026-10-05 — 29.89: o dono busca na exclusão mesmo com o teto geral esgotado (branch feat/29-89-cota-do-dono)
+
+- **O problema** (revisão do #342, E4 baixa): dois operadores esgotam as 60 buscas da hora, e ninguém busca por até
+  1 h, nem o dono.
+- **O que muda:** o dono (`pedidos.operadores_do_dono`, comparado sem espaço sobrando e sem caixa, como o pedidos
+  compara) fica fora do teto somado. Ele tem a cota de um operador (30 por hora), e as buscas dele não gastam o teto
+  dos outros. Com a lista vazia, ninguém escapa do teto. Não há chave nova no config.
+- **Prova:** `simulated` (`tests/test_portal_exclusao.py`: dono com o teto esgotado e sem gastá-lo, e sem dono
+  declarado; o mutante com o dono dentro do teto reprova). `not_run`: o central.
 
 ## 2026-10-05 — 29.90: "OK" é aceite, não dispensa; a folha entre a guarda e o Share não recebe o toque (branch feat/29-90-ok-e-aceite)
 
@@ -76,6 +143,266 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `test_sobreposicao.py`, `test_learning_falhas.py`, `test_learning_diagnostico.py`, `test_funil_de_receitas.py`); o
   teste da folha entre a guarda e o Share falha com a releitura desligada (o toque cai na folha em 360,1188).
   `not_run`: aparelho real e a duração da releitura (p50/p95, central e remoto).
+
+## 2026-10-05 — 29.92: a sessão `unknown` em aparelho com conta real para na primeira e chama a pessoa (branch fix/29-92-sessao-unknown-pede-a-pessoa)
+
+- Achado do rastro do 29.90: abaixo do teto, a porta de sessão devolvia `ensure_session(automatic=True)` a cada tick; a
+  rodada seguinte reabria o app e, caindo na tela de login, digitava a senha guardada em cima de uma tela que ninguém
+  reconheceu. No teto, o objetivo parava sem aviso nenhum ao dono.
+- Na porta, aparelho com vínculo ativo (`shared.vinculos.tem_vinculo_ativo`) tem teto 1 (`SocialRepository.teto_de_unknown`):
+  o primeiro `unknown` já para. Como a porta só existe com vínculo, o `session_unknown_retry_cap` deixou de agir nela
+  (a chave fica). A tela classificada direto como login segue para o login com consentimento (ADR-040).
+- `session.needs_person` cobre o `unknown` no teto, uma vez na entrada e uma na saída (`emit_needs_person_change`,
+  `no_teto`/`anterior_no_teto`).
+- Ressalva (b): com vínculo, tela de OUTRO pacote que casa com o detector de verificação humana não leva o app reaberto
+  por cima (`voltar_ao_estado_conhecido(nao_reabrir_sobre=…)`); vira `unknown` com motivo próprio, sem marcar conta travada.
+- Métricas, sem coluna: `sessao.unknown_rodada{instancia, rodada}`, `sessao.unknown_resolvida{instancia, rodada_antes}`
+  e `sessao.parada_resolvida{instancia, via}` (`releitura_sem_toque` = a releitura única do teto, sem ninguém tocar; `pessoa_devolveu` = depois de a pessoa devolver o controle).
+- Leitura do #371: a prévia de recursos (`AppSessionProvider`) usa o mesmo teto por aparelho e não planeja
+  `session.verify` sobre a parada (U1). A retirada de conta fecha o item da fila do `unknown` no teto (U2). A doc
+  registra as duas exceções de propósito: o app fora do primeiro plano não soma, e o login acontece na mesma rodada (U3/U4).
+- Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py`,
+  `test_conta_bloqueada_sai.py`). `not_run`: aparelho real.
+
+## 2026-10-05 — 29.95: o site aponta cada arquivo pela versão do conteúdo (branch feat/29-95-versao-dos-arquivos-do-site)
+
+- **Por quê** (caminhada da orquestradora depois do deploy 34): no Chrome do dono, o rótulo "Ilustração" seguiu com a
+  cor antiga até a recarga forçada. A origem manda `no-cache` no CSS e no JS do site, e a borda os entrega com
+  `max-age=14400` (medido às 03:23:10Z e às 03:30:43Z). Assim, quem já visitou fica até 4 h com o CSS e o JS velhos
+  depois de cada deploy, e o HTML novo pode encontrar o JS velho.
+- **O que muda:**
+  - na subida, as páginas do site (`index.html` e `404.html`) passam a apontar cada arquivo da pasta com `?v=` e os 12
+    primeiros hex do sha256 do conteúdo (CSS, JS, marcas, ícones); conteúdo novo é endereço novo;
+  - o que não é arquivo do site fica como está: `/central/`, `/`, âncoras;
+  - a prova de fora baixa a raiz, pega o `?v=` do CSS e do JS e confere que a borda entrega, por esse endereço, o
+    conteúdo com esse hash. Reprova sem `?v=` ou com hash diferente, que é o caso de a borda guardar sem olhar a query.
+  - Nada muda na Cloudflare.
+- **Prova:**
+  - `simulated`: `tests/test_portal_site.py` (a raiz e a 404 apontam a versão que a origem serve; conteúdo novo muda
+    o endereço e a ETag da página; página, arquivo ausente e âncora ficam intactos; a guarda do teste reprova
+    qualquer citação a arquivo da pasta sem `?v=`, em aspas simples, sem aspas, maiúscula, `srcset`, `use href`,
+    caminho relativo ou `url()` no CSS, com um caso que prova que ela acha) e
+    `scripts/tests/test_portal_prova_de_fora.py` (22, com a versão velha e o arquivo sem `?v=` reprovando, e a
+    mensagem com as três causas: query ignorada, cópia velha ou arquivo alterado no caminho);
+  - a subida NÃO recusa um atributo fora dessas formas: derrubaria o central por um detalhe de HTML. Quem garante é
+    a guarda do teste;
+  - `real` (05/10 03:43:46Z, só GET): `/assets/site.css?v=<novo>` deu `cf-cache-status: MISS` e, na segunda vez,
+    `REVALIDATED`: a borda guarda separado por query, e o endereço novo não herda o guardado;
+  - `not_run`: o central depois do deploy e a prova de fora com as linhas novas.
+
+## 2026-10-05 — 29.91: a borda não reescreve o HTML do site nem o do painel (branch feat/29-91-html-sem-injecao)
+
+- **Por quê:** em 05/10 a Cloudflare injetava o beacon do Web Analytics também no painel (`/central/`), que não tinha
+  CSP. 244 páginas em 24 h foram à conta de análise, com seletores e ids de execução. O recurso foi desligado na zona,
+  mas pode ser religado por engano.
+- **O que muda:**
+  - o HTML do site (raiz e 404) sai com `no-transform`, e comprimido em gzip pela origem quando o cliente aceita e
+    acima de 1 KB. Sem isso a borda deixaria de comprimir e a raiz iria de ~10 KB a ~40 KB;
+  - o `index.html` do painel sai com `no-transform` e com a CSP do painel (`CSP_DO_PAINEL`): script, estilo e conexão
+    só da própria origem, e imagem também de `blob:` e `data:`;
+  - o CSS e o JS do site seguem comprimidos pela borda;
+  - `server.csp_do_painel` (`aplicar` de fábrica, `so_relatar` ou `desligada`) desfaz a CSP sem deploy, só com o
+    reinício da `farm-central`, se uma tela quebrar no central;
+  - leitura do #366: o `connect-src` lista também o `wss://` de cada `server.public_hosts` e o `ws://`/`wss://` de
+    cada `server.allowed_origins` (Safari e iOS antigos, só com CSP 2, não cobrem WebSocket pelo `'self'`); o modo é
+    tipado com o mesmo `Literal` da configuração; `/404.html` pedido pelo nome sai como a 404 (status 404 e
+    `no-transform`); o arquivo de teste da prova de fora volta a LF.
+- **Estilos:** nenhum componente escreve `style=""` no HTML nem injeta `<style>`. No `src`, nada de `innerHTML`,
+  `setAttribute('style')`, `cssText` nem `<style>`. No bundle, os três `innerHTML` são internos do react-dom (o caminho
+  do `dangerouslySetInnerHTML`, que o código não usa). O `style={...}` do React vai pelo CSSOM, que a CSP não barra.
+- **Prova:**
+  - `simulated`: `tests/test_portal_site.py` (gzip só quando o cliente aceita, `q=0` respeitado, o mesmo HTML nos dois
+    jeitos, a 404 também, o CSS sem `no-transform`) e `tests/test_painel_estatico.py` (CSP e `no-transform` no
+    `index.html`, o bundle sem, e os três valores da chave);
+  - navegador num painel isolado (harness, porta 8794):
+    - sem aparelho: 11 telas sem nenhuma violação de CSP, o WebSocket da mesma origem aberto e o de outra origem
+      barrado pela CSP;
+    - com o aparelho falso do harness: a prévia do cartão vinda da API (`/frame?mode=thumb`, 360x640), o quadro do
+      foco como `blob:` (720x1280), o anexo PNG na aba Anexos como `blob:` e o upload de foto da persona (o arquivo
+      posto no campo, enviado e mostrado pela API). Tudo carregou, sem nenhuma violação; no console, a única
+      mensagem de CSP é a do teste proposital com `wss://exemplo.invalid`;
+  - a prova de fora (`scripts/portal-prova-de-fora.sh`) passa a pedir também `/central/` como navegador e a conferir
+    `no-transform` na raiz e no painel, o gzip da origem na raiz (pedida com gzip, br e zstd: br ou zstd quer dizer
+    que a borda abriu o corpo) e a CSP do painel. `simulated`: `scripts/tests/test_portal_prova_de_fora.py` (19, com o
+    beacon no painel, o HTML sem `no-transform`, o corpo recomprimido e o painel em Report-Only reprovando);
+  - `real`, antes do deploy (05/10 03:35:48Z, central em `584ac9c8`, só GET): a raiz chega em zstd com 11.355 B no fio
+    e `Cache-Control: no-store`; o `/central/` em zstd, sem `no-transform` e sem CSP; nenhum beacon (o RUM está
+    desligado na zona desde as 02:23Z);
+  - `not_run`: o central depois do deploy 35 (o peso da raiz no gzip da origem, perto de 10,6 KB, e a prova de fora
+    com as linhas novas). Não se religa o Web Analytics para provar.
+
+## 2026-10-05 — 31.70: o resto da varredura do 31.67, erro sobre a saída do modelo sem o texto dela (branch fix/31-70-causa-sem-texto-resto)
+
+- **O que muda:** os erros sobre a saída do modelo agora são levantados FORA do `except` e sem `from`. Antes, a exceção
+  original ficava em `__cause__`/`__context__` e ia junto a qualquer log com traceback, levando o texto do modelo (o
+  `.doc` do `JSONDecodeError`, o `input_value=` da `ValidationError` ou o rótulo do enum).
+- **Onde:**
+  - `openai_provider.decide`: os argumentos da ferramenta (G1).
+  - `command_refinement.refinement_from_json` e `orquestracao.orquestracao_from_json` (G1). Nestes dois a mensagem também
+    trazia o `input_value`. Usam a função nova `command_refinement.motivo_sem_valor`, que dá de cada erro só o `type`
+    e o lugar (nome de campo do esquema e índice; outra chave vira `?`), e linha e coluna para o JSON.
+  - `planning/curador.parecer_from_json`, mais `learning/domain/curador._parecer` e `_rotulo` (G2): o `from None` dentro
+    do `except` só escondia a causa na impressão; ela seguia em `__context__`.
+  - `skills/domain/document.parse_json_object` (G3).
+- **M5 avaliado, sem mudança:** o motivo `ai_refusal` carrega `str(AIError)`, mas o texto da recusa é fixo nos dois
+  provedores (`anthropic_provider._check_stop` e o `content_filter` do `openai_provider`). O `ai_error` de saída inválida
+  só leva linha e coluna depois do 31.67 e deste item.
+- **Prova:** `simulated`. `backend/tests/test_causa_sem_texto_resto.py` (8 casos) e
+  `test_openai_provider.py::test_argumentos_ilegiveis_da_ferramenta_viram_erro_sem_o_texto_na_causa`. O segredo vai num
+  valor que a mensagem antiga mostrava, e os testes conferem a mensagem, `__cause__` e `__context__`. Real: `not_run`.
+
+## 2026-10-05 — 29.98: o conjunto das catracas em arquivo de ids (branch test/29-98-catracas)
+
+- `backend/tests/catracas.txt` (53 ids) e `scripts/tests/catracas.txt` (6 ids): os testes que inspecionam o código
+  inteiro ou assinaturas, fora do dirigido comum. Uso: `pytest @tests/catracas.txt -n 4` (de `backend/`) e
+  `pytest @scripts/tests/catracas.txt` (da raiz).
+- `backend/tests/test_catracas.py` trava o formato (só id por linha; um `#` ou uma linha vazia faz a coleta voltar
+  vazia) e a existência de cada id, lida por `ast` sem importar os módulos.
+- Regra em `.claude/rules/testes.md`: todo dirigido que toque `backend/app` roda o conjunto inteiro.
+- Prova: `simulated`, em Idle, na máquina central: o backend deu 86 passed em 30,8 s com `-n 4` (37 s de parede); os
+  scripts, 6 passed em 0,4 s; `test_catracas`, 6 passed. Real: não se aplica.
+
+## 2026-10-05 — 28.40: aviso para todo objetivo parado esperando a pessoa (branch canais/28-40-objetivo-parado)
+
+- `avisos/domain/mensagem.py`: tipo `objective.waiting_user` (nível 1, sai na hora, com rajada). O objetivo que entra
+  em `waiting_user` pedindo a pessoa, de qualquer origem, avisa uma vez por espera (`objective:<id>:<finished_at>`); a
+  aprovação fica de fora. Texto fixo: aparelho, etapa que espera (nome do catálogo ou chave), motivo pelo
+  `failure_kind` do 29.90 ou pelo `blocked_kind`, e o gesto do item parado na execução (Assumir controle, Tentar
+  novamente ou Abandonar), com o link da própria execução: o objetivo parado não está na caixa de Pendências; nunca o
+  detalhe, o `needs` nem o título da etapa. A conta em tela não reconhecida (`unknown`, 29.92) ganha a frase e as três
+  linhas revisadas pela Aprendizado, e o link abre o Foco do aparelho, onde fica o "Assumir controle". Catraca: toda tela de link de aviso
+  existe nas rotas do painel. O lembrete do 31.50 do objetivo parado também leva à execução, com o mesmo gesto
+  (revisão do #372, L1). O agrupado do objetivo parado leva a Execuções, com o gesto próprio, e a resposta a um
+  lembrete manda ao link dele, não à caixa (revisão do #372, G1).
+- `avisos/infrastructure/servico.py`: `objective.updated` entra nos eventos que avisam; o serviço põe a capability da
+  etapa em `waiting_user` e o nome dela; o lote de frente cala pelo mesmo `_e_de_prova` do `run.updated`; o aviso de
+  conta do mesmo aparelho, ativo e posterior à criação da execução, cala o objetivo só se for da mesma conta (ou, sem
+  `account_id`, da mesma persona e por motivo de conta); outra persona ou outro app da mesma persona avisam
+  (revisão do #372, O1).
+- `avisos/infrastructure/portas_da_central.py`: o desfecho nos canais diz "N esperando você" e o gesto; a "Evidência"
+  pula o objetivo em `waiting_user`, cujo motivo livre traz texto de tela ou de conta (revisão do #372, O2).
+- Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` (50 testes); rede dirigida dos canais verde.
+  Real: `not_run`.
+
+## 2026-10-05 — 30.70: a espera por uma pessoa não é veredito sobre a receita (branch fix/30-70-espera-nao-e-veredito)
+
+- Achado da leitura do 30.69: em `StepExecutor._after_step`, o `veredito` só excluía defeito do plano, `retry` e
+  trava da conta. Uma etapa com a receita reproduzida ou divergida que terminava em `waiting_user` somava `replay_fail`
+  e `consecutive_fail` (a quarentena) e gravava `driven_by='recipe+ai'`, que o aprendizado lê como evidência CONTRA a
+  receita. Com o 29.90 (a releitura que segura o toque marca a divergência; o aviso que cobre o botão termina em
+  `waiting_user`), um aviso do app contaria contra uma receita boa.
+- `waiting_user` entra ao lado do `retry` entre os desfechos que não são veredito. `reproducao_sql._ETAPAS` ignora a
+  etapa em `waiting_user`, `cancelled` ou `skipped`, o que cobre as gravadas antes (cancelar e pular só pegam etapa
+  aberta; D1 da leitura do #374). A etapa retomada e terminada dá o veredito de verdade.
+- Prova: `simulated` (`backend/tests/test_espera_nao_e_veredito_da_receita.py`, 3 testes). Cada metade do conserto,
+  desfeita, reprova o seu teste. `not_run`: aparelho real.
+
+## 2026-10-05 — 31.69: valor curto sem identificador não fecha a leitura pela prova local (branch feat/31-69-valor-curto-sem-id)
+
+- L3 da leitura do 31.61: sem `resource_id` (Compose, WebView), um valor curto inteiro ("1", "Sim") de OUTRO elemento
+  ainda fechava a leitura; com o id repetido (linhas de lista), outra linha com o mesmo valor curto também.
+- Agora o valor com menos de 4 caracteres normalizados (`VALOR_CURTO`) só fecha vindo de um elemento com id ÚNICO na
+  tela relida; senão a etapa volta ao ator (uma volta a mais, nunca um valor velho).
+- Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`, 3 testes novos; os dois negativos falham no código
+  anterior). Real: `not_run`.
+
+## 2026-10-05 — 28.39: sobras do desfecho e do plano esquecido (branch canais/28-39-sobras-do-desfecho)
+
+- G1 da leitura do #358: a primeira vez que a conversa vê a execução em `planned` fica gravada na linha, no `previa`,
+  com a chave `vista_em_planned`, como um `setdefault`. Antes ficava em memória. Um processo que reiniciasse, ou um
+  líder da trava `avisos` que alternasse, a cada menos de 1 h, nunca chegaria à hora. Se a execução sai de `planned`,
+  a vista é apagada.
+- O gesto: só o botão Cancelar do dono cancela COM gesto. O `_cancelar_plano` passa a ter `gesto=False` por padrão.
+  Cancelam sem gesto, sem gravar `cancelou_execucao` em nome de ninguém:
+  - a linha presa;
+  - a recuperação da porta;
+  - a recusa;
+  - o erro interno;
+  - a prévia que não saiu;
+  - a prévia vencida;
+  - o plano esquecido.
+- F3: o lote dos desfechos pendentes gira por cursor (`esperando_desfecho(depois_de=…)`, `LOTE_DESFECHO = 20`). Com
+  20 linhas antigas de execução longa à frente, a linha nova entra na volta seguinte. A falha passageira repete o mesmo
+  lote.
+- O desfecho que saiu sem o id do canal fica registrado por uma referência própria (`resultado:<entrada_id>`). A marca
+  que não gravou não o faz repetir.
+- A mensagem original apagada pelo dono: o desfecho já vai com `allow_sending_without_reply` (adaptador do Telegram),
+  então o 400 não acontece e não há tentativa a fazer sem a referência. No Trello, a referência é o próprio cartão, e não
+  há para onde mandar sem ele. Fica provado por teste.
+- Prova: `simulated`, com 6 testes novos em `tests/test_telegram_entrada.py`; ao todo, 144 passaram em
+  `test_telegram_entrada`, `test_trello_leitor` e `test_telegram_portas`. No ambiente real: `not_run`.
+
+## 2026-10-05 — 28.38: o canal diz o estado certo e não perde o desfecho (branch canais/28-38-estado-certo)
+
+- A recusa e o erro interno num caminho de início dizem o estado relido. Em `cancelling`, o texto é "está sendo
+  cancelada" (ela podia estar rodando, e "ainda não começou" seria falso). Em `needs_input`, o texto diz que é preciso
+  responder no painel, porque pelo canal não se responde.
+- O desfecho só marca `resultado_em` quando sai, ou quando a falha é `definitiva` (repetir não adianta). Antes, ele era
+  marcado mesmo quando o envio falhava calado, e na execução terminal ele é a única linha ao dono (28.36). Na falha
+  passageira, a volta para e a linha tenta de novo na volta seguinte, nunca antes do que o 429 pediu. O laço é um só:
+  o Trello troca só o texto (`_texto_do_desfecho`, sem a "Evidência"). Se o desfecho já está em `canal_enviadas`
+  (`origem='resultado'`) e só a marca faltou, ele não se repete (F2 da revisão). O tempo esgotado depois de o canal
+  aceitar ainda pode repetir: a escolha é "pelo menos uma vez".
+- Uma linha `feita` cuja execução está em `planned` (o `planning` de uma prévia termina ali) não tinha faxina: ficava
+  sem desfecho para sempre e travava o despacho do aprendizado. Agora, com a linha passada de `PLANO_ESQUECIDO_S`
+  (1 h, bem acima do `ttl_previa_s`, para dar tempo de iniciar no painel), a conversa lê o estado. A hora conta de
+  quando ela VIU a execução em `planned`, porque `runs` não guarda a hora da transição e a linha ficou `feita` ainda em
+  `planning` (F1); ela fica em memória, e um reinício dá mais tempo ao dono, nunca menos. Passada a hora, a execução é
+  cancelada SEM gesto (`portas.cancelar(run_id, gesto=False)`, `por=None`), e o sinal `cancelou_execucao` não sai em
+  nome do dono (F4). O desfecho "cancelada" fecha a linha.
+- Prova: `simulated`, com 11 testes novos em `tests/test_telegram_entrada.py`, 1 em `tests/test_trello_leitor.py` e
+  1 em `tests/test_telegram_portas.py` (o sinal com e sem gesto, sobre o serviço real do harness). No ambiente real: `not_run`.
+
+## 2026-10-05 — 28.37: a saúde acusa quando os backends ligam canais diferentes (branch canais/28-37-canais-divergentes)
+
+- N1 da revisão do #345: numa frota com um backend só com o aviso e outro só com o Trello, quem pega a trava `avisos`
+  segura os dois laços, e o canal que só o outro liga para calado. Agora cada backend publica o que liga
+  (`CanaisDaFrota`, `avisos/infrastructure/canais_frota.py`) na tabela `settings`, chave `canais.config:<OWNER_ID>`,
+  sem migração. O valor é só `{avisos, trello, em}`. A escrita sai na volta das travas, só quando muda ou a cada
+  120 s.
+- Problema de saúde `canais_divergentes` quando um canal ligado em algum backend com publicação fresca (< 240 s) não
+  está ligado no líder da trava. Aparece em qualquer backend, e o texto não leva `OWNER_ID`. Sem líder, ou com um
+  backend só, não acusa.
+- A publicação sai no encerramento limpo, e a de backend sumido há mais de 1 h é varrida na escrita. A chave não
+  aparece no `GET /api/settings` e o `PUT` a recusa (`unknown_setting`).
+- Notas C1 a C3 da revisão, consertadas no próprio PR:
+  - C1: a varredura apaga com `WHERE key=? AND value=?`, pelo valor lido; a publicação que o dono regravou no meio fica.
+  - C2: o `retirar()` tem `try` próprio no `stop()`, e a falha das travas não o impede.
+  - C3: só quem roda o scheduler publica, retira e se conta (`roda=cfg.roda_scheduler`). Uma réplica só de API não
+    acusa um canal que nunca roda nela.
+- Prova: `simulated`, em `tests/test_avisos_canais_frota.py` (12 testes). A frota real com dois backends fica
+  `not_run`: hoje há um só.
+
+## 2026-10-05 — 31.64: a etapa da irmã em curso conta no objeto da família (branch feat/31-64-imagem-sem-aprovacao-na-familia)
+
+- **O furo:** com `publicar_sem_aprovacao` ligado (padrão desligado), persona `autonomous` e nenhum outro motivo de
+  aprovação, a porta não grava pedido, e a saída só nasce no commit. A segunda persona do mesmo pedido passava com a
+  mesma imagem enquanto a primeira publicava (sobra do 31.53).
+- **O conserto:** `_mesmo_objeto_na_familia` conta também as etapas das outras personas do pedido em `running` ou
+  `verifying`, com a mesma capability e o mesmo objeto (`SocialRepository.etapas_em_curso_da_acao`). Etapas em
+  `ready` e `failed` não contam.
+- **F1 da revisão:** a etapa vira `running` na tomada, antes da porta; duas irmãs tomadas juntas se viam e as duas
+  eram recusadas. Agora só contam as MAIS ANTIGAS que a etapa da porta (`started_at`, `id` no desempate): das
+  que correm juntas, exatamente uma passa (testes de duas e de três irmãs).
+- **S1 da revisão (migração 110):** a ordem das tomadas não basta (a retomada de `retry_wait`/`waiting_user` mantém o
+  `started_at` da primeira tomada; o relógio varia por máquina). A porta marca `steps.passou_a_porta` ao liberar o
+  efeito; quem passou conta sempre (fora de falha e cancelamento), e "só as mais antigas" vale só entre as que não
+  passaram. Testes: retomada de `retry_wait` e de `waiting_user` recusada; a que passou e falhou não conta.
+- **S2 da revisão:** a marca conta só nos estados abertos (a concluída já sai pela saída gravada, com janela) e o lote da
+  consulta vem pelo `id` DESC. Antes, mais de 200 marcas concluídas na persona irmã tiravam a etapa em curso do
+  `LIMIT 200` e a mesma imagem passava. Teste: 201 concluídas + 1 em curso, recusa sai.
+- Prova: `simulated` (`backend/tests/test_familia_por_objeto.py::test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem`,
+  falha no código anterior). Real: `not_run`.
+
+## 2026-10-05 — 31.56: a barra de endereço tapada vira o padrão (branch feat/31-56-tapar-barra-ligado)
+
+- O A/B ao vivo do 31.56 deu LIGA (05/10, android-09, deploy 33, 3 execuções por braço): sucesso 3/3 nos dois braços,
+  16 decisões ligada contra 14 desligada (+14,3 %, teto 20 %), US$ 0,496713 no total. O padrão de
+  `ai.tapar_barra_de_endereco` passa a `true` em `config.py` e em `config.example.yaml`; o central já está ligado pela
+  config dele. Ressalva: n = 3 por braço; o veredito é o do critério pré-registrado, não uma estimativa do efeito.
+- A virada é silenciosa para quem não tem a chave no `config.yaml`: quem quiser o comportamento antigo põe
+  `ai.tapar_barra_de_endereco: false`.
+- Prova: `real` do A/B (acima); `simulated` do padrão (`backend/tests/test_url_fora_do_prompt.py`).
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 

@@ -635,7 +635,10 @@ def _rotulo[E: StrEnum](tipo: type[E], valor: object, motivo: MotivoDeInvalidade
     try:
         return tipo(valor)
     except ValueError:
-        raise _Invalida(motivo) from None
+        pass
+    # 31.70: FORA do `except`; o `ValueError` do enum ("'<valor>' is not a valid ...") traz o rótulo que o modelo
+    # escreveu e ficava em `__context__` mesmo com `from None`.
+    raise _Invalida(motivo)
 
 
 def _rotulos[E: StrEnum](tipo: type[E], valor: object) -> tuple[E, ...]:
@@ -672,10 +675,15 @@ def validar_saida(bruto: str | Mapping[str, object], dossie: Dossie, *,
 
 def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: float | None) -> Parecer:
     if isinstance(bruto, str):
+        ilegivel = False
         try:
             dados: object = json.loads(bruto)
         except ValueError:
-            raise _Invalida(MotivoDeInvalidade.JSON_INVALIDO) from None
+            ilegivel = True
+        # 31.70 (G2): FORA do `except`; o `from None` deixava o `JSONDecodeError` (com o parecer no `.doc`) em
+        # `__context__`.
+        if ilegivel:
+            raise _Invalida(MotivoDeInvalidade.JSON_INVALIDO)
     else:
         dados = bruto
     if not isinstance(dados, Mapping):

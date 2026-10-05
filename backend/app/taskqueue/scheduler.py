@@ -21,16 +21,17 @@ from ..metricas import metricas
 from ..modules.learning.domain.falhas import FailureKind
 from ..modules.learning.domain.prova import rastro_da_amostra
 from ..modules.learning.domain.validacao import tamanho_da_amostra
-from ..models import (ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent, InstanceState,
-                      ObjectiveStatus, Plan, PlanStep, Postcondition, RunStatus, StepDTO, StepStatus)
+from ..models import (OBJECTIVE_TERMINAL, ActionStatus, AttemptStatus, ControlOwner, DeliveryLevel, InstanceCurrent,
+                      InstanceState, ObjectiveStatus, Plan, PlanStep, Postcondition, RunStatus, StepDTO, StepStatus)
 from ..planning.capabilities import capability_of, normalizar_alvo
 from ..planning.catalog import capabilities_of
 from ..releases.service import InstalacaoIncerta
+from ..social.approvals import MOTIVO_DA_RECUSA
 from ..planning.provider import AIError, AIProvider, AppContext
 from ..util import iso_in, now, now_iso, parse_iso
 from .ai_slots import VagasDeIA
 from .balanceamento import Candidato, Servidor
-from .dialogos import MOTIVO_SEM_SAIDA
+from .dialogos import MOTIVO_SEM_SAIDA, NAVEGADORES
 from .executor import (PREFIXO_LIMPEZA, Cobertura, Outcome, StepExecutor, StepOutcome, saidas_exigidas,
                        tela_da_falha)
 from .flows import FlowStore
@@ -144,6 +145,18 @@ def texto_do_fluxo_salvo(flow_id: str, status: str, *, aprendizado_ligado: bool)
             "planejador segue sendo chamado. Com o aprendizado desligado (aprendizado.enabled: false), nenhuma "
             "execução o promove: só uma pessoa o publica")
 
+
+
+def _sem_o_motivo(draft_meta: str | None) -> str | None:
+    """31.65 (M3 da leitura do #364): a etapa replanejada herda o rascunho da anterior, mas NÃO o motivo de uma recusa
+    passada (`social.approvals.MOTIVO_DA_RECUSA`): numa etapa nova ele engana quem lê o detalhe. Só o motivo: `None`."""
+    if draft_meta is None:
+        return None
+    meta = loads(draft_meta, {})
+    if not isinstance(meta, dict) or MOTIVO_DA_RECUSA not in meta:
+        return draft_meta
+    resto = {k: v for k, v in meta.items() if k != MOTIVO_DA_RECUSA}
+    return dumps(resto) if resto else None
 
 class Scheduler:
     def __init__(self, cfg: Config, repo: Repository, devices: DeviceManager, provider: AIProvider,
@@ -1341,6 +1354,10 @@ class Scheduler:
                 await self._conferir_no_app_de_qa(obj, run, rt)
             self._maybe_complete(objective_id)
             self._parar_pela_conta(objective_id, rt)
+            if repo.objective_row(objective_id)["status"] in {s.value for s in OBJECTIVE_TERMINAL}:
+                # 31.66: o navegador na frente segue redesenhando a página e segura a CPU do convidado depois do fim.
+                # Só com o objetivo TERMINAL: à espera de uma pessoa, a tela fica como está para ela ver.
+                await self.devices.tirar_da_frente(rt, NAVEGADORES)
         except asyncio.CancelledError:
             raise
         except PosseDaEtapaPerdida as perda:
@@ -2209,7 +2226,7 @@ class Scheduler:
                 bindings["content"] = texto
                 guardas += [g for g in (loads(antiga["commit_guard"], []) or []) if g not in guardas]
                 mudou = True
-            rascunho = nova["draft_meta"] if nova["draft_meta"] is not None else antiga["draft_meta"]
+            rascunho = nova["draft_meta"] if nova["draft_meta"] is not None else _sem_o_motivo(antiga["draft_meta"])
             if mudou or rascunho != nova["draft_meta"]:
                 db.execute("UPDATE steps SET bindings=?, commit_guard=?, draft_meta=? WHERE id=?",
                            (dumps(bindings) if bindings else None, dumps(guardas), rascunho, nova["id"]))

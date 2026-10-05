@@ -27,8 +27,10 @@ from __future__ import annotations
 import logging
 import logging.handlers
 import os
+import re
 import socket
 import sys
+from collections.abc import Iterable
 from time import monotonic
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -44,7 +46,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .api import ROTAS_DE_SESSAO, recusa_do_despacho, router, worker_router
 from .commands.despacho import DespachoRecusado
-from .config import Config, get_config
+from .config import Config, ModoDaCspDoPainel, get_config
 from .modules.avisos.presentation.anexos import router as canais_anexos_router
 from .modules.avisos.presentation.estado import router as canais_estado_router
 from .modules.decisoes.presentation.rotas import router as decisoes_automaticas_router
@@ -358,7 +360,11 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         for caminho_de_entrada in ((PREFIXO_DO_PAINEL,) if site_ligado else ("/", PREFIXO_DO_PAINEL)):
             app.add_api_route(caminho_de_entrada, _para_o_painel, methods=["GET", "HEAD"], include_in_schema=False)
 
-        app.mount(PREFIXO_DO_PAINEL, PainelEstatico(directory=dist, html=True), name="frontend")
+        servidor = cfg.file.server
+        politica = politica_do_painel(origens_de_websocket(servidor.public_hosts, servidor.allowed_origins))
+        app.mount(PREFIXO_DO_PAINEL,
+                  PainelEstatico(directory=dist, html=True, csp=servidor.csp_do_painel, politica=politica),
+                  name="frontend")
         if site_ligado:
             # POR ÚLTIMO: o `mount` na raiz casa qualquer caminho, então tudo que veio antes (a API, `/central`) vence.
             # Uma pasta `site/` com arquivo fora da lista derruba a subida aqui (ADR-075).
@@ -399,13 +405,67 @@ class PainelEstatico(StaticFiles):
     bytes), e o que tem hash pode ser guardado por um ano sem perguntar.
     """
 
+    def __init__(self, *, directory: str | os.PathLike[str], html: bool = False, csp: ModoDaCspDoPainel = "aplicar",
+                 politica: str = "") -> None:
+        super().__init__(directory=directory, html=html)
+        cabecalhos: dict[ModoDaCspDoPainel, str | None] = {"aplicar": "Content-Security-Policy",
+                                                           "so_relatar": "Content-Security-Policy-Report-Only",
+                                                           "desligada": None}
+        self._cabecalho_da_csp = cabecalhos[csp]
+        self._politica = politica or politica_do_painel(())
+
     def file_response(self, *args: Any, **kwargs: Any) -> Any:
         resposta = super().file_response(*args, **kwargs)
         caminho = str(getattr(resposta, "path", ""))
         tem_hash = "/assets/" in caminho.replace("\\", "/")
-        resposta.headers["Cache-Control"] = ("public, max-age=31536000, immutable" if tem_hash
-                                             else "no-cache, must-revalidate")
+        if tem_hash:
+            resposta.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            # 29.91: o `index.html` do painel sai com CSP e `no-transform`. Em 05/10 a Cloudflare injetava o beacon do
+            # Web Analytics também no painel, e sem CSP ele rodava: 244 páginas de `/central/` em 24 h, com seletores
+            # e ids de execução, foram à conta de análise. O `no-transform` impede a borda de reescrever o HTML (é
+            # pequeno, a compressão não faz falta); a CSP barra qualquer script que não seja do próprio painel.
+            resposta.headers["Cache-Control"] = "no-cache, must-revalidate, no-transform"
+            if self._cabecalho_da_csp:                   # `server.csp_do_painel`: desfazer sem deploy
+                resposta.headers[self._cabecalho_da_csp] = self._politica
         return resposta
+
+
+#: O que o painel construído carrega, medido no `frontend/dist` e no código em 05/10: script, estilo e ícone do
+#: próprio `/central/`; imagens da própria API, `blob:` (quadro do aparelho, anexos) e um `data:` no CSS; `fetch` e o
+#: WebSocket na mesma origem (`'self'` cobre `ws:`/`wss:` da mesma origem na CSP 3). Nenhum script ou estilo em linha,
+#: nenhum CSS-em-JS, nenhum `eval`; o `style={...}` do React vai pelo CSSOM, que a CSP não barra.
+CSP_DO_PAINEL = (
+    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; "
+    "font-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'")
+
+#: Um nome ou IP com porta opcional, e nada mais: o que entra na política não pode trazer `;`, espaço nem esquema.
+_HOST_DA_CSP = re.compile(r"(?:[a-z0-9-]+(?:\.[a-z0-9-]+)*|\[[0-9a-f:.]+\])(?::[0-9]{1,5})?", re.IGNORECASE)
+
+
+def origens_de_websocket(public_hosts: Iterable[str], allowed_origins: Iterable[str]) -> list[str]:
+    """As origens `wss:`/`ws:` do painel, tiradas da CONFIGURAÇÃO e nunca do cabeçalho `Host` do pedido.
+
+    Na CSP 3, `'self'` já cobre `ws:` e `wss:` da mesma origem; na CSP 2 não, e um Safari ou iOS antigo ficaria sem os
+    eventos ao vivo (o dono usa o painel no celular). Os nomes públicos viram `wss://` (atrás do túnel TLS); as origens
+    aceitas viram `ws://` ou `wss://` conforme o esquema delas (o acesso local, `http://127.0.0.1:8000`). O que não
+    tem cara de nome ou IP fica fora, para nenhuma linha da configuração injetar diretiva na política."""
+    saida: list[str] = []
+    for host in public_hosts:
+        if _HOST_DA_CSP.fullmatch(host):
+            saida.append(f"wss://{host.lower()}")
+    for origem in allowed_origins:
+        esquema, _, resto = origem.partition("://")
+        ws = {"http": "ws", "https": "wss"}.get(esquema.lower())
+        if ws and _HOST_DA_CSP.fullmatch(resto):
+            saida.append(f"{ws}://{resto.lower()}")
+    return list(dict.fromkeys(saida))
+
+
+def politica_do_painel(origens_ws: Iterable[str]) -> str:
+    """`CSP_DO_PAINEL` com as origens de WebSocket explícitas no `connect-src`."""
+    extra = "".join(f" {origem}" for origem in origens_ws)
+    return CSP_DO_PAINEL.replace("connect-src 'self';", f"connect-src 'self'{extra};", 1)
 
 
 def create_worker_app(state: AppState) -> FastAPI:

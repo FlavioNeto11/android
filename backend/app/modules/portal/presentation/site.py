@@ -14,9 +14,15 @@ O `index.html` é montado por requisição: os contatos do config entram ESCAPAD
 (sem contatos, o bloco some) e o token de tempo mínimo do formulário entra no marcador `<!--portal:token-->`. Por isso
 ele sai com `no-store`; os outros arquivos saem com ETag e `no-cache` (os nomes não têm hash, então o navegador
 revalida e recebe 304).
+
+A borda, porém, troca esse `no-cache` por `max-age=14400` nos arquivos que ela guarda (CSS, JS, imagens; medido em
+05/10), e quem já visitou ficava até 4 h com o CSS e o JS velhos depois de um deploy (29.95). Por isso as páginas
+apontam para cada arquivo do site com `?v=` e o começo do sha256 do conteúdo, calculado na subida: conteúdo novo é
+endereço novo, e nem a borda nem o navegador têm a versão velha guardada sob ele.
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import html
 import re
@@ -59,6 +65,10 @@ FIM_DO_FORMULARIO = "<!--portal:fim-do-formulario-->"
 SEM_FORMULARIO = ('<div class="formulario formulario-fora" id="formulario-contato"><p>O formulário de contato está '
                   'fora do ar no momento. Ligue ou chame no WhatsApp pelos telefones ao lado.</p></div>')
 _MARCADOR = re.compile(r"<!--portal:[a-z-]+-->")
+#: `href`/`src` com caminho absoluto da própria origem, sem query nem âncora: os candidatos a levar a versão.
+_ENDERECO_LOCAL = re.compile(r'(\s(?:href|src)=")(/[^"?#]*)(")')
+#: Hex do sha256 na versão: 12 bastam para que dois conteúdos diferentes não colidam na prática.
+DIGITOS_DA_VERSAO = 12
 
 
 class SiteInvalido(ValueError):
@@ -92,6 +102,24 @@ def ler_site(raiz: Path) -> dict[str, Arquivo]:
     return arquivos
 
 
+def versionar(arquivos: Mapping[str, Arquivo]) -> dict[str, Arquivo]:
+    """As páginas `.html` com `?v=<sha256>` em cada `href`/`src` que aponta para um arquivo do site que não é página.
+    O que não está na pasta (o painel, `/`, uma âncora) fica como está. A ETag da página é refeita sobre o corpo novo."""
+    def com_versao(achado: re.Match[str]) -> str:
+        alvo = arquivos.get(achado.group(2))
+        if alvo is None or alvo.tipo.startswith("text/html"):
+            return achado.group(0)
+        versao = hashlib.sha256(alvo.corpo).hexdigest()[:DIGITOS_DA_VERSAO]
+        return f"{achado.group(1)}{achado.group(2)}?v={versao}{achado.group(3)}"
+
+    saida = dict(arquivos)
+    for caminho, arquivo in arquivos.items():
+        if arquivo.tipo.startswith("text/html"):
+            corpo = _ENDERECO_LOCAL.sub(com_versao, arquivo.corpo.decode("utf-8")).encode("utf-8")
+            saida[caminho] = Arquivo(corpo, arquivo.tipo, '"' + hashlib.sha256(corpo).hexdigest()[:20] + '"')
+    return saida
+
+
 class ContatoPublico(Protocol):
     """`app.config.ContatoPublicoCfg`, visto daqui só pelos dois campos."""
     nome: str
@@ -123,7 +151,7 @@ class SitePublico:
 
     def __init__(self, raiz: Path, contatos: Iterable[ContatoPublico], token: Callable[[Scope], str], *,
                  contato_ligado: bool) -> None:
-        self.arquivos = ler_site(raiz)
+        self.arquivos = versionar(ler_site(raiz))
         modelo = self.arquivos["/index.html"].corpo.decode("utf-8").replace(
             MARCADOR_DOS_CONTATOS, bloco_de_contatos(contatos))
         if not contato_ligado and INICIO_DO_FORMULARIO in modelo and FIM_DO_FORMULARIO in modelo:
@@ -145,22 +173,50 @@ class SitePublico:
             return
         caminho = scope["path"]
         if caminho in ("/", "/index.html"):
-            await _responder(send, 200, self.index(scope), EXTENSOES_DO_SITE[".html"],
-                             {"Cache-Control": "no-store"}, metodo)
+            await _responder_html(scope, send, 200, self.index(scope), "no-store", metodo)
             return
-        arquivo = self.arquivos.get(caminho)
+        arquivo = None if caminho == "/404.html" else self.arquivos.get(caminho)   # só pelo caminho 404 (N5 do #366)
         if arquivo is None:
             # A página 404 do site (29.80), com o status 404; sem ela na pasta, o texto curto de sempre.
             pagina = self.arquivos.get("/404.html")
-            corpo, tipo = ((pagina.corpo, pagina.tipo) if pagina is not None
-                           else ("Não encontrado.".encode("utf-8"), "text/plain; charset=utf-8"))
-            await _responder(send, 404, corpo, tipo, {"Cache-Control": "no-cache"}, metodo)
+            if pagina is not None:
+                await _responder_html(scope, send, 404, pagina.corpo, "no-cache", metodo)
+            else:
+                await _responder(send, 404, "Não encontrado.".encode("utf-8"), "text/plain; charset=utf-8",
+                                 {"Cache-Control": "no-cache"}, metodo)
             return
         cabecalhos = {"Cache-Control": "no-cache", "ETag": arquivo.etag}
         if _cabecalho(scope, b"if-none-match") == arquivo.etag:
             await _responder(send, 304, b"", arquivo.tipo, cabecalhos, metodo)
             return
         await _responder(send, 200, arquivo.corpo, arquivo.tipo, cabecalhos, metodo)
+
+
+#: Abaixo disto o gzip não compensa o cabeçalho e o tempo (a 404 e a raiz passam bem acima).
+GZIP_MIN_BYTES = 1024
+
+
+def _aceita_gzip(scope: Scope) -> bool:
+    """O cliente aceita gzip, e não com `q=0`. Sem o cabeçalho, nada é comprimido (o `curl` puro recebe o HTML cru)."""
+    for parte in (_cabecalho(scope, b"accept-encoding") or "").lower().split(","):
+        nome, _, parametros = parte.strip().partition(";")
+        if nome.strip() in ("gzip", "*"):
+            return parametros.replace(" ", "") not in ("q=0", "q=0.0", "q=0.00", "q=0.000")
+    return False
+
+
+async def _responder_html(scope: Scope, send: Send, status: int, corpo: bytes, cache: str, metodo: str) -> None:
+    """As páginas HTML do site (29.91). `no-transform` impede a borda de REESCREVER o HTML: a Cloudflare injetou o
+    beacon do Web Analytics (29.85) e pode injetar o Rocket Loader ou a ofuscação de e-mail, e o painel dela pode ser
+    religado por engano. O mesmo `no-transform` tira da borda a compressão, então a página sai comprimida daqui: sem
+    isso, cada visita pagaria ~40 KB em vez de ~10 KB (medido em 05/10). Só o HTML: o CSS e o JS seguem comprimidos
+    pela borda, que não mexe no conteúdo deles. Não há segredo nem eco do visitante no HTML (o token anti-robô não abre
+    nada), então comprimir não abre BREACH."""
+    extras = {"Cache-Control": f"{cache}, no-transform", "Vary": "Accept-Encoding"}
+    if len(corpo) >= GZIP_MIN_BYTES and _aceita_gzip(scope):
+        corpo = gzip.compress(corpo, compresslevel=6, mtime=0)
+        extras["Content-Encoding"] = "gzip"
+    await _responder(send, status, corpo, EXTENSOES_DO_SITE[".html"], extras, metodo)
 
 
 def _cabecalho(scope: Scope, nome: bytes) -> str | None:

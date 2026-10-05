@@ -101,10 +101,15 @@ def parecer_from_json(raw: str) -> JsonObject:
     texto = raw.strip()
     if texto.startswith("```"):
         texto = texto.strip("`").removeprefix("json").strip()
+    falha: str | None = None
     try:
         dados = json.loads(texto)
     except ValueError as exc:
-        raise ParecerIlegivel(f"O parecer do curador não é JSON: {exc}") from None
+        falha = str(exc)
+    # 31.70 (G2): FORA do `except`. O `from None` só esconde a causa na impressão: o `JSONDecodeError` segue em
+    # `__context__`, com o parecer inteiro no `.doc`.
+    if falha is not None:
+        raise ParecerIlegivel(f"O parecer do curador não é JSON: {falha}")
     if not isinstance(dados, dict):
         raise ParecerIlegivel("O parecer do curador não é um objeto JSON.")
     return dados

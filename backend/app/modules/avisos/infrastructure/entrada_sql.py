@@ -27,6 +27,8 @@ MAX_CURTO = 1000
 MAX_ERRO = 300
 #: A linha-marco da 1ª subida (B1): o `id_externo` não colide com um `update_id` (só dígitos).
 INICIO = "inicio"
+#: A chave, no `previa` da linha, da primeira vez que a conversa viu a execução em `planned` (28.39, G1).
+VISTA_EM_PLANNED = "vista_em_planned"
 
 
 def _previa(bruta: object) -> dict[str, object]:
@@ -218,7 +220,11 @@ class EntradasDoCanal:
     def registrar_enviada(self, ref_mensagem: str | None, origem: str, *, fato: str | None = None,
                           entrada_id: int | None = None) -> None:
         if ref_mensagem is None:
-            return
+            # O desfecho que saiu sem o id do canal (resposta sem `message_id`) fica registrado por uma referência própria:
+            # sem ela, a marca que não gravou faria repeti-lo (28.39). Nenhum id de Telegram ou Trello tem esse formato.
+            if origem != "resultado" or entrada_id is None:
+                return
+            ref_mensagem = f"resultado:{int(entrada_id)}"
         self.db.execute(
             "INSERT INTO canal_enviadas(canal, ref_mensagem, origem, fato, entrada_id, enviada_em)"
             " VALUES (?,?,?,?,?,?) ON CONFLICT (canal, ref_mensagem) DO NOTHING",
@@ -246,10 +252,40 @@ class EntradasDoCanal:
                            (self.canal,)) is not None
 
     # ------------------------------------------------------------------ desfecho na conversa
-    def esperando_desfecho(self, limite: int = 20) -> list[dict[str, object]]:
+    #: Quantas linhas esperando desfecho a conversa trata por volta; o lote gira por `depois_de` (28.39).
+    LOTE_DESFECHO = 20
+
+    def esperando_desfecho(self, limite: int | None = None, *, depois_de: int = 0) -> list[dict[str, object]]:
         return [dict(r) for r in self.db.query(
-            "SELECT id, ref_mensagem, run_id FROM canal_entradas WHERE canal=? AND run_id IS NOT NULL"
-            " AND resultado_em IS NULL AND estado='feita' ORDER BY id LIMIT ?", (self.canal, limite))]
+            "SELECT id, ref_mensagem, run_id, previa, tratada_em, recebida_em FROM canal_entradas WHERE canal=?"
+            " AND run_id IS NOT NULL AND resultado_em IS NULL AND estado='feita' AND id > ? ORDER BY id LIMIT ?",
+            (self.canal, int(depois_de), int(limite or self.LOTE_DESFECHO)))]
+
+    def desfecho_ja_enviado(self, ident: int) -> bool:
+        """O desfecho desta linha já saiu e ficou registrado (`canal_enviadas`, origem `resultado`): não se repete."""
+        return self.db.one("SELECT 1 AS x FROM canal_enviadas WHERE canal=? AND entrada_id=? AND origem='resultado'"
+                           " LIMIT 1", (self.canal, int(ident))) is not None
+
+    def vista_em_planned(self, ident: int) -> datetime:
+        """A primeira vez que a conversa viu a execução desta linha em `planned` (28.39, G1), gravada no `previa` da linha
+        na primeira chamada (como um `setdefault`). Só o líder da trava `avisos` chama, e a linha já está `feita`: nada
+        mais escreve no `previa` dela."""
+        previa = _previa(self.db.scalar("SELECT previa FROM canal_entradas WHERE id=? AND canal=?", (int(ident), self.canal)))
+        visto = parse_iso(str(previa.get(VISTA_EM_PLANNED) or ""))
+        if visto is not None:
+            return visto
+        agora = self.relogio()
+        previa[VISTA_EM_PLANNED] = to_iso(agora)
+        self.db.execute("UPDATE canal_entradas SET previa=? WHERE id=? AND canal=?",
+                        (json.dumps(previa, ensure_ascii=False), int(ident), self.canal))
+        return agora
+
+    def esquecer_vista_em_planned(self, ident: int) -> None:
+        """A execução saiu de `planned`: se voltar, a hora conta de novo."""
+        previa = _previa(self.db.scalar("SELECT previa FROM canal_entradas WHERE id=? AND canal=?", (int(ident), self.canal)))
+        if previa.pop(VISTA_EM_PLANNED, None) is not None:
+            self.db.execute("UPDATE canal_entradas SET previa=? WHERE id=? AND canal=?",
+                            (json.dumps(previa, ensure_ascii=False), int(ident), self.canal))
 
     def marcar_desfecho(self, ident: int) -> None:
         self.db.execute("UPDATE canal_entradas SET resultado_em=? WHERE id=? AND canal=?",

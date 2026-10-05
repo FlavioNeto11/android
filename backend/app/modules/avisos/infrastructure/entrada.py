@@ -91,6 +91,34 @@ OPERADOR_DO_TELEGRAM = "telegram:dono"
 EM_ANDAMENTO = ("running", "paused")
 #: Estados finais: o desfecho de sempre (`portas.desfecho`) é a linha ao dono, e nenhuma outra (28.36).
 TERMINAIS = frozenset(s.value for s in RUN_TERMINAL)
+#: Em `needs_input` a execução para até alguém responder; pelo Telegram não se responde, então o texto aponta o painel.
+RESPONDA_NO_PAINEL = "espera uma resposta sua: responda no painel para ela seguir"
+
+
+def _texto_da_recusa(curta: str, estado: str | None, motivo: str) -> str:
+    """O que o dono lê quando a Central recusou iniciar, pelo estado lido depois (28.36, 28.38)."""
+    if estado in EM_ANDAMENTO:
+        return f"A execução {curta} já estava em andamento: {motivo}"
+    if estado == "cancelling":       # podia estar rodando: "não iniciei" seria falso
+        return f"A execução {curta} está sendo cancelada: {motivo}"
+    if estado == "needs_input":
+        return f"A execução {curta} {RESPONDA_NO_PAINEL} ({motivo})."
+    return f"Não iniciei a execução {curta}: {motivo}"
+
+
+def _texto_do_erro(curta: str, estado: str | None) -> str:
+    """O que o dono lê quando um erro interno veio num caminho de início e a execução já saiu de `planned` (28.36,
+    28.38). Em `planning` ela de fato ainda não começou."""
+    erro = "houve um erro interno ao iniciar (está no log da Central)"
+    if estado in EM_ANDAMENTO:
+        return (f"A execução {curta} está em andamento; houve um erro interno logo depois do início (está no log da "
+                "Central). Conto aqui quando terminar.")
+    if estado == "cancelling":
+        return f"A execução {curta} está sendo cancelada; {erro}. Conto aqui o desfecho."
+    if estado == "needs_input":
+        return f"A execução {curta} {RESPONDA_NO_PAINEL}; {erro}. Conto aqui o desfecho."
+    return (f"A execução {curta} ainda não começou, depois de um erro interno ao iniciar (está no log da Central). "
+            "Conto aqui o desfecho.")
 #: O que o dono ouve quando a mensagem vai à orquestradora (28.28), pelo motivo do repasse. Nunca o texto do extrator do
 #: painel: "Diga onde ou por quem" não responde a uma pergunta.
 RESPOSTA_DO_REPASSE = {
@@ -190,6 +218,11 @@ _CAUSA_DA_RECUSA = {
 OCIOSO_S = 15.0
 #: Quanto tempo uma linha pode ficar em `executando` sem execução criada antes de ser dada como interrompida.
 PRESA_S = 300.0
+#: A linha ficou `feita` e a execução voltou (ou ficou) em `planned` sem ninguém iniciar nem cancelar: o `planning` de uma
+#: prévia termina em `planned`. Ninguém mais a inicia pelo canal (a linha já não tem botão), e esquecida ela trava o
+#: despacho do aprendizado. Depois disto (bem acima do `ttl_previa_s`, para o dono poder iniciá-la no painel), é
+#: cancelada, e o desfecho "cancelada" fecha a linha (28.38).
+PLANO_ESQUECIDO_S = 3600.0
 #: As fases da linha do Executar (28.27), na `previa`: o plano sendo feito (o vigia espera `planned`) e a prévia da
 #: porta mostrada (o "Executar (aprova N)" manda os pares do retrato).
 FASE_PLANEJANDO = "planejando"
@@ -280,7 +313,10 @@ class PortasDaCentral(Protocol):
     def iniciar(self, run_id: str) -> None:
         """Inicia a execução `planned` sem a porta (a prévia dela não pôde ser lida): a porta decide no despacho."""
         ...
-    def cancelar(self, run_id: str) -> None: ...
+    def cancelar(self, run_id: str, *, gesto: bool = True) -> None:
+        """Só a execução `planned`. `gesto=False`: ninguém fez o gesto (a faxina do plano esquecido, 28.38), e o sinal
+        `cancelou_execucao` não é gravado."""
+        ...
     def imagem_da_etapa(self, run_id: str, step_id: str) -> tuple[bytes, str] | None:
         """Os bytes e o mime da imagem que a etapa vai publicar (`image_id`), ou `None`. Quem chama confere o sha256."""
         ...
@@ -509,6 +545,10 @@ class ConversaDoCanal:
         self._agora = relogio or time.time
         #: mensagens antigas desta volta (escritas com a Central fora): o dono é avisado uma vez no fim da volta
         self._antigas = 0
+        #: O 429 pediu para esperar: o reenvio do desfecho não sai antes desta hora (epoch), mesmo com voltas no meio.
+        self._desfecho_espera_ate = 0.0
+        #: O lote dos desfechos gira (28.39): a próxima volta começa depois desta linha (0 = do começo).
+        self._desfecho_depois_de = 0
         #: O "sim" ou o "não" do dono a quem chegou (28.18): (chat, autorizar) → o que responder ao dono. Só o leitor do
         #: Telegram com os convidados ligados o põe; sem ele, a resposta diz que o caminho está desligado.
         self.decidir_convidado: Callable[[str, bool], Awaitable[str]] | None = None
@@ -582,7 +622,7 @@ class ConversaDoCanal:
                     log.exception("telegram: execução da mensagem presa %s", linha.get("id"))
                     perdida = None
                 if perdida:
-                    self._cancelar_plano(perdida)
+                    self._cancelar_plano(perdida)         # recuperação da queda: não é gesto do dono (28.39)
                 await self._responder(saida, linha, RESPOSTA_PRESA)
         for linha in self.repo.presas_na_porta(PRESA_S):
             await self._recuperar_da_porta(saida, linha)
@@ -1246,7 +1286,7 @@ class ConversaDoCanal:
         if acao == "c":
             if self.repo.marcar(oid, "cancelada", de=("pergunta",)):
                 if previa.get("fase") == FASE_PORTA and previa.get("run_id"):
-                    self._cancelar_plano(str(previa["run_id"]))
+                    self._cancelar_plano(str(previa["run_id"]), gesto=True)    # o Cancelar é o gesto do dono
                 await self._responder(saida, original, "Cancelado: nada foi executado.")
         elif acao == "p" and previa.get("fase") == FASE_PORTA:
             if not extra or extra != previa.get("marca"):
@@ -1449,8 +1489,7 @@ class ConversaDoCanal:
         except Exception:  # noqa: BLE001 - na dúvida, abandona; o cancelamento confere o estado de novo
             estado = None
         motivo = self._redigir(str(recusa))[:300]
-        texto = (f"A execução {curta} já estava em andamento: {motivo}" if estado in EM_ANDAMENTO
-                 else f"Não iniciei a execução {curta}: {motivo}")
+        texto = _texto_da_recusa(curta, estado, motivo)
         if estado not in ("planned", None):
             await self._seguiu(saida, linha, de, run_id, estado, texto)
             return
@@ -1466,11 +1505,7 @@ class ConversaDoCanal:
         except Exception:  # noqa: BLE001 - na dúvida, abandona; o cancelamento confere o estado de novo
             estado = None
         if estado not in ("planned", None):
-            texto = (f"A execução {curta} está em andamento; houve um erro interno logo depois do início (está no log "
-                     "da Central). Conto aqui quando terminar." if estado in EM_ANDAMENTO
-                     else f"A execução {curta} ainda não começou, depois de um erro interno ao iniciar (está no log da "
-                          "Central). Conto aqui o desfecho.")
-            await self._seguiu(saida, linha, de, run_id, estado, texto)
+            await self._seguiu(saida, linha, de, run_id, estado, _texto_do_erro(curta, estado))
             return
         await self._abandonar_porta(saida, {**linha, "run_id": run_id} if run_id else linha, de, erro,
                                     "Não iniciei a execução: erro interno (está no log da Central).")
@@ -1529,29 +1564,88 @@ class ConversaDoCanal:
         await self._feita(saida, original, i, f"Execução {curta} iniciada; {n} {'sim gravado' if n == 1 else 'sins gravados'}"
                                               f"{validos}. Conto aqui quando terminar.", run_id=run_id)
 
-    def _cancelar_plano(self, run_id: str) -> None:
+    def _cancelar_plano(self, run_id: str, *, gesto: bool = False) -> None:
         """Todo caminho que abandona a porta (Cancelar, prévia vencida, recusa, falha, linha presa) cancela a execução
         só de plano: esquecida em `planned`, ela trava o despacho do aprendizado. Só a que ainda está em `planned`: a
         recusa `invalid_state` pode ser de um plano que já foi iniciado, e esse segue. A leitura aqui só poupa a chamada;
         quem decide é o `cancelar` da porta, condicionado a `planned` num `UPDATE` só, porque outro gesto (o "Aprovar e
-        iniciar" do painel) pode iniciar a execução entre a leitura e o cancelamento."""
+        iniciar" do painel) pode iniciar a execução entre a leitura e o cancelamento.
+
+        `gesto`: só o botão Cancelar do dono. A prévia vencida, a recusa, o erro interno, a prévia que não saiu, a linha
+        presa e o plano esquecido são consequência ou faxina, e o sinal `cancelou_execucao` não sai em nome de ninguém
+        (28.38, F4; 28.39)."""
         if not run_id:
             return
         try:
             if self.portas.estado_da_execucao(run_id) != "planned":
                 return
-            self.portas.cancelar(run_id)
+            self.portas.cancelar(run_id, gesto=gesto)
         except Exception:  # noqa: BLE001 - a execução `planned` não tem efeito; a faxina das execuções a encerra
             log.exception("telegram: cancelar a execução %s da prévia cancelada", run_id)
 
     # ------------------------------------------------------------------ desfecho na thread
     async def _contar_desfechos(self, saida: SaidaDaConversa) -> None:
-        for linha in self.repo.esperando_desfecho():
-            texto = self.portas.desfecho(str(linha["run_id"]))
+        """O desfecho só fica marcado quando saiu, ou quando tentar de novo não adianta (`FalhaDeEnvio.definitiva`): na
+        execução terminal ele é a ÚNICA linha ao dono (28.36), e marcado sem sair o dono não saberia do fim (28.38). A
+        falha passageira para a volta (o canal está fora) e a linha tenta de novo na seguinte, nunca antes do que o 429
+        pediu (`espera_s`). Sem teto de tentativas: no máximo uma falha por volta, e a linha `feita` sai pela faxina da
+        retenção (28.16)."""
+        if self._agora() < self._desfecho_espera_ate:
+            return
+        # O lote gira (28.39): com 20 linhas antigas de execução longa à frente, as novas esperariam para sempre. O cursor
+        # só anda quando a volta trata o lote inteiro; a falha passageira (o `return` abaixo) repete o mesmo lote.
+        linhas = self.repo.esperando_desfecho(depois_de=self._desfecho_depois_de)
+        if not linhas and self._desfecho_depois_de:
+            linhas = self.repo.esperando_desfecho()
+        for linha in linhas:
+            run_id = str(linha["run_id"])
+            texto = self.portas.desfecho(run_id)
             if texto is None:
+                # A linha fica `feita` ainda em `planning`: antes de 1 h de linha, a execução não pode estar 1 h em
+                # `planned`. Só então se lê o estado (a volta não relê as 20 execuções em curso a cada vez).
+                if self.repo.idade_s(linha) > PLANO_ESQUECIDO_S:
+                    self._plano_esquecido(linha, run_id)
                 continue
-            await self._responder(saida, linha, self._redigir(texto), origem="resultado")
+            if self.repo.desfecho_ja_enviado(self._id(linha)):
+                # Saiu e ficou registrado, mas a marca não gravou (o banco caiu entre os dois): não repete (revisão do
+                # #358, F2). O tempo esgotado DEPOIS de o canal aceitar não deixa registro e ainda pode repetir: a
+                # troca é "pelo menos uma vez", porque na execução terminal esta é a única linha ao dono.
+                self.repo.marcar_desfecho(self._id(linha))
+                continue
+            try:
+                await self._responder(saida, linha, self._texto_do_desfecho(texto), origem="resultado", exigir=True)
+            except FalhaDeEnvio as falha:
+                if not falha.definitiva:
+                    if falha.espera_s:
+                        self._desfecho_espera_ate = self._agora() + falha.espera_s
+                    return
+                log.warning("telegram: desfecho da mensagem %s não sai nunca (%s)", linha.get("id"), falha.motivo)
             self.repo.marcar_desfecho(self._id(linha))
+        self._desfecho_depois_de = self._id(linhas[-1]) if len(linhas) >= self.repo.LOTE_DESFECHO else 0
+
+    def _plano_esquecido(self, linha: Linha, run_id: str) -> None:
+        """A hora conta de quando a conversa VIU a execução em `planned` (revisão do #358, F1): `runs` não guarda a hora
+        da transição, e a linha ficou `feita` ainda em `planning`. A primeira vista fica NA LINHA (28.39, G1): em memória,
+        um processo que reinicia, ou um líder da trava `avisos` que alterna, a cada menos de 1 h, nunca chegaria à hora.
+
+        O cancelamento sai SEM gesto (F4): ninguém o fez, e o sinal `cancelou_execucao` não sai em nome de ninguém."""
+        try:
+            estado = self.portas.estado_da_execucao(run_id)
+        except Exception:  # noqa: BLE001 - sem a leitura, tenta na volta seguinte
+            log.exception("telegram: estado da execução %s sem desfecho", run_id)
+            return
+        oid = self._id(linha)
+        if estado != "planned":
+            self.repo.esquecer_vista_em_planned(oid)
+            return
+        desde = self.repo.vista_em_planned(oid)          # grava a primeira vista, se ainda não há
+        if (self.repo.relogio() - desde).total_seconds() <= PLANO_ESQUECIDO_S:
+            return
+        log.info("telegram: execução %s esquecida em planned; cancelada pela faxina do canal (28.38)", run_id)
+        self._cancelar_plano(run_id)                      # sem gesto; o desfecho "cancelada" sai na volta seguinte
+
+    def _texto_do_desfecho(self, texto: str) -> str:
+        return self._redigir(texto)
 
     # ------------------------------------------------------------------ saída
     async def _responder(self, saida: SaidaDaConversa, linha: Mapping[str, object], texto: str, *,
