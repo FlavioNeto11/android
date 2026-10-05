@@ -36,7 +36,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   público recusado na carga e Cc/Cf fora do rótulo do ator.
 - 2ª leitura do #386: Z1 (só contêiner distinto da marca é caixa), K1b (`botao_que_fecha` com o mesmo
   `_diz_aceitar`, sem soltar o caso do #308) e K2b (aceite recusado em qualquer lugar só com marca de cara de aviso).
-- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (37), com 13 mutações conferidas. `real`: `not_run`.
+- Delta da 2ª leitura, assumido pela frente Android: Z1c (em `_na_zona`, a caixa SOMA à faixa; um invólucro só do
+  texto com id de `_PISTAS`, como `banner-content` ou `modal-body`, não libera mais os botões do irmão de baixo) e K2c
+  (em `_cara_de_aviso`, a marca não clicável, como o título "Sua privacidade" ou a pergunta "Aceitar cookies?",
+  tem cara de aviso; o link do rodapé é clicável e segue fora).
+- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (40), com 13 mutações conferidas e mais as duas
+  do delta (desfazer o Z1c ou o K2c reprova os testes novos); com `test_dialogos_em_serie.py`, 63 passed; catracas
+  88; `test_arquitetura` 9. As árvores reais de `data/diag-31-72/` dão o mesmo antes e depois do delta (NTP, ml, g1
+  e uol com 0 recusado; gov-3 com 12, nenhum do Chrome). `real`: `not_run`.
 
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
