@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from app import supervisor as sup
+from app import vigia_do_laco
 from app.vigia_do_laco import PREFIXO, VigiaDoLaco, ultimo_despejo
 
 from .conftest import Harness
@@ -95,6 +96,43 @@ def test_a_partida_tem_prazo_proprio_antes_da_primeira_batida(tmp_path: Path) ->
     assert "(partida (antes da primeira batida))" in arquivo.read_text(encoding="utf-8").splitlines()[0]
 
 
+def test_o_prazo_da_partida_vence_antes_da_primeira_conferencia_do_supervisor() -> None:
+    """C1 da leitura do #421: com 120 s, o despejo da partida presa síncrona empatava com o kill (≈120 s depois do
+    `Popen`). A carência é o piso de qualquer kill, com ou sem a tolerância da partida do 29.124 (que só o adia)."""
+    assert vigia_do_laco.PARTIDA_S + vigia_do_laco.INTERVALO_S < sup.CARENCIA_S
+
+
+def test_excecao_fora_do_disco_tambem_conta_no_teto(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """N2: uma exceção que não é `OSError` no despejo também gasta a tentativa; sem isto, um arquivo por segundo."""
+    def quebra(**_k: object) -> None:
+        raise RuntimeError("faulthandler")
+
+    monkeypatch.setattr(vigia_do_laco.faulthandler, "dump_traceback", quebra)
+    r = _Relogio()
+    v = _vigia(tmp_path, r)
+    r.agora += 200
+    for _ in range(100):
+        r.agora += 1
+        v.conferir()
+    assert len(list(tmp_path.glob(f"{PREFIXO}*.txt"))) <= vigia_do_laco.DESPEJOS_POR_EPISODIO
+
+
+def test_ultimo_despejo_ignora_o_que_some_no_meio(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    some = tmp_path / f"{PREFIXO}20261005T130000Z-1.txt"
+    fica = tmp_path / f"{PREFIXO}20261005T130100Z-1.txt"
+    some.write_text("x", encoding="utf-8")
+    fica.write_text("x", encoding="utf-8")
+    original = Path.stat
+
+    def stat(self: Path, *a: object, **k: object) -> os.stat_result:
+        if self.name == some.name:
+            raise FileNotFoundError(self)
+        return original(self, *a, **k)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "stat", stat)
+    assert ultimo_despejo(tmp_path) == fica
+
+
 def test_ficam_so_os_mais_novos(tmp_path: Path) -> None:
     for i in range(25):
         (tmp_path / f"{PREFIXO}20261005T1200{i:02d}Z-1.txt").write_text("velho", encoding="utf-8")
@@ -120,13 +158,13 @@ def test_disco_que_falha_ainda_avisa_sem_derrubar(tmp_path: Path, caplog: pytest
 async def test_a_batida_vem_do_laco_e_o_laco_preso_e_visto(tmp_path: Path) -> None:
     """Fim a fim com relógio real: a tarefa bate pelo laço; um `time.sleep` no laço (o bloqueio que se procura)
     deixa a batida envelhecer, e a thread do vigia despeja sozinha."""
-    v = VigiaDoLaco(tmp_path, limite_s=0.5, partida_s=5, redespejo_s=10, intervalo_s=0.1)
+    v = VigiaDoLaco(tmp_path, limite_s=1.0, partida_s=5, redespejo_s=10, intervalo_s=0.1)
     batidas = asyncio.create_task(v.laco_de_batidas())
     v.iniciar()
     try:
         await asyncio.sleep(0.3)
         assert not list(tmp_path.glob(f"{PREFIXO}*"))
-        time.sleep(1.5)                       # o laço preso de propósito
+        time.sleep(3)                         # o laço preso de propósito (folga larga sobre o limite, para carga)
         await asyncio.sleep(0.2)
         arquivos = list(tmp_path.glob(f"{PREFIXO}*.txt"))
         assert len(arquivos) == 1
@@ -164,6 +202,21 @@ def test_supervisor_cita_o_despejo_na_linha_do_kill(tmp_path: Path, caplog: pyte
         s.run(ciclos=3)
     assert f"encerrando o backend (pid 4242): 3 conferências seguidas sem resposta; pilha do laço travado em {despejo}" \
         in caplog.text
+
+
+def test_erro_ao_procurar_o_despejo_nao_impede_o_kill(caplog: pytest.LogCaptureFixture) -> None:
+    encerrados: list[object] = []
+
+    def explode() -> Path | None:
+        raise FileNotFoundError("sumiu entre a lista e o stat")
+
+    s = sup.Supervisor(iniciar=_Proc, saudavel=lambda: False, encerrar=encerrados.append, dormir=lambda s: None,
+                       despejo=explode)
+    s.proc = _Proc()
+    with caplog.at_level(logging.WARNING, logger="poc.supervisor"):
+        s.run(ciclos=3)
+    assert len(encerrados) == 1, "o backend travado tem de morrer mesmo sem a citação"
+    assert "sem despejo de pilha do vigia" in caplog.text
 
 
 def test_supervisor_sem_despejo_diz_que_nao_ha(caplog: pytest.LogCaptureFixture) -> None:

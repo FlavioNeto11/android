@@ -3,12 +3,15 @@
 O incidente de 05/10 (12:55Z a 13:13Z, cinco kills do supervisor) não deixou como saber QUEM prendia o laço: o
 supervisor confere `/api/health`, mata depois de três silêncios e não guarda pilha. Aqui, uma tarefa no laço marca uma
 batida por segundo, e uma thread de fora dele confere a idade da batida. Passou de `LIMITE_S`, a thread escreve a
-pilha de TODAS as threads (`faulthandler`, que não depende do laço nem do GIL estar livre por muito tempo) num arquivo
-em `data/logs/`, antes de o supervisor matar o processo (ele leva três conferências, uns 40 s).
+pilha de TODAS as threads (`faulthandler`, que não depende do laço e precisa do GIL só por um instante) num arquivo
+em `data/logs/`, antes de o supervisor matar o processo (ele leva três conferências, uns 40 s). Uma chamada C que
+segura o GIL sem soltar deixa o vigia mudo enquanto durar; laço Python puro solta o GIL a cada 5 ms.
 
 - **A partida conta.** A thread nasce no `main()`, antes do `AppState` (que migra o banco e lê o disco). Até a
   primeira batida, o prazo é `PARTIDA_S`: uma partida presa (a de 13:07Z não escreveu linha em 2,5 min) também deixa
-  pilha.
+  pilha. `PARTIDA_S` fica abaixo da carência do supervisor (90 s até a primeira conferência; o kill vem pelo menos
+  30 s depois): com 120 s, o despejo e o kill empatavam numa partida presa síncrona, e o `terminate()` do Windows é
+  tiro seco. Um falso alarme numa partida lenta custa um arquivo e uma linha.
 - **Episódio.** Um travamento contínuo é um episódio: no máximo `DESPEJOS_POR_EPISODIO` despejos, espaçados de
   `REDESPEJO_S` (dois despejos mostram se a pilha andou). Quando a batida volta, uma linha diz quanto durou.
 - **Teto em disco.** Ficam os `MANTER` despejos mais novos.
@@ -28,7 +31,7 @@ from pathlib import Path
 log = logging.getLogger("poc.vigia")
 
 LIMITE_S = 10.0
-PARTIDA_S = 120.0
+PARTIDA_S = 60.0
 REDESPEJO_S = 30.0
 DESPEJOS_POR_EPISODIO = 3
 INTERVALO_S = 1.0
@@ -96,7 +99,7 @@ class VigiaDoLaco:
                 fh.write(f"laço de eventos sem batida há {atraso:.1f} s ({fase}); {carimbo}\n\n")
                 fh.flush()
                 faulthandler.dump_traceback(file=fh, all_threads=True)
-        except OSError as exc:              # disco cheio ou saturado: o aviso sai mesmo assim, sem o arquivo
+        except Exception as exc:  # noqa: BLE001 - disco cheio ou saturado: o aviso sai mesmo assim, sem o arquivo
             log.warning("laço de eventos sem batida há %.1f s (%s); a pilha não pôde ser gravada: %s", atraso, fase,
                         exc)
             return None
@@ -133,8 +136,16 @@ class VigiaDoLaco:
 
 def ultimo_despejo(pasta: Path, *, desde_s: float = 300.0) -> Path | None:
     """O despejo mais novo dos últimos `desde_s` segundos, para a linha do kill do supervisor."""
+    agora = time.time()
+    candidatos: list[tuple[float, Path]] = []
     try:
-        candidatos = [p for p in pasta.glob(f"{PREFIXO}*.txt") if time.time() - p.stat().st_mtime <= desde_s]
+        for p in pasta.glob(f"{PREFIXO}*.txt"):
+            try:
+                mtime = p.stat().st_mtime
+            except OSError:               # sumiu entre a lista e o stat (poda, mão): não é candidato
+                continue
+            if agora - mtime <= desde_s:
+                candidatos.append((mtime, p))
     except OSError:
         return None
-    return max(candidatos, key=lambda p: p.stat().st_mtime, default=None)
+    return max(candidatos, default=(0.0, None))[1]

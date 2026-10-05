@@ -204,8 +204,12 @@ class Supervisor:
 
     def _derrubar_e_resubir(self, motivo: str) -> None:
         if self.proc is not None:
-            # 29.121: o vigia do laço do backend grava a pilha antes deste kill; a linha diz onde ela está.
-            arquivo = self._despejo()
+            # 29.121: o vigia do laço do backend grava a pilha antes deste kill; a linha diz onde ela está. O kill não
+            # depende da citação: um erro ao procurar o despejo vira "sem despejo".
+            try:
+                arquivo = self._despejo()
+            except Exception:  # noqa: BLE001
+                arquivo = None
             log.warning("encerrando o backend (pid %s): %s%s", self.proc.pid, motivo,
                         f"; pilha do laço travado em {arquivo}" if arquivo else "; sem despejo de pilha do vigia")
             self._encerrar(self.proc)
