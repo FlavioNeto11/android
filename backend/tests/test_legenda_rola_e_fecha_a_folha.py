@@ -455,14 +455,17 @@ async def test_a_folha_em_portugues_fecha_pela_regra_sem_o_ator_a_ver(tmp_path: 
         assert fake.rotulo_ligado and len(fake.shares) == 1
 
 
-async def _tres_recusas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tipo: str) -> tuple[Any, InstagramComDobra]:
+async def _tres_recusas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                        tipo: str) -> tuple[Any, InstagramComDobra, list[str | None]]:
     """A releitura antes do toque acha SEMPRE a mesma mudança (`tipo`): a 3ª recusa decide o desfecho (D5)."""
     from app.taskqueue import executor as modulo
     monkeypatch.setattr(modulo, "cobertura_nova_no_ponto", lambda antes, depois, ponto, alvo: (tipo, f"[simulado] {tipo}"))
     ator = AtorQueLigaORotulo()
     async with _parque_com_dobra(tmp_path, folha=False, ator=ator) as h:
         etapa = await _publicar(h)
-        return etapa, _fake(h)
+        erros = [r["error"] for r in _estado(h).db.query("SELECT error FROM attempts WHERE step_id=? ORDER BY number",
+                                                          (etapa["id"],))]
+        return etapa, _fake(h), erros
 
 
 async def test_tres_coberturas_novas_param_numa_pessoa_como_aviso_do_app(tmp_path: Path,
@@ -470,7 +473,7 @@ async def test_tres_coberturas_novas_param_numa_pessoa_como_aviso_do_app(tmp_pat
     """D5: um clicável NOVO por cima do botão de efeito, três vezes, é um aviso que o app não declara. A etapa para em
     `waiting_user` sem nova navegação, com o tipo `aviso_do_app`; nada foi tocado."""
     from app.taskqueue.executor import MUDANCA_POR_CIMA
-    etapa, fake = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_POR_CIMA)
+    etapa, fake, _ = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_POR_CIMA)
     assert etapa["status"] == "waiting_user", (etapa["status"], etapa["status_detail"])
     assert "Um aviso cobre o botão de efeito" in (etapa["status_detail"] or "")
     assert fake.shares == []
@@ -479,7 +482,8 @@ async def test_tres_coberturas_novas_param_numa_pessoa_como_aviso_do_app(tmp_pat
 async def test_tres_alvos_movidos_falham_e_repetem(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """D5: só o alvo fora do lugar, três vezes, é tela se mexendo: `fail_or_retry`, como antes; nada foi tocado."""
     from app.taskqueue.executor import MUDANCA_FORA_DO_LUGAR
-    etapa, fake = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_FORA_DO_LUGAR)
+    etapa, fake, erros = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_FORA_DO_LUGAR)
     assert etapa["status"] in ("failed", "uncertain"), (etapa["status"], etapa["status_detail"])
-    assert "A tela mudou entre a conferência e o toque de efeito" in (etapa["status_detail"] or "")
+    # a 1ª tentativa sai pelo `fail_or_retry`; as seguintes podem parar por outro motivo do roteiro
+    assert any("A tela mudou entre a conferência e o toque de efeito" in (e or "") for e in erros), erros
     assert fake.shares == []
