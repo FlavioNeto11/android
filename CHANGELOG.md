@@ -19,6 +19,27 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.106: o "começar a partir de" do grupo de acesso só vale a última escolha (branch fix/29-106-partir-de)
+
+- O defeito, achado pelo atraso semeado do 29.104 e não visto em uso: no editor de grupo novo, o "começar a partir de"
+  lia o acesso da persona sem estado de "em voo" e sem descartar a resposta velha.
+  - Escolher A e logo B, com A respondendo depois, deixava o rascunho com A.
+  - O "Criar grupo" seguia livre durante a leitura: quem clicava antes da resposta criava o grupo com o rascunho
+    anterior.
+- `frontend/src/features/profiles/PolicyGroups.tsx`:
+  - cada chamada leva um número (`useRef`), e só a última aplica a resposta, o erro e o fim da espera. Escolher o
+    "Padrão do catálogo" também aposenta a leitura em voo;
+  - com a leitura em voo (`lendoPerfil`), o Criar/Salvar e os editores de ações e de limites ficam travados, porque
+    uma escolha feita ali seria apagada pela resposta.
+- `ProfilesPage.test.tsx`: o `it.fails` do W2 (#392) virou `it` (A responde depois de B e o grupo parte de B). Um
+  caso novo prova o botão e o editor travados com a leitura segura e o grupo criado com a escolha do perfil depois
+  dela.
+- Prova `simulated` (central, 05/10, Node 24.19.0):
+  - sem o conserto, os dois casos caem nas asserções da corrida;
+  - com ele, o ProfilesPage passa com o atraso ligado (sementes 11, 44 e 88, 49/49 cada);
+  - a suíte do frontend inteira deu 1605/1605;
+  - no navegador: `not_run` até o deploy.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
