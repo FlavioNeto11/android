@@ -6354,22 +6354,40 @@ Valores aditivos de `motivo` nos pedidos de validação (`GET /api/aprendizado/v
 - O texto para a pessoa vem do servidor (`MOTIVO_HUMANO`), como os demais. O painel não precisa de mudança.
 - **Prova:** `simulated` (`backend/tests/test_validacao_motivos_da_prova.py`).
 
-## Adendo v1.60 (05/10/2026; número da orquestradora; item 30.80) — a receita que não se aplicou não conta como falha dela
+## Adendo v1.56 (05/10/2026; número da orquestradora; item 31.84) — `clear_first` na entrada manual de texto
 
-Mudanças aditivas; o painel não muda.
-- `GET /api/recipes` (e toda leitura que devolve a linha da receita) ganha `nao_aplicavel_seguidas: integer`
-  (migração 115, padrão `0`).
-  - Conta as vezes seguidas em que a receita "não se aplicou": divergiu na AÇÃO 1, antes de agir, por alvo ausente
-    na tela (não ambíguo), e a etapa terminou comprovada pela IA. Nesses casos nem `replay_ok` nem `replay_fail` mudam.
-  - Da 3ª seguida em diante, cada uma conta como falha comum (`replay_fail`, `consecutive_fail` e a quarentena de
-    sempre), sem zerar a série.
-  - O ok, a falha comum, o `PUT /api/recipes/{id}` e a reativação pelo livro zeram.
-- O evento `decision` desse caso diz "tela de partida diferente" e leva no `data`, além de `text`:
-  `kind: "receita_nao_aplicavel"`, `recipe_id`, `step_id` e `contou_como_falha: boolean` (`true` da 3ª seguida em diante).
-- A etapa fica com `driven_by: "ai"` quando não contou (nenhuma ação da receita rodou), e `"recipe+ai"` quando contou.
-- A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
-  que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
-- **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).
+`POST /api/instances/{id}/input` (`ManualInput`), campo aditivo:
+- `clear_first: boolean` (padrão `false`), só para `type:'text'`; nos outros tipos é ignorado. Com `true`, o campo em
+  foco é limpo antes de digitar (o mesmo `type_text(clear_first=True)` da reprodução da receita; o `type_text` da sessão
+  de automação engole a falha do `clear()` e acaba acrescentando, e quem pega isso é a pós-condição da etapa). Com
+  `clear_first:true` e `type` diferente de `text`: `422` (validação do corpo). Com `false` ou
+  ausente, o comportamento é o de antes: o texto acrescenta ao que já está no campo.
+- Sem a sessão de automação do aparelho conectada (caminho do ADB `input text`, que só acrescenta), `clear_first:true`
+  responde `400 {code:'bad_input'}` em vez de digitar sem limpar. A recusa da senha na loja continua antes de tudo.
+- Na leitura das sessões de treino (`GET /api/training/{id}`, `inputs[]`), numa entrada de tipo `text` o campo `key_name`
+  com o valor `clear_first` é a marca de que o texto foi enviado limpando o campo; vai para coluna própria numa migração
+  futura.
+- O que o modo treinamento grava não muda: uma entrada `text` comum. A destilação passou a tratar `delete` antes de
+  `text` como ruído e `enter` logo após o `text` como `press_enter` (ver "Teclas ao ensinar" em
+  `docs/dominios/perfis-e-instagram.md`).
+- O painel pode ignorar o campo. Ausente também quer dizer backend de antes do 31.84.
+- Item 31.85, sem campo novo: ENQUANTO HÁ GRAVAÇÃO do treinamento, o quadro informado que é o MAIS RECENTE do backend
+  é aceito mesmo acima da idade máxima (cada entrada gravada lê a hierarquia antes de agir e deixa o aparelho lento; na
+  medida de 05/10 as 15 teclas seguintes a um toque de 24 s voltaram `stale_frame`). Continuam em `409 stale_frame` (ou
+  `capture_failing`): quadro velho quando já existe um mais novo (a pessoa clicou numa imagem antiga), a captura com falha
+  registrada, quadro com mais de 60 s (captura travada) e TODO quadro velho fora da gravação. `frame_mismatch` e quadro
+  desconhecido não mudaram.
+  - A folga NÃO vale às cegas para o que age no campo em foco: com o quadro aceito só por ela, `type:'text'` e as teclas
+    `enter`/`delete` voltam `409 stale_frame` se a hierarquia lida antes da ação faltar, for de tela sensível ou tiver
+    campo de senha em foco (a pessoa vê o quadro novo e repete). Se chegou quadro novo enquanto essa hierarquia era lida,
+    qualquer entrada sob a folga volta `409 stale_frame`.
+  - Toque, toque longo e arraste sob a folga só passam se o quadro informado foi capturado DEPOIS da última entrada
+    manual com efeito (o quadro só é o "mais recente" porque a captura ainda não rodou depois dela; o segundo toque sobre
+    ele cairia na tela nova com a coordenada da velha): senão `409 stale_frame`, e a pessoa espera a imagem nova. O
+    carimbo da entrada vale também quando a ação levanta (o toque que estoura o prazo segue rodando no aparelho) e numa
+    recusa anterior ao despacho: custa uma recusa a mais sob a folga, o lado seguro.
+- **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`, `backend/tests/test_treino_quadro_velho.py`).
+  `real`: `not_run`.
 
 ## Adendo v1.57 (05/10/2026; número da orquestradora; item 31.83) — o `save` do treinamento recusa a proposta que nunca funcionaria
 
@@ -6423,37 +6441,19 @@ Duas rotas novas e uma regra de gravação; nada muda nas existentes além do `r
   falta> ainda não foi lido… Refaça as receitas quando ele voltar". O painel chama `/recipes` nesse caso.
 - **Prova:** `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`); `real`: `not_run`.
 
-## Adendo v1.56 (05/10/2026; número da orquestradora; item 31.84) — `clear_first` na entrada manual de texto
+## Adendo v1.60 (05/10/2026; número da orquestradora; item 30.80) — a receita que não se aplicou não conta como falha dela
 
-`POST /api/instances/{id}/input` (`ManualInput`), campo aditivo:
-- `clear_first: boolean` (padrão `false`), só para `type:'text'`; nos outros tipos é ignorado. Com `true`, o campo em
-  foco é limpo antes de digitar (o mesmo `type_text(clear_first=True)` da reprodução da receita; o `type_text` da sessão
-  de automação engole a falha do `clear()` e acaba acrescentando, e quem pega isso é a pós-condição da etapa). Com
-  `clear_first:true` e `type` diferente de `text`: `422` (validação do corpo). Com `false` ou
-  ausente, o comportamento é o de antes: o texto acrescenta ao que já está no campo.
-- Sem a sessão de automação do aparelho conectada (caminho do ADB `input text`, que só acrescenta), `clear_first:true`
-  responde `400 {code:'bad_input'}` em vez de digitar sem limpar. A recusa da senha na loja continua antes de tudo.
-- Na leitura das sessões de treino (`GET /api/training/{id}`, `inputs[]`), numa entrada de tipo `text` o campo `key_name`
-  com o valor `clear_first` é a marca de que o texto foi enviado limpando o campo; vai para coluna própria numa migração
-  futura.
-- O que o modo treinamento grava não muda: uma entrada `text` comum. A destilação passou a tratar `delete` antes de
-  `text` como ruído e `enter` logo após o `text` como `press_enter` (ver "Teclas ao ensinar" em
-  `docs/dominios/perfis-e-instagram.md`).
-- O painel pode ignorar o campo. Ausente também quer dizer backend de antes do 31.84.
-- Item 31.85, sem campo novo: ENQUANTO HÁ GRAVAÇÃO do treinamento, o quadro informado que é o MAIS RECENTE do backend
-  é aceito mesmo acima da idade máxima (cada entrada gravada lê a hierarquia antes de agir e deixa o aparelho lento; na
-  medida de 05/10 as 15 teclas seguintes a um toque de 24 s voltaram `stale_frame`). Continuam em `409 stale_frame` (ou
-  `capture_failing`): quadro velho quando já existe um mais novo (a pessoa clicou numa imagem antiga), a captura com falha
-  registrada, quadro com mais de 60 s (captura travada) e TODO quadro velho fora da gravação. `frame_mismatch` e quadro
-  desconhecido não mudaram.
-  - A folga NÃO vale às cegas para o que age no campo em foco: com o quadro aceito só por ela, `type:'text'` e as teclas
-    `enter`/`delete` voltam `409 stale_frame` se a hierarquia lida antes da ação faltar, for de tela sensível ou tiver
-    campo de senha em foco (a pessoa vê o quadro novo e repete). Se chegou quadro novo enquanto essa hierarquia era lida,
-    qualquer entrada sob a folga volta `409 stale_frame`.
-  - Toque, toque longo e arraste sob a folga só passam se o quadro informado foi capturado DEPOIS da última entrada
-    manual com efeito (o quadro só é o "mais recente" porque a captura ainda não rodou depois dela; o segundo toque sobre
-    ele cairia na tela nova com a coordenada da velha): senão `409 stale_frame`, e a pessoa espera a imagem nova. O
-    carimbo da entrada vale também quando a ação levanta (o toque que estoura o prazo segue rodando no aparelho) e numa
-    recusa anterior ao despacho: custa uma recusa a mais sob a folga, o lado seguro.
-- **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`, `backend/tests/test_treino_quadro_velho.py`).
-  `real`: `not_run`.
+Mudanças aditivas; o painel não muda.
+- `GET /api/recipes` (e toda leitura que devolve a linha da receita) ganha `nao_aplicavel_seguidas: integer`
+  (migração 115, padrão `0`).
+  - Conta as vezes seguidas em que a receita "não se aplicou": divergiu na AÇÃO 1, antes de agir, por alvo ausente
+    na tela (não ambíguo), e a etapa terminou comprovada pela IA. Nesses casos nem `replay_ok` nem `replay_fail` mudam.
+  - Da 3ª seguida em diante, cada uma conta como falha comum (`replay_fail`, `consecutive_fail` e a quarentena de
+    sempre), sem zerar a série.
+  - O ok, a falha comum, o `PUT /api/recipes/{id}` e a reativação pelo livro zeram.
+- O evento `decision` desse caso diz "tela de partida diferente" e leva no `data`, além de `text`:
+  `kind: "receita_nao_aplicavel"`, `recipe_id`, `step_id` e `contou_como_falha: boolean` (`true` da 3ª seguida em diante).
+- A etapa fica com `driven_by: "ai"` quando não contou (nenhuma ação da receita rodou), e `"recipe+ai"` quando contou.
+- A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
+  que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
+- **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).
