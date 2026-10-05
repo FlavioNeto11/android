@@ -19,6 +19,35 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.101: o vigia da borda confere que a API não abre para fora (branch feat/29-101-vigia-da-api)
+
+- **Por quê** (nota da leitura do 29.97): o vigia pedia o painel, a raiz, o CSS e o JS, e não via o defeito mais grave
+  do endereço público, a API respondendo sem credencial.
+- **O quê:** um 5º GET por volta, o primeiro, a `/api/instances` pelo nome público, sem credencial e sem cookie. Só o
+  status importa: o adaptador não lê o corpo (`ler_corpo=False`), que aberto seria dado do central.
+  - 401 ou 403: ok.
+  - 2xx: defeito `api_aberta` (`onde` = `/api/instances`, o mesmo no `achado` do aviso). O aviso sai na 1ª volta,
+    pela Canais (tipo próprio dela, nível "precisa de você", um por dia), e a saúde mostra `portal_api_aberta`,
+    separado e antes do `portal_borda_defeito`, com o gesto: tirar o nome público do ar e conferir
+    `server.public_hosts` e o token.
+  - 502, 504, 52x, 530, rede ou tempo esgotado: "não consegui conferir", como o resto da volta.
+  - O desafio da borda (403 com `cf-mitigated: challenge`) e outro status (404, 3xx, 500): "não consegui conferir"
+    DA API, com o código (`api-desafio`, `api-404`), contado e avisado à parte do site (`onde=api`, saúde
+    `portal_api_sem_conferir`), para não gritar crítico à toa nem dizer que a página está fora; avisa depois de
+    `voltas_sem_conferir` voltas. O 500 diz na saúde que o pedido pode ter passado do portão.
+  - A API sem resposta (rede, 52x, tempo esgotado) com o site TAMBÉM sem conferir é a mesma queda e conta só pelo site;
+    com o site conferido na mesma volta (rota lenta, regra da zona só em `/api/*`), conta e avisa como da API.
+  - Quem liga o vigia é a subida do backend (`state.py`, tarefa `portal-borda`), no líder da trava `avisos`, com a hora
+    do projeto em UTC; há teste do laço ligado, não só da volta isolada.
+  - O vigia só avisa: não para serviço, não toca túnel nem configuração.
+- **Contrato com a Canais:** código `api_aberta`, `onde` `api`, `achado` fixo `/api/instances`. A parte dela vem em PR
+  próprio, empilhado sobre o #381.
+- **Prova:**
+  - `simulated`: `backend/tests/test_portal_borda.py` (a tabela de status da API, o 1º pedido sem credencial e sem
+    corpo lido, o aviso na hora e a saúde separada, o status estranho que só avisa depois de N voltas).
+  - `not_run`: o central. A prova `real` é a 1ª volta depois do deploy, lida na saúde (a API fechada dá ok). A API
+    aberta de verdade não se provoca.
+
 ## 2026-10-05 — 29.97: o vigia da borda (branch feat/29-97-vigia-da-borda)
 
 - **Por quê:** os dois defeitos do portal desta semana (o beacon injetado na raiz e no painel, e o CSS e o JS

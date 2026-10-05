@@ -494,6 +494,9 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
 - o vigia da borda (29.97) faz essas conferências sozinho, de hora em hora, no líder:
   - liga com `portal.vigia.ligado` (de fábrica `true`) e só roda com `server.public_hosts`;
   - a 1ª volta é 5 min depois da subida;
+  - pede também `/api/instances` sem credencial (29.101), que tem de dar 401 ou 403; se der 2xx, a saúde mostra
+    `portal_api_aberta` e o dono recebe o aviso na hora: a API do central está aberta para a internet, e o gesto é
+    tirar o nome público do ar (o vigia não para nada sozinho);
   - o resultado aparece na saúde como `portal_borda_defeito` (com o gesto na zona) ou `portal_borda_sem_conferir`
     (depois de `voltas_sem_conferir` voltas seguidas sem conseguir); no log `poc.portal`, "vigia da borda ok" a cada
     volta limpa;
