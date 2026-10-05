@@ -23,10 +23,14 @@ from app.db import Database
 from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrada import RESPOSTA_IDENTIDADE
 from app.modules.avisos.infrastructure.entrada import (
+    ERRO_CURTO_DEMAIS,
+    MINIMO_DO_PEDIDO,
     OPERADOR_DO_TELEGRAM,
     PRESA_S,
     RESPOSTA_CREDENCIAL,
     RESPOSTA_CREDENCIAL_SEM_APAGAR,
+    RESPOSTA_CURTO_DEMAIS,
+    RESPOSTA_FALHA_INTERNA,
     Pendencia,
     PlanoMudou,
     Previa,
@@ -785,12 +789,6 @@ async def test_texto_livre_sem_destino_recusado_vai_a_orquestradora_sem_o_texto_
 async def test_recado_curto_demais_fica_recusado_e_nao_vira_erro_interno(c: Cenario, texto: str) -> None:
     """28.43 (o "1" solto do dono, 05/10 10:26Z): o texto livre mais curto que o pedido aceita não chega à prévia.
     A linha fica `recusada` (não `falhou`), e a resposta diz o que fazer, sem "falhou" nem "erro aqui dentro"."""
-    from app.modules.avisos.infrastructure.entrada import (
-        ERRO_CURTO_DEMAIS,
-        MINIMO_DO_PEDIDO,
-        RESPOSTA_CURTO_DEMAIS,
-        RESPOSTA_FALHA_INTERNA,
-    )
     assert MINIMO_DO_PEDIDO == 3 and len(texto) < MINIMO_DO_PEDIDO
     await c.volta(msg(5, texto))
     assert "previa" not in c.portas.nomes()

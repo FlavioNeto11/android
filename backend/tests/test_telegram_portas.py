@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from pydantic import BaseModel, ValidationError
 
 from app.models import MissingInfo, RunCreate
 from app.modules.avisos.infrastructure.entrada import (
@@ -74,6 +75,23 @@ async def test_previa_de_pedido_curto_demais_e_recusa_e_nao_falha_interna(harnes
     `ValidationError` (que a conversa contava como "erro aqui dentro")."""
     with pytest.raises(RecusaDaCentral):
         _portas(harness).previa(texto)
+
+
+async def test_validation_error_de_dentro_da_previa_segue_como_falha_interna(harness: Harness, como_telegram: None,
+                                                                          monkeypatch: pytest.MonkeyPatch) -> None:
+    """28.43 (R1 da leitura do #407): só o corpo fora do formato vira recusa. Um `ValidationError` que nasce DENTRO da
+    prévia é defeito da Central e segue como falha interna, sem virar "o pedido não cabe no formato"."""
+    class _Modelo(BaseModel):
+        n: int
+
+    def _quebra(_corpo: object) -> object:
+        _Modelo(n="x")                                  # type: ignore[arg-type] - levanta ValidationError aqui dentro
+        raise AssertionError("não chega")
+
+    portas = _portas(harness)
+    monkeypatch.setattr(portas.runs, "previa_de_alvos", _quebra)
+    with pytest.raises(ValidationError):
+        portas.previa("publique a foto no android-12")
 
 
 async def test_decidir_e_o_servico_do_painel_e_quem_decide_e_telegram_dono(harness: Harness,

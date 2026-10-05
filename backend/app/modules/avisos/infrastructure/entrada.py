@@ -151,10 +151,10 @@ class ConferenciaDeComentario(Protocol):
     async def conferir(self, action: str) -> tuple[str, str | None]: ...
 
 
-#: 28.30 e a entrada 1256 de 04/10: o recado que a Central não conseguiu tratar não fica mudo. Frase fixa, sem eco.
 #: 28.43: o texto livre mais curto que o pedido de execução aceita (o `min_length` de `RunTargetsResolveBody.command`).
 #: Lido do modelo, para não divergir dele: abaixo disso a prévia estourava `ValidationError` e virava "erro aqui dentro".
-MINIMO_DO_PEDIDO = next((int(m.min_length) for m in RunTargetsResolveBody.model_fields["command"].metadata
+_CAMPO_DO_PEDIDO = RunTargetsResolveBody.model_fields.get("command")
+MINIMO_DO_PEDIDO = next((int(m.min_length) for m in getattr(_CAMPO_DO_PEDIDO, "metadata", None) or []
                          if getattr(m, "min_length", None)), 1)
 #: O que o dono lê quando o recado é curto demais para ser um pedido (28.43, o "1" solto das 10:26Z de 05/10). A linha
 #: fica `recusada`, não `falhou`: não é falha interna. O `erro` não diz "credencial" nem "pergunta" (a volta das
@@ -163,6 +163,7 @@ RESPOSTA_CURTO_DEMAIS = ("Recado curto demais para virar um pedido. Se é a resp
                          "\"Responder\" nela e mande de novo; se é um pedido, diga o que fazer e em qual aparelho "
                          "(ex.: \"no android-12\").")
 ERRO_CURTO_DEMAIS = "curto demais para um pedido"
+#: 28.30 e a entrada 1256 de 04/10: o recado que a Central não conseguiu tratar não fica mudo. Frase fixa, sem eco.
 RESPOSTA_FALHA_INTERNA = ("Não consegui tratar este recado por um erro aqui dentro; ele ficou guardado e a orquestradora vai "
                           "olhar. /ajuda mostra os comandos.")
 #: A credencial é recusada sem guardar e apagada do canal quando ele deixa (contrato dos canais, §7); a resposta nunca
