@@ -45,6 +45,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from . import marca_de_partida
 from .api import ROTAS_DE_SESSAO, recusa_do_despacho, router, worker_router
 from .commands.despacho import DespachoRecusado
 from .config import Config, ModoDaCspDoPainel, get_config
@@ -218,7 +219,10 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
         batidas = asyncio.create_task(vigia.laco_de_batidas(), name="vigia-do-laco") if vigia is not None else None
         poc = state or AppState(cfg)
         app.state.poc = poc
+        marca = marca_de_partida.pasta_do_supervisor(cfg.data_dir)          # 29.124; sem id, não grava
+        marca_de_partida.gravar(marca, marca_de_partida.INICIANDO)
         await poc.start()
+        marca_de_partida.gravar(marca, marca_de_partida.NO_AR)
         try:
             yield
         finally:
@@ -591,10 +595,15 @@ def main() -> None:
     conferir_exposicao(cfg)
     host = endereco_de_escuta(cfg)     # `server.host`, salvo no contêiner; recusa ANTES de abrir o banco
     # 29.121: o vigia nasce antes do `AppState` (que migra o banco e lê o disco): a partida presa também deixa pilha.
-    vigia = VigiaDoLaco(cfg.logs_dir)
+    # Sob o supervisor, o despejo vai para a pasta de logs DELE, que é onde ele procura para citar no kill (N5).
+    vigia = VigiaDoLaco(marca_de_partida.pasta_do_supervisor(cfg.logs_dir, "logs"))
     vigia.iniciar()
     # workers=1 e reload desligado: fork traria processos com o mesmo OWNER_ID disputando as mesmas etapas
+    # 29.124: a partida (migração, disco) pode passar da carência do supervisor; a marca, com o id que ele passou,
+    # diz em que fase esta subida está. Sem `POC_PARTIDA_ID` (backend subido à mão), nada é gravado.
+    marca_de_partida.gravar(marca_de_partida.pasta_do_supervisor(cfg.data_dir), marca_de_partida.ANTES_DO_ESTADO)
     poc = AppState(cfg)
+    marca_de_partida.gravar(marca_de_partida.pasta_do_supervisor(cfg.data_dir), marca_de_partida.ESTADO_PRONTO)
     app = create_app(cfg, state=poc, vigia=vigia)
     sockets = [_socket_de(host, cfg.file.server.port)]
     porta_worker = int(cfg.file.server.worker_port or 0)

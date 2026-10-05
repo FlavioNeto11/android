@@ -19,6 +19,30 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.124: o supervisor espera a partida lenta e pausa depois de reinícios seguidos (branch fix/29-124-supervisor-partida)
+
+- No incidente de 05/10, com o disco saturado, a partida do backend passou dos 90 s de carência e mais três
+  conferências e virou laço: cinco kills em 18 min.
+- `backend/app/marca_de_partida.py`: a cada subida, o supervisor sorteia um id e o passa em `POC_PARTIDA_ID` (o PID
+  não serve: no Windows, o `python.exe` do venv é um lançador e o backend é filho dele). O backend reescreve a marca
+  (`id`, `fase`, `ts`, nada mais) antes do `AppState`, depois dele, antes do `poc.start()` e em `no_ar`. O supervisor
+  só tolera o silêncio com o id desta subida, fase antes de `no_ar`, menos de 600 s desde a subida e menos de 240 s
+  desde a última reescrita; a linha do log diz a fase. Ler ou gravar a marca nunca derruba nada: erro de escrita é
+  engolido no backend, e arquivo ausente, parcial ou estranho é "sem marca" no supervisor.
+- Depois de 4 reinícios seguidos sem uma conferência boa, a espera antes do próximo vira 300 s, dita no log; uma
+  conferência boa zera a conta. Backend `no_ar` e mudo segue a regra das três falhas.
+- N5 da leitura do #421: o supervisor passa a pasta dele em `POC_PASTA_DO_SUPERVISOR`; o backend grava ali a marca, e
+  o vigia despeja em `<pasta>/logs`, onde o supervisor procura (antes, um `paths.logs_dir` diferente separava os dois).
+- Ramo rebaseado sobre o #421 (9cb77354): a junção de `supervisor.py` e `main.py` está feita aqui.
+- Prova `simulated`: `backend/tests/test_supervisor_partida.py`, 22 passed (bancada com relógios e marca falsos, o
+  `Popen` capturado e o ciclo de vida real do `create_app` com um estado falso). Mutações, cada uma reprovada: sem
+  conferir o id (2); sem o prazo de 240 s (2); sem o teto de 600 s (1); `no_ar` tolerado (1); sem a pausa longa (1);
+  id herdado repassado (1); sem a pasta do supervisor (1); sem a marca no ciclo de vida (1). Juntos com os do #421 e
+  os vizinhos: 138 passed (partida, vigia, supervisão do central, identidade do backend, ambiente dos filhos,
+  arquitetura, cobertura de rotas, autenticação, painel estático) e `@tests/catracas.txt` 88 passed. `not_run`: a
+  catraca do mypy (sem mypy no venv do central) e a prova real, que vem com a próxima partida pelo supervisor depois
+  do deploy.
+
 ## 2026-10-05 — 29.121: o vigia do laço de eventos guarda a pilha antes do kill do supervisor (branch fix/29-121-vigia-do-laco)
 
 - O incidente de 05/10 (12:55Z a 13:13Z, cinco kills do supervisor por `/api/health` mudo) não deixou como saber
