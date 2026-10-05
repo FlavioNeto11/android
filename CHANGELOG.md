@@ -235,6 +235,27 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Regra em `.claude/rules/testes.md`: todo dirigido que toque `backend/app` roda o conjunto inteiro.
 - Prova: `simulated`, em Idle, na máquina central: o backend deu 86 passed em 30,8 s com `-n 4` (37 s de parede); os
   scripts, 6 passed em 0,4 s; `test_catracas`, 6 passed. Real: não se aplica.
+## 2026-10-05 — 28.40: aviso para todo objetivo parado esperando a pessoa (branch canais/28-40-objetivo-parado)
+
+- `avisos/domain/mensagem.py`: tipo `objective.waiting_user` (nível 1, sai na hora, com rajada). O objetivo que entra
+  em `waiting_user` pedindo a pessoa, de qualquer origem, avisa uma vez por espera (`objective:<id>:<finished_at>`); a
+  aprovação fica de fora. Texto fixo: aparelho, etapa que espera (nome do catálogo ou chave), motivo pelo
+  `failure_kind` do 29.90 ou pelo `blocked_kind`, e o gesto do item parado na execução (Assumir controle, Tentar
+  novamente ou Abandonar), com o link da própria execução: o objetivo parado não está na caixa de Pendências; nunca o
+  detalhe, o `needs` nem o título da etapa. A conta em tela não reconhecida (`unknown`, 29.92) ganha a frase e as três
+  linhas revisadas pela Aprendizado, e o link abre o Foco do aparelho, onde fica o "Assumir controle". Catraca: toda tela de link de aviso
+  existe nas rotas do painel. O lembrete do 31.50 do objetivo parado também leva à execução, com o mesmo gesto
+  (revisão do #372, L1). O agrupado do objetivo parado leva a Execuções, com o gesto próprio, e a resposta a um
+  lembrete manda ao link dele, não à caixa (revisão do #372, G1).
+- `avisos/infrastructure/servico.py`: `objective.updated` entra nos eventos que avisam; o serviço põe a capability da
+  etapa em `waiting_user` e o nome dela; o lote de frente cala pelo mesmo `_e_de_prova` do `run.updated`; o aviso de
+  conta do mesmo aparelho, ativo e posterior à criação da execução, cala o objetivo só se for da mesma conta (ou, sem
+  `account_id`, da mesma persona e por motivo de conta); outra persona ou outro app da mesma persona avisam
+  (revisão do #372, O1).
+- `avisos/infrastructure/portas_da_central.py`: o desfecho nos canais diz "N esperando você" e o gesto; a "Evidência"
+  pula o objetivo em `waiting_user`, cujo motivo livre traz texto de tela ou de conta (revisão do #372, O2).
+- Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` (50 testes); rede dirigida dos canais verde.
+  Real: `not_run`.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
