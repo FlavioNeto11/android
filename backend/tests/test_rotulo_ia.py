@@ -340,3 +340,22 @@ async def test_o_upload_do_dono_diz_sem_rotulo_e_a_imagem_por_resolver_nao_diz_n
     itens = _por_chave(previa_da_porta(state, "run-p"))
     assert itens["up"]["rotulo_ia"] is False
     assert itens["solta"]["tem_imagem"] is True and itens["solta"]["rotulo_ia"] is None
+
+
+async def test_o_sha_da_foto_do_canal_e_o_mesmo_da_previa_da_porta(harness: Any) -> None:
+    """28.46: a foto que a Canais manda ao dono confere o sha256 lido da Central por `sha_da_imagem_na_porta`. Ele tem de
+    ser, item a item, o `imagem_sha256` que a prévia da porta mostra, inclusive o `None` da imagem de outra persona."""
+    from app.modules.avisos.infrastructure.portas_da_central import sha_da_imagem_na_porta
+
+    state = harness.state
+    pid = _plano(state, [{"key": "pub", "cap": "CREATE_POST",
+                          "bindings": {"image_id": "img-x", "content": "praia", "content_verbatim": "true"}},
+                         {"key": "minha", "cap": "CREATE_POST",
+                          "bindings": {"image_id": "img-m", "content": "praia 2", "content_verbatim": "true"}}])
+    _imagem(state, "img-x", _outro_perfil(state))
+    _imagem(state, "img-m", pid)
+    itens = _por_chave(previa_da_porta(state, "run-p"))
+    for chave in ("pub", "minha"):
+        assert sha_da_imagem_na_porta(state.db, "run-p", str(itens[chave]["step_id"])) == itens[chave]["imagem_sha256"]
+    assert itens["minha"]["imagem_sha256"] and itens["pub"]["imagem_sha256"] is None
+    assert sha_da_imagem_na_porta(state.db, "run-p", "etapa-que-nao-existe") is None

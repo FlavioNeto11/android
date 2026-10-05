@@ -5,7 +5,9 @@ Telegram. Rodar da raiz: `backend/.venv/Scripts/python.exe -m pytest -q .claude/
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import json
 import sys
 from pathlib import Path
 
@@ -55,13 +57,12 @@ def test_sem_imagem_ou_com_bytes_que_nao_sao_imagem_nada_sai() -> None:
         t.imagem_conferida(ETAPA, hashlib.sha256(texto).hexdigest(), lambda _r, _s: (texto, ""))
 
 
-def test_foto_nao_vai_a_convidado_e_pede_a_previa(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
-                                                capsys: pytest.CaptureFixture[str]) -> None:
+def test_foto_nao_vai_a_convidado(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                  capsys: pytest.CaptureFixture[str]) -> None:
     legenda = tmp_path / "legenda.txt"
     legenda.write_text("Imagem da prévia.", encoding="utf-8")
-    for extra in (["--chat", "123"], []):
-        monkeypatch.setattr(sys, "argv", ["telegram_status.py", str(legenda), "--foto", ETAPA, *extra])
-        assert t.main() == 2
+    monkeypatch.setattr(sys, "argv", ["telegram_status.py", str(legenda), "--foto", ETAPA, "--chat", "123"])
+    assert t.main() == 2
     assert "nada enviado" in capsys.readouterr().out
 
 
@@ -107,3 +108,101 @@ def test_escolha_ruim_ou_a_convidado_nada_envia(monkeypatch: pytest.MonkeyPatch,
         monkeypatch.setattr(sys, "argv", ["telegram_status.py", str(texto), *extra])
         assert t.main() == 2
     assert capsys.readouterr().out.count("nada enviado") == 3
+
+
+# ------------------------------------------------------------------ 28.46: o envio montado, com a Central falsa
+class _CanalFalso:
+    def __init__(self, falha: Exception | None = None) -> None:
+        self.enviadas: list[tuple[bytes, str, str, int | None]] = []
+        self.falha = falha
+
+    async def enviar_anexo(self, conteudo: bytes, mime: str, legenda: str, *, responde_a: int | None = None) -> int:
+        if self.falha is not None:
+            raise self.falha
+        self.enviadas.append((conteudo, mime, legenda, responde_a))
+        return 999
+
+
+def _central(sha: str | None, *, ler=None, quebra: Exception | None = None):  # noqa: ANN001, ANN202
+    def montar():  # noqa: ANN202
+        if quebra is not None:
+            raise quebra
+        return (ler or (lambda _r, _s: (PNG, ""))), (lambda _r, _s: sha)
+    return montar
+
+
+def _foto(central, canal: _CanalFalso, previa: Path | None = None) -> int:  # noqa: ANN001
+    return asyncio.run(t._enviar_foto("Imagem.", 302, ETAPA, previa, central=central, canal=canal))
+
+
+@pytest.fixture
+def gravadas(monkeypatch: pytest.MonkeyPatch) -> list[object]:
+    feitas: list[object] = []
+    monkeypatch.setattr(t, "_gravar_enviada", lambda mid, *a, **k: feitas.append(mid))
+    return feitas
+
+
+def test_a_foto_sai_com_o_sha_da_central(gravadas: list[object], tmp_path: Path) -> None:
+    sha = hashlib.sha256(PNG).hexdigest()
+    canal = _CanalFalso()
+    assert _foto(_central(sha), canal) == 0
+    assert canal.enviadas == [(PNG, "image/png", "Imagem.", 302)] and gravadas == [999]
+    # com o arquivo da prévia que bate com a Central, também sai
+    arquivo = tmp_path / "porta.json"
+    arquivo.write_text(json.dumps(_previa(sha)), encoding="utf-8")
+    assert _foto(_central(sha), _CanalFalso(), arquivo) == 0
+
+
+def test_sha_errado_nao_chama_o_envio(gravadas: list[object], tmp_path: Path,
+                                      capsys: pytest.CaptureFixture[str]) -> None:
+    canal = _CanalFalso()
+    assert _foto(_central("0" * 64), canal) == 2                           # a Central diz outro sha que o dos bytes
+    assert _foto(_central(None), canal) == 2                               # a prévia da Central não tem imagem
+    arquivo = tmp_path / "porta.json"                                       # o arquivo diz outro sha que a Central
+    arquivo.write_text(json.dumps(_previa("1" * 64)), encoding="utf-8")
+    assert _foto(_central(hashlib.sha256(PNG).hexdigest()), canal, arquivo) == 2
+    assert canal.enviadas == [] and gravadas == []
+    saida = capsys.readouterr().out
+    assert "não bate" in saida and "não tem imagem_sha256" in saida and "não é o que a Central mostra" in saida
+
+
+def test_cada_falha_de_leitura_tem_o_seu_motivo(gravadas: list[object], capsys: pytest.CaptureFixture[str]) -> None:
+    sha = hashlib.sha256(PNG).hexdigest()
+
+    def sumiu(_r: str, _s: str) -> tuple[bytes, str]:
+        raise FileNotFoundError("x")
+
+    def quebrou(_r: str, _s: str) -> tuple[bytes, str]:
+        raise RuntimeError("x")
+
+    canal = _CanalFalso()
+    assert _foto(_central(sha, ler=sumiu), canal) == 2
+    assert _foto(_central(sha, ler=quebrou), canal) == 2
+    assert _foto(_central(sha, quebra=RuntimeError("banco")), canal) == 2
+    assert canal.enviadas == [] and gravadas == []
+    saida = capsys.readouterr().out
+    assert "não foi lida do armazém (FileNotFoundError)" in saida
+    assert "não foi conferida (RuntimeError)" in saida and "a Central não foi lida (RuntimeError)" in saida
+    assert "Traceback" not in saida
+
+
+def test_sem_resposta_do_telegram_manda_conferir_o_chat(gravadas: list[object],
+                                                        capsys: pytest.CaptureFixture[str]) -> None:
+    sha = hashlib.sha256(PNG).hexdigest()
+    assert _foto(_central(sha), _CanalFalso(t.FalhaDeEnvio("tempo esgotado"))) == 1
+    assert "confira o chat antes de repetir" in capsys.readouterr().out
+    assert _foto(_central(sha), _CanalFalso(t.FalhaDeEnvio("chat não encontrado", definitiva=True, status=400))) == 1
+    assert "confira o chat" not in capsys.readouterr().out                 # recusa clara: não saiu
+    assert gravadas == []
+
+
+def test_chat_vazio_nada_envia(monkeypatch: pytest.MonkeyPatch, gravadas: list[object],
+                               capsys: pytest.CaptureFixture[str]) -> None:
+    from types import SimpleNamespace
+
+    from pydantic import SecretStr
+    monkeypatch.setattr(t, "EnvSettings", lambda: SimpleNamespace(telegram_chat_id=SecretStr(""),
+                                                                   telegram_bot_token=SecretStr("x")))
+    sha = hashlib.sha256(PNG).hexdigest()
+    assert asyncio.run(t._enviar_foto("Imagem.", None, ETAPA, None, central=_central(sha))) == 2
+    assert "TELEGRAM_CHAT_ID vazio" in capsys.readouterr().out and gravadas == []
