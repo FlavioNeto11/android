@@ -26,13 +26,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   partir de `boot_log_offset`. Esse offset só era gravado no spawn, e um backend novo tem 0. O detector leu o log
   inteiro, achou `Showing crashdialog` de boots antigos (três vezes no log do 03 e três no do 06, nenhuma no do
   01) e encerrou o 03 e o 06, ambos com conta real, às 12:57:05Z e 12:57:29Z.
-- `DeviceManager._adopt` (local) grava como offset o tamanho atual do log. Valem só as linhas escritas depois da
-  readoção, para o diálogo, para o veredito do snapshot e para a releitura do 29.76 (d). O custo: um diálogo que já
-  estava na tela antes do reinício do backend não é visto, e a espera vai até o prazo do boot.
-- Prova `simulated`: `backend/tests/test_readocao_sem_log_antigo.py`, 2 passed. A mutação (sem o conserto) reprova
-  os 2. Vizinhos: 136 passed (prontidão, readoção, wake, apps de fundo, arquitetura) e 81 passed (ciclo de vida do
-  emulador, relatório de falha, veredito do snapshot, executor do worker). `real`: `not_run` até o deploy (o
-  Orquestrador religa 01, 03 e 06 por `start`).
+- `DeviceManager._adopt` (local) grava como offset o começo da subida em curso, a última linha `emuglConfig_init`
+  (`emu.inicio_da_subida_atual`, fora do laço): o diálogo de uma subida vem depois das linhas dela (medido nos logs do
+  03 e do 06). O diálogo desta subida segue visto, mesmo escrito antes do reinício do backend; os das anteriores, não.
+  Sem a linha, vale o fim do arquivo (aí um diálogo já na tela não é visto, e a espera vai até o prazo do boot); o
+  arquivo que some no meio dá 0, não uma exceção na partida. Na readoção, o veredito do snapshot e a releitura do
+  29.76 (d) nem rodam (o `_wait_boot` adotado não é wake).
+- Prova `simulated`: `backend/tests/test_readocao_sem_log_antigo.py`, 4 passed: o diálogo antigo não para; o escrito
+  depois da readoção para; o desta subida, escrito antes da readoção, para (M1); log sem a linha vai ao fim; arquivo
+  que some vira 0. Mutações: sem o conserto reprova o do incidente; o offset no fim do arquivo (sem o M1) reprova 2.
+  Vizinhos: 233 passed (prontidão, readoção, wake, apps de fundo, arquitetura, ciclo de vida do emulador, relatório
+  de falha, veredito do snapshot, executor do worker, pacote do agente, log do emulador) e `@tests/catracas.txt` 88
+  passed. `real`: `not_run` até o deploy (o Orquestrador religa 01, 03 e 06 por `start`).
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
