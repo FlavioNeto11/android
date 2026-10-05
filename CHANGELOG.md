@@ -24,6 +24,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e
   31.88 F2 painel (46b9040b). Os conflitos eram só de CHANGELOG e do fim de `TrainingReview.test.tsx` (cada ramo acrescentou ao fim); ficaram os
   blocos e os testes dos dois lados (33 testes na revisão: 21 + 6 do E + 2 do F + 4 do F2).
+- Reajuste sobre `integ/suite-43` (0420d107, com o painel do 30.81 já na main): em `types.ts` ficam `ensinado_em_prova` e `scope` na resposta do salvar;
+  no resultado de `TrainingReview` o selo "em prova" (30.81) vem primeiro e a linha "Vale para …" (31.88 F2) logo abaixo, e a frase "Até a prova passar…"
+  só aparece quando não há `ensinado_em_prova` (a nota do 30.81 já diz isso); os testes do 31.91 F1 e do 31.90-E somam (38 testes na revisão) e um
+  teste novo fixa a ordem. Frontend inteiro 1723/1723 (e 1724 com o teste novo), typecheck e build ok.
 - Uma correção de teste que só a junção mostrou: o teste do 31.90-C que segura a leitura das personas soltava a resposta antes de o fetch atrasado
   entregar o pedido ao handler (semente 88 a 100 ms); agora espera o pedido chegar.
 - Prova `simulated`: frontend inteiro 1708/1708, typecheck limpo e `npm run build` ok (4 workers, Idle); com atraso do fetch passam as sementes

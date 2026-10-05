@@ -805,3 +805,21 @@ it('31.91 F1: o campo ausente (backend anterior) também esconde a tela do ensin
   await waitFor(() => expect(text()).toContain('entradas'));
   expect(text()).not.toContain('Habilidade versionada');
 });
+
+it('junção 30.81 + 31.88 F2: no resultado o selo "em prova" vem primeiro e a linha "Vale para" logo abaixo, sem repetir a frase da prova', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'f-0a1b2c3d4e5f', warnings: [],
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
+    ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' }, scope: { on_proof: 'todos', profile_ids: [], group_ids: [] },
+  }));
+  await abrirEProporComPrevia();
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Vale para todos os perfis, depois de provado.'));
+  const t = text();
+  expect(t.indexOf('em prova')).toBeGreaterThan(-1);
+  expect(t.indexOf('em prova')).toBeLessThan(t.indexOf('Vale para todos os perfis'));          // selo primeiro, escopo logo abaixo
+  expect(t.split('Até a prova').length - 1).toBeLessThanOrEqual(1);                             // a frase da prova não aparece duas vezes
+  expect(t).not.toContain('Até a prova passar, só a persona que ensinou usa o fluxo');         // a do 30.81 já diz isso
+});
+
