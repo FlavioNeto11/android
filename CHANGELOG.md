@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.61 (A): leitura julgada com prova local de tela fecha sem `step_done` (branch feat/31-61-leitura-sem-step-done)
+
+- **Etapa:** a de leitura (tem saídas, sem efeito, sem `commit_guard`, sem `commit_selector`), julgada, com prova local
+  de TELA no catálogo (`count_gt` e `sent_text` ficam fora).
+- **Fecho:** com todas as saídas lidas, o executor relê a árvore (`imagem=False`). Se a prova local vale NESSA árvore,
+  o laço sai para a verificação final sem pedir o `step_done` ao ator.
+- **Inalterado:** a verificação final roda igual, e o juiz continua onde o contrato pede (`need`). Sem prova declarada,
+  nada muda.
+- **Instrução direta:** depois do `step_done` recusado e depois de leitura parcial: "a tela já está pronta: a próxima
+  ação é read_value de 'X'". Só o nome da saída, nunca o valor nem o texto da tela.
+- **Medida, roteiro das 8 decisões da `r-20261004232524-2e0775`:** 8 → 7 `decide`; o tempo do harness não muda
+  (`decide` simulado).
+- **Teste negativo:** a tela muda depois da última leitura → a etapa não fecha e o `step_done` volta a ser pedido.
+- Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`; o `_prova_local` é dublê por árvore). Real:
+  `not_run`, janela depois do deploy 34.
+
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
 - `scripts/tests/test_poda_ab_offline.py` confere `scripts/poda-ab-offline.py`: só a UI do Chrome sai, a `url_bar` fica,
