@@ -123,7 +123,7 @@ def test_os_vazamentos_da_rodada_f_recusam(comando: str, classe: str, tipo: str)
     "acesse com @zilda.prado e Girassol2024", "faça login com @bruno e tulipa42", "entre com @bruno: abacate",
     "entre com @zilda.prado / tulipa", "acesse com @tadeu.quintela4821, abacate",
     "entre com valdir.teixeira6352@outlook.com e tulipa42", "faça login com zilda@correio.net: abacate",
-    "entre com zilda@correio.net / girassol", "login com @andre.carvalho9543, tulipa",
+    "entre com zilda@correio.net / girassol", "login com @rene.sampaio381524, tulipa",
     "acesse com @zilda.prado e abacate, depois curta o post",
 ])
 def test_o_par_com_handle_ou_email_recusa(comando: str) -> None:

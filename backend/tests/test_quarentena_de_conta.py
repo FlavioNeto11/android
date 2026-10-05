@@ -47,7 +47,7 @@ from .test_loja_de_apps import estado, falsificar, ligar, versao
 NOVA = "054_protecao_de_contas"
 ORIGEM = Path(db_mod.__file__).resolve().parents[1] / "migrations"
 TS = "2026-09-28T12:00:00.000Z"
-FELIPE = "felipe.nogueira93762026"
+FELIPE = "gilberto.vasconcelos517"
 #: 28/09/2026 21:36 no horário da máquina central (E. South America, -03:00): o instante em que o dono viu o desafio.
 VISTO_PELO_DONO = "2026-09-29T00:36:00.000Z"
 
@@ -186,7 +186,7 @@ def _eventos(h: Harness, kind: str) -> list[dict[str, object]]:
 async def test_aparelho_com_marcador_recusa_vinculo_troca_e_cadastro(h: Harness) -> None:
     s = h.state
     assert s is not None
-    assert _marcar(h, handle="@Felipe.Nogueira93762026") is True
+    assert _marcar(h, handle="@Gilberto.Vasconcelos517") is True
     assert s.social_repo.conta_travada_no_aparelho("android-02")["handle"] == FELIPE   # normalizado
     lucas = s.social.create_profile(ProfileCreate(username="tadeu.quintela4821")).id
 
@@ -326,7 +326,7 @@ async def test_remediar_com_vinculo_ativo_nunca_devolve_reset(h: Harness) -> Non
     """24/09: o 3º degrau (`reset`) apagou a sessão do andre. Com conta vinculada, o 3º degrau é o dono."""
     s = h.state
     assert s is not None
-    s.social.create_profile(ProfileCreate(username="andre.carvalho9543", instance_id="android-01"))
+    s.social.create_profile(ProfileCreate(username="rene.sampaio381524", instance_id="android-01"))
     rt = s.devices.get("android-01")
     s.devices.set_desired_state(rt, InstanceState.online.value)
     verbos = await _escada(h, "android-01", 4)
@@ -464,7 +464,7 @@ async def test_distribuir_e_entregar_ao_ligar_pulam_o_aparelho_com_marcador(tmp_
 async def test_mudanca_de_status_gera_evento_com_origem_e_autor(h: Harness) -> None:
     s = h.state
     assert s is not None
-    pid = s.social.create_profile(ProfileCreate(username="beatriz.rocha9276")).id
+    pid = s.social.create_profile(ProfileCreate(username="sueli.barreto6148")).id
     s.social.update_profile(pid, ProfilePatch(status="blocked"))
     linha = s.social_repo.profile_row(pid)
     assert linha["status"] == "blocked" and linha["blocked_at"] and linha["blocked_origin"] == "declarado"
@@ -484,7 +484,7 @@ async def test_bloqueio_pela_regra_do_desafio_tambem_deixa_rastro(h: Harness) ->
     """ADR-029 escreve o status pelo repositório, por fora do serviço: o rastro tem de valer por lá também."""
     s = h.state
     assert s is not None
-    pid = s.social.create_profile(ProfileCreate(username="thiago.moreira4827")).id
+    pid = s.social.create_profile(ProfileCreate(username="osvaldo.guedes2093")).id
     assert bloquear_por_desafio(s.social_repo, s.bus, profile_id=pid, instance_id="android-01",
                                 anterior_status=None, detail="Confirm you are human", app_label="Instagram")
     linha = s.social_repo.profile_row(pid)

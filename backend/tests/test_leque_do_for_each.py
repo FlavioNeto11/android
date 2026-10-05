@@ -73,7 +73,7 @@ async def test_lista_mista_proprio_perfil_conta_nossa_na_janela_e_terceiro(harne
     na porta (ADR-055, sem pedido); só o terceiro vira pedido ao dono."""
     state = harness.state
     lucas = _execucao(state, [])
-    andre = state.social.create_profile(ProfileCreate(username="andre.carvalho9543", password=SENHA,
+    andre = state.social.create_profile(ProfileCreate(username="rene.sampaio381524", password=SENHA,
                                                       instance_id="android-02")).id
     state.social.create_profile(ProfileCreate(username="valdir.teixeira6352", password=SENHA, instance_id="android-03"))
     state.social_repo.record_interaction(andre, type=InteractionType.comment_replied.value, direction="outbound",

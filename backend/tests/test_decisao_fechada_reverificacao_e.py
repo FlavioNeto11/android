@@ -30,7 +30,7 @@ from .test_decisao_fechada_intencao import Mundo2, porta_aberta  # noqa: F401 - 
 DESTINOS = CatalogoDeDestinos((
     PersonaNomeavel("p-lucas", ("Lucas", "Lucas Almeida", "Lucas Almeida"), ("tadeu.quintela4821",)),
     PersonaNomeavel("p-bruno", ("Bruno", "Bruno Ferreira", "Bruno Ferreira"), ("valdir.teixeira6352",)),
-    PersonaNomeavel("p-andre", ("André", "André Carvalho", "André Carvalho"), ("andre.carvalho9543",)),
+    PersonaNomeavel("p-andre", ("André", "André Carvalho", "André Carvalho"), ("rene.sampaio381524",)),
 ), tuple(f"android-{i:02d}" for i in range(1, 9)))
 EXTRATOR = TargetExtractor(DESTINOS)
 #: Os nomes do catálogo como chegam ao filtro (rodada F): o que `RunService.dados_da_sombra` passa no 5º item.

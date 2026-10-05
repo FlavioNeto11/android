@@ -607,7 +607,7 @@ describe('grupos de acesso', () => {
 
   function rotasBase(grupos: unknown[]) {
     backend.on('GET', /^\/api\/personas$/, () => json([
-      pessoa({ id: 'ig-1', name: 'André Carvalho', username: 'andre.carvalho9543', policy_group_id: 'grp-1',
+      pessoa({ id: 'ig-1', name: 'André Carvalho', username: 'rene.sampaio381524', policy_group_id: 'grp-1',
                policy_group_name: 'Cautelosos' }),
       pessoa({ id: 'ig-2', name: 'Bruno Ferreira', username: 'valdir.teixeira6352' }),
       SEM_CONTA,
@@ -628,7 +628,7 @@ describe('grupos de acesso', () => {
 
   it('mostra os grupos com o resumo e quem está dentro; o cartão da persona diz o grupo', async () => {
     rotasBase([{ id: 'grp-1', name: 'Cautelosos', description: 'Contas novas', capabilities: { LIKE_POST: 'approval_required' },
-                 limits: { likes_per_hour: 5 }, loosened: [], members: [{ id: 'ig-1', username: 'andre.carvalho9543' }],
+                 limits: { likes_per_hour: 5 }, loosened: [], members: [{ id: 'ig-1', username: 'rene.sampaio381524' }],
                  created_at: '', updated_at: '' }]);
     await render();
     await waitFor(() => expect(text()).toContain('Grupos de acesso'));
@@ -640,14 +640,14 @@ describe('grupos de acesso', () => {
 
   it('29.25 (B3): membro cuja conta saiu aparece pelo nome e "sem conta", nunca como um "@" sozinho', async () => {
     rotasBase([{ id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [],
-                 members: [{ id: 'ig-1', username: 'andre.carvalho9543', name: 'André Carvalho' },
+                 members: [{ id: 'ig-1', username: 'rene.sampaio381524', name: 'André Carvalho' },
                            { id: 'ig-7', username: '', name: 'Beatriz Rocha' },
                            { id: 'ig-8', username: null, name: null }],
                  created_at: '', updated_at: '' }]);
     await render();
     const chips = await esperarElemento('[aria-label="Personas no grupo Cautelosos"]');
     const textos = Array.from(chips.querySelectorAll('span[data-sem-conta], span[class*="memberChip"]')).map((e) => e.textContent);
-    expect(textos).toContain('@andre.carvalho9543');
+    expect(textos).toContain('@rene.sampaio381524');
     expect(textos).toContain('Beatriz Rocha · sem conta');
     expect(textos).toContain('Pessoa sem nome · sem conta');              // sem nome nenhum, ainda assim não é "@"
     expect(textos.filter((t) => (t ?? '').trim() === '@')).toHaveLength(0);
@@ -656,7 +656,7 @@ describe('grupos de acesso', () => {
 
   it('29.25 (B3): o editor lista o membro sem conta (fora da listagem de perfis) e deixa tirá-lo do grupo', async () => {
     const grupo = { id: 'grp-1', name: 'Cautelosos', description: '', capabilities: {}, limits: {}, loosened: [],
-                    members: [{ id: 'ig-1', username: 'andre.carvalho9543', name: 'André Carvalho' },
+                    members: [{ id: 'ig-1', username: 'rene.sampaio381524', name: 'André Carvalho' },
                               { id: 'ig-7', username: '', name: 'Beatriz Rocha' }],
                     created_at: '', updated_at: '' };
     rotasBase([grupo]);
@@ -1000,7 +1000,7 @@ describe('grupos de acesso', () => {
     // A mesma chave de ação pode existir nos dois catálogos (SEND_MESSAGE): cada app é um recorte à parte do grupo.
     rotasBase([{ id: 'grp-1', name: 'Cautelosos', description: '', package: 'com.instagram.android',
                  capabilities: { SEND_MESSAGE: 'approval_required' }, limits: {}, loosened: [],
-                 members: [{ id: 'ig-1', username: 'andre.carvalho9543' }], created_at: '', updated_at: '' }]);
+                 members: [{ id: 'ig-1', username: 'rene.sampaio381524' }], created_at: '', updated_at: '' }]);
     backend.on('GET', /app-catalog/, () => json([
       { package: 'com.instagram.android', name: 'Instagram', label: 'Instagram', has_catalog: true,
         session_provider: 'instagram', needs_profile: true, profile_anchor: true },

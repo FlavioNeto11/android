@@ -21,8 +21,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-05 — 31.101: os testes não usam mais o identificador de uma conta real (branch test/31-101-dados-ficticios-nos-testes)
 
-- Os três @ com número de contas reais que os testes usavam como dado viraram valores de exemplo fixos, o mesmo para o
-  mesmo papel (36 arquivos de teste, 208 linhas). A troca é `scripts/trocar-nomes-nos-testes.py`, que lê a tabela de
+- Os @ com número de contas reais que os testes usavam como dado viraram valores de exemplo fixos, o mesmo para o
+  mesmo papel: os das três contas ativas (36 arquivos de teste, 208 linhas) e os das contas bloqueadas (8 arquivos,
+  20 linhas; o longo mantém o comprimento, que é o que o teste do card e o comentário de `Profiles.module.css`
+  exercitam). O comentário de `config/eval-set.yaml` que dizia qual conta o android-01 opera passa a citar o aparelho
+  (`«conta do android-01»`): um valor de exemplo ali tornaria o comentário falso. A troca é `scripts/trocar-nomes-nos-testes.py`, que lê a tabela de
   um arquivo local fora de qualquer checkout (`--tabela` ou `TROCA_DE_NOMES_TABELA`, sem caminho padrão; recusa tabela
   dentro do repositório). O script não guarda nome nenhum e só imprime contagens. A caixa vai trecho a trecho, para os
   testes de caixa ("Nome.Sobrenome…", "NOME.sobrenome…") manterem a força.
