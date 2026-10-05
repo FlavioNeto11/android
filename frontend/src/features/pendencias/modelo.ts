@@ -49,6 +49,15 @@ export function precisaDePessoa(session: { status: string; unknown_at_cap?: bool
   return PRECISA_DE_PESSOA.has(session.status) || !!session.unknown_at_cap;
 }
 
+/**
+ * Desde quando a sessão espera (29.100): a hora em que o estado atual começou. `verified_at` é a última verificação,
+ * que na parada fica vazia ou de dias atrás, e fazia uma parada de agora parecer antiga. Ele só vale quando o
+ * backend não manda `status_since` (anterior ao 29.100, ou `session_ready` de antes da migração 112).
+ */
+export function desdeDaSessao(session: { status_since?: string | null; verified_at: string | null }): string | null {
+  return session.status_since ?? session.verified_at;
+}
+
 export interface Pendencia {
   /** Estável entre leituras (a lista não pisca quando a caixa é relida). */
   chave: string;
@@ -178,7 +187,7 @@ export function pendenciasDeSessoes(personas: readonly PersonaDTO[]): Pendencia[
       titulo: nome && nome !== p.username ? `${nome} (@${p.username})` : `@${p.username}`,
       detalhe: `${metaDaSessao(p.session).label} · ${aparelho ?? 'sem aparelho vinculado'}`
         + ' · só uma pessoa resolve',
-      desde: p.session.verified_at,
+      desde: desdeDaSessao(p.session),
       acao: 'Resolver',
       destino: { tela: 'personas' },
     };
@@ -190,8 +199,9 @@ export const DIAS_PARA_ANTIGA = 7;
 
 /**
  * Triagem por idade (decisão D1): a execução que parou pedindo informação há mais de 7 dias raramente é a próxima
- * coisa a fazer, e 27 linhas seguidas escondiam o que chegou hoje. Só a origem Execução: o `desde` de uma intervenção
- * é a última verificação da sessão, e um login travado de verdade não pode ir parar numa seção recolhida.
+ * coisa a fazer, e 27 linhas seguidas escondiam o que chegou hoje. Só a origem Execução: uma intervenção de sessão
+ * continua parada até alguém agir, por mais antiga que seja, e um login travado de verdade não pode ir parar numa seção
+ * recolhida.
  */
 export function ehAntiga(p: Pendencia, agora: number): boolean {
   if (p.origem !== 'execucao' || !p.desde) return false;

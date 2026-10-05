@@ -553,6 +553,25 @@ describe('fila de intervenção', () => {
     await click(byRole('button', /Assumir controle/i));
     await waitFor(() => useUiStore.getState().focusInstanceId === 'android-01');
   });
+
+  it('29.100: a fila ordena pela hora em que o estado começou, não pela última verificação', async () => {
+    // A parada de agora tem a verificação mais velha (dias antes de parar); antes ela ia para o topo como "a que espera
+    // há mais tempo".
+    backend.on('GET', /^\/api\/personas$/, () => json([
+      pessoa({ id: 'ig-1', username: 'parou.agora', instance_id: 'android-01',
+               session: { status: 'unknown', instance_id: 'android-01', observed_username: null,
+                          verified_at: '2026-09-20T10:00:00Z', detail: null, stale: false, unknown_at_cap: true,
+                          status_since: '2026-10-05T06:30:00Z' } }),
+      pessoa({ id: 'ig-2', username: 'desafio.antigo', instance_id: 'android-02',
+               session: { status: 'auth_challenge', instance_id: 'android-02', observed_username: null,
+                          verified_at: '2026-10-01T09:00:00Z', detail: null, stale: false,
+                          status_since: '2026-10-01T09:00:00Z' } }),
+    ]));
+    await render();
+    await waitFor(() => text().includes('Aguardando intervenção'));
+    const fila = text().slice(text().indexOf('Aguardando intervenção'));
+    expect(fila.indexOf('desafio.antigo')).toBeLessThan(fila.indexOf('parou.agora'));
+  });
 });
 
 // ---------------------------------------------------------------- localidade (E9, item 4.4)

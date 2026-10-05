@@ -31,7 +31,7 @@ from .sessao_gate import acoes_de_sessao, app_on_device
 #: As colunas de `account_sessions` com o apelido que os leitores antigos esperam: `observed_username` era o nome em
 #: `instagram_sessions`, e o motor de sessão, `state.py` e o DTO do perfil continuam lendo por ele.
 _SESSAO = ("account_id, instance_id, status, observed_handle, observed_handle AS observed_username, verified_at,"
-           " detail, unknown_streak, updated_at")
+           " detail, unknown_streak, updated_at, status_since")
 
 
 def sessao_vencida(session: Row | None, max_age_s: int) -> bool:
@@ -1104,7 +1104,7 @@ class SocialRepository:
         if self.account_row(profile_id, account_id) is None:
             raise KeyError(account_id)
         streak = 0
-        anterior = self.db.one("SELECT status, unknown_streak FROM account_sessions WHERE account_id=?"
+        anterior = self.db.one("SELECT status, unknown_streak, status_since FROM account_sessions WHERE account_id=?"
                                " AND instance_id=?", (account_id, instance_id))
         estava_em_unknown = anterior is not None and anterior["status"] == SessionStatus.unknown.value
         if status is SessionStatus.unknown and reobserved:
@@ -1117,13 +1117,19 @@ class SocialRepository:
         elif status is SessionStatus.session_ready and estava_em_unknown and int(anterior["unknown_streak"] or 0):
             metricas.contar("sessao.unknown_resolvida", instancia=instance_id,
                             rodada_antes=int(anterior["unknown_streak"] or 0))
+        # 29.100: `status_since` é a hora em que o estado ATUAL começou. Reescrever o mesmo estado (a reobservação,
+        # o "Verificar conta", a invalidação de quem já estava `unknown`) mantém a hora; só a mudança a troca. É ela
+        # que Pendências mostra: `verified_at` fica vazio ou velho justamente na parada.
+        agora = now_iso()
+        desde = agora if anterior is None or anterior["status"] != status.value else anterior["status_since"]
         self.db.execute(
             "INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at, detail,"
-            " updated_at, unknown_streak) VALUES (?,?,?,?,?,?,?,?)"
+            " updated_at, unknown_streak, status_since) VALUES (?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(account_id, instance_id) DO UPDATE SET status=excluded.status,"
             " observed_handle=excluded.observed_handle, verified_at=excluded.verified_at,"
-            " detail=excluded.detail, updated_at=excluded.updated_at, unknown_streak=excluded.unknown_streak",
-            (account_id, instance_id, status.value, observed_handle, verified_at, detail, now_iso(), streak))
+            " detail=excluded.detail, updated_at=excluded.updated_at, unknown_streak=excluded.unknown_streak,"
+            " status_since=excluded.status_since",
+            (account_id, instance_id, status.value, observed_handle, verified_at, detail, agora, streak, desde))
 
     def session_row(self, profile_id: str, instance_id: str | None = None) -> Row | None:
         """A sessão da conta âncora do perfil: NESTE aparelho quando ele é dito; senão a do aparelho vinculado, ou a
@@ -1265,7 +1271,8 @@ class SocialRepository:
                 observed_username=session["observed_username"] if session else None,
                 verified_at=session["verified_at"] if session else None,
                 detail=session["detail"] if session else None,
-                stale=sessao_vencida(session, self.session_max_age_s), unknown_at_cap=self.parada_no_teto(session)),
+                stale=sessao_vencida(session, self.session_max_age_s), unknown_at_cap=self.parada_no_teto(session),
+                status_since=session["status_since"] if session else None),
             app_on_device=app, session_actions=acoes,
             last_verified_at=row["last_verified_at"], last_activity_at=row["last_activity_at"])
 
@@ -1280,7 +1287,7 @@ class SocialRepository:
             status=SessionStatus(s["status"]) if s else SessionStatus.unknown, instance_id=instance_id,
             observed_username=s["observed_username"] if s else None, verified_at=s["verified_at"] if s else None,
             detail=s["detail"] if s else None, stale=sessao_vencida(s, self.session_max_age_s),
-            unknown_at_cap=self.parada_no_teto(s))
+            unknown_at_cap=self.parada_no_teto(s), status_since=s["status_since"] if s else None)
 
     def devices_de(self, profile_id: str) -> list[PersonaDeviceDTO]:
         """`PersonaDTO.devices` (051): cada vínculo ativo, o principal primeiro, com o estado do aparelho quando o

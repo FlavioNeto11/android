@@ -541,6 +541,10 @@ class SessionInfo(BaseModel):
     #: parou de reobservar e espera uma pessoa. É a mesma regra do `session.needs_person` (entrada e saída do aviso),
     #: e põe a sessão nas filas "Aguardando intervenção" e Pendências, que filtram por estado.
     unknown_at_cap: bool = False
+    #: 29.100: quando o estado ATUAL começou (`account_sessions.status_since`); a reobservação do mesmo estado não o
+    #: move. É a hora que Pendências mostra no item da sessão parada. `None` em sessão gravada só antes da migração
+    #: e já `session_ready` nela (a migração preenche as demais com a última gravação).
+    status_since: str | None = None
 
 
 class PersonaDeviceDTO(BaseModel):

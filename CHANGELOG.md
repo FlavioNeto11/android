@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.100: Pendências mostra a hora da parada, não a da última verificação (branch feat/29-100-pendencias-hora-da-parada)
+
+- **Migração 112** (`account_sessions.status_since`): a hora em que o estado atual da sessão começou. `SocialRepository.set_account_session` a troca só na mudança de estado e a mantém quando o mesmo estado é regravado (reobservação, "Verificar conta", invalidação de quem já estava `unknown`). O preenchimento usa `updated_at` onde o estado não é `session_ready`; a pronta fica nula.
+- **Adendo v1.51:** `SessionInfo.status_since`, nos três montadores do 29.96 (`profile_dto`, `sessao_no_aparelho`, `_account_dto`).
+- **Painel:** `desdeDaSessao` (`pendencias/modelo.ts`) é o "desde" do item em Pendências e a hora e a ordem de "Aguardando intervenção" (`ProfilesPage.tsx`), com `verified_at` como reserva. Antes, a parada de agora aparecia como de dias atrás e ia para o topo da fila como a mais antiga.
+- Prova `simulated`: `backend/tests/test_sessao_status_since.py`, `PendenciasPage.test.tsx` e `ProfilesPage.test.tsx` (os resultados no PR). `not_run`: o painel do central, até o deploy.
+
 ## 2026-10-05 — 29.96: a sessão parada no teto aparece em Pendências e em "Aguardando intervenção" (branch feat/29-96-parada-no-teto-em-pendencias)
 
 - Achado da leitura do #371 (S): o `unknown` no teto abre o aviso `session.needs_person`, mas as duas filas do painel

@@ -682,6 +682,11 @@ export interface SessionInfo {
    * sempre manda; ausente vale `false`.
    */
   unknown_at_cap?: boolean;
+  /**
+   * 29.100 (adendo v1.51): quando o estado ATUAL começou; a reobservação do mesmo estado não o move. Nulo na sessão
+   * `session_ready` de antes da migração 112. Opcional pelo mesmo motivo de `unknown_at_cap`.
+   */
+  status_since?: string | null;
 }
 
 /** Política de localidade: o que fazer quando o servidor onde os dados do perfil vivem não responde. */

@@ -6219,3 +6219,18 @@ Sem migração. Campo aditivo em `SessionInfo`, que vai em `PersonaDTO.session`,
   intervenção" de Personas e a caixa de Pendências), com o rótulo "Tela não reconhecida" em vez de "Não verificada".
 - **Prova:** `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py::test_parada_no_teto_aparece_no_rest_pela_regra_do_aviso`,
   `frontend/src/features/pendencias/PendenciasPage.test.tsx`, `frontend/src/features/profiles/ProfilesPage.test.tsx`).
+
+## Adendo v1.51 (05/10/2026; número da orquestradora; item 29.100) — a hora em que o estado da sessão começou
+
+Migração 112. Campo aditivo em `SessionInfo`, nos mesmos cinco DTOs do adendo v1.48:
+- `status_since: string | null`: ISO-8601 UTC da hora em que o estado ATUAL (`status`) começou. Regravar o mesmo estado
+  não o move: a reobservação de quem está `unknown`, o "Verificar conta" e a invalidação de quem já estava `unknown`
+  mantêm a hora. Só a mudança de estado, ou a linha nova, a troca. `verified_at` continua sendo a última verificação.
+- Na sessão parada no teto (`unknown_at_cap`, v1.48), é a entrada em `unknown`. Com vínculo ativo o teto é 1, então é
+  a própria parada. Sem vínculo, a parada vem até `teto − 1` reobservações depois, a poucos ticks do agendador.
+- Nulo quando a sessão não existe, ou quando era `session_ready` antes da migração 112 e não mudou de estado desde
+  então. A migração preenche as outras com a última gravação. Em `session_ready` gravada depois da 112, é a hora em que
+  ficou pronta.
+- O painel usa `status_since` como o "desde" do item da sessão em Pendências e cai em `verified_at` quando ele falta.
+  Ausente = backend de antes do 29.100.
+- **Prova:** `simulated` (`backend/tests/test_sessao_status_since.py`, `frontend/src/features/pendencias/PendenciasPage.test.tsx`).

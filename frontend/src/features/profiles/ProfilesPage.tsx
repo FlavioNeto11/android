@@ -24,7 +24,7 @@ import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { useUiStore } from '../../store/ui';
 // Estados de sessão que só uma pessoa resolve: o mesmo conjunto da caixa de Pendências (fila e caixa não divergem).
-import { precisaDePessoa } from '../pendencias/modelo';
+import { desdeDaSessao, precisaDePessoa } from '../pendencias/modelo';
 import { BarraDeLote } from './AcoesEmLote';
 import { NovaPersonaManual, NovaPersonaPorPrompt } from './NovaPersona';
 import { PolicyGroupsSection } from './PolicyGroups';
@@ -352,7 +352,7 @@ function InterventionQueue({ profiles, instances, workers }: {
     () => profiles
       .filter((p) => precisaDePessoa(p.session))
       // Mais velho primeiro: quem está esperando há mais tempo aparece no topo.
-      .sort((a, b) => (a.session.verified_at ?? '').localeCompare(b.session.verified_at ?? '')),
+      .sort((a, b) => (desdeDaSessao(a.session) ?? '').localeCompare(desdeDaSessao(b.session) ?? '')),
     [profiles],
   );
 
@@ -392,7 +392,7 @@ function InterventionQueue({ profiles, instances, workers }: {
                     <Smartphone size={13} aria-hidden />
                     {p.instance_id ?? <span className={styles.muted}>sem aparelho vinculado</span>}
                     {server ? <ServerBadge server={server} size="sm" estatico /> : null}
-                    <span className={styles.muted}>· {tempoRelativo(p.session.verified_at, now)}</span>
+                    <span className={styles.muted}>· {tempoRelativo(desdeDaSessao(p.session), now)}</span>
                   </p>
                   {p.session.detail ? <p className={styles.filaMotivo}>{p.session.detail}</p> : null}
                 </div>

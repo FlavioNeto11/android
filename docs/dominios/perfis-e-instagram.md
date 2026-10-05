@@ -196,7 +196,11 @@ Caminhos relativos a `backend/app/`.
   aparelho e não planeja `session.verify` sobre a parada. A regra do teto mora num lugar só
   (`shared.vinculos.teto_de_unknown`), para a porta, a prévia e o REST. Item 29.96: o `SessionInfo.unknown_at_cap` (adendo
   v1.48) põe a parada nas filas "Aguardando intervenção" e Pendências, com o rótulo "Tela não reconhecida". Segue a
-  regra do aviso (`unknown_no_teto`, sem o desconto do teto velho), e o aviso leva ao Foco do aparelho.
+  regra do aviso (`unknown_no_teto`, sem o desconto do teto velho), e o aviso leva ao Foco do aparelho. Item 29.100:
+  as duas filas mostram e ordenam pela hora em que o estado começou (`account_sessions.status_since`, migração 112;
+  `SessionInfo.status_since`, adendo v1.51), não pela última verificação, que na parada fica vazia ou velha. Regravar
+  o mesmo estado mantém a hora. Sem vínculo, a primeira entrada em `unknown` vem até `teto − 1` reobservações antes da
+  parada.
   Duas exceções, de propósito:
   - o app fora do primeiro plano (`_fora_do_primeiro_plano` em `sessao.py`) grava `unknown` SEM somar, e a porta
     segue automática: abrir o app de novo não é rodada de sessão, porque a tela nem chegou a ser lida;
