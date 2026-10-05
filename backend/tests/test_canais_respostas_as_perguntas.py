@@ -341,3 +341,15 @@ def test_cartao_de_teste_sem_numero_guarda_a_pergunta_vazia(tmp_path: Path, nome
     assert r.responde_a == f"{MARCA_DA_PERGUNTA};autoria=digitado"
     numero, _, autoria = (r.responde_a or "").removeprefix(MARCA_DA_PERGUNTA).partition(";autoria=")
     assert (numero, autoria) == ("", "digitado")
+
+
+async def test_28_54_comentario_de_ia_do_membro_do_dono_com_o_app_dele_guarda_app(tmp_path: Path) -> None:
+    """F5 da leitura: com `apps_do_dono` preenchida, um comentário 🤖 do membro do dono escrito pelo app reconhecido guarda
+    `autoria=app` (a medida do 28.52) e nunca `app_do_dono`; segue `outro`, ignorada, sem valer como resposta."""
+    c = await _cenario(tmp_path, apps_do_dono=[APP_DO_DONO["id"]])
+    acao = c.trello.comenta(DONO, C_MANUAL, "🤖 nota de uma sessão", lista=L_PERGUNTAS, nome=NOME, app=APP_DO_DONO)
+    r = recebida_da_action(acao, c.cfg.file.trello, chave_do_cartao=lambda _card: None)
+    assert r is not None and (r.tipo, r.do_dono, r.texto) == ("outro", False, "")
+    assert r.responde_a == f"{MARCA_DA_PERGUNTA}P-006;autoria={AUTORIA_DE_APP}"
+    await c.volta()
+    assert c.linha(str(acao["id"]))["estado"] == "ignorada" and c.avisos == [] and c.acoes_da_central() == []
