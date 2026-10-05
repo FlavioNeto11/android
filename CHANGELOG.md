@@ -30,6 +30,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O início que perde para OUTRO início (estado relido `running` ou `paused`, sem cancelamento) devolve
   `invalid_state` com texto próprio, `INICIADA_POR_OUTRO_GESTO`: os sins valeram. Antes, o dono lia um texto de
   cancelamento por um gesto que tinha valido.
+- No canal, nunca "Não iniciei" quando a execução iniciou (revisão do #346). Um erro interno depois do
+  compare-and-set do início passa pelo `_erro_ao_iniciar`, e a recusa pelo `_recusa_na_porta`. Os dois releem o
+  estado: fora de `planned`, a linha fica `feita`, nada é cancelado e o texto diz "está em andamento" ou "já estava em
+  andamento". Isso vale no "Executar (aprova N)", no N = 0, no início sem a porta e no vigia. Testes em
+  `tests/test_telegram_entrada.py`; ao todo, 117 passaram em 4 arquivos.
 - Prova: `simulated` para o caminho de um processo, em `tests/test_telegram_portas.py` (o início que perde para outro
   início; a trava da linha antes do primeiro sim). Ao todo 124 passaram (`test_telegram_portas`, `test_porta_do_plano`,
   `test_avisos_porta`, `test_executor_honra_o_plano`, `test_telegram_entrada`, `test_cobertura_de_rotas`), em Idle e

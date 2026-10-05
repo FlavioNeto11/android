@@ -87,6 +87,8 @@ log = logging.getLogger("poc.avisos.entrada")
 
 #: Quem age pela conversa, na auditoria (decisão (b)): legível e sem o chat_id.
 OPERADOR_DO_TELEGRAM = "telegram:dono"
+#: Estados de uma execução que já iniciou e ainda não acabou: a mensagem ao dono nunca diz "não iniciei" (28.36).
+EM_ANDAMENTO = ("running", "paused")
 #: O que o dono ouve quando a mensagem vai à orquestradora (28.28), pelo motivo do repasse. Nunca o texto do extrator do
 #: painel: "Diga onde ou por quem" não responde a uma pergunta.
 RESPOSTA_DO_REPASSE = {
@@ -1293,8 +1295,9 @@ class ConversaDoCanal:
                 await self._ver_um_plano(saida, linha)
             except Exception:  # noqa: BLE001 - uma linha ruim não cala as outras da volta (revisão do #336, A1)
                 log.exception("telegram: vigia da porta, mensagem %s", linha.get("id"))
-                await self._abandonar_porta(saida, linha, ("executando", "pergunta"), "erro interno no vigia da porta",
-                                            "Não iniciei a execução: erro interno (está no log da Central).")
+                run_id = str(linha.get("run_id") or "")
+                await self._erro_ao_iniciar(saida, linha, ("executando", "pergunta"), run_id, run_id[-6:],
+                                            "erro interno no vigia da porta")
 
     async def _abandonar_porta(self, saida: SaidaDaConversa, linha: Linha, de: tuple[str, ...], erro: str,
                                texto: str) -> None:
@@ -1343,15 +1346,15 @@ class ConversaDoCanal:
         try:
             self.portas.iniciar(run_id)
         except RecusaDaCentral as recusa:
-            await self._abandonar_porta(saida, linha, ("executando", "pergunta"), "recusada pela Central",
-                                        f"Não iniciei a execução {curta}: {self._redigir(str(recusa))[:300]}")
+            # Outro gesto pode ter iniciado antes: o `_recusa_na_porta` relê o estado e não diz "não iniciei" (28.36).
+            await self._recusa_na_porta(saida, linha, ("executando", "pergunta"), run_id, curta, recusa)
             return
         except Exception:
             # Revisão do #336 (A1): sem isto a exceção subia do vigia, a linha ficava em `planejando` e calava as
             # linhas seguintes da volta.
             log.exception("telegram: iniciar sem a porta a execução %s", run_id)
-            await self._abandonar_porta(saida, linha, ("executando", "pergunta"), "erro interno ao iniciar",
-                                        "Não iniciei a execução: erro interno (está no log da Central).")
+            await self._erro_ao_iniciar(saida, linha, ("executando", "pergunta"), run_id, curta,
+                                        "erro interno ao iniciar")
             return
         await self._feita(saida, linha, i, f"Execução {curta} iniciada; as travas se decidem na execução (a prévia "
                                            "delas não pôde ser lida agora). Conto aqui quando terminar.", run_id=run_id)
@@ -1389,8 +1392,7 @@ class ConversaDoCanal:
             except Exception:
                 # Sem isto a linha ficaria em `executando` e o vigia tentaria de novo a cada volta, para sempre.
                 log.exception("telegram: iniciar o plano da execução %s", run_id)
-                await self._abandonar_porta(saida, {**linha, "run_id": run_id}, de, "erro interno ao iniciar o plano",
-                                            "Não iniciei a execução: erro interno (está no log da Central).")
+                await self._erro_ao_iniciar(saida, linha, de, run_id, curta, "erro interno ao iniciar o plano")
                 return
             await self._feita(saida, linha, i, linha_sem_aprovacao(curta, leitura, plano_mudou=bool(mudou)),
                               run_id=run_id)
@@ -1435,17 +1437,40 @@ class ConversaDoCanal:
     async def _recusa_na_porta(self, saida: SaidaDaConversa, linha: Linha, de: tuple[str, ...], run_id: str,
                                curta: str, recusa: RecusaDaCentral) -> None:
         """A Central recusou iniciar. Se a execução ainda está em `planned`, a porta é abandonada (e a execução,
-        cancelada); se já seguiu (`invalid_state`: outro gesto a iniciou), o desfecho de sempre a conta."""
-        texto = f"Não iniciei a execução {curta}: {self._redigir(str(recusa))[:300]}"
+        cancelada); se já seguiu (`invalid_state`: outro gesto a iniciou), o desfecho de sempre a conta. Nunca "não
+        iniciei" quando a execução está em andamento (28.36)."""
         try:
-            seguiu = self.portas.estado_da_execucao(run_id) not in ("planned", None)
+            estado = self.portas.estado_da_execucao(run_id)
         except Exception:  # noqa: BLE001 - na dúvida, abandona; o cancelamento confere o estado de novo
-            seguiu = False
-        if seguiu:
+            estado = None
+        motivo = self._redigir(str(recusa))[:300]
+        texto = (f"A execução {curta} já estava em andamento: {motivo}" if estado in EM_ANDAMENTO
+                 else f"Não iniciei a execução {curta}: {motivo}")
+        if estado not in ("planned", None):
             self.repo.marcar(self._id(linha), "feita", run_id=run_id, de=de)
             await self._responder(saida, linha, texto)
             return
         await self._abandonar_porta(saida, {**linha, "run_id": run_id}, de, "recusada pela Central", texto)
+
+    async def _erro_ao_iniciar(self, saida: SaidaDaConversa, linha: Linha, de: tuple[str, ...], run_id: str,
+                               curta: str, erro: str) -> None:
+        """Erro interno (não recusa) num caminho que inicia a execução. Ele pode vir DEPOIS do compare-and-set do início
+        (pré-voo, objetivos, agendador): a execução já roda, e dizer "não iniciei" seria falso. Fora de `planned`, a
+        linha fica feita e o desfecho de sempre a conta; em `planned` (ou sem leitura), a porta é abandonada (28.36)."""
+        try:
+            estado = self.portas.estado_da_execucao(run_id) if run_id else None
+        except Exception:  # noqa: BLE001 - na dúvida, abandona; o cancelamento confere o estado de novo
+            estado = None
+        if estado not in ("planned", None):
+            texto = (f"A execução {curta} está em andamento; houve um erro interno logo depois do início (está no log "
+                     "da Central). Conto aqui quando terminar." if estado in EM_ANDAMENTO
+                     else f"A execução {curta} está em '{estado}' depois de um erro interno ao iniciar (está no log da "
+                          "Central).")
+            if self.repo.marcar(self._id(linha), "feita", run_id=run_id, de=de):
+                await self._responder(saida, linha, texto)
+            return
+        await self._abandonar_porta(saida, {**linha, "run_id": run_id} if run_id else linha, de, erro,
+                                    "Não iniciei a execução: erro interno (está no log da Central).")
 
     async def _executar_aprovando(self, saida: SaidaDaConversa, original: Linha, i: Intencao,
                                   previa: Mapping[str, object]) -> None:
@@ -1479,9 +1504,7 @@ class ConversaDoCanal:
             return
         except Exception:
             log.exception("telegram: aprovar o plano da execução %s", run_id)
-            await self._abandonar_porta(saida, {**original, "run_id": run_id}, ("executando",),
-                                        "erro interno ao aprovar o plano",
-                                        "Não iniciei a execução: erro interno (está no log da Central).")
+            await self._erro_ao_iniciar(saida, original, ("executando",), run_id, curta, "erro interno ao aprovar o plano")
             return
         sins = resposta.get("aprovacoes")
         n = len(sins) if isinstance(sins, list) else len(aprovar)
