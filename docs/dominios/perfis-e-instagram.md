@@ -403,11 +403,16 @@ A pessoa faz a tarefa no aparelho, pelo Foco, e a IA generaliza a gravação em 
     objetivo, ou pós-condição de tipo inválido (antes era `KeyError`/500).
   - `parametro_fora_do_comando`: declarado em `parameters` e ausente do comando; o fluxo nunca casaria.
   - `parametro_nao_declarado`: `{x}` no comando sem parâmetro declarado (marcadores reservados não contam).
-  - `comando_generico`: menos de 2 palavras ou 10 letras fixas fora das chaves; casaria com pedidos alheios.
+  - `comando_generico`: o comando tem de COMEÇAR por palavra fixa (o fluxo casa com `.+?` e `fullmatch`, então `{pedido} no instagram` sequestraria todo pedido que termine assim) e ter ao menos 2 palavras e 6 letras fixas fora das chaves (`ligue para {contato}` passa; `siga {perfil}` não).
+  - `parametro_invalido`: `{…}` no comando que não é nome válido (maiúscula, acento): ficaria literal e o fluxo nunca casaria.
+  - `entrada_duplicada`: entrada em duas etapas, ou em etapa e em `discarded` (o `_receitas` tiraria o toque da etapa calado).
   - `pos_condicao_vazia`: etapa com efeito externo sem `postcondition.value` nem `description` (e sem ação de
     catálogo, que traz a sua). Sem efeito, o objetivo serve de critério e o `save` devolve o aviso em `warnings`.
   - `entradas_sem_etapa`: entrada gravada que não está em nenhuma etapa nem em `discarded` (a lista `#n` vem na
-    mensagem); `proposta_invalida`: descarte sem `seq`.
+    mensagem); `proposta_invalida`: tipo errado (lista que não é lista, descarte sem `seq` inteiro, `summary`/`app_id`/`parameters`).
+  - `inputs` e `discarded` são listas de inteiros; `title`, `goal`, `value`, `bindings` com tipo errado são `etapa_invalida` (400, não 500).
+  - A chave de etapa do `propose` (`normalizar_proposta`) é única e sempre cabe no padrão de `PlanStep.key` (31.93: o laço
+    antigo não terminava com chave de 40 caracteres repetida).
   - O `TRAINER_SYSTEM` pede cobertura total das entradas e manda para `discarded` as teclas de apagar que só limpam
     o campo e o `back`/`home` que desfazem engano (a reprodução limpa o campo; tecla na etapa derruba a receita).
 
