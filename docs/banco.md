@@ -373,6 +373,10 @@ pela regra de saúde. Desde então o portão é este:
   já saiu não é morto de novo. Cada comando ao Docker tem prazo de 30 s (estourou: rc 124, a amostra falha e o laço
   segue); três amostras seguidas sem o `df` dão uma linha "SEM AMOSTRA do df há 90 s", porque o aborto fica cego; e
   o `docker run` que falha (a imagem que falta, com o `--pull=never`) diz o erro dele antes do "não aceitou conexão".
+  Desde o 29.113: a parte interrompida (Ctrl-C, o `--resumo` que falha) mata a árvore do pytest antes de subir o
+  erro, e diz "INTERROMPIDA"; o pytest que sai sozinho entre a amostra e o aborto fica com o rc dele, não "ABORTADA";
+  o `docker stop` que falha avisa que o tmpfs pode seguir de pé. O pai morto de fora (o pwsh fechado) ainda deixa
+  a árvore viva: confira `python -m pytest` antes de outra rodada.
   - **Por quê.** Na suíte 35, os 467 arquivos juntos encheram os 4 GB: 181 failed, 823 errors, quase todos
     `DiskFull`. Pelos logs do contêiner, o estouro foi na `base/` (3688 erros ali e 1668 em `global/`, nenhum em
     `pg_wal`). O WAL ficou estável perto de 1 GB, com 30 segmentos reciclados por checkpoint, igual nas metades.

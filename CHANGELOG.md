@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.113: o `pg-rapido.py` não deixa o pytest rodando quando é interrompido (branch fix/29-113-pg-rapido, sobre o #410)
+
+- O1: `rodar_parte` mata a árvore do pytest quando algo interrompe a parte (Ctrl-C, `OSError` do `--resumo`, qualquer
+  exceção) e relata "INTERROMPIDA"; o laço das amostras foi para `_acompanhar`. O pai morto de fora (Job Object com
+  KILL_ON_JOB_CLOSE) fica para item próprio.
+- N1: `parar` relata o `docker stop` que falha, com o comando para tirar o tmpfs de pé.
+- N3: o pytest que saiu sozinho entre a amostra e o aborto fica com o rc dele, não com "ABORTADA" (rc 3).
+- O teste da árvore real só mata o neto quando não passou (o PID pode ter sido reusado).
+- Prova `simulated`: `scripts/tests/test_pg_rapido.py` (4 novos), 19 passed, com a mutação do O1 e a do N3 reprovando;
+  `pytest @scripts/tests/catracas.txt`, 6 passed. Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

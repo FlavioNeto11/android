@@ -256,13 +256,36 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
                 dormir: Callable[[float], None] = time.sleep, intervalo_s: float = INTERVALO_S,
                 limite: float = LIMITE) -> int:
     """Uma parte: contêiner novo, pytest, amostras. 0 verde; o rc do pytest se vermelho; 3 abortada pelo disco;
-    8 se o contêiner não aceitou conexão."""
+    8 se o contêiner não aceitou conexão.
+
+    O1 do 29.113: o que interromper a parte (Ctrl-C, um `OSError` do `--resumo`, qualquer exceção) passa pelo
+    `except`, que mata a árvore do pytest se ela ainda estiver viva. Sem isso, o pytest `-n 8` e os workers seguiam
+    contra o contêiner, e no Windows o filho não morre com o pai (a contaminação do K-101). O pai morto DE FORA (o pwsh
+    que o chamou fechado) não passa por aqui: isso pede um Job Object com KILL_ON_JOB_CLOSE, em item próprio."""
     subida = recriar(executar, dormir, relatar=relatar)
     if subida is None:
         relatar(f"{rotulo} o contêiner não aceitou conexão {agora()}")
         return 8
     relatar(f"{rotulo} aceitou em {subida} s; inicio {agora()} arquivos={len(arquivos)} python={python_do_pytest()}")
     proc = lancar(arquivos, saida)
+    try:
+        return _acompanhar(rotulo, proc, saida, relatar, executar=executar, dormir=dormir, intervalo_s=intervalo_s,
+                           limite=limite)
+    except BaseException:
+        # Só na interrupção: nas saídas normais o pytest já terminou (`wait`) ou a árvore já foi morta (o aborto).
+        if proc.poll() is None:
+            problema = matar_arvore(proc, executar)
+            try:
+                relatar(f"{rotulo} INTERROMPIDA {agora()}: a árvore do pytest foi morta"
+                        + (f" | ATENÇÃO: {problema}" if problema else ""))
+            except Exception:  # noqa: BLE001 — o relato que falhou pode ser a própria causa (o `--resumo`)
+                print(f"{rotulo} INTERROMPIDA: a árvore do pytest foi morta", file=sys.stderr, flush=True)
+        raise
+
+
+def _acompanhar(rotulo: str, proc: Processo, saida: Path, relatar: Callable[[str], None], *, executar: Executar,
+                dormir: Callable[[float], None], intervalo_s: float, limite: float) -> int:
+    """O laço das amostras de uma parte com o pytest já lançado (o `rodar_parte` cuida de matar a árvore)."""
     pico: Amostra | None = None
     sem_amostra = 0
     while proc.poll() is None:
@@ -276,6 +299,10 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
             relatar(f"{rotulo} SEM AMOSTRA do df há {sem_amostra * intervalo_s:.0f} s ({agora()}): o aborto pelo disco "
                     "está cego até a amostra voltar")
         if deve_abortar(a, limite):
+            if proc.poll() is not None:
+                # N3 do 29.113: o pytest saiu sozinho entre a amostra e o aborto. O resultado é o dele (verde ou
+                # vermelho), não "ABORTADA"; o disco alto fica no pico, abaixo.
+                break
             problema = matar_arvore(proc, executar)
             relatar(f"{rotulo} ABORTADA pelo disco: {a.linha() if a else ''}"
                     + (f" | ATENÇÃO: {problema}" if problema else ""))
@@ -286,6 +313,17 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
     relatar(f"{rotulo} pico: {pico.linha() if pico else 'sem amostra'}")
     relatar(f"{rotulo} no fim: {fim.linha() if fim else 'sem amostra'}")
     return rc
+
+
+def parar(executar: Executar, relatar: Callable[[str], None]) -> bool:
+    """N1 do 29.113: o `docker stop` que falha (ou estoura o prazo) deixava o tmpfs de 4 GB de pé sem aviso."""
+    r = executar(["docker", "stop", NOME])
+    if r.returncode == 0:
+        return True
+    erro = " ".join((r.stderr or r.stdout or "").split())[:200]
+    relatar(f"ATENÇÃO: docker stop {NOME} saiu com rc={r.returncode} ({erro or 'sem mensagem'}); o tmpfs de "
+            f"{TMPFS_MB // 1024} GB pode seguir de pé: confira com `docker ps` e pare com `docker rm -f {NOME}`")
+    return False
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -329,9 +367,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         rc = rodar_parte(rotulo, f, pasta / f"pg_parte{i}.txt", relatar)
         if rc != 0:
             relatar(f"{rotulo} PAROU (rc={rc}); as partes seguintes não rodaram")
-            _executar(["docker", "stop", NOME])
+            parar(_executar, relatar)
             return rc
-    _executar(["docker", "stop", NOME])
+    parar(_executar, relatar)
     relatar(f"pg verde: {len(fatias)} partes, {len(todos)} arquivos {agora()}")
     return 0
 

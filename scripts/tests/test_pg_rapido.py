@@ -162,6 +162,7 @@ def test_matar_arvore_de_verdade_mata_o_neto(tmp_path):
     pai = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{filho!r}]); time.sleep(30)"
     proc = subprocess.Popen([sys.executable, "-c", pai], start_new_session=pg.os.name != "nt")
     pid_filho: int | None = None
+    passou = False
     try:
         for _ in range(100):
             if marca.exists() and marca.read_text().strip():
@@ -175,10 +176,12 @@ def test_matar_arvore_de_verdade_mata_o_neto(tmp_path):
                 break
             pg.time.sleep(0.1)
         assert not _vivo(pid_filho), "o filho do pytest ficou órfão (K-099)"
+        passou = True
     finally:
         if proc.poll() is None:
             proc.kill()
-        if pid_filho is not None and _vivo(pid_filho):       # falhou no meio: o neto não fica dormindo
+        # Só quando o teste não passou: passando, o neto já morreu, e o PID pode ter sido reusado por outro processo.
+        if not passou and pid_filho is not None and _vivo(pid_filho):
             if pg.os.name == "nt":
                 subprocess.run(["taskkill", "/F", "/PID", str(pid_filho)], capture_output=True, check=False)
             else:
@@ -262,3 +265,68 @@ def test_docker_run_que_falha_diz_o_porque(tmp_path):
                         lancar=lambda a, s: pytest.fail("não roda o pytest"), dormir=lambda s: None)
     assert rc == 8
     assert any("docker run saiu com rc=125: Unable to find image" in ln for ln in linhas)
+
+
+def test_o1_a_interrupcao_no_meio_mata_a_arvore_e_se_propaga(tmp_path):
+    """O1 do 29.113: Ctrl-C durante as amostras não deixa o pytest -n 8 rodando contra o contêiner."""
+    class _CtrlC(_Docker):
+        def __call__(self, cmd):
+            if cmd[:2] == ["docker", "exec"] and "df -m" in " ".join(cmd):
+                raise KeyboardInterrupt
+            return super().__call__(cmd)
+    docker = _CtrlC([100])
+    linhas: list[str] = []
+    with pytest.raises(KeyboardInterrupt):
+        pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=docker,
+                       lancar=lambda arq, s: _Pytest(voltas=50), dormir=lambda s: None)
+    assert any(c and c[0] in ("taskkill", "kill") for c in docker.chamadas)       # a árvore, não só o pai
+    assert linhas[-1].startswith("pg parte 1/1 INTERROMPIDA")
+
+
+def test_o1_o_relato_que_falha_tambem_mata_a_arvore(tmp_path):
+    """O `--resumo` ilegível (OSError no relato) no meio da parte: a árvore morre, e o erro sobe."""
+    docker = _Docker([100])
+    vezes = {"n": 0}
+
+    def relatar(linha: str) -> None:
+        vezes["n"] += 1
+        if "SEM AMOSTRA" in linha or vezes["n"] > 1:
+            raise OSError("disco do resumo cheio")
+    class _SemDf(_Docker):
+        def __call__(self, cmd):
+            if cmd[:2] == ["docker", "exec"] and "df -m" in " ".join(cmd):
+                self.chamadas.append(list(cmd))
+                return _ok("")
+            return super().__call__(cmd)
+    docker = _SemDf([100])
+    with pytest.raises(OSError):
+        pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", relatar, executar=docker,
+                       lancar=lambda arq, s: _Pytest(voltas=50), dormir=lambda s: None)
+    assert any(c and c[0] in ("taskkill", "kill") for c in docker.chamadas)
+
+
+def test_n3_o_pytest_que_saiu_antes_do_aborto_fica_com_o_rc_dele(tmp_path):
+    """N3 do 29.113: a amostra passou do limite, mas o pytest já tinha saído (verde): rc 0, não "ABORTADA"."""
+    class _SaiNaAmostra(_Pytest):
+        def __init__(self) -> None:
+            super().__init__(voltas=1, rc=0)
+            self.chamadas_de_poll = 0
+
+        def poll(self):
+            self.chamadas_de_poll += 1
+            return None if self.chamadas_de_poll == 1 else 0      # vivo no laço; saiu antes do aborto
+    docker = _Docker([3600])
+    linhas: list[str] = []
+    rc = pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=docker,
+                        lancar=lambda arq, s: _SaiNaAmostra(), dormir=lambda s: None)
+    assert rc == 0 and not any("ABORTADA" in ln for ln in linhas)
+    assert not any(c and c[0] in ("taskkill", "kill") for c in docker.chamadas)
+    assert any("pico:" in ln and "88%" in ln for ln in linhas)
+
+
+def test_n1_o_docker_stop_que_falha_avisa():
+    linhas: list[str] = []
+    ok = pg.parar(lambda cmd: subprocess.CompletedProcess(cmd, 124, "", "excedeu 30 s"), linhas.append)
+    assert not ok and "docker stop farm-pg-rapido saiu com rc=124 (excedeu 30 s)" in linhas[-1]
+    assert "docker rm -f farm-pg-rapido" in linhas[-1]
+    assert pg.parar(lambda cmd: _ok(), linhas.append) and len(linhas) == 1
