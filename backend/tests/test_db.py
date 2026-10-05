@@ -367,6 +367,48 @@ def test_com_o_aborto_do_postgres_o_erro_engolido_so_nao_perde_a_escrita_com_o_s
     db.close()
 
 
+def test_savepoint_desfeito_descarta_o_efeito_pedido_dentro_dele(tmp_path: Path) -> None:
+    """29.108: `depois_do_commit` pedido dentro de um `savepoint()` que falha não roda no COMMIT de fora; o pedido fora
+    dele roda, uma vez; e o de um savepoint que deu certo também."""
+    db = _banco(tmp_path)
+    rodou: list[str] = []
+    with db.tx():
+        db.depois_do_commit(lambda: rodou.append("fora"))
+        with pytest.raises(RuntimeError):
+            with db.savepoint():
+                db.depois_do_commit(lambda: rodou.append("desfeito"))
+                raise RuntimeError("o sub-bloco falha")
+        with db.savepoint():
+            db.depois_do_commit(lambda: rodou.append("sub-bloco certo"))
+        assert rodou == []                                  # nada antes do COMMIT
+    assert rodou == ["fora", "sub-bloco certo"]
+    db.close()
+
+
+def test_savepoint_aninhado_descarta_so_o_que_foi_desfeito(tmp_path: Path) -> None:
+    """29.108 (T1 da leitura): savepoints aninhados. A dá certo com B desfeito dentro: só o pedido de A roda. C desfeito
+    com D que deu certo dentro: os dois saem, porque desfazer C desfaz também o que D gravou."""
+    db = _banco(tmp_path)
+    rodou: list[str] = []
+    with db.tx():
+        with db.savepoint():
+            db.depois_do_commit(lambda: rodou.append("A"))
+            with pytest.raises(RuntimeError):
+                with db.savepoint():
+                    db.depois_do_commit(lambda: rodou.append("B desfeito"))
+                    raise RuntimeError("B falha")
+            db.depois_do_commit(lambda: rodou.append("A depois de B"))
+        with pytest.raises(RuntimeError):
+            with db.savepoint():
+                db.depois_do_commit(lambda: rodou.append("C desfeito"))
+                with db.savepoint():
+                    db.depois_do_commit(lambda: rodou.append("D dentro de C"))
+                raise RuntimeError("C falha depois de D")
+        assert rodou == []
+    assert rodou == ["A", "A depois de B"]
+    db.close()
+
+
 def test_savepoint_que_desfaz_com_a_conexao_viva_nao_a_deixa_suspeita(tmp_path: Path,
                                                                       monkeypatch: pytest.MonkeyPatch) -> None:
     """Revisor do 22.5: no PostgreSQL, um deadlock ou um statement timeout é `psycopg.OperationalError` — está em

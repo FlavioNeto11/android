@@ -310,6 +310,10 @@ def _pwsh(comando: str) -> str:
 
 
 @pytest.mark.skipif(shutil.which("pwsh") is None, reason="pwsh não está no PATH")
+# 29.102: `scripts/lib/copias-de-avd.ps1` é do Windows, como o parque (separador `\` no caminho relativo e na trava
+# `*.lock`). No Linux do job de PostgreSQL do CI, o pwsh existe e o teste reprovava com `android-07.avd//...` e a trava
+# copiada: o defeito é da plataforma do teste, não da cópia. Portar a lib sem um Linux para provar seria afirmação.
+@pytest.mark.skipif(sys.platform != "win32", reason="a lib de cópia de AVD é do Windows (o parque é Windows)")
 def test_copia_a_frio_confere_o_hash_e_a_restauracao_nao_apaga_o_avd_substituido(tmp_path: Path) -> None:
     """29.39: a cópia leva o `.ini` e o `.avd` (sem a trava do emulador), com o sha256 de cada arquivo no manifesto e
     só o id do aparelho; a restauração confere a cópia, MOVE o AVD que estava lá e aponta o `.ini` para o lugar novo."""

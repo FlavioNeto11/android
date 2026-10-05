@@ -95,6 +95,8 @@ _PERGUNTA_INICIO = re.compile(
 #: O que faz da frase um pedido para um aparelho ou uma persona, mesmo terminando em "?": "pode abrir o QA no
 #: android-12?" é pedido.
 _CITA_DESTINO = re.compile(r"\bandroid-\d+\b|@\w|\bpersona\b")
+#: 28.44: a resposta que é SÓ a opção ("1", "opção 1", "a 1", "1.", "1)"), já sem acento e em minúsculas.
+_OPCAO = re.compile(r"^(?:(?:opcao|a|o)\s+)?(?P<op>\w{1,12})\s*[.)]?$")
 
 
 def _eh_pergunta(normal: str) -> bool:
@@ -126,6 +128,9 @@ class Intencao:
     #: `pergunta` (pergunta solta do dono), `continuacao` (reply a uma resposta nossa de um repasse) ou `sem_destino`
     #: (texto livre que a prévia recusou). Decide a resposta ao dono; o repasse é o mesmo.
     repasse: str | None = None
+    #: 28.44: a opção que a resposta SOLTA casou com a pergunta de escolha `ref` (sem reply). Só informa a orquestradora:
+    #: nunca vale como aval, veto ou resposta a pergunta do produto.
+    opcao: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +206,16 @@ class Fato:
     def portal(self) -> bool:
         """A mensagem de um visitante do site (28.32): `portal:<contato_id>`. Só informa."""
         return self.tipo == "portal"
+
+    @property
+    def escolha(self) -> bool:
+        """A pergunta de escolha que a ANA mandou ao dono (28.44): `escolha:<message_id>:<opções com hífen>`."""
+        return self.tipo == "escolha"
+
+    @property
+    def opcoes(self) -> list[str]:
+        """As opções de uma pergunta de escolha (`1-2-3` → `["1", "2", "3"]`)."""
+        return [o for o in self.detalhe.split("-") if o] if self.escolha else []
 
 
 #: A resposta a um aviso que só informa e se resolve pelo link dele (28.41).
@@ -373,11 +388,27 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         if palavra in _NAO:
             return Intencao("vetar", ref=f.ident)
         return Intencao("desconhecida", motivo="Para decidir esta aprovação, responda \"sim\" ou \"não\".")
+    if f.escolha:
+        # 28.44: o reply de verdade a uma pergunta de escolha da ANA é recado para a orquestradora, que a escreveu. Sem
+        # este ramo, caía na regra de fundo do G1 ("só informa") e a resposta do dono se perdia.
+        return Intencao("orquestradora", ref=f.ident, repasse="escolha",
+                        texto=f"Resposta do dono, em reply, à pergunta de escolha {f.ident} (opções {f.detalhe}): {t}")
     if f.pergunta:
         return Intencao("responder", ref=f.ident, texto=t)
     # Sem ramo próprio (`pedido:`, `learning:`, `trello-convidado:`, os espelhos e qualquer família nova): a gramática
     # comum decide, e a regra de fundo de `rotear` tira dela o comando (28.41).
     return None
+
+
+def opcao_da_escolha(texto: str | None, opcoes: list[str]) -> str | None:
+    """A opção (como está na lista) que o texto INTEIRO indica, ou None (28.44). Só a opção sozinha casa: "1 e 3",
+    "sim, a 2" e uma opção fora da lista não casam e seguem o caminho de sempre."""
+    m = _OPCAO.match(" ".join(_sem_acento(texto or "").split()))
+    if m is None or m.group("op") in _SIM or m.group("op") in _NAO:
+        # Palavra de aval ("sim", "s", "ok", "não") nunca é opção, mesmo que a pergunta a tenha listado: o `--escolha`
+        # já recusa, e esta é a rede (decisão da orquestradora na leitura do #412).
+        return None
+    return next((o for o in opcoes if _sem_acento(o) == m.group("op")), None)
 
 
 def texto_para_o_extrator(alvo: str, objetivo: str) -> str:

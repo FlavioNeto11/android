@@ -643,6 +643,40 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Na transação do gesto, a execução é conferida por um `UPDATE` que trava a linha, e não por um `SELECT`. Com dois
     backends no PostgreSQL, o cancelamento do outro espera o COMMIT e enxerga os sins, que expira junto; sem isso,
     sobravam sins `approved` numa execução cancelada (28.36).
+  - O recado livre mais curto que o pedido de execução aceita (o `min_length` de `RunTargetsResolveBody.command`, hoje
+    3) não chega à prévia (28.43). A linha fica `recusada` com o erro "curto demais para um pedido", e a resposta
+    pede para tocar em "Responder" na mensagem, ou para dizer o que fazer e em qual aparelho. Antes, o "1" solto do
+    dono (05/10 10:26Z) estourava `ValidationError` e virava "erro aqui dentro". A porta também converte o
+    `ValidationError` do pedido em `RecusaDaCentral`, como rede.
+  - A resposta solta casa com a pergunta de escolha aberta (28.44):
+    - **A marca:** a pergunta de escolha leva a marca `escolha:<message_id>:<opções>` (ex.: `escolha:294:1-2-3`) em
+      `canal_enviadas.fato`. Só quem manda marca, com `telegram_status.py --escolha 1,2,3`; nada adivinha a escolha
+      pelo texto.
+    - **Quando casa:** a mensagem do dono SEM reply cujo texto inteiro é uma das opções ("1", "opção 1", "a 1", "1.",
+      "1)") casa com a pergunta aberta. Aberta quer dizer: marcada, mandada nos últimos 30 min
+      (`JANELA_DA_ESCOLHA_S`), ainda sem resposta e não substituída. A resposta pode ter vindo por reply ou por
+      casamento; as duas gravam `alvo = 'escolha:<msg>'`. A substituição é `--substitui <msg>`, uma linha própria
+      `substitui:<nova>` com o fato `substitui:<antiga>`.
+    - **Para onde vai:** a casada vai à orquestradora com `previa.casada_com` e `previa.opcao`, e não preenche
+      `responde_a`. Com duas ou mais abertas, nada casa: vai como `escolha_ambigua`, e a resposta pede o Responder.
+      "1 e 3", "sim, a 2" e uma opção fora da lista seguem o caminho de sempre.
+    - **O reply de verdade:** o reply a uma mensagem `escolha:` tem ramo próprio (repasse `escolha`) e não cai na regra
+      de fundo do G1.
+    - **Nunca é aval:** nada disso vira aval, veto, resposta a pergunta do produto ou prévia. A casada não tem
+      `responde_a`, e toda conferência de autorização segue pedindo o reply ao aviso.
+    - **Pergunta sensível aberta:** com uma pergunta de senha aberta, a resposta solta curta segue a regra do curto com
+      pergunta sensível, e é recusada como possível credencial. O reply à pergunta de escolha passa.
+    - **A ordem é a do chat** (C1 da leitura do #412): só casa a pergunta de `message_id` menor que o da resposta, e a
+      substituição só fecha a antiga se a nova veio antes da resposta. O `recebida_em` é a hora em que o nosso laço
+      gravou, e uma pergunta mandada nessa brecha parecia anterior ao "1".
+    - **A resposta diz qual pergunta** (D1): "Li o seu "1" como a opção 1 da minha pergunta das HH:MMZ. Se não era
+      isso, responda nela com Responder.", em reply à pergunta casada, não ao "1".
+    - **Opção é número ou uma letra:** o `--escolha` recusa palavra ("sim", "ok", "pode", "publica") e as letras S e N.
+      A conversa nunca lê palavra de aval como opção, mesmo com a marca forjada.
+    - **Limites conhecidos, sem conserto agora:**
+      - a mensagem encaminhada pelo dono conta como dele;
+      - se a marca da pergunta nova não grava, a antiga segue aberta, e o script sai com erro visível (código 3).
+    - **Fora do escopo:** o Trello e o convidado ficam fora.
   - O texto da recusa ou do erro ao iniciar segue o estado relido (28.38):
     - `running` ou `paused`: "em andamento";
     - `cancelling`: "está sendo cancelada";
@@ -656,6 +690,40 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Só o botão Cancelar do dono cancela com gesto (o sinal `cancelou_execucao`). Os cancelamentos de consequência ou
     de faxina não gravam sinal (28.39).
   - O lote dos desfechos pendentes gira: linhas antigas de execução longa não seguram as novas (28.39).
+  - O "parou" (`awaiting_person`, 29.93) não é o fim (28.42). O desfecho que sai nesse estado deixa a marca
+    `desfecho_parado` no `previa` da linha.
+    - Quando a execução sai da espera (retomada, conclusão, falha, cancelamento ou purga), a linha volta a esperar
+      desfecho, e o fim real chega à mesma conversa, uma vez.
+    - Se a execução parar de novo, o novo "parou" também sai.
+    - O estado é lido ANTES do texto, para que a corrida entre as duas leituras possa no máximo repetir o fim, nunca
+      calá-lo.
+    - A anti-repetição do #358 conta os envios além dos rearmes (`desfechos_rearmados`).
+    - O rearme só vale para a linha que ainda tem a marca, e uma vez só (R1 da leitura do #400). A troca compara o
+      `previa` lido e exige `resultado_em` preenchido. Um líder velho, com a lista antiga de linhas paradas, não
+      rearma de novo a linha que o novo já terminou. A trava `avisos` é um aluguel de 120 s conferido no começo da
+      volta e depois do long-poll: ela não cerca as escritas, e um líder que perdeu o aluguel no meio da volta ainda
+      termina a volta dele. Por isso a troca no banco vale de qualquer jeito.
+    - O estado só se lê para a linha que já tem desfecho, e o texto é relido depois dele (N2). A volta não lê o
+      estado das execuções em curso; ler estado e texto numa leitura só, pela porta, fica para depois.
+    - Limites conhecidos:
+      - a retomada que para de novo entre duas voltas não é vista: o segundo "parou" não sai, e o fim sai depois;
+      - o "parou" já registrado e sem a marca (o banco caiu entre o envio e a marca), com a execução concluindo
+        antes da volta seguinte, marca sem mandar o fim (raro);
+      - as linhas que pararam antes do deploy do 28.42 não têm a marca e nunca ganham o fim;
+      - uma espera mais longa que `retencao_dias` perde a linha na faxina, e o fim fica mudo;
+      - com líderes sobrepostos e um ciclo inteiro dentro da sobreposição (parar, rearmar, parar de novo), o "parou"
+        pode sair em dobro (N3 da leitura do #400). O erro é para o lado de avisar, não de calar.
+    - O `marcar_desfecho(parado=True)` faz ler, mudar e gravar o `previa` sem troca condicional. Entre a leitura e a
+      gravação, outra escrita no `previa` da mesma linha se perderia. Só o líder da trava escreve ali depois que a linha
+      fica `feita` (como no `vista_em_planned`), e a sobreposição de líderes é o caso do N3.
+    - Achado (leitura do #400, ressalva 2): o aviso `approval.pending` da execução se decide por reply "sim" ou "não".
+      O caminho é `_rotear_resposta`, depois `_decidir`, `portas.decidir` e `ApprovalService.decide`, e exige
+      `do_dono=1`, o reply ao aviso e a aprovação ainda pendente. Ele não tem a trava "fora do canal" da prévia da porta
+      (`FORA_DO_CANAL`, 28.27), e o texto do aviso não leva a imagem. Uma aprovação com imagem ou texto longo se decide
+      pelo Telegram sem que o dono a veja inteira ali. Até haver trava, quem pede o aval manda a imagem em reply ao
+      aviso (28.45).
+    - O conjunto de estados com desfecho se chama `COM_DESFECHO` (antes `TERMINAIS`, que enganava: `awaiting_person`
+      não é terminal).
   - A prévia que não sai inteira marca a linha como falha e avisa o dono uma vez. Uma linha com erro não cala as
     outras da volta do vigia; a linha que caiu no meio do "Executar (aprova N)" é recuperada depois de `PRESA_S`.
   - P1: item que o dono não veria por inteiro (texto com nome de persona, contato ou segredo, texto longo, bloco que não
@@ -732,7 +800,19 @@ operação. Aqui só se descreve a forma deles.
 Os scripts da operação provisória ficam versionados em `.claude/canais/`, e os dados deles ficam na pasta excluída:
 
 - `telegram_inbox.py`: lê as mensagens do bot;
-- `telegram_status.py`: envia uma mensagem, com `--reply-to` e `--chat`;
+- `telegram_status.py`: envia uma mensagem, com `--reply-to` e `--chat`. Também tem:
+  - `--escolha` e `--substitui`, do 28.44;
+  - `--foto STEP_ID`, que manda ao dono a imagem que a etapa vai publicar (28.45 e 28.46):
+    - a imagem só sai se o sha256 dos bytes bater com o `imagem_sha256` que a prévia da porta mostra. Esse sha é lido
+      da própria Central (`sha_da_imagem_na_porta`, a mesma conta do `porta_do_plano._item`). Um teste em
+      `test_rotulo_ia.py` prende as duas juntas, inclusive no `None` da imagem de outra persona;
+    - o `--previa <porta.json>` é opcional e, se vier, também tem de bater com a Central;
+    - cada falha diz o seu motivo e nada sai: a Central não lida, a imagem fora do armazém, o sha diferente, o chat
+      vazio;
+    - sem resposta do Telegram (tempo esgotado, 5xx), a foto pode ter saído: a saída manda conferir o chat antes de
+      repetir;
+    - o script usa o backend do checkout central, então o `--foto` do 28.46 só funciona depois do deploy dele. Antes
+      disso, recusa com "a Central não foi lida (ImportError)", e nada sai;
 - `resumo_laco.py`: o resumo de hora em hora, com `--carimbar` e `--ensaio`;
 - `url_painel.py`: grava ou recua o `avisos.url_painel` do `config.yaml`, com backup.
 

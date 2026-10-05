@@ -259,7 +259,8 @@ def parecer_gravado(saida: JsonValue) -> Parecer | None:
                        riscos=_enums(RiscoApontado, saida.get("riscos")),
                        inconsistencias=_enums(Inconsistencia, saida.get("inconsistencias")),
                        falta=_enums(Falta, saida.get("falta")),
-                       conclusao=conclusao if isinstance(conclusao, str) else None)
+                       conclusao=conclusao if isinstance(conclusao, str) else None,
+                       falta_descartada=_enums(Falta, saida.get("falta_descartada")))
     except ValueError:
         return None
 
