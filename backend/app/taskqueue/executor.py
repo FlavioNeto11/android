@@ -220,7 +220,7 @@ def linha_da_recusa_do_juiz(onde: str, texto: str) -> str:
             f"{enderecos_limpos(texto)[:300]}. Continue a partir da tela atual.")
 
 
-#: 31.69: abaixo disto (caracteres normalizados) o valor é curto demais para se reconhecer sozinho ("1", "Sim", "Hoje").
+#: 31.69: abaixo disto (caracteres normalizados) o valor é curto demais para se reconhecer sozinho ("1", "Sim", "OK").
 VALOR_CURTO = 4
 
 
