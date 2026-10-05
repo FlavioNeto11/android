@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
+
+- X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
+- X2: três amostras seguidas sem o `df` dão uma linha "SEM AMOSTRA do df há 90 s", uma por série.
+- `matar_arvore` confere o `poll()` antes: o pytest que já saiu não vira "kill falhou" na linha do aborto.
+- `recriar` relata o rc e o erro do `docker run` (a imagem que falta, com o `--pull=never`).
+- O teste da árvore real dorme 30 s em vez de 120 e mata o neto no `finally` se falhar no meio.
+- Prova `simulated`: `scripts/tests/test_pg_rapido.py` (4 novos), 15 passed; `pytest @scripts/tests/catracas.txt`,
+  6 passed. Real: `not_run` (a próxima vez do PG da suíte).
+
 ## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)
 
 - Pedido do dono pelo Telegram (entrada 1790, 05/10 09:39:19Z): "o que significa ana? precisa colocar isso no portal
