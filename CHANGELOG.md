@@ -30,6 +30,27 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O texto continua onde quem decide o vê: na etapa e no pedido de aprovação.
 - Prova: `simulated` (`backend/tests/test_rascunho_fora_do_log.py`, 2 testes; falham com o código da main). Rodada
   dirigida: 170 passed.
+## 2026-10-05 — 31.61 (A): leitura julgada com prova local de tela fecha sem `step_done` (branch feat/31-61-leitura-sem-step-done)
+
+- **Etapa:** a de leitura (tem saídas, sem efeito, sem `commit_guard`, sem `commit_selector`), julgada, com prova local
+  de TELA no catálogo (`count_gt` e `sent_text` ficam fora).
+- **Fecho:** com todas as saídas lidas, o executor relê a árvore (`imagem=False`). Se a prova local vale NESSA árvore,
+  o laço sai para a verificação final sem pedir o `step_done` ao ator.
+- **Inalterado:** a verificação final roda igual, e o juiz continua onde o contrato pede (`need`). Sem prova declarada,
+  nada muda.
+- **Instrução direta:** depois do `step_done` recusado e depois de leitura parcial: "a tela já está pronta: a próxima
+  ação é read_value de 'X'". Só o nome da saída, nunca o valor nem o texto da tela.
+- **Medida, roteiro das 8 decisões da `r-20261004232524-2e0775`:** 8 → 7 `decide`; o tempo do harness não muda
+  (`decide` simulado).
+- **Teste negativo:** a tela muda depois da última leitura → a etapa não fecha e o `step_done` volta a ser pedido.
+- **L1 da revisão:** a prova confere a tela; o fecho também exige que cada valor lido da árvore ainda apareça na
+  árvore relida (outra tela do mesmo tipo não fecha com os valores da anterior), e valor lido da imagem deixa o
+  ator no laço. Teste: a mesma lista com outros contatos depois da última leitura não fecha.
+- **L2 da revisão:** o valor tem de seguir no MESMO elemento (`resource_id`) e, lido sem trecho, com o texto igual
+  (`valor_segue_na_tela`); por contenção, um valor curto casaria em outra tela do mesmo tipo. Teste: "QA-0011"
+  na lista relida não confirma "QA-001".
+- Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`; o `_prova_local` é dublê por árvore). Real:
+  `not_run`, janela depois do deploy 34.
 
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 

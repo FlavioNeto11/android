@@ -104,6 +104,12 @@ JULGAMENTOS_ANTES_DO_ATOR = 1
 #: (o aceite do LT-1 diz que não pode subir). Com `False`, a etapa sem prova local paga o juiz barato na entrada, como o
 #: handoff de latência descreve; mexer nisto só com a fração "já pronta na entrada" medida em `real`.
 ENTRADA_JULGADA_SO_COM_PROVA_LOCAL = True
+#: 31.61 (A): a etapa de LEITURA julgada com prova local declarada sai do laço sem `step_done` quando todas as saídas
+#: estão lidas e a prova local vale numa árvore lida DEPOIS da última leitura. Na r-…2e0775 (caixa do Outlook) o último
+#: `decide` era só o ator dizendo "pronto". `False` devolve o caminho de antes (a medida "antes" do teste).
+LEITURA_FECHA_SEM_STEP_DONE = True
+#: As provas locais que comprovam um EFEITO (publicar, enviar), não uma tela: etapa com uma delas não entra no 31.61.
+PROVAS_DE_EFEITO = ("count_gt", "sent_text")
 #: Liga o atalho de ENTRADA do LT-1 (a pós-condição já vale na tela lida → sai para a comprovação sem o ator). Existe
 #: para os testes que provam regras do ator NUM CENÁRIO em que o atalho cortaria a decisão observada (o piso de tier, a
 #: política de imagem): eles desligam isto e reafirmam a prova antiga sem enfraquecê-la.
@@ -212,6 +218,22 @@ def linha_da_recusa_do_juiz(onde: str, texto: str) -> str:
     volta ao ator e chega ao `attempts.error` pelo `fail_or_retry`."""
     return (f"(executor) {onde}: o verificador conferiu a tela e a pós-condição NÃO está comprovada: "
             f"{enderecos_limpos(texto)[:300]}. Continue a partir da tela atual.")
+
+
+def valor_segue_na_tela(tree: UiTree, valor: str, resource_id: str, exato: bool) -> bool:
+    """31.61, L2 da revisão do #348: o valor lido ainda está na tela relida, no MESMO elemento (o `resource_id` dele,
+    quando tem) e, lido sem trecho, com o texto ou a descrição IGUAL (normalizado). Por contenção, um valor curto ou
+    comum ("1", "Sim") casaria em outra tela do mesmo tipo e a etapa fecharia com o valor velho. Com trecho, o valor é
+    parte do elemento: basta estar contido nele."""
+    n = norm_text(valor)
+    if not n:
+        return False
+    for e in tree.elements:
+        if resource_id and e.resource_id != resource_id:
+            continue
+        if any((t == n) if exato else (n in t) for t in (norm_text(e.text), norm_text(e.desc))):
+            return True
+    return False
 
 
 def linha_do_valor_lido(nome: str, valor: str, faltam: Sequence[str]) -> str:
@@ -1724,6 +1746,9 @@ class StepExecutor:
         # Item 12.4: sem nomes escolhidos pelo planejador, a etapa entrega o que a AÇÃO declara (`Capability.saidas`).
         saidas_declaradas = saidas_exigidas(repo.saidas_da_etapa(step.id), cap)
         lidos: dict[str, tuple[str, str]] = {}
+        # 31.61 L2: de onde cada valor foi lido (o `resource_id` do elemento e se foi o texto inteiro, sem trecho), para o
+        # fecho sem `step_done` conferir o MESMO elemento na tela relida.
+        origem_dos_lidos: dict[str, tuple[str, bool]] = {}
         # Item 12.5 (ADR-070): as saídas lidas da IMAGEM (nome → (leitor, sha256 do recorte, id da evidência)); as
         # tentativas visuais já feitas nesta tentativa da etapa (barreira `repetida`); e a conta PRÓPRIA das recusas da
         # barreira de saídas, que `observe_screen` e `find_element` não zeram (`errors_in_row` zera): com 4, a etapa vai
@@ -1939,6 +1964,20 @@ class StepExecutor:
         teto_leitura = int(self.cfg.file.ai.max_decisoes_leitura) if leitura else 0
         ai_cfg = self._ai_da_execucao(str(run["id"]))      # 17.14: o perfil da execução pode trocar imagem e árvore
         judged_step = step.postcondition.kind == "model_judged" or need is not None
+        # 31.61 (A): só a etapa de leitura (sem efeito, sem gatilho, sem `commit_guard`), julgada, com prova local de TELA
+        # declarada no catálogo. Sem prova declarada nada muda; o juiz do fim do laço continua onde o contrato o pede.
+        prova_da_leitura = (cap.local_proof if (LEITURA_FECHA_SEM_STEP_DONE and cap is not None and cap.local_proof
+                                                and judged_step and leitura and not step.commit_selector
+                                                and not cap.side_effect and not cap.commit_selector
+                                                and not cap.local_proof.startswith(PROVAS_DE_EFEITO)) else None)
+
+        async def leitura_pronta(tela: Observation) -> bool:
+            """A prova local declarada da etapa de leitura vale nesta tela (a mesma porta da verificação final)."""
+            if prova_da_leitura is None or cap is None or not app.package or tela.sensitive:
+                return False
+            return await self._prova_local(step, CapabilityRef(app.package, cap.key), tela,
+                                           conta=getattr(ctx_for(), "account_label", None))
+
         decisions = 0
         image_requested = False
         # Lições medidas do ator (ADR-054): pedidas na PRIMEIRA consulta ao ator desta tentativa e reusadas nas
@@ -2673,6 +2712,7 @@ class StepExecutor:
                             return await dado_ausente("o valor lido não tinha relação com o pedido", obs)
                         continue
                 lidos[args.name] = (valor, args.value_kind)
+                origem_dos_lidos[args.name] = (alvo.resource_id or "", not (args.value or "").strip())
                 if lido_da_imagem is not None:
                     # O recorte vira evidência SÓ agora, com a leitura válida; a nota não traz o valor. A ação não leva o
                     # valor (`args.value` fica **OMITIDO**) nem a transcrição: só nome, tipo, tamanho, origem e ids.
@@ -2713,6 +2753,26 @@ class StepExecutor:
                 if (not faltam and not judged_step and not obs.sensitive
                         and self._postcondition_holds(step, obs, cartao, pacote=app.package)):
                     break              # ler não muda a tela: com tudo lido e a pós-condição valendo, só comprovar
+                if not faltam and prova_da_leitura is not None and not visuais:
+                    # 31.61 (A): a prova vale numa árvore lida AGORA, depois da última leitura (não na de antes): a tela
+                    # pode ter mudado enquanto se lia. Fechar aqui tira só a volta ao ator; a verificação final roda igual.
+                    # Valor lido da IMAGEM não se confere na árvore: com um deles, o ator segue no laço.
+                    try:
+                        peek = last_obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
+                    except DriverError:
+                        continue
+                    # L1 da revisão do #348: a prova confere a TELA; cada valor lido tem de seguir nela. Outra tela do
+                    # mesmo tipo (outro e-mail, a lista rolada) casaria a prova com os valores da anterior.
+                    if (await leitura_pronta(peek)
+                            and all(valor_segue_na_tela(peek.tree, como_texto(v, k), *origem_dos_lidos.get(n, ("", True)))
+                                    for n, (v, k) in lidos.items())):
+                        repo.decision(f"{iid} · {step.title}: valores lidos e a prova local vale na tela relida; "
+                                      "a etapa vai à verificação sem step_done", run_id=run_id, instance_id=iid,
+                                      step_id=step.id)
+                        break
+                elif faltam and await leitura_pronta(obs):
+                    # Instrução direta, só com o NOME da saída (nunca valor, endereço nem texto da tela).
+                    history.append(f"(executor) a tela já está pronta: a próxima ação é read_value de '{faltam[0]}'.")
                 continue
             if ((isinstance(args, StepDone) or decision.tool == "collect_list")
                     and (frente := self._tela_fora_do_app(step, obs, app.package)) is not None):
@@ -2736,6 +2796,9 @@ class StepExecutor:
                 repo.finish_action(aid, ActionStatus.rejected, error="valor da etapa ainda não lido")
                 history.append("step_done REJEITADA: esta etapa entrega " + ", ".join(f"'{n}'" for n in faltam_saidas())
                                + " às seguintes — leia na tela com read_value antes de concluir.")
+                if await leitura_pronta(obs):          # 31.61 (A): só o nome da saída, nada da tela
+                    history.append("(executor) a tela já está pronta: a próxima ação é read_value de "
+                                   f"'{faltam_saidas()[0]}'.")
                 errors_in_row += 1
                 recusas_de_saida += 1
                 if errors_in_row >= 4 or recusas_de_saida >= 4:
