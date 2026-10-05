@@ -141,8 +141,13 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
         return copia;
       });
     });
-    setFase('resumo');
-    await onConcluido();
+    // O resumo só depois de a lista se reler: com ele na tela a pessoa fecha e reabre o lote, e a operação seguinte
+    // decidia pela lista velha ("já estava sem grupo", ok e sem PATCH, com a persona ainda no grupo) (29.114).
+    try {
+      await onConcluido();
+    } finally {
+      setFase('resumo');
+    }
   }
 
   // ------------------------------------------------ custo, aviso e confirmação por operação
@@ -321,7 +326,7 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
                          tone={fase === 'resumo' ? (falhas ? 'warning' : 'success') : 'accent'} />
             <p className={styles.detail} role="status">
               {fase === 'resumo' ? `Terminado: ${oks} ok · ${falhas} ${falhas === 1 ? 'falhou' : 'falharam'}.`
-                : `Executando, ${CONCORRENCIA_DO_LOTE} por vez…`}
+                : feitos === n ? 'Relendo a lista de personas…' : `Executando, ${CONCORRENCIA_DO_LOTE} por vez…`}
             </p>
             <ul className={styles.loteLista} aria-label="Resultado por persona">
               {pessoas.map((p, i) => {

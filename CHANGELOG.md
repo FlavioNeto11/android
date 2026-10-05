@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.114: o lote só diz "Terminado" depois de a lista se reler (branch fix/29-114-lote-espera-releitura)
+
+- `frontend/src/features/profiles/AcoesEmLote.tsx`: o resumo do lote aparecia antes de a lista de personas se reler.
+  Quem fechava e reabria o lote nesse intervalo decidia pela lista velha. Tirar do grupo uma persona recém-posta nele
+  dizia "já estava sem grupo", com ok e sem PATCH, e ela continuava no grupo: um sucesso falso, achado no 29.104.
+  Agora a fase segue "executando" até a releitura voltar, com "Relendo a lista de personas…" e o Cancelar travado.
+- Teste: `AcoesEmLote.test.tsx` segura a releitura e confere que não há "Terminado" nem fechar antes dela, e que tirar
+  do grupo depois manda o PATCH das duas. Falha no código anterior. Prova simulated:
+  - `src/features/profiles` 190/190 sem atraso;
+  - com `ATRASO_DO_FETCH_MS=40`, o AcoesEmLote passa nas sementes 7, 11, 22, 44, 88 e 99.
+
 ## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)
 
 - Pedido do dono pelo Telegram (entrada 1790, 05/10 09:39:19Z): "o que significa ana? precisa colocar isso no portal

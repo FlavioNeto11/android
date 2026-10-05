@@ -203,6 +203,44 @@ describe('ações em lote', () => {
     expect(backend.callsTo('PATCH', /\/instagram\/profiles\/ig-9$/)).toHaveLength(0);   // já estava sem grupo
   });
 
+  // 29.114: com o "Terminado" na tela antes de a lista se reler, quem fechava e reabria o lote decidia pela lista
+  // velha: "já estava sem grupo", ok e sem PATCH, com a persona ainda no grupo.
+  it('o resumo só aparece depois de a lista se reler; até lá o diálogo não fecha', async () => {
+    let lista = [MARIANA, LUCAS];
+    let soltar: (() => void) | null = null;
+    rotas();
+    backend.on('GET', /^\/api\/personas$/, () => (soltar === null && lista[0]!.policy_group_id
+      ? new Promise<Response>((r) => { soltar = () => r(json(lista)); })
+      : json(lista)));
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => {
+      const id = c.path.split('/').pop();
+      lista = lista.map((p) => (p.id === id ? { ...p, ...(c.body as object) } : p));
+      return json(lista.find((p) => p.id === id));
+    });
+    await render();
+    await waitFor(() => text().includes('Lucas Almeida'));
+    await selecionar('Mariana Costa', 'Lucas Almeida');
+    await click(byRole('button', /Grupo de acesso/, barra()));
+    const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
+    await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
+    await waitFor(() => soltar !== null);
+    expect(text(dialogo)).toContain('Relendo a lista de personas');
+    expect(text(dialogo)).not.toContain('Terminado');
+    expect(byRole('button', /^Cancelar/, dialogo).getAttribute('aria-disabled')).toBe('true');
+
+    await act(async () => { soltar!(); });
+    await waitFor(() => text(dialogo).includes('Terminado: 2 ok · 0 falharam.'));
+    await click(byRole('button', /^Fechar$/, dialogo));
+    await click(byRole('button', /Grupo de acesso/, barra()));
+    const outro = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
+    await setValue(byRole('combobox', /^Grupo/, outro) as HTMLSelectElement, '');
+    await click(byRole('button', /Tirar do grupo/, outro));
+    await waitFor(() => text().includes('Terminado: 2 ok'));
+    // A lista relida diz que as duas estão no grupo: tirar manda o PATCH de cada uma.
+    expect(backend.callsTo('PATCH', /\/instagram\/profiles\//).slice(2).map((c) => c.body))
+      .toEqual([{ policy_group_id: null }, { policy_group_id: null }]);
+  });
+
   it('bloquear e reativar: PATCH status por persona; quem já está no status não é chamado', async () => {
     rotas();
     backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
