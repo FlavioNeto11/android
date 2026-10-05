@@ -6657,3 +6657,20 @@ Muda o VALOR de `ref` nos eventos de fluxo e passa a aceitar a referência nova 
   (do slug para a referência pública). Até o deploy, a Canais segue sem transmitir o `ref` de fluxo nem o `message`.
 - **Ainda não coberto** (próximas fatias do 30.83): as rotas `/api/flows/{id}`, os `href` das respostas do painel, os
   eventos `learning.ensinado_*` (30.80 B e 30.81, ainda em ramo) e os logs que levam `fluxo:<id>`.
+
+## Adendo v1.69 (05/10/2026; número da orquestradora; item 31.87 F2) — o ensino usa os dados da persona
+
+Nenhuma rota nova e nenhum campo novo; muda o CONTEÚDO de três respostas do modo treinamento quando a sessão tem
+persona e a pessoa digitou, como uma entrada inteira, um dado não sigiloso dela (`profile_variables`, genérico por chave).
+- `POST /api/training/{session_id}/propose`: o parâmetro do comando cujo exemplo é esse dado sai de `parameters` e de
+  `command_template`. Nas etapas (`title`, `goal`, `precondition`, `postcondition.value|description`, `bindings[].value`),
+  `{param}` e o valor literal viram o marcador `{perfil_x}`.
+- `POST /api/training/{session_id}/save` e `/preview`: a mesma troca na proposta enviada (a editada à mão também), e
+  `warnings` ganha uma linha "{perfil_x}: vem do perfil da persona de cada aparelho (o aparelho sem esse dado não roda o
+  fluxo)." A proposta guardada na sessão é a trocada.
+- O marcador não entra em `plan.parameters` do fluxo salvo; a receita destilada digita `{perfil_x}`, e a reprodução usa o
+  dado da persona do aparelho (os parâmetros do objetivo vencem).
+- Não troca: valor com menos de 3 caracteres, valor só dentro de outro texto, valor não digitado, sessão sem persona.
+- **O que o painel precisa mudar:** nada obrigatório. A revisão mostra `{perfil_x}` como texto e o aviso entra na lista
+  de `warnings` que ela já exibe.
+- **Prova:** `simulated` (`backend/tests/test_treino_dado_da_persona.py`); `real`: `not_run`.

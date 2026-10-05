@@ -27,7 +27,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   exemplo sai do comando) e na receita destilada; a reprodução recebe os dados da persona do objetivo. O `save` e a
   prévia avisam o que vem do perfil.
 - Contrato: a proposta guardada pode perder um parâmetro e ganhar marcadores nas etapas, e os `warnings` do `save` e
-  da prévia ganham uma linha. O número do adendo fica com a orquestradora.
+  da prévia ganham uma linha (adendo v1.69).
 - Funções tocadas (K-095): `TrainingSkills.propose`, `_preparar`, `refazer_receitas` e `_persona_demonstrada` (nova),
   `Repository.variaveis_da_persona` (nova), o despacho da receita no executor (`Replayer` com os dados da persona),
   `training/dado_da_persona.py` (novo).
