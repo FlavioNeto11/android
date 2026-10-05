@@ -323,8 +323,14 @@ avisos depois da faxina"), e a trava cai no TTL.
     do membro dele: sem `appCreator` vale como digitado; `appCreator` em `apps_do_dono` vale como digitado e a linha leva
     `autoria: app_do_dono` na prévia, sem pedido no Telegram (a P-009 e a P-010 precisaram da reconfirmação por esse
     caminho); o app da Central ou qualquer outro id fica `ignorada` ("escrita por app"); outro membro com o app dele
-    nunca vira o dono. A resposta que autorize efeito fora da máquina segue pedindo a confirmação de sempre (28.30), com
-    ou sem app reconhecido, e fora das listas de perguntas o app não muda nada.
+    nunca vira o dono. Fora das listas de perguntas o app não muda nada, e o comentário que autorize efeito fora da
+    máquina segue pedindo a confirmação no Telegram (28.30), com ou sem app reconhecido. Dentro das listas de perguntas
+    nenhum código pede o 28.30: a resposta vai à orquestradora sem Telegram, e quem barra o efeito externo é ela, ao ler
+    a resposta (comentário nunca autoriza efeito em conta real).
+  - **O id do app é público, o valor é a igualdade com o membro:** o id do aplicativo do Trello no celular é o mesmo para
+    qualquer usuário do cliente do Trello; ele não prova quem escreveu. O que lhe dá valor é o autor ser igual a
+    `trello.membro_dono` (conferido na tradução, `recebida_da_action`, e de novo no consumo). O teste do membro errado
+    guarda isso: o mesmo id escrito por outro membro nunca vira o dono.
   - **Fraqueza conhecida: "sem app = digitado".** O conector do Trello grava com o token do dono e SEM `appCreator`
     (medido em 05/10 em 200 comentários do quadro: os 135 de IA sem app têm os mesmos campos dos 12 digitados por ele, e
     `agenticIdentity` vem nulo em todos). Nada no retorno separa o conector do navegador do dono. Hoje isso se fecha só
