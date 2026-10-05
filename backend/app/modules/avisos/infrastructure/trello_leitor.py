@@ -439,15 +439,11 @@ class ConversaDoTrello(ConversaDoCanal):
                       "Telegram.")
         return "\n".join(linhas)
 
-    async def _contar_desfechos(self, saida: SaidaDaConversa) -> None:
+    def _texto_do_desfecho(self, texto: str) -> str:
         # O desfecho do painel traz a "Evidência" (texto do aparelho, onde moram nome e @conta): fica de fora do Trello.
-        for linha in self.repo.esperando_desfecho():
-            texto = self.portas.desfecho(str(linha["run_id"]))
-            if texto is None:
-                continue
-            curto = "\n".join(t for t in texto.splitlines() if not t.startswith("Evidência"))
-            await self._responder(saida, linha, self._redigir(curto) + "\nO detalhe está no painel.", origem="resultado")
-            self.repo.marcar_desfecho(self._id(linha))
+        # O laço (reenvio na falha passageira, plano esquecido) é o da conversa (28.38).
+        curto = "\n".join(t for t in texto.splitlines() if not t.startswith("Evidência"))
+        return self._redigir(curto) + "\nO detalhe está no painel."
 
     async def _enviar(self, saida: SaidaDaConversa, texto: str, *, origem: str, responde_a: str | None = None,
                       botoes: list[tuple[str, str]] | None = None, entrada_id: int | None = None,

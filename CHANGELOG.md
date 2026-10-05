@@ -104,6 +104,26 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   iria ao juiz. Pelo centro (y=1168), ele fica fora.
 - Prova: `simulated` (`backend/tests/test_bolha_sem_id.py`, 2 testes novos que falham no código anterior). Real:
   `not_run`.
+## 2026-10-05 — 28.38: o canal diz o estado certo e não perde o desfecho (branch canais/28-38-estado-certo)
+
+- A recusa e o erro interno num caminho de início dizem o estado relido. Em `cancelling`, o texto é "está sendo
+  cancelada" (ela podia estar rodando, e "ainda não começou" seria falso). Em `needs_input`, o texto diz que é preciso
+  responder no painel, porque pelo canal não se responde.
+- O desfecho só marca `resultado_em` quando sai, ou quando a falha é `definitiva` (repetir não adianta). Antes, ele era
+  marcado mesmo quando o envio falhava calado, e na execução terminal ele é a única linha ao dono (28.36). Na falha
+  passageira, a volta para e a linha tenta de novo na volta seguinte, nunca antes do que o 429 pediu. O laço é um só:
+  o Trello troca só o texto (`_texto_do_desfecho`, sem a "Evidência"). Se o desfecho já está em `canal_enviadas`
+  (`origem='resultado'`) e só a marca faltou, ele não se repete (F2 da revisão). O tempo esgotado depois de o canal
+  aceitar ainda pode repetir: a escolha é "pelo menos uma vez".
+- Uma linha `feita` cuja execução está em `planned` (o `planning` de uma prévia termina ali) não tinha faxina: ficava
+  sem desfecho para sempre e travava o despacho do aprendizado. Agora, com a linha passada de `PLANO_ESQUECIDO_S`
+  (1 h, bem acima do `ttl_previa_s`, para dar tempo de iniciar no painel), a conversa lê o estado. A hora conta de
+  quando ela VIU a execução em `planned`, porque `runs` não guarda a hora da transição e a linha ficou `feita` ainda em
+  `planning` (F1); ela fica em memória, e um reinício dá mais tempo ao dono, nunca menos. Passada a hora, a execução é
+  cancelada SEM gesto (`portas.cancelar(run_id, gesto=False)`, `por=None`), e o sinal `cancelou_execucao` não sai em
+  nome do dono (F4). O desfecho "cancelada" fecha a linha.
+- Prova: `simulated`, com 11 testes novos em `tests/test_telegram_entrada.py`, 1 em `tests/test_trello_leitor.py` e
+  1 em `tests/test_telegram_portas.py` (o sinal com e sem gesto, sobre o serviço real do harness). No ambiente real: `not_run`.
 
 ## 2026-10-05 — 28.36: a aprovação no plano trava a linha da execução (branch canais/28-36-trava-na-aprovacao)
 
