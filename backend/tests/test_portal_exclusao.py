@@ -25,6 +25,7 @@ from app.modules.portal.domain.exclusao import chave_do_telefone, final, mesmo_t
 from app.util import now
 
 from .conftest import Harness
+from .relogio_do_portal import RelogioParado
 
 BUSCA = "/api/portal/contatos/busca"
 EXCLUIR = "/api/portal/contatos/excluir"
@@ -70,6 +71,9 @@ def _canais(h: Harness, monkeypatch: pytest.MonkeyPatch, canais: CanaisFalsa | N
 
 
 def _cliente(h: Harness, **kw: object) -> httpx.AsyncClient:
+    assert h.state is not None
+    if not isinstance(h.state.portal.relogio, RelogioParado):
+        h.state.portal.relogio = RelogioParado()            # T.2: o teto por hora pela rota anda pelo relógio do teste
     app = create_app(h.cfg, state=h.state)
     app.state.poc = h.state
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test", **kw)  # type: ignore[arg-type]
@@ -356,6 +360,12 @@ async def test_31a_busca_do_operador_da_429_e_o_outro_operador_segue(harness: Ha
             r = await c.post("/api/portal/contatos/busca", json={"telefone": TEL_A})
     assert r.status_code == 429 and r.json()["detail"]["code"] == "muitas_buscas"
     assert 1 <= int(r.headers["retry-after"]) <= 3601
+    assert harness.state is not None
+    relogio = harness.state.portal.relogio
+    assert isinstance(relogio, RelogioParado)
+    relogio.avancar(3600.5)                                  # a hora passou, sem esperar de verdade (T.2)
+    async with _logado(harness) as c:
+        assert (await c.post("/api/portal/contatos/busca", json={"telefone": TEL_A})).status_code == 200
     async with _cliente(harness) as outro:
         assert (await outro.post("/api/login", json={"operator": "Outra Pessoa"})).status_code == 200
         assert (await outro.post("/api/portal/contatos/busca", json={"telefone": TEL_A})).status_code == 200

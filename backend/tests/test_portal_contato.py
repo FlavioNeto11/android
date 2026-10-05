@@ -5,11 +5,12 @@ Prova `simulated`: o harness de sempre e uma Canais FALSA no lugar de `avisar_co
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import shutil
 import time
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -19,9 +20,11 @@ from pydantic import SecretStr
 from app.main import create_app
 from app.modules.portal.application.protecao import cliente_pseudonimo, emitir_token
 from app.modules.portal.infrastructure.contatos_sql import RETENCAO_DIAS
+from app.modules.portal.montagem import RETENCAO_S, EstadoDoLaco, RelogioReal
 from app.util import now
 
 from .conftest import Harness
+from .relogio_do_portal import RelogioParado
 
 PUBLICO = "dev.nvit.com.br"
 SEGREDO = "tk-portal-contato-93ad0e"          # token de teste, não existe fora daqui
@@ -74,7 +77,18 @@ def _ligar(h: Harness, monkeypatch: pytest.MonkeyPatch, canais: CanaisFalsa | No
     return canais
 
 
-def _cliente(h: Harness, *, ip: str = IP, origem: str | None = f"https://{PUBLICO}") -> httpx.AsyncClient:
+def _relogio(h: Harness) -> RelogioParado:
+    """O relógio do portal parado (T.2): a rota e o token leem a mesma hora, e a idade do token é a que o teste diz."""
+    assert h.state is not None
+    if not isinstance(h.state.portal.relogio, RelogioParado):
+        h.state.portal.relogio = RelogioParado()
+    return h.state.portal.relogio
+
+
+def _cliente(h: Harness, *, ip: str = IP, origem: str | None = f"https://{PUBLICO}",
+             relogio_real: bool = False) -> httpx.AsyncClient:
+    if not relogio_real:
+        _relogio(h)
     app = create_app(h.cfg, state=h.state)
     app.state.poc = h.state
     cab = {"cf-connecting-ip": ip}
@@ -86,13 +100,15 @@ def _cliente(h: Harness, *, ip: str = IP, origem: str | None = f"https://{PUBLIC
 
 def _token(h: Harness, idade_s: float = 10) -> str:
     assert h.state is not None
-    return emitir_token(h.state.portal.contatos.sal(), time.time() - idade_s)
+    return emitir_token(h.state.portal.contatos.sal(), _relogio(h).epoch_s() - idade_s)
 
 
 def _corpo(h: Harness, **muda: object) -> dict[str, object]:
     corpo: dict[str, object] = {"nome": "Visitante Fictício", "empresa": "Empresa Fictícia", "telefone": TELEFONE,
                                 "mensagem": "Quero conhecer a ANA.\nPodem ligar à tarde?", "consentimento": True,
-                                "site": "", "token": _token(h)}
+                                "site": ""}
+    # Só emite o token (e para o relógio) se o teste não trouxe o dele: o do relógio real não pode ser trocado aqui.
+    corpo["token"] = muda.pop("token") if "token" in muda else _token(h)
     corpo.update(muda)
     return corpo
 
@@ -416,7 +432,7 @@ def test_resumo_conta_a_hora_fechada_e_so_o_teto_diario_como_descarte(harness: H
 
     monkeypatch.setattr(harness.state.avisos, "avisar_resumo_do_portal", resumo, raising=False)
     servico, repo = harness.state.portal.contatos, harness.state.portal.repo
-    virada = now().replace(minute=0, second=0, microsecond=0)
+    virada = datetime(2026, 10, 5, 4, 0, tzinfo=timezone.utc)          # hora fixa (T.2): nada do relógio real
     dentro, antes, depois = virada - timedelta(minutes=30), virada - timedelta(hours=2), virada + timedelta(minutes=5)
     assert servico.resumir(virada + timedelta(minutes=1)) is None and chamadas == []     # nada: não chama
     marcas = iter(range(100))
@@ -504,3 +520,88 @@ async def test_site_ligado_sem_a_pasta_desliga_o_contato_e_diz_por_que(harness: 
         assert (await c.post(ROTA, json=_corpo(harness))).status_code == 404
     codigos = {p.code for p in harness.state.health().problems}
     assert "portal_site_sem_pasta" in codigos and _linhas(harness) == []
+
+
+# ---------------------------------------------------------------- T.2: a hora do portal num lugar só
+async def test_token_na_fronteira_exata_da_idade(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Com o relógio parado, a idade do token é exata: `token_min_s` passa e um segundo antes é robô (202 sem
+    gravar); `token_max_s` passa e um segundo depois é `token_expirado`."""
+    _ligar(harness, monkeypatch, CanaisFalsa())
+    lim = harness.cfg.file.portal.limites
+    async with _cliente(harness, ip="203.0.113.21") as c:
+        cedo = await c.post(ROTA, json=_corpo(harness, token=_token(harness, idade_s=lim.token_min_s - 1)))
+        assert cedo.status_code == 202 and _linhas(harness) == []
+        no_minimo = await c.post(ROTA, json=_corpo(harness, token=_token(harness, idade_s=lim.token_min_s)))
+        assert no_minimo.status_code == 202 and len(_linhas(harness)) == 1
+    async with _cliente(harness, ip="203.0.113.22") as c:
+        no_maximo = await c.post(ROTA, json=_corpo(harness, token=_token(harness, idade_s=lim.token_max_s)))
+        assert no_maximo.status_code == 202 and len(_linhas(harness)) == 2
+        passou = await c.post(ROTA, json=_corpo(harness, token=_token(harness, idade_s=lim.token_max_s + 1)))
+    assert passou.status_code == 400 and passou.json()["detail"]["code"] == "token_expirado"
+    assert len(_linhas(harness)) == 2
+
+
+def test_a_pagina_emite_o_token_na_hora_do_relogio_do_portal(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    _ligar(harness, monkeypatch, CanaisFalsa())
+    relogio = _relogio(harness)
+    assert harness.state is not None
+    assert harness.state.portal.token() == emitir_token(harness.state.portal.contatos.sal(), relogio.epoch_s())
+
+
+def test_uma_volta_do_laco_com_o_relogio_parado(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """O laço do contato sem `sleep` nem relógio real: reenvia a cada volta, resume só na virada da hora UTC e faz a
+    retenção na 1ª volta e depois de `RETENCAO_S`."""
+    _ligar(harness, monkeypatch, CanaisFalsa())
+    assert harness.state is not None
+    portal = harness.state.portal
+    relogio = RelogioParado(datetime(2026, 10, 5, 4, 59, tzinfo=timezone.utc))
+    portal.relogio = relogio
+    feito: list[tuple[str, datetime]] = []
+    monkeypatch.setattr(portal.contatos, "reenviar", lambda agora: feito.append(("reenvio", agora)) or {})
+    monkeypatch.setattr(portal.contatos, "resumir", lambda agora: feito.append(("resumo", agora)))
+    monkeypatch.setattr(portal.repo, "apagar_vencidos", lambda agora: feito.append(("retencao", agora)) or 0)
+    estado = EstadoDoLaco(hora_do_resumo=relogio.agora().strftime("%Y-%m-%dT%H"))
+
+    asyncio.run(portal.volta_do_laco(estado))
+    assert [f for f, _ in feito] == ["reenvio", "retencao"]                # a hora não virou; a retenção é a 1ª
+    relogio.avancar(60)                                                    # 05:00: virou a hora
+    asyncio.run(portal.volta_do_laco(estado))
+    assert [f for f, _ in feito[2:]] == ["reenvio", "resumo"]
+    assert feito[-1][1] == datetime(2026, 10, 5, 5, 0, tzinfo=timezone.utc)
+    relogio.avancar(RETENCAO_S - 60)                                       # 1 h depois da 1ª retenção
+    asyncio.run(portal.volta_do_laco(estado))
+    assert [f for f, _ in feito[4:]] == ["reenvio", "retencao"]
+
+
+# ---------------------------------------------------------------- T.2, R1 da leitura do #387: o relógio de verdade
+def test_o_relogio_real_e_utc_concorda_com_a_epoca_e_o_monotonico_nao_volta() -> None:
+    """Todo teste de rota troca o relógio pelo parado; este prova o que fica em produção: `agora()` com fuso UTC, a
+    mesma hora de `epoch_s()` (o token guarda uma, a rota confere com a outra) e o monotônico que não volta."""
+    relogio = RelogioReal()
+    agora, epoca = relogio.agora(), relogio.epoch_s()
+    assert agora.tzinfo is not None and agora.utcoffset() == timedelta(0)
+    assert abs(agora.timestamp() - epoca) < 2 and abs(epoca - time.time()) < 2
+    antes = relogio.monotonico_s()
+    assert relogio.monotonico_s() >= antes
+
+
+async def test_a_rota_do_contato_com_o_relogio_real_aceita_o_token_da_pagina(harness: Harness,
+                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sem trocar o relógio: o `AppState` sobe com o `RelogioReal`, o token emitido na hora de parede de verdade (10 s
+    atrás, para passar do mínimo sem esperar) é aceito e gravado, e um token de antes do máximo é `token_expirado`.
+    Um `epoch_s` errado ou um `agora` sem fuso recusaria todo contato no ar; aqui isso reprova."""
+    _ligar(harness, monkeypatch, CanaisFalsa())
+    assert harness.state is not None
+    assert isinstance(harness.state.portal.relogio, RelogioReal)
+    sal = harness.state.portal.contatos.sal()
+    lim = harness.cfg.file.portal.limites
+    async with _cliente(harness, ip="203.0.113.31", relogio_real=True) as c:
+        aceito = await c.post(ROTA, json=_corpo(harness, token=emitir_token(sal, time.time() - 10)))
+        assert aceito.status_code == 202 and len(_linhas(harness)) == 1
+        velho = await c.post(ROTA, json=_corpo(harness, token=emitir_token(sal, time.time() - lim.token_max_s - 60)))
+        # O token que a PÁGINA emite (`epoch_s`) e a rota confere (`agora`): recém-emitido é "cedo" (202 sem gravar),
+        # nunca `token_expirado`, que é o que um `epoch_s` atrasado daria.
+        da_pagina = await c.post(ROTA, json=_corpo(harness, token=harness.state.portal.token()))
+    assert velho.status_code == 400 and velho.json()["detail"]["code"] == "token_expirado"
+    assert da_pagina.status_code == 202 and len(_linhas(harness)) == 1
+    assert isinstance(harness.state.portal.relogio, RelogioReal)                 # ninguém trocou no caminho

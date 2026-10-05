@@ -186,6 +186,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   diz "Crítico" nem espera o dono (pode ser o caminho do central, e não o site).
 - Prova `simulated`: `backend/tests/test_avisos_portal_borda.py`. Real: `not_run`.
 
+## 2026-10-05 — T.2 (fatia do portal): a hora do portal num lugar só (branch feat/t2-relogio-do-portal)
+
+- **É refatoração de produção**, não só teste (N1 da leitura do #387): `portal/montagem.py` ganha o `RelogioDoPortal`
+  (`agora()`, `epoch_s()`, `monotonico_s()`; o `RelogioReal` usa os mesmos `now()`, `time.time()` e
+  `time.monotonic()` de antes), e passam a ler dele as rotas do contato e da exclusão, o token da página, a saúde, os
+  dois laços e o prazo total do adaptador da borda. A volta do laço do contato sai do `sleep` (`volta_do_laco`). O
+  comportamento não muda; os commits dizem `test(portal)` e não foram reescritos.
+- **Testes que deixaram o relógio real:** o token pelo HTTP (fronteira exata do mínimo e do máximo), o resumo da hora,
+  uma volta do laço, o teto por hora da exclusão pela rota e o prazo total do vigia. Ficam com a hora real as chamadas
+  `now()` passadas direto aos serviços e o `sleep(0.02)` da corrida entre threads.
+- **O relógio de verdade continua provado** (R1 da leitura do #387): um teste do `RelogioReal` (UTC, `epoch_s` igual a
+  `agora`, monotônico que não volta) e um de rota do contato SEM trocar o relógio, com o token da própria página; um
+  `epoch_s` atrasado ou um `agora` sem fuso reprovam os dois (medido por mutação).
+- **Prova:** `simulated` (`tests/test_portal_contato.py`, `test_portal_exclusao.py`, `test_portal_borda.py`). O T.2
+  segue `partial`: esta fatia é evidência, não o fecho.
+
 ## 2026-10-05 — 29.101: o vigia da borda confere que a API não abre para fora (branch feat/29-101-vigia-da-api)
 
 - **Por quê** (nota da leitura do 29.97): o vigia pedia o painel, a raiz, o CSS e o JS, e não via o defeito mais grave
