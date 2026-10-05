@@ -3,7 +3,7 @@
 // `controlled_by_other` com `dono` e `desde`; o painel diz quem e desde quando, e só toma com a confirmação.
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfirmHost } from '../components/Confirm';
 import { formatClock } from '../lib/time';
 import { FakeBackend, byRole, click, installBrowserStubs, json, text, waitFor } from '../test/harness';
@@ -92,5 +92,25 @@ describe('controle com dono (29.143)', () => {
     await act(async () => { await useControlStore.getState().take('android-05', true); });
     useControlStore.getState().tomado('android-05', 'Operador A');
     expect(useControlStore.getState().leases['android-05']?.leaseId).toBe('lease-meu');
+  });
+
+  it('tomada lenta (resposta depois de 3 s): o evento da própria tomada, logo depois da resposta, não derruba o lease novo', async () => {
+    let responder!: (r: Response) => void;
+    backend.on('POST', /control\/take$/, () => new Promise<Response>((ok) => { responder = ok; }));
+    const inicio = Date.now();
+    const relogio = vi.spyOn(Date, 'now').mockReturnValue(inicio);
+    try {
+      let pedido!: Promise<void>;
+      await act(async () => { pedido = useControlStore.getState().take('android-08', true); });
+      await waitFor(() => expect(responder).toBeTypeOf('function'));
+      relogio.mockReturnValue(inicio + 5000);
+      responder(json({ status: 'granted', lease_id: 'lease-lento' }));
+      await act(async () => { await pedido; });
+      relogio.mockReturnValue(inicio + 5200);
+      useControlStore.getState().tomado('android-08', 'Operador A');
+      expect(useControlStore.getState().leases['android-08']?.leaseId).toBe('lease-lento');
+    } finally {
+      relogio.mockRestore();
+    }
   });
 });

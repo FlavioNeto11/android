@@ -54,6 +54,9 @@ export const useControlStore = create<ControlStore>((set, get) => ({
       if (tomar) tomadasDestaAba[instanceId] = Date.now();
       const res = await api.takeControl(instanceId, tomar);
       set((s) => ({ leases: { ...s.leases, [instanceId]: { leaseId: res.lease_id, status: res.status, acquiredAt: Date.now() } } }));
+      // S1 da leitura: a janela conta da RESPOSTA. Com a tomada lenta (o backend encerra a gravação no mesmo pedido), a
+      // marca de antes do pedido já teria vencido quando o `control.changed` chegasse, e ele derrubaria o lease novo.
+      if (tomar) tomadasDestaAba[instanceId] = Date.now();
       // Reflete já a resposta; o evento `control.changed` confirma em seguida.
       if (res.status === 'granted') {
         useAppStore.getState().patchInstance(instanceId, { control: 'user', control_pending: false });
