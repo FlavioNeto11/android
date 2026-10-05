@@ -401,6 +401,16 @@ Migração `038_modo_treinamento.sql`: `training_sessions` (`status`: `recording
 `training_inputs` (`type`: `tap|long_press|swipe|text|key|open_app`), `flow_scope`, `flows.source` (`'run'` ou
 `'training:<sessão>'`).
 
+**Teclas ao ensinar (31.84).** O texto digitado pelo painel acrescenta ao campo (`clear_first=false`), e quem ensina
+apagava um caractere por vez com "Apagar". Como a receita digita com `clear_first=True`, que já limpa o campo,
+`distill_training` trata assim as teclas gravadas na etapa:
+- `delete` ANTES de um `text` da mesma etapa é ruído e é pulada; depois do último `text`, ou sem `text`, muda o
+  resultado e a etapa segue sem receita;
+- `enter` imediatamente depois de um `text` vira `press_enter=True` da própria ação `type_text`; `enter` solto recusa;
+- `back`, `home` e `recents` dependem do estado de quem ensinou e recusam, como antes.
+`ManualInput.clear_first` (só `type='text'`) deixa o painel limpar o campo antes de digitar, sem N toques em Apagar;
+pelo ADB puro, sem sessão Appium, recusa com `bad_input` (o `input text` só acrescenta). O gravador não mudou.
+
 ## O Instagram como dado (ADR-052)
 
 O dono pediu "zero Python por app", e o Instagram deixou de ter código: `integrations/instagram/` e

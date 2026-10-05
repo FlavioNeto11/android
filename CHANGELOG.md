@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.84: as teclas de quem ensina não derrubam mais a receita da etapa (branch fix/31-84-85-entrada-manual-no-treino)
+
+- `distill_training`: `delete` antes de um `text` da etapa é ruído (a receita já limpa o campo); `enter` colado ao `text`
+  vira `press_enter`; `back`, `home`, `recents`, `delete` depois do texto e `enter` solto seguem recusando.
+- `ManualInput.clear_first` (só `type='text'`, padrão `false`) chega ao `type_text`; pelo ADB puro recusa `bad_input`.
+  Adendo v1.56 do contrato.
+- Prova `simulated`: `backend/tests/test_treino_teclas_na_destilacao.py` (10 passed; sem o conserto, 3 falham).
+  Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

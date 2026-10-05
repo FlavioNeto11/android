@@ -4271,7 +4271,13 @@ class DeviceManager:
                 await self._recusar_senha_na_loja(rt, text)
             try:
                 if rt.session.connected or self.io_factory is not None:
-                    await rt.executor.run(lambda: rt.io.type_text(text, clear_first=False), timeout=30, label="digitação manual")
+                    await rt.executor.run(lambda: rt.io.type_text(text, clear_first=inp.clear_first), timeout=30,
+                                          label="digitação manual")
+                elif inp.clear_first:
+                    # O `input text` do ADB só acrescenta e não há primitiva de limpar o campo por ele: digitar assim
+                    # deixaria o texto antigo junto do novo. Recusa em vez de fingir (a sessão do Appium limpa).
+                    raise ControlError("bad_input", "Limpar o campo antes de digitar exige a sessão de automação do "
+                                                    "aparelho, e ela não está conectada.")
                 else:
                     await rt.executor.run(rt.adb.input_text_ascii, text, timeout=30, label="digitação manual")
             except AdbError as exc:

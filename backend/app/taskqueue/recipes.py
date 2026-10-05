@@ -498,7 +498,19 @@ def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *,
     for i, e in enumerate(inputs):
         tipo = e["type"]
         if tipo == "key":
-            return None, f"tecla {e.get('key_name')} depende do estado de quem ensinou"
+            tecla = e.get("key_name")
+            # Apagar ANTES de um texto da mesma etapa é ruído: a receita digita com `clear_first=True`, que já limpa o
+            # campo (31.84; o painel digita sem limpar, e quem ensina apagava um caractere por vez). Depois do último
+            # texto, ou numa etapa sem texto, a tecla muda o resultado e segue recusando.
+            if tecla == "delete" and any(x["type"] == "text" for x in inputs[i + 1:]):
+                continue
+            # Enter colado ao texto que acabou de ser digitado é o "enviar" daquele campo: vira `press_enter` da própria
+            # ação de digitar. Enter solto age sobre um campo que a receita não conhece e segue recusando.
+            if tecla == "enter" and i > 0 and inputs[i - 1]["type"] == "text" and out and out[-1]["tool"] == "type_text":
+                out[-1]["args"]["press_enter"] = True
+                continue
+            # back, home, recents (e o resto) dependem do estado de quem ensinou.
+            return None, f"tecla {tecla} depende do estado de quem ensinou"
         if tipo == "swipe":
             dy = (e.get("y2") or 0) - (e.get("y") or 0)
             pending_scrolls.append("down" if dy < 0 else "up")          # dedo sobe = conteúdo rola para baixo

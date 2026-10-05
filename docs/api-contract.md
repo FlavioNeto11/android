@@ -6334,3 +6334,17 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
 - O mesmo descarte sai numa linha de log do curador, com o id da revisão, a classe e os rótulos.
 - O painel pode ignorar a chave. Ausente também quer dizer backend de antes do 30.73.
 - **Prova:** `simulated` (`backend/tests/test_curador_classe_b.py`).
+
+## Adendo v1.56 (05/10/2026; número da orquestradora; item 31.84) — `clear_first` na entrada manual de texto
+
+`POST /api/instances/{id}/input` (`ManualInput`), campo aditivo:
+- `clear_first: boolean` (padrão `false`), só para `type:'text'`; nos outros tipos é ignorado. Com `true`, o campo em
+  foco é limpo antes de digitar (o mesmo `type_text(clear_first=True)` da reprodução da receita). Com `false` ou
+  ausente, o comportamento é o de antes: o texto acrescenta ao que já está no campo.
+- Sem a sessão de automação do aparelho conectada (caminho do ADB `input text`, que só acrescenta), `clear_first:true`
+  responde `400 {code:'bad_input'}` em vez de digitar sem limpar. A recusa da senha na loja continua antes de tudo.
+- O que o modo treinamento grava não muda: uma entrada `text` comum. A destilação passou a tratar `delete` antes de
+  `text` como ruído e `enter` logo após o `text` como `press_enter` (ver "Teclas ao ensinar" em
+  `docs/dominios/perfis-e-instagram.md`).
+- O painel pode ignorar o campo. Ausente também quer dizer backend de antes do 31.84.
+- **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`). `real`: `not_run`.
