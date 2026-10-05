@@ -30,6 +30,497 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   não passa por janela). Os testes do 31.73, com dump plano, não mudam: a união dos nós de topo é a extensão das
   folhas. `real`: `not_run`, à espera de um dump bruto de um diálogo nativo e de uma página esparsa.
 
+## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
+
+- Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.
+- Motivos novos do pedido, pelos campos estruturados: `orcamento_da_prova` (`attempts.error_kind='budget'`) e `app_sem_sessao` (`objectives.blocked_kind='auth'`, gravado só na execução de prova a partir de `StepOutcome.pede_login`). Valem no fechamento e na remotivação do estoque; nenhum é chegada do curador. Adendo v1.54.
+- O aparelho em que a prova parou no login sai dos candidatos daquele app até a verificação nova do app nele, ou até um objetivo concluído num fluxo do mesmo app ali.
+- Não é falha do executor: sem regra nova em `falhas.py`.
+- Prova `simulated`: `backend/tests/test_validacao_motivos_da_prova.py` (9 passed, verificado por mutação).
+
+## 2026-10-05 — 30.80: a receita que não se aplicou não conta como falha dela (branch feat/30-80-receita-nao-aplicavel)
+
+- Achado real, 05/10 (prova do 31.79, `r-20261005133833-122345`):
+  - a execução partiu de dentro de uma conversa, e a receita ensinada 194 divergiu na ação 1 ("alvo ausente");
+  - a IA comprovou a etapa, mas a receita saiu com `replay_fail=1`.
+- `taskqueue/recipes.py`:
+  - `AlvoAusente` (subclasse de `RecipeDiverged`);
+  - `RecipeStore.nao_aplicavel`, com `NAO_APLICAVEL_CONTA_APOS=3`;
+  - `result` zera a série; a falha que vem da série (`_falhou(…, zera_serie=False)`) não zera.
+- `taskqueue/executor.py` (`_after_step`):
+  - divergência na ação 1, antes de agir, por alvo ausente, com a etapa COMPROVADA: não é veredito sobre a receita, e
+    `driven_by='ai'` a mantém fora da evidência contra;
+  - o evento leva o código `receita_nao_aplicavel` e os ids;
+  - da 3ª seguida em diante, cada uma conta como falha comum, sem zerar a série: a quarentena chega na 5ª;
+  - o seletor ambíguo (casa mais de um elemento) segue como falha comum.
+- Migração 115: `recipes.nao_aplicavel_seguidas`.
+- `PUT /api/recipes/{id}` e a reativação pelo livro também a zeram.
+- `GET /api/recipes` passa a trazer o campo.
+- Prova `simulated`:
+  - `test_receita_nao_aplicavel.py` (4 testes, verificado por mutação);
+  - `test_receita_divergida_escala.py` ajustado ao critério novo;
+  - `test_d1_receitas.py` cobre a rota.
+
+## 2026-10-05 — 29.127: o marco da subida no log do emulador e o offset que nunca lê o histórico (branch fix/29-127-readocao-marco)
+
+- Sobras das leituras do #420 (29.123).
+- R1: o `start_process` escreve `[central] subida do emulador: <avd> <hora UTC>` no log antes do `Popen` (descritor
+  sem buffer). A readoção usa a última linha que é marco ou `emuglConfig_init` (esta de reserva, para subidas de um
+  agente anterior ao marco). Fecha a janela residual do 29.123: nos primeiros segundos de uma subida, antes de o
+  emulador descarregar a saída bufferizada (29.34), a última `emuglConfig_init` era a da subida anterior, e um
+  diálogo dela pararia o aparelho. Vale no central agora e no notebook depois da atualização do agente.
+- M1 da leitura: quando o emulador anterior morreu no meio de uma linha (sem `\n`), o `start_process` escreve um `\n`
+  antes do marco; colado na linha cortada, o marco faria a readoção começar no pedaço final da subida anterior (e um
+  "Showing crashdialog" nele pararia o aparelho). Log que já termina em `\n` não ganha linha vazia. Prova
+  `simulated`: `test_marco_nao_cola_na_linha_cortada_da_subida_anterior` e `test_log_que_termina_em_quebra_nao_ganha_linha_vazia`;
+  sem o `\n`, o primeiro reprova. Dirigidos e vizinhos: 67 passed; catracas 88.
+- R2: só "o arquivo não existe" dá offset 0. Erro passageiro com o arquivo existindo tenta de novo (3 vezes); depois,
+  o fim do arquivo se o `stat` responder; senão, offset desconhecido (`-1`), e nem o detector de diálogo nem o
+  veredito do snapshot leem o log nessa readoção.
+- N3: o veredito do snapshot lê do começo quando o log foi rotacionado no spawn (como o `dialogo_de_crash`).
+- N1: a retentativa a frio grava o offset dela antes do segundo `_spawn`.
+- N5: o texto do `docs/dominios/parque.md` diz quando vale o fim do arquivo.
+- Prova `simulated`: `backend/tests/test_readocao_marco.py` (11) e `test_readocao_sem_log_antigo.py` (4): 15 passed.
+  Mutações: sem o marco no `start_process` reprova 2; a readoção ignorando o marco, 3; erro passageiro virando 0, 3;
+  o veredito sem a rotação, 1; a retentativa a frio sem offset, 1. As guardas explícitas do offset desconhecido no
+  `dialogo_de_crash` e no `_snapshot_verdict` NÃO são discriminadas: sem elas, o `seek(-1)` levanta `OSError`, já
+  tratado, com o mesmo resultado; ficam como documentação. Vizinhos: 161 passed (veredito do snapshot, relatório de
+  falha, log do emulador, instalação do worker, executor do worker, pacote do agente, prontidão, wake, arquitetura)
+  e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a próxima readoção depois do deploy).
+
+## 2026-10-05 — 29.123: a readoção não lê o histórico do log do emulador (branch fix/29-123-readocao-sem-log-antigo)
+
+- O incidente de 05/10 (29.122): às 12:56:52Z, um backend recém-subido readotou 01, 03 e 06. Com o host saturado,
+  a sonda não fechou e a readoção caiu no `_wait_boot`, que procura o diálogo de relatório de falha (29.55 c) a
+  partir de `boot_log_offset`. Esse offset só era gravado no spawn, e um backend novo tem 0. O detector leu o log
+  inteiro, achou `Showing crashdialog` de boots antigos (três vezes no log do 03 e três no do 06, nenhuma no do
+  01) e encerrou o 03 e o 06, ambos com conta real, às 12:57:05Z e 12:57:29Z.
+- `DeviceManager._adopt` (local) grava como offset o começo da subida em curso, a última linha `emuglConfig_init`
+  (`emu.inicio_da_subida_atual`, fora do laço): o diálogo de uma subida vem depois das linhas dela (medido nos logs do
+  03 e do 06). O diálogo desta subida segue visto, mesmo escrito antes do reinício do backend; os das anteriores, não.
+  Sem a linha, vale o fim do arquivo (aí um diálogo já na tela não é visto, e a espera vai até o prazo do boot); o
+  arquivo que some no meio dá 0, não uma exceção na partida. Na readoção, o veredito do snapshot e a releitura do
+  29.76 (d) nem rodam (o `_wait_boot` adotado não é wake).
+- Prova `simulated`: `backend/tests/test_readocao_sem_log_antigo.py`, 4 passed: o diálogo antigo não para; o escrito
+  depois da readoção para; o desta subida, escrito antes da readoção, para (M1); log sem a linha vai ao fim; arquivo
+  que some vira 0. Mutações: sem o conserto reprova o do incidente; o offset no fim do arquivo (sem o M1) reprova 2.
+  Vizinhos: 233 passed (prontidão, readoção, wake, apps de fundo, arquitetura, ciclo de vida do emulador, relatório
+  de falha, veredito do snapshot, executor do worker, pacote do agente, log do emulador) e `@tests/catracas.txt` 88
+  passed. `real`: `not_run` até o deploy (o Orquestrador religa 01, 03 e 06 por `start`).
+
+## 2026-10-05 — 29.125: o supervisor só mata o backend (branch fix/29-125-supervisor-so-o-backend)
+
+- Censo de 05/10: o Appium e o sing-box do backend do deploy 37 seguiam vivos com o pai morto. A varredura de filhos
+  do supervisor (`_matar_filhos`, `psutil.Process(pid).children(recursive=True)`) nunca alcançava nada no Windows:
+  o PID guardado é o do lançador do `python.exe` do venv, e depois do kill o `psutil.Process(pid)` dá
+  `NoSuchProcess`. Decisão do Orquestrador, opção (i): a varredura sai, e o texto passa a dizer o que vale. O
+  supervisor só mata o processo do backend; Appium, servidor de rede e emuladores ficam vivos de propósito e são do
+  backend seguinte (readoção do emulador pelo PID; o Appium da porta é readotado se provar o mascaramento e trocado
+  se não, `AppiumServer.start`, K-039). `e_emulador` fica: o `AppiumServer` usa.
+- O teste da varredura (`test_a_varredura_de_filhos_mata_o_appium_e_poupa_os_emuladores`), que exercia o código
+  removido, virou `test_o_supervisor_nao_mata_nada_alem_do_processo_do_backend`: o encerramento só toca o processo
+  recebido (com `psutil` e `os.kill` proibidos), e o `supervisor.py` não importa `psutil` nem `signal`, nem chama
+  `children`, `process_iter` ou `killpg`. Aprendizado da linha "matar pelo supervisor" corrigido.
+- Prova `simulated`: o teste novo passa e reprova com o `supervisor.py` anterior (056b14af). Vizinhos: 108 passed
+  (supervisão do central, partida, vigia, identidade do backend, ambiente dos filhos, arquitetura e os
+  `test_appium*`) e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (o próximo kill pelo
+  supervisor deixa o Appium para o backend seguinte, como já acontecia na prática).
+
+## 2026-10-05 — 29.124: o supervisor espera a partida lenta e pausa depois de reinícios seguidos (branch fix/29-124-supervisor-partida)
+
+- No incidente de 05/10, com o disco saturado, a partida do backend passou dos 90 s de carência e mais três
+  conferências e virou laço: cinco kills em 18 min.
+- `backend/app/marca_de_partida.py`: a cada subida, o supervisor sorteia um id e o passa em `POC_PARTIDA_ID` (o PID
+  não serve: no Windows, o `python.exe` do venv é um lançador e o backend é filho dele). O backend reescreve a marca
+  (`id`, `fase`, `ts`, nada mais) antes do `AppState`, depois dele, antes do `poc.start()` e em `no_ar`. O supervisor
+  só tolera o silêncio com o id desta subida, fase antes de `no_ar`, menos de 600 s desde a subida e menos de 240 s
+  desde a última reescrita; a linha do log diz a fase. Ler ou gravar a marca nunca derruba nada: erro de escrita é
+  engolido no backend, e arquivo ausente, parcial ou estranho é "sem marca" no supervisor.
+- Depois de 4 reinícios seguidos sem uma conferência boa, a espera antes do próximo vira 300 s, dita no log; uma
+  conferência boa zera a conta. Backend `no_ar` e mudo segue a regra das três falhas.
+- N5 da leitura do #421: o supervisor passa a pasta dele em `POC_PASTA_DO_SUPERVISOR`; o backend grava ali a marca, e
+  o vigia despeja em `<pasta>/logs`, onde o supervisor procura (antes, um `paths.logs_dir` diferente separava os dois).
+- Ramo rebaseado sobre o #421 (9cb77354): a junção de `supervisor.py` e `main.py` está feita aqui.
+- Prova `simulated`: `backend/tests/test_supervisor_partida.py`, 22 passed (bancada com relógios e marca falsos, o
+  `Popen` capturado e o ciclo de vida real do `create_app` com um estado falso). Mutações, cada uma reprovada: sem
+  conferir o id (2); sem o prazo de 240 s (2); sem o teto de 600 s (1); `no_ar` tolerado (1); sem a pausa longa (1);
+  id herdado repassado (1); sem a pasta do supervisor (1); sem a marca no ciclo de vida (1). Juntos com os do #421 e
+  os vizinhos: 138 passed (partida, vigia, supervisão do central, identidade do backend, ambiente dos filhos,
+  arquitetura, cobertura de rotas, autenticação, painel estático) e `@tests/catracas.txt` 88 passed. `not_run`: a
+  catraca do mypy (sem mypy no venv do central) e a prova real, que vem com a próxima partida pelo supervisor depois
+  do deploy.
+
+## 2026-10-05 — 29.121: o vigia do laço de eventos guarda a pilha antes do kill do supervisor (branch fix/29-121-vigia-do-laco)
+
+- O incidente de 05/10 (12:55Z a 13:13Z, cinco kills do supervisor por `/api/health` mudo) não deixou como saber
+  quem prendia o laço: o supervisor mata depois de três silêncios e não guarda pilha.
+- `backend/app/vigia_do_laco.py`: uma tarefa no laço marca uma batida por segundo; uma thread de fora confere a
+  idade dela e, acima de 10 s, grava a pilha de TODAS as threads (`faulthandler`) em
+  `data/logs/laco-travado-<UTC>-<n>.txt`. A thread nasce no `main()`, antes do `AppState`: até a primeira batida o
+  prazo é de 60 s, abaixo da carência do supervisor (com 120 s, o despejo empatava com o kill numa partida presa
+  síncrona, C1 da leitura), e uma partida presa também deixa pilha. No máximo 3 despejos por episódio, a cada 30 s; a volta
+  do laço sai no log com a duração; ficam os 20 despejos mais novos. Disco que falha: o aviso sai sem o arquivo.
+- O supervisor cita na linha do kill o despejo dos últimos 5 min (ou diz que não há). O kill não depende da
+  citação: um erro ao procurar o despejo vira "sem despejo" (N4 da leitura), e um arquivo que some entre a lista e
+  o `stat` deixa de ser candidato. Uma exceção que não é `OSError` no despejo também gasta a tentativa (N2).
+- Delta da leitura: `test_vigia_do_laco.py`, 15 passed; o de relógio real com limite de 1 s e o laço preso por
+  3 s (folga para carga). Mutações: `PARTIDA_S` de volta a 120 reprova o teste que prende `PARTIDA_S + INTERVALO_S <
+  CARENCIA_S`; só `OSError` no despejo, 1; o kill dependendo da citação, 1; o `stat` fora do `try`, 1. Vizinhos: 90
+  passed (supervisão do central, identidade do backend, ambiente dos filhos, arquitetura, cobertura de rotas,
+  autenticação) e `@tests/catracas.txt` 88 passed.
+- Prova `simulated` da primeira versão: `backend/tests/test_vigia_do_laco.py`, 11 passed, um deles com relógio real e o laço preso
+  de propósito (`time.sleep` no laço), a pilha gravada pela thread. Mutações: sem o despejo reprova 6; a batida
+  depois do `poc.start()`, 1; o supervisor sem citar, 1; a partida com o prazo do laço, 1. Vizinhos: 111 passed
+  (supervisão do central, identidade do backend, TLS, painel estático, autenticação, arquitetura, cobertura de
+  rotas) e `@tests/catracas.txt` 88 passed. `not_run`: a catraca do mypy (o mypy não está instalado no venv do
+  central, compartilhado com o backend no ar) e a prova real, que só vem com um travamento de verdade depois do
+  deploy.
+
+## 2026-10-05 — 29.120: a corrida do teste da segunda leitura do log do snapshot (branch fix/29-120-corrida-releitura)
+
+- `test_wake_relogio_do_snapshot.py::test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura` reprovou
+  no PG dirigido da suíte 37 (1 failed, 9600 passed) e passou sozinho no PG. A causa estava no teste, não no código:
+  ele punha `LOG_CONTRADIZ_RELEITURA_S` em 10 ms, e a releitura, agendada dentro do `_wait_boot`, disparava em
+  qualquer `await` que ele ainda fizesse depois disso, antes de o teste ligar a recusa do log. Com a máquina cheia,
+  essas esperas passaram de 10 ms, e a releitura leu o veredito ainda `None`. Não era o `db.query` síncrono do teste
+  (um `time.sleep` de 50 ms ali não reprova: o laço não roda o temporizador durante ele).
+- Agora o teste captura a releitura no `call_later` do laço (só ela; o resto, o `asyncio.sleep` inclusive, segue no
+  laço de verdade), confere que o prazo é o `LOG_CONTRADIZ_RELEITURA_S` real e a dispara à mão depois que a recusa
+  chega. O código do central não muda.
+- Prova `simulated`: `backend/tests/test_wake_relogio_do_snapshot.py`, 12 passed. O teste antigo com o prazo em 0 s
+  reprova sempre (o disparo dentro do `_wait_boot`); o novo não depende do prazo, porque captura a releitura.
+
+## 2026-10-05 — 29.117: a árvore do pytest num Job Object e uma rodada por vez no `pg-rapido.py` (branch fix/29-117-job-object, sobre o 29.113)
+
+- Windows: `lancar_em_job` cria o pytest SUSPENSO, põe no Job Object (KILL_ON_JOB_CLOSE) e só então retoma a thread
+  principal; todo worker do xdist nasce dentro. O `matar_arvore` termina o job; o `taskkill /T` saiu (pegava processo
+  alheio cujo pai morto tinha o PID do pytest). O pai morto de fora leva a árvore junto. Fora do Windows, o grupo.
+- Sem job (o script já num job que não aceita aninhamento): a parte diz em uma linha e, no aborto, só o PID do pytest
+  morre. O `ResumeThread` que falha mata o processo suspenso, e a parte sai com rc 11 e a linha do erro.
+- Uma rodada por vez: mutex nomeado `Global\farm-pg-rapido` ou `flock`; a segunda rodada sai com rc 10 antes do
+  `docker rm -f`; a trava que não se cria sai com rc 12. O erro 5 no `Global\` é o mutex de outra rodada (de outra
+  sessão ou usuário, com uma DACL que nos nega acesso) e também sai com rc 10, dito na linha; sem recuo ao `Local\`,
+  que deixaria as duas rodadas correrem (M1 da leitura).
+- Leitura do 29.117: o job terminado (aborto, interrupção, "já saiu") tem o handle fechado na hora (N1); os testes reais
+  fecham o job no `finally` (N2); nenhum teste usa a trava da rodada real, que tem nome de teste por fixture (N3).
+- N4 da leitura do 29.113: o `parar` que levanta no `finally` do `main` não troca a exceção original (vai ao stderr); o
+  `docker stop` sem contêiner (o `docker run` não subiu) não dá mais o ATENÇÃO falso.
+- Prova `simulated`: `scripts/tests/test_pg_rapido.py`, 35 passed (13 novos, os de árvore com processos REAIS criados
+  pelo teste: o neto morto pelo job, o lançador morto de fora levando o neto, um processo de fora do job intocado); a
+  mutação "sem entrar no job" reprova 4. Depois da leitura: 38 passed, e as mutações do M1 (sem tratar o erro 5) e do
+  N1 (sem fechar o handle no aborto) reprovam um teste cada; o do M1 usa um mutex REAL com DACL que nega tudo.
+  `pytest @scripts/tests/catracas.txt`, 6 passed. Real (05/10, central,
+  11:37Z, ponta deste ramo): o `_lancar_pytest` com `-n 8` subiu dentro do job e saiu com rc 0 (`test_catracas.py`,
+  6 passed). O PG de verdade: `not_run`.
+
+## 2026-10-05 — 29.113: o `pg-rapido.py` não deixa o pytest rodando quando é interrompido (branch fix/29-113-pg-rapido, sobre o #410)
+
+- O1: `rodar_parte` mata a árvore do pytest quando algo interrompe a parte (Ctrl-C, `OSError` do `--resumo`, qualquer
+  exceção) e relata "INTERROMPIDA"; o laço das amostras foi para `_acompanhar`. O pai morto de fora (Job Object com
+  KILL_ON_JOB_CLOSE) fica para item próprio.
+- N1: `parar` relata o `docker stop` que falha e SUGERE na linha o `docker rm -f` (não o executa).
+- Q2 da leitura: o `main` para o contêiner num `finally` em volta do laço das partes; interrompido, o tmpfs de 4 GB
+  não fica mais preso na RAM até a próxima rodada. Sem parte iniciada (RAM baixa), não há o que parar.
+- N3: o pytest que saiu sozinho entre a amostra e o aborto fica com o rc dele, não com "ABORTADA" (rc 3).
+- O teste da árvore real só mata o neto quando não passou (o PID pode ter sido reusado).
+- Prova `simulated`: `scripts/tests/test_pg_rapido.py` (7 novos), 22 passed, com as mutações do O1, do N3 e do
+  Q2 reprovando;
+  `pytest @scripts/tests/catracas.txt`, 6 passed. Real: `not_run`.
+
+## 2026-10-05 — 29.118: com a lista velha, os lotes que decidem por ela ficam indisponíveis (branch fix/29-118-lote-lista-velha)
+
+Leitura do 29.116 pela Ferramentas do Claude.
+
+- B1: depois do aviso "a lista não se releu", nada barrava. Grupo, bloquear e reativar decidem pelo estado da lista na
+  tela ("já estava…", ok e sem PATCH), então um lote sobre a lista velha relatava sucesso sem mudar nada, o defeito do
+  29.114. Agora `ProfilesPage` passa `listaVelha` à barra, e os três ficam indisponíveis com o motivo "A lista não se
+  releu: use “Tentar de novo”." até a leitura dar certo. Apagar, fotos e completar seguem livres.
+- N: o `confirmar` espera a releitura até `PRAZO_DA_RELEITURA_MS` (45 s). Passado o prazo, conta como não relida: uma
+  rajada de releituras não prende o diálogo em "executando".
+- C1 (leitura do #423): a releitura que perde para o prazo segue em voo, e o erro da página ainda é nulo. Agora ela vai
+  à barra, que trava grupo, bloquear e reativar com "A lista ainda está se relendo: aguarde." até ela assentar.
+- A1: o `aria-busy` sai do `<dialog>` inteiro, onde podia fazer o leitor de tela segurar o "Executando…/Relendo…" do
+  status, e fica só na lista "Resultado por persona".
+- Testes novos em `AcoesEmLote.test.tsx`: B1, o clique fora com o `aria-busy` só na lista, e o prazo. Os três falham
+  no código do 29.116. Prova simulated, em Idle:
+  - `src/features/profiles` e `src/components` 226/226 sem atraso;
+  - `src/features/profiles` 201/201 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99;
+
+## 2026-10-05 — 29.119: a catraca das esperas lê comentário, string e negação como o código (branch fix/29-119-catraca-k)
+
+Leitura do W1 e do 29.112 pelas revisoras.
+
+- `frontend/src/test/esperas.test.ts`:
+  - K2: o comentário sai com um varredor que copia as strings como estão, e o `//` de `'https://…'` deixa de esconder
+    o resto da linha. Cada caractere fica na mesma posição, então as linhas dos achados não mudam.
+  - K1: a negação da frente só poupa o corpo sem `&&`, `||`, `??` nem `?` de ternário no nível de fora
+    (`!carregando && c.querySelector(…)` devolve o elemento).
+  - K3: o `\/` escapado de um regex literal não abre comentário nem nível. A aspa sem escape dentro de um regex segue
+    como limite anotado.
+  - N1: os parênteses da busca são lidos balanceados (`:not(…)`, `:has(…)`), e o fim em `closest(…)` e `find(…)`
+    também conta. `undefined`, `0` e `''` seguem passando no `waitFor`; o limite está anotado no cabeçalho.
+- `GuiaImagens.test.tsx` afirma o selo "simulado" pelo elemento, não pela palavra, que também está no aviso do gerador.
+- `frontend/src/components/Disclosure.test.tsx` (novo): o bloco fechado à mão segue fechado com o `openWhen` parado em
+  verdadeiro e só reabre numa nova subida.
+- Prova simulated, em Idle:
+  - `src/test`, `src/components` e `GuiaImagens.test.tsx` 37/37; a catraca varre todos os testes sem achado novo;
+  - os casos novos falham na catraca anterior (o primeiro a cair é o K1);
+  - o GuiaImagens passa com `ATRASO_DO_FETCH_MS=40` na semente 88, onde caía;
+  - typecheck limpo.
+
+## 2026-10-05 — 29.115: o formulário trava enquanto envia, em vez de apagar o que a pessoa mexeu (branch fix/29-115-form-trava-ao-enviar)
+
+- `frontend/src/features/settings/LimitsSection.tsx` e `frontend/src/features/rede/RedePage.tsx`: a resposta do envio
+  zera o formulário (`setDrafts({})`; `setNome('')`…). O que a pessoa mexia com o PUT ou o POST em voo sumia sem ser
+  salvo nem avisado. Achado do 29.104. Seguindo o que o painel já faz (perfis, imagens, editor de política), os campos
+  ficam desabilitados enquanto envia: nos Limites, o `fieldset` de cada grupo; no cadastro de VPN e proxy, cada campo.
+- `frontend/src/test/harness.ts`: o `setValue` recusa campo `:disabled`, inclusive o de `fieldset` desabilitado. Um
+  teste que digitasse ali provaria um gesto que a tela não permite. Nenhum teste existente dependia disso.
+- Testes: `LimitsSection.test.tsx` (novo) e um caso novo em `RedePage.test.tsx` seguram o pedido e conferem os campos
+  desabilitados e livres depois. Os dois falham no código anterior. Os dois testes que eram a prova esperam o campo
+  livre antes de digitar, como a pessoa. Prova simulated:
+  - frontend inteiro 1617/1617 sem atraso;
+  - app.integration, rede e settings 174/174 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99.
+
+## 2026-10-05 — 28.47: as sobras da leitura do #412 na resposta solta à escolha (branch canais/28-47-escolha-sobras)
+
+- A mensagem encaminhada (`forward_origin`, ou `forward_date`) não casa com a pergunta de escolha. A marca é gravada
+  na `previa` da linha, sem migração.
+- O teto pelo relógio saiu: a pergunta gravada um instante depois do "1", mas anterior a ele no chat, casa.
+- O `message_id` é comparado como número (`isdecimal`), com teste que cruza a casa dos dígitos (99 contra 100).
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py`, 113 no arquivo; o teste do teto falhou antes de o
+  teto sair). Real: `not_run`.
+
+## 2026-10-05 — 28.48: a foto do item já decidido conferida pela âncora do sim (branch canais/28-48-foto-pela-aprovacao)
+
+- `telegram_status.py --foto`: com o item já aprovado na prévia da porta, o `midia_sha256` gravado no sim
+  (`sha_da_imagem_aprovada`) é a âncora. Se o sha da prévia de agora divergir dele, nada sai.
+- Prova: `simulated` (`.claude/canais/test_telegram_status.py` e
+  `backend/tests/test_rotulo_ia.py::test_o_sha_aprovado_no_plano_e_a_ancora_da_foto`). Real: `not_run`.
+
+## 2026-10-05 — 31.82, segredo na gravação do treinamento (branch fix/31-80-82-gravacao-do-treino)
+
+- Achados da auditoria, conferidos no código: sem árvore (leitura falhou ou estourou o prazo) um texto digitado só
+  dependia das heurísticas; o alvo de um toque levava o conteúdo do campo editável; `screen_lines`/`screen_title`
+  não passavam por filtro.
+- `recorder.py`: sem árvore o texto não é gravado (`has_text` e `text_len` ficam); no alvo, campo editável perde o
+  `text` (e os `unique` que dependiam dele) e qualquer `text`/`desc` que case com `looks_secret`, `mentions_credential`
+  ou `parece_senha_ou_codigo` sai; linhas e título de tela com esses formatos saem. A receita segue por `resource_id`
+  (`build_selectors` dá o seletor `rid`). Campo editável nunca guarda `text`; sem `resource_id` e sem `desc` o alvo fica sem seletor e a etapa não vira receita.
+- Prova `simulated`: `backend/tests/test_treino_segredo_na_gravacao.py` (4; sem o conserto os 4 falham) e
+  `test_modo_treinamento.py` (7 passed). Real: `not_run`.
+
+## 2026-10-05 — 31.94, teclado de PIN na gravação do treinamento (branch fix/31-94-teclado-de-pin-na-gravacao)
+
+- Tirar o rótulo "4" não bastava: o `resource_id` (`key4`) e o x/y de cada toque num teclado fixo são o dígito.
+- Toque em tecla de teclado numérico (rótulo `text` ou `desc` de um dígito ou "2,ABC"; sem rótulo e rid terminado em
+  dígito; alvo sem rótulo cujo rid ou classe nomeia teclado: `pin_pad`, `PinKeypadView`...) é gravado sem alvo e sem
+  x/y, com `sensitive=1` (a coluna que já existia; sem migração). `android:id/button1` com rótulo segue gravado.
+- Em tela sensível, o toque sem id estrutural (nem do alvo nem de filho) também sai sem x/y.
+- A destilação não muda: coordenada solta já não vira receita (teste com `distill_training`).
+- `linha_da_entrada` (`planning/training.py`, só esse trecho): toque com `sensitive` e sem x diz "toque em teclado ou tela sensível (não gravado)" e `ponto=(x,y)` só sai com x (nunca "ponto=(None,None)").
+- Segunda leitura do #440: toque sem seletor utilizável (alvo None, ou sem `unique` e sem filhos) sai sem x/y em qualquer
+  tela, sem marcar `sensitive`; nomes de teclado novos (`pincode`, `pinview`, `pinentry`, `pinlock`, `numberpad`,
+  `patternlock`, `lockview`, `dialpad`); a tecla telefônica só com as letras do próprio dígito ("5G", "2FA", "4K" seguem
+  gravados). Fora: arraste em padrão de bloqueio e o significado da coluna `sensitive`.
+- Prova `simulated`: `test_treino_segredo_na_gravacao.py` (24). Real: `not_run`.
+
+## 2026-10-05 — 31.80/31.82, segunda leitura do PR #427 (branch fix/31-80-82-gravacao-do-treino)
+
+- C1 (31.80): `reconcile_after_restart` só fecha sessão de aparelho que NÃO é hospedado por outro dono
+  (`instances.hosted_by`, o padrão de `commands/store.py`); `TrainingRecorder` recebe `owner_id`. O log só sai se o
+  UPDATE mudou linha.
+- S1 (31.82): alvo e filhos com `text`/`desc` de um dígito só (PIN desenhado) perdem esse rótulo e os `unique` dele.
+- S2 (31.82): `parece_linha_com_codigo` (nova, só acréscimo em `redaction.py`) e `parece_codigo` por token valem para
+  linhas, título e alvo da tela.
+- N5 não feito: o motivo da omissão pede coluna nova em `training_inputs` (migração); fica para outro item.
+- Prova `simulated`: `test_treino_gravacao_orfa.py` (6), `test_treino_segredo_na_gravacao.py` (12),
+  `test_redaction_linha_com_codigo.py` (17), `test_modo_treinamento.py` (7). Real: `not_run`.
+
+## 2026-10-05 — 31.82, achados do revisor de segredos (branch fix/31-80-82-gravacao-do-treino)
+
+- Texto digitado só é guardado com campo editável, não senha, em foco na árvore (antes, só `tree is None` cobria).
+- `filhos` do alvo cujo `class_name` é de campo de texto perdem o `text` e os `unique` que dependiam dele.
+- `parece_codigo` entra no filtro de segredo da gravação (alvo, título, linhas): "123 456", "8845-12".
+- Em tela `sensitive` o alvo e os filhos perdem `text` e `desc` (ficam `resource_id`, classe, `unique` por id).
+- Limite conhecido em `docs/teaching.md`. Prova `simulated`: `test_treino_segredo_na_gravacao.py` (9; cada conserto tem
+  um teste que falha sem ele). Real: `not_run`.
+
+## 2026-10-05 — 31.80, gravação do treinamento órfã depois do reinício (branch fix/31-80-82-gravacao-do-treino)
+
+- Medido no real (05/10): o reinício no meio de uma gravação deixava `training_sessions.status='recording'`, o aparelho
+  nascia sem `training_session_id`, `record` saía calado, o painel seguia "Gravando" e `start` recusava com
+  `already_recording`.
+- `TrainingRecorder.reconcile_after_restart` (chamado na subida, junto das outras reconciliações): toda sessão
+  `recording` vira `recorded` (entradas valem), com `finished_at` e um evento `log` por sessão. Não religa gravação.
+- `start` com sessão ativa no banco mas sem gravador vivo no aparelho encerra a órfã como `recorded` e segue;
+  `already_recording` só vale para a gravação viva.
+- Prova `simulated`: `backend/tests/test_treino_gravacao_orfa.py` (3), e `test_modo_treinamento.py` (7 passed).
+  Real: `not_run` (reinício do central com gravação aberta).
+
+## 2026-10-05 — 31.86 B: prévia do salvar e refazer as receitas do treino (branch feat/31-86-previa-e-refazer-receitas)
+
+- `POST /api/training/{id}/preview` (mesmo corpo do `save`) roda a MESMA conferência (`_preparar`: os mesmos códigos
+  400/409, inclusive `duplicate_command`) e a MESMA destilação, sem escrever nada, e devolve por etapa
+  `{key, title, recipe, reason}` mais `warnings`. A pessoa vê por que uma etapa ficaria sem receita enquanto ainda
+  edita a proposta.
+- `POST /api/training/{id}/recipes` refaz a destilação de uma sessão JÁ salva (plano do fluxo + proposta guardada) e
+  grava as receitas que faltam; idempotente (`recipes.save` segue vetando a chave com receita ativa); 409
+  `sessao_nao_salva` se a sessão não foi salva e 409 `fluxo_desligado` se a habilidade está desligada. Só grava em chave
+  VIRGEM (`RecipeStore.status_da_chave`, só leitura): onde a chave já teve receita de qualquer status o motivo diz o
+  status, porque o `save` do treino trocaria a quarentena por uma ativa nova (revisão #438, C1). O reparo também
+  consulta o veto da pessoa (`RecipeStore.caminho_vetado`, a mesma conta que o `save` aplica a quem não é treino) e não
+  recria a receita vetada, mesmo com a chave virgem.
+- Causa do "salvar offline não gera receita": só duas leituras dependem do aparelho, a versão do app (adb) e a variante
+  idioma/densidade (adb); nenhuma é gravada na sessão. Agora, fora do ar, o save usa o que a última leitura deixou
+  (`rt.app_versions`/`rt.ui_variant` e o inventário `device_app_state`, a fonte do despacho); sem isso o motivo diz
+  o que falta (nada é chutado da configuração: variante errada deixaria a receita morta e "gravada"). A rota
+  `/recipes` repara as sessões antigas quando o aparelho volta.
+- `RecipeStore.chave_ocupada` (só lê) é a conta do veto, usada pelo `save` e pela prévia. `distill_training` e a
+  política de `recipes.save` não mudaram.
+- Prova: `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`, 19 testes); `real`: `not_run`.
+
+## 2026-10-05 — 31.95: sobras da validação do salvar do treino (branch fix/31-95-sobras-da-validacao-do-salvar)
+
+- `entrada_inexistente` (400): `seq` em etapa ou em `discarded` fora das entradas gravadas. `seq` repetido dentro de
+  `discarded` não recusa: fica o primeiro, no `normalizar_proposta` e no salvar (o modelo às vezes repete, e isso não
+  muda a receita); em etapa e em `discarded` ao mesmo tempo segue `entrada_duplicada`.
+- `side_effect` tem de ser booleano (o texto "false" virava verdadeiro): senão `etapa_invalida`.
+- `{` ou `}` sem par no comando é `parametro_invalido`.
+- `normalizar_proposta` acha os parâmetros pelo `PLACEHOLDER` do fluxo (aceita `{_x}`), em vez de uma cópia da expressão.
+- Prova `simulated`: `test_treino_validacao_do_salvar.py` (52) e `test_treino_chave_da_etapa.py` (8), com mutação de cada regra. Real: `not_run`.
+
+## 2026-10-05 — 31.83 (2ª leitura): duplicadas, comando por posição, tipos errados e parâmetro inválido (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `entrada_duplicada` (400): entrada em duas etapas ou em etapa e `discarded` (o `_receitas` tirava o toque da etapa calado).
+- `comando_generico` passa a olhar a posição: o comando começa por palavra fixa e tem 2 palavras e 6 letras fixas (era 10).
+  Barra `{pedido} no instagram` e `{acao} para o cliente`; passa `envie {mensagem} para {contato}` e `ligue para {contato}`.
+  `TRAINER_SYSTEM`: o comando começa pelo verbo.
+- Tipo errado vira 400 (`etapa_invalida`/`proposta_invalida`) em vez de 500: `title`/`goal`/`value`, `bindings`,
+  `inputs` que não é lista de inteiros (`"12"` virava `[1, 2]` calado), `discarded`, `parameters`, `summary`, `app_id` e
+  comando que não é texto.
+- `parametro_invalido`: `{Contato}`/`{endereço}` no comando não casam o padrão e ficavam literais.
+- Adendo v1.57 e doc do domínio atualizados. Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (46),
+  com mutação (S1 3 falham, S2 3 + 2, N3 2). Real: `not_run`.
+
+## 2026-10-05 — 31.93: chave repetida de 40 caracteres não trava mais o `propose` (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `normalizar_proposta` repetia `f"{k}_2"[:40]` até a chave ser nova; com 40 caracteres o corte devolvia a mesma chave e o
+  laço nunca saía, congelando o laço de eventos do backend inteiro. `_chave_unica` usa `_2`, `_3`… cortando a base para o
+  sufixo caber (termina sempre).
+- `_chave`: título só com símbolos vira `etapa`, e a chave nunca passa de 40 caracteres (antes `etapa_<40>` dava 46 e
+  500 no `PlanStep`).
+- Prova `simulated`: `backend/tests/test_treino_chave_da_etapa.py` (7, com prazo de 2 s numa thread); com o código antigo
+  5 falham (4 por laço infinito). Real: `not_run`.
+
+## 2026-10-05 — 31.83: o `save` do modo treinamento valida a proposta antes de escrever (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `validar_proposta_para_salvar` (`training/skills.py`) roda antes de qualquer escrita e recusa com 400 e mensagem em
+  português: `etapa_invalida` (sem chave, chave repetida, sem título/objetivo; antes `KeyError`/500),
+  `parametro_fora_do_comando`, `parametro_nao_declarado`, `comando_generico` (menos de 2 palavras/10 letras fixas),
+  `pos_condicao_vazia` (etapa com efeito) e `entradas_sem_etapa` (gravada fora de etapa e de `discarded`).
+  Etapa sem efeito e sem pós-condição segue aceita; a resposta traz `warnings`.
+- `TRAINER_SYSTEM` manda toda entrada para uma etapa ou `discarded`, teclas de apagar de limpeza e `back`/`home` de
+  engano para `discarded`, e pós-condição sempre descrita. Esquema de saída igual.
+- Adendo v1.57 no contrato; doc em `docs/dominios/perfis-e-instagram.md`.
+- Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (13), com mutação por código; `real`: `not_run`.
+
+## 2026-10-05 — 31.84: as teclas de quem ensina não derrubam mais a receita da etapa (branch fix/31-84-85-entrada-manual-no-treino)
+
+- `distill_training`: `delete` COLADO ao `text` seguinte (sequência contígua de `delete` e depois o `text`, sem toque,
+  arraste ou outra tecla no meio) é ruído (a receita já limpa o campo); `enter` colado ao `text`
+  vira `press_enter`; `back`, `home`, `recents`, `delete` depois do texto e `enter` solto seguem recusando.
+- `ManualInput.clear_first` (só `type='text'`, padrão `false`) chega ao `type_text`; pelo ADB puro recusa `bad_input`.
+  Adendo v1.56 do contrato.
+- Prova `simulated`: `backend/tests/test_treino_teclas_na_destilacao.py` (11 passed; sem o conserto, 3 falham; o `delete` solto em outro campo recusa).
+  Real: `not_run`.
+
+## 2026-10-05 — 31.85: gravando, o quadro mais recente não é recusado por idade (branch fix/31-84-85-entrada-manual-no-treino)
+
+- `manual_input`: com gravação do treinamento, o quadro informado igual ao mais recente do backend vale acima da idade
+  máxima (captura sã, teto de 60 s); quadro antigo com um mais novo disponível e todo quadro velho fora da gravação
+  seguem em `stale_frame`. Motivo: a leitura de hierarquia da própria gravação deixava o aparelho lento (toque de
+  24 s) e as 15 teclas seguintes foram recusadas em série.
+- Pela folga, texto, `enter` e `delete` exigem a hierarquia lida antes da ação sem tela sensível nem foco em senha; senão
+  `stale_frame` (revisão de segredos). Falha ao gravar a entrada loga só o tipo da exceção, não a mensagem.
+- Prova `simulated`: `backend/tests/test_treino_quadro_velho.py` (10 passed; sem a guarda da folga, 3 falham; com o log
+  antigo, 1 falha). Real: `not_run`.
+
+## 2026-10-05 — 31.85: o carimbo da última entrada vale também quando a ação levanta (C2 do #430)
+
+- `manual_input`: `rt.ultima_entrada_mono` passa a ser posto num `finally` em volta do despacho. O toque que estoura o prazo
+  (24 s medidos) levanta, mas segue rodando no aparelho; sem carimbo o 2º toque sobre o mesmo quadro passava pela folga.
+  Carimba também a recusa anterior ao despacho (lado seguro: uma recusa a mais sob a folga).
+- Docs: `key_name = 'clear_first'` na leitura das sessões de treino (coluna própria numa migração futura); a linha
+  `recording` órfã se o `stop` falhar.
+- Prova `simulated`: `test_treino_quadro_velho.py` (15 passed); com o carimbo fora do `finally`, o teste novo falha. Real: `not_run`.
+
+## 2026-10-05 — 31.84/31.85: correções da segunda leitura do PR #430 (branch fix/31-84-85-entrada-manual-no-treino)
+
+- 31.85 (C1): `rt.ultima_entrada_mono` carimbado em cada entrada manual com efeito; sob a folga, toque, toque longo e arraste
+  só passam com quadro capturado DEPOIS dela (o segundo toque sobre o mesmo quadro caía na tela nova com a coordenada da
+  velha). C1b: quadro novo durante a leitura da árvore recusa qualquer entrada sob a folga.
+- 31.85 (R1): o fim (e o início) do controle zera `rt.training_session_id`; o gravador falhar no encerramento não prende a folga.
+- 31.84 (N1): o gravador marca o texto enviado com `clear_first` em `key_name` (sem migração); a destilação só trata o
+  `delete` colado como ruído se aquele texto foi limpando o campo (apagar parcial recusa a receita). `ManualInput`
+  recusa `clear_first` fora de `type='text'` (422). N2: o `type_text` do Appium engole a falha do `clear()`.
+- Prova `simulated`: `test_treino_quadro_velho.py` (14 passed), `test_treino_teclas_na_destilacao.py` (16 passed); cada
+  mutação (C1, C1b, R1, N1) derruba um teste. Real: `not_run`.
+
+## 2026-10-05 — 31.80, 31.84, 31.85, 31.86, tela do Modo treinamento (branch fix/31-80-86-painel-do-treino)
+
+- 31.80: a barra só diz "Gravando" com o controle na mão; sessão `recording` sem ele (gravação órfã) vira aviso com
+  "Concluir e revisar" e "Descartar".
+- 31.84: "Limpar o campo antes" ao lado de Enviar (marcada enquanto grava, desmarcada fora); o texto vai com
+  `clear_first: true` (contrato v1.56, `ManualInput.clear_first`); a dica do treino ganhou a linha sobre ela.
+- 31.85: "Enviando ao aparelho…" (`aria-live="polite"`) enquanto uma entrada está em voo; a barra conta as entradas
+  recusadas (`stale_frame`/`frame_mismatch`) durante a gravação ("N entrada(s) recusada(s): refaça"). Sem fila de entradas.
+- 31.86: aparelho fora do ar (e que não é a loja) mostra a barra em "só revisão": "Para revisar" e a revisão
+  funcionam, sem o formulário de iniciar.
+- Estado compartilhado em `frontend/src/features/training/trainingStore.ts` (só memória).
+- Correção da revisão do PR #428: o aviso de "não está mais gravando" e os botões só valem sem ninguém no controle
+  (`control !== 'user'`); com outra pessoa ou aba no controle o aviso é "gravação em andamento por quem está com o
+  controle", sem Concluir nem Descartar. `stop`/`discard` mandam o `lease_id` da aba quando há (as rotas de hoje não
+  declaram corpo, então o campo é ignorado; o 31.92 passa a exigi-lo). "Limpar o campo antes" volta ao padrão a cada
+  gravação; `bad_input` com `clear_first` ganha a dica de desmarcar; a região viva do contador nasce vazia.
+- Prova `simulated`: `FocusPanel.test.tsx` (8 novos, 37 passed) e `TrainingBar.test.tsx` (7 novos, 8 passed) e `trainingStore.test.ts` (1); cada
+  teste novo falha sem a mudança (mutação conferida). `npm run typecheck` limpo. Real: `not_run` (depende do backend
+  em paralelo, `clear_first`, e da implantação).
+
+## 2026-10-05 — 31.90-A, a revisão do treino deixa quem ensinou corrigir as entradas (branch feat/31-90-a-revisao-corrige-entradas)
+
+- Cada entrada de etapa ganha "Descartar", que a leva ao `discarded` com `why: "descartada por quem ensinou"`. Cada
+  descartada ganha "Devolver à etapa…". As duas tiram a entrada de todo outro lugar: nada fica em dois lugares, que o
+  save recusaria (`entrada_duplicada`).
+- A entrada gravada que não está em nenhuma etapa nem no descarte aparece no bloco "Sem destino", no topo, com as duas
+  ações. O "Salvar como fluxo" fica travado, com o motivo escrito, enquanto houver alguma (o save diria
+  `entradas_sem_etapa`). Também fica travado quando a proposta da IA já vem com uma entrada em dois lugares.
+- Os `warnings` da resposta do save (adendo v1.57) vão no toast de sucesso e na tela de resultado.
+- O texto não gravado aparece como "texto não gravado", e nunca com valor, nem quando a entrada vem marcada como
+  sensível.
+- Prova simulated (`TrainingReview.test.tsx`, 3 casos novos): nove mutações, uma por parte, todas pegas. Navegador
+  `not_run`.
+
+## 2026-10-05 — 31.89 F1 e F6: o casamento do comando por fluxo vai do mais específico, e a troca de valor por palavra inteira (branch fix/31-89-casamento-mais-especifico)
+
+- F1: `FlowStore.match` ordena os fluxos ativos por `matching.specificity` (a do resolvedor v2: mais texto fixo, menos
+  parâmetros), depois `uses` desc, depois `created_at`. Antes ganhava o de mais usos e "curtir {x}" engolia "curtir o
+  post de {p}". O filtro de escopo por perfil segue antes da ordem e o empate de tudo segue como antes (a pergunta ao
+  dono é outra fatia).
+- F6: `_sub_values` troca o valor de exemplo só como palavra inteira ("Ana" não mexe em "Banana"); borda que é símbolo
+  ou espaço ("@fulano", "R$ 10") continua trocada; um valor curto não reescreve o `{nome}` já posto.
+- F6, segunda leitura: a borda é por CLASSE. Valor que começa ou termina em dígito exige só um não-dígito do lado de fora
+  ("10" troca em "esperar 10min" e "v10", não em "100" nem "110"); letra ou `_` segue exigindo não-palavra ("posts",
+  "ana_silva", "fulano123" e "#tag2026" não perdem pedaço). Antes, "10min" ficava sem troca e o plano reaproveitado com
+  outro número dizia "10min" calado.
+- N2 (só teste, sem mudar código): molde com parâmetro reservado conta como buraco na especificidade e é literal no
+  `_extract`; a ordem de hoje nesse caso está fixada como limite conhecido.
+- Medido no banco real em 05/10 (só leitura): 0 comandos de 30 dias casam com 2 ou mais fluxos ativos e 0 fluxos ativos
+  têm valor de exemplo que é substring de outra palavra; as duas mudanças não alteram resultado de hoje.
+- `test_intencao_resolucao.py::test_empate_entre_fluxos...` afirmava a ordem antiga (o mais usado vence); virou "o mais específico vence".
+- Prova: `simulated`: `backend/tests/test_fluxo_casamento_especifico.py` (35 testes, incluindo a paridade com
+  `SqlSkillRepository.candidates`); revertidos F1 e F6 um por vez, falham 4 e 7 deles. Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

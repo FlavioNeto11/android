@@ -7,6 +7,8 @@ import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { initialDataState } from '../../store/reducer';
+import { useToastStore } from '../../store/toasts';
+import { useTrainingStore } from '../training/trainingStore';
 import { useUiStore } from '../../store/ui';
 import { APPS, makeBinding, makeInstance, makePersona, makeSnapshot } from '../../test/fixtures';
 import {
@@ -60,6 +62,7 @@ beforeEach(() => {
   const snap = makeSnapshot();
   useAppStore.setState({ ...initialDataState, settings: snap.settings, health: snap.health });
   useControlStore.setState({ leases: {}, busy: {} });
+  useTrainingStore.setState({ gravando: {}, recusadas: {} });
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -597,5 +600,130 @@ describe('FocusPanel — servidor sem resposta = estado desconhecido (RF-40)', (
       makeInstance(9, { state: 'stopped', kind: 'external', worker_id: 'worker-lan-01' }), [worker()]);
     expect(text(el)).not.toContain('Desconhecido');
     expect(byRole('button', /^Iniciar/, el).getAttribute('aria-disabled')).toBeNull();
+  });
+});
+
+describe('FocusPanel — painel do Modo treinamento (31.80, 31.84, 31.85, 31.86)', () => {
+  const agora = () => new Date().toISOString();
+  const quadro: FrameInfo = { id: 'f1', ts: agora(), width: 1080, height: 2400, orientation: 'portrait', stale: false, sensitive: true };
+  const GRAVANDO = {
+    id: 'trn-9', instance_id: 'android-01', profile_id: null, app_id: null, intent: 'Responder a DM', status: 'recording',
+    operator: null, proposal: null, flow_id: null, created_at: '', finished_at: null, updated_at: '', inputs: [],
+  };
+  const aparelho = (over: Partial<Instance> = {}) => comControle(makeInstance(1, { state: 'online', frame: quadro, ...over }));
+  const caixa = (el: HTMLElement) => el.querySelector('input[aria-label="Texto para digitar no aparelho"]') as HTMLInputElement;
+  // O nome acessível vem do <label> que envolve o campo; o harness só lê rótulo por `htmlFor`, então acha-se pelo rótulo.
+  const marcaLimpar = (el: HTMLElement) => Array.from(el.querySelectorAll('label'))
+    .find((l) => /Limpar o campo antes/.test(l.textContent ?? ''))!.querySelector('input') as HTMLInputElement;
+  const comGravacao = () => {
+    backend.on('GET', /\/training$/, () => json([GRAVANDO]));
+    backend.on('GET', /\/training\/trn-9$/, () => json(GRAVANDO));
+  };
+
+  async function aguardarQuadro(el: HTMLElement) {
+    await waitFor(() => expect(text(el)).toContain('f1 (1080×2400)'));
+  }
+
+  it('31.84: com gravação ativa "Limpar o campo antes" vem marcada e o texto vai com clear_first; desmarcada, omite', async () => {
+    comGravacao();
+    backend.on('POST', /\/input$/, () => json({ ok: true }));
+    const el = await renderFocus(aparelho());
+    await aguardarQuadro(el);
+    await waitFor(() => expect(marcaLimpar(el).checked).toBe(true));
+    expect(text(el)).toContain('Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.');
+
+    await setValue(caixa(el), 'olá');
+    await click(byRole('button', /^Enviar$/, el));
+    await waitFor(() => expect(backend.callsTo('POST', /\/input$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /\/input$/)[0]!.body).toMatchObject({ type: 'text', text: 'olá', clear_first: true });
+
+    await click(marcaLimpar(el));
+    expect(marcaLimpar(el).checked).toBe(false);
+    await setValue(caixa(el), 'de novo');
+    await click(byRole('button', /^Enviar$/, el));
+    await waitFor(() => expect(backend.callsTo('POST', /\/input$/)).toHaveLength(2));
+    expect(backend.callsTo('POST', /\/input$/)[1]!.body).not.toHaveProperty('clear_first');
+  });
+
+  it('31.84: fora da gravação a opção começa desmarcada e o texto não pede limpeza', async () => {
+    backend.on('POST', /\/input$/, () => json({ ok: true }));
+    const el = await renderFocus(aparelho());
+    await aguardarQuadro(el);
+    expect(marcaLimpar(el).checked).toBe(false);
+    await setValue(caixa(el), 'oi');
+    await click(byRole('button', /^Enviar$/, el));
+    await waitFor(() => expect(backend.callsTo('POST', /\/input$/)).toHaveLength(1));
+    expect(backend.callsTo('POST', /\/input$/)[0]!.body).not.toHaveProperty('clear_first');
+  });
+
+  it('31.85: 409 stale_frame durante a gravação vira "N entrada(s) recusada(s): refaça" na barra', async () => {
+    comGravacao();
+    backend.on('POST', /\/input$/, () => apiError(409, 'stale_frame', 'A tela mudou.'));
+    const el = await renderFocus(aparelho());
+    await aguardarQuadro(el);
+    await waitFor(() => expect(text(el)).toContain('Gravando: Responder a DM'));
+    expect(text(el)).not.toContain('recusada(s)');
+    await click(byRole('button', /^Enter$/, el));
+    await waitFor(() => expect(text(el)).toContain('1 entrada(s) recusada(s): refaça'));
+    await click(byRole('button', /^Enter$/, el));
+    await waitFor(() => expect(text(el)).toContain('2 entrada(s) recusada(s): refaça'));
+  });
+
+  it('31.85: enquanto a entrada está em voo, "Enviando ao aparelho…" aparece (aria-live) e some ao responder', async () => {
+    let liberar: (r: Response) => void = () => undefined;
+    backend.on('POST', /\/input$/, () => new Promise<Response>((r) => { liberar = r; }));
+    const el = await renderFocus(aparelho());
+    await aguardarQuadro(el);
+    expect(text(el)).not.toContain('Enviando ao aparelho…');
+    await click(byRole('button', /^Enter$/, el));
+    await waitFor(() => expect(text(el)).toContain('Enviando ao aparelho…'));
+    const viva = Array.from(el.querySelectorAll('[aria-live="polite"]')).find((n) => n.textContent === 'Enviando ao aparelho…');
+    expect(viva).toBeTruthy();
+    await act(async () => liberar(json({ ok: true })));
+    await waitFor(() => expect(text(el)).not.toContain('Enviando ao aparelho…'));
+  });
+
+  it('31.86: aparelho fora do ar (erro) mantém "Para revisar", sem o formulário de iniciar', async () => {
+    backend.on('GET', /\/training$/, () => json([{ ...GRAVANDO, id: 'trn-3', status: 'recorded' }]));
+    const el = await renderFocus(makeInstance(1, { state: 'error' }));
+    await waitFor(() => expect(text(el)).toContain('Para revisar:'));
+    expect(text(el)).toContain('Aparelho fora do ar: dá para revisar e salvar o fluxo');
+    expect(allByRole('button', /Iniciar treinamento/, el)).toHaveLength(0);
+    expect(byRole('button', /Responder a DM/, el)).toBeTruthy();
+  });
+
+  it('A4: a escolha de "Limpar o campo antes" não atravessa gravações: ao começar ou terminar uma, volta ao padrão', async () => {
+    const el = await renderFocus(aparelho());
+    await aguardarQuadro(el);
+    expect(marcaLimpar(el).checked).toBe(false);
+    await click(marcaLimpar(el));
+    expect(marcaLimpar(el).checked).toBe(true);
+    await act(async () => useTrainingStore.getState().definirGravando('android-01', true));
+    expect(marcaLimpar(el).checked).toBe(true);
+    await click(marcaLimpar(el));
+    expect(marcaLimpar(el).checked).toBe(false);
+    await act(async () => useTrainingStore.getState().definirGravando('android-01', false));
+    expect(marcaLimpar(el).checked).toBe(false);
+    await act(async () => useTrainingStore.getState().definirGravando('android-01', true));
+    expect(marcaLimpar(el).checked).toBe(true);
+  });
+
+  it('A5: 400 bad_input de um envio com clear_first ganha a dica de desmarcar, sem desmarcar sozinho', async () => {
+    useToastStore.setState({ toasts: [] });
+    comGravacao();
+    backend.on('POST', /\/input$/, () => apiError(400, 'bad_input', 'Campo não aceita limpeza.'));
+    const el = await renderFocus(aparelho());
+    await aguardarQuadro(el);
+    await waitFor(() => expect(marcaLimpar(el).checked).toBe(true));
+    await setValue(caixa(el), 'oi');
+    await click(byRole('button', /^Enviar$/, el));
+    await waitFor(() => expect(useToastStore.getState().toasts.length).toBeGreaterThan(0));
+    expect(useToastStore.getState().toasts.some((t) => t.hint === 'Desmarque Limpar o campo antes e envie de novo.')).toBe(true);
+    expect(marcaLimpar(el).checked).toBe(true);
+  });
+
+  it('31.86: a loja continua sem o Modo treinamento, mesmo fora do ar', async () => {
+    const el = await renderFocus(makeInstance(1, { state: 'error', kind: 'store' }));
+    expect(el.querySelector('section[aria-label="Modo treinamento"]')).toBeNull();
   });
 });

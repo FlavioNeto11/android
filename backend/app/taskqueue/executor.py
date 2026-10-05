@@ -70,8 +70,9 @@ from .proofs import marcas_pendentes_na_tela, nivel_pelo_marcador, variantes_de_
 from .projecao import HistoricoDeAcoes, app_da_etapa
 from .latencia import TemposDaTentativa, ms_desde
 from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_galeria
-from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
-                      filhos_rotulados, hash_generico_da_linha, unique_selectors)
+from .recipes import (NAO_APLICAVEL_CONTA_APOS, READ_ONLY, AlvoAusente, RecipeDiverged, RecipeStore, Replayer,
+                      contar_retorno_ia, distill, eh_generica, filhos_rotulados, hash_generico_da_linha,
+                      unique_selectors)
 from .repository import Repository
 from .dialogos import (FRACAO_DA_PAGINA, FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE,
                        MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha,
@@ -526,6 +527,10 @@ class StepOutcome:
     sobreposicao: bool = False
     #: 31.40 b: o elemento que cobre (do id do juiz ou da árvore), que a limpeza recebe; `None` quando não se achou.
     cobertura: Cobertura | None = None
+    #: 30.75 (no fim, para não deslocar quem monta por posição): a etapa parou na tela de senha do app (o app pede
+    #: login). Na execução de PROVA, o scheduler grava `objectives.blocked_kind='auth'` e o pedido de validação fecha
+    #: `app_sem_sessao`, não `sem_evidencia`.
+    pede_login: bool = False
 
 
 class OrcamentoDaEtapa(AIError):
@@ -1621,6 +1626,24 @@ class StepExecutor:
                 self.repo.db.execute("UPDATE steps SET driven_by='ai' WHERE id=?", (step.id,))
             return
         repo = self.repo
+        if na_receita and ok and rr.partida_diferente and not replayed:
+            # 30.80: a tela de partida era outra (a ação 1 não achou o alvo) e a IA comprovou a etapa: a receita não se
+            # aplicou, e isso não é veredito sobre ela. Quem conduziu foi a IA (`ai`: nenhuma ação da receita rodou), e
+            # o aprendizado não lê evidência contra. A N-ésima seguida conta como falha comum (`nao_aplicavel`).
+            contou, quarantined = self.recipes.nao_aplicavel(rr.row["id"])
+            repo.db.execute("UPDATE steps SET driven_by=? WHERE id=?", ("recipe+ai" if contou else "ai", step.id))
+            texto = (f"{iid} · {step.title}: receita v{rr.row['version']} não se aplicou: tela de partida diferente"
+                     + (f" ({NAO_APLICAVEL_CONTA_APOS}ª seguida: conta como falha da receita)" if contou
+                        else "; não conta como falha da receita"))
+            # O código estável (`kind`) e os ids deixam a contagem sem ler o texto: a receita ensinada tentada que não
+            # servia naquela tela aparece já na 1ª vez, não só na quarentena.
+            repo.bus.emit("decision", texto, run_id=run_id, instance_id=iid, step_id=step.id,
+                          data={"text": texto, "kind": "receita_nao_aplicavel", "recipe_id": int(rr.row["id"]),
+                                "step_id": step.id, "contou_como_falha": contou})
+            if quarantined:
+                repo.decision(f"{iid} · {step.title}: receita v{rr.row['version']} em quarentena após falhas seguidas; "
+                              "a etapa será reaprendida com a IA", run_id=run_id, instance_id=iid, step_id=step.id)
+            return
         if na_receita:
             clean = ok and not rr.diverged
             quarantined = self.recipes.result(rr.row["id"], clean)
@@ -2420,9 +2443,11 @@ class StepExecutor:
                                        f"O app pede autenticação e a senha da conta está guardada sem consentimento "
                                        f"({senha_do_app.refusal}): consentimento_pendente.",
                                        needs="Marque o consentimento na conta da persona (guia Contas e acesso da persona) e "
-                                             "retome o item — ou faça o login manualmente e devolva o controle.")
+                                             "retome o item — ou faça o login manualmente e devolva o controle.",
+                                       pede_login=True)
                 return StepOutcome(Outcome.waiting_user, f"O app pede autenticação ({porque}).",
-                                   needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.")
+                                   needs="Assuma o controle, faça o login manualmente e devolva o controle à IA.",
+                                   pede_login=True)
             # ---------- decidir: a receita (se houver e ainda casar) fala primeiro; na divergência a IA assume
             decision: Decision | None = None
             from_recipe = False
@@ -2482,10 +2507,12 @@ class StepExecutor:
                         rr.completed_by_recipe = True          # o aparelho já estava no estado final desta etapa
                         break
                     rr.diverged = str(exc)
+                    rr.partida_diferente = isinstance(exc, AlvoAusente) and rep.done_actions == 0
                     decision = None
                     history.append(f"(executor) a receita desta etapa divergiu: {exc}. Continue a partir da tela atual.")
-                    repo.decision(f"{iid} · {step.title}: receita divergiu — {exc}; a IA assume esta etapa",
-                                  run_id=run_id, instance_id=iid, step_id=step.id)
+                    repo.decision(f"{iid} · {step.title}: receita divergiu — {exc}"
+                                  + ("; tela de partida diferente" if rr.partida_diferente else "")
+                                  + "; a IA assume esta etapa", run_id=run_id, instance_id=iid, step_id=step.id)
             scale = self._image_scale(obs, ai_cfg)
             # 31.51: só no NAVEGADOR (revisão do #308): num app com conta real, um aviso não reconhecido com "Dismiss"
             # não se fecha por regra sem pessoa; ali fica o comportamento de antes.
@@ -4636,6 +4663,8 @@ class _RecipeRun:
     signature: str = ""
     variant: str = ""
     diverged: str | None = None
+    #: 30.80: a divergência foi na AÇÃO 1, antes de a receita agir, por alvo ausente: a tela de partida era outra.
+    partida_diferente: bool = False
     retorno_contado: bool = False      # `receita.retorno_ia` já contado nesta tentativa
     completed_by_recipe: bool = False
     #: A etapa fechou por um atalho do executor (LT-1) SEM o ator decidir nada e sem ação de receita: `driven_by` grava

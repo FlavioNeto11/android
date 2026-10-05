@@ -224,7 +224,7 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   e sem etapa de efeito, o sistema o publica; com efeito, ele espera o dono. Ou seja, um comando novo sem efeito paga o
   planejador duas vezes antes de o fluxo valer ([dominios/aprendizado.md](dominios/aprendizado.md)).
 - **Funil medido** (evolução de desempenho, ADR-027): consulta de receita (`receita.consulta{encontrada|candidata|
-  herdada|ausente|quarentena}`, com a causa do "ausente" em `receita.ausente{causa}`), reprodução (`receita.reproducao{ok|divergiu}`) e retorno à IA (`receita.retorno_ia{motivo}`),
+  herdada|ausente|quarentena}`, com a causa do "ausente" em `receita.ausente{causa}`), reprodução (`receita.reproducao{ok|divergiu|nao_aplicavel}`; o último é a receita que não se aplicou à tela de partida, 30.80) e retorno à IA (`receita.retorno_ia{motivo}`),
   em `GET /api/desempenho`. `GET /api/flows/cobertura` traz `aproveitamento` por fluxo e app: etapas elegíveis, por
   receita, receita + IA e só IA, "sem cobertura" separado de "receita de outra chave ou em quarentena", e chamadas de
   IA evitadas estimadas (`taskqueue/aproveitamento.py`).

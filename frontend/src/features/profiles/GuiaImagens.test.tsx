@@ -82,7 +82,8 @@ it('a galeria mostra a principal, o selo "simulado", a receita e o custo', async
   // a galeria chegou é a receita da imagem (29.104).
   await waitFor(() => text().includes('semente 123456'));
   expect(text()).toContain('principal');
-  expect(text()).toContain('simulado');
+  // O SELO, não a palavra: "simulado" também está no nome do modelo do aviso do gerador (29.119).
+  expect(Array.from(container.querySelectorAll('span')).some((s) => s.textContent === 'simulado')).toBe(true);
   expect(text()).toContain('1:1');
   expect(text()).toContain('sem custo');
   expect(text()).toContain('recusada pelo provedor');

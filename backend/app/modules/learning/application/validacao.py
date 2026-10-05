@@ -211,6 +211,9 @@ class FontesDaValidacao(Protocol):
     def desfecho(self, run_id: str) -> tuple[str, float] | None: ...    # (status, usd) quando assentou
     #: 30.31 (fatia 2): a execução é um ensaio só de leitura (`contracts.origem.eh_ensaio_de_leitura`).
     def ensaio_da_execucao(self, run_id: str) -> bool: ...
+    #: 30.75: a causa estruturada de uma execução que não deixou evidência: `ORCAMENTO_DA_PROVA` (alguma tentativa
+    #: terminou com `error_kind='budget'`) ou `APP_SEM_SESSAO` (algum objetivo com `blocked_kind='auth'`); senão `None`.
+    def causa_sem_evidencia(self, run_id: str) -> Motivo | None: ...
 
 
 class DespachoDeValidacao(Protocol):
@@ -451,8 +454,9 @@ class ServicoDeValidacao:
             elif p.item_kind == LivroKind.FLUXO.value:
                 # 30.37 (ajuste c): a prova de fluxo só deixa evidência a favor ou contra DO FLUXO; o que não é nenhuma
                 # das duas é infra (aparelho, teto, etapa que pediria pessoa, cancelamento pelo sistema) e não diz
-                # nada sobre o fluxo: `sem_evidencia`, nunca `execucao_falhou`.
-                motivo = Motivo.SEM_EVIDENCIA
+                # nada sobre o fluxo: `sem_evidencia`, nunca `execucao_falhou`. 30.75: quando a causa é conhecida (o
+                # teto cortou, o app pediu login), o motivo é ela.
+                motivo = self._fontes.causa_sem_evidencia(run_id) or Motivo.SEM_EVIDENCIA
             else:
                 motivo = Motivo.SEM_EVIDENCIA if status.startswith("completed") else Motivo.EXECUCAO_FALHOU
         return int(self._registro.fechar(p.id, estado, motivo, usd, self._relogio()))
@@ -521,6 +525,9 @@ class ServicoDeValidacao:
             if (motivo is None and p.item_kind == LivroKind.RECEITA.value and p.comando
                     and not self._fontes.caminho_da_receita(p.item_ref, p.comando)):
                 motivo = Motivo.SEM_CAMINHO
+            if motivo is None and p.item_kind == LivroKind.FLUXO.value and p.run_id:
+                # 30.75: o estoque (e o que fechou antes de a causa ficar registrada) passa ao motivo da causa
+                motivo = self._fontes.causa_sem_evidencia(p.run_id)
             if motivo is not None and self._registro.remotivar(p.id, motivo, agora):
                 n += 1
         return n + self._reabrir(agora)

@@ -23,6 +23,7 @@ from typing import Any, Protocol
 from ..db import Database, Row
 from ..modules.learning.domain.livro import apps_na_ordem_do_plano
 from ..modules.skills.domain.document import JsonValue
+from ..modules.skills.domain.matching import specificity
 from ..models import Plan, PlannerInfo, StepResult
 from ..util import now_iso
 
@@ -97,12 +98,49 @@ def _com_valores(text: str, values: dict[str, str]) -> str:
     return PLACEHOLDER.sub(lambda m: values.get(m.group(1), m.group(0)), text)
 
 
+def _borda(caractere: str, molde: str) -> str:
+    """O lookaround que a borda do valor exige (`molde` é o lookbehind ou o lookahead): dígito pede um não-dígito,
+    letra ou `_` pede um que não seja letra, dígito nem `_`, símbolo e espaço não pedem nada."""
+    if re.fullmatch(r"\d", caractere):
+        return molde.format(r"\d")
+    return molde.format(r"\w") if re.fullmatch(r"\w", caractere) else ""
+
+
 def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
+    """Troca cada valor de exemplo por `{nome}` no texto do plano, valores mais longos primeiro.
+
+    F6 (31.89): o valor só é trocado INTEIRO, e a borda se confere por CLASSE de caractere. Borda que é letra ou `_`
+    exige, do lado de fora, algo que não seja letra, dígito nem `_`: com "Ana" de exemplo, "Banana", "Ana2" e "a_Ana"
+    ficam como estão, e "posts", "ana_silva" e "fulano123" não perdem um pedaço para "post", "ana" e "fulano". Borda
+    que é DÍGITO exige só um não-dígito: com "10" de exemplo, "esperar 10min" vira "esperar {n}min" e "v10" vira "v{n}",
+    mas "100" e "110" ficam (exigir também não-letra aqui deixava "10min" sem troca, e o plano reaproveitado com outro número
+    dizia "10min" calado). Borda que é símbolo ou espaço ("@fulano", "R$ 10") não exige nada: o símbolo já delimita.
+    Cada troca só olha o texto que ainda não é `{nome}`: um valor curto ("nome") não reescreve o marcador que um
+    valor anterior acabou de pôr.
+    """
     if not text:
         return text
+    pedacos: list[tuple[str, bool]] = [(text, False)]          # (texto, já é marcador)
     for name, value in sorted(values.items(), key=lambda kv: -len(kv[1])):
-        text = text.replace(value, "{" + name + "}")
-    return text
+        if not value:
+            continue
+        antes, depois = _borda(value[0], "(?<!{})"), _borda(value[-1], "(?!{})")
+        achar = re.compile(antes + re.escape(value) + depois)
+        novos: list[tuple[str, bool]] = []
+        for trecho, feito in pedacos:
+            if feito:
+                novos.append((trecho, True))
+                continue
+            pos = 0
+            for m in achar.finditer(trecho):
+                if m.start() > pos:
+                    novos.append((trecho[pos:m.start()], False))
+                novos.append(("{" + name + "}", True))
+                pos = m.end()
+            if pos < len(trecho):
+                novos.append((trecho[pos:], False))
+        pedacos = novos
+    return "".join(t for t, _ in pedacos)
 
 
 class FlowStore:
@@ -283,7 +321,13 @@ class FlowStore:
         perfis/grupos) só casa quando TODOS eles estão no escopo — um aparelho fora dele planejaria sozinho, e o
         plano é um só por execução. `None` = prévia sem aparelhos (custo, apps exigidos): qualquer fluxo serve.
         """
-        for row in self.db.query("SELECT * FROM flows WHERE status='active' ORDER BY uses DESC, created_at"):
+        # F1 (31.89): entre moldes que casam o mesmo comando ganha o MAIS ESPECÍFICO (o critério do resolvedor v2,
+        # `matching.specificity`: mais texto fixo, depois menos parâmetros), não o mais usado: "curtir o post de {p}"
+        # vence "curtir {x}" mesmo com menos usos. A ordem do SQL (`uses DESC, created_at`) fica como desempate: o
+        # `sorted` é estável, então só a especificidade a reordena (empate de tudo segue o comportamento de antes).
+        ativos = sorted(self.db.query("SELECT * FROM flows WHERE status='active' ORDER BY uses DESC, created_at"),
+                        key=lambda r: specificity(r["command_template"]), reverse=True)
+        for row in ativos:
             if profile_ids is not None and not self._no_escopo(row["id"], profile_ids):
                 continue
             values = self._extract(row["command_template"], command)
