@@ -63,3 +63,47 @@ def test_foto_nao_vai_a_convidado_e_pede_a_previa(monkeypatch: pytest.MonkeyPatc
         monkeypatch.setattr(sys, "argv", ["telegram_status.py", str(legenda), "--foto", ETAPA, *extra])
         assert t.main() == 2
     assert "nada enviado" in capsys.readouterr().out
+
+
+# ------------------------------------------------------------------ 28.44: --escolha e --substitui
+def test_opcoes_da_escolha_viram_o_detalhe_do_fato() -> None:
+    assert t.opcoes_da_escolha("1,2,3") == "1-2-3"
+    assert t.opcoes_da_escolha(" A , B ,C,D ") == "A-B-C-D"
+    for ruim in ("1", "1,1", "1,a-b", "1,x:y", "1,,", "1,opcao-muito-longa-demais"):
+        with pytest.raises(ValueError):
+            t.opcoes_da_escolha(ruim)
+
+
+class _RepoFalso:
+    def __init__(self) -> None:
+        self.feitas: list[tuple[object, ...]] = []
+
+    def registrar_enviada(self, ref: str, origem: str, *, fato: str | None = None) -> None:
+        self.feitas.append(("enviada", ref, origem, fato))
+
+    def registrar_substituta(self, nova: str, antiga: str) -> None:
+        self.feitas.append(("substituta", nova, antiga))
+
+
+def test_gravar_enviada_marca_a_escolha_e_a_substituta() -> None:
+    repo = _RepoFalso()
+    t._gravar_enviada(297, lambda: repo, escolha="1-2-3", substitui=294)
+    assert repo.feitas == [("enviada", "297", "ana", "escolha:297:1-2-3"), ("substituta", "297", "294")]
+    repo = _RepoFalso()
+    t._gravar_enviada(298, lambda: repo)
+    assert repo.feitas == [("enviada", "298", "ana", None)]                  # sem a flag, nada muda
+
+
+def test_escolha_ruim_ou_a_convidado_nada_envia(monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+                                               capsys: pytest.CaptureFixture[str]) -> None:
+    texto = tmp_path / "pergunta.txt"
+    texto.write_text("Responda 1, 2 ou 3.", encoding="utf-8")
+
+    async def nao_envia(*_a: object, **_k: object) -> int:
+        raise AssertionError("não devia enviar")
+
+    monkeypatch.setattr(t, "_enviar", nao_envia)
+    for extra in (["--escolha", "1"], ["--escolha", "1,2", "--chat", "123"], ["--substitui", "294", "--foto", ETAPA]):
+        monkeypatch.setattr(sys, "argv", ["telegram_status.py", str(texto), *extra])
+        assert t.main() == 2
+    assert capsys.readouterr().out.count("nada enviado") == 3

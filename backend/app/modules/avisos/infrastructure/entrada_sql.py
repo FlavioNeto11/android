@@ -230,6 +230,33 @@ class EntradasDoCanal:
             " VALUES (?,?,?,?,?,?) ON CONFLICT (canal, ref_mensagem) DO NOTHING",
             (self.canal, ref_mensagem, origem, fato, entrada_id, self._agora()))
 
+    def registrar_substituta(self, nova: str, antiga: str) -> None:
+        """A mensagem `nova` substitui a pergunta `antiga` (28.44): a antiga deixa de estar aberta. Vai numa linha própria,
+        porque a da `nova` já tem o seu `fato` e a chave `(canal, ref_mensagem)` é única. A referência `substitui:<nova>`
+        é como o `resultado:<id>` do 28.39: nenhum id de Telegram tem esse formato."""
+        self.db.execute(
+            "INSERT INTO canal_enviadas(canal, ref_mensagem, origem, fato, entrada_id, enviada_em)"
+            " VALUES (?,?,'substitui',?,NULL,?) ON CONFLICT (canal, ref_mensagem) DO NOTHING",
+            (self.canal, f"substitui:{nova}", f"substitui:{antiga}", self._agora()))
+
+    def escolhas_abertas(self, ate: str, janela_s: float, *, fora: int) -> list[dict[str, object]]:
+        """As perguntas de escolha (`fato = 'escolha:<msg>:<opções>'`, 28.44) mandadas nos `janela_s` segundos antes de
+        `ate` (o `recebida_em` da resposta), da mais nova para a mais velha. Ficam de fora as que o dono já respondeu, por
+        reply de verdade (`responde_a`) ou por casamento (`alvo = 'escolha:<msg>'`), e as que uma mensagem posterior
+        substituiu (`substitui:<msg>`). `fora`: a própria linha que se casa, que não conta como resposta."""
+        limite = parse_iso(ate)
+        if limite is None:
+            return []
+        desde = to_iso(limite - timedelta(seconds=janela_s))
+        return [dict(r) for r in self.db.query(
+            "SELECT s.ref_mensagem, s.fato, s.enviada_em FROM canal_enviadas s WHERE s.canal=? AND s.fato LIKE 'escolha:%'"
+            " AND s.enviada_em >= ? AND s.enviada_em <= ?"
+            " AND NOT EXISTS (SELECT 1 FROM canal_entradas e WHERE e.canal=s.canal AND e.do_dono=1 AND e.id <> ?"
+            "  AND (e.responde_a=s.ref_mensagem OR e.alvo='escolha:' || s.ref_mensagem))"
+            " AND NOT EXISTS (SELECT 1 FROM canal_enviadas n WHERE n.canal=s.canal AND n.origem='substitui'"
+            "  AND n.fato='substitui:' || s.ref_mensagem)"
+            " ORDER BY s.enviada_em DESC, s.ref_mensagem DESC", (self.canal, desde, ate, int(fora)))]
+
     def enviada(self, ref_mensagem: str) -> dict[str, object] | None:
         r = self.db.one("SELECT * FROM canal_enviadas WHERE canal=? AND ref_mensagem=?", (self.canal, ref_mensagem))
         return dict(r) if r is not None else None

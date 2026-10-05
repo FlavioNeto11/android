@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.44: a resposta solta casa com a pergunta de escolha aberta (branch canais/28-44-escolha-solta)
+
+- A pergunta de escolha que a ANA manda leva a marca `escolha:<msg>:<opções>` (`telegram_status.py --escolha 1,2,3`).
+  O "1" solto do dono, em até 30 min e com uma só pergunta aberta, casa com ela e vai à orquestradora com
+  `casada_com`. Com duas abertas, nada casa e a resposta pede o Responder. `--substitui` fecha a pergunta anterior.
+- O reply de verdade à pergunta de escolha ganhou ramo próprio e não cai mais no "só informa".
+- A casada nunca vira aval, veto, resposta do produto nem prévia: não tem `responde_a`.
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py`, 9 testes do 28.44, e
+  `.claude/canais/test_telegram_status.py`). Real: `not_run`.
+
 ## 2026-10-05 — 28.43: recado curto demais não vira "erro aqui dentro" (branch canais/28-43-recado-curto)
 
 - O texto livre mais curto que o pedido aceita (o `min_length` lido do `RunTargetsResolveBody`) fica `recusada`, com

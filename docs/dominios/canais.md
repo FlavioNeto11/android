@@ -647,8 +647,26 @@ avisos depois da faxina"), e a trava cai no TTL.
     3) não chega à prévia (28.43). A linha fica `recusada` com o erro "curto demais para um pedido", e a resposta
     pede para tocar em "Responder" na mensagem, ou para dizer o que fazer e em qual aparelho. Antes, o "1" solto do
     dono (05/10 10:26Z) estourava `ValidationError` e virava "erro aqui dentro". A porta também converte o
-    `ValidationError` do pedido em `RecusaDaCentral`, como rede. Casar a resposta curta com a última pergunta
-    numerada é o 28.44.
+    `ValidationError` do pedido em `RecusaDaCentral`, como rede.
+  - A resposta solta casa com a pergunta de escolha aberta (28.44):
+    - **A marca:** a pergunta de escolha leva a marca `escolha:<message_id>:<opções>` (ex.: `escolha:294:1-2-3`) em
+      `canal_enviadas.fato`. Só quem manda marca, com `telegram_status.py --escolha 1,2,3`; nada adivinha a escolha
+      pelo texto.
+    - **Quando casa:** a mensagem do dono SEM reply cujo texto inteiro é uma das opções ("1", "opção 1", "a 1", "1.",
+      "1)") casa com a pergunta aberta. Aberta quer dizer: marcada, mandada nos últimos 30 min
+      (`JANELA_DA_ESCOLHA_S`), ainda sem resposta e não substituída. A resposta pode ter vindo por reply ou por
+      casamento; as duas gravam `alvo = 'escolha:<msg>'`. A substituição é `--substitui <msg>`, uma linha própria
+      `substitui:<nova>` com o fato `substitui:<antiga>`.
+    - **Para onde vai:** a casada vai à orquestradora com `previa.casada_com` e `previa.opcao`, e não preenche
+      `responde_a`. Com duas ou mais abertas, nada casa: vai como `escolha_ambigua`, e a resposta pede o Responder.
+      "1 e 3", "sim, a 2" e uma opção fora da lista seguem o caminho de sempre.
+    - **O reply de verdade:** o reply a uma mensagem `escolha:` tem ramo próprio (repasse `escolha`) e não cai na regra
+      de fundo do G1.
+    - **Nunca é aval:** nada disso vira aval, veto, resposta a pergunta do produto ou prévia. A casada não tem
+      `responde_a`, e toda conferência de autorização segue pedindo o reply ao aviso.
+    - **Pergunta sensível aberta:** com uma pergunta de senha aberta, a resposta solta curta segue a regra do curto com
+      pergunta sensível, e é recusada como possível credencial. O reply à pergunta de escolha passa.
+    - **Fora do escopo:** o Trello e o convidado ficam fora.
   - O texto da recusa ou do erro ao iniciar segue o estado relido (28.38):
     - `running` ou `paused`: "em andamento";
     - `cancelling`: "está sendo cancelada";

@@ -54,8 +54,10 @@ from app.modules.avisos.application.entrada import (
     AJUDA,
     RESPOSTA_IDENTIDADE,
     SAUDACAO,
+    Fato,
     Intencao,
     casar_ref,
+    opcao_da_escolha,
     rotear,
     texto_para_o_extrator,
 )
@@ -138,6 +140,15 @@ RESPOSTA_DO_REPASSE = {
 }
 #: 28.30: as respostas do dono ao pedido de confirmação de um comentário seu no Trello.
 REPASSES_DO_COMENTARIO = ("comentario_sim", "comentario_nao")
+#: 28.44: a resposta a uma pergunta de escolha da ANA. É `escolha` quando vem em reply ou solta e casada (com `opcao`), e
+#: `escolha_ambigua` quando vem solta com mais de uma pergunta aberta.
+REPASSES_DA_ESCOLHA = ("escolha", "escolha_ambigua")
+#: Quanto tempo depois da pergunta de escolha a resposta solta ainda casa com ela (28.44). Constante, sem chave de config.
+JANELA_DA_ESCOLHA_S = 1800
+RESPOSTA_ESCOLHA_REPLY = "Recebi a sua resposta. A orquestradora confere e segue."
+RESPOSTA_ESCOLHA_CASADA = "Recebi a opção {opcao}, como resposta à sua mensagem anterior. A orquestradora confere e segue."
+RESPOSTA_ESCOLHA_AMBIGUA = ("Tenho mais de uma pergunta aberta para você: toque em Responder na mensagem certa e mande a "
+                            "opção de novo.")
 RESPOSTA_COMENTARIO_MUDOU = "O comentário mudou depois do pedido: nada foi repassado. Comente de novo no cartão."
 RESPOSTA_COMENTARIO_APAGADO = "O comentário foi apagado depois do pedido: nada foi repassado."
 RESPOSTA_COMENTARIO_SEM_CONFERIR = ("Não consegui conferir o comentário no Trello agora: nada foi repassado. Responda sim "
@@ -927,9 +938,11 @@ class ConversaDoCanal:
         resposta a essa pergunta, "curta" quando é texto curto com ela aberta (pode ter sido um pedido), None quando
         passa. Na dúvida (a pergunta não pôde ser lida), recusa: o dono responde pelo painel."""
         i = self._intencao({"texto": r.texto, "responde_a": r.responde_a})
-        if i.repasse in REPASSES_DO_COMENTARIO:
+        if i.repasse in REPASSES_DO_COMENTARIO or i.repasse in REPASSES_DA_ESCOLHA:
             # 28.30 (revisão da #314): o "sim" ao pedido de confirmação de um comentário é curto, mas é resposta a um fato
             # que não pede credencial. Sem isto, com uma pergunta de senha aberta, ele era recusado e apagado como senha.
+            # 28.44: o mesmo vale para o reply à pergunta de escolha da ANA. A resposta SOLTA não chega aqui casada (sem
+            # o id da linha não há casamento) e segue a regra do curto com pergunta sensível.
             return None
         if i.tipo in ("livre", "orquestradora"):
             # E6: o texto livre E o recado à orquestradora (reply a mensagem que a Central não mandou, ou `/orq`) são
@@ -1009,6 +1022,10 @@ class ConversaDoCanal:
     def _intencao(self, linha: Linha) -> Intencao:
         texto = str(linha.get("texto") or "")
         responde_a = _texto(linha.get("responde_a"))
+        if responde_a is None and linha.get("id") is not None:
+            casada = self._escolha_solta(linha, texto)
+            if casada is not None:
+                return casada
         enviada = self.repo.enviada(responde_a) if responde_a is not None else None
         # Regra do CANAL (decisão (e)): reply a uma mensagem do bot que a Central não mandou é da orquestradora; reply
         # a uma mensagem da própria pessoa não é reply ao bot. A gramática comum só conhece o `/orq`.
@@ -1027,6 +1044,30 @@ class ConversaDoCanal:
                                 repasse="continuacao")
         return rotear(texto, fato=str(fato) if fato else None)
 
+    def _escolha_solta(self, linha: Linha, texto: str) -> Intencao | None:
+        """28.44: a mensagem SOLTA do dono que é só uma opção ("1", "opção 2") casa com a pergunta de escolha aberta da
+        ANA (`escolha:<msg>:<opções>`, nos `JANELA_DA_ESCOLHA_S` antes dela). Com uma aberta e a opção na lista dela,
+        casa; com mais de uma aberta e a opção na lista de alguma, nada casa e vai à orquestradora como ambígua. Fora
+        disso, None: o caminho de sempre."""
+        if not texto.strip() or texto.strip().startswith("/"):
+            return None
+        abertas = self.repo.escolhas_abertas(str(linha.get("recebida_em") or ""), JANELA_DA_ESCOLHA_S,
+                                             fora=self._id(linha))
+        casam = [(f, op) for f in (Fato.de(str(a.get("fato") or "")) for a in abertas) if f is not None
+                 for op in [opcao_da_escolha(texto, f.opcoes)] if op is not None]
+        if not casam:
+            return None
+        t = texto.strip()
+        if len(abertas) > 1:
+            refs = [str(a["ref_mensagem"]) for a in abertas]
+            return Intencao("orquestradora", ref=",".join(refs), repasse="escolha_ambigua",
+                            texto=f"Resposta solta do dono ({t}) com {len(refs)} perguntas de escolha abertas "
+                                  f"({', '.join(refs)}): nada casou; pedi o reply na mensagem certa.")
+        f, op = casam[0]
+        return Intencao("orquestradora", ref=f.ident, repasse="escolha", opcao=op,
+                        texto=f"Resposta solta do dono, casada com a pergunta de escolha {f.ident} (opções {f.detalhe}): "
+                              f"opção {op}. Sem reply: não vale como aval de item com efeito externo.")
+
     def _fato_do_anexo(self, responde_a: str) -> str | None:
         """O reply do dono a uma foto dele vira o fato `anexo:<id>` (a 1ª imagem GUARDADA da mensagem respondida); sem foto
         guardada ali, nada muda e a mensagem segue a gramática comum (28.24, F3)."""
@@ -1043,6 +1084,8 @@ class ConversaDoCanal:
             self.repo.marcar(self._id(linha), "ignorada", intencao=i.tipo, de=("recebida",))
         elif i.tipo == "orquestradora" and i.repasse in REPASSES_DO_COMENTARIO:
             await self._repassar_comentario(saida, linha, i)
+        elif i.tipo == "orquestradora" and i.repasse in REPASSES_DA_ESCOLHA:
+            await self._repassar_escolha(saida, linha, i)
         elif i.tipo == "orquestradora":
             await self._repassar(saida, linha, i)
         elif i.tipo == "ajuda":
@@ -1098,6 +1141,26 @@ class ConversaDoCanal:
                          previa={"repasse": i.repasse or "comando", "texto": i.texto},
                          de=("recebida", "pergunta"))
         await self._responder(saida, linha, RESPOSTA_DO_REPASSE.get(i.repasse or "", RESPOSTA_DO_REPASSE["comando"]))
+
+    async def _repassar_escolha(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """A resposta a uma pergunta de escolha vai à orquestradora (28.44), nunca à prévia, ao aval nem à pergunta do
+        produto. O `alvo = 'escolha:<msg>'` fecha a pergunta (ela deixa de estar aberta); a ambígua não fecha nenhuma.
+        A casada leva `casada_com` e `opcao` na `previa`, e NÃO preenche `responde_a`, que segue só o reply de verdade."""
+        previa: dict[str, object] = {"repasse": i.repasse or "escolha", "texto": i.texto}
+        alvo = None
+        if i.repasse == "escolha_ambigua":
+            previa["abertas"] = (i.ref or "").split(",")
+            resposta = RESPOSTA_ESCOLHA_AMBIGUA
+        else:
+            alvo = f"escolha:{i.ref}"
+            if i.opcao is not None:
+                previa.update(casada_com=i.ref, opcao=i.opcao)
+                resposta = RESPOSTA_ESCOLHA_CASADA.format(opcao=i.opcao)
+            else:
+                resposta = RESPOSTA_ESCOLHA_REPLY
+        self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora", alvo=alvo,
+                         previa=previa, de=("recebida", "pergunta"))
+        await self._responder(saida, linha, resposta)
 
     async def _repassar_comentario(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         """O sim ou o não ao pedido de confirmação de um comentário (28.30). O sim relê o comentário no Trello: se mudou,

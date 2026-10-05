@@ -24,12 +24,16 @@ from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrada import RESPOSTA_IDENTIDADE
 from app.modules.avisos.infrastructure.entrada import (
     ERRO_CURTO_DEMAIS,
+    JANELA_DA_ESCOLHA_S,
     MINIMO_DO_PEDIDO,
     OPERADOR_DO_TELEGRAM,
     PRESA_S,
     RESPOSTA_CREDENCIAL,
     RESPOSTA_CREDENCIAL_SEM_APAGAR,
     RESPOSTA_CURTO_DEMAIS,
+    RESPOSTA_ESCOLHA_AMBIGUA,
+    RESPOSTA_ESCOLHA_CASADA,
+    RESPOSTA_ESCOLHA_REPLY,
     RESPOSTA_FALHA_INTERNA,
     Pendencia,
     PlanoMudou,
@@ -1365,3 +1369,124 @@ async def test_erro_depois_do_inicio_nos_outros_caminhos_tambem_nao_diz_que_nao_
     assert "cancelar" not in c.portas.nomes() and c.linha(5)["estado"] == "feita"
     assert c.bot.textos()[-1].startswith("A execução abc123 está em andamento; houve um erro interno")
     assert not any(t.startswith("Não iniciei") for t in c.bot.textos())
+
+
+# ------------------------------------------------------------------ 28.44: a resposta solta casa com a escolha aberta
+#: O que a resposta casada nunca chama. A triagem do curto (`pergunta_sensivel`) só lê, e roda antes de tudo.
+ACOES_DA_PORTA = {"decidir", "responder", "previa", "criar", "aprovar_plano", "iniciar", "cancelar"}
+
+
+def _escolha(tmp_path: Path) -> tuple[Cenario, list[datetime]]:
+    agora = [datetime(2026, 10, 5, 10, 26, 26, tzinfo=timezone.utc)]
+    c = Cenario(tmp_path, relogio=lambda: agora[0])
+    return c, agora
+
+
+def _pergunta(c: Cenario, agora: list[datetime], mid: str, opcoes: str = "1-2-3") -> None:
+    c.repo.registrar_enviada(mid, "ana", fato=f"escolha:{mid}:{opcoes}")
+    agora[0] += timedelta(seconds=33)
+
+
+@pytest.mark.parametrize("texto", ["1", "opção 1", "a 1", "1.", "1)", " Opção 1 "])
+async def test_um_solto_casa_com_a_escolha_aberta_e_vai_a_orquestradora(tmp_path: Path, texto: str) -> None:
+    """28.44 (o "1" solto das 10:26:59Z de 05/10, 33 s depois da 294): casa com a pergunta, vai à orquestradora com
+    `casada_com`, sem prévia, sem porta e sem `responde_a`."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, "294")
+    await c.volta(msg(5, texto))
+    linha = c.linha(5)
+    assert (linha["estado"], linha["alvo"], linha["responde_a"]) == ("orquestradora", "escolha:294", None)
+    previa = json.loads(str(linha["previa"]))
+    assert (previa["repasse"], previa["casada_com"], previa["opcao"]) == ("escolha", "294", "1")
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+    assert c.bot.textos()[-1] == RESPOSTA_ESCOLHA_CASADA.format(opcao="1")
+
+
+async def test_fora_da_janela_nao_casa_e_cai_na_recusa_do_curto(tmp_path: Path) -> None:
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, "294")
+    agora[0] += timedelta(seconds=JANELA_DA_ESCOLHA_S)
+    await c.volta(msg(5, "1"))
+    assert (c.linha(5)["estado"], c.linha(5)["erro"]) == ("recusada", ERRO_CURTO_DEMAIS)
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+
+
+async def test_duas_abertas_nao_casam_e_vao_como_ambiguas(tmp_path: Path) -> None:
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, "294")
+    _pergunta(c, agora, "297", "A-B")
+    await c.volta(msg(5, "1"))
+    linha = c.linha(5)
+    assert (linha["estado"], linha["alvo"]) == ("orquestradora", None)       # a ambígua não fecha nenhuma
+    previa = json.loads(str(linha["previa"]))
+    assert previa["repasse"] == "escolha_ambigua" and sorted(previa["abertas"]) == ["294", "297"]
+    assert "casada_com" not in previa
+    assert c.bot.textos()[-1] == RESPOSTA_ESCOLHA_AMBIGUA
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+
+
+async def test_a_ja_respondida_nao_casa_de_novo(tmp_path: Path) -> None:
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, "294")
+    await c.volta(msg(5, "2", reply_to=294))                 # o reply de verdade fecha a pergunta
+    assert c.linha(5)["alvo"] == "escolha:294"
+    await c.volta(msg(6, "1"))
+    assert (c.linha(6)["estado"], c.linha(6)["erro"]) == ("recusada", ERRO_CURTO_DEMAIS)
+    # a casada também fecha: o segundo "1" solto não casa
+    _pergunta(c, agora, "300")
+    await c.volta(msg(7, "1"))
+    assert c.linha(7)["alvo"] == "escolha:300"
+    await c.volta(msg(8, "2"))
+    assert c.linha(8)["estado"] == "recusada"
+
+
+async def test_a_substituida_nao_esta_mais_aberta(tmp_path: Path) -> None:
+    """Acréscimo da leitura da orquestradora: a rodada 2 fecha a rodada 1. Com a substituta gravada, só a nova está
+    aberta, e o "1" casa com ela."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, "294")
+    _pergunta(c, agora, "297")
+    c.repo.registrar_substituta("297", "294")
+    await c.volta(msg(5, "1"))
+    assert c.linha(5)["alvo"] == "escolha:297"
+    assert c.repo.enviada("substitui:297") is not None and c.repo.enviada("297")["fato"] == "escolha:297:1-2-3"
+
+
+@pytest.mark.parametrize("texto", ["4", "1 e 3", "sim, a 2"])
+async def test_o_que_nao_e_uma_opcao_da_lista_nao_casa(tmp_path: Path, texto: str) -> None:
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, "294")
+    await c.volta(msg(5, texto))
+    assert c.linha(5)["alvo"] != "escolha:294"
+    assert c.repo.escolhas_abertas(str(c.linha(5)["recebida_em"]), JANELA_DA_ESCOLHA_S, fora=0) != []
+
+
+async def test_reply_a_escolha_vai_a_orquestradora_pelo_ramo_novo(tmp_path: Path) -> None:
+    """Sem o ramo `escolha`, o reply caía na regra de fundo do G1 ("só informa")."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, "294")
+    await c.volta(msg(5, "a segunda, mas só amanhã", reply_to=294))
+    linha = c.linha(5)
+    assert (linha["estado"], linha["alvo"], linha["responde_a"]) == ("orquestradora", "escolha:294", "294")
+    previa = json.loads(str(linha["previa"]))
+    assert previa["repasse"] == "escolha" and "casada_com" not in previa and "a segunda" in previa["texto"]
+    assert c.bot.textos()[-1] == RESPOSTA_ESCOLHA_REPLY
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+
+
+async def test_a_casada_nunca_decide_um_aval_aberto(tmp_path: Path) -> None:
+    """§7 do desenho: com um aviso de aprovação aberto E uma escolha aberta, o "1" solto casa com a escolha e não chama
+    aprovar, vetar, decidir nem criar. O aval só se decide pelo reply ao aviso dele."""
+    c, agora = _escolha(tmp_path)
+    c.repo.registrar_enviada("555", "aviso", fato="approval:apr-0000aa11")
+    _pergunta(c, agora, "294")
+    await c.volta(msg(5, "1"))
+    assert c.linha(5)["alvo"] == "escolha:294"
+    assert not set(c.portas.nomes()) & ACOES_DA_PORTA
+
+
+async def test_comando_solto_nao_casa(tmp_path: Path) -> None:
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, "294")
+    await c.volta(msg(5, "/status"))
+    assert c.linha(5)["intencao"] == "status"
