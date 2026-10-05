@@ -78,10 +78,11 @@ it('a galeria mostra a principal, o selo "simulado", a receita e o custo', async
              error: 'O provedor recusou o pedido.', cost_usd: 0.011, url: '/api/personas/ig-1/images/img-2' }),
   ]));
   await abrirImagens();
-  // "principal" já está no subtítulo fixo do cartão: o que diz que a galeria chegou é o selo (29.104).
-  await waitFor(() => text().includes('simulado'));
+  // "principal" já está no subtítulo fixo do cartão, e "simulado" no nome do modelo do aviso do gerador: o que diz que
+  // a galeria chegou é a receita da imagem (29.104).
+  await waitFor(() => text().includes('semente 123456'));
   expect(text()).toContain('principal');
-  expect(text()).toContain('semente 123456');
+  expect(text()).toContain('simulado');
   expect(text()).toContain('1:1');
   expect(text()).toContain('sem custo');
   expect(text()).toContain('recusada pelo provedor');

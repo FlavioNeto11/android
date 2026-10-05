@@ -224,20 +224,37 @@ export async function waitFor<T>(check: () => T, timeoutMs = 4000): Promise<T> {
 }
 
 /**
- * Espera um elemento aparecer e o devolve. O `waitFor(() => raiz.querySelector(…))` passava na hora com `null` (só
- * `false` e exceção são "ainda não"); aqui `null` também é, até o prazo. A catraca `src/test/esperas.test.ts` barra a
- * forma antiga.
+ * Espera um elemento aparecer e o devolve, e diz na falha o seletor, a raiz e o prazo. Desde o W1 o `waitFor` também
+ * trata `null` como "ainda não"; esta forma segue preferida porque a mensagem nomeia o que faltou e onde. A catraca
+ * `src/test/esperas.test.ts` barra a forma antiga.
+ *
+ * A raiz passada como `undefined` (um `li` que a desestruturação não achou) é erro, não `document`: o padrão do
+ * parâmetro trocava em silêncio a busca no item pela busca na tela toda, e ela achava o elemento de outro item.
  */
 export async function esperarElemento<E extends Element = HTMLElement>(
   seletor: string,
-  raiz: ParentNode = document,
+  raiz?: ParentNode,
   timeoutMs = 4000,
 ): Promise<E> {
+  // Só a raiz OMITIDA vale `document`; `arguments` separa a omitida da passada como `undefined`.
+  if (arguments.length >= 2 && raiz == null) {
+    throw new Error(`esperarElemento: a raiz da busca por "${seletor}" veio ${String(raiz)}`);
+  }
+  const alvo: ParentNode = raiz ?? document;
+  const onde = descreverRaiz(alvo);
   return waitFor(() => {
-    const el = raiz.querySelector<E>(seletor);
-    if (el == null) throw new Error(`esperarElemento: nada com "${seletor}" ainda`);
+    const el = alvo.querySelector<E>(seletor);
+    if (el == null) throw new Error(`esperarElemento: nada com "${seletor}" em ${onde} depois de ${timeoutMs} ms`);
     return el;
   }, timeoutMs);
+}
+
+function descreverRaiz(raiz: ParentNode): string {
+  // Os testes de lógica rodam em node, sem `document` nem `Element`.
+  if (typeof document !== 'undefined' && raiz === document) return 'document';
+  if (typeof Element === 'undefined' || !(raiz instanceof Element)) return String(raiz);
+  const nome = raiz.getAttribute('aria-label');
+  return `<${raiz.tagName.toLowerCase()}${raiz.id ? `#${raiz.id}` : ''}${nome ? ` aria-label="${nome}"` : ''}>`;
 }
 
 // ---- consultas e interações mínimas (sem dependências extras) ----
