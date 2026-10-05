@@ -765,6 +765,48 @@ async def test_fim_depois_do_parou_que_ja_saiu_e_ficou_registrado_nao_repete(c: 
     assert c.bot.chamou("sendMessage") == n and c.linha(5)["resultado_em"] is not None
 
 
+async def test_rearmar_duas_vezes_da_um_rearme_so(c: Cenario) -> None:
+    """R1 da leitura do #400: o rearme confere a marca no banco; o segundo não muda nada."""
+    import json
+    await _parada(c)
+    ident = int(str(c.linha(5)["id"]))
+    assert c.repo.rearmar_desfecho(ident) is True
+    assert c.repo.rearmar_desfecho(ident) is False
+    assert json.loads(str(c.linha(5)["previa"]))["desfechos_rearmados"] == 1 and c.linha(5)["resultado_em"] is None
+
+
+async def test_lider_velho_com_a_foto_antiga_nao_manda_o_fim_duas_vezes(c: Cenario) -> None:
+    """R1: o líder novo rearmou e mandou o fim; o velho, com a foto de `desfechos_parados` de antes, não rearma de
+    novo (a marca já saiu), e o fim não se repete."""
+    await _parada(c)
+    foto = c.repo.desfechos_parados()
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "completed", "Execução abc123: concluída."
+    await c.volta()
+    assert c.repo.rearmar_desfecho(int(str(foto[0]["id"]))) is False
+    await c.volta()
+    assert _desfechos(c, "Execução abc123: concluída.") == ["Execução abc123: concluída."]
+
+
+async def test_a_execucao_em_curso_nao_custa_leitura_de_estado_a_cada_volta(c: Cenario) -> None:
+    """N2 da leitura do #400: sem desfecho (em curso), a volta não lê o estado; só a que chega ao desfecho lê."""
+    lidos: list[str] = []
+    original = c.portas.estado_da_execucao
+
+    def contando(run_id: str) -> str | None:
+        lidos.append(run_id)
+        return original(run_id)
+
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.estado_da_execucao = contando                                              # type: ignore[method-assign]
+    for _ in range(3):
+        await c.volta()
+    assert lidos == []
+    c.portas.estados[RUN], c.portas.desfechos[RUN] = "completed", "Execução abc123: concluída."
+    await c.volta()
+    assert lidos == [RUN]
+
+
 async def test_execucao_em_andamento_que_nao_tem_desfecho_nao_e_cancelada(c: Cenario) -> None:
     """Só a `planned` esquecida: a que roda há horas segue (o `_cancelar_plano` confere o estado)."""
     from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S

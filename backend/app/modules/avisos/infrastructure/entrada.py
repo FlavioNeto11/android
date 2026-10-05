@@ -1608,13 +1608,19 @@ class ConversaDoCanal:
             linhas = self.repo.esperando_desfecho()
         for linha in linhas:
             run_id = str(linha["run_id"])
-            # Lido ANTES do texto (28.42): se a execução sair da espera entre as duas leituras, o pior caso é o fim
-            # contado duas vezes (o rearme), nunca o fim calado. Sem a leitura, o desfecho sai sem rearme, como antes.
-            try:
-                parado = self.portas.estado_da_execucao(run_id) == PARADA_PELA_PESSOA
-            except Exception:  # noqa: BLE001 - a leitura do estado não cala o desfecho
-                parado = False
             texto = self.portas.desfecho(run_id)
+            parado = False
+            if texto is not None:
+                # 28.42 (N2 da leitura do #400): o estado só se lê quando há desfecho, uma vez por execução que chega a
+                # ele, e não a cada volta para as 20 em curso. Lido ANTES do texto que vale (o texto é relido): se a
+                # execução sair da espera entre as duas leituras, o pior caso é o fim contado duas vezes (o rearme),
+                # nunca calado. Sem a leitura, o desfecho sai sem rearme, como antes. O ideal, para depois: a porta
+                # devolver estado e texto de uma leitura só.
+                try:
+                    parado = self.portas.estado_da_execucao(run_id) == PARADA_PELA_PESSOA
+                except Exception:  # noqa: BLE001 - a leitura do estado não cala o desfecho
+                    parado = False
+                texto = self.portas.desfecho(run_id)
             if texto is None:
                 # A linha fica `feita` ainda em `planning`: antes de 1 h de linha, a execução não pode estar 1 h em
                 # `planned`. Só então se lê o estado (a volta não relê as 20 execuções em curso a cada vez).

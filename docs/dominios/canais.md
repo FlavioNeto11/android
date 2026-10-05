@@ -664,6 +664,19 @@ avisos depois da faxina"), e a trava cai no TTL.
     - O estado é lido ANTES do texto, para que a corrida entre as duas leituras possa no máximo repetir o fim, nunca
       calá-lo.
     - A anti-repetição do #358 conta os envios além dos rearmes (`desfechos_rearmados`).
+    - O rearme só vale para a linha que ainda tem a marca, e uma vez só (R1 da leitura do #400). A troca compara o
+      `previa` lido e exige `resultado_em` preenchido. Um líder velho, com a lista antiga de linhas paradas, não
+      rearma de novo a linha que o novo já terminou. A trava `avisos` é um aluguel de 120 s conferido no começo da
+      volta e depois do long-poll: ela não cerca as escritas, e um líder que perdeu o aluguel no meio da volta ainda
+      termina a volta dele. Por isso a troca no banco vale de qualquer jeito.
+    - O estado só se lê para a linha que já tem desfecho, e o texto é relido depois dele (N2). A volta não lê o
+      estado das execuções em curso; ler estado e texto numa leitura só, pela porta, fica para depois.
+    - Limites conhecidos:
+      - a retomada que para de novo entre duas voltas não é vista: o segundo "parou" não sai, e o fim sai depois;
+      - o "parou" já registrado e sem a marca (o banco caiu entre o envio e a marca), com a execução concluindo
+        antes da volta seguinte, marca sem mandar o fim (raro);
+      - as linhas que pararam antes do deploy do 28.42 não têm a marca e nunca ganham o fim;
+      - uma espera mais longa que `retencao_dias` perde a linha na faxina, e o fim fica mudo.
     - O conjunto de estados com desfecho se chama `COM_DESFECHO` (antes `TERMINAIS`, que enganava: `awaiting_person`
       não é terminal).
   - A prévia que não sai inteira marca a linha como falha e avisa o dono uma vez. Uma linha com erro não cala as

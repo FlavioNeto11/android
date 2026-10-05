@@ -27,8 +27,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O estado é lido antes do texto: a corrida entre as duas leituras pode no máximo repetir o fim, nunca calá-lo. A
   anti-repetição do #358 conta os envios além dos rearmes (`desfechos_rearmados`).
 - `TERMINAIS` → `COM_DESFECHO` (o conjunto inclui `awaiting_person`, que não é terminal).
+- Leitura do #400:
+  - R1: o rearme só vale para a linha que ainda tem a marca, e uma vez. A troca compara o `previa` e exige
+    `resultado_em`, de modo que um líder velho com a lista antiga não manda o fim duas vezes.
+  - N2: o estado só se lê para a linha que já tem desfecho, e o texto é relido depois dele; as execuções em curso
+    não custam leitura a cada volta.
+  - Os limites conhecidos estão no `canais.md`.
 - Prova: `simulated` (`backend/tests/test_telegram_entrada.py`: o fim depois do parou, a parada que segue parada, a
-  retomada que para de novo e a anti-repetição). Real: `not_run`.
+  retomada que para de novo, a anti-repetição, o rearme duplo, o líder velho e a volta sem leitura de estado). Real:
+  `not_run`.
 
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 

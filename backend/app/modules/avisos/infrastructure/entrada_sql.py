@@ -287,13 +287,24 @@ class EntradasDoCanal:
             (self.canal, f"%{DESFECHO_PARADO}%", int(depois_de), int(limite or self.LOTE_DESFECHO)))]
         return [r for r in linhas if _previa(r.get("previa")).get(DESFECHO_PARADO) is True]
 
-    def rearmar_desfecho(self, ident: int) -> None:
-        """A execução saiu de `awaiting_person` (28.42): a linha volta a esperar desfecho, e o próximo envio conta."""
-        previa = _previa(self.db.scalar("SELECT previa FROM canal_entradas WHERE id=? AND canal=?", (int(ident), self.canal)))
-        previa.pop(DESFECHO_PARADO, None)
-        previa[DESFECHOS_REARMADOS] = self._rearmes(ident) + 1
-        self.db.execute("UPDATE canal_entradas SET previa=?, resultado_em=NULL WHERE id=? AND canal=?",
-                        (json.dumps(previa, ensure_ascii=False), int(ident), self.canal))
+    def rearmar_desfecho(self, ident: int) -> bool:
+        """A execução saiu de `awaiting_person` (28.42): a linha volta a esperar desfecho, e o próximo envio conta.
+
+        Só rearma a linha que AINDA tem a marca, e uma vez (R1 da leitura do #400): um líder velho, com a foto antiga de
+        `desfechos_parados`, rearmaria uma linha que o novo já rearmou e terminou, e o fim sairia duas vezes. A troca
+        compara o `previa` lido (com a marca) e exige `resultado_em` preenchido; quem perde a corrida não muda nada."""
+        bruta = self.db.scalar("SELECT previa FROM canal_entradas WHERE id=? AND canal=? AND resultado_em IS NOT NULL",
+                               (int(ident), self.canal))
+        previa = _previa(bruta)
+        if previa.get(DESFECHO_PARADO) is not True:
+            return False
+        previa.pop(DESFECHO_PARADO)
+        rearmes = previa.get(DESFECHOS_REARMADOS)
+        previa[DESFECHOS_REARMADOS] = (rearmes if isinstance(rearmes, int) and not isinstance(rearmes, bool) else 0) + 1
+        cur = self.db.execute("UPDATE canal_entradas SET previa=?, resultado_em=NULL WHERE id=? AND canal=?"
+                              " AND resultado_em IS NOT NULL AND previa=?",
+                              (json.dumps(previa, ensure_ascii=False), int(ident), self.canal, bruta))
+        return cur.rowcount == 1
 
     def vista_em_planned(self, ident: int) -> datetime:
         """A primeira vez que a conversa viu a execução desta linha em `planned` (28.39, G1), gravada no `previa` da linha
