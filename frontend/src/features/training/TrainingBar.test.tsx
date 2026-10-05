@@ -6,7 +6,8 @@ import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { makeInstance } from '../../test/fixtures';
-import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { useToastStore } from '../../store/toasts';
+import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { TrainingBar } from './TrainingBar';
 import { useTrainingStore } from './trainingStore';
 
@@ -160,4 +161,37 @@ it('sessão salva aparece em "Salvas" com "Refazer receitas", que só chama /rec
   await waitFor(() => expect(text()).toContain('Nenhuma receita nova.'));
   expect(text()).toContain('Abrir (já havia receita ativa para esta etapa)');
   expect(backend.callsTo('POST', /\/training\/trn-7\/recipes$/)).toHaveLength(1);
+});
+
+// 31.92 (v1.64): o controle mudou de mãos e o lease desta aba ficou velho; o backend recusa com 409 control_required
+// e não muda nada. A barra diz que a gravação continua (com a mensagem do backend) e se relê.
+it('Concluir recusado por control_required: a gravação continua na barra, com o motivo, e a lista se relê', async () => {
+  useToastStore.setState({ toasts: [] });
+  backend.on('POST', /\/training\/trn-9\/stop$/, () => apiError(409, 'control_required', 'Só quem está com o controle do aparelho encerra esta gravação.'));
+  await act(async () => root.render(<><TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-velho" mine /><ConfirmHost /></>));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  const leituras = backend.callsTo('GET', /\/training$/).length;
+  await click(byRole('button', /^Concluir e revisar$/));
+  await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'A gravação continua')).toBe(true));
+  const aviso = useToastStore.getState().toasts.find((t) => t.title === 'A gravação continua');
+  expect(aviso?.message).toContain('Só quem está com o controle do aparelho encerra esta gravação.');
+  expect(useToastStore.getState().toasts.some((t) => t.title === 'Não foi possível encerrar o treinamento')).toBe(false);
+  await waitFor(() => expect(backend.callsTo('GET', /\/training$/).length).toBeGreaterThan(leituras));
+  expect(text()).toContain('Gravando: Responder a DM');
+  expect(allByRole('dialog', /Treinamento:/)).toHaveLength(0);          // não abre a revisão
+});
+
+it('Descartar recusado por control_required: a gravação continua, sem perder nada, e a lista se relê', async () => {
+  useToastStore.setState({ toasts: [] });
+  backend.on('POST', /\/training\/trn-9\/discard$/, () => apiError(409, 'control_required', 'Só quem está com o controle do aparelho descarta esta gravação.'));
+  await act(async () => root.render(<><TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-velho" mine /><ConfirmHost /></>));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  const leituras = backend.callsTo('GET', /\/training$/).length;
+  await click(byRole('button', /^Descartar$/));
+  await click(byRole('button', /^Descartar gravação$/, byRole('dialog', /Descartar a gravação/)));
+  await waitFor(() => expect(useToastStore.getState().toasts.find((t) => t.title === 'A gravação continua')?.message)
+    .toContain('Só quem está com o controle do aparelho descarta esta gravação.'));
+  await waitFor(() => expect(backend.callsTo('GET', /\/training$/).length).toBeGreaterThan(leituras));
+  expect(backend.callsTo('POST', /\/discard$/)[0]!.body).toEqual({ lease_id: 'lease-velho' });
+  expect(text()).toContain('Gravando: Responder a DM');
 });

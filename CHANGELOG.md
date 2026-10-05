@@ -138,6 +138,13 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   `RedePage.test.tsx`. Quatro mutações, todas pegas. Frontend inteiro: 1631/1631. Settings, rede e `src/test` com
   `ATRASO_DO_FETCH_MS=40` nas sementes 7 e 88: 156/156.
 
+## 2026-10-05 — 31.92 (painel): a barra de treinamento trata a recusa de parar sem o controle (branch fix/31-92-painel-controle)
+
+- Com o backend do 31.92 (adendo v1.64, ramo `fix/31-92-parar-gravacao-exige-controle`), parar ou descartar uma gravação viva exige o controle atual do aparelho, e o painel já mandava o `lease_id` (31.8x). A recusa `409 control_required` agora aparece como "A gravação continua", com a mensagem do backend; a barra se relê e não abre a revisão. Antes saía o genérico "Não foi possível encerrar o treinamento".
+- Gravação órfã (controle `none` ou `ai`) segue com Concluir e Descartar sem lease, como no backend.
+- Entra no corte junto do backend do 31.92.
+- Prova `simulated`: `frontend/src/features/training/TrainingBar.test.tsx`; `real`: `not_run`.
+
 ## 2026-10-05 — 31.90-B: a revisão do treino mostra a prévia do salvar e oferece "Refazer receitas" (branch feat/31-90-b-revisao-previa)
 
 - Prévia do salvar (adendo v1.58): meio segundo depois da última edição, cada etapa diz "Ao salvar: sem IA/com IA" com o motivo. Os avisos aparecem abaixo das etapas. A resposta velha de uma prévia que outra edição superou é descartada. A prévia só roda quando a tela não tem o que dizer antes (sem destino, duplicada, escopo).
