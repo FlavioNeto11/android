@@ -250,3 +250,38 @@ def test_enderecos_absolutos_da_pagina_batem_entre_si() -> None:
     og_imagem = re.search(r'<meta property="og:image" content="(https://[^/"]+)/assets/', html)
     assert canonical and og_url and og_imagem
     assert canonical.group(1) == og_url.group(1) == og_imagem.group(1) == f"https://{PUBLICO}"
+
+
+def _luminancia(cor: tuple[float, float, float]) -> float:
+    def canal(v: float) -> float:
+        v /= 255
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    r, g, b = cor
+    return 0.2126 * canal(r) + 0.7152 * canal(g) + 0.0722 * canal(b)
+
+
+def _contraste(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    claro, escuro = sorted((_luminancia(a), _luminancia(b)), reverse=True)
+    return (claro + 0.05) / (escuro + 0.05)
+
+
+def _hex(valor: str) -> tuple[float, float, float]:
+    v = valor.strip().lstrip("#")
+    return (int(v[0:2], 16), int(v[2:4], 16), int(v[4:6], 16))
+
+
+def test_rotulo_ilustracao_tem_contraste_aa_nos_fundos_reais() -> None:
+    """O rótulo "Ilustração" é texto que quem enxerga lê (diz que o console e a ficha são ilustrações); o leitor de
+    tela recebe o `aria-label` da figura. Medido no endereço público em 05/10 (29.80): com `#6a8198` dava 3,9 no
+    console e 2,98 na ficha. Os fundos vêm do próprio CSS: o gradiente do console (`--noite-3` → `--noite-2`) e o
+    topo da ficha (teal a 18 % sobre `--noite-2`, o ponto mais claro do gradiente)."""
+    css = (SITE / "assets" / "site.css").read_text(encoding="utf-8")
+    var = dict(re.findall(r"--(noite-[23]):\s*(#[0-9a-fA-F]{6})", css))
+    noite2, noite3 = _hex(var["noite-2"]), _hex(var["noite-3"])
+    topo = tuple(45 * 0.18 + c * 0.82 for c in noite2[:1]) + (212 * 0.18 + noite2[1] * 0.82, 191 * 0.18 + noite2[2] * 0.82)
+    assert "rgba(45, 212, 191, .18)" in css                            # o topo da ficha que o cálculo supõe
+    for seletor, fundos in ((".console-barra em", (noite3, noite2)), (".ficha-topo em", (topo,))):
+        cor = re.search(re.escape(seletor) + r" \{[^}]*color: (#[0-9a-fA-F]{6})", css)
+        assert cor, seletor
+        for fundo in fundos:
+            assert _contraste(_hex(cor.group(1)), fundo) >= 4.5, (seletor, cor.group(1), fundo)
