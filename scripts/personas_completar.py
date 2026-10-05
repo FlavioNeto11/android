@@ -65,11 +65,19 @@ def pedir(base: str, metodo: str, rota: str, corpo: Any = None, *, timeout: floa
 
 
 def ler_personas(caminho: Path) -> Any:
-    """A chave `personas` do arquivo de dados; sem o arquivo, uma mensagem clara em vez de um traceback."""
+    """A chave `personas` do arquivo de dados; sem o arquivo, com JSON inválido ou sem a chave, uma mensagem clara
+    em vez de um traceback. A mensagem não repete o conteúdo: ele é dado de persona."""
     if not caminho.is_file():
         raise SystemExit(f"arquivo de personas não encontrado: {caminho}. Ele fica fora do Git, na pasta privada "
                          f"da instalação ({PRIVADO}); outro lugar, pelo argumento ou pela variável.")
-    return json.loads(caminho.read_text(encoding="utf-8"))["personas"]
+    try:
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"arquivo de personas inválido: {caminho} ({type(exc).__name__}, linha "
+                         f"{getattr(exc, 'lineno', '?')}).") from None
+    if not isinstance(dados, dict) or "personas" not in dados:
+        raise SystemExit(f"arquivo de personas sem a chave \"personas\": {caminho}.")
+    return dados["personas"]
 
 
 def vazio(valor: Any) -> bool:

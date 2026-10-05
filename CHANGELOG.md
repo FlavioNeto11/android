@@ -27,7 +27,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   do Git. Atenção: quando o checkout central avançar para este commit, o Git apaga as cópias de `scripts/`; a
   pasta privada fica.
 - `scripts/personas_completar.py` e `scripts/personas_criar.py` recebem o caminho (`--vozes` ou `PERSONAS_VOZES`;
-  `--novas` ou `PERSONAS_NOVAS`), com padrão na pasta privada; sem o arquivo, param com uma mensagem clara.
+  `--novas` ou `PERSONAS_NOVAS`), com padrão na pasta privada; sem o arquivo, com JSON inválido ou sem a chave
+  `personas`, param com uma mensagem clara que não repete o conteúdo.
 - O teste da proposta de voz valida o FORMATO com dados fictícios inventados, lidos pela mesma função do script.
 - `scripts/trocar-nomes-nos-testes.py` lê a chave `ids` da tabela como troca literal, com a caixa exata e sempre (não
   só no `--amplo`), fora dos valores de exemplo que o `--amplo` confere. O briefing 12 da rodada 2 de UX trocou o id
@@ -35,7 +36,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - A conferência do `--amplo` também descarta o handle de exemplo com o ponto escapado numa regex de teste: sem isso,
   o ensaio abortava na ponta do 31.101 pelo próprio valor de exemplo (2 testes de perfis do frontend). A tabela não
   mudou. Ensaio do `--amplo` nesta ponta: 120 arquivos, 1433 linhas, não aplicado.
-- Prova `simulated`: `backend/tests/test_social_dm.py::test_proposta_de_voz_cobre_os_oito_campos_no_formato_do_arquivo` e `scripts/tests/test_trocar_nomes_ids.py` (4 testes; o do `--amplo` falha se os ids entrarem nos valores conferidos). Real: `not_run`.
+- Alcance: o item não cobre os nomes de persona em comentários e docs fora de teste, onde a troca ampla não chega;
+  esse complemento é o 31.107 (revisão da Ferramentas, achado C1).
+- Prova `simulated`: `backend/tests/test_social_dm.py::test_proposta_de_voz_cobre_os_oito_campos_no_formato_do_arquivo` e `scripts/tests/test_trocar_nomes_ids.py` (5 testes; o do `--amplo` falha se os ids entrarem nos valores conferidos). Real: `not_run`.
 
 ## 2026-10-05 — 31.101: os testes não usam mais o identificador de uma conta real (branch test/31-101-dados-ficticios-nos-testes)
 

@@ -462,6 +462,17 @@ def test_proposta_de_voz_cobre_os_oito_campos_no_formato_do_arquivo(tmp_path: Pa
     # Sem o arquivo, o script para com uma mensagem, não com um traceback.
     with pytest.raises(SystemExit, match="não encontrado"):
         script.ler_personas(arquivo.with_name("ausente.json"))
+    # JSON quebrado ou sem a chave também param com mensagem, e a mensagem não repete o conteúdo do arquivo.
+    quebrado = arquivo.with_name("quebrado.json")
+    quebrado.write_text('{"personas": {"Exemplo Alfa": ', encoding="utf-8")
+    with pytest.raises(SystemExit, match="inválido") as erro:
+        script.ler_personas(quebrado)
+    assert "Exemplo Alfa" not in str(erro.value)
+    sem_chave = arquivo.with_name("sem-chave.json")
+    sem_chave.write_text('["Exemplo Alfa"]', encoding="utf-8")
+    with pytest.raises(SystemExit, match="sem a chave") as erro:
+        script.ler_personas(sem_chave)
+    assert "Exemplo Alfa" not in str(erro.value)
 
 
 #: Os sete traços que as oito personas do parque já têm preenchidos. Só serve para provar que a proposta
