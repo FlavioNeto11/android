@@ -151,9 +151,32 @@ def trainer_user(req: TrainingRequest) -> str:
             f"Apps configurados:\n{apps}{cat}\n\nGravação ({len(req.inputs)} entradas):\n{entradas}")
 
 
+_TAMANHO_MAX_DA_CHAVE = 40     # o padrão de `PlanStep.key` aceita 41 (`^[a-z][a-z0-9_]{1,40}$`); 40 deixa folga
+
+
 def _chave(k: str) -> str:
-    k = re.sub(r"[^a-z0-9_]+", "_", (k or "").strip().lower()).strip("_")[:40]
-    return k if re.match(r"^[a-z]", k) and len(k) >= 2 else f"etapa_{k or 'x'}"
+    """Chave de etapa válida em `PlanStep.key` (letra, depois letras/dígitos/_), nunca com mais de 40 caracteres."""
+    k = re.sub(r"[^a-z0-9_]+", "_", (k or "").strip().lower()).strip("_")[:_TAMANHO_MAX_DA_CHAVE]
+    if not k:
+        return "etapa"                        # título só com símbolos ou acentos
+    if not re.match(r"^[a-z]", k) or len(k) < 2:
+        return f"etapa_{k}"[:_TAMANHO_MAX_DA_CHAVE]
+    return k
+
+
+def _chave_unica(base: str, vistos: set[str]) -> str:
+    """`base`, ou `base_2`, `base_3`… cortando a base para o sufixo caber. O laço antigo (`f"{k}_2"[:40]`) devolvia a
+    mesma chave quando ela já tinha 40 caracteres e nunca saía, congelando o laço de eventos do backend inteiro (31.93).
+    Aqui o sufixo muda a cada volta e sempre cabe; `vistos` é finito, então termina."""
+    if base not in vistos:
+        return base
+    n = 2
+    while True:
+        sufixo = f"_{n}"
+        k = f"{base[:_TAMANHO_MAX_DA_CHAVE - len(sufixo)]}{sufixo}"
+        if k not in vistos:
+            return k
+        n += 1
 
 
 def proposal_from_json(raw: str, req: TrainingRequest) -> dict[str, Any]:
@@ -180,9 +203,7 @@ def normalizar_proposta(p: dict[str, Any], req: TrainingRequest) -> dict[str, An
     vistos: set[str] = set()
     etapas = []
     for s in p.get("steps") or []:
-        k = _chave(s.get("key") or s.get("title") or "etapa")
-        while k in vistos:
-            k = f"{k}_2"[:40]
+        k = _chave_unica(_chave(s.get("key") or s.get("title") or "etapa"), vistos)
         vistos.add(k)
         etapas.append({**s, "key": k, "inputs": sorted({int(i) for i in s.get("inputs") or [] if int(i) in existentes}),
                        "bindings": [b for b in s.get("bindings") or [] if b.get("name")]})
