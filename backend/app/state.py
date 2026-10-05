@@ -512,8 +512,8 @@ class AppState:
         # aprendizado (ADR-054) é encadeado aqui, numa thread: o fim da execução nunca espera nem cai por causa dele.
         self.scheduler.on_run_settled = self._execucao_assentada
         # 29.93: a parada esperando a pessoa solta o mesmo que a main soltava ao parar, sem o digest; e a execução que
-        # fecha na saída dessa espera (confirmação, abandono, vencimento, cancelamento) não tem worker para chamar o
-        # `_settle_run`: o repositório a assenta com o MESMO gancho.
+        # fecha sem worker (saída dessa espera, cancelamento órfão do 29.103) não tem quem chame o `_settle_run`: o
+        # repositório a assenta com o MESMO gancho, se ganhar a marca `assentada_em` (#382, migração 113).
         self.scheduler.on_run_parada = self._execucao_parada
         self.repo.ao_assentar_sem_worker = self._execucao_assentada
         self.scheduler.on_items_collected = self._registrar_leitura
@@ -2985,6 +2985,14 @@ class AppState:
         self._draft_locks.pop(run_id, None)
         self.pedidos.ao_assentar(run_id)             # só acorda o laço de pedidos (28.4); nunca escreve aqui
 
+    def _assentamento_agendado(self, run_id: str) -> None:
+        """O assentamento que veio de outra thread, já no laço. Sem o envoltório, a exceção cairia no tratador padrão
+        do asyncio, sem dizer de que execução era."""
+        try:
+            self._execucao_assentada(run_id)
+        except Exception:  # noqa: BLE001 - o assentamento nunca derruba o laço
+            log.exception("assentamento agendado da execução %s", run_id)
+
     def _execucao_assentada(self, run_id: str) -> None:
         """A execução saiu do ar: solta o lock de escrita dela e encadeia o digest do aprendizado numa thread."""
         try:
@@ -2994,7 +3002,7 @@ class AppState:
             # inteiro vai para o laço: o dicionário de travas e o `create_task` do digest são dele.
             principal = self._laco_principal
             if principal is not None and principal.is_running():
-                principal.call_soon_threadsafe(self._execucao_assentada, run_id)
+                principal.call_soon_threadsafe(self._assentamento_agendado, run_id)
             else:
                 # Sem laço (teste sem `start`, ou thread que termina depois do desligamento): solta, e o digest desta
                 # execução se perde; só o `backfill_licoes` manual o recupera. O aviso deixa a perda visível.

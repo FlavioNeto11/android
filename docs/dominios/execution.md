@@ -1230,13 +1230,26 @@ Contexto: design §2.4; decisão: [ADR-038](../decisoes.md#adr-038--máquinas-de
   - **Parada sem digest:** ao parar, o `_settle_run` do worker solta o explorador, a trava de rascunho e acorda os
     pedidos (`Scheduler.on_run_parada` → `AppState._execucao_parada`), na mesma hora em que a main soltava ao parar
     em `completed_with_issues`.
-  - **Assentamento na saída, uma vez:** sem worker (abandonar, vencer, cancelar), `Repository.set_run_status` chama
-    `ao_assentar_sem_worker` (`AppState._execucao_assentada`: digest, trava, pedidos) quando a execução vai a terminal
-    vinda direto de `awaiting_person`, ou de `cancelling` com o `finished_at` da espera ainda gravado (o `resolve`
-    limpa o `finished_at` antes do `recompute_run`; por isso o critério é o estado anterior). Confirmar a etapa
-    parada devolve o objetivo às etapas seguintes, e quem fecha é o worker. De outra thread (o vencimento roda em `to_thread`;
-    a rota síncrona, no threadpool), é agendado no laço por `call_soon_threadsafe`. A retomada limpa o `finished_at`,
-    e quem assenta é o worker, como antes: o gancho não dispara junto.
+  - **Assentamento exatamente uma vez, pela marca `runs.assentada_em` (#382, migração 113):**
+    - Quem assenta grava a marca por compare-and-set (`Repository.marcar_assentada`: `WHERE assentada_em IS NULL` e
+      estado final). Só quem gravou assenta; o outro não faz nada, mesmo em outro backend.
+    - **Execução comum, pelo worker, em linha:** no `finally` do `Scheduler._work`, o `recompute_run` e a marca vão
+      na MESMA `tx()`, e o `_settle_run(venceu=...)` chama o `on_run_settled` só se este worker gravou.
+    - **A rede, para quem fecha sem worker:** `Repository.set_run_status`, ao gravar um estado final vindo de um
+      estado de trabalho (não de `planning`/`needs_input`/`planned`), agenda `_assentar_sem_worker` para depois do
+      COMMIT (`Database.depois_do_commit`). Ele não assenta se há worker deste backend num objetivo da execução
+      (`Scheduler._tem_worker_da_execucao`) e só assenta se ganhar a marca. No caminho comum ele chega depois do
+      COMMIT do worker, já com a marca, e não faz nada. Sobra para ele a saída da espera da pessoa (abandonar,
+      vencer, cancelar) e o cancelamento órfão (29.103: `running`/`paused` sem worker vivo, fechada pelo
+      `_finish_cancel`). De outra thread (o vencimento roda em `to_thread`), o gancho é agendado no laço por
+      `call_soon_threadsafe`, com a marca já gravada na thread.
+    - **Zerar:** só o `set_run_status` grava `runs.status`, e ele zera a marca ao ir a qualquer estado não final que
+      não seja `cancelling` (a retomada, a volta a esperar a pessoa): a execução reaberta assenta de novo ao fechar,
+      como antes. Cancelar uma execução já assentada (a `completed_with_issues` incerta) não zera e não assenta de
+      novo (o D1).
+    - **Falha depois de marcar:** o assentamento que estoura depois da marca não se repete (como antes da marca, no
+      `_settle_run`): o log diz a execução, e o digest se recupera pelo `backfill_licoes` manual.
+    - Confirmar a etapa parada devolve o objetivo às etapas seguintes, e quem fecha é o worker.
 - **Reabertura registrada como é:** `completed_with_issues → running, paused, completed, cancelling` e
   `cancelled → running, paused` (`recompute_run` reabre quando um item é retomado). É a reabertura que o design §2.4
   aponta; ela entra na tabela para ser revista no passo "impor", não aprovada.
