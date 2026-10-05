@@ -48,7 +48,8 @@ def test_demonstracao_diferente_substitui_a_ativa_da_ia(mundo: Mundo) -> None:
     ensinada = mundo.salva(commit=False, candidate=False, learned_from=TREINO, rid="app:id/outro")
     assert ensinada and ensinada != da_ia
     assert mundo.status(da_ia) == "superseded" and mundo.status(ensinada) == "active"
-    assert mundo.procura()["id"] == ensinada and _viva(mundo) == ensinada
+    assert _viva(mundo) == ensinada                                          # ela segura a chave
+    assert mundo.procura() is None              # 30.81: fora da persona que ensinou, só depois da prova ou do Confirmar
     # a trilha nos dois lados, assinada pela sessão de treino (não pelo sistema)
     assert mundo.trilha(da_ia)[-1] == ("published", "deprecated", TREINO)
     assert "demonstrada pela pessoa" in _motivo(mundo, da_ia) and "v2" in _motivo(mundo, da_ia)
