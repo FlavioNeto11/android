@@ -649,6 +649,34 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - Prova: `simulated`: `backend/tests/test_fluxo_casamento_especifico.py` (35 testes, incluindo a paridade com
   `SqlSkillRepository.candidates`); revertidos F1 e F6 um por vez, falham 4 e 7 deles. Real: `not_run`.
 
+## 2026-10-05 — 31.87 F1: pré-voo do dado da persona ausente (branch fix/31-87-prevoo-dado-da-persona)
+
+- O plano que cita `{perfil_*}` ou `{conta_<app>_usuario}` e a persona de algum aparelho-alvo não resolve (dado ausente,
+  vazio ou aparelho sem persona) deixava a variável CRUA no objetivo da etapa: a receita divergia e a IA assumia com
+  `{perfil_sobrenome}` escrito. Agora `RunService._plan` pede resposta (`needs_input`) antes de materializar: zero
+  objetivos, zero etapas, nada despachado; uma frase por aparelho, só com id do aparelho e rótulo do campo.
+- Defesa em profundidade: `Repository.materialize` recusa (`DadoDaPersonaAusente`, só nomes de variável) e o `_plan` fecha
+  a execução em `failed` com o motivo em vez de deixá-la presa em `planning`. Caminho feliz idêntico; sem campo novo.
+- Revisão (C1, R1, N1): a falta de dado sai com `field: "persona_data"` (o painel mostra a pergunta e "Cadastre o dado na
+  persona e crie a execução de novo", sem a caixa que completa o comando nem o rodapé de destino); `profile_id` só
+  quando o aparelho não tem persona. A frase não promete mais "diga o valor no comando". O replano (`revise_plan`) não
+  grava `{perfil_x}` cru: a recuperação automática é recusada com motivo, a retomada do item vira `RunError`, a
+  expansão do `for_each` bloqueia o item. Limite conhecido: `PlanStep.variables` do `for_each` não é varrido.
+- Segunda revisão (D1, D2): a expansão do `for_each` bloqueada pelo dado ausente agora faz o `_work` sair do laço
+  (antes a próxima etapa pronta refazia `running` e o objetivo ficava preso sem worker). `persona_data` entra no conjunto
+  único `CAMPOS_SEM_RESPOSTA_POR_TEXTO` (destino + dado da persona: refinar, perguntas pendentes, sinal
+  `respondeu_pergunta`, preferências e sugestões do livro); a sucessora recusa a resposta quando TODAS as perguntas são
+  `persona_data`. O rodapé do `RunView` junta os caminhos no caso misto.
+- 31.99, achados da revisão automática do #437: (1) `_resolvidos_de` só aceita o parâmetro como substituto quando toda
+  variável da persona citada no valor dele é da persona (`materialize` resolve os parâmetros numa passada só, e
+  `{"perfil_sobrenome": "{perfil_sobrenome}"}` sem o dado passava cru); (2) `revise_plan` confere e insere com a MESMA
+  leitura da persona, feita dentro da transação, como `materialize` (lida fora, uma edição no intervalo passava com o
+  valor antigo); (3) o comentário de `RunService._plan` não diz mais que o valor no comando resolve. Testes: o parâmetro
+  que cita a si mesmo (com e sem texto depois), o que cita um dado que a persona tem, e o retrato único no replano.
+  Prova `simulated`: `tests/test_prevoo_dado_da_persona.py`, 27 passed no 995321b1 (eram 24 antes do 31.99). Real: `not_run`.
+- Prova `simulated`: `tests/test_prevoo_dado_da_persona.py` (24 passed; 14 no 796a26ac, 18 no 3f502014), `RunView.test.tsx` (8 passed); vizinhos e `test_arquitetura.py` verdes;
+  `pytest @tests/catracas.txt`, 88 passed. `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
