@@ -29,7 +29,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   grava as receitas que faltam; idempotente (`recipes.save` segue vetando a chave com receita ativa); 409
   `sessao_nao_salva` se a sessão não foi salva e 409 `fluxo_desligado` se a habilidade está desligada. Só grava em chave
   VIRGEM (`RecipeStore.status_da_chave`, só leitura): onde a chave já teve receita de qualquer status o motivo diz o
-  status, porque o `save` do treino trocaria a quarentena por uma ativa nova (revisão #438, C1).
+  status, porque o `save` do treino trocaria a quarentena por uma ativa nova (revisão #438, C1). O reparo também
+  consulta o veto da pessoa (`RecipeStore.caminho_vetado`, a mesma conta que o `save` aplica a quem não é treino) e não
+  recria a receita vetada, mesmo com a chave virgem.
 - Causa do "salvar offline não gera receita": só duas leituras dependem do aparelho, a versão do app (adb) e a variante
   idioma/densidade (adb); nenhuma é gravada na sessão. Agora, fora do ar, o save usa o que a última leitura deixou
   (`rt.app_versions`/`rt.ui_variant` e o inventário `device_app_state`, a fonte do despacho); sem isso o motivo diz

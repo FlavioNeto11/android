@@ -791,6 +791,11 @@ class RecipeStore:
                 or self._com_status("validated", package, app_version, step_hash, signature=signature,
                                     variant=variant) is not None)
 
+    def caminho_vetado(self, receita: ReceitaVista) -> bool:
+        """Uma PESSOA desligou este caminho e o sistema não o traz de volta (`ouvinte.vetada`)? Só lê; sem ouvinte,
+        nunca. É a conta que o `save` aplica a quem não é treino, e que o reparo do treino (31.86) aplica também."""
+        return self.ouvinte is not None and self.ouvinte.vetada(receita)
+
     def status_da_chave(self, package: str, app_version: str, step_hash: str, *, signature: str = "",
                         variant: str = "") -> str | None:
         """O status da versão mais nova que a chave já teve, de QUALQUER status (`None`: chave virgem). Só lê. O
@@ -846,7 +851,7 @@ class RecipeStore:
                 # execução. Fica a candidata, com a prova já recomeçada pela divergência.
                 return None
             gravadas = dumps(actions)
-            if self.ouvinte is not None and not treino and self.ouvinte.vetada(ReceitaVista(
+            if not treino and self.caminho_vetado(ReceitaVista(
                     package=package, app_version=app_version, signature=signature, variant=variant,
                     step_hash=step_hash, actions=gravadas, learned_from=learned_from)):
                 return None

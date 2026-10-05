@@ -25,7 +25,7 @@ from ..models import Plan, PlannerInfo, PlanStep, Postcondition
 from ..planning.capabilities import CapabilityCatalog, CapabilityNode, load_catalog
 from ..planning.training import TrainingRequest
 from ..taskqueue.flows import PLACEHOLDER, RESERVED, _norm  # noqa: PLC2701 - a MESMA normalização da `match_key`
-from ..taskqueue.recipes import distill_training, step_template_hash
+from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..util import now_iso
 from .recorder import TrainingError
 
@@ -459,6 +459,12 @@ class TrainingSkills:
                     linha["reason"] = (JA_HAVIA_RECEITA if antes in ("active", "validated")
                                        else f"a chave já teve receita (status {antes}): o reparo não a ressuscita")
                     continue
+            if so_chave_virgem and self.s.scheduler.executor.recipes.caminho_vetado(ReceitaVista(
+                    package=pkg, app_version=versao, signature=assinatura, variant=variante, step_hash=hash_da_etapa,
+                    actions=dumps(d.acoes), learned_from=f"training:{session_id}")):
+                # O `save` do treino pula este veto (a pessoa ensina agora); o reparo roda sem ela, então o respeita.
+                linha["reason"] = "a pessoa vetou esta receita: o reparo não a recria"
+                continue
             if not gravar:
                 ocupada = self.s.scheduler.executor.recipes.chave_ocupada(
                     pkg, versao, hash_da_etapa, signature=assinatura, variant=variante)

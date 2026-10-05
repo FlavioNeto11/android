@@ -319,3 +319,38 @@ async def test_refazer_com_o_fluxo_desligado_e_409(harness: Harness) -> None:
         await st.skills.refazer_receitas(sid)
     assert (erro.value.code, erro.value.status) == ("fluxo_desligado", 409)
     assert st.db.scalar("SELECT COUNT(*) FROM recipes") == 0
+
+
+async def test_refazer_respeita_o_veto_da_pessoa_mesmo_com_a_chave_virgem(harness: Harness) -> None:
+    """O `save` do treino pula o veto (a pessoa ensina agora); o reparo não: ela já desligou esse caminho."""
+    class Veto:
+        def __init__(self) -> None:
+            self.perguntas: list[str] = []
+
+        def vetada(self, receita: Any) -> bool:
+            self.perguntas.append(receita.step_hash)
+            return True
+
+        def exige_o_dono(self, recipe_id: int, receita: Any) -> bool | None:
+            return False
+
+        def mudou(self, mudanca: Any) -> None:
+            return None
+
+    st, rt, lease, sid = await _sessao_mista(harness)
+    _esquecer_o_aparelho(rt)
+    await st.skills.save(sid, proposal=_proposta(), profile_ids=[], group_ids=[])
+    assert st.db.scalar("SELECT COUNT(*) FROM recipes") == 0                          # chave virgem
+    rt.state = InstanceState.online
+    lojas = st.scheduler.executor.recipes
+    veto = Veto()
+    lojas.ouvinte = veto
+    try:
+        vetado = await st.skills.refazer_receitas(sid)
+    finally:
+        lojas.ouvinte = None
+    assert vetado["created"] == 0 and st.db.scalar("SELECT COUNT(*) FROM recipes") == 0
+    assert veto.perguntas, "o reparo precisa consultar o veto"
+    assert _por_chave(vetado["steps"])["abrir"]["reason"] == "a pessoa vetou esta receita: o reparo não a recria"
+    sem_veto = await st.skills.refazer_receitas(sid)                                   # sem veto: grava, como antes
+    assert sem_veto["created"] >= 2
