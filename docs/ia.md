@@ -1765,12 +1765,24 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   r-20261005071303-f24955 ele o marcou citando o banner "Abra o app" do Mercado Livre e, no próprio texto, disse que a
   causa principal era o conteúdo errado. A limpeza entrou à toa, falhou, e o desfecho escondeu a causa.
 - Duas camadas:
-  - o prompt do juiz: com OUTRA causa além da cobertura (conteúdo errado, outra tela, o item não está lá),
-    `sobreposicao` é false;
-  - a regra estrutural (`executor.cobre_a_tela`): o elemento citado precisa cobrir ao menos 15 % da tela
-    (`FRACAO_DA_SOBREPOSICAO`). Menor que isso, a recusa vale como "não" comum, com a métrica
-    `juiz.sobreposicao_descartada`. Sem elemento achado, fica como antes.
-- Os 15 % foram medidos nas duas ocorrências reais do banner (bounds gravados nas variáveis da limpeza, 720 x 1280):
-  11,6 % como faixa no topo (f24955) e 83,8 % como modal (r-20261004190200-5b56e6, que cobria de fato). É a mesma
-  fração do 31.51.
+  - o prompt do juiz: se o que está VISÍVEL fora do aviso já mostra outra causa (conteúdo errado, outra tela),
+    `sobreposicao` é false; o que está só escondido pelo aviso não é outra causa;
+  - a regra estrutural (`executor.sobreposicao_vale`). Só se julga o elemento que o juiz CITOU e que está na árvore;
+    sem citado, ou sem o tamanho da tela, vale como antes. Vale quando:
+    - o citado cobre ao menos 15 % da tela (`FRACAO_DA_SOBREPOSICAO`, a MESMA constante do 31.51,
+      `dialogos.FRACAO_QUE_COBRE`);
+    - ou a menor caixa com pista de diálogo que o contém cobre 15 % (o juiz pode citar o "X" de um modal);
+    - ou outra folha com texto cruza a área (a faixa FIXA sobre o conteúdo).
+
+    Senão é faixa no fluxo da página, e a recusa vale como "não" comum, com a métrica `juiz.sobreposicao_descartada`.
+- Sem o tamanho da tela a regra vale, e o `dialogos._cobre_a_tela` do 31.51 responde "não": lá a pergunta é outra (há
+  diálogo a fechar?), e na dúvida a limpeza não falha.
+- A árvore não diz quem é filho de quem. Os descendentes do aviso são a sequência contígua logo depois dele na ordem do
+  documento (a do uiautomator, em profundidade), toda contida na área. Uma folha contida na área FORA dessa sequência é
+  a página por baixo de um aviso fixo. Medido no gov.br (05/10, android-09): a folha de cookies de 49 % no rodapé vem no
+  fim do documento, e as linhas da página por baixo dela vêm antes, inteiras dentro da área. No banner do Mercado Livre
+  (f24955), os filhos vêm logo depois dele e nada de fora da sequência fica contido: segue descartado.
+- Os 15 % foram medidos nas duas ocorrências reais do banner (bounds gravados nas variáveis da limpeza e confirmados
+  pela captura de 05/10, 720 x 1280): 11,6 % como faixa no topo (f24955) e 83,8 % como modal (r-20261004190200-5b56e6,
+  que cobria de fato).
 - Prova `simulated`: `backend/tests/test_sobreposicao_com_duas_causas.py`. `not_run`: uma recusa real com duas causas.

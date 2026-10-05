@@ -67,8 +67,9 @@ SISTEMAS = {
     # propósito, não é enfraquecimento do teste.
     # Item 31.40: o verificador marca `sobreposicao` quando algo cobre o alvo — o hash muda de propósito.
     # Item 31.40 b: e cita em `cobre` o id do elemento que cobre — o hash muda de propósito.
-    # Item 31.73: outra causa além da cobertura (conteúdo errado, outra tela) é `sobreposicao` false — de propósito.
-    "VERIFIER_SYSTEM": "7d9a802a40f7048480bbf15a00708b871f9a835081fdd8f3b23219e639d5bdc0",
+    # Item 31.73: outra causa VISÍVEL fora do aviso (conteúdo errado, outra tela) é `sobreposicao` false; o que está só
+    # escondido pelo aviso não é outra causa — de propósito.
+    "VERIFIER_SYSTEM": "26a20a5c9efb73eaea09ae6361a7e34d92646d0209a8bcd392a25c89a5517d3c",
 }
 
 

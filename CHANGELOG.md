@@ -23,9 +23,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - Achado real na janela do 31.40 (r-20261005071303-f24955): o juiz marcou `sobreposicao` com o banner do topo, e o
   próprio texto dele dizia que a causa era o conteúdo errado; a limpeza entrou à toa e escondeu a causa.
-- Prompt do juiz: outra causa além da cobertura é `sobreposicao` false (hash de `VERIFIER_SYSTEM` atualizado de
-  propósito). `executor.cobre_a_tela` e `FRACAO_DA_SOBREPOSICAO` (15 %, medido nas duas árvores reais do banner:
-  11,6 % e 83,8 %): menor, a recusa vale como "não" comum. `docs/ia.md` § 21.
+- Prompt do juiz: outra causa VISÍVEL fora do aviso é `sobreposicao` false; o que só está escondido não é (hash de
+  `VERIFIER_SYSTEM` atualizado de propósito). `executor.sobreposicao_vale`: só o elemento citado e presente na árvore
+  decide; vale com 15 % da tela (a constante do 31.51, uma só), pela caixa com pista que o contém (o "X" de um modal) ou
+  quando outra folha com texto cruza a área (os descendentes vêm pela ordem do documento, medida no gov.br); senão, a
+  recusa vale como "não" comum. `docs/ia.md` § 21.
 - Os testes do 31.40 e do 31.51 citavam o 1º nó do app de teste (0,5 % da tela); agora citam um aviso que cobre 62,5 %,
   posto na tela do aparelho falso (`test_sobreposicao._juiz_com_ref`).
 - Prova `simulated`: `tests/test_sobreposicao_com_duas_causas.py` (4), com mutação conferida. `real`: `not_run`.
