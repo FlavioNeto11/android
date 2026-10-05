@@ -221,8 +221,45 @@ class TrainingRecorder:
         return self.db.scalar("SELECT id FROM training_sessions WHERE instance_id=? AND status='recording'",
                               (instance_id,))
 
-    def stop(self, session_id: str, *, discard: bool = False) -> dict[str, Any]:
+    def _gravando_com_controle(self, instance_id: str, session_id: str) -> bool:
+        """31.92: a gravação é VIVA quando o aparelho a está gravando (`rt.training_session_id`) e há uma pessoa no
+        controle (lease de usuário). Sem gravador ativo, sem aparelho neste processo ou sem controle (devolvido,
+        expirado, reinício) ela é órfã: não há quem a esteja ensinando, e qualquer pessoa autenticada a encerra."""
+        rt = self.devices.devices.get(instance_id)
+        return bool(rt is not None and getattr(rt, "training_session_id", None) == session_id
+                    and str(getattr(rt.control, "value", rt.control)) == "user" and rt.lease_id)
+
+    def _exigir_o_controle(self, instance_id: str, lease_id: str | None, discard: bool) -> None:
+        """Mesma conferência do `start`: o lease é o ATUAL do controle de usuário do aparelho. Recusa sem tocar em nada
+        (a gravação segue). Alcance: cobre quem NÃO tem o lease. Quem clica "Assumir" com controle de usuário vigente
+        recebe hoje o mesmo lease (`request_control`) e passa por aqui; isso fica para o item 29.143."""
+        rt = self.devices.devices.get(instance_id)
+        if not lease_id or rt is None or rt.lease_id != lease_id:
+            acao = "descarta" if discard else "encerra"
+            raise TrainingError("control_required", f"Só quem está com o controle do aparelho {acao} esta gravação.", 409)
+
+    def _hospedada_em_outro_servidor(self, instance_id: str) -> bool:
+        """Duas réplicas: o aparelho tem dono (`instances.hosted_by`) e não é este processo. A gravação VIVA dele não é
+        órfã: o gravador está lá, e daqui não dá para conferir o lease. Sem dono carimbado, ou sem `owner_id` neste
+        processo, vale o tratamento de sempre."""
+        if not self.owner_id:
+            return False
+        dono = self.db.scalar("SELECT hosted_by FROM instances WHERE id=?", (instance_id,))
+        return bool(dono) and dono != self.owner_id
+
+    def stop(self, session_id: str, *, discard: bool = False, lease_id: str | None = None,
+             por_sistema: bool = False) -> dict[str, Any]:
+        """Falha fechado (31.92): por padrão a chamada é de uma PESSOA e, numa gravação VIVA, `lease_id` precisa ser o do
+        controle atual (senão 409 `control_required`). Aparelho hospedado por outra réplica: 409
+        `gravacao_em_outro_servidor`. Só o chamador do sistema (devolução do controle) diz `por_sistema=True` e dispensa a
+        conferência. A gravação órfã e o descarte de sessão que não está gravando nunca pedem controle."""
         s = self._row(session_id)
+        if not por_sistema and s["status"] == "recording":
+            if self._hospedada_em_outro_servidor(s["instance_id"]):
+                raise TrainingError("gravacao_em_outro_servidor",
+                                    "Esta gravação está em outro servidor; encerre por lá.", 409)
+            if self._gravando_com_controle(s["instance_id"], session_id):
+                self._exigir_o_controle(s["instance_id"], lease_id, discard)
         if s["status"] == "recording":
             status = "discarded" if discard else "recorded"
             agora = now_iso()
@@ -269,7 +306,7 @@ class TrainingRecorder:
         """Devolver o controle encerra a gravação: sem a pessoa no aparelho não há o que gravar."""
         sid = self.active_for(instance_id)
         if sid:
-            self.stop(sid)
+            self.stop(sid, por_sistema=True)     # o sistema encerra: sem conferência de controle
 
     # ------------------------------------------------------------------ entradas
     def record(self, rt: Any, entrada: dict[str, Any], tree: Any | None) -> None:

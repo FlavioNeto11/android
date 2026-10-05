@@ -52,7 +52,7 @@ from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ServerLimits
                      AdoptDeviceBody, ApprovalBatchBody, ApprovalDecision, AppInput, AppPatch, BulkBody,
                      CapabilityDTO, WorkerDeviceProposal,
                      CommandCancelBody, CommandResolveBody, CommandState, InstanceActionBody,
-                     InstancePatch, InstanceProvisionBody, InstanceState, RepairPauseBody, RepairPauseInfo, ResolverQuarentenaBody, TrainingSaveBody, TrainingStartBody,
+                     InstancePatch, InstanceProvisionBody, InstanceState, RepairPauseBody, RepairPauseInfo, ResolverQuarentenaBody, TrainingSaveBody, TrainingStartBody, TrainingStopBody,
                      PolicyGroupCreate, PolicyGroupPatch, ProfileAccountCreate,
                      ProfileAccountDTO, ProfileAccountPatch, ProfilePolicyPatch,
                      AppInstallBody, AppVerifyBody, CredentialClone, CredentialUpdate, MemoryCreate, PersonaCreate, PersonaDTO,
@@ -597,10 +597,10 @@ async def get_training(request: Request, session_id: str) -> Any:
 
 
 @router.post("/training/{session_id}/stop")
-async def stop_training(request: Request, session_id: str) -> Any:
+async def stop_training(request: Request, session_id: str, body: TrainingStopBody | None = None) -> Any:
     from .training.recorder import TrainingError  # noqa: PLC0415
     try:
-        return st(request).training.stop(session_id)
+        return st(request).training.stop(session_id, lease_id=body.lease_id if body else None)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -651,10 +651,10 @@ async def redo_training_recipes(request: Request, session_id: str) -> dict[str, 
 
 
 @router.post("/training/{session_id}/discard")
-async def discard_training(request: Request, session_id: str) -> Any:
+async def discard_training(request: Request, session_id: str, body: TrainingStopBody | None = None) -> Any:
     from .training.recorder import TrainingError  # noqa: PLC0415
     try:
-        return st(request).training.stop(session_id, discard=True)
+        return st(request).training.stop(session_id, discard=True, lease_id=body.lease_id if body else None)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 

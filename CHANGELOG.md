@@ -172,6 +172,13 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
 - Sem mudança de backend. "Tirar do grupo" segue livre para quem não tem conta.
 - Prova `simulated`: `frontend/src/features/profiles/AcoesEmLote.test.tsx` (15 testes; `src/features/profiles` 202/202; mutações G1 e G2 pegas); `real`: `not_run`.
 
+## 2026-10-05 — 31.92: parar ou descartar uma gravação viva exige o controle do aparelho (branch fix/31-92-parar-gravacao-exige-controle)
+
+- `POST /api/training/{id}/stop` e `/discard` aceitam o corpo opcional `{"lease_id": "..."}`. Numa gravação VIVA (o aparelho a grava e há um controle de usuário), o `lease_id` tem de ser o atual, com a mesma conferência do `start`; sem ele ou com outro: 409 `control_required` ("Só quem está com o controle do aparelho encerra/descarta esta gravação."), e a gravação segue gravando, sem perder entrada. Gravação órfã (sem gravador ativo, ou aparelho em `none`/`ai`), `discard` de sessão que já não grava e os encerramentos do sistema (devolução do controle, troca no `start`, reinício) seguem sem lease.
+- Prova `simulated`: `backend/tests/test_treino_parar_exige_controle.py` 23 passed; com a conferência removida, 9 reprovam; `test_modo_treinamento.py` 7, `test_treino_gravacao_orfa.py` 6, `test_ensino_v2.py` 16, `test_cobertura_de_rotas.py` 2, `test_arquitetura.py` 9, `test_catracas.py` 6 passed. `real`: `not_run`.
+- Falha fechado: `TrainingRecorder.stop` confere por padrão; só a devolução do controle diz `por_sistema=True`. Aparelho hospedado por outra réplica: 409 `gravacao_em_outro_servidor` ("Esta gravação está em outro servidor; encerre por lá."). Quem clica "Assumir" com controle de usuário vigente recebe o mesmo lease: fica para o 29.143. Testes: 23 passed no arquivo novo (9 reprovam sem a conferência padrão).
+- A parte do painel (mandar o `lease_id` e tratar o 409) é necessária para o item valer inteiro e vem em outra mudança.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.
