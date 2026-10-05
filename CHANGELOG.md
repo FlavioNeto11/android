@@ -39,6 +39,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     da isca.
 - **Prova:** `simulated` (`tests/test_portal_exclusao.py` 24, 1 pula sem o #340; prova de fora 4; Configuração no frontend). `not_run`:
   o 28.34 real, o central, PostgreSQL.
+
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
 - `scripts/tests/test_poda_ab_offline.py` confere `scripts/poda-ab-offline.py`: só a UI do Chrome sai, a `url_bar` fica,
