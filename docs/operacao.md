@@ -474,7 +474,8 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
 - a borda não reescreve o HTML (29.91):
   - a raiz, a 404 e o `index.html` do painel saem com `Cache-Control: … no-transform`;
   - o HTML do site sai comprimido em gzip pela origem;
-  - o painel tem CSP própria.
+  - o painel tem CSP própria; se ela quebrar uma tela, `server.csp_do_painel: so_relatar` (ou `desligada`) no
+    `config.yaml` e o reinício da `farm-central` a desfazem sem deploy.
   Com isso, um Web Analytics, um Rocket Loader ou uma ofuscação de e-mail religados por engano na zona não entram nas
   páginas. Para conferir de fora: `curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip' https://<host>/` mostra
   `content-encoding: gzip` e `no-transform`;
