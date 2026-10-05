@@ -6203,7 +6203,7 @@ Sem migração. Aditivo no `data` do evento `step.updated` (`TaskRepository.emit
   Ausente = backend de antes do 29.90.
 - **Prova:** `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py::test_a_folha_que_nao_fecha_para_numa_pessoa_sem_mais_toque`).
 
-## Adendo v1.XX (05/10/2026; número da orquestradora no corte da suíte 36; item 29.93) — a execução que espera você não aparece como encerrada
+## Adendo v1.50 (05/10/2026; número da orquestradora; item 29.93) — a execução que espera você não aparece como encerrada
 
 Antes, quando o trabalho automático acabava com um objetivo em `waiting_user` (um gesto da pessoa no aparelho: login,
 desafio, aprovação), a execução ia a `completed_with_issues`, que é terminal, e grava `finished_at`: o painel, o Telegram
@@ -6228,7 +6228,7 @@ e quem lê o contrato a davam por encerrada, e a retomada do item a "reabria".
 - **Telegram:** o desfecho diz "espera você no aparelho"; a contagem "esperando você" e o gesto seguem os do 28.40.
 - **Pedidos:** a ocorrência fecha como fechava com o `completed_with_issues` (`incerta` ou `falhou`); o "esperando você"
   na ocorrência, se vier, é do 28.40.
-- **Migração de dados** (número da orquestradora): leva a `awaiting_person` as execuções já paradas em
+- **Migração de dados** (`111_execucao_aguardando_pessoa`): leva a `awaiting_person` as execuções já paradas em
   `completed_with_issues` com objetivo `waiting_user`. Idempotente; 0 linhas no banco do central em 05/10.
 - **Prova:** `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
   `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). `not_run`: o central.

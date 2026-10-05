@@ -8,7 +8,7 @@
 -- Idempotente: rodar de novo não acha nada. Não há CHECK em `runs.status`, então não há esquema a mudar.
 -- Medido no banco do central em 05/10 (mode=ro): 0 linhas a mudar; o vencimento ligado já tinha fechado os parados.
 --
--- NÚMERO PROVISÓRIO (999): a orquestradora dá o número no corte da suíte 36, e o arquivo é renomeado antes do merge.
+-- Número 111 reservado pela orquestradora em 05/10 06:44Z.
 UPDATE runs SET status = 'awaiting_person'
  WHERE status = 'completed_with_issues'
    AND EXISTS (SELECT 1 FROM objectives o WHERE o.run_id = runs.id AND o.status = 'waiting_user');

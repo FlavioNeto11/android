@@ -37,8 +37,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   Aprendizado) liga o digest. Os dois PRs entram juntos.
 - Painel: rótulo "Aguardando você", grupo "Pede atenção"; Cancelar e o aviso "precisam de você" voltam a valer nela;
   `isRunSemTrabalho` para repetir, relatório, custo e recarga do detalhe.
-- Migração de dados com número provisório (999, renomeada no corte): 0 linhas no central em 05/10. Adendo do contrato
-  com número provisório (v1.XX).
+- Migração de dados `111_execucao_aguardando_pessoa`: 0 linhas no central em 05/10. Adendo v1.50 do contrato (números
+  da orquestradora).
 - Prova: `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
   `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). Real: `not_run`.
 
