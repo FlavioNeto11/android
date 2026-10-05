@@ -46,6 +46,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_ensino_v2.py` (health), `TrainingReview.test.tsx` e `CorrigirEtapa.test.tsx` (3 testes
   novos: chave desligada e campo ausente escondem, a conversão fica). Real: `not_run`.
 
+## 2026-10-05 — 31.108: nome de persona em slug de URL fora de teste trocado por exemplo (branch chore/31-108-nome-de-persona-em-slug-e-handle)
+
+- Complemento do 31.107: o nome de persona real na forma com HÍFEN (o slug de URL de exemplo) em comentários e docs fora de
+  teste virou o nome de exemplo da mesma tabela local (fora do Git): 15 linhas em 7 arquivos (`docs/produto.md`, 3 docs de revisão
+  de UX e 3 arquivos do painel: `ProfilesPage.tsx`, `slugPersona.ts`, `rotas.ts`; só comentário e texto), e o pedaço real que
+  sobrava dentro de um slug de exemplo. Código executável, decisão e prova não mudam.
+- Forma com PONTO (handle): na main de hoje só resta na migração 054 (aplicada, não se edita), no livro-razão do plano e no
+  relatório do runner (gerados pelo mecanismo): nada a trocar à mão. O resto da lista de antes já saiu no 31.98, 31.102 e 31.106.
+- Também trocados, por decisão da orquestradora (22:35Z: o histórico fica no Git, o texto vivo não leva nome de persona): 2
+  linhas antigas do CHANGELOG e a avaliação original de UX (`docs/revisoes-ux/00-avaliacao-original.txt`), 1 linha.
+- Prova: `not_run` em teste de comportamento (só comentário e doc); conferido por busca que nenhuma linha acrescentada tem
+  pedaço de nome real; `docs-check` verde; frontend `typecheck` e os 334 testes de `profiles` e `lib` verdes. Real: `not_run`.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
@@ -6888,7 +6901,7 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
 
 ## 2026-10-02 — 29.25: persona sem @ no grupo de acesso, cabeçalho do cartão no celular e `flows/match` em POST (branch feat/29-25-ux-personas)
 
-- **B3:** o grupo de acesso mostra a persona cuja conta saiu (29.23) como "Beatriz Rocha · sem conta" (discreto, tracejado), e não como um chip "@" vazio; o
+- **B3:** o grupo de acesso mostra a persona cuja conta saiu (29.23) como "Sueli Barreto · sem conta" (discreto, tracejado), e não como um chip "@" vazio; o
   `aria-label` e as opções do diálogo seguem a mesma regra (`rotuloDaConta`, em `pessoa.ts`). `members[]` do grupo ganha `name` no backend (só adição).
 - **I6:** em tela estreita (≤720 px) o `CardHeader` (`components/ui.module.css`, a mesma regra do 28.12; serve a `PageSection` e a toda guia) reserva ao texto no mínimo 12rem; a ação fica no canto quando cabe e desce para a linha de baixo, à direita, quando não cabe;
   antes o texto ficava com ~1/3 da linha ao lado de "Adicionar conta" e o título quebrava no meio da palavra. Título com `overflow-wrap: normal`.
@@ -7796,7 +7809,7 @@ Integrado na `main`; **não implantado** (só o painel; sem backend). Prova `sim
 worktree. Relatórios em [`docs/revisoes-ux/rodada-2/`](docs/revisoes-ux/rodada-2/).
 
 - **Cabeçalho:** uma linha de 56 px no celular (Menu, marca, saúde, "Resumo"); chip "Recursos" no tablet.
-- **Persona:** cabeçalho único, 5 seções, nome legível na URL (`#/personas/lucas-almeida`) com o id antigo aceito.
+- **Persona:** cabeçalho único, 5 seções, nome legível na URL (`#/personas/tadeu-quintela`) com o id antigo aceito.
 - **Execução e pendências:** resumo no topo da execução, aba padrão por situação, regra de pendências testada nas quatro
   origens; total com "4+" quando uma origem falha.
 - **Acessibilidade e texto:** menu expandido a partir de 1280 px, alvos de 32 px, rótulo do gráfico em 13 px, nome acessível do
