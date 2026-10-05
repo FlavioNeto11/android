@@ -26,7 +26,10 @@ from app.util import parse_iso, to_iso
 
 #: O pedido `rodando` cuja execução não assentou neste prazo (ficou em `needs_input`, o digest não passou) expira.
 RODANDO_NO_MAXIMO_H = 6
-#: A execução que já assentou (o digest roda depois disso; `needs_input` também encerra a execução).
+#: A execução que já assentou (o digest roda depois disso; `needs_input` também encerra a execução). `awaiting_person`
+#: (29.93) fica FORA de propósito: ele pode voltar a `running` e concluir, e a validação fecharia antes como "não
+#: comprovou". O digest roda na SAÍDA dele (30.69). Execução de validação nem chega lá: `Scheduler._prova_sem_pessoa`
+#: encerra o `waiting_user` sem esperar ninguém (`test_execucao_de_validacao_nunca_fica_aguardando_pessoa`).
 ASSENTADAS = frozenset({"completed", "completed_with_issues", "failed", "cancelled", "needs_input"})
 
 

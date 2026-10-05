@@ -65,7 +65,7 @@ async def test_perfil_bloqueado_no_meio_da_execucao_para_o_objetivo_com_o_motivo
         pid["p"] = h.state.social.create_profile(ProfileCreate(username="juliana.teste", password=SENHA,
                                                                 instance_id="android-01")).id
         run = h.run(["android-01"])
-        detalhe = await h.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "cancelled"))
+        detalhe = await h.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "cancelled", "awaiting_person"))
         obj = detalhe.objectives[0]
         assert h.state.repo.objective_row(obj.id)["profile_id"] == pid["p"]
         # Parou no ponto seguro seguinte, com o motivo NO OBJETIVO — e não seguiu até concluir a tarefa.
@@ -90,7 +90,7 @@ async def test_objetivo_de_conta_bloqueada_nao_e_despachado_mesmo_sem_porta_de_s
     await harness.ticks(2)
     antes = harness.ai.count("decide")
     run = harness.run(["android-01"])
-    detalhe = await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "cancelled"))
+    detalhe = await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "cancelled", "awaiting_person"))
     obj = detalhe.objectives[0]
     assert obj.status == "waiting_user", obj.status
     assert "bloqueada" in (obj.blocked_reason or "")

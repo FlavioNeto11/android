@@ -82,7 +82,7 @@ async def test_pos_condicao_nao_comprovavel_falha_na_hora_e_retem_os_demais(harn
 
     inner.plan, inner.decide, inner.verify = plan, decide, verify
     run = harness.run(["android-01", "android-02"])
-    await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "waiting_user"))
+    await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "awaiting_person", "waiting_user"))
     db = harness.state.db                                          # type: ignore[union-attr]
     objs = {o["instance_id"]: o for o in db.query("SELECT * FROM objectives WHERE run_id=?", (run.id,))}
 

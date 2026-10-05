@@ -16,7 +16,7 @@ import { StatusBadge } from '../../components/StatusBadge';
 import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { toneClass } from '../../components/tone';
 import { cx, formatPercent, plural, truncate } from '../../lib/format';
-import { OBJECTIVE_STATUS, RUN_STATUS, isRunTerminal, metaOf, type StatusMeta } from '../../lib/status';
+import { OBJECTIVE_STATUS, RUN_STATUS, isRunSemTrabalho, isRunTerminal, metaOf, type StatusMeta } from '../../lib/status';
 import { formatDateTime, formatDuration, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { loadRunDetail, reconnectNow } from '../../store/live';
@@ -327,7 +327,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
             <Button
               icon={Repeat}
               loading={busy === 'repeat'}
-              disabledReason={terminal ? null : 'Espere esta execução terminar para repeti-la.'}
+              disabledReason={isRunSemTrabalho(run.status) ? null : 'Espere esta execução terminar para repeti-la.'}
               onClick={() => void act('repeat', async () => {
                 const nova = await repeatRun(run);
                 if (nova) selectRun(nova.id);

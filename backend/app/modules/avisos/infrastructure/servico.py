@@ -43,6 +43,7 @@ from app.modules.avisos.domain.portal import (
     ApagadoNoCanal,
     ContatoAvisado,
     ContatoDoPortal,
+    aviso_da_borda,
     aviso_do_contato,
     aviso_do_resumo,
     chave_do_contato,
@@ -237,6 +238,27 @@ class ServicoDeAvisos:
             log.error("avisos: resumo do portal não entrou na fila: %s", type(exc).__name__)
             return ContatoAvisado(False, FALHA_INTERNA)
 
+    def avisar_borda_do_portal(self, codigo: str, onde: str, agora: datetime, *, achado: str | None = None,
+                               horas_sem_conferir: int | None = None) -> ContatoAvisado:
+        """29.97: o vigia da borda do site (laço do Portal) achou um defeito, ou não consegue conferir há N voltas.
+        Contrato combinado com o Portal em 05/10 04:25Z: ele chama só na TRANSIÇÃO; a chave é por código e dia UTC
+        (`portal-borda:<código>:<AAAA-MM-DD>`), então chamar de novo no mesmo dia devolve `enfileirado=True` sem segunda
+        mensagem. Código ou lugar fora do contrato, ou `sem_conferir` sem as horas: `campo_invalido`. O log leva só o
+        código e o motivo."""
+        try:
+            aviso = aviso_da_borda(codigo, onde, agora, achado=achado, horas_sem_conferir=horas_sem_conferir)
+            if aviso is None:
+                log.info("avisos: borda do portal recusada (%s): %s", codigo if isinstance(codigo, str) else "?",
+                         CAMPO_INVALIDO)
+                return ContatoAvisado(False, CAMPO_INVALIDO)
+            if not self.ligado or self.canal() is None:
+                return ContatoAvisado(False, CANAL_DESLIGADO)
+            self.fila.enfileirar(aviso)
+            return ContatoAvisado(True)
+        except Exception as exc:  # noqa: BLE001 - o laço do Portal tenta de novo na volta seguinte
+            log.error("avisos: borda do portal não entrou na fila: %s", type(exc).__name__)
+            return ContatoAvisado(False, FALHA_INTERNA)
+
     async def apagar_avisos_do_portal(self, contato_id: int, agora: datetime) -> ApagadoNoCanal:
         """28.34, a exclusão de um contato do site a pedido do titular (29.83; contrato em `docs/dominios/canais.md`
         C-27). Nesta ordem:
@@ -325,10 +347,10 @@ class ServicoDeAvisos:
         do objetivo ser criada. O aviso de conta de uma execução ANTERIOR não cala o objetivo novo. Além disso (revisão
         do #372, O1, regra da orquestradora às 04:09Z), a conta tem de ser a do objetivo:
 
-        - com `account_id` no aviso: só cala quando é a conta do objetivo (`_conta_do_objetivo`). A outra persona no
-          mesmo aparelho e o outro app da mesma persona (o Outlook junto do Instagram) avisam;
-        - só com `profile_id`: só cala quando a persona é a mesma E o objetivo parou por motivo de conta
-          (`failure_kind` `autenticacao` ou `conta_errada`, ou o bloqueio sem etapa da porta de sessão).
+        - com `account_id` no aviso: é a conta do objetivo (`_conta_do_objetivo`). A outra persona no mesmo aparelho e
+          o outro app da mesma persona (o Outlook junto do Instagram) avisam;
+        - só com `profile_id`: é a mesma persona;
+        - e, nos dois casos (28.41, N1), o objetivo parou por motivo de conta (`_parou_pela_conta`).
 
         Faltando a conta ou a persona de um dos lados, não cala: um aviso em dobro custa menos que uma parada muda.
         Limites conhecidos: se o objetivo parar ANTES de a conta mudar de estado, saem as duas mensagens; e outra
@@ -348,18 +370,26 @@ class ServicoDeAvisos:
             if not (isinstance(dados, dict) and dados.get("active") is True and str(aviso["ts"]) >= str(criada)):
                 return False
             if dados.get("account_id"):
-                return self._conta_do_objetivo(oid, str(persona)) == dados["account_id"]
-            if dados.get("profile_id") != persona:
-                return False
-            if (data or {}).get("failure_kind") in ("autenticacao", "conta_errada"):
-                return True
-            # O bloqueio da porta de sessão (`Scheduler._portas_do_app`) para o objetivo ANTES de a etapa rodar: não há
-            # etapa em `waiting_user`.
-            return self.fila.db.scalar("SELECT 1 FROM steps WHERE objective_id=? AND status='waiting_user' LIMIT 1",
-                                       (oid,)) is None
+                mesma = self._conta_do_objetivo(oid, str(persona)) == dados["account_id"]
+            else:
+                mesma = dados.get("profile_id") == persona
+            # 28.41 (N1 da leitura do #372): o motivo de conta vale nos DOIS ramos. Com a conta igual, o objetivo que
+            # parou por falta de informação ou por um aviso do app ainda é outra notícia.
+            return mesma and self._parou_pela_conta(oid, data)
         except Exception:  # noqa: BLE001 - ver a docstring: na dúvida, avisa
             log.exception("avisos: não foi possível conferir o aviso de conta do objetivo %s", oid)
             return False
+
+    def _parou_pela_conta(self, oid: str, data: dict[str, object] | None) -> bool:
+        """O objetivo parou por motivo de conta: `failure_kind` `autenticacao` ou `conta_errada`, ou o bloqueio da porta
+        de sessão (`Scheduler._portas_do_app`), que para o objetivo ANTES de a etapa rodar (sem etapa em
+        `waiting_user`)."""
+        if (data or {}).get("failure_kind") in ("autenticacao", "conta_errada"):
+            return True
+        if (data or {}).get("failure_kind"):
+            return False
+        return self.fila.db.scalar("SELECT 1 FROM steps WHERE objective_id=? AND status='waiting_user' LIMIT 1",
+                                   (oid,)) is None
 
     def _conta_do_objetivo(self, oid: str, persona: str) -> str | None:
         """A conta (`profile_accounts.id`) em que o objetivo parou: a da persona no app da etapa que espera ou, sem ela (a

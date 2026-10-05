@@ -41,6 +41,8 @@ export function resultadoDaExecucao(run: Pick<RunSummary, 'status' | 'started_at
   switch (run.status) {
     case 'completed': return `Concluída com sucesso${em(' em')}`;
     case 'completed_with_issues': return `Concluída com problemas${em(' em')}`;
+    // 29.93: o fim do trabalho automático (`finished_at`) é desde quando ela espera um gesto da pessoa no aparelho.
+    case 'awaiting_person': return `Aguardando você${em(' após')}`;
     case 'failed': return `Falhou${em(' após')}`;
     case 'cancelled': return `Cancelada${em(' após')}`;
     case 'running': return `Em execução${em(' há')}`;

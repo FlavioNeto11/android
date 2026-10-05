@@ -12,6 +12,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -89,6 +90,8 @@ if [[ "$caminho" == / && "$codigo" == 200 && "$navegador" == 1 ]]; then
   corpo="$corpo<script src=\"/assets/site.js?v=2026-10-05T01:00\" defer></script></head><body><main></main>"
   case "$QUEBRA" in
     beacon) corpo="$corpo<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{\"token\": \"x\"}'></script>" ;;
+    barra_invertida) corpo="$corpo<script src=\"\\\\cdn.exemplo.invalid/b.js\"></script>" ;;
+    beacon_com_token) corpo="$corpo<script defer src=\"https://static.cloudflareinsights.com/beacon.min.js?token=tk-beacon-9f31\"></script>" ;;
     script_de_fora) corpo="$corpo<script src=\"https://cdn.exemplo.invalid/x.js\"></script>" ;;
     src_espacado) corpo="$corpo<script"$'\n'"  defer"$'\n'"  src = \"https://cdn.exemplo.invalid/y.js\"></script>" ;;
     maiuscula) corpo="$corpo<SCRIPT SRC='HTTPS://cdn.exemplo.invalid/z.js'></SCRIPT>" ;;
@@ -138,7 +141,7 @@ def _bash() -> str:
     return achado
 
 
-def _rodar(tmp_path: Path, quebra: str = "") -> tuple[subprocess.CompletedProcess[str], list[str]]:
+def _rodar(tmp_path: Path, quebra: str = "", extra: str = "") -> tuple[subprocess.CompletedProcess[str], list[str]]:
     pasta = tmp_path / "bin"
     pasta.mkdir()
     curl = pasta / "curl"
@@ -156,13 +159,13 @@ def _rodar(tmp_path: Path, quebra: str = "") -> tuple[subprocess.CompletedProces
     # Blindagem contra a rede de verdade: o nome público é um `.invalid` (RFC 2606, nunca resolve) e, se o PATH não
     # pegar a pasta do `curl` falso, o comando para antes de rodar a prova (saída 97) em vez de usar o `curl` real.
     comando = (f'export PATH="{caminho}:$PATH" CURL_LOG="{reg}" QUEBRA="{quebra}" SITE=ligado CONTATO=ligado '
-               f'HOSTNAME_PUBLICO=prova.invalid; '
+               f'HOSTNAME_PUBLICO=prova.invalid PYTHON="{Path(sys.executable).as_posix()}" {extra}; '
                f'[ "$(command -v curl)" = "{caminho}/curl" ] || {{ echo "curl real no PATH"; exit 97; }}; '
                f'bash "{script}" depois')
     r = subprocess.run([bash, "-c", comando], capture_output=True, text=True, encoding="utf-8", timeout=120)
     assert r.returncode != 97, r.stdout + r.stderr
     pedidos = registro.read_text(encoding="utf-8").splitlines()
-    assert pedidos, "nenhum pedido passou pelo curl falso"
+    assert pedidos or r.returncode == 3, "nenhum pedido passou pelo curl falso"   # 3: parou antes, sem a régua
     return r, pedidos
 
 
@@ -219,8 +222,10 @@ def test_a_raiz_e_pedida_como_navegador_e_o_script_proprio_passa(tmp_path: Path)
     ("beacon", "https://static.cloudflareinsights.com/beacon.min.js"),   # o achado de 05/10, aspas simples
     ("script_de_fora", "https://cdn.exemplo.invalid/x.js"),
     ("src_espacado", "https://cdn.exemplo.invalid/y.js"),                # X1: tag em linhas, `src = "…"`
-    ("maiuscula", "HTTPS://cdn.exemplo.invalid/z.js"),                    # X2: SCRIPT SRC e HTTPS:// em maiúscula
-    ("src_na_query", "https://cdn.exemplo.invalid/a.js?src=b"),          # Y2: `?src=` dentro da URL não é o valor
+    ("maiuscula", "https://cdn.exemplo.invalid/z.js"),     # X2: SCRIPT SRC e HTTPS:// em maiúscula; a linha sai lida
+    # Y2: `?src=` dentro da URL não é o valor. A query sai da linha (29.97: a régua nunca repete query, que no beacon
+    # leva token), e o valor certo é a URL, não o `b`.
+    ("src_na_query", "script que a pagina nao tem no HTML: https://cdn.exemplo.invalid/a.js\n"),
     ("cdn_cgi", "/cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js"),   # X3: a própria origem
     ("desafio_embutido", "(embutido)"),                                   # X3: /cdn-cgi/ em script sem src
 ])
@@ -229,6 +234,16 @@ def test_script_que_a_pagina_nao_tem_reprova_e_diz_onde_desligar(tmp_path: Path,
     assert r.returncode == 1, r.stdout
     assert "FALHOU / (como navegador)" in r.stdout and esperado in r.stdout
     assert "Web Analytics" in r.stdout and "Rocket Loader" in r.stdout and "Nao afrouxe a CSP" in r.stdout
+
+
+def test_a_linha_do_script_injetado_sai_sem_a_query(tmp_path: Path) -> None:
+    """29.97: o beacon leva o token da conta na query. A linha da prova (que vai a log, chat e PR) diz qual script, e
+    nunca a query dele."""
+    r, _ = _rodar(tmp_path, quebra="beacon_com_token")
+    assert r.returncode == 1, r.stdout
+    assert "FALHOU / (como navegador)" in r.stdout
+    assert "https://static.cloudflareinsights.com/beacon.min.js" in r.stdout
+    assert "tk-beacon-9f31" not in r.stdout + r.stderr and "?token" not in r.stdout
 
 
 def test_raiz_que_nao_vem_200_como_navegador_reprova(tmp_path: Path) -> None:
@@ -259,7 +274,7 @@ def test_o_painel_e_pedido_como_navegador_e_o_html_sai_intocado(tmp_path: Path) 
 @pytest.mark.parametrize(("quebra", "linha", "motivo"), [
     ("beacon_no_painel", "FALHOU /central/ (como navegador)", "https://static.cloudflareinsights.com/beacon.min.js"),
     ("transformado", "FALHOU / (sem transformar)", "sem no-transform"),
-    ("recomprimido", "FALHOU / (sem transformar)", "esperado o gzip da origem; veio content-encoding: br"),
+    ("recomprimido", "FALHOU / (sem transformar)", "esperado o gzip da origem; veio br"),
     ("painel_so_relata", "FALHOU /central/ (sem transformar)", "server.csp_do_painel em aplicar?"),
 ])
 def test_borda_que_reescreve_ou_painel_sem_csp_reprova(tmp_path: Path, quebra: str, linha: str, motivo: str) -> None:
@@ -284,3 +299,25 @@ def test_arquivo_sem_versao_ou_com_a_velha_reprova(tmp_path: Path, quebra: str, 
     r, _ = _rodar(tmp_path, quebra=quebra)
     assert r.returncode == 1, r.stdout
     assert linha in r.stdout and motivo in r.stdout, r.stdout
+
+
+def test_painel_em_relatorio_passa_com_a_variavel_da_subida(tmp_path: Path) -> None:
+    """V9: com `CSP_DO_PAINEL=so_relatar` (a subida do 29.91 em relatório), o painel com o Report-Only dá ok."""
+    r, _ = _rodar(tmp_path, quebra="painel_so_relata", extra="CSP_DO_PAINEL=so_relatar")
+    assert r.returncode == 0, r.stdout
+    assert "ok     /central/ (sem transformar)       (no-transform, CSP do painel em Report-Only)" in r.stdout
+
+
+def test_sem_python_ou_com_variavel_errada_para_com_o_motivo(tmp_path: Path) -> None:
+    """V6: sem a régua não há prova; para no começo dizendo por quê, em vez de linhas em branco."""
+    r, _ = _rodar(tmp_path, extra="CSP_DO_PAINEL=aplica")
+    assert r.returncode == 3 and "PARE: CSP_DO_PAINEL so aceita aplicar ou so_relatar" in r.stdout
+    (tmp_path / "b").mkdir()
+    r, _ = _rodar(tmp_path / "b", extra='PYTHON="/nao/existe/python"')
+    assert r.returncode == 3 and "PARE: a regua da borda precisa de um Python 3.11+" in r.stdout
+
+
+def test_script_com_barra_invertida_e_de_fora(tmp_path: Path) -> None:
+    """V2: o navegador lê `\\cdn/b.js` como `//cdn/b.js`; a régua antiga reprovava, a nova também."""
+    r, _ = _rodar(tmp_path, quebra="barra_invertida")
+    assert r.returncode == 1 and "FALHOU / (como navegador)" in r.stdout and "cdn.exemplo.invalid/b.js" in r.stdout

@@ -10,11 +10,16 @@ antes de iniciar ou sem worker vivo assentam sem ele. Por isso a varredura é o 
 | `completed`                                 | `concluida`                                          | —                                       |
 | `completed_with_issues` com `uncertain`     | `incerta`                                            | `objetivo incerto: {ids}`               |
 | `completed_with_issues` sem `uncertain`     | `falhou`                                             | `parcial: {ok} de {total}`              |
+| `awaiting_person` (29.93)                   | como `completed_with_issues` (`incerta` ou `falhou`) | idem                                    |
 | `failed`                                    | `falhou`                                             | `status_detail` da execução             |
 | `cancelled`                                 | `cancelada`, ou `perdida` (prazo de início)          | ver abaixo                              |
 | linha de `runs` ausente (purga)             | `falhou`                                             | `execução {id} não existe mais`         |
 
 Falha e incerteza nunca viram sucesso: `completed_with_issues` é `falhou` ou `incerta`, jamais `concluida`.
+
+`awaiting_person` (29.93) é a execução cujo objetivo espera um gesto da pessoa, que antes assentava como
+`completed_with_issues`. Fecha a ocorrência do mesmo jeito, para o domínio dos pedidos não mudar neste item; o
+"esperando você" na ocorrência, se vier, é do 28.40.
 
 **Prazo de início** (§7.5, "atraso na fila"): `despachada` com a execução ainda sem objetivo iniciado há mais de
 `prazo_inicio_s` desde o despacho é cancelada pelo laço, que grava a INTENÇÃO (`resumo = 'prazo_inicio'`). O estado
@@ -78,7 +83,7 @@ def fechar(*, estado_atual: str, run_id: str, run_status: str | None, objetivos:
     incertos = [o.id for o in objetivos if o.status == "uncertain"]
     if run_status == "completed":
         return Fechamento("concluida")
-    if run_status == "completed_with_issues":
+    if run_status in ("completed_with_issues", "awaiting_person"):
         if incertos:
             return Fechamento("incerta", f"objetivo incerto: {', '.join(incertos)}")
         ok = sum(1 for o in objetivos if o.status == "succeeded")

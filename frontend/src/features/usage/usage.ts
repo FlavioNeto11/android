@@ -285,6 +285,7 @@ const IMAGE_REASON_LABEL: Record<string, string> = {
   problema: 'a etapa teve problema',
   primeira_julgada: 'primeira tela julgada',
   primeira_da_leitura: 'primeira tela da leitura',
+  leitura_pendente: 'saída ainda não lida',
   arvore_pobre: 'árvore da tela pobre',
 };
 

@@ -11,7 +11,6 @@ A busca é `POST` (e não `GET ?telefone=`) para o telefone não ir para a URL n
 from __future__ import annotations
 
 import json
-import time
 from collections.abc import Mapping
 
 from fastapi import APIRouter, Request, Response
@@ -21,7 +20,6 @@ from fastapi.responses import JSONResponse
 from app.modules.portal.application.exclusao import MuitasBuscas, PedidoInvalido
 from app.modules.portal.montagem import Portal
 from app.shared.costuras import autor_do_gesto
-from app.util import now
 
 ROTA_DA_BUSCA = "/api/portal/contatos/busca"
 ROTA_DA_EXCLUSAO = "/api/portal/contatos/excluir"
@@ -70,7 +68,7 @@ async def buscar_contatos(request: Request) -> Response:
     portal, dados = preparo
     try:
         contatos = await run_in_threadpool(portal.exclusao.buscar, dados.get("telefone"),
-                                           operador=autor_do_gesto(request.state.operador), agora_s=time.monotonic())
+                                           operador=autor_do_gesto(request.state.operador), agora_s=portal.relogio.monotonico_s())
     except PedidoInvalido as erro:
         return _invalido(erro)
     except MuitasBuscas as erro:
@@ -91,7 +89,7 @@ async def excluir_contatos(request: Request) -> Response:
         pedido = await run_in_threadpool(portal.exclusao.preparar, dados)
     except PedidoInvalido as erro:
         return _invalido(erro)
-    agora = now()
+    agora = portal.relogio.agora()
     resultado = await portal.exclusao.decidir(pedido, agora)
     resultado = await run_in_threadpool(portal.exclusao.concluir, pedido, resultado,
                                         executado_por=autor_do_gesto(request.state.operador), agora=agora)

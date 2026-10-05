@@ -4,8 +4,8 @@ import type { InstanceState } from '../api/types';
 import type { ConnectivityInfo, ReadinessInfo, StreamStatus } from '../api/types';
 import {
   ACCOUNT_SESSION_STATUS, APP_INSTALL_STATE, CONNECTIVITY_STATE, DRIFT_KIND, DRIVEN_BY, FLOW_STATUS, INSTANCE_STATE,
-  READINESS_PHASE, STREAM_STATUS, UNKNOWN_STATUS, aiWaitMeta, drivenByMeta, isAiBlocked, metaOf, pendingWaitMeta,
-  slotWaitDetail,
+  READINESS_PHASE, RUN_STATUS, STREAM_STATUS, UNKNOWN_STATUS, aiWaitMeta, drivenByMeta, isAiBlocked, isRunActive,
+  isRunSemTrabalho, isRunTerminal, metaOf, pendingWaitMeta, slotWaitDetail,
 } from './status';
 
 describe('INSTANCE_STATE', () => {
@@ -175,5 +175,19 @@ describe('mapas novos de StatusMeta — todo enum tem rótulo em português, tom
       expect(meta.icon).toBe(UNKNOWN_STATUS.icon);
     }
     expect(metaOf(STREAM_STATUS, null)).toBe(UNKNOWN_STATUS);
+  });
+});
+
+describe('awaiting_person (29.93)', () => {
+  it('não é terminal nem ativa, mas já não tem trabalho automático; rótulo "Aguardando você" com tom de atenção', () => {
+    expect(isRunTerminal('awaiting_person')).toBe(false);
+    expect(isRunActive('awaiting_person')).toBe(false);
+    expect(isRunSemTrabalho('awaiting_person')).toBe(true);
+    for (const s of ['completed', 'completed_with_issues', 'cancelled', 'failed'] as const) expect(isRunSemTrabalho(s)).toBe(true);
+    for (const s of ['planning', 'needs_input', 'planned', 'running', 'paused', 'cancelling'] as const) {
+      expect(isRunSemTrabalho(s)).toBe(false);
+    }
+    expect(RUN_STATUS.awaiting_person.label).toBe('Aguardando você');
+    expect(RUN_STATUS.awaiting_person.tone).toBe('warning');
   });
 });
