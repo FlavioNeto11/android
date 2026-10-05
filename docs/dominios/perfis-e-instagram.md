@@ -396,6 +396,14 @@ A pessoa faz a tarefa no aparelho, pelo Foco, e a IA generaliza a gravação em 
   `capability_required`) e grava via `FlowStore.learn_from_plan` + `flow_scope` (escopo por perfis/grupos —
   sem linha, vale para todos). Rotas: `GET /api/training`, `GET/POST /api/training/{session_id}` e
   `/stop`/`/propose`/`/save`/`/discard` (`backend/app/api.py:342-410`).
+- **Desfazer a última entrada (item 31.90-D).** `desfazer_a_ultima()` (`POST /api/training/{session_id}/undo`) tira
+  da gravação VIVA a última entrada, o toque errado, sem descartar a sessão. Exige o lease do controle (o mesmo do
+  `start` e do `stop`). A gravação parada se corrige na revisão (409 `nao_esta_gravando`), e a órfã não tem quem esteja
+  ensinando (409 `control_required`). O `seq` opcional confere que a última ainda é a que a pessoa viu (409
+  `entrada_mudou`), e a leitura e a remoção ficam na mesma transação, que antes confere de novo o status por um UPDATE
+  condicional na sessão (um `stop` no meio não deixa apagar entrada da gravação parada). A próxima entrada gravada
+  recebe o número seguinte ao que ficou: o `seq` desfeito é reaproveitado. O aparelho não volta: a entrada sai só da
+  gravação.
 - **Validação do `save` (item 31.83).** O `propose` normaliza a proposta; o `save` aceita a que o cliente manda, por
   isso `validar_proposta_para_salvar` (`training/skills.py`) a confere ANTES de qualquer escrita (fluxo, escopo,
   receita, status da sessão) e recusa com 400 e a mensagem do que corrigir. Códigos, além dos de sempre:

@@ -77,7 +77,7 @@ from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
-from .modules.skills.presentation.schemas import EscopoDoFluxoBody, TrainingStopBody
+from .modules.skills.presentation.schemas import EscopoDoFluxoBody, TrainingStopBody, TrainingUndoBody
 from .planning import conciliacao, costs, saldos
 from .porta_do_plano import (AprovarPlanoBody, PortaIndisponivel, PreviaDoItemBody, aprovar_plano, previa_da_porta,
                              previa_do_item, renovar_plano)
@@ -667,6 +667,16 @@ async def discard_training(request: Request, session_id: str, body: TrainingStop
     from .training.recorder import TrainingError  # noqa: PLC0415
     try:
         return st(request).training.stop(session_id, discard=True, lease_id=body.lease_id if body else None)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+
+
+@router.post("/training/{session_id}/undo")
+async def undo_training_input(request: Request, session_id: str, body: TrainingUndoBody) -> dict[str, object]:
+    """31.90-D: tira a ÚLTIMA entrada da gravação VIVA (o toque errado) sem descartar a sessão. Exige o controle do
+    aparelho (`lease_id`); `seq` opcional confere que a última ainda é a que a pessoa viu. O aparelho não volta."""
+    try:
+        return st(request).training.desfazer_a_ultima(session_id, lease_id=body.lease_id, seq=body.seq)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 

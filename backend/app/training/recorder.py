@@ -300,6 +300,51 @@ class TrainingRecorder:
                             (now_iso(), session_id))
         return self.get(session_id)
 
+    def desfazer_a_ultima(self, session_id: str, *, lease_id: str | None, seq: int | None = None) -> dict[str, object]:
+        """31.90-D: tira da gravação VIVA a última entrada (o toque errado), sem descartar a sessão inteira. Só quem está
+        com o controle do aparelho desfaz (o mesmo lease do `start` e do `stop`); a gravação que já parou se corrige na
+        revisão, e a órfã não tem quem esteja ensinando. O aparelho NÃO volta: a entrada sai só da gravação.
+
+        `seq` (opcional): o número da entrada que a pessoa viu como última. Se outra entrada chegou entre o que ela viu e
+        o pedido, recusa com 409 `entrada_mudou` em vez de apagar a nova. Lê e apaga na mesma transação: a entrada que
+        o gravador grava depois disso recebe o próximo número a partir do que ficou."""
+        s = self._row(session_id)
+        if s["status"] != "recording":
+            raise TrainingError("nao_esta_gravando", "Só a gravação em andamento desfaz a última entrada; depois de "
+                                                      "parar, corrija na revisão.", 409)
+        if self._hospedada_em_outro_servidor(s["instance_id"]):
+            raise TrainingError("gravacao_em_outro_servidor", "Esta gravação está em outro servidor; desfaça por lá.",
+                                409)
+        if not self._gravando_com_controle(s["instance_id"], session_id):
+            raise TrainingError("control_required", "Só quem está com o controle do aparelho desfaz a última entrada.",
+                                409)
+        rt = self.devices.devices.get(s["instance_id"])
+        if not lease_id or rt is None or rt.lease_id != lease_id:
+            raise TrainingError("control_required", "Só quem está com o controle do aparelho desfaz a última entrada.",
+                                409)
+        with self.db.tx():
+            # N1 da leitura: o status se confere de novo DENTRO da transação, e pela escrita: o UPDATE condicional trava a
+            # linha da sessão (no PostgreSQL, um `stop` concorrente espera este commit), e a gravação que parou entre a
+            # conferência de cima e aqui não perde entrada.
+            viva = self.db.execute("UPDATE training_sessions SET updated_at=? WHERE id=? AND status='recording'",
+                                   (now_iso(), session_id))
+            if (viva.rowcount or 0) != 1:
+                raise TrainingError("nao_esta_gravando", "Só a gravação em andamento desfaz a última entrada; depois de "
+                                                          "parar, corrija na revisão.", 409)
+            ultima = self.db.one("SELECT seq, type FROM training_inputs WHERE session_id=? ORDER BY seq DESC LIMIT 1",
+                                 (session_id,))
+            if ultima is None:
+                raise TrainingError("sem_entrada", "Não há entrada para desfazer nesta gravação.", 409)
+            if seq is not None and int(ultima["seq"]) != seq:
+                raise TrainingError("entrada_mudou", f"A última entrada agora é a {ultima['seq']}, não a {seq}; "
+                                                     "confira antes de desfazer.", 409)
+            self.db.execute("DELETE FROM training_inputs WHERE session_id=? AND seq=?", (session_id, ultima["seq"]))
+        desfeita = {"seq": int(ultima["seq"]), "type": str(ultima["type"])}
+        self.bus.emit("training.input.undone", f"{s['instance_id']}: treinamento — entrada {desfeita['seq']} desfeita "
+                                               f"({desfeita['type']})", instance_id=s["instance_id"],
+                      data={"training_session_id": session_id, **desfeita})
+        return {**self.get(session_id), "undone": desfeita}
+
     def _encerrar_orfa(self, session_id: str, motivo: str) -> None:
         s = self._row(session_id)
         agora = now_iso()
