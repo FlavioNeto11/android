@@ -29,10 +29,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   Aprendizado.
 - `avisos/infrastructure/servico.py`: `objective.updated` entra nos eventos que avisam; o serviço põe a capability da
   etapa em `waiting_user` e o nome dela; o lote de frente cala pelo mesmo `_e_de_prova` do `run.updated`; o aviso de
-  conta do mesmo aparelho, ativo e posterior à criação da execução, cala o objetivo (aproximação documentada).
-- `avisos/infrastructure/portas_da_central.py`: o desfecho nos canais diz "N esperando você" e o gesto.
-- Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` (33 testes); rede dirigida dos canais com 1025
-  passed. Real: `not_run`.
+  conta do mesmo aparelho, ativo e posterior à criação da execução, cala o objetivo só se for da mesma conta (ou, sem
+  `account_id`, da mesma persona e por motivo de conta); outra persona ou outro app da mesma persona avisam
+  (revisão do #372, O1).
+- `avisos/infrastructure/portas_da_central.py`: o desfecho nos canais diz "N esperando você" e o gesto; a "Evidência"
+  pula o objetivo em `waiting_user`, cujo motivo livre traz texto de tela ou de conta (revisão do #372, O2).
+- Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` (50 testes); rede dirigida dos canais verde.
+  Real: `not_run`.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 

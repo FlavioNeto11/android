@@ -159,7 +159,7 @@ class ServicoDeAvisos:
             obj = (data or {}).get("objective")
             if not isinstance(obj, dict) or obj.get("status") != "waiting_user" or obj.get("blocked_kind") == "approval":
                 return False
-            if self._conta_ja_avisou(obj):
+            if self._conta_ja_avisou(obj, data):
                 return False
             data = self._com_nome_da_acao(self._com_a_etapa_que_espera(data, obj))
         aviso = aviso_de_evento(kind, data, evento_id, cfg.url_painel, frozenset(cfg.aprendizado_faixas), redigir,
@@ -316,29 +316,63 @@ class ServicoDeAvisos:
             return data
         return {**(data or {}), "acao": str(etapa["capability"])}
 
-    def _conta_ja_avisou(self, obj: dict[str, object]) -> bool:
+    def _conta_ja_avisou(self, obj: dict[str, object], data: dict[str, object] | None) -> bool:
         """28.40: o objetivo parou porque a CONTA pede a pessoa, e o `session.needs_person` já avisou: uma mensagem só.
 
-        O evento da conta não leva a execução (`identity/application/session_rules.py`), só o aparelho. A regra é uma
-        APROXIMAÇÃO de "a mesma execução", aceita pela orquestradora (05/10): o último `session.needs_person` do mesmo
-        aparelho está ativo e saiu depois de a execução do objetivo ser criada. O aviso de conta de uma execução
-        ANTERIOR não cala o objetivo novo. Limites conhecidos: se o objetivo parar ANTES de a conta mudar de estado, saem
-        as duas mensagens; e outra execução no mesmo aparelho, criada antes de a conta pedir a pessoa, fica calada.
-        Leitura falhando: avisa (o dono recebe um aviso a mais, nunca perde um)."""
-        aparelho, run_id = obj.get("instance_id"), obj.get("run_id")
-        if not isinstance(aparelho, str) or not isinstance(run_id, str):
+        O evento da conta não leva a execução (`identity/application/session_rules.py`), só o aparelho, a persona e,
+        quando quem emite sabe, a conta (`account_id`). A regra é uma APROXIMAÇÃO de "a mesma execução", aceita pela
+        orquestradora (05/10): o último `session.needs_person` do mesmo aparelho está ativo e saiu depois de a execução
+        do objetivo ser criada. O aviso de conta de uma execução ANTERIOR não cala o objetivo novo. Além disso (revisão
+        do #372, O1, regra da orquestradora às 04:09Z), a conta tem de ser a do objetivo:
+
+        - com `account_id` no aviso: só cala quando é a conta do objetivo (`_conta_do_objetivo`). A outra persona no
+          mesmo aparelho e o outro app da mesma persona (o Outlook junto do Instagram) avisam;
+        - só com `profile_id`: só cala quando a persona é a mesma E o objetivo parou por motivo de conta
+          (`failure_kind` `autenticacao` ou `conta_errada`, ou o bloqueio sem etapa da porta de sessão).
+
+        Faltando a conta ou a persona de um dos lados, não cala: um aviso em dobro custa menos que uma parada muda.
+        Limites conhecidos: se o objetivo parar ANTES de a conta mudar de estado, saem as duas mensagens; e outra
+        execução no mesmo aparelho e na mesma conta, criada antes de a conta pedir a pessoa, fica calada. Leitura
+        falhando: avisa."""
+        aparelho, run_id, oid = obj.get("instance_id"), obj.get("run_id"), obj.get("id")
+        if not isinstance(aparelho, str) or not isinstance(run_id, str) or not isinstance(oid, str):
             return False
         try:
-            conta = self.fila.db.one("SELECT ts, data FROM events WHERE kind='session.needs_person' AND instance_id=? "
+            aviso = self.fila.db.one("SELECT ts, data FROM events WHERE kind='session.needs_person' AND instance_id=? "
                                      "ORDER BY id DESC LIMIT 1", (aparelho,))
             criada = self.fila.db.scalar("SELECT created_at FROM runs WHERE id=?", (run_id,))
+            persona = self.fila.db.scalar("SELECT profile_id FROM objectives WHERE id=?", (oid,))
+            if aviso is None or criada is None or not persona:
+                return False
+            dados = loads(aviso["data"], {})
+            if not (isinstance(dados, dict) and dados.get("active") is True and str(aviso["ts"]) >= str(criada)):
+                return False
+            if dados.get("account_id"):
+                return self._conta_do_objetivo(oid, str(persona)) == dados["account_id"]
+            if dados.get("profile_id") != persona:
+                return False
+            if (data or {}).get("failure_kind") in ("autenticacao", "conta_errada"):
+                return True
+            # O bloqueio da porta de sessão (`Scheduler._portas_do_app`) para o objetivo ANTES de a etapa rodar: não há
+            # etapa em `waiting_user`.
+            return self.fila.db.scalar("SELECT 1 FROM steps WHERE objective_id=? AND status='waiting_user' LIMIT 1",
+                                       (oid,)) is None
         except Exception:  # noqa: BLE001 - ver a docstring: na dúvida, avisa
-            log.exception("avisos: não foi possível conferir o aviso de conta do objetivo %s", obj.get("id"))
+            log.exception("avisos: não foi possível conferir o aviso de conta do objetivo %s", oid)
             return False
-        if conta is None or criada is None:
-            return False
-        dados = loads(conta["data"], {})
-        return isinstance(dados, dict) and dados.get("active") is True and str(conta["ts"]) >= str(criada)
+
+    def _conta_do_objetivo(self, oid: str, persona: str) -> str | None:
+        """A conta (`profile_accounts.id`) em que o objetivo parou: a da persona no app da etapa que espera ou, sem ela (a
+        porta de sessão para antes da etapa), no app da próxima etapa a rodar. Só quando a etapa DECLARA o app e a persona
+        tem UMA conta ativa nele; senão `None` (o app herdado do plano ou do aparelho não é adivinhado aqui)."""
+        etapa = self.fila.db.one("SELECT app_id FROM steps WHERE objective_id=? AND status IN "
+                                 "('waiting_user', 'pending', 'ready', 'retry_wait') "
+                                 "ORDER BY CASE WHEN status='waiting_user' THEN 0 ELSE 1 END, seq, id LIMIT 1", (oid,))
+        if etapa is None or not etapa["app_id"]:
+            return None
+        contas = self.fila.db.query("SELECT id FROM profile_accounts WHERE profile_id=? AND app_id=? AND status='active'",
+                                    (persona, etapa["app_id"]))
+        return str(contas[0]["id"]) if len(contas) == 1 else None
 
     def _e_de_prova(self, kind: str, data: dict[str, object] | None) -> bool:
         """30.37 e 28.19: a execução do SISTEMA não é de uma pessoa: a pergunta dela (`run.updated` em `needs_input`)

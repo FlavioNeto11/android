@@ -383,9 +383,11 @@ avisos depois da faxina"), e a trava cai no TTL.
       fora (já sai como `approval.pending`). O texto diz o aparelho, a etapa que espera (nome do catálogo ou chave), o
       motivo pelo `failure_kind` (29.90) ou pelo `blocked_kind`, quando há um conhecido, e o gesto da caixa de
       Pendências. O detalhe e o `needs` nunca saem. O lote de frente cala pela mesma regra do `run.updated`. O aviso
-      de conta do mesmo aparelho, ativo e posterior à criação da execução, cala o objetivo: é uma aproximação de "a
-      mesma execução", porque o evento da conta não leva a execução. O desfecho nos canais diz "N esperando você" e
-      o mesmo gesto. A conta em tela não reconhecida (`unknown`, 29.92) tem frase e três linhas próprias.
+      de conta do mesmo aparelho, ativo e posterior à criação da execução, cala o objetivo só quando é da MESMA conta
+      (com `account_id`: a conta da persona no app da etapa) ou, sem a conta, da mesma persona e por motivo de conta:
+      é uma aproximação de "a mesma execução", porque o evento da conta não leva a execução; na dúvida, avisa. O
+      desfecho nos canais diz "N esperando você" e o mesmo gesto, e a "Evidência" nunca é o motivo livre de um
+      objetivo parado. A conta em tela não reconhecida (`unknown`, 29.92) tem frase e três linhas próprias.
     - **2, algo falhou:** a pausa e o orçamento esgotado pararam algo do dono e saem na hora. A ocorrência perdida e
       os eventos perdidos não pararam nada e esperam a janela.
     - **3, rotina** (relatório, encerramento, 80% do orçamento, condição atendida, aprendizado): nunca sai sozinha. Vai

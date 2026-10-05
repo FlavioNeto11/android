@@ -165,10 +165,20 @@ def _run(banco: Database, run_id: str, *, chave: str, criada: str | None = None,
                                                 criada or to_iso(now()), prova))
 
 
-def _conta(banco: Database, aparelho: str, *, ativa: bool, ts: str) -> None:
+def _conta(banco: Database, aparelho: str, *, ativa: bool, ts: str, persona: str | None = "p1",
+           conta: str | None = None) -> None:
+    dados: dict[str, object] = {"instance_id": aparelho, "status": "auth_challenge", "active": ativa}
+    if persona is not None:
+        dados["profile_id"] = persona
+    if conta is not None:
+        dados["account_id"] = conta
     banco.execute("INSERT INTO events(ts, kind, level, instance_id, message, data) VALUES (?,?,?,?,?,?)",
-                  (ts, "session.needs_person", "warn", aparelho, "conta",
-                   json.dumps({"instance_id": aparelho, "status": "auth_challenge", "active": ativa})))
+                  (ts, "session.needs_person", "warn", aparelho, "conta", json.dumps(dados)))
+
+
+def _objetivo(banco: Database, run_id: str, *, persona: str | None = "p1", aparelho: str = "android-13") -> None:
+    banco.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, profile_id) VALUES (?,?,?,?,?,?)",
+                  (f"{run_id}:o1", run_id, aparelho, "waiting_user", 1, persona))
 
 
 def _parou(servico: Any, run_id: str, *, aparelho: str = "android-13", desde: str = ESPERA, **kw: object) -> bool:
@@ -204,9 +214,89 @@ def test_o_aviso_de_conta_da_mesma_execucao_cala_o_objetivo(tmp_path: Path) -> N
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     criada = now()
     _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _objetivo(banco, "rc")
     _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)))
     assert _parou(servico, "rc") is False, "a conta já avisou: o objetivo da mesma execução repetiu a mensagem"
     assert _parou(servico, "rc", aparelho="android-12") is True, "o aviso de conta de outro aparelho calou o objetivo"
+
+
+@pytest.mark.parametrize(("persona_da_conta", "persona_do_objetivo"), [
+    ("p2", "p1"),          # O1 da revisão do #372: a conta de OUTRA persona no mesmo aparelho
+    (None, "p1"),          # o aviso de conta sem a persona
+    ("p1", None),          # o objetivo sem a persona
+])
+def test_so_o_aviso_de_conta_da_mesma_persona_cala_o_objetivo(tmp_path: Path, persona_da_conta: str | None,
+                                                              persona_do_objetivo: str | None) -> None:
+    """Na dúvida, avisa: um aviso em dobro custa menos que uma parada muda (orquestradora, 05/10 04:06Z)."""
+    servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
+    criada = now()
+    _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _objetivo(banco, "rc", persona=persona_do_objetivo)
+    _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)), persona=persona_da_conta)
+    assert _parou(servico, "rc") is True
+
+
+def _personas_e_contas(banco: Database) -> None:
+    """Duas personas no mesmo aparelho; a p1 tem conta no Instagram e no Outlook (o caso da regra das 04:09Z)."""
+    agora = to_iso(now())
+    for pid in ("p1", "p2"):
+        banco.execute("INSERT INTO instagram_profiles(id, username, created_at, updated_at) VALUES (?,?,?,?)",
+                      (pid, f"u{pid}", agora, agora))
+    for cid, pid, app in (("c-ig-p1", "p1", "instagram"), ("c-ol-p1", "p1", "outlook"), ("c-ig-p2", "p2", "instagram")):
+        banco.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
+                      " VALUES (?,?,?,?,?,?,?)", (cid, pid, app, f"h{cid}", "active", agora, agora))
+
+
+def _etapa(banco: Database, run_id: str, seq: int, status: str, app: str | None) -> None:
+    banco.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+                  " postcondition, timeout_s, max_attempts, status, capability, app_id)"
+                  " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (f"{run_id}:s{seq}", run_id, f"{run_id}:o1", "android-13", 1, seq, f"e{seq}", "t", "g", "{}", 180, 3,
+                   status, "SEND_MESSAGE", app))
+
+
+@pytest.mark.parametrize(("conta_do_aviso", "etapas", "cala"), [
+    ("c-ig-p1", [("waiting_user", "instagram")], True),            # a mesma conta: o aviso de conta basta
+    ("c-ol-p1", [("waiting_user", "instagram")], False),           # a mesma persona, OUTRO app no mesmo aparelho
+    ("c-ig-p2", [("waiting_user", "instagram")], False),           # OUTRA persona no mesmo aparelho
+    ("c-ig-p1", [("waiting_user", None)], False),                  # a etapa não declara o app: conta desconhecida
+    ("c-ig-p1", [("succeeded", "outlook"), ("pending", "instagram")], True),   # porta de sessão: antes da etapa
+    ("c-ol-p1", [("succeeded", "instagram"), ("pending", "outlook")], True),
+    ("c-ig-p1", [("succeeded", "instagram"), ("pending", "outlook")], False),
+])
+def test_com_a_conta_no_aviso_so_a_mesma_conta_cala_o_objetivo(tmp_path: Path, conta_do_aviso: str,
+                                                               etapas: list[tuple[str, str | None]], cala: bool) -> None:
+    """O1 do #372, regra das 04:09Z: o `profile_id` sozinho calaria o objetivo do Instagram por um aviso do Outlook
+    da mesma persona."""
+    servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
+    _personas_e_contas(banco)
+    criada = now()
+    _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _objetivo(banco, "rc")
+    for seq, (status, app) in enumerate(etapas, start=1):
+        _etapa(banco, "rc", seq, status, app)
+    _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)), conta=conta_do_aviso)
+    assert _parou(servico, "rc") is (not cala)
+
+
+@pytest.mark.parametrize(("failure_kind", "com_etapa", "cala"), [
+    ("autenticacao", True, True),
+    ("conta_errada", True, True),
+    ("falta_informacao", True, False),        # a mesma persona, outro motivo: avisa
+    ("aviso_do_app", True, False),
+    (None, True, False),
+    (None, False, True),                      # o bloqueio sem etapa da porta de sessão
+])
+def test_so_com_a_persona_no_aviso_cala_so_o_motivo_de_conta(tmp_path: Path, failure_kind: str | None, com_etapa: bool,
+                                                             cala: bool) -> None:
+    servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
+    criada = now()
+    _run(banco, "rc", chave="k-comum", criada=to_iso(criada))
+    _objetivo(banco, "rc")
+    if com_etapa:
+        _etapa(banco, "rc", 1, "waiting_user", "instagram")
+    _conta(banco, "android-13", ativa=True, ts=to_iso(criada + timedelta(seconds=30)))
+    assert _parou(servico, "rc", failure_kind=failure_kind) is (not cala)
 
 
 def test_o_aviso_de_conta_de_uma_execucao_anterior_nao_cala_o_objetivo_novo(tmp_path: Path) -> None:
@@ -215,6 +305,7 @@ def test_o_aviso_de_conta_de_uma_execucao_anterior_nao_cala_o_objetivo_novo(tmp_
     agora = now()
     _conta(banco, "android-13", ativa=True, ts=to_iso(agora - timedelta(hours=3)))   # de uma execução de antes
     _run(banco, "rc", chave="k-comum", criada=to_iso(agora))
+    _objetivo(banco, "rc")                                              # a mesma persona: só a hora discrimina
     assert _parou(servico, "rc") is True
 
 
@@ -222,6 +313,7 @@ def test_a_conta_que_ja_saiu_da_espera_nao_cala_o_objetivo(tmp_path: Path) -> No
     servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio(), canal=CanalFalso())
     agora = now()
     _run(banco, "rc", chave="k-comum", criada=to_iso(agora))
+    _objetivo(banco, "rc")
     _conta(banco, "android-13", ativa=True, ts=to_iso(agora + timedelta(seconds=10)))
     _conta(banco, "android-13", ativa=False, ts=to_iso(agora + timedelta(seconds=20)))
     assert _parou(servico, "rc") is True
@@ -280,3 +372,23 @@ def test_o_desfecho_diz_quantos_esperam_voce_e_o_gesto() -> None:
 def test_sem_objetivo_esperando_o_desfecho_fica_como_era() -> None:
     texto = _portas(RunStatus.completed, succeeded=2).desfecho("r1")
     assert texto == "Execução abc123: concluída.\nObjetivos: 2 de 2 com sucesso."
+
+
+def test_o_motivo_livre_do_objetivo_parado_nao_vira_evidencia(tmp_path: Path) -> None:
+    """O2 da revisão do #372: o objetivo parado tem o `finished_at` mais novo, e o `status_detail` dele traz texto de
+    tela ou de conta. A evidência é a do objetivo terminado; sem um, nenhuma."""
+    _servico, banco, _ = _backend(_cfg(tmp_path), AQUI, Relogio())
+    _run(banco, "r1", chave="k-comum")
+    for oid, aparelho, status, detalhe, fim in (
+            ("r1:o1", "android-12", "succeeded", "mensagem comprovada na tela", "2026-10-05T03:00:00.000Z"),
+            ("r1:o2", "android-13", "waiting_user", "MARCADOR tela pede @fulana", "2026-10-05T03:30:00.000Z")):
+        banco.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, status_detail, finished_at)"
+                      " VALUES (?,?,?,?,?,?,?)", (oid, "r1", aparelho, status, 1, detalhe, fim))
+    portas = _portas(RunStatus.completed_with_issues, succeeded=1, waiting_user=1)
+    portas.db = banco
+    texto = portas.desfecho("r1") or ""
+    assert "MARCADOR" not in texto and "fulana" not in texto
+    assert "Evidência: mensagem comprovada na tela" in texto
+    banco.execute("UPDATE objectives SET status='waiting_user' WHERE id='r1:o1'")
+    texto = portas.desfecho("r1") or ""
+    assert "Evidência" not in texto and "MARCADOR" not in texto
