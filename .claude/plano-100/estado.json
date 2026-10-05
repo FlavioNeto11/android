@@ -9283,20 +9283,20 @@
   "31.90": {
    "id": "31.90",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "Ramo da Portal 31.90-B, ponta 89d7dc7c. Simulado: frontend/src/features/training/TrainingReview.test.tsx::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
+   "proof": "real",
+   "evidence": "REAL (parte B, percurso no navegador): Parte B, 05/10/2026 ~18:10Z-18:12Z, WIN-7S2UASNLFOP, commit 9f9e2b39, Foco do android-04 > Modo treinamento. 'Salvas (1)' lista a gravação salva com 'Refazer receitas' e a nota. A revisão da gravação trn-osso9bYL3nq4N4ZJ, depois da proposta real, mostra a prévia por etapa ('Ao salvar: …', com a marca 'sem IA') e 'Pedir outra proposta' com a nota de custo. O salvar como fluxo não foi feito, para não pôr item de teste no catálogo vivo; a gravação ficou como proposta pronta. | Antes (suíte 39, simulado): Ramo da Portal 31.90-B, ponta 89d7dc7c. Simulado: frontend/src/features/training/TrainingReview.test.tsx::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
    "blocker": null,
    "arquivos": [
     "frontend/src/features/training/TrainingReview.test.tsx",
     "frontend/src/features/training/TrainingBar.test.tsx"
    ],
-   "nota": "o ramo cobre só uma parte do item (partial, como a orquestradora classificou na 38); a frente diz se fecha",
-   "grupo": "android-suite-39",
+   "nota": "O item segue parcial como antes. Achados A ('O que você fez (1 entradas)' e '1 entrada(s)') e B ('Ao salvar: receita será gravada ao salvar') viram o 29.146. | o ramo cobre só uma parte do item (partial, como a orquestradora classificou na 38); a frente diz se fecha",
+   "grupo": "orquestradora-percurso-deploy-39",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T18:09:30+00:00"
+   "quando": "2026-10-05T18:19:13+00:00"
   },
   "31.89": {
    "id": "31.89",
@@ -9495,7 +9495,7 @@
    "id": "29.130",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "Ramo da Portal, ponta a4a01f3a. Simulado: frontend/src/features/profiles/ProfilesPage.test.tsx::*, frontend/src/features/rede/RedePage.test.tsx::*, frontend/src/features/settings/LimitsSection.test.tsx::*, frontend/src/test/harness.test.ts::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
+   "evidence": "Observação real de um caminho só (não muda o nível da prova): 05/10/2026 ~18:13Z, WIN-7S2UASNLFOP, commit 9f9e2b39, Configuração > Limites: o Enter no campo 'Aparelhos ligados ao mesmo tempo' sem alteração não envia nenhum PUT de limits e o foco fica no campo. O Enter COM alteração (foco no 'Salvar limites') não foi percorrido, porque salvaria um limite vivo do parque: essa parte segue só com a prova simulated (LimitsSection.test.tsx). N1, N3 e N4 são do harness e da tela de rede, cobertos pela prova simulated. | Antes (suíte 39, simulado): Ramo da Portal, ponta a4a01f3a. Simulado: frontend/src/features/profiles/ProfilesPage.test.tsx::*, frontend/src/features/rede/RedePage.test.tsx::*, frontend/src/features/settings/LimitsSection.test.tsx::*, frontend/src/test/harness.test.ts::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
    "blocker": null,
    "arquivos": [
     "frontend/src/features/profiles/ProfilesPage.test.tsx",
@@ -9503,36 +9503,36 @@
     "frontend/src/features/settings/LimitsSection.test.tsx",
     "frontend/src/test/harness.test.ts"
    ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-39",
+   "nota": "Parte real só do caminho sem alteração. | classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "orquestradora-percurso-deploy-39",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T18:09:30+00:00"
+   "quando": "2026-10-05T18:19:13+00:00"
   },
   "29.141": {
    "id": "29.141",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Ramo da Portal, ponta 4b30731e. Simulado: frontend/src/features/profiles/AcoesEmLote.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
+   "proof": "real",
+   "evidence": "REAL (percurso no navegador): 05/10/2026 ~18:09Z, WIN-7S2UASNLFOP, commit 9f9e2b39, Personas > lote > Grupo de acesso. Com duas personas sem conta, o 'Pôr no grupo Operação' fica com aria-disabled=true e o tooltip diz 'Nenhuma das selecionadas tem conta: crie a conta na guia Contas e acesso antes.'; a faixa diz '2 selecionadas não têm conta', sem 'as outras'. Ao juntar uma persona com conta, o botão fica disponível e a faixa diz que elas aparecem como falha no resumo e as outras entram no grupo. Nada foi aplicado. | Antes (suíte 39, simulado): Ramo da Portal, ponta 4b30731e. Simulado: frontend/src/features/profiles/AcoesEmLote.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
    "blocker": null,
    "arquivos": [
     "frontend/src/features/profiles/AcoesEmLote.test.tsx"
    ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-39",
+   "nota": "Lido no painel servido (index-CJU9ytV6.js). | classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "orquestradora-percurso-deploy-39",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T18:09:30+00:00"
+   "quando": "2026-10-05T18:19:13+00:00"
   },
   "31.92": {
    "id": "31.92",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Backend fix/31-92 9b0d9280 e painel 5ab98d6d; na junção da 39 o TrainingStopBody foi para app.modules.skills.presentation.schemas (catraca dos corpos), sem mudar campo. Simulado: backend/tests/test_treino_parar_exige_controle.py::*, backend/tests/test_modo_treinamento.py::*, backend/tests/test_ensino_v2.py::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
+   "proof": "real",
+   "evidence": "REAL (backend, pelo painel; o aviso do painel segue simulado): 05/10/2026 ~18:10Z, WIN-7S2UASNLFOP, commit 9f9e2b39, gravação trn-osso9bYL3nq4N4ZJ no android-04: POST /api/training/{id}/stop com lease_id errado devolveu 409 {detail:{code:'control_required', message:'Só quem está com o controle do aparelho encerra esta gravação.'}}. No painel, uma 2ª aba sem lease mostra a nota de leitura sem Concluir nem Descartar, com 'Retomar controle'. O toast 'A gravação continua' do 409 no painel não foi visto no real, porque duas abas da mesma pessoa dividem o lease (achado C, vai para o 29.143); essa parte segue com a prova simulated (TrainingBar.test.tsx). | Antes (suíte 39, simulado): Backend fix/31-92 9b0d9280 e painel 5ab98d6d; na junção da 39 o TrainingStopBody foi para app.modules.skills.presentation.schemas (catraca dos corpos), sem mudar campo. Simulado: backend/tests/test_treino_parar_exige_controle.py::*, backend/tests/test_modo_treinamento.py::*, backend/tests/test_ensino_v2.py::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
    "blocker": null,
    "arquivos": [
     "backend/tests/test_treino_parar_exige_controle.py",
@@ -9540,31 +9540,31 @@
     "backend/tests/test_ensino_v2.py",
     "frontend/src/features/training/TrainingBar.test.tsx"
    ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-39",
+   "nota": "Achado C: com 'Retomar controle' na 2ª aba, a 1ª ainda concluiu a gravação (mesmo lease). | classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "orquestradora-percurso-deploy-39",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T18:09:30+00:00"
+   "quando": "2026-10-05T18:19:13+00:00"
   },
   "31.91": {
    "id": "31.91",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "F2 de backend 78c70431 e painel 8c008afb; na junção da 39 o teste de guarda passa o lease no descarte (31.92). Simulado: backend/tests/test_treino_proposta_com_respostas.py::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
+   "evidence": "NOT_RUN no caminho real das respostas: As respostas às perguntas da proposta não foram percorridas (not_run): a única proposta real pedida no percurso veio sem perguntas. Essa proposta foi pedida em 05/10/2026 às 18:12:19Z, WIN-7S2UASNLFOP, commit 9f9e2b39, gravação trn-osso9bYL3nq4N4ZJ, como uma chamada real (ai_calls id 4845, role plan, origem ensino, claude-sonnet-5-5, anthropic, 301 tokens de entrada, 2506 de escrita de cache e 300 de saída, 5380 ms). Custo lido pela regra de planning/costs (row_usd com ai.prices): US$ 0,009867. 'Pedir proposta à IA' é primário antes da proposta; geração de habilidade não percorrida. | Antes (suíte 39, simulado): F2 de backend 78c70431 e painel 8c008afb; na junção da 39 o teste de guarda passa o lease no descarte (31.92). Simulado: backend/tests/test_treino_proposta_com_respostas.py::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 672 passed; backend SQLite -n 6 11840 passed, 13 skipped, 3 failed, todos consertados antes do deploy (estado_com_marca no #446; TrainingStopBody para a apresentação do skills; o lease no teste do 31.91-F2), dirigidos verdes; frontend typecheck limpo, 1678 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real, C:\\farm\\ferramentas\\mypy); PG dirigido 474 arquivos -n 8: 10182 passed, 13 skipped, 2 failed CONHECIDAS e medidas (29.139): test_dialogos_em_serie.py (4 falham igual na main 19e34b22) e test_sobreposicao_com_duas_causas.py (como na 38), não passou. Deploy 39 em 05/10/2026 ~18:05Z: /api/health ok, commit 9f9e2b39, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-150236); agente do notebook 0.1.0+9f9e2b3.",
    "blocker": null,
    "arquivos": [
     "backend/tests/test_treino_proposta_com_respostas.py",
     "frontend/src/features/training/TrainingBar.test.tsx"
    ],
-   "nota": "o ramo cobre só uma parte do item (partial, como a orquestradora classificou na 38); a frente diz se fecha",
-   "grupo": "android-suite-39",
+   "nota": "Gasto pago do percurso: US$ 0,009867 (uma chamada). | o ramo cobre só uma parte do item (partial, como a orquestradora classificou na 38); a frente diz se fecha",
+   "grupo": "orquestradora-percurso-deploy-39",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T18:09:30+00:00"
+   "quando": "2026-10-05T18:19:13+00:00"
   },
   "31.97": {
    "id": "31.97",
@@ -12356,6 +12356,19 @@
    ],
    "grupos": [
     "orquestradora-suite-39-31-99"
+   ]
+  },
+  {
+   "quando": "2026-10-05T18:19:13+00:00",
+   "itens": [
+    "29.141",
+    "29.130",
+    "31.90",
+    "31.92",
+    "31.91"
+   ],
+   "grupos": [
+    "orquestradora-percurso-deploy-39"
    ]
   }
  ]
