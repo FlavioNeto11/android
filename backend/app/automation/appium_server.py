@@ -120,18 +120,20 @@ class AppiumServer:
         alheio que de fato recebe as requisições (inclusive o preenchimento sensível). O arquivo só vale quando o
         sistema não diz quem escuta."""
         candidatos = self._donos_da_porta()
-        if not candidatos:
+        if candidatos:
+            # S1 da leitura do #446: com dois donos (127.0.0.1 e 0.0.0.0, por exemplo), um alheio basta para ser
+            # externo; o nosso ao lado não prova que as requisições vão a ele.
             try:
-                candidatos = [int(self._pid_file.read_text(encoding="ascii").strip())]
-            except (OSError, ValueError):
-                pass
-        for pid in candidatos:
-            try:
-                if self._is_ours(psutil.Process(pid)):
-                    return pid
+                if all(self._is_ours(psutil.Process(pid)) for pid in candidatos):
+                    return candidatos[0]
             except psutil.Error:
-                continue
-        return None
+                pass
+            return None
+        try:
+            gravado = int(self._pid_file.read_text(encoding="ascii").strip())
+            return gravado if self._is_ours(psutil.Process(gravado)) else None
+        except (OSError, ValueError, psutil.Error):
+            return None
 
     def start(self, wait_s: float = 60) -> bool:
         """Reaproveita o que responde na porta (`_reuse_running`) ou sobe um Appium com as regras.
@@ -187,7 +189,8 @@ class AppiumServer:
             # subindo escreve no mesmo `appium.log` (append) e pode pôr a frase depois do `offset`; a frase só vale
             # quando o sistema não diz quem escuta.
             donos = self._donos_da_porta()
-            ligou = proc.pid in donos if donos else LISTENER_MARKER in texto
+            # S1 da leitura do #446: todos os donos têm de ser este processo; um alheio ao lado não deixa provar.
+            ligou = set(donos) == {proc.pid} if donos else LISTENER_MARKER in texto
             if ligou and self.is_up():
                 self._pid_file.write_text(str(proc.pid), encoding="ascii")
                 self.log_masking_active = LOADED_RULES_MARKER in texto

@@ -57,15 +57,17 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   - `_subir` (Codex, P1): com os donos da porta visíveis, só a porta ser do processo novo prova a subida. Um Appium
     anterior ainda subindo escreve no mesmo `appium.log` (append) e podia pôr a frase do ouvinte depois do `offset`;
     a frase só vale sem visibilidade dos donos;
+  - S1 da leitura do #446: com dois donos na porta (127.0.0.1 e 0.0.0.0), um alheio basta para ser externo em
+    `_own_orphan`, e na subida os donos têm de ser só o processo novo (`set(donos) == {proc.pid}`);
   - limite que fica: a linha das regras de mascaramento no log não se atribui a um processo (o log do Appium não traz
     pid); com a porta provada deste processo, o resto do risco é o anterior, do mesmo projeto e com as mesmas regras,
     ter escrito a linha.
 - Prova `simulated`, em Idle, -n 2, um arquivo por vez:
-  - `backend/tests/test_sobras_29_131.py` 13, `test_achados_29_138.py` 5, `test_appium_start_pid_novo.py` 7,
+  - `backend/tests/test_sobras_29_131.py` 13, `test_achados_29_138.py` 7, `test_appium_start_pid_novo.py` 7,
     `test_supervisor_partida.py` 22, `test_saude_do_appium.py` 9, `test_supervisao_do_central.py` 20 (1 skipped),
     `test_vigia_do_laco.py` 15, `test_readocao_marco.py` 13, `test_readocao_sem_log_antigo.py` 4,
     `test_arquitetura.py` 9; `@tests/catracas.txt` 88 passed;
-  - 14 mutações, cada uma reprovada. As 9 do 29.131: migrate sem aviso; `AppState` sem `aparelhos`; recusa que não
+  - 16 mutações, cada uma reprovada (as 2 do S1: `any` no lugar de `all`; o pid entre os donos bastando). As 9 do 29.131: migrate sem aviso; `AppState` sem `aparelhos`; recusa que não
     zera; kill sem idade; partida com redespejo de 30 s; erro de leitura dando True; S1 só pelo `is_up`; `start` sem
     o dono da porta; sem a prova pela porta. As 5 do 29.138: sem a guarda da resposta; sem marcar a resposta; sem
     zerar na subida; o arquivo valendo com o dono conhecido; a frase valendo com o dono visível.
