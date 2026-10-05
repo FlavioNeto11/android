@@ -6351,3 +6351,20 @@ Valores aditivos de `motivo` nos pedidos de validação (`GET /api/aprendizado/v
   - Nenhum dos dois é chegada do curador.
 - O texto para a pessoa vem do servidor (`MOTIVO_HUMANO`), como os demais. O painel não precisa de mudança.
 - **Prova:** `simulated` (`backend/tests/test_validacao_motivos_da_prova.py`).
+
+## Adendo v1.60 (05/10/2026; número da orquestradora; item 30.80) — a receita que não se aplicou não conta como falha dela
+
+Mudanças aditivas; o painel não muda.
+- `GET /api/recipes` (e toda leitura que devolve a linha da receita) ganha `nao_aplicavel_seguidas: integer`
+  (migração 115, padrão `0`).
+  - Conta as vezes seguidas em que a receita "não se aplicou": divergiu na AÇÃO 1, antes de agir, por alvo ausente
+    na tela (não ambíguo), e a etapa terminou comprovada pela IA. Nesses casos nem `replay_ok` nem `replay_fail` mudam.
+  - Da 3ª seguida em diante, cada uma conta como falha comum (`replay_fail`, `consecutive_fail` e a quarentena de
+    sempre), sem zerar a série.
+  - O ok, a falha comum, o `PUT /api/recipes/{id}` e a reativação pelo livro zeram.
+- O evento `decision` desse caso diz "tela de partida diferente" e leva no `data`, além de `text`:
+  `kind: "receita_nao_aplicavel"`, `recipe_id`, `step_id` e `contou_como_falha: boolean` (`true` da 3ª seguida em diante).
+- A etapa fica com `driven_by: "ai"` quando não contou (nenhuma ação da receita rodou), e `"recipe+ai"` quando contou.
+- A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
+  que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
+- **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).

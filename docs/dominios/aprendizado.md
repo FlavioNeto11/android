@@ -2029,3 +2029,38 @@ Os três primeiros diziam só "sem evidência", e a medida não sabia o que trav
 **Prova:** `simulated` em `backend/tests/test_validacao_motivos_da_prova.py` (verificada por mutação: sem a marca no
 scheduler ou sem o filtro do aparelho, os testes reprovam). `real`: `not_run` até o deploy e a primeira prova com essa
 parada.
+
+## A receita que não se aplicou (30.80)
+
+Achado real (05/10, a prova do 31.79): a `r-20261005133833-122345` partiu de dentro de uma conversa no android-12. A
+receita 194, ensinada no modo treinamento, divergiu na ação 1 ("alvo ausente ou ambíguo nesta tela"), a IA comprovou a
+etapa, e a receita saiu com `replay_fail=1`. A falha era da tela de partida, não dela.
+
+- **"Não se aplicou"** (`StepExecutor._after_step` e `RecipeStore.nao_aplicavel`), quando valem as três condições:
+  - a receita divergiu na AÇÃO 1, antes de agir (`Replayer.done_actions == 0`);
+  - a divergência foi alvo AUSENTE (`recipes.AlvoAusente`). O seletor AMBÍGUO, que casa mais de um elemento, fica de
+    fora com a mesma mensagem: deixou de ser único, e isso é defeito da receita;
+  - a etapa TERMINOU comprovada.
+- **Nesse caso:**
+  - nem `replay_ok` nem `replay_fail` sobem, e `consecutive_fail` fica como está;
+  - `steps.driven_by='ai'`, porque nenhuma ação da receita rodou. Por isso a etapa não vira evidência contra no
+    aprendizado (`reproducao_sql.py` só lê `recipe`, `recipe+ai` e `sem_ator`);
+  - `attempts.recipe_id` segue apontando a receita tentada;
+  - a etapa que seria `sem_ator` também fica `ai`. É de propósito (sai da evidência contra), mas soma uma etapa da IA
+    no `/api/usage` sem chamada de IA.
+- **O evento `decision`** da execução diz "tela de partida diferente" e leva o código estável no `data`:
+  `kind='receita_nao_aplicavel'`, `recipe_id`, `step_id` e `contou_como_falha`. Isso dá para contar sem ler texto, e a
+  receita ensinada tentada que não servia aparece já na 1ª vez.
+  - A trilha (`learning_transitions`) fica para mudança de estado.
+- **Contrapeso** (migração 115, `recipes.nao_aplicavel_seguidas`): da 3ª "não se aplicou" SEGUIDA em diante, CADA
+  uma conta como falha comum (`recipe+ai`, `replay_fail`, a quarentena de sempre), sem zerar a série. Assim um 1º
+  seletor quebrado (atualização do app) chega à quarentena na 5ª execução.
+  - Na 1ª versão a 3ª zerava a série, e a quarentena só chegava na 9ª (R1 da segunda leitura).
+  - O ok, a falha comum, o gesto da pessoa na rota `PUT /api/recipes/{id}` e a reativação pelo livro zeram a série.
+- **Continua sendo falha comum:**
+  - a divergência depois da 1ª ação;
+  - "ações reproduzidas, mas a pós-condição não apareceu";
+  - parâmetro ausente;
+  - a etapa que a IA assumiu e que falhou ou ficou incerta.
+- **Prova:** `simulated`, em `tests/test_receita_nao_aplicavel.py`, que parte de dentro de outra conversa como o caso
+  real.

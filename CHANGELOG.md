@@ -27,6 +27,29 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Não é falha do executor: sem regra nova em `falhas.py`.
 - Prova `simulated`: `backend/tests/test_validacao_motivos_da_prova.py` (9 passed, verificado por mutação).
 
+## 2026-10-05 — 30.80: a receita que não se aplicou não conta como falha dela (branch feat/30-80-receita-nao-aplicavel)
+
+- Achado real, 05/10 (prova do 31.79, `r-20261005133833-122345`):
+  - a execução partiu de dentro de uma conversa, e a receita ensinada 194 divergiu na ação 1 ("alvo ausente");
+  - a IA comprovou a etapa, mas a receita saiu com `replay_fail=1`.
+- `taskqueue/recipes.py`:
+  - `AlvoAusente` (subclasse de `RecipeDiverged`);
+  - `RecipeStore.nao_aplicavel`, com `NAO_APLICAVEL_CONTA_APOS=3`;
+  - `result` zera a série; a falha que vem da série (`_falhou(…, zera_serie=False)`) não zera.
+- `taskqueue/executor.py` (`_after_step`):
+  - divergência na ação 1, antes de agir, por alvo ausente, com a etapa COMPROVADA: não é veredito sobre a receita, e
+    `driven_by='ai'` a mantém fora da evidência contra;
+  - o evento leva o código `receita_nao_aplicavel` e os ids;
+  - da 3ª seguida em diante, cada uma conta como falha comum, sem zerar a série: a quarentena chega na 5ª;
+  - o seletor ambíguo (casa mais de um elemento) segue como falha comum.
+- Migração 115: `recipes.nao_aplicavel_seguidas`.
+- `PUT /api/recipes/{id}` e a reativação pelo livro também a zeram.
+- `GET /api/recipes` passa a trazer o campo.
+- Prova `simulated`:
+  - `test_receita_nao_aplicavel.py` (4 testes, verificado por mutação);
+  - `test_receita_divergida_escala.py` ajustado ao critério novo;
+  - `test_d1_receitas.py` cobre a rota.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
