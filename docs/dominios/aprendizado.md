@@ -2008,6 +2008,63 @@ era desligado pela obsolescência em silêncio: a etapa voltava para a IA e quem
   - Nunca conteúdo, seletor, conta ou texto de tela.
 - **Quem traduz para o dono** é a frente Canais (28.50): o texto do aviso é fixo, e o id vai só no link do detalhe.
 - **Prova:** `simulated`, em `backend/tests/test_learning_ensinado_rebaixado.py`. `real`: `not_run`.
+
+## O ensinado só vale para quem ensinou até a prova (30.81)
+
+O fluxo salvo no modo treinamento nascia ativo e casava para qualquer aparelho sem prova nenhuma. Desenho aprovado pela
+orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajustes de 16:25Z).
+
+- **Nasce ativo, restrito** (`taskqueue/flows.py::ensinado_em_prova`):
+  - O `match` com aparelhos só usa o ensinado quando TODOS os perfis são a persona do ensino
+    (`training_sessions.profile_id`).
+  - A prévia sem aparelhos (`profile_ids=None`) casa como antes.
+  - A sessão sem persona não casa em lugar nenhum, e o salvar diz isso numa linha de `warnings`.
+  - O fluxo que não veio do treino sai antes de qualquer consulta.
+  - O `IntentResolver` não muda, e não há migração.
+- **A espera acaba** com:
+  - uma prova real a favor, sem `invalida` da mesma origem, de uma execução com `prova_fluxo_id` deste fluxo, depois do
+    nascimento;
+  - ou a linha de uma PESSOA na trilha depois do nascimento ("Confirmar que fica", desligar). Não contam `sistema`,
+    `plataforma` (a régua) nem `training:` (outra demonstração).
+- **Quem abre a prova:** a volta da validação, e não o ouvinte do nascimento. O `save` grava a proposta final (com os
+  `example`) DEPOIS de `learn_from_plan`, e o ouvinte leria a proposta velha.
+  - `EnsinoDaValidacaoSql.a_provar` é uma consulta só por volta.
+  - O pedido é a reprodução em outro aparelho. O comando é o molde com o `example` de cada parâmetro
+    (`domain/validacao.py::comando_do_ensino`), e o aparelho do treino fica de fora.
+  - O `review_id` é `ensino:<sessão>`, com um pedido vivo por item. A execução leva a chave de sempre da validação.
+- **O que a prova automática não cobre passa à pessoa.** O pedido nasce `recusada` com o motivo, e sai
+  `learning.ensinado_espera_decisao`. Isso vale para:
+  - a classe C, e o item sem dossiê de agora (`classe_c`);
+  - toda recusa ao nascer: `efeito_real`, `sessao_ou_autenticacao`, `credencial`, `sem_origem` (faltou exemplo) e
+    `sem_caminho`;
+  - as tentativas esgotadas: 3 pedidos sem veredito, por aparelho fora do ar, expiração ou sem evidência
+    (`tentativas_esgotadas`, `TETO_DE_TENTATIVAS_DO_ENSINO`).
+
+  O conjunto é `MOTIVOS_QUE_ESPERAM_A_PESSOA`. Depois dele, a volta não abre mais nada para aquele nascimento.
+- **Rebaixamento** (`SombraDosFluxos._rebaixar_o_ensinado`):
+  - Só o veredito CONTRÁRIO (`against`) de uma prova real desliga o fluxo que ainda esperava. Vai a `disabled` pelo
+    sistema, como a sombra contradita, com a execução na trilha. As receitas ativas `training:<sessão>` vão junto para a
+    quarentena, cada uma com a trilha.
+  - O 30.80 B avisa pelo caminho que já existe.
+  - Não rebaixam: a infraestrutura (`posicao=None`), a prova simulada e a forma.
+  - Uma pessoa reverte pelo Livro.
+- **A decisão da pessoa:**
+  - "Confirmar que fica" (30.24) passa a valer para o ensinado que espera a pessoa; antes, só "Revisar". O resultado é
+    `liberado`.
+  - Desligar pelo Livro é `desligado`.
+  - As duas publicam `learning.ensinado_decidido`, uma por nascimento: a espera é lida ANTES da linha da pessoa.
+  - O ensinado que ainda está na prova automática não se confirma (409).
+- **Eventos**, combinados com a Canais às 15:31Z:
+  - `learning.ensinado_espera_decisao`: `{kind, ref, app, treino, persona, desde}`;
+  - `learning.ensinado_decidido`: `{kind, ref, desde, decisao, decidido_em}`.
+
+  O `desde` é o nascimento (`flows.created_at`), o mesmo nos dois. Persona e slug nunca vão no `message`. O cartão da
+  lista de perguntas não decide (C-13).
+- **Campo da Portal:** `ensinado_em_prova: {persona, sessao}`, ausente quando não se aplica. Vai em:
+  - `cobertura_do_fluxo`, que serve `/flows/match` e `/flows/cobertura`;
+  - a resposta do salvar do treino;
+  - o topo da resposta de `/training/{id}/recipes`.
+- **Prova:** `simulated`, em `backend/tests/test_ensinado_em_prova.py`. `real`: `not_run`.
 ## A prova sem evidência diz a causa (30.75)
 
 A leitura de 05/10 (`.claude/handoffs/aprendizado-sem-evidencia.md`) achou 5 pedidos de fluxo `sem_evidencia`:

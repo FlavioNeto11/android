@@ -19,6 +19,48 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.81: o fluxo ensinado só vale para a persona que ensinou até a prova (branch feat/30-81-prova-do-ensinado)
+
+- O fluxo salvo no modo treinamento segue nascendo ativo, mas o `match` com aparelhos só o usa quando TODOS os perfis
+  são a persona do ensino (`training_sessions.profile_id`). A prévia sem aparelhos casa como antes. A sessão sem persona
+  não casa em lugar nenhum, e o salvar e a prévia avisam numa linha de `warnings`.
+- A espera acaba com uma prova real a favor, não invalidada, de uma execução com `prova_fluxo_id` deste fluxo depois do
+  nascimento, ou com a decisão de uma pessoa depois do nascimento. Não contam o sistema, a régua da plataforma e outro
+  treino. O fluxo que não veio do treino não paga consulta a mais.
+- A volta da validação (`ServicoDeValidacao.uma_volta`) abre a prova com UMA consulta por volta: reprodução em outro
+  aparelho, o molde preenchido pelos `example` da proposta salva, o aparelho do treino de fora, `review_id`
+  `ensino:<sessão>`, um pedido vivo por vez.
+- O que a prova automática não cobre passa à pessoa: o pedido nasce `recusada` com o motivo e sai
+  `learning.ensinado_espera_decisao` (`warn`). Isso vale para a classe C, o item sem dossiê de agora, toda recusa ao
+  nascer (efeito em app real, sessão, credencial, sem exemplo, sem caminho) e as tentativas esgotadas. Motivos novos:
+  `classe_c` e `tentativas_esgotadas`, este depois de 3 pedidos sem veredito.
+- O veredito CONTRÁRIO de uma prova real desliga o fluxo (`disabled`, pelo sistema, com a execução na trilha) e põe em
+  quarentena as receitas ativas do mesmo treino. O aviso do 30.80 B sai pelo caminho de sempre. A falha de
+  infraestrutura, a prova simulada e a divergência de forma não rebaixam.
+- "Confirmar que fica" (`POST /api/aprendizado/fluxo/{id}/confirmar`) passa a valer também para o ensinado que espera a
+  pessoa. Ele e desligar pelo Livro publicam `learning.ensinado_decidido` (`liberado`, `desligado` ou `outro`), um por
+  nascimento.
+- O campo `ensinado_em_prova: {persona, sessao}`, combinado com a Portal, vai em `POST /api/flows/match`,
+  `GET /api/flows/cobertura`, na resposta do salvar do treino e no topo da de `POST /api/training/{id}/recipes`. Fica
+  ausente quando não se aplica.
+- Funções tocadas (K-095):
+  - `taskqueue/flows.py`: `ensinado_em_prova` (nova), `FlowStore.match` e `FlowStore._restrito_ao_ensino` (nova);
+  - `social/capacidades.py`: `cobertura_do_fluxo` e `cobertura_dos_fluxos`, que agora seleciona `source` e
+    `created_at`;
+  - `training/skills.py`: `save`, `preview`, `refazer_receitas`, `_em_prova` (nova) e `_aviso_sem_persona` (nova);
+  - `application/nativos.py`: `SombraDosFluxos.__init__` (`ensinado` no fim), `_minerar_prova` e
+    `_rebaixar_o_ensinado` (nova);
+  - `application/validacao.py`: `ServicoDeValidacao.__init__` (`ensino` no fim), `uma_volta`,
+    `_abrir_provas_do_ensino` e `_abrir_prova_do_ensinado` (novas);
+  - `application/servico.py`: `_mover_nativo`, `confirmar_que_fica` e `avisar_espera_do_ensinado` (nova);
+  - `application/ensinado.py`: `AvisadorDoEnsinado.espera_decisao`, `espera_da_pessoa` e `decidiu_sem_falhar` (novas);
+  - `domain/validacao.py`: `comando_do_ensino` e `passo_do_ensino` (novas);
+  - `domain/ensinado.py`: `EsperaDoEnsinado`, `DecisaoDoEnsinado` e `decisao_da_pessoa` (novas);
+  - `infrastructure`: `LeituraSql.ensinado_a_esperar`, `LeitorDoEnsinadoSql.espera_da_pessoa`,
+    `EnsinoDaValidacaoSql`, os dois métodos novos de `EventosNoBarramento` e a ligação em `ligar_nativos.ligar` e
+    `ligar_validacao.ligar`.
+- Prova `simulated`: `backend/tests/test_ensinado_em_prova.py`. Real: `not_run` (o próximo treino salvo no central).
+
 ## 2026-10-05 — 30.80 parte B: o ensinado que o sistema tirou de uso avisa (branch feat/30-80b-aviso-do-ensinado)
 
 - Eventos novos `learning.ensinado_rebaixado` (`info`) e `learning.ensinado_sem_receita` (`warn`). Saem quando a receita

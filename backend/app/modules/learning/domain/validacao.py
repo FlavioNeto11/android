@@ -104,6 +104,10 @@ class Motivo(StrEnum):
     #: 30.41: o plano que a execução rodaria (o do fluxo em prova, ou o fluxo ativo do comando da receita) passa do teto
     #: máximo (`teto_da_prova`), ou o tamanho dele não se sabe. Fecha AO DESPACHAR: sem gasto e sem envio pela metade.
     PLANO_ACIMA_DO_TETO = "plano_acima_do_teto"
+    #: 30.81: o ensinado no modo treinamento que a prova automática não cobre espera a decisão de uma pessoa: a classe
+    #: C (ou sem dossiê de agora), e as tentativas da prova esgotadas sem veredito (falhas de infraestrutura).
+    CLASSE_C = "classe_c"
+    TENTATIVAS_ESGOTADAS = "tentativas_esgotadas"
     # ao despachar (o pedido fica `pendente` e tenta na volta seguinte)
     AMBIENTE_OCUPADO = "ambiente_ocupado"             # health com problema, execução em curso (restart/suíte/deploy)
     SEM_APARELHO = "sem_aparelho"                     # nenhum aparelho ocioso que sirva
@@ -426,9 +430,46 @@ def motivo_da_prova_invalida(detalhe: str | None) -> Motivo:
     return Motivo.SEM_EVIDENCIA if m is None else Motivo(m.value)
 
 
+# ------------------------------------------------------------------ a prova do ensinado (30.81)
+#: O `review_id` do pedido que prova o fluxo ensinado: `ensino:<sessão>` (um pedido vivo por vez; idempotente).
+PREFIXO_DO_ENSINO = "ensino:"
+#: Quantos pedidos a prova do ensinado abre sem veredito (aparelho fora do ar, tempo esgotado, sem evidência) antes de
+#: passar à pessoa. Só o veredito CONTRÁRIO de uma prova que rodou rebaixa o ensinado; a falha de infraestrutura, não.
+TETO_DE_TENTATIVAS_DO_ENSINO = 3
+#: As recusas ao nascer do pedido (a prova automática não cobre o item) e as duas do ensinado: o pedido `recusada` com
+#: um destes motivos é a marca de que o ensinado espera a decisão de uma pessoa (o cartão da Canais).
+MOTIVOS_QUE_ESPERAM_A_PESSOA = frozenset({
+    Motivo.TIPO_SEM_EXECUCAO, Motivo.DESLIGADO, Motivo.VETADO, Motivo.SESSAO, Motivo.SEM_ORIGEM, Motivo.CREDENCIAL,
+    Motivo.EFEITO_REAL, Motivo.SEM_CAMINHO, Motivo.CLASSE_C, Motivo.TENTATIVAS_ESGOTADAS})
+
+
+def comando_do_ensino(modelo: str, exemplos: Mapping[str, str]) -> str:
+    """O comando da prova do ensinado: o molde do fluxo com o `example` de cada parâmetro da proposta salva. Faltou o
+    exemplo de algum parâmetro (ou o molde está vazio): `""`, e o pedido nasce recusado `sem_origem`."""
+    faltou = False
+
+    def valor(m: re.Match[str]) -> str:
+        nonlocal faltou
+        v = (exemplos.get(m.group(1)) or "").strip()
+        faltou = faltou or not v
+        return v
+
+    comando = re.sub(r"\{([a-z_][a-z0-9_]*)\}", valor, modelo or "").strip()
+    return "" if faltou or not comando else comando
+
+
+def passo_do_ensino(*, tentativas: int, vivo: bool, esperando_pessoa: bool) -> str | None:
+    """O que a volta da validação faz com o ensinado ainda sem prova: `abrir` um pedido, `esgotado` (passa à pessoa) ou
+    nada (`None`: já há pedido vivo, ou ele já espera a pessoa)."""
+    if vivo or esperando_pessoa:
+        return None
+    return "esgotado" if tentativas >= TETO_DE_TENTATIVAS_DO_ENSINO else "abrir"
+
+
 __all__ = ["BETA_PADRAO", "FALTA_AUTOMATIZAVEL", "JANELA_DE_PROVAS_DIAS", "MAXIMO_DE_PROVAS", "MAXIMO_POR_HORA",
            "MOTIVO_HUMANO", "TETO_DA_PROVA_MAXIMO_USD", "TETO_DA_PROVA_PISO_USD", "TETO_DA_PROVA_POR_ETAPA_USD",
-           "VALIDADE_DO_PEDIDO_H", "VIVOS", "Ambiente", "AparelhoCandidato", "EstadoDoPedido", "FatosDoParecer",
+           "VALIDADE_DO_PEDIDO_H", "VIVOS", "MOTIVOS_QUE_ESPERAM_A_PESSOA", "PREFIXO_DO_ENSINO",
+           "TETO_DE_TENTATIVAS_DO_ENSINO", "comando_do_ensino", "passo_do_ensino", "Ambiente", "AparelhoCandidato", "EstadoDoPedido", "FatosDoParecer",
            "Folego", "Grupo", "Motivo", "Pedido", "ProvaAnterior", "conta_para_o_limite", "escolher_aparelho",
            "excluidos_da_validacao", "falta_automatizavel", "grupo_de", "limite_de_provas_atingido",
            "marca_da_evidencia", "motivo_da_prova_invalida", "motivo_humano", "pedido_do_parecer", "pode_despachar",
