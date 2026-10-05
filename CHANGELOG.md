@@ -179,6 +179,12 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
 - Falha fechado: `TrainingRecorder.stop` confere por padrão; só a devolução do controle diz `por_sistema=True`. Aparelho hospedado por outra réplica: 409 `gravacao_em_outro_servidor` ("Esta gravação está em outro servidor; encerre por lá."). Quem clica "Assumir" com controle de usuário vigente recebe o mesmo lease: fica para o 29.143. Testes: 23 passed no arquivo novo (9 reprovam sem a conferência padrão).
 - A parte do painel (mandar o `lease_id` e tratar o 409) é necessária para o item valer inteiro e vem em outra mudança.
 
+## 2026-10-05 — 31.91 (F0 e F2): o propose do treino recebe as respostas da pessoa (ADR-077)
+
+- Decisão do dono de 05/10: um caminho só de ensino, o Modo treinamento (ADR-077). `POST /api/training/{id}/propose` aceita corpo opcional `{"answers": [{question, answer}]}` (contrato v1.63): as respostas se acumulam na proposta da sessão (até 16), entram no texto do provedor com a frase do ensino v2 (agora numa função só, `texto_das_respostas`) e as perguntas respondidas não voltam. Resposta com formato de segredo é recusada com 400 `resposta_sensivel` antes de qualquer chamada de IA; erro de forma é 400 `invalid_answers`. Uma chamada do provedor por pedido; o salvar não leva as respostas para `flows` nem `recipes`. Sem migração.
+- Prova `simulated`: `backend/tests/test_treino_proposta_com_respostas.py` (35 passed), com mutação (respostas no texto, perguntas respondidas, recusa de segredo, pergunta conhecida, `answers` do cliente no salvar, corrida) reprovando o teste; provedor simulado com espião. Prova `not_run` com IA real.
+- Revisão independente (delta): a `question` só vale se for das `questions` da proposta guardada ou já respondida (sem proposta guardada, 400 `invalid_answers`; sem teto de tamanho na pergunta conhecida) e a pergunta também passa pela checagem de segredo; o `save` e a `/preview` ignoram o `answers` do cliente e usam o da sessão; o `propose` só grava se a sessão não mudou desde a leitura (409 `proposta_concorrente`). Prova `real`: `mypy-catraca` 257, igual ao teto (rodado pela orquestradora na ponta `7583f3f6`).
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.

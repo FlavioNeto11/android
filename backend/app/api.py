@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import re
@@ -608,11 +609,20 @@ async def stop_training(request: Request, session_id: str, body: TrainingStopBod
 @router.post("/training/{session_id}/propose")
 async def propose_training(request: Request, session_id: str) -> Any:
     """A IA lê a gravação e propõe a habilidade (comando com parâmetros, etapas, descartes). Uma chamada do modelo
-    do planejador; a proposta fica guardada para a pessoa revisar."""
+    do planejador; a proposta fica guardada para a pessoa revisar. Corpo OPCIONAL `{"answers": [{question, answer}]}`
+    (31.91): as respostas da pessoa às perguntas da proposta anterior; lido à mão para o erro de forma ser 400
+    `invalid_answers` (e não o 422 do FastAPI)."""
     from .planning.provider import AIError  # noqa: PLC0415
     from .training.recorder import TrainingError  # noqa: PLC0415
+    cru = await request.body()
+    corpo: object = None
+    if cru.strip():
+        try:
+            corpo = json.loads(cru)
+        except ValueError:
+            raise err(400, "invalid_answers", "O corpo tem de ser um JSON {\"answers\": [...]}.") from None
     try:
-        return await st(request).skills.propose(session_id)
+        return await st(request).skills.propose(session_id, corpo)
     except TrainingError as exc:
         raise _training_error(exc) from exc
     except AIError as exc:

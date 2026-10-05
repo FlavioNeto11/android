@@ -27,7 +27,7 @@ from app.modules.skills.domain.generalization import GeneralizationContext, enve
 from app.modules.skills.domain.teaching import Generalization, GeneralizationRequest, GeneralizerFailed, RecordedInput
 from app.planning.capabilities import load_catalog
 from app.planning.provider import AIError, Usage
-from app.planning.training import TrainingRequest
+from app.planning.training import TrainingRequest, texto_das_respostas
 
 
 class GeneralizingProvider(Protocol):
@@ -96,8 +96,7 @@ def _intencao_com_contexto(request: GeneralizationRequest) -> str:
         partes.append("Correções da pessoa (a habilidade errou aqui):\n" +
                       "\n".join(f"- {c}" for c in request.corrections))
     if request.answers:
-        partes.append("Respostas da pessoa às suas perguntas anteriores (não pergunte de novo):\n" +
-                      "\n".join(f"- {a.question} → {a.answer}" for a in request.answers))
+        partes.append(texto_das_respostas((a.question, a.answer) for a in request.answers))
     return "\n\n".join(p for p in partes if p.strip())
 
 

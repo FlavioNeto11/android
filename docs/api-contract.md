@@ -6494,3 +6494,38 @@ Mudança de comportamento em duas rotas do modo treinamento; o corpo novo é adi
   `control_required`, mostrar a mensagem do erro e manter a barra de gravação (a gravação segue viva; nada foi encerrado),
   em vez de tratá-la como sessão encerrada. Quem não tem o controle vê a gravação, mas não a encerra.
 - **Prova:** `simulated` (`backend/tests/test_treino_parar_exige_controle.py`); `real`: `not_run`.
+
+## Adendo v1.63 (05/10/2026; número da orquestradora; item 31.91) — o propose do treino recebe as respostas da pessoa
+
+Mudanças aditivas; sem corpo, o comportamento é o de antes.
+- `POST /api/training/{session_id}/propose` aceita corpo OPCIONAL `{"answers": [{"question": "...", "answer": "..."}]}`.
+  - `answers`: no máximo 8 itens por pedido. `question` não vazia (sem teto de tamanho: só vale se for uma pergunta da proposta guardada) e `answer` de 1 a 500 caracteres, depois de `strip`.
+    Pergunta repetida no mesmo corpo, campo a mais, JSON que não é objeto ou texto fora do formato: **400
+    `invalid_answers`**, sem chamar a IA e sem mudar a sessão.
+  - **A pergunta tem de ser conhecida**: uma `question` do corpo só vale se estiver nas `questions` da proposta guardada
+    ou já tiver sido respondida (comparação por `strip().casefold()`). Outra é 400 `invalid_answers` ("pergunta
+    desconhecida: responda a uma pergunta da proposta atual"). Responder sem proposta guardada também é 400
+    `invalid_answers`. A pergunta conhecida vale como está, sem teto de tamanho.
+  - Pergunta OU resposta com FORMATO de segredo (a mesma checagem das memórias): **400 `resposta_sensivel`**, mensagem "Não escreva
+    senha nem código aqui: a proposta não precisa disso.", antes de qualquer chamada de IA e sem mudar a sessão.
+    Falar da senha sem o valor ("sim, com a senha da conta") é aceito.
+  - Sem corpo, ou com `answers` vazio e sem respostas guardadas: a proposta sai como antes (sem a chave `answers`).
+- **Acúmulo.** As respostas ficam guardadas dentro da proposta da sessão, na chave `answers` (lista de
+  `{question, answer}`), somando as de chamadas anteriores. A mesma pergunta (comparada por `strip().casefold()`)
+  troca a resposta anterior. O teto é de 16 pares acumulados: acima disso, 400 `invalid_answers`. Um `propose` sem
+  corpo mantém as guardadas.
+- **Ao modelo.** Todas as respostas acumuladas entram no texto enviado ao provedor, sob a frase "Respostas da pessoa às
+  suas perguntas anteriores (não pergunte de novo):" (a mesma do ensino v2), uma linha `- pergunta → resposta` cada.
+  Continua UMA chamada do provedor por `propose`, com o uso contabilizado como antes.
+- **Na resposta.** `proposal.questions` não repete pergunta já respondida (mesma comparação) e `proposal.answers`
+  traz o acumulado. `GET /api/training/{id}` devolve a proposta com `answers`. No modo simulado o comando não muda por
+  causa das respostas, mas a regra das perguntas vale.
+- **Salvar e prévia.** `save` e `preview` aceitam a proposta com `answers`, mas IGNORAM o `answers` que o cliente
+  mandar nela: vale o da SESSÃO (o do cliente nem forja nem apaga). As respostas ficam só na sessão e não vão para
+  `flows` nem `recipes`.
+- **Corrida.** O `propose` só grava a proposta se a sessão não mudou desde que ele a leu (`updated_at`). Se outra
+  proposta terminou antes: **409 `proposta_concorrente`**, "Outra proposta desta gravação terminou antes; peça de
+  novo.", e a proposta da outra fica intacta.
+- O texto da resposta não vai a log nem a evento.
+- Erros de estado como antes: gravando 409 `still_recording`, salva ou descartada 409 `closed`, sem entradas 400 `empty`.
+- **Prova:** `simulated` (`backend/tests/test_treino_proposta_com_respostas.py`).
