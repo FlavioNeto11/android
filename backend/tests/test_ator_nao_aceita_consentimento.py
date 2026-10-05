@@ -9,6 +9,7 @@ não é o Chrome). Nível de prova: `simulated`.
 """
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 import pytest
@@ -22,7 +23,7 @@ from app.taskqueue.dialogos import (LIMITE_DE_RECUSAS_DE_ACEITE, MOTIVO_ACEITE_R
 
 from .conftest import Harness
 from .fake_device import Node
-from .test_dialogos_em_serie import _ACEITAR, _CONFIGURAR, _COOKIES, _PAGINA, _arvore, _no
+from .test_dialogos_em_serie import _ACEITAR, _CONFIGURAR, _COOKIES, _COOKIES_TEXTO, _PAGINA, _arvore, _no
 
 TERMINAIS = ("completed", "completed_with_issues", "failed", "waiting_user", "needs_input", "uncertain")
 
@@ -714,3 +715,28 @@ def test_n1_a_marca_curta_sem_gemeo_clicavel_segue_com_cara_de_aviso() -> None:
                        ("Detalhes", (40, 1500, 600, 1560), "", "android.widget.Button", True),
                        ("OK", (40, 600, 400, 660), "", "android.widget.Button", True))
     assert _recusa(outro_texto, "OK") == "OK"
+def test_31_104_pagina_esparsa_mede_a_tela_pela_janela_e_o_aviso_segue_marca() -> None:
+    """31.104: a janela do dump (31.77) é a tela inteira, mas as folhas só ocupam o canto de cima. Pela extensão das
+    folhas (400×300), o texto do aviso (400×200) passava de 60 % da "página", deixava de ser marca e o "Aceitar todos"
+    passava. Pela maior das duas medidas, o aviso segue marca e o aceite é recusado."""
+    aviso = _no(1, _COOKIES_TEXTO, 0, 40, 400, 240, rid="cookie-consent-banner", classe="android.view.View",
+                clicavel=False)
+    aceitar = _no(2, "Aceitar todos", 40, 250, 300, 300)
+    xml = ('<hierarchy rotation="0"><node index="0" text="" resource-id="" class="android.widget.FrameLayout"'
+           ' package="com.android.chrome" content-desc="" clickable="false" enabled="true" bounds="[0,0][720,1280]">'
+           + aviso + aceitar + "</node></hierarchy>")
+    tree = parse_hierarchy(xml)
+    assert tree.janela == (0, 0, 720, 1280)
+    assert max(e.bounds[2] for e in tree.elements) == 400 and max(e.bounds[3] for e in tree.elements) == 300
+    assert _recusa(tree, "Aceitar todos") == "Aceitar todos"
+
+def test_31_104_sem_janela_o_tamanho_da_tela_do_executor_trava() -> None:
+    """N1 da leitura do 31.104: árvore sem janela (montada fora do leitor), folhas esparsas. Só pela extensão, o aviso
+    não é marca e o aceite passa (o comportamento de antes); com o tamanho da tela que o executor conhece, trava."""
+    aviso = _no(1, _COOKIES_TEXTO, 0, 40, 400, 240, rid="cookie-consent-banner", classe="android.view.View",
+                clicavel=False)
+    tree = dataclasses.replace(parse_hierarchy(_arvore(aviso, _no(2, "Aceitar todos", 40, 250, 300, 300))), janela=None)
+    alvo = _alvo(tree, "Aceitar todos")
+    assert toque_que_aceita(tree, alvo) is None
+    recusado = toque_que_aceita(tree, alvo, None, (720, 1280))
+    assert recusado is not None and recusado.text == "Aceitar todos"

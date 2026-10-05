@@ -48,6 +48,31 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   a recusa de "OK"/"Aceitar" num rodapé só com "Política de privacidade". O gêmeo também deixa de ser a "caixa" da marca
   (`_caixa_da_marca`), senão o par se tornaria aviso pelo outro lado. Prova `simulated`: 3 testes `test_n1_*`; as árvores
   reais ficam idênticas (gov-3 com 12). `real`: `not_run`.
+## 2026-10-05 — 31.104: a tela do aviso pela maior medida (branch fix/31-104-pagina-pela-janela, sobre o 31.77)
+
+- `taskqueue/dialogos.py`: `toque_que_aceita` mede a tela pela maior das medidas, em largura e altura: a extensão das
+  folhas, a janela do dump (`UiTree.janela`, 31.77) e o tamanho da tela que o executor conhece (parâmetro `tela`, do
+  `ToolContext`, passado por `_aceite_do_toque`; vale também sem janela, N1 da leitura). Antes era só a extensão: numa página esparsa, o texto do aviso
+  passava de 60 % dela, deixava de ser marca, e o "Aceitar todos" passava (achado S1, que vem do 31.72). A faixa em volta
+  da marca, fração da altura, cresce junto. A mudança é monótona: nada que travava passa a dispensar.
+- `_cobre_a_tela` fica pela extensão das folhas: ali a medida menor é o lado que endurece (mais etapas falham fechado);
+  a maior afrouxaria.
+- Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py`, `test_31_104_pagina_esparsa_…` (reprova o
+  código anterior, conferido por mutação) e `test_31_104_sem_janela_o_tamanho_da_tela_do_executor_trava`. `real`: `not_run`.
+
+## 2026-10-05 — 31.77: uma fração só e a janela flutuante pela raiz do dump (branch feat/31-77-fracao-unica-e-janela-pela-raiz)
+
+- `automation/hierarchy.py`: `UiTree.janela` (novo, `None` por padrão) e `_janela_do_dump`. É a união dos bounds dos
+  nós de topo do dump, lida antes de o leitor descartar o contêiner sem texto, sem os de `com.android.systemui`.
+- `taskqueue/dialogos.py`: `_FRACAO_DA_PAGINA` vira `FRACAO_DA_PAGINA`, pública e única (K2 da leitura do #391).
+- `taskqueue/executor.py`: `_FRACAO_DA_JANELA` sai. O L2 de `sobreposicao_vale` passa a usar `tree.janela` contra
+  `FRACAO_DA_PAGINA`, e não mais a extensão das folhas (L2-a). Sem janela, o L2 não decide.
+- Leitura da revisão: o diálogo com janela de tela inteira fica fora da regra da janela flutuante (limite escrito em
+  `docs/ia.md`, L2); o nó de topo com bounds zerados ao lado de um válido não entra na união (teste novo). A marcação
+  pelo ancestral não foi feita nem é prometida por este ramo.
+- Prova `simulated`: `backend/tests/test_janela_pela_raiz.py` (8 testes; a página esparsa com folhas em 15 % da tela
+  não passa por janela). Os testes do 31.73, com dump plano, não mudam: a união dos nós de topo é a extensão das
+  folhas. `real`: `not_run`, à espera de um dump bruto de um diálogo nativo e de uma página esparsa.
 
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 

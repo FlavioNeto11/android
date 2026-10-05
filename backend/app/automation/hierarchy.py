@@ -254,6 +254,10 @@ class UiTree:
     #: nó a mais depois do teto basta. A leitura visual (item 12.5) recusa com `arvore_truncada`, porque "esta linha não
     #: tem texto" só vale se a subárvore inteira foi vista.
     truncada: bool = False
+    #: 31.77 (L2-a): a área da JANELA do dump, a união dos bounds dos nós de topo (os filhos de `<hierarchy>`), lida
+    #: antes de o leitor descartar o contêiner sem texto. O Appium entrega só a janela ativa: no diálogo nativo é o
+    #: painel do diálogo; na página, a tela. `None` = árvore montada fora de `parse_hierarchy` (não se sabe).
+    janela: tuple[int, int, int, int] | None = None
 
     def at(self, x: int, y: int) -> UiElement | None:
         """O elemento sob o ponto (x, y) em pixels do aparelho: o MENOR que o contém — o mesmo critério do toque
@@ -570,6 +574,24 @@ class UiTree:
         return h.hexdigest()[:16]
 
 
+def _janela_do_dump(root: ET.Element) -> tuple[int, int, int, int] | None:
+    """31.77 (L2-a): a união dos bounds dos nós de topo do dump (a raiz, quando o próprio documento é um nó). A barra de
+    status e a de navegação (`com.android.systemui`), se um dia vierem como janelas próprias, ficam de fora: senão a
+    união seria a tela inteira e o diálogo nunca pareceria janela. Sem nó de topo com bounds, `None`."""
+    topo = [root] if "bounds" in root.attrib else list(root)
+    caixas = []
+    for no in topo:
+        m = BOUNDS_RE.match(no.attrib.get("bounds", ""))
+        if not m or no.attrib.get("package", "") == "com.android.systemui":
+            continue
+        b = tuple(int(g) for g in m.groups())
+        if b[2] > b[0] and b[3] > b[1]:
+            caixas.append(b)
+    if not caixas:
+        return None
+    return (min(b[0] for b in caixas), min(b[1] for b in caixas), max(b[2] for b in caixas), max(b[3] for b in caixas))
+
+
 def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
                     regras: tuple[RegraDeTelaSensivel, ...] = (), sempre_sensivel: str | None = None) -> UiTree:
     """`regras` e `sempre_sensivel` são os dois critérios de "tela sensível" que faltavam (achado #127).
@@ -664,4 +686,4 @@ def parse_hierarchy(xml_text: str, *, max_elements: int = 1500,
             if _SO_DIGITOS.match(e.text):
                 e.text = MASK
     return UiTree(elements=elements, packages=packages, sensitive=sensitive, sensitive_reason=motivo,
-                  conta_travada=trava, truncada=truncada)
+                  conta_travada=trava, truncada=truncada, janela=_janela_do_dump(root))
