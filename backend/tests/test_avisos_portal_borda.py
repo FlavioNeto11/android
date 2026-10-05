@@ -46,11 +46,15 @@ def test_o_script_sai_com_host_e_caminho_e_o_cookie_com_o_nome() -> None:
     assert c is not None and c.corpo.startswith("A página inicial do site chegou pondo cookie (__cf_bm).")
 
 
-@pytest.mark.parametrize("achado", [f"{BEACON}?token=abc", "__cf_bm=valor", "a b", "x" * 121, 42, ""])
-def test_achado_fora_do_formato_some_sem_recusar(achado: object) -> None:
-    """O beacon tem token na query, e o cookie tem valor: só sai host e caminho, ou o nome."""
+@pytest.mark.parametrize(("achado", "sobra"), [
+    # Releitura do #381: recusado o achado inteiro, sai só o host se ele passar no filtro (aqui, o do beacon).
+    (f"{BEACON}?token=abc", ": static.cloudflareinsights.com"),
+    ("__cf_bm=valor", ""), ("a b", ""), ("x" * 121, ""), (42, ""), ("", "")])
+def test_achado_fora_do_formato_some_sem_recusar(achado: object, sobra: str) -> None:
+    """O beacon tem token na query, e o cookie tem valor: só sai host e caminho, ou o nome, e nunca a query."""
     a = p.aviso_da_borda("script_injetado", "raiz", AGORA_UTC, achado=achado)
-    assert a is not None and a.corpo.startswith("A página inicial do site chegou com um script que a página não tem.")
+    assert a is not None
+    assert a.corpo.startswith(f"A página inicial do site chegou com um script que a página não tem{sobra}.")
     assert "token" not in a.corpo and "valor" not in a.corpo
 
 
@@ -168,3 +172,37 @@ def test_achado_recusado_nao_cala_o_aviso(tmp_path: Path, achado: object) -> Non
 def test_sem_conferir_diz_o_codigo_do_vigia_pelo_filtro(achado: object, causa: str) -> None:
     a = p.aviso_da_borda(p.SEM_CONFERIR, "raiz", AGORA_UTC, achado=achado, horas_sem_conferir=2)
     assert a is not None and a.corpo.split("\n")[0].endswith(causa)
+
+
+# ===================================================================== 4. as notas da releitura do #381
+@pytest.mark.parametrize("achado", ["10_0_0_5.nip.io/x", "cdn-2130706433.io/y", "cdn/x_3232235777/y", "0x7f000001/x"])
+def test_ip_com_sublinhado_decimal_longo_e_hexadecimal_nao_sai(achado: str) -> None:
+    a = p.aviso_da_borda("script_injetado", "raiz", AGORA_UTC, achado=achado)
+    assert a is not None
+    for pedaco in ("10_0_0_5", "2130706433", "3232235777", "0x7f000001"):
+        assert pedaco not in a.titulo + a.corpo
+
+
+@pytest.mark.parametrize("codigo", ["borda-502", "api-404", "tempo-esgotado"])
+def test_o_codigo_do_vigia_continua_passando(codigo: str) -> None:
+    a = p.aviso_da_borda(p.SEM_CONFERIR, "raiz", AGORA_UTC, achado=codigo, horas_sem_conferir=1)
+    assert a is not None and f"(código: {codigo})" in a.corpo
+
+
+def test_achado_recusado_pela_versao_sai_so_com_o_host() -> None:
+    a = p.aviso_da_borda("script_injetado", "painel", AGORA_UTC, achado="cdn.exemplo.com/jquery-3.6.0.min.js")
+    assert a is not None and ": cdn.exemplo.com." in a.corpo and "3.6.0" not in a.corpo
+
+
+def test_fuso_que_nao_diz_o_deslocamento_e_recusado() -> None:
+    from datetime import tzinfo
+
+    class SemDeslocamento(tzinfo):
+        def utcoffset(self, dt: datetime | None) -> timedelta | None:
+            return None
+
+    agora = AGORA_UTC.replace(tzinfo=SemDeslocamento())
+    assert agora.tzinfo is not None
+    assert p.aviso_da_borda("cookie", "raiz", agora, achado="__cf_bm") is None
+    with pytest.raises(ValueError, match="sem fuso"):
+        p.chave_da_borda("cookie", agora)

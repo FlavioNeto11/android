@@ -585,7 +585,8 @@ avisos depois da faxina"), e a trava cai no TTL.
     - O `achado` só sai como host e caminho, ou o nome do cookie: com `?`, `=`, espaço, IP ou mais de 120
       caracteres, é omitido sem recusa. IP inclui o que está dentro de um nome (`10.0.0.5.nip.io`,
       `10-0-0-5.sslip.io`) e a forma curta ou decimal: qualquer sequência de quatro números separados por `.` ou `-`,
-      ou rótulo só de dígitos, omite o achado (B1 da leitura do #381).
+      ou rótulo só de dígitos, omite o achado (B1 da leitura do #381); também com `_` como separador, decimal de 8+ dígitos e hexadecimal (`0x…`). Recusado o
+      achado inteiro (por exemplo, uma versão no caminho), sai só o host, se ele passar no mesmo filtro.
     - Quem chama manda SÓ host e caminho, sem query nem credencial: o filtro não reconhece segredo num segmento de
       caminho (`cdn/token/abc123` passa).
     - `agora` sem fuso é `campo_invalido`: o dia UTC da chave não pode depender do fuso do processo (B2).
@@ -602,6 +603,14 @@ avisos depois da faxina"), e a trava cai no TTL.
       internet e não o site, e que não espera o dono. O nível 2 fica.
     - Achado recusado pelo filtro nunca cala o aviso: ele sai sem o item (pergunta da orquestradora, 05/10 06:51Z).
     - A resposta do dono vai à orquestradora como recado (repasse `borda`) e nunca vira pedido.
+    - `api_aberta` (29.101, com o Portal; texto aprovado pela orquestradora em 05/10 06:56Z): a API do central
+      respondeu sem login pelo endereço público. Só com `onde=api`; tipo próprio `portal.borda_api` no nível 1 (sai
+      na hora e espera o dono). Texto fixo: o único caminho citado é `/api/instances`, e o achado não entra. O gesto
+      é dele (parar o serviço do túnel no central); responder vai à orquestradora pelo repasse `borda`, o que só
+      funciona com uma sessão ativa. Mesma chave por dia, sem reaviso no dia; a saúde do Portal mostra o achado.
+      Quando o vigia não consegue conferir a API (leitura do #383), manda `sem_conferir` com `onde=api` e o motivo
+      (`api-404`, `api-desafio`, `api-500`…): o texto é da API, com as horas e o motivo, não espera o dono, e no
+      `api-500` pede um olhar (a API devia recusar antes da rota). Chave própria, `portal-borda:sem_conferir_api:<dia>`.
 - **Hoje:** `modules/avisos/domain/portal.py` (montagem e higiene),
   `infrastructure/servico.py::avisar_contato_do_portal`, `avisar_resumo_do_portal` e `avisar_borda_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,
   a tabela dos contatos, a taxa e a retenção são da frente Portal (29.77).

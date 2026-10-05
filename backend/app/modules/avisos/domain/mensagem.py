@@ -91,6 +91,8 @@ NIVEL_POR_TIPO: dict[str, int] = {
     # 29.97: o vigia da borda do site. O site errado para visitante parou algo do dono: sai na hora.
     "portal.borda": ALGO_FALHOU,
     "portal.borda_sem_conferir": ALGO_FALHOU,
+    # 29.101: a API do central aberta sem login pelo endereço público. O gesto é do dono (parar o túnel): sai na hora.
+    "portal.borda_api": PRECISA_DE_VOCE,
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
 PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado", "portal.resumo", "portal.borda",

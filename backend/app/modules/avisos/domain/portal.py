@@ -319,6 +319,23 @@ def aviso_do_resumo(retidos: int, descartados: int, janela_h: int, agora: dateti
 TIPO_DA_BORDA = "portal.borda"
 TIPO_DA_BORDA_SEM_CONFERIR = "portal.borda_sem_conferir"
 SEM_CONFERIR = "sem_conferir"
+#: 29.101 (contrato com o Portal e texto aprovado pela orquestradora, 05/10 06:56Z): a API do central respondeu sem
+#: login pelo endereço público. Tipo próprio no nível 1: sai na hora e espera o dono, cujo gesto é parar o túnel. A
+#: chave segue a da borda (`portal-borda:api_aberta:<dia UTC>`, sem reaviso no dia) e a resposta dele vai à
+#: orquestradora pelo mesmo repasse `borda`.
+TIPO_DA_BORDA_API = "portal.borda_api"
+API_ABERTA = "api_aberta"
+ONDE_DA_API = "api"
+#: O "sem conferir" da API tem chave própria (`portal-borda:sem_conferir_api:<dia>`), separada da do site.
+SEM_CONFERIR_DA_API = "sem_conferir_api"
+#: O motivo que pede a frase a mais: a API respondeu com erro em vez de recusar antes da rota.
+API_COM_ERRO = "api-500"
+TITULO_DA_API = "🔓 Site: a API do central respondeu sem login pelo endereço público"
+CORPO_DA_API = (
+    "Chegou: um pedido sem login a /api/instances, pelo nome público, foi atendido.",
+    "Crítico: quem estiver na internet consegue ler dados do central sem senha. Escrita não foi testada.",
+    "Espera você: pare o serviço do túnel (Cloudflared) no central. Se preferir, responda a esta mensagem: a ANA "
+    "repassa à orquestradora, que confere de fora e para o túnel, mas isso só funciona com uma sessão ativa.")
 #: Onde o vigia achou o defeito, dito ao dono.
 ONDE_DA_BORDA: dict[str, str] = {"raiz": "A página inicial do site", "painel": "O painel", "css": "O estilo do site",
                                  "js": "O script do site"}
@@ -327,7 +344,9 @@ _ACHADO = re.compile(r"[A-Za-z0-9._/-]{1,120}")
 #: B1 da leitura do #381: o IP também se esconde dentro de um nome (`10.0.0.5.nip.io`, `10-0-0-5.sslip.io`) e em forma
 #: curta ou decimal (`127.1`, `2130706433`). O achado sai sem nenhuma sequência de quatro números separados por `.` ou
 #: `-` e sem rótulo só de dígitos; um caminho com segmento numérico também perde o detalhe (o aviso sai sem ele).
-_IP_NO_ACHADO = re.compile(r"\d+[.-]\d+[.-]\d+[.-]\d+|(?:^|[./])\d+(?=[./]|$)")
+#: Releitura do #381: também `_` como separador (`10_0_0_5.nip.io`), o decimal longo e o hexadecimal
+#: (`0x7f000001`). O `-` e o `_` ficam FORA da segunda alternativa, que cortaria `borda-502` e `api-404`.
+_IP_NO_ACHADO = re.compile(r"\d+[._-]\d+[._-]\d+[._-]\d+|(?:^|[./])\d+(?=[./]|$)|\d{8,}|0x[0-9A-Fa-f]+")
 HORAS_SEM_CONFERIR_MAX = 24 * 31
 REPASSA = "Se nada mudou lá, responda a esta mensagem: a ANA repassa à orquestradora."
 
@@ -380,9 +399,13 @@ BORDA: dict[str, _Borda] = {
 def chave_da_borda(codigo: str, agora: datetime) -> str:
     """`portal-borda:<código>:<AAAA-MM-DD>`: um defeito que persiste dá uma mensagem por dia UTC, não uma por hora. O
     `agora` sem fuso seria lido como hora local do processo (B2 da leitura do #381): recusado."""
-    if agora.tzinfo is None:
+    if agora.utcoffset() is None:
         raise ValueError("agora sem fuso")
     return chave_do_fato("portal-borda", codigo, f"{agora.astimezone(timezone.utc):%Y-%m-%d}")
+
+
+def _so_o_host(valor: object) -> object:
+    return valor.strip().split("/", 1)[0] if isinstance(valor, str) else None
 
 
 def _achado(valor: object, separador: str, fim: str = "") -> str:
@@ -391,16 +414,33 @@ def _achado(valor: object, separador: str, fim: str = "") -> str:
     return f"{separador}{valor.strip()}{fim}"
 
 
+def _api_sem_conferir(h: int, achado: object, agora: datetime) -> Aviso:
+    """29.101, leitura do #383 (orquestradora, 05/10 07:16Z): o vigia não conseguiu conferir a API (404, 302, 429, 500,
+    503 ou o desafio da borda). O site pode estar perfeito, então o texto é da API. Chave própria, para que o "sem
+    conferir" do site no mesmo dia não engula o da API. No `api-500`, a API respondeu com erro em vez de recusar o
+    pedido sem login antes da rota: vale olhar."""
+    causa = _achado(achado, " (código: ", ")") or ""
+    linhas = [f"Há {h} h o vigia não completa a conferência da API do central pelo nome público{causa}."]
+    if isinstance(achado, str) and achado.strip() == API_COM_ERRO:
+        linhas.append("A API devia recusar o pedido sem login antes de chegar à rota, e respondeu com erro: vale olhar.")
+    linhas.append("Não espera você: a conferência segue sozinha, e uma API aberta vem em aviso próprio.")
+    return Aviso(chave=chave_da_borda(SEM_CONFERIR_DA_API, agora), tipo=TIPO_DA_BORDA_SEM_CONFERIR,
+                 titulo=titulo_do_aviso(f"🌐 Site: não consigo conferir a API do central há {h} h"),
+                 corpo="\n".join(linhas), link=None, nivel=nivel_do_tipo(TIPO_DA_BORDA_SEM_CONFERIR))
+
+
 def aviso_da_borda(codigo: object, onde: object, agora: datetime, *, achado: object = None,
                    horas_sem_conferir: object = None) -> Aviso | None:
     """O aviso pronto para a fila, ou `None` quando o código ou o lugar não são do contrato, ou falta a contagem de
     horas do `sem_conferir`. O `achado` fora do formato é omitido, sem recusa. Sem link."""
-    if not isinstance(agora, datetime) or agora.tzinfo is None or not isinstance(codigo, str):
+    if not isinstance(agora, datetime) or agora.utcoffset() is None or not isinstance(codigo, str):
         return None                      # sem fuso, o dia UTC dependeria do fuso do processo (B2): `campo_invalido`
     if codigo == SEM_CONFERIR:
         if not _contagem(horas_sem_conferir, 1, HORAS_SEM_CONFERIR_MAX):
             return None
         h = int(horas_sem_conferir)  # type: ignore[call-overload]
+        if onde == ONDE_DA_API:
+            return _api_sem_conferir(h, achado, agora)
         # B3 da leitura do #381 (decisão da orquestradora): sem conferir não é defeito visto. Nada de "Crítico"; o
         # texto diz que a conferência não completou, há quanto tempo, que pode ser o caminho e não o site, e que não
         # espera o dono. O nível 2 fica.
@@ -413,11 +453,21 @@ def aviso_da_borda(codigo: object, onde: object, agora: datetime, *, achado: obj
         return Aviso(chave=chave_da_borda(codigo, agora), tipo=TIPO_DA_BORDA_SEM_CONFERIR,
                      titulo=titulo_do_aviso(f"🌐 Site: não consigo conferir a página há {h} h"), corpo=corpo, link=None,
                      nivel=nivel_do_tipo(TIPO_DA_BORDA_SEM_CONFERIR))
+    if codigo == API_ABERTA:
+        # 29.101: o lugar é só a API, e o texto é fixo: o único caminho citado é `/api/instances`, e o achado do vigia
+        # não entra (nada de host nem IP).
+        if onde != ONDE_DA_API:
+            return None
+        return Aviso(chave=chave_da_borda(codigo, agora), tipo=TIPO_DA_BORDA_API, titulo=titulo_do_aviso(TITULO_DA_API),
+                     corpo="\n".join(CORPO_DA_API), link=None, nivel=nivel_do_tipo(TIPO_DA_BORDA_API))
     borda = BORDA.get(codigo)
     lugar = ONDE_DA_BORDA.get(onde) if isinstance(onde, str) else None
     if borda is None or lugar is None:
         return None
-    detalhe = _achado(achado, " (", ")") if codigo == "cookie" else _achado(achado, ": ")
+    # Releitura do #381: recusado o host e caminho inteiro (uma versão no caminho, `jquery-3.6.0.min.js`), tenta só o
+    # host pelo mesmo filtro, para o aviso não sair sem item nenhum.
+    detalhe = (_achado(achado, " (", ")") if codigo == "cookie"
+               else _achado(achado, ": ") or _achado(_so_o_host(achado), ": "))
     corpo = "\n".join([borda.chegou.format(onde=lugar, achado=detalhe), borda.critico, borda.gesto])
     return Aviso(chave=chave_da_borda(codigo, agora), tipo=TIPO_DA_BORDA, titulo=titulo_do_aviso(borda.titulo),
                  corpo=corpo, link=None, nivel=nivel_do_tipo(TIPO_DA_BORDA))
