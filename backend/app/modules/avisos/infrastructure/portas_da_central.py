@@ -26,6 +26,7 @@ from app.modules.avisos.application.entrada import casar_ref
 from app.modules.avisos.domain.mensagem import GESTO_DA_APROVACAO_NO_DESFECHO, GESTO_DO_OBJETIVO
 from app.modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo, LeituraRecusada
 from app.modules.avisos.infrastructure.entrada import Captura, Pendencia, PlanoMudou, Previa, RecusaDaCentral
+from app.modules.identity.domain.available_data import textos_da_biografia_para_filtro
 from app.porta_do_plano import PortaIndisponivel
 from app.security.sessions import operador_atual
 from app.shared.costuras import autor_do_gesto
@@ -388,8 +389,13 @@ def _resumo_da_aprovacao(a: dict[str, object]) -> str:
 
 def nomes_de_persona(db: Database) -> list[str]:
     """Nome de exibição, primeiro e último nome e @ das personas: o que a conversa (28.28) e o aviso (28.31) tiram de
-    todo texto que mandam pelo canal. Inclui as aposentadas: o nome continua sendo de uma pessoa da plataforma."""
+    todo texto que mandam pelo canal. Inclui as aposentadas: o nome continua sendo de uma pessoa da plataforma.
+
+    31.87 F2 (C1 da leitura): também os valores de texto livre da biografia (cidade, empregador, profissão, religião,
+    gostos…), porque agora são variáveis da persona e o valor resolvido vai aonde o texto da etapa vai, aviso e pergunta
+    do Telegram inclusive."""
     nomes: list[str] = []
-    for r in db.query("SELECT display_name, first_name, last_name, username FROM instagram_profiles"):
+    for r in db.query("SELECT display_name, first_name, last_name, username, biography FROM instagram_profiles"):
         nomes.extend(str(v) for v in (r["display_name"], r["first_name"], r["last_name"], r["username"]) if v)
+        nomes.extend(textos_da_biografia_para_filtro({"biography": r["biography"]}))
     return nomes

@@ -21,7 +21,7 @@ BIOGRAFIA = {
     "schema_version": 2, "approx_age": 31,
     "origin": {"birthplace": "Vila Sintetica", "hometown": "Cidadela Velha", "nationality": "hyliana"},
     "home": {"city": "Cidadela", "state": "Reino", "country": "Hyrule", "residence": "casa com a irmã"},
-    "work": {"profession": "ferreira", "employer": "Oficina Exemplo", "education": ["curso de forja", "oficina"]},
+    "work": {"profession": "armeira", "employer": "Oficina Exemplo", "education": ["curso de forja", "oficina"]},
     "life": {"marital_status": "solteira", "children": 0, "history": ["um fato longo que não vira marcador"]},
     "beliefs": {"religion": {"affiliation": "sem religião", "practice": "nao_pratica", "in_speech": "frase longa"},
                 "politics": {"orientation": "centro", "engagement": "baixo", "summary": "frase longa"}},
@@ -121,3 +121,56 @@ def test_o_adaptador_do_banco_le_a_coluna_da_biografia(harness: Harness) -> None
     # outro perfil, sem biografia: nenhum marcador dela
     outro = s.social.create_profile(ProfileCreate(username="link.teste", instance_id="android-02", first_name="Link")).id
     assert "perfil_cidade" not in variaveis_do_perfil(s.runs.dados, outro)
+
+
+# ---------------------------------------------------------------- C1 da leitura: o valor não sai pelo Telegram
+def test_textos_da_biografia_para_o_filtro_sao_um_por_item_e_sem_enumeracao() -> None:
+    from app.modules.identity.domain.available_data import textos_da_biografia_para_filtro
+
+    textos = textos_da_biografia_para_filtro(CAMPOS)
+    assert {"Cidadela", "Reino", "armeira", "Oficina Exemplo", "curso de forja", "oficina", "sem religião", "forja",
+            "música", "pesca", "pressa"} <= set(textos)
+    # enumerações curtas e o número de filhos ficam de fora; lista vazia e biografia estragada não dão nada
+    assert not {"centro", "baixo", "nao_pratica", "0"} & set(textos)
+    assert textos_da_biografia_para_filtro({"biography": "{"}) == [] and textos_da_biografia_para_filtro(None) == []
+
+
+def test_valor_da_biografia_num_titulo_de_etapa_nao_sai_pelo_telegram(harness: Harness) -> None:
+    """A orquestradora pediu a prova: um título de etapa com valor de biografia (agora variável da persona) não sai no
+    `approval.pending` nem no `run.needs_input`, que o Telegram carrega. A porta REAL (`nomes_de_persona`) lê o banco."""
+    from app.modules.avisos.domain.mensagem import aviso_de_evento, texto_da_mensagem
+    from app.modules.avisos.infrastructure.portas_da_central import nomes_de_persona
+    from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
+
+    s = harness.state
+    pid = s.social.create_profile(ProfileCreate(username="zelda.teste", instance_id="android-01",
+                                                email="zelda@exemplo.test", first_name="Zelda")).id
+    s.db.execute("UPDATE instagram_profiles SET biography=? WHERE id=?", (json.dumps(BIOGRAFIA), pid))
+    nomes = nomes_de_persona(s.db)
+    assert "Cidadela" in nomes and "Oficina Exemplo" in nomes and "armeira" in nomes
+    titulo = "Digitar Cidadela e armeira na Oficina Exemplo, com curso de forja"
+    proibidos = ("Cidadela", "armeira", "Oficina Exemplo", "forja")
+    redigir = TriagemDeCredencial().redigir
+    aprovacao = {"approval": {"id": "ap1", "summary": titulo, "target": "caixa", "content": titulo}}
+    parada = {"run": {"id": "r-20261005-abc123", "short_id": "abc123", "status": "needs_input",
+                      "started_at": "2026-10-05T14:02:11.000Z", "instance_ids": ["android-01"], "command": titulo,
+                      "status_detail": titulo}}
+    for kind, dados in (("approval.pending", aprovacao), ("run.updated", parada)):
+        for conversa in (False, True):
+            aviso = aviso_de_evento(kind, dados, 9, "https://painel.exemplo/central", redigir=redigir, nomes=nomes,
+                                    conversa=conversa)
+            assert aviso is not None
+            texto = texto_da_mensagem(aviso.titulo, aviso.corpo, aviso.link)
+            for proibido in proibidos:
+                assert proibido.casefold() not in texto.casefold(), (kind, conversa, proibido, texto)
+    # sem o filtro, o mesmo texto SAIA: é o que a prova pega (mutação: nomes sem a biografia)
+    sem = [n for n in nomes if n not in textos_da_biografia(s.db)]
+    vazou = aviso_de_evento("run.updated", parada, 9, "https://painel.exemplo/central", redigir=redigir, nomes=sem,
+                            conversa=True)
+    assert vazou is not None and "Cidadela" in texto_da_mensagem(vazou.titulo, vazou.corpo, vazou.link)
+
+
+def textos_da_biografia(db) -> set[str]:
+    from app.modules.identity.domain.available_data import textos_da_biografia_para_filtro
+    return {t for r in db.query("SELECT biography FROM instagram_profiles")
+            for t in textos_da_biografia_para_filtro({"biography": r["biography"]})}

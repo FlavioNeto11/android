@@ -177,6 +177,38 @@ def _biografia(fields: Mapping[str, object] | None) -> dict[str, str]:
     return {nome: v for nome, caminho, _r in BIOGRAPHY_FIELDS if (v := _valor_da_biografia(bio, caminho))}
 
 
+#: Marcadores da biografia que NÃO entram no filtro dos canais: enumerações curtas e genéricas ("centro", "baixo") e o
+#: número de filhos. Todo o resto é texto livre da pessoa (cidade, empregador, profissão, religião, gostos…).
+_FORA_DO_FILTRO_DOS_CANAIS = frozenset({"perfil_pratica_religiosa", "perfil_orientacao_politica",
+                                        "perfil_engajamento_politico", "perfil_filhos"})
+
+
+def textos_da_biografia_para_filtro(fields: Mapping[str, object] | None) -> list[str]:
+    """Os valores de texto livre da biografia, UM POR ITEM (uma lista de gostos vira vários), para o filtro dos canais
+    (31.87 F2, C1 da leitura): o valor de um marcador vai aonde o texto da etapa vai, e isso inclui o aviso e a
+    pergunta que saem pelo Telegram. Quem lê é a porta `nomes_de_persona` da Canais, que os põe na mesma lista dos nomes.
+    Excesso de redação é falha segura; por isso, tudo que é texto da pessoa entra."""
+    bruto = None if fields is None else fields.get("biography")
+    if isinstance(bruto, str):
+        try:
+            bruto = json.loads(bruto)
+        except ValueError:
+            return []
+    if not isinstance(bruto, Mapping):
+        return []
+    bio = normalizar_biografia(bruto)
+    saida: list[str] = []
+    for nome, caminho, _rotulo in BIOGRAPHY_FIELDS:
+        if nome in _FORA_DO_FILTRO_DOS_CANAIS:
+            continue
+        atual: object = bio
+        for chave in caminho:
+            atual = atual.get(chave) if isinstance(atual, Mapping) else None
+        itens = atual if isinstance(atual, list) else [atual]
+        saida.extend(t for x in itens if isinstance(x, str) and (t := _texto(x)))
+    return saida
+
+
 def slug(texto: str, limite: int = SLUG_MAX) -> str:
     """`configura-es-do-android` → `configura_es_do_android`; `portal.exemplo.gov.br` → `portal_exemplo_gov_br`."""
     s = _NAO_SLUG.sub("_", texto.strip().casefold()).strip("_")
