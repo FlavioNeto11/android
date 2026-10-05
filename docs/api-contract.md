@@ -467,9 +467,7 @@ drift_kind, detail}`. Nenhum APK é baixado pelo sistema: os arquivos entram pel
 | `POST /api/instagram/profiles/{id}/connect\|verify\|logout` | – | 202 `{accepted, command_id, state, profile_id, instance_id}` — verbos `session.connect/verify/logout` na tabela `commands`; acompanhe por `GET /api/commands/{id}` |
 
 `InstagramProfile` **não tem campo de senha** — nem em resposta, nem em erro de validação. `credential` traz só
-metadados (`configured`, `status`, `failed_attempts`, `blocked_until`). `session`:
-`{status:'unknown'|'auth_required'|'auth_challenge'|'wrong_account'|'session_ready', instance_id,
-observed_username, verified_at, detail}`.
+metadados (`configured`, `status`, `failed_attempts`, `blocked_until`).
 
 ### Persona, memória, histórico e contexto
 
@@ -1100,6 +1098,8 @@ campo.
 | `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
 | `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[]}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo) |
+| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
+| `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
@@ -1174,7 +1174,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `politica.excecao_sem_efeito` | sim | `social/excecoes.py` — reservada, o gesto terminou sem efeito; ela fecha e não volta a aberta (30.65) |
 | `politica.excecao_incerta` | sim | `social/excecoes.py` — reservada, e a etapa terminou sem liquidação; o efeito pode ter saído e conta como usada (30.65) |
 | `app_state.updated` | sim | `state.py` |
-| `session.needs_person` | sim | `modules/identity/application/session_rules.py::emit_needs_person_change`, chamada por `integrations/app_declarado/sessao.py::SessaoDeclarada._save` e `state.py::AppState._sessao_desmentida` — a sessão da conta entrou em `auth_challenge`/`wrong_account` |
+| `session.needs_person` | sim | — |
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
@@ -1285,8 +1285,6 @@ Ver `backend/app/workers/protocol.py` (contrato completo; os dois lados importam
   a mantém (item aguardando a pessoa ainda será retomado).
 - 422 de qualquer rota: erro cujo caminho passa por um nome sensível (credencial, senha, token…) sai sem `input` e sem
   `ctx`.
-- Com credencial, a tela de senha deixa de pôr a etapa em `waiting_user`; desafio (código não fornecido, CAPTCHA)
-  continua pedindo a pessoa.
 - Comando que pede site/navegador ou nomeia outro app registrado não fica preso ao catálogo do app da conta do
   aparelho: o plano é livre.
 
@@ -2424,12 +2422,8 @@ de orçamento do executor cita a janela efetiva.
     autor, evidencia}`;
   - `device.locked_account`: `{instance_id, handle, profile_id, app_id, origem, acao: marcado|resolvido, autor,
     evidencia}`;
-  - `decision` do executor na trava: `data {kind: "auth_challenge", subtipo: conta_travada|codigo|verificacao, trecho,
-    tela, package}`; o motivo em `objectives.blocked_reason` e `attempts.error` é `auth_challenge (<subtipo>): …
-    "<trecho>"`;
   - `log` com `data.reason = "disjuntor_de_conta"` (`{profile_id, related_profile_ids, run_ids}`) e com `data.reason =
     "login_parado"`.
-- `StepBlocked.kind` ganha `challenge` (vira `auth_challenge`, subtipo `verificacao`, que pede pessoa sem bloquear).
 - Sessão: a credencial da conta ganha o estado `review` depois de um envio de senha sem sucesso; o login automático é
   recusado sem tocar, e só o Conectar (a pessoa) tenta. Ajuste novo `max_logins_per_day` no `sessao.yaml` (3 no
   Instagram), sobrescrevível em `contas.sessao.<pacote>.max_logins_per_day`.
@@ -2679,8 +2673,6 @@ e o pedido de controle do aparelho levam o operador da sessão ao sinal do apren
 gesto é um por `(kind, source_ref)`: o primeiro autor fica. Nenhum corpo ou resposta mudou.
 
 **Tela da falha (22.3).** `attempts.failure_screen` passa a ser gravado:
-- é o nome de uma regra declarada no `telas.yaml` do app da etapa, ou o tipo do motor nas telas protegidas
-  (`desafio|dois_fatores|login`);
 - é NULL quando a tela é desconhecida, outro app está na frente ou não houve observação;
 - só é gravado com `failure_kind`;
 - nunca é texto da tela.
@@ -2813,9 +2805,7 @@ seguem `not_run` (24.9, 25.4, 25.5).
 - `POST …/accounts/{aid}/session/connect` e `…/session/verify` operam a CONTA do caminho (`ensure_session(…,
   account_id=aid)`). Conta de site (com `host`) é recusada com 409 `conta_de_site`: o login gerenciado é o da conta do
   app, sem site.
-- Desafio numa conta de outro app para só aquela conta (credencial em `review`), sem bloquear a persona; a conta
-  travada põe o aparelho em quarentena. O marcador da quarentena usa o @ da conta, ou o identificador de login quando
-  ela não tem @.
+- O marcador da quarentena usa o @ da conta, ou o identificador de login quando ela não tem @.
 - Trocar o servidor de um aparelho pede confirmação quando QUALQUER conta de uma persona vinculada tem sessão pronta
   nele, não só a âncora.
 
@@ -2849,29 +2839,29 @@ com "credencial" é tratado como segredo pela redação.
     nome que nenhuma etapa anterior lê vira `missing` com `field: "saida"`, e o plano sai sem etapas.
   - O despacho troca a referência pelo valor na linha da etapa antes da porta de política. A ferramenta `read_value`
     lê o valor do texto do elemento, e `step_done` sem a leitura é recusado.
-  - Código de verificação, senha e token nunca são saída.
+  - senha e token nunca são saída.
   - Ação de catálogo também entrega valor (ADR-065): a capability declara `saidas` (nomes que pode entregar), a etapa
     de catálogo do plano entre apps leva `saidas` com um subconjunto delas, e o `PlanStep.saidas` gravado é o mesmo
     da etapa livre. Nome fora do declarado vira `missing` (`field` = a ação em minúsculas). Sem mudança de rota,
     de DTO ou de migração.
 - **Relatório:** `per_instance[].values_read: [{name, value, value_kind, step_title, app, read_at}]` em
   `GET /api/runs/{id}/report`, e a seção "Valores lidos entre etapas" no markdown.
-- **Origem do valor (item 12.5, ADR-070; adendo provisório):** cada item de `values_read` ganha `origem` (`arvore`|`visual`),
-  `leitor` (`provedor/modelo`), `frame_sha256` e `evidence_id` (os três nulos quando `origem=arvore`). O markdown traz, para
-  cada valor visual, a linha "lido da imagem; conferido às cegas por <leitor> no recorte da captura <sha8>". A ferramenta
-  `read_value` ganha `source` (`tree` padrão | `visual`; `visual` exige `value` e só vale com `value_kind=text`). A ação
-  `read_value` visual registra `{name, value_kind, chars, origem, frame_id, evidence_id, leitor}` e `args.value` fica
-  `**OMITIDO**`; a recusa é uma ação `rejected` cujo `error` é só um código do vocabulário fechado (`desligado`,
-  `elemento_com_texto`, `regiao_nao_declarada`, `arvore_truncada`, `tela_sensivel`, `fora_do_app`, `sem_ancora`,
-  `captura_mudou`, `repetida`, `sem_leitor`, `leitor_falhou`, `ilegivel`, `truncado`, `nao_confere`, `triagem:<motivo>`; o
-  vocabulário é fechado e inclui `tela_sensivel` e `leitor_falhou`, que o orquestrador também aceita). A triagem (código de
-  verificação, senha, token) NÃO é erro de chamada: como no caminho da árvore, a ação fica `rejected` com
-  `valor recusado pela triagem: <motivo>` e a etapa vai para `waiting_user`, sem nova tentativa do ator. O valor gravado é o do
-  leitor (limpo); as saídas `origem=visual` não entram nas variáveis de receita; orçamento, prazo e crédito do leitor seguem o
-  desfecho do ator e não viram `leitor_falhou`.
-  `GET /api/ai` lista a função `leitura` em `roles` e `models` quando `ai.roles.leitura` está escrito, e o `notice` nomeia
-  provedor, modelo e os apps que declaram a região. `GET /api/usage` agrupa as chamadas pelo `role` `leitura`, e `ai_calls.origem`
-  é `leitura`. Sem rota nova; migração 078.
+- **Origem do valor (item 12.5, ADR-070; adendo provisório):** cada item de `values_read` ganha `origem`
+  (`arvore`|`visual`), `leitor` (`provedor/modelo`), `frame_sha256` e `evidence_id` (os três nulos quando
+  `origem=arvore`). O markdown traz, para cada valor visual, a linha "lido da imagem; conferido às cegas por <leitor> no
+  recorte da captura <sha8>". A ferramenta `read_value` ganha `source` (`tree` padrão | `visual`; `visual` exige `value`
+  e só vale com `value_kind=text`). A ação `read_value` visual registra `{name, value_kind, chars, origem, frame_id,
+  evidence_id, leitor}` e `args.value` fica `**OMITIDO**`; a recusa é uma ação `rejected` cujo `error` é só um código do
+  vocabulário fechado (`desligado`, `elemento_com_texto`, `regiao_nao_declarada`, `arvore_truncada`, `tela_sensivel`,
+  `fora_do_app`, `sem_ancora`, `captura_mudou`, `repetida`, `sem_leitor`, `leitor_falhou`, `ilegivel`, `truncado`,
+  `nao_confere`, `triagem:<motivo>`; o vocabulário é fechado e inclui `tela_sensivel` e `leitor_falhou`, que o
+  orquestrador também aceita). A triagem (senha, token) NÃO é erro de chamada: como no caminho da árvore, a ação fica
+  `rejected` com `valor recusado pela triagem: <motivo>` e a etapa vai para `waiting_user`, sem nova tentativa do ator.
+  O valor gravado é o do leitor (limpo); as saídas `origem=visual` não entram nas variáveis de receita; orçamento, prazo
+  e crédito do leitor seguem o desfecho do ator e não viram `leitor_falhou`. `GET /api/ai` lista a função `leitura` em
+  `roles` e `models` quando `ai.roles.leitura` está escrito, e o `notice` nomeia provedor, modelo e os apps que declaram
+  a região. `GET /api/usage` agrupa as chamadas pelo `role` `leitura`, e `ai_calls.origem` é `leitura`. Sem rota nova;
+  migração 078.
 
 ## Adendo v0.43 (30/09/2026) — Fase 29: prova de vazamento na linha do aparelho e leitura do firewall por interface (ADR-056, ADR-061)
 
@@ -4902,12 +4892,11 @@ revisões do PR #166). `not_run`: a conversa real.
 
 Nenhuma rota nova e nenhuma migração. Um código de erro novo, um evento novo e duas leituras públicas no caminho comum
 (painel e canais). O ADR-040 continua valendo: a senha mora na conta da persona e a automação a digita por
-`type_secret`. O código de verificação, a pessoa digita no aparelho (ADR-009). A resposta a uma pergunta vira comando de
+`type_secret`. A resposta a uma pergunta vira comando de
 uma execução sucessora, que vai ao prompt do planejador e ao histórico; por isso a credencial não entra por ali. Na
 dúvida, recusa.
 
-- **409 `credencial_na_resposta`**, com `tipo` no `detail` (`senha`, `2fa`, `codigo`, `token`, `credencial` ou
-  `formato`). A mensagem aponta o caminho certo e nunca repete a resposta. Sai em:
+- A mensagem aponta o caminho certo e nunca repete a resposta. Sai em:
   - `POST /api/runs/{id}/successor`, antes de qualquer gravação: nenhuma execução nova nasce e a antiga segue em
     `needs_input`. Recusa quando:
     - alguma pergunta aberta da execução pede credencial, seja qual for a resposta;
@@ -5772,15 +5761,11 @@ de efeito, e aprova antes de iniciar o que pede o aval dele. O sim do plano só 
 texto ainda por escrever (briefing) fica para a execução: aprovar no plano exige texto final (`content_verbatim`).
 
 - **`GET /api/runs/{id}/porta`** (200), só leitura: não grava decisão, não abre pedido, não prende exceção, não escreve
-  rascunho, não chama IA. 404 `not_found`; 409 `invalid_state` fora de `planned`; 409 `no_plan` sem etapas. Corpo:
-  `run_id`, `hash_do_plano` (atalho, não prova), `validade_ate`, `custo_rascunhos_usd` (0 nesta fatia), `estimativa`
-  (sempre `true`: a execução é paralela e a porta roda de novo no despacho; os tetos por balde não somam os itens
-  anteriores do plano), `parcial`/`total` (itens cuja porta não pôde ser calculada), `itens` e `na_execucao`
-  (`textos_da_tela`, `itens_for_each` — as etapas-modelo, cujos itens nascem da coleta —, `sempre`: desafio, 2FA,
-  CAPTCHA). Cada item: `objective_id`, `step_id`, `aparelho`, `titulo`, `persona_rotulo`, `profile_id`, `app`, `acao`,
-  `alvo`, `objeto_alvo`, `selo`, `motivo`, `dica`, `retry_at`, `texto` (o literal, quando final), `texto_na_execucao`,
-  `tem_imagem`, `imagem_sha256`, `chave` (só no selo `aprovacao`), `dependentes` (as etapas do mesmo objetivo que
-  dependem desta, transitivas) e `falhou`. Selos, pela MESMA conta do despacho (`AppState.vereditos_da_porta`):
+  rascunho, não chama IA. 404 `not_found`; 409 `invalid_state` fora de `planned`; 409 `no_plan` sem etapas. Cada item:
+  `objective_id`, `step_id`, `aparelho`, `titulo`, `persona_rotulo`, `profile_id`, `app`, `acao`, `alvo`, `objeto_alvo`,
+  `selo`, `motivo`, `dica`, `retry_at`, `texto` (o literal, quando final), `texto_na_execucao`, `tem_imagem`,
+  `imagem_sha256`, `chave` (só no selo `aprovacao`), `dependentes` (as etapas do mesmo objetivo que dependem desta,
+  transitivas) e `falhou`. Selos, pela MESMA conta do despacho (`AppState.vereditos_da_porta`):
   - `permitido`: segue sem parar;
   - `aprovacao`: pede o aval (política, DM fria, o mesmo pedido a várias contas, teto `preparar`, mensagem repetida), com
     chave;
@@ -6235,8 +6220,8 @@ Sem migração: `ai_calls.image_reason` é `TEXT` sem `CHECK` (migração 080). 
 ## Adendo v1.50 (05/10/2026; número da orquestradora; item 29.93) — a execução que espera você não aparece como encerrada
 
 Antes, quando o trabalho automático acabava com um objetivo em `waiting_user` (um gesto da pessoa no aparelho: login,
-desafio, aprovação), a execução ia a `completed_with_issues`, que é terminal, e grava `finished_at`: o painel, o Telegram
-e quem lê o contrato a davam por encerrada, e a retomada do item a "reabria".
+aprovação), a execução ia a `completed_with_issues`, que é terminal, e grava `finished_at`: o painel, o Telegram e quem
+lê o contrato a davam por encerrada, e a retomada do item a "reabria".
 
 - **`RunStatus.awaiting_person`** (valor novo, aditivo): o trabalho automático acabou e pelo menos um objetivo está em
   `waiting_user`. NÃO é terminal. Grava `finished_at` (o fim do trabalho automático; o vencimento do 31.50 conta dali,
@@ -6351,3 +6336,124 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
 - O mesmo descarte sai numa linha de log do curador, com o id da revisão, a classe e os rótulos.
 - O painel pode ignorar a chave. Ausente também quer dizer backend de antes do 30.73.
 - **Prova:** `simulated` (`backend/tests/test_curador_classe_b.py`).
+
+## Adendo v1.54 (05/10/2026; número da orquestradora; item 30.75) — a prova sem evidência diz a causa
+
+Valores aditivos de `motivo` nos pedidos de validação (`GET /api/aprendizado/validacoes`, `itens[].motivo`, e
+`contagem` por estado sem mudança):
+- `orcamento_da_prova`: um teto de IA (o do pedido, `teto_usd`, ou o do dia) encerrou a execução da prova no meio: a
+  última tentativa dela terminou pelo teto. O gasto (`usd`) não deixou evidência no fluxo.
+- `app_sem_sessao`: o app pediu login no aparelho escolhido, e a prova parou ali. O aparelho sai dos candidatos das
+  próximas provas daquele app até a próxima verificação do app nele (que confere a instalação, não a sessão: a de
+  rotina, ao ligar com mais de 24 h, também solta) ou até um objetivo concluído num fluxo do mesmo app nele.
+- Os dois valem só para execução de PROVA (`prova_fluxo_id`). O estoque `sem_evidencia` de execução comum (antes do
+  30.37) segue `sem_evidencia`.
+- Os dois saem do mesmo lugar que `sem_evidencia`: o pedido de fluxo que fecha sem evidência a favor nem contra.
+  - O pedido já fechado `sem_evidencia` pode passar a um deles, uma vez, pelo passo da curadoria.
+  - Nenhum dos dois é chegada do curador.
+- O texto para a pessoa vem do servidor (`MOTIVO_HUMANO`), como os demais. O painel não precisa de mudança.
+- **Prova:** `simulated` (`backend/tests/test_validacao_motivos_da_prova.py`).
+
+## Adendo v1.56 (05/10/2026; número da orquestradora; item 31.84) — `clear_first` na entrada manual de texto
+
+`POST /api/instances/{id}/input` (`ManualInput`), campo aditivo:
+- `clear_first: boolean` (padrão `false`), só para `type:'text'`; nos outros tipos é ignorado. Com `true`, o campo em
+  foco é limpo antes de digitar (o mesmo `type_text(clear_first=True)` da reprodução da receita; o `type_text` da sessão
+  de automação engole a falha do `clear()` e acaba acrescentando, e quem pega isso é a pós-condição da etapa). Com
+  `clear_first:true` e `type` diferente de `text`: `422` (validação do corpo). Com `false` ou
+  ausente, o comportamento é o de antes: o texto acrescenta ao que já está no campo.
+- Sem a sessão de automação do aparelho conectada (caminho do ADB `input text`, que só acrescenta), `clear_first:true`
+  responde `400 {code:'bad_input'}` em vez de digitar sem limpar. A recusa da senha na loja continua antes de tudo.
+- Na leitura das sessões de treino (`GET /api/training/{id}`, `inputs[]`), numa entrada de tipo `text` o campo `key_name`
+  com o valor `clear_first` é a marca de que o texto foi enviado limpando o campo; vai para coluna própria numa migração
+  futura.
+- O que o modo treinamento grava não muda: uma entrada `text` comum. A destilação passou a tratar `delete` antes de
+  `text` como ruído e `enter` logo após o `text` como `press_enter` (ver "Teclas ao ensinar" em
+  `docs/dominios/perfis-e-instagram.md`).
+- O painel pode ignorar o campo. Ausente também quer dizer backend de antes do 31.84.
+- Item 31.85, sem campo novo: ENQUANTO HÁ GRAVAÇÃO do treinamento, o quadro informado que é o MAIS RECENTE do backend
+  é aceito mesmo acima da idade máxima (cada entrada gravada lê a hierarquia antes de agir e deixa o aparelho lento; na
+  medida de 05/10 as 15 teclas seguintes a um toque de 24 s voltaram `stale_frame`). Continuam em `409 stale_frame` (ou
+  `capture_failing`): quadro velho quando já existe um mais novo (a pessoa clicou numa imagem antiga), a captura com falha
+  registrada, quadro com mais de 60 s (captura travada) e TODO quadro velho fora da gravação. `frame_mismatch` e quadro
+  desconhecido não mudaram.
+  - A folga NÃO vale às cegas para o que age no campo em foco: com o quadro aceito só por ela, `type:'text'` e as teclas
+    `enter`/`delete` voltam `409 stale_frame` se a hierarquia lida antes da ação faltar, for de tela sensível ou tiver
+    campo de senha em foco (a pessoa vê o quadro novo e repete). Se chegou quadro novo enquanto essa hierarquia era lida,
+    qualquer entrada sob a folga volta `409 stale_frame`.
+  - Toque, toque longo e arraste sob a folga só passam se o quadro informado foi capturado DEPOIS da última entrada
+    manual com efeito (o quadro só é o "mais recente" porque a captura ainda não rodou depois dela; o segundo toque sobre
+    ele cairia na tela nova com a coordenada da velha): senão `409 stale_frame`, e a pessoa espera a imagem nova. O
+    carimbo da entrada vale também quando a ação levanta (o toque que estoura o prazo segue rodando no aparelho) e numa
+    recusa anterior ao despacho: custa uma recusa a mais sob a folga, o lado seguro.
+- **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`, `backend/tests/test_treino_quadro_velho.py`).
+  `real`: `not_run`.
+
+## Adendo v1.57 (05/10/2026; número da orquestradora; item 31.83) — o `save` do treinamento recusa a proposta que nunca funcionaria
+
+`POST /api/training/{session_id}/save` confere a proposta ANTES de gravar (fluxo, escopo, receita, status da sessão).
+Novos 400, no formato de sempre (`detail: {code, message}`; a mensagem diz o que corrigir). Os códigos antigos
+(`no_proposal`, `invalid_command`, `ambiguous_command`, `unknown_profile`, `unknown_group`, `capability_required`) e o 409
+`duplicate_command` ficam como estavam:
+- `etapa_invalida`: etapa sem `key`, com `key` repetida ou fora de `^[a-z][a-z0-9_]{1,40}$`, sem `title` e `goal`, ou com
+  `postcondition.kind` inválido. Antes: 500.
+- `parametro_fora_do_comando`: parâmetro em `parameters` que o `command_template` não usa.
+- `parametro_nao_declarado`: `{x}` no comando sem parâmetro declarado (`instance_id`, `run_id` e `account_label` não contam).
+- `comando_generico`: o comando não começa por palavra fixa (ex.: `{pedido} no instagram`), ou tem menos de 2 palavras ou de 6 letras/dígitos fixos fora das chaves. `ligue para {contato}` passa; `siga {perfil}` não.
+- `parametro_invalido`: `{…}` no comando que não é nome válido (minúsculas, sem acento, números e `_`), ou `{`/`}` sem par (`abra {contato`).
+- `entrada_duplicada`: entrada em duas etapas, ou em uma etapa e em `discarded`; a mensagem lista os `#seq`. Repetida só dentro de `discarded` não recusa: fica a primeira.
+- `entrada_inexistente`: `seq` numa etapa ou em `discarded` que não está entre as entradas gravadas (31.95); a mensagem lista os `#seq`.
+- `pos_condicao_vazia`: etapa com `side_effect` sem `postcondition.value` nem `description` (salvo ação de catálogo).
+- `entradas_sem_etapa`: entrada gravada fora de `steps[].inputs` e de `discarded`; a mensagem lista os `#seq`.
+- `proposta_invalida`: tipo errado: `steps`/`parameters`/`discarded` que não é lista, item de `discarded` sem `seq` inteiro, `summary`/`app_id` que não é texto.
+- `etapa_invalida` cobre também `side_effect` que não é booleano (o texto "false" contaria como verdadeiro), `inputs` que não é lista de inteiros, `bindings` que não é lista de objetos e `title`/`goal`/`value`/`description` que não é texto.
+- Os códigos `entradas_sem_etapa`, `entrada_duplicada`, `entrada_inexistente`, `parametro_fora_do_comando`, `parametro_nao_declarado`, `pos_condicao_vazia`, `etapa_invalida` e `proposta_invalida` terminam a mensagem com "Peça uma nova proposta à IA." (a tela ainda não edita etapas; 31.90).
+
+Campo aditivo na resposta de sucesso: `warnings: string[]` (vazio quando não há), com as etapas sem efeito aceitas sem
+descrição de pós-condição (o objetivo serviu de critério). O painel pode ignorá-lo.
+- **Prova:** `simulated` (`backend/tests/test_treino_validacao_do_salvar.py`).
+
+## Adendo v1.58 (05/10/2026; número da orquestradora; item 31.86 B) — prévia do salvar e refazer as receitas do treino
+
+Duas rotas novas e uma regra de gravação; nada muda nas existentes além do `reason` das etapas fora do ar.
+- `POST /api/training/{session_id}/preview`, corpo igual ao do `save` (`TrainingSaveBody`, `extra="forbid"`).
+  - Roda a mesma conferência e a mesma destilação do `save`, e NÃO escreve nada: nem fluxo, escopo, receita, status da
+    sessão nem evento de log. Mesmos erros do `save`: os 400 do adendo v1.57 e os de sempre, o 409 `closed` (já salva) e
+    o 409 `duplicate_command` (comando de fluxo ou habilidade publicada), todos antes de gravar.
+  - 200: `{steps: [{key, title, recipe, reason}], warnings: string[]}`. `recipe: true` quer dizer "seria gravada"
+    (`reason` "receita será gravada ao salvar"); `false` traz o motivo literal da destilação (ex.: tecla que depende
+    do estado de quem ensinou, texto sigiloso, alvo sem seletor estável), ou "já havia receita ativa para esta etapa",
+    ou o que falta do aparelho (abaixo). Nunca leva as ações da receita nem texto digitado.
+  - Com o aparelho no ar, a primeira prévia pode levar o tempo de uma leitura do aparelho (versão do app e variante);
+    as seguintes usam o cache.
+- `POST /api/training/{session_id}/recipes`, sem corpo: refaz a destilação de uma sessão JÁ salva e grava a receita das
+  etapas que ainda não têm (origem `training:<id>`, as mesmas regras e o mesmo veto de receita ativa do `save`).
+  - 200: `{session, flow_id, steps: [{key, title, recipe, reason}], created: int}`; `created` conta as receitas
+    gravadas nesta chamada. Idempotente: a segunda chamada devolve `created: 0` ("já havia receita ativa").
+  - Só grava em chave VIRGEM (nenhuma receita da chave, de qualquer status): onde a chave já teve receita em
+    quarentena, desligada ou substituída, a etapa sai com `recipe: false` e `reason` "a chave já teve receita (status X)",
+    porque o `recipes.save` do treino trocaria a quarentena por uma ativa nova e ressuscitaria o caminho que o
+    aprendizado rebaixou. O `save` normal não muda de política.
+  - 409 `sessao_nao_salva` (sem `flow_id`), 409 `fluxo_inexistente` (a habilidade foi apagada), 409 `fluxo_desligado`
+    (a habilidade está desligada), 404 `not_found`.
+- Aparelho fora do ar no `save`/prévia/reparo: a identidade da receita (versão do app, idioma e densidade) vem do que a
+  última leitura deixou; se faltar, a etapa fica sem receita com o `reason` "aparelho do treinamento fora do ar e <o que
+  falta> ainda não foi lido… Refaça as receitas quando ele voltar". O painel chama `/recipes` nesse caso.
+- **Prova:** `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`); `real`: `not_run`.
+
+## Adendo v1.60 (05/10/2026; número da orquestradora; item 30.80) — a receita que não se aplicou não conta como falha dela
+
+Mudanças aditivas; o painel não muda.
+- `GET /api/recipes` (e toda leitura que devolve a linha da receita) ganha `nao_aplicavel_seguidas: integer`
+  (migração 115, padrão `0`).
+  - Conta as vezes seguidas em que a receita "não se aplicou": divergiu na AÇÃO 1, antes de agir, por alvo ausente
+    na tela (não ambíguo), e a etapa terminou comprovada pela IA. Nesses casos nem `replay_ok` nem `replay_fail` mudam.
+  - Da 3ª seguida em diante, cada uma conta como falha comum (`replay_fail`, `consecutive_fail` e a quarentena de
+    sempre), sem zerar a série.
+  - O ok, a falha comum, o `PUT /api/recipes/{id}` e a reativação pelo livro zeram.
+- O evento `decision` desse caso diz "tela de partida diferente" e leva no `data`, além de `text`:
+  `kind: "receita_nao_aplicavel"`, `recipe_id`, `step_id` e `contou_como_falha: boolean` (`true` da 3ª seguida em diante).
+- A etapa fica com `driven_by: "ai"` quando não contou (nenhuma ação da receita rodou), e `"recipe+ai"` quando contou.
+- A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
+  que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
+- **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).

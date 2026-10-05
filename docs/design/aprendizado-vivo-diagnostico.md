@@ -43,7 +43,6 @@ Conferências desta sessão (real, leitura, 02/10 ~19:35Z):
 |---|---|---|---|---|
 | Identidade do app, provedor de sessão, âncora, renderizador recusado | `app.yaml` | — | sim (despacho, compatibilidade, apps de fundo) | não |
 | Ações do app (capabilities), risco, pré/pós-condição | `catalogo.yaml` (só Instagram na main; Outlook no 12.3) | — | sim: planejador (`PlanRequest.catalog`), porta de política, prova local de VERIFY | não (só `/api/capabilities`) |
-| Telas conhecidas, sinais, conta travada/desafio/2FA | `telas.yaml` | `learning_items kind=tela` (candidata → publicada, `telas.modo`) | classificação e detecção de bloqueio; **não vai ao prompt** | só a aprendida; ao ser absorvida no YAML vira `deprecated absorvida:` e **some** |
 | Login e conferência de conta | `sessao.yaml` (motor `SessaoDeclarada`) | — | sim (fora do laço da IA) | não |
 | Receita (ações por seletor de uma etapa) | — | `recipes` (`candidate→active/validated→quarantined/superseded`) | sim, decide a etapa SEM IA (ativa) ou em sombra (candidata) | sim, como linha genérica; conteúdo só em Configuração |
 | Fluxo (plano de um comando) | — | `flows` (`match_key`) | sim, substitui o planejador | sim, linha genérica |

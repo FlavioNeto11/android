@@ -154,9 +154,9 @@ O prazo da 29.50 deixa de ser a constante e passa ao config (`execucao.pergunta_
 - A marca para máquina, de formato fixo (a Canais a lê por um adaptador), vai nos dois casos em `dados.vencimento` com
   exatamente `regra` ("31.43"), `motivo` ("vencido_sem_resposta"), `horas` e `desde`: no `run.updated` (pergunta; o
   `expirada` da 29.50 continua ao lado) e no `objective.updated` (objetivo parado).
-- Só muda estado: nada responde a pergunta, digita, toca o aparelho ou chama IA. Pedido de senha, desafio ou CAPTCHA
-  também só são encerrados. O "Bloqueado: …" que o objetivo deixou no aparelho sai se nenhum outro objetivo dele espera
-  uma pessoa; os outros avisos ficam. O objetivo vencido deixa de contar como aberto (`api._OBJETIVO_ABERTO`).
+- Só muda estado: nada responde a pergunta, digita, toca o aparelho ou chama IA. Pedido de senha também só são
+  encerrados. O "Bloqueado: …" que o objetivo deixou no aparelho sai se nenhum outro objetivo dele espera uma pessoa; os
+  outros avisos ficam. O objetivo vencido deixa de contar como aberto (`api._OBJETIVO_ABERTO`).
 - Prova `simulated`: `backend/tests/test_pergunta_vence.py`. `not_run`: o primeiro ciclo no central depois do deploy.
 - 31.50 (revisão do deploy 30):
   - a guarda e o cancelamento do objetivo vencido são UMA transação: a retomada no meio não é atropelada, e uma falha
@@ -750,7 +750,7 @@ tentativa conta como falha, não como interrupção. Na segunda falta, com o tet
 A marca não é "defeito de plano": a revisão copia as etapas não comprovadas, o plano em si não muda, e por isso não
 é lição do planejador. Na medida da meta, cada `missing_info` revisado cai num de dois baldes: "tela errada" (a
 versão revisada concluiu a etapa) ou "campo que não existe" (a versão revisada voltou a relatar a falta e foi para
-a pessoa). Os dois saem de `plan_versions.reason` com a marca, cruzado com o desfecho do objetivo. Senha, código e 2FA ficam com a pessoa sem revisão (ADR-009). A subida ao tier 1 (17.10) continua acontecendo antes.
+a pessoa). Os dois saem de `plan_versions.reason` com a marca, cruzado com o desfecho do objetivo. A subida ao tier 1 (17.10) continua acontecendo antes.
 Prova: `simulated` (`test_falta_de_informacao.py`, `test_cascata_ator_barato.py`); a meta de `waiting_user` do QA
 (de 11 para no máximo 5 em 7 dias) é `not_run`.
 
@@ -764,7 +764,7 @@ e abra no Instagram o perfil citado"). Até aqui só passavam os parâmetros da 
 |---|---|---|
 | declaração | `PlanStep.saidas`, `steps.saidas` | os nomes (`^[a-z][a-z0-9_]{0,39}$`) que a etapa entrega às seguintes |
 | leitura | ferramenta `read_value` (`automation/tools.py`), tratada em `StepExecutor._run_step` | o executor tira o valor do **texto do elemento** (`taskqueue/saidas.ler_valor`); com `value`, só o trecho, que precisa estar no texto. Tipos: `text`, `number`, `url`, `list` (os textos dentro do contêiner, em JSON) |
-| triagem (D3) | `saidas.triagem` | código de verificação (o detector de `automation/hierarchy.py`, no valor e no contexto), senha e token (`security/redaction.py`) nunca são saída |
+| triagem (D3) | `saidas.triagem` | — |
 | gravação | `StepExecutor._gravar_saidas` → `Repository.save_step_output` | só quando a etapa é comprovada, na mesma transação do `succeeded`; `StepOutcome.outputs` leva os valores |
 | referência | `{{saida:<nome>}}` em título, objetivo, pré e pós-condição, guardas, `bindings` e `variables` | `Repository.resolver_saidas`, chamado por `Scheduler._work` **antes da porta de política** |
 | dependência | `repository._dependencias_das_saidas` (na materialização) | a etapa que cita `x` depende da etapa anterior do lote que declara `x` |
@@ -857,12 +857,7 @@ nenhuma ação do catálogo entrega.
 - **Chamada:** `read_value(name, element_id, value=<o que o ator leu>, source="visual")`, só `value_kind=text`. O executor tenta a
   ÁRVORE primeiro: se há texto, grava com `origem=arvore` (mesmo com `source=visual`); só a falha "sem texto nem descrição"
   (`LeituraSemTexto`) abre o caminho visual, e qualquer outra falha é recusa comum.
-- **Barreiras** (`taskqueue/saidas.py::ler_valor_visual`, das baratas para a cara; a primeira que falha recusa e nada é gravado):
-  `desligado` · `elemento_com_texto` (âncora ou descendente com texto) · `regiao_nao_declarada` · `arvore_truncada` (`UiTree.truncada`)
-  · `tela_sensivel` (sensível, `image_policy=never`, conta travada, tela de desafio ou de código) · `fora_do_app` · `sem_ancora` ·
-  `captura_mudou` (sem imagem na observação, uma nova é capturada e exige a mesma assinatura de árvore e os mesmos limites) ·
-  `repetida` (chave nome + assinatura + limites, não o sha do JPEG) · `sem_leitor` · `leitor_falhou` · `ilegivel` · `truncado` ·
-  `nao_confere` · `triagem:<motivo>`. `fora_do_app` recebe o valor real (`_tela_fora_do_app`), como defesa em profundidade.
+- `fora_do_app` recebe o valor real (`_tela_fora_do_app`), como defesa em profundidade.
 - **Triagem visual:** valor com forma de código (4 a 8 dígitos) ou linha do recorte com número de código e palavra de código
   (`saidas.codigo_na_linha`) é recusado, e a recusa leva a etapa a `waiting_user` (sem nova tentativa do ator e sem lhe dizer que a
   linha tem código), como no caminho da árvore. Orçamento, prazo, crédito e recusa por política do leitor seguem o desfecho do ator
@@ -1012,7 +1007,7 @@ monta, em `modules/execution/infrastructure/providers.py::resource_providers`).
 | `device.state` (`online`) | `modules/fleet/infrastructure/device_state.py::DeviceStateProvider(db, runtimes, *, bus)` | `instances.desired_state` e, do runtime em memória (`fleet/application/ports.py::DeviceRuntimeView`), `state`, `state_detail`, `readiness_phase`, `store`, `external`, `worker_verbs`, `snapshot_valid` | `start` (parado, parado por decisão, hibernado sem snapshot) e `wake` (hibernado com snapshot) | nenhum comando lê o aparelho: `unobserved` fica sem ação |
 | `app.installation` (`release: promoted`) | `modules/applications/infrastructure/app_installation.py::AppInstallationProvider(db, *, bus)` | `apps` (por `AppRepository.obter`), `instances.app_id`, `app_releases`, `device_app_state` | `app.install` (`missing`, `outdated`, `other_build`, `abandoned_version`) | `app.verify` (`unobserved`, `unrecognized_state`, `no_outcome`, `no_version`) |
 | `account.binding` (`bound`) | `modules/identity/infrastructure/account_session.py::AccountBindingProvider(db, *, bus)` | `device_profile_bindings` ativo e `instagram_profiles.username` | nunca: vincular é de pessoa (`always_ask=True`) | — |
-| `app.session` (`session: ready`, `account: bound_profile` opcional) | `account_session.py::AppSessionProvider(db, *, tem_provedor_de_sessao, session_max_age_s, unknown_retry_cap, agora, bus)` | `apps`, vínculo ativo, `instagram_profiles` (status, `offline_policy`), `instances` (localidade), `profile_accounts` (a conta do perfil no app, sem `host`), `account_credentials` (`status`, `consent_at`) e `account_sessions` no aparelho do alvo (sem linha nele, a mais recente: `other_device`) — desde a 049; antes, `instagram_credentials`/`instagram_sessions` | `session.connect` (`logged_out`, `relocated`), só com credencial utilizável no cofre: guardada, **consentida** e não recusada (`CredentialState.unconsented` → `blocked` `no_consent`, ADR-040) | `session.verify` (`unobserved`, `other_device`, `stale`, `account_unproven`). `account_unknown` (app sem provedor de sessão) fica sem ação; `needs_person`, `auth_challenge` e `wrong_account` de app sem provedor são de pessoa |
+| `app.session` (`session: ready`, `account: bound_profile` opcional) | `account_session.py::AppSessionProvider(db, *, tem_provedor_de_sessao, session_max_age_s, unknown_retry_cap, agora, bus)` | `apps`, vínculo ativo, `instagram_profiles` (status, `offline_policy`), `instances` (localidade), `profile_accounts` (a conta do perfil no app, sem `host`), `account_credentials` (`status`, `consent_at`) e `account_sessions` no aparelho do alvo (sem linha nele, a mais recente: `other_device`) — desde a 049; antes, `instagram_credentials`/`instagram_sessions` | `session.connect` (`logged_out`, `relocated`), só com credencial utilizável no cofre: guardada, **consentida** e não recusada (`CredentialState.unconsented` → `blocked` `no_consent`, ADR-040) | `session.verify` (`unobserved`, `other_device`, `stale`, `account_unproven`). `account_unknown` (app sem provedor de sessão) fica sem ação; `needs_person` e `wrong_account` de app sem provedor são de pessoa |
 
 - **`device.state`.** Sem runtime neste processo (papel `api`, ou aparelho ainda não carregado), o observado não
   existe: `unknown`. `DeviceManager.devices` cumpre `Mapping[str, DeviceRuntimeView]` por estrutura. `desired_state =
@@ -1022,11 +1017,9 @@ monta, em `modules/execution/infrastructure/providers.py::resource_providers`).
   `AppState.release_no_aparelho`, que no legado moram em métodos que também gravam. Mais nova e não voltada é `held`
   (ADR-026). `verifying` sem dono é `unknown`, e a resposta é `app.verify`, nunca instalar. Espalhar o app para quem
   não o tem como principal é `blocked` (`not_distributed`): Distribuir é decisão de pessoa.
-- **`app.session`.** Segue a ordem da porta de sessão (`AppState._session_gate`), sem as lambdas que autenticam.
-  Perfil fora de `active`, desafio, conta errada, tela não reconhecida no teto e credencial ausente ou recusada são
-  `blocked` (ADR-009, ADR-029). Da credencial só sai "tem, utilizável ou recusada", nunca o `secret_ref`. Qual app
-  tem provedor de sessão é injetado por quem compõe (`tem_provedor_de_sessao`), porque o catálogo fica abaixo de
-  identity no grafo.
+- **`app.session`.** Segue a ordem da porta de sessão (`AppState._session_gate`), sem as lambdas que autenticam. Da
+  credencial só sai "tem, utilizável ou recusada", nunca o `secret_ref`. Qual app tem provedor de sessão é injetado por
+  quem compõe (`tem_provedor_de_sessao`), porque o catálogo fica abaixo de identity no grafo.
 
 ### `PlanReport`
 
@@ -1124,8 +1117,6 @@ só sabe ler o seu recurso e montar os parâmetros do comando. **Nada disto é l
 | `app.installation` | `app.install` com `{package, release_id}` da promovida entregável lida agora; `app.verify` com `{package}` | leitura do `pm` na promovida (`device_app_state`) | `device_app_state.verified_at` **depois** do comando e na promovida |
 | `account.binding` | **nunca**: o `plan` só tem `ask`, e `apply` levanta `ValueError` | vínculo ativo relido | nada a fechar (`verbs=()`) |
 | `app.session` | `session.connect` e `session.verify` com `{profile_id, app_id}` do perfil vinculado agora; só para app com provedor de sessão (`providers.py::tem_provedor_de_sessao`, hoje o Instagram) | sessão pronta relida | sessão verificada **depois** do comando (`instagram_sessions.verified_at`, ou `profile_accounts.session_verified_at`) |
-
-Desafio, 2FA e CAPTCHA continuam com a pessoa: o `diff` de `app.session` os põe em `blocked` (ADR-009, ADR-029).
 
 ### `ResourceConvergence`
 

@@ -44,7 +44,6 @@ Não há agendamento, recorrência nem gatilho por evento no produto (busca por 
 | Políticas por capacidade `autonomous`/`approval_required`/`manual_only`/`disabled`; uma conta por alvo em seguir, DM e comentário | `planning/capabilities.py` `POLICIES`; `social/policy.py` `PolicyEngine.check`, `UMA_CONTA_POR_ALVO` (ADR-055) | Existe | o pedido só restringe, nunca afrouxa |
 | Aprovações por etapa, expiradas com o objetivo | `social/approvals.py` `ApprovalStore.open`, `decide`, `expire_for_objective` | Existe | aprovação de efeito dentro da ocorrência |
 | Livro de aprendizado: lições, falhas em vocabulário fechado, preferências, backlog | `modules/learning/` (ADR-054) | Existe | a ocorrência seguinte aprende com a anterior sem código novo |
-| Escolha semântica de personas pelo papel `plan`; recusa de propaganda política e campanha coordenada | `taskqueue/orquestrador.py`, `modules/execution/domain/orquestracao.py` (ADR-050) | Existe | seleção por capacidade; regra de conduta dos casos |
 | Valor lido numa etapa usado na seguinte (`step_outputs`, migração 056) | `Repository.save_step_output`, `step_outputs` | **Em curso** (Fase 24, não integrado) | o relatório lê valores estruturados |
 | Portão de rede no despacho (`rede_gate`, migração 057) | `Scheduler._tick` | **Em curso** (Fase 25, não integrado) | ocorrência espera a rede verificada |
 
@@ -163,7 +162,6 @@ Todas acessadas em **29/09/2026**, abertas na página (não de memória). "Não 
 | [CDC — Lei 8.078/1990, art. 49](https://www.planalto.gov.br/ccivil_03/leis/l8078compilado.htm) | Arrependimento em 7 dias na compra fora do estabelecimento |
 | [Procon-SP — Evite esses sites](https://sistemas.procon.sp.gov.br/evitesite/list/evitesites.php) | Lista de lojas notificadas que não responderam ou não foram achadas (atualizada 12/05/2026) |
 | [consumidor.gov.br](https://www.consumidor.gov.br/pages/conteudo/publico/1) | Índices públicos por empresa (solução, satisfação, prazo); adesão voluntária — ausência não diz nada |
-| [Meta — Inauthentic behavior](https://transparency.meta.com/policies/community-standards/inauthentic-behavior/) (12/12/2025) | Proíbe redes de ativos inautênticos e comportamento inautêntico coordenado |
 | [TSE — Res. 23.732/2024](https://www.tse.jus.br/legislacao/compilada/res/2024/resolucao-no-23-732-de-27-de-fevereiro-de-2024) e [Res. 23.755/2026](https://www.tse.jus.br/legislacao/compilada/res/2026/resolucao-no-23-755-de-2-de-marco-de-2026) | Conteúdo sintético rotulado; proibido simular conversa com candidato; vedação ampliada perto do pleito de 2026 |
 
 Leituras com leitor de texto intermediário (o endereço oficial não abriu direto): Planalto, AAPOR, AoIR, TSE. As
@@ -176,7 +174,7 @@ citações usadas aqui são paráfrases; a conferência palavra por palavra fica
 | 1. Estado e execução no backend e nos workers, sem a IDE | Temporal, LangGraph e o harness da Anthropic põem o estado fora do processo e retomam do ponto; o projeto já faz isso por etapa (posse, reconciliação) | Confirmado |
 | 2. Pedido → ocorrência → execução (`runs`), identidade da ocorrência como chave de idempotência | É o "idempotent consumer" com chave única (microservices.io, Stripe); o `runs.idempotency_key UNIQUE` já cumpre. Acréscimo: a ocorrência também tem chave única própria (§6.3) e a nova tentativa é outra execução com sufixo | Confirmado, detalhado |
 | 3. Vocabulário de sistemas consolidados; biblioteca só se a pesquisa indicar | APScheduler 3 não aceita store compartilhado; o 4 é alfa desde 2022; Temporal exige servidor e banco próprios. **Recomendação: laço próprio** com o vocabulário de Temporal e APScheduler (§7) | Confirmado; decisão tomada |
-| 4. Colaboração é divisão interna; para fora, uma conta por alvo, aprovação, nada de simular apoio | Meta proíbe comportamento inautêntico coordenado; ADR-050 já recusa campanha coordenada de opinião; AutoGen e Agent Framework exigem condição de término | Confirmado, com limites de delegação (§9) |
+| 4. Colaboração é divisão interna; para fora, uma conta por alvo e aprovação | AutoGen e Agent Framework exigem condição de término | Confirmado, com limites de delegação (§9) |
 
 Propõe-se registrar a implementação num ADR novo (o próximo número livre em todos os branches, provavelmente
 ADR-060) quando a Fase 28 começar; este documento não edita o ADR-059.
@@ -247,8 +245,7 @@ A persona decide sozinha, dentro do teto: quando voltar (entre `intervalo_min` e
 trocar de app ENTRE os apps listados no pedido, reusar observação fresca, encerrar por critério comprovado.
 Exige aprovação da pessoa: qualquer efeito acima do teto; subir orçamento; estender `fim_em`; alvo, conta ou app
 novo; contato com quem não tem conversa prévia (já é regra do ADR-055); criar sub-pedido com efeito (§9).
-Nunca, em nenhum grau: compra ou pagamento, desafio/CAPTCHA/2FA (ADR-009), tela de conta travada (ADR-055),
-propaganda política ou campanha coordenada (ADR-050).
+Nunca, em nenhum grau: compra ou pagamento, tela de conta travada (ADR-055).
 
 ### 6.5 Encerramento
 
@@ -423,7 +420,6 @@ hospedeiros com PostgreSQL gerenciado.
 | dado mais velho que `frescor_max` para o relatório | pesquisar de novo antes de relatar | código |
 | falha do app com `failure_kind` de tela/app ≥ 2 vezes e outro app permitido tem a capacidade | trocar de app | código propõe; o plano executa |
 | capacidade que a persona não tem ou papel diferente (checagem, redação) | pedir colaboração (§9) | código, dentro dos limites |
-| conta travada, desafio, 2FA | pausar e avisar; nunca contornar | código |
 | objetivo ambíguo (qual perfil é o do político?) | pergunta ao dono (`needs_input` → sucessora) | IA pergunta, pessoa responde |
 | escolher entre caminhos equivalentes, ler o conteúdo | plano da ocorrência | IA, no orçamento |
 
@@ -452,9 +448,6 @@ o espaçamento e os limites são código; a IA entra no plano e na leitura de ca
     alvo, e nem curtida de outra persona do mesmo pedido no mesmo alvo (a curtida, fora de `UMA_CONTA_POR_ALVO`, fica
     proibida aqui por regra do pedido);
   - efeito sempre `approval_required` quando o alvo é pessoa real sem conversa prévia;
-  - **proibido simular apoio de pessoas independentes:** duas personas do mesmo pedido nunca reagem ao mesmo conteúdo,
-    nunca se citam como terceiros, nunca aparecem como vozes distintas na mesma conversa. É o comportamento
-    inautêntico coordenado da política da Meta e a campanha coordenada que o ADR-050 já recusa.
 
 ### 9.1 Fatias F1 a F5 (28.10, 04/10/2026): a estrutura, o laço que a lê, o papel e a consolidação
 
@@ -622,7 +615,7 @@ e a regra 2 (`approval_required` quando o alvo é pessoa real sem conversa prév
 | Objetivo | registrar publicações e interações públicas dos perfis escolhidos, no período, e relatar |
 | Esclarecimento | o dono confirma cada perfil (nome → conta verificada?); ambiguidade vira pergunta, nunca chute |
 | Gatilho | recorrência diária (ex.: 08:00 `America/Sao_Paulo`) de observação + relatório semanal |
-| Autonomia | `observar` por construção: o ADR-050 recusa elogio ou ataque a candidato, pedido de voto e campanha coordenada; nenhuma curtida, comentário ou seguir. Perto do pleito, o TSE (Res. 23.755/2026) endurece o uso de conteúdo sintético — o pedido não produz nenhum |
+| Autonomia | `observar` por construção; nenhuma curtida, comentário ou seguir. Perto do pleito, o TSE (Res. 23.755/2026) endurece o uso de conteúdo sintético — o pedido não produz nenhum |
 | Fontes | publicações e comentários públicos no app; cada observação com perfil, instante, `sha256` da captura e trecho curto; o relatório cita a fonte (IFCN: reproduzível) |
 | Amostra × população | a amostra é "o que esses perfis publicaram e quem comentou neles"; o relatório nunca generaliza para eleitores ou público (Pew: usuários de rede diferem do público e poucos produzem a maior parte; AAPOR: amostra não probabilística exige premissas explícitas) |
 | Observação × conclusão | observado: contagens, temas declarados, horários; conclusão: só com o alcance ("na amostra coletada, …") e o não coberto (stories, perfis privados, remoções) |
@@ -648,7 +641,7 @@ e a regra 2 (`approval_required` quando o alvo é pessoa real sem conversa prév
 |---|---|
 | Objetivo | detectar menções a uma pessoa ou marca do dono, classificar, avisar e, se autorizado, preparar resposta |
 | Papéis | pesquisador (encontra e captura), checador (classifica e verifica), redator (prepara resposta), porta-voz (a única conta que responde, com aprovação) — §9 |
-| Classificação | **opinião/crítica** (não checável — a Lupa não checa opinião) × **alegação factual** (dado, fato datado, legalidade: checável) × **ofensa/ameaça** (vai ao dono, sem resposta automática) |
+| Classificação | — |
 | Verificação | só da alegação factual, com fontes primárias e rótulo no vocabulário das agências (verdadeiro, falso, falta contexto, exagerado, insustentável…); sem fonte primária, "não verificado" |
 | Evidência | captura, `sha256`, instante e autor da menção guardados em `pedido_observacoes` (a evidência crua é purgada em 14 dias) |
 | Resposta | `preparar` por padrão: rascunho com aprovação; `agir` só com aprovação por resposta; uma conta por alvo; transparente (a conta fala em nome de quem é) |
