@@ -5468,3 +5468,51 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 raiz", [api-contract.md](api-contract.md) adendo v1.36, [banco.md](banco.md) migração 107; `backend/app/main.py`
 (`guarda`, montagem da raiz), `backend/app/modules/portal/`, `site/`, `scripts/portal-prova-de-fora.sh`,
 `scripts/deploy.ps1`.
+
+## ADR-077 — Um caminho só de ensino: o Modo treinamento
+
+**Data:** 05/10/2026 · **Estado:** aceito (decisão do dono, 05/10/2026; item 31.91). Fatia F2 implementada e provada
+`simulated`; as outras fatias seguem abaixo.
+
+**Contexto.** Hoje há dois caminhos para a pessoa ensinar a central, e eles se sobrepõem:
+
+- o **Modo treinamento** (itens 13.1 a 13.3): a pessoa opera o aparelho, a central grava as entradas, a IA propõe um
+  fluxo e o salvar o transforma em fluxo e receitas com escopo;
+- o **Ensino por habilidade** (o "ensino v2"): resolvedor de intenção, validação estática, laço de perguntas e
+  respostas, versões de habilidade. Está sem uso e nunca destilou uma receita.
+
+A pessoa vê duas telas para o mesmo fim. Pior: as perguntas que a IA faz no Modo treinamento (`questions` da proposta)
+aparecem e morrem, porque não há onde respondê-las; só o ensino v2 sabia fechar esse laço.
+
+**Decisão.** Fica **um** caminho de ensino, o Modo treinamento.
+
+1. Do ensino v2 continuam, como **camada interna** do Modo treinamento: o resolvedor de intenção, a validação estática
+   e o laço de perguntas e respostas. Nenhum deles tem tela própria.
+2. A tela do ensino v2 **sai atrás de chave** (desligada, reversível). **Nenhuma tabela e nenhum dado é apagado.**
+3. **Nenhuma linha de `flows` ou `recipes` é reescrita.** O que já foi salvo continua valendo como está.
+4. As respostas da pessoa passam a entrar no `propose` do Modo treinamento (fatia F2), com a mesma frase que o ensino
+   v2 já usava para o modelo, definida num lugar só.
+
+A frase do dono, literal, em 05/10/2026: "faça de uma forma que não fique redundante e tenha o caminho oficial
+funcionando".
+
+**Consequências.**
+
+- Um só lugar para ensinar e um só contrato (`POST /api/training/{id}/propose`) para a proposta com respostas.
+- O ensino v2 deixa de ser caminho de produto; o código que o Modo treinamento reaproveita fica coberto pelos testes
+  de hoje.
+- Não há migração: as respostas moram na proposta da sessão (`training_sessions.proposal`, chave `answers`), e o salvar
+  não as leva para `flows` nem `recipes`.
+- Reverter é religar a chave da tela; os dados nunca saíram.
+
+**Fatias.**
+
+- **F0**: este ADR.
+- **F1**: esconder a tela do ensino v2 atrás de chave e fechar a sessão de ensino que ficou parada.
+- **F2**: o `propose` com respostas (adendo v1.63 do contrato; `backend/app/training/respostas.py`).
+- **F3**: o salvar do Modo treinamento passa pela validação estática do ensino v2.
+- **F4** (opcional): versionar a habilidade por adoção, em vez de substituir.
+
+**Relação.** ADR-040 (a automação faz o que a pessoa pediu; a resposta com formato de segredo é recusada, não
+guardada), [api-contract.md](api-contract.md) adendo v1.63; `backend/app/training/skills.py`,
+`backend/app/training/respostas.py`, `backend/app/planning/training.py`, `backend/app/training/generalizer.py`.
