@@ -410,7 +410,11 @@ para sem tirar nada se alguma foi mexida à mão) e `conferir` só lê e diz se 
 sem gravar; a prova de fora deu 22 de 22 às 23:06:58Z.
 Para tirar o hostname do ar, `Stop-Service Cloudflared` (e, se for o caso, `cloudflared service uninstall`).
 
-### Site institucional na raiz (29.77, ADR-075; desligado, prova `simulated`)
+### Site institucional na raiz (29.77, ADR-075; ligado no central desde 05/10/2026)
+
+**Estado no central (`real`, 05/10/2026, `a0c9865e`):** site e formulário ligados às 01:19Z, com o sim do dono. Prova de
+fora às 01:19:51Z com `SITE=ligado CONTATO=ligado WEBHOOK_DO_TRELLO=ligado`: tudo como esperado. O primeiro contato de
+verdade pelo formulário segue `not_run`. De fábrica, em qualquer outra instalação, tudo nasce desligado.
 
 O site público da SICAT/ANA (pasta `site/`, versionada) vai na raiz de `https://dev.nvit.com.br/`, com o painel seguindo
 em `/central/`. O formulário de contato manda a mensagem ao Telegram do dono pelo bot (contrato `portal.contato`, item
