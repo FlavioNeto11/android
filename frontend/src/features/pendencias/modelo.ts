@@ -20,7 +20,7 @@
  */
 import type { PedidoView } from '../../api/pedidos';
 import type { Approval, PersonaDTO, RunSummary } from '../../api/types';
-import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
+import { metaDaSessao } from '../../lib/status';
 import type { Destino } from '../../store/ui';
 import { rotuloDoKind, type EntradaDoLivro } from '../aprendizado/model';
 import { encurtar, tituloCurto } from '../runs/filtroExecucoes';
@@ -40,6 +40,24 @@ export const ROTULO_DA_ORIGEM: Record<OrigemDaPendencia, string> = {
  * (achado #106). Um só lugar: a fila "Aguardando intervenção" de Personas e a caixa de pendências leem daqui.
  */
 export const PRECISA_DE_PESSOA: ReadonlySet<string> = new Set(['auth_challenge', 'wrong_account', 'needs_person']);
+
+/**
+ * A sessão espera uma pessoa: um dos estados de `PRECISA_DE_PESSOA` ou o `unknown` NO TETO do aparelho (29.96,
+ * `unknown_at_cap`: a automação parou sem tocar numa tela que não reconheceu). O filtro das duas filas.
+ */
+export function precisaDePessoa(session: { status: string; unknown_at_cap?: boolean }): boolean {
+  return PRECISA_DE_PESSOA.has(session.status) || !!session.unknown_at_cap;
+}
+
+/**
+ * Desde quando a sessão espera (29.100): a hora da mudança de estado ou, no `unknown`, a da parada no teto.
+ * `verified_at` é a última verificação, que na parada fica vazia ou de dias atrás, e fazia uma parada de agora parecer
+ * antiga. Ele só vale quando o backend não manda `status_since` (anterior ao 29.100, ou `session_ready` de antes da
+ * migração 112).
+ */
+export function desdeDaSessao(session: { status_since?: string | null; verified_at: string | null }): string | null {
+  return session.status_since ?? session.verified_at;
+}
 
 export interface Pendencia {
   /** Estável entre leituras (a lista não pisca quando a caixa é relida). */
@@ -161,16 +179,16 @@ export function pendenciasDePedidos(
  * resolver na tela); a caixa só leva até ela.
  */
 export function pendenciasDeSessoes(personas: readonly PersonaDTO[]): Pendencia[] {
-  return personas.filter((p) => p.username && PRECISA_DE_PESSOA.has(p.session.status)).map((p) => {
+  return personas.filter((p) => p.username && precisaDePessoa(p.session)).map((p) => {
     const nome = p.display_name || p.name;
     const aparelho = p.session.instance_id ?? p.instance_id;
     return {
       chave: `intervencao:${p.id}`,
       origem: 'intervencao',
       titulo: nome && nome !== p.username ? `${nome} (@${p.username})` : `@${p.username}`,
-      detalhe: `${metaOf(ACCOUNT_SESSION_STATUS, p.session.status).label} · ${aparelho ?? 'sem aparelho vinculado'}`
+      detalhe: `${metaDaSessao(p.session).label} · ${aparelho ?? 'sem aparelho vinculado'}`
         + ' · só uma pessoa resolve',
-      desde: p.session.verified_at,
+      desde: desdeDaSessao(p.session),
       acao: 'Resolver',
       destino: { tela: 'personas' },
     };
@@ -182,8 +200,9 @@ export const DIAS_PARA_ANTIGA = 7;
 
 /**
  * Triagem por idade (decisão D1): a execução que parou pedindo informação há mais de 7 dias raramente é a próxima
- * coisa a fazer, e 27 linhas seguidas escondiam o que chegou hoje. Só a origem Execução: o `desde` de uma intervenção
- * é a última verificação da sessão, e um login travado de verdade não pode ir parar numa seção recolhida.
+ * coisa a fazer, e 27 linhas seguidas escondiam o que chegou hoje. Só a origem Execução: uma intervenção de sessão
+ * continua parada até alguém agir, por mais antiga que seja, e um login travado de verdade não pode ir parar numa seção
+ * recolhida.
  */
 export function ehAntiga(p: Pendencia, agora: number): boolean {
   if (p.origem !== 'execucao' || !p.desde) return false;
@@ -211,7 +230,7 @@ export interface EntradasDaCaixa {
  * 2. Persona: cada aprovação de texto com status `pending` (a decidida, aprovada ou recusada, não conta);
  * 3. Execução: cada execução com status `needs_input`, por mais antiga que seja (a de um objetivo `waiting_user`
  *    dentro de uma execução que já terminou não conta: está em Execuções, no chip "Pede atenção");
- * 4. Intervenção: cada persona COM conta cuja sessão está em login, desafio ou conta errada (`PRECISA_DE_PESSOA`);
+ * 4. Intervenção: cada persona COM conta cuja sessão está em login, desafio, conta errada ou parada no teto (`precisaDePessoa`);
  * 5. Pedido (emenda à ADR-062, 28.9): cada pedido em `aguardando_pessoa`. A aprovação e a execução `needs_input` das
  *    execuções DELE saem das origens 2 e 3 e aparecem agrupadas sob o pedido (`filhas`): o item do pedido é o que conta.
  *

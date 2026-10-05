@@ -132,7 +132,7 @@ export function ResumoDaExecucao({
         <dd className={styles.valor}>
           <span className={styles.resultado}>{resultado}</span>
           {sucessos ? <span className={styles.secundario}> · {sucessos}</span> : null}
-          {run.status === 'completed' || run.status === 'completed_with_issues' ? (
+          {run.status === 'completed' || run.status === 'completed_with_issues' || run.status === 'awaiting_person' ? (
             <>{' '}{origem === 'prova_fluxo' || origem === 'validacao_qa'
               ? <VereditoDaValidacao runId={run.id} />
               : <LegendaDeSucessoComprovado />}</>

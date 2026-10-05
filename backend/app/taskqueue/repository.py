@@ -7,6 +7,7 @@ operações críticas (assumir etapa + registrar tentativa) são uma única tran
 """
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 from collections.abc import Callable, Sequence
@@ -18,7 +19,7 @@ from ..contracts.origem import origem_da_execucao
 from ..db import Database, INTEGRITY_ERRORS, Row, dumps, loads
 from ..events import EventBus
 from ..social.approvals import MOTIVO_DA_RECUSA
-from ..models import (RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, AttemptStatus, DecisionDTO, DeliveryLevel,
+from ..models import (RUN_SEM_TRABALHO, RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, AttemptStatus, DecisionDTO, DeliveryLevel,
                       EvidenceDTO, ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, PlanVersionDTO, Postcondition,
                       RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, SAIDA_NOME_RE, SAIDA_VALOR_MAX,
                       SAIDA_ORIGENS, SAIDA_VALUE_KINDS, StepDTO, StepResult, StepStatus)
@@ -40,6 +41,8 @@ from .recipes import para_hash, step_template_hash
 from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
 
+log = logging.getLogger("poc.repository")
+
 #: Tipo do conteúdo por extensão de evidência. O disco não guarda tipo (quem serve o decide pela extensão), mas
 #: o S3 guarda — e sem isto toda captura de tela chegaria ao navegador como `application/octet-stream`.
 CONTENT_TYPES = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "txt": "text/plain",
@@ -51,6 +54,11 @@ TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 MOTIVO_REJEICAO = "rejeitado por quem aprova"
 #: Os desfechos de etapa que são FALHA e levam o tipo classificado (ADR-054); nos demais, `steps.failure_kind` é nulo.
 _ETAPA_EM_FALHA = frozenset({StepStatus.failed, StepStatus.uncertain, StepStatus.waiting_user})
+
+
+#: Estados de antes do trabalho automático: a execução que sai deles direto para um estado final (o planejador recusou,
+#: cancelada antes de iniciar) não tem o que assentar; a varredura dos pedidos a fecha (A1).
+_ANTES_DE_INICIAR = frozenset({RunStatus.planning.value, RunStatus.needs_input.value, RunStatus.planned.value})
 
 
 class Sentinel:
@@ -158,6 +166,15 @@ class Repository:
         #: 31.50: (prazo em horas, ligado desde) do vencimento, ou `None` desligado. Quem sabe é o `RunService`, que o
         #: preenche; sem ele (testes de repositório), os DTOs saem sem `vence_em`, como antes.
         self.prazo_do_vencimento: Callable[[], tuple[float, str] | None] | None = None
+        #: 29.93: o assentamento da execução que fecha SEM worker: ela esperava a pessoa (`awaiting_person`) e sai pela
+        #: confirmação, pelo abandono, pelo vencimento (31.50) ou pelo cancelamento; ou foi cancelada sem worker vivo
+        #: (29.103). O `Scheduler._settle_run` só roda no fim de um worker. Quem liga isto é o `AppState`, com o MESMO
+        #: gancho do `_settle_run` (`_execucao_assentada`: digest, trava de rascunho e pedidos). Só é chamado por quem
+        #: ganhou a marca `assentada_em` (`marcar_assentada`).
+        self.ao_assentar_sem_worker: Callable[[str], None] | None = None
+        #: "Há worker deste backend num objetivo desta execução?" O `Scheduler` liga. Com worker vivo, a rede não
+        #: assenta: quem assenta é o worker, no fim dele, em linha.
+        self.worker_da_execucao_vivo: Callable[[str], bool] | None = None
         #: Os dados NÃO sigilosos da persona de cada aparelho, para as variáveis `{perfil_email}` etc. (ADR-040). "O app
         #: tem provedor de sessão?" decide o VALOR de `conta_<app>_usuario` (29.71: o nome no app, nunca o e-mail de
         #: login, no app de login gerenciado): com o predicado em falso, a materialização punha o e-mail do Instagram no
@@ -274,12 +291,19 @@ class Repository:
         `so_se`: a troca só vale se a execução ainda está num desses estados E sem cancelamento pedido, num `UPDATE`
         só (compare-and-set); senão nada muda, nada sai e devolve `False`. É o início (`RunService.start`) contra o
         cancelamento condicionado do canal (28.27), que marca `cancel_requested` antes de fechar a execução."""
-        anterior = self.db.scalar("SELECT status FROM runs WHERE id=?", (run_id,))
+        linha = self.db.one("SELECT status FROM runs WHERE id=?", (run_id,))
+        anterior = linha["status"] if linha is not None else None
         fields, params = ["status=?", "status_detail=?"], [status.value, detail]
+        if status not in RUN_TERMINAL and status != RunStatus.cancelling:
+            # #382: a execução volta a ter trabalho (retomada), ou volta a esperar a pessoa: assenta de novo quando
+            # fechar. Zera AQUI, no único lugar que grava `runs.status`, para nenhum caminho de reabertura escapar.
+            # `cancelling` não zera: cancelar uma execução já assentada (a `completed_with_issues` incerta) não traz
+            # trabalho novo; assentar de novo seria em dobro (o D1 da leitura do #382).
+            fields.append("assentada_em=NULL")
         if status == RunStatus.running:
             fields.append("started_at=COALESCE(started_at, ?)")
             params.append(now_iso())
-        if status in RUN_TERMINAL:
+        if status in RUN_SEM_TRABALHO:          # 29.93: esperar a pessoa também é o fim do trabalho automático
             fields.append("finished_at=COALESCE(finished_at, ?)")
             params.append(now_iso())
         if so_se:
@@ -292,7 +316,42 @@ class Repository:
             self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
         self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
         self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level, dados=dados)
+        # 29.93/#382: a REDE do assentamento. Toda execução que chega a um estado final vindo de um estado de trabalho
+        # (não do planejamento: a que falha ou é cancelada antes de iniciar segue fechada pela varredura dos pedidos)
+        # tenta assentar depois do COMMIT. Só assenta quem ganha a marca `assentada_em` e não tem worker vivo; a
+        # execução comum é assentada pelo worker, que grava a marca na MESMA transação do estado final
+        # (`Scheduler._work`), então a rede chega depois e perde. Sobra para ela quem fecha sem worker: a saída da
+        # espera da pessoa (concluir, abandonar, vencer, cancelar) e o cancelamento órfão (29.103).
+        if (status in RUN_TERMINAL and anterior is not None and anterior != status.value
+                and anterior not in _ANTES_DE_INICIAR and self.ao_assentar_sem_worker is not None):
+            # Depois do COMMIT: o vencimento troca o estado dentro de uma `tx()`, numa thread; disparado ali dentro, o
+            # assentamento esperaria a trava do banco no laço de eventos ou leria a execução ainda esperando.
+            self.db.depois_do_commit(lambda: self._assentar_sem_worker(run_id))
         return True
+
+    def marcar_assentada(self, run_id: str) -> bool:
+        """Compare-and-set da marca de assentamento (#382, migração 113): `True` só para quem a gravou agora, com a
+        execução em estado final. Quem recebe `True` assenta; quem recebe `False` não faz nada (outro já assentou).
+        Se o assentamento estourar DEPOIS de marcar, não se repete: o log diz a execução, e o digest se recupera pelo
+        `backfill_licoes` manual (como antes da marca, quando o `_settle_run` também não repetia)."""
+        marcas = ", ".join("?" for _ in RUN_TERMINAL)
+        cur = self.db.execute(f"UPDATE runs SET assentada_em=? WHERE id=? AND assentada_em IS NULL "
+                              f"AND status IN ({marcas})", (now_iso(), run_id, *(s.value for s in RUN_TERMINAL)))
+        return cur.rowcount == 1
+
+    def _assentar_sem_worker(self, run_id: str) -> None:
+        gancho = self.ao_assentar_sem_worker
+        if gancho is None:
+            return
+        vivo = self.worker_da_execucao_vivo
+        if vivo is not None and vivo(run_id):
+            return                              # o worker assenta no fim dele, em linha
+        if not self.marcar_assentada(run_id):
+            return                              # já assentada (pelo worker, ou por outro backend)
+        try:
+            gancho(run_id)
+        except Exception:  # noqa: BLE001 - o assentamento nunca derruba a troca de estado já gravada
+            log.exception("assentamento da execução %s sem worker", run_id)
 
     def request_pause(self, run_id: str, reason: str) -> None:
         """Pausa automaticamente (disjuntor de conta de IA): idempotente e sem checar quem pediu — ao contrário
@@ -1168,15 +1227,20 @@ class Repository:
                 new = RunStatus.completed
             else:
                 new = RunStatus.completed_with_issues
-            if counts.waiting_user or counts.uncertain:
-                # há itens aguardando decisão do usuário: a execução segue "em aberto" para permitir retomada
+            if counts.waiting_user:
+                # 29.93: um item espera um gesto da pessoa no aparelho. Não é fim: a execução fica `awaiting_person`
+                # (não terminal) até a retomada reabrir ou o vencimento (31.50) fechar o objetivo parado.
+                new = RunStatus.awaiting_person
+            elif counts.uncertain:
+                # item incerto, sem ninguém esperando gesto: `completed_with_issues`, que já diz "com problemas" e
+                # permite a retomada. Vale também com cancelamento pedido (o item incerto que `_finish_cancel` não fecha).
                 new = RunStatus.completed_with_issues
             detail = self._status_detail(counts, total)
             if new != current or detail != run["status_detail"]:
                 self.set_run_status(run_id, new, detail, message=f"Execução {run_id} finalizada: {detail}",
                                     level="info" if new == RunStatus.completed else "warn")
             return new
-        if current in RUN_TERMINAL and active > 0:          # retomada de itens
+        if current in RUN_SEM_TRABALHO and active > 0:      # retomada de itens
             self.db.execute("UPDATE runs SET finished_at=NULL WHERE id=?", (run_id,))
             self.set_run_status(run_id, RunStatus.paused if run["pause_requested"] else RunStatus.running,
                                 "itens retomados")
@@ -1459,7 +1523,7 @@ class Repository:
         if not ids or self.prazo_do_vencimento is None:
             return {}
         marcas = ",".join("?" for _ in ids)
-        terminais = {s.value for s in RUN_TERMINAL}
+        terminais = {s.value for s in RUN_SEM_TRABALHO}
         return {str(o["id"]): self._vence_em(max(str(o["finished_at"] or ""), str(o["fim"] or "")))
                 if o["status"] == ObjectiveStatus.waiting_user.value and o["run_status"] in terminais else None
                 for o in self.db.query(f"SELECT o.id, o.status, o.finished_at, r.status AS run_status, "
@@ -1470,8 +1534,8 @@ class Repository:
         if row["status"] != ObjectiveStatus.waiting_user.value or self.prazo_do_vencimento is None:
             return None
         run = self.db.one("SELECT status, finished_at FROM runs WHERE id=?", (row["run_id"],))
-        if run is None or RunStatus(run["status"]) not in RUN_TERMINAL:
-            return None                               # execução viva: o relógio só começa quando ela termina
+        if run is None or RunStatus(run["status"]) not in RUN_SEM_TRABALHO:
+            return None                               # execução viva: o relógio só começa quando o trabalho dela acaba
         return self._vence_em(max(str(row["finished_at"] or ""), str(run["finished_at"] or "")))
 
     def objective_dto(self, row: Row) -> ObjectiveDTO:

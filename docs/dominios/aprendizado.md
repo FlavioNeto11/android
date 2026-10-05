@@ -1474,6 +1474,15 @@ A lacuna ("a receita não tem evidência datada") tinha um custo medido em 03/10
   `consecutive_fail` (quarentena) e não grava `driven_by`. Na leitura, a etapa em `waiting_user`, `cancelled` ou
   `skipped` fica de fora, o que cobre as gravadas antes (cancelar e pular só pegam etapa aberta). A etapa retomada que terminar dá o veredito no digest seguinte. A divergência
   vista na SOMBRA continua contando, como na nova tentativa: segura a promoção.
+  - Exceção conhecida (D1-N1 da leitura do #374): em 04/10, entre o 31.36 e o 31.40 b, a etapa opcional rodou
+    com receita por algumas horas. Uma falha ali gravou `recipe+ai` e depois `skipped`, e o filtro a esconde da
+    retrocarga. Fica registrado; não vale código.
+- **A espera pela pessoa no digest (30.69, sobre o 29.93).** A execução em `awaiting_person` não assenta nem é
+  digerida enquanto espera; o assentamento na saída é do 29.93. A exposição da etapa em `waiting_user` não fecha
+  (`_ETAPA_FINAL` sem ele): a curadoria escolhe as execuções pelo `finished_at` e congelaria o desfecho da espera.
+  No relatório de condução, a etapa que espera sem `driven_by` aparece como `esperando_pessoa`, não como "sem
+  condução", e fica fora da porcentagem por receita. O digest re-rodado na saída não duplica linha em nenhum
+  dos 10 mineradores (nota de desenho do 30.69).
 - **Não decide nada.** Só grava evidência; o D1, a quarentena e os contadores seguem donos do estado da receita.
 - **Retrocarga** `RetrocargaDaReceita`, passo da curadoria (e não função única na montagem): a cada volta completa as
   reproduções de execuções já terminadas que ainda não têm linha (as de antes do 30.39, um digest que falhou), datadas
@@ -1843,7 +1852,8 @@ Dos revisores dos pacotes (29/09); nenhuma bloqueou o merge.
   `requested_by` cru e o prefixo da nota do painel (22.2). Decisão do dono pendente: registrar à parte, sem contar na
   régua, a segunda pessoa que repete o mesmo gesto (A pede o controle e desiste, B pede e recebe: o sinal fica com A).
 - **A7:** depois de "ajuda", o controle de 10% é gravado, mas nada o reavalia; a aposentadoria conta toda evidência
-  contra de voto, sem olhar o braço; a exposição guarda o desfecho do primeiro assentamento; todas as lições de etapa
+  contra de voto, sem olhar o braço; a exposição guarda o desfecho do primeiro assentamento (a espera da pessoa
+  não fecha mais a da etapa, 30.69); todas as lições de etapa
   livre dividem a chave `(app, '*', papel)`; o SQL novo só rodou em SQLite.
 - **A8:** nove mutações sobreviveram, entre elas a árvore sensível do parque na coleta e o "zero contra" depois do
   nascimento (lacunas de teste, sem vazar segredo); a transição pelo livro vale para a sessão só depois do cache de 30

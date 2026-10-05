@@ -71,16 +71,23 @@ RUN_TRANSITIONS: Mapping[str, frozenset[str]] = _tabela({
     # `pause` (e o disjuntor), `cancel`; `recompute_run` fecha. `cancelled` direto: execução reaberta que já tinha
     # `cancel_requested` (resolver um item de uma execução cancelada) fecha como cancelada sem passar por
     # `cancelling` de novo.
-    "running": frozenset({"paused", "cancelling", "completed", "completed_with_issues", "cancelled"}),
+    "running": frozenset({"paused", "cancelling", "completed", "completed_with_issues", "cancelled", "awaiting_person"}),
     # `resume`, `cancel`; e `recompute_run` fecha a execução pausada quando o trabalho em curso termina.
-    "paused": frozenset({"running", "cancelling", "completed", "completed_with_issues", "cancelled"}),
+    "paused": frozenset({"running", "cancelling", "completed", "completed_with_issues", "cancelled", "awaiting_person"}),
     # `cancel` repetido reafirma; `Scheduler._finish_cancel` → `recompute_run` fecha.
-    "cancelling": frozenset({"cancelling", "cancelled", "completed", "completed_with_issues"}),
+    "cancelling": frozenset({"cancelling", "cancelled", "completed", "completed_with_issues", "awaiting_person"}),
+    # 29.93: o trabalho automático acabou e um objetivo espera um gesto da pessoa. `recompute_run` reafirma com o
+    # detalhe novo; fecha (`completed`, ou `completed_with_issues` quando o vencimento do 31.50 cancela o objetivo
+    # parado); REABRE (`running`/`paused`) quando um item é retomado; `cancel` é permitido (`RunService.cancel`).
+    "awaiting_person": frozenset({"awaiting_person", "completed", "completed_with_issues", "cancelled", "running",
+                                  "paused", "cancelling"}),
     "completed": frozenset(),
-    # A execução "em aberto" (há item aguardando pessoa): `recompute_run` reafirma com o detalhe novo, fecha como
-    # `completed` quando a pessoa confirma o último item, e REABRE (`running`/`paused`) quando um item é retomado —
-    # a reabertura que o §2.4 aponta. `cancel` é permitido aqui (`RunService.cancel`).
-    "completed_with_issues": frozenset({"completed_with_issues", "completed", "running", "paused", "cancelling"}),
+    # A execução com item incerto: `recompute_run` reafirma com o detalhe novo, fecha como `completed` quando a pessoa
+    # confirma o último item, e REABRE (`running`/`paused`) quando um item é retomado — a reabertura que o §2.4
+    # aponta. `cancel` é permitido aqui (`RunService.cancel`). `awaiting_person`: o item incerto resolvido que volta a
+    # esperar um gesto sem trabalho automático no meio (29.93).
+    "completed_with_issues": frozenset({"completed_with_issues", "completed", "running", "paused", "cancelling",
+                                        "awaiting_person"}),
     # Reabertura: resolver (repetir) um item incerto/falho de uma execução cancelada; e reafirmação do detalhe.
     "cancelled": frozenset({"cancelled", "running", "paused"}),
     "failed": frozenset(),

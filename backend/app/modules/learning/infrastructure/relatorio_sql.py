@@ -25,9 +25,9 @@ from collections.abc import Callable, Sequence
 from datetime import datetime
 
 from app.db import Database, Row
-from app.modules.learning.domain.backlog import (SEM_CONDUCAO, AcaoLivre, ChamadaDeTela, FonteDaOcorrencia,
-                                                 LinhaDoBacklog, Ocorrencia, SaudeDasExecucoes, TipoDeVerificacao,
-                                                 chave_do_grupo)
+from app.modules.learning.domain.backlog import (ESPERANDO_A_PESSOA, SEM_CONDUCAO, AcaoLivre, ChamadaDeTela,
+                                                 FonteDaOcorrencia, LinhaDoBacklog, Ocorrencia, SaudeDasExecucoes,
+                                                 TipoDeVerificacao, chave_do_grupo)
 from app.modules.learning.domain.ciclo import ConflitoDeEstado
 from app.modules.learning.domain.falhas import classificar_pelo_tipo_da_ia, tipo_da_tentativa
 from app.modules.learning.domain.vocabulario import (SINAIS_DE_INTERVENCAO, CategoriaDoBacklog, EstadoDoBacklog,
@@ -404,7 +404,8 @@ class FontesDeFalhaSql:
                 " WHERE COALESCE(s.finished_at, s.started_at) >= ? AND COALESCE(s.finished_at, s.started_at) < ?"
                 f" AND s.status IN ({marcas})" + real + " GROUP BY s.driven_by, s.status",
                 (desde, ate, *_ETAPA_COM_DESFECHO)):
-            quem = linhas.texto_ou_nulo(r, "driven_by") or SEM_CONDUCAO
+            quem = linhas.texto_ou_nulo(r, "driven_by") or (
+                ESPERANDO_A_PESSOA if linhas.texto(r, "status") == "waiting_user" else SEM_CONDUCAO)
             conducao[quem] = conducao.get(quem, 0) + linhas.inteiro(r, "n")
             if linhas.texto(r, "status") == "waiting_user":
                 intervencoes += linhas.inteiro(r, "n")

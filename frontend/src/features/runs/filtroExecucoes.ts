@@ -49,6 +49,7 @@ export function grupoDoStatus(s: RunSummary['status']): GrupoStatus {
   switch (s) {
     case 'completed': return 'concluida';
     case 'completed_with_issues':
+    case 'awaiting_person':          // 29.93: espera um gesto da pessoa no aparelho (antes, `completed_with_issues`)
     case 'needs_input': return 'pendencia';
     case 'failed': return 'falha';
     case 'cancelled': return 'cancelada';

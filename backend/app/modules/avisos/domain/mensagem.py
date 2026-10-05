@@ -88,9 +88,15 @@ NIVEL_POR_TIPO: dict[str, int] = {
     # do limiar, o formulário segurou contatos que seriam dele, e sai na hora; abaixo, vai com a rotina.
     "portal.resumo": ALGO_FALHOU,
     "portal.resumo_rotina": ROTINA,
+    # 29.97: o vigia da borda do site. O site errado para visitante parou algo do dono: sai na hora.
+    "portal.borda": ALGO_FALHOU,
+    "portal.borda_sem_conferir": ALGO_FALHOU,
+    # 29.101: a API do central aberta sem login pelo endereço público. O gesto é do dono (parar o túnel): sai na hora.
+    "portal.borda_api": PRECISA_DE_VOCE,
 }
 #: Os de nível 2 que PARARAM algo do dono: saem na hora. O resto do nível 2 vai à janela, com a rotina.
-PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado", "portal.resumo"})
+PARARAM_ALGO = frozenset({"pedido.pausa_automatica", "pedido.orcamento_esgotado", "portal.resumo", "portal.borda",
+                          "portal.borda_sem_conferir"})
 #: O aviso de um pedido do LOTE de uma frente (28.31 F2a): o tipo ganha este prefixo e vai sempre à janela, qualquer que
 #: seja o nível, porque a prova da frente não é notícia para o dono. Duas exceções saem na hora: a aprovação, porque só o
 #: dono decide (orquestradora, 04/10 01:20Z, a mesma regra das execuções de lote), e a ocorrência incerta, porque efeito
@@ -155,6 +161,8 @@ GESTO_DO_OBJETIVO = ("Espera você: abra a execução no painel e, no item parad
                      "ou Abandonar.")
 #: O mesmo gesto no lembrete do 31.50, que tem prazo (revisão do #372, L1).
 GESTO_DO_OBJETIVO_ANTES = GESTO_DO_OBJETIVO.replace("Espera você: ", "Espera você: antes disso, ", 1)
+#: 28.41 (leitura do #382): o objetivo parado numa APROVAÇÃO se resolve na caixa, não no aparelho.
+GESTO_DA_APROVACAO_NO_DESFECHO = "Espera você: decida a aprovação na caixa de Pendências."
 #: O que parou o objetivo, pelo `failure_kind` do `objective.updated` (29.90) ou, sem ele, pelo `blocked_kind`. Texto fixo:
 #: o `status_detail` e o `needs` nunca saem (podem trazer tela, conta ou texto do comando). Fora do mapa (o `ui_ocupada`
 #: do 29.87, nulo antes da classificação), a mensagem fica sem a linha do motivo.
@@ -584,8 +592,14 @@ GESTO_AGRUPADO_PADRAO = "Espera você: abra a caixa de Pendências do painel par
 GESTO_AGRUPADO: dict[str, str] = {
     "objective.waiting_user": ("Espera você: abra Execuções no painel e, em cada item parado, escolha Assumir controle, "
                                "Tentar novamente ou Abandonar."),
+    # 28.41: o lembrete agrupado pode misturar aprovação, pergunta e objetivo parado, que não estão no mesmo lugar.
+    "pendencia.vence_em": ("Espera você: antes de vencer, decida as aprovações e responda as perguntas na caixa de "
+                           "Pendências; os objetivos parados estão em Execuções."),
 }
-CAMINHO_AGRUPADO: dict[str, str] = {"objective.waiting_user": "#/execucoes"}
+#: A tela do agrupado. A conta que pede a pessoa vai sempre à caixa (28.41): o link do avulso em tela não reconhecida
+#: é o Foco de UM aparelho, e o agrupado é de vários; com o 29.96 (suíte 36) o `unknown` aparece na caixa.
+CAMINHO_AGRUPADO: dict[str, str] = {"objective.waiting_user": "#/execucoes", "session.needs_person": "#/pendencias",
+                                    "pendencia.vence_em": "#/pendencias"}
 
 
 def corpo_agrupado(titulos: Sequence[str], tipo: str | None = None) -> str:

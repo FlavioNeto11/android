@@ -8,7 +8,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { CanalAnexo } from '../../api/types';
-import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, byRole, click, esperarElemento, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { AnexosTab } from './AnexosTab';
 import { desdeDoPeriodo, tamanhoLegivel, validarCartao } from './anexos';
 
@@ -72,7 +72,7 @@ describe('AnexosTab', () => {
     expect(imagem).toContain('123 KB');
     expect(imagem).toContain('há 3 h');
     // A miniatura vem da memória da aba (F5): o arquivo baixa uma vez e vira URL `blob:`.
-    await waitFor(() => container.querySelector('li img'));
+    await esperarElemento('li img', container);
     expect(container.querySelector('li img')?.getAttribute('src')).toMatch(/^blob:fake-/);
     expect(backend.callsTo('GET', CONTEUDO).map((c) => c.path)).toEqual(['/api/canais/anexos/3/conteudo']);
     expect(pdf).toContain('Enviado pela Central');
@@ -133,7 +133,7 @@ describe('AnexosTab', () => {
     await waitFor(() => text().includes('Mostrando 2 de 2'));
     const [li3, li2] = Array.from(container.querySelectorAll('li')) as HTMLElement[];
     expect(li3?.querySelector('img[alt^="Prévia"]')).toBeNull();
-    await waitFor(() => li3?.querySelector('img'));
+    await esperarElemento('img', li3);
     await click(byRole('button', /Ver prévia$/, li3));
     const previa = li3?.querySelector('img[alt="Prévia: Imagem 3"]');
     expect(previa?.getAttribute('src')).toBe(li3?.querySelector('img')?.getAttribute('src'));    // o mesmo arquivo em memória
@@ -153,7 +153,9 @@ describe('AnexosTab', () => {
     await abrir();
     await waitFor(() => text().includes('Mostrando 1 de 1'));
     await click(byRole('button', /Ver prévia$/));
-    await act(async () => { container.querySelector('img[alt^="Prévia"]')?.dispatchEvent(new Event('error')); });
+    // Sem esperar, o `?.` não achava a prévia (que só aparece com o arquivo em memória) e o `error` não saía.
+    const previa = await esperarElemento('img[alt^="Prévia"]', container);
+    await act(async () => { previa.dispatchEvent(new Event('error')); });
     expect(text()).toContain('Não consegui carregar a imagem');
   });
 
@@ -240,11 +242,13 @@ describe('AnexosTab', () => {
   it('F5: a miniatura fica em memória enquanto a aba está aberta (trocar de filtro não baixa de novo)', async () => {
     backend.on('GET', LISTA, () => json(pagina([IMAGEM])));
     await abrir();
-    await waitFor(() => container.querySelector('li img'));
+    await esperarElemento('li img', container);
     await setValue(byRole('combobox', 'Sentido') as HTMLSelectElement, 'entrada');
-    await waitFor(() => ultimaConsulta()?.get('direcao') === 'entrada' && container.querySelector('li img'));
+    await waitFor(() => ultimaConsulta()?.get('direcao') === 'entrada');
+    await esperarElemento('li img', container);
     await setValue(byRole('combobox', 'Sentido') as HTMLSelectElement, '');
-    await waitFor(() => ultimaConsulta()?.get('direcao') == null && container.querySelector('li img'));
+    await waitFor(() => ultimaConsulta()?.get('direcao') == null);
+    await esperarElemento('li img', container);
     expect(backend.callsTo('GET', CONTEUDO)).toHaveLength(1);
   });
 
@@ -274,10 +278,10 @@ describe('AnexosTab', () => {
       await act(async () => {
         doItem(li3)?.cb([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
       });
-      await waitFor(() => li3?.querySelector('img'));
+      await esperarElemento('img', li3);
       expect(backend.callsTo('GET', CONTEUDO).map((c) => c.path)).toEqual(['/api/canais/anexos/3/conteudo']);
       await click(byRole('button', /Ver prévia$/, li4));                                // fora da tela, mas a prévia pede
-      await waitFor(() => li4?.querySelector('img[alt="Prévia: Imagem 4"]'));
+      await esperarElemento('img[alt="Prévia: Imagem 4"]', li4);
       expect(backend.callsTo('GET', CONTEUDO)).toHaveLength(2);
     } finally {
       (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = original;
