@@ -2894,6 +2894,8 @@ export interface ItemDaPorta {
   texto?: string | null;
   texto_na_execucao?: boolean;
   tem_imagem?: boolean;
+  /** A imagem que a publicação leva (29.30/30.68), só a de sha256 conhecido; o painel a mostra no cartão. */
+  image_id?: string | null;
   imagem_sha256?: string | null;
   chave: string | null;
   dependentes: string[];
@@ -2914,9 +2916,18 @@ export interface PreviaDaPorta {
 
 export interface AprovarPlanoItem {
   step_id: string;
+  /** A chave que o dono viu: a da prévia, ou a da prévia do texto EDITADO (`previaDoItem`) quando há `texto` (30.68). */
   chave: string;
   /** O texto editado no cartão; omitido = o da prévia. */
   texto?: string;
+}
+
+/** 30.68: a prévia de UM item com o texto proposto (só leitura; `item` null = a etapa não fecha mais um item). */
+export interface PreviaDoItem {
+  step_id: string;
+  /** O texto conferido, já sem espaço nas pontas. */
+  texto: string;
+  item: ItemDaPorta | null;
 }
 
 export interface RenovarPlanoResultado {

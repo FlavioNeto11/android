@@ -1,6 +1,6 @@
 import { Ban, CheckCircle2, Clock, Hourglass, ImageIcon, Lock, Play, RotateCcw, ShieldQuestion, Undo2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, hintForError, toApiError } from '../../api/client';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { api, hintForError, personaImageUrl, toApiError } from '../../api/client';
 import type { AprovarPlanoItem, ItemDaPorta, PreviaDaPorta, SeloDaPorta } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Banner } from '../../components/Banner';
@@ -57,6 +57,20 @@ export function temChaveSolta(texto: string): boolean {
   return texto.includes('{') && !temVariavel(texto);
 }
 
+/** 30.68: a espera da digitação antes de conferir o texto editado na porta (sair do campo confere na hora). */
+export const ESPERA_DA_DIGITACAO_MS = 500;
+
+/** A prévia do item com o texto editado: para qual texto foi pedida e o que voltou. */
+interface PreviaDoTexto { texto: string; item: ItemDaPorta | null; erro: string | null; carregando: boolean }
+
+type Conferencia = 'conferindo' | 'ok' | 'mudou' | 'erro';
+
+function conferencia(p: PreviaDoTexto | undefined, texto: string): Conferencia {
+  if (!p || p.texto !== texto || p.carregando) return 'conferindo';
+  if (p.erro !== null) return 'erro';
+  return p.item?.selo === 'aprovacao' && p.item.chave ? 'ok' : 'mudou';
+}
+
 /** Lê o 409 `plano_mudou`: a lista do que mudou e a prévia nova. Tolerante: o que faltar vira vazio. */
 function lerPlanoMudou(detail: Record<string, unknown> | null): { mudaram: Mudou[]; previa: PreviaDaPorta | null } {
   const mudaram = Array.isArray(detail?.mudaram) ? (detail.mudaram as Mudou[]) : [];
@@ -77,6 +91,9 @@ export function PortaDoPlano({ runId }: { runId: string }) {
   const [textos, setTextos] = useState<Record<string, string>>({});
   const [mudaram, setMudaram] = useState<Mudou[]>([]);
   const [enviando, setEnviando] = useState(false);
+  // 30.68: a prévia de cada texto editado; `pedidos` guarda o último texto pedido por etapa (resposta velha não vale).
+  const [previasDoTexto, setPreviasDoTexto] = useState<Record<string, PreviaDoTexto>>({});
+  const pedidos = useRef<Map<string, string>>(new Map());
 
   const carregar = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -96,17 +113,69 @@ export function PortaDoPlano({ runId }: { runId: string }) {
     return () => ctl.abort();
   }, [carregar]);
 
-  const itens = previa?.itens ?? [];
+  const itens = useMemo(() => previa?.itens ?? [], [previa]);
   // Tirar uma etapa tira as que dependem dela (a conta final é do servidor; aqui é para a pessoa ver antes).
   const tiradasComDependentes = useMemo(() => {
     const todas = new Set(tiradas);
     for (const item of itens) if (tiradas.has(item.step_id)) for (const d of item.dependentes) todas.add(d);
     return todas;
   }, [itens, tiradas]);
-  const aprovaveis = itens.filter((i) => i.selo === 'aprovacao' && i.chave && !tiradasComDependentes.has(i.step_id));
+  const aprovaveis = useMemo(
+    () => itens.filter((i) => i.selo === 'aprovacao' && i.chave && !tiradasComDependentes.has(i.step_id)),
+    [itens, tiradasComDependentes],
+  );
   const emBranco = aprovaveis.filter((i) => i.texto != null && (textos[i.step_id] ?? i.texto).trim() === '').length;
   const comVariavel = aprovaveis.filter((i) => temVariavel(textos[i.step_id] ?? '')).length;
   const longos = aprovaveis.filter((i) => tamanhoDoTexto(textos[i.step_id] ?? '') > LIMITE_DO_TEXTO).length;
+
+  // 30.68: o texto editado DE VERDADE (diferente do da prévia) e que passa nas travas locais: esse se confere na porta,
+  // porque há regra que depende do texto (a DM repetida) e o dono tem de ver o motivo novo antes do sim.
+  const editados = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const i of aprovaveis) {
+      const t = textos[i.step_id];
+      if (t === undefined || i.texto == null) continue;
+      const limpo = t.trim();
+      if (limpo === i.texto.trim() || limpo === '' || temVariavel(limpo) || tamanhoDoTexto(limpo) > LIMITE_DO_TEXTO) continue;
+      m.set(i.step_id, limpo);
+    }
+    return m;
+  }, [aprovaveis, textos]);
+
+  const conferir = useCallback(async (stepId: string, texto: string) => {
+    if (pedidos.current.get(stepId) === texto) return;
+    pedidos.current.set(stepId, texto);
+    setPreviasDoTexto((s) => ({ ...s, [stepId]: { texto, item: null, erro: null, carregando: true } }));
+    try {
+      const r = await api.previaDoItem(runId, stepId, texto);
+      if (pedidos.current.get(stepId) !== texto) return;
+      setPreviasDoTexto((s) => ({ ...s, [stepId]: { texto, item: r.item, erro: null, carregando: false } }));
+    } catch (e) {
+      if (pedidos.current.get(stepId) !== texto) return;
+      pedidos.current.delete(stepId);   // sair do campo tenta de novo
+      const err = toApiError(e);
+      setPreviasDoTexto((s) => ({ ...s, [stepId]: { texto, item: null, erro: err.message, carregando: false } }));
+    }
+  }, [runId]);
+
+  // Prévia nova (recarga ou 409): o que se conferiu era da anterior.
+  useEffect(() => {
+    pedidos.current.clear();
+    setPreviasDoTexto({});
+  }, [previa]);
+
+  useEffect(() => {
+    if (editados.size === 0) return undefined;
+    const espera = window.setTimeout(() => {
+      for (const [sid, texto] of editados) void conferir(sid, texto);
+    }, ESPERA_DA_DIGITACAO_MS);
+    return () => window.clearTimeout(espera);
+  }, [editados, conferir]);
+
+  const conferencias = [...editados].map(([sid, texto]) => conferencia(previasDoTexto[sid], texto));
+  const conferindo = conferencias.filter((c) => c === 'conferindo').length;
+  const naoFecham = conferencias.filter((c) => c === 'mudou').length;
+  const semConferir = conferencias.filter((c) => c === 'erro').length;
 
   const cartoes = useMemo(() => {
     const m = new Map<string, ItemDaPorta[]>();
@@ -132,10 +201,12 @@ export function PortaDoPlano({ runId }: { runId: string }) {
   async function aprovarEIniciar() {
     if (!previa) return;
     setEnviando(true);
+    // 30.68: o texto editado vai com a chave da prévia DESSE texto, a que o dono viu (o servidor confere de novo).
     const aprovar: AprovarPlanoItem[] = aprovaveis.map((i) => {
-      const editado = textos[i.step_id];
-      return editado !== undefined && i.texto != null && editado.trim() !== i.texto.trim()
-        ? { step_id: i.step_id, chave: i.chave as string, texto: editado }
+      const editado = editados.get(i.step_id);
+      // Sem a prévia do texto (o botão já trava), a chave da prévia faz o servidor devolver 409: a edição nunca se perde.
+      return editado !== undefined
+        ? { step_id: i.step_id, chave: previasDoTexto[i.step_id]?.item?.chave ?? (i.chave as string), texto: editado }
         : { step_id: i.step_id, chave: i.chave as string };
     });
     try {
@@ -255,10 +326,22 @@ export function PortaDoPlano({ runId }: { runId: string }) {
                     {item.tem_imagem ? <Badge tone="neutral" icon={ImageIcon}>com imagem</Badge> : null}
                     {tirada ? <Badge tone="warning">{porDependencia ? 'sai junto (depende de uma tirada)' : 'não será feita'}</Badge> : null}
                   </div>
+                  {item.image_id && item.profile_id ? (
+                    // 29.30: quem aprova a publicação vê a imagem que vai ao feed, não só "com imagem".
+                    <img className={styles.draftImagem} src={personaImageUrl(item.profile_id, item.image_id)}
+                         alt={`Imagem que ${oQue(item)} publica`} loading="lazy" />
+                  ) : null}
                   {editavel ? (
                     <TextArea rows={3} aria-label={`Texto de ${oQue(item)} em ${item.aparelho}`} value={texto}
-                              onChange={(e) => setTextos((s) => ({ ...s, [item.step_id]: e.target.value }))} />
+                              onChange={(e) => setTextos((s) => ({ ...s, [item.step_id]: e.target.value }))}
+                              onBlur={() => {
+                                const editado = editados.get(item.step_id);
+                                if (editado !== undefined) void conferir(item.step_id, editado);
+                              }} />
                   ) : item.texto ? <p className={styles.draftWhat}>“{item.texto}”</p> : null}
+                  {editavel && editados.has(item.step_id)
+                    ? <TextoConferido previa={previasDoTexto[item.step_id]} texto={editados.get(item.step_id) ?? ''} />
+                    : null}
                   {editavel && temChaveSolta(texto) ? (
                     <p className={styles.draftWhat} role="note">Este texto tem uma chave ({'{'}); ele sai exatamente assim.</p>
                   ) : null}
@@ -309,7 +392,10 @@ export function PortaDoPlano({ runId }: { runId: string }) {
           disabledReason={emBranco > 0
             ? `${emBranco} texto(s) em branco: escreva o texto ou marque “Não fazer esta”.`
             : comVariavel > 0 ? 'Há texto com {nome}: escreva o texto final.'
-              : longos > 0 ? `Há texto acima de ${LIMITE_DO_TEXTO} caracteres.` : null}
+              : longos > 0 ? `Há texto acima de ${LIMITE_DO_TEXTO} caracteres.`
+                : naoFecham > 0 ? `${naoFecham} texto(s) editado(s) não pedem mais o seu aval aqui: volte ao texto da prévia ou marque “Não fazer esta”.`
+                  : semConferir > 0 ? 'Não deu para conferir o texto editado: saia do campo para tentar de novo.'
+                    : conferindo > 0 ? 'Conferindo na porta o texto editado…' : null}
           onClick={() => void aprovarEIniciar()}
         >
           {aprovaveis.length > 0 ? `Aprovar ${aprovaveis.length} e iniciar` : 'Iniciar e decidir na execução'}
@@ -323,6 +409,31 @@ export function PortaDoPlano({ runId }: { runId: string }) {
 export function frasesDoRenovar(renovadas: number, vencidas: number): string {
   if (vencidas === 0) return `${renovadas} sim(ns) do plano renovado(s).`;
   return `${renovadas} renovado(s), ${vencidas} vencido(s) voltam para você rever.`;
+}
+
+
+/** 30.68: o que a porta faz com o texto editado, junto do item: o motivo novo, ou por que ele deixa de ser 🔒. */
+function TextoConferido({ previa, texto }: { previa: PreviaDoTexto | undefined; texto: string }) {
+  const estado = conferencia(previa, texto);
+  if (estado === 'conferindo') return <p className={styles.draftWhat} role="status">Conferindo este texto na porta…</p>;
+  if (estado === 'erro') {
+    return <p className={styles.draftWhat} role="alert">Não deu para conferir este texto: {previa?.erro}. Saia do campo para tentar de novo.</p>;
+  }
+  const item = previa?.item ?? null;
+  if (estado === 'mudou') {
+    const selo = item ? SELO[item.selo].rotulo : 'não fecha mais uma ação';
+    return (
+      <p className={styles.draftWhat} role="alert">
+        Com este texto, a ação não pede mais o seu aval aqui ({selo}){item?.motivo ? `: ${item.motivo}` : ''}. Volte ao
+        texto da prévia ou marque “Não fazer esta”.
+      </p>
+    );
+  }
+  return (
+    <p className={styles.draftWhat} role="status">
+      Com este texto: pede seu aval{item?.motivo ? ` — ${item.motivo}` : ''}.
+    </p>
+  );
 }
 
 /**
