@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.89 F4 e F5: o comando que "parece com o fluxo tal" e o aviso de colisão ao salvar (branch feat/31-89-sugestao-e-colisao)
+
+- `POST /api/flows/similar` `{command}` → `{matches, suggestions[{ref, template, score}]}`: até 3 fluxos ativos cujo texto
+  fixo o comando contém, sem acento, caixa, artigo e preposição, na mesma ordem e com pequenas variações. Só pergunta:
+  não cria execução, não usa IA, não devolve o nome do fluxo, e `/api/flows/match` segue como era.
+  - Nota mínima 0,9, medida só leitura no central: dos 119 comandos de 30 dias que nenhum molde casa, 9 ganham sugestão
+    (até 2 por comando); com 0,85 seriam 13 (até 4).
+- Colisão ao salvar: o salvar e a prévia do treino avisam em `warnings` quando o molde novo (com os exemplos) já é
+  casado por um fluxo ativo ou candidato, ou casa o dele (valor-sonda; só cobre a forma, não os exemplos dele), e dizem
+  quem passa na frente. Não recusa e não grava. Sem migração (a 119, `flow_phrases`, segue reservada e sem uso).
+- Fica fora: a pergunta "usar o fluxo X?" na criação da execução (`needs_input`) e as frases alternativas. Adendo v1.72.
+- Prova: `simulated` (`backend/tests/test_fluxos_parecidos_e_colisao.py`); `real`: `not_run`.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a

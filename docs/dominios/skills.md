@@ -220,6 +220,8 @@ o `AppState.skill_planner` (`infrastructure/run_planning.py::SkillRunPlanner`), 
   (`matching.py::specificity`: mais texto fixo, depois menos buracos), em ordem de `skill_id`. O empate não se
   decide mais pelo id: vira pergunta, a menos que os tipos o desfaçam.
   - O fluxo (`FlowStore.match`, 31.89 F1) usa a MESMA `specificity` (importada de `matching.py`): especificidade desc, depois `uses` desc, depois `created_at`. "curtir o post de {p}" vence "curtir {x}" mesmo com menos usos; o empate de tudo segue como antes (não pergunta). A skill não tem contador de uso, e por isso a resposta não muda com o tempo.
+  - Parece, mas não casa (31.89 F5, `taskqueue/parecidos.py`): `POST /api/flows/similar` compara o comando com o texto FIXO de cada molde ativo (sem acento, caixa, artigo e preposição; as palavras na mesma ordem, com pequenas variações como "curta"/"curtir"; molde com menos de 2 palavras fixas não entra; nota mínima 0,9, medida só leitura). Só pergunta: não cria execução, não usa IA e não muda o `match`.
+  - Colisão ao salvar (31.89 F4, `FlowStore.colisoes`): o molde novo com os exemplos, ou o existente com valor-sonda, que o outro também casa vira aviso em `warnings`, dizendo quem passa na frente. Não recusa. O mesmo comando continua sendo o 409.
   - `_sub_values` (o valor de exemplo vira `{nome}` no plano aprendido, 31.89 F6) troca só o valor inteiro, com fronteira de palavra: "Ana" não mexe em "Banana"; valor que começa ou termina em símbolo ("@fulano") segue sendo trocado.
 - Uma publicada adulterada **entre as devolvidas** é recusa (`ContentTampered`), inclusive no empate
   (`backend/tests/test_intencao_resolucao.py::test_adulterada_entre_as_empatadas_e_recusa`). O registro não pula para

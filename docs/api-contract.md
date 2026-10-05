@@ -6657,3 +6657,23 @@ Muda o VALOR de `ref` nos eventos de fluxo e passa a aceitar a referência nova 
   (do slug para a referência pública). Até o deploy, a Canais segue sem transmitir o `ref` de fluxo nem o `message`.
 - **Ainda não coberto** (próximas fatias do 30.83): as rotas `/api/flows/{id}`, os `href` das respostas do painel, os
   eventos `learning.ensinado_*` (30.80 B e 30.81, ainda em ramo) e os logs que levam `fluxo:<id>`.
+
+## Adendo v1.72 (05/10/2026; número da orquestradora; item 31.89 F4 e F5) — "parece com o fluxo tal" e a colisão ao salvar
+
+Uma rota nova e avisos novos; sem migração. `POST /api/flows/match` não muda.
+- **`POST /api/flows/similar`**, corpo `{command}` (o mesmo `FlowMatchBody`, 1 a 4000 caracteres): `{matches, suggestions}`.
+  - `matches` é verdadeiro quando algum fluxo ativo já casa o comando por inteiro; aí `suggestions` vem vazio.
+  - `suggestions` tem até 3 itens `{ref, template, score}`: a referência pública (`f-…`), o molde e a nota de 0 a 1 (mínimo
+    0,9). Nunca o nome do fluxo (o resumo do treino pode trazer o valor demonstrado).
+  - Só pergunta. Não cria execução e não usa IA. Olha só os fluxos (`FlowStore`), não as habilidades versionadas, e não confere o `ai.flows`.
+- **Colisão ao salvar:** `warnings` do `POST /api/training/{id}/save` e `/preview` ganha um texto "O comando “…” colide com
+  a habilidade “…” (ref): os dois casam o mesmo texto e o novo / o que já existe passa na frente". Duas direções: (a) o
+  molde novo com os exemplos é casado por um molde ativo ou candidato; (b) o molde existente com um valor-sonda é casado
+  pelo novo (só cobre a forma do existente, não os exemplos dele). Não recusa e não grava; o mesmo comando segue sendo o
+  409 `duplicate_command`.
+- **Fora, dito de propósito:** a pergunta "usar o fluxo X?" (`needs_input`) na criação da execução e as frases
+  alternativas (`flow_phrases`, migração 119 reservada e sem uso).
+- **Nota de tela (Portal):** na revisão do salvar, listar os avisos de "colide"; no rascunho do comando, chamar
+  `POST /api/flows/similar` quando o `match` voltar `null` e mostrar "isto parece com <molde>"; clicar não executa, só
+  leva a pessoa a reescrever o comando como o molde.
+- **Prova:** `simulated` (`backend/tests/test_fluxos_parecidos_e_colisao.py`); `real`: `not_run`.
