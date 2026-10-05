@@ -6180,3 +6180,20 @@ Sem migração. Aditivo no `data` do evento `step.updated` (`TaskRepository.emit
 - O painel não tipa o `data` desses eventos (`frontend/src/store/reducer.ts`, `obj<Step>(data, 'step')`): nada muda lá.
   Ausente = backend de antes do 29.90.
 - **Prova:** `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py::test_a_folha_que_nao_fecha_para_numa_pessoa_sem_mais_toque`).
+
+## Adendo v1.48 (05/10/2026; número da orquestradora; item 29.96) — a sessão parada no teto aparece nas filas
+
+Sem migração. Campo aditivo em `SessionInfo`, que vai em `PersonaDTO.session`, `InstagramProfileDTO.session`,
+`PersonaDeviceDTO.session`, `PersonaOnDeviceDTO.session` e `ProfileAccountDTO.session`:
+- `unknown_at_cap: boolean` (padrão `false`): a sessão está em `unknown` NO TETO do aparelho dela. O teto é o de
+  `shared.vinculos.teto_de_unknown`: 1 com vínculo ativo (conta real, 29.92), senão o global
+  `session_unknown_retry_cap`. A automação parou sem tocar numa tela que não reconheceu e espera uma pessoa.
+- É a MESMA regra do `session.needs_person` (`SocialRepository.unknown_no_teto`): o campo liga quando o aviso entra e
+  desliga quando o aviso sai.
+- Não desconta o teto "velho" (gravado antes de o aparelho entrar no ar ou além da validade), ao contrário do
+  `ProviderSession.unknown_capped` da prévia de recursos. Aquele responde "reler ou pedir a pessoa"; este responde
+  "há um aviso aberto esperando alguém". Um reinício do emulador não tira o item da fila enquanto o aviso segue aberto.
+- O `status` continua `unknown`. O painel usa o campo nas duas filas que filtravam só por estado ("Aguardando
+  intervenção" de Personas e a caixa de Pendências), com o rótulo "Tela não reconhecida" em vez de "Não verificada".
+- **Prova:** `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py::test_parada_no_teto_aparece_no_rest_pela_regra_do_aviso`,
+  `frontend/src/features/pendencias/PendenciasPage.test.tsx`, `frontend/src/features/profiles/ProfilesPage.test.tsx`).

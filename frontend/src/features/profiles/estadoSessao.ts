@@ -1,4 +1,4 @@
-import { ACCOUNT_SESSION_STATUS, metaOf, type StatusMeta } from '../../lib/status';
+import { ACCOUNT_SESSION_STATUS, metaOf, SESSAO_PARADA_NO_TETO, type StatusMeta } from '../../lib/status';
 import type { Aba } from './abas';
 
 /** O que o selo de estado do cabeçalho da persona mostra e, quando há o que fazer, para onde leva. */
@@ -14,8 +14,14 @@ export interface EstadoDaSessao {
  * Sessão da conta principal → selo acionável. Não executa nada: "Verificar conta" e "Resolver" só LEVEM à guia
  * Contas e acesso, onde moram os botões de verdade (com o aparelho escolhido e a confirmação de cada um).
  */
-export function estadoDaSessao(session: { status?: string | null; verified_at?: string | null } | null | undefined): EstadoDaSessao {
+export function estadoDaSessao(
+  session: { status?: string | null; verified_at?: string | null; unknown_at_cap?: boolean } | null | undefined,
+): EstadoDaSessao {
   const status = session?.status ?? 'unknown';
+  // 29.96: o `unknown` no teto não é "ninguém olhou": a automação parou e espera uma pessoa.
+  if (session?.unknown_at_cap) {
+    return { meta: SESSAO_PARADA_NO_TETO, acao: { rotulo: 'Resolver', guia: 'contas' }, confirmadaEm: null };
+  }
   const meta = metaOf(ACCOUNT_SESSION_STATUS, status);
   switch (status) {
     case 'session_ready':

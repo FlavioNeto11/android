@@ -193,7 +193,11 @@ Caminhos relativos a `backend/app/`.
   `session.needs_person`. Como a porta só existe com vínculo, o `session_unknown_retry_cap` (3) deixou de agir nela e
   só vale onde não há vínculo (hoje, nenhum caminho automático); segue como limite do contador
   (`tests/test_porta_de_sessao_no_teto.py`). A prévia de recursos (`AppSessionProvider`) usa o mesmo teto por
-  aparelho e não planeja `session.verify` sobre a parada. Duas exceções, de propósito:
+  aparelho e não planeja `session.verify` sobre a parada. A regra do teto mora num lugar só
+  (`shared.vinculos.teto_de_unknown`), para a porta, a prévia e o REST. Item 29.96: o `SessionInfo.unknown_at_cap` (adendo
+  v1.48) põe a parada nas filas "Aguardando intervenção" e Pendências, com o rótulo "Tela não reconhecida". Segue a
+  regra do aviso (`unknown_no_teto`, sem o desconto do teto velho), e o aviso leva ao Foco do aparelho.
+  Duas exceções, de propósito:
   - o app fora do primeiro plano (`_fora_do_primeiro_plano` em `sessao.py`) grava `unknown` SEM somar, e a porta
     segue automática: abrir o app de novo não é rodada de sessão, porque a tela nem chegou a ser lida;
   - dentro da MESMA rodada, uma tela desconhecida seguida de voltar ou reabrir que cai numa tela de login

@@ -20,7 +20,7 @@
  */
 import type { PedidoView } from '../../api/pedidos';
 import type { Approval, PersonaDTO, RunSummary } from '../../api/types';
-import { ACCOUNT_SESSION_STATUS, metaOf } from '../../lib/status';
+import { metaDaSessao } from '../../lib/status';
 import type { Destino } from '../../store/ui';
 import { rotuloDoKind, type EntradaDoLivro } from '../aprendizado/model';
 import { encurtar, tituloCurto } from '../runs/filtroExecucoes';
@@ -40,6 +40,14 @@ export const ROTULO_DA_ORIGEM: Record<OrigemDaPendencia, string> = {
  * (achado #106). Um só lugar: a fila "Aguardando intervenção" de Personas e a caixa de pendências leem daqui.
  */
 export const PRECISA_DE_PESSOA: ReadonlySet<string> = new Set(['auth_challenge', 'wrong_account', 'needs_person']);
+
+/**
+ * A sessão espera uma pessoa: um dos estados de `PRECISA_DE_PESSOA` ou o `unknown` NO TETO do aparelho (29.96,
+ * `unknown_at_cap`: a automação parou sem tocar numa tela que não reconheceu). O filtro das duas filas.
+ */
+export function precisaDePessoa(session: { status: string; unknown_at_cap?: boolean }): boolean {
+  return PRECISA_DE_PESSOA.has(session.status) || !!session.unknown_at_cap;
+}
 
 export interface Pendencia {
   /** Estável entre leituras (a lista não pisca quando a caixa é relida). */
@@ -161,14 +169,14 @@ export function pendenciasDePedidos(
  * resolver na tela); a caixa só leva até ela.
  */
 export function pendenciasDeSessoes(personas: readonly PersonaDTO[]): Pendencia[] {
-  return personas.filter((p) => p.username && PRECISA_DE_PESSOA.has(p.session.status)).map((p) => {
+  return personas.filter((p) => p.username && precisaDePessoa(p.session)).map((p) => {
     const nome = p.display_name || p.name;
     const aparelho = p.session.instance_id ?? p.instance_id;
     return {
       chave: `intervencao:${p.id}`,
       origem: 'intervencao',
       titulo: nome && nome !== p.username ? `${nome} (@${p.username})` : `@${p.username}`,
-      detalhe: `${metaOf(ACCOUNT_SESSION_STATUS, p.session.status).label} · ${aparelho ?? 'sem aparelho vinculado'}`
+      detalhe: `${metaDaSessao(p.session).label} · ${aparelho ?? 'sem aparelho vinculado'}`
         + ' · só uma pessoa resolve',
       desde: p.session.verified_at,
       acao: 'Resolver',
@@ -211,7 +219,7 @@ export interface EntradasDaCaixa {
  * 2. Persona: cada aprovação de texto com status `pending` (a decidida, aprovada ou recusada, não conta);
  * 3. Execução: cada execução com status `needs_input`, por mais antiga que seja (a de um objetivo `waiting_user`
  *    dentro de uma execução que já terminou não conta: está em Execuções, no chip "Pede atenção");
- * 4. Intervenção: cada persona COM conta cuja sessão está em login, desafio ou conta errada (`PRECISA_DE_PESSOA`);
+ * 4. Intervenção: cada persona COM conta cuja sessão está em login, desafio, conta errada ou parada no teto (`precisaDePessoa`);
  * 5. Pedido (emenda à ADR-062, 28.9): cada pedido em `aguardando_pessoa`. A aprovação e a execução `needs_input` das
  *    execuções DELE saem das origens 2 e 3 e aparecem agrupadas sob o pedido (`filhas`): o item do pedido é o que conta.
  *

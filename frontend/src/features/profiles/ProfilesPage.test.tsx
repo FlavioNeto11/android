@@ -537,6 +537,22 @@ describe('fila de intervenção', () => {
     // remoto (o painel em si é testado em `FocusPanel.test.tsx`; aqui importa que a fila manda para lá).
     await waitFor(() => useUiStore.getState().focusInstanceId === 'android-02');
   });
+
+  it('29.96: a sessão parada no teto entra na fila com o rótulo próprio e o mesmo "Assumir controle"', async () => {
+    backend.on('GET', /^\/api\/personas$/, () => json([pessoa({
+      instance_id: 'android-01',
+      session: { status: 'unknown', instance_id: 'android-01', observed_username: null, verified_at: null,
+                 detail: 'Instagram não voltou ao estado conhecido', stale: false, unknown_at_cap: true },
+    })]));
+    backend.on('POST', /\/instances\/android-01\/control\/take$/, () => json({ status: 'granted', lease_id: 'lease-2' }));
+    await render();
+    await waitFor(() => text().includes('Aguardando intervenção'));
+    expect(text()).toContain('Tela não reconhecida');
+    expect(text()).toContain('tela que a automação não reconheceu');
+
+    await click(byRole('button', /Assumir controle/i));
+    await waitFor(() => useUiStore.getState().focusInstanceId === 'android-01');
+  });
 });
 
 // ---------------------------------------------------------------- localidade (E9, item 4.4)

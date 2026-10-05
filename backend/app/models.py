@@ -537,6 +537,10 @@ class SessionInfo(BaseModel):
     # "Conectado" verificado há tempo demais: continua sendo o que se observou, mas deixa de valer como verdade
     # de agora — a porta relê o aparelho antes da tarefa, e o cartão diz que o dado é velho.
     stale: bool = False
+    #: 29.96: `unknown` NO TETO deste aparelho (`shared.vinculos.teto_de_unknown`; com vínculo ativo, 1): a porta
+    #: parou de reobservar e espera uma pessoa. É a mesma regra do `session.needs_person` (entrada e saída do aviso),
+    #: e põe a sessão nas filas "Aguardando intervenção" e Pendências, que filtram por estado.
+    unknown_at_cap: bool = False
 
 
 class PersonaDeviceDTO(BaseModel):

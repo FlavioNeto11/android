@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.96: a sessão parada no teto aparece em Pendências e em "Aguardando intervenção" (branch feat/29-96-parada-no-teto-em-pendencias)
+
+- Achado da leitura do #371 (S): o `unknown` no teto abre o aviso `session.needs_person`, mas as duas filas do painel
+  filtravam só por estado (`auth_challenge`, `wrong_account`, `needs_person`), e a sessão parada continua `unknown`. O
+  dono recebia o aviso e não achava o item.
+- `SessionInfo.unknown_at_cap` (adendo v1.48), preenchido nos três montadores (persona, persona no aparelho, conta) por
+  `SocialRepository.parada_no_teto`, com a mesma regra do aviso (`unknown_no_teto`).
+- A regra do teto mora num lugar só, `shared.vinculos.teto_de_unknown`, chamado pela porta (via repositório), pela
+  prévia de recursos e pelo campo (N1 da leitura do #371).
+- Painel: `precisaDePessoa(session)` nas duas filas; rótulo "Tela não reconhecida" (`SESSAO_PARADA_NO_TETO`,
+  `metaDaSessao`); o selo da persona pede "Resolver".
+- Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py` (T1: o teto de quem
+  compõe sem vínculo), `test_social_profiles.py`; `frontend/src/features/pendencias/PendenciasPage.test.tsx`,
+  `profiles/ProfilesPage.test.tsx`, `profiles/estadoSessao.test.ts`). `not_run`: aparelho real.
+
 ## 2026-10-05 — 29.92: a sessão `unknown` em aparelho com conta real para na primeira e chama a pessoa (branch fix/29-92-sessao-unknown-pede-a-pessoa)
 
 - Achado do rastro do 29.90: abaixo do teto, a porta de sessão devolvia `ensure_session(automatic=True)` a cada tick; a
