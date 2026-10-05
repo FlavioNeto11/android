@@ -8184,16 +8184,16 @@
   },
   "29.80": {
    "id": "29.80",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real em 05/10/2026, 01:48Z a 01:52Z, máquina WIN-7S2UASNLFOP, endereço público https://dev.nvit.com.br/ servido pelo deploy 33 (a0c9865e, site e contato ligados às 01:19Z); navegador embutido e curl, só GET (nenhum POST). Prévia de link: canonical, og:url e og:image no mesmo endereço público; og:title, og:type website, og:locale pt_BR, og:image:width/height 1200x630, twitter:card summary_large_image (twitter:image ausente: o cartão usa a og:image); assets/previa.png 200, PNG 1200x630, 140932 bytes. Ícones: favicon.ico 48x48 4037 B, favicon.svg 281 B, assets/icone-180.png 2265 B. 404: GET /pagina-que-nao-existe deu HTTP 404 com a página própria ('Página não encontrada · ANA · SICAT') e meta robots noindex; fetch no navegador também 404. Contraste AA (estilos computados, fundo composto pelos ancestrais, inclusive gradientes; texto grande 3, demais 4,5): 255 linhas de texto em 1440 px e 248 em 360 px; reprovaram só textos com aria-hidden: os números 01/02/03 dos pilares (decorativos) e as iniciais do avatar (fundo de gradiente claro, contraste alto), e o rótulo 'Ilustração' do console (3,9 a 4,34) e da ficha de persona (2,98), que quem enxerga lê -> corrigido no PR #356 (fix/29-80-contraste-ilustracao, 31eee4bc: #6a8198 para #91a2b3, 6,01 a 6,70 e 4,59; teste em test_portal_site.py que reprova a cor antiga). Foco: Tab real 40 vezes (33 elementos distintos, do 'Pular para o conteúdo' ao rodapé, incluindo abas, FAQ, telefones, WhatsApp e os campos do formulário): 40/40 com :focus-visible e anel sólido de 3 px (#22d3ee no escuro, #0e7490 no claro), menor contraste do anel com o fundo 4,94 (mínimo 3). Sem rolagem horizontal em 1440 e 360 px; document.cookie vazio; o beacon da Cloudflare aparece e é bloqueado pela CSP (status 0), o que é o 29.85.",
-   "blocker": "PR #356 (contraste do rótulo 'Ilustração') no deploy, e a prévia num chat real do WhatsApp e do Telegram (do dono)",
-   "grupo": "resultado-orquestradora-janela33c",
+   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP, central em 584ac9c8 (deploy 34, /api/health às 03:31:03Z), endereço público https://dev.nvit.com.br, só GET. 03:30:43Z: /assets/site.css pela borda traz a cor nova do rótulo 'Ilustração' (#91a2b3 nas 2 ocorrências, nenhuma #6a8198; contraste 7,25 e 6,70, medido pela orquestradora no Chrome do dono depois da recarga forçada); /pagina-que-nao-existe 404 text/html (a página 404 própria); a raiz com og:type, og:locale, og:url, og:title, og:description, og:image (https://dev.nvit.com.br/assets/previa.png, 1200 de largura, image/png) e os ícones /favicon.ico 48x48 e /favicon.svg. Prova de fora (SITE=ligado) às 03:30:23Z: '/pagina-que-nao-existe 404 (a página 404 própria, com status 404)' ok. Antes, real em .claude/handoffs/portal-resultado-2980-real.json (teclado, foco 40/40 com Tab real, movimento reduzido, peso das imagens). Simulado: tests/test_portal_site.py. not_run: a prévia do link renderizada num chat real do WhatsApp e do Telegram (pede o celular do dono). Observação que virou o 29.95: a borda entrega site.css e site.js com Cache-Control max-age=14400 (a origem manda no-cache), e quem já tinha visitado viu a cor antiga até forçar a recarga. Não executado e fora do aceite do item: a prévia do link num aplicativo de conversa real, que depende de alguém colar o endereço num chat.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite34a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T02:30:11+00:00"
+   "quando": "2026-10-05T03:46:54+00:00"
   },
   "28.27": {
    "id": "28.27",
@@ -8236,16 +8236,185 @@
   },
   "29.85": {
    "id": "29.85",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "PR #353, ponta final 5dd09934 (branch feat/29-85-prova-sem-script-de-fora; revisões X1-X5 e Y1-Y2 fechadas pela Ferramentas e pela Reload plugins). Real em 05/10/2026, máquina WIN-7S2UASNLFOP, do worktree C:\\git\\portal-29-85 na 5dd09934, contra https://dev.nvit.com.br (deploy 33, a0c9865e, site e contato ligados): (1) 01:31:46Z, antes do desligamento, a raiz pedida como navegador trazia /assets/site.js e https://static.cloudflareinsights.com/beacon.min.js/v31edd6df…, e pelo curl puro 0 ocorrências (o achado que a prova nova pega); (2) o dono liberou a Cloudflare às 02:15:13Z (Telegram, linha 1565) e a orquestradora desligou o Web Analytics/RUM da zona às 02:23-02:25Z; (3) 02:27:50Z: `SITE=ligado CONTATO=ligado WEBHOOK_DO_TRELLO=ligado bash scripts/portal-prova-de-fora.sh depois` -> 'RESULTADO: tudo como esperado', saída 0, 39 linhas ok, incluindo 'ok / (como navegador) (nenhum script de fora nem da Cloudflare no HTML)', CSP do site, sem Set-Cookie, 404s da lista fechada, webhook do Trello ligado, 429 do login na borda, isca 202, 415, 413 e Host forjado 403. Leituras só leitura antes (02:27:50Z) e depois (02:27:59Z): portal_contatos max_id=2 e contagem 2, avisos_entregas tipo portal.contato 2, sem mudança. Simulated: scripts/tests/test_portal_prova_de_fora.py, 14 testes (beacon, outra origem, tag em linhas, maiúscula, ?src= na URL, versão com dois-pontos, Rocket Loader, challenge-platform embutido, desafio 403, curl -q em toda chamada).",
-   "blocker": "merge do #353 na suíte 34 (junto do fix/29-83-curl-q 1fc0fad8, que põe -q no curl da isca do #342)",
-   "grupo": "resultado-orquestradora-janela33c",
+   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP, central em 584ac9c8 (deploy 34, #353 na main). Web Analytics / RUM desligado na zona às 02:23Z (com o sim do dono). Prova de fora nova (SITE=ligado SEM_LIMITE_DE_TAXA=1) às 03:30:23Z: '/ (como navegador): nenhum script de fora nem da Cloudflare no HTML' ok, '/ (cabeçalhos): CSP do site' ok, '/ (sem cookie)' ok, 33 linhas ok. As 2 'FALHOU' da rodada são só as chaves da prova que não passei (WEBHOOK_DO_TRELLO e CONTATO, ligados no central: HEAD do webhook 200 e a isca do contato 202, sem gravar nem avisar). A rodada da orquestradora às 03:21:37Z, com todas as chaves, deu rc=0 e 41 ok. Antes: .claude/handoffs/portal-resultado-2985-real.json (o beacon some depois do desligamento). Simulado: scripts/tests/test_portal_prova_de_fora.py. A defesa do nosso lado (no-transform e CSP no painel) é o 29.91.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite34a",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T02:30:11+00:00"
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "29.84": {
+   "id": "29.84",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #352 (fix/29-84-vagas-pela-regra, ponta 7c226593) na suíte 34, no ar em 584ac9c8 desde 05/10 às 03:21:23Z (deploy 34, migração 109; 'no ar' da orquestradora às 03:27Z). Mudanças: `Scheduler._vagas_do_host(s: LimitsCfg)` lê `capacidade(central).max_slots` (`vagas_que_valem`) na foto `servidores()`, na reserva do rodízio (`livres[None]`) e no `_ocupacao(None)`; a rota `_limites_dos_servidores` usa `cap.max_slots` no efetivo do central e do remoto. Prova simulated: `test_limites_por_servidor.py::test_agendador_e_rota_de_limites_leem_as_vagas_pela_regra_unica` e `::test_reserva_do_central_no_rodizio_usa_as_vagas_pela_regra_unica` (R3); a mutação para a leitura direta derruba os dois. Suíte 34 na 584ac9c8: scripts 602, SQLite 10748 passed e 13 skipped, PG dirigido 4965 passed (282 arquivos), front 1598, docs-check 0/0. A catraca do Any (`test_any_so_diminui`) só passou depois da 7c226593.",
+   "blocker": "Sem prova real própria: com a regra única dando hoje o mesmo número do setting no central, o comportamento no ar não muda, e não há leitura que separe o antes do depois.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "29.86": {
+   "id": "29.86",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #354 (fix/29-86-vagas-restantes, ponta c9507d3e, empilhado no #352) na suíte 34, no ar em 584ac9c8 desde 05/10 às 03:21:23Z. R1: um worker remoto não inscrito sai com 0 vagas livres na foto (`Scheduler.servidores`), e não com o setting do central. R2: o aviso `capacity_local` compara a RAM com `capacidade(central).max_slots`; sem a linha no registro, vale o setting vivo. Z1/Z2: as docstrings e o texto do aviso citam a regra única. Prova simulated: `test_limites_por_servidor.py::test_remoto_nao_inscrito_nao_mostra_vaga_livre_na_foto` e `test_saude_ao_vivo.py::test_aviso_de_capacidade_compara_com_as_vagas_pela_regra_unica`; cada um cai na mutação. Suíte 34 na 584ac9c8, com os mesmos números do 29.84.",
+   "blocker": "Sem prova real: hoje nenhum remoto está fora do registro, e a regra do central dá o mesmo número do setting.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "28.34": {
+   "id": "28.34",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 34 inteira verde (backend 10748, PostgreSQL dirigido 4965, frontend 1598), deploy 34 no ar às 2026-10-05T03:21Z (central em 584ac9c8, migração 109), main descongelada em aab8e7f0; números da orquestradora. Simulated: backend/tests/test_avisos_portal_exclusao.py e backend/tests/test_portal_exclusao.py (a exclusão do contato do site a pedido do titular apaga a mensagem do bot quando o Telegram deixa, cancela o aviso na fila e limpa a resposta; contato excluído antes da entrega não sai depois). PR #340, ponta b142e8b7.",
+   "blocker": "Real not_run: nenhum pedido de exclusão de titular aconteceu depois do deploy 34. Prova real quando o primeiro pedido chegar pela tela 'Site e privacidade', sem provocar com contato de verdade.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "28.35": {
+   "id": "28.35",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 34 inteira verde (backend 10748, PostgreSQL dirigido 4965, frontend 1598), deploy 34 no ar às 2026-10-05T03:21Z (central em 584ac9c8, migração 109), main descongelada em aab8e7f0; números da orquestradora. Simulated: backend/tests/test_avisos_servico.py e backend/tests/test_canais_faxina.py (trava_de_avisos_em_uso(cfg) = avisos.enabled or trello.enabled; o backend desligado não toma a trava avisos e a faxina a solta no finally). PR #345, ponta c909b668.",
+   "blocker": "Real not_run: o caso só existe com um backend de canal desligado, e o central tem um backend só, com o aviso ligado. A frota mista é acusada pelo 28.37 (suíte 35).",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "28.36": {
+   "id": "28.36",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 34 inteira verde (backend 10748, PostgreSQL dirigido 4965, frontend 1598), deploy 34 no ar às 2026-10-05T03:21Z (central em 584ac9c8, migração 109), main descongelada em aab8e7f0; números da orquestradora. Simulated: backend/tests/test_telegram_portas.py (o UPDATE que trava a linha da execução antes do primeiro sim; o início que perde para outro início devolve INICIADA_POR_OUTRO_GESTO) e backend/tests/test_telegram_entrada.py (nunca 'Não iniciei' com a execução em andamento; terminal deixa só o desfecho). PR #346, ponta ccca8050.",
+   "blocker": "Real not_run: a corrida entre dois backends no PostgreSQL não roda num processo só e o central tem um backend. O texto do canal em andamento aparece quando um gesto do dono perder para outro, sem provocar.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "31.53": {
+   "id": "31.53",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#344 (9da01945) na main; deploy 34 no ar: GET /api/health do central WIN-7S2UASNLFOP responde commit 584ac9c8, migração 109_portal_exclusoes, status ok (lido às 03:42:19Z de 05/10/2026; o 'no ar' às 03:27Z é da Orquestradora). Regra do objeto na família e piso do handle de outro app na citação (só ativo, 3+), em tests/test_familia_no_rascunho.py. Execução real não rodou.",
+   "blocker": "prova real pede execução com duas personas do mesmo pedido e o mesmo objeto; sem janela marcada",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "31.61": {
+   "id": "31.61",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#348 (1be22cf8 A, c7473d7e L1, d97c8b52 L2) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). Roteiro das 8 decisões da r-20261004232524-2e0775: 8 → 7 decide no harness; negativos de tela que muda, mesma tela com outros valores (L1) e valor só contido (L2) em tests/test_leitura_sem_step_done.py. Medida real das decisões não rodou.",
+   "blocker": "medida real (decides por etapa de leitura) na janela do 31.58, que espera a vez da Orquestradora",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "31.62": {
+   "id": "31.62",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#349 (e43778fa, 7cb7133c) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). _ultima_sem_tipo confere 'abaixo' em todos os contêineres de lista que contêm a bolha, pela posição do centro (_na_faixa); o botão Enviar sobreposto à lista não conta. Árvores sintéticas em tests/test_bolha_sem_id.py. Execução real não rodou.",
+   "blocker": "prova real pede conversa com bolha sem id numa lista interna; sem janela marcada",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "31.63": {
+   "id": "31.63",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#347 (c46a02bc) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). O texto do rascunho saiu do evento 'texto escrito na voz do perfil' (só o tamanho), do log da reescrita e do motivo de recusa montado em código; a AIError de saída inválida sai fora do except, sem input_value e sem __cause__/__context__ (V1a), e training.proposal_from_json igual (V3). tests/test_rascunho_fora_do_log.py. Os resíduos V1b/V4 viraram o 31.67 (#365) e o V2 o 31.65 (#364), suíte 35.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "31.68": {
+   "id": "31.68",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#359 (a96fb8bd) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). Prévia da porta e do item com vista_em; aprovar sem vista_em legível com item a aprovar dá 409 plano_mudou; DM igual depois do vista_em entra em mudaram. tests/test_porta_do_plano.py (10 novos), test_telegram_entrada.py (T2), test_telegram_portas.py, test_executor_honra_o_plano.py, frontend PortaDoPlano.test.tsx. Percurso no navegador em servidor simulado do worktree (porta 8765, a96fb8bd, 05/10 02:20Z): 409 com 'depois da prévia que você viu' e nada gravado; reaprovar na prévia nova deu 200 com 2 aprovações. A Orquestradora fez a caminhada no central depois do deploy 34.",
+   "blocker": "prova real com execução de uma DM pela porta em aparelho sem conta real: janela de prova pedida às 03:27Z, a seguir",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "29.83": {
+   "id": "29.83",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP, central em 584ac9c8 com a migração 109_portal_exclusoes (/api/health às 03:31:03Z, deploy 34). Prova de fora às 03:30:23Z contra https://dev.nvit.com.br: POST /api/portal/contatos/busca 401 e POST /api/portal/contatos/excluir 401 sem sessão (corpos inválidos de propósito), nenhum Set-Cookie na raiz. A prova de fora da orquestradora às 03:21:37Z (rc=0, 41 ok) cobre as mesmas linhas. Simulado: ver .claude/handoffs/portal-resultado-suite34.json (test_portal_exclusao, test_configuracao_de_exemplo, painel isolado no navegador). not_run: a caminhada pós-deploy no painel logado (.claude/handoffs/portal-caminhada-2983.md) e a exclusão de verdade com um contato de TESTE (pede o sim do dono). Caminhada da orquestradora no painel logado (real, 05/10/2026 de 03:24Z a 03:26Z, Chrome do dono, central em 584ac9c8): Configuração, 'Site e privacidade', 'Exclusão a pedido do titular': número só de zeros é recusado no navegador sem ir à rede; a busca com um número fictício respondeu 200 em 61 ms com 'Nenhum contato com esse telefone'; nenhum controle de apagar aparece sem resultado; nada foi apagado.",
+   "blocker": "Falta a exclusão de verdade de um contato, que só acontece a pedido de um titular ou com um contato de teste autorizado pelo dono (envio válido pelo formulário e exclusão de dado pedem o sim dele).",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "29.81": {
+   "id": "29.81",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #351 (ponta 24b5f179, migração 108) na suíte 34, no ar em 584ac9c8 desde 05/10/2026 às 03:21:23Z (suíte: SQLite 10748 passed, PG dirigido 4965 passed com test_upload_feito_por_ia.py, frontend 1598 passed). Leitura real, sem envio (05/10 ~03:25Z, Chrome do dono, painel do central): a guia de imagens da persona mostra 'Esta foto foi feita por IA?' com três opções e padrão 'Não informado (sai sem rótulo de IA)', o campo de arquivo aceita jpeg e png, e o contrato publica a rota feita-por-ia. Decisão do dono de 05/10 (Telegram 02:15:13Z): a resposta não é obrigatória no envio.",
+   "blocker": "Real not_run: o envio de uma foto com a resposta e a correção depois, na foto, mudam dado de persona e ficam com o dono no uso.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "29.87": {
+   "id": "29.87",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #355 (ponta a6b1680b) na suíte 34, no ar em 584ac9c8 desde 05/10/2026 às 03:21:23Z (suíte: SQLite 10748 passed, PG dirigido 4965 passed, scripts 602 passed). A tela da legenda rola até o rótulo de IA e a folha de aviso do Instagram fecha por toque fora, sem tocar em OK nem em 'Manage settings'; se não fechar, a etapa para em waiting_user.",
+   "blocker": "Real not_run: só se prova num fluxo de publicação em aparelho real, que é a primeira publicação (29.30), pedida ao dono depois do deploy 35.",
+   "grupo": "resultado-orquestradora-suite34a",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T03:46:54+00:00"
   }
  },
  "rodadas": [
@@ -10784,6 +10953,29 @@
    ],
    "grupos": [
     "resultado-orquestradora-janela33c"
+   ]
+  },
+  {
+   "quando": "2026-10-05T03:46:54+00:00",
+   "itens": [
+    "29.84",
+    "29.86",
+    "28.34",
+    "28.35",
+    "28.36",
+    "31.53",
+    "31.61",
+    "31.62",
+    "31.63",
+    "31.68",
+    "29.80",
+    "29.83",
+    "29.85",
+    "29.81",
+    "29.87"
+   ],
+   "grupos": [
+    "resultado-orquestradora-suite34a"
    ]
   }
  ]
