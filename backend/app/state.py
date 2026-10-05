@@ -1194,7 +1194,8 @@ class AppState:
             return          # a trava confirmada retirou a conta (29.23): não há item de fila para uma conta que saiu
         emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=instance_id, status=status,
                                  anterior_status=atual["status"] if atual is not None else None,
-                                 detail=detail[:300], account_id=str(conta["id"]))
+                                 detail=detail[:300], account_id=str(conta["id"]),
+                                 anterior_no_teto=self.social_repo.unknown_no_teto(atual, instance_id))
 
     def _pacote_em_curso(self, instance_id: str) -> str | None:
         """O pacote do app da etapa que o worker deste aparelho executa agora (o dela, senão o do plano, senão o do
@@ -1443,7 +1444,10 @@ class AppState:
                   else "a sessão deste perfil ainda não foi verificada")
         if session and session["status"] in self._SESSAO_PRECISA_DE_PESSOA:
             return motivo, None
-        teto = self.settings.get().session_unknown_retry_cap
+        # 29.92: teto por aparelho. Com vínculo ativo (conta real) é 1: o primeiro `unknown` de um `ensure_session` já
+        # para, porque a rodada seguinte pode cair no login e digitar a senha guardada em cima de uma tela que ninguém
+        # reconheceu. A tela classificada direto como login segue para o `_login` com consentimento (ADR-040).
+        teto = self.social_repo.teto_de_unknown(rt.id) or self.settings.get().session_unknown_retry_cap
         if (session and session["status"] == SessionStatus.unknown.value
                 and int(session["unknown_streak"] or 0) >= teto):
             # Achado #104: sem este teto, uma tela que `classify()` nunca reconhece (sinal ausente da tabela,

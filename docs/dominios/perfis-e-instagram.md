@@ -187,7 +187,11 @@ Caminhos relativos a `backend/app/`.
   human", "confirme/comprove que você é humano/uma pessoa") é a conta travada (decisão do dono, 29/09): cai em
   `challenge` nos dois idiomas e em `hierarchy._CONTA_TRAVADA`, sem toque nenhum — a prova é com hierarquia
   SINTÉTICA (`tests/test_detector_conta_travada.py`), porque a tela real não existe (a conta foi perdida). Tela que
-  nenhum sinal reconhece não se reobserva para sempre: `session_unknown_retry_cap` (3) bloqueia o perfil com o motivo
+  nenhum sinal reconhece não se reobserva para sempre. Item 29.92: na porta de sessão, aparelho com vínculo ativo
+  (conta real, `shared.vinculos.tem_vinculo_ativo`) para no PRIMEIRO `unknown` — a rodada seguinte podia cair no login
+  e digitar a senha guardada em cima de uma tela que ninguém reconheceu — e a parada sai uma vez em
+  `session.needs_person`. Como a porta só existe com vínculo, o `session_unknown_retry_cap` (3) deixou de agir nela e
+  só vale onde não há vínculo (hoje, nenhum caminho automático); segue como limite do contador
   (`tests/test_porta_de_sessao_no_teto.py`). `_needs_person(conta, instance_id)` impede o agendador de
   sequer tentar de novo quando o estado já pede pessoa (lê a sessão da conta **deste app** neste aparelho, 23.4);
   `_blocked_reason()` recusa entrar sem `consent_at` na credencial da conta (ADR-040). Tetos, cooldown e prazos são

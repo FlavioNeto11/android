@@ -343,7 +343,10 @@ class LimitsCfg(BaseModel):
     # Teto de reobservações automáticas seguidas quando a sessão fica `unknown` (achado #104): uma tela que
     # `classify()` não reconhece (sinal ausente da tabela, onboarding fora do mapa) não pode reabrir o app e
     # reobservar a cada tick para sempre. Ao alcançar o teto, a porta do despacho trata como "só uma pessoa
-    # resolve" — mesmo caminho de auth_challenge/wrong_account — em vez de insistir sozinha.
+    # resolve" — mesmo caminho de auth_challenge/wrong_account — em vez de insistir sozinha. Item 29.92: aparelho com
+    # vínculo ativo (conta real) tem teto 1 na porta, e a porta só existe com vínculo; este teto deixou de agir nela
+    # e só vale onde não há vínculo (hoje, nenhum caminho automático). Continua limitando o `unknown_streak`. Não
+    # remova nem renomeie: o `config.yaml` de uma instalação pode ter a chave.
     session_unknown_retry_cap: int = Field(3, ge=1, le=20)
     # Coordenação de frota sobre o mesmo alvo (achado #114, endurecida pelo ADR-055). Fica em LimitsCfg, não no
     # `automation_policy` de cada perfil: é regra da OPERAÇÃO como um todo — um perfil não pode afrouxar sozinho o

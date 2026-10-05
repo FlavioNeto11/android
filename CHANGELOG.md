@@ -19,6 +19,22 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.92: a sessão `unknown` em aparelho com conta real para na primeira e chama a pessoa (branch fix/29-92-sessao-unknown-pede-a-pessoa)
+
+- Achado do rastro do 29.90: abaixo do teto, a porta de sessão devolvia `ensure_session(automatic=True)` a cada tick; a
+  rodada seguinte reabria o app e, caindo na tela de login, digitava a senha guardada em cima de uma tela que ninguém
+  reconheceu. No teto, o objetivo parava sem aviso nenhum ao dono.
+- Na porta, aparelho com vínculo ativo (`shared.vinculos.tem_vinculo_ativo`) tem teto 1 (`SocialRepository.teto_de_unknown`):
+  o primeiro `unknown` já para. Como a porta só existe com vínculo, o `session_unknown_retry_cap` deixou de agir nela
+  (a chave fica). A tela classificada direto como login segue para o login com consentimento (ADR-040).
+- `session.needs_person` cobre o `unknown` no teto, uma vez na entrada e uma na saída (`emit_needs_person_change`,
+  `no_teto`/`anterior_no_teto`).
+- Ressalva (b): com vínculo, tela de OUTRO pacote que casa com o detector de verificação humana não leva o app reaberto
+  por cima (`voltar_ao_estado_conhecido(nao_reabrir_sobre=…)`); vira `unknown` com motivo próprio, sem marcar conta travada.
+- Métricas, sem coluna: `sessao.unknown_rodada{instancia, rodada}`, `sessao.unknown_resolvida{instancia, rodada_antes}`
+  e `sessao.parada_resolvida{instancia, via}` (`observacao` = a releitura só de observação, sem ninguém tocar).
+- Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`). `not_run`: aparelho real.
+
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do
