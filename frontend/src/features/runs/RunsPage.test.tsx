@@ -153,7 +153,8 @@ it('D1: o chip de `completed_with_issues` + `needs_input` não usa a palavra "pe
   await act(async () => { root.render(<RunsPage />); });
   // i % 3 === 1 são `completed_with_issues`: 82 das 246.
   await waitFor(() => expect(byRole('button', /^Pede atenção/).getAttribute('aria-pressed')).toBe('true'));
-  expect(text(byRole('button', /^Pede atenção/))).toBe('Pede atenção82');
+  // O chip marcado vem da URL; a contagem, do fetch (29.104).
+  await waitFor(() => expect(text(byRole('button', /^Pede atenção/))).toBe('Pede atenção82'));
   const chips = document.querySelector('[role="group"][aria-label="Situação da execução"]') as HTMLElement;
   expect(text(chips).toLowerCase()).not.toContain('pendência');
   // A dica (no foco de teclado também) diz o que o conjunto é, e onde estão as que dependem de você.
