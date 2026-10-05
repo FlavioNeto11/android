@@ -450,7 +450,8 @@ it('persona sem @ ganha o Instagram pela adoção: POST /instagram/profiles com 
   await waitFor(() => text().includes('ainda não tem @ de cadastro'));
   expect(text()).toContain('Sem conta de cadastro');
   await click(byRole('button', /Adicionar conta/i));
-  await setValue(byRole('combobox', /Aplicativo/i) as HTMLSelectElement, 'instagram');
+  // 29.140: o seletor de app só aparece com o catálogo (GET app-catalog); com atraso no fetch, ainda não estava.
+  await setValue(await waitFor(() => byRole('combobox', /Aplicativo/i)) as HTMLSelectElement, 'instagram');
   await setValue(byRole('textbox', /Usuário do Instagram/i) as HTMLInputElement, 'luciana.bastos73519');
   await click(byRole('button', /^Adicionar$/i));
   await waitFor(() => backend.callsTo('POST', /^\/api\/instagram\/profiles$/).length === 1);
@@ -1139,6 +1140,10 @@ it('grupo de acesso: cada ação diz de onde vem, "herdar" apaga a escolha próp
   await click(byRole('button', /herdar \(Só manual\)/i));
   await waitFor(() => expect(backend.callsTo('PUT', /\/policy$/)).toHaveLength(1));
   expect(backend.callsTo('PUT', /\/policy$/)[0]!.body).toEqual({ capabilities: { SEND_MESSAGE: null } });
+  // 29.140: o PUT registrado não é a resposta. Enquanto ela não chega, o "Grupo" fica desabilitado (salvando); com
+  // atraso no fetch (semente 88), o setValue logo depois caía nele. Espera a resposta assentar na tela.
+  await waitFor(() => expect(text()).not.toContain('próprio · sobrepõe o grupo'));
+  await waitFor(() => expect((byRole('combobox', /^Grupo$/) as HTMLSelectElement).disabled).toBe(false));
 
   // trocar o grupo é um PATCH no perfil
   const select = byRole('combobox', /^Grupo$/) as HTMLSelectElement;

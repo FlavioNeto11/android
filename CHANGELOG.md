@@ -90,6 +90,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Com o PG folgado, a etapa chega à verificação antes de 0,4 s e gasta o "coberta" em "Enviada ✓". A tela muda, a mesma verificação julga de novo (correto) e o "sim" tira a limpeza que o teste prova. Sob carga, os 0,4 s já tinham passado.
 - Só teste: `_juiz_com_ref` e o `_rodar` de `test_sobreposicao_com_duas_causas.py` partem da mensagem já entregue (`_mensagem_ja_entregue`). O rejulgamento da tela que muda fica preso por `test_a_tela_que_muda_depois_do_coberta_e_julgada_de_novo`, pelo relógio virtual. A mutação "para no 1º julgamento" é reprovada. Prova `simulated` (PG -n 1, três arquivos): três vezes 49 passed, mais uma sob carga; o controle em `b2908051` deu 2 failed.
 
+## 2026-10-05 — 29.140: os testes do perfil e do Foco não dependem da pressa do fetch (branch fix/29-140-corridas-com-atraso)
+
+- Quatro esperas que faltavam, todas no teste e nenhuma no código do painel. O pedido registrado não é a resposta (29.104).
+  - `ProfileDetail` "grupo de acesso…": depois do "herdar", o "Grupo" fica desabilitado até a resposta do PUT. Agora o teste espera a resposta assentar antes de trocar o grupo.
+  - `ProfileDetail` "persona sem @…": o seletor de app só aparece com o catálogo. Agora espera por ele, como os vizinhos já faziam.
+  - `FocusPanel` 31.84: a resposta do 1º envio limpa a caixa. Agora espera o envio terminar antes de marcar, digitar e enviar de novo.
+  - `FocusPanel` 31.85: com atraso, o handler do POST só roda depois da espera, e liberar a resposta antes disso não soltava nada. Agora espera o handler.
+- Prova `simulated`: `src/features/focus` e `src/features/profiles` com `ATRASO_DO_FETCH_MS=40` passam nas sementes 7, 88, 1, 42, 123, 999, 2024 e 31 (255/255 em cada). Sem atraso, o frontend inteiro dá 1678/1678, com typecheck verde.
+
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
 
 - **Implantado** às 18:06Z: central em `9f9e2b39`, migração `115_receita_nao_aplicavel` (sem migração nova), 17 pontas sobre `19e34b22` e dois consertos de junção.
