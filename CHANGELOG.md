@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.92: parar ou descartar uma gravação viva exige o controle do aparelho (branch fix/31-92-parar-gravacao-exige-controle)
+
+- `POST /api/training/{id}/stop` e `/discard` aceitam o corpo opcional `{"lease_id": "..."}`. Numa gravação VIVA (o aparelho a grava e há um controle de usuário), o `lease_id` tem de ser o atual, com a mesma conferência do `start`; sem ele ou com outro: 409 `control_required` ("Só quem está com o controle do aparelho encerra/descarta esta gravação."), e a gravação segue gravando, sem perder entrada. Gravação órfã (sem gravador ativo, ou aparelho em `none`/`ai`), `discard` de sessão que já não grava e os encerramentos do sistema (devolução do controle, troca no `start`, reinício) seguem sem lease.
+- Prova `simulated`: `backend/tests/test_treino_parar_exige_controle.py` 17 passed; com a conferência removida, 7 reprovam (stop e discard sem lease e com lease errado, controle que mudou de mãos, domínio); `test_modo_treinamento.py` 7, `test_treino_gravacao_orfa.py` 6, `test_ensino_v2.py` 16, `test_cobertura_de_rotas.py` 2, `test_arquitetura.py` 9, `test_catracas.py` 6 passed. `real`: `not_run`.
+- A parte do painel (mandar o `lease_id` e tratar o 409) é necessária para o item valer inteiro e vem em outra mudança.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.

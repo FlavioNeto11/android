@@ -207,7 +207,7 @@ async def test_rotas_http_do_treinamento(harness: Harness) -> None:
         fake.screen = "home"
         await _entrada(st, rt, lease, type="tap", x=100, y=200 + 3 * 120 + 30)
         assert (await c.post(f"/api/training/{sid}/propose")).status_code == 409          # ainda gravando
-        assert (await c.post(f"/api/training/{sid}/stop")).json()["status"] == "recorded"
+        assert (await c.post(f"/api/training/{sid}/stop", json={"lease_id": lease})).json()["status"] == "recorded"
         assert len((await c.get(f"/api/training/{sid}")).json()["inputs"]) == 1
         assert (await c.get("/api/training?instance_id=android-01")).json()[0]["id"] == sid
         prop = (await c.post(f"/api/training/{sid}/propose")).json()["proposal"]
@@ -218,5 +218,5 @@ async def test_rotas_http_do_treinamento(harness: Harness) -> None:
         assert r.status_code == 200, r.text
         assert r.json()["flow_id"]
         outro = (await c.post("/api/instances/android-01/training", json={"intent": "y", "lease_id": lease})).json()["id"]
-        assert (await c.post(f"/api/training/{outro}/discard")).json()["status"] == "discarded"
+        assert (await c.post(f"/api/training/{outro}/discard", json={"lease_id": lease})).json()["status"] == "discarded"
         assert (await c.get("/api/training/nao-existe")).status_code == 404

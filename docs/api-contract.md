@@ -6457,3 +6457,23 @@ Mudanças aditivas; o painel não muda.
 - A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
   que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
 - **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).
+
+## Adendo v1.64 (05/10/2026; número da orquestradora; item 31.92) — parar ou descartar uma gravação viva exige o controle do aparelho
+
+Mudança de comportamento em duas rotas do modo treinamento; o corpo novo é aditivo e opcional.
+- `POST /api/training/{session_id}/stop` e `POST /api/training/{session_id}/discard` aceitam o corpo opcional
+  `{"lease_id": "<lease do controle>"}` (`extra=forbid`; sem corpo ou `{}` equivale a sem lease).
+  - Gravação VIVA = a sessão está em `recording`, o aparelho a está gravando e há um controle de usuário (`control: "user"`).
+    Nesse caso o `lease_id` tem de ser o lease ATUAL do aparelho, a mesma conferência do `POST /api/instances/{id}/training`.
+    Sem `lease_id` ou com outro: **409** `control_required`, com a mensagem "Só quem está com o controle do aparelho
+    encerra esta gravação." (`/discard`: "…descarta esta gravação."). A recusa não muda nada: a sessão segue `recording`,
+    o gravador segue ativo e nenhuma entrada se perde. Se o controle passou a outra pessoa, só o lease novo para ou descarta.
+  - Continuam SEM lease: a gravação órfã (sem gravador ativo, ou com o aparelho em `none` ou `ai`: controle devolvido,
+    expirado ou backend reiniciado), o `/discard` de sessão que não está em `recording` (gravada ou proposta) e os
+    encerramentos do sistema (devolver o controle, trocar a gravação no `start`, reconciliar após o reinício).
+  - Demais respostas inalteradas: 404 `not_found`, 200 com a sessão.
+- **O que o painel precisa mudar:** mandar `{"lease_id": ...}` no corpo de `/stop` e `/discard` quando a pessoa está com o
+  controle (o cliente `stopTraining`/`discardTraining` já faz isso quando a aba tem lease), e, ao receber 409
+  `control_required`, mostrar a mensagem do erro e manter a barra de gravação (a gravação segue viva; nada foi encerrado),
+  em vez de tratá-la como sessão encerrada. Quem não tem o controle vê a gravação, mas não a encerra.
+- **Prova:** `simulated` (`backend/tests/test_treino_parar_exige_controle.py`); `real`: `not_run`.
