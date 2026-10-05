@@ -222,7 +222,7 @@ def test_a_raiz_e_pedida_como_navegador_e_o_script_proprio_passa(tmp_path: Path)
     ("beacon", "https://static.cloudflareinsights.com/beacon.min.js"),   # o achado de 05/10, aspas simples
     ("script_de_fora", "https://cdn.exemplo.invalid/x.js"),
     ("src_espacado", "https://cdn.exemplo.invalid/y.js"),                # X1: tag em linhas, `src = "…"`
-    ("maiuscula", "HTTPS://cdn.exemplo.invalid/z.js"),                    # X2: SCRIPT SRC e HTTPS:// em maiúscula
+    ("maiuscula", "https://cdn.exemplo.invalid/z.js"),     # X2: SCRIPT SRC e HTTPS:// em maiúscula; a linha sai lida
     # Y2: `?src=` dentro da URL não é o valor. A query sai da linha (29.97: a régua nunca repete query, que no beacon
     # leva token), e o valor certo é a URL, não o `b`.
     ("src_na_query", "script que a pagina nao tem no HTML: https://cdn.exemplo.invalid/a.js\n"),

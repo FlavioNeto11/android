@@ -7,8 +7,8 @@ dia, e a saúde lendo só o estado. Nenhum pedido sai da máquina: o nome públi
 from __future__ import annotations
 
 import gzip
-import re
 import hashlib
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -348,12 +348,66 @@ def test_versao_e_a_primeira_apontada_e_o_item_tem_teto() -> None:
     ("javascript:alert(1)", "javascript"),
     ("data:text/javascript,alert(1)", "data"),
     ("(embutido)", "embutido"),
+    ("HTTPS://CDN.EXEMPLO.INVALID/A.js", "cdn.exemplo.invalid/A.js"),
+    ("https:///cdn.exemplo.invalid/x.js", "cdn.exemplo.invalid/x.js"),          # o navegador ignora as barras a mais
+    ("https://cdn.exemplo.invalid/x@y/z.js", "cdn.exemplo.invalid/x"),           # corta no `@` do caminho, não cola
+    ("https://cdn.exemplo.invalid/x.js;jsessionid=ABC", "cdn.exemplo.invalid/x.js"),
+    ("admin:s3cret@evil.invalid/x.js", "esquema"),
+    ("https://user:p/ss@cdn.exemplo.invalid/x.js", "url-invalida"),
+    ("https://10.0.0.5/x.js", "ip/x.js"),
+    ("https://[2001:db8::1]:8443/x.js", "ip/x.js"),
+    ("a/b:c.js", "a/b"),
 ])
 def test_o_achado_da_canais_e_so_host_e_caminho_no_alfabeto_dela(src: str, item: str) -> None:
     """Contrato com a Canais (leitura do #381): o filtro dela não acha segredo em segmento de caminho; o vigia manda só
-    host e caminho, sem query, fragmento, credencial nem porta, e no alfabeto `[A-Za-z0-9._/-]`."""
+    host e caminho, sem query, fragmento, `;`, credencial nem porta, e no alfabeto `[A-Za-z0-9._/-]`, cortado."""
     assert borda.item_do_script(src) == item
-    assert re.fullmatch(r"[A-Za-z0-9._/-]{1,120}", borda.item_do_script(src))
+
+
+#: Cada marcador é um pedaço que NUNCA pode sair no item nem no detalhe (leitura do #378, Q1 a Q4). A porta só não
+#: pode sair no item: o detalhe da saúde e da prova mostra esquema, host, porta e caminho.
+_MARCAS = ("USUARIO", "SENHA", "QUERY", "FRAG", "SESSAO", "10.0.0.5", "2001", "db8", "c0a8")
+_PORTA = "8443"
+_CDN = "cdn.exemplo.invalid"
+_SRCS_ADVERSARIOS = [
+    f"https://USUARIO:SENHA@{_CDN}:8443/a.js?QUERY=1#FRAG",
+    f"HTTPS://USUARIO:SENHA@{_CDN.upper()}:8443/A.js?QUERY",
+    f"\\\\USUARIO:SENHA@{_CDN}:8443\\a.js",
+    f"https:\\\\USUARIO:SENHA@{_CDN}/a.js",
+    f"ht\ttps://USUARIO:SE\nNHA@{_CDN}/a.js",
+    f"https:/USUARIO:SENHA@{_CDN}/a.js",
+    f"https:///USUARIO:SENHA@{_CDN}/a.js",
+    f"https:USUARIO:SENHA@{_CDN}/a.js",
+    f"//USUARIO:SENHA@{_CDN}:8443/a.js#FRAG",
+    f"/\\USUARIO:SENHA@{_CDN}/a.js",
+    f"https://USUARIO@SENHA@{_CDN}/a.js",
+    f"https://USUARIO:SENHA@{_CDN}/x@y/a.js",
+    f"https://{_CDN}/a.js;jsessionid=SESSAO",
+    f"https://{_CDN}/a.js;SESSAO?QUERY",
+    f"https://USUARIO:SENHA/SENHA@{_CDN}/a.js",
+    f"https://USUARIO:SENHA?SENHA@{_CDN}/a.js",
+    f"https://USUARIO:SENHA;SENHA@{_CDN}/a.js",
+    f"https://USUARIO:SENHA#SENHA@{_CDN}/a.js",
+    "https://USUARIO:SENHA@10.0.0.5:8443/a.js?QUERY",
+    "https://[2001:db8::1]:8443/a.js",
+    "https://[::ffff:c0a8:1]/a.js",
+    "USUARIO:SENHA@evil.invalid/a.js",
+    "\x01 https://USUARIO:SENHA@evil.invalid/a.js",
+]
+
+
+@pytest.mark.parametrize("src", _SRCS_ADVERSARIOS)
+def test_nenhum_pedaco_de_credencial_porta_query_ou_ip_sai_no_item_nem_no_detalhe(src: str) -> None:
+    """Propriedade, não exemplo: com o `src` montado de marcadores em várias formas (caixa, `\\\\`, tabulação, uma e três
+    barras, `@` no caminho, `;`, IPv4, IPv6), nenhum marcador sai no `item` (Canais) nem no `detalhe` (saúde, prova)."""
+    item, detalhe = borda.endereco_do_script(src)
+    for marca in _MARCAS:
+        assert marca.lower() not in item.lower(), (marca, item)
+        assert marca.lower() not in detalhe.lower(), (marca, detalhe)
+    assert _PORTA not in item, item
+    assert re.fullmatch(r"[A-Za-z0-9._/-]{0,120}", item)
+    [achado] = borda.conferir_html("/", 200, f'<script src="{src}"></script>', host=HOST).achados
+    assert (achado.item, achado.detalhe) == (item, detalhe)
 
 
 # ------------------------------------------------------------------ 29.101: a API pedida de fora sem credencial
