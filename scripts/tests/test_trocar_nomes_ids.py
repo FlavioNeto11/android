@@ -65,3 +65,16 @@ def test_tabela_dentro_do_repositorio_continua_barrada(tmp_path: Path, monkeypat
     monkeypatch.setattr("sys.argv", ["x", "--tabela", str(tabela), "--raiz", str(raiz)])
     with pytest.raises(SystemExit, match="não pode ficar dentro"):
         troca.main()
+
+
+def test_amplo_ignora_o_handle_de_exemplo_com_o_ponto_escapado(tmp_path: Path, monkeypatch, capsys) -> None:
+    """O handle já trocado numa rodada anterior também aparece com o ponto escapado numa regex de teste; essa forma
+    não pode fazer o `--amplo` abortar como se o valor de exemplo já existisse."""
+    raiz, privado = tmp_path / "repo", tmp_path / "privado"
+    privado.mkdir()
+    _repo(raiz, "PADRAO = /girafa" + chr(92) + ".amostral7310/\nNOME = 'Quimera'\n")
+    tabela = privado / "tabela.json"
+    tabela.write_text(json.dumps(TABELA), encoding="utf-8")
+    monkeypatch.setattr("sys.argv", ["x", "--tabela", str(tabela), "--raiz", str(raiz), "--amplo"])
+    assert troca.main() == 0
+    assert "arquivos: 1" in capsys.readouterr().out

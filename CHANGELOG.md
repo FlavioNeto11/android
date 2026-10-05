@@ -32,6 +32,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `scripts/trocar-nomes-nos-testes.py` lê a chave `ids` da tabela como troca literal, com a caixa exata e sempre (não
   só no `--amplo`), fora dos valores de exemplo que o `--amplo` confere. O briefing 12 da rodada 2 de UX trocou o id
   real pelo de exemplo. Depende do 31.101 (o ramo nasce da ponta dele) e, para zerar o id no frontend, do 31.106.
+- A conferência do `--amplo` também descarta o handle de exemplo com o ponto escapado numa regex de teste: sem isso,
+  o ensaio abortava na ponta do 31.101 pelo próprio valor de exemplo (2 testes de perfis do frontend). A tabela não
+  mudou. Ensaio do `--amplo` nesta ponta: 120 arquivos, 1433 linhas, não aplicado.
 - Prova `simulated`: `backend/tests/test_social_dm.py::test_proposta_de_voz_cobre_os_oito_campos_no_formato_do_arquivo` e `scripts/tests/test_trocar_nomes_ids.py` (4 testes; o do `--amplo` falha se os ids entrarem nos valores conferidos). Real: `not_run`.
 
 ## 2026-10-05 — 31.101: os testes não usam mais o identificador de uma conta real (branch test/31-101-dados-ficticios-nos-testes)

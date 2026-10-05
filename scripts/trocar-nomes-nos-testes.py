@@ -144,6 +144,9 @@ def main() -> int:
     # nomes de exemplo que já estavam nos testes.
     novos |= {p for velho, novo in tabela.get("pares", {}).items() for p in pedacos_de(novo) - pedacos_de(velho)}
     feitos = [*tabela["handles"].values(), *tabela.get("pares", {}).values()]
+    # 31.105: o handle já trocado também fica com o ponto escapado numa regex de teste (`/nome\.sobrenome1234/`);
+    # sem essa forma, o pedaço dele sobrava e o `--amplo` abortava pelo próprio valor de exemplo.
+    feitos += [f.replace(".", "\\.") for f in feitos if "." in f]
     if novos & {s.lower() for s in tabela.get("simulados", [])}:
         raise SystemExit("um valor de exemplo coincide com um nome do simulated_provider")
     if args.banco:
