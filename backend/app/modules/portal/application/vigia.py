@@ -204,7 +204,8 @@ class Vigia:
         achados: list[tuple[str, str, str]] = []
         quando = f"{self.quando:%H:%M}Z" if self.quando else "?"
         if self.ultima is not None and self.ultima.estado == borda.DEFEITO:
-            detalhes = "; ".join(f"{a.onde}: {a.detalhe}" for a in self.ultima.achados)
+            # O detalhe pode trazer valor de terceiro (cabeçalho, nome de cookie): nenhum controle entra na saúde (U1).
+            detalhes = borda.linha_sem_controle("; ".join(f"{a.onde}: {a.detalhe}" for a in self.ultima.achados))
             codigos = list(dict.fromkeys(a.codigo for a in self.ultima.achados))
             achados.append((
                 "portal_borda_defeito",

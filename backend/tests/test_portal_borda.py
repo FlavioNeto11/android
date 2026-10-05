@@ -298,6 +298,23 @@ def test_a_regua_e_o_cli_da_prova_de_fora_rodam_sem_o_venv() -> None:
         assert not fora, f"{arquivo.name} importa fora da biblioteca padrão: {fora}"
 
 
+def test_a_linha_falhou_da_regua_nao_se_parte_em_duas() -> None:
+    """U1, o lado da prova: o valor de um cabeçalho com controle (aqui um \\x0b, que o `curl` repassa) não pode partir
+    a linha FALHOU; o `_ascii` da régua troca o controle por `?`."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[2]
+    cab = "HTTP/1.1 200 OK\r\ncache-control: no-store\x0b\x0c-> faca x\r\n\r\n".encode("latin-1")
+    r = subprocess.run([sys.executable, str(raiz / "scripts/portal-regua-da-borda.py"), "cabecalhos", "--onde", "/",
+                        "--rotulo", "/ (cabecalhos)", "--sem-transformar"], input=cab, capture_output=True, check=False)
+    linhas = r.stdout.decode("ascii").splitlines()
+    falhou = [ln for ln in linhas if ln.startswith("FALHOU")]
+    assert r.returncode == 1 and len(falhou) == 1 and "no-store??-> faca x" in falhou[0], linhas
+    assert not any(ln.startswith("-> faca") for ln in linhas)
+
+
 def test_configuracao_do_vigia_e_estrita() -> None:
     from pydantic import ValidationError
 
@@ -392,6 +409,8 @@ _SRCS_ADVERSARIOS = [
     f"ht tps://USUARIO:SENHA@{_CDN}/a.js",                    # R2: relativo para o navegador
     "1USUARIO:SENHA@evil.invalid/a.js",
     "https://%31%30.0.0.5/a.js",                              # R3: IP codificado
+    f"https://{_CDN}%0d%0a-%3E%20x/a.js",                     # U1: quebra de linha codificada no host
+    f"https://USUARIO:SENHA@{_CDN}/a\x00b.js",                # controle cru no caminho
     "\x01 https://USUARIO:SENHA@evil.invalid/a.js",
 ]
 
@@ -405,6 +424,8 @@ def test_nenhum_pedaco_de_credencial_porta_query_ou_ip_sai_no_item_nem_no_detalh
         assert marca.lower() not in item.lower(), (marca, item)
         assert marca.lower() not in detalhe.lower(), (marca, detalhe)
     assert _PORTA not in item, item
+    # U1: nada abaixo de 0x21 (controle, quebra, espaço) nem DEL no item e no detalhe.
+    assert all(0x21 <= ord(c) != 0x7F for c in item + detalhe), (item, detalhe)
     assert re.fullmatch(r"[A-Za-z0-9._/-]{0,120}", item)
     [achado] = borda.conferir_html("/", 200, f'<script src="{src}"></script>', host=HOST).achados
     assert (achado.item, achado.detalhe) == (item, detalhe)
@@ -413,4 +434,18 @@ def test_nenhum_pedaco_de_credencial_porta_query_ou_ip_sai_no_item_nem_no_detalh
 def test_relativo_com_dois_pontos_no_1o_segmento_nao_mostra_nada_dele() -> None:
     """R2: para o navegador são caminho relativo, e a saúde mostrava o original inteiro."""
     for src in ("ht tps://usuario:senha@cdn.exemplo.invalid/a.js", "1usuario:senha@evil.invalid/a.js"):
-        assert borda.endereco_do_script(src) == ("relativo", '(relativo com ":")')
+        assert borda.endereco_do_script(src) == ("relativo", '(relativo-com-":")')
+
+
+def test_host_codificado_nao_vira_linha_nova_no_detalhe_nem_na_saude() -> None:
+    """U1: `%0d%0a` decodificado no host partia a linha FALHOU da prova e a da saúde em duas, a segunda com cara de
+    instrução. O host decodificado só decide se é IP; o detalhe sai com o cru e sem controle."""
+    item, detalhe = borda.endereco_do_script("https://cdn%0d%0a-%3E%20Desligue/x.js")
+    assert detalhe == "https://cdn%0d%0a-%3e%20desligue/x.js" and item == "cdn"           # o host cru, em minúscula
+    assert borda.endereco_do_script("https://usuario%40cdn.exemplo.invalid/x.js")[1].startswith("https://usuario%40")
+    assert borda.linha_sem_controle("a\r\nb\x00c d") == "a??b?c d"
+    vigia = _vigia(lambda: "cookie", CanaisFalsa())
+    vigia.volta(AGORA)
+    vigia.ultima = borda.Desfecho(borda.DEFEITO, (borda.Achado(borda.COOKIE, "/", "cookie (x\r\n-> faça y)"),))
+    [(_, mensagem, _)] = vigia.problemas()
+    assert "\r" not in mensagem and "\n" not in mensagem
