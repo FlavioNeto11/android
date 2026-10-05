@@ -359,6 +359,18 @@ pela regra de saúde. Desde então o portão é este:
   inteira em PG e para reproduzir o que só falha com durabilidade. Espere a primeira conexão aceita antes do
   pytest: a primeira rodada da suíte 18 deu 1913 erros "the database system is starting up".
 
+  Desde o 29.99 o contêiner sobe por `scripts/pg-rapido.py`, sempre com a mesma configuração, mais WAL mínimo
+  (`wal_level=minimal`, `max_wal_senders=0`, `max_wal_size=256MB`, `checkpoint_timeout=1min`), e só no loopback. O
+  script recria o contêiner a cada parte (`--partes`, o tmpfs volta vazio) e espera a conexão pelo TCP. A cada 30 s
+  ele amostra o tmpfs, o `pg_wal`, a `base`, os esquemas de teste e o tamanho de `pg_class`, `pg_attribute` e
+  `pg_depend`; a 85 % do tmpfs, mata a árvore do pytest e para com uma linha.
+  - **Por quê.** Na suíte 35, os 467 arquivos juntos encheram os 4 GB: 181 failed, 823 errors, quase todos
+    `DiskFull`. Pelos logs do contêiner, o estouro foi na `base/` (3688 erros ali e 1668 em `global/`, nenhum em
+    `pg_wal`). O WAL ficou estável perto de 1 GB, com 30 segmentos reciclados por checkpoint, igual nas metades.
+  - **As metades** (234 e 233 arquivos) passaram com pico de 1057 e 1077 MB: 928 e 944 MB de WAL, 129 e 133 de base.
+  - **O que ainda falta.** Por que a `base` passou de ~3 GB só na rodada inteira é a medida pendente do 29.99: uma
+    rodada inteira com o amostrador, na vez da orquestradora.
+
   | Suíte | Contêiner | Aceitar conexão | PG dirigido |
   |---|---|---|---|
   | 25 | `farm-pg-rapido` | 3,1 s | 7 min 49 s, 2234 testes em 119 arquivos (4,8 testes/s) |
