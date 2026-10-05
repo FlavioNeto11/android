@@ -43,6 +43,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   leitura da persona, feita dentro da transação, como `materialize` (lida fora, uma edição no intervalo passava com o
   valor antigo); (3) o comentário de `RunService._plan` não diz mais que o valor no comando resolve. Testes: o parâmetro
   que cita a si mesmo (com e sem texto depois), o que cita um dado que a persona tem, e o retrato único no replano.
+  Prova `simulated`: `tests/test_prevoo_dado_da_persona.py`, 27 passed no 995321b1 (eram 24 antes do 31.99). Real: `not_run`.
 - Prova `simulated`: `tests/test_prevoo_dado_da_persona.py` (24 passed; 14 no 796a26ac, 18 no 3f502014), `RunView.test.tsx` (8 passed); vizinhos e `test_arquitetura.py` verdes;
   `pytest @tests/catracas.txt`, 88 passed. `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
 
