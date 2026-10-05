@@ -411,6 +411,13 @@ A pessoa faz a tarefa no aparelho, pelo Foco, e a IA generaliza a gravação em 
   - O `TRAINER_SYSTEM` pede cobertura total das entradas e manda para `discarded` as teclas de apagar que só limpam
     o campo e o `back`/`home` que desfazem engano (a reprodução limpa o campo; tecla na etapa derruba a receita).
 
+- **Prévia e reparo das receitas (31.86 B).** `POST /api/training/{id}/preview` (corpo do `save`) devolve, sem
+  gravar, o que o `save` faria: por etapa `recipe` e o `reason` literal, e os `warnings`; usa `_preparar`, a mesma
+  conferência do `save`. `POST /api/training/{id}/recipes` refaz as receitas de uma sessão já salva (o plano vem do
+  fluxo, as entradas da proposta guardada). Fora do ar, o save só grava receita se a versão do app e a variante de
+  interface ainda estão lembradas (cache do executor/inventário); senão o motivo diz o que falta e o reparo roda
+  quando o aparelho volta. Contrato: adendo v1.58.
+
 Migração `038_modo_treinamento.sql`: `training_sessions` (`status`: `recording|recorded|proposed|saved|discarded`),
 `training_inputs` (`type`: `tap|long_press|swipe|text|key|open_app`), `flow_scope`, `flows.source` (`'run'` ou
 `'training:<sessão>'`).

@@ -19,6 +19,24 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.86 B: prévia do salvar e refazer as receitas do treino (branch feat/31-86-previa-e-refazer-receitas)
+
+- `POST /api/training/{id}/preview` (mesmo corpo do `save`) roda a MESMA conferência (`_preparar`: os mesmos códigos
+  400/409, inclusive `duplicate_command`) e a MESMA destilação, sem escrever nada, e devolve por etapa
+  `{key, title, recipe, reason}` mais `warnings`. A pessoa vê por que uma etapa ficaria sem receita enquanto ainda
+  edita a proposta.
+- `POST /api/training/{id}/recipes` refaz a destilação de uma sessão JÁ salva (plano do fluxo + proposta guardada) e
+  grava as receitas que faltam; idempotente (`recipes.save` segue vetando a chave com receita ativa); 409
+  `sessao_nao_salva` se a sessão não foi salva.
+- Causa do "salvar offline não gera receita": só duas leituras dependem do aparelho, a versão do app (adb) e a variante
+  idioma/densidade (adb); nenhuma é gravada na sessão. Agora, fora do ar, o save usa o que a última leitura deixou
+  (`rt.app_versions`/`rt.ui_variant` e o inventário `device_app_state`, a fonte do despacho); sem isso o motivo diz
+  o que falta (nada é chutado da configuração: variante errada deixaria a receita morta e "gravada"). A rota
+  `/recipes` repara as sessões antigas quando o aparelho volta.
+- `RecipeStore.chave_ocupada` (só lê) é a conta do veto, usada pelo `save` e pela prévia. `distill_training` e a
+  política de `recipes.save` não mudaram.
+- Prova: `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`, 19 testes); `real`: `not_run`.
+
 ## 2026-10-05 — 31.83: o `save` do modo treinamento valida a proposta antes de escrever (branch fix/31-83-validacao-do-salvar-do-treino)
 
 - `validar_proposta_para_salvar` (`training/skills.py`) roda antes de qualquer escrita e recusa com 400 e mensagem em
