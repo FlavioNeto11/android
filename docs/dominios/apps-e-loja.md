@@ -84,6 +84,15 @@ A versão do formato também é conferida na carga (RA-24). `catalogo.yaml` (`co
 `sessao.yaml` (`versao`) só aceitam 1. Subir a versão exige, no mesmo commit, o código que a lê
 (`VERSOES_DE_CONTRATO`, `VERSOES_DE_TELAS`, `VERSOES_DE_SESSAO`).
 
+**Folha fechada sem escolher** (item 29.87): uma regra `intersticial` do `telas.yaml` pode declarar
+`fechar: {toque_fora: {folha, fundo}}` e `nunca: [rótulos]`, um exigindo o outro. O executor, antes da receita e do
+ator, fecha a folha reconhecida com um toque no fundo escurecido acima dela (`toque_fora_da_folha`), sem IA e sem
+escolher; nunca toca num rótulo de `nunca`. Se a folha não fecha em `LIMITE_DE_FOLHAS` toques, ou não sobra fundo acima
+dela, a etapa para em `waiting_user` sem mais toque. O Instagram declara a "Sharing posts" da 1ª vez na tela da legenda
+("OK" e "Manage settings" são aceitar um aviso numa conta real). Na mesma tela, a linha de um `commit_switch` exigido e
+ausente (o "Add AI label" fica abaixo da dobra) é trazida à tela pela regra, em passos de 25 % da área rolável, antes de o
+ator decidir (`rolagem_ate_o_interruptor`).
+
 **Dica de tela ao juiz** (item 31.46): o `telas.yaml` aceita `dicas_ao_juiz: [{texto, telas?}]`, um fato sobre como a árvore
 do app é desenhada (o Outlook: a linha da lista é um `ComposeView` sem texto, então a árvore não mostra remetente nem
 assunto). O carregador recusa campo desconhecido, `texto` vazio ou acima de 600 caracteres e tela não declarada;

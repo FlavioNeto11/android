@@ -28,8 +28,8 @@ from typing import Awaitable, Callable
 
 import yaml
 
-from .hierarchy import (SUBTIPO_CODIGO, SUBTIPO_CONTA_TRAVADA, ContaTravada, UiTree, detectar_trava_generica,
-                        normalizar_texto_de_tela)
+from .hierarchy import (SUBTIPO_CODIGO, SUBTIPO_CONTA_TRAVADA, ContaTravada, UiElement, UiTree,
+                        detectar_trava_generica, normalizar_texto_de_tela)
 
 #: Vocabulário dos motores. Quem trata cada tipo é o núcleo (sessão, executor), não o app.
 TIPOS = frozenset({"desafio", "dois_fatores", "intersticial", "login", "carregando", "autenticada"})
@@ -83,6 +83,11 @@ class RegraDeTela:
     origem: str = ORIGEM_REPOSITORIO
     #: Só na aprendida: entra no estado conhecido (a declarada diz isso em `estado_conhecido.telas`).
     casa: bool = False
+    #: 29.87: folha de aviso que se fecha SEM ESCOLHER, por um toque no fundo escurecido acima dela:
+    #: (sufixo do id da folha, sufixo do id do fundo). `None` = a regra não declara fechamento.
+    fechar_fora: tuple[str, str] | None = None
+    #: 29.87: rótulos que nada automático toca nesta tela ("OK" de um aviso numa conta real é aceitar; ele pede o dono).
+    nunca: tuple[str, ...] = ()
 
     @property
     def aprendida(self) -> bool:
@@ -462,12 +467,14 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
         nome_da_tela = str(r.get("tela") or "")
         if not nome_da_tela:
             raise ConhecimentoInvalido(f"{onde}: falta `tela`")
+        fechar_fora, nunca = _fechamento(r, onde, tipo)
         regras.append(RegraDeTela(tela=nome_da_tela, tipo=tipo, razao=str(r.get("razao") or nome_da_tela),
                                   autenticada=bool(r.get("autenticada", False)), sinal=sinal,
                                   formulario_de_senha=bool(r.get("formulario_de_senha", False)),
                                   sem_elementos=bool(r.get("sem_elementos", False)),
                                   ids=_textos(r.get("ids"), f"{onde}.ids"), extracao=extracao,
-                                  ids_todos=_textos(r.get("ids_todos"), f"{onde}.ids_todos")))
+                                  ids_todos=_textos(r.get("ids_todos"), f"{onde}.ids_todos"),
+                                  fechar_fora=fechar_fora, nunca=nunca))
     if not regras:
         raise ConhecimentoInvalido("nenhuma regra em `telas`")
     ec = _mapa(raiz.get("estado_conhecido"), "estado_conhecido")
@@ -485,6 +492,59 @@ def de_dados(dados: object) -> ConhecimentoDeTelas:
                                estado_conhecido=EstadoConhecido(telas=casa, voltar_max=voltar_max,
                                                                 reabrir=bool(ec.get("reabrir", True))),
                                regioes_visuais=regioes, dicas_ao_juiz=dicas)
+
+
+def _fechamento(r: dict[str, object], onde: str, tipo: str) -> tuple[tuple[str, str] | None, tuple[str, ...]]:
+    """29.87: `fechar: {toque_fora: {folha, fundo}}` e `nunca: [...]`. Só numa tela intermediária, e um vem com o
+    outro: o fechamento sem escolher existe para que os rótulos de `nunca` fiquem sem toque."""
+    bruto, nunca = r.get("fechar"), _textos(r.get("nunca"), f"{onde}.nunca")
+    if bruto is None:
+        if nunca:
+            raise ConhecimentoInvalido(f"{onde}: `nunca` exige `fechar` (como a tela se fecha sem tocar nesses rótulos)")
+        return None, ()
+    if tipo != "intersticial":
+        raise ConhecimentoInvalido(f"{onde}: `fechar` só vale em tela `intersticial` (é {tipo!r})")
+    fechar = _mapa(bruto, f"{onde}.fechar")
+    if set(fechar) != {"toque_fora"}:
+        raise ConhecimentoInvalido(f"{onde}.fechar: o único fechamento entendido é `toque_fora`")
+    fora = _mapa(fechar["toque_fora"], f"{onde}.fechar.toque_fora")
+    folha, fundo = str(fora.get("folha") or "").strip().lower(), str(fora.get("fundo") or "").strip().lower()
+    if not folha or not fundo or set(fora) != {"folha", "fundo"}:
+        raise ConhecimentoInvalido(f"{onde}.fechar.toque_fora: declare só `folha` e `fundo` (sufixos de id)")
+    if not nunca:
+        raise ConhecimentoInvalido(f"{onde}: `fechar` exige `nunca` (os rótulos que ninguém toca nesta folha)")
+    return (folha, fundo), nunca
+
+
+#: 29.87: a folha precisa deixar ao menos isto (px) de fundo acima dela para o toque cair FORA dela.
+FUNDO_MINIMO_PX = 24
+
+
+def _rotulo_normal(e: UiElement) -> str:
+    return " ".join(f"{e.text} {e.desc}".split()).casefold()
+
+
+def toque_fora_da_folha(regra: RegraDeTela, tree: UiTree) -> tuple[int, int] | None:
+    """29.87: o ponto (do aparelho) que fecha a folha da `regra` sem escolher nada: no fundo escurecido, no meio da
+    faixa que sobra ACIMA da folha (medido no android-13 em 05/10: a folha "Sharing posts" começa em y=260 e o fundo
+    em y=48; o toque em (360, 250) fechou sem tocar em "OK"). `None` quando não há como: folha ou fundo fora da
+    árvore, fundo de menos acima da folha, ou o ponto cairia num elemento com rótulo de `nunca`."""
+    if regra.fechar_fora is None:
+        return None
+    id_da_folha, id_do_fundo = regra.fechar_fora
+    folha = next((e for e in tree.elements if _sufixo(e.resource_id) == id_da_folha), None)
+    fundo = next((e for e in tree.elements if _sufixo(e.resource_id) == id_do_fundo), None)
+    if folha is None or fundo is None or folha.bounds[1] - fundo.bounds[1] < FUNDO_MINIMO_PX:
+        return None
+    x = (folha.bounds[0] + folha.bounds[2]) // 2
+    y = (fundo.bounds[1] + folha.bounds[1]) // 2
+    if not (fundo.bounds[0] <= x <= fundo.bounds[2]):
+        return None
+    proibidos = {n.casefold() for n in regra.nunca}
+    if any(e.bounds[0] <= x <= e.bounds[2] and e.bounds[1] <= y <= e.bounds[3] and _rotulo_normal(e) in proibidos
+           for e in tree.elements):
+        return None
+    return x, y
 
 
 #: Uma dica é uma frase curta por tela: passar disto é o arquivo virando manual dentro do prompt do juiz.

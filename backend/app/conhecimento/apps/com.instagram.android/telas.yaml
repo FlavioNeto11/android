@@ -36,6 +36,9 @@ sinais:
     login_error: '(unable to log ?in|an unexpected error occurred|please try logging in again)'
     switcher: '(switch accounts?|log into another account)'
     inbox: '^\s*(messages|direct)\s*$'
+    # 29.87: a folha da 1ª vez na tela da legenda (android-13, 05/10 01:27Z): "Sharing posts", "Your account is
+    # public…", com OK e "Manage settings". Casa junto dos ids da folha (`ids_todos` da regra), nunca sozinho.
+    aviso_de_compartilhar: '(?m)^\s*sharing posts\s*$'
   pt:
     login_button: '^\s*(entrar|fazer login)\s*$'
     facebook: 'facebook'
@@ -49,6 +52,8 @@ sinais:
     login_error: '(n[ãa]o foi poss[íi]vel (entrar|fazer login)|ocorreu um erro inesperado|tente (entrar|fazer login) novamente)'
     switcher: '(trocar de conta|entrar em outra conta)'
     inbox: '^\s*(mensagens|direct)\s*$'
+    # NÃO MEDIDO em português: o texto é palpite; os ids da folha (`ids_todos`) é que decidem.
+    aviso_de_compartilhar: '(?m)^\s*(compartilhamento de publica[çc][õo]es|compartilhando publica[çc][õo]es|sharing posts)\s*$'
 
 # Leitura da conta aberta. `conta_no_cabecalho` é a fonte confiável de QUEM está logado: só ids de cabeçalho de
 # perfil (no feed, o mesmo `action_bar_title` mostra o autor do reel). `arroba_solto` é o palpite pelo primeiro
@@ -67,6 +72,16 @@ telas:
   - {tela: save_login_prompt, tipo: intersticial, autenticada: true, sinal: save_login,
      razao: o app pergunta se quer salvar os dados de login}
   - {tela: account_switcher, tipo: intersticial, autenticada: true, sinal: switcher, razao: seletor de contas aberto}
+  # 29.87 (leitura real do android-13, 05/10): a folha "Sharing posts" abre por cima da tela da legenda na 1ª vez.
+  # "OK" e "Manage settings" são aceitar um aviso numa conta real: só o dono. O executor a fecha SEM ESCOLHER, com um
+  # toque no fundo escurecido acima da folha (`background_dimmer` cobre a tela; a folha começa em
+  # `layout_container_bottom_sheet`). A tecla voltar não foi medida nela. Se o toque fora não a fechar, a etapa para
+  # para uma pessoa sem tocar em mais nada.
+  - {tela: aviso_de_compartilhar, tipo: intersticial, autenticada: true, sinal: aviso_de_compartilhar,
+     ids_todos: [bottom_sheet_container, background_dimmer, layout_container_bottom_sheet],
+     fechar: {toque_fora: {folha: layout_container_bottom_sheet, fundo: background_dimmer}},
+     nunca: [OK, Manage settings, Gerenciar configurações],
+     razao: aviso de compartilhamento de publicações (fechado sem escolher)}
   - {tela: login, tipo: login, formulario_de_senha: true, razao: há um campo de senha na tela}
   - {tela: loading, tipo: carregando, sem_elementos: true, razao: tela ainda sem elementos}
   - {tela: inbox, tipo: autenticada, autenticada: true, sinal: inbox, razao: caixa de mensagens}
