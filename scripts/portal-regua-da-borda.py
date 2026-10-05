@@ -36,6 +36,16 @@ def _regua() -> ModuleType:
 LINHA_MAX = 200                                     # um Location comprido não empurra o resto da linha para fora
 
 
+def _linha(texto: str) -> str:
+    """O valor de terceiro que vai cru à linha (o `Location`). Todo caractere fora do ASCII imprimível vira `?`, sem a
+    dobra do NFKD: um `ｈttps` de largura total ou uma ligadura apareceria igual ao esperado ao lado de um FALHOU (L1 da
+    leitura do #396). Cortado, diz o tamanho total, porque a diferença pode estar depois do corte."""
+    limpo = "".join(c if 0x21 <= ord(c) <= 0x7E else "?" for c in texto)
+    if len(limpo) <= LINHA_MAX:
+        return limpo
+    return f"{limpo[:LINHA_MAX]}... ({len(limpo)} caracteres)"
+
+
 def _ascii(texto: str) -> str:
     """Toda linha FALHOU passa por aqui. Controle vindo da página ou da borda vira `?`: uma quebra de linha de
     terceiro partiria a linha em duas, a segunda com cara de instrução (U1 da leitura do #378)."""
@@ -75,7 +85,7 @@ def main(argv: list[str]) -> int:
     entrada = sys.stdin.buffer.read()
     if a.conferencia == "linha":                     # 29.107: valor de terceiro que o shell imprime (o Location)
         # Sem quebra no fim: o `$(...)` do shell tira o LF, mas não o CR que o print do Windows poria antes dele.
-        sys.stdout.write(_ascii(entrada.decode("utf-8", "replace"))[:LINHA_MAX])
+        sys.stdout.write(_linha(entrada.decode("utf-8", "replace")))
         return 0
     r = _regua()
 

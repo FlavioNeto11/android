@@ -67,6 +67,11 @@ else
        # 29.107: o Location é de terceiro (a borda pode reescrevê-lo); controle nele não pode partir a linha da prova.
        [[ "$QUEBRA" == location_fora ]] && destino=$'https://outro.example.invalid/\r\nok     tudo certo\x1b[2J'
        [[ "$QUEBRA" == location_suja ]] && destino="$destino"$'\x1b[31mverde\nok     /falso'
+       # L1 do #396: sósia de largura total, C1 (U+0085) e BiDi (U+202E), em UTF-8; e um destino longo demais.
+       [[ "$QUEBRA" == location_largura ]] && destino=$'\xef\xbd\x88'"${destino:1}"
+       [[ "$QUEBRA" == location_c1 ]] && destino="$destino"$'\xc2\x85x'
+       [[ "$QUEBRA" == location_bidi ]] && destino=$'\xe2\x80\xae'"$destino"
+       [[ "$QUEBRA" == location_longa ]] && destino="$destino$(printf 'a%.0s' {1..300})"
        ;;
     /) codigo=200; extra="content-security-policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'"
        case "$QUEBRA" in
@@ -324,16 +329,31 @@ def test_sem_python_ou_com_variavel_errada_para_com_o_motivo(tmp_path: Path) -> 
 @pytest.mark.parametrize(("quebra", "inicio", "falhas"), [
     ("location_fora", "FALHOU /central (Location)", 1),
     ("location_suja", "ok     /central (Location)", 0),
+    ("location_largura", "FALHOU /central (Location)", 1),
+    ("location_c1", "ok     /central (Location)", 0),
+    ("location_bidi", "FALHOU /central (Location)", 1),
 ])
 def test_o_location_sai_sem_controle_numa_linha_so(tmp_path: Path, quebra: str, inicio: str, falhas: int) -> None:
     """29.107: o destino do redirecionamento passa pela mesma limpeza da régua antes de ir à linha. Um `\\r\\n` ou um
-    ESC vindo da borda viraria uma segunda linha com cara de `ok` (ou apagaria a tela)."""
+    ESC vindo da borda viraria uma segunda linha com cara de `ok` (ou apagaria a tela). L1 do #396: nenhum caractere
+    fora do ASCII chega à linha, nem dobrado em sósia (o `ｈ` de largura total sai `?`, não `h`)."""
     r, _ = _rodar(tmp_path, quebra=quebra)
     [linha] = [x for x in r.stdout.splitlines() if "(Location)" in x]
     assert linha.startswith(inicio) and "?" in linha
+    assert all(0x20 <= ord(c) <= 0x7E for c in linha), linha
+    if quebra == "location_largura":
+        assert "-> ?ttps://" in linha                                      # a diferença aparece, não some no NFKD
     assert "\x1b" not in r.stdout and "\r" not in r.stdout
     assert not any(x.startswith(("ok     tudo certo", "ok     /falso")) for x in r.stdout.splitlines())
     assert (r.returncode == 1) == bool(falhas)
+
+
+def test_o_location_longo_e_cortado_e_diz_o_tamanho(tmp_path: Path) -> None:
+    """L1 do #396: o corte em 200 caracteres pode esconder a parte que difere; a linha diz o tamanho total."""
+    r, _ = _rodar(tmp_path, quebra="location_longa")
+    [linha] = [x for x in r.stdout.splitlines() if "(Location)" in x]
+    assert linha.startswith("ok     /central (Location)") and re.search(r"\.\.\. \(\d{3} caracteres\)$", linha), linha
+    assert r.returncode == 0
 
 
 def test_script_com_barra_invertida_e_de_fora(tmp_path: Path) -> None:
