@@ -24,8 +24,11 @@ from .fake_device import Node
 TERMINAIS = ("completed", "completed_with_issues", "failed", "waiting_user", "needs_input", "uncertain")
 
 
-def _juiz(inner: Any, chave: str, *, cobertas: int) -> list[str]:
-    """O verificador da etapa `chave`: as `cobertas` primeiras respostas são "não, algo cobre o alvo"; depois, "sim"."""
+def _juiz(harness: Harness, chave: str, *, cobertas: int) -> list[str]:
+    """O verificador da etapa `chave`: as `cobertas` primeiras respostas são "não, algo cobre o alvo"; depois, "sim".
+    Conta chamadas, então a mensagem já nasce entregue (`_mensagem_ja_entregue`, 29.139)."""
+    _mensagem_ja_entregue(harness)
+    inner = harness.ai.inner
     verify0 = inner.verify
     vistos: list[str] = []
 
@@ -56,7 +59,7 @@ def _etapas(h: Harness, run_id: str, chave: str) -> list[Any]:
 async def test_recusa_por_sobreposicao_insere_a_limpeza_e_nao_repete_a_etapa(harness: Harness) -> None:
     harness.pular_o_tempo()
     harness.encurtar_verificacao(1.5)
-    vistos = _juiz(harness.ai.inner, "verify_sent", cobertas=1)
+    vistos = _juiz(harness, "verify_sent", cobertas=1)
     run = harness.run(["android-01"])
     await harness.wait_run(run.id, statuses=TERMINAIS)
     etapas = _etapas(harness, run.id, "verify_sent")
@@ -75,7 +78,7 @@ async def test_recusa_por_sobreposicao_insere_a_limpeza_e_nao_repete_a_etapa(har
 async def test_a_limpeza_entra_uma_vez_por_objetivo_e_o_juiz_nao_afrouxa(harness: Harness) -> None:
     harness.pular_o_tempo()
     harness.encurtar_verificacao(1.5)
-    _juiz(harness.ai.inner, "verify_sent", cobertas=1000)            # o aviso nunca sai
+    _juiz(harness, "verify_sent", cobertas=1000)            # o aviso nunca sai
     run = harness.run(["android-01"])
     await harness.wait_run(run.id, statuses=TERMINAIS)
     assert _revisoes(harness, run.id, "sobreposição") == 1             # a segunda recusa segue o caminho de sempre
@@ -87,7 +90,7 @@ async def test_a_limpeza_entra_uma_vez_por_objetivo_e_o_juiz_nao_afrouxa(harness
 async def test_etapa_com_efeito_nao_ganha_a_limpeza(harness: Harness) -> None:
     harness.pular_o_tempo()
     harness.encurtar_verificacao(1.5)
-    _juiz(harness.ai.inner, "send_message", cobertas=1000)
+    _juiz(harness, "send_message", cobertas=1000)
     run = harness.run(["android-01"])
     await harness.wait_run(run.id, statuses=TERMINAIS)
     assert _revisoes(harness, run.id, "sobreposição") == 0
@@ -328,6 +331,7 @@ async def test_a_tela_que_muda_depois_do_coberta_e_julgada_de_novo(harness: Harn
     relogio = harness.pular_o_tempo()
     harness.encurtar_verificacao(1.5)
     fake = harness.fakes["android-01"]
+    fake.sent_after_s = 0.0                           # nunca "Enviando…": a 1ª leitura é sempre "Enviada ✓"
     fake.delivered_after_s = 3600.0                   # só o avanço do relógio virtual abaixo a entrega
     fake._build = lambda original=fake._build: [*original(), AVISO_QUE_COBRE]
     inner = harness.ai.inner
