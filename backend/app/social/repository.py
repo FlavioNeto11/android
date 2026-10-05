@@ -1609,6 +1609,25 @@ class SocialRepository:
                           argumentos if isinstance(argumentos, dict) else None, r["outgoing_content"]))
         return saida
 
+    def etapas_em_curso_da_acao(self, profile_id: str, capability: str, *, app_id: str | None = None,
+                                exclude_step_id: str | None = None) -> list[tuple[str, dict[str, object] | None]]:
+        """31.64: as etapas deste perfil e desta ação que já passaram a porta e ainda não deixaram rastro (`running` ou
+        `verifying`): `(id, argumentos)`. Com `publicar_sem_aprovacao` ligado e nenhum outro motivo de aprovação, a porta
+        não grava pedido, e a saída só nasce no commit; sem isto, a outra persona do pedido passava com a mesma imagem
+        enquanto a primeira ainda publicava."""
+        por_app = " AND (e.app_id=? OR e.app_id IS NULL)" if app_id else ""
+        sem_a_etapa = " AND e.id<>?" if exclude_step_id else ""
+        linhas = self.db.query(
+            "SELECT e.id, e.bindings FROM steps e JOIN objectives o ON o.id=e.objective_id"
+            " WHERE o.profile_id=? AND e.capability=? AND e.status IN ('running','verifying')"
+            f"{por_app}{sem_a_etapa} ORDER BY e.id LIMIT 200",
+            (profile_id, capability, *((app_id,) if app_id else ()), *((exclude_step_id,) if exclude_step_id else ())))
+        saida: list[tuple[str, dict[str, object] | None]] = []
+        for r in linhas:
+            argumentos = loads(r["bindings"], None)
+            saida.append((str(r["id"]), argumentos if isinstance(argumentos, dict) else None))
+        return saida
+
     def pedidos_da_acao(self, profile_id: str, capability: str, *, since: str, app_id: str | None = None,
                         exclude_step_id: str | None = None, decidido_desde: str | None = None
                         ) -> list[tuple[str, str, str | None, dict[str, object] | None, str, str | None]]:

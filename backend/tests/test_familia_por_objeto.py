@@ -62,6 +62,23 @@ def test_a_mesma_imagem_ja_publicada_por_outra_persona_do_pedido_tambem(tmp_path
     assert not veredito.allowed and "31.53" in veredito.reason
 
 
+def test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem(tmp_path: Path) -> None:
+    """31.64: com `publicar_sem_aprovacao` a etapa da irmã passa a porta sem pedido e sem saída até o commit; enquanto
+    ela roda ou verifica, a mesma imagem é recusada. Pronta (ainda não passou a porta) ou já falha, não conta."""
+    _repo, policies, db, a, b = _familia(tmp_path)
+    publicar = capability_of(IG, "CREATE_POST")
+    sid = _etapa(db, "r-a", "CREATE_POST", POST_A)
+    db.execute("UPDATE objectives SET profile_id=? WHERE id='r-a:android-01'", (a,))
+    pedido = ContextoDoPedido(raiz="r-b", familia=frozenset({a, b}))
+    for status, recusa in (("ready", False), ("running", True), ("verifying", True), ("failed", False)):
+        db.execute("UPDATE steps SET status=? WHERE id=?", (status, sid))
+        veredito = policies.check(b, publicar, step_id="r-b:x", pedido=pedido, bindings={"image_id": "img-1"})
+        assert ("31.53" in veredito.reason and not veredito.allowed) is recusa, (status, veredito.reason)
+    db.execute("UPDATE steps SET status='running' WHERE id=?", (sid,))
+    outra = policies.check(b, publicar, step_id="r-b:x", pedido=pedido, bindings={"image_id": "img-2"})
+    assert "31.53" not in outra.reason
+
+
 def test_sem_pedido_ou_com_outra_imagem_nada_muda(tmp_path: Path) -> None:
     _repo, policies, db, a, b = _familia(tmp_path)
     _pedido_aberto(db, a, POST_A)
