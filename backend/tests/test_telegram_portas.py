@@ -327,3 +327,69 @@ async def test_cancelamento_entre_a_transacao_e_o_inicio_expira_os_sins_do_plano
     with pytest.raises(PortaIndisponivel) as depois:                     # quem cancelou lê o motivo certo
         aprovar_plano(st, "run-p", corpo, por="flavio")
     assert "foi cancelada" in depois.value.mensagem
+
+
+async def test_inicio_que_perde_para_outro_inicio_diz_que_o_gesto_valeu(harness: Harness,
+                                                                       monkeypatch: pytest.MonkeyPatch) -> None:
+    """28.36: OUTRO início (o "Iniciar" do painel, a outra porta) chega entre a transação do `aprovar_plano` e o `start`
+    dele. O gesto valeu (os sins ficam `approved` e a execução roda com eles): a recusa segue `invalid_state`, mas com
+    texto próprio, e não o de cancelamento."""
+    from app.models import RunStatus
+    from app.porta_do_plano import (INICIADA_POR_OUTRO_GESTO, AprovarPlanoBody, ItemAprovado, PortaIndisponivel,
+                                    aprovar_plano)
+
+    from .test_porta_do_plano import _plano_com_dm
+
+    st = harness.state
+    assert st is not None
+    itens = _plano_com_dm(st)
+    original = st.runs.start
+
+    def outro_inicio_antes(run_id: str, *, por: str) -> Any:
+        # O compare-and-set do outro início, sem o agendador: o que se mede é a resposta deste gesto.
+        assert st.repo.set_run_status(run_id, RunStatus.running, None, message="outro início",
+                                      so_se=(RunStatus.planned,))
+        return original(run_id, por=por)
+
+    monkeypatch.setattr(st.runs, "start", outro_inicio_antes)
+    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+                             tirar=[])
+    with pytest.raises(PortaIndisponivel) as recusa:
+        aprovar_plano(st, "run-p", corpo, por="flavio")
+    assert recusa.value.codigo == "invalid_state" and recusa.value.mensagem == INICIADA_POR_OUTRO_GESTO
+    assert st.db.scalar("SELECT status FROM runs WHERE id='run-p'") == "running"
+    sins = [r["status"] for r in st.db.query("SELECT status FROM pending_approvals WHERE run_id='run-p' AND origem='plano'")]
+    assert sins == ["approved"]
+
+
+async def test_a_porta_trava_a_linha_da_execucao_antes_de_gravar_o_sim(harness: Harness) -> None:
+    """28.36: dentro da transação, a conferência da execução é o UPDATE que trava a linha (no PostgreSQL, o cancelamento
+    de outro backend espera o COMMIT e enxerga os sins), e vem antes de o primeiro sim ser gravado. A corrida entre dois
+    backends não roda num processo só; aqui fica a ordem."""
+    from app.porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano
+
+    from .test_porta_do_plano import _plano_com_dm
+
+    st = harness.state
+    assert st is not None
+    itens = _plano_com_dm(st)
+    vistos: list[str] = []
+    execute = st.db.execute
+
+    def espiao(sql: str, params: Any = ()) -> Any:
+        vistos.append(" ".join(sql.split()))
+        return execute(sql, params)
+
+    st.db.execute = espiao  # type: ignore[method-assign]
+    try:
+        corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+                                 tirar=[])
+        try:
+            aprovar_plano(st, "run-p", corpo, por="flavio")
+        except Exception:  # noqa: BLE001 - o início pode recusar no harness; o que se mede é a ordem na transação
+            pass
+    finally:
+        st.db.execute = execute  # type: ignore[method-assign]
+    trava = next(i for i, s in enumerate(vistos) if s.startswith("UPDATE runs SET cancel_requested=cancel_requested"))
+    sim = next(i for i, s in enumerate(vistos) if s.startswith("INSERT INTO pending_approvals"))
+    assert trava < sim

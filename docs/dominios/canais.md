@@ -561,6 +561,11 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Todo caminho que abandona a porta cancela a execução que ainda está em `planned` (esquecida, ela trava o despacho
     do aprendizado): Cancelar, prévia vencida, recusa, erro interno, prévia que não saiu e linha presa recuperada. A
     recusa de um plano que outro gesto já iniciou não cancela: a execução segue e o desfecho a conta.
+  - Quando outro início chega antes do deste gesto, o gesto valeu: os sins ficam gravados e a execução roda com eles.
+    A recusa segue `invalid_state`, mas o texto diz isso, e não fala em cancelamento (28.36).
+  - Na transação do gesto, a execução é conferida por um `UPDATE` que trava a linha, e não por um `SELECT`. Com dois
+    backends no PostgreSQL, o cancelamento do outro espera o COMMIT e enxerga os sins, que expira junto; sem isso,
+    sobravam sins `approved` numa execução cancelada (28.36).
   - A prévia que não sai inteira marca a linha como falha e avisa o dono uma vez. Uma linha com erro não cala as
     outras da volta do vigia; a linha que caiu no meio do "Executar (aprova N)" é recuperada depois de `PRESA_S`.
   - P1: item que o dono não veria por inteiro (texto com nome de persona, contato ou segredo, texto longo, bloco que não

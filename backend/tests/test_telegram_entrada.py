@@ -12,6 +12,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -998,3 +999,86 @@ async def test_recusa_de_plano_ja_iniciado_nao_cancela(c: Cenario) -> None:
     c.portas.estados[RUN] = "running"
     await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
     assert "cancelar" not in c.portas.nomes() and c.linha(5)["estado"] == "feita"
+    # 28.36: nunca "não iniciei" quando a execução está em andamento.
+    assert c.bot.textos()[-1] == ("A execução abc123 já estava em andamento: O plano desta execução já foi aprovado ou "
+                                  "iniciado.")
+
+
+async def test_erro_depois_do_inicio_nao_diz_que_nao_iniciou(c: Cenario, monkeypatch: pytest.MonkeyPatch) -> None:
+    """28.36 (revisão do #346): a exceção que não é recusa chega DEPOIS do compare-and-set do início (pré-voo,
+    objetivos, agendador). A execução já roda com os sins: a linha fica feita, nada é cancelado, e o texto diz que ela
+    está em andamento."""
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+
+    def quebra_depois_do_inicio(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+        c.portas.estados[run_id] = "running"
+        raise RuntimeError("pré-voo fora")
+
+    monkeypatch.setattr(c.portas, "aprovar_plano", quebra_depois_do_inicio)
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    assert "cancelar" not in c.portas.nomes() and c.linha(5)["estado"] == "feita"
+    assert c.portas.estados[RUN] == "running"
+    assert c.bot.textos()[-1] == ("A execução abc123 está em andamento; houve um erro interno logo depois do início "
+                                  "(está no log da Central). Conto aqui quando terminar.")
+    assert not any(t.startswith("Não iniciei") for t in c.bot.textos())
+
+
+async def test_recusa_com_a_execucao_ja_terminal_deixa_so_o_desfecho(c: Cenario) -> None:
+    """28.36, caso (c) da revisão do #346: a recusa chega com a execução já TERMINAL (cancelada por outro gesto). A linha
+    fica feita, e o dono lê UMA linha só: a do desfecho de sempre, sem o código cru do estado."""
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    c.portas.recusar_aprovar = "Esta execução foi cancelada."
+    c.portas.estados[RUN] = "cancelled"
+    c.portas.desfechos[RUN] = "Execução abc123: cancelada."
+    n = len(c.bot.textos())
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    await c.volta()
+    assert c.linha(5)["estado"] == "feita" and "cancelar" not in c.portas.nomes()
+    novas = c.bot.textos()[n:]
+    assert novas == ["Execução abc123: cancelada."], novas
+    assert not any("'cancelled'" in t or "Não iniciei" in t for t in novas)
+
+
+async def test_erro_ao_avisar_que_seguiu_nao_sobe(c: Cenario, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão do #346, E1: o envio do "está em andamento" que falha não sobe (no vigia, calaria as linhas seguintes)."""
+    from app.modules.avisos.infrastructure.entrada import ConversaDoCanal
+
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    c.portas.recusar_aprovar = "O plano desta execução já foi aprovado ou iniciado."
+    c.portas.estados[RUN] = "running"
+
+    async def responder_quebra(self: Any, *a: Any, **kw: Any) -> None:
+        raise RuntimeError("banco fora ao registrar a enviada")
+
+    monkeypatch.setattr(ConversaDoCanal, "_responder", responder_quebra)
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    assert c.linha(5)["estado"] == "feita" and "cancelar" not in c.portas.nomes()
+
+
+@pytest.mark.parametrize("caminho", ["sem_sim", "sem_porta"])
+async def test_erro_depois_do_inicio_nos_outros_caminhos_tambem_nao_diz_que_nao_iniciou(
+        c: Cenario, caminho: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """28.36: a mesma regra no N = 0 (o `aprovar_plano` sem sins, direto do vigia) e no início sem a porta."""
+    if caminho == "sem_sim":
+        c.portas.previa_da_porta = _porta(_item("s1", selo="permitido"), total=True)
+
+        def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+            c.portas.estados[run_id] = "running"
+            raise RuntimeError("agendador fora")
+
+        monkeypatch.setattr(c.portas, "aprovar_plano", quebra)
+    else:
+        c.portas.porta_quebra = True
+
+        def quebra_ao_iniciar(run_id: str) -> None:
+            c.portas.estados[run_id] = "running"
+            raise RuntimeError("agendador fora")
+
+        monkeypatch.setattr(c.portas, "iniciar", quebra_ao_iniciar)
+    await _executar(c)
+    assert "cancelar" not in c.portas.nomes() and c.linha(5)["estado"] == "feita"
+    assert c.bot.textos()[-1].startswith("A execução abc123 está em andamento; houve um erro interno")
+    assert not any(t.startswith("Não iniciei") for t in c.bot.textos())

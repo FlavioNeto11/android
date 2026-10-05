@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from .db import Row, loads
-from .models import RUN_TERMINAL, InteractionType, StepStatus
+from .models import RUN_TERMINAL, InteractionType, RunStatus, StepStatus
 from .planning.capabilities import contraparte, objeto_da_acao, texto_a_gerar
 from .social.approvals import apply_edit
 from .social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_ROTULO_IA, VERSAO_DA_CHAVE,
@@ -359,6 +359,9 @@ def _itens(previa: Mapping[str, object]) -> list[dict[str, object]]:
 #: O `detail` da etapa tirada. Começa por `MOTIVO_REJEICAO` porque é DECISÃO, não lacuna: é esse prefixo que faz o
 #: `recovery_steps` ("Tentar novamente", recuperação automática) não recriar a etapa que o dono tirou.
 MOTIVO_TIRADA = f"{MOTIVO_REJEICAO}: tirada na prévia da porta (30.61), o dono escolheu não fazer"
+#: O início que perdeu para OUTRO início (28.36): os sins deste gesto ficaram gravados e a execução roda com eles.
+INICIADA_POR_OUTRO_GESTO = ("Outro gesto já tinha iniciado esta execução; os sins que você aprovou foram gravados e "
+                            "valem nela.")
 
 
 def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por: str) -> dict[str, object]:
@@ -422,11 +425,17 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
     with state.db.tx():
         # Dois gestos ao mesmo tempo: a transação serializa, e o segundo vê o sim do primeiro (ou a execução iniciada,
         # ou o cancelamento do canal em curso: sem isto, sobrariam sins `approved` de origem `plano` numa execução
-        # cancelada).
-        agora_na_porta = state.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (run_id,))
-        if agora_na_porta is None:
-            raise PortaIndisponivel("not_found", "Execução não encontrada.", 404)
-        _exigir_na_porta(agora_na_porta, ja_aprovado=True)
+        # cancelada). A conferência é um UPDATE que não muda nada, e não um SELECT: no PostgreSQL ele trava a linha
+        # até o COMMIT, e o cancelamento de outro backend espera e depois enxerga os sins gravados aqui (28.36). O
+        # SQLite não aceita `FOR UPDATE`; nele o `BEGIN IMMEDIATE` já serializa.
+        travou = state.db.execute("UPDATE runs SET cancel_requested=cancel_requested WHERE id=? AND status='planned' "
+                                  "AND cancel_requested=0", (run_id,))
+        if (travou.rowcount or 0) != 1:
+            agora_na_porta = state.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (run_id,))
+            if agora_na_porta is None:
+                raise PortaIndisponivel("not_found", "Execução não encontrada.", 404)
+            _exigir_na_porta(agora_na_porta, ja_aprovado=True)
+            raise PortaIndisponivel("invalid_state", "O plano desta execução já foi aprovado ou iniciado.")
         if state.db.scalar("SELECT 1 FROM pending_approvals WHERE run_id=? AND origem='plano' LIMIT 1", (run_id,)):
             raise PortaIndisponivel("invalid_state", "O plano desta execução já foi aprovado ou iniciado.")
         for sid, chave in aprovar:
@@ -464,6 +473,12 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
     except RunError as exc:
         # O cancelamento do canal chegou entre esta transação e o início: ele já expirou os sins gravados acima
         # (`_cancelar_antes_de_iniciar`), e a resposta é a da porta, não um erro do serviço. O código do serviço fica.
+        # Se quem chegou antes foi OUTRO início, o gesto valeu: os sins estão gravados e a execução roda com eles. O
+        # código segue `invalid_state` (o contrato do segundo gesto), mas o texto diz o que houve (28.36).
+        agora = state.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (run_id,))
+        if agora is not None and agora["status"] in {RunStatus.running.value, RunStatus.paused.value} \
+                and not agora["cancel_requested"]:
+            raise PortaIndisponivel("invalid_state", INICIADA_POR_OUTRO_GESTO, exc.status) from None
         raise PortaIndisponivel(exc.code, exc.message, exc.status) from None
     return {"run": resumo.model_dump(mode="json"), "aprovacoes": gravadas, "tiradas": tirados, "validade_ate": validade}
 

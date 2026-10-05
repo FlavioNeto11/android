@@ -63,6 +63,26 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   iria ao juiz. Pelo centro (y=1168), ele fica fora.
 - Prova: `simulated` (`backend/tests/test_bolha_sem_id.py`, 2 testes novos que falham no código anterior). Real:
   `not_run`.
+## 2026-10-05 — 28.36: a aprovação no plano trava a linha da execução (branch canais/28-36-trava-na-aprovacao)
+
+- `aprovar_plano` conferia a execução com um `SELECT`. Com dois backends no PostgreSQL (read committed), o cancelamento
+  do canal no outro backend fazia o compare-and-set e o `expire_for_objective` sem enxergar os sins ainda não
+  confirmados, e sobravam sins `approved` numa execução `cancelled`. Agora a conferência é
+  `UPDATE runs SET cancel_requested=cancel_requested WHERE id=? AND status='planned' AND cancel_requested=0`, que trava
+  a linha até o COMMIT (o SQLite não aceita `FOR UPDATE`). Com `rowcount != 1`, a recusa sai pelo `_exigir_na_porta`
+  relido.
+- O início que perde para OUTRO início (estado relido `running` ou `paused`, sem cancelamento) devolve
+  `invalid_state` com texto próprio, `INICIADA_POR_OUTRO_GESTO`: os sins valeram. Antes, o dono lia um texto de
+  cancelamento por um gesto que tinha valido.
+- No canal, nunca "Não iniciei" quando a execução iniciou (revisão do #346). Um erro interno depois do
+  compare-and-set do início passa pelo `_erro_ao_iniciar`, e a recusa pelo `_recusa_na_porta`. Os dois releem o
+  estado: fora de `planned`, a linha fica `feita`, nada é cancelado e o texto diz "está em andamento" ou "já estava em
+  andamento". Isso vale no "Executar (aprova N)", no N = 0, no início sem a porta e no vigia. Testes em
+  `tests/test_telegram_entrada.py`; ao todo, 117 passaram em 4 arquivos.
+- Prova: `simulated` para o caminho de um processo, em `tests/test_telegram_portas.py` (o início que perde para outro
+  início; a trava da linha antes do primeiro sim). Ao todo 124 passaram (`test_telegram_portas`, `test_porta_do_plano`,
+  `test_avisos_porta`, `test_executor_honra_o_plano`, `test_telegram_entrada`, `test_cobertura_de_rotas`), em Idle e
+  sem `-n`. A corrida entre dois backends no PostgreSQL: `not_run` (não roda num processo só).
 
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
