@@ -220,6 +220,22 @@ def linha_da_recusa_do_juiz(onde: str, texto: str) -> str:
             f"{enderecos_limpos(texto)[:300]}. Continue a partir da tela atual.")
 
 
+def valor_segue_na_tela(tree: UiTree, valor: str, resource_id: str, exato: bool) -> bool:
+    """31.61, L2 da revisão do #348: o valor lido ainda está na tela relida, no MESMO elemento (o `resource_id` dele,
+    quando tem) e, lido sem trecho, com o texto ou a descrição IGUAL (normalizado). Por contenção, um valor curto ou
+    comum ("1", "Sim") casaria em outra tela do mesmo tipo e a etapa fecharia com o valor velho. Com trecho, o valor é
+    parte do elemento: basta estar contido nele."""
+    n = norm_text(valor)
+    if not n:
+        return False
+    for e in tree.elements:
+        if resource_id and e.resource_id != resource_id:
+            continue
+        if any((t == n) if exato else (n in t) for t in (norm_text(e.text), norm_text(e.desc))):
+            return True
+    return False
+
+
 def linha_do_valor_lido(nome: str, valor: str, faltam: Sequence[str]) -> str:
     """A linha do histórico do ator depois de um `read_value` lido da árvore. 31.54: o valor que é URL vai limpo
     (`enderecos_limpos`); a saída da etapa guarda o valor como foi lido, que é o que a pessoa pediu."""
@@ -1730,6 +1746,9 @@ class StepExecutor:
         # Item 12.4: sem nomes escolhidos pelo planejador, a etapa entrega o que a AÇÃO declara (`Capability.saidas`).
         saidas_declaradas = saidas_exigidas(repo.saidas_da_etapa(step.id), cap)
         lidos: dict[str, tuple[str, str]] = {}
+        # 31.61 L2: de onde cada valor foi lido (o `resource_id` do elemento e se foi o texto inteiro, sem trecho), para o
+        # fecho sem `step_done` conferir o MESMO elemento na tela relida.
+        origem_dos_lidos: dict[str, tuple[str, bool]] = {}
         # Item 12.5 (ADR-070): as saídas lidas da IMAGEM (nome → (leitor, sha256 do recorte, id da evidência)); as
         # tentativas visuais já feitas nesta tentativa da etapa (barreira `repetida`); e a conta PRÓPRIA das recusas da
         # barreira de saídas, que `observe_screen` e `find_element` não zeram (`errors_in_row` zera): com 4, a etapa vai
@@ -2693,6 +2712,7 @@ class StepExecutor:
                             return await dado_ausente("o valor lido não tinha relação com o pedido", obs)
                         continue
                 lidos[args.name] = (valor, args.value_kind)
+                origem_dos_lidos[args.name] = (alvo.resource_id or "", not (args.value or "").strip())
                 if lido_da_imagem is not None:
                     # O recorte vira evidência SÓ agora, com a leitura válida; a nota não traz o valor. A ação não leva o
                     # valor (`args.value` fica **OMITIDO**) nem a transcrição: só nome, tipo, tamanho, origem e ids.
@@ -2744,7 +2764,8 @@ class StepExecutor:
                     # L1 da revisão do #348: a prova confere a TELA; cada valor lido tem de seguir nela. Outra tela do
                     # mesmo tipo (outro e-mail, a lista rolada) casaria a prova com os valores da anterior.
                     if (await leitura_pronta(peek)
-                            and all(peek.tree.count_text(como_texto(v, k)) > 0 for v, k in lidos.values())):
+                            and all(valor_segue_na_tela(peek.tree, como_texto(v, k), *origem_dos_lidos.get(n, ("", True)))
+                                    for n, (v, k) in lidos.items())):
                         repo.decision(f"{iid} · {step.title}: valores lidos e a prova local vale na tela relida; "
                                       "a etapa vai à verificação sem step_done", run_id=run_id, instance_id=iid,
                                       step_id=step.id)

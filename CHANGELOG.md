@@ -35,6 +35,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **L1 da revisão:** a prova confere a tela; o fecho também exige que cada valor lido da árvore ainda apareça na
   árvore relida (outra tela do mesmo tipo não fecha com os valores da anterior), e valor lido da imagem deixa o
   ator no laço. Teste: a mesma lista com outros contatos depois da última leitura não fecha.
+- **L2 da revisão:** o valor tem de seguir no MESMO elemento (`resource_id`) e, lido sem trecho, com o texto igual
+  (`valor_segue_na_tela`); por contenção, um valor curto casaria em outra tela do mesmo tipo. Teste: "QA-0011"
+  na lista relida não confirma "QA-001".
 - Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`; o `_prova_local` é dublê por árvore). Real:
   `not_run`, janela depois do deploy 34.
 

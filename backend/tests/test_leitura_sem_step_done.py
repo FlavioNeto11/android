@@ -157,3 +157,21 @@ async def test_mesma_tela_com_outros_valores_na_arvore_relida_nao_fecha(harness:
     db = harness.state.db                                                     # type: ignore[union-attr]
     assert visto["decisoes"] == 8
     assert not any("sem step_done" in (r["text"] or "") for r in db.query("SELECT message AS text FROM events"))
+
+
+async def test_valor_so_contido_em_outro_nome_na_arvore_relida_nao_fecha(harness: Any, caixa: None) -> None:
+    """L2 da revisão do #348: a lista relida tem "QA-0011" e "QA-0021", que CONTÊM os valores lidos ("QA-001" e
+    "QA-002") sem ser eles. Por contenção a etapa fecharia com o valor velho; sem trecho, só o texto igual vale."""
+    from . import fake_device
+    originais = list(fake_device.CONTACTS)
+
+    def trocar(outros: bool) -> None:
+        fake_device.CONTACTS[:] = ["QA-0011", "QA-0021", "Equipe Outra"] if outros else originais
+
+    try:
+        visto, _s, final = await _rodar(harness, valores_somem_na_ultima_leitura=trocar)
+    finally:
+        fake_device.CONTACTS[:] = originais
+    assert final.status == "completed"
+    assert visto["decisoes"] == 8
+
