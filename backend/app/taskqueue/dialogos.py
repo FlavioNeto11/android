@@ -36,6 +36,8 @@ def e_navegador(pacote: str | None) -> bool:
 #: acento e sem caixa, com o rótulo INTEIRO (não "contém"): "Não aceitar cookies" não casa com "aceitar".
 _ROTULOS_QUE_FECHAM: tuple[str, ...] = (
     "rejeitar todos", "rejeitar tudo", "rejeitar", "recusar todos", "recusar tudo", "recusar",
+    # O "Rejeitar cookies" da folha do gov.br (captura de 05/10): sem isto, a trava do 31.72 recusaria a saída certa.
+    "rejeitar cookies", "recusar cookies", "reject cookies", "decline cookies",
     "recusar opcionais", "rejeitar opcionais", "apenas necessarios", "somente necessarios", "apenas essenciais",
     "somente essenciais", "usar apenas cookies necessarios", "continuar sem aceitar", "nao aceitar",
     "reject all", "reject", "decline", "only necessary", "necessary only", "continue without accepting",
@@ -160,8 +162,38 @@ LIMITE_DE_RECUSAS_DE_ACEITE = 4
 REJEICAO_TYPE_TEXT_FORA_DE_CAMPO = "no navegador, type_text só em campo editável"
 
 
+#: K2 da releitura do #386: no RÓTULO, a palavra de aceite só conta no começo de palavra ("inaceitável" não é aceite).
+#: No id fica o `_NUNCA` sem fronteira: `btnAccept` e `cookieAcceptAll` não têm fronteira antes do "Accept".
+_NUNCA_NO_ROTULO = re.compile(r"\b(?:" + _NUNCA.pattern + ")", re.IGNORECASE)
+
+#: K2: o id da interface do PRÓPRIO navegador (`com.android.chrome:id/...`). A página da web não tem id com pacote.
+#: A página inicial anônima do Chrome tem "Block third-party cookies" e `cookie_controls_card` (captura de 05/10): é
+#: interface do Chrome, não aviso de site, e não vira marca.
+_ID_DO_NAVEGADOR = tuple(f"{p}:id/" for p in NAVEGADORES)
+
+
+def _do_navegador(e: UiElement) -> bool:
+    return (e.resource_id or "").startswith(_ID_DO_NAVEGADOR)
+
+
 def _de_consentimento(e: UiElement) -> bool:
+    if _do_navegador(e):
+        return False
     return any(_CONSENTIMENTO.search(x) for x in (e.class_name or "", e.resource_id or "", _rotulo(e)[:120]))
+
+
+def _diz_aceitar(e: UiElement) -> bool:
+    """K1 da releitura: o rótulo EXATO da lista de fechar vence o `_NUNCA` no rótulo ("Não aceitar", "Continuar sem
+    aceitar"); o `_NUNCA` no id recusa sempre (`cookie-accept-and-close`)."""
+    if _NUNCA.search(e.resource_id or ""):
+        return True
+    if _normal(_rotulo(e)) in _ROTULOS_QUE_FECHAM:
+        return False
+    return any(_NUNCA_NO_ROTULO.search(x) for x in (e.text or "", e.desc or ""))
+
+
+def _contem(fora: tuple[int, int, int, int], dentro: tuple[int, int, int, int]) -> bool:
+    return fora[0] <= dentro[0] and fora[1] <= dentro[1] and dentro[2] <= fora[2] and dentro[3] <= fora[3]
 
 
 def _area(caixa: tuple[int, int, int, int]) -> int:
@@ -169,9 +201,9 @@ def _area(caixa: tuple[int, int, int, int]) -> int:
 
 
 def _fecha_ou_recusa(e: UiElement) -> bool:
-    """O mesmo critério de `botao_que_fecha`, para um elemento só: rótulo da lista fechada, ou ícone sem rótulo com id
-    de fechar; nunca o que tem `_NUNCA` no text, no desc ou no id."""
-    if any(_NUNCA.search(x) for x in (e.text or "", e.desc or "", e.resource_id or "")):
+    """O critério de `botao_que_fecha`, para um elemento só: rótulo da lista fechada, ou ícone sem rótulo com id de
+    fechar; nunca o que diz aceitar (`_diz_aceitar`, K1)."""
+    if _diz_aceitar(e):
         return False
     rotulo = _rotulo(e)
     return _normal(rotulo) in _ROTULOS_QUE_FECHAM or (not rotulo and bool(_ID_QUE_FECHA.search(e.resource_id or "")))
@@ -190,28 +222,51 @@ def toque_que_aceita(tree: UiTree, alvo: UiElement | None,
     silêncio."""
     if alvo is None:
         return None
-    marcas = [e for e in tree.elements if _de_consentimento(e)]
+    largura = max((e.bounds[2] for e in tree.elements), default=0)
+    altura = max((e.bounds[3] for e in tree.elements), default=0)
+    pagina = _FRACAO_DA_PAGINA * largura * altura
+    # K2: só a marca que tem cara de aviso (abaixo de 60 % da tela; a interface do navegador já saiu em
+    # `_de_consentimento`) liga a trava.
+    marcas = [e for e in tree.elements if _de_consentimento(e) and _area(e.bounds) < pagina]
     if not marcas:
         return None
-    if any(_NUNCA.search(x) for x in (alvo.text or "", alvo.desc or "", alvo.resource_id or "")):
+    x = ponto[0] if ponto is not None else (alvo.bounds[0] + alvo.bounds[2]) / 2
+    y = ponto[1] if ponto is not None else (alvo.bounds[1] + alvo.bounds[3]) / 2
+    na_zona = any(_na_zona(tree, m, x, y, pagina, _MARGEM_DA_FAIXA * altura) for m in marcas)
+    if _do_navegador(alvo):
+        # K2: o botão do navegador (o menu da barra de tradução por cima da folha de cookies do gov.br, 05/10) não é
+        # a página: fora da zona não se julga pelo rótulo; dentro dela, só o que diz aceitar é recusado.
+        return alvo if na_zona and _diz_aceitar(alvo) else None
+    if _diz_aceitar(alvo):
         return alvo
     if alvo.editable:
         return None                                    # tocar num campo de texto não aceita nada
-    largura = max((e.bounds[2] for e in tree.elements), default=0)
-    altura = max((e.bounds[3] for e in tree.elements), default=0)
-    margem = _MARGEM_DA_FAIXA * altura
-    y = ponto[1] if ponto is not None else (alvo.bounds[1] + alvo.bounds[3]) / 2
-    na_zona = any(_area(m.bounds) < _FRACAO_DA_PAGINA * largura * altura
-                  and m.bounds[1] - margem <= y <= m.bounds[3] + margem for m in marcas)
     if na_zona and not _fecha_ou_recusa(alvo):
         return alvo
     return None
 
 
+def _na_zona(tree: UiTree, marca: UiElement, x: float, y: float, pagina: float, margem: float) -> bool:
+    """A zona da marca. Regra da caixa (releitura do #386): quando a marca está dentro de uma caixa reconhecida (a
+    maior que a contém, abaixo da fração da página, que é marca ou tem `_PISTAS`, e que contém mais que a própria
+    marca), a zona é a caixa inteira: a folha de cookies do gov.br (05/10) cobre 49 % do rodapé, e a página por baixo
+    dela não recebe o toque. Sem caixa, a faixa em volta da marca, porque o leitor descarta o contêiner vazio."""
+    caixas = [e for e in tree.elements if _contem(e.bounds, marca.bounds) and _area(e.bounds) < pagina
+              and (e is marca or _de_consentimento(e) or _PISTAS.search(e.class_name or "")
+                   or _PISTAS.search(e.resource_id or ""))]
+    caixa = max(caixas, key=lambda e: _area(e.bounds), default=marca)
+    if any(e is not caixa and _contem(caixa.bounds, e.bounds) for e in tree.elements):
+        b = caixa.bounds
+        return b[0] <= x <= b[2] and b[1] <= y <= b[3]
+    return marca.bounds[1] - margem <= y <= marca.bounds[3] + margem
+
+
 def rotulo_para_o_ator(e: UiElement) -> str:
     """O rótulo de um elemento da página para o histórico do ator: espaços normalizados, até 60 caracteres. É texto da
     página: vai só ao ator, nunca ao `error` nem ao `status_detail` (que chegam a aviso e cartão)."""
-    return " ".join((_rotulo(e) or e.resource_id or e.class_name.rsplit(".", 1)[-1]).split())[:60]
+    bruto = _rotulo(e) or e.resource_id or e.class_name.rsplit(".", 1)[-1]
+    # Sem caractere de controle nem de formatação (Cc, Cf: o RTL e o zero-width da página) no histórico do ator.
+    return " ".join("".join(c for c in bruto if unicodedata.category(c) not in ("Cc", "Cf")).split())[:60]
 
 
 def tipo_do_elemento(e: UiElement) -> str:

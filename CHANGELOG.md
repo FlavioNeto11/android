@@ -29,7 +29,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Leitura do #386 (Ferramentas do Claude): o `drag` (início e fim), o `type_text` com `element_id` (B1), o aceite
   fora da faixa, o ponto tocado (N2), as recusas somadas na execução (N8), o rótulo fora do `error` (S1) e os hosts
   validados na carga (N6).
-- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (23), com 5 mutações conferidas. `real`: `not_run`.
+- Releitura do #386, calibrada em capturas reais (05/10, android-09, só rolagem): K1 (o rótulo exato de fechar
+  vence a palavra de aceite no rótulo, nunca no id), K2 (a interface do Chrome não vira marca; fronteira de palavra
+  no rótulo; o botão do Chrome só pelo rótulo e dentro da zona), a regra da caixa (zona = a caixa do aviso), "Rejeitar
+  cookies" na lista de fechar, K3 (recusas por etapa, com o B1 no mesmo limite), K4 (o B1 da receita diverge), sufixo
+  público recusado na carga e Cc/Cf fora do rótulo do ator.
+- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (32), com 9 mutações conferidas. `real`: `not_run`.
 
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 

@@ -1950,6 +1950,16 @@ class StepExecutor:
                 return StepOutcome(Outcome.uncertain, detail)
             return StepOutcome(Outcome.failed, detail, sem_recuperacao=True)
 
+        def recusas_da_trava() -> int:
+            """31.72, N8 e K3 da leitura do #386: o `errors_in_row` zera em qualquer ação bem-sucedida, então alternar
+            o aceite com `observe_screen` nunca chegaria a 4. Contam as recusas da trava acumuladas na ETAPA (em todas
+            as tentativas dela; uma etapa nova começa do zero): o toque de aceite e o `type_text` fora de campo (B1),
+            que é o mesmo aceite por outro caminho."""
+            return int(repo.db.scalar(
+                "SELECT COUNT(*) FROM actions a JOIN attempts t ON t.id = a.attempt_id WHERE t.step_id = ? "
+                "AND a.status = 'rejected' AND (a.error LIKE ? OR a.error LIKE ?)",
+                (step.id, MOTIVO_ACEITE_RECUSADO + "%", REJEICAO_TYPE_TEXT_FORA_DE_CAMPO + "%")) or 0)
+
         async def dado_ausente(motivo: str, obs: Observation | None) -> StepOutcome:
             """31.38: o que se procurou e onde, para a pessoa, sem nada lido da página (o texto do modelo fica na nota
             da evidência, já triado). Sem nova tentativa da mesma etapa: quem decide o replano é o scheduler."""
@@ -3016,9 +3026,11 @@ class StepExecutor:
                                    error=f"{REJEICAO_TYPE_TEXT_FORA_DE_CAMPO} ({campo.id}, {tipo_do_elemento(campo)})")
                 history.append(f"type_text REJEITADA pelo executor: {REJEICAO_TYPE_TEXT_FORA_DE_CAMPO} "
                                f"('{rotulo_para_o_ator(campo)}', {campo.id}); toque no campo de texto, não no botão.")
+                if from_recipe:
+                    rr.diverged = f"type_text fora de campo: ({campo.id}, {tipo_do_elemento(campo)})"   # K4
                 errors_in_row += 1
-                if errors_in_row >= 4:
-                    return await fail_or_retry("A IA insistiu em type_text fora de campo editável.", obs)
+                if errors_in_row >= 4 or recusas_da_trava() >= LIMITE_DE_RECUSAS_DE_ACEITE:
+                    return await falhar_sem_nova_tentativa("A IA insistiu em type_text fora de campo editável.", obs)
                 continue
             if (no_navegador and (decision.tool in ("tap", "long_press", "drag") or escreve_em)
                     and (aceite := self._aceite_do_toque(tool_ctx, args, obs.tree, ai_cfg)) is not None):
@@ -3040,13 +3052,7 @@ class StepExecutor:
                                + (f" ('{rotulo_para_o_ator(saida)}', {saida.id})" if saida is not None else "")
                                + ", ou siga sem aceitar.")
                 errors_in_row += 1
-                # N8 da leitura: o `errors_in_row` zera em qualquer ação bem-sucedida, então alternar o aceite com
-                # `observe_screen` nunca chegaria a 4. Contam as recusas DESTA trava acumuladas na execução.
-                recusas = int(repo.db.scalar(
-                    "SELECT COUNT(*) FROM actions a JOIN attempts t ON t.id = a.attempt_id JOIN steps s ON s.id = "
-                    "t.step_id WHERE s.run_id = ? AND a.status = 'rejected' AND a.error LIKE ?",
-                    (run_id, MOTIVO_ACEITE_RECUSADO + "%")) or 0)
-                if errors_in_row >= 4 or recusas >= LIMITE_DE_RECUSAS_DE_ACEITE:
+                if errors_in_row >= 4 or recusas_da_trava() >= LIMITE_DE_RECUSAS_DE_ACEITE:
                     # Sem saída que preserve a privacidade, a etapa não tem o que repetir: falha com o motivo.
                     return await falhar_sem_nova_tentativa(
                         f"A IA insistiu em aceitar: {MOTIVO_ACEITE_RECUSADO} {quem}; nada foi aceito.", obs)

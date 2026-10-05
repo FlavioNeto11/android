@@ -149,6 +149,15 @@ class EnvSettings(BaseSettings):
 ModoDaCspDoPainel = Literal["aplicar", "so_relatar", "desligada"]
 
 
+#: 31.72, releitura do #386: sufixos públicos que `ai.consentimento_aceito_em` recusa (um host vale para os
+#: subdomínios). Lista fechada e curta, sem rede: os do Brasil e os genéricos mais comuns.
+_SUFIXOS_PUBLICOS = frozenset({
+    "com.br", "net.br", "org.br", "gov.br", "edu.br", "jus.br", "leg.br", "mil.br", "art.br", "blog.br", "app.br",
+    "co.uk", "org.uk", "gov.uk", "ac.uk", "com.au", "com.ar", "com.mx", "com.pt", "co.jp", "github.io",
+    "herokuapp.com", "vercel.app", "netlify.app", "pages.dev", "web.app", "firebaseapp.com", "blogspot.com",
+})
+
+
 class ServerCfg(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
@@ -677,6 +686,11 @@ class AiCfg(BaseModel):
         if ruins:
             raise ValueError(f"ai.consentimento_aceito_em aceita só host (loja.com.br), sem esquema, caminho nem "
                              f"curinga; os subdomínios já valem: {ruins}")
+        # Releitura do #386: como os subdomínios valem, um sufixo público ("com.br", "gov.br") liberaria o aceite em
+        # todos os sites dele. Lista curta e fechada (sem baixar a Public Suffix List): o que esta instalação usa.
+        sufixos = [h for h in limpos if h in _SUFIXOS_PUBLICOS]
+        if sufixos:
+            raise ValueError(f"ai.consentimento_aceito_em não aceita sufixo público, só o host de um site: {sufixos}")
         return limpos
 
     #: Item 31.41: o valor lido só é gravado com evidência de RELAÇÃO com o nome pedido (seletor do catálogo, rótulo

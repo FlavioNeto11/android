@@ -1772,9 +1772,26 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   qualquer lugar. Na faixa em volta de cada marca (mais 12 % da altura da tela acima e abaixo; a marca com 60 % da tela
   ou mais é a página) só passam o recusar, o fechar e o campo de texto: "Continuar" e o botão com o texto só na imagem
   são recusados. O falso positivo vale mais que o aceite em silêncio.
+- Releitura do #386, calibrada nas capturas reais de 05/10 no android-09 (Mercado Livre, g1, gov.br, uol e a página
+  inicial anônima do Chrome), só rolagem e nada aceito:
+  - **K1:** o rótulo EXATO da lista de fechar vence a palavra de aceite no rótulo ("Não aceitar", "Continuar sem
+    aceitar"); a palavra de aceite no id recusa sempre (`cookie-accept-and-close`).
+  - **K2:** a interface do próprio navegador (id `com.android.chrome:id/…`) não vira marca: a página inicial anônima tem
+    "Block third-party cookies". No rótulo, a palavra de aceite só conta no começo de palavra ("inaceitável" não é
+    aceite); no id, sem fronteira (`btnAccept`). O botão do navegador só é julgado pelo rótulo, e só dentro da zona (o
+    menu da barra de tradução por cima da folha de cookies do gov.br passa).
+  - **Regra da caixa:** quando a marca está dentro de uma caixa reconhecida (a maior que a contém, abaixo de 60 %, que
+    é marca ou tem cara de diálogo, e que contém mais que a marca), a zona é a caixa inteira, sem a margem: a folha de
+    49 % do gov.br recusa a página por baixo dela. Sem caixa, a faixa de antes.
+  - "Rejeitar cookies", "Recusar cookies", "Reject cookies" e "Decline cookies" entraram na lista de fechar (o botão
+    real do gov.br seria recusado).
+  - **K3:** as recusas somam por ETAPA, não por execução; o `type_text` fora de campo (B1) conta no mesmo limite e,
+    no limite, falha sem nova tentativa. **K4:** o B1 vindo de receita marca a divergência dela.
+  - A carga de `ai.consentimento_aceito_em` recusa sufixo público (`com.br`, `gov.br`, `github.io`…): o host vale para
+    os subdomínios. O rótulo que vai ao ator perde caracteres de controle e de formatação (Cc, Cf).
 - O recusado vira ação `rejected` com o motivo "o consentimento do site não é aceito pelo ator (eN, Tipo)": no `error`
   e no `status_detail` (que chegam a aviso e cartão) vão só o id e o tipo; o rótulo, texto da página, vai só ao
-  histórico do ator, com os espaços normalizados. Quatro recusas somadas na EXECUÇÃO (ou quatro erros seguidos) encerram
+  histórico do ator, com os espaços normalizados. Quatro recusas somadas na ETAPA (ou quatro erros seguidos) encerram
   a etapa sem nova tentativa (`pos_condicao_nao_comprovada` em `falhas.py`). Nunca vira sucesso por aceite.
 - `ai.consentimento_aceito_em`: hosts em que o ator pode aceitar (lido da `url_bar`, com subdomínios). Vazia por padrão;
   preenchê-la é decisão do dono. A carga recusa `*.loja.com`, `https://…` e caminho, que nunca casariam.

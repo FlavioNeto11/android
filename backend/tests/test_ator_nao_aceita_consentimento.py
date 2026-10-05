@@ -85,10 +85,13 @@ def test_aceite_fora_da_faixa_tambem_e_recusado(rotulo: str) -> None:
 
 def test_o_ponto_tocado_decide_e_nao_o_centro_do_elemento() -> None:
     """N2 da leitura: um elemento alto (o anúncio que vai do meio da página até a faixa do aviso) julgado pelo ponto."""
-    alto = _no(13, "Anúncio", 0, 300, 720, 1000)
+    alto = _no(13, "Anúncio", 0, 300, 720, 1060)
     tree = parse_hierarchy(_arvore(_PAGINA, _COOKIES, _ACEITAR, alto))
-    assert _recusa(tree, "Anúncio", (360, 350)) is None                          # longe da faixa
-    assert _recusa(tree, "Anúncio", (360, 990)) == "Anúncio"                     # dentro da faixa
+    assert _recusa(tree, "Anúncio", (360, 350)) is None                          # longe do aviso
+    assert _recusa(tree, "Anúncio", (360, 1040)) == "Anúncio"                    # dentro do aviso
+    # Regra da caixa (releitura do #386): o aviso contém o "Aceitar", então a zona é a caixa dele, sem a margem de
+    # 12 % da faixa: 10 px acima do aviso o toque cai no anúncio, não no aviso.
+    assert _recusa(tree, "Anúncio", (360, 990)) is None
 
 
 def test_fora_do_aviso_a_pagina_segue_livre() -> None:
@@ -270,3 +273,159 @@ async def test_fora_do_navegador_a_trava_nao_age(harness: Harness, monkeypatch: 
     run = harness.run(["android-01"])
     final = await harness.wait_run(run.id, statuses=TERMINAIS)
     assert final.status == "completed" and _recusadas(harness, final.id, "tap") == []
+
+
+# ------------------------------------------------------------------------- releitura do #386: K1 a K4, caixa, N6
+def _xml(*nos: tuple[str, tuple[int, int, int, int], str, str, bool]) -> Any:
+    """(texto, bounds, rid, classe, clicável), na ordem do documento."""
+    corpo = "".join(
+        f'<node index="0" text="{t}" resource-id="{rid}" class="{cls or "android.view.View"}" '
+        f'package="com.android.chrome" content-desc="" clickable="{str(c).lower()}" enabled="true" '
+        f'bounds="[{b[0]},{b[1]}][{b[2]},{b[3]}]" />' for t, b, rid, cls, c in nos)
+    return parse_hierarchy(f'<hierarchy rotation="0">{corpo}</hierarchy>')
+
+
+_TEXTO_DO_AVISO = ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False)
+
+
+def test_k1_o_rotulo_exato_de_fechar_vence_o_nunca_no_rotulo_e_nao_no_id() -> None:
+    tree = _xml(_TEXTO_DO_AVISO,
+                ("Não aceitar", (20, 1080, 340, 1140), "", "android.widget.Button", True),
+                ("Continuar sem aceitar", (360, 1080, 700, 1140), "", "android.widget.Button", True),
+                ("Fechar", (600, 1150, 700, 1200), "cookie-accept-and-close", "android.widget.Button", True))
+    assert _recusa(tree, "Não aceitar") is None
+    assert _recusa(tree, "Continuar sem aceitar") is None
+    assert _recusa(tree, "Fechar") == "Fechar"                       # o id diz aceitar: recusado sempre
+
+
+def test_k2_a_interface_do_chrome_nao_vira_marca() -> None:
+    """A página inicial anônima do Chrome (captura de 05/10, `anon-0-ntp-anonima`): "Block third-party cookies" é
+    interface do navegador; com só isso na tela, a trava não age."""
+    tree = _xml(("", (64, 1129, 656, 1232), "com.android.chrome:id/cookie_controls_card", "", True),
+                ("Block third-party cookies", (96, 1161, 528, 1204),
+                 "com.android.chrome:id/cookie_controls_card_title", "android.widget.TextView", False),
+                ("Learn more", (64, 900, 300, 960), "com.android.chrome:id/learn_more", "", True),
+                ("Permitir", (400, 900, 600, 960), "", "android.widget.Button", True))
+    assert _recusa(tree, "Learn more") is None
+    assert _recusa(tree, "Permitir") is None                         # sem marca de site, nada a julgar
+
+
+def test_k2_a_palavra_de_aceite_no_rotulo_so_conta_no_comeco_da_palavra() -> None:
+    """Fora da zona do aviso: "inaceitável" não é aceite no rótulo; no id, `btnAccept` segue recusado."""
+    tree = _xml(_TEXTO_DO_AVISO,
+                ("Denunciar conteúdo inaceitável", (20, 200, 700, 260), "", "android.widget.Button", True),
+                ("Entrar", (20, 300, 700, 360), "btnAccept", "android.widget.Button", True))
+    assert _recusa(tree, "Denunciar conteúdo inaceitável") is None
+    assert _recusa(tree, "Entrar") == "Entrar"
+
+
+def test_k2_o_botao_do_chrome_so_e_julgado_pelo_rotulo_e_dentro_da_zona() -> None:
+    """O menu da barra de tradução do Chrome por cima da folha de cookies do gov.br (05/10): não é a página."""
+    tree = _xml(("Para melhorar a sua experiência, usamos cookies", (0, 602, 720, 1232), "", "", False),
+                ("Rejeitar cookies", (192, 1004, 528, 1068), "", "android.widget.Button", True),
+                ("More options", (512, 1120, 608, 1232), "com.android.chrome:id/translate_infobar_menu_button",
+                 "android.widget.ImageButton", True),
+                ("Accept", (40, 1120, 200, 1232), "com.android.chrome:id/infobar_accept", "android.widget.Button", True),
+                ("Allow", (40, 60, 200, 140), "com.android.chrome:id/allow", "android.widget.Button", True))
+    assert _recusa(tree, "More options") is None
+    assert _recusa(tree, "Accept") == "Accept"                       # dentro da zona, diz aceitar
+    assert _recusa(tree, "Allow") is None                            # fora da zona, o Chrome não é julgado pelo rótulo
+
+
+def test_a_regra_da_caixa_a_zona_e_a_folha_inteira() -> None:
+    """gov.br (`gov-3-rodape`): a linha da página por baixo da folha de 49 % (antes dela no documento) é recusada; a
+    que está acima da folha, ainda dentro da antiga faixa de 12 %, passa."""
+    tree = _xml(("Saúde e Vigilância Sanitária", (32, 480, 688, 560), "", "", True),
+                ("Viagens e Turismo", (32, 918, 688, 1066), "", "", True),
+                ("Para melhorar a sua experiência, usamos cookies", (0, 602, 720, 1232), "", "", False),
+                ("Ao aceitar, você terá acesso a todas as funcionalidades", (44, 664, 676, 796), "", "", False),
+                ("Rejeitar cookies", (192, 1004, 528, 1068), "", "android.widget.Button", True),
+                ("Aceitar cookies", (192, 1100, 528, 1164), "", "android.widget.Button", True))
+    assert _recusa(tree, "Viagens e Turismo") == "Viagens e Turismo"
+    assert _recusa(tree, "Saúde e Vigilância Sanitária") is None
+    assert _recusa(tree, "Rejeitar cookies") is None
+    assert _recusa(tree, "Aceitar cookies") == "Aceitar cookies"
+
+
+def test_o_rotulo_para_o_ator_tira_controle_e_formatacao() -> None:
+    tree = _xml(("Ace​itar‮ todos\u2060", (0, 0, 100, 40), "", "", True))
+    assert rotulo_para_o_ator(tree.elements[0]) == "Aceitar todos"
+
+
+def test_n6_recusa_sufixo_publico() -> None:
+    for sufixo in ("com.br", "gov.br", "github.io"):
+        with pytest.raises(ValueError, match="sufixo público"):
+            AiCfg(consentimento_aceito_em=[sufixo])
+    assert AiCfg(consentimento_aceito_em=["loja.com.br"]).consentimento_aceito_em == ["loja.com.br"]
+
+
+async def test_pelo_laco_k3_as_recusas_contam_por_etapa(harness: Harness, monkeypatch: Any) -> None:
+    """K3: três recusas na 1ª etapa e três na 2ª somam seis na execução, mas nenhuma etapa chega ao limite (4): a trava
+    não encerra nenhuma delas. Com a contagem por execução (antes), a 4ª recusa encerraria a 2ª etapa."""
+    from app.planning.provider import Usage
+    from app.taskqueue import executor as modulo
+    harness.pular_o_tempo()
+    harness.cfg.file.ai.screenshot_max_side = 1280
+    monkeypatch.setattr(modulo, "e_navegador", lambda pacote: True)
+    fake = _com_aviso(harness, AVISO, ACEITAR)
+    toque = lambda t: _decisao("tap", element_id=_no_aceitar(t).id, is_commit_action=False)  # noqa: E731
+    olhar = lambda t: _decisao("observe_screen")  # noqa: E731
+    decide0 = harness.ai.inner.decide
+    filas: dict[str, list[Any]] = {}
+
+    async def decide(req: Any) -> Any:
+        if req.ctx.step_key not in filas:
+            filas[req.ctx.step_key] = [toque, olhar] * 3 if len(filas) < 2 else []
+        fila = filas[req.ctx.step_key]
+        if fila:
+            return fila.pop(0)(req.screen.tree), Usage()
+        return await decide0(req)
+
+    harness.ai.inner.decide = decide
+    antes = len(fake.calls)
+    run = harness.run(["android-01"])
+    final = await harness.wait_run(run.id, statuses=TERMINAIS)
+    assert len(filas) >= 2                                             # o plano tem ao menos duas etapas com decisão
+    assert _toques_em(fake, antes, ACEITAR.bounds) == 0
+    assert len(_recusadas(harness, final.id, "tap")) == 6
+    assert not harness.state.db.scalar(                                # type: ignore[union-attr]
+        "SELECT COUNT(*) FROM steps WHERE run_id=? AND status_detail LIKE 'A IA insistiu em aceitar%'", (final.id,))
+
+
+async def test_pelo_laco_k4_o_type_text_fora_de_campo_vindo_da_receita_diverge(harness: Harness,
+                                                                                  monkeypatch: Any) -> None:
+    """K4: o `type_text` da RECEITA que cairia no botão do aviso é recusado pelo B1 e conta como divergência da
+    receita (`rr.diverged`), como o toque de aceite já contava: a receita não sai como reproduzida."""
+    import json
+
+    from app.metricas import metricas
+    from app.taskqueue import executor as modulo
+    harness.pular_o_tempo()
+    harness.cfg.file.ai.recipes = "replay"
+    harness.cfg.file.ai.screenshot_max_side = 1280
+    monkeypatch.setattr(modulo, "e_navegador", lambda pacote: True)
+    botao = Node("android.widget.Button", (600, 880, 700, 920), text="Aceitar cookies", rid="aceitar_cookies",
+                 clickable=True)
+    for aparelho in ("android-01", "android-02"):
+        fake = harness.fakes[aparelho]
+        original = fake._build
+        fake._build = (lambda o: lambda: [*o(), AVISO, botao])(original)
+    assert (await harness.wait_run(harness.run(["android-01"]).id, statuses=TERMINAIS)).status == "completed"
+    db = harness.state.db                                                   # type: ignore[union-attr]
+    trocadas = 0
+    for linha in db.query("SELECT id, actions FROM recipes"):
+        acoes = json.loads(linha["actions"])
+        if any(a.get("tool") == "type_text" for a in acoes):
+            for a in acoes:
+                if a.get("tool") == "type_text":
+                    a["selectors"] = [{"kind": "rid", "rid": "com.pocqa.messenger:id/aceitar_cookies"}]
+            db.execute("UPDATE recipes SET actions=? WHERE id=?", (json.dumps(acoes), linha["id"]))
+            trocadas += 1
+    assert trocadas >= 1                                                    # o fluxo do app de teste tem um type_text
+    metricas.limpar()
+    fake2 = harness.fakes["android-02"]
+    antes = len(fake2.calls)
+    final = await harness.wait_run(harness.run(["android-02"]).id, statuses=TERMINAIS)
+    assert _toques_em(fake2, antes, botao.bounds) == 0
+    assert any(e.startswith(REJEICAO_TYPE_TEXT_FORA_DE_CAMPO) for e in _recusadas(harness, final.id, "type_text"))
+    assert metricas.valor("receita.reproducao", resultado="divergiu") >= 1
