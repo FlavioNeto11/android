@@ -129,6 +129,9 @@ def afetados(raiz: Path, arquivos: list[str]) -> dict:
             cand = f"scripts/tests/test_{Path(a).stem.replace('-', '_')}.py"
             if (raiz / cand).exists():
                 marca(cand, f"script {Path(a).name}")
+        elif a.startswith("scripts/") and a.endswith(".ps1"):
+            # 29.94: a varredura de colisão com parâmetro olha TODO .ps1, e o portão do -PularBackup mora no deploy.
+            marca("scripts/tests/test_deploy_portao_do_ensaio.py", f"script {Path(a).name} (varredura dos .ps1)")
         elif a.startswith("frontend/src/"):
             sugestoes.append(f"cd frontend && npx vitest related {a} --run")
         elif a.startswith("backend/app/conhecimento/") or a.startswith("contracts/"):

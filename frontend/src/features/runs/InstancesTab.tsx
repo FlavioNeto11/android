@@ -401,6 +401,12 @@ function StepDetail({ detail, step: s, attempts }: { detail: RunDetail; step: St
             <dd className={styles.noteVal}>{s.status_detail}</dd>
           </>
         ) : null}
+        {s.motivo_da_persona ? (
+          <>
+            <dt className={styles.noteKey}>Motivo da persona</dt>
+            <dd className={styles.noteVal}>{s.motivo_da_persona}</dd>
+          </>
+        ) : null}
         {s.next_retry_at ? (
           <>
             <dt className={styles.noteKey}>Próxima tentativa</dt>

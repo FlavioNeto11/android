@@ -67,6 +67,7 @@ def test_motivo_do_retorno_e_vocabulario_fechado() -> None:
             "alvo_do_efeito",
         'guarda do efeito externo: antes do efeito, estes textos precisam estar visíveis e não estão: "QA-001"':
             "guarda_do_efeito",
+        "tela mudou antes do toque: apareceu por cima do alvo (background_dimmer)": "tela_mudou",
         "qualquer outra coisa": "outro",
         "": "outro",
         None: "outro",

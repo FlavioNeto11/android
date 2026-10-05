@@ -23,3 +23,23 @@ paths:
 - **Nunca enfraqueça nem apague um teste** para fazer a suíte passar.
 - Teste multi-banco abre o banco pela fábrica configurada, nunca `Database(caminho)` direto.
 - Teste de tempo real usa relógio **injetável**, não `time.sleep`/`datetime.now()` direto.
+- **Catracas (29.98): todo dirigido que toque `backend/app` roda `pytest @tests/catracas.txt -n 4`** (de `backend/`,
+  cerca de 40 s em Idle). Se tocar também scripts ou a config, roda `pytest @scripts/tests/catracas.txt` da raiz (1 s).
+  Catraca é o teste que inspeciona o código inteiro ou assinaturas: quebra longe do arquivo editado, e o dirigido não a
+  roda sozinho (o #350 chegou a final com uma vermelha). Teste novo desse tipo entra no arquivo no mesmo PR que o cria.
+  O arquivo é só id por linha, sem comentário nem linha vazia: uma linha `#` faz a coleta inteira voltar vazia, e
+  `tests/test_catracas.py` trava isso. O porquê de cada uma, por gatilho:
+  - A, método ou parâmetro novo em classe com lista fechada ou porta: `SocialRepository`, `MemoryStore`,
+    `ClienteTrello`, as portas e os dublês, `ensure_session`.
+  - B, varredura de `backend/app`: `subprocess` sem `env=`, `get_secret`, `Capability(...)`, literais de prefixo,
+    "instagram", corpos em `models.py`, motivo literal do executor sem regra em `falhas.py`, `recovery=` do scheduler e
+    `cache_ttl` do provider.
+  - C, rota fora de `/api/`.
+  - D, YAML de `conhecimento/apps` (com `objeto_alvo`, em LF) e o `worker-manifest.txt` (import novo alcançado pelo
+    agente).
+  - E, contrato congelado ou vocabulário espelhado: o fio do worker (hash), os Literals da DSL, os enums dos recursos,
+    as tools do ator, nome de credencial em DTO ou config, seção do `AppConfigFile` contra o exemplo e o config do
+    contêiner.
+  - F, `.ps1` lido como texto: deploy, start, stop, farm-health, scale-test e rotation-test.
+  - Fora do arquivo, porque o gatilho não é `backend/app`: mudou Dockerfile, compose, `ci.yml` ou `deploy/`, rode
+    `scripts/tests/test_conteineres.py` inteiro. O frontend não foi varrido.

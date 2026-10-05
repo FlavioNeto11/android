@@ -5483,6 +5483,22 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
    vêm do `guarda`. A página não tem script, estilo nem manipulador em linha, nem recurso de fora (há teste); o JS só
    escreve com `textContent` e posta com `credentials: "omit"`. O HSTS é dado pela Cloudflare (ADR-073, um mês). O site
    não põe cookie, não tem analytics e não carrega fonte de terceiros.
+   - **A borda não reescreve o HTML** (29.91, achado do 29.85 em 05/10). A Cloudflare injetou o beacon do Web
+     Analytics na raiz E no painel. O site barrava pela CSP; o painel, sem CSP, deixou ir à conta de análise 244 páginas
+     de `/central/` em 24 h. O recurso foi desligado na zona (02:23Z, com o sim do dono). Como o painel da Cloudflare pode
+     ser religado por engano, a proteção passou a ser do nosso lado também:
+     - o HTML do site (raiz e 404) sai com `no-transform`;
+     - como isso tira a compressão da borda, o HTML sai comprimido em gzip daqui, quando o cliente aceita e acima de
+       1 KB. Assim a página fica em ~10 KB e não em ~40 KB;
+     - o CSS e o JS seguem com a borda. Como ela troca o `no-cache` da origem por `max-age=14400`, as páginas apontam
+       cada arquivo do site com `?v=` e o começo do sha256 do conteúdo, calculado na subida (29.95);
+     - o `index.html` do painel sai com `no-transform` e a CSP do painel (`CSP_DO_PAINEL` em `app/main.py`):
+       `script-src 'self'`, `img-src 'self' blob: data:` (o quadro e os anexos) e `connect-src 'self'`, que cobre o
+       WebSocket da mesma origem na CSP 3. Para navegador só com CSP 2 (Safari e iOS antigos), o `connect-src` lista
+       também as origens `ws`/`wss` tiradas da configuração (`server.public_hosts` e `server.allowed_origins`), nunca
+       do `Host` do pedido. A chave `server.csp_do_painel` (`aplicar`, `so_relatar`, `desligada`) a desfaz sem
+       deploy.
+     - A CSP do painel foi conferida em 11 telas sem violação, e o WebSocket de outra origem é barrado.
    O nome público (`dev.nvit.com.br`, ADR-073) fica escrito no HTML estático no `canonical`, no `og:url` e no
    `og:image` (a prévia de link exige endereço absoluto), sem marcador trocado pelo servidor; há teste que reprova se
    os três divergirem. Servido por outro nome, a prévia aponta para esse.
@@ -5599,10 +5615,20 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
     - Com o código de operadora (`0 15 11 …`), o número não casa com a forma só com DDD: busque como a pessoa escreveu.
 - **Dois tetos de busca, ambos em memória e com 429 `muitas_buscas`**, porque a busca acha contatos e não pode virar
   varredura.
-  - 30 buscas válidas por hora por operador (`portal.limites.buscas_por_operador_hora`). A chave é o nome da sessão em
-    `casefold`, então "Ana" e "ana" dividem o balde.
+  - 30 buscas válidas por hora por operador (`portal.limites.buscas_por_operador_hora`). A chave é o nome da sessão
+    sem espaço sobrando e em `casefold`, a mesma regra de `pedidos.operadores_do_dono`; então "Ana" e "ana" dividem o
+    balde.
   - 60 por hora somando todos (`portal.limites.buscas_total_hora`). É este que limita a varredura: o nome é declarado
     no login, e um nome novo ganharia outro balde por operador, mas não outro balde geral (revisão E4).
+  - O dono (`pedidos.operadores_do_dono`) fica FORA do teto somado e tem só a cota de um operador (29.89). Assim, dois
+    convidados que esgotam a hora não deixam o dono sem atender um titular, e as buscas dele não gastam o teto dos
+    outros.
+    - O nome do dono também é declarado no login, então quem o usa ganha uma cota de operador, nada além.
+    - Limitação aceita: a cota do dono vale para quem SE DECLARA dono. Quem entra no painel com esse nome usa o balde
+      dele e pode esgotá-lo, e no log os dois aparecem iguais. O painel tem uma credencial só, e quem a tem é de
+      confiança. Identificar o dono por algo que não se declara fica para a tranca por cliente (29.56).
+    - O total por hora fica limitado à soma das duas cotas.
+    - Com a lista vazia, ninguém escapa do teto somado.
   - A contagem é feita sob trava, porque a rota busca em threads do pool.
   - Reiniciar o central zera os dois, e isso fica aceito: a busca exige o número inteiro e uma pessoa logada.
   - Cada busca deixa no log o operador e a contagem, sem o telefone.

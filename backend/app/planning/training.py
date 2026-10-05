@@ -152,10 +152,14 @@ def proposal_from_json(raw: str, req: TrainingRequest) -> dict[str, Any]:
     if texto.startswith("```"):
         texto = re.sub(r"^```[a-zA-Z]*\s*", "", texto)
         texto = re.sub(r"\s*```$", "", texto).strip()
+    falha: str | None = None
     try:
         dados = json.loads(texto)
     except ValueError as exc:                # o `str` do JSONDecodeError diz linha e coluna, não o documento
-        raise AIError(f"Proposta de treinamento inválida devolvida pelo modelo: {exc}", kind="invalid_output") from exc
+        falha = str(exc)
+    if falha is not None:
+        # 31.67 (V1b): fora do `except`, sem a causa (o `.doc` do `JSONDecodeError` é a proposta inteira do modelo).
+        raise AIError(f"Proposta de treinamento inválida devolvida pelo modelo: {falha}", kind="invalid_output")
     # 31.63 (V3): a validação sem a entrada (`input_value=` traria a proposta do modelo), levantada fora do `except`.
     out = validar_saida(_TrainOut, dados, "Proposta de treinamento inválida devolvida pelo modelo")
     return normalizar_proposta(out.model_dump(), req)

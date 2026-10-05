@@ -1897,6 +1897,9 @@ class StepDTO(BaseModel):
     for_each: str | None = None               # etapa-modelo ainda não expandida
     variables: dict[str, str] = {}            # variáveis próprias da etapa (item, item_index)
     opcional: bool = False                    # item 31.36: etapa de limpeza; falhar vira `skipped` e o objetivo segue
+    # Item 31.65: o motivo da RECUSA da persona ao escrever o texto desta etapa (texto do modelo). Só aqui, no detalhe
+    # da etapa; a dica do bloqueio, que viaja para Pendências, aviso e Trello, é fixa. Ausente sem recusa.
+    motivo_da_persona: str | None = None
 
 
 class ActionDTO(BaseModel):
