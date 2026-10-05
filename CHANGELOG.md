@@ -29,8 +29,9 @@ Lado Jev do 28.10 F5, sobre o 31.49 (#330).
   - mesma imagem: recusado, não adiado;
   - objeto ambíguo: passa por aprovação;
   - sem pedido, nada muda.
-- `PolicyEngine.cita_a_familia`, chamado pela porta (`_policy_gate`, `app/state.py`) depois do rascunho: o texto que cita o @
-  de OUTRA persona do mesmo pedido (com ou sem `@`, inteiro) passa por aprovação. O motivo
+- `PolicyEngine.cita_a_familia`, chamado no `check` (texto literal do plano: a prévia mostra o mesmo selo da execução) e
+  de novo pela porta (`_policy_gate`, `app/state.py`) depois do rascunho (texto gerado): o texto que cita o @ de OUTRA
+  persona do mesmo pedido (com ou sem `@`, inteiro) passa por aprovação. O motivo
   (`MOTIVO_CITA_A_FAMILIA`) não leva o @ nem o texto: ele viaja para decisão, evento, aviso e resumo.
 - Plano e porta passam pelo mesmo `PolicyEngine.check`; `porta_do_plano.py` não muda. Sem migração e sem forma nova na API.
 - Prova: `simulated` (`backend/tests/test_familia_por_objeto.py`, 7 testes; mais `test_contexto_do_pedido`,
@@ -41,6 +42,10 @@ Lado Jev do 28.10 F5, sobre o 31.49 (#330).
   prévia do plano mostra o mesmo selo da execução; o texto GERADO é pego na porta depois do rascunho, com o motivo uma
   vez só (`backend/tests/test_familia_no_rascunho.py`, harness, com contraprova). O @ da família vem também de
   `profile_accounts.handle` (a conta da persona em cada app).
+- Revisão F2 (corrida com legenda gerada): a porta roda `mesmo_objeto_na_familia` de novo depois do rascunho, sem `await`
+  até gravar o pedido; entre duas personas do pedido com a mesma imagem, uma segue e a outra é recusada
+  (`backend/tests/test_familia_corrida_da_imagem.py`, com contraprova). Com `publicar_sem_aprovacao` ligado não há pedido
+  a ver, e a janela até a interação gravada continua (o piso de aprovação do 30.60 vem ligado).
 
 ## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
 

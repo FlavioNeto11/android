@@ -623,6 +623,17 @@ class PolicyEngine:
                     "Decida o pedido que já está em Pendências.")
         return None
 
+    def mesmo_objeto_na_familia(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None, *,
+                                counterparty: str | None, app_id: str | None, step_id: str | None,
+                                pedido: ContextoDoPedido | None) -> tuple[bool, str, str] | None:
+        """31.53 (F2 da revisão): a mesma regra do `check`, para a porta rodar de novo DEPOIS do rascunho. Com legenda
+        gerada, entre o `check` e a gravação do pedido de aprovação ficam a trava de escrita e a chamada do modelo
+        (segundos): duas personas do pedido passavam pelo `check` antes de qualquer pedido existir. Sem pedido, `None`.
+        Só lê."""
+        if pedido is None:
+            return None
+        return self._mesmo_objeto_na_familia(profile_id, cap, counterparty, bindings, now(), app_id, step_id, pedido)
+
     def cita_a_familia(self, profile_id: str, cap: Capability, bindings: Mapping[str, object] | None,
                        pedido: ContextoDoPedido | None) -> str | None:
         """31.53 (lado Jev do 28.10 F5): o texto desta etapa (o rascunho já escrito, ou o literal do plano) cita o @ de

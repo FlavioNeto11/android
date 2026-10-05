@@ -2130,20 +2130,29 @@ class AppState:
         # 31.53: com o texto escrito, a conta nossa que cita OUTRA conta do mesmo pedido entre personas passa por
         # aprovação. O texto literal o `check` já pegou (e o motivo está no `reason`); aqui é o texto gerado. Sem pedido,
         # `None` e nada muda.
-        citada = self.policies.cita_a_familia(
-            profile_id, cap, loads(srow["bindings"], {}) or {},
-            contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None)
+        familia = contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None
+        argumentos = loads(srow["bindings"], {}) or {}
+        citada = self.policies.cita_a_familia(profile_id, cap, argumentos, familia)
         citada = citada if citada and citada not in (veredito.reason or "") else None
+        # 31.53 (F2): a regra do objeto na família de novo, agora que o rascunho acabou. Daqui até o pedido gravado no
+        # `_approval_gate` não há `await`: entre duas personas do pedido com a mesma imagem, a primeira a chegar aqui
+        # grava o pedido e a segunda o vê e é recusada; nunca as duas publicam.
+        mesmo = self.policies.mesmo_objeto_na_familia(profile_id, cap, argumentos,
+                                                      counterparty=contraparte(cap, argumentos),
+                                                      app_id=app_da_etapa_id, step_id=srow["id"], pedido=familia)
+        if mesmo is not None and mesmo[0]:
+            return Verdict(allowed=False, policy=veredito.policy, counts=veredito.counts, reason=mesmo[1], hint=mesmo[2])
+        objeto_ambiguo = mesmo[1] if mesmo is not None and mesmo[1] not in (veredito.reason or "") else None
         # Aprovação por política, por DM fria (o porquê vem no `reason` do veredito que libera) ou pela confirmação
         # do mesmo pedido a várias contas — nenhum grupo nem perfil afrouxa as duas últimas.
         # 28.23: com o teto `preparar`, o efeito exige aprovação qualquer que seja a política da persona.
         pelo_teto = ("teto de autonomia preparar: o efeito precisa da sua aprovação"
                      if teto == "preparar" and cap.side_effect else "")
-        if veredito.needs_approval or confirmacao or pelo_teto or repetida or citada:
+        if veredito.needs_approval or confirmacao or pelo_teto or repetida or citada or objeto_ambiguo:
             # O `check` já põe a repetição no `reason` quando o texto era conhecido antes do rascunho: sem este corte, o
             # cartão trazia a mesma frase duas vezes (revisão do 31.49).
             nova = repetida if repetida and repetida not in (veredito.reason or "") else ""
-            motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, nova, citada) if m)
+            motivo = "; ".join(m for m in (veredito.reason, confirmacao, pelo_teto, nova, citada, objeto_ambiguo) if m)
             # 30.65: a etapa que usa a exceção sempre pede decisão nova; o aprovado de outra versão não vale para ela.
             return self._approval_gate(obj, srow, cap, profile_id, motivo=motivo, excecao=veredito.excecao,
                                        pacote=pacote, app_id=app_da_etapa_id)
