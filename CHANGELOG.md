@@ -84,6 +84,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - A tomada explícita (`{"tomar": true}`) dá um lease novo e invalida o antigo. A gravação viva termina `recorded` (nem salva nem descartada), com o log "interrompida pela tomada". O `control.changed` diz quem tomou de quem. O painel (confirmação da tomada) fica com a Portal.
 - Prova `simulated`: `backend/tests/test_controle_com_dono_29_143.py` (8), com a mutação "a tomada não encerra a gravação" reprovada; 236 testes das rotas de controle e do treino, catracas, `test_arquitetura` (`Any` sem subir) e mypy no teto. `real`: `not_run`.
 
+## 2026-10-05 — 29.139: a falha da sobreposição no PostgreSQL era corrida do teste
+
+- Causa medida: o aparelho falso envelhece a mensagem pelo relógio real somado ao virtual (`FakeQaDevice.status_of`, "Enviada ✓" até 0,4 s), e o juiz falso responde "coberta" só no 1º julgamento.
+- Com o PG folgado, a etapa chega à verificação antes de 0,4 s e gasta o "coberta" em "Enviada ✓". A tela muda, a mesma verificação julga de novo (correto) e o "sim" tira a limpeza que o teste prova. Sob carga, os 0,4 s já tinham passado.
+- Só teste: `_juiz_com_ref` e o `_rodar` de `test_sobreposicao_com_duas_causas.py` partem da mensagem já entregue (`_mensagem_ja_entregue`). O rejulgamento da tela que muda fica preso por `test_a_tela_que_muda_depois_do_coberta_e_julgada_de_novo`, pelo relógio virtual. A mutação "para no 1º julgamento" é reprovada. Prova `simulated` (PG -n 1, três arquivos): três vezes 49 passed, mais uma sob carga; o controle em `b2908051` deu 2 failed.
+
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
 
 - **Implantado** às 18:06Z: central em `9f9e2b39`, migração `115_receita_nao_aplicavel` (sem migração nova), 17 pontas sobre `19e34b22` e dois consertos de junção.
