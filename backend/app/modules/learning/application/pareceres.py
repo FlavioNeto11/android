@@ -33,7 +33,7 @@ from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, ConflitoDeEstado, E
 from app.modules.learning.domain.evidencia_invalida import motivo_de_evidencia_invalida
 from app.modules.learning.domain.curador import Decisao
 from app.modules.learning.domain.livro import (ROTULO_DA_CONFIRMACAO, AcaoPermitida, EntradaDoLivro, acoes_da_pessoa,
-                                               rotulo_do_passo)
+                                               quem_no_log, ref_no_log, rotulo_do_passo)
 from app.modules.learning.domain.parecer import (DecisaoDaPessoa, DecisaoFinal, GestoRecusado, RecusaDoGesto,
                                                  RevisaoGravada, acao_do_aceite, conferir_gesto,
                                                  decisao_pela_transicao, mais_restritiva, parecer_visivel)
@@ -213,7 +213,7 @@ class ServicoDePareceres:
                 if r is None:
                     # A tela tinha um parecer que já não vale (decidido, outro estado): a decisão fica, sem rótulo.
                     log.info("aprendizado: review_id %s não responde ao estado %s de %s; decisão sem rótulo",
-                             review_id, estado, antes.trail_ref)
+                             review_id, estado, ref_no_log(antes.trail_ref))
                     return
             else:
                 r = next((c for c in candidatas if c.pendente_em(estado)), None)
@@ -229,7 +229,7 @@ class ServicoDePareceres:
                                           transicao_id=transicao, override=d.override, override_motivo=motivo):
                     self._sinal(r, d, by=by, viu=viu, app=antes.app)
         except Exception:  # noqa: BLE001 - o rótulo é acessório: a decisão da pessoa já está gravada
-            log.exception("aprendizado: rótulo do parecer de %s", antes.trail_ref)
+            log.exception("aprendizado: rótulo do parecer de %s", ref_no_log(antes.trail_ref))
 
     # ================================================================== o gesto sobre o parecer
     def responder(self, kind: LivroKind, ref: str, review_id: str, *, aceitar: bool, motivo: str, by: str,
@@ -289,7 +289,7 @@ class ServicoDePareceres:
             raise GestoRecusado("curador_fora_do_on")
         d = self._dossies.dossie(e)
         if d is None:
-            raise ConflitoDeEstado(f"Não há como montar o dossiê de {kind.value} {ref} agora.")
+            raise ConflitoDeEstado(f"Não há como montar o dossiê de {quem_no_log(kind, ref)} agora.")
         ja = self._registro.do_dossie(e.trail_ref, d.dossie_hash)
         if ja is not None:
             return RespostaAoPedido(registrado=False, revisao=ja)

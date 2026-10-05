@@ -100,6 +100,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Fatia 4 (S1 da leitura da fatia 3): o texto das exceções de fluxo de `LearningService`, `ServicoDeValidacao` e
   `SqlLearningRepository` diz só "fluxo" (`quem_no_log`), e os três logs de `SombraDosFluxos` dizem só o tipo da
   exceção. O adendo v1.66 lista tudo que fica com o id interno e avisa a Canais da chave do aviso do ensinado.
+- Correção C1 da leitura da fatia 4: mais seis logs (autopublicação, aprovação automática, obsolescência, curador e
+  pareceres) e três exceções (dossiê do parecer e receita sem id numérico) sem a referência crua; a varredura
+  `test_ref_do_fluxo_fora_do_log.py` impede a volta.
 - Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (15), `test_ensinado_em_prova.py` (36),
   `test_treino_substitui_receita.py` e
   `test_learning_autopublicacao_sombra.py`. Real: `not_run`.
