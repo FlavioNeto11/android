@@ -450,9 +450,13 @@ class ConversaDoTrello(ConversaDoCanal):
             self.repo.marcar_desfecho(self._id(linha))
 
     async def _enviar(self, saida: SaidaDaConversa, texto: str, *, origem: str, responde_a: str | None = None,
-                      botoes: list[tuple[str, str]] | None = None, entrada_id: int | None = None) -> None:
+                      botoes: list[tuple[str, str]] | None = None, entrada_id: int | None = None,
+                      exigir: bool = False) -> None:
+        # `exigir` vale aqui como no Telegram, de propósito: é o envio que não pode falhar calado (a prévia da porta,
+        # 28.27). Se a resposta no cartão não sai, a falha sobe e quem chamou abandona a linha, em vez de deixar o dono
+        # sem o que aprovar. Os botões não existem no cartão; o `exigir` não depende deles.
         await super()._enviar(saida, texto.replace(_SEM_APAGAR_DO_CHAT, _SEM_APAGAR_DO_CARTAO), origem=origem,
-                              responde_a=responde_a, botoes=None, entrada_id=entrada_id)
+                              responde_a=responde_a, botoes=None, entrada_id=entrada_id, exigir=exigir)
 
     def antiga(self, r: Recebida) -> bool:
         """Escrita há mais que `trello.idade_max_s` (a Central estava fora): nem o convidado recebe resposta a isso."""
