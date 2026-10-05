@@ -192,7 +192,14 @@ Caminhos relativos a `backend/app/`.
   e digitar a senha guardada em cima de uma tela que ninguém reconheceu — e a parada sai uma vez em
   `session.needs_person`. Como a porta só existe com vínculo, o `session_unknown_retry_cap` (3) deixou de agir nela e
   só vale onde não há vínculo (hoje, nenhum caminho automático); segue como limite do contador
-  (`tests/test_porta_de_sessao_no_teto.py`). `_needs_person(conta, instance_id)` impede o agendador de
+  (`tests/test_porta_de_sessao_no_teto.py`). A prévia de recursos (`AppSessionProvider`) usa o mesmo teto por
+  aparelho e não planeja `session.verify` sobre a parada. Duas exceções, de propósito:
+  - o app fora do primeiro plano (`_fora_do_primeiro_plano` em `sessao.py`) grava `unknown` SEM somar, e a porta
+    segue automática: abrir o app de novo não é rodada de sessão, porque a tela nem chegou a ser lida;
+  - dentro da MESMA rodada, uma tela desconhecida seguida de voltar ou reabrir que cai numa tela de login
+    reconhecida faz o login na hora (ADR-040, com consentimento); o teto 1 só impede a rodada seguinte.
+
+  `_needs_person(conta, instance_id)` impede o agendador de
   sequer tentar de novo quando o estado já pede pessoa (lê a sessão da conta **deste app** neste aparelho, 23.4);
   `_blocked_reason()` recusa entrar sem `consent_at` na credencial da conta (ADR-040). Tetos, cooldown e prazos são
   os `ajustes` do `sessao.yaml` com a sobrescrita da instalação por cima (`contas.sessao.<pacote>.<ajuste>` no

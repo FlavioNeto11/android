@@ -33,7 +33,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   por cima (`voltar_ao_estado_conhecido(nao_reabrir_sobre=…)`); vira `unknown` com motivo próprio, sem marcar conta travada.
 - Métricas, sem coluna: `sessao.unknown_rodada{instancia, rodada}`, `sessao.unknown_resolvida{instancia, rodada_antes}`
   e `sessao.parada_resolvida{instancia, via}` (`releitura_sem_toque` = a releitura única do teto, sem ninguém tocar; `pessoa_devolveu` = depois de a pessoa devolver o controle).
-- Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`). `not_run`: aparelho real.
+- Leitura do #371: a prévia de recursos (`AppSessionProvider`) usa o mesmo teto por aparelho e não planeja
+  `session.verify` sobre a parada (U1). A retirada de conta fecha o item da fila do `unknown` no teto (U2). A doc
+  registra as duas exceções de propósito: o app fora do primeiro plano não soma, e o login acontece na mesma rodada (U3/U4).
+- Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py`,
+  `test_conta_bloqueada_sai.py`). `not_run`: aparelho real.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
