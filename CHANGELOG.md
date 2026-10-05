@@ -229,6 +229,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   88; `test_arquitetura` 9. As árvores reais de `data/diag-31-72/` dão o mesmo antes e depois do delta (NTP, ml, g1
   e uol com 0 recusado; gov-3 com 12, nenhum do Chrome). `real`: `not_run`.
 
+## 2026-10-05 — 31.73: a recusa por sobreposição pede cobertura de verdade (branch fix/31-73-sobreposicao-com-duas-causas)
+
+- Achado real na janela do 31.40 (r-20261005071303-f24955): o juiz marcou `sobreposicao` com o banner do topo, e o
+  próprio texto dele dizia que a causa era o conteúdo errado; a limpeza entrou à toa e escondeu a causa.
+- Prompt do juiz: outra causa VISÍVEL fora do aviso é `sobreposicao` false; o que só está escondido não é (hash de
+  `VERIFIER_SYSTEM` atualizado de propósito). `executor.sobreposicao_vale`: só o elemento citado e presente na árvore
+  decide; vale com 15 % da tela (a constante do 31.51, uma só), pela caixa com pista que o contém (o "X" de um modal) ou
+  quando outra folha com texto cruza a área (os descendentes vêm pela ordem do documento, medida no gov.br); senão, a
+  recusa vale como "não" comum. `docs/ia.md` § 21.
+- 2ª leitura do #391: L1 (bounds iguais não fazem contêiner) e L2 (árvore inteira abaixo de 60 % da tela é janela
+  flutuante, o diálogo nativo sem painel: a recusa vale; real `not_run`).
+- Os testes do 31.40 e do 31.51 citavam o 1º nó do app de teste (0,5 % da tela); agora citam um aviso que cobre 62,5 %,
+  posto na tela do aparelho falso (`test_sobreposicao._juiz_com_ref`).
+- Prova `simulated`: `tests/test_sobreposicao_com_duas_causas.py` (4), com mutação conferida. `real`: `not_run`.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,
