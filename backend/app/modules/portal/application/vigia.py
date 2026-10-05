@@ -100,7 +100,8 @@ def _pagina(onde: str, resposta: Resposta, host: str, *, sem_transformar: bool =
             csp: str | None = None, sem_cookie: bool = False) -> list[Desfecho]:
     """A página e os cabeçalhos dela. Fora do 200 só vale o `pagina_fora` do HTML: um desafio da borda (403) não tem
     `no-transform`, CSP nem gzip, e conferir cabeçalho nele viraria 3 ou 4 avisos com gesto errado (V1). Corpo em br
-    ou zstd não se lê aqui: a borda abriu e recomprimiu, e o `html_transformado` dos cabeçalhos já diz isso."""
+    ou zstd não se lê aqui: a borda abriu e recomprimiu. Na raiz o `gzip_da_origem` já acusa; no painel, que a origem
+    não comprime, o próprio corpo ilegível vira o `html_transformado` (V4)."""
     if resposta.status != 200:
         return [borda.conferir_html(onde, resposta.status, "", host=host)]
     desfechos = [borda.conferir_cabecalhos(onde, resposta.status, resposta.cabecalhos, sem_transformar=sem_transformar,
