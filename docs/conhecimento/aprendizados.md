@@ -1336,7 +1336,7 @@ suspeitar de processo segurando o arquivo.
 **Sintoma.** Em 29/09, às 02:05:31Z, a escada de reparo pediu `restart` do android-01 (2º degrau; "o `system_server`
 caiu"). Às 02:10:14Z ele falhou ("o Android subiu, mas não ficou pronto em 60 s": o preparo estourou o prazo). Às
 02:15:34Z veio o `reset` (3º degrau, `c-20260929021534-6d15cd`, `requested_by` `system`), que apagou o Instagram e a
-sessão do lucas.almeida9484, uma das três contas vivas.
+sessão do «conta do android-01», uma das três contas vivas.
 
 **Causa.** Assumida pela coincidência medida: a máquina central estava saturada pelo trabalho da própria IDE em
 paralelo — a suíte inteira do backend, o Docker Desktop com os testes em PostgreSQL e o boot do android-17 do
@@ -1392,7 +1392,7 @@ ligado. Real, 29/09, depois do deploy de `f497075`:
   Android System Intelligence, Mensagens, YouTube, YouTube Music, Gmail, Bem-estar digital, Fotos, Maps, Agenda e Drive;
 - nenhum deles rodando depois;
 - `MemAvailable` do android-06 foi a 974 MB (antes, 670–830 MB) e o do android-01 a 1054 MB (antes, 730–960 MB);
-- o Instagram seguiu ok: "Verificar conta" do andre no android-06 às 07:41:12Z confirmou @andre.carvalho9543
+- o Instagram seguiu ok: "Verificar conta" do andre no android-06 às 07:41:12Z confirmou @«conta do android-06»
   (`c-20260929074028-e124bc`).
 
 **Aplicabilidade.** Vigente. Aparelho lento com pouca RAM livre: confira os apps em segundo plano antes de pedir mais

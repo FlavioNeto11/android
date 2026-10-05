@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.102: os documentos não citam mais o @ de conta real (branch docs/31-102-identificadores-fora-dos-docs)
+
+- Em `docs/` (8 arquivos, 40 ocorrências), cada @ de conta real virou a referência ao aparelho, `«conta do android-NN»`;
+  o "@" da frase original ficou onde estava, porque em alguns exemplos é ele o sentido ("entre como @…", "digitou sem
+  arroba"). Só texto: nenhuma decisão, ADR ou prova muda de sentido.
+- Fora, de propósito: `docs/execucao-plano-100-runner.md` (gerado pelo mecanismo do plano-100 a partir do estado) e
+  arquivos fora de `docs/`; os pedaços de nome em prosa ficam para a troca ampla.
+- Prova: `not_run` (docs-check depois do "no ar" da suíte 39). Real: `not_run`.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.

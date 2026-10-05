@@ -2608,7 +2608,7 @@ tela) e **decisão técnica** (o livro-caixa).
 
 `real`: a projeção sobre o histórico do central para o plano da e31953 deu 16–28 chamadas, US$ 0,40–0,74 e 3–5 min
 (a execução real: 31 chamadas e 18,7 min). Sessão pelo motor genérico no central (`a7fe364`, 28/09 ~19:37 UTC):
-"Verificar conta" confirmou `@lucas.almeida9484` no android-01 e `@andre.carvalho9543` no android-06; com o convidado
+"Verificar conta" confirmou `@«conta do android-01»` no android-01 e `@«conta do android-06»` no android-06; com o convidado
 sobrecarregado e a árvore vazia, gravou `unknown` em vez de afirmar
 ([relatório §20](relatorio-validacao.md#20-conhecimento-de-app-como-dado-adr-052-fatias-14--implantação-e-prova-real-28092026)).
 Login digitando a senha e a volta ao estado conhecido num aparelho real: `not_run`.
@@ -3245,7 +3245,7 @@ aprovação automática (30.55)".
 - Nada foi digitado nem enviado; a tela foi fechada com BACK.
 - Incidente de 29/09, 02:05–02:15Z (`real`, K-058). O backend estava em `7a02491` desde 01:42Z
   (`data\logs\backend.log.2026-09-28`, em hora local), antes da regra "nenhum reset com conta", e a escada de reparo
-  apagou a sessão do lucas.almeida9484, conta viva:
+  apagou a sessão do «conta do android-01», conta viva:
   - 02:05:31Z: `restart` do android-01, 2º degrau (motivo: "o `system_server` caiu");
   - 02:10:14Z: o `restart` falhou ("o Android subiu, mas não ficou pronto em 60 s": o preparo estourou o prazo);
   - 02:15:34Z: `reset`, 3º degrau (`c-20260929021534-6d15cd`, `requested_by` `system`, terminado às 02:20:27Z), que
@@ -3362,7 +3362,7 @@ desligados depois (mexer no WSL continua exigindo autorização em chat, CLAUDE.
 - O painel antigo quebra o "Marcar como concluído" em etapa com efeito: o frontend vai no mesmo deploy (`npm run
   build`).
 - `account_label` passa a ser o @ vinculado: um fluxo do QA Messenger que confira `Conta: {account_label}` no android-01
-  passa a esperar `lucas.almeida9484`.
+  passa a esperar `«conta do android-01»`.
 - Com a máquina central a 90% de CPU ou mais, um aparelho local doente de verdade espera: a cada 10 min o reparo
   reconfere e só sobe de degrau quando a máquina aliviar. O aviso no cartão diz por quê.
 - **Pendências dos revisores:**
@@ -3382,7 +3382,7 @@ desligados depois (mexer no WSL continua exigindo autorização em chat, CLAUDE.
   - as escolhas do pacote frota: a regra de uma conta vale para o balde inteiro (inclusive responder a quem escreveu e
     aceitar pedido de seguir); aprovação dada que nunca chega ao efeito reserva o alvo por 30 dias; a mesma persona em
     dois aparelhos não é "outra conta"; o texto exato do dono (`content_verbatim`) fica fora da trava de atribuição;
-  - quando e como reativar o lucas.almeida9484, cuja sessão o `reset` de 29/09 apagou. Recomendação: um único login,
+  - quando e como reativar o «conta do android-01», cuja sessão o `reset` de 29/09 apagou. Recomendação: um único login,
     acompanhado pelo dono, pelo Conectar do painel, num horário calmo da máquina. Até lá, nada toca a conta (a conduta
     de login (e) vale: depois de 1 envio sem sucesso, o login automático para).
 
@@ -4612,7 +4612,7 @@ catálogo, comando), que o ADR-063 não cobre.
         - e-mail + separador + valor, ou e-mail + palavra com letra que fecha a oração.
     - **Leitura literal** (escolha 1): a sintaxe de destino conta mesmo cortada pelo extrator. Isentá-la deixava a família
       3 da fase 2 da H aberta (0 de 28). Por isso, "entre com a conta Lucas e curta" recusa, enquanto "entre pela Lucas e
-      curta" e "entre como @lucas.almeida9484 e curta o post" passam. O nome do catálogo na posição de valor é valor
+      curta" e "entre como @«conta do android-01» e curta o post" passam. O nome do catálogo na posição de valor é valor
       (postura da G-4).
     - A única exceção é o objeto pessoa ou conversa ("entre na conversa com o contato"). "entre no insta" sozinho passa.
       O token só de dígitos segue a regra dos anos do item 17. As máscaras de forma continuam para o que passa.
