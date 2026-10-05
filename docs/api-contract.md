@@ -6353,5 +6353,8 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
   `capture_failing`): quadro velho quando já existe um mais novo (a pessoa clicou numa imagem antiga), a captura com falha
   registrada, quadro com mais de 60 s (captura travada) e TODO quadro velho fora da gravação. `frame_mismatch` e quadro
   desconhecido não mudaram.
+  - A folga NÃO vale às cegas para o que age no campo em foco: com o quadro aceito só por ela, `type:'text'` e as teclas
+    `enter`/`delete` voltam `409 stale_frame` se a hierarquia lida antes da ação faltar, for de tela sensível ou tiver
+    campo de senha em foco (a pessoa vê o quadro novo e repete). Toque, toque longo e arraste seguem como estavam.
 - **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`, `backend/tests/test_treino_quadro_velho.py`).
   `real`: `not_run`.

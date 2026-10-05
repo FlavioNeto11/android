@@ -35,7 +35,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   máxima (captura sã, teto de 60 s); quadro antigo com um mais novo disponível e todo quadro velho fora da gravação
   seguem em `stale_frame`. Motivo: a leitura de hierarquia da própria gravação deixava o aparelho lento (toque de
   24 s) e as 15 teclas seguintes foram recusadas em série.
-- Prova `simulated`: `backend/tests/test_treino_quadro_velho.py` (4 passed; sem o conserto, 1 falha). Real: `not_run`.
+- Pela folga, texto, `enter` e `delete` exigem a hierarquia lida antes da ação sem tela sensível nem foco em senha; senão
+  `stale_frame` (revisão de segredos). Falha ao gravar a entrada loga só o tipo da exceção, não a mensagem.
+- Prova `simulated`: `backend/tests/test_treino_quadro_velho.py` (10 passed; sem a guarda da folga, 3 falham; com o log
+  antigo, 1 falha). Real: `not_run`.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 

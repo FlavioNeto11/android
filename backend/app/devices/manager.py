@@ -4219,6 +4219,7 @@ class DeviceManager:
         if rt.state != InstanceState.online:
             raise ControlError("offline", "O aparelho não está online.")
         fw = fh = 0
+        so_pela_folga = False                      # 31.85: o quadro só passou pela folga da gravação
         if not (inp.type == "key" and inp.key in TECLAS_DE_NAVEGACAO):
             # 29.105: a tecla de navegação não aponta para nada na tela (sem coordenada nem campo), então não confere
             # o quadro. É a saída quando ele não se renova: numa tela protegida contra captura (a aba anônima do
@@ -4239,6 +4240,7 @@ class DeviceManager:
                                     and rt.capture_failures == 0 and idade_ms <= TETO_QUADRO_NA_GRAVACAO_MS)
                 if not e_o_mais_recente:
                     raise self._quadro_velho(rt, "O frame exibido está antigo demais para uma ação segura.")
+                so_pela_folga = True
             if (fw, fh) != (rt.frame.info.width, rt.frame.info.height):
                 raise ControlError("frame_mismatch", "A orientação/tamanho da tela mudou desde o frame exibido.")
 
@@ -4250,6 +4252,15 @@ class DeviceManager:
         # Modo treinamento: a tela de ANTES do toque é o que diz QUAL elemento a pessoa escolheu. Custa uma leitura
         # de hierarquia por entrada (~0,5 s) — só enquanto grava, e a tela avisa que o treinamento é mais lento.
         arvore_antes = await self._arvore_para_treino(rt) if rt.training_session_id else None
+        if so_pela_folga and (inp.type == "text" or (inp.type == "key" and inp.key in ("enter", "delete"))):
+            # Com a folga a pessoa olha um quadro de até 60 s, e nesse tempo a tela pode ter virado um diálogo ou um campo
+            # de senha. Texto, Enter e Apagar agem sobre o campo em foco: sem a árvore real (ou com tela sensível ou foco
+            # em senha) não dá para saber onde cairiam, e a recusa leva a pessoa ao quadro novo. Toque e arraste já miram
+            # um ponto que ela escolheu e seguem como estavam.
+            foco = next((e for e in (arvore_antes.elements if arvore_antes is not None else []) if e.focused), None)
+            if arvore_antes is None or arvore_antes.sensitive or (foco is not None and foco.password):
+                raise self._quadro_velho(rt, "O quadro exibido é antigo e a tela atual não pode ser confirmada (sensível, "
+                                             "campo de senha ou sem leitura): confira o quadro novo e repita.")
 
         t = inp.type
         if t == "tap":
@@ -4300,8 +4311,11 @@ class DeviceManager:
             try:
                 self.on_training_input(rt, {"type": t, "x": inp.x, "y": inp.y, "x2": inp.x2, "y2": inp.y2,
                                             "key": inp.key, "text": inp.text if t == "text" else None}, arvore_antes)
-            except Exception:  # noqa: BLE001 - gravar é acessório: a entrada já aconteceu no aparelho
-                log.exception("%s: entrada não gravada no treinamento", rt.id)
+            except Exception as exc:  # noqa: BLE001 - gravar é acessório: a entrada já aconteceu no aparelho
+                # Sem a mensagem nem o traceback: o DETAIL de uma falha de constraint do PostgreSQL pode trazer a linha
+                # inteira, com o texto digitado (que pode ser credencial).
+                log.error("%s: entrada não gravada no treinamento (sessão %s): %s", rt.id, rt.training_session_id,
+                          type(exc).__name__)
 
     async def _arvore_para_treino(self, rt: DeviceRuntime) -> Any:
         try:

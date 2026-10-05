@@ -417,6 +417,8 @@ que a pessoa vê passava da idade máxima e as teclas seguintes eram recusadas e
 `DeviceManager.manual_input`, com gravação ativa, o quadro igual a `rt.frame.info.id` (o mais recente) vale mesmo acima
 da idade, com a captura sã e até `TETO_QUADRO_NA_GRAVACAO_MS` (60 s). Quadro antigo com um mais novo disponível, e todo
 quadro velho fora da gravação, seguem recusados.
+Pela folga, texto, Enter e Apagar ainda exigem a hierarquia lida antes da ação: sem ela, com tela sensível ou foco em senha,
+voltam `stale_frame`. Falha ao gravar a entrada loga só o tipo da exceção (o DETAIL do PostgreSQL pode trazer o texto).
 
 ## O Instagram como dado (ADR-052)
 
