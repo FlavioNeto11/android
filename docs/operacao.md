@@ -562,6 +562,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `start.ps1` / `stop.ps1` | P | Sobe/derruba o backend, Appium e (opcional) emuladores do projeto; o `stop.ps1` também encerra o Appium órfão deste projeto (K-039) e tem `-Simular` |
 | `backup.ps1` | S | Cópia consistente do banco+config, sem parar nada |
 | `testes-afetados.py` | S | Lista (e com `--run` roda) só os testes que o diff atinge; `--ocioso` roda em prioridade ociosa |
+| `pg-rapido.py` | P | PG dirigido da suíte no contêiner descartável `farm-pg-rapido` (29.99): recria o contêiner com WAL mínimo, roda a lista em `--partes`, amostra o disco a cada 30 s e aborta a parte com uma linha em 85 % do tmpfs; `--simular` só lista as partes, `--amostrar` lê o contêiner de pé. Só com a vez da orquestradora |
 | `restore.ps1` (sem `-Confirmar`) | S | Ensaio em pasta limpa |
 | `restore.ps1 -Confirmar` | P | Substitui `data/` de verdade, exige backend parado |
 | `deploy.ps1` | P | Para → copia banco → sobe → confere; mexe na tarefa `farm-central` |

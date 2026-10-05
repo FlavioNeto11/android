@@ -363,6 +363,24 @@ pela regra de saúde. Desde então o portão é este:
   inteira em PG e para reproduzir o que só falha com durabilidade. Espere a primeira conexão aceita antes do
   pytest: a primeira rodada da suíte 18 deu 1913 erros "the database system is starting up".
 
+  Desde o 29.99 o contêiner sobe por `scripts/pg-rapido.py`, sempre com a mesma configuração, mais WAL mínimo
+  (`wal_level=minimal`, `max_wal_senders=0`, `max_wal_size=256MB`, `checkpoint_timeout=1min`), e só no loopback. O
+  script recria o contêiner a cada parte (`--partes`, o tmpfs volta vazio) e espera a conexão pelo TCP. A cada 30 s
+  ele amostra o tmpfs, o `pg_wal`, a `base`, os esquemas de teste e o tamanho de `pg_class`, `pg_attribute` e
+  `pg_depend`; a 85 % do tmpfs, mata a árvore do pytest e para com uma linha. A amostra decide pelo `df`: o rc e o
+  erro do `du` não contam, porque ele tropeça em arquivo que some no meio, o comum com esquemas criados e apagados;
+  `wal` e `base` ilegíveis saem como "?". Fora do Windows, o pytest sobe num grupo de processos próprio, e o aborto
+  mata o grupo inteiro (o K-099); no Windows, `taskkill /T`. Kill que falha aparece na linha do aborto.
+  - **Por quê.** Na suíte 35, os 467 arquivos juntos encheram os 4 GB: 181 failed, 823 errors, quase todos
+    `DiskFull`. Pelos logs do contêiner, o estouro foi na `base/` (3688 erros ali e 1668 em `global/`, nenhum em
+    `pg_wal`). O WAL ficou estável perto de 1 GB, com 30 segmentos reciclados por checkpoint, igual nas metades.
+  - **As metades** (234 e 233 arquivos) passaram com pico de 1057 e 1077 MB: 928 e 944 MB de WAL, 129 e 133 de base.
+  - **Com o WAL mínimo** (05/10, 07:37–08:01Z, metade 1, 234 arquivos, -n 8): "5524 passed, 8 skipped in
+    1409.34s". O pico ficou em 388 MB (WAL 256, base 132), contra 1057 MB, em 46 amostras, todas válidas. O WAL
+    ficou preso nos 256 MB.
+  - **O que ainda falta.** Por que a `base` passou de ~3 GB só na rodada inteira é a medida pendente do 29.99: uma
+    rodada inteira com o amostrador, na vez da orquestradora.
+
   | Suíte | Contêiner | Aceitar conexão | PG dirigido |
   |---|---|---|---|
   | 25 | `farm-pg-rapido` | 3,1 s | 7 min 49 s, 2234 testes em 119 arquivos (4,8 testes/s) |
