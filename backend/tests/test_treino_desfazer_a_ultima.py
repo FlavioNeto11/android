@@ -81,6 +81,24 @@ async def test_gravacao_parada_se_corrige_na_revisao(harness: Harness) -> None:
     assert _seqs(st, sid) == [(1, "key")]
 
 
+async def test_parou_entre_a_conferencia_e_a_escrita_nao_apaga(harness: Harness) -> None:
+    """N1 da leitura: o `stop` que chega depois da conferência do lease e antes da transação. O status se confere de
+    novo dentro dela, e a gravação parada fica com a entrada."""
+    st, rt, lease, sid = await _gravando(harness)
+    conferir = st.training._gravando_com_controle                           # noqa: SLF001
+
+    def para_no_meio(instance_id: str, session_id: str) -> bool:
+        ok = conferir(instance_id, session_id)
+        st.db.execute("UPDATE training_sessions SET status='recorded' WHERE id=?", (session_id,))
+        return ok
+
+    st.training._gravando_com_controle = para_no_meio                       # noqa: SLF001
+    async with _cliente(harness) as c:
+        r = await c.post(f"/api/training/{sid}/undo", json={"lease_id": lease})
+    assert r.status_code == 409 and "nao_esta_gravando" in r.text, r.text
+    assert _seqs(st, sid) == [(1, "key")]
+
+
 async def test_orfa_sem_gravador_nao_tem_quem_desfaca(harness: Harness) -> None:
     st, rt, lease, sid = await _gravando(harness)
     rt.training_session_id = None

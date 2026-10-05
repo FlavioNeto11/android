@@ -323,6 +323,14 @@ class TrainingRecorder:
             raise TrainingError("control_required", "Só quem está com o controle do aparelho desfaz a última entrada.",
                                 409)
         with self.db.tx():
+            # N1 da leitura: o status se confere de novo DENTRO da transação, e pela escrita: o UPDATE condicional trava a
+            # linha da sessão (no PostgreSQL, um `stop` concorrente espera este commit), e a gravação que parou entre a
+            # conferência de cima e aqui não perde entrada.
+            viva = self.db.execute("UPDATE training_sessions SET updated_at=? WHERE id=? AND status='recording'",
+                                   (now_iso(), session_id))
+            if (viva.rowcount or 0) != 1:
+                raise TrainingError("nao_esta_gravando", "Só a gravação em andamento desfaz a última entrada; depois de "
+                                                          "parar, corrija na revisão.", 409)
             ultima = self.db.one("SELECT seq, type FROM training_inputs WHERE session_id=? ORDER BY seq DESC LIMIT 1",
                                  (session_id,))
             if ultima is None:
@@ -331,7 +339,6 @@ class TrainingRecorder:
                 raise TrainingError("entrada_mudou", f"A última entrada agora é a {ultima['seq']}, não a {seq}; "
                                                      "confira antes de desfazer.", 409)
             self.db.execute("DELETE FROM training_inputs WHERE session_id=? AND seq=?", (session_id, ultima["seq"]))
-            self.db.execute("UPDATE training_sessions SET updated_at=? WHERE id=?", (now_iso(), session_id))
         desfeita = {"seq": int(ultima["seq"]), "type": str(ultima["type"])}
         self.bus.emit("training.input.undone", f"{s['instance_id']}: treinamento — entrada {desfeita['seq']} desfeita "
                                                f"({desfeita['type']})", instance_id=s["instance_id"],

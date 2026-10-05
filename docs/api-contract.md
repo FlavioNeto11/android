@@ -6667,7 +6667,11 @@ Rota nova e aditiva no modo treinamento. Nada muda nas rotas que existem nem no 
   (`extra=forbid`; sem `lease_id`, ou `seq` menor que 1: **422**).
   - Tira a ÚLTIMA entrada da gravação VIVA (sessão em `recording`, o aparelho a está gravando e há controle de usuário) e
     responde **200** com a sessão, igual a `GET /api/training/{session_id}`, mais `undone: {seq, type}`.
-  - O aparelho não volta: a entrada sai só da gravação. A próxima entrada gravada recebe o número seguinte ao que ficou.
+  - O aparelho não volta: a entrada sai só da gravação. A próxima entrada gravada recebe o número seguinte ao que ficou,
+    ou seja, o `seq` desfeito é REAPROVEITADO: o painel verá `training.input` N, `training.input.undone` N e
+    `training.input` N de novo, e tem de casar a entrada pelo que o `GET` devolve, não guardar o `seq` como identidade.
+  - O status `recording` se confere de novo dentro da transação, por um UPDATE condicional na sessão: um `stop` que chegue
+    no meio espera ou vence, e a gravação parada nunca perde entrada (409 `nao_esta_gravando`).
   - `seq`: o número da entrada que a pessoa viu como última. Se outra chegou antes do pedido: **409** `entrada_mudou`
     ("A última entrada agora é a N, não a M; confira antes de desfazer."), sem apagar nada.
   - Recusas, todas sem mudar nada:
