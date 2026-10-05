@@ -3,12 +3,15 @@ status, nos dois caminhos por onde o sistema tira uma receita ou um fluxo de uso
 seguidas, substituição; `LearningService.avisar_mudanca_nativa`) e o Livro (a obsolescência e todo
 `mudar_estado(by='sistema')`; `LearningService._mover_nativo`). A regra e o payload moram em `domain/ensinado.py`.
 
-Chamado DEPOIS da trilha, na mesma transação: `desde` é o instante gravado nela, estável se o evento for reemitido.
+Chamado DEPOIS da trilha: `desde` é o instante gravado nela, estável se o evento for reemitido. Na loja, dentro da
+transação dela (num savepoint próprio, `mudou_isolado`: a falha do aviso não desfaz a trilha). No Livro, depois do
+commit de `transicionar_nativo` (salvo transação externa), e por isso `mudou_sem_falhar` é seguro ali.
 """
 from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from contextlib import AbstractContextManager
 from datetime import datetime
 
 from app.modules.learning.application.ports import LeitorDoEnsinado, PortaDoEnsinado
@@ -21,11 +24,14 @@ log = logging.getLogger(__name__)
 
 class AvisadorDoEnsinado:
     def __init__(self, porta: PortaDoEnsinado | None, leitor: LeitorDoEnsinado | None,
-                 relogio: Callable[[], datetime]) -> None:
-        """Sem a porta ou sem o leitor, nada é publicado (o central liga os dois; os testes do Livro, nenhum)."""
+                 relogio: Callable[[], datetime],
+                 isolar: Callable[[], AbstractContextManager[object]] | None = None) -> None:
+        """Sem a porta ou sem o leitor, nada é publicado (o central liga os dois; os testes do Livro, nenhum).
+        `isolar`: o savepoint do banco (`db.savepoint`), só em volta do aviso que a loja pede."""
         self._porta = porta
         self._leitor = leitor
         self._relogio = relogio
+        self._isolar = isolar
 
     def mudou(self, antes: EntradaDoLivro | None, depois: EntradaDoLivro, *, por_sistema: bool) -> None:
         """PROPAGA a falha da porta e do leitor: a loja chama isto dentro do `savepoint` dela (PostgreSQL)."""
@@ -41,6 +47,19 @@ class AvisadorDoEnsinado:
             kind=depois.kind.value, ref=depois.ref, app=depois.app or "", treino=treino,
             sem_receita_ativa=not self._leitor.tem_ativo_no_lugar(depois.kind, depois.ref),
             para=depois.native_status or "", desde=desde))
+
+    def mudou_isolado(self, antes: EntradaDoLivro | None, depois: EntradaDoLivro, *, por_sistema: bool) -> None:
+        """O caminho da loja (N1 da leitura do 30.80 B): o aviso num savepoint PRÓPRIO, aninhado no da loja. A falha das
+        leituras ou do `emit` desfaz só ele, e a trilha da transição e o aviso do 30.21 ficam. Sem `isolar`, propaga
+        (no PostgreSQL, engolir sem savepoint deixaria a transação da loja abortada)."""
+        if self._isolar is None:
+            self.mudou(antes, depois, por_sistema=por_sistema)
+            return
+        try:
+            with self._isolar():
+                self.mudou(antes, depois, por_sistema=por_sistema)
+        except Exception:  # noqa: BLE001 - o savepoint já desfez o aviso; a transição e a trilha ficam
+            log.exception("aprendizado: aviso do ensinado de %s %s", depois.kind.value, depois.ref)
 
     def mudou_sem_falhar(self, antes: EntradaDoLivro | None, depois: EntradaDoLivro, *, por_sistema: bool) -> None:
         try:
