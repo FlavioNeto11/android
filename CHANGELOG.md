@@ -271,6 +271,15 @@ Leitura do W1 e do 29.112 pelas revisoras.
   - frontend inteiro 1617/1617 sem atraso;
   - app.integration, rede e settings 174/174 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99.
 
+## 2026-10-05 — 28.47: as sobras da leitura do #412 na resposta solta à escolha (branch canais/28-47-escolha-sobras)
+
+- A mensagem encaminhada (`forward_origin`, ou `forward_date`) não casa com a pergunta de escolha. A marca é gravada
+  na `previa` da linha, sem migração.
+- O teto pelo relógio saiu: a pergunta gravada um instante depois do "1", mas anterior a ele no chat, casa.
+- O `message_id` é comparado como número (`isdecimal`), com teste que cruza a casa dos dígitos (99 contra 100).
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py`, 113 no arquivo; o teste do teto falhou antes de o
+  teto sair). Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
