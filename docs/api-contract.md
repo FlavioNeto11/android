@@ -6442,7 +6442,8 @@ Duas rotas novas e uma regra de gravação; nada muda nas existentes além do `r
     (a habilidade está desligada), 404 `not_found`.
 - Aparelho fora do ar no `save`/prévia/reparo: a identidade da receita (versão do app, idioma e densidade) vem do que a
   última leitura deixou; se faltar, a etapa fica sem receita com o `reason` "aparelho do treinamento fora do ar e <o que
-  falta> ainda não foi lido… Refaça as receitas quando ele voltar". O painel chama `/recipes` nesse caso.
+  falta> ainda não foi lido… Refaça as receitas quando ele voltar". O painel oferece "Refazer receitas" nesse caso (31.90-B): a pessoa aciona
+  `/recipes` no relatório do salvar ou na lista "Salvas" da barra de treinamento; nada chama sozinho.
 - **Prova:** `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`); `real`: `not_run`.
 
 ## Adendo v1.60 (05/10/2026; número da orquestradora; item 30.80) — a receita que não se aplicou não conta como falha dela
@@ -6486,6 +6487,76 @@ frente Canais (28.50).
   status nativo, e quem avisa o dono não o usa.
 - **Prova:** `simulated` (`backend/tests/test_learning_ensinado_rebaixado.py`).
 
+## Adendo v1.62 (05/10/2026; número da orquestradora; item 31.100) — o `save` do treinamento recusa marcador reservado no comando
+
+`POST /api/training/{session_id}/save` ganha um 400 novo, no formato do adendo v1.57 (`detail: {code, message}`):
+- `parametro_reservado`: o `command_template` usa `{instance_id}`, `{run_id}` ou `{account_label}`. No casamento do pedido
+  (`FlowStore._extract`) eles valem como texto literal, e o fluxo só casaria com quem digitasse as chaves. A mensagem
+  diz quais e sugere texto fixo ou um parâmetro próprio. Não termina com "Peça uma nova proposta à IA.": o comando é
+  editável na tela.
+- Muda uma regra do v1.57: antes o reservado no comando passava (`parametro_nao_declarado` não o contava). Declarado em
+  `parameters`, fora do comando, continua aceito: o plano o usa e a materialização o resolve.
+- **Prova:** `simulated` (`backend/tests/test_treino_validacao_do_salvar.py`).
+
+## Adendo v1.63 (05/10/2026; número da orquestradora; item 31.91) — o propose do treino recebe as respostas da pessoa
+
+Mudanças aditivas; sem corpo, o comportamento é o de antes.
+- `POST /api/training/{session_id}/propose` aceita corpo OPCIONAL `{"answers": [{"question": "...", "answer": "..."}]}`.
+  - `answers`: no máximo 8 itens por pedido. `question` não vazia (sem teto de tamanho: só vale se for uma pergunta da proposta guardada) e `answer` de 1 a 500 caracteres, depois de `strip`.
+    Pergunta repetida no mesmo corpo, campo a mais, JSON que não é objeto ou texto fora do formato: **400
+    `invalid_answers`**, sem chamar a IA e sem mudar a sessão.
+  - **A pergunta tem de ser conhecida**: uma `question` do corpo só vale se estiver nas `questions` da proposta guardada
+    ou já tiver sido respondida (comparação por `strip().casefold()`). Outra é 400 `invalid_answers` ("pergunta
+    desconhecida: responda a uma pergunta da proposta atual"). Responder sem proposta guardada também é 400
+    `invalid_answers`. A pergunta conhecida vale como está, sem teto de tamanho.
+  - Pergunta OU resposta com FORMATO de segredo (a mesma checagem das memórias): **400 `resposta_sensivel`**, mensagem "Não escreva
+    senha nem código aqui: a proposta não precisa disso.", antes de qualquer chamada de IA e sem mudar a sessão.
+    Falar da senha sem o valor ("sim, com a senha da conta") é aceito.
+  - Sem corpo, ou com `answers` vazio e sem respostas guardadas: a proposta sai como antes (sem a chave `answers`).
+- **Acúmulo.** As respostas ficam guardadas dentro da proposta da sessão, na chave `answers` (lista de
+  `{question, answer}`), somando as de chamadas anteriores. A mesma pergunta (comparada por `strip().casefold()`)
+  troca a resposta anterior. O teto é de 16 pares acumulados: acima disso, 400 `invalid_answers`. Um `propose` sem
+  corpo mantém as guardadas.
+- **Ao modelo.** Todas as respostas acumuladas entram no texto enviado ao provedor, sob a frase "Respostas da pessoa às
+  suas perguntas anteriores (não pergunte de novo):" (a mesma do ensino v2), uma linha `- pergunta → resposta` cada.
+  Continua UMA chamada do provedor por `propose`, com o uso contabilizado como antes.
+- **Na resposta.** `proposal.questions` não repete pergunta já respondida (mesma comparação) e `proposal.answers`
+  traz o acumulado. `GET /api/training/{id}` devolve a proposta com `answers`. No modo simulado o comando não muda por
+  causa das respostas, mas a regra das perguntas vale.
+- **Salvar e prévia.** `save` e `preview` aceitam a proposta com `answers`, mas IGNORAM o `answers` que o cliente
+  mandar nela: vale o da SESSÃO (o do cliente nem forja nem apaga). As respostas ficam só na sessão e não vão para
+  `flows` nem `recipes`.
+- **Corrida.** O `propose` só grava a proposta se a sessão não mudou desde que ele a leu (`updated_at`). Se outra
+  proposta terminou antes: **409 `proposta_concorrente`**, "Outra proposta desta gravação terminou antes; peça de
+  novo.", e a proposta da outra fica intacta.
+- O texto da resposta não vai a log nem a evento.
+- Erros de estado como antes: gravando 409 `still_recording`, salva ou descartada 409 `closed`, sem entradas 400 `empty`.
+- **Prova:** `simulated` (`backend/tests/test_treino_proposta_com_respostas.py`).
+
+## Adendo v1.64 (05/10/2026; número da orquestradora; item 31.92) — parar ou descartar uma gravação viva exige o controle do aparelho
+
+Mudança de comportamento em duas rotas do modo treinamento; o corpo novo é aditivo e opcional.
+- `POST /api/training/{session_id}/stop` e `POST /api/training/{session_id}/discard` aceitam o corpo opcional
+  `{"lease_id": "<lease do controle>"}` (`extra=forbid`; sem corpo ou `{}` equivale a sem lease).
+  - Gravação VIVA = a sessão está em `recording`, o aparelho a está gravando e há um controle de usuário (`control: "user"`).
+    Nesse caso o `lease_id` tem de ser o lease ATUAL do aparelho, a mesma conferência do `POST /api/instances/{id}/training`.
+    Sem `lease_id` ou com outro: **409** `control_required`, com a mensagem "Só quem está com o controle do aparelho
+    encerra esta gravação." (`/discard`: "…descarta esta gravação."). A recusa não muda nada: a sessão segue `recording`,
+    o gravador segue ativo e nenhuma entrada se perde. Se o controle passou a outra pessoa, só o lease novo para ou descarta.
+  - Aparelho hospedado por OUTRA réplica (`instances.hosted_by` de outro dono): a gravação viva dele não é órfã. `/stop` e
+    `/discard` respondem **409** `gravacao_em_outro_servidor` ("Esta gravação está em outro servidor; encerre por lá."), sem
+    mudar nada, com ou sem lease. Sem dono carimbado, ou do próprio processo sem gravador ativo, a sessão segue órfã.
+  - Alcance: o item cobre quem NÃO tem o lease. Quem clica "Assumir" com um controle de usuário vigente recebe hoje o mesmo
+    lease (`request_control`) e passa pela conferência; isso fica para o item 29.143.
+  - Continuam SEM lease: a gravação órfã (sem gravador ativo, ou com o aparelho em `none` ou `ai`: controle devolvido,
+    expirado ou backend reiniciado), o `/discard` de sessão que não está em `recording` (gravada ou proposta) e os
+    encerramentos do sistema (devolver o controle, trocar a gravação no `start`, reconciliar após o reinício).
+  - Demais respostas inalteradas: 404 `not_found`, 200 com a sessão.
+- **O que o painel precisa mudar:** mandar `{"lease_id": ...}` no corpo de `/stop` e `/discard` quando a pessoa está com o
+  controle (o cliente `stopTraining`/`discardTraining` já faz isso quando a aba tem lease), e, ao receber 409
+  `control_required`, mostrar a mensagem do erro e manter a barra de gravação (a gravação segue viva; nada foi encerrado),
+  em vez de tratá-la como sessão encerrada. Quem não tem o controle vê a gravação, mas não a encerra.
+- **Prova:** `simulated` (`backend/tests/test_treino_parar_exige_controle.py`); `real`: `not_run`.
 ## Adendo v1.65 (05/10/2026; número da orquestradora; item 30.81) — o fluxo ensinado espera a prova
 
 Aditivo. O fluxo salvo no modo treinamento segue nascendo `active`, mas até a prova só vale para a persona que ensinou.

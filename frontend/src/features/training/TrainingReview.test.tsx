@@ -7,8 +7,11 @@ import { initialDataState } from '../../store/reducer';
 import { makeSnapshot } from '../../test/fixtures';
 import { ConfirmHost } from '../../components/Confirm';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { TrainingReview } from './TrainingReview';
+import { FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
+
+/** O atraso máximo do fetch falso (modo ATRASO_DO_FETCH_MS): a resposta que o teste solta depois ainda pode estar a caminho. */
+const ATRASO_MAXIMO = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
 
 let root: Root;
 let container: HTMLElement;
@@ -162,57 +165,49 @@ it('com features.skills desligado (padrão), a revisão é a de sempre: sem ensi
   }
 });
 
-it('com features.skills ligado: gera a candidata, responde a pergunta, gera de novo e salva como rascunho', async () => {
+// 31.91: caminho único de ensino. Com `features.skills`, a revisão não gera candidata: o fluxo salvo vira habilidade
+// pela conversão da fase J, e o ensino v2 que a gravação já tinha aparece só para leitura.
+it('com features.skills ligado e sem ensino: nada de candidata; depois de salvar, "Gerar habilidade deste fluxo" converte o fluxo', async () => {
+  comHabilidades(true);
+  backend.on('GET', /\/teaching-sessions$/, () => json([]));
+  backend.on('POST', /\/flows\/mandar-mensagem\/adopt$/, () => json({
+    flow_id: 'mandar-mensagem', skill_id: 'qa-messenger.mandar_mensagem', warnings: [],
+    published: { ref: 'qa-messenger.mandar_mensagem@1' }, draft: { ref: 'qa-messenger.mandar_mensagem@2' },
+  }));
+  await act(async () => root.render(<><TrainingReview sessionId="trn-1" onClose={() => {}} /><ConfirmHost /></>));
+  await waitFor(() => expect(backend.callsTo('GET', /teaching-sessions$/)).toHaveLength(1));
+  await flush(ATRASO_MAXIMO + 30);
+  expect(text()).not.toContain('Habilidade versionada');
+  expect(allByRole('button', /Gerar candidata de habilidade/i)).toHaveLength(0);
+  expect(byRole('button', /Pedir proposta à IA/i).className).toMatch(/btnPrimary/);
+  await click(byRole('button', /Pedir proposta à IA/i));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  expect(byRole('button', /^Salvar como fluxo/).className).toMatch(/btnPrimary/);
+
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  expect(text()).toContain('Parâmetros com tipo, riscos e versões só existem na habilidade.');
+  await click(byRole('button', /^Gerar habilidade deste fluxo$/));
+  await click(await waitFor(() => byRole('button', /^Gerar habilidade$/, byRole('dialog', /Gerar a habilidade deste fluxo/))));
+  await waitFor(() => expect(text()).toContain('qa-messenger.mandar_mensagem@2 em rascunho'));
+  expect(backend.callsTo('POST', /\/adopt$/)).toHaveLength(1);
+  expect(backend.callsTo('POST', /\/teaching-sessions$/)).toHaveLength(0);
+});
+
+it('com features.skills ligado e ensino antigo na gravação: o ensino aparece só para leitura, sem responder, gerar nem descartar', async () => {
   comHabilidades(true);
   const pergunta = { id: 7, kind: 'effect_confirmation', key: 'efeito:enviar', origin: 'ai',
                      text: 'A etapa “Enviar” muda algo fora do aparelho?', target: null, candidate_id: 'cand-1' };
-  backend.on('GET', /\/teaching-sessions$/, () => json([]));
-  backend.on('POST', /\/teaching-sessions$/, () => json(ensino('open'), 201));
-  backend.on('POST', /\/teaching-sessions\/ens-1\/demonstrations$/, () => json(ensino('open')));
-  let geracoes = 0;
-  backend.on('POST', /\/teaching-sessions\/ens-1\/candidates$/, () => {
-    geracoes += 1;
-    return json(geracoes === 1
-      ? ensino('asking', { current_candidate: candidata(1), open_questions: [pergunta] })
-      : ensino('validating', { current_candidate: candidata(2) }));
-  });
-  backend.on('POST', /\/teaching-sessions\/ens-1\/answers$/, () => json(ensino('asking', { current_candidate: candidata(1) })));
-  backend.on('POST', /\/skill-candidates\/cand-2\/validate$/, () => json(ensino('ready', { current_candidate: candidata(2) })));
-  backend.on('POST', /\/skill-candidates\/cand-2\/publish$/, () => json(ensino('published', {
-    current_candidate: candidata(2, 'accepted'), result_version_id: 'qa-messenger.mandar_mensagem@1' })));
-
+  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
+  backend.on('GET', /\/teaching-sessions\/ens-1$/, () => json(ensino('asking', { current_candidate: candidata(1), open_questions: [pergunta] })));
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('Habilidade versionada'));
-  expect(backend.callsTo('GET', /teaching-sessions$/)[0]!.query.get('training_session_id')).toBe('trn-1');
-  // P1.5: "Gerar" só aparece depois de saber que a gravação não tem ensino.
-  await waitFor(() => byRole('button', /Gerar candidata de habilidade/i));
-  // P2.1: com o ensino v2 ligado, ele é o caminho principal — o rodapé do fluxo deixa de ser primário.
-  expect(byRole('button', /Gerar candidata de habilidade/i).className).toMatch(/btnPrimary/);
-  expect(byRole('button', /^Salvar como fluxo/).className).not.toMatch(/btnPrimary/);
-  expect(byRole('button', /Pedir proposta à IA/i).className).not.toMatch(/btnPrimary/);
-  await click(byRole('button', /Gerar candidata de habilidade/i));
-  await waitFor(() => expect(text()).toContain('muda algo fora do aparelho'));
-  expect(text()).toContain('{contato} · string = QA-001');
-  expect(text()).toContain('efeito externo');
-  const criado = backend.callsTo('POST', /\/teaching-sessions$/)[0]!.body as { instruction: string; app_id: string };
-  expect(criado).toEqual({ instruction: 'Mandar mensagem', app_id: 'qa-messenger' });
-  expect((backend.callsTo('POST', /demonstrations$/)[0]!.body as { training_session_id: string }).training_session_id).toBe('trn-1');
-
-  expect(text()).toMatch(/candidata 1 .*proposta/);                    // status da candidata em português
-  await setValue(byRole('textbox', /Resposta à pergunta: A etapa “Enviar” muda algo/i) as HTMLInputElement, 'Sim, é enviar.');
-  await click(byRole('button', /^Responder$/i));
-  await waitFor(() => expect(text()).toContain('Gerar de novo com as respostas'));
-  expect(backend.callsTo('POST', /answers$/)[0]!.body).toEqual({ question_id: 7, body: 'Sim, é enviar.' });
-  await click(byRole('button', /Gerar de novo com as respostas/i));
-  await waitFor(() => expect(text()).toContain('Salvar como rascunho'));
-  await click(byRole('button', /Salvar como rascunho/i));
-  await waitFor(() => expect(text()).toContain('qa-messenger.mandar_mensagem@1'));
-  expect(backend.callsTo('POST', /validate$/)[0]!.body).toEqual({ mode: 'static' });
-  expect(backend.callsTo('POST', /publish$/)).toHaveLength(1);
-  expect(text()).toContain('Configuração → Fluxos e receitas → Habilidades');   // o nome da aba, como na TopBar
-  expect(allByRole('button', /^Descartar/)).toHaveLength(0);                      // terminal: nada a descartar
-  // o "Salvar como fluxo" de sempre continua lá, sem ponte com o ensino v2
-  expect(backend.callsTo('POST', /\/save$/)).toHaveLength(0);
+  expect(text()).toContain('muda algo fora do aparelho');
+  expect(text()).toContain('fica só para leitura');
+  expect(allByRole('textbox', /Resposta à pergunta/)).toHaveLength(0);
+  for (const nome of [/^Responder$/, /Gerar de novo/, /Pedir outra candidata/, /Salvar como rascunho/, /^Descartar$/]) {
+    expect(allByRole('button', nome)).toHaveLength(0);
+  }
 });
 
 // ---------------------------------------------------------------- 31.90-A: quem ensinou corrige as entradas
@@ -265,7 +260,10 @@ it('entrada sem etapa e sem descarte: bloco "Sem destino" no topo, Salvar travad
   expect(regiao('Sem destino').textContent).not.toContain('#2');
   expect(salvar().getAttribute('aria-disabled')).toBe('true');                 // ainda falta o #3
 
+  // R1: escolher a etapa não move; quem move é o "Devolver".
   await setValue(byRole('combobox', /Devolver a entrada #3 à etapa/, regiao('Sem destino')) as HTMLSelectElement, '0');
+  expect(regiao('Sem destino').textContent).toContain('#3');
+  await click(byRole('button', /^Devolver a entrada #3$/, regiao('Sem destino')));
   await waitFor(() => expect(rotulados('section', 'Sem destino')).toHaveLength(0));
   expect(regiao('Entradas da etapa 1', 'ul').textContent).toContain('Enviar');
   expect(salvar().getAttribute('aria-disabled')).toBeNull();
@@ -299,7 +297,10 @@ it('Descartar tira da etapa e Devolver tira do descarte: a entrada nunca fica em
   expect(rotulados('ul', 'Entradas da etapa 1')).toHaveLength(0);           // etapa vazia: a IA conduz
   expect(text()).toContain('sem entradas: a IA conduz esta etapa');
   await setValue(byRole('combobox', /Devolver a entrada #1 à etapa/) as HTMLSelectElement, '1');
+  await click(byRole('button', /^Devolver a entrada #1$/));
+  await waitFor(() => expect(regiao('Entradas da etapa 2', 'ul').textContent).toContain('#1'));
   await setValue(byRole('combobox', /Devolver a entrada #4 à etapa/) as HTMLSelectElement, '1');
+  await click(byRole('button', /^Devolver a entrada #4$/));
   await waitFor(() => expect(regiao('Entradas da etapa 2', 'ul').textContent).toContain('Voltar'));
   expect(regiao('Descartadas').textContent).not.toContain('#1');
   expect(regiao('Descartadas').textContent).not.toContain('#4');
@@ -330,4 +331,250 @@ it('texto não gravado nunca aparece, nem marcado como sensível com valor; os a
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   const sucesso = useToastStore.getState().toasts.find((t) => t.tone === 'success');
   expect(sucesso?.message).toContain('A etapa "Abrir" não confere o efeito no servidor.');
+});
+
+// ---------------------------------------------------------------- 31.90-B: foco, anúncio e "editado" que compara
+it('descartar e devolver: o foco vai para a entrada no lugar novo, o status diz para onde, e voltar ao que era não pede "Sair sem salvar"', async () => {
+  let fechado = 0;
+  const sessao = { ...SESSAO, inputs: [...SESSAO.inputs, toque(3, 'Enviar')] };
+  const proposta = { ...PROPOSTA, steps: [etapa('abrir', 'Abrir', [1, 2]), etapa('enviar', 'Enviar', [3])] };
+  backend.on('GET', /\/training\/trn-1$/, () => json(sessao));
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => json({ ...sessao, status: 'proposed', proposal: proposta }));
+  await act(async () => root.render(<><TrainingReview sessionId="trn-1" onClose={() => { fechado += 1; }} /><ConfirmHost /></>));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  const status = () => [...document.querySelectorAll('[role="status"]')].map((s) => s.textContent).join(' | ');
+
+  await click(byRole('button', /^Descartar a entrada #3$/, regiao('Entradas da etapa 2', 'ul')));
+  await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Devolver a entrada #3 à etapa'));
+  expect(regiao('Descartadas').contains(document.activeElement)).toBe(true);
+  expect(status()).toContain('#3 foi para Descartadas');
+
+  await setValue(byRole('combobox', /Devolver a entrada #3 à etapa/) as HTMLSelectElement, '1');
+  await click(byRole('button', /^Devolver a entrada #3$/));
+  await waitFor(() => expect(document.activeElement?.getAttribute('aria-label')).toBe('Descartar a entrada #3'));
+  expect(regiao('Entradas da etapa 2', 'ul').contains(document.activeElement)).toBe(true);
+  expect(status()).toContain('#3 voltou à etapa 2 (Enviar)');
+
+  // A proposta voltou a ser a que a IA mandou: não há o que perder, e "Depois" fecha sem perguntar.
+  await click(byRole('button', /^Depois$/));
+  await waitFor(() => expect(fechado).toBe(1));
+  expect(text()).not.toContain('Sair sem salvar o fluxo?');
+});
+
+it('descarte repetido conta uma vez (#442); a entrada na etapa e no descarte sai da etapa com "Manter descartada"', async () => {
+  const sessao = { ...SESSAO, inputs: [...SESSAO.inputs, toque(3, 'Enviar')] };
+  await abrirComProposta(sessao, {
+    ...PROPOSTA, steps: [etapa('abrir', 'Abrir', [1, 2, 3])],
+    discarded: [{ seq: 3, why: 'engano' }, { seq: 3, why: 'engano de novo' }],
+  });
+  expect(regiao('Descartadas').textContent).toContain('Descartadas (1)');
+  const salvar = () => byRole('button', /^Salvar como fluxo/);
+  expect(salvar().getAttribute('aria-label') ?? salvar().textContent).toContain('#3 está em mais de um lugar');
+
+  await click(byRole('button', /^Manter a entrada #3 só em Descartadas$/, regiao('Descartadas')));
+  await waitFor(() => expect(regiao('Entradas da etapa 1', 'ul').textContent).not.toContain('#3'));
+  // O descarte segue com as duas linhas da IA, e isso não trava o salvar.
+  expect(salvar().getAttribute('aria-disabled')).toBeNull();
+  expect(allByRole('button', /^Manter a entrada #3/)).toHaveLength(0);
+});
+
+it('toque sem alvo nas palavras do backend (#440), o "Confere" em português e a mesma tecla seguida numa linha só', async () => {
+  const tecla = (seq: number) => ({ ...SESSAO.inputs[1]!, seq, type: 'key', key_name: 'delete', has_text: false, text_len: null });
+  const pin = { ...SESSAO.inputs[0]!, seq: 3, target: null, x: null, y: null, sensitive: true };
+  const solto = { ...SESSAO.inputs[0]!, seq: 4, target: null, x: 50, y: 60 };
+  const sessao = { ...SESSAO, inputs: [...SESSAO.inputs, pin, solto, tecla(5), tecla(6), tecla(7)] };
+  await abrirComProposta(sessao, { ...PROPOSTA, steps: [etapa('abrir', 'Abrir', [1, 2, 3, 4, 5, 6, 7])] });
+  expect(text()).toContain('toque em teclado ou tela sensível (não gravado)');
+  expect(text()).toContain('toque sem elemento identificado');
+  expect(text()).toContain('Confere: aparece o texto “{contato}” (aberta)');
+  // Na coluna da gravação, uma linha; na etapa, cada uma com o seu Descartar.
+  expect(text()).toContain('#5–#7');
+  expect(text()).toContain('tecla delete ×3');
+  for (const n of [5, 6, 7]) expect(byRole('button', new RegExp(`^Descartar a entrada #${n}$`), regiao('Entradas da etapa 1', 'ul'))).toBeTruthy();
+});
+
+// ---------------------------------------------------------------- 31.90-B: prévia do salvar (v1.58), recusas no campo e refazer receitas
+const PREVIA_OK = { steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita será gravada ao salvar' }], warnings: [] };
+const reasonDa = (reason: string) => ({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, reason }] });
+
+async function abrirEProporComPrevia() {
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+}
+
+it('a prévia mostra o que cada etapa vira; a recusa do comando vai no campo e trava o Salvar até corrigir', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, (c) => {
+    const comando = (c.body as { proposal: { command_template: string } }).proposal.command_template;
+    return comando.startsWith('{') ? apiError(400, 'comando_generico', 'O comando precisa começar por palavra fixa.') : json(PREVIA_OK);
+  });
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(text()).toContain('Ao salvar: receita será gravada ao salvar'));
+  const comando = () => byRole('textbox', /Comando/) as HTMLInputElement;
+  const salvar = () => byRole('button', /^Salvar como fluxo/);
+  expect(comando().getAttribute('aria-invalid')).toBeNull();
+  // O corpo da prévia é o do salvar (v1.58: `extra="forbid"`).
+  expect(Object.keys(backend.callsTo('POST', /\/preview$/)[0]!.body as object).sort()).toEqual(['group_ids', 'profile_ids', 'proposal']);
+
+  await setValue(comando(), '{contato} mande');
+  await waitFor(() => expect(comando().getAttribute('aria-invalid')).toBe('true'));
+  expect(text()).toContain('O comando precisa começar por palavra fixa.');
+  expect(salvar().getAttribute('aria-label') ?? salvar().textContent).toContain('Corrija o comando');
+  expect(text()).not.toContain('Ao salvar:');                      // a prévia velha não fica ao lado da recusa
+
+  await setValue(comando(), 'mande para {contato}');
+  await waitFor(() => expect(text()).toContain('Ao salvar: receita será gravada ao salvar'));
+  expect(comando().getAttribute('aria-invalid')).toBeNull();
+  expect(salvar().getAttribute('aria-disabled')).toBeNull();
+});
+
+it('salvar recusado por parâmetro reservado (v1.62) fica no campo e sem toast; entrada_inexistente vira o motivo do Salvar', async () => {
+  useToastStore.setState({ toasts: [] });
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => apiError(400, 'parametro_reservado', 'O nome {run_id} é reservado: escolha outro.'));
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(text()).toContain('Ao salvar:'));
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(byRole('textbox', /Comando/).getAttribute('aria-invalid')).toBe('true'));
+  expect(text()).toContain('O nome {run_id} é reservado: escolha outro.');
+  expect(useToastStore.getState().toasts.filter((t) => t.title === 'Não foi possível salvar o fluxo')).toHaveLength(0);
+
+  // Recusa que não é do comando: vira o motivo do "Salvar" travado, com a mensagem literal.
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => apiError(400, 'entrada_inexistente', 'As entradas #9 não existem na gravação. Peça uma nova proposta à IA.'));
+  await setValue(byRole('textbox', /Título da etapa 1/) as HTMLInputElement, 'Abrir');
+  const salvar = () => byRole('button', /^Salvar como fluxo/);
+  await waitFor(() => expect(salvar().getAttribute('aria-label') ?? salvar().textContent).toContain('As entradas #9 não existem'));
+  expect(byRole('textbox', /Comando/).getAttribute('aria-invalid')).toBeNull();
+});
+
+it('duas prévias fora de ordem: vale a da última edição', async () => {
+  let soltarPrimeira: (r: Response) => void = () => {};
+  let pedidas = 0;
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => {
+    pedidas += 1;
+    if (pedidas === 1) return new Promise<Response>((r) => { soltarPrimeira = r; });
+    return json(reasonDa('da segunda'));
+  });
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(pedidas).toBe(1));
+  await setValue(byRole('textbox', /Título da etapa 1/) as HTMLInputElement, 'Abrir de novo');
+  await waitFor(() => expect(text()).toContain('Ao salvar: da segunda'));
+  soltarPrimeira(json(reasonDa('da primeira')));
+  await flush(ATRASO_MAXIMO + 30);
+  expect(text()).toContain('Ao salvar: da segunda');
+  expect(text()).not.toContain('da primeira');
+});
+
+it('etapa sem receita no salvar: "Refazer receitas" só com o clique, chama /recipes e diz quantas gravou', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', warnings: [],
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: false,
+              reason: 'aparelho do treinamento fora do ar e a versão do app ainda não foi lida. Refaça as receitas quando ele voltar' }],
+  }));
+  backend.on('POST', /\/training\/trn-1\/recipes$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', created: 1,
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
+  }));
+  await abrirEProporComPrevia();
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  expect(text()).toContain('com IA');
+  expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(0);       // quem aciona é a pessoa
+
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('1 receita gravada agora.'));
+  expect(text()).toContain('— receita gravada');                        // o relatório troca pelo do refazer
+  expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(1);
+});
+
+// ---------------------------------------------------------------- 31.91 F2 (v1.63): responder às perguntas da proposta
+it('as respostas vão no corpo do propose e a proposta nova as mostra; sem resposta, o corpo não vai', async () => {
+  let pedidas = 0;
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => {
+    pedidas += 1;
+    return json({ ...SESSAO, status: 'proposed', proposal: pedidas === 1 ? PROPOSTA
+      : { ...PROPOSTA, questions: [], answers: [{ question: 'O texto muda?', answer: 'Muda a cada cliente.' }] } });
+  });
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  expect(backend.callsTo('POST', /\/propose$/)[0]!.body).toBeUndefined();
+  expect(text()).toContain('Não escreva senha nem código');
+  expect(byRole('button', /^Pedir outra proposta$/)).toBeTruthy();
+
+  await setValue(byRole('textbox', /^O texto muda\?$/) as HTMLInputElement, '  Muda a cada cliente.  ');
+  await click(byRole('button', /^Pedir nova proposta com as respostas$/));
+  await waitFor(() => expect(regiao('Respostas já dadas', 'ul').textContent).toContain('Muda a cada cliente.'));
+  expect(backend.callsTo('POST', /\/propose$/)[1]!.body).toEqual({ answers: [{ question: 'O texto muda?', answer: 'Muda a cada cliente.' }] });
+  expect(rotulados('section', 'Perguntas da IA')).toHaveLength(0);     // respondida, não volta como pergunta
+});
+
+it('resposta com cara de senha (resposta_sensivel) fica no campo da pergunta, sem toast, e a proposta não muda', async () => {
+  useToastStore.setState({ toasts: [] });
+  let pedidas = 0;
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => {
+    pedidas += 1;
+    return pedidas === 1 ? json({ ...SESSAO, status: 'proposed', proposal: PROPOSTA })
+      : apiError(400, 'resposta_sensivel', 'A resposta parece senha ou código: não mande segredo para a IA.');
+  });
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  const campo = () => byRole('textbox', /^O texto muda\?$/) as HTMLInputElement;
+  await setValue(campo(), 'Senha123!');
+  await click(byRole('button', /^Pedir nova proposta com as respostas$/));
+  await waitFor(() => expect(campo().getAttribute('aria-invalid')).toBe('true'));
+  expect(text()).toContain('A resposta parece senha ou código');
+  expect(useToastStore.getState().toasts.filter((t) => t.title === 'A IA não conseguiu propor o fluxo')).toHaveLength(0);
+  expect((byRole('textbox', /Comando/) as HTMLInputElement).value).toBe('mande para {contato}');   // a proposta atual fica
+  // Mexer na resposta tira o aviso.
+  await setValue(campo(), 'Muda a cada cliente.');
+  expect(campo().getAttribute('aria-invalid')).toBeNull();
+});
+
+it('com entrada sem destino a prévia não é pedida (a tela já diz o motivo); dado o destino, ela roda', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  const sessao = { ...SESSAO, inputs: [...SESSAO.inputs, toque(3, 'Enviar')] };
+  await abrirComProposta(sessao, { ...PROPOSTA, steps: [etapa('abrir', 'Abrir', [1, 2])] });
+  await flush(ESPERA_DA_PREVIA_MS + ATRASO_MAXIMO + 50);
+  expect(backend.callsTo('POST', /\/preview$/)).toHaveLength(0);
+  await click(byRole('button', /^Descartar a entrada #3$/, regiao('Sem destino')));
+  await waitFor(() => expect(backend.callsTo('POST', /\/preview$/)).toHaveLength(1));
+});
+
+it('proposta_concorrente: mostra o motivo e relê a sessão, ficando com a proposta que valeu', async () => {
+  useToastStore.setState({ toasts: [] });
+  let pedidas = 0;
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => {
+    pedidas += 1;
+    return pedidas === 1 ? json({ ...SESSAO, status: 'proposed', proposal: PROPOSTA })
+      : apiError(409, 'proposta_concorrente', 'Outra proposta desta gravação terminou antes; peça de novo.');
+  });
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  backend.on('GET', /\/training\/trn-1$/, () => json({ ...SESSAO, status: 'proposed', proposal: { ...PROPOSTA, command_template: 'mande a {contato}' } }));
+  await click(byRole('button', /^Pedir outra proposta$/));
+  await waitFor(() => expect((byRole('textbox', /Comando/) as HTMLInputElement).value).toBe('mande a {contato}'));
+  expect(useToastStore.getState().toasts.find((t) => t.title === 'A proposta mudou enquanto você pedia')?.message)
+    .toContain('Outra proposta desta gravação terminou antes');
+});
+
+it('mais de 8 respostas: o pedido trava com o motivo em vez de cortar a 9ª', async () => {
+  const perguntas = Array.from({ length: 9 }, (_, i) => `Pergunta ${i + 1}`);
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => json({ ...SESSAO, status: 'proposed', proposal: { ...PROPOSTA, questions: perguntas } }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('Pergunta 9'));
+  for (const p of perguntas) await setValue(byRole('textbox', new RegExp(`^${p}$`)) as HTMLInputElement, 'sim');
+  const pedir = byRole('button', /^Pedir nova proposta com as respostas/);
+  expect(pedir.getAttribute('aria-disabled')).toBe('true');
+  expect(pedir.getAttribute('aria-label') ?? pedir.textContent).toContain('Mande até 8 respostas por vez');
+  const antes = backend.callsTo('POST', /\/propose$/).length;
+  await click(pedir);
+  expect(backend.callsTo('POST', /\/propose$/)).toHaveLength(antes);
+  await setValue(byRole('textbox', /^Pergunta 9$/) as HTMLInputElement, '');
+  expect(byRole('button', /^Pedir nova proposta com as respostas/).getAttribute('aria-disabled')).toBeNull();
 });

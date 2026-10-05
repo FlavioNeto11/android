@@ -858,7 +858,7 @@ describe('grupos de acesso', () => {
     expect(criar.disabled).toBe(true);                                    // antes: criava com o rascunho anterior
     const soManual = byRole('radio', /Só manual/i, byRole('radiogroup', /Política de Curtir a publicação/i));
     expect((soManual as HTMLInputElement).disabled).toBe(true);           // mexer agora seria apagado pela resposta
-    await click(criar);
+    await expect(click(criar)).rejects.toThrow('está desabilitado');      // 29.130: o harness, como a pessoa, não clica
     expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(0);
 
     await act(async () => { soltar(); });

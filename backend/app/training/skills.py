@@ -28,6 +28,7 @@ from ..taskqueue.flows import PLACEHOLDER, RESERVED, _norm, ensinado_em_prova  #
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..util import now_iso
 from .recorder import TrainingError
+from .respostas import acumular, guardadas, sem_as_respondidas, validar_respostas
 
 
 # ---------------------------------------------------------------------------- validação da proposta (item 31.83)
@@ -82,7 +83,7 @@ def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
     """Confere a proposta que o cliente mandou ANTES de qualquer escrita: o `propose` normaliza, o `save` aceita o que
     vier. Devolve a proposta com `inputs`/`discarded` já como inteiros e os AVISOS do que foi aceito com ressalva.
 
-    Recusa (400) com o que a pessoa deve corrigir: `etapa_invalida`, `parametro_invalido`,
+    Recusa (400) com o que a pessoa deve corrigir: `etapa_invalida`, `parametro_invalido`, `parametro_reservado`,
     `parametro_fora_do_comando`, `parametro_nao_declarado`, `comando_generico`, `pos_condicao_vazia` (etapa com efeito
     externo), `entrada_duplicada` (em duas etapas, ou em etapa e em `discarded`: o `_receitas` tiraria o toque da etapa
     calado), `entradas_sem_etapa` (gravada e sem destino: a receita nasce sem o toque, errada e calada) e
@@ -148,6 +149,15 @@ def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
                     "Do contrário o fluxo nunca casa.")
     declarados = {str(x["name"]) for x in p.get("parameters") or [] if x.get("name")}
     usados = {m.group(1) for m in PLACEHOLDER.finditer(comando)}
+    # 31.100: `{instance_id}`, `{run_id}` e `{account_label}` são do sistema. No casamento do pedido
+    # (`FlowStore._extract`) eles valem como texto literal, então o fluxo só casaria com quem digitasse as chaves.
+    # No comando, recusa; nos parâmetros e nas etapas do plano continuam valendo (o `materialize` os resolve).
+    if reservados := sorted(usados & RESERVED):
+        raise _erro("parametro_reservado",
+                    "O comando usa " + ", ".join("{" + n + "}" for n in reservados)
+                    + ", que é do sistema (o aparelho, a execução ou a conta) e nunca aparece num pedido: o "
+                    "fluxo só casaria com quem digitasse as chaves. Troque por texto fixo ou por um parâmetro "
+                    "seu (ex.: {conta}).")
     fora = sorted(n for n in declarados - usados if n not in RESERVED)
     if fora:
         raise _erro("parametro_fora_do_comando",
@@ -274,7 +284,10 @@ class TrainingSkills:
                 for c in cat.offered]
 
     # ------------------------------------------------------------------ proposta
-    async def propose(self, session_id: str) -> dict[str, Any]:
+    async def propose(self, session_id: str, body: object = None) -> dict[str, Any]:
+        """`body`: o corpo opcional `{"answers": [...]}` já lido do JSON (31.91); sem ele, o comportamento de sempre.
+        Sem corpo (ou com `answers` vazio) as respostas JÁ guardadas na proposta anterior são mantidas e reenviadas ao
+        provedor. O UPDATE final só vale se a sessão não mudou desde a leitura (`proposta_concorrente`, 409)."""
         sess = self.s.training.get(session_id)
         if sess["status"] == "recording":
             raise TrainingError("still_recording", "Conclua a gravação antes de pedir a proposta.", 409)
@@ -282,19 +295,31 @@ class TrainingSkills:
             raise TrainingError("closed", "Este treinamento já foi salvo ou descartado.", 409)
         if not sess["inputs"]:
             raise TrainingError("empty", "Nada foi gravado neste treinamento.", 400)
+        # 31.91: a forma e o formato de segredo são conferidos ANTES do provedor e sem tocar na sessão; as respostas
+        # já guardadas na proposta anterior são lidas aqui, porque o UPDATE abaixo troca a proposta inteira.
+        respostas = acumular(guardadas(sess.get("proposal")), validar_respostas(body, sess.get("proposal")))
         apps = self._apps()
         app_id = self._app_da_sessao(sess, apps)
         pacote = apps[app_id]["package"] if app_id in apps else None
         req = TrainingRequest(intent=sess["intent"], app_id=app_id, apps=list(apps.values()),
-                              inputs=[e for e in sess["inputs"]], catalog=self._catalogo(pacote), session_id=session_id)
+                              inputs=[e for e in sess["inputs"]], catalog=self._catalogo(pacote), session_id=session_id,
+                              answers=respostas)
         proposta, usage = await self.s.provider.generalize(req)
         try:
             self.s.repo.add_usage(None, None, usage)
         except Exception:  # noqa: BLE001 - contabilidade nunca derruba a proposta
             pass
         proposta["app_id"] = app_id
-        self.s.db.execute("UPDATE training_sessions SET proposal=?, status='proposed', updated_at=? WHERE id=?",
-                          (dumps(proposta), now_iso(), session_id))
+        proposta.pop("answers", None)
+        if respostas:           # sem resposta nenhuma a proposta fica como sempre foi (sem a chave)
+            proposta["questions"] = sem_as_respondidas([q for q in proposta.get("questions") or [] if isinstance(q, str)],
+                                                       respostas)
+            proposta["answers"] = respostas
+        # N3: dois `propose` da mesma sessão: o último UPDATE ganharia e as respostas do primeiro sumiriam calado
+        cur = self.s.db.execute("UPDATE training_sessions SET proposal=?, status='proposed', updated_at=? "
+                                "WHERE id=? AND updated_at=?", (dumps(proposta), now_iso(), session_id, sess["updated_at"]))
+        if getattr(cur, "rowcount", 1) == 0:
+            raise TrainingError("proposta_concorrente", "Outra proposta desta gravação terminou antes; peça de novo.", 409)
         return self.s.training.get(session_id)
 
     # ------------------------------------------------------------------ salvar, prévia e refazer (31.83, 31.86)
@@ -305,6 +330,11 @@ class TrainingSkills:
         if sess["status"] == "saved":
             raise TrainingError("closed", "Este treinamento já virou habilidade.", 409)
         p = proposal or sess.get("proposal")
+        if proposal and isinstance(p, dict):
+            # N1: `answers` mora na SESSÃO; o que o cliente mandar na proposta é ignorado (nem forjado, nem apagado)
+            p = {k: v for k, v in p.items() if k != "answers"}
+            if resp := guardadas(sess.get("proposal")):
+                p["answers"] = resp
         if not p or not p.get("steps"):
             raise TrainingError("no_proposal", "Peça a proposta da IA (ou monte as etapas) antes de salvar.", 400)
         if not isinstance(p.get("command_template"), (str, type(None))):

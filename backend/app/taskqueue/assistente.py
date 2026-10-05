@@ -29,8 +29,9 @@ from ..modules.execution.domain.command_refinement import (AppResumo, CommandRef
 from ..planning.provider import AIError
 from ..security.redaction import redact
 from .costuras import RespostaAPergunta, avisar
-from .perguntas import (CAMPOS_DE_DESTINO, TIPO_FORMATO, TRIAGEM, acrescimo, mensagem_da_recusa, perguntas_abertas,
-                        tipo_sensivel)
+from .perguntas import (CAMPO_DADO_DA_PERSONA, CAMPOS_DE_DESTINO, CAMPOS_SEM_RESPOSTA_POR_TEXTO,
+                        MENSAGEM_DADO_DA_PERSONA, TIPO_FORMATO, TRIAGEM, acrescimo, mensagem_da_recusa,
+                        perguntas_abertas, tipo_sensivel)
 from .service import RunError, RunService
 
 log = logging.getLogger(__name__)
@@ -92,6 +93,8 @@ class ComandoAssistido:
             raise RunError("pergunta_de_destino",
                            "Quem faz e em qual aparelho se escolhe no Comando (modo \"Por persona\" ou marcando os "
                            "aparelhos), não por texto: o assistente não responde a " + ", ".join(destino) + ".", 409)
+        if any(a.field == CAMPO_DADO_DA_PERSONA for a in body.answers):
+            raise RunError("dado_da_persona_ausente", MENSAGEM_DADO_DA_PERSONA, 409)
         instance_ids, profile_ids, pendentes, run_id = list(body.instance_ids), list(body.profile_ids), [], None
         comando = body.command.strip()
         if body.run_id:
@@ -102,7 +105,8 @@ class ComandoAssistido:
             pedido = self._pedido(run)
             instance_ids = instance_ids or list(pedido.get("instance_ids") or loads(run["instance_ids"], []))
             profile_ids = profile_ids or list(pedido.get("profile_ids") or [])
-            pendentes = [q for q in perguntas_da_execucao(runs, run) if q.get("field") not in CAMPOS_DE_DESTINO]
+            pendentes = [q for q in perguntas_da_execucao(runs, run)
+                         if q.get("field") not in CAMPOS_SEM_RESPOSTA_POR_TEXTO]
             # O destino desta execução já está na foto (alvos ecoados): o texto que vai à IA é o SEM destinos, senão
             # o refinado carregaria "peça para o Lucas…" e a sucessora o leria de novo como destino do texto.
             comando = runs.sem_destinos(comando) or comando
@@ -166,7 +170,11 @@ class ComandoAssistido:
         # 29.52: recusa ANTES de qualquer gravação e de a antiga sair do ar. A pergunta que pede senha ou código não
         # se responde por texto, seja qual for a resposta; sem ela, o acréscimo da resposta com cara de credencial.
         # O evento e o sinal não levam a resposta: o 409 também não a repete.
-        tipo = tipo_sensivel(perguntas_da_execucao(runs, run))
+        abertas = perguntas_da_execucao(runs, run)
+        if abertas and all(q.get("field") == CAMPO_DADO_DA_PERSONA for q in abertas):
+            # 31.87: só falta dado da persona; a resposta por texto não o cadastra e iria ao livro como se fosse escolha.
+            raise RunError("dado_da_persona_ausente", MENSAGEM_DADO_DA_PERSONA, 409)
+        tipo = tipo_sensivel(abertas)
         texto = runs.sem_destinos(body.command.strip()) or body.command.strip()
         if tipo is None and TRIAGEM.resposta_recusada(acrescimo(str(run["command"]), texto)):
             tipo = TIPO_FORMATO
@@ -205,7 +213,7 @@ class ComandoAssistido:
             log.exception("perguntas da execução %s não lidas para o aprendizado", run.get("id"))
             return ()
         return tuple(dict.fromkeys(str(q.get("field") or "") for q in perguntas
-                                   if q.get("field") not in CAMPOS_DE_DESTINO))
+                                   if q.get("field") not in CAMPOS_SEM_RESPOSTA_POR_TEXTO))
 
     @staticmethod
     def _pedido(run: Mapping[str, object]) -> dict[str, object]:

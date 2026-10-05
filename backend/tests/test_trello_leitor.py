@@ -83,15 +83,22 @@ class TrelloFalso:
         self.nomes: dict[str, str] = {}                 # 28.30: o nome de cada cartão (GET /1/cards/{id}?fields=name)
 
     def acao(self, tipo: str, autor: str, card: str, *, texto: str | None = None, para: str | None = None,
-             ha_s: float = 0, quadro: str = QUADRO, ident: str | None = None) -> dict[str, object]:
+             ha_s: float = 0, quadro: str = QUADRO, ident: str | None = None, lista: str | None = None,
+             nome: str | None = None, app: object = None, sem_app: bool = False) -> dict[str, object]:
         self.n += 1
         dados: dict[str, object] = {"board": {"id": quadro}, "card": {"id": card}}
+        if nome is not None:                            # 28.51: o nome do cartão que a action do Trello traz
+            dados["card"] = {"id": card, "name": nome}
+        if lista is not None:                           # 28.51: a lista do cartão no momento do comentário
+            dados["list"] = {"id": lista}
         if texto is not None:
             dados["text"] = texto
         if para is not None:
             dados["listAfter"] = {"id": para}
         a: dict[str, object] = {"id": ident or f"a{self.n:04d}", "idMemberCreator": autor, "type": tipo,
                                 "date": _iso(self.relogio.t - timedelta(seconds=ha_s)), "data": dados}
+        if not sem_app:                                 # revisão do #447: o app que escreveu (None = digitado por gente)
+            a["appCreator"] = app
         self.acoes.append(a)
         return a
 
