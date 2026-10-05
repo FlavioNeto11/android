@@ -997,7 +997,8 @@ async def test_item_cujo_bloco_nao_cabe_inteiro_fica_fora_do_sim(c: Cenario) -> 
 
 async def test_erro_interno_ao_iniciar_sem_sim_pendente_nao_fica_em_laco(c: Cenario,
                                                                        monkeypatch: pytest.MonkeyPatch) -> None:
-    def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+    def quebra(run_id: str, aprovar: list[tuple[str, str]], *,
+               vista_em: str | None = None) -> dict[str, object]:
         raise RuntimeError("banco fora")
 
     monkeypatch.setattr(c.portas, "aprovar_plano", quebra)
@@ -1180,12 +1181,16 @@ async def test_todo_caminho_que_abandona_a_porta_cancela_a_execucao_planned(c: C
     ident = await _executar(c)
     if caminho == "recusa":
         c.portas.recusar_aprovar = "O plano desta execução não pode ser aprovado agora."
+    quebrou: list[str] = []
     if caminho == "erro":
-        def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+        def quebra(run_id: str, aprovar: list[tuple[str, str]], *,
+                   vista_em: str | None = None) -> dict[str, object]:
+            quebrou.append(run_id)            # o dublê rodou: o erro é o "banco fora", não a assinatura
             raise RuntimeError("banco fora")
         monkeypatch.setattr(c.portas, "aprovar_plano", quebra)
     gesto = f"c:{ident}" if caminho == "cancelar" else _p(c, ident)
     await c.volta(botao(7, gesto, mid=c.bot.mid))
+    assert quebrou == ([RUN] if caminho == "erro" else [])
     assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and c.portas.estados[RUN] == "cancelled"
     assert c.linha(5)["estado"] in ("cancelada", "falhou")
 
@@ -1228,7 +1233,8 @@ async def test_erro_ao_iniciar_diz_o_estado_certo(c: Cenario, monkeypatch: pytes
     c.portas.previa_da_porta = _porta(_item("s1"))
     ident = await _executar(c)
 
-    def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+    def quebra(run_id: str, aprovar: list[tuple[str, str]], *,
+               vista_em: str | None = None) -> dict[str, object]:
         c.portas.estados[run_id] = estado
         raise RuntimeError("erro de teste")
 
@@ -1300,7 +1306,8 @@ async def test_erro_depois_do_inicio_nos_outros_caminhos_tambem_nao_diz_que_nao_
     if caminho == "sem_sim":
         c.portas.previa_da_porta = _porta(_item("s1", selo="permitido"), total=True)
 
-        def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+        def quebra(run_id: str, aprovar: list[tuple[str, str]], *,
+                   vista_em: str | None = None) -> dict[str, object]:
             c.portas.estados[run_id] = "running"
             raise RuntimeError("agendador fora")
 
