@@ -1175,7 +1175,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `session.needs_person` | sim | — |
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
 | `learning.ensinado_rebaixado` | sim | `modules/learning/application/ensinado.py::AvisadorDoEnsinado`, chamado por `LearningService` (`avisar_mudanca_nativa` e `_mover_nativo`) — a receita ou o fluxo ensinado no modo treinamento saiu de uso por decisão do SISTEMA (quarentena, substituição, obsolescência) e outro ativo segura o lugar; 30.80 B |
-| `learning.ensinado_sem_receita` | sim | o mesmo, quando nada ativo ficou no lugar (a etapa voltou para a IA); `warn`; 30.80 B |
+| `learning.ensinado_sem_receita` | sim | o mesmo, quando nada ativo ficou no lugar (a etapa voltou para a IA); `warn`; 30.80 B; ver o adendo v1.61 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 
@@ -6336,3 +6336,28 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
 - O mesmo descarte sai numa linha de log do curador, com o id da revisão, a classe e os rótulos.
 - O painel pode ignorar a chave. Ausente também quer dizer backend de antes do 30.73.
 - **Prova:** `simulated` (`backend/tests/test_curador_classe_b.py`).
+
+## Adendo v1.61 (05/10/2026; número da orquestradora; item 30.80 B) — o ensinado que o sistema tirou de uso avisa
+
+Dois tipos novos de evento, persistidos e sem aparelho. São aditivos: o painel não muda, e quem os traduz para o dono é a
+frente Canais (28.50).
+- `learning.ensinado_rebaixado` (`level: "info"`): a receita ou o fluxo ensinado no modo treinamento
+  (`training:<sessão>`), que estava em uso, saiu de uso por decisão do SISTEMA (quarentena por falhas seguidas,
+  substituição, obsolescência), e outra receita ativa na mesma chave (ou outro fluxo ativo no mesmo `match_key`)
+  segura o lugar.
+- `learning.ensinado_sem_receita` (`level: "warn"`): o mesmo, quando nada ativo ficou no lugar; a IA volta a conduzir
+  a etapa.
+- Cada transição publica UM dos dois. Não publicam: o gesto de uma pessoa, outra demonstração, o item que a IA
+  aprendeu e o nascimento.
+- `data`, lista fechada (`domain/ensinado.py::CAMPOS_DO_PAYLOAD`):
+  - `kind`: `"receita"` ou `"fluxo"`;
+  - `ref`: o id da receita (só dígitos) ou do fluxo (slug `[a-z0-9-]`);
+  - `app`: o pacote;
+  - `treino`: o id inteiro da sessão de treino (`trn-…`);
+  - `sem_receita_ativa`: `boolean`, o mesmo que o tipo diz;
+  - `para`: o status NATIVO de destino (`quarantined`, `superseded`, `disabled`);
+  - `desde`: ISO UTC, o instante da transição gravado na trilha (`learning_transitions.decided_at`), estável numa
+    reemissão.
+- Nunca conteúdo da receita ou do fluxo, seletor, conta ou texto de tela. O `message` só leva tipo, id, pacote e o
+  status nativo, e quem avisa o dono não o usa.
+- **Prova:** `simulated` (`backend/tests/test_learning_ensinado_rebaixado.py`).
