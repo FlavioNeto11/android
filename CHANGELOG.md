@@ -68,6 +68,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `::test_savepoint_aninhado_descarta_so_o_que_foi_desfeito`, o caso aninhado). Real: `not_run` (pede dois
   backends).
 
+## 2026-10-05 — 29.105: o controle manual tem saída numa tela protegida contra captura (branch fix/29-105-tela-protegida)
+
+- `DeviceManager.manual_input`: Voltar, Início e Recentes (`TECLAS_DE_NAVEGACAO`) não conferem o quadro (só o lease e
+  o aparelho no ar). Toque, arraste, texto, Enter e Apagar com quadro desconhecido ou velho e a captura falhando
+  recebem `capture_failing`, com o motivo e a saída; sem falha registrada, `stale_frame` como antes (`_quadro_velho`).
+  Antes, com a aba anônima do Chrome na frente, o quadro congelava e nem o Voltar passava (medida do 31.72).
+- Enter e Apagar ficam fora da isenção (decisão da orquestradora na leitura): agem sobre o campo em foco, e às cegas o
+  Enter confirmaria o que a pessoa não vê.
+- **Adendo v1.52.** O painel (`FocusPanel.tsx`, `client.ts`) mostra o aviso próprio de `capture_failing` e manda as
+  três teclas de navegação mesmo sem imagem exibida.
+- O que o screencap faz com a FLAG_SECURE (falha ou sai preto) segue INFERRED; as duas consequências estão no adendo.
+  Medido no android-09 (`real`, 05/10, `e5f1b22b`): o mesmo congelamento SEM tela protegida, por sobrecarga do
+  convidado (K-102, com o toque reaproveitado que abriu o Outlook).
+- Testes: a captura falhando vem do caminho real (o dublê recusa o screencap e uma volta de `_volta_da_previa` registra
+  a falha), sem escrever o contador à mão; a tecla fora do ar; Enter e Apagar; e `test_execution.py` passa a exigir o
+  código `not_controller` da tecla antes do controle.
+- Prova `simulated`, em Idle: `backend/tests/test_tela_protegida.py` (7 testes), `test_execution.py` e `test_contrato_http.py`, 34 passed; `test_tela_protegida.py` repetido 5 vezes, 7 passed em cada; `pytest @tests/catracas.txt -n 4`, 88 passed; `tests/test_arquitetura.py`, 9 passed; painel `npm run typecheck` limpo e `npm test`, 1613 passed; `docs-check`, 0 erros. `not_run`: a tela protegida no aparelho.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,
