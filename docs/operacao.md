@@ -217,7 +217,11 @@ runner **próprio** na máquina central, que não consome minutos da conta:
 - **Achado do Copilot é achado a conferir, nunca ordem.** A frente dona do PR confere no código e responde; o conserto
   volta como delta à segunda leitura.
 - **Agente de nuvem.** Só a orquestradora atribui tarefa, e só tarefa mecânica e delimitada. A aprovação para rodar
-  workflow e o firewall ficam ligados; o Copilot não aprova PR. `not_run` até a primeira tarefa.
+  workflow e o firewall ficam ligados; o Copilot não aprova PR.
+  Primeira tarefa (`real`, 05/10/2026 18:14Z, item 29.137, PR 449 em rascunho): o agente parou sem alterar nada, com
+  `hook errored`. Os hooks de `.claude/settings.json` chamam o Python por um caminho do Windows, que não existe na
+  máquina Linux do agente, e ele honra esses hooks. O conserto é o item 29.147; até lá o agente de nuvem não
+  funciona neste repositório. A revisão de PR não é afetada.
 - **Fora.** Vale só para este repositório. Ninguém instala o Copilot CLI nesta máquina. As opções de privacidade e de
   cobrança da conta são do dono.
 
