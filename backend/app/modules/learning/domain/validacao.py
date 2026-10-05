@@ -148,6 +148,9 @@ MOTIVO_HUMANO: Mapping[Motivo, str] = {
     Motivo.EFEITO_REAL: "O comando tem efeito num app real; por enquanto só a leitura se valida.",
     Motivo.SEM_FLUXO_ATIVO: "Não há fluxo ativo para este comando.",
     Motivo.SEM_CAMINHO: "O fluxo de agora não passa mais pela etapa deste item.",
+    # 30.81: a prova do ensinado que não sai sozinha passa à pessoa
+    Motivo.CLASSE_C: "O que foi ensinado é de risco alto (ou sem avaliação de agora): a prova automática não o cobre.",
+    Motivo.TENTATIVAS_ESGOTADAS: "A prova do que foi ensinado tentou 3 vezes sem veredito; a decisão fica com a pessoa.",
     # 30.42 e 30.41: recusas ao despachar (sem execução nem gasto) e os fechamentos pela linha `invalida` da prova
     Motivo.LIMITE_DE_PROVAS: "O item já teve 2 provas desta versão nos últimos 7 dias.",
     Motivo.SEM_APARELHO_NOVO: "Pedia outro aparelho, e todos os que servem já foram usados nas provas.",
