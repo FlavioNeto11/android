@@ -1837,7 +1837,9 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   preenchê-la é decisão do dono. A carga recusa `*.loja.com`, `https://…` e caminho, que nunca casariam. **31.103:** a
   barra lida é a de verdade, o primeiro nó com o id da `url_bar` FORA do trecho da página (`dialogos.texto_da_barra`,
   com a régua do 31.75): a página que põe esse id num elemento antes da barra real não escolhe o host. Sem barra fora
-  da página (H3, árvore truncada), não há isenção. Prova `simulated`; o real fica `not_run`.
+  da página (H3, árvore truncada), não há isenção. A mesma leitura vale para a conferência do site antes do
+  `type_secret` (`_conferir_destino`: a barra falsa com o host da conta não recebe a senha), e a imagem que vai ao
+  provedor tapa TODO nó com o id da barra (31.54), não só o primeiro. Prova `simulated`; o real fica `not_run`.
 - O prompt do ator diz "recuse; NUNCA aceite", só para economizar decisões.
 - Limites conhecidos:
   - a trava só age com o pacote `com.android.chrome` (cobre as Custom Tabs); não cobre WebView embutida de app nem

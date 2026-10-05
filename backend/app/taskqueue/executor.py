@@ -200,17 +200,19 @@ def imagem_com_barra_tapada(jpeg: bytes, tree: UiTree, pacote: str | None, largu
     tapar com segurança: pacote sem barra conhecida, barra fora da árvore ou sem área. Quem chama manda a imagem como
     está e registra o motivo."""
     barra = BARRA_DE_ENDERECO.get(pacote or "")
-    alvo = next((e for e in tree.elements if barra is not None and e.resource_id == barra), None)
-    if alvo is None or largura <= 0 or altura <= 0:
-        return None
-    x1, y1, x2, y2 = alvo.bounds
-    if x2 <= x1 or y2 <= y1:
+    # 31.103 (S1 da leitura): TODO nó com o id da barra é tapado, não só o primeiro. A página pode pôr o id num elemento
+    # antes da barra real; tapar só o primeiro taparia a falsa e mandaria o endereço real ao provedor. Tapar também o da
+    # página é o lado que protege (some um trecho da página da imagem, nunca o endereço).
+    caixas = [e.bounds for e in tree.elements if barra is not None and e.resource_id == barra
+              and e.bounds[2] > e.bounds[0] and e.bounds[3] > e.bounds[1]]
+    if not caixas or largura <= 0 or altura <= 0:
         return None
     with Image.open(io.BytesIO(jpeg)) as img:
         img = img.convert("RGB")
         fx, fy = img.width / largura, img.height / altura
-        ImageDraw.Draw(img).rectangle((int(x1 * fx), int(y1 * fy), int(x2 * fx + 0.999), int(y2 * fy + 0.999)),
-                                      fill=(0, 0, 0))
+        desenho = ImageDraw.Draw(img)
+        for x1, y1, x2, y2 in caixas:
+            desenho.rectangle((int(x1 * fx), int(y1 * fy), int(x2 * fx + 0.999), int(y2 * fy + 0.999)), fill=(0, 0, 0))
         buf = io.BytesIO()
         img.save(buf, "JPEG", quality=72)
     return buf.getvalue()
@@ -929,8 +931,10 @@ class StepExecutor:
         barra = BARRA_DE_ENDERECO.get(pacote or "")
         if barra is None:
             return
-        texto = next((e.text for e in (await observe()).elements if e.resource_id == barra and e.text), "")
-        host = _host(texto)
+        # 31.103 (A1 da leitura): a barra de VERDADE, fora do trecho da página. O primeiro nó com o id e com texto podia
+        # ser um elemento da página de outro domínio com o host da conta, e a senha seria digitada nela. Sem barra
+        # fora da página, o host é vazio e nada é digitado.
+        host = _host(texto_da_barra(await observe(), {barra}))
         if not host:
             raise DriverError("Não dá para confirmar o site: a barra de endereço não está visível. Role a página ao "
                               "topo e tente de novo.", effect_possible=False)

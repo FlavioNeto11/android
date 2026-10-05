@@ -25,11 +25,25 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   conteúdo da página (`_conteudo_web`, a régua do 31.75); sem barra fora da página, `""`.
 - `taskqueue/executor.py`: `_aceite_do_toque` lê o host de `ai.consentimento_aceito_em` por ela. Antes, o primeiro nó
   com o id na ordem do documento: a página com `id="com.android.chrome:id/url_bar"` antes da barra real escolhia o
-  host e liberava o "Aceitar". Sem barra confiável, não há isenção (o lado que trava). Os outros leitores da barra
-  (`BARRA_DE_ENDERECO` fora do aceite) não mudam.
-- Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py`, os três `test_31_103_…` (unidade) e
-  `test_pelo_laco_31_103_a_barra_falsa_da_pagina_nao_libera_o_aceite` (pelo laço, reprova o código anterior, conferido
-  por mutação). `real`: `not_run`.
+  host e liberava o "Aceitar". Sem barra confiável, não há isenção (o lado que trava).
+- Leitura do 31.103 (A1, S1, N2): os leitores do id da barra (`BARRA_DE_ENDERECO`) que decidem alguma coisa:
+  - **mudou, `_conferir_destino`** (a conferência do site antes do `type_secret`): lia o primeiro nó com o id e com
+    texto. Uma página de outro domínio com o id e o host da conta antes da barra real recebia a senha. Agora lê por
+    `texto_da_barra`; sem barra fora da página, o host é vazio e cai no erro que já existia ("Não dá para confirmar o
+    site"), sem digitar.
+  - **mudou, `imagem_com_barra_tapada`** (o que vai ao provedor): tapava só o primeiro nó com o id, ou seja, a falsa, e
+    o endereço real ia na imagem. Agora tapa TODO nó com o id, dentro e fora da página: tapar também o da página é o
+    lado que protege (some um trecho da página, nunca o endereço).
+  - **mudou, `_aceite_do_toque`** (a isenção de host): este item.
+  - **ficou, `_arvore_com_endereco_limpo`** (o texto da barra que vai ao prompt): já passa TODO nó com o id por
+    `endereco_para_o_prompt`, inclusive o da página; não escolhe um nó, então não há o primeiro a enganar.
+- Prova `simulated`, todas verificadas por mutação contra o código anterior:
+  - `backend/tests/test_ator_nao_aceita_consentimento.py`: os três `test_31_103_…` (unidade) e
+    `test_pelo_laco_31_103_a_barra_falsa_da_pagina_nao_libera_o_aceite` (pelo laço);
+  - `backend/tests/test_credenciais_da_conta.py`: `test_31_103_a_barra_falsa_com_o_host_da_conta_nao_recebe_a_senha` e
+    `test_31_103_a_barra_real_com_o_host_da_conta_vale_mesmo_com_a_falsa` (valores de teste, sem conta real);
+  - `backend/tests/test_url_fora_do_prompt.py::test_31_103_a_barra_falsa_da_pagina_nao_esconde_a_real_e_as_duas_sao_tapadas`.
+  `real`: `not_run`.
 
 ## 2026-10-05 — 31.75: a página com id do navegador não ganha a isenção do K2 (branch feat/31-75-pagina-com-id-do-navegador)
 

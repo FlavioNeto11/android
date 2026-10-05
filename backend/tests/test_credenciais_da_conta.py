@@ -782,3 +782,44 @@ def test_pagina_no_comando_do_instagram_nao_tira_do_catalogo() -> None:
     apps = [AppContext("instagram", "Instagram", "com.instagram.android", None, None, None)]
     assert not pede_outro_alvo("entre no perfil @fulano e curta o post da página principal", apps,
                                {"com.instagram.android"})
+
+
+def _barra_falsa_antes_da_real(fake: Any, falsa: str, real: str) -> None:
+    """31.103 (A1): a página (WebView) põe um elemento com o id da barra e o texto `falsa` ANTES da raiz do Chrome; a
+    barra de verdade, com `real`, vem depois da raiz (`control_container`), como no Chrome."""
+    from .fake_device import Node
+    barra = f"{CHROME}:id/url_bar"
+    fake.barra_de_endereco = None
+    original = fake._build
+
+    def build() -> list[Any]:
+        return [Node("android.webkit.WebView", (0, 160, 720, 1232), text="Entrar"),
+                Node("android.widget.EditText", (0, 170, 720, 230), text=falsa, rid=barra),
+                *original(),
+                Node("android.widget.FrameLayout", (0, 48, 720, 160), rid=f"{CHROME}:id/control_container",
+                     clickable=True),
+                Node("android.widget.EditText", (0, 60, 600, 150), text=real, rid=barra, clickable=True)]
+    fake._build = build
+
+
+async def test_31_103_a_barra_falsa_com_o_host_da_conta_nao_recebe_a_senha(harness: Harness,
+                                                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    """A1 da leitura do 31.103: a página de OUTRO domínio põe a barra falsa com o host da conta antes da barra real.
+    A conferência lê a barra de verdade (fora do trecho da página) e recusa; nada é digitado."""
+    rt, fake, ex, observar, pid, _ = await _preparar_login(harness, monkeypatch)
+    _barra_falsa_antes_da_real(fake, f"{HOST}/login", "outro.exemplo.test/login")
+    preencher = _preencher(ex, rt, pid, await observar(), observar)
+    with pytest.raises(DriverError) as erro:
+        await preencher(SENHA_CHROME, None)                        # type: ignore[misc]
+    assert erro.value.effect_possible is False and "outro.exemplo.test" in str(erro.value)
+    assert fake.login_fields == {}
+
+
+async def test_31_103_a_barra_real_com_o_host_da_conta_vale_mesmo_com_a_falsa(harness: Harness,
+                                                                             monkeypatch: pytest.MonkeyPatch) -> None:
+    """O outro lado: a barra real diz o host da conta e a falsa da página diz outro; a senha vai (a falsa não manda)."""
+    rt, fake, ex, observar, pid, valor = await _preparar_login(harness, monkeypatch)
+    _barra_falsa_antes_da_real(fake, "outro.exemplo.test/login", f"{HOST}/login")
+    preencher = _preencher(ex, rt, pid, await observar(), observar)
+    await preencher(SENHA_CHROME, None)                            # type: ignore[misc]
+    assert fake.login_fields.get("login_pin") == valor

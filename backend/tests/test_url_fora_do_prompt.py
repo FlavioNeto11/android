@@ -190,3 +190,23 @@ async def test_a_recusa_final_do_juiz_com_url_vai_limpa_a_etapa_ao_objetivo_e_a_
     assert any(n.startswith("Pós-condição NÃO comprovada: ") and "contas.exemplo/reset/…?…" in n for n in notas)
     bloqueio = [r["b"] for r in st.db.query("SELECT blocked_reason b FROM objectives WHERE run_id=?", (run.id,))]
     assert any(b and "contas.exemplo/reset/…?…" in b for b in bloqueio)
+
+
+def test_31_103_a_barra_falsa_da_pagina_nao_esconde_a_real_e_as_duas_sao_tapadas() -> None:
+    """S1 da leitura do 31.103: a página põe o id da barra num elemento ANTES da barra real (na ordem do documento).
+    Tapar só o primeiro taparia a falsa e mandaria o endereço real ao provedor; as duas saem tapadas."""
+    no = ('<node index="0" text="{t}" resource-id="{r}" class="{c}" package="' + CHROME + '" content-desc=""'
+          ' clickable="false" enabled="true" bounds="{b}" />')
+    xml = ('<hierarchy rotation="0">'
+           + no.format(t="Página", r="", c="android.webkit.WebView", b="[0,160][720,1232]")
+           + no.format(t="falsa.exemplo/login", r=f"{CHROME}:id/url_bar", c="android.widget.EditText",
+                       b="[0,400][720,500]")
+           + no.format(t="", r=f"{CHROME}:id/control_container", c="android.widget.FrameLayout", b="[0,0][720,150]")
+           + no.format(t="real.exemplo/reset?token=abc123", r=f"{CHROME}:id/url_bar", c="android.widget.EditText",
+                       b="[0,20][720,120]")
+           + '</hierarchy>')
+    tapada = imagem_com_barra_tapada(_branca(), parse_hierarchy(xml), CHROME, LARGURA, ALTURA)
+    assert tapada is not None
+    assert _pixel(tapada, 360, 70) < 40           # a barra real
+    assert _pixel(tapada, 360, 450) < 40          # a falsa da página
+    assert _pixel(tapada, 360, 800) > 215         # o resto da página fica
