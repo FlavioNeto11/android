@@ -166,7 +166,7 @@ describe('saúde por app', () => {
     expect(saudeDoApp).toContain('1 degradando');
     // O selo do item vem da lista do Livro: a linha de /apps/{pacote} chegou sem `saude`.
     const lista = container.querySelector('section[aria-label="Aprendido"]') as HTMLElement;
-    expect(text(lista)).toContain('Saúde: Degradando');
+    await waitFor(() => expect(text(lista)).toContain('Saúde: Degradando'));       // o Livro é outro fetch (29.104)
     expect(text(lista)).toContain('Saúde: Saudável');
   });
 });
