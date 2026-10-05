@@ -1334,6 +1334,8 @@ class TrainingSaveBody(BaseModel):
     proposal: dict[str, Any] | None = None
     profile_ids: list[str] = Field(default_factory=list, max_length=500)
     group_ids: list[str] = Field(default_factory=list, max_length=100)
+    #: 31.88 F2: `todos` (padrão) usa a lista acima; `quem_ensinou` fixa o escopo na persona do treino.
+    scope_on_proof: Literal["todos", "quem_ensinou"] = "todos"
 
 
 class PolicyGroupMember(BaseModel):

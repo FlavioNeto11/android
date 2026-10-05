@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.88 F2: a escolha de escopo do ensinado (branch feat/31-88-escopo-ao-provar)
+
+- O salvar e a prévia do modo treinamento aceitam `scope_on_proof`: `todos` (padrão, a lista do corpo; vazio é todos) ou
+  `quem_ensinou` (o escopo permanente é a persona do treino). `quem_ensinou` sem persona na sessão: 409
+  `no_teacher_persona`; junto de uma lista explícita: 400 `scope_ambiguous`. Nada é gravado na recusa.
+- A resposta do salvar e da prévia traz `scope`. O `match` já respeitava a `flow_scope`: o fluxo `quem_ensinou` não casa
+  para outra persona nem depois da prova.
+- `PUT /api/flows/{id}/scope`: a pessoa amplia ou restringe depois, com o antes e o depois no evento `log` (não no
+  Livro, para não tirar o fluxo legado da fila "Revisar"). Sem migração. Adendo v1.71.
+- Prova: `simulated` (`backend/tests/test_treino_escopo_ao_provar.py`); `real`: `not_run`.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
