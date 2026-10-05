@@ -47,6 +47,18 @@ async def test_a_tecla_passa_com_o_quadro_congelado_e_ate_sem_quadro_conhecido(h
     assert outro.value.code == "not_controller"
 
 
+async def test_a_tecla_passa_sem_quadro_nenhum_e_o_toque_diz_capture_failing(harness: Harness) -> None:
+    """O painel manda a tecla com `frame_id: ''` quando nenhuma imagem chegou: o backend não pode depender do quadro."""
+    st = harness.state
+    assert st is not None
+    rt, lease, _ = await _no_controle(harness)
+    rt.frame, rt.capture_failures, rt.capture_error = None, 1, "DriverError: screencap falhou"  # type: ignore[attr-defined]
+    await st.devices.manual_input(rt, ManualInput(lease_id=lease, frame_id="", type="key", key="back"))
+    with pytest.raises(ControlError) as recusa:
+        await st.devices.manual_input(rt, ManualInput(lease_id=lease, frame_id="", type="tap", x=10, y=10))
+    assert recusa.value.code == "capture_failing"
+
+
 async def test_toque_com_quadro_velho_e_captura_sa_segue_stale_frame(harness: Harness) -> None:
     st = harness.state
     assert st is not None

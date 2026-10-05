@@ -28,8 +28,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Adendo v1.52.** O painel (`FocusPanel.tsx`, `client.ts`) mostra o aviso próprio de `capture_failing` e manda a tecla
   mesmo sem imagem exibida.
 - O que o screencap faz com a FLAG_SECURE (falha ou sai preto) segue INFERRED; as duas consequências estão no adendo.
-- Prova `simulated`, em Idle: `backend/tests/test_tela_protegida.py` (4 novos), `test_execution.py` e
-  `test_contrato_http.py`, 31 passed; `pytest @tests/catracas.txt tests/test_arquitetura.py -n 4`, 88 passed; painel
+- Prova `simulated`, em Idle: `backend/tests/test_tela_protegida.py` (5 novos), `test_execution.py` e
+  `test_contrato_http.py`, 31 passed (o 5º, depois, 5 passed no arquivo); `pytest @tests/catracas.txt tests/test_arquitetura.py -n 4`, 88 passed; painel
   `npm run typecheck` e `npm test`, 1612 passed. `not_run`: a tela protegida no aparelho, até a medida no android-09.
 
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
