@@ -171,6 +171,11 @@ class Fato:
         """O aviso sobre quem não é o dono (28.18). `detalhe == "novo"` é o único que se decide."""
         return self.tipo == "convidado"
 
+    @property
+    def portal(self) -> bool:
+        """A mensagem de um visitante do site (28.32): `portal:<contato_id>`. Só informa."""
+        return self.tipo == "portal"
+
 
 def _sem_acento(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c)).lower()
@@ -265,6 +270,12 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
     if f.anexo:
         # Só o pedido de leitura é do anexo; "sim", um objetivo ou qualquer outra frase seguem a gramática comum (None).
         return Intencao("ler_anexo", ref=f.ident) if _LER.match(" ".join(_sem_acento(t).split())) else None
+    if f.portal:
+        # 28.32: o texto é de um desconhecido da internet. A resposta do dono a ele nunca vira pedido, execução, cartão,
+        # aprovação nem chamada de IA, e não vai ao visitante.
+        return Intencao("desconhecida", motivo="Esta mensagem é de um visitante do site e só informa: nada foi executado, "
+                                               "e a sua resposta não vai a ele. Para falar com ele, use o contato que "
+                                               "ele deixou.")
     if f.teto_de_comentarios:
         # Revisão da #314: o aviso do teto só informa. Sem este ramo, um "sim" a ele cairia no texto livre e viraria
         # pedido.

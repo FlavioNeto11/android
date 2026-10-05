@@ -29,6 +29,15 @@ from app.models import Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram
 from app.modules.avisos.application.entrega import Canal, Resultado, entregar
 from app.modules.avisos.domain.mensagem import Aviso, aviso_de_evento
+from app.modules.avisos.domain.portal import (
+    CAMPO_INVALIDO,
+    CANAL_DESLIGADO,
+    FALHA_INTERNA,
+    ContatoAvisado,
+    ContatoDoPortal,
+    aviso_do_contato,
+    motivo_de_recusa,
+)
 from app.modules.avisos.infrastructure.faxina_sql import Faxina, FaxinaDosCanais
 from app.modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from app.taskqueue.travas import AVISOS, Lideranca, TravaPerdida
@@ -40,6 +49,8 @@ KINDS_QUE_AVISAM = frozenset({"approval.pending", "run.updated", "session.needs_
                               "learning.needs_person", "pendencia.vence_em"})
 #: De quanto em quanto tempo o laço varre incertos, vencidos e purga (a entrega roda a cada volta).
 FAXINA_S = 3600.0
+#: De quanto em quanto tempo, com o canal desligado, vencem os contatos do site pendentes (28.32).
+PESSOAIS_S = 300.0
 
 
 class ServicoDeAvisos:
@@ -62,6 +73,7 @@ class ServicoDeAvisos:
         self._lider = lider or self._tomar
         self._esperar_ate = 0.0
         self._faxina_em = 0.0
+        self._pessoais_em = 0.0
         #: A faxina das tabelas de canal (28.16). Roda no mesmo laço, mas NÃO depende do Telegram pronto: o Trello pode
         #: estar ligado sem ele, e o que já foi gravado precisa sair no prazo mesmo com o canal desligado depois.
         self._faxina_canais = faxina_canais
@@ -154,6 +166,28 @@ class ServicoDeAvisos:
             log.exception("avisos: não foi possível enfileirar %s", aviso.chave)
             return False
 
+    def avisar_contato_do_portal(self, contato: ContatoDoPortal) -> ContatoAvisado:
+        """28.32: a mensagem de um visitante do site ao Telegram do dono. A rota do Portal (29.77) chama depois de validar,
+        aplicar a taxa e gravar o contato (o `contato_id` é a linha dela). Idempotente pela chave `portal:<id>`: chamar
+        de novo devolve `enfileirado=True` sem segunda mensagem. Recusa (`campo_invalido`, `canal_desligado`) e falha
+        (`falha_interna`) não gravam nada, e a rota chama de novo depois. O log leva só o id e o motivo, nunca o texto.
+        Sem `texto_seguro` nem redator (ADR-075): o contato serve para o dono responder."""
+        cid = contato.contato_id if isinstance(contato.contato_id, int) else "?"
+        try:
+            if motivo_de_recusa(contato) is not None:
+                log.info("avisos: contato do portal %s recusado: %s", cid, CAMPO_INVALIDO)
+                return ContatoAvisado(False, CAMPO_INVALIDO)
+            aviso = aviso_do_contato(contato)
+            if aviso is None:
+                return ContatoAvisado(False, CAMPO_INVALIDO)
+            if not self.ligado or self.canal() is None:
+                return ContatoAvisado(False, CANAL_DESLIGADO)
+            self.fila.enfileirar(aviso)                  # False = já estava: a chave garante uma mensagem só
+            return ContatoAvisado(True)
+        except Exception as exc:  # noqa: BLE001 - a rota guarda o contato e tenta de novo; o texto não vai ao log
+            log.error("avisos: contato do portal %s não entrou na fila: %s", cid, type(exc).__name__)
+            return ContatoAvisado(False, FALHA_INTERNA)
+
     def _com_nome_da_acao(self, data: dict[str, object] | None) -> dict[str, object] | None:
         """31.50: põe `acao_nome` (o nome do catálogo) ao lado da `acao` do lembrete. A falha da leitura só tira o nome."""
         acao = (data or {}).get("acao")
@@ -210,7 +244,10 @@ class ServicoDeAvisos:
     async def entregar_uma_vez(self) -> Resultado | None:
         """Uma volta de entrega, só no líder e com canal pronto. `None` quando pulou."""
         canal = self.canal()
-        if canal is None or time.monotonic() < self._esperar_ate:
+        if canal is None:
+            self._vencer_pessoais()
+            return None
+        if time.monotonic() < self._esperar_ate:
             return None
         token = self._lider(AVISOS)
         if token is None:
@@ -236,6 +273,20 @@ class ServicoDeAvisos:
         if resultado.falharam:
             log.warning("avisos: %d aviso(s) falharam de vez nesta volta", resultado.falharam)
         return resultado
+
+    def _vencer_pessoais(self) -> None:
+        """Canal desligado: a faxina da entrega não roda, mas o corpo do contato do site (28.32) vence do mesmo jeito. No
+        máximo uma vez por `PESSOAIS_S`."""
+        if time.monotonic() < self._pessoais_em:
+            return
+        self._pessoais_em = time.monotonic() + PESSOAIS_S
+        try:
+            vencidos = self.fila.vencer_pessoais(validade_h=self.cfg.file.avisos.validade_h)
+        except Exception as exc:  # noqa: BLE001 - a faxina nunca derruba o laço; tenta de novo na próxima volta
+            log.error("avisos: vencer os contatos pendentes com o canal desligado: %s", type(exc).__name__)
+            return
+        if vencidos:
+            log.info("avisos: %d contato(s) do site vencido(s) com o canal desligado; corpo apagado", vencidos)
 
     def _faxina(self, cerca: Callable[[], object]) -> None:
         if time.monotonic() < self._faxina_em:

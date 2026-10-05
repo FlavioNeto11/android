@@ -32,6 +32,16 @@ from app.security.redaction import redact
 API = "https://api.telegram.org"
 #: Limite do Telegram para o texto de uma mensagem; o aviso é bem menor, o corte é só um cinto.
 TEXTO_MAX = 4000
+
+
+def corte_utf16(texto: str, maximo: int) -> str:
+    """O texto em até `maximo` unidades UTF-16, que é como o Telegram conta o limite (4096): com emoji (2 unidades), o
+    corte por ponto de código passava do limite, e a mensagem voltava com 400 (revisão do #331, B1). Nunca parte um par
+    substituto."""
+    dados = texto.encode("utf-16-le")
+    if len(dados) <= 2 * maximo:
+        return texto
+    return dados[:2 * maximo].decode("utf-16-le", errors="ignore")
 DESCRICAO_MAX = 160
 #: Códigos em que repetir a mesma chamada não muda nada: token recusado, bot sem acesso ao chat, chat inexistente.
 DEFINITIVOS = frozenset({400, 401, 403, 404})
@@ -165,7 +175,7 @@ class CanalTelegram:
         """Uma mensagem ao chat configurado; devolve o `message_id` (o registro da 085). `responde_a` põe a mensagem
         na thread da pessoa; `botoes` são (rótulo, callback_data) numa linha de teclado inline. `chat_id` só para o
         convidado (28.18): a resposta a ele vai ao chat DELE, nunca ao do dono."""
-        corpo: dict[str, object] = {"chat_id": chat_id or self._chat_id, "text": texto[:TEXTO_MAX],
+        corpo: dict[str, object] = {"chat_id": chat_id or self._chat_id, "text": corte_utf16(texto, TEXTO_MAX),
                                     "disable_web_page_preview": True}
         if responde_a is not None:
             corpo["reply_parameters"] = {"message_id": responde_a, "allow_sending_without_reply": True}
