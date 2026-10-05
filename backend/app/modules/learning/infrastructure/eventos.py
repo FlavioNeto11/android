@@ -2,6 +2,8 @@
 do aviso moram em `application/espera.py` e `domain/espera.py`."""
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
@@ -26,10 +28,15 @@ class EventosNoBarramento:
     """`PortaDeEventos` (e `PortaDoEnsinado`, 30.80 B) sobre o `EventBus`: evento persistido (não está em `EPHEMERAL_KINDS`), sem aparelho. O
     payload é só o que `AvisoDeEspera.como_dados` monta (lista fechada). A falha SOBE: cada chamador decide."""
 
-    def __init__(self, bus: Barramento) -> None:
+    def __init__(self, bus: Barramento, ref_publica_do_fluxo: Callable[[str], str] | None = None) -> None:
+        """`ref_publica_do_fluxo` (30.83): o id interno do fluxo para a referência aleatória que sai do central; sem
+        ela, o id."""
         self._bus = bus
+        self._ref_publica = ref_publica_do_fluxo
 
     def esperando_a_pessoa(self, aviso: AvisoDeEspera) -> None:
+        if aviso.kind == "fluxo" and self._ref_publica is not None:
+            aviso = replace(aviso, ref=self._ref_publica(aviso.ref))      # o `href` sai da `ref`
         self._bus.emit(TIPO_DO_EVENTO, aviso.mensagem(), level=aviso.nivel, data=aviso.como_dados())
 
     def ensinado_rebaixado(self, aviso: AvisoDoEnsinado) -> None:

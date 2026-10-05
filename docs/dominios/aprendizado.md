@@ -2117,6 +2117,21 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   - A receita escondida pela espera não cai para a genérica nem para a herança (N3 da Reload): é falha fechada, e a
     etapa vai para a IA mesmo quando uma receita genérica serviria.
 - **Prova:** `simulated`, em `backend/tests/test_ensinado_em_prova.py`. `real`: `not_run`.
+
+## A referência pública do fluxo é aleatória (30.83)
+
+- O id do fluxo era o slug do `plan.summary` literal (podia trazer nome ou @) e saía em evento, `href` e log (achado S1
+  da leitura do 30.80 B, herdado do 30.21). Desenho aprovado em 05/10.
+- `flows.ref_publico` (migração 116): `f-` mais 12 hex aleatórios, nunca derivada do conteúdo (um hash do nome deixaria
+  confirmar o palpite). O fluxo novo nasce com `id = ref_publico` (`flows.ref_aleatoria`); o antigo mantém o id (sem ON
+  UPDATE CASCADE nas referências) e ganha a referência na subida (`preencher_refs_publicas`, idempotente).
+- Sai a pública: `learning.needs_person` de fluxo (`ref` e `href`), sem a referência no `message`. Entra qualquer uma:
+  as rotas do Livro com `{ref}` e o pedido de validação traduzem por `LearningService.ref_interna` (adendo v1.66).
+- A habilidade adotada de um fluxo novo herda o id opaco (`<app>.f-…`); o nome legível segue em `flows.name`.
+- **Limites (próximas fatias):** `/api/flows/{id}`, os `href` das respostas do painel, os eventos `learning.ensinado_*`
+  (30.80 B e 30.81, em ramo) e os logs com `fluxo:<id>` ainda usam o id interno.
+- **Prova:** `simulated`, em `backend/tests/test_ref_publico_do_fluxo.py`. `real`: `not_run`.
+
 ## A prova sem evidência diz a causa (30.75)
 
 A leitura de 05/10 (`.claude/handoffs/aprendizado-sem-evidencia.md`) achou 5 pedidos de fluxo `sem_evidencia`:

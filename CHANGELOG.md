@@ -99,6 +99,27 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `FocusPanel` 31.85: com atraso, o handler do POST só roda depois da espera, e liberar a resposta antes disso não soltava nada. Agora espera o handler.
 - Prova `simulated`: `src/features/focus` e `src/features/profiles` com `ATRASO_DO_FETCH_MS=40` passam nas sementes 7, 88, 1, 42, 123, 999, 2024 e 31 (255/255 em cada). Sem atraso, o frontend inteiro dá 1678/1678, com typecheck verde.
 
+## 2026-10-05 — 30.83 (fatia 1): a referência do fluxo é aleatória e não sai do resumo (branch feat/30-83-ref-publico-do-fluxo)
+
+- O id do fluxo novo deixa de ser o slug do `plan.summary` LITERAL (que podia trazer nome de pessoa ou @ e saía em
+  evento, `href` e log; achado S1 da leitura do 30.80 B, herdado do 30.21). Agora é `f-` mais 12 hex ALEATÓRIOS
+  (`flows.ref_aleatoria`), em `learn_from_run` e `learn_from_plan`. O nome legível segue na coluna `name`.
+- Migração 116: `flows.ref_publico` com índice único. O fluxo novo nasce com `ref_publico = id`; o que já existe
+  mantém o id (as referências a ele não têm ON UPDATE CASCADE) e ganha a referência na subida
+  (`flows.preencher_refs_publicas`, idempotente, chamada em `AppState`).
+- Funções tocadas (K-095): `FlowStore.learn_from_run`, `FlowStore.learn_from_plan`, `ref_aleatoria` e
+  `preencher_refs_publicas` (novas), `AppState.__init__`.
+- Fatia 2 (adendo v1.66): `learning.needs_person` de fluxo sai com `ref` e `href` na referência pública
+  (`EventosNoBarramento(ref_publica_do_fluxo=)`), e o `message` do fluxo não cita a referência
+  (`AvisoDeEspera.mensagem`). As rotas `{kind}/{ref}` do Livro e o pedido de validação aceitam o id e a referência
+  (`LearningService.ref_interna`, `id_do_fluxo`). Funções tocadas (K-095): `EventosNoBarramento.__init__` e
+  `esperando_a_pessoa`, `AvisoDeEspera.mensagem`, `LearningService.__init__` (`id_do_fluxo`, último) e
+  `ref_interna` (nova), `montar_aprendizado`, as rotas de `presentation/livro.py` e `validacoes.py::pedir_validacao`,
+  `ref_publica_do_fluxo` e `id_do_fluxo` (novas).
+- Próximas fatias: `/api/flows/{id}`, os `href` das respostas do painel, os eventos `learning.ensinado_*` (depois do
+  30.80 B e do 30.81) e os logs que levam `fluxo:<id>`.
+- Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (7). Real: `not_run`.
+
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
 
 - **Implantado** às 18:06Z: central em `9f9e2b39`, migração `115_receita_nao_aplicavel` (sem migração nova), 17 pontas sobre `19e34b22` e dois consertos de junção.

@@ -86,6 +86,7 @@ async def pedir_validacao(request: Request, ref: str) -> JSONResponse:
     """30.47: o gesto de pedir a prova de um fluxo candidato. A regra é a do pedido do curador, mais a classe C e o
     efeito fora do QA, que seguem com o dono. Quem pediu fica no pedido."""
     servico, validacao = _servicos(request)
+    ref = servico.ref_interna(LivroKind.FLUXO, ref)      # 30.83: aceita o id e a referência pública
     entrada = _chamar(lambda: servico.entrada(LivroKind.FLUXO, ref))
     try:
         pid = validacao.pedir_pela_pessoa(entrada, by=_quem(request))
