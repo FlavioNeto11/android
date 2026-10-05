@@ -89,9 +89,9 @@ def test_o_ponto_tocado_decide_e_nao_o_centro_do_elemento() -> None:
     tree = parse_hierarchy(_arvore(_PAGINA, _COOKIES, _ACEITAR, alto))
     assert _recusa(tree, "Anúncio", (360, 350)) is None                          # longe do aviso
     assert _recusa(tree, "Anúncio", (360, 1040)) == "Anúncio"                    # dentro do aviso
-    # Regra da caixa (releitura do #386): o aviso contém o "Aceitar", então a zona é a caixa dele, sem a margem de
-    # 12 % da faixa: 10 px acima do aviso o toque cai no anúncio, não no aviso.
-    assert _recusa(tree, "Anúncio", (360, 990)) is None
+    # Z1 da 2ª leitura: o aviso que É a caixa externa (não há contêiner distinto em volta) fica com a faixa de 12 %,
+    # como na 8324c9a9: 10 px acima dele o toque segue recusado (lado seguro).
+    assert _recusa(tree, "Anúncio", (360, 990)) == "Anúncio"
 
 
 def test_fora_do_aviso_a_pagina_segue_livre() -> None:
@@ -333,8 +333,9 @@ def test_k2_o_botao_do_chrome_so_e_julgado_pelo_rotulo_e_dentro_da_zona() -> Non
 
 
 def test_a_regra_da_caixa_a_zona_e_a_folha_inteira() -> None:
-    """gov.br (`gov-3-rodape`): a linha da página por baixo da folha de 49 % (antes dela no documento) é recusada; a
-    que está acima da folha, ainda dentro da antiga faixa de 12 %, passa."""
+    """gov.br (`gov-3-rodape`): a linha da página por baixo da folha de 49 % (antes dela no documento) é recusada. A
+    folha é ela mesma marca e a caixa externa: pelo Z1 da 2ª leitura, a zona dela é a faixa, e a linha 42 px acima
+    também é recusada (lado seguro); bem acima da faixa, passa."""
     tree = _xml(("Saúde e Vigilância Sanitária", (32, 480, 688, 560), "", "", True),
                 ("Viagens e Turismo", (32, 918, 688, 1066), "", "", True),
                 ("Para melhorar a sua experiência, usamos cookies", (0, 602, 720, 1232), "", "", False),
@@ -342,7 +343,7 @@ def test_a_regra_da_caixa_a_zona_e_a_folha_inteira() -> None:
                 ("Rejeitar cookies", (192, 1004, 528, 1068), "", "android.widget.Button", True),
                 ("Aceitar cookies", (192, 1100, 528, 1164), "", "android.widget.Button", True))
     assert _recusa(tree, "Viagens e Turismo") == "Viagens e Turismo"
-    assert _recusa(tree, "Saúde e Vigilância Sanitária") is None
+    assert _recusa(tree, "Saúde e Vigilância Sanitária") == "Saúde e Vigilância Sanitária"
     assert _recusa(tree, "Rejeitar cookies") is None
     assert _recusa(tree, "Aceitar cookies") == "Aceitar cookies"
 
@@ -429,3 +430,55 @@ async def test_pelo_laco_k4_o_type_text_fora_de_campo_vindo_da_receita_diverge(h
     assert _toques_em(fake2, antes, botao.bounds) == 0
     assert any(e.startswith(REJEICAO_TYPE_TEXT_FORA_DE_CAMPO) for e in _recusadas(harness, final.id, "type_text"))
     assert metricas.valor("receita.reproducao", resultado="divergiu") >= 1
+
+
+# ------------------------------------------------------------------------ 2ª leitura do #386: Z1, K1b e K2b
+def test_z1_o_paragrafo_com_link_nao_encolhe_a_zona() -> None:
+    """O parágrafo do aviso com o link "política de cookies" dentro dele: sem contêiner distinto, a zona é a faixa, e os
+    botões 100 px abaixo que não dizem aceitar seguem recusados."""
+    tree = _xml(("Usamos cookies para melhorar sua experiência. Saiba mais na política de cookies",
+                 (20, 1000, 700, 1060), "", "", False),
+                ("política de cookies", (400, 1030, 600, 1058), "", "", True),
+                ("Estou de acordo", (20, 1150, 340, 1200), "", "android.widget.Button", True),
+                ("Ciente", (360, 1150, 500, 1200), "", "android.widget.Button", True),
+                ("Prosseguir", (520, 1150, 700, 1200), "", "android.widget.Button", True))
+    for rotulo in ("Estou de acordo", "Ciente", "Prosseguir"):
+        assert _recusa(tree, rotulo) == rotulo, rotulo
+
+
+def test_k1b_o_botao_que_fecha_escolhe_continuar_sem_aceitar() -> None:
+    from app.taskqueue.dialogos import botao_que_fecha
+    tree = _xml(("", (0, 900, 720, 1232), "cookie-banner", "", True),
+                ("Usamos cookies para melhorar sua experiência", (20, 920, 700, 980), "", "", False),
+                ("Aceitar", (20, 1100, 340, 1160), "", "android.widget.Button", True),
+                ("Continuar sem aceitar", (360, 1100, 700, 1160), "", "android.widget.Button", True))
+    escolhido = botao_que_fecha(tree)
+    assert escolhido is not None and escolhido.text == "Continuar sem aceitar"
+
+
+def test_k1_o_x_com_desc_accept_segue_vetado() -> None:
+    """O caso do #308: text "X" e desc "Accept"; o rótulo exato de fechar não livra quando o outro campo diz aceitar."""
+    corpo = ('<node index="0" text="Usamos cookies para melhorar sua experiência" resource-id="" class="android.view.View" '
+             'package="com.android.chrome" content-desc="" clickable="false" enabled="true" bounds="[0,1000][720,1060]" />'
+             '<node index="1" text="X" resource-id="" class="android.widget.Button" package="com.android.chrome" '
+             'content-desc="Accept" clickable="true" enabled="true" bounds="[660,200][708,248]" />')
+    tree = parse_hierarchy(f'<hierarchy rotation="0">{corpo}</hierarchy>')
+    assert _recusa(tree, "X") == "X"
+
+
+def test_k2b_so_o_link_de_privacidade_do_rodape_nao_tranca_a_tela() -> None:
+    """Com só o link "Política de privacidade" do rodapé, a palavra de aceite longe dele passa; perto dele, não."""
+    tree = _xml(("Política de privacidade", (20, 1180, 300, 1220), "", "", True),
+                ("OK", (20, 300, 200, 360), "", "android.widget.Button", True),
+                ("Permitir", (220, 300, 400, 360), "", "android.widget.Button", True),
+                ("Aceitamos Pix", (420, 300, 700, 360), "", "", True),
+                ("Concordo", (320, 1180, 500, 1220), "", "android.widget.Button", True))
+    for rotulo in ("OK", "Permitir", "Aceitamos Pix"):
+        assert _recusa(tree, rotulo) is None, rotulo
+    assert _recusa(tree, "Concordo") == "Concordo"                     # na faixa do link, segue recusado
+
+
+def test_k2b_com_aviso_de_verdade_a_palavra_de_aceite_e_recusada_em_qualquer_lugar() -> None:
+    tree = _xml(("Usamos cookies para melhorar sua experiência", (0, 160, 720, 220), "", "", False),
+                ("ACEITAR TODOS", (120, 1050, 600, 1110), "", "android.widget.Button", True))
+    assert _recusa(tree, "ACEITAR TODOS") == "ACEITAR TODOS"

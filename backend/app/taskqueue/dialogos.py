@@ -125,7 +125,8 @@ def botao_que_fecha(tree: UiTree, area: tuple[int, int, int, int] | None = None)
             continue
         rotulo, rid = _rotulo(e), e.resource_id or ""
         # Releitura do #308: o veto olha text, desc e id, os três; o rótulo usa só um deles (text "X", desc "Accept").
-        if any(_NUNCA.search(x) for x in (e.text or "", e.desc or "", rid)):
+        # K1b da releitura do #386: o mesmo `_diz_aceitar` da trava do ator ("Continuar sem aceitar" é saída).
+        if _diz_aceitar(e):
             continue
         normal = _normal(rotulo)
         if normal in _ROTULOS_QUE_FECHAM:
@@ -187,9 +188,9 @@ def _diz_aceitar(e: UiElement) -> bool:
     aceitar"); o `_NUNCA` no id recusa sempre (`cookie-accept-and-close`)."""
     if _NUNCA.search(e.resource_id or ""):
         return True
-    if _normal(_rotulo(e)) in _ROTULOS_QUE_FECHAM:
-        return False
-    return any(_NUNCA_NO_ROTULO.search(x) for x in (e.text or "", e.desc or ""))
+    campos = [x for x in (e.text or "", e.desc or "") if x]
+    # Só o campo que NÃO é um rótulo exato de fechar conta: text "X" com desc "Accept" (#308) segue vetado.
+    return any(_NUNCA_NO_ROTULO.search(x) for x in campos if _normal(x) not in _ROTULOS_QUE_FECHAM)
 
 
 def _contem(fora: tuple[int, int, int, int], dentro: tuple[int, int, int, int]) -> bool:
@@ -238,7 +239,9 @@ def toque_que_aceita(tree: UiTree, alvo: UiElement | None,
         # a página: fora da zona não se julga pelo rótulo; dentro dela, só o que diz aceitar é recusado.
         return alvo if na_zona and _diz_aceitar(alvo) else None
     if _diz_aceitar(alvo):
-        return alvo
+        # K2b: a palavra de aceite é recusada em qualquer lugar só com um aviso de verdade na tela; com só o link de
+        # privacidade do rodapé, "OK", "Permitir" e "Aceitamos Pix" longe dele passam (na zona dele, não).
+        return alvo if na_zona or any(_cara_de_aviso(tree, m, pagina) for m in marcas) else None
     if alvo.editable:
         return None                                    # tocar num campo de texto não aceita nada
     if na_zona and not _fecha_ou_recusa(alvo):
@@ -251,14 +254,32 @@ def _na_zona(tree: UiTree, marca: UiElement, x: float, y: float, pagina: float, 
     maior que a contém, abaixo da fração da página, que é marca ou tem `_PISTAS`, e que contém mais que a própria
     marca), a zona é a caixa inteira: a folha de cookies do gov.br (05/10) cobre 49 % do rodapé, e a página por baixo
     dela não recebe o toque. Sem caixa, a faixa em volta da marca, porque o leitor descarta o contêiner vazio."""
-    caixas = [e for e in tree.elements if _contem(e.bounds, marca.bounds) and _area(e.bounds) < pagina
-              and (e is marca or _de_consentimento(e) or _PISTAS.search(e.class_name or "")
-                   or _PISTAS.search(e.resource_id or ""))]
-    caixa = max(caixas, key=lambda e: _area(e.bounds), default=marca)
-    if any(e is not caixa and _contem(caixa.bounds, e.bounds) for e in tree.elements):
+    caixa = _caixa_da_marca(tree, marca, pagina)
+    if caixa is not None:
         b = caixa.bounds
         return b[0] <= x <= b[2] and b[1] <= y <= b[3]
     return marca.bounds[1] - margem <= y <= marca.bounds[3] + margem
+
+
+def _caixa_da_marca(tree: UiTree, marca: UiElement, pagina: float) -> UiElement | None:
+    """A caixa reconhecida da marca, ou `None`. Z1 da releitura: só um contêiner DISTINTO da marca é caixa. O parágrafo
+    do aviso com o link "política de cookies" dentro dele não é: a zona encolheria para o retângulo dele e o botão
+    100 px abaixo passaria."""
+    caixas = [e for e in tree.elements if e is not marca and _contem(e.bounds, marca.bounds) and _area(e.bounds) < pagina
+              and (_de_consentimento(e) or _PISTAS.search(e.class_name or "") or _PISTAS.search(e.resource_id or ""))]
+    caixa = max(caixas, key=lambda e: _area(e.bounds), default=None)
+    if caixa is not None and any(e is not caixa and _contem(caixa.bounds, e.bounds) for e in tree.elements):
+        return caixa
+    return None
+
+
+#: K2b da releitura: a marca com cara de AVISO tem texto de consentimento de frase (não o link "Política de
+#: privacidade" do rodapé, com 24 caracteres) ou está dentro de uma caixa reconhecida.
+_FRASE_DE_AVISO = 30
+
+
+def _cara_de_aviso(tree: UiTree, marca: UiElement, pagina: float) -> bool:
+    return len(_rotulo(marca)) > _FRASE_DE_AVISO or _caixa_da_marca(tree, marca, pagina) is not None
 
 
 def rotulo_para_o_ator(e: UiElement) -> str:

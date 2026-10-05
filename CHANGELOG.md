@@ -34,7 +34,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   no rótulo; o botão do Chrome só pelo rótulo e dentro da zona), a regra da caixa (zona = a caixa do aviso), "Rejeitar
   cookies" na lista de fechar, K3 (recusas por etapa, com o B1 no mesmo limite), K4 (o B1 da receita diverge), sufixo
   público recusado na carga e Cc/Cf fora do rótulo do ator.
-- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (32), com 9 mutações conferidas. `real`: `not_run`.
+- 2ª leitura do #386: Z1 (só contêiner distinto da marca é caixa), K1b (`botao_que_fecha` com o mesmo
+  `_diz_aceitar`, sem soltar o caso do #308) e K2b (aceite recusado em qualquer lugar só com marca de cara de aviso).
+- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (37), com 13 mutações conferidas. `real`: `not_run`.
 
 ## 2026-10-05 — 31.73: a recusa por sobreposição pede cobertura de verdade (branch fix/31-73-sobreposicao-com-duas-causas)
 
