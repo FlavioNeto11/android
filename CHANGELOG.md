@@ -49,6 +49,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `backend/tests/test_backup.py` segue com 12 testes.
 - Real: `not_run` para o conserto. O único dado real é a recusa das 03:19:01Z, que prova o DEFEITO; o conserto se
   prova no próximo deploy com `-Ensaio` seguido de `-PularBackup`.
+
 ## 2026-10-05 — 31.65: o motivo livre da recusa da persona sai da dica que viaja (branch feat/31-65-motivo-do-modelo-fora-da-dica)
 
 - V2 da revisão do 31.63: quando a persona recusava escrever, a dica do bloqueio era o `refusal_reason` (ou o
@@ -66,6 +67,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_protecao_de_frota.py`, teste da retomada novo, que falha com a marca antiga,
   e a ausência no evento gravado; `frontend/src/features/runs/CorrigirEtapa.test.tsx`, 2 testes novos;
   `frontend/src/store/reducer.test.ts`, 1 novo). Real: `not_run`.
+
 ## 2026-10-05 — 31.67: causa de exceção sem texto do modelo nem argumentos de ferramenta (branch fix/31-67-causa-sem-texto)
 
 - V1b e V4 da revisão do 31.63. Três erros de IA (`parsing.loads_json`, `provider.persona_draft_from_json`,
@@ -75,6 +77,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Agora os quatro são levantados FORA do `except` (sem `__cause__` nem `__context__`), com a mensagem de antes (linha e
   coluna; `loc: msg`, e os erros da ferramenta lidos sem a entrada).
 - Prova: `simulated` (`backend/tests/test_rascunho_fora_do_log.py`, 4 testes novos). Real: `not_run`.
+
 ## 2026-10-05 — 31.66: o navegador sai do primeiro plano ao fechar o objetivo (branch feat/31-66-navegador-fora-da-frente)
 
 - Achado da janela de provas do deploy 33: o fim de uma execução de navegador deixava o Chrome na frente redesenhando
@@ -92,6 +95,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_navegador_fora_da_frente.py`). `not_run`: a carga real no android-09 com o
   pedido de navegador do A/B, logo depois do fim e em 1 minuto, contra o "antes" do 31.56 (3,1 a 7,5; abaixo de 2 em
   1,5 a 2,3 min depois de um HOME), na janela do deploy 35.
+
 ## 2026-10-05 — 29.89: o dono busca na exclusão mesmo com o teto geral esgotado (branch feat/29-89-cota-do-dono)
 
 - **O problema** (revisão do #342, E4 baixa): dois operadores esgotam as 60 buscas da hora, e ninguém busca por até
@@ -101,6 +105,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   dos outros. Com a lista vazia, ninguém escapa do teto. Não há chave nova no config.
 - **Prova:** `simulated` (`tests/test_portal_exclusao.py`: dono com o teto esgotado e sem gastá-lo, e sem dono
   declarado; o mutante com o dono dentro do teto reprova). `not_run`: o central.
+
 ## 2026-10-05 — 29.90: "OK" é aceite, não dispensa; a folha entre a guarda e o Share não recebe o toque (branch feat/29-90-ok-e-aceite)
 
 - Sobras das leituras do 29.87 (#355). O rótulo `ok` sai dos rótulos GLOBAIS de dispensa da sessão do Instagram
@@ -121,6 +126,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `test_sobreposicao.py`, `test_learning_falhas.py`, `test_learning_diagnostico.py`, `test_funil_de_receitas.py`); o
   teste da folha entre a guarda e o Share falha com a releitura desligada (o toque cai na folha em 360,1188).
   `not_run`: aparelho real e a duração da releitura (p50/p95, central e remoto).
+
 ## 2026-10-05 — 29.92: a sessão `unknown` em aparelho com conta real para na primeira e chama a pessoa (branch fix/29-92-sessao-unknown-pede-a-pessoa)
 
 - Achado do rastro do 29.90: abaixo do teto, a porta de sessão devolvia `ensure_session(automatic=True)` a cada tick; a
@@ -140,6 +146,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   registra as duas exceções de propósito: o app fora do primeiro plano não soma, e o login acontece na mesma rodada (U3/U4).
 - Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py`,
   `test_conta_bloqueada_sai.py`). `not_run`: aparelho real.
+
 ## 2026-10-05 — 29.95: o site aponta cada arquivo pela versão do conteúdo (branch feat/29-95-versao-dos-arquivos-do-site)
 
 - **Por quê** (caminhada da orquestradora depois do deploy 34): no Chrome do dono, o rótulo "Ilustração" seguiu com a
@@ -206,6 +213,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     desligado na zona desde as 02:23Z);
   - `not_run`: o central depois do deploy 35 (o peso da raiz no gzip da origem, perto de 10,6 KB, e a prova de fora
     com as linhas novas). Não se religa o Web Analytics para provar.
+
 ## 2026-10-05 — 31.70: o resto da varredura do 31.67, erro sobre a saída do modelo sem o texto dela (branch fix/31-70-causa-sem-texto-resto)
 
 - **O que muda:** os erros sobre a saída do modelo agora são levantados FORA do `except` e sem `from`. Antes, a exceção
@@ -225,6 +233,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Prova:** `simulated`. `backend/tests/test_causa_sem_texto_resto.py` (8 casos) e
   `test_openai_provider.py::test_argumentos_ilegiveis_da_ferramenta_viram_erro_sem_o_texto_na_causa`. O segredo vai num
   valor que a mensagem antiga mostrava, e os testes conferem a mensagem, `__cause__` e `__context__`. Real: `not_run`.
+
 ## 2026-10-05 — 29.98: o conjunto das catracas em arquivo de ids (branch test/29-98-catracas)
 
 - `backend/tests/catracas.txt` (53 ids) e `scripts/tests/catracas.txt` (6 ids): os testes que inspecionam o código
@@ -235,6 +244,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Regra em `.claude/rules/testes.md`: todo dirigido que toque `backend/app` roda o conjunto inteiro.
 - Prova: `simulated`, em Idle, na máquina central: o backend deu 86 passed em 30,8 s com `-n 4` (37 s de parede); os
   scripts, 6 passed em 0,4 s; `test_catracas`, 6 passed. Real: não se aplica.
+
 ## 2026-10-05 — 28.40: aviso para todo objetivo parado esperando a pessoa (branch canais/28-40-objetivo-parado)
 
 - `avisos/domain/mensagem.py`: tipo `objective.waiting_user` (nível 1, sai na hora, com rajada). O objetivo que entra
@@ -256,6 +266,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   pula o objetivo em `waiting_user`, cujo motivo livre traz texto de tela ou de conta (revisão do #372, O2).
 - Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` (50 testes); rede dirigida dos canais verde.
   Real: `not_run`.
+
 ## 2026-10-05 — 30.70: a espera por uma pessoa não é veredito sobre a receita (branch fix/30-70-espera-nao-e-veredito)
 
 - Achado da leitura do 30.69: em `StepExecutor._after_step`, o `veredito` só excluía defeito do plano, `retry` e
@@ -269,17 +280,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_espera_nao_e_veredito_da_receita.py`, 3 testes). Cada metade do conserto,
   desfeita, reprova o seu teste. `not_run`: aparelho real.
 
-## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
-
-- `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do
-  rascunho, que iam a painel, aviso e resumo).
-- `app/social/service.py`: o log da reescrita por fala atribuída a terceiro leva o tamanho do trecho, não o trecho; o
-  motivo da recusa (que vai ao `hint` da espera) deixou de citar o trecho entre aspas.
-- Varredura dos outros logs, eventos e decisões do backend por texto de rascunho ou de mensagem: só esses três levavam.
-  Os demais `{texto}` são frases do sistema (estado, motivo, ADR), não texto da persona.
-- O texto continua onde quem decide o vê: na etapa e no pedido de aprovação.
-- Prova: `simulated` (`backend/tests/test_rascunho_fora_do_log.py`, 2 testes; falham com o código da main). Rodada
-  dirigida: 170 passed.
 ## 2026-10-05 — 31.69: valor curto sem identificador não fecha a leitura pela prova local (branch feat/31-69-valor-curto-sem-id)
 
 - L3 da leitura do 31.61: sem `resource_id` (Compose, WebView), um valor curto inteiro ("1", "Sim") de OUTRO elemento
@@ -289,40 +289,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`, 3 testes novos; os dois negativos falham no código
   anterior). Real: `not_run`.
 
-## 2026-10-05 — 31.61 (A): leitura julgada com prova local de tela fecha sem `step_done` (branch feat/31-61-leitura-sem-step-done)
-
-- **Etapa:** a de leitura (tem saídas, sem efeito, sem `commit_guard`, sem `commit_selector`), julgada, com prova local
-  de TELA no catálogo (`count_gt` e `sent_text` ficam fora).
-- **Fecho:** com todas as saídas lidas, o executor relê a árvore (`imagem=False`). Se a prova local vale NESSA árvore,
-  o laço sai para a verificação final sem pedir o `step_done` ao ator.
-- **Inalterado:** a verificação final roda igual, e o juiz continua onde o contrato pede (`need`). Sem prova declarada,
-  nada muda.
-- **Instrução direta:** depois do `step_done` recusado e depois de leitura parcial: "a tela já está pronta: a próxima
-  ação é read_value de 'X'". Só o nome da saída, nunca o valor nem o texto da tela.
-- **Medida, roteiro das 8 decisões da `r-20261004232524-2e0775`:** 8 → 7 `decide`; o tempo do harness não muda
-  (`decide` simulado).
-- **Teste negativo:** a tela muda depois da última leitura → a etapa não fecha e o `step_done` volta a ser pedido.
-- **L1 da revisão:** a prova confere a tela; o fecho também exige que cada valor lido da árvore ainda apareça na
-  árvore relida (outra tela do mesmo tipo não fecha com os valores da anterior), e valor lido da imagem deixa o
-  ator no laço. Teste: a mesma lista com outros contatos depois da última leitura não fecha.
-- **L2 da revisão:** o valor tem de seguir no MESMO elemento (`resource_id`) e, lido sem trecho, com o texto igual
-  (`valor_segue_na_tela`); por contenção, um valor curto casaria em outra tela do mesmo tipo. Teste: "QA-0011"
-  na lista relida não confirma "QA-001".
-- Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`; o `_prova_local` é dublê por árvore). Real:
-  `not_run`, janela depois do deploy 34.
-
-## 2026-10-05 — 31.62: bolha sem id, o "abaixo" em todos os contêineres de lista, pelo centro (branch feat/31-62-lista-de-todos-os-conteineres)
-
-- **Todos os contêineres:** `UiTree._ultima_sem_tipo` confere "mensagem abaixo" em TODOS os contêineres de lista que
-  contêm a bolha, não só no menor. Uma lista interna justa em volta da bolha escondia as mensagens mais novas da lista
-  de fora (Q1 da revisão do 31.59).
-- **Regra do centro:** "dentro da lista" passa a ser o centro do elemento dentro dela (`_na_faixa`); a contenção
-  inteira perdia a mensagem nova que vaza da lista.
-- **Desvio da revisão:** a revisão sugeria "topo na faixa e sobreposição horizontal". No Direct medido (31.26), o botão
-  "Send" da barra de escrita começa em y=1132, antes do fim da lista (1166), e contaria como "abaixo": o envio provado
-  iria ao juiz. Pelo centro (y=1168), ele fica fora.
-- Prova: `simulated` (`backend/tests/test_bolha_sem_id.py`, 2 testes novos que falham no código anterior). Real:
-  `not_run`.
 ## 2026-10-05 — 28.39: sobras do desfecho e do plano esquecido (branch canais/28-39-sobras-do-desfecho)
 
 - G1 da leitura do #358: a primeira vez que a conversa vê a execução em `planned` fica gravada na linha, no `previa`,
@@ -369,6 +335,104 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   nome do dono (F4). O desfecho "cancelada" fecha a linha.
 - Prova: `simulated`, com 11 testes novos em `tests/test_telegram_entrada.py`, 1 em `tests/test_trello_leitor.py` e
   1 em `tests/test_telegram_portas.py` (o sinal com e sem gesto, sobre o serviço real do harness). No ambiente real: `not_run`.
+
+## 2026-10-05 — 28.37: a saúde acusa quando os backends ligam canais diferentes (branch canais/28-37-canais-divergentes)
+
+- N1 da revisão do #345: numa frota com um backend só com o aviso e outro só com o Trello, quem pega a trava `avisos`
+  segura os dois laços, e o canal que só o outro liga para calado. Agora cada backend publica o que liga
+  (`CanaisDaFrota`, `avisos/infrastructure/canais_frota.py`) na tabela `settings`, chave `canais.config:<OWNER_ID>`,
+  sem migração. O valor é só `{avisos, trello, em}`. A escrita sai na volta das travas, só quando muda ou a cada
+  120 s.
+- Problema de saúde `canais_divergentes` quando um canal ligado em algum backend com publicação fresca (< 240 s) não
+  está ligado no líder da trava. Aparece em qualquer backend, e o texto não leva `OWNER_ID`. Sem líder, ou com um
+  backend só, não acusa.
+- A publicação sai no encerramento limpo, e a de backend sumido há mais de 1 h é varrida na escrita. A chave não
+  aparece no `GET /api/settings` e o `PUT` a recusa (`unknown_setting`).
+- Notas C1 a C3 da revisão, consertadas no próprio PR:
+  - C1: a varredura apaga com `WHERE key=? AND value=?`, pelo valor lido; a publicação que o dono regravou no meio fica.
+  - C2: o `retirar()` tem `try` próprio no `stop()`, e a falha das travas não o impede.
+  - C3: só quem roda o scheduler publica, retira e se conta (`roda=cfg.roda_scheduler`). Uma réplica só de API não
+    acusa um canal que nunca roda nela.
+- Prova: `simulated`, em `tests/test_avisos_canais_frota.py` (12 testes). A frota real com dois backends fica
+  `not_run`: hoje há um só.
+
+## 2026-10-05 — 31.64: a etapa da irmã em curso conta no objeto da família (branch feat/31-64-imagem-sem-aprovacao-na-familia)
+
+- **O furo:** com `publicar_sem_aprovacao` ligado (padrão desligado), persona `autonomous` e nenhum outro motivo de
+  aprovação, a porta não grava pedido, e a saída só nasce no commit. A segunda persona do mesmo pedido passava com a
+  mesma imagem enquanto a primeira publicava (sobra do 31.53).
+- **O conserto:** `_mesmo_objeto_na_familia` conta também as etapas das outras personas do pedido em `running` ou
+  `verifying`, com a mesma capability e o mesmo objeto (`SocialRepository.etapas_em_curso_da_acao`). Etapas em
+  `ready` e `failed` não contam.
+- **F1 da revisão:** a etapa vira `running` na tomada, antes da porta; duas irmãs tomadas juntas se viam e as duas
+  eram recusadas. Agora só contam as MAIS ANTIGAS que a etapa da porta (`started_at`, `id` no desempate): das
+  que correm juntas, exatamente uma passa (testes de duas e de três irmãs).
+- **S1 da revisão (migração 110):** a ordem das tomadas não basta (a retomada de `retry_wait`/`waiting_user` mantém o
+  `started_at` da primeira tomada; o relógio varia por máquina). A porta marca `steps.passou_a_porta` ao liberar o
+  efeito; quem passou conta sempre (fora de falha e cancelamento), e "só as mais antigas" vale só entre as que não
+  passaram. Testes: retomada de `retry_wait` e de `waiting_user` recusada; a que passou e falhou não conta.
+- **S2 da revisão:** a marca conta só nos estados abertos (a concluída já sai pela saída gravada, com janela) e o lote da
+  consulta vem pelo `id` DESC. Antes, mais de 200 marcas concluídas na persona irmã tiravam a etapa em curso do
+  `LIMIT 200` e a mesma imagem passava. Teste: 201 concluídas + 1 em curso, recusa sai.
+- Prova: `simulated` (`backend/tests/test_familia_por_objeto.py::test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem`,
+  falha no código anterior). Real: `not_run`.
+
+## 2026-10-05 — 31.56: a barra de endereço tapada vira o padrão (branch feat/31-56-tapar-barra-ligado)
+
+- O A/B ao vivo do 31.56 deu LIGA (05/10, android-09, deploy 33, 3 execuções por braço): sucesso 3/3 nos dois braços,
+  16 decisões ligada contra 14 desligada (+14,3 %, teto 20 %), US$ 0,496713 no total. O padrão de
+  `ai.tapar_barra_de_endereco` passa a `true` em `config.py` e em `config.example.yaml`; o central já está ligado pela
+  config dele. Ressalva: n = 3 por braço; o veredito é o do critério pré-registrado, não uma estimativa do efeito.
+- A virada é silenciosa para quem não tem a chave no `config.yaml`: quem quiser o comportamento antigo põe
+  `ai.tapar_barra_de_endereco: false`.
+- Prova: `real` do A/B (acima); `simulated` do padrão (`backend/tests/test_url_fora_do_prompt.py`).
+
+## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
+
+- `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do
+  rascunho, que iam a painel, aviso e resumo).
+- `app/social/service.py`: o log da reescrita por fala atribuída a terceiro leva o tamanho do trecho, não o trecho; o
+  motivo da recusa (que vai ao `hint` da espera) deixou de citar o trecho entre aspas.
+- Varredura dos outros logs, eventos e decisões do backend por texto de rascunho ou de mensagem: só esses três levavam.
+  Os demais `{texto}` são frases do sistema (estado, motivo, ADR), não texto da persona.
+- O texto continua onde quem decide o vê: na etapa e no pedido de aprovação.
+- Prova: `simulated` (`backend/tests/test_rascunho_fora_do_log.py`, 2 testes; falham com o código da main). Rodada
+  dirigida: 170 passed.
+
+## 2026-10-05 — 31.61 (A): leitura julgada com prova local de tela fecha sem `step_done` (branch feat/31-61-leitura-sem-step-done)
+
+- **Etapa:** a de leitura (tem saídas, sem efeito, sem `commit_guard`, sem `commit_selector`), julgada, com prova local
+  de TELA no catálogo (`count_gt` e `sent_text` ficam fora).
+- **Fecho:** com todas as saídas lidas, o executor relê a árvore (`imagem=False`). Se a prova local vale NESSA árvore,
+  o laço sai para a verificação final sem pedir o `step_done` ao ator.
+- **Inalterado:** a verificação final roda igual, e o juiz continua onde o contrato pede (`need`). Sem prova declarada,
+  nada muda.
+- **Instrução direta:** depois do `step_done` recusado e depois de leitura parcial: "a tela já está pronta: a próxima
+  ação é read_value de 'X'". Só o nome da saída, nunca o valor nem o texto da tela.
+- **Medida, roteiro das 8 decisões da `r-20261004232524-2e0775`:** 8 → 7 `decide`; o tempo do harness não muda
+  (`decide` simulado).
+- **Teste negativo:** a tela muda depois da última leitura → a etapa não fecha e o `step_done` volta a ser pedido.
+- **L1 da revisão:** a prova confere a tela; o fecho também exige que cada valor lido da árvore ainda apareça na
+  árvore relida (outra tela do mesmo tipo não fecha com os valores da anterior), e valor lido da imagem deixa o
+  ator no laço. Teste: a mesma lista com outros contatos depois da última leitura não fecha.
+- **L2 da revisão:** o valor tem de seguir no MESMO elemento (`resource_id`) e, lido sem trecho, com o texto igual
+  (`valor_segue_na_tela`); por contenção, um valor curto casaria em outra tela do mesmo tipo. Teste: "QA-0011"
+  na lista relida não confirma "QA-001".
+- Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`; o `_prova_local` é dublê por árvore). Real:
+  `not_run`, janela depois do deploy 34.
+
+## 2026-10-05 — 31.62: bolha sem id, o "abaixo" em todos os contêineres de lista, pelo centro (branch feat/31-62-lista-de-todos-os-conteineres)
+
+- **Todos os contêineres:** `UiTree._ultima_sem_tipo` confere "mensagem abaixo" em TODOS os contêineres de lista que
+  contêm a bolha, não só no menor. Uma lista interna justa em volta da bolha escondia as mensagens mais novas da lista
+  de fora (Q1 da revisão do 31.59).
+- **Regra do centro:** "dentro da lista" passa a ser o centro do elemento dentro dela (`_na_faixa`); a contenção
+  inteira perdia a mensagem nova que vaza da lista.
+- **Desvio da revisão:** a revisão sugeria "topo na faixa e sobreposição horizontal". No Direct medido (31.26), o botão
+  "Send" da barra de escrita começa em y=1132, antes do fim da lista (1166), e contaria como "abaixo": o envio provado
+  iria ao juiz. Pelo centro (y=1168), ele fica fora.
+- Prova: `simulated` (`backend/tests/test_bolha_sem_id.py`, 2 testes novos que falham no código anterior). Real:
+  `not_run`.
 
 ## 2026-10-05 — 28.36: a aprovação no plano trava a linha da execução (branch canais/28-36-trava-na-aprovacao)
 
@@ -483,25 +547,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py`: as funções puras sobre as árvores REAIS do 13
   em `tests/fixtures/instagram_legenda/`, e o laço do executor com a geometria medida). `not_run`: a 1ª publicação real
   (29.30), depois do deploy 34.
-## 2026-10-05 — 28.37: a saúde acusa quando os backends ligam canais diferentes (branch canais/28-37-canais-divergentes)
-
-- N1 da revisão do #345: numa frota com um backend só com o aviso e outro só com o Trello, quem pega a trava `avisos`
-  segura os dois laços, e o canal que só o outro liga para calado. Agora cada backend publica o que liga
-  (`CanaisDaFrota`, `avisos/infrastructure/canais_frota.py`) na tabela `settings`, chave `canais.config:<OWNER_ID>`,
-  sem migração. O valor é só `{avisos, trello, em}`. A escrita sai na volta das travas, só quando muda ou a cada
-  120 s.
-- Problema de saúde `canais_divergentes` quando um canal ligado em algum backend com publicação fresca (< 240 s) não
-  está ligado no líder da trava. Aparece em qualquer backend, e o texto não leva `OWNER_ID`. Sem líder, ou com um
-  backend só, não acusa.
-- A publicação sai no encerramento limpo, e a de backend sumido há mais de 1 h é varrida na escrita. A chave não
-  aparece no `GET /api/settings` e o `PUT` a recusa (`unknown_setting`).
-- Notas C1 a C3 da revisão, consertadas no próprio PR:
-  - C1: a varredura apaga com `WHERE key=? AND value=?`, pelo valor lido; a publicação que o dono regravou no meio fica.
-  - C2: o `retirar()` tem `try` próprio no `stop()`, e a falha das travas não o impede.
-  - C3: só quem roda o scheduler publica, retira e se conta (`roda=cfg.roda_scheduler`). Uma réplica só de API não
-    acusa um canal que nunca roda nela.
-- Prova: `simulated`, em `tests/test_avisos_canais_frota.py` (12 testes). A frota real com dois backends fica
-  `not_run`: hoje há um só.
 
 ## 2026-10-05 — 28.35: a trava `avisos` só fica com quem usa um canal (branch canais/28-35-trava-so-com-aviso)
 
@@ -560,26 +605,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   chave repetida no `avisar_contato_do_portal` registra aviso no log, só com o id; N2 e N3 escritos na C-27. Prova
   `simulated`: 17 passed (o `enfileirar` concorrente antes e depois da lápide, a falha depois do `incerto`, o canal
   ilegível, o aviso da chave repetida).
-## 2026-10-05 — 31.64: a etapa da irmã em curso conta no objeto da família (branch feat/31-64-imagem-sem-aprovacao-na-familia)
-
-- **O furo:** com `publicar_sem_aprovacao` ligado (padrão desligado), persona `autonomous` e nenhum outro motivo de
-  aprovação, a porta não grava pedido, e a saída só nasce no commit. A segunda persona do mesmo pedido passava com a
-  mesma imagem enquanto a primeira publicava (sobra do 31.53).
-- **O conserto:** `_mesmo_objeto_na_familia` conta também as etapas das outras personas do pedido em `running` ou
-  `verifying`, com a mesma capability e o mesmo objeto (`SocialRepository.etapas_em_curso_da_acao`). Etapas em
-  `ready` e `failed` não contam.
-- **F1 da revisão:** a etapa vira `running` na tomada, antes da porta; duas irmãs tomadas juntas se viam e as duas
-  eram recusadas. Agora só contam as MAIS ANTIGAS que a etapa da porta (`started_at`, `id` no desempate): das
-  que correm juntas, exatamente uma passa (testes de duas e de três irmãs).
-- **S1 da revisão (migração 110):** a ordem das tomadas não basta (a retomada de `retry_wait`/`waiting_user` mantém o
-  `started_at` da primeira tomada; o relógio varia por máquina). A porta marca `steps.passou_a_porta` ao liberar o
-  efeito; quem passou conta sempre (fora de falha e cancelamento), e "só as mais antigas" vale só entre as que não
-  passaram. Testes: retomada de `retry_wait` e de `waiting_user` recusada; a que passou e falhou não conta.
-- **S2 da revisão:** a marca conta só nos estados abertos (a concluída já sai pela saída gravada, com janela) e o lote da
-  consulta vem pelo `id` DESC. Antes, mais de 200 marcas concluídas na persona irmã tiravam a etapa em curso do
-  `LIMIT 200` e a mesma imagem passava. Teste: 201 concluídas + 1 em curso, recusa sai.
-- Prova: `simulated` (`backend/tests/test_familia_por_objeto.py::test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem`,
-  falha no código anterior). Real: `not_run`.
 
 ## 2026-10-04 — 31.53: a família do pedido também se compara pelo objeto, e o texto que cita outra conta dela passa por aprovação (branch feat/31-53-objeto-alvo-na-familia)
 
@@ -638,15 +663,6 @@ Lado Jev do 28.10 F5, sobre o 31.49 (#330).
   textos no cartão do plano, na aba Textos e na guia Aprovações e o link até a guia Imagens. As fotos do percurso
   entraram pela API: `not_run` o envio pelo painel (o seletor "Esta foto foi feita por IA?" com o arquivo; só
   `GuiaImagens.test.tsx`) e a publicação real.
-## 2026-10-05 — 31.56: a barra de endereço tapada vira o padrão (branch feat/31-56-tapar-barra-ligado)
-
-- O A/B ao vivo do 31.56 deu LIGA (05/10, android-09, deploy 33, 3 execuções por braço): sucesso 3/3 nos dois braços,
-  16 decisões ligada contra 14 desligada (+14,3 %, teto 20 %), US$ 0,496713 no total. O padrão de
-  `ai.tapar_barra_de_endereco` passa a `true` em `config.py` e em `config.example.yaml`; o central já está ligado pela
-  config dele. Ressalva: n = 3 por braço; o veredito é o do critério pré-registrado, não uma estimativa do efeito.
-- A virada é silenciosa para quem não tem a chave no `config.yaml`: quem quiser o comportamento antigo põe
-  `ai.tapar_barra_de_endereco: false`.
-- Prova: `real` do A/B (acima); `simulated` do padrão (`backend/tests/test_url_fora_do_prompt.py`).
 
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
