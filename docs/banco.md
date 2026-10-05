@@ -382,7 +382,7 @@ pela regra de saúde. Desde então o portão é este:
   árvore pelo ParentProcessId e pegava processo alheio com PID reusado), e o pai morto de fora leva a árvore junto
   (KILL_ON_JOB_CLOSE). Se o pytest não entrar no job (o script já num job sem aninhamento), a parte diz isso e, no
   aborto, só o PID dele morre. Uma rodada por vez: a segunda sai com rc 10 antes de tocar o contêiner (mutex
-  `Global\farm-pg-rapido`, ou `Local\` dito na linha; `flock` fora do Windows).
+  `Global\farm-pg-rapido`, `flock` fora do Windows; o erro 5 no `Global\` é o mutex de outra sessão e também é rc 10).
   - **Por quê.** Na suíte 35, os 467 arquivos juntos encheram os 4 GB: 181 failed, 823 errors, quase todos
     `DiskFull`. Pelos logs do contêiner, o estouro foi na `base/` (3688 erros ali e 1668 em `global/`, nenhum em
     `pg_wal`). O WAL ficou estável perto de 1 GB, com 30 segmentos reciclados por checkpoint, igual nas metades.

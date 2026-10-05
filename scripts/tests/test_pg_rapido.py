@@ -15,12 +15,23 @@ WINDOWS = pg.os.name == "nt"
 #: 29.117: o `matar_arvore` no Windows termina o Job Object do pytest; nos dublês, o job é um rótulo e a terminação
 #: fica registrada aqui (a do sistema não é chamada).
 _JOBS_TERMINADOS: list[str] = []
+_JOBS_FECHADOS: list[str] = []
 _JOB_OK = [True]
+
+
+@pytest.fixture(autouse=True)
+def _trava_de_teste(monkeypatch):
+    """N3 da leitura do 29.117: nenhum teste usa a trava da rodada real (com uma em curso, o teste reprovava, e o
+    teste em curso recusava a rodada real com rc 10; o scripts/tests faz parte do próprio funil)."""
+    monkeypatch.setattr(pg, "NOME_DA_TRAVA", f"{pg.NOME}-teste-{pg.os.getpid()}")
+    yield
+    pg.soltar_trava()
 
 
 @pytest.fixture(autouse=True)
 def _job_de_mentira(monkeypatch):
     _JOBS_TERMINADOS.clear()
+    _JOBS_FECHADOS.clear()
     _JOB_OK[0] = True
     if WINDOWS:
         def terminar(job):
@@ -30,7 +41,9 @@ def _job_de_mentira(monkeypatch):
             return orig_terminar(job)
 
         def fechar(h):
-            if not isinstance(h, str):
+            if isinstance(h, str):
+                _JOBS_FECHADOS.append(h)
+            else:
                 orig_fechar(h)
         orig_terminar, orig_fechar = pg._terminar_job, pg._fechar_handle
         monkeypatch.setattr(pg, "_terminar_job", terminar)
@@ -211,6 +224,7 @@ def test_matar_arvore_de_verdade_mata_o_neto(tmp_path):
         assert _esperar_morte(pid_filho), "o filho do pytest ficou órfão (K-099)"
         passou = True
     finally:
+        pg.fechar_job(proc)                                            # N2 da leitura do 29.117
         if proc.poll() is None:
             proc.kill()
         # Só quando o teste não passou: passando, o neto já morreu, e o PID pode ter sido reusado por outro processo.
@@ -483,6 +497,7 @@ def test_29117_processo_fora_do_job_nunca_morre(tmp_path):
         assert _esperar_morte(neto)
         assert de_fora.poll() is None, "o processo de fora do job morreu"
     finally:
+        pg.fechar_job(proc)                                            # N2 da leitura do 29.117
         for p in (de_fora, proc):
             if p.poll() is None:
                 p.kill()
@@ -502,7 +517,7 @@ def test_29117_sem_job_so_o_proprio_processo_morre():
 
 def test_29117_uma_rodada_por_vez_pela_trava(tmp_path):
     """Nota 3: a segunda rodada não toca no contêiner da primeira; a trava solta quando a primeira acaba."""
-    tenta = _carregar_pg() + "; print(m.tentar_travar())"
+    tenta = _carregar_pg() + f"; m.NOME_DA_TRAVA = {pg.NOME_DA_TRAVA!r}; print(m.tentar_travar())"
     assert pg.tentar_travar()
     try:
         r = subprocess.run([sys.executable, "-c", tenta], capture_output=True, text=True, timeout=60, check=False)
@@ -574,22 +589,93 @@ def test_29117_o_pytest_que_nao_sobe_da_rc_11_com_a_linha(tmp_path):
     assert rc == 11 and "o pytest NÃO SUBIU: ResumeThread: erro 5" in linhas[-1]
 
 
-@pytest.mark.skipif(not WINDOWS, reason="mutex nomeado é do Windows")
-def test_29117_sem_privilegio_no_global_a_trava_e_local_e_dita(tmp_path, monkeypatch):
-    """Cuidado 4: o Global\\ recusado cai no Local\\, e a linha diz qual valeu."""
-    orig = pg._criar_mutex
+def _mutex_que_nega_tudo(nome: str) -> int:
+    """Um mutex REAL com a DACL `D:(D;;GA;;;WD)` (nega tudo a todos), como o de uma rodada de outra sessão ou usuário."""
+    import ctypes
+    from ctypes import wintypes
 
-    def criar(nome):
-        if nome.startswith("Global"):
-            raise OSError("CreateMutex Global: erro 5 do Windows")
-        return orig(nome + "-teste")
-    monkeypatch.setattr(pg, "_criar_mutex", criar)
-    pg.soltar_trava()
+    adv = ctypes.WinDLL("advapi32", use_last_error=True)
+    adv.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
+
+    class _Atributos(ctypes.Structure):
+        _fields_ = [("nLength", wintypes.DWORD), ("lpSecurityDescriptor", ctypes.c_void_p),
+                    ("bInheritHandle", wintypes.BOOL)]
+    sd = ctypes.c_void_p()
+    assert adv.ConvertStringSecurityDescriptorToSecurityDescriptorW("D:(D;;GA;;;WD)", 1, ctypes.byref(sd), None)
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateMutexW.restype = wintypes.HANDLE
+    k32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    attr = _Atributos(ctypes.sizeof(_Atributos), sd, False)
+    h = k32.CreateMutexW(ctypes.byref(attr), False, nome)
+    k32.LocalFree(sd)
+    assert h, f"o mutex de teste não foi criado: erro {ctypes.get_last_error()}"
+    return h
+
+
+@pytest.mark.skipif(not WINDOWS, reason="mutex nomeado é do Windows")
+def test_29117_o_mutex_alheio_que_nega_acesso_e_recusa_rc_10(tmp_path, monkeypatch, capsys):
+    """M1 da leitura do 29.117: o erro 5 no Global\\ é o mutex de outra rodada, não falta de privilégio. Recusa (rc 10),
+    sem recuar ao Local\\, que deixaria as duas rodadas correrem."""
+    h = _mutex_que_nega_tudo(f"Global\\{pg.NOME_DA_TRAVA}")
     try:
-        assert pg.tentar_travar()
-        assert pg.ESCOPO_DA_TRAVA[0].startswith("Local\\farm-pg-rapido (o Global\\ recusou")
+        assert pg.tentar_travar() is False
+        assert "existe e nega acesso (erro 5)" in pg.ESCOPO_DA_TRAVA[0]
+        lista = tmp_path / "lista.txt"
+        (tmp_path / "backend" / "tests").mkdir(parents=True)
+        (tmp_path / "backend" / "tests" / "test_0.py").write_text("")
+        lista.write_text("tests/test_0.py", encoding="utf-8")
+        monkeypatch.setattr(pg, "RAIZ", tmp_path)
+        monkeypatch.setattr(pg, "_executar", lambda cmd: pytest.fail(f"docker chamado: {cmd}"))
+        assert pg.main(["--lista", str(lista), "--partes", "1", "--saidas", str(tmp_path)]) == 10
+        assert "nega acesso (erro 5)" in capsys.readouterr().out
     finally:
-        pg.soltar_trava()
+        pg._fechar_handle(h)
+
+
+@pytest.mark.skipif(not WINDOWS, reason="mutex nomeado é do Windows")
+def test_29117_o_outro_erro_do_mutex_sobe(monkeypatch):
+    def falha(h, inicial, nome):
+        pg.ctypes.set_last_error(87)                                   # ERROR_INVALID_PARAMETER
+        return None
+    monkeypatch.setattr(pg._k32, "CreateMutexW", falha)
+    with pytest.raises(OSError, match="erro 87"):
+        pg.tentar_travar()
+
+
+def test_29117_o_teste_nunca_usa_a_trava_da_rodada_real():
+    """N3: o nome é o de teste em todo teste (a fixture), e a trava real segue livre para a rodada do funil."""
+    assert pg.NOME_DA_TRAVA != pg.NOME and pg.NOME_DA_TRAVA.startswith(f"{pg.NOME}-teste-")
+
+
+@pytest.mark.skipif(not WINDOWS, reason="o handle do job é do Windows")
+def test_29117_n1_o_job_terminado_tem_o_handle_fechado_na_hora(tmp_path):
+    """N1: aborto, interrupção e "já saiu" fecham o handle do job, sem esperar o script sair."""
+    abortado = _Pytest(voltas=50)
+    assert pg.matar_arvore(abortado, _Docker([100])) is None
+    assert _JOBS_TERMINADOS == ["job-4242"] and _JOBS_FECHADOS == ["job-4242"] and abortado.job is None
+    _JOBS_TERMINADOS.clear()
+    _JOBS_FECHADOS.clear()
+    saido = _Pytest(voltas=0)
+    assert pg.matar_arvore(saido, _Docker([100])) is None
+    assert _JOBS_FECHADOS == ["job-4242"] and saido.job is None
+    _JOBS_FECHADOS.clear()
+
+    class _JaSaiu(_Pytest):
+        def poll(self):
+            return 0 if self.voltas < 0 else super().poll()
+
+    class _CtrlC(_Docker):
+        def __call__(self, cmd):
+            if cmd[:2] == ["docker", "exec"] and "df -m" in " ".join(cmd):
+                proc.voltas = -1                                       # saiu, e o Ctrl-C chega em seguida
+                raise KeyboardInterrupt
+            return super().__call__(cmd)
+    proc = _JaSaiu(voltas=50)
+    with pytest.raises(KeyboardInterrupt):
+        pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", lambda ln: None, executar=_CtrlC([100]),
+                       lancar=lambda arq, s: proc, dormir=lambda s: None)
+    assert _JOBS_FECHADOS == ["job-4242"] and proc.job is None
 
 
 def test_29117_a_trava_que_nao_se_cria_nao_roda_calada(tmp_path, monkeypatch):

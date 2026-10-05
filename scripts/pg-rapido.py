@@ -372,6 +372,7 @@ def matar_arvore(proc: Processo, executar: Executar) -> str | None:
         # Saiu sozinho entre a amostra e o aborto: nada a relatar. Um worker que tenha ficado no job morre com ele.
         if job is not None:
             _terminar_job(job)
+        fechar_job(proc)
         return None
     if os.name == "nt":
         if job is None:
@@ -387,6 +388,7 @@ def matar_arvore(proc: Processo, executar: Executar) -> str | None:
         proc.wait(timeout=30)
     except subprocess.TimeoutExpired:
         problema = (problema + "; " if problema else "") + "o pytest não saiu em 30 s"
+    fechar_job(proc)                                   # N1 da leitura do 29.117: o handle não espera o script sair
     return problema
 
 
@@ -456,6 +458,7 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
                         + (f" | ATENÇÃO: {problema}" if problema else ""))
             except Exception:  # noqa: BLE001 — o relato que falhou pode ser a própria causa (o `--resumo`)
                 print(f"{rotulo} INTERROMPIDA: a árvore do pytest foi morta", file=sys.stderr, flush=True)
+        fechar_job(proc)                               # já saído: um worker que tenha sobrado morre com o job
         raise
 
 
@@ -493,12 +496,19 @@ def _acompanhar(rotulo: str, proc: Processo, saida: Path, relatar: Callable[[str
 
 
 _TRAVA: list[object] = []      # o mutex (Windows) ou o arquivo com flock: vivo enquanto o processo vive
-ESCOPO_DA_TRAVA: list[str] = []  # o nome que valeu (Global\ ou Local\), para a linha da rodada
+NOME_DA_TRAVA = NOME            # os testes trocam (N3 da leitura do 29.117): nunca a trava de uma rodada real
+ESCOPO_DA_TRAVA: list[str] = []  # o que a trava disse, para a linha da rodada
+_ACESSO_NEGADO = 5              # ERROR_ACCESS_DENIED
 
 
-def _criar_mutex(nome: str) -> int:
+def _criar_mutex(nome: str) -> int | None:
+    """O handle do mutex, ou `None` quando ele JÁ EXISTE com uma DACL que nos nega acesso (erro 5): criado por
+    outra rodada, de outra sessão ou de outro usuário. Criar um mutex no `Global\\` não pede privilégio; o erro 5 ali
+    é o objeto alheio, não falta de direito de criar."""
     h = _k32.CreateMutexW(None, False, nome)
     if not h:
+        if ctypes.get_last_error() == _ACESSO_NEGADO:
+            return None
         raise _erro_win(f"CreateMutex {nome}")
     return h
 
@@ -510,17 +520,15 @@ def tentar_travar() -> bool:
     if _TRAVA:
         return True
     if os.name == "nt":
-        # O Global\ vale entre sessões; numa sessão sem o privilégio de criá-lo, o Local\ (a mesma sessão). Os dois
-        # falhando, o erro sobe: nunca "segue sem trava" calado.
-        try:
-            nome = f"Global\\{NOME}"
-            h = _criar_mutex(nome)
-        except OSError as global_:
-            nome = f"Local\\{NOME}"
-            h = _criar_mutex(nome)
-            ESCOPO_DA_TRAVA[:] = [f"{nome} (o Global\\ recusou: {global_})"]
-        else:
-            ESCOPO_DA_TRAVA[:] = [nome]
+        # Só o Global\\, que vale entre sessões. M1 da leitura do 29.117: recuar ao Local\\ no erro 5 deixava duas
+        # rodadas correrem (o mutex existe, é da outra). O erro 5 é recusa (rc 10); outro erro sobe (rc 12): nunca
+        # "segue sem trava" calado.
+        nome = f"Global\\{NOME_DA_TRAVA}"
+        h = _criar_mutex(nome)
+        if h is None:
+            ESCOPO_DA_TRAVA[:] = [f"{nome} existe e nega acesso (erro 5): é de outra rodada, de outra sessão ou usuário"]
+            return False
+        ESCOPO_DA_TRAVA[:] = [nome]
         if _k32.WaitForSingleObject(h, 0) not in (0, 0x80):       # WAIT_OBJECT_0, WAIT_ABANDONED
             _fechar_handle(h)
             return False
@@ -529,7 +537,7 @@ def tentar_travar() -> bool:
     import fcntl
     import tempfile
 
-    arq = open(Path(tempfile.gettempdir()) / f"{NOME}.trava", "w")  # noqa: SIM115 — fica aberto: é a trava
+    arq = open(Path(tempfile.gettempdir()) / f"{NOME_DA_TRAVA}.trava", "w")  # noqa: SIM115 — fica aberto: é a trava
     try:
         fcntl.flock(arq, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except OSError:
@@ -595,6 +603,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             relatar(f"parte {i}/{len(fatias)}: {len(f)} arquivos (de {len(todos)}), {f[0]} … {f[-1]}")
         return 0
     pasta = args.saidas or (args.resumo.parent if args.resumo else Path.cwd())
+    ESCOPO_DA_TRAVA.clear()
     try:
         livre_da_trava = tentar_travar()
     except OSError as exc:
@@ -602,11 +611,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{agora()}")
         return 12
     if not livre_da_trava:
-        relatar(f"NÃO RODOU: outra rodada do pg-rapido está em curso (trava {NOME}); nenhum contêiner foi tocado "
-                f"{agora()}")
+        detalhe = f"; {ESCOPO_DA_TRAVA[0]}" if ESCOPO_DA_TRAVA and "nega acesso" in ESCOPO_DA_TRAVA[0] else ""
+        relatar(f"NÃO RODOU: outra rodada do pg-rapido está em curso (trava {NOME_DA_TRAVA}{detalhe}); nenhum "
+                f"contêiner foi tocado {agora()}")
         return 10
-    if ESCOPO_DA_TRAVA and "recusou" in ESCOPO_DA_TRAVA[0]:
-        relatar(f"trava: {ESCOPO_DA_TRAVA[0]}")
     subiu = False
     try:
         for i, f in enumerate(fatias, 1):
