@@ -32,8 +32,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     carrega o arquivo do domínio pelo caminho e roda com qualquer Python 3.11+ do PATH, sem o venv (há teste: só
     biblioteca padrão). O que muda na saída:
     - as linhas `ok` saem iguais;
-    - as de FALHOU mudam de texto: uma por falha; o valor sem o nome do cabeçalho (`veio br`); o script sem a query
-      (o beacon leva token nela); linha de gesto (`-> …`) também em `html_transformado`, `csp_ausente`, `cookie` e
+    - as de FALHOU mudam de texto: uma por falha; o valor sem o nome do cabeçalho (`veio br`); o script lido como o
+      navegador lê, sem query, fragmento, `;…` nem `usuario:senha@` (o beacon leva token na query), com esquema e host
+      em minúscula (`HTTPS://` sai `https://`), host de IP como `ip` e endereço com porta inválida como
+      `(endereço inválido)`; linha de gesto (`-> …`) também em `html_transformado`, `csp_ausente`, `cookie` e
       "sem ?v="; e "nao conferido: borda 522" no lugar de "522 esperado 200";
     - os cabeçalhos da raiz (`/ (cabecalhos)`, `/ (sem cookie)`) passam a ser pedidos como navegador, num pedido só,
       mais fiel ao visitante: se a zona só põe `__cf_bm` para navegador, a linha do cookie agora acusa;
@@ -43,7 +45,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `portal/application/vigia.py` e `portal/adapters/borda_http.py`: de hora em hora, no líder da trava `avisos`, até
     4 GET pelo 1º nome público, como navegador e sem credencial. O estado fica em memória, a saúde o lê
     (`portal_borda_defeito`, `portal_borda_sem_conferir`), e o aviso vai pela Canais (`avisar_borda_do_portal`, PR
-    dela), um por código e por dia;
+    dela), um por código e por dia. No `achado` do script vai só host e caminho (`borda.endereco_do_script`):
+    cortado no 1º caractere fora do alfabeto da Canais, sem credencial, porta, query nem `;…`, IP como `ip`, e
+    esquema fora de uma lista curta como `esquema`. Segredo em segmento de caminho passa, como o contrato declara;
   - `portal.vigia` (`ligado`, `intervalo_s`, `prazo_s`, `voltas_sem_conferir`) no config estrito e no exemplo.
 - **Prova:**
   - `simulated`: `tests/test_portal_borda.py` (24: a volta limpa com 4 GET sem credencial, cada defeito com código,

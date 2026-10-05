@@ -136,26 +136,64 @@ def conferir_html(onde: str, status: int, html: str, *, host: str) -> Desfecho:
         return _defeito(Achado(PAGINA_FORA, onde, f"status {status}"))
     if not html.strip():
         return _defeito(Achado(PAGINA_FORA, onde, "corpo vazio pedido como navegador"))
-    # O detalhe vai à saúde e à linha da prova: um `data:` de 1 MB não pode aparecer inteiro (N1 da leitura do #378).
-    return _defeito(*(Achado(SCRIPT_INJETADO, onde, src[:ITEM_MAX], item_do_script(src))
-                      for src in scripts_de_fora(html, host)))
+    return _defeito(*(Achado(SCRIPT_INJETADO, onde, detalhe, item)
+                      for item, detalhe in map(endereco_do_script, scripts_de_fora(html, host))))
+
+
+#: Os esquemas que saem pelo nome. Outro texto antes do `:` sai como `esquema`: pode ser `usuario:senha@…` (Q1).
+ESQUEMAS_CONHECIDOS = frozenset({"data", "javascript", "blob", "about", "file", "ftp", "ws", "wss"})
+_ESQUEMA = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*):")
+#: IPv4 em qualquer forma que o navegador aceita (decimal, hexa, com menos de 4 partes).
+_IPV4 = re.compile(r"(?:0x[0-9a-f]*|\d+)(?:\.(?:0x[0-9a-f]*|\d+)){0,3}\.?")
+_FORA_DO_ALFABETO = re.compile(r"[^A-Za-z0-9._/-]")    # o filtro da Canais
+_PONTAS = "".join(map(chr, range(33)))                   # controle e espaço, que o navegador tira das pontas
 
 
 def item_do_script(src: str) -> str:
-    """O que vai à Canais no `achado`: só host e caminho, sem query, fragmento, credencial nem porta, no alfabeto do
-    filtro dela (`[A-Za-z0-9._/-]`), com teto. O filtro não reconhece segredo em segmento de caminho, então o corte é
-    aqui. `data:` e `javascript:` vão só pelo esquema; o script embutido, como `embutido`."""
+    return endereco_do_script(src)[0]
+
+
+def _no_alfabeto(texto: str) -> str:
+    """Corta no 1º caractere fora do alfabeto da Canais: tirar só o caractere colaria os dois lados (Q1)."""
+    return _FORA_DO_ALFABETO.split(texto, maxsplit=1)[0][:ITEM_MAX]
+
+
+def endereco_do_script(src: str) -> tuple[str, str]:
+    """`(item, detalhe)` de um script de fora, lido como o navegador lê (tabulação e quebra somem, `\\` vale `/`, as
+    pontas perdem controle e espaço, e `http(s):` ignora quantas barras vierem).
+
+    - `item` vai à Canais no `achado`: só host e caminho, sem query, fragmento, `;…`, credencial nem porta, CORTADO no
+      1º caractere fora do alfabeto do filtro dela (`[A-Za-z0-9._/-]`), nunca colado, com teto. Segredo em segmento de
+      caminho passa: é o contrato declarado com a Canais.
+    - `detalhe` vai à saúde e à linha FALHOU da prova: esquema, host, porta e caminho, sem credencial (Q4), com teto.
+    - Host de IP vira `ip` nos dois (Q3); autoridade com porta que não é número (senha com `/`, `?`, `;` ou `#` sem
+      codificar, Q2) vira `url-invalida`, e o navegador nem carregaria o script."""
     if src == "(embutido)":
-        return "embutido"
-    limpo = _sem_query(re.sub(r"[\t\n\r]", "", src).replace("\\", "/"))
-    esquema = re.split(r"[/?#]", limpo.lower(), maxsplit=1)[0]
-    if limpo.startswith("//") or esquema in ("http:", "https:"):
-        autoridade, _, caminho = limpo.split("//", 1)[-1].partition("/")
-        nome = autoridade.rsplit("@", 1)[-1].split(":", 1)[0]
-        limpo = nome + ("/" + caminho if caminho else "")
-    elif ":" in esquema:
-        limpo = esquema.split(":", 1)[0]
-    return re.sub(r"[^A-Za-z0-9._/-]", "", limpo)[:ITEM_MAX]
+        return "embutido", src
+    limpo = re.split(r"[?#;]", re.sub(r"[\t\n\r]", "", src).replace("\\", "/").strip(_PONTAS), maxsplit=1)[0]
+    m = _ESQUEMA.match(limpo)
+    esquema = m.group(1).lower() if m else ""
+    if limpo.startswith("//"):
+        resto, prefixo = limpo.lstrip("/"), "//"
+    elif m and esquema in ("http", "https"):
+        resto, prefixo = limpo[m.end():].lstrip("/"), f"{esquema}://"
+    elif m:
+        nome = esquema if esquema in ESQUEMAS_CONHECIDOS else "esquema"
+        # `data:` e `javascript:` mostram o próprio script na saúde (é o que foi injetado); o resto, só o nome.
+        return nome, (src[:ITEM_MAX] if nome in ("data", "javascript") else f"{nome}:…")
+    else:                                                 # relativo: `/cdn-cgi/…`, `a/b:c.js`
+        return _no_alfabeto(limpo), limpo[:ITEM_MAX]
+    autoridade, barra, caminho = resto.partition("/")
+    nome = autoridade.rsplit("@", 1)[-1].lower()          # o userinfo inteiro, até o ÚLTIMO `@` da autoridade (Q2)
+    if nome.startswith("["):
+        host, porta = "ip", nome.partition("]")[2].removeprefix(":")
+    else:
+        host, _, porta = nome.partition(":")
+        host = "ip" if _IPV4.fullmatch(host) else host
+    if porta and not porta.isdigit():
+        return "url-invalida", prefixo + "(endereço inválido)"
+    detalhe = prefixo + host + (f":{porta}" if porta else "") + barra + caminho
+    return _no_alfabeto(host + barra + caminho), detalhe[:ITEM_MAX]
 
 
 def conferir_cabecalhos(onde: str, status: int, cabecalhos: Mapping[str, str], *, sem_transformar: bool = False,
