@@ -2996,7 +2996,10 @@ class AppState:
             if principal is not None and principal.is_running():
                 principal.call_soon_threadsafe(self._execucao_assentada, run_id)
             else:
-                self._execucao_parada(run_id)        # sem laço (teste sem `start`): solta, e não há digest a encadear
+                # Sem laço (teste sem `start`, ou thread que termina depois do desligamento): solta, e o digest desta
+                # execução se perde; só o `backfill_licoes` manual o recupera. O aviso deixa a perda visível.
+                self._execucao_parada(run_id)
+                log.warning("aprendizado: execução %s assentou sem o laço de eventos; o digest dela não rodou", run_id)
             return
         self._execucao_parada(run_id)
         tarefa = laco.create_task(self._digerir(run_id), name=f"aprendizado-{run_id}")
