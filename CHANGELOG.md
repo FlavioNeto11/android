@@ -256,6 +256,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   pula o objetivo em `waiting_user`, cujo motivo livre traz texto de tela ou de conta (revisão do #372, O2).
 - Prova `simulated`: `backend/tests/test_avisos_objetivo_parado.py` (50 testes); rede dirigida dos canais verde.
   Real: `not_run`.
+## 2026-10-05 — 30.70: a espera por uma pessoa não é veredito sobre a receita (branch fix/30-70-espera-nao-e-veredito)
+
+- Achado da leitura do 30.69: em `StepExecutor._after_step`, o `veredito` só excluía defeito do plano, `retry` e
+  trava da conta. Uma etapa com a receita reproduzida ou divergida que terminava em `waiting_user` somava `replay_fail`
+  e `consecutive_fail` (a quarentena) e gravava `driven_by='recipe+ai'`, que o aprendizado lê como evidência CONTRA a
+  receita. Com o 29.90 (a releitura que segura o toque marca a divergência; o aviso que cobre o botão termina em
+  `waiting_user`), um aviso do app contaria contra uma receita boa.
+- `waiting_user` entra ao lado do `retry` entre os desfechos que não são veredito. `reproducao_sql._ETAPAS` ignora a
+  etapa em `waiting_user`, `cancelled` ou `skipped`, o que cobre as gravadas antes (cancelar e pular só pegam etapa
+  aberta; D1 da leitura do #374). A etapa retomada e terminada dá o veredito de verdade.
+- Prova: `simulated` (`backend/tests/test_espera_nao_e_veredito_da_receita.py`, 3 testes). Cada metade do conserto,
+  desfeita, reprova o seu teste. `not_run`: aparelho real.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 

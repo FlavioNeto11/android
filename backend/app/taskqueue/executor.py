@@ -1487,8 +1487,12 @@ class StepExecutor:
         replayed = rr.mode == "replay" and rr.replayer is not None and rr.replayer.done_actions + int(rr.completed_by_recipe) > 0
         # `retry` não é veredito sobre a receita: só o desfecho da etapa (ou a divergência) entra na conta — senão um
         # aparelho com problema próprio poria em quarentena, sozinho, uma receita que funciona nos demais. Defeito do
-        # plano também não é veredito sobre ela.
-        veredito = not (outcome.plan_defect or outcome.outcome == Outcome.retry or outcome.trava_da_conta)
+        # plano também não é veredito sobre ela. Nem a espera por uma pessoa (30.70): aviso do app, autenticação,
+        # conta errada ou falta de informação param a etapa por um motivo que não é da receita — contá-la como falha
+        # punha uma receita boa em quarentena e gravava evidência contra ela no aprendizado. A etapa retomada que
+        # terminar dá o veredito de verdade.
+        veredito = not (outcome.plan_defect or outcome.outcome in (Outcome.retry, Outcome.waiting_user)
+                        or outcome.trava_da_conta)
         na_receita = rr.mode == "replay" and rr.row is not None and veredito and (replayed or rr.diverged)
         if rr.mode == "replay" and rr.row is not None and not na_receita:
             # Funil de receitas (C5) contado por TENTATIVA, nas três pontas: a consulta (`RecipeStore.find`) e o
