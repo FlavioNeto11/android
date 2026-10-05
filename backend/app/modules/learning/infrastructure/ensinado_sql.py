@@ -52,9 +52,12 @@ class LeitorDoEnsinadoSql:
         if kind is LivroKind.RECEITA:
             if not ref.isdigit():
                 return False
+            # A mesma família de `RecipeStore._aposentar_legadas`: cada parte da chave é a da receita, ou a receita a
+            # tem vazia (a provada da chave COMPLETA atende a consulta que a legada sem assinatura ou variante atendia).
             return self._db.one(
                 "SELECT o.id FROM recipes r JOIN recipes o ON o.app_package=r.app_package AND"
-                " o.app_version=r.app_version AND o.app_signature=r.app_signature AND o.variant=r.variant AND"
+                " o.app_version=r.app_version AND (r.app_signature='' OR o.app_signature=r.app_signature) AND"
+                " (r.variant='' OR o.variant=r.variant) AND"
                 " o.step_hash=r.step_hash AND o.id<>r.id AND o.status='active' WHERE r.id=? LIMIT 1",
                 (int(ref),)) is not None
         if kind is LivroKind.FLUXO:

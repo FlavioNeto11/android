@@ -134,7 +134,8 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
                               relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias,
                               eventos=porta, catalogo_de_risco=risco, titulos=TitulosDoRegistro(),
                               risco_do_nativo=lambda e: lido.do_nativo(e, fontes.conteudo(e.kind, e.ref)),
-                              ensinado=porta, leitor_do_ensinado=LeitorDoEnsinadoSql(db))     # 30.80 B
+                              ensinado=porta, leitor_do_ensinado=LeitorDoEnsinadoSql(db),
+                              isolar_o_aviso=db.savepoint)     # 30.80 B
     # Pacote A3: o que mais falha e o backlog. A apresentação o acha pelo tipo; a curadoria roda o passo dele.
     falhas = ServicoDeFalhas(FontesDeFalhaSql(db, precos=precos), SqlBacklogRepository(db), repo,
                              TriagemDeCredencial(), regras=lambda: regras_do_backlog(config().backlog),

@@ -69,7 +69,8 @@ class Mundo:
         porta = EventosNoBarramento(self.bus)
         self.servico = LearningService(self.repo, FontesSql(db), TriagemDeCredencial(), ajustes=Ajustes, relogio=lambda: RELOGIO,
                                        retencao_de_logs_dias=lambda: 14, eventos=porta, ensinado=porta,
-                                       leitor_do_ensinado=LeitorDoEnsinadoSql(db))
+                                       leitor_do_ensinado=LeitorDoEnsinadoSql(db),
+                                       isolar_o_aviso=db.savepoint)                 # como a montagem do central
         self.store = RecipeStore(db)
         ligar_nativos.ligar(self.servico, self.repo, db, receitas=self.store, decidir=lambda texto, run_id: None)
 
@@ -166,6 +167,51 @@ def test_o_barramento_fora_nao_derruba_a_transicao_do_livro(mundo: Mundo) -> Non
     mundo.bus.falha = True
     mundo.servico.mudar_estado(LivroKind.RECEITA, str(rid), SkillState.DISABLED, by="sistema", reason="obsoleto")
     assert mundo.status(rid) == "quarantined" and mundo.bus.do_ensinado() == []
+
+
+# ------------------------------------------------------------------ leitura da Ferramentas (S2, N1, N3)
+def test_a_segunda_transicao_pela_loja_nao_avisa_de_novo(mundo: Mundo) -> None:
+    rid = mundo.salva(learned_from="training:trn-1")
+    mundo.quarentena(rid)
+    outra = mundo.store.save(package=PKG, app_version="1.0(1)", step_hash="h-abrir", step_key="abrir",
+                             learned_from="s1", candidate=False, **CHAVE,
+                             actions=[{"tool": "tap", "commit": False, "why": "abrir", "args": {},
+                                       "selectors": [{"kind": "rid", "rid": "app:id/outro"}]}])
+    assert outra and mundo.status(rid) == "superseded"                    # quarentena → substituída, pela loja
+    assert len(mundo.bus.do_ensinado()) == 1                              # só o da quarentena
+
+
+def test_a_legada_ensinada_aposentada_pela_chave_completa_e_de_rotina(mundo: Mundo) -> None:
+    legada = mundo.salva(learned_from="training:trn-1")                  # assinatura vazia: a chave de antes
+    # a provada da chave COMPLETA, já ativa (a promoção pela sombra é de outro teste): a loja aposenta a legada
+    mundo.db.execute(
+        "INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key, version, status,"
+        " actions, learned_from_step, created_at) SELECT app_package, app_version, 'sha-1', variant, step_hash,"
+        " step_key, version+1, 'active', actions, 's2', created_at FROM recipes WHERE id=?", (legada,))
+    linha = mundo.db.one("SELECT * FROM recipes WHERE app_signature='sha-1' AND learned_from_step='s2'")
+    assert linha is not None
+    mundo.store._aposentar_legadas(linha)  # noqa: SLF001 - o caminho do achado S2, sem a sombra na frente
+    assert mundo.status(legada) == "superseded" and mundo.status(int(linha["id"])) == "active"
+    [(tipo, _, nivel, dados)] = mundo.bus.do_ensinado()
+    assert (tipo, nivel, dados["sem_receita_ativa"], dados["para"]) == (TIPO_REBAIXADO, "info", False, "superseded")
+
+
+def test_outra_demonstracao_na_mesma_chave_nao_avisa(mundo: Mundo) -> None:
+    mundo.salva(learned_from="training:trn-1")
+    mundo.store.save(package=PKG, app_version="1.0(1)", step_hash="h-abrir", step_key="abrir",
+                     learned_from="training:trn-2", candidate=False, **CHAVE,
+                     actions=[{"tool": "tap", "commit": False, "why": "abrir", "args": {},
+                               "selectors": [{"kind": "rid", "rid": "app:id/outro"}]}])
+    assert mundo.bus.do_ensinado() == []                                  # a pessoa ensinou de novo: não é o sistema
+
+
+def test_a_falha_do_aviso_na_loja_nao_desfaz_a_trilha_da_quarentena(mundo: Mundo) -> None:
+    rid = mundo.salva(learned_from="training:trn-1")
+    mundo.bus.falha = True                                                # só os tipos do ensinado falham
+    mundo.quarentena(rid)
+    trilha = mundo.repo.trilha(f"receita:{rid}")
+    assert trilha[-1].to_state is SkillState.DISABLED                     # a linha da quarentena ficou
+    assert mundo.bus.do_ensinado() == []
 
 
 # ------------------------------------------------------------------ a regra pura

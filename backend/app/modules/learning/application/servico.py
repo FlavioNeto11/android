@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -152,13 +153,15 @@ class LearningService:
                  eventos: PortaDeEventos | None = None, catalogo_de_risco: CatalogoDeRisco | None = None,
                  titulos: TitulosDoCatalogo | None = None,
                  risco_do_nativo: RiscoDoNativo | None = None,
-                 ensinado: PortaDoEnsinado | None = None, leitor_do_ensinado: LeitorDoEnsinado | None = None) -> None:
+                 ensinado: PortaDoEnsinado | None = None, leitor_do_ensinado: LeitorDoEnsinado | None = None,
+                 isolar_o_aviso: Callable[[], AbstractContextManager[object]] | None = None) -> None:
         """`retencao_de_logs_dias`: o `log_retention_days` VIGENTE (muda com o processo no ar); é o que diz até
         onde `ai_calls` ainda está inteiro. `eventos`: a porta do `learning.needs_person` (30.21; sem ela, nada é
         publicado); `catalogo_de_risco`: os fatos do catálogo do app para a faixa B ou C; `titulos`: o nome da
         capability no catálogo (sem ele, o painel mostra o código); `risco_do_nativo`: a capability da receita e as
         etapas do fluxo, lidas como o dossiê as lê, para a faixa do aviso ser a do parecer (30.33).
-        `ensinado`/`leitor_do_ensinado` (30.80 B): o aviso do ensinado que o sistema tirou de uso; sem os dois, nada."""
+        `ensinado`/`leitor_do_ensinado` (30.80 B): o aviso do ensinado que o sistema tirou de uso; sem os dois, nada.
+        `isolar_o_aviso` (N1 da leitura do 30.80 B): o savepoint do banco, só em volta desse aviso no caminho da loja."""
         self._repo = repo
         self._fontes = fontes
         self._triagem = triagem
@@ -170,7 +173,7 @@ class LearningService:
         self._extensoes: list[object] = []
         self._lacos: list[LacoPeriodico] = []
         self._espera = AvisadorDeEspera(eventos, catalogo_de_risco, relogio, risco_do_nativo)
-        self._ensinado = AvisadorDoEnsinado(ensinado, leitor_do_ensinado, relogio)
+        self._ensinado = AvisadorDoEnsinado(ensinado, leitor_do_ensinado, relogio, isolar_o_aviso)
         self._titulos = titulos
 
     @property
@@ -774,7 +777,7 @@ class LearningService:
         if de_status is not None:
             antes = replace(depois, state=estado_nativo(kind, de_status), native_status=de_status)
         self._espera.mudou(antes, depois, por_sistema=by == SYSTEM_ACTOR)
-        self._ensinado.mudou(antes, depois, por_sistema=by == SYSTEM_ACTOR)          # 30.80 B: quarentena, troca
+        self._ensinado.mudou_isolado(antes, depois, por_sistema=by == SYSTEM_ACTOR)  # 30.80 B: quarentena, troca
 
     def registrar_sinal(self, sinal: NovoSinal, *, recusar_nota: bool = False, substituir: bool = False,
                         um_por_evento: bool = False) -> int | None:
