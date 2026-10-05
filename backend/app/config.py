@@ -1399,8 +1399,21 @@ class TrelloCfg(BaseModel):
     retencao_dias: float = Field(30.0, ge=2, le=3650)
     #: Quem o dono autorizou a PEDIR (além dele). Vazia de fábrica: o pedido de convidado vira aviso ao dono.
     membros_autorizados: list[str] = Field(default_factory=list)
+    #: 28.54: ids dos apps que o DONO reconheceu como ele (o aplicativo do Trello no celular dele). A resposta do membro
+    #: do dono numa pergunta escrita por um desses apps vale como digitada; qualquer outro app não conta. Vazia de
+    #: fábrica: um id só entra com o sim dele, conferido no banco. Nunca o app da Central.
+    apps_do_dono: list[str] = Field(default_factory=list)
     responder_convidados: bool = False                       # responde a pergunta de convidado no cartão, só com o já visível
     webhook: TrelloWebhookCfg = TrelloWebhookCfg()
+
+    @field_validator("apps_do_dono")
+    @classmethod
+    def _apps_sem_vazio(cls, v: list[str]) -> list[str]:
+        # Um id vazio ou com espaço nunca casaria; erra na partida em vez de calar a resposta dele.
+        limpos = [x.strip() for x in v]
+        if any(not x for x in limpos):
+            raise ValueError("trello.apps_do_dono: id vazio")
+        return list(dict.fromkeys(limpos))
 
     @field_validator("listas")
     @classmethod

@@ -20,6 +20,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-05 — 28.54: o app do dono refina a autoria da resposta no Trello (branch canais/28-54-app-do-dono)
+
+- Nova chave `trello.apps_do_dono` (vazia de fábrica, no `config.example.yaml`): ids dos apps que o dono reconheceu como ele. Na lista de perguntas, a escrita por app só vale como digitada se o autor é o membro do dono E o id está na lista; a linha leva `autoria: app_do_dono` na prévia, sem pedido no Telegram. O app da Central, outro id e outro membro seguem `ignorada`. O app nunca substitui a conferência do membro, e fora das perguntas nada muda (28.30).
+- Medido em 05/10 (200 comentários do quadro, só estrutura): o conector do Trello não deixa sinal (sem `appCreator`, `agenticIdentity` nulo), então "sem app = digitado" fica como fraqueza conhecida em `docs/dominios/canais.md`, com o 28.53 (membro próprio da ANA) como conserto definitivo.
+- Prova `simulated`: `test_canais_respostas_as_perguntas.py` 27 passed (8 novos, valores fictícios), `test_trello_leitor.py` 43, `test_trello_config.py` 16, catracas 88, mypy 257 igual ao teto, docs-check 0 erros. `not_run`: o id do app do celular no config do central (entra só depois do deploy, com o sim dele no P-011, entrada 2226 conferida no banco em 05/10 20:48Z).
+
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
 - **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).

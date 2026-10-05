@@ -14,8 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from app.config import PAPEIS_DE_LISTA_DO_TRELLO
+from pydantic import ValidationError
+
+from app.config import PAPEIS_DE_LISTA_DO_TRELLO, TrelloCfg
 from app.modules.avisos.infrastructure.trello_leitor import (
+    AUTORIA_APP_DO_DONO,
+    AUTORIA_DE_APP,
     AUTORIA_NAO_CONFIRMADA_TEXTO,
     MARCA_DA_PERGUNTA,
     MOTIVO_ESCRITA_POR_APP,
@@ -32,9 +36,10 @@ from .test_trello_leitor import AMIGO, C_MANUAL, DONO, Cenario
 L_PERGUNTAS, L_RESPONDIDAS = "lista-perguntas", "lista-respondidas"
 
 
-async def _cenario(tmp_path: Path, **kw: object) -> Cenario:
+async def _cenario(tmp_path: Path, *, apps_do_dono: list[str] | None = None, **kw: object) -> Cenario:
     cen = Cenario(tmp_path, **kw)                                           # type: ignore[arg-type]
     cen.cfg.file.trello.listas.update(perguntas=L_PERGUNTAS, perguntas_respondidas=L_RESPONDIDAS)
+    cen.cfg.file.trello.apps_do_dono = list(apps_do_dono or [])
     await cen.sobe()
     return cen
 
@@ -143,7 +148,11 @@ def test_papel_sem_lista_configurada_nao_marca_nada(tmp_path: Path) -> None:
         assert r is not None and r.responde_a is None
 
 
-APP = {"id": "6ac16d9365f66a5f4771ecb6", "authType": "appKeyToken"}
+# Valores FICTÍCIOS (28.54): nenhum id de app ou de membro real mora no repositório.
+APP = {"id": "app-da-central-0000", "authType": "appKeyToken"}
+APP_DO_DONO = {"id": "app-do-celular-1111", "authType": "appKeyToken"}
+APP_OUTRO = {"id": "app-desconhecido-2222", "authType": "appKeyToken"}
+NOME = "P-006. Uma pergunta de teste?"
 
 
 async def test_sem_app_creator_a_resposta_conta(tmp_path: Path) -> None:
@@ -180,7 +189,101 @@ async def test_sem_o_campo_a_autoria_nao_se_confirma(tmp_path: Path) -> None:
 def test_a_autoria_fica_so_nas_listas_de_perguntas(tmp_path: Path) -> None:
     """Fora das listas de perguntas o `appCreator` não muda nada: lá o segundo fator segue sendo o Telegram (28.30)."""
     c = Cenario(tmp_path)
-    for kw in ({"app": APP}, {"sem_app": True}):
+    for kw in ({"app": APP}, {"app": APP_DO_DONO}, {"sem_app": True}):
         acao = c.trello.comenta(DONO, C_MANUAL, "Autorizado", lista="lista-de-outra-coisa", **kw)  # type: ignore[arg-type]
         r = recebida_da_action(acao, c.cfg.file.trello, chave_do_cartao=lambda _card: None)
         assert r is not None and r.responde_a is None and r.do_dono
+
+
+# ---------------------------------------------------------------------------------------------- 28.54: o app do dono
+async def test_28_54_app_do_dono_vale_como_digitado(tmp_path: Path) -> None:
+    """O app que ele reconheceu (o Trello no celular), escrevendo com o membro dele, é a resposta dele: sem a
+    reconfirmação no Telegram que a P-009 e a P-010 precisaram."""
+    c = await _cenario(tmp_path, apps_do_dono=[APP_DO_DONO["id"]])
+    acao = c.trello.comenta(DONO, C_MANUAL, "sim", lista=L_PERGUNTAS, nome=NOME, app=APP_DO_DONO)
+    await c.volta()
+    linha = c.linha(str(acao["id"]))
+    assert (linha["estado"], linha["destino"]) == ("orquestradora", "orquestradora")
+    assert linha["responde_a"] == f"{MARCA_DA_PERGUNTA}P-006;autoria={AUTORIA_APP_DO_DONO}"
+    previa = _previa(linha)
+    assert previa["pergunta"] == "P-006" and previa["autoria"] == AUTORIA_APP_DO_DONO and "aviso" not in previa
+    assert c.avisos == [] and c.acoes_da_central() == []                     # nada no Telegram, nenhuma decisão
+
+
+async def test_28_54_app_da_central_nunca_vale_como_do_dono(tmp_path: Path) -> None:
+    """A Central escreve com o token do dono: o app dela não é "do dono"; só o id que ele reconheceu vale."""
+    c = await _cenario(tmp_path, apps_do_dono=[APP_DO_DONO["id"]])
+    acao = c.trello.comenta(DONO, C_MANUAL, "sim", lista=L_PERGUNTAS, nome=NOME, app=APP)
+    await c.volta()
+    linha = c.linha(str(acao["id"]))
+    assert linha["estado"] == "ignorada" and _previa(linha)["motivo"] == MOTIVO_ESCRITA_POR_APP
+    assert linha["responde_a"].endswith(f";autoria={AUTORIA_DE_APP}")
+
+
+async def test_28_54_outro_app_continua_ignorado(tmp_path: Path) -> None:
+    c = await _cenario(tmp_path, apps_do_dono=[APP_DO_DONO["id"]])
+    acao = c.trello.comenta(DONO, C_MANUAL, "sim", lista=L_PERGUNTAS, nome=NOME, app=APP_OUTRO)
+    await c.volta()
+    linha = c.linha(str(acao["id"]))
+    assert linha["estado"] == "ignorada"
+    assert _previa(linha) == {"repasse": REPASSE_RESPOSTA_A_PERGUNTA, "motivo": MOTIVO_ESCRITA_POR_APP}
+    assert c.avisos == [] and c.trello.comentarios == []
+
+
+async def test_28_54_lista_vazia_deixa_tudo_como_hoje(tmp_path: Path) -> None:
+    """De fábrica `apps_do_dono` é vazia: o app do celular é um app qualquer e a resposta não conta."""
+    c = await _cenario(tmp_path)
+    acao = c.trello.comenta(DONO, C_MANUAL, "sim", lista=L_PERGUNTAS, nome=NOME, app=APP_DO_DONO)
+    await c.volta()
+    assert c.linha(str(acao["id"]))["estado"] == "ignorada"
+
+
+async def test_28_54_sem_app_continua_digitado(tmp_path: Path) -> None:
+    """A fraqueza conhecida: sem `appCreator` vale como digitado (o conector não deixa marca; o conserto é o 28.53)."""
+    c = await _cenario(tmp_path, apps_do_dono=[APP_DO_DONO["id"]])
+    acao = c.trello.comenta(DONO, C_MANUAL, "sim", lista=L_PERGUNTAS, nome=NOME, app=None)
+    await c.volta()
+    linha = c.linha(str(acao["id"]))
+    assert linha["estado"] == "orquestradora" and "autoria" not in _previa(linha)
+
+
+async def test_28_54_o_membro_errado_com_o_app_do_dono_nao_responde(tmp_path: Path) -> None:
+    """O app só refina a autoria do membro do dono: um autorizado escrevendo pelo mesmo app não vira ele."""
+    c = await _cenario(tmp_path, autorizados=[AMIGO], apps_do_dono=[APP_DO_DONO["id"]])
+    acao = c.trello.comenta(AMIGO, C_MANUAL, "sim", lista=L_PERGUNTAS, nome=NOME, app=APP_DO_DONO)
+    await c.volta()
+    linha = c.linha(str(acao["id"]))
+    assert linha["estado"] == "ignorada" and c.avisos == [] and c.trello.comentarios == []
+    assert linha["responde_a"].endswith(f";autoria={AUTORIA_DE_APP}")              # nem como "app do dono"
+    assert c.acoes_da_central() == []
+
+
+def test_28_54_a_conferencia_do_membro_vem_antes_do_app(tmp_path: Path) -> None:
+    """Pura: sem membro configurado, com autor vazio ou com outro autor, o id do app nunca abre a porta."""
+    c = Cenario(tmp_path)
+    t = c.cfg.file.trello
+    t.listas.update(perguntas=L_PERGUNTAS)
+    t.apps_do_dono = [APP_DO_DONO["id"]]
+    for dono, autor in (("", ""), (DONO, ""), (DONO, AMIGO), ("", DONO)):
+        t.membro_dono = dono
+        acao = c.trello.comenta(autor, C_MANUAL, "sim", lista=L_PERGUNTAS, nome=NOME, app=APP_DO_DONO)
+        r = recebida_da_action(acao, t, chave_do_cartao=lambda _card: None)
+        assert r is not None and not r.do_dono
+        assert r.responde_a is None or r.responde_a.endswith(f";autoria={AUTORIA_DE_APP}")
+
+
+async def test_28_54_efeito_externo_fora_das_perguntas_segue_pedindo_o_28_30(tmp_path: Path) -> None:
+    """Com ou sem app reconhecido, o comentário num cartão do plano que autoriza algo continua pedindo a confirmação do
+    dono no Telegram: o app só refina a lista de perguntas."""
+    for app in (APP_DO_DONO, None):
+        c = await _cenario(tmp_path / ("com" if app else "sem"), apps_do_dono=[APP_DO_DONO["id"]])
+        c.trello.comenta(DONO, C_MANUAL, "Autorizado", lista="lista-de-outra-coisa", nome="P-007. Nome parecido", app=app)
+        await c.volta()
+        assert [a.tipo for a in c.avisos] == [TIPO_DO_COMENTARIO]
+
+
+def test_28_54_a_config_nasce_vazia_e_recusa_id_vazio() -> None:
+    assert TrelloCfg().apps_do_dono == []
+    assert TrelloCfg(apps_do_dono=[" app-1 ", "app-1", "app-2"]).apps_do_dono == ["app-1", "app-2"]
+    with pytest.raises(ValidationError):
+        TrelloCfg(apps_do_dono=["app-1", "  "])

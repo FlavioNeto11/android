@@ -316,6 +316,21 @@ avisos depois da faxina"), e a trava cai no TTL.
     resposta chega à orquestradora marcada "autoria não confirmada" e não registra decisão. Nome de cartão sem `P-NNN`
     no começo chega marcado "sem número: conferir o cartão antes de registrar decisão". Fora das listas de perguntas o
     segundo fator segue sendo a confirmação no Telegram (28.30).
+  - **O app do dono refina a autoria, nunca a substitui (28.54):** o `appCreator` separa o app que escreveu, e a conferência
+    do membro (`idMemberCreator` igual a `trello.membro_dono`) vem sempre antes. `trello.apps_do_dono` lista os ids de
+    app que o DONO reconheceu como ele (o aplicativo do Trello no celular dele; nasce vazia, no exemplo e no central, e
+    um id só entra com o sim dele numa pergunta do Trello conferido no banco). Quatro casos na lista de perguntas, todos
+    do membro dele: sem `appCreator` vale como digitado; `appCreator` em `apps_do_dono` vale como digitado e a linha leva
+    `autoria: app_do_dono` na prévia, sem pedido no Telegram (a P-009 e a P-010 precisaram da reconfirmação por esse
+    caminho); o app da Central ou qualquer outro id fica `ignorada` ("escrita por app"); outro membro com o app dele
+    nunca vira o dono. A resposta que autorize efeito fora da máquina segue pedindo a confirmação de sempre (28.30), com
+    ou sem app reconhecido, e fora das listas de perguntas o app não muda nada.
+  - **Fraqueza conhecida: "sem app = digitado".** O conector do Trello grava com o token do dono e SEM `appCreator`
+    (medido em 05/10 em 200 comentários do quadro: os 135 de IA sem app têm os mesmos campos dos 12 digitados por ele, e
+    `agenticIdentity` vem nulo em todos). Nada no retorno separa o conector do navegador do dono. Hoje isso se fecha só
+    por conduta: o conector é proibido de comentar e de criar cartão nas listas de perguntas (R1, 28.52), e o 🤖 segue
+    obrigatório. O conserto definitivo é o 28.53: a ANA passa a escrever por um membro próprio, e `idMemberCreator`
+    separa o que é dele do que é da IA em qualquer caminho de escrita.
   - O recado que falha por erro interno responde com uma frase fixa, e o reply a ela segue à orquestradora (a entrada 1256
     de 04/10 ficou `falhou` sem resposta).
   - O login do painel recusa nome começado por `trello:` ou `telegram:`: esse é o operador dos canais. A sessão antiga
