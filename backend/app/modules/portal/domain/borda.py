@@ -18,6 +18,7 @@ import hashlib
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from urllib.parse import unquote
 
 OK, DEFEITO, SEM_CONFERIR = "ok", "defeito", "sem_conferir"
 
@@ -33,7 +34,8 @@ API_ABERTA = "api_aberta"
 #: mexer no central. O mesmo texto vai no `achado` do aviso (contrato da Canais).
 CAMINHO_DA_API = "/api/instances"
 #: As recusas certas: 401 do portão do central (`security/access.py`, nome público sem credencial) ou 403 de uma
-#: camada à frente dele.
+#: camada à frente dele. O 403 com `cf-mitigated: challenge` NÃO conta: é o desafio da Cloudflare, que um navegador
+#: passa, e atrás dele a API pode estar aberta (C1 da leitura do #383).
 API_RECUSOU = frozenset({401, 403})
 
 #: A borda sem alcançar o central (o túnel): não diz nada sobre a página. O 0 é o `curl` sem resposta nenhuma.
@@ -160,6 +162,22 @@ _ESQUEMA = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*):")
 _IPV4 = re.compile(r"(?:0x[0-9a-f]*|\d+)(?:\.(?:0x[0-9a-f]*|\d+)){0,3}\.?")
 _FORA_DO_ALFABETO = re.compile(r"[^A-Za-z0-9._/-]")    # o filtro da Canais
 _PONTAS = "".join(map(chr, range(33)))                   # controle e espaço, que o navegador tira das pontas
+#: O que nunca entra no detalhe: uma quebra de linha de terceiro partiria a linha FALHOU da prova e a da saúde em
+#: duas, a segunda com cara de instrução (U1 da leitura do #378).
+_CONTROLE_OU_ESPACO = re.compile(r"[\x00-\x20\x7f]")
+
+
+_CONTROLE = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _sem_controle(texto: str) -> str:
+    return _CONTROLE_OU_ESPACO.sub("?", texto)
+
+
+def linha_sem_controle(texto: str) -> str:
+    """Para o texto que mistura frase nossa com valor de terceiro (cabeçalho, nome de cookie) e vai a uma linha da
+    saúde ou da prova: o espaço fica, o controle vira `?`. Cinto e suspensório do U1, para qualquer caminho futuro."""
+    return _CONTROLE.sub("?", texto)
 
 
 def item_do_script(src: str) -> str:
@@ -183,7 +201,9 @@ def endereco_do_script(src: str) -> tuple[str, str]:
       codificar, Q2) vira `url-invalida`, e o navegador nem carregaria o script."""
     if src == "(embutido)":
         return "embutido", src
-    limpo = re.split(r"[?#;]", re.sub(r"[\t\n\r]", "", src).replace("\\", "/").strip(_PONTAS), maxsplit=1)[0]
+    # Antes da autoridade, só `?` e `#` cortam: para o navegador ela termina em `/`, `?` ou `#`, e um `;` dentro dela é
+    # do userinfo (`https://usuario;sessao@cdn/x.js` é host `cdn`, R1). O `;` corta só o caminho, depois.
+    limpo = re.split(r"[?#]", re.sub(r"[\t\n\r]", "", src).replace("\\", "/").strip(_PONTAS), maxsplit=1)[0]
     m = _ESQUEMA.match(limpo)
     esquema = m.group(1).lower() if m else ""
     if limpo.startswith("//"):
@@ -193,20 +213,30 @@ def endereco_do_script(src: str) -> tuple[str, str]:
     elif m:
         nome = esquema if esquema in ESQUEMAS_CONHECIDOS else "esquema"
         # `data:` e `javascript:` mostram o próprio script na saúde (é o que foi injetado); o resto, só o nome.
-        return nome, (src[:ITEM_MAX] if nome in ("data", "javascript") else f"{nome}:…")
+        return nome, (_sem_controle(src[:ITEM_MAX]) if nome in ("data", "javascript") else f"{nome}:…")
     else:                                                 # relativo: `/cdn-cgi/…`, `a/b:c.js`
-        return _no_alfabeto(limpo), limpo[:ITEM_MAX]
+        limpo = limpo.split(";", 1)[0]
+        if ":" in limpo.split("/", 1)[0]:
+            # `ht tps://usuario:senha@…` e `1usuario:senha@…` não são esquema para o navegador: são caminho relativo,
+            # mas o 1º segmento com `:` tem cara de credencial. Nada dele sai (R2).
+            return "relativo", '(relativo-com-":")'
+        return _no_alfabeto(limpo), _sem_controle(limpo[:ITEM_MAX])
     autoridade, barra, caminho = resto.partition("/")
-    nome = autoridade.rsplit("@", 1)[-1].lower()          # o userinfo inteiro, até o ÚLTIMO `@` da autoridade (Q2)
+    caminho = caminho.split(";", 1)[0]
+    # O userinfo inteiro, até o ÚLTIMO `@` da autoridade (Q2). O host decodificado serve SÓ para decidir se é IP
+    # (`%31%30.0.0.5`, R3); o detalhe sai com o host cru, porque `%0d%0a` decodificado é quebra de linha (U1) e
+    # `usuario%40cdn` teria cara de userinfo (U2).
+    cru = autoridade.rsplit("@", 1)[-1].lower()
+    nome = unquote(cru)
     if nome.startswith("["):
         host, porta = "ip", nome.partition("]")[2].removeprefix(":")
     else:
-        host, _, porta = nome.partition(":")
-        host = "ip" if _IPV4.fullmatch(host) else host
+        host, _, porta = cru.partition(":")
+        host = "ip" if _IPV4.fullmatch(unquote(host).split(":", 1)[0]) else host
     if porta and not porta.isdigit():
-        return "url-invalida", prefixo + "(endereço inválido)"
+        return "url-invalida", prefixo + "(endereço-inválido)"
     detalhe = prefixo + host + (f":{porta}" if porta else "") + barra + caminho
-    return _no_alfabeto(host + barra + caminho), detalhe[:ITEM_MAX]
+    return _no_alfabeto(host + barra + caminho), _sem_controle(detalhe[:ITEM_MAX])
 
 
 def conferir_cabecalhos(onde: str, status: int, cabecalhos: Mapping[str, str], *, sem_transformar: bool = False,
@@ -275,10 +305,15 @@ def conferir_versao(onde: str, versao: str | None, status: int | None = None, co
     return Desfecho(OK)
 
 
-def conferir_api(status: int) -> Desfecho:
+def conferir_api(status: int, cabecalhos: Mapping[str, str] | None = None) -> Desfecho:
     """A API pedida pelo nome público sem credencial (29.101). Recusa (401, 403) é ok; 2xx é a API aberta para a
-    internet. O túnel sem alcançar a origem não diz nada. Outro status (3xx, 404, 500) também não prova nem um nem
-    outro: vira sem_conferir com o status, que avisa depois de N voltas em vez de gritar crítico à toa."""
+    internet. O túnel sem alcançar a origem não diz nada. O desafio da borda (403 com `cf-mitigated: challenge`) e
+    outro status (3xx, 404, 500) também não provam nem um nem outro: viram sem_conferir com o motivo (`api desafio`,
+    `api 404`), que avisa depois de N voltas em vez de gritar crítico à toa. O 500 merece olhar: o portão recusa antes
+    da rota, então um 500 sem credencial sugere que o pedido passou do portão ou que o portão quebrou. Dos cabeçalhos,
+    só o `cf-mitigated` é lido."""
+    if status == 403 and cabecalho(cabecalhos or {}, "cf-mitigated").lower() == "challenge":
+        return sem_conferir("api desafio")
     if status in API_RECUSOU:
         return Desfecho(OK)
     if status in STATUS_SEM_CONFERIR:

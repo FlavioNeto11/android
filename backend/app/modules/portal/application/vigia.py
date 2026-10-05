@@ -7,9 +7,10 @@ A prova de fora só roda quando alguém lembra; o vigia roda sozinho. O que é d
 (`domain/borda.py`), a mesma da prova de fora.
 
 Uma volta faz no máximo 5 GET, um por conferência, sem retry e sem credencial: a API (29.101, só o status, o corpo
-nunca é lido), a raiz e o painel como navegador, e o CSS e o JS pelo endereço com `?v=` que a raiz aponta. O estado fica em memória: a saúde só o lê, sem pedir nada à rede.
+nunca é lido), a raiz e o painel como navegador, e o CSS e o JS pelo endereço com `?v=` que a raiz aponta. O estado
+fica em memória: a saúde só o lê, sem pedir nada à rede.
 O aviso ao dono sai pela Canais (`avisar_borda_do_portal`, contrato dela) uma vez por código e por dia, e o "não
-consegui conferir" só depois de N voltas seguidas.
+consegui conferir" só depois de N voltas seguidas, contado à parte para o site e para a API.
 """
 from __future__ import annotations
 
@@ -62,13 +63,23 @@ def _pedir(buscar: Buscar, url: str, aceita: str | None, *, ler_corpo: bool = Tr
 def uma_volta(buscar: Buscar, *, host: str, site_ligado: bool, csp_do_painel: str) -> Desfecho:
     """As conferências de uma volta, juntas. A API e o painel sempre; a raiz e a versão do CSS e do JS só com o site
     ligado."""
+    return borda.juntar(uma_volta_em_partes(buscar, host=host, site_ligado=site_ligado, csp_do_painel=csp_do_painel))
+
+
+def uma_volta_em_partes(buscar: Buscar, *, host: str, site_ligado: bool,
+                        csp_do_painel: str) -> tuple[Desfecho, Desfecho]:
+    """`(api, site)`. Separados porque a API tem o próprio "não consegui conferir" (C3 da leitura do #383): uma API em
+    404 com o site perfeito não pode virar aviso de que a página está fora de alcance."""
     base = f"https://{host}"
+    # A API primeiro: é o defeito mais grave. Só o status importa; aberta, o corpo seria dado do central (29.101). Dos
+    # cabeçalhos, só o `cf-mitigated` é lido (C1), e nada deles vai ao log nem à saúde.
+    resposta = _pedir(buscar, base + borda.CAMINHO_DA_API, None, ler_corpo=False)
+    api = resposta if isinstance(resposta, Desfecho) else borda.conferir_api(resposta.status, resposta.cabecalhos)
+    return api, borda.juntar(_o_site(buscar, base, host, site_ligado=site_ligado, csp_do_painel=csp_do_painel))
+
+
+def _o_site(buscar: Buscar, base: str, host: str, *, site_ligado: bool, csp_do_painel: str) -> list[Desfecho]:
     desfechos: list[Desfecho] = []
-
-    # A API primeiro: é o defeito mais grave. Só o status importa; aberta, o corpo seria dado do central (29.101).
-    api = _pedir(buscar, base + borda.CAMINHO_DA_API, None, ler_corpo=False)
-    desfechos.append(api if isinstance(api, Desfecho) else borda.conferir_api(api.status))
-
     painel = _pedir(buscar, base + "/central/", borda.ACEITA)
     if isinstance(painel, Desfecho):
         desfechos.append(painel)
@@ -76,15 +87,15 @@ def uma_volta(buscar: Buscar, *, host: str, site_ligado: bool, csp_do_painel: st
         desfechos += _pagina("/central/", painel, host, sem_transformar=True,
                              csp=None if csp_do_painel == "desligada" else csp_do_painel)
     if not site_ligado:
-        return borda.juntar(desfechos)
+        return desfechos
 
     raiz = _pedir(buscar, base + "/", borda.ACEITA)
     if isinstance(raiz, Desfecho):
         desfechos.append(raiz)
-        return borda.juntar(desfechos)
+        return desfechos
     desfechos += _pagina("/", raiz, host, sem_transformar=True, gzip_da_origem=True, csp="site", sem_cookie=True)
     if raiz.status != 200 or not _corpo_legivel(raiz):
-        return borda.juntar(desfechos)
+        return desfechos
     html = _texto(raiz)
     versoes = borda.versoes_pedidas(html)
     for caminho in ("/assets/site.css", "/assets/site.js"):
@@ -98,7 +109,7 @@ def uma_volta(buscar: Buscar, *, host: str, site_ligado: bool, csp_do_painel: st
             desfechos.append(arquivo)
         else:
             desfechos.append(borda.conferir_versao(caminho, versao, arquivo.status, arquivo.corpo))
-    return borda.juntar(desfechos)
+    return desfechos
 
 
 def _pagina(onde: str, resposta: Resposta, host: str, *, sem_transformar: bool = False, gzip_da_origem: bool = False,
@@ -128,6 +139,11 @@ def _texto(resposta: Resposta) -> str:
     return resposta.corpo.decode("utf-8", "replace")
 
 
+#: As chaves do "não consegui conferir" no dia do aviso: uma do site e outra da API (a Canais também separa).
+_CHAVE_DO_SITE, _CHAVE_DA_API = borda.SEM_CONFERIR, "sem_conferir_api"
+_CHAVES_SEM_CONFERIR = frozenset({_CHAVE_DO_SITE, _CHAVE_DA_API})
+
+
 class Vigia:
     """O estado entre voltas, em memória: a última volta, as voltas seguidas sem conferir e o dia em que cada código já
     foi avisado. Um processo, um vigia; só o líder dá voltas (o laço confere)."""
@@ -143,8 +159,11 @@ class Vigia:
         self._intervalo_s = intervalo_s
         self._avisar = avisar
         self.ultima: Desfecho | None = None
+        self.ultima_do_site: Desfecho | None = None
+        self.ultima_da_api: Desfecho | None = None
         self.quando: datetime | None = None
-        self.seguidas_sem_conferir = 0
+        self.seguidas_sem_conferir = 0              # o site (painel, raiz, arquivos), ou o túnel inteiro
+        self.seguidas_sem_conferir_api = 0          # só a API respondendo outra coisa (404, 302, 500, desafio): C3
         self._avisado_em: dict[str, date] = {}
 
     def volta(self, agora: datetime) -> Desfecho | None:
@@ -152,44 +171,58 @@ class Vigia:
         host = self._host()
         if not host:
             return None
-        desfecho = uma_volta(self._buscar, host=host, site_ligado=self._site_ligado(),
-                             csp_do_painel=self._csp_do_painel())
-        self.ultima, self.quando = desfecho, agora
-        if desfecho.estado == borda.SEM_CONFERIR:
-            self.seguidas_sem_conferir += 1
-            log.warning("portal: vigia da borda sem conferir (%s), %s volta(s) seguida(s)", desfecho.motivo,
-                        self.seguidas_sem_conferir)
-            if self.seguidas_sem_conferir >= self._n():
-                # O aviso diz o código (`borda-502`, `tempo-esgotado`): o filtro da Canais só deixa [A-Za-z0-9._/-].
-                codigo = desfecho.motivo.split(",", 1)[0].strip().replace(" ", "-")
-                self._avisar_uma_vez(borda.SEM_CONFERIR, "raiz", agora, achado=codigo or None, horas=self._horas())
-            return desfecho
-        self.seguidas_sem_conferir = 0
-        self._avisado_em.pop(borda.SEM_CONFERIR, None)
+        api, site = uma_volta_em_partes(self._buscar, host=host, site_ligado=self._site_ligado(),
+                                        csp_do_painel=self._csp_do_painel())
+        desfecho = borda.juntar((api, site))
+        self.ultima, self.ultima_do_site, self.ultima_da_api, self.quando = desfecho, site, api, agora
+        self.seguidas_sem_conferir = self._sem_conferir(site, self.seguidas_sem_conferir, "raiz", _CHAVE_DO_SITE, agora)
+        # Rede, túnel e tempo esgotado na API também derrubam o painel: quem conta é o site, sem aviso dobrado.
+        if not (api.estado == borda.SEM_CONFERIR and not api.motivo.startswith("api ")):
+            self.seguidas_sem_conferir_api = self._sem_conferir(api, self.seguidas_sem_conferir_api, "api",
+                                                                _CHAVE_DA_API, agora)
         if desfecho.estado == borda.OK:
             log.info("portal: vigia da borda ok")
             self._avisado_em.clear()
+            return desfecho
+        if desfecho.estado == borda.SEM_CONFERIR:
             return desfecho
         log.warning("portal: vigia da borda achou defeito: %s",
                     "; ".join(f"{a.codigo} em {a.onde}" for a in desfecho.achados))
         presentes: dict[str, Achado] = {}
         for achado in desfecho.achados:
             presentes.setdefault(achado.codigo, achado)
-        for codigo in [c for c in self._avisado_em if c not in presentes]:
+        for codigo in [c for c in self._avisado_em if c not in presentes and c not in _CHAVES_SEM_CONFERIR]:
             del self._avisado_em[codigo]                      # resolvido: se voltar, avisa de novo
         for codigo, achado in presentes.items():
             self._avisar_uma_vez(codigo, ONDE_DO_AVISO.get(achado.onde, "raiz"), agora, achado=achado.item or None)
         return desfecho
 
-    def _horas(self) -> int:
-        return max(1, math.ceil(self.seguidas_sem_conferir * self._intervalo_s() / 3600))
+    def _sem_conferir(self, parte: Desfecho, seguidas: int, onde: str, chave: str, agora: datetime) -> int:
+        """As voltas seguidas sem conferir de uma parte; na N-ésima, o aviso. Conferiu: zera."""
+        if parte.estado != borda.SEM_CONFERIR:
+            self._avisado_em.pop(chave, None)
+            return 0
+        seguidas += 1
+        log.warning("portal: vigia da borda sem conferir %s (%s), %s volta(s) seguida(s)", onde, parte.motivo, seguidas)
+        if seguidas >= self._n():
+            # O aviso diz o código (`borda-502`, `tempo-esgotado`, `api-404`): o filtro da Canais só deixa
+            # [A-Za-z0-9._/-].
+            codigo = parte.motivo.split(",", 1)[0].strip().replace(" ", "-")
+            self._avisar_uma_vez(borda.SEM_CONFERIR, onde, agora, achado=codigo or None, horas=self._horas(seguidas),
+                                 chave=chave)
+        return seguidas
+
+    def _horas(self, seguidas: int) -> int:
+        return max(1, math.ceil(seguidas * self._intervalo_s() / 3600))
 
     def _avisar_uma_vez(self, codigo: str, onde: str, agora: datetime, *, achado: str | None = None,
-                        horas: int | None = None) -> None:
-        """Uma vez por código e por dia UTC (a chave da Canais também é por dia). Se a Canais não enfileirou (canal
-        desligado, falha), tenta de novo na volta seguinte."""
+                        horas: int | None = None, chave: str | None = None) -> None:
+        """Uma vez por código e por dia UTC (a chave da Canais também é por dia); o "não consegui conferir" tem uma
+        chave para o site e outra para a API. Se a Canais não enfileirou (canal desligado, falha), tenta de novo na
+        volta seguinte."""
+        chave = chave or codigo
         dia = agora.date()
-        if self._avisado_em.get(codigo) == dia:
+        if self._avisado_em.get(chave) == dia:
             return
         avisar = self._avisar()
         if avisar is None:
@@ -200,7 +233,7 @@ class Vigia:
             log.error("portal: aviso da borda (%s) não saiu: %s", codigo, type(exc).__name__)
             return
         if getattr(resposta, "enfileirado", False):
-            self._avisado_em[codigo] = dia
+            self._avisado_em[chave] = dia
         else:
             log.warning("portal: aviso da borda (%s) não entrou na fila: %s", codigo, getattr(resposta, "motivo", "?"))
 
@@ -218,14 +251,28 @@ class Vigia:
                 borda.GESTOS[borda.API_ABERTA]))
         defeitos = tuple(a for a in defeitos if a.codigo != borda.API_ABERTA)
         if defeitos:
-            detalhes = "; ".join(f"{a.onde}: {a.detalhe}" for a in defeitos)
+            # O detalhe pode trazer valor de terceiro (cabeçalho, nome de cookie): nenhum controle entra na saúde (U1).
+            detalhes = borda.linha_sem_controle("; ".join(f"{a.onde}: {a.detalhe}" for a in defeitos))
             codigos = list(dict.fromkeys(a.codigo for a in defeitos))
             achados.append((
                 "portal_borda_defeito",
                 f"O vigia da borda (volta das {quando}) achou a página mexida pelo caminho: {detalhes}.",
                 " ".join(borda.GESTOS[c] for c in codigos if c in borda.GESTOS)))
+        if self.seguidas_sem_conferir_api >= self._n():
+            motivo = self.ultima_da_api.motivo if self.ultima_da_api is not None else "?"
+            # O portão do central recusa antes da rota: um 500 sem credencial sugere que o pedido passou dele ou que
+            # ele quebrou (nota da leitura do #383).
+            extra = (" Um 500 sem credencial sugere que o pedido passou do portão do central ou que o portão quebrou."
+                     if motivo == "api 500" else "")
+            achados.append((
+                "portal_api_sem_conferir",
+                f"Há {self.seguidas_sem_conferir_api} volta(s) seguida(s) a API pedida sem credencial pelo nome "
+                f"público não recusa nem abre ({motivo}; última às {quando}).{extra}",
+                "Confira se uma regra da zona (redirecionamento, desafio, página de erro) responde por /api/* no lugar "
+                "do central; o vigia não consegue dizer se a API está fechada."))
         if self.seguidas_sem_conferir >= self._n():
-            motivo = self.ultima.motivo if self.ultima is not None else "?"
+            parte = self.ultima_do_site or self.ultima
+            motivo = parte.motivo if parte is not None else "?"
             achados.append((
                 "portal_borda_sem_conferir",
                 f"Há {self.seguidas_sem_conferir} volta(s) seguida(s) o vigia da borda não consegue conferir o site pelo "

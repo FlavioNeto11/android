@@ -34,6 +34,9 @@ def _regua() -> ModuleType:
 
 
 def _ascii(texto: str) -> str:
+    """Toda linha FALHOU passa por aqui. Controle vindo da página ou da borda vira `?`: uma quebra de linha de
+    terceiro partiria a linha em duas, a segunda com cara de instrução (U1 da leitura do #378)."""
+    texto = "".join("?" if ord(c) < 0x20 or ord(c) == 0x7F else c for c in texto)
     return unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
 
 

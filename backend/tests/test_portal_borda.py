@@ -54,6 +54,12 @@ def _borda(quebra: str = "") -> httpx.MockTransport:
                 return httpx.Response(200, json=[{"serial": "emulador-segredo"}])
             if quebra == "api_404":
                 return httpx.Response(404)
+            if quebra == "api_500":
+                return httpx.Response(500)
+            if quebra == "api_desafio":
+                # O desafio da borda em /api/*: 403, mas não é a recusa do central (C1 da leitura do #383).
+                return httpx.Response(403, headers={"cf-mitigated": "challenge", "set-cookie": "__cf_bm=segredo-cf"},
+                                      text="<title>Just a moment...</title>")
             return httpx.Response(401, json={"detail": "unauthorized"})
         if caminho == "/central/":
             corpo = b'<!doctype html><script type="module" src="/central/assets/index-abc.js"></script><div id="root">'
@@ -324,6 +330,23 @@ def test_a_regua_e_o_cli_da_prova_de_fora_rodam_sem_o_venv() -> None:
         assert not fora, f"{arquivo.name} importa fora da biblioteca padrão: {fora}"
 
 
+def test_a_linha_falhou_da_regua_nao_se_parte_em_duas() -> None:
+    """U1, o lado da prova: o valor de um cabeçalho com controle (aqui um \\x0b, que o `curl` repassa) não pode partir
+    a linha FALHOU; o `_ascii` da régua troca o controle por `?`."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[2]
+    cab = "HTTP/1.1 200 OK\r\ncache-control: no-store\x0b\x0c-> faca x\r\n\r\n".encode("latin-1")
+    r = subprocess.run([sys.executable, str(raiz / "scripts/portal-regua-da-borda.py"), "cabecalhos", "--onde", "/",
+                        "--rotulo", "/ (cabecalhos)", "--sem-transformar"], input=cab, capture_output=True, check=False)
+    linhas = r.stdout.decode("ascii").splitlines()
+    falhou = [ln for ln in linhas if ln.startswith("FALHOU")]
+    assert r.returncode == 1 and len(falhou) == 1 and "no-store??-> faca x" in falhou[0], linhas
+    assert not any(ln.startswith("-> faca") for ln in linhas)
+
+
 def test_configuracao_do_vigia_e_estrita() -> None:
     from pydantic import ValidationError
 
@@ -375,6 +398,9 @@ def test_versao_e_a_primeira_apontada_e_o_item_tem_teto() -> None:
     ("https://10.0.0.5/x.js", "ip/x.js"),
     ("https://[2001:db8::1]:8443/x.js", "ip/x.js"),
     ("a/b:c.js", "a/b"),
+    ("https://usuario;sessao@cdn.exemplo.invalid/a.js", "cdn.exemplo.invalid/a.js"),     # R1
+    ("ht tps://usuario:senha@cdn.exemplo.invalid/a.js", "relativo"),                     # R2
+    ("https://%31%30.0.0.5/a.js", "ip/a.js"),                                            # R3
 ])
 def test_o_achado_da_canais_e_so_host_e_caminho_no_alfabeto_dela(src: str, item: str) -> None:
     """Contrato com a Canais (leitura do #381): o filtro dela não acha segredo em segmento de caminho; o vigia manda só
@@ -384,7 +410,7 @@ def test_o_achado_da_canais_e_so_host_e_caminho_no_alfabeto_dela(src: str, item:
 
 #: Cada marcador é um pedaço que NUNCA pode sair no item nem no detalhe (leitura do #378, Q1 a Q4). A porta só não
 #: pode sair no item: o detalhe da saúde e da prova mostra esquema, host, porta e caminho.
-_MARCAS = ("USUARIO", "SENHA", "QUERY", "FRAG", "SESSAO", "10.0.0.5", "2001", "db8", "c0a8")
+_MARCAS = ("USUARIO", "SENHA", "QUERY", "FRAG", "SESSAO", "1234", "10.0.0.5", "%31%30", "2001", "db8", "c0a8")
 _PORTA = "8443"
 _CDN = "cdn.exemplo.invalid"
 _SRCS_ADVERSARIOS = [
@@ -410,6 +436,13 @@ _SRCS_ADVERSARIOS = [
     "https://[2001:db8::1]:8443/a.js",
     "https://[::ffff:c0a8:1]/a.js",
     "USUARIO:SENHA@evil.invalid/a.js",
+    f"https://USUARIO;SESSAO@{_CDN}/a.js",                    # R1: o `;` é do userinfo, o host é o cdn
+    f"https://USUARIO:1234;SESSAO@{_CDN}/a.js",
+    f"ht tps://USUARIO:SENHA@{_CDN}/a.js",                    # R2: relativo para o navegador
+    "1USUARIO:SENHA@evil.invalid/a.js",
+    "https://%31%30.0.0.5/a.js",                              # R3: IP codificado
+    f"https://{_CDN}%0d%0a-%3E%20x/a.js",                     # U1: quebra de linha codificada no host
+    f"https://USUARIO:SENHA@{_CDN}/a\x00b.js",                # controle cru no caminho
     "\x01 https://USUARIO:SENHA@evil.invalid/a.js",
 ]
 
@@ -423,9 +456,31 @@ def test_nenhum_pedaco_de_credencial_porta_query_ou_ip_sai_no_item_nem_no_detalh
         assert marca.lower() not in item.lower(), (marca, item)
         assert marca.lower() not in detalhe.lower(), (marca, detalhe)
     assert _PORTA not in item, item
+    # U1: nada abaixo de 0x21 (controle, quebra, espaço) nem DEL no item e no detalhe.
+    assert all(0x21 <= ord(c) != 0x7F for c in item + detalhe), (item, detalhe)
     assert re.fullmatch(r"[A-Za-z0-9._/-]{0,120}", item)
     [achado] = borda.conferir_html("/", 200, f'<script src="{src}"></script>', host=HOST).achados
     assert (achado.item, achado.detalhe) == (item, detalhe)
+
+
+def test_relativo_com_dois_pontos_no_1o_segmento_nao_mostra_nada_dele() -> None:
+    """R2: para o navegador são caminho relativo, e a saúde mostrava o original inteiro."""
+    for src in ("ht tps://usuario:senha@cdn.exemplo.invalid/a.js", "1usuario:senha@evil.invalid/a.js"):
+        assert borda.endereco_do_script(src) == ("relativo", '(relativo-com-":")')
+
+
+def test_host_codificado_nao_vira_linha_nova_no_detalhe_nem_na_saude() -> None:
+    """U1: `%0d%0a` decodificado no host partia a linha FALHOU da prova e a da saúde em duas, a segunda com cara de
+    instrução. O host decodificado só decide se é IP; o detalhe sai com o cru e sem controle."""
+    item, detalhe = borda.endereco_do_script("https://cdn%0d%0a-%3E%20Desligue/x.js")
+    assert detalhe == "https://cdn%0d%0a-%3e%20desligue/x.js" and item == "cdn"           # o host cru, em minúscula
+    assert borda.endereco_do_script("https://usuario%40cdn.exemplo.invalid/x.js")[1].startswith("https://usuario%40")
+    assert borda.linha_sem_controle("a\r\nb\x00c d") == "a??b?c d"
+    vigia = _vigia(lambda: "cookie", CanaisFalsa())
+    vigia.volta(AGORA)
+    vigia.ultima = borda.Desfecho(borda.DEFEITO, (borda.Achado(borda.COOKIE, "/", "cookie (x\r\n-> faça y)"),))
+    [(_, mensagem, _)] = vigia.problemas()
+    assert "\r" not in mensagem and "\n" not in mensagem
 
 
 # ------------------------------------------------------------------ 29.101: a API pedida de fora sem credencial
@@ -433,6 +488,7 @@ def test_nenhum_pedaco_de_credencial_porta_query_ou_ip_sai_no_item_nem_no_detalh
     (401, borda.OK, ""), (403, borda.OK, ""), (200, borda.DEFEITO, ""), (204, borda.DEFEITO, ""),
     (502, borda.SEM_CONFERIR, "borda 502"), (504, borda.SEM_CONFERIR, "borda 504"), (0, borda.SEM_CONFERIR, "sem resposta"),
     (404, borda.SEM_CONFERIR, "api 404"), (302, borda.SEM_CONFERIR, "api 302"), (500, borda.SEM_CONFERIR, "api 500"),
+    (429, borda.SEM_CONFERIR, "api 429"), (503, borda.SEM_CONFERIR, "api 503"),
 ])
 def test_a_api_sem_credencial_tem_de_recusar(status: int, estado: str, motivo: str) -> None:
     """401 ou 403 é ok; 2xx é a API aberta; o túnel não diz nada; o resto não prova nem um nem outro e não grita
@@ -478,4 +534,39 @@ def test_api_que_responde_outra_coisa_so_avisa_depois_de_n_voltas() -> None:
     vigia.volta(AGORA)
     assert canais.chamadas == []
     vigia.volta(AGORA + timedelta(hours=1))
-    assert canais.chamadas == [("sem_conferir", "raiz", "api-404", 2)]
+    # C3: o "não consegui conferir" é DA API, com o código; o site, perfeito, não vira aviso de página fora.
+    assert canais.chamadas == [("sem_conferir", "api", "api-404", 2)]
+    assert vigia.seguidas_sem_conferir == 0 and vigia.seguidas_sem_conferir_api == 2
+    assert [p[0] for p in vigia.problemas()] == ["portal_api_sem_conferir"]
+
+
+def test_desafio_da_borda_na_api_nao_e_recusa() -> None:
+    """C1: o 403 com `cf-mitigated: challenge` é o desafio, que um navegador passa; atrás dele a API pode estar aberta.
+    Vira "não consegui conferir" da API, e nada dos cabeçalhos vai à saúde."""
+    assert borda.conferir_api(403, {"CF-Mitigated": "challenge"}).motivo == "api desafio"
+    assert borda.conferir_api(403, {"cf-mitigated": "block"}).estado == borda.OK      # bloqueio é recusa
+    assert borda.conferir_api(403).estado == borda.OK
+    d, _ = _volta("api_desafio", site=False)
+    assert d.estado == borda.SEM_CONFERIR and d.motivo == "api desafio"
+    canais = CanaisFalsa()
+    vigia = _vigia(lambda: "api_desafio", canais, n=1)
+    vigia.volta(AGORA)
+    assert canais.chamadas == [("sem_conferir", "api", "api-desafio", 1)]
+    [(codigo, mensagem, dica)] = vigia.problemas()
+    assert codigo == "portal_api_sem_conferir" and "segredo-cf" not in mensagem + dica and "challenge" not in mensagem
+
+
+def test_api_500_diz_que_o_pedido_pode_ter_passado_do_portao() -> None:
+    vigia = _vigia(lambda: "api_500", CanaisFalsa(), n=1)
+    vigia.volta(AGORA)
+    [(codigo, mensagem, _)] = vigia.problemas()
+    assert codigo == "portal_api_sem_conferir" and "api 500" in mensagem and "passou do portão" in mensagem
+
+
+def test_tunel_fora_avisa_uma_vez_pelo_site_e_nao_pela_api() -> None:
+    """A API também cai com o túnel; quem conta é o site, sem aviso dobrado."""
+    canais = CanaisFalsa()
+    vigia = _vigia(lambda: "tunel", canais, n=1)
+    vigia.volta(AGORA)
+    assert canais.chamadas == [("sem_conferir", "raiz", "borda-522", 1)]
+    assert vigia.seguidas_sem_conferir_api == 0
