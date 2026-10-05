@@ -27,8 +27,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   sobrava dentro de um slug de exemplo. Código executável, decisão e prova não mudam.
 - Forma com PONTO (handle): na main de hoje só resta na migração 054 (aplicada, não se edita), no livro-razão do plano e no
   relatório do runner (gerados pelo mecanismo): nada a trocar à mão. O resto da lista de antes já saiu no 31.98, 31.102 e 31.106.
-- Ficam de fora, de propósito: uma linha do CHANGELOG e a avaliação original de UX (`docs/revisoes-ux/00-avaliacao-original.txt`),
-  que são registro histórico do que foi escrito na época; trocar altera a fonte. Decisão da orquestradora se quiser.
+- Também trocados, por decisão da orquestradora (22:35Z: o histórico fica no Git, o texto vivo não leva nome de persona): 2
+  linhas antigas do CHANGELOG e a avaliação original de UX (`docs/revisoes-ux/00-avaliacao-original.txt`), 1 linha.
 - Prova: `not_run` em teste de comportamento (só comentário e doc); conferido por busca que nenhuma linha acrescentada tem
   pedaço de nome real; `docs-check` verde; frontend `typecheck` e os 334 testes de `profiles` e `lib` verdes. Real: `not_run`.
 
@@ -6730,7 +6730,7 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
 
 ## 2026-10-02 — 29.25: persona sem @ no grupo de acesso, cabeçalho do cartão no celular e `flows/match` em POST (branch feat/29-25-ux-personas)
 
-- **B3:** o grupo de acesso mostra a persona cuja conta saiu (29.23) como "Beatriz Rocha · sem conta" (discreto, tracejado), e não como um chip "@" vazio; o
+- **B3:** o grupo de acesso mostra a persona cuja conta saiu (29.23) como "Sueli Barreto · sem conta" (discreto, tracejado), e não como um chip "@" vazio; o
   `aria-label` e as opções do diálogo seguem a mesma regra (`rotuloDaConta`, em `pessoa.ts`). `members[]` do grupo ganha `name` no backend (só adição).
 - **I6:** em tela estreita (≤720 px) o `CardHeader` (`components/ui.module.css`, a mesma regra do 28.12; serve a `PageSection` e a toda guia) reserva ao texto no mínimo 12rem; a ação fica no canto quando cabe e desce para a linha de baixo, à direita, quando não cabe;
   antes o texto ficava com ~1/3 da linha ao lado de "Adicionar conta" e o título quebrava no meio da palavra. Título com `overflow-wrap: normal`.
@@ -7638,7 +7638,7 @@ Integrado na `main`; **não implantado** (só o painel; sem backend). Prova `sim
 worktree. Relatórios em [`docs/revisoes-ux/rodada-2/`](docs/revisoes-ux/rodada-2/).
 
 - **Cabeçalho:** uma linha de 56 px no celular (Menu, marca, saúde, "Resumo"); chip "Recursos" no tablet.
-- **Persona:** cabeçalho único, 5 seções, nome legível na URL (`#/personas/lucas-almeida`) com o id antigo aceito.
+- **Persona:** cabeçalho único, 5 seções, nome legível na URL (`#/personas/tadeu-quintela`) com o id antigo aceito.
 - **Execução e pendências:** resumo no topo da execução, aba padrão por situação, regra de pendências testada nas quatro
   origens; total com "4+" quando uma origem falha.
 - **Acessibilidade e texto:** menu expandido a partir de 1280 px, alvos de 32 px, rótulo do gráfico em 13 px, nome acessível do
