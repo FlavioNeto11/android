@@ -69,7 +69,7 @@ class Approval:
         d = {k: getattr(self, k) for k in
              ("id", "profile_id", "run_id", "objective_id", "step_id", "capability", "target", "summary",
               "generated_content", "approved_content", "status", "created_at", "decided_at", "decided_note",
-              "decided_by", "interaction_id", "image_id", "origem", "expires_at", "plan_version")}
+              "decided_by", "interaction_id", "image_id", "rotulo_ia", "origem", "expires_at", "plan_version")}
         d["content"] = self.content
         return d
 
