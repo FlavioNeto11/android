@@ -14,6 +14,7 @@ from typing import Any, Callable
 
 import psutil
 
+from . import marca_de_partida
 from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
 from .automation.hierarchy import SUBTIPO_CONTA_TRAVADA
@@ -300,7 +301,11 @@ class AppState:
         # precisa dele (`scripts/stop.ps1`) lê o arquivo na hora de usar. Ver `security/local_secret.py`.
         local_secret.garantir(cfg.data_dir)
         self.db = Database(cfg.db_dsn)
-        self.db.migrate()
+        # 29.131: a marca da partida (29.124) anda a cada migração aplicada e entre os passos longos daqui; sem o id
+        # do supervisor, `gravar` não faz nada.
+        pasta_da_marca = marca_de_partida.pasta_do_supervisor(cfg.data_dir)
+        self.db.migrate(ao_aplicar=lambda _v: marca_de_partida.gravar(pasta_da_marca, marca_de_partida.MIGRANDO))
+        marca_de_partida.gravar(pasta_da_marca, marca_de_partida.MIGRANDO)
         # `origin`: quem publicou. É o que permite a OUTRA réplica saber o que não é dela e entregar aos
         # WebSockets ligados nela (item 5.6) — sem isso, o painel de uma réplica não via nada da outra.
         self.bus = EventBus(self.db, origin=cfg.owner_id)
@@ -323,6 +328,7 @@ class AppState:
         self.devices = DeviceManager(cfg, self.db, self.bus, self.tools, self.appium,
                                      settings_getter=self.settings.get, io_factory=io_factory, emulator=emulator)
         self.devices.seed()
+        marca_de_partida.gravar(pasta_da_marca, marca_de_partida.APARELHOS)
         self.provider: AIProvider = provider or build_provider(cfg)
         # Storage de evidências (item 5.7): disco local por omissão, S3-compatível por bandeira. A chave gravada
         # em `evidence.path` passa a ser chave de storage, e é a mesma nas duas pontas.

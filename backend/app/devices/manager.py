@@ -2729,7 +2729,7 @@ class DeviceManager:
                     if not warm:
                         await asyncio.to_thread(self._discard_snapshot, rt)
                     log_path = self.cfg.logs_dir / f"emulator-{rt.avd_name}.log"
-                    rt.boot_log_offset = log_path.stat().st_size if log_path.exists() else 0
+                    rt.boot_log_offset = self._offset_do_spawn(log_path)
                     await asyncio.to_thread(self._spawn, rt, a, wipe, warm)
                     if wipe:
                         self._disco_apagado(rt, "o emulador subiu com os dados apagados (reset)")
@@ -2746,7 +2746,7 @@ class DeviceManager:
                         t0 = time.monotonic()
                         # 29.127 (N1): a subida a frio é outra subida; o offset da tentativa do snapshot leria o log
                         # dela também.
-                        rt.boot_log_offset = log_path.stat().st_size if log_path.exists() else 0
+                        rt.boot_log_offset = self._offset_do_spawn(log_path)
                         await asyncio.to_thread(self._spawn, rt, a, False, False)
                         self._set_state(rt, InstanceState.booting, "snapshot descartado; iniciando a frio")
                         await self._wait_boot(rt, t0)
@@ -3311,6 +3311,12 @@ class DeviceManager:
         await asyncio.to_thread(rt.session.close)
         rt.automation, rt.frame = AutomationInfo(), None
         self._set_state(rt, estado, detalhe)
+
+    @staticmethod
+    def _offset_do_spawn(log_path: Path) -> int:
+        """O offset de uma subida que este backend vai iniciar: o tamanho do log agora (o que vier depois é dela). Se o
+        spawn rotacionar o log, o arquivo novo fica menor, e os leitores leem do começo (29.127, N3)."""
+        return log_path.stat().st_size if log_path.exists() else 0
 
     @staticmethod
     def _offset_da_readocao(log_path: Path, *, tentativas: int = 3, pausa_s: float = 0.2) -> int:

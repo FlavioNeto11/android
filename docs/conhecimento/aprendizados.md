@@ -945,7 +945,7 @@ o que seria encerrado, sem encerrar nada. Com a pasta vazia, a seleção casava 
 testes: `Join-Path` com um drive inexistente devolve vazio); agora isso é erro.
 
 **Fora do deploy: correção no backend (28/09).** Sobrava o backend que morre sozinho (crash, Windows Update). O
-`Supervisor.ciclo` só sobe outro, e sem pai vivo o `_matar_filhos` não alcança o Appium que o morto subiu; o backend
+`Supervisor.ciclo` só sobe outro, e sem pai vivo o `_matar_filhos` (removido no 29.125) não alcança o Appium que o morto subiu; o backend
 seguinte o readotava pelo `data/appium.pid` e, sem prova de mascaramento, subia `degraded`. Havia duas saídas: o
 supervisor encerrar o órfão antes de subir, ou o `AppiumServer.start` trocá-lo. Ficou a segunda
 (`_reuse_running` e `_kill_orphan`). Ela cobre todo caminho até a subida: supervisor, `start.ps1` e deploy cujo

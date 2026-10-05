@@ -205,9 +205,11 @@ só envia o token de encerramento para a Farm identificada.
 **Partida lenta não é travamento** (29.124, `backend/app/marca_de_partida.py`). A cada subida, o supervisor sorteia um
 id e o passa em `POC_PARTIDA_ID`, junto da pasta dele (`POC_PASTA_DO_SUPERVISOR`, a `data/` ao lado do
 `supervisor.log`). O backend grava `data/backend-partida.json` (só `id`, `fase`, `ts`) antes do `AppState`, depois
-dele, antes do `poc.start()` e em `no_ar`. O silêncio de `/api/health` não conta como falha enquanto a marca é desta
-subida, a fase não é `no_ar`, a partida tem menos de 600 s e a última reescrita menos de 240 s; o `supervisor.log`
-diz a fase. Sem marca, com marca de outra subida, parada ou `no_ar`, vale a regra de sempre (90 s de carência e três
+dele, antes do `poc.start()` e em `no_ar`; dentro do `AppState`, também a cada migração aplicada e depois das
+migrações e dos aparelhos (29.131). O silêncio de `/api/health` não conta como falha enquanto a marca é desta subida,
+a fase não é `no_ar`, a partida tem menos de 600 s e a última reescrita menos de 240 s: os 240 s valem por passo
+(uma migração sozinha que passe deles conta como falha), e os 600 s pela partida inteira. O `supervisor.log` diz a
+fase, e a linha do kill diz há quanto tempo foi gravada a pilha do vigia que ela cita. Sem marca, com marca de outra subida, parada ou `no_ar`, vale a regra de sempre (90 s de carência e três
 falhas a cada 15 s). Depois de 4 reinícios seguidos sem uma conferência boa, a espera antes do próximo vira 300 s,
 dita no log; uma conferência boa zera a conta. O despejo do vigia do laço (29.121) também vai para a pasta do
 supervisor, onde ele o procura para citar no kill. Backend subido à mão não tem id e não grava marca.

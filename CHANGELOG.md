@@ -19,6 +19,60 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.131 e 29.138: as sobras das leituras do #433, #435, #441 e #443, e os achados das revisões automáticas do #443 (branch fix/29-131-sobras-supervisor-readocao)
+
+Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
+
+- #433 (29.124):
+  - R1: a marca da partida anda DENTRO do `AppState`. O `Database.migrate(ao_aplicar=)` avisa a cada migração
+    aplicada (um erro de quem acompanha não interrompe nada), e o `AppState` grava `migrando` e, depois dos aparelhos,
+    `aparelhos`. Os 240 s passam a valer por passo, e os 600 s pela partida inteira (o `docs/operacao.md` diz isso;
+    antes, uma migração lenta passava dos 240 s e era morta no meio).
+  - O `main()` grava `antes_do_estado` e `estado_pronto` pela nova `estado_com_marca(cfg, fabrica)`, testável.
+  - N1: a linha do kill diz há quanto tempo a pilha citada foi gravada, e na partida o vigia espaça os despejos em
+    120 s (aos 60, 180 e 300 s), em vez de 30 s.
+  - A recusa por backend alheio respondendo zera `reinicios_seguidos`.
+- #435 (29.125):
+  - o docstring do `_kill_orphan` cita `supervisor.e_emulador`;
+  - sai a lista decorativa do teste;
+  - o `signal` deixa de ser proibido (um CTRL_BREAK ao próprio backend não é matar outro processo);
+  - o `aprendizados.md` marca o `_matar_filhos` como removido.
+- #441 (29.127):
+  - o `_offset_do_spawn(log_path)` serve ao spawn e à retentativa a frio, e o teste confere os dois sites;
+  - as guardas do offset -1 são discriminadas por um `Path.open` que reprova se for chamado;
+  - o `_termina_em_quebra` dá False num erro de leitura com o arquivo existindo (o `\n` a mais é o lado seguro).
+- #443 (29.132):
+  - S1: o Appium novo que morre sem ligar a porta devolve a decisão ao reaproveitamento também quando o `is_up` de
+    2 s falha, se alguém escuta na porta;
+  - o `start()` pergunta o dono da porta antes de subir outro processo;
+  - a porta ser do processo novo prova a subida, sem depender da frase `listener started on` de uma versão;
+  - o `_donos_da_porta` lista TODOS os ouvintes;
+  - sai o `_confirm_masking`, que ficou sem chamador.
+- 29.138, achados das revisões automáticas do #443, conferidos e todos procedentes:
+  - supervisor (Copilot): a saúde que respondeu prova que ESTE processo acabou a partida. O `respondeu_nesta_subida`
+    desliga a tolerância da partida até a próxima subida (zera em `_subir`). Antes, com a marca final sem gravar (a
+    escrita engole o erro), um laço travado depois do "no ar" era tolerado como partida lenta por até 240/600 s;
+  - `_own_orphan` (Copilot): o dono da porta conhecido e alheio é externo; o `appium.pid` só vale quando o sistema
+    não diz quem escuta. O teste que esperava o arquivo valendo passa a afirmar `None`;
+  - `_subir` (Codex, P1): com os donos da porta visíveis, só a porta ser do processo novo prova a subida. Um Appium
+    anterior ainda subindo escreve no mesmo `appium.log` (append) e podia pôr a frase do ouvinte depois do `offset`;
+    a frase só vale sem visibilidade dos donos;
+  - limite que fica: a linha das regras de mascaramento no log não se atribui a um processo (o log do Appium não traz
+    pid); com a porta provada deste processo, o resto do risco é o anterior, do mesmo projeto e com as mesmas regras,
+    ter escrito a linha.
+- Prova `simulated`, em Idle, -n 2, um arquivo por vez:
+  - `backend/tests/test_sobras_29_131.py` 13, `test_achados_29_138.py` 5, `test_appium_start_pid_novo.py` 7,
+    `test_supervisor_partida.py` 22, `test_saude_do_appium.py` 9, `test_supervisao_do_central.py` 20 (1 skipped),
+    `test_vigia_do_laco.py` 15, `test_readocao_marco.py` 13, `test_readocao_sem_log_antigo.py` 4,
+    `test_arquitetura.py` 9; `@tests/catracas.txt` 88 passed;
+  - 14 mutações, cada uma reprovada. As 9 do 29.131: migrate sem aviso; `AppState` sem `aparelhos`; recusa que não
+    zera; kill sem idade; partida com redespejo de 30 s; erro de leitura dando True; S1 só pelo `is_up`; `start` sem
+    o dono da porta; sem a prova pela porta. As 5 do 29.138: sem a guarda da resposta; sem marcar a resposta; sem
+    zerar na subida; o arquivo valendo com o dono conhecido; a frase valendo com o dono visível.
+- Mypy `real` (05/10, central, mypy 2.3.1 num venv isolado): 257 = teto. Os arquivos deste ramo ficam fora dos
+  pacotes da catraca (`app.contracts`, `app.modules`, `app.shared`).
+- `not_run`: a prova real (a próxima partida do central e a próxima subida do Appium depois do deploy).
+
 ## 2026-10-05 — 29.132: o `start()` do Appium só dá "subiu" quando é ele que liga a porta (branch fix/29-132-appium-start-pid-novo)
 
 - Medido em 05/10 (29.126). Às 13:10Z, com a máquina saturada:

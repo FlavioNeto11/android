@@ -41,8 +41,10 @@ class _PopenFalso:
 
 
 def _subir_com(monkeypatch: pytest.MonkeyPatch, server: AppiumServer, *, roteiro: list[str], morre: bool,
-               responde: list[bool]) -> list[_PopenFalso]:
+               responde: list[bool], donos: list[int] | None = None) -> list[_PopenFalso]:
     criados: list[_PopenFalso] = []
+    # Quem escuta na porta, sob controle do teste: sem isto, o teste veria o Appium de verdade desta máquina.
+    monkeypatch.setattr(server, "_donos_da_porta", lambda: list(donos or []))
 
     def popen(*a: Any, **kw: Any) -> _PopenFalso:
         criados.append(_PopenFalso(list(roteiro), morre, *a, **kw))
@@ -120,8 +122,10 @@ def test_o_dono_da_porta_e_o_orfao_mesmo_com_o_appium_pid_de_outro(tmp_path: Pat
     assert server._own_orphan() == 13056
 
 
-def test_dono_da_porta_alheio_nao_e_orfao_e_o_gravado_ainda_vale(tmp_path: Path,
-                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
+def test_dono_da_porta_alheio_e_externo_mesmo_com_o_gravado_nosso_vivo(tmp_path: Path,
+                                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    """29.138 (achado do Copilot no #443): quem recebe as requisições é o 4000, alheio. Provar o mascaramento no 777
+    (nosso, vivo, sem escutar) certificaria o servidor errado; antes, o arquivo ainda valia e isto devolvia 777."""
     server = _server(tmp_path)
     cmd = _com_appium_instalado(server, tmp_path, monkeypatch)
     server._pid_file.parent.mkdir(parents=True, exist_ok=True)
@@ -131,7 +135,7 @@ def test_dono_da_porta_alheio_nao_e_orfao_e_o_gravado_ainda_vale(tmp_path: Path,
     conexao = SimpleNamespace(status=psutil.CONN_LISTEN, laddr=SimpleNamespace(port=server.cfg.file.appium.port),
                               pid=4000)
     monkeypatch.setattr(mod.psutil, "net_connections", lambda kind="tcp": [conexao])
-    assert server._own_orphan() == 777
+    assert server._own_orphan() is None
 
 
 def test_sem_ver_as_conexoes_vale_o_appium_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

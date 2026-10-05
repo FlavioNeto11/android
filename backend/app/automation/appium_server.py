@@ -93,16 +93,19 @@ class AppiumServer:
     def _is_ours(self, proc: psutil.Process) -> bool:
         return str(self._package).lower() in " ".join(proc.cmdline()).lower()
 
-    def _dono_da_porta(self) -> int | None:
-        """O PID que escuta na porta do Appium, ou `None` (ninguém, ou o sistema não deixa ver)."""
+    def _donos_da_porta(self) -> list[int]:
+        """Os PIDs que escutam na porta do Appium (todos: 29.131, N2 da leitura do #443); vazio se ninguém, ou se o
+        sistema não deixa ver."""
         porta = self.cfg.file.appium.port
+        donos: list[int] = []
         try:
             for c in psutil.net_connections(kind="tcp"):
                 if c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == porta and c.pid:
-                    return int(c.pid)
+                    if int(c.pid) not in donos:
+                        donos.append(int(c.pid))
         except (psutil.Error, OSError):
-            return None
-        return None
+            return []
+        return donos
 
     def _own_orphan(self) -> int | None:
         """Appium deixado por um backend anterior deste projeto que morreu sem desligar: o processo cuja linha de
@@ -110,17 +113,18 @@ class AppiumServer:
 
         29.132: primeiro o DONO DA PORTA, depois o PID gravado. Só o arquivo não bastava: em 05/10 13:10Z um start
         sobrescreveu o `appium.pid` com o PID de um Appium que morreu sem ligar a porta, e o que seguia respondendo
-        (nosso, com as regras) passou a ser tratado como "servidor externo", sem mascaramento comprovado."""
-        candidatos: list[int] = []
-        dono = self._dono_da_porta()
-        if dono is not None:
-            candidatos.append(dono)
-        try:
-            gravado = int(self._pid_file.read_text(encoding="ascii").strip())
-            if gravado not in candidatos:
-                candidatos.append(gravado)
-        except (OSError, ValueError):
-            pass
+        (nosso, com as regras) passou a ser tratado como "servidor externo", sem mascaramento comprovado.
+
+        29.138 (achado do Copilot no #443): com o dono da porta CONHECIDO e alheio, é externo, sem cair no arquivo. O
+        PID gravado podia ser de um Appium nosso vivo que não escuta, e o mascaramento provado nele valeria para o
+        alheio que de fato recebe as requisições (inclusive o preenchimento sensível). O arquivo só vale quando o
+        sistema não diz quem escuta."""
+        candidatos = self._donos_da_porta()
+        if not candidatos:
+            try:
+                candidatos = [int(self._pid_file.read_text(encoding="ascii").strip())]
+            except (OSError, ValueError):
+                pass
         for pid in candidatos:
             try:
                 if self._is_ours(psutil.Process(pid)):
@@ -135,7 +139,9 @@ class AppiumServer:
         29.132: se o novo morre sem ligar a porta e alguém responde nela, quem responde é o anterior; a decisão
         volta ao `_reuse_running` (uma vez) em vez de o novo ser dado como "subiu"."""
         for _ in range(2):
-            if self.is_up() and self._reuse_running():
+            # 29.131 (N1 e S1 da leitura do #443): alguém escutando na porta conta como "responde" mesmo se o `is_up`
+            # de 2 s falhar com a máquina saturada; sem isto, sobe-se um processo a mais que só morre na porta.
+            if (self.is_up() or self._donos_da_porta()) and self._reuse_running():
                 return True
             subiu = self._subir(wait_s)
             if subiu is not None:
@@ -176,7 +182,13 @@ class AppiumServer:
             # 29.132: "responde na porta" não diz QUEM responde. Só conta a linha do próprio log deste processo; o
             # `appium.pid` só é gravado aqui, para não apontar para um processo que nunca ligou a porta.
             texto = self._log_desde(log_path, offset)
-            if LISTENER_MARKER in texto and self.is_up():
+            # 29.131 (leitura do #443): a porta ser DESTE processo prova; não depende da frase de uma versão.
+            # 29.138 (achado P1 no #443): com os donos da porta visíveis, SÓ isso prova. Um Appium anterior ainda
+            # subindo escreve no mesmo `appium.log` (append) e pode pôr a frase depois do `offset`; a frase só vale
+            # quando o sistema não diz quem escuta.
+            donos = self._donos_da_porta()
+            ligou = proc.pid in donos if donos else LISTENER_MARKER in texto
+            if ligou and self.is_up():
                 self._pid_file.write_text(str(proc.pid), encoding="ascii")
                 self.log_masking_active = LOADED_RULES_MARKER in texto
                 self.detail = f"iniciado por este projeto (pid {self.pid})"
@@ -185,7 +197,9 @@ class AppiumServer:
                 return True
             if proc.poll() is not None:
                 self.pid = None
-                if self.is_up():
+                # 29.131 (S1 da leitura do #443): com a máquina saturada, o `is_up` de 2 s pode falhar também; quem
+                # escuta na porta decide igual.
+                if self._donos_da_porta() or self.is_up():
                     log.warning("o Appium novo (pid %s) saiu sem ligar a porta %s, e outro servidor responde nela: "
                                 "a decisão volta ao reaproveitamento", proc.pid, a.port)
                     return None
@@ -242,7 +256,7 @@ class AppiumServer:
         Três travas antes do tiro. Há Appium instalado para subir outro: trocar um servidor degradado por nenhum
         derrubaria a automação inteira. A linha de comando é conferida de novo no MESMO objeto que vai ser
         encerrado, porque entre `_own_orphan` e aqui o PID pode ter sido reciclado. E filho que for emulador fica,
-        pelo mesmo critério do supervisor (o backend readota emulador vivo pelo PID).
+        pelo critério de `supervisor.e_emulador` (o backend readota emulador vivo pelo PID).
         """
         if not shutil.which("node") or not (self._package / "index.js").exists():
             return "não há Appium instalado para subir outro no lugar"
@@ -293,7 +307,7 @@ class AppiumServer:
     def _prove_masking(self, pid: int) -> bool:
         """Comprova o mascaramento de um Appium READOTADO (órfão do próprio projeto), sem reiniciá-lo.
 
-        Não dá para usar `_confirm_masking`: não há offset confiável no log de um processo que este backend não
+        Não dá para ler a linha das regras no log (`_subir`): não há offset confiável no log de um processo que este backend não
         acabou de iniciar, e o arquivo pode já ter rotacionado. A prova que sobra é suficiente: o cmdline do PID
         tem `--log-filters` apontando para o arquivo esperado, E o conteúdo do arquivo é exatamente
         `LOG_FILTER_RULES` — o Appium recusa subir com regra inválida (`_write_log_filters`), então um arquivo
@@ -316,10 +330,6 @@ class AppiumServer:
         except (OSError, ValueError):
             return False
         return on_disk == LOG_FILTER_RULES
-
-    def _confirm_masking(self, log_path: Path, offset: int) -> bool:
-        """Confirma no próprio log que o Appium aceitou as regras ("Loaded N filtering rule(s)")."""
-        return LOADED_RULES_MARKER in self._log_desde(log_path, offset)
 
     @staticmethod
     def _log_desde(log_path: Path, offset: int) -> str:
