@@ -415,6 +415,23 @@ def ler_renderizador(logs_dir: Path, avd_name: str) -> Renderizador | None:
     return _renderizador_da_linha(ultimo)
 
 
+def inicio_da_subida_atual(log_path: Path) -> int | None:
+    """29.123 (M1): o offset em bytes da ÚLTIMA linha `emuglConfig_init` do log, que é o começo da subida em curso. O
+    log acumula as subidas (só é cortado no spawn seguinte, `_rotate_log`), e o diálogo de relatório de falha de uma
+    subida vem DEPOIS das linhas `emuglConfig_init` dela (medido nos logs do 03 e do 06 em 05/10). `None` se a linha
+    não existe ou o arquivo não abre. Lido linha a linha, em bytes, como o `ler_renderizador`; fora do laço."""
+    pos, inicio = 0, None
+    try:
+        with log_path.open("rb") as fh:
+            for linha in fh:
+                if b"emuglConfig_init" in linha:
+                    inicio = pos
+                pos += len(linha)
+    except OSError:
+        return None
+    return inicio
+
+
 #: Quanto do log viaja no desfecho de um comando. A cauda é o que interessa (a falha está no fim) e o teto existe
 #: porque isto atravessa o canal do worker e vai parar no `result` de um comando, que é lido pelo painel.
 LOG_MAX_BYTES = 8000

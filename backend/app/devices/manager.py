@@ -1593,6 +1593,12 @@ class DeviceManager:
         if not self.tools.found():
             rt.state, rt.state_detail = InstanceState.stopped, "Android SDK não encontrado"
             return
+        # 29.123: o log do emulador é acumulado entre subidas, e o `boot_log_offset` só é gravado no spawn (um backend
+        # recém-subido tem 0). Readotar sem isto fazia o detector de diálogo do `_wait_boot` ler o HISTÓRICO: um
+        # "Showing crashdialog" de um boot antigo parou o 03 e o 06 (contas reais) em 05/10 12:57Z. O offset passa a
+        # ser o começo da subida em curso (a última `emuglConfig_init`), então o diálogo DESTA subida segue visto.
+        rt.boot_log_offset = await asyncio.to_thread(self._offset_da_readocao,
+                                                     self.cfg.logs_dir / f"emulator-{rt.avd_name}.log")
         alive = emu.is_our_emulator(rt.pid, rt.avd_name)
         try:
             state = await rt.executor.run(rt.adb.state, timeout=12, label="adb get-state")
@@ -3297,6 +3303,18 @@ class DeviceManager:
         await asyncio.to_thread(rt.session.close)
         rt.automation, rt.frame = AutomationInfo(), None
         self._set_state(rt, estado, detalhe)
+
+    @staticmethod
+    def _offset_da_readocao(log_path: Path) -> int:
+        """O começo da subida em curso no log (29.123); sem a linha `emuglConfig_init`, o fim do arquivo (só conta o
+        que vier depois); sem arquivo, ou se ele some entre uma leitura e outra, 0."""
+        inicio = emu.inicio_da_subida_atual(log_path)
+        if inicio is not None:
+            return inicio
+        try:
+            return log_path.stat().st_size
+        except OSError:
+            return 0
 
     async def _readotar_agora(self, rt: DeviceRuntime) -> None:
         """Readoção IMEDIATA depois de um `start`/`wake` que o agente concluiu. Sem isto o aparelho remoto só era
