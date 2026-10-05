@@ -338,6 +338,7 @@ async def test_inicio_que_perde_para_outro_inicio_diz_que_o_gesto_valeu(harness:
     from app.models import RunStatus
     from app.porta_do_plano import (INICIADA_POR_OUTRO_GESTO, AprovarPlanoBody, ItemAprovado, PortaIndisponivel,
                                     aprovar_plano)
+    from app.util import now_iso
 
     from .test_porta_do_plano import _plano_com_dm
 
@@ -353,7 +354,7 @@ async def test_inicio_que_perde_para_outro_inicio_diz_que_o_gesto_valeu(harness:
         return original(run_id, por=por)
 
     monkeypatch.setattr(st.runs, "start", outro_inicio_antes)
-    corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+    corpo = AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
                              tirar=[])
     with pytest.raises(PortaIndisponivel) as recusa:
         aprovar_plano(st, "run-p", corpo, por="flavio")
@@ -368,6 +369,7 @@ async def test_a_porta_trava_a_linha_da_execucao_antes_de_gravar_o_sim(harness: 
     de outro backend espera o COMMIT e enxerga os sins), e vem antes de o primeiro sim ser gravado. A corrida entre dois
     backends não roda num processo só; aqui fica a ordem."""
     from app.porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano
+    from app.util import now_iso
 
     from .test_porta_do_plano import _plano_com_dm
 
@@ -383,7 +385,7 @@ async def test_a_porta_trava_a_linha_da_execucao_antes_de_gravar_o_sim(harness: 
 
     st.db.execute = espiao  # type: ignore[method-assign]
     try:
-        corpo = AprovarPlanoBody(aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
+        corpo = AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=itens["dm"]["step_id"], chave=itens["dm"]["chave"])],
                                  tirar=[])
         try:
             aprovar_plano(st, "run-p", corpo, por="flavio")

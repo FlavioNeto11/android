@@ -1028,7 +1028,8 @@ async def test_erro_depois_do_inicio_nao_diz_que_nao_iniciou(c: Cenario, monkeyp
     c.portas.previa_da_porta = _porta(_item("s1"))
     ident = await _executar(c)
 
-    def quebra_depois_do_inicio(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+    def quebra_depois_do_inicio(run_id: str, aprovar: list[tuple[str, str]], *,
+                                vista_em: str | None = None) -> dict[str, object]:
         c.portas.estados[run_id] = "running"
         raise RuntimeError("pré-voo fora")
 
