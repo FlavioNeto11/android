@@ -158,9 +158,10 @@ def test_o_kill_que_falha_aparece_na_linha_do_aborto(tmp_path):
 def test_matar_arvore_de_verdade_mata_o_neto(tmp_path):
     """Prova barata do K-099: uma árvore real de dois níveis (pai → filho dormindo) e o `matar_arvore` real."""
     marca = tmp_path / "filho.pid"
-    filho = f"import os,time; open(r'{marca}','w').write(str(os.getpid())); time.sleep(120)"
-    pai = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{filho!r}]); time.sleep(120)"
+    filho = f"import os,time; open(r'{marca}','w').write(str(os.getpid())); time.sleep(30)"
+    pai = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{filho!r}]); time.sleep(30)"
     proc = subprocess.Popen([sys.executable, "-c", pai], start_new_session=pg.os.name != "nt")
+    pid_filho: int | None = None
     try:
         for _ in range(100):
             if marca.exists() and marca.read_text().strip():
@@ -177,6 +178,11 @@ def test_matar_arvore_de_verdade_mata_o_neto(tmp_path):
     finally:
         if proc.poll() is None:
             proc.kill()
+        if pid_filho is not None and _vivo(pid_filho):       # falhou no meio: o neto não fica dormindo
+            if pg.os.name == "nt":
+                subprocess.run(["taskkill", "/F", "/PID", str(pid_filho)], capture_output=True, check=False)
+            else:
+                pg.os.kill(pid_filho, 9)
 
 
 def _vivo(pid: int) -> bool:
@@ -215,3 +221,44 @@ def test_simular_lista_as_partes_sem_tocar_o_docker(tmp_path, monkeypatch, capsy
     out = capsys.readouterr().out
     assert "parte 1/2: 3 arquivos (de 5)" in out and "parte 2/2: 2 arquivos (de 5)" in out
     assert "wal_level=minimal" in out
+
+
+def test_executar_com_prazo_devolve_124_sem_levantar():
+    """X1: o `docker exec` preso não pendura o laço; o prazo estourado vira rc 124, como o `timeout` do coreutils."""
+    r = pg._executar([sys.executable, "-c", "import time; time.sleep(5)"], prazo_s=0.5)
+    assert r.returncode == 124 and "excedeu" in r.stderr
+
+
+def test_tres_amostras_sem_df_avisam_uma_vez(tmp_path):
+    """X2: sem a linha do df, o aborto pelo disco fica cego; a 3ª amostra seguida sem ela avisa, uma vez por série."""
+    class _SemDf(_Docker):
+        def __call__(self, cmd):
+            if cmd[:2] == ["docker", "exec"] and "df -m" in " ".join(cmd):
+                self.chamadas.append(list(cmd))
+                return _ok("")
+            return super().__call__(cmd)
+    linhas: list[str] = []
+    rc = pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=_SemDf([100]),
+                        lancar=lambda arq, s: _Pytest(voltas=7), dormir=lambda s: None, intervalo_s=30)
+    avisos = [ln for ln in linhas if "SEM AMOSTRA do df há 90 s" in ln]
+    assert rc == 0 and len(avisos) == 1
+
+
+def test_arvore_que_ja_saiu_nao_vira_kill_falho():
+    """O pytest que saiu entre a amostra e o aborto: nada de `taskkill`, nada de ATENÇÃO."""
+    chamadas: list[list[str]] = []
+    assert pg.matar_arvore(_Pytest(voltas=0), lambda cmd: chamadas.append(list(cmd)) or _ok(rc=128)) is None
+    assert chamadas == []
+
+
+def test_docker_run_que_falha_diz_o_porque(tmp_path):
+    """A imagem que falta (`--pull=never`) dizia só "não aceitou conexão"; agora o stderr do `docker run` vem junto."""
+    def docker(cmd):
+        if cmd[:2] == ["docker", "run"]:
+            return subprocess.CompletedProcess(cmd, 125, "", "Unable to find image 'postgres:16' locally\n")
+        return _ok()
+    linhas: list[str] = []
+    rc = pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=docker,
+                        lancar=lambda a, s: pytest.fail("não roda o pytest"), dormir=lambda s: None)
+    assert rc == 8
+    assert any("docker run saiu com rc=125: Unable to find image" in ln for ln in linhas)

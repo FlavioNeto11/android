@@ -48,14 +48,16 @@ from pathlib import Path
 from typing import Protocol
 
 from app.config import Config
-from app.models import RUN_SEM_TRABALHO, Problem
+from app.models import RUN_SEM_TRABALHO, Problem, RunStatus, RunTargetsResolveBody
 from app.modules.avisos.adapters.telegram import CanalTelegram, ConflitoDeConsumidor
 from app.modules.avisos.application.entrada import (
     AJUDA,
     RESPOSTA_IDENTIDADE,
     SAUDACAO,
+    Fato,
     Intencao,
     casar_ref,
+    opcao_da_escolha,
     rotear,
     texto_para_o_extrator,
 )
@@ -90,8 +92,11 @@ OPERADOR_DO_TELEGRAM = "telegram:dono"
 #: Estados de uma execução que já iniciou e ainda não acabou: a mensagem ao dono nunca diz "não iniciei" (28.36).
 EM_ANDAMENTO = ("running", "paused")
 #: Estados com desfecho: o de sempre (`portas.desfecho`) é a linha ao dono, e nenhuma outra (28.36). Os finais e, desde
-#: o 29.93, `awaiting_person`: o trabalho automático acabou e a linha diz que a execução espera um gesto dele.
-TERMINAIS = frozenset(s.value for s in RUN_SEM_TRABALHO)
+#: o 29.93, `awaiting_person`: o trabalho automático acabou e a linha diz que a execução espera um gesto dele. O nome
+#: não é "terminais" (28.42): `awaiting_person` não é fim, e o desfecho dele se rearma quando a execução sai dali.
+COM_DESFECHO = frozenset(s.value for s in RUN_SEM_TRABALHO)
+#: O estado cujo desfecho ("parou") se rearma na saída (28.42).
+PARADA_PELA_PESSOA = RunStatus.awaiting_person.value
 #: Em `needs_input` a execução para até alguém responder; pelo Telegram não se responde, então o texto aponta o painel.
 RESPONDA_NO_PAINEL = "espera uma resposta sua: responda no painel para ela seguir"
 
@@ -138,6 +143,17 @@ RESPOSTA_DO_REPASSE = {
 }
 #: 28.30: as respostas do dono ao pedido de confirmação de um comentário seu no Trello.
 REPASSES_DO_COMENTARIO = ("comentario_sim", "comentario_nao")
+#: 28.44: a resposta a uma pergunta de escolha da ANA. É `escolha` quando vem em reply ou solta e casada (com `opcao`), e
+#: `escolha_ambigua` quando vem solta com mais de uma pergunta aberta.
+REPASSES_DA_ESCOLHA = ("escolha", "escolha_ambigua")
+#: Quanto tempo depois da pergunta de escolha a resposta solta ainda casa com ela (28.44). Constante, sem chave de config.
+JANELA_DA_ESCOLHA_S = 1800
+RESPOSTA_ESCOLHA_REPLY = "Recebi a sua resposta. A orquestradora confere e segue."
+#: D1 da leitura do #412: diz QUAL pergunta (a hora dela) e sai em reply a ela, para um casamento errado ficar à vista.
+RESPOSTA_ESCOLHA_CASADA = ("Li o seu \"{texto}\" como a opção {opcao} da minha pergunta das {hora}. Se não era isso, "
+                           "responda nela com Responder.")
+RESPOSTA_ESCOLHA_AMBIGUA = ("Tenho mais de uma pergunta aberta para você: toque em Responder na mensagem certa e mande a "
+                            "opção de novo.")
 RESPOSTA_COMENTARIO_MUDOU = "O comentário mudou depois do pedido: nada foi repassado. Comente de novo no cartão."
 RESPOSTA_COMENTARIO_APAGADO = "O comentário foi apagado depois do pedido: nada foi repassado."
 RESPOSTA_COMENTARIO_SEM_CONFERIR = ("Não consegui conferir o comentário no Trello agora: nada foi repassado. Responda sim "
@@ -151,6 +167,18 @@ class ConferenciaDeComentario(Protocol):
     async def conferir(self, action: str) -> tuple[str, str | None]: ...
 
 
+#: 28.43: o texto livre mais curto que o pedido de execução aceita (o `min_length` de `RunTargetsResolveBody.command`).
+#: Lido do modelo, para não divergir dele: abaixo disso a prévia estourava `ValidationError` e virava "erro aqui dentro".
+_CAMPO_DO_PEDIDO = RunTargetsResolveBody.model_fields.get("command")
+MINIMO_DO_PEDIDO = next((int(m.min_length) for m in getattr(_CAMPO_DO_PEDIDO, "metadata", None) or []
+                         if getattr(m, "min_length", None)), 1)
+#: O que o dono lê quando o recado é curto demais para ser um pedido (28.43, o "1" solto das 10:26Z de 05/10). A linha
+#: fica `recusada`, não `falhou`: não é falha interna. O `erro` não diz "credencial" nem "pergunta" (a volta das
+#: recusas sem resposta só repete essas).
+RESPOSTA_CURTO_DEMAIS = ("Recado curto demais para virar um pedido. Se é a resposta a uma mensagem minha, toque em "
+                         "\"Responder\" nela e mande de novo; se é um pedido, diga o que fazer e em qual aparelho "
+                         "(ex.: \"no android-12\").")
+ERRO_CURTO_DEMAIS = "curto demais para um pedido"
 #: 28.30 e a entrada 1256 de 04/10: o recado que a Central não conseguiu tratar não fica mudo. Frase fixa, sem eco.
 RESPOSTA_FALHA_INTERNA = ("Não consegui tratar este recado por um erro aqui dentro; ele ficou guardado e a orquestradora vai "
                           "olhar. /ajuda mostra os comandos.")
@@ -552,6 +580,8 @@ class ConversaDoCanal:
         self._desfecho_espera_ate = 0.0
         #: O lote dos desfechos gira (28.39): a próxima volta começa depois desta linha (0 = do começo).
         self._desfecho_depois_de = 0
+        #: O lote das linhas com o desfecho "parou" gira do mesmo jeito (28.42).
+        self._rearme_depois_de = 0
         #: O "sim" ou o "não" do dono a quem chegou (28.18): (chat, autorizar) → o que responder ao dono. Só o leitor do
         #: Telegram com os convidados ligados o põe; sem ele, a resposta diz que o caminho está desligado.
         self.decidir_convidado: Callable[[str, bool], Awaitable[str]] | None = None
@@ -915,9 +945,11 @@ class ConversaDoCanal:
         resposta a essa pergunta, "curta" quando é texto curto com ela aberta (pode ter sido um pedido), None quando
         passa. Na dúvida (a pergunta não pôde ser lida), recusa: o dono responde pelo painel."""
         i = self._intencao({"texto": r.texto, "responde_a": r.responde_a})
-        if i.repasse in REPASSES_DO_COMENTARIO:
+        if i.repasse in REPASSES_DO_COMENTARIO or i.repasse in REPASSES_DA_ESCOLHA:
             # 28.30 (revisão da #314): o "sim" ao pedido de confirmação de um comentário é curto, mas é resposta a um fato
             # que não pede credencial. Sem isto, com uma pergunta de senha aberta, ele era recusado e apagado como senha.
+            # 28.44: o mesmo vale para o reply à pergunta de escolha da ANA. A resposta SOLTA não chega aqui casada (sem
+            # o id da linha não há casamento) e segue a regra do curto com pergunta sensível.
             return None
         if i.tipo in ("livre", "orquestradora"):
             # E6: o texto livre E o recado à orquestradora (reply a mensagem que a Central não mandou, ou `/orq`) são
@@ -997,6 +1029,10 @@ class ConversaDoCanal:
     def _intencao(self, linha: Linha) -> Intencao:
         texto = str(linha.get("texto") or "")
         responde_a = _texto(linha.get("responde_a"))
+        if responde_a is None and linha.get("id") is not None:
+            casada = self._escolha_solta(linha, texto)
+            if casada is not None:
+                return casada
         enviada = self.repo.enviada(responde_a) if responde_a is not None else None
         # Regra do CANAL (decisão (e)): reply a uma mensagem do bot que a Central não mandou é da orquestradora; reply
         # a uma mensagem da própria pessoa não é reply ao bot. A gramática comum só conhece o `/orq`.
@@ -1015,6 +1051,30 @@ class ConversaDoCanal:
                                 repasse="continuacao")
         return rotear(texto, fato=str(fato) if fato else None)
 
+    def _escolha_solta(self, linha: Linha, texto: str) -> Intencao | None:
+        """28.44: a mensagem SOLTA do dono que é só uma opção ("1", "opção 2") casa com a pergunta de escolha aberta da
+        ANA (`escolha:<msg>:<opções>`, nos `JANELA_DA_ESCOLHA_S` antes dela). Com uma aberta e a opção na lista dela,
+        casa; com mais de uma aberta e a opção na lista de alguma, nada casa e vai à orquestradora como ambígua. Fora
+        disso, None: o caminho de sempre."""
+        if not texto.strip() or texto.strip().startswith("/"):
+            return None
+        abertas = self.repo.escolhas_abertas(str(linha.get("recebida_em") or ""), JANELA_DA_ESCOLHA_S,
+                                             fora=self._id(linha), ref_da_resposta=_texto(linha.get("ref_mensagem")))
+        casam = [(f, op) for f in (Fato.de(str(a.get("fato") or "")) for a in abertas) if f is not None
+                 for op in [opcao_da_escolha(texto, f.opcoes)] if op is not None]
+        if not casam:
+            return None
+        t = texto.strip()
+        if len(abertas) > 1:
+            refs = [str(a["ref_mensagem"]) for a in abertas]
+            return Intencao("orquestradora", ref=",".join(refs), repasse="escolha_ambigua",
+                            texto=f"Resposta solta do dono ({t}) com {len(refs)} perguntas de escolha abertas "
+                                  f"({', '.join(refs)}): nada casou; pedi o reply na mensagem certa.")
+        f, op = casam[0]
+        return Intencao("orquestradora", ref=f.ident, repasse="escolha", opcao=op,
+                        texto=f"Resposta solta do dono, casada com a pergunta de escolha {f.ident} (opções {f.detalhe}): "
+                              f"opção {op}. Sem reply: não vale como aval de item com efeito externo.")
+
     def _fato_do_anexo(self, responde_a: str) -> str | None:
         """O reply do dono a uma foto dele vira o fato `anexo:<id>` (a 1ª imagem GUARDADA da mensagem respondida); sem foto
         guardada ali, nada muda e a mensagem segue a gramática comum (28.24, F3)."""
@@ -1031,6 +1091,8 @@ class ConversaDoCanal:
             self.repo.marcar(self._id(linha), "ignorada", intencao=i.tipo, de=("recebida",))
         elif i.tipo == "orquestradora" and i.repasse in REPASSES_DO_COMENTARIO:
             await self._repassar_comentario(saida, linha, i)
+        elif i.tipo == "orquestradora" and i.repasse in REPASSES_DA_ESCOLHA:
+            await self._repassar_escolha(saida, linha, i)
         elif i.tipo == "orquestradora":
             await self._repassar(saida, linha, i)
         elif i.tipo == "ajuda":
@@ -1086,6 +1148,34 @@ class ConversaDoCanal:
                          previa={"repasse": i.repasse or "comando", "texto": i.texto},
                          de=("recebida", "pergunta"))
         await self._responder(saida, linha, RESPOSTA_DO_REPASSE.get(i.repasse or "", RESPOSTA_DO_REPASSE["comando"]))
+
+    async def _repassar_escolha(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
+        """A resposta a uma pergunta de escolha vai à orquestradora (28.44), nunca à prévia, ao aval nem à pergunta do
+        produto. O `alvo = 'escolha:<msg>'` fecha a pergunta (ela deixa de estar aberta); a ambígua não fecha nenhuma.
+        A casada leva `casada_com` e `opcao` na `previa`, e NÃO preenche `responde_a`, que segue só o reply de verdade."""
+        previa: dict[str, object] = {"repasse": i.repasse or "escolha", "texto": i.texto}
+        alvo = None
+        if i.repasse == "escolha_ambigua":
+            previa["abertas"] = (i.ref or "").split(",")
+            resposta = RESPOSTA_ESCOLHA_AMBIGUA
+        else:
+            alvo = f"escolha:{i.ref}"
+            if i.opcao is not None:
+                previa.update(casada_com=i.ref, opcao=i.opcao)
+                pergunta = self.repo.enviada(i.ref or "")
+                quando = parse_iso(str((pergunta or {}).get("enviada_em") or ""))
+                escrito = str(linha.get("texto") or i.opcao).strip()[:40]
+                resposta = RESPOSTA_ESCOLHA_CASADA.format(texto=escrito, opcao=i.opcao,
+                                                          hora=f"{quando:%H:%M}Z" if quando else "de há pouco")
+                self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora", alvo=alvo,
+                                 previa=previa, de=("recebida", "pergunta"))
+                # Em reply à PERGUNTA casada, não ao "1": o dono vê de cara a qual mensagem a resposta foi ligada.
+                await self._enviar(saida, resposta, origem="resposta", responde_a=i.ref, entrada_id=self._id(linha))
+                return
+            resposta = RESPOSTA_ESCOLHA_REPLY
+        self.repo.marcar(self._id(linha), "orquestradora", intencao=i.tipo, destino="orquestradora", alvo=alvo,
+                         previa=previa, de=("recebida", "pergunta"))
+        await self._responder(saida, linha, resposta)
 
     async def _repassar_comentario(self, saida: SaidaDaConversa, linha: Linha, i: Intencao) -> None:
         """O sim ou o não ao pedido de confirmação de um comentário (28.30). O sim relê o comentário no Trello: se mudou,
@@ -1246,6 +1336,11 @@ class ConversaDoCanal:
     async def _previa(self, saida: SaidaDaConversa, linha: Linha, i: Intencao, texto: str,
                       instance_ids: list[str] | None) -> None:
         ident = self._id(linha)
+        if len(texto.strip()) < MINIMO_DO_PEDIDO:
+            self.repo.marcar(ident, "recusada", intencao=i.tipo, erro=ERRO_CURTO_DEMAIS, resposta=RESPOSTA_CURTO_DEMAIS,
+                             de=("recebida", "pergunta"))
+            await self._responder(saida, linha, RESPOSTA_CURTO_DEMAIS)
+            return
         p = self.portas.previa(texto, instance_ids)
         if p.perguntas or not p.alvos:
             online = self.portas.online()[:8]
@@ -1515,10 +1610,10 @@ class ConversaDoCanal:
 
     async def _seguiu(self, saida: SaidaDaConversa, linha: Linha, de: tuple[str, ...], run_id: str, estado: str,
                       texto: str) -> None:
-        """A execução saiu de `planned` por outro caminho: a linha fica feita, e o desfecho de sempre a conta. Já
-        TERMINAL, o desfecho é a única linha ao dono (sem isto ele leria duas: esta e a do desfecho, na volta seguinte).
-        O envio não sobe: no vigia, um erro aqui calaria as linhas seguintes da volta (revisão do #346, E1)."""
-        if not self.repo.marcar(self._id(linha), "feita", run_id=run_id, de=de) or estado in TERMINAIS:
+        """A execução saiu de `planned` por outro caminho: a linha fica feita, e o desfecho de sempre a conta. Num
+        estado `COM_DESFECHO`, ele é a única linha ao dono (sem isto ele leria duas: esta e a do desfecho, na volta
+        seguinte). O envio não sobe: no vigia, um erro aqui calaria as linhas seguintes da volta (revisão do #346, E1)."""
+        if not self.repo.marcar(self._id(linha), "feita", run_id=run_id, de=de) or estado in COM_DESFECHO:
             return
         try:
             await self._responder(saida, linha, texto)
@@ -1593,6 +1688,7 @@ class ConversaDoCanal:
         falha passageira para a volta (o canal está fora) e a linha tenta de novo na seguinte, nunca antes do que o 429
         pediu (`espera_s`). Sem teto de tentativas: no máximo uma falha por volta, e a linha `feita` sai pela faxina da
         retenção (28.16)."""
+        self._rearmar_desfechos()
         if self._agora() < self._desfecho_espera_ate:
             return
         # O lote gira (28.39): com 20 linhas antigas de execução longa à frente, as novas esperariam para sempre. O cursor
@@ -1603,6 +1699,18 @@ class ConversaDoCanal:
         for linha in linhas:
             run_id = str(linha["run_id"])
             texto = self.portas.desfecho(run_id)
+            parado = False
+            if texto is not None:
+                # 28.42 (N2 da leitura do #400): o estado só se lê quando há desfecho, uma vez por execução que chega a
+                # ele, e não a cada volta para as 20 em curso. Lido ANTES do texto que vale (o texto é relido): se a
+                # execução sair da espera entre as duas leituras, o pior caso é o fim contado duas vezes (o rearme),
+                # nunca calado. Sem a leitura, o desfecho sai sem rearme, como antes. O ideal, para depois: a porta
+                # devolver estado e texto de uma leitura só.
+                try:
+                    parado = self.portas.estado_da_execucao(run_id) == PARADA_PELA_PESSOA
+                except Exception:  # noqa: BLE001 - a leitura do estado não cala o desfecho
+                    parado = False
+                texto = self.portas.desfecho(run_id)
             if texto is None:
                 # A linha fica `feita` ainda em `planning`: antes de 1 h de linha, a execução não pode estar 1 h em
                 # `planned`. Só então se lê o estado (a volta não relê as 20 execuções em curso a cada vez).
@@ -1613,7 +1721,7 @@ class ConversaDoCanal:
                 # Saiu e ficou registrado, mas a marca não gravou (o banco caiu entre os dois): não repete (revisão do
                 # #358, F2). O tempo esgotado DEPOIS de o canal aceitar não deixa registro e ainda pode repetir: a
                 # troca é "pelo menos uma vez", porque na execução terminal esta é a única linha ao dono.
-                self.repo.marcar_desfecho(self._id(linha))
+                self.repo.marcar_desfecho(self._id(linha), parado=parado)
                 continue
             try:
                 await self._responder(saida, linha, self._texto_do_desfecho(texto), origem="resultado", exigir=True)
@@ -1623,8 +1731,26 @@ class ConversaDoCanal:
                         self._desfecho_espera_ate = self._agora() + falha.espera_s
                     return
                 log.warning("telegram: desfecho da mensagem %s não sai nunca (%s)", linha.get("id"), falha.motivo)
-            self.repo.marcar_desfecho(self._id(linha))
+            self.repo.marcar_desfecho(self._id(linha), parado=parado)
         self._desfecho_depois_de = self._id(linhas[-1]) if len(linhas) >= self.repo.LOTE_DESFECHO else 0
+
+    def _rearmar_desfechos(self) -> None:
+        """28.42: o desfecho se marca uma vez por conversa, e o "parou" de `awaiting_person` não é o fim. Quando a
+        execução sai dali (o gesto da pessoa a retomou, concluiu, cancelou, ou ela foi purgada), a linha volta a esperar
+        desfecho e o fim real chega à mesma conversa. Sem envio aqui: quem fala é o `_contar_desfechos`, com as travas
+        de sempre (429, falha passageira, anti-repetição). O lote gira como o do desfecho."""
+        linhas = self.repo.desfechos_parados(depois_de=self._rearme_depois_de)
+        if not linhas and self._rearme_depois_de:
+            linhas = self.repo.desfechos_parados()
+        for linha in linhas:
+            try:
+                estado = self.portas.estado_da_execucao(str(linha["run_id"]))
+            except Exception:  # noqa: BLE001 - sem a leitura, tenta na volta seguinte
+                log.exception("telegram: estado da execução %s parada", linha.get("run_id"))
+                continue
+            if estado != PARADA_PELA_PESSOA:
+                self.repo.rearmar_desfecho(self._id(linha))
+        self._rearme_depois_de = self._id(linhas[-1]) if len(linhas) >= self.repo.LOTE_DESFECHO else 0
 
     def _plano_esquecido(self, linha: Linha, run_id: str) -> None:
         """A hora conta de quando a conversa VIU a execução em `planned` (revisão do #358, F1): `runs` não guarda a hora
