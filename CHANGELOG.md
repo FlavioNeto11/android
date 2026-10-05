@@ -31,6 +31,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   conta uma vez.
 - O executor guarda a linha de base no toque do efeito (`_guardar_linha_de_base`), e ela chega à prova local
   (`StepView.mensagens_antes`) e ao marcador.
+- Bolha sem `resource_id` (árvore real do 31.26, 04/10 23:50:58Z: o `TextView` da bolha do Direct não tem id e a
+  lista não se declara rolável com o fio curto): "mensagem abaixo" passa a ser qualquer texto não editável dentro
+  do menor contêiner de lista (rolável, ou de classe de lista do Android) e depois da bolha. Na dúvida, o juiz:
+  duas bolhas iguais, bolha fora de lista ou rótulo curto abaixo dela. Sem isso, a DM que hoje fecha sem IA
+  passaria a pagar o juiz. Teste: `backend/tests/test_bolha_sem_id.py` (árvore real reduzida, texto fictício).
 - Prova: `simulated` (`backend/tests/test_marcador_de_entrega.py`, com os casos da bolha antiga, da que contém o texto
   e do rejulgamento com o mesmo modelo). Os testes que provam envio passaram a declarar a linha de base (nenhuma bolha
   igual antes). A chamada no ponto do toque foi conferida pela leitura do código.

@@ -214,6 +214,11 @@ class UiElement:
         return " | ".join(parts)
 
 
+#: 31.59: as classes de lista do Android (o nome simples, de qualquer pacote): o contêiner das mensagens de uma
+#: conversa quando a lista não se declara rolável (fio curto, que cabe na tela; medido no 31.26).
+_CLASSES_DE_LISTA = frozenset({"RecyclerView", "ListView", "ScrollView", "NestedScrollView", "AbsListView", "GridView"})
+
+
 def _dentro(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
     """O retângulo `a` está dentro de `b` (bordas inclusive)."""
     return b[0] <= a[0] and b[1] <= a[1] and a[2] <= b[2] and a[3] <= b[3]
@@ -283,8 +288,10 @@ class UiTree:
 
         "Mensagem" é o mesmo tipo de elemento da bolha (o `resource_id` dela ou o de um elemento igual dentro dela): se
         houver outro desse tipo abaixo, a bolha é antiga (revelada por rolagem, ou com resposta depois). O "Seen", a hora
-        e a reação abaixo dela não são mensagem e não contam. Sem `resource_id` para dizer o que é mensagem, `None`: a
-        árvore não sabe, e o modelo julga."""
+        e a reação abaixo dela não são mensagem e não contam.
+
+        Sem `resource_id` (a bolha do Direct do Instagram, medida no 31.26: um `TextView` sem id, filho direto da lista),
+        `_ultima_sem_tipo` decide pelo contêiner de lista."""
         bolhas = self.bolhas_iguais(content)
         if not bolhas:
             return None
@@ -294,10 +301,35 @@ class UiTree:
                  if e.resource_id and not e.editable and _dentro(e.bounds, bolha.bounds)
                  and (norm_text(e.text) == n or norm_text(e.desc) == n)}
         if not tipos:
-            return None
+            return self._ultima_sem_tipo(bolhas)
         if any(e.resource_id in tipos and e.bounds[1] >= bolha.bounds[3] for e in self.elements):
             return None
         return bolha
+
+    def _ultima_sem_tipo(self, bolhas: list[UiElement]) -> UiElement | None:
+        """31.59 (bolha sem `resource_id`): sem o tipo da bolha, "mensagem abaixo" é QUALQUER elemento não editável com
+        texto ou descrição dentro do menor contêiner de lista que contém a bolha (rolável, ou de classe de lista do
+        Android: não depende de app) e com o topo depois do fim dela. Na dúvida, `None` e o modelo julga, nunca
+        "enviado":
+
+        - mais de uma bolha igual (sem tipo não se diz qual é a nova);
+        - bolha fora de contêiner de lista;
+        - qualquer texto abaixo dela na lista, inclusive um rótulo curto (hora, "Seen", reação): sem o tipo, a árvore não
+          separa rótulo de uma resposta curta, então a prova cai no juiz enquanto ele estiver lá. O rótulo nunca vira a
+          bolha: ela é só o elemento com o texto IGUAL ao conteúdo."""
+        if len(bolhas) != 1:
+            return None
+        bolha = bolhas[0]
+        lista = min((e for e in self.elements
+                     if e is not bolha and _dentro(bolha.bounds, e.bounds) and e.bounds != bolha.bounds
+                     and (e.scrollable or e.class_name.rsplit(".", 1)[-1] in _CLASSES_DE_LISTA)),
+                    key=lambda e: (e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1]), default=None)
+        if lista is None:
+            return None
+        abaixo = any(not e.editable and (e.text.strip() or e.desc.strip()) and e is not bolha
+                     and not _dentro(e.bounds, bolha.bounds) and _dentro(e.bounds, lista.bounds)
+                     and e.bounds[1] >= bolha.bounds[3] for e in self.elements)
+        return None if abaixo else bolha
 
     def sent_as_message(self, content: str, *, antes: int | None = None) -> bool | None:
         """Prova determinística de 'texto enviado numa conversa' (achado #102), sem chamar o modelo: o conteúdo
