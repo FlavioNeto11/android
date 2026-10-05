@@ -476,6 +476,20 @@ Leitura do W1 e do 29.112 pelas revisoras.
   teste novo falha sem a mudança (mutação conferida). `npm run typecheck` limpo. Real: `not_run` (depende do backend
   em paralelo, `clear_first`, e da implantação).
 
+## 2026-10-05 — 31.90-A, a revisão do treino deixa quem ensinou corrigir as entradas (branch feat/31-90-a-revisao-corrige-entradas)
+
+- Cada entrada de etapa ganha "Descartar", que a leva ao `discarded` com `why: "descartada por quem ensinou"`. Cada
+  descartada ganha "Devolver à etapa…". As duas tiram a entrada de todo outro lugar: nada fica em dois lugares, que o
+  save recusaria (`entrada_duplicada`).
+- A entrada gravada que não está em nenhuma etapa nem no descarte aparece no bloco "Sem destino", no topo, com as duas
+  ações. O "Salvar como fluxo" fica travado, com o motivo escrito, enquanto houver alguma (o save diria
+  `entradas_sem_etapa`). Também fica travado quando a proposta da IA já vem com uma entrada em dois lugares.
+- Os `warnings` da resposta do save (adendo v1.57) vão no toast de sucesso e na tela de resultado.
+- O texto não gravado aparece como "texto não gravado", e nunca com valor, nem quando a entrada vem marcada como
+  sensível.
+- Prova simulated (`TrainingReview.test.tsx`, 3 casos novos): nove mutações, uma por parte, todas pegas. Navegador
+  `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

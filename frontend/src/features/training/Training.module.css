@@ -32,6 +32,13 @@
 .step p { margin: 0; }
 .stepHead { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .stepHead > :first-child { flex: 1 1 220px; }
+.semDestino { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--warning-border);
+              border-radius: var(--radius-md); background: var(--warning-soft); }
+.semDestino p { margin: 0; }
+.entryList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-sm); }
+.entryList li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
+.entryText { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.entryActions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
 .scope { margin: 0; padding: var(--sp-3); border: 1px solid var(--border-1); border-radius: var(--radius-md); }
 .scope legend { font-size: var(--fs-sm); font-weight: 600; padding: 0 var(--sp-2); }
 .scope p { margin: 0 0 var(--sp-2); }
