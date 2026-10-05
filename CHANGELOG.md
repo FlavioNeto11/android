@@ -27,6 +27,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated` (suíte 40): `scripts/tests` 672 passed; backend em SQLite 11875 passed; frontend 1678 passed na segunda rodada (2 falhas intermitentes na primeira, item 29.148); catracas 88 e 6; PostgreSQL dirigido nos 257 arquivos afetados, 5231 passed e 0 falhas.
 - `not_run`: percurso no navegador e prova real do conserto com conta real.
 
+## 2026-10-05 — 31.106: exemplos fictícios no código do frontend (branch fix/31-106-exemplos-ficticios-no-frontend)
+
+- `frontend/src/features/profiles/NovaPersona.tsx`: o placeholder do campo Nome, que aparece na tela, era o nome de uma
+  persona real; passa a um nome fictício, conferido contra os nomes do banco central e a tabela de troca (sem colisão).
+- `frontend/src/features/profiles/slugPersona.ts` (2 comentários) e `frontend/src/lib/rotas.ts` (1): o id real de persona
+  usado como exemplo (`ig-…`, existe no banco) passa a um id fictício no mesmo formato. O id não estava na tabela de
+  troca, e a troca ampla não o pegaria. Os slugs de nome nesses comentários ficam para a troca ampla do 31.105.
+- Prova `simulated`: `slugPersona.test.ts`, `rotas.test.ts`, `NovaPersonaLote.test.tsx` e `ProfilesPage.test.tsx`
+  (87 passed) e `tsc --noEmit` limpo. `real`: `not_run` (o placeholder não foi visto no navegador).
+
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
 
 - **Implantado** às 18:06Z: central em `9f9e2b39`, migração `115_receita_nao_aplicavel` (sem migração nova), 17 pontas sobre `19e34b22` e dois consertos de junção.
