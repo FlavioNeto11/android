@@ -318,8 +318,8 @@ avisos depois da faxina"), e a trava cai no TTL.
     segundo fator segue sendo a confirmação no Telegram (28.30).
   - **A marca separa a API da tela, não o dono da IA (revisão do #447, R1):** uma sessão que dirigisse o navegador ou o
     aplicativo do Trello com a conta dele escreveria sem `appCreator`. **Proibição (decisão da orquestradora, N1 da
-    revisão do 28.52):** nenhuma sessão escreve em cartão das listas de perguntas pelo conector do Trello nem pela tela,
-    com ou sem 🤖; só a Canais escreve ali, pela API da Central e com 🤖. Se o conector gravar como `digitado`, uma
+    revisão do 28.52):** nenhuma sessão comenta em cartão das listas de perguntas pelo conector do Trello nem pela tela,
+    com ou sem 🤖. Só a Canais cria o cartão da pergunta e comenta nele, pela API da Central e com 🤖 no comentário. Se o conector gravar como `digitado`, uma
     escrita dele sem 🤖 contaria como resposta do dono. A única exceção é a sonda abaixo, com 🤖, num cartão de teste e
     só com o sinal da orquestradora. Se aparecer "escrita por app" numa
     resposta que ele digitou, é sinal de que o Trello passou a marcar os próprios aplicativos: avisar a orquestradora.
