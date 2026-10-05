@@ -403,6 +403,7 @@ class ServicoDeValidacao:
             return
         falta = (Falta.REPRODUCAO_EM_OUTRO_APARELHO,)
         grupo = grupo_de(efeito=e.side_effect, app_qa=self._todos_de_qa(e))
+        motivo: Motivo | None                            # o parecer pode não ter motivo (pedido aceito)
         if passo == "esgotado":
             estado, motivo = EstadoDoPedido.RECUSADA, Motivo.TENTATIVAS_ESGOTADAS
         else:
