@@ -20,6 +20,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-05 — 29.143: o controle manual tem dono (branch fix/29-143)
+
+- Antes, "Assumir" com o controle de outra pessoa devolvia o mesmo lease, e quem só olhava podia tocar, parar ou descartar a gravação de quem ensina. Agora o lease guarda o dono (o operador da sessão, ou `panel`), e outra pessoa recebe 409 `controlled_by_other` com `dono` e `desde`.
+- A tomada explícita (`{"tomar": true}`) dá um lease novo e invalida o antigo. A gravação viva termina `recorded` (nem salva nem descartada), com o log "interrompida pela tomada". O `control.changed` diz quem tomou de quem. O painel (confirmação da tomada) fica com a Portal.
+- Prova `simulated`: `backend/tests/test_controle_com_dono_29_143.py` (8), com a mutação "a tomada não encerra a gravação" reprovada; 236 testes das rotas de controle e do treino, catracas, `test_arquitetura` (`Any` sem subir) e mypy no teto. `real`: `not_run`.
+
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
 
 - **Implantado** às 18:06Z: central em `9f9e2b39`, migração `115_receita_nao_aplicavel` (sem migração nova), 17 pontas sobre `19e34b22` e dois consertos de junção.

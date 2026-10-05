@@ -177,7 +177,7 @@ def sem_snapshot(porque: str) -> str:
 
 
 class ControlError(Exception):
-    def __init__(self, code: str, message: str, **detalhes: Any):
+    def __init__(self, code: str, message: str, **detalhes: str | None):
         super().__init__(message)
         self.code = code
         self.message = message
@@ -4198,7 +4198,7 @@ class DeviceManager:
             self._control_event(rt, "IA liberou o aparelho")
 
     def _grant_user(self, rt: DeviceRuntime, lease_id: str, *, dono: str,
-                    mensagem: str = "Controle manual concedido ao usuário", **extra: Any) -> None:
+                    mensagem: str = "Controle manual concedido ao usuário", **extra: str) -> None:
         rt.control, rt.control_since = ControlOwner.user, now_iso()
         rt.lease_id, rt.pending_lease_id, rt.takeover_requested = lease_id, None, False
         rt.lease_dono, rt.pending_dono = dono, None
@@ -4207,7 +4207,7 @@ class DeviceManager:
         rt.attention = "Controle manual ativo — a execução automática deste aparelho está suspensa."
         self._control_event(rt, mensagem, **extra)
 
-    def _control_event(self, rt: DeviceRuntime, message: str, **extra: Any) -> None:
+    def _control_event(self, rt: DeviceRuntime, message: str, **extra: str) -> None:
         self.bus.emit("control.changed", f"{rt.id}: {message}", instance_id=rt.id,
                       data={"instance_id": rt.id, "control": rt.control.value, "pending": rt.takeover_requested,
                             **extra})
