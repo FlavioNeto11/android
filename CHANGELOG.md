@@ -154,6 +154,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Doc (`aprendizado.md`): no estoque migrado, as exposições congeladas com `waiting_user` antes do 30.69 ficam assim; o relatório de condução, recalculado, mostra `esperando_pessoa` também nas antigas. Nota N2: a exposição de etapa que concluiu antes da espera só é preenchida na saída (atrasa, não perde).
 - Prova `simulated`: `backend/tests/test_digest_na_saida_da_espera.py` (6 passed na d6409fbe; o novo `test_a_curadoria_nao_escolhe_a_execucao_que_espera_e_escolhe_quando_ela_sai` confere também que a saída da espera preenche a exposição). Na 2ª ponta do 30.71, com o T1 e o N1, SQLite em Idle: dirigidos 78 passed (`-n 2`, digest_na_saida_da_espera, aguardando_pessoa, learning_licoes, aprendizado_backfill_licoes, prompts_licoes) e catracas 86 passed (`-n 4`). No caso `cancelada_na_espera` do T1, a medida é o que o digest da saída ESCREVE: a exposição da etapa que espera, com `filled_at` e `outcome`, que o segundo digest não pode mudar.
 
+## 2026-10-05 — 30.73: o parecer da classe B não pede voto nem decisão da pessoa (branch feat/30-73-curador-na-classe-b)
+
+- Medida do 30.72: 5 fluxos B que já cumpriam os números da autopublicação paravam em `observar` porque o parecer pedia `voto_da_pessoa` e `decisao_da_pessoa` por "efeito sem catálogo", que é a definição da classe B.
+- Dossiê (`modules/learning/domain/curador.py`): o fato `risco.classe_b_e` no item B, e `faltas_do_item` sem as duas faltas da pessoa nas opções e no `validar_saida` do item B. A e C sem mudança; o estoque gravado se lê como foi gravado.
+- Hub (`backend/app/planning/curador.py`, da Jev): uma frase da classe B no `CURADOR_SYSTEM`, `VERSAO_DO_TEMPLATE` `curador-v2` e o hash do texto preso em teste.
+- O descarte fica visível (pedido da Jev): `Parecer.falta_descartada`, na `saida` gravada só quando houve, e uma linha de log em `CuradorPorIA.uma_volta` com o id da revisão e os rótulos. Na API, adendo v1.53.
+- A autopublicação segue em `shadow`. Prova `simulated`: `backend/tests/test_curador_classe_b.py`; dirigidos do curador 207 passed, os que tocam parecer, dossiê e `saida` 330 passed, `scripts/tests` da Jev 50 passed, catracas 86 passed (SQLite, Idle, na 32a326be).
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,

@@ -4075,7 +4075,8 @@ pessoa: a escolha dela mede se a IA acerta, sem a influência dela (D-3). O pare
   `curador: {modo, pendentes_ocultos, pode_pedir_revisao} | null`. `Revisao`: `{id, criado_em, gatilho, validade, classe,
   simulated, modelo, estado_no_parecer, parecer, atual, acao, recusa, decisao_final, decidido_por, override,
   override_motivo, transicao_id}`. `parecer` é a saída validada (`decisao`, `alvo`, `faixa`, `causa`, `confianca`,
-  `probabilidade`, `evidencias_citadas`, `riscos`, `inconsistencias`, `falta` e `conclusao`, o único texto livre), `null`
+  `probabilidade`, `evidencias_citadas`, `riscos`, `inconsistencias`, `falta` e `conclusao`, o único texto livre; e
+  `falta_descartada` só quando a validação tirou de `falta` um rótulo fora da classe, adendo v1.53), `null`
   quando a `validade` não é `ok` (`invalida:<motivo>`, `recusada:custo`, `recusada:triagem`). `atual`: é o parecer que uma
   decisão de agora responde (só ele traz `acao` e `recusa`). `classe`: a efetiva, a da política endurecida pela `faixa`
   que a IA declarou.
@@ -6332,3 +6333,21 @@ Migração 112. Campo aditivo em `SessionInfo`, nos mesmos cinco DTOs do adendo 
   parcial, ANTES deste código (deploy 36, `e5f1b22b`): no android-04, com a captura sã, o toque com quadro de ~40 s
   voltou `stale_frame` e o Voltar com quadro recente passou (`data/diag-29-105/29-105-medida.md`); no android-09, a
   sobrecarga acima (`data/diag-29-105/a09/registro.txt`). A tela protegida em si: `not_run`.
+
+## Adendo v1.53 (05/10/2026; número da orquestradora; item 30.73) — a falta que a validação tirou do parecer da classe B
+
+Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learning_reviews.saida` relida. Aparece em
+`GET /api/aprendizado/{kind}/{ref}` (`pareceres[]`) e na resposta do pedido de revisão
+(`POST /api/aprendizado/{kind}/{ref}/revisao`, `revisao`):
+- `falta_descartada: string[]`, com rótulos do mesmo vocabulário fechado de `falta` (`Falta`).
+  - São os que a IA marcou fora das faltas da classe do item e a validação tirou de `falta`.
+  - Hoje só acontece na classe B, com `voto_da_pessoa` e `decisao_da_pessoa`: um provedor sem esquema estrito pode
+    devolvê-los mesmo fora das opções.
+- AUSENTE quando não houve descarte. A `saida` dos pareceres sem descarte, inclusive todo o estoque de `curador-v1`,
+  fica byte a byte como antes.
+- Não entra em decisão nenhuma: nem no aceite, nem na regra da autopublicação, nem no pedido de prova. Existe para não
+  esconder que o modelo insistiu.
+- Nunca leva texto da IA, só rótulos.
+- O mesmo descarte sai numa linha de log do curador, com o id da revisão, a classe e os rótulos.
+- O painel pode ignorar a chave. Ausente também quer dizer backend de antes do 30.73.
+- **Prova:** `simulated` (`backend/tests/test_curador_classe_b.py`).

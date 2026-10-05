@@ -1666,6 +1666,45 @@ mesmo aparelho; falta reprodução em outro aparelho", mas a reprodução já ex
 
 **Prova:** `simulated` em `backend/tests/test_learning_dossie_pela_marca.py` (3 testes; mutação conferida no separador
 das versões). `real`: `not_run` até o deploy.
+
+## O parecer da classe B não pede o que nenhuma prova produz (30.73)
+
+A medida do 30.72 (05/10, `.claude/handoffs/aprendizado-medida-30-72.md`) achou isto: nenhum dos 22 fluxos B tinha
+caminho para `aprovar`. Cinco deles já cumpriam os números da autopublicação (≥ 2 execuções reais em ≥ 2 aparelhos,
+nenhuma evidência contra) e paravam em `observar`, porque o parecer pedia `voto_da_pessoa` e `decisao_da_pessoa` por
+"efeito sem catálogo". Na classe B, o efeito em app sem catálogo é a própria definição da classe
+(`politica_de_risco`), e nenhuma execução produz essas duas faltas.
+
+- **Dossiê:** o item B leva o fato `risco.classe_b_e` (`CLASSE_B_DO_ITEM`).
+  - Diz que "sem entrada no catálogo" define a classe e não é lacuna, que o parecer julga pelas evidências citáveis,
+    que publicar um fluxo B segue a regra da autopublicação e que o aceite continua sendo da pessoa.
+  - O dossiê A e o C não mudam.
+  - A `VERSAO_DO_DOSSIE` continua 1 (N1 da leitura, decidido): é uma chave condicional, como `sem_caminho` e as do
+    30.36.
+    - Subir para 2 mudaria o hash de TODO dossiê, A e C inclusive, e reabriria a revisão de todo o livro sem
+      nada novo a dizer neles.
+    - O parecer B feito com a instrução nova se reconhece pelo dossiê gravado em `learning_reviews.dossie`, que tem
+      `risco.classe_b_e`. A `template_versao` da revisão é a forma do dossiê (`dossie-v1`), não a versão do texto.
+  - O hash do dossiê B muda, e cada item B fica elegível para UMA revisão nova depois do cooldown, dentro da fatia do
+    curador.
+- **Opções fechadas:** `faltas_do_item(classe)` tira `voto_da_pessoa` e `decisao_da_pessoa` das opções de `falta` do
+  item B (`FALTA_SO_DA_PESSOA`).
+  - O esquema estrito que vai ao provedor leva esse enum.
+  - Se um provedor sem esquema estrito as devolver mesmo assim, o `validar_saida` as tira do parecer, que segue
+    válido. O descarte não some: elas vão a `Parecer.falta_descartada`, à `saida` gravada como `falta_descartada`
+    (só quando houve, então a `saida` dos outros pareceres não muda) e a uma linha de log com o id da revisão e os
+    rótulos. Pedido da Jev: não esconder que o modelo insistiu.
+  - Na A e na C, as opções são todas, como antes.
+- **Instrução do hub:** a frase da B no `CURADOR_SYSTEM` (`backend/app/planning/curador.py`, hub da Jev), na redação
+  dela (05/10 08:45Z). Ela nomeia os rótulos (`voto_da_pessoa`, `decisao_da_pessoa`) em vez de "não peça decisão da
+  pessoa", que contradiria o "quem aceita é a pessoa" do mesmo texto, e termina com "O aceite continua sendo da
+  pessoa". `VERSAO_DO_TEMPLATE` passa a `curador-v2`, e o hash do texto fica preso num teste.
+- **Estoque:** o parecer gravado com `voto_da_pessoa` se lê como foi gravado (`parecer_gravado` não filtra).
+- **A autopublicação continua em `shadow`.** Ligar o `on` não faz parte deste item.
+
+**Prova:** `simulated` em `backend/tests/test_curador_classe_b.py`. `real`: `not_run` até o deploy e a primeira
+revisão B de `curador-v2`.
+
 ## A prova de fluxo por amostra (30.48)
 
 O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 e o fluxo nunca se validava por pedido: o
