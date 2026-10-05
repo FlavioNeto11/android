@@ -5,9 +5,11 @@
 // passa no dia em que é escrito e quebra quando o relógio passa dela, em qualquer ramo. Rodando a suíte com o relógio
 // à frente (+2, +40, +400 dias) o teste assim aparece antes. Para TRÁS, os testes com fixtures em setembro falham
 // (o "passado" fixo vira futuro): isso não é defeito, o relógio de verdade só anda para a frente.
-const dias = Number(process.env.DESLOCAMENTO_DIAS ?? 0);
+import { lerDeslocamentoEmDias } from './deslocamento';
 
-if (Number.isFinite(dias) && dias !== 0) {
+const dias = lerDeslocamentoEmDias(process.env.DESLOCAMENTO_DIAS);
+
+if (dias !== 0) {
   const Real = Date;
   const desloque = dias * 864e5;
   class Deslocada extends Real {
