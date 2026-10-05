@@ -2037,6 +2037,7 @@ class StepExecutor:
                                               kind="text", note=note)
                 return
             data = obs.jpeg
+            sensivel_tardia = False
             if data is None and not obs.sensitive and obs.image_omitted in ("policy", "capture_failed"):
                 # A observação saiu só com a árvore (a imagem não ia ao modelo, ou a captura falhou e o 31.76 tolerou).
                 # A evidência adquire a SUA, agora, com o próprio horário na nota — é só evidência, nunca fonte de
@@ -2051,7 +2052,10 @@ class StepExecutor:
                 if tardia is not None:
                     data, quando = tardia
                     note += f" (imagem adquirida depois da observação, às {quando})"
-            if obs.sensitive:
+                else:
+                    # `None` da tardia é a tela que é (ou pode ser) sensível, ou a geração trocada: segue "sensível".
+                    sensivel_tardia = True
+            if obs.sensitive or sensivel_tardia:
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
                                               kind=kind, note=note + " (tela sensível: captura omitida)", redacted=True)
             elif data is None:
