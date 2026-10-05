@@ -20,6 +20,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-05 — 29.148: o prazo do `waitFor` não conta o tempo em que o processo ficou parado (branch fix/29-148-runspage-intermitente)
+
+- Só o harness de testes muda (`frontend/src/test/harness.ts`); o painel e o `RunsPage` ficam como estão.
+  - A falha da suíte 40 (`RunsPage.test.tsx`: paginação com timeout de 20 s e o D2 com a lista vazia) veio logo depois da suíte SQLite, com a máquina carregada. O arquivo sozinho passa, também com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 88, 1, 2, 3 e 4.
+  - A causa mais provável é o relógio: o vitest fica sem CPU por segundos e a espera de 4 s estoura sem a tela ter tido tempo de responder. Não consegui reproduzir a parada sem saturar o parque.
+  - Agora o `flush` do `waitFor` mede o atraso do próprio timer; o que passar de 200 ms volta para o prazo (teto de 60 s no total). A condição que nunca vale continua estourando no prazo, porque o timer dela chega em dia.
+  - O estouro de 20 s do teste de paginação é do vitest e não muda: uma parada acima disso ainda o derruba.
+- Prova `simulated`: `harness.test.ts::29.148` (dois testes novos: a parada de 1,2 s com prazo de 0,5 s passa; a condição falsa estoura em dia). Com a folga mutada para "nunca credita", o primeiro falha. Frontend inteiro: 1680/1680 em 4 workers (1678 + os 2 novos), typecheck verde, em 05/10 sobre `61d431ce`. `real`: não rodou; a intermitência em si fica `not_run` até uma suíte carregada confirmar.
+
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
 
 - **Implantado** às 18:06Z: central em `9f9e2b39`, migração `115_receita_nao_aplicavel` (sem migração nova), 17 pontas sobre `19e34b22` e dois consertos de junção.
