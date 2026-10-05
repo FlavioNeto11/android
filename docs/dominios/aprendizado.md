@@ -1984,3 +1984,21 @@ anterior contra nem uma classe C.
   - a segunda volta não decidiu nada;
   - os 11 do Instagram ficaram com o dono.
 - `real`: `not_run` até o deploy (entra em `shadow`).
+
+## A demonstração substitui a receita da etapa (30.79)
+
+B1 do mapa do ensino (31.81). Achado: a pessoa demonstrava no modo treinamento uma etapa que já tinha receita ativa,
+e `RecipeStore.save` descartava a demonstração em silêncio ("a ativa só sai por quarentena").
+
+- **A regra:** a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE substitui a
+  receita que segura a chave, que é `RecipeStore.viva`:
+  - a ativa aprendida da IA;
+  - a `validated` que esperava o dono, que assim sai da fila dele;
+  - a de uma demonstração anterior.
+- **A substituída** vai para `superseded`. A trilha dos dois lados é assinada pela sessão de treino (`por`), não pelo
+  sistema.
+- **O mesmo caminho** não grava nada: `save` devolve o id da que já vale. Ao substituir, devolve o id novo.
+- **Fora do treino nada muda:** a ativa e a `validated` seguram a chave, e a herança (RA-20) segue sendo do sistema
+  mesmo vinda de receita ensinada.
+- A demonstração ainda nasce ativa e não passa pela prova; isso é o 30.81.
+- **Prova:** `simulated`, em `backend/tests/test_treino_substitui_receita.py`. `real`: `not_run`.
