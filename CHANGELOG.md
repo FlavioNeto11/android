@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.105: os dados de personas saem do Git (branch chore/31-105-dados-de-personas-fora-do-git)
+
+- Os dois arquivos de dados de personas usados por scripts (a proposta de voz e o cadastro das personas novas) saíram
+  do índice com `git rm --cached`, sem reescrever histórico, e entraram no `.gitignore`. Antes, foram copiados para a
+  pasta privada da instalação, `C:/farm/privado/`, como a tabela de nomes de teste; a cópia tem o mesmo sha256 do blob
+  do Git. Atenção: quando o checkout central avançar para este commit, o Git apaga as cópias de `scripts/`; a
+  pasta privada fica.
+- `scripts/personas_completar.py` e `scripts/personas_criar.py` recebem o caminho (`--vozes` ou `PERSONAS_VOZES`;
+  `--novas` ou `PERSONAS_NOVAS`), com padrão na pasta privada; sem o arquivo, param com uma mensagem clara.
+- O teste da proposta de voz valida o FORMATO com dados fictícios inventados, lidos pela mesma função do script.
+- `scripts/trocar-nomes-nos-testes.py` lê a chave `ids` da tabela como troca literal, com a caixa exata e sempre (não
+  só no `--amplo`), fora dos valores de exemplo que o `--amplo` confere. O briefing 12 da rodada 2 de UX trocou o id
+  real pelo de exemplo. Depende do 31.101 (o ramo nasce da ponta dele) e, para zerar o id no frontend, do 31.106.
+- Prova `simulated`: `backend/tests/test_social_dm.py` e `scripts/tests/test_trocar_nomes_ids.py`. Real: `not_run`.
+
 ## 2026-10-05 — 31.101: os testes não usam mais o identificador de uma conta real (branch test/31-101-dados-ficticios-nos-testes)
 
 - Os @ com número de contas reais que os testes usavam como dado viraram valores de exemplo fixos, o mesmo para o
