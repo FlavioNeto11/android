@@ -34,7 +34,8 @@ API_ABERTA = "api_aberta"
 #: mexer no central. O mesmo texto vai no `achado` do aviso (contrato da Canais).
 CAMINHO_DA_API = "/api/instances"
 #: As recusas certas: 401 do portão do central (`security/access.py`, nome público sem credencial) ou 403 de uma
-#: camada à frente dele.
+#: camada à frente dele. O 403 com `cf-mitigated: challenge` NÃO conta: é o desafio da Cloudflare, que um navegador
+#: passa, e atrás dele a API pode estar aberta (C1 da leitura do #383).
 API_RECUSOU = frozenset({401, 403})
 
 #: A borda sem alcançar o central (o túnel): não diz nada sobre a página. O 0 é o `curl` sem resposta nenhuma.
@@ -285,10 +286,15 @@ def conferir_versao(onde: str, versao: str | None, status: int | None = None, co
     return Desfecho(OK)
 
 
-def conferir_api(status: int) -> Desfecho:
+def conferir_api(status: int, cabecalhos: Mapping[str, str] | None = None) -> Desfecho:
     """A API pedida pelo nome público sem credencial (29.101). Recusa (401, 403) é ok; 2xx é a API aberta para a
-    internet. O túnel sem alcançar a origem não diz nada. Outro status (3xx, 404, 500) também não prova nem um nem
-    outro: vira sem_conferir com o status, que avisa depois de N voltas em vez de gritar crítico à toa."""
+    internet. O túnel sem alcançar a origem não diz nada. O desafio da borda (403 com `cf-mitigated: challenge`) e
+    outro status (3xx, 404, 500) também não provam nem um nem outro: viram sem_conferir com o motivo (`api desafio`,
+    `api 404`), que avisa depois de N voltas em vez de gritar crítico à toa. O 500 merece olhar: o portão recusa antes
+    da rota, então um 500 sem credencial sugere que o pedido passou do portão ou que o portão quebrou. Dos cabeçalhos,
+    só o `cf-mitigated` é lido."""
+    if status == 403 and cabecalho(cabecalhos or {}, "cf-mitigated").lower() == "challenge":
+        return sem_conferir("api desafio")
     if status in API_RECUSOU:
         return Desfecho(OK)
     if status in STATUS_SEM_CONFERIR:

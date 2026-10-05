@@ -31,8 +31,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     separado e antes do `portal_borda_defeito`, com o gesto: tirar o nome público do ar e conferir
     `server.public_hosts` e o token.
   - 502, 504, 52x, 530, rede ou tempo esgotado: "não consegui conferir", como o resto da volta.
-  - Outro status (404, 3xx, 500): também "não consegui conferir", com o código `api-<status>`, para não gritar
-    crítico à toa; avisa depois de `voltas_sem_conferir` voltas.
+  - O desafio da borda (403 com `cf-mitigated: challenge`) e outro status (404, 3xx, 500): "não consegui conferir"
+    DA API, com o código (`api-desafio`, `api-404`), contado e avisado à parte do site (`onde=api`, saúde
+    `portal_api_sem_conferir`), para não gritar crítico à toa nem dizer que a página está fora; avisa depois de
+    `voltas_sem_conferir` voltas. O 500 diz na saúde que o pedido pode ter passado do portão.
   - O vigia só avisa: não para serviço, não toca túnel nem configuração.
 - **Contrato com a Canais:** código `api_aberta`, `onde` `api`, `achado` fixo `/api/instances`. A parte dela vem em PR
   próprio, empilhado sobre o #381.

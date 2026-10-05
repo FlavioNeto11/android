@@ -1572,9 +1572,10 @@ class ContatoPublicoCfg(BaseModel):
 
 
 class PortalVigiaCfg(BaseModel):
-    """O vigia da borda (29.97): de hora em hora, no líder da trava `avisos`, o central pede o site e o painel pelo
-    primeiro nome de `server.public_hosts`, como um visitante (só GET, sem credencial, no máximo 4 pedidos por volta), e
-    confere o que a borda da Cloudflare fez com eles. Sem nome público, nada roda, mesmo com `ligado: true`."""
+    """O vigia da borda (29.97): de hora em hora, no líder da trava `avisos`, o central pede a API, o site e o painel
+    pelo primeiro nome de `server.public_hosts`, como um visitante (só GET, sem credencial, no máximo 5 pedidos por
+    volta), e confere que a API recusa (29.101) e o que a borda da Cloudflare fez com as páginas. A API é conferida
+    mesmo com `portal.site_ligado: false`. Sem nome público, ou com `ligado: false`, nada roda, nem a API."""
 
     model_config = _PORTAL_ESTRITO
 

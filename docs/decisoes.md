@@ -5507,8 +5507,13 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
        status, o corpo nunca é lido), e como navegador o painel, a raiz e o CSS e o JS pelo `?v=` que a raiz aponta;
      - a API pedida de fora sem credencial tem de recusar (401 ou 403). Se responder 2xx, é `api_aberta`, o defeito
        mais grave do endereço público: aviso na hora, nível "precisa de você", e na saúde `portal_api_aberta`,
-       separado e primeiro. Outro status (404, 3xx, 500) não prova nem um nem outro e entra como "não consegui
-       conferir". O vigia só avisa: tirar o nome público do ar é decisão do dono;
+       separado e primeiro. O 403 com `cf-mitigated: challenge` NÃO é recusa: é o desafio da Cloudflare, que um
+       navegador passa, e atrás dele a API pode estar aberta. Ele e outro status (404, 3xx, 500) não provam nem um nem
+       outro e entram como "não consegui conferir" DA API, contado e avisado à parte do site (`onde=api`,
+       `api-desafio`, `api-404`; na saúde `portal_api_sem_conferir`), para uma API em 404 com o site perfeito não
+       virar aviso de página fora. O 500 leva uma frase a mais: o portão recusa antes da rota, então um 500 sem
+       credencial sugere que o pedido passou do portão ou que o portão quebrou. O vigia só avisa: tirar o nome
+       público do ar é decisão do dono;
      - três desfechos: ok, defeito e "não consegui conferir" (rede, tempo esgotado, a borda sem alcançar o central).
        O terceiro só vira problema depois de `portal.vigia.voltas_sem_conferir` voltas seguidas;
      - o que é defeito é decidido por UMA régua (`portal/domain/borda.py`), a mesma da prova de fora, que a chama por

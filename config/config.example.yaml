@@ -745,8 +745,8 @@ portal:                           # site institucional na raiz do nome público 
   # Vigia da borda (29.97): de hora em hora, só no líder, o central pede o site e o painel pelo 1º nome de
   # server.public_hosts, como um visitante (só GET, sem credencial, até 5 pedidos), e confere que a API recusa sem
   # credencial (29.101), script injetado pela Cloudflare, no-transform, a CSP, cookie e a versão do CSS e do JS.
-  # Defeito vai à saúde e ao dono pela Canais.
-  # Sem nome público, nada roda.
+  # Defeito vai à saúde e ao dono pela Canais. A conferência da API vem com portal.vigia.ligado e roda mesmo com
+  # site_ligado: false; com o vigia desligado, ou sem server.public_hosts, nada roda, nem a API.
   vigia:
     ligado: true
     intervalo_s: 3600             # 600 a 86400

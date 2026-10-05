@@ -54,6 +54,12 @@ def _borda(quebra: str = "") -> httpx.MockTransport:
                 return httpx.Response(200, json=[{"serial": "emulador-segredo"}])
             if quebra == "api_404":
                 return httpx.Response(404)
+            if quebra == "api_500":
+                return httpx.Response(500)
+            if quebra == "api_desafio":
+                # O desafio da borda em /api/*: 403, mas não é a recusa do central (C1 da leitura do #383).
+                return httpx.Response(403, headers={"cf-mitigated": "challenge", "set-cookie": "__cf_bm=segredo-cf"},
+                                      text="<title>Just a moment...</title>")
             return httpx.Response(401, json={"detail": "unauthorized"})
         if caminho == "/central/":
             corpo = b'<!doctype html><script type="module" src="/central/assets/index-abc.js"></script><div id="root">'
@@ -429,6 +435,7 @@ def test_relativo_com_dois_pontos_no_1o_segmento_nao_mostra_nada_dele() -> None:
     (401, borda.OK, ""), (403, borda.OK, ""), (200, borda.DEFEITO, ""), (204, borda.DEFEITO, ""),
     (502, borda.SEM_CONFERIR, "borda 502"), (504, borda.SEM_CONFERIR, "borda 504"), (0, borda.SEM_CONFERIR, "sem resposta"),
     (404, borda.SEM_CONFERIR, "api 404"), (302, borda.SEM_CONFERIR, "api 302"), (500, borda.SEM_CONFERIR, "api 500"),
+    (429, borda.SEM_CONFERIR, "api 429"), (503, borda.SEM_CONFERIR, "api 503"),
 ])
 def test_a_api_sem_credencial_tem_de_recusar(status: int, estado: str, motivo: str) -> None:
     """401 ou 403 é ok; 2xx é a API aberta; o túnel não diz nada; o resto não prova nem um nem outro e não grita
@@ -474,4 +481,39 @@ def test_api_que_responde_outra_coisa_so_avisa_depois_de_n_voltas() -> None:
     vigia.volta(AGORA)
     assert canais.chamadas == []
     vigia.volta(AGORA + timedelta(hours=1))
-    assert canais.chamadas == [("sem_conferir", "raiz", "api-404", 2)]
+    # C3: o "não consegui conferir" é DA API, com o código; o site, perfeito, não vira aviso de página fora.
+    assert canais.chamadas == [("sem_conferir", "api", "api-404", 2)]
+    assert vigia.seguidas_sem_conferir == 0 and vigia.seguidas_sem_conferir_api == 2
+    assert [p[0] for p in vigia.problemas()] == ["portal_api_sem_conferir"]
+
+
+def test_desafio_da_borda_na_api_nao_e_recusa() -> None:
+    """C1: o 403 com `cf-mitigated: challenge` é o desafio, que um navegador passa; atrás dele a API pode estar aberta.
+    Vira "não consegui conferir" da API, e nada dos cabeçalhos vai à saúde."""
+    assert borda.conferir_api(403, {"CF-Mitigated": "challenge"}).motivo == "api desafio"
+    assert borda.conferir_api(403, {"cf-mitigated": "block"}).estado == borda.OK      # bloqueio é recusa
+    assert borda.conferir_api(403).estado == borda.OK
+    d, _ = _volta("api_desafio", site=False)
+    assert d.estado == borda.SEM_CONFERIR and d.motivo == "api desafio"
+    canais = CanaisFalsa()
+    vigia = _vigia(lambda: "api_desafio", canais, n=1)
+    vigia.volta(AGORA)
+    assert canais.chamadas == [("sem_conferir", "api", "api-desafio", 1)]
+    [(codigo, mensagem, dica)] = vigia.problemas()
+    assert codigo == "portal_api_sem_conferir" and "segredo-cf" not in mensagem + dica and "challenge" not in mensagem
+
+
+def test_api_500_diz_que_o_pedido_pode_ter_passado_do_portao() -> None:
+    vigia = _vigia(lambda: "api_500", CanaisFalsa(), n=1)
+    vigia.volta(AGORA)
+    [(codigo, mensagem, _)] = vigia.problemas()
+    assert codigo == "portal_api_sem_conferir" and "api 500" in mensagem and "passou do portão" in mensagem
+
+
+def test_tunel_fora_avisa_uma_vez_pelo_site_e_nao_pela_api() -> None:
+    """A API também cai com o túnel; quem conta é o site, sem aviso dobrado."""
+    canais = CanaisFalsa()
+    vigia = _vigia(lambda: "tunel", canais, n=1)
+    vigia.volta(AGORA)
+    assert canais.chamadas == [("sem_conferir", "raiz", "borda-522", 1)]
+    assert vigia.seguidas_sem_conferir_api == 0
