@@ -31,7 +31,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   continua aberta.
 - Snapshot: a execução aguardando vem por 7 dias depois de `finished_at` (com o vencimento desligado nada a fecharia). A
   caixa de Pendências não depende do snapshot para isso: ela conta só `needs_input` (ADR-062).
-- Telegram: o desfecho diz "espera você no aparelho"; a contagem "esperando você" e o gesto são do 28.40. `TERMINAIS`
+- Telegram: o desfecho diz "parou no aparelho" (redação da Canais); a contagem "esperando você" e o gesto são do 28.40. `TERMINAIS`
   da entrada inclui o estado novo (o desfecho é a única linha, 28.36).
 - Pedidos: a ocorrência fecha como fechava com o `completed_with_issues`, para o domínio da Canais não mudar agora.
 - Aprendizado: nenhum digest enquanto a execução espera (`_settle_run` não a assenta; fora do `ASSENTADAS` e dos

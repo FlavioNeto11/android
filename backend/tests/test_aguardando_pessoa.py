@@ -199,7 +199,7 @@ async def test_consumidores_do_needs_input_nao_pegam_a_execucao_aguardando(harne
 # ------------------------------------------------------------------ Telegram e pedidos
 def test_o_telegram_conta_a_execucao_aguardando_como_desfecho_com_frase_propria() -> None:
     assert "awaiting_person" in TERMINAIS                 # o desfecho é a única linha (28.36), como no terminal
-    assert _DESFECHO[RunStatus.awaiting_person] == "espera você no aparelho"
+    assert _DESFECHO[RunStatus.awaiting_person] == "parou no aparelho"
     assert all(v != _DESFECHO[RunStatus.awaiting_person] for k, v in _DESFECHO.items() if k != RunStatus.awaiting_person)
 
 

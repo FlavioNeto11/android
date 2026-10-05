@@ -182,8 +182,9 @@ async def test_prova_com_etapa_que_pede_pessoa_e_cancelada_pelo_sistema(real: Re
 
 
 async def test_execucao_de_validacao_nunca_fica_aguardando_pessoa(real: Real) -> None:
-    """29.93: `awaiting_person` está no `ASSENTADAS` da validação, e ele pode voltar a `running`. A validação não para
-    nele porque `_prova_sem_pessoa` encerra o `waiting_user` sem esperar ninguém; a execução comum, sim, fica nele."""
+    """29.93: `awaiting_person` fica FORA do `ASSENTADAS` da validação (não é desfecho, e pode voltar a `running`). A
+    validação não para nele porque `_prova_sem_pessoa` encerra o `waiting_user` sem esperar ninguém; a execução comum,
+    sim, fica nele."""
     real.h.fakes["android-01"].screen = "launcher"
     real.h.fakes["android-01"].require_login = True                      # a etapa daria `waiting_user`
     run = real.prova("prova-caso-29-93")
