@@ -153,7 +153,7 @@ else
             -X POST -H "Content-Type: application/json" -H "Origin: https://$H" \
             -d '{"nome":"prova","telefone":"00000000","mensagem":"prova","consentimento":true,"site":"isca","token":""}'
         # A isca de novo, agora lendo os cabecalhos: a resposta do contato tambem nao poe cookie (ADR-075).
-        cab_isca="$(curl -s -o /dev/null -D - -m 20 -X POST -H "Content-Type: application/json" -H "Origin: https://$H" \
+        cab_isca="$(curl -q -s -o /dev/null -D - -m 20 -X POST -H "Content-Type: application/json" -H "Origin: https://$H" \
             -d '{"nome":"prova","telefone":"00000000","mensagem":"prova","consentimento":true,"site":"isca","token":""}' \
             "https://$H/api/portal/contato" | tr -d '\r')"
         if grep -qi '^set-cookie:' <<< "$cab_isca"; then
