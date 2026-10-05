@@ -1249,6 +1249,9 @@ Contexto: design §2.4; decisão: [ADR-038](../decisoes.md#adr-038--máquinas-de
       novo (o D1).
     - **Falha depois de marcar:** o assentamento que estoura depois da marca não se repete (como antes da marca, no
       `_settle_run`): o log diz a execução, e o digest se recupera pelo `backfill_licoes` manual.
+    - **Quem perde a marca (29.108):** o worker cujo compare-and-set perdeu não assenta, mas chama o `on_run_parada`
+      para soltar o que é do processo dele (a trava de rascunho em memória; acorda os pedidos), sem o digest. Um
+      `depois_do_commit` pedido dentro de um `savepoint()` desfeito sai junto com ele.
     - Confirmar a etapa parada devolve o objetivo às etapas seguintes, e quem fecha é o worker.
 - **Reabertura registrada como é:** `completed_with_issues → running, paused, completed, cancelling` e
   `cancelled → running, paused` (`recompute_run` reabre quando um item é retomado). É a reabertura que o design §2.4

@@ -62,6 +62,8 @@ log = logging.getLogger("poc.devices")
 #: hierarquia. A evidência fica guardada: mais velha que isto, a tela pode ter mudado para uma sensível sem ninguém ver.
 CLASSIFICACAO_FRESCA_S = 2.0
 MANUAL_LEASE_TTL_S = 600
+#: As teclas do controle manual que não conferem o quadro (29.105): só as de navegação, que saem da tela.
+TECLAS_DE_NAVEGACAO = frozenset({"back", "home", "recents"})
 #: Interesse em prévia (contrato C2): o painel renova antes de vencer. Abaixo de 5 s, uma aba lenta piscaria entre
 #: ao vivo e suspensa; acima de 60 s, uma aba que fechou sem avisar manteria o aparelho sendo capturado à toa.
 TTL_INTERESSE_MIN_S = 5.0
@@ -4189,6 +4191,20 @@ class DeviceManager:
         self.on_device_free()
         self.on_control_released(rt)
 
+    @staticmethod
+    def _quadro_velho(rt: DeviceRuntime, frase: str) -> ControlError:
+        """A recusa do toque, do arraste, do texto, do Enter e do Apagar sem quadro atual. Com a captura falhando, o quadro não vai se
+        renovar esperando: o código é outro (`capture_failing`), com o motivo e a saída (29.105). Sem falha
+        registrada, é a corrida comum entre o painel e a tela (`stale_frame`: aguardar a imagem nova resolve)."""
+        if rt.capture_failures > 0:
+            motivo = f" ({rt.capture_error})" if rt.capture_error else ""
+            return ControlError("capture_failing",
+                                f"A captura da tela está falhando{motivo}, e o quadro não se renova: toque, arraste, "
+                                "texto, Enter e Apagar precisam de um quadro atual. Voltar, Início e Recentes seguem "
+                                "aceitas e não dependem do quadro. Uma tela protegida contra captura (aba anônima, "
+                                "app bancário) faz isso.")
+        return ControlError("stale_frame", frase)
+
     def _check_lease(self, rt: DeviceRuntime, lease_id: str) -> None:
         if rt.control != ControlOwner.user or rt.lease_id != lease_id:
             raise ControlError("not_controller", "Assuma o controle do aparelho antes de interagir.")
@@ -4199,15 +4215,21 @@ class DeviceManager:
         self.touch(rt)
         if rt.state != InstanceState.online:
             raise ControlError("offline", "O aparelho não está online.")
-        seen = rt.recent_frames.get(inp.frame_id)
-        s = self.get_settings()
-        if seen is None or rt.frame is None:
-            raise ControlError("stale_frame", "A interação se refere a um frame que o backend não reconhece mais.")
-        mono, fw, fh = seen
-        if (time.monotonic() - mono) * 1000 > max(s.frame_max_age_ms, s.capture_focus_interval_s * 3000):
-            raise ControlError("stale_frame", "O frame exibido está antigo demais para uma ação segura.")
-        if (fw, fh) != (rt.frame.info.width, rt.frame.info.height):
-            raise ControlError("frame_mismatch", "A orientação/tamanho da tela mudou desde o frame exibido.")
+        fw = fh = 0
+        if not (inp.type == "key" and inp.key in TECLAS_DE_NAVEGACAO):
+            # 29.105: a tecla de navegação não aponta para nada na tela (sem coordenada nem campo), então não confere
+            # o quadro. É a saída quando ele não se renova: numa tela protegida contra captura (a aba anônima do
+            # Chrome, FLAG_SECURE) o screencap não traz imagem nova, e sem isto nem o Voltar passava (medida do
+            # 31.72). Enter e Apagar agem sobre o campo em foco: às cegas, o Enter confirmaria o que a pessoa não vê.
+            seen = rt.recent_frames.get(inp.frame_id)
+            s = self.get_settings()
+            if seen is None or rt.frame is None:
+                raise self._quadro_velho(rt, "A interação se refere a um frame que o backend não reconhece mais.")
+            mono, fw, fh = seen
+            if (time.monotonic() - mono) * 1000 > max(s.frame_max_age_ms, s.capture_focus_interval_s * 3000):
+                raise self._quadro_velho(rt, "O frame exibido está antigo demais para uma ação segura.")
+            if (fw, fh) != (rt.frame.info.width, rt.frame.info.height):
+                raise ControlError("frame_mismatch", "A orientação/tamanho da tela mudou desde o frame exibido.")
 
         def pt(x: float | None, y: float | None) -> tuple[int, int]:
             if x is None or y is None or not (0 <= x < fw and 0 <= y < fh):

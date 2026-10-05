@@ -340,10 +340,6 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
 De [docs/plano-100.md §6](plano-100.md) (o que não dá para provar com o hardware de hoje) e
 [§7](plano-100.md) (o que fica fora, por decisão — não por lacuna técnica):
 
-- **Desafio, CAPTCHA e 2FA são sempre manuais.** O sistema nunca tenta resolvê-los; vira `AUTH_CHALLENGE` e espera
-  uma pessoa. O plano melhora a fila de intervenção em volta (item 6.4), não automatiza o desafio.
-- **Sem evasão de detecção** de emulador ou de antibot. Multi-conta em emulador pode ser bloqueada pela
-  plataforma; o projeto não contorna isso.
 - **APK só da Play Store**, com a conta Google do dono (via emulador-loja), ou de um arquivo que o dono forneça —
   nunca de espelho de terceiros; `apks/` fica fora do Git.
 - **Senha nunca em resposta, log, evento, evidência, captura, prompt, memória, fixture ou Git.**

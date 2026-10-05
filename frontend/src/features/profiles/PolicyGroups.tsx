@@ -180,6 +180,17 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
   // chegasse depois, por cima de B; e salvar nesse meio criava o grupo sem a escolha.
   const leituraDoPerfil = useRef(0);
   const [lendoPerfil, setLendoPerfil] = useState(false);
+  // A dica só aparece se a leitura demorar: a comum leva ~40 ms, e uma linha que surge e some empurraria o formulário
+  // duas vezes a cada escolha (M1 da leitura do #398). A trava continua imediata.
+  const [dicaDaLeitura, setDicaDaLeitura] = useState(false);
+  useEffect(() => {
+    if (!lendoPerfil) {
+      setDicaDaLeitura(false);
+      return undefined;
+    }
+    const espera = setTimeout(() => setDicaDaLeitura(true), DICA_DA_LEITURA_MS);
+    return () => clearTimeout(espera);
+  }, [lendoPerfil]);
   const [pacoteEscolhido, setPacoteEscolhido] = useState<string | null>(null);
   const { acoes, apps, pacoteEfetivo, pronto } = useAcoesDoApp(pacoteEscolhido);
   const chave = pacoteEfetivo ?? '';
@@ -212,6 +223,11 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
     const minha = ++leituraDoPerfil.current;    // a escolha nova, mesmo a do padrão, aposenta a leitura em voo
     if (!profileId || !pronto) {                // sem o catálogo, o rascunho ficaria sem app (chave '')
       setLendoPerfil(false);
+      // "Padrão do catálogo" também SUBSTITUI: depois de partir de A, voltar ao padrão tira o que veio de A (29.109).
+      if (!profileId) {
+        setRascunhos({});
+        setLimites({});
+      }
       return;
     }
     setLendoPerfil(true);
@@ -319,7 +335,8 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
                                     placeholder="Para que serve este grupo" />}
           </Field>
           {grupo === null ? (
-            <Field label="Começar a partir de" unit="opcional">
+            <Field label="Começar a partir de" unit="opcional"
+                   hint={dicaDaLeitura ? 'Lendo o acesso de hoje da persona; salvar e editar esperam a resposta.' : undefined}>
               {({ id }) => (
                 <Select id={id} defaultValue="" disabled={!pronto} onChange={(e) => void partirDe(e.target.value)}>
                   <option value="">Padrão do catálogo</option>
@@ -408,5 +425,8 @@ function PolicyGroupDialog({ grupo, profiles, grupos, onClose, onSaved }: {
     </Dialog>
   );
 }
+
+/** Quanto a leitura do "começar a partir de" espera antes de mostrar a dica (M1 da leitura do #398). */
+const DICA_DA_LEITURA_MS = 300;
 
 const RANK: Record<PolicyName, number> = { disabled: 0, manual_only: 1, approval_required: 2, autonomous: 3 };

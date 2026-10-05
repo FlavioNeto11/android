@@ -151,7 +151,8 @@ async def test_api_exige_prazo_valida_limites_e_aparece_no_status_e_na_saude(h: 
             r = await c.put("/api/instances/android-01/repair-pause", json=corpo)
             assert r.status_code == 422, (corpo, r.text)
         assert (await c.put("/api/instances/android-99/repair-pause", json={"ttl_s": 600, "reason": "experimento"})).status_code == 404
-        assert (await c.get("/api/health")).json()["features"]["repair_pause"] == {}          # desligada por padrão
+        antes = (await c.get("/api/health")).json()
+        assert antes["features"]["repair_pause"] == {}                                          # desligada por padrão
 
         r = await c.put("/api/instances/android-01/repair-pause", json={"ttl_s": 600, "reason": "experimento W8"})
         assert r.status_code == 200
@@ -163,7 +164,9 @@ async def test_api_exige_prazo_valida_limites_e_aparece_no_status_e_na_saude(h: 
         assert inst["android-02"]["repair_pause"] is None                                      # só o marcado
         saude = (await c.get("/api/health")).json()
         assert list(saude["features"]["repair_pause"]) == ["android-01"]
-        assert saude["status"] in ("ok", "degraded")
+        # A pausa não muda a saúde. Pelo antes e depois, não por um valor absoluto: no runner do CI a saúde já vem
+        # `error` por coisas do host (29.102), e o teste reprovava sem relação com a pausa.
+        assert saude["status"] == antes["status"]
         assert not any(p["code"].startswith("repair") for p in saude["problems"])               # informativo, não é problema
 
         assert (await c.delete("/api/instances/android-01/repair-pause")).json() == {"status": "resumed"}

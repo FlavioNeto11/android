@@ -115,6 +115,8 @@ describe('Limites → Por servidor', () => {
 
     // Decidido 8: apagar o campo desfaz a decisão (sem teto), mandando `null`.
     await waitFor(() => expect((byRole('textbox', 'Teto de aparelhos') as HTMLInputElement).value).toBe('8'));
+    // O valor 8 já estava no campo antes da resposta: espera o Salvar sair do `loading` (29.104).
+    await waitFor(() => byRole('button', /^Salvar/).getAttribute('aria-busy') !== 'true');
     await setValue(byRole('textbox', 'Teto de aparelhos') as HTMLInputElement, '');
     await click(byRole('button', /^Salvar/));
     await waitFor(() => expect(backend.callsTo('PUT', /limits$/)).toHaveLength(2));

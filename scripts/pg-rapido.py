@@ -43,6 +43,8 @@ DADOS = "/var/lib/postgresql/data"
 TMPFS_MB = 4096
 LIMITE = 0.85                 # fração do tmpfs a partir da qual a parte é abortada
 INTERVALO_S = 30
+PRAZO_DO_COMANDO_S = 30       # um `docker exec` preso não pode parar o laço das amostras (X1 da leitura do #385)
+SEM_AMOSTRA_AVISO = 3         # amostras seguidas sem a linha do `df` até o aviso (X2)
 RAM_MINIMA_GB = 7.0           # banco.md: os 4 GB do tmpfs e a folga dos emuladores
 DSN = f"postgresql://postgres:teste@127.0.0.1:{PORTA}/farm"
 #: Durabilidade desligada (o banco é descartável) e WAL mínimo: sem réplica nem arquivo, o PostgreSQL não precisa
@@ -173,9 +175,14 @@ def ram_livre_gb() -> float | None:
     return round(e.ullAvailPhys / 1024 ** 3, 1)
 
 
-def _executar(cmd: Sequence[str]) -> "subprocess.CompletedProcess[str]":
+def _executar(cmd: Sequence[str], prazo_s: float = PRAZO_DO_COMANDO_S) -> "subprocess.CompletedProcess[str]":
+    """Roda o comando com prazo. Estourou: rc 124 (o do `timeout` do coreutils), sem levantar, e quem chama trata como
+    falha comum (a amostra vira `None`, o `pg_isready` tenta de novo)."""
     env = {**os.environ, "MSYS_NO_PATHCONV": "1"}       # Git Bash não reescreve /var/lib/... no docker exec
-    return subprocess.run(list(cmd), capture_output=True, text=True, env=env, check=False)
+    try:
+        return subprocess.run(list(cmd), capture_output=True, text=True, env=env, check=False, timeout=prazo_s)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(list(cmd), 124, "", f"excedeu {prazo_s:.0f} s")
 
 
 def python_do_pytest() -> Path:
@@ -198,6 +205,10 @@ def matar_arvore(proc: Processo, executar: Executar) -> str | None:
     """O pytest com `-n 8` tem filhos: matar só o pai deixa os workers vivos e órfãos (lição do K-099). No Windows,
     `taskkill /T`; fora dele, o grupo inteiro (o `_lancar_pytest` abre o pytest num grupo próprio). Devolve `None`
     quando a árvore morreu, ou a frase do que falhou, para a linha do aborto dizer."""
+    if proc.poll() is not None:
+        # Saiu sozinho entre a amostra e o aborto: o `taskkill` daria rc 128 ("processo não encontrado") e a linha do
+        # aborto acusaria um kill que não faltou. Os filhos já órfãos o `taskkill /T` também não alcança mais.
+        return None
     if os.name == "nt":
         r = executar(["taskkill", "/T", "/F", "/PID", str(proc.pid)])
     else:
@@ -210,10 +221,16 @@ def matar_arvore(proc: Processo, executar: Executar) -> str | None:
     return problema
 
 
-def recriar(executar: Executar, dormir: Callable[[float], None], prazo_s: float = 240) -> float | None:
-    """Contêiner novo com a configuração do script; segundos até aceitar conexão TCP, ou `None` no prazo."""
+def recriar(executar: Executar, dormir: Callable[[float], None], prazo_s: float = 240,
+            relatar: Callable[[str], None] | None = None) -> float | None:
+    """Contêiner novo com a configuração do script; segundos até aceitar conexão TCP, ou `None` no prazo. O erro do
+    `docker run` (a imagem que falta com o `--pull=never`, a porta ocupada) vai ao `relatar`, se houver."""
     executar(["docker", "rm", "-f", NOME])
-    if executar(comando_docker_run()).returncode != 0:
+    run = executar(comando_docker_run())
+    if run.returncode != 0:
+        if relatar is not None:
+            erro = " ".join((run.stderr or run.stdout or "").split())[:300]
+            relatar(f"docker run saiu com rc={run.returncode}: {erro or 'sem mensagem'}")
         return None
     inicio = time.monotonic()
     while time.monotonic() - inicio < prazo_s:
@@ -240,18 +257,24 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
                 limite: float = LIMITE) -> int:
     """Uma parte: contêiner novo, pytest, amostras. 0 verde; o rc do pytest se vermelho; 3 abortada pelo disco;
     8 se o contêiner não aceitou conexão."""
-    subida = recriar(executar, dormir)
+    subida = recriar(executar, dormir, relatar=relatar)
     if subida is None:
         relatar(f"{rotulo} o contêiner não aceitou conexão {agora()}")
         return 8
     relatar(f"{rotulo} aceitou em {subida} s; inicio {agora()} arquivos={len(arquivos)} python={python_do_pytest()}")
     proc = lancar(arquivos, saida)
     pico: Amostra | None = None
+    sem_amostra = 0
     while proc.poll() is None:
         dormir(intervalo_s)
         a = amostrar(executar)
         if a is not None and (pico is None or a.usado_mb > pico.usado_mb):
             pico = a
+        sem_amostra = 0 if a is not None else sem_amostra + 1
+        if sem_amostra == SEM_AMOSTRA_AVISO:
+            # Uma linha por série: sem o df, o aborto pelo disco não tem com o que decidir.
+            relatar(f"{rotulo} SEM AMOSTRA do df há {sem_amostra * intervalo_s:.0f} s ({agora()}): o aborto pelo disco "
+                    "está cego até a amostra voltar")
         if deve_abortar(a, limite):
             problema = matar_arvore(proc, executar)
             relatar(f"{rotulo} ABORTADA pelo disco: {a.linha() if a else ''}"
