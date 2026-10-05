@@ -74,9 +74,10 @@ from .recipes import (NAO_APLICAVEL_CONTA_APOS, READ_ONLY, AlvoAusente, RecipeDi
                       contar_retorno_ia, distill, eh_generica, filhos_rotulados, hash_generico_da_linha,
                       unique_selectors)
 from .repository import Repository
-from .dialogos import (FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE, MOTIVO_ACEITE_RECUSADO,
-                       MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha, dialogo_sem_saida,
-                       e_navegador, rotulo_para_o_ator, tipo_do_elemento, toque_que_aceita)
+from .dialogos import (FRACAO_DA_PAGINA, FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE,
+                       MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha,
+                       dialogo_sem_saida, e_navegador, rotulo_para_o_ator, texto_da_barra, tipo_do_elemento,
+                       toque_que_aceita)
 from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -199,17 +200,19 @@ def imagem_com_barra_tapada(jpeg: bytes, tree: UiTree, pacote: str | None, largu
     tapar com segurança: pacote sem barra conhecida, barra fora da árvore ou sem área. Quem chama manda a imagem como
     está e registra o motivo."""
     barra = BARRA_DE_ENDERECO.get(pacote or "")
-    alvo = next((e for e in tree.elements if barra is not None and e.resource_id == barra), None)
-    if alvo is None or largura <= 0 or altura <= 0:
-        return None
-    x1, y1, x2, y2 = alvo.bounds
-    if x2 <= x1 or y2 <= y1:
+    # 31.103 (S1 da leitura): TODO nó com o id da barra é tapado, não só o primeiro. A página pode pôr o id num elemento
+    # antes da barra real; tapar só o primeiro taparia a falsa e mandaria o endereço real ao provedor. Tapar também o da
+    # página é o lado que protege (some um trecho da página da imagem, nunca o endereço).
+    caixas = [e.bounds for e in tree.elements if barra is not None and e.resource_id == barra
+              and e.bounds[2] > e.bounds[0] and e.bounds[3] > e.bounds[1]]
+    if not caixas or largura <= 0 or altura <= 0:
         return None
     with Image.open(io.BytesIO(jpeg)) as img:
         img = img.convert("RGB")
         fx, fy = img.width / largura, img.height / altura
-        ImageDraw.Draw(img).rectangle((int(x1 * fx), int(y1 * fy), int(x2 * fx + 0.999), int(y2 * fy + 0.999)),
-                                      fill=(0, 0, 0))
+        desenho = ImageDraw.Draw(img)
+        for x1, y1, x2, y2 in caixas:
+            desenho.rectangle((int(x1 * fx), int(y1 * fy), int(x2 * fx + 0.999), int(y2 * fy + 0.999)), fill=(0, 0, 0))
         buf = io.BytesIO()
         img.save(buf, "JPEG", quality=72)
     return buf.getvalue()
@@ -396,11 +399,6 @@ def cobertura_na_arvore(tree: UiTree, ref: str | None) -> Cobertura | None:
 #: conteúdo; a captura de 05/10 08:06Z confirmou os bounds) e 83,8 % como modal (r-20261004190200-5b56e6, cobria).
 FRACAO_DA_SOBREPOSICAO = FRACAO_QUE_COBRE
 
-#: L2 da leitura do #391: abaixo desta fração da tela, a árvore inteira é uma janela flutuante (o dump de um diálogo
-#: nativo), não a página. A mesma fração de 60 % que o 31.72 usa para a página.
-_FRACAO_DA_JANELA = 0.6
-
-
 def _area_de(b: tuple[int, int, int, int]) -> int:
     return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
 
@@ -437,14 +435,12 @@ def sobreposicao_vale(tree: UiTree, ref: str | None, largura: int, altura: int) 
         return True
     # L2 da leitura do #391: no diálogo nativo (AlertDialog) o leitor corta o painel (`android:id/parentPanel`, sem
     # texto) e, com o dump só da janela do diálogo, sobram título, mensagem e botões, todos pequenos e sem pista. A
-    # árvore inteira menor que `_FRACAO_DA_JANELA` da tela é uma janela flutuante: o que se vê é o próprio diálogo.
-    if tree.elements:
-        x1 = min(e.bounds[0] for e in tree.elements)
-        y1 = min(e.bounds[1] for e in tree.elements)
-        x2 = max(e.bounds[2] for e in tree.elements)
-        y2 = max(e.bounds[3] for e in tree.elements)
-        if _area_de((x1, y1, x2, y2)) < _FRACAO_DA_JANELA * tela:
-            return True
+    # JANELA do dump menor que `FRACAO_DA_PAGINA` da tela é uma janela flutuante: o que se vê é o próprio diálogo.
+    # L2-a (31.77): a janela é a dos nós de topo do dump (`UiTree.janela`), não a extensão das folhas que sobraram: a
+    # página esparsa sem ids (Compose, Flutter) fica com folhas abaixo de 60 % e passaria por janela. Sem a janela (árvore
+    # montada fora de `parse_hierarchy`), o L2 não decide: a extensão das folhas é justamente o erro que ele corrige.
+    if tree.janela is not None and _area_de(tree.janela) < FRACAO_DA_PAGINA * tela:
+        return True
     base = caixa or citado
     area = base.bounds
     # Os descendentes da base, sem a relação de pai na árvore: na ordem do documento (a do uiautomator, em
@@ -935,8 +931,10 @@ class StepExecutor:
         barra = BARRA_DE_ENDERECO.get(pacote or "")
         if barra is None:
             return
-        texto = next((e.text for e in (await observe()).elements if e.resource_id == barra and e.text), "")
-        host = _host(texto)
+        # 31.103 (A1 da leitura): a barra de VERDADE, fora do trecho da página. O primeiro nó com o id e com texto podia
+        # ser um elemento da página de outro domínio com o host da conta, e a senha seria digitada nela. Sem barra
+        # fora da página, o host é vazio e nada é digitado.
+        host = _host(texto_da_barra(await observe(), {barra}))
         if not host:
             raise DriverError("Não dá para confirmar o site: a barra de endereço não está visível. Role a página ao "
                               "topo e tente de novo.", effect_possible=False)
@@ -1279,12 +1277,12 @@ class StepExecutor:
                 continue                               # o gesto falharia na execução, como antes
             alvos.append((el, (px, py)))
         if ai.consentimento_aceito_em:
-            barras = set(BARRA_DE_ENDERECO.values())
-            texto = next((e.text for e in tree.elements if e.resource_id in barras), "")
-            host = _host(texto or "")
+            # 31.103: a barra de verdade, fora do trecho da página; a página com o id da barra não escolhe o host.
+            host = _host(texto_da_barra(tree, set(BARRA_DE_ENDERECO.values())))
             if host and any(host == h or host.endswith("." + h) for h in map(str.casefold, ai.consentimento_aceito_em)):
                 return None
-        return next((r for el, ponto in alvos if (r := toque_que_aceita(tree, el, ponto)) is not None), None)
+        tela = (tool_ctx.width, tool_ctx.height)        # 31.104: a terceira medida da tela, vale mesmo sem janela
+        return next((r for el, ponto in alvos if (r := toque_que_aceita(tree, el, ponto, tela)) is not None), None)
 
     def _image_scale(self, obs: Observation, ai: AiCfg | None = None) -> float:
         """Pixels do aparelho por pixel do espaço de coordenadas que o modelo enxerga."""

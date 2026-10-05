@@ -1803,14 +1803,43 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   - **K2c:** a marca NÃO clicável também tem cara de aviso: o título "Sua privacidade" (corpo sem a palavra) e a
     pergunta "Aceitar cookies?" ligam a recusa da palavra de aceite em qualquer lugar. O link do rodapé é clicável e
     segue fora (o K2b).
+  - **N1** (31.75): o Chrome expõe um link inline como DOIS nós com o mesmo texto e os mesmos bounds, um clicável e um
+    filho não clicável (gov-3, "Declaração de Cookies"). Uma marca não clicável com gêmeo clicável conta como o nó
+    clicável (o par é um só), e o gêmeo também não é "caixa" da marca; texto longo e caixa seguem valendo. Sem isso, o
+    rodapé só com "Política de privacidade" ligaria a recusa de "OK"/"Aceitar" na tela toda. **Limite:** não há captura
+    real de rodapé só com o link; a regra vem da forma vista no gov-3 (dentro de um aviso de verdade).
   - Ficam do lado seguro, recusados: "Rejeitar cookies." com ponto e "Rejeitar todos os cookies" (fora da lista
     exata), e o `type_text(press_enter=True)` com o foco num botão segue sem tratamento.
+- 31.75, a página que imita o id do navegador: o Chrome expõe o `id` do HTML como `resource-id`, então um botão da
+  PÁGINA com `id="com.android.chrome:id/allow"` escaparia da isenção do K2 (classe e posição não separam). Na ordem do
+  documento, o conteúdo da página fica entre a WebView e a primeira RAIZ da interface do Chrome (`control_container`,
+  no ML e no g1; `bottom_container`, no gov.br; capturas de 05/10); o elemento com id do Chrome DENTRO desse trecho é
+  página, não ganha a isenção, é julgado como página e, com id de consentimento, vira marca (`dialogos._conteudo_web`).
+  A interface real do Chrome depois da raiz segue isenta (o "More options" do gov.br). Três endurecimentos, para
+  falhar FECHADO onde a página manda: **H1** a identidade da página é o `id` eN do leitor (único por árvore), não o
+  `id()` do objeto Python (um alvo de outra instância da mesma árvore não ganha a isenção calado); **H2** a raiz só
+  encerra a página com o id de raiz E a classe `android.widget.FrameLayout` (é sempre FrameLayout nas 13 capturas reais
+  com raiz; o HTML pode pôr o id da raiz num `View` antes do botão falso); **H3** com WebView e NENHUMA raiz válida
+  depois dela (a barra escondida pela rolagem, ml-2, ml-3 e uol-2; a árvore truncada, `tree.truncada`, que deixou a raiz
+  fora do corte), a página vai até o FIM do documento. Da leitura do 31.75: o leitor (`parse_hierarchy`) guarda
+  SEMPRE a WebView, mesmo sem título e sem rolagem, porque a página conseguia sumir com ela (`<title>` vazio e
+  `overflow: hidden`) e o botão falso voltava a ganhar a isenção; e a página é a UNIÃO dos trechos de todas as
+  WebViews, cada um até a primeira raiz válida (a segunda WebView depois da raiz e o iframe exposto como WebView
+  aninhada também são página). **Limites que sobram:** (i) sem WebView na árvore não há conteúdo web (a página
+  inicial anônima é nativa) e vale o id; (ii) a regra supõe que o conteúdo web não expõe a classe `FrameLayout`;
+  (iii) marcar a página na leitura pelo ancestral WebView não foi feito: a ordem do documento, com a WebView sempre
+  presente, cobre o que as capturas mostram.
 - O recusado vira ação `rejected` com o motivo "o consentimento do site não é aceito pelo ator (eN, Tipo)": no `error`
   e no `status_detail` (que chegam a aviso e cartão) vão só o id e o tipo; o rótulo, texto da página, vai só ao
   histórico do ator, com os espaços normalizados. Quatro recusas somadas na ETAPA (ou quatro erros seguidos) encerram
   a etapa sem nova tentativa (`pos_condicao_nao_comprovada` em `falhas.py`). Nunca vira sucesso por aceite.
 - `ai.consentimento_aceito_em`: hosts em que o ator pode aceitar (lido da `url_bar`, com subdomínios). Vazia por padrão;
-  preenchê-la é decisão do dono. A carga recusa `*.loja.com`, `https://…` e caminho, que nunca casariam.
+  preenchê-la é decisão do dono. A carga recusa `*.loja.com`, `https://…` e caminho, que nunca casariam. **31.103:** a
+  barra lida é a de verdade, o primeiro nó com o id da `url_bar` FORA do trecho da página (`dialogos.texto_da_barra`,
+  com a régua do 31.75): a página que põe esse id num elemento antes da barra real não escolhe o host. Sem barra fora
+  da página (H3, árvore truncada), não há isenção. A mesma leitura vale para a conferência do site antes do
+  `type_secret` (`_conferir_destino`: a barra falsa com o host da conta não recebe a senha), e a imagem que vai ao
+  provedor tapa TODO nó com o id da barra (31.54), não só o primeiro. Prova `simulated`; o real fica `not_run`.
 - O prompt do ator diz "recuse; NUNCA aceite", só para economizar decisões.
 - Limites conhecidos:
   - a trava só age com o pacote `com.android.chrome` (cobre as Custom Tabs); não cobre WebView embutida de app nem
@@ -1848,9 +1877,24 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
 - 2ª leitura do #391:
   - **L1:** dois elementos com os MESMOS bounds não se contam um ao outro como contêiner (no Chrome, o View com texto e
     o TextView filho igual); a linha da página por baixo de uma faixa pequena segue folha para o J3.
-  - **L2:** abaixo de 60 % da tela, a árvore inteira é uma janela flutuante (o dump de um diálogo nativo, cujo painel
+  - **L2:** abaixo de 60 % da tela, a JANELA do dump é uma janela flutuante (o dump de um diálogo nativo, cujo painel
     `android:id/parentPanel` sem texto o leitor corta): a recusa vale. Prova `simulated`; o real fica `not_run` até a
-    captura de um AlertDialog. Limite: com a página no MESMO dump, a extensão não acusa a janela.
+    captura de um AlertDialog. Limite: com a página no MESMO dump, a janela não acusa o diálogo; e o diálogo cuja
+    janela ocupa a tela inteira (60 % ou mais, como a folha de tela cheia) fica fora da regra da janela flutuante: o L2
+    não decide, e a recusa do juiz sobre ele só vale pelas outras regras (caixa, cruzamento).
+  - **L2-a (31.77):** a janela é a dos nós de topo do dump (`UiTree.janela`, lida em `parse_hierarchy` antes de o leitor
+    descartar o contêiner sem texto; a barra do sistema como janela própria fica de fora), não a extensão das folhas
+    que sobraram: a página esparsa sem ids (Compose, Flutter) tem folhas abaixo de 60 % e passaria por janela. Sem a
+    janela (árvore montada fora do leitor), o L2 não decide. A fração é UMA, pública, `dialogos.FRACAO_DA_PAGINA`
+    (0,6), a mesma da marca que é a página no 31.72 (K2 da leitura do #391). Prova `simulated`
+    (`backend/tests/test_janela_pela_raiz.py`); o real fica `not_run` até um dump BRUTO de diálogo nativo e de
+    página esparsa (a rota `/hierarchy` devolve só as folhas).
+  - **31.104:** a TELA da marca também é a maior das medidas: a extensão das folhas, a janela do dump e o tamanho da
+    tela do `ToolContext` (`toque_que_aceita`, parâmetro `tela`). Em `_cobre_a_tela` fica a extensão das folhas, que
+    lá é o lado que endurece. Pela extensão só, numa página esparsa o texto do aviso passava de 60 % da "página", deixava
+    de ser marca, e o "Aceitar todos" passava. Aqui o lado que trava é a página maior; a faixa (12 % da altura) cresce
+    junto. Prova `simulated` (`backend/tests/test_ator_nao_aceita_consentimento.py`, teste `test_31_104_…`, que
+    reprova o código anterior); o real fica `not_run`.
   - Nas capturas inteiras (05/10): o banner da f24955 (ml-1-topo, 73 nós) segue descartado; a folha do gov.br e o
     botão "Rejeitar cookies" dela (gov-3-rodape, 52 nós) valem.
   - Notas sem conserto agora: o "X" fora da caixa quando só o cartão tem pista; a faixa fixa no rodapé com banner no

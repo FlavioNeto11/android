@@ -283,6 +283,87 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   aberta.
 - Prova: `simulated` (`backend/tests/test_canais_respostas_as_perguntas.py`). Real: `not_run`.
 
+## 2026-10-05 — 31.103: o host do aceite vem da barra de verdade (branch fix/31-103-barra-fora-da-pagina, sobre 31.75 + 31.104)
+
+- `taskqueue/dialogos.py`: `texto_da_barra(tree, barras)`, o texto do primeiro nó com o id da barra de endereço FORA do
+  conteúdo da página (`_conteudo_web`, a régua do 31.75); sem barra fora da página, `""`.
+- `taskqueue/executor.py`: `_aceite_do_toque` lê o host de `ai.consentimento_aceito_em` por ela. Antes, o primeiro nó
+  com o id na ordem do documento: a página com `id="com.android.chrome:id/url_bar"` antes da barra real escolhia o
+  host e liberava o "Aceitar". Sem barra confiável, não há isenção (o lado que trava).
+- Leitura do 31.103 (A1, S1, N2): os leitores do id da barra (`BARRA_DE_ENDERECO`) que decidem alguma coisa:
+  - **mudou, `_conferir_destino`** (a conferência do site antes do `type_secret`): lia o primeiro nó com o id e com
+    texto. Uma página de outro domínio com o id e o host da conta antes da barra real recebia a senha. Agora lê por
+    `texto_da_barra`; sem barra fora da página, o host é vazio e cai no erro que já existia ("Não dá para confirmar o
+    site"), sem digitar.
+  - **mudou, `imagem_com_barra_tapada`** (o que vai ao provedor): tapava só o primeiro nó com o id, ou seja, a falsa, e
+    o endereço real ia na imagem. Agora tapa TODO nó com o id, dentro e fora da página: tapar também o da página é o
+    lado que protege (some um trecho da página, nunca o endereço).
+  - **mudou, `_aceite_do_toque`** (a isenção de host): este item.
+  - **ficou, `_arvore_com_endereco_limpo`** (o texto da barra que vai ao prompt): já passa TODO nó com o id por
+    `endereco_para_o_prompt`, inclusive o da página; não escolhe um nó, então não há o primeiro a enganar.
+- Prova `simulated`, todas verificadas por mutação contra o código anterior:
+  - `backend/tests/test_ator_nao_aceita_consentimento.py`: os três `test_31_103_…` (unidade) e
+    `test_pelo_laco_31_103_a_barra_falsa_da_pagina_nao_libera_o_aceite` (pelo laço);
+  - `backend/tests/test_credenciais_da_conta.py`: `test_31_103_a_barra_falsa_com_o_host_da_conta_nao_recebe_a_senha` e
+    `test_31_103_a_barra_real_com_o_host_da_conta_vale_mesmo_com_a_falsa` (valores de teste, sem conta real);
+  - `backend/tests/test_url_fora_do_prompt.py::test_31_103_a_barra_falsa_da_pagina_nao_esconde_a_real_e_as_duas_sao_tapadas`.
+  `real`: `not_run`.
+
+## 2026-10-05 — 31.75: a página com id do navegador não ganha a isenção do K2 (branch feat/31-75-pagina-com-id-do-navegador)
+
+- Furo do 31.72: o Chrome expõe o `id` do HTML como `resource-id`; um botão da página com
+  `id="com.android.chrome:id/allow"` era tratado como interface do navegador e escapava da trava.
+- `taskqueue/dialogos.py`: `_conteudo_web` (nova). Na ordem do documento, o que está entre a WebView e a primeira raiz
+  da interface do Chrome (`control_container`, `bottom_container`) é página: `_do_navegador` e `_de_consentimento`
+  não dão a isenção ali. Sem WebView, vale o id, como antes (limite declarado em `docs/ia.md` § 20).
+- Endurecimentos pedidos na leitura, para falhar fechado: H1 (a identidade da página é o `e.id` eN do leitor, não o
+  `id()` do objeto), H2 (a raiz só encerra a página com o id de raiz E a classe `FrameLayout`; uma raiz falsa em `View`
+  não encerra) e H3 (com WebView e sem raiz válida, a página vai até o fim do documento: a barra escondida pela
+  rolagem e a árvore truncada). Limites que sobram: sem WebView (só tela nativa, depois da correção abaixo) vale o
+  id; a regra supõe que conteúdo web não expõe `FrameLayout`; marcar a página pelo ancestral WebView não foi feito.
+- Correções da leitura do 31.75: (2) o leitor guarda SEMPRE a WebView (`parse_hierarchy`): a página com `<title>`
+  vazio e sem rolagem sumia com ela, e o botão com id do Chrome voltava a ganhar a isenção, inclusive com um iframe
+  depois dele; (3) a página é a união dos trechos de TODAS as WebViews, cada um até a primeira raiz válida; (1) nos
+  quatro testes de H1, H2 e H3 o "Aceitar" falso saiu da faixa da marca: antes eles passavam também sem a regra
+  (o ramo K2 recusava pela faixa).
+- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (5 testes novos do 31.75, com a captura real do
+  gov.br: a barra de tradução do Chrome depois da raiz segue livre) e 3 da leitura, 54 passed; mutações conferidas
+  depois da correção, cada uma reprova o teste dela: H1, H2, H3, o leitor sem a WebView e só o primeiro trecho. Os
+  vizinhos (`test_dialogos_em_serie`, `test_outlook_declarado`, `test_sensitive_input`, `test_sobreposicao*`,
+  `test_treino_segredo_na_gravacao`, `test_grade_cede_a_arvore`, `test_observacao_arvore_primeiro`) e
+  `test_arquitetura` verdes; `@tests/catracas.txt`, 88 passed. As árvores reais de `data/diag-31-72/` dão o mesmo antes (152f8b54) e depois (NTP, ml, g1, uol com 0
+  recusado; gov-3 com 12 clicáveis recusados, nenhum do Chrome; "More options" livre). `real`: `not_run`.
+- N1 (acréscimo da orquestradora, commit à parte): `dialogos._gemeo`/`_clicavel`. O link inline que o Chrome expõe como
+  par de nós (mesmo texto e bounds, um clicável e um filho não clicável, visto no gov-3) é um nó só, clicável: não liga
+  a recusa de "OK"/"Aceitar" num rodapé só com "Política de privacidade". O gêmeo também deixa de ser a "caixa" da marca
+  (`_caixa_da_marca`), senão o par se tornaria aviso pelo outro lado. Prova `simulated`: 3 testes `test_n1_*`; as árvores
+  reais ficam idênticas (gov-3 com 12). `real`: `not_run`.
+## 2026-10-05 — 31.104: a tela do aviso pela maior medida (branch fix/31-104-pagina-pela-janela, sobre o 31.77)
+
+- `taskqueue/dialogos.py`: `toque_que_aceita` mede a tela pela maior das medidas, em largura e altura: a extensão das
+  folhas, a janela do dump (`UiTree.janela`, 31.77) e o tamanho da tela que o executor conhece (parâmetro `tela`, do
+  `ToolContext`, passado por `_aceite_do_toque`; vale também sem janela, N1 da leitura). Antes era só a extensão: numa página esparsa, o texto do aviso
+  passava de 60 % dela, deixava de ser marca, e o "Aceitar todos" passava (achado S1, que vem do 31.72). A faixa em volta
+  da marca, fração da altura, cresce junto. A mudança é monótona: nada que travava passa a dispensar.
+- `_cobre_a_tela` fica pela extensão das folhas: ali a medida menor é o lado que endurece (mais etapas falham fechado);
+  a maior afrouxaria.
+- Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py`, `test_31_104_pagina_esparsa_…` (reprova o
+  código anterior, conferido por mutação) e `test_31_104_sem_janela_o_tamanho_da_tela_do_executor_trava`. `real`: `not_run`.
+
+## 2026-10-05 — 31.77: uma fração só e a janela flutuante pela raiz do dump (branch feat/31-77-fracao-unica-e-janela-pela-raiz)
+
+- `automation/hierarchy.py`: `UiTree.janela` (novo, `None` por padrão) e `_janela_do_dump`. É a união dos bounds dos
+  nós de topo do dump, lida antes de o leitor descartar o contêiner sem texto, sem os de `com.android.systemui`.
+- `taskqueue/dialogos.py`: `_FRACAO_DA_PAGINA` vira `FRACAO_DA_PAGINA`, pública e única (K2 da leitura do #391).
+- `taskqueue/executor.py`: `_FRACAO_DA_JANELA` sai. O L2 de `sobreposicao_vale` passa a usar `tree.janela` contra
+  `FRACAO_DA_PAGINA`, e não mais a extensão das folhas (L2-a). Sem janela, o L2 não decide.
+- Leitura da revisão: o diálogo com janela de tela inteira fica fora da regra da janela flutuante (limite escrito em
+  `docs/ia.md`, L2); o nó de topo com bounds zerados ao lado de um válido não entra na união (teste novo). A marcação
+  pelo ancestral não foi feita nem é prometida por este ramo.
+- Prova `simulated`: `backend/tests/test_janela_pela_raiz.py` (8 testes; a página esparsa com folhas em 15 % da tela
+  não passa por janela). Os testes do 31.73, com dump plano, não mudam: a união dos nós de topo é a extensão das
+  folhas. `real`: `not_run`, à espera de um dump bruto de um diálogo nativo e de uma página esparsa.
+
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 
 - Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.
