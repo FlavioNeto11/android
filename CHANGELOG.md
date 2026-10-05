@@ -139,6 +139,28 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   continua lendo o estado de agora.
 - Prova `simulated`: dois testes novos em `tests/test_decisoes_registro_coerente.py`, que falham com a memória desligada
   (as leituras se repetiam por item) e passam com ela. 86 passed nos cinco arquivos de decisões.
+## 2026-10-04 — 28.34: contato do site excluído a pedido do titular some do canal (branch canais/28-34-exclusao-do-contato)
+
+- **Por quê:** o 29.83 do Portal apaga um contato do site a pedido de quem escreveu. Sem o lado do canal, o aviso
+  ainda na fila sairia depois da exclusão, e a mensagem e a resposta do dono ficariam no chat.
+- **O quê:** `state.avisos.apagar_avisos_do_portal(contato_id, agora) -> ApagadoNoCanal(estado, apagadas, a_mao)`, no
+  contrato combinado com a sessão Portal (regra C-27 em `docs/dominios/canais.md`):
+  - a fila primeiro: `enviando` devolve `em_envio`; `pendente`, `falhou` e `incerto` viram `descartado` sem corpo; sem
+    linha, uma lápide pela chave, e o reenvio de depois vira no-op;
+  - o texto das respostas do dono sai do banco;
+  - as mensagens do bot e as respostas do dono com menos de 47 h saem do chat (`deleteMessage`); o resto vai para
+    `a_mao` com a hora, inclusive a `incerto` e a `enviado` sem `message_id`;
+  - `falhou` só com erro de banco; o log leva só o id e as contagens.
+- **Prova:** `simulated`, `backend/tests/test_avisos_portal_exclusao.py` (12 passed: pendente, lápide e reenvio no-op,
+  enviado com a mensagem e a resposta apagadas, 47 h e canal desligado, recusa e rede, enviando, incerto e falhou,
+  enviado sem id, erro de banco sem conteúdo no log, só a chave do contato, a janela); 242 passed em todos os
+  `test_avisos_*`. Real: `not_run` (nenhuma exclusão real; o Telegram de verdade não foi chamado).
+- **Revisão independente do #340 (orquestradora, 04/10 23:49Z):** E1, a lápide entra antes dos UPDATEs, e só
+  `enviado` ou `descartado` relidos dão `ok` (o reenvio concorrente do Portal não fura mais a exclusão); E2, os passos 1
+  e 2 numa transação (a hora do `incerto` não se perde numa falha parcial); N1, o canal ilegível vai para `a_mao`; a
+  chave repetida no `avisar_contato_do_portal` registra aviso no log, só com o id; N2 e N3 escritos na C-27. Prova
+  `simulated`: 17 passed (o `enfileirar` concorrente antes e depois da lápide, a falha depois do `incerto`, o canal
+  ilegível, o aviso da chave repetida).
 
 ## 2026-10-04 — 28.32: a mensagem do visitante do site chega ao Telegram do dono (branch canais/28-32-contato-do-portal)
 

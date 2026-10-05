@@ -19,7 +19,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .mensagem import PRECISA_DE_VOCE, Aviso, chave_do_fato, nivel_do_tipo, titulo_do_aviso
 
@@ -55,6 +55,35 @@ class ContatoAvisado:
 
     enfileirado: bool
     motivo: str | None = None
+
+
+#: 28.34: o Telegram deixa o bot apagar uma mensagem do chat privado até 48 h depois; 1 h de folga.
+JANELA_DE_APAGAR = timedelta(hours=47)
+APAGADO_OK, APAGADO_EM_ENVIO, APAGADO_FALHOU = "ok", "em_envio", "falhou"
+
+
+@dataclass(frozen=True, slots=True)
+class ApagadoNoCanal:
+    """28.34, a exclusão de um contato do site a pedido do titular (29.83). `estado`: `ok` (a fila e as respostas do
+    dono terminaram; o Portal pode apagar o contato), `em_envio` (a mensagem está saindo agora: tente de novo em um
+    minuto) ou `falhou` (erro de banco na fila ou nas respostas: nada de meia exclusão). `apagadas`: mensagens apagadas
+    do chat agora. `a_mao`: a hora UTC (ISO) de cada mensagem que ficou para o dono apagar à mão (velha demais, canal
+    desligado, recusa do Telegram, ou a que pode ter saído sem registro)."""
+
+    estado: str
+    apagadas: int = 0
+    a_mao: tuple[str, ...] = ()
+
+
+def da_para_apagar(hora: str | None, agora: datetime) -> bool:
+    """A mensagem de `hora` ainda está dentro da janela em que o bot a apaga. Hora ilegível ou sem fuso: não."""
+    if not hora:
+        return False
+    try:
+        quando = datetime.fromisoformat(hora.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return quando.tzinfo is not None and agora - quando < JANELA_DE_APAGAR
 
 
 #: Direção (U+202A–202E, U+2066–2069, U+200E, U+200F, U+061C) e largura zero (U+200B–200D, U+2060, U+FEFF). O resto

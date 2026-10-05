@@ -579,6 +579,52 @@ avisos depois da faxina"), e a trava cai no TTL.
   `_mostrar_porta`, `_executar_aprovando`) e `infrastructure/portas_da_central.py` (`porta`, `aprovar_plano`, `iniciar`,
   `cancelar`, `imagem_da_etapa`).
 
+**C-27 · Contato do site excluído a pedido do titular some do canal (28.34).**
+- **Origem:** frente Portal (29.83, exclusão a pedido do titular), contrato combinado entre as sessões em 04/10
+  23:25Z–23:40Z, com o desenho aprovado pela orquestradora às 23:20Z.
+- **Regra:**
+  - A rota do Portal (`POST /api/portal/contatos/excluir`, atrás de sessão; uma pessoa aperta) chama UMA função por
+    contato, `await state.avisos.apagar_avisos_do_portal(contato_id, agora)`, e só apaga o contato com `estado="ok"`.
+  - Nesta ordem:
+    1. **A fila primeiro, e para sempre**, na chave `portal:<id>`: `enviando` devolve `em_envio` e não mexe em nada
+       (a varredura vira o `enviando` parado em `incerto`, então isso se resolve em minutos); `pendente`, `falhou` e
+       `incerto` viram `descartado` sem corpo nem link; `enviado` e `descartado` ficam, sem corpo; sem linha, entra uma
+       **lápide** `descartado`. Pela chave UNIQUE, o `avisar_contato_do_portal` de depois vira no-op: nada sai depois da
+       exclusão, nem pelo laço de reenvio do Portal. O estado é relido depois das escritas, e o líder que reivindicou
+       no meio aparece como `em_envio`.
+    2. **As respostas do dono** às mensagens do fato perdem o texto em `canal_entradas`; a linha fica.
+    3. **O chat**: as mensagens do bot (`canal_enviadas.fato`) e as respostas do dono a elas, com menos de 47 h (o
+       Telegram deixa até 48 h), saem pelo `deleteMessage`. Vão para `a_mao`, com a hora: a mais velha, a de canal
+       desligado, a que o Telegram recusa, a que falha na rede, a `incerto` (pode ter saído; vale o `iniciado_em`) e a
+       `enviado` sem `message_id` (vale o `enviado_em`).
+  - A lápide entra ANTES dos UPDATEs, e os passos 1 e 2 vão numa transação (revisão do #340, E1 e E2): o reenvio
+    concorrente do Portal nunca entra com corpo depois da exclusão, e a falha de um passo não consome a hora do
+    `incerto`. Só `enviado` ou `descartado` relidos dão `ok`; qualquer outro estado dá `em_envio`.
+  - **Fora do alcance, e fica no chat** (o dono sabe pela confirmação, que fala só do aviso e das respostas a ele):
+    - a resposta da Central à resposta do dono (texto fixo "Esta mensagem é de um visitante do site e só informa…",
+      sem dado do visitante);
+    - a resposta do dono a ESSA resposta (segundo nível) e os anexos de uma resposta dele.
+  - A janela de 47 h da resposta do dono conta de `recebida_em`, a hora em que a Central a recebeu, e não a da
+    mensagem: com a Central fora por horas, o Telegram recusa (400) e a mensagem vai para `a_mao`, que é o lado seguro.
+  - A chave já existir no `avisar_contato_do_portal` registra um aviso no log, só com o id: é o reenvio normal da
+    rota, ou um id reusado que cairia calado na lápide de um excluído.
+  - `ok` quando 1 e 2 terminaram, mesmo com `a_mao`; `falhou` só com erro de banco em 1 ou 2. Erro de rede em 3 não é
+    falha. O log leva só o id e as contagens; a função não guarda registro próprio (o registro da exclusão é do Portal,
+    só com ids e contagens).
+  - **O dono decide sabendo** (orquestradora, 04/10 23:42Z, condição para apagar também a resposta dele): a
+    confirmação da exclusão no painel (Configuração → "Site e privacidade", PR #342 do Portal) diz, depois de "Será
+    apagado:", que "Também serão apagados do seu Telegram o aviso deste contato e as suas respostas a esse aviso,
+    quando o Telegram ainda permitir (até 47 horas depois do envio). O que não der para apagar sozinho aparece numa
+    lista com a hora, para você apagar à mão." (no plural, "os avisos destes contatos" e "a esses avisos"). Em "Não
+    será apagado:" ficam as cópias de segurança e as mensagens com mais de 47 horas; fecha com "Não há como desfazer." A tela diz 47, o mesmo
+    `JANELA_DE_APAGAR` do código, e não as 48 do Telegram: não promete o que o código não cumpre (orquestradora, E3,
+    04/10 23:59Z; #342 `217f621c`).
+  - O id do contato nunca se repete (`{{PK_AUTO}}`: AUTOINCREMENT no SQLite, BIGSERIAL no PG; travado pelo teste do
+    Portal), senão um contato novo cairia na lápide do excluído e o aviso dele sumiria calado.
+- **Hoje:** `domain/portal.py` (`ApagadoNoCanal`, `JANELA_DE_APAGAR`, `da_para_apagar`),
+  `infrastructure/fila_sql.py` (`descartar_do_contato`, `respostas_ao_fato`, `tirar_texto_das_respostas`) e
+  `infrastructure/servico.py::apagar_avisos_do_portal`. A rota e a tabela dos contatos são da frente Portal (29.83).
+
 ## 7. Arquivos locais (fora do Git) e o que guardam
 
 Ficam em `.claude/handoffs/`, que o `.git/info/exclude` exclui: têm id de chat, vínculo com nome e estado da
