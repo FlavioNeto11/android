@@ -80,7 +80,7 @@ from app.modules.avisos.domain.privacidade import PERSONA_OCULTA as PERSONA_OCUL
 from app.modules.avisos.domain.privacidade import sem_nome_de_persona as sem_nome_de_persona
 from app.modules.avisos.infrastructure.anexos import AnexoJaResolvido, AnexoRecusado, ArmazemDeAnexos
 from app.modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
-from app.modules.avisos.infrastructure.entrada_sql import EntradasDoCanal
+from app.modules.avisos.infrastructure.entrada_sql import ENCAMINHADA, EntradasDoCanal
 from app.security.sessions import OPERADOR
 from app.taskqueue.travas import AVISOS
 from app.util import parse_iso
@@ -391,6 +391,9 @@ class Recebida:
     perfil: Mapping[str, object] | None = field(default=None, compare=False)
     #: Os anexos da mensagem (28.24), já traduzidos e ainda NÃO baixados. A legenda vem em `texto`.
     anexos: tuple[AnexoRecebido, ...] = ()
+    #: A mensagem foi ENCAMINHADA (`forward_origin`, ou o `forward_date` da API antiga): o texto é de outra pessoa, mesmo
+    #: que quem encaminhou seja o dono. A resposta solta à escolha não casa com ela (28.47).
+    encaminhada: bool = False
 
 
 class SaidaDaConversa(Protocol):
@@ -528,7 +531,9 @@ def _ler_update(u: Mapping[str, object], chat_do_dono: str) -> Recebida | None:
                     # Privado de verdade: o chat é a própria pessoa (no Telegram, chat.id == from.id na conversa a dois).
                     privado=privado and bool(autor) and chat_id == autor,
                     perfil=dict(de) if de else None,
-                    anexos=_anexos_da_mensagem(msg) if msg is not None and cb is None else ())
+                    anexos=_anexos_da_mensagem(msg) if msg is not None and cb is None else (),
+                    encaminhada=msg is not None and cb is None and (msg.get("forward_origin") is not None
+                                                                    or msg.get("forward_date") is not None))
 
 
 def _anexos_da_mensagem(msg: Mapping[str, object]) -> tuple[AnexoRecebido, ...]:
@@ -692,7 +697,8 @@ class ConversaDoCanal:
     def _linha(self, r: Recebida, texto: str | None, estado: str = "recebida", erro: str | None = None) -> bool:
         return self.repo.gravar(id_externo=r.id_externo, ordem=r.ordem, tipo=r.tipo, do_dono=r.do_dono,
                                 ref_mensagem=r.ref_mensagem, responde_a=r.responde_a, texto=texto,
-                                tamanho=len(r.texto), estado=estado, erro=erro)
+                                tamanho=len(r.texto), estado=estado, erro=erro,
+                                previa={ENCAMINHADA: True} if r.encaminhada else None)
 
     async def registrar(self, r: Recebida, saida: SaidaDaConversa | None = None) -> None:
         """Grava o que chegou, já com as políticas que não esperam a gramática: quem não é o dono, o longo demais e o
@@ -1055,8 +1061,8 @@ class ConversaDoCanal:
         """28.44: a mensagem SOLTA do dono que é só uma opção ("1", "opção 2") casa com a pergunta de escolha aberta da
         ANA (`escolha:<msg>:<opções>`, nos `JANELA_DA_ESCOLHA_S` antes dela). Com uma aberta e a opção na lista dela,
         casa; com mais de uma aberta e a opção na lista de alguma, nada casa e vai à orquestradora como ambígua. Fora
-        disso, None: o caminho de sempre."""
-        if not texto.strip() or texto.strip().startswith("/"):
+        disso, None: o caminho de sempre. A mensagem encaminhada nunca casa (28.47): o texto é de outra pessoa."""
+        if not texto.strip() or texto.strip().startswith("/") or self.repo.encaminhada(linha):
             return None
         abertas = self.repo.escolhas_abertas(str(linha.get("recebida_em") or ""), JANELA_DA_ESCOLHA_S,
                                              fora=self._id(linha), ref_da_resposta=_texto(linha.get("ref_mensagem")))

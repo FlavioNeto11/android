@@ -26,6 +26,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`.claude/canais/test_telegram_status.py` e
   `backend/tests/test_rotulo_ia.py::test_o_sha_aprovado_no_plano_e_a_ancora_da_foto`). Real: `not_run`.
 
+## 2026-10-05 — 28.47: as sobras da leitura do #412 na resposta solta à escolha (branch canais/28-47-escolha-sobras)
+
+- A mensagem encaminhada (`forward_origin`, ou `forward_date`) não casa com a pergunta de escolha. A marca é gravada
+  na `previa` da linha, sem migração.
+- O teto pelo relógio saiu: a pergunta gravada um instante depois do "1", mas anterior a ele no chat, casa.
+- O `message_id` é comparado como número (`isdecimal`), com teste que cruza a casa dos dígitos (99 contra 100).
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py`, 113 no arquivo; o teste do teto falhou antes de o
+  teto sair). Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
