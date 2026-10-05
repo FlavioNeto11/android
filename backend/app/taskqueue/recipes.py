@@ -783,6 +783,14 @@ class RecipeStore:
                            " AND variant=? AND step_hash=? AND status=? ORDER BY version DESC LIMIT 1",
                            (package, app_version, signature, variant, step_hash, status))
 
+    def chave_ocupada(self, package: str, app_version: str, step_hash: str, *, signature: str = "",
+                      variant: str = "") -> bool:
+        """A chave já tem receita ATIVA ou `validated` (o que o `save` nunca substitui)? Só lê: a prévia do treino
+        (31.86) usa isto para dizer "já havia receita" sem gravar, e o `save` usa a MESMA conta — uma regra só."""
+        return (self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None
+                or self._com_status("validated", package, app_version, step_hash, signature=signature,
+                                    variant=variant) is not None)
+
     def save(self, *, package: str, app_version: str, step_hash: str, step_key: str, actions: list[dict[str, Any]],
              learned_from: str, signature: str = "", variant: str = "", candidate: bool = False,
              replaces: int | None = None, heranca: str | None = None) -> int | None:
@@ -817,12 +825,9 @@ class RecipeStore:
                     self._avisar(replaces, "candidate", "superseded",
                                  "divergiu; o caminho da IA serve a qualquer valor e vai para a chave genérica")
                     replaces = None
-            if self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None:
+            if self.chave_ocupada(package, app_version, step_hash, signature=signature, variant=variant):
                 return None
-            if self._com_status("validated", package, app_version, step_hash, signature=signature,
-                                variant=variant) is not None:
-                return None
-            em_prova = self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
+            em_prova =self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
             if candidate and em_prova is not None and em_prova["id"] != replaces:
                 return None
             if (candidate and em_prova is not None
