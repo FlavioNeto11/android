@@ -29,7 +29,9 @@ digitado (quando pôde ser gravado).
 
 Devolva:
 - `command_template`: o comando em português que alguém digitaria para pedir esta tarefa, com os valores que
-  variam como `{nome}` (ex.: "responda a DM de {contato} com {mensagem}"). Nomes em minúsculas, sem acento. O comando começa pelo verbo, nunca por um parâmetro. Entre dois
+  variam como `{nome}` (ex.: "responda a DM de {contato} com {mensagem}"). Nomes em minúsculas, sem acento.
+  Nunca use {instance_id}, {run_id} nem {account_label}: são do sistema e o salvar recusa (troque por um nome seu, ex.: {conta}).
+  O comando começa pelo verbo, nunca por um parâmetro. Entre dois
   parâmetros sempre há pelo menos uma palavra fixa (nunca "{a} {b}" colados: não daria para separar os valores).
 - `parameters`: cada `{nome}` do comando, com o valor usado nesta gravação em `example`. Todo `{nome}` do comando
   consta aqui e todo parâmetro daqui aparece no comando; o comando tem também texto fixo (ao menos duas palavras).

@@ -28,6 +28,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `tests/test_treino_validacao_do_salvar.py` (o caso na tabela de recusas, os três reservados pelo
   nome, o reservado nos parâmetros que segue valendo; o teste que aceitava o reservado no comando ficou só com a chave
   de catálogo). Real: `not_run`.
+- N1 da leitura do #444: o prompt da proposta (`planning/training.TRAINER_SYSTEM`) avisa que os três são do sistema e
+  que o salvar recusa; o 400 fica como rede. `test_prompt_da_proposta_proibe_o_marcador_reservado_no_comando` fixa a
+  frase e cada nome de `RESERVED`. Prova `simulated`: o arquivo e `test_arquitetura.py` (68 passed),
+  `@tests/catracas.txt` (88 passed). `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
 
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 

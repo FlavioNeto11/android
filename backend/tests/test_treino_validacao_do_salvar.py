@@ -322,3 +322,14 @@ async def test_comando_que_nao_e_texto_vira_400(harness: Harness) -> None:
     with pytest.raises(TrainingError) as erro:
         await st.skills.save(sid, proposal=_com(command_template=12), profile_ids=[], group_ids=[])
     assert erro.value.code == "invalid_command" and erro.value.status == 400
+
+
+def test_prompt_da_proposta_proibe_o_marcador_reservado_no_comando() -> None:
+    """N1 do #444: a IA é avisada ANTES de propor; o `parametro_reservado` do salvar fica como rede, não como o 1º aviso.
+    Fixa a frase e cada nome de `RESERVED`, para um nome novo lá não ficar fora do prompt."""
+    from app.planning.training import TRAINER_SYSTEM  # noqa: PLC0415
+    from app.taskqueue.flows import RESERVED  # noqa: PLC0415
+
+    assert "são do sistema e o salvar recusa" in TRAINER_SYSTEM
+    for nome in sorted(RESERVED):
+        assert "{" + nome + "}" in TRAINER_SYSTEM
