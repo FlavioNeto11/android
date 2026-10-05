@@ -85,6 +85,25 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Dois casos novos: `!a?.5:c.querySelector('x')` é pego (antes passava como booleano) e `itens().find(…) && ok?.5:1` é poupado (antes era falso positivo, o `&&` é só a condição do ternário); mais o `?.length` verdadeiro, poupado.
 - Prova `simulated`: `esperas.test.ts` 4/4; com a regra antiga de volta o caso `!a?.5:…` falha. Typecheck verde. A catraca que varre os testes do repositório segue sem achado, em 05/10 sobre `65452966`.
 
+## 2026-10-05 — 31.109: o detemplate da receita tem a mesma borda do fluxo e do hash (branch fix/31-109-borda-do-detemplate)
+
+- `recipes.detemplate` (a ação que a receita aprende: texto digitado e seletor) trocava o valor por `str.replace` com o
+  piso de 3 caracteres: "nasal" virava `{perfil}l` na ação, enquanto a identidade da etapa (31.96) e o fluxo-modelo já
+  tinham a borda. Agora usa `flows.trocar_valores_por_nomes`; o piso e o cálculo de "coberto" não mudam.
+- Medido, só leitura, no banco do central em 05/10 (script em `.claude/handoffs/jev/`, saída só com
+  números): das 193 receitas com etapa de origem (87 ativas, 16 em quarentena, 44 substituídas, 46 candidatas), reaprendidas
+  das ações da tentativa com a regra antiga e a nova, **0** mudam de ação, com as variáveis do objetivo e no pior caso (união de
+  todos os valores de texto do objetivo, da etapa e dos alvos). O reaprender com a regra antiga reproduz a ação gravada de
+  173 delas; as outras 20 dependem de variáveis de inserção que o banco não guarda, e por isso o pior caso. Sem backfill.
+- Correção da leitura (F1): o valor DENTRO de palavra maior ("@ana_silva" com "@ana") deixou de contar como `used` e
+  o texto de outra pessoa caía no rótulo fixo de `_usable_text`; um corte antes dele devolve `None`, como era antes da
+  borda (teste novo, mutação reprovada; a medição segue em 0 de 193). Também o caso do marcador reescrito por valor curto
+  de 3 caracteres (F2).
+- A receita aprendida pelo Modo treinamento (`distill_training`) usa o mesmo `detemplate`, mas não tem linha de ação no
+  banco para reaprender: medida só pelos testes.
+- Prova `simulated`: `backend/tests/test_recipes.py::test_detemplate_so_troca_o_valor_inteiro_como_o_fluxo_e_o_hash`.
+  Real: `not_run`. Relido por 492 testes de receita, treino, fluxo, catracas e arquitetura (verdes).
+
 ## 2026-10-05 — 31.96: a troca de valor em fluxos e receitas tem borda mais conservadora (branch fix/31-96-borda-da-troca-de-valor)
 
 - `_sub_values` (`backend/app/taskqueue/flows.py`): borda do DÍGITO agora exige, à esquerda, nenhum caractere de palavra e,
