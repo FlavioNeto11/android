@@ -8,7 +8,7 @@ import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { aplicarHash, useUiStore } from '../../store/ui';
 import { makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, apiError, byRole, click, esperarElemento, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, byRole, click, esperarElemento, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { ProfilesPage } from './ProfilesPage';
 
 /** A pessoa como `GET /personas` a devolve (v0.27): `username` nulo quando ainda não tem conta de cadastro. */
@@ -759,6 +759,42 @@ describe('grupos de acesso', () => {
     await setValue(partir, 'ig-2');
     await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
     await waitFor(() => !marcada(/Sozinho/i, /Política de Seguir/i));
+    await click(byRole('button', /Criar grupo/i));
+    await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
+    expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
+      .toEqual({});
+  });
+
+  // 29.106 (W2 da leitura do #392): o teste acima espera A aplicado antes de trocar, então não vê a corrida. Este
+  // força a ordem (A responde DEPOIS de B) e falha enquanto o defeito vive; o conserto do 29.106 o vira em `it`.
+  it.fails('29.106: escolher A e logo B, com A respondendo depois de B, parte de B', async () => {
+    rotasBase([]);
+    let soltarA: () => void = () => undefined;
+    const aSegura = new Promise<void>((r) => { soltarA = r; });
+    backend.on('GET', /\/instagram\/profiles\/ig-1\/policy$/, async () => {
+      await aSegura;
+      return json({ limits: {}, capabilities: {}, defaults: {}, loosened: [], own: { FOLLOW: 'autonomous' }, group: {},
+                    own_limits: {}, group_limits: {} });
+    });
+    backend.on('GET', /\/instagram\/profiles\/ig-2\/policy$/, () => json({
+      limits: {}, capabilities: {}, defaults: {}, loosened: [], own: {}, group: {}, own_limits: {}, group_limits: {},
+    }));
+    backend.on('POST', /\/instagram\/policy-groups$/,
+      (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(byRole('radiogroup', /Política de Seguir/i)).toBeTruthy());
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Do Bruno');
+    const partir = byRole('combobox', /Começar a partir de/i) as HTMLSelectElement;
+    await setValue(partir, 'ig-1');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-1\/policy$/)).toHaveLength(1));
+    await setValue(partir, 'ig-2');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    await flush(30);                                                      // B aplicada
+    await act(async () => { soltarA(); });
+    await flush(30);                                                      // A chega por último
+    expect(marcada(/Sozinho/i, /Política de Seguir/i)).toBe(false);
+    await waitFor(() => !(byRole('button', /Criar grupo/i) as HTMLButtonElement).disabled);
     await click(byRole('button', /Criar grupo/i));
     await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
     expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
