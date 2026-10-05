@@ -34,7 +34,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   recriar sessão; segue pela árvore. No timeout, espera o executor do aparelho ficar livre (`drain`, limitado pelo prazo
   da etapa) e relê só a árvore. Se o ator PEDIU a imagem e a captura falha 2 vezes seguidas, vale o caminho de antes
   (`fail_or_retry`, "A captura da tela seguiu falhando").
-- Prova `simulated`: `backend/tests/test_falha_so_da_imagem.py` (11 testes, aparelho falso). `real`: `not_run`.
+- Leitura da revisão (delta depois do 820ac0d5):
+  - **Evidência:** imagem AUSENTE não é tela sensível. A observação `capture_failed` tenta a captura tardia da evidência
+    (como a `policy`). Sem imagem, a evidência é texto, sem `redacted`, com o motivo na nota: "(captura da tela
+    falhou)", "(imagem ausente)" ou "(imagem não adquirida: <Tipo>)", e não mais "(tela sensível: captura omitida)".
+  - **Contagem mais estrita, mantida:** a falha tolerada com a imagem PEDIDA pelo ator conta seguida até 2; sem a imagem
+    pedida, não conta. Quem pede a imagem e não a recebe não decide às cegas.
+  - **O caminho de antes mudou:** com a imagem pedida e a captura falhando, a etapa ia a `_stuck` depois de 3 erros
+    seguidos de leitura; agora vai a `fail_or_retry` com limite de 2 ("A captura da tela seguiu falhando").
+  - **Classificador:** o motivo novo "A captura da tela seguiu falhando" ganha regra em `modules/learning/domain/falhas.py`
+    (`ui_ocupada`, a família da leitura que segue falhando); sem ela a catraca do motivo literal reprovava.
+- Prova `simulated`: `backend/tests/test_falha_so_da_imagem.py` (14 testes, aparelho falso; o da evidência reprova o
+  código anterior, conferido por mutação). `real`: `not_run`.
   Contrato: adendo v1.55 em `docs/api-contract.md` (`image_omitted` ganha `capture_failed`; campo interno, fora de DTO,
   evento e evidência da API). Parágrafo em `docs/ia.md` ("Imagem sob demanda").
 

@@ -42,6 +42,7 @@ TEXTOS: list[tuple[str, FailureKind]] = [
     ("Prazo da etapa esgotado antes da chamada de IA.", F.PRAZO_DA_ETAPA),
     ("A interface do aparelho seguiu ocupada: busy", F.UI_OCUPADA),
     ("A leitura da tela seguiu falhando: adb", F.UI_OCUPADA),
+    ("A captura da tela seguiu falhando: FalhaDeLeitura", F.UI_OCUPADA),
     ("Não foi possível observar a tela: socket hang up", F.SESSAO_DE_AUTOMACAO),
     ("Sessão de automação indisponível: UiAutomator2 caiu", F.SESSAO_DE_AUTOMACAO),
     ("Falhas consecutivas do driver: x", F.SESSAO_DE_AUTOMACAO),

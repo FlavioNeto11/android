@@ -2037,9 +2037,10 @@ class StepExecutor:
                                               kind="text", note=note)
                 return
             data = obs.jpeg
-            if data is None and not obs.sensitive and obs.image_omitted == "policy":
-                # A observação saiu só com a árvore (a imagem não ia ao modelo). A evidência adquire a SUA, agora, com
-                # o próprio horário na nota — é só evidência, nunca fonte de coordenada (adendo v0.20, C1).
+            if data is None and not obs.sensitive and obs.image_omitted in ("policy", "capture_failed"):
+                # A observação saiu só com a árvore (a imagem não ia ao modelo, ou a captura falhou e o 31.76 tolerou).
+                # A evidência adquire a SUA, agora, com o próprio horário na nota — é só evidência, nunca fonte de
+                # coordenada (adendo v0.20, C1).
                 try:
                     tardia = await self.devices.imagem_tardia(rt, timeout=call_timeout)
                 except DriverError as exc:
@@ -2050,9 +2051,15 @@ class StepExecutor:
                 if tardia is not None:
                     data, quando = tardia
                     note += f" (imagem adquirida depois da observação, às {quando})"
-            if obs.sensitive or data is None:
+            if obs.sensitive:
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
                                               kind=kind, note=note + " (tela sensível: captura omitida)", redacted=True)
+            elif data is None:
+                # Leitura do 31.76: imagem AUSENTE não é tela sensível. Dizer "sensível" com `redacted` afirmaria na
+                # trilha de auditoria um fato falso sobre a tela.
+                motivo = "captura da tela falhou" if obs.image_omitted == "capture_failed" else "imagem ausente"
+                await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
+                                              kind="text", note=note + f" ({motivo})")
             else:
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
                                               kind=kind, note=note, data=data)

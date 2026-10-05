@@ -271,6 +271,28 @@ async def test_ator_pede_a_imagem_e_a_captura_falha_duas_vezes_cai_no_caminho_de
     assert detail.status != "completed", _detalhes(detail)
 
 
+async def test_evidencia_da_captura_que_falhou_nao_diz_tela_sensivel(
+        harness: Harness, _rapido: None) -> None:
+    """Leitura do 31.76: imagem AUSENTE não é tela sensível. A evidência da `fail_or_retry` depois de duas capturas
+    falhas (com a imagem pedida) é texto, não `redacted`, e diz o que houve; nenhuma evidência da execução diz
+    "tela sensível". Aqui a captura tardia da evidência também falha, e a nota diz isso."""
+    harness.pular_o_tempo()
+    fake = harness.fakes["android-01"]
+    _ator_pede_a_imagem(harness, 2)
+    _screencap_que_falha(fake, depois=1)
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id)
+    assert harness.state is not None
+    linhas = harness.state.db.query("SELECT kind, note, redacted FROM evidence WHERE run_id=? ORDER BY id", (run.id,))
+    assert not [r["note"] for r in linhas if "tela sensível" in (r["note"] or "")]
+    falhas = [r for r in linhas if (r["note"] or "").startswith("Falha: A captura da tela seguiu falhando")]
+    assert falhas, [r["note"] for r in linhas]
+    for r in falhas:
+        assert r["kind"] == "text" and not r["redacted"]
+        assert ("(imagem não adquirida: FalhaDeLeitura)" in r["note"]
+                or "(captura da tela falhou)" in r["note"]), r["note"]
+
+
 async def test_ator_pede_a_imagem_e_a_captura_falha_uma_vez_segue_pela_arvore(
         harness: Harness, _rapido: None) -> None:
     harness.pular_o_tempo()

@@ -6470,4 +6470,8 @@ v0.20), interno ao backend: não aparece em DTO, evento nem evidência da API (c
   exceção sobe como antes, e `completar_imagem` refaz a captura de uma observação `capture_failed`.
 - Campos junto, também internos: `captura_falha` ("Tipo: mensagem", sem texto de tela) e `captura_excedeu_prazo`.
 - A métrica `captura.total` conta `origem=observacao, resultado=falha`; a série da prévia (`capture_failures`) não é tocada.
+- **Evidência da API:** o campo não vai a ela, mas a evidência da etapa muda com ele. A observação `capture_failed` tenta
+  a captura tardia (como a `policy`); sem imagem, a evidência é `kind="text"`, `redacted=0`, com o motivo na nota
+  ("(captura da tela falhou)", "(imagem ausente)" ou "(imagem não adquirida: <Tipo>)"). "Tela sensível" e
+  `redacted=1` ficam só para a tela sensível de fato.
 - **Prova:** `simulated` (`backend/tests/test_falha_so_da_imagem.py`).

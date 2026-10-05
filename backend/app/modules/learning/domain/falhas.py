@@ -124,8 +124,10 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     # 29.87/29.90 (D4): a folha de aviso declarada que não fechou com o toque fora dela. Responder ao aviso ("OK" numa
     # conta real) é da pessoa: não é o aparelho, e nunca vira lição.
     (_F.AVISO_DO_APP, ("nao fechou com um toque fora dela", "um aviso cobre o botao de efeito")),
-    # 29.90: a tela que segue mudando entre a conferência do efeito e o toque (nada foi tocado).
+    # 29.90: a tela que segue mudando entre a conferência do efeito e o toque (nada foi tocado). 31.76: a captura da
+    # imagem que o ator pediu e que falhou duas vezes seguidas é da mesma família da leitura que segue falhando.
     (_F.UI_OCUPADA, ("interface do aparelho seguiu ocupada", "leitura da tela seguiu falhando",
+                     "captura da tela seguiu falhando",
                      "a tela mudou entre a conferencia e o toque", "tela mudou antes do toque")),
     (_F.APARELHO_TRAVADO, ("chamada ao aparelho travada", "tempo esgotado numa chamada ao aparelho")),
     (_F.SESSAO_DE_AUTOMACAO, ("sessao de automacao indisponivel", "nao foi possivel observar a tela",
