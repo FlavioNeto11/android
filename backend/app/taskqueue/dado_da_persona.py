@@ -45,16 +45,21 @@ def _textos_do_passo(passo: PlanStep) -> Iterator[str]:
     yield from passo.bindings.values()          # os argumentos da ação/receita (alvo, conteúdo)
 
 
-def _textos_do_plano(plano: Plan) -> Iterator[str]:
-    yield from plano.parameters.values()
-    for passo in plano.steps:
+def _textos(parametros: Mapping[str, str], passos: Sequence[PlanStep]) -> Iterator[str]:
+    # Limite conhecido (N1): `PlanStep.variables` (item/item_index do `for_each`) não é varrido; são valores lidos da tela.
+    yield from parametros.values()
+    for passo in passos:
         yield from _textos_do_passo(passo)
 
 
 def nomes_citados(plano: Plan) -> list[str]:
     """Os `{perfil_*}` e `{conta_*_usuario}` que o plano cita, sem repetir, na ordem em que aparecem."""
+    return _nomes(plano.parameters, plano.steps)
+
+
+def _nomes(parametros: Mapping[str, str], passos: Sequence[PlanStep]) -> list[str]:
     achados: dict[str, None] = {}
-    for texto in _textos_do_plano(plano):
+    for texto in _textos(parametros, passos):
         for m in _CITACAO.finditer(texto):
             achados.setdefault(m.group(1), None)
     return list(achados)
@@ -81,6 +86,15 @@ def faltas_por_aparelho(plano: Plan, instancias: Sequence[Mapping[str, object]])
         if faltam:
             faltas[str(inst["instance_id"])] = faltam
     return faltas
+
+
+def faltas_dos_passos(passos: Sequence[PlanStep], parametros: Mapping[str, str],
+                      variaveis: Mapping[str, str] | None) -> list[str]:
+    """O mesmo pré-voo para etapas soltas (o replano de `Repository.revise_plan`): os nomes que `variaveis` e os
+    parâmetros do objetivo não resolvem."""
+    resolvidos = ({k for k, v in (variaveis or {}).items() if str(v).strip()}
+                  | {k for k, v in parametros.items() if str(v).strip()})
+    return [n for n in _nomes(parametros, passos) if n not in resolvidos]
 
 
 def exigir_resolvido(plano: Plan, variaveis: Mapping[str, str] | None) -> None:
@@ -113,12 +127,17 @@ def perguntas(faltas: Mapping[str, Sequence[str]], sem_persona: frozenset[str] =
     for iid, nomes in faltas.items():
         rotulos = [rotulo(n) for n in nomes]
         if iid in sem_persona:
+            # Falta o destino (quem faz): o painel mostra a orientação de destino, que aqui é a certa.
             texto = (f"O {iid} não tem persona vinculada, e este pedido usa {_lista(rotulos)} dela: vincule uma persona "
-                     "ao aparelho ou diga o valor no comando.")
+                     "ao aparelho e peça de novo.")
+            campo = "profile_id"
         else:
+            # Falta o DADO: não é pergunta de destino. A saída é cadastrar o dado e criar outra execução (esta só sai para
+            # `cancelled`); "dizer o valor no comando" não vale com fluxo reaproveitado, que não mapeia o valor ao parâmetro.
             cadastrado = "cadastrado" if len(rotulos) == 1 else "cadastrados"
-            texto = (f"A persona do {iid} não tem {_lista(rotulos)} {cadastrado}: cadastre na persona ou diga o valor "
-                     "no comando.")
-        saida.append({"code": "dado_da_persona_ausente", "question": texto, "field": "profile_id", "options": [],
+            texto = (f"A persona do {iid} não tem {_lista(rotulos)} {cadastrado}: cadastre o dado na persona e peça "
+                     "de novo.")
+            campo = "persona_data"
+        saida.append({"code": "dado_da_persona_ausente", "question": texto, "field": campo, "options": [],
                       "instance_id": iid, "profile_id": None})
     return saida

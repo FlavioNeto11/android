@@ -1792,6 +1792,9 @@ class RunService:
         steps = self.scheduler.recovery_steps(run, obj["id"])
         if not steps:
             raise RunError("nothing_to_retry", "Não há etapas pendentes para refazer neste item.")
+        if faltam := self.repo.faltas_do_replano(obj["id"], steps):
+            raise RunError("dado_da_persona_ausente", "O plano usa dado da persona que o aparelho não tem ("
+                           + ", ".join(faltam) + "): cadastre o dado na persona e peça de novo.")
         versao = self.repo.revise_plan(obj["id"], reason, steps)
         # O mesmo que a recuperação automática faz depois de revisar: o texto escrito (e talvez aprovado) mora na
         # LINHA da etapa, não em `runs.plan`. Sem herdá-lo, a etapa renascia sem `content`, sem a guarda e sem a

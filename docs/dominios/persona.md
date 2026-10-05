@@ -288,7 +288,11 @@ e `consent_credentials` saíram (422 por `extra="forbid"`), e `run_secrets` fico
 pós-condição, guardas, `bindings` e `parameters`) atrás de `{perfil_*}` e `{conta_<app>_usuario}`
 (`taskqueue/dado_da_persona.py`). Aparelho cuja persona não resolve algum (ausente, vazio, ou sem persona vinculada):
 a execução vai a `needs_input`, sem etapas, com uma frase por aparelho (só id e rótulo do campo, nunca valor, nome ou
-e-mail). `materialize` repete a conferência e recusa com `DadoDaPersonaAusente`; nunca grava a variável crua.
+e-mail). A pergunta leva `field: "persona_data"` (cadastre o dado na persona e crie a execução de novo: `needs_input`
+só sai para `cancelled`, e dizer o valor no comando não vira parâmetro do fluxo reaproveitado); `profile_id` só quando
+o aparelho não tem persona. `materialize` e `revise_plan` repetem a conferência e recusam com `DadoDaPersonaAusente`;
+nunca gravam a variável crua (recuperação: recusada com motivo; retomada: `RunError`; expansão do `for_each`: item
+bloqueado). Limite conhecido: as `variables` das etapas do `for_each` (item, item_index) não são varridas.
 
 **Rotas por conta** (`api.py`; as antigas por perfil são apelidos da conta âncora):
 

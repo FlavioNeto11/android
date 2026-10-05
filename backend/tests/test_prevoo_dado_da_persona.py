@@ -24,7 +24,7 @@ import pytest
 
 from app.models import Plan, PlanStep, PlannerInfo, Postcondition, ProfileCreate, RunCreate
 from app.taskqueue.dado_da_persona import (DadoDaPersonaAusente, exigir_resolvido, faltas_por_aparelho, nomes_citados,
-                                           perguntas)
+                                           perguntas, rotulo)
 
 from .conftest import Harness
 
@@ -65,6 +65,15 @@ def _tudo_da_execucao(h: Harness, run_id: str) -> str:
     return "\n".join(partes)
 
 
+def _campos_das_perguntas(h: Harness, run_id: str) -> list[str]:
+    """O `field` de cada pergunta que o painel lê do evento `log` (`data.questions`)."""
+    assert h.state is not None
+    campos: list[str] = []
+    for r in h.state.db.query("SELECT data FROM events WHERE run_id=? AND kind='log'", (run_id,)):
+        campos += [str(q["field"]) for q in (json.loads(r["data"] or "null") or {}).get("questions", [])]
+    return campos
+
+
 def _detalhe(h: Harness, run_id: str) -> str:
     assert h.state is not None
     return str(h.state.repo.run_row(run_id)["status_detail"])
@@ -83,6 +92,10 @@ async def test_persona_sem_sobrenome_pede_resposta_e_nao_materializa(harness: Ha
                                    (run.id + ":%",)) == 0
     detalhe = _detalhe(harness, run.id)
     assert "android-01" in detalhe and "sobrenome" in detalhe
+    # C1: falta de DADO não é pergunta de destino (o painel esconderia a orientação certa), e a frase só promete o que
+    # funciona: cadastrar na persona e pedir de novo (dizer o valor no comando não vira parâmetro do fluxo).
+    assert _campos_das_perguntas(harness, run.id) == ["persona_data"]
+    assert "cadastre o dado na persona e peça de novo" in detalhe and "diga o valor" not in detalhe
     # Só id e rótulo: nenhum valor, nome de persona, e-mail nem handle em lugar nenhum da execução.
     tudo = _tudo_da_execucao(harness, run.id)
     for proibido in (NOME, EMAIL, USUARIO_SEM_SOBRENOME):
@@ -117,6 +130,8 @@ async def test_aparelho_sem_persona_vinculada_falta_tudo(harness: Harness) -> No
     assert "android-03" in detalhe and "não tem persona vinculada" in detalhe
     for rotulo in ("nome", "sobrenome", "e-mail"):
         assert rotulo in detalhe
+    # Sem persona vinculada falta o DESTINO: aí a orientação de destino do painel é a certa.
+    assert _campos_das_perguntas(harness, run.id) == ["profile_id"] and "diga o valor" not in detalhe
     assert _linhas(harness, run.id, "objectives") == 0 and _linhas(harness, run.id, "steps") == 0
 
 
@@ -244,6 +259,60 @@ def test_a_pergunta_so_leva_id_e_rotulo() -> None:
     faltas = {"android-12": ["perfil_sobrenome"], "android-13": ["perfil_nome", "perfil_email"]}
     q = perguntas(faltas, sem_persona=frozenset({"android-13"}))
     assert [p["instance_id"] for p in q] == ["android-12", "android-13"]
-    assert q[0]["question"] == ("A persona do android-12 não tem sobrenome cadastrado: cadastre na persona ou diga o "
-                                "valor no comando.")
+    assert q[0]["question"] == ("A persona do android-12 não tem sobrenome cadastrado: cadastre o dado na persona e "
+                                "peça de novo.")
+    assert [p["field"] for p in q] == ["persona_data", "profile_id"]
     assert "não tem persona vinculada" in str(q[1]["question"]) and "nome e e-mail" in str(q[1]["question"])
+
+
+def test_conta_com_host_e_sufixo_numerado_casa_com_a_expressao() -> None:
+    """`conta_<app>_<host>_usuario` e `conta_<app>_usuario_2` (colisão de slug) são variáveis; a senha e o app sem o
+    sufixo `_usuario` não."""
+    plano = _plano_puro("{conta_chrome_portal_exemplo_test_usuario} {conta_instagram_usuario_2} {conta_chrome_senha} "
+                        "{conta_instagram}")
+    assert nomes_citados(plano) == ["conta_chrome_portal_exemplo_test_usuario", "conta_instagram_usuario_2"]
+    assert rotulo("conta_chrome_portal_exemplo_test_usuario") == "usuário da conta chrome portal exemplo test"
+    assert rotulo("conta_instagram_usuario_2") == "usuário da conta instagram"
+
+
+# ------------------------------------------------------------ 5. R1: o replano não grava a variável crua
+def _objetivo_sem_persona(harness: Harness, chave: str) -> tuple[str, str, Plan]:
+    """Objetivo materializado com o dado (foto do planejamento) mas SEM persona hoje: o replano relê a persona e a
+    variável deixa de resolver."""
+    repo = harness.state.repo                                                   # type: ignore[union-attr]
+    run, _ = repo.create_run(RunCreate(command="teste de replano", instance_ids=["android-01"], idempotency_key=chave),
+                             simulated=True)
+    plano = _plano_puro("Digitar {perfil_nome}.")
+    repo.save_plan(run["id"], plano)
+    repo.materialize(run["id"], plano, [{"instance_id": "android-01", "variables": {"perfil_nome": NOME}}])
+    return run["id"], f"{run['id']}:android-01", plano
+
+
+def test_revise_plan_recusa_dado_ausente_antes_de_gravar(harness: Harness) -> None:
+    repo = harness.state.repo                                                   # type: ignore[union-attr]
+    run_id, oid, plano = _objetivo_sem_persona(harness, "k-replano-1")
+    antes = repo.objective_row(oid)["plan_version"]
+    assert repo.faltas_do_replano(oid, plano.steps) == ["perfil_nome"]
+    with pytest.raises(DadoDaPersonaAusente) as erro:
+        repo.revise_plan(oid, "teste", plano.steps)
+    assert erro.value.faltam == ("perfil_nome",) and NOME not in str(erro.value)
+    assert repo.objective_row(oid)["plan_version"] == antes                    # nada gravado
+    assert harness.state.db.scalar("SELECT COUNT(*) FROM plan_versions WHERE objective_id=?", (oid,)) == 1  # type: ignore[union-attr]
+
+
+def test_recuperacao_automatica_e_recusada_com_motivo_so_com_nomes(harness: Harness) -> None:
+    run_id, oid, plano = _objetivo_sem_persona(harness, "k-replano-2")
+    sched = harness.state.scheduler                                             # type: ignore[union-attr]
+    motivo = sched._revisao_condenada(oid, harness.state.repo.run_row(run_id), list(plano.steps))  # noqa: SLF001
+    assert motivo is not None and "perfil_nome" in motivo and "não foi tentada" in motivo and NOME not in motivo
+
+
+def test_retomar_item_com_dado_ausente_vira_recusa_clara(harness: Harness) -> None:
+    from app.taskqueue.service import RunError
+
+    run_id, oid, _plano = _objetivo_sem_persona(harness, "k-replano-3")
+    obj = harness.state.repo.objective_row(oid)                                 # type: ignore[union-attr]
+    with pytest.raises(RunError) as erro:
+        harness.state.runs._requeue(obj, "teste")                               # type: ignore[union-attr]  # noqa: SLF001
+    assert erro.value.code == "dado_da_persona_ausente" and "perfil_nome" in erro.value.message
+    assert NOME not in erro.value.message

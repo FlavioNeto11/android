@@ -27,7 +27,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   objetivos, zero etapas, nada despachado; uma frase por aparelho, só com id do aparelho e rótulo do campo.
 - Defesa em profundidade: `Repository.materialize` recusa (`DadoDaPersonaAusente`, só nomes de variável) e o `_plan` fecha
   a execução em `failed` com o motivo em vez de deixá-la presa em `planning`. Caminho feliz idêntico; sem campo novo.
-- Prova `simulated`: `tests/test_prevoo_dado_da_persona.py` (14 passed); vizinhos e `test_arquitetura.py` verdes;
+- Revisão (C1, R1, N1): a falta de dado sai com `field: "persona_data"` (o painel mostra a pergunta e "Cadastre o dado na
+  persona e crie a execução de novo", sem a caixa que completa o comando nem o rodapé de destino); `profile_id` só
+  quando o aparelho não tem persona. A frase não promete mais "diga o valor no comando". O replano (`revise_plan`) não
+  grava `{perfil_x}` cru: a recuperação automática é recusada com motivo, a retomada do item vira `RunError`, a
+  expansão do `for_each` bloqueia o item. Limite conhecido: `PlanStep.variables` do `for_each` não é varrido.
+- Prova `simulated`: `tests/test_prevoo_dado_da_persona.py` (18 passed; era 14 no 796a26ac), `RunView.test.tsx` (7 passed); vizinhos e `test_arquitetura.py` verdes;
   `pytest @tests/catracas.txt`, 88 passed. `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)

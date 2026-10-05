@@ -1981,6 +1981,11 @@ class Scheduler:
         done = {r["key"] for r in repo.db.query("SELECT key FROM steps WHERE objective_id=? AND status='succeeded'",
                                                 (obj["id"],))}
         steps = [s for s in expand(plan.steps, collected) if s.key not in done]
+        if steps and (faltam := self.repo.faltas_do_replano(obj["id"], steps)):
+            # 31.87 (R1): a expansão não grava `{perfil_x}` cru; o item espera a pessoa, com só nomes de variável.
+            self._block(obj, "O plano usa dado da persona que o aparelho não tem (" + ", ".join(faltam) + ").",
+                        "Cadastre o dado na persona e crie a execução de novo.")
+            return
         if steps:
             # O começo "Expandido para " é lido pelo veredito da prova de fluxo (30.42, `domain.prova.PREFIXO_DA_EXPANSAO`):
             # a versão que só expande não é replanejamento.
@@ -2219,6 +2224,10 @@ class Scheduler:
         objetivo esgotado" — a v3 de r-20260928165254-e31953 girou 448,7 s até lá. O p90 recusaria revisões que
         costumam caber. Etapa sem base medida entra com zero (`projetar` nunca inventa número), então sem histórico
         a revisão nunca é recusada por aqui."""
+        if faltam := self.repo.faltas_do_replano(objective_id, steps):
+            # 31.87 (R1): refazer com `{perfil_x}` que a persona não resolve gravaria o texto cru. Só nomes de variável.
+            return ("A recuperação automática não foi tentada: o plano usa dado da persona que o aparelho não tem ("
+                    + ", ".join(faltam) + "). Cadastre o dado na persona e peça de novo.")
         restante = self._prazo_restante_s(self.repo.objective_row(objective_id))
         if restante is None:
             return None
@@ -2305,6 +2314,8 @@ class Scheduler:
                 novos += [limpar, s.model_copy(update={"depends_on": [chave]})]
             else:
                 novos.append(s)
+        if self.repo.faltas_do_replano(obj["id"], novos):          # 31.87 (R1): dado da persona ausente; vale o caminho de sempre
+            return False
         reason = f"Recuperação automática ({MOTIVO_SOBREPOSICAO}) após '{step.title}': {detail}"
         versao = self.repo.revise_plan(obj["id"], reason, novos)
         self.herdar_textos(obj["id"], versao)
