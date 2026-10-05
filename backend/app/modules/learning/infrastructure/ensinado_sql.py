@@ -156,7 +156,7 @@ class EnsinoDaValidacaoSql:
         try:
             return self._servico.entrada(LivroKind.FLUXO, fluxo_id)
         except Exception:  # noqa: BLE001 - o fluxo sumiu entre a consulta e agora: nada a abrir
-            log.info("aprendizado: ensinado %s sem entrada no livro", fluxo_id)
+            log.info("aprendizado: ensinado sem entrada no livro")         # 30.83: sem o id do fluxo
             return None
 
     def espera_decisao(self, aviso: EsperaDoEnsinado) -> None:

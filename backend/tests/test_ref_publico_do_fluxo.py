@@ -7,8 +7,11 @@ O desenho aprovado pela orquestradora pede `f-` mais 12 hex ALEATÓRIOS (nada de
 """
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterator
+from dataclasses import replace
+from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
 
@@ -18,13 +21,25 @@ import pytest
 from app.db import Database
 from app.main import create_app
 from app.models import Plan, PlannerInfo, PlanStep, Postcondition
+from app.modules.learning.application.espera import AvisadorDeEspera
+from app.modules.learning.application.feedback import EfeitoAplicado
+from app.modules.learning.domain.ciclo import ConflitoDeEstado, SkillState, TransicaoProibida
+from app.modules.learning.domain.ensinado import AvisoDoEnsinado, DecisaoDoEnsinado, EsperaDoEnsinado
 from app.modules.learning.domain.espera import AvisoDeEspera, Faixa
+from app.modules.learning.domain.livro import EntradaDoLivro, quem_no_log, ref_no_log
+from app.modules.learning.domain.vocabulario import LivroKind, Origem
 from app.modules.learning.infrastructure.eventos import EventosNoBarramento
-from app.taskqueue.flows import FlowStore, id_do_fluxo, preencher_refs_publicas, ref_publica_do_fluxo
+from app.modules.learning.domain.voto import AcaoDoEfeito, Efeito
+from app.modules.learning.infrastructure.ligar_nativos import PoliticaD1DoFluxo
+from app.modules.learning.presentation.feedback import _efeito
+from app.taskqueue.flows import FlowStore, MudancaDoFluxo, id_do_fluxo, preencher_refs_publicas, ref_publica_do_fluxo
 from app.util import now_iso
 
 from .conftest import Harness
 from .fake_skills import banco
+from .test_conversao_de_fluxo import cliente
+from .test_descompilador import abrir_conversa
+from .test_learning_pedir_validacao import Mundo, mundo  # noqa: F401 - a fixture do pedido de validação (N1)
 
 FORMA = re.compile(r"f-[0-9a-f]{12}")
 
@@ -145,3 +160,116 @@ async def test_a_rota_do_livro_abre_o_fluxo_pela_referencia_publica(harness: Har
     assert pelo_id.status_code == pela_ref.status_code == 200, (pelo_id.text, pela_ref.text)
     assert pela_ref.json()["item"]["ref"] == pelo_id.json()["item"]["ref"]
     assert sem.status_code == 404
+
+
+# ------------------------------------------------------------------ N1: o slug do fluxo legado não vai ao log
+SLUG = "enviar-mensagem-para-maria-souza"
+
+
+def test_o_log_diz_o_fluxo_so_pelo_tipo_e_o_resto_como_veio() -> None:
+    assert ref_no_log(f"fluxo:{SLUG}") == "fluxo" and ref_no_log("receita:42") == "receita:42"
+    assert ref_no_log("li-abc") == "li-abc" and ref_no_log("pedido:painel") == "pedido:painel"
+    assert quem_no_log(LivroKind.FLUXO, SLUG) == "fluxo" and quem_no_log(LivroKind.RECEITA, "42") == "receita 42"
+
+
+def test_o_slug_do_fluxo_legado_nao_vai_ao_log_da_validacao(mundo: Mundo, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.INFO)
+    mundo.servico.pedir_pela_pessoa(mundo.candidato(SLUG), by="painel")
+    assert mundo.servico.uma_volta(lambda: 1) is not None                  # o pedido e o despacho logam
+    assert "pediu a validação de fluxo" in caplog.text and "de fluxo em android-10" in caplog.text
+    assert "maria" not in caplog.text
+
+
+def test_o_slug_do_fluxo_legado_nao_vai_ao_log_quando_o_aviso_ou_a_trilha_falham(
+        db: Database, caplog: pytest.LogCaptureFixture) -> None:
+    class Quebrada:
+        def esperando_a_pessoa(self, aviso: AvisoDeEspera) -> None:
+            raise RuntimeError("barramento fora")
+
+        def registrar(self, *args: object, **kwargs: object) -> None:
+            raise RuntimeError("trilha fora")
+
+    caplog.set_level(logging.INFO)
+    e = EntradaDoLivro(kind=LivroKind.FLUXO, ref=SLUG, state=SkillState.VALIDATED, native_status="candidate",
+                       title="t", app="com.instagram.android", origin=Origem.EXECUCAO, side_effect=True)
+    avisador = AvisadorDeEspera(Quebrada(), None, lambda: datetime.now(UTC))
+    avisador.mudou_sem_falhar(None, e, por_sistema=True)                   # o aviso de espera falha
+    assert avisador.parecer_disponivel(e, Faixa.C) is False                 # o aviso de parecer falha
+    PoliticaD1DoFluxo(None, Quebrada(), db).mudou(  # type: ignore[arg-type]
+        MudancaDoFluxo(SLUG, None, "candidate", motivo="aprendido", por="sistema"))       # a trilha falha
+    assert len([r for r in caplog.records if r.levelno == logging.ERROR]) == 3, caplog.text
+    assert "maria" not in caplog.text
+
+
+# ------------------------------------------------------------------ fatia 3: rotas antigas, ensinado e `href`
+async def test_as_rotas_antigas_do_fluxo_aceitam_a_referencia_publica(tmp_path: Path) -> None:
+    h = Harness(tmp_path, 1)
+    await h.boot()
+    try:
+        s = h.state
+        assert s is not None
+        flow_id, _ = abrir_conversa(s.db)
+        publica = "f-0123456789ab"                       # diferente do id, para a rota ter o que traduzir
+        s.db.execute("UPDATE flows SET ref_publico=? WHERE id=?", (publica, flow_id))
+        h.cfg.file.skills.enabled = True
+        async with cliente(h) as c:
+            r = await c.put(f"/api/flows/{publica}", json={"status": "disabled"})
+            assert r.status_code == 200 and r.json()["id"] == flow_id, r.text
+            assert s.db.scalar("SELECT status FROM flows WHERE id=?", (flow_id,)) == "disabled"
+            assert (await c.put(f"/api/flows/{publica}", json={"status": "active"})).status_code == 200
+            r = await c.post(f"/api/flows/{publica}/adopt", json={"reason": "converter"})
+            assert r.status_code == 201 and r.json()["flow_id"] == flow_id, r.text
+            r = await c.post(f"/api/flows/{publica}/release", json={"reason": "voltar"})
+            assert r.status_code == 200 and r.json()["flow_id"] == flow_id, r.text
+            r = await c.delete(f"/api/flows/{publica}")    # a guarda da adoção leu pelo id interno (sem a tradução,
+            assert r.status_code == 409 and r.json()["detail"]["code"] == "flow_adopted"   # o DELETE seria um 204 vazio)
+            _legado(s.db, SLUG, "mande uma mensagem a maria")
+            assert (await c.delete(f"/api/flows/{ref_publica_do_fluxo(s.db, SLUG)}")).status_code == 204
+            assert s.db.one("SELECT 1 FROM flows WHERE id=?", (SLUG,)) is None
+            assert (await c.put("/api/flows/f-ffffffffffff", json={"status": "active"})).status_code == 404
+    finally:
+        await h.state.stop()                                                    # type: ignore[union-attr]
+
+
+def test_os_avisos_do_ensinado_saem_com_a_referencia_publica(db: Database) -> None:
+    _legado(db, SLUG, "mande uma mensagem a maria")
+    preencher_refs_publicas(db)
+    publica = ref_publica_do_fluxo(db, SLUG)
+    bus = _Bus()
+    porta = EventosNoBarramento(bus, partial(ref_publica_do_fluxo, db))
+    porta.ensinado_rebaixado(AvisoDoEnsinado(kind="fluxo", ref=SLUG, app="instagram", treino="trn-1",
+                                             sem_receita_ativa=True, para="disabled", desde=now_iso()))
+    porta.ensinado_espera_decisao(EsperaDoEnsinado(kind="fluxo", ref=SLUG, app="instagram", treino="trn-1",
+                                                   persona=None, desde=now_iso()))
+    porta.ensinado_decidido(DecisaoDoEnsinado(kind="fluxo", ref=SLUG, desde=now_iso(), decisao="liberado",
+                                              decidido_em=now_iso()))
+    porta.ensinado_rebaixado(AvisoDoEnsinado(kind="receita", ref="42", app="instagram", treino="trn-1",
+                                             sem_receita_ativa=False, para="superseded", desde=now_iso()))
+    *fluxos, (_, _, receita) = bus.eventos
+    assert len(fluxos) == 3 and all(dados["ref"] == publica for _, _, dados in fluxos)
+    assert all("maria" not in mensagem + str(dados) for _, mensagem, dados in fluxos)
+    assert receita["ref"] == "42"
+
+
+def test_o_href_de_desfazer_do_voto_leva_a_referencia_publica() -> None:
+    def traduz(kind: str, valor: str) -> str:
+        return "f-0123456789ab" if kind == "fluxo" else valor
+
+    fluxo = _efeito(EfeitoAplicado(Efeito(AcaoDoEfeito.DESLIGAR, "fluxo", SLUG), True, reativavel=True), traduz)
+    receita = _efeito(EfeitoAplicado(Efeito(AcaoDoEfeito.DESLIGAR, "receita", "42"), True, reativavel=True), traduz)
+    assert fluxo["desfazer"] == {"method": "POST", "href": "/api/aprendizado/fluxo/f-0123456789ab/status",
+                                 "body": {"to": "published", "reason": "reativado depois do voto"}}
+    assert fluxo["ref"] == SLUG                         # o `ref` segue o id interno, que o painel casa com a lista
+    assert isinstance(receita["desfazer"], dict) and receita["desfazer"]["href"] == "/api/aprendizado/receita/42/status"
+
+
+def test_as_excecoes_do_pedido_de_validacao_nao_levam_o_slug(mundo: Mundo) -> None:
+    """S1 da leitura da fatia 3: o texto da exceção vai ao `detail` da resposta e ao log."""
+    e = mundo.candidato(SLUG)
+    mundo.servico.pedir_pela_pessoa(e, by="painel")
+    with pytest.raises(ConflitoDeEstado) as vivo:
+        mundo.servico.pedir_pela_pessoa(e, by="painel")
+    with pytest.raises(TransicaoProibida) as publicado:
+        mundo.servico.pedir_pela_pessoa(replace(e, state=SkillState.PUBLISHED), by="painel")
+    assert "maria" not in str(vivo.value) and "maria" not in str(publicado.value)
+    assert "pedido de validação vivo" in str(vivo.value) and "fluxo" in str(publicado.value)

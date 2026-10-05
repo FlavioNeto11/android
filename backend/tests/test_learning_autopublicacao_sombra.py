@@ -258,7 +258,8 @@ def test_a_volta_vazia_deixa_rastro_no_log_e_nas_metricas(mundo: Mundo, caplog: 
     assert mundo.auto.relatorio()["ultima_volta"] == {"em": to_iso(INICIO + timedelta(hours=1)), "modo": "shadow",
                                                       "avaliados": 1, "publicaria": 1, "marcados": 1,
                                                       "publicados": 0}
-    assert any(m.endswith(f"1 caso(s) novo(s): {ref}") for m in caplog.messages)
+    assert any(m.endswith("1 caso(s) novo(s)") for m in caplog.messages)
+    assert not any(ref.partition(":")[2] in m for m in caplog.messages)    # 30.83: o id do fluxo não vai ao log
 
 
 def test_sem_lider_a_volta_nao_conta(mundo: Mundo) -> None:

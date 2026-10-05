@@ -107,6 +107,12 @@ function operandosDoTopo(corpo: string): { texto: string; depois: string | null 
   return operandos;
 }
 
+/** O `?` em `i` abre um ternário, não um `?.`? `ok?.5:1` é `ok ? .5 : 1`: o `?.` seguido de dígito é ternário (29.136). */
+function eInterrogacaoDeTernario(corpo: string, i: number): boolean {
+  if (corpo.charAt(i) !== '?' || corpo.charAt(i + 1) === '?') return false;
+  return corpo.charAt(i + 1) !== '.' || /\d/.test(corpo.charAt(i + 2));
+}
+
 /** Há um `?` de ternário no nível de fora (nem `?.`, nem `??`)? Então um ramo que não é o último também decide. */
 function temTernarioNoTopo(corpo: string): boolean {
   let nivel = 0;
@@ -117,7 +123,7 @@ function temTernarioNoTopo(corpo: string): boolean {
     else if ('([{'.includes(c)) nivel++;
     else if (')]}'.includes(c)) nivel--;
     else if (c === '?' && corpo.charAt(i + 1) === '?') i++;
-    else if (nivel === 0 && c === '?' && corpo.charAt(i + 1) !== '.') return true;
+    else if (nivel === 0 && eInterrogacaoDeTernario(corpo, i)) return true;
   }
   return false;
 }
@@ -136,9 +142,30 @@ function temOperadorNoTopo(corpo: string): boolean {
     else if ('([{'.includes(c)) nivel++;
     else if (')]}'.includes(c)) nivel--;
     else if (nivel === 0 && (dois === '&&' || dois === '||' || dois === '??')) return true;
-    else if (nivel === 0 && c === '?' && corpo.charAt(i + 1) !== '.') return true;
+    else if (nivel === 0 && eInterrogacaoDeTernario(corpo, i)) return true;
   }
   return false;
+}
+
+/**
+ * Há um operador que muda o valor (comparação, aritmética, bit, vírgula, ternário, `in`/`instanceof`) no nível de fora?
+ * Então a expressão não é só a busca: `sel === itens.find(…)` é booleano (29.135). O `?.` e o `=>` (dentro dos
+ * parênteses da chamada) não contam; o `?.` seguido de dígito é ternário (29.136 trata o mesmo caso).
+ */
+function temOperadorDeValorNoTopo(corpo: string): boolean {
+  let nivel = 0;
+  for (let i = 0; i < corpo.length; i++) {
+    const c = corpo.charAt(i);
+    if (c === '\\') i++;
+    else if (ASPAS.has(c)) i = fimDaString(corpo, i);
+    else if ('([{'.includes(c)) nivel++;
+    else if (')]}'.includes(c)) nivel--;
+    else if (nivel === 0) {
+      if ('=<>+-*/%&|^,:'.includes(c)) return true;
+      if (c === '?' && (corpo.charAt(i + 1) !== '.' || /\d/.test(corpo.charAt(i + 2)))) return true;
+    }
+  }
+  return /\s(?:in|instanceof)\s/.test(corpo.replace(/\([^()]*\)/g, '()'));
 }
 
 // O valor devolvido é o de uma busca que pode não achar nada: `querySelector`/`closest` (null) e `find` (undefined,
@@ -186,8 +213,8 @@ function semParentesesDeFora(corpo: string): string {
 }
 
 // O corpo em bloco (`() => { … }`) segue fora: o `return` pode estar em qualquer ponto dele (29.129, F3, anotado).
-// Limites anotados: um `(x as T)!` no MEIO da expressão não é lido como busca, e um operando entre parênteses antes do
-// `&&` (`(itens().find(…)) && !carregando`) escapa do G2.
+// Limite anotado: um `(x as T)!` no MEIO da expressão não é lido como busca. O operando entre parênteses antes do `&&`
+// (`(itens().find(…)) && !carregando`) é lido pelo G2 (29.135).
 function esperasQuePassamSemAchar(codigo: string): number[] {
   return primeirosArgumentos(semComentarios(codigo))
     .filter(({ argumento }) => {
@@ -204,7 +231,14 @@ function esperasQuePassamSemAchar(codigo: string): number[] {
       // hora, por mais que o último operando seja negado (29.129, G2).
       // O operando negado já é booleano, e com ternário no topo o `&&` é só a condição.
       const ternario = temTernarioNoTopo(corpo);
-      if (!ternario && operandos.some((o) => o.depois === '&&' && !o.texto.startsWith('!') && terminaNumaBusca(o.texto))) return true;
+      // O operando entre parênteses vale o de dentro: `(itens().find(…)) && ok` é o mesmo valor (29.135). Só vale como
+      // busca o operando que É a busca: com operador no nível de fora (`(sel === itens.find(…)) && ok`) o valor é o do
+      // operador, booleano, e termina no `.find(…)` só por acaso.
+      const valeUmaBusca = (texto: string): boolean => {
+        const dentro = semParentesesDeFora(texto);
+        return !dentro.startsWith('!') && !temOperadorDeValorNoTopo(dentro) && terminaNumaBusca(dentro);
+      };
+      if (!ternario && operandos.some((o) => o.depois === '&&' && valeUmaBusca(o.texto))) return true;
       // Com `&&`, `||` ou `??` no topo, quem decide é o último operando: negado, é booleano. Com ternário no topo, não.
       if (!ternario && operandos[operandos.length - 1]!.texto.startsWith('!')) return false;
       return terminaNumaBusca(corpo);
@@ -257,6 +291,11 @@ describe('catraca das esperas', () => {
       "await waitFor(() => ok ? !a : c.querySelector('x'));",
       // Com ternário no topo a negação da frente é só a condição: o ramo que sobra pode ser null.
       "await waitFor(() => !a ? b : c.querySelector('x'));",
+      // 29.135: o operando entre parênteses antes do `&&` também é lido (G2): o `.find(…)` dentro dele dá `undefined`.
+      "await waitFor(() => (itens().find((i) => i.id === 'x')) && !carregando);",
+      "await waitFor(() => ((itens().find((i) => i.id === 'x'))) && !carregando);",
+      // 29.136: `?.` seguido de dígito é ternário (`ok ? .5 : …`), não encadeamento opcional.
+      "await waitFor(() => !a?.5:c.querySelector('x'));",
     ];
     const poupa = [
       "await waitFor(() => container.querySelector('h1')?.textContent === 'Mariana Costa');",
@@ -276,6 +315,16 @@ describe('catraca das esperas', () => {
       // G2 sem falso positivo: o `.find(…)` negado é booleano, e no ternário o `&&` é só a condição.
       "await waitFor(() => !lista.find((i) => i.id === 'x') && pronto);",
       "await waitFor(() => itens().find((i) => i.id === 'x') && ok ? a : b);",
+      // 29.135, sem falso positivo: entre parênteses, o `.find(…)` negado segue booleano.
+      "await waitFor(() => (!lista.find((i) => i.id === 'x')) && pronto);",
+      // A comparação entre parênteses (ou sem eles) é booleana, mesmo terminando num `.find(…)` (achado do Codex no PR 455).
+      "await waitFor(() => (selected === itens.find((i) => i.id === 'x')) && pronto);",
+      "await waitFor(() => selected === itens.find((i) => i.id === 'x') && pronto);",
+      "await waitFor(() => (x instanceof Y) && pronto);",
+      // 29.136: com `?.5` o ternário está no topo e o `&&` é só a condição; lido como `?.`, virava falso positivo.
+      "await waitFor(() => itens().find((i) => i.id === 'x') && ok?.5:1);",
+      // O encadeamento opcional de verdade (`?.` e `?.[`, sem dígito) não é ternário.
+      "await waitFor(() => itens().find((i) => i.id === 'x') !== undefined && ok?.length);",
     ];
     for (const linha of pega) expect(esperasQuePassamSemAchar(linha), linha).toHaveLength(1);
     for (const linha of poupa) expect(esperasQuePassamSemAchar(linha), linha).toEqual([]);

@@ -1,8 +1,12 @@
-"""Cria as personas de `scripts/personas-novas.json` que ainda não existem — por NOME, nunca duas vezes.
+"""Cria as personas do arquivo de personas novas que ainda não existem — por NOME, nunca duas vezes.
 
 Par de `personas_completar.py`: aquele preenche o que falta nas personas que já existem; este cria as que faltam
 para os aparelhos que nunca tiveram uma (os seis do worker, em 23/09/2026). Nenhuma nasce vinculada a perfil:
 o vínculo depende de conta registrada pelo dono, na tela do perfil.
+
+O arquivo é dado de persona de verdade e NÃO fica no Git (31.105): mora em `C:/farm/privado/personas-novas.json`,
+como a tabela de nomes de teste. Outro lugar: `--novas <arquivo>` ou a variável `PERSONAS_NOVAS`. O formato é
+`{"personas": [{"name", "summary", "persona_prompt", "traits"}]}`.
 
 Uso
 ---
@@ -12,22 +16,23 @@ Uso
 from __future__ import annotations
 
 import argparse
-import json
+import os
 from pathlib import Path
 
-from personas_completar import pedir  # mesmo cliente HTTP, mesmo loopback
+from personas_completar import PRIVADO, ler_personas, pedir  # mesmo cliente HTTP, mesmo loopback, mesma pasta
 
-RAIZ = Path(__file__).resolve().parent.parent
-NOVAS = RAIZ / "scripts" / "personas-novas.json"
+NOVAS = PRIVADO / "personas-novas.json"
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--base", default="http://127.0.0.1:8000/api")
     ap.add_argument("--aplicar", action="store_true", help="cria de verdade; sem isto só imprime")
+    ap.add_argument("--novas", type=Path, default=Path(os.environ.get("PERSONAS_NOVAS") or NOVAS),
+                    help=f"as personas a criar (padrão: PERSONAS_NOVAS ou {NOVAS})")
     args = ap.parse_args()
 
-    propostas = json.loads(NOVAS.read_text(encoding="utf-8"))["personas"]
+    propostas = ler_personas(args.novas)
     existentes = {p["name"].strip().lower() for p in pedir(args.base, "GET", "/personas")}
     print(f"Personas em {args.base}: {len(existentes)} existentes, {len(propostas)} propostas")
     criadas = 0

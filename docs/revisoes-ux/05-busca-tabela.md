@@ -153,10 +153,10 @@ vite na 5195 com `VITE_API_TARGET=http://127.0.0.1:8000`, painel do Browser da I
   que o contador da tarefa 02 conta. Sem filtro, 14 cartões com a mesma altura, nenhum selo cortado depois do
   ajuste (antes do ajuste "Bloqueada pela platafo…" cortava; medido e corrigido), `scrollWidth` 1440. Marquei Bruno,
   troquei para Tabela: `#/personas?visao=tabela`, 14 linhas, Bruno continuou marcado. Digitei `@lucas` na busca:
-  sobrou só Lucas Almeida na hora, `#/personas?q=%40lucas&visao=tabela`, `history.length` igual ao de antes, e o
+  sobrou só Tadeu Quintela na hora, `#/personas?q=%40tadeu&visao=tabela`, `history.length` igual ao de antes, e o
   aviso "(1 fora do filtro atual)". `location.reload()` (tipo `reload`) reabriu com a busca `@lucas` e a tabela.
-- Menu "⋯" de Beatriz Rocha (bloqueada): itens "Reativar" e "Remover persona". "Remover persona" abriu o diálogo
-  "Remover Beatriz Rocha?" com "Voltar" e "Remover"; cliquei **Voltar**, o diálogo fechou e Beatriz continuou na
+- Menu "⋯" de Sueli Barreto (bloqueada): itens "Reativar" e "Remover persona". "Remover persona" abriu o diálogo
+  "Remover Sueli Barreto?" com "Voltar" e "Remover"; cliquei **Voltar**, o diálogo fechou e Sueli continuou na
   lista. Nada foi confirmado, marcado nem reativado.
 - Execuções a 1440: `#/execucoes?status=pendencia` trouxe o histórico inteiro (subtítulo "115 de 246 execuções";
   chips Todas 246, Em andamento 3, Concluídas 103, Com pendência 115, Falharam 7, Canceladas 18), 50 itens
