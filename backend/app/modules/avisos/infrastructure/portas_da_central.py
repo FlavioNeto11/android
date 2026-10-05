@@ -49,7 +49,8 @@ class PortasReais:
                  capturar: Callable[[str], Awaitable[tuple[bytes | None, str | None]]] | None = None,
                  leitor_de_anexos: LeitorDeAnexo | None = None,
                  previa_da_porta: Callable[[str], dict[str, object]] | None = None,
-                 aprovar_plano: Callable[..., dict[str, object]] | None = None,
+                 aprovar_plano: Callable[[str, list[tuple[str, str]], str, str | None], dict[str, object]]
+                 | None = None,
                  ler_imagem: Callable[[str], bytes | None] | None = None):
         self.db = db
         # 28.27: as duas da porta (30.61) e a leitura dos bytes da imagem da persona (`storage_key`), injetadas.

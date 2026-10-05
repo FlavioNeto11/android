@@ -687,6 +687,48 @@ async def test_g1b_a_mesma_dm_mandada_antes_da_previa_vista_segue_coberta(harnes
     assert state.db.scalar("SELECT COUNT(*) FROM pending_approvals WHERE origem='plano'") == 1
 
 
+async def test_g1b_o_texto_editado_repetido_depois_da_previa_vista_nao_fica_coberto(harness: Any,
+                                                                                     monkeypatch: Any) -> None:
+    """Revisão do 31.68, T1: a repetição se confere com o texto que VAI (o editado). O texto editado mandado ao mesmo
+    alvo depois do `vista_em` volta `plano_mudou`; o texto original mandado depois não pesa, porque não é o que vai."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    sid, pid = itens["dm"]["step_id"], str(itens["dm"]["profile_id"])
+    vista = to_iso(now() - timedelta(seconds=30))
+    proposto = previa_do_item(state, "run-p", PreviaDoItemBody(step_id=sid, texto="texto que vai"))["item"]
+    for texto in ("texto que vai", DM["content"]):
+        state.social_repo.record_interaction(pid, type="dm_sent", direction="outbound", status="confirmed",
+                                             counterparty=ALVO, outgoing_content=texto, app_id="ig", run_id="r-outra",
+                                             occurred_at=to_iso(now() - timedelta(seconds=5)))
+    corpo = AprovarPlanoBody(vista_em=vista, aprovar=[ItemAprovado(step_id=sid, chave=proposto["chave"],  # type: ignore[index]
+                                                                   texto="texto que vai")])
+    with pytest.raises(PortaIndisponivel) as recusa:
+        aprovar_plano(state, "run-p", corpo, por="flavio")
+    assert recusa.value.codigo == "plano_mudou"
+    [mudou] = recusa.value.extra["mudaram"]
+    assert mudou["step_id"] == sid and mudou["motivo"].startswith("depois da prévia que você viu:")
+    assert state.db.scalar("SELECT COUNT(*) FROM pending_approvals") == 0
+
+
+async def test_g1b_o_original_repetido_depois_nao_pesa_quando_vai_o_texto_editado(harness: Any,
+                                                                                  monkeypatch: Any) -> None:
+    """T1, o outro lado: só o texto original repetido depois do `vista_em`; vai o editado, que nunca foi mandado."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    itens = _plano_com_dm(state)
+    sid, pid = itens["dm"]["step_id"], str(itens["dm"]["profile_id"])
+    vista = to_iso(now() - timedelta(seconds=30))
+    proposto = previa_do_item(state, "run-p", PreviaDoItemBody(step_id=sid, texto="texto que vai"))["item"]
+    state.social_repo.record_interaction(pid, type="dm_sent", direction="outbound", status="confirmed",
+                                         counterparty=ALVO, outgoing_content=DM["content"], app_id="ig",
+                                         run_id="r-outra", occurred_at=to_iso(now() - timedelta(seconds=5)))
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=vista, aprovar=[ItemAprovado(
+        step_id=sid, chave=proposto["chave"], texto="texto que vai")]), por="flavio")  # type: ignore[index]
+    linha = state.db.one("SELECT generated_content FROM pending_approvals WHERE origem='plano'")
+    assert linha["generated_content"] == "texto que vai"
+
+
 def test_g1b_a_previa_e_a_previa_do_item_trazem_vista_em(harness: Any) -> None:
     state = harness.state
     _plano_com_dm(state)

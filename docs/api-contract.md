@@ -6104,3 +6104,30 @@ origem decidia sozinha (`upload` = sem rótulo), e a foto de IA que o dono subis
 - **Prova:** `simulated` (`backend/tests/test_upload_feito_por_ia.py`,
   `frontend/src/features/profiles/GuiaImagens.test.tsx`, `frontend/src/features/profiles/SeloRotuloIa.test.tsx`,
   `frontend/src/features/runs/PortaDoPlano.test.tsx`). `not_run`: publicação real de uma foto enviada.
+
+## Adendo v1.45 (05/10/2026; número da orquestradora; item 31.68) — o sim do plano cobre só a prévia que o dono viu
+
+Resíduo do #330 (31.49): o sim dado na prévia da porta valia desde o clique em "Aprovar" (`decided_at`). Uma DM igual
+mandada ou aprovada ENTRE a prévia na tela e o clique não estava no motivo que o dono leu e ficava coberta pelo sim; a
+repetição não muda a chave do item, então não dava `plano_mudou`.
+
+- **`PreviaDaPorta.vista_em`** (`GET /runs/{id}/porta`) e **`vista_em`** da prévia de um item (`POST
+  /runs/{id}/porta/item`): o instante ISO-8601 em que a prévia foi montada.
+- **`AprovarPlanoBody.vista_em`** (`POST /runs/{id}/aprovar-plano`, `string | null`, até 40 caracteres): o `vista_em` da
+  prévia que o dono VIU. Com item a aprovar, sem ele (ausente, vazio, ilegível ou no futuro) a resposta é **409
+  `plano_mudou`** com a prévia nova e cada item em `mudaram` com o motivo "a prévia não diz quando foi vista: recarregue-a
+  e aprove de novo"; nada é gravado (falha fechada: incerteza não conta como sim; o cliente antigo é só uma aba a
+  recarregar). Sem item a aprovar (só tirar, ou N = 0) o campo não é exigido.
+- **Repetição depois da prévia:** com `vista_em`, cada DM a aprovar é conferida pela mesma conta da porta
+  (`mensagem_repetida` com o `desde` do 31.49) a partir desse instante, com o texto que vai (o editado, se houver). A DM
+  igual mandada ou aprovada DEPOIS entra em `mudaram` com "depois da prévia que você viu: …" e a resposta é **409
+  `plano_mudou`**; a que já existia quando a prévia foi vista estava no motivo lido e segue coberta pelo sim.
+- **Telegram (28.27):** o retrato da prévia guarda o `vista_em` mostrado ao dono, e o "Executar (aprova N)" o devolve.
+- **Painel:** o "Aprovar N e iniciar" manda o `vista_em` da prévia inteira que está na tela, não o da prévia do texto
+  editado (a inteira é a mais antiga das duas: o lado mais estrito).
+- **Sem limite de idade:** a prévia vista não vence pelo relógio. A aba velha só aprova se selo, chave e texto ainda
+  batem e não houve repetição desde o `vista_em`, isto é, aprova o que a pessoa viu (decisão da orquestradora,
+  05/10; prazo, se o dono pedir, vira regra nova).
+- **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_telegram_entrada.py`,
+  `backend/tests/test_telegram_portas.py`, `backend/tests/test_executor_honra_o_plano.py`,
+  `frontend/src/features/runs/PortaDoPlano.test.tsx`). `not_run`: o gesto no central (depois do deploy 34).

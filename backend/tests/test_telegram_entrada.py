@@ -123,6 +123,7 @@ class PortasFalsas:
         self.porta_quebra = False
         self.mudou: list[dict[str, object]] | None = None     # o próximo `aprovar_plano` dá 409 `plano_mudou`
         self.recusar_aprovar: str | None = None
+        self.vistas_em: list[str | None] = []       # G1b: o `vista_em` de cada `aprovar_plano`, na ordem
         self.imagens: dict[str, tuple[bytes, str]] = {}
         self.estado_ao_criar = "planned"            # o status da execução só de plano logo depois de criada
         self.criada_com: dict[str, str] = {}        # chave de idempotência → run_id (a linha presa antes do run_id)
@@ -194,6 +195,7 @@ class PortasFalsas:
     def aprovar_plano(self, run_id: str, aprovar: list[tuple[str, str]], *,
                       vista_em: str | None = None) -> dict[str, object]:
         self._anota("aprovar_plano", run_id, tuple(aprovar))
+        self.vistas_em.append(vista_em)
         if self.mudou is not None:
             mudaram, self.mudou = self.mudou, None
             raise PlanoMudou("mudou", dict(self.previa_da_porta), mudaram)
@@ -709,6 +711,20 @@ async def test_plano_mudou_manda_a_previa_nova_e_nada_e_gravado(c: Cenario) -> N
     assert c.portas.chamadas[-1] == ("aprovar_plano", (RUN, (("s1", "d" * 64), ("s3", f"{'s3':0<64}"))),
                                      OPERADOR_DO_TELEGRAM)
     assert c.portas.nomes().count("aprovar_plano") == 2
+
+
+async def test_g1b_o_executar_devolve_o_vista_em_do_retrato_que_o_dono_viu(c: Cenario) -> None:
+    """G1b: o "Executar (aprova N)" manda o `vista_em` da prévia RETRATADA (a que o dono viu), não o de uma prévia lida
+    na hora do toque; depois de um `plano_mudou`, o da prévia nova que a conversa mostrou."""
+    c.portas.previa_da_porta = _porta(_item("s1"), vista_em="2026-10-05T02:00:00Z")
+    ident = await _executar(c)
+    c.portas.mudou = [{"step_id": "s1", "selo": "aprovacao", "motivo": "a chave mudou"}]
+    c.portas.previa_da_porta = _porta(_item("s1", chave="d" * 64), vista_em="2026-10-05T02:05:00Z")
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    assert json.loads(str(c.linha(5)["previa"]))["vista_em"] == "2026-10-05T02:05:00Z"
+    c.portas.previa_da_porta = _porta(_item("s1", chave="d" * 64), vista_em="2026-10-05T02:09:00Z")
+    await c.volta(botao(8, _p(c, ident), mid=c.bot.mid))
+    assert c.portas.vistas_em == ["2026-10-05T02:00:00Z", "2026-10-05T02:05:00Z"]
 
 
 async def test_previa_da_porta_vencida_cancela_a_execucao(c: Cenario) -> None:

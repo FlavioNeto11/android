@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.68 (G1b): o sim do plano cobre só a repetição vista na prévia (branch feat/g1b-vista-em-na-aprovacao)
+
+- **O resíduo do #330:** o sim dado na prévia valia desde o clique. A DM igual mandada ou aprovada entre a prévia na tela
+  e o clique não estava no motivo lido e ficava coberta (a repetição não muda a chave).
+- **`vista_em`:** a prévia da porta e a do item devolvem `vista_em`; o gesto (painel e Telegram) o devolve. Com item a
+  aprovar, sem ele (ou ilegível, ou no futuro) a aprovação é `plano_mudou` com a prévia nova e nada é gravado (falha
+  fechada). A DM igual surgida DEPOIS do `vista_em` entra em `mudaram`. Contrato: adendo v1.45.
+- Prova: `simulated` (`backend/tests/test_porta_do_plano.py`, 10 testes novos; `test_telegram_entrada`, 1 novo;
+  `test_telegram_portas`, `test_executor_honra_o_plano`; `frontend/src/features/runs/PortaDoPlano.test.tsx`). Real:
+  `not_run`, gesto no central depois do deploy 34.
+
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
 - `scripts/tests/test_poda_ab_offline.py` confere `scripts/poda-ab-offline.py`: só a UI do Chrome sai, a `url_bar` fica,
