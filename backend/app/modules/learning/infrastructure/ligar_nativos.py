@@ -142,18 +142,38 @@ def _primeiro_aparelho(bruto: str | None) -> str | None:
     return None
 
 
-#: O `lastUpdateTime` do `dumpsys` vem no fuso DO APARELHO, sem fuso escrito (`2026-10-04 20:08:02`), e o fuso de cada
-#: emulador não está no banco. Em UTC, a hora verdadeira fica entre a lida −14 h e a lida +12 h (os fusos vão de −12 a
-#: +14). Para afirmar que a atualização foi ANTES do início, conta-se o pior caso, a lida +12 h.
+#: O `lastUpdateTime` do `dumpsys` vem no fuso DO APARELHO, sem fuso escrito (`2026-10-04 20:08:02`). Sem o fuso, a
+#: hora verdadeira em UTC fica entre a lida −14 h e a lida +12 h (os fusos vão de −12 a +14), e para afirmar que a
+#: atualização foi ANTES do início conta-se o pior caso, a lida +12 h.
 _FOLGA_DO_FUSO = timedelta(hours=12)
+#: 30.77: com o fuso lido na inspeção (`device_app_state.last_update_offset`), a hora em UTC é exata; sobra 1 h de margem
+#: para uma mudança de horário de verão entre a atualização e a leitura e para o relógio do aparelho.
+_MARGEM_COM_FUSO = timedelta(hours=1)
 _FORMATO_DO_DUMPSYS = "%Y-%m-%d %H:%M:%S"
+_FUSO = re.compile(r"([+-])(\d{2})(\d{2})")
 
 
-def versao_estavel_na_execucao(versao: str | None, atualizado: str | None, inicio: str | None) -> str | None:
+def _deslocamento(fuso: str | None) -> timedelta | None:
+    """`-0300` → −3 h; vazio, ilegível ou fora de −12..+14 h: `None` (a regra volta à folga de 12 h)."""
+    m = _FUSO.fullmatch((fuso or "").strip())
+    if m is None:
+        return None
+    horas, minutos = int(m.group(2)), int(m.group(3))
+    if minutos >= 60:
+        return None
+    d = timedelta(hours=horas, minutes=minutos) * (-1 if m.group(1) == "-" else 1)
+    return d if timedelta(hours=-12) <= d <= timedelta(hours=14) else None
+
+
+def versao_estavel_na_execucao(versao: str | None, atualizado: str | None, inicio: str | None,
+                               fuso: str | None = None) -> str | None:
     """30.74 (V1 da leitura): a versão observada AGORA só vale para a execução se o app não pode ter mudado depois do
     início dela. Sem a hora da última atualização, sem o início, ou com qualquer uma ilegível: `None` (na dúvida, a
     evidência fica sem versão, como antes do 30.74; uma versão errada seria prova falsa de "versão viva").
-    O preço da folga do fuso: a execução que começa até ~12 h depois de uma atualização fica sem versão."""
+
+    30.77: com o `fuso` do aparelho lido na inspeção, a hora da atualização em UTC é a lida menos o deslocamento, e a
+    margem cai para 1 h. Sem ele (linha antiga, leitura que não o trouxe), segue a folga de 12 h, e a execução que
+    começa até ~12 h depois de uma atualização fica sem versão."""
     if not versao or not atualizado or not inicio:
         return None
     try:
@@ -163,7 +183,11 @@ def versao_estavel_na_execucao(versao: str | None, atualizado: str | None, inici
         return None
     if comeco is None:
         return None
-    pior_caso = lida.replace(tzinfo=comeco.tzinfo) + _FOLGA_DO_FUSO
+    deslocamento = _deslocamento(fuso)
+    if deslocamento is None:
+        pior_caso = lida.replace(tzinfo=comeco.tzinfo) + _FOLGA_DO_FUSO
+    else:
+        pior_caso = lida.replace(tzinfo=comeco.tzinfo) - deslocamento + _MARGEM_COM_FUSO
     return versao if pior_caso < comeco else None
 
 
@@ -202,7 +226,8 @@ class LeituraSql:
         if not aparelho:
             return None
         linha = self._db.one(
-            "SELECT d.observed_version_name AS v, d.last_update_time AS atualizado, r.started_at AS inicio"
+            "SELECT d.observed_version_name AS v, d.last_update_time AS atualizado, d.last_update_offset AS fuso,"
+            " r.started_at AS inicio"
             " FROM flows f JOIN apps a ON a.id = f.app_id"
             " JOIN device_app_state d ON d.package_name = a.package AND d.instance_id = ?"
             " JOIN runs r ON r.id = ?"
@@ -211,7 +236,7 @@ class LeituraSql:
         if linha is None:
             return None
         return versao_estavel_na_execucao(linhas.texto_ou_nulo(linha, "v"), linhas.texto_ou_nulo(linha, "atualizado"),
-                                          linhas.texto_ou_nulo(linha, "inicio"))
+                                          linhas.texto_ou_nulo(linha, "inicio"), linhas.texto_ou_nulo(linha, "fuso"))
 
     def _uso(self, row: Row) -> ProvaDaExecucao | None:
         """30.51: a execução comum que usou o fluxo (`runs.flow_id`) pela regra da prova (`_prova`). Ensaio, lote de teste

@@ -209,6 +209,8 @@ class InstalledApp:
     splits: list[str] = field(default_factory=list)
     first_install_time: str | None = None
     last_update_time: str | None = None
+    #: 30.77: o fuso do aparelho (`-0300`) lido junto; `None` quando a leitura não o trouxe.
+    last_update_offset: str | None = None
     paths: list[str] = field(default_factory=list)
 
 
@@ -277,7 +279,8 @@ class AppInstaller:
             return InstalledApp(present=False)
         return InstalledApp(present=True, version_name=info["version_name"], version_code=info["version_code"],
                             splits=list(info["splits"]), first_install_time=info["first_install_time"],
-                            last_update_time=info["last_update_time"], paths=list(info["paths"]))
+                            last_update_time=info["last_update_time"], paths=list(info["paths"]),
+                            last_update_offset=info.get("last_update_offset"))
 
     # ------------------------------------------------------------------ escrita
     async def install(self, rt: Any, *, paths: list[Path], timeout: float | None = None,
