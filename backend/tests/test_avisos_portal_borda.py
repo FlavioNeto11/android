@@ -46,11 +46,15 @@ def test_o_script_sai_com_host_e_caminho_e_o_cookie_com_o_nome() -> None:
     assert c is not None and c.corpo.startswith("A página inicial do site chegou pondo cookie (__cf_bm).")
 
 
-@pytest.mark.parametrize("achado", [f"{BEACON}?token=abc", "__cf_bm=valor", "a b", "x" * 121, 42, ""])
-def test_achado_fora_do_formato_some_sem_recusar(achado: object) -> None:
-    """O beacon tem token na query, e o cookie tem valor: só sai host e caminho, ou o nome."""
+@pytest.mark.parametrize(("achado", "sobra"), [
+    # Releitura do #381: recusado o achado inteiro, sai só o host se ele passar no filtro (aqui, o do beacon).
+    (f"{BEACON}?token=abc", ": static.cloudflareinsights.com"),
+    ("__cf_bm=valor", ""), ("a b", ""), ("x" * 121, ""), (42, ""), ("", "")])
+def test_achado_fora_do_formato_some_sem_recusar(achado: object, sobra: str) -> None:
+    """O beacon tem token na query, e o cookie tem valor: só sai host e caminho, ou o nome, e nunca a query."""
     a = p.aviso_da_borda("script_injetado", "raiz", AGORA_UTC, achado=achado)
-    assert a is not None and a.corpo.startswith("A página inicial do site chegou com um script que a página não tem.")
+    assert a is not None
+    assert a.corpo.startswith(f"A página inicial do site chegou com um script que a página não tem{sobra}.")
     assert "token" not in a.corpo and "valor" not in a.corpo
 
 
