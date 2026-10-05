@@ -124,6 +124,11 @@ class Capability:
     # vista, e o modelo nem é perguntado — o executor segue olhando até o prazo da verificação. Motivo: em 19/09 a DM
     # da beatriz foi dada por enviada com "Sending…" congelado debaixo da bolha (ADR-055).
     pending_marks: tuple[str, ...] = ()
+    # Item 31.57: o MARCADOR de cada nível de entrega que o app mostra debaixo da mensagem, como `nivel=Texto`
+    # (`delivered=Delivered`, `read=Seen`); níveis em `NIVEIS_DO_MARCADOR`. Casado na árvore logo abaixo da bolha
+    # desta execução (`proofs.nivel_pelo_marcador`), ele dispensa o PRIMEIRO julgamento; o rejulgamento do 17.10 segue e
+    # decide. Vazio = o juiz decide, como antes. Só se declara o que foi visto numa árvore real do app.
+    delivery_marks: tuple[str, ...] = ()
     # Prova local (sem modelo) para uma pós-condição `model_judged`, quando existe uma conferência determinística
     # confiável pela árvore (gramática e regras em `taskqueue/proofs.py`): "sent_text" (o `content` apareceu no
     # fio e saiu do campo de escrita, achado #102), "sent_text:<sel>" (o mesmo, com o campo de escrita da conversa
@@ -147,6 +152,24 @@ class Capability:
         efeito = " [EFEITO EXTERNO]" if self.side_effect else ""
         entrega = f" [entrega em `saidas`: {', '.join(self.saidas)}]" if self.saidas else ""
         return f"- {self.key}({argumentos}){efeito}{entrega}: {self.title}"
+
+
+#: 31.57: os níveis que um marcador declarado pode afirmar. `appeared` e `none` não têm marcador: o texto na tela não
+#: prova envio.
+NIVEIS_DO_MARCADOR = ("sent", "delivered", "read")
+
+
+def marcas_de_entrega(entradas: tuple[str, ...] | list[str]) -> list[tuple[str, str]]:
+    """31.57: `nivel=Texto` → `(nivel, texto)`. Entrada fora da forma levanta `ValueError` (a carga do catálogo a
+    traduz para `CatalogoInvalido`, então nada chega torto ao executor)."""
+    pares = []
+    for entrada in entradas:
+        nivel, sep, texto = entrada.partition("=")
+        nivel, texto = nivel.strip(), texto.strip()
+        if not sep or nivel not in NIVEIS_DO_MARCADOR or not texto:
+            raise ValueError(f"{entrada!r}: esperava nivel=Texto, com o nível em {', '.join(NIVEIS_DO_MARCADOR)}")
+        pares.append((nivel, texto))
+    return pares
 
 
 class UnknownCapability(LookupError):
@@ -771,6 +794,12 @@ def _acao(bruta: object, onde: str) -> Capability:
         raise CatalogoInvalido(f"{onde}.default_policy: {cap.default_policy!r} fora de {', '.join(POLICIES)}")
     if cap.post_kind not in TIPOS_DE_POS:
         raise CatalogoInvalido(f"{onde}.post_kind: {cap.post_kind!r} fora de {', '.join(TIPOS_DE_POS)}")
+    try:
+        marcas_de_entrega(cap.delivery_marks)
+    except ValueError as erro:
+        raise CatalogoInvalido(f"{onde}.delivery_marks: {erro}") from None
+    if cap.delivery_marks and not cap.side_effect:
+        raise CatalogoInvalido(f"{onde}.delivery_marks: marcador de entrega só cabe em ação com efeito")
     if cap.item_key is not None:
         try:
             re.compile(cap.item_key)

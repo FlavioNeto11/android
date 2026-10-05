@@ -304,6 +304,30 @@ achado não se confirmam nos dados.
     Fica a decisão "envio comprovado pela árvore local (sent_text)" e a métrica `verificacao.primeiro_juiz_dispensado`.
     O atalho só vale quando: o nível é `sent` (entregue e lida, a árvore não prova); é o primeiro julgamento da
     verificação; o rejulgamento vai acontecer (ligado e com modelo diferente). Sem isso, nada muda.
+    Desde o 31.57 (`ai.marcador_de_entrega_dispensa_primeiro_juiz`), o catálogo do app pode declarar o MARCADOR de cada
+    nível (`delivery_marks: [delivered=Delivered, read=Seen]`, níveis `sent`, `delivered` e `read`). Ele dispensa o
+    primeiro julgamento com as mesmas travas, para qualquer nível exigido que o nível marcado atenda, quando o marcador
+    casado (`proofs.nivel_pelo_marcador`) cumpre todas estas condições:
+    - é o texto inteiro, normalizado, da PRIMEIRA linha logo abaixo da bolha mais baixa com o texto desta execução;
+    - o texto saiu (bolha fora do campo de escrita);
+    - não há marca de pendente nem de falha na tela.
+    A métrica é a mesma, com `prova=marcador:<nivel>`, e o rejulgamento decide o nível que vale. Nenhum app declara
+    marcador ainda: se a árvore real do Instagram expõe "Seen" ou "Delivered" debaixo da bolha não foi medido, e a
+    declaração espera uma captura real, só leitura.
+    Desde o 31.59, a prova `sent_text` (e o marcador por cima dela) exige a LINHA DE BASE: no toque do efeito, o
+    executor guarda quantas bolhas com o texto IGUAL (normalizado; não mais "contém") a tela tinha, e a prova só vale
+    se depois houver mais, e a bolha igual mais baixa tem de ser a última mensagem (nenhuma bolha do mesmo tipo abaixo;
+    "Seen" e hora não contam), com as bolhas contadas distintas. Sem isso, uma mensagem antiga com o mesmo texto (ou que contém o texto), com "Seen" embaixo e
+    o campo limpo, passava por envio. A linha de base mora em memória; a verificação sem ela (reconciliação depois de
+    reinício) não tem prova pela árvore e vai ao modelo.
+    **Limites conhecidos do 31.59, sem código agora:**
+    - a resposta IGUAL da outra pessoa logo depois de um envio nosso que falhou com o campo limpo: a bolha recebida
+      costuma ter o mesmo id, vira a última e sobe a contagem. Conserto futuro, se a medida pedir: o catálogo declara
+      o lado ou o id da bolha ENVIADA;
+    - foto ou áudio abaixo de uma bolha antiga de texto não conta como mensagem mais nova, a não ser que o contêiner
+      do balão tenha um id comum a todos os tipos.
+    A medida que fecha os dois, sem execução a mais, vem da árvore gravada da DM do 31.26: o id e o lado da bolha
+    enviada, e se há um contêiner comum aos tipos de mensagem.
   - `verdict` (o desfecho): `yes`/`no`/`uncertain`/`unprovable` no `verify`; o nome da ferramenta no `decide` (fora
     da lista de ferramentas, `desconhecida`); `plano` ou `pergunta` no `plan`; nulo na leitura e na linha de erro.
   - `image_reason` (por que a imagem foi junto, ou não), na ordem de `_motivo_da_imagem`. Sem imagem: `sensivel`,

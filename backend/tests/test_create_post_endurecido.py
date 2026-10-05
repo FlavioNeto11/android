@@ -120,6 +120,7 @@ def _executor_de_verificacao(tmp_path: Path, telas: list[UiTree], verificador: _
     ex.devices = _Aparelho(telas)
     ex.provider = verificador
     ex.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(lambda _app: None))
+    ex._mensagens_antes = {}                          # 31.59: sem linha de base; quem prova envio a declara
 
     async def _ai(run_id: str, objective_id: str | None, fabrica: Any, **_kw: Any) -> Verdict:
         resultado, _uso = await fabrica()
@@ -127,6 +128,7 @@ def _executor_de_verificacao(tmp_path: Path, telas: list[UiTree], verificador: _
 
     ex._ai = _ai
     return ex
+
 
 
 def _publicacao() -> StepDTO:
@@ -184,6 +186,7 @@ async def test_a_dm_continua_com_o_atalho_do_sent_text(tmp_path: Path) -> None:
 
     verificador = _Verificador("yes")
     ex = _executor_de_verificacao(tmp_path, [_conversa()], verificador)
+    ex._mensagens_antes = {_envio().id: 0}           # 31.59: a tela do toque não tinha a bolha
     ok, texto = await verificar_dm(ex, _envio())
     assert ok, texto
     assert verificador.chamadas == []

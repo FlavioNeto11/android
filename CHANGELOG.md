@@ -226,6 +226,38 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Prova:** `simulated` (`backend/tests/test_portal_site.py`, 12; `backend/tests/test_portal_contato.py`, 19; mais
   `test_arquitetura`, `test_cobertura_de_rotas`, `test_portal_publico_central` e `scripts/tests`). `not_run`: ligado
   no central e a prova de fora com o site no ar.
+## 2026-10-04 — 31.59: a prova de envio pela árvore exige linha de base e texto igual (branch feat/31-57-marcador-de-entrega)
+
+- Achado A1 da revisão do 31.57, que vale também para o `sent_text` do 31.26, já na `main`: a bolha ANTIGA com o mesmo
+  texto, ou que CONTÉM o texto, com o campo limpo, passava por envio. Pior ainda com "Seen" embaixo: ia a `read`.
+- `UiTree.mensagens_iguais` conta por igualdade normalizada, e `sent_as_message(..., antes=)` só prova com MAIS bolhas
+  iguais do que a linha de base. Sem linha de base, não afirma nada.
+- Revisão (R1 e R2): a bolha igual que conta tem de ser a ÚLTIMA mensagem da conversa (`ultima_bolha_igual`: nenhum
+  elemento do mesmo tipo de bolha abaixo dela; "Seen", hora e reação não contam). Sem id para dizer o que é
+  mensagem, o modelo julga. As bolhas são contadas DISTINTAS, e o texto dentro de um balão com a mesma descrição
+  conta uma vez.
+- O executor guarda a linha de base no toque do efeito (`_guardar_linha_de_base`), e ela chega à prova local
+  (`StepView.mensagens_antes`) e ao marcador.
+- Bolha sem `resource_id` (árvore real do 31.26, 04/10 23:50:58Z: o `TextView` da bolha do Direct não tem id e a
+  lista não se declara rolável com o fio curto): "mensagem abaixo" passa a ser qualquer texto não editável dentro
+  do menor contêiner de lista (rolável, ou de classe de lista do Android) e depois da bolha. Na dúvida, o juiz:
+  duas bolhas iguais, bolha fora de lista ou rótulo curto abaixo dela. Sem isso, a DM que hoje fecha sem IA
+  passaria a pagar o juiz. Teste: `backend/tests/test_bolha_sem_id.py` (árvore real reduzida, texto fictício).
+- Prova: `simulated` (`backend/tests/test_marcador_de_entrega.py`, com os casos da bolha antiga, da que contém o texto
+  e do rejulgamento com o mesmo modelo). Os testes que provam envio passaram a declarar a linha de base (nenhuma bolha
+  igual antes). A chamada no ponto do toque foi conferida pela leitura do código.
+
+## 2026-10-04 — 31.57: o marcador de entrega declarado no catálogo dispensa o primeiro julgamento (branch feat/31-57-marcador-de-entrega)
+
+- Catálogo: o campo `delivery_marks` (`nivel=Texto`, com os níveis `sent`, `delivered` e `read`) é conferido na carga e
+  só cabe em ação com efeito. Ele aparece no contrato do domínio como `side_effect.delivery_marks`.
+- `taskqueue/proofs.py`: `nivel_pelo_marcador` só afirma o nível pelo marcador logo abaixo da bolha desta execução,
+  com o texto fora do campo e sem marca de pendente nem de falha na tela.
+- Executor: com o marcador casado e o nível exigido atendido, o primeiro julgamento é dispensado e o rejulgamento do
+  17.10 decide. Valem as mesmas travas do 31.26, e a chave é `ai.marcador_de_entrega_dispensa_primeiro_juiz`.
+- Nenhum app declara marcador ainda: a árvore real do Instagram não foi medida (UNKNOWN). Prova `simulated`
+  (`backend/tests/test_marcador_de_entrega.py`, 16 testes); prova real `not_run`.
+
 ## 2026-10-04 — 28.29: o registro das decisões automáticas diz a verdade e se lê fácil (branch canais/28-29-registro-de-decisoes)
 
 Achados das duas revisões independentes do deploy 30, do passeio da orquestradora pela aba "Decidido sozinho" e da

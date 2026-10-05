@@ -214,6 +214,16 @@ class UiElement:
         return " | ".join(parts)
 
 
+#: 31.59: as classes de lista do Android (o nome simples, de qualquer pacote): o contêiner das mensagens de uma
+#: conversa quando a lista não se declara rolável (fio curto, que cabe na tela; medido no 31.26).
+_CLASSES_DE_LISTA = frozenset({"RecyclerView", "ListView", "ScrollView", "NestedScrollView", "AbsListView", "GridView"})
+
+
+def _dentro(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    """O retângulo `a` está dentro de `b` (bordas inclusive)."""
+    return b[0] <= a[0] and b[1] <= a[1] and a[2] <= b[2] and a[3] <= b[3]
+
+
 @dataclass(slots=True)
 class UiTree:
     elements: list[UiElement]
@@ -254,18 +264,94 @@ class UiTree:
         n = norm_text(needle)
         return bool(n) and any(n in norm_text(t) for t in self.texts())
 
-    def sent_as_message(self, content: str) -> bool | None:
+    def bolhas_iguais(self, content: str) -> list[UiElement]:
+        """31.59: as bolhas DISTINTAS com o texto (ou a descrição) IGUAL ao conteúdo, normalizado, em elementos não
+        editáveis. Igualdade e não "contém": a bolha antiga "oi, tudo bem?" não é a mensagem "oi". Distintas (R2 da
+        revisão): o elemento contido noutro já contado (o texto dentro do balão que repete a mesma descrição) não soma."""
+        n = norm_text(content)
+        if not n:
+            return []
+        iguais = sorted((e for e in self.elements if not e.editable and (norm_text(e.text) == n or norm_text(e.desc) == n)),
+                        key=lambda e: -((e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1])))
+        distintas: list[UiElement] = []
+        for e in iguais:
+            if not any(_dentro(e.bounds, d.bounds) for d in distintas):
+                distintas.append(e)
+        return distintas
+
+    def mensagens_iguais(self, content: str) -> int:
+        """31.59: quantas bolhas distintas com o texto IGUAL (`bolhas_iguais`)."""
+        return len(self.bolhas_iguais(content))
+
+    def ultima_bolha_igual(self, content: str) -> UiElement | None:
+        """31.59 (R1 da revisão): a bolha igual mais baixa, se ela for a ÚLTIMA mensagem da conversa; `None` senão.
+
+        "Mensagem" é o mesmo tipo de elemento da bolha (o `resource_id` dela ou o de um elemento igual dentro dela): se
+        houver outro desse tipo abaixo, a bolha é antiga (revelada por rolagem, ou com resposta depois). O "Seen", a hora
+        e a reação abaixo dela não são mensagem e não contam.
+
+        Sem `resource_id` (a bolha do Direct do Instagram, medida no 31.26: um `TextView` sem id, filho direto da lista),
+        `_ultima_sem_tipo` decide pelo contêiner de lista."""
+        bolhas = self.bolhas_iguais(content)
+        if not bolhas:
+            return None
+        bolha = max(bolhas, key=lambda e: e.bounds[3])
+        n = norm_text(content)
+        tipos = {e.resource_id for e in self.elements
+                 if e.resource_id and not e.editable and _dentro(e.bounds, bolha.bounds)
+                 and (norm_text(e.text) == n or norm_text(e.desc) == n)}
+        if not tipos:
+            return self._ultima_sem_tipo(bolhas)
+        if any(e.resource_id in tipos and e.bounds[1] >= bolha.bounds[3] for e in self.elements):
+            return None
+        return bolha
+
+    def _ultima_sem_tipo(self, bolhas: list[UiElement]) -> UiElement | None:
+        """31.59 (bolha sem `resource_id`): sem o tipo da bolha, "mensagem abaixo" é QUALQUER elemento não editável com
+        texto ou descrição dentro do menor contêiner de lista que contém a bolha (rolável, ou de classe de lista do
+        Android: não depende de app) e com o topo depois do fim dela. Na dúvida, `None` e o modelo julga, nunca
+        "enviado":
+
+        - mais de uma bolha igual (sem tipo não se diz qual é a nova);
+        - bolha fora de contêiner de lista;
+        - qualquer texto abaixo dela na lista, inclusive um rótulo curto (hora, "Seen", reação): sem o tipo, a árvore não
+          separa rótulo de uma resposta curta, então a prova cai no juiz enquanto ele estiver lá. O rótulo nunca vira a
+          bolha: ela é só o elemento com o texto IGUAL ao conteúdo."""
+        if len(bolhas) != 1:
+            return None
+        bolha = bolhas[0]
+        lista = min((e for e in self.elements
+                     if e is not bolha and _dentro(bolha.bounds, e.bounds) and e.bounds != bolha.bounds
+                     and (e.scrollable or e.class_name.rsplit(".", 1)[-1] in _CLASSES_DE_LISTA)),
+                    key=lambda e: (e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1]), default=None)
+        if lista is None:
+            return None
+        abaixo = any(not e.editable and (e.text.strip() or e.desc.strip()) and e is not bolha
+                     and not _dentro(e.bounds, bolha.bounds) and _dentro(e.bounds, lista.bounds)
+                     and e.bounds[1] >= bolha.bounds[3] for e in self.elements)
+        return None if abaixo else bolha
+
+    def sent_as_message(self, content: str, *, antes: int | None = None) -> bool | None:
         """Prova determinística de 'texto enviado numa conversa' (achado #102), sem chamar o modelo: o conteúdo
         aparece num elemento que NÃO é editável (uma mensagem já publicada no fio) e não sobra em nenhum campo
         editável (o campo de escrita, que some/limpa depois do envio — se ainda tiver o texto, ele não saiu de
         lá e não está comprovado). `None` quando não há conteúdo para provar (etapa sem `content` conhecido);
-        chamador cai para o julgamento do modelo nesse caso e em qualquer resultado False."""
+        chamador cai para o julgamento do modelo nesse caso e em qualquer resultado False.
+
+        31.59: `antes` é quantas bolhas com o texto IGUAL havia na tela de ANTES do envio (a linha de base que o executor
+        guarda no toque do efeito). A prova exige que a contagem tenha AUMENTADO: sem isso, uma mensagem antiga com o
+        mesmo texto e o campo limpo eram indistinguíveis de um envio. Sem linha de base (`None`), a árvore não afirma
+        nada e o modelo julga, como antes de existir a prova.
+
+        A bolha que conta também tem de ser a ÚLTIMA mensagem da conversa (`ultima_bolha_igual`, R1): uma bolha antiga
+        que entrou na tela por rolagem tem mensagens mais novas abaixo."""
         n = norm_text(content)
-        if not n:
+        if not n or antes is None:
             return None
-        em_bolha = any(not e.editable and n in norm_text(f"{e.text} {e.desc}") for e in self.elements)
         no_campo = any(e.editable and n in norm_text(e.text) for e in self.elements)
-        return em_bolha and not no_campo
+        if no_campo or self.mensagens_iguais(content) <= antes:
+            return False
+        return self.ultima_bolha_igual(content) is not None
 
     def count_text(self, needle: str) -> int:
         n = norm_text(needle)

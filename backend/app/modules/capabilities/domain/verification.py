@@ -39,6 +39,9 @@ class StepView:
     #: Nível de entrega exigido (`sent`, `delivered`…). Quando há, a prova local não basta: "enviado" não prova
     #: "entregue". É a mesma regra do executor (`_verify`).
     required_delivery_level: str | None = None
+    #: 31.59: quantas mensagens com o texto IGUAL ao `content` havia na tela de ANTES do efeito (linha de base do
+    #: executor). `None` = sem linha de base: a prova `sent_text` não afirma nada.
+    mensagens_antes: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

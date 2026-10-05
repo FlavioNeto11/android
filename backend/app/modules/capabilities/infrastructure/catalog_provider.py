@@ -37,6 +37,8 @@ class _EtapaDaProva:
     band_guard: list[str]
     #: Já resolvido pelos argumentos da etapa: vazio quando a publicação é por posição (sem `caption_contains`).
     card_guard: list[str] = field(default_factory=list)
+    #: 31.59: a linha de base de `sent_text` (quantas mensagens com o texto igual antes do envio).
+    mensagens_antes: int | None = None
 
 
 def _nao_afirma(motivo: str) -> VerifyResult:
@@ -97,6 +99,7 @@ class CatalogCapabilityProvider:
         # A legenda da publicação alvo restringe a prova ao cartão dela (r-20260928165254-e31953: `desc==Liked` de
         # outro cartão fechava a curtida). Sem `caption_contains`, `card_guard` fica vazio e a prova é a de sempre.
         etapa = _EtapaDaProva(bindings=dict(node.bindings), band_guard=list(node.band_guard),
+                              mensagens_antes=node.mensagens_antes,
                               card_guard=list(guardas_do_cartao(definicao.card_guard, dict(node.bindings))))
         if local_proof_holds(definicao.local_proof, etapa, tela) is True:
             return VerifyResult(VerifyOutcome.proved,

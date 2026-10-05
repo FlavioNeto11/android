@@ -106,6 +106,8 @@ def _executor(tmp_path: Path, telas: list[UiTree], verificador: _VerificadorQueD
     ex.devices = _Aparelho(telas, frente)  # type: ignore[assignment]
     ex.provider = verificador  # type: ignore[assignment]
     ex.capabilities = CatalogCapabilityProvider(CatalogCapabilityRegistry(lambda _app: None))
+    # 31.59: a linha de base que o `_run_step` guarda no toque do Send — a tela de antes não tinha a bolha.
+    ex._mensagens_antes = {f"r-dm:{IID}:v1:send": 0}  # noqa: SLF001
 
     async def _ai(run_id: str, objective_id: str | None, fabrica: object, **_kw: object) -> Verdict:
         resultado, _uso = await fabrica()  # type: ignore[operator]
@@ -254,7 +256,8 @@ def test_o_catalogo_declara_o_criterio_objetivo_da_dm() -> None:
 async def test_a_porta_de_capability_devolve_pendente_com_sending() -> None:
     """A mesma regra pela porta `CapabilityProvider` (fase G): pendente não prova nem desmente — e nunca é `proved`."""
     prov = CatalogCapabilityProvider(CatalogCapabilityRegistry({"instagram": PKG}.get))
-    etapa = StepView(node_id="send", capability=ENVIO, bindings=(("content", CONTEUDO), ("username", "@ana")))
+    etapa = StepView(node_id="send", capability=ENVIO, bindings=(("content", CONTEUDO), ("username", "@ana")),
+                     mensagens_antes=0)
     pendente = await prov.verify(etapa, Leitura(screen=_conversa(status="Sending…"), package=PKG))
     assert pendente.outcome is VerifyOutcome.pending and "Sending…" in pendente.detail
     enviada = await prov.verify(etapa, Leitura(screen=_conversa(), package=PKG))

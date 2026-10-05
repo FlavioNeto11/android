@@ -52,6 +52,8 @@ CAMPOS_NOVOS: dict[str, object] = {
     "saidas": [],
     # 31.41: como reconhecer o elemento de cada saída (`nome=seletor`, `nome~termo`). O Instagram não declara saídas.
     "saidas_relacao": [],
+    # 31.57: o marcador de cada nível de entrega (`nivel=Texto`). O Instagram ainda não declara: falta medir a árvore real.
+    "delivery_marks": [],
     # C10 (r-20260928165254-e31953, r-20260928195344-02ee9e): a legenda que identifica a publicação alvo.
     "card_guard": [],
     # C10, revisão: os controles do cartão tocados SEM efeito (o balão que abre a folha "Comments"). Lista desde a
