@@ -511,13 +511,49 @@ def test_31_75_o_aviso_da_pagina_com_id_do_chrome_segue_marca() -> None:
     assert _recusa(tree, "Continuar") == "Continuar"
 
 
-def test_31_75_sem_a_raiz_vale_o_id_como_antes() -> None:
-    """Sem a raiz da interface depois da WebView, não se sabe onde a página termina: vale o id (limite conhecido)."""
+def test_31_75_h3_sem_a_raiz_a_pagina_vai_ate_o_fim_e_o_id_nao_vale() -> None:
+    """H3: com WebView e nenhuma raiz válida depois dela (a barra escondida pela rolagem: ml-2, ml-3, uol-2), a página vai
+    até o fim do documento: o botão com id do Chrome que diz aceitar é recusado (falha fechada)."""
     tree = _xml(_WEBVIEW,
                 ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
-                ("More options", (512, 1120, 608, 1232), "com.android.chrome:id/translate_infobar_menu_button",
-                 "android.widget.ImageButton", True))
+                ("Aceitar", (40, 1080, 300, 1140), "com.android.chrome:id/allow", "android.widget.Button", True))
+    assert _recusa(tree, "Aceitar") == "Aceitar"
+
+
+def test_31_75_h3_arvore_truncada_a_raiz_fora_do_corte_tambem_falha_fechada() -> None:
+    """H3: na árvore truncada (`tree.truncada`) a raiz pode ter ficado de fora do corte: o resto é página."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("Aceitar", (40, 1080, 300, 1140), "com.android.chrome:id/allow", "android.widget.Button", True))
+    tree.truncada = True
+    assert _recusa(tree, "Aceitar") == "Aceitar"
+
+
+def test_31_75_h2_a_raiz_falsa_do_html_nao_encerra_a_pagina() -> None:
+    """H2: o HTML pode pôr o id da raiz (`bottom_container`) num `View` antes do botão falso; só o FrameLayout da
+    interface nativa encerra a página. O botão com id do Chrome que diz aceitar é recusado; a raiz real, depois, segue."""
+    tree = _xml(_WEBVIEW,
+                ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+                ("", (0, 1100, 720, 1232), "com.android.chrome:id/bottom_container", "android.view.View", False),
+                ("Aceitar", (40, 1120, 300, 1180), "com.android.chrome:id/allow", "android.widget.Button", True),
+                _RAIZ,
+                ("More options", (624, 48, 720, 160), "com.android.chrome:id/menu_button", "android.widget.ImageButton", True))
+    assert _recusa(tree, "Aceitar") == "Aceitar"
     assert _recusa(tree, "More options") is None
+
+
+def test_31_75_h1_o_alvo_de_outra_instancia_da_mesma_arvore_nao_ganha_a_isencao() -> None:
+    """H1: a identidade da página é o `id` eN do leitor, não o `id()` do objeto Python: o alvo vindo de OUTRA instância da
+    mesma árvore (uma releitura) é julgado como página do mesmo jeito."""
+    nos = (_WEBVIEW,
+           ("Usamos cookies para melhorar sua experiência", (0, 1000, 720, 1060), "", "", False),
+           ("Aceitar", (40, 1080, 300, 1140), "com.android.chrome:id/allow", "android.widget.Button", True),
+           _RAIZ)
+    tree, outra = _xml(*nos), _xml(*nos)
+    alvo = _alvo(outra, "Aceitar")
+    assert alvo is not _alvo(tree, "Aceitar")                          # é outro objeto (a premissa do teste)
+    achado = toque_que_aceita(tree, alvo)
+    assert achado is alvo
 
 
 def test_31_75_sem_webview_vale_o_id_como_antes() -> None:

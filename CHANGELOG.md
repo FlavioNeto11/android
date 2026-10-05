@@ -25,7 +25,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `id="com.android.chrome:id/allow"` era tratado como interface do navegador e escapava da trava.
 - `taskqueue/dialogos.py`: `_conteudo_web` (nova). Na ordem do documento, o que está entre a WebView e a primeira raiz
   da interface do Chrome (`control_container`, `bottom_container`) é página: `_do_navegador` e `_de_consentimento`
-  não dão a isenção ali. Sem WebView ou sem a raiz, vale o id, como antes (limite declarado em `docs/ia.md` § 20).
+  não dão a isenção ali. Sem WebView, vale o id, como antes (limite declarado em `docs/ia.md` § 20).
+- Endurecimentos pedidos na leitura, para falhar fechado: H1 (a identidade da página é o `e.id` eN do leitor, não o
+  `id()` do objeto), H2 (a raiz só encerra a página com o id de raiz E a classe `FrameLayout`; uma raiz falsa em `View`
+  não encerra) e H3 (com WebView e sem raiz válida, a página vai até o fim do documento: a barra escondida pela
+  rolagem e a árvore truncada). Limites que sobram: sem WebView vale o id; a regra supõe que conteúdo web não expõe
+  `FrameLayout`; marcar a página na leitura pelo ancestral WebView fica para o 31.77.
 - Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (5 testes novos do 31.75, com a captura real do
   gov.br: a barra de tradução do Chrome depois da raiz segue livre); mutações conferidas (desfazer cada regra reprova o
   teste dela). As árvores reais de `data/diag-31-72/` dão o mesmo antes (152f8b54) e depois (NTP, ml, g1, uol com 0

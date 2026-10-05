@@ -1817,9 +1817,16 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   documento, o conteúdo da página fica entre a WebView e a primeira RAIZ da interface do Chrome (`control_container`,
   no ML e no g1; `bottom_container`, no gov.br; capturas de 05/10); o elemento com id do Chrome DENTRO desse trecho é
   página, não ganha a isenção, é julgado como página e, com id de consentimento, vira marca (`dialogos._conteudo_web`).
-  A interface real do Chrome depois da raiz segue isenta (o "More options" do gov.br). **Limite declarado:** sem
-  WebView na árvore (o leitor a corta quando vem sem título) ou sem a raiz depois dela, não se sabe onde a página
-  termina e vale o id, como antes; o alvo precisa ser um elemento da MESMA árvore (o `resolve_point` do executor é).
+  A interface real do Chrome depois da raiz segue isenta (o "More options" do gov.br). Três endurecimentos, para
+  falhar FECHADO onde a página manda: **H1** a identidade da página é o `id` eN do leitor (único por árvore), não o
+  `id()` do objeto Python (um alvo de outra instância da mesma árvore não ganha a isenção calado); **H2** a raiz só
+  encerra a página com o id de raiz E a classe `android.widget.FrameLayout` (é sempre FrameLayout nas 13 capturas reais
+  com raiz; o HTML pode pôr o id da raiz num `View` antes do botão falso); **H3** com WebView e NENHUMA raiz válida
+  depois dela (a barra escondida pela rolagem, ml-2, ml-3 e uol-2; a árvore truncada, `tree.truncada`, que deixou a raiz
+  fora do corte), a página vai até o FIM do documento. **Limites que sobram:** (i) sem WebView na árvore vale o id (o
+  leitor descarta a WebView que não é rolável e não tem título); (ii) a regra supõe que o conteúdo web não expõe a
+  classe `FrameLayout`; (iii) o caminho robusto, marcar a página na leitura da árvore pelo ancestral WebView, fica
+  para o 31.77.
 - O recusado vira ação `rejected` com o motivo "o consentimento do site não é aceito pelo ator (eN, Tipo)": no `error`
   e no `status_detail` (que chegam a aviso e cartão) vão só o id e o tipo; o rótulo, texto da página, vai só ao
   histórico do ator, com os espaços normalizados. Quatro recusas somadas na ETAPA (ou quatro erros seguidos) encerram

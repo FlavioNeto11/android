@@ -176,30 +176,40 @@ _ID_DO_NAVEGADOR = tuple(f"{p}:id/" for p in NAVEGADORES)
 #: 31.75: as raízes da interface do Chrome que vêm DEPOIS do conteúdo da página na ordem do documento (capturas de
 #: 05/10: `control_container`, a barra de cima, no ML e no g1; `bottom_container`, a barra de tradução, no gov.br).
 _RAIZES_DO_NAVEGADOR = ("control_container", "bottom_container")
+#: H2: a classe das raízes nas 13 capturas reais com raiz; o conteúdo web (`View`, `Button`, `TextView`) não a expõe.
+_CLASSE_DA_RAIZ = "android.widget.FrameLayout"
 
 
-def _conteudo_web(tree: UiTree) -> frozenset[int]:
-    """31.75: os elementos da PÁGINA (os `id()` deles), sem confiar no id. O Chrome expõe o `id` do HTML como
-    `resource-id`, então uma página pode ter `id="com.android.chrome:id/x"` e se passar por interface. Na ordem do
-    documento, o conteúdo da página vem entre a WebView e a primeira raiz da interface do Chrome; o que tiver id do
-    navegador ali dentro é da página. Sem WebView na árvore (o leitor a corta quando vem sem título) ou sem a raiz, não
-    se sabe onde a página termina: vale o id, como antes (limite conhecido)."""
+def _conteudo_web(tree: UiTree) -> frozenset[str]:
+    """31.75: os elementos da PÁGINA (os `id` eN que o leitor dá, únicos por árvore), sem confiar no `resource-id`. O
+    Chrome expõe o `id` do HTML como `resource-id`, então uma página pode ter `id="com.android.chrome:id/x"` e se passar
+    por interface. Na ordem do documento, o conteúdo da página vem entre a WebView e a primeira RAIZ da interface do
+    Chrome; o que tiver id do navegador ali dentro é da página. Três endurecimentos, para falhar FECHADO onde a página
+    manda:
+    - H1: a identidade é o `e.id` (o `id()` do objeto Python daria a isenção calado a um alvo vindo de outra instância
+      da mesma árvore).
+    - H2: a raiz só encerra a página com o id de raiz E a classe `FrameLayout` (a interface nativa); o HTML pode pôr o
+      id da raiz num `View`, `Button` ou `TextView` antes do botão falso.
+    - H3: com WebView e NENHUMA raiz válida depois dela (a barra escondida pela rolagem; a árvore truncada, que deixou a
+      raiz fora do corte), a página vai até o FIM do documento. Prefere-se o toque recusado ao aceite em silêncio.
+    Sem WebView na árvore (o leitor a descarta quando não é rolável e não tem título), não se sabe onde a página começa:
+    vale o id, como antes (limite declarado). O caminho robusto, marcar a página na leitura pelo ancestral WebView, é o
+    31.77."""
     els = tree.elements
     i = next((k for k, e in enumerate(els) if "WebView" in (e.class_name or "")), None)
     if i is None:
         return frozenset()
     raizes = {f"{p}{r}" for p in _ID_DO_NAVEGADOR for r in _RAIZES_DO_NAVEGADOR}
-    fim = next((k for k in range(i + 1, len(els)) if (els[k].resource_id or "") in raizes), None)
-    if fim is None:
-        return frozenset()
-    return frozenset(id(e) for e in els[i + 1:fim])
+    fim = next((k for k in range(i + 1, len(els))
+                if (els[k].resource_id or "") in raizes and (els[k].class_name or "") == _CLASSE_DA_RAIZ), len(els))
+    return frozenset(e.id for e in els[i + 1:fim])
 
 
-def _do_navegador(e: UiElement, web: frozenset[int] = frozenset()) -> bool:
-    return (e.resource_id or "").startswith(_ID_DO_NAVEGADOR) and id(e) not in web
+def _do_navegador(e: UiElement, web: frozenset[str] = frozenset()) -> bool:
+    return (e.resource_id or "").startswith(_ID_DO_NAVEGADOR) and e.id not in web
 
 
-def _de_consentimento(e: UiElement, web: frozenset[int] = frozenset()) -> bool:
+def _de_consentimento(e: UiElement, web: frozenset[str] = frozenset()) -> bool:
     if _do_navegador(e, web):
         return False
     return any(_CONSENTIMENTO.search(x) for x in (e.class_name or "", e.resource_id or "", _rotulo(e)[:120]))
