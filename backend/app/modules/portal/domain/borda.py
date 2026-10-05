@@ -148,22 +148,24 @@ _ESQUEMA = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*):")
 _IPV4 = re.compile(r"(?:0x[0-9a-f]*|\d+)(?:\.(?:0x[0-9a-f]*|\d+)){0,3}\.?")
 _FORA_DO_ALFABETO = re.compile(r"[^A-Za-z0-9._/-]")    # o filtro da Canais
 _PONTAS = "".join(map(chr, range(33)))                   # controle e espaço, que o navegador tira das pontas
-#: O que nunca entra no detalhe: uma quebra de linha de terceiro partiria a linha FALHOU da prova e a da saúde em
-#: duas, a segunda com cara de instrução (U1 da leitura do #378).
-_CONTROLE_OU_ESPACO = re.compile(r"[\x00-\x20\x7f]")
-
-
-_CONTROLE = re.compile(r"[\x00-\x1f\x7f]")
+#: O que PODE entrar no detalhe do script: só ASCII imprimível, sem espaço. Lista do permitido, não do proibido: uma
+#: quebra de linha de terceiro (U1), o NEL (U+0085), o separador de linha (U+2028), o C1 (U+009B) ou a inversão
+#: bidirecional (U+202E), que vira o texto na tela do painel, viram `?` sem depender de tabela de categoria (V1 da
+#: leitura do #378). Host com letra fora do ASCII aparece com `?`, e isso é aceitável.
+_FORA_DO_DETALHE = re.compile(r"[^\x21-\x7e]")
+#: Na linha da saúde, que mistura frase nossa com valor de terceiro: ASCII imprimível com o espaço, e as letras
+#: acentuadas do Latin-1 (U+00C0 a U+00FF, sem × e ÷), para o português da frase não virar `?`.
+_FORA_DA_LINHA = re.compile(r"[^\x20-\x7eÀ-ÖØ-öø-ÿ]")
 
 
 def _sem_controle(texto: str) -> str:
-    return _CONTROLE_OU_ESPACO.sub("?", texto)
+    return _FORA_DO_DETALHE.sub("?", texto)
 
 
 def linha_sem_controle(texto: str) -> str:
     """Para o texto que mistura frase nossa com valor de terceiro (cabeçalho, nome de cookie) e vai a uma linha da
-    saúde ou da prova: o espaço fica, o controle vira `?`. Cinto e suspensório do U1, para qualquer caminho futuro."""
-    return _CONTROLE.sub("?", texto)
+    saúde ou da prova: só o permitido fica (ASCII imprimível, espaço e letra acentuada), o resto vira `?`."""
+    return _FORA_DA_LINHA.sub("?", texto)
 
 
 def item_do_script(src: str) -> str:
@@ -199,7 +201,7 @@ def endereco_do_script(src: str) -> tuple[str, str]:
     elif m:
         nome = esquema if esquema in ESQUEMAS_CONHECIDOS else "esquema"
         # `data:` e `javascript:` mostram o próprio script na saúde (é o que foi injetado); o resto, só o nome.
-        return nome, (_sem_controle(src[:ITEM_MAX]) if nome in ("data", "javascript") else f"{nome}:…")
+        return nome, (_sem_controle(src[:ITEM_MAX]) if nome in ("data", "javascript") else f"{nome}:...")
     else:                                                 # relativo: `/cdn-cgi/…`, `a/b:c.js`
         limpo = limpo.split(";", 1)[0]
         if ":" in limpo.split("/", 1)[0]:
@@ -220,7 +222,7 @@ def endereco_do_script(src: str) -> tuple[str, str]:
         host, _, porta = cru.partition(":")
         host = "ip" if _IPV4.fullmatch(unquote(host).split(":", 1)[0]) else host
     if porta and not porta.isdigit():
-        return "url-invalida", prefixo + "(endereço-inválido)"
+        return "url-invalida", prefixo + "(endereco-invalido)"
     detalhe = prefixo + host + (f":{porta}" if porta else "") + barra + caminho
     return _no_alfabeto(host + barra + caminho), _sem_controle(detalhe[:ITEM_MAX])
 

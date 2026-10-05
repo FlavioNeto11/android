@@ -379,6 +379,8 @@ def test_o_achado_da_canais_e_so_host_e_caminho_no_alfabeto_dela(src: str, item:
 #: Cada marcador é um pedaço que NUNCA pode sair no item nem no detalhe (leitura do #378, Q1 a Q4). A porta só não
 #: pode sair no item: o detalhe da saúde e da prova mostra esquema, host, porta e caminho.
 _MARCAS = ("USUARIO", "SENHA", "QUERY", "FRAG", "SESSAO", "1234", "10.0.0.5", "%31%30", "2001", "db8", "c0a8")
+#: V1: o que a lista do proibido deixava passar (NEL, separador de linha e de parágrafo, C1, largura zero, bidi).
+_UNICODE_PERIGOSO = ("\u0085", " ", " ", "\u009b", "​", "‮")
 _PORTA = "8443"
 _CDN = "cdn.exemplo.invalid"
 _SRCS_ADVERSARIOS = [
@@ -410,6 +412,8 @@ _SRCS_ADVERSARIOS = [
     "1USUARIO:SENHA@evil.invalid/a.js",
     "https://%31%30.0.0.5/a.js",                              # R3: IP codificado
     f"https://{_CDN}%0d%0a-%3E%20x/a.js",                     # U1: quebra de linha codificada no host
+    *(f"https://{_CDN}/a{c}b.js" for c in _UNICODE_PERIGOSO),  # V1: NEL, separadores, C1, largura zero, bidi
+    *(f"https://cdn{c}x.invalid/a.js" for c in _UNICODE_PERIGOSO),
     f"https://USUARIO:SENHA@{_CDN}/a\x00b.js",                # controle cru no caminho
     "\x01 https://USUARIO:SENHA@evil.invalid/a.js",
 ]
@@ -425,7 +429,7 @@ def test_nenhum_pedaco_de_credencial_porta_query_ou_ip_sai_no_item_nem_no_detalh
         assert marca.lower() not in detalhe.lower(), (marca, detalhe)
     assert _PORTA not in item, item
     # U1: nada abaixo de 0x21 (controle, quebra, espaço) nem DEL no item e no detalhe.
-    assert all(0x21 <= ord(c) != 0x7F for c in item + detalhe), (item, detalhe)
+    assert all(0x21 <= ord(c) <= 0x7E for c in item + detalhe), (item, detalhe)        # V1: só ASCII imprimível
     assert re.fullmatch(r"[A-Za-z0-9._/-]{0,120}", item)
     [achado] = borda.conferir_html("/", 200, f'<script src="{src}"></script>', host=HOST).achados
     assert (achado.item, achado.detalhe) == (item, detalhe)
@@ -449,3 +453,28 @@ def test_host_codificado_nao_vira_linha_nova_no_detalhe_nem_na_saude() -> None:
     vigia.ultima = borda.Desfecho(borda.DEFEITO, (borda.Achado(borda.COOKIE, "/", "cookie (x\r\n-> faça y)"),))
     [(_, mensagem, _)] = vigia.problemas()
     assert "\r" not in mensagem and "\n" not in mensagem
+
+
+@pytest.mark.parametrize("perigoso", _UNICODE_PERIGOSO)
+def test_unicode_que_quebra_ou_vira_a_linha_nao_chega_a_saude(perigoso: str) -> None:
+    """V1: pelo detalhe direto e por um cabeçalho de verdade (o httpx lê em latin-1: o byte 0x85 vira U+0085), nenhum
+    desses chega à linha da saúde; o português da frase fica."""
+    assert perigoso not in borda.linha_sem_controle(f"a{perigoso}b") and "ação" in borda.linha_sem_controle("ação")
+    vigia = _vigia(lambda: "cookie", CanaisFalsa())
+    vigia.volta(AGORA)
+    vigia.ultima = borda.Desfecho(borda.DEFEITO, (borda.Achado(borda.COOKIE, "/", f"cookie (x{perigoso}y)"),))
+    [(_, mensagem, _)] = vigia.problemas()
+    assert perigoso not in mensagem and "cookie (x?y)" in mensagem
+    if perigoso in ("\u0085", "\u009b"):                             # os que cabem num byte de cabeçalho
+        def responder(pedido: httpx.Request) -> httpx.Response:
+            if pedido.url.path == "/api/instances":
+                return httpx.Response(401)
+            cab = [(b"cache-control", b"no-store" + perigoso.encode("latin-1") + b"x"),
+                   (b"content-security-policy", CSP_SITE.encode())]
+            return httpx.Response(200, headers=cab, content=b"<!doctype html><div id='root'>")
+        vigia = Vigia(BuscarPelaBorda(lambda: 5, httpx.MockTransport(responder)), host=lambda: HOST,
+                      site_ligado=lambda: False, csp_do_painel=lambda: "aplicar", voltas_sem_conferir=lambda: 3,
+                      intervalo_s=lambda: 3600, avisar=lambda: None)
+        vigia.volta(AGORA)
+        [(codigo, mensagem, _)] = vigia.problemas()
+        assert codigo == "portal_borda_defeito" and "no-store?x" in mensagem and perigoso not in mensagem
