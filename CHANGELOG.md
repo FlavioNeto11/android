@@ -61,6 +61,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Os três hooks de `.claude/settings.json` chamavam `C:/Program Files/Python313/python.exe` e quebravam no Linux do agente ("hook errored"). Agora seguem em exec-form (command + args, sem shell) com `command: "python"` pelo PATH (o Python 3.13 do dono no Windows, o `setup-python` 3.13 no agente), sem mudar o que o hook faz: mesmo `-S -E`, mesmo carregamento e o código de saída do Python passa direto. Script ausente continua liberando, como antes.
 - Prova `simulated`: `scripts/tests/test_hooks_portateis.py` (6 passed, hooks rodando em exec-form com o `python` do PATH): a guarda barra segredo, arquivo grande sem limit e migração commitada, libera leitura comum, e o hook de workflow libera arquivo comum; mutação com o interpretador trocado reprovada. `not_run`: o agente do Copilot em Linux de verdade.
 
+## 2026-10-05 — 30.81, painel: o ensinado em prova e o "Confirmar que fica" do fluxo que espera a pessoa (branch feat/30-81-painel-em-prova)
+
+- Só frontend, sobre o contrato do adendo v1.65 (`ensinado_em_prova` e `espera_a_pessoa`, combinados com a Portal). Os campos são opcionais: sem o backend do 30.81 na main, nada muda na tela.
+  - Selo "em prova" (com a explicação no `title`) no relatório do salvar do treino, no "Refazer receitas" (a frase diz que as receitas só valem para a persona que ensinou e o selo some quando a espera acaba), na estimativa do comando que casa um fluxo ensinado, nos caminhos da persona e na lista de fluxos de Configuração. A gravação sem persona diz que o fluxo não vale em aparelho nenhum até a prova.
+  - No Livro, o fluxo com `espera_a_pessoa` mostra o porquê em português (um texto por motivo do contrato; o código fica no `title`, e um motivo novo cai numa frase geral) e oferece "Confirmar que fica" na frente de "Desligar", pela rota própria `…/confirmar`. Com `null` ou em outro tipo de item, nada muda.
+  - Nenhuma frase leva o id da persona.
+  - Leitura do Codex no PR 451, os dois achados procederam: com `persona: null` o relatório do salvar e o do "Refazer receitas" dizem que o comando e as receitas não valem em aparelho nenhum (e não "só a persona que ensinou"), e a nota do Livro, que não sabe se a gravação tinha persona, usa frase neutra para os dois casos.
+- Prova `simulated`: `TrainingReview.test.tsx` (2 testes novos), `AprendizadoPage.test.tsx` (2), `model.test.ts` (1), `emProva.test.ts` (3). Frontend inteiro 1685/1686 com 4 workers em Idle e typecheck verde, em 05/10 sobre `65452966`: a única falha é `PortaDoPlano.test.tsx` (data fixa de 05/10 21:00Z que venceu; falha igual na main pura; conserto em `fix/porta-do-plano-validade-relativa`). `real`: `not_run` até o backend do 30.81 entrar e o percurso no navegador.
+
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
 - **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).
