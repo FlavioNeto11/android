@@ -26,6 +26,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Agora, no fim do `_work`, com o objetivo TERMINAL (concluído, falho ou cancelado), o scheduler chama
   `DeviceManager.tirar_da_frente`: se o app na frente é um navegador (`dialogos.NAVEGADORES`), HOME. Em `waiting_user`
   a tela fica como está, para a pessoa. Falha de ADB não pesa na execução.
+- Leitura do #368: com controle manual pedido (`takeover_requested`) ou tomado pela pessoa, nada sai (H1); com a
+  tela de verificação ou desafio na última árvore lida (`detectar_conta_travada`), nem HOME (H2, ADR-055).
+  Testes que discriminam (H3): `waiting_user` e `uncertain`, controle pedido e tomado, trava na frente e falha
+  do ADB no fim (o desfecho segue `succeeded`).
 - Um objetivo por aparelho por execução (`{run_id}:{instance_id}`): o HOME é sempre o último gesto daquele aparelho
   na execução. A próxima execução abre o navegador como já abria (o `open_app` já manda HOME quando outro app está na
   frente); o HOME não encerra o Chrome, então a volta é morna.

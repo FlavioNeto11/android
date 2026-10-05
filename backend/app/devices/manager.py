@@ -24,6 +24,7 @@ from PIL import Image
 from ..automation.appium_driver import AndroidDeviceIO, AppiumSession
 from ..automation.appium_server import AppiumServer
 from ..automation.driver import DeviceIO, DriverError, DriverTimeout, FalhaDeLeitura, sessao_perdida
+from ..automation.conhecimento_de_telas import detectar_conta_travada
 from ..automation.hierarchy import MOTIVO_LOJA, RegraDeTelaSensivel, UiTree, parse_hierarchy
 from ..config import AndroidCfg, Config
 from ..db import INTEGRITY_ERRORS, Database, dumps, loads
@@ -4323,6 +4324,13 @@ class DeviceManager:
         Por quê: o fim de uma execução de navegador deixava o Chrome na frente redesenhando a página, e o convidado
         ficava com carga de 3 a 10 em 2 vCPU até alguém mexer (medido no android-09 em 05/10, janela de provas do
         deploy 33). Depois de um HOME a carga caiu abaixo de 2 em 1,5 a 2,3 min."""
+        # H1 da leitura do #368: a pessoa pediu (ou tem) o aparelho; nada sai depois do pedido.
+        if rt.takeover_requested or rt.control == ControlOwner.user:
+            return None
+        # H2: com a tela de verificação ou desafio na frente nada toca, nem HOME (ADR-055: quem ouve "travada" sai sem
+        # tocar, teclar nem reabrir). A última árvore lida é a que a execução viu por último.
+        if rt.last_tree is not None and detectar_conta_travada(rt.last_tree) is not None:
+            return None
         if self.io_factory is not None:
             foco, tecla = getattr(rt.io, "current_focus", None), getattr(rt.io, "press_key", None)
         else:
