@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.64: a etapa da irmã em curso conta no objeto da família (branch feat/31-64-imagem-sem-aprovacao-na-familia)
+
+- **O furo:** com `publicar_sem_aprovacao` ligado (padrão desligado), persona `autonomous` e nenhum outro motivo de
+  aprovação, a porta não grava pedido, e a saída só nasce no commit. A segunda persona do mesmo pedido passava com a
+  mesma imagem enquanto a primeira publicava (sobra do 31.53).
+- **O conserto:** `_mesmo_objeto_na_familia` conta também as etapas das outras personas do pedido em `running` ou
+  `verifying`, com a mesma capability e o mesmo objeto (`SocialRepository.etapas_em_curso_da_acao`). Etapas em
+  `ready` e `failed` não contam.
+- Prova: `simulated` (`backend/tests/test_familia_por_objeto.py::test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem`,
+  falha no código anterior). Real: `not_run`.
+
 ## 2026-10-04 — 31.53: a família do pedido também se compara pelo objeto, e o texto que cita outra conta dela passa por aprovação (branch feat/31-53-objeto-alvo-na-familia)
 
 Lado Jev do 28.10 F5, sobre o 31.49 (#330).
