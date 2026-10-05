@@ -28,9 +28,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Única mudança em texto que vai à IA: o exemplo de nome de usuário com @ de `PLANNER_CAPABILITY_SYSTEM` virou
   fictício; os hashes de `PLANNER_CAPABILITY_SYSTEM`, `PLANNER_MULTIAPP_SYSTEM` e `PLANNER_MULTIAPP_SYSTEM_CURTO` em
   `tests/test_prompts_licoes.py` mudam de propósito (só o exemplo difere; conferido contra o texto antigo).
-- Fora, de propósito: a lista fictícia do `simulated_provider`, o nome de uma lista do Trello e uma variável homônima,
-  e um exemplo numa mensagem de erro ao usuário (texto de código, não comentário). Os testes também usam @ de contas
-  como dado de exemplo: não é escopo deste item.
+- A recusa `sem_alvo` (`execution/application/alvos.py`) cita "com a persona Fulana" como exemplo; o texto esperado e os
+  dados do teste de varredura de nomes em `tests/test_telegram_entrada.py` usam nomes de exemplo. Fora, de propósito:
+  a lista fictícia do `simulated_provider`, o nome de uma lista do Trello e uma variável homônima. Os @ de contas usados
+  como dado nos outros testes são o 31.101.
 - Prova `simulated`: `not_run` (funil da suíte 39; os dirigidos rodam depois do "no ar"). Real: `not_run`.
 
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)

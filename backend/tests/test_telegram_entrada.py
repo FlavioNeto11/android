@@ -883,7 +883,7 @@ async def test_quem_e_voce_responde_que_e_a_ana_e_que_e_ia_sem_previa(c: Cenario
 
 
 # ---------------------------------------------------------------- 28.28: pergunta ao bot não vira comando de aparelho
-SEM_DESTINO = 'Diga onde ou por quem: escolha aparelhos, personas, ou cite no comando ("com a persona André", "no android-03").'
+SEM_DESTINO = 'Diga onde ou por quem: escolha aparelhos, personas, ou cite no comando ("com a persona Fulana", "no android-03").'
 
 
 async def test_pergunta_solta_do_dono_vai_a_orquestradora_e_nao_a_previa(c: Cenario) -> None:
@@ -945,17 +945,17 @@ async def test_quem_e_voce_segue_identidade(c: Cenario) -> None:
 
 async def test_nenhuma_resposta_do_canal_sai_com_nome_de_persona(c: Cenario) -> None:
     # Varre as recusas: o texto vem do serviço compartilhado com o painel e pode trazer o nome (o exemplo do extrator).
-    c.portas.personas = ["André", "andre.qa", "Bruno Lima"]
+    c.portas.personas = ["Beltrano", "beltrano.qa", "Ciclano Souza"]
     c.portas.recusar_criar = True
     c.portas.alvos = [{"instance_id": "android-09", "profile_id": None, "origem": "texto"}]
     c.portas.perguntas = []
-    await c.volta(msg(5, "/para android-09: comente oi com a persona André e @andre.qa"))
+    await c.volta(msg(5, "/para android-09: comente oi com a persona Beltrano e @beltrano.qa"))
     await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
-    c.portas.recusar_previa = "Recusado: Bruno Lima e ANDRE não podem agir aqui"
+    c.portas.recusar_previa = "Recusado: Ciclano Souza e BELTRANO não podem agir aqui"
     await c.volta(msg(7, "/para android-10: postar"))
     for texto in c.bot.textos():
         normal = texto.lower()
-        assert "andré" not in normal and "andre" not in normal and "bruno lima" not in normal, texto
+        assert "beltrano" not in normal and "ciclano souza" not in normal, texto
     assert any("<persona>" in t for t in c.bot.textos())
 
 

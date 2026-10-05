@@ -318,7 +318,7 @@ def resolver_alvos(pedido: PedidoDeAlvos, dicas: DicasDoTexto, mundo: Mundo) -> 
         _so_pelo_texto(pedido, dicas, mundo, estado)
     else:
         raise RecusaDeAlvo("sem_alvo", "Diga onde ou por quem: escolha aparelhos, personas, ou cite no comando "
-                                       "(“com a persona André”, “no android-03”).", 400)
+                                       "(“com a persona Fulana”, “no android-03”).", 400)
     vistos: dict[str, AlvoResolvido] = {}
     for a in estado.alvos:
         if a.instance_id in vistos:
