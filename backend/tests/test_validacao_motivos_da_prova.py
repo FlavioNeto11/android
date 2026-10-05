@@ -94,8 +94,7 @@ def test_o_estoque_sem_evidencia_passa_a_causa_uma_vez(validacao: Validacao) -> 
 
 def test_a_causa_vem_dos_campos_e_nao_do_texto(tmp_path: Path) -> None:
     db = banco_migrado(tmp_path, "causa.sqlite3")
-    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
-               " VALUES ('r-x','k-x','cmd','execute','cancelled',0,'[\"android-02\"]',?)", (to_iso(datetime.now(UTC)),))
+    _execucao(db, "r-x", prova=True)               # S1 da leitura: uma PROVA, para o None vir dos campos, não da guarda
     _parada(db, "r-x")
     # o texto do motivo da prova cita autenticação, mas sem o campo estruturado não é `app_sem_sessao`
     db.execute("UPDATE objectives SET status_detail='Prova de fluxo (validação): a etapa precisaria de uma pessoa "
