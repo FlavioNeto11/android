@@ -63,11 +63,15 @@ def trocador(tabela: dict, amplo: bool):
     """O handle inteiro primeiro (com o número trocado); com `amplo`, depois os `pares` (nome.sobrenome sem o número,
     inclusive colado a um dígito, e o handle de exemplo que repetia o sufixo de uma conta real) e cada pedaço de nome
     por palavra inteira."""
-    handles = [(re.compile(re.escape(velho), re.IGNORECASE), novo) for velho, novo in tabela["handles"].items()]
+    # 31.101: o handle também aparece com o ponto escapado, numa expressão regular do teste (`/nome\.sobrenome1234/`);
+    # essa forma se troca pela de exemplo com o ponto escapado do mesmo jeito.
+    def _com_escape(pares: dict) -> list[tuple[str, str]]:
+        return [*pares.items(), *((v.replace(".", "\\."), n.replace(".", "\\.")) for v, n in pares.items() if "." in v)]
+    handles = [(re.compile(re.escape(velho), re.IGNORECASE), novo) for velho, novo in _com_escape(tabela["handles"])]
     if amplo:
         # Fim do par: nem letra (o começo de um sobrenome mais longo não é ele), mas pode vir um dígito colado.
         handles += [(re.compile(r"\b" + re.escape(velho) + r"(?![^\W\d_])", re.IGNORECASE), novo)
-                    for velho, novo in tabela.get("pares", {}).items()]
+                    for velho, novo in _com_escape(tabela.get("pares", {}))]
     pedacos = tabela["pedacos"] if amplo else {}
     pad = (re.compile(r"\b(" + "|".join(sorted(map(re.escape, pedacos), key=len, reverse=True)) + r")\b",
                       re.IGNORECASE) if pedacos else None)

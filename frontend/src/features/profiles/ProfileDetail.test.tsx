@@ -152,7 +152,7 @@ it('o cabeçalho tem a identidade UMA vez: nome e @ não se repetem na Visão ge
   await abrir();
   const t = text();
   expect((t.match(/Mariana Costa/g) ?? []).length).toBe(1);
-  expect((t.match(/@mariana\.costa91182/g) ?? []).length).toBe(1);
+  expect((t.match(/@luciana\.bastos73519/g) ?? []).length).toBe(1);
   expect(container.querySelectorAll('h1')).toHaveLength(1);
   expect(container.querySelector('h1')?.textContent).toBe('Mariana Costa');
   // O cartão "Identidade" ficou só com atributos.

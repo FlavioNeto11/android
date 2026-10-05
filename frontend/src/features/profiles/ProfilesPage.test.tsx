@@ -515,7 +515,7 @@ describe('fila de intervenção', () => {
     expect(text()).toContain('android-02');
     expect(text()).toContain('O Instagram exige confirmação adicional.');
     // "tadeu.quintela4821" está `unknown`: NÃO aparece na fila, só no cartão (uma vez).
-    expect(text().match(/lucas\.almeida9484/g)?.length ?? 0).toBe(1);
+    expect(text().match(/tadeu\.quintela4821/g)?.length ?? 0).toBe(1);
   });
 
   it('sem ninguém preso, a fila não aparece', async () => {
