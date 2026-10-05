@@ -35,7 +35,11 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - `GuiaImagens.test.tsx` afirma o selo "simulado" pelo elemento, não pela palavra, que também está no aviso do gerador.
 - `frontend/src/components/Disclosure.test.tsx` (novo): o bloco fechado à mão segue fechado com o `openWhen` parado em
   verdadeiro e só reabre numa nova subida.
-- Prova `not_run`: escrito durante o congelamento da suíte 37; roda depois do "no ar".
+- Prova simulated, em Idle:
+  - `src/test`, `src/components` e `GuiaImagens.test.tsx` 37/37; a catraca varre todos os testes sem achado novo;
+  - os casos novos falham na catraca anterior (o primeiro a cair é o K1);
+  - o GuiaImagens passa com `ATRASO_DO_FETCH_MS=40` na semente 88, onde caía;
+  - typecheck limpo.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
