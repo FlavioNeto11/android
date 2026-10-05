@@ -595,3 +595,48 @@ def test_k2c_a_pergunta_do_aviso_tem_cara_de_aviso_e_o_link_do_rodape_nao() -> N
                   ("Política de privacidade", (40, 2300, 500, 2360), "", "", True),
                   ("Aceitar", (40, 600, 400, 660), "", "android.widget.Button", True))
     assert _recusa(rodape, "Aceitar") is None
+
+
+# ------------------------------------------------------------- 31.75, N1: o link inline exposto como par de nós
+def _par(texto: str, b: tuple[int, int, int, int]) -> tuple[Any, Any]:
+    """O Chrome expõe um link inline (gov-3, "Declaração de Cookies") como DOIS nós com o mesmo texto e os mesmos bounds:
+    o clicável e um filho que NÃO é clicável."""
+    return ((texto, b, "", "android.view.View", True), (texto, b, "", "android.widget.TextView", False))
+
+
+def test_n1_o_link_de_privacidade_exposto_como_par_nao_liga_a_recusa_na_tela_toda() -> None:
+    """(a) Rodapé só com o link, como par, e um "OK" longe dele: sem aviso de consentimento, o "OK" passa."""
+    tree = _xml(_TELA_2400,
+                *_par("Política de privacidade", (40, 2300, 500, 2360)),
+                ("OK", (40, 600, 400, 660), "", "android.widget.Button", True),
+                ("Aceitar", (500, 600, 900, 660), "", "android.widget.Button", True))
+    assert _recusa(tree, "OK") is None
+    assert _recusa(tree, "Aceitar") is None
+
+
+def test_n1_o_par_dentro_de_um_aviso_de_verdade_segue_recusando() -> None:
+    """(b) O mesmo par dentro de um aviso real (texto longo ou caixa): a palavra de aceite segue recusada."""
+    longo = _xml(_TELA_2400,
+                 ("Usamos cookies para melhorar sua experiência", (40, 1500, 1040, 1560), "", "", False),
+                 *_par("Declaração de Cookies", (398, 1580, 660, 1616)),
+                 ("Aceitar", (40, 600, 400, 660), "", "android.widget.Button", True))
+    assert _recusa(longo, "Aceitar") == "Aceitar"
+    caixa = _xml(_TELA_2400,
+                 ("", (0, 1400, 1080, 1800), "cookie-banner", "", False),
+                 *_par("Política de privacidade", (40, 1700, 500, 1760)),
+                 ("OK", (40, 600, 400, 660), "", "android.widget.Button", True))
+    assert _recusa(caixa, "OK") == "OK"
+
+
+def test_n1_a_marca_curta_sem_gemeo_clicavel_segue_com_cara_de_aviso() -> None:
+    """(c) O K2c não afrouxa: o título curto não clicável, sem gêmeo clicável, liga a recusa; com um clicável de OUTRO
+    texto no mesmo lugar, também (só o gêmeo de mesmo texto e mesmos bounds vale)."""
+    sozinho = _xml(_TELA_2400,
+                   ("Sua privacidade", (40, 1500, 600, 1560), "", "", False),
+                   ("OK", (40, 600, 400, 660), "", "android.widget.Button", True))
+    assert _recusa(sozinho, "OK") == "OK"
+    outro_texto = _xml(_TELA_2400,
+                       ("Sua privacidade", (40, 1500, 600, 1560), "", "", False),
+                       ("Detalhes", (40, 1500, 600, 1560), "", "android.widget.Button", True),
+                       ("OK", (40, 600, 400, 660), "", "android.widget.Button", True))
+    assert _recusa(outro_texto, "OK") == "OK"

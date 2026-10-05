@@ -30,6 +30,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   gov.br: a barra de tradução do Chrome depois da raiz segue livre); mutações conferidas (desfazer cada regra reprova o
   teste dela). As árvores reais de `data/diag-31-72/` dão o mesmo antes (152f8b54) e depois (NTP, ml, g1, uol com 0
   recusado; gov-3 com 12 clicáveis recusados, nenhum do Chrome; "More options" livre). `real`: `not_run`.
+- N1 (acréscimo da orquestradora, commit à parte): `dialogos._gemeo`/`_clicavel`. O link inline que o Chrome expõe como
+  par de nós (mesmo texto e bounds, um clicável e um filho não clicável, visto no gov-3) é um nó só, clicável: não liga
+  a recusa de "OK"/"Aceitar" num rodapé só com "Política de privacidade". O gêmeo também deixa de ser a "caixa" da marca
+  (`_caixa_da_marca`), senão o par se tornaria aviso pelo outro lado. Prova `simulated`: 3 testes `test_n1_*`; as árvores
+  reais ficam idênticas (gov-3 com 12). `real`: `not_run`.
 
 ## 2026-10-05 — 31.72: o ator não aceita consentimento do site (branch feat/31-72-ator-nao-aceita-consentimento)
 

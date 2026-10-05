@@ -292,9 +292,9 @@ def _na_zona(tree: UiTree, marca: UiElement, x: float, y: float, pagina: float, 
 def _caixa_da_marca(tree: UiTree, marca: UiElement, pagina: float) -> UiElement | None:
     """A caixa reconhecida da marca, ou `None`. Z1 da releitura: só um contêiner DISTINTO da marca é caixa. O parágrafo
     do aviso com o link "política de cookies" dentro dele não é: a zona encolheria para o retângulo dele e o botão
-    100 px abaixo passaria."""
+    100 px abaixo passaria. N1: o gêmeo da marca (par de nós do mesmo link) também não é caixa."""
     web = _conteudo_web(tree)
-    caixas = [e for e in tree.elements if e is not marca and _contem(e.bounds, marca.bounds) and _area(e.bounds) < pagina
+    caixas = [e for e in tree.elements if e is not marca and not _gemeo(e, marca) and _contem(e.bounds, marca.bounds) and _area(e.bounds) < pagina
               and (_de_consentimento(e, web) or _PISTAS.search(e.class_name or "") or _PISTAS.search(e.resource_id or ""))]
     caixa = max(caixas, key=lambda e: _area(e.bounds), default=None)
     if caixa is not None and any(e is not caixa and _contem(caixa.bounds, e.bounds) for e in tree.elements):
@@ -307,10 +307,21 @@ def _caixa_da_marca(tree: UiTree, marca: UiElement, pagina: float) -> UiElement 
 _FRASE_DE_AVISO = 30
 
 
+def _gemeo(a: UiElement, b: UiElement) -> bool:
+    """N1: o mesmo texto nos mesmos bounds. O Chrome expõe um link inline como DOIS nós assim (gov-3, "Declaração de
+    Cookies": o clicável e um filho não clicável); o par é um nó só."""
+    return a is not b and bool(_rotulo(a)) and a.bounds == b.bounds and _rotulo(a) == _rotulo(b)
+
+
+def _clicavel(tree: UiTree, e: UiElement) -> bool:
+    """N1: `e` é clicável ou tem um gêmeo clicável (o par é um nó só, clicável)."""
+    return e.clickable or any(g.clickable and _gemeo(g, e) for g in tree.elements)
+
+
 def _cara_de_aviso(tree: UiTree, marca: UiElement, pagina: float) -> bool:
     # K2c da leitura: o título ou a pergunta do aviso ("Sua privacidade", "Aceitar cookies?") não é clicável e tem
-    # menos de 30 caracteres; o link do rodapé, que o K2b quer deixar de fora, é clicável.
-    return (not marca.clickable or len(_rotulo(marca)) > _FRASE_DE_AVISO
+    # menos de 30 caracteres; o link do rodapé, que o K2b quer deixar de fora, é clicável (N1: ou tem gêmeo clicável).
+    return (not _clicavel(tree, marca) or len(_rotulo(marca)) > _FRASE_DE_AVISO
             or _caixa_da_marca(tree, marca, pagina) is not None)
 
 

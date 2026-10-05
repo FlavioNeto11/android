@@ -1805,6 +1805,11 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   - **K2c:** a marca NÃO clicável também tem cara de aviso: o título "Sua privacidade" (corpo sem a palavra) e a
     pergunta "Aceitar cookies?" ligam a recusa da palavra de aceite em qualquer lugar. O link do rodapé é clicável e
     segue fora (o K2b).
+  - **N1** (31.75): o Chrome expõe um link inline como DOIS nós com o mesmo texto e os mesmos bounds, um clicável e um
+    filho não clicável (gov-3, "Declaração de Cookies"). Uma marca não clicável com gêmeo clicável conta como o nó
+    clicável (o par é um só), e o gêmeo também não é "caixa" da marca; texto longo e caixa seguem valendo. Sem isso, o
+    rodapé só com "Política de privacidade" ligaria a recusa de "OK"/"Aceitar" na tela toda. **Limite:** não há captura
+    real de rodapé só com o link; a regra vem da forma vista no gov-3 (dentro de um aviso de verdade).
   - Ficam do lado seguro, recusados: "Rejeitar cookies." com ponto e "Rejeitar todos os cookies" (fora da lista
     exata), e o `type_text(press_enter=True)` com o foco num botão segue sem tratamento.
 - 31.75, a página que imita o id do navegador: o Chrome expõe o `id` do HTML como `resource-id`, então um botão da
