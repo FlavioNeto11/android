@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.51 A: a resposta nas listas de perguntas não pede confirmação no Telegram (branch canais/28-51a-perguntas-sem-confirmacao)
+
+- Defeito de 05/10 ~16:10Z: as cinco respostas do dono às perguntas P-001 a P-005, comentadas no Trello, caíram no
+  caminho do 28.30 e pediram confirmação de sim ou não no Telegram dele.
+- `trello.listas` aceita os papéis `perguntas` e `perguntas_respondidas`. O comentário do dono num cartão dessas listas
+  vai à orquestradora com o número da pergunta (`previa.pergunta`, tirado do nome `P-NNN`), sem pedido no Telegram, e o
+  cartão recebe uma linha só. O resto do 28.30 não muda.
+- A instalação precisa dos dois ids em `trello.listas` do `config.yaml` (vale na subida); sem eles nada muda.
+- Prova: `simulated` (`backend/tests/test_canais_respostas_as_perguntas.py`). Real: `not_run`.
+
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 
 - Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.

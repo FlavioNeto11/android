@@ -301,6 +301,13 @@ avisos depois da faxina"), e a trava cai no TTL.
   - O nome do cartão e o texto só vão se passarem inteiros pelos filtros do 28.31 (`texto_seguro`); senão, "num cartão
     do Trello" e "o texto fica no cartão".
   - Só o dono: a anotação de um membro autorizado segue só registrada, e a linha sem autor lido não é do dono.
+  - **Exceção, as listas de perguntas (28.51, parte A):** o comentário do dono num cartão das listas com papel
+    `perguntas` ou `perguntas_respondidas` em `trello.listas` é a resposta dele à pergunta. Vai à orquestradora com o
+    número tirado do nome do cartão (`P-NNN`, em `previa.pergunta`), sem pedido de confirmação no Telegram, e o cartão
+    recebe uma linha só. A resposta não autoriza ação em conta real: essa segue pedindo o sim daqui na hora da ação. O
+    comando com `/` segue a gramática, e o papel sem lista configurada não liga nada. Origem: 05/10 ~16:10Z, as cinco
+    respostas às P-001 a P-005 pediram confirmação no Telegram, contra a regra de que a pergunta e a resposta ficam só no
+    Trello.
   - O recado que falha por erro interno responde com uma frase fixa, e o reply a ela segue à orquestradora (a entrada 1256
     de 04/10 ficou `falhou` sem resposta).
   - O login do painel recusa nome começado por `trello:` ou `telegram:`: esse é o operador dos canais. A sessão antiga
