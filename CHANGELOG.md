@@ -20,6 +20,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-05 — 30.83 (fatia 1): a referência do fluxo é aleatória e não sai do resumo (branch feat/30-83-ref-publico-do-fluxo)
+
+- O id do fluxo novo deixa de ser o slug do `plan.summary` LITERAL (que podia trazer nome de pessoa ou @ e saía em
+  evento, `href` e log; achado S1 da leitura do 30.80 B, herdado do 30.21). Agora é `f-` mais 12 hex ALEATÓRIOS
+  (`flows.ref_aleatoria`), em `learn_from_run` e `learn_from_plan`. O nome legível segue na coluna `name`.
+- Migração 116: `flows.ref_publico` com índice único. O fluxo novo nasce com `ref_publico = id`; o que já existe
+  mantém o id (as referências a ele não têm ON UPDATE CASCADE) e ganha a referência na subida
+  (`flows.preencher_refs_publicas`, idempotente, chamada em `AppState`).
+- Funções tocadas (K-095): `FlowStore.learn_from_run`, `FlowStore.learn_from_plan`, `ref_aleatoria` e
+  `preencher_refs_publicas` (novas), `AppState.__init__`.
+- Próximas fatias: eventos e `href` de fluxo com `ref_publico`, a rota que aceita as duas formas, os logs (adendo
+  v1.66).
+- Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (4). Real: `not_run`.
+
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
 
 - **Implantado** às 18:06Z: central em `9f9e2b39`, migração `115_receita_nao_aplicavel` (sem migração nova), 17 pontas sobre `19e34b22` e dois consertos de junção.

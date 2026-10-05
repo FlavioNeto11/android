@@ -126,6 +126,7 @@ from .modules.pedidos.infrastructure.laco import LacoDePedidos
 from .modules.pedidos.infrastructure.saldo import motivo_de_adiamento
 from .modules.pedidos.infrastructure.servico import PedidosApi
 from .modules.portal.montagem import Portal
+from .taskqueue.flows import preencher_refs_publicas
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
@@ -306,6 +307,8 @@ class AppState:
         pasta_da_marca = marca_de_partida.pasta_do_supervisor(cfg.data_dir)
         self.db.migrate(ao_aplicar=lambda _v: marca_de_partida.gravar(pasta_da_marca, marca_de_partida.MIGRANDO))
         marca_de_partida.gravar(pasta_da_marca, marca_de_partida.MIGRANDO)
+        # 30.83: a referência pública aleatória dos fluxos de antes da migração 116 (o SQL portátil não sorteia).
+        preencher_refs_publicas(self.db)
         # `origin`: quem publicou. É o que permite a OUTRA réplica saber o que não é dela e entregar aos
         # WebSockets ligados nela (item 5.6) — sem isso, o painel de uma réplica não via nada da outra.
         self.bus = EventBus(self.db, origin=cfg.owner_id)

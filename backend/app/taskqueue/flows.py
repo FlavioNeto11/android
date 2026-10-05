@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -143,6 +144,31 @@ def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
     return "".join(t for t, _ in pedacos)
 
 
+#: 30.83: a referência pública do fluxo, `f-` mais 12 hex ALEATÓRIOS. Nunca derivada do resumo, do comando nem do
+#: `match_key`: quem conhece o nome não confirma o palpite pelo valor que sai em evento, `href` e log.
+PREFIXO_DA_REF = "f-"
+
+
+def ref_aleatoria(db: Database) -> str:
+    """Uma referência nova, livre como id E como `ref_publico` (o fluxo novo usa a mesma nas duas colunas)."""
+    while True:
+        ref = f"{PREFIXO_DA_REF}{secrets.token_hex(6)}"
+        if db.one("SELECT id FROM flows WHERE id=? OR ref_publico=?", (ref, ref)) is None:
+            return ref
+
+
+def preencher_refs_publicas(db: Database) -> int:
+    """30.83: dá a referência aleatória a cada fluxo que ainda não tem (os de antes da migração 116). Roda na subida;
+    idempotente (só as linhas sem ela, e o UPDATE confere de novo, para duas réplicas subindo juntas). O id antigo
+    fica: as referências a ele não têm ON UPDATE CASCADE. Devolve quantas preencheu."""
+    feitas = 0
+    for linha in db.query("SELECT id FROM flows WHERE ref_publico IS NULL ORDER BY id"):
+        cur = db.execute("UPDATE flows SET ref_publico=? WHERE id=? AND ref_publico IS NULL",
+                         (ref_aleatoria(db), linha["id"]))
+        feitas += int(cur.rowcount or 0)
+    return feitas
+
+
 class FlowStore:
     def __init__(self, db: Database, politica: PoliticaDoFluxo | None = None):
         self.db = db
@@ -219,15 +245,12 @@ class FlowStore:
                     return None
                 flow_id, de, motivo = reaproveita, "disabled", f"reaprendido da execução {run['id']} (mesma linha)"
             else:
-                base = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", plan.summary).encode("ascii", "ignore")
-                              .decode().lower()).strip("-")[:40] or "fluxo"
-                flow_id, n = base, 2
-                while self.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)):
-                    flow_id, n = f"{base}-{n}", n + 1
+                flow_id = ref_aleatoria(self.db)                 # 30.83: nada do resumo no id (ele sai em evento)
                 self.db.execute(
                     "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, status,"
-                    " created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (flow_id, plan.summary[:120], key, template, plano, plan.app_id, run["id"], status, now_iso()))
+                    " created_at, ref_publico) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (flow_id, plan.summary[:120], key, template, plano, plan.app_id, run["id"], status, now_iso(),
+                     flow_id))
                 motivo = f"aprendido da execução {run['id']}"
             self.set_required_apps(flow_id, apps)
             if self.politica is not None:
@@ -259,17 +282,13 @@ class FlowStore:
         if self.db.one("SELECT id FROM skill_versions WHERE state='published' AND match_key=?", (key,)):
             raise ValueError("Já existe uma habilidade versionada publicada para este comando. Mude o comando ou "
                              "desabilite a habilidade.")
-        base = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", plan.summary).encode("ascii", "ignore")
-                      .decode().lower()).strip("-")[:40] or "habilidade"
-        flow_id, n = base, 2
-        while self.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)):
-            flow_id, n = f"{base}-{n}", n + 1
+        flow_id = ref_aleatoria(self.db)                         # 30.83: o resumo do treino pode trazer o valor demonstrado
         with self.db.tx():
             self.db.execute(
                 "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, created_at,"
-                " source) VALUES (?,?,?,?,?,?,?,?,?)",
+                " source, ref_publico) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (flow_id, plan.summary[:120], key, template, plan.model_dump_json(), plan.app_id, None, now_iso(),
-                 source))
+                 source, flow_id))
             apps = [plan.app_id, *(s.app_id for s in plan.steps)]
             self.set_required_apps(flow_id, [a for a in apps if a])
             if self.politica is not None:
