@@ -209,13 +209,16 @@ def _tentativas_demais(espera: float) -> JSONResponse:
                         status_code=429, headers={"Retry-After": str(segundos)})
 
 
-def estado_com_marca(cfg: Config, fabrica: Callable[[Config], AppState] = AppState) -> AppState:
+def estado_com_marca(cfg: Config, fabrica: Callable[[Config], AppState] | None = None) -> AppState:
     """O `AppState` entre as marcas da partida (29.124). A partida (migração, disco) pode passar da carência do
     supervisor; a marca, com o id que ele passou, diz em que fase esta subida está. Sem `POC_PARTIDA_ID` (backend
-    subido à mão), nada é gravado."""
+    subido à mão), nada é gravado.
+
+    Sem `fabrica`, o `AppState` deste módulo é lido NA CHAMADA, não na definição: quem troca `main.AppState` (o teste
+    do contêiner, suíte 39) tem de ser obedecido, ou o `main()` sobe o estado de verdade."""
     pasta = marca_de_partida.pasta_do_supervisor(cfg.data_dir)
     marca_de_partida.gravar(pasta, marca_de_partida.ANTES_DO_ESTADO)
-    estado = fabrica(cfg)
+    estado = (fabrica or AppState)(cfg)
     marca_de_partida.gravar(pasta, marca_de_partida.ESTADO_PRONTO)
     return estado
 

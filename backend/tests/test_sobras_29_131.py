@@ -83,6 +83,16 @@ def test_main_grava_antes_e_depois_do_estado(tmp_path: Path, monkeypatch: pytest
     assert marca is not None and marca.fase == marca_de_partida.ESTADO_PRONTO
 
 
+def test_sem_fabrica_vale_o_appstate_do_modulo_na_hora_da_chamada(tmp_path: Path,
+                                                                   monkeypatch: pytest.MonkeyPatch) -> None:
+    """Suíte 39: com o padrão `fabrica=AppState` preso na definição, trocar `main.AppState` não valia, e o teste do
+    contêiner subia o estado de verdade."""
+    from app import main as principal
+
+    monkeypatch.setattr(principal, "AppState", lambda _cfg: "trocado")
+    assert principal.estado_com_marca(make_config(tmp_path)) == "trocado"   # type: ignore[comparison-overlap]
+
+
 # ================================================================== #433: a recusa por backend alheio zera a conta
 def test_backend_alheio_respondendo_zera_os_reinicios_seguidos() -> None:
     b = Bancada()
