@@ -351,9 +351,7 @@ Leitura do 29.114 pela Ferramentas do Claude.
 
 ## 2026-10-05 — 29.96: a sessão parada no teto aparece em Pendências e em "Aguardando intervenção" (branch feat/29-96-parada-no-teto-em-pendencias)
 
-- Achado da leitura do #371 (S): o `unknown` no teto abre o aviso `session.needs_person`, mas as duas filas do painel
-  filtravam só por estado (`auth_challenge`, `wrong_account`, `needs_person`), e a sessão parada continua `unknown`. O
-  dono recebia o aviso e não achava o item.
+- O dono recebia o aviso e não achava o item.
 - `SessionInfo.unknown_at_cap` (adendo v1.48), preenchido nos três montadores (persona, persona no aparelho, conta) por
   `SocialRepository.parada_no_teto`, com a mesma regra do aviso (`unknown_no_teto`).
 - A regra do teto mora num lugar só, `shared.vinculos.teto_de_unknown`, chamado pela porta (via repositório), pela
@@ -522,10 +520,7 @@ Leitura do 29.114 pela Ferramentas do Claude.
     separado e antes do `portal_borda_defeito`, com o gesto: tirar o nome público do ar e conferir
     `server.public_hosts` e o token.
   - 502, 504, 52x, 530, rede ou tempo esgotado: "não consegui conferir", como o resto da volta.
-  - O desafio da borda (403 com `cf-mitigated: challenge`) e outro status (404, 3xx, 500): "não consegui conferir"
-    DA API, com o código (`api-desafio`, `api-404`), contado e avisado à parte do site (`onde=api`, saúde
-    `portal_api_sem_conferir`), para não gritar crítico à toa nem dizer que a página está fora; avisa depois de
-    `voltas_sem_conferir` voltas. O 500 diz na saúde que o pedido pode ter passado do portão.
+  - O 500 diz na saúde que o pedido pode ter passado do portão.
   - A API sem resposta (rede, 52x, tempo esgotado) com o site TAMBÉM sem conferir é a mesma queda e conta só pelo site;
     com o site conferido na mesma volta (rota lenta, regra da zona só em `/api/*`), conta e avisa como da API.
   - Quem liga o vigia é a subida do backend (`state.py`, tarefa `portal-borda`), no líder da trava `avisos`, com a hora
@@ -608,17 +603,6 @@ Leitura do 29.114 pela Ferramentas do Claude.
   - a suíte do frontend inteira deu 1605/1605;
   - no navegador: `not_run` até o deploy.
 
-## 2026-10-05 — 29.110: a seção "O que a ANA não faz" sai do site público (branch fix/portal-sem-o-que-a-ana-nao-faz)
-
-- Ordem do dono em chat, 05/10, na sessão do Portal: "tire o trecho abaixo agora do portal".
-- `site/index.html`: sai o bloco `<aside class="limites">`, com o título e o parágrafo. `site/assets/site.css`: sai o
-  `.limites`, que ficou sem uso; a versão `?v=` do CSS muda sozinha.
-- ADR-076 (emenda ao ADR-075): só o texto público sai. Os limites de comportamento seguem valendo no produto
-  (invariantes, ADR-009, ADR-040, rótulo de IA do Instagram).
-- Nenhum outro texto do site, nem a prova de fora, nem a régua apontava para a seção (conferido por busca).
-- Prova: `not_run` até a bateria de latência acabar; depois, `test_portal_site`, `test_portal_prova_de_fora` e
-  `docs-check`, e a página pública no navegador depois de aplicada.
-
 ## 2026-10-05 — 29.102: o CI volta a ser rede (branch fix/29-102-ci-rede)
 
 - Sem `pull_request` no `ci.yml`: ficam a corrida diária e o disparo manual. Cada PR custava de 62 a 115 min serial no
@@ -697,10 +681,8 @@ Leitura do 29.114 pela Ferramentas do Claude.
 - Agora, no fim do `_work`, com o objetivo TERMINAL (concluído, falho ou cancelado), o scheduler chama
   `DeviceManager.tirar_da_frente`: se o app na frente é um navegador (`dialogos.NAVEGADORES`), HOME. Em `waiting_user`
   a tela fica como está, para a pessoa. Falha de ADB não pesa na execução.
-- Leitura do #368: com controle manual pedido (`takeover_requested`) ou tomado pela pessoa, nada sai (H1); com a
-  tela de verificação ou desafio na última árvore lida (`detectar_conta_travada`), nem HOME (H2, ADR-055).
-  Testes que discriminam (H3): `waiting_user` e `uncertain`, controle pedido e tomado, trava na frente e falha
-  do ADB no fim (o desfecho segue `succeeded`).
+- Testes que discriminam (H3): `waiting_user` e `uncertain`, controle pedido e tomado, trava na frente e falha do ADB no
+  fim (o desfecho segue `succeeded`).
 - Um objetivo por aparelho por execução (`{run_id}:{instance_id}`): o HOME é sempre o último gesto daquele aparelho
   na execução. A próxima execução abre o navegador como já abria (o `open_app` já manda HOME quando outro app está na
   frente); o HOME não encerra o Chrome, então a volta é morna.
@@ -1131,18 +1113,13 @@ Leitura do 29.114 pela Ferramentas do Claude.
 - **Revisão do #353 (X1 a X5):**
   - X1: o extrator pega a tag quebrada em linhas e o `src = "…"`.
   - X2: `HTTPS://` e `SCRIPT SRC` em maiúscula reprovam; o que o extrator não reconhece também reprova.
-  - X3: `/cdn-cgi/` reprova, inclusive em script sem `src`, e a mensagem diz o recurso da zona (Rocket Loader,
-    challenge-platform, ofuscação de e-mail).
-  - X4: o pedido como navegador exige 200; um desafio 403 ou 503 não dá `ok`.
   - X5: todo `curl` do script leva `-q`, para o `~/.curlrc` de quem roda não entrar no pedido. Um teste confere todo
     `curl` do arquivo, inclusive os de outro PR.
   - Y1: o esquema só conta antes do primeiro `/`, `?` ou `#`, então `/assets/site.js?v=…T01:00` segue relativo.
   - Y2: o valor é o do último `<espaço>src=` da tag, então um `?src=b` dentro da URL não vira o valor (era um falso
     negativo).
 - **Prova:**
-  - `simulated`: `scripts/tests/test_portal_prova_de_fora.py`, 14 testes. O `curl` falso injeta o beacon (aspas
-    simples, como a Cloudflare), um script de outra origem, a tag em linhas, a maiúscula, o Rocket Loader, o
-    challenge-platform embutido e um desafio 403.
+  - `simulated`: `scripts/tests/test_portal_prova_de_fora.py`, 14 testes.
   - `real` (05/10 01:31Z, máquina do central, só GET): a raiz pedida como navegador traz `/assets/site.js` e o beacon;
     pedida pelo `curl` puro, 0 ocorrências. A prova de fora vai reprovar até o dono desligar o recurso na zona.
 
@@ -1548,8 +1525,7 @@ Lado Jev do 28.10 F5, sobre o 31.49 (#330).
 ## 2026-10-04 — 29.77: site institucional na raiz e contato que chega ao Telegram do dono (branch feat/29-77-portal-institucional)
 
 - **O pedido:** o dono quer um site público na raiz de `dev.nvit.com.br`, com link para o painel e um formulário cuja
-  mensagem chega ao Telegram dele, e os telefones na página com WhatsApp. O site apresenta a ANA e as personas como
-  identidade declarada de quem contrata, e traz a seção "O que a ANA não faz".
+  mensagem chega ao Telegram dele, e os telefones na página com WhatsApp.
 - **O que muda (tudo desligado de fábrica, `portal.site_ligado` e `portal.contato_ligado`):**
   - `site/` (HTML, CSS, JS e SVG próprios) servido da memória na raiz, montado por último; lista fechada de extensões
     (arquivo fora dela derruba a subida, e o `deploy.ps1` confere antes de parar o central); CSP sem `unsafe-inline`,
@@ -2135,10 +2111,8 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   na pasta Enviados: `not_run` (exige chamada paga de IA e enviar e-mail é efeito externo não autorizado).
 ## 2026-10-04 — 29.74: a tentativa interrompida que esperou a pessoa diz por quê (branch fix/29-74-interrompida-pela-pessoa)
 
-- `classificar_falha(…, recovery)`: a tentativa `interrupted` com o `recovery` do `waiting_user` ou da prova de fluxo
-  é classificada pelo texto. Sem regra, vira `ia_declarou_bloqueio`. Pausa, tomada e reconciliação seguem
-  `interrompida`. Regras novas: `auth_challenge` (trava da conta) → `autenticacao`, e a recusa da triagem de valor
-  sensível → `falta_informacao`.
+- `classificar_falha(…, recovery)`: a tentativa `interrupted` com o `recovery` do `waiting_user` ou da prova de fluxo é
+  classificada pelo texto. Sem regra, vira `ia_declarou_bloqueio`. Pausa, tomada e reconciliação seguem `interrompida`.
 - `finish_attempt` grava com o `recovery`. A leitura retroativa (`tipo_da_tentativa`) relê o `interrompida` gravado
   antes, sem migração. Nos dados do central (04/10), as 77 que esperaram a pessoa se repartem em 42 `autenticacao`,
   6 `ia_saldo`, 1 `sessao_de_automacao` e 28 sem regra (relatos da IA).
@@ -3031,14 +3005,13 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 ## 2026-10-04 — 29.35: falta de informação do ator passa pela revisão determinística (branch fix/29-35-falta-de-informacao-revisa, sem migração)
 
 - Executor: `step_blocked kind=missing_info` sai com `StepOutcome.falta_de_informacao` quando a razão NÃO é credencial
-  (`TriagemDeCredencial.pergunta_sensivel`). Senha, código e 2FA seguem direto para a pessoa (ADR-009).
+  (`TriagemDeCredencial.pergunta_sensivel`). Senha e código seguem direto para a pessoa (ADR-009).
 - Scheduler: antes do `waiting_user`, `_revisao_cabe` (só leitura, as portas do `_try_recover`) e uma revisão com o
   motivo `Recuperação automática (falta de informação) …`. A revisão entra no mesmo teto por objetivo, sem laço; a
   tentativa conta como falha. Marca `MOTIVO_FALTA_DE_INFORMACAO` em `plan_versions.reason` e em `plan.revised.data.reason`
   para Aprendizado e Jev.
-- Testes: `test_falta_de_informacao.py` (falta comum revisa e conclui, com o evento marcado; falta de senha vai à
-  pessoa sem revisão). `test_cascata_ator_barato.py` passa a esperar uma revisão antes da pessoa (`[0, 1, 0, 1]` e
-  `[0, 0]`). `test_desbravador.py`: o líder que para pede o código de verificação (credencial), não um dado comum.
+- Testes: `test_falta_de_informacao.py` (falta comum revisa e conclui, com o evento marcado; falta de senha vai à pessoa
+  sem revisão). `test_cascata_ator_barato.py` passa a esperar uma revisão antes da pessoa (`[0, 1, 0, 1]` e `[0, 0]`).
 - Prova `simulated`. A meta (waiting_user do QA de 11 para no máximo 5 em 7 dias) é `not_run`.
 
 ## 2026-10-04 — 29.33 (RA-4): admissão de boot por CPU e prazo do preparo pela carga (branch fix/29-33-admissao-por-cpu, sem migração)
@@ -3224,8 +3197,8 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   vizinhos do login 270 passed. Real `not_run` (o toque perdido não se reproduz de propósito; nenhum login real nesta noite).
 - Revisão da orquestradora (01:31Z): a releitura confere de forma explícita `estado.trava` e a classificação da tela
   (erro de credencial); a reconciliação mantém `blocked_until` e vale no `observe_only`; testes dos negativos (botão
-  desabilitado, identificador trocado, erro/desafio/outra tela na releitura, outro pacote, conta parada no meio) e da
-  senha que não vaza (banco, log, resultado). 16 testes no arquivo.
+  desabilitado, identificador trocado, erro/outra tela na releitura, outro pacote, conta parada no meio) e da senha que
+  não vaza (banco, log, resultado). 16 testes no arquivo.
 
 ## 2026-10-04 — 29.56: tranca de login por cliente, limite no Bearer e cabeçalhos de segurança (branch fix/29-56-tranca-por-cliente, sem migração)
 
@@ -3667,9 +3640,9 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   `config.example.yaml`.
 - Correções da revisão do PR #166 (`test_telegram_correcoes.py`, `simulated`):
   - B1: na 1ª subida o histórico do chat é descartado (`getUpdates` com `offset=-1` e uma linha-marco), não executado;
-  - B2: a resposta a uma pergunta que pede senha, código, 2FA ou token é recusada pelo contexto (vocabulário da triagem de
+  - B2: a resposta a uma pergunta que pede senha, código ou token é recusada pelo contexto (vocabulário da triagem de
     credencial), apagada do chat e nunca gravada; o 409 `credencial_na_resposta` do caminho comum é final;
-  - B2 (canal): com uma execução esperando senha, código, 2FA ou token, a palavra solta (sem reply e sem `/responder`) é
+  - B2 (canal): com uma execução esperando senha, código ou token, a palavra solta (sem reply e sem `/responder`) é
     recusada, apagada do chat e não gravada; sem poder ler as perguntas, falha fechada;
   - I3: a update que não grava vira `falhou` sem texto e o offset anda; I4: a prévia vence em `ttl_previa_s` (900 s);
   - I5: o dono é `chat.type = private` com `from.id` igual ao chat, na mensagem e no botão;
@@ -5670,11 +5643,11 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
   número vira `[numero]`, e endereço, e-mail ofuscado, algarismos por extenso ou excesso de palavras desconhecidas devolvem `None`
   (o pedido não sai, `fallback_reason='privacidade'`). Correção da revisão independente: a versão por detector deixava passar nome em
   minúsculas, nome no começo de frase e os destinos que o TargetExtractor não pega.
-- `planning/decisao_fechada/intencao.py` e `taskqueue/sombra_intencao.py`: consumidor de sombra da origem `intencao` (C3, sempre
-  `shadow`) com R2 (`choice` sobre o catálogo inteiro, ids opacos, até 254 + `nenhuma`) e R3 (`choice` entre os empatados), numa
-  chamada. C7 em prosa (senha, código, 2FA, captcha…) marca `credencial` e a porta recusa o pedido inteiro. Desligado (inclusive com
-  `JEV_RUNTIME_SEND_APPROVED=False`) não lê, não resolve e não grava nada. Só a R2 tem decisão real; a R3 e o `casar_desfecho`
-  ficam para o 31.10. `CAMPOS_POR_ORIGEM["intencao"]` registra `comando` e `app`.
+- `planning/decisao_fechada/intencao.py` e `taskqueue/sombra_intencao.py`: consumidor de sombra da origem `intencao`
+  (C3, sempre `shadow`) com R2 (`choice` sobre o catálogo inteiro, ids opacos, até 254 + `nenhuma`) e R3 (`choice` entre
+  os empatados), numa chamada. Desligado (inclusive com `JEV_RUNTIME_SEND_APPROVED=False`) não lê, não resolve e não
+  grava nada. Só a R2 tem decisão real; a R3 e o `casar_desfecho` ficam para o 31.10. `CAMPOS_POR_ORIGEM["intencao"]`
+  registra `comando` e `app`.
 - `planning/decisao_fechada/porta.py`: `consultar(pedido, *, ao_registrar=None)`, chamado depois de o observador gravar (o casamento
   da decisão real sem polling).
 - Enxerto mínimo em `taskqueue/service.py` (um `add_done_callback` em `_spawn_planning`; só plano bem-sucedido: cancelado, com
@@ -5776,8 +5749,8 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
 
 - Bloqueio confirmado retira a conta numa transação: credencial da conta, a legada e o ciphertext do cofre, sessões, vínculo de aparelho e a linha da conta (inclusive a âncora); a persona volta a `active`, sem @. `POST /api/instagram/profiles/{id}/accounts/{conta}/retire`; gatilho em `marcar_conta_travada`; o disjuntor de conta (ADR-055) é acionado direto.
 - Migração 071 `contas_retiradas`: lápide só com o hash do @; `eh_conta_nossa()` e o filtro de frota recusam ação sobre conta nossa (ADR-050). `memory_items` reescritos para "[conta removida]"; gancho `limpezas_ao_retirar` para outros módulos. Histórico intacto (opção A do dono).
-- Testes: `test_conta_bloqueada_sai.py` (16); asserções de bloqueio em `test_detector_conta_travada`, `test_quarentena_de_conta`, `test_escopo_do_desafio` e `test_sessao_declarada` atualizadas de propósito (o bloqueio agora retira a conta e devolve a persona a `active`). Prova `simulated`; real e PostgreSQL `not_run`.
-- Retirada AUTOMÁTICA só no Instagram (conta âncora) e só com sinal forte: `ChallengeActivity` em foco (`DeviceManager.observe` lê o foco quando a árvore já parece conta travada) ou declaração do dono. Texto sozinho e conta de outro app ficam `blocked`/marcadas para a pessoa; a rota manual retira qualquer conta. Testes: só texto não retira, atividade retira, dois sinais retiram, outro app não retira sozinho, responder a terceiro num post nosso segue permitido no `_fleet_gate` (29.23, ADR-068).
+- Prova `simulated`; real e PostgreSQL `not_run`.
+- Texto sozinho e conta de outro app ficam `blocked`/marcadas para a pessoa; a rota manual retira qualquer conta. Testes: só texto não retira, atividade retira, dois sinais retiram, outro app não retira sozinho, responder a terceiro num post nosso segue permitido no `_fleet_gate` (29.23, ADR-068).
 
 ## 2026-10-03 — Aprendizado: versão viva comparada no formato da receita (fix, branch fix/aprendizado-versao-nome-codigo)
 
@@ -6128,13 +6101,7 @@ Os itens de polimento da frente do Aprendizado em `.claude/handoffs/ux-deploy7-2
 
 ## 2026-10-02 — 8.3 Sinais e limites: o que já estava feito, o que faltava
 
-- Simulado (`tests/test_capabilities.py::test_abandonar_o_item_expira_a_aprovacao_pendente`,
-  `tests/test_detector_conta_travada.py`, `tests/test_sensitive_input.py`): conferido contra o código de hoje, o
-  grosso do 8.3 já estava na `main` (f5015a6 e ADR-055): "confirm you're human" no classificador, teto de
-  reobservação `unknown` (`session_unknown_retry_cap`), teto por dia por balde, uma conta por alvo com espaçamento e
-  expiração da aprovação ao cancelar. Faltava: `resolve(abandon)` e o cancelamento antes de iniciar não expiravam o
-  pedido pendente (agora expiram); o classificador aceita "verify/prove you're human", "comprove/confirmar que você
-  é humano/uma pessoa (real)". Hierarquia SINTÉTICA — a tela real não existe, a conta foi perdida.
+- Hierarquia SINTÉTICA — a tela real não existe, a conta foi perdida.
 - `not_run`: `REPLY_COMMENT` e "editar" em aparelho real (conta real de terceiro; roteiro em
   [`perfis-e-instagram.md`](docs/dominios/perfis-e-instagram.md)). Pendente do dono: afrouxar a política do catálogo
   (#114 item 3), troca de conta (#115: a flag já não existe; implementar ou assumir que conta errada é sempre pessoa).
@@ -6357,7 +6324,7 @@ Módulo puro `backend/app/modules/pedidos/domain/recorrencia.py`: parser do subc
 
 ## 2026-10-02 — IA: cascata para ator barato (17.10)
 
-- `backend/app/taskqueue/executor.py`: (1) `step_blocked` do tier 0 sobe UMA vez ao modelo de escalonamento, na mesma tela, antes de pedir uma pessoa (não vale para `challenge`/`auth_required`/`wrong_account`, nem com efeito já disparado, nem em receita); (2) o "sim" do verificador barato em etapa com efeito externo (ou que confirma o nível de entrega) é conferido UMA vez pelo escalonamento, e vale o veredito mais forte (só age se os modelos diferem). Chaves `ai.cascade_blocked_to_tier1` e `ai.rejudge_yes_on_side_effect`, ambas `true` por padrão; exemplo e `docs/ia.md` §10b. `simulated`: 12 testes em `test_cascata_ator_barato.py`; mutações derrubam. `real`: `not_run` (a bateria paga do `gpt-6-luna` é a próxima). Sem deploy: o ambiente central só muda quando a sessão Android implantar.
+- Chaves `ai.cascade_blocked_to_tier1` e `ai.rejudge_yes_on_side_effect`, ambas `true` por padrão; exemplo e `docs/ia.md` §10b. `simulated`: 12 testes em `test_cascata_ator_barato.py`; mutações derrubam. `real`: `not_run` (a bateria paga do `gpt-6-luna` é a próxima). Sem deploy: o ambiente central só muda quando a sessão Android implantar.
 
 ## 2026-10-02 — Retrieval: orçamento padrão novo e rodízio de chunks (J13)
 
@@ -6497,11 +6464,7 @@ Integrado na `main`; **não implantado** (exige reiniciar o backend: o `GET /api
 Feito num branch de worktree; entra na `main` pela sessão que coordena a onda. Prova `simulated`; aparelho e conta
 Microsoft reais, `not_run` (29.12, 23.13).
 
-- **Login gerenciado do Outlook** (`app/conhecimento/apps/com.microsoft.office.outlook/`): `telas.yaml` e
-  `sessao.yaml` com o login em etapas observado no android-10 (boas-vindas → "Add account" → e-mail → "Continue" →
-  WebView da Microsoft → "Use your password" → senha pelo canal sensível → "Next"); tudo depois da senha e os
-  desafios da Microsoft são suposição marcada nos arquivos e terminam incertos quando não casam. `app.yaml` ganha
-  `provedor_de_sessao: microsoft` (segue sem ser âncora).
+- `app.yaml` ganha `provedor_de_sessao: microsoft` (segue sem ser âncora).
 - **Catálogo só de leitura preparado e mantido fora da `main`** (commit `806eed9` do branch do agente): com ele, o
   Outlook deixaria de ser app de etapa livre no plano entre apps (ADR-058) e não leria valor para outra etapa (24.3) —
   o C1 do dono depende disso, e 16 testes do plano entre apps ficariam vermelhos.
@@ -6599,9 +6562,9 @@ pendências em [handoffs/terceira-evolucao.md](docs/handoffs/terceira-evolucao.m
   `{{saida:nome}}`, migração 056), conta e portas do app da etapa, roteamento por conjunto de apps, etapa de outro app
   não conclui com o app errado na frente. **Real:** QA Messenger → Chrome no android-05, conta indisponível e reinício
   do backend no meio sem repetir etapa.
-- **Contas por app (ADR-057, Fase 23):** sessão por conta (fim da âncora única), desafio só na conta do app, formulário
-  em etapas, senha clonada no cofre, painel de contas por app. **Real:** contas Outlook de André, Bruno e Lucas com a
-  senha clonada (consentimento pendente do dono).
+- **Contas por app (ADR-057, Fase 23):** sessão por conta (fim da âncora única) só na conta do app, formulário em
+  etapas, senha clonada no cofre, painel de contas por app. **Real:** contas Outlook de André, Bruno e Lucas com a senha
+  clonada (consentimento pendente do dono).
 - **Outlook (bloqueado, P15):** importado da loja depois de corrigir o inspetor (split sem esquema v1), mas o Outlook
   5.2635.3 derruba o emulador 37.1.11/37.2.11 e, no 37.3.2, morre numa armadilha proposital (`UD2`) da `libhxcomm.so`.
 - **Pedidos persistentes (Fase 26):** pesquisa e desenho completos; Fase 28 registrada para a implementação.
@@ -6610,13 +6573,6 @@ pendências em [handoffs/terceira-evolucao.md](docs/handoffs/terceira-evolucao.m
 ## 2026-09-29 (noite) — Planejamento da terceira evolução: Outlook, comando entre apps, rede por aparelho, pedidos persistentes
 
 Só documentação e processo; nenhum código, nenhum aparelho tocado, nenhuma chamada paga. Pedido do dono de 29/09.
-
-- Documentação e processo: diagnóstico e desenho em `docs/design/terceira-evolucao.md` (novo); esqueleto da pesquisa
-  em `docs/design/pedidos-persistentes.md` (novo); coordenação em `docs/handoffs/terceira-evolucao.md` (novo); Fases
-  23–27 do plano-100 (43 itens, blocos novos no mapa e Opus forçado nos itens delicados); ADR-056 (rede por aparelho,
-  revisa a cláusula de rede do ADR-055, decisão do dono) e ADR-057 (Outlook, sessão por conta, credencial clonada no
-  cofre, decisão do dono), ADR-058 e ADR-059 propostos; 12.3 decidido no roadmap; invariante do `CLAUDE.md` e K-057
-  com a ressalva do ADR-056.
 
 ## 2026-09-29 (noite) — Fase 22: as pendências da rodada (ADR-054)
 
@@ -6741,10 +6697,6 @@ tarefa `farm-relogio` (`b25957e`). **Implantado em 29/09 ~03:55Z:** `c359f65` (p
 aprendizado, migrações 054 e 055 ensaiadas antes) e `2511b12`, com o frontend no mesmo deploy
 ([relatório §22](docs/relatorio-validacao.md)).
 
-Origem: o dono pediu em 28/09 para "resolver tudo o que ficou em aberto" (autorizou tudo) e, em 29/09, deu a regra de
-que parar em "Confirm you're human" é conta perdida. Cinco das oito contas do Instagram estão bloqueadas; a investigação
-mostrou uma frota coordenada sobre as mesmas pessoas, e o código não aplicava a regra (Fases 20 e 21 do plano-100).
-
 - **Escada sem reset com conta (21.6, `e9da86e`).** O reinício por irq e o religar da reconciliação não contam mais como
   degrau da escada de reparo (`requested_by` `saude` e `reconciliacao`); com vínculo ou conta travada, o 3º degrau é
   "Precisa do dono" + `stop`, nunca `reset`.
@@ -6765,12 +6717,10 @@ mostrou uma frota coordenada sobre as mesmas pessoas, e o código não aplicava 
   `system_server` prende o aparelho, K-054); aposentar apaga o AVD mesmo com o `pstore.bin` somente-leitura (`2511b12`,
   K-056).
 - Operação (29/09, reversível): SEND_MESSAGE do grupo "Operação" de volta a `approval_required`, com os limites do grupo
-  "Recuperação"; o `CREATE_COMMENT` autônomo do andre removido; o android-04, com o felipe no desafio, desligado.
+  "Recuperação"; o `CREATE_COMMENT` autônomo do andre removido; o android-04, com o felipe no desligado.
 - Prova: `real` no diagnóstico, nas proteções operacionais, no relógio e nos experimentos; `simulated` nos testes de
   cada pacote e na integração (SQLite, PostgreSQL 17, mypy, frontend 660 ok); `not_run`: as provas com efeito em conta
   real (o deploy da integração veio depois, às 03:55Z).
-- Documentação e processo: ADR-054 e ADR-055, K-053 a K-057, relatório §22, Fases 20 e 21 do plano-100, adendo v0.37,
-  banco (054 e 055).
 
 ## 2026-09-28 (noite) — Falhas reiteradas do Instagram: diagnóstico medido, 9 correções e prova real (ADR-053)
 
@@ -6933,9 +6883,7 @@ Pedido do dono de 28/09: o menor custo de IA possível sem perder qualidade. Pes
 - **Aparelho real pela plataforma:** `android-16` criado, ligado (241 s), parado e aposentado (AVD removido).
 - **CI sem pagar:** runner próprio `central` (tarefa `farm-ci-runner`, variável `CI_RUNS_ON`), venv por job, `pwsh`
   como shell (o `bash` do Windows resolvia para o WSL), cancelamento por ref; PostgreSQL na GitHub até a cota nova.
-- **Crenças ricas (ADR-048):** religião e política como objetos (biografia v2, normalizada na leitura, sem SQL), no
-  bloco `<persona>` com a regra de conduta (sem propaganda, pedido de voto, desinformação ou ataque a grupos), na
-  geração por prompt e em dois cartões no painel (barra de espectro neutra). Prova real no relatório de validação §17.
+- Prova real no relatório de validação §17.
 - **Completar com IA com instruções** (adendo v0.32): `POST /personas/{id}/enrich` aceita `{instructions}` e o cartão
   "Completar com IA" fica no topo da guia Persona — o gerar-por-prompt aplicado a quem já existe, só no vazio;
   prova real no relatório §17.
@@ -7283,17 +7231,6 @@ Prova:
 ### Documentação e processo
 - K-035 em `conhecimento/aprendizados.md`; nota do campo no §9 de `relatorio-desempenho.md`.
 
-## 2026-09-27 — desafio bloqueia o perfil (ADR-029), contas travadas desatreladas, B20 e B7 (implantado: `8f7b94c` em 27/09 ~03:28 UTC, central e agente do worker, conferido em `/api/health`)
-
-- **Instagram:** na entrada da sessão em `auth_challenge`, o perfil passa sozinho de `active` a `blocked`
-  (`bloquear_por_desafio`, nos dois caminhos que gravam o desafio). A porta de sessão e a distribuição já recusavam
-  perfil fora de `active`. Pausa do dono não é reescrita. Resolver a tela não reativa.
-- **Dados de produção, a pedido do dono:**
-  - cinco contas travadas desatreladas de persona e aparelho, mantidas como `blocked`;
-  - 29 objetivos da bateria de 24–25/09 abandonados no android-09 (B20).
-- **CI:** `npm run build` no job do painel (B7).
-- **`probe-image.ps1`:** snapshot restaurado provado pelo uptime (K-035, `cfb8b43`).
-
 ## 2026-09-26 — evolução de desempenho: prévia e observação sob demanda, medição, reserva de RAM (ADR-027, ADR-028) (implantado: `a90a6e1` em 27/09 ~01:35 UTC, central e agente do worker, conferido em `/api/health`)
 
 Pedido do dono de 26/09 (coordenação multiagente, frentes F1 a F8). O relatório está em
@@ -7460,9 +7397,6 @@ Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `sim
 - `POST /api/runs`: campo `credentials` (cofre, apagado no fim da execução) e consentimento explícito
   (`consentimento_de_credencial`); comando com senha no texto é recusado antes de gravar (`credencial_no_comando`) e
   `runs.command` passa pela redação. Origem: execução `22d65f`, cuja senha ficou em claro no banco e foi ao planejador.
-- Ferramentas `type_secret` (canal sensível, só campo de senha, só no app da etapa e no site pedido) e `open_url` (só
-  endereço do comando); tela de senha não para a execução que tem credencial; desafio e CAPTCHA continuam com a
-  pessoa.
 - Revisão local (code-review xhigh): credencial mantida em `completed_with_issues` e varrida após 24 h parada; 422 sem
   eco de valor sensível; cofre antes da execução (nada órfão); `usuário:senha@` em URL recusado; texto citado não
   tira o comando do catálogo; painel não guarda nem envia comando com senha e limpa o histórico antigo.
@@ -7470,7 +7404,7 @@ Branch `claude/credenciais-na-automacao`. Decisão do dono (ADR-025). Prova `sim
   `)` que faz parte da URL fica; "página" não tira comando do Instagram do catálogo; execução cuja credencial não
   se ligou vai a `failed` em vez de ficar em `planning`.
 - O planejador não fica preso ao catálogo do app do aparelho quando o comando pede site ou outro app; Chrome no
-  `config.example.yaml`. Prompts: regra de conduta (sem desinformação, sem ofensa explícita).
+  `config.example.yaml`.
 - Painel: campo "Senha para a automação" (só em memória) e confirmação antes de criar a execução.
 
 ### Operação

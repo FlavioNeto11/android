@@ -1253,13 +1253,10 @@ efetiva de cada ação, lida da API, e não a do catálogo.
 **Data:** 29/09/2026 · **Área:** parque, processo, Instagram (ADR-055)
 
 **Sintoma.** Em 28/09, das 21:36 às 21:40 (-03:00), um experimento de `hide_error_dialogs` escolheu o android-04 como
-"aparelho sem persona nem conta": `account_label` `qa-user-04` e `/personas` vazio. Mandou 10 entradas por adb (toques e
-arrastos) e aberturas a frio sobre a tela "Confirm you're human" do felipe.nogueira93762026, que abriram "Get support" e
-o assistente da Meta. Nada foi digitado nem enviado; a tela foi fechada com BACK.
+"aparelho sem persona nem conta": `account_label` `qa-user-04` e `/personas` vazio. Nada foi digitado nem enviado; a
+tela foi fechada com BACK.
 
-**Causa.** O rótulo era o da configuração (`qa-user-04`, do QA Messenger), não derivado de conta nenhuma. O perfil
-estava `blocked` pela declaração do dono (23/09; o bloqueio automático do ADR-029 nunca disparou) e o desvínculo de
-27/09 03:10Z tinha tirado a persona do aparelho, mas a sessão do Instagram continuava no disco e na tela. Nada no
+**Causa.** O rótulo era o da configuração (`qa-user-04`, do QA Messenger), não derivado de conta nenhuma. Nada no
 sistema dizia, por aparelho, que ali estava logada uma conta travada.
 
 **O que funcionou.** O marcador por aparelho (`device_locked_accounts`, migração 054), carregado com o android-04;
@@ -1328,28 +1325,6 @@ o módulo vai ao agente do notebook. Prova `simulated`: `backend/tests/test_prov
 
 **Aplicabilidade.** Vigente. Outro `avd_nao_apagado` com o emulador parado: procure o atributo somente-leitura antes de
 suspeitar de processo segurando o arquivo.
-
-### K-057 — Frota coordenada sobre uma pessoa real precede os bloqueios: a resposta é conduta, não disfarce
-
-**Data:** 29/09/2026 · **Área:** perfis, Instagram, política (ADR-055)
-
-**Sintoma.** Cinco de oito contas do Instagram bloqueadas; em três delas o sistema nunca viu o desafio.
-
-**Causa.** Medida, sem prova do motivo do Instagram. As oito contas nasceram no mesmo dia, no mesmo host, com a mesma
-imagem e o mesmo `ro.serialno`, e agiram em três ondas coordenadas sobre as mesmas pessoas: o mesmo comentário de 4
-contas no mesmo post (18/09); 8 follows na mesma pessoa privada em 19m43s (19/09); 7 DMs à mesma pessoa em 8m40s com o
-recado "seu marido mandou um oi", com SEND_MESSAGE `autonomous` (19/09). Nada nos dados separa as vivas das bloqueadas
-(DM 5 de 5 contra 2 de 3, Fisher p = 0,375).
-
-**O que funcionou.** Conduta como regra de código: uma conta por alvo para seguir, DM e comentário, com o excedente
-recusado; DM fria sempre com aprovação; persona que não atribui fala a terceiros; o disjuntor que pausa as contas do
-mesmo alvo quando uma cai; os tetos e o espaçamento do grupo "Recuperação" para as vivas. Nunca disfarce (mascarar
-emulador ou rede, proxy): é evasão, e é proibida.
-
-**Aplicabilidade.** Vigente. Um comando que mande a mesma ação a várias contas do Instagram é, por padrão, coordenação:
-uma conta por alvo, e nunca duas contas no mesmo alvo dentro da janela de 30 dias. Em parte substituído pelo ADR-056
-(29/09, decisão do dono): a rede por aparelho, declarada e medida, deixou de ser proibida; rotação de IP, mascarar
-emulador ou identidade e resolver desafio seguem proibidos, e a conduta acima continua inteira.
 
 ### K-058 — Carga da IDE no central vira "aparelho doente" e dispara a escada de reparo: um trabalho pesado por vez
 
@@ -2356,7 +2331,6 @@ painel, a resposta ia antes ao modelo, pelo `POST /api/commands/refine`.
 - A única triagem era `_recusar_credencial` (`redact(command) != command`), que só pega FORMATO: "senha: …", tokens.
 - Uma palavra sem rótulo não tem formato de segredo. Quem diz que ela é senha é a PERGUNTA a que responde, e a
   triagem não olhava a pergunta.
-- `mentions_credential` pega "senha" e "código de verificação", mas não "qual o código que chegou por SMS?".
 
 **O que funcionou (29.52).**
 - A regra é UMA, na `TriagemDeCredencial`:
@@ -2623,7 +2597,6 @@ arquivo editado. Quem acrescenta um método a um repositório num PR sobre outra
   configuração, também `pytest @scripts/tests/catracas.txt`, da raiz (29.98; regra em `.claude/rules/testes.md`).
 - Catraca nova entra no arquivo de identificadores no mesmo PR; `tests/test_catracas.py` reprova identificador que não
   existe. O arquivo não aceita comentário nem linha em branco: qualquer um dos dois zera a coleta.
-- Catraca que percorre uma lista junta todos os ofensores antes de falhar, para uma falha não esconder a outra.
 - Rodada dirigida vale pela contagem, não pela cor: um caminho de arquivo que não existe na linha de comando do
   `pytest` zera a coleta inteira ("no tests ran", saída 4), como o comentário no arquivo de identificadores.
 - O "final" de um PR diz que as catracas rodaram na ponta final, e o leitor independente cobra essa linha.

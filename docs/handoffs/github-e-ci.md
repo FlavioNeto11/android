@@ -102,7 +102,7 @@ central, e o job com prioridade ociosa (K-058). Enquanto isso o hospedado custa 
 
 | Item | Achado |
 |---|---|
-| Conta | `FlavioNeto11`, plano Pro, dono e responsável pela cobrança do repositório; passkey/2FA ativo |
+| Conta | `FlavioNeto11`, plano Pro, dono e responsável pela cobrança do repositório; passkey ativo |
 | Repositório | privado, admin único (`FlavioNeto11`); sem colaboradores, sem webhooks, sem deploy keys, sem ambientes |
 | Variáveis e segredos do repositório | variável `CI_RUNS_ON`; **nenhum secret** |
 | Permissão padrão do `GITHUB_TOKEN` | somente leitura; Actions não aprova PR |

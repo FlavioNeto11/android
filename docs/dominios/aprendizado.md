@@ -124,17 +124,17 @@ continua ganhando do prazo. O status vem antes (`interrupted` segue `interrompid
 executor deixa de ser contrato; as REGRAS de texto ficam para o legado sem `error_kind`.
 
 **A interrompida que esperou a pessoa (29.74).** `interrupted` segue `interrompida` na reconciliação, na pausa e na
-tomada de controle. A tentativa que parou para esperar a pessoa (o `recovery` do `waiting_user`, "Aguardando o
-usuário", e o da prova de fluxo, "Prova de fluxo: encerrada pelo sistema": `falhas.ESPEROU_A_PESSOA`) é classificada
-pelo texto, como a etapa: autenticação, trava da conta (`auth_challenge`), saldo, falta de informação. Texto sem regra
-ali, ou com tipo de navegação (o texto gravado pode ser o erro anterior da tentativa), é o relato livre da IA
-(`ia_declarou_bloqueio`): só o que nunca vira lição e a falta de informação passam (`DA_PESSOA_NA_ESPERA`). Antes, tudo isso formava um grupo da camada `execucao`
-(`fk-d0f1c2ed23`, ~77 ocorrências em 04/10) que ninguém consertava. O legado gravado `interrompida` é relido com o
-`recovery` na leitura retroativa (`falhas.tipo_da_tentativa`, no relatório, no agregado diário, no feedback e no
-aprendido da execução), sem migração, e conta como retroativo. Com `retroativo=False`, fica o gravado. A série
-diária já agregada (`learning_daily`) não é reescrita: os dias antigos seguem `interrompida` e os recentes saem
-reclassificados (decisão da orquestradora, 04/10: não recompor, não se apaga dado por isso). Saúde D-5, orçamento do
-curador, gatilhos, dossiê e a régua do 30.55 não leem o tipo da tentativa.
+tomada de controle. A tentativa que parou para esperar a pessoa (o `recovery` do `waiting_user`, "Aguardando o usuário",
+e o da prova de fluxo, "Prova de fluxo: encerrada pelo sistema": `falhas.ESPEROU_A_PESSOA`) é classificada pelo texto,
+como a etapa: autenticação, trava da conta, saldo, falta de informação. Texto sem regra ali, ou com tipo de navegação (o
+texto gravado pode ser o erro anterior da tentativa), é o relato livre da IA (`ia_declarou_bloqueio`): só o que nunca
+vira lição e a falta de informação passam (`DA_PESSOA_NA_ESPERA`). Antes, tudo isso formava um grupo da camada
+`execucao` (`fk-d0f1c2ed23`, ~77 ocorrências em 04/10) que ninguém consertava. O legado gravado `interrompida` é relido
+com o `recovery` na leitura retroativa (`falhas.tipo_da_tentativa`, no relatório, no agregado diário, no feedback e no
+aprendido da execução), sem migração, e conta como retroativo. Com `retroativo=False`, fica o gravado. A série diária já
+agregada (`learning_daily`) não é reescrita: os dias antigos seguem `interrompida` e os recentes saem reclassificados
+(decisão da orquestradora, 04/10: não recompor, não se apaga dado por isso). Saúde D-5, orçamento do curador, gatilhos,
+dossiê e a régua do 30.55 não leem o tipo da tentativa.
 
 **Dívida paga (29/09, `2b0e5db`).** O contrato de gesto mora em `app/shared/costuras.py`: `TomadaDeControle`,
 `CosturaDeControle`, `avisar`, as portas de comando e de ensino e `autor_do_gesto`. `taskqueue/costuras.py` o reexporta,
@@ -329,8 +329,6 @@ verificador** (ADR-024); como entram no prompt, em [ia.md §15](../ia.md).
    contagem, sufixo de resource-id, `{parâmetro}` e rótulo curto que se repetiu, idêntico, em 2 execuções. Nunca
    `attempts.error` cru, texto de tela, nome de terceiro, valor de parâmetro ou segredo. A nota de um voto vira
    candidata `human_origin`, que só o dono publica.
-3. **Nunca viram lição:** autenticação, desafio, 2FA, CAPTCHA, conta, IA e infraestrutura; a etapa de sessão ou login,
-   pela ação do catálogo ou pela chave da etapa livre (`ACAO_DE_SESSAO`); a tentativa que parou em login ou desafio.
 4. **Validação e publicação.** A mesma impressão em 2 execuções reais valida. Sem efeito e com `licoes.modo: on`, o
    sistema publica na `fila_de_prova`, e a curadoria abre uma prova por (app, ação, papel).
 5. **Medida.** Em prova, 50% das unidades com a lição e 50% sem (unidade = etapa no ator, planejamento no planejador;
@@ -359,8 +357,8 @@ atualização do app: dela, o "voltar" da conferência de conta sai do app e cha
    e nenhuma das telas declaradas).
 4. **Publicação** sozinha só com `telas.modo: on`. De fábrica é `observe`: grava, minera e valida, e a sessão não
    consome.
-5. **Desligam a regra:** o primeiro conflito (login, desafio, 2FA ou conta errada no mesmo aparelho até 2 min de um
-   uso), o modo fora de `on`, uma pessoa, e 30 dias sem casar numa versão nova do app.
+5. **Desligam a regra:** o primeiro conflito (login ou conta errada no mesmo aparelho até 2 min de um uso), o modo fora
+   de `on`, uma pessoa, e 30 dias sem casar numa versão nova do app.
 6. **Ponte para o repositório:** `GET /api/aprendizado/export?kind=tela&app=` devolve o fragmento YAML. Quando o YAML
    commitado reconhece todas as amostras, a aprendida se aposenta como `absorvida:<commit>`.
 
@@ -437,12 +435,9 @@ com o banco aberto só para leitura.
   antigo só é reconhecido com o `instance_id` do próprio comando.
 - **Tela da falha (22.3).** `executor.tela_da_falha` classifica a última árvore observada pela tentativa com o
   `telas.yaml` do app da etapa; `scheduler._run_guarded` a leva no `StepOutcome`, e `repository.finish_attempt` grava
-  `attempts.failure_screen` no mesmo UPDATE de `failure_kind`, só quando há tipo de falha. O valor é o nome de uma
-  regra declarada, ou o tipo do motor nas telas protegidas (`desafio`, `dois_fatores`, `login`, alinhado a
-  `licoes.TELAS_EXCLUIDAS`); NULL quando a tela é desconhecida, outro app está na frente, o app não tem conhecimento
-  ou não houve observação nesta tentativa. Nunca texto da tela. A trava achada dentro de uma ferramenta devolve a tela
-  pelo próprio executor, porque `quick_tree` não atualiza `rt.last_tree`. As telas aprendidas ficam fora, para a
-  chave do grupo não depender do modo do livro.
+  `attempts.failure_screen` no mesmo UPDATE de `failure_kind`, só quando há tipo de falha. Nunca texto da tela. A trava
+  achada dentro de uma ferramenta devolve a tela pelo próprio executor, porque `quick_tree` não atualiza `rt.last_tree`.
+  As telas aprendidas ficam fora, para a chave do grupo não depender do modo do livro.
 - **App por etapa no aprendizado (medido em 02/10, `test_aprendizado_app_por_etapa.py`).** `steps.app_id` NULL é o
   desenho, não perda: o plano só grava o app da etapa quando ele difere do app do plano (`planning/parsing.py`), e
   `runs.app_ids` leva o app do plano primeiro. A régua diária, o relatório de falhas, as lições e as costuras resolvem
@@ -667,7 +662,7 @@ tabela de arestas**. As regras são puras e moram em `domain/relacoes.py`; `Lear
   habilidade dividem o comando) e lição, voz e preferência (o escopo não nomeia a proposição) ficam sem contradição derivada; abri-la para a
   lição exige um critério de tema que ainda não existe.
 - **Vivo** é `candidate`, `validated` ou `published`; item morto não disputa e não é acusado.
-- **A evidência `conflict` não vira relação:** na tela ela aponta para um aparelho (login, desafio), não para outro item.
+- **A evidência `conflict` não vira relação:** na tela ela aponta para um aparelho (login), não para outro item.
 - **Absorvida** liga a regra pelo nome na tela (`regra_declarada`) e pelo commit nos demais itens; a leitura do YAML em si não entra (o alvo é o nome).
 - Fora do escopo: o painel (30.16) e a relação `revisado por` (do curador por IA, §8.5).
 
