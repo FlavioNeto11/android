@@ -28,8 +28,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`draft_meta.motivo_da_recusa`), exposto em `StepDTO.motivo_da_persona` e mostrado como "Motivo da persona" no
   detalhe da etapa no painel. A chave não fecha a escrita (`rascunho_fechado`): a retomada escreve de novo e o texto
   escrito a substitui.
-- Prova: `simulated` (`backend/tests/test_protecao_de_frota.py`, teste da retomada novo, que falha com a marca antiga;
-  `frontend/src/features/runs/CorrigirEtapa.test.tsx`, 2 testes novos). Real: `not_run`.
+- O motivo NÃO vai ao evento `step.updated` (gravado em `events` e transmitido a todo navegador): o painel
+  mantém o do detalhe da execução; `null` limpa. Contrato: adendo v1.46.
+- Prova: `simulated` (`backend/tests/test_protecao_de_frota.py`, teste da retomada novo, que falha com a marca antiga,
+  e a ausência no evento gravado; `frontend/src/features/runs/CorrigirEtapa.test.tsx`, 2 testes novos;
+  `frontend/src/store/reducer.test.ts`, 1 novo). Real: `not_run`.
+
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do
