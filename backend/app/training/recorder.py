@@ -279,6 +279,8 @@ class TrainingRecorder:
             return
         from ..taskqueue.executor import _safe_target  # noqa: PLC0415 - mesma regra de alvo das receitas
         tipo = entrada["type"]
+        if tipo == "text" and entrada.get("clear_first"):    # 31.84: sem coluna nova, `key_name` marca o texto enviado limpando o campo
+            entrada = {**entrada, "key": "clear_first"}
         sensivel = bool(tree is not None and tree.sensitive)
         alvo = None
         x, y = entrada.get("x"), entrada.get("y")

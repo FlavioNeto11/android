@@ -516,7 +516,28 @@ def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *,
     for i, e in enumerate(inputs):
         tipo = e["type"]
         if tipo == "key":
-            return None, f"tecla {e.get('key_name')} depende do estado de quem ensinou"
+            tecla = e.get("key_name")
+            # Apagar COLADO ao texto que vem depois é ruído: a receita digita com `clear_first=True`, que já limpa o
+            # campo (31.84; o painel digita sem limpar, e quem ensina apagava um caractere por vez). Só vale a
+            # sequência contígua de `delete` seguida DIRETAMENTE de um `text`: com toque, arraste ou outra tecla no
+            # meio, o apagar pode ter sido em outro campo, e a receita (que limpa só o do texto) divergiria do ensinado
+            # sem avisar. Nos demais casos a tecla muda o resultado e segue recusando (etapa sem receita).
+            if tecla == "delete":
+                j = i + 1
+                while j < len(inputs) and inputs[j]["type"] == "key" and inputs[j].get("key_name") == "delete":
+                    j += 1
+                # ...e só quando AQUELE texto foi enviado limpando o campo (`key_name == "clear_first"`, ver o gravador):
+                # aí os apagar de antes não mudam o resultado. Sem isso o apagar foi parcial ("Olá Maria" → apaga 5 →
+                # nome) e a receita, que limpa tudo, divergiria do ensinado: depende do conteúdo anterior.
+                if j < len(inputs) and inputs[j]["type"] == "text" and inputs[j].get("key_name") == "clear_first":
+                    continue
+            # Enter colado ao texto que acabou de ser digitado é o "enviar" daquele campo: vira `press_enter` da própria
+            # ação de digitar. Enter solto age sobre um campo que a receita não conhece e segue recusando.
+            if tecla == "enter" and i > 0 and inputs[i - 1]["type"] == "text" and out and out[-1]["tool"] == "type_text":
+                out[-1]["args"]["press_enter"] = True
+                continue
+            # back, home, recents (e o resto) dependem do estado de quem ensinou.
+            return None, f"tecla {tecla} depende do estado de quem ensinou"
         if tipo == "swipe":
             dy = (e.get("y2") or 0) - (e.get("y") or 0)
             pending_scrolls.append("down" if dy < 0 else "up")          # dedo sobe = conteúdo rola para baixo

@@ -6422,3 +6422,38 @@ Duas rotas novas e uma regra de gravação; nada muda nas existentes além do `r
   última leitura deixou; se faltar, a etapa fica sem receita com o `reason` "aparelho do treinamento fora do ar e <o que
   falta> ainda não foi lido… Refaça as receitas quando ele voltar". O painel chama `/recipes` nesse caso.
 - **Prova:** `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`); `real`: `not_run`.
+
+## Adendo v1.56 (05/10/2026; número da orquestradora; item 31.84) — `clear_first` na entrada manual de texto
+
+`POST /api/instances/{id}/input` (`ManualInput`), campo aditivo:
+- `clear_first: boolean` (padrão `false`), só para `type:'text'`; nos outros tipos é ignorado. Com `true`, o campo em
+  foco é limpo antes de digitar (o mesmo `type_text(clear_first=True)` da reprodução da receita; o `type_text` da sessão
+  de automação engole a falha do `clear()` e acaba acrescentando, e quem pega isso é a pós-condição da etapa). Com
+  `clear_first:true` e `type` diferente de `text`: `422` (validação do corpo). Com `false` ou
+  ausente, o comportamento é o de antes: o texto acrescenta ao que já está no campo.
+- Sem a sessão de automação do aparelho conectada (caminho do ADB `input text`, que só acrescenta), `clear_first:true`
+  responde `400 {code:'bad_input'}` em vez de digitar sem limpar. A recusa da senha na loja continua antes de tudo.
+- Na leitura das sessões de treino (`GET /api/training/{id}`, `inputs[]`), numa entrada de tipo `text` o campo `key_name`
+  com o valor `clear_first` é a marca de que o texto foi enviado limpando o campo; vai para coluna própria numa migração
+  futura.
+- O que o modo treinamento grava não muda: uma entrada `text` comum. A destilação passou a tratar `delete` antes de
+  `text` como ruído e `enter` logo após o `text` como `press_enter` (ver "Teclas ao ensinar" em
+  `docs/dominios/perfis-e-instagram.md`).
+- O painel pode ignorar o campo. Ausente também quer dizer backend de antes do 31.84.
+- Item 31.85, sem campo novo: ENQUANTO HÁ GRAVAÇÃO do treinamento, o quadro informado que é o MAIS RECENTE do backend
+  é aceito mesmo acima da idade máxima (cada entrada gravada lê a hierarquia antes de agir e deixa o aparelho lento; na
+  medida de 05/10 as 15 teclas seguintes a um toque de 24 s voltaram `stale_frame`). Continuam em `409 stale_frame` (ou
+  `capture_failing`): quadro velho quando já existe um mais novo (a pessoa clicou numa imagem antiga), a captura com falha
+  registrada, quadro com mais de 60 s (captura travada) e TODO quadro velho fora da gravação. `frame_mismatch` e quadro
+  desconhecido não mudaram.
+  - A folga NÃO vale às cegas para o que age no campo em foco: com o quadro aceito só por ela, `type:'text'` e as teclas
+    `enter`/`delete` voltam `409 stale_frame` se a hierarquia lida antes da ação faltar, for de tela sensível ou tiver
+    campo de senha em foco (a pessoa vê o quadro novo e repete). Se chegou quadro novo enquanto essa hierarquia era lida,
+    qualquer entrada sob a folga volta `409 stale_frame`.
+  - Toque, toque longo e arraste sob a folga só passam se o quadro informado foi capturado DEPOIS da última entrada
+    manual com efeito (o quadro só é o "mais recente" porque a captura ainda não rodou depois dela; o segundo toque sobre
+    ele cairia na tela nova com a coordenada da velha): senão `409 stale_frame`, e a pessoa espera a imagem nova. O
+    carimbo da entrada vale também quando a ação levanta (o toque que estoura o prazo segue rodando no aparelho) e numa
+    recusa anterior ao despacho: custa uma recusa a mais sob a folga, o lado seguro.
+- **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`, `backend/tests/test_treino_quadro_velho.py`).
+  `real`: `not_run`.

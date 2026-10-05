@@ -414,6 +414,48 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - Adendo v1.57 no contrato; doc em `docs/dominios/perfis-e-instagram.md`.
 - Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (13), com mutação por código; `real`: `not_run`.
 
+## 2026-10-05 — 31.84: as teclas de quem ensina não derrubam mais a receita da etapa (branch fix/31-84-85-entrada-manual-no-treino)
+
+- `distill_training`: `delete` COLADO ao `text` seguinte (sequência contígua de `delete` e depois o `text`, sem toque,
+  arraste ou outra tecla no meio) é ruído (a receita já limpa o campo); `enter` colado ao `text`
+  vira `press_enter`; `back`, `home`, `recents`, `delete` depois do texto e `enter` solto seguem recusando.
+- `ManualInput.clear_first` (só `type='text'`, padrão `false`) chega ao `type_text`; pelo ADB puro recusa `bad_input`.
+  Adendo v1.56 do contrato.
+- Prova `simulated`: `backend/tests/test_treino_teclas_na_destilacao.py` (11 passed; sem o conserto, 3 falham; o `delete` solto em outro campo recusa).
+  Real: `not_run`.
+
+## 2026-10-05 — 31.85: gravando, o quadro mais recente não é recusado por idade (branch fix/31-84-85-entrada-manual-no-treino)
+
+- `manual_input`: com gravação do treinamento, o quadro informado igual ao mais recente do backend vale acima da idade
+  máxima (captura sã, teto de 60 s); quadro antigo com um mais novo disponível e todo quadro velho fora da gravação
+  seguem em `stale_frame`. Motivo: a leitura de hierarquia da própria gravação deixava o aparelho lento (toque de
+  24 s) e as 15 teclas seguintes foram recusadas em série.
+- Pela folga, texto, `enter` e `delete` exigem a hierarquia lida antes da ação sem tela sensível nem foco em senha; senão
+  `stale_frame` (revisão de segredos). Falha ao gravar a entrada loga só o tipo da exceção, não a mensagem.
+- Prova `simulated`: `backend/tests/test_treino_quadro_velho.py` (10 passed; sem a guarda da folga, 3 falham; com o log
+  antigo, 1 falha). Real: `not_run`.
+
+## 2026-10-05 — 31.85: o carimbo da última entrada vale também quando a ação levanta (C2 do #430)
+
+- `manual_input`: `rt.ultima_entrada_mono` passa a ser posto num `finally` em volta do despacho. O toque que estoura o prazo
+  (24 s medidos) levanta, mas segue rodando no aparelho; sem carimbo o 2º toque sobre o mesmo quadro passava pela folga.
+  Carimba também a recusa anterior ao despacho (lado seguro: uma recusa a mais sob a folga).
+- Docs: `key_name = 'clear_first'` na leitura das sessões de treino (coluna própria numa migração futura); a linha
+  `recording` órfã se o `stop` falhar.
+- Prova `simulated`: `test_treino_quadro_velho.py` (15 passed); com o carimbo fora do `finally`, o teste novo falha. Real: `not_run`.
+
+## 2026-10-05 — 31.84/31.85: correções da segunda leitura do PR #430 (branch fix/31-84-85-entrada-manual-no-treino)
+
+- 31.85 (C1): `rt.ultima_entrada_mono` carimbado em cada entrada manual com efeito; sob a folga, toque, toque longo e arraste
+  só passam com quadro capturado DEPOIS dela (o segundo toque sobre o mesmo quadro caía na tela nova com a coordenada da
+  velha). C1b: quadro novo durante a leitura da árvore recusa qualquer entrada sob a folga.
+- 31.85 (R1): o fim (e o início) do controle zera `rt.training_session_id`; o gravador falhar no encerramento não prende a folga.
+- 31.84 (N1): o gravador marca o texto enviado com `clear_first` em `key_name` (sem migração); a destilação só trata o
+  `delete` colado como ruído se aquele texto foi limpando o campo (apagar parcial recusa a receita). `ManualInput`
+  recusa `clear_first` fora de `type='text'` (422). N2: o `type_text` do Appium engole a falha do `clear()`.
+- Prova `simulated`: `test_treino_quadro_velho.py` (14 passed), `test_treino_teclas_na_destilacao.py` (16 passed); cada
+  mutação (C1, C1b, R1, N1) derruba um teste. Real: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
