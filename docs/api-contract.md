@@ -334,8 +334,8 @@ interface ManualInput {
 | `metrics` | `{metrics: Metrics}` | não |
 | `health.updated` | `{health: Health}` | não |
 | `run.updated` | `{run: RunSummary}` | sim |
-| `objective.updated` | `{objective: Objective}` | sim |
-| `step.updated` | `{step: Step}` | sim |
+| `objective.updated` | `{objective: Objective, failure_kind?: string \| null}` (`failure_kind` na entrada em `waiting_user` pela etapa, desde a v1.47) | sim |
+| `step.updated` | `{step: Step, failure_kind?: string \| null}` (`failure_kind` desde a v1.47) | sim |
 | `attempt.updated` | `{attempt: Attempt}` (sem `actions`) | sim |
 | `action.logged` | `{action: Action, instance_id, step_id}` | sim |
 | `evidence.added` | `{evidence: Evidence}` | sim |
@@ -6165,3 +6165,18 @@ repetição não muda a chave do item, então não dava `plano_mudou`.
 - **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_telegram_entrada.py`,
   `backend/tests/test_telegram_portas.py`, `backend/tests/test_executor_honra_o_plano.py`,
   `frontend/src/features/runs/PortaDoPlano.test.tsx`). `not_run`: o gesto no central (depois do deploy 34).
+
+## Adendo v1.47 (05/10/2026; número da orquestradora; item 29.90) — `step.updated` e `objective.updated` levam o tipo de falha
+
+Sem migração. Aditivo no `data` do evento `step.updated` (`TaskRepository.emit_step`); o `StepDTO` não muda.
+- `failure_kind: string | null`: o tipo de falha classificado da etapa (`steps.failure_kind`, ADR-054; vocabulário em
+  `modules/learning/domain/falhas.py`). Nulo fora de um desfecho de falha. É o motivo estável para uma regra de aviso
+  consumir a parada que pede a pessoa sem ler o `status_detail` (texto livre). Os que pedem a pessoa numa etapa em
+  `waiting_user` incluem `aviso_do_app` (a folha de aviso que não fecha, ou um clicável novo por cima do botão de efeito,
+  29.90), `autenticacao`, `conta_errada` e `falta_informacao`.
+- `objective.updated`, na transição do objetivo para `waiting_user` pelo desfecho da etapa
+  (`Scheduler`, ramo `Outcome.waiting_user`): o mesmo `failure_kind` da etapa em `data.failure_kind`, para a regra de
+  aviso (28.40) escolher o texto sem cruzar com o `step.updated`. Nas outras transições, ausente.
+- O painel não tipa o `data` desses eventos (`frontend/src/store/reducer.ts`, `obj<Step>(data, 'step')`): nada muda lá.
+  Ausente = backend de antes do 29.90.
+- **Prova:** `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py::test_a_folha_que_nao_fecha_para_numa_pessoa_sem_mais_toque`).

@@ -269,3 +269,30 @@ def test_ainda_cobre_pela_identidade_e_pela_area() -> None:
                            UiTree(elements=[lista, fora], packages=["p"], sensitive=False))     # deixou a área
     assert Cobertura.das_variaveis(c.variaveis()) == c
     assert Cobertura.das_variaveis({}) is None
+
+
+async def test_o_teto_de_acoes_numa_limpeza_falha_a_limpeza_sem_juiz(harness: Harness, monkeypatch: Any) -> None:
+    """29.90 (L1 da revisão do 29.87): a etapa de limpeza tem voltas a mais no laço (`LIMITE_DE_DIALOGOS`). O ator que
+    só observa esgota as ações dela: sai pelo motivo do teto, sem juiz, e a limpeza opcional fica pulada sem travar a
+    etapa seguinte."""
+    import re
+    from app.taskqueue import executor as modulo
+    from app.planning.provider import Decision
+    harness.pular_o_tempo()
+    harness.encurtar_verificacao(1.5)
+    chamadas = _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    inner = harness.ai.inner
+    decide0 = inner.decide
+
+    async def decide(req: Any) -> Any:
+        if req.ctx.step_key.startswith(modulo.PREFIXO_LIMPEZA):
+            return Decision(tool="observe_screen", args={"rationale": "[simulado] só olha"}), Usage()
+        return await decide0(req)
+
+    inner.decide = decide
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    limpeza = _limpeza(harness, run.id)
+    assert re.search(r"Limite de \d+ ações por etapa", limpeza["status_detail"] or ""), limpeza["status_detail"]
+    assert chamadas.get("limpar_antes_verify_sent", 0) == 0
+    assert limpeza["status"] == "skipped"

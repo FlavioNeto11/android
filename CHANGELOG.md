@@ -39,6 +39,27 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py`,
   `test_conta_bloqueada_sai.py`). `not_run`: aparelho real.
 
+## 2026-10-05 — 29.90: "OK" é aceite, não dispensa; a folha entre a guarda e o Share não recebe o toque (branch feat/29-90-ok-e-aceite)
+
+- Sobras das leituras do 29.87 (#355). O rótulo `ok` sai dos rótulos GLOBAIS de dispensa da sessão do Instagram
+  (`sessao.yaml`); nenhum app declara mais `ok` como rótulo global de recusa (o "OK" do Outlook é botão só da tela dele).
+- Releitura da árvore logo antes do toque de efeito (`tap`/`long_press`; `type_text` e `drag` de efeito ficam fora por
+  escopo), `cobertura_nova_no_ponto`: um clicável novo por cima do ponto (`cobertura`) ou o alvo fora do lugar
+  (`alvo_movido`) seguram o toque, e o laço observa de novo; a folha declarada fecha pela regra e o Share sai depois,
+  uma vez. Toque por x,y sem elemento no ponto também é relido. Na ação de receita, a receita diverge e a IA assume.
+- Em `LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO` (3, no total da tentativa): com alguma `cobertura`, a etapa para em
+  `waiting_user` como `aviso_do_app` (um aviso que o app não declara); só `alvo_movido`, `fail_or_retry`.
+- Métricas para a janela do deploy 35: `executor.releitura_antes_do_efeito_ms{resultado}` e
+  `executor.tela_mudou_antes_do_efeito{motivo, origem}`; o funil de receitas ganha o motivo `tela_mudou`.
+- `proibido_na_tela` e o fechamento da folha (`regra_de_fechar`) reconhecem a tela em todos os idiomas declarados
+  (D1b, D1c); `telas.yaml` inválido avisa no log uma vez por modificação, e um `OSError` passageiro não fica no cache
+  (L2); tipo de falha `aviso_do_app` (camada pessoa, nunca vira lição) para a folha que não fecha (D4); o teto de ações
+  numa etapa de limpeza tem teste (L1).
+- Prova: `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py`, `test_receita_divergida_escala.py`,
+  `test_sobreposicao.py`, `test_learning_falhas.py`, `test_learning_diagnostico.py`, `test_funil_de_receitas.py`); o
+  teste da folha entre a guarda e o Share falha com a releitura desligada (o toque cai na folha em 360,1188).
+  `not_run`: aparelho real e a duração da releitura (p50/p95, central e remoto).
+
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do

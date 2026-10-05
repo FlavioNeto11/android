@@ -82,6 +82,7 @@ def test_todo_tipo_de_falha_tem_causa_sem_excecao() -> None:
     (FailureKind.SESSAO_DE_AUTOMACAO, CausaProvavel.APARELHO), (FailureKind.INTERROMPIDA, CausaProvavel.APARELHO),
     (FailureKind.DEFEITO_DO_PLANO, CausaProvavel.PLANO),
     (FailureKind.FALTA_INFORMACAO, CausaProvavel.INFORMACAO_DA_PESSOA),
+    (FailureKind.AVISO_DO_APP, CausaProvavel.INFORMACAO_DA_PESSOA),
     (FailureKind.EFEITO_GUARDA_NAO_ATENDIDA, CausaProvavel.CATALOGO_RECUSOU),
     (FailureKind.EFEITO_NAO_COMPROVADO, CausaProvavel.VERIFICADOR),
     (FailureKind.POS_CONDICAO_NAO_COMPROVADA, CausaProvavel.VERIFICADOR),

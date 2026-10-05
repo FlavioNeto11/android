@@ -1560,9 +1560,11 @@ class Repository:
 
     def emit_step(self, step_id: str, message: str, *, level: str = "info") -> None:
         r = self.step_row(step_id)
+        # 29.90: o tipo de falha classificado (ADR-054) vai no evento, para uma regra de aviso consumir a parada que
+        # pede a pessoa (`aviso_do_app`, `autenticacao`…) por um motivo estável, não pelo texto do detalhe.
         self.bus.emit("step.updated", f"{r['instance_id']}: {message}", level=level, run_id=r["run_id"],
                       instance_id=r["instance_id"], objective_id=r["objective_id"], step_id=step_id,
-                      data={"step": self.step_dto(r).model_dump(mode="json")})
+                      data={"step": self.step_dto(r).model_dump(mode="json"), "failure_kind": r["failure_kind"]})
 
     def emit_attempt(self, attempt_id: str, step: Row | None) -> None:
         a = self.db.one("SELECT * FROM attempts WHERE id=?", (attempt_id,))
