@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.47: as sobras da leitura do #412 na resposta solta à escolha (branch canais/28-47-escolha-sobras)
+
+- A mensagem encaminhada (`forward_origin`, ou `forward_date`) não casa com a pergunta de escolha. A marca é gravada
+  na `previa` da linha, sem migração.
+- O teto pelo relógio saiu: a pergunta gravada um instante depois do "1", mas anterior a ele no chat, casa.
+- O `message_id` é comparado como número (`isdecimal`), com teste que cruza a casa dos dígitos (99 contra 100).
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py`, 113 no arquivo; o teste do teto falhou antes de o
+  teto sair). Real: `not_run`.
+
 ## 2026-10-05 — 28.44: a resposta solta casa com a pergunta de escolha aberta (branch canais/28-44-escolha-solta)
 
 - A pergunta de escolha que a ANA manda leva a marca `escolha:<msg>:<opções>` (`telegram_status.py --escolha 1,2,3`).

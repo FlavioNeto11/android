@@ -58,10 +58,15 @@ def _na_fase(linhas: list[dict[str, object]], fase: str) -> list[dict[str, objec
     return [linha for linha in linhas if fase_de(linha) == fase]
 
 
+#: A marca, na `previa` gravada com a linha, da mensagem encaminhada (28.47).
+ENCAMINHADA = "encaminhada"
+
+
 def _numero(ref: object) -> int | None:
-    """O `message_id` do Telegram como número (a ordem do chat); `None` para o que não é (`resultado:<id>`, vazio)."""
+    """O `message_id` do Telegram como número (a ordem do chat); `None` para o que não é (`resultado:<id>`, vazio).
+    `isdecimal`, e não `isdigit`: "²" passa no `isdigit` e quebra o `int`."""
     texto = str(ref or "").strip()
-    return int(texto) if texto.isdigit() else None
+    return int(texto) if texto.isdecimal() else None
 
 
 def _curto(texto: str | None, n: int = MAX_CURTO) -> str | None:
@@ -97,17 +102,18 @@ class EntradasDoCanal:
 
     def gravar(self, *, id_externo: str, ordem: int | None, tipo: str, do_dono: bool, ref_mensagem: str | None,
                responde_a: str | None, texto: str | None, tamanho: int, estado: str = "recebida",
-               erro: str | None = None) -> bool:
+               erro: str | None = None, previa: Mapping[str, object] | None = None) -> bool:
         """Grava o que chegou. Devolve se a linha é nova. `estado` final já na gravação para o que não se trata (não
         veio do dono, credencial): o texto destes nunca é gravado, então não há o que tratar depois."""
         agora = self._agora()
         tratada = None if estado == "recebida" else agora
         cur = self.db.execute(
             "INSERT INTO canal_entradas(canal, id_externo, ordem, tipo, do_dono, ref_mensagem, responde_a, texto,"
-            " tamanho, estado, erro, recebida_em, tratada_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " tamanho, estado, erro, previa, recebida_em, tratada_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT (canal, id_externo) DO NOTHING",
             (self.canal, id_externo, ordem, tipo, 1 if do_dono else 0, ref_mensagem, responde_a, texto, int(tamanho),
-             estado, _curto(erro, MAX_ERRO), agora, tratada))
+             estado, _curto(erro, MAX_ERRO), json.dumps(previa, ensure_ascii=False) if previa is not None else None,
+             agora, tratada))
         return (cur.rowcount or 0) == 1
 
     # ------------------------------------------------------------------ o aviso do webhook (Trello, 32.2 §8.5)
@@ -245,7 +251,17 @@ class EntradasDoCanal:
             " VALUES (?,?,'substitui',?,NULL,?) ON CONFLICT (canal, ref_mensagem) DO NOTHING",
             (self.canal, f"substitui:{nova}", f"substitui:{antiga}", self._agora()))
 
-    def escolhas_abertas(self, ate: str, janela_s: float, *, fora: int, ref_da_resposta: str | None) -> list[dict[str, object]]:
+    def encaminhada(self, linha: Mapping[str, object]) -> bool:
+        """A linha veio de uma mensagem encaminhada (28.47): `gravar` pôs a marca na `previa` ao gravar. Uma `previa` que
+        não é JSON conta como não encaminhada; a marca some quando a conversa grava a `previa` dela, depois de decidir."""
+        try:
+            previa = json.loads(str(linha.get("previa") or "null"))
+        except ValueError:
+            return False
+        return isinstance(previa, dict) and previa.get(ENCAMINHADA) is True
+
+    def escolhas_abertas(self, ate: str, janela_s: float, *, fora: int,
+                         ref_da_resposta: str | None) -> list[dict[str, object]]:
         """As perguntas de escolha (`fato = 'escolha:<msg>:<opções>'`, 28.44) abertas quando o dono escreveu a resposta
         `ref_da_resposta`, da mais nova para a mais velha. Ficam de fora as que o dono já respondeu, por reply de verdade
         (`responde_a`) ou por casamento (`alvo = 'escolha:<msg>'`), e as que uma mensagem ANTERIOR à resposta substituiu
@@ -253,9 +269,10 @@ class EntradasDoCanal:
 
         A ordem é a do `message_id`, não a do relógio (C1 da leitura do #412): no chat privado ele é uma sequência só,
         para os dois lados, e o `recebida_em` é a hora em que o NOSSO laço gravou. Uma pergunta mandada depois de o dono
-        escrever, mas antes de o laço gravar, não casa; uma substituição nessa mesma brecha não fecha a anterior. A
-        janela de `janela_s` segundos antes de `ate` (o `recebida_em`) segue pelo relógio. Sem `ref_da_resposta`
-        numérica, nada casa."""
+        escrever, mas antes de o laço gravar, não casa; uma substituição nessa mesma brecha não fecha a anterior. Por
+        isso não há teto pelo relógio (28.47): a pergunta que o script gravou um instante depois do "1", mas que veio
+        antes dele no chat, casa. A janela de `janela_s` segundos antes de `ate` (o `recebida_em`) segue pelo relógio.
+        Sem `ref_da_resposta` numérica, nada casa."""
         limite = parse_iso(ate)
         resposta = _numero(ref_da_resposta)
         if limite is None or resposta is None:
@@ -263,10 +280,10 @@ class EntradasDoCanal:
         desde = to_iso(limite - timedelta(seconds=janela_s))
         candidatas = [dict(r) for r in self.db.query(
             "SELECT s.ref_mensagem, s.fato, s.enviada_em FROM canal_enviadas s WHERE s.canal=? AND s.fato LIKE 'escolha:%'"
-            " AND s.enviada_em >= ? AND s.enviada_em <= ?"
+            " AND s.enviada_em >= ?"
             " AND NOT EXISTS (SELECT 1 FROM canal_entradas e WHERE e.canal=s.canal AND e.do_dono=1 AND e.id <> ?"
             "  AND (e.responde_a=s.ref_mensagem OR e.alvo='escolha:' || s.ref_mensagem))"
-            " ORDER BY s.enviada_em DESC, s.ref_mensagem DESC", (self.canal, desde, ate, int(fora)))]
+            " ORDER BY s.enviada_em DESC, s.ref_mensagem DESC", (self.canal, desde, int(fora)))]
         candidatas = [c for c in candidatas if (_numero(c["ref_mensagem"]) or resposta) < resposta]
         if not candidatas:
             return []
