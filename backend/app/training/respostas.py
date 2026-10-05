@@ -2,8 +2,11 @@
 
 O `propose` recebe, opcionalmente, `{"answers": [{"question", "answer"}]}`. Aqui ficam a validação da forma, a recusa
 de segredo, o acúmulo entre chamadas (guardado DENTRO da proposta da sessão, na chave `answers`) e o corte das
-perguntas que a pessoa já respondeu. Nada aqui escreve em banco, log ou evento: o texto da resposta é da pessoa e
-só vai ao provedor.
+perguntas que a pessoa já respondeu.
+
+Um `propose` SEM corpo (ou com `answers` vazio) mantém e reenvia ao provedor as respostas já guardadas na proposta
+anterior; só um corpo com respostas novas as soma ou troca. Nada aqui escreve em banco, log ou evento:
+o texto da resposta é da pessoa e só vai ao provedor.
 """
 from __future__ import annotations
 
@@ -12,7 +15,6 @@ from .recorder import TrainingError
 
 MAX_POR_CORPO = 8
 MAX_ACUMULADAS = 16
-PERGUNTA_MAX = 300
 RESPOSTA_MAX = 500
 
 Resposta = dict[str, str]       # {"question": ..., "answer": ...}
@@ -27,9 +29,19 @@ def _invalida(mensagem: str) -> TrainingError:
     return TrainingError("invalid_answers", mensagem, 400)
 
 
-def validar_respostas(corpo: object) -> list[Resposta]:
+def conhecidas(proposta: object) -> set[str]:
+    """As perguntas a que se pode responder: as `questions` da proposta guardada e as já respondidas (chaves de
+    comparação). Texto livre do cliente fora disso não entra no pedido ao provedor."""
+    if not isinstance(proposta, dict):
+        return set()
+    abertas = {chave_da_pergunta(q) for q in proposta.get("questions") or [] if isinstance(q, str)}
+    return abertas | {chave_da_pergunta(r["question"]) for r in guardadas(proposta)}
+
+
+def validar_respostas(corpo: object, proposta: object = None) -> list[Resposta]:
     """Confere o corpo do `propose`. `None` (sem corpo) e `{}` valem como nenhuma resposta. Levanta
-    `invalid_answers` (400) para erro de forma e `resposta_sensivel` (400) para resposta com formato de segredo."""
+    `invalid_answers` (400) para erro de forma, para pergunta que não é da proposta guardada (ou sem proposta
+    guardada) e `resposta_sensivel` (400) para pergunta ou resposta com formato de segredo."""
     if corpo is None:
         return []
     if not isinstance(corpo, dict):
@@ -53,8 +65,8 @@ def validar_respostas(corpo: object) -> list[Resposta]:
         if not isinstance(pergunta, str) or not isinstance(resposta, str):
             raise _invalida(f"A resposta {n} tem pergunta e resposta que não são texto.")
         pergunta, resposta = pergunta.strip(), resposta.strip()
-        if not 1 <= len(pergunta) <= PERGUNTA_MAX:
-            raise _invalida(f"A pergunta da resposta {n} tem de ter de 1 a {PERGUNTA_MAX} caracteres.")
+        if not pergunta:             # sem teto: a pergunta só vale se for da proposta guardada (a IA não limita o tamanho)
+            raise _invalida(f"A pergunta da resposta {n} não pode ficar vazia.")
         if not 1 <= len(resposta) <= RESPOSTA_MAX:
             raise _invalida(f"A resposta {n} tem de ter de 1 a {RESPOSTA_MAX} caracteres.")
         chave = chave_da_pergunta(pergunta)
@@ -62,9 +74,15 @@ def validar_respostas(corpo: object) -> list[Resposta]:
             raise _invalida(f"A pergunta da resposta {n} aparece repetida no mesmo pedido.")
         vistas.add(chave)
         limpas.append({"question": pergunta, "answer": resposta})
-    # depois da forma: o formato de segredo, antes de qualquer chamada de IA (a mensagem não repete o texto)
-    if any(looks_secret(r["answer"]) for r in limpas):
+    # depois da forma: o formato de segredo (na pergunta também: é texto do cliente que iria ao provedor), antes de
+    # qualquer chamada de IA; a mensagem não repete o texto
+    if any(looks_secret(r["answer"]) or looks_secret(r["question"]) for r in limpas):
         raise TrainingError("resposta_sensivel", "Não escreva senha nem código aqui: a proposta não precisa disso.", 400)
+    if limpas and not isinstance(proposta, dict):
+        raise _invalida("Não há proposta guardada: peça a proposta antes de responder às perguntas dela.")
+    abertas = conhecidas(proposta)
+    if any(chave_da_pergunta(r["question"]) not in abertas for r in limpas):
+        raise _invalida("pergunta desconhecida: responda a uma pergunta da proposta atual.")
     return limpas
 
 
