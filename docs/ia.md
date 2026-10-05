@@ -1190,7 +1190,7 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
         de topo depois: "@cafe_at_home" e "look-at-me" passam;
       - "-dot-" como ponto do domínio;
       - os provedores fastmail, laposte, web.de, mail.ru e me.com (protonmail, zoho, gmx, yandex e aol já estavam).
-    - **G-4, o catálogo real**: os nomes chegam INTEIROS (`nomes_de_destino`: "lucas almeida", não "lucas" e "almeida"
+    - **G-4, o catálogo real**: os nomes chegam INTEIROS (`nomes_de_destino`: "tadeu quintela", não "tadeu" e "quintela"
       soltos), e o nome solto só é destino depois da palavra de conta ou do "@" (`_Destinos`).
       - Nunca na posição de valor: uma persona "Girassol" não isenta a senha "girassol", nem em "entre com girassol" nem
         como segundo do par ("entre com a conta Lucas e girassol").

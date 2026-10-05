@@ -47,7 +47,7 @@ de Perfil), e `openPersona(id, tab)` e `?foco=` seguem iguais (`store/ui.ts` e `
 
 ## Linha de base (reconfirmada neste branch, antes de mexer) e depois
 
-Medido pelo navegador da IDE contra o backend simulado, persona "Lucas Almeida" com @ e aparelho, 1440 px.
+Medido pelo navegador da IDE contra o backend simulado, persona "Tadeu Quintela" com @ e aparelho, 1440 px.
 
 | | Antes (`085e34e`) | Depois |
 |---|---|---|

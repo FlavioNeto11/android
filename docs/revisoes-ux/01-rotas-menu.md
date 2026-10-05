@@ -145,7 +145,7 @@ selecionada: vira `#/execucoes/<id>` com replace.
 `VITE_API_TARGET=http://127.0.0.1:8000`, painel do Browser da IDE; só navegação, nenhum clique com efeito):
 - 1440×900: coluna lateral com as 8 seções visíveis, `scrollWidth` igual à largura (1440, sem rolagem horizontal).
   Começou recolhida (a janela do painel do navegador media menos de 1280 px no carregamento) e "Expandir menu"
-  expandiu. `#/perfis` virou `#/personas`, com o título certo e "Personas" como item atual. "Abrir André Carvalho"
+  expandiu. `#/perfis` virou `#/personas`, com o título certo e "Personas" como item atual. "Abrir René Sampaio"
   → `#/personas/<id>`; a guia Memória → `#/personas/<id>/memoria`, sem nova entrada no histórico (o comprimento
   ficou em 3). Navegar de novo para o link abriu a mesma pessoa na mesma guia, e Voltar → `#/personas` com a lista.
   "Abrir android-01 na visão de foco" → `#/painel?foco=android-01` (o painel abriu e o conteúdo ficou com 594 px),

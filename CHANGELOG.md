@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.107: nome de persona fora de teste trocado à mão (branch chore/31-107-nomes-de-persona-fora-de-teste)
+
+- Complemento do 31.105 (achado C1 da revisão): nome e sobrenome de persona real em comentários e docs fora de teste,
+  onde a troca ampla não chega, viraram os nomes de exemplo da mesma tabela local (fora do Git), 13 linhas em 8
+  arquivos: 6 docs de revisão de UX e de IA e 2 comentários do frontend. Na mesma linha, os pedaços soltos de nome
+  real também foram trocados, para a frase continuar coerente. Só texto: nenhuma decisão, prova ou código mudou.
+- Fora do alcance, por estarem em outro ramo: os 3 arquivos de `backend/app` saem no 31.98 e o placeholder do
+  formulário sai no 31.106. Ficam como registro histórico o livro-razão do plano e as linhas antigas deste arquivo.
+- A tabela local ganhou os 2 pedaços que faltavam, com valores de exemplo conferidos contra o repositório, a tabela e
+  o banco central (só leitura).
+- Prova: `not_run` em teste (só comentário e doc); conferido por busca que nenhuma linha alterada tem pedaço de nome
+  real; `docs-check` verde.
+
 ## 2026-10-05 — 31.105: os dados de personas saem do Git (branch chore/31-105-dados-de-personas-fora-do-git)
 
 - Os dois arquivos de dados de personas usados por scripts (a proposta de voz e o cadastro das personas novas) saíram
