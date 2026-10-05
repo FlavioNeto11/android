@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.101: os testes não usam mais o identificador de uma conta real (branch test/31-101-dados-ficticios-nos-testes)
+
+- Os três @ com número de contas reais que os testes usavam como dado viraram valores de exemplo fixos, o mesmo para o
+  mesmo papel (36 arquivos de teste, 208 linhas). A troca é `scripts/trocar-nomes-nos-testes.py`, que lê a tabela de
+  um arquivo local FORA do Git (o script não guarda nome nenhum) e só imprime contagens.
+- `--amplo` troca também os pedaços de nome (ensaio: 124 arquivos, 1594 linhas). Não aplicado: roda como última junção
+  no corte de uma suíte, quando a orquestradora marcar, para não conflitar com os ramos da fila.
+- Sem catraca nesta rodada: hash de identificador curto num teste versionado se reverte por dicionário; se houver
+  uma, é HMAC com a chave no mesmo caminho local da tabela.
+- Prova `simulated`: `not_run` (funil da suíte 39). Conferido sem pytest: nenhum identificador antigo nos testes. Real: `not_run`.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.

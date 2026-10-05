@@ -52,8 +52,8 @@ class _Frota:
 
 def _frota(tmp_path: Path, **over: Any) -> tuple[SocialService, SocialRepository, PolicyEngine, dict[str, str]]:
     svc, repo, _pol, _db = build(tmp_path)
-    contas = {"lucas": perfil(svc, "lucas.almeida9484", "android-01"),
-              "mariana": perfil(svc, "mariana.costa91182", "android-02")}
+    contas = {"lucas": perfil(svc, "tadeu.quintela4821", "android-01"),
+              "mariana": perfil(svc, "luciana.bastos73519", "android-02")}
     for pid in contas.values():
         # sem aquecimento e sem intervalo entre ações: o que se mede aqui é só a regra de frota
         repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0, '
@@ -133,7 +133,7 @@ def test_acao_de_frota_sem_alvo_conhecido_e_recusada(tmp_path: Path) -> None:
 # ============================================================================ 2. curtida: teto configurável
 def test_curtida_conta_para_o_teto_de_contas_por_alvo(tmp_path: Path) -> None:
     svc, _repo, policies, contas = _frota(tmp_path, curtidas=2)
-    contas["bruno"] = svc.create_profile(ProfileCreate(username="bruno.ferreira9267", password=SENHA)).id
+    contas["bruno"] = svc.create_profile(ProfileCreate(username="valdir.teixeira6352", password=SENHA)).id
     _fez(svc, contas["lucas"], InteractionType.post_liked)
     like = capability_of(IG, "LIKE_POST")
     assert policies.check(contas["mariana"], like, counterparty=ALVO).allowed          # 1 outra < teto 2
@@ -351,9 +351,9 @@ def _execucao_em_duas_contas(state: Any, acao: str, bindings: dict[str, str]) ->
     db = state.db
     db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
     db.execute("UPDATE instances SET app_id='ig' WHERE id IN ('android-01','android-02')")
-    pids = {"android-01": state.social.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA,
+    pids = {"android-01": state.social.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA,
                                                                     instance_id="android-01")).id,
-            "android-02": state.social.create_profile(ProfileCreate(username="mariana.costa91182", password=SENHA,
+            "android-02": state.social.create_profile(ProfileCreate(username="luciana.bastos73519", password=SENHA,
                                                                     instance_id="android-02")).id}
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
                " VALUES ('run-f','kf','x','execute','running',1,'[\"android-01\",\"android-02\"]',"

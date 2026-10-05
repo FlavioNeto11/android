@@ -19,7 +19,7 @@ from app.util import now, to_iso
 
 from .test_capabilities import IG, SENHA
 
-LUCAS = "lucas.almeida9484"
+LUCAS = "tadeu.quintela4821"
 
 
 def _execucao(state: Any, alvos: list[str], *, limites: str = '"comments_per_hour": 3') -> str:
@@ -75,9 +75,9 @@ async def test_lista_mista_proprio_perfil_conta_nossa_na_janela_e_terceiro(harne
     lucas = _execucao(state, [])
     andre = state.social.create_profile(ProfileCreate(username="andre.carvalho9543", password=SENHA,
                                                       instance_id="android-02")).id
-    state.social.create_profile(ProfileCreate(username="bruno.ferreira9267", password=SENHA, instance_id="android-03"))
+    state.social.create_profile(ProfileCreate(username="valdir.teixeira6352", password=SENHA, instance_id="android-03"))
     state.social_repo.record_interaction(andre, type=InteractionType.comment_replied.value, direction="outbound",
-                                         status=InteractionStatus.confirmed.value, counterparty="@bruno.ferreira9267",
+                                         status=InteractionStatus.confirmed.value, counterparty="@valdir.teixeira6352",
                                          app_id="ig", occurred_at=to_iso(now() - timedelta(days=2)))
     db = state.db
     db.execute("UPDATE runs SET plan=? WHERE id='run-l'", (_plano_de_responder_a_lista().model_dump_json(),))
@@ -89,12 +89,12 @@ async def test_lista_mista_proprio_perfil_conta_nossa_na_janela_e_terceiro(harne
     obj = db.one("SELECT * FROM objectives WHERE id='run-l:android-01'")
     coleta = state.scheduler.repo.step_dto(db.one("SELECT * FROM steps WHERE id='run-l:android-01:v1:collect'"))
     state.scheduler._expand_for_each(obj, coleta,
-                                     [LUCAS, "bruno.ferreira9267", "terceiro.real"])
+                                     [LUCAS, "valdir.teixeira6352", "terceiro.real"])
     obj = db.one("SELECT * FROM objectives WHERE id='run-l:android-01'")
     etapas = db.query("SELECT * FROM steps WHERE objective_id=? AND plan_version=? AND capability='REPLY_COMMENT'"
                       " ORDER BY seq", (obj["id"], obj["plan_version"]))
     alvos = [json.loads(e["bindings"])["username"] for e in etapas]
-    assert alvos == ["bruno.ferreira9267", "terceiro.real"]                 # o próprio perfil não virou etapa
+    assert alvos == ["valdir.teixeira6352", "terceiro.real"]                 # o próprio perfil não virou etapa
     assert any("próprio perfil" in d["message"] for d in db.query("SELECT message FROM events WHERE kind='decision' AND run_id='run-l'"))
     run = db.one("SELECT * FROM runs WHERE id='run-l'")
     nossa, terceiro = [await state._policy_gate(obj, e, run) for e in etapas]

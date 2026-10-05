@@ -26,7 +26,7 @@ from .test_decisao_fechada_reverificacao_h import _motivo
 FAMILIAS_H: list[tuple[str, int]] = [
     ('entre com o lucas hoje girassol', 1), ('entre com lucas agora girassol', 1), ('entre com o lucas (girassol)', 1),
     ('entre com o lucas do girassol', 1), ('entre com o lucas hoje, girassol', 1),
-    ('entre com Lucas Almeida de novo girassol', 1), ('entre com @lucas.almeida9484 hoje girassol', 1),
+    ('entre com Lucas Almeida de novo girassol', 1), ('entre com @tadeu.quintela4821 hoje girassol', 1),
     ('entre com android-01 hoje girassol', 1), ('entre com a conta do lucas hoje girassol', 1),
     ('entre como lucas hoje girassol', 1), ('faça login com o lucas hoje girassol', 1),
     ('entre no instagram com o lucas hoje girassol', 1), ('entra com o lucas hoje girassol', 1),
@@ -37,7 +37,7 @@ FAMILIAS_H: list[tuple[str, int]] = [
     ('entre com o navegador e girassol', 2), ('entre com a conta lucas hoje girassol', 3),
     ('curta a foto da marina com a conta lucas, girassol', 3),
     ('curta a foto da marina com a conta lucas (girassol)', 3),
-    ('curta a foto da marina com a conta @lucas.almeida9484, girassol', 3),
+    ('curta a foto da marina com a conta @tadeu.quintela4821, girassol', 3),
     ('curta a foto da marina com a conta lucas, que abre com girassol', 3),
     ('entre com a conta lucas mesmo girassol', 3), ('entre com a conta lucas agora girassol', 3),
     ('entre com a conta lucas antes girassol', 3), ('entre com a conta lucas primeiro girassol', 3),
@@ -101,7 +101,7 @@ REGRESSAO_F: list[str] = [
     'entre com @zilda.prado e girassol e curta', 'entre com @zilda e girassol', 'entre com @zilda.prado, girassol',
     'entre com @zilda.prado: girassol', 'faça login com @zilda.prado e girassol',
     'entre no instagram com @zilda.prado e girassol', 'entre com @zilda.prado e a girassol',
-    'entre com lucas.almeida9484@outlook.com e girassol', 'entre com lucas.almeida9484@gmail.com, girassol',
+    'entre com tadeu.quintela4821@outlook.com e girassol', 'entre com tadeu.quintela4821@gmail.com, girassol',
     'entre com lucas@outlook.com e girassol', 'entre com a conta zilda@correio.net e girassol',
     'mande para zilda-at-correio-net a foto', 'mande para zilda-at-gmail a foto',
     'mande para zilda-at-correio-dot-net a foto', 'digite g, i, r, a, s, s, o, l e curta o post da Marina',
@@ -153,7 +153,7 @@ CUSTO_DA_FORMA_A: list[tuple[str, bool]] = [
     ("entre com a conta do lucas e curta a foto da Marina", False), ("conta do lucas: abra o feed", False),
     ("acesse a conta da Marina e leia a bio", False), ("Abra o QA Messenger e confirme qual conta está conectada", False),
     # G
-    ("entre com @lucas.almeida9484 e curta o post", False), ("entre com a conta Girassol e curta a foto", True),
+    ("entre com @tadeu.quintela4821 e curta o post", False), ("entre com a conta Girassol e curta a foto", True),
     ("acesse a conta da Girassol e leia a bio", True), ("usuário lucas, curta o post da Marina", False),
     ("na conta lucas, comente parabéns", False),
     # H
@@ -194,7 +194,7 @@ def test_os_controles_operacionais_passam(comando: str, girassol: bool) -> None:
     # o verbo de entrar com conector até 3 tokens depois, o passado incluso
     "entre no insta com a foto da marina", "entre com a conta Lucas e curta", "entre no app usando o google",
     "acessei com sucesso", "logado com sucesso, curta a foto", "logue com a conta do lucas",
-    "entre com @lucas.almeida9484 e curta o post",
+    "entre com @tadeu.quintela4821 e curta o post",
     # o campo forte e o verbo de digitar, mesmo sem valor
     "abra a conta e curta", "digite oi",
     # o par sem campo forte: campo amplo, nome do catálogo e e-mail
@@ -213,7 +213,7 @@ def test_os_gatilhos_da_forma_a_recusam_com_motivo_proprio(comando: str) -> None
     # (31.20): os controles que o tinham estão em `CUSTO_DA_A_MEDIA` (test_decisao_fechada_reverificacao_i.py)
     "abra o insta e curta as 3 fotos", "abra o insta e veja o post de 2024", "abra o insta e use 1987",
     # a sintaxe de destino sem gatilho ("pela", "como")
-    "curta a foto da Marina pela Lucas", "curta o post como @lucas.almeida9484",
+    "curta a foto da Marina pela Lucas", "curta o post como @tadeu.quintela4821",
     # a vírgula da lista com verbo e o e-mail seguido de número
     "veja o perfil Marina, Zilda e Ana", "curta o post de Maria Silva @maria.s fulano@exemplo.com 987654321",
 ])

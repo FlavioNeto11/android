@@ -15,7 +15,7 @@ import { ProfilesPage } from './ProfilesPage';
 /** A pessoa como `GET /personas` a devolve (v0.27): `username` nulo quando ainda não tem conta de cadastro. */
 function pessoa(over: Partial<PersonaDTO> = {}): PersonaDTO {
   return {
-    id: 'ig-1', name: 'Mariana Costa', summary: null, username: 'mariana.costa91182', display_name: 'Mariana Costa',
+    id: 'ig-1', name: 'Mariana Costa', summary: null, username: 'luciana.bastos73519', display_name: 'Mariana Costa',
     first_name: 'Mariana', last_name: 'Costa', birth_date: null, email: null, persona_id: 'ig-1', persona_name: 'Mariana Costa',
     status: 'active', instance_id: 'android-02',
     locality: { worker_id: null, worker_name: 'este servidor', worker_state: 'online', known: true,
@@ -86,7 +86,7 @@ describe('remover persona', () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa()]));
     backend.on('DELETE', /^\/api\/personas\//, () => json(null, 204));
     await render();
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
 
     // Remover mora no menu "⋯" (tarefa UX 05), longe do "Abrir".
     await click(byRole('button', /Mais ações de Mariana Costa/i));
@@ -95,14 +95,14 @@ describe('remover persona', () => {
     await click(byRole('button', /^Voltar$/i, byRole('dialog', /Remover/)));
     await waitFor(() => !text().includes('as senhas guardadas no cofre vão junto'));
     expect(backend.callsTo('DELETE', /personas/)).toHaveLength(0);
-    expect(text()).toContain('mariana.costa91182');
+    expect(text()).toContain('luciana.bastos73519');
   });
 
   it('confirmar no diálogo apaga pela rota da persona (que recusa quem está vinculado ou em execução)', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa()]));
     backend.on('DELETE', /^\/api\/personas\//, () => json(null, 204));
     await render();
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
 
     // Remover mora no menu "⋯" (tarefa UX 05), longe do "Abrir".
     await click(byRole('button', /Mais ações de Mariana Costa/i));
@@ -121,7 +121,7 @@ describe('personas', () => {
     expect(text()).toContain('sem conta de cadastro');
     expect(text()).toContain('29 anos · Recife · Professora de biologia');
     expect(text()).not.toContain('@null');
-    expect(text()).toContain('@mariana.costa91182');
+    expect(text()).toContain('@luciana.bastos73519');
     // A lista vem de `GET /personas` (todas as pessoas), não de `GET /instagram/profiles` (só quem tem @).
     expect(backend.callsTo('GET', /^\/api\/instagram\/profiles$/)).toHaveLength(0);
   });
@@ -141,7 +141,7 @@ describe('personas', () => {
   it('o cartão é a pessoa: contas, aparelho e situação — sem senha, sessão nem Conectar', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa({ accounts_count: 2 })]));
     await render();
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
     expect(text()).toContain('Contas');
     expect(text()).toContain('2');
     expect(text()).toContain('android-02');
@@ -159,7 +159,7 @@ describe('personas', () => {
       instance_id: 'android-02', devices: [binding('android-02', true), binding('android-05', false)],
     })]));
     await render();
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
     expect(text()).toContain('Aparelhos');
     expect(text()).toContain('android-02 (principal) · android-05');
   });
@@ -175,7 +175,7 @@ describe('personas', () => {
 
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa()]));
     await click(byRole('button', /Tentar de novo/));
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
     expect(text()).not.toContain('Não foi possível carregar as personas');
   });
 
@@ -500,28 +500,28 @@ describe('fila de intervenção', () => {
   it('lista perfil, aparelho e motivo de quem está preso, e ignora quem não está', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([
       pessoa({
-        id: 'ig-1', username: 'mariana.costa91182',
+        id: 'ig-1', username: 'luciana.bastos73519',
         session: { status: 'auth_challenge', instance_id: 'android-02', observed_username: null,
                    verified_at: '2026-09-23T09:00:00Z', detail: 'O Instagram exige confirmação adicional.',
                    stale: false },
       }),
-      pessoa({ id: 'ig-2', name: 'Lucas Almeida', username: 'lucas.almeida9484', instance_id: 'android-01' }),
+      pessoa({ id: 'ig-2', name: 'Lucas Almeida', username: 'tadeu.quintela4821', instance_id: 'android-01' }),
       SEM_CONTA,
     ]));
     await render();
     await waitFor(() => text().includes('Aguardando intervenção'));
 
-    expect(text()).toContain('mariana.costa91182');
+    expect(text()).toContain('luciana.bastos73519');
     expect(text()).toContain('android-02');
     expect(text()).toContain('O Instagram exige confirmação adicional.');
-    // "lucas.almeida9484" está `unknown`: NÃO aparece na fila, só no cartão (uma vez).
+    // "tadeu.quintela4821" está `unknown`: NÃO aparece na fila, só no cartão (uma vez).
     expect(text().match(/lucas\.almeida9484/g)?.length ?? 0).toBe(1);
   });
 
   it('sem ninguém preso, a fila não aparece', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa()]));   // status padrão: unknown
     await render();
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
     expect(text()).not.toContain('Aguardando intervenção');
   });
 
@@ -588,7 +588,7 @@ describe('onde a persona vive', () => {
                   detail: 'os dados deste perfil vivem em Notebook da sala, mas android-02 aponta hoje para este servidor' },
     })]));
     await render();
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
     expect(text()).toContain('Servidor');
     expect(text()).toContain('Notebook da sala');
     expect(text()).toContain('mudou de servidor');
@@ -609,7 +609,7 @@ describe('grupos de acesso', () => {
     backend.on('GET', /^\/api\/personas$/, () => json([
       pessoa({ id: 'ig-1', name: 'André Carvalho', username: 'andre.carvalho9543', policy_group_id: 'grp-1',
                policy_group_name: 'Cautelosos' }),
-      pessoa({ id: 'ig-2', name: 'Bruno Ferreira', username: 'bruno.ferreira9267' }),
+      pessoa({ id: 'ig-2', name: 'Bruno Ferreira', username: 'valdir.teixeira6352' }),
       SEM_CONTA,
     ]));
     backend.on('GET', /\/instagram\/policy-groups$/, () => json(grupos));
@@ -684,7 +684,7 @@ describe('grupos de acesso', () => {
     // O grupo de acesso governa o que a CONTA faz: a pessoa sem @ não aparece como membro possível.
     expect(() => byRole('checkbox', /@null/i)).toThrow();
     await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Aquecimento');
-    await click(byRole('checkbox', /@bruno.ferreira9267/i));
+    await click(byRole('checkbox', /@valdir.teixeira6352/i));
     await waitFor(() => expect(byRole('radiogroup', /Política de Curtir a publicação/i)).toBeTruthy());
     await click(byRole('radio', /Com aprovação/i, byRole('radiogroup', /Política de Curtir a publicação/i)));
     await click(byRole('button', /Criar grupo/i));
@@ -1047,7 +1047,7 @@ describe('grupos de acesso', () => {
 describe('busca, filtros e visão em tabela', () => {
   const LISTA = () => [
     pessoa(),
-    pessoa({ id: 'ig-2', name: 'Bruno Ferreira', username: 'bruno.ferreira9267', display_name: 'Bruno Ferreira',
+    pessoa({ id: 'ig-2', name: 'Bruno Ferreira', username: 'valdir.teixeira6352', display_name: 'Bruno Ferreira',
              status: 'blocked', instance_id: null, locality: null }),
     SEM_CONTA,
   ];
@@ -1056,22 +1056,22 @@ describe('busca, filtros e visão em tabela', () => {
     backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
     useUiStore.getState().navegar({ tela: 'personas', query: { situacao: 'bloqueada' } }, 'replace');
     await render();
-    await waitFor(() => text().includes('bruno.ferreira9267'));
-    expect(text()).not.toContain('mariana.costa91182');
+    await waitFor(() => text().includes('valdir.teixeira6352'));
+    expect(text()).not.toContain('luciana.bastos73519');
     expect(text()).toContain('1 de 3 personas');
     expect(byRole('button', /Bloqueadas pela plataforma/).getAttribute('aria-pressed')).toBe('true');
     await click(byRole('button', /Limpar filtros/));
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
     expect(window.location.hash).toBe('#/personas');
   });
 
   it('buscar pelo @ grava `q` na URL substituindo a entrada (sem empilhar), e o vazio diz o filtro', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
     await render();
-    await waitFor(() => text().includes('bruno.ferreira9267'));
+    await waitFor(() => text().includes('valdir.teixeira6352'));
     const antes = window.history.length;
     await setValue(byRole('textbox', /Buscar personas/) as HTMLInputElement, '@bruno');
-    await waitFor(() => !text().includes('mariana.costa91182'));
+    await waitFor(() => !text().includes('luciana.bastos73519'));
     expect(text()).toContain('Bruno Ferreira');
     expect(window.location.hash).toBe('#/personas?q=%40bruno');
     expect(window.history.length).toBe(antes);
@@ -1083,9 +1083,9 @@ describe('busca, filtros e visão em tabela', () => {
     backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
     useUiStore.getState().navegar({ tela: 'personas', query: { situacao: 'ativa', vinculo: 'com', ordem: 'situacao' } }, 'replace');
     await render();
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
     expect(text()).not.toContain('Helena Prado');
-    expect(text()).not.toContain('bruno.ferreira9267');
+    expect(text()).not.toContain('valdir.teixeira6352');
     expect((byRole('combobox', /Aparelho vinculado/) as HTMLSelectElement).value).toBe('com');
     expect((byRole('combobox', /Ordenar personas/) as HTMLSelectElement).value).toBe('situacao');
   });
@@ -1093,7 +1093,7 @@ describe('busca, filtros e visão em tabela', () => {
   it('alternar cartões → tabela não perde a seleção; a tabela tem as colunas pedidas', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
     await render();
-    await waitFor(() => text().includes('bruno.ferreira9267'));
+    await waitFor(() => text().includes('valdir.teixeira6352'));
     await click(byRole('checkbox', /^Selecionar Bruno Ferreira$/));
     await click(byRole('button', /^Tabela$/));
     await waitFor(() => document.querySelector('table') !== null);
@@ -1111,7 +1111,7 @@ describe('busca, filtros e visão em tabela', () => {
     backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
     useUiStore.getState().navegar({ tela: 'personas', query: { situacao: 'ativa' } }, 'replace');
     await render();
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
     await click(byRole('button', /^Tabela$/));
     await waitFor(() => document.querySelector('table') !== null);
     expect(window.localStorage.getItem('cda.personas.visao')).toBe('"tabela"');
@@ -1129,10 +1129,10 @@ describe('busca, filtros e visão em tabela', () => {
   it('"Selecionar todas" vale para o que o filtro mostra, e a seleção fora do filtro é avisada', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json(LISTA()));
     await render();
-    await waitFor(() => text().includes('bruno.ferreira9267'));
+    await waitFor(() => text().includes('valdir.teixeira6352'));
     await click(byRole('checkbox', /^Selecionar Mariana Costa$/));
     await act(async () => { useUiStore.getState().trocarQuery({ situacao: 'bloqueada' }); });
-    await waitFor(() => !text().includes('mariana.costa91182'));
+    await waitFor(() => !text().includes('luciana.bastos73519'));
     expect(text()).toContain('(1 fora do filtro atual)');
     await click(byRole('checkbox', /Selecionar todas as 1 personas/));
     expect(text()).toContain('2 de 3 para as ações em lote');
@@ -1159,7 +1159,7 @@ describe('busca, filtros e visão em tabela', () => {
   it('"Marcar bloqueada" saiu do cartão e mora no menu "⋯"', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([pessoa()]));
     await render();
-    await waitFor(() => text().includes('mariana.costa91182'));
+    await waitFor(() => text().includes('luciana.bastos73519'));
     expect(() => byRole('button', /^Marcar bloqueada$/)).toThrow();
     await click(byRole('button', /Mais ações de Mariana Costa/));
     expect(byRole('button', /^Marcar bloqueada$/)).toBeTruthy();

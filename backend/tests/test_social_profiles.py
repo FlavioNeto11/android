@@ -65,8 +65,8 @@ def novo(username: str, senha: str | None, instance_id: str | None = None, **ove
 def test_cadastra_perfil_com_credencial_e_vinculo(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        dto = svc.create_profile(novo("mariana.costa91182", SENHA_MARIANA, "android-02", email="m@exemplo.com"))
-        assert dto.username == "mariana.costa91182" and dto.instance_id == "android-02"
+        dto = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02", email="m@exemplo.com"))
+        assert dto.username == "luciana.bastos73519" and dto.instance_id == "android-02"
         # O identificador de login padrão é o E-MAIL do perfil: é ele que o Instagram sempre aceita, e entrar pelo
         # @usuário chegou a devolver "unable to log in" no aparelho real.
         assert dto.credential.configured and dto.credential.login_identifier == "m@exemplo.com"
@@ -79,12 +79,12 @@ def test_cadastra_perfil_com_credencial_e_vinculo(tmp_path: Path) -> None:
 def test_o_dto_do_perfil_nao_tem_campo_de_senha(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        dto = svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
+        dto = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
         texto = dto.model_dump_json()
         assert SENHA_LUCAS not in texto
         assert "password" not in texto and "senha" not in texto.lower()
         assert dto.credential.configured is True                    # o painel sabe que existe, não qual é
-        assert dto.credential.login_identifier == "lucas.almeida9484"   # sem e-mail no perfil, cai no @usuário
+        assert dto.credential.login_identifier == "tadeu.quintela4821"   # sem e-mail no perfil, cai no @usuário
     finally:
         db.close()
 
@@ -92,7 +92,7 @@ def test_o_dto_do_perfil_nao_tem_campo_de_senha(tmp_path: Path) -> None:
 def test_a_senha_nao_fica_em_claro_em_lugar_nenhum_do_banco(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
+        svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
         despejo = ""
         for t in sorted(db.tables()):
             for row in db.query(f"SELECT * FROM {t}"):            # noqa: S608 - nomes vêm do próprio esquema
@@ -114,7 +114,7 @@ def test_a_senha_nao_esta_nos_bytes_do_arquivo_do_banco(tmp_path: Path) -> None:
         pytest.skip("prova presa ao arquivo do SQLite; no PostgreSQL vale a varredura por tabela, acima")
     svc, repo, secrets, db = build(tmp_path)
     try:
-        svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
+        svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
         assert SENHA_LUCAS.encode() not in Path(db.path).read_bytes()
     finally:
         db.close()
@@ -123,7 +123,7 @@ def test_a_senha_nao_esta_nos_bytes_do_arquivo_do_banco(tmp_path: Path) -> None:
 def test_trocar_a_senha_mantem_a_mesma_credencial(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        dto = svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
+        dto = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
         antes = repo.credential_row(dto.id)["secret_ref"]
         svc.set_credential(dto.id, CredentialUpdate(password="senha-nova-A1#"))
         depois = repo.credential_row(dto.id)
@@ -142,7 +142,7 @@ def test_apagar_o_perfil_nao_deixa_senha_antiga_no_cofre(tmp_path: Path) -> None
     """Depois de trocar a senha e apagar o perfil, nada sobra em `secrets` — nem a atual, nem versões anteriores."""
     svc, repo, secrets, db = build(tmp_path)
     try:
-        dto = svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
+        dto = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
         svc.set_credential(dto.id, CredentialUpdate(password="senha-nova-A1#"))
         svc.set_credential(dto.id, CredentialUpdate(password="senha-nova-B2#"))
         svc.delete_profile(dto.id)
@@ -154,7 +154,7 @@ def test_apagar_o_perfil_nao_deixa_senha_antiga_no_cofre(tmp_path: Path) -> None
 def test_apagar_o_perfil_apaga_a_credencial_do_cofre(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        dto = svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
+        dto = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
         ref = repo.credential_row(dto.id)["secret_ref"]
         assert secrets.exists(ref)
         svc.delete_profile(dto.id)
@@ -170,7 +170,7 @@ def test_cofre_travado_bloqueia_cadastro_sem_apagar_nada(tmp_path: Path) -> None
     try:
         assert secrets.status() == "locked"
         with pytest.raises(SocialError) as exc:
-            svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
+            svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
         assert exc.value.status == 503 and "travado" in exc.value.message
         assert repo.list_profile_ids() == []                         # nada pela metade
     finally:
@@ -180,9 +180,9 @@ def test_cofre_travado_bloqueia_cadastro_sem_apagar_nada(tmp_path: Path) -> None
 def test_username_duplicado_e_recusado(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS))
+        svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS))
         with pytest.raises(SocialError, match="Já existe"):
-            svc.create_profile(novo("LUCAS.almeida9484", "outra"))   # maiúsculas não criam outro perfil
+            svc.create_profile(novo("Tadeu.quintela4821", "outra"))   # maiúsculas não criam outro perfil
     finally:
         db.close()
 
@@ -191,7 +191,7 @@ def test_aparelho_desconhecido_e_recusado(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
         with pytest.raises(SocialError, match="Aparelho desconhecido"):
-            svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-99"))
+            svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-99"))
     finally:
         db.close()
 
@@ -203,8 +203,8 @@ def test_mover_para_o_aparelho_de_outra_conta_do_mesmo_app_e_recusado(tmp_path: 
     Lucas continua onde estava. Ninguém toma o aparelho de ninguém."""
     svc, repo, secrets, db = build(tmp_path)
     try:
-        lucas = svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
-        mariana = svc.create_profile(novo("mariana.costa91182", SENHA_MARIANA, "android-02"))
+        lucas = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
+        mariana = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02"))
         with pytest.raises(SocialError) as exc:
             svc.update_profile(mariana.id, ProfilePatch(instance_id="android-01"))
         assert exc.value.code == "conta_do_app_ja_no_aparelho" and exc.value.status == 409
@@ -227,9 +227,9 @@ def test_mover_para_o_aparelho_de_outra_conta_do_mesmo_app_e_recusado(tmp_path: 
 def test_trocar_de_aparelho_zera_a_sessao_mas_preserva_o_perfil(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        dto = svc.create_profile(novo("mariana.costa91182", SENHA_MARIANA, "android-02"))
+        dto = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02"))
         repo.set_session(dto.id, status=SessionStatus.session_ready, instance_id="android-02",
-                         observed_username="mariana.costa91182", verified_at="2026-09-17T10:00:00Z")
+                         observed_username="luciana.bastos73519", verified_at="2026-09-17T10:00:00Z")
         svc.update_profile(dto.id, ProfilePatch(instance_id="android-01"))
         atual = svc.get_profile(dto.id)
         assert atual.session.status is SessionStatus.unknown         # sessão não migra de aparelho
@@ -301,10 +301,10 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
 def test_consulta_com_o_perfil_errado_nao_devolve_dado_do_outro(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        lucas = svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
-        mariana = svc.create_profile(novo("mariana.costa91182", SENHA_MARIANA, "android-02"))
+        lucas = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
+        mariana = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02"))
         repo.set_session(lucas.id, status=SessionStatus.session_ready, instance_id="android-01",
-                         observed_username="lucas.almeida9484")
+                         observed_username="tadeu.quintela4821")
 
         # credencial, vínculo e sessão são estritamente por perfil
         assert repo.credential_row(lucas.id)["secret_ref"] != repo.credential_row(mariana.id)["secret_ref"]
@@ -326,8 +326,8 @@ def test_consulta_com_o_perfil_errado_nao_devolve_dado_do_outro(tmp_path: Path) 
 def test_tentativa_de_autenticacao_e_por_perfil(tmp_path: Path) -> None:
     svc, repo, secrets, db = build(tmp_path)
     try:
-        lucas = svc.create_profile(novo("lucas.almeida9484", SENHA_LUCAS, "android-01"))
-        mariana = svc.create_profile(novo("mariana.costa91182", SENHA_MARIANA, "android-02"))
+        lucas = svc.create_profile(novo("tadeu.quintela4821", SENHA_LUCAS, "android-01"))
+        mariana = svc.create_profile(novo("luciana.bastos73519", SENHA_MARIANA, "android-02"))
         attempt = repo.start_auth_attempt(lucas.id, "android-01")
         repo.finish_auth_attempt(mariana.id, attempt, outcome="session_ready")   # perfil errado: não escreve
         assert repo.auth_attempts(lucas.id)[0]["outcome"] is None
@@ -346,7 +346,7 @@ async def test_api_nunca_devolve_a_senha_e_o_422_nao_ecoa_o_valor(harness: Harne
     app.state.poc = state
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
         criado = await c.post("/api/instagram/profiles", json={
-            "username": "mariana.costa91182", "first_name": "Mariana", "last_name": "Costa",
+            "username": "luciana.bastos73519", "first_name": "Mariana", "last_name": "Costa",
             "instance_id": "android-02", "password": SENHA_MARIANA})
         assert criado.status_code == 201, criado.text
         assert SENHA_MARIANA not in criado.text
@@ -377,7 +377,7 @@ async def test_nada_da_senha_vaza_para_eventos_nem_para_o_log(harness: Harness) 
     app = create_app(harness.cfg, state=state)
     app.state.poc = state
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
-        await c.post("/api/instagram/profiles", json={"username": "lucas.almeida9484", "instance_id": "android-01",
+        await c.post("/api/instagram/profiles", json={"username": "tadeu.quintela4821", "instance_id": "android-01",
                                                       "password": SENHA_LUCAS})
     eventos = "".join(str(dict(r)) for r in state.db.query("SELECT * FROM events"))
     assert SENHA_LUCAS not in eventos

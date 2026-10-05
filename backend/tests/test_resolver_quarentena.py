@@ -26,7 +26,7 @@ from .conftest import Harness
 
 RETIRADA = "conta retirada (bloqueada)"
 FELIPE = "felipe.nogueira93762026"
-VIVA = "lucas.almeida9484"
+VIVA = "tadeu.quintela4821"
 URL = "/api/instances/android-02/locked-account/resolve"
 
 

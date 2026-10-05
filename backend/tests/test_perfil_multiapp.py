@@ -34,7 +34,7 @@ def test_perfil_nasce_com_a_conta_do_instagram_e_ganha_outras(tmp_path: Path) ->
     pid = perfil(svc)
     contas = svc.list_accounts(pid)
     assert [c.app_id for c in contas] == ["instagram"]
-    assert contas[0].automated_login and contas[0].handle == "mariana.costa91182" and contas[0].credential_configured
+    assert contas[0].automated_login and contas[0].handle == "luciana.bastos73519" and contas[0].credential_configured
 
     # Senha de conta só com o consentimento da pessoa (ADR-040): sem ele, 409 e nenhuma conta criada.
     with pytest.raises(SocialError) as sem:

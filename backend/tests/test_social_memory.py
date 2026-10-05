@@ -54,9 +54,9 @@ def build(tmp_path: Path) -> tuple[SocialService, SocialRepository, Database]:
 
 
 def dois_perfis(svc: SocialService) -> tuple[str, str]:
-    lucas = svc.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA, instance_id="android-01",
+    lucas = svc.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA, instance_id="android-01",
                                              persona_id=svc.create_persona(PERSONA_LUCAS).id)).id
-    mariana = svc.create_profile(ProfileCreate(username="mariana.costa91182", password=SENHA, instance_id="android-02",
+    mariana = svc.create_profile(ProfileCreate(username="luciana.bastos73519", password=SENHA, instance_id="android-02",
                                                persona_id=svc.create_persona(PERSONA_MARIANA).id)).id
     return lucas, mariana
 
@@ -390,7 +390,7 @@ async def test_rotas_de_persona_memoria_e_contexto(tmp_path: Path) -> None:
             persona = (await client.post("/api/personas", json=PERSONA_LUCAS.model_dump())).json()
             # `persona_id` de uma pessoa sem conta: é ELA que ganha a conta (mesma linha, mesmo id — 047).
             criado = await client.post("/api/instagram/profiles", json={
-                "username": "lucas.almeida9484", "password": SENHA, "persona_id": persona["id"],
+                "username": "tadeu.quintela4821", "password": SENHA, "persona_id": persona["id"],
                 "instance_id": "android-01"})
             assert criado.status_code == 201
             pid = criado.json()["id"]

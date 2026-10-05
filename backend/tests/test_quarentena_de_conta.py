@@ -188,7 +188,7 @@ async def test_aparelho_com_marcador_recusa_vinculo_troca_e_cadastro(h: Harness)
     assert s is not None
     assert _marcar(h, handle="@Felipe.Nogueira93762026") is True
     assert s.social_repo.conta_travada_no_aparelho("android-02")["handle"] == FELIPE   # normalizado
-    lucas = s.social.create_profile(ProfileCreate(username="lucas.almeida9484")).id
+    lucas = s.social.create_profile(ProfileCreate(username="tadeu.quintela4821")).id
 
     with pytest.raises(SocialError) as e:
         s.social.bind_device(lucas, PersonaDeviceBody(instance_id="android-02", app_id="instagram"))
@@ -199,9 +199,9 @@ async def test_aparelho_com_marcador_recusa_vinculo_troca_e_cadastro(h: Harness)
     assert e.value.code == "aparelho_em_quarentena"
     # Cadastro com o aparelho: recusado ANTES de qualquer linha — nada nasce pela metade.
     with pytest.raises(SocialError) as e:
-        s.social.create_profile(ProfileCreate(username="bruno.ferreira9267", instance_id="android-02"))
+        s.social.create_profile(ProfileCreate(username="valdir.teixeira6352", instance_id="android-02"))
     assert e.value.code == "aparelho_em_quarentena"
-    assert s.social_repo.profile_by_username("bruno.ferreira9267") is None
+    assert s.social_repo.profile_by_username("valdir.teixeira6352") is None
     # E o repositório recusa por conta própria, para quem vincula por fora do serviço.
     with pytest.raises(AparelhoEmQuarentena):
         s.social_repo.bind(lucas, "android-02", app_id="instagram")
@@ -515,9 +515,9 @@ async def test_account_label_segue_o_vinculo_e_o_marcador(h: Harness) -> None:
         return linha["account_label"], linha["account_label_origin"]
 
     assert rotulo("android-02") == ("qa-user-02", None)              # o da configuração, como sempre
-    lucas = s.social.create_profile(ProfileCreate(username="lucas.almeida9484", instance_id="android-02")).id
-    assert rotulo("android-02") == ("lucas.almeida9484", "vinculo")
-    assert s.devices.dto(s.devices.get("android-02")).account_label == "lucas.almeida9484"
+    lucas = s.social.create_profile(ProfileCreate(username="tadeu.quintela4821", instance_id="android-02")).id
+    assert rotulo("android-02") == ("tadeu.quintela4821", "vinculo")
+    assert s.devices.dto(s.devices.get("android-02")).account_label == "tadeu.quintela4821"
     s.social.update_profile(lucas, ProfilePatch(instance_id=None))
     assert rotulo("android-02") == (None, None)                      # o derivado sai com o vínculo
     _marcar(h, "android-02")

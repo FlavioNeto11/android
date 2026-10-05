@@ -28,7 +28,7 @@ _SERVICOS: dict[str, Any] = {}                 # perfil → o SocialService que 
 
 def _conta(tmp_path: Path) -> tuple[Any, PolicyEngine, Any, str]:
     _svc, repo, _pol, db = build(tmp_path)
-    pid = perfil(_svc, "lucas.almeida9484", "android-01")
+    pid = perfil(_svc, "tadeu.quintela4821", "android-01")
     _SERVICOS[pid] = _svc
     repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0, '
                                                    '"cooldown_between_external_actions_s": 0}}'})
@@ -137,7 +137,7 @@ async def test_o_bom_dia_do_qa_messenger_sai_antes_da_porta_e_roda_duas_vezes_se
 
     state = harness.state
     db = state.db
-    pid = state.social.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA,
+    pid = state.social.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA,
                                                     instance_id="android-01")).id
     pacote = db.scalar("SELECT a.package FROM instances i JOIN apps a ON a.id=i.app_id WHERE i.id='android-01'")
     assert pacote and capability_of(pacote, "SEND_MESSAGE") is None          # sem catálogo: nada a consultar

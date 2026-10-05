@@ -28,8 +28,8 @@ from .test_decisao_fechada_intencao import Mundo2, porta_aberta  # noqa: F401 - 
 
 #: O catálogo de destinos do harness da orquestradora (as três contas vivas).
 DESTINOS = CatalogoDeDestinos((
-    PersonaNomeavel("p-lucas", ("Lucas", "Lucas Almeida", "Lucas Almeida"), ("lucas.almeida9484",)),
-    PersonaNomeavel("p-bruno", ("Bruno", "Bruno Ferreira", "Bruno Ferreira"), ("bruno.ferreira9267",)),
+    PersonaNomeavel("p-lucas", ("Lucas", "Lucas Almeida", "Lucas Almeida"), ("tadeu.quintela4821",)),
+    PersonaNomeavel("p-bruno", ("Bruno", "Bruno Ferreira", "Bruno Ferreira"), ("valdir.teixeira6352",)),
     PersonaNomeavel("p-andre", ("André", "André Carvalho", "André Carvalho"), ("andre.carvalho9543",)),
 ), tuple(f"android-{i:02d}" for i in range(1, 9)))
 EXTRATOR = TargetExtractor(DESTINOS)

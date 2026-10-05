@@ -62,8 +62,8 @@ VAZAMENTOS_DA_RODADA_F = [
     ("faça login com @zilda.prado e girassol", "C7", "bug"),
     ("entre no instagram com @zilda.prado e girassol", "C7", "bug"),
     ("entre com @zilda.prado e a girassol", "C7", "bug"),
-    ("entre com lucas.almeida9484@outlook.com e girassol", "C7", "bug"),
-    ("entre com lucas.almeida9484@gmail.com, girassol", "C7", "bug"),
+    ("entre com tadeu.quintela4821@outlook.com e girassol", "C7", "bug"),
+    ("entre com tadeu.quintela4821@gmail.com, girassol", "C7", "bug"),
     ("entre com lucas@outlook.com e girassol", "C7", "bug"),
     ("entre com a conta zilda@correio.net e girassol", "C7", "bug"),
     # G-3: "at" com hífen (cético de método)
@@ -119,10 +119,10 @@ def test_os_vazamentos_da_rodada_f_recusam(comando: str, classe: str, tipo: str)
 # ------------------------------------------------------------------ G-1: o usuário como @handle ou e-mail
 #: Os 12 pares da orquestradora (casos 465 a 476 do corpus).
 @pytest.mark.parametrize("comando", [
-    "entre com @zilda.prado e girassol e curta", "entre com lucas.almeida9484@outlook.com e girassol",
+    "entre com @zilda.prado e girassol e curta", "entre com tadeu.quintela4821@outlook.com e girassol",
     "acesse com @zilda.prado e Girassol2024", "faça login com @bruno e tulipa42", "entre com @bruno: abacate",
-    "entre com @zilda.prado / tulipa", "acesse com @lucas.almeida9484, abacate",
-    "entre com bruno.ferreira9267@outlook.com e tulipa42", "faça login com zilda@correio.net: abacate",
+    "entre com @zilda.prado / tulipa", "acesse com @tadeu.quintela4821, abacate",
+    "entre com valdir.teixeira6352@outlook.com e tulipa42", "faça login com zilda@correio.net: abacate",
     "entre com zilda@correio.net / girassol", "login com @andre.carvalho9543, tulipa",
     "acesse com @zilda.prado e abacate, depois curta o post",
 ])
@@ -133,7 +133,7 @@ def test_o_par_com_handle_ou_email_recusa(comando: str) -> None:
 
 @pytest.mark.parametrize("comando", [
     "acesse com @zilda.prado e Girassol2024", "entre com @zilda.prado e girassol", "entre com lucas@outlook.com e girassol",
-    "entre com lucas.almeida9484@gmail.com, girassol",
+    "entre com tadeu.quintela4821@gmail.com, girassol",
 ])
 def test_o_par_com_handle_e_par_e_nao_mascara(comando: str) -> None:
     """Regra (iv): com o usuário reconhecido, o par recusa como par; o valor com dígito nunca sai como `[termo]`."""
@@ -143,9 +143,9 @@ def test_o_par_com_handle_e_par_e_nao_mascara(comando: str) -> None:
 def test_o_handle_do_catalogo_sem_valor_passa() -> None:
     """"entre como @<handle do catálogo>" é destino; o mesmo com um handle que o catálogo não conhece é intenção de entrar.
     Com "com", a forma A (31.18) recusa pelo conector do verbo de entrar; desde a A-média (31.20), o verbo sozinho."""
-    assert _motivo("curta o post como @lucas.almeida9484") is None
-    assert _motivo("entre como @lucas.almeida9484 e curta o post") == "c7_gatilho"
-    assert _motivo("entre com @lucas.almeida9484 e curta o post") == "c7_gatilho"
+    assert _motivo("curta o post como @tadeu.quintela4821") is None
+    assert _motivo("entre como @tadeu.quintela4821 e curta o post") == "c7_gatilho"
+    assert _motivo("entre com @tadeu.quintela4821 e curta o post") == "c7_gatilho"
     assert _motivo("entre com @zilda.prado e curta o post") == "c7_intencao_de_entrar"
 
 
@@ -186,8 +186,8 @@ def test_controles_do_email_passam(comando: str) -> None:
     "entre com girassol e curta a foto", "entre com a conta Lucas e girassol", "entre com a conta Lucas girassol",
     "entre com a conta Lucas, girassol", "entre com a persona Lucas e girassol", "faça login com a conta Lucas e girassol",
     "entre no insta com a conta Lucas e girassol", "login com a conta Lucas e girassol", "acesse com a conta Lucas e girassol",
-    "entre com a conta Lucas e depois girassol", "entre com a conta lucas.almeida9484 e girassol",
-    "entre como @lucas.almeida9484 e girassol", "entre com a conta Lucas e Girassol",
+    "entre com a conta Lucas e depois girassol", "entre com a conta tadeu.quintela4821 e girassol",
+    "entre como @tadeu.quintela4821 e girassol", "entre com a conta Lucas e Girassol",
     "abra o instagram e entre com a girassol, depois curta o post da Marina", "entre com o girassol e curta a foto",
     "entre usando a girassol e curta a foto da Marina", "entre no app do insta agora com girassol e curta o post",
     "log into the app with girassol and like Marina's post", "faça o acesso com girassol e curta o post da Marina",

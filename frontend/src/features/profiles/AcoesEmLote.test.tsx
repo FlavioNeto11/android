@@ -21,7 +21,7 @@ import { ProfilesPage } from './ProfilesPage';
 
 function pessoa(over: Partial<PersonaDTO> = {}): PersonaDTO {
   return {
-    id: 'ig-1', name: 'Mariana Costa', summary: null, username: 'mariana.costa91182', display_name: 'Mariana Costa',
+    id: 'ig-1', name: 'Mariana Costa', summary: null, username: 'luciana.bastos73519', display_name: 'Mariana Costa',
     first_name: 'Mariana', last_name: 'Costa', birth_date: null, email: null, persona_id: 'ig-1', persona_name: 'Mariana Costa',
     status: 'active', instance_id: null, locality: null, offline_policy: 'wait',
     credential: { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null,
@@ -38,7 +38,7 @@ const GRUPO = {
   created_at: '', updated_at: '',
 } as unknown as PolicyGroup;
 const MARIANA = pessoa();
-const LUCAS = pessoa({ id: 'ig-2', name: 'Lucas Almeida', username: 'lucas.almeida9484', display_name: 'Lucas Almeida',
+const LUCAS = pessoa({ id: 'ig-2', name: 'Lucas Almeida', username: 'tadeu.quintela4821', display_name: 'Lucas Almeida',
                        first_name: 'Lucas', last_name: 'Almeida', persona_id: 'ig-2', persona_name: 'Lucas Almeida',
                        status: 'blocked' });
 const HELENA = pessoa({ id: 'ig-9', name: 'Helena Prado', username: null, display_name: 'Helena Prado',

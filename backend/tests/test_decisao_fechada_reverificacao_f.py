@@ -38,8 +38,8 @@ VAZAMENTOS_DA_RODADA_E = [
     ("login com a conta Lucas e girassol", "C7"),
     ("acesse com a conta Lucas e girassol", "C7"),
     ("entre com a conta Lucas e depois girassol", "C7"),
-    ("entre com a conta lucas.almeida9484 e girassol", "C7"),
-    ("entre como @lucas.almeida9484 e girassol", "C7"),
+    ("entre com a conta tadeu.quintela4821 e girassol", "C7"),
+    ("entre como @tadeu.quintela4821 e girassol", "C7"),
     ("entre com a conta Lucas e Girassol", "C7"),
     ("abra o instagram e entre com a girassol, depois curta o post da Marina", "C7"),
     ("entre com o girassol e curta a foto", "C7"),
@@ -175,8 +175,8 @@ def test_o_com_seguido_de_valor_recusa(comando: str) -> None:
 
 def test_os_nomes_de_destino() -> None:
     """Cada nome INTEIRO, sem o "@" (rodada G, G-4: a palavra solta de um nome de várias não é destino)."""
-    nomes = nomes_de_destino(["@lucas.almeida9484", "Lucas Almeida", "android-01", "Ana da Silva", "de"])
-    assert nomes == {"lucas.almeida9484", "lucas almeida", "android-01", "ana da silva"}
+    nomes = nomes_de_destino(["@tadeu.quintela4821", "Lucas Almeida", "android-01", "Ana da Silva", "de"])
+    assert nomes == {"tadeu.quintela4821", "lucas almeida", "android-01", "ana da silva"}
 
 
 # ------------------------------------------------------------------ F-C a F-H

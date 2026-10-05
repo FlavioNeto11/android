@@ -23,12 +23,12 @@ from app.util import now, to_iso
 from .test_capabilities import IG, build, perfil
 from .test_protecao_de_frota import ALVO, _execucao_em_duas_contas, _Frota, _porta
 
-BRUNO = "@bruno.ferreira9267"
+BRUNO = "@valdir.teixeira6352"
 
 
 def _lucas(tmp_path: Path, **over: Any) -> tuple[Any, Any, PolicyEngine, Any, str]:
     svc, repo, _pol, db = build(tmp_path)
-    pid = perfil(svc, "lucas.almeida9484", "android-01")
+    pid = perfil(svc, "tadeu.quintela4821", "android-01")
     repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0, '
                                                    '"cooldown_between_external_actions_s": 0}}'})
     return svc, repo, PolicyEngine(repo, lambda: _Frota(**over)), db, pid
@@ -46,10 +46,10 @@ def _respondeu(repo: Any, pid: str, alvo: str = BRUNO, *, dias_atras: float = 1.
 
 def test_o_caso_real_resposta_repetida_e_recusada_sem_retry_at(tmp_path: Path) -> None:
     _svc, repo, policies, _db, pid = _lucas(tmp_path)
-    assert normalizar_alvo("@Bruno.Ferreira9267") == BRUNO          # o que a porta compara é o que o histórico grava
+    assert normalizar_alvo("@Valdir.teixeira6352") == BRUNO          # o que a porta compara é o que o histórico grava
     interacao = _respondeu(repo, pid)
     veredito = policies.check(pid, capability_of(IG, "REPLY_COMMENT"), run_id="r-hoje",
-                              counterparty="@Bruno.Ferreira9267", app_id="instagram")
+                              counterparty="@Valdir.teixeira6352", app_id="instagram")
     assert not veredito.allowed and veredito.retry_at is None
     assert interacao in veredito.reason and BRUNO in veredito.reason and "antes da aprovação" in veredito.reason
     assert veredito.hint and "à mão" in veredito.hint
@@ -99,7 +99,7 @@ def test_a_propria_etapa_nao_se_barra_na_retomada(tmp_path: Path) -> None:
 def test_pedido_em_aberto_da_mesma_conta_recusa_o_segundo(tmp_path: Path) -> None:
     """Duas execuções quase juntas: nenhuma respondeu ainda, mas a primeira já tem pedido em Pendências."""
     _svc, _repo, policies, db, pid = _lucas(tmp_path)
-    pedido = ApprovalStore(db).open(profile_id=pid, capability="REPLY_COMMENT", summary="Responder", target="bruno.ferreira9267",
+    pedido = ApprovalStore(db).open(profile_id=pid, capability="REPLY_COMMENT", summary="Responder", target="valdir.teixeira6352",
                                     content="Valeu!", run_id="r-1", step_id="r-1:android-01:v1:reply_1")
     veredito = policies.check(pid, capability_of(IG, "REPLY_COMMENT"), counterparty=BRUNO,
                               step_id="r-2:android-01:v1:reply_1")
