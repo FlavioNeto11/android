@@ -184,8 +184,8 @@ async def _execucao(h: Harness, caso: str) -> str:
                   " VALUES ('item-30-71-t1', ?, 'ator', 'with', ?, ?)", (f"step:{etapa['id']}", run_id, to_iso(now())))
     st.runs.cancel(run_id)
     await h.wait(lambda: st.repo.run_row(run_id)["status"] == "cancelled", what="execução cancelada")
-    await h.wait(lambda: not st._digestoes, what="digests do gancho")
-    assert st.db.scalar("SELECT filled_at FROM learning_exposures WHERE run_id=?", (run_id,)) is not None   # noqa: SLF001 - o que o gancho encadeou
+    await h.wait(lambda: not st._digestoes, what="digests do gancho")   # noqa: SLF001 - o que o gancho encadeou
+    assert st.db.scalar("SELECT filled_at FROM learning_exposures WHERE run_id=?", (run_id,)) is not None
     return run_id
 
 
@@ -198,7 +198,8 @@ async def test_o_digest_rodado_de_novo_na_mesma_execucao_nao_duplica_nada(harnes
     que o chame duas vezes, inclusive o da execução `cancelled`."""
     st = _estado(harness)
     run_id = await _execucao(harness, caso)
-    st.learning.digerir_execucao(run_id)
+    # I1 da leitura do 30.71: o `antes` é o do digest do assentamento (o worker na `concluida`, o gancho da saída na
+    # cancelada), sem um digest a mais no meio: o que se compara é o 1º com o 2º, e isso prova "uma vez só"
     antes = _contagens(st, run_id)
     assert any(antes.values()), antes      # a medida por execução não pode passar de vazio: o digest gravou algo dela
     relatorio = st.learning.digerir_execucao(run_id)
