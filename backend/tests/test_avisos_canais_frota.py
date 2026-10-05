@@ -15,6 +15,7 @@ from app.db import loads
 from app.main import create_app
 from app.modules.avisos.infrastructure.canais_frota import FRESCA_S, PREFIXO, REGRAVAR_S, VELHA_S, CanaisDaFrota
 from app.taskqueue.travas import AVISOS, Lideranca
+from app.util import to_iso
 
 
 def _cfg(avisos: bool, trello: bool) -> Any:
@@ -152,3 +153,64 @@ async def test_a_chave_nao_aparece_nem_se_escreve_pela_configuracao(harness: Any
     escrito = cliente.put("/api/settings", json={PREFIXO + "x": {"avisos": True}})
     assert escrito.status_code == 400 and escrito.json()["detail"]["code"] == "unknown_setting"
     assert not st.db.scalar("SELECT 1 FROM settings WHERE key=?", (PREFIXO + "x",))
+
+
+async def test_varredura_nao_apaga_a_publicacao_que_o_dono_regravou_depois_da_leitura(harness: Any) -> None:
+    """C1 da revisão do #357: B lê a publicação velha de A, A volta e regrava, e só então B apaga. O DELETE vai pelo valor
+    lido: a publicação nova de A fica."""
+    db = harness.state.db
+    agora = db.agora()
+    rel_a = _Relogio(agora - timedelta(seconds=VELHA_S + 600))
+    a = _backend(db, "bk-volta", True, True, relogio=rel_a)
+    a.publicar()
+    b = _backend(db, "bk-varre", True, True)
+    leitura_velha = b._todas()                                   # noqa: SLF001 - a leitura de antes da regravação
+    rel_a.agora = agora
+    assert a.publicar() is True                                   # A voltou: regrava com a hora de agora
+    b._todas = lambda: leitura_velha                              # type: ignore[method-assign]
+    b._varrer(agora)                                              # noqa: SLF001
+    valor = loads(db.scalar("SELECT value FROM settings WHERE key=?", (PREFIXO + "bk-volta",)), {})
+    assert valor and valor["em"] == to_iso(agora)
+
+
+async def test_replica_so_de_api_nao_publica_nao_retira_e_nao_se_conta(harness: Any) -> None:
+    """C3 da revisão do #357: só quem roda o scheduler roda os laços dos canais. A réplica só de API, com flags diferentes
+    das do líder, não acusa no `/health` dela um canal que nunca roda ali, e não apaga a publicação do mesmo dono."""
+    db = harness.state.db
+    lider = _backend(db, "bk-lider-api", True, False)
+    lider.publicar()
+    _lider(db, "bk-lider-api")
+    replica = CanaisDaFrota(db, _cfg(False, True), dono="bk-replica", roda=False)
+    assert replica.publicar() is False
+    assert not db.scalar("SELECT 1 FROM settings WHERE key=?", (PREFIXO + "bk-replica",))
+    assert _codigos(replica) == [] and _codigos(lider) == []
+    mesmo_dono = CanaisDaFrota(db, _cfg(True, False), dono="bk-lider-api", roda=False)
+    mesmo_dono.retirar()
+    assert db.scalar("SELECT 1 FROM settings WHERE key=?", (PREFIXO + "bk-lider-api",))
+    assert harness.state.canais_da_frota.roda is harness.cfg.roda_scheduler
+
+
+async def test_retirada_sai_mesmo_quando_soltar_as_travas_falha(tmp_path: Any) -> None:
+    """C2 da revisão do #357: a retirada tem `try` próprio no `stop()`; a falha das travas não a impede."""
+    from .conftest import Harness
+
+    hh = Harness(tmp_path, 1)
+    await hh.boot()
+    st = hh.state
+    st._manter_travas()                                           # noqa: SLF001
+    chave = PREFIXO + hh.cfg.owner_id
+
+    def quebra() -> None:
+        raise RuntimeError("travas fora")
+
+    st.lideranca.soltar_todas = quebra                            # type: ignore[method-assign]
+    depois_de_retirar: list[object] = []
+    original = st.canais_da_frota.retirar
+
+    def espiao() -> None:
+        original()
+        depois_de_retirar.append(st.db.scalar("SELECT 1 FROM settings WHERE key=?", (chave,)))
+
+    st.canais_da_frota.retirar = espiao  # type: ignore[method-assign]
+    await st.stop()
+    assert depois_de_retirar == [None]

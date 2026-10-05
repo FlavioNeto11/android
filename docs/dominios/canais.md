@@ -195,7 +195,7 @@ outro só com Trello), quem pega a trava primeiro fica com ela, e o canal do out
 booleanos e a hora, quando muda ou a cada 120 s. O problema `canais_divergentes` aparece quando um canal ligado em
 algum backend com publicação fresca (menos de 240 s) não está ligado no líder. O texto não leva o nome de nenhum
 backend. A publicação sai no encerramento limpo, e a de backend sumido há mais de 1 h é varrida. A tela de
-Configuração não a mostra, e o `PUT /api/settings` não a aceita. A falha ao soltar a trava sai no log à parte ("canais: soltar a trava
+Configuração não a mostra, e o `PUT /api/settings` não a aceita. Só publica e só se conta quem roda o scheduler: uma réplica só de API não acusa um canal que nunca roda nela. A varredura apaga pelo valor lido, e a publicação regravada no meio fica. O backup do banco inteiro leva essa linha, como leva toda a tabela `settings`. A falha ao soltar a trava sai no log à parte ("canais: soltar a trava
 avisos depois da faxina"), e a trava cai no TTL.
 
 ## 4. Pedidos, autorizações e decisões

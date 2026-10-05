@@ -31,8 +31,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   backend só, não acusa.
 - A publicação sai no encerramento limpo, e a de backend sumido há mais de 1 h é varrida na escrita. A chave não
   aparece no `GET /api/settings` e o `PUT` a recusa (`unknown_setting`).
-- Prova: `simulated`, em `tests/test_avisos_canais_frota.py` (9 testes). A frota real com dois backends fica `not_run`:
-  hoje há um só.
+- Notas C1 a C3 da revisão, consertadas no próprio PR:
+  - C1: a varredura apaga com `WHERE key=? AND value=?`, pelo valor lido; a publicação que o dono regravou no meio fica.
+  - C2: o `retirar()` tem `try` próprio no `stop()`, e a falha das travas não o impede.
+  - C3: só quem roda o scheduler publica, retira e se conta (`roda=cfg.roda_scheduler`). Uma réplica só de API não
+    acusa um canal que nunca roda nela.
+- Prova: `simulated`, em `tests/test_avisos_canais_frota.py` (12 testes). A frota real com dois backends fica
+  `not_run`: hoje há um só.
 
 ## 2026-10-05 — 28.35: a trava `avisos` só fica com quem usa um canal (branch canais/28-35-trava-so-com-aviso)
 

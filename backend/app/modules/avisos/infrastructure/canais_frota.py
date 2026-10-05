@@ -34,11 +34,20 @@ VELHA_S = 3600.0
 NOME_DO_CANAL = {"avisos": "aviso no Telegram", "trello": "Trello"}
 
 
+#: Uma publicação lida: os canais, a hora (`None` se ilegível) e o valor cru (a varredura apaga só se ele não mudou).
+Publicacao = tuple[dict[str, bool], datetime | None, str]
+
+
 class CanaisDaFrota:
-    def __init__(self, db: Database, cfg: Config, *, dono: str, relogio: Callable[[], datetime] | None = None):
+    """`roda`: este processo roda os laços dos canais (`roda_scheduler`). Uma réplica só de API não publica, não retira e
+    não se conta na comparação: os canais dela nunca rodam ali, e o `/health` dela acusaria um canal que nunca parou."""
+
+    def __init__(self, db: Database, cfg: Config, *, dono: str, relogio: Callable[[], datetime] | None = None,
+                 roda: bool = True):
         self.db = db
         self.cfg = cfg
         self.dono = dono
+        self.roda = roda
         self.relogio: Callable[[], datetime] = relogio if relogio is not None else db.agora
         self._escrito: tuple[dict[str, bool], datetime] | None = None
 
@@ -53,6 +62,8 @@ class CanaisDaFrota:
     def publicar(self) -> bool:
         """Grava o que este backend liga, só quando mudou ou quando a última escrita tem mais que `REGRAVAR_S`. Devolve
         se escreveu. Na escrita, varre as publicações de backend que sumiu há mais que `VELHA_S`."""
+        if not self.roda:
+            return False
         agora, meus = self.relogio(), self.meus()
         if self._escrito is not None:
             antes, em = self._escrito
@@ -65,22 +76,28 @@ class CanaisDaFrota:
         return True
 
     def retirar(self) -> None:
-        """Encerramento limpo: a publicação sai na hora, e a saúde dos outros não espera ela envelhecer."""
+        """Encerramento limpo: a publicação sai na hora, e a saúde dos outros não espera ela envelhecer. A réplica só de
+        API não publicou e não apaga: com o mesmo `OWNER_ID` do processo do scheduler, apagaria a publicação dele."""
+        if not self.roda:
+            return
         self.db.execute("DELETE FROM settings WHERE key=?", (self.chave,))
         self._escrito = None
 
     def _varrer(self, agora: datetime) -> None:
         limite = agora - timedelta(seconds=VELHA_S)
-        velhas = [k for k, p in self._todas().items() if k != self.chave and (p[1] is None or p[1] < limite)]
-        for k in velhas:
-            self.db.execute("DELETE FROM settings WHERE key=?", (k,))
+        velhas = [(k, p[2]) for k, p in self._todas().items() if k != self.chave and (p[1] is None or p[1] < limite)]
+        for k, bruto in velhas:
+            # Pelo valor lido, não só pela chave: se o dono voltou e regravou entre a leitura e o DELETE, a publicação
+            # nova fica (sem isto, ela sumiria da saúde até a regravação seguinte dele, 120 s depois).
+            self.db.execute("DELETE FROM settings WHERE key=? AND value=?", (k, bruto))
 
-    def _todas(self) -> dict[str, tuple[dict[str, bool], datetime | None]]:
-        saida: dict[str, tuple[dict[str, bool], datetime | None]] = {}
+    def _todas(self) -> dict[str, Publicacao]:
+        saida: dict[str, Publicacao] = {}
         for linha in self.db.query("SELECT key, value FROM settings WHERE key LIKE ?", (PREFIXO + "%",)):
-            valor = loads(linha["value"], {}) or {}
+            bruto = str(linha["value"])
+            valor = loads(bruto, {}) or {}
             canais = {c: bool(valor.get(c)) for c in NOME_DO_CANAL}
-            saida[str(linha["key"])] = (canais, parse_iso(str(valor.get("em") or "")))
+            saida[str(linha["key"])] = (canais, parse_iso(str(valor.get("em") or "")), bruto)
         return saida
 
     # ------------------------------------------------------------------ saúde
@@ -92,8 +109,10 @@ class CanaisDaFrota:
         if not dono:
             return []
         fresca = agora - timedelta(seconds=FRESCA_S)
-        frescas = {k[len(PREFIXO):]: canais for k, (canais, em) in self._todas().items() if em is not None and em >= fresca}
-        frescas[self.dono] = self.meus()      # o local vale pelo que está ligado agora, mesmo antes da primeira escrita
+        frescas = {k[len(PREFIXO):]: canais for k, (canais, em, _) in self._todas().items()
+                   if em is not None and em >= fresca}
+        if self.roda:
+            frescas[self.dono] = self.meus()  # o local vale pelo que está ligado agora, mesmo antes da primeira escrita
         lider = frescas.get(str(dono))
         if lider is None:
             return []

@@ -344,7 +344,7 @@ class AppState:
         # saldos, curadoria e retenção; os outros pulam a volta sem erro.
         self.lideranca = Lideranca(self.db, dono=cfg.owner_id)
         # Quais canais cada backend liga (28.37): a saúde acusa quando o líder da trava `avisos` não liga um deles.
-        self.canais_da_frota = CanaisDaFrota(self.db, cfg, dono=cfg.owner_id)
+        self.canais_da_frota = CanaisDaFrota(self.db, cfg, dono=cfg.owner_id, roda=cfg.roda_scheduler)
         # Os anexos dos canais (28.24): o arquivo em `data/anexos/` (fora do Git), pelo sha256; a faxina do 28.16 os apaga.
         self.anexos_canal = ArmazemDeAnexos(self.db, cfg.data_dir / "anexos")
         # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
@@ -2802,9 +2802,14 @@ class AppState:
             try:
                 # Saída limpa devolve as travas de líder na hora: o outro backend assume sem esperar o prazo.
                 self.lideranca.soltar_todas()
-                self.canais_da_frota.retirar()   # e a publicação dos canais sai junto (28.37)
             except Exception:  # noqa: BLE001 - devolver a trava nunca impede fechar o banco; ela vence sozinha
                 log.exception("encerramento: falha ao soltar as travas de líder")
+            try:
+                # Num `try` próprio: se as travas falharem, a publicação dos canais ainda sai (28.37), e os outros não
+                # acusam divergência por uma publicação que ficaria até envelhecer.
+                self.canais_da_frota.retirar()
+            except Exception:  # noqa: BLE001 - a publicação vence sozinha (FRESCA_S); nunca impede fechar o banco
+                log.exception("encerramento: falha ao retirar a publicação dos canais")
             self.db.close()
 
     async def _esperar_o_que_grava_sombra(self, sombra_intencao: SombraDaIntencao | None) -> None:
