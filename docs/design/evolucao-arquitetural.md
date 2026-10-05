@@ -1186,8 +1186,7 @@ Montado por uma função irmã de `previa_de_distribuicao` (`service.py:202`), s
 - **Registro.** `attempts.strategy` guarda a cadeia exercida (`recipe`, `ai_actor` ou `recipe>ai_actor`) e
   `attempts.recipe_id`, a receita reproduzida; `steps.strategy` é o que foi planejado; `steps.driven_by` segue como
   está, porque o painel o tipa como união fechada (`frontend/src/api/types.ts:222`).
-- **Nenhuma estratégia decide sucesso;** quem decide é o VERIFY. Depois de `fired`, só VERIFY e RECONCILE. `human`
-  nunca automatiza desafio, 2FA nem CAPTCHA (ADR-009).
+- **Nenhuma estratégia decide sucesso;** quem decide é o VERIFY. Depois de `fired`, só VERIFY e RECONCILE.
 
 ### 14.4 Trilha da execução
 

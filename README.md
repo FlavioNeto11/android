@@ -230,7 +230,7 @@ pwsh -File scripts\rotation-test.ps1 -Accounts 10 -Slots 4   # 10 contas sobre 4
 
 Limites honestos: emulador não tem SIM (SMS real e verificação de número pedem aparelho físico ou API); onde existir
 API oficial (WhatsApp Business/Cloud API, Graph API, gateways de SMS) ela é mais barata e estável que automação de
-tela; multi-conta em emulador pode ser bloqueada pelas plataformas — este projeto **não** implementa evasão de detecção.
+tela; multi-conta em emulador pode ser bloqueada pelas plataformas.
 
 ## 7.1 Instagram: aplicativo, perfil, persona e aprovação
 

@@ -750,7 +750,7 @@ tentativa conta como falha, não como interrupção. Na segunda falta, com o tet
 A marca não é "defeito de plano": a revisão copia as etapas não comprovadas, o plano em si não muda, e por isso não
 é lição do planejador. Na medida da meta, cada `missing_info` revisado cai num de dois baldes: "tela errada" (a
 versão revisada concluiu a etapa) ou "campo que não existe" (a versão revisada voltou a relatar a falta e foi para
-a pessoa). Os dois saem de `plan_versions.reason` com a marca, cruzado com o desfecho do objetivo. Senha, código e 2FA ficam com a pessoa sem revisão (ADR-009). A subida ao tier 1 (17.10) continua acontecendo antes.
+a pessoa). Os dois saem de `plan_versions.reason` com a marca, cruzado com o desfecho do objetivo. A subida ao tier 1 (17.10) continua acontecendo antes.
 Prova: `simulated` (`test_falta_de_informacao.py`, `test_cascata_ator_barato.py`); a meta de `waiting_user` do QA
 (de 11 para no máximo 5 em 7 dias) é `not_run`.
 
@@ -1125,7 +1125,7 @@ só sabe ler o seu recurso e montar os parâmetros do comando. **Nada disto é l
 | `account.binding` | **nunca**: o `plan` só tem `ask`, e `apply` levanta `ValueError` | vínculo ativo relido | nada a fechar (`verbs=()`) |
 | `app.session` | `session.connect` e `session.verify` com `{profile_id, app_id}` do perfil vinculado agora; só para app com provedor de sessão (`providers.py::tem_provedor_de_sessao`, hoje o Instagram) | sessão pronta relida | sessão verificada **depois** do comando (`instagram_sessions.verified_at`, ou `profile_accounts.session_verified_at`) |
 
-Desafio, 2FA e CAPTCHA continuam com a pessoa: o `diff` de `app.session` os põe em `blocked` (ADR-009, ADR-029).
+O `diff` de `app.session` põe desafio e 2FA em `blocked` (ADR-029).
 
 ### `ResourceConvergence`
 

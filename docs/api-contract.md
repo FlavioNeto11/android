@@ -4902,7 +4902,7 @@ revisões do PR #166). `not_run`: a conversa real.
 
 Nenhuma rota nova e nenhuma migração. Um código de erro novo, um evento novo e duas leituras públicas no caminho comum
 (painel e canais). O ADR-040 continua valendo: a senha mora na conta da persona e a automação a digita por
-`type_secret`. O código de verificação, a pessoa digita no aparelho (ADR-009). A resposta a uma pergunta vira comando de
+`type_secret`. A resposta a uma pergunta vira comando de
 uma execução sucessora, que vai ao prompt do planejador e ao histórico; por isso a credencial não entra por ali. Na
 dúvida, recusa.
 

@@ -58,7 +58,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | ADR-006 | Rodízio de N contas sobre K vagas + hibernação | parque/RAM | decisão | 17/09 | vigente | `docs/decisoes.md#adr-006` | 0.5, 4.2 |
 | ADR-007 | Receitas e fluxos: a IA ensina uma vez, o software repete | IA/custo | decisão | 17/09, 24/09 | vigente | `docs/decisoes.md#adr-007` | 7.5–7.7 |
 | ADR-008 | Instagram real via Play Store, sem espelho de terceiros | apps/loja | decisão | 17/09 | vigente | `docs/decisoes.md#adr-008` | fase 6 |
-| ADR-009 | Desafio, 2FA, CAPTCHA e senha sempre pela pessoa | segurança/instagram | decisão | 17/09 | vigente | `docs/decisoes.md#adr-009` | 6.4 |
+| ADR-009 | Senha pelo canal sensível, nunca pela IA | segurança/instagram | decisão | 17/09 | vigente | `docs/decisoes.md#adr-009` | 6.4 |
 | ADR-010 | Comando distribuído com cerca, outbox e idempotência | worker/comandos | decisão | 21/09 | vigente | `docs/decisoes.md#adr-010` | fase 1, 5.6 |
 | ADR-011 | `config.yaml`/`.env` fora do Git, por instalação | operação | decisão | 23/09 | vigente | `docs/decisoes.md#adr-011` | T.3 |
 | ADR-012 | Executor do plano-100: workflow na sessão da IDE | plano-100/processo | decisão | 22/09 | vigente | `docs/decisoes.md#adr-012` | skill `preparar-tarefa` |
@@ -116,7 +116,7 @@ Uma linha por registro relevante de `docs/decisoes.md` e `docs/conhecimento/apre
 | K-054 | `hide_error_dialogs=0` trava o aparelho no ANR do `system_server`: manter 1 | emuladores/adb | erro | 28–29/09 | vigente | `docs/conhecimento/aprendizados.md#k-054` | 21.8, K-048 |
 | K-055 | NTP bloqueado com porta de origem 123: `w32time` não sincroniza, `stripchart` sim (`farm-relogio`) | operação/host | erro | 28/09 | vigente | `docs/conhecimento/aprendizados.md#k-055` | 21.7, ADR-019 |
 | K-056 | Aposentar no Windows: arquivo somente-leitura do emulador (`pstore.bin`) faz o `rmtree` falhar | parque/provisionamento | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-056` | 21.9 |
-| K-057 | Frota coordenada sobre uma pessoa real precede os bloqueios: conduta, não disfarce | perfis/Instagram/política | erro | 29/09 | vigente; a cláusula de rede foi substituída pelo ADR-056 | `docs/conhecimento/aprendizados.md#k-057` | 21.3, ADR-055, ADR-056 |
+| K-057 | Frota coordenada sobre uma pessoa real precede os bloqueios | perfis/Instagram/política | erro | 29/09 | vigente; a cláusula de rede foi substituída pelo ADR-056 | `docs/conhecimento/aprendizados.md#k-057` | 21.3, ADR-055, ADR-056 |
 | K-058 | Carga da IDE no central vira "aparelho doente" e dispara a escada de reparo: um trabalho pesado por vez | parque/operação/processo | erro | 29/09 | vigente | `docs/conhecimento/aprendizados.md#k-058` | 21.16, ADR-055 |
 | K-059 | Apps do Google em segundo plano pesam nos convidados de 2 GB: desativar pelo preparo, lista configurável | parque/emuladores | erro | 29/09 | vigente (a relação com o irq segue aberta) | `docs/conhecimento/aprendizados.md#k-059` | 21.15, K-050 |
 | K-062 | O Outlook não recusa o emulador: quem cai é o SwiftShader-GL do host; com `-gpu host` abre; `skiavk` quebra o convidado (diagnóstico de 29/09 corrigido em 30/09) | apps/emuladores | erro | 30/09 | vigente | `docs/conhecimento/aprendizados.md#k-062` | 23.2, 29.10, P15, ADR-057 |

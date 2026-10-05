@@ -49,7 +49,7 @@ arquitetura interna. O pedido, em treze pontos, com a seção que responde a cad
 | 13 | Coerência ponta a ponta, migrações validadas, dados preservados, testes | §10, §11, §13, §17 |
 
 O que não muda: os invariantes do `CLAUDE.md` (segredo nunca em prompt, log, evento, evidência, memória, fixture ou
-Git; desafio, 2FA e CAPTCHA com a pessoa, ADR-009; nenhuma evasão de detecção; mundo real só com autorização em
+Git; mundo real só com autorização em
 chat). O que muda de regra escrita está na §16 (ADR-040 substitui em parte o ADR-025).
 
 ---
@@ -1324,7 +1324,7 @@ Cada um entra em `docs/decisoes.md` quando a onda correspondente é integrada.
   por conta; `type_secret` por (perfil do objetivo, conta: pacote e host); ref nunca em `run_secrets`; `open_url` e a
   trava de site pelos hosts da conta; apps com `SessionProvider` continuam determinísticos e exigem o mesmo
   consentimento. O que continua do ADR-025: o valor nunca vai ao modelo, a log, a evento, a evidência ou a memória;
-  três travas; desafio, 2FA e CAPTCHA com a pessoa (ADR-009).
+  três travas.
 - **ADR-041 — A persona é a pessoa** (WA; **registrado** em 27/09:
   [decisões](../decisoes.md#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off)).
   `instagram_profiles` como raiz; `personas` dobrada; modelo rico híbrido; religião e política guardadas e não

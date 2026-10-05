@@ -1329,7 +1329,7 @@ o módulo vai ao agente do notebook. Prova `simulated`: `backend/tests/test_prov
 **Aplicabilidade.** Vigente. Outro `avd_nao_apagado` com o emulador parado: procure o atributo somente-leitura antes de
 suspeitar de processo segurando o arquivo.
 
-### K-057 — Frota coordenada sobre uma pessoa real precede os bloqueios: a resposta é conduta, não disfarce
+### K-057 — Frota coordenada sobre uma pessoa real precede os bloqueios
 
 **Data:** 29/09/2026 · **Área:** perfis, Instagram, política (ADR-055)
 
@@ -1343,8 +1343,7 @@ recado "seu marido mandou um oi", com SEND_MESSAGE `autonomous` (19/09). Nada no
 
 **O que funcionou.** Conduta como regra de código: uma conta por alvo para seguir, DM e comentário, com o excedente
 recusado; DM fria sempre com aprovação; persona que não atribui fala a terceiros; o disjuntor que pausa as contas do
-mesmo alvo quando uma cai; os tetos e o espaçamento do grupo "Recuperação" para as vivas. Nunca disfarce (mascarar
-emulador ou rede, proxy): é evasão, e é proibida.
+mesmo alvo quando uma cai; os tetos e o espaçamento do grupo "Recuperação" para as vivas.
 
 **Aplicabilidade.** Vigente. Um comando que mande a mesma ação a várias contas do Instagram é, por padrão, coordenação:
 uma conta por alvo, e nunca duas contas no mesmo alvo dentro da janela de 30 dias. Em parte substituído pelo ADR-056

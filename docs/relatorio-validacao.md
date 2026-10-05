@@ -382,7 +382,7 @@ que a linha de comando é a do backend. Observação para quem automatiza: `star
   gargalo para 10 contas, então ficou como experimento opcional.
 * Uma pasta temporária de sonda ficou em `data\avd-probe\` (alguns GB): pode ser apagada à mão.
 * Emulador não tem SIM: SMS real e verificação de número pedem aparelho físico ou API. Multi-conta em emulador pode
-  ser bloqueada pelas plataformas; o projeto não implementa evasão de detecção.
+  ser bloqueada pelas plataformas.
 
 ## 8. Domínio Instagram: o que está provado e o que não está (17/09/2026, terceira rodada)
 

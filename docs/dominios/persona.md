@@ -232,7 +232,7 @@ Agora tudo é da **conta do app**:
   que o app declara no `sessao.yaml` (`navegador.hosts`, ou subdomínio); fora deles a pessoa assume, e a senha não sai.
   A conta com `host` é de portal, pelo navegador, e não tem login gerenciado: a porta e o despacho só acham a conta do
   app inteiro (`conta_do_pacote`), e o "Conectar" dela recusa sem tocar no aparelho (`_resolver_conta`; na rota, 409
-  `conta_de_site`) ([perfis e Instagram](perfis-e-instagram.md#instagram-classificador-login-determinístico-sessão-desafios-manuais)).
+  `conta_de_site`) ([perfis e Instagram](perfis-e-instagram.md#instagram-classificador-login-determinístico-sessão)).
   No login em etapas, a senha só vai para a tela que mostra o `login_identifier` da conta (senão o `handle`).
 - **Escopo do desafio (23.5, decisão do dono P9 de 29/09)** (`session_rules.py::aplicar_desafio`, a regra única dos
   dois chamadores, `SessaoDeclarada._save` e `AppState._sessao_desmentida`): no app âncora nada mudou (a conta travada

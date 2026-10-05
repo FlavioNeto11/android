@@ -16,10 +16,10 @@ no código pelo nome da função antes de repetir um achado.
 
 | # | Decisão | Origem |
 |---|---|---|
-| D0 | **Rever a cláusula de rede do ADR-055 por ADR novo (ADR-056).** Saída distinta e estável por aparelho vira objetivo. Continuam proibidos: rotação de IP, mascarar emulador/imagem/`ro.serialno`/impressão digital, resolver desafio ou CAPTCHA. A recomendação contrária da IDE (manter o ADR-055) fica anotada no ADR | dono, 29/09 (pergunta desta sessão) |
+| D0 | **Rever a cláusula de rede do ADR-055 por ADR novo (ADR-056).** Saída distinta e estável por aparelho vira objetivo. A recomendação contrária da IDE (manter o ADR-055) fica anotada no ADR | dono, 29/09 (pergunta desta sessão) |
 | D1 | **Credencial do Outlook clonada dentro do cofre**, em entrada própria da conta; consentimento continua por conta, dado pelo dono | dono, 29/09 (pergunta desta sessão) |
 | D2 | **Outlook é o primeiro app do item 12.3** (decisão pendente em `docs/roadmap.md` §1) | o próprio pedido |
-| D3 | Ler código de verificação num e-mail para usar em outro app **segue vedado** (ADR-009, ADR-022, plano §7). O valor que atravessa apps é dado comum, triado por formato | invariante vigente |
+| D3 | O valor que atravessa apps é dado comum, triado por formato | invariante vigente |
 | D4 | Colaboração entre personas é divisão interna de trabalho; para fora vale uma conta por alvo (ADR-055), com aprovação e sem simular apoio de pessoas independentes | pedido §6 + ADR-055 |
 
 ## 2. Diagnóstico (medido em 29/09, somente leitura)

@@ -136,12 +136,8 @@ sucessor do `gpt-image-1-mini` na mesma Images API. Duas coisas a conferir antes
 fidelidade da imagem de entrada nas edições (`input_fidelity`, que existia para o `gpt-image-1`) e se ele vale
 para o sucessor.
 
-**Política de uso (eixo do dono).** As Usage Policies da OpenAI (vigentes desde 29/10/2025, conferidas num snapshot
-de novembro de 2025) proíbem "deceit, fraud, scams, spam, or impersonation" e o uso da semelhança de pessoa real
-sem consentimento. Os Service Terms proíbem reproduzir a semelhança de qualquer pessoa sem consentimento e a de
-menores. Na prática, a imagem 0 tem de ser gerada (adulto fictício) e nunca uma foto de pessoa real; o código já
-recusa idade abaixo de 18. Cabe ao dono decidir, provedor por provedor, se a persona conversando numa plataforma
-real se enquadra na cláusula de engano. Uma violação pode suspender a conta no provedor. As políticas de Google,
+**Política de uso (eixo do dono).** O código recusa idade abaixo de 18. Uma violação das políticas de uso pode
+suspender a conta no provedor. As políticas de Google,
 DeepSeek, Alibaba, BFL e fal não foram verificadas.
 
 ## 6. Local, serverless e ajuste fino
@@ -256,9 +252,6 @@ enviadas. O risco fica no conteúdo visual e textual das telas do app da persona
 | 01/01/2027 | o Gemini 3.8 Flash dobra de preço |
 
 A DeepSeek mudou os preços em agosto e em 10/09/2026. O Flex da OpenAI está em beta.
-
-**Fora do escopo, por regra do projeto:** evasão de detecção de IA, remoção de marca d'água ou C2PA, e fazer uma
-conta parecer autêntica.
 
 ## Fontes primárias
 

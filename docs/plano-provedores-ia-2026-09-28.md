@@ -188,10 +188,8 @@ cada um pede autorização.
 
 1. **Jurisdição das capturas.** Recomendado: EUA (OpenAI e Google no plano pago). A Alibaba é opcional, conforme a
    região. A DeepSeek não é recomendada, porque os dados ficam na China.
-2. **Política de uso.** As Usage Policies da OpenAI proíbem enganar e se passar por outra pessoa, e o uso de
-   semelhança de pessoa real sem consentimento. A imagem 0 é sempre gerada, de um adulto fictício; o código já
-   recusa idade abaixo de 18. Cabe a você decidir se o uso das personas se enquadra nessa política, provedor a
-   provedor. Uma violação pode suspender a conta.
+2. **Política de uso.** O código recusa idade abaixo de 18. Uma violação das políticas de uso pode suspender a
+   conta.
 3. **Autorizações da Etapa 2**, passo a passo: 2.1 e 2.6 não tocam o parque; 2.2 a 2.5 tocam o parque e reiniciam a
    produção.
 4. **Registrar a Fase 17 no plano-100**, se quiser acompanhar pelo mecanismo.

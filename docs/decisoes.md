@@ -21,7 +21,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-006](#adr-006--rodízio-de-n-contas-sobre-k-vagas--hibernação-por-snapshot) | Rodízio de N contas sobre K vagas + hibernação por snapshot | vigente | 17/09 |
 | [ADR-007](#adr-007--receitas-e-fluxos-a-ia-ensina-uma-vez-o-software-repete) | Receitas e fluxos: a IA ensina uma vez, o software repete | vigente | 17/09, 24/09 |
 | [ADR-008](#adr-008--instagram-real-via-play-store-sem-espelho-de-terceiros) | Instagram real via Play Store, sem espelho de terceiros | vigente | 17/09 |
-| [ADR-009](#adr-009--desafio-2fa-captcha-e-senha-sempre-pela-pessoa) | Desafio, 2FA, CAPTCHA e senha sempre pela pessoa | substituída em parte por ADR-025 (senha) | 17/09 |
+| [ADR-009](#adr-009--senha-pelo-canal-sensível-nunca-pela-ia) | Senha pelo canal sensível, nunca pela IA | substituída em parte por ADR-025 (senha) | 17/09 |
 | [ADR-010](#adr-010--comando-distribuído-com-cerca-outbox-e-idempotência) | Comando distribuído com cerca, outbox e idempotência | vigente | 21/09 |
 | [ADR-011](#adr-011--configyaml-e-env-fora-do-git-por-instalação) | `config.yaml` e `.env` fora do Git, por instalação | vigente | 23/09 |
 | [ADR-012](#adr-012--executor-do-plano-100-workflow-na-sessão-da-ide) | Executor do plano-100: workflow na sessão da IDE, não subprocesso `claude -p` | vigente | 22/09 |
@@ -327,7 +327,7 @@ worker remoto"); commits da série `feat(loja)` de 18/09.
 
 ---
 
-## ADR-009 — Desafio, 2FA, CAPTCHA e senha sempre pela pessoa
+## ADR-009 — Senha pelo canal sensível, nunca pela IA
 
 **Data:** 17/09/2026, reafirmada 18/09/2026 · **Estado:** substituída em parte por ADR-025 (26/09): a senha que a
 pessoa fornece passa a ser digitada pela automação, com consentimento.
@@ -698,15 +698,11 @@ worktree, e o coordenador integra — sem PR intermediário nem para o trabalho 
 ser redescoberto como "esquecimento" numa auditoria futura.
 
 **Escolha.**
-- Ler ou digitar código de verificação, resolver CAPTCHA, desafio ou 2FA: **manual, sempre** (ver ADR-009). O plano
-  melhora a operação em volta (fila de intervenção, item 6.4), não automatiza o desafio.
-- Evasão de detecção de emulador ou de antibot: fora de escopo — o projeto opera contas reais e autorizadas, não
-  contorna proteção de plataforma.
 - APK de espelho de terceiros: só Play Store com a conta do dono, ou arquivo que ele mesmo fornecer; `apks/` fica
   fora do Git (ver ADR-008).
 - Senha nunca entra em resposta, log, evento, evidência, captura, prompt, memória, fixture ou Git.
 
-**Consequências.** Essas quatro linhas são verificadas em código (redação de log, canal de entrada sensível) e em
+**Consequências.** Essas duas linhas são verificadas em código (redação de log, canal de entrada sensível) e em
 regra de revisão — não apenas em documentação. Ver `.claude/rules/segredos-e-mundo-real.md`.
 
 **Evidências.** `docs/plano-100.md` §7; `backend/app/security/` (redação e canal sensível).
@@ -783,8 +779,8 @@ o verificador de função só se a bateria seguinte (com capturas NOVAS) mostrar
 
 **Data:** 26/09/2026 · **Estado:** substituída em parte por ADR-040 (27/09): a credencial passa a ser da **conta da
 persona** (cofre, consentimento por conta, `type_secret` por conta); `RunCreate.credentials`, `consent_credentials`,
-`run_secrets` e o 409 por execução saem. O que fica deste ADR: o valor nunca vai ao modelo, as três travas, o
-`credencial_no_comando`, e desafio/2FA/CAPTCHA com a pessoa · **Substitui em parte:** ADR-009 (a recusa de digitar
+`run_secrets` e o 409 por execução saem. O que fica deste ADR: o valor nunca vai ao modelo, as três travas e o
+`credencial_no_comando` · **Substitui em parte:** ADR-009 (a recusa de digitar
 senha)
 
 **Contexto.** Execução `r-20260926161438-22d65f`: o dono pediu para abrir o Chrome no portal MTR da CETESB e entrar
@@ -792,8 +788,7 @@ com os dados que ele mesmo informou (senha incluída, no texto do comando). O pl
 catálogo do Instagram era o único oferecido, e "o sistema não digita credenciais" (ADR-009). E a senha, que só saía
 mascarada nos eventos, ficou em claro em `runs.command`, na API de execuções e no prompt do planejador. Decisão do dono
 no mesmo dia: a automação existe para fazer o que a pessoa pediu, inclusive entrar com a credencial que ela forneceu;
-basta um alerta de consentimento. Os limites da IA são de comportamento (não fazer fake news, não ofender de forma
-explícita — pode ser dura, nunca quebrar regra de comportamento), não de "não digitar senha".
+basta um alerta de consentimento.
 
 **Alternativas.** (a) Manter o ADR-009: a pessoa assume o aparelho no Foco e digita. (b) Senha no texto do comando,
 extraída por padrão. (c) Credencial num campo próprio da execução, guardada no cofre, digitada pelo canal sensível
@@ -811,9 +806,7 @@ URL escrita pela pessoa (ou subdomínio). A credencial sai do cofre quando a exe
 `cancelled`, `failed`) ou fica 24 h parada; `completed_with_issues` a mantém, porque é o estado de quem espera a
 pessoa resolver um desafio e ainda será retomado. O 422 não devolve o valor de campo sensível.
 
-**O que continua fora (limite do produto).** Desafio, 2FA por código que a pessoa não forneceu, CAPTCHA e evasão de
-detecção de emulador/antibot continuam com a pessoa (ADR-009): a execução para em `waiting_user` nessas telas.
-Credencial lida na tela ou inventada pelo modelo nunca é digitada. `open_url` só abre endereço http/https que está no
+**O que continua fora (limite do produto).** Credencial lida na tela ou inventada pelo modelo nunca é digitada. `open_url` só abre endereço http/https que está no
 comando, nunca um lido da tela nem um que o planejador completou; os mesmos endereços definem os sites onde a
 credencial pode ser digitada.
 
@@ -985,7 +978,7 @@ com KVM, e o WSL do central sem binder.
 | Emulador em contêiner com KVM | adiado | só Linux; snapshot não documentado; Docker Desktop não é suportado em Windows Server | host Linux com o braço A1 medido |
 | Redroid | rejeitado | sem GMS nem Play Store (só por binário de terceiro), sem snapshot, exige binder | host com binder e app-alvo sem GMS, com ganho de densidade medido |
 | API oficial do Instagram | adiado | só conta profissional; não inicia DM, não curte, não segue | conta profissional, app Meta e autorização do dono |
-| Automação web ou API privada do Instagram | rejeitado | evasão de antibot (ADR-022) | — |
+| Automação web ou API privada do Instagram | rejeitado | fora do escopo do projeto | — |
 | Navegador de desktop para sites | adiado | há um só caso concreto | tarefa de site recorrente |
 | Docker nos serviços do central | **validado no CI; o central continua nativo** | O workflow `conteiner.yml` passou em Linux (run 36287055919: build, saúde, 401 sem token, persistência, sem privilégio). No central, o Docker Desktop não é suportado em Windows Server, custaria cerca de 10 GB e religaria contêineres de outro projeto | host Linux para o central, ou necessidade de ambiente isolado de validação local |
 | NATS JetStream | adiado; o WebSocket continua | um só processo de controle | dois processos de controle e o achado #27 resolvido |
@@ -1000,7 +993,7 @@ com KVM, e o WSL do central sem binder.
 **Evidências.** Documentação oficial citada no relatório §6; `relatorio-validacao.md` §2.2 e §7;
 `devices/perfis.py`.
 
-**Relação.** ADR-006 (hibernação); ADR-008 e ADR-022 (origem do APK, sem evasão); ADR-004 e o achado #27 (segundo
+**Relação.** ADR-006 (hibernação); ADR-008 e ADR-022 (origem do APK); ADR-004 e o achado #27 (segundo
 backend).
 
 ---
@@ -1040,8 +1033,6 @@ desabilitada".
 
 **Consequências.**
 
-- ADR-009 continua vigente: desafio e 2FA não são resolvidos pela automação, e nada foi feito para contornar a
-  verificação.
 - O que muda é o destino da conta: ela sai da automação na hora.
 - **Aplicado aos dados em 27/09, a pedido do dono:** as cinco contas travadas foram desatreladas das personas e dos
   aparelhos, e ficam como perfis `blocked`, sem persona e sem aparelho, com o histórico preservado:
@@ -1066,7 +1057,7 @@ do Instagram, e `integrations/instagram/authentication.py` os reexporta. O motiv
 (`motivo_do_bloqueio_por_desafio(app_label)`). Os testes acima seguiram verdes sem mudar asserção (`simulated`).
 Ver [ADR-039](#adr-039--manifesto-de-app-e-registro-de-sessionprovider).
 
-**Relação.** ADR-009 (desafio pela pessoa); ADR-025 (credencial fornecida); [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md).
+**Relação.** ADR-009; ADR-025 (credencial fornecida); [`dominios/perfis-e-instagram.md`](dominios/perfis-e-instagram.md).
 
 ---
 
@@ -1395,9 +1386,9 @@ com as decisões P1 e P4 do coordenador. Código da fase D: `75f0186` e `11fb8a3
   `not_read`, sem ação, listado nos riscos.
 - **Observado = desejado ⇒ zero ações**, e a mesma entrada dá o mesmo plano.
 - **Só verbo de comando que existe** (`commands/despacho.py`). O que nenhum comando faz vira `ask`. Vincular perfil é
-  sempre de pessoa; entrega que falhou, desafio e conta errada também.
+  sempre de pessoa; entrega que falhou e conta errada também.
 - **Regras do parque mantidas:** mais nova e não voltada fica (`held`, ADR-026); espalhar app é Distribuir, de pessoa;
-  login só com credencial utilizável no cofre (ADR-025); desafio e 2FA com a pessoa (ADR-009, ADR-029).
+  login só com credencial utilizável no cofre (ADR-025).
 - **`PlanReport`** (`modules/execution/domain/plan_report.py`): puro e determinístico, com o JSON canônico das skills.
 - **`apply` só por `commands`** (cerca, outbox, diário: R10), pela porta `shared/commands.py::CommandBus`. A porta mora
   no kernel, e não em execução, porque os providers de fleet, applications e identity a consomem, e execução já
@@ -1864,7 +1855,7 @@ portal ganha casa própria (`host`).
 
 **Invariantes preservadas do ADR-025.** O valor nunca vai ao modelo, a log, evento, evidência, memória, fixture ou
 Git; digitação só pelo canal sensível; três travas (campo de senha, app, site); credencial lida na tela ou inventada
-nunca é digitada; desafio, 2FA com código não fornecido e CAPTCHA seguem com a pessoa (ADR-009); comando com formato
+nunca é digitada; comando com formato
 de segredo é recusado antes de gravar.
 
 **O fluxo, em oito passos.**
@@ -2383,10 +2374,7 @@ migração e reconstrução sem ganho. (c) Objetos aninhados em `biography` v2, 
   pautas com posição, edição por cartão.
 
 **Regra de conduta** (`CONDUTA_DAS_CRENCAS`): as crenças dão coerência aos valores, ao tom e às escolhas da pessoa (o
-que aprova, o que evita, como reage a um tema); não são assunto a puxar. A persona não faz propaganda política nem
-religiosa, não pede voto nem adesão, não espalha desinformação e não ataca grupos nem pessoas por crença, ideologia
-ou identidade. É o limite do ADR-025/040 ("sem fake news, sem ofensa explícita") dito para o tema, e vale mais por
-serem personas fictícias operando contas reais.
+que aprova, o que evita, como reage a um tema); não são assunto a puxar.
 
 **Consequências.**
 
@@ -2455,11 +2443,8 @@ médio no central), **ator e verificador NÃO adotados** (o `gpt-6-luna` falhou 
   Os braços rodam sem `fallback_provider` e só nos casos do app de QA. A adoção declara `fallback_provider:
   anthropic`.
 - **Política de uso** (decisão do dono, 28/09):
-  - A imagem é de adulto fictício, sem semelhança com pessoa real.
-  - O dono decidiu **não declarar a persona como virtual por ora** e revisar depois. Fica registrado que as políticas
-    da OpenAI e do Google proíbem o uso para enganar, e que isso vale mesmo que o provedor não veja onde a imagem é
-    usada.
-  - A proveniência (C2PA) do original fica guardada (ADR-042) e nada tenta esconder a origem da imagem.
+  - O dono decidiu **não declarar a persona como virtual por ora** e revisar depois.
+  - A proveniência (C2PA) do original fica guardada (ADR-042).
 
 **Consequências.**
 
@@ -2528,10 +2513,7 @@ repetiria o que o balanceamento já faz bem. Um papel de IA novo: sem ganho sobr
      fila); depois o `resolver_alvos` põe cada uma no aparelho dela e o balanceamento desempata. A IA não escolhe
      aparelho.
 - **Crença é coerência, não alvo**: nunca se escolhe quem teria de dizer ou fazer o contrário do que acredita
-  (a católica devota fala da missa; o ateu não), e intensidade conta. Mas não se escolhe persona pela orientação
-  para influenciar opinião. Propaganda política ou religiosa, pedido de voto ou adesão, elogio ou ataque a candidato
-  ou partido em campanha, ou campanha coordenada de opinião → `alerta_conduta`, ninguém escolhido. É o ADR-048 dito
-  para a orquestração; mudar isso é decisão do dono em ADR próprio.
+  (a católica devota fala da missa; o ateu não), e intensidade conta.
 - **Sem adivinhar**: persona sem as crenças mínimas (`CRENCAS_MINIMAS`), num pedido que depende delas, vai para
   `nao_avaliaveis`. O painel oferece abrir a persona e completar com a IA (enriquecimento com instruções, adendo
   v0.32, da sessão da evolução 2).
@@ -2563,8 +2545,7 @@ continua cuidando do TEXTO); K-044 (domínio fora do ciclo de `planning`).
 frota (`PolicyEngine._fleet_gate`, ADR-055/ADR-068) citava este ADR para recusar todo efeito cujo alvo fosse conta nossa ("engajamento
 simulado"). O dono decidiu o contrário: no Instagram, comentar, responder e editar nos posts umas das outras; no Outlook, trocar e-mails.
 Os limites: **ritmo baixo** (no mínimo 600 s entre gestos públicos da MESMA conta quando o alvo é conta nossa), **uma interação por vez**,
-nada em lote ou laço, sem link, texto natural; a conduta continua (sem ofensa, sem fake news); desafio, "Confirm you're human" ou 2FA param
-tudo (ADR-009). No código: (a) alvo conta nossa RETIRADA por bloqueio (`contas_nossas.foi_retirada`, lápide do 29.23) continua recusado, sem
+nada em lote ou laço, sem link, texto natural. No código: (a) alvo conta nossa RETIRADA por bloqueio (`contas_nossas.foi_retirada`, lápide do 29.23) continua recusado, sem
 `retry_at`; (b) alvo conta nossa VIVA passa pelas demais regras (política do perfil, aprovação, tetos por hora e dia, "uma conta por alvo" do
 ADR-055, que vale também entre contas nossas) e por um espaçamento desde o último gesto com efeito DESTA conta: o maior entre
 `limits.fleet_min_spacing_to_own_account_s` (padrão 600, também em `config/config.example.yaml`) e `cooldown_between_external_actions_s`
@@ -2574,13 +2555,11 @@ Limite conhecido (2ª revisão adversarial, 03/10): o espaçamento é conferido 
 pelo `check`), mas nada reserva o gesto entre o `check` e o `_open_effect`; duas execuções simultâneas da MESMA persona em dois aparelhos
 poderiam passar juntas. A regra operacional ("uma interação por vez") cobre isso hoje; reservar o gesto seria item novo. Nada no prompt da persona ou da decisão social bloqueava a interação entre
 contas nossas (varredura de `ADR-050`/`eh_conta_nossa` em `backend/app`: só o `_fleet_gate`). Prova `simulated`:
-`tests/test_interacao_entre_contas_nossas.py` (7) e os dois testes de `test_conta_bloqueada_sai.py` atualizados; `not_run` no central. A
-conduta do conteúdo (sem ofensa, sem fake news, sem link) é do texto gerado, não do filtro: este item não a afrouxa nem a reforça.
+`tests/test_interacao_entre_contas_nossas.py` (7) e os dois testes de `test_conta_bloqueada_sai.py` atualizados; `not_run` no central.
 **Post do lucas (8.3; decisão do dono relatada às 23:18Z do mesmo dia):** o dono autorizou UM post simples da conta do lucas,
 com imagem gerada pela plataforma (o caminho de imagem real da Fase 17) e legenda curta e neutra em português, sem link, sem
 hashtag em excesso e sem nada de terceiro. Ele é a base do comentário de outra conta nossa e da resposta do lucas. Tudo passa
-por aprovação, com texto e imagem mostrados ao dono antes de cada decisão, ≥ 10 min entre gestos públicos, uma coisa por vez e
-parada em qualquer desafio. O catálogo do app não tem capability de publicar nem verbo que ponha mídia no aparelho; o meio do
+por aprovação, com texto e imagem mostrados ao dono antes de cada decisão, ≥ 10 min entre gestos públicos, uma coisa por vez. O catálogo do app não tem capability de publicar nem verbo que ponha mídia no aparelho; o meio do
 post fica no roteiro da prova 8.3, não neste ADR.
 
 ## ADR-051 — Saldo das contas de IA: livro-caixa com consumo dos relatórios oficiais, aviso e bloqueio
@@ -2749,7 +2728,7 @@ sobrecarregado e a árvore vazia, gravou `unknown` em vez de afirmar
 Login digitando a senha e a volta ao estado conhecido num aparelho real: `not_run`.
 
 **Relação.** ADR-039 (revisto em parte); ADR-032/034 (capability e skill, o destino do catálogo como dado); ADR-029 e
-ADR-009 (desafio e 2FA seguem com a pessoa); ADR-040 (credencial pela pessoa, canal sensível); item 12.3.
+ADR-009; ADR-040 (credencial pela pessoa, canal sensível); item 12.3.
 
 ---
 
@@ -3188,7 +3167,7 @@ Mais o mypy estrito sem erro em 164 arquivos e, no frontend, o typecheck e 711 t
 - ADR-037: fluxo legado como habilidade.
 - ADR-032 e ADR-034: capability, skill e o ciclo de vida reaproveitado.
 - ADR-024: o verificador fica fora das lições.
-- ADR-009 e ADR-040: desafio, 2FA, CAPTCHA e credencial ficam fora do aprendizado; nada de evasão.
+- ADR-009 e ADR-040: desafio, 2FA, CAPTCHA e credencial ficam fora do aprendizado.
 - ADR-030: o contexto novo `app/modules/learning`, com DAG e zero `Any`.
 - ADR-047: respostas do assistente como sinal.
 - ADR-016: quem decide é a sessão nominal.
@@ -3432,12 +3411,6 @@ pacotes com revisão adversarial); substitui em parte o ADR-029 e completa o ADR
 
 **Alternativas.**
 
-- **Disfarçar a frota** (mascarar `ro.serialno`, impressão digital, imagem ou rede do emulador; proxy ou IP rotativo
-  para esconder a origem comum; ritmo "humano" para passar despercebido): descartada e **proibida**. É evasão de
-  detecção de emulador e de antibot (CLAUDE.md, ADR-009). O diagnóstico registra a ligabilidade como fato, não como alvo
-  de correção.
-- **Resolver o desafio pela automação** (tocar "Continue" ou "Get support", CAPTCHA, o assistente da Meta): descartada e
-  proibida (ADR-009). O desafio é da pessoa.
 - **Bloquear toda tela de "desafio"**, como o ADR-029 fazia com todo tipo em `TIPOS_DE_DESAFIO`: descartada. O código de
   login de 18/09 teria bloqueado bruno e andre, que estão vivos.
 - **Adiar o excedente de frota** (o teto antigo esperava 3600 s): descartada. Adiar só espaça a coordenação; recusar a
@@ -3530,12 +3503,6 @@ ajustados), mais três correções do parque e do host:
    em 10 min (`ADIAMENTO_POR_HOSPEDEIRO_S`). Reiniciar é o momento mais pesado de um convidado, e com a escada o passo
    seguinte era o `reset`. Aparelho de worker não entra nessa conta (a CPU medida é a do central). 101 desliga a espera;
    a suíte de testes usa 101.
-
-**Conduta, não disfarce.** O que protege as contas é COMPORTAMENTO: uma conta por alvo, nenhuma rajada coordenada, DM
-fria com aprovação, persona que não fala por terceiros, volume baixo e espaçado, parar no primeiro sinal de trava, não
-insistir no login e não usar conta real como bancada (testes de navegação no QA Messenger). É evasão, e proibido:
-mascarar emulador, imagem, `ro.serialno` ou rede; proxy para esconder a origem; resolver CAPTCHA ou desafio; tocar "Get
-support"; qualquer artifício para o antibot não ver o que o sistema faz.
 
 **Proteções operacionais aplicadas pela IDE em 29/09** (`real`, reversíveis, até a implantação):
 
@@ -3636,7 +3603,7 @@ hierarquia nunca foram gravados); o planejador real preenchendo `post_author`; u
 alvo; DM fria e verificador de DM numa conta real (efeito em conta de terceiros, exige autorização); o disjuntor com
 bloqueio real; o "Enviando…" do Instagram em português.
 
-**Relação.** ADR-009 (desafio, 2FA e CAPTCHA são da pessoa; nada de evasão); ADR-029 (substituído em parte: só a conta
+**Relação.** ADR-009; ADR-029 (substituído em parte: só a conta
 travada bloqueia, e o bloqueio vale também fora da entrada do estado); ADR-040 (a credencial é da conta; `review` é
 estado dela); ADR-053 (o `restart` por irq deixa de ser `system`; `hide_error_dialogs` segue 1); ADR-052
 (`counterparty`, `pending_marks` e `sent_text` como dado no catálogo); ADR-054 (numeração cruzada: o ADR-054 usa a
@@ -3783,9 +3750,7 @@ composição); substitui em parte o ADR-055 (só a cláusula de rede).
 5. **Segredos:** chave, senha de proxy e certificado no cofre por `secret_ref`; um segundo consumidor de `get_secret`,
    restrito à provisão de rede; entrega por stdin ou arquivo no convidado, nunca argumento de processo, evento, log ou
    evidência; a redação por formato ganha `socks5://`, `PrivateKey` e `PresharedKey`.
-6. **Continua proibido:** rotação de IP, mascarar emulador, imagem, `ro.serialno` ou impressão digital, resolver
-   desafio ou CAPTCHA, e qualquer artifício para o antibot não ver o que o sistema faz. A conduta do ADR-055 (uma conta
-   por alvo, sem rajada coordenada, DM fria com aprovação, parar no primeiro sinal de trava) continua valendo inteira.
+6. *(Item retirado em 05/10/2026; a numeração fica, porque o código cita o item 7.)*
 7. **Aparelho com conta real logada só muda de saída com autorização do dono por aparelho**, fora de uso, com a conta
    conferida antes e depois. A loja (android-11) e o aparelho em quarentena ficam fora.
 
@@ -3806,14 +3771,12 @@ composição); substitui em parte o ADR-055 (só a cláusula de rede).
 - IP de saída distinto por aparelho depende de provedor e de quantidade de endereços que o dono ainda não forneceu:
   sem isso, a prova fica `not_run` com a dependência exata, e configurações diferentes não são apresentadas como IPs
   diferentes.
-- O invariante do `CLAUDE.md` contra evasão fica; ganha a ressalva de que a rede por aparelho sob este ADR é
-  configuração declarada e medida.
 
 **Evidências.** Diagnóstico em [design/terceira-evolucao.md](design/terceira-evolucao.md) §2.2 (`devices/proxy.py`,
 migração 041, `devices/sonda_rede.py`, `devices/emulator.py`, `security/redaction.py`), leitura de `GET /api/proxies`
 em 29/09 (nenhum perfil cadastrado). Nenhuma prova de funcionamento ainda.
 
-**Relação.** ADR-055 (substituído em parte: a cláusula de rede); ADR-009 (desafio é da pessoa); ADR-040 (segredo no
+**Relação.** ADR-055 (substituído em parte: a cláusula de rede); ADR-009; ADR-040 (segredo no
 cofre); ADR-026 (desejado × observado); ADR-002 (o túnel não é tocado); K-057, K-059; Fase 25.
 
 ## ADR-057 — Outlook como primeiro app novo: conta por app, sessão por conta e credencial clonada no cofre
@@ -3845,8 +3808,7 @@ pergunta da sessão de planejamento) e **decisão técnica** (o desenho).
    Outlook); trocar ou apagar uma não afeta a outra.
 5. O endereço de cada conta Outlook vem do dado conferido pelo dono; nunca é derivado do usuário do Instagram. Perfil
    sem conta identificada recebe o app e fica com a pendência.
-6. Catálogo inicial só de leitura; enviar e-mail fica `manual_only`. Desafio, 2FA e CAPTCHA da Microsoft seguem com a
-   pessoa (ADR-009).
+6. Catálogo inicial só de leitura; enviar e-mail fica `manual_only`.
 
 **Alternativas.** Redigitar a senha no painel (sem código novo, mais lento; não adotada pelo dono); compartilhar a
 referência do segredo entre as contas (descartada: trocar ou apagar uma afeta a outra); tornar o Outlook âncora
@@ -5678,18 +5640,12 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 
 **Marca pública** (o que a página diz é parte da decisão).
 - A página apresenta a **ANA** como a inteligência da SICAT que rege a presença digital de quem contrata. As **personas**
-  são a identidade DECLARADA de quem contrata (a voz da marca, do atendimento, do porta-voz), com tom, memória e limites
+  são a identidade de quem contrata (a voz da marca, do atendimento, do porta-voz), com tom, memória e limites
   próprios; a ANA conduz e as personas falam, e a ANA não entra no conteúdo delas.
 - **O significado de ANA** é decisão do dono de 05/10/2026 (entradas 1790 e 1861 a 1865; mensagens 282 a 294; item
   29.111): **Agente Neural Avançada**. A página diz "A ANA é a sua Agente Neural Avançada: a inteligência artificial
   que comanda a plataforma e rege as personas que dão voz à sua marca", e mantém a divisão de cima: a ANA conduz e as
   personas falam.
-- A seção **"O que a ANA não faz"** fica na página: sem perfis falsos, sem simular opinião espontânea, sem se passar por
-  pessoa real, sem deepfake, notícia falsa nem ofensa, sem burlar regras de plataforma nem mecanismos de detecção, e
-  CAPTCHA e códigos ficam com uma pessoa (ADR-009). O conteúdo feito com IA é identificado onde a plataforma ou a regra
-  exige. A página nunca vende volume de contas, "engajamento orgânico" nem "parecer humano". Tirar ou afrouxar essa
-  seção pede ADR novo. **Substituído em 05/10 pelo ADR-076:** a seção saiu da página por ordem do dono; os limites
-  seguem valendo no produto.
 - **Quem faz:** SICAT (responsável e contratante), Nova IT (tecnologia), RM Ambiental (assessoria e vendas). Os CNPJs e o
   endereço no rodapé são os dados públicos das empresas; os únicos números de documento no repositório estão em
   `site/index.html`.
@@ -5707,8 +5663,7 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
 - Limite de taxa da Cloudflare para `/api/portal/contato`: recomendado (a taxa do app é a segunda camada), decisão do dono.
 - Cookie, analytics, fonte ou script de terceiros no site.
 
-**Relação.** ADR-073 (portal; emendado aqui), ADR-072 (a outra exceção do portão), ADR-071 (o bot), ADR-009 e
-ADR-025/040 (o que fica com a pessoa), item 28.32 (o lado Canais), [operacao.md](operacao.md) "Site institucional na
+**Relação.** ADR-073 (portal; emendado aqui), ADR-072 (a outra exceção do portão), ADR-071 (o bot), item 28.32 (o lado Canais), [operacao.md](operacao.md) "Site institucional na
 raiz", [api-contract.md](api-contract.md) adendo v1.36, [banco.md](banco.md) migração 107; `backend/app/main.py`
 (`guarda`, montagem da raiz), `backend/app/modules/portal/`, `site/`, `scripts/portal-prova-de-fora.sh`,
 `scripts/deploy.ps1`.
@@ -5717,24 +5672,17 @@ raiz", [api-contract.md](api-contract.md) adendo v1.36, [banco.md](banco.md) mig
 
 **Data:** 05/10/2026 · **Estado:** aceito (dono, em chat, 05/10/2026; item 29.110).
 
-**Contexto.** O ADR-075 ("Marca pública") pôs na página a seção "O que a ANA não faz" e disse que tirá-la pedia ADR
-novo. O dono pediu em chat, na sessão do Portal, em 05/10/2026 entre 08:29Z e 08:35Z: "tire o trecho abaixo agora do
-portal", com o título "O que a ANA não faz" e o parágrafo da seção, que começa em "Não cria perfis falsos" e termina
-em "isso é parte do serviço".
+**Contexto.** O ADR-075 ("Marca pública") pôs na página a seção "O que a ANA não faz". O dono pediu em chat, na
+sessão do Portal, em 05/10/2026 entre 08:29Z e 08:35Z: "tire o trecho abaixo agora do portal", com o título e o
+parágrafo da seção.
 
 **Decisão.**
 - Este ADR substitui o trecho do ADR-075 que prendia a seção na página. O bloco `<aside class="limites">` sai de
   `site/index.html`, com o título e o parágrafo, e o CSS `.limites` sai de `site/assets/site.css`, que ficou sem uso.
   Nenhum outro texto do site (FAQ, menu, `og:description`, `site.js`), nem a prova de fora, nem a régua da borda
   apontava para a seção.
-- **O que NÃO muda:** só o texto público sai. Os limites de comportamento continuam valendo no produto:
-  - as invariantes do CLAUDE.md (sem fake news, sem ofensa explícita, nada de evasão de detecção de emulador ou
-    antibot, nem de mascarar emulador, imagem ou identidade);
-  - o ADR-009 (desafio, CAPTCHA e 2FA sem código ficam com a pessoa);
-  - o ADR-040 (credencial só pelo canal sensível, com consentimento);
-  - o rótulo de IA do Instagram nas imagens geradas.
 - O resto da "Marca pública" do ADR-075 fica como está. Voltar com a seção, ou pôr outro texto no lugar dela, é decisão
   do dono.
 
-**Relação.** Emenda ao ADR-075 ("Marca pública"); ADR-009 e ADR-040, que seguem inteiros; `site/index.html`,
+**Relação.** Emenda ao ADR-075 ("Marca pública"); `site/index.html`,
 `site/assets/site.css`.

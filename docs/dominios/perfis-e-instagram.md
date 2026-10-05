@@ -1,7 +1,7 @@
 # Domínio: perfis, Instagram e treinamento
 
 Como uma identidade social é representada, o que ela sabe fazer, com que limites, e como o Instagram — o único
-app com login determinístico hoje — é operado sem nunca resolver um desafio sozinho. Para o contrato HTTP, ver
+app com login determinístico hoje — é operado. Para o contrato HTTP, ver
 [`../api-contract.md`](../api-contract.md); para o banco, [`../banco.md`](../banco.md).
 
 ## A persona é a pessoa
@@ -149,7 +149,7 @@ Rotas: `GET/PUT /api/instagram/profiles/{id}/policy`, `GET /api/instagram/policy
 contas da mesma execução escrevam o mesmo texto. Rotas: `GET /api/approvals`, `POST /api/approvals/decide`
 (lote), `POST /api/approvals/{id}/decide`.
 
-## Instagram: classificador, login determinístico, sessão, desafios manuais
+## Instagram: classificador, login determinístico, sessão
 
 Desde o ADR-052 o Instagram não tem código próprio: é a pasta de dado
 `backend/app/conhecimento/apps/com.instagram.android/`, lida por motores genéricos, DETERMINÍSTICOS e fora do laço
@@ -182,8 +182,7 @@ Caminhos relativos a `backend/app/`.
   comentário no código (achado #115) registra que a troca automática de conta nunca foi implementada de propósito
   (a flag `auto_switch_account`, que sugeria o contrário, não existe mais na configuração; implementar a troca pelo
   seletor de contas é decisão do dono, ainda aberta).
-  `_challenge()` grava `SessionStatus.auth_challenge` e devolve `Outcome.AUTH_CHALLENGE`: **não existe caminho de
-  código que resolva desafio ou 2FA automaticamente.** "Confirm you're human" (e variantes: "verify/prove you're
+  `_challenge()` grava `SessionStatus.auth_challenge` e devolve `Outcome.AUTH_CHALLENGE`. "Confirm you're human" (e variantes: "verify/prove you're
   human", "confirme/comprove que você é humano/uma pessoa") é a conta travada (decisão do dono, 29/09): cai em
   `challenge` nos dois idiomas e em `hierarchy._CONTA_TRAVADA`, sem toque nenhum — a prova é com hierarquia
   SINTÉTICA (`tests/test_detector_conta_travada.py`), porque a tela real não existe (a conta foi perdida). Tela que
@@ -276,8 +275,7 @@ Caminhos relativos a `backend/app/`.
     a senha uma vez por tela e o prazo recomeça; enquanto a mesma tela segue com o botão, espera-se a troca (o WebView
     demora) sem julgá-la desafio nem tocar de novo. Sem o botão, a tela segue o tipo dela: a de código vai para a
     pessoa (`challenge_before_password`). A carga recusa alternativa em tela de tipo `desafio` (ADR-055: nada se toca
-    em conta travada), na tela da senha, repetida ou na do identificador. Escolher a senha é o método de entrada do
-    titular, não resolver desafio (ADR-009 segue valendo para código, aprovação e CAPTCHA).
+    em conta travada), na tela da senha, repetida ou na do identificador.
 
   Prova `simulated`: `backend/tests/test_outlook_declarado.py` (os dois blocos na pasta real do Outlook e a carga
   recusada); quem não os declara segue igual (`::test_quem_nao_declara_entrada_nem_alternativa_segue_como_antes`).
@@ -317,8 +315,8 @@ human" é sinal de conta perdida. O que muda no desafio e em volta dele:
 - **Contas nossas entre si (29.28, emenda do ADR-050).** Conta nossa VIVA pode ser alvo de outra conta nossa (Instagram: comentar,
   responder, editar nos posts umas das outras; Outlook: trocar e-mails), em ritmo baixo: o gesto com efeito exige no mínimo
   `limits.fleet_min_spacing_to_own_account_s` (600 s) — ou o `cooldown_between_external_actions_s` do perfil, se maior — desde o último
-  gesto com efeito DESTA conta, com `retry_at`; uma interação por vez, sem link, texto natural; a conduta e a regra de desafio/2FA
-  continuam. Conta RETIRADA por bloqueio segue recusada. "Uma conta por alvo" e a aprovação valem entre contas nossas como para qualquer
+  gesto com efeito DESTA conta, com `retry_at`; uma interação por vez, sem link, texto natural.
+  Conta RETIRADA por bloqueio segue recusada. "Uma conta por alvo" e a aprovação valem entre contas nossas como para qualquer
   alvo, e a conta nossa continua fora da elegibilidade de "terceiro" (8.3).
 - **Uma conta por alvo.** Seguir, DM e comentário: no máximo uma conta por pessoa numa janela de 30 dias, com o
   excedente recusado; curtida e comentário ganham o alvo (`post_author`, herdado de OPEN_POST); um pedido igual a várias
@@ -336,32 +334,6 @@ human" é sinal de conta perdida. O que muda no desafio e em volta dele:
     perdeu e um toque manual entrou.
   - **`review` que se reconcilia (29.64).** A conta lida e CONFERIDA aberta no aparelho tira a credencial de `review`
     (volta a `active`, falhas zeradas, evento `login_reconciliado`); `invalid` não sai assim.
-- **Conduta, não disfarce.** Nada de mascarar emulador ou rede, proxy, resolver CAPTCHA ou tocar em "Get support": é
-  evasão, proibida (ADR-009).
-
-**Garantia de "desafio sempre manual"**, com os pontos exatos. No motor, valendo para qualquer app, seja qual for o
-dado:
-
-- `sessao.py::SessaoDeclarada.ensure_session` checa `estado.tipo in TIPOS_DE_DESAFIO` (`desafio`, `dois_fatores`)
-  antes de chegar a `_login`; `_challenge` sempre devolve `AUTH_CHALLENGE`; `_needs_person` barra nova tentativa
-  automática; `Outcome.terminal` inclui `AUTH_CHALLENGE`; `_apply_verdict` conta para o teto de tentativas todo desfecho
-  depois do envio que não seja sucesso nem senha recusada (essa bloqueia direto, sem contar);
-- `conhecimento.py::DESFECHOS_DEPOIS_DO_ENVIO` não tem `retryable` nem `session_ready`: depois que a senha foi
-  enviada, nenhuma regra do dado autoriza repetir o envio, e sucesso só sai de `conferir_conta`, com a conta lida na
-  tela. O carregador recusa desfecho fora do vocabulário, e o vocabulário não tem nada que responda a um desafio;
-- `automation/conhecimento_de_telas.py::voltar_ao_estado_conhecido` nunca "volta" de `NAO_SE_VOLTA` (desafio, 2FA,
-  login, intersticial, carregando);
-- `automation/hierarchy.py::_DESAFIO` marca como sensível, em qualquer app, a tela de desafio (sem imagem para o
-  modelo, dígitos mascarados). Fica no código, e as telas sensíveis declaradas por app ficam em
-  `config.yaml: sensitive_screens`, fora do pacote do app: são segurança, e um pacote de dado não as afrouxa.
-  `backend/tests/test_sensitive_input.py` confere, string por string, que `_DESAFIO` concorda com os sinais
-  `challenge`/`two_factor` do `telas.yaml` do Instagram.
-
-No dado: a ordem `challenge`/`two_factor` antes de `login` é declarada no `telas.yaml` (o carregador não a impõe);
-para o Instagram, quem a garante é `backend/tests/test_instagram_auth.py::test_challenge_e_dois_fatores_vem_antes_do_login`.
-Testes: `backend/tests/test_instagram_auth.py` (fixture `backend/tests/fake_instagram.py`, pacote lido por
-`backend/tests/pacote_instagram.py`) e, para um app novo só em dado,
-`backend/tests/test_sessao_declarada.py::test_um_app_novo_para_no_desafio_e_chama_a_pessoa`.
 
 ## `SessionProvider` e o registro por pacote (fase K1)
 
@@ -379,11 +351,10 @@ integrados em `f06e34a`, mais a correção `3fbe9df`. Caminhos relativos a `back
   `None` é a conta do perfil no pacote do provedor (no provedor do app âncora, a conta âncora, como sempre);
 - `automatic=True` é a chamada do agendador; `observe_only=True` é "Verificar conta" e a reobservação (nunca
   autentica); `force_login=True` refaz o login;
-- as garantias continuam do provedor: nunca repete envio por timeout, nunca segue com conta errada, nunca resolve
-  desafio (ADR-009), senha só pelo canal sensível e só com o consentimento da conta (ADR-025/040);
+- as garantias continuam do provedor: nunca repete envio por timeout, nunca segue com conta errada, senha só pelo canal sensível e só com o consentimento da conta (ADR-025/040);
 - a implementação de produção é o motor genérico `integrations/app_declarado/sessao.py::SessaoDeclarada`, montado
   com o conhecimento de cada pasta de app que tem `sessao.yaml` pela fábrica do manifesto
-  (`integrations/app_declarado/pacote.py::fabrica_de_sessao`; ADR-052, [acima](#instagram-classificador-login-determinístico-sessão-desafios-manuais));
+  (`integrations/app_declarado/pacote.py::fabrica_de_sessao`; ADR-052, [acima](#instagram-classificador-login-determinístico-sessão));
   em teste, também `backend/tests/fake_dois_apps.py::SessaoDoQa`.
 
 **O registro por pacote.** `modules/identity/application/sessions.py::SessionProviders`:
@@ -499,7 +470,7 @@ Migração `038_modo_treinamento.sql`: `training_sessions` (`status`: `recording
 O dono pediu "zero Python por app", e o Instagram deixou de ter código: `integrations/instagram/` e
 `planning/catalog/instagram.py` foram apagados. Tudo o que a plataforma sabe dele está em
 `backend/app/conhecimento/apps/com.instagram.android/`, lido pelos motores genéricos descritos
-[acima](#instagram-classificador-login-determinístico-sessão-desafios-manuais)
+[acima](#instagram-classificador-login-determinístico-sessão)
 ([design](../design/conhecimento-de-app.md)):
 
 | Arquivo | O que declara | Quem lê |
@@ -668,7 +639,7 @@ extensão está pronto: desde o ADR-052, uma pasta de dado com `app.yaml`, `cata
 continua para teste. Provado só com o QA e com o app de e-mail fictício em teste (`simulated`). O primeiro app é o
 Outlook (ADR-057, Fase 23), e a sessão por conta que dois apps no mesmo perfil pediam foi feita no item 23.4
 ([acima](#sessionprovider-e-o-registro-por-pacote-fase-k1)); o login em etapas, a conta fora da barra inferior e a
-Custom Tab com site declarado, no item 23.6 ([acima](#instagram-classificador-login-determinístico-sessão-desafios-manuais)).
+Custom Tab com site declarado, no item 23.6 ([acima](#instagram-classificador-login-determinístico-sessão)).
 
 ## Capacidades — implementação e validação
 
@@ -685,7 +656,6 @@ Custom Tab com site declarado, no item 23.6 ([acima](#instagram-classificador-lo
 | Modo treinamento: UI de revisão (13.3) | implementado | automatizada (`TrainingReview.test.tsx`) | commit `bfffb0d`; plano-100 id 13.3 (proof `tests`) |
 | Voz da persona (8.1) | implementado (código) | não executada em produção — aplicar as 8 personas é gasto do dono, não feito | plano-100 id 8.1 (proof `not_run`) |
 | Memória de DM recebida (8.2) | implementado (código) | não executada — conversa real entre duas contas fora do escopo desta rodada; padrões de `leitura.mensagem` do `app.yaml` do Instagram não conferidos contra árvore de acessibilidade real | plano-100 id 8.2 (proof `not_run`) |
-| Desafio/2FA sempre manual | implementado (garantia estrutural no motor genérico; a ordem das telas é dado) | automatizada (`tests/test_instagram_auth.py`, `tests/test_sessao_declarada.py::test_um_app_novo_para_no_desafio_e_chama_a_pessoa`) — sem contraexemplo de bypass encontrado na leitura do código | `integrations/app_declarado/sessao.py`, `conhecimento.py::DESFECHOS_DEPOIS_DO_ENVIO`, `automation/hierarchy.py::_DESAFIO`, `telas.yaml` do Instagram ([acima](#instagram-classificador-login-determinístico-sessão-desafios-manuais)) |
 
 Backlog:
 

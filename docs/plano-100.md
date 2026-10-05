@@ -554,8 +554,7 @@ instalação, vínculo e autenticação registrados separadamente; perfis sem co
 Origem: o mesmo pedido de 29/09: o comando representa o objetivo, não um app, e a persona passa do Outlook ao
 Instagram preservando contexto, identidade e progresso. O 12.1 já deu o app por etapa; faltam o catálogo de vários
 apps, o valor que passa de uma etapa a outra e as checagens que só olham um app
-([design/terceira-evolucao.md](design/terceira-evolucao.md) §2.4). Ler código de verificação num e-mail para usar em
-outro app segue vedado (ADR-009, ADR-022).
+([design/terceira-evolucao.md](design/terceira-evolucao.md) §2.4).
 
 | Item | O que | Achados | Tam. |
 |---|---|---|---|
@@ -1030,9 +1029,6 @@ conteúdo redigido (a regra do Telegram: redação e corte, sem captura); link d
 
 ## 7. O que continua fora, por decisão
 
-- Ler ou digitar código de verificação, resolver CAPTCHA, desafio ou 2FA: **manual, sempre**. O plano melhora a
-  operação em volta (6.4), não automatiza o desafio.
-- Evasão de detecção de emulador ou de antibot.
 - APK de espelho de terceiros: só Play Store com a sua conta, ou arquivo que você fornecer; `apks/` fora do Git.
 - Senha nunca em resposta, log, evento, evidência, captura, prompt, memória, fixture ou Git.
 
