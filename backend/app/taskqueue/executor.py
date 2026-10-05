@@ -2763,6 +2763,13 @@ class StepExecutor:
                     # 31.78 (C2): instrução ao ator, não fato do executor; por isso fora do `history` (os `facts` do juiz).
                     actor_history = [*actor_history, f"(executor) '{relido}' já foi lido e entregue, com o mesmo valor; "
                                                      "todos os valores da etapa estão lidos: a próxima ação é step_done."]
+                elif leitura and divergentes and not faltam_saidas():
+                    # 30.78: com tudo lido, uma saída cuja última leitura diverge da anterior segura a etapa até o teto
+                    # (C1 do 31.78). Sem o aviso, o ator relia a saída ESTÁVEL sem saber por que nada andava. Instrução,
+                    # como a de cima: só na cópia do ator.
+                    nomes = ", ".join(f"'{n}'" for n in sorted(divergentes))
+                    actor_history = [*actor_history, f"(executor) {nomes}: a última leitura deu um valor diferente da "
+                                                     "anterior; releia para confirmar qual vale antes do step_done."]
                 rr.exerceu(StrategyKind.ai_actor)
                 if licoes is None:
                     licoes = self._licoes_da_tentativa(run, objective, step, attempt_id, app, rr)
@@ -3020,6 +3027,11 @@ class StepExecutor:
                 repetida = args.name in lidos and lidos[args.name][0] == valor
                 if args.name in lidos and not repetida:
                     divergentes.add(args.name)
+                    # 30.78: FATO neutro, que vai também ao juiz (`history`): a tela mudou ou o ator leu outro elemento,
+                    # e quem julga a pós-condição sabe que o valor não foi o mesmo a tentativa inteira. Sem os valores
+                    # (eles já estão nas linhas das leituras) e sem instrução.
+                    history.append(f"(executor) o valor lido de '{args.name}' mudou nesta tentativa; vale a última "
+                                   "leitura.")
                 elif repetida:
                     divergentes.discard(args.name)
                 lidos[args.name] = (valor, args.value_kind)

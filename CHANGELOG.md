@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.78: sobras da leitura que não gira (branch feat/30-78-sobras-da-leitura-que-nao-gira)
+
+Da leitura do 31.78.
+- Fato neutro ao juiz: a releitura que muda o valor de uma saída põe no `history` "o valor lido de '<saída>' mudou nesta
+  tentativa; vale a última leitura.", sem os valores e sem instrução.
+- Aviso ao ator: com tudo lido e uma saída divergente, a cópia do ator pede para reler essa saída antes do `step_done`.
+  Não vai ao juiz.
+- Teste com duas saídas, uma estável e uma divergente que se estabiliza: a etapa anda, o juiz recebe o fato e a entrega
+  é a última leitura. O caso em que ela segue divergente até o teto já estava coberto pelo 31.78.
+- Funções tocadas (K-095): o laço do ator em `taskqueue/executor.py` (a leitura do `read_value` e a montagem do
+  histórico do ator).
+- Prova `simulated`: `backend/tests/test_leitura_que_nao_gira_sobras.py` (3). Sem a mudança no executor, os 3
+  reprovam. Real: `not_run`.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
