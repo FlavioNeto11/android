@@ -2733,14 +2733,18 @@ class StepExecutor:
                 if (not faltam and not judged_step and not obs.sensitive
                         and self._postcondition_holds(step, obs, cartao, pacote=app.package)):
                     break              # ler não muda a tela: com tudo lido e a pós-condição valendo, só comprovar
-                if not faltam and prova_da_leitura is not None:
+                if not faltam and prova_da_leitura is not None and not visuais:
                     # 31.61 (A): a prova vale numa árvore lida AGORA, depois da última leitura (não na de antes): a tela
                     # pode ter mudado enquanto se lia. Fechar aqui tira só a volta ao ator; a verificação final roda igual.
+                    # Valor lido da IMAGEM não se confere na árvore: com um deles, o ator segue no laço.
                     try:
                         peek = last_obs = await self.devices.observe(rt, timeout=call_timeout, imagem=False)
                     except DriverError:
                         continue
-                    if await leitura_pronta(peek):
+                    # L1 da revisão do #348: a prova confere a TELA; cada valor lido tem de seguir nela. Outra tela do
+                    # mesmo tipo (outro e-mail, a lista rolada) casaria a prova com os valores da anterior.
+                    if (await leitura_pronta(peek)
+                            and all(peek.tree.count_text(como_texto(v, k)) > 0 for v, k in lidos.values())):
                         repo.decision(f"{iid} · {step.title}: valores lidos e a prova local vale na tela relida; "
                                       "a etapa vai à verificação sem step_done", run_id=run_id, instance_id=iid,
                                       step_id=step.id)

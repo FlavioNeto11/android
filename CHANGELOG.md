@@ -32,6 +32,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Medida, roteiro das 8 decisões da `r-20261004232524-2e0775`:** 8 → 7 `decide`; o tempo do harness não muda
   (`decide` simulado).
 - **Teste negativo:** a tela muda depois da última leitura → a etapa não fecha e o `step_done` volta a ser pedido.
+- **L1 da revisão:** a prova confere a tela; o fecho também exige que cada valor lido da árvore ainda apareça na
+  árvore relida (outra tela do mesmo tipo não fecha com os valores da anterior), e valor lido da imagem deixa o
+  ator no laço. Teste: a mesma lista com outros contatos depois da última leitura não fecha.
 - Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`; o `_prova_local` é dublê por árvore). Real:
   `not_run`, janela depois do deploy 34.
 

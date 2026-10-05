@@ -65,7 +65,8 @@ def _plano(inner: Any) -> Any:
     return plan
 
 
-def _roteiro(harness: Harness, visto: dict[str, Any], *, tela_muda_na_ultima_leitura: bool = False) -> Any:
+def _roteiro(harness: Harness, visto: dict[str, Any], *, tela_muda_na_ultima_leitura: bool = False,
+             valores_somem_na_ultima_leitura: Any = None) -> Any:
     decide0 = harness.ai.inner.decide
 
     async def decide(req: Any) -> Any:
@@ -81,11 +82,15 @@ def _roteiro(harness: Harness, visto: dict[str, Any], *, tela_muda_na_ultima_lei
             el = next(e for e in req.screen.tree.elements if e.text == ("QA-001" if nome == "remetente" else "QA-002"))
             if nome == "assunto" and tela_muda_na_ultima_leitura:
                 fake.screen, fake.contact = "chat", "QA-003"     # a árvore relida depois desta leitura não tem a lista
+            if nome == "assunto" and valores_somem_na_ultima_leitura is not None:
+                valores_somem_na_ultima_leitura(True)            # a mesma lista, com outros contatos
             return Decision(tool="read_value", args={"rationale": "r", "name": nome, "element_id": el.id,
                                                      "value": None, "value_kind": "text"}), Usage()
         if passo == "step_done":
             if tela_muda_na_ultima_leitura and fake.screen == "chat":
                 fake.screen, fake.contact = "home", None
+            if valores_somem_na_ultima_leitura is not None:
+                valores_somem_na_ultima_leitura(False)
             return Decision(tool="step_done", args={"rationale": "pronto", "evidence": "caixa",
                                                     "delivery_level": None}), Usage()
         return Decision(tool="observe_screen", args={"rationale": "olhar"}), Usage()
@@ -129,6 +134,25 @@ async def test_prova_local_falsa_na_arvore_relida_nao_fecha(harness: Harness, ca
     """A tela da última leitura tinha a lista; a relida depois dela, não. A etapa NÃO sai sem o ator: o `step_done`
     volta a ser pedido (8 decisões), e nenhuma decisão de fecho sem `step_done` é gravada."""
     visto, _s, final = await _rodar(harness, tela_muda_na_ultima_leitura=True)
+    assert final.status == "completed"
+    db = harness.state.db                                                     # type: ignore[union-attr]
+    assert visto["decisoes"] == 8
+    assert not any("sem step_done" in (r["text"] or "") for r in db.query("SELECT message AS text FROM events"))
+
+
+async def test_mesma_tela_com_outros_valores_na_arvore_relida_nao_fecha(harness: Harness, caixa: None) -> None:
+    """L1 da revisão do #348: a tela relida ainda casa a prova (a mesma lista), mas os valores lidos não estão mais nela
+    (outra tela do mesmo tipo). A etapa NÃO sai sem o ator: o `step_done` volta a ser pedido."""
+    from . import fake_device
+    originais = list(fake_device.CONTACTS)
+
+    def trocar(outros: bool) -> None:
+        fake_device.CONTACTS[:] = ["Equipe Outra", "Suporte Outro", "QA-009"] if outros else originais
+
+    try:
+        visto, _s, final = await _rodar(harness, valores_somem_na_ultima_leitura=trocar)
+    finally:
+        fake_device.CONTACTS[:] = originais
     assert final.status == "completed"
     db = harness.state.db                                                     # type: ignore[union-attr]
     assert visto["decisoes"] == 8
