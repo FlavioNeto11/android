@@ -2,6 +2,7 @@ import { Zap } from 'lucide-react';
 import { createContext, useContext, useId, useState, type ReactNode } from 'react';
 import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
+import { SeloEmProva } from '../../components/SeloEmProva';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { textoDosApps } from '../../lib/appsDoFluxo';
@@ -96,7 +97,10 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
         ) : null}
         {capability ? <Fato rotulo="Capacidade"><CapabilityNomeada codigo={capability} nome={nomeDaCapabilityDo(item)(capability)} /></Fato> : null}
         {versao ? <Fato rotulo="Versão">{versao}</Fato> : null}
-        <Fato rotulo="Estado">{rotuloDoEstado(item.state)}</Fato>
+        <Fato rotulo="Estado">
+          {rotuloDoEstado(item.state)}
+          {item.kind === 'fluxo' && item.ensinado_em_prova ? <> <SeloEmProva ensinado={item.ensinado_em_prova} /></> : null}
+        </Fato>
         <Fato rotulo="Origem">{ORIGEM_LABEL[item.origin] ?? item.origin}</Fato>
       </dl>
       {item.nasceu_em ? (

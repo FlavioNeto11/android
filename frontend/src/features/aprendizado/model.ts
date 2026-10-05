@@ -11,7 +11,7 @@
  * TOLERANTE (`ler*`) — campo ausente vira `null`, linha que não é objeto some, e nada quebra a página.
  */
 import { Archive, CircleCheck, CircleDashed, CircleOff, FilePen, ShieldCheck } from 'lucide-react';
-import type { SkillState } from '../../api/types';
+import type { EnsinadoEmProva, SkillState } from '../../api/types';
 import { isRecord } from '../../lib/format';
 import { POSTCONDITION_KIND, type StatusMeta } from '../../lib/status';
 import { formatQuando } from '../../lib/time';
@@ -121,6 +121,9 @@ export interface EntradaDoLivro {
   /** 30.81, só no fluxo: o motivo (código do contrato) por que o ensinado espera a decisão de uma pessoa e o "Confirmar
    *  que fica" vale para ele; `null` no resto. Ausente nos outros tipos e em backend anterior. */
   espera_a_pessoa?: string | null;
+  /** 30.85 (adendo v1.73), só no fluxo ensinado: presente enquanto ele espera a prova (o mesmo `{persona, sessao}` do
+   *  30.81) e AUSENTE quando foi provado, confirmado por uma pessoa, desligado ou não veio do treino. `state` segue `published`. */
+  ensinado_em_prova?: EnsinadoEmProva | null;
 }
 
 /** 30.23: a execução do sucesso falso e o item que ela ensinou (no fluxo, a própria linha, que renasce nela). */

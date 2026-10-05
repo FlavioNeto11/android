@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.85 (painel): o Livro mostra o selo "em prova" no fluxo ensinado (branch feat/30-85-selo-no-livro)
+
+- Só frontend, contra o adendo v1.73 (backend `feat/30-85-selo-em-prova-no-livro`, ainda sem merge): a entrada e o detalhe do fluxo no Livro passam a
+  trazer `ensinado_em_prova {persona, sessao}` enquanto ele espera a prova (ausente quando provado, confirmado, desligado ou sem treino; o `state`
+  segue `published`). Achado do percurso do deploy 42: o fluxo salvo com a gravação sem persona aparecia só como "Publicado".
+- `ItemDoLivro`: o mesmo `SeloEmProva` do 30.81 ao lado do estado, e, sem `espera_a_pessoa`, a nota curta de quem pode usar até a prova (com a persona
+  ou sem ela); com `espera_a_pessoa` vale a nota de "Confirmar que fica" e a explicação não se repete. `DetalheRico`: o selo no fato "Estado".
+  Sem o campo (backend anterior), nada muda na tela.
+- Prova `simulated`: `AprendizadoPage.test.tsx::30.85` (2 testes) e `DetalheRico.test.tsx::o selo em prova do fluxo ensinado` (1); tirar o selo do item
+  ou do detalhe reprova os três. Frontend inteiro 1701/1701, typecheck e build ok (4 workers, Idle). `not_run`: o percurso real (depende do backend).
+
 ## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
 
 - O fluxo ensinado que a prova real desligou (30.81) renasce na mesma linha quando a pessoa ensina o mesmo comando de

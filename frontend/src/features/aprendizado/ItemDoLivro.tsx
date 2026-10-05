@@ -5,8 +5,9 @@ import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Disclosure } from '../../components/Disclosure';
 import { Checkbox } from '../../components/Field';
+import { SeloEmProva } from '../../components/SeloEmProva';
 import { StatusBadge } from '../../components/StatusBadge';
-import { textoDaEsperaDaPessoa } from '../../lib/emProva';
+import { explicacaoEmProva, textoDaEsperaDaPessoa } from '../../lib/emProva';
 import { cx, formatInt } from '../../lib/format';
 import { saveJson } from '../../lib/storage';
 import { toLoadError } from '../../lib/loadError';
@@ -162,6 +163,8 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
           </Badge>
         ) : null}
         {e.state ? <StatusBadge meta={ESTADO_META[e.state]} size="sm" /> : null}
+        {/* 30.85: o ensinado ainda em prova segue "Publicado", mas só vale para a persona que ensinou; o selo é o do 30.81. */}
+        {e.kind === 'fluxo' ? <SeloEmProva ensinado={e.ensinado_em_prova} /> : null}
         {saude ? <Badge tone={saude.tone} size="sm" icon={saude.icon} title={saude.description} className={styles.seloDeSaude}><span className="sr-only">Saúde: </span>{saude.label}</Badge> : null}
       </div>
       <div className={styles.itemMeta}>
@@ -199,6 +202,10 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
           Ensinado, ainda em prova: o uso fica restrito até ela passar (só a persona que ensinou; sem persona na gravação,
           nenhum aparelho). {textoDaEsperaDaPessoa(e.espera_a_pessoa)} “Confirmar que fica” libera o fluxo para quem estiver no escopo.
         </p>
+      ) : null}
+      {/* Em prova sem a pessoa na jogada (a prova automática ainda decide): a nota curta; com `espera_a_pessoa` vale a de cima. */}
+      {e.kind === 'fluxo' && e.ensinado_em_prova && !e.espera_a_pessoa ? (
+        <p className={styles.notaDoItem}>{explicacaoEmProva(e.ensinado_em_prova)}</p>
       ) : null}
       {e.confirmado ? (
         <p className={styles.notaDoItem}>
