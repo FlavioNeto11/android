@@ -6219,3 +6219,14 @@ Sem migração. Campo aditivo em `SessionInfo`, que vai em `PersonaDTO.session`,
   intervenção" de Personas e a caixa de Pendências), com o rótulo "Tela não reconhecida" em vez de "Não verificada".
 - **Prova:** `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py::test_parada_no_teto_aparece_no_rest_pela_regra_do_aviso`,
   `frontend/src/features/pendencias/PendenciasPage.test.tsx`, `frontend/src/features/profiles/ProfilesPage.test.tsx`).
+
+## Adendo v1.49 (05/10/2026; número da orquestradora; item 31.71) — `MotivoDaImagem` ganha `leitura_pendente`
+
+Sem migração: `ai_calls.image_reason` é `TEXT` sem `CHECK` (migração 080). Aditivo no vocabulário `MotivoDaImagem`
+(`planning/provider.py`), que aparece em `GET /api/usage` como chave de `image_reasons`.
+- `leitura_pendente`: a imagem foi porque a etapa entrega valor (`saidas`) e ainda falta saída declarada. Só existe com
+  `ai.imagem_enquanto_falta_saida` ligada (desligada por padrão). Vem depois de `sensivel`, `politica_*`, `pedida`,
+  `problema` e `primeira_*` na ordem da regra: a política e a tela sensível continuam mandando.
+- O painel rotula o valor novo ("saída ainda não lida", `frontend/src/features/usage/usage.ts`); um valor desconhecido
+  segue aparecendo pela chave crua. Ausente = backend de antes do 31.71 ou chave desligada.
+- **Prova:** `simulated` (`backend/tests/test_imagem_enquanto_falta_saida.py`).
