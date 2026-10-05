@@ -334,6 +334,13 @@ Prova: `test_ensino_v2.py::test_laco_de_perguntas_e_respostas_ate_o_rascunho` (v
   letras; e-mail e senha na mesma linha também passam. Código de 4 a 8 dígitos sozinho, ou perto de "code", "código",
   "verify", "senha", "pin", "otp", "token", não é gravado nas linhas, no título nem no alvo (por token também: "Recife
   2024" cai, de propósito; na dúvida, recusa); dígito único de tecla de PIN desenhada sai do alvo em qualquer tela.
+  Teclado de PIN desenhado (31.94): o toque numa tecla (rótulo `text` ou `desc` de um dígito ou no formato "2,ABC"; ou sem
+  rótulo e com `resource_id` terminado em dígito, como `key4`; ou alvo sem rótulo cujo id ou classe nomeia um teclado
+  num View só: `pin_pad`, `PinKeypadView`, `keypad`, `numpad`, `passcode`, `lockpattern`) é gravado SEM alvo e SEM x/y,
+  com a marca `sensitive`: o id e a posição seriam o dígito. Botões de diálogo (`android:id/button1`, "OK") têm
+  rótulo e seguem gravados. Em tela sensível, o toque sem id estrutural também sai sem x/y. A etapa com essa entrada
+  não vira receita ("coordenada solta") e a IA a conduz. Limite conhecido: dígito por extenso ("um", "one") não é
+  reconhecido como tecla.
   Reinício com duas réplicas: a reconciliação só fecha a gravação de aparelho que o próprio backend hospeda.
 
 ## O generalizador e o custo

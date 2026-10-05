@@ -35,6 +35,21 @@ def _parece_segredo(texto: str | None) -> bool:
 
 
 _UM_DIGITO = re.compile(r"\d")
+#: A tecla do teclado telefônico: um dígito e até 4 letras maiúsculas, com separador opcional ("2,ABC", "2 ABC", "2ABC").
+_TECLA_TELEFONICA = re.compile(r"\d[ ,.\-]?[A-Z]{1,4}")
+_RID_TERMINA_EM_DIGITO = re.compile(r"\d$")
+#: Os nomes de um teclado ou padrão de bloqueio desenhado num View só (o alvo é o teclado inteiro: a posição do toque É o
+#: dígito). Só estes; casam por PEDAÇO do nome (`spinner` não é `pin`).
+_TERMOS_DE_TECLADO = frozenset({"pin", "passcode", "keypad", "numpad", "pinpad", "lockpattern", "patternview"})
+_PEDACOS_DE_NOME = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+")
+
+
+def _nome_de_teclado(nome: str | None) -> bool:
+    """`pin_pad`, `PinKeypadView`, `lock_pattern_view`: separa por `_`, `.`, `-` e por caixa (camelCase) e compara os
+    pedaços, e os pares vizinhos juntos, com `_TERMOS_DE_TECLADO`."""
+    pedacos = [m.group().lower() for m in _PEDACOS_DE_NOME.finditer(nome or "")]
+    candidatos = set(pedacos) | {a + b for a, b in zip(pedacos, pedacos[1:], strict=False)}
+    return bool(candidatos & _TERMOS_DE_TECLADO)
 _ENFEITE_DE_TOKEN = ".,;:!?()[]{}\"'"
 
 
@@ -47,6 +62,41 @@ def _parece_segredo_de_tela(texto: str | None) -> bool:
     if _parece_segredo(texto) or parece_linha_com_codigo(texto):
         return True
     return any(parece_codigo(t.strip(_ENFEITE_DE_TOKEN)) for t in texto.split())
+
+
+def _rotulo_de_tecla(texto: str | None) -> bool:
+    t = (texto or "").strip()
+    return bool(_UM_DIGITO.fullmatch(t) or _TECLA_TELEFONICA.fullmatch(t))
+
+
+def _e_tecla_de_teclado_numerico(alvo: dict | None) -> bool:
+    """31.94: o toque numa tecla de PIN desenhada na tela. Tirar o rótulo não basta: o `resource_id` (`key4`, `digit_4`,
+    `btn4`) e o x/y de cada toque num teclado fixo SÃO o dígito. É tecla quando o elemento tocado (ou um filho rotulado
+    dele) tem rótulo (`text` OU `desc`) de um dígito ou de tecla telefônica, ou quando NÃO tem rótulo e o `resource_id` termina
+    em dígito, ou ainda quando o `resource_id`/classe nomeia um teclado desenhado num View só (`pin_pad`, `PinKeypadView`).
+    Dígito por extenso ("um", "one") não entra: limite conhecido.
+    `android:id/button1` (OK/Cancelar de todo diálogo) termina em dígito mas tem rótulo: não é tecla. Campo editável não
+    entra pelo rótulo (o `text` dele é o conteúdo, não o nome)."""
+    if not alvo:
+        return False
+    rotulos = [] if alvo.get("editable") else [alvo.get("text"), alvo.get("desc")]
+    for filho in alvo.get("filhos") or []:
+        if not (filho.get("editable") or _classe_de_campo_de_texto(filho.get("class_name"))):
+            rotulos += [filho.get("text"), filho.get("desc")]
+    if any(_rotulo_de_tecla(r) for r in rotulos):
+        return True
+    if any((r or "").strip() for r in rotulos):
+        return False
+    rid = (alvo.get("resource_id") or "").rsplit("/", 1)[-1]
+    # Sem rótulo: o teclado desenhado num View só (rid ou classe com `pin`, `keypad`...) ou a tecla cujo id termina em dígito.
+    if _nome_de_teclado(rid) or _nome_de_teclado((alvo.get("class_name") or "").rsplit(".", 1)[-1]):
+        return True
+    return not alvo.get("editable") and bool(_RID_TERMINA_EM_DIGITO.search(rid))
+
+
+def _tem_id_estrutural(alvo: dict | None) -> bool:
+    """O alvo (ou um filho rotulado dele) tem `resource_id`: a receita ainda o acha sem coordenada."""
+    return bool(alvo) and bool(alvo.get("resource_id") or any(f.get("resource_id") for f in alvo.get("filhos") or []))
 
 
 def _classe_de_campo_de_texto(class_name: str | None) -> bool:
@@ -224,8 +274,17 @@ class TrainingRecorder:
         tipo = entrada["type"]
         sensivel = bool(tree is not None and tree.sensitive)
         alvo = None
-        if tree is not None and tipo in ("tap", "long_press") and entrada.get("x") is not None:
-            alvo = _alvo_sem_segredo(_safe_target(tree.at(int(entrada["x"]), int(entrada["y"])), tree), sensivel)
+        x, y = entrada.get("x"), entrada.get("y")
+        marcada = sensivel                       # a coluna `sensitive`: tela sensível OU toque que não se guarda
+        if tree is not None and tipo in ("tap", "long_press") and x is not None:
+            bruto = _safe_target(tree.at(int(x), int(y)), tree)
+            if _e_tecla_de_teclado_numerico(bruto) or (sensivel and not _tem_id_estrutural(bruto)):
+                # 31.94: teclado de PIN desenhado, ou toque em tela sensível sem identificador estrutural: sem alvo e sem
+                # x/y (num teclado fixo, a coordenada é o dígito). A receita não nasce disso (coordenada solta).
+                x = y = None
+                marcada = True
+            else:
+                alvo = _alvo_sem_segredo(bruto, sensivel)
         texto = entrada.get("text")
         tem_texto = bool(texto)
         if texto is not None:
@@ -247,11 +306,11 @@ class TrainingRecorder:
         self.db.execute(
             "INSERT INTO training_inputs(session_id, seq, ts, type, x, y, x2, y2, key_name, text, has_text, text_len,"
             " package, app_id, target, screen_title, screen_lines, sensitive) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (sid, seq, now_iso(), tipo, entrada.get("x"), entrada.get("y"), entrada.get("x2"), entrada.get("y2"),
+            (sid, seq, now_iso(), tipo, x, y, entrada.get("x2"), entrada.get("y2"),
              entrada.get("key"), texto, int(tem_texto), len(entrada.get("text") or "") if tem_texto else None,
              pacote, entrada.get("app_id"), dumps(alvo) if alvo else None,
              titulo, dumps(linhas) if linhas is not None else None,
-             int(sensivel)))
+             int(marcada)))
         self.db.execute("UPDATE training_sessions SET updated_at=? WHERE id=?", (now_iso(), sid))
         self.bus.emit("training.input", f"{rt.id}: treinamento — entrada {seq} ({tipo})", instance_id=rt.id,
                       data={"training_session_id": sid, "seq": seq})

@@ -31,6 +31,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_segredo_na_gravacao.py` (4; sem o conserto os 4 falham) e
   `test_modo_treinamento.py` (7 passed). Real: `not_run`.
 
+## 2026-10-05 — 31.94, teclado de PIN na gravação do treinamento (branch fix/31-94-teclado-de-pin-na-gravacao)
+
+- Tirar o rótulo "4" não bastava: o `resource_id` (`key4`) e o x/y de cada toque num teclado fixo são o dígito.
+- Toque em tecla de teclado numérico (rótulo `text` ou `desc` de um dígito ou "2,ABC"; sem rótulo e rid terminado em
+  dígito; alvo sem rótulo cujo rid ou classe nomeia teclado: `pin_pad`, `PinKeypadView`...) é gravado sem alvo e sem
+  x/y, com `sensitive=1` (a coluna que já existia; sem migração). `android:id/button1` com rótulo segue gravado.
+- Em tela sensível, o toque sem id estrutural (nem do alvo nem de filho) também sai sem x/y.
+- A destilação não muda: coordenada solta já não vira receita (teste com `distill_training`).
+- Fora do escopo (outro ramo): `linha_da_entrada` de `planning/training.py` imprime "ponto=(None,None) sem elemento
+  identificado" nesses toques; precisa dizer "toque em teclado ou tela sensível (não gravado)" quando `sensitive`.
+- Prova `simulated`: `test_treino_segredo_na_gravacao.py` (20). Real: `not_run`.
+
 ## 2026-10-05 — 31.80/31.82, segunda leitura do PR #427 (branch fix/31-80-82-gravacao-do-treino)
 
 - C1 (31.80): `reconcile_after_restart` só fecha sessão de aparelho que NÃO é hospedado por outro dono
