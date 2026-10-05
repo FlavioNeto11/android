@@ -148,12 +148,14 @@ class LearningService:
                  mineradores: Sequence[Minerador] = (), passos: Sequence[PassoDeCuradoria] = (),
                  eventos: PortaDeEventos | None = None, catalogo_de_risco: CatalogoDeRisco | None = None,
                  titulos: TitulosDoCatalogo | None = None,
-                 risco_do_nativo: RiscoDoNativo | None = None) -> None:
+                 risco_do_nativo: RiscoDoNativo | None = None,
+                 id_do_fluxo: Callable[[str], str] | None = None) -> None:
         """`retencao_de_logs_dias`: o `log_retention_days` VIGENTE (muda com o processo no ar); é o que diz até
         onde `ai_calls` ainda está inteiro. `eventos`: a porta do `learning.needs_person` (30.21; sem ela, nada é
         publicado); `catalogo_de_risco`: os fatos do catálogo do app para a faixa B ou C; `titulos`: o nome da
         capability no catálogo (sem ele, o painel mostra o código); `risco_do_nativo`: a capability da receita e as
-        etapas do fluxo, lidas como o dossiê as lê, para a faixa do aviso ser a do parecer (30.33)."""
+        etapas do fluxo, lidas como o dossiê as lê, para a faixa do aviso ser a do parecer (30.33). `id_do_fluxo`
+        (30.83): a referência que chega numa rota (o id ou a `ref_publico` de um aviso) para o id interno."""
         self._repo = repo
         self._fontes = fontes
         self._triagem = triagem
@@ -166,6 +168,13 @@ class LearningService:
         self._lacos: list[LacoPeriodico] = []
         self._espera = AvisadorDeEspera(eventos, catalogo_de_risco, relogio, risco_do_nativo)
         self._titulos = titulos
+        self._id_do_fluxo = id_do_fluxo
+
+    def ref_interna(self, kind: LivroKind, ref: str) -> str:
+        """30.83: o link do aviso leva a referência pública do fluxo; o resto do livro fala o id interno."""
+        if kind is LivroKind.FLUXO and self._id_do_fluxo is not None:
+            return self._id_do_fluxo(ref)
+        return ref
 
     @property
     def ajustes(self) -> Ajustes:

@@ -157,6 +157,21 @@ def ref_aleatoria(db: Database) -> str:
             return ref
 
 
+def ref_publica_do_fluxo(db: Database, flow_id: str) -> str:
+    """A referência que sai do central (evento, `href`): a `ref_publico`; sem ela (subida ainda não preencheu), o id."""
+    linha = db.one("SELECT ref_publico FROM flows WHERE id=?", (flow_id,))
+    return str(linha["ref_publico"]) if linha is not None and linha["ref_publico"] else flow_id
+
+
+def id_do_fluxo(db: Database, ref: str) -> str:
+    """O id interno a partir do que chega numa rota: o próprio id (fluxo novo, ou o painel antigo) ou a `ref_publico`
+    (o link de um aviso). Sem nenhum dos dois, devolve como veio: quem lê dá o 404 de sempre."""
+    if db.one("SELECT id FROM flows WHERE id=?", (ref,)) is not None:
+        return ref
+    linha = db.one("SELECT id FROM flows WHERE ref_publico=?", (ref,))
+    return str(linha["id"]) if linha is not None else ref
+
+
 def preencher_refs_publicas(db: Database) -> int:
     """30.83: dá a referência aleatória a cada fluxo que ainda não tem (os de antes da migração 116). Roda na subida;
     idempotente (só as linhas sem ela, e o UPDATE confere de novo, para duas réplicas subindo juntas). O id antigo

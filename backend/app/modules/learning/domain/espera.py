@@ -88,8 +88,10 @@ class AvisoDeEspera:
                 "aguardando": self.aguardando, "motivo": self.motivo, "href": self.href, "desde": self.desde}
 
     def mensagem(self) -> str:
-        """Só identificadores e vocabulário fechado: a mensagem também é persistida e transmitida."""
-        quem = f"{self.kind} {self.ref}" + (f" ({self.app})" if self.app else "")
+        """Só identificadores e vocabulário fechado: a mensagem também é persistida, transmitida e vai ao backend.log
+        (`EventBus.emit`). No fluxo, sem a referência (30.83: o id antigo é o slug do resumo); ela segue em `data`."""
+        quem = self.kind if self.kind == "fluxo" else f"{self.kind} {self.ref}"
+        quem += f" ({self.app})" if self.app else ""
         if self.aguardando:
             return f"Conhecimento aguardando a pessoa, faixa {self.faixa.value}: {quem} [{self.motivo}]"
         return f"Conhecimento saiu da espera da pessoa, faixa {self.faixa.value}: {quem} [{self.motivo}]"

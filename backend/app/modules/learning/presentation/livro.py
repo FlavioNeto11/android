@@ -355,12 +355,14 @@ async def revisar(request: Request) -> JsonObject:
 @router.get("/{kind}/{ref}", response_model=None)
 async def ler_item(request: Request, kind: LivroKind, ref: str) -> JsonObject:
     servico = _servico(request)
+    ref = servico.ref_interna(kind, ref)                 # 30.83: aceita o id e a referência pública
     return _detalhe(_chamar(lambda: servico.detalhe(kind, ref)), servico)
 
 
 @router.post("/{kind}/{ref}/status", response_model=None)
 async def mudar_status(request: Request, kind: LivroKind, ref: str, corpo: CorpoDeStatus) -> JsonObject:
     servico = _servico(request)
+    ref = servico.ref_interna(kind, ref)                 # 30.83: aceita o id e a referência pública
     quem = _quem(request)
     pareceres = _pareceres(servico)
     if pareceres is not None:
@@ -374,6 +376,7 @@ async def mudar_status(request: Request, kind: LivroKind, ref: str, corpo: Corpo
 @router.post("/{kind}/{ref}/evidencia-invalida", response_model=None)
 async def invalidar_evidencia(request: Request, kind: LivroKind, ref: str, corpo: CorpoDeEvidenciaInvalida) -> JsonObject:
     servico = _servico(request)
+    ref = servico.ref_interna(kind, ref)                 # 30.83: aceita o id e a referência pública
     quem = _quem(request)
     pareceres = _pareceres(servico)
     if pareceres is not None:
@@ -386,6 +389,7 @@ async def invalidar_evidencia(request: Request, kind: LivroKind, ref: str, corpo
 @router.post("/{kind}/{ref}/confirmar", response_model=None)
 async def confirmar_que_fica(request: Request, kind: LivroKind, ref: str, corpo: CorpoDaConfirmacao) -> JsonObject:
     servico = _servico(request)
+    ref = servico.ref_interna(kind, ref)                 # 30.83: aceita o id e a referência pública
     quem = _quem(request)
     pareceres = _pareceres(servico)
     if pareceres is not None:
@@ -407,6 +411,7 @@ def _servico_dos_pareceres(servico: LearningService) -> ServicoDePareceres:
 async def responder_parecer(request: Request, kind: LivroKind, ref: str, review_id: str,
                             corpo: CorpoDoParecer) -> JsonObject:
     servico = _servico(request)
+    ref = servico.ref_interna(kind, ref)                 # 30.83: aceita o id e a referência pública
     pareceres = _servico_dos_pareceres(servico)
     quem = _quem(request)
     entrada = _chamar(lambda: pareceres.responder(kind, ref, review_id, aceitar=corpo.resposta == "aceitar",
@@ -417,6 +422,7 @@ async def responder_parecer(request: Request, kind: LivroKind, ref: str, review_
 @router.post("/{kind}/{ref}/revisao", response_model=None)
 async def pedir_revisao(request: Request, kind: LivroKind, ref: str) -> JSONResponse:
     servico = _servico(request)
+    ref = servico.ref_interna(kind, ref)                 # 30.83: aceita o id e a referência pública
     pareceres = _servico_dos_pareceres(servico)
     quem = _quem(request)
     resposta = _chamar(lambda: pareceres.pedir_revisao(kind, ref, by=quem))

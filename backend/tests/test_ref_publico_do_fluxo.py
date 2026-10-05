@@ -9,15 +9,21 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator
+from functools import partial
 from pathlib import Path
 
+import httpx
 import pytest
 
 from app.db import Database
+from app.main import create_app
 from app.models import Plan, PlannerInfo, PlanStep, Postcondition
-from app.taskqueue.flows import FlowStore, preencher_refs_publicas
+from app.modules.learning.domain.espera import AvisoDeEspera, Faixa
+from app.modules.learning.infrastructure.eventos import EventosNoBarramento
+from app.taskqueue.flows import FlowStore, id_do_fluxo, preencher_refs_publicas, ref_publica_do_fluxo
 from app.util import now_iso
 
+from .conftest import Harness
 from .fake_skills import banco
 
 FORMA = re.compile(r"f-[0-9a-f]{12}")
@@ -77,3 +83,57 @@ def test_a_referencia_e_unica_no_banco(db: Database) -> None:
     db.execute("UPDATE flows SET ref_publico='f-000000000001' WHERE id='a'")
     with pytest.raises(Exception):  # noqa: B017 - SQLite e PostgreSQL levantam classes diferentes
         db.execute("UPDATE flows SET ref_publico='f-000000000001' WHERE id='b'")
+
+
+# ------------------------------------------------------------------ fatia 2: o que sai e o que entra
+class _Bus:
+    def __init__(self) -> None:
+        self.eventos: list[tuple[str, str, dict[str, object]]] = []
+
+    def emit(self, kind: str, message: str, *, level: str = "info", instance_id: str | None = None,
+             data: dict[str, object] | None = None) -> object:
+        self.eventos.append((kind, message, dict(data or {})))
+        return None
+
+
+def test_as_duas_traducoes_aceitam_o_id_e_a_referencia(db: Database) -> None:
+    _legado(db, "enviar-mensagem-para-maria-souza", "mande uma mensagem a maria")
+    preencher_refs_publicas(db)
+    ref = ref_publica_do_fluxo(db, "enviar-mensagem-para-maria-souza")
+    assert FORMA.fullmatch(ref)
+    antigo = "enviar-mensagem-para-maria-souza"
+    assert id_do_fluxo(db, ref) == id_do_fluxo(db, antigo) == antigo
+    assert id_do_fluxo(db, "f-ffffffffffff") == "f-ffffffffffff"                 # desconhecida: o 404 de sempre
+    assert ref_publica_do_fluxo(db, "sem-linha") == "sem-linha"
+
+
+def test_o_aviso_do_fluxo_sai_com_a_referencia_publica_e_sem_o_id_na_mensagem(db: Database) -> None:
+    _legado(db, "enviar-mensagem-para-maria-souza", "mande uma mensagem a maria")
+    preencher_refs_publicas(db)
+    bus = _Bus()
+    porta = EventosNoBarramento(bus, partial(ref_publica_do_fluxo, db))
+    porta.esperando_a_pessoa(AvisoDeEspera(kind="fluxo", ref="enviar-mensagem-para-maria-souza", app="instagram",
+                                           faixa=Faixa.C, aguardando=True, motivo="classe_c", desde=now_iso()))
+    porta.esperando_a_pessoa(AvisoDeEspera(kind="receita", ref="42", app="instagram", faixa=Faixa.B,
+                                           aguardando=True, motivo="classe_b", desde=now_iso()))
+    (_, msg_fluxo, dados_fluxo), (_, msg_receita, dados_receita) = bus.eventos
+    publica = ref_publica_do_fluxo(db, "enviar-mensagem-para-maria-souza")
+    assert dados_fluxo["ref"] == publica and str(dados_fluxo["href"]).endswith(f"item=fluxo:{publica}")
+    assert "maria" not in msg_fluxo and "maria" not in str(dados_fluxo)        # nem na mensagem, que vai ao log
+    assert dados_receita["ref"] == "42" and "receita 42" in msg_receita       # a receita não muda (id só dígitos)
+
+
+async def test_a_rota_do_livro_abre_o_fluxo_pela_referencia_publica(harness: Harness) -> None:
+    db = harness.state.db
+    _legado(db, "enviar-mensagem-para-maria-souza", "mande uma mensagem a maria")
+    preencher_refs_publicas(db)
+    publica = ref_publica_do_fluxo(db, "enviar-mensagem-para-maria-souza")
+    app = create_app(harness.cfg, state=harness.state)
+    app.state.poc = harness.state
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        pelo_id = await c.get("/api/aprendizado/fluxo/enviar-mensagem-para-maria-souza")
+        pela_ref = await c.get(f"/api/aprendizado/fluxo/{publica}")
+        sem = await c.get("/api/aprendizado/fluxo/f-ffffffffffff")
+    assert pelo_id.status_code == pela_ref.status_code == 200, (pelo_id.text, pela_ref.text)
+    assert pela_ref.json()["item"]["ref"] == pelo_id.json()["item"]["ref"]
+    assert sem.status_code == 404

@@ -43,7 +43,7 @@ from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from app.taskqueue.aproveitamento import aproveitamento
-from app.taskqueue.flows import FlowStore
+from app.taskqueue.flows import FlowStore, id_do_fluxo, ref_publica_do_fluxo
 from app.taskqueue.recipes import RecipeStore
 from app.util import now
 from app.version import commit_em_execucao
@@ -130,9 +130,11 @@ def montar_aprendizado(db: Database, *, config: Callable[[], LearningCfg], reten
     servico = LearningService(repo, fontes,
                               TriagemDeCredencial(), ajustes=lambda: ajustes_do_config(config()),
                               relogio=relogio, retencao_de_logs_dias=retencao_de_logs_dias,
-                              eventos=EventosNoBarramento(eventos) if eventos is not None else None,
+                              eventos=(EventosNoBarramento(eventos, partial(ref_publica_do_fluxo, db))
+                                       if eventos is not None else None),
                               catalogo_de_risco=risco, titulos=TitulosDoRegistro(),
-                              risco_do_nativo=lambda e: lido.do_nativo(e, fontes.conteudo(e.kind, e.ref)))
+                              risco_do_nativo=lambda e: lido.do_nativo(e, fontes.conteudo(e.kind, e.ref)),
+                              id_do_fluxo=partial(id_do_fluxo, db))
     # Pacote A3: o que mais falha e o backlog. A apresentação o acha pelo tipo; a curadoria roda o passo dele.
     falhas = ServicoDeFalhas(FontesDeFalhaSql(db, precos=precos), SqlBacklogRepository(db), repo,
                              TriagemDeCredencial(), regras=lambda: regras_do_backlog(config().backlog),

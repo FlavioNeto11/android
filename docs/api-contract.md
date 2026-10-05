@@ -6529,3 +6529,23 @@ Mudança de comportamento em duas rotas do modo treinamento; o corpo novo é adi
   `control_required`, mostrar a mensagem do erro e manter a barra de gravação (a gravação segue viva; nada foi encerrado),
   em vez de tratá-la como sessão encerrada. Quem não tem o controle vê a gravação, mas não a encerra.
 - **Prova:** `simulated` (`backend/tests/test_treino_parar_exige_controle.py`); `real`: `not_run`.
+
+## Adendo v1.66 (05/10/2026; número da orquestradora; item 30.83) — a referência pública do fluxo é aleatória
+
+Muda o VALOR de `ref` nos eventos de fluxo e passa a aceitar a referência nova nas rotas; nenhum campo novo no payload.
+- **Antes:** o id do fluxo era o slug do `plan.summary` LITERAL e saía em `data.ref`, no `href` e no `message`. Um resumo
+  como "Enviar mensagem para @maria_souza" virava `enviar-mensagem-para-maria-souza…`.
+- **Referência pública:** `f-` mais 12 hex ALEATÓRIOS (`secrets`), coluna `flows.ref_publico` (migração 116). Nunca é
+  derivada do resumo, do comando nem do `match_key`. O fluxo novo nasce com `id = ref_publico`; o que já existe mantém o
+  id interno e ganha a referência na subida.
+- **`learning.needs_person`** (adendo v0.49), com `kind: "fluxo"`: `data.ref` é a referência pública, e o `href`
+  (`#/aprendizado?aba=aprendido&item=fluxo:<ref>`) também. O `message` do fluxo não cita a referência: fica com o tipo e
+  o app. A receita (id só de dígitos) não muda.
+- **Rotas que aceitam as duas formas** (o id interno ou a referência pública) quando `kind` é `fluxo`:
+  `GET /api/aprendizado/fluxo/{ref}` e os `POST` em `…/status`, `…/evidencia-invalida`, `…/confirmar`,
+  `…/parecer/{review_id}`, `…/revisao` e `/api/aprendizado/fluxo/{ref}/validacao`. A resposta segue com o id interno em
+  `item.ref`. Referência desconhecida: o 404 de sempre.
+- **Quem consome:** a Canais deduplica por `desde` + `ref`; a partir do deploy, o `ref` de um fluxo antigo muda uma vez
+  (do slug para a referência pública). Até o deploy, a Canais segue sem transmitir o `ref` de fluxo nem o `message`.
+- **Ainda não coberto** (próximas fatias do 30.83): as rotas `/api/flows/{id}`, os `href` das respostas do painel, os
+  eventos `learning.ensinado_*` (30.80 B e 30.81, ainda em ramo) e os logs que levam `fluxo:<id>`.

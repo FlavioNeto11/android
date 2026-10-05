@@ -30,9 +30,16 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (`flows.preencher_refs_publicas`, idempotente, chamada em `AppState`).
 - Funções tocadas (K-095): `FlowStore.learn_from_run`, `FlowStore.learn_from_plan`, `ref_aleatoria` e
   `preencher_refs_publicas` (novas), `AppState.__init__`.
-- Próximas fatias: eventos e `href` de fluxo com `ref_publico`, a rota que aceita as duas formas, os logs (adendo
-  v1.66).
-- Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (4). Real: `not_run`.
+- Fatia 2 (adendo v1.66): `learning.needs_person` de fluxo sai com `ref` e `href` na referência pública
+  (`EventosNoBarramento(ref_publica_do_fluxo=)`), e o `message` do fluxo não cita a referência
+  (`AvisoDeEspera.mensagem`). As rotas `{kind}/{ref}` do Livro e o pedido de validação aceitam o id e a referência
+  (`LearningService.ref_interna`, `id_do_fluxo`). Funções tocadas (K-095): `EventosNoBarramento.__init__` e
+  `esperando_a_pessoa`, `AvisoDeEspera.mensagem`, `LearningService.__init__` (`id_do_fluxo`, último) e
+  `ref_interna` (nova), `montar_aprendizado`, as rotas de `presentation/livro.py` e `validacoes.py::pedir_validacao`,
+  `ref_publica_do_fluxo` e `id_do_fluxo` (novas).
+- Próximas fatias: `/api/flows/{id}`, os `href` das respostas do painel, os eventos `learning.ensinado_*` (depois do
+  30.80 B e do 30.81) e os logs que levam `fluxo:<id>`.
+- Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (7). Real: `not_run`.
 
 ## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
 
