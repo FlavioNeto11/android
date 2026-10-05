@@ -1669,8 +1669,14 @@ nenhuma evidência contra) e paravam em `observar`, porque o parecer pedia `voto
   - Diz que "sem entrada no catálogo" define a classe e não é lacuna, que o parecer julga pelas evidências citáveis,
     que publicar um fluxo B segue a regra da autopublicação e que o aceite continua sendo da pessoa.
   - O dossiê A e o C não mudam.
-  - A `VERSAO_DO_DOSSIE` continua 1: é uma chave condicional, como `sem_caminho`. O hash do dossiê B muda, e cada
-    item B fica elegível para UMA revisão nova depois do cooldown, dentro da fatia do curador.
+  - A `VERSAO_DO_DOSSIE` continua 1 (N1 da leitura, decidido): é uma chave condicional, como `sem_caminho` e as do
+    30.36.
+    - Subir para 2 mudaria o hash de TODO dossiê, A e C inclusive, e reabriria a revisão de todo o livro sem
+      nada novo a dizer neles.
+    - O parecer B feito com a instrução nova se reconhece pelo dossiê gravado em `learning_reviews.dossie`, que tem
+      `risco.classe_b_e`. A `template_versao` da revisão é a forma do dossiê (`dossie-v1`), não a versão do texto.
+  - O hash do dossiê B muda, e cada item B fica elegível para UMA revisão nova depois do cooldown, dentro da fatia do
+    curador.
 - **Opções fechadas:** `faltas_do_item(classe)` tira `voto_da_pessoa` e `decisao_da_pessoa` das opções de `falta` do
   item B (`FALTA_SO_DA_PESSOA`).
   - O esquema estrito que vai ao provedor leva esse enum.
