@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
+from . import marca_de_partida
 from .identidade import corpo_e_da_farm
 from .vigia_do_laco import ultimo_despejo
 
@@ -52,6 +53,17 @@ ESPERA_MIN_S = 5.0
 ESPERA_MAX_S = 60.0
 #: Prazo entre o pedido educado de parada e o tiro.
 PRAZO_DE_SAIDA_S = 20.0
+#: 29.124: enquanto a marca DESTA subida diz que a partida segue (fase antes de `no_ar`), o silêncio de `/api/health`
+#: não conta como falha, até este teto desde a subida. Com o disco saturado (05/10), a partida passou dos 90 s da
+#: carência e virou laço de kills.
+TETO_DA_PARTIDA_S = 600.0
+#: 29.124: ... e desde que a última reescrita da marca tenha menos que isto. Uma marca parada numa fase por mais
+#: tempo é partida travada, não devagar; conta como falha mesmo abaixo do teto.
+PRAZO_DA_FASE_S = 240.0
+#: 29.124: reinícios seguidos sem uma conferência boa. Daqui em diante, a espera antes do próximo é `PAUSA_LONGA_S`:
+#: reiniciar a cada minuto uma máquina sem fôlego só acrescenta partidas (cinco kills em 18 min, em 05/10).
+TETO_DE_REINICIOS = 4
+PAUSA_LONGA_S = 300.0
 
 
 class Processo(Protocol):
@@ -75,6 +87,8 @@ class Relatorio:
     conferencias_ok: int = 0
     conferencias_falhas: int = 0
     recusou_por_ja_haver_backend: int = 0
+    esperou_a_partida: int = 0
+    pausas_longas: int = 0
 
 
 #: Teto do corpo lido de `/api/health`: o da Farm tem alguns KB; ler sem teto seria confiar em quem responde.
@@ -149,13 +163,22 @@ def _matar_filhos(pid: int) -> None:
             pass
 
 
-def iniciar_backend(raiz_backend: Path, log_dir: Path) -> Processo:
-    """`python -m app.main` com o MESMO interpretador que roda o supervisor (o do venv), com a saída em arquivo."""
+def iniciar_backend(raiz_backend: Path, log_dir: Path, partida_id: str | None = None) -> Processo:
+    """`python -m app.main` com o MESMO interpretador que roda o supervisor (o do venv), com a saída em arquivo.
+
+    O ambiente é o do supervisor (o backend precisa da própria configuração), mais o id desta subida (29.124), que
+    o backend grava na marca da partida, e a pasta do supervisor (a mãe de `log_dir`), onde o backend grava a marca e
+    o vigia despeja a pilha. Um id herdado de outra subida nunca passa adiante."""
+    env = {**os.environ}
+    env.pop(marca_de_partida.VARIAVEL, None)
+    if partida_id:
+        env[marca_de_partida.VARIAVEL] = partida_id
+    env[marca_de_partida.PASTA] = str(log_dir.parent)
     log_dir.mkdir(parents=True, exist_ok=True)
     saida = open(log_dir / "backend.out.log", "ab", buffering=0)          # noqa: SIM115 - herdado pelo filho
     erro = open(log_dir / "backend.err.log", "ab", buffering=0)           # noqa: SIM115 - herdado pelo filho
     try:
-        return subprocess.Popen([sys.executable, "-m", "app.main"], cwd=str(raiz_backend),
+        return subprocess.Popen([sys.executable, "-m", "app.main"], cwd=str(raiz_backend), env=env,
                                 stdout=saida, stderr=erro, stdin=subprocess.DEVNULL, close_fds=True,
                                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                                 start_new_session=os.name != "nt")
@@ -170,9 +193,23 @@ class Supervisor:
                  dormir: Callable[[float], None] = time.sleep,
                  falhas_ate_reiniciar: int = FALHAS_ATE_REINICIAR, carencia_s: float = CARENCIA_S,
                  intervalo_s: float = INTERVALO_S, espera_min_s: float = ESPERA_MIN_S,
-                 espera_max_s: float = ESPERA_MAX_S, despejo: Callable[[], Path | None] = lambda: None) -> None:
+                 espera_max_s: float = ESPERA_MAX_S, despejo: Callable[[], Path | None] = lambda: None,
+                 ler_marca: Callable[[], marca_de_partida.Marca | None] = lambda: None,
+                 nova_partida: Callable[[], str] = marca_de_partida.nova_partida,
+                 teto_da_partida_s: float = TETO_DA_PARTIDA_S, prazo_da_fase_s: float = PRAZO_DA_FASE_S,
+                 teto_de_reinicios: int = TETO_DE_REINICIOS, pausa_longa_s: float = PAUSA_LONGA_S,
+                 relogio: Callable[[], float] = time.monotonic,
+                 relogio_de_parede: Callable[[], float] = time.time) -> None:
+        """`iniciar` lê `self.partida_id` (o id desta subida, sorteado antes de chamá-lo) e o passa ao backend."""
         self._iniciar, self._saudavel, self._encerrar, self._dormir = iniciar, saudavel, encerrar, dormir
         self._despejo = despejo
+        self._ler_marca, self._nova_partida = ler_marca, nova_partida
+        self._relogio, self._relogio_de_parede = relogio, relogio_de_parede
+        self.teto_da_partida_s, self.prazo_da_fase_s = teto_da_partida_s, prazo_da_fase_s
+        self.teto_de_reinicios, self.pausa_longa_s = teto_de_reinicios, pausa_longa_s
+        self.partida_id: str | None = None
+        self.subiu_em = 0.0
+        self.reinicios_seguidos = 0
         self.falhas_ate_reiniciar = falhas_ate_reiniciar
         self.carencia_s, self.intervalo_s = carencia_s, intervalo_s
         self.espera_min_s, self.espera_max_s = espera_min_s, espera_max_s
@@ -197,7 +234,9 @@ class Supervisor:
             self._dormir(self.intervalo_s)
             return
         log.info("subindo o backend (%s)", motivo)
+        self.partida_id = self._nova_partida()
         self.proc = self._iniciar()
+        self.subiu_em = self._relogio()
         self.relatorio.iniciou += 1
         self.falhas = 0
         self._dormir(self.carencia_s)
@@ -214,10 +253,46 @@ class Supervisor:
                         f"; pilha do laço travado em {arquivo}" if arquivo else "; sem despejo de pilha do vigia")
             self._encerrar(self.proc)
             self.proc = None
-        # A espera cresce entre reinícios SEGUIDOS; uma conferência boa a devolve ao mínimo (ver `ciclo`).
+        self._esperar_antes_de_subir()
+        self._subir(motivo)
+
+    def _esperar_antes_de_subir(self) -> None:
+        """A espera cresce entre reinícios SEGUIDOS; uma conferência boa a devolve ao mínimo (ver `ciclo`). Passado o
+        teto de reinícios seguidos (29.124), vira a pausa longa, dita no log."""
+        self.reinicios_seguidos += 1
+        if self.reinicios_seguidos >= self.teto_de_reinicios:
+            self.relatorio.pausas_longas += 1
+            log.warning("%s reinícios seguidos sem uma conferência boa: pausa de %.0f s antes do próximo (a máquina "
+                        "pode estar sem fôlego: disco, RAM)", self.reinicios_seguidos, self.pausa_longa_s)
+            self._dormir(self.pausa_longa_s)
+            return
         self._dormir(self.espera)
         self.espera = min(self.espera_max_s, self.espera * 2)
-        self._subir(motivo)
+
+    def _partida_em_curso(self) -> str | None:
+        """29.124: a descrição da partida que justifica o silêncio, ou `None` (vale a regra de sempre).
+
+        Tolera só se a marca é DESTA subida (o id bate), a fase não é `no_ar`, a partida está abaixo do teto e a
+        última reescrita da marca é recente. Backend `no_ar` mudo segue a regra das três falhas."""
+        try:
+            marca = self._ler_marca()
+        except Exception:  # noqa: BLE001 - ler a marca não pode derrubar o supervisor: sem marca
+            marca = None
+        if marca is None or self.partida_id is None or marca.id != self.partida_id:
+            return None
+        if marca.fase == marca_de_partida.NO_AR:
+            return None
+        subindo_ha = self._relogio() - self.subiu_em
+        if subindo_ha >= self.teto_da_partida_s:
+            log.warning("a partida (fase %s) passou do teto: %.0f s desde a subida, teto de %.0f s; o silêncio conta "
+                        "como falha", marca.fase, subindo_ha, self.teto_da_partida_s)
+            return None
+        parada_ha = self._relogio_de_parede() - marca.ts
+        if not 0 <= parada_ha < self.prazo_da_fase_s:
+            log.warning("a marca da partida está na fase %s há %.0f s, acima do prazo de %.0f s; o silêncio conta como "
+                        "falha", marca.fase, parada_ha, self.prazo_da_fase_s)
+            return None
+        return f"fase {marca.fase} há {parada_ha:.0f} s, {subindo_ha:.0f} s desde a subida"
 
     # ------------------------------------------------------------------ o laço
     def ciclo(self) -> None:
@@ -231,14 +306,22 @@ class Supervisor:
             # backend seguinte, em `AppiumServer.start` (K-039), que conhece as regras e o critério de "é nosso".
             self.relatorio.reiniciou_por_morte += 1
             self.proc = None
-            self._dormir(self.espera)
-            self.espera = min(self.espera_max_s, self.espera * 2)
+            self._esperar_antes_de_subir()
             self._subir("o processo anterior terminou")
             return
         if self._saudavel():
             self.relatorio.conferencias_ok += 1
             self.falhas = 0
             self.espera = self.espera_min_s       # sessão que vive: o próximo reinício volta a ser rápido
+            self.reinicios_seguidos = 0
+            self._dormir(self.intervalo_s)
+            return
+        partida = self._partida_em_curso()
+        if partida is not None:
+            # 29.124: vivo e ainda na partida desta subida. Não é travamento; é a máquina devagar.
+            self.relatorio.esperou_a_partida += 1
+            log.info("/api/health ainda não responde, mas o backend (pid %s) está subindo (%s); não conta como falha",
+                     self.proc.pid, partida)
             self._dormir(self.intervalo_s)
             return
         self.falhas += 1
@@ -276,10 +359,13 @@ def main(argv: list[str] | None = None) -> int:
                         handlers=[logging.FileHandler(log_dir / "supervisor.log", encoding="utf-8"),
                                   logging.StreamHandler(sys.stderr)])
     _instalar_redacao(logging.getLogger())
-    sup = Supervisor(iniciar=lambda: iniciar_backend(raiz_backend, log_dir),
+    # A marca e o despejo do vigia ficam nas pastas do supervisor (`data/` e `data/logs/`), que ele passa ao backend
+    # em `POC_PASTA_DO_SUPERVISOR`: um `paths.data_dir` ou `paths.logs_dir` diferente no config não as separa (N5).
+    sup = Supervisor(iniciar=lambda: iniciar_backend(raiz_backend, log_dir, sup.partida_id),
                      saudavel=lambda: saude_responde(args.health),
                      carencia_s=args.carencia, intervalo_s=args.intervalo, falhas_ate_reiniciar=args.falhas,
-                     despejo=lambda: ultimo_despejo(log_dir))
+                     despejo=lambda: ultimo_despejo(log_dir),
+                     ler_marca=lambda: marca_de_partida.ler(log_dir.parent))
     log.info("supervisor no ar; vigiando %s a cada %.0f s", args.health, args.intervalo)
     try:
         sup.run()
