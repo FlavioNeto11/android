@@ -28,7 +28,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   no COMMIT de fora, embora a escrita que o pediu tivesse saído com o `ROLLBACK TO SAVEPOINT`. Agora sai junto (a lista
   volta ao tamanho de antes do savepoint), e a docstring diz isso.
 - Prova: `simulated` (`backend/tests/test_aguardando_pessoa.py::test_k2_o_worker_que_perde_a_marca_solta_a_trava_deste_processo_sem_digest`,
-  `backend/tests/test_db.py::test_savepoint_desfeito_descarta_o_efeito_pedido_dentro_dele`). Real: `not_run` (pede dois
+  `backend/tests/test_db.py::test_savepoint_desfeito_descarta_o_efeito_pedido_dentro_dele` e
+  `::test_savepoint_aninhado_descarta_so_o_que_foi_desfeito`, o caso aninhado). Real: `not_run` (pede dois
   backends).
 
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
