@@ -743,8 +743,9 @@ portal:                           # site institucional na raiz do nome público 
     buscas_por_operador_hora: 30  # buscas por telefone na exclusão a pedido do titular (29.83), por operador (1 a 1000)
     buscas_total_hora: 60         # as mesmas buscas somando todos os operadores (1 a 10000)
   # Vigia da borda (29.97): de hora em hora, só no líder, o central pede o site e o painel pelo 1º nome de
-  # server.public_hosts, como um visitante (só GET, sem credencial, até 4 pedidos), e confere script injetado pela
-  # Cloudflare, no-transform, a CSP, cookie e a versão do CSS e do JS. Defeito vai à saúde e ao dono pela Canais.
+  # server.public_hosts, como um visitante (só GET, sem credencial, até 5 pedidos), e confere que a API recusa sem
+  # credencial (29.101), script injetado pela Cloudflare, no-transform, a CSP, cookie e a versão do CSS e do JS.
+  # Defeito vai à saúde e ao dono pela Canais.
   # Sem nome público, nada roda.
   vigia:
     ligado: true

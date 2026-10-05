@@ -5503,13 +5503,18 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
      prova de fora só roda quando alguém lembra. O central confere sozinho:
      - de hora em hora, só no líder da trava `avisos`, pelo 1º nome de `server.public_hosts` (nunca o `Host` de um
        pedido);
-     - no máximo 4 GET por volta, como navegador, sem credencial, sem cookie e sem retry: o painel, a raiz e o CSS e
-       o JS pelo `?v=` que a raiz aponta;
+     - no máximo 5 GET por volta, sem credencial, sem cookie e sem retry: a API (`/api/instances`, 29.101, só o
+       status, o corpo nunca é lido), e como navegador o painel, a raiz e o CSS e o JS pelo `?v=` que a raiz aponta;
+     - a API pedida de fora sem credencial tem de recusar (401 ou 403). Se responder 2xx, é `api_aberta`, o defeito
+       mais grave do endereço público: aviso na hora, nível "precisa de você", e na saúde `portal_api_aberta`,
+       separado e primeiro. Outro status (404, 3xx, 500) não prova nem um nem outro e entra como "não consegui
+       conferir". O vigia só avisa: tirar o nome público do ar é decisão do dono;
      - três desfechos: ok, defeito e "não consegui conferir" (rede, tempo esgotado, a borda sem alcançar o central).
        O terceiro só vira problema depois de `portal.vigia.voltas_sem_conferir` voltas seguidas;
      - o que é defeito é decidido por UMA régua (`portal/domain/borda.py`), a mesma da prova de fora, que a chama por
        `scripts/portal-regua-da-borda.py`. Muda a régua, mudam as duas;
-     - a saúde lê só o estado da última volta (`portal_borda_defeito`, `portal_borda_sem_conferir`); a subida nunca
+     - a saúde lê só o estado da última volta (`portal_api_aberta`, `portal_borda_defeito`,
+       `portal_borda_sem_conferir`); a subida nunca
        espera a borda;
      - o aviso ao dono sai pela Canais (`avisar_borda_do_portal`, contrato e textos dela), uma vez por código e por
        dia, com o gesto na zona, sem IP, sem conta e sem query.
