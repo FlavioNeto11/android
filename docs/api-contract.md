@@ -6530,7 +6530,7 @@ Mudança de comportamento em duas rotas do modo treinamento; o corpo novo é adi
   em vez de tratá-la como sessão encerrada. Quem não tem o controle vê a gravação, mas não a encerra.
 - **Prova:** `simulated` (`backend/tests/test_treino_parar_exige_controle.py`); `real`: `not_run`.
 
-## Adendo v1.NN (05/10/2026; número a confirmar pela orquestradora; item 29.143) — o controle manual tem dono
+## Adendo v1.67 (05/10/2026; número da orquestradora; item 29.143) — o controle manual tem dono
 
 Mudança de comportamento em `POST /api/instances/{id}/control/take`; o corpo novo é aditivo e opcional.
 - O lease do controle de usuário (e o pedido pendente com a IA) passa a ter dono: o operador da sessão do painel, ou
