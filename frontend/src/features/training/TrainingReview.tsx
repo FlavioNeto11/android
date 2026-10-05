@@ -23,12 +23,14 @@ import { confirm } from '../../components/Confirm';
 import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select, TextInput } from '../../components/Field';
+import { EditorDaPosCondicao, EditorDosParametros } from './EdicaoDaProposta';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { useAppStore } from '../../store/app';
 import { plural } from '../../lib/format';
 import { toast, toastError } from '../../store/toasts';
 import { TeachingPanel } from './TeachingPanel';
 import styles from './Training.module.css';
+import { ATE_A_PROVA, corpoDoEscopo, SeletorValePara, textoDoEscopo, type ModoDoEscopo } from './ValePara';
 
 const TIPO: Record<string, string> = { tap: 'toque', long_press: 'toque longo', swipe: 'deslize', text: 'texto', key: 'tecla', open_app: 'abrir app' };
 
@@ -94,6 +96,32 @@ export function toqueSemAlvo(e: TrainingInput): string | null {
   return e.sensitive && e.x === null ? 'em teclado ou tela sensível (não gravado)' : 'sem elemento identificado';
 }
 
+/** Como o seletor `unique` da gravação se lê (`recorder._CAMPOS_DO_SELETOR`): o que a receita compara no aparelho. */
+const SELETOR: Record<string, string> = { 'rid+text': 'id e texto', 'rid+desc': 'id e descrição', rid: 'id', desc: 'descrição', text: 'texto' };
+
+/**
+ * 31.90-F: como a gravação RECONHECE o elemento tocado, para a pessoa conferir antes de salvar (a receita só vale se o
+ * elemento se acha de novo). Só toque com alvo; o toque sem alvo já tem a sua frase em `toqueSemAlvo`. O id aparece sem o
+ * pacote (`x:id/nome` vira `nome`): é o rótulo técnico do elemento, não dado da pessoa.
+ */
+export function alvoReconhecido(e: TrainingInput): string | null {
+  const t = e.target;
+  if ((e.type !== 'tap' && e.type !== 'long_press') || !t || !Object.keys(t).length) return null;
+  const como = (t.unique ?? []).map((u) => SELETOR[u] ?? u);
+  const id = t.resource_id ? t.resource_id.split('/').pop() : '';
+  if (!como.length) {
+    if (!t.filhos?.length) return 'sem identificador único: este toque não vira receita';
+    // Contêiner sem identidade: a receita acha o elemento por um filho rotulado (até três gravados); a pessoa vê quais.
+    const filhos = t.filhos.slice(0, 3).map((f) => {
+      const rotulo = f.text || f.desc;
+      const fid = f.resource_id ? f.resource_id.split('/').pop() : '';
+      return [rotulo ? `“${rotulo}”` : '', fid ? `id ${fid}` : ''].filter(Boolean).join(', ');
+    }).filter(Boolean);
+    return `reconhecido pelo que o elemento contém${filhos.length ? `: ${filhos.join('; ')}` : ''}`;
+  }
+  return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `, id ${id}` : ''}`;
+}
+
 /** O que a etapa confere, em palavras da pessoa; o tipo cru só aparece se o backend mandar um que a tela não conhece. */
 export function textoDoConfere(pc: TrainingStep['postcondition']): string {
   const valor = pc.value ? `“${pc.value}”` : '';
@@ -124,11 +152,13 @@ function agruparTeclas(entradas: TrainingInput[], descartadas: Set<number>): Tra
 /** O que a entrada foi. Texto não gravado (tela sensível, senha, cara de segredo) nunca tem valor na tela. */
 function DescricaoEntrada({ e }: { e: TrainingInput }) {
   const semAlvo = toqueSemAlvo(e);
+  const alvo = alvoReconhecido(e);
   return (
     <>
       {TIPO[e.type] ?? e.type}
       {e.target?.text || e.target?.desc ? <> em <strong>{e.target.text || e.target.desc}</strong></> : null}
       {semAlvo ? <span className={styles.muted}> {semAlvo}</span> : null}
+      {alvo ? <span className={styles.muted}> ({alvo})</span> : null}
       {e.type === 'text' ? (e.text !== null && !e.sensitive ? <> “{e.text}”</> : <span className={styles.muted}> (texto não gravado)</span>) : null}
       {e.type === 'open_app' ? <> {e.app_id}</> : null}
       {e.type === 'key' ? <> {e.key_name}</> : null}
@@ -215,6 +245,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   const [original, setOriginal] = useState<TrainingProposal | null>(null);
   const editado = proposta !== null && JSON.stringify(proposta) !== JSON.stringify(original);
   const [escopoMudou, setEscopoMudou] = useState(false);
+  // 31.88 F2: "Vale para". O padrão é o do contrato: todos, depois de provado.
+  const [vale, setVale] = useState<ModoDoEscopo>('todos');
   // R1/R2 (#436): a etapa escolhida para devolver cada entrada, o que a última ação fez (anunciado) e para onde o foco
   // vai depois dela; o controle de onde a entrada estava some no re-render.
   const [destino, setDestino] = useState<Record<number, string>>({});
@@ -320,8 +352,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   const bloqueioLocal = motivoLocal();
   const [fechada, setFechada] = useState(false);
   const corpoDoSalvar = useMemo(
-    () => (proposta ? { proposal: proposta, profile_ids: [...escolhidosP].sort(), group_ids: [...escolhidosG].sort() } : null),
-    [proposta, escolhidosP, escolhidosG],
+    () => (proposta ? { proposal: proposta, ...corpoDoEscopo(vale, escolhidosP, escolhidosG) } : null),
+    [proposta, escolhidosP, escolhidosG, vale],
   );
   useEffect(() => {
     if (fechada) return;
@@ -353,7 +385,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         title: answers.length ? 'Pedir nova proposta com as respostas?' : 'Pedir outra proposta?',
         confirmLabel: answers.length ? 'Pedir nova proposta' : 'Pedir outra proposta',
         cancelLabel: 'Voltar',
-        body: 'A proposta atual e o que você mudou nela (comando, etapas, destino das entradas, ações do catálogo) são substituídos pela nova. Quem recebe o fluxo continua marcado.',
+        body: 'A proposta atual e o que você mudou nela (comando, etapas, destino das entradas, ações do catálogo) são substituídos pela nova. O que você escolheu em Vale para continua.',
       });
       if (!confirmed) return;
     }
@@ -420,7 +452,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     if (!proposta) return;
     setSalvando(true);
     try {
-      const r = await api.saveTraining(sessionId, { proposal: proposta, profile_ids: [...escolhidosP], group_ids: [...escolhidosG] });
+      const r = await api.saveTraining(sessionId, { proposal: proposta, ...corpoDoEscopo(vale, escolhidosP, escolhidosG) });
       setResultado(r);
       setSemReceitaAoSalvar(r.steps.some((x) => !x.recipe));
       const avisos = r.warnings ?? [];
@@ -493,8 +525,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     // O save recusaria as duas (`entradas_sem_etapa`, `entrada_duplicada`): a tela diz antes e diz como resolver.
     if (semDestino.length) return `Falta destino para ${listaDeSeqs(semDestino.map((e) => e.seq))}: descarte ou devolva a uma etapa.`;
     if (duplicadas.length) return `${listaDeSeqs(duplicadas)} está em mais de um lugar: descarte ou devolva a uma etapa só.`;
-    if (escopo.carregando) return 'Aguarde a lista de perfis e grupos.';
-    if (escopo.erro) return 'A lista de perfis e grupos não carregou: sem ela, "nada marcado" não quer dizer "todos". Tente de novo.';
+    // As listas só importam em "Escolher": nas outras duas o corpo não leva perfil nem grupo.
+    if (vale === 'quem_ensinou' && !sessao?.profile_id) return 'Este treino não teve persona: não há “quem ensinou”. Escolha outra opção em Vale para.';
+    if (vale === 'escolher' && escopo.carregando) return 'Aguarde a lista de perfis e grupos.';
+    if (vale === 'escolher' && escopo.erro) return 'A lista de perfis e grupos não carregou: sem ela, "nada marcado" não quer dizer "todos". Tente de novo.';
     return null;
   }
 
@@ -568,6 +602,9 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
           </p>
           {resultado.ensinado_em_prova ? (
             <p className={styles.muted} role="status">{explicacaoEmProva(resultado.ensinado_em_prova)}</p>
+          ) : null}
+          {resultado.scope ? (
+            <p className={styles.muted}>Vale para {textoDoEscopo(resultado.scope, escopo.perfis, escopo.grupos)}.{resultado.ensinado_em_prova ? '' : ` ${ATE_A_PROVA}`}</p>
           ) : null}
           <code className={styles.command}>{proposta?.command_template}</code>
           <ul className={styles.stepReport}>
@@ -656,9 +693,12 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                   )}
                 </Field>
                 {proposta.parameters.length ? (
-                  <p className={styles.params}>
-                    {proposta.parameters.map((p) => <Badge key={p.name} size="sm" tone="accent">{`{${p.name}}`} = {p.example}</Badge>)}
-                  </p>
+                  <>
+                    <p className={styles.params}>
+                      {proposta.parameters.map((p) => <Badge key={p.name} size="sm" tone="accent">{`{${p.name}}`} = {p.example}</Badge>)}
+                    </p>
+                    <EditorDosParametros parametros={proposta.parameters} onChange={(parameters) => mudarProposta({ parameters })} />
+                  </>
                 ) : null}
                 {proposta.questions.length ? (
                   <section className={styles.questions} aria-label="Perguntas da IA">
@@ -700,6 +740,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       ) : null}
                       <p className={styles.muted}>Confere: {textoDoConfere(s.postcondition)}
                         {s.inputs.map((n) => porSeq.get(n)).filter(Boolean).length ? '' : ' · sem entradas: a IA conduz esta etapa'}</p>
+                      <EditorDaPosCondicao indice={i} etapa={s} onChange={(postcondition) => mudarEtapa(i, { postcondition })} />
                       {previaPorEtapa.get(s.key) ? (
                         <p className={styles.muted}>
                           <Badge size="sm" tone={previaPorEtapa.get(s.key)!.recipe ? 'success' : 'neutral'}>
@@ -739,8 +780,13 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                   </section>
                 ) : null}
                 <fieldset className={styles.scope}>
-                  <legend>Quem recebe o fluxo</legend>
-                  {escopo.erro ? (
+                  <legend>Vale para</legend>
+                  <SeletorValePara modo={vale} onModo={(m) => { setVale(m); setEscopoMudou(true); }} temPersona={!!sessao?.profile_id}
+                                   grupoDoNome={`vale-${sessionId}`}>
+                  {previa?.scope ? (
+                    <p className={styles.muted} role="status">Ao salvar vale para {textoDoEscopo(previa.scope, escopo.perfis, escopo.grupos)}. {ATE_A_PROVA}</p>
+                  ) : null}
+                  {vale !== 'escolher' ? null : escopo.erro ? (
                     <Banner tone="danger" icon={ServerCrash} compact role="alert" title="A lista de perfis e grupos não carregou"
                             actions={<Button size="sm" variant="outline" icon={RefreshCw} loading={escopo.carregando} onClick={() => void carregarEscopo()}>Tentar de novo</Button>}>
                       {escopo.erro.message} {escopo.erro.hint}
@@ -764,6 +810,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       </div>
                     </>
                   )}
+                  </SeletorValePara>
                 </fieldset>
                 <span className={styles.actions}>
                   <Button size="sm" variant={respondidas.length ? 'outline' : 'ghost'} icon={WandSparkles} loading={pensando}

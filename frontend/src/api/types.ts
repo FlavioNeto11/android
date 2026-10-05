@@ -1984,6 +1984,12 @@ export interface AppDetail {
 
 
 // ---------------------------------------------------------------- modo treinamento (itens 13.1–13.3)
+/** O alvo do toque (`recorder`): o elemento, e os filhos rotulados quando o contêiner não tem identidade própria. */
+export interface TrainingTarget {
+  text?: string; desc?: string; resource_id?: string; class_name?: string; unique?: string[];
+  filhos?: TrainingTarget[];
+}
+
 export interface TrainingInput {
   session_id: string;
   seq: number;
@@ -1997,7 +2003,7 @@ export interface TrainingInput {
   text_len: number | null;
   package: string | null;
   app_id: string | null;
-  target: { text?: string; desc?: string; resource_id?: string; class_name?: string; unique?: string[] } | null;
+  target: TrainingTarget | null;
   screen_title: string | null;
   screen_lines: string[];
   sensitive: boolean;
@@ -2058,6 +2064,13 @@ export interface TrainingStepReport {
   reason: string;
 }
 
+/** 31.88 F2 (adendo v1.71): o escopo que o salvar gravou (ou a prévia gravaria). `on_proof` é a escolha "Vale para". */
+export interface TrainingScope {
+  on_proof: 'todos' | 'quem_ensinou';
+  profile_ids: string[];
+  group_ids: string[];
+}
+
 export interface TrainingSaveResult {
   session: TrainingSession;
   flow_id: string;
@@ -2066,12 +2079,15 @@ export interface TrainingSaveResult {
   warnings?: string[];
   /** 30.81: o fluxo salvo espera a prova; só vale para a persona que ensinou. */
   ensinado_em_prova?: EnsinadoEmProva;
+  scope?: TrainingScope;
 }
 
 /** `POST /training/{id}/preview` (adendo v1.58): o que o salvar faria, sem gravar. */
 export interface TrainingPreview {
   steps: TrainingStepReport[];
   warnings: string[];
+  /** Adendo v1.71; backend anterior não manda. */
+  scope?: TrainingScope;
 }
 
 /** `POST /training/{id}/recipes` (adendo v1.58): `created` conta as receitas gravadas nesta chamada. */

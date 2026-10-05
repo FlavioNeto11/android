@@ -19,6 +19,89 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
+
+- Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e
+  31.88 F2 painel (46b9040b). Os conflitos eram só de CHANGELOG e do fim de `TrainingReview.test.tsx` (cada ramo acrescentou ao fim); ficaram os
+  blocos e os testes dos dois lados (33 testes na revisão: 21 + 6 do E + 2 do F + 4 do F2).
+- Reajuste sobre `integ/suite-43` (0420d107, com o painel do 30.81 já na main): em `types.ts` ficam `ensinado_em_prova` e `scope` na resposta do salvar;
+  no resultado de `TrainingReview` o selo "em prova" (30.81) vem primeiro e a linha "Vale para …" (31.88 F2) logo abaixo, e a frase "Até a prova passar…"
+  só aparece quando não há `ensinado_em_prova` (a nota do 30.81 já diz isso); os testes do 31.91 F1 e do 31.90-E somam (38 testes na revisão) e um
+  teste novo fixa a ordem. Frontend inteiro 1723/1723 (e 1724 com o teste novo), typecheck e build ok.
+- Uma correção de teste que só a junção mostrou: o teste do 31.90-C que segura a leitura das personas soltava a resposta antes de o fetch atrasado
+  entregar o pedido ao handler (semente 88 a 100 ms); agora espera o pedido chegar.
+- Prova `simulated`: frontend inteiro 1708/1708, typecheck limpo e `npm run build` ok (4 workers, Idle); com atraso do fetch passam as sementes
+  7/40, 88/100 e 13/150. `not_run`: o percurso no navegador (deploy 43; o do 31.88 F2 de ponta a ponta depende do backend f75b3b97).
+
+## 2026-10-05 — 31.90-C: o treino pergunta de quem é o ensino, quando o aparelho tem mais de uma persona (branch feat/31-90-c-persona-ao-iniciar)
+
+- Só frontend; o backend já aceitava `profile_id` no início da gravação e recusava com 409 `persona_ambigua` quando o aparelho tem duas personas para o app e nenhuma é escolhida. O painel não mandava o campo, então esse aparelho não conseguia ensinar nada pelo painel (e, com o 30.81, um treino sem persona gera um fluxo que não vale em aparelho nenhum).
+  - `TrainingBar` lê as personas do aparelho (`GET /instances/{id}/personas`) quando o formulário de iniciar está à vista. Com mais de uma persona para o app escolhido (`personasDoEnsino`: uma por pessoa, as vinculadas ao app ou sem app no vínculo; sem app escolhido, todas), aparece "De quem é o ensino?", o "Iniciar treinamento" fica indisponível com o motivo até a escolha e o corpo leva `profile_id`.
+  - Com uma só, o texto diz de quem é o ensino e o corpo segue como era. Sem nenhuma, o texto avisa que o fluxo fica sem persona e não vale em aparelho nenhum até uma prova real ou a sua confirmação. Se a leitura das personas falhar, o formulário segue como era e o backend decide.
+- Prova `simulated`: `TrainingBar.test.tsx` (5 testes novos, um deles da regra por app); sem o `profile_id` no corpo o teste da escolha falha. Frontend inteiro 1691/1691 com 4 workers em Idle e typecheck verde, em 05/10 sobre `095a43b6`. `real`: `not_run` (o percurso com um aparelho de duas personas fica para depois do deploy).
+- Achado do Codex no PR 456 (conferido, válido): enquanto a leitura das personas corria, a lista ficava `null`, o Iniciar liberava e um aparelho com várias personas mandava o início sem `profile_id` (409). Agora a leitura tem estado próprio: o Iniciar fica travado com o motivo "Lendo as personas deste aparelho." até ela assentar, a lista de outro aparelho some ao trocar, e a falha da leitura continua sem travar o início. Prova `simulated`: `TrainingBar.test.tsx` (teste novo com a leitura segurada; sem a trava ele falha).
+
+## 2026-10-05 — 31.90-E: corrigir o que a etapa confere e os exemplos dos parâmetros na revisão do ensino (branch feat/31-90-e-editar-poscondicao-e-parametros)
+
+- **O quê.** Na revisão da proposta (`TrainingReview`), cada etapa ganha "Editar o que a etapa confere" (tipo, valor e descrição da
+  pós-condição) e a proposta ganha "Editar os exemplos dos parâmetros". O nome do parâmetro não se edita, porque está no
+  comando. A etapa com efeito fora do aparelho e sem comprovação já abre o editor; o editor aberto não fecha enquanto se digita.
+- **Achados do Codex no PR 457 (conferidos, os dois válidos).** O salvar refaz a etapa com ação do catálogo pelo catálogo
+  (`TrainingSkills._preparar`, `cat.build_step`), então a conferência editada ali seria mostrada e jogada fora: a etapa com
+  `capability` perdeu o editor e diz que a conferência vem do catálogo. E a descrição do parâmetro nunca entra no fluxo salvo
+  (`Plan.parameters` leva só o nome; só o exemplo vai para a prova): o campo saiu, ficou o exemplo.
+- **Servidor.** Sem mudança: o `save` já valida a proposta editada (31.83) e a recusa (`pos_condicao_vazia`, `parametro_*`) aparece
+  no botão Salvar como as outras. Sem rota nova.
+- **Prova.** `simulated`: `frontend/src/features/training/TrainingReview.test.tsx::31.90-E` (6 testes: edição de tipo, valor e
+  descrição; exemplo do parâmetro com o corpo do save; abertura automática; editor fechado; recusa do servidor; etapa do catálogo
+  sem editor), com
+  mutação dos dois handlers reprovando 2 testes. Frontend inteiro 1692/1692 e `typecheck` limpos (4 workers, Idle).
+  `not_run`: percurso no navegador (entra no percurso do deploy que levar este corte).
+
+## 2026-10-05 — 31.90-F: a revisão do ensino mostra como a gravação reconhece cada elemento tocado (branch feat/31-90-f-alvo-reconhecido)
+
+- Só frontend, sem rota nova: o alvo gravado de cada toque já chega em `inputs[].target` (`unique`, `resource_id`, `filhos`). A linha da
+  entrada ganha, em cinza, "(reconhecido por id e texto, id conversation_name)": o seletor em palavras (`alvoReconhecido`), o id sem o
+  pacote e, quando o toque não tem identificador único, "sem identificador único: este toque não vira receita" (a regra do 31.94, que
+  zera a coordenada). Toque sem alvo continua com a frase de `toqueSemAlvo`.
+- Achado do Codex no PR 458 (conferido, válido): o contêiner sem identidade é alcançado pela receita por um filho rotulado
+  (`recipes.build_selectors`, até três gravados), e a frase genérica escondia qual. Agora ela traz os filhos: `reconhecido pelo que o
+  elemento contém: “Fulano”, id row_name; “Foto”`.
+- Prova `simulated`: `TrainingReview.test.tsx::31.90-F` (2 testes; sem tirar o pacote do id, ambos falham). Frontend inteiro 1688/1688
+  e `typecheck` limpos (4 workers, Idle). `not_run`: percurso no navegador (entra no do deploy que levar este corte).
+
+## 2026-10-05 — 29.104 (2º PR): os testes que clicavam ou afirmavam antes do botão estar pronto (branch fix/29-104-falhas-sob-atraso)
+
+- Medido sobre a main 095a43b6 com o fetch falso atrasado (`ATRASO_DO_FETCH_MS`, `SEMENTE_DO_ATRASO`), a suíte inteira do frontend, 4 workers em Idle:
+  semente 7 a 40 ms passa 1686/1686 (as 53 falhas da primeira medição já tinham sido consertadas pelos itens 29.128 a 29.148), mas as sementes
+  88 a 40 ms, 1 a 100, 13 a 100 e 7 a 200 achavam 6 testes de 4 arquivos que clicam ou afirmam antes de o botão estar pronto.
+- Conserto, só em teste, com o `botaoPronto` que o harness já tem (nenhum produto mudou: era o teste apressado, não corrida do produto): o
+  Voltar, Recentes, Enter, Devolver à IA e Fechar do foco sem imagem (`app.integration.test.tsx`), o Confirmar e executar do 409 por aparelho
+  (`CommandPanel.test.tsx`), o Parar e o Parar o aparelho (`FocusPanel.test.tsx`) e os Salvar como fluxo da revisão do ensino
+  (`TrainingReview.test.tsx`, mais três "Salvar liberado" que viram `waitFor`).
+- Prova `simulated`: suíte inteira 1686/1686 sem atraso e nas sementes e atrasos 1/100, 3/200, 5/300, 7/200, 13/100, 21/150, 77/60, 88/40 e 99/100;
+  typecheck limpo. O conserto de cada teste falhava antes na semente que o achou. `not_run`: o Node 22 do CI.
+
+## 2026-10-05 — 31.88 F2 (painel): "Vale para" na revisão do ensino e "Mudar a quem vale" no Livro (branch feat/31-88-f2-vale-para)
+
+- Só frontend, contra o adendo v1.71 (backend `feat/31-88-escopo-ao-provar`, ponta f75b3b97, ainda sem merge): o painel não funciona de
+  ponta a ponta antes de ele entrar; pela API real o salvar com `scope_on_proof` seria recusado como campo extra.
+- **Revisão do salvar** (`TrainingReview`, `ValePara.tsx`): o fieldset "Quem recebe o fluxo" virou "Vale para", com três opções: "Todos, depois
+  de provado" (padrão: `scope_on_proof: "todos"` e listas vazias), "Só quem ensinou" (`scope_on_proof: "quem_ensinou"`, sem lista, que junto de
+  lista a API recusa com 400 `scope_ambiguous`) e "Escolher perfis e grupos" (as caixas de antes, com o perfil do aparelho já marcado, e
+  `scope_on_proof: "todos"`). "Só quem ensinou" sai desabilitada, com o motivo, quando o treino não teve persona (a API recusa com 409
+  `no_teacher_persona`). A lista de perfis e grupos só trava o Salvar em "Escolher". A prévia e o resultado do salvar mostram o `scope`
+  devolvido ("Ao salvar vale para …", "Vale para …") e a frase de que, até a prova, só a persona que ensinou usa o fluxo.
+- **Mudança de padrão a saber:** antes o salvar mandava só o perfil do aparelho marcado; agora o padrão é "todos, depois de provado", como o
+  contrato manda (e, na prova, o fluxo só casa para a persona que ensinou).
+- **Livro** (`EscopoDoFluxo.tsx`, `DetalheRico.tsx`): no fluxo que nasceu no treino, a seção "A quem vale" tem "Mudar a quem vale", que carrega
+  perfis e grupos ao abrir e chama `PUT /api/flows/{id}/scope`. O Livro não tem o escopo de agora, então a tela diz que o que for marcado
+  substitui e mostra o que o servidor devolveu. Recusa (`unknown_profile`, `unknown_group`) vira aviso.
+- Harness: `radio` passa a ser um papel conhecido do `byRole`.
+- Prova `simulated`: `TrainingReview.test.tsx::31.88 F2` (4 testes) e `DetalheRico.test.tsx::a quem o fluxo ensinado vale` (4 testes); sem o
+  `sort` das listas e com lista junto de `quem_ensinou` os testes falham. Frontend inteiro 1694/1694 e typecheck limpos (4 workers, Idle); com
+  atraso do fetch só falham os dois testes que o 29.104 conserta noutro ramo. `not_run`: o percurso real (depois do deploy com o backend).
+
 ## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
 
 - O fluxo ensinado que a prova real desligou (30.81) renasce na mesma linha quando a pessoa ensina o mesmo comando de

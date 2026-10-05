@@ -481,20 +481,20 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(text(panel)).toContain('Controle: Você'));
     await act(async () => ws.serverSend({ type: 'event', event: makeEvent(121, 'control.changed', { instance_id: 'android-01', control: 'user', pending: false }, { instance_id: 'android-01' }) }));
 
-    await click(byRole('button', 'Voltar', panel));
+    await click(await botaoPronto('Voltar', panel));
     await waitFor(() => expect(entradas()).toHaveLength(antes + 1));
     expect(entradas().at(-1)?.body).toMatchObject({ type: 'key', key: 'back', frame_id: '' });
-    await click(byRole('button', 'Recentes', panel));
+    await click(await botaoPronto('Recentes', panel));
     await waitFor(() => expect(entradas()).toHaveLength(antes + 2));
     expect(entradas().at(-1)?.body).toMatchObject({ type: 'key', key: 'recents', frame_id: '' });
 
     // Enter age sobre o campo em foco: às cegas confirmaria o que a pessoa não vê; não sai sem imagem
-    await click(byRole('button', 'Enter', panel));
+    await click(await botaoPronto('Enter', panel));
     await waitFor(() => expect(text()).toContain('Ainda não há imagem na tela'));
     expect(entradas()).toHaveLength(antes + 2);
 
-    await click(byRole('button', /^Devolver à IA/, panel));
-    await click(byRole('button', /^Fechar/, panel));
+    await click(await botaoPronto(/^Devolver à IA/, panel));
+    await click(await botaoPronto(/^Fechar/, panel));
     await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));
     await act(async () => { await new Promise((r) => setTimeout(r, 50)); });   // o popstate do Fechar, antes do próximo
   });
