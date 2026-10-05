@@ -358,7 +358,8 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
         for caminho_de_entrada in ((PREFIXO_DO_PAINEL,) if site_ligado else ("/", PREFIXO_DO_PAINEL)):
             app.add_api_route(caminho_de_entrada, _para_o_painel, methods=["GET", "HEAD"], include_in_schema=False)
 
-        app.mount(PREFIXO_DO_PAINEL, PainelEstatico(directory=dist, html=True), name="frontend")
+        app.mount(PREFIXO_DO_PAINEL, PainelEstatico(directory=dist, html=True, csp=cfg.file.server.csp_do_painel),
+                  name="frontend")
         if site_ligado:
             # POR ÚLTIMO: o `mount` na raiz casa qualquer caminho, então tudo que veio antes (a API, `/central`) vence.
             # Uma pasta `site/` com arquivo fora da lista derruba a subida aqui (ADR-075).
@@ -399,6 +400,11 @@ class PainelEstatico(StaticFiles):
     bytes), e o que tem hash pode ser guardado por um ano sem perguntar.
     """
 
+    def __init__(self, *args: Any, csp: str = "aplicar", **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._cabecalho_da_csp = {"aplicar": "Content-Security-Policy",
+                                  "so_relatar": "Content-Security-Policy-Report-Only"}.get(csp)
+
     def file_response(self, *args: Any, **kwargs: Any) -> Any:
         resposta = super().file_response(*args, **kwargs)
         caminho = str(getattr(resposta, "path", ""))
@@ -411,7 +417,8 @@ class PainelEstatico(StaticFiles):
             # e ids de execução, foram à conta de análise. O `no-transform` impede a borda de reescrever o HTML (é
             # pequeno, a compressão não faz falta); a CSP barra qualquer script que não seja do próprio painel.
             resposta.headers["Cache-Control"] = "no-cache, must-revalidate, no-transform"
-            resposta.headers["Content-Security-Policy"] = CSP_DO_PAINEL
+            if self._cabecalho_da_csp:                   # `server.csp_do_painel`: desfazer sem deploy
+                resposta.headers[self._cabecalho_da_csp] = CSP_DO_PAINEL
         return resposta
 
 

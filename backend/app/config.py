@@ -172,6 +172,11 @@ class ServerCfg(BaseModel):
     #: `http`, então o processo não tem como descobrir isto sozinho — e adivinhar errado põe `Secure` num cookie
     #: que nunca chegaria, ou deixa de pô-lo onde deveria.
     tls_behind_proxy: bool = False
+    #: A CSP do `index.html` do painel (29.91). `aplicar` barra o que não for do próprio painel; `so_relatar` manda o
+    #: mesmo texto como `Content-Security-Policy-Report-Only` (nada é barrado, e cada violação aparece no console do
+    #: navegador); `desligada` não manda nenhuma. Existe para desfazer sem deploy, só com o reinício da `farm-central`,
+    #: se a CSP quebrar uma tela no central.
+    csp_do_painel: Literal["aplicar", "so_relatar", "desligada"] = "aplicar"
 
 
 class PathsCfg(BaseModel):

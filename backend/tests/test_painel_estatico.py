@@ -17,6 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import httpx
+import pytest
 
 from app.main import create_app
 
@@ -92,6 +93,29 @@ async def test_o_html_do_painel_barra_script_de_fora_e_a_borda_nao_o_reescreve(h
             assert "no-cache" in pagina.headers["cache-control"], caminho      # e segue revalidando
         bundle = await c.get("/central/assets/index-abc123.js")
         assert "no-transform" not in bundle.headers["cache-control"]
+
+
+@pytest.mark.parametrize(("modo", "presente", "ausente"), [
+    ("aplicar", "content-security-policy", "content-security-policy-report-only"),
+    ("so_relatar", "content-security-policy-report-only", "content-security-policy"),
+    ("desligada", None, "content-security-policy"),
+])
+async def test_csp_do_painel_se_desfaz_pelo_config_sem_deploy(harness: Harness, modo: str, presente: str | None,
+                                                             ausente: str) -> None:
+    """`server.csp_do_painel`: se a CSP quebrar uma tela no central, `so_relatar` (só relata, no console do navegador)
+    ou `desligada` e o reinício da `farm-central` desfazem sem deploy. O `no-transform` fica nos três."""
+    from app.main import CSP_DO_PAINEL
+
+    harness.cfg.file.server.csp_do_painel = modo  # type: ignore[assignment]
+    async with _cliente(harness) as c:
+        pagina = await c.get("/central/")
+        assert pagina.status_code == 200
+        if presente:
+            assert pagina.headers[presente] == CSP_DO_PAINEL
+        assert ausente not in pagina.headers
+        if modo == "desligada":
+            assert "content-security-policy-report-only" not in pagina.headers
+        assert "no-transform" in pagina.headers["cache-control"]
 
 
 async def test_central_sem_barra_leva_ao_painel_com_redirecionamento_relativo(harness: Harness) -> None:

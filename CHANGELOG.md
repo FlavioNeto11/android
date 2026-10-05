@@ -29,13 +29,23 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     acima de 1 KB. Sem isso a borda deixaria de comprimir e a raiz iria de ~10 KB a ~40 KB;
   - o `index.html` do painel sai com `no-transform` e com a CSP do painel (`CSP_DO_PAINEL`): script, estilo e conexão
     só da própria origem, e imagem também de `blob:` e `data:`;
-  - o CSS e o JS do site seguem comprimidos pela borda.
+  - o CSS e o JS do site seguem comprimidos pela borda;
+  - `server.csp_do_painel` (`aplicar` de fábrica, `so_relatar` ou `desligada`) desfaz a CSP sem deploy, só com o
+    reinício da `farm-central`, se uma tela quebrar no central.
+- **Estilos:** nenhum componente escreve `style=""` no HTML nem injeta `<style>`. No `src`, nada de `innerHTML`,
+  `setAttribute('style')`, `cssText` nem `<style>`. No bundle, os três `innerHTML` são internos do react-dom (o caminho
+  do `dangerouslySetInnerHTML`, que o código não usa). O `style={...}` do React vai pelo CSSOM, que a CSP não barra.
 - **Prova:**
   - `simulated`: `tests/test_portal_site.py` (gzip só quando o cliente aceita, `q=0` respeitado, o mesmo HTML nos dois
     jeitos, a 404 também, o CSS sem `no-transform`) e `tests/test_painel_estatico.py` (CSP e `no-transform` no
-    `index.html`, o bundle sem);
-  - navegador num painel isolado (harness, 0 aparelhos, porta 8794): 11 telas sem nenhuma violação de CSP e sem erro
-    no console, o WebSocket da mesma origem aberto e o de outra origem barrado pela CSP;
+    `index.html`, o bundle sem, e os três valores da chave);
+  - navegador num painel isolado (harness, porta 8794):
+    - sem aparelho: 11 telas sem nenhuma violação de CSP, o WebSocket da mesma origem aberto e o de outra origem
+      barrado pela CSP;
+    - com o aparelho falso do harness: a prévia do cartão vinda da API (`/frame?mode=thumb`, 360x640), o quadro do
+      foco como `blob:` (720x1280), o anexo PNG na aba Anexos como `blob:` e o upload de foto da persona (o arquivo
+      posto no campo, enviado e mostrado pela API). Tudo carregou, sem nenhuma violação; no console, a única
+      mensagem de CSP é a do teste proposital com `wss://exemplo.invalid`;
   - `not_run`: o central (depois do deploy) e a prova de fora pedindo `/central/` como navegador, que entra quando o
     #353 estiver na main.
 

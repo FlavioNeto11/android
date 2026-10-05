@@ -33,6 +33,9 @@ server:
     - http://127.0.0.1:5173
     - http://localhost:5173
     # - https://dev.nvit.com.br
+  # CSP do index.html do painel (29.91): aplicar | so_relatar (Report-Only, violações no console) | desligada.
+  # Vale na subida; se uma tela quebrar no central, "so_relatar" e reiniciar a farm-central desfazem sem deploy.
+  csp_do_painel: aplicar
 
 paths:
   data_dir: data
