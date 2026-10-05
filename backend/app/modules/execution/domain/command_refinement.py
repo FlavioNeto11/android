@@ -21,7 +21,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.contracts.identidade import REGRA_DE_IDENTIDADE
 from app.modules.identity.domain.available_data import AvailableDatum
@@ -158,11 +158,28 @@ def refinement_from_json(raw: str) -> CommandRefinement:
     texto = raw.strip()
     # Cerca de código (```json … ```) acontece mesmo com saída estruturada em alguns provedores compatíveis.
     texto = re.sub(r"^```(?:json)?\s*|\s*```$", "", texto)
+    falha: str | None = None
     try:
         out = RefineOut.model_validate(json.loads(texto))
     except Exception as exc:  # noqa: BLE001 - JSON ou esquema: os dois são saída inválida do modelo
-        raise RefinamentoInvalido(f"Refinamento em formato inválido: {exc}") from exc
+        falha = motivo_sem_valor(exc)
+    if falha is not None:
+        raise RefinamentoInvalido(f"Refinamento em formato inválido: {falha}")
     return CommandRefinement(**out.model_dump())
+
+
+def motivo_sem_valor(exc: Exception) -> str:
+    """O motivo de uma saída do modelo que não é JSON ou não cumpre o esquema, SEM o valor que o modelo escreveu.
+
+    31.70 (G1 da leitura do 31.67): o `str` da `ValidationError` traz `input_value=...` (o texto do modelo), e o
+    `.doc` do `JSONDecodeError` é a resposta inteira. Quem chama levanta FORA do `except`, sem `from`: senão a exceção
+    original fica em `__cause__`/`__context__` e vai junto a qualquer log com traceback."""
+    if isinstance(exc, ValidationError):
+        return "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}"
+                         for e in exc.errors(include_input=False, include_url=False, include_context=False)[:4])
+    if isinstance(exc, json.JSONDecodeError):
+        return str(exc)                      # linha e coluna, sem o documento
+    return type(exc).__name__
 
 
 def normalizar(r: CommandRefinement, redigir: Callable[[str], str]) -> CommandRefinement:

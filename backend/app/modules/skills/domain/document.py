@@ -59,10 +59,14 @@ def canonical_json(value: JsonValue) -> str:
 
 
 def parse_json_object(text: str) -> JsonObject:
+    falha: str | None = None
     try:
         bruto = json.loads(text)
     except json.JSONDecodeError as exc:
-        raise NotJson(f"texto não é JSON: {exc.msg}") from exc
+        falha = exc.msg
+    # 31.70 (G3): FORA do `except` e sem `from exc`; o `.doc` do `JSONDecodeError` é o texto inteiro.
+    if falha is not None:
+        raise NotJson(f"texto não é JSON: {falha}")
     return as_json_object(bruto)
 
 
