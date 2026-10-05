@@ -35,6 +35,10 @@ PASTA = "POC_PASTA_DO_SUPERVISOR"
 
 ANTES_DO_ESTADO = "antes_do_estado"
 ESTADO_PRONTO = "estado_pronto"
+#: 29.131: reescritas DENTRO do `AppState`, para o prazo de 240 s valer por passo e não pelo estado inteiro (com uma
+#: só marca antes dele, uma migração lenta passava dos 240 s e era morta no meio).
+MIGRANDO = "migrando"
+APARELHOS = "aparelhos"
 INICIANDO = "iniciando"
 NO_AR = "no_ar"
 

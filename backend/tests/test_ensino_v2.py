@@ -335,7 +335,7 @@ async def test_gravacao_ainda_gravando_deixa_o_ensino_demonstrando(harness: Harn
     with pytest.raises(TeachingStateConflict) as gravando:
         await ens.propose(tid)
     assert gravando.value.code == "still_recording"
-    st.training.stop(gravacao["id"])                                  # o gravador não avisa; a leitura acomoda
+    st.training.stop(gravacao["id"], lease_id=lease)                                  # o gravador não avisa; a leitura acomoda
     assert ens.get(tid).session.status is TeachingStatus.OPEN
 
 

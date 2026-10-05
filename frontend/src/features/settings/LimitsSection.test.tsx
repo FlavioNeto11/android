@@ -63,3 +63,23 @@ it('enquanto salva, os campos ficam desabilitados; com a resposta, voltam com o 
   await waitFor(() => backend.callsTo('PUT', /settings$/).length === 2);
   expect(backend.callsTo('PUT', /settings$/)[1]?.body).toEqual({ preview_mode: 'always' });
 });
+
+// 29.130: o Enter num campo envia o formulário, e o fieldset desabilitado tiraria o foco do campo para o body.
+it('Enter num campo envia e o foco vai para o Salvar, que segue focável enquanto envia', async () => {
+  let soltar: (() => void) | null = null;
+  backend.on('PUT', /^\/api\/settings$/, (c) => new Promise<Response>((r) => {
+    soltar = () => r(json({ ...useAppStore.getState().settings!, ...(c.body as Partial<Settings>) }));
+  }));
+  await act(async () => { root.render(<LimitsSection />); });
+  const previa = byRole('combobox', 'Prévia dos aparelhos') as HTMLSelectElement;
+  await setValue(previa, 'always');
+  previa.focus();
+  await act(async () => { previa.form!.requestSubmit(); });
+  await waitFor(() => soltar !== null);
+  const salvar = byRole('button', /^Salvar limites/);
+  expect(previa.matches(':disabled')).toBe(true);
+  expect(document.activeElement).toBe(salvar);
+  expect(salvar.getAttribute('aria-busy')).toBe('true');
+  await act(async () => { soltar!(); });
+  await waitFor(() => !previa.matches(':disabled'));
+});

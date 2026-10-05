@@ -1356,8 +1356,10 @@ class AvisosCfg(BaseModel):
 
 
 #: Os papéis que `trello.listas` aceita (32.2): onde a Central cria os cartões, as listas cujo destino vale sim e não, e
-#: onde nascem os cartões de marco (um por deploy) e de custo (um por dia).
-PAPEIS_DE_LISTA_DO_TRELLO = frozenset({"central_automatico", "aprovado", "vetado", "marcos", "custos"})
+#: onde nascem os cartões de marco (um por deploy) e de custo (um por dia). 28.51: as duas listas das perguntas ao dono
+#: (`perguntas` e `perguntas_respondidas`); o comentário dele nelas é a resposta e não pede confirmação no Telegram.
+PAPEIS_DE_LISTA_DO_TRELLO = frozenset({"central_automatico", "aprovado", "vetado", "marcos", "custos", "perguntas",
+                                       "perguntas_respondidas"})
 
 
 class TrelloWebhookCfg(BaseModel):

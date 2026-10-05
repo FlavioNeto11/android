@@ -27,6 +27,270 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Sem identificador do item no texto; o link vai ao detalhe na aba Aprendizado. O slug do fluxo só entra no link se
   passar nos filtros. Payload fora do contrato não vira aviso.
 - Prova: `simulated` (`backend/tests/test_avisos_ensinado.py`). Real: `not_run`; depende do PR da Aprendizado.
+
+## 2026-10-05 — Deploy 39 e rodada do plano-100 (645 itens)
+
+- **Implantado** às 18:06Z: central em `9f9e2b39`, migração `115_receita_nao_aplicavel` (sem migração nova), 17 pontas sobre `19e34b22` e dois consertos de junção.
+- Prova `real`: `GET /api/health` ok e sem problemas, prova de fora com tudo como esperado (`/api/instances` 403), agente do notebook em `0.1.0+9f9e2b3`, mypy 257 igual ao teto pelo `scripts/mypy-catraca.py`.
+- Prova `simulated` (suíte 39): `scripts/tests` 672 passed; backend em SQLite 11840 passed, com 3 falhas consertadas e relidas antes do deploy; frontend 1678 passed; catracas 88 e 6. No PostgreSQL dirigido, 10182 passed e 2 failed conhecidas (`test_dialogos_em_serie.py` e `test_sobreposicao_com_duas_causas.py`, item 29.139): essa etapa não passou inteira.
+- Consertos de junção: `estado_com_marca` lê a fábrica na chamada (29.131, `e6020a23`); `TrainingStopBody` nasce na apresentação do treino, e o teste da proposta descarta a gravação com o controle (`9f9e2b39`).
+- Plano-100: 9 IDs novos (28.52, 29.140 a 29.145, 31.101 e 31.102) e o resultado da suíte 39 aplicado pelo mecanismo: 548 de 645.
+
+## 2026-10-05 — 29.131 e 29.138: as sobras das leituras do #433, #435, #441 e #443, e os achados das revisões automáticas do #443 (branch fix/29-131-sobras-supervisor-readocao)
+
+Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
+
+- #433 (29.124):
+  - R1: a marca da partida anda DENTRO do `AppState`. O `Database.migrate(ao_aplicar=)` avisa a cada migração
+    aplicada (um erro de quem acompanha não interrompe nada), e o `AppState` grava `migrando` e, depois dos aparelhos,
+    `aparelhos`. Os 240 s passam a valer por passo, e os 600 s pela partida inteira (o `docs/operacao.md` diz isso;
+    antes, uma migração lenta passava dos 240 s e era morta no meio).
+  - O `main()` grava `antes_do_estado` e `estado_pronto` pela nova `estado_com_marca(cfg, fabrica)`, testável.
+  - N1: a linha do kill diz há quanto tempo a pilha citada foi gravada, e na partida o vigia espaça os despejos em
+    120 s (aos 60, 180 e 300 s), em vez de 30 s.
+  - A recusa por backend alheio respondendo zera `reinicios_seguidos`.
+- #435 (29.125):
+  - o docstring do `_kill_orphan` cita `supervisor.e_emulador`;
+  - sai a lista decorativa do teste;
+  - o `signal` deixa de ser proibido (um CTRL_BREAK ao próprio backend não é matar outro processo);
+  - o `aprendizados.md` marca o `_matar_filhos` como removido.
+- #441 (29.127):
+  - o `_offset_do_spawn(log_path)` serve ao spawn e à retentativa a frio, e o teste confere os dois sites;
+  - as guardas do offset -1 são discriminadas por um `Path.open` que reprova se for chamado;
+  - o `_termina_em_quebra` dá False num erro de leitura com o arquivo existindo (o `\n` a mais é o lado seguro).
+- #443 (29.132):
+  - S1: o Appium novo que morre sem ligar a porta devolve a decisão ao reaproveitamento também quando o `is_up` de
+    2 s falha, se alguém escuta na porta;
+  - o `start()` pergunta o dono da porta antes de subir outro processo;
+  - a porta ser do processo novo prova a subida, sem depender da frase `listener started on` de uma versão;
+  - o `_donos_da_porta` lista TODOS os ouvintes;
+  - sai o `_confirm_masking`, que ficou sem chamador.
+- 29.138, achados das revisões automáticas do #443, conferidos e todos procedentes:
+  - supervisor (Copilot): a saúde que respondeu prova que ESTE processo acabou a partida. O `respondeu_nesta_subida`
+    desliga a tolerância da partida até a próxima subida (zera em `_subir`). Antes, com a marca final sem gravar (a
+    escrita engole o erro), um laço travado depois do "no ar" era tolerado como partida lenta por até 240/600 s;
+  - `_own_orphan` (Copilot): o dono da porta conhecido e alheio é externo; o `appium.pid` só vale quando o sistema
+    não diz quem escuta. O teste que esperava o arquivo valendo passa a afirmar `None`;
+  - `_subir` (Codex, P1): com os donos da porta visíveis, só a porta ser do processo novo prova a subida. Um Appium
+    anterior ainda subindo escreve no mesmo `appium.log` (append) e podia pôr a frase do ouvinte depois do `offset`;
+    a frase só vale sem visibilidade dos donos;
+  - S1 da leitura do #446: com dois donos na porta (127.0.0.1 e 0.0.0.0), um alheio basta para ser externo em
+    `_own_orphan`, e na subida os donos têm de ser só o processo novo (`set(donos) == {proc.pid}`);
+  - limite que fica: a linha das regras de mascaramento no log não se atribui a um processo (o log do Appium não traz
+    pid); com a porta provada deste processo, o resto do risco é o anterior, do mesmo projeto e com as mesmas regras,
+    ter escrito a linha.
+- Prova `simulated`, em Idle, -n 2, um arquivo por vez:
+  - `backend/tests/test_sobras_29_131.py` 13, `test_achados_29_138.py` 7, `test_appium_start_pid_novo.py` 7,
+    `test_supervisor_partida.py` 22, `test_saude_do_appium.py` 9, `test_supervisao_do_central.py` 20 (1 skipped),
+    `test_vigia_do_laco.py` 15, `test_readocao_marco.py` 13, `test_readocao_sem_log_antigo.py` 4,
+    `test_arquitetura.py` 9; `@tests/catracas.txt` 88 passed;
+  - 16 mutações, cada uma reprovada (as 2 do S1: `any` no lugar de `all`; o pid entre os donos bastando). As 9 do 29.131: migrate sem aviso; `AppState` sem `aparelhos`; recusa que não
+    zera; kill sem idade; partida com redespejo de 30 s; erro de leitura dando True; S1 só pelo `is_up`; `start` sem
+    o dono da porta; sem a prova pela porta. As 5 do 29.138: sem a guarda da resposta; sem marcar a resposta; sem
+    zerar na subida; o arquivo valendo com o dono conhecido; a frase valendo com o dono visível.
+- Mypy `real` (05/10, central, mypy 2.3.1 num venv isolado): 257 = teto. Os arquivos deste ramo ficam fora dos
+  pacotes da catraca (`app.contracts`, `app.modules`, `app.shared`).
+- `not_run`: a prova real (a próxima partida do central e a próxima subida do Appium depois do deploy).
+
+## 2026-10-05 — 29.132: o `start()` do Appium só dá "subiu" quando é ele que liga a porta (branch fix/29-132-appium-start-pid-novo)
+
+- Medido em 05/10 (29.126). Às 13:10Z, com a máquina saturada:
+  - o `is_up` de 2 s não viu o Appium anterior (13056, nosso, com as regras), e o backend subiu outro (36048);
+  - o `is_up` seguinte foi respondido pelo 13056, e o `_confirm_masking` leu o log do 36048 antes de ele carregar as
+    regras (13:11:54Z), daí o "não confirmado";
+  - o `appium.pid` virou 36048, que nunca ligou a porta e sumiu;
+  - às 13:12:50Z, o backend seguinte chamou o 13056 de "servidor externo", e o `type_secret` ficou bloqueado em
+    todos os aparelhos.
+- `backend/app/automation/appium_server.py`:
+  - "subiu" só quando o log DESTE processo diz `listener started on` e a porta responde; o mascaramento é lido no
+    mesmo texto;
+  - o `appium.pid` só é gravado nessa hora;
+  - se o novo morre sem ligar a porta e alguém responde nela, a decisão volta ao `_reuse_running`, uma vez;
+  - o `_own_orphan` procura primeiro o DONO DA PORTA (`psutil.net_connections`) e depois o PID gravado, com o mesmo
+    critério de "é nosso" (linha de comando em `tools/appium`), e a prova da máscara segue a mesma.
+- O Appium falso de `test_supervisao_do_central.py` passa a escrever a linha `listener started on` ao ligar a porta,
+  como o de verdade (`appium.log`, 09:38:54 local).
+- Prova `simulated`: `backend/tests/test_appium_start_pid_novo.py`, 7 testes, com `test_saude_do_appium.py`: 16
+  passed. Mutações, cada uma reprovada: "subiu" só pelo `is_up` (2); `appium.pid` antes de ligar (2); morto com outro
+  na porta dado como falha (1); sem o dono da porta (2); dono alheio aceito (1). Vizinhos: 59 passed (com os testes
+  de `node` de verdade do Appium órfão) e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a
+  próxima subida do backend com outro Appium na porta).
+
+## 2026-10-05 — 29.128, o lote "Completar com IA" não diz "completada" sem o modelo chamado (branch fix/29-128-lote-completar-frase)
+
+- A frase comparava o `updated_at` da resposta com o da persona na lista da tela. Com a lista velha, ou com a persona
+  editada noutra aba, ela dizia "completada" quando o servidor devolveu a persona sem chamar o modelo. Agora a
+  persona é relida antes do pedido e a comparação é com ela. Se essa leitura falha, o pedido vai assim mesmo e a
+  frase diz que não dá para saber.
+- Nota P da leitura do #423: a barra conta as releituras pendentes. Com duas, a primeira que assenta não solta a trava.
+- Prova simulated (`AcoesEmLote.test.tsx`, 2 casos novos): três mutações, todas pegas; frontend inteiro 1630/1630.
+
+## 2026-10-05 — 29.129, catraca das esperas, rodada 2 (branch fix/29-129-catraca-k-rodada-2)
+
+- F1: com `&&`, `||` ou `??` no nível de fora, quem decide o valor é o último operando. Negado, ele é booleano, e
+  `!a || !c.querySelector('x')` e `ok && !c.querySelector('x')` deixam de ser falso positivo. Com ternário no topo,
+  a negação da frente é só a condição, e `!a ? b : c.querySelector('x')` segue acusado.
+- F2: o `!` de asserção de não nulo no fim é ignorado, como o `as Tipo`, porque em execução o valor é o mesmo `null`.
+- F3: o corpo entre parênteses e o `async () =>` passam a ser lidos. O corpo em bloco segue fora, anotado.
+- F4: o apóstrofo em texto de JSX fica anotado junto do limite K3; ele só pode esconder um achado.
+- G1 (leitura): toda espera `async` é acusada, porque o `waitFor` devolve a Promise na hora, sem repetir.
+- G2 (leitura): no `X && …`, um X que termina numa busca (o `undefined` do `.find(…)`) é acusado mesmo com o último
+  operando negado.
+- Prova simulated (`src/test/esperas.test.ts`): 10 casos novos e cinco mutações, todas pegas. A varredura de todos os
+  testes não dá achado novo.
+
+## 2026-10-05 — 29.130, sobras da leitura do 29.115 (branch fix/29-130-sobras-da-leitura-29-115)
+
+- N1: o `click` do harness recusa controle `:disabled`, também dentro de `fieldset` desabilitado, como o `setValue`.
+  O `aria-disabled` do `Button` segue clicável. O teste do 29.106 que clicava no "Criar grupo" desabilitado passa a
+  afirmar a recusa.
+- N2: nos Limites, o Enter num campo envia e o foco vai para o "Salvar limites", que segue focável enquanto envia.
+  Antes, o fieldset desabilitado mandava o foco para o body.
+- N3: a mensagem do harness usa `||`: um `id` vazio não vale como nome, e a mensagem cai na tag.
+- N4: no cadastro de rede, a releitura da lista sai do `try` do criar. Ela não trava mais os campos, e a falha dela
+  não diria "Não foi possível criar" sobre um perfil criado. Só a leitura mais nova escreve (S1 da leitura): com dois
+  perfis criados em seguida, a releitura velha que respondesse por último apagaria o 2º da tela.
+- O `click` também recusa o ícone dentro de um botão desabilitado (o controle desabilitado mais próximo); um link num
+  fieldset desabilitado segue clicável.
+- Prova simulated: `src/test/harness.test.ts` (novo), 1 caso novo em `LimitsSection.test.tsx` e 1 em
+  `RedePage.test.tsx`. Quatro mutações, todas pegas. Frontend inteiro: 1631/1631. Settings, rede e `src/test` com
+  `ATRASO_DO_FETCH_MS=40` nas sementes 7 e 88: 156/156.
+
+## 2026-10-05 — 31.92 (painel): a barra de treinamento trata a recusa de parar sem o controle (branch fix/31-92-painel-controle)
+
+- Com o backend do 31.92 (adendo v1.64, ramo `fix/31-92-parar-gravacao-exige-controle`), parar ou descartar uma gravação viva exige o controle atual do aparelho, e o painel já mandava o `lease_id` (31.8x). A recusa `409 control_required` agora aparece como "A gravação continua", com a mensagem do backend; a barra se relê e não abre a revisão. Antes saía o genérico "Não foi possível encerrar o treinamento".
+- Gravação órfã (controle `none` ou `ai`) segue com Concluir e Descartar sem lease, como no backend.
+- Entra no corte junto do backend do 31.92.
+- Prova `simulated`: `frontend/src/features/training/TrainingBar.test.tsx`; `real`: `not_run`.
+
+## 2026-10-05 — 31.91 (painel): caminho único de ensino e respostas às perguntas da proposta (branch feat/31-91-painel-ensino)
+
+- Caminho único (decisão do dono de 05/10): a revisão do treino não gera mais candidata de habilidade. "Salvar como fluxo" é sempre o botão principal. Com `features.skills`, o relatório do salvar oferece "Gerar habilidade deste fluxo", que usa a conversão da fase J (`POST /api/flows/{id}/adopt`, com confirmação): a v1 é o plano do fluxo e a v2 fica em rascunho para tipos, riscos e versões.
+- O ensino v2 que a gravação já tinha aparece só para leitura (`TeachingPanel somenteLeitura`), sem responder, gerar, salvar nem descartar. Sem ensino, o painel não aparece. Nada do ensino antigo é apagado.
+- Respostas às perguntas (31.91 F2, adendo v1.63): cada pergunta da proposta ganha um campo, com o aviso fixo de não escrever senha nem código. "Pedir nova proposta com as respostas" manda até 8 respostas aparadas (máximo de 500 caracteres) e diz o custo. As respostas já dadas aparecem abaixo. `resposta_sensivel` fica no campo da pergunta, sem toast, e sai quando a pessoa edita.
+- A lista "Salvas" da barra diz quando mostra só as 5 mais novas (nota da segunda leitura do 31.90-B).
+- Prova `simulated`: `frontend/src/features/training/TrainingReview.test.tsx` e `TrainingBar.test.tsx`; frontend inteiro com 1662 testes; 9 mutações, todas pegas; `real`: `not_run` (o backend do F2 está no ramo da orquestradora).
+
+## 2026-10-05 — 31.90-B: a revisão do treino mostra a prévia do salvar e oferece "Refazer receitas" (branch feat/31-90-b-revisao-previa)
+
+- Prévia do salvar (adendo v1.58): meio segundo depois da última edição, cada etapa diz "Ao salvar: sem IA/com IA" com o motivo. Os avisos aparecem abaixo das etapas. A resposta velha de uma prévia que outra edição superou é descartada. A prévia só roda quando a tela não tem o que dizer antes (sem destino, duplicada, escopo).
+- Recusas no lugar certo: as do comando (`comando_generico`, `parametro_invalido`, `parametro_fora_do_comando`, `parametro_nao_declarado`, `parametro_reservado` do v1.62, `duplicate_command`) aparecem no campo "Comando" com `aria-invalid` e a mensagem do backend, sem toast. As outras 400 (inclusive `entrada_inexistente`) viram o motivo do "Salvar" travado até a próxima edição.
+- "Refazer receitas" acionado pela pessoa: no relatório do salvar, quando alguma etapa saiu sem receita, e na lista nova "Salvas" da barra de treinamento. Diz quantas receitas a chamada gravou e o motivo de cada etapa que segue sem receita. A frase do adendo v1.58 em `docs/api-contract.md` foi trocada para "o painel oferece".
+- R1/R2 (#436): o select só escolhe a etapa, e quem move é o botão "Devolver". Depois de mover, o foco vai para a entrada no lugar novo, e uma região `role=status` diz para onde ela foi.
+- "Sair sem salvar" compara com a proposta que chegou: descartar e devolver a mesma entrada não pede mais confirmação.
+- N2: o descarte repetido conta uma vez (#442). Entrada que está numa etapa e no descarte ganha "Manter descartada".
+- Textos: o "Confere" sai em português; o toque sem alvo usa as palavras de `linha_da_entrada` (#440); a mesma tecla seguida vira uma linha só na gravação ("tecla delete ×15"); B1 (#428): o aviso da gravação de outra aba diz "clique em Retomar controle".
+- Fica para depois: o selo "em prova" (`ensinado_em_prova`, 30.81) não está na `main`. A TrainingBar com o controle assumido segue só com prova simulada.
+- Prova `simulated`: `frontend/src/features/training/TrainingReview.test.tsx` e `TrainingBar.test.tsx`; `real`: `not_run`.
+
+## 2026-10-05 — 29.141: o lote de grupo de acesso não oferece o que daria "0 ok" (branch fix/29-141-lote-grupo-sem-conta)
+
+- Quando todas as personas selecionadas estão sem conta, "Pôr no grupo" fica travado com o motivo, e o aviso deixa de dizer que "as outras entram no grupo". Antes o botão ficava ativo, e o resultado garantido era "0 ok · N falharam". Achado 5 da volta no navegador do deploy 38.
+- A recusa do lote para persona sem conta continua, agora com o motivo verdadeiro no comentário. O backend aceita o membro sem conta, e o editor de grupos o mostra e preserva desde o 29.25. A recusa é de produto: o grupo governa o que a conta faz no app. O comentário antigo dizia que o editor apagaria o membro, o que deixou de ser verdade com o 29.25.
+- Sem mudança de backend. "Tirar do grupo" segue livre para quem não tem conta.
+- Prova `simulated`: `frontend/src/features/profiles/AcoesEmLote.test.tsx` (15 testes; `src/features/profiles` 202/202; mutações G1 e G2 pegas); `real`: `not_run`.
+
+## 2026-10-05 — 31.92: parar ou descartar uma gravação viva exige o controle do aparelho (branch fix/31-92-parar-gravacao-exige-controle)
+
+- `POST /api/training/{id}/stop` e `/discard` aceitam o corpo opcional `{"lease_id": "..."}`. Numa gravação VIVA (o aparelho a grava e há um controle de usuário), o `lease_id` tem de ser o atual, com a mesma conferência do `start`; sem ele ou com outro: 409 `control_required` ("Só quem está com o controle do aparelho encerra/descarta esta gravação."), e a gravação segue gravando, sem perder entrada. Gravação órfã (sem gravador ativo, ou aparelho em `none`/`ai`), `discard` de sessão que já não grava e os encerramentos do sistema (devolução do controle, troca no `start`, reinício) seguem sem lease.
+- Prova `simulated`: `backend/tests/test_treino_parar_exige_controle.py` 23 passed; com a conferência removida, 9 reprovam; `test_modo_treinamento.py` 7, `test_treino_gravacao_orfa.py` 6, `test_ensino_v2.py` 16, `test_cobertura_de_rotas.py` 2, `test_arquitetura.py` 9, `test_catracas.py` 6 passed. `real`: `not_run`.
+- Falha fechado: `TrainingRecorder.stop` confere por padrão; só a devolução do controle diz `por_sistema=True`. Aparelho hospedado por outra réplica: 409 `gravacao_em_outro_servidor` ("Esta gravação está em outro servidor; encerre por lá."). Quem clica "Assumir" com controle de usuário vigente recebe o mesmo lease: fica para o 29.143. Testes: 23 passed no arquivo novo (9 reprovam sem a conferência padrão).
+- A parte do painel (mandar o `lease_id` e tratar o 409) é necessária para o item valer inteiro e vem em outra mudança.
+
+## 2026-10-05 — 31.91 (F0 e F2): o propose do treino recebe as respostas da pessoa (ADR-077)
+
+- Decisão do dono de 05/10: um caminho só de ensino, o Modo treinamento (ADR-077). `POST /api/training/{id}/propose` aceita corpo opcional `{"answers": [{question, answer}]}` (contrato v1.63): as respostas se acumulam na proposta da sessão (até 16), entram no texto do provedor com a frase do ensino v2 (agora numa função só, `texto_das_respostas`) e as perguntas respondidas não voltam. Resposta com formato de segredo é recusada com 400 `resposta_sensivel` antes de qualquer chamada de IA; erro de forma é 400 `invalid_answers`. Uma chamada do provedor por pedido; o salvar não leva as respostas para `flows` nem `recipes`. Sem migração.
+- Prova `simulated`: `backend/tests/test_treino_proposta_com_respostas.py` (35 passed), com mutação (respostas no texto, perguntas respondidas, recusa de segredo, pergunta conhecida, `answers` do cliente no salvar, corrida) reprovando o teste; provedor simulado com espião. Prova `not_run` com IA real.
+- Revisão independente (delta): a `question` só vale se for das `questions` da proposta guardada ou já respondida (sem proposta guardada, 400 `invalid_answers`; sem teto de tamanho na pergunta conhecida) e a pergunta também passa pela checagem de segredo; o `save` e a `/preview` ignoram o `answers` do cliente e usam o da sessão; o `propose` só grava se a sessão não mudou desde a leitura (409 `proposta_concorrente`). Prova `real`: `mypy-catraca` 257, igual ao teto (rodado pela orquestradora na ponta `7583f3f6`).
+
+## 2026-10-05 — 31.97, arraste sem coordenada na gravação do treinamento (branch fix/31-97-arraste-sem-coordenada)
+
+- O padrão de bloqueio se desenha ARRASTANDO e o `swipe` não procurava o alvo: começo e fim do arraste ficavam no banco e
+  saíam pela API. Agora o `swipe` segue a regra do toque (31.94) pela ORIGEM: origem dentro de um contêiner de
+  teclado/padrão de bloqueio (`pin_pad`, `lockPatternView`, `PinKeypadView`...; vale o ancestral por área) ou em tela
+  sensível é gravado sem `x`, `y`, `x2`, `y2` e com `sensitive=1`. Sem árvore da tela, segue o toque: perde as
+  coordenadas e fica sem marca. A rolagem comum (origem em tela comum, com ou sem seletor, inclusive a partir de um item
+  de rótulo "5" ou de id `item1`: a regra de tecla isolada é só do toque) guarda as quatro coordenadas.
+- A coluna `sensitive` segue com os dois sentidos ("tela sensível" e "entrada que não se guarda"); separar fica para a
+  migração futura do ensino. Sem migração e sem mudança na forma da resposta da API (só `x`/`y`/`x2`/`y2` nulos).
+- Leitores: `linha_da_entrada` diz "arraste em teclado, padrão de bloqueio ou tela sensível (não gravado)" (nada de "rolou");
+  `distill_training` recusa a etapa ("arraste não gravado": antes `dy=0` virava "rolar para cima", um gesto inventado);
+  `proposta_simulada` descarta o arraste com o motivo; `_entrada_legada` e `inputs()` carregam os nulos sem quebrar.
+- Dígito por extenso ("um" a "nove", "zero", "one" a "nine") passa a ser tecla SÓ com o ponto dentro de um contêiner de
+  teclado (toque e arraste); fora dele, um botão "Um" segue comum.
+- Prova `simulated`: `backend/tests/test_treino_arraste_sem_coordenada.py`, 10 passed; mutação nos casos (a)/(b), (d) e
+  nos dois de rolagem a partir de item de um dígito derruba os testes certos. `not_run`: aparelho real com padrão de bloqueio.
+
+## 2026-10-05 — 29.144: a catraca do mypy sem depender do venv de uma sessão (branch fix/29-144-mypy-caminho-fixo)
+
+- `scripts/mypy-catraca.py` aceita o Python do mypy à parte, por `--python <python.exe>` ou pela variável `MYPY_PYTHON`
+  (a opção vence). O mypy analisa o venv do backend por `--python-executable`, e o site-packages do backend entra no
+  `PYTHONPATH`, porque o plugin `pydantic.mypy` do `backend/mypy.ini` é importado pelo Python do próprio mypy. Sem
+  a opção nem a variável, o comando é o de antes.
+- No central, o Python fixo é `C:\farm\ferramentas\mypy` (fora do Git): venv do Python 3.13 só com os pinos do mypy
+  do `backend/requirements-dev.txt`. Antes, a medida da suíte 38 dependia de um venv no scratchpad de uma sessão, que
+  morre com ela.
+- `docs/operacao.md` (o Python do mypy, como recriar) e `.claude/rules/testes.md` (a catraca do dirigido) dizem o caminho.
+- Prova:
+  - `simulated`: `scripts/tests/test_mypy_catraca.py`, 7 passed (3 novos: o comando de sempre sem Python à parte, o
+    `--python-executable` e o `PYTHONPATH` com ele, e a precedência entre a opção e a variável);
+  - `real`: 05/10, central, sobre 19e34b22, `MYPY_PYTHON=C:\farm\ferramentas\mypy\Scripts\python.exe`; a catraca
+    deu 257 erros, igual ao teto, rc 0, em 34 s.
+
+## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
+
+- **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.
+- Prova `real`: ensaio de migração sobre a cópia `20261005-125938`, `GET /api/health` ok e sem problemas, prova de fora com `rc=0` e 46 linhas ok (`/api/instances` 401 e 403), agente do notebook em `0.1.0+86afe1b`.
+- Prova `simulated` (suíte 38): `scripts/tests` 669 passed; backend em SQLite 11689 passed; frontend 1650 passed; mypy 257, igual ao teto. No PostgreSQL dirigido, 9824 passed e 5 failed conhecidas em `test_sobreposicao*.py` (item 29.139): essa etapa não passou inteira.
+- Plano-100: 78 IDs novos (janelas 37 e 38, com a Fase 33 e seus 8 itens) e o resultado da suíte 38 aplicado pelo mecanismo: 535 de 636. As linhas 3.3, 6.2, 6.4 e 8.3 deixaram de citar quatro achados que saíram do apêndice no `ebc316f9`.
+
+## 2026-10-05 — 29.134: GitHub Copilot no repositório (revisão de PR sob pedido e ambiente do agente de nuvem)
+
+- Pedido do dono de 05/10: usar o Copilot Pro+ para aliviar a carga das sessões e desta máquina.
+- `.github/copilot-instructions.md` e `.github/workflows/copilot-setup-steps.yml` (`f5d9a096`); o ambiente do agente roda sempre em `ubuntu-latest`, nunca no runner `central`.
+- A revisão de PR é pedida PR a PR pela orquestradora; a regra automática do repositório fica desligada. Operação em `docs/operacao.md` § 5.
+- Prova `real` para a revisão: três PRs em 05/10, 566,87 créditos (US$ 5,67), 10 achados e 9 confirmados pelas frentes. Prova `not_run` para o agente de nuvem.
+
+## 2026-10-05 — 31.100: o salvar do treino recusa marcador reservado no comando (branch fix/31-100-placeholder-reservado-no-comando)
+
+- `training/skills.validar_proposta_para_salvar`: `{instance_id}`, `{run_id}` ou `{account_label}` no `command_template`
+  recusa com `parametro_reservado` (400, adendo v1.62). O `FlowStore._extract` os trata como texto literal, e o fluxo
+  só casaria com quem digitasse as chaves. Nos `parameters` do plano continuam aceitos. Achado da revisão automática do
+  #442, conferido pela Aprendizado.
+- Prova `simulated`: `tests/test_treino_validacao_do_salvar.py` (o caso na tabela de recusas, os três reservados pelo
+  nome, o reservado nos parâmetros que segue valendo; o teste que aceitava o reservado no comando ficou só com a chave
+  de catálogo). Real: `not_run`.
+- N1 da leitura do #444: o prompt da proposta (`planning/training.TRAINER_SYSTEM`) avisa que os três são do sistema e
+  que o salvar recusa; o 400 fica como rede. `test_prompt_da_proposta_proibe_o_marcador_reservado_no_comando` fixa a
+  frase e cada nome de `RESERVED`. Prova `simulated`: o arquivo e `test_arquitetura.py` (68 passed),
+  `@tests/catracas.txt` (88 passed). `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
+
+## 2026-10-05 — 28.49: as sobras das leituras do #426 (28.47) e do #431 (28.48) (branch canais/28-49-sobras-das-leituras)
+
+- `sha_da_imagem_aprovada`: vale a decisão mais recente da etapa (`approved`, `edited` ou `rejected`, desempate pelo
+  id), e só se ela for o sim. Um "não" depois do sim tira a âncora, e a foto não sai rotulada "aprovado". O sim
+  vencido (`expired`) não é decisão do dono e não conta.
+- `canais.md`: a ordem por `message_id` supõe um chat só, e a pergunta de escolha vai sempre ao privado do dono; o
+  `--foto` pede o deploy antes do uso de toda função nova que importa.
+- Testes: o `_numero` com "²" (o caso que o `isdecimal` corrige; o 99 contra 100 já passava antes); a âncora com o sim
+  vencido mais novo, dois sins e o "não" depois do sim.
+- Prova: `simulated` (`backend/tests/test_rotulo_ia.py::test_a_ancora_da_foto_segue_a_decisao_mais_recente` e
+  `backend/tests/test_telegram_entrada.py::test_o_numero_do_message_id_so_aceita_digito_decimal`). Real: `not_run`.
+
+## 2026-10-05 — 28.51 A: a resposta nas listas de perguntas não pede confirmação no Telegram (branch canais/28-51a-perguntas-sem-confirmacao)
+
+- Defeito de 05/10 ~16:10Z: as cinco respostas do dono às perguntas P-001 a P-005, comentadas no Trello, caíram no
+  caminho do 28.30 e pediram confirmação de sim ou não no Telegram dele.
+- `trello.listas` aceita os papéis `perguntas` e `perguntas_respondidas`. O comentário do dono num cartão dessas listas
+  vai à orquestradora com o número da pergunta (`previa.pergunta`, tirado do nome `P-NNN`), sem pedido no Telegram, e o
+  cartão recebe uma linha só. O resto do 28.30 não muda.
+- A instalação precisa dos dois ids em `trello.listas` do `config.yaml` (vale na subida); sem eles nada muda.
+- Revisão do #447: só conta como resposta do dono a action do membro dele, sem 🤖 e sem `appCreator` (o que sai pela
+  API com o token dele leva o app; medido em 05/10). Com o app, `ignorada` ("escrita por app"). Sem o campo, chega
+  marcada "autoria não confirmada". Nome sem `P-NNN` chega marcado "sem número". Testes do 🤖 e do "sim" com aprovação
+  aberta.
+- Prova: `simulated` (`backend/tests/test_canais_respostas_as_perguntas.py`). Real: `not_run`.
+
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 
 - Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.
@@ -105,6 +369,31 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   de falha, veredito do snapshot, executor do worker, pacote do agente, log do emulador) e `@tests/catracas.txt` 88
   passed. `real`: `not_run` até o deploy (o Orquestrador religa 01, 03 e 06 por `start`).
 
+## 2026-10-05 — 29.132: o `start()` do Appium só dá "subiu" quando é ele que liga a porta (branch fix/29-132-appium-start-pid-novo)
+
+- Medido em 05/10 (29.126). Às 13:10Z, com a máquina saturada:
+  - o `is_up` de 2 s não viu o Appium anterior (13056, nosso, com as regras), e o backend subiu outro (36048);
+  - o `is_up` seguinte foi respondido pelo 13056, e o `_confirm_masking` leu o log do 36048 antes de ele carregar as
+    regras (13:11:54Z), daí o "não confirmado";
+  - o `appium.pid` virou 36048, que nunca ligou a porta e sumiu;
+  - às 13:12:50Z, o backend seguinte chamou o 13056 de "servidor externo", e o `type_secret` ficou bloqueado em
+    todos os aparelhos.
+- `backend/app/automation/appium_server.py`:
+  - "subiu" só quando o log DESTE processo diz `listener started on` e a porta responde; o mascaramento é lido no
+    mesmo texto;
+  - o `appium.pid` só é gravado nessa hora;
+  - se o novo morre sem ligar a porta e alguém responde nela, a decisão volta ao `_reuse_running`, uma vez;
+  - o `_own_orphan` procura primeiro o DONO DA PORTA (`psutil.net_connections`) e depois o PID gravado, com o mesmo
+    critério de "é nosso" (linha de comando em `tools/appium`), e a prova da máscara segue a mesma.
+- O Appium falso de `test_supervisao_do_central.py` passa a escrever a linha `listener started on` ao ligar a porta,
+  como o de verdade (`appium.log`, 09:38:54 local).
+- Prova `simulated`: `backend/tests/test_appium_start_pid_novo.py`, 7 testes, com `test_saude_do_appium.py`: 16
+  passed. Mutações, cada uma reprovada: "subiu" só pelo `is_up` (2); `appium.pid` antes de ligar (2); morto com outro
+  na porta dado como falha (1); sem o dono da porta (2); dono alheio aceito (1). Vizinhos: 59 passed (com os testes
+  de `node` de verdade do Appium órfão) e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a
+  próxima subida do backend com outro Appium na porta).
+
+
 ## 2026-10-05 — 29.125: o supervisor só mata o backend (branch fix/29-125-supervisor-so-o-backend)
 
 - Censo de 05/10: o Appium e o sing-box do backend do deploy 37 seguiam vivos com o pai morto. A varredura de filhos
@@ -173,6 +462,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   central, compartilhado com o backend no ar) e a prova real, que só vem com um travamento de verdade depois do
   deploy.
 
+## 2026-10-05 — 29.127: o marco da subida no log do emulador e o offset que nunca lê o histórico (branch fix/29-127-readocao-marco)
+
+
 ## 2026-10-05 — 29.120: a corrida do teste da segunda leitura do log do snapshot (branch fix/29-120-corrida-releitura)
 
 - `test_wake_relogio_do_snapshot.py::test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura` reprovou
@@ -186,6 +478,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   chega. O código do central não muda.
 - Prova `simulated`: `backend/tests/test_wake_relogio_do_snapshot.py`, 12 passed. O teste antigo com o prazo em 0 s
   reprova sempre (o disparo dentro do `_wait_boot`); o novo não depende do prazo, porque captura a releitura.
+
+- O incidente de 05/10 (29.122): às 12:56:52Z, um backend recém-subido readotou 01, 03 e 06. Com o host saturado,
+  a sonda não fechou e a readoção caiu no `_wait_boot`, que procura o diálogo de relatório de falha (29.55 c) a
+  partir de `boot_log_offset`. Esse offset só era gravado no spawn, e um backend novo tem 0. O detector leu o log
+  inteiro, achou `Showing crashdialog` de boots antigos (três vezes no log do 03 e três no do 06, nenhuma no do
+  01) e encerrou o 03 e o 06, ambos com conta real, às 12:57:05Z e 12:57:29Z.
+- `DeviceManager._adopt` (local) grava como offset o começo da subida em curso, a última linha `emuglConfig_init`
+  (`emu.inicio_da_subida_atual`, fora do laço): o diálogo de uma subida vem depois das linhas dela (medido nos logs do
+  03 e do 06). O diálogo desta subida segue visto, mesmo escrito antes do reinício do backend; os das anteriores, não.
+  Sem a linha, vale o fim do arquivo (aí um diálogo já na tela não é visto, e a espera vai até o prazo do boot); o
+  arquivo que some no meio dá 0, não uma exceção na partida. Na readoção, o veredito do snapshot e a releitura do
+  29.76 (d) nem rodam (o `_wait_boot` adotado não é wake).
+- Prova `simulated`: `backend/tests/test_readocao_sem_log_antigo.py`, 4 passed: o diálogo antigo não para; o escrito
+  depois da readoção para; o desta subida, escrito antes da readoção, para (M1); log sem a linha vai ao fim; arquivo
+  que some vira 0. Mutações: sem o conserto reprova o do incidente; o offset no fim do arquivo (sem o M1) reprova 2.
+  Vizinhos: 233 passed (prontidão, readoção, wake, apps de fundo, arquitetura, ciclo de vida do emulador, relatório
+  de falha, veredito do snapshot, executor do worker, pacote do agente, log do emulador) e `@tests/catracas.txt` 88
+  passed. `real`: `not_run` até o deploy (o Orquestrador religa 01, 03 e 06 por `start`).
 
 ## 2026-10-05 — 29.117: a árvore do pytest num Job Object e uma rodada por vez no `pg-rapido.py` (branch fix/29-117-job-object, sobre o 29.113)
 
@@ -517,6 +827,34 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - `test_intencao_resolucao.py::test_empate_entre_fluxos...` afirmava a ordem antiga (o mais usado vence); virou "o mais específico vence".
 - Prova: `simulated`: `backend/tests/test_fluxo_casamento_especifico.py` (35 testes, incluindo a paridade com
   `SqlSkillRepository.candidates`); revertidos F1 e F6 um por vez, falham 4 e 7 deles. Real: `not_run`.
+
+## 2026-10-05 — 31.87 F1: pré-voo do dado da persona ausente (branch fix/31-87-prevoo-dado-da-persona)
+
+- O plano que cita `{perfil_*}` ou `{conta_<app>_usuario}` e a persona de algum aparelho-alvo não resolve (dado ausente,
+  vazio ou aparelho sem persona) deixava a variável CRUA no objetivo da etapa: a receita divergia e a IA assumia com
+  `{perfil_sobrenome}` escrito. Agora `RunService._plan` pede resposta (`needs_input`) antes de materializar: zero
+  objetivos, zero etapas, nada despachado; uma frase por aparelho, só com id do aparelho e rótulo do campo.
+- Defesa em profundidade: `Repository.materialize` recusa (`DadoDaPersonaAusente`, só nomes de variável) e o `_plan` fecha
+  a execução em `failed` com o motivo em vez de deixá-la presa em `planning`. Caminho feliz idêntico; sem campo novo.
+- Revisão (C1, R1, N1): a falta de dado sai com `field: "persona_data"` (o painel mostra a pergunta e "Cadastre o dado na
+  persona e crie a execução de novo", sem a caixa que completa o comando nem o rodapé de destino); `profile_id` só
+  quando o aparelho não tem persona. A frase não promete mais "diga o valor no comando". O replano (`revise_plan`) não
+  grava `{perfil_x}` cru: a recuperação automática é recusada com motivo, a retomada do item vira `RunError`, a
+  expansão do `for_each` bloqueia o item. Limite conhecido: `PlanStep.variables` do `for_each` não é varrido.
+- Segunda revisão (D1, D2): a expansão do `for_each` bloqueada pelo dado ausente agora faz o `_work` sair do laço
+  (antes a próxima etapa pronta refazia `running` e o objetivo ficava preso sem worker). `persona_data` entra no conjunto
+  único `CAMPOS_SEM_RESPOSTA_POR_TEXTO` (destino + dado da persona: refinar, perguntas pendentes, sinal
+  `respondeu_pergunta`, preferências e sugestões do livro); a sucessora recusa a resposta quando TODAS as perguntas são
+  `persona_data`. O rodapé do `RunView` junta os caminhos no caso misto.
+- 31.99, achados da revisão automática do #437: (1) `_resolvidos_de` só aceita o parâmetro como substituto quando toda
+  variável da persona citada no valor dele é da persona (`materialize` resolve os parâmetros numa passada só, e
+  `{"perfil_sobrenome": "{perfil_sobrenome}"}` sem o dado passava cru); (2) `revise_plan` confere e insere com a MESMA
+  leitura da persona, feita dentro da transação, como `materialize` (lida fora, uma edição no intervalo passava com o
+  valor antigo); (3) o comentário de `RunService._plan` não diz mais que o valor no comando resolve. Testes: o parâmetro
+  que cita a si mesmo (com e sem texto depois), o que cita um dado que a persona tem, e o retrato único no replano.
+  Prova `simulated`: `tests/test_prevoo_dado_da_persona.py`, 27 passed no 995321b1 (eram 24 antes do 31.99). Real: `not_run`.
+- Prova `simulated`: `tests/test_prevoo_dado_da_persona.py` (24 passed; 14 no 796a26ac, 18 no 3f502014), `RunView.test.tsx` (8 passed); vizinhos e `test_arquitetura.py` verdes;
+  `pytest @tests/catracas.txt`, 88 passed. `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 

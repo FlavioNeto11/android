@@ -45,7 +45,7 @@ import { TimelineTab } from './TimelineTab';
 import { NOME_DA_IA } from '../../lib/identidade';
 
 /** O campo de cada pergunta, em português (os de destino vêm do roteamento por persona, ADR-044). */
-const CAMPO_DA_PERGUNTA: Record<string, string> = { profile_id: 'persona', instance_id: 'aparelho' };
+const CAMPO_DA_PERGUNTA: Record<string, string> = { profile_id: 'persona', instance_id: 'aparelho', persona_data: 'dado da persona' };
 
 type TabId = AbaDaExecucao;
 
@@ -265,8 +265,11 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
     ? missing.map((m) => ({ field: m.field, question: m.question, options: [] }))
     : run.status === 'needs_input' ? perguntasDosEventos(events) : [];
   const deDestino = perguntas.some((q) => q.field === 'profile_id' || q.field === 'instance_id');
+  // 31.87: dado que a persona do aparelho não tem. Não se responde aqui (a resposta não vira parâmetro do plano): o
+  // caminho é cadastrar o dado na persona e criar a execução de novo, que passa pelo pré-voo outra vez.
+  const daPersona = perguntas.some((q) => q.field === 'persona_data');
   // 29.52: a pergunta que pede senha ou código não tem caixa de resposta (o tipo vem do evento do backend).
-  const sensivel = run.status === 'needs_input' && !deDestino ? perguntaSensivelDosEventos(events) : null;
+  const sensivel = run.status === 'needs_input' && !deDestino && !daPersona ? perguntaSensivelDosEventos(events) : null;
   // As opções de persona chegam como ids: o nome só vem da lista de personas, lida só quando há uma pergunta assim.
   const pessoas = usePersonas(perguntas.some((q) => q.field === 'profile_id'));
   const nomeDaOpcao = (id: string) => {
@@ -386,7 +389,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
               tone="warning"
               icon={CircleHelp}
               role="alert"
-              title={deDestino ? 'Falta decidir quem faz e onde' : `${NOME_DA_IA} precisa de mais informações para montar o plano`}
+              title={deDestino ? 'Falta decidir quem faz e onde' : daPersona ? 'Falta um dado da persona' : `${NOME_DA_IA} precisa de mais informações para montar o plano`}
               actions={
                 <Button
                   size="sm"
@@ -402,7 +405,7 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
             >
               {perguntas.length > 0 && sensivel ? (
                 <RespostaSensivel tipo={sensivel} perguntas={perguntas} instanceId={run.instance_ids[0] ?? null} />
-              ) : perguntas.length > 0 && !deDestino ? (
+              ) : perguntas.length > 0 && !deDestino && !daPersona ? (
                 // ADR-047: responder aqui mesmo. A IA junta as respostas ao comando e nasce a execução sucessora —
                 // sem voltar ao Comando para reescrever o texto.
                 <AssistenteDoComando
@@ -448,8 +451,11 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
                 <p>{loading ? 'Carregando as perguntas…' : run.status_detail || 'O backend não informou quais dados faltam.'}</p>
               )}
               <p style={{ marginTop: 6 }}>
-                {deDestino
-                  ? 'Escolha no Comando (modo “Por persona”, ou marcando os aparelhos) e envie de novo — esta execução não avança sozinha.'
+                {deDestino || daPersona
+                  ? [
+                      deDestino ? 'Escolha no Comando (modo “Por persona”, ou marcando os aparelhos) e envie de novo — esta execução não avança sozinha.' : null,
+                      daPersona ? 'Cadastre o dado na persona e crie a execução de novo.' : null,
+                    ].filter(Boolean).join(' ')
                   : sensivel
                     ? 'Esta execução não avança sozinha: depois disso, edite o comando e peça de novo (ou cancele).'
                     : 'Esta execução não avança sozinha: responda acima (nasce outra, com o comando completo) ou edite o comando.'}

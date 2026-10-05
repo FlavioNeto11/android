@@ -134,3 +134,48 @@ it('perguntaSensivelDosEventos lê o tipo do evento e ignora o resto', () => {
   expect(perguntaSensivelDosEventos([makeEvent(1, 'pergunta_sensivel', null)])).toBeNull();
   expect(perguntaSensivelDosEventos(null)).toBeNull();
 });
+
+/**
+ * 31.87: o dado que a persona do aparelho não tem (`field: 'persona_data'`) NÃO é pergunta de destino nem se responde
+ * numa caixa que completa o comando: o caminho é cadastrar o dado e criar a execução de novo.
+ */
+it('dado da persona ausente: mostra a pergunta e o caminho, sem caixa de resposta nem rodapé de destino', async () => {
+  const pergunta = { code: 'dado_da_persona_ausente', field: 'persona_data', options: [], instance_id: 'android-12', profile_id: null,
+    question: 'A persona do android-12 não tem sobrenome cadastrado: cadastre o dado na persona e peça de novo.' };
+  const run = makeRun({ status: 'needs_input', status_detail: pergunta.question });
+  useAppStore.setState({
+    runs: [run],
+    detail: {
+      runId: RUN_ID, status: 'ready', error: null, eventsStatus: 'ready',
+      data: makeRunDetail({ ...run, plan: null, objectives: [], steps: [], attempts: [], evidence: [], plan_versions: [], decisions: [] }),
+      events: [makeEvent(12, 'log', { questions: [pergunta] }, { run_id: RUN_ID, level: 'warn', message: 'falta dado da persona' })],
+    },
+  });
+  await act(async () => { root.render(<RunView />); });
+  await waitFor(() => expect(text(container)).toContain('Falta um dado da persona'));
+  const t = text(container);
+  expect(t).toContain('A persona do android-12 não tem sobrenome cadastrado');
+  expect(t).toContain('Cadastre o dado na persona e crie a execução de novo.');
+  expect(t).not.toContain('Responda aqui');                    // nada de caixa que completa o comando
+  expect(t).not.toContain('Escolha no Comando');               // nem o rodapé de destino
+  expect(t).not.toContain('Falta decidir quem faz e onde');
+});
+
+it('pergunta mista (destino + dado da persona): o rodapé leva os dois caminhos', async () => {
+  const dado = { code: 'dado_da_persona_ausente', field: 'persona_data', options: [], instance_id: 'android-12', profile_id: null,
+    question: 'A persona do android-12 não tem sobrenome cadastrado: cadastre o dado na persona e peça de novo.' };
+  const run = makeRun({ status: 'needs_input', status_detail: PERGUNTA.question });
+  useAppStore.setState({
+    runs: [run],
+    detail: {
+      runId: RUN_ID, status: 'ready', error: null, eventsStatus: 'ready',
+      data: makeRunDetail({ ...run, plan: null, objectives: [], steps: [], attempts: [], evidence: [], plan_versions: [], decisions: [] }),
+      events: [makeEvent(13, 'log', { questions: [PERGUNTA, dado] }, { run_id: RUN_ID, level: 'warn', message: 'mista' })],
+    },
+  });
+  await act(async () => { root.render(<RunView />); });
+  await waitFor(() => expect(text(container)).toContain('Cadastre o dado na persona e crie a execução de novo.'));
+  const t = text(container);
+  expect(t).toContain('Escolha no Comando');
+  expect(t).not.toContain('Responda aqui');
+});

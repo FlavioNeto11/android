@@ -1,10 +1,64 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `7d104faa` (migração 113, deploy 36 mais a subida a quente do 29.111); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 05/10/2026: runtime do backend em `9f9e2b39` (migração 115, deploy 39); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 39 no ar (05/10/2026, 18:06Z, central `9f9e2b39`, migração `115_receita_nao_aplicavel`, sem migração
+  nova).** Dezessete pontas sobre `19e34b22`, mais dois consertos de junção. Itens: 29.128, 29.129, 29.130, 29.131,
+  29.132, 29.138, 29.141, 29.144, 28.49, 31.92, 31.97, 31.99 e 31.100; em parte, 28.51 (A), 31.87 (F1), 31.90 (B) e
+  31.91 (F0, F2 e painel). O detalhe de cada um está no [CHANGELOG](../CHANGELOG.md) e no
+  [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): avanço direto de `19e34b22` para `9f9e2b39`, com push; cópia
+    `data\backups\20261005-150236` (194,1 MB, íntegra; não havia migração a ensaiar); `GET /api/health` ok e sem
+    problemas; prova de fora às 18:07Z com tudo como esperado (`/api/instances` 403); agente do notebook em
+    `0.1.0+9f9e2b3`; mypy 257, igual ao teto, pelo `scripts/mypy-catraca.py` (29.144); os papéis `perguntas` e
+    `perguntas_respondidas` de `trello.listas` carregados na subida (28.51, parte A).
+  - `simulated` (suíte 39 sobre `9f9e2b39`): `scripts/tests` 672 passed; backend em SQLite 11840 passed, com 3
+    falhas consertadas antes do deploy e relidas (29.131 no `e6020a23`; a junção do 31.92 com o 31.91 no
+    `9f9e2b39`); frontend 1678 passed e build; catracas 88 e 6.
+  - Não passou inteiro: no PostgreSQL dirigido, 10182 passed e 2 failed conhecidas (item 29.139):
+    `test_dialogos_em_serie.py`, que falha igual na `main` anterior, e `test_sobreposicao_com_duas_causas.py`, como
+    na suíte 38.
+  - `not_run`: o percurso no navegador do que entrou; a resposta do dono num cartão de pergunta sem pedido no
+    Telegram, de ponta a ponta (28.51, parte A); a prova real do 31.91 e do 31.92 pelo painel.
+  - Os três aparelhos de conta real ficaram parados das 17:05Z até depois do deploy, por decisão da orquestradora e sem apagar nada; a religação, um por vez pela API local, começou às 18:07Z.
+  - Plano-100: 9 IDs novos (28.52, 29.140 a 29.145, 31.101 e 31.102) e o resultado da suíte 39 aplicado pelo
+    mecanismo: 548 de 645.
+- **Deploy 38 no ar (05/10/2026, 16:02Z, central `86afe1b5`, migração `115_receita_nao_aplicavel`).** Vinte e quatro
+  merges sobre `ebc316f9`. Itens: 29.113, 29.117, 29.120, 29.121, 29.123, 29.124, 29.125, 29.127, 29.115, 29.118,
+  29.119, 28.47, 28.48, 30.75, 30.80, 31.80, 31.82, 31.83, 31.84, 31.85, 31.94 e 31.95; em parte, 31.86 (B), 31.89
+  (F1 e F6) e 31.90 (A). O detalhe de cada um está no [CHANGELOG](../CHANGELOG.md) e no
+  [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): avanço direto de `ebc316f9` para `86afe1b5`, com push; ensaio com a cópia
+    `data\backups\20261005-125938` (192,7 MB, íntegra), que aplicou só a migração 115 numa cópia restaurada;
+    `scripts/deploy.ps1 -PularBackup` com `rc=0`; `GET /api/health` ok e sem problemas (o `appium_log_masking_off`
+    sumiu); prova de fora de 16:03:35Z a 16:03:43Z com `rc=0` e 46 linhas ok (`/api/instances` 401, e 403 com Host
+    forjado); agente do notebook em `0.1.0+86afe1b` às 16:09Z (procedimento A10 de [`worker.md`](worker.md)).
+  - `real`: android-01, android-03 e android-06, parados desde o incidente das 13:15Z, religados um por vez pela API
+    local de 16:06:49Z a 16:18:53Z; na leitura de 16:23:47Z os três estavam `online`, com automação `ready` e
+    internet `healthy`. A subida do 01 pegou a máquina a 92 % de CPU (testes das frentes ao mesmo tempo); os testes
+    pararam e a pausa de reparo cobriu os três durante a subida.
+  - `simulated` (suíte 38 sobre `86afe1b5`, em Idle): `scripts/tests` 669 passed; backend em SQLite com `-n 6`,
+    11689 passed, 13 skipped e 1 failed (a catraca do `Any` do #442, consertada no `97dbf664`; dirigidos depois, 71
+    passed); frontend com typecheck limpo, 1650 passed e build; catracas 88 + 6 passed; mypy 257, igual ao teto;
+    PostgreSQL dirigido (473 arquivos, `-n 8`) com 9824 passed e **5 failed conhecidas** em `test_sobreposicao*.py`
+    (8 com `-n 1`; 25 passed sem xdist, no PostgreSQL e no SQLite). **A etapa do PostgreSQL não passou inteira**; a
+    causa está aberta no item 29.139.
+  - `real` (volta no navegador pela frente do painel, ~16:20Z, só leitura e estado de tela): lote de Personas,
+    Limites, Rede e revisão do ensino funcionam; oito achados viraram trabalho (31.90-B, 29.141 e 29.142).
+  - `not_run`: os estados do ensino com o controle assumido (gravando, recusas, "Limpar o campo") no navegador; a
+    prova real do ensino num aparelho de teste, autorizada às 16:25Z e ainda sem resultado.
+- **GitHub Copilot no repositório (05/10/2026, item 29.134, `f5d9a096`).** Pedido do dono: usar o Copilot Pro+ para
+  aliviar a carga das sessões e desta máquina. Instruções do repositório e ambiente do agente de nuvem no lugar; a
+  revisão de PR é pedida PR a PR pela orquestradora. Como operar: [`operacao.md` § 5](operacao.md#5-ci).
+  - `real`: três revisões em 05/10 (PRs de 756 a 1.549 linhas), 566,87 créditos (US$ 5,67), de 4 a 6 minutos cada, em
+    runner hospedado; 10 achados, 9 confirmados pelas frentes. Por esse custo a revisão automática ficou desligada.
+  - `not_run`: o agente de nuvem (a primeira tarefa ainda não foi atribuída).
+- **Plano-100 em 636 itens, 535 implementados (05/10/2026, 16:25Z).** Entraram os 78 IDs das janelas 37 e 38, entre
+  eles a Fase 33 (integração com serviço externo de autorização, 8 itens). As linhas 3.3, 6.2, 6.4 e 8.3 deixaram de
+  citar quatro achados cujo texto saiu do apêndice no `ebc316f9`.
 - **Subida a quente do 29.111 (05/10/2026, 10:40Z, central `7d104faa`).** A pedido do dono, o site público diz o que o
   nome ANA significa: **Agente Neural Avançada** (escolha dele, 05/10; registrada no ADR-075). A frase segue a regra da
   página: a ANA rege, as personas dão voz. Sem a forma em inglês; título, descrição e imagem social não mudaram.
