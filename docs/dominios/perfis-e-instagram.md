@@ -415,6 +415,11 @@ apagava um caractere por vez com "Apagar". Como a receita digita com `clear_firs
 pós-condição da etapa é quem pega) deixa o painel limpar o campo antes de digitar, sem N toques em Apagar;
 pelo ADB puro, sem sessão Appium, recusa com `bad_input` (o `input text` só acrescenta). O gravador não mudou.
 
+Numa entrada `text` da sessão de treino, `key_name = 'clear_first'` é a marca de que o texto foi enviado limpando o campo
+(a API de leitura passa a mostrar isso); a marca vai para coluna própria numa migração futura.
+Se o `stop` da gravação falhar no fim do controle, a linha `recording` fica órfã até a próxima subida ou o próximo
+`start` (que o 31.80 já trata); `rt.training_session_id` é zerado de qualquer modo.
+
 **Quadro velho ao gravar (31.85).** Gravando, cada entrada lê a hierarquia antes de agir e o aparelho fica lento; o quadro
 que a pessoa vê passava da idade máxima e as teclas seguintes eram recusadas em série (`stale_frame`). Em
 `DeviceManager.manual_input`, com gravação ativa, o quadro igual a `rt.frame.info.id` (o mais recente) vale mesmo acima

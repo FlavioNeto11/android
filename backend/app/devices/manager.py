@@ -4278,49 +4278,55 @@ class DeviceManager:
                                              "campo de senha ou sem leitura): confira o quadro novo e repita.")
 
         t = inp.type
-        if t == "tap":
-            x, y = pt(inp.x, inp.y)
-            await rt.executor.run(self._manual(rt).tap, x, y, timeout=20, label="toque manual")
-            desc = f"toque em ({x},{y})"
-        elif t == "long_press":
-            x, y = pt(inp.x, inp.y)
-            await rt.executor.run(self._manual(rt).long_press, x, y, inp.duration_ms or 800, timeout=25, label="toque longo manual")
-            desc = f"toque longo em ({x},{y})"
-        elif t == "swipe":
-            x, y = pt(inp.x, inp.y)
-            x2, y2 = pt(inp.x2, inp.y2)
-            await rt.executor.run(self._manual(rt).swipe, x, y, x2, y2, inp.duration_ms or 300, timeout=25, label="arraste manual")
-            desc = f"arraste ({x},{y})→({x2},{y2})"
-        elif t == "key":
-            if not inp.key:
-                raise ControlError("bad_input", "Tecla não informada.")
-            await rt.executor.run(self._manual(rt).press_key, inp.key, timeout=20, label="tecla manual")
-            desc = f"tecla {inp.key}"
-        else:  # text — o conteúdo digitado nunca vai para o log (pode ser credencial)
-            text = inp.text or ""
-            if not text:
-                raise ControlError("bad_input", "Texto vazio.")
-            if rt.store:
-                # Decisão 4 do plano (dono, 24/09): a loja abre e opera como os outros aparelhos, e o texto pelo
-                # painel passa a valer nela. O que continua SEM passar pelo backend é a SENHA da conta Google: campo
-                # de senha em foco (ou tela sensível) recusa e manda digitar na janela do emulador. Sem conseguir
-                # ler a tela, o que tem cara de senha ou de código também é recusado — o resto é digitado.
-                await self._recusar_senha_na_loja(rt, text)
-            try:
-                if rt.session.connected or self.io_factory is not None:
-                    await rt.executor.run(lambda: rt.io.type_text(text, clear_first=inp.clear_first), timeout=30,
-                                          label="digitação manual")
-                elif inp.clear_first:
-                    # O `input text` do ADB só acrescenta e não há primitiva de limpar o campo por ele: digitar assim
-                    # deixaria o texto antigo junto do novo. Recusa em vez de fingir (a sessão do Appium limpa).
-                    raise ControlError("bad_input", "Limpar o campo antes de digitar exige a sessão de automação do "
-                                                    "aparelho, e ela não está conectada.")
-                else:
-                    await rt.executor.run(rt.adb.input_text_ascii, text, timeout=30, label="digitação manual")
-            except AdbError as exc:
-                raise ControlError("bad_input", str(exc)) from exc
-            desc = f"digitação de {len(text)} caractere(s)"
-        rt.ultima_entrada_mono = time.monotonic()
+        # O carimbo vai no `finally`: a ação que estoura o prazo (o toque de 24 s) levanta, mas a thread não se
+        # interrompe e o toque cai no aparelho depois. Sem carimbo, o 2º toque sobre o mesmo quadro passaria pela folga
+        # (31.85). Carimba também a recusa anterior ao despacho (coordenada, tecla vazia, loja): custa uma recusa a
+        # mais sob a folga, e é o lado seguro frente a separar os casos.
+        try:
+            if t == "tap":
+                x, y = pt(inp.x, inp.y)
+                await rt.executor.run(self._manual(rt).tap, x, y, timeout=20, label="toque manual")
+                desc = f"toque em ({x},{y})"
+            elif t == "long_press":
+                x, y = pt(inp.x, inp.y)
+                await rt.executor.run(self._manual(rt).long_press, x, y, inp.duration_ms or 800, timeout=25, label="toque longo manual")
+                desc = f"toque longo em ({x},{y})"
+            elif t == "swipe":
+                x, y = pt(inp.x, inp.y)
+                x2, y2 = pt(inp.x2, inp.y2)
+                await rt.executor.run(self._manual(rt).swipe, x, y, x2, y2, inp.duration_ms or 300, timeout=25, label="arraste manual")
+                desc = f"arraste ({x},{y})→({x2},{y2})"
+            elif t == "key":
+                if not inp.key:
+                    raise ControlError("bad_input", "Tecla não informada.")
+                await rt.executor.run(self._manual(rt).press_key, inp.key, timeout=20, label="tecla manual")
+                desc = f"tecla {inp.key}"
+            else:  # text — o conteúdo digitado nunca vai para o log (pode ser credencial)
+                text = inp.text or ""
+                if not text:
+                    raise ControlError("bad_input", "Texto vazio.")
+                if rt.store:
+                    # Decisão 4 do plano (dono, 24/09): a loja abre e opera como os outros aparelhos, e o texto pelo
+                    # painel passa a valer nela. O que continua SEM passar pelo backend é a SENHA da conta Google: campo
+                    # de senha em foco (ou tela sensível) recusa e manda digitar na janela do emulador. Sem conseguir
+                    # ler a tela, o que tem cara de senha ou de código também é recusado — o resto é digitado.
+                    await self._recusar_senha_na_loja(rt, text)
+                try:
+                    if rt.session.connected or self.io_factory is not None:
+                        await rt.executor.run(lambda: rt.io.type_text(text, clear_first=inp.clear_first), timeout=30,
+                                              label="digitação manual")
+                    elif inp.clear_first:
+                        # O `input text` do ADB só acrescenta e não há primitiva de limpar o campo por ele: digitar assim
+                        # deixaria o texto antigo junto do novo. Recusa em vez de fingir (a sessão do Appium limpa).
+                        raise ControlError("bad_input", "Limpar o campo antes de digitar exige a sessão de automação do "
+                                                        "aparelho, e ela não está conectada.")
+                    else:
+                        await rt.executor.run(rt.adb.input_text_ascii, text, timeout=30, label="digitação manual")
+                except AdbError as exc:
+                    raise ControlError("bad_input", str(exc)) from exc
+                desc = f"digitação de {len(text)} caractere(s)"
+        finally:
+            rt.ultima_entrada_mono = time.monotonic()
         self.bus.emit("log", f"{rt.id}: entrada manual — {desc}", instance_id=rt.id)
         rt.capture_now.set()
         if rt.training_session_id and self.on_training_input is not None:

@@ -226,3 +226,21 @@ async def test_fim_do_controle_zera_a_gravacao_mesmo_se_o_gravador_falhar(harnes
     st.devices._end_user_control(rt, None)
     status, lease4 = st.devices.request_control(rt)
     assert status == "granted" and rt.training_session_id is None
+
+
+async def test_folga_toque_que_estoura_o_prazo_tambem_carimba_a_entrada(harness: Harness) -> None:
+    """C2: a ação que levanta (o toque de 24 s estoura o prazo) segue rodando no aparelho; o 2º toque sobre o mesmo quadro
+    não pode passar pela folga."""
+    st, rt, lease, frame = await _no_controle(harness, gravando=True)
+    _envelhecer(rt, frame, 20)
+
+    def estoura(x: int, y: int) -> None:
+        raise TimeoutError("toque excedeu 20s")
+
+    harness.fakes["android-01"].tap = estoura
+    with pytest.raises(Exception):
+        await st.devices.manual_input(rt, _toque(lease, frame))
+    assert rt.ultima_entrada_mono > rt.recent_frames[frame][0]
+    with pytest.raises(ControlError) as segundo:
+        await st.devices.manual_input(rt, _toque(lease, frame))
+    assert segundo.value.code == "stale_frame"

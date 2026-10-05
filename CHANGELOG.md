@@ -40,6 +40,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_quadro_velho.py` (10 passed; sem a guarda da folga, 3 falham; com o log
   antigo, 1 falha). Real: `not_run`.
 
+## 2026-10-05 — 31.85: o carimbo da última entrada vale também quando a ação levanta (C2 do #430)
+
+- `manual_input`: `rt.ultima_entrada_mono` passa a ser posto num `finally` em volta do despacho. O toque que estoura o prazo
+  (24 s medidos) levanta, mas segue rodando no aparelho; sem carimbo o 2º toque sobre o mesmo quadro passava pela folga.
+  Carimba também a recusa anterior ao despacho (lado seguro: uma recusa a mais sob a folga).
+- Docs: `key_name = 'clear_first'` na leitura das sessões de treino (coluna própria numa migração futura); a linha
+  `recording` órfã se o `stop` falhar.
+- Prova `simulated`: `test_treino_quadro_velho.py` (15 passed); com o carimbo fora do `finally`, o teste novo falha. Real: `not_run`.
+
 ## 2026-10-05 — 31.84/31.85: correções da segunda leitura do PR #430 (branch fix/31-84-85-entrada-manual-no-treino)
 
 - 31.85 (C1): `rt.ultima_entrada_mono` carimbado em cada entrada manual com efeito; sob a folga, toque, toque longo e arraste

@@ -6345,6 +6345,9 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
   ausente, o comportamento é o de antes: o texto acrescenta ao que já está no campo.
 - Sem a sessão de automação do aparelho conectada (caminho do ADB `input text`, que só acrescenta), `clear_first:true`
   responde `400 {code:'bad_input'}` em vez de digitar sem limpar. A recusa da senha na loja continua antes de tudo.
+- Na leitura das sessões de treino (`GET /api/training/{id}`, `inputs[]`), numa entrada de tipo `text` o campo `key_name`
+  com o valor `clear_first` é a marca de que o texto foi enviado limpando o campo; vai para coluna própria numa migração
+  futura.
 - O que o modo treinamento grava não muda: uma entrada `text` comum. A destilação passou a tratar `delete` antes de
   `text` como ruído e `enter` logo após o `text` como `press_enter` (ver "Teclas ao ensinar" em
   `docs/dominios/perfis-e-instagram.md`).
@@ -6361,6 +6364,8 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
     qualquer entrada sob a folga volta `409 stale_frame`.
   - Toque, toque longo e arraste sob a folga só passam se o quadro informado foi capturado DEPOIS da última entrada
     manual com efeito (o quadro só é o "mais recente" porque a captura ainda não rodou depois dela; o segundo toque sobre
-    ele cairia na tela nova com a coordenada da velha): senão `409 stale_frame`, e a pessoa espera a imagem nova.
+    ele cairia na tela nova com a coordenada da velha): senão `409 stale_frame`, e a pessoa espera a imagem nova. O
+    carimbo da entrada vale também quando a ação levanta (o toque que estoura o prazo segue rodando no aparelho) e numa
+    recusa anterior ao despacho: custa uma recusa a mais sob a folga, o lado seguro.
 - **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`, `backend/tests/test_treino_quadro_velho.py`).
   `real`: `not_run`.
