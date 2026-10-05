@@ -47,6 +47,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   decide; vale com 15 % da tela (a constante do 31.51, uma só), pela caixa com pista que o contém (o "X" de um modal) ou
   quando outra folha com texto cruza a área (os descendentes vêm pela ordem do documento, medida no gov.br); senão, a
   recusa vale como "não" comum. `docs/ia.md` § 21.
+- 2ª leitura do #391: L1 (bounds iguais não fazem contêiner) e L2 (árvore inteira abaixo de 60 % da tela é janela
+  flutuante, o diálogo nativo sem painel: a recusa vale; real `not_run`).
 - Os testes do 31.40 e do 31.51 citavam o 1º nó do app de teste (0,5 % da tela); agora citam um aviso que cobre 62,5 %,
   posto na tela do aparelho falso (`test_sobreposicao._juiz_com_ref`).
 - Prova `simulated`: `tests/test_sobreposicao_com_duas_causas.py` (4), com mutação conferida. `real`: `not_run`.

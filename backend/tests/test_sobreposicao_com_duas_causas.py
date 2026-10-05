@@ -55,6 +55,10 @@ REAL_F24955 = _arvore(
 )
 
 
+#: A página por baixo, como em toda árvore real: sem ela, a árvore inteira seria uma "janela flutuante" (L2).
+_PAGINA = _no("Página", (0, 48, 720, 1280), classe="android.webkit.WebView")
+
+
 def test_a_constante_e_uma_so() -> None:
     assert FRACAO_DA_SOBREPOSICAO is FRACAO_QUE_COBRE and FRACAO_QUE_COBRE == 0.15
 
@@ -73,8 +77,8 @@ def test_o_modal_da_5b56e6_vale() -> None:
 
 def test_os_15_por_cento_exatos() -> None:
     """720 x 192 = 15 % de 720 x 1280: vale; um pixel a menos de altura, não (sem mais nada na tela)."""
-    t192 = _arvore(_no("Aviso", (0, 1000, 720, 1192)))
-    t191 = _arvore(_no("Aviso", (0, 1000, 720, 1191)))
+    t192 = _arvore(_PAGINA, _no("Aviso", (0, 1000, 720, 1192)))
+    t191 = _arvore(_PAGINA, _no("Aviso", (0, 1000, 720, 1191)))
     assert sobreposicao_vale(t192, _id(t192, "Aviso"), 720, 1280) is True
     assert sobreposicao_vale(t191, _id(t191, "Aviso"), 720, 1280) is False
 
@@ -82,10 +86,10 @@ def test_os_15_por_cento_exatos() -> None:
 def test_j1_o_x_dentro_de_um_modal_vale_pela_caixa() -> None:
     """O prompt manda citar "o diálogo, o banner ou o botão de fechar dele": o "X" de 48 x 48 (0,25 %) dentro de um
     modal de 60 % é sobreposição de verdade. Sem a pista na caixa, o "X" sozinho não vale."""
-    tree = _arvore(_no("Aviso de cookies", (0, 200, 720, 968), rid="cookie_modal", classe="android.app.Dialog"),
+    tree = _arvore(_PAGINA, _no("Aviso de cookies", (0, 200, 720, 968), rid="cookie_modal", classe="android.app.Dialog"),
                    _no("", (660, 210, 708, 258), rid="fechar", clicavel=True))
     assert sobreposicao_vale(tree, _id(tree, "fechar"), 720, 1280) is True
-    sem_pista = _arvore(_no("Bloco da página", (0, 200, 720, 968), rid="bloco"),
+    sem_pista = _arvore(_PAGINA, _no("Bloco da página", (0, 200, 720, 968), rid="bloco"),
                         _no("", (660, 210, 708, 258), rid="fechar", clicavel=True))
     assert sobreposicao_vale(sem_pista, _id(sem_pista, "fechar"), 720, 1280) is False
 
@@ -100,7 +104,7 @@ def test_j2_sem_citado_na_arvore_vale_como_antes() -> None:
 
 def test_j3_a_faixa_fixa_sobre_a_mensagem_vale() -> None:
     """O aviso FIXO no rodapé (10 %) por cima da última mensagem, que passa da faixa: outra folha com texto cruza."""
-    tree = _arvore(_no("Oi, tudo certo?", (20, 1080, 500, 1150), classe="android.widget.TextView"),
+    tree = _arvore(_PAGINA, _no("Oi, tudo certo?", (20, 1080, 500, 1150), classe="android.widget.TextView"),
                    _no("Usamos cookies", (0, 1104, 720, 1232), rid="cookie-bar"))
     assert sobreposicao_vale(tree, _id(tree, "Usamos cookies"), 720, 1280) is True
 
@@ -109,14 +113,73 @@ def test_j3_a_linha_da_pagina_inteira_dentro_da_faixa_vale_pela_ordem() -> None:
     """Achado da medida no gov.br (05/10, `gov-3-rodape`): as linhas da página por baixo do aviso fixo ficam INTEIRAS
     dentro da área dele, e a árvore não diz quem é filho de quem. A ordem do documento diz: os filhos do aviso vêm em
     sequência logo depois dele; a linha da página veio antes. Barra pequena (10 %), para o J3 decidir sozinho."""
-    pagina = _arvore(_no("Viagens e Turismo", (132, 1150, 410, 1190), classe="android.widget.TextView"),
+    pagina = _arvore(_PAGINA, _no("Viagens e Turismo", (132, 1150, 410, 1190), classe="android.widget.TextView"),
                      _no("Usamos cookies", (0, 1104, 720, 1232), rid="cookie-bar"),
                      _no("Aceitar", (560, 1150, 700, 1200), clicavel=True))
     assert sobreposicao_vale(pagina, _id(pagina, "Usamos cookies"), 720, 1280) is True
-    so_filhos = _arvore(_no("Usamos cookies", (0, 1104, 720, 1232), rid="cookie-bar"),
+    so_filhos = _arvore(_PAGINA, _no("Usamos cookies", (0, 1104, 720, 1232), rid="cookie-bar"),
                         _no("Viagens e Turismo", (132, 1150, 410, 1190), classe="android.widget.TextView"),
                         _no("Aceitar", (560, 1150, 700, 1200), clicavel=True))
     assert sobreposicao_vale(so_filhos, _id(so_filhos, "Usamos cookies"), 720, 1280) is False
+
+
+def test_l1_o_par_com_os_mesmos_bounds_e_folha() -> None:
+    """No Chrome, o View com texto e o TextView filho com o mesmo texto e os mesmos bounds: os dois se conteriam e a
+    linha da página sumiria do J3. Barra fixa pequena (10 %) por cima da linha, que vem antes no documento."""
+    tree = _arvore(_PAGINA,
+                   _no("Viagens e Turismo", (132, 1150, 410, 1190)),
+                   _no("Viagens e Turismo", (132, 1150, 410, 1190), classe="android.widget.TextView"),
+                   _no("Usamos cookies", (0, 1104, 720, 1232), rid="cookie-bar"))
+    assert sobreposicao_vale(tree, _id(tree, "Usamos cookies"), 720, 1280) is True
+
+
+def test_l2_o_dialogo_nativo_sem_painel_vale_pela_extensao_da_arvore() -> None:
+    """Ensaio sintético do L2 (`simulated`; o real fica `not_run` até a captura de um AlertDialog): o leitor corta o
+    painel `android:id/parentPanel` sem texto; sobram título, mensagem e botões, todos abaixo de 15 % e sem pista. O
+    dump é só a janela do diálogo, menor que 60 % da tela: a recusa vale."""
+    xml = ('<hierarchy rotation="0">'
+           '<node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="android" content-desc="" '
+           'clickable="false" enabled="true" bounds="[40,480][680,820]" />'
+           '<node index="0" text="" resource-id="android:id/parentPanel" class="android.widget.LinearLayout" '
+           'package="android" content-desc="" clickable="false" enabled="true" bounds="[40,480][680,820]" />'
+           '<node index="0" text="Permitir acesso à localização?" resource-id="android:id/alertTitle" '
+           'class="android.widget.TextView" package="android" content-desc="" clickable="false" enabled="true" '
+           'bounds="[88,520][632,580]" />'
+           '<node index="1" text="O app quer usar a sua localização." resource-id="android:id/message" '
+           'class="android.widget.TextView" package="android" content-desc="" clickable="false" enabled="true" '
+           'bounds="[88,600][632,700]" />'
+           '<node index="2" text="Cancelar" resource-id="android:id/button2" class="android.widget.Button" '
+           'package="android" content-desc="" clickable="true" enabled="true" bounds="[300,740][460,800]" />'
+           '<node index="3" text="OK" resource-id="android:id/button1" class="android.widget.Button" '
+           'package="android" content-desc="" clickable="true" enabled="true" bounds="[480,740][632,800]" />'
+           '</hierarchy>')
+    tree = parse_hierarchy(xml)
+    assert not any(e.resource_id == "android:id/parentPanel" for e in tree.elements)   # o painel foi cortado
+    assert sobreposicao_vale(tree, _id(tree, "Permitir acesso à localização?"), 720, 1280) is True
+    # Limite conhecido, dito no PR: com a página por baixo no MESMO dump (tela inteira), a extensão não acusa a janela
+    # e, sem painel nem pista, o J1 e o J3 também não; só a captura real dirá se o uiautomator despeja assim.
+    com_pagina = parse_hierarchy(xml.replace('<hierarchy rotation="0">', '<hierarchy rotation="0">' + _PAGINA))
+    assert sobreposicao_vale(com_pagina, _id(com_pagina, "Permitir acesso à localização?"), 720, 1280) is False
+
+
+def test_l2_o_alertdialog_real_do_android_04() -> None:
+    """Captura real (05/10 10:34:35Z, android-04 sem conta, deploy 36, `data/diag-31-73/alertdialog-nativo.json`):
+    "Reset app preferences?" das Configurações, cancelado com BACK. O dump é só a janela do diálogo (36,6 % de
+    720 x 1280), sem id nem pista; o título (6,7 %) e os botões só valem pelo L2."""
+    def no(t: str, b: tuple[int, int, int, int], cls: str, clic: bool = False) -> str:
+        return (f'<node index="0" text="{t}" resource-id="" class="{cls}" package="com.android.settings" '
+                f'content-desc="" clickable="{str(clic).lower()}" enabled="true" '
+                f'bounds="[{b[0]},{b[1]}][{b[2]},{b[3]}]" />')
+    tree = parse_hierarchy('<hierarchy rotation="0">'
+                           + no("Reset app preferences?", (120, 288, 600, 417), "android.widget.TextView")
+                           + no("This will reset all preferences for apps", (120, 449, 597, 847), "android.widget.TextView")
+                           + no("", (224, 895, 373, 991), "android.view.View", True)
+                           + no("Cancel", (248, 922, 349, 965), "android.widget.TextView")
+                           + no("", (389, 895, 600, 991), "android.view.View", True)
+                           + no("Reset apps", (413, 922, 576, 965), "android.widget.TextView")
+                           + "</hierarchy>")
+    for e in tree.elements:
+        assert sobreposicao_vale(tree, e.id, 720, 1280) is True, e.id
 
 
 def test_o_prompt_do_juiz_separa_o_visivel_do_escondido() -> None:
