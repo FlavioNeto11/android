@@ -12,6 +12,7 @@ import { useAppStore } from '../../store/app';
 import { apiAprendizado } from './api';
 import { abrirApp } from './apps';
 import { AppsDoItem, eMultiApp } from './AppsDoItem';
+import { EscopoDoFluxo } from './EscopoDoFluxo';
 import { SecaoDoParecer } from './ParecerDaIA';
 import {
   SEM_DADO, destinoDaRelacao, metaDeSaude, metaDeVersao, rotuloDaDimensao, rotuloDaFerramenta, rotuloDaRelacao,
@@ -677,6 +678,9 @@ export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onM
         {relacoes.length > 0 ? <Relacoes relacoes={relacoes} /> : null}
         <SecaoDoParecer item={item} pareceres={Array.isArray(detalhe.pareceres) ? detalhe.pareceres : []}
                         curador={detalhe.curador} onMudou={onMudou} />
+        {item.kind === 'fluxo' && conteudo?.tipo === 'fluxo' && conteudo.origem.tipo === 'treino' ? (
+          <Secao slug="escopo" titulo="A quem vale"><EscopoDoFluxo flowId={item.ref} /></Secao>
+        ) : null}
         <Acoes item={item} invalidar={detalhe.invalidar_evidencia?.run_id ?? null} onMudou={onMudou} />
       </div>
     </PrefixoDeIds.Provider>

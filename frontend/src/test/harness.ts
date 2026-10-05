@@ -277,7 +277,7 @@ function roleOf(el: Element): string | null {
   const tag = el.tagName.toLowerCase();
   if (tag === 'input') {
     const type = (el as HTMLInputElement).type;
-    return type === 'checkbox' ? 'checkbox' : 'textbox';
+    return type === 'checkbox' ? 'checkbox' : type === 'radio' ? 'radio' : 'textbox';
   }
   return IMPLICIT[tag] ?? null;
 }

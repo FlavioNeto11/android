@@ -7,7 +7,7 @@ import { initialDataState } from '../../store/reducer';
 import { makeSnapshot } from '../../test/fixtures';
 import { ConfirmHost } from '../../components/Confirm';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
 
 /** O atraso máximo do fetch falso (modo ATRASO_DO_FETCH_MS): a resposta que o teste solta depois ainda pode estar a caminho. */
@@ -70,13 +70,15 @@ it('mostra a gravação (texto sigiloso sem conteúdo), pede a proposta, e salva
   await click(byRole('button', /Pedir proposta à IA/i));
   await waitFor(() => expect(text()).toContain('O texto muda?'));
   expect(text()).toContain('{contato} = QA-001');
+  await click(byRole('radio', /Escolher perfis e grupos/));
   await click(byRole('checkbox', /@aluno.dois/i));
   // P2.1: o rodapé salva um FLUXO e diz isso; "habilidade" fica para a versionada (ensino v2).
   expect(allByRole('button', /Salvar habilidade/i)).toHaveLength(0);
   await click(byRole('button', /Salvar como fluxo/i));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
-  const corpo = backend.callsTo('POST', /\/save$/)[0]!.body as { profile_ids: string[] };
+  const corpo = backend.callsTo('POST', /\/save$/)[0]!.body as { profile_ids: string[]; scope_on_proof: string };
   expect(corpo.profile_ids.sort()).toEqual(['ig-1', 'ig-2']);           // o perfil do aparelho já vem marcado
+  expect(corpo.scope_on_proof).toBe('todos');                             // "escolher" manda as listas e `todos` (adendo v1.71)
   expect(text()).toContain('sem IA');
 });
 
@@ -86,6 +88,7 @@ it('se a lista de perfis falha, o escopo mostra o erro com "Tentar de novo" e o 
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('QA-001'));
   await click(byRole('button', /Pedir proposta à IA/i));
+  await click(await waitFor(() => byRole('radio', /Escolher perfis e grupos/)));       // a lista só importa em "Escolher"
   await waitFor(() => expect(text()).toContain('A lista de perfis e grupos não carregou'));
   expect(text()).toContain('banco indisponível');
   expect(text()).not.toContain('Nada marcado = todos os perfis');
@@ -417,7 +420,7 @@ it('a prévia mostra o que cada etapa vira; a recusa do comando vai no campo e t
   const salvar = () => byRole('button', /^Salvar como fluxo/);
   expect(comando().getAttribute('aria-invalid')).toBeNull();
   // O corpo da prévia é o do salvar (v1.58: `extra="forbid"`).
-  expect(Object.keys(backend.callsTo('POST', /\/preview$/)[0]!.body as object).sort()).toEqual(['group_ids', 'profile_ids', 'proposal']);
+  expect(Object.keys(backend.callsTo('POST', /\/preview$/)[0]!.body as object).sort()).toEqual(['group_ids', 'profile_ids', 'proposal', 'scope_on_proof']);
 
   await setValue(comando(), '{contato} mande');
   await waitFor(() => expect(comando().getAttribute('aria-invalid')).toBe('true'));
@@ -580,3 +583,56 @@ it('mais de 8 respostas: o pedido trava com o motivo em vez de cortar a 9ª', as
   await setValue(byRole('textbox', /^Pergunta 9$/) as HTMLInputElement, '');
   expect(byRole('button', /^Pedir nova proposta com as respostas/).getAttribute('aria-disabled')).toBeNull();
 });
+
+// ---------------------------------------------------------------- 31.88 F2 (adendo v1.71): "Vale para"
+const SALVO = { session: { ...SESSAO, status: 'saved' }, flow_id: 'f-0a1b2c3d4e5f', steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }] };
+const corpoDe = (rota: RegExp) => backend.callsTo('POST', rota)[0]!.body as Record<string, unknown>;
+
+it('31.88 F2: o padrão é "Todos, depois de provado": o corpo leva scope_on_proof todos e listas vazias, e a lista que falhou não trava o Salvar', async () => {
+  backend.on('GET', /\/instagram\/profiles$/, () => apiError(500, 'internal', 'banco indisponível'));
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, scope: { on_proof: 'todos', profile_ids: [], group_ids: [] } }));
+  await abrirComProposta(SESSAO, PROPOSTA);
+  expect((byRole('radio', /Todos, depois de provado/) as HTMLInputElement).checked).toBe(true);
+  await waitFor(() => expect(text()).toContain('Ao salvar vale para todos os perfis, depois de provado.'));
+  expect(text()).toContain('Até a prova passar, só a persona que ensinou usa o fluxo');
+  expect(allByRole('checkbox', /@aluno/)).toHaveLength(0);                    // as listas só aparecem em "Escolher"
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/save$/)).toHaveLength(1));
+  expect(corpoDe(/\/save$/)).toMatchObject({ scope_on_proof: 'todos', profile_ids: [], group_ids: [] });
+  expect(corpoDe(/\/preview$/)).toMatchObject({ scope_on_proof: 'todos', profile_ids: [], group_ids: [] });
+});
+
+it('31.88 F2: "Só quem ensinou" manda scope_on_proof sem listas, e a prévia e o resultado mostram o escopo que o servidor devolveu', async () => {
+  const escopo = { on_proof: 'quem_ensinou' as const, profile_ids: [] as string[], group_ids: [] as string[] };
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, scope: escopo }));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({ ...SALVO, scope: escopo }));
+  await abrirComProposta(SESSAO, PROPOSTA);
+  await click(byRole('radio', /Só quem ensinou/));
+  await waitFor(() => expect(text()).toContain('Ao salvar vale para só a persona que ensinou, também depois da prova.'));
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Vale para só a persona que ensinou, também depois da prova.'));
+  const corpo = corpoDe(/\/save$/);
+  expect(corpo.scope_on_proof).toBe('quem_ensinou');
+  expect(corpo).not.toHaveProperty('profile_ids');                             // com lista junto, a API recusa (scope_ambiguous)
+  expect(corpo).not.toHaveProperty('group_ids');
+});
+
+it('31.88 F2: "Escolher perfis e grupos" manda as listas com scope_on_proof todos e o resultado diz quem foi escolhido', async () => {
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({ ...SALVO, scope: { on_proof: 'todos', profile_ids: ['ig-2'], group_ids: [] } }));
+  await abrirComProposta(SESSAO, PROPOSTA);
+  await click(byRole('radio', /Escolher perfis e grupos/));
+  await click(await waitFor(() => byRole('checkbox', /@aluno.um/)));              // o perfil do aparelho vinha marcado: sai
+  await click(byRole('checkbox', /@aluno.dois/));
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Vale para @aluno.dois.'));
+  expect(corpoDe(/\/save$/)).toMatchObject({ scope_on_proof: 'todos', profile_ids: ['ig-2'], group_ids: [] });
+});
+
+it('31.88 F2: treino sem persona: "Só quem ensinou" fica desabilitado com o motivo, antes de a API recusar (no_teacher_persona)', async () => {
+  await abrirComProposta({ ...SESSAO, profile_id: null }, PROPOSTA);
+  const so = byRole('radio', /Só quem ensinou/) as HTMLInputElement;
+  expect(so.disabled).toBe(true);
+  expect(text()).toContain('Este treino não teve persona: não há “quem ensinou”.');
+  expect((byRole('radio', /Todos, depois de provado/) as HTMLInputElement).checked).toBe(true);
+});
+
