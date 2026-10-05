@@ -4798,16 +4798,16 @@
   },
   "29.21": {
    "id": "29.21",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "04/10/2026, central, main 24da29ef: android-05 (QA, rede exigida_com_bloqueio, trafego_verificado rev 1) parado às 12:31:24Z (snapshot descartado) e ligado a frio (c-20261004123129-561e24), online às 12:33:05Z. A rede não regrediu para 'configurado'; a convergência remediu às 12:34:57Z (device.network succeeded, medição #1215) sem pedir reinício. Nenhuma linha de reinício segurado no backend.log desde 00:04Z. O cenário de 02/10 não se reproduziu.",
-   "blocker": "Causa exata do 'ocupado' de 02/10 segue não provada; os termos do 29.21 ficam no detail da linha de rede quando ocorrer.",
-   "grupo": "android-suite26",
-   "modelo": "claude-opus-5-5",
-   "esforco": "sessao executora",
+   "evidence": "Real parcial (máquina central, backend no ar em 0ede1860, implantado em 04/10 às 19:50Z, que contém o conserto c7f799c5 do PR #81): data/logs/backend.log.2026-10-04 tem 'android-02: reinício da rede aguarda o aparelho: worker no scheduler' às 21:52:17Z e 'reinício da rede não saiu em 25 tentativas: worker no scheduler; a varredura tenta de novo em 5 min' às 21:54:17Z (o log grava hora local, -03:00; os ids de comando confirmam o UTC). Isso prova que o termo é dito, uma vez por termo, e que a espera de 5 min funciona. O contexto foi o incidente 29.41 do notebook: o aparelho físico atrás do android-02 trocou às 21:50Z (start c-20261004214843-aa192a, que acabou às 21:50:12Z). O termo veio sem '(objetivo …)' e no banco nenhum objetivo do android-02 estava aberto entre 21:45Z e 22:00Z. Quem segurou foi o trabalho de aparelho que liga junto com o boot (`AppState._reobservar_se_velho` → `run_device_job`, rótulo 'reobservação e entrega do que foi distribuído'; o código põe a rede antes dos apps em `vitrine.trabalho_ao_ligar`). O comando device.network c-20261004215157-670114 acabou às 21:52:16Z e pediu o reinício 1 s depois, de dentro do próprio trabalho. Em seguida veio a entrega dos 4 apps, que o aparelho novo não tinha (app_state 'verifying' das 21:54:51Z às 21:57:45Z). O túnel voltou pela interface às 22:00:10Z (device.network c-20261004215957-e6aeb3), sem reinício, e nenhuma execução ficou presa: a espera de 5 min, em vez da de 30 s, mostra que não havia objetivo em wait_reason='rede'. Leitura de código sobre o limite (main baae3724): o trabalho de aparelho não tem teto global (`Scheduler._device_job` só faz await na fábrica), mas cada passo tem prazo: `installer.inspect` 40 s por pacote (`inspect_timeout_s`), instalação 900 s por app (`install_timeout_s`), leitura da rede pelo `AparelhoPeloAdb.shell` com prazo (`timeout=None` vira `rede.sonda.prazo_leitura_s` mais `FOLGA_DA_FILA_S`), e os laços de espera do tun0 e do botão do cliente com prazo monotônico. Os laços correm sobre listas finitas (pacotes e entregas). A recusa por aparelho ocupado não conta para `rede.reinicios_max`: só o pedido que sai conta. A varredura volta depois de `_ESPERA_DA_RELEITURA_S`. Então o reinício sai na primeira passada depois que o trabalho solta o aparelho. Prova simulated, que continua valendo: `backend/tests/test_rede_aplicacao.py::test_reinicio_com_objetivo_esperando_a_rede` e `::test_reinicio_que_nao_sai_diz_qual_termo_segurou`.",
+   "blocker": "A retentativa de 30 s com objetivo esperando a rede não teve caso real (segue simulated). A causa do 'ocupado' do android-05 em 02/10 não está provada. Há um suspeito com evidência: o mesmo trabalho de aparelho do boot, também num frio, que pede o reinício de dentro e o segura até acabar a entrega dos apps. Fica como observação. O pior caso do trabalho é longo, mas finito: rede, proxy, 40 s por pacote relido e 900 s por app entregue. Reabrir se aparecer no backend.log 'reinício da rede não saiu … o objetivo <id> espera a rede' repetido por mais tempo que esse pior caso, ou com execução presa.",
+   "grupo": "resultado-orquestradora-janela34c",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T13:17:24+00:00"
+   "quando": "2026-10-05T04:06:12+00:00"
   },
   "17.8": {
    "id": "17.8",
@@ -8171,16 +8171,16 @@
   },
   "29.77": {
    "id": "29.77",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 05/10/2026, máquina WIN-7S2UASNLFOP (central), commit a0c9865e (deploy 33 no ar às 01:17:42Z, migração 107_portal_contatos). Sim do dono para ligar: Telegram 2026-10-05T00:59:01Z (linha 1501 de canal_entradas, do_dono=1, resposta à mensagem 252). Ligado pelo roteiro: cópia data/backups/config.yaml.antes-portal-site-20261005-011833, bloco portal no config.yaml, `pwsh -File scripts\\deploy.ps1 -Ensaio` rc=0 com 'site/: 15 arquivo(s) na lista; portal.site_ligado=True', reinício da farm-central às 01:18:50Z, saúde em 57 s sem problemas. Prova de fora às 01:19:51Z: `SITE=ligado CONTATO=ligado WEBHOOK_DO_TRELLO=ligado bash scripts/portal-prova-de-fora.sh depois` com RESULTADO tudo como esperado (raiz 200 com a CSP do site e sem Set-Cookie; robots barra /central/ e /api/; 404 fora da pasta; contato GET 401, isca 202, tipo errado 415, corpo grande 413; /api/instances 401). portal_contatos vazio depois da isca. Caminhada no navegador (1440 e 360 px, 01:20Z a 01:22Z): menu, âncoras, 5 abas por clique e teclado, 7 perguntas, 2 telefones e 2 WhatsApp, rodapé das três empresas, sem preço, sem e-mail, sem cookie, sem rolagem horizontal; campo inválido não faz pedido à rede; a isca fora da tela. Simulado (sessão Portal, PR 333): tests/test_portal_contato.py, tests/test_portal_site.py e scripts/tests/test_portal_prova_de_fora.py, na suíte 33 inteira verde (SQLite 10624 e PG 5232 na a0c9865e). not_run: o primeiro contato de verdade pelo formulário até o Telegram do dono, o limite por cliente, JS desligado e token expirado.",
-   "blocker": "o primeiro contato real pelo formulário é do dono; achado 29.85 (tag do Web Analytics injetada pela Cloudflare, bloqueada pela CSP)",
-   "grupo": "resultado-orquestradora-suite33",
+   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP, endereço público https://dev.nvit.com.br, site e contato ligados desde o deploy 33 (central a0c9865e; desde 03:27Z em 584ac9c8, deploy 34). (1) Dois contatos entregues pelo formulário de verdade: ids 1 (01:23:36Z) e 2 (01:29:59Z, do dono), os dois em estado entregue, com 2 avisos do portal na Canais (contagem por id e instante, sem ler conteúdo). (2) Envios inválidos, sem efeito, todos com telefone de um dígito: token falso 202 {ok:true} às 01:59:57.795Z e token cedo 202 às 01:59:58.238Z (os dois descartados em silêncio, sem gravar nem avisar, como a página promete ao robô); token válido com campo inválido 422 campo_invalido [telefone] às 02:00:03.656Z; token vencido 400 token_expirado às 04:02:14.598Z, com o token emitido às ~02:00Z sob a a0c9865e e conferido sob a 584ac9c8 (o sal está no banco, settings portal.sal; o deploy 34 não tocou protecao.py nem contato.py). Leituras antes e depois de cada rodada (01:59:52Z, 02:00:07Z, 02:27:50Z, 02:27:59Z, 04:02:14Z, 04:02:17Z): max_id=2, contatos=2, avisos_portal=2, nada gravado nem avisado. (3) Prova de fora: 02:27:50Z com SITE e CONTATO ligados (o #353, portal-resultado-2985-real.json); 03:21:37Z pela orquestradora, rc=0 e 41 ok; 03:30:23Z por mim, SITE=ligado: CSP do site, sem cookie, robots, nada fora da pasta, 404 própria, e a isca do contato 202 sem gravar. POSTs no público por esta frente: 5 de 6 (os 3 inválidos, a isca de 03:30Z, o vencido). Simulado: backend/tests/test_portal_contato.py (consentimento ausente 422, limite por cliente 3/h e 10/dia pelo cf-connecting-ip, teto global, retido e pendente, isca), test_portal_site.py, scripts/tests/test_portal_prova_de_fora.py. Ficaram só simulated, de propósito no público: o consentimento ausente (pediria um envio com campos válidos) e o limite por cliente (teste de carga no endereço público, proibido).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela34c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T01:26:30+00:00"
+   "quando": "2026-10-05T04:06:12+00:00"
   },
   "29.80": {
    "id": "29.80",
@@ -8368,14 +8368,14 @@
    "id": "31.68",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "#359 (a96fb8bd) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). Prévia da porta e do item com vista_em; aprovar sem vista_em legível com item a aprovar dá 409 plano_mudou; DM igual depois do vista_em entra em mudaram. tests/test_porta_do_plano.py (10 novos), test_telegram_entrada.py (T2), test_telegram_portas.py, test_executor_honra_o_plano.py, frontend PortaDoPlano.test.tsx. Percurso no navegador em servidor simulado do worktree (porta 8765, a96fb8bd, 05/10 02:20Z): 409 com 'depois da prévia que você viu' e nada gravado; reaprovar na prévia nova deu 200 com 2 aprovações. A Orquestradora fez a caminhada no central depois do deploy 34.",
-   "blocker": "prova real com execução de uma DM pela porta em aparelho sem conta real: janela de prova pedida às 03:27Z, a seguir",
-   "grupo": "resultado-orquestradora-suite34a",
+   "evidence": "#359 (a96fb8bd) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). Prévia da porta e do item com vista_em; aprovar sem vista_em legível com item a aprovar dá 409 plano_mudou; DM igual depois do vista_em entra em mudaram. tests/test_porta_do_plano.py (10 novos), test_telegram_entrada.py (T2), test_telegram_portas.py, test_executor_honra_o_plano.py, frontend PortaDoPlano.test.tsx. Percurso no navegador em servidor simulado do worktree (porta 8765, a96fb8bd, 05/10 02:20Z): 409 com 'depois da prévia que você viu' e nada gravado; reaprovar na prévia nova deu 200 com 2 aprovações. A Orquestradora fez a caminhada no central depois do deploy 34. Janela real só de plano (05/10 03:48Z, central 584ac9c8, lote:jev:31.68-1, r-20261005034820-b565c5, android-03): GET /runs/{id}/porta 200 com vista_em presente; o comentário em post nosso deu 4 itens sem nenhum 'pede seu aval' (na_execucao, permitido), então as recusas sem vista_em não rodaram; execução cancelada (cancelled), 0 aprovações, US$ 0,01967 por costs.spent_usd.",
+   "blocker": "recusa sem vista_em e aprovação com vista_em em real saem do uso: a primeira publicação (29.30) é approval_required e passa pela porta com item de aval, com o dono aprovando. Sem segunda execução com DM (decisão da Orquestradora, 05/10 03:49Z; ADR-055). Comentário cai em 'na_execucao' na prévia (o post só se resolve na execução): nunca mostra 'pede seu aval'.",
+   "grupo": "resultado-orquestradora-janela34c",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T03:46:54+00:00"
+   "quando": "2026-10-05T04:06:12+00:00"
   },
   "29.83": {
    "id": "29.83",
@@ -10976,6 +10976,17 @@
    ],
    "grupos": [
     "resultado-orquestradora-suite34a"
+   ]
+  },
+  {
+   "quando": "2026-10-05T04:06:12+00:00",
+   "itens": [
+    "29.21",
+    "29.77",
+    "31.68"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela34c"
    ]
   }
  ]
