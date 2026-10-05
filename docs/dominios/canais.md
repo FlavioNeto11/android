@@ -772,6 +772,8 @@ Os scripts da operação provisória ficam versionados em `.claude/canais/`, e o
     - a imagem só sai se o sha256 dos bytes bater com o `imagem_sha256` que a prévia da porta mostra. Esse sha é lido
       da própria Central (`sha_da_imagem_na_porta`, a mesma conta do `porta_do_plano._item`). Um teste em
       `test_rotulo_ia.py` prende as duas juntas, inclusive no `None` da imagem de outra persona;
+    - com o item já decidido no plano, o `midia_sha256` congelado no sim (`sha_da_imagem_aprovada`) é a âncora:
+      se a prévia de agora disser outro sha, nada sai (28.48);
     - o `--previa <porta.json>` é opcional e, se vier, também tem de bater com a Central;
     - cada falha diz o seu motivo e nada sai: a Central não lida, a imagem fora do armazém, o sha diferente, o chat
       vazio;

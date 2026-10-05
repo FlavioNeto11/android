@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.48: a foto do item já decidido conferida pela âncora do sim (branch canais/28-48-foto-pela-aprovacao)
+
+- `telegram_status.py --foto`: com o item já aprovado na prévia da porta, o `midia_sha256` gravado no sim
+  (`sha_da_imagem_aprovada`) é a âncora. Se o sha da prévia de agora divergir dele, nada sai.
+- Prova: `simulated` (`.claude/canais/test_telegram_status.py` e
+  `backend/tests/test_rotulo_ia.py::test_o_sha_aprovado_no_plano_e_a_ancora_da_foto`). Real: `not_run`.
+
 ## 2026-10-05 — 28.46: a foto da etapa conferida contra a prévia da própria Central (branch canais/28-46-foto-pela-central)
 
 - `telegram_status.py --foto` lê o `imagem_sha256` da Central (`sha_da_imagem_na_porta`, a mesma conta da prévia da

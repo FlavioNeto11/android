@@ -185,12 +185,17 @@ def imagem_conferida(step_id: str, sha_esperado: str, ler) -> tuple[bytes, str]:
     return conteudo, str(mime)
 
 
-def _da_central():  # noqa: ANN202 - (ler a imagem da etapa, ler o sha256 da prévia da porta), pelo banco e pelo armazém
-    """As duas leituras da Central (28.46): a imagem da etapa, do armazém dos avatares, e o `imagem_sha256` que a prévia
-    da porta mostra, pela mesma conta dela. Separado para o teste trocar por um falso."""
+def _da_central():  # noqa: ANN202 - (imagem da etapa, sha256 da prévia da porta, sha256 aprovado), pelo banco e armazém
+    """As leituras da Central: a imagem da etapa, do armazém dos avatares; o `imagem_sha256` que a prévia da porta
+    mostra, pela mesma conta dela (28.46); e o `midia_sha256` congelado no sim do plano, quando o item já foi decidido
+    (28.48). Separado para o teste trocar por um falso."""
     from app.config import load_config
     from app.db import Database
-    from app.modules.avisos.infrastructure.portas_da_central import imagem_da_etapa, sha_da_imagem_na_porta
+    from app.modules.avisos.infrastructure.portas_da_central import (
+        imagem_da_etapa,
+        sha_da_imagem_aprovada,
+        sha_da_imagem_na_porta,
+    )
     from app.storage import DISK, DiskStorage, build_storage
     cfg = load_config()
     env = cfg.env
@@ -201,7 +206,8 @@ def _da_central():  # noqa: ANN202 - (ler a imagem da etapa, ler o sha256 da pr�
     avatares = DiskStorage(cfg.data_dir) if storage.name == DISK else storage
     db = Database(cfg.db_dsn)
     return (lambda run_id, step_id: imagem_da_etapa(db, avatares.get, run_id, step_id),
-            lambda run_id, step_id: sha_da_imagem_na_porta(db, run_id, step_id))
+            lambda run_id, step_id: sha_da_imagem_na_porta(db, run_id, step_id),
+            lambda run_id, step_id: sha_da_imagem_aprovada(db, run_id, step_id))
 
 
 def _canal_do_dono():  # noqa: ANN202 - o CanalTelegram do chat do dono, ou o motivo de não haver
@@ -218,16 +224,23 @@ def _canal_do_dono():  # noqa: ANN202 - o CanalTelegram do chat do dono, ou o mo
 async def _enviar_foto(legenda: str, reply_to: int | None, step_id: str, previa: Path | None, *,
                        central=None, canal=None) -> int:  # noqa: ANN001 - os falsos do teste
     """28.45/28.46: a foto da etapa ao dono, só se o sha256 da imagem bate com o que a prévia da porta mostra, lido da
-    PRÓPRIA Central. `previa` (o JSON gravado) é opcional: com ele, o arquivo também tem de bater com a Central."""
+    PRÓPRIA Central. `previa` (o JSON gravado) é opcional: com ele, o arquivo também tem de bater com a Central.
+    28.48: com o item já decidido no plano, o sha256 aprovado é a âncora, e o da prévia tem de ser ele."""
     run_id = step_id.split(":", 1)[0]
     try:
-        ler, sha_na_porta = (central or _da_central)()
+        ler, sha_na_porta, sha_aprovado = (central or _da_central)()
         sha = sha_na_porta(run_id, step_id)
+        aprovado = sha_aprovado(run_id, step_id)
     except Exception as exc:  # noqa: BLE001 - sem ler a Central, nada sai; o tipo basta (sem texto do banco)
         print(f"recusado, nada enviado: a Central não foi lida ({type(exc).__name__})")
         return 2
     if not sha:
         print("recusado, nada enviado: a prévia da porta não tem imagem_sha256 para esta etapa")
+        return 2
+    if aprovado is not None and aprovado != sha:
+        # A imagem mudou depois do sim (ou a prévia de agora não é a aprovada): o dono veria outra imagem que não a que
+        # aprovou. A execução também recusa por isso (a chave diverge); aqui, nada sai.
+        print("recusado, nada enviado: a imagem da etapa não é mais a que o dono aprovou (sha256 diferente do sim)")
         return 2
     if previa is not None:
         try:
@@ -265,7 +278,8 @@ async def _enviar_foto(legenda: str, reply_to: int | None, step_id: str, previa:
         incerta = not exc.definitiva and (exc.status is None or exc.status >= 500)
         print(f"Falhou: {exc.motivo}" + (". A foto pode ter saído: confira o chat antes de repetir." if incerta else ""))
         return 1
-    print(f"enviada a foto ({mime}, sha256 {sha[:8]}…, {len(conteudo)} bytes) message_id={mid}")
+    ancora = "aprovado e da prévia" if aprovado else "da prévia"
+    print(f"enviada a foto ({mime}, sha256 {sha[:8]}… {ancora}, {len(conteudo)} bytes) message_id={mid}")
     _gravar_enviada(mid)
     return 0
 
