@@ -22,7 +22,7 @@ central (8000) não foi tocado; tudo o que subi foi parado ao fim.
    viram uma lista suspensa. As Aprovações pendentes aparecem no botão da seção Atividade.
 5. **Escopo do filtro de app** (`ProfileAccounts.tsx`): "Mostrando: Instagram" (ou "todos os apps") e "Filtra só Memória
    e Interações; as outras guias não mudam". A fileira só aparece nessas duas guias (as únicas que ela filtra).
-6. **Slug legível na URL** (`slugPersona.ts`): `#/personas/lucas-almeida`, aceito e gerado, com o id antigo compatível.
+6. **Slug legível na URL** (`slugPersona.ts`): `#/personas/tadeu-quintela`, aceito e gerado, com o id antigo compatível.
 
 ## As rotas: a URL guarda a GUIA, a seção é derivada
 
@@ -32,7 +32,7 @@ de Perfil), e `openPersona(id, tab)` e `?foco=` seguem iguais (`store/ui.ts` e `
 
 - **Slug**: nome sem acento, minúsculas, `-` entre palavras (corte em 48 caracteres numa fronteira de palavra); nome sem
   letra alguma cai no nome de exibição, no @ ou em `persona`. **Homônimos** ganham todos um sufixo curto tirado do PRÓPRIO
-  id (os 4 últimos caracteres `a-z0-9`: `lucas-almeida-fqg8`), então a ordem da lista e um terceiro homônimo não mudam o
+  id (os 4 últimos caracteres `a-z0-9`: `tadeu-quintela-fqg8`), então a ordem da lista e um terceiro homônimo não mudam o
   link dos outros; se dois ids terminarem igual, o sufixo cresce até distinguir. Slug que coincidir com o id de outra
   pessoa cede e usa o próprio id.
 - **Resolução** sem endpoint novo, pela lista já carregada: 1º o id exato; 2º o slug de hoje; 3º a forma com sufixo
@@ -56,7 +56,7 @@ Medido pelo navegador da IDE contra o backend simulado, persona "Lucas Almeida" 
 | @ na Visão geral | 3 | 1 |
 | `h1` | 1 | 1 |
 | Campos sensíveis na Visão geral | à vista | recolhidos, fechados |
-| URL | `#/personas/ig-R7UM9mwweF0rFqG8` | `#/personas/lucas-almeida-fqg8` (homônimo) ou `#/personas/ana-beatriz-nandu-avila` |
+| URL | `#/personas/ig-R7UM9mwweF0rFqG8` | `#/personas/tadeu-quintela-fqg8` (homônimo) ou `#/personas/ana-sueli-nandu-avila` |
 
 Divergência do briefing: ele conta **3** repetições de foto/nome/handle (cabeçalho, linha de chips, Identidade). No
 código, a "linha de chips" é o seletor de apps, que não repete o nome; medi 2 do nome e 3 do @ (o 3º é a conta do
@@ -101,7 +101,7 @@ seções), `ProfilesPage.test.tsx` (hashes com slug), `NovaPersonaLote.test.tsx`
 | `#/perfis/<id>/aparelhos`, `?foco=` atravessando a troca, guia inexistente cai na Visão geral | simulated | idem |
 | Lista carregando não pisca "não encontrada"; slug desconhecido avisa só depois; homônimos; nome puro ambíguo; renomear com a tela aberta | simulated | idem |
 | 5 seções, `aria-current`, lista suspensa com as mesmas 5, só as guias da seção, identidade uma vez, "Não verificada" não dispara nada, "Abrir no aparelho", bloco recolhido (`aria-expanded`, não monta fechado), escopo do app | simulated | `ProfileDetail.test.tsx` |
-| Abrir pelos links reais no navegador contra o backend simulado: `ig-…/aparelhos` → `ana-beatriz-nandu-avila/aparelhos`, `#/perfis/ig-…/contas` → `helena-prado/contas`, `?foco=` preservado, 0 entradas empilhadas, `nao-existe` → banner | real (01/10, central, `085e34e`+working tree, simulado 8712) | navegador da IDE, aba própria |
+| Abrir pelos links reais no navegador contra o backend simulado: `ig-…/aparelhos` → `ana-sueli-nandu-avila/aparelhos`, `#/perfis/ig-…/contas` → `elaine-prado/contas`, `?foco=` preservado, 0 entradas empilhadas, `nao-existe` → banner | real (01/10, central, `085e34e`+working tree, simulado 8712) | navegador da IDE, aba própria |
 | Sem rolagem horizontal, sem rótulo cortado, sem alvo < 32 px no cabeçalho/navegação/abas, nas 11 URLs de guia, em 1440, 1024, 768 e 390 px; em 390 a lista suspensa aparece e os botões somem (e o inverso a partir de 768) | real (idem) | medição por DOM (`scrollWidth`/`clientWidth`, alturas) |
 | axe 4.13 (wcag2a/aa, 2.1, 2.2, best-practice) nas 11 guias a 390 px e em 4 guias a 1440 px (com o bloco de atributos aberto): **0 falhas de contraste, 0 na Visão geral além de `region` do contêiner de avisos** | real (idem) | `javascript_tool` + axe servido de `C:\temp\ui-verificar` |
 | `npm run typecheck` e `npm test` inteiros | real (01/10) | **88 arquivos, 1077 testes passando** |

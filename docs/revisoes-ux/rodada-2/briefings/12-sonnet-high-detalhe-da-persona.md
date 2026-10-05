@@ -27,7 +27,7 @@ forca_recomendada: high
 3. Tornar claro o escopo do seletor de apps ("Mostrando: Instagram") e o que ele filtra.
 4. Campos sensíveis (religião, política) atrás de um bloco recolhível "Atributos de personalidade", fechado por padrão.
 5. Tornar o selo de estado acionável: "Não verificada" leva ao fluxo de verificação; "Conectado" mostra desde quando.
-6. **ID legível na URL**: aceitar e gerar `#/personas/lucas-almeida` (slug por nome, com sufixo curto em caso de colisão). Manter compatibilidade com o ID antigo.
+6. **ID legível na URL**: aceitar e gerar `#/personas/tadeu-quintela` (slug por nome, com sufixo curto em caso de colisão). Manter compatibilidade com o ID antigo.
 7. Em 390 px: seções como lista suspensa ou rolagem horizontal com indicador, sem cortar rótulos.
 
 ## Critérios de aceite

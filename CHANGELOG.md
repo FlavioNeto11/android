@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.108: nome de persona em slug de URL fora de teste trocado por exemplo (branch chore/31-108-nome-de-persona-em-slug-e-handle)
+
+- Complemento do 31.107: o nome de persona real na forma com HÍFEN (o slug de URL de exemplo) em comentários e docs fora de
+  teste virou o nome de exemplo da mesma tabela local (fora do Git): 15 linhas em 7 arquivos (`docs/produto.md`, 3 docs de revisão
+  de UX e 3 arquivos do painel: `ProfilesPage.tsx`, `slugPersona.ts`, `rotas.ts`; só comentário e texto), e o pedaço real que
+  sobrava dentro de um slug de exemplo. Código executável, decisão e prova não mudam.
+- Forma com PONTO (handle): na main de hoje só resta na migração 054 (aplicada, não se edita), no livro-razão do plano e no
+  relatório do runner (gerados pelo mecanismo): nada a trocar à mão. O resto da lista de antes já saiu no 31.98, 31.102 e 31.106.
+- Ficam de fora, de propósito: uma linha do CHANGELOG e a avaliação original de UX (`docs/revisoes-ux/00-avaliacao-original.txt`),
+  que são registro histórico do que foi escrito na época; trocar altera a fonte. Decisão da orquestradora se quiser.
+- Prova: `not_run` em teste de comportamento (só comentário e doc); conferido por busca que nenhuma linha acrescentada tem
+  pedaço de nome real; `docs-check` verde; frontend `typecheck` e os 334 testes de `profiles` e `lib` verdes. Real: `not_run`.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
