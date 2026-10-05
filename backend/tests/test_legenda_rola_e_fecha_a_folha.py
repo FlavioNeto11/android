@@ -347,6 +347,10 @@ async def test_a_folha_que_nao_fecha_para_numa_pessoa_sem_mais_toque(tmp_path: P
                  for r in _estado(h).db.query("SELECT data FROM events WHERE kind='step.updated' AND step_id=?",
                                               (etapa["id"],))]
         assert "aviso_do_app" in tipos, tipos
+        do_objetivo = [json.loads(r["data"] or "{}").get("failure_kind")
+                       for r in _estado(h).db.query("SELECT data FROM events WHERE kind='objective.updated' AND "
+                                                    "objective_id=?", (etapa["objective_id"],))]
+        assert "aviso_do_app" in do_objetivo, do_objetivo
 
 
 class AtorQueSoObserva(AtorQueLigaORotulo):
