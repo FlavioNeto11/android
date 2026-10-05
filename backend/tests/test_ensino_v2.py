@@ -359,6 +359,9 @@ async def test_rotas_ligadas_do_ensino_ao_rascunho_e_ciclo_da_versao(harness: Ha
     st.cfg.file.skills.enabled = True
     async with _cliente(harness) as c:
         assert (await c.get("/api/health")).json()["features"]["skills"] is True
+        assert (await c.get("/api/health")).json()["features"]["ensino_v2"] is False     # a tela tem chave própria
+        st.cfg.file.skills.ensino_v2_na_tela = True
+        assert (await c.get("/api/health")).json()["features"]["ensino_v2"] is True      # 31.91 F1: ligada, aparece
         r = await c.post("/api/teaching-sessions", json={"instruction": f"senha: {SEGREDO}"})
         assert r.status_code == 400 and r.json()["detail"]["code"] == "credential_in_text"
         assert SEGREDO not in r.text
