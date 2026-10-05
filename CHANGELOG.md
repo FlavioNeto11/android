@@ -299,6 +299,21 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - Prova `simulated`: `backend/tests/test_treino_segredo_na_gravacao.py` (4; sem o conserto os 4 falham) e
   `test_modo_treinamento.py` (7 passed). Real: `not_run`.
 
+## 2026-10-05 — 31.94, teclado de PIN na gravação do treinamento (branch fix/31-94-teclado-de-pin-na-gravacao)
+
+- Tirar o rótulo "4" não bastava: o `resource_id` (`key4`) e o x/y de cada toque num teclado fixo são o dígito.
+- Toque em tecla de teclado numérico (rótulo `text` ou `desc` de um dígito ou "2,ABC"; sem rótulo e rid terminado em
+  dígito; alvo sem rótulo cujo rid ou classe nomeia teclado: `pin_pad`, `PinKeypadView`...) é gravado sem alvo e sem
+  x/y, com `sensitive=1` (a coluna que já existia; sem migração). `android:id/button1` com rótulo segue gravado.
+- Em tela sensível, o toque sem id estrutural (nem do alvo nem de filho) também sai sem x/y.
+- A destilação não muda: coordenada solta já não vira receita (teste com `distill_training`).
+- `linha_da_entrada` (`planning/training.py`, só esse trecho): toque com `sensitive` e sem x diz "toque em teclado ou tela sensível (não gravado)" e `ponto=(x,y)` só sai com x (nunca "ponto=(None,None)").
+- Segunda leitura do #440: toque sem seletor utilizável (alvo None, ou sem `unique` e sem filhos) sai sem x/y em qualquer
+  tela, sem marcar `sensitive`; nomes de teclado novos (`pincode`, `pinview`, `pinentry`, `pinlock`, `numberpad`,
+  `patternlock`, `lockview`, `dialpad`); a tecla telefônica só com as letras do próprio dígito ("5G", "2FA", "4K" seguem
+  gravados). Fora: arraste em padrão de bloqueio e o significado da coluna `sensitive`.
+- Prova `simulated`: `test_treino_segredo_na_gravacao.py` (24). Real: `not_run`.
+
 ## 2026-10-05 — 31.80/31.82, segunda leitura do PR #427 (branch fix/31-80-82-gravacao-do-treino)
 
 - C1 (31.80): `reconcile_after_restart` só fecha sessão de aparelho que NÃO é hospedado por outro dono

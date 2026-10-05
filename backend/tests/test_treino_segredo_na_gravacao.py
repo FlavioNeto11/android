@@ -156,21 +156,16 @@ async def test_alvo_em_tela_sensivel_guarda_so_o_estrutural(harness: Harness) ->
     assert "Entrar" not in json.dumps(por_filho, ensure_ascii=False)
 
 
-async def test_tecla_de_pin_desenhada_nao_guarda_o_digito_no_alvo_nem_nos_filhos(harness: Harness) -> None:
-    st, rt, sid = await _gravando(harness)
-    teclas = _arvore(
-        _el("e1", text="4", rid="com.pocqa.messenger:id/tecla", bounds=(0, 0, 100, 100), clickable=True),
-        _el("e2", desc="8", rid="com.pocqa.messenger:id/tecla_desc", bounds=(100, 0, 200, 100), clickable=True),
-        _el("e3", bounds=(200, 0, 300, 100), clickable=True),                                  # contêiner sem identidade
-        _el("e4", text="7", rid="com.pocqa.messenger:id/digito", bounds=(210, 10, 290, 90)))   # filho rotulado
-    for x, y in ((50, 50), (150, 50), (205, 5)):
-        st.training.record(rt, {"type": "tap", "x": x, "y": y}, teclas)
-    alvos = [e["target"] for e in st.training.get(sid)["inputs"]]
-    assert alvos[0]["text"] == "" and alvos[0]["unique"] == ["rid"] and alvos[0]["resource_id"].endswith("tecla")
-    assert alvos[1]["desc"] == "" and alvos[1]["unique"] == ["rid"]
-    filhos = alvos[2].get("filhos") or []
-    assert filhos and filhos[0]["text"] == "" and "text" not in filhos[0]["unique"], alvos[2]
-    assert not any(d in json.dumps(alvos) for d in ('"text": "4"', '"desc": "8"', '"text": "7"'))
+def test_rotulo_de_um_digito_sai_do_alvo_e_dos_filhos_e_leva_os_unique_dele() -> None:
+    """S1 (defesa em profundidade: o toque em tecla já nem grava alvo, 31.94; isto vale para o que escapar dele)."""
+    from app.training.recorder import _alvo_sem_segredo
+    alvo = {"text": "4", "desc": "8", "resource_id": "r:id/tecla", "class_name": "x.View",
+            "unique": ["rid+text", "rid+desc", "rid", "text", "desc"],
+            "filhos": [{"text": "7", "desc": "", "resource_id": "r:id/digito", "class_name": "x.View",
+                        "unique": ["rid+text", "rid", "text"]}]}
+    limpo = _alvo_sem_segredo(alvo)
+    assert limpo["text"] == "" and limpo["desc"] == "" and limpo["unique"] == ["rid"]
+    assert limpo["filhos"][0]["text"] == "" and limpo["filhos"][0]["unique"] == ["rid"]
 
 
 async def test_formatos_de_codigo_reais_nao_vao_para_linhas_titulo_nem_alvo(harness: Harness) -> None:
@@ -203,3 +198,118 @@ def test_os_campos_de_cada_seletor_acompanham_o_selector_rank_das_receitas() -> 
         rid, text, desc = _combo(kind, alvo)
         usados = tuple(c for c, v in (("resource_id", rid), ("text", text), ("desc", desc)) if v is not None)
         assert _CAMPOS_DO_SELETOR[kind] == usados, kind
+
+
+# ---- 31.94: teclado de PIN desenhado e toque em tela sensível sem identificador -------------------------------------
+def _tecla(i: str = "e1", **campos) -> UiElement:
+    return _el(i, bounds=(0, 0, 200, 200), clickable=True, **campos)
+
+
+async def _toque_unico(harness: Harness, elemento: UiElement, *, sensivel: bool = False):
+    st = harness.state
+    rt = st.devices.get("android-01")
+    sid = st.training.active_for("android-01")
+    if sid is None:
+        st, rt, sid = await _gravando(harness)
+    tela = UiTree(elements=[elemento], packages=["com.pocqa.messenger"], sensitive=sensivel)
+    st.training.record(rt, {"type": "tap", "x": 100, "y": 100}, tela)
+    return st.training.get(sid)["inputs"][-1]
+
+
+def _nao_gravado(entrada: dict) -> bool:
+    return (entrada["target"] is None and entrada["x"] is None and entrada["y"] is None and entrada["sensitive"] is True)
+
+
+async def test_tecla_com_rotulo_de_digito_e_rid_com_digito_nao_grava_alvo_nem_coordenada(harness: Harness) -> None:
+    assert _nao_gravado(await _toque_unico(harness, _tecla(text="4", rid="com.android.systemui:id/key4")))
+
+
+async def test_tecla_telefonica_com_letras_nao_grava_alvo_nem_coordenada(harness: Harness) -> None:
+    for rotulo in ("2,ABC", "2 ABC", "2ABC"):
+        assert _nao_gravado(await _toque_unico(harness, _tecla(text=rotulo))), rotulo
+
+
+async def test_tecla_sem_rotulo_com_rid_terminado_em_digito_nao_grava_alvo_nem_coordenada(harness: Harness) -> None:
+    assert _nao_gravado(await _toque_unico(harness, _tecla(rid="com.pocqa.messenger:id/digit_7")))
+
+
+async def test_rotulo_de_digito_so_na_desc_tambem_e_tecla(harness: Harness) -> None:
+    assert _nao_gravado(await _toque_unico(harness, _tecla(desc="1", rid="com.pocqa.messenger:id/botao")))
+
+
+async def test_botao_de_dialogo_com_rotulo_termina_em_digito_mas_segue_gravado(harness: Harness) -> None:
+    for rid, rotulo in (("android:id/button1", "OK"), ("android:id/button2", "Cancelar")):
+        entrada = await _toque_unico(harness, _tecla(text=rotulo, rid=rid))
+        assert entrada["target"]["text"] == rotulo and entrada["target"]["resource_id"] == rid, rid
+        assert entrada["x"] == 100 and entrada["y"] == 100 and entrada["sensitive"] is False, rid
+
+
+async def test_teclado_desenhado_num_view_so_pelo_nome_do_id_ou_da_classe(harness: Harness) -> None:
+    assert _nao_gravado(await _toque_unico(harness, _tecla(rid="com.pocqa.messenger:id/pin_pad")))
+    assert _nao_gravado(await _toque_unico(harness, _tecla(classe="com.pocqa.ui.PinKeypadView")))
+    for rid in ("com.pocqa.messenger:id/shopping_cart", "com.pocqa.messenger:id/spinner_cidade"):   # "pin" dentro de palavra
+        entrada = await _toque_unico(harness, _tecla(rid=rid))
+        assert entrada["target"]["resource_id"] == rid and entrada["x"] == 100 and entrada["sensitive"] is False, rid
+
+
+async def test_tela_sensivel_toque_sem_identificador_sai_sem_coordenada_e_com_id_segue_estrutural(harness: Harness) -> None:
+    sem_id = await _toque_unico(harness, _tecla(text="Entrar"), sensivel=True)
+    assert _nao_gravado(sem_id)
+    com_id = await _toque_unico(harness, _tecla(text="Continuar", rid="com.pocqa.messenger:id/continuar"), sensivel=True)
+    assert com_id["target"]["text"] == "" and com_id["target"]["resource_id"].endswith("continuar")
+    assert com_id["x"] == 100 and com_id["sensitive"] is True
+
+
+async def test_a_destilacao_recusa_a_etapa_com_tecla_nao_gravada_sem_excecao(harness: Harness) -> None:
+    from app.taskqueue.recipes import distill_training
+    entrada = await _toque_unico(harness, _tecla(text="4", rid="com.android.systemui:id/key4"))
+    receita, motivo = distill_training([entrada], {}, side_effect=False)
+    assert receita is None and "sem elemento identificado" in motivo, motivo
+
+
+async def test_a_linha_da_entrada_de_tecla_nao_gravada_nao_traz_none_coordenada_nem_id(harness: Harness) -> None:
+    from app.planning.training import linha_da_entrada
+    entrada = await _toque_unico(harness, _tecla(text="4", rid="com.android.systemui:id/key4"))
+    linha = linha_da_entrada(entrada)
+    assert "toque em teclado ou tela sensível (não gravado)" in linha, linha
+    assert "None" not in linha and "ponto" not in linha and "key4" not in linha and "elemento" not in linha, linha
+    # o toque comum sem alvo segue como antes, com a coordenada
+    comum = {"seq": 2, "type": "tap", "x": 10, "y": 20, "target": None, "sensitive": False}
+    assert linha_da_entrada(comum) == "#2 tap | ponto=(10,20) sem elemento identificado"
+    # sem x e sem a marca (entrada antiga): nunca "ponto=(None,None)"
+    assert "None" not in linha_da_entrada({"seq": 3, "type": "tap", "x": None, "y": None, "target": None})
+
+
+async def test_toque_sem_seletor_utilizavel_sai_sem_coordenada_mas_nao_e_sensivel(harness: Harness) -> None:
+    from app.planning.training import linha_da_entrada
+    # contêiner sem id, sem rótulo e sem filho rotulado (Flutter/SurfaceView): a posição seria o dígito
+    entrada = await _toque_unico(harness, _tecla(classe="io.flutter.embedding.android.FlutterView"))
+    assert entrada["x"] is None and entrada["y"] is None and entrada["sensitive"] is False
+    assert "None" not in linha_da_entrada(entrada) and "ponto" not in linha_da_entrada(entrada)
+    # nem alvo nenhum (toque fora de qualquer elemento): a linha não traz ponto, só "sem elemento identificado"
+    st, rt, sid = harness.state, harness.state.devices.get("android-01"), harness.state.training.active_for("android-01")
+    tela = UiTree(elements=[_tecla()], packages=["com.pocqa.messenger"], sensitive=False)
+    st.training.record(rt, {"type": "tap", "x": 900, "y": 900}, tela)
+    fora = st.training.get(sid)["inputs"][-1]
+    assert fora["target"] is None and fora["x"] is None and fora["sensitive"] is False
+    assert linha_da_entrada(fora).endswith("| sem elemento identificado") and "None" not in linha_da_entrada(fora)
+    # com `unique` o toque segue como sempre, com x/y
+    com_id = await _toque_unico(harness, _tecla(text="Enviar", rid="com.pocqa.messenger:id/enviar"))
+    assert com_id["x"] == 100 and com_id["y"] == 100 and com_id["target"]["unique"]
+
+
+async def test_nomes_de_teclado_novos_caem_e_os_parecidos_seguem_gravados(harness: Harness) -> None:
+    for nome in ("pin_code", "PinView", "pin_entry", "pin_lock", "number_pad", "NumberPad", "pattern_lock", "lock_view",
+                 "dial_pad", "DialPad"):
+        assert _nao_gravado(await _toque_unico(harness, _tecla(rid=f"com.pocqa.messenger:id/{nome}"))), nome
+    for nome in ("pinned_post", "OpinionView", "Pinterest"):
+        entrada = await _toque_unico(harness, _tecla(rid=f"com.pocqa.messenger:id/{nome}"))
+        assert entrada["target"]["resource_id"].endswith(nome) and entrada["x"] == 100, nome
+
+
+async def test_tecla_telefonica_so_com_as_letras_daquele_digito(harness: Harness) -> None:
+    for rotulo in ("5G", "2FA", "4K", "3D", "1A", "5 ABC"):          # não são teclas: seguem gravados
+        entrada = await _toque_unico(harness, _tecla(text=rotulo, rid="com.pocqa.messenger:id/chip"))
+        assert entrada["x"] == 100 and entrada["sensitive"] is False and entrada["target"]["resource_id"], rotulo
+    for rotulo in ("5 JKL", "7 PQRS", "9,WXYZ", "0 +", "2ABC"):
+        assert _nao_gravado(await _toque_unico(harness, _tecla(text=rotulo, rid="com.pocqa.messenger:id/chip"))), rotulo
