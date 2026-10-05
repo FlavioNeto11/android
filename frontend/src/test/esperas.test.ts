@@ -83,10 +83,11 @@ function primeirosArgumentos(codigo: string): { indice: number; argumento: strin
 }
 
 /**
- * O último operando do nível de fora, depois do último `&&`, `||` ou `??`: é ele que decide o valor quando os da frente
- * passam. `ok && !c.querySelector('x')` devolve o booleano da negação (29.129, F1).
+ * Os operandos do nível de fora, separados por `&&`, `||` e `??`, cada um com o operador que vem depois dele. O último
+ * decide o valor quando os da frente passam: `ok && !c.querySelector('x')` devolve o booleano da negação (29.129, F1).
  */
-function ultimoOperando(corpo: string): string {
+function operandosDoTopo(corpo: string): { texto: string; depois: string | null }[] {
+  const operandos: { texto: string; depois: string | null }[] = [];
   let nivel = 0;
   let inicio = 0;
   for (let i = 0; i < corpo.length; i++) {
@@ -97,11 +98,13 @@ function ultimoOperando(corpo: string): string {
     else if ('([{'.includes(c)) nivel++;
     else if (')]}'.includes(c)) nivel--;
     else if (nivel === 0 && (dois === '&&' || dois === '||' || dois === '??')) {
+      operandos.push({ texto: corpo.slice(inicio, i).trim(), depois: dois });
       inicio = i + 2;
       i++;
     }
   }
-  return corpo.slice(inicio).trim();
+  operandos.push({ texto: corpo.slice(inicio).trim(), depois: null });
+  return operandos;
 }
 
 /** Há um `?` de ternário no nível de fora (nem `?.`, nem `??`)? Então um ramo que não é o último também decide. */
@@ -183,16 +186,24 @@ function semParentesesDeFora(corpo: string): string {
 }
 
 // O corpo em bloco (`() => { … }`) segue fora: o `return` pode estar em qualquer ponto dele (29.129, F3, anotado).
+// Limite anotado: um `(x as T)!` no MEIO da expressão não é lido como busca.
 function esperasQuePassamSemAchar(codigo: string): number[] {
   return primeirosArgumentos(semComentarios(codigo))
     .filter(({ argumento }) => {
-      const bruto = /^(?:async\s*)?\(\)\s*=>\s*([\s\S]*)$/.exec(argumento)?.[1]?.trim();
+      // O corpo `async` devolve uma Promise, e o `waitFor` a devolve na hora, sem repetir: qualquer espera `async`
+      // passa sem esperar, seja qual for o corpo (29.129, G1).
+      if (/^async\b/.test(argumento)) return true;
+      const bruto = /^\(\)\s*=>\s*([\s\S]*)$/.exec(argumento)?.[1]?.trim();
       if (bruto == null || bruto.startsWith('{')) return false;
       const corpo = semParentesesDeFora(bruto);
       // `!x.querySelector(…)` e `!!x.querySelector(…)` já devolvem booleano, desde que nada no nível de fora mude o valor.
       if (corpo.startsWith('!') && !temOperadorNoTopo(corpo)) return false;
+      const operandos = operandosDoTopo(corpo);
+      // No `X && …` o valor é X quando ele é falso: um X que termina numa busca (o `undefined` do `.find(…)`) passa na
+      // hora, por mais que o último operando seja negado (29.129, G2).
+      if (operandos.some((o) => o.depois === '&&' && terminaNumaBusca(o.texto))) return true;
       // Com `&&`, `||` ou `??` no topo, quem decide é o último operando: negado, é booleano. Com ternário no topo, não.
-      if (!temTernarioNoTopo(corpo) && ultimoOperando(corpo).startsWith('!')) return false;
+      if (!temTernarioNoTopo(corpo) && operandos[operandos.length - 1]!.texto.startsWith('!')) return false;
       return terminaNumaBusca(corpo);
     })
     .map(({ indice }) => indice);
@@ -229,9 +240,15 @@ describe('catraca das esperas', () => {
       // 29.129, F2: a asserção de não nulo no fim não muda o valor em execução.
       "await waitFor(() => container.querySelector('li')!);",
       "await waitFor(() => container.querySelector('li')! as HTMLElement);",
-      // F3: o corpo entre parênteses e o `async`.
+      // F3: o corpo entre parênteses.
       "await waitFor(() => (container.querySelector('li')));",
+      // G1: o corpo `async` é uma Promise, devolvida na hora, qualquer que seja o corpo.
       "await waitFor(async () => container.querySelector('li'));",
+      "await waitFor(async () => text().includes('x'));",
+      "await waitFor(async () => !!c.querySelector('x'));",
+      "await waitFor(async () => { await x(); return true; });",
+      // G2: o `.find(…)` antes de um `&&` dá `undefined` quando não acha, e é esse o valor.
+      "await waitFor(() => itens().find((i) => i.id === 'x') && !carregando);",
       // F1, o outro lado: o último operando não negado decide.
       "await waitFor(() => !a || c.querySelector('x'));",
       "await waitFor(() => ok ? !a : c.querySelector('x'));",

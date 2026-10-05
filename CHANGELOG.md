@@ -49,6 +49,9 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - F2: o `!` de asserção de não nulo no fim é ignorado, como o `as Tipo`, porque em execução o valor é o mesmo `null`.
 - F3: o corpo entre parênteses e o `async () =>` passam a ser lidos. O corpo em bloco segue fora, anotado.
 - F4: o apóstrofo em texto de JSX fica anotado junto do limite K3; ele só pode esconder um achado.
+- G1 (leitura): toda espera `async` é acusada, porque o `waitFor` devolve a Promise na hora, sem repetir.
+- G2 (leitura): no `X && …`, um X que termina numa busca (o `undefined` do `.find(…)`) é acusado mesmo com o último
+  operando negado.
 - Prova simulated (`src/test/esperas.test.ts`): 10 casos novos e cinco mutações, todas pegas. A varredura de todos os
   testes não dá achado novo.
 
