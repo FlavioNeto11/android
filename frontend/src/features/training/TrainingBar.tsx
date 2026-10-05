@@ -65,6 +65,8 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   // 31.90-C: de quem é o ensino. Com mais de uma persona para o app o backend recusa (409 `persona_ambigua`): a pessoa
   // escolhe; com uma só, ela segue sozinha; sem nenhuma, o fluxo nasce sem persona e não vale em aparelho nenhum (30.81).
   const [personas, setPersonas] = useState<PersonaOnDevice[] | null>(null);
+  // 'lendo' trava o Iniciar: sem a lista, aparelho com várias personas mandaria o início sem dono e o backend recusaria.
+  const [leitura, setLeitura] = useState<'lendo' | 'pronta' | 'falhou'>('lendo');
   const [quemEnsina, setQuemEnsina] = useState('');
   // Uma ação em voo por vez; cada botão gira só pela sua e o outro explica por que espera.
   const [ocupado, setOcupado] = useState<'iniciar' | 'concluir' | 'descartar' | null>(null);
@@ -98,8 +100,13 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   useEffect(() => {
     if (!formularioAberto) return;
     let vivo = true;
+    // Lista de outro aparelho não vale para este: some enquanto a nova não chega.
+    setPersonas(null);
+    setLeitura('lendo');
     // Falhar a leitura não trava o início: sem a lista o formulário segue como era e o backend decide.
-    api.instancePersonas(instance.id).then((lista) => { if (vivo) setPersonas(lista); }).catch(() => { if (vivo) setPersonas(null); });
+    api.instancePersonas(instance.id)
+      .then((lista) => { if (vivo) { setPersonas(lista); setLeitura('pronta'); } })
+      .catch(() => { if (vivo) { setPersonas(null); setLeitura('falhou'); } });
     return () => { vivo = false; };
   }, [formularioAberto, instance.id]);
 
@@ -118,7 +125,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   }), [instance.id, carregar]);
 
   async function iniciar() {
-    if (!leaseId || !intencao.trim() || ocupado || (precisaEscolher && !escolhaValida)) return;
+    if (!leaseId || !intencao.trim() || ocupado || (precisaEscolher && !escolhaValida) || (formularioAberto && leitura === 'lendo')) return;
     setOcupado('iniciar');
     try {
       setAtiva(await api.startTraining(instance.id, {
@@ -250,7 +257,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             <p className={styles.hint}>O ensino fica com {candidatas[0]?.display_name || candidatas[0]?.name}, a persona deste aparelho.</p>
           )}
           <Button size="sm" variant="primary" icon={CircleDot} loading={ocupado === 'iniciar'}
-                  disabledReason={!intencao.trim() ? 'Diga o que vai ensinar.' : precisaEscolher && !escolhaValida ? 'Escolha de qual persona é o ensino.' : null}
+                  disabledReason={!intencao.trim() ? 'Diga o que vai ensinar.' : leitura === 'lendo' ? 'Lendo as personas deste aparelho.' : precisaEscolher && !escolhaValida ? 'Escolha de qual persona é o ensino.' : null}
                   onClick={() => void iniciar()}>
             Iniciar treinamento
           </Button>

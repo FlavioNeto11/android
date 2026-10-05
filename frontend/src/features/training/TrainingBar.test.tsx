@@ -274,10 +274,31 @@ it('31.90-C: sem persona vinculada o painel avisa que o fluxo não vale em apare
 
 it('31.90-C: a leitura das personas que falha não trava o início: sem seletor e sem aviso, o backend decide', async () => {
   const corpos = await abrirParaIniciar('falha');
+  await waitFor(() => expect(byRole('button', /Iniciar treinamento/).getAttribute('aria-disabled')).not.toBe('true'));
   await click(byRole('button', /Iniciar treinamento/));
   await waitFor(() => expect(corpos).toHaveLength(1));
   expect(allByRole('combobox', /De quem é o ensino/)).toHaveLength(0);
   expect(text()).not.toContain('Nenhuma persona está vinculada');
+});
+
+it('31.90-C: enquanto a leitura das personas corre o Iniciar fica travado com o motivo; ao chegar, o seletor aparece', async () => {
+  let soltar: (r: Response) => void = () => {};
+  const corpos: unknown[] = [];
+  backend.on('GET', /\/training$/, () => json([]));
+  backend.on('GET', /\/instances\/android-01\/personas$/, () => new Promise<Response>((ok) => { soltar = ok; }));
+  backend.on('POST', /\/instances\/android-01\/training$/, (c) => { corpos.push(c.body); return json(GRAVANDO); });
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
+  await setValue(await waitFor(() => byRole('textbox', /O que você vai ensinar/)) as HTMLInputElement, 'Responder a DM');
+  const iniciar = () => byRole('button', /Iniciar treinamento/);
+  expect(iniciar().getAttribute('aria-disabled')).toBe('true');
+  expect(iniciar().textContent).toContain('Lendo as personas deste aparelho.');
+  await click(iniciar());
+  expect(corpos).toHaveLength(0);                                       // sem a lista não se manda o início sem dono
+
+  await act(async () => soltar(json([persona('p-a', 'Ana Exemplo'), persona('p-b', 'Beto Exemplo')])));
+  await waitFor(() => expect(byRole('combobox', /De quem é o ensino/)).toBeTruthy());
+  expect(iniciar().textContent).toContain('Escolha de qual persona é o ensino.');   // o motivo muda quando a lista chega
+  expect(corpos).toHaveLength(0);
 });
 
 it('31.90-C: personasDoEnsino conta uma por pessoa e respeita o app escolhido, como o backend', () => {
