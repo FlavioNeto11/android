@@ -27,6 +27,9 @@ export function apiError(status: number, code: string, message: string): Respons
  * teste que falhar diz a semente, e a rodada se repete com ela.
  */
 const ATRASO_MAXIMO_MS = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
+// Cada `install()` abre uma geração. Com o atraso, a resposta de uma geração já substituída nunca chega: o teste que
+// acabou com pedido em voo não escreve na store global do teste seguinte, como uma página fechada (29.104).
+let geracaoDoBackend = 0;
 const SEMENTE_DO_ATRASO = process.env.SEMENTE_DO_ATRASO ?? String(Date.now());
 
 function sorteioDoAtraso(): (() => number) | null {
@@ -69,6 +72,7 @@ export class FakeBackend {
   install(): void {
     esquecerLeituraDosPendentes();          // a leitura dividida da fila não atravessa testes
     const atraso = sorteioDoAtraso();
+    const geracao = ++geracaoDoBackend;
     const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://localhost');
       const method = (init?.method ?? 'GET').toUpperCase();
@@ -83,7 +87,10 @@ export class FakeBackend {
       const call: RecordedCall = { method, path: url.pathname, query: url.searchParams, body };
       this.calls.push(call);
       const ms = atraso?.();
-      if (ms) await new Promise((r) => setTimeout(r, ms));
+      if (ms) {
+        await new Promise((r) => setTimeout(r, ms));
+        if (geracao !== geracaoDoBackend) return new Promise<Response>(() => undefined);
+      }
       const match = this.handlers.find((h) => h.method === method && h.pattern.test(url.pathname));
       if (!match) return apiError(404, 'not_found', `Rota não simulada: ${method} ${url.pathname}`);
       return match.handler(call);
