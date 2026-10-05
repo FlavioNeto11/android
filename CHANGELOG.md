@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.97 (parte da Canais): o aviso do vigia da borda do site (branch canais/29-97-borda-do-portal)
+
+- `avisos/domain/portal.py`: `aviso_da_borda` e `chave_da_borda`. Sete códigos do vigia do Portal, cada um com
+  assunto, o que chegou, o que é crítico e o gesto na zona da Cloudflare. Uma mensagem por código e dia UTC. O achado
+  só sai como host e caminho ou o nome do cookie; query, `=`, espaço e IP nunca saem.
+- `avisos/domain/mensagem.py`: `portal.borda` e `portal.borda_sem_conferir` no nível 2, saindo na hora.
+- `avisos/infrastructure/servico.py`: `avisar_borda_do_portal`, no molde do `avisar_resumo_do_portal` (contrato com
+  o Portal de 05/10 04:25Z).
+- `avisos/application/entrada.py` e `infrastructure/entrada.py`: a resposta do dono ao aviso vai à orquestradora como
+  recado e nunca vira pedido.
+- Prova `simulated`: `backend/tests/test_avisos_portal_borda.py`. Real: `not_run`.
+
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do
