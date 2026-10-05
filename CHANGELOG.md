@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.121: o vigia do laço de eventos guarda a pilha antes do kill do supervisor (branch fix/29-121-vigia-do-laco)
+
+- O incidente de 05/10 (12:55Z a 13:13Z, cinco kills do supervisor por `/api/health` mudo) não deixou como saber
+  quem prendia o laço: o supervisor mata depois de três silêncios e não guarda pilha.
+- `backend/app/vigia_do_laco.py`: uma tarefa no laço marca uma batida por segundo; uma thread de fora confere a
+  idade dela e, acima de 10 s, grava a pilha de TODAS as threads (`faulthandler`) em
+  `data/logs/laco-travado-<UTC>-<n>.txt`. A thread nasce no `main()`, antes do `AppState`: até a primeira batida o
+  prazo é de 120 s, e uma partida presa também deixa pilha. No máximo 3 despejos por episódio, a cada 30 s; a volta
+  do laço sai no log com a duração; ficam os 20 despejos mais novos. Disco que falha: o aviso sai sem o arquivo.
+- O supervisor cita na linha do kill o despejo dos últimos 5 min (ou diz que não há).
+- Prova `simulated`: {PROVA}
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

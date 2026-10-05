@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from .identidade import corpo_e_da_farm
+from .vigia_do_laco import ultimo_despejo
 
 log = logging.getLogger("poc.supervisor")
 
@@ -169,8 +170,9 @@ class Supervisor:
                  dormir: Callable[[float], None] = time.sleep,
                  falhas_ate_reiniciar: int = FALHAS_ATE_REINICIAR, carencia_s: float = CARENCIA_S,
                  intervalo_s: float = INTERVALO_S, espera_min_s: float = ESPERA_MIN_S,
-                 espera_max_s: float = ESPERA_MAX_S) -> None:
+                 espera_max_s: float = ESPERA_MAX_S, despejo: Callable[[], Path | None] = lambda: None) -> None:
         self._iniciar, self._saudavel, self._encerrar, self._dormir = iniciar, saudavel, encerrar, dormir
+        self._despejo = despejo
         self.falhas_ate_reiniciar = falhas_ate_reiniciar
         self.carencia_s, self.intervalo_s = carencia_s, intervalo_s
         self.espera_min_s, self.espera_max_s = espera_min_s, espera_max_s
@@ -202,7 +204,10 @@ class Supervisor:
 
     def _derrubar_e_resubir(self, motivo: str) -> None:
         if self.proc is not None:
-            log.warning("encerrando o backend (pid %s): %s", self.proc.pid, motivo)
+            # 29.121: o vigia do laço do backend grava a pilha antes deste kill; a linha diz onde ela está.
+            arquivo = self._despejo()
+            log.warning("encerrando o backend (pid %s): %s%s", self.proc.pid, motivo,
+                        f"; pilha do laço travado em {arquivo}" if arquivo else "; sem despejo de pilha do vigia")
             self._encerrar(self.proc)
             self.proc = None
         # A espera cresce entre reinícios SEGUIDOS; uma conferência boa a devolve ao mínimo (ver `ciclo`).
@@ -269,7 +274,8 @@ def main(argv: list[str] | None = None) -> int:
     _instalar_redacao(logging.getLogger())
     sup = Supervisor(iniciar=lambda: iniciar_backend(raiz_backend, log_dir),
                      saudavel=lambda: saude_responde(args.health),
-                     carencia_s=args.carencia, intervalo_s=args.intervalo, falhas_ate_reiniciar=args.falhas)
+                     carencia_s=args.carencia, intervalo_s=args.intervalo, falhas_ate_reiniciar=args.falhas,
+                     despejo=lambda: ultimo_despejo(log_dir))
     log.info("supervisor no ar; vigiando %s a cada %.0f s", args.health, args.intervalo)
     try:
         sup.run()
