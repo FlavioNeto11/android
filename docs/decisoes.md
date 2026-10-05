@@ -5499,6 +5499,20 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
        do `Host` do pedido. A chave `server.csp_do_painel` (`aplicar`, `so_relatar`, `desligada`) a desfaz sem
        deploy.
      - A CSP do painel foi conferida em 11 telas sem violação, e o WebSocket de outra origem é barrado.
+   - **O vigia da borda** (29.97). Os defeitos acima nasceram de configuração da zona, que muda a qualquer hora, e a
+     prova de fora só roda quando alguém lembra. O central confere sozinho:
+     - de hora em hora, só no líder da trava `avisos`, pelo 1º nome de `server.public_hosts` (nunca o `Host` de um
+       pedido);
+     - no máximo 4 GET por volta, como navegador, sem credencial, sem cookie e sem retry: o painel, a raiz e o CSS e
+       o JS pelo `?v=` que a raiz aponta;
+     - três desfechos: ok, defeito e "não consegui conferir" (rede, tempo esgotado, a borda sem alcançar o central).
+       O terceiro só vira problema depois de `portal.vigia.voltas_sem_conferir` voltas seguidas;
+     - o que é defeito é decidido por UMA régua (`portal/domain/borda.py`), a mesma da prova de fora, que a chama por
+       `scripts/portal-regua-da-borda.py`. Muda a régua, mudam as duas;
+     - a saúde lê só o estado da última volta (`portal_borda_defeito`, `portal_borda_sem_conferir`); a subida nunca
+       espera a borda;
+     - o aviso ao dono sai pela Canais (`avisar_borda_do_portal`, contrato e textos dela), uma vez por código e por
+       dia, com o gesto na zona, sem IP, sem conta e sem query.
    O nome público (`dev.nvit.com.br`, ADR-073) fica escrito no HTML estático no `canonical`, no `og:url` e no
    `og:image` (a prévia de link exige endereço absoluto), sem marcador trocado pelo servidor; há teste que reprova se
    os três divergirem. Servido por outro nome, a prévia aponta para esse.

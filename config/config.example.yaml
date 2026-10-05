@@ -743,6 +743,15 @@ portal:                           # site institucional na raiz do nome público 
     token_max_s: 7200             # depois disso a página ficou aberta demais e o visitante recarrega (600 a 86400)
     buscas_por_operador_hora: 30  # buscas por telefone na exclusão a pedido do titular (29.83), por operador (1 a 1000)
     buscas_total_hora: 60         # as mesmas buscas somando todos os operadores (1 a 10000)
+  # Vigia da borda (29.97): de hora em hora, só no líder, o central pede o site e o painel pelo 1º nome de
+  # server.public_hosts, como um visitante (só GET, sem credencial, até 4 pedidos), e confere script injetado pela
+  # Cloudflare, no-transform, a CSP, cookie e a versão do CSS e do JS. Defeito vai à saúde e ao dono pela Canais.
+  # Sem nome público, nada roda.
+  vigia:
+    ligado: true
+    intervalo_s: 3600             # 600 a 86400
+    prazo_s: 10                   # prazo de cada pedido (1 a 60)
+    voltas_sem_conferir: 3        # voltas seguidas sem conseguir conferir até virar problema e aviso (1 a 48)
 
 apps:
   # Navegador que já vem na imagem google_apis (ADR-025): sites entram pela ferramenta `open_url`, com endereço
