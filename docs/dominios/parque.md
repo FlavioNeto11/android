@@ -387,12 +387,17 @@ Agora são três camadas, no central e no agente (`devices/emulator.py` está no
 - **Readoção (29.123, 05/10/2026).** O log do emulador acumula as subidas, e o offset só era gravado no spawn: um
   backend recém-subido tinha 0. Na readoção que caía no `_wait_boot` (a sonda não fechava com o host saturado), o
   detector lia o histórico, e um `Showing crashdialog` de dias antes parou o 03 e o 06, ambos com conta real, às
-  12:57Z (incidente de 05/10, 29.122). Agora o `_adopt` local grava como offset o começo da subida em curso: a
-  última linha `emuglConfig_init` (`emu.inicio_da_subida_atual`), porque o diálogo de uma subida vem depois das
-  linhas dela (medido nos logs do 03 e do 06). O diálogo desta subida, mesmo escrito antes do reinício do backend,
-  segue visto; os das subidas anteriores, não. Sem a linha (log cortado, emulador nos primeiros segundos), vale o
-  fim do arquivo: aí um diálogo que já estava na tela não é visto, e a espera vai até o prazo do boot. Na readoção, o
-  veredito do snapshot e a releitura do 29.76 (d) nem rodam (o `_wait_boot` adotado não é wake).
+  12:57Z (incidente de 05/10, 29.122). Agora o `_adopt` local grava como offset o começo da subida em curso
+  (`emu.inicio_da_subida_atual`): a última linha que é o marco `[central] subida do emulador`, escrito pelo
+  `start_process` antes do `Popen` (29.127), ou `emuglConfig_init`, que fica de reserva para subidas de um agente
+  anterior ao marco. O diálogo de uma subida vem depois das linhas dela (medido nos logs do 03 e do 06). O diálogo
+  desta subida, mesmo escrito antes do reinício do backend, segue visto; os das subidas anteriores, não, nem nos
+  primeiros segundos da subida (antes do 29.127, até o emulador descarregar a saída bufferizada, a última
+  `emuglConfig_init` era a da subida anterior). Sem nenhuma das duas linhas (só um log que não veio de subida
+  nenhuma), vale o fim do arquivo. Só "o arquivo não existe" dá 0; um erro passageiro tenta de novo e, se não
+  passar, o offset fica desconhecido e o detector não lê nada nesta readoção (a espera vai até o prazo do boot). Na
+  readoção, o veredito do snapshot e a releitura do 29.76 (d) nem rodam (o `_wait_boot` adotado não é wake). O
+  veredito lê do começo quando o log foi rotacionado no spawn, e a retentativa a frio grava o offset dela.
 
 Prova: `simulated` (`backend/tests/test_relatorio_de_falha_do_emulador.py`, e os dois casos do agente em
 `backend/tests/test_worker_executor.py`). A prova `real` ainda é `not_run`: é a subida de um aparelho SEM conta com o

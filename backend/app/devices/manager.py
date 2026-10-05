@@ -1596,7 +1596,8 @@ class DeviceManager:
         # 29.123: o log do emulador é acumulado entre subidas, e o `boot_log_offset` só é gravado no spawn (um backend
         # recém-subido tem 0). Readotar sem isto fazia o detector de diálogo do `_wait_boot` ler o HISTÓRICO: um
         # "Showing crashdialog" de um boot antigo parou o 03 e o 06 (contas reais) em 05/10 12:57Z. O offset passa a
-        # ser o começo da subida em curso (a última `emuglConfig_init`), então o diálogo DESTA subida segue visto.
+        # ser o começo da subida em curso (o último marco do `start_process` ou `emuglConfig_init`, 29.127), então o
+        # diálogo DESTA subida segue visto.
         rt.boot_log_offset = await asyncio.to_thread(self._offset_da_readocao,
                                                      self.cfg.logs_dir / f"emulator-{rt.avd_name}.log")
         alive = emu.is_our_emulator(rt.pid, rt.avd_name)
@@ -2743,6 +2744,9 @@ class DeviceManager:
                         self._save_pid(rt, None)
                         await asyncio.to_thread(self._discard_snapshot, rt)
                         t0 = time.monotonic()
+                        # 29.127 (N1): a subida a frio é outra subida; o offset da tentativa do snapshot leria o log
+                        # dela também.
+                        rt.boot_log_offset = log_path.stat().st_size if log_path.exists() else 0
                         await asyncio.to_thread(self._spawn, rt, a, False, False)
                         self._set_state(rt, InstanceState.booting, "snapshot descartado; iniciando a frio")
                         await self._wait_boot(rt, t0)
@@ -3066,9 +3070,13 @@ class DeviceManager:
     def _snapshot_verdict(self, rt: DeviceRuntime) -> bool | None:
         """True = snapshot carregado · False = recusado pelo emulador · None = o log ainda não disse."""
         path = self.cfg.logs_dir / f"emulator-{rt.avd_name}.log"
+        if rt.boot_log_offset < 0:                  # 29.127: offset desconhecido, não lê o histórico
+            return None
         try:
             with path.open("rb") as fh:
-                fh.seek(rt.boot_log_offset)
+                # 29.127 (N3): o offset é medido antes do spawn, que pode rotacionar o log (`_rotate_log`). Log menor
+                # que o offset é o arquivo novo: lê do começo, como o `dialogo_de_crash`.
+                fh.seek(rt.boot_log_offset if rt.boot_log_offset <= path.stat().st_size else 0)
                 text = fh.read(400_000).decode("utf-8", errors="replace")
         except OSError:
             return None
@@ -3305,16 +3313,29 @@ class DeviceManager:
         self._set_state(rt, estado, detalhe)
 
     @staticmethod
-    def _offset_da_readocao(log_path: Path) -> int:
-        """O começo da subida em curso no log (29.123); sem a linha `emuglConfig_init`, o fim do arquivo (só conta o
-        que vier depois); sem arquivo, ou se ele some entre uma leitura e outra, 0."""
-        inicio = emu.inicio_da_subida_atual(log_path)
-        if inicio is not None:
-            return inicio
+    def _offset_da_readocao(log_path: Path, *, tentativas: int = 3, pausa_s: float = 0.2) -> int:
+        """O começo da subida em curso no log (29.123, 29.127). Sem marco nem `emuglConfig_init`, o fim do arquivo (só
+        conta o que vier depois). Sem arquivo, 0.
+
+        29.127 (R2): só "o arquivo não existe" dá 0. Um erro passageiro com o arquivo existindo (no Windows, um
+        compartilhamento negado, um antivírus) dava 0 e o detector lia o histórico inteiro, o falso positivo do
+        29.123. Agora tenta de novo; depois, o fim do arquivo, se o `stat` responder; senão, offset desconhecido, e o
+        detector não lê nada nesta readoção (a espera vai até o prazo do boot). Roda numa thread (`to_thread`)."""
+        for tentativa in range(tentativas):
+            try:
+                inicio = emu.inicio_da_subida_atual(log_path)
+                return inicio if inicio is not None else log_path.stat().st_size
+            except FileNotFoundError:
+                return 0
+            except OSError:
+                if tentativa + 1 < tentativas:
+                    time.sleep(pausa_s)
         try:
             return log_path.stat().st_size
-        except OSError:
+        except FileNotFoundError:
             return 0
+        except OSError:
+            return emu.OFFSET_DESCONHECIDO
 
     async def _readotar_agora(self, rt: DeviceRuntime) -> None:
         """Readoção IMEDIATA depois de um `start`/`wake` que o agente concluiu. Sem isto o aparelho remoto só era

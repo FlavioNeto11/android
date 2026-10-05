@@ -50,6 +50,33 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - `test_receita_divergida_escala.py` ajustado ao critério novo;
   - `test_d1_receitas.py` cobre a rota.
 
+## 2026-10-05 — 29.127: o marco da subida no log do emulador e o offset que nunca lê o histórico (branch fix/29-127-readocao-marco)
+
+- Sobras das leituras do #420 (29.123).
+- R1: o `start_process` escreve `[central] subida do emulador: <avd> <hora UTC>` no log antes do `Popen` (descritor
+  sem buffer). A readoção usa a última linha que é marco ou `emuglConfig_init` (esta de reserva, para subidas de um
+  agente anterior ao marco). Fecha a janela residual do 29.123: nos primeiros segundos de uma subida, antes de o
+  emulador descarregar a saída bufferizada (29.34), a última `emuglConfig_init` era a da subida anterior, e um
+  diálogo dela pararia o aparelho. Vale no central agora e no notebook depois da atualização do agente.
+- M1 da leitura: quando o emulador anterior morreu no meio de uma linha (sem `\n`), o `start_process` escreve um `\n`
+  antes do marco; colado na linha cortada, o marco faria a readoção começar no pedaço final da subida anterior (e um
+  "Showing crashdialog" nele pararia o aparelho). Log que já termina em `\n` não ganha linha vazia. Prova
+  `simulated`: `test_marco_nao_cola_na_linha_cortada_da_subida_anterior` e `test_log_que_termina_em_quebra_nao_ganha_linha_vazia`;
+  sem o `\n`, o primeiro reprova. Dirigidos e vizinhos: 67 passed; catracas 88.
+- R2: só "o arquivo não existe" dá offset 0. Erro passageiro com o arquivo existindo tenta de novo (3 vezes); depois,
+  o fim do arquivo se o `stat` responder; senão, offset desconhecido (`-1`), e nem o detector de diálogo nem o
+  veredito do snapshot leem o log nessa readoção.
+- N3: o veredito do snapshot lê do começo quando o log foi rotacionado no spawn (como o `dialogo_de_crash`).
+- N1: a retentativa a frio grava o offset dela antes do segundo `_spawn`.
+- N5: o texto do `docs/dominios/parque.md` diz quando vale o fim do arquivo.
+- Prova `simulated`: `backend/tests/test_readocao_marco.py` (11) e `test_readocao_sem_log_antigo.py` (4): 15 passed.
+  Mutações: sem o marco no `start_process` reprova 2; a readoção ignorando o marco, 3; erro passageiro virando 0, 3;
+  o veredito sem a rotação, 1; a retentativa a frio sem offset, 1. As guardas explícitas do offset desconhecido no
+  `dialogo_de_crash` e no `_snapshot_verdict` NÃO são discriminadas: sem elas, o `seek(-1)` levanta `OSError`, já
+  tratado, com o mesmo resultado; ficam como documentação. Vizinhos: 161 passed (veredito do snapshot, relatório de
+  falha, log do emulador, instalação do worker, executor do worker, pacote do agente, prontidão, wake, arquitetura)
+  e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a próxima readoção depois do deploy).
+
 ## 2026-10-05 — 29.123: a readoção não lê o histórico do log do emulador (branch fix/29-123-readocao-sem-log-antigo)
 
 - O incidente de 05/10 (29.122): às 12:56:52Z, um backend recém-subido readotou 01, 03 e 06. Com o host saturado,

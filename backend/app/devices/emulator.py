@@ -77,6 +77,14 @@ def _rotate_log(path: Path, limite_bytes: int = 8 * 1024 * 1024) -> None:
 #: Sem janela, ninguém responde, e a subida fica ali até o prazo do boot (incidente de 03/10/2026 19:00Z, 29.55).
 LINHA_DO_DIALOGO_DE_CRASH = "Showing crashdialog"
 
+#: 29.127 (R1): a linha que o `start_process` escreve no log ANTES do `Popen`. É o começo garantido de cada subida:
+#: a saída do emulador é bufferizada (29.34), e até a primeira linha `emuglConfig_init` dele descer ao arquivo, a
+#: última do log era a da subida anterior. Só o nome do AVD e a hora; nada do ambiente.
+MARCO_DA_SUBIDA = "[central] subida do emulador"
+#: 29.127 (R2): offset de quem não conseguiu ler o log (erro que não é "arquivo não existe"). O detector de diálogo e o
+#: veredito do snapshot NÃO leem com ele: ler do 0 seria ler o histórico (o falso positivo do 29.123).
+OFFSET_DESCONHECIDO = -1
+
 #: O `motivo` com que o agente fecha o `start` que parou nesse diálogo; o central o reconhece para não abrir a escada.
 MOTIVO_DIALOGO_DE_CRASH = "dialogo_de_crash"
 
@@ -132,7 +140,10 @@ def quarentenar_relatorios(env: dict[str, str], destino: Path) -> list[Path]:
 
 def dialogo_de_crash(log_path: Path, offset: int = 0) -> bool:
     """A subida DESTA vez (o log a partir de `offset`, o tamanho dele no spawn) parou no diálogo de consentimento de um
-    relatório de falha (29.55 c)? Log menor que o offset foi rotacionado no spawn (`_rotate_log`): lê do começo."""
+    relatório de falha (29.55 c)? Log menor que o offset foi rotacionado no spawn (`_rotate_log`): lê do começo.
+    Offset desconhecido (29.127): não lê nada."""
+    if offset < 0:
+        return False
     try:
         with log_path.open("rb") as fh:
             if offset > log_path.stat().st_size:
@@ -163,8 +174,17 @@ def start_process(cfg: Config, tools: SdkTools, avd_name: str, console_port: int
     cfg.logs_dir.mkdir(parents=True, exist_ok=True)
     log_path = cfg.logs_dir / f"emulator-{avd_name}.log"
     _rotate_log(log_path)
+    quebra = b"" if _termina_em_quebra(log_path) else b"\n"
     logf = open(log_path, "ab", buffering=0)  # noqa: SIM115 - herdado pelo processo filho
     try:
+        try:
+            # 29.127 (R1): o descritor não tem buffer, então o marco está no arquivo antes de o emulador existir.
+            hora = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            # O `\n` antes, quando o emulador anterior morreu no meio de uma linha (M1 da leitura do #441): colado
+            # nela, o marco faria a readoção começar no pedaço final da subida ANTERIOR.
+            logf.write(quebra + f"{MARCO_DA_SUBIDA}: {avd_name} {hora}\n".encode())
+        except OSError:
+            pass                                   # o marco é ajuda à readoção; nunca motivo para recusar o boot
         # `start_new_session` é o NEW_GROUP do mundo POSIX, e sem ele o "inicia destacado" da primeira linha
         # deste arquivo valia só no Windows: no Linux o emulador herdava a sessão e o grupo de processos do
         # agente, e uma unidade systemd com o `KillMode=control-group` padrão derrubaria TODOS os emuladores a
@@ -178,6 +198,16 @@ def start_process(cfg: Config, tools: SdkTools, avd_name: str, console_port: int
     finally:
         logf.close()
     return proc.pid
+
+
+def _termina_em_quebra(log_path: Path) -> bool:
+    """O log termina em `\n` (ou está vazio, ou não existe)? Só o último byte é lido."""
+    try:
+        with log_path.open("rb") as fh:
+            fh.seek(-1, os.SEEK_END)
+            return fh.read(1) == b"\n"
+    except OSError:                                # vazio (o seek negativo falha) ou ausente: nada a separar
+        return True
 
 
 def is_our_emulator(pid: int | None, avd_name: str) -> bool:
@@ -416,19 +446,24 @@ def ler_renderizador(logs_dir: Path, avd_name: str) -> Renderizador | None:
 
 
 def inicio_da_subida_atual(log_path: Path) -> int | None:
-    """29.123 (M1): o offset em bytes da ÚLTIMA linha `emuglConfig_init` do log, que é o começo da subida em curso. O
-    log acumula as subidas (só é cortado no spawn seguinte, `_rotate_log`), e o diálogo de relatório de falha de uma
-    subida vem DEPOIS das linhas `emuglConfig_init` dela (medido nos logs do 03 e do 06 em 05/10). `None` se a linha
-    não existe ou o arquivo não abre. Lido linha a linha, em bytes, como o `ler_renderizador`; fora do laço."""
+    """O offset em bytes do começo da subida em curso: a ÚLTIMA linha que é o marco do `start_process` (29.127, R1) ou
+    `emuglConfig_init` (29.123, M1). O log acumula as subidas (só é cortado no spawn seguinte, `_rotate_log`).
+
+    - O marco vem antes do `Popen`, então existe desde o primeiro instante da subida. Sem ele, até o emulador
+      descarregar a saída (bufferizada), a última `emuglConfig_init` era a da subida anterior.
+    - A linha `emuglConfig_init` fica de reserva: uma subida por um agente anterior ao marco só tem ela. Como o marco de
+      uma subida vem antes das linhas `emuglConfig_init` dela, a última de qualquer das duas é sempre da subida em
+      curso, e o diálogo de relatório de falha vem depois (medido nos logs do 03 e do 06 em 05/10).
+
+    `None` se nenhuma das duas existe. O erro de abrir ou ler SOBE (29.127, R2): quem chama distingue "arquivo não
+    existe" de falha passageira. Lido linha a linha, em bytes, como o `ler_renderizador`; fora do laço."""
+    marco = MARCO_DA_SUBIDA.encode()
     pos, inicio = 0, None
-    try:
-        with log_path.open("rb") as fh:
-            for linha in fh:
-                if b"emuglConfig_init" in linha:
-                    inicio = pos
-                pos += len(linha)
-    except OSError:
-        return None
+    with log_path.open("rb") as fh:
+        for linha in fh:
+            if marco in linha or b"emuglConfig_init" in linha:
+                inicio = pos
+            pos += len(linha)
     return inicio
 
 
