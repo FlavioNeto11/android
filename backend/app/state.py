@@ -3370,7 +3370,11 @@ class AppState:
         """Quanto cabe AGORA (RAM livre) contra o alvo decidido (`max_online_devices`) — mesma conta do portão de
         boot real, para o aviso e a recusa nunca discordarem (achado #146, item 10.3)."""
         try:
-            alvo = int(getattr(self.settings.get(), "max_online_devices", 0) or 0)
+            # 29.86 (R2): o alvo é o mesmo número do agendador e do painel (`vagas_que_valem` pelo `capacidade`);
+            # sem a linha do central no registro (a janela da subida), o setting vivo.
+            cap = self.workers.capacidade(self.cfg.owner_id)
+            alvo = int(cap.max_slots if cap is not None
+                       else getattr(self.settings.get(), "max_online_devices", 0) or 0)
             if alvo <= 0:
                 return None
             a = self.cfg.file.android
