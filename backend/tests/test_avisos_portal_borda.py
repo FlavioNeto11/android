@@ -59,7 +59,10 @@ def test_sem_conferir_diz_ha_quantas_horas() -> None:
     assert a is not None and a.tipo == p.TIPO_DA_BORDA_SEM_CONFERIR
     assert a.titulo == "ANA: 🌐 Site: não consigo conferir a página há 3 h"
     assert a.chave == "portal-borda:sem_conferir:2026-10-05"
-    assert a.corpo.split("\n")[2].startswith("Espera você: confira o túnel do central.")
+    # B3 da leitura do #381: sem conferir não é defeito visto; nada de "Crítico" e não espera o dono.
+    assert "Crítico" not in a.corpo and "Espera você" not in a.corpo
+    assert a.corpo.split("\n")[1] == "Pode ser o caminho do central até a internet, e não o site."
+    assert a.corpo.split("\n")[2].startswith("Não espera você:")
 
 
 @pytest.mark.parametrize(("codigo", "onde", "horas"), [
@@ -84,7 +87,10 @@ def test_nivel_2_sai_na_hora_sem_agrupar_e_fora_do_trello() -> None:
         assert tipo not in ROTULOS                    # o espelho do Trello só cria cartão de tipo com rótulo
 
 
-@pytest.mark.parametrize("achado", ["10.0.0.5", "10.0.0.5/beacon.js", "192.168.1.20"])
+@pytest.mark.parametrize("achado", ["10.0.0.5", "10.0.0.5/beacon.js", "192.168.1.20",
+                                    # B1 da leitura do #381: o IP dentro do nome, em forma curta e em decimal
+                                    "10.0.0.5.nip.io/beacon.js", "cdn/10.0.0.5./x", "10-0-0-5.sslip.io", "127.1",
+                                    "2130706433"])
 def test_o_texto_nunca_leva_ip(achado: str) -> None:
     for codigo in ("script_injetado", "cookie"):
         a = p.aviso_da_borda(codigo, "raiz", AGORA_UTC, achado=achado)
@@ -125,6 +131,8 @@ def test_recusas_e_falha_sem_gravar(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert servico.avisar_borda_do_portal(p.SEM_CONFERIR, "raiz", AGORA_UTC) == invalido
     desligado, db2, _ = _backend(_cfg(tmp_path / "b", ligado=False), "a", Relogio())
     assert desligado.avisar_borda_do_portal("cookie", "raiz", AGORA_UTC) == p.ContatoAvisado(False, p.CANAL_DESLIGADO)
+    # B2 da leitura do #381: o `agora` sem fuso faria o dia UTC da chave depender do fuso do processo.
+    assert servico.avisar_borda_do_portal("cookie", "raiz", AGORA_UTC.replace(tzinfo=None)) == invalido
     assert _linhas(db) == [] and _linhas(db2) == []
 
     def quebra(aviso: object) -> bool:
@@ -132,3 +140,12 @@ def test_recusas_e_falha_sem_gravar(tmp_path: Path, monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(servico.fila, "enfileirar", quebra)
     assert servico.avisar_borda_do_portal("cookie", "raiz", AGORA_UTC) == p.ContatoAvisado(False, p.FALHA_INTERNA)
+
+
+def test_agora_sem_fuso_e_recusado() -> None:
+    """B2 da leitura do #381: o Python lê o `datetime` ingênuo como hora local do processo."""
+    ingenuo = AGORA_UTC.replace(tzinfo=None)
+    assert p.aviso_da_borda("script_injetado", "raiz", ingenuo, achado=BEACON) is None
+    assert p.aviso_da_borda(p.SEM_CONFERIR, "raiz", ingenuo, horas_sem_conferir=3) is None
+    with pytest.raises(ValueError, match="sem fuso"):
+        p.chave_da_borda("cookie", ingenuo)

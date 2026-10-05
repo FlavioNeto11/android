@@ -29,6 +29,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   o Portal de 05/10 04:25Z).
 - `avisos/application/entrada.py` e `infrastructure/entrada.py`: a resposta do dono ao aviso vai à orquestradora como
   recado e nunca vira pedido.
+- Leitura do #381: B1, o achado também perde o IP escondido num nome (`10.0.0.5.nip.io`, `10-0-0-5.sslip.io`) e a
+  forma curta ou decimal (`127.1`, `2130706433`); B2, `agora` sem fuso é `campo_invalido`; B3, o `sem_conferir` não
+  diz "Crítico" nem espera o dono (pode ser o caminho do central, e não o site).
 - Prova `simulated`: `backend/tests/test_avisos_portal_borda.py`. Real: `not_run`.
 
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)

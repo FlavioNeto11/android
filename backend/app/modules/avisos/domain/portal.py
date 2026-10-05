@@ -324,6 +324,10 @@ ONDE_DA_BORDA: dict[str, str] = {"raiz": "A página inicial do site", "painel": 
                                  "js": "O script do site"}
 #: O achado só sai se for host e caminho (o beacon tem token na query) ou o nome do cookie: nada de `?`, `=`, espaço.
 _ACHADO = re.compile(r"[A-Za-z0-9._/-]{1,120}")
+#: B1 da leitura do #381: o IP também se esconde dentro de um nome (`10.0.0.5.nip.io`, `10-0-0-5.sslip.io`) e em forma
+#: curta ou decimal (`127.1`, `2130706433`). O achado sai sem nenhuma sequência de quatro números separados por `.` ou
+#: `-` e sem rótulo só de dígitos; um caminho com segmento numérico também perde o detalhe (o aviso sai sem ele).
+_IP_NO_ACHADO = re.compile(r"\d+[.-]\d+[.-]\d+[.-]\d+|(?:^|[./])\d+(?=[./]|$)")
 HORAS_SEM_CONFERIR_MAX = 24 * 31
 REPASSA = "Se nada mudou lá, responda a esta mensagem: a ANA repassa à orquestradora."
 
@@ -374,12 +378,15 @@ BORDA: dict[str, _Borda] = {
 
 
 def chave_da_borda(codigo: str, agora: datetime) -> str:
-    """`portal-borda:<código>:<AAAA-MM-DD>`: um defeito que persiste dá uma mensagem por dia UTC, não uma por hora."""
+    """`portal-borda:<código>:<AAAA-MM-DD>`: um defeito que persiste dá uma mensagem por dia UTC, não uma por hora. O
+    `agora` sem fuso seria lido como hora local do processo (B2 da leitura do #381): recusado."""
+    if agora.tzinfo is None:
+        raise ValueError("agora sem fuso")
     return chave_do_fato("portal-borda", codigo, f"{agora.astimezone(timezone.utc):%Y-%m-%d}")
 
 
 def _achado(valor: object, separador: str, fim: str = "") -> str:
-    if not isinstance(valor, str) or not _ACHADO.fullmatch(valor.strip()) or _IP.search(valor):
+    if not isinstance(valor, str) or not _ACHADO.fullmatch(valor.strip()) or _IP_NO_ACHADO.search(valor):
         return ""                        # fora do formato, ou um IP: nunca sai
     return f"{separador}{valor.strip()}{fim}"
 
@@ -388,15 +395,19 @@ def aviso_da_borda(codigo: object, onde: object, agora: datetime, *, achado: obj
                    horas_sem_conferir: object = None) -> Aviso | None:
     """O aviso pronto para a fila, ou `None` quando o código ou o lugar não são do contrato, ou falta a contagem de
     horas do `sem_conferir`. O `achado` fora do formato é omitido, sem recusa. Sem link."""
-    if not isinstance(agora, datetime) or not isinstance(codigo, str):
-        return None
+    if not isinstance(agora, datetime) or agora.tzinfo is None or not isinstance(codigo, str):
+        return None                      # sem fuso, o dia UTC dependeria do fuso do processo (B2): `campo_invalido`
     if codigo == SEM_CONFERIR:
         if not _contagem(horas_sem_conferir, 1, HORAS_SEM_CONFERIR_MAX):
             return None
         h = int(horas_sem_conferir)  # type: ignore[call-overload]
-        corpo = "\n".join([f"Há {h} h o vigia não abre o site pelo nome público (tempo esgotado ou erro do túnel).",
-                           "Crítico: o site pode estar fora para visitantes.",
-                           f"Espera você: confira o túnel do central. {REPASSA}"])
+        # B3 da leitura do #381 (decisão da orquestradora): sem conferir não é defeito visto. Nada de "Crítico"; o
+        # texto diz que a conferência não completou, há quanto tempo, que pode ser o caminho e não o site, e que não
+        # espera o dono. O nível 2 fica.
+        corpo = "\n".join([f"Há {h} h o vigia não completa a conferência do site pelo nome público (tempo esgotado ou "
+                           "erro no caminho).",
+                           "Pode ser o caminho do central até a internet, e não o site.",
+                           "Não espera você: a conferência segue sozinha, e um defeito visto vem em aviso próprio."])
         return Aviso(chave=chave_da_borda(codigo, agora), tipo=TIPO_DA_BORDA_SEM_CONFERIR,
                      titulo=titulo_do_aviso(f"🌐 Site: não consigo conferir a página há {h} h"), corpo=corpo, link=None,
                      nivel=nivel_do_tipo(TIPO_DA_BORDA_SEM_CONFERIR))
