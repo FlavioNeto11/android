@@ -86,11 +86,13 @@ async def listar(request: Request, regra: str | None = Query(None, max_length=12
     itens = registro.listar(regra=regra, fila=fila, desde=_instante(desde, "desde"), ate=_instante(ate, "ate"),
                             desfeitas=desfeitas, limite=limite)
     # 28.29: o registro mostra o estado de agora do item; o que foi desfeito por outro caminho sai do filtro "não".
-    agora = [desfazer.reconciliar(d) for d in itens]
-    if desfeitas == "nao":
-        agora = [d for d in agora if not d.desfeita]
-    return {"itens": [_item(d, desfazer) for d in agora], "total": len(agora), "regras": registro.regras(),
-            "desfazer_dias": dias}
+    # Uma leitura do livro por item na listagem toda (revisão do 28.29, achado 4).
+    with desfazer.numa_leitura():
+        agora = [desfazer.reconciliar(d) for d in itens]
+        if desfeitas == "nao":
+            agora = [d for d in agora if not d.desfeita]
+        corpo = [_item(d, desfazer) for d in agora]
+    return {"itens": corpo, "total": len(agora), "regras": registro.regras(), "desfazer_dias": dias}
 
 
 @router.post("/{decisao_id}/desfazer", response_model=None)

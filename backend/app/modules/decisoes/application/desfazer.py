@@ -13,7 +13,8 @@ e por quê, lidos da trilha da fila. Sem isso a decisão seguia "não desfeita" 
 """
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
@@ -128,6 +129,17 @@ class DesfazerDecisoes:
         self._registro = registro
         self._inversas = inversas
         self._dias = dias
+
+    @contextmanager
+    def numa_leitura(self) -> Iterator[None]:
+        """A listagem inteira numa leitura só de cada item (revisão do 28.29, achado 4): a fila que sabe reaproveitar a
+        leitura (`memorizado`, opcional no protocolo) o faz enquanto o bloco durar. O desfazer não usa isto."""
+        with ExitStack() as pilha:
+            for inversa in self._inversas.values():
+                memorizado = getattr(inversa, "memorizado", None)
+                if callable(memorizado):
+                    pilha.enter_context(memorizado())
+            yield
 
     def _inversa(self, decisao: Decisao) -> InversaDaFila:
         return self._inversas.get(decisao.fila) or SemInversa("esta fila ainda não tem a volta ligada")
