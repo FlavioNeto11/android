@@ -2010,6 +2010,14 @@ export interface TrainingProposal {
   discarded: { seq: number; why: string }[];
   questions: string[];
   app_id?: string | null;
+  /** v1.63: respostas acumuladas da pessoa (a mesma pergunta substitui a anterior); backend anterior não manda. */
+  answers?: TrainingAnswer[];
+}
+
+/** Uma resposta da pessoa a uma pergunta da proposta (v1.63): pergunta 1–300 e resposta 1–500 caracteres. */
+export interface TrainingAnswer {
+  question: string;
+  answer: string;
 }
 
 export interface TrainingSession {

@@ -195,3 +195,12 @@ it('Descartar recusado por control_required: a gravação continua, sem perder n
   expect(backend.callsTo('POST', /\/discard$/)[0]!.body).toEqual({ lease_id: 'lease-velho' });
   expect(text()).toContain('Gravando: Responder a DM');
 });
+
+it('com mais de 5 sessões salvas, a lista diz que mostra só as 5 mais novas', async () => {
+  const salva = (n: number) => ({ ...GRAVANDO, id: `trn-s${n}`, intent: `Ensino ${n}`, status: 'saved', flow_id: `fluxo-${n}` });
+  backend.on('GET', /\/training$/, () => json([1, 2, 3, 4, 5, 6].map(salva)));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Salvas (as 5 mais novas de 6)'));
+  expect(allByRole('button', /^Refazer receitas de/)).toHaveLength(5);
+  expect(text()).not.toContain('Ensino 6');
+});

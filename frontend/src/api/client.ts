@@ -92,6 +92,7 @@ import type {
   ProfileAccountCreateRequest,
   ProfileAccountPatchRequest,
   AppOverview,
+  TrainingAnswer,
   TrainingPreview,
   TrainingProposal,
   TrainingRecipesResult,
@@ -751,7 +752,9 @@ export const api = {
     request<TrainingSession>('POST', `/training/${enc(id)}/stop`, leaseId ? { body: { lease_id: leaseId } } : {}),
   discardTraining: (id: string, leaseId?: string | null) =>
     request<TrainingSession>('POST', `/training/${enc(id)}/discard`, leaseId ? { body: { lease_id: leaseId } } : {}),
-  proposeTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/propose`),
+  /** Adendo v1.63: com `answers`, a IA propõe de novo levando as respostas da pessoa; sem elas, o corpo não vai (igual a antes). */
+  proposeTraining: (id: string, answers?: TrainingAnswer[]) =>
+    request<TrainingSession>('POST', `/training/${enc(id)}/propose`, answers?.length ? { body: { answers } } : {}),
   saveTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[] }) =>
     request<TrainingSaveResult>('POST', `/training/${enc(id)}/save`, { body }),
   /** Adendo v1.58: a mesma conferência e destilação do salvar, sem gravar nada. */

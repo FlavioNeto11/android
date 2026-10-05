@@ -20,6 +20,9 @@ import { RefazerReceitas, TrainingReview, toqueSemAlvo } from './TrainingReview'
 import { useTrainingStore } from './trainingStore';
 import styles from './Training.module.css';
 
+/** Quantas sessões salvas a barra lista para refazer receitas: as mais novas (a lista vem do backend da mais nova para a mais velha). */
+const SALVAS_NA_BARRA = 5;
+
 const DESCRICAO: Record<string, string> = {
   tap: 'toque', long_press: 'toque longo', swipe: 'deslize', text: 'texto', key: 'tecla', open_app: 'abrir app',
 };
@@ -124,7 +127,8 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   const pendentes = sessoes.filter((s) => s.status === 'recorded' || s.status === 'proposed');
   // v1.58: a sessão salva some de "Para revisar", mas a etapa que ficou sem receita (aparelho fora do ar no salvar)
   // ainda pode ganhá-la; daqui a pessoa refaz quando o aparelho voltar, sem reabrir a revisão.
-  const salvas = sessoes.filter((s) => s.status === 'saved').slice(0, 5);
+  const todasSalvas = sessoes.filter((s) => s.status === 'saved');
+  const salvas = todasSalvas.slice(0, SALVAS_NA_BARRA);
 
   return (
     <section className={styles.bar} aria-label="Modo treinamento">
@@ -203,7 +207,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
         </div>
       ) : null}
       {salvas.length ? (
-        <Disclosure summary={`Salvas (${salvas.length})`} bare>
+        <Disclosure summary={todasSalvas.length > salvas.length ? `Salvas (as ${salvas.length} mais novas de ${todasSalvas.length})` : `Salvas (${salvas.length})`} bare>
           <ul className={styles.salvas}>
             {salvas.map((s) => (
               <li key={s.id}>
