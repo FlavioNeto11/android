@@ -90,12 +90,35 @@ class DespachoDoParque:
             com_valor = {linhas.texto(r, "id") for r in self._db.query(
                 f"SELECT id FROM instances WHERE {coluna} IS NOT NULL AND TRIM({coluna}) <> '' ORDER BY id")}
             com_o_app = [i for i in com_o_app if i in com_valor]
+        sem_sessao = self._sem_sessao_no_app(exigidos)
+        com_o_app = [i for i in com_o_app if i not in sem_sessao]
         if not com_o_app:
             return []
         com_conta = aparelhos_com_vinculo_ativo(self._db)     # conta vinculada é conta real (ADR-055)
         return [AparelhoCandidato(id=c.instance_id, online=c.ligado, ocioso=not c.ocupado, tem_o_app=True,
                                   conta_real=c.instance_id in com_conta)
                 for c in self._parque.candidatos_de(com_o_app)]
+
+    def _sem_sessao_no_app(self, pacotes: Sequence[str]) -> set[str]:
+        """30.75 (b): os aparelhos em que uma prova de fluxo de um destes `pacotes` parou porque o app pediu login
+        (`objectives.blocked_kind='auth'`) e que ainda não tiveram uma verificação nova DEPOIS da parada: a verificação
+        do app no aparelho (`device_app_state.verified_at`) ou um objetivo concluído com sucesso num fluxo do mesmo app
+        no mesmo aparelho (a execução comum que entrou no app prova que a sessão voltou). Sem isto, a prova seguinte
+        escolhia o mesmo aparelho e parava na mesma tela de senha (lv-61f13d634e7bf08e, 05/10)."""
+        if not pacotes:
+            return set()
+        marcas = linhas.marcas(len(pacotes))
+        return {linhas.texto(r, "i") for r in self._db.query(
+            "SELECT o.instance_id AS i FROM objectives o JOIN runs r ON r.id = o.run_id"
+            " JOIN flows f ON f.id = r.prova_fluxo_id JOIN apps a ON a.id = f.app_id"
+            f" WHERE o.blocked_kind = 'auth' AND o.instance_id IS NOT NULL AND a.package IN ({marcas})"
+            " AND NOT EXISTS (SELECT 1 FROM device_app_state d WHERE d.instance_id = o.instance_id"
+            "   AND d.package_name = a.package AND d.verified_at > COALESCE(o.finished_at, r.finished_at, ''))"
+            " AND NOT EXISTS (SELECT 1 FROM objectives o2 JOIN runs r2 ON r2.id = o2.run_id"
+            "   JOIN flows f2 ON f2.id = COALESCE(r2.prova_fluxo_id, r2.flow_id) JOIN apps a2 ON a2.id = f2.app_id"
+            "   WHERE o2.instance_id = o.instance_id AND a2.package = a.package AND o2.status = 'succeeded'"
+            "   AND o2.finished_at > COALESCE(o.finished_at, r.finished_at, ''))"
+            " ORDER BY o.instance_id", tuple(pacotes))}
 
     def gasto_da_operacao(self, agora: datetime, dias: int) -> float:
         return RegistroDeRevisoesSql(self._db).janela(agora, dias).gasto_da_operacao
