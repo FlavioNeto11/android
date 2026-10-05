@@ -119,6 +119,14 @@ class ReleaseBody(BaseModel):
     lease_id: str
 
 
+class TakeControlBody(BaseModel):
+    """29.143: `tomar=true` é a tomada explícita do controle de OUTRA pessoa (lease novo; a gravação dela é encerrada).
+    Sem corpo, ou com `false`, é o pedido de sempre: com outra pessoa no controle, 409 `controlled_by_other`."""
+
+    model_config = ConfigDict(extra="forbid")
+    tomar: bool = False
+
+
 class ServerLimitsPatch(BaseModel):
     """Limites de UMA máquina (tela Limites → Por servidor). Campo ausente = não mexe; `null` = volta ao valor
     da máquina (o `worker.yaml` dela; para este servidor, o padrão do `config.yaml`)."""

@@ -64,6 +64,7 @@ from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ServerLimits
                      LoginBody, ManualInput, PanelSessionInfo, ReleaseBody, ResolveBody, RunCreate,
                      RunTargetsPreview, RunTargetsResolveBody)
 from .metricas import metricas
+from .modules.fleet.presentation.schemas import TakeControlBody
 from .contracts.skills.resolve import SkillResolveRequest
 from .modules.identity.adapters.pos_processamento import dimensoes
 from .modules.identity.domain.persona import MAIORIDADE
@@ -3005,11 +3006,15 @@ async def clear_repair_pause(request: Request, instance_id: str) -> dict[str, st
 
 
 @router.post("/instances/{instance_id}/control/take")
-async def take_control(request: Request, instance_id: str) -> Any:
+async def take_control(request: Request, instance_id: str, body: TakeControlBody | None = None) -> Any:
     s = st(request)
     rt = device(s, instance_id)
-    # Pedir o aparelho com a IA numa etapa é o gesto `tomou_controle` (ADR-054): leva o operador da sessão.
-    status, lease = s.devices.request_control(rt, por=_autor_do_sinal(request))
+    # Pedir o aparelho com a IA numa etapa é o gesto `tomou_controle` (ADR-054): leva o operador da sessão, que desde o
+    # 29.143 também é o dono do lease (outra pessoa recebe 409 `controlled_by_other`, com `dono` e `desde`).
+    try:
+        status, lease = s.devices.request_control(rt, por=_autor_do_sinal(request), tomar=bool(body and body.tomar))
+    except ControlError as exc:
+        raise err(409, exc.code, exc.message, **exc.detalhes) from exc
     return {"status": status, "lease_id": lease}
 
 

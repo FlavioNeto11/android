@@ -256,8 +256,8 @@ class TrainingRecorder:
 
     def _exigir_o_controle(self, instance_id: str, lease_id: str | None, discard: bool) -> None:
         """Mesma conferência do `start`: o lease é o ATUAL do controle de usuário do aparelho. Recusa sem tocar em nada
-        (a gravação segue). Alcance: cobre quem NÃO tem o lease. Quem clica "Assumir" com controle de usuário vigente
-        recebe hoje o mesmo lease (`request_control`) e passa por aqui; isso fica para o item 29.143."""
+        (a gravação segue). Desde o 29.143 o lease tem dono: outra pessoa que clica "Assumir" recebe 409
+        `controlled_by_other`, não o lease, e a tomada explícita troca o lease e encerra esta gravação antes."""
         rt = self.devices.devices.get(instance_id)
         if not lease_id or rt is None or rt.lease_id != lease_id:
             acao = "descarta" if discard else "encerra"
@@ -327,11 +327,17 @@ class TrainingRecorder:
             self._encerrar_orfa(sid, "encerrada pelo reinício do backend")
         return len(ids)
 
-    def stop_for_instance(self, instance_id: str) -> None:
-        """Devolver o controle encerra a gravação: sem a pessoa no aparelho não há o que gravar."""
+    def stop_for_instance(self, instance_id: str, *, motivo: str | None = None) -> None:
+        """Devolver o controle encerra a gravação: sem a pessoa no aparelho não há o que gravar. `motivo` (29.143, a
+        tomada explícita) vai ao log: a gravação fica `recorded`, nem salva nem descartada, e quem ensinava decide na
+        revisão."""
         sid = self.active_for(instance_id)
         if sid:
             self.stop(sid, por_sistema=True)     # o sistema encerra: sem conferência de controle
+            if motivo:
+                self.bus.emit("log", f"{instance_id}: gravação do treinamento {motivo}; as entradas já gravadas foram "
+                              "mantidas para a revisão", level="warn", instance_id=instance_id,
+                              data={"training_session_id": sid})
 
     # ------------------------------------------------------------------ entradas
     def record(self, rt: Any, entrada: dict[str, Any], tree: Any | None) -> None:

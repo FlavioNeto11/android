@@ -6616,3 +6616,24 @@ Aditivo. O fluxo salvo no modo treinamento segue nascendo `active`, mas até a p
 
   O `desde` é o nascimento do fluxo (ISO UTC), o mesmo nos dois. O `message` não leva persona nem o id do fluxo.
 - **Prova:** `simulated` (`backend/tests/test_ensinado_em_prova.py`).
+
+## Adendo v1.67 (05/10/2026; número da orquestradora; item 29.143) — o controle manual tem dono
+
+Mudança de comportamento em `POST /api/instances/{id}/control/take`; o corpo novo é aditivo e opcional.
+- O lease do controle de usuário (e o pedido pendente com a IA) passa a ter dono: o operador da sessão do painel, ou
+  `panel` sem sessão (o mesmo autor do sinal `tomou_controle`, ADR-054). Não persiste, como o lease.
+- A mesma pessoa (outra aba) recebe o mesmo `lease_id`, como antes.
+- Outra pessoa recebe **409** `controlled_by_other`, com `dono` e `desde` (ISO, `null` no pendente) no corpo do erro,
+  em vez do lease calado. Mensagens: "<dono> está no controle de <aparelho> desde <hora>; para assumir, use a tomada
+  explícita." e, com a IA no controle, "<dono> já pediu o controle de <aparelho>; aguardando a IA.". A recusa não muda nada.
+- Tomada explícita: corpo `{"tomar": true}` (`extra=forbid`; sem corpo ou `false` é o pedido de sempre). Devolve 200
+  `{status:'granted', lease_id}` com um lease NOVO. O antigo deixa de valer na hora (`input`, `release` e o
+  `training.*` respondem como sem lease). A gravação viva de quem ensinava é encerrada (`recorded`, nem salva nem
+  descartada), com um log `warn` "interrompida pela tomada de <novo>". O `control.changed` traz "<novo> tomou o
+  controle de <antigo>", com `tomado_por` e `tomado_de` em `data`. Com o pedido pendente de outra pessoa, a tomada também
+  é recusada (409).
+- Limite: sem sessão todo chamador é `panel`, e entre eles não há como distinguir; `panel` e um operador com sessão se
+  recusam um ao outro.
+- **O que o painel precisa mudar (Portal):** no 409 `controlled_by_other`, mostrar quem está no controle e desde
+  quando, e oferecer "Tomar o controle" com confirmação, que manda `{"tomar": true}`.
+- **Prova:** `simulated` (`backend/tests/test_controle_com_dono_29_143.py`); `real`: `not_run`.
