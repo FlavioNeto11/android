@@ -4414,14 +4414,14 @@
    "id": "29.17",
    "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 30/09–01/10, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:\\Android\u0007rquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box em data/arquivo/. Em 01/10, 27 worktrees terminados removidos com git worktree remove (os branches ficam, inclusive o do catálogo do Outlook), cada junção desfeita só como atalho antes; backend/.venv e frontend/node_modules do central conferidos com o mesmo número de itens antes e depois. Nada foi apagado de forma definitiva.",
+   "evidence": "Real, 30/09–01/10, central: SdkBeta, SdkCanary, imagem android-36 e o AVD diag-outlook-36 movidos para C:/Android/arquivo-diagnostico-20260930 (11,3 GB, com LEIA-ME); piloto de rede e o zip do sing-box em data/arquivo/. Em 01/10, 27 worktrees terminados removidos com git worktree remove (os branches ficam, inclusive o do catálogo do Outlook), cada junção desfeita só como atalho antes; backend/.venv e frontend/node_modules do central conferidos com o mesmo número de itens antes e depois. Nada foi apagado de forma definitiva.",
    "blocker": null,
-   "grupo": "29-pendencias-evolucao3",
-   "modelo": "opus",
-   "esforco": "high",
+   "grupo": "resultado-orquestradora-29-17",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-01T10:50:15+00:00"
+   "quando": "2026-10-05T09:53:36+00:00"
   },
   "29.7": {
    "id": "29.7",
@@ -11531,6 +11531,15 @@
    ],
    "grupos": [
     "resultado-orquestradora-29-94"
+   ]
+  },
+  {
+   "quando": "2026-10-05T09:53:36+00:00",
+   "itens": [
+    "29.17"
+   ],
+   "grupos": [
+    "resultado-orquestradora-29-17"
    ]
   }
  ]
