@@ -2,15 +2,20 @@
 do aviso moram em `application/espera.py` e `domain/espera.py`."""
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, TypeVar
 
 from app.integrations.app_declarado.conhecimento import PASTA_DOS_APPS
 from app.modules.applications.infrastructure import registry
+from app.modules.learning.domain.ensinado import (TIPO_DECIDIDO, TIPO_ESPERA_DECISAO, AvisoDoEnsinado,
+                                                  DecisaoDoEnsinado, EsperaDoEnsinado)
 from app.modules.learning.domain.espera import AvisoDeEspera, FatosDoCatalogo
 from app.planning.capabilities import UnknownCapability
 
 TIPO_DO_EVENTO = "learning.needs_person"
+_AvisoComRef = TypeVar("_AvisoComRef", AvisoDeEspera, AvisoDoEnsinado, EsperaDoEnsinado, DecisaoDoEnsinado)
 
 
 class Barramento(Protocol):
@@ -21,14 +26,38 @@ class Barramento(Protocol):
 
 
 class EventosNoBarramento:
-    """`PortaDeEventos` sobre o `EventBus`: evento persistido (não está em `EPHEMERAL_KINDS`), sem aparelho. O
+    """`PortaDeEventos` (e `PortaDoEnsinado`, 30.80 B) sobre o `EventBus`: evento persistido (não está em `EPHEMERAL_KINDS`), sem aparelho. O
     payload é só o que `AvisoDeEspera.como_dados` monta (lista fechada). A falha SOBE: cada chamador decide."""
 
-    def __init__(self, bus: Barramento) -> None:
+    def __init__(self, bus: Barramento, ref_publica_do_fluxo: Callable[[str], str] | None = None) -> None:
+        """`ref_publica_do_fluxo` (30.83): o id interno do fluxo para a referência aleatória que sai do central; sem
+        ela, o id."""
         self._bus = bus
+        self._ref_publica = ref_publica_do_fluxo
+
+    def _publico(self, aviso: _AvisoComRef) -> _AvisoComRef:
+        """30.83: o fluxo sai pela referência pública (o `href` do aviso de espera sai da `ref`); o resto como veio."""
+        if aviso.kind == "fluxo" and self._ref_publica is not None:
+            return replace(aviso, ref=self._ref_publica(aviso.ref))
+        return aviso
 
     def esperando_a_pessoa(self, aviso: AvisoDeEspera) -> None:
+        aviso = self._publico(aviso)
         self._bus.emit(TIPO_DO_EVENTO, aviso.mensagem(), level=aviso.nivel, data=aviso.como_dados())
+
+    def ensinado_rebaixado(self, aviso: AvisoDoEnsinado) -> None:
+        """30.80 B (`PortaDoEnsinado`): o tipo diz a criticidade; o payload é só `AvisoDoEnsinado.como_dados`."""
+        aviso = self._publico(aviso)
+        self._bus.emit(aviso.tipo, aviso.mensagem(), level=aviso.nivel, data=aviso.como_dados())
+
+    def ensinado_espera_decisao(self, aviso: EsperaDoEnsinado) -> None:
+        """30.81: precisa de uma pessoa (vira cartão na lista de perguntas pela Canais)."""
+        aviso = self._publico(aviso)
+        self._bus.emit(TIPO_ESPERA_DECISAO, aviso.mensagem(), level="warn", data=aviso.como_dados())
+
+    def ensinado_decidido(self, aviso: DecisaoDoEnsinado) -> None:
+        aviso = self._publico(aviso)
+        self._bus.emit(TIPO_DECIDIDO, aviso.mensagem(), level="info", data=aviso.como_dados())
 
 
 class RiscoDoRegistro:

@@ -8,7 +8,7 @@ import { useUiStore } from '../../store/ui';
 import type { ResolveTargetsRequest, ResolveTargetsResponse } from '../../api/types';
 import { makeBinding, makePersona, makeRun, makeSnapshot } from '../../test/fixtures';
 import {
-  FakeBackend, allByRole, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor,
+  FakeBackend, allByRole, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor,
 } from '../../test/harness';
 import { CommandPanel, SENHA_NO_COMANDO } from './CommandPanel';
 
@@ -225,7 +225,7 @@ describe('Comando "Por persona"', () => {
     // A prévia inteira foi pedida com a seleção do modo por aparelho.
     expect(resolucoes()[0]!.body).toEqual({ command: 'no android-03 abra o app', instance_ids: ['android-01', 'android-03'] });
 
-    await click(byRole('button', /^Confirmar e executar/, caixa));
+    await click(await botaoPronto(/^Confirmar e executar/, caixa));
     await waitFor(() => expect(envios()).toHaveLength(2));
     const eco = envios()[1]!.body as Record<string, unknown>;
     expect(eco).toMatchObject({ instance_ids: [], targets: [{ profile_id: 'ig-1', instance_ids: ['android-03'], app_id: null }] });

@@ -64,6 +64,7 @@ from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ServerLimits
                      LoginBody, ManualInput, PanelSessionInfo, ReleaseBody, ResolveBody, RunCreate,
                      RunTargetsPreview, RunTargetsResolveBody)
 from .metricas import metricas
+from .modules.fleet.presentation.schemas import TakeControlBody
 from .contracts.skills.resolve import SkillResolveRequest
 from .modules.identity.adapters.pos_processamento import dimensoes
 from .modules.identity.domain.persona import MAIORIDADE
@@ -98,6 +99,7 @@ from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
 from .social.excecoes import ExcecaoEmUso, ExcecaoInvalida
 from .social.service import SocialError
 from .taskqueue import observabilidade
+from .taskqueue.flows import id_do_fluxo
 from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
@@ -867,6 +869,7 @@ async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObj
 @router.put("/flows/{flow_id}")
 async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> Any:
     s = st(request)
+    flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: o id ou a referência pública (o `href` dos avisos)
     if s.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)) is None:
         raise err(404, "not_found", "Fluxo não encontrado.")
     if patch.get("status") not in ("active", "disabled"):
@@ -899,6 +902,7 @@ async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> 
 @router.delete("/flows/{flow_id}", status_code=204)
 async def delete_flow(request: Request, flow_id: str) -> Response:
     s = st(request)
+    flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: antes da guarda da adoção, que lê pelo id
     # Fluxo adotado por uma habilidade é o caminho de volta da adoção (`release_flow` o religa): apagá-lo deixaria
     # a habilidade sem ter para onde desfazer. Desligar continua possível; apagar, só depois de desfazer.
     if (dona := s.skill_repo.adopter_id(flow_id)) is not None:
@@ -2702,7 +2706,7 @@ async def instance_context(request: Request, instance_id: str) -> Any:
 
 @router.get("/instagram/profiles/{profile_id}/operational-context")
 async def profile_context(request: Request, profile_id: str, instance_id: str | None = None) -> Any:
-    """O MESMO contexto, chegando pelo perfil: do André Carvalho ao aparelho dele sem trocar de tela. O aparelho é
+    """O MESMO contexto, chegando pelo perfil: do Beltrano Souza ao aparelho dele sem trocar de tela. O aparelho é
     o principal da persona, ou o dito em `?instance_id=` (precisa estar vinculado a ela)."""
     s = st(request)
     rt, _perfil = _profile_device(s, profile_id, instance_id)
@@ -3005,11 +3009,15 @@ async def clear_repair_pause(request: Request, instance_id: str) -> dict[str, st
 
 
 @router.post("/instances/{instance_id}/control/take")
-async def take_control(request: Request, instance_id: str) -> Any:
+async def take_control(request: Request, instance_id: str, body: TakeControlBody | None = None) -> Any:
     s = st(request)
     rt = device(s, instance_id)
-    # Pedir o aparelho com a IA numa etapa é o gesto `tomou_controle` (ADR-054): leva o operador da sessão.
-    status, lease = s.devices.request_control(rt, por=_autor_do_sinal(request))
+    # Pedir o aparelho com a IA numa etapa é o gesto `tomou_controle` (ADR-054): leva o operador da sessão, que desde o
+    # 29.143 também é o dono do lease (outra pessoa recebe 409 `controlled_by_other`, com `dono` e `desde`).
+    try:
+        status, lease = s.devices.request_control(rt, por=_autor_do_sinal(request), tomar=bool(body and body.tomar))
+    except ControlError as exc:
+        raise err(409, exc.code, exc.message, **exc.detalhes) from exc
     return {"status": status, "lease_id": lease}
 
 
@@ -3480,8 +3488,10 @@ def _limites_dos_servidores(s: Any) -> list[ServerLimitsDTO]:
                                         max_working=decidido.get("max_working"),
                                         min_free_ram_mb=declarado.min_free_ram_mb,
                                         max_devices=decidido.get("max_devices"))
-            travado = {"min_free_ram_mb": "Guarda do boot deste servidor: `android.min_free_ram_mb_after_boot` "
-                                          "no config.yaml."}
+            # 29.142: a frase é para a pessoa (a chave crua com crases aparecia no painel); a chave fica no comentário:
+            # `android.min_free_ram_mb_after_boot` no config.yaml.
+            travado = {"min_free_ram_mb": "Depois de ligar mais um aparelho, este servidor tem de manter pelo menos isto "
+                                          "livre. Muda só na configuração da instalação, com reinício."}
             nome = linha["name"] if linha is not None else f"{wid} (este servidor)"
         else:
             d = s.workers.limites_declarados(wid)
@@ -3524,8 +3534,9 @@ async def put_server_limits(request: Request, worker_id: str, body: ServerLimits
         raise err(404, "not_found", f"Servidor {worker_id} não existe.")
     if worker_id == host:
         if "min_free_ram_mb" in patch:
-            raise err(400, "locked_limit", "O piso de RAM deste servidor é a guarda do boot local "
-                                           "(`android.min_free_ram_mb_after_boot` no config.yaml).")
+            # 29.142: frase para a pessoa; a chave é `android.min_free_ram_mb_after_boot` no config.yaml.
+            raise err(400, "locked_limit", "A RAM livre depois de ligar um aparelho neste servidor muda só na "
+                                           "configuração da instalação, com reinício.")
         base = s.cfg.file.limits
         vivos: dict[str, Any] = {}
         if "max_slots" in patch:

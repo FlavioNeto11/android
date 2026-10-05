@@ -82,7 +82,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-073](#adr-073--portal-na-internet-por-túnel-de-saída-da-cloudflare-o-host-separa-o-público-do-local-o-painel-mora-em-central) | Portal na internet por túnel de saída da Cloudflare: o `Host` separa o público do local, o painel mora em `/central` (item 29.54) | aceito (dono, 03/10; túnel `real` desde 03/10 21:47Z) | 03/10 |
 | [ADR-074](#adr-074--fechamento-da-fase-28-pedidos-persistentes-aceitos-a-fase-fecha-por-cláusula-as-emendas-do-dado-real-e-a-colaboração-em-fatias) | Fechamento da Fase 28: pedidos persistentes aceitos, a fase fecha por cláusula, as emendas do dado real e a colaboração em fatias (item 28.13) | proposto (Canais, 04/10) | 04/10 |
 | [ADR-075](#adr-075--site-institucional-na-raiz-e-contato-público-que-chega-ao-telegram-do-dono-emenda-ao-adr-073) | Site institucional na raiz e contato público que chega ao Telegram do dono: emenda ao ADR-073 (item 29.77) | proposto (Portal, 04/10; site e contato desligados) | 04/10 |
-| [ADR-077](#adr-077--um-caminho-só-de-ensino-o-modo-treinamento) | Um caminho só de ensino: o Modo treinamento (item 31.91) | aceito (dono, 05/10; só o F2 implementado) | 05/10 |
+| [ADR-077](#adr-077--um-caminho-só-de-ensino-o-modo-treinamento) | Um caminho só de ensino: o Modo treinamento (item 31.91) | aceito (dono, 05/10; F2 e a tela do F1 implementados) | 05/10 |
 
 ---
 
@@ -2609,7 +2609,7 @@ tela) e **decisão técnica** (o livro-caixa).
 
 `real`: a projeção sobre o histórico do central para o plano da e31953 deu 16–28 chamadas, US$ 0,40–0,74 e 3–5 min
 (a execução real: 31 chamadas e 18,7 min). Sessão pelo motor genérico no central (`a7fe364`, 28/09 ~19:37 UTC):
-"Verificar conta" confirmou `@lucas.almeida9484` no android-01 e `@andre.carvalho9543` no android-06; com o convidado
+"Verificar conta" confirmou `@«conta do android-01»` no android-01 e `@«conta do android-06»` no android-06; com o convidado
 sobrecarregado e a árvore vazia, gravou `unknown` em vez de afirmar
 ([relatório §20](relatorio-validacao.md#20-conhecimento-de-app-como-dado-adr-052-fatias-14--implantação-e-prova-real-28092026)).
 Login digitando a senha e a volta ao estado conhecido num aparelho real: `not_run`.
@@ -3246,7 +3246,7 @@ aprovação automática (30.55)".
 - Nada foi digitado nem enviado; a tela foi fechada com BACK.
 - Incidente de 29/09, 02:05–02:15Z (`real`, K-058). O backend estava em `7a02491` desde 01:42Z
   (`data\logs\backend.log.2026-09-28`, em hora local), antes da regra "nenhum reset com conta", e a escada de reparo
-  apagou a sessão do lucas.almeida9484, conta viva:
+  apagou a sessão da «conta do android-01», conta viva:
   - 02:05:31Z: `restart` do android-01, 2º degrau (motivo: "o `system_server` caiu");
   - 02:10:14Z: o `restart` falhou ("o Android subiu, mas não ficou pronto em 60 s": o preparo estourou o prazo);
   - 02:15:34Z: `reset`, 3º degrau (`c-20260929021534-6d15cd`, `requested_by` `system`, terminado às 02:20:27Z), que
@@ -3363,7 +3363,7 @@ desligados depois (mexer no WSL continua exigindo autorização em chat, CLAUDE.
 - O painel antigo quebra o "Marcar como concluído" em etapa com efeito: o frontend vai no mesmo deploy (`npm run
   build`).
 - `account_label` passa a ser o @ vinculado: um fluxo do QA Messenger que confira `Conta: {account_label}` no android-01
-  passa a esperar `lucas.almeida9484`.
+  passa a esperar o @ da conta do android-01 (o handle vinculado), não o rótulo do aparelho.
 - Com a máquina central a 90% de CPU ou mais, um aparelho local doente de verdade espera: a cada 10 min o reparo
   reconfere e só sobe de degrau quando a máquina aliviar. O aviso no cartão diz por quê.
 - **Pendências dos revisores:**
@@ -3383,7 +3383,7 @@ desligados depois (mexer no WSL continua exigindo autorização em chat, CLAUDE.
   - as escolhas do pacote frota: a regra de uma conta vale para o balde inteiro (inclusive responder a quem escreveu e
     aceitar pedido de seguir); aprovação dada que nunca chega ao efeito reserva o alvo por 30 dias; a mesma persona em
     dois aparelhos não é "outra conta"; o texto exato do dono (`content_verbatim`) fica fora da trava de atribuição;
-  - quando e como reativar o lucas.almeida9484, cuja sessão o `reset` de 29/09 apagou. Recomendação: um único login,
+  - quando e como reativar a «conta do android-01», cuja sessão o `reset` de 29/09 apagou. Recomendação: um único login,
     acompanhado pelo dono, pelo Conectar do painel, num horário calmo da máquina. Até lá, nada toca a conta (a conduta
     de login (e) vale: depois de 1 envio sem sucesso, o login automático para).
 
@@ -4613,7 +4613,7 @@ catálogo, comando), que o ADR-063 não cobre.
         - e-mail + separador + valor, ou e-mail + palavra com letra que fecha a oração.
     - **Leitura literal** (escolha 1): a sintaxe de destino conta mesmo cortada pelo extrator. Isentá-la deixava a família
       3 da fase 2 da H aberta (0 de 28). Por isso, "entre com a conta Lucas e curta" recusa, enquanto "entre pela Lucas e
-      curta" e "entre como @lucas.almeida9484 e curta o post" passam. O nome do catálogo na posição de valor é valor
+      curta" e "entre como @«conta do android-01» e curta o post" passam. O nome do catálogo na posição de valor é valor
       (postura da G-4).
     - A única exceção é o objeto pessoa ou conversa ("entre na conversa com o contato"). "entre no insta" sozinho passa.
       O token só de dígitos segue a regra dos anos do item 17. As máscaras de forma continuam para o que passa.
@@ -5472,8 +5472,8 @@ raiz", [api-contract.md](api-contract.md) adendo v1.36, [banco.md](banco.md) mig
 
 ## ADR-077 — Um caminho só de ensino: o Modo treinamento
 
-**Data:** 05/10/2026 · **Estado:** aceito (decisão do dono, 05/10/2026; item 31.91). Fatia F2 implementada e provada
-`simulated`; as outras fatias seguem abaixo.
+**Data:** 05/10/2026 · **Estado:** aceito (decisão do dono, 05/10/2026; item 31.91). Fatia F2 e a tela do F1 implementadas
+e provadas `simulated`; as outras fatias seguem abaixo.
 
 **Contexto.** Hoje há dois caminhos para a pessoa ensinar a central, e eles se sobrepõem:
 
@@ -5509,7 +5509,9 @@ aparecem e morrem, porque não há onde respondê-las; só o ensino v2 sabia fec
 **Fatias** (plano; só o F2 está implementado, e nenhuma além da decisão acima foi aprovada pelo dono em separado).
 
 - **F0**: este ADR.
-- **F1** (plano): esconder a tela do ensino v2 atrás de chave e fechar a sessão de ensino que ficou parada.
+- **F1**: esconder a tela do ensino v2 atrás de chave (feito: `skills.ensino_v2_na_tela`, `health.features.ensino_v2`, desligada
+  por padrão; esconde a revisão só para leitura e o "Corrigir etapa"). Falta fechar a sessão de ensino que ficou parada:
+  é dado, fica para decisão (desenho no item 31.91).
 - **F2**: o `propose` com respostas (adendo v1.63 do contrato; `backend/app/training/respostas.py`).
 - **F3** (plano, ainda por decidir): o salvar do Modo treinamento passa pela validação estática do ensino v2.
 - **F4** (plano, opcional): versionar a habilidade por adoção, em vez de substituir.

@@ -46,6 +46,7 @@ constante de contrato (`app.contracts.identidade`). Só texto: nenhuma regra de 
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -83,7 +84,11 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "pedido.encerramento": ROTINA,
     "pedido.condicao_atendida": ROTINA,
     "learning.needs_person": ROTINA,
-    "trello.teto_de_comentarios": ROTINA,          # 28.30: o teto por hora segurou os pedidos; nada a fazer
+    # 28.50 (30.80 B): o que a pessoa ENSINOU e o sistema tirou de ativo. Com outra receita segurando a etapa é rotina;
+    # sem nenhuma, a etapa voltou para a IA e quem ensinou precisa saber já.
+    "learning.ensinado_rebaixado": ROTINA,
+    "learning.ensinado_sem_receita": PRECISA_DE_VOCE,
+    "trello.teto_de_comentarios": ROTINA,         # 28.30: o teto por hora segurou os pedidos; nada a fazer
     # 28.32: os contatos do site acima dos tetos, só contagens, um por hora. Não pede o dono (revisão do #335): acima
     # do limiar, o formulário segurou contatos que seriam dele, e sai na hora; abaixo, vai com a rotina.
     "portal.resumo": ALGO_FALHOU,
@@ -128,7 +133,21 @@ ROTULOS: dict[str, str] = {
     "pedido.pergunta": "Um pedido tem uma pergunta para você",
     "pedido.ocorrencia_incerta": "Uma ocorrência de pedido terminou incerta",
     "learning.needs_person": "Um conhecimento aprendido espera a sua revisão",
+    "learning.ensinado_rebaixado": "Algo que você ensinou foi rebaixado",
+    "learning.ensinado_sem_receita": "Algo que você ensinou caiu, e a etapa ficou sem receita",
 }
+#: 28.50: o formato do `ref` por `kind` do item ensinado (contrato com a Aprendizado, 30.80 B): a receita é número, o
+#: fluxo é slug. O `app` é o pacote Android. Fora disso, o aviso não sai.
+REF_DO_ENSINADO: dict[str, re.Pattern[str]] = {"receita": re.compile(r"[0-9]{1,18}"),
+                                               "fluxo": re.compile(r"[a-z0-9-]{1,64}")}
+APP_DO_ENSINADO = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,63}(?:\.[A-Za-z0-9_]{1,64}){1,8}")
+#: O `para` da transição (vocabulário nativo da loja) → frase fixa. Valor fora do mapa: a frase genérica.
+PARA_DO_ENSINADO: dict[str, str] = {"quarantined": "foi para a quarentena depois de falhas seguidas",
+                                    "disabled": "foi desligado por estar obsoleto",
+                                    "superseded": "foi substituído pelo sistema"}
+PARA_DO_ENSINADO_GENERICO = "saiu de ativo por decisão do sistema"
+GESTO_DO_ENSINADO = ("Espera você: ensine de novo no Modo treinamento, ou reative pelo Aprendizado se o app já foi "
+                     "consertado.")
 #: Faixas do aprendizado que avisam fora do painel quando `avisos.aprendizado_faixas` não diz outra coisa.
 FAIXAS_DO_APRENDIZADO_PADRAO: frozenset[str] = frozenset({"C"})
 ROTULO_GENERICO_DE_PEDIDO = "Um pedido tem novidade"
@@ -537,6 +556,35 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         tipo, chave = "learning.needs_person", chave_do_fato("learning", *[x for x in partes if x is not None])
         assunto = "📚 " + ROTULOS[tipo]
         linhas = ["Espera você, sem pressa: revise na aba Aprendizado."]
+    elif kind in ("learning.ensinado_rebaixado", "learning.ensinado_sem_receita"):
+        # 28.50 (30.80 B): um evento por transição da trilha, e o `desde` é o instante gravado nela, então a reemissão
+        # da mesma transição dá a mesma chave. No texto, como no 28.14, nenhum identificador do item: nem o número, nem
+        # o pacote, só se é receita ou fluxo e a tradução do `para`. O número da receita vai só ao link do painel (como o
+        # da execução); o id do fluxo não vai a lugar nenhum fora, e o `message` do evento nunca é lido. O item não está na caixa de
+        # Pendências: o link é o detalhe dele na aba Aprendizado. `ref` e `app` fora do formato: nada sai.
+        d = dados or {}
+        item = _texto(d.get("kind"))
+        formato = REF_DO_ENSINADO.get(item or "")
+        ref = _id_valido(formato, d.get("ref")) if formato else None
+        app = _id_valido(APP_DO_ENSINADO, d.get("app"))
+        desde = _texto(d.get("desde"))
+        if item is None or ref is None or app is None or desde is None:
+            return None
+        # O id de um FLUXO é hoje o slug do resumo do pedido e pode carregar identificador de conta ou nome (leitura do
+        # 30.80 B): até o 30.83 tirar o pedido do id, ele não sai para fora nem na chave, que vai como resumo do ref. O
+        # ref de receita é só dígitos e vai.
+        ref_da_chave = ref if item == "receita" else "h" + hashlib.sha256(ref.encode()).hexdigest()[:16]
+        tipo, chave = kind, chave_do_fato("learning", "ensinado", item, ref_da_chave, desde)
+        o_que = "Uma receita que você ensinou" if item == "receita" else "Um fluxo que você ensinou"
+        para = PARA_DO_ENSINADO.get(_texto(d.get("para")) or "", PARA_DO_ENSINADO_GENERICO)
+        assunto = ("🧩 " if tipo == "learning.ensinado_sem_receita" else "📚 ") + ROTULOS[tipo]
+        linhas = [f"{o_que} {para}."]
+        if tipo == "learning.ensinado_sem_receita":
+            linhas += ["Nada ativo ficou para essa etapa: a IA volta a conduzi-la sozinha.", GESTO_DO_ENSINADO]
+        else:
+            linhas += ["Outra receita ainda segura a etapa.", NADA_A_FAZER]
+        caminho = f"#/aprendizado?aba=aprendido&item=receita:{ref}" if item == "receita" else "#/aprendizado?aba=aprendido"
+        link = link_da_tela(url_painel, caminho)
     else:
         return None
     return Aviso(chave=chave, tipo=tipo, titulo=titulo_do_aviso(assunto), corpo="\n".join(linhas), link=link,
@@ -558,6 +606,8 @@ ROTULOS_AGRUPADOS: dict[str, str] = {
     "session.needs_person": "{n} contas pedem intervenção humana",
     "objective.waiting_user": "{n} objetivos pararam esperando você",
     "learning.needs_person": "{n} conhecimentos aprendidos esperam a sua revisão",
+    "learning.ensinado_rebaixado": "{n} coisas que você ensinou foram rebaixadas",
+    "learning.ensinado_sem_receita": "{n} coisas que você ensinou caíram, e as etapas ficaram sem receita",
     "pendencia.vence_em": "{n} pendências vencem nas próximas 2 h",
 }
 ROTULO_AGRUPADO_DE_PEDIDO = "{n} novidades de pedidos"
@@ -595,11 +645,15 @@ GESTO_AGRUPADO: dict[str, str] = {
     # 28.41: o lembrete agrupado pode misturar aprovação, pergunta e objetivo parado, que não estão no mesmo lugar.
     "pendencia.vence_em": ("Espera você: antes de vencer, decida as aprovações e responda as perguntas na caixa de "
                            "Pendências; os objetivos parados estão em Execuções."),
+    # 28.50: o item ensinado não está na caixa: está na aba Aprendizado.
+    "learning.ensinado_sem_receita": ("Espera você: ensine de novo no Modo treinamento, ou reative cada um pela aba "
+                                      "Aprendizado se o app já foi consertado."),
 }
 #: A tela do agrupado. A conta que pede a pessoa vai sempre à caixa (28.41): o link do avulso em tela não reconhecida
 #: é o Foco de UM aparelho, e o agrupado é de vários; com o 29.96 (suíte 36) o `unknown` aparece na caixa.
 CAMINHO_AGRUPADO: dict[str, str] = {"objective.waiting_user": "#/execucoes", "session.needs_person": "#/pendencias",
-                                    "pendencia.vence_em": "#/pendencias"}
+                                    "pendencia.vence_em": "#/pendencias",
+                                    "learning.ensinado_sem_receita": "#/aprendizado?aba=aprendido"}
 
 
 def corpo_agrupado(titulos: Sequence[str], tipo: str | None = None) -> str:

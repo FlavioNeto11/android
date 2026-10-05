@@ -14,6 +14,12 @@ O que ele faz, e o que NÃO faz
 * Sem `--aplicar`, não escreve nada: imprime o que faria. É o padrão.
 * `--prova` é uma chamada PAGA de IA por persona (uma prévia cada): só roda quando pedida, e o dono decide.
 
+Onde fica a proposta
+--------------------
+A proposta de voz é dado de persona de verdade e NÃO fica no Git (31.105): mora na pasta privada da instalação,
+`C:/farm/privado/personas-voz.json`, como a tabela de nomes de teste. Outro lugar: `--vozes <arquivo>` ou a
+variável `PERSONAS_VOZES`. O formato é `{"personas": {"<nome da persona>": {<os oito campos>}}}`.
+
 Uso
 ---
     python scripts/personas_completar.py                      # o que falta em cada persona (não escreve nada)
@@ -28,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -35,7 +42,9 @@ from pathlib import Path
 from typing import Any
 
 RAIZ = Path(__file__).resolve().parent.parent
-VOZES = RAIZ / "scripts" / "personas-voz.json"
+#: A pasta privada da instalação: fora de qualquer checkout, fora do Git (31.105).
+PRIVADO = Path("C:/farm/privado")
+VOZES = PRIVADO / "personas-voz.json"
 #: Os campos que este script preenche. É a lista do achado: os que estavam vazios em todas as oito.
 CAMPOS = ("slang", "dm_style", "comment_style", "with_known", "with_strangers", "common_phrases",
           "forbidden_phrases", "examples")
@@ -55,12 +64,28 @@ def pedir(base: str, metodo: str, rota: str, corpo: Any = None, *, timeout: floa
         raise SystemExit(f"não foi possível falar com {base}: {e.reason}. O backend está no ar?") from None
 
 
+def ler_personas(caminho: Path) -> Any:
+    """A chave `personas` do arquivo de dados; sem o arquivo, com JSON inválido ou sem a chave, uma mensagem clara
+    em vez de um traceback. A mensagem não repete o conteúdo: ele é dado de persona."""
+    if not caminho.is_file():
+        raise SystemExit(f"arquivo de personas não encontrado: {caminho}. Ele fica fora do Git, na pasta privada "
+                         f"da instalação ({PRIVADO}); outro lugar, pelo argumento ou pela variável.")
+    try:
+        dados = json.loads(caminho.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SystemExit(f"arquivo de personas inválido: {caminho} ({type(exc).__name__}, linha "
+                         f"{getattr(exc, 'lineno', '?')}).") from None
+    if not isinstance(dados, dict) or "personas" not in dados:
+        raise SystemExit(f"arquivo de personas sem a chave \"personas\": {caminho}.")
+    return dados["personas"]
+
+
 def vazio(valor: Any) -> bool:
     return valor is None or valor == "" or valor == []
 
 
-def completar(base: str, aplicar: bool) -> int:
-    proposta = json.loads(VOZES.read_text(encoding="utf-8"))["personas"]
+def completar(base: str, aplicar: bool, vozes: Path = VOZES) -> int:
+    proposta = ler_personas(vozes)
     personas = pedir(base, "GET", "/api/personas")
     mexidas = 0
     for p in personas:
@@ -71,7 +96,7 @@ def completar(base: str, aplicar: bool) -> int:
             print(f"  {p['name']}: completa")
             continue
         if nova is None:
-            print(f"  {p['name']}: faltam {', '.join(faltando)} — SEM proposta em {VOZES.name}")
+            print(f"  {p['name']}: faltam {', '.join(faltando)} — SEM proposta em {vozes.name}")
             continue
         preencher = {c: nova[c] for c in faltando if c in nova}
         print(f"  {p['name']}: preencher {', '.join(preencher)}" + ("" if aplicar else "  (simulação)"))
@@ -116,13 +141,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--prova", metavar="INTENCAO",
                     help="roda a MESMA intenção em todas as personas (chamada paga de IA, uma por persona)")
     ap.add_argument("--saida", type=Path, default=RAIZ / "data" / "prova-personas.json")
+    ap.add_argument("--vozes", type=Path, default=Path(os.environ.get("PERSONAS_VOZES") or VOZES),
+                    help=f"a proposta de voz (padrão: PERSONAS_VOZES ou {VOZES})")
     args = ap.parse_args(argv)
 
     if args.prova:
         prova(args.base, args.prova, args.saida)
         return 0
     print(f"Personas em {args.base}:")
-    completar(args.base, args.aplicar)
+    completar(args.base, args.aplicar, args.vozes)
     return 0
 
 

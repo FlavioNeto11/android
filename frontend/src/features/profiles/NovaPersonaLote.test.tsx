@@ -22,7 +22,7 @@ import { ProfilesPage } from './ProfilesPage';
 
 function pessoa(over: Partial<PersonaDTO> = {}): PersonaDTO {
   return {
-    id: 'ig-1', name: 'Mariana Costa', summary: null, username: 'mariana.costa91182', display_name: 'Mariana Costa',
+    id: 'ig-1', name: 'Mariana Costa', summary: null, username: 'luciana.bastos73519', display_name: 'Mariana Costa',
     first_name: 'Mariana', last_name: 'Costa', birth_date: null, email: null, persona_id: 'ig-1', persona_name: 'Mariana Costa',
     status: 'active', instance_id: null, locality: null, offline_policy: 'wait',
     credential: { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null,

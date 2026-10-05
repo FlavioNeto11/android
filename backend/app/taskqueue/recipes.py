@@ -28,10 +28,13 @@ from ..automation.hierarchy import UiElement, UiTree
 from ..db import Database, Row, dumps, loads
 from ..metricas import metricas
 from ..models import PlanStep
+from ..modules.learning.domain.aprovacao_automatica import PLATAFORMA
 from ..modules.learning.domain.causa_do_ausente import ChaveDaReceita, ReceitaVizinha, causa_do_ausente, doadora
-from ..modules.learning.domain.livro import receita_tem_efeito
+from ..modules.learning.domain.livro import CONFIRMADO_QUE_FICA, receita_tem_efeito
 from ..planning.provider import Decision
+from .flows import trocar_valores_por_nomes
 from ..util import norm_text, now_iso
+from .flows import PREFIXO_DO_TREINO, SISTEMA
 
 SENSITIVE_PARAM = re.compile(r"pass|senha|pin\b|otp|token|secret|segredo|c[oó]digo|code", re.IGNORECASE)
 READ_ONLY = {"observe_screen", "find_element", "wait_for", "verify_state"}
@@ -101,7 +104,7 @@ def para_hash(step: PlanStep, variables: dict[str, str] | None) -> PlanStep:
     Medido em 23/09/2026: o planejador às vezes escreve o valor literal na pós-condição ("perfil de @nasa aberto")
     em vez de `{perfil}`. A receita era gravada com o hash desse literal e nunca casava com o mesmo caminho para
     outro alvo — 15 receitas ativas do Instagram e cobertura zero em todos os fluxos. O fluxo-modelo já faz esta
-    troca ao aprender (`flows._sub_values`); aqui ela passa a valer também na identidade da etapa, dos dois lados.
+    troca ao aprender (`flows.trocar_valores_por_nomes`); aqui ela passa a valer também na identidade da etapa, dos dois lados.
     """
     valores = {k: v for k, v in (variables or {}).items()
                if k not in _NAO_TEMPLATIZA and isinstance(v, str) and len(v) >= 3 and "{" not in v}
@@ -111,9 +114,9 @@ def para_hash(step: PlanStep, variables: dict[str, str] | None) -> PlanStep:
     def troca(texto: str | None) -> str | None:
         if not texto:
             return texto
-        for nome, valor in sorted(valores.items(), key=lambda kv: -len(kv[1])):
-            texto = texto.replace(valor, "{" + nome + "}")
-        return texto
+        # A mesma troca, com a mesma borda, de quando o fluxo aprende (31.96): `str.replace` partia "nasal" por "nasa"
+        # e dava ao hash da receita uma identidade que o fluxo-modelo não tem.
+        return trocar_valores_por_nomes(texto, valores)
 
     return step.model_copy(update={
         "postcondition": step.postcondition.model_copy(update={"value": troca(step.postcondition.value) or ""}),
@@ -209,7 +212,7 @@ def eh_generica(actions: Sequence[Mapping[str, object]], post_value: str | None,
     específica: errar para cá só adia o ganho. "Message", "Options" e "Send message" (`open_thread`) são genéricos.
 
     `titulo`: o título RESOLVIDO da etapa entra junto da pós-condição (revisão da Android no #145). O planejador às vezes
-    escreve o alvo só no título ("Abrir a conversa com Lucas"), sem parâmetro; sem isso, o toque em "Lucas" passaria
+    escreve o alvo só no título ("Abrir a conversa com Fulano"), sem parâmetro; sem isso, o toque em "Fulano" passaria
     como genérico e só a sombra com outro valor o pegaria.
     """
     post = _normal(f"{post_value or ''} {titulo or ''}")
@@ -225,12 +228,13 @@ def eh_generica(actions: Sequence[Mapping[str, object]], post_value: str | None,
 
 # ------------------------------------------------------------------ des-templatização
 def detemplate(text: str, variables: dict[str, str]) -> tuple[str, bool, bool]:
-    """Troca valores conhecidos por {nome} (o mais longo primeiro).
+    """Troca valores conhecidos por {nome} (o mais longo primeiro), com a MESMA borda do fluxo-modelo e do hash da
+    receita (31.109, `flows._sub_values`): o valor só vale inteiro, então "nasal" não vira `{perfil}l` e "v10" não vira
+    `v{n}`. Antes era `str.replace` sem borda, e a ação aprendida divergia da identidade da etapa.
     Devolve (texto, usou_alguma_variável, ficou_100%_coberto_por_variáveis)."""
-    out, used = text, False
-    for name, value in sorted(variables.items(), key=lambda kv: -len(kv[1] or "")):
-        if value and len(value) >= 3 and value in out:
-            out, used = out.replace(value, "{" + name + "}"), True
+    valores = {n: v for n, v in variables.items() if v and len(v) >= 3}
+    out = trocar_valores_por_nomes(text, valores) or text
+    used = out != text
     covered = used and not TEMPLATE_RE.sub("", out).strip(" \t\r\n.,;:!?-—()[]\"'“”")
     return out, used, covered
 
@@ -356,10 +360,15 @@ def _usable_text(text: str, variables: dict[str, str]) -> str | None:
     templ, used, covered = detemplate(text, variables)
     if used:
         return templ if covered else None
+    # 31.109: o valor DENTRO de palavra maior ("@ana_silva" com "@ana", "Mariana Silva" com "Maria") não é trocado
+    # (a borda), mas o texto é de outra pessoa: sem este corte ele cairia no rótulo fixo abaixo e viraria seletor
+    # literal, que o replay para outro alvo poderia tocar. Como era antes da borda: descartado.
+    if any(v and len(v) >= 3 and v in text for v in variables.values()):
+        return None
     # A tela mostra "ana" para o parâmetro "@ana" (linha da caixa de mensagens, cabeçalho da conversa). Sem isto o
     # seletor gravava "ana" LITERAL e, reproduzido para "@bia", tocava a conversa de outra pessoa — a verificação
     # recusava, mas a tentativa se perdia e a receita ia para a quarentena (achado da fase G, 27/09). Só o texto
-    # INTEIRO igual ao valor sem arroba vira parâmetro: um pedaço ("Mariana" para "@ana") nunca.
+    # INTEIRO igual ao valor sem arroba vira parâmetro: um pedaço ("Fabiana" para "@ana") nunca.
     for name, value in sorted(variables.items(), key=lambda kv: -len(kv[1] or "")):
         puro = _sem_arroba(value or "")
         if puro and len(puro) >= 3 and norm_text(text) == norm_text(puro):
@@ -401,7 +410,7 @@ def build_selectors(target: dict[str, Any], variables: dict[str, str]) -> list[d
 
 def _rotulo_estavel(sel: dict[str, str]) -> bool:
     """O literal do seletor do filho (sem os `{parâmetros}`) não muda com o estado nem traz um @ de pessoa: o nome de
-    pessoa só vale templatizado. Qualquer @ literal recusa ("por @lucas", "Foto de @lucas"; revisão da Android)."""
+    pessoa só vale templatizado. Qualquer @ literal recusa ("por @fulano", "Foto de @fulano"; revisão da Android)."""
     for chave in ("text", "desc"):
         literal = re.sub(r"\{[^}]*\}", "", sel.get(chave) or "").strip()
         if literal and ("@" in literal or _ROTULO_DE_ESTADO.search(literal)):
@@ -722,7 +731,8 @@ class RecipeStore:
             self.ouvinte.mudou(MudancaDaReceita(recipe_id=recipe_id, de=de, para=para, motivo=motivo, por=por))
 
     def find(self, package: str | None, app_version: str | None, step_hash: str | None, *,
-             signature: str = "", variant: str = "", step_hash_generico: str | None = None) -> Row | None:
+             signature: str = "", variant: str = "", step_hash_generico: str | None = None,
+             persona: str | None = None, prova_fluxo: str | None = None) -> Row | None:
         """Identidade da receita: pacote + versão + ASSINATURA + VARIANTE de interface + etapa.
 
         Assinatura entra porque dois APKs podem dizer a mesma versão e não serem o mesmo app; variante entra porque
@@ -746,6 +756,13 @@ class RecipeStore:
         tentativa achada pela genérica leva o rótulo `chave=generica` (a específica fica na série de antes), e quem
         chamou sabe a chave pelo `step_hash` da linha. Iguais (pós-condição vazia) ou sem genérica: uma consulta só.
         A herança tenta a específica e depois a genérica; a causa do ausente é medida uma vez, pela específica.
+
+        30.81: a receita ensinada no modo treinamento só é achada para a `persona` que ensinou (a do objetivo; `None` =
+        aparelho sem persona, que não a acha) até ser LIBERADA (`_restrita_ao_ensino`): o "Confirmar que fica" de uma
+        pessoa no fluxo da sessão, ou a evidência a favor DELA numa execução real de prova desse fluxo. Fora disso, a
+        consulta termina `ensino_em_prova`, sem herança nem genérica (falha fechada: a etapa vai para a IA). A execução
+        de prova do próprio fluxo (`prova_fluxo`) a acha, para a prova exercitar o que libera. A receita que não veio
+        do treino não paga consulta.
         """
         if not (package and app_version and step_hash):
             return None
@@ -760,6 +777,9 @@ class RecipeStore:
             if row is not None:
                 resultado = nome
                 break
+        if row is not None and self._restrita_ao_ensino(row, persona, prova_fluxo):
+            metricas.contar("receita.consulta", resultado="ensino_em_prova")
+            return None
         if row is None:
             # Uma consulta a mais, só no erro: distingue "nunca aprendida" de "aprendida e posta de lado". As duas
             # mandam a etapa para a IA, mas pedem coisas diferentes de quem lê (aprender × investigar a tela).
@@ -779,6 +799,40 @@ class RecipeStore:
         generica_casou = row is not None and len(hashes) > 1 and row["step_hash"] == hashes[1]
         metricas.contar("receita.consulta", resultado=resultado, chave="generica" if generica_casou else None)
         return row
+
+    def _restrita_ao_ensino(self, row: Row, persona: str | None, prova_fluxo: str | None = None) -> bool:
+        """30.81: a receita do treino só vale fora da persona que ensinou depois de LIBERADA: o "Confirmar que fica"
+        explícito de uma pessoa no fluxo da sessão, ou uma evidência a favor DELA (etapa conduzida só pela receita e
+        comprovada) numa execução real de prova desse fluxo (N1 da Reload, decisão da orquestradora: a prova só libera o
+        que exercitou). A execução de prova do próprio fluxo a acha (`prova_fluxo`). O fluxo desligado sem isso não
+        solta as receitas (N2). Sem o fluxo (apagado pela rota), falha fechada (N4): segue só para a persona da sessão,
+        e só a evidência a favor dela numa execução real DE PROVA a libera (N5: a execução comum de quem ensinou não
+        conta). Uma consulta, só na receita do treino."""
+        origem = str(row["learned_from_step"] or "")
+        if not origem.startswith(PREFIXO_DO_TREINO):
+            return False
+        fluxo = self.db.one("SELECT id, created_at FROM flows WHERE source=? ORDER BY created_at DESC, id DESC LIMIT 1",
+                            (origem,))
+        if fluxo is not None and prova_fluxo is not None and prova_fluxo == fluxo["id"]:
+            return False
+        provada = ("EXISTS (SELECT 1 FROM learning_evidence e JOIN runs ru ON ru.id = e.run_id WHERE e.item_ref=?"
+                   " AND e.stance='for' AND e.simulated=0"
+                   + (" AND ru.prova_fluxo_id=?" if fluxo is not None else " AND ru.prova_fluxo_id IS NOT NULL")
+                   + " AND NOT EXISTS (SELECT 1 FROM learning_evidence i WHERE i.item_ref = e.item_ref"
+                   " AND i.origin_ref = e.origin_ref AND i.stance='invalida')) AS provada")
+        if fluxo is None:
+            r = self.db.one("SELECT (SELECT profile_id FROM training_sessions WHERE id=?) AS persona, 0 AS confirmado, "
+                            + provada, (origem[len(PREFIXO_DO_TREINO):], f"receita:{row['id']}"))
+        else:
+            r = self.db.one(
+                "SELECT (SELECT profile_id FROM training_sessions WHERE id=?) AS persona,"
+                " EXISTS (SELECT 1 FROM learning_transitions t WHERE t.item_ref=? AND t.decided_at>=? AND t.reason LIKE ?"
+                "  AND t.decided_by NOT IN (?,?) AND t.decided_by NOT LIKE ?) AS confirmado, " + provada,
+                (origem[len(PREFIXO_DO_TREINO):], f"fluxo:{fluxo['id']}", fluxo["created_at"], f"{CONFIRMADO_QUE_FICA}%",
+                 SISTEMA, PLATAFORMA, f"{PREFIXO_DO_TREINO}%", f"receita:{row['id']}", fluxo["id"]))
+        if r is None or bool(r["confirmado"]) or bool(r["provada"]):
+            return False
+        return r["persona"] is None or persona != r["persona"]
 
     def _herdar(self, package: str, app_version: str, step_hash: str, *, signature: str,
                 variant: str, medir: bool = True) -> tuple[str, Row | None]:
@@ -815,6 +869,13 @@ class RecipeStore:
             log.warning("receitas: herança indisponível (%s %s): %s", package, step_hash, exc)
             return "ausente", None
 
+    def viva(self, package: str, app_version: str, step_hash: str, *, signature: str = "",
+             variant: str = "") -> Row | None:
+        """30.79: a receita que SEGURA a chave hoje, a ativa ou a `validated` que espera o dono. É a que a demonstração
+        da pessoa substitui (`save`), e o relatório do treino a lê ANTES de salvar para dizer qual já existia."""
+        return (self._ativa(package, app_version, step_hash, signature=signature, variant=variant)
+                or self._com_status("validated", package, app_version, step_hash, signature=signature, variant=variant))
+
     def _ativa(self, package: str, app_version: str, step_hash: str, *, signature: str, variant: str) -> Row | None:
         """A receita ativa da chave, sem medir nada — `save` também pergunta isto, e não é consulta de etapa."""
         return self._com_status("active", package, app_version, step_hash, signature=signature, variant=variant)
@@ -831,11 +892,23 @@ class RecipeStore:
 
     def chave_ocupada(self, package: str, app_version: str, step_hash: str, *, signature: str = "",
                       variant: str = "") -> bool:
-        """A chave já tem receita ATIVA ou `validated` (o que o `save` nunca substitui)? Só lê: a prévia do treino
-        (31.86) usa isto para dizer "já havia receita" sem gravar, e o `save` usa a MESMA conta — uma regra só."""
-        return (self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None
-                or self._com_status("validated", package, app_version, step_hash, signature=signature,
-                                    variant=variant) is not None)
+        """A chave tem uma receita que a SEGURA (`viva`: a ativa ou a `validated`)? Só lê. Quem não é treino não a
+        substitui (o `save` devolve `None`). A demonstração a substitui quando o caminho é outro (30.79), e o que ela
+        faria é `previa_do_treino`."""
+        return self.viva(package, app_version, step_hash, signature=signature, variant=variant) is not None
+
+    def previa_do_treino(self, package: str, app_version: str, step_hash: str,
+                         actions: Sequence[Mapping[str, object]], *, signature: str = "",
+                         variant: str = "") -> tuple[str, Row | None]:
+        """O que o `save` do TREINO faria com estas ações, sem gravar (a prévia do 31.86 e o relatório do salvar):
+        - `("ja_vale", viva)`: o mesmo caminho da receita que segura a chave (o `save` devolve o id dela);
+        - `("substitui", viva)`: outro caminho (o `save` grava a versão nova e a viva vira `superseded`);
+        - `("grava", None)`: nada segura a chave.
+        A conta é a mesma do `save` (`viva` + `_caminho`). O veto não entra, porque o treino não passa por ele."""
+        viva = self.viva(package, app_version, step_hash, signature=signature, variant=variant)
+        if viva is None:
+            return "grava", None
+        return ("ja_vale" if _caminho(loads(viva["actions"], [])) == _caminho(actions) else "substitui"), viva
 
     def caminho_vetado(self, receita: ReceitaVista) -> bool:
         """Uma PESSOA desligou este caminho e o sistema não o traz de volta (`ouvinte.vetada`)? Só lê; sem ouvinte,
@@ -853,8 +926,9 @@ class RecipeStore:
 
     def save(self, *, package: str, app_version: str, step_hash: str, step_key: str, actions: list[dict[str, Any]],
              learned_from: str, signature: str = "", variant: str = "", candidate: bool = False,
-             replaces: int | None = None, heranca: str | None = None) -> int | None:
-        """Grava uma versão nova SÓ se não houver receita ativa (a ativa só sai por quarentena).
+             replaces: int | None = None, heranca: str | None = None, so_em_chave_virgem: bool = False) -> int | None:
+        """Grava uma versão nova SÓ se não houver receita ativa (a ativa só sai por quarentena), salvo a demonstração da
+        pessoa (30.79, abaixo).
 
         `candidate`: a receita nasce em prova (`recipes_promote_after`, o caminho que a IA aprendeu); sem ele nasce
         ativa — o modo treinamento (a pessoa demonstrou) e o `recipes_promote_after: 0`.
@@ -870,10 +944,28 @@ class RecipeStore:
 
         `heranca` (RA-20): o motivo da trilha da herdeira (`find`). Herdar é do SISTEMA, mesmo de uma receita ensinada
         no treino (a origem fica em `learned_from`): passa pelo veto e a trilha é do sistema.
+
+        30.79 (B1 do mapa do ensino): a demonstração da pessoa SUBSTITUI a receita que segura a chave (`viva`: a ativa
+        aprendida da IA, a `validated` que espera o dono, ou a de uma demonstração anterior), com a trilha nos dois lados
+        (`por` = a sessão de treino). Antes ela era descartada em silêncio ("já havia receita ativa"). Com o MESMO
+        caminho, nada se grava: devolve o id da que já vale, que é a demonstração.
+
+        `so_em_chave_virgem` (31.86, o reparo das receitas de um treino já salvo): grava só se a chave NUNCA teve
+        receita, de nenhum status, e se nenhuma pessoa vetou o caminho. O reparo roda sem a pessoa, então não herda o poder da
+        demonstração, que pula o veto e substitui a receita viva, inclusive a que o aprendizado pôs em quarentena. O
+        reparo confere o mesmo antes (`status_da_chave`, `caminho_vetado`), e aqui a conta se repete dentro da `tx`,
+        sem janela entre a conferência e a gravação.
         """
         chave = (package, app_version, signature, variant, step_hash)
         treino = learned_from.startswith("training:") and heranca is None
         with self.db.tx():
+            if so_em_chave_virgem and (
+                    self.db.scalar("SELECT 1 FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
+                                   " AND variant=? AND step_hash=? LIMIT 1", chave) is not None
+                    or self.caminho_vetado(ReceitaVista(package=package, app_version=app_version, signature=signature,
+                                                        variant=variant, step_hash=step_hash, actions=dumps(actions),
+                                                        learned_from=learned_from))):
+                return None              # o reparo (31.86): a conferência dele, de novo DENTRO da transação
             if replaces is not None:
                 # RA-20 B: a candidata ESPECÍFICA que divergiu e um caminho da IA que serve a qualquer valor (o executor
                 # grava na chave genérica). Ela sai aqui, mesmo que a genérica não grave (já tem a sua em prova): senão,
@@ -885,8 +977,12 @@ class RecipeStore:
                     self._avisar(replaces, "candidate", "superseded",
                                  "divergiu; o caminho da IA serve a qualquer valor e vai para a chave genérica")
                     replaces = None
-            if self.chave_ocupada(package, app_version, step_hash, signature=signature, variant=variant):
-                return None
+            viva = self.viva(package, app_version, step_hash, signature=signature, variant=variant)
+            if viva is not None:
+                if not treino:
+                    return None
+                if _caminho(loads(viva["actions"], [])) == _caminho(actions):
+                    return int(viva["id"])           # a demonstração é o caminho que já vale: nada novo a gravar
             em_prova = self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
             if candidate and em_prova is not None and em_prova["id"] != replaces:
                 return None
@@ -904,12 +1000,14 @@ class RecipeStore:
             ver = int(self.db.scalar(
                 "SELECT COALESCE(MAX(version),0)+1 FROM recipes WHERE app_package=? AND app_version=? AND"
                 " app_signature=? AND variant=? AND step_hash=?", chave))
+            # 30.79: a demonstração tira de cena também a que segurava a chave (a ativa ou a `validated`).
+            trocadas = "'candidate','quarantined','active','validated'" if treino else "'candidate','quarantined'"
             antigas = self.db.query("SELECT id, status FROM recipes WHERE app_package=? AND app_version=? AND"
                                     " app_signature=? AND variant=? AND step_hash=?"
-                                    " AND status IN ('candidate','quarantined')", chave) if self.ouvinte else []
+                                    f" AND status IN ({trocadas})", chave) if self.ouvinte else []
             self.db.execute("UPDATE recipes SET status='superseded' WHERE app_package=? AND app_version=? AND"
                             " app_signature=? AND variant=? AND step_hash=?"
-                            " AND status IN ('candidate','quarantined')", chave)
+                            f" AND status IN ({trocadas})", chave)
             status = "candidate" if candidate else "active"
             novo = int(self.db.inserted_id(
                 "INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key, version,"
@@ -917,7 +1015,12 @@ class RecipeStore:
                 (package, app_version, signature, variant, step_hash, step_key, ver,
                  status, gravadas, learned_from, now_iso())) or 0)
             for antiga in antigas:
-                self._avisar(int(antiga["id"]), str(antiga["status"]), "superseded", f"substituída pela v{ver}")
+                if treino:                       # a causa é a demonstração, também na candidata e na quarentena
+                    self._avisar(int(antiga["id"]), str(antiga["status"]), "superseded",
+                                 f"substituída pela v{ver}, demonstrada pela pessoa no modo treinamento",
+                                 por=learned_from)
+                else:
+                    self._avisar(int(antiga["id"]), str(antiga["status"]), "superseded", f"substituída pela v{ver}")
             if novo:
                 motivo = (heranca if heranca is not None else "ensinada no modo treinamento" if treino else
                           "aprendida da IA; em prova (sombra)" if candidate else

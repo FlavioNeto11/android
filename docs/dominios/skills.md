@@ -359,7 +359,9 @@ A pergunta na execução (`needs_input`, `runs.plan` nulo, evento estruturado) e
 - Adotar um fluxo com `skills.enabled` desligado é recusado (`SkillsDisabled`, [abaixo](#recusas-do-repositório)):
   o fluxo seria desligado e o comando ficaria sem resolução.
 - `Health.features.skills` é o `skills.enabled` lido a cada `GET /api/health` (fase F). O painel só mostra o ensino v2
-  e a lista de habilidades com ele ligado ([produto](../produto.md#3-fluxos-do-usuário)). As rotas `/api/skills`,
+  e a lista de habilidades com ele ligado ([produto](../produto.md#3-fluxos-do-usuário)); a TELA do ensino v2 (revisão só
+  para leitura e "Corrigir etapa") pede também `Health.features.ensino_v2` (`skills.ensino_v2_na_tela`, 31.91 F1, padrão
+  `false`; a lista de habilidades e a conversão de fluxo seguem só com `skills`). As rotas `/api/skills`,
   `/api/teaching-sessions` e `/api/skill-candidates` respondem 404 `skills_disabled` com ele desligado.
 
 ## Adoção de fluxo

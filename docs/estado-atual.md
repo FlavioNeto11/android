@@ -1,10 +1,43 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `61d431ce` (migração 115, deploy 40); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 05/10/2026: runtime do backend em `cb6742d4` (migração 116, deploy 42); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 42 no ar (05/10/2026, 23:33Z, central `cb6742d4`, sem migração nova; segue a 116).** Doze pontas sobre
+  `095a43b6`: privacidade de nomes 31.105, 31.107, 31.96 e 31.109; canais 28.54; hooks no agente de nuvem 29.147; suíte do
+  frontend 29.148 e 29.150; catraca de esperas 29.136 e 29.135; ensino 30.81 (painel) e 30.84 com a fatia 4 do 30.83.
+  Detalhe no [CHANGELOG](../CHANGELOG.md) e no [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): ensaio com a cópia `dataackups61005-202809`; deploy com `-PularBackup`;
+    `GET /api/health` ok; prova de fora como esperado; agente do notebook em `0.1.0+cb6742d`; aparelhos 01, 03 e 06 online;
+    hooks sem erro na primeira sessão após o deploy (29.147); primeira resposta do dono pelo app do Trello reconhecido
+    aceita sem reenvio (28.54, entrada 2368).
+  - `simulated` (suíte 42): números do CHANGELOG.
+  - `not_run`: percurso no navegador (depois das pontas do corte 43); piloto do Copilot (29.137, 30.82).
+  - Plano-100: resultado da suíte 42 e as leituras 31.26, 31.58 e 29.75 aplicados pelo mecanismo; IDs novos 31.109 e 29.151
+    (662 itens). P-013 respondida (sim): a R5 em sombra entra no corte 44. Corte 43 em montagem sobre `cb6742d4`, com as
+    frentes remergeando as pontas que nasceram de `095a43b6`.
+- **Deploy 41 no ar (05/10/2026, 22:06Z, central `ac77742c`, migração `116_ref_publico_do_fluxo`, nova).** Dezesseis
+  pontas sobre `65452966`, com o ensino na frente: 30.79, 30.80 B, 30.81, 30.83 (fatias 1 a 3), 28.50, 29.146 e 29.143;
+  privacidade 31.98, 31.101, 31.102 e 31.106; consertos 31.76, 28.52, 29.139, 29.140 e 29.149, mais a anotação de tipo do
+  30.81. Detalhe no [CHANGELOG](../CHANGELOG.md) e no [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): ensaio com a cópia `data\backups\20261005-190117` (aplicou a 116 numa cópia
+    restaurada, depois apagada); deploy com `-PularBackup`; `GET /api/health` ok e sem problemas; prova de fora com tudo como
+    esperado na segunda rodada (a primeira, logo após a subida, teve uma falha transitória em `/api/login`, 404 em vez de 429);
+    `/api/instances` 401 de fora e 403 com Host forjado; agente do notebook em `0.1.0+ac77742`; android-01, android-03 e
+    android-06 `online` com automação `ready` depois da readoção, sem reinício, reset ou login (03 e 06 estavam em `error`
+    desde a readoção do deploy 40, que dá 60 s e eles levam 65 a 75 s: item 29.151).
+  - `simulated` (suíte 41 sobre `ac77742c`, central em Idle): `scripts/tests` 672 passed; backend em SQLite 11990 passed e 13
+    skipped; frontend 1686 passed e build (o teste de data fixa do 29.149 passou); catracas 88 e 6; mypy 257, igual ao teto;
+    PostgreSQL dirigido nos 474 arquivos afetados, em duas partes, 10398 passed e 0 falhas (as duas falhas conhecidas do
+    29.139 sumiram); repetição dos 51 arquivos tocados pela anotação de tipo, 922 passed em SQLite e em PostgreSQL.
+  - `not_run`: percurso no navegador das telas do ensino (frente Portal, logo após o deploy); prova real do ensino num app de
+    teste (31.79).
+  - Plano-100: resultado da suíte 41 e cinco itens já integrados sem estado (31.72, 31.73, 31.78, 30.71, 31.93) aplicados
+    pelo mecanismo; IDs novos 28.54, 29.148, 31.107, 29.149, 29.150 e 31.108: 660 itens, 569 implementados. Conta nova desde
+    20:27Z, com política de economia (Sonnet por padrão, Opus só no ensino e numa leitora, ramo só de teste ou texto lido por
+    PR com a revisão automática do Codex).
 - **Deploy 40 no ar (05/10/2026, 20:37Z, central `61d431ce`, migração `115_receita_nao_aplicavel`, sem migração
   nova).** Suíte mínima, de uma junção só (`2bce3b1e` sobre `8ac140e0`), feita na troca de conta para pôr no ar o
   conserto da senha pela web: a conferência do site antes de digitar lia o primeiro nó com o identificador da barra de
@@ -322,7 +355,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Parque:** apps do Google desativados no preparo (21.15, K-059; `MemAvailable` de 670–960 para 974–1054 MB) e o
     reparo que espera a máquina aliviar (21.16, `9348e9c`, K-058).
   - **Incidente (29/09, 02:05–02:15Z):** com a máquina saturada pela IDE, a escada de reparo do central (ainda em
-    `7a02491`) deu `restart` e `reset` no android-01 e apagou o Instagram e a sessão do lucas.almeida9484
+    `7a02491`) deu `restart` e `reset` no android-01 e apagou o Instagram e a sessão da «conta do android-01»
     (`c-20260929021534-6d15cd`). A conta não foi tocada desde então; o android-01 está sem o app. Conduta: um trabalho
     pesado por vez no central, testes em prioridade ociosa, Docker e WSL desligados depois dos testes em PostgreSQL.
   - **Decisões do dono pendentes:**
@@ -689,8 +722,8 @@ por decisão do dono.
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
 1a. **Evolução de desempenho: implantada e provada em 27/09.**
-    - **Contas do Instagram (27/09, pedido do dono):** só `lucas.almeida9484` (android-01), `bruno.ferreira9267`
-      (android-03) e `andre.carvalho9543` (android-06) funcionam.
+    - **Contas do Instagram (27/09, pedido do dono):** só `«conta do android-01»` (android-01), `«conta do android-03»`
+      (android-03) e `«conta do android-06»` (android-06) funcionam.
       - As outras cinco foram desatreladas: `blocked`, sem persona e sem aparelho. A tabela está
         em [`relatorio-desempenho.md`](relatorio-desempenho.md) §10.
       O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia.

@@ -2,7 +2,8 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeBackend, apiError, click, installBrowserStubs, json, openDetails, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, installBrowserStubs, json, openDetails, text, waitFor } from '../../test/harness';
+import { useToastStore } from '../../store/toasts';
 import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
@@ -621,3 +622,69 @@ describe('30.43: de onde o item nasceu e o histórico de validações', () => {
     expect(backend.callsTo('GET', /^\/api\/aprendizado\/validacoes$/)).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------- 31.88 F2 (adendo v1.71): "Mudar a quem vale"
+describe('detalhe rico: a quem o fluxo ensinado vale (31.88 F2)', () => {
+  const FLUXO_DO_TREINO = (origem: 'treino' | 'execucao'): DetalheDoLivro => detalhe({
+    conteudo: { tipo: 'fluxo', nome: 'Abrir o perfil', comando_modelo: 'abra o perfil', origem: { tipo: origem, fonte: null, source_run_id: null },
+                apps: [], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } },
+    item: { kind: 'fluxo', ref: 'f-0a1b2c3d4e5f' },
+  });
+  let backend: FakeBackend;
+  beforeEach(() => {
+    backend = new FakeBackend();
+    backend.install();
+    backend.on('GET', /\/instagram\/profiles$/, () => json([{ id: 'ig-1', username: 'aluno.um' }, { id: 'ig-2', username: 'aluno.dois' }]));
+    backend.on('GET', /policy-groups$/, () => json([{ id: 'g-1', name: 'Equipe A', description: '' }]));
+    useToastStore.setState({ toasts: [] });
+  });
+
+  it('só o fluxo que nasceu no treino ganha a seção; o aprendido de execução não', async () => {
+    let t = await mostrar(FLUXO_DO_TREINO('treino'));
+    expect(secoes()).toContain('A quem vale');
+    expect(t).toContain('Mudar a quem vale');
+    t = await mostrar(FLUXO_DO_TREINO('execucao'));
+    expect(secoes()).not.toContain('A quem vale');
+  });
+
+  it('abrir carrega as listas (nada antes), nada marcado manda vazio = todos e o resultado diz o que o servidor gravou', async () => {
+    backend.on('PUT', /\/flows\/f-0a1b2c3d4e5f\/scope$/, () => json({ flow_id: 'f-0a1b2c3d4e5f', profile_ids: [], group_ids: [] }));
+    await mostrar(FLUXO_DO_TREINO('treino'));
+    expect(backend.callsTo('GET', /\/instagram\/profiles$/)).toHaveLength(0);
+    await openDetails(/Mudar a quem vale/);
+    await waitFor(() => expect(allByRole('checkbox', /@aluno/)).toHaveLength(2));
+    expect(text(container)).toContain('substitui a quem o fluxo vale');
+    expect(text(container)).toContain('Até a prova passar, só a persona que ensinou usa o fluxo');
+    await click(await botaoPronto('Aplicar'));
+    await waitFor(() => expect(text(container)).toContain('Agora vale para todos os perfis, depois de provado.'));
+    expect(backend.callsTo('PUT', /\/scope$/)[0]!.body).toEqual({ profile_ids: [], group_ids: [] });
+  });
+
+  it('o que se marca vai ordenado e o resultado nomeia grupo e perfil devolvidos', async () => {
+    backend.on('PUT', /\/flows\/f-0a1b2c3d4e5f\/scope$/, () => json({ flow_id: 'f-0a1b2c3d4e5f', profile_ids: ['ig-2', 'ig-1'], group_ids: ['g-1'] }));
+    await mostrar(FLUXO_DO_TREINO('treino'));
+    await openDetails(/Mudar a quem vale/);
+    await click(await waitFor(() => byRole('checkbox', /@aluno.dois/)));
+    await click(byRole('checkbox', /@aluno.um/));
+    await click(byRole('checkbox', /Grupo Equipe A/));
+    await click(await botaoPronto('Aplicar'));
+    await waitFor(() => expect(text(container)).toContain('Agora vale para grupo Equipe A, @aluno.dois, @aluno.um.'));
+    expect(backend.callsTo('PUT', /\/scope$/)[0]!.body).toEqual({ profile_ids: ['ig-1', 'ig-2'], group_ids: ['g-1'] });
+  });
+
+  it('a lista que falha mostra "Tentar de novo" e não deixa aplicar às cegas; a recusa do servidor vira aviso, sem "Agora vale"', async () => {
+    backend.on('GET', /\/instagram\/profiles$/, () => apiError(500, 'internal', 'banco indisponível'));
+    await mostrar(FLUXO_DO_TREINO('treino'));
+    await openDetails(/Mudar a quem vale/);
+    await waitFor(() => expect(text(container)).toContain('A lista de perfis e grupos não carregou'));
+    expect(allByRole('button', /^Aplicar$/)).toHaveLength(0);
+
+    backend.on('GET', /\/instagram\/profiles$/, () => json([{ id: 'ig-1', username: 'aluno.um' }]));
+    backend.on('PUT', /\/scope$/, () => apiError(400, 'unknown_profile', 'Perfil desconhecido.'));
+    await click(byRole('button', /Tentar de novo/));
+    await click(await botaoPronto('Aplicar'));
+    await waitFor(() => expect(useToastStore.getState().toasts.some((x) => x.title === 'Não foi possível mudar a quem o fluxo vale')).toBe(true));
+    expect(text(container)).not.toContain('Agora vale para');
+  });
+});
+

@@ -28,6 +28,9 @@
 .ask { display: flex; flex-direction: column; gap: var(--sp-3); align-items: flex-start; }
 .ask p { margin: 0; color: var(--text-2); font-size: var(--fs-sm); }
 .params { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0; }
+/* 31.90-E: os editores da pós-condição e dos parâmetros, recolhidos até a pessoa abrir. */
+.editor { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-2) 0; }
+.parametro { display: flex; flex-direction: column; gap: var(--sp-1); }
 .questions { margin: 0; padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-5); border-radius: var(--radius-md); background: var(--accent-soft); font-size: var(--fs-sm); }
 .steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sp-2); counter-reset: etapa; }
 .step { display: flex; flex-direction: column; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border-1); border-radius: var(--radius-md); }

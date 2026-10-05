@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it } from 'vitest';
-import { click, setValue } from './harness';
+import { click, setValue, waitFor } from './harness';
 
 // 29.130: o harness recusa o gesto que a tela não permite, nos dois sentidos (clicar e digitar), e diz em quê.
 
@@ -36,4 +36,24 @@ it('sem aria-label nem id, a mensagem nomeia a tag (id vazio não vale como nome
   document.body.innerHTML = '<input disabled><button disabled>x</button>';
   await expect(setValue(document.querySelector('input')!, 'a')).rejects.toThrow('o campo INPUT está desabilitado');
   await expect(click(document.querySelector('button')!)).rejects.toThrow('click: BUTTON está desabilitado');
+});
+
+// 29.148: o prazo do `waitFor` não conta o tempo em que o processo ficou parado (host carregado), mas continua
+// estourando para a condição que nunca vale.
+function pararOProcesso(ms: number): void {
+  const fim = Date.now() + ms;
+  while (Date.now() < fim) { /* ocupa a thread: o timer do flush chega atrasado, como num worker sem CPU */ }
+}
+
+it('29.148: um processo parado por mais que o prazo não estoura a espera; a condição vale depois da parada', async () => {
+  let pronto = false;
+  setTimeout(() => pararOProcesso(1200), 5);          // a parada cai dentro do `flush` da espera
+  setTimeout(() => { pronto = true; }, 1300);
+  await expect(waitFor(() => pronto, 500)).resolves.toBe(true);
+});
+
+it('29.148: a condição que nunca vale continua estourando no prazo, sem crédito de espera em dia', async () => {
+  const antes = Date.now();
+  await expect(waitFor(() => false, 300)).rejects.toThrow('a condição continuou falsa');
+  expect(Date.now() - antes).toBeLessThan(1500);
 });

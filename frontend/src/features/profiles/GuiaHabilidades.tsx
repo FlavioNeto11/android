@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../../api/client';
 import type { ProfileCapabilities } from '../../api/types';
 import { Badge } from '../../components/Badge';
+import { SeloEmProva } from '../../components/SeloEmProva';
 import { Card, CardBody, CardHeader } from '../../components/Card';
 import { EmptyState } from '../../components/EmptyState';
 import { ProgressBar } from '../../components/ProgressBar';
@@ -81,6 +82,7 @@ export function AbaHabilidades({ profile }: { profile: Pessoa }) {
                     <div className={styles.skillTrailHead}>
                       <strong>{f.name}</strong>
                       <Badge tone={custo.tone}>{custo.label}</Badge>
+                      <SeloEmProva ensinado={f.ensinado_em_prova} />
                       <span className={styles.muted}>
                         {f.target_version ? `versão ${f.target_version} · ` : ''}{f.times ?? 0}× · último: {f.last_at ? tempoRelativo(f.last_at, now) : '—'}
                       </span>

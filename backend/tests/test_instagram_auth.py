@@ -30,7 +30,7 @@ from .fake_instagram import PKG, FakeInstagram
 from . import pacote_instagram as ig
 
 SENHA = "$a=B7ee1#<b-C?S-{"
-USUARIO = "mariana.costa91182"
+USUARIO = "luciana.bastos73519"
 
 
 class FakeExecutor:
@@ -442,14 +442,14 @@ async def test_dois_fatores_tambem_espera_a_pessoa(tmp_path: Path) -> None:
 async def test_conta_errada_e_sempre_intervencao_humana(tmp_path: Path) -> None:
     """Achado #115: a troca automática nunca foi implementada; a configuração que a sugeria foi retirada —
     conta errada bloqueia e pede uma pessoa, sem exceção."""
-    app = FakeInstagram(account="lucas.almeida9484", screen="feed")
+    app = FakeInstagram(account="tadeu.quintela4821", screen="feed")
     auth, repo, social, db = build(tmp_path, app)
     try:
         pid = cadastrar(social)
         r = await auth.ensure_session(FakeRt(app), pid)
-        assert r.outcome is Outcome.WRONG_ACCOUNT and r.observed_username == "lucas.almeida9484"
+        assert r.outcome is Outcome.WRONG_ACCOUNT and r.observed_username == "tadeu.quintela4821"
         assert repo.session_row(pid)["status"] == SessionStatus.wrong_account.value
-        assert app.account == "lucas.almeida9484"                     # não deslogou ninguém
+        assert app.account == "tadeu.quintela4821"                     # não deslogou ninguém
         assert app.typed == []
     finally:
         db.close()

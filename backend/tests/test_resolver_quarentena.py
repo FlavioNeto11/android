@@ -25,8 +25,8 @@ from app.social.contas_nossas import MARCADOR, foi_retirada, registrar_lapide
 from .conftest import Harness
 
 RETIRADA = "conta retirada (bloqueada)"
-FELIPE = "felipe.nogueira93762026"
-VIVA = "lucas.almeida9484"
+FELIPE = "gilberto.vasconcelos517"
+VIVA = "tadeu.quintela4821"
 URL = "/api/instances/android-02/locked-account/resolve"
 
 

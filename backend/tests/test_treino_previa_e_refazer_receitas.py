@@ -13,7 +13,7 @@ import pytest
 from app.models import InstanceState
 from app.taskqueue.recipes import step_template_hash
 from app.training.recorder import TrainingError
-from app.training.skills import JA_HAVIA_RECEITA
+from app.training.skills import JA_HAVIA_RECEITA, _aviso_sem_persona
 
 from .conftest import Harness
 from .test_modo_treinamento import SEGREDO, _entrada, _no_controle
@@ -21,6 +21,10 @@ from .test_perfil_bloqueado_e_capacidades import _cliente
 from .test_treino_validacao_do_salvar import CASOS, COMANDO, _etapa, _sessao_gravada
 
 PACOTE_DO_APP = "qa-messenger"          # id do app no harness; o pacote sai da tabela `apps`
+
+
+# 30.81: estes treinos são gravados sem persona no aparelho; a prévia e o salvar avisam do mesmo jeito.
+_SEM_PERSONA = _aviso_sem_persona({"profile_id": None})
 
 
 def _proposta() -> dict[str, Any]:
@@ -82,7 +86,7 @@ async def test_previa_diz_o_mesmo_que_o_save_e_nao_escreve_nada(harness: Harness
     assert _foto(st, sid) == antes                                  # nem fluxo, escopo, receita, status nem proposta
     assert not [m for m in emitidos if "Habilidade" in m]           # nem o evento de "habilidade salva"
 
-    assert set(previa) == {"steps", "warnings"} and previa["warnings"] == []
+    assert set(previa) == {"steps", "warnings"} and previa["warnings"] == _SEM_PERSONA   # 30.81: gravado sem persona
     for linha in previa["steps"]:
         assert set(linha) == {"key", "title", "recipe", "reason"}    # as ações da receita nunca saem
     dela = _por_chave(previa["steps"])
@@ -112,6 +116,27 @@ async def test_previa_conta_a_receita_que_ja_existe_sem_gravar_outra(harness: Ha
     previa = _por_chave((await st.skills.preview(sid2, proposal=outra, profile_ids=[], group_ids=[]))["steps"])
     assert previa["abrir"]["recipe"] is False and previa["abrir"]["reason"] == JA_HAVIA_RECEITA
     assert _foto(st, sid2) == antes
+
+
+async def test_previa_e_save_dizem_que_a_demonstracao_substitui_a_receita_de_outro_caminho(harness: Harness) -> None:
+    """30.79 na junção com o 31.86: a etapa que já tem receita de OUTRO caminho ganha a demonstração nova. A prévia
+    diz que ela substituirá a viva, o salvar diz o mesmo, e a viva sai como `superseded`."""
+    st, rt, lease, sid = await _sessao_mista(harness)
+    await st.skills.save(sid, proposal=_proposta(), profile_ids=[], group_ids=[])
+    velha = st.db.one("SELECT id, version, actions FROM recipes WHERE step_key='abrir' AND status='active'")
+    acoes = json.loads(velha["actions"])
+    acoes[0]["selectors"] = [{"kind": "rid", "rid": "app:id/outro_caminho"}]       # a viva passa a ser outro caminho
+    st.db.execute("UPDATE recipes SET actions=? WHERE id=?", (json.dumps(acoes), velha["id"]))
+    sid2 = await _gravar(st, rt, lease, harness.fakes["android-01"])
+    outra = _proposta()
+    outra["command_template"] = "mande a DM de {contato} dizendo {mensagem}"       # outro comando, mesma etapa
+    troca = f", substituindo a v{velha['version']} (receita {velha['id']})"
+    previa = _por_chave((await st.skills.preview(sid2, proposal=outra, profile_ids=[], group_ids=[]))["steps"])
+    assert previa["abrir"] == {**previa["abrir"], "recipe": True, "reason": "receita será gravada ao salvar" + troca}
+    assert st.db.scalar("SELECT status FROM recipes WHERE id=?", (velha["id"],)) == "active"     # a prévia não grava
+    salvo = _por_chave((await st.skills.save(sid2, proposal=outra, profile_ids=[], group_ids=[]))["steps"])
+    assert salvo["abrir"]["recipe"] is True and salvo["abrir"]["reason"] == "receita gravada" + troca
+    assert st.db.scalar("SELECT status FROM recipes WHERE id=?", (velha["id"],)) == "superseded"
 
 
 @pytest.mark.parametrize(("codigo", "estraga"), CASOS, ids=[f"{c}-{f.__name__}" for c, f in CASOS])
@@ -261,7 +286,7 @@ async def test_rotas_http_previa_e_refazer(harness: Harness) -> None:
         r = await c.post(f"/api/training/{sid}/preview", json={"proposal": _proposta()})
         assert r.status_code == 200, r.text
         corpo = r.json()
-        assert set(corpo) == {"steps", "warnings"} and corpo["warnings"] == []
+        assert set(corpo) == {"steps", "warnings"} and corpo["warnings"] == _SEM_PERSONA
         assert [s["key"] for s in corpo["steps"]] == ["abrir", "conversa", "escrever", "enviar"]
         assert all(set(s) == {"key", "title", "recipe", "reason"} and isinstance(s["recipe"], bool) for s in corpo["steps"])
         assert SEGREDO not in r.text
@@ -285,7 +310,7 @@ async def test_rotas_http_previa_e_refazer(harness: Harness) -> None:
         r = await c.post(f"/api/training/{sid}/recipes")
         assert r.status_code == 200, r.text
         corpo = r.json()
-        assert set(corpo) == {"session", "flow_id", "steps", "created"} and corpo["created"] >= 2
+        assert set(corpo) == {"session", "flow_id", "steps", "created", "ensinado_em_prova"} and corpo["created"] >= 2
         assert all(set(s) == {"key", "title", "recipe", "reason"} for s in corpo["steps"])
         r = await c.post(f"/api/training/{sid}/recipes")
         assert r.status_code == 200 and r.json()["created"] == 0

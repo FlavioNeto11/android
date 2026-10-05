@@ -72,6 +72,11 @@ PAPEIS_DAS_PERGUNTAS = ("perguntas", "perguntas_respondidas")
 #: campo no retorno, não dá para confirmar a autoria e ela também não conta (falha fechada).
 AUTORIA_DE_APP = "app"
 AUTORIA_NAO_CONFIRMADA = "nao_confirmada"
+#: 28.54: o app que o dono reconheceu como ele (`trello.apps_do_dono`, por exemplo o aplicativo do Trello no celular dele).
+#: Só refina a autoria do PRÓPRIO membro do dono; nunca substitui a conferência do membro. Vale como digitado.
+AUTORIA_APP_DO_DONO = "app_do_dono"
+#: 28.52: só nos comentários de IA (com 🤖) das listas de perguntas, que guardam a autoria para medir: `appCreator` nulo.
+AUTORIA_DIGITADA = "digitado"
 _SEPARADOR_DA_AUTORIA = ";autoria="
 _NUMERO_DA_PERGUNTA = re.compile(r"^\s*(P-\d{3,})(?!\d)")
 #: Comentário que começa com isto é de uma IA (a Central ou uma sessão), nunca um pedido do dono, que não usa 🤖.
@@ -149,6 +154,17 @@ def _epoch(data: object) -> float | None:
     return d.timestamp() if d is not None else None
 
 
+def _autoria_do_app(app: object, autor: str, cfg: TrelloCfg) -> str:
+    """28.54: a escrita por app só vale como do dono se o app for um dos que ELE reconheceu e o autor for o membro dele.
+    Qualquer outro app (a Central, um script, uma sessão, um app desconhecido) segue `AUTORIA_DE_APP`, que não conta.
+    O conector do Trello não leva `appCreator` (medido em 05/10) e por isso não passa por aqui: essa fraqueza só fecha
+    com o membro próprio da ANA (28.53)."""
+    ident = _texto((_mapa(app) or {}).get("id"))
+    if ident and autor and autor == cfg.membro_dono and ident in cfg.apps_do_dono:
+        return AUTORIA_APP_DO_DONO
+    return AUTORIA_DE_APP
+
+
 def recebida_da_action(action: Mapping[str, object], cfg: TrelloCfg, *,
                        chave_do_cartao: Callable[[str], str | None],
                        da_central: Callable[[str], bool] | None = None, quadro: str | None = None) -> Recebida | None:
@@ -188,16 +204,25 @@ def recebida_da_action(action: Mapping[str, object], cfg: TrelloCfg, *,
         texto = str(dados.get("text") or "")
         lista = _texto((_mapa(dados.get("list")) or {}).get("id"))
         das_perguntas = {cfg.listas.get(p) for p in PAPEIS_DAS_PERGUNTAS} - {None, ""}
+        da_ia = texto.lstrip().startswith((PREFIXO_DA_IA, MARCA_DE_IA)) or (da_central is not None and da_central(ident))
         if fato is None and lista is not None and lista in das_perguntas:
             numero = _NUMERO_DA_PERGUNTA.match(str((_mapa(dados.get("card")) or {}).get("name") or ""))
             fato = f"{MARCA_DA_PERGUNTA}{numero.group(1) if numero else ''}"
             if "appCreator" not in action:
                 fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_NAO_CONFIRMADA}"
             elif action.get("appCreator") is not None:
-                fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_DE_APP}"
+                # 28.54: o app do dono só refina a autoria da resposta DELE; o comentário de IA guarda sempre "app" (28.52).
+                fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_DE_APP if da_ia else _autoria_do_app(action.get('appCreator'), autor, cfg)}"
+            elif da_ia:
+                fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_DIGITADA}"
+            if da_ia:
+                # 28.52: o comentário de IA numa lista de perguntas segue sem valer nada, mas a linha guarda a autoria
+                # da action. É a medida de que caminho de escrita das sessões leva `appCreator`.
+                return Recebida(id_externo=ident, ordem=None, tipo="outro", do_dono=False, texto="", ref_mensagem=ref,
+                                responde_a=fato, escrita_em=escrita)
         # Qualquer 🤖 no começo é de IA, não do dono: a Central, a sessão Canais, a orquestradora (`🤖 ORQ`) e os comentários
         # antigos (`🤖 HH:MMZ ·`) escrevem todos com o token dele. Regra C-07 de docs/dominios/canais.md.
-        if texto.lstrip().startswith((PREFIXO_DA_IA, MARCA_DE_IA)) or (da_central is not None and da_central(ident)):
+        if da_ia:
             return outro()                    # o que a própria Central escreveu volta como action do dono (o token é o dele)
         return Recebida(id_externo=ident, ordem=None, tipo="mensagem", do_dono=do_dono, texto=texto,
                         ref_mensagem=ref, responde_a=fato, escrita_em=escrita)
@@ -411,6 +436,8 @@ class ConversaDoTrello(ConversaDoCanal):
                              de=("recebida",))
             return
         previa: dict[str, object] = {"repasse": REPASSE_RESPOSTA_A_PERGUNTA, "texto": i.texto, "pergunta": i.ref}
+        if i.alvo == AUTORIA_APP_DO_DONO:
+            previa["autoria"] = AUTORIA_APP_DO_DONO      # vale como digitada; a orquestradora vê por onde chegou
         marcas = [AUTORIA_NAO_CONFIRMADA_TEXTO] if i.alvo == AUTORIA_NAO_CONFIRMADA else []
         if i.ref is None:
             marcas.append(SEM_NUMERO_DA_PERGUNTA)

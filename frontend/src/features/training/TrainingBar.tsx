@@ -6,7 +6,7 @@
 import { CircleDot, GraduationCap, Square, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import { api, toApiError } from '../../api/client';
-import type { Instance, TrainingSession } from '../../api/types';
+import type { Instance, PersonaOnDevice, TrainingSession } from '../../api/types';
 import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
@@ -20,8 +20,33 @@ import { RefazerReceitas, TrainingReview, toqueSemAlvo } from './TrainingReview'
 import { useTrainingStore } from './trainingStore';
 import styles from './Training.module.css';
 
+/** Quantos caracteres do nome da gravação cabem no botão de "Para revisar"; o nome inteiro vai no rótulo. */
+const ROTULO_DA_GRAVACAO = 40;
+
+/** Corta o nome na última palavra inteira que cabe, com reticências (29.142: antes o corte caía no meio da palavra). */
+function encurtar(nome: string): string {
+  if (nome.length <= ROTULO_DA_GRAVACAO) return nome;
+  const corte = nome.slice(0, ROTULO_DA_GRAVACAO - 1);
+  const espaco = corte.lastIndexOf(' ');
+  return `${(espaco > ROTULO_DA_GRAVACAO / 2 ? corte.slice(0, espaco) : corte).trimEnd()}…`;
+}
+
 /** Quantas sessões salvas a barra lista para refazer receitas: as mais novas (a lista vem do backend da mais nova para a mais velha). */
 const SALVAS_NA_BARRA = 5;
+
+/**
+ * As personas que podem ser dona do ensino neste app (31.90-C): uma por pessoa, as vinculadas ao app escolhido ou sem app
+ * no vínculo; sem app escolhido, todas. É a mesma conta do backend (`persona_ambigua` com mais de uma).
+ */
+export function personasDoEnsino(personas: readonly PersonaOnDevice[], appId: string): PersonaOnDevice[] {
+  const vistas = new Set<string>();
+  return personas.filter((p) => {
+    if (appId && p.app_id && p.app_id !== appId) return false;
+    if (vistas.has(p.profile_id)) return false;
+    vistas.add(p.profile_id);
+    return true;
+  });
+}
 
 const DESCRICAO: Record<string, string> = {
   tap: 'toque', long_press: 'toque longo', swipe: 'deslize', text: 'texto', key: 'tecla', open_app: 'abrir app',
@@ -37,6 +62,12 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   const [ativa, setAtiva] = useState<TrainingSession | null>(null);
   const [intencao, setIntencao] = useState('');
   const [appId, setAppId] = useState('');
+  // 31.90-C: de quem é o ensino. Com mais de uma persona para o app o backend recusa (409 `persona_ambigua`): a pessoa
+  // escolhe; com uma só, ela segue sozinha; sem nenhuma, o fluxo nasce sem persona e não vale em aparelho nenhum (30.81).
+  const [personas, setPersonas] = useState<PersonaOnDevice[] | null>(null);
+  // 'lendo' trava o Iniciar: sem a lista, aparelho com várias personas mandaria o início sem dono e o backend recusaria.
+  const [leitura, setLeitura] = useState<'lendo' | 'pronta' | 'falhou'>('lendo');
+  const [quemEnsina, setQuemEnsina] = useState('');
   // Uma ação em voo por vez; cada botão gira só pela sua e o outro explica por que espera.
   const [ocupado, setOcupado] = useState<'iniciar' | 'concluir' | 'descartar' | null>(null);
   const [revisando, setRevisando] = useState<string | null>(null);
@@ -64,6 +95,29 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
     void carregar();
   }, [carregar, mine]);
 
+  // As personas vinculadas a este aparelho: só se leem quando o formulário de iniciar está à vista.
+  const formularioAberto = mine && !ativa && !somenteRevisao;
+  useEffect(() => {
+    if (!formularioAberto) return;
+    let vivo = true;
+    // Lista de outro aparelho não vale para este: some enquanto a nova não chega.
+    setPersonas(null);
+    setLeitura('lendo');
+    // Falhar a leitura não trava o início: sem a lista o formulário segue como era e o backend decide.
+    api.instancePersonas(instance.id)
+      .then((lista) => { if (vivo) { setPersonas(lista); setLeitura('pronta'); } })
+      .catch(() => { if (vivo) { setPersonas(null); setLeitura('falhou'); } });
+    return () => { vivo = false; };
+  }, [formularioAberto, instance.id]);
+
+  const candidatas = personasDoEnsino(personas ?? [], appId);
+  const precisaEscolher = candidatas.length > 1;
+  const escolhaValida = candidatas.some((p) => p.profile_id === quemEnsina);
+  // A escolha que deixou de valer (outro app, outro aparelho) não vai no corpo: o backend a recusaria com 409.
+  useEffect(() => {
+    if (quemEnsina && !escolhaValida) setQuemEnsina('');
+  }, [quemEnsina, escolhaValida]);
+
   // Cada entrada gravada chega como evento: a lista ao vivo acompanha sem consultar a cada segundo.
   useEffect(() => onLiveEvent((ev) => {
     if (ev.instance_id !== instance.id) return;
@@ -71,10 +125,12 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   }), [instance.id, carregar]);
 
   async function iniciar() {
-    if (!leaseId || !intencao.trim() || ocupado) return;
+    if (!leaseId || !intencao.trim() || ocupado || (precisaEscolher && !escolhaValida) || (formularioAberto && leitura === 'lendo')) return;
     setOcupado('iniciar');
     try {
-      setAtiva(await api.startTraining(instance.id, { intent: intencao.trim(), lease_id: leaseId, app_id: appId || null }));
+      setAtiva(await api.startTraining(instance.id, {
+        intent: intencao.trim(), lease_id: leaseId, app_id: appId || null, ...(precisaEscolher && escolhaValida ? { profile_id: quemEnsina } : {}),
+      }));
       toast({ tone: 'info', title: 'Gravando o treinamento', message: 'Faça a tarefa na tela. Cada toque lê a tela antes, então fica um pouco mais lento.' });
     } catch (e) {
       toastError('Não foi possível iniciar o treinamento', e);
@@ -149,7 +205,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
         <div className={styles.recording}>
           <p className={styles.recLine}>
             <CircleDot size={14} className={styles.recDot} aria-hidden /> Gravando: <strong>{ativa.intent}</strong>
-            <Badge size="sm">{(ativa.inputs ?? []).length} entrada(s)</Badge>
+            <Badge size="sm">{plural((ativa.inputs ?? []).length, 'entrada', 'entradas')}</Badge>
           </p>
           <ol className={styles.liveList}>
             {(ativa.inputs ?? []).slice(-6).map((e) => (
@@ -164,7 +220,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             ))}
           </ol>
           {/* A região viva nasce vazia com a gravação: o texto que entra depois é anunciado, o que já nasce com ele não. */}
-          <p className={styles.hint} role="status" aria-live="polite">{recusadas ? `${recusadas} entrada(s) recusada(s): refaça` : ''}</p>
+          <p className={styles.hint} role="status" aria-live="polite">{recusadas ? `${plural(recusadas, 'entrada recusada', 'entradas recusadas')}: refaça` : ''}</p>
           <p className={styles.hint}>Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.</p>
           {botoesDaGravacao()}
         </div>
@@ -186,8 +242,23 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
               </Select>
             )}
           </Field>
+          {personas === null ? null : precisaEscolher ? (
+            <Field label="De quem é o ensino?">
+              {({ id }) => (
+                <Select id={id} value={quemEnsina} onChange={(e) => setQuemEnsina(e.target.value)}>
+                  <option value="">Escolha a persona</option>
+                  {candidatas.map((p) => <option key={p.profile_id} value={p.profile_id}>{p.display_name || p.name}</option>)}
+                </Select>
+              )}
+            </Field>
+          ) : candidatas.length === 0 ? (
+            <p className={styles.hint}>Nenhuma persona está vinculada a este aparelho para este app: o fluxo gravado fica sem persona e não vale em aparelho nenhum até uma prova real ou a sua confirmação.</p>
+          ) : (
+            <p className={styles.hint}>O ensino fica com {candidatas[0]?.display_name || candidatas[0]?.name}, a persona deste aparelho.</p>
+          )}
           <Button size="sm" variant="primary" icon={CircleDot} loading={ocupado === 'iniciar'}
-                  disabledReason={intencao.trim() ? null : 'Diga o que vai ensinar.'} onClick={() => void iniciar()}>
+                  disabledReason={!intencao.trim() ? 'Diga o que vai ensinar.' : leitura === 'lendo' ? 'Lendo as personas deste aparelho.' : precisaEscolher && !escolhaValida ? 'Escolha de qual persona é o ensino.' : null}
+                  onClick={() => void iniciar()}>
             Iniciar treinamento
           </Button>
           <p className={styles.hint}>Senhas e códigos digitados não são gravados. Devolver o controle encerra a gravação.</p>
@@ -200,8 +271,12 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
         <div className={styles.pending}>
           <span className={styles.muted}>Para revisar:</span>
           {pendentes.map((s) => (
-            <Button key={s.id} size="sm" variant="ghost" onClick={() => setRevisando(s.id)}>
-              {s.intent.slice(0, 40)}{s.status === 'proposed' ? ' · proposta pronta' : ''}
+            <Button key={s.id} size="sm" variant="ghost" onClick={() => setRevisando(s.id)}
+                    label={`Revisar “${s.intent}”${s.status === 'proposed' ? ', proposta pronta' : ', só gravada'}`}>
+              {/* 29.142: o rótulo leva o nome inteiro; o estado aparece nas duas situações, para a só gravada não
+                  parecer igual à de proposta pronta. */}
+              {encurtar(s.intent)}
+              {s.status === 'proposed' ? ' · proposta pronta' : ' · só gravada'}
             </Button>
           ))}
         </div>

@@ -7,7 +7,7 @@ import { Button } from '../../components/Button';
 import { Field, TextInput } from '../../components/Field';
 import { ProgressBar } from '../../components/ProgressBar';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
-import { cx } from '../../lib/format';
+import { cx, plural } from '../../lib/format';
 import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import { useIntervaloVisivel } from '../../lib/polling';
 import { useAppStore } from '../../store/app';
@@ -182,7 +182,7 @@ function ServerCard({ server, onSaved }: { server: ServerLimits; onSaved: (s: Se
 
       <div className={styles.serverActions}>
         <span className={cx(styles.saveNote, dirty > 0 && styles.saveNoteDirty)} aria-live="polite">
-          {dirty === 0 ? (errorCount > 0 ? `Corrija ${errorCount} campo(s)` : 'Sem alterações') : `${dirty} alteração(ões) não salva(s)`}
+          {dirty === 0 ? (errorCount > 0 ? `Corrija ${plural(errorCount, 'campo', 'campos')}` : 'Nenhuma alteração pendente.') : `${plural(dirty, 'alteração não salva', 'alterações não salvas')}`}
         </span>
         <Button size="sm" variant="ghost" icon={Undo2} disabled={(dirty === 0 && errorCount === 0) || saving}
                 onClick={() => { setDrafts({}); setShowAll(false); }}>
