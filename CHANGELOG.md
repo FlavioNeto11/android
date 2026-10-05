@@ -27,9 +27,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   comprimento, que é o que o comentário de `Profiles.module.css` descreve). A conta do android-05 não aparece em teste. O comentário de `config/eval-set.yaml` que dizia qual conta o android-01 opera passa a citar o aparelho
   (`«conta do android-01»`): um valor de exemplo ali tornaria o comentário falso. A troca é `scripts/trocar-nomes-nos-testes.py`, que lê a tabela de
   um arquivo local fora de qualquer checkout (`--tabela` ou `TROCA_DE_NOMES_TABELA`, sem caminho padrão; recusa tabela
-  dentro deste repositório, do `--raiz` ou de qualquer árvore de trabalho do git, perguntando ao próprio git). O script não guarda nome nenhum e só imprime contagens. A caixa vai trecho a trecho, para os
+  dentro deste repositório, do `--raiz` ou de qualquer árvore de trabalho do git, perguntando ao próprio git; a conferência falha fechada: só "fora de um repositório" libera). O script não guarda nome nenhum e só imprime contagens. A caixa vai trecho a trecho, para os
   testes de caixa ("Nome.Sobrenome…", "NOME.sobrenome…") manterem a força.
-- `--amplo` troca também os `pares` da tabela (nome.sobrenome sem o número, inclusive colado a um dígito, e os handles
+- `--amplo` troca também os `pares` da tabela (nome.sobrenome sem o número, inclusive colado a um dígito, mas nunca o começo de um sobrenome mais longo, e os handles
   de exemplo que repetiam o sufixo numérico de uma conta real) e os pedaços de nome (ensaio: 120 arquivos, 1435 linhas). Não aplicado: roda como última junção
   no corte de uma suíte, quando a orquestradora marcar, para não conflitar com os ramos da fila.
 - Sem catraca nesta rodada: hash de identificador curto num teste versionado se reverte por dicionário; se houver

@@ -65,7 +65,8 @@ def trocador(tabela: dict, amplo: bool):
     por palavra inteira."""
     handles = [(re.compile(re.escape(velho), re.IGNORECASE), novo) for velho, novo in tabela["handles"].items()]
     if amplo:
-        handles += [(re.compile(r"\b" + re.escape(velho), re.IGNORECASE), novo)
+        # Fim do par: nem letra (o começo de um sobrenome mais longo não é ele), mas pode vir um dígito colado.
+        handles += [(re.compile(r"\b" + re.escape(velho) + r"(?![^\W\d_])", re.IGNORECASE), novo)
                     for velho, novo in tabela.get("pares", {}).items()]
     pedacos = tabela["pedacos"] if amplo else {}
     pad = (re.compile(r"\b(" + "|".join(sorted(map(re.escape, pedacos), key=len, reverse=True)) + r")\b",
@@ -92,12 +93,22 @@ def nomes_do_banco(banco: Path, fora: set[str]) -> set[str]:
 
 def _dentro_de_checkout(tabela: Path, raiz: Path) -> bool:
     """Dentro deste repositório, do `--raiz` ou de QUALQUER árvore de trabalho do git (outro checkout, um worktree):
-    em todos, um `git add` descuidado a levaria a um commit. Quem responde por "qualquer árvore" é o próprio git."""
+    em todos, um `git add` descuidado a levaria a um commit. Quem responde por "qualquer árvore" é o próprio git, e a
+    conferência FALHA FECHADA: só "false" ou o "not a git repository" liberam. O 128 de "dubious ownership", por
+    exemplo, acontece justamente dentro de um checkout."""
     pasta = tabela.resolve().parent
+    if not pasta.is_dir():
+        raise SystemExit("a pasta da tabela não existe")
     if any(r.resolve() in (pasta, *pasta.parents) for r in (RAIZ, raiz)):
         return True
-    git = subprocess.run(["git", "-C", str(pasta), "rev-parse", "--is-inside-work-tree"], capture_output=True, text=True)
-    return git.returncode == 0 and git.stdout.strip() == "true"
+    try:
+        git = subprocess.run(["git", "-C", str(pasta), "rev-parse", "--is-inside-work-tree"], capture_output=True,
+                             text=True)
+    except OSError as exc:
+        raise SystemExit(f"não deu para perguntar ao git onde a tabela está: {type(exc).__name__}") from exc
+    if git.returncode == 0 and git.stdout.strip() == "false":
+        return False
+    return not (git.returncode == 128 and "not a git repository" in git.stderr)
 
 
 def main() -> int:
@@ -114,8 +125,13 @@ def main() -> int:
         raise SystemExit("a tabela não pode ficar dentro de um repositório (este, o --raiz ou outro checkout)")
     tabela = json.loads(args.tabela.read_text(encoding="utf-8"))
     trocar = trocador(tabela, args.amplo)
-    novos = {p for v in [*tabela["pedacos"].values(), *tabela["handles"].values()]
-             for p in re.split(r"[.\d]+", v.lower()) if p}
+    def pedacos_de(texto: str) -> set[str]:
+        return {p for p in re.split(r"[.\d]+", texto.lower()) if p}
+    novos = {p for v in [*tabela["pedacos"].values(), *tabela["handles"].values()] for p in pedacos_de(v)}
+    # Do par, só o pedaço que o par INTRODUZ conta como novo: o handle de exemplo que só troca o sufixo mantém os
+    # nomes de exemplo que já estavam nos testes.
+    novos |= {p for velho, novo in tabela.get("pares", {}).items() for p in pedacos_de(novo) - pedacos_de(velho)}
+    feitos = [*tabela["handles"].values(), *tabela.get("pares", {}).values()]
     if novos & {s.lower() for s in tabela.get("simulados", [])}:
         raise SystemExit("um valor de exemplo coincide com um nome do simulated_provider")
     if args.banco:
@@ -127,7 +143,7 @@ def main() -> int:
     textos = {f: f.read_bytes().decode("utf-8") for f in arquivos(args.raiz)}
     if args.amplo:
         juntos = "\n".join(textos.values())
-        for feito in tabela["handles"].values():      # o handle já trocado numa rodada anterior não conta
+        for feito in feitos:      # o handle ou par já trocado numa rodada anterior não conta
             juntos = re.sub(re.escape(feito), " ", juntos, flags=re.IGNORECASE)
         if any(re.search(r"\b" + re.escape(n) + r"\b", juntos, re.IGNORECASE) for n in novos):
             raise SystemExit("um valor de exemplo já existe nos testes: troque-o na tabela")
