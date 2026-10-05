@@ -212,3 +212,35 @@ def parece_codigo(texto: str | None) -> bool:
     `parece_senha_ou_codigo` (6 a 8, sem espaço) porque julga uma RESPOSTA solta, em que o código chega sozinho e
     às vezes partido (29.52; é a regra do canal do 28.15). Na dúvida, recusa: um "2024" respondido solto cai aqui."""
     return bool(texto) and bool(_CODIGO_SOLTO.fullmatch(texto or ""))
+
+
+#: A palavra que anuncia um código de verificação numa linha de tela ou de SMS (31.82). Palavra inteira, sem diferenciar
+#: maiúsculas ("pin" não pega "spinner").
+_PALAVRA_DE_CODIGO = re.compile(
+    r"\b(?:code|c[oó]digo|codigo|verify|verification|verifica[çc][aã]o|verificar|senha|password|pin|otp|token"
+    r"|confirma[çc][aã]o|confirmation)\b", re.IGNORECASE)
+#: 4 a 8 dígitos, com UM espaço ou hífen no meio (o prefixo curto "G-" fica de fora: o hífen já é fronteira de palavra).
+_NUMERO_DE_CODIGO = re.compile(r"(?<!\w)(?:\d{4,8}|\d{2,6}[ -]\d{2,6})(?!\w)")
+_DISTANCIA_DO_CODIGO = 40
+
+
+def parece_linha_com_codigo(linha: str | None) -> bool:
+    """A linha de tela FALA de código e traz o número perto: 4 a 8 dígitos (aceita um espaço ou hífen no meio e prefixo
+    curto como "G-123456") a até 40 caracteres, antes ou depois, de uma palavra como code, código, verify, senha, pin,
+    otp ou token. "G-123456 is your Google verification code" e "Use 123 456 to verify your Instagram account." caem;
+    "Recife 2024", "Pedido 48213 entregue" e "há 5 min" não (sem a palavra). Julga linhas de tela, título e rótulo de
+    alvo gravados; o texto digitado tem a regra do foco."""
+    t = linha or ""
+    if not t:
+        return False
+    palavras = [m.span() for m in _PALAVRA_DE_CODIGO.finditer(t)]
+    if not palavras:
+        return False
+    for m in _NUMERO_DE_CODIGO.finditer(t):
+        if not 4 <= sum(c.isdigit() for c in m.group()) <= 8:
+            continue
+        for ini, fim in palavras:
+            distancia = ini - m.end() if ini >= m.end() else m.start() - fim
+            if distancia <= _DISTANCIA_DO_CODIGO:
+                return True
+    return False

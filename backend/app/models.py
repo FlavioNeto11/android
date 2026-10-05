@@ -1641,6 +1641,15 @@ class ManualInput(BaseModel):
     duration_ms: int | None = Field(default=None, ge=0, le=10000)
     text: str | None = Field(default=None, max_length=2000)
     key: Literal["back", "home", "recents", "enter", "delete"] | None = None
+    # Só para type='text' (nos outros tipos é ignorado): apaga o campo em foco antes de digitar, em vez de pedir à pessoa
+    # N toques em "Apagar". Padrão False: quem digita pelo painel quer acrescentar ao que já está lá.
+    clear_first: bool = False
+
+    @model_validator(mode="after")
+    def _clear_first_so_no_texto(self) -> "ManualInput":
+        if self.clear_first and self.type != "text":
+            raise ValueError("clear_first só vale para type='text'")
+        return self
 
 
 class DistributeSpec(BaseModel):

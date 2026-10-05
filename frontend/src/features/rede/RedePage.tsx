@@ -494,6 +494,8 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
   }
 
   const faltando = !nome.trim() || !host.trim() || !Number(porta) ? 'Preencha nome, host e porta.' : null;
+  // Os campos ficam desabilitados enquanto cria: a resposta os esvazia, e o que a pessoa digitasse para o próximo
+  // perfil com o POST em voo sumia (29.115).
 
   return (
     <Card>
@@ -501,25 +503,25 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
       <CardBody>
         <div className={s.secretRow}>
           <TextInput aria-label="Nome do perfil" placeholder="Nome (ex.: WireGuard escritório)" value={nome} maxLength={60}
-                     onChange={(e) => setNome(e.target.value)} />
-          <Select aria-label="Tipo" small value={kind} onChange={(e) => mudarKind(e.target.value as NetworkProfileKind)}>
+                     disabled={ocupado} onChange={(e) => setNome(e.target.value)} />
+          <Select aria-label="Tipo" small value={kind} disabled={ocupado} onChange={(e) => mudarKind(e.target.value as NetworkProfileKind)}>
             <option value="vpn">VPN</option>
             <option value="proxy">Proxy</option>
           </Select>
-          <Select aria-label="Protocolo" small value={protocol} onChange={(e) => setProtocol(e.target.value as NetworkProtocol)}>
+          <Select aria-label="Protocolo" small value={protocol} disabled={ocupado} onChange={(e) => setProtocol(e.target.value as NetworkProtocol)}>
             {PROTOCOLOS[kind].map((p) => <option key={p} value={p}>{p}</option>)}
           </Select>
-          <TextInput aria-label="Host" placeholder="Host ou IP" value={host} mono maxLength={253} onChange={(e) => setHost(e.target.value)} />
-          <TextInput aria-label="Porta" type="number" min={1} max={65535} value={porta} onChange={(e) => setPorta(e.target.value)} />
+          <TextInput aria-label="Host" placeholder="Host ou IP" value={host} mono maxLength={253} disabled={ocupado} onChange={(e) => setHost(e.target.value)} />
+          <TextInput aria-label="Porta" type="number" min={1} max={65535} value={porta} disabled={ocupado} onChange={(e) => setPorta(e.target.value)} />
           <Button icon={Plus} loading={ocupado} disabledReason={faltando} onClick={() => void criar()}>Criar</Button>
         </div>
         <div className={s.secretRow} style={{ marginTop: 'var(--sp-2)' }}>
           <TextInput aria-label="Segredo (chave, senha ou certificado)" type="password" placeholder="Segredo — opcional, nunca reexibido"
-                     autoComplete="new-password" value={secret} onChange={(e) => setSecret(e.target.value)}
+                     autoComplete="new-password" value={secret} disabled={ocupado} onChange={(e) => setSecret(e.target.value)}
                      style={{ gridColumn: 'span 3' }} />
           <TextInput aria-label="Saída esperada (IPv4 público, opcional)" placeholder="Saída esperada — IPv4 público, opcional"
                      title="O IP público pelo qual o aparelho deve sair com este perfil. Com ele, a medição confere a saída; sem ele, só avisa de saída repetida."
-                     value={saida} mono maxLength={45} onChange={(e) => setSaida(e.target.value)}
+                     value={saida} mono maxLength={45} disabled={ocupado} onChange={(e) => setSaida(e.target.value)}
                      style={{ gridColumn: 'span 2' }} />
         </div>
         {perfis.length === 0 ? <p className={s.muted}>Nenhum perfil cadastrado.</p> : (

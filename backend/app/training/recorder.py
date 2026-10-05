@@ -13,17 +13,134 @@ Regras que valem desde a gravação (a senha não tem caminho para cá):
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Callable
 from typing import Any
 
 from ..db import dumps, loads
-from ..security.redaction import looks_secret, mentions_credential, parece_senha_ou_codigo
+from ..security.redaction import looks_secret, mentions_credential, parece_codigo, parece_linha_com_codigo, parece_senha_ou_codigo
 from ..social.observacao import linhas_de_conteudo
 from ..util import new_token, now_iso
 
 log = logging.getLogger(__name__)
 
 TITULO_IDS = ("action_bar_title", "igds_action_bar_title", "header_title", "title_text_view", "toolbar_title")
+
+
+def _parece_segredo(texto: str | None) -> bool:
+    """Os filtros de segredo da gravação, juntos: formato de credencial, fala de credencial, senha/código e código solto
+    de 4 a 8 dígitos (com espaço ou hífen: "123 456", "8845-12"; na dúvida, recusa)."""
+    return bool(texto) and (looks_secret(texto) or mentions_credential(texto) or parece_senha_ou_codigo(texto or "")
+                            or parece_codigo(texto))
+
+
+_UM_DIGITO = re.compile(r"\d")
+#: A tecla do teclado telefônico: um dígito e até 4 letras maiúsculas, com separador opcional ("2,ABC", "2 ABC", "2ABC").
+#: As letras de cada dígito do teclado telefônico: "5G", "4K", "2FA" não são teclas; "5 JKL" é.
+_LETRAS_DA_TECLA = {"2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL", "6": "MNO", "7": "PQRS", "8": "TUV", "9": "WXYZ", "0": "+"}
+_TECLA_TELEFONICA = re.compile(r"(\d)[ ,.\-]?([A-Z]{1,4}|\+)")
+_RID_TERMINA_EM_DIGITO = re.compile(r"\d$")
+#: Os nomes de um teclado ou padrão de bloqueio desenhado num View só (o alvo é o teclado inteiro: a posição do toque É o
+#: dígito). Só estes; casam por PEDAÇO do nome (`spinner` não é `pin`).
+_TERMOS_DE_TECLADO = frozenset({
+    "pin", "passcode", "keypad", "numpad", "pinpad", "lockpattern", "patternview", "pincode", "pinview", "pinentry",
+    "pinlock", "numberpad", "patternlock", "lockview", "dialpad"})
+_PEDACOS_DE_NOME = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+")
+
+
+def _nome_de_teclado(nome: str | None) -> bool:
+    """`pin_pad`, `PinKeypadView`, `lock_pattern_view`: separa por `_`, `.`, `-` e por caixa (camelCase) e compara os
+    pedaços, e os pares vizinhos juntos, com `_TERMOS_DE_TECLADO`."""
+    pedacos = [m.group().lower() for m in _PEDACOS_DE_NOME.finditer(nome or "")]
+    candidatos = set(pedacos) | {a + b for a, b in zip(pedacos, pedacos[1:], strict=False)}
+    return bool(candidatos & _TERMOS_DE_TECLADO)
+_ENFEITE_DE_TOKEN = ".,;:!?()[]{}\"'"
+
+
+def _parece_segredo_de_tela(texto: str | None) -> bool:
+    """O que vem da TELA (linha, título, rótulo de alvo): além dos filtros do texto, `parece_codigo` por token ("Use
+    4821 para entrar") e a linha que fala de código com o número perto ("G-123456 is your ... verification code").
+    Over-filtra de propósito ("Recife 2024" cai pelo token): na dúvida, recusa."""
+    if not texto:
+        return False
+    if _parece_segredo(texto) or parece_linha_com_codigo(texto):
+        return True
+    return any(parece_codigo(t.strip(_ENFEITE_DE_TOKEN)) for t in texto.split())
+
+
+def _rotulo_de_tecla(texto: str | None) -> bool:
+    t = (texto or "").strip()
+    if _UM_DIGITO.fullmatch(t):
+        return True
+    m = _TECLA_TELEFONICA.fullmatch(t)
+    return bool(m) and _LETRAS_DA_TECLA.get(m.group(1)) == m.group(2)
+
+
+def _e_tecla_de_teclado_numerico(alvo: dict | None) -> bool:
+    """31.94: o toque numa tecla de PIN desenhada na tela. Tirar o rótulo não basta: o `resource_id` (`key4`, `digit_4`,
+    `btn4`) e o x/y de cada toque num teclado fixo SÃO o dígito. É tecla quando o elemento tocado (ou um filho rotulado
+    dele) tem rótulo (`text` OU `desc`) de um dígito ou de tecla telefônica, ou quando NÃO tem rótulo e o `resource_id` termina
+    em dígito, ou ainda quando o `resource_id`/classe nomeia um teclado desenhado num View só (`pin_pad`, `PinKeypadView`).
+    Dígito por extenso ("um", "one") não entra: limite conhecido.
+    `android:id/button1` (OK/Cancelar de todo diálogo) termina em dígito mas tem rótulo: não é tecla. Campo editável não
+    entra pelo rótulo (o `text` dele é o conteúdo, não o nome)."""
+    if not alvo:
+        return False
+    rotulos = [] if alvo.get("editable") else [alvo.get("text"), alvo.get("desc")]
+    for filho in alvo.get("filhos") or []:
+        if not (filho.get("editable") or _classe_de_campo_de_texto(filho.get("class_name"))):
+            rotulos += [filho.get("text"), filho.get("desc")]
+    if any(_rotulo_de_tecla(r) for r in rotulos):
+        return True
+    if any((r or "").strip() for r in rotulos):
+        return False
+    rid = (alvo.get("resource_id") or "").rsplit("/", 1)[-1]
+    # Sem rótulo: o teclado desenhado num View só (rid ou classe com `pin`, `keypad`...) ou a tecla cujo id termina em dígito.
+    if _nome_de_teclado(rid) or _nome_de_teclado((alvo.get("class_name") or "").rsplit(".", 1)[-1]):
+        return True
+    return not alvo.get("editable") and bool(_RID_TERMINA_EM_DIGITO.search(rid))
+
+
+def _tem_id_estrutural(alvo: dict | None) -> bool:
+    """O alvo (ou um filho rotulado dele) tem `resource_id`: a receita ainda o acha sem coordenada."""
+    return bool(alvo) and bool(alvo.get("resource_id") or any(f.get("resource_id") for f in alvo.get("filhos") or []))
+
+
+def _classe_de_campo_de_texto(class_name: str | None) -> bool:
+    """`EditText`, `AutoCompleteTextView`, `TextInputEditText` e variantes: o filho do alvo não traz a chave `editable`."""
+    c = class_name or ""
+    return "EditText" in c or "AutoCompleteTextView" in c
+
+
+#: Que campos do alvo cada seletor `unique` usa (o espelho de `recipes._combo`, sem o import tardio).
+_CAMPOS_DO_SELETOR = {"rid+text": ("resource_id", "text"), "rid+desc": ("resource_id", "desc"), "rid": ("resource_id",),
+                      "desc": ("desc",), "text": ("text",)}
+
+
+def _alvo_sem_segredo(alvo: dict | None, sensivel: bool = False) -> dict | None:
+    """31.82 (b): o alvo gravado leva `text`/`desc` do elemento tocado. Num campo editável o `text` é o CONTEÚDO do campo
+    (o que a pessoa já digitou), que não identifica o campo: sai (`resource_id`, `desc` de rótulo e classe ficam). Em
+    qualquer alvo, `text`/`desc` que casem com os filtros de segredo saem. Os seletores `unique` que dependiam do campo
+    removido saem junto (a destilação, em `_combo`, também os ignoraria). Campo editável NUNCA guarda `text`, tenha ou
+    não outro identificador: o conteúdo é o que alguém digitou e não serve de seletor. Texto ou rótulo de um dígito só (tecla de PIN desenhada) sai em qualquer tela. Sem `resource_id` nem `desc`
+    o alvo fica sem seletor e a etapa não vira receita (a IA conduz). Os `filhos` seguem a mesma regra: um filho cuja
+    classe é de campo de texto também perde o `text`. Em tela `sensivel` (31.82 item 4) `text` e `desc` saem sempre, do
+    alvo e dos filhos, junto com os `unique` que dependiam deles: ficam `resource_id`, `class_name` e o estrutural."""
+    if alvo is None:
+        return None
+    limpo = dict(alvo)
+    if limpo.get("editable") or _classe_de_campo_de_texto(limpo.get("class_name")):
+        limpo["text"] = ""
+    for campo in ("text", "desc"):
+        valor = limpo.get(campo)
+        # S1: o PIN num teclado DESENHADO na tela é uma sequência de alvos "4", "8"...: um dígito só não se guarda.
+        if (sensivel or _parece_segredo_de_tela(valor) or (isinstance(valor, str) and _UM_DIGITO.fullmatch(valor.strip()))):
+            limpo[campo] = ""
+    if "unique" in limpo:
+        limpo["unique"] = [k for k in limpo["unique"] or [] if all(limpo.get(c) for c in _CAMPOS_DO_SELETOR.get(k, ("?",)))]
+    if limpo.get("filhos"):
+        limpo["filhos"] = [f for f in (_alvo_sem_segredo(dict(f), sensivel) for f in limpo["filhos"]) if f and f.get("unique")]
+    return limpo
 
 
 class TrainingError(Exception):
@@ -42,10 +159,13 @@ def titulo_da_tela(tree: Any) -> str | None:
 
 class TrainingRecorder:
     def __init__(self, db: Any, bus: Any, devices: Any,
-                 personas_do_aparelho: Callable[[str, str | None], list[str]]):
+                 personas_do_aparelho: Callable[[str, str | None], list[str]], owner_id: str | None = None):
         self.db = db
         self.bus = bus
         self.devices = devices
+        #: O backend dono dos aparelhos deste processo (`instances.hosted_by`): a reconciliação da partida só fecha o que
+        #: é dele, e não a gravação VIVA de um aparelho que outra réplica hospeda.
+        self.owner_id = owner_id
         #: `(aparelho, app) -> personas vinculadas` (N:N, migração 051). Com `app`, só as que servem àquele app.
         self._personas_do_aparelho = personas_do_aparelho
 
@@ -61,8 +181,13 @@ class TrainingRecorder:
             raise TrainingError("store_device", "A loja (Play Store) não é aparelho de treinamento.", 400)
         if str(getattr(rt.control, "value", rt.control)) != "user" or not lease_id or rt.lease_id != lease_id:
             raise TrainingError("control_required", "Assuma o controle do aparelho no Foco antes de gravar.", 409)
-        if self.active_for(instance_id):
+        ativa = self.active_for(instance_id)
+        if ativa and getattr(rt, "training_session_id", None) == ativa:
             raise TrainingError("already_recording", "Já há um treinamento sendo gravado neste aparelho.", 409)
+        if ativa:
+            # 31.80: a linha diz "recording" mas o aparelho não a está gravando (o `record` sairia calado): órfã. Recusar
+            # trancava o aparelho até alguém descartar à mão; encerra como `recorded` (as entradas valem) e segue.
+            self._encerrar_orfa(ativa, "a gravação anterior estava sem gravador ativo")
         if app_id and self.db.one("SELECT id FROM apps WHERE id=?", (app_id,)) is None:
             raise TrainingError("unknown_app", f"Aplicativo '{app_id}' não está cadastrado.", 400)
         profile_id = self._persona_da_gravacao(instance_id, app_id, profile_id)
@@ -113,6 +238,33 @@ class TrainingRecorder:
                             (now_iso(), session_id))
         return self.get(session_id)
 
+    def _encerrar_orfa(self, session_id: str, motivo: str) -> None:
+        s = self._row(session_id)
+        agora = now_iso()
+        cur = self.db.execute("UPDATE training_sessions SET status='recorded', finished_at=?, updated_at=? "
+                              "WHERE id=? AND status='recording'", (agora, agora, session_id))
+        if getattr(cur, "rowcount", 1) == 0:
+            return                               # outra partida já a encerrou: sem log em dobro
+        self.bus.emit("log", f"{s['instance_id']}: gravação do treinamento encerrada — {motivo}; as entradas já gravadas "
+                      "foram mantidas", level="warn", instance_id=s["instance_id"],
+                      data={"training_session_id": session_id})
+
+    def reconcile_after_restart(self) -> int:
+        """31.80: na subida do processo dono dos aparelhos (`rt.training_session_id` nasce None), toda sessão
+        `recording` ficou órfã: nada mais grava, mas o painel seguiria mostrando "Gravando" e `start` recusaria outra.
+        Vira `recorded` (as entradas já gravadas valem). Nunca religa a gravação: gravar sem a pessoa saber é pior."""
+        sql, params = "SELECT t.id FROM training_sessions t WHERE t.status='recording'", ()
+        if self.owner_id:
+            # O mesmo padrão de `commands/store.py` e `releases/repository.py`: com duas réplicas, a partida desta não
+            # encerra a gravação viva de um aparelho que OUTRA hospeda (instances.hosted_by).
+            sql += (" AND NOT EXISTS (SELECT 1 FROM instances i WHERE i.id=t.instance_id"
+                    " AND i.hosted_by IS NOT NULL AND i.hosted_by<>?)")
+            params = (self.owner_id,)
+        ids = [r["id"] for r in self.db.query(sql, params)]
+        for sid in ids:
+            self._encerrar_orfa(sid, "encerrada pelo reinício do backend")
+        return len(ids)
+
     def stop_for_instance(self, instance_id: str) -> None:
         """Devolver o controle encerra a gravação: sem a pessoa no aparelho não há o que gravar."""
         sid = self.active_for(instance_id)
@@ -127,28 +279,51 @@ class TrainingRecorder:
             return
         from ..taskqueue.executor import _safe_target  # noqa: PLC0415 - mesma regra de alvo das receitas
         tipo = entrada["type"]
+        if tipo == "text" and entrada.get("clear_first"):    # 31.84: sem coluna nova, `key_name` marca o texto enviado limpando o campo
+            entrada = {**entrada, "key": "clear_first"}
         sensivel = bool(tree is not None and tree.sensitive)
         alvo = None
-        if tree is not None and tipo in ("tap", "long_press") and entrada.get("x") is not None:
-            alvo = _safe_target(tree.at(int(entrada["x"]), int(entrada["y"])), tree)
+        x, y = entrada.get("x"), entrada.get("y")
+        marcada = sensivel                       # a coluna `sensitive`: tela sensível OU toque que não se guarda
+        if tree is not None and tipo in ("tap", "long_press") and x is not None:
+            bruto = _safe_target(tree.at(int(x), int(y)), tree)
+            if _e_tecla_de_teclado_numerico(bruto) or (sensivel and not _tem_id_estrutural(bruto)):
+                # 31.94: teclado de PIN desenhado, ou toque em tela sensível sem identificador estrutural: sem alvo e sem
+                # x/y (num teclado fixo, a coordenada é o dígito). A receita não nasce disso (coordenada solta).
+                x = y = None
+                marcada = True
+            else:
+                alvo = _alvo_sem_segredo(bruto, sensivel)
+        if tipo in ("tap", "long_press") and x is not None and not (alvo and (alvo.get("unique") or alvo.get("filhos"))):
+            # 31.94 (geral): sem seletor utilizável (alvo None, ou sem `unique` e sem filhos) a coordenada não vira receita e,
+            # num teclado desenhado num View só (Flutter, SurfaceView), é o dígito. Não é segredo conhecido: sem `sensitive`.
+            x = y = None
         texto = entrada.get("text")
         tem_texto = bool(texto)
         if texto is not None:
             foco = next((e for e in (tree.elements if tree is not None else []) if e.focused), None)
-            if (sensivel or (foco is not None and foco.password) or looks_secret(texto) or mentions_credential(texto)
-                    or parece_senha_ou_codigo(texto)):
+            # 31.82 (a): só se guarda o que foi digitado com um campo editável, que não é de senha, em foco na árvore.
+            # Sem árvore (leitura falhou ou estourou o prazo), sem foco (senha revelada, WebView, foco ainda não
+            # refletido) ou com foco em quem não é campo, não se sabe se era senha, e as heurísticas deixam passar senha
+            # curta ou só minúscula: fica só `has_text` e o tamanho.
+            if (tree is None or sensivel or foco is None or not foco.editable or foco.password
+                    or _parece_segredo(texto)):
                 texto = None                     # a pessoa digitou algo que não pode ser guardado
         seq = int(self.db.scalar("SELECT COALESCE(MAX(seq), 0) FROM training_inputs WHERE session_id=?", (sid,)) or 0) + 1
         pacote = next((p for p in (tree.packages if tree is not None else []) if p != "com.android.systemui"), None)
+        titulo = titulo_da_tela(tree) if tree is not None and not sensivel else None
+        if _parece_segredo_de_tela(titulo):
+            titulo = None                        # 31.82 (c): a tela com "Seu código é 123456" não vira título
+        linhas = ([ln for ln in linhas_de_conteudo(tree.elements, limite_linhas=24) if not _parece_segredo_de_tela(ln)][:8]
+                  if tree is not None and not sensivel else None)
         self.db.execute(
             "INSERT INTO training_inputs(session_id, seq, ts, type, x, y, x2, y2, key_name, text, has_text, text_len,"
             " package, app_id, target, screen_title, screen_lines, sensitive) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (sid, seq, now_iso(), tipo, entrada.get("x"), entrada.get("y"), entrada.get("x2"), entrada.get("y2"),
+            (sid, seq, now_iso(), tipo, x, y, entrada.get("x2"), entrada.get("y2"),
              entrada.get("key"), texto, int(tem_texto), len(entrada.get("text") or "") if tem_texto else None,
              pacote, entrada.get("app_id"), dumps(alvo) if alvo else None,
-             titulo_da_tela(tree) if tree is not None and not sensivel else None,
-             dumps(linhas_de_conteudo(tree.elements, limite_linhas=8)) if tree is not None and not sensivel else None,
-             int(sensivel)))
+             titulo, dumps(linhas) if linhas is not None else None,
+             int(marcada)))
         self.db.execute("UPDATE training_sessions SET updated_at=? WHERE id=?", (now_iso(), sid))
         self.bus.emit("training.input", f"{rt.id}: treinamento — entrada {seq} ({tipo})", instance_id=rt.id,
                       data={"training_session_id": sid, "seq": seq})
