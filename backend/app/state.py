@@ -2444,7 +2444,9 @@ class AppState:
                     "screen_seen": tela[:400],
                     "incoming": recebido,
                 })
-        self.bus.emit("log", f"{obj['instance_id']}: texto escrito na voz do perfil — {draft.content[:60]}",
+        # 31.63: o evento diz SÓ que o texto foi escrito e o tamanho. O texto mora na etapa e no pedido de aprovação, onde
+        # quem decide o vê; evento vai a painel, aviso e resumo, e rascunho não é dado de log.
+        self.bus.emit("log", f"{obj['instance_id']}: texto escrito na voz do perfil ({len(draft.content)} caracteres)",
                       run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=obj["id"])
         return None
 

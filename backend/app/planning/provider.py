@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass, field
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, get_args
+from typing import TYPE_CHECKING, Any, Final, Literal, Protocol, TypeVar, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -57,6 +57,33 @@ ORIGENS_DE_IA: tuple[str, ...] = ("execucao", "ensino", "orquestracao", "assiste
 MotivoDeOrcamento = Literal["saldo", "dia", "fatia_curador", "fatia_jev", "fatia_leitura", "execucao", "pedido"]
 MOTIVOS_DE_ORCAMENTO: tuple[str, ...] = ("saldo", "dia", "fatia_curador", "fatia_jev", "fatia_leitura", "execucao",
                                          "pedido")
+
+
+def erro_de_validacao_sem_entrada(exc: ValidationError, limite: int = 6) -> str:
+    """31.63 (V1): a `ValidationError` da saída do modelo em texto SEM a entrada. O `str(exc)` do pydantic v2 traz
+    `input_value=`, isto é, o pedaço do JSON do modelo (o rascunho, o plano); a mensagem vai ao `AIError`, daí a
+    `ai_calls.error_message`, ao log e ao motivo da etapa (espera, aviso, resumo). Aqui só o lugar e o tipo de cada erro.
+    Quem levanta o `AIError` com isto o levanta FORA do `except` (`validar_saida`): o `log.warning(..., exc_info=True)`
+    do `_ai` imprime a causa encadeada, e mesmo com `from None` a `ValidationError` com a entrada ficaria no
+    `__context__` (a regra da transcrição, abaixo, e de `sensitive_input`)."""
+    erros = exc.errors(include_input=False, include_url=False, include_context=False)
+    partes = [f"{'.'.join(map(str, e['loc'])) or '(raiz)'}: {e['type']}" for e in erros[:limite]]
+    if len(erros) > limite:
+        partes.append(f"e mais {len(erros) - limite}")
+    return f"{len(erros)} erro(s) de validação ({'; '.join(partes)})"
+
+
+_Modelo = TypeVar("_Modelo", bound=BaseModel)
+
+
+def validar_saida(modelo: type[_Modelo], dados: object, prefixo: str) -> _Modelo:
+    """31.63 (V1a): `modelo.model_validate(dados)`; inválido, um `AIError` com `prefixo` e só lugar e tipo de cada erro,
+    levantado DEPOIS do `except`, com `__cause__` e `__context__` vazios."""
+    try:
+        return modelo.model_validate(dados)
+    except ValidationError as exc:
+        falha = erro_de_validacao_sem_entrada(exc)
+    raise AIError(f"{prefixo}: {falha}", kind="invalid_output")
 
 
 class AIError(RuntimeError):
@@ -481,10 +508,7 @@ def persona_draft_from_json(raw: str) -> PersonaDraft:
         dados = json.loads(texto)
     except ValueError as exc:
         raise AIError(f"Rascunho de persona não é JSON: {exc}", kind="invalid_output") from exc
-    try:
-        return PersonaDraft.model_validate(_vazio_e_nulo(dados))
-    except ValidationError as exc:
-        raise AIError(f"Rascunho de persona inválido devolvido pelo modelo: {exc}", kind="invalid_output") from exc
+    return validar_saida(PersonaDraft, _vazio_e_nulo(dados), "Rascunho de persona inválido devolvido pelo modelo")
 
 
 def _vazio_e_nulo(valor: object) -> object:

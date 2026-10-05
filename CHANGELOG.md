@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
+
+- `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do
+  rascunho, que iam a painel, aviso e resumo).
+- `app/social/service.py`: o log da reescrita por fala atribuída a terceiro leva o tamanho do trecho, não o trecho; o
+  motivo da recusa (que vai ao `hint` da espera) deixou de citar o trecho entre aspas.
+- Varredura dos outros logs, eventos e decisões do backend por texto de rascunho ou de mensagem: só esses três levavam.
+  Os demais `{texto}` são frases do sistema (estado, motivo, ADR), não texto da persona.
+- O texto continua onde quem decide o vê: na etapa e no pedido de aprovação.
+- Prova: `simulated` (`backend/tests/test_rascunho_fora_do_log.py`, 2 testes; falham com o código da main). Rodada
+  dirigida: 170 passed.
+
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
 - `scripts/tests/test_poda_ab_offline.py` confere `scripts/poda-ab-offline.py`: só a UI do Chrome sai, a `url_bar` fica,
