@@ -116,6 +116,21 @@ async function escreverEEnviar(textoDaCorrecao: string): Promise<void> {
   await click(byRole('button', /^Enviar correção/, container));
 }
 
+describe('Motivo da persona no detalhe da etapa (31.65)', () => {
+  it('a recusa da persona aparece só no detalhe da etapa que a teve', async () => {
+    const d = detalhe('waiting_user', false);
+    const motivo = 'o texto atribuía um recado a um terceiro';
+    await abrir({ ...d, steps: d.steps.map((s) => (s.id === ETAPA ? { ...s, motivo_da_persona: motivo } : s)) });
+    expect(text(container)).toContain('Motivo da persona');
+    expect(text(container).split(motivo)).toHaveLength(2);           // uma vez: a outra etapa aberta não tem
+  });
+
+  it('sem recusa, nenhuma linha de motivo', async () => {
+    await abrir(detalhe('waiting_user', false));
+    expect(text(container)).not.toContain('Motivo da persona');
+  });
+});
+
 describe('Corrigir esta etapa (plano 22.7)', () => {
   it('a origem vem do passo da mesma versão do plano do objetivo, pela key; sem ela, nenhuma', () => {
     const d = detalhe('failed');

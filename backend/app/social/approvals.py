@@ -13,6 +13,7 @@ digitou não teria como voltar atrás — `succeeded` é estado terminal na máq
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Callable
 
@@ -364,6 +365,26 @@ def guardar_rascunho(db: Database, step_id: str, meta: dict[str, Any]) -> None:
     Precisa ser durável: entre escrever e commitar pode haver horas de espera por aprovação e um reinício.
     """
     db.execute("UPDATE steps SET draft_meta=? WHERE id=?", (dumps(meta), step_id))
+
+
+#: 31.65: a chave de `draft_meta` com o motivo da RECUSA da persona. Não é rascunho: não fecha a escrita da etapa.
+MOTIVO_DA_RECUSA = "motivo_da_recusa"
+#: 31.65: a dica que viaja quando a persona recusa. Fixa: o motivo (texto do modelo) fica no detalhe da etapa.
+DICA_DA_RECUSA = ("A persona se recusou a escrever este texto; o motivo dela está no detalhe da etapa. Reescreva a "
+                  "intenção e retome o item.")
+
+
+def guardar_recusa(db: Database, step_id: str, motivo: str) -> None:
+    """31.65 (V2 da revisão do 31.63): o motivo da recusa é texto livre do modelo (ou cita um trecho dele) e pode
+    trazer o pedido ou o nome de um terceiro. Fica só na etapa, para o detalhe da etapa no painel; a dica que viaja
+    (bloqueio do objetivo, Pendências, aviso, Trello) leva só a frase fixa."""
+    meta = {k: v for k, v in ler_rascunho(db, step_id).items() if k != MOTIVO_DA_RECUSA}
+    guardar_rascunho(db, step_id, {**meta, MOTIVO_DA_RECUSA: motivo[:600]})
+
+
+def rascunho_fechado(meta: Mapping[str, object]) -> bool:
+    """A etapa já tem rascunho (a porta não escreve de novo)? Só o motivo de uma recusa não conta: a retomada escreve."""
+    return any(k != MOTIVO_DA_RECUSA for k in meta)
 
 
 def ler_rascunho(db: Database, step_id: str) -> dict[str, Any]:

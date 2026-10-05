@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.65: o motivo livre da recusa da persona sai da dica que viaja (branch feat/31-65-motivo-do-modelo-fora-da-dica)
+
+- V2 da revisão do 31.63: quando a persona recusava escrever, a dica do bloqueio era o `refusal_reason` (ou o
+  `rationale`) do modelo, que pode citar o pedido ou o nome de um terceiro (o motivo do ADR-055 cita o trecho). Essa
+  dica viaja ao bloqueio do objetivo, às Pendências, ao aviso no Telegram e ao Trello.
+- Agora a dica é fixa (`DICA_DA_RECUSA`, "o motivo dela está no detalhe da etapa"), e o motivo fica só na etapa
+  (`draft_meta.motivo_da_recusa`), exposto em `StepDTO.motivo_da_persona` e mostrado como "Motivo da persona" no
+  detalhe da etapa no painel. A chave não fecha a escrita (`rascunho_fechado`): a retomada escreve de novo e o texto
+  escrito a substitui.
+- Prova: `simulated` (`backend/tests/test_protecao_de_frota.py`, teste da retomada novo, que falha com a marca antiga;
+  `frontend/src/features/runs/CorrigirEtapa.test.tsx`, 2 testes novos). Real: `not_run`.
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
 - `app/state.py`: o evento "texto escrito na voz do perfil" leva só o tamanho (antes, os 60 primeiros caracteres do

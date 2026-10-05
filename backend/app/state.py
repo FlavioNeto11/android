@@ -114,8 +114,8 @@ from .releases.service import InstalacaoIncerta, ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
 from .social.contas_nossas import MARCADOR
 from .social.repository import SocialRepository, frase_da_quarentena, sessao_vencida
-from .social.approvals import (Approval, ApprovalService, ApprovalStore, definir_texto, guardar_rascunho, ler_rascunho,
-                               textos_irmaos)
+from .social.approvals import (DICA_DA_RECUSA, Approval, ApprovalService, ApprovalStore, definir_texto,
+                               guardar_rascunho, guardar_recusa, ler_rascunho, rascunho_fechado, textos_irmaos)
 from .social.persona_batch import LotesDePersona
 from .social.policy import UMA_CONTA_POR_ALVO, PolicyEngine, Verdict
 from .social.service import SocialError, SocialService, thread_de_dm
@@ -2383,7 +2383,8 @@ class AppState:
             # tem chave), então se a etapa chegou aqui com briefing, aquele sim não a cobre: pular a escrita deixaria
             # a etapa sem texto, e o pedido da execução sairia sem o que vai ser enviado.
             pedido = self.approvals.for_step(srow["id"])
-            if ler_rascunho(self.db, srow["id"]) or (pedido is not None and pedido.origem != "plano"):
+            if rascunho_fechado(ler_rascunho(self.db, srow["id"])) or (pedido is not None
+                                                                       and pedido.origem != "plano"):
                 return None
             # O tipo de texto e as leituras de tela são do APP da etapa (o manifesto dele no registro de apps).
             tipo = capabilities_of(pacote).text_kind(cap.key) or "dm_initiate"
@@ -2442,10 +2443,10 @@ class AppState:
             if draft.refused or not (draft.content or "").strip():
                 # O motivo da recusa vem antes da justificativa: é ele que diz o que mudar na intenção (ex.: o
                 # texto atribuía um recado a um terceiro, ADR-055) — a justificativa só explica a escolha do texto.
+                # 31.65: ele é texto do modelo (ou cita um trecho dele) e fica só na etapa; a dica viaja e é fixa.
+                guardar_recusa(self.db, srow["id"], draft.refusal_reason or draft.rationale or "sem justificativa")
                 return Verdict(allowed=False, policy=cap.default_policy,
-                               reason="a persona se recusou a escrever este texto",
-                               hint=f"{draft.refusal_reason or draft.rationale or 'sem justificativa'}. Reescreva a "
-                                    "intenção e retome o item.")
+                               reason="a persona se recusou a escrever este texto", hint=DICA_DA_RECUSA)
             # Texto e marca na MESMA transação: um crash entre os dois deixaria a etapa com texto novo e sem
             # marca, e a retomada geraria outro por cima — pago, e por cima do que já estava escrito.
             with self.db.tx():

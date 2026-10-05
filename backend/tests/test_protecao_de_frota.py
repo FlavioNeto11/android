@@ -27,6 +27,7 @@ from app.models import (InteractionStatus, InteractionType, PolicyGroupCreate, P
 from app.planning.capabilities import (BALDES_SEM_ALVO, CapabilityNode, CatalogoInvalido, capability_of, catalogo_de_dados, compose,
                                        contraparte, load_catalog)
 from app.planning.provider import Usage
+from app.social.approvals import DICA_DA_RECUSA
 from app.social.conteudo import fala_atribuida_a_terceiro
 from app.social.policy import PolicyEngine
 from app.social.repository import SocialRepository
@@ -429,10 +430,30 @@ async def test_texto_que_fala_por_terceiro_nao_chega_ao_aparelho(harness: Any) -
                      (json.dumps({"post_author": "@outra.pessoa", "content_brief": "oi"}),))
     veredito = await _porta(state, "android-01")
     assert veredito is not None and not veredito.allowed and veredito.retry_at is None
-    assert "terceiro" in (veredito.hint or "")
+    # 31.65: o motivo (que cita o trecho do modelo) fica só no detalhe da etapa; a dica que viaja é a fixa.
+    assert veredito.hint == DICA_DA_RECUSA
+    etapa = state.repo.step_dto(state.db.one("SELECT * FROM steps WHERE id='run-f:android-01:v1:efeito'"))
+    assert "terceiro" in (etapa.motivo_da_persona or "")
     bindings = json.loads(state.db.one("SELECT bindings FROM steps WHERE id='run-f:android-01:v1:efeito'")["bindings"])
     assert "content" not in bindings                                     # nada foi escrito na etapa
     assert state.approval_service.list() == []
+
+
+async def test_a_recusa_guardada_nao_fecha_a_escrita_e_some_quando_a_persona_escreve(harness: Any) -> None:
+    """31.65: o motivo da recusa mora em `draft_meta`, mas não é rascunho. A retomada escreve de novo (sem isto a porta
+    pularia a escrita e a etapa seguiria sem texto), e o texto escrito substitui o motivo."""
+    state = harness.state
+    state.social.provider = _ProvedorQueAtribui(corrige=False)
+    _execucao_em_duas_contas(state, "CREATE_COMMENT", {"post_author": ALVO, "content_brief": "mandar um oi"})
+    state.db.execute("UPDATE steps SET bindings=? WHERE id='run-f:android-02:v1:efeito'",
+                     (json.dumps({"post_author": "@outra.pessoa", "content_brief": "oi"}),))
+    sid = "run-f:android-01:v1:efeito"
+    assert (await _porta(state, "android-01")).hint == DICA_DA_RECUSA
+    state.social.provider = _ProvedorQueAtribui(corrige=True)
+    await _porta(state, "android-01")
+    etapa = state.repo.step_dto(state.db.one("SELECT * FROM steps WHERE id=?", (sid,)))
+    assert etapa.bindings.get("content") == "Oi, Ana! Passando só pra dar um oi 🤍"
+    assert etapa.motivo_da_persona is None
 
 
 async def test_uma_conta_so_segue_a_politica_de_sempre(harness: Any) -> None:
