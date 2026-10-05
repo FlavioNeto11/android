@@ -643,7 +643,9 @@ class PolicyEngine:
         resumo, e o dono vê o @ no próprio texto do item que aprova. Sem pedido, nada. Só lê.
 
         O @ vem de `instagram_profiles.username` e de `profile_accounts.handle` (a conta da persona em cada app) das
-        personas da família; casa com ou sem `@`, inteiro (não dentro de outro nome)."""
+        personas da família; casa com ou sem `@`, inteiro (não dentro de outro nome). Piso para o `profile_accounts`
+        (revisão do #344): só a conta ATIVA, com 3 ou mais caracteres e sem espaço; um handle de 1 ou 2 letras, ou um
+        nome com espaço, casaria com quase todo texto e pediria aprovação à toa."""
         if pedido is None or not cap.side_effect:
             return None
         outras = sorted(pedido.familia - {profile_id})
@@ -651,10 +653,11 @@ class PolicyEngine:
         if not outras or not textos:
             return None
         marcas = ",".join("?" * len(outras))
-        nomes = {str(r["nome"]).strip().lstrip("@") for r in self.repo.db.query(
-            f"SELECT username AS nome FROM instagram_profiles WHERE id IN ({marcas}) AND username <> ''"
-            f" UNION SELECT handle AS nome FROM profile_accounts WHERE profile_id IN ({marcas}) AND handle <> ''",
-            (*outras, *outras))}
+        nomes = {str(r["username"]).strip().lstrip("@") for r in self.repo.db.query(
+            f"SELECT username FROM instagram_profiles WHERE id IN ({marcas}) AND username <> ''", tuple(outras))}
+        nomes |= {h for r in self.repo.db.query(
+            f"SELECT handle FROM profile_accounts WHERE profile_id IN ({marcas}) AND status='active'", tuple(outras))
+            if len(h := str(r["handle"] or "").strip().lstrip("@")) >= 3 and not re.search(r"\s", h)}
         texto = " ".join(textos)
         for nome in (n for n in nomes if n):
             if re.search(rf"(?<![\w.])@?{re.escape(nome)}(?![\w])", texto, flags=re.IGNORECASE):

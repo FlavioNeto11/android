@@ -76,6 +76,31 @@ async def test_conta_da_irma_noutro_app_tambem_conta_e_sem_citar_nao_ha_motivo(h
     assert veredito is not None and MOTIVO_CITA_A_FAMILIA in (veredito.reason or "")
 
 
+async def test_piso_do_handle_de_outro_app_curto_desligado_ou_com_espaco_nao_conta(harness: Any,
+                                                                                    monkeypatch: Any) -> None:
+    """Revisão do #344: handle de `profile_accounts` só conta ATIVO, com 3+ caracteres e sem espaço. O de 4 (`cris`) conta."""
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    _plano(state, [{"key": "dm", "cap": "SEND_MESSAGE", "bindings": {"username": DM["username"],
+                                                                     "content": "cumprimente a pessoa"}}])
+    irma = _irma(state)
+    _com_familia(monkeypatch, state, irma)
+    for i, (handle, estado) in enumerate((("ab", "active"), ("ana paula", "active"), ("vel.ha", "disabled"),
+                                          ("cris", "active"))):
+        state.db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
+                         " VALUES (?, ?, ?, ?, ?, '2026-10-04T10:00:00Z', '2026-10-04T10:00:00Z')",
+                         (f"pa-{i}", irma, f"app-{i}", handle, estado))
+    from app.planning.capabilities import capability_of
+
+    from .test_capabilities import IG
+    dm = capability_of(IG, "SEND_MESSAGE")
+    dono = state.db.scalar("SELECT profile_id FROM objectives")
+    pedido = ContextoDoPedido(raiz="ped-1", familia=frozenset({dono, irma}))
+    for texto in ("ab, tudo bem?", "falei com a ana paula", "a vel.ha voltou"):
+        assert state.policies.cita_a_familia(dono, dm, {"content": texto}, pedido) is None, texto
+    assert state.policies.cita_a_familia(dono, dm, {"content": "a cris mandou um oi"}, pedido) == MOTIVO_CITA_A_FAMILIA
+
+
 async def test_rascunho_sem_citar_a_familia_nao_ganha_o_motivo(harness: Any, monkeypatch: Any) -> None:
     state = harness.state
     _sem_iniciar(state, monkeypatch)

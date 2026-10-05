@@ -41,7 +41,8 @@ Lado Jev do 28.10 F5, sobre o 31.49 (#330).
 - Revisão (antes da leitura): o texto LITERAL que cita outra conta do pedido já pede aprovação no `check`, então a
   prévia do plano mostra o mesmo selo da execução; o texto GERADO é pego na porta depois do rascunho, com o motivo uma
   vez só (`backend/tests/test_familia_no_rascunho.py`, harness, com contraprova). O @ da família vem também de
-  `profile_accounts.handle` (a conta da persona em cada app).
+  `profile_accounts.handle` (a conta da persona em cada app), com piso: só a conta ATIVA, com 3 ou mais caracteres e
+  sem espaço (um handle de 1 ou 2 letras casaria com quase todo texto).
 - Revisão F2 (corrida com legenda gerada): a porta roda `mesmo_objeto_na_familia` de novo depois do rascunho, sem `await`
   até gravar o pedido; entre duas personas do pedido com a mesma imagem, uma segue e a outra é recusada
   (`backend/tests/test_familia_corrida_da_imagem.py`, com contraprova). Com `publicar_sem_aprovacao` ligado não há pedido
