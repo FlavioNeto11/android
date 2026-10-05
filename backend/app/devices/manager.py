@@ -4189,6 +4189,20 @@ class DeviceManager:
         self.on_device_free()
         self.on_control_released(rt)
 
+    @staticmethod
+    def _quadro_velho(rt: DeviceRuntime, frase: str) -> ControlError:
+        """A recusa do toque, do arraste e do texto sem quadro atual. Com a captura falhando, o quadro não vai se
+        renovar esperando: o código é outro (`capture_failing`), com o motivo e a saída (29.105). Sem falha
+        registrada, é a corrida comum entre o painel e a tela (`stale_frame`: aguardar a imagem nova resolve)."""
+        if rt.capture_failures > 0:
+            motivo = f" ({rt.capture_error})" if rt.capture_error else ""
+            return ControlError("capture_failing",
+                                f"A captura da tela está falhando{motivo}, e o quadro não se renova: toque, arraste e "
+                                "texto precisam de um quadro atual. As teclas (Voltar, Início, Recentes) seguem "
+                                "aceitas e não dependem do quadro. Uma tela protegida contra captura (aba anônima, "
+                                "app bancário) faz isso.")
+        return ControlError("stale_frame", frase)
+
     def _check_lease(self, rt: DeviceRuntime, lease_id: str) -> None:
         if rt.control != ControlOwner.user or rt.lease_id != lease_id:
             raise ControlError("not_controller", "Assuma o controle do aparelho antes de interagir.")
@@ -4199,15 +4213,20 @@ class DeviceManager:
         self.touch(rt)
         if rt.state != InstanceState.online:
             raise ControlError("offline", "O aparelho não está online.")
-        seen = rt.recent_frames.get(inp.frame_id)
-        s = self.get_settings()
-        if seen is None or rt.frame is None:
-            raise ControlError("stale_frame", "A interação se refere a um frame que o backend não reconhece mais.")
-        mono, fw, fh = seen
-        if (time.monotonic() - mono) * 1000 > max(s.frame_max_age_ms, s.capture_focus_interval_s * 3000):
-            raise ControlError("stale_frame", "O frame exibido está antigo demais para uma ação segura.")
-        if (fw, fh) != (rt.frame.info.width, rt.frame.info.height):
-            raise ControlError("frame_mismatch", "A orientação/tamanho da tela mudou desde o frame exibido.")
+        fw = fh = 0
+        if inp.type != "key":
+            # 29.105: a tecla não aponta para nada na tela (sem coordenada nem campo), então não confere o quadro. É a
+            # saída quando ele não se renova: numa tela protegida contra captura (a aba anônima do Chrome, FLAG_SECURE)
+            # o screencap não traz imagem nova, e sem isto nem o Voltar passava (medida do 31.72).
+            seen = rt.recent_frames.get(inp.frame_id)
+            s = self.get_settings()
+            if seen is None or rt.frame is None:
+                raise self._quadro_velho(rt, "A interação se refere a um frame que o backend não reconhece mais.")
+            mono, fw, fh = seen
+            if (time.monotonic() - mono) * 1000 > max(s.frame_max_age_ms, s.capture_focus_interval_s * 3000):
+                raise self._quadro_velho(rt, "O frame exibido está antigo demais para uma ação segura.")
+            if (fw, fh) != (rt.frame.info.width, rt.frame.info.height):
+                raise ControlError("frame_mismatch", "A orientação/tamanho da tela mudou desde o frame exibido.")
 
         def pt(x: float | None, y: float | None) -> tuple[int, int]:
             if x is None or y is None or not (0 <= x < fw and 0 <= y < fh):

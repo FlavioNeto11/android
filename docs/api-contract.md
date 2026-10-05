@@ -279,7 +279,7 @@ interface Snapshot {
 | `POST /api/instances/{id}/control/release` | `{lease_id}` | `{status:'released'}` |
 | `PUT /api/instances/{id}/repair-pause` | `{ttl_s: 60..10800, reason: string(3..200)}` | `RepairPauseInfo` `{until, since, reason, by, remaining_s}`; pausa o reparo AUTOMÁTICO (escada e reinício por saúde) só deste aparelho; `ttl_s` obrigatório, expira sozinha, repetir renova; `422` sem prazo ou fora dos limites, `404` aparelho desconhecido |
 | `DELETE /api/instances/{id}/repair-pause` | – | `{status:'resumed'}`; `404 {code:'no_repair_pause'}` sem pausa em vigor |
-| `POST /api/instances/{id}/input` | `ManualInput` | `{ok:true}`; `409 {code:'stale_frame'|'frame_mismatch'|'not_controller'}` |
+| `POST /api/instances/{id}/input` | `ManualInput` | `{ok:true}`; `409 {code:'stale_frame'|'frame_mismatch'|'capture_failing'|'not_controller'}` (a tecla não confere o quadro: v1.52) |
 | `POST /api/runs` | `{command, instance_ids, idempotency_key, mode:'plan'|'execute', ai_profile?}` | `RunSummary` (`deduplicated:true` se a chave já existia; `ai_profile`/`ai_profile_source:'explicit'|'canary'|null`, item 17.7); `422 {code:'ai_profile_desconhecido'}` se `ai_profile` não está em `ai.profiles` |
 | `GET /api/runs?limit=20` | – | `RunSummary[]` |
 | `GET /api/runs/{id}` | – | `RunDetail` |
@@ -6295,3 +6295,28 @@ Migração 112. Campo aditivo em `SessionInfo`, nos mesmos cinco DTOs do adendo 
 - O painel usa `status_since` como o "desde" do item da sessão em Pendências e cai em `verified_at` quando ele falta.
   Ausente = backend de antes do 29.100.
 - **Prova:** `simulated` (`backend/tests/test_sessao_status_since.py`, `frontend/src/features/pendencias/PendenciasPage.test.tsx`).
+
+## Adendo v1.52 (05/10/2026; número da orquestradora; item 29.105) — a tecla não depende do quadro, e o quadro velho com a captura falhando diz o porquê
+
+`POST /api/instances/{id}/input` (`ManualInput`), sem campo novo:
+- `type:'key'` (Voltar, Início, Recentes, Enter, Apagar) não confere mais o `frame_id`: nem se o backend o conhece, nem
+  a idade, nem o tamanho. A tecla não aponta para nada na tela. O lease (`not_controller`) e o aparelho online
+  (`offline`) continuam valendo. O `frame_id` segue obrigatório no corpo; o painel manda o da imagem exibida, ou `''`
+  quando nenhuma imagem chegou.
+- Toque, toque longo, arraste e texto seguem exigindo um quadro atual. Quando o quadro é desconhecido ou velho:
+  - com a captura falhando (`consecutive_capture_failures > 0` no `stream` da instância): `409 {code:'capture_failing'}`,
+    com a mensagem do motivo (`last_capture_error`) e da saída (as teclas passam). Esperar a imagem nova não resolve;
+  - sem falha registrada: `409 {code:'stale_frame'}`, como antes (a corrida comum entre o painel e a tela).
+- `frame_mismatch` não mudou.
+- O caso que motivou: na medida do 31.72 (android-09, 05/10), uma tela protegida contra captura (a aba anônima do
+  Chrome, FLAG_SECURE) congelou o quadro, e todo `/input` voltou `stale_frame`, até o Voltar: o painel ficou sem saída.
+- **O que o screencap faz com a FLAG_SECURE ainda é INFERRED** (falha, ou sai uma imagem preta):
+  - se falha: o `stream` registra a falha, toque e texto recebem `capture_failing`, e a tecla é a saída;
+  - se sai preto: o quadro se renova (preto), o `stale_frame` não dispara, e o toque passa às cegas sobre uma imagem
+    preta. O 29.105 não detecta isso; a tecla segue sendo a saída.
+- O painel trata `capture_failing` com aviso próprio (o motivo do backend e "use Voltar ou Início") e manda a tecla
+  mesmo sem imagem exibida. Ausente = backend de antes do 29.105 (a tecla recebia `stale_frame` com o quadro velho).
+- **Prova:** `simulated` (`backend/tests/test_tela_protegida.py`, `frontend/src/app.integration.test.tsx`). `real`
+  parcial no android-04 (05/10, deploy 36, `e5f1b22b`, ANTES deste código): com a captura sã, o toque com quadro de
+  ~40 s voltou `stale_frame` e o Voltar com quadro recente passou (`data/diag-29-105/29-105-medida.md`). A tela
+  protegida em si: `not_run`.

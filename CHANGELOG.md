@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.105: o controle manual tem saída numa tela protegida contra captura (branch fix/29-105-tela-protegida)
+
+- `DeviceManager.manual_input`: a tecla não confere o quadro (só o lease e o online). Toque, arraste e texto com quadro
+  desconhecido ou velho e a captura falhando recebem `capture_failing`, com o motivo e a saída; sem falha registrada,
+  `stale_frame` como antes (`_quadro_velho`). Antes, uma aba anônima do Chrome (FLAG_SECURE) congelava o quadro e
+  nem o Voltar passava (medida do 31.72).
+- **Adendo v1.52.** O painel (`FocusPanel.tsx`, `client.ts`) mostra o aviso próprio de `capture_failing` e manda a tecla
+  mesmo sem imagem exibida.
+- O que o screencap faz com a FLAG_SECURE (falha ou sai preto) segue INFERRED; as duas consequências estão no adendo.
+- Prova `simulated`, em Idle: `backend/tests/test_tela_protegida.py` (4 novos), `test_execution.py` e
+  `test_contrato_http.py`, 31 passed; `pytest @tests/catracas.txt tests/test_arquitetura.py -n 4`, 88 passed; painel
+  `npm run typecheck` e `npm test`, 1612 passed. `not_run`: a tela protegida no aparelho, até a medida no android-09.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,

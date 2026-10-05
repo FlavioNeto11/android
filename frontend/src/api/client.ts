@@ -205,6 +205,9 @@ export function hintForError(e: ApiError): string {
     case 'stale_frame':
     case 'frame_mismatch':
       return 'A tela mudou — aguarde a nova imagem e tente de novo.';
+    // 29.105: o quadro não se renova (tela protegida contra captura); a tecla não depende dele.
+    case 'capture_failing':
+      return 'A captura da tela está falhando e a imagem não se renova. Voltar e Início seguem funcionando.';
     case 'not_controller':
       return 'Você não está com o controle desta instância. Use “Assumir controle” antes de interagir.';
     // ADR-040: a senha mora na conta da persona, nunca no comando nem na execução.

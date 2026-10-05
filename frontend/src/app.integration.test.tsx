@@ -440,6 +440,13 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(text()).toContain('A tela mudou — aguarde a nova imagem e tente de novo'));
     await waitFor(() => expect(backend.callsTo('GET', /android-01\/frame$/).length).toBeGreaterThan(framesBefore));
 
+    // 409 capture_failing (29.105): diz o motivo e a saída pelas teclas
+    backend.on('POST', /^\/api\/instances\/[^/]+\/input$/, () => apiError(409, 'capture_failing', 'A captura da tela está falhando (screencap falhou).'));
+    await pointer(box, 'pointerdown', 500, 600);
+    await pointer(box, 'pointerup', 500, 600);
+    await waitFor(() => expect(text()).toContain('A captura da tela está falhando'));
+    expect(text()).toContain('Use Voltar ou Início para sair desta tela');
+
     await click(byRole('button', /^Devolver à IA/, panel));
     await waitFor(() => expect(backend.callsTo('POST', /release$/)).toHaveLength(1));
     expect(backend.callsTo('POST', /release$/)[0]?.body).toEqual({ lease_id: 'lease-1' });
