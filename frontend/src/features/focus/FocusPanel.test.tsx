@@ -537,17 +537,17 @@ describe('FocusPanel — ações em grupos', () => {
     const execucao = { run_id: 'run-0001', objective_id: 'obj-1', objective_status: 'running' as const, step_id: 's-1',
                        step_title: 'Abrir o app', step_status: 'running' as const, steps_done: 1, steps_total: 3 };
     const el = await renderFocus(makeInstance(1, { state: 'online', current: execucao }));
-    await click(byRole('button', /^Parar/, el));
+    await click(await botaoPronto(/^Parar/, el));
     const dialogo = await waitFor(() => byRole('dialog', /Parar android-01 no meio de uma execução/));
     expect(text(dialogo)).toContain('run-0001');
     expect(backend.callsTo('POST', /\/actions\/stop$/)).toHaveLength(0);      // nada sem confirmar
-    await click(byRole('button', 'Parar o aparelho', dialogo));
+    await click(await botaoPronto('Parar o aparelho', dialogo));
     await waitFor(() => expect(backend.callsTo('POST', /\/actions\/stop$/)).toHaveLength(1));
 
     await act(async () => root.unmount());
     root = createRoot(container);
     const livre = await renderFocus(makeInstance(1, { state: 'online', current: null }));
-    await click(byRole('button', /^Parar/, livre));
+    await click(await botaoPronto(/^Parar/, livre));
     await waitFor(() => expect(backend.callsTo('POST', /\/actions\/stop$/)).toHaveLength(2));
     expect(allByRole('dialog', /Parar android-01/)).toHaveLength(0);
     await flush(20);
