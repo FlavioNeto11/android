@@ -2130,9 +2130,18 @@ class StepExecutor:
         limpeza = step.key.startswith(PREFIXO_LIMPEZA)
         cobertura_da_limpeza = Cobertura.das_variaveis(step.variables) if limpeza else None
         fechados_pela_regra = 0
-        for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0)):
-            if volta - fechados_pela_regra > max_actions:
-                break
+        # 29.87: a folha de aviso fechada sem escolher e a rolagem até o interruptor exigido também são da regra: não
+        # gastam as ações do ator.
+        folhas_fechadas = 0
+        rolagens_ate_o_interruptor = 0
+        # Um texto só para as duas saídas do teto: `falhas.py` o classifica como ciclo sem progresso.
+        motivo_do_teto = f"Limite de {max_actions} ações por etapa atingido sem concluir."
+        for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0) + LIMITE_DE_FOLHAS
+                           + LIMITE_DE_ROLAGENS_ATE_O_INTERRUPTOR):
+            if volta - fechados_pela_regra - folhas_fechadas - rolagens_ate_o_interruptor > max_actions:
+                # E1 da revisão do 29.87: o teto do ator, não o fim do laço. Sair com `break` pularia o `else` e levaria
+                # a etapa à verificação como se ela tivesse dito `step_done`.
+                return await fail_or_retry(motivo_do_teto, last_obs)
             pela_regra = False
             chamada_do_ator = None
             settle_da_volta, settle_pendente = settle_pendente, None
@@ -2268,7 +2277,40 @@ class StepExecutor:
             # ---------- decidir: a receita (se houver e ainda casar) fala primeiro; na divergência a IA assume
             decision: Decision | None = None
             from_recipe = False
-            rep = rr.replayer if (rr.mode == "replay" and not rr.diverged and not fired) else None
+            # ---------- 29.87: a folha de aviso DECLARADA no conhecimento do app (`fechar: toque_fora`) fecha pela
+            # árvore, sem IA e sem escolher nada: o toque cai no fundo escurecido acima dela. "OK" de um aviso numa
+            # conta real é aceitar, e isso é do dono (`nunca`). Antes da receita e do ator: por cima da folha, nenhum
+            # toque deles chega aonde miram. Sem ponto seguro, ou de volta depois do teto: uma pessoa, sem mais toque.
+            regra_da_folha = None
+            try:
+                # E2 da revisão: lido uma vez por modificação (roda a cada volta); inválido não derruba a etapa.
+                conhecimento_da_tela = (telas_do_app.da_pasta_por_data(CONHECIMENTO_DE_APPS / app.package)
+                                        if app.package and app.package.replace(".", "").replace("_", "").isalnum()
+                                        else None)
+            except (telas_do_app.ConhecimentoInvalido, OSError) as exc:
+                log.warning("conhecimento de telas de %s inválido; sem a folha declarada: %s", app.package, exc)
+                conhecimento_da_tela = None
+            if conhecimento_da_tela is not None:
+                vista = telas_do_app.classificar(conhecimento_da_tela, obs.tree, package=obs.package)
+                regra_da_folha = conhecimento_da_tela.regra(vista.tela)
+            if regra_da_folha is not None and regra_da_folha.fechar_fora is not None:
+                ponto = telas_do_app.toque_fora_da_folha(regra_da_folha, obs.tree)
+                if ponto is None or folhas_fechadas >= LIMITE_DE_FOLHAS:
+                    await evidence(obs, f"Folha que não fechou sem escolher: {regra_da_folha.razao}")
+                    return StepOutcome(Outcome.waiting_user, (
+                        f'A folha "{regra_da_folha.razao}" não fechou com um toque fora dela; nada foi tocado nela.'),
+                        needs="Feche a folha na tela sem aceitar nada (toque fora dela) e retome o item"
+                              + ("." if fired else "; nada foi publicado."))
+                escala = self._image_scale(obs, ai_cfg)
+                decision = Decision(tool="tap", args={
+                    "x": round(ponto[0] / escala), "y": round(ponto[1] / escala), "is_commit_action": False,
+                    "rationale": f"[regra 29.87] fechar sem escolher: {regra_da_folha.razao}"})
+                folhas_fechadas += 1
+                pela_regra = True
+                history.append(f'(executor) a folha "{regra_da_folha.razao}" foi fechada com um toque fora dela, sem '
+                               "IA e sem escolher nada")
+            rep = (rr.replayer if (decision is None and rr.mode == "replay" and not rr.diverged and not fired)
+                   else None)
             if rep is not None:
                 rr.exerceu(StrategyKind.recipe)
                 try:
@@ -2325,6 +2367,21 @@ class StepExecutor:
                 return await falhar_sem_nova_tentativa(
                     f"{MOTIVO_SEM_SAIDA} '{sobra}': nenhum botão de recusar, fechar ou continuar no navegador; nada "
                     "foi aceito.", obs)
+            if (decision is None and not fired and cap is not None and cap.commit_switch
+                    and rolagens_ate_o_interruptor < LIMITE_DE_ROLAGENS_ATE_O_INTERRUPTOR
+                    and (arrasto := rolagem_ate_o_interruptor(cap.commit_switch, cap.commit_selector,
+                                                              self._argumentos_da_guarda(cap, step), obs.tree))):
+                # ---------- 29.87: a linha do interruptor exigido está abaixo da dobra (o "Add AI label" do Instagram):
+                # a regra rola até ela, sem IA, para o ator vê-la e ligá-la e para a guarda não ler "ausente" no Share.
+                decision = Decision(tool="drag", args={
+                    "from_x": round(arrasto[0] / scale), "from_y": round(arrasto[1] / scale),
+                    "to_x": round(arrasto[2] / scale), "to_y": round(arrasto[3] / scale),
+                    "duration_ms": DURACAO_DA_ROLAGEM_MS, "is_commit_action": False,
+                    "rationale": "[regra 29.87] rolar até a linha do interruptor exigido"})
+                rolagens_ate_o_interruptor += 1
+                pela_regra = True
+                history.append("(executor) a tela rolou até a linha do interruptor exigido, sem IA: ligue-o antes do "
+                               "toque de efeito")
             if decision is None:
                 # ---------- LT-1: a pós-condição já vale na tela que acabou de ser lida? Pular o ator, nunca a prova.
                 # Só etapa SEM efeito (a UI otimista de uma etapa com efeito mostra o "feito" antes de ele valer),
@@ -3176,7 +3233,7 @@ class StepExecutor:
                 if r:
                     break
         else:
-            return await fail_or_retry(f"Limite de {max_actions} ações por etapa atingido sem concluir.", last_obs)
+            return await fail_or_retry(motivo_do_teto, last_obs)
 
         if collecting and collected is not None:
             if faltam_saidas():
@@ -4021,6 +4078,47 @@ def estado_do_interruptor(tree: UiTree, seletor: str) -> str:
         if estado != "ambiguo":
             estado = "desligado"
     return estado
+
+
+#: 29.87: quantas vezes, por tentativa, a regra rola a tela atrás da linha do interruptor exigido.
+LIMITE_DE_ROLAGENS_ATE_O_INTERRUPTOR = 4
+#: 29.87: cada passo arrasta esta fração da área rolável. Medido no android-13 (05/10): na tela da legenda (área de
+#: 955 px) a legenda e a linha "Add AI label" só cabem juntas com 380 a 544 px de rolagem. O `scroll` do ator (70 %)
+#: tiraria a legenda da tela, e a guarda `{content}` do Share exige o texto visível; em passos de 25 % a linha aparece
+#: no 2º, com a legenda ainda à vista.
+PASSO_DA_ROLAGEM = 0.25
+#: 29.87: o arrasto é lento (sem arremesso): o conteúdo anda o que o dedo andou.
+DURACAO_DA_ROLAGEM_MS = 600
+#: 29.87: quantas folhas declaradas (`fechar: toque_fora`) a regra fecha por tentativa antes de chamar uma pessoa.
+LIMITE_DE_FOLHAS = 2
+
+
+def rolagem_ate_o_interruptor(commit_switch: Sequence[str], commit_selector: str | None,
+                              bindings: Mapping[str, str], tree: UiTree) -> tuple[int, int, int, int] | None:
+    """29.87: o arrasto (x1, y1, x2, y2, no aparelho) que traz à tela a linha de um interruptor exigido e AUSENTE,
+    ou `None`. Só na tela do efeito (o `commit_selector` à vista: sem isso a regra rolaria a galeria atrás da linha) e
+    só quando o argumento do interruptor é "true". O arrasto sobe um passo (`PASSO_DA_ROLAGEM`) dentro da maior área
+    rolável vertical e começa num ponto sem nada clicável nem editável embaixo: é rolagem, nunca toque. Pura."""
+    if not commit_selector or not tree.find_selector(commit_selector):
+        return None
+    if not any(estado_do_interruptor(tree, s) == "ausente" for s in marcas_exigidas(commit_switch, bindings)):
+        return None
+    verticais = [e for e in tree.elements
+                 if e.scrollable and (e.bounds[3] - e.bounds[1]) * 2 > (e.bounds[2] - e.bounds[0])]
+    if not verticais:
+        return None
+    area = max(verticais, key=lambda e: (e.bounds[2] - e.bounds[0]) * (e.bounds[3] - e.bounds[1]))
+    x1, y1, x2, y2 = area.bounds
+    passo = int((y2 - y1) * PASSO_DA_ROLAGEM)
+    if passo < 40:
+        return None
+    tocaveis = [e for e in tree.elements if e.clickable or e.editable]
+    margem = max(8, (x2 - x1) // 20)
+    for x in ((x1 + x2) // 2, x1 + margem, x2 - margem):
+        for y in range(y2 - 12, y1 + passo + 12, -12):
+            if not any(e.bounds[0] <= x <= e.bounds[2] and e.bounds[1] <= y <= e.bounds[3] for e in tocaveis):
+                return x, y, x, y - passo
+    return None
 
 
 def interruptor_ligado(tree: UiTree, seletor: str) -> bool:

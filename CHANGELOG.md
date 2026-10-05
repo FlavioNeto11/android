@@ -181,6 +181,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     challenge-platform embutido e um desafio 403.
   - `real` (05/10 01:31Z, máquina do central, só GET): a raiz pedida como navegador traz `/assets/site.js` e o beacon;
     pedida pelo `curl` puro, 0 ocorrências. A prova de fora vai reprovar até o dono desligar o recurso na zona.
+## 2026-10-05 — 29.87: a tela da legenda rola até o rótulo de IA e fecha a folha de aviso sem escolher (branch feat/29-87-rolar-ate-o-rotulo)
+
+- Achados da leitura real do android-13 (05/10 01:24Z–01:30Z, deploy 33, sem Share e sem tocar no interruptor): a linha
+  "Add AI label" fica abaixo da dobra da tela da legenda, e a guarda do 29.79 leria "ausente" e recusaria o Share. Na 1ª
+  vez, a folha "Sharing posts" abre por cima, com "OK" e "Manage settings".
+- O executor rola até a linha do interruptor exigido e ausente, sem IA, em passos de 25 % da área rolável
+  (`rolagem_ate_o_interruptor`): a linha aparece no 2º passo com a legenda ainda à vista (a guarda `{content}` do Share).
+- `telas.yaml` ganha `fechar: {toque_fora: {folha, fundo}}` e `nunca` numa regra `intersticial`. A folha "Sharing posts"
+  do Instagram fecha com um toque no fundo acima dela, nunca em "OK"; se não fecha em 2 toques, a etapa para numa pessoa.
+- Limite conhecido: se a folha abrir entre a leitura da tela e o toque no Share, o toque cai no fundo e nada é publicado;
+  a etapa não repete o Share (reconciliação do CREATE_POST) e para, sem publicação dupla.
+- Prova: `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py`: as funções puras sobre as árvores REAIS do 13
+  em `tests/fixtures/instagram_legenda/`, e o laço do executor com a geometria medida). `not_run`: a 1ª publicação real
+  (29.30), depois do deploy 34.
 
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 

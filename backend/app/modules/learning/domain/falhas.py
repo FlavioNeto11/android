@@ -116,7 +116,9 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
                           "chave da anthropic invalida", "credencial recusada por", "falha de rede ao contatar",
                           "limite de requisicoes", "resposta do modelo truncada", "sem chamar nenhuma ferramenta",
                           "sem endpoint configurado")),
-    (_F.UI_OCUPADA, ("interface do aparelho seguiu ocupada", "leitura da tela seguiu falhando")),
+    # 29.87: a folha de aviso declarada que não fechou com o toque fora dela segue cobrindo a tela.
+    (_F.UI_OCUPADA, ("interface do aparelho seguiu ocupada", "leitura da tela seguiu falhando",
+                     "nao fechou com um toque fora dela")),
     (_F.APARELHO_TRAVADO, ("chamada ao aparelho travada", "tempo esgotado numa chamada ao aparelho")),
     (_F.SESSAO_DE_AUTOMACAO, ("sessao de automacao indisponivel", "nao foi possivel observar a tela",
                               "falhas consecutivas do driver")),

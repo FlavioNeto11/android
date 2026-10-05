@@ -87,6 +87,7 @@ TEXTOS: list[tuple[str, FailureKind]] = [
     ("O toque foi tentado no controle de outra publicação.", F.EFEITO_ALVO_ERRADO),
     ("Pré-condições do efeito externo não foram atendidas.", F.EFEITO_GUARDA_NAO_ATENDIDA),
     ("Limite de 40 ações por etapa atingido sem concluir.", F.CICLO_SEM_PROGRESSO),
+    ('A folha "Sharing posts" não fechou com um toque fora dela; nada foi tocado nela.', F.UI_OCUPADA),
     ("A coleta não encontrou nenhum item na lista.", F.COLETA_VAZIA),
     ("A lista não chegou ao fim dentro do limite de páginas da coleta.", F.COLETA_INCOMPLETA),
     ("A lista tem 80 itens; o limite é 50.", F.COLETA_INCOMPLETA),

@@ -512,8 +512,9 @@ acoes:
     precondition: A imagem está na galeria do aparelho, o editor de nova publicação está aberto com ela escolhida e a
       legenda já foi escrita e aprovada.
     goal: Publicar a imagem escolhida com a legenda aprovada. Se rotulo_ia for "true", ligar "Add AI label" na tela
-      da legenda ANTES do Share (o Share é recusado sem ele). Depois do Share, voltar ao PRÓPRIO perfil para a
-      contagem de publicações (a prova é o número maior que o lido antes).
+      da legenda ANTES do Share (o Share é recusado sem ele); a linha fica abaixo da dobra, e o executor rola até ela.
+      Depois do Share, voltar ao PRÓPRIO perfil para a contagem de publicações (a prova é o número maior que o lido
+      antes).
     post_kind: model_judged
     post_value: publicação criada no próprio perfil
     post_description: O número de publicações do próprio perfil é maior que o lido antes de publicar.
@@ -539,8 +540,11 @@ acoes:
     commit_guard: ['{content}']
     # 29.79 (regra do dono, 03/10): imagem realista gerada por IA e publicada pela automação SEMPRE leva o rótulo de
     # IA do Instagram. MEDIDO no mesmo 8.3 (`a01-post-02-rotulo-off.json` e `-on.json`): "Add AI label" é um TextView
-    # sem estado; o interruptor é um `android.view.View` clicável na MESMA linha, `checked=true` quando ligado. A
-    # conferir de novo na medida dos seletores depois do deploy (versão do app). Sem ele ligado, nada de Share.
+    # sem estado; o interruptor é um `android.view.View` clicável na MESMA linha, `checked=true` quando ligado. Sem ele
+    # ligado, nada de Share. 29.87: MEDIDO de novo no android-13 (05/10 01:28Z, deploy 33, só leitura): o TextView e o
+    # View (`clickable`, `checkable`, sem id) estão como no 8.3, mas a linha fica ABAIXO DA DOBRA da tela da legenda,
+    # sob "Tag people" e "Add location". O executor rola até ela em passos de 25 % (`rolagem_ate_o_interruptor`), sem
+    # tirar a legenda da tela; a folha "Sharing posts" da 1ª vez fecha sem escolher (`telas.yaml`).
     commit_switch: ['rotulo_ia:text==Add AI label']
     # 29.79 (d): a prova de que a publicação saiu COM o rótulo (a contagem só prova que saiu). MEDIDO no 8.3
     # (`data/diag-8-3/a01-post-02-publicado.json`): logo depois do Share o feed mostra o post novo com "AI info" em
