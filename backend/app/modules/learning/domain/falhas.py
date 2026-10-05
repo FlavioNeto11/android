@@ -108,8 +108,9 @@ REGRAS: tuple[tuple[FailureKind, tuple[str, ...]], ...] = (
     # `collect_list` da coleta, deixar de ler (ou insistir em leitura inválida) é conduta do ator com a ferramenta. E
     # concluir na tela de outro app (item 24.7) também: o executor disse qual app abrir e o ator não abriu. E insistir
     # em "dado ausente" fora de etapa de leitura (31.38): a ferramenta só vale onde há o que ler. E concluir a limpeza
-    # sem gesto nenhum (31.40 b): o executor disse o que cobre a tela e o ator não fechou.
-    (_F.IA_CHAMADA_INVALIDA, ("insistiu em chamadas invalidas", "nao usou collect_list", "acao da receita invalida",
+    # sem gesto nenhum (31.40 b): o executor disse o que cobre a tela e o ator não fechou. E reler o mesmo nome com valores
+    # diferentes até o teto da leitura sem concluir (31.78): nenhum valor ficou estável para entregar.
+    (_F.IA_CHAMADA_INVALIDA, ("insistiu em chamadas invalidas", "leu valores divergentes", "nao usou collect_list", "acao da receita invalida",
                               "concluiu a etapa sem ler o valor", "o valor da etapa nao foi lido",
                               "entrega as seguintes nao foi lido", "concluir a etapa fora do app dela",
                               "dado ausente' numa etapa que nao e de leitura",

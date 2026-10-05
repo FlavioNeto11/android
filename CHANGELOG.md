@@ -27,18 +27,29 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `costs.spent_usd`). É a única tentativa do banco com 3 ou mais releituras do mesmo nome. O "0" nunca foi descartado.
   Por que o modelo relia não é provável pelo banco: `ai_calls` não guarda a resposta.
 - `taskqueue/executor.py`:
-  - releitura do mesmo nome com o MESMO valor e nada faltando:
-    - na 1ª, uma linha `(executor)` diz que é hora do `step_done`, sem o valor;
+  - releitura do mesmo nome com o MESMO valor e nada faltando, só em etapa de leitura (sem efeito e sem
+    `commit_guard`):
+    - na 1ª, o ator recebe "é hora do `step_done`", sem o valor. A instrução vai só na cópia da decisão dele, e não
+      aos fatos do juiz (C2 da leitura);
     - na 2ª, a etapa vai à verificação, que julga a pós-condição como depois de um `step_done`.
-    - Valor diferente zera a conta: a tela pode ter mudado.
-  - O teto de decisões da leitura com tudo lido vai à verificação. Com algo faltando, segue `dado_ausente`.
+    - Só um valor diferente zera a conta. Outras ações entre as leituras, não.
+  - O teto de decisões da leitura, com tudo lido:
+    - vai à verificação;
+    - se a última leitura de alguma saída diverge da anterior, é falha honesta "A IA leu valores divergentes de …"
+      (C1 da leitura). Regra nova em `falhas.py`: `ia_chamada_invalida`;
+    - com algo faltando, segue `dado_ausente`.
   - A linha do histórico do ator diz `lido e entregue: "<valor>"`. A hipótese de "lido: 0" soar como "nada lido" não
     está provada.
-- Prova `simulated`: `test_releitura_do_mesmo_valor.py`, com 4 testes:
+- Prova `simulated`: `test_releitura_do_mesmo_valor.py`, com 10 testes:
   - "0" e "7" fecham em 3 decisões;
-  - valor diferente vai ao teto e à verificação;
-  - outra saída faltando segue em `dado_ausente`.
-  - Cada uma das 4 regras, revertida, reprova um teste.
+  - o aviso fica fora dos fatos do juiz;
+  - uma ação entre as leituras não zera a conta;
+  - o "não" do juiz falha sem laço;
+  - teto com leitura única vai à verificação;
+  - leituras divergentes falham sem juiz;
+  - outra saída faltando segue em `dado_ausente`;
+  - `commit_guard` e `side_effect` ficam fora.
+  - Cada uma das 7 regras, revertida, reprova um teste. A frase nova tem caso em `test_learning_falhas.py`.
 - Prova real `not_run`: é a nova prévia do 29.30, com o perfil ainda em 0 publicações.
 
 ## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)

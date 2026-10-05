@@ -1781,10 +1781,15 @@ class StepExecutor:
         # 29.49: a recusa determinística de cada par (tela, âncora) já lido; reler o par vira `repetida` definitiva.
         recusas_visuais: dict[ChaveDeTentativa, str] = {}
         recusas_de_saida = 0
-        # 31.78: releituras de um nome já lido, com o MESMO valor e nada faltando (outras ações no meio não zeram). O ator
-        # do 29.30 releu 12 vezes o "0" da contagem sem chamar `step_done` (r-…-701173); na 1ª o executor diz que é hora
-        # de concluir, na 2ª a etapa vai à verificação. Valor diferente zera: a tela pode ter mudado.
+        # 31.78: releituras de um nome já lido, com o MESMO valor e nada faltando. O ator do 29.30 releu 12 vezes o "0" da
+        # contagem sem chamar `step_done` (r-…-701173); na 1ª o ator é avisado de que é hora de concluir, na 2ª a etapa
+        # vai à verificação. Só uma leitura de valor DIFERENTE zera a conta (a tela pode ter mudado); observar, rolar ou
+        # tocar entre as leituras não zera: quem decide se a tela ainda prova é o juiz da verificação.
         releituras_iguais = 0
+        relido: str | None = None           # o nome do aviso, que vai só na cópia da decisão do ator (não ao juiz)
+        # 31.78 (C1 da leitura do #413): os nomes cuja ÚLTIMA leitura diverge da anterior. No teto, valor divergente não
+        # vai à verificação: o juiz julga "a contagem foi lida", não qual valor é o certo, e a saída é a base da prova.
+        divergentes: set[str] = set()
 
         def faltam_saidas() -> list[str]:
             return [n for n in saidas_declaradas if n not in lidos]
@@ -2540,6 +2545,11 @@ class StepExecutor:
                 image_requested = False
                 if encadeada is None:          # a ação encadeada não é decisão nova (31.35)
                     if teto_leitura and decisions >= teto_leitura:
+                        if not faltam_saidas() and divergentes:
+                            return await fail_or_retry(
+                                "A IA leu valores divergentes de " + ", ".join(f"'{n}'" for n in sorted(divergentes))
+                                + f" até o teto de {teto_leitura} decisões da leitura; nenhum valor ficou estável para "
+                                  "entregar às seguintes.", obs)
                         if not faltam_saidas():
                             # 31.78: com tudo lido, o teto não é "dado ausente" (r-…-701173: 12 leituras do mesmo
                             # "0" e a etapa falhou dizendo "não encontrei"). Vai à verificação, que julga a pós-condição.
@@ -2555,6 +2565,10 @@ class StepExecutor:
                 lembrete = (lembrete_da_leitura(faltam_saidas(), visual=ai_cfg.leitura_visual.enabled)
                             if ai_cfg.imagem_enquanto_falta_saida and faltam_saidas() and screen.jpeg else None)
                 actor_history = historico_do_ator(history, ai_cfg.actor_history_lines, lembrete)
+                if releituras_iguais and relido is not None:
+                    # 31.78 (C2): instrução ao ator, não fato do executor; por isso fora do `history` (os `facts` do juiz).
+                    actor_history = [*actor_history, f"(executor) '{relido}' já foi lido e entregue, com o mesmo valor; "
+                                                     "todos os valores da etapa estão lidos: a próxima ação é step_done."]
                 rr.exerceu(StrategyKind.ai_actor)
                 if licoes is None:
                     licoes = self._licoes_da_tentativa(run, objective, step, attempt_id, app, rr)
@@ -2810,6 +2824,10 @@ class StepExecutor:
                             return await dado_ausente("o valor lido não tinha relação com o pedido", obs)
                         continue
                 repetida = args.name in lidos and lidos[args.name][0] == valor
+                if args.name in lidos and not repetida:
+                    divergentes.add(args.name)
+                elif repetida:
+                    divergentes.discard(args.name)
                 lidos[args.name] = (valor, args.value_kind)
                 origem_dos_lidos[args.name] = (alvo.resource_id or "", not (args.value or "").strip())
                 if lido_da_imagem is not None:
@@ -2859,9 +2877,7 @@ class StepExecutor:
                                   "valores lidos; a etapa vai à verificação sem step_done",
                                   run_id=run_id, instance_id=iid, step_id=step.id)
                     break
-                if releituras_iguais:
-                    history.append(f"(executor) '{args.name}' já foi lido e entregue, com o mesmo valor; todos os "
-                                   "valores da etapa estão lidos: a próxima ação é step_done.")
+                relido = args.name if releituras_iguais else None
                 if not faltam and prova_da_leitura is not None and not visuais:
                     # 31.61 (A): a prova vale numa árvore lida AGORA, depois da última leitura (não na de antes): a tela
                     # pode ter mudado enquanto se lia. Fechar aqui tira só a volta ao ator; a verificação final roda igual.
