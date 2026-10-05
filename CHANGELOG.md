@@ -27,9 +27,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **O que muda:** com `SITE=ligado`, `scripts/portal-prova-de-fora.sh` baixa a raiz com `Accept` e `User-Agent` de
   navegador. Ela FALHA se achar `cloudflareinsights` ou qualquer `<script src>` de outra origem, e diz onde se desliga
   (Web Analytics / RUM da zona). A CSP não muda.
+- **Revisão do #353 (X1 a X5):**
+  - X1: o extrator pega a tag quebrada em linhas e o `src = "…"`.
+  - X2: `HTTPS://` e `SCRIPT SRC` em maiúscula reprovam; o que o extrator não reconhece também reprova.
+  - X3: `/cdn-cgi/` reprova, inclusive em script sem `src`, e a mensagem diz o recurso da zona (Rocket Loader,
+    challenge-platform, ofuscação de e-mail).
+  - X4: o pedido como navegador exige 200; um desafio 403 ou 503 não dá `ok`.
+  - X5: todo `curl` do script leva `-q`, para o `~/.curlrc` de quem roda não entrar no pedido. Um teste confere todo
+    `curl` do arquivo, inclusive os de outro PR.
 - **Prova:**
-  - `simulated`: `scripts/tests/test_portal_prova_de_fora.py`, 7 testes, com o `curl` falso injetando o beacon (aspas
-    simples, como a Cloudflare) e um script de outra origem.
+  - `simulated`: `scripts/tests/test_portal_prova_de_fora.py`, 13 testes. O `curl` falso injeta o beacon (aspas
+    simples, como a Cloudflare), um script de outra origem, a tag em linhas, a maiúscula, o Rocket Loader, o
+    challenge-platform embutido e um desafio 403.
   - `real` (05/10 01:31Z, máquina do central, só GET): a raiz pedida como navegador traz `/assets/site.js` e o beacon;
     pedida pelo `curl` puro, 0 ocorrências. A prova de fora vai reprovar até o dono desligar o recurso na zona.
 

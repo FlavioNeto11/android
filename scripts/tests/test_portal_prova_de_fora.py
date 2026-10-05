@@ -8,6 +8,7 @@ credencial. Prova `simulated`; a prova de fora de verdade é a do procedimento e
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -70,10 +71,17 @@ else
 fi
 # A raiz pedida COMO navegador (29.85): a borda da Cloudflare injeta o beacon só nesse caso; o curl puro não vê.
 if [[ "$caminho" == / && "$codigo" == 200 && "$navegador" == 1 ]]; then
-  corpo='<!doctype html><html><head><script src="/assets/site.js" defer></script></head><body><main></main>'
+  # O script do próprio site, relativo e absoluto (com o nome em maiúscula: é o mesmo endereço).
+  corpo='<!doctype html><html><head><script src="/assets/site.js" defer></script>'
+  corpo="$corpo<script src=\"HTTPS://PROVA.INVALID/assets/site.js\" defer></script></head><body><main></main>"
   case "$QUEBRA" in
     beacon) corpo="$corpo<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{\"token\": \"x\"}'></script>" ;;
     script_de_fora) corpo="$corpo<script src=\"https://cdn.exemplo.invalid/x.js\"></script>" ;;
+    src_espacado) corpo="$corpo<script"$'\n'"  defer"$'\n'"  src = \"https://cdn.exemplo.invalid/y.js\"></script>" ;;
+    maiuscula) corpo="$corpo<SCRIPT SRC='HTTPS://cdn.exemplo.invalid/z.js'></SCRIPT>" ;;
+    cdn_cgi) corpo="$corpo<script src=\"/cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js\" defer></script>" ;;
+    desafio_embutido) corpo="$corpo<script>(function(){var a=document.createElement('script');a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';})();</script>" ;;
+    desafio) codigo=403; corpo='<!doctype html><html><head><title>Just a moment...</title></head><body></body>' ;;
   esac
   corpo="$corpo</body></html>"
 fi
@@ -81,6 +89,7 @@ if [[ "$cabecalhos" == 1 ]]; then printf 'HTTP/2 %s\r\n%s\r\n\r\n' "$codigo" "$e
 case "$formato" in
   '%{http_code}') printf '%s' "$codigo" ;;
   '%{redirect_url}') printf '%s' "$destino" ;;
+  '\n%{http_code}') printf '%s\n%s' "$corpo" "$codigo" ;;
   *) [[ "$corpo_fora" == 0 ]] && printf '%s' "$corpo" ;;
 esac
 exit 0
@@ -166,7 +175,7 @@ def test_robots_sem_barrar_a_api_reprova(tmp_path: Path) -> None:
 # ------------------------------------------------------------------ 29.85: script de outra origem no HTML
 def test_a_raiz_e_pedida_como_navegador_e_o_script_proprio_passa(tmp_path: Path) -> None:
     """A borda da Cloudflare só injeta o beacon quando o pedido parece de navegador: a prova baixa a raiz assim, e o
-    `<script src>` relativo do próprio site não reprova."""
+    `<script src>` do próprio site, relativo ou absoluto com o nome em maiúscula, não reprova."""
     r, pedidos = _rodar(tmp_path)
     assert r.returncode == 0, r.stdout + r.stderr
     assert "ok     / (como navegador)" in r.stdout
@@ -176,9 +185,27 @@ def test_a_raiz_e_pedida_como_navegador_e_o_script_proprio_passa(tmp_path: Path)
 @pytest.mark.parametrize(("quebra", "esperado"), [
     ("beacon", "https://static.cloudflareinsights.com/beacon.min.js"),   # o achado de 05/10, aspas simples
     ("script_de_fora", "https://cdn.exemplo.invalid/x.js"),
+    ("src_espacado", "https://cdn.exemplo.invalid/y.js"),                # X1: tag em linhas, `src = "…"`
+    ("maiuscula", "HTTPS://cdn.exemplo.invalid/z.js"),                    # X2: SCRIPT SRC e HTTPS:// em maiúscula
+    ("cdn_cgi", "/cdn-cgi/scripts/7d0fa10a/cloudflare-static/rocket-loader.min.js"),   # X3: a própria origem
+    ("desafio_embutido", "(embutido)"),                                   # X3: /cdn-cgi/ em script sem src
 ])
-def test_script_de_outra_origem_no_html_reprova_e_diz_onde_desligar(tmp_path: Path, quebra: str, esperado: str) -> None:
+def test_script_que_a_pagina_nao_tem_reprova_e_diz_onde_desligar(tmp_path: Path, quebra: str, esperado: str) -> None:
     r, _ = _rodar(tmp_path, quebra=quebra)
-    assert r.returncode == 1
+    assert r.returncode == 1, r.stdout
     assert "FALHOU / (como navegador)" in r.stdout and esperado in r.stdout
-    assert "Web Analytics" in r.stdout and "Nao afrouxe a CSP" in r.stdout
+    assert "Web Analytics" in r.stdout and "Rocket Loader" in r.stdout and "Nao afrouxe a CSP" in r.stdout
+
+
+def test_raiz_que_nao_vem_200_como_navegador_reprova(tmp_path: Path) -> None:
+    """X4: um desafio da Cloudflare (403 ou 503) não tem a página para conferir; não pode dar `ok`."""
+    r, _ = _rodar(tmp_path, quebra="desafio")
+    assert r.returncode == 1
+    assert re.search(r"FALHOU / \(como navegador\) +403  esperado 200", r.stdout), r.stdout
+
+
+def test_todo_curl_do_script_ignora_o_curlrc() -> None:
+    """X5: `-q` é o primeiro argumento de todo `curl`, para o `~/.curlrc` de quem roda não entrar no pedido (um proxy,
+    um cabeçalho, um `--insecure`). Vale também para os `curl` que outro PR acrescentar."""
+    chamadas = re.findall(r"\bcurl[ \t]+(-\S*)", SCRIPT.read_text(encoding="utf-8"))
+    assert chamadas and all(c == "-q" for c in chamadas), chamadas

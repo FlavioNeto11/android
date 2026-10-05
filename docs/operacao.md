@@ -463,6 +463,9 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
   - A CSP do site bloqueia o beacon, mas sobra um erro de console em todo visitante.
   - O conserto é desligar a injeção na zona: Web Analytics / Real User Measurements (RUM), no painel da Cloudflare,
     feito pelo dono.
+  - Também reprova `/cdn-cgi/` no HTML, que é script da Cloudflare na própria origem: Rocket Loader, o desafio JS
+    (`challenge-platform`) ou a ofuscação de e-mail.
+  - Reprova ainda a raiz que não vem 200 quando pedida como navegador (um desafio não mostra a página).
   - Nunca afrouxar a CSP;
 - 180 dias no sistema: o laço apaga a linha inteira a cada hora, com o contato ligado ou não;
 - o descartado (teto diário, `campo_invalido`, `falhas_demais`) tem o conteúdo apagado sem chegar à equipe. O

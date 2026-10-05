@@ -31,7 +31,7 @@ FALHAS=0
 
 codigo() { # caminho [args extras do curl]  -> imprime so o codigo HTTP
     local caminho="$1"; shift
-    curl -s -o /dev/null -m 20 -w '%{http_code}' "$@" "https://$H$caminho"
+    curl -q -s -o /dev/null -m 20 -w '%{http_code}' "$@" "https://$H$caminho"
 }
 
 confere() { # caminho esperado descricao [args extras]
@@ -51,7 +51,7 @@ echo "prova de fora de https://$H  modo=$MODO  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # Vale nos dois modos: o canal do worker nunca sai pelo tunel (regra do ingress), e http vira https na borda.
 confere /api/worker/ws      "404" "canal do worker: 404 no ingress"
 confere /api/worker/midia   "404" "canal de midia do worker: 404 no ingress"
-veio_http="$(curl -s -o /dev/null -m 20 -w '%{http_code}' "http://$H/central/")"
+veio_http="$(curl -q -s -o /dev/null -m 20 -w '%{http_code}' "http://$H/central/")"
 if [[ "$veio_http" == "301" || "$veio_http" == "308" ]]; then
     printf 'ok     %-28s %s  (http vira https na borda)\n' "http://.../central/" "$veio_http"
 else
@@ -78,13 +78,13 @@ else
         confere /site/index.html    "404" "site: o caminho da pasta nao e servido"
         confere /rascunho.pdf       "404" "site: extensao fora da lista fechada"
         confere /pagina-que-nao-existe "404" "site: a pagina 404 propria, com status 404"
-        robots="$(curl -s -m 20 "https://$H/robots.txt" | tr -d '\r')"
+        robots="$(curl -q -s -m 20 "https://$H/robots.txt" | tr -d '\r')"
         if [[ "$robots" == *"Disallow: /central/"* && "$robots" == *"Disallow: /api/"* ]]; then
             printf 'ok     %-28s      (barra /central/ e /api/)\n' "/robots.txt (corpo)"
         else
             printf 'FALHOU %-28s      esperado Disallow de /central/ e /api/\n' "/robots.txt (corpo)"; FALHAS=$((FALHAS + 1))
         fi
-        cabecalhos="$(curl -s -o /dev/null -D - -m 20 "https://$H/" | tr -d '\r')"
+        cabecalhos="$(curl -q -s -o /dev/null -D - -m 20 "https://$H/" | tr -d '\r')"
         csp="$(grep -i '^content-security-policy:' <<< "$cabecalhos")"
         if [[ "$csp" == *"script-src 'self'"* && "$csp" == *"frame-ancestors 'none'"* ]]; then
             printf 'ok     %-28s      (CSP do site)\n' "/ (cabecalhos)"
@@ -102,25 +102,42 @@ else
         # quando o pedido parece de navegador; o curl puro nao ve (medido em 05/10). A CSP do site bloqueia e o script
         # nao roda, mas sobra um erro de console em todo visitante, e a pagina promete "sem rastreadores". Por isso a
         # raiz e baixada COMO navegador, e qualquer <script src> de outra origem reprova. A CSP nao muda: o conserto e
-        # desligar o recurso na zona.
+        # desligar o recurso na zona. A Cloudflare tambem injeta script na PROPRIA origem, sob /cdn-cgi/ (Rocket Loader,
+        # challenge-platform, ofuscacao de e-mail): relativo, passa na CSP, e tambem reprova.
         ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
-        html="$(curl -s -m 20 -H 'Accept: text/html,application/xhtml+xml' -H "User-Agent: $ua" "https://$H/")"
+        nav="$(curl -q -s -m 20 -w '\n%{http_code}' -H 'Accept: text/html,application/xhtml+xml' -H "User-Agent: $ua" \
+            "https://$H/")"
+        codigo_nav="${nav##*$'\n'}"; html="${nav%$'\n'*}"
+        # Uma linha so: a tag pode vir quebrada em linhas, e o `=` com espaco em volta.
+        html_linha="$(tr '\r\n\t' '   ' <<< "$html")"
         de_fora=""
+        shopt -s nocasematch                   # HTTPS:// e o nome publico em maiuscula sao o mesmo endereco
         while IFS= read -r src; do
             case "$src" in
+                *"/cdn-cgi/"*) de_fora="$de_fora $src" ;;
                 "https://$H/"*|"//$H/"*) ;;
-                http://*|https://*|//*) de_fora="$de_fora $src" ;;
+                //*|*:*) de_fora="$de_fora $src" ;;
+                /*|[a-z0-9._~-]*) ;;           # relativo a propria origem
+                *) de_fora="$de_fora $src" ;;  # o que nao se reconhece reprova
             esac
-        done < <(grep -oiE "<script[^>]*[[:space:]]src=[\"']?[^\"' >]+" <<< "$html" | sed -E "s/.*[sS][rR][cC]=[\"']?//")
-        if [[ -z "$html" ]]; then
+        done < <(grep -oiE "<script[^>]*[[:space:]]src[[:space:]]*=[[:space:]]*[\"']?[^\"' >]+" <<< "$html_linha" |
+                 sed -E "s/.*[sS][rR][cC][[:space:]]*=[[:space:]]*[\"']?//")
+        shopt -u nocasematch
+        if [[ "$codigo_nav" != 200 ]]; then
+            printf 'FALHOU %-28s %s  esperado 200: sem ver a pagina nao ha o que conferir (desafio da Cloudflare?)\n' \
+                "/ (como navegador)" "$codigo_nav"; FALHAS=$((FALHAS + 1))
+        elif [[ -z "$html" ]]; then
             printf 'FALHOU %-28s      a raiz veio vazia pedida como navegador\n' "/ (como navegador)"; FALHAS=$((FALHAS + 1))
-        elif [[ -n "$de_fora" || "$html" == *cloudflareinsights* ]]; then
-            printf 'FALHOU %-28s      script de outra origem no HTML:%s\n' "/ (como navegador)" "${de_fora:- cloudflareinsights}"
-            echo '       -> desligue na Cloudflare, na zona do nome publico: Web Analytics / Real User Measurements (RUM),'
-            echo '          a injecao automatica do beacon. Nao afrouxe a CSP: a pagina promete que nao usa rastreadores.'
+        elif [[ -n "$de_fora" || "$html_linha" == *cloudflareinsights* || "$html_linha" == *"/cdn-cgi/"* ]]; then
+            printf 'FALHOU %-28s      script que a pagina nao tem no HTML:%s\n' "/ (como navegador)" "${de_fora:- (embutido)}"
+            echo '       -> desligue na Cloudflare, na zona do nome publico, o recurso que injeta:'
+            echo '          cloudflareinsights = Web Analytics / Real User Measurements (RUM), a injecao automatica do beacon;'
+            echo '          /cdn-cgi/scripts = Rocket Loader (Speed > Optimization); /cdn-cgi/challenge-platform = desafio'
+            echo '          JS / Bot Fight Mode; /cdn-cgi/l/email-protection = Email Address Obfuscation (Scrape Shield).'
+            echo '          Nao afrouxe a CSP: a pagina promete que nao usa rastreadores.'
             FALHAS=$((FALHAS + 1))
         else
-            printf 'ok     %-28s      (nenhum script de outra origem no HTML)\n' "/ (como navegador)"
+            printf 'ok     %-28s      (nenhum script de fora nem da Cloudflare no HTML)\n' "/ (como navegador)"
         fi
     else
         confere /                   "301 302 307 308" "raiz: redireciona para o painel"
@@ -156,7 +173,7 @@ else
     fi
     # A rota de sessao, de fora e sem credencial, tem de dizer que a senha e exigida e que nao ha operador:
     # e isso que faz o painel publico mostrar a tela de login em vez de so falhar com 401 nos dados.
-    corpo="$(curl -s -m 20 "https://$H/api/session" | tr -d ' \n\r')"
+    corpo="$(curl -q -s -m 20 "https://$H/api/session" | tr -d ' \n\r')"
     if [[ "$corpo" == *'"token_required":true'* && "$corpo" == *'"operator":null'* ]]; then
         printf 'ok     %-28s      (pede senha e nao ha operador)\n' "/api/session (corpo)"
     else
@@ -165,7 +182,7 @@ else
     fi
     # Para onde a raiz manda (ou /central, com o site no ar): caminho relativo ao proprio endereco, nunca 127.0.0.1.
     entrada="/"; [[ "${SITE:-}" == "ligado" ]] && entrada="/central"
-    destino="$(curl -s -o /dev/null -m 20 -w '%{redirect_url}' "https://$H$entrada")"
+    destino="$(curl -q -s -o /dev/null -m 20 -w '%{redirect_url}' "https://$H$entrada")"
     case "$destino" in
         "https://$H/central/"*) printf 'ok     %-28s -> %s\n' "$entrada (Location)" "$destino" ;;
         *) printf 'FALHOU %-28s -> %s  esperado https://%s/central/\n' "$entrada (Location)" "$destino" "$H"; FALHAS=$((FALHAS + 1)) ;;
