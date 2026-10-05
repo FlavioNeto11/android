@@ -241,6 +241,10 @@ class CuradorPorIA:
                 invalidas.append(ref)
                 continue
             revisadas.append(ref)
+            if validacao.parecer.falta_descartada:
+                # 30.73: visível também no log, além da `saida`; só os rótulos (vocabulário fechado), nunca o texto
+                log.info("aprendizado: parecer de %s veio com falta fora da classe %s, descartada: %s", review_id,
+                         x.dossie.classe.value, ", ".join(f.value for f in validacao.parecer.falta_descartada))
             self._fechar_o_laco(x, review_id, validacao.parecer, simulado)
             # Parecer do adaptador SIMULADO nunca vira aviso ao dono: o evento chega ao Telegram (28.14) sem marca de
             # simulado, e um parecer falso lá é pior que nenhum. Fica só o registro (`learning_reviews.simulated=1`).

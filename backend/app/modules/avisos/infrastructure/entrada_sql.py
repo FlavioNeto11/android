@@ -29,6 +29,11 @@ MAX_ERRO = 300
 INICIO = "inicio"
 #: A chave, no `previa` da linha, da primeira vez que a conversa viu a execução em `planned` (28.39, G1).
 VISTA_EM_PLANNED = "vista_em_planned"
+#: 28.42: o desfecho desta linha saiu com a execução em `awaiting_person` ("parou"); quando ela sair dali, o desfecho se
+#: rearma e o fim real (concluída, falhou, cancelada, ou parou de novo) chega à mesma conversa.
+DESFECHO_PARADO = "desfecho_parado"
+#: Quantas vezes o desfecho desta linha se rearmou: o `desfecho_ja_enviado` conta os envios além delas.
+DESFECHOS_REARMADOS = "desfechos_rearmados"
 
 
 def _previa(bruta: object) -> dict[str, object]:
@@ -56,6 +61,17 @@ def _na_fase(linhas: list[dict[str, object]], fase: str) -> list[dict[str, objec
             return None
         return previa.get("fase") if isinstance(previa, dict) else None
     return [linha for linha in linhas if fase_de(linha) == fase]
+
+
+#: A marca, na `previa` gravada com a linha, da mensagem encaminhada (28.47).
+ENCAMINHADA = "encaminhada"
+
+
+def _numero(ref: object) -> int | None:
+    """O `message_id` do Telegram como número (a ordem do chat); `None` para o que não é (`resultado:<id>`, vazio).
+    `isdecimal`, e não `isdigit`: "²" passa no `isdigit` e quebra o `int`."""
+    texto = str(ref or "").strip()
+    return int(texto) if texto.isdecimal() else None
 
 
 def _curto(texto: str | None, n: int = MAX_CURTO) -> str | None:
@@ -91,17 +107,18 @@ class EntradasDoCanal:
 
     def gravar(self, *, id_externo: str, ordem: int | None, tipo: str, do_dono: bool, ref_mensagem: str | None,
                responde_a: str | None, texto: str | None, tamanho: int, estado: str = "recebida",
-               erro: str | None = None) -> bool:
+               erro: str | None = None, previa: Mapping[str, object] | None = None) -> bool:
         """Grava o que chegou. Devolve se a linha é nova. `estado` final já na gravação para o que não se trata (não
         veio do dono, credencial): o texto destes nunca é gravado, então não há o que tratar depois."""
         agora = self._agora()
         tratada = None if estado == "recebida" else agora
         cur = self.db.execute(
             "INSERT INTO canal_entradas(canal, id_externo, ordem, tipo, do_dono, ref_mensagem, responde_a, texto,"
-            " tamanho, estado, erro, recebida_em, tratada_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            " tamanho, estado, erro, previa, recebida_em, tratada_em) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT (canal, id_externo) DO NOTHING",
             (self.canal, id_externo, ordem, tipo, 1 if do_dono else 0, ref_mensagem, responde_a, texto, int(tamanho),
-             estado, _curto(erro, MAX_ERRO), agora, tratada))
+             estado, _curto(erro, MAX_ERRO), json.dumps(previa, ensure_ascii=False) if previa is not None else None,
+             agora, tratada))
         return (cur.rowcount or 0) == 1
 
     # ------------------------------------------------------------------ o aviso do webhook (Trello, 32.2 §8.5)
@@ -230,6 +247,59 @@ class EntradasDoCanal:
             " VALUES (?,?,?,?,?,?) ON CONFLICT (canal, ref_mensagem) DO NOTHING",
             (self.canal, ref_mensagem, origem, fato, entrada_id, self._agora()))
 
+    def registrar_substituta(self, nova: str, antiga: str) -> None:
+        """A mensagem `nova` substitui a pergunta `antiga` (28.44): a antiga deixa de estar aberta. Vai numa linha própria,
+        porque a da `nova` já tem o seu `fato` e a chave `(canal, ref_mensagem)` é única. A referência `substitui:<nova>`
+        é como o `resultado:<id>` do 28.39: nenhum id de Telegram tem esse formato."""
+        self.db.execute(
+            "INSERT INTO canal_enviadas(canal, ref_mensagem, origem, fato, entrada_id, enviada_em)"
+            " VALUES (?,?,'substitui',?,NULL,?) ON CONFLICT (canal, ref_mensagem) DO NOTHING",
+            (self.canal, f"substitui:{nova}", f"substitui:{antiga}", self._agora()))
+
+    def encaminhada(self, linha: Mapping[str, object]) -> bool:
+        """A linha veio de uma mensagem encaminhada (28.47): `gravar` pôs a marca na `previa` ao gravar. Uma `previa` que
+        não é JSON conta como não encaminhada; a marca some quando a conversa grava a `previa` dela, depois de decidir."""
+        try:
+            previa = json.loads(str(linha.get("previa") or "null"))
+        except ValueError:
+            return False
+        return isinstance(previa, dict) and previa.get(ENCAMINHADA) is True
+
+    def escolhas_abertas(self, ate: str, janela_s: float, *, fora: int,
+                         ref_da_resposta: str | None) -> list[dict[str, object]]:
+        """As perguntas de escolha (`fato = 'escolha:<msg>:<opções>'`, 28.44) abertas quando o dono escreveu a resposta
+        `ref_da_resposta`, da mais nova para a mais velha. Ficam de fora as que o dono já respondeu, por reply de verdade
+        (`responde_a`) ou por casamento (`alvo = 'escolha:<msg>'`), e as que uma mensagem ANTERIOR à resposta substituiu
+        (`substitui:<msg>`). `fora`: a própria linha que se casa, que não conta como resposta.
+
+        A ordem é a do `message_id`, não a do relógio (C1 da leitura do #412): no chat privado ele é uma sequência só,
+        para os dois lados, e o `recebida_em` é a hora em que o NOSSO laço gravou. Uma pergunta mandada depois de o dono
+        escrever, mas antes de o laço gravar, não casa; uma substituição nessa mesma brecha não fecha a anterior. Por
+        isso não há teto pelo relógio (28.47): a pergunta que o script gravou um instante depois do "1", mas que veio
+        antes dele no chat, casa. A janela de `janela_s` segundos antes de `ate` (o `recebida_em`) segue pelo relógio.
+        Sem `ref_da_resposta` numérica, nada casa."""
+        limite = parse_iso(ate)
+        resposta = _numero(ref_da_resposta)
+        if limite is None or resposta is None:
+            return []
+        desde = to_iso(limite - timedelta(seconds=janela_s))
+        candidatas = [dict(r) for r in self.db.query(
+            "SELECT s.ref_mensagem, s.fato, s.enviada_em FROM canal_enviadas s WHERE s.canal=? AND s.fato LIKE 'escolha:%'"
+            " AND s.enviada_em >= ?"
+            " AND NOT EXISTS (SELECT 1 FROM canal_entradas e WHERE e.canal=s.canal AND e.do_dono=1 AND e.id <> ?"
+            "  AND (e.responde_a=s.ref_mensagem OR e.alvo='escolha:' || s.ref_mensagem))"
+            " ORDER BY s.enviada_em DESC, s.ref_mensagem DESC", (self.canal, desde, int(fora)))]
+        candidatas = [c for c in candidatas if (_numero(c["ref_mensagem"]) or resposta) < resposta]
+        if not candidatas:
+            return []
+        # As substituições já feitas quando o dono escreveu: a `nova` (o fim de `substitui:<nova>`) veio antes da resposta.
+        refs = [str(c["ref_mensagem"]) for c in candidatas]
+        substituidas = {str(r["fato"]).partition(":")[2] for r in self.db.query(
+            f"SELECT ref_mensagem, fato FROM canal_enviadas WHERE canal=? AND origem='substitui'"
+            f" AND fato IN ({','.join('?' * len(refs))})", (self.canal, *(f"substitui:{r}" for r in refs)))
+            if (_numero(str(r["ref_mensagem"]).partition(":")[2]) or resposta) < resposta}
+        return [c for c in candidatas if str(c["ref_mensagem"]) not in substituidas]
+
     def enviada(self, ref_mensagem: str) -> dict[str, object] | None:
         r = self.db.one("SELECT * FROM canal_enviadas WHERE canal=? AND ref_mensagem=?", (self.canal, ref_mensagem))
         return dict(r) if r is not None else None
@@ -262,9 +332,44 @@ class EntradasDoCanal:
             (self.canal, int(depois_de), int(limite or self.LOTE_DESFECHO)))]
 
     def desfecho_ja_enviado(self, ident: int) -> bool:
-        """O desfecho desta linha já saiu e ficou registrado (`canal_enviadas`, origem `resultado`): não se repete."""
-        return self.db.one("SELECT 1 AS x FROM canal_enviadas WHERE canal=? AND entrada_id=? AND origem='resultado'"
-                           " LIMIT 1", (self.canal, int(ident))) is not None
+        """O desfecho desta linha já saiu e ficou registrado (`canal_enviadas`, origem `resultado`): não se repete. Com
+        o desfecho rearmado (28.42), cada rearme pede mais um envio: só os envios além dos rearmes contam."""
+        enviados = int(self.db.scalar("SELECT COUNT(*) FROM canal_enviadas WHERE canal=? AND entrada_id=?"
+                                      " AND origem='resultado'", (self.canal, int(ident))) or 0)
+        return enviados > self._rearmes(ident)
+
+    def _rearmes(self, ident: int) -> int:
+        previa = _previa(self.db.scalar("SELECT previa FROM canal_entradas WHERE id=? AND canal=?", (int(ident), self.canal)))
+        valor = previa.get(DESFECHOS_REARMADOS)
+        return valor if isinstance(valor, int) and not isinstance(valor, bool) else 0
+
+    def desfechos_parados(self, limite: int | None = None, *, depois_de: int = 0) -> list[dict[str, object]]:
+        """As linhas cujo desfecho saiu com a execução parada à espera da pessoa (28.42), em lote que gira como o do
+        desfecho. O LIKE só estreita; quem decide é o JSON lido (lição da #314)."""
+        linhas = [dict(r) for r in self.db.query(
+            "SELECT id, run_id, previa FROM canal_entradas WHERE canal=? AND run_id IS NOT NULL"
+            " AND resultado_em IS NOT NULL AND estado='feita' AND previa LIKE ? AND id > ? ORDER BY id LIMIT ?",
+            (self.canal, f"%{DESFECHO_PARADO}%", int(depois_de), int(limite or self.LOTE_DESFECHO)))]
+        return [r for r in linhas if _previa(r.get("previa")).get(DESFECHO_PARADO) is True]
+
+    def rearmar_desfecho(self, ident: int) -> bool:
+        """A execução saiu de `awaiting_person` (28.42): a linha volta a esperar desfecho, e o próximo envio conta.
+
+        Só rearma a linha que AINDA tem a marca, e uma vez (R1 da leitura do #400): um líder velho, com a foto antiga de
+        `desfechos_parados`, rearmaria uma linha que o novo já rearmou e terminou, e o fim sairia duas vezes. A troca
+        compara o `previa` lido (com a marca) e exige `resultado_em` preenchido; quem perde a corrida não muda nada."""
+        bruta = self.db.scalar("SELECT previa FROM canal_entradas WHERE id=? AND canal=? AND resultado_em IS NOT NULL",
+                               (int(ident), self.canal))
+        previa = _previa(bruta)
+        if previa.get(DESFECHO_PARADO) is not True:
+            return False
+        previa.pop(DESFECHO_PARADO)
+        rearmes = previa.get(DESFECHOS_REARMADOS)
+        previa[DESFECHOS_REARMADOS] = (rearmes if isinstance(rearmes, int) and not isinstance(rearmes, bool) else 0) + 1
+        cur = self.db.execute("UPDATE canal_entradas SET previa=?, resultado_em=NULL WHERE id=? AND canal=?"
+                              " AND resultado_em IS NOT NULL AND previa=?",
+                              (json.dumps(previa, ensure_ascii=False), int(ident), self.canal, bruta))
+        return cur.rowcount == 1
 
     def vista_em_planned(self, ident: int) -> datetime:
         """A primeira vez que a conversa viu a execução desta linha em `planned` (28.39, G1), gravada no `previa` da linha
@@ -287,9 +392,16 @@ class EntradasDoCanal:
             self.db.execute("UPDATE canal_entradas SET previa=? WHERE id=? AND canal=?",
                             (json.dumps(previa, ensure_ascii=False), int(ident), self.canal))
 
-    def marcar_desfecho(self, ident: int) -> None:
-        self.db.execute("UPDATE canal_entradas SET resultado_em=? WHERE id=? AND canal=?",
-                        (self._agora(), int(ident), self.canal))
+    def marcar_desfecho(self, ident: int, *, parado: bool = False) -> None:
+        """`parado`: o desfecho saiu com a execução em `awaiting_person`; a marca rearma quando ela sair dali (28.42)."""
+        if not parado:
+            self.db.execute("UPDATE canal_entradas SET resultado_em=? WHERE id=? AND canal=?",
+                            (self._agora(), int(ident), self.canal))
+            return
+        previa = _previa(self.db.scalar("SELECT previa FROM canal_entradas WHERE id=? AND canal=?", (int(ident), self.canal)))
+        previa[DESFECHO_PARADO] = True
+        self.db.execute("UPDATE canal_entradas SET resultado_em=?, previa=? WHERE id=? AND canal=?",
+                        (self._agora(), json.dumps(previa, ensure_ascii=False), int(ident), self.canal))
 
     # ------------------------------------------------------------------ o comentário do dono no Trello (28.30)
     def comentarios_com_pedido(self, *, desde: str, card: str | None = None, exceto: int | None = None) -> list[str]:

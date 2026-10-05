@@ -16,7 +16,6 @@ efeito externo foram canceladas antes, no mesmo dia (checkpoint 10 de
 | `r-20260918212916-66ac27` | needs_input | 2026-09-18 21:29 | android-01 | entre na conta thi.mnz e fale boa noite pra ele por inbox no instagram |
 | `r-20260918212947-7dd2d8` | needs_input | 2026-09-18 21:29 | android-01 | apenas enviar a mensagem para @thi.mnz usando a conta atual pelo instagram |
 | `r-20260919214402-fc383a` | planned | 2026-09-19 21:44 | android-01, android-02, android-03, android-04, android-05, android-06, android-07, android-08 | acesse o instagram, navege até o perfil @anarabotdilha e envie uma mensagem inbox pra ela dizendo que o quanto o marido dela ama ela, não precisa pensar muito, só escreva isso seguindo o seu perfil algo simples |
-| `r-20260920143652-132c2e` | needs_input | 2026-09-20 14:36 | android-01, android-02, android-03, android-04, android-05, android-06, android-07, android-08 | no aparelho android-05 está aparecendo na conta instagram Confirm you're human, to use your account, juliana.mendes9056, resolva esse problema, nós não temos um telefone disponivel |
 | `r-20260922204913-bd3d3f` | planned | 2026-09-22 20:49 | android-01 | abra o instagram, acesse o perfil do @fornalhaskate e envie um boa tarde por inbox |
 | `r-20260926161438-22d65f` | needs_input | 2026-09-26 16:14 | android-01 | (entrar no site da CETESB pelo Chrome e preencher o login; o texto original cita dados de acesso e não é copiado aqui) |
 | `r-20260927225745-e84d7c` | planned | 2026-09-27 22:57 | android-01 | abra a conversa com @bruno.ferreira9267 no instagram |

@@ -9,6 +9,11 @@ O arquivo é texto em HTML do Telegram (<b>, <i>, <code>, <a href>); "<", ">" e 
 nunca se perder.
 
 Uso: backend/.venv/Scripts/python.exe .claude/canais/telegram_status.py <arquivo> [--reply-to <message_id>]
+
+28.45, a imagem de uma etapa (só ao dono): `--foto <step_id> --previa <porta.json>`. Os bytes vêm pela MESMA regra da
+porta (`PortasReais.imagem_da_etapa`: o `image_id` dos argumentos da etapa, lido do armazém dos avatares) e só saem se
+o sha256 bater com o `imagem_sha256` daquela etapa na prévia gravada. O `<arquivo>` vira a legenda (texto puro, sem
+HTML). Nada de caminho livre: a foto é sempre a da etapa.
 """
 from __future__ import annotations
 
@@ -108,19 +113,179 @@ def _abrir_repositorio_do_produto():  # noqa: ANN202 - o repositório do produto
     return EntradasDoCanal(Database(load_config().db_dsn), canal="telegram")
 
 
-def _gravar_enviada(mid: object, abrir=None) -> None:  # noqa: ANN001
-    """Grava a mensagem que o script mandou ao DONO em `canal_enviadas` (`origem='ana'`, sem fato), para a resposta (reply)
-    do dono a ela ser reconhecida como resposta à ANA, e não cair como texto livre. Falhar aqui NUNCA falha o envio: só
-    avisa. Só o chat do dono (os `message_id` de um convidado podem colidir com os do dono na mesma tabela)."""
+#: Uma opção de pergunta de escolha (28.44): um número ou UMA letra (decisão da orquestradora na leitura do #412). Palavra
+#: nenhuma: "sim", "ok", "pode" ou "publica" como opção fariam a resposta solta parecer um aval.
+_OPCAO = re.compile(r"^(?:\d{1,3}|[A-Za-z])$")
+#: As letras que a conversa lê como sim ou não ("s", "n"): também não servem de opção.
+_LETRAS_DE_AVAL = {"s", "n"}
+
+
+def opcoes_da_escolha(valor: str) -> str:
+    """`--escolha 1,2,3` → `1-2-3`, o detalhe do fato `escolha:<msg>:<opções>`. Pelo menos duas opções, sem repetir,
+    números ou letras; fora disso, ValueError antes de qualquer envio."""
+    opcoes = [o.strip() for o in valor.split(",") if o.strip()]
+    if (len(opcoes) < 2 or len({o.lower() for o in opcoes}) != len(opcoes) or not all(_OPCAO.match(o) for o in opcoes)
+            or any(o.lower() in _LETRAS_DE_AVAL for o in opcoes)):
+        raise ValueError("--escolha pede de 2 opções em diante, separadas por vírgula, cada uma um número ou uma letra "
+                         "(ex.: 1,2,3 ou A,B,C), sem S nem N")
+    return "-".join(opcoes)
+
+
+def _gravar_enviada(mid: object, abrir=None, *, escolha: str | None = None,  # noqa: ANN001
+                    substitui: int | None = None) -> bool:
+    """Grava a mensagem que o script mandou ao DONO em `canal_enviadas` (`origem='ana'`), para a resposta (reply) do dono a
+    ela ser reconhecida como resposta à ANA, e não cair como texto livre. Falhar aqui NUNCA falha o envio: só avisa. Só
+    o chat do dono (os `message_id` de um convidado podem colidir com os do dono na mesma tabela).
+
+    28.44: com `escolha` (as opções já em `1-2-3`), o fato é `escolha:<mid>:<opções>`, e a resposta solta do dono pode
+    casar com ela. Com `substitui`, a pergunta antiga deixa de estar aberta (`registrar_substituta`)."""
     try:
         if mid is None:
-            return
-        (abrir or _abrir_repositorio_do_produto)().registrar_enviada(str(mid), "ana")
+            return False
+        repo = (abrir or _abrir_repositorio_do_produto)()
+        repo.registrar_enviada(str(mid), "ana", fato=f"escolha:{mid}:{escolha}" if escolha else None)
+        if substitui is not None:
+            repo.registrar_substituta(str(mid), str(substitui))
+        return True
     except Exception as exc:  # noqa: BLE001 - a mensagem já saiu; o banco não pode desfazer isso
         print(f"aviso: a mensagem saiu, mas não foi registrada em canal_enviadas ({type(exc).__name__})")
+        return False
 
 
-async def _enviar(texto: str, reply_to: int | None, chat: str | None = None) -> int:
+class FotoRecusada(Exception):
+    """A imagem da etapa não pode sair: o motivo, sem segredo nem nome."""
+
+
+def sha_da_previa(previa: dict[str, object], step_id: str) -> str:
+    """O `imagem_sha256` da etapa na prévia da porta gravada (`itens[].step_id`)."""
+    for item in previa.get("itens") or []:
+        if isinstance(item, dict) and item.get("step_id") == step_id:
+            sha = item.get("imagem_sha256")
+            if isinstance(sha, str) and len(sha) == 64:
+                return sha
+            raise FotoRecusada("a etapa está na prévia, mas sem imagem_sha256")
+    raise FotoRecusada("a etapa não está na prévia")
+
+
+def imagem_conferida(step_id: str, sha_esperado: str, ler) -> tuple[bytes, str]:  # noqa: ANN001 - (run, step) → bytes
+    """Os bytes da imagem da etapa e o mime pela assinatura, só se o sha256 bate com o da prévia (28.45)."""
+    import hashlib
+
+    from app.modules.avisos.domain.anexos import detectar_mime
+    run_id = step_id.split(":", 1)[0]
+    lida = ler(run_id, step_id)
+    if lida is None:
+        raise FotoRecusada("a etapa não tem imagem pronta no armazém")
+    conteudo = lida[0]
+    if hashlib.sha256(conteudo).hexdigest() != sha_esperado:
+        raise FotoRecusada("o sha256 da imagem não bate com o da prévia")
+    mime = detectar_mime(conteudo)
+    if not (mime or "").startswith("image/"):
+        raise FotoRecusada("o conteúdo não é uma imagem conhecida")
+    return conteudo, str(mime)
+
+
+def _da_central():  # noqa: ANN202 - (imagem da etapa, sha256 da prévia da porta, sha256 aprovado), pelo banco e armazém
+    """As leituras da Central: a imagem da etapa, do armazém dos avatares; o `imagem_sha256` que a prévia da porta
+    mostra, pela mesma conta dela (28.46); e o `midia_sha256` congelado no sim do plano, quando o item já foi decidido
+    (28.48). Separado para o teste trocar por um falso."""
+    from app.config import load_config
+    from app.db import Database
+    from app.modules.avisos.infrastructure.portas_da_central import (
+        imagem_da_etapa,
+        sha_da_imagem_aprovada,
+        sha_da_imagem_na_porta,
+    )
+    from app.storage import DISK, DiskStorage, build_storage
+    cfg = load_config()
+    env = cfg.env
+    storage = build_storage(env.evidence_storage, evidence_dir=cfg.evidence_dir, bucket=env.s3_bucket,
+                            endpoint_url=env.s3_endpoint_url, region=env.s3_region,
+                            access_key=_segredo(env.s3_access_key_id) or None,
+                            secret_key=_segredo(env.s3_secret_access_key) or None)
+    avatares = DiskStorage(cfg.data_dir) if storage.name == DISK else storage
+    db = Database(cfg.db_dsn)
+    return (lambda run_id, step_id: imagem_da_etapa(db, avatares.get, run_id, step_id),
+            lambda run_id, step_id: sha_da_imagem_na_porta(db, run_id, step_id),
+            lambda run_id, step_id: sha_da_imagem_aprovada(db, run_id, step_id))
+
+
+def _canal_do_dono():  # noqa: ANN202 - o CanalTelegram do chat do dono, ou o motivo de não haver
+    env = EnvSettings()
+    chat = _segredo(env.telegram_chat_id)
+    if not chat:
+        return None, "TELEGRAM_CHAT_ID vazio no .env do central"
+    try:
+        return CanalTelegram(_segredo(env.telegram_bot_token), chat), None
+    except TokenAusente as exc:
+        return None, str(exc)
+
+
+async def _enviar_foto(legenda: str, reply_to: int | None, step_id: str, previa: Path | None, *,
+                       central=None, canal=None) -> int:  # noqa: ANN001 - os falsos do teste
+    """28.45/28.46: a foto da etapa ao dono, só se o sha256 da imagem bate com o que a prévia da porta mostra, lido da
+    PRÓPRIA Central. `previa` (o JSON gravado) é opcional: com ele, o arquivo também tem de bater com a Central.
+    28.48: com o item já decidido no plano, o sha256 aprovado é a âncora, e o da prévia tem de ser ele."""
+    run_id = step_id.split(":", 1)[0]
+    try:
+        ler, sha_na_porta, sha_aprovado = (central or _da_central)()
+        sha = sha_na_porta(run_id, step_id)
+        aprovado = sha_aprovado(run_id, step_id)
+    except Exception as exc:  # noqa: BLE001 - sem ler a Central, nada sai; o tipo basta (sem texto do banco)
+        print(f"recusado, nada enviado: a Central não foi lida ({type(exc).__name__})")
+        return 2
+    if not sha:
+        print("recusado, nada enviado: a prévia da porta não tem imagem_sha256 para esta etapa")
+        return 2
+    if aprovado is not None and aprovado != sha:
+        # A imagem mudou depois do sim (ou a prévia de agora não é a aprovada): o dono veria outra imagem que não a que
+        # aprovou. A execução também recusa por isso (a chave diverge); aqui, nada sai.
+        print("recusado, nada enviado: a imagem da etapa não é mais a que o dono aprovou (sha256 diferente do sim)")
+        return 2
+    if previa is not None:
+        try:
+            sha_do_arquivo = sha_da_previa(json.loads(previa.read_text(encoding="utf-8")), step_id)
+        except FotoRecusada as exc:
+            print(f"recusado, nada enviado: {exc}")
+            return 2
+        except (OSError, ValueError) as exc:
+            print(f"recusado, nada enviado: o arquivo da prévia não foi lido ({type(exc).__name__})")
+            return 2
+        if sha_do_arquivo != sha:
+            print("recusado, nada enviado: o arquivo da prévia não é o que a Central mostra (sha256 diferente)")
+            return 2
+    try:
+        conteudo, mime = imagem_conferida(step_id, sha, ler)
+    except FotoRecusada as exc:
+        print(f"recusado, nada enviado: {exc}")
+        return 2
+    except OSError as exc:
+        print(f"recusado, nada enviado: a imagem não foi lida do armazém ({type(exc).__name__})")
+        return 2
+    except Exception as exc:  # noqa: BLE001 - sem a imagem conferida, nada sai
+        print(f"recusado, nada enviado: a imagem não foi conferida ({type(exc).__name__})")
+        return 2
+    if canal is None:
+        canal, motivo = _canal_do_dono()
+        if canal is None:
+            print(f"{motivo}; nada enviado")
+            return 2
+    try:
+        mid = await canal.enviar_anexo(conteudo, mime, _sem_tags(legenda), responde_a=reply_to)
+    except FalhaDeEnvio as exc:
+        # Sem resposta do Telegram (tempo esgotado, conexão caída) ou com 5xx, a foto pode ter saído: repetir às cegas
+        # manda duas. Recusa clara (4xx, definitiva) não saiu.
+        incerta = not exc.definitiva and (exc.status is None or exc.status >= 500)
+        print(f"Falhou: {exc.motivo}" + (". A foto pode ter saído: confira o chat antes de repetir." if incerta else ""))
+        return 1
+    ancora = "aprovado e da prévia" if aprovado else "da prévia"
+    print(f"enviada a foto ({mime}, sha256 {sha[:8]}… {ancora}, {len(conteudo)} bytes) message_id={mid}")
+    _gravar_enviada(mid)
+    return 0
+
+
+async def _enviar(texto: str, reply_to: int | None, chat: str | None = None, *, escolha: str | None = None,
+                  substitui: int | None = None) -> int:
     env = EnvSettings()
     token = _segredo(env.telegram_bot_token)
     chat_id = _segredo(env.telegram_chat_id)
@@ -163,8 +328,12 @@ async def _enviar(texto: str, reply_to: int | None, chat: str | None = None) -> 
         print(f"enviado {modo} ({len(texto)} chars) message_id={mid}")
         if chat:
             _historico_de_saida(chat, mid, _sem_tags(texto))
-        else:
-            _gravar_enviada(mid)
+        elif not _gravar_enviada(mid, escolha=escolha, substitui=substitui) and (escolha or substitui is not None):
+            # A pergunta saiu sem a marca: a resposta solta não casa com ela, e a substituída segue aberta. Erro visível,
+            # para quem mandou registrar à mão ou avisar (leitura do #412).
+            print("ERRO: a mensagem saiu, mas a marca da escolha ou da substituição não foi gravada; a resposta solta "
+                  "não vai casar com ela")
+            return 3
         return 0
     except FalhaDeEnvio as exc:
         print(f"Falhou: {exc.motivo}")
@@ -177,14 +346,35 @@ def main() -> int:
     ap.add_argument("--reply-to", type=int, default=None)
     ap.add_argument("--chat", default=None, help="convidado registrado (membros-trello.json); sem isto, vai ao dono")
     ap.add_argument("--titulo", default=None, help="compatibilidade: vira a 1ª linha em negrito")
+    ap.add_argument("--foto", default=None, metavar="STEP_ID", help="28.45: manda a imagem desta etapa (só ao dono)")
+    ap.add_argument("--previa", default=None, help="opcional (28.46): a prévia da porta gravada (JSON); se vier, tem de bater com a da Central")
+    ap.add_argument("--escolha", default=None, metavar="OPÇÕES",
+                    help="28.44: a mensagem pede uma escolha (ex.: 1,2,3); a resposta solta do dono casa com ela")
+    ap.add_argument("--substitui", type=int, default=None, metavar="MESSAGE_ID",
+                    help="28.44: esta mensagem substitui a pergunta de escolha anterior, que deixa de estar aberta")
     args = ap.parse_args()
+    escolha = None
+    if args.escolha is not None or args.substitui is not None:
+        if args.chat or args.foto:
+            print("--escolha e --substitui valem só para texto ao dono; nada enviado")
+            return 2
+        try:
+            escolha = opcoes_da_escolha(args.escolha) if args.escolha is not None else None
+        except ValueError as exc:
+            print(f"{exc}; nada enviado")
+            return 2
     texto = Path(args.arquivo).read_text(encoding="utf-8").strip()
     if not texto:
         print("arquivo vazio")
         return 2
     if args.titulo:
         texto = f"<b>{html.escape(args.titulo)}</b>\n{texto}"
-    return asyncio.run(_enviar(texto, args.reply_to, args.chat))
+    if args.foto:
+        if args.chat:
+            print("--foto vai só ao dono; nada enviado")
+            return 2
+        return asyncio.run(_enviar_foto(texto, args.reply_to, args.foto, Path(args.previa) if args.previa else None))
+    return asyncio.run(_enviar(texto, args.reply_to, args.chat, escolha=escolha, substitui=args.substitui))
 
 
 if __name__ == "__main__":

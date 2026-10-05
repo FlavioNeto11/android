@@ -43,6 +43,8 @@ DADOS = "/var/lib/postgresql/data"
 TMPFS_MB = 4096
 LIMITE = 0.85                 # fração do tmpfs a partir da qual a parte é abortada
 INTERVALO_S = 30
+PRAZO_DO_COMANDO_S = 30       # um `docker exec` preso não pode parar o laço das amostras (X1 da leitura do #385)
+SEM_AMOSTRA_AVISO = 3         # amostras seguidas sem a linha do `df` até o aviso (X2)
 RAM_MINIMA_GB = 7.0           # banco.md: os 4 GB do tmpfs e a folga dos emuladores
 DSN = f"postgresql://postgres:teste@127.0.0.1:{PORTA}/farm"
 #: Durabilidade desligada (o banco é descartável) e WAL mínimo: sem réplica nem arquivo, o PostgreSQL não precisa
@@ -173,9 +175,14 @@ def ram_livre_gb() -> float | None:
     return round(e.ullAvailPhys / 1024 ** 3, 1)
 
 
-def _executar(cmd: Sequence[str]) -> "subprocess.CompletedProcess[str]":
+def _executar(cmd: Sequence[str], prazo_s: float = PRAZO_DO_COMANDO_S) -> "subprocess.CompletedProcess[str]":
+    """Roda o comando com prazo. Estourou: rc 124 (o do `timeout` do coreutils), sem levantar, e quem chama trata como
+    falha comum (a amostra vira `None`, o `pg_isready` tenta de novo)."""
     env = {**os.environ, "MSYS_NO_PATHCONV": "1"}       # Git Bash não reescreve /var/lib/... no docker exec
-    return subprocess.run(list(cmd), capture_output=True, text=True, env=env, check=False)
+    try:
+        return subprocess.run(list(cmd), capture_output=True, text=True, env=env, check=False, timeout=prazo_s)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(list(cmd), 124, "", f"excedeu {prazo_s:.0f} s")
 
 
 def python_do_pytest() -> Path:
@@ -183,37 +190,218 @@ def python_do_pytest() -> Path:
     return python if python.exists() else Path(sys.executable)   # worktree sem venv: o Python que roda o script
 
 
+# --- 29.117: a árvore do pytest num Job Object (Windows) -----------------------------------------------------------
+# O `taskkill /T` montava a árvore pelo ParentProcessId, que o Windows não limpa quando o pai morre: um processo alheio
+# e antigo cujo pai morto tinha o PID do pytest de agora entrava na árvore e morria com /F. Regra: nunca matar o que não
+# é comprovadamente descendente do nosso pytest. O job é essa prova: o pytest entra nele SUSPENSO (antes de rodar uma
+# instrução, então nenhum worker do xdist nasce fora), e todo filho dele nasce dentro. Com KILL_ON_JOB_CLOSE, o único
+# handle do job é o deste script: se ele morrer de fora (o pwsh pai fechado), o kernel mata a árvore inteira.
+if os.name == "nt":
+    import ctypes
+    from ctypes import wintypes
+
+    _k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _k32.CreateJobObjectW.restype = wintypes.HANDLE
+    _k32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
+    _k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD]
+    _k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    _k32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    _k32.CloseHandle.argtypes = [wintypes.HANDLE]
+    _k32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    _k32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    _k32.OpenThread.restype = wintypes.HANDLE
+    _k32.OpenThread.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    _k32.ResumeThread.restype = wintypes.DWORD
+    _k32.ResumeThread.argtypes = [wintypes.HANDLE]
+    _k32.CreateMutexW.restype = wintypes.HANDLE
+    _k32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    _k32.WaitForSingleObject.restype = wintypes.DWORD
+    _k32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    _k32.ReleaseMutex.argtypes = [wintypes.HANDLE]
+
+    class _Basica(ctypes.Structure):
+        _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                    ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                    ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                    ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                    ("SchedulingClass", wintypes.DWORD)]
+
+    class _Io(ctypes.Structure):
+        _fields_ = [(n, ctypes.c_ulonglong) for n in ("ReadOperationCount", "WriteOperationCount",
+                                                      "OtherOperationCount", "ReadTransferCount",
+                                                      "WriteTransferCount", "OtherTransferCount")]
+
+    class _Estendida(ctypes.Structure):
+        _fields_ = [("BasicLimitInformation", _Basica), ("IoInfo", _Io), ("ProcessMemoryLimit", ctypes.c_size_t),
+                    ("JobMemoryLimit", ctypes.c_size_t), ("PeakProcessMemoryUsed", ctypes.c_size_t),
+                    ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+    class _Thread(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD), ("th32ThreadID", wintypes.DWORD),
+                    ("th32OwnerProcessID", wintypes.DWORD), ("tpBasePri", wintypes.LONG),
+                    ("tpDeltaPri", wintypes.LONG), ("dwFlags", wintypes.DWORD)]
+
+    _k32.Thread32First.argtypes = [wintypes.HANDLE, ctypes.POINTER(_Thread)]
+    _k32.Thread32Next.argtypes = [wintypes.HANDLE, ctypes.POINTER(_Thread)]
+
+_CREATE_SUSPENDED = 0x4
+_KILL_ON_JOB_CLOSE = 0x2000
+_INFO_ESTENDIDA = 9           # JobObjectExtendedLimitInformation
+_INVALIDO = ctypes.c_void_p(-1).value if os.name == "nt" else None
+
+
+def _erro_win(o_que: str) -> OSError:
+    return OSError(f"{o_que}: erro {ctypes.get_last_error()} do Windows")
+
+
+def _criar_job() -> int:
+    job = _k32.CreateJobObjectW(None, None)       # handle não herdável: o filho não segura o próprio job
+    if not job:
+        raise _erro_win("CreateJobObject")
+    info = _Estendida()
+    info.BasicLimitInformation.LimitFlags = _KILL_ON_JOB_CLOSE
+    if not _k32.SetInformationJobObject(job, _INFO_ESTENDIDA, ctypes.byref(info), ctypes.sizeof(info)):
+        erro = _erro_win("SetInformationJobObject")
+        _k32.CloseHandle(job)
+        raise erro
+    return job
+
+
+def _retomar(pid: int) -> None:
+    """Solta a thread principal do processo criado suspenso (um processo novo tem uma thread só)."""
+    snap = _k32.CreateToolhelp32Snapshot(0x4, 0)   # TH32CS_SNAPTHREAD
+    if not snap or snap == _INVALIDO:
+        raise _erro_win("CreateToolhelp32Snapshot")
+    try:
+        t = _Thread()
+        t.dwSize = ctypes.sizeof(_Thread)
+        ok = _k32.Thread32First(snap, ctypes.byref(t))
+        while ok:
+            if t.th32OwnerProcessID == pid:
+                h = _k32.OpenThread(0x2, False, t.th32ThreadID)   # THREAD_SUSPEND_RESUME
+                if not h:
+                    raise _erro_win("OpenThread")
+                try:
+                    if _k32.ResumeThread(h) == 0xFFFFFFFF:
+                        raise _erro_win("ResumeThread")
+                finally:
+                    _k32.CloseHandle(h)
+                return
+            ok = _k32.Thread32Next(snap, ctypes.byref(t))
+        raise OSError(f"a thread do processo {pid} não apareceu para ser retomada")
+    finally:
+        _k32.CloseHandle(snap)
+
+
+def _entrar_no_job(job: int, proc: "subprocess.Popen[bytes]") -> None:
+    if not _k32.AssignProcessToJobObject(job, int(proc._handle)):  # type: ignore[attr-defined]
+        raise _erro_win("AssignProcessToJobObject")
+
+
+def lancar_em_job(cmd: Sequence[str], **popen: object) -> "subprocess.Popen[bytes]":
+    """`Popen` com a árvore presa: no Windows, num Job Object (o processo nasce suspenso, entra no job e só então
+    roda); fora dele, num grupo de processos próprio. O job fica em `proc.job`.
+
+    - Não entrou no job (o script já está num job que não aceita aninhamento): segue SEM job, e `proc.aviso_do_job`
+      diz isso; no aborto, só o PID dele morre e a árvore pode sobrar. Nunca volta ao `taskkill /T`.
+    - Não retomou (o `ResumeThread` falhou): o processo, ainda suspenso, morre com o job, e o erro sobe; um pytest
+      suspenso para sempre não fica para trás."""
+    if os.name != "nt":
+        return subprocess.Popen(list(cmd), start_new_session=True, **popen)  # type: ignore[call-overload]
+    job = _criar_job()
+    flags = int(popen.pop("creationflags", 0)) | _CREATE_SUSPENDED  # type: ignore[call-overload]
+    try:
+        proc = subprocess.Popen(list(cmd), creationflags=flags, **popen)  # type: ignore[call-overload]
+    except BaseException:
+        _fechar_handle(job)
+        raise
+    aviso = None
+    try:
+        _entrar_no_job(job, proc)
+    except OSError as exc:
+        _fechar_handle(job)
+        job, aviso = None, (f"o pytest não entrou no job ({exc}): segue sem job; no aborto só o PID dele morre, e os "
+                            "filhos podem sobrar")
+    try:
+        _retomar(proc.pid)
+    except BaseException:
+        if job is not None:
+            _terminar_job(job)
+            _fechar_handle(job)
+        if proc.poll() is None:
+            proc.kill()                              # suspenso: não rodou nada
+        proc.wait()
+        raise
+    proc.job = job  # type: ignore[attr-defined]
+    proc.aviso_do_job = aviso  # type: ignore[attr-defined]
+    return proc
+
+
+def _terminar_job(job: int) -> bool:
+    return bool(_k32.TerminateJobObject(job, 1))
+
+
+def _fechar_handle(h: object) -> None:
+    _k32.CloseHandle(h)
+
+
+def fechar_job(proc: Processo) -> None:
+    """Fecha o handle do job (com KILL_ON_JOB_CLOSE, o que sobrou da árvore morre junto)."""
+    job = getattr(proc, "job", None)
+    if job is not None and os.name == "nt":
+        _fechar_handle(job)
+        proc.job = None  # type: ignore[attr-defined]
+
+
 def _lancar_pytest(arquivos: Sequence[str], saida: Path) -> Processo:
     flags = getattr(subprocess, "IDLE_PRIORITY_CLASS", 0)
     arq = saida.open("w", encoding="utf-8")
-    # Fora do Windows, grupo de processos próprio: é o que o `matar_arvore` mata inteiro (o K-099 na outra plataforma).
-    return subprocess.Popen([str(python_do_pytest()), "-m", "pytest", "-q", "-n", "8", "-p", "no:cacheprovider",
-                             *arquivos],
-                            cwd=RAIZ / "backend", env={**os.environ, "TEST_DATABASE_URL": DSN},
-                            stdout=arq, stderr=subprocess.STDOUT, creationflags=flags,
-                            start_new_session=os.name != "nt")
+    return lancar_em_job([str(python_do_pytest()), "-m", "pytest", "-q", "-n", "8", "-p", "no:cacheprovider",
+                          *arquivos],
+                         cwd=RAIZ / "backend", env={**os.environ, "TEST_DATABASE_URL": DSN},
+                         stdout=arq, stderr=subprocess.STDOUT, creationflags=flags)
 
 
 def matar_arvore(proc: Processo, executar: Executar) -> str | None:
-    """O pytest com `-n 8` tem filhos: matar só o pai deixa os workers vivos e órfãos (lição do K-099). No Windows,
-    `taskkill /T`; fora dele, o grupo inteiro (o `_lancar_pytest` abre o pytest num grupo próprio). Devolve `None`
-    quando a árvore morreu, ou a frase do que falhou, para a linha do aborto dizer."""
+    """O pytest com `-n 8` tem filhos: matar só o pai deixa os workers vivos e órfãos (lição do K-099). No Windows, o
+    Job Object dele (29.117; nunca o `taskkill /T`, que pegava processo alheio pelo PID reusado); fora dele, o grupo
+    inteiro (o `lancar_em_job` abre o pytest num grupo próprio). Devolve `None` quando a árvore morreu, ou a frase do
+    que falhou, para a linha do aborto dizer."""
+    job = getattr(proc, "job", None)
+    if proc.poll() is not None:
+        # Saiu sozinho entre a amostra e o aborto: nada a relatar. Um worker que tenha ficado no job morre com ele.
+        if job is not None:
+            _terminar_job(job)
+        fechar_job(proc)
+        return None
     if os.name == "nt":
-        r = executar(["taskkill", "/T", "/F", "/PID", str(proc.pid)])
+        if job is None:
+            # Sem job, não há prova de quem é descendente: só o próprio processo, pelo handle dele.
+            proc.kill()  # type: ignore[attr-defined]
+            problema: str | None = "o pytest não estava num job: só ele foi morto, os filhos podem ter ficado"
+        else:
+            problema = None if _terminar_job(job) else "o TerminateJobObject falhou"
     else:
         r = executar(["kill", "-KILL", "--", f"-{proc.pid}"])
-    problema = None if r.returncode == 0 else f"o kill da árvore saiu com rc={r.returncode}"
+        problema = None if r.returncode == 0 else f"o kill da árvore saiu com rc={r.returncode}"
     try:
         proc.wait(timeout=30)
     except subprocess.TimeoutExpired:
         problema = (problema + "; " if problema else "") + "o pytest não saiu em 30 s"
+    fechar_job(proc)                                   # N1 da leitura do 29.117: o handle não espera o script sair
     return problema
 
 
-def recriar(executar: Executar, dormir: Callable[[float], None], prazo_s: float = 240) -> float | None:
-    """Contêiner novo com a configuração do script; segundos até aceitar conexão TCP, ou `None` no prazo."""
+def recriar(executar: Executar, dormir: Callable[[float], None], prazo_s: float = 240,
+            relatar: Callable[[str], None] | None = None) -> float | None:
+    """Contêiner novo com a configuração do script; segundos até aceitar conexão TCP, ou `None` no prazo. O erro do
+    `docker run` (a imagem que falta com o `--pull=never`, a porta ocupada) vai ao `relatar`, se houver."""
     executar(["docker", "rm", "-f", NOME])
-    if executar(comando_docker_run()).returncode != 0:
+    run = executar(comando_docker_run())
+    if run.returncode != 0:
+        if relatar is not None:
+            erro = " ".join((run.stderr or run.stdout or "").split())[:300]
+            relatar(f"docker run saiu com rc={run.returncode}: {erro or 'sem mensagem'}")
         return None
     inicio = time.monotonic()
     while time.monotonic() - inicio < prazo_s:
@@ -239,30 +427,148 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
                 dormir: Callable[[float], None] = time.sleep, intervalo_s: float = INTERVALO_S,
                 limite: float = LIMITE) -> int:
     """Uma parte: contêiner novo, pytest, amostras. 0 verde; o rc do pytest se vermelho; 3 abortada pelo disco;
-    8 se o contêiner não aceitou conexão."""
-    subida = recriar(executar, dormir)
+    8 se o contêiner não aceitou conexão; 11 se o pytest não subiu (29.117: não retomou do suspenso).
+
+    O1 do 29.113: o que interromper a parte (Ctrl-C, um `OSError` do `--resumo`, qualquer exceção) passa pelo
+    `except`, que mata a árvore do pytest se ela ainda estiver viva. Sem isso, o pytest `-n 8` e os workers seguiam
+    contra o contêiner, e no Windows o filho não morre com o pai (a contaminação do K-101). O pai morto DE FORA (o pwsh
+    que o chamou fechado) não passa por aqui: isso pede um Job Object com KILL_ON_JOB_CLOSE, em item próprio."""
+    subida = recriar(executar, dormir, relatar=relatar)
     if subida is None:
         relatar(f"{rotulo} o contêiner não aceitou conexão {agora()}")
         return 8
     relatar(f"{rotulo} aceitou em {subida} s; inicio {agora()} arquivos={len(arquivos)} python={python_do_pytest()}")
-    proc = lancar(arquivos, saida)
+    try:
+        proc = lancar(arquivos, saida)
+    except OSError as exc:
+        relatar(f"{rotulo} o pytest NÃO SUBIU: {exc} {agora()}")
+        return 11
+    aviso = getattr(proc, "aviso_do_job", None)
+    if aviso:
+        relatar(f"{rotulo} ATENÇÃO: {aviso}")
+    try:
+        return _acompanhar(rotulo, proc, saida, relatar, executar=executar, dormir=dormir, intervalo_s=intervalo_s,
+                           limite=limite)
+    except BaseException:
+        # Só na interrupção: nas saídas normais o pytest já terminou (`wait`) ou a árvore já foi morta (o aborto).
+        if proc.poll() is None:
+            problema = matar_arvore(proc, executar)
+            try:
+                relatar(f"{rotulo} INTERROMPIDA {agora()}: a árvore do pytest foi morta"
+                        + (f" | ATENÇÃO: {problema}" if problema else ""))
+            except Exception:  # noqa: BLE001 — o relato que falhou pode ser a própria causa (o `--resumo`)
+                print(f"{rotulo} INTERROMPIDA: a árvore do pytest foi morta", file=sys.stderr, flush=True)
+        fechar_job(proc)                               # já saído: um worker que tenha sobrado morre com o job
+        raise
+
+
+def _acompanhar(rotulo: str, proc: Processo, saida: Path, relatar: Callable[[str], None], *, executar: Executar,
+                dormir: Callable[[float], None], intervalo_s: float, limite: float) -> int:
+    """O laço das amostras de uma parte com o pytest já lançado (o `rodar_parte` cuida de matar a árvore)."""
     pico: Amostra | None = None
+    sem_amostra = 0
     while proc.poll() is None:
         dormir(intervalo_s)
         a = amostrar(executar)
         if a is not None and (pico is None or a.usado_mb > pico.usado_mb):
             pico = a
+        sem_amostra = 0 if a is not None else sem_amostra + 1
+        if sem_amostra == SEM_AMOSTRA_AVISO:
+            # Uma linha por série: sem o df, o aborto pelo disco não tem com o que decidir.
+            relatar(f"{rotulo} SEM AMOSTRA do df há {sem_amostra * intervalo_s:.0f} s ({agora()}): o aborto pelo disco "
+                    "está cego até a amostra voltar")
         if deve_abortar(a, limite):
+            if proc.poll() is not None:
+                # N3 do 29.113: o pytest saiu sozinho entre a amostra e o aborto. O resultado é o dele (verde ou
+                # vermelho), não "ABORTADA"; o disco alto fica no pico, abaixo.
+                break
             problema = matar_arvore(proc, executar)
             relatar(f"{rotulo} ABORTADA pelo disco: {a.linha() if a else ''}"
                     + (f" | ATENÇÃO: {problema}" if problema else ""))
             return 3
     rc = proc.wait()
+    fechar_job(proc)                                   # um worker que tenha sobrado morre com o job (29.117)
     relatar(f"{rotulo} rc={rc} fim {agora()} | {ultima_contagem(saida)}")
     fim = amostrar(executar)
     relatar(f"{rotulo} pico: {pico.linha() if pico else 'sem amostra'}")
     relatar(f"{rotulo} no fim: {fim.linha() if fim else 'sem amostra'}")
     return rc
+
+
+_TRAVA: list[object] = []      # o mutex (Windows) ou o arquivo com flock: vivo enquanto o processo vive
+NOME_DA_TRAVA = NOME            # os testes trocam (N3 da leitura do 29.117): nunca a trava de uma rodada real
+ESCOPO_DA_TRAVA: list[str] = []  # o que a trava disse, para a linha da rodada
+_ACESSO_NEGADO = 5              # ERROR_ACCESS_DENIED
+
+
+def _criar_mutex(nome: str) -> int | None:
+    """O handle do mutex, ou `None` quando ele JÁ EXISTE com uma DACL que nos nega acesso (erro 5): criado por
+    outra rodada, de outra sessão ou de outro usuário. Criar um mutex no `Global\\` não pede privilégio; o erro 5 ali
+    é o objeto alheio, não falta de direito de criar."""
+    h = _k32.CreateMutexW(None, False, nome)
+    if not h:
+        if ctypes.get_last_error() == _ACESSO_NEGADO:
+            return None
+        raise _erro_win(f"CreateMutex {nome}")
+    return h
+
+
+def tentar_travar() -> bool:
+    """Nota 3 da leitura do 29.113: uma rodada por vez na máquina (o nome do contêiner e a porta são fixos, e o
+    `recriar` da segunda apagava o contêiner da primeira). Mutex nomeado no Windows e `flock` fora dele: o sistema
+    solta os dois quando o processo morre, então não há trava velha. `False` = outra rodada está em curso."""
+    if _TRAVA:
+        return True
+    if os.name == "nt":
+        # Só o Global\\, que vale entre sessões. M1 da leitura do 29.117: recuar ao Local\\ no erro 5 deixava duas
+        # rodadas correrem (o mutex existe, é da outra). O erro 5 é recusa (rc 10); outro erro sobe (rc 12): nunca
+        # "segue sem trava" calado.
+        nome = f"Global\\{NOME_DA_TRAVA}"
+        h = _criar_mutex(nome)
+        if h is None:
+            ESCOPO_DA_TRAVA[:] = [f"{nome} existe e nega acesso (erro 5): é de outra rodada, de outra sessão ou usuário"]
+            return False
+        ESCOPO_DA_TRAVA[:] = [nome]
+        if _k32.WaitForSingleObject(h, 0) not in (0, 0x80):       # WAIT_OBJECT_0, WAIT_ABANDONED
+            _fechar_handle(h)
+            return False
+        _TRAVA.append(h)
+        return True
+    import fcntl
+    import tempfile
+
+    arq = open(Path(tempfile.gettempdir()) / f"{NOME_DA_TRAVA}.trava", "w")  # noqa: SIM115 — fica aberto: é a trava
+    try:
+        fcntl.flock(arq, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        arq.close()
+        return False
+    _TRAVA.append(arq)
+    return True
+
+
+def soltar_trava() -> None:
+    while _TRAVA:
+        t = _TRAVA.pop()
+        if os.name == "nt":
+            _k32.ReleaseMutex(t)
+            _fechar_handle(t)
+        else:
+            t.close()  # type: ignore[attr-defined]
+
+
+def parar(executar: Executar, relatar: Callable[[str], None]) -> bool:
+    """N1 do 29.113: o `docker stop` que falha (ou estoura o prazo) deixava o tmpfs de 4 GB de pé sem aviso. Só para e
+    relata; o `docker rm -f` fica como sugestão na linha, para quem confere antes de apagar."""
+    r = executar(["docker", "stop", NOME])
+    if r.returncode == 0:
+        return True
+    if "no such container" in (r.stderr or r.stdout or "").lower():
+        return True                                    # o `docker run` nem subiu (rc 8): não há o que parar
+    erro = " ".join((r.stderr or r.stdout or "").split())[:200]
+    relatar(f"ATENÇÃO: docker stop {NOME} saiu com rc={r.returncode} ({erro or 'sem mensagem'}); o tmpfs de "
+            f"{TMPFS_MB // 1024} GB pode seguir de pé: confira com `docker ps` e pare com `docker rm -f {NOME}`")
+    return False
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -297,20 +603,44 @@ def main(argv: Sequence[str] | None = None) -> int:
             relatar(f"parte {i}/{len(fatias)}: {len(f)} arquivos (de {len(todos)}), {f[0]} … {f[-1]}")
         return 0
     pasta = args.saidas or (args.resumo.parent if args.resumo else Path.cwd())
-    for i, f in enumerate(fatias, 1):
-        rotulo = f"pg parte {i}/{len(fatias)}"
-        livre = ram_livre_gb()
-        if livre is not None and livre < RAM_MINIMA_GB:
-            relatar(f"{rotulo} NÃO RODOU: {livre} GB livres, abaixo de {RAM_MINIMA_GB} {agora()}")
-            return 9
-        rc = rodar_parte(rotulo, f, pasta / f"pg_parte{i}.txt", relatar)
-        if rc != 0:
-            relatar(f"{rotulo} PAROU (rc={rc}); as partes seguintes não rodaram")
-            _executar(["docker", "stop", NOME])
-            return rc
-    _executar(["docker", "stop", NOME])
-    relatar(f"pg verde: {len(fatias)} partes, {len(todos)} arquivos {agora()}")
-    return 0
+    ESCOPO_DA_TRAVA.clear()
+    try:
+        livre_da_trava = tentar_travar()
+    except OSError as exc:
+        relatar(f"NÃO RODOU: a trava de uma rodada por vez não pôde ser criada ({exc}); nenhum contêiner foi tocado "
+                f"{agora()}")
+        return 12
+    if not livre_da_trava:
+        detalhe = f"; {ESCOPO_DA_TRAVA[0]}" if ESCOPO_DA_TRAVA and "nega acesso" in ESCOPO_DA_TRAVA[0] else ""
+        relatar(f"NÃO RODOU: outra rodada do pg-rapido está em curso (trava {NOME_DA_TRAVA}{detalhe}); nenhum "
+                f"contêiner foi tocado {agora()}")
+        return 10
+    subiu = False
+    try:
+        for i, f in enumerate(fatias, 1):
+            rotulo = f"pg parte {i}/{len(fatias)}"
+            livre = ram_livre_gb()
+            if livre is not None and livre < RAM_MINIMA_GB:
+                relatar(f"{rotulo} NÃO RODOU: {livre} GB livres, abaixo de {RAM_MINIMA_GB} {agora()}")
+                return 9
+            subiu = True
+            rc = rodar_parte(rotulo, f, pasta / f"pg_parte{i}.txt", relatar)
+            if rc != 0:
+                relatar(f"{rotulo} PAROU (rc={rc}); as partes seguintes não rodaram")
+                return rc
+        relatar(f"pg verde: {len(fatias)} partes, {len(todos)} arquivos {agora()}")
+        return 0
+    finally:
+        # Q2 da leitura do 29.113: interrompido (Ctrl-C, exceção), o contêiner também para; antes, o tmpfs de 4 GB
+        # ficava preso na RAM até a próxima rodada. Sem parte iniciada, não há contêiner a parar.
+        if subiu:
+            # N4 da leitura: o `parar` (ou o relato dele) que levanta aqui SUBSTITUIRIA a exceção original, que é o
+            # motivo da interrupção. Cai no stderr, como no `rodar_parte`.
+            try:
+                parar(_executar, relatar)
+            except BaseException as exc:  # noqa: BLE001 — inclusive um segundo Ctrl-C durante o stop
+                print(f"ATENÇÃO: o docker stop {NOME} não terminou ({type(exc).__name__}: {exc}); confira com "
+                      f"`docker ps`", file=sys.stderr, flush=True)
 
 
 if __name__ == "__main__":

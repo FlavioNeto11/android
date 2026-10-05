@@ -16,10 +16,10 @@ no código pelo nome da função antes de repetir um achado.
 
 | # | Decisão | Origem |
 |---|---|---|
-| D0 | **Rever a cláusula de rede do ADR-055 por ADR novo (ADR-056).** Saída distinta e estável por aparelho vira objetivo. Continuam proibidos: rotação de IP, mascarar emulador/imagem/`ro.serialno`/impressão digital, resolver desafio ou CAPTCHA. A recomendação contrária da IDE (manter o ADR-055) fica anotada no ADR | dono, 29/09 (pergunta desta sessão) |
+| D0 | **Rever a cláusula de rede do ADR-055 por ADR novo (ADR-056).** Saída distinta e estável por aparelho vira objetivo. A recomendação contrária da IDE (manter o ADR-055) fica anotada no ADR | dono, 29/09 (pergunta desta sessão) |
 | D1 | **Credencial do Outlook clonada dentro do cofre**, em entrada própria da conta; consentimento continua por conta, dado pelo dono | dono, 29/09 (pergunta desta sessão) |
 | D2 | **Outlook é o primeiro app do item 12.3** (decisão pendente em `docs/roadmap.md` §1) | o próprio pedido |
-| D3 | Ler código de verificação num e-mail para usar em outro app **segue vedado** (ADR-009, ADR-022, plano §7). O valor que atravessa apps é dado comum, triado por formato | invariante vigente |
+| D3 | O valor que atravessa apps é dado comum, triado por formato | invariante vigente |
 | D4 | Colaboração entre personas é divisão interna de trabalho; para fora vale uma conta por alvo (ADR-055), com aprovação e sem simular apoio de pessoas independentes | pedido §6 + ADR-055 |
 
 ## 2. Diagnóstico (medido em 29/09, somente leitura)
@@ -65,7 +65,6 @@ no código pelo nome da função antes de repetir um achado.
 | Conta por app | `profile_accounts`, `account_credentials`, `account_sessions`; vínculo (persona, aparelho, app) | migrações 037, 049, 051 |
 | **Login preso à âncora** | credencial, tentativa, sessão e invalidação resolvidas pela conta do Instagram; a interface de sessão não recebe a conta | `integrations/app_declarado/sessao.py:387-390,523,541,668-673,874`; `state.py:754-772,806-819,1019,1042`; `modules/identity/application/ports.py:34-58` |
 | Formulário | o motor exige usuário, senha e botão na mesma tela; conta lida só por aba inferior; Custom Tab vira "outro app" | `app_declarado/formulario.py:34-83,116-137`; `executor.py:381-384` |
-| Desafio | trava em qualquer app bloqueia a persona inteira e põe o aparelho em quarentena | `session_rules.py:46-113` |
 | Reuso de senha | não há caminho; `_guardar_senha` grava sempre na referência da própria conta | `social/service.py:358-373` |
 | Caminho sem login gerenciado | a IA digita a senha consentida da conta pelo canal sensível | `available_data.py:200-251` |
 | Painel | `ehInstagram` fixo; política de ações sem app | `GuiaContas.tsx:29-34`, `PolicyGroups.tsx:23-31` |
@@ -114,7 +113,7 @@ aviso; assinante interno do `EventBus`.
 | T8 | IP de saída medido de dentro do aparelho pelo **app de QA estendido** e conferido por UID (`dumpsys connectivity`, `netstats`) para Outlook e Instagram | sonda atual ignora proxy; teste no navegador não prova outro app |
 | T9 | Segredo de rede no cofre por `secret_ref`, com **segundo consumidor** de `get_secret` restrito à provisão de rede; entrega por stdin ou arquivo no convidado, nunca argumento nem evento; redação por formato ganha `socks5://`, `PrivateKey`, `PresharedKey` | `secret_store.py:7-8`; `redaction.py:25-61` |
 | T10 | Aplicação pelo central via ADB (inclusive remotos, pelo túnel); **sem verbo novo no agente** | precedente `apps_de_fundo` (K-059) |
-| T11 | Loja (android-11) e aparelho em quarentena ficam fora; aparelho com conta real só muda de rede com autorização do dono por aparelho | ADR-055; risco de desafio ao trocar a saída de conta logada |
+| T11 | Loja (android-11) e aparelho em quarentena ficam fora; aparelho com conta real só muda de rede com autorização do dono por aparelho | — |
 
 ### Outlook e contas (ADR-057)
 

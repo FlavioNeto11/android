@@ -224,7 +224,7 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
   e sem etapa de efeito, o sistema o publica; com efeito, ele espera o dono. Ou seja, um comando novo sem efeito paga o
   planejador duas vezes antes de o fluxo valer ([dominios/aprendizado.md](dominios/aprendizado.md)).
 - **Funil medido** (evolução de desempenho, ADR-027): consulta de receita (`receita.consulta{encontrada|candidata|
-  herdada|ausente|quarentena}`, com a causa do "ausente" em `receita.ausente{causa}`), reprodução (`receita.reproducao{ok|divergiu}`) e retorno à IA (`receita.retorno_ia{motivo}`),
+  herdada|ausente|quarentena}`, com a causa do "ausente" em `receita.ausente{causa}`), reprodução (`receita.reproducao{ok|divergiu|nao_aplicavel}`; o último é a receita que não se aplicou à tela de partida, 30.80) e retorno à IA (`receita.retorno_ia{motivo}`),
   em `GET /api/desempenho`. `GET /api/flows/cobertura` traz `aproveitamento` por fluxo e app: etapas elegíveis, por
   receita, receita + IA e só IA, "sem cobertura" separado de "receita de outra chave ou em quarentena", e chamadas de
   IA evitadas estimadas (`taskqueue/aproveitamento.py`).
@@ -428,7 +428,7 @@ config — nunca instala ou baixa nada sozinho.
 
 Duas regras que tornam seguro um ator ou verificador baratos (Haiku, `gpt-6-luna`, modelo local), ambas em `backend/app/taskqueue/executor.py`, ambas ligadas por padrão e com chave em `ai.*`:
 
-1. **`cascade_blocked_to_tier1`:** um `step_blocked` do tier 0 (kinds `unexpected_screen`, `missing_info`, `app_incompatible`, `other`) não pede uma pessoa na hora: o modelo de escalonamento olha a MESMA tela, **uma vez por tentativa**; se ele também relatar o bloqueio, vale o caminho de sempre (`waiting_user` ou falha). `challenge`, `auth_required` e `wrong_account` **nunca sobem**: dependem de pessoa ou do autenticador (ADR-009, ADR-055). Não age com efeito já disparado (continua `uncertain`), nem em decisão de receita, nem quando a etapa já decide no tier 1. A linha da execução diz o motivo ("bloqueio relatado pelo modelo de ação").
+1. **`cascade_blocked_to_tier1`:** um `step_blocked` do tier 0 (kinds `unexpected_screen`, `missing_info`, `app_incompatible`, `other`) não pede uma pessoa na hora: o modelo de escalonamento olha a MESMA tela, **uma vez por tentativa**; se ele também relatar o bloqueio, vale o caminho de sempre (`waiting_user` ou falha). Não age com efeito já disparado (continua `uncertain`), nem em decisão de receita, nem quando a etapa já decide no tier 1. A linha da execução diz o motivo ("bloqueio relatado pelo modelo de ação").
 2. **`rejudge_yes_on_side_effect`:** o "sim" do verificador barato numa etapa com efeito externo (ou que confirma o nível de entrega dele) é conferido UMA vez pelo modelo de escalonamento, e o veredito do mais forte é o que vale (discordou, não conta como prova). É a outra metade do B14/7.10, que já rejulgava o "não". Só age quando o modelo do verificador é DIFERENTE do de escalonamento.
 
 - **Custo:** a regra 1 só custa quando o ator barato bloqueou (antes era uma pessoa); a 2 soma uma verificação do modelo forte (US$ 0,004 a 0,010 pelos preços observados em 02/10) por etapa com efeito aprovada. Os dois botões existem para a bateria poder medir com e sem.
@@ -606,8 +606,7 @@ por prazo, 12 delas com os 60 s que o modelo pedia, 8 com a chamada de IA passan
 
 **Crenças no bloco `<persona>` (28/09, ADR-048).** Depois da biografia curta vêm as crenças, quando existem: uma
 seção para religião e outra para política, um campo por linha, valores fechados em português, tudo por
-`sem_marcacao`; em seguida a linha fixa "conduta sobre crenças" (`CONDUTA_DAS_CRENCAS`: coerência de valores e tom,
-nunca propaganda, pedido de voto ou adesão, desinformação ou ataque a grupo). `SOCIAL_SYSTEM` manda usar as crenças
+`sem_marcacao`; em seguida a linha fixa "conduta sobre crenças" (`CONDUTA_DAS_CRENCAS`: coerência de valores e tom). `SOCIAL_SYSTEM` manda usar as crenças
 como coerência, não como assunto. A geração de persona pede crenças ricas e variadas, com teto de 10000 tokens.
 
 ## 13. Provedores em nuvem por papel (Fase 17)
@@ -754,7 +753,7 @@ o que toca a IA. Nenhuma chamada de IA escreve, escolhe ou mede lição (`aprend
 - **A lição é só contexto.** Não muda guarda, política, desfecho nem custo máximo: `commit_guard`, `card_guard` e
   `band_guard` continuam valendo, e a lição que contradisser uma guarda perde para ela. Texto de modelo fechado
   (ação, tipo de pós-condição, contagem, sufixo de id, `{parâmetro}`, rótulo curto repetido): nunca erro cru, texto de
-  tela, nome de terceiro, valor ou segredo. Autenticação, desafio, 2FA, CAPTCHA, conta, IA e infraestrutura nunca
+  tela, nome de terceiro, valor ou segredo. Autenticação, conta, IA e infraestrutura nunca
   viram lição.
 
 Prova: `simulated` (`backend/tests/test_prompts_licoes.py`, `test_learning_licoes.py`, `test_learning_efeito.py`);
@@ -778,7 +777,7 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
   - `JEV_ALLOWED_CLASSES` é o teto de código (C0 e C1 em F1 para todos, C2 em F2, C3 em F3), e **a C3 só vale na origem
     `intencao` e só em `shadow`** (em outra origem, ou em `on`, é recusada);
   - C4 em diante não existe no vocabulário;
-  - qualquer marcador de C7 no pedido (tela sensível ou protegida, aparelho-loja, segredo, credencial, desafio/2FA/CAPTCHA)
+  - qualquer marcador de C7 no pedido (tela sensível ou protegida, aparelho-loja, segredo, credencial)
     recusa o pedido INTEIRO, na sombra também; `social_persona` e qualquer origem fora das quatro (D-J5) também recusam;
   - o estado só leva campos nomeados da lista da origem (`CAMPOS_POR_ORIGEM`, vazia até cada consumidor registrar os seus);
   - toda string do corpo passa por `security.redaction.redact` (cobre segredo, não nome de terceiro: por isso a classe é
@@ -994,7 +993,6 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       - leet (`3→e 4→a 0→o 1→i $→s`) e palavra invertida (`ahnes`, `drowssap`);
       - separadores entre todas as letras (`s/e/n/h/a`) e controle de direção (bidi) no texto cru;
       - Passwort, Kennwort, wachtwoord, mot de passe, parola d'ordine (também em `redaction._CREDENCIAL`);
-      - o código pedido pela quantidade de dígitos ("os seis dígitos") ou "destravar";
       - prefixo de token de acesso de qualquer tamanho.
     - **O motivo da recusa** vai para a linha da sombra (`motivo_privacidade`, migração 079; `c7_*` ou o motivo do filtro).
       O `fallback_reason` continua `privacidade`, e `validar` continua devolvendo `c7` ou `pedido_vazio`.
@@ -1437,8 +1435,8 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
       - nos testes, 27 controles com verbo de entrar viraram recusa (`CUSTO_DA_A_MEDIA`).
     - Prova `simulated`: no harness de 785 casos (corpus regenerado pela orquestradora às 14:29Z), 0 vazamentos nos
       dois catálogos, só as 4 recusas indevidas conhecidas, e 0 diferenças entre catálogos.
-  - **C7 nunca sai, em prosa ou não**: comando que fala de senha, código, 2FA, PIN, OTP, token, captcha, verificação, chave,
-    segredo ou desafio, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
+  - **C7 nunca sai, em prosa ou não**: comando que fala de senha, PIN, token, chave
+    ou segredo, em PT, EN ou ES (`menciona_c7`: `mentions_credential`, `looks_secret` e o assunto no texto
     normalizado, também com homóglifo, letra de largura cheia, uma letra por vez separada por ponto ou espaço, e letra de
     outra escrita) vai com estado vazio e marcador `credencial`; a porta recusa o pedido inteiro (zero chamadas) e grava
     `privacidade`.
@@ -1843,3 +1841,42 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
   - fora do navegador a trava não age: as folhas de app são declaradas no catálogo e fecham pela regra do 29.87.
 - Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py`. `not_run`: as execuções 2 e 3 do 31.40,
   depois do deploy.
+
+## 21. A recusa por sobreposição pede cobertura de verdade (item 31.73)
+
+- O 31.40 insere a limpeza opcional quando o juiz recusa com `sobreposicao`. O juiz é um booleano do modelo: na
+  r-20261005071303-f24955 ele o marcou citando o banner "Abra o app" do Mercado Livre e, no próprio texto, disse que a
+  causa principal era o conteúdo errado. A limpeza entrou à toa, falhou, e o desfecho escondeu a causa.
+- Duas camadas:
+  - o prompt do juiz: se o que está VISÍVEL fora do aviso já mostra outra causa (conteúdo errado, outra tela),
+    `sobreposicao` é false; o que está só escondido pelo aviso não é outra causa;
+  - a regra estrutural (`executor.sobreposicao_vale`). Só se julga o elemento que o juiz CITOU e que está na árvore;
+    sem citado, ou sem o tamanho da tela, vale como antes. Vale quando:
+    - o citado cobre ao menos 15 % da tela (`FRACAO_DA_SOBREPOSICAO`, a MESMA constante do 31.51,
+      `dialogos.FRACAO_QUE_COBRE`);
+    - ou a menor caixa com pista de diálogo que o contém cobre 15 % (o juiz pode citar o "X" de um modal);
+    - ou outra folha com texto cruza a área (a faixa FIXA sobre o conteúdo).
+
+    Senão é faixa no fluxo da página, e a recusa vale como "não" comum, com a métrica `juiz.sobreposicao_descartada`.
+- Sem o tamanho da tela a regra vale, e o `dialogos._cobre_a_tela` do 31.51 responde "não": lá a pergunta é outra (há
+  diálogo a fechar?), e na dúvida a limpeza não falha.
+- A árvore não diz quem é filho de quem. Os descendentes do aviso são a sequência contígua logo depois dele na ordem do
+  documento (a do uiautomator, em profundidade), toda contida na área. Uma folha contida na área FORA dessa sequência é
+  a página por baixo de um aviso fixo. Medido no gov.br (05/10, android-09): a folha de cookies de 49 % no rodapé vem no
+  fim do documento, e as linhas da página por baixo dela vêm antes, inteiras dentro da área. No banner do Mercado Livre
+  (f24955), os filhos vêm logo depois dele e nada de fora da sequência fica contido: segue descartado.
+- 2ª leitura do #391:
+  - **L1:** dois elementos com os MESMOS bounds não se contam um ao outro como contêiner (no Chrome, o View com texto e
+    o TextView filho igual); a linha da página por baixo de uma faixa pequena segue folha para o J3.
+  - **L2:** abaixo de 60 % da tela, a árvore inteira é uma janela flutuante (o dump de um diálogo nativo, cujo painel
+    `android:id/parentPanel` sem texto o leitor corta): a recusa vale. Prova `simulated`; o real fica `not_run` até a
+    captura de um AlertDialog. Limite: com a página no MESMO dump, a extensão não acusa a janela.
+  - Nas capturas inteiras (05/10): o banner da f24955 (ml-1-topo, 73 nós) segue descartado; a folha do gov.br e o
+    botão "Rejeitar cookies" dela (gov-3-rodape, 52 nós) valem.
+  - Notas sem conserto agora: o "X" fora da caixa quando só o cartão tem pista; a faixa fixa no rodapé com banner no
+    topo (a métrica não distingue erro do juiz); o aviso fixo que vem PRIMEIRO no documento pode engolir as primeiras
+    folhas da página (L3).
+- Os 15 % foram medidos nas duas ocorrências reais do banner (bounds gravados nas variáveis da limpeza e confirmados
+  pela captura de 05/10, 720 x 1280): 11,6 % como faixa no topo (f24955) e 83,8 % como modal (r-20261004190200-5b56e6,
+  que cobria de fato).
+- Prova `simulated`: `backend/tests/test_sobreposicao_com_duas_causas.py`. `not_run`: uma recusa real com duas causas.

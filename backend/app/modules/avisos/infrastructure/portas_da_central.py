@@ -15,7 +15,10 @@ O autor de tudo isto é o operador do ContextVar (`telegram:dono`), que o servi�
 """
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Mapping
+
+from pydantic import ValidationError
 
 from app.db import Database, loads
 from app.models import Health, RunCreate, RunStatus, RunTarget, RunTargetsResolveBody
@@ -27,7 +30,8 @@ from app.porta_do_plano import PortaIndisponivel
 from app.security.sessions import operador_atual
 from app.shared.costuras import autor_do_gesto
 from app.social.approvals import ApprovalService
-from app.social.chave_da_aprovacao import ARGUMENTO_DA_IMAGEM
+from app.social.chave_da_aprovacao import ARGUMENTO_DA_IMAGEM, midia_da_etapa
+from app.social.repository import SocialRepository
 from app.social.service import SocialError
 from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
 from app.taskqueue.perguntas import (
@@ -51,6 +55,46 @@ MOTIVO_DA_RECUSA = {
     "acima_da_autonomia": "Motivo: o plano tinha etapas com efeito, e esta execução só podia observar. Nada foi feito.",
 }
 MOTIVO_DA_RECUSA_GENERICO = "Motivo: o plano foi recusado antes de começar. Nada foi executado; o detalhe está no painel."
+
+log = logging.getLogger(__name__)
+
+
+def imagem_da_etapa(db: Database, ler_imagem: Callable[[str], bytes | None] | None, run_id: str,
+                    step_id: str) -> tuple[bytes, str] | None:
+    """A imagem que a etapa publica (`image_id` nos argumentos), lida do armazém dos avatares. O mime não é declarado:
+    quem envia confere a assinatura dos bytes; quem chama confere o sha256 contra o da prévia (`sha_da_imagem_na_porta`).
+    Fora da classe para o script da foto (28.46) ler sem montar as portas inteiras."""
+    if ler_imagem is None:
+        return None
+    bindings = loads(db.scalar("SELECT bindings FROM steps WHERE id=? AND run_id=?", (step_id, run_id)), {})
+    imagem = str((bindings or {}).get(ARGUMENTO_DA_IMAGEM) or "").strip()
+    if not imagem:
+        return None
+    chave = db.scalar("SELECT storage_key FROM persona_images WHERE id=? AND status='ready'", (imagem,))
+    conteudo = ler_imagem(str(chave)) if chave else None
+    return (conteudo, "application/octet-stream") if conteudo else None
+
+
+def sha_da_imagem_aprovada(db: Database, run_id: str, step_id: str) -> str | None:
+    """O `midia_sha256` congelado no sim do plano desta etapa (28.48; `ApprovalService.aprovar_no_plano`): a imagem que o
+    dono APROVOU. É a âncora mais forte que o recálculo de `sha_da_imagem_na_porta`; quem manda a foto confere as duas.
+    A decisão mais recente, com desempate pelo id; `None` sem sim com imagem para a etapa."""
+    valor = db.scalar("SELECT midia_sha256 FROM pending_approvals WHERE run_id=? AND step_id=? AND status='approved'"
+                      " AND midia_sha256 IS NOT NULL ORDER BY decided_at DESC, id DESC LIMIT 1", (run_id, step_id))
+    return str(valor) if valor else None
+
+
+def sha_da_imagem_na_porta(db: Database, run_id: str, step_id: str) -> str | None:
+    """O `imagem_sha256` que a prévia da porta mostra para a etapa (28.46), pela MESMA conta dela (`porta_do_plano._item`):
+    `midia_da_etapa` com o perfil da porta, que é o do objetivo ou, sem ele, o único do aparelho. `None`: etapa que não
+    existe, sem imagem, ou imagem sem sha256 conhecido (gerando, falhou, de outra persona)."""
+    linha = db.one("SELECT s.bindings, o.profile_id, o.instance_id FROM steps s JOIN objectives o ON o.id=s.objective_id"
+                   " WHERE s.id=? AND s.run_id=?", (step_id, run_id))
+    if linha is None:
+        return None
+    perfil = linha["profile_id"] or SocialRepository(db).perfil_unico_da_instancia(str(linha["instance_id"]))
+    _, sha = midia_da_etapa(db, loads(linha["bindings"], {}) or {}, perfil=str(perfil) if perfil else None)
+    return sha
 
 
 class PortasReais:
@@ -224,7 +268,16 @@ class PortasReais:
     # ------------------------------------------------------------------ ação (os serviços das rotas)
     def previa(self, texto: str, instance_ids: list[str] | None = None) -> Previa:
         try:
-            p = self.runs.previa_de_alvos(RunTargetsResolveBody(command=texto, instance_ids=instance_ids or []))
+            corpo = RunTargetsResolveBody(command=texto, instance_ids=instance_ids or [])
+        except ValidationError as exc:
+            # 28.43: o pedido fora do formato (curto ou longo demais) é recusa, não falha interna. A conversa já recusa
+            # o curto antes; esta é a rede para o que escapar. Só o corpo: um ValidationError de dentro da prévia é
+            # defeito e segue como falha interna. O log leva onde e o tipo, nunca o texto (pode ter dado do dono).
+            log.warning("pedido fora do formato da prévia: %s",
+                        [(".".join(map(str, e.get("loc") or ())), e.get("type")) for e in exc.errors()])
+            raise RecusaDaCentral("O pedido não cabe no formato de uma execução; diga o que fazer e em qual aparelho.") from None
+        try:
+            p = self.runs.previa_de_alvos(corpo)
         except RunError as exc:
             raise RecusaDaCentral(exc.message) from None
         return Previa(alvos=[t.model_dump() for t in p.targets],
@@ -293,17 +346,7 @@ class PortasReais:
             raise RecusaDaCentral(exc.message) from None
 
     def imagem_da_etapa(self, run_id: str, step_id: str) -> tuple[bytes, str] | None:
-        """A imagem que a etapa publica (`image_id` nos argumentos), lida do armazém dos avatares. O mime não é declarado:
-        quem envia confere a assinatura dos bytes; quem chama confere o sha256 contra o da prévia."""
-        if self._ler_imagem is None:
-            return None
-        bindings = loads(self.db.scalar("SELECT bindings FROM steps WHERE id=? AND run_id=?", (step_id, run_id)), {})
-        imagem = str((bindings or {}).get(ARGUMENTO_DA_IMAGEM) or "").strip()
-        if not imagem:
-            return None
-        chave = self.db.scalar("SELECT storage_key FROM persona_images WHERE id=? AND status='ready'", (imagem,))
-        conteudo = self._ler_imagem(str(chave)) if chave else None
-        return (conteudo, "application/octet-stream") if conteudo else None
+        return imagem_da_etapa(self.db, self._ler_imagem, run_id, step_id)
 
     def decidir(self, approval_id: str, verbo: str, nota: str | None = None) -> str:
         try:

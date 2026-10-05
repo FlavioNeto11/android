@@ -13,7 +13,6 @@ paths:
 - **A automação digita a credencial que a pessoa guardou** (ADR-040, que substitui em parte o ADR-025): só pela
   credencial da conta da persona, com consentimento por conta, e só por `type_secret`, no app e no site daquela
   conta. A execução não carrega credencial. Nunca credencial dentro do texto do comando, lida da tela ou inventada.
-- **Desafio, 2FA com código não fornecido e CAPTCHA são resolvidos pela pessoa**; nada de evasão de antibot.
 - **Script `[P]` toca o parque ou o ambiente central** (reiniciar aparelho, migrar o banco do ambiente central).
   O ambiente central é de desenvolvimento e validação do dono, ainda não é produção (`CLAUDE.md`): validar ali é
   permitido. **Autorização explícita antes** só para chamada paga de IA além do pontual, ação com efeito externo

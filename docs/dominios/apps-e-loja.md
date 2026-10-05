@@ -140,7 +140,6 @@ Daí em diante, o núcleo pergunta ao registro, sem `if` por app:
 | porta de sessão do despacho | o provedor do pacote do item | `state.py::AppState._session_gate` → `SessionProviders.for_package` |
 | invalidação ao mexer no disco de um app | o app tem provedor? | `state.py::AppState._sessao_apos_mudanca_de_app` → `SessionProviders.has` |
 | "tela contradiz a sessão" no executor | o app tem provedor? | `taskqueue/executor.py::StepExecutor._sessao_desmentida` → `session_provider_of` |
-| rótulo do app no bloqueio do ADR-029 e no aviso de invalidação | `label` | `state.py::AppState._sessao_desmentida`, `::_invalidate_sessions` |
 | rascunho na voz do perfil | `text_kind` e o `ScreenReader` | `state.py::AppState._draft_gate` |
 | leitura de conversa vira histórico | `conversation_read` | `state.py::AppState._registrar_leitura` |
 | "login automático" no painel | o app tem provedor? | `apps_overview.py`, `social/service.py::SocialService._account_dto` |
@@ -171,16 +170,15 @@ sessão, que perguntam a este registro (ciclo).
 mensagem (que a marca como lida) ficam fora: uma etapa com efeito no Outlook sem ação dele é recusada pela porta de
 política (item 13.2, `manual_only`), e etapa livre num app com catálogo vira pergunta no planejador (ADR-058).
 
-**Valor entre etapas pelo catálogo (ADR-065).** Com catálogo o Outlook deixou de ser app de etapa livre, então a ação
-de catálogo passou a poder entregar um valor lido (o `read_value` da etapa livre, item 24.3) a outra etapa, sem
-Python por app: a ação declara no `catalogo.yaml` os nomes que PODE entregar (`saidas: [remetente, assunto]` em
-`OPEN_MAIL_INBOX` e `SEARCH_MAIL`); o planejador entre apps diz, por etapa, quais usa (`saidas` da etapa, só nomes
-da lista; fora dela, ou numa ação sem `saidas`, vira pergunta e o plano sai sem etapas); a etapa seguinte os cita como
-`{{saida:<nome>}}`. Quem lê é o executor, do texto do elemento na tela, com a triagem de segredo de sempre: código de
-verificação, senha e token nunca são saída (por isso não há nome `codigo` e o cenário "ler o código no Outlook" segue
-com a pessoa). A coleta não declara `saidas` (a lista vai pelo `for_each`). Etapa de catálogo com `saidas` não usa
-receita (ler é decisão sobre a tela da vez); sem `saidas` na etapa, tudo segue como antes. O que ele declara depois da senha é
-suposição, marcada nos arquivos.
+**Valor entre etapas pelo catálogo (ADR-065).** Com catálogo o Outlook deixou de ser app de etapa livre, então a ação de
+catálogo passou a poder entregar um valor lido (o `read_value` da etapa livre, item 24.3) a outra etapa, sem Python por
+app: a ação declara no `catalogo.yaml` os nomes que PODE entregar (`saidas: [remetente, assunto]` em `OPEN_MAIL_INBOX` e
+`SEARCH_MAIL`); o planejador entre apps diz, por etapa, quais usa (`saidas` da etapa, só nomes da lista; fora dela, ou
+numa ação sem `saidas`, vira pergunta e o plano sai sem etapas); a etapa seguinte os cita como `{{saida:<nome>}}`. Quem
+lê é o executor, do texto do elemento na tela, com a triagem de segredo de sempre: senha e token nunca são saída (por
+isso não há nome `codigo` e o cenário "ler o código no Outlook" segue com a pessoa). A coleta não declara `saidas` (a
+lista vai pelo `for_each`). Etapa de catálogo com `saidas` não usa receita (ler é decisão sobre a tela da vez); sem
+`saidas` na etapa, tudo segue como antes. O que ele declara depois da senha é suposição, marcada nos arquivos.
 
 **O QA Messenger é a prova de extensibilidade, e só em teste.** `backend/tests/fake_dois_apps.py::manifesto_do_qa`
 registra o QA por `register_manifest()` com três capabilities (`QA_OPEN_CHAT`, `QA_COMPOSE`, `QA_SEND_MESSAGE`) e um

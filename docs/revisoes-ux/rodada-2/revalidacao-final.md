@@ -83,7 +83,7 @@ API, ABI, Play e imagem nos 12 aparelhos locais.
   desconhecido" com "Ver no Painel", ambos marcados ATENÇÃO.
 - Grupo **Custos** no topo e no "Resumo": com IA simulada nenhuma conta paga função, e os 2 saldos semeados não
   aparecem (a tarefa 10 semeou saldos baixos). Não é defeito; a composição do Resumo com Custos fica sem prova real.
-- Execução `running`, origem "Intervenção" (sessão em desafio), sessão "Conectado · confirmada há…" no cabeçalho da
+- Execução `running`, origem "Intervenção", sessão "Conectado · confirmada há…" no cabeçalho da
   persona e selo "Comprovado" (`proven: true`): o simulado não alcança.
 - Lighthouse nas larguras 1920, 1280, 1024 e 768 (rodado a 1440 nas 9 telas e a 390 em Painel e Personas).
 - Popover "Recursos" do tablet (768 px) nunca aberto; a gaveta do menu exercitada com teclado só a 768 px (a 390 só

@@ -25,7 +25,7 @@ import pytest
 
 from app.api import _SQL_RUNS_DO_SNAPSHOT, _STATUS_DO_SNAPSHOT, AGUARDANDO_NO_SNAPSHOT_D
 from app.models import RUN_SEM_TRABALHO, RUN_TERMINAL, ResolveBody, RunStatus
-from app.modules.avisos.infrastructure.entrada import TERMINAIS
+from app.modules.avisos.infrastructure.entrada import COM_DESFECHO
 from app.modules.avisos.infrastructure.portas_da_central import _DESFECHO
 from app.modules.execution.domain.states import RUN_TRANSITIONS
 from app.modules.pedidos.domain.fechamento import Fechamento, ObjetivoVisto, fechar
@@ -199,7 +199,7 @@ async def test_consumidores_do_needs_input_nao_pegam_a_execucao_aguardando(harne
 
 # ------------------------------------------------------------------ Telegram e pedidos
 def test_o_telegram_conta_a_execucao_aguardando_como_desfecho_com_frase_propria() -> None:
-    assert "awaiting_person" in TERMINAIS                 # o desfecho é a única linha (28.36), como no terminal
+    assert "awaiting_person" in COM_DESFECHO                 # o desfecho é a única linha (28.36), como no terminal
     assert _DESFECHO[RunStatus.awaiting_person] == "parou"
     assert all(v != _DESFECHO[RunStatus.awaiting_person] for k, v in _DESFECHO.items() if k != RunStatus.awaiting_person)
 
@@ -595,3 +595,16 @@ async def test_d2_a_execucao_cancelada_sem_worker_assenta_uma_vez(harness: Harne
     await harness.wait_run(run_id, statuses=("cancelled",))
     await _assentou(harness, g, run_id)
     _um_assentamento(st, g, run_id, sem_worker=True)
+
+
+async def test_k2_o_worker_que_perde_a_marca_solta_a_trava_deste_processo_sem_digest(harness: Harness,
+                                                                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    """29.108 (K2): a marca já foi de outro (outro backend, a rede). O `_settle_run` deste processo não assenta de novo,
+    mas solta a trava de rascunho que é dele e acorda os pedidos (o idempotente da parada)."""
+    st = harness.state
+    assert st is not None
+    run_id, g = await _assentada_pelo_worker(harness, monkeypatch)
+    st._draft_locks[run_id] = asyncio.Lock()                    # noqa: SLF001 - a trava que ficaria presa
+    st.scheduler._settle_run(run_id, venceu=False)              # noqa: SLF001
+    assert run_id not in st._draft_locks                         # noqa: SLF001
+    assert g["digest"] == [] and g["pedidos"] == [run_id] and g["sem_worker"] == []

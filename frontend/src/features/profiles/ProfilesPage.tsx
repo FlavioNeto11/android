@@ -76,20 +76,33 @@ export function ProfilesPage() {
   const [preferida, setPreferida] = useState(() => visaoPreferida(CHAVE_VISAO, VISOES, 'cards'));
   const token = useRef(0);
 
-  const load = useCallback(async () => {
+  // A leitura mais nova em voo: quem perde a corrida para ela espera a resposta dela, em vez de voltar antes de a lista
+  // nova chegar à tela (29.116).
+  const leituraEmVoo = useRef<Promise<boolean> | null>(null);
+
+  /** Relê as personas e os grupos. Devolve se a lista de personas se releu: o lote avisa quando ela ficou velha (29.116). */
+  const ler = useCallback((): Promise<boolean> => {
     const mine = ++token.current;
-    const [p, grp] = await Promise.allSettled([api.listPersonas(), api.listPolicyGroups()]);
-    if (mine !== token.current) return;
-    if (grp.status === 'fulfilled') setGrupos(grp.value);
-    if (p.status === 'fulfilled') {
-      setPessoas(p.value);
-      setErro(null);
-    } else {
+    const leitura = (async (): Promise<boolean> => {
+      const [p, grp] = await Promise.allSettled([api.listPersonas(), api.listPolicyGroups()]);
+      if (mine !== token.current) return (await leituraEmVoo.current) ?? false;
+      if (grp.status === 'fulfilled') setGrupos(grp.value);
+      if (p.status === 'fulfilled') {
+        setPessoas(p.value);
+        setErro(null);
+        return true;
+      }
       // O erro fica na tela, com "Tentar de novo": `[]` aqui dizia "Nenhuma persona" com a API caída, e só um
       // toast passageiro contava a verdade (P1.3).
       setErro(toLoadError(p.reason));
-    }
+      return false;
+    })();
+    leituraEmVoo.current = leitura;
+    return leitura;
   }, []);
+  const load = useCallback(async () => {
+    await ler();
+  }, [ler]);
 
   // Recarrega a cada novo snapshot (reconexão) e a cada mudança na fila "Aguardando intervenção" — perfis não
   // vêm no snapshot, e o evento dedicado só carrega o bastante para saber que algo mudou (achado #106).
@@ -322,7 +335,7 @@ export function ProfilesPage() {
       )}
 
       <BarraDeLote selecionadas={pessoas.filter((p) => selecionadas.has(p.id))} grupos={grupos}
-                   onLimpar={() => setSelecionadas(new Set())} onConcluido={load} />
+                   onLimpar={() => setSelecionadas(new Set())} onConcluido={ler} listaVelha={erro !== null} />
 
       {criando === 'prompt' ? (
         <NovaPersonaPorPrompt onClose={() => setCriando(null)} onCriada={criada} onLote={load}

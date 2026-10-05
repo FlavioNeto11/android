@@ -124,17 +124,17 @@ continua ganhando do prazo. O status vem antes (`interrupted` segue `interrompid
 executor deixa de ser contrato; as REGRAS de texto ficam para o legado sem `error_kind`.
 
 **A interrompida que esperou a pessoa (29.74).** `interrupted` segue `interrompida` na reconciliação, na pausa e na
-tomada de controle. A tentativa que parou para esperar a pessoa (o `recovery` do `waiting_user`, "Aguardando o
-usuário", e o da prova de fluxo, "Prova de fluxo: encerrada pelo sistema": `falhas.ESPEROU_A_PESSOA`) é classificada
-pelo texto, como a etapa: autenticação, trava da conta (`auth_challenge`), saldo, falta de informação. Texto sem regra
-ali, ou com tipo de navegação (o texto gravado pode ser o erro anterior da tentativa), é o relato livre da IA
-(`ia_declarou_bloqueio`): só o que nunca vira lição e a falta de informação passam (`DA_PESSOA_NA_ESPERA`). Antes, tudo isso formava um grupo da camada `execucao`
-(`fk-d0f1c2ed23`, ~77 ocorrências em 04/10) que ninguém consertava. O legado gravado `interrompida` é relido com o
-`recovery` na leitura retroativa (`falhas.tipo_da_tentativa`, no relatório, no agregado diário, no feedback e no
-aprendido da execução), sem migração, e conta como retroativo. Com `retroativo=False`, fica o gravado. A série
-diária já agregada (`learning_daily`) não é reescrita: os dias antigos seguem `interrompida` e os recentes saem
-reclassificados (decisão da orquestradora, 04/10: não recompor, não se apaga dado por isso). Saúde D-5, orçamento do
-curador, gatilhos, dossiê e a régua do 30.55 não leem o tipo da tentativa.
+tomada de controle. A tentativa que parou para esperar a pessoa (o `recovery` do `waiting_user`, "Aguardando o usuário",
+e o da prova de fluxo, "Prova de fluxo: encerrada pelo sistema": `falhas.ESPEROU_A_PESSOA`) é classificada pelo texto,
+como a etapa: autenticação, trava da conta, saldo, falta de informação. Texto sem regra ali, ou com tipo de navegação (o
+texto gravado pode ser o erro anterior da tentativa), é o relato livre da IA (`ia_declarou_bloqueio`): só o que nunca
+vira lição e a falta de informação passam (`DA_PESSOA_NA_ESPERA`). Antes, tudo isso formava um grupo da camada
+`execucao` (`fk-d0f1c2ed23`, ~77 ocorrências em 04/10) que ninguém consertava. O legado gravado `interrompida` é relido
+com o `recovery` na leitura retroativa (`falhas.tipo_da_tentativa`, no relatório, no agregado diário, no feedback e no
+aprendido da execução), sem migração, e conta como retroativo. Com `retroativo=False`, fica o gravado. A série diária já
+agregada (`learning_daily`) não é reescrita: os dias antigos seguem `interrompida` e os recentes saem reclassificados
+(decisão da orquestradora, 04/10: não recompor, não se apaga dado por isso). Saúde D-5, orçamento do curador, gatilhos,
+dossiê e a régua do 30.55 não leem o tipo da tentativa.
 
 **Dívida paga (29/09, `2b0e5db`).** O contrato de gesto mora em `app/shared/costuras.py`: `TomadaDeControle`,
 `CosturaDeControle`, `avisar`, as portas de comando e de ensino e `autor_do_gesto`. `taskqueue/costuras.py` o reexporta,
@@ -329,8 +329,6 @@ verificador** (ADR-024); como entram no prompt, em [ia.md §15](../ia.md).
    contagem, sufixo de resource-id, `{parâmetro}` e rótulo curto que se repetiu, idêntico, em 2 execuções. Nunca
    `attempts.error` cru, texto de tela, nome de terceiro, valor de parâmetro ou segredo. A nota de um voto vira
    candidata `human_origin`, que só o dono publica.
-3. **Nunca viram lição:** autenticação, desafio, 2FA, CAPTCHA, conta, IA e infraestrutura; a etapa de sessão ou login,
-   pela ação do catálogo ou pela chave da etapa livre (`ACAO_DE_SESSAO`); a tentativa que parou em login ou desafio.
 4. **Validação e publicação.** A mesma impressão em 2 execuções reais valida. Sem efeito e com `licoes.modo: on`, o
    sistema publica na `fila_de_prova`, e a curadoria abre uma prova por (app, ação, papel).
 5. **Medida.** Em prova, 50% das unidades com a lição e 50% sem (unidade = etapa no ator, planejamento no planejador;
@@ -359,8 +357,8 @@ atualização do app: dela, o "voltar" da conferência de conta sai do app e cha
    e nenhuma das telas declaradas).
 4. **Publicação** sozinha só com `telas.modo: on`. De fábrica é `observe`: grava, minera e valida, e a sessão não
    consome.
-5. **Desligam a regra:** o primeiro conflito (login, desafio, 2FA ou conta errada no mesmo aparelho até 2 min de um
-   uso), o modo fora de `on`, uma pessoa, e 30 dias sem casar numa versão nova do app.
+5. **Desligam a regra:** o primeiro conflito (login ou conta errada no mesmo aparelho até 2 min de um uso), o modo fora
+   de `on`, uma pessoa, e 30 dias sem casar numa versão nova do app.
 6. **Ponte para o repositório:** `GET /api/aprendizado/export?kind=tela&app=` devolve o fragmento YAML. Quando o YAML
    commitado reconhece todas as amostras, a aprendida se aposenta como `absorvida:<commit>`.
 
@@ -437,12 +435,9 @@ com o banco aberto só para leitura.
   antigo só é reconhecido com o `instance_id` do próprio comando.
 - **Tela da falha (22.3).** `executor.tela_da_falha` classifica a última árvore observada pela tentativa com o
   `telas.yaml` do app da etapa; `scheduler._run_guarded` a leva no `StepOutcome`, e `repository.finish_attempt` grava
-  `attempts.failure_screen` no mesmo UPDATE de `failure_kind`, só quando há tipo de falha. O valor é o nome de uma
-  regra declarada, ou o tipo do motor nas telas protegidas (`desafio`, `dois_fatores`, `login`, alinhado a
-  `licoes.TELAS_EXCLUIDAS`); NULL quando a tela é desconhecida, outro app está na frente, o app não tem conhecimento
-  ou não houve observação nesta tentativa. Nunca texto da tela. A trava achada dentro de uma ferramenta devolve a tela
-  pelo próprio executor, porque `quick_tree` não atualiza `rt.last_tree`. As telas aprendidas ficam fora, para a
-  chave do grupo não depender do modo do livro.
+  `attempts.failure_screen` no mesmo UPDATE de `failure_kind`, só quando há tipo de falha. Nunca texto da tela. A trava
+  achada dentro de uma ferramenta devolve a tela pelo próprio executor, porque `quick_tree` não atualiza `rt.last_tree`.
+  As telas aprendidas ficam fora, para a chave do grupo não depender do modo do livro.
 - **App por etapa no aprendizado (medido em 02/10, `test_aprendizado_app_por_etapa.py`).** `steps.app_id` NULL é o
   desenho, não perda: o plano só grava o app da etapa quando ele difere do app do plano (`planning/parsing.py`), e
   `runs.app_ids` leva o app do plano primeiro. A régua diária, o relatório de falhas, as lições e as costuras resolvem
@@ -667,7 +662,7 @@ tabela de arestas**. As regras são puras e moram em `domain/relacoes.py`; `Lear
   habilidade dividem o comando) e lição, voz e preferência (o escopo não nomeia a proposição) ficam sem contradição derivada; abri-la para a
   lição exige um critério de tema que ainda não existe.
 - **Vivo** é `candidate`, `validated` ou `published`; item morto não disputa e não é acusado.
-- **A evidência `conflict` não vira relação:** na tela ela aponta para um aparelho (login, desafio), não para outro item.
+- **A evidência `conflict` não vira relação:** na tela ela aponta para um aparelho (login), não para outro item.
 - **Absorvida** liga a regra pelo nome na tela (`regra_declarada`) e pelo commit nos demais itens; a leitura do YAML em si não entra (o alvo é o nome).
 - Fora do escopo: o painel (30.16) e a relação `revisado por` (do curador por IA, §8.5).
 
@@ -1404,7 +1399,8 @@ re-execução.
 - aparece como "Prova de fluxo (validação)" (`RunSummary.prova_fluxo_id`): nunca comando de pessoa, nunca aviso, nunca o
   último comando do cartão;
 - `needs_input`, `approval_required` ou incerteza é infra: o sistema encerra a execução na hora (sem
-  `cancelou_execucao`, sem pergunta pendente, sem aviso) e o pedido fecha `sem_evidencia`.
+  `cancelou_execucao`, sem pergunta pendente, sem aviso) e o pedido fecha `sem_evidencia`. Desde o 30.75, a parada na
+  tela de senha do app fecha `app_sem_sessao`, e o corte pelo teto, `orcamento_da_prova` (seção do 30.75).
 
 **A evidência** (`SombraDosFluxos.minerar`, ramo da prova), UMA linha do fluxo provado, com a marca do conteúdo:
 - a favor: execução `completed` e todas as etapas comprovadas;
@@ -1483,6 +1479,16 @@ A lacuna ("a receita não tem evidência datada") tinha um custo medido em 03/10
   No relatório de condução, a etapa que espera sem `driven_by` aparece como `esperando_pessoa`, não como "sem
   condução", e fica fora da porcentagem por receita. O digest re-rodado na saída não duplica linha em nenhum
   dos 10 mineradores (nota de desenho do 30.69).
+  - Desde o 30.71, a curadoria (`execucoes_a_preencher`) também deixa de ESCOLHER a execução `awaiting_person`. Antes
+    ela entrava em toda passada sem preencher nada e, com o `LIMIT 200` por `run_id`, podia tirar a vez de quem fecha.
+  - A janela da curadoria (`PREENCHER_DIAS`) conta da SAÍDA da espera: `COALESCE(assentada_em, finished_at)`. O
+    vencimento e o cancelamento não limpam o `finished_at`, que guarda a hora da entrada; uma espera mais longa que a
+    janela, com o digest da saída perdido, deixaria a exposição de fora para sempre (N1 da leitura do 30.71).
+  - Nota (N2 da mesma leitura): a exposição de uma etapa que já tinha concluído ANTES da espera agora só é preenchida
+    na saída da execução, porque a curadoria não escolhe a execução que espera. Atrasa, não perde.
+  - No estoque migrado (a 111 levou as `completed_with_issues` com objetivo esperando para `awaiting_person`), as
+    exposições que o primeiro digest congelou com `waiting_user`, antes do 30.69, ficam assim: nada as reabre.
+  - O relatório de condução, que é recalculado a cada leitura, passa a mostrar `esperando_pessoa` também nas antigas.
 - **Não decide nada.** Só grava evidência; o D1, a quarentena e os contadores seguem donos do estado da receita.
 - **Retrocarga** `RetrocargaDaReceita`, passo da curadoria (e não função única na montagem): a cada volta completa as
   reproduções de execuções já terminadas que ainda não têm linha (as de antes do 30.39, um digest que falhou), datadas
@@ -1656,6 +1662,75 @@ mesmo aparelho; falta reprodução em outro aparelho", mas a reprodução já ex
 
 **Prova:** `simulated` em `backend/tests/test_learning_dossie_pela_marca.py` (3 testes; mutação conferida no separador
 das versões). `real`: `not_run` até o deploy.
+
+## O parecer da classe B não pede o que nenhuma prova produz (30.73)
+
+A medida do 30.72 (05/10, `.claude/handoffs/aprendizado-medida-30-72.md`) achou isto: nenhum dos 22 fluxos B tinha
+caminho para `aprovar`. Cinco deles já cumpriam os números da autopublicação (≥ 2 execuções reais em ≥ 2 aparelhos,
+nenhuma evidência contra) e paravam em `observar`, porque o parecer pedia `voto_da_pessoa` e `decisao_da_pessoa` por
+"efeito sem catálogo". Na classe B, o efeito em app sem catálogo é a própria definição da classe
+(`politica_de_risco`), e nenhuma execução produz essas duas faltas.
+
+- **Dossiê:** o item B leva o fato `risco.classe_b_e` (`CLASSE_B_DO_ITEM`).
+  - Diz que "sem entrada no catálogo" define a classe e não é lacuna, que o parecer julga pelas evidências citáveis,
+    que publicar um fluxo B segue a regra da autopublicação e que o aceite continua sendo da pessoa.
+  - O dossiê A e o C não mudam.
+  - A `VERSAO_DO_DOSSIE` continua 1 (N1 da leitura, decidido): é uma chave condicional, como `sem_caminho` e as do
+    30.36.
+    - Subir para 2 mudaria o hash de TODO dossiê, A e C inclusive, e reabriria a revisão de todo o livro sem
+      nada novo a dizer neles.
+    - O parecer B feito com a instrução nova se reconhece pelo dossiê gravado em `learning_reviews.dossie`, que tem
+      `risco.classe_b_e`. A `template_versao` da revisão é a forma do dossiê (`dossie-v1`), não a versão do texto.
+  - O hash do dossiê B muda, e cada item B fica elegível para UMA revisão nova depois do cooldown, dentro da fatia do
+    curador.
+- **Opções fechadas:** `faltas_do_item(classe)` tira `voto_da_pessoa` e `decisao_da_pessoa` das opções de `falta` do
+  item B (`FALTA_SO_DA_PESSOA`).
+  - O esquema estrito que vai ao provedor leva esse enum.
+  - Se um provedor sem esquema estrito as devolver mesmo assim, o `validar_saida` as tira do parecer, que segue
+    válido. O descarte não some: elas vão a `Parecer.falta_descartada`, à `saida` gravada como `falta_descartada`
+    (só quando houve, então a `saida` dos outros pareceres não muda) e a uma linha de log com o id da revisão e os
+    rótulos. Pedido da Jev: não esconder que o modelo insistiu.
+  - Na A e na C, as opções são todas, como antes.
+- **Instrução do hub:** a frase da B no `CURADOR_SYSTEM` (`backend/app/planning/curador.py`, hub da Jev), na redação
+  dela (05/10 08:45Z). Ela nomeia os rótulos (`voto_da_pessoa`, `decisao_da_pessoa`) em vez de "não peça decisão da
+  pessoa", que contradiria o "quem aceita é a pessoa" do mesmo texto, e termina com "O aceite continua sendo da
+  pessoa". `VERSAO_DO_TEMPLATE` passa a `curador-v2`, e o hash do texto fica preso num teste.
+- **Estoque:** o parecer gravado com `voto_da_pessoa` se lê como foi gravado (`parecer_gravado` não filtra).
+- **A autopublicação continua em `shadow`.** Ligar o `on` não faz parte deste item.
+
+**Prova:** `simulated` em `backend/tests/test_curador_classe_b.py`. `real`: `not_run` até o deploy e a primeira
+revisão B de `curador-v2`.
+
+## A versão do app na evidência do fluxo (30.74)
+
+A medida do 30.72 (05/10) achou as 113 evidências reais de fluxo do central com `app_version` nulo. As de receita levam
+a versão (`recipes.app_version`). Por isso o parecer do curador dizia "sem versão do app registrada" e pedia
+`reproducao_na_versao_viva`, que nenhuma prova satisfazia.
+
+- **Quem grava:** o digest, nos três caminhos que gravam evidência de fluxo: a sombra (`run:`), a prova (30.37) e o uso
+  (30.51, `uso:`).
+- **De onde vem a versão:** do app do fluxo (o principal: `flows.app_id`, depois `apps.package`), lida em
+  `device_app_state` do aparelho da execução (`LeituraSql.versao_do_fluxo_no_aparelho`).
+- **Sem leitura do aparelho, ou com a versão vazia:** fica nula, como antes.
+- **Só a versão que valia NA execução (V1 da leitura).** A leitura é a da hora do digest, não a da execução. Se o app
+  pode ter sido atualizado depois do início dela (um digest atrasado, a primeira passada depois de um deploy), a
+  evidência velha levaria a versão nova, uma prova falsa de "versão viva". Por isso a versão só vale quando a última
+  atualização do app no aparelho (`device_app_state.last_update_time`) é COM CERTEZA anterior ao início da execução
+  (`runs.started_at`); senão, nula.
+  - O `last_update_time` vem do `dumpsys` no fuso DO APARELHO, sem fuso escrito, e o fuso de cada emulador não está no
+    banco. A conta usa o pior caso (a hora lida + 12 h, `versao_estavel_na_execucao`).
+  - O preço: a execução que começa até ~12 h depois de uma atualização do app fica sem versão.
+  - Sem `last_update_time`, sem `started_at`, ou com uma hora ilegível: nula.
+- **As reclassificações ficam sem versão (N2 da leitura, decidido):** as linhas `forma` (30.36), `invalida` por efeito
+  repetido (30.42) e `revalidada` (30.53) são gravadas por cima de uma evidência de execução e não levam `app_version`.
+  - O certo, se um dia precisar, é COPIAR a versão da evidência original, nunca ler de novo.
+  - Não entra agora porque nenhuma delas é reprodução: não satisfazem `reproducao_na_versao_viva`, e o dossiê as casa
+    com a original pela origem e pela marca do conteúdo, não pela versão.
+- **O estoque não é refeito:** as evidências antigas seguem nulas.
+
+**Prova:** `simulated` em `backend/tests/test_versao_na_evidencia_do_fluxo.py`. `real`: `not_run` até o deploy e a
+primeira evidência de fluxo depois dele.
+
 ## A prova de fluxo por amostra (30.48)
 
 O `for_each` de tamanho desconhecido nunca cabia no teto do 30.41 e o fluxo nunca se validava por pedido: o
@@ -1910,3 +1985,82 @@ anterior contra nem uma classe C.
   - a segunda volta não decidiu nada;
   - os 11 do Instagram ficaram com o dono.
 - `real`: `not_run` até o deploy (entra em `shadow`).
+
+## A prova sem evidência diz a causa (30.75)
+
+A leitura de 05/10 (`.claude/handoffs/aprendizado-sem-evidencia.md`) achou 5 pedidos de fluxo `sem_evidencia`:
+- dois foram o teto do pedido cortando a execução no meio, que gastou US$ 0,157 e 0,159 sem deixar evidência;
+- um foi o QA Messenger do android-02 deslogado: a prova parou na tela de senha, com US$ 0;
+- os outros dois eram de antes do `prova_fluxo_id` e já estavam corrigidos.
+
+Os três primeiros diziam só "sem evidência", e a medida não sabia o que travou nem quanto custou.
+
+- **Motivos novos do pedido** (`domain/validacao.Motivo`), escolhidos pelos campos estruturados, nunca pelo texto
+  (`FontesDaValidacaoSql.causa_sem_evidencia`):
+  - `orcamento_da_prova`: a ÚLTIMA tentativa da execução terminou com `attempts.error_kind='budget'`: um teto de IA
+    a encerrou. `budget` é o tipo de todo teto (o do pedido, o do dia, o de chamadas, o de uma ação); um teto que a
+    execução sobreviveu (o da leitura do 31.38) não é a causa. Quando o teto encerrou, ele vence o login;
+  - `app_sem_sessao`: algum objetivo da execução tem `objectives.blocked_kind='auth'`;
+  - sem nenhum dos dois, `sem_evidencia`, como antes;
+  - só em execução de PROVA (`runs.prova_fluxo_id`). O estoque `sem_evidencia` de execução comum (antes do 30.37)
+    segue `sem_evidencia` e no caminho da reabertura (C1 da leitura do #419).
+- **Onde valem:** no fechamento do pedido de FLUXO (`ServicoDeValidacao.minerar`) e no passo da curadoria que remotiva
+  o estoque `sem_evidencia` (`executar`, só a partir de `sem_evidencia`).
+  - Nenhum dos dois é chegada do curador nem se reabre: não dizem nada sobre o fluxo.
+  - Não são falha do executor, que não ganha texto novo; por isso não há regra nova em `falhas.py`.
+- **A causa estruturada do login:** o executor marca o desfecho da tela de senha com `StepOutcome.pede_login`, e só na
+  execução de PROVA o `Scheduler._prova_sem_pessoa` grava `blocked_kind='auth'` no objetivo que encerra. A execução
+  comum segue como sempre: `waiting_user`, sem essa marca.
+- **O aparelho sai das próximas provas daquele app** (`DespachoDoParque._sem_sessao_no_app`). O aparelho em que uma prova
+  de fluxo do pacote parou no login deixa de ser candidato para os pedidos que exigem o pacote. Ele volta quando:
+  - a verificação do app nele (`device_app_state.verified_at`) é posterior à parada; ou
+  - um objetivo `succeeded` num fluxo do mesmo app (`runs.flow_id` ou `prova_fluxo_id`), no mesmo aparelho, terminou
+    depois da parada. A execução comum que entrou no app prova que a sessão voltou.
+  - Sem outro aparelho que sirva, o pedido espera (`sem_aparelho`), como sempre.
+  - Limites conhecidos (leitura do #419):
+    - a verificação confere a INSTALAÇÃO, não a sessão: a de rotina (ao ligar o aparelho com o `verified_at` de mais de
+      24 h) solta o aparelho ainda deslogado, e a próxima prova nele pode gastar a vaga de novo;
+    - a exclusão usa o app PRINCIPAL do fluxo: o login pedido por um app secundário exclui o app errado;
+    - com `verify_max_age_h=0`, só a verificação manual, a reinstalação ou um sucesso de fluxo soltam.
+- **O estoque de 05/10 não ganha a marca do login:** a parada foi gravada antes do campo. O passo da curadoria passa a
+  `orcamento_da_prova` os dois cortes de 03/10, e o de 05/10 segue `sem_evidencia`.
+- **API:** os dois valores novos de `motivo` em `GET /api/aprendizado/validacoes` (adendo v1.54).
+
+**Prova:** `simulated` em `backend/tests/test_validacao_motivos_da_prova.py` (verificada por mutação: sem a marca no
+scheduler ou sem o filtro do aparelho, os testes reprovam). `real`: `not_run` até o deploy e a primeira prova com essa
+parada.
+
+## A receita que não se aplicou (30.80)
+
+Achado real (05/10, a prova do 31.79): a `r-20261005133833-122345` partiu de dentro de uma conversa no android-12. A
+receita 194, ensinada no modo treinamento, divergiu na ação 1 ("alvo ausente ou ambíguo nesta tela"), a IA comprovou a
+etapa, e a receita saiu com `replay_fail=1`. A falha era da tela de partida, não dela.
+
+- **"Não se aplicou"** (`StepExecutor._after_step` e `RecipeStore.nao_aplicavel`), quando valem as três condições:
+  - a receita divergiu na AÇÃO 1, antes de agir (`Replayer.done_actions == 0`);
+  - a divergência foi alvo AUSENTE (`recipes.AlvoAusente`). O seletor AMBÍGUO, que casa mais de um elemento, fica de
+    fora com a mesma mensagem: deixou de ser único, e isso é defeito da receita;
+  - a etapa TERMINOU comprovada.
+- **Nesse caso:**
+  - nem `replay_ok` nem `replay_fail` sobem, e `consecutive_fail` fica como está;
+  - `steps.driven_by='ai'`, porque nenhuma ação da receita rodou. Por isso a etapa não vira evidência contra no
+    aprendizado (`reproducao_sql.py` só lê `recipe`, `recipe+ai` e `sem_ator`);
+  - `attempts.recipe_id` segue apontando a receita tentada;
+  - a etapa que seria `sem_ator` também fica `ai`. É de propósito (sai da evidência contra), mas soma uma etapa da IA
+    no `/api/usage` sem chamada de IA.
+- **O evento `decision`** da execução diz "tela de partida diferente" e leva o código estável no `data`:
+  `kind='receita_nao_aplicavel'`, `recipe_id`, `step_id` e `contou_como_falha`. Isso dá para contar sem ler texto, e a
+  receita ensinada tentada que não servia aparece já na 1ª vez.
+  - A trilha (`learning_transitions`) fica para mudança de estado.
+- **Contrapeso** (migração 115, `recipes.nao_aplicavel_seguidas`): da 3ª "não se aplicou" SEGUIDA em diante, CADA
+  uma conta como falha comum (`recipe+ai`, `replay_fail`, a quarentena de sempre), sem zerar a série. Assim um 1º
+  seletor quebrado (atualização do app) chega à quarentena na 5ª execução.
+  - Na 1ª versão a 3ª zerava a série, e a quarentena só chegava na 9ª (R1 da segunda leitura).
+  - O ok, a falha comum, o gesto da pessoa na rota `PUT /api/recipes/{id}` e a reativação pelo livro zeram a série.
+- **Continua sendo falha comum:**
+  - a divergência depois da 1ª ação;
+  - "ações reproduzidas, mas a pós-condição não apareceu";
+  - parâmetro ausente;
+  - a etapa que a IA assumiu e que falhou ou ficou incerta.
+- **Prova:** `simulated`, em `tests/test_receita_nao_aplicavel.py`, que parte de dentro de outra conversa como o caso
+  real.

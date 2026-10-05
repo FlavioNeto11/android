@@ -8,7 +8,7 @@ import {
   DIAGNOSTICS, FLOWS, RECIPES, REPORT, RUN_EVENTS, RUN_ID, USAGE_SIMULATED, makeEvent, makeInstance, makeRun, makeRunDetail, makeSnapshot,
 } from './test/fixtures';
 import {
-  FakeBackend, FakeWebSocket, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, pointer, setValue, text, waitFor,
+  FakeBackend, FakeWebSocket, allByRole, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, pointer, setValue, text, waitFor,
 } from './test/harness';
 
 /**
@@ -282,7 +282,8 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(runPosts()).toHaveLength(2));
 
     backend.on('POST', /^\/api\/runs$/, () => json({ ...makeRun(), deduplicated: true }));
-    await click(byRole('button', /^Executar/));
+    // A segunda tentativa registrada ainda não voltou: o Executar fica em `loading` até a resposta (29.104).
+    await click(await botaoPronto(/^Executar/));
     await waitFor(() => expect(text()).toContain('Execução já existente — nenhuma duplicata criada'));
 
     const posts = runPosts().map((c) => c.body as { idempotency_key: string; mode: string; instance_ids: string[]; command: string });
@@ -414,6 +415,10 @@ describe('Central de Aparelhos — sessão completa', () => {
     const shownFrameId = `full-${frameSeq}`;
     expect(backend.callsTo('POST', /input$/)[0]?.body).toEqual({ type: 'tap', x: 540, y: 1200, lease_id: 'lease-1', frame_id: shownFrameId });
 
+    // O toque registrado ainda não voltou, e a tela recusa gesto enquanto envia: sem esperar, a margem passaria
+    // por estar ocupada, não por ser margem. As teclas saem do bloqueio com a resposta (29.104).
+    await botaoPronto('Voltar', panel);
+
     // margem (pillarbox) é rejeitada
     await pointer(box, 'pointerdown', 100, 600);
     await pointer(box, 'pointerup', 100, 600);
@@ -427,18 +432,27 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(backend.callsTo('POST', /input$/)).toHaveLength(2));
     expect(backend.callsTo('POST', /input$/)[1]?.body).toMatchObject({ type: 'swipe', x: 540, y: 2000, x2: 540, y2: 800, duration_ms: expect.any(Number) });
 
-    // tecla do Android e texto
-    await click(byRole('button', 'Voltar', panel));
+    // tecla do Android e texto. As teclas ficam desabilitadas enquanto o gesto anterior não volta (29.104).
+    await click(await botaoPronto('Voltar', panel));
     await waitFor(() => expect(backend.callsTo('POST', /input$/)).toHaveLength(3));
     expect(backend.callsTo('POST', /input$/)[2]?.body).toMatchObject({ type: 'key', key: 'back', lease_id: 'lease-1' });
 
-    // 409 stale_frame: explica e busca um frame novo
+    // 409 stale_frame: explica e busca um frame novo. Antes, a tecla tem de voltar: com ela em voo a tela recusa o
+    // toque e o 409 nunca seria pedido (29.104).
+    await botaoPronto('Voltar', panel);
     const framesBefore = backend.callsTo('GET', /android-01\/frame$/).length;
     backend.on('POST', /^\/api\/instances\/[^/]+\/input$/, () => apiError(409, 'stale_frame', 'Frame antigo'));
     await pointer(box, 'pointerdown', 500, 600);
     await pointer(box, 'pointerup', 500, 600);
     await waitFor(() => expect(text()).toContain('A tela mudou — aguarde a nova imagem e tente de novo'));
     await waitFor(() => expect(backend.callsTo('GET', /android-01\/frame$/).length).toBeGreaterThan(framesBefore));
+
+    // 409 capture_failing (29.105): diz o motivo e a saída pelas teclas
+    backend.on('POST', /^\/api\/instances\/[^/]+\/input$/, () => apiError(409, 'capture_failing', 'A captura da tela está falhando (screencap falhou).'));
+    await pointer(box, 'pointerdown', 500, 600);
+    await pointer(box, 'pointerup', 500, 600);
+    await waitFor(() => expect(text()).toContain('A captura da tela está falhando'));
+    expect(text()).toContain('Use Voltar, Início ou Recentes para sair desta tela');
 
     await click(byRole('button', /^Devolver à IA/, panel));
     await waitFor(() => expect(backend.callsTo('POST', /release$/)).toHaveLength(1));
@@ -447,6 +461,42 @@ describe('Central de Aparelhos — sessão completa', () => {
     await click(byRole('button', /^Fechar/, panel));
     await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));
     await waitFor(() => expect(ws.sent[ws.sent.length - 1]).toMatchObject({ type: 'watch', focus: null }));
+  });
+
+  it('foco sem imagem (29.105): Voltar, Início e Recentes saem com frame_id vazio; Enter e Apagar esperam a imagem', async () => {
+    const ws = FakeWebSocket.last;
+    // a captura não traz imagem nenhuma (tela protegida): o painel nunca tem um quadro exibido
+    backend.on('GET', /^\/api\/instances\/android-01\/frame$/, () => apiError(404, 'no_frame', 'Ainda não há frame deste aparelho.'));
+    backend.on('POST', /^\/api\/instances\/[^/]+\/input$/, () => json({ ok: true }));
+    const entradas = () => backend.callsTo('POST', /android-01\/input$/);
+    const antes = entradas().length;
+    // O "Fechar" do teste anterior volta no histórico, e o popstate do jsdom chega depois: abrir antes dele faria o
+    // painel novo fechar sozinho.
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await click(byRole('button', 'Abrir android-01 na visão de foco'));
+    const panel = await waitFor(() => byRole('dialog', /Visão de foco: android-01/));
+    await waitFor(() => expect(backend.callsTo('GET', /android-01\/frame$/).length).toBeGreaterThan(0));
+    // o teste anterior deixou o android-01 como controle de usuário (sem lease nesta aba): o botão é "Retomar"
+    await click(byRole('button', /^(Assumir|Retomar) controle/, panel));
+    await waitFor(() => expect(text(panel)).toContain('Controle: Você'));
+    await act(async () => ws.serverSend({ type: 'event', event: makeEvent(121, 'control.changed', { instance_id: 'android-01', control: 'user', pending: false }, { instance_id: 'android-01' }) }));
+
+    await click(byRole('button', 'Voltar', panel));
+    await waitFor(() => expect(entradas()).toHaveLength(antes + 1));
+    expect(entradas().at(-1)?.body).toMatchObject({ type: 'key', key: 'back', frame_id: '' });
+    await click(byRole('button', 'Recentes', panel));
+    await waitFor(() => expect(entradas()).toHaveLength(antes + 2));
+    expect(entradas().at(-1)?.body).toMatchObject({ type: 'key', key: 'recents', frame_id: '' });
+
+    // Enter age sobre o campo em foco: às cegas confirmaria o que a pessoa não vê; não sai sem imagem
+    await click(byRole('button', 'Enter', panel));
+    await waitFor(() => expect(text()).toContain('Ainda não há imagem na tela'));
+    expect(entradas()).toHaveLength(antes + 2);
+
+    await click(byRole('button', /^Devolver à IA/, panel));
+    await click(byRole('button', /^Fechar/, panel));
+    await waitFor(() => expect(allByRole('dialog', /Visão de foco/)).toHaveLength(0));
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });   // o popstate do Fechar, antes do próximo
   });
 
   it('foco: pedido de controle "pending" espera a IA e só libera a interação após control.changed', async () => {
@@ -477,7 +527,8 @@ describe('Central de Aparelhos — sessão completa', () => {
 
     // not_controller: explica e derruba o lease local
     backend.on('POST', /^\/api\/instances\/android-02\/input$/, () => apiError(409, 'not_controller', 'O controle voltou para a IA'));
-    await click(byRole('button', /^Início/, panel));
+    // O Início anterior registrado ainda não voltou, e as teclas ficam desabilitadas enquanto ele envia (29.104).
+    await click(await botaoPronto(/^Início/, panel));
     await waitFor(() => expect(text()).toContain('Você não está mais com o controle deste aparelho'));
     // sem o lease, a barra do controle manual sai da tela: não há tecla "desabilitada" para clicar à toa
     await waitFor(() => expect(allByRole('button', /^Início/, panel)).toHaveLength(0));
@@ -585,8 +636,11 @@ describe('Central de Aparelhos — sessão completa', () => {
     const preview = byRole('combobox', 'Prévia dos aparelhos') as HTMLSelectElement;
     expect(preview.value).toBe('on_demand');
     expect(Array.from(preview.options).map((o) => o.textContent)).toEqual(['Sob demanda (padrão)', 'Sempre (modo antigo)']);
+    // Os campos ficam desabilitados enquanto o PUT anterior não volta (29.115).
+    await waitFor(() => !preview.matches(':disabled'));
     await setValue(preview, 'always');
-    await click(byRole('button', /^Salvar limites/));
+    // O PUT anterior registrado ainda não voltou: o Salvar fica em `loading` até a resposta (29.104).
+    await click(await botaoPronto(/^Salvar limites/));
     await waitFor(() => expect(backend.callsTo('PUT', /settings$/)).toHaveLength(3));
     expect(backend.callsTo('PUT', /settings$/)[2]?.body).toEqual({ preview_mode: 'always' });
 
@@ -631,7 +685,8 @@ describe('Central de Aparelhos — sessão completa', () => {
     await waitFor(() => expect(backend.callsTo('DELETE', /flows\/abrir-config$/)).toHaveLength(1));
     await waitFor(() => expect(text(panel)).not.toContain('Abrir Configurações'));
 
-    await click(byRole('button', 'Excluir a receita open_app v1', panel));
+    // A lista se relê depois do DELETE do fluxo: o botão da receita só aceita o clique com ela de volta (29.104).
+    await click(await botaoPronto('Excluir a receita open_app v1', panel));
     const confirmRecipe = await waitFor(() => byRole('dialog', /Excluir a receita/));
     await click(byRole('button', 'Excluir receita', confirmRecipe));
     await waitFor(() => expect(backend.callsTo('DELETE', /recipes\/12$/)).toHaveLength(1));

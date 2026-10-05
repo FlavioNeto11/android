@@ -3,6 +3,7 @@ import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
 import { api, toApiError } from '../../api/client';
 import { useOperationalContext } from '../devices/OperationalContextCard';
 import { TrainingBar } from '../training/TrainingBar';
+import { useTrainingStore } from '../training/trainingStore';
 import type { ManualInput } from '../../api/types';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
@@ -33,6 +34,9 @@ import { Drawer, seletorDoAparelho } from './Drawer';
 import { Screen, type ScreenHandle, type ShownFrame } from './Screen';
 
 type InputPayload = Omit<ManualInput, 'lease_id' | 'frame_id'>;
+
+/** As teclas que saem sem imagem (29.105): o backend só dispensa o quadro destas. */
+const TECLAS_DE_NAVEGACAO: ReadonlySet<string> = new Set(['back', 'home', 'recents']);
 
 /** O mesmo limiar do `@media` em Focus.module.css: abaixo dele o painel é tela cheia e "Voltar" é a saída. */
 const TELA_ESTREITA = '(max-width: 720px)';
@@ -82,6 +86,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
   const screenRef = useRef<ScreenHandle>(null);
   const panelRef = useRef<HTMLElement>(null);
   const [sending, setSending] = useState(false);
+  const gravando = useTrainingStore((s) => !!s.gravando[instanceId]);
+  const registrarRecusa = useTrainingStore((s) => s.registrarRecusa);
   const [shown, setShown] = useState<ShownFrame | null>(null);
   const [highlight, setHighlight] = useState<[number, number, number, number] | null>(null);
   const [hierarquiaAberta, setHierarquiaAberta] = useState(false);
@@ -96,20 +102,35 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
         toast({ tone: 'warning', title: 'Você não está no controle', hint: 'Clique em “Assumir controle” antes de interagir.' });
         return false;
       }
-      if (!displayed) {
+      // 29.105: as teclas de navegação não apontam para nada na tela e o backend não confere o quadro delas; são a
+      // saída quando a imagem não chega (tela protegida contra captura). Enter e Apagar agem sobre o campo em foco
+      // e seguem pedindo imagem.
+      if (!displayed && !(payload.type === 'key' && payload.key != null && TECLAS_DE_NAVEGACAO.has(payload.key))) {
         toast({ tone: 'warning', title: 'Ainda não há imagem na tela', hint: 'Aguarde a imagem carregar e tente de novo.' });
         return false;
       }
       setSending(true);
       try {
         // `frame_id` = frame que o usuário ESTÁ VENDO (o que gerou a imagem exibida), não o mais novo do store.
-        await api.sendInput(instanceId, { ...payload, lease_id: currentLease.leaseId, frame_id: displayed.id });
+        await api.sendInput(instanceId, { ...payload, lease_id: currentLease.leaseId, frame_id: displayed?.id ?? '' });
         return true;
       } catch (e) {
         const err = toApiError(e);
         if (err.code === 'stale_frame' || err.code === 'frame_mismatch') {
+          // 31.85: o aviso é um só (chave fixa), mas a gravação conta cada entrada recusada para a pessoa refazê-las.
+          registrarRecusa(instanceId);
           toast({ tone: 'warning', title: 'A tela mudou — aguarde a nova imagem e tente de novo', message: 'Nada foi enviado ao aparelho.', key: `stale-${instanceId}` });
           screenRef.current?.refresh();
+        } else if (err.code === 'capture_failing') {
+          // 29.105: esperar a imagem nova não resolve; a mensagem do backend diz o motivo e que Voltar, Início e
+          // Recentes passam.
+          toast({
+            tone: 'warning',
+            title: 'A captura da tela está falhando',
+            message: err.message,
+            hint: 'Use Voltar, Início ou Recentes para sair desta tela; toque, texto, Enter e Apagar voltam quando a imagem voltar.',
+            key: `captura-${instanceId}`,
+          });
         } else if (err.code === 'not_controller') {
           dropLease(instanceId);
           toast({
@@ -119,6 +140,9 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
             hint: 'O controle pode ter expirado ou voltado para a IA. Clique em “Assumir controle” para continuar.',
             key: `ctl-${instanceId}`,
           });
+        } else if (err.code === 'bad_input' && payload.clear_first) {
+          // Não desmarca sozinho: a pessoa decide se manda o texto sem limpar o campo.
+          toastError('A ação manual não foi aceita', err, { hint: 'Desmarque Limpar o campo antes e envie de novo.' });
         } else {
           toastError('A ação manual não foi aceita', err);
         }
@@ -127,7 +151,7 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
         setSending(false);
       }
     },
-    [instanceId, dropLease],
+    [instanceId, dropLease, registrarRecusa],
   );
 
   const onGesture = useCallback(
@@ -259,7 +283,8 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
             <Banner tone="warning" icon={Hand} role="alert" title="Atenção necessária">{instance.attention}</Banner>
           ) : null}
 
-          {online && !loja ? <TrainingBar instance={instance} leaseId={lease?.leaseId ?? null} mine={mine} /> : null}
+          {/* 31.86: fora do ar a barra segue de pé só para revisar; sem ela, as gravações ficavam inalcançáveis. */}
+          {!loja ? <TrainingBar instance={instance} leaseId={lease?.leaseId ?? null} mine={mine} somenteRevisao={!online} /> : null}
 
           <IdentitySection instance={instance} server={server} appName={defaultApp?.name ?? instance.app_id} />
           <HealthSection instance={instance} selo={selo} desconhecido={desconhecido} />
@@ -279,11 +304,12 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
             mine={mine}
             pending={!!pending}
             sending={sending}
+            gravando={gravando}
             defaultApp={defaultApp}
             desconhecido={desconhecido}
             contextLoading={contexto.carregando}
             onKey={(key: ManualKey) => void sendInput({ type: 'key', key })}
-            onText={(text) => sendInput({ type: 'text', text })}
+            onText={(text, clearFirst) => sendInput(clearFirst ? { type: 'text', text, clear_first: true } : { type: 'text', text })}
             onRefreshFrame={() => screenRef.current?.refresh()}
             onReloadContext={() => void contexto.carregar()}
             onShowHierarchy={mostrarHierarquia}

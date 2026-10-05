@@ -91,7 +91,7 @@ situação "concluída" de uma execução (com início e fim de 2 min 03 s). Por
 **not_run**:
 - Execuções em andamento (`running`) vistas na tela: o backend simulado normaliza o status que forcei no banco; a guia
   Linha do tempo para `running` está provada só no teste.
-- Origens Aprendizado e Intervenção no backend simulado (não semeei item de aprendizado nem sessão em desafio); só os
+- Origens Aprendizado e Intervenção no backend simulado (não semeei item de aprendizado nem sessão em intervenção); só os
   testes cobrem as quatro origens.
 - Leitura do central real (porta 8000): não consultado.
 - O **Painel** (`#/painel`) com a execução selecionada: o mesmo `RunView`, dentro de um cartão mais estreito; não foi

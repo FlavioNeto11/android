@@ -205,6 +205,9 @@ export function hintForError(e: ApiError): string {
     case 'stale_frame':
     case 'frame_mismatch':
       return 'A tela mudou — aguarde a nova imagem e tente de novo.';
+    // 29.105: o quadro não se renova (tela protegida contra captura); as teclas de navegação não dependem dele.
+    case 'capture_failing':
+      return 'A captura da tela está falhando e a imagem não se renova. Voltar, Início e Recentes seguem funcionando.';
     case 'not_controller':
       return 'Você não está com o controle desta instância. Use “Assumir controle” antes de interagir.';
     // ADR-040: a senha mora na conta da persona, nunca no comando nem na execução.
@@ -741,8 +744,11 @@ export const api = {
   listTraining: (instanceId?: string) =>
     request<TrainingSession[]>('GET', '/training', { query: { instance_id: instanceId } }),
   getTraining: (id: string) => request<TrainingSession>('GET', `/training/${enc(id)}`),
-  stopTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/stop`),
-  discardTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/discard`),
+  // O `lease_id` vai quando a aba tem um (31.92: o backend passa a exigi-lo para encerrar gravação viva); sem lease, o corpo não vai.
+  stopTraining: (id: string, leaseId?: string | null) =>
+    request<TrainingSession>('POST', `/training/${enc(id)}/stop`, leaseId ? { body: { lease_id: leaseId } } : {}),
+  discardTraining: (id: string, leaseId?: string | null) =>
+    request<TrainingSession>('POST', `/training/${enc(id)}/discard`, leaseId ? { body: { lease_id: leaseId } } : {}),
   proposeTraining: (id: string) => request<TrainingSession>('POST', `/training/${enc(id)}/propose`),
   saveTraining: (id: string, body: { proposal?: TrainingProposal | null; profile_ids?: string[]; group_ids?: string[] }) =>
     request<TrainingSaveResult>('POST', `/training/${enc(id)}/save`, { body }),

@@ -287,9 +287,12 @@ describe('progresso do lote', () => {
     });
     await abrir(30);
     await waitFor(() => text().includes('Terminado: 0 criada(s) · 2 rascunho(s)'));
-    const depois = leituras;
+    // Conta os pedidos que a tela mandou, não as respostas: com o atraso, uma releitura mandada antes do fim ainda
+    // chega ao handler depois do "Terminado" (29.104).
+    const relidas = () => backend.callsTo('GET', /^\/api\/personas\/generate\/batch\/lote-1$/).length;
+    const depois = relidas();
     await flush(120);
-    expect(leituras).toBe(depois);                                      // terminou: parou de reler
+    expect(relidas()).toBe(depois);                                     // terminou: parou de reler
   });
 
   it('lote perdido num reinício (404) vira aviso, não erro', async () => {

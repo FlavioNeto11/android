@@ -78,15 +78,19 @@ it('a galeria mostra a principal, o selo "simulado", a receita e o custo', async
              error: 'O provedor recusou o pedido.', cost_usd: 0.011, url: '/api/personas/ig-1/images/img-2' }),
   ]));
   await abrirImagens();
-  await waitFor(() => text().includes('principal'));
-  expect(text()).toContain('simulado');
-  expect(text()).toContain('semente 123456');
+  // "principal" já está no subtítulo fixo do cartão, e "simulado" no nome do modelo do aviso do gerador: o que diz que
+  // a galeria chegou é a receita da imagem (29.104).
+  await waitFor(() => text().includes('semente 123456'));
+  expect(text()).toContain('principal');
+  // O SELO, não a palavra: "simulado" também está no nome do modelo do aviso do gerador (29.119).
+  expect(Array.from(container.querySelectorAll('span')).some((s) => s.textContent === 'simulado')).toBe(true);
   expect(text()).toContain('1:1');
   expect(text()).toContain('sem custo');
   expect(text()).toContain('recusada pelo provedor');
   expect(text()).toContain('O provedor recusou o pedido.');
   expect(text()).toContain('custo US$ 0.011');
-  expect(text()).toContain('Simulado: sem custo');
+  // O aviso do gerador vem do status da IA, que é outra leitura (29.104).
+  await waitFor(() => text().includes('Simulado: sem custo'));
   // "Tornar principal" só para imagem pronta que ainda não é a principal: nenhuma aqui.
   expect(() => byRole('button', /Tornar principal/i)).toThrow();
 });

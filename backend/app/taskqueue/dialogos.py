@@ -26,7 +26,7 @@ NAVEGADORES = frozenset({"com.android.chrome"})
 
 #: Fração mínima da tela que um diálogo cobre para contar como "o que cobre" quando a área do juiz não é conhecida
 #: (revisão do #308, 3a: um id banner/modal que sobra pequeno na página não transforma a limpeza certa em falha).
-_FRACAO_QUE_COBRE = 0.15
+FRACAO_QUE_COBRE = 0.15
 
 
 def e_navegador(pacote: str | None) -> bool:
@@ -108,7 +108,7 @@ def _cobre_a_tela(e: UiElement, tree: UiTree) -> bool:
     largura = max((x.bounds[2] for x in tree.elements), default=0)
     altura = max((x.bounds[3] for x in tree.elements), default=0)
     x1, y1, x2, y2 = e.bounds
-    return largura > 0 and altura > 0 and (x2 - x1) * (y2 - y1) >= _FRACAO_QUE_COBRE * largura * altura
+    return largura > 0 and altura > 0 and (x2 - x1) * (y2 - y1) >= FRACAO_QUE_COBRE * largura * altura
 
 
 def botao_que_fecha(tree: UiTree, area: tuple[int, int, int, int] | None = None) -> UiElement | None:

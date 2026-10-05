@@ -94,6 +94,46 @@ segurança é a corrida diária das 05:17 UTC (conjunto inteiro, com PostgreSQL)
 trabalho é `scripts/testes-afetados.py` (§4). Não é mais preciso `[skip ci]` nos commits. Para voltar: devolver
 `push: branches: [main]` ao `on:` do `ci.yml` (e esperar o CI antes do deploy).
 
+**Desde 05/10/2026 também não roda em pull request** (29.102, decisão da orquestradora): cada PR custava de 62 a 115 min
+serial no runner do central, que é a máquina das suítes e das medidas de latência, e o `[skip ci]` na ponta falhou
+três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que restou para a corrida diária voltar a ser rede:
+
+- **Porta do runner:** o job `porta` olha se o runner já tem um `pytest` vivo; na corrida agendada, com um vivo, os
+  jobs do central são pulados com um aviso (`::warning::`). O disparo manual roda sempre. Em 05/10 o SQLite do cron
+  disputou a máquina com a suíte 35 e caiu no limite de 60 min.
+  - **Rede parcial:** quando a porta pula, o job de PostgreSQL, hospedado na GitHub, roda assim mesmo.
+  - **Órfão:** `pytest` vivo há mais de 6 h não conta e sai como `::error::` com o PID (encerre-o). O `::error::` não
+    reprova nada: o sinal fica só na página do run. O corte de 6 h vale porque nenhuma medida ou suíte nossa dura isso
+    (a maior é o funil inteiro, perto de 1 h 50; o PG, 30 a 50 min; as baterias, até 15 min). Uma medida que um dia
+    passe de 6 h tem de subir o corte, senão o CI roda junto com ela (K-101).
+  - **48 h:** a porta grava a hora de cada corrida de verdade em `farm-porta-ultima-corrida.txt`, na pasta de trabalho
+    do runner. Pulando com mais de 48 h desde a última, ela reprova e o run fica vermelho, em vez de pular calado.
+    - A marca quer dizer "a corrida INICIOU", não "terminou bem".
+    - O disparo manual só-PG (`somente_postgres`) não grava a marca, porque não roda nada no central.
+    - Marca ilegível é regravada com a hora de agora, com `::warning::`. Como na pasta limpa (abaixo), isso também
+      pode atrasar o vermelho em até 48 h: o aviso no run é o único sinal até lá.
+    - Se a pasta `_work` do runner for limpa, a primeira pulada regrava a marca com a hora de agora: nunca reprova à
+      toa, mas pode atrasar o vermelho em até 48 h.
+  - **Premissa:** a porta lê o `CommandLine` dos processos, que para processo de outro usuário só vem a quem está
+    elevado. O runner roda como Administrator, nível Highest (tarefa `farm-ci-runner`), e as suítes e medidas também:
+    hoje ela vê todos. Runner sem elevação veria zero e nunca pularia. A forma robusta seria uma trava de PID num
+    caminho fixo, gravada pelo funil e pelas medidas; ficou de fora porque cada sessão roda os seus scripts.
+- **Catraca do mypy:** o código novo (`app.contracts`, `app.modules`, `app.shared`) nasceu com zero erro e derivou até
+  254 no cron de 05/10 (257 na base do 29.102, depois da suíte 35); o job reprovava toda noite. Agora `scripts/mypy-catraca.py` reprova só se a contagem passa do teto em
+  `backend/mypy-teto.txt`; quem baixa a contagem baixa o teto no mesmo commit. Sem o `pull_request`, o cron só a veria
+  DEPOIS do merge e reprovaria para todos sem dizer quem subiu: por isso ela roda também no funil, junto das catracas,
+  e no dirigido de quem toca `backend/app` (`.claude/rules/testes.md`). Leva ~1 min e pede o mypy do
+  `requirements-dev.txt` no Python que a roda. O teto é do Windows, a plataforma do runner: o mypy avalia os ramos de
+  `sys.platform`, e em Linux a contagem pode ser outra.
+- **docs-check em clone limpo:** `.claude/handoff-current.md` entrou no `.gitignore` versionado (estava só no
+  `.git/info/exclude`, que não vem num clone).
+- **Testes que dependiam do host:** `test_pausa_de_reparo` compara a saúde antes e depois da pausa, não um valor
+  absoluto (hermético). `test_backup::test_copia_a_frio_...` NÃO ficou hermético: roda só no Windows (a lib de cópia
+  de AVD é do Windows) e pula no Linux.
+- **"Nada dispara em push" não é literal:** o `conteiner.yml` ainda roda em push de qualquer ramo que toque
+  `deploy/**`, `.dockerignore`, `backend/requirements.txt`, `backend/app/main.py` ou `frontend/package*.json`. Ele é
+  hospedado e não ocupa o central.
+
 `.github/workflows/ci.yml` — **6 jobs** (até 24/09 eram 5, e o cabeçalho do arquivo dizia 4):
 
 | Job | Quando | O que faz |
@@ -132,8 +172,8 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   `gh api repos/FlavioNeto11/android/actions/runners`; pausar de verdade é `Stop-ScheduledTask` e encerrar
   `Runner.Listener`/`Runner.Worker` (de preferência com `busy=false`). Primeira corrida inteira verde no runner
   próprio: `69bba2d` e `0d2a508` (28/09).
-- **Gatilhos:** push só na `main`; branch com pull request roda pelo `pull_request` (antes eram duas corridas por
-  commit na mesma fila de um runner só). Um push novo no mesmo ref cancela a corrida anterior.
+- **Gatilhos:** só a corrida diária (`schedule`) e o disparo manual (`workflow_dispatch`); push e `pull_request`
+  estão desligados (30/09 e 05/10). Um disparo novo no mesmo ref cancela a corrida anterior.
 - **Isolamento:** cada job de Python tem venv próprio (`.github/actions/python-isolado`), porque no runner próprio o
   Python do toolcache é compartilhado; `shell: pwsh` nos dois sistemas (no Windows o runner resolve `bash` para o do WSL); um push novo no
   mesmo ref cancela o CI anterior (`concurrency`).
@@ -161,6 +201,16 @@ parada, o health caía no Cartório (404) e o supervisor, que aceitava qualquer 
 Supervisor, `deploy.ps1`, `start.ps1`, `stop.ps1`, `restore.ps1` e `loja-janela.ps1` agora perguntam QUEM
 responde (`Health.service`, ver `backend/app/identidade.py` e `scripts/lib/farm-health.ps1`); o `stop.ps1` também
 só envia o token de encerramento para a Farm identificada.
+
+**Partida lenta não é travamento** (29.124, `backend/app/marca_de_partida.py`). A cada subida, o supervisor sorteia um
+id e o passa em `POC_PARTIDA_ID`, junto da pasta dele (`POC_PASTA_DO_SUPERVISOR`, a `data/` ao lado do
+`supervisor.log`). O backend grava `data/backend-partida.json` (só `id`, `fase`, `ts`) antes do `AppState`, depois
+dele, antes do `poc.start()` e em `no_ar`. O silêncio de `/api/health` não conta como falha enquanto a marca é desta
+subida, a fase não é `no_ar`, a partida tem menos de 600 s e a última reescrita menos de 240 s; o `supervisor.log`
+diz a fase. Sem marca, com marca de outra subida, parada ou `no_ar`, vale a regra de sempre (90 s de carência e três
+falhas a cada 15 s). Depois de 4 reinícios seguidos sem uma conferência boa, a espera antes do próximo vira 300 s,
+dita no log; uma conferência boa zera a conta. O despejo do vigia do laço (29.121) também vai para a pasta do
+supervisor, onde ele o procura para citar no kill. Backend subido à mão não tem id e não grava marca.
 
 **O Appium do backend anterior não fica para o próximo** (K-039, 28/09/2026). Três deploys seguidos deixaram o
 `node` do Appium na 4723 depois do `stop.ps1`; o backend novo o readotava e subia `degraded`
@@ -243,15 +293,19 @@ isso). Pontos que já causaram incidente:
   leitura e concilia na hora; ADR-051). Nenhuma das duas chama modelo de IA.
 - `GET /api/diagnostics` (`backend/app/api.py:243`) — o mesmo relatório do `diagnose.ps1` mais o que só o
   backend sabe (capacidade medida, ferramentas).
+- `data/logs/laco-travado-<UTC>-<n>.txt` (29.121, `backend/app/vigia_do_laco.py`) — a pilha de TODAS as threads do
+  backend quando o laço de eventos fica mais de 10 s sem bater (60 s na partida, antes da primeira batida), gravada
+  por uma thread fora do laço antes de o supervisor matar o processo. No máximo 3 por episódio, a cada 30 s; ficam os
+  20 mais novos. A linha `encerrando o backend` do `supervisor.log` cita o despejo dos últimos 5 min, e o
+  `backend.log` diz quando o laço voltou e quanto ficou parado.
 - **Relógio do host** — a tarefa `farm-relogio` (SYSTEM, a cada 15 min) roda `scripts/sincronizar-relogio.ps1`: mede o
   desvio pelo NTP.br com `w32tm /stripchart` e ajusta acima de 0,2 s; o `w32time` fica sem sincronização própria
   (`syncfromflags:NO`), porque a rede bloqueia NTP com porta de origem 123 (K-055). Cada rodada vai para
   `data\logs\relogio.log`; `-Simular` mede sem ajustar.
 - **Antes de qualquer experimento num aparelho** (agente, `adb input`, `settings put`, carga de CPU): tirar um screencap
   e ler a conta logada, sem tocar. `account_label`, `/personas` e os vínculos não bastam: o android-04 tinha
-  `qa-user-04` e nenhuma persona, com o felipe travado em "Confirm you're human" (K-053). Aparelho com `locked_account`
-  está em quarentena e não se toca; experimento vai num aparelho novo e sem conta (provisionar e aposentar são
-  permitidos no ambiente central).
+  `qa-user-04` e nenhuma persona, com a conta do felipe logada (K-053). Experimento vai num aparelho novo e sem conta
+  (provisionar e aposentar são permitidos no ambiente central).
 
 ## 11. Segurança
 
@@ -467,9 +521,6 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
   - A CSP do site bloqueia o beacon, mas sobra um erro de console em todo visitante.
   - O conserto é desligar a injeção na zona: Web Analytics / Real User Measurements (RUM), no painel da Cloudflare,
     feito pelo dono.
-  - Também reprova `/cdn-cgi/` no HTML, que é script da Cloudflare na própria origem: Rocket Loader, o desafio JS
-    (`challenge-platform`) ou a ofuscação de e-mail.
-  - Reprova ainda a raiz que não vem 200 quando pedida como navegador (um desafio não mostra a página).
   - Nunca afrouxar a CSP;
 - a borda não reescreve o HTML (29.91):
   - a raiz, a 404 e o `index.html` do painel saem com `Cache-Control: … no-transform`;
@@ -862,13 +913,13 @@ e "quem é você?" (ou `/quem`) responde que é a ANA e que é uma IA, sem virar
   caixa dela no mesmo momento.
 - Com a entrada ligada, o aviso de aprovação leva o resumo, o alvo e o texto, e o de pergunta leva a pergunta. Os dois
   vão redigidos e cortados em 500 caracteres, para o dono responder ali mesmo (decisão (d)).
-- A mensagem com cara de senha ou código não é guardada: a Central a apaga do chat e responde sem ecoar nada. Se o
+- A mensagem com cara de senha não é guardada: a Central a apaga do chat e responde sem ecoar nada. Se o
   Telegram não deixar apagar, a resposta pede ao dono que apague.
-- A resposta a uma execução que pergunta por senha, código, 2FA ou token também é recusada, qualquer que seja a forma do
+- A resposta a uma execução que pergunta por senha ou token também é recusada, qualquer que seja a forma do
   texto (decide pelo contexto, com o vocabulário da triagem de credencial): não é guardada, é apagada do chat, e a
-  resposta orienta o dono: a senha se grava na conta da persona, e o código de verificação se digita no aparelho. Vale
+  resposta orienta o dono: a senha se grava na conta da persona. Vale
   para o reply ao aviso e para `/responder <id> <texto>`.
-- Enquanto uma execução espera senha, código, 2FA ou token, um texto curto (até 3 palavras, como "kiwi2024!" ou
+- Enquanto uma execução espera senha ou token, um texto curto (até 3 palavras, como "kiwi2024!" ou
   "kiwi 2024") também é recusado, apagado do chat e nunca gravado: como texto livre, como recado à orquestradora (`/orq`
   ou reply a mensagem que a Central não mandou) e como `/responder` sem id. A resposta pede o pedido com mais detalhe;
   uma frase segue como pedido, com a prévia.

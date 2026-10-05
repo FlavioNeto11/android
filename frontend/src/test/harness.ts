@@ -1,5 +1,5 @@
 import { act } from 'react';
-import { expect, onTestFailed, vi } from 'vitest';
+import { afterEach, expect, onTestFailed, vi } from 'vitest';
 import { esquecerLeituraDosPendentes } from '../features/aprendizado/api';
 
 /** Backend falso: responde às rotas do contrato e registra tudo o que o frontend pediu. */
@@ -27,6 +27,40 @@ export function apiError(status: number, code: string, message: string): Respons
  * teste que falhar diz a semente, e a rodada se repete com ela.
  */
 const ATRASO_MAXIMO_MS = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
+// Cada `install()` abre uma geração. Com o atraso, a resposta de uma geração já substituída nunca chega: o teste que
+// acabou com pedido em voo não escreve na store global do teste seguinte, como uma página fechada (29.104).
+let geracaoDoBackend = 0;
+
+// Pedidos atrasados que ainda não chegaram ao handler. Sem o atraso, o handler roda na hora do fetch e nada fica em
+// voo no fim do teste; com ele, o pedido que sobra escreveria na store do teste seguinte ou deixaria presa uma leitura
+// dividida de módulo (o `emVoo` de `usePersonas`). O `afterEach` abaixo espera cada um chegar ao handler (não à
+// resposta: um `soltar` segurado pelo teste não trava a drenagem), e o teste acaba como acabaria sem o atraso (29.104).
+const ateOHandler = new Set<Promise<void>>();
+
+function marcarAteOHandler(): () => void {
+  let chegou = (): void => undefined;
+  const marca = new Promise<void>((r) => { chegou = r; });
+  ateOHandler.add(marca);
+  return () => {
+    ateOHandler.delete(marca);
+    chegou();
+  };
+}
+
+async function drenarPedidosAtrasados(): Promise<void> {
+  // O teto de voltas é só a rede de segurança para uma tela ainda montada que pede de novo a cada resposta.
+  for (let volta = 0; ateOHandler.size > 0 && volta < 20; volta++) {
+    await Promise.allSettled([...ateOHandler]);
+    // A resposta ainda passa pelo corpo do Response e pelas microtarefas de quem a pediu: uma volta do relógio.
+    await new Promise((r) => setTimeout(r, 0));
+  }
+}
+
+afterEach(async () => {
+  if (ateOHandler.size === 0) return;
+  await act(async () => { await drenarPedidosAtrasados(); });
+});
+
 const SEMENTE_DO_ATRASO = process.env.SEMENTE_DO_ATRASO ?? String(Date.now());
 
 function sorteioDoAtraso(): (() => number) | null {
@@ -69,6 +103,7 @@ export class FakeBackend {
   install(): void {
     esquecerLeituraDosPendentes();          // a leitura dividida da fila não atravessa testes
     const atraso = sorteioDoAtraso();
+    const geracao = ++geracaoDoBackend;
     const fetchImpl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, 'http://localhost');
       const method = (init?.method ?? 'GET').toUpperCase();
@@ -82,11 +117,23 @@ export class FakeBackend {
       }
       const call: RecordedCall = { method, path: url.pathname, query: url.searchParams, body };
       this.calls.push(call);
-      const ms = atraso?.();
-      if (ms) await new Promise((r) => setTimeout(r, ms));
+      // A rota é escolhida na chegada do pedido, como sem o atraso: o teste que troca a resposta depois de ver o
+      // pedido registrado não muda a do pedido que já estava em voo (29.104).
       const match = this.handlers.find((h) => h.method === method && h.pattern.test(url.pathname));
-      if (!match) return apiError(404, 'not_found', `Rota não simulada: ${method} ${url.pathname}`);
-      return match.handler(call);
+      const responder = (): Response | Promise<Response> => {
+        if (!match) return apiError(404, 'not_found', `Rota não simulada: ${method} ${url.pathname}`);
+        return match.handler(call);
+      };
+      const ms = atraso?.();
+      if (!ms) return responder();
+      const chegou = marcarAteOHandler();
+      try {
+        await new Promise((r) => setTimeout(r, ms));
+        if (geracao !== geracaoDoBackend) return new Promise<Response>(() => undefined);
+        return responder();
+      } finally {
+        chegou();
+      }
     };
     vi.stubGlobal('fetch', vi.fn(fetchImpl));
   }
@@ -166,7 +213,7 @@ export async function waitFor<T>(check: () => T, timeoutMs = 4000): Promise<T> {
       const r = check();
       // `waitFor(() => text().includes('x'))` devolvia `false` e passava NA HORA, sem esperar nem afirmar nada:
       // um booleano falso conta como "ainda não", como uma exceção, até o prazo.
-      if (r === false) throw new Error(`waitFor: a condição continuou falsa — ${String(check).slice(0, 160)}`);
+      if (r === false || r === null) throw new Error(`waitFor: a condição continuou ${r === null ? 'nula' : 'falsa'} — ${String(check).slice(0, 160)}`);
       return r;
     } catch (e) {
       lastError = e;
@@ -177,20 +224,37 @@ export async function waitFor<T>(check: () => T, timeoutMs = 4000): Promise<T> {
 }
 
 /**
- * Espera um elemento aparecer e o devolve. O `waitFor(() => raiz.querySelector(…))` passava na hora com `null` (só
- * `false` e exceção são "ainda não"); aqui `null` também é, até o prazo. A catraca `src/test/esperas.test.ts` barra a
- * forma antiga.
+ * Espera um elemento aparecer e o devolve, e diz na falha o seletor, a raiz e o prazo. Desde o W1 o `waitFor` também
+ * trata `null` como "ainda não"; esta forma segue preferida porque a mensagem nomeia o que faltou e onde. A catraca
+ * `src/test/esperas.test.ts` barra a forma antiga.
+ *
+ * A raiz passada como `undefined` (um `li` que a desestruturação não achou) é erro, não `document`: o padrão do
+ * parâmetro trocava em silêncio a busca no item pela busca na tela toda, e ela achava o elemento de outro item.
  */
 export async function esperarElemento<E extends Element = HTMLElement>(
   seletor: string,
-  raiz: ParentNode = document,
+  raiz?: ParentNode,
   timeoutMs = 4000,
 ): Promise<E> {
+  // Só a raiz OMITIDA vale `document`; `arguments` separa a omitida da passada como `undefined`.
+  if (arguments.length >= 2 && raiz == null) {
+    throw new Error(`esperarElemento: a raiz da busca por "${seletor}" veio ${String(raiz)}`);
+  }
+  const alvo: ParentNode = raiz ?? document;
+  const onde = descreverRaiz(alvo);
   return waitFor(() => {
-    const el = raiz.querySelector<E>(seletor);
-    if (el == null) throw new Error(`esperarElemento: nada com "${seletor}" ainda`);
+    const el = alvo.querySelector<E>(seletor);
+    if (el == null) throw new Error(`esperarElemento: nada com "${seletor}" em ${onde} depois de ${timeoutMs} ms`);
     return el;
   }, timeoutMs);
+}
+
+function descreverRaiz(raiz: ParentNode): string {
+  // Os testes de lógica rodam em node, sem `document` nem `Element`.
+  if (typeof document !== 'undefined' && raiz === document) return 'document';
+  if (typeof Element === 'undefined' || !(raiz instanceof Element)) return String(raiz);
+  const nome = raiz.getAttribute('aria-label');
+  return `<${raiz.tagName.toLowerCase()}${raiz.id ? `#${raiz.id}` : ''}${nome ? ` aria-label="${nome}"` : ''}>`;
 }
 
 // ---- consultas e interações mínimas (sem dependências extras) ----
@@ -231,6 +295,20 @@ function nameOf(el: Element): string {
   return (el.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * O botão pronto para o clique: existe, não está bloqueado (`disabled`, `aria-disabled`) nem em `loading` (`aria-busy`).
+ * O pedido registrado não é a resposta: o clique logo depois de um `callsTo` cai num botão que ainda espera (29.104).
+ */
+export async function botaoPronto(name: RegExp | string, root: ParentNode = document): Promise<HTMLElement> {
+  return waitFor(() => {
+    const b = byRole('button', name, root);
+    if ((b as HTMLButtonElement).disabled || b.getAttribute('aria-disabled') === 'true' || b.getAttribute('aria-busy') === 'true') {
+      throw new Error(`o botão ${String(name)} ainda está bloqueado`);
+    }
+    return b;
+  });
+}
+
 export function allByRole(role: string, name: RegExp | string, root: ParentNode = document): HTMLElement[] {
   const out: HTMLElement[] = [];
   for (const el of Array.from(root.querySelectorAll('*'))) {
@@ -264,6 +342,9 @@ export async function openDetails(summaryText: RegExp, scope: ParentNode = docum
 export async function setValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, value: string): Promise<void> {
   const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+  // Ninguém digita num campo desabilitado (nem no de um `fieldset` desabilitado): o teste que o fizesse provaria um
+  // gesto que a tela não permite (29.115).
+  if (el.matches(':disabled')) throw new Error(`setValue: o campo ${el.getAttribute('aria-label') ?? el.id ?? el.tagName} está desabilitado`);
   await act(async () => {
     setter?.call(el, value);
     el.dispatchEvent(new Event(el instanceof HTMLSelectElement ? 'change' : 'input', { bubbles: true }));

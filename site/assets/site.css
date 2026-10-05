@@ -286,13 +286,6 @@ a { color: var(--acento-forte); text-underline-offset: 3px; }
 .tracos svg { width: 32px; height: 32px; margin-bottom: 12px; fill: none; stroke: var(--acento); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .tracos b { display: block; font-size: 1.05rem; margin-bottom: 4px; }
 .tracos span { display: block; color: var(--texto-2); font-size: .93rem; line-height: 1.5; }
-.declarada {
-  display: flex; gap: 16px; align-items: flex-start; margin-top: 32px; padding: 22px 24px; border-radius: var(--raio);
-  background: rgba(52, 211, 153, .08); border: 1px solid rgba(52, 211, 153, .4);
-}
-.declarada svg { flex: none; width: 30px; height: 30px; fill: none; stroke: var(--ok); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.declarada b { display: block; font-size: 1.08rem; margin-bottom: 4px; }
-.declarada p { margin: 0; color: var(--texto-2); }
 .poucas-vozes { margin: 28px auto 0; max-width: 46em; text-align: center; color: var(--texto-2); font-size: 1.08rem; }
 .poucas-vozes b { color: var(--texto); }
 
