@@ -2,7 +2,7 @@
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { FakeBackend, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, byRole, click, esperarElemento, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { useUiStore } from '../../store/ui';
 import { AprendizadoPage } from './AprendizadoPage';
 import {
@@ -255,6 +255,34 @@ describe('falhas e capability no detalhe do app', () => {
     ]);
     // O grupo com item pedindo atenção já abre; o resto fica recolhido até a pessoa abrir.
     await waitFor(() => expect(container.querySelector('ul[aria-label="Aprendido: Receita"]')).toBeTruthy());
+  });
+
+  // 29.112: o bloco decidia abrir na montagem; com o detalhe antes do Livro, a atenção era 0 naquela hora e o bloco
+  // que pede atenção ficava recolhido para sempre.
+  it('o detalhe chega antes do Livro: o bloco que pede atenção abre quando a saúde chega, e o que a pessoa abriu fica', async () => {
+    let soltarLivro: (() => void) | null = null;
+    backend.on('GET', /^\/api\/aprendizado$/, (c) => {
+      const app = c.query.get('app');
+      const itens = app ? LIVRO.filter((e) => e.app === app) : LIVRO;
+      const resposta = json({ itens, total: itens.length, contagem: {} });
+      return app ? new Promise<Response>((r) => { soltarLivro = () => r(resposta); }) : resposta;
+    });
+    await montar();
+    await waitFor(() => expect(cartao(CHEIO)).toBeTruthy());
+    await click(byRole('button', /^Ver o app$/, cartao(CHEIO)));
+    const secao = await esperarElemento('section[aria-label="Aprendido"]', container);
+    await waitFor(() => soltarLivro !== null);
+    // Sem a saúde, ninguém pede atenção ainda: tudo recolhido.
+    expect(secao.querySelector('ul[aria-label="Aprendido: Receita"]')).toBeNull();
+    // A pessoa abre o bloco do Fluxo (que não pede atenção) antes de a saúde chegar.
+    const fluxo = Array.from(secao.querySelectorAll('[data-grupos] > details'))
+      .find((d) => text(d.querySelector('summary') as HTMLElement).includes('Fluxo')) as HTMLDetailsElement;
+    await act(async () => { fluxo.open = true; fluxo.dispatchEvent(new Event('toggle')); });
+
+    await act(async () => { soltarLivro!(); });
+    await waitFor(() => expect(secao.querySelector('ul[aria-label="Aprendido: Receita"]')).toBeTruthy());
+    // A saúde que chega abre o que pede atenção e não mexe no que a pessoa abriu.
+    expect(fluxo.open).toBe(true);
   });
 
   it('quando a linha traz `capability`, o aprendido é agrupado por ela', async () => {
