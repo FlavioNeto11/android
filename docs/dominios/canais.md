@@ -583,6 +583,19 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Na transação do gesto, a execução é conferida por um `UPDATE` que trava a linha, e não por um `SELECT`. Com dois
     backends no PostgreSQL, o cancelamento do outro espera o COMMIT e enxerga os sins, que expira junto; sem isso,
     sobravam sins `approved` numa execução cancelada (28.36).
+  - O texto da recusa ou do erro ao iniciar segue o estado relido (28.38):
+    - `running` ou `paused`: "em andamento";
+    - `cancelling`: "está sendo cancelada";
+    - `needs_input`: responda no painel;
+    - `planning` ou `planned`: "ainda não começou" ou "não iniciei".
+  - O desfecho só fica marcado quando sai, ou quando a falha do envio é definitiva. Na falha passageira, ele tenta de
+    novo na volta seguinte (28.38).
+  - Se a linha já tem 1 h (`PLANO_ESQUECIDO_S`) e a conversa vê a execução em `planned` por mais 1 h, a execução é
+    cancelada sem gesto: nada fica em nome do dono. O desfecho fecha a linha (28.38). A primeira vista em `planned`
+    fica gravada na linha, e um reinício não recomeça a hora (28.39).
+  - Só o botão Cancelar do dono cancela com gesto (o sinal `cancelou_execucao`). Os cancelamentos de consequência ou
+    de faxina não gravam sinal (28.39).
+  - O lote dos desfechos pendentes gira: linhas antigas de execução longa não seguram as novas (28.39).
   - A prévia que não sai inteira marca a linha como falha e avisa o dono uma vez. Uma linha com erro não cala as
     outras da volta do vigia; a linha que caiu no meio do "Executar (aprova N)" é recuperada depois de `PRESA_S`.
   - P1: item que o dono não veria por inteiro (texto com nome de persona, contato ou segredo, texto longo, bloco que não

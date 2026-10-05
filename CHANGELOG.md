@@ -87,6 +87,52 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   iria ao juiz. Pelo centro (y=1168), ele fica fora.
 - Prova: `simulated` (`backend/tests/test_bolha_sem_id.py`, 2 testes novos que falham no código anterior). Real:
   `not_run`.
+## 2026-10-05 — 28.39: sobras do desfecho e do plano esquecido (branch canais/28-39-sobras-do-desfecho)
+
+- G1 da leitura do #358: a primeira vez que a conversa vê a execução em `planned` fica gravada na linha, no `previa`,
+  com a chave `vista_em_planned`, como um `setdefault`. Antes ficava em memória. Um processo que reiniciasse, ou um
+  líder da trava `avisos` que alternasse, a cada menos de 1 h, nunca chegaria à hora. Se a execução sai de `planned`,
+  a vista é apagada.
+- O gesto: só o botão Cancelar do dono cancela COM gesto. O `_cancelar_plano` passa a ter `gesto=False` por padrão.
+  Cancelam sem gesto, sem gravar `cancelou_execucao` em nome de ninguém:
+  - a linha presa;
+  - a recuperação da porta;
+  - a recusa;
+  - o erro interno;
+  - a prévia que não saiu;
+  - a prévia vencida;
+  - o plano esquecido.
+- F3: o lote dos desfechos pendentes gira por cursor (`esperando_desfecho(depois_de=…)`, `LOTE_DESFECHO = 20`). Com
+  20 linhas antigas de execução longa à frente, a linha nova entra na volta seguinte. A falha passageira repete o mesmo
+  lote.
+- O desfecho que saiu sem o id do canal fica registrado por uma referência própria (`resultado:<entrada_id>`). A marca
+  que não gravou não o faz repetir.
+- A mensagem original apagada pelo dono: o desfecho já vai com `allow_sending_without_reply` (adaptador do Telegram),
+  então o 400 não acontece e não há tentativa a fazer sem a referência. No Trello, a referência é o próprio cartão, e não
+  há para onde mandar sem ele. Fica provado por teste.
+- Prova: `simulated`, com 6 testes novos em `tests/test_telegram_entrada.py`; ao todo, 144 passaram em
+  `test_telegram_entrada`, `test_trello_leitor` e `test_telegram_portas`. No ambiente real: `not_run`.
+
+## 2026-10-05 — 28.38: o canal diz o estado certo e não perde o desfecho (branch canais/28-38-estado-certo)
+
+- A recusa e o erro interno num caminho de início dizem o estado relido. Em `cancelling`, o texto é "está sendo
+  cancelada" (ela podia estar rodando, e "ainda não começou" seria falso). Em `needs_input`, o texto diz que é preciso
+  responder no painel, porque pelo canal não se responde.
+- O desfecho só marca `resultado_em` quando sai, ou quando a falha é `definitiva` (repetir não adianta). Antes, ele era
+  marcado mesmo quando o envio falhava calado, e na execução terminal ele é a única linha ao dono (28.36). Na falha
+  passageira, a volta para e a linha tenta de novo na volta seguinte, nunca antes do que o 429 pediu. O laço é um só:
+  o Trello troca só o texto (`_texto_do_desfecho`, sem a "Evidência"). Se o desfecho já está em `canal_enviadas`
+  (`origem='resultado'`) e só a marca faltou, ele não se repete (F2 da revisão). O tempo esgotado depois de o canal
+  aceitar ainda pode repetir: a escolha é "pelo menos uma vez".
+- Uma linha `feita` cuja execução está em `planned` (o `planning` de uma prévia termina ali) não tinha faxina: ficava
+  sem desfecho para sempre e travava o despacho do aprendizado. Agora, com a linha passada de `PLANO_ESQUECIDO_S`
+  (1 h, bem acima do `ttl_previa_s`, para dar tempo de iniciar no painel), a conversa lê o estado. A hora conta de
+  quando ela VIU a execução em `planned`, porque `runs` não guarda a hora da transição e a linha ficou `feita` ainda em
+  `planning` (F1); ela fica em memória, e um reinício dá mais tempo ao dono, nunca menos. Passada a hora, a execução é
+  cancelada SEM gesto (`portas.cancelar(run_id, gesto=False)`, `por=None`), e o sinal `cancelou_execucao` não sai em
+  nome do dono (F4). O desfecho "cancelada" fecha a linha.
+- Prova: `simulated`, com 11 testes novos em `tests/test_telegram_entrada.py`, 1 em `tests/test_trello_leitor.py` e
+  1 em `tests/test_telegram_portas.py` (o sinal com e sem gesto, sobre o serviço real do harness). No ambiente real: `not_run`.
 
 ## 2026-10-05 — 28.36: a aprovação no plano trava a linha da execução (branch canais/28-36-trava-na-aprovacao)
 
