@@ -24,6 +24,7 @@ reconciliações) ou `scheduler` (hospeda e despacha; não publica a API REST ne
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import logging.handlers
 import os
@@ -67,6 +68,7 @@ from .security.access import CABECALHO_DO_IP_NA_BORDA, CLIENTE_LOCAL, avaliar, c
 from .security.redaction import RedactingFilter, chave_sensivel
 from .security.sessions import COOKIE, OPERADOR
 from .state import VERSION, AppState
+from .vigia_do_laco import VigiaDoLaco
 
 
 
@@ -206,11 +208,14 @@ def _tentativas_demais(espera: float) -> JSONResponse:
                         status_code=429, headers={"Retry-After": str(segundos)})
 
 
-def create_app(cfg: Config | None = None, state: AppState | None = None) -> FastAPI:
+def create_app(cfg: Config | None = None, state: AppState | None = None,
+               vigia: VigiaDoLaco | None = None) -> FastAPI:
     cfg = cfg or get_config()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # 29.121: a batida começa ANTES do `poc.start()`, para uma partida presa no laço também deixar pilha.
+        batidas = asyncio.create_task(vigia.laco_de_batidas(), name="vigia-do-laco") if vigia is not None else None
         poc = state or AppState(cfg)
         app.state.poc = poc
         await poc.start()
@@ -218,6 +223,8 @@ def create_app(cfg: Config | None = None, state: AppState | None = None) -> Fast
             yield
         finally:
             await poc.stop()
+            if batidas is not None:
+                batidas.cancel()
 
     # Os docs da API moram sob `/api/` (29.54): o portão só exige credencial de `/api/*`, e `/docs`, `/redoc` e
     # `/openapi.json` (o mapa inteiro da API) abriam sem credencial pelo Host público. Sob `/api/` valem a regra
@@ -583,9 +590,12 @@ def main() -> None:
     setup_logging(cfg)
     conferir_exposicao(cfg)
     host = endereco_de_escuta(cfg)     # `server.host`, salvo no contêiner; recusa ANTES de abrir o banco
+    # 29.121: o vigia nasce antes do `AppState` (que migra o banco e lê o disco): a partida presa também deixa pilha.
+    vigia = VigiaDoLaco(cfg.logs_dir)
+    vigia.iniciar()
     # workers=1 e reload desligado: fork traria processos com o mesmo OWNER_ID disputando as mesmas etapas
     poc = AppState(cfg)
-    app = create_app(cfg, state=poc)
+    app = create_app(cfg, state=poc, vigia=vigia)
     sockets = [_socket_de(host, cfg.file.server.port)]
     porta_worker = int(cfg.file.server.worker_port or 0)
     if porta_worker:

@@ -283,6 +283,11 @@ isso). Pontos que já causaram incidente:
   leitura e concilia na hora; ADR-051). Nenhuma das duas chama modelo de IA.
 - `GET /api/diagnostics` (`backend/app/api.py:243`) — o mesmo relatório do `diagnose.ps1` mais o que só o
   backend sabe (capacidade medida, ferramentas).
+- `data/logs/laco-travado-<UTC>-<n>.txt` (29.121, `backend/app/vigia_do_laco.py`) — a pilha de TODAS as threads do
+  backend quando o laço de eventos fica mais de 10 s sem bater (60 s na partida, antes da primeira batida), gravada
+  por uma thread fora do laço antes de o supervisor matar o processo. No máximo 3 por episódio, a cada 30 s; ficam os
+  20 mais novos. A linha `encerrando o backend` do `supervisor.log` cita o despejo dos últimos 5 min, e o
+  `backend.log` diz quando o laço voltou e quanto ficou parado.
 - **Relógio do host** — a tarefa `farm-relogio` (SYSTEM, a cada 15 min) roda `scripts/sincronizar-relogio.ps1`: mede o
   desvio pelo NTP.br com `w32tm /stripchart` e ajusta acima de 0,2 s; o `w32time` fica sem sincronização própria
   (`syncfromflags:NO`), porque a rede bloqueia NTP com porta de origem 123 (K-055). Cada rodada vai para

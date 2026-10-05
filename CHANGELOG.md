@@ -97,6 +97,32 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   de falha, veredito do snapshot, executor do worker, pacote do agente, log do emulador) e `@tests/catracas.txt` 88
   passed. `real`: `not_run` até o deploy (o Orquestrador religa 01, 03 e 06 por `start`).
 
+## 2026-10-05 — 29.121: o vigia do laço de eventos guarda a pilha antes do kill do supervisor (branch fix/29-121-vigia-do-laco)
+
+- O incidente de 05/10 (12:55Z a 13:13Z, cinco kills do supervisor por `/api/health` mudo) não deixou como saber
+  quem prendia o laço: o supervisor mata depois de três silêncios e não guarda pilha.
+- `backend/app/vigia_do_laco.py`: uma tarefa no laço marca uma batida por segundo; uma thread de fora confere a
+  idade dela e, acima de 10 s, grava a pilha de TODAS as threads (`faulthandler`) em
+  `data/logs/laco-travado-<UTC>-<n>.txt`. A thread nasce no `main()`, antes do `AppState`: até a primeira batida o
+  prazo é de 60 s, abaixo da carência do supervisor (com 120 s, o despejo empatava com o kill numa partida presa
+  síncrona, C1 da leitura), e uma partida presa também deixa pilha. No máximo 3 despejos por episódio, a cada 30 s; a volta
+  do laço sai no log com a duração; ficam os 20 despejos mais novos. Disco que falha: o aviso sai sem o arquivo.
+- O supervisor cita na linha do kill o despejo dos últimos 5 min (ou diz que não há). O kill não depende da
+  citação: um erro ao procurar o despejo vira "sem despejo" (N4 da leitura), e um arquivo que some entre a lista e
+  o `stat` deixa de ser candidato. Uma exceção que não é `OSError` no despejo também gasta a tentativa (N2).
+- Delta da leitura: `test_vigia_do_laco.py`, 15 passed; o de relógio real com limite de 1 s e o laço preso por
+  3 s (folga para carga). Mutações: `PARTIDA_S` de volta a 120 reprova o teste que prende `PARTIDA_S + INTERVALO_S <
+  CARENCIA_S`; só `OSError` no despejo, 1; o kill dependendo da citação, 1; o `stat` fora do `try`, 1. Vizinhos: 90
+  passed (supervisão do central, identidade do backend, ambiente dos filhos, arquitetura, cobertura de rotas,
+  autenticação) e `@tests/catracas.txt` 88 passed.
+- Prova `simulated` da primeira versão: `backend/tests/test_vigia_do_laco.py`, 11 passed, um deles com relógio real e o laço preso
+  de propósito (`time.sleep` no laço), a pilha gravada pela thread. Mutações: sem o despejo reprova 6; a batida
+  depois do `poc.start()`, 1; o supervisor sem citar, 1; a partida com o prazo do laço, 1. Vizinhos: 111 passed
+  (supervisão do central, identidade do backend, TLS, painel estático, autenticação, arquitetura, cobertura de
+  rotas) e `@tests/catracas.txt` 88 passed. `not_run`: a catraca do mypy (o mypy não está instalado no venv do
+  central, compartilhado com o backend no ar) e a prova real, que só vem com um travamento de verdade depois do
+  deploy.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
