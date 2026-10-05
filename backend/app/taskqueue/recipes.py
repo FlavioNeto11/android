@@ -42,6 +42,9 @@ UNSAFE_TO_REPLAY = {"press_back", "press_home", "drag"}        # dependem do est
 UNSAFE_TO_REPLAY |= {"type_secret", "open_url"}
 SELECTOR_RANK = ("rid+text", "rid+desc", "rid", "desc", "text")
 QUARANTINE_AFTER = 3
+#: 30.80: a receita que "não se aplicou" (tela de partida diferente na ação 1, etapa comprovada pela IA) não conta como
+#: falha; a N-ésima SEGUIDA conta, para um 1º seletor quebrado (atualização do app) não ficar isento para sempre.
+NAO_APLICAVEL_CONTA_APOS = 3
 MAX_ACTIONS = 8
 TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
@@ -50,6 +53,11 @@ log = logging.getLogger("poc.receitas")
 
 class RecipeDiverged(Exception):
     pass
+
+
+class AlvoAusente(RecipeDiverged):
+    """30.80: o alvo da ação não está nesta tela. Na AÇÃO 1, antes de a receita agir, é a tela de partida que é outra
+    (a r-20261005133833-122345 partiu de dentro de uma conversa), não a receita que errou: o executor decide se conta."""
 
 
 # ------------------------------------------------------------------ funil medido (adendo v0.20, C5)
@@ -585,7 +593,7 @@ class Replayer:
                     return Decision(tool="scroll", args={"rationale": f"{tag} (rolando até o alvo aparecer)",
                                                          "direction": hint["direction"], "element_id": None,
                                                          "expect_done": False})
-                raise RecipeDiverged(f"ação {self.idx + 1} ({act['tool']}): alvo ausente ou ambíguo nesta tela")
+                raise AlvoAusente(f"ação {self.idx + 1} ({act['tool']}): alvo ausente ou ambíguo nesta tela")
             filho = next((s for s in act["selectors"] if s.get("via") == "filho"), None)
             if filho is not None and not toque_no_filho_cai_no_conteiner(tree, el, filho.get("conteiner")):
                 raise RecipeDiverged(f"ação {self.idx + 1} ({act['tool']}): o toque no rótulo não cairia no contêiner "
@@ -871,12 +879,12 @@ class RecipeStore:
         """
         metricas.contar("receita.reproducao", resultado="ok" if ok else "divergiu")
         if ok:
-            self.db.execute("UPDATE recipes SET replay_ok=replay_ok+1, consecutive_fail=0, last_used_at=? WHERE id=?",
-                            (now_iso(), recipe_id))
+            self.db.execute("UPDATE recipes SET replay_ok=replay_ok+1, consecutive_fail=0, nao_aplicavel_seguidas=0,"
+                            " last_used_at=? WHERE id=?", (now_iso(), recipe_id))
             return False
         with self.db.tx():
             self.db.execute("UPDATE recipes SET replay_fail=replay_fail+1, consecutive_fail=consecutive_fail+1,"
-                            " last_used_at=? WHERE id=?", (now_iso(), recipe_id))
+                            " nao_aplicavel_seguidas=0, last_used_at=? WHERE id=?", (now_iso(), recipe_id))
             row = self.db.one("SELECT consecutive_fail, status FROM recipes WHERE id=?", (recipe_id,))
             if row and row["consecutive_fail"] >= QUARANTINE_AFTER:
                 self.db.execute("UPDATE recipes SET status='quarantined' WHERE id=?", (recipe_id,))
@@ -886,6 +894,20 @@ class RecipeStore:
                 return True
         return False
 
+    def nao_aplicavel(self, recipe_id: int) -> tuple[bool, bool]:
+        """30.80: a receita divergiu na AÇÃO 1 por alvo ausente (a tela de partida era outra) e a etapa terminou
+        comprovada pela IA. Não é veredito sobre ela: nem `replay_ok` nem `replay_fail`, e `consecutive_fail` fica como
+        está. A `NAO_APLICAVEL_CONTA_APOS`-ésima seguida conta como falha comum (`result(…, False)`), que zera a série.
+
+        Devolve `(contou_como_falha, entrou_em_quarentena)`."""
+        with self.db.tx():
+            self.db.execute("UPDATE recipes SET nao_aplicavel_seguidas=nao_aplicavel_seguidas+1, last_used_at=?"
+                            " WHERE id=?", (now_iso(), recipe_id))
+            seguidas = int(self.db.scalar("SELECT nao_aplicavel_seguidas FROM recipes WHERE id=?", (recipe_id,)) or 0)
+        if seguidas < NAO_APLICAVEL_CONTA_APOS:
+            metricas.contar("receita.reproducao", resultado="nao_aplicavel")
+            return False, False
+        return True, self.result(recipe_id, False)
     def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int, simulada: bool = False) -> bool:
         """Veredito da sombra de UMA execução da etapa. Devolve True se a candidata foi promovida a ativa agora.
 
