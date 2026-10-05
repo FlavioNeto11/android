@@ -265,6 +265,24 @@ def test_falha_do_transporte_vira_sem_resposta() -> None:
         BuscarPelaBorda(lambda: 5, _borda("timeout"))(f"https://{HOST}/", aceita=None)
 
 
+def test_prazo_total_pelo_relogio_do_portal_sem_esperar() -> None:
+    """V13 com o relógio do portal (T.2): uma resposta que pinga devagar estoura o prazo TOTAL, mesmo com cada pedaço
+    dentro do prazo do httpx. O monotônico é falso e anda 2 s por pedaço; nada espera de verdade."""
+    relogio = {"s": 0.0}
+
+    class Pingando(httpx.SyncByteStream):
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            for _ in range(10):
+                relogio["s"] += 2.0
+                yield b"x" * 100
+
+    transporte = httpx.MockTransport(lambda pedido: httpx.Response(200, stream=Pingando()))
+    buscar = BuscarPelaBorda(lambda: 5, transporte, monotonico=lambda: relogio["s"])
+    with pytest.raises(SemResposta, match="tempo esgotado"):
+        buscar(f"https://{HOST}/", aceita=None)
+    assert relogio["s"] <= 8.0                                           # parou no 1º pedaço depois dos 5 s
+
+
 # ------------------------------------------------------------------ montagem, configuração e saúde
 async def test_saude_le_so_o_estado_e_o_nome_vem_do_config(harness: Harness) -> None:
     assert harness.state is not None
