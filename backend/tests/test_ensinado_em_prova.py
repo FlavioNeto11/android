@@ -338,7 +338,8 @@ def _recusado_espera_a_pessoa(mundo: Mundo, fid: str, motivo: Motivo) -> None:
     (ev,) = mundo.bus.do_tipo(TIPO_ESPERA_DECISAO)
     _, mensagem, nivel, dados = ev
     assert tuple(dados) == CAMPOS_DA_ESPERA and nivel == "warn"
-    assert dados == {"kind": "fluxo", "ref": fid, "app": "instagram", "treino": SESSAO, "persona": ANA,
+    assert dados == {"kind": "fluxo", "ref": fid, "app": mundo.servico.entrada(LivroKind.FLUXO, fid).app or "instagram",
+                     "treino": SESSAO, "persona": ANA,
                      "desde": mundo.db.scalar("SELECT created_at FROM flows WHERE id=?", (fid,))}
     assert fid not in mensagem and ANA not in mensagem   # nem slug nem persona no `message` (combinado com a Canais)
     assert not mundo.casa([BIA])                         # e a restrição fica até a pessoa decidir
