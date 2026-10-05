@@ -114,6 +114,27 @@ async def test_previa_conta_a_receita_que_ja_existe_sem_gravar_outra(harness: Ha
     assert _foto(st, sid2) == antes
 
 
+async def test_previa_e_save_dizem_que_a_demonstracao_substitui_a_receita_de_outro_caminho(harness: Harness) -> None:
+    """30.79 na junção com o 31.86: a etapa que já tem receita de OUTRO caminho ganha a demonstração nova. A prévia
+    diz que ela substituirá a viva, o salvar diz o mesmo, e a viva sai como `superseded`."""
+    st, rt, lease, sid = await _sessao_mista(harness)
+    await st.skills.save(sid, proposal=_proposta(), profile_ids=[], group_ids=[])
+    velha = st.db.one("SELECT id, version, actions FROM recipes WHERE step_key='abrir' AND status='active'")
+    acoes = json.loads(velha["actions"])
+    acoes[0]["selectors"] = [{"kind": "rid", "rid": "app:id/outro_caminho"}]       # a viva passa a ser outro caminho
+    st.db.execute("UPDATE recipes SET actions=? WHERE id=?", (json.dumps(acoes), velha["id"]))
+    sid2 = await _gravar(st, rt, lease, harness.fakes["android-01"])
+    outra = _proposta()
+    outra["command_template"] = "mande a DM de {contato} dizendo {mensagem}"       # outro comando, mesma etapa
+    troca = f", substituindo a v{velha['version']} (receita {velha['id']})"
+    previa = _por_chave((await st.skills.preview(sid2, proposal=outra, profile_ids=[], group_ids=[]))["steps"])
+    assert previa["abrir"] == {**previa["abrir"], "recipe": True, "reason": "receita será gravada ao salvar" + troca}
+    assert st.db.scalar("SELECT status FROM recipes WHERE id=?", (velha["id"],)) == "active"     # a prévia não grava
+    salvo = _por_chave((await st.skills.save(sid2, proposal=outra, profile_ids=[], group_ids=[]))["steps"])
+    assert salvo["abrir"]["recipe"] is True and salvo["abrir"]["reason"] == "receita gravada" + troca
+    assert st.db.scalar("SELECT status FROM recipes WHERE id=?", (velha["id"],)) == "superseded"
+
+
 @pytest.mark.parametrize(("codigo", "estraga"), CASOS, ids=[f"{c}-{f.__name__}" for c, f in CASOS])
 async def test_previa_recusa_com_o_mesmo_codigo_do_save_e_sem_escrever(harness: Harness, codigo: str, estraga: Any) -> None:
     st, sid = await _sessao_gravada(harness)

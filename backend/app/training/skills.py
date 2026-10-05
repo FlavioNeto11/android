@@ -20,7 +20,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, NamedTuple, get_args
 
-from ..db import dumps
+from ..db import Row, dumps
 from ..models import Plan, PlannerInfo, PlanStep, Postcondition
 from ..planning.capabilities import CapabilityCatalog, CapabilityNode, load_catalog
 from ..planning.training import TrainingRequest
@@ -511,16 +511,18 @@ class TrainingSkills:
                 # O `save` do treino pula este veto (a pessoa ensina agora); o reparo roda sem ela, então o respeita.
                 linha["reason"] = "a pessoa vetou esta receita: o reparo não a recria"
                 continue
+            # 30.79: a demonstração substitui a receita que segura a etapa quando o caminho é outro. A prévia e o
+            # salvar leem a MESMA conta da loja (`previa_do_treino`), e o texto diz qual receita saiu.
+            loja = self.s.scheduler.executor.recipes
+            efeito, viva = loja.previa_do_treino(pkg, versao, hash_da_etapa, d.acoes, signature=assinatura,
+                                                 variant=variante)
             if not gravar:
-                ocupada = self.s.scheduler.executor.recipes.chave_ocupada(
-                    pkg, versao, hash_da_etapa, signature=assinatura, variant=variante)
-                linha.update({"recipe": not ocupada,
-                              "reason": JA_HAVIA_RECEITA if ocupada else "receita será gravada ao salvar"})
+                linha.update(_linha_da_receita(efeito, viva, gravada=None))
                 continue
-            rid = self.s.scheduler.executor.recipes.save(
-                package=pkg, app_version=versao, step_hash=hash_da_etapa, step_key=passo.key,
-                actions=d.acoes, learned_from=f"training:{session_id}", signature=assinatura, variant=variante)
-            linha.update({"recipe": bool(rid), "reason": "receita gravada" if rid else JA_HAVIA_RECEITA})
+            rid = loja.save(package=pkg, app_version=versao, step_hash=hash_da_etapa, step_key=passo.key,
+                            actions=d.acoes, learned_from=f"training:{session_id}", signature=assinatura,
+                            variant=variante, so_em_chave_virgem=so_chave_virgem)
+            linha.update(_linha_da_receita(efeito, viva, gravada=rid if rid else 0))
         return relatorio
 
 
@@ -532,6 +534,16 @@ def _inteiros(valores: object) -> list[int]:
         except (TypeError, ValueError):
             continue
     return saida
+
+
+def _linha_da_receita(efeito: str, viva: Row | None, *, gravada: int | None) -> dict[str, object]:
+    """`recipe`/`reason` da etapa no relatório. `gravada=None` é a prévia (nada gravado); `0`, o `save` que não gravou.
+    O mesmo caminho da receita que já vale não grava nada, nos dois (`recipe: false`, o motivo de sempre)."""
+    if efeito == "ja_vale" or gravada == 0 or (gravada is not None and viva is not None
+                                                and gravada == int(viva["id"])):
+        return {"recipe": False, "reason": JA_HAVIA_RECEITA}
+    troca = f", substituindo a v{viva['version']} (receita {viva['id']})" if efeito == "substitui" and viva else ""
+    return {"recipe": True, "reason": ("receita será gravada ao salvar" if gravada is None else "receita gravada") + troca}
 
 
 def _destilar(sess: Sessao, p: Proposta, passos: list[PlanStep], exemplos: dict[str, str],

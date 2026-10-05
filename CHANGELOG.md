@@ -19,6 +19,29 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
+
+- `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
+  receita ativa. A que segurava a chave (a ativa aprendida da IA, a `validated` que esperava o dono, ou a de uma
+  demonstração anterior) sai como `superseded`. Antes a demonstração era descartada em silêncio ("já havia ativa").
+  - A trilha dos dois lados é assinada pela sessão de treino: "substituída pela vN, demonstrada pela pessoa no modo
+    treinamento".
+  - Com o MESMO caminho nada se grava, e `save` devolve o id da que já vale.
+  - Ao substituir, `save` devolve o id NOVO.
+  - O salvamento que não é do treino segue igual: não troca a ativa nem a `validated`.
+- `RecipeStore.viva(...)` (novo, público): a receita que segura a chave hoje, a ativa ou a `validated`. É para o
+  relatório do treino dizer qual já existia.
+- Sem migração e sem rota nova.
+- Prova `simulated`: `backend/tests/test_treino_substitui_receita.py` (6), verificado por mutação com 5 regras.
+  Real: `not_run` (a próxima sessão de treino numa etapa que já tinha receita).
+- Junção com o 31.86 (#438):
+  - a prévia e o relatório do salvar leem `RecipeStore.previa_do_treino` (a mesma conta do `save`). Com o mesmo
+    caminho, "já havia receita". Com outro, "receita gravada, substituindo a vN (receita N)";
+  - `chave_ocupada` virou `viva(...) is not None`;
+  - o reparo (`POST /api/training/{id}/recipes`) passa `so_em_chave_virgem=True` ao `save`, que repete DENTRO da `tx`
+    a conferência de chave virgem e do veto da pessoa: o reparo não herda o poder da demonstração;
+  - o prefixo `training:` fica no reparo, porque os leitores dele (a origem no painel, `Origem.TREINO`, as genéricas,
+    o aviso do 30.80 B) seguem tratando a receita refeita como ensinada.
 
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 

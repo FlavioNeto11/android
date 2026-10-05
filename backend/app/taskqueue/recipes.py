@@ -815,6 +815,13 @@ class RecipeStore:
             log.warning("receitas: herança indisponível (%s %s): %s", package, step_hash, exc)
             return "ausente", None
 
+    def viva(self, package: str, app_version: str, step_hash: str, *, signature: str = "",
+             variant: str = "") -> Row | None:
+        """30.79: a receita que SEGURA a chave hoje, a ativa ou a `validated` que espera o dono. É a que a demonstração
+        da pessoa substitui (`save`), e o relatório do treino a lê ANTES de salvar para dizer qual já existia."""
+        return (self._ativa(package, app_version, step_hash, signature=signature, variant=variant)
+                or self._com_status("validated", package, app_version, step_hash, signature=signature, variant=variant))
+
     def _ativa(self, package: str, app_version: str, step_hash: str, *, signature: str, variant: str) -> Row | None:
         """A receita ativa da chave, sem medir nada — `save` também pergunta isto, e não é consulta de etapa."""
         return self._com_status("active", package, app_version, step_hash, signature=signature, variant=variant)
@@ -831,11 +838,23 @@ class RecipeStore:
 
     def chave_ocupada(self, package: str, app_version: str, step_hash: str, *, signature: str = "",
                       variant: str = "") -> bool:
-        """A chave já tem receita ATIVA ou `validated` (o que o `save` nunca substitui)? Só lê: a prévia do treino
-        (31.86) usa isto para dizer "já havia receita" sem gravar, e o `save` usa a MESMA conta — uma regra só."""
-        return (self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None
-                or self._com_status("validated", package, app_version, step_hash, signature=signature,
-                                    variant=variant) is not None)
+        """A chave tem uma receita que a SEGURA (`viva`: a ativa ou a `validated`)? Só lê. Quem não é treino não a
+        substitui (o `save` devolve `None`). A demonstração a substitui quando o caminho é outro (30.79), e o que ela
+        faria é `previa_do_treino`."""
+        return self.viva(package, app_version, step_hash, signature=signature, variant=variant) is not None
+
+    def previa_do_treino(self, package: str, app_version: str, step_hash: str,
+                         actions: Sequence[Mapping[str, object]], *, signature: str = "",
+                         variant: str = "") -> tuple[str, Row | None]:
+        """O que o `save` do TREINO faria com estas ações, sem gravar (a prévia do 31.86 e o relatório do salvar):
+        - `("ja_vale", viva)`: o mesmo caminho da receita que segura a chave (o `save` devolve o id dela);
+        - `("substitui", viva)`: outro caminho (o `save` grava a versão nova e a viva vira `superseded`);
+        - `("grava", None)`: nada segura a chave.
+        A conta é a mesma do `save` (`viva` + `_caminho`). O veto não entra, porque o treino não passa por ele."""
+        viva = self.viva(package, app_version, step_hash, signature=signature, variant=variant)
+        if viva is None:
+            return "grava", None
+        return ("ja_vale" if _caminho(loads(viva["actions"], [])) == _caminho(actions) else "substitui"), viva
 
     def caminho_vetado(self, receita: ReceitaVista) -> bool:
         """Uma PESSOA desligou este caminho e o sistema não o traz de volta (`ouvinte.vetada`)? Só lê; sem ouvinte,
@@ -853,8 +872,9 @@ class RecipeStore:
 
     def save(self, *, package: str, app_version: str, step_hash: str, step_key: str, actions: list[dict[str, Any]],
              learned_from: str, signature: str = "", variant: str = "", candidate: bool = False,
-             replaces: int | None = None, heranca: str | None = None) -> int | None:
-        """Grava uma versão nova SÓ se não houver receita ativa (a ativa só sai por quarentena).
+             replaces: int | None = None, heranca: str | None = None, so_em_chave_virgem: bool = False) -> int | None:
+        """Grava uma versão nova SÓ se não houver receita ativa (a ativa só sai por quarentena), salvo a demonstração da
+        pessoa (30.79, abaixo).
 
         `candidate`: a receita nasce em prova (`recipes_promote_after`, o caminho que a IA aprendeu); sem ele nasce
         ativa — o modo treinamento (a pessoa demonstrou) e o `recipes_promote_after: 0`.
@@ -870,10 +890,28 @@ class RecipeStore:
 
         `heranca` (RA-20): o motivo da trilha da herdeira (`find`). Herdar é do SISTEMA, mesmo de uma receita ensinada
         no treino (a origem fica em `learned_from`): passa pelo veto e a trilha é do sistema.
+
+        30.79 (B1 do mapa do ensino): a demonstração da pessoa SUBSTITUI a receita que segura a chave (`viva`: a ativa
+        aprendida da IA, a `validated` que espera o dono, ou a de uma demonstração anterior), com a trilha nos dois lados
+        (`por` = a sessão de treino). Antes ela era descartada em silêncio ("já havia receita ativa"). Com o MESMO
+        caminho, nada se grava: devolve o id da que já vale, que é a demonstração.
+
+        `so_em_chave_virgem` (31.86, o reparo das receitas de um treino já salvo): grava só se a chave NUNCA teve
+        receita, de nenhum status, e se nenhuma pessoa vetou o caminho. O reparo roda sem a pessoa, então não herda o poder da
+        demonstração, que pula o veto e substitui a receita viva, inclusive a que o aprendizado pôs em quarentena. O
+        reparo confere o mesmo antes (`status_da_chave`, `caminho_vetado`), e aqui a conta se repete dentro da `tx`,
+        sem janela entre a conferência e a gravação.
         """
         chave = (package, app_version, signature, variant, step_hash)
         treino = learned_from.startswith("training:") and heranca is None
         with self.db.tx():
+            if so_em_chave_virgem and (
+                    self.db.scalar("SELECT 1 FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
+                                   " AND variant=? AND step_hash=? LIMIT 1", chave) is not None
+                    or self.caminho_vetado(ReceitaVista(package=package, app_version=app_version, signature=signature,
+                                                        variant=variant, step_hash=step_hash, actions=dumps(actions),
+                                                        learned_from=learned_from))):
+                return None              # o reparo (31.86): a conferência dele, de novo DENTRO da transação
             if replaces is not None:
                 # RA-20 B: a candidata ESPECÍFICA que divergiu e um caminho da IA que serve a qualquer valor (o executor
                 # grava na chave genérica). Ela sai aqui, mesmo que a genérica não grave (já tem a sua em prova): senão,
@@ -885,8 +923,12 @@ class RecipeStore:
                     self._avisar(replaces, "candidate", "superseded",
                                  "divergiu; o caminho da IA serve a qualquer valor e vai para a chave genérica")
                     replaces = None
-            if self.chave_ocupada(package, app_version, step_hash, signature=signature, variant=variant):
-                return None
+            viva = self.viva(package, app_version, step_hash, signature=signature, variant=variant)
+            if viva is not None:
+                if not treino:
+                    return None
+                if _caminho(loads(viva["actions"], [])) == _caminho(actions):
+                    return int(viva["id"])           # a demonstração é o caminho que já vale: nada novo a gravar
             em_prova = self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
             if candidate and em_prova is not None and em_prova["id"] != replaces:
                 return None
@@ -904,12 +946,14 @@ class RecipeStore:
             ver = int(self.db.scalar(
                 "SELECT COALESCE(MAX(version),0)+1 FROM recipes WHERE app_package=? AND app_version=? AND"
                 " app_signature=? AND variant=? AND step_hash=?", chave))
+            # 30.79: a demonstração tira de cena também a que segurava a chave (a ativa ou a `validated`).
+            trocadas = "'candidate','quarantined','active','validated'" if treino else "'candidate','quarantined'"
             antigas = self.db.query("SELECT id, status FROM recipes WHERE app_package=? AND app_version=? AND"
                                     " app_signature=? AND variant=? AND step_hash=?"
-                                    " AND status IN ('candidate','quarantined')", chave) if self.ouvinte else []
+                                    f" AND status IN ({trocadas})", chave) if self.ouvinte else []
             self.db.execute("UPDATE recipes SET status='superseded' WHERE app_package=? AND app_version=? AND"
                             " app_signature=? AND variant=? AND step_hash=?"
-                            " AND status IN ('candidate','quarantined')", chave)
+                            f" AND status IN ({trocadas})", chave)
             status = "candidate" if candidate else "active"
             novo = int(self.db.inserted_id(
                 "INSERT INTO recipes(app_package, app_version, app_signature, variant, step_hash, step_key, version,"
@@ -917,7 +961,12 @@ class RecipeStore:
                 (package, app_version, signature, variant, step_hash, step_key, ver,
                  status, gravadas, learned_from, now_iso())) or 0)
             for antiga in antigas:
-                self._avisar(int(antiga["id"]), str(antiga["status"]), "superseded", f"substituída pela v{ver}")
+                if treino:                       # a causa é a demonstração, também na candidata e na quarentena
+                    self._avisar(int(antiga["id"]), str(antiga["status"]), "superseded",
+                                 f"substituída pela v{ver}, demonstrada pela pessoa no modo treinamento",
+                                 por=learned_from)
+                else:
+                    self._avisar(int(antiga["id"]), str(antiga["status"]), "superseded", f"substituída pela v{ver}")
             if novo:
                 motivo = (heranca if heranca is not None else "ensinada no modo treinamento" if treino else
                           "aprendida da IA; em prova (sombra)" if candidate else
