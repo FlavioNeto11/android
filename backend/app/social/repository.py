@@ -1614,14 +1614,24 @@ class SocialRepository:
         """31.64: as etapas deste perfil e desta ação que já passaram a porta e ainda não deixaram rastro (`running` ou
         `verifying`): `(id, argumentos)`. Com `publicar_sem_aprovacao` ligado e nenhum outro motivo de aprovação, a porta
         não grava pedido, e a saída só nasce no commit; sem isto, a outra persona do pedido passava com a mesma imagem
-        enquanto a primeira ainda publicava."""
+        enquanto a primeira ainda publicava.
+
+        F1 da revisão do #350: a etapa vira `running` na TOMADA, antes da porta. Duas irmãs tomadas juntas se veriam em
+        `running` e as duas seriam recusadas. Com a etapa `exclude_step_id` já tomada, só contam as MAIS ANTIGAS que ela
+        (`started_at`, com o `id` no desempate): das que correm juntas, exatamente uma passa. Sem `started_at` (a prévia,
+        a etapa ainda não tomada), todas as em curso contam."""
         por_app = " AND (e.app_id=? OR e.app_id IS NULL)" if app_id else ""
         sem_a_etapa = " AND e.id<>?" if exclude_step_id else ""
+        minha = (self.db.scalar("SELECT started_at FROM steps WHERE id=?", (exclude_step_id,))
+                 if exclude_step_id else None)
+        mais_antigas = (" AND (COALESCE(e.started_at, '')<? OR (COALESCE(e.started_at, '')=? AND e.id<?))"
+                        if minha else "")
         linhas = self.db.query(
             "SELECT e.id, e.bindings FROM steps e JOIN objectives o ON o.id=e.objective_id"
             " WHERE o.profile_id=? AND e.capability=? AND e.status IN ('running','verifying')"
-            f"{por_app}{sem_a_etapa} ORDER BY e.id LIMIT 200",
-            (profile_id, capability, *((app_id,) if app_id else ()), *((exclude_step_id,) if exclude_step_id else ())))
+            f"{por_app}{sem_a_etapa}{mais_antigas} ORDER BY e.id LIMIT 200",
+            (profile_id, capability, *((app_id,) if app_id else ()), *((exclude_step_id,) if exclude_step_id else ()),
+             *((str(minha), str(minha), exclude_step_id) if minha else ())))
         saida: list[tuple[str, dict[str, object] | None]] = []
         for r in linhas:
             argumentos = loads(r["bindings"], None)

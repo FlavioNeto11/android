@@ -13,12 +13,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from app.models import InteractionStatus
+from app.models import InteractionStatus, ProfileCreate
 from app.planning.capabilities import capability_of
 from app.social.approvals import ApprovalStore
 from app.social.policy import MOTIVO_CITA_A_FAMILIA, ContextoDoPedido, PolicyEngine
 
-from .test_capabilities import IG, perfil
+from .test_capabilities import IG, SENHA, perfil
 from .test_repetido_entre_execucoes import _SERVICOS, _conta, _etapa
 
 POST_A = {"image_id": "img-1", "content": "Fim de tarde"}
@@ -77,6 +77,49 @@ def test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem
     db.execute("UPDATE steps SET status='running' WHERE id=?", (sid,))
     outra = policies.check(b, publicar, step_id="r-b:x", pedido=pedido, bindings={"image_id": "img-2"})
     assert "31.53" not in outra.reason
+
+
+def _etapa_tomada(db: Any, run: str, pid: str, quando: str, aparelho: str) -> str:
+    """Uma etapa de publicação com a mesma imagem, já TOMADA (`running`, `started_at`), da persona `pid` (um aparelho por
+    etapa em curso: o banco não deixa duas `running` no mesmo)."""
+    sid = _etapa(db, run, "CREATE_POST", POST_A)
+    db.execute("UPDATE objectives SET profile_id=? WHERE id=?", (pid, f"{run}:android-01"))
+    db.execute("UPDATE steps SET status='running', started_at=?, instance_id=? WHERE id=?", (quando, aparelho, sid))
+    return sid
+
+
+def test_irmas_tomadas_juntas_com_a_mesma_imagem_exatamente_uma_passa(tmp_path: Path) -> None:
+    """F1 da revisão do #350: a etapa vira `running` na tomada, antes da porta. Duas irmãs em `running` com a mesma
+    imagem: a mais antiga passa e a outra é recusada (antes do conserto, as duas eram recusadas). Mesmo `started_at`:
+    o `id` desempata."""
+    _repo, policies, db, a, b = _familia(tmp_path)
+    publicar = capability_of(IG, "CREATE_POST")
+    pedido = ContextoDoPedido(raiz="r-a", familia=frozenset({a, b}))
+    for quando_a, quando_b in (("2026-10-05T01:00:00Z", "2026-10-05T01:00:05Z"),
+                               ("2026-10-05T01:00:00Z", "2026-10-05T01:00:00Z")):
+        db.execute("DELETE FROM steps")
+        sa = _etapa_tomada(db, "r-a", a, quando_a, "android-01")
+        sb = _etapa_tomada(db, "r-b", b, quando_b, "android-02")
+        recusadas = [sid for pid, sid in ((a, sa), (b, sb))
+                     if "31.53" in policies.check(pid, publicar, step_id=sid, pedido=pedido,
+                                                  bindings={"image_id": "img-1"}).reason]
+        assert recusadas == [sb], (quando_a, quando_b, recusadas)       # "r-a…" < "r-b…" no desempate
+
+
+def test_tres_irmas_tomadas_juntas_so_a_mais_antiga_passa(tmp_path: Path) -> None:
+    repo, policies, db, a, b = _familia(tmp_path)
+    c = _SERVICOS[a].create_profile(ProfileCreate(username="carla.dias7781", password=SENHA)).id   # sem aparelho
+    repo.update_profile(c, {"automation_policy": '{"limits": {"warmup_days": 0, '
+                                                 '"cooldown_between_external_actions_s": 0}}'})
+    publicar = capability_of(IG, "CREATE_POST")
+    pedido = ContextoDoPedido(raiz="r-a", familia=frozenset({a, b, c}))
+    etapas = {c: _etapa_tomada(db, "r-c", c, "2026-10-05T01:00:01Z", "android-03"),
+              a: _etapa_tomada(db, "r-a", a, "2026-10-05T01:00:03Z", "android-01"),
+              b: _etapa_tomada(db, "r-b", b, "2026-10-05T01:00:02Z", "android-02")}
+    passaram = [pid for pid, sid in etapas.items()
+                if "31.53" not in policies.check(pid, publicar, step_id=sid, pedido=pedido,
+                                                 bindings={"image_id": "img-1"}).reason]
+    assert passaram == [c]
 
 
 def test_sem_pedido_ou_com_outra_imagem_nada_muda(tmp_path: Path) -> None:

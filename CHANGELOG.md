@@ -27,6 +27,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **O conserto:** `_mesmo_objeto_na_familia` conta também as etapas das outras personas do pedido em `running` ou
   `verifying`, com a mesma capability e o mesmo objeto (`SocialRepository.etapas_em_curso_da_acao`). Etapas em
   `ready` e `failed` não contam.
+- **F1 da revisão:** a etapa vira `running` na tomada, antes da porta; duas irmãs tomadas juntas se viam e as duas
+  eram recusadas. Agora só contam as MAIS ANTIGAS que a etapa da porta (`started_at`, `id` no desempate): das
+  que correm juntas, exatamente uma passa (testes de duas e de três irmãs).
 - Prova: `simulated` (`backend/tests/test_familia_por_objeto.py::test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem`,
   falha no código anterior). Real: `not_run`.
 
