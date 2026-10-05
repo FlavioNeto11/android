@@ -61,8 +61,13 @@ class TrainingRecorder:
             raise TrainingError("store_device", "A loja (Play Store) não é aparelho de treinamento.", 400)
         if str(getattr(rt.control, "value", rt.control)) != "user" or not lease_id or rt.lease_id != lease_id:
             raise TrainingError("control_required", "Assuma o controle do aparelho no Foco antes de gravar.", 409)
-        if self.active_for(instance_id):
+        ativa = self.active_for(instance_id)
+        if ativa and getattr(rt, "training_session_id", None) == ativa:
             raise TrainingError("already_recording", "Já há um treinamento sendo gravado neste aparelho.", 409)
+        if ativa:
+            # 31.80: a linha diz "recording" mas o aparelho não a está gravando (o `record` sairia calado): órfã. Recusar
+            # trancava o aparelho até alguém descartar à mão; encerra como `recorded` (as entradas valem) e segue.
+            self._encerrar_orfa(ativa, "a gravação anterior estava sem gravador ativo")
         if app_id and self.db.one("SELECT id FROM apps WHERE id=?", (app_id,)) is None:
             raise TrainingError("unknown_app", f"Aplicativo '{app_id}' não está cadastrado.", 400)
         profile_id = self._persona_da_gravacao(instance_id, app_id, profile_id)
@@ -112,6 +117,24 @@ class TrainingRecorder:
             self.db.execute("UPDATE training_sessions SET status='discarded', updated_at=? WHERE id=?",
                             (now_iso(), session_id))
         return self.get(session_id)
+
+    def _encerrar_orfa(self, session_id: str, motivo: str) -> None:
+        s = self._row(session_id)
+        agora = now_iso()
+        self.db.execute("UPDATE training_sessions SET status='recorded', finished_at=?, updated_at=? "
+                        "WHERE id=? AND status='recording'", (agora, agora, session_id))
+        self.bus.emit("log", f"{s['instance_id']}: gravação do treinamento encerrada — {motivo}; as entradas já gravadas "
+                      "foram mantidas", level="warn", instance_id=s["instance_id"],
+                      data={"training_session_id": session_id})
+
+    def reconcile_after_restart(self) -> int:
+        """31.80: na subida do processo dono dos aparelhos (`rt.training_session_id` nasce None), toda sessão
+        `recording` ficou órfã: nada mais grava, mas o painel seguiria mostrando "Gravando" e `start` recusaria outra.
+        Vira `recorded` (as entradas já gravadas valem). Nunca religa a gravação: gravar sem a pessoa saber é pior."""
+        ids = [r["id"] for r in self.db.query("SELECT id FROM training_sessions WHERE status='recording'")]
+        for sid in ids:
+            self._encerrar_orfa(sid, "encerrada pelo reinício do backend")
+        return len(ids)
 
     def stop_for_instance(self, instance_id: str) -> None:
         """Devolver o controle encerra a gravação: sem a pessoa no aparelho não há o que gravar."""

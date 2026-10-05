@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.80, gravação do treinamento órfã depois do reinício (branch fix/31-80-82-gravacao-do-treino)
+
+- Medido no real (05/10): o reinício no meio de uma gravação deixava `training_sessions.status='recording'`, o aparelho
+  nascia sem `training_session_id`, `record` saía calado, o painel seguia "Gravando" e `start` recusava com
+  `already_recording`.
+- `TrainingRecorder.reconcile_after_restart` (chamado na subida, junto das outras reconciliações): toda sessão
+  `recording` vira `recorded` (entradas valem), com `finished_at` e um evento `log` por sessão. Não religa gravação.
+- `start` com sessão ativa no banco mas sem gravador vivo no aparelho encerra a órfã como `recorded` e segue;
+  `already_recording` só vale para a gravação viva.
+- Prova `simulated`: `backend/tests/test_treino_gravacao_orfa.py` (3), e `test_modo_treinamento.py` (7 passed).
+  Real: `not_run` (reinício do central com gravação aberta).
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

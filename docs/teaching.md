@@ -313,6 +313,14 @@ Prova: `test_ensino_v2.py::test_laco_de_perguntas_e_respostas_ate_o_rascunho` (v
 - O generalizador é a mesma função do treino v1: `generalize` do provedor, com o `TrainingRequest` de
   `planning/training.py` (abaixo).
 
+## A gravação do treino v1: reinício e segredo
+
+- **Reinício do backend no meio de uma gravação** (31.80): ao subir, toda sessão `recording` vira `recorded` (as entradas
+  já gravadas valem) e sai um evento `log` por sessão dizendo que o reinício a encerrou. Quem ensinava precisa abrir
+  outra gravação e continuar dali; o gravador **não religa sozinho** (gravar sem a pessoa saber é pior que encerrar).
+- Um `start` que encontra uma gravação "viva" só no banco (o aparelho não a está gravando) encerra a antiga como
+  `recorded` e aceita a nova. `already_recording` continua só para a gravação que o aparelho realmente grava.
+
 ## O generalizador e o custo
 
 - **A porta** é `application/ports.py::SkillGeneralizer`: `async generalize(GeneralizationRequest) -> Generalization`.

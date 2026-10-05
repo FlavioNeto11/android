@@ -2715,6 +2715,7 @@ class AppState:
             await self.scheduler.start()
             self.runs.resume_planning_after_restart()
             self.releases.reconcile_after_restart()      # instalação interrompida nunca é repetida às cegas
+            self.training.reconcile_after_restart()      # 31.80: gravação do treinamento sem gravador vira "recorded"
             # …e agora ela tem quem a releia: sem isto, `verifying` dizia "o estado será relido do aparelho" e o
             # aparelho ficava bloqueado para tarefas daquele app até alguém chamar a rota de verificação à mão.
             self._reverificar_interrompidas()
