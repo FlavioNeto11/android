@@ -1984,7 +1984,7 @@ export interface TrainingInput {
   text_len: number | null;
   package: string | null;
   app_id: string | null;
-  target: { text?: string; desc?: string; resource_id?: string; class_name?: string; unique?: string[] } | null;
+  target: { text?: string; desc?: string; resource_id?: string; class_name?: string; unique?: string[]; filhos?: unknown[] } | null;
   screen_title: string | null;
   screen_lines: string[];
   sensitive: boolean;

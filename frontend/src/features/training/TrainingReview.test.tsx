@@ -8,7 +8,8 @@ import { makeSnapshot } from '../../test/fixtures';
 import { ConfirmHost } from '../../components/Confirm';
 import { useToastStore } from '../../store/toasts';
 import { FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
+import { alvoReconhecido, ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
+import type { TrainingInput } from '../../api/types';
 
 /** O atraso máximo do fetch falso (modo ATRASO_DO_FETCH_MS): a resposta que o teste solta depois ainda pode estar a caminho. */
 const ATRASO_MAXIMO = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
@@ -579,4 +580,22 @@ it('mais de 8 respostas: o pedido trava com o motivo em vez de cortar a 9ª', as
   expect(backend.callsTo('POST', /\/propose$/)).toHaveLength(antes);
   await setValue(byRole('textbox', /^Pergunta 9$/) as HTMLInputElement, '');
   expect(byRole('button', /^Pedir nova proposta com as respostas/).getAttribute('aria-disabled')).toBeNull();
+});
+
+// ---------------------------------------------------------------- 31.90-F: como a gravação reconhece o elemento tocado
+it('31.90-F: a coluna da gravação diz por que a gravação reconhece o elemento (seletor e id, sem o pacote)', async () => {
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  expect(text()).toContain('(reconhecido por id e texto, id conversation_name)');
+  expect(text()).not.toContain('x:id/conversation_name');
+});
+
+it('31.90-F: alvoReconhecido cobre cada seletor, o alvo sem identificador e o que não é toque', () => {
+  const entrada = (parcial: Partial<TrainingInput>) => ({ ...SESSAO.inputs[0], ...parcial }) as unknown as TrainingInput;
+  expect(alvoReconhecido(entrada({ target: { desc: 'Enviar', unique: ['desc'] } }))).toBe('reconhecido por descrição');
+  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/ok', unique: ['rid', 'text'], text: 'OK' } }))).toBe('reconhecido por id (ou texto), id ok');
+  expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [] } }))).toBe('sem identificador único: este toque não vira receita');
+  expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [], filhos: [{}] } }))).toBe('reconhecido pelo que o elemento contém');
+  expect(alvoReconhecido(entrada({ target: null }))).toBeNull();                      // sem alvo: a frase é de toqueSemAlvo
+  expect(alvoReconhecido(entrada({ type: 'text', target: { unique: ['text'], text: 'x' } }))).toBeNull();
 });
