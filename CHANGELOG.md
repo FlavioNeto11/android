@@ -34,6 +34,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `started_at` da primeira tomada; o relógio varia por máquina). A porta marca `steps.passou_a_porta` ao liberar o
   efeito; quem passou conta sempre (fora de falha e cancelamento), e "só as mais antigas" vale só entre as que não
   passaram. Testes: retomada de `retry_wait` e de `waiting_user` recusada; a que passou e falhou não conta.
+- **S2 da revisão:** a marca conta só nos estados abertos (a concluída já sai pela saída gravada, com janela) e o lote da
+  consulta vem pelo `id` DESC. Antes, mais de 200 marcas concluídas na persona irmã tiravam a etapa em curso do
+  `LIMIT 200` e a mesma imagem passava. Teste: 201 concluídas + 1 em curso, recusa sai.
 - Prova: `simulated` (`backend/tests/test_familia_por_objeto.py::test_a_mesma_imagem_na_etapa_em_curso_da_irma_sem_pedido_de_aprovacao_tambem`,
   falha no código anterior). Real: `not_run`.
 

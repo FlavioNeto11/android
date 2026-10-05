@@ -1624,7 +1624,12 @@ class SocialRepository:
         S1 da mesma revisão (migração 110): a que já PASSOU a porta (`passou_a_porta = 1`) conta SEMPRE, em qualquer
         estado que não seja falha nem cancelamento. Sem isso, a etapa que voltava de `retry_wait` ou `waiting_user` com o
         `started_at` da primeira tomada era "mais antiga" que a irmã que já publicava, e as duas publicavam; e a ordem
-        pelo relógio de cada máquina se invertia com dois backends."""
+        pelo relógio de cada máquina se invertia com dois backends.
+
+        S2 da mesma revisão: a marca conta só nos estados ABERTOS. A `succeeded` já é coberta pela saída gravada (com a
+        janela de 30 dias da regra) e, contada aqui sem janela, enchia o lote: com mais de 200 marcas antigas na persona
+        irmã, a etapa em curso ficava fora do `LIMIT` e a S1 e a F1 reabriam. Pelo mesmo motivo o lote vem das MAIS
+        NOVAS (`id` começa pelo `run_id` datado)."""
         por_app = " AND (e.app_id=? OR e.app_id IS NULL)" if app_id else ""
         sem_a_etapa = " AND e.id<>?" if exclude_step_id else ""
         minha = (self.db.scalar("SELECT started_at FROM steps WHERE id=?", (exclude_step_id,))
@@ -1634,9 +1639,10 @@ class SocialRepository:
         linhas = self.db.query(
             "SELECT e.id, e.bindings FROM steps e JOIN objectives o ON o.id=e.objective_id"
             " WHERE o.profile_id=? AND e.capability=?"
-            " AND ((e.passou_a_porta=1 AND e.status NOT IN ('failed','cancelled','skipped'))"
+            " AND ((e.passou_a_porta=1 AND e.status IN ('pending','ready','running','verifying','retry_wait',"
+            "'waiting_user','uncertain'))"
             f" OR (e.passou_a_porta=0 AND e.status IN ('running','verifying'){mais_antigas}))"
-            f"{por_app}{sem_a_etapa} ORDER BY e.id LIMIT 200",
+            f"{por_app}{sem_a_etapa} ORDER BY e.id DESC LIMIT 200",
             (profile_id, capability, *((str(minha), str(minha), exclude_step_id) if minha else ()),
              *((app_id,) if app_id else ()), *((exclude_step_id,) if exclude_step_id else ())))
         saida: list[tuple[str, dict[str, object] | None]] = []

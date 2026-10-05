@@ -153,6 +153,25 @@ def test_s1_a_irma_que_passou_e_falhou_nao_conta_mais(tmp_path: Path) -> None:
     assert "31.53" not in policies.check(a, publicar, step_id=sa, pedido=pedido, bindings={"image_id": "img-1"}).reason
 
 
+def test_s2_marcas_antigas_concluidas_nao_tiram_a_irma_em_curso_do_lote(tmp_path: Path) -> None:
+    """S2 da revisão do #350: 201 etapas da irmã já concluídas (`succeeded`) e marcadas, com outras imagens, e 1 em curso
+    marcada com a mesma imagem. Antes, as marcas concluídas entravam sem janela e o lote (`ORDER BY id LIMIT 200`) trazia
+    as mais antigas: a em curso ficava de fora e a mesma imagem passava. Agora a recusa sai."""
+    _repo, policies, db, a, b = _familia(tmp_path)
+    publicar = capability_of(IG, "CREATE_POST")
+    pedido = ContextoDoPedido(raiz="r-a", familia=frozenset({a, b}))
+    for n in range(201):
+        run = f"r-b{n:03d}"
+        sid = _etapa(db, run, "CREATE_POST", {"image_id": f"img-velha-{n}"})
+        db.execute("UPDATE objectives SET profile_id=? WHERE id=?", (b, f"{run}:android-01"))
+        db.execute("UPDATE steps SET status='succeeded', passou_a_porta=1 WHERE id=?", (sid,))
+    sb = _etapa_tomada(db, "r-zz", b, "2026-10-05T01:00:00Z", "android-02")
+    db.execute("UPDATE steps SET passou_a_porta=1 WHERE id=?", (sb,))
+    sa = _etapa_tomada(db, "r-a", a, "2026-10-05T01:00:30Z", "android-01")
+    veredito = policies.check(a, publicar, step_id=sa, pedido=pedido, bindings={"image_id": "img-1"})
+    assert not veredito.allowed and "31.53" in veredito.reason
+
+
 def test_sem_pedido_ou_com_outra_imagem_nada_muda(tmp_path: Path) -> None:
     _repo, policies, db, a, b = _familia(tmp_path)
     _pedido_aberto(db, a, POST_A)
