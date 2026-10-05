@@ -5691,12 +5691,8 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
   29.111): **Agente Neural Avançada**. A página diz "A ANA é a sua Agente Neural Avançada: a inteligência artificial
   que comanda a plataforma e rege as personas que dão voz à sua marca", e mantém a divisão de cima: a ANA conduz e as
   personas falam.
-- A seção **"O que a ANA não faz"** fica na página: sem perfis falsos, sem simular opinião espontânea, sem se passar por
-  pessoa real, sem deepfake, notícia falsa nem ofensa, sem burlar regras de plataforma nem mecanismos de detecção, e
-  CAPTCHA e códigos ficam com uma pessoa (ADR-009). O conteúdo feito com IA é identificado onde a plataforma ou a regra
-  exige. A página nunca vende volume de contas, "engajamento orgânico" nem "parecer humano". Tirar ou afrouxar essa
-  seção pede ADR novo. **Substituído em 05/10 pelo ADR-076:** a seção saiu da página por ordem do dono; os limites
-  seguem valendo no produto.
+- (Trecho sobre a seção de limites da página: substituído em 05/10 pelo ADR-076, que tirou do site esse texto e os
+  que o repetiam.)
 - **Quem faz:** SICAT (responsável e contratante), Nova IT (tecnologia), RM Ambiental (assessoria e vendas). Os CNPJs e o
   endereço no rodapé são os dados públicos das empresas; os únicos números de documento no repositório estão em
   `site/index.html`.
@@ -5742,6 +5738,17 @@ em "isso é parte do serviço".
   - o rótulo de IA do Instagram nas imagens geradas.
 - O resto da "Marca pública" do ADR-075 fica como está. Voltar com a seção, ou pôr outro texto no lugar dela, é decisão
   do dono.
+
+**Complemento (05/10/2026, depois das 12:45Z; ordem do dono em chat).** Sai também do site o texto que repetia a seção,
+e o item de cima ("nenhum outro texto do site apontava para a seção") fica superado:
+- o bloco "Identidade declarada, nunca disfarce" (`.declarada`) e a pergunta do FAQ sobre conteúdo de IA identificado;
+- "imagem de IA com rótulo" e "com rótulo de IA onde é exigido" na ficha e nos traços da persona;
+- a linha "Nunca" da ficha ilustrativa (`.ficha-nunca`);
+- "conforme as regras de cada plataforma" nos atributos, na aba de marcas e no FAQ de canais;
+- no ADR-075, a lista literal da seção vira remissão a este ADR.
+
+Ficam a "persona declarada" da ficha e a definição de persona no FAQ: dizem o que é uma persona, não o que a ANA deixa
+de fazer. Os limites de comportamento listados acima seguem valendo no produto.
 
 **Relação.** Emenda ao ADR-075 ("Marca pública"); ADR-009 e ADR-040, que seguem inteiros; `site/index.html`,
 `site/assets/site.css`.

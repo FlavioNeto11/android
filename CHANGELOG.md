@@ -593,6 +593,18 @@ Leitura do 29.114 pela Ferramentas do Claude.
   - a suíte do frontend inteira deu 1605/1605;
   - no navegador: `not_run` até o deploy.
 
+## 2026-10-05 — 29.110 (complemento): sai do site o texto que repetia a seção de limites (branch fix/29-110-site-sem-mencoes-de-limites)
+
+- Ordem do dono em chat, 05/10, depois das 12:45Z: tirar as demais menções do site a esses limites.
+- `site/index.html`: saem o bloco "Identidade declarada, nunca disfarce", a pergunta do FAQ sobre conteúdo de IA
+  identificado, as menções ao rótulo de IA na ficha e nos traços da persona, a linha "Nunca" da ficha ilustrativa e
+  "conforme as regras de cada plataforma" (atributos, aba de marcas, FAQ de canais). `site/assets/site.css`: saem
+  `.declarada` e `.ficha-nunca`, sem uso.
+- ADR-076 ganha o complemento; no ADR-075 a lista literal da seção vira remissão.
+- Ficam a "persona declarada" e a definição de persona no FAQ. Os limites de comportamento do produto não mudaram.
+- Prova: busca no `site/` sem sobras das frases tiradas nem de classe sem CSS; testes `not_run` (main congelada na
+  suíte 37); página pública no navegador `not_run` até o deploy.
+
 ## 2026-10-05 — 29.110: a seção "O que a ANA não faz" sai do site público (branch fix/portal-sem-o-que-a-ana-nao-faz)
 
 - Ordem do dono em chat, 05/10, na sessão do Portal: "tire o trecho abaixo agora do portal".
