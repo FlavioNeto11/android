@@ -393,7 +393,7 @@ def cobertura_na_arvore(tree: UiTree, ref: str | None) -> Cobertura | None:
 FRACAO_DA_SOBREPOSICAO = FRACAO_QUE_COBRE
 
 #: L2 da leitura do #391: abaixo desta fração da tela, a árvore inteira é uma janela flutuante (o dump de um diálogo
-#: nativo), não a página. A mesma fração que separa a página de um aviso no 31.72 (`dialogos._FRACAO_DA_PAGINA`).
+#: nativo), não a página. A mesma fração de 60 % que o 31.72 usa para a página.
 _FRACAO_DA_JANELA = 0.6
 
 
