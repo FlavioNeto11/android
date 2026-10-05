@@ -1420,7 +1420,10 @@ class StepExecutor:
                                            persona=self.repo.persona_do_objetivo(objective["profile_id"], rt.id),
                                            prova_fluxo=run["prova_fluxo_id"])
                 if rr.row is not None:
-                    rr.replayer = self.recipes.replayer(rr.row, rr.variables)
+                    # 31.87 F2: a receita ensinada digita `{perfil_email}`; os dados da persona do objetivo entram
+                    # só na REPRODUÇÃO (os do objetivo vencem). A destilação na execução segue com `rr.variables`.
+                    rr.replayer = self.recipes.replayer(
+                        rr.row, {**self.repo.variaveis_da_persona(objective["profile_id"]), **rr.variables})
                     if rr.row["status"] == "candidate":
                         rr.mode = "shadow"      # em prova: a IA decide a etapa e a receita só é comparada
             except Exception as exc:  # noqa: BLE001 - receita é otimização: nunca derruba a etapa

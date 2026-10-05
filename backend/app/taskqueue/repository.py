@@ -235,6 +235,10 @@ class Repository:
         """`{perfil_email: …}` e afins do perfil de um aparelho — só o não sigiloso; a senha nunca vira variável."""
         return profile_variables(self._dados, profile_id)
 
+    def variaveis_da_persona(self, profile_id: str | None) -> dict[str, str]:
+        """O mesmo, para o ensino (31.87 F2) e a reprodução da receita: quem lê o perfil é a identidade, nunca a coluna."""
+        return self._variaveis_da_persona(profile_id)
+
     # ------------------------------------------------------------------ conta da persona no app da etapa (24.4)
     def persona_do_objetivo(self, profile_id: str | None, instance_id: str) -> str | None:
         """A persona por quem o item age: a do objetivo; sem ela (objetivo antigo), a ÚNICA vinculada ao aparelho.

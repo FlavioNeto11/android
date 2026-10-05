@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, NamedTuple, get_args
 
 from ..db import Row, dumps
@@ -27,6 +27,7 @@ from ..planning.training import TrainingRequest
 from ..taskqueue.flows import PLACEHOLDER, RESERVED, _norm, ensinado_em_prova  # noqa: PLC2701 - a MESMA normalização da `match_key`
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..util import now_iso
+from . import dado_da_persona
 from .recorder import TrainingError
 from .respostas import acumular, guardadas, sem_as_respondidas, validar_respostas
 
@@ -235,6 +236,34 @@ def _aviso_sem_persona(sess: Sessao) -> list[str]:
     return ["O treinamento não tinha persona no aparelho: a habilidade não vale em aparelho nenhum até ser provada."]
 
 
+#: 31.88 F2: a escolha de escopo do salvar. `todos` (padrão): vale para quem o corpo disser (`profile_ids`/`group_ids`,
+#: vazio = todos) quando a prova acabar a espera do 30.81. `quem_ensinou`: o escopo permanente é a persona do treino.
+ESCOPO_TODOS = "todos"
+ESCOPO_QUEM_ENSINOU = "quem_ensinou"
+ESCOPOS_AO_PROVAR = (ESCOPO_TODOS, ESCOPO_QUEM_ENSINOU)
+
+
+def _escopo_ao_provar(sess: Sessao, escolha: str, profile_ids: list[str],
+                      group_ids: list[str]) -> tuple[list[str], list[str]]:
+    """Os perfis e grupos que o `save` grava, pela escolha `scope_on_proof`. `quem_ensinou` não soma com uma lista
+    explícita (seria dizer duas coisas) e exige persona na sessão (sem ela o escopo viraria "todos" em silêncio)."""
+    if escolha not in ESCOPOS_AO_PROVAR:
+        raise TrainingError("invalid_scope_on_proof", f"scope_on_proof deve ser {' ou '.join(ESCOPOS_AO_PROVAR)}.", 400)
+    if escolha == ESCOPO_TODOS:
+        return profile_ids, group_ids
+    if profile_ids or group_ids:
+        raise TrainingError("scope_ambiguous", "Escolha “só quem ensinou” OU a lista de perfis e grupos, não os dois.", 400)
+    persona = sess.get("profile_id")
+    if not persona:
+        raise TrainingError("no_teacher_persona", "Este treinamento não tinha persona no aparelho: não há “quem ensinou”. "
+                                                  "Escolha os perfis ou deixe o escopo em “todos”.", 409)
+    return [str(persona)], []
+
+
+def _escopo_da_resposta(prep: _Preparo, escolha: str) -> dict[str, object]:
+    return {"on_proof": escolha, "profile_ids": prep.profile_ids, "group_ids": prep.group_ids}
+
+
 @dataclass
 class _Preparo:
     """A proposta já conferida e o plano montado, ainda sem gravar nada: o miolo comum do `save`, da prévia e do
@@ -246,6 +275,9 @@ class _Preparo:
     exemplos: dict[str, str]
     apps: dict[str, dict[str, str]]
     app_id: str | None
+    #: O escopo que o `save` grava (31.88 F2): o que a pessoa escolheu, ou a persona que ensinou (`quem_ensinou`).
+    profile_ids: list[str] = field(default_factory=list)
+    group_ids: list[str] = field(default_factory=list)
 
 
 class _Destilada(NamedTuple):
@@ -311,6 +343,8 @@ class TrainingSkills:
             pass
         proposta["app_id"] = app_id
         proposta.pop("answers", None)
+        # 31.87 F2: o dado da persona que a pessoa digitou vira o marcador, não parâmetro do comando nem literal.
+        proposta, _ = dado_da_persona.na_proposta(proposta, self._persona_demonstrada(sess))
         if respostas:           # sem resposta nenhuma a proposta fica como sempre foi (sem a chave)
             proposta["questions"] = sem_as_respondidas([q for q in proposta.get("questions") or [] if isinstance(q, str)],
                                                        respostas)
@@ -324,7 +358,7 @@ class TrainingSkills:
 
     # ------------------------------------------------------------------ salvar, prévia e refazer (31.83, 31.86)
     def _preparar(self, sess: Sessao, session_id: str, proposal: Proposta | None, profile_ids: list[str],
-                  group_ids: list[str]) -> _Preparo:
+                  group_ids: list[str], scope_on_proof: str = ESCOPO_TODOS) -> _Preparo:
         """Tudo que o `save` confere e monta ANTES da primeira escrita; a prévia chama a mesma função, então os dois
         recusam com os mesmos códigos. Não escreve nada."""
         if sess["status"] == "saved":
@@ -337,6 +371,9 @@ class TrainingSkills:
                 p["answers"] = resp
         if not p or not p.get("steps"):
             raise TrainingError("no_proposal", "Peça a proposta da IA (ou monte as etapas) antes de salvar.", 400)
+        # 31.87 F2: a mesma troca da proposta, para a que a pessoa editou à mão; antes de conferir o comando.
+        persona = self._persona_demonstrada(sess)
+        p, marcadores = dado_da_persona.na_proposta(p, persona)
         if not isinstance(p.get("command_template"), (str, type(None))):
             raise TrainingError("invalid_command", "O comando da habilidade tem de ser um texto.", 400)
         comando = (p.get("command_template") or "").strip()
@@ -345,6 +382,7 @@ class TrainingSkills:
         if re.search(r"\}\s*\{", comando):
             raise TrainingError("ambiguous_command", "Há dois parâmetros colados no comando (ex.: “{a} {b}”): coloque uma "
                                                      "palavra fixa entre eles, senão não dá para separar os valores.", 400)
+        profile_ids, group_ids = _escopo_ao_provar(sess, scope_on_proof, profile_ids, group_ids)
         for pid in profile_ids:
             if self.s.social_repo.profile_row(pid) is None:
                 raise TrainingError("unknown_profile", f"Perfil inexistente: {pid}.", 400)
@@ -393,17 +431,20 @@ class TrainingSkills:
         plano = Plan(summary=(p.get("summary") or sess["intent"])[:200], app_id=app_id, app_package=pacote,
                      parameters={n: "{" + n + "}" for n in exemplos}, steps=passos,
                      planner=PlannerInfo(provider="treinamento", model=f"treinamento:{session_id}", simulated=False))
-        return _Preparo({**p, "app_id": app_id}, avisos, comando, plano, exemplos, apps, app_id)
+        # A destilação troca o valor digitado pelo nome: os parâmetros da pessoa primeiro, a persona no que sobrar.
+        variaveis = {**exemplos, **{k: v for k, v in persona.items() if k not in exemplos}}
+        return _Preparo({**p, "app_id": app_id}, [*avisos, *dado_da_persona.aviso(marcadores)], comando, plano,
+                        variaveis, apps, app_id, profile_ids, group_ids)
 
     async def save(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],
-                   group_ids: list[str]) -> dict[str, object]:
+                   group_ids: list[str], scope_on_proof: str = ESCOPO_TODOS) -> dict[str, object]:
         sess = self.s.training.get(session_id)
-        prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids)
+        prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids, scope_on_proof)
         try:
             flow_id = self.s.scheduler.flows.learn_from_plan(prep.plano, prep.comando, source=f"training:{session_id}")
         except ValueError as exc:
             raise TrainingError("duplicate_command", str(exc), 409) from None
-        self.s.scheduler.flows.set_scope(flow_id, profile_ids=profile_ids, group_ids=group_ids)
+        self.s.scheduler.flows.set_scope(flow_id, profile_ids=prep.profile_ids, group_ids=prep.group_ids)
         relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
                                           prep, session_id, gravar=True)
         self.s.db.execute("UPDATE training_sessions SET status='saved', flow_id=?, proposal=?, updated_at=? WHERE id=?",
@@ -411,15 +452,16 @@ class TrainingSkills:
         self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento",
                         data={"training_session_id": session_id, "flow_id": flow_id})
         return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio,
-                "warnings": [*prep.avisos, *_aviso_sem_persona(sess)], **self._em_prova(flow_id)}
+                "warnings": [*prep.avisos, *_aviso_sem_persona(sess)], "scope": _escopo_da_resposta(prep, scope_on_proof),
+                **self._em_prova(flow_id)}
 
     async def preview(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],
-                      group_ids: list[str]) -> dict[str, object]:
+                      group_ids: list[str], scope_on_proof: str = ESCOPO_TODOS) -> dict[str, object]:
         """O que o `save` faria com esta proposta, SEM escrever (31.86): a mesma conferência (mesmos códigos), a mesma
         destilação e o mesmo relatório por etapa. É para a pessoa ver por que uma etapa ficaria sem receita enquanto
         ainda dá para corrigir a proposta. Nada vai ao banco: nem fluxo, escopo, receita, status ou evento."""
         sess = self.s.training.get(session_id)
-        prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids)
+        prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids, scope_on_proof)
         # A única recusa do `save` que só aparece ao gravar (`learn_from_plan`): o comando repetido. Lida sem escrever.
         chave = _norm(prep.comando)
         if self.s.db.one("SELECT id FROM flows WHERE match_key=?", (chave,)):
@@ -430,7 +472,8 @@ class TrainingSkills:
                                                      "Mude o comando ou desabilite a habilidade.", 409)
         relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
                                           prep, session_id, gravar=False)
-        return {"steps": relatorio, "warnings": [*prep.avisos, *_aviso_sem_persona(sess)]}
+        return {"steps": relatorio, "warnings": [*prep.avisos, *_aviso_sem_persona(sess)],
+                "scope": _escopo_da_resposta(prep, scope_on_proof)}
 
     async def refazer_receitas(self, session_id: str) -> dict[str, object]:
         """Repara uma sessão JÁ salva: destila de novo (com a proposta guardada) e grava a receita das etapas que ainda
@@ -453,6 +496,7 @@ class TrainingSkills:
         por_chave = {s.key: s for s in plano.steps}
         etapas = [st for st in p.get("steps") or [] if isinstance(st, dict) and st.get("key") in por_chave]
         exemplos = {str(x["name"]): str(x.get("example") or "") for x in p.get("parameters") or [] if x.get("name")}
+        exemplos |= {k: v for k, v in self._persona_demonstrada(sess).items() if k not in exemplos}     # 31.87 F2
         apps = self._apps()
         prep = _Preparo({**p, "steps": etapas}, [], "", plano, exemplos, apps, plano.app_id)
         relatorio = await self._relatorio(
@@ -460,6 +504,10 @@ class TrainingSkills:
             gravar=True, so_chave_virgem=True)
         return {"session": self.s.training.get(session_id), "flow_id": sess["flow_id"], "steps": relatorio,
                 "created": sum(1 for linha in relatorio if linha["recipe"]), **self._em_prova(sess["flow_id"])}
+
+    def _persona_demonstrada(self, sess: Sessao) -> dict[str, str]:
+        """31.87 F2: os dados (não sigilosos) da persona do treino que a pessoa digitou na demonstração."""
+        return dado_da_persona.demonstrados(self.s.repo.variaveis_da_persona(sess.get("profile_id")), sess["inputs"])
 
     def _em_prova(self, flow_id: str) -> dict[str, object]:
         """30.81: `ensinado_em_prova` `{persona, sessao}` no topo da resposta enquanto a habilidade espera a prova (só
