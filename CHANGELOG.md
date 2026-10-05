@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.69: o que o digest do aprendizado conta durante e depois da espera pela pessoa (branch feat/30-69-digest-na-saida-da-espera, sobre o 29.93)
+
+- Com o 29.93, a execução que espera a pessoa fica em `awaiting_person` e só assenta na saída. O gancho da saída é do
+  #382. Aqui fica o que o digest grava.
+- `licoes_sql._ETAPA_FINAL` sem `waiting_user`: a exposição da etapa que espera não congela. A curadoria
+  (`execucoes_a_preencher`) escolhe as execuções pelo `finished_at`, que a espera grava, e preenchia o desfecho
+  `waiting_user`, que nunca mais mudava.
+- Relatório de condução: a etapa em espera sem `driven_by` conta como `esperando_pessoa`, fora da porcentagem por
+  receita (N1 da leitura do #374).
+- Catraca da premissa do 30.70 (D1-N2): `cancel_open_steps` e `revise_plan` não tocam etapa `failed` nem `uncertain`.
+- Prova: `simulated` (`backend/tests/test_digest_na_saida_da_espera.py`). `not_run`: aparelho real.
+
 ## 2026-10-05 — 29.93: a execução que espera você não aparece como encerrada (branch fix/29-93-aguardando-pessoa)
 
 - `RunStatus.awaiting_person` (não terminal): o `recompute_run` leva a ele a execução sem trabalho automático com algum
