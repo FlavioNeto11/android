@@ -576,8 +576,10 @@ avisos depois da faxina"), e a trava cai no TTL.
       Trello.
     - Corpo no molde: o que chegou, "Crítico: …" e "Espera você: …" com o lugar na zona da Cloudflare. O
       `sem_conferir` é a exceção (B3, decisão da orquestradora): sem conferir não é defeito visto, então não há
-      "Crítico"; o texto diz há quantas horas a conferência não completa, que pode ser o caminho do central até a
+      "Crítico"; o texto diz há quantas horas a conferência não completa (com o código do vigia, `borda-502`,
+      `tempo-esgotado`, `api-<status>`, pelo mesmo filtro do achado), que pode ser o caminho do central até a
       internet e não o site, e que não espera o dono. O nível 2 fica.
+    - Achado recusado pelo filtro nunca cala o aviso: ele sai sem o item (pergunta da orquestradora, 05/10 06:51Z).
     - A resposta do dono vai à orquestradora como recado (repasse `borda`) e nunca vira pedido.
 - **Hoje:** `modules/avisos/domain/portal.py` (montagem e higiene),
   `infrastructure/servico.py::avisar_contato_do_portal`, `avisar_resumo_do_portal` e `avisar_borda_do_portal`, e o apagamento do corpo em `infrastructure/fila_sql.py`. A rota,

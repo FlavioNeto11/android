@@ -404,8 +404,10 @@ def aviso_da_borda(codigo: object, onde: object, agora: datetime, *, achado: obj
         # B3 da leitura do #381 (decisão da orquestradora): sem conferir não é defeito visto. Nada de "Crítico"; o
         # texto diz que a conferência não completou, há quanto tempo, que pode ser o caminho e não o site, e que não
         # espera o dono. O nível 2 fica.
-        corpo = "\n".join([f"Há {h} h o vigia não completa a conferência do site pelo nome público (tempo esgotado ou "
-                           "erro no caminho).",
+        # O código do vigia (`borda-502`, `tempo-esgotado`, `api-<status>`) passa pelo mesmo filtro do achado
+        # (combinado com o Portal, 05/10); sem ele, a frase genérica.
+        causa = _achado(achado, " (código: ", ")") or " (tempo esgotado ou erro no caminho)"
+        corpo = "\n".join([f"Há {h} h o vigia não completa a conferência do site pelo nome público{causa}.",
                            "Pode ser o caminho do central até a internet, e não o site.",
                            "Não espera você: a conferência segue sozinha, e um defeito visto vem em aviso próprio."])
         return Aviso(chave=chave_da_borda(codigo, agora), tipo=TIPO_DA_BORDA_SEM_CONFERIR,

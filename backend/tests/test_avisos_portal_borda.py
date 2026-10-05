@@ -149,3 +149,22 @@ def test_agora_sem_fuso_e_recusado() -> None:
     assert p.aviso_da_borda(p.SEM_CONFERIR, "raiz", ingenuo, horas_sem_conferir=3) is None
     with pytest.raises(ValueError, match="sem fuso"):
         p.chave_da_borda("cookie", ingenuo)
+
+
+@pytest.mark.parametrize("achado", ["10.0.0.5/beacon.js", "10.0.0.5.nip.io/x", "a b", None])
+def test_achado_recusado_nao_cala_o_aviso(tmp_path: Path, achado: object) -> None:
+    """Pergunta da orquestradora (05/10 06:51Z): o achado que o filtro recusa (o host do script é um IP) some do texto,
+    e o aviso de script injetado SAI assim mesmo; um `campo_invalido` aqui calaria um defeito visto."""
+    servico, db, _ = _backend(_cfg(tmp_path), "a", Relogio(), canal=CanalFalso())
+    assert servico.avisar_borda_do_portal("script_injetado", "painel", AGORA_UTC, achado=achado) == p.ContatoAvisado(
+        True, None)
+    assert len(_linhas(db)) == 1
+
+
+@pytest.mark.parametrize(("achado", "causa"), [
+    ("borda-502", " (código: borda-502)."), ("tempo-esgotado", " (código: tempo-esgotado)."),
+    ("api-500", " (código: api-500)."), (None, " (tempo esgotado ou erro no caminho)."),
+    ("10.0.0.5", " (tempo esgotado ou erro no caminho).")])
+def test_sem_conferir_diz_o_codigo_do_vigia_pelo_filtro(achado: object, causa: str) -> None:
+    a = p.aviso_da_borda(p.SEM_CONFERIR, "raiz", AGORA_UTC, achado=achado, horas_sem_conferir=2)
+    assert a is not None and a.corpo.split("\n")[0].endswith(causa)
