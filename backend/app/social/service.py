@@ -1454,10 +1454,14 @@ class SocialService:
         contagens: dict[str, int] = {}
         # Onde a conta estava logada, ANTES de a retirada mascarar o @ do marcador e apagar sessões e vínculos (29.27).
         pedido = self._pedido_de_limpeza(profile_id, conta, ancora)
-        # Sessões que estavam na fila "Aguardando intervenção": a conta sai, e o item sai da fila junto.
-        na_fila = [(str(s["instance_id"]), str(s["status"])) for s in self.repo.db.query(
-            "SELECT instance_id, status FROM account_sessions WHERE account_id=?", (account_id,))
-            if str(s["status"]) in PRECISA_DE_PESSOA]
+        # Sessões que estavam na fila "Aguardando intervenção": a conta sai, e o item sai da fila junto. O `unknown`
+        # no teto (29.92) também abriu item, e a conta é lida ANTES de a retirada apagar o vínculo que dá o teto 1.
+        na_fila: list[tuple[str, str, bool]] = []
+        for linha in self.repo.db.query("SELECT instance_id, status, unknown_streak FROM account_sessions"
+                                    " WHERE account_id=?", (account_id,)):
+            no_teto = self.repo.unknown_no_teto(linha, str(linha["instance_id"]))
+            if str(linha["status"]) in PRECISA_DE_PESSOA or no_teto:
+                na_fila.append((str(linha["instance_id"]), str(linha["status"]), no_teto))
         with self.repo.db.tx():
             for limpeza in list(self.limpezas_ao_retirar):
                 for nome, n in (limpeza(self.repo.db, profile_id=profile_id, account_id=account_id, handle=handle,
@@ -1486,10 +1490,11 @@ class SocialService:
                       data={"profile_id": profile_id, "account_id": account_id, "app_id": app_id, "ancora": ancora,
                             "origem": origem, "autor": autor, "evidencia": redact(texto),
                             "limpezas": contagens, "status_da_persona": self._status_do(profile_id)})
-        for iid, anterior in na_fila:
+        for iid, anterior, anterior_no_teto in na_fila:
             emit_needs_person_change(self.bus, profile_id=profile_id, instance_id=iid,
                                      status=SessionStatus.unknown.value, anterior_status=anterior,
-                                     detail="conta retirada por bloqueio", account_id=account_id)
+                                     detail="conta retirada por bloqueio", account_id=account_id,
+                                     anterior_no_teto=anterior_no_teto)
         limpeza = self._agendar_limpeza(pedido)
         if self.ao_retirar_conta is not None:
             try:

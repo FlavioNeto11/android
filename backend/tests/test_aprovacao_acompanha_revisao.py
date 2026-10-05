@@ -306,3 +306,24 @@ def test_o_mesmo_texto_para_a_mesma_pessoa_em_outro_post_pede_de_novo(tmp_path: 
     assert store.objeto_da_etapa(v2, None) is None
     assert store.acompanhar_revisao(v2, profile_id=None, acao=None, target="@ana", content="bom dia",
                                     disparou=lambda _etapa: False) is None
+
+
+@pytest.mark.parametrize(("antes", "depois"), [
+    ({"motivo_da_recusa": "recusa antiga"}, None),
+    ({"rationale": "elogio", "motivo_da_recusa": "recusa antiga"}, {"rationale": "elogio"}),
+    ({"rationale": "elogio"}, {"rationale": "elogio"}),
+])
+def test_a_etapa_replanejada_nao_herda_o_motivo_de_uma_recusa_passada(
+        tmp_path: Path, antes: dict[str, str], depois: dict[str, str] | None) -> None:
+    """31.65, M3 da leitura do #364: o rascunho da versão anterior acompanha a etapa revisada, mas o motivo de uma recusa
+    passada não. Numa etapa nova ele enganaria quem lê o detalhe; o resto do rascunho segue igual."""
+    from types import SimpleNamespace
+
+    from app.taskqueue.scheduler import Scheduler
+
+    db, _store = _banco(tmp_path)
+    velha, nova = _etapa(db, 1, "comentar", "Que foto linda!"), _etapa(db, 2, "comentar", "Que foto linda!")
+    db.execute("UPDATE steps SET draft_meta=? WHERE id=?", (json.dumps(antes), velha))
+    Scheduler.herdar_textos(SimpleNamespace(repo=SimpleNamespace(db=db)), "run-u:android-02", 2)  # type: ignore[arg-type]
+    herdado = db.scalar("SELECT draft_meta FROM steps WHERE id=?", (nova,))
+    assert (loads(herdado, None) if herdado else None) == depois

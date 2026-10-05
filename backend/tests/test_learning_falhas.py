@@ -87,7 +87,11 @@ TEXTOS: list[tuple[str, FailureKind]] = [
     ("O toque foi tentado no controle de outra publicação.", F.EFEITO_ALVO_ERRADO),
     ("Pré-condições do efeito externo não foram atendidas.", F.EFEITO_GUARDA_NAO_ATENDIDA),
     ("Limite de 40 ações por etapa atingido sem concluir.", F.CICLO_SEM_PROGRESSO),
-    ('A folha "Sharing posts" não fechou com um toque fora dela; nada foi tocado nela.', F.UI_OCUPADA),
+    ('A folha "Sharing posts" não fechou com um toque fora dela; nada foi tocado nela.', F.AVISO_DO_APP),
+    ("A tela mudou entre a conferência e o toque de efeito: o alvo do efeito não está mais no mesmo lugar; nada foi "
+     "tocado.", F.UI_OCUPADA),
+    ("Um aviso cobre o botão de efeito e não é declarado no conhecimento do app: apareceu por cima do alvo (x); nada "
+     "foi tocado.", F.AVISO_DO_APP),
     ("A coleta não encontrou nenhum item na lista.", F.COLETA_VAZIA),
     ("A lista não chegou ao fim dentro do limite de páginas da coleta.", F.COLETA_INCOMPLETA),
     ("A lista tem 80 itens; o limite é 50.", F.COLETA_INCOMPLETA),
@@ -219,7 +223,8 @@ def test_todo_tipo_tem_camada_e_toda_camada_tem_onde_alterar() -> None:
 
 def test_nunca_vira_licao_autenticacao_ia_e_infraestrutura() -> None:
     for tipo in (F.AUTENTICACAO, F.CONTA_ERRADA, F.IA_INDISPONIVEL, F.IA_RECUSA, F.IA_SALDO, F.IA_ORCAMENTO,
-                 F.SESSAO_DE_AUTOMACAO, F.APP_ANR, F.UI_OCUPADA, F.APARELHO_TRAVADO, F.INTERROMPIDA, F.OUTRO):
+                 F.SESSAO_DE_AUTOMACAO, F.APP_ANR, F.UI_OCUPADA, F.APARELHO_TRAVADO, F.INTERROMPIDA, F.OUTRO,
+                 F.AVISO_DO_APP):
         assert tipo in NUNCA_VIRA_LICAO
     for tipo in (F.ALVO_AUSENTE, F.CICLO_SEM_PROGRESSO, F.EFEITO_ALVO_ERRADO, F.POS_CONDICAO_NAO_COMPROVADA,
                  F.DEFEITO_DO_PLANO):

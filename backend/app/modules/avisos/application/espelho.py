@@ -18,7 +18,7 @@ from typing import Protocol
 
 from app.contracts.identidade import NOME_DA_IA
 from app.modules.avisos.application.entrada import sufixo
-from app.modules.avisos.domain.mensagem import ROTULOS, chave_do_fato
+from app.modules.avisos.domain.mensagem import ID_DE_EXECUCAO, ROTULOS, chave_do_fato
 
 #: As famílias que o reconciliador mantém e ARQUIVA quando o fato some. `deploy` e `custo` ficam de fora: são histórico.
 FAMILIAS_ESPELHADAS = ("approval", "run", "pedido", "livro")
@@ -119,7 +119,7 @@ def _seguro(valor: str) -> str:
 #: - execução: `r-<AAAAMMDDhhmmss>-<6 hex>`;
 #: - pedido: `ped_` + 22 caracteres base64 url-safe (`pedidos/domain/previa.py`);
 #: - item do Livro: `receita:<número>`, `fluxo:<hex de 8+>` ou `fluxo:f<número>`.
-_ID_DE_EXECUCAO = re.compile(r"r-\d{14}-[0-9a-f]{6}")
+_ID_DE_EXECUCAO = ID_DE_EXECUCAO
 _ID_DE_PEDIDO = re.compile(r"ped_[A-Za-z0-9_-]{22}")
 _ID_DE_ITEM = re.compile(r"receita:\d+|fluxo:(?:[0-9a-f]{8,}|f\d+)")
 

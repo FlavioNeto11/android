@@ -67,6 +67,7 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "approval.pending": PRECISA_DE_VOCE,
     "run.needs_input": PRECISA_DE_VOCE,
     "session.needs_person": PRECISA_DE_VOCE,
+    "objective.waiting_user": PRECISA_DE_VOCE,     # 28.40: o objetivo parado esperando a pessoa, de qualquer origem
     "pedido.aprovacao_pendente": PRECISA_DE_VOCE,
     "pedido.pergunta": PRECISA_DE_VOCE,
     "pedido.ocorrencia_incerta": PRECISA_DE_VOCE,
@@ -110,6 +111,7 @@ ROTULOS: dict[str, str] = {
     "pendencia.vence_em": "Uma pendência vence em breve",
     "run.needs_input": "Uma execução parou pedindo informação",
     "session.needs_person": "Uma conta pede intervenção humana",
+    "objective.waiting_user": "Um objetivo parou esperando você",
     "pedido.pausa_automatica": "Um pedido foi pausado automaticamente",
     "pedido.orcamento_80": "Um pedido usou 80% do orçamento",
     "pedido.orcamento_esgotado": "Um pedido esgotou o orçamento",
@@ -135,6 +137,34 @@ NADA_A_FAZER = "Nada a fazer."
 SITUACAO_DA_CONTA: dict[str, str] = {
     "auth_challenge": "a conta pediu uma verificação (desafio)",
     "wrong_account": "o aparelho está numa conta diferente da esperada",
+    # 29.92 (texto revisado pela Aprendizado): a tela que o sistema não reconhece num aparelho com conta real.
+    "unknown": "tela de app não reconhecida; a automação parou sem tocar nela",
+}
+#: As linhas de cada situação da conta (28.40). Fora do mapa, as de sempre. O "Devolver à IA" relê a sessão no `unknown`
+#: (`_SESSAO_PARA_REOBSERVAR`, `state.py`) em modo só observação: nunca entra com a senha.
+LINHAS_DA_CONTA: dict[str, list[str]] = {
+    "unknown": ["Nada foi tentado: nem voltar, nem entrar com a senha.",
+                "A conta é real; a tela pode ser um aviso ou uma verificação.",
+                "Espera você: no painel, use Assumir controle, resolva a tela e toque em Devolver à IA; a automação relê "
+                "a sessão e segue."],
+}
+LINHAS_DA_CONTA_PADRAO = ["Nada é tentado na tela até alguém resolver.", "Espera você: resolva no aparelho pelo painel."]
+#: 28.40: o gesto do objetivo parado. Ele NÃO está na caixa de Pendências (ADR-062, D1: o `waiting_user` fica em
+#: Execuções); os botões do item parado são os de `frontend/src/features/runs/InstancesTab.tsx`.
+GESTO_DO_OBJETIVO = ("Espera você: abra a execução no painel e, no item parado, escolha Assumir controle, Tentar novamente "
+                     "ou Abandonar.")
+#: O mesmo gesto no lembrete do 31.50, que tem prazo (revisão do #372, L1).
+GESTO_DO_OBJETIVO_ANTES = GESTO_DO_OBJETIVO.replace("Espera você: ", "Espera você: antes disso, ", 1)
+#: O que parou o objetivo, pelo `failure_kind` do `objective.updated` (29.90) ou, sem ele, pelo `blocked_kind`. Texto fixo:
+#: o `status_detail` e o `needs` nunca saem (podem trazer tela, conta ou texto do comando). Fora do mapa (o `ui_ocupada`
+#: do 29.87, nulo antes da classificação), a mensagem fica sem a linha do motivo.
+MOTIVO_DA_PARADA: dict[str, str] = {
+    "aviso_do_app": "O app mostrou um aviso que pede uma pessoa.",
+    "autenticacao": "A conta pediu uma verificação ou um novo login.",
+    "conta_errada": "O aparelho está numa conta diferente da esperada.",
+    "falta_informacao": "Falta uma informação para a etapa seguir.",
+    "ai": "A IA ficou indisponível para esta etapa (chave, saldo ou recusa).",
+    "policy": "A política do perfil barrou a etapa.",
 }
 #: O motivo do encerramento (`pedidos/domain/estados.MOTIVOS_DE_ENCERRAMENTO`) dito em português.
 MOTIVO_DO_ENCERRAMENTO: dict[str, str] = {
@@ -191,6 +221,24 @@ def link_da_caixa(url_painel: str | None) -> str | None:
     if not base.lower().startswith(("http://", "https://")):
         return None
     return base.rstrip("/") + "/" + CAMINHO_DA_CAIXA
+
+
+#: 28.40 (orquestradora, 05/10 04:24Z): os links que não são a caixa, pelas rotas do painel (`frontend/src/lib/rotas.ts`):
+#: a execução (`#/execucoes/<id>`) e o Foco do aparelho (`#/painel?foco=<id>`, parâmetro global). O id só entra se casar
+#: INTEIRO com o formato; senão o link abre só a tela.
+ID_DE_EXECUCAO = re.compile(r"r-\d{14}-[0-9a-f]{6}")
+ID_DE_APARELHO = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,62}")
+
+
+def link_da_tela(url_painel: str | None, caminho: str) -> str | None:
+    """`<base>/<caminho>` com a mesma regra da `link_da_caixa` (só `http(s)://`)."""
+    caixa = link_da_caixa(url_painel)
+    return caixa.removesuffix(CAMINHO_DA_CAIXA) + caminho if caixa else None
+
+
+def _id_valido(formato: re.Pattern[str], valor: object) -> str | None:
+    texto = _texto(valor)
+    return texto if texto and formato.fullmatch(texto) else None
 
 
 def _texto(valor: object) -> str | None:
@@ -390,9 +438,39 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
         tipo, chave = "session.needs_person", chave_do_fato("session", str(evento_id))
         d = dados or {}
         aparelho = _texto(d.get("instance_id"))
-        situacao = SITUACAO_DA_CONTA.get(_texto(d.get("status")) or "", "uma conta pede intervenção humana")
+        status = _texto(d.get("status")) or ""
+        situacao = SITUACAO_DA_CONTA.get(status, "uma conta pede intervenção humana")
         assunto = f"🔐 {aparelho}: {situacao}" if aparelho else f"🔐 {situacao[0].upper()}{situacao[1:]}"
-        linhas = ["Nada é tentado na tela até alguém resolver.", "Espera você: resolva no aparelho pelo painel."]
+        linhas = list(LINHAS_DA_CONTA.get(status, LINHAS_DA_CONTA_PADRAO))
+        if status == "unknown":
+            # O link abre o Foco do aparelho, onde fica o "Assumir controle" que a linha 3 pede (a tela não reconhecida
+            # só entra em Pendências com o 29.96, e lá seria um clique a mais). As outras situações seguem com a caixa.
+            foco = _id_valido(ID_DE_APARELHO, aparelho)
+            link = link_da_tela(url_painel, f"#/painel?foco={foco}" if foco else "#/painel")
+    elif kind == "objective.updated":
+        # 28.40: o objetivo que ENTRA em `waiting_user` pedindo a pessoa, de qualquer origem (a folha de tela não
+        # reconhecida do 29.87, a falta de informação, a política, a IA indisponível, o pré-voo). A aprovação fica de
+        # fora: ela já sai como `approval.pending`. O `finished_at` é a entrada na espera (`set_objective`), e a
+        # reemissão sem mudança de estado (`emit_objective`) repete o mesmo: uma espera, uma mensagem; o objetivo
+        # retomado que volta a esperar é outra. `waiting_user` → `waiting_user` está fora da tabela de transições.
+        o = _filho(dados, "objective")
+        ident, desde = _texto(o.get("id")), _texto(o.get("finished_at"))
+        if o.get("status") != "waiting_user" or o.get("blocked_kind") == "approval" or ident is None or desde is None:
+            return None
+        tipo, chave = "objective.waiting_user", chave_do_fato("objective", ident, desde)
+        d = dados or {}
+        aparelho = _texto(o.get("instance_id"))
+        # Como no lembrete do 31.50: só o NOME da ação no catálogo (o serviço o põe em `acao_nome`) ou a chave dela;
+        # nunca o título da etapa nem o comando.
+        acao = _texto(d.get("acao"))
+        nome_da_acao = texto_seguro(_texto(d.get("acao_nome")), nomes, redigir) if redigir is not None else None
+        etapa = nome_da_acao or (acao if acao and _CHAVE_DE_CATALOGO.match(acao) else None)
+        motivo = MOTIVO_DA_PARADA.get(_texto(d.get("failure_kind")) or _texto(o.get("blocked_kind")) or "")
+        assunto = f"✋ {f'O objetivo no {aparelho}' if aparelho else 'Um objetivo'} parou esperando você"
+        linhas = [x for x in (f"Etapa que espera: {etapa}." if etapa else None, motivo, GESTO_DO_OBJETIVO) if x]
+        # A própria execução: o objetivo parado não está na caixa de Pendências. O id não aparece no texto.
+        run = _id_valido(ID_DE_EXECUCAO, o.get("run_id"))
+        link = link_da_tela(url_painel, f"#/execucoes/{run}" if run else "#/execucoes")
     elif kind == "pedido.aviso":
         aviso = _filho(dados, "aviso")
         ident = _texto(aviso.get("id")) or (f"evento-{evento_id}" if evento_id else None)
@@ -433,7 +511,13 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
             f"Etapa que espera: {etapa}." if etapa else None,
             f"Se vencer: {acontece}.",
             "Espera você: decida na caixa de Pendências antes disso." if o_que == "aprovacao" else
+            GESTO_DO_OBJETIVO_ANTES if o_que == "objetivo" else
             "Espera você: responda na caixa de Pendências antes disso.") if x]
+        if o_que == "objetivo":
+            # O objetivo parado não está na caixa de Pendências (ADR-062, D1): o lembrete leva à própria execução, como o
+            # aviso de entrada na espera (revisão do #372, L1). A aprovação e a pergunta da execução seguem com a caixa.
+            run = _id_valido(ID_DE_EXECUCAO, d.get("run_id"))
+            link = link_da_tela(url_painel, f"#/execucoes/{run}" if run else "#/execucoes")
     elif kind == "learning.needs_person":
         # Só a ENTRADA na espera é notícia: a saída (`aguardando` falso) não manda nada, e uma saída sem a entrada
         # correspondente (reinício do processo do Livro) é no-op. `desde` é a hora da transição e se repete na
@@ -464,6 +548,7 @@ ROTULOS_AGRUPADOS: dict[str, str] = {
     "approval.pending": "{n} aprovações aguardando a sua decisão",
     "run.needs_input": "{n} execuções pararam pedindo informação",
     "session.needs_person": "{n} contas pedem intervenção humana",
+    "objective.waiting_user": "{n} objetivos pararam esperando você",
     "learning.needs_person": "{n} conhecimentos aprendidos esperam a sua revisão",
     "pendencia.vence_em": "{n} pendências vencem nas próximas 2 h",
 }
@@ -493,12 +578,34 @@ def _itens(titulos: Sequence[str], maximo: int) -> list[str]:
     return linhas
 
 
-def corpo_agrupado(titulos: Sequence[str]) -> str:
-    """Uma linha por item (o assunto de cada aviso, que já passou pelos filtros), até `ITENS_NO_AGRUPADO`, e o gesto."""
+#: O gesto e a tela do aviso AGRUPADO, por tipo (revisão do #372, G1). O padrão manda à caixa de Pendências; o objetivo
+#: parado não está lá (ADR-062, D1), então a rajada dele leva a Execuções, sem o id de nenhuma.
+GESTO_AGRUPADO_PADRAO = "Espera você: abra a caixa de Pendências do painel para responder a cada um."
+GESTO_AGRUPADO: dict[str, str] = {
+    "objective.waiting_user": ("Espera você: abra Execuções no painel e, em cada item parado, escolha Assumir controle, "
+                               "Tentar novamente ou Abandonar."),
+}
+CAMINHO_AGRUPADO: dict[str, str] = {"objective.waiting_user": "#/execucoes"}
+
+
+def corpo_agrupado(titulos: Sequence[str], tipo: str | None = None) -> str:
+    """Uma linha por item (o assunto de cada aviso, que já passou pelos filtros), até `ITENS_NO_AGRUPADO`, e o gesto
+    do tipo."""
+    gesto = GESTO_AGRUPADO.get(tipo or "")
     if not titulos:
-        return CORPO_AGRUPADO
-    return "\n".join([*_itens(titulos, ITENS_NO_AGRUPADO),
-                      "Espera você: abra a caixa de Pendências do painel para responder a cada um."])
+        return f"Chegaram em sequência. {gesto}" if gesto else CORPO_AGRUPADO
+    return "\n".join([*_itens(titulos, ITENS_NO_AGRUPADO), gesto or GESTO_AGRUPADO_PADRAO])
+
+
+def link_agrupado(tipo: str, links: Sequence[str | None]) -> str | None:
+    """O link do agrupado: o primeiro que houver no grupo (todos são da caixa, ou nenhum, no aviso de pedido que não pede
+    pessoa) ou, no tipo com tela própria (`CAMINHO_AGRUPADO`), a tela dele na mesma base, sem o id de um item só."""
+    primeiro = next((x for x in links if x), None)
+    caminho = CAMINHO_AGRUPADO.get(tipo)
+    if primeiro is None or caminho is None:
+        return primeiro
+    base, separador, _ = primeiro.partition("#/")
+    return base + caminho if separador else primeiro
 
 
 def titulo_da_rotina(n: int) -> str:

@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from app.automation.hierarchy import parse_hierarchy
 from app.models import PlanStep, Postcondition
 from app.planning.capabilities import capability_of
 from app.planning.provider import Decision, Usage
@@ -175,3 +176,31 @@ async def test_valor_so_contido_em_outro_nome_na_arvore_relida_nao_fecha(harness
     assert final.status == "completed"
     assert visto["decisoes"] == 8
 
+
+# ----------------------------------------------------------------------------- 31.69: valor curto (L3 da leitura)
+def _tela(*nos: tuple[str, str]) -> Any:
+    """Uma árvore com um nó por `(resource_id, texto)`, um abaixo do outro."""
+    xml = "".join(f'<node index="{i}" text="{t}" resource-id="{r}" class="android.widget.TextView" package="p"'
+                  f' content-desc="" clickable="false" enabled="true" bounds="[0,{i * 50}][300,{i * 50 + 40}]" />'
+                  for i, (r, t) in enumerate(nos))
+    return parse_hierarchy(f'<hierarchy rotation="0">{xml}</hierarchy>')
+
+
+def test_l3_valor_curto_sem_id_nao_fecha_mesmo_igual() -> None:
+    """Sem `resource_id`, um "1" de OUTRO elemento casaria pela igualdade: o valor curto volta ao ator."""
+    tela = _tela(("", "1"), ("", "Caixa de entrada"))
+    assert not modulo_executor.valor_segue_na_tela(tela, "1", "", True)
+    assert modulo_executor.valor_segue_na_tela(tela, "Caixa de entrada", "", True)     # o longo segue fechando
+
+
+def test_l3_valor_curto_com_id_repetido_nao_fecha() -> None:
+    """Linhas de lista com o mesmo id: outra linha com o mesmo valor curto casaria."""
+    tela = _tela(("p:id/badge", "1"), ("p:id/badge", "1"), ("p:id/titulo", "QA-0011"))
+    assert not modulo_executor.valor_segue_na_tela(tela, "1", "p:id/badge", True)
+    assert modulo_executor.valor_segue_na_tela(tela, "QA-0011", "p:id/titulo", True)
+
+
+def test_l3_valor_curto_com_id_unico_fecha() -> None:
+    tela = _tela(("p:id/badge", "1"), ("", "1"))
+    assert modulo_executor.valor_segue_na_tela(tela, "1", "p:id/badge", True)
+    assert modulo_executor.valor_segue_na_tela(tela, "Sim", "p:id/badge", False) is False   # outro valor não casa

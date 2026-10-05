@@ -636,8 +636,9 @@ async def test_porta_nao_tenta_com_credencial_recusada(harness: Any) -> None:
 
 async def test_porta_para_de_insistir_apos_teto_de_reobservacoes_unknown(harness: Any) -> None:
     """Achado #104: sem teto, uma tela não reconhecida (`unknown`) reabria o app e reobservava a cada tick, para
-    sempre. Depois de `session_unknown_retry_cap` gravações seguidas em `unknown`, a porta bloqueia como se
-    dependesse de pessoa, em vez de continuar despachando trabalho automático."""
+    sempre. A porta bloqueia como se dependesse de pessoa, em vez de continuar despachando trabalho automático.
+    29.92: a porta só existe com vínculo ativo, e aparelho com vínculo (conta real) tem teto 1 — a primeira gravação
+    em `unknown` já para; o `session_unknown_retry_cap` (3) segue só como limite do contador."""
     state = harness.state
     state.appium.log_masking_active = True
     pid = state.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA,
@@ -645,19 +646,20 @@ async def test_porta_para_de_insistir_apos_teto_de_reobservacoes_unknown(harness
     # `create_profile` grava um `unknown` inicial ("sessão ainda não verificada"), mas sem `reobserved`: não é
     # uma tela classificada, então não conta para o teto.
     assert state.social_repo.session_row(pid)["unknown_streak"] == 0
-    teto = state.settings.get().session_unknown_retry_cap
-    for i in range(teto - 1):
-        state.social_repo.set_session(pid, status=SessionStatus.unknown, instance_id="android-01",
-                                      detail=f"tela não reconhecida ({i})", reobserved=True)
-        motivo, trabalho = state._session_gate(state.devices.get("android-01"))
-        assert trabalho is not None, f"ainda deveria tentar sozinho na tentativa {i}"
-
+    assert state.social_repo.teto_de_unknown("android-01") == 1          # vínculo ativo: conta real
+    motivo, trabalho = state._session_gate(state.devices.get("android-01"))
+    assert trabalho is not None                                           # antes de qualquer `unknown` lido, tenta
     state.social_repo.set_session(pid, status=SessionStatus.unknown, instance_id="android-01",
-                                  detail="tela não reconhecida (última)", reobserved=True)
-    assert state.social_repo.session_row(pid)["unknown_streak"] == teto
+                                  detail="tela não reconhecida", reobserved=True)
+    assert state.social_repo.session_row(pid)["unknown_streak"] == 1
     motivo, trabalho = state._session_gate(state.devices.get("android-01"))
     assert trabalho is None
     assert "tentativas seguidas" in motivo
+    # o contador segue limitado pelo teto global (não passa de 3), como antes
+    for i in range(5):
+        state.social_repo.set_session(pid, status=SessionStatus.unknown, instance_id="android-01",
+                                      detail=f"tela não reconhecida ({i})", reobserved=True)
+    assert state.social_repo.session_row(pid)["unknown_streak"] == state.settings.get().session_unknown_retry_cap
 
     # um status QUALQUER diferente de unknown zera a sequência
     state.social_repo.set_session(pid, status=SessionStatus.auth_required, instance_id="android-01",

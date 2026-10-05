@@ -49,12 +49,29 @@ def test_o_lembrete_diz_o_que_vence_onde_quando_e_o_que_acontece() -> None:
 
 
 @pytest.mark.parametrize(("o_que", "sujeito", "gesto"), [
-    ("objetivo", "O objetivo parado", "responda"), ("execucao", "A pergunta da execução", "responda"),
-    ("outra-coisa", "Uma pendência", "responda")])
+    ("execucao", "A pergunta da execução", "responda"), ("outra-coisa", "Uma pendência", "responda")])
 def test_cada_tipo_de_item_tem_o_seu_sujeito(o_que: str, sujeito: str, gesto: str) -> None:
-    a = aviso_de_evento("pendencia.vence_em", _dados(o_que=o_que), 7)
+    a = aviso_de_evento("pendencia.vence_em", _dados(o_que=o_que), 7, PAINEL)
     assert a is not None and a.titulo.startswith(f"ANA: ⏳ {sujeito}")
     assert a.corpo.endswith(f"Espera você: {gesto} na caixa de Pendências antes disso.")
+    assert a.link == f"{PAINEL}/#/pendencias"
+
+
+def test_o_lembrete_do_objetivo_parado_leva_a_execucao_e_nao_a_caixa() -> None:
+    """Revisão do #372, L1: o objetivo parado não está na caixa de Pendências (ADR-062, D1). O lembrete leva à própria
+    execução, com o gesto do item parado; a aprovação segue com a caixa."""
+    run = "r-20261005034000-abc123"
+    a = aviso_de_evento("pendencia.vence_em", _dados(o_que="objetivo", run_id=run), 7, PAINEL)
+    assert a is not None and a.titulo.startswith("ANA: ⏳ O objetivo parado")
+    assert a.corpo.endswith("Espera você: antes disso, abra a execução no painel e, no item parado, escolha Assumir "
+                            "controle, Tentar novamente ou Abandonar.")
+    assert "Pendências" not in a.corpo and run not in a.titulo + a.corpo
+    assert a.link == f"{PAINEL}/#/execucoes/{run}"
+    torto = aviso_de_evento("pendencia.vence_em", _dados(o_que="objetivo", run_id="r1"), 7, PAINEL)
+    assert torto is not None and torto.link == f"{PAINEL}/#/execucoes"
+    aprovacao = aviso_de_evento("pendencia.vence_em", _dados(run_id=run), 7, PAINEL)
+    assert aprovacao is not None and aprovacao.link == f"{PAINEL}/#/pendencias"
+    assert aprovacao.corpo.endswith("Espera você: decida na caixa de Pendências antes disso.")
 
 
 def test_execucao_com_um_aparelho_diz_qual_e_com_varios_nao() -> None:

@@ -334,9 +334,30 @@ def test_app_session_validade_e_teto_vem_de_quem_compoe(banco: Database) -> None
     assert obs.provider is not None and obs.provider.stale
     assert [(a.purpose.value, a.verb) for a in depois.plan(depois.diff(SESSAO, obs))] == [
         ("observe", "session.verify")]
-    # Validade 0 desliga o vencimento, como em `sessao_vencida`; teto maior tira o andre do bloqueio.
+    # Validade 0 desliga o vencimento, como em `sessao_vencida`. O teto maior NÃO tira o andre do bloqueio: o
+    # android-03 tem vínculo ativo (conta real), e aí o teto é 1, o mesmo da porta (29.92).
     frouxo = _sessoes(banco, validade_s=0, teto=10)
-    assert frouxo.read_current_state(SESSAO.ref, Target("android-03")).provider.unknown_capped is False  # type: ignore[union-attr]
+    assert frouxo.read_current_state(SESSAO.ref, Target("android-03")).provider.unknown_capped is True  # type: ignore[union-attr]
+
+
+def test_app_session_com_vinculo_para_no_primeiro_unknown_como_a_porta(banco: Database) -> None:
+    """29.92 (U1 da leitura do #371): com vínculo ativo, UM `unknown` já é o teto, como na porta de sessão
+    (`SocialRepository.teto_de_unknown`). A prévia diz "assuma o controle" e nenhum `session.verify` é planejado —
+    antes, com o teto global 3, ela dizia "não verificada" e planejava a releitura enquanto a porta pedia a pessoa."""
+    _identidades(banco)
+    banco.execute("UPDATE account_sessions SET unknown_streak=1 WHERE account_id='acc-p-andre'")
+    p = _sessoes(banco, teto=3)
+    andre = p.read_current_state(SESSAO.ref, Target("android-03"))
+    assert andre.provider is not None and andre.provider.unknown_capped
+    drift = p.diff(SESSAO, andre)
+    assert (drift.status, drift.code) == (DriftStatus.blocked, SessionCode.unrecognized_screen)
+    assert all(a.verb != "session.verify" for a in p.plan(drift))
+
+    # Ainda sem nenhuma leitura de tela (contador 0), a sessão segue "não verificada" e pede a releitura.
+    banco.execute("UPDATE account_sessions SET unknown_streak=0 WHERE account_id='acc-p-andre'")
+    zero = p.read_current_state(SESSAO.ref, Target("android-03"))
+    assert zero.provider is not None and zero.provider.unknown_capped is False
+    assert [(a.purpose.value, a.verb) for a in p.plan(p.diff(SESSAO, zero))] == [("observe", "session.verify")]
 
 
 def test_app_session_teto_velho_nao_e_teto(banco: Database) -> None:

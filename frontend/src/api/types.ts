@@ -274,6 +274,9 @@ interface Step {
   driven_by: 'ai' | 'recipe' | 'recipe+ai' | 'sem_ator' | null;   // v0.2 — quem decidiu as ações; `sem_ator`: fechou sem ator (caminho rápido 1)
   /** Item 12.1: app em que esta etapa roda. `null`/ausente = o app do plano (`Plan.app_id`). */
   app_id?: string | null;
+  /** Item 31.65: o motivo da recusa da persona ao escrever o texto desta etapa (texto do modelo). Só no detalhe da
+   *  etapa: a dica do bloqueio, que viaja para Pendências, aviso e Trello, é fixa. Ausente sem recusa. */
+  motivo_da_persona?: string | null;
 }
 
 interface Action {

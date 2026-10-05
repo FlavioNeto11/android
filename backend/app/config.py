@@ -144,6 +144,11 @@ class EnvSettings(BaseSettings):
         return os.environ.get(nome, "")
 
 
+#: Os modos de `server.csp_do_painel` (29.91). Um tipo só para a configuração e para o `PainelEstatico`: um valor
+#: digitado errado no código não passa no mypy em vez de falhar aberto.
+ModoDaCspDoPainel = Literal["aplicar", "so_relatar", "desligada"]
+
+
 class ServerCfg(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
@@ -172,6 +177,11 @@ class ServerCfg(BaseModel):
     #: `http`, então o processo não tem como descobrir isto sozinho — e adivinhar errado põe `Secure` num cookie
     #: que nunca chegaria, ou deixa de pô-lo onde deveria.
     tls_behind_proxy: bool = False
+    #: A CSP do `index.html` do painel (29.91). `aplicar` barra o que não for do próprio painel; `so_relatar` manda o
+    #: mesmo texto como `Content-Security-Policy-Report-Only` (nada é barrado, e cada violação aparece no console do
+    #: navegador); `desligada` não manda nenhuma. Existe para desfazer sem deploy, só com o reinício da `farm-central`,
+    #: se a CSP quebrar uma tela no central.
+    csp_do_painel: ModoDaCspDoPainel = "aplicar"
 
 
 class PathsCfg(BaseModel):
@@ -343,7 +353,10 @@ class LimitsCfg(BaseModel):
     # Teto de reobservações automáticas seguidas quando a sessão fica `unknown` (achado #104): uma tela que
     # `classify()` não reconhece (sinal ausente da tabela, onboarding fora do mapa) não pode reabrir o app e
     # reobservar a cada tick para sempre. Ao alcançar o teto, a porta do despacho trata como "só uma pessoa
-    # resolve" — mesmo caminho de auth_challenge/wrong_account — em vez de insistir sozinha.
+    # resolve" — mesmo caminho de auth_challenge/wrong_account — em vez de insistir sozinha. Item 29.92: aparelho com
+    # vínculo ativo (conta real) tem teto 1 na porta, e a porta só existe com vínculo; este teto deixou de agir nela
+    # e só vale onde não há vínculo (hoje, nenhum caminho automático). Continua limitando o `unknown_streak`. Não
+    # remova nem renomeie: o `config.yaml` de uma instalação pode ter a chave.
     session_unknown_retry_cap: int = Field(3, ge=1, le=20)
     # Coordenação de frota sobre o mesmo alvo (achado #114, endurecida pelo ADR-055). Fica em LimitsCfg, não no
     # `automation_policy` de cada perfil: é regra da OPERAÇÃO como um todo — um perfil não pode afrouxar sozinho o
@@ -660,11 +673,11 @@ class AiCfg(BaseModel):
     # evidência, a árvore do navegador antes da poda acima, para o A/B offline (`scripts/poda-ab-offline.py`). Nunca um
     # aparelho de conta real; tela sensível nunca é gravada.
     diagnostico_arvore_aparelhos: list[str] = Field(default_factory=list)
-    # Item 31.54, DESLIGADO por padrão: tapa com um retângulo opaco a barra de endereço do Chrome (bounds da `url_bar`
-    # na árvore) na imagem que vai ao ator e ao juiz; o texto limpo da barra (31.52) segue na árvore. Liga só pelo
-    # A/B ao vivo do 31.56 (android-09, sites públicos, desligada × ligada): sucesso igual e não mais de 20 % de decisões
-    # a mais. Tapar pode tirar do ator e do juiz uma evidência que eles usam.
-    tapar_barra_de_endereco: bool = False
+    # Item 31.54, LIGADO por padrão desde o A/B ao vivo do 31.56 (05/10, android-09, deploy 33, sites públicos): sucesso
+    # 3/3 nos dois braços e 16 decisões contra 14 (+14,3 %, dentro do teto de 20 %). Tapa com um retângulo opaco a barra
+    # de endereço do Chrome (bounds da `url_bar` na árvore) na imagem que vai ao ator e ao juiz; o texto limpo da barra
+    # (31.52) segue na árvore. `false` volta a mandar a imagem como está.
+    tapar_barra_de_endereco: bool = True
     # Item 31.35 (parte B), DESLIGADO por padrão: quantas ações o ator pode mandar numa decisão de etapa SEM efeito
     # (chamadas paralelas de ferramenta; o executor confere o alvo de cada uma na tela nova). 1 = uma só, como sempre.
     # Liga só depois do A/B com teto (sucesso igual e >= 30 % menos decisões).

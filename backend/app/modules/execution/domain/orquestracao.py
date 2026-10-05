@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
+from app.modules.execution.domain.command_refinement import motivo_sem_valor
 from app.modules.identity.domain.persona import CONDUTA_DAS_CRENCAS
 
 #: Quantas candidatas vão ao modelo, no máximo: cada cartão é biografia + crenças de uma pessoa (o que sai da
@@ -159,10 +160,13 @@ def orquestracao_user(req: PedidoDeOrquestracao) -> str:
 
 def orquestracao_from_json(raw: str) -> OrquestracaoOut:
     texto = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+    falha: str | None = None
     try:
         return OrquestracaoOut.model_validate(json.loads(texto))
     except Exception as exc:  # noqa: BLE001 - JSON ou esquema: os dois são saída inválida do modelo
-        raise OrquestracaoInvalida(f"Orquestração em formato inválido: {exc}") from exc
+        falha = motivo_sem_valor(exc, OrquestracaoOut)
+    # 31.70: FORA do `except` e sem `from` (ver `motivo_sem_valor`).
+    raise OrquestracaoInvalida(f"Orquestração em formato inválido: {falha}")
 
 
 def normalizar(out: OrquestracaoOut, req: PedidoDeOrquestracao) -> OrquestracaoOut:

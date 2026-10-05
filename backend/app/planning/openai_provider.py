@@ -372,10 +372,16 @@ class OpenAICompatProvider:
             raise AIError("O modelo respondeu sem chamar nenhuma ferramenta.", retryable=True, kind="invalid_output")
         fn = chamadas[0].get("function") or {}
         crus = fn.get("arguments")
+        falha: str | None = None
         try:
             args = json.loads(crus) if isinstance(crus, str) else dict(crus or {})
         except (json.JSONDecodeError, TypeError, ValueError) as exc:
-            raise AIError(f"Argumentos de ferramenta inválidos: {exc}", retryable=True, kind="invalid_output") from exc
+            falha = str(exc)
+        # 31.70 (G1 da leitura do 31.67): levantado FORA do `except`. Com `from exc`, o `JSONDecodeError` ficava em
+        # `__cause__`, e o `.doc` dele é o argumento inteiro que o ator escolheu (o texto a digitar). O `str` diz só
+        # linha e coluna.
+        if falha is not None:
+            raise AIError(f"Argumentos de ferramenta inválidos: {falha}", retryable=True, kind="invalid_output")
         if not isinstance(args, dict):
             raise AIError("Argumentos de ferramenta não são um objeto.", retryable=True, kind="invalid_output")
         return Decision(tool=str(fn.get("name") or ""), args=args, raw_text=self._texto(msg) or None), usage

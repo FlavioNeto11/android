@@ -17,6 +17,7 @@ from typing import Any
 from ..contracts.origem import origem_da_execucao
 from ..db import Database, INTEGRITY_ERRORS, Row, dumps, loads
 from ..events import EventBus
+from ..social.approvals import MOTIVO_DA_RECUSA
 from ..models import (RUN_SEM_TRABALHO, RUN_TERMINAL, ActionDTO, ActionStatus, AttemptDTO, AttemptStatus, DecisionDTO, DeliveryLevel,
                       EvidenceDTO, ObjectiveDTO, ObjectiveStatus, Plan, PlanStep, PlanVersionDTO, Postcondition,
                       RunCounts, RunCreate, RunDetail, RunStatus, RunSummary, SAIDA_NOME_RE, SAIDA_VALOR_MAX,
@@ -66,6 +67,13 @@ _SEM_RESTAURO = Sentinel()
 #: par de estados, e não lista de ocorrências, para não crescer sem limite num processo de dias. A suíte de testes
 #: reprova o teste que a fizer subir (`tests/conftest.py::_transicoes_dentro_da_tabela`).
 TRANSICOES_FORA_DA_TABELA: Counter[tuple[str, str, str]] = Counter()
+
+
+def _motivo_da_recusa(draft_meta: str | None) -> str | None:
+    """31.65: o motivo da recusa da persona guardado na etapa (`social.approvals.guardar_recusa`), ou `None`."""
+    meta = loads(draft_meta, {}) if draft_meta else {}
+    motivo = meta.get(MOTIVO_DA_RECUSA) if isinstance(meta, dict) else None
+    return str(motivo) if motivo else None
 
 
 def _col(row: Any, nome: str) -> Any:
@@ -1508,7 +1516,8 @@ class Repository:
             capability=r["capability"], commit_selector=r["commit_selector"],
             band_guard=loads(r["band_guard"], []) or [], bindings=loads(r["bindings"], {}) or {},
             for_each=r["for_each"], variables=loads(r["variables"], {}) or {}, app_id=_col(r, "app_id"),
-            opcional=bool(_col(r, "opcional")))
+            opcional=bool(_col(r, "opcional")),
+            motivo_da_persona=_motivo_da_recusa(_col(r, "draft_meta")))
 
     @staticmethod
     def action_dto(r: Row) -> ActionDTO:
@@ -1565,9 +1574,17 @@ class Repository:
 
     def emit_step(self, step_id: str, message: str, *, level: str = "info") -> None:
         r = self.step_row(step_id)
+        etapa = self.step_dto(r).model_dump(mode="json")
+        if etapa.get("motivo_da_persona"):
+            # 31.65: o motivo da recusa é texto do modelo e pode citar um terceiro. O evento é gravado em `events` e
+            # transmitido a todo navegador conectado: ele não vai. O painel o lê do detalhe da execução
+            # (`GET /runs/{id}`), e sem a chave no evento mantém o que já tinha; `null` (sem recusa) o limpa.
+            del etapa["motivo_da_persona"]
+        # 29.90: o tipo de falha classificado (ADR-054) vai no evento, para uma regra de aviso consumir a parada que
+        # pede a pessoa (`aviso_do_app`, `autenticacao`…) por um motivo estável, não pelo texto do detalhe.
         self.bus.emit("step.updated", f"{r['instance_id']}: {message}", level=level, run_id=r["run_id"],
                       instance_id=r["instance_id"], objective_id=r["objective_id"], step_id=step_id,
-                      data={"step": self.step_dto(r).model_dump(mode="json")})
+                      data={"step": etapa, "failure_kind": r["failure_kind"]})
 
     def emit_attempt(self, attempt_id: str, step: Row | None) -> None:
         a = self.db.one("SELECT * FROM attempts WHERE id=?", (attempt_id,))

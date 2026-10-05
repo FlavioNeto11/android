@@ -76,6 +76,7 @@ class TrelloFalso:
         self.pedidos: list[httpx.Request] = []
         self.comentarios: list[tuple[str, str]] = []
         self.falhar: list[int] = []
+        self.falhar_comentario: list[int] = []          # 28.38: só o POST do comentário falha (a leitura segue)
         self.ignorar_since = False
         self.eco = True
         self.n = 0
@@ -120,6 +121,8 @@ class TrelloFalso:
             card = caminho.split("/")[3]
             return httpx.Response(200, json={"id": card, "name": self.nomes.get(card, "Cartão de teste")})
         if pedido.method == "POST" and caminho.endswith("/actions/comments"):
+            if self.falhar_comentario:
+                return httpx.Response(self.falhar_comentario.pop(0), text="falha")
             corpo = json.loads(pedido.content)
             card = caminho.split("/")[3]
             self.comentarios.append((card, corpo["text"]))
@@ -451,6 +454,21 @@ async def test_texto_ou_responder_num_cartao_de_pergunta_e_a_resposta(c: Cenario
     await c.volta()
     desfecho = c.trello.textos()[-1]
     assert "concluída" in desfecho and "Evidência" not in desfecho and "@maria_ig" not in c.corpos()
+
+
+async def test_desfecho_que_nao_saiu_no_cartao_tenta_de_novo(c: Cenario) -> None:
+    """28.38: o laço do desfecho é o da conversa; o Trello só troca o texto. O 5xx no comentário não marca a linha."""
+    c.trello.comenta(DONO, C_RUN, "Marina")
+    await c.volta()
+    c.portas.desfechos["r-nova-000001"] = "Execução 000001: concluída.\nEvidência: @maria_ig"
+    c.trello.falhar_comentario = [503]
+    await c.volta()
+    assert not any("concluída" in t for t in c.trello.textos())
+    await c.volta()
+    [final] = [t for t in c.trello.textos() if "concluída" in t]
+    assert final.endswith("Execução 000001: concluída.\nO detalhe está no painel.")
+    await c.volta()
+    assert len([t for t in c.trello.textos() if "concluída" in t]) == 1
 
 
 # ---------------------------------------------------------------------------------------------- comando livre

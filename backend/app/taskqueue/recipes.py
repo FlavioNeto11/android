@@ -61,6 +61,7 @@ _MOTIVOS_DO_RETORNO: tuple[tuple[str, str], ...] = (
     ("ação da receita inválida", "acao_invalida"),
     ("alvo do efeito externo", "alvo_do_efeito"),
     ("guarda do efeito externo", "guarda_do_efeito"),
+    ("tela mudou antes do toque", "tela_mudou"),          # 29.90: a releitura antes do toque de efeito
     ("parâmetro ausente", "parametro_ausente"),
     ("pós-condição não apareceu", "pos_condicao"),
     ("alvo ausente ou ambíguo", "alvo_ausente"),
