@@ -142,7 +142,8 @@ describe('página Aprendizado', () => {
 
     await click(byRole('tab', /^Sinais/, container));
     await waitFor(() => expect(text(container)).toContain('Tomou o controle'));
-    expect(text(container)).toContain('Instagram › Abrir o perfil');    // P3: os nomes, com o código no `title`
+    // Os nomes vêm do catálogo, outro fetch: espera os nomes, não só o sinal (29.104).
+    await waitFor(() => expect(text(container)).toContain('Instagram › Abrir o perfil'));    // P3: os nomes, com o código no `title`
     expect(text(container)).not.toContain('com.instagram.android ›');
     expect(backend.callsTo('GET', /^\/api\/aprendizado\/sinais$/)[0]?.query.get('dias')).toBe('14');
   });

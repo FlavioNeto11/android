@@ -166,7 +166,7 @@ describe('saúde por app', () => {
     expect(saudeDoApp).toContain('1 degradando');
     // O selo do item vem da lista do Livro: a linha de /apps/{pacote} chegou sem `saude`.
     const lista = container.querySelector('section[aria-label="Aprendido"]') as HTMLElement;
-    expect(text(lista)).toContain('Saúde: Degradando');
+    await waitFor(() => expect(text(lista)).toContain('Saúde: Degradando'));       // o Livro é outro fetch (29.104)
     expect(text(lista)).toContain('Saúde: Saudável');
   });
 });
@@ -254,7 +254,7 @@ describe('falhas e capability no detalhe do app', () => {
       expect.stringContaining('Fluxo'), expect.stringContaining('Lição'), expect.stringContaining('Receita'),
     ]);
     // O grupo com item pedindo atenção já abre; o resto fica recolhido até a pessoa abrir.
-    expect(container.querySelector('ul[aria-label="Aprendido: Receita"]')).toBeTruthy();
+    await waitFor(() => expect(container.querySelector('ul[aria-label="Aprendido: Receita"]')).toBeTruthy());
   });
 
   it('quando a linha traz `capability`, o aprendido é agrupado por ela', async () => {
