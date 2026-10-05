@@ -46,6 +46,9 @@ LOG_FILTER_RULES: list[dict[str, str]] = [
     },
 ]
 LOADED_RULES_MARKER = "filtering rule"     # o Appium registra "Loaded N filtering rule(s)" quando aceita as regras
+#: 29.132: a linha em que o Appium diz que LIGOU a porta. Quem responde na porta pode ser outro servidor (o anterior,
+#: que o `is_up` de 2 s não viu com a máquina saturada); só esta linha, no log deste processo, diz que é ele.
+LISTENER_MARKER = "listener started on"
 
 
 def _spared(proc: psutil.Process) -> bool:
@@ -90,19 +93,59 @@ class AppiumServer:
     def _is_ours(self, proc: psutil.Process) -> bool:
         return str(self._package).lower() in " ".join(proc.cmdline()).lower()
 
-    def _own_orphan(self) -> int | None:
-        """Appium deixado por um backend anterior deste projeto que morreu sem desligar: só é reconhecido se o
-        PID gravado ainda existir E a linha de comando apontar para o Appium de tools/appium."""
+    def _dono_da_porta(self) -> int | None:
+        """O PID que escuta na porta do Appium, ou `None` (ninguém, ou o sistema não deixa ver)."""
+        porta = self.cfg.file.appium.port
         try:
-            pid = int(self._pid_file.read_text(encoding="ascii").strip())
-            ours = self._is_ours(psutil.Process(pid))
-        except (OSError, ValueError, psutil.Error):
+            for c in psutil.net_connections(kind="tcp"):
+                if c.status == psutil.CONN_LISTEN and c.laddr and c.laddr.port == porta and c.pid:
+                    return int(c.pid)
+        except (psutil.Error, OSError):
             return None
-        return pid if ours else None
+        return None
+
+    def _own_orphan(self) -> int | None:
+        """Appium deixado por um backend anterior deste projeto que morreu sem desligar: o processo cuja linha de
+        comando aponta para o Appium de tools/appium.
+
+        29.132: primeiro o DONO DA PORTA, depois o PID gravado. Só o arquivo não bastava: em 05/10 13:10Z um start
+        sobrescreveu o `appium.pid` com o PID de um Appium que morreu sem ligar a porta, e o que seguia respondendo
+        (nosso, com as regras) passou a ser tratado como "servidor externo", sem mascaramento comprovado."""
+        candidatos: list[int] = []
+        dono = self._dono_da_porta()
+        if dono is not None:
+            candidatos.append(dono)
+        try:
+            gravado = int(self._pid_file.read_text(encoding="ascii").strip())
+            if gravado not in candidatos:
+                candidatos.append(gravado)
+        except (OSError, ValueError):
+            pass
+        for pid in candidatos:
+            try:
+                if self._is_ours(psutil.Process(pid)):
+                    return pid
+            except psutil.Error:
+                continue
+        return None
 
     def start(self, wait_s: float = 60) -> bool:
-        if self.is_up() and self._reuse_running():
-            return True
+        """Reaproveita o que responde na porta (`_reuse_running`) ou sobe um Appium com as regras.
+
+        29.132: se o novo morre sem ligar a porta e alguém responde nela, quem responde é o anterior; a decisão
+        volta ao `_reuse_running` (uma vez) em vez de o novo ser dado como "subiu"."""
+        for _ in range(2):
+            if self.is_up() and self._reuse_running():
+                return True
+            subiu = self._subir(wait_s)
+            if subiu is not None:
+                return subiu
+        self.detail = ("o Appium novo não ligou a porta e o servidor que responde nela não foi reaproveitado; veja "
+                       "data/logs/appium.log")
+        return False
+
+    def _subir(self, wait_s: float) -> bool | None:
+        """`True` subiu (este processo ligou a porta), `False` falhou, `None` morreu sem ligar e outro responde."""
         a = self.cfg.file.appium
         appium_dir = self.cfg.path(a.dir)
         entry = self._package / "index.js"
@@ -128,18 +171,25 @@ class AppiumServer:
         finally:
             logf.close()
         self.pid = proc.pid
-        self._pid_file.write_text(str(proc.pid), encoding="ascii")
         deadline = time.monotonic() + wait_s
         while time.monotonic() < deadline:
-            if self.is_up():
-                self.log_masking_active = self._confirm_masking(log_path, offset)
+            # 29.132: "responde na porta" não diz QUEM responde. Só conta a linha do próprio log deste processo; o
+            # `appium.pid` só é gravado aqui, para não apontar para um processo que nunca ligou a porta.
+            texto = self._log_desde(log_path, offset)
+            if LISTENER_MARKER in texto and self.is_up():
+                self._pid_file.write_text(str(proc.pid), encoding="ascii")
+                self.log_masking_active = LOADED_RULES_MARKER in texto
                 self.detail = f"iniciado por este projeto (pid {self.pid})"
                 if not self.log_masking_active:
                     self.detail += " — ATENÇÃO: mascaramento de log não confirmado"
                 return True
             if proc.poll() is not None:
-                self.detail = f"Appium encerrou ao iniciar (código {proc.returncode}); veja data/logs/appium.log"
                 self.pid = None
+                if self.is_up():
+                    log.warning("o Appium novo (pid %s) saiu sem ligar a porta %s, e outro servidor responde nela: "
+                                "a decisão volta ao reaproveitamento", proc.pid, a.port)
+                    return None
+                self.detail = f"Appium encerrou ao iniciar (código {proc.returncode}); veja data/logs/appium.log"
                 return False
             time.sleep(1)
         self.detail = "Appium não respondeu a tempo; veja data/logs/appium.log"
@@ -269,12 +319,17 @@ class AppiumServer:
 
     def _confirm_masking(self, log_path: Path, offset: int) -> bool:
         """Confirma no próprio log que o Appium aceitou as regras ("Loaded N filtering rule(s)")."""
+        return LOADED_RULES_MARKER in self._log_desde(log_path, offset)
+
+    @staticmethod
+    def _log_desde(log_path: Path, offset: int) -> str:
+        """O que este processo escreveu no log desde que subiu (o arquivo é dele: `_rotate_log` + append)."""
         try:
             with open(log_path, "rb") as fh:
                 fh.seek(offset)
-                return LOADED_RULES_MARKER in fh.read().decode("utf-8", "replace")
+                return fh.read().decode("utf-8", "replace")
         except OSError:
-            return False
+            return ""
 
     def stop(self) -> None:
         """Encerra apenas o processo que este backend iniciou."""

@@ -111,6 +111,30 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   de falha, veredito do snapshot, executor do worker, pacote do agente, log do emulador) e `@tests/catracas.txt` 88
   passed. `real`: `not_run` até o deploy (o Orquestrador religa 01, 03 e 06 por `start`).
 
+## 2026-10-05 — 29.132: o `start()` do Appium só dá "subiu" quando é ele que liga a porta (branch fix/29-132-appium-start-pid-novo)
+
+- Medido em 05/10 (29.126). Às 13:10Z, com a máquina saturada:
+  - o `is_up` de 2 s não viu o Appium anterior (13056, nosso, com as regras), e o backend subiu outro (36048);
+  - o `is_up` seguinte foi respondido pelo 13056, e o `_confirm_masking` leu o log do 36048 antes de ele carregar as
+    regras (13:11:54Z), daí o "não confirmado";
+  - o `appium.pid` virou 36048, que nunca ligou a porta e sumiu;
+  - às 13:12:50Z, o backend seguinte chamou o 13056 de "servidor externo", e o `type_secret` ficou bloqueado em
+    todos os aparelhos.
+- `backend/app/automation/appium_server.py`:
+  - "subiu" só quando o log DESTE processo diz `listener started on` e a porta responde; o mascaramento é lido no
+    mesmo texto;
+  - o `appium.pid` só é gravado nessa hora;
+  - se o novo morre sem ligar a porta e alguém responde nela, a decisão volta ao `_reuse_running`, uma vez;
+  - o `_own_orphan` procura primeiro o DONO DA PORTA (`psutil.net_connections`) e depois o PID gravado, com o mesmo
+    critério de "é nosso" (linha de comando em `tools/appium`), e a prova da máscara segue a mesma.
+- O Appium falso de `test_supervisao_do_central.py` passa a escrever a linha `listener started on` ao ligar a porta,
+  como o de verdade (`appium.log`, 09:38:54 local).
+- Prova `simulated`: `backend/tests/test_appium_start_pid_novo.py`, 7 testes, com `test_saude_do_appium.py`: 16
+  passed. Mutações, cada uma reprovada: "subiu" só pelo `is_up` (2); `appium.pid` antes de ligar (2); morto com outro
+  na porta dado como falha (1); sem o dono da porta (2); dono alheio aceito (1). Vizinhos: 59 passed (com os testes
+  de `node` de verdade do Appium órfão) e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (a
+  próxima subida do backend com outro Appium na porta).
+
 ## 2026-10-05 — 29.125: o supervisor só mata o backend (branch fix/29-125-supervisor-so-o-backend)
 
 - Censo de 05/10: o Appium e o sing-box do backend do deploy 37 seguiam vivos com o pai morto. A varredura de filhos

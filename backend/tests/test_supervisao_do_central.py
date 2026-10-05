@@ -425,7 +425,9 @@ for (const f of (process.env.APPIUM_FALSO_FILHOS || '').split(require('path').de
 http.createServer((req, res) => {
   res.setHeader('content-type', 'application/json');
   res.end(JSON.stringify({ value: { ready: true } }));
-}).listen(Number(opt('--port', '4723')), opt('--address', '127.0.0.1'));
+}).listen(Number(opt('--port', '4723')), opt('--address', '127.0.0.1'),
+  // A linha do Appium de verdade ao ligar a porta (`LISTENER_MARKER`, 29.132).
+  () => console.log('Appium REST http interface listener started on http://' + opt('--address', '127.0.0.1')));
 """
 
 
