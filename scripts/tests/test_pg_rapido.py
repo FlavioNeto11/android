@@ -1,12 +1,14 @@
 """Testes puros do PG rápido da suíte (scripts/pg-rapido.py, 29.99), com docker e pytest de mentira."""
 import importlib.util
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 _SPEC = importlib.util.spec_from_file_location("pg_rapido", Path(__file__).resolve().parents[1] / "pg-rapido.py")
 pg = importlib.util.module_from_spec(_SPEC)
+sys.modules["pg_rapido"] = pg          # o `@dataclass` procura o módulo em `sys.modules`
 _SPEC.loader.exec_module(pg)
 
 

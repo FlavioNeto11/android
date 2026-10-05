@@ -165,6 +165,8 @@ def _executar(cmd: Sequence[str]) -> "subprocess.CompletedProcess[str]":
 
 def _lancar_pytest(arquivos: Sequence[str], saida: Path) -> Processo:
     python = RAIZ / "backend" / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    if not python.exists():
+        python = Path(sys.executable)           # worktree sem venv próprio: o mesmo Python que roda o script
     flags = getattr(subprocess, "IDLE_PRIORITY_CLASS", 0)
     arq = saida.open("w", encoding="utf-8")
     return subprocess.Popen([str(python), "-m", "pytest", "-q", "-n", "8", "-p", "no:cacheprovider", *arquivos],
