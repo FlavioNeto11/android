@@ -22,7 +22,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-05 — 31.65: o motivo livre da recusa da persona sai da dica que viaja (branch feat/31-65-motivo-do-modelo-fora-da-dica)
 
 - V2 da revisão do 31.63: quando a persona recusava escrever, a dica do bloqueio era o `refusal_reason` (ou o
-  `rationale`) do modelo, que pode citar o pedido ou o nome de um terceiro (o motivo do ADR-055 cita o trecho). Essa
+  `rationale`) do modelo, que pode citar o pedido ou o nome de um terceiro. Essa
   dica viaja ao bloqueio do objetivo, às Pendências, ao aviso no Telegram e ao Trello.
 - Agora a dica é fixa (`DICA_DA_RECUSA`, "o motivo dela está no detalhe da etapa"), e o motivo fica só na etapa
   (`draft_meta.motivo_da_recusa`), exposto em `StepDTO.motivo_da_persona` e mostrado como "Motivo da persona" no

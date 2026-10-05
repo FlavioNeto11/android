@@ -2443,7 +2443,7 @@ class AppState:
             if draft.refused or not (draft.content or "").strip():
                 # O motivo da recusa vem antes da justificativa: é ele que diz o que mudar na intenção (ex.: o
                 # texto atribuía um recado a um terceiro, ADR-055) — a justificativa só explica a escolha do texto.
-                # 31.65: ele é texto do modelo (ou cita um trecho dele) e fica só na etapa; a dica viaja e é fixa.
+                # 31.65: o motivo do modelo é texto livre dele e fica só na etapa; a dica viaja e é fixa.
                 guardar_recusa(self.db, srow["id"], draft.refusal_reason or draft.rationale or "sem justificativa")
                 return Verdict(allowed=False, policy=cap.default_policy,
                                reason="a persona se recusou a escrever este texto", hint=DICA_DA_RECUSA)

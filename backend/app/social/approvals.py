@@ -375,7 +375,7 @@ DICA_DA_RECUSA = ("A persona se recusou a escrever este texto; o motivo dela est
 
 
 def guardar_recusa(db: Database, step_id: str, motivo: str) -> None:
-    """31.65 (V2 da revisão do 31.63): o motivo da recusa é texto livre do modelo (ou cita um trecho dele) e pode
+    """31.65 (V2 da revisão do 31.63): o motivo da recusa que vem do MODELO é texto livre dele e pode
     trazer o pedido ou o nome de um terceiro. Fica só na etapa, para o detalhe da etapa no painel; a dica que viaja
     (bloqueio do objetivo, Pendências, aviso, Trello) leva só a frase fixa."""
     meta = {k: v for k, v in ler_rascunho(db, step_id).items() if k != MOTIVO_DA_RECUSA}
