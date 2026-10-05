@@ -413,6 +413,20 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
 - A revisão de PR é pedida PR a PR pela orquestradora; a regra automática do repositório fica desligada. Operação em `docs/operacao.md` § 5.
 - Prova `real` para a revisão: três PRs em 05/10, 566,87 créditos (US$ 5,67), 10 achados e 9 confirmados pelas frentes. Prova `not_run` para o agente de nuvem.
 
+## 2026-10-05 — 29.146: plural no treino e a frase da prévia com receita (branch fix/29-146-plural-e-previa-do-treino)
+
+- Achados A e B do percurso do deploy 39. A: "1 entrada(s)" na barra, "O que você fez (1 entradas)" na revisão e "N entrada(s) recusada(s)" passam pelo `plural()`. B: com receita, a prévia do salvar diz "Ao salvar: a receita desta etapa é gravada." no lugar de repetir o motivo literal do contrato v1.58 ("receita será gravada ao salvar"); sem receita, o motivo literal segue. Só painel; o contrato não muda.
+- Ramo sobre o do 29.142, com a main 63e3cf47 juntada.
+- Prova `simulated`: typecheck verde; `TrainingBar.test.tsx`, `TrainingReview.test.tsx` e `FocusPanel.test.tsx` com os textos novos; training, focus, rede e settings 241/241. Com `ATRASO_DO_FETCH_MS=40` (sementes 7 e 88), dois testes do `FocusPanel` (31.84 e 31.85) falham igual na main 63e3cf47: corrida que já existia, não deste ramo.
+
+## 2026-10-05 — 29.142: textos da volta da 38 (Limites, "Para revisar" e a coluna "Conta real") (branch fix/29-142-textos-da-volta-38)
+
+- Achado 6, Limites: o "sem alterações" das duas telas é um texto só ("Nenhuma alteração pendente."), a contagem usa o plural certo no lugar de "alteração(ões)" e "campo(s)", e a trava da RAM livre depois do boot vira frase para a pessoa no lugar da chave crua do `config.yaml` (`backend/app/api.py`).
+- Achado 7, "Para revisar" na barra do treinamento: o nome longo é cortado na última palavra inteira com reticências, o rótulo acessível leva o nome inteiro e as duas situações dizem o estado ("· proposta pronta" ou "· só gravada").
+- Achado 8, coluna "Conta real" da rede por aparelho: uma entrada por conta, com os apps ao lado (`@conta (Instagram, Outlook)`), no lugar de repetir a conta a cada app (`backend/app/devices/rede.py::_conta_real`).
+- Delta da leitura (N1 e N2): a recusa `real_account_confirm_required` e o diálogo do RedePage citam a conta depois de dois-pontos, sem parênteses aninhados; o `locked_limit` do PATCH também perdeu a chave crua. Só texto; os testes deste delta rodam depois do "no ar" da 39.
+- Prova `simulated`: `backend/tests/test_rede_por_aparelho.py::test_conta_real_uma_linha_por_persona_com_os_apps`, `frontend/src/features/training/TrainingBar.test.tsx` (29.142) e `frontend/src/features/settings/ServersLimits.test.tsx` (teto de aparelhos); typecheck verde; 392 testes do frontend em training, settings, servers, focus e profiles; catracas 88 passed; dirigidos do backend 1810 passed. A catraca do mypy ficou `not_run` (o venv do central não tem o mypy).
+
 ## 2026-10-05 — 31.100: o salvar do treino recusa marcador reservado no comando (branch fix/31-100-placeholder-reservado-no-comando)
 
 - `training/skills.validar_proposta_para_salvar`: `{instance_id}`, `{run_id}` ou `{account_label}` no `command_template`

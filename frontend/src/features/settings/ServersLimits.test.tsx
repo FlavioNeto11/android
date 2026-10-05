@@ -102,6 +102,8 @@ describe('Limites → Por servidor', () => {
     expect(text()).toContain('conferido ao criar aparelho');
     const teto = byRole('textbox', 'Teto de aparelhos') as HTMLInputElement;
     expect(teto.placeholder).toBe('sem teto');
+    // 29.142: o mesmo texto do Geral para "sem alterações" e o plural certo no lugar de "alteração(ões)".
+    expect(text()).toContain('Nenhuma alteração pendente.');
 
     await setValue(teto, '300');
     await click(byRole('button', /^Salvar/));
@@ -109,6 +111,8 @@ describe('Limites → Por servidor', () => {
     expect(backend.callsTo('PUT', /limits$/)).toHaveLength(0);
 
     await setValue(teto, '8');
+    expect(text()).toContain('1 alteração não salva');
+    expect(text()).not.toContain('(ões)');
     await click(byRole('button', /^Salvar/));
     await waitFor(() => expect(backend.callsTo('PUT', /servers\/central\/limits$/)).toHaveLength(1));
     expect(backend.callsTo('PUT', /limits$/)[0]?.body).toEqual({ max_devices: 8 });

@@ -3480,8 +3480,10 @@ def _limites_dos_servidores(s: Any) -> list[ServerLimitsDTO]:
                                         max_working=decidido.get("max_working"),
                                         min_free_ram_mb=declarado.min_free_ram_mb,
                                         max_devices=decidido.get("max_devices"))
-            travado = {"min_free_ram_mb": "Guarda do boot deste servidor: `android.min_free_ram_mb_after_boot` "
-                                          "no config.yaml."}
+            # 29.142: a frase é para a pessoa (a chave crua com crases aparecia no painel); a chave fica no comentário:
+            # `android.min_free_ram_mb_after_boot` no config.yaml.
+            travado = {"min_free_ram_mb": "Depois de ligar mais um aparelho, este servidor tem de manter pelo menos isto "
+                                          "livre. Muda só na configuração da instalação, com reinício."}
             nome = linha["name"] if linha is not None else f"{wid} (este servidor)"
         else:
             d = s.workers.limites_declarados(wid)
@@ -3524,8 +3526,9 @@ async def put_server_limits(request: Request, worker_id: str, body: ServerLimits
         raise err(404, "not_found", f"Servidor {worker_id} não existe.")
     if worker_id == host:
         if "min_free_ram_mb" in patch:
-            raise err(400, "locked_limit", "O piso de RAM deste servidor é a guarda do boot local "
-                                           "(`android.min_free_ram_mb_after_boot` no config.yaml).")
+            # 29.142: frase para a pessoa; a chave é `android.min_free_ram_mb_after_boot` no config.yaml.
+            raise err(400, "locked_limit", "A RAM livre depois de ligar um aparelho neste servidor muda só na "
+                                           "configuração da instalação, com reinício.")
         base = s.cfg.file.limits
         vivos: dict[str, Any] = {}
         if "max_slots" in patch:
