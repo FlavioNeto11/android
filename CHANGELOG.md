@@ -27,6 +27,44 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   diagnóstico do 31.52): 5 árvores. Redução dos caracteres do prompt do ator com a poda: 0,533, 0,273, 0,182, 0,149 e
   0,141; mediana 0,182 (3964 → 3243 caracteres). Sem IA, só leitura.
 - Prova do script: `simulated` (`scripts/tests/test_poda_ab_offline.py`).
+## 2026-10-04 — 28.33: quem desligou conta, e o religar à mão não reabre o botão (branch canais/28-33-autor-do-desligar)
+
+- Achado 5 do 28.29: o desligamento por regra automática (`sistema`, `plataforma`) não é mais registrado como "desfeita".
+  A decisão continua contada, e o botão some com o motivo "foi desligado depois por uma regra automática". O desfazer
+  pela rota responde 409, sem gravar como dela o que outra decisão fez.
+- Achado 6 do 28.29: o item que uma pessoa desligou depois da decisão segue desfeito mesmo que ela o religue à mão. O
+  botão não volta, e nada desliga a publicação dela. Só vale o desligamento posterior à transição da própria decisão
+  (`origem_ref = aprendizado:<id>`).
+- A trilha só é lida quando o estado do item mudou depois da decisão (`state_at`), ou quando o item está desligado. O
+  publicado intocado não paga leitura extra no GET, porque o achado 4 continua valendo.
+- Prova `simulated`: três testes novos em `tests/test_decisoes_registro_coerente.py`. Os falsos de
+  `tests/test_decisoes_desfazer.py` ganharam o `detalhe` e o `state_at` que a inversa lê agora; o comportamento coberto
+  é o mesmo. 89 passed nos cinco arquivos de decisões.
+- Revisão do #322 (Reload plugins, `C:/claude-ferramentas/revisao-28-33.md`):
+  - A1: uma regra desligou e uma PESSOA religou à mão (`disabled → published`). O botão não volta, com o motivo "o item
+    foi religado à mão por <quem> depois", e o desfazer pela rota dá 409 sem tocar na trilha. Religar por regra
+    (`plataforma`) mantém o botão. A primeira publicação (de `validated`) não conta como religar.
+  - M2: a última transição para `disabled` usa o mesmo filtro da transição da decisão (`t.id >`).
+  - N1 do #320: o memo da listagem vive num `ContextVar`. Outra requisição ou thread não vê o memo de uma listagem
+    aberta. A trilha também é memorizada na listagem.
+  - M1 (relógios de dois backends): anotado, sem conserto.
+  - A1b: toda publicação depois da transição da decisão é republicação e tira o botão. De pessoa (religar, reativar o
+    depreciado, devolver à prova e publicar), com o motivo de religado à mão. De regra, com "publicado de novo por uma
+    regra automática", porque desfazer a antiga desligaria a publicação nova. Isso troca o comportamento anterior, em
+    que o religar por regra mantinha o botão. Na linha antiga, sem o id da transição, só conta a volta de `disabled` ou
+    `deprecated`.
+  - O memo diz que uma tarefa criada dentro do bloco herdaria o mesmo dict (hoje nada cria tarefa ali).
+  - "Confirmar que fica" (`published → published`, 30.24) não é republicação: move o `state_at`, mas o item não muda, e
+    o botão fica (por pessoa ou pela regra).
+  - Testes: 51 passed em `test_decisoes_registro_coerente` e `test_decisoes_desfazer`, em série e em Idle. Os
+    testes novos:
+    - A1;
+    - o reativado depois de depreciado;
+    - o republicado por regra;
+    - o memo por contexto;
+    - os dois caminhos da trilha, com e sem o id;
+    - a confirmação que fica, por pessoa e pela regra.
+
 ## 2026-10-04 — 28.29, achado 4 da revisão: o GET do registro lê o livro uma vez por item (branch canais/28-29-leitura-unica)
 
 - `GET /api/decisoes-automaticas` lia o mesmo item do livro 3 a 4 vezes por decisão: em `por_que_nao`, em `descrever` e

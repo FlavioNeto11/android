@@ -17,7 +17,7 @@ import pytest
 
 
 from app.db import Database, dumps
-from app.decisoes_inversas import InversaDoAprendizado, SemInversaDaExecucao
+from app.decisoes_inversas import MOTIVO_REPUBLICADO_POR_REGRA, InversaDoAprendizado, SemInversaDaExecucao
 from app.modules.decisoes.domain.decisao import Decisao
 from app.modules.decisoes.domain.leitura import (efeito_do_aprendizado, efeito_legivel, fatos_legiveis, texto_curto,
                                                  decisao_de_evento)
@@ -217,7 +217,7 @@ def test_dentro_da_listagem_o_livro_e_lido_uma_vez_por_item() -> None:
     from app.modules.learning.domain.ciclo import NaoEncontrado
 
     class Entrada:
-        state, title = SkillState.PUBLISHED, "Lição"
+        state, title, state_at = SkillState.PUBLISHED, "Lição", "2000-01-01T00:00:00Z"   # intocado desde a decisão
 
     class Livro:
         def __init__(self) -> None:
@@ -259,3 +259,178 @@ async def test_o_get_da_lista_le_o_livro_uma_vez_por_item(harness: Harness, monk
         itens = (await c.get("/api/decisoes-automaticas")).json()["itens"]
     assert len(itens) == 3 and all(i["pode_desfazer"] for i in itens)
     assert sorted(lidas) == sorted(licoes)                                         # antes: 3 leituras por item
+
+
+# ===================================================================== (d) 28.33: quem desligou e o religar à mão
+async def test_desligado_por_regra_automatica_nao_e_desfazer_e_nao_oferece_o_botao(harness: Harness) -> None:
+    """Achado 5 do 28.29: o desligamento pelo `sistema` (outra decisão automática) não vira "desfeita pela plataforma"."""
+    lic = _publicar_licao(harness)
+    did = _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"})
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DISABLED, by="sistema", reason="saúde piorou")
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+        assert item["desfeita"] is False and item["desfeita_por"] is None
+        assert item["pode_desfazer"] is False and "regra automática" in item["por_que_nao"]
+        r = await c.post(f"/api/decisoes-automaticas/{did}/desfazer", json={"confirmar": True, "motivo": "x"})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "sem_inversa_segura"
+        # O resumo segue contando a decisão (só a desfeita sai da conta).
+        assert len((await c.get("/api/decisoes-automaticas?desfeitas=nao")).json()["itens"]) == 1
+
+
+async def test_desligado_pela_pessoa_e_religado_a_mao_segue_desfeito(harness: Harness) -> None:
+    """Achado 6 do 28.29: a pessoa desligou e depois religou; a publicação de agora é dela, e o botão não volta."""
+    lic = _publicar_licao(harness)
+    did = _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"}, dias_atras=0.001)
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DISABLED, by="panel", reason="não confio")
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.PUBLISHED, by="panel", reason="voltei atrás")
+    n = len(_trilha(harness, lic))
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+        assert item["desfeita"] is True and item["desfeita_por"] == "panel" and item["motivo_do_desfazer"] == "não confio"
+        assert item["pode_desfazer"] is False
+        r = await c.post(f"/api/decisoes-automaticas/{did}/desfazer", json={"confirmar": True})
+        assert r.status_code == 200 and r.json()["desfeita_agora"] is False
+    assert len(_trilha(harness, lic)) == n                                        # nada desligou o que a pessoa religou
+
+
+async def test_publicado_e_intocado_nao_le_a_trilha(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A conferência do achado 6 só lê a trilha quando o estado mudou depois da decisão: o GET não volta a pagar
+    uma leitura extra por item (o achado 4)."""
+    lic = _publicar_licao(harness)
+    _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"})
+    original = harness.state.learning.detalhe
+    lidas: list[str] = []
+
+    def contando(kind: LivroKind, ref: str) -> object:
+        lidas.append(ref)
+        return original(kind, ref)
+
+    monkeypatch.setattr(harness.state.learning, "detalhe", contando)
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+    assert item["pode_desfazer"] is True and lidas == []
+
+
+async def test_desligado_por_regra_e_religado_a_mao_nao_oferece_o_botao(harness: Harness) -> None:
+    """Revisão do #322 (A1): a regra desligou e a PESSOA religou à mão. A publicação de agora é dela: o desfazer não
+    pode desligá-la dizendo que desfez a decisão da plataforma."""
+    lic = _publicar_licao(harness)
+    did = _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"}, dias_atras=0.001)
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DISABLED, by="sistema", reason="saúde piorou")
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.PUBLISHED, by="panel", reason="religuei")
+    n = len(_trilha(harness, lic))
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+        assert item["desfeita"] is False and item["pode_desfazer"] is False
+        assert "religado à mão por panel" in item["por_que_nao"]
+        r = await c.post(f"/api/decisoes-automaticas/{did}/desfazer", json={"confirmar": True, "motivo": "x"})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "sem_inversa_segura"
+    assert len(_trilha(harness, lic)) == n                                        # nada desligou o que a pessoa religou
+
+
+async def test_republicado_por_regra_tira_o_botao(harness: Harness) -> None:
+    """Revisão do #322 (A1b; antes o botão ficava): a republicação por regra (`plataforma`) é OUTRA decisão
+    automática. Desfazer esta desligaria a publicação nova, que não é dela."""
+    lic = _publicar_licao(harness)
+    _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"}, dias_atras=0.001)
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DISABLED, by="sistema", reason="saúde piorou")
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.PUBLISHED, by="plataforma", reason="voltou")
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+    assert item["pode_desfazer"] is False and item["por_que_nao"].endswith(MOTIVO_REPUBLICADO_POR_REGRA)
+
+
+def test_o_memo_e_por_contexto() -> None:
+    """Revisão do #320 (N1): o memo da listagem vive num `ContextVar`. Outro contexto (outra requisição, outra thread)
+    não vê o memo de uma listagem aberta e lê o estado de agora."""
+    import contextvars
+
+    class Entrada:
+        state, title, state_at = SkillState.PUBLISHED, "Lição", "2000-01-01T00:00:00Z"
+
+    class Livro:
+        def __init__(self) -> None:
+            self.lidas = 0
+
+        def entrada(self, kind: object, ref: str) -> object:
+            self.lidas += 1
+            return Entrada()
+
+    livro = Livro()
+    inversa = InversaDoAprendizado(livro)  # type: ignore[arg-type]
+    d = _decisao("aprendizado", "receita:1", {"kind": "receita", "para": "published"})
+    with inversa.memorizado():
+        inversa.por_que_nao(d), inversa.descrever(d)
+        assert livro.lidas == 1
+        contextvars.Context().run(lambda: (inversa.por_que_nao(d), inversa.descrever(d)))
+        assert livro.lidas == 3                                     # o outro contexto leu de novo, sem o memo
+
+
+def _inversa_com_trilha(*passos: tuple[int, SkillState | None, SkillState, str]) -> InversaDoAprendizado:
+    """A inversa sobre um livro falso: o item está publicado e mudou depois da decisão; a trilha é a dada."""
+    from types import SimpleNamespace
+
+    class Livro:
+        def entrada(self, kind: object, ref: str) -> object:
+            return SimpleNamespace(state=SkillState.PUBLISHED, state_at=None, title="Lição")
+
+        def detalhe(self, kind: object, ref: str) -> object:
+            return SimpleNamespace(trilha=[SimpleNamespace(id=i, from_state=de, to_state=para, decided_by=por,
+                                                           decided_at="2026-10-04T13:00:00Z", reason="r")
+                                           for i, de, para, por in passos])
+
+    return InversaDoAprendizado(Livro())  # type: ignore[arg-type]
+
+
+def _decisao_com_id(transicao: int) -> Decisao:
+    return Decisao(1, "aprendizado", "receita:1", f"aprendizado:{transicao}", "r", "e",
+                   {"kind": "receita", "para": "published"}, "2026-10-04T12:00:00Z")
+
+
+S = SkillState
+_DA_DECISAO = (10, S.VALIDATED, S.PUBLISHED, "plataforma")
+_DEVOLVIDO = [(11, S.PUBLISHED, S.DISABLED, "sistema"), (12, S.DISABLED, S.CANDIDATE, "painel:dono"),
+              (13, S.CANDIDATE, S.VALIDATED, "sistema")]
+
+
+def test_com_o_id_da_decisao_toda_publicacao_depois_dela_e_republicacao() -> None:
+    """Revisão do #322 (A1b): devolver à prova e publicar de novo (pessoa ou regra) também tira o botão."""
+    regra = _inversa_com_trilha(_DA_DECISAO, *_DEVOLVIDO, (14, S.VALIDATED, S.PUBLISHED, "sistema"))
+    assert regra.por_que_nao(_decisao_com_id(10)) == MOTIVO_REPUBLICADO_POR_REGRA
+    pessoa = _inversa_com_trilha(_DA_DECISAO, *_DEVOLVIDO, (14, S.VALIDATED, S.PUBLISHED, "painel:dono"))
+    assert "religado à mão por painel:dono" in (pessoa.por_que_nao(_decisao_com_id(10)) or "")
+    assert _inversa_com_trilha(_DA_DECISAO).por_que_nao(_decisao_com_id(10)) is None       # só a da própria decisão
+
+
+def test_sem_o_id_da_decisao_so_conta_a_volta_de_fora_de_circulacao() -> None:
+    """Linha antiga (`origem_ref` sem id): a trilha inteira é lida, então a primeira publicação não conta."""
+    antiga = _decisao("aprendizado", "receita:1", {"kind": "receita", "para": "published"})
+    assert _inversa_com_trilha((5, S.VALIDATED, S.PUBLISHED, "painel:dono")).por_que_nao(antiga) is None
+    reativado = _inversa_com_trilha((5, S.VALIDATED, S.PUBLISHED, "plataforma"),
+                                    (6, S.PUBLISHED, S.DEPRECATED, "sistema"), (7, S.DEPRECATED, S.PUBLISHED, "panel"))
+    assert "religado à mão por panel" in (reativado.por_que_nao(antiga) or "")
+
+
+async def test_depreciado_pela_regra_e_reativado_pela_pessoa_nao_oferece_o_botao(harness: Harness) -> None:
+    """Revisão do #322 (A1b), pelo livro de verdade: `deprecated → published` é sempre de pessoa."""
+    lic = _publicar_licao(harness)
+    did = _decidir(harness, "aprendizado", lic, fatos={"kind": "licao", "para": "published"}, dias_atras=0.001)
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.DEPRECATED, by="sistema", reason="sem uso")
+    harness.state.learning.mudar_estado(LivroKind.LICAO, lic, SkillState.PUBLISHED, by="panel", reason="reativei")
+    n = len(_trilha(harness, lic))
+    async with _cliente(harness) as c:
+        [item] = (await c.get("/api/decisoes-automaticas")).json()["itens"]
+        assert item["pode_desfazer"] is False and "religado à mão por panel" in item["por_que_nao"]
+        r = await c.post(f"/api/decisoes-automaticas/{did}/desfazer", json={"confirmar": True, "motivo": "x"})
+        assert r.status_code == 409
+    assert len(_trilha(harness, lic)) == n
+
+
+@pytest.mark.parametrize("quem", ["painel:dono", "plataforma"])
+def test_confirmar_que_fica_nao_e_republicacao(quem: str) -> None:
+    """Decisão da orquestradora (04/10 23:00Z): a linha `published → published` do "Confirmar que fica" (30.24) move o
+    `state_at`, mas o item não muda; o botão fica, com o id da decisão e sem ele."""
+    confirmado = (11, S.PUBLISHED, S.PUBLISHED, quem)
+    assert _inversa_com_trilha(_DA_DECISAO, confirmado).por_que_nao(_decisao_com_id(10)) is None
+    antiga = _decisao("aprendizado", "receita:1", {"kind": "receita", "para": "published"})
+    assert _inversa_com_trilha((5, S.VALIDATED, S.PUBLISHED, "plataforma"), confirmado).por_que_nao(antiga) is None
