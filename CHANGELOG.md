@@ -27,7 +27,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   receita. Com o 29.90 (a releitura que segura o toque marca a divergência; o aviso que cobre o botão termina em
   `waiting_user`), um aviso do app contaria contra uma receita boa.
 - `waiting_user` entra ao lado do `retry` entre os desfechos que não são veredito. `reproducao_sql._ETAPAS` ignora a
-  etapa em `waiting_user`, o que cobre as gravadas antes. A etapa retomada e terminada dá o veredito de verdade.
+  etapa em `waiting_user`, `cancelled` ou `skipped`, o que cobre as gravadas antes (cancelar e pular só pegam etapa
+  aberta; D1 da leitura do #374). A etapa retomada e terminada dá o veredito de verdade.
 - Prova: `simulated` (`backend/tests/test_espera_nao_e_veredito_da_receita.py`, 3 testes). Cada metade do conserto,
   desfeita, reprova o seu teste. `not_run`: aparelho real.
 

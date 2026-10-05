@@ -99,3 +99,23 @@ async def test_leitura_de_reproducoes_ignora_a_etapa_que_espera_a_pessoa(harness
     db.execute("UPDATE steps SET driven_by='recipe', status='succeeded' WHERE id=?", (etapa["id"],))
     posicoes = {r.posicao for r in leitor.da_execucao(etapa["run_id"]) if r.receita == receita["id"]}
     assert posicoes == {Posicao.FOR}
+
+
+async def test_espera_antiga_cancelada_ou_pulada_nao_vota_e_a_falha_vota(harness: Harness) -> None:
+    """D1 da leitura do #374: a etapa de antes do conserto que ficou `recipe+ai` em espera e depois foi cancelada
+    (abandono, vencimento, rejeição) ou pulada (repetir o item revisa o plano) não vota — essa combinação só nasce da
+    espera, porque cancelar e pular só pegam etapa aberta. A etapa `recipe+ai` que FALHOU segue votando contra."""
+    harness.pular_o_tempo()
+    db, receita, etapa, tentativa = await _receita_aprendida(harness)
+    db.execute("UPDATE attempts SET recipe_id=? WHERE id=?", (receita["id"], tentativa))
+    leitor = ReproducoesSql(db)
+
+    def posicoes() -> set[Posicao]:
+        return {r.posicao for r in leitor.da_execucao(etapa["run_id"]) if r.receita == receita["id"]}
+
+    for status in ("cancelled", "skipped"):
+        db.execute("UPDATE steps SET driven_by='recipe+ai', status=? WHERE id=?", (status, etapa["id"]))
+        assert posicoes() == set(), status
+        assert not [r for r in leitor.faltantes() if r.receita == receita["id"]], status
+    db.execute("UPDATE steps SET driven_by='recipe+ai', status='failed' WHERE id=?", (etapa["id"],))
+    assert posicoes() == {Posicao.AGAINST}

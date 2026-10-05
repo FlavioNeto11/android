@@ -1471,8 +1471,8 @@ A lacuna ("a receita não tem evidência datada") tinha um custo medido em 03/10
 - **A espera por uma pessoa não é veredito (30.70).** A etapa que para em `waiting_user` (aviso do app, autenticação,
   conta errada, falta de informação) não conta contra a receita. No executor (`_after_step`), `waiting_user` está
   ao lado de `retry`, defeito do plano e trava da conta fora do `veredito`: não soma `replay_fail` nem
-  `consecutive_fail` (quarentena) e não grava `driven_by`. Na leitura, a etapa em `waiting_user` fica de fora,
-  o que cobre as gravadas antes. A etapa retomada que terminar dá o veredito no digest seguinte. A divergência
+  `consecutive_fail` (quarentena) e não grava `driven_by`. Na leitura, a etapa em `waiting_user`, `cancelled` ou
+  `skipped` fica de fora, o que cobre as gravadas antes (cancelar e pular só pegam etapa aberta). A etapa retomada que terminar dá o veredito no digest seguinte. A divergência
   vista na SOMBRA continua contando, como na nova tentativa: segura a promoção.
 - **Não decide nada.** Só grava evidência; o D1, a quarentena e os contadores seguem donos do estado da receita.
 - **Retrocarga** `RetrocargaDaReceita`, passo da curadoria (e não função única na montagem): a cada volta completa as

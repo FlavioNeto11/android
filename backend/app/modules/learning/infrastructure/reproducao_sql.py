@@ -8,7 +8,10 @@ consultada para decidir: `exerceu(StrategyKind.recipe)`, só em modo `replay`; a
 - `driven_by IN ('recipe+ai', 'sem_ator')`: a receita foi consultada e a etapa não terminou por ela (contra).
 - a etapa em `waiting_user` (30.70) não entra: espera por uma pessoa não é veredito sobre a receita. O executor já não
   grava `driven_by` nesse desfecho; o filtro cobre as etapas gravadas antes disso. Retomada e terminada, ela volta à
-  leitura no digest seguinte.
+  leitura no digest seguinte. Também ficam de fora `cancelled` e `skipped`: só uma etapa ABERTA (`pending`, `ready`,
+  `retry_wait`, `waiting_user`) é cancelada (abandono, vencimento, rejeição, cancelamento) ou pulada (plano revisado),
+  e o `recipe+ai` só é gravado num desfecho com veredito (`succeeded`, `failed`, `uncertain`), que não reabre a etapa.
+  Então `recipe+ai` com `cancelled`/`skipped` só nasce da espera gravada antes do conserto.
 
 Várias etapas da mesma receita na mesma execução (o `for_each`, uma receita reaproveitada em duas etapas) viram UMA
 linha por posição: a chave única do livro é (item, origem, posição) e a origem é a execução.
@@ -36,7 +39,7 @@ _ETAPAS = (
     " WHERE a.recipe_id IS NOT NULL"
     " AND a.number = (SELECT MAX(x.number) FROM attempts x WHERE x.step_id = s.id)"
     " AND s.driven_by IN ('recipe', 'recipe+ai', 'sem_ator')"
-    " AND s.status <> 'waiting_user'"
+    " AND s.status NOT IN ('waiting_user', 'cancelled', 'skipped')"
     " AND (s.driven_by <> 'recipe' OR s.status = 'succeeded')")
 _ORDEM = " ORDER BY s.run_id, a.recipe_id, s.plan_version, s.seq, s.id"
 #: A etapa ainda sem a linha da sua posição: a mesma conta do agrupamento, feita em SQL para o passo não reler tudo.
