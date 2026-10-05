@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.120: a corrida do teste da segunda leitura do log do snapshot (branch fix/29-120-corrida-releitura)
+
+- `test_wake_relogio_do_snapshot.py::test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura` reprovou
+  no PG dirigido da suíte 37 (1 failed, 9600 passed) e passou sozinho no PG. A causa estava no teste, não no código:
+  ele punha `LOG_CONTRADIZ_RELEITURA_S` em 10 ms, agendada dentro do `_wait_boot`, e só ligava a recusa do log
+  depois de um `db.query`. Com a máquina cheia, a consulta passou de 10 ms, e a releitura leu o veredito ainda
+  `None`.
+- Agora o teste captura a releitura no `call_later` do laço (só ela; o resto, o `asyncio.sleep` inclusive, segue no
+  laço de verdade), confere que o prazo é o `LOG_CONTRADIZ_RELEITURA_S` real e a dispara à mão depois que a recusa
+  chega. O código do central não muda.
+- Prova `simulated`: {PROVA}
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
