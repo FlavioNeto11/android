@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.50: o aviso do que a pessoa ensinou e o sistema rebaixou (branch canais/28-50-aviso-do-ensinado)
+
+- `learning.ensinado_sem_receita` (precisa de você, na hora) e `learning.ensinado_rebaixado` (rotina), os eventos da
+  Aprendizado (30.80 B), entram em `KINDS_QUE_AVISAM`, `NIVEL_POR_TIPO`, `ROTULOS`, `ROTULOS_AGRUPADOS`,
+  `GESTO_AGRUPADO`, `CAMINHO_AGRUPADO` e `aviso_de_evento`.
+- Sem identificador do item no texto; o link vai ao detalhe na aba Aprendizado. O slug do fluxo só entra no link se
+  passar nos filtros. Payload fora do contrato não vira aviso.
+- Prova: `simulated` (`backend/tests/test_avisos_ensinado.py`). Real: `not_run`; depende do PR da Aprendizado.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
