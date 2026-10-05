@@ -6457,3 +6457,30 @@ Mudanças aditivas; o painel não muda.
 - A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
   que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
 - **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).
+
+## Adendo v1.63 (05/10/2026; número da orquestradora; item 31.91) — o propose do treino recebe as respostas da pessoa
+
+Mudanças aditivas; sem corpo, o comportamento é o de antes.
+- `POST /api/training/{session_id}/propose` aceita corpo OPCIONAL `{"answers": [{"question": "...", "answer": "..."}]}`.
+  - `answers`: no máximo 8 itens por pedido. `question` de 1 a 300 e `answer` de 1 a 500 caracteres, depois de `strip`.
+    Pergunta repetida no mesmo corpo, campo a mais, JSON que não é objeto ou texto fora do formato: **400
+    `invalid_answers`**, sem chamar a IA e sem mudar a sessão.
+  - Resposta com FORMATO de segredo (a mesma checagem das memórias): **400 `resposta_sensivel`**, mensagem "Não escreva
+    senha nem código aqui: a proposta não precisa disso.", antes de qualquer chamada de IA e sem mudar a sessão.
+    Falar da senha sem o valor ("sim, com a senha da conta") é aceito.
+  - Sem corpo, ou com `answers` vazio e sem respostas guardadas: a proposta sai como antes (sem a chave `answers`).
+- **Acúmulo.** As respostas ficam guardadas dentro da proposta da sessão, na chave `answers` (lista de
+  `{question, answer}`), somando as de chamadas anteriores. A mesma pergunta (comparada por `strip().casefold()`)
+  troca a resposta anterior. O teto é de 16 pares acumulados: acima disso, 400 `invalid_answers`. Um `propose` sem
+  corpo mantém as guardadas.
+- **Ao modelo.** Todas as respostas acumuladas entram no texto enviado ao provedor, sob a frase "Respostas da pessoa às
+  suas perguntas anteriores (não pergunte de novo):" (a mesma do ensino v2), uma linha `- pergunta → resposta` cada.
+  Continua UMA chamada do provedor por `propose`, com o uso contabilizado como antes.
+- **Na resposta.** `proposal.questions` não repete pergunta já respondida (mesma comparação) e `proposal.answers`
+  traz o acumulado. `GET /api/training/{id}` devolve a proposta com `answers`. No modo simulado o comando não muda por
+  causa das respostas, mas a regra das perguntas vale.
+- **Salvar e prévia.** `save` e `preview` aceitam a proposta com `answers`; as respostas ficam só na sessão e não vão
+  para `flows` nem `recipes`.
+- O texto da resposta não vai a log nem a evento.
+- Erros de estado como antes: gravando 409 `still_recording`, salva ou descartada 409 `closed`, sem entradas 400 `empty`.
+- **Prova:** `simulated` (`backend/tests/test_treino_proposta_com_respostas.py`).

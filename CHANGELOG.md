@@ -19,6 +19,11 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.91 (F0 e F2): o propose do treino recebe as respostas da pessoa (ADR-077)
+
+- Decisão do dono de 05/10: um caminho só de ensino, o Modo treinamento (ADR-077). `POST /api/training/{id}/propose` aceita corpo opcional `{"answers": [{question, answer}]}` (contrato v1.63): as respostas se acumulam na proposta da sessão (até 16), entram no texto do provedor com a frase do ensino v2 (agora numa função só, `texto_das_respostas`) e as perguntas respondidas não voltam. Resposta com formato de segredo é recusada com 400 `resposta_sensivel` antes de qualquer chamada de IA; erro de forma é 400 `invalid_answers`. Uma chamada do provedor por pedido; o salvar não leva as respostas para `flows` nem `recipes`. Sem migração.
+- Prova `simulated`: `backend/tests/test_treino_proposta_com_respostas.py` (29 passed), com mutação em três pontos (respostas no texto, perguntas respondidas, recusa de segredo) reprovando o teste; provedor simulado com espião. Prova `not_run` com IA real e `mypy-catraca` (sem o mypy no ambiente desta sessão).
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.
