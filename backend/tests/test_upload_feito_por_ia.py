@@ -174,9 +174,9 @@ async def test_so_o_motivo_mudando_tambem_muda_a_chave(harness: Any) -> None:
     assert depois["chave"] and depois["chave"] != antes
 
 
-async def test_a_rota_das_aprovacoes_entrega_o_rotulo_e_o_porque(tmp_path: Path) -> None:
-    """Achado no percurso do painel (05/10): `Approval.to_dict` não levava o `rotulo_ia` (29.79) nem o porquê, e o selo
-    da aba Textos e da guia Aprovações nunca aparecia — o teste do painel simulava o campo. A rota tem de entregá-los."""
+async def test_a_rota_das_aprovacoes_entrega_o_porque(tmp_path: Path) -> None:
+    """`GET /approvals` entrega o `rotulo_ia_motivo` ao lado do `rotulo_ia` (este coberto desde a suíte 33 por
+    `test_rotulo_ia_na_aprovacao.py`): a aba Textos e a guia Aprovações mostram os três estados."""
     cfg = make_config(tmp_path)
     cfg.ensure_dirs()
     app = create_app(cfg)
