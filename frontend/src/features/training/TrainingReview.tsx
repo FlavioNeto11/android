@@ -93,6 +93,32 @@ export function toqueSemAlvo(e: TrainingInput): string | null {
   return e.sensitive && e.x === null ? 'em teclado ou tela sensível (não gravado)' : 'sem elemento identificado';
 }
 
+/** Como o seletor `unique` da gravação se lê (`recorder._CAMPOS_DO_SELETOR`): o que a receita compara no aparelho. */
+const SELETOR: Record<string, string> = { 'rid+text': 'id e texto', 'rid+desc': 'id e descrição', rid: 'id', desc: 'descrição', text: 'texto' };
+
+/**
+ * 31.90-F: como a gravação RECONHECE o elemento tocado, para a pessoa conferir antes de salvar (a receita só vale se o
+ * elemento se acha de novo). Só toque com alvo; o toque sem alvo já tem a sua frase em `toqueSemAlvo`. O id aparece sem o
+ * pacote (`x:id/nome` vira `nome`): é o rótulo técnico do elemento, não dado da pessoa.
+ */
+export function alvoReconhecido(e: TrainingInput): string | null {
+  const t = e.target;
+  if ((e.type !== 'tap' && e.type !== 'long_press') || !t || !Object.keys(t).length) return null;
+  const como = (t.unique ?? []).map((u) => SELETOR[u] ?? u);
+  const id = t.resource_id ? t.resource_id.split('/').pop() : '';
+  if (!como.length) {
+    if (!t.filhos?.length) return 'sem identificador único: este toque não vira receita';
+    // Contêiner sem identidade: a receita acha o elemento por um filho rotulado (até três gravados); a pessoa vê quais.
+    const filhos = t.filhos.slice(0, 3).map((f) => {
+      const rotulo = f.text || f.desc;
+      const fid = f.resource_id ? f.resource_id.split('/').pop() : '';
+      return [rotulo ? `“${rotulo}”` : '', fid ? `id ${fid}` : ''].filter(Boolean).join(', ');
+    }).filter(Boolean);
+    return `reconhecido pelo que o elemento contém${filhos.length ? `: ${filhos.join('; ')}` : ''}`;
+  }
+  return `reconhecido por ${como[0]}${como.length > 1 ? ` (ou ${como.slice(1).join(', ')})` : ''}${id ? `, id ${id}` : ''}`;
+}
+
 /** O que a etapa confere, em palavras da pessoa; o tipo cru só aparece se o backend mandar um que a tela não conhece. */
 export function textoDoConfere(pc: TrainingStep['postcondition']): string {
   const valor = pc.value ? `“${pc.value}”` : '';
@@ -123,11 +149,13 @@ function agruparTeclas(entradas: TrainingInput[], descartadas: Set<number>): Tra
 /** O que a entrada foi. Texto não gravado (tela sensível, senha, cara de segredo) nunca tem valor na tela. */
 function DescricaoEntrada({ e }: { e: TrainingInput }) {
   const semAlvo = toqueSemAlvo(e);
+  const alvo = alvoReconhecido(e);
   return (
     <>
       {TIPO[e.type] ?? e.type}
       {e.target?.text || e.target?.desc ? <> em <strong>{e.target.text || e.target.desc}</strong></> : null}
       {semAlvo ? <span className={styles.muted}> {semAlvo}</span> : null}
+      {alvo ? <span className={styles.muted}> ({alvo})</span> : null}
       {e.type === 'text' ? (e.text !== null && !e.sensitive ? <> “{e.text}”</> : <span className={styles.muted}> (texto não gravado)</span>) : null}
       {e.type === 'open_app' ? <> {e.app_id}</> : null}
       {e.type === 'key' ? <> {e.key_name}</> : null}

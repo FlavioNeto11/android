@@ -44,6 +44,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   mutação dos dois handlers reprovando 2 testes. Frontend inteiro 1692/1692 e `typecheck` limpos (4 workers, Idle).
   `not_run`: percurso no navegador (entra no percurso do deploy que levar este corte).
 
+## 2026-10-05 — 31.90-F: a revisão do ensino mostra como a gravação reconhece cada elemento tocado (branch feat/31-90-f-alvo-reconhecido)
+
+- Só frontend, sem rota nova: o alvo gravado de cada toque já chega em `inputs[].target` (`unique`, `resource_id`, `filhos`). A linha da
+  entrada ganha, em cinza, "(reconhecido por id e texto, id conversation_name)": o seletor em palavras (`alvoReconhecido`), o id sem o
+  pacote e, quando o toque não tem identificador único, "sem identificador único: este toque não vira receita" (a regra do 31.94, que
+  zera a coordenada). Toque sem alvo continua com a frase de `toqueSemAlvo`.
+- Achado do Codex no PR 458 (conferido, válido): o contêiner sem identidade é alcançado pela receita por um filho rotulado
+  (`recipes.build_selectors`, até três gravados), e a frase genérica escondia qual. Agora ela traz os filhos: `reconhecido pelo que o
+  elemento contém: “Fulano”, id row_name; “Foto”`.
+- Prova `simulated`: `TrainingReview.test.tsx::31.90-F` (2 testes; sem tirar o pacote do id, ambos falham). Frontend inteiro 1688/1688
+  e `typecheck` limpos (4 workers, Idle). `not_run`: percurso no navegador (entra no do deploy que levar este corte).
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
