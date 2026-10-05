@@ -225,7 +225,7 @@ class _ProvedorQueVaza:
 
     async def generalize(self, req: Any) -> tuple[dict[str, object], Usage]:
         return ({"summary": "Entrar", "command_template": "entre com {usuario} usando {chave_de_acesso}",
-                 "parameters": [{"name": "usuario", "example": "lucas.almeida9484", "description": ""},
+                 "parameters": [{"name": "usuario", "example": "tadeu.quintela4821", "description": ""},
                                 {"name": "chave_de_acesso", "example": self.exemplo, "description": ""}],
                  "steps": [{"key": "entrar", "title": "Entrar", "goal": "entrar", "inputs": [], "side_effect": False,
                             "capability": None, "bindings": [], "app_id": None,

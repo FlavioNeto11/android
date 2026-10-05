@@ -82,7 +82,7 @@ def test_senha_e_codigo_digitados_nao_sao_gravados_mas_frase_sim() -> None:
     from app.security.redaction import parece_senha_ou_codigo
     for segredo in (SEGREDO, "Abc12345", "482913", "S3nh@forte"):
         assert parece_senha_ou_codigo(segredo), segredo
-    for normal in ("Olá, tudo certo?", "nasa", "QA-001", "bom dia", "lucas.almeida9484", "2026"):
+    for normal in ("Olá, tudo certo?", "nasa", "QA-001", "bom dia", "tadeu.quintela4821", "2026"):
         assert not parece_senha_ou_codigo(normal), normal
 
 

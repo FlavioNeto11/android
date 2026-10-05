@@ -22,7 +22,7 @@ def _el(text: str = "", desc: str = "", rid: str = "", *, editable: bool = False
 
 # A caixa de mensagens do André em 24/09, como a hierarquia real mostrou (resumida).
 CAIXA = [
-    _el("andre.carvalho9543", rid="igds_action_bar_title"), _el(desc="New Message"), _el(desc="Search"),
+    _el("rene.sampaio381524", rid="igds_action_bar_title"), _el(desc="New Message"), _el(desc="Search"),
     _el("Search or ask Meta AI", rid="ig_text"), _el(desc="Add note", rid="pog_root_view"),
     _el("Messages"), _el("Requests"),
     _el(desc="Orna Planejados Araraquara, Sent Sunday"), _el("Orna Planejados Araraquara"), _el("Sent Sunday"),
@@ -46,7 +46,7 @@ def test_so_o_conteudo_da_tela_vira_linha() -> None:
 
 def test_assunto_e_o_alvo_da_etapa_ou_o_titulo_da_tela() -> None:
     assert assunto_da_tela({"username": "nasa"}, CAIXA, "instagram") == "@nasa"
-    assert assunto_da_tela({}, CAIXA, "instagram") == "andre.carvalho9543"
+    assert assunto_da_tela({}, CAIXA, "instagram") == "rene.sampaio381524"
     assert assunto_da_tela(None, [], "instagram") == "instagram"
 
 
@@ -68,7 +68,7 @@ async def test_tela_vira_memoria_uma_vez_e_aparece_marcada_no_contexto(tmp_path:
         for _ in range(2):           # a mesma tela no mesmo dia: um fato só, visto 2x
             item = s.remember_screen(perfil.id, step_title="Abrir as mensagens", bindings={}, elements=CAIXA)
         assert item is not None and item.source == "observation" and item.occurrences == 2
-        assert item.subject == "andre.carvalho9543" and "Ana Rabottini-Psicopedagoga" in item.content
+        assert item.subject == "rene.sampaio381524" and "Ana Rabottini-Psicopedagoga" in item.content
         assert item.expires_at is not None
         assert s.remember_screen(perfil.id, step_title="vazia", bindings={}, elements=[_el(desc="Home", rid="feed_tab")]) is None
         ctx = s.context(perfil.id, recall_hint="Ana Rabottini")
