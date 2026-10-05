@@ -21,7 +21,7 @@ from pydantic import SecretStr
 
 from app.main import create_app
 from app.modules.portal.application.exclusao import MuitasBuscas, ServicoDeExclusao
-from app.modules.portal.domain.exclusao import chave_do_telefone, final, mesmo_telefone
+from app.modules.portal.domain.exclusao import chave_do_telefone, final, mesmo_telefone, nome_do_operador
 from app.util import now
 
 from .conftest import Harness
@@ -406,7 +406,7 @@ def test_dono_busca_com_o_teto_geral_esgotado_e_nao_gasta_o_dos_outros(harness: 
     compara: sem espaço sobrando e sem caixa) segue buscando, com a cota de um operador, e as buscas dele não entram
     no teto somado."""
     assert harness.state is not None
-    harness.cfg.file.pedidos.operadores_do_dono = [" Flavio "]
+    harness.cfg.file.pedidos.operadores_do_dono = [" Dono  Teste "]          # espaço sobrando e por dentro
     servico = harness.state.portal.exclusao
     for nome in ("primeira", "segunda"):
         for i in range(30):
@@ -414,9 +414,9 @@ def test_dono_busca_com_o_teto_geral_esgotado_e_nao_gasta_o_dos_outros(harness: 
     with pytest.raises(MuitasBuscas):
         servico.buscar(TEL_A, operador="terceira", agora_s=1100.0)
     for i in range(30):
-        servico.buscar(TEL_A, operador="flavio" if i % 2 else "FLAVIO", agora_s=1100.0 + i)
+        servico.buscar(TEL_A, operador="dono teste" if i % 2 else "DONO TESTE", agora_s=1100.0 + i)
     with pytest.raises(MuitasBuscas):                                   # a cota de um operador vale para o dono
-        servico.buscar(TEL_A, operador="Flavio", agora_s=1200.0)
+        servico.buscar(TEL_A, operador="Dono Teste", agora_s=1200.0)
     # A hora dos convidados passou e a do dono não: as 30 dele não ocuparam o teto somado.
     for i in range(60):
         servico.buscar(TEL_A, operador=f"convidado-{i % 2}", agora_s=1000.0 + 3600.5 + 30 + i / 100)
@@ -430,7 +430,18 @@ def test_sem_dono_declarado_ninguem_escapa_do_teto_geral(harness: Harness) -> No
         for i in range(30):
             servico.buscar(TEL_A, operador=nome, agora_s=1000.0 + i)
     with pytest.raises(MuitasBuscas):
-        servico.buscar(TEL_A, operador="Flavio", agora_s=1100.0)
+        servico.buscar(TEL_A, operador="Dono Teste", agora_s=1100.0)
+
+
+def test_espaco_dentro_do_nome_nao_abre_outro_balde(harness: Harness) -> None:
+    """A chave do balde junta os espaços de dentro: "Ana  Maria" é "Ana Maria", e não ganha mais 30 buscas."""
+    assert harness.state is not None
+    assert nome_do_operador("Ana  Maria") == nome_do_operador(" ana maria ") == "ana maria"
+    servico = harness.state.portal.exclusao
+    for i in range(30):
+        servico.buscar(TEL_A, operador="Ana Maria", agora_s=1000.0 + i)
+    with pytest.raises(MuitasBuscas):
+        servico.buscar(TEL_A, operador="Ana  Maria", agora_s=1100.0)
 
 
 def test_duas_threads_no_limite_nao_passam_as_duas() -> None:

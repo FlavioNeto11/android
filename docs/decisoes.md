@@ -5608,6 +5608,9 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
     convidados que esgotam a hora não deixam o dono sem atender um titular, e as buscas dele não gastam o teto dos
     outros.
     - O nome do dono também é declarado no login, então quem o usa ganha uma cota de operador, nada além.
+    - Limitação aceita: a cota do dono vale para quem SE DECLARA dono. Quem entra no painel com esse nome usa o balde
+      dele e pode esgotá-lo, e no log os dois aparecem iguais. O painel tem uma credencial só, e quem a tem é de
+      confiança. Identificar o dono por algo que não se declara fica para a tranca por cliente (29.56).
     - O total por hora fica limitado à soma das duas cotas.
     - Com a lista vazia, ninguém escapa do teto somado.
   - A contagem é feita sob trava, porque a rota busca em threads do pool.
