@@ -17,7 +17,8 @@ from app.automation.hierarchy import parse_hierarchy
 from app.config import AiCfg
 from app.modules.learning.domain.falhas import classificar_texto
 from app.taskqueue.dialogos import (LIMITE_DE_RECUSAS_DE_ACEITE, MOTIVO_ACEITE_RECUSADO,
-                                    REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, rotulo_para_o_ator, toque_que_aceita)
+                                    REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha, rotulo_para_o_ator,
+                                    toque_que_aceita)
 
 from .conftest import Harness
 from .fake_device import Node
@@ -447,7 +448,6 @@ def test_z1_o_paragrafo_com_link_nao_encolhe_a_zona() -> None:
 
 
 def test_k1b_o_botao_que_fecha_escolhe_continuar_sem_aceitar() -> None:
-    from app.taskqueue.dialogos import botao_que_fecha
     tree = _xml(("", (0, 900, 720, 1232), "cookie-banner", "", True),
                 ("Usamos cookies para melhorar sua experiência", (20, 920, 700, 980), "", "", False),
                 ("Aceitar", (20, 1100, 340, 1160), "", "android.widget.Button", True),
@@ -482,3 +482,49 @@ def test_k2b_com_aviso_de_verdade_a_palavra_de_aceite_e_recusada_em_qualquer_lug
     tree = _xml(("Usamos cookies para melhorar sua experiência", (0, 160, 720, 220), "", "", False),
                 ("ACEITAR TODOS", (120, 1050, 600, 1110), "", "android.widget.Button", True))
     assert _recusa(tree, "ACEITAR TODOS") == "ACEITAR TODOS"
+
+
+#: A tela de 2400 px de altura do celular: a faixa em volta da marca é de 288 px (`_MARGEM_DA_FAIXA`).
+_TELA_2400 = ("", (0, 0, 1080, 2400), "", "android.widget.FrameLayout", False)
+
+
+def test_z1c_a_caixa_soma_a_faixa_e_o_involucro_do_texto_nao_libera_o_irmao_de_baixo() -> None:
+    """Z1c da leitura: um involucro só do texto, com id de `_PISTAS` que não é de consentimento (`banner-content`), vira
+    a caixa da marca. A zona é a caixa MAIS a faixa: os botões no irmão de baixo, 200 px abaixo dele e dentro da faixa
+    do texto, seguem recusados, mesmo sem a palavra de aceite."""
+    for involucro in ("banner-content", "modal-body"):
+        tree = _xml(_TELA_2400,
+                    ("", (0, 1600, 1080, 1760), involucro, "", False),
+                    ("Usamos cookies para melhorar sua experiência", (20, 1610, 1060, 1690), "", "", False),
+                    ("política de cookies", (20, 1700, 400, 1750), "", "", True),
+                    ("Estou de acordo", (20, 1950, 260, 2010), "", "android.widget.Button", True),
+                    ("Ciente", (280, 1950, 520, 2010), "", "android.widget.Button", True),
+                    ("Prosseguir", (540, 1950, 780, 2010), "", "android.widget.Button", True),
+                    ("Continuar", (800, 1950, 1060, 2010), "", "android.widget.Button", True))
+        for rotulo in ("Estou de acordo", "Ciente", "Prosseguir", "Continuar"):
+            assert _recusa(tree, rotulo) == rotulo, (involucro, rotulo)
+
+
+def test_k2c_o_titulo_curto_do_aviso_tem_cara_de_aviso() -> None:
+    """K2c da leitura: o título "Sua privacidade" (curto, não clicável) com o corpo sem a palavra é aviso de verdade; a
+    palavra de aceite 440 px abaixo, fora da faixa de 288 px, é recusada."""
+    tree = _xml(_TELA_2400,
+                ("Sua privacidade", (40, 1500, 600, 1560), "", "", False),
+                ("Usamos dados para personalizar anúncios e conteúdo", (40, 1580, 1040, 1680), "", "", False),
+                ("Aceitar todos", (40, 2000, 360, 2060), "", "android.widget.Button", True),
+                ("Aceitar e continuar", (380, 2000, 760, 2060), "", "android.widget.Button", True),
+                ("OK", (780, 2000, 1040, 2060), "", "android.widget.Button", True))
+    for rotulo in ("Aceitar todos", "Aceitar e continuar", "OK"):
+        assert _recusa(tree, rotulo) == rotulo, rotulo
+
+
+def test_k2c_a_pergunta_do_aviso_tem_cara_de_aviso_e_o_link_do_rodape_nao() -> None:
+    pergunta = _xml(_TELA_2400,
+                    ("Aceitar cookies?", (40, 1500, 600, 1560), "", "", False),
+                    ("Aceitar", (40, 2000, 400, 2060), "", "android.widget.Button", True))
+    assert _recusa(pergunta, "Aceitar") == "Aceitar"
+    # O link do rodapé é clicável: segue fora (o K2b), e a palavra de aceite longe dele passa.
+    rodape = _xml(_TELA_2400,
+                  ("Política de privacidade", (40, 2300, 500, 2360), "", "", True),
+                  ("Aceitar", (40, 600, 400, 660), "", "android.widget.Button", True))
+    assert _recusa(rodape, "Aceitar") is None

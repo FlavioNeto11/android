@@ -253,11 +253,16 @@ def _na_zona(tree: UiTree, marca: UiElement, x: float, y: float, pagina: float, 
     """A zona da marca. Regra da caixa (releitura do #386): quando a marca está dentro de uma caixa reconhecida (a
     maior que a contém, abaixo da fração da página, que é marca ou tem `_PISTAS`, e que contém mais que a própria
     marca), a zona é a caixa inteira: a folha de cookies do gov.br (05/10) cobre 49 % do rodapé, e a página por baixo
-    dela não recebe o toque. Sem caixa, a faixa em volta da marca, porque o leitor descarta o contêiner vazio."""
+    dela não recebe o toque. Sem caixa, a faixa em volta da marca, porque o leitor descarta o contêiner vazio.
+
+    Z1c da leitura: a caixa SOMA à faixa, não a substitui. Um invólucro só do texto com id de `_PISTAS` que não é de
+    consentimento (`banner-content`, `modal-body`) vira a caixa; se a zona fosse só ele, os botões no irmão de baixo
+    ("Estou de acordo", "Prosseguir" a 200 px) passariam."""
     caixa = _caixa_da_marca(tree, marca, pagina)
     if caixa is not None:
         b = caixa.bounds
-        return b[0] <= x <= b[2] and b[1] <= y <= b[3]
+        if b[0] <= x <= b[2] and b[1] <= y <= b[3]:
+            return True
     return marca.bounds[1] - margem <= y <= marca.bounds[3] + margem
 
 
@@ -279,7 +284,10 @@ _FRASE_DE_AVISO = 30
 
 
 def _cara_de_aviso(tree: UiTree, marca: UiElement, pagina: float) -> bool:
-    return len(_rotulo(marca)) > _FRASE_DE_AVISO or _caixa_da_marca(tree, marca, pagina) is not None
+    # K2c da leitura: o título ou a pergunta do aviso ("Sua privacidade", "Aceitar cookies?") não é clicável e tem
+    # menos de 30 caracteres; o link do rodapé, que o K2b quer deixar de fora, é clicável.
+    return (not marca.clickable or len(_rotulo(marca)) > _FRASE_DE_AVISO
+            or _caixa_da_marca(tree, marca, pagina) is not None)
 
 
 def rotulo_para_o_ator(e: UiElement) -> str:
