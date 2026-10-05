@@ -40,7 +40,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Em tela sensível, o toque sem id estrutural (nem do alvo nem de filho) também sai sem x/y.
 - A destilação não muda: coordenada solta já não vira receita (teste com `distill_training`).
 - `linha_da_entrada` (`planning/training.py`, só esse trecho): toque com `sensitive` e sem x diz "toque em teclado ou tela sensível (não gravado)" e `ponto=(x,y)` só sai com x (nunca "ponto=(None,None)").
-- Prova `simulated`: `test_treino_segredo_na_gravacao.py` (21). Real: `not_run`.
+- Segunda leitura do #440: toque sem seletor utilizável (alvo None, ou sem `unique` e sem filhos) sai sem x/y em qualquer
+  tela, sem marcar `sensitive`; nomes de teclado novos (`pincode`, `pinview`, `pinentry`, `pinlock`, `numberpad`,
+  `patternlock`, `lockview`, `dialpad`); a tecla telefônica só com as letras do próprio dígito ("5G", "2FA", "4K" seguem
+  gravados). Fora: arraste em padrão de bloqueio e o significado da coluna `sensitive`.
+- Prova `simulated`: `test_treino_segredo_na_gravacao.py` (24). Real: `not_run`.
 
 ## 2026-10-05 — 31.80/31.82, segunda leitura do PR #427 (branch fix/31-80-82-gravacao-do-treino)
 

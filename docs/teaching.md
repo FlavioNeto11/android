@@ -339,7 +339,7 @@ Prova: `test_ensino_v2.py::test_laco_de_perguntas_e_respostas_ate_o_rascunho` (v
   num View só: `pin_pad`, `PinKeypadView`, `keypad`, `numpad`, `passcode`, `lockpattern`) é gravado SEM alvo e SEM x/y,
   com a marca `sensitive`: o id e a posição seriam o dígito. Botões de diálogo (`android:id/button1`, "OK") têm
   rótulo e seguem gravados. Em tela sensível, o toque sem id estrutural também sai sem x/y. A etapa com essa entrada
-  não vira receita ("coordenada solta") e a IA a conduz. Limite conhecido: dígito por extenso ("um", "one") não é
+  não vira receita ("coordenada solta") e a IA a conduz. Em qualquer tela, o toque cujo alvo gravado não tem seletor utilizável (sem `unique` e sem filhos: contêiner sem id, Flutter, SurfaceView) também sai sem x/y, mas sem a marca `sensitive`. A tecla telefônica só vale com as letras do próprio dígito (5 JKL; "5G", "2FA", "4K" seguem gravados). Limites conhecidos: o arraste em padrão de bloqueio (coordenadas do swipe) e dígito por extenso ("um", "one") não é
   reconhecido como tecla.
   Reinício com duas réplicas: a reconciliação só fecha a gravação de aparelho que o próprio backend hospeda.
 

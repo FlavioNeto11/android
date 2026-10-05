@@ -36,11 +36,15 @@ def _parece_segredo(texto: str | None) -> bool:
 
 _UM_DIGITO = re.compile(r"\d")
 #: A tecla do teclado telefônico: um dígito e até 4 letras maiúsculas, com separador opcional ("2,ABC", "2 ABC", "2ABC").
-_TECLA_TELEFONICA = re.compile(r"\d[ ,.\-]?[A-Z]{1,4}")
+#: As letras de cada dígito do teclado telefônico: "5G", "4K", "2FA" não são teclas; "5 JKL" é.
+_LETRAS_DA_TECLA = {"2": "ABC", "3": "DEF", "4": "GHI", "5": "JKL", "6": "MNO", "7": "PQRS", "8": "TUV", "9": "WXYZ", "0": "+"}
+_TECLA_TELEFONICA = re.compile(r"(\d)[ ,.\-]?([A-Z]{1,4}|\+)")
 _RID_TERMINA_EM_DIGITO = re.compile(r"\d$")
 #: Os nomes de um teclado ou padrão de bloqueio desenhado num View só (o alvo é o teclado inteiro: a posição do toque É o
 #: dígito). Só estes; casam por PEDAÇO do nome (`spinner` não é `pin`).
-_TERMOS_DE_TECLADO = frozenset({"pin", "passcode", "keypad", "numpad", "pinpad", "lockpattern", "patternview"})
+_TERMOS_DE_TECLADO = frozenset({
+    "pin", "passcode", "keypad", "numpad", "pinpad", "lockpattern", "patternview", "pincode", "pinview", "pinentry",
+    "pinlock", "numberpad", "patternlock", "lockview", "dialpad"})
 _PEDACOS_DE_NOME = re.compile(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+")
 
 
@@ -66,7 +70,10 @@ def _parece_segredo_de_tela(texto: str | None) -> bool:
 
 def _rotulo_de_tecla(texto: str | None) -> bool:
     t = (texto or "").strip()
-    return bool(_UM_DIGITO.fullmatch(t) or _TECLA_TELEFONICA.fullmatch(t))
+    if _UM_DIGITO.fullmatch(t):
+        return True
+    m = _TECLA_TELEFONICA.fullmatch(t)
+    return bool(m) and _LETRAS_DA_TECLA.get(m.group(1)) == m.group(2)
 
 
 def _e_tecla_de_teclado_numerico(alvo: dict | None) -> bool:
@@ -285,6 +292,10 @@ class TrainingRecorder:
                 marcada = True
             else:
                 alvo = _alvo_sem_segredo(bruto, sensivel)
+        if tipo in ("tap", "long_press") and x is not None and not (alvo and (alvo.get("unique") or alvo.get("filhos"))):
+            # 31.94 (geral): sem seletor utilizável (alvo None, ou sem `unique` e sem filhos) a coordenada não vira receita e,
+            # num teclado desenhado num View só (Flutter, SurfaceView), é o dígito. Não é segredo conhecido: sem `sensitive`.
+            x = y = None
         texto = entrada.get("text")
         tem_texto = bool(texto)
         if texto is not None:

@@ -278,3 +278,38 @@ async def test_a_linha_da_entrada_de_tecla_nao_gravada_nao_traz_none_coordenada_
     assert linha_da_entrada(comum) == "#2 tap | ponto=(10,20) sem elemento identificado"
     # sem x e sem a marca (entrada antiga): nunca "ponto=(None,None)"
     assert "None" not in linha_da_entrada({"seq": 3, "type": "tap", "x": None, "y": None, "target": None})
+
+
+async def test_toque_sem_seletor_utilizavel_sai_sem_coordenada_mas_nao_e_sensivel(harness: Harness) -> None:
+    from app.planning.training import linha_da_entrada
+    # contêiner sem id, sem rótulo e sem filho rotulado (Flutter/SurfaceView): a posição seria o dígito
+    entrada = await _toque_unico(harness, _tecla(classe="io.flutter.embedding.android.FlutterView"))
+    assert entrada["x"] is None and entrada["y"] is None and entrada["sensitive"] is False
+    assert "None" not in linha_da_entrada(entrada) and "ponto" not in linha_da_entrada(entrada)
+    # nem alvo nenhum (toque fora de qualquer elemento): a linha não traz ponto, só "sem elemento identificado"
+    st, rt, sid = harness.state, harness.state.devices.get("android-01"), harness.state.training.active_for("android-01")
+    tela = UiTree(elements=[_tecla()], packages=["com.pocqa.messenger"], sensitive=False)
+    st.training.record(rt, {"type": "tap", "x": 900, "y": 900}, tela)
+    fora = st.training.get(sid)["inputs"][-1]
+    assert fora["target"] is None and fora["x"] is None and fora["sensitive"] is False
+    assert linha_da_entrada(fora).endswith("| sem elemento identificado") and "None" not in linha_da_entrada(fora)
+    # com `unique` o toque segue como sempre, com x/y
+    com_id = await _toque_unico(harness, _tecla(text="Enviar", rid="com.pocqa.messenger:id/enviar"))
+    assert com_id["x"] == 100 and com_id["y"] == 100 and com_id["target"]["unique"]
+
+
+async def test_nomes_de_teclado_novos_caem_e_os_parecidos_seguem_gravados(harness: Harness) -> None:
+    for nome in ("pin_code", "PinView", "pin_entry", "pin_lock", "number_pad", "NumberPad", "pattern_lock", "lock_view",
+                 "dial_pad", "DialPad"):
+        assert _nao_gravado(await _toque_unico(harness, _tecla(rid=f"com.pocqa.messenger:id/{nome}"))), nome
+    for nome in ("pinned_post", "OpinionView", "Pinterest"):
+        entrada = await _toque_unico(harness, _tecla(rid=f"com.pocqa.messenger:id/{nome}"))
+        assert entrada["target"]["resource_id"].endswith(nome) and entrada["x"] == 100, nome
+
+
+async def test_tecla_telefonica_so_com_as_letras_daquele_digito(harness: Harness) -> None:
+    for rotulo in ("5G", "2FA", "4K", "3D", "1A", "5 ABC"):          # não são teclas: seguem gravados
+        entrada = await _toque_unico(harness, _tecla(text=rotulo, rid="com.pocqa.messenger:id/chip"))
+        assert entrada["x"] == 100 and entrada["sensitive"] is False and entrada["target"]["resource_id"], rotulo
+    for rotulo in ("5 JKL", "7 PQRS", "9,WXYZ", "0 +", "2ABC"):
+        assert _nao_gravado(await _toque_unico(harness, _tecla(text=rotulo, rid="com.pocqa.messenger:id/chip"))), rotulo
