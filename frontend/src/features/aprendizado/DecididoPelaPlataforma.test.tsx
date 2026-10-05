@@ -86,7 +86,7 @@ describe('leitura do relatório', () => {
 describe('Decidido pela plataforma', () => {
   it('em on lista as decisões com o gesto, os fatos e o Desligar só no que segue vivo', async () => {
     await montar();
-    await waitFor(() => linha('receita:180'));
+    await waitFor(() => linha('receita:180') !== null);
     const vivo = linha('receita:180');
     expect(text(vivo)).toContain('Receita nº 180 · send message (v1)');
     expect(text(vivo)).toContain('Publicou');
@@ -105,7 +105,7 @@ describe('Decidido pela plataforma', () => {
 
   it('desligar pede o motivo, chama a rota de sempre e relê', async () => {
     await montar();
-    await waitFor(() => linha('receita:180'));
+    await waitFor(() => linha('receita:180') !== null);
     await click(byRole('button', /^Desligar$/, linha('receita:180')));
     const campo = linha('receita:180').querySelector('textarea, input[type="text"], input:not([type])') as HTMLInputElement;
     await setValue(campo, 'prefiro olhar este');
@@ -122,7 +122,7 @@ describe('Decidido pela plataforma', () => {
                                                           titulo: `receita ${i + 1}` }));
     relatorio = { modo: 'on', ultima_volta: null, casos_na_sombra: 0, decididos_pela_plataforma: muitas };
     await montar();
-    await waitFor(() => linha('receita:1'));
+    await waitFor(() => linha('receita:1') !== null);
     expect(container.querySelectorAll('[data-decisao-da-plataforma]')).toHaveLength(5);
     await click(byRole('button', /Ver todas as 7 decisões/));
     expect(container.querySelectorAll('[data-decisao-da-plataforma]')).toHaveLength(7);
@@ -134,7 +134,7 @@ describe('Decidido pela plataforma', () => {
                                                           titulo: `receita ${i + 1}`, estado: i === 6 ? 'disabled' : 'published' }));
     relatorio = { modo: 'on', ultima_volta: null, casos_na_sombra: 0, decididos_pela_plataforma: muitas };
     await montar();
-    await waitFor(() => linha('receita:1'));
+    await waitFor(() => linha('receita:1') !== null);
     expect(byRole('button', /Ver todas as 7 decisões \(1 desfeita\)/)).toBeTruthy();
   });
 
@@ -142,7 +142,7 @@ describe('Decidido pela plataforma', () => {
     relatorio = { modo: 'shadow', casos_na_sombra: 1, decididos_pela_plataforma: [],
                   ultima_volta: { em: '2026-10-04T17:00:00Z', avaliados: 40, decidiria: ['receita:80'], decididos: [] } };
     await montar();
-    await waitFor(() => secao());
+    await waitFor(() => secao() !== null);
     expect(text(secao()!)).toContain('Em observação');
     expect(text(secao()!)).toContain('decidiria 1 de 40 itens');
     expect(text(secao()!.querySelector('[aria-label="O que a plataforma decidiria"]')!)).toContain('back_to_list (v1)');
@@ -151,14 +151,14 @@ describe('Decidido pela plataforma', () => {
   it('em shadow com a lista vazia diz que nada foi decidido; com decisões, que são de quando ela decidia sozinha', async () => {
     relatorio = { modo: 'shadow', casos_na_sombra: 0, decididos_pela_plataforma: [], ultima_volta: null };
     await montar();
-    await waitFor(() => secao());
+    await waitFor(() => secao() !== null);
     expect(text(secao()!)).toContain('Nada foi decidido sozinho ainda');
     await act(async () => root.unmount());
     container.remove();
     montado = false;
     relatorio = { modo: 'shadow', casos_na_sombra: 0, decididos_pela_plataforma: DECISOES, ultima_volta: null };
     await montar();
-    await waitFor(() => linha('receita:180'));
+    await waitFor(() => linha('receita:180') !== null);
     expect(text(secao()!)).not.toContain('Nada foi decidido sozinho');
     expect(text(secao()!)).toContain('As decisões abaixo são de quando ela decidia.');   // a frase da main (deploy 31)
   });
@@ -191,7 +191,7 @@ describe('Decidido pela plataforma', () => {
     relatorio = { modo: 'shadow', casos_na_sombra: 0, decididos_pela_plataforma: DECISOES,
                   ultima_volta: { em: '2026-10-04T18:00:00Z', avaliados: 40, decidiria: [], decididos: [] } };
     await montar();
-    await waitFor(() => linha('receita:180'));
+    await waitFor(() => linha('receita:180') !== null);
     expect(text(secao()!)).toContain('Em observação');
     expect(text(secao()!)).not.toContain('Nada foi decidido sozinho');
     expect(text(secao()!)).toContain('de quando ela decidia');
@@ -209,7 +209,7 @@ describe('30.63: o porquê com os rótulos da tela', () => {
 describe('30.66: os textos da aba Para aprovar', () => {
   it('a regra aparece com nome legível, e o id cru só no title', async () => {
     await montar();
-    await waitFor(() => linha('receita:180'));
+    await waitFor(() => linha('receita:180') !== null);
     const vivo = linha('receita:180');
     expect(text(vivo)).toContain('Aprovação automática do que esperava você');
     expect(text(linha('receita:5'))).toContain('Confirmação automática do que estava em revisão');
@@ -223,7 +223,7 @@ describe('30.66: os textos da aba Para aprovar', () => {
       ...DECISOES, { ...DECISOES[0], item_ref: 'fluxo:f-1', kind: 'fluxo', ref: 'f-1', em: '2026-10-04T17:01:00Z',
                      titulo: 'Mandar "{message_template}" para {recipient_1}' }] };
     await montar();
-    await waitFor(() => linha('fluxo:f-1'));
+    await waitFor(() => linha('fluxo:f-1') !== null);
     expect(text(linha('fluxo:f-1'))).toContain('Mandar … para …');
     expect(text(linha('receita:5'))).toContain('Receita nº 5 · collect contacts (v1)');
     expect(text(secao()!)).not.toMatch(/[{}]|_i1|send_message/);
