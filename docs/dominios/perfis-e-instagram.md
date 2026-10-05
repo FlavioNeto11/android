@@ -198,9 +198,9 @@ Caminhos relativos a `backend/app/`.
   v1.48) põe a parada nas filas "Aguardando intervenção" e Pendências, com o rótulo "Tela não reconhecida". Segue a
   regra do aviso (`unknown_no_teto`, sem o desconto do teto velho), e o aviso leva ao Foco do aparelho. Item 29.100:
   as duas filas mostram e ordenam pela hora em que o estado começou (`account_sessions.status_since`, migração 112;
-  `SessionInfo.status_since`, adendo v1.51), não pela última verificação, que na parada fica vazia ou velha. Regravar
-  o mesmo estado mantém a hora. Sem vínculo, a primeira entrada em `unknown` vem até `teto − 1` reobservações antes da
-  parada.
+  `SessionInfo.status_since`, adendo v1.51), não pela última verificação, que na parada fica vazia ou velha. A hora é
+  a da mudança de estado e, no `unknown`, a da chegada ao teto: um `unknown` administrativo antigo que para hoje
+  mostra hoje. Regravar o mesmo estado fora disso mantém a hora.
   Duas exceções, de propósito:
   - o app fora do primeiro plano (`_fora_do_primeiro_plano` em `sessao.py`) grava `unknown` SEM somar, e a porta
     segue automática: abrir o app de novo não é rodada de sessão, porque a tela nem chegou a ser lida;

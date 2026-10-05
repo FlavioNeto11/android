@@ -6223,11 +6223,17 @@ Sem migração. Campo aditivo em `SessionInfo`, que vai em `PersonaDTO.session`,
 ## Adendo v1.51 (05/10/2026; número da orquestradora; item 29.100) — a hora em que o estado da sessão começou
 
 Migração 112. Campo aditivo em `SessionInfo`, nos mesmos cinco DTOs do adendo v1.48:
-- `status_since: string | null`: ISO-8601 UTC da hora em que o estado ATUAL (`status`) começou. Regravar o mesmo estado
-  não o move: a reobservação de quem está `unknown`, o "Verificar conta" e a invalidação de quem já estava `unknown`
-  mantêm a hora. Só a mudança de estado, ou a linha nova, a troca. `verified_at` continua sendo a última verificação.
-- Na sessão parada no teto (`unknown_at_cap`, v1.48), é a entrada em `unknown`. Com vínculo ativo o teto é 1, então é
-  a própria parada. Sem vínculo, a parada vem até `teto − 1` reobservações depois, a poucos ticks do agendador.
+- `status_since: string | null`: ISO-8601 UTC de desde quando a sessão está assim.
+  - É a hora da mudança de estado (ou da linha nova).
+  - No `unknown`, é também a hora em que a série de reobservações CHEGOU ao teto do aparelho (`unknown_at_cap`,
+    v1.48): a parada.
+  - Por isso a sessão parada mostra a hora da parada, mesmo quando o `unknown` começou dias antes por um gesto
+    administrativo (vínculo, wipe, logout).
+- Fora disso, regravar o mesmo estado não move a hora: a reobservação abaixo do teto, o "Verificar conta" no teto e a
+  invalidação de quem já estava `unknown`.
+- `verified_at` continua sendo a última verificação.
+- A decisão é tomada dentro do próprio upsert, contra a linha que o comando encontra, então duas gravações concorrentes
+  não deixam a hora velha.
 - Nulo quando a sessão não existe, ou quando era `session_ready` antes da migração 112 e não mudou de estado desde
   então. A migração preenche as outras com a última gravação. Em `session_ready` gravada depois da 112, é a hora em que
   ficou pronta.

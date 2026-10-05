@@ -683,7 +683,8 @@ export interface SessionInfo {
    */
   unknown_at_cap?: boolean;
   /**
-   * 29.100 (adendo v1.51): quando o estado ATUAL começou; a reobservação do mesmo estado não o move. Nulo na sessão
+   * 29.100 (adendo v1.51): desde quando a sessão está assim: a mudança de estado e, no `unknown`, a chegada ao teto (a
+   * parada); regravar o mesmo estado fora disso não a move. Nulo na sessão
    * `session_ready` de antes da migração 112. Opcional pelo mesmo motivo de `unknown_at_cap`.
    */
   status_since?: string | null;

@@ -34,6 +34,10 @@ _SESSAO = ("account_id, instance_id, status, observed_handle, observed_handle AS
            " detail, unknown_streak, updated_at, status_since")
 
 
+#: 29.100: o "teto" de quem não tem teto configurado, no SQL do `status_since`: nenhuma série chega a ele.
+_SEM_TETO = 2**31 - 1
+
+
 def sessao_vencida(session: Row | None, max_age_s: int) -> bool:
     """`session_ready` verificada há tempo demais. Uma regra só: o que a porta do despacho recusa é exatamente o
     que o cartão do perfil marca como dado velho.
@@ -1104,7 +1108,7 @@ class SocialRepository:
         if self.account_row(profile_id, account_id) is None:
             raise KeyError(account_id)
         streak = 0
-        anterior = self.db.one("SELECT status, unknown_streak, status_since FROM account_sessions WHERE account_id=?"
+        anterior = self.db.one("SELECT status, unknown_streak FROM account_sessions WHERE account_id=?"
                                " AND instance_id=?", (account_id, instance_id))
         estava_em_unknown = anterior is not None and anterior["status"] == SessionStatus.unknown.value
         if status is SessionStatus.unknown and reobserved:
@@ -1117,19 +1121,30 @@ class SocialRepository:
         elif status is SessionStatus.session_ready and estava_em_unknown and int(anterior["unknown_streak"] or 0):
             metricas.contar("sessao.unknown_resolvida", instancia=instance_id,
                             rodada_antes=int(anterior["unknown_streak"] or 0))
-        # 29.100: `status_since` é a hora em que o estado ATUAL começou. Reescrever o mesmo estado (a reobservação,
-        # o "Verificar conta", a invalidação de quem já estava `unknown`) mantém a hora; só a mudança a troca. É ela
-        # que Pendências mostra: `verified_at` fica vazio ou velho justamente na parada.
+        # 29.100: `status_since` é desde quando a sessão está ASSIM: a hora da mudança de estado e, no `unknown`, a hora
+        # em que a série CHEGOU ao teto do aparelho (a parada). Reescrever o mesmo estado (a reobservação abaixo do teto,
+        # o "Verificar conta" no teto, a invalidação de quem já estava `unknown`) mantém a hora. Sem a troca no teto, um
+        # `unknown` administrativo (vínculo, wipe, logout) de dias atrás que depois parasse na reobservação mostraria a
+        # hora do gesto em Pendências, e não a da parada.
+        #
+        # A decisão vai DENTRO do upsert, contra a linha que o comando encontra: duas gravações concorrentes ("Verificar
+        # conta" e o motor) não deixam a hora velha por terem lido a linha antes. O NÚMERO do teto vem da regra única
+        # (`teto_de_unknown`, que não depende da linha); só a comparação `unknown_streak >= teto` de `unknown_no_teto`
+        # se repete no SQL, porque é ela que precisa ser atômica. Sem teto configurado, nada chega a ele.
+        teto = self.teto_de_unknown(instance_id)
+        teto_sql = teto if teto is not None else _SEM_TETO
         agora = now_iso()
-        desde = agora if anterior is None or anterior["status"] != status.value else anterior["status_since"]
         self.db.execute(
             "INSERT INTO account_sessions(account_id, instance_id, status, observed_handle, verified_at, detail,"
             " updated_at, unknown_streak, status_since) VALUES (?,?,?,?,?,?,?,?,?)"
             " ON CONFLICT(account_id, instance_id) DO UPDATE SET status=excluded.status,"
             " observed_handle=excluded.observed_handle, verified_at=excluded.verified_at,"
             " detail=excluded.detail, updated_at=excluded.updated_at, unknown_streak=excluded.unknown_streak,"
-            " status_since=excluded.status_since",
-            (account_id, instance_id, status.value, observed_handle, verified_at, detail, agora, streak, desde))
+            " status_since=CASE WHEN account_sessions.status = excluded.status"
+            " AND NOT (excluded.status = ? AND excluded.unknown_streak >= ? AND account_sessions.unknown_streak < ?)"
+            " THEN account_sessions.status_since ELSE excluded.status_since END",
+            (account_id, instance_id, status.value, observed_handle, verified_at, detail, agora, streak, agora,
+             SessionStatus.unknown.value, teto_sql, teto_sql))
 
     def session_row(self, profile_id: str, instance_id: str | None = None) -> Row | None:
         """A sessão da conta âncora do perfil: NESTE aparelho quando ele é dito; senão a do aparelho vinculado, ou a
