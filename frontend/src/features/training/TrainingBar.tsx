@@ -160,7 +160,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
         <div className={styles.recording}>
           <p className={styles.recLine}>
             <CircleDot size={14} className={styles.recDot} aria-hidden /> Gravando: <strong>{ativa.intent}</strong>
-            <Badge size="sm">{(ativa.inputs ?? []).length} entrada(s)</Badge>
+            <Badge size="sm">{plural((ativa.inputs ?? []).length, 'entrada', 'entradas')}</Badge>
           </p>
           <ol className={styles.liveList}>
             {(ativa.inputs ?? []).slice(-6).map((e) => (
@@ -175,7 +175,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             ))}
           </ol>
           {/* A região viva nasce vazia com a gravação: o texto que entra depois é anunciado, o que já nasce com ele não. */}
-          <p className={styles.hint} role="status" aria-live="polite">{recusadas ? `${recusadas} entrada(s) recusada(s): refaça` : ''}</p>
+          <p className={styles.hint} role="status" aria-live="polite">{recusadas ? `${plural(recusadas, 'entrada recusada', 'entradas recusadas')}: refaça` : ''}</p>
           <p className={styles.hint}>Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.</p>
           {botoesDaGravacao()}
         </div>
