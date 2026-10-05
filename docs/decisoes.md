@@ -3245,7 +3245,7 @@ aprovação automática (30.55)".
 - Nada foi digitado nem enviado; a tela foi fechada com BACK.
 - Incidente de 29/09, 02:05–02:15Z (`real`, K-058). O backend estava em `7a02491` desde 01:42Z
   (`data\logs\backend.log.2026-09-28`, em hora local), antes da regra "nenhum reset com conta", e a escada de reparo
-  apagou a sessão do «conta do android-01», conta viva:
+  apagou a sessão da «conta do android-01», conta viva:
   - 02:05:31Z: `restart` do android-01, 2º degrau (motivo: "o `system_server` caiu");
   - 02:10:14Z: o `restart` falhou ("o Android subiu, mas não ficou pronto em 60 s": o preparo estourou o prazo);
   - 02:15:34Z: `reset`, 3º degrau (`c-20260929021534-6d15cd`, `requested_by` `system`, terminado às 02:20:27Z), que
@@ -3362,7 +3362,7 @@ desligados depois (mexer no WSL continua exigindo autorização em chat, CLAUDE.
 - O painel antigo quebra o "Marcar como concluído" em etapa com efeito: o frontend vai no mesmo deploy (`npm run
   build`).
 - `account_label` passa a ser o @ vinculado: um fluxo do QA Messenger que confira `Conta: {account_label}` no android-01
-  passa a esperar `«conta do android-01»`.
+  passa a esperar o @ da conta do android-01 (o handle vinculado), não o rótulo do aparelho.
 - Com a máquina central a 90% de CPU ou mais, um aparelho local doente de verdade espera: a cada 10 min o reparo
   reconfere e só sobe de degrau quando a máquina aliviar. O aviso no cartão diz por quê.
 - **Pendências dos revisores:**
@@ -3382,7 +3382,7 @@ desligados depois (mexer no WSL continua exigindo autorização em chat, CLAUDE.
   - as escolhas do pacote frota: a regra de uma conta vale para o balde inteiro (inclusive responder a quem escreveu e
     aceitar pedido de seguir); aprovação dada que nunca chega ao efeito reserva o alvo por 30 dias; a mesma persona em
     dois aparelhos não é "outra conta"; o texto exato do dono (`content_verbatim`) fica fora da trava de atribuição;
-  - quando e como reativar o «conta do android-01», cuja sessão o `reset` de 29/09 apagou. Recomendação: um único login,
+  - quando e como reativar a «conta do android-01», cuja sessão o `reset` de 29/09 apagou. Recomendação: um único login,
     acompanhado pelo dono, pelo Conectar do painel, num horário calmo da máquina. Até lá, nada toca a conta (a conduta
     de login (e) vale: depois de 1 envio sem sucesso, o login automático para).
 

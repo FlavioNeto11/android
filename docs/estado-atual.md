@@ -282,7 +282,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Parque:** apps do Google desativados no preparo (21.15, K-059; `MemAvailable` de 670–960 para 974–1054 MB) e o
     reparo que espera a máquina aliviar (21.16, `9348e9c`, K-058).
   - **Incidente (29/09, 02:05–02:15Z):** com a máquina saturada pela IDE, a escada de reparo do central (ainda em
-    `7a02491`) deu `restart` e `reset` no android-01 e apagou o Instagram e a sessão do «conta do android-01»
+    `7a02491`) deu `restart` e `reset` no android-01 e apagou o Instagram e a sessão da «conta do android-01»
     (`c-20260929021534-6d15cd`). A conta não foi tocada desde então; o android-01 está sem o app. Conduta: um trabalho
     pesado por vez no central, testes em prioridade ociosa, Docker e WSL desligados depois dos testes em PostgreSQL.
   - **Decisões do dono pendentes:**

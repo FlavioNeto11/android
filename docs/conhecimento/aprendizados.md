@@ -1336,7 +1336,7 @@ suspeitar de processo segurando o arquivo.
 **Sintoma.** Em 29/09, às 02:05:31Z, a escada de reparo pediu `restart` do android-01 (2º degrau; "o `system_server`
 caiu"). Às 02:10:14Z ele falhou ("o Android subiu, mas não ficou pronto em 60 s": o preparo estourou o prazo). Às
 02:15:34Z veio o `reset` (3º degrau, `c-20260929021534-6d15cd`, `requested_by` `system`), que apagou o Instagram e a
-sessão do «conta do android-01», uma das três contas vivas.
+sessão da «conta do android-01», uma das três contas vivas.
 
 **Causa.** Assumida pela coincidência medida: a máquina central estava saturada pelo trabalho da própria IDE em
 paralelo — a suíte inteira do backend, o Docker Desktop com os testes em PostgreSQL e o boot do android-17 do

@@ -1511,7 +1511,7 @@ simples.
   não levou `caption_contains`, e a guarda de cartão não entrou em jogo nesta prova.
 - Curtida: toque às 23:53:45Z; pós-condição `selector:desc==Liked` comprovada pela árvore local, sem IA.
 - Comentário: toque em "Post" às 23:54:57Z; o texto inteiro, "rapaz, que post bacana esse, com carinho de quem quer
-  fazer diferença 👏 é isso aí!", apareceu na lista como do «conta do android-06». Digitação por
+  fazer diferença 👏 é isso aí!", apareceu na lista como da «conta do android-06». Digitação por
   `mobile: replaceElementValue` em 234 ms (HTTP 200), com o texto mascarado no `appium.log` como `**SECURE**` (0
   ocorrências do texto no log).
 - **Achado de processo (K-052):** o comentário NÃO passou por aprovação humana. A política própria do perfil do andre
@@ -1724,7 +1724,7 @@ convenção aceita como dívida: `devices/manager.py` passou a importar `taskque
 - 02:05:31Z: a escada de reparo pediu `restart` do android-01, 2º degrau (motivo: "o `system_server` caiu").
 - 02:10:14Z: o `restart` falhou ("o Android subiu, mas não ficou pronto em 60 s": o preparo estourou o prazo).
 - 02:15:34Z: `reset`, 3º degrau (`c-20260929021534-6d15cd`, `requested_by` `system`, terminado às 02:20:27Z). Apagou o
-  Instagram e a sessão do «conta do android-01», uma das três contas vivas.
+  Instagram e a sessão da «conta do android-01», uma das três contas vivas.
 - Fonte: os eventos `instance.remediation` e `command.updated` em `data\logs\backend.log.2026-09-28` (hora local,
   -03:00) e `GET /api/commands/c-20260929021534-6d15cd`.
 - Causa assumida: a máquina central estava saturada pelo trabalho da IDE em paralelo — a suíte inteira, o Docker Desktop
