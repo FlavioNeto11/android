@@ -162,6 +162,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O descarte fica visível (pedido da Jev): `Parecer.falta_descartada`, na `saida` gravada só quando houve, e uma linha de log em `CuradorPorIA.uma_volta` com o id da revisão e os rótulos. Na API, adendo v1.53.
 - A autopublicação segue em `shadow`. Prova `simulated`: `backend/tests/test_curador_classe_b.py`; dirigidos do curador 207 passed, os que tocam parecer, dossiê e `saida` 330 passed, `scripts/tests` da Jev 50 passed, catracas 86 passed (SQLite, Idle, na 32a326be).
 
+## 2026-10-05 — 30.74: a evidência do fluxo leva a versão do app (branch feat/30-74-versao-na-evidencia-do-fluxo)
+
+- As 113 evidências reais de fluxo do central tinham `app_version` nulo (medida do 30.72), e o curador pedia `reproducao_na_versao_viva` sem prova possível.
+- O digest grava a versão do app do fluxo observada no aparelho da execução (`device_app_state`, `LeituraSql.versao_do_fluxo_no_aparelho`), nos três caminhos: sombra, prova e uso. Sem leitura, nula como antes; o estoque não é refeito.
+- V1 da leitura: a versão é a observada na hora do digest, então só vale se a última atualização do app no aparelho (`last_update_time`, fuso do aparelho, contado no pior caso de +12 h) é com certeza anterior ao início da execução; na dúvida, nula (`versao_estavel_na_execucao`; o método da leitura passa a receber o `run_id`).
+- N2, decidido: as reclassificações (`forma`, `invalida`, `revalidada`) seguem sem versão; não são reprodução. Se um dia precisar, copiar a da original.
+- Prova `simulated`: `backend/tests/test_versao_na_evidencia_do_fluxo.py`.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,
