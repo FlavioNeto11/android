@@ -8,7 +8,7 @@ import { makeSnapshot } from '../../test/fixtures';
 import { ConfirmHost } from '../../components/Confirm';
 import { useToastStore } from '../../store/toasts';
 import { FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { TrainingReview } from './TrainingReview';
+import { ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
 
 /** O atraso máximo do fetch falso (modo ATRASO_DO_FETCH_MS): a resposta que o teste solta depois ainda pode estar a caminho. */
 const ATRASO_MAXIMO = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
@@ -495,4 +495,14 @@ it('etapa sem receita no salvar: "Refazer receitas" só com o clique, chama /rec
   await waitFor(() => expect(text()).toContain('1 receita gravada agora.'));
   expect(text()).toContain('— receita gravada');                        // o relatório troca pelo do refazer
   expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(1);
+});
+
+it('com entrada sem destino a prévia não é pedida (a tela já diz o motivo); dado o destino, ela roda', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  const sessao = { ...SESSAO, inputs: [...SESSAO.inputs, toque(3, 'Enviar')] };
+  await abrirComProposta(sessao, { ...PROPOSTA, steps: [etapa('abrir', 'Abrir', [1, 2])] });
+  await flush(ESPERA_DA_PREVIA_MS + ATRASO_MAXIMO + 50);
+  expect(backend.callsTo('POST', /\/preview$/)).toHaveLength(0);
+  await click(byRole('button', /^Descartar a entrada #3$/, regiao('Sem destino')));
+  await waitFor(() => expect(backend.callsTo('POST', /\/preview$/)).toHaveLength(1));
 });
