@@ -610,6 +610,9 @@ class Parecer:
     inconsistencias: tuple[Inconsistencia, ...] = ()
     falta: tuple[Falta, ...] = ()
     conclusao: str | None = None            # o único texto livre; não entra na decisão
+    # 30.73: a falta que a IA marcou fora das faltas da classe (o voto e a decisão da pessoa num item B) e a validação
+    # tirou de `falta`. Fica no registro para não esconder que o modelo insistiu; não entra em decisão nenhuma.
+    falta_descartada: tuple[Falta, ...] = ()
 
     def faixa_efetiva(self, da_politica: ClasseDeRisco) -> ClasseDeRisco:
         """Vale a mais restritiva entre a da política e a que a IA apontou, exceto na A: lá a IA nunca muda o resultado
@@ -630,7 +633,9 @@ class Parecer:
                 "evidencias_citadas": [c for c in self.evidencias_citadas],
                 "riscos": [r.value for r in self.riscos],
                 "inconsistencias": [i.value for i in self.inconsistencias],
-                "falta": [f.value for f in self.falta], "conclusao": self.conclusao}
+                "falta": [f.value for f in self.falta], "conclusao": self.conclusao,
+                # só quando houve descarte: a `saida` dos pareceres sem descarte fica igual à de antes
+                **({"falta_descartada": [f.value for f in self.falta_descartada]} if self.falta_descartada else {})}
 
 
 @dataclass(frozen=True, slots=True)
@@ -731,7 +736,9 @@ def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: f
     # esquema estrito) sai do parecer em vez de invalidá-lo. Parecer já gravado não passa por aqui: o estoque se lê como
     # foi gravado.
     da_classe = faltas_do_item(dossie.classe)
-    falta = tuple(f for f in _rotulos(Falta, dados.get("falta")) if f.value in da_classe)
+    marcadas = _rotulos(Falta, dados.get("falta"))
+    falta = tuple(f for f in marcadas if f.value in da_classe)
+    descartada = tuple(f for f in marcadas if f.value not in da_classe)
     rotulo = _rotulo(Confianca, dados.get("confianca"), MotivoDeInvalidade.CONFIANCA_INVALIDA)
     p = _probabilidade(probabilidade)
     confianca = confianca_da_probabilidade(p) if p is not None else rotulo
@@ -757,7 +764,8 @@ def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: f
         raise _Invalida(MotivoDeInvalidade.ALVO_INDEVIDO)
     return Parecer(decisao=decisao, evidencias_citadas=citadas_t, confianca=confianca, probabilidade=p,
                    alvo=alvo if isinstance(alvo, str) else None, faixa=faixa, causa=causa, riscos=riscos,
-                   inconsistencias=inconsistencias, falta=falta, conclusao=conclusao)
+                   inconsistencias=inconsistencias, falta=falta, conclusao=conclusao,
+                   falta_descartada=descartada)
 
 
 __all__ = ["CAMPOS_DA_SAIDA", "CAMPOS_OBRIGATORIOS", "DECISOES_COM_ALVO", "LIMIARES_DE_CONFIANCA",

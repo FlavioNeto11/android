@@ -8,6 +8,7 @@ O que estes testes guardam:
 - o dossiê B leva o fato `risco.classe_b_e`; o A e o C não mudam;
 - as opções de `falta` do item B não têm as duas faltas da pessoa; as do A e do C continuam todas;
 - o parecer B novo que as traga (provedor sem esquema estrito) sai sem elas, e continua válido; no A e no C, ficam;
+- o descarte fica visível: `falta_descartada` no parecer e na `saida` gravada (só quando houve), e volta na leitura;
 - o parecer JÁ GRAVADO com `voto_da_pessoa` se lê como foi gravado (o estoque não muda);
 - a instrução do hub (`CURADOR_SYSTEM`) tem a frase da B, e o texto está preso à versão do template (`curador-v2`).
 
@@ -64,10 +65,17 @@ def test_o_parecer_b_novo_sai_sem_as_faltas_da_pessoa_e_o_a_e_o_c_as_mantem() ->
     b = validar_saida(_saida(falta=falta), _dossie(B))
     assert b.ok and b.parecer is not None
     assert [f.value for f in b.parecer.falta] == ["reproducao_em_outro_aparelho"]
+    assert {f.value for f in b.parecer.falta_descartada} == PESSOA
+    gravada = b.parecer.como_dados()
+    assert set(gravada["falta_descartada"]) == PESSOA                 # type: ignore[arg-type]
+    relido = parecer_gravado(gravada)
+    assert relido is not None and relido.falta_descartada == b.parecer.falta_descartada
     for fatos in (A, C):
         v = validar_saida(_saida(falta=falta), _dossie(fatos))
         assert v.ok and v.parecer is not None
         assert {f.value for f in v.parecer.falta} == set(falta)
+        assert v.parecer.falta_descartada == ()
+        assert "falta_descartada" not in v.parecer.como_dados()      # sem descarte, a `saida` é a de antes
 
 
 def test_o_parecer_ja_gravado_com_voto_da_pessoa_se_le_como_foi_gravado() -> None:

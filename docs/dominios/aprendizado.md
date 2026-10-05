@@ -1666,7 +1666,9 @@ nenhuma evidência contra) e paravam em `observar`, porque o parecer pedia `voto
   item B (`FALTA_SO_DA_PESSOA`).
   - O esquema estrito que vai ao provedor leva esse enum.
   - Se um provedor sem esquema estrito as devolver mesmo assim, o `validar_saida` as tira do parecer, que segue
-    válido.
+    válido. O descarte não some: elas vão a `Parecer.falta_descartada`, à `saida` gravada como `falta_descartada`
+    (só quando houve, então a `saida` dos outros pareceres não muda) e a uma linha de log com o id da revisão e os
+    rótulos. Pedido da Jev: não esconder que o modelo insistiu.
   - Na A e na C, as opções são todas, como antes.
 - **Instrução do hub:** a frase da B no `CURADOR_SYSTEM` (`backend/app/planning/curador.py`, hub da Jev), na redação
   dela (05/10 08:45Z). Ela nomeia os rótulos (`voto_da_pessoa`, `decisao_da_pessoa`) em vez de "não peça decisão da
