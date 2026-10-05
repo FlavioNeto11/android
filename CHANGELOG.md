@@ -179,6 +179,29 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_wake_relogio_do_snapshot.py`, 12 passed. O teste antigo com o prazo em 0 s
   reprova sempre (o disparo dentro do `_wait_boot`); o novo não depende do prazo, porque captura a releitura.
 
+## 2026-10-05 — 29.117: a árvore do pytest num Job Object e uma rodada por vez no `pg-rapido.py` (branch fix/29-117-job-object, sobre o 29.113)
+
+- Windows: `lancar_em_job` cria o pytest SUSPENSO, põe no Job Object (KILL_ON_JOB_CLOSE) e só então retoma a thread
+  principal; todo worker do xdist nasce dentro. O `matar_arvore` termina o job; o `taskkill /T` saiu (pegava processo
+  alheio cujo pai morto tinha o PID do pytest). O pai morto de fora leva a árvore junto. Fora do Windows, o grupo.
+- Sem job (o script já num job que não aceita aninhamento): a parte diz em uma linha e, no aborto, só o PID do pytest
+  morre. O `ResumeThread` que falha mata o processo suspenso, e a parte sai com rc 11 e a linha do erro.
+- Uma rodada por vez: mutex nomeado `Global\farm-pg-rapido` ou `flock`; a segunda rodada sai com rc 10 antes do
+  `docker rm -f`; a trava que não se cria sai com rc 12. O erro 5 no `Global\` é o mutex de outra rodada (de outra
+  sessão ou usuário, com uma DACL que nos nega acesso) e também sai com rc 10, dito na linha; sem recuo ao `Local\`,
+  que deixaria as duas rodadas correrem (M1 da leitura).
+- Leitura do 29.117: o job terminado (aborto, interrupção, "já saiu") tem o handle fechado na hora (N1); os testes reais
+  fecham o job no `finally` (N2); nenhum teste usa a trava da rodada real, que tem nome de teste por fixture (N3).
+- N4 da leitura do 29.113: o `parar` que levanta no `finally` do `main` não troca a exceção original (vai ao stderr); o
+  `docker stop` sem contêiner (o `docker run` não subiu) não dá mais o ATENÇÃO falso.
+- Prova `simulated`: `scripts/tests/test_pg_rapido.py`, 35 passed (13 novos, os de árvore com processos REAIS criados
+  pelo teste: o neto morto pelo job, o lançador morto de fora levando o neto, um processo de fora do job intocado); a
+  mutação "sem entrar no job" reprova 4. Depois da leitura: 38 passed, e as mutações do M1 (sem tratar o erro 5) e do
+  N1 (sem fechar o handle no aborto) reprovam um teste cada; o do M1 usa um mutex REAL com DACL que nega tudo.
+  `pytest @scripts/tests/catracas.txt`, 6 passed. Real (05/10, central,
+  11:37Z, ponta deste ramo): o `_lancar_pytest` com `-n 8` subiu dentro do job e saiu com rc 0 (`test_catracas.py`,
+  6 passed). O PG de verdade: `not_run`.
+
 ## 2026-10-05 — 29.113: o `pg-rapido.py` não deixa o pytest rodando quando é interrompido (branch fix/29-113-pg-rapido, sobre o #410)
 
 - O1: `rodar_parte` mata a árvore do pytest quando algo interrompe a parte (Ctrl-C, `OSError` do `--resumo`, qualquer

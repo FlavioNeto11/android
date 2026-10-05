@@ -10,6 +10,49 @@ _SPEC = importlib.util.spec_from_file_location("pg_rapido", Path(__file__).resol
 pg = importlib.util.module_from_spec(_SPEC)
 sys.modules["pg_rapido"] = pg          # o `@dataclass` procura o módulo em `sys.modules`
 _SPEC.loader.exec_module(pg)
+WINDOWS = pg.os.name == "nt"
+
+#: 29.117: o `matar_arvore` no Windows termina o Job Object do pytest; nos dublês, o job é um rótulo e a terminação
+#: fica registrada aqui (a do sistema não é chamada).
+_JOBS_TERMINADOS: list[str] = []
+_JOBS_FECHADOS: list[str] = []
+_JOB_OK = [True]
+
+
+@pytest.fixture(autouse=True)
+def _trava_de_teste(monkeypatch):
+    """N3 da leitura do 29.117: nenhum teste usa a trava da rodada real (com uma em curso, o teste reprovava, e o
+    teste em curso recusava a rodada real com rc 10; o scripts/tests faz parte do próprio funil)."""
+    monkeypatch.setattr(pg, "NOME_DA_TRAVA", f"{pg.NOME}-teste-{pg.os.getpid()}")
+    yield
+    pg.soltar_trava()
+
+
+@pytest.fixture(autouse=True)
+def _job_de_mentira(monkeypatch):
+    _JOBS_TERMINADOS.clear()
+    _JOBS_FECHADOS.clear()
+    _JOB_OK[0] = True
+    if WINDOWS:
+        def terminar(job):
+            if isinstance(job, str):
+                _JOBS_TERMINADOS.append(job)
+                return _JOB_OK[0]
+            return orig_terminar(job)
+
+        def fechar(h):
+            if isinstance(h, str):
+                _JOBS_FECHADOS.append(h)
+            else:
+                orig_fechar(h)
+        orig_terminar, orig_fechar = pg._terminar_job, pg._fechar_handle
+        monkeypatch.setattr(pg, "_terminar_job", terminar)
+        monkeypatch.setattr(pg, "_fechar_handle", fechar)
+
+
+def _matou(docker) -> bool:
+    """A árvore foi morta: o job terminado (Windows) ou o `kill` do grupo (fora dele)."""
+    return bool(_JOBS_TERMINADOS) or any(c and c[0] == "kill" for c in docker.chamadas)
 
 
 def _ok(stdout: str = "", rc: int = 0) -> subprocess.CompletedProcess:
@@ -44,6 +87,7 @@ class _Docker:
 class _Pytest:
     def __init__(self, voltas: int, rc: int = 0) -> None:
         self.pid, self.voltas, self.rc, self.morto = 4242, voltas, rc, False
+        self.job = "job-4242"
 
     def poll(self):
         if self.morto:
@@ -136,8 +180,11 @@ def test_disco_acima_do_limite_mata_a_arvore_e_para_com_uma_linha(tmp_path):
     rc = pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=docker,
                         lancar=lambda arq, s: proc, dormir=lambda s: None)
     assert rc == 3
-    arvore = (["taskkill", "/T", "/F", "/PID", "4242"] if pg.os.name == "nt" else ["kill", "-KILL", "--", "-4242"])
-    assert arvore in docker.chamadas                                   # a árvore, não só o pai (K-099)
+    if WINDOWS:                                                        # a árvore, não só o pai (K-099)
+        assert _JOBS_TERMINADOS == ["job-4242"]                        # pelo job (29.117), nunca o taskkill /T
+        assert not any(c and c[0] == "taskkill" for c in docker.chamadas)
+    else:
+        assert ["kill", "-KILL", "--", "-4242"] in docker.chamadas
     assert linhas[-1].startswith("pg parte 1/1 ABORTADA pelo disco:") and "tmpfs 3600 de 4096 MB (88%)" in linhas[-1]
     assert "ATENÇÃO" not in linhas[-1]
 
@@ -145,22 +192,24 @@ def test_disco_acima_do_limite_mata_a_arvore_e_para_com_uma_linha(tmp_path):
 def test_o_kill_que_falha_aparece_na_linha_do_aborto(tmp_path):
     class _KillFalha(_Docker):
         def __call__(self, cmd):
-            if cmd and cmd[0] in ("taskkill", "kill"):
+            if cmd and cmd[0] == "kill":
                 self.chamadas.append(list(cmd))
                 return _ok(rc=128)
             return super().__call__(cmd)
+    _JOB_OK[0] = False
     linhas: list[str] = []
     rc = pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=_KillFalha([3600]),
                         lancar=lambda arq, s: _Pytest(voltas=50), dormir=lambda s: None)
-    assert rc == 3 and "ATENÇÃO: o kill da árvore saiu com rc=128" in linhas[-1]
+    esperado = "ATENÇÃO: o TerminateJobObject falhou" if WINDOWS else "ATENÇÃO: o kill da árvore saiu com rc=128"
+    assert rc == 3 and esperado in linhas[-1]
 
 
 def test_matar_arvore_de_verdade_mata_o_neto(tmp_path):
     """Prova barata do K-099: uma árvore real de dois níveis (pai → filho dormindo) e o `matar_arvore` real."""
     marca = tmp_path / "filho.pid"
-    filho = f"import os,time; open(r'{marca}','w').write(str(os.getpid())); time.sleep(30)"
-    pai = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{filho!r}]); time.sleep(30)"
-    proc = subprocess.Popen([sys.executable, "-c", pai], start_new_session=pg.os.name != "nt")
+    filho = f"import os,time; open(r'{marca}','w').write(str(os.getpid())); time.sleep(90)"
+    pai = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{filho!r}]); time.sleep(90)"
+    proc = pg.lancar_em_job([sys.executable, "-c", pai])            # como o `_lancar_pytest` (job ou grupo)
     pid_filho: int | None = None
     passou = False
     try:
@@ -171,13 +220,11 @@ def test_matar_arvore_de_verdade_mata_o_neto(tmp_path):
         pid_filho = int(marca.read_text())
         assert pg.matar_arvore(proc, pg._executar) is None
         assert proc.poll() is not None
-        for _ in range(50):                                            # o sistema leva um instante para recolher
-            if not _vivo(pid_filho):
-                break
-            pg.time.sleep(0.1)
-        assert not _vivo(pid_filho), "o filho do pytest ficou órfão (K-099)"
+        # Por relógio (o sistema leva um instante para recolher); o neto dorme 90 s, bem mais que o prazo.
+        assert _esperar_morte(pid_filho), "o filho do pytest ficou órfão (K-099)"
         passou = True
     finally:
+        pg.fechar_job(proc)                                            # N2 da leitura do 29.117
         if proc.poll() is None:
             proc.kill()
         # Só quando o teste não passou: passando, o neto já morreu, e o PID pode ter sido reusado por outro processo.
@@ -279,7 +326,7 @@ def test_o1_a_interrupcao_no_meio_mata_a_arvore_e_se_propaga(tmp_path):
     with pytest.raises(KeyboardInterrupt):
         pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=docker,
                        lancar=lambda arq, s: _Pytest(voltas=50), dormir=lambda s: None)
-    assert any(c and c[0] in ("taskkill", "kill") for c in docker.chamadas)       # a árvore, não só o pai
+    assert _matou(docker)       # a árvore, não só o pai
     assert linhas[-1].startswith("pg parte 1/1 INTERROMPIDA")
 
 
@@ -302,7 +349,7 @@ def test_o1_o_relato_que_falha_tambem_mata_a_arvore(tmp_path, capsys):
     with pytest.raises(OSError):
         pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", relatar, executar=docker,
                        lancar=lambda arq, s: _Pytest(voltas=50), dormir=lambda s: None)
-    assert any(c and c[0] in ("taskkill", "kill") for c in docker.chamadas)
+    assert _matou(docker)
     assert "pg parte 1/1 INTERROMPIDA" in capsys.readouterr().err
 
 
@@ -331,7 +378,7 @@ def test_n3_o_pytest_que_saiu_antes_do_aborto_fica_com_o_rc_dele(tmp_path):
     rc = pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=docker,
                         lancar=lambda arq, s: proc, dormir=lambda s: None)
     assert rc == 0 and not any("ABORTADA" in ln for ln in linhas)
-    assert not any(c and c[0] in ("taskkill", "kill") for c in docker.chamadas)
+    assert not _matou(docker)
     assert any("pico:" in ln and "88%" in ln for ln in linhas)
 
 
@@ -386,3 +433,287 @@ def test_q2_sem_parte_iniciada_nao_ha_o_que_parar(tmp_path, monkeypatch):
     monkeypatch.setattr(pg, "rodar_parte", lambda *a, **k: pytest.fail("não roda parte sem RAM"))
     assert pg.main(["--lista", str(lista), "--partes", "2", "--saidas", str(tmp_path)]) == 9
     assert paradas == []
+
+
+
+def _carregar_pg() -> str:
+    return (f"import importlib.util,sys; s=importlib.util.spec_from_file_location('pgr', r'{_SPEC.origin}'); "
+            "m=importlib.util.module_from_spec(s); sys.modules['pgr']=m; s.loader.exec_module(m)")
+
+
+def _esperar_pid(marca: Path) -> int:
+    for _ in range(150):
+        if marca.exists() and marca.read_text().strip():
+            return int(marca.read_text())
+        pg.time.sleep(0.1)
+    raise AssertionError("o neto não escreveu o PID")
+
+
+def _esperar_morte(pid: int, prazo_s: float = 10) -> bool:
+    """Por relógio, não por voltas: o `tasklist` leva quase 1 s sob carga, e cem voltas passavam do sono do neto (a
+    mutação "sem job" passava porque o neto morria sozinho)."""
+    fim = pg.time.monotonic() + prazo_s
+    while pg.time.monotonic() < fim:
+        if not _vivo(pid):
+            return True
+        pg.time.sleep(0.2)
+    return not _vivo(pid)
+
+
+@pytest.mark.skipif(not WINDOWS, reason="Job Object é do Windows")
+def test_29117_o_pai_morto_de_fora_leva_a_arvore_junto(tmp_path):
+    """KILL_ON_JOB_CLOSE: o handle do job é só de quem lançou; morto de fora (TerminateProcess, como o pwsh fechado),
+    o kernel mata a árvore inteira."""
+    marca = tmp_path / "neto.pid"
+    filho = f"import os,time; open(r'{marca}','w').write(str(os.getpid())); time.sleep(90)"
+    pai = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{filho!r}]); time.sleep(90)"
+    lancador = _carregar_pg() + f"; m.lancar_em_job([sys.executable,'-c',{pai!r}]); import time; time.sleep(90)"
+    externo = subprocess.Popen([sys.executable, "-c", lancador])
+    neto: int | None = None
+    try:
+        neto = _esperar_pid(marca)
+        externo.kill()                                                 # o pai do pytest morre sem chance de limpar
+        externo.wait(timeout=10)
+        assert _esperar_morte(neto), "o neto sobreviveu ao lançador morto de fora"
+        neto = None
+    finally:
+        if externo.poll() is None:
+            externo.kill()
+        if neto is not None and _vivo(neto):
+            subprocess.run(["taskkill", "/F", "/PID", str(neto)], capture_output=True, check=False)
+
+
+@pytest.mark.skipif(not WINDOWS, reason="Job Object é do Windows")
+def test_29117_processo_fora_do_job_nunca_morre(tmp_path):
+    """A regra do conserto: só morre o que é comprovadamente descendente do nosso pytest (está no job)."""
+    marca = tmp_path / "filho.pid"
+    filho = f"import os,time; open(r'{marca}','w').write(str(os.getpid())); time.sleep(90)"
+    pai = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{filho!r}]); time.sleep(90)"
+    de_fora = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(90)"])
+    proc = pg.lancar_em_job([sys.executable, "-c", pai])
+    try:
+        neto = _esperar_pid(marca)
+        assert pg.matar_arvore(proc, pg._executar) is None
+        assert _esperar_morte(neto)
+        assert de_fora.poll() is None, "o processo de fora do job morreu"
+    finally:
+        pg.fechar_job(proc)                                            # N2 da leitura do 29.117
+        for p in (de_fora, proc):
+            if p.poll() is None:
+                p.kill()
+
+
+@pytest.mark.skipif(not WINDOWS, reason="só o Windows tem o caminho sem job")
+def test_29117_sem_job_so_o_proprio_processo_morre():
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(90)"])
+    try:
+        problema = pg.matar_arvore(proc, pg._executar)
+        assert proc.poll() is not None
+        assert problema and "não estava num job" in problema
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+
+def test_29117_uma_rodada_por_vez_pela_trava(tmp_path):
+    """Nota 3: a segunda rodada não toca no contêiner da primeira; a trava solta quando a primeira acaba."""
+    tenta = _carregar_pg() + f"; m.NOME_DA_TRAVA = {pg.NOME_DA_TRAVA!r}; print(m.tentar_travar())"
+    assert pg.tentar_travar()
+    try:
+        r = subprocess.run([sys.executable, "-c", tenta], capture_output=True, text=True, timeout=60, check=False)
+        assert r.stdout.strip() == "False", r.stderr
+    finally:
+        pg.soltar_trava()
+    r = subprocess.run([sys.executable, "-c", tenta], capture_output=True, text=True, timeout=60, check=False)
+    assert r.stdout.strip() == "True", r.stderr
+
+
+def test_29117_o_main_com_a_trava_ocupada_nao_toca_o_docker(tmp_path, monkeypatch):
+    lista = tmp_path / "lista.txt"
+    (tmp_path / "backend" / "tests").mkdir(parents=True)
+    (tmp_path / "backend" / "tests" / "test_0.py").write_text("")
+    lista.write_text("tests/test_0.py", encoding="utf-8")
+    monkeypatch.setattr(pg, "RAIZ", tmp_path)
+    monkeypatch.setattr(pg, "tentar_travar", lambda: False)
+    monkeypatch.setattr(pg, "_executar", lambda cmd: pytest.fail(f"docker chamado: {cmd}"))
+    assert pg.main(["--lista", str(lista), "--partes", "1", "--saidas", str(tmp_path)]) == 10
+
+
+
+@pytest.mark.skipif(not WINDOWS, reason="Job Object é do Windows")
+def test_29117_fora_do_job_segue_sem_job_e_diz(monkeypatch):
+    """Cuidado 2: o script já num job que não aceita aninhamento. O pytest roda sem job, com o aviso, e nunca o /T."""
+    def recusa(job, proc):
+        raise OSError("AssignProcessToJobObject: erro 5 do Windows")
+    monkeypatch.setattr(pg, "_entrar_no_job", recusa)
+    proc = pg.lancar_em_job([sys.executable, "-c", "import sys; sys.exit(7)"])
+    assert proc.wait(timeout=30) == 7                                  # retomado: rodou
+    assert proc.job is None and "não entrou no job" in proc.aviso_do_job
+
+
+def test_29117_o_aviso_do_job_vai_para_a_linha_da_parte(tmp_path):
+    proc = _Pytest(voltas=0)
+    proc.aviso_do_job = "o pytest não entrou no job (erro 5): segue sem job"
+    linhas: list[str] = []
+    pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=_Docker([100]),
+                   lancar=lambda arq, s: proc, dormir=lambda s: None)
+    assert any(ln.startswith("pg parte 1/1 ATENÇÃO: o pytest não entrou no job") for ln in linhas)
+
+
+@pytest.mark.skipif(not WINDOWS, reason="Job Object é do Windows")
+def test_29117_o_que_nao_retoma_morre_e_o_erro_sobe(monkeypatch):
+    """Cuidado 3: o `ResumeThread` que falha não deixa um pytest suspenso para sempre."""
+    criados: list = []
+    popen = pg.subprocess.Popen
+
+    def guardar(*a, **k):
+        p = popen(*a, **k)
+        criados.append(p)
+        return p
+
+    def falha(pid):
+        raise OSError("ResumeThread: erro 5 do Windows")
+    monkeypatch.setattr(pg.subprocess, "Popen", guardar)
+    monkeypatch.setattr(pg, "_retomar", falha)
+    with pytest.raises(OSError, match="ResumeThread"):
+        pg.lancar_em_job([sys.executable, "-c", "import time; time.sleep(90)"])
+    assert criados and criados[0].poll() is not None
+
+
+def test_29117_o_pytest_que_nao_sobe_da_rc_11_com_a_linha(tmp_path):
+    def falha(arq, s):
+        raise OSError("ResumeThread: erro 5 do Windows")
+    linhas: list[str] = []
+    rc = pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=_Docker([100]),
+                        lancar=falha, dormir=lambda s: None)
+    assert rc == 11 and "o pytest NÃO SUBIU: ResumeThread: erro 5" in linhas[-1]
+
+
+def _mutex_que_nega_tudo(nome: str) -> int:
+    """Um mutex REAL com a DACL `D:(D;;GA;;;WD)` (nega tudo a todos), como o de uma rodada de outra sessão ou usuário."""
+    import ctypes
+    from ctypes import wintypes
+
+    adv = ctypes.WinDLL("advapi32", use_last_error=True)
+    adv.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+        wintypes.LPCWSTR, wintypes.DWORD, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p]
+
+    class _Atributos(ctypes.Structure):
+        _fields_ = [("nLength", wintypes.DWORD), ("lpSecurityDescriptor", ctypes.c_void_p),
+                    ("bInheritHandle", wintypes.BOOL)]
+    sd = ctypes.c_void_p()
+    assert adv.ConvertStringSecurityDescriptorToSecurityDescriptorW("D:(D;;GA;;;WD)", 1, ctypes.byref(sd), None)
+    k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    k32.CreateMutexW.restype = wintypes.HANDLE
+    k32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    attr = _Atributos(ctypes.sizeof(_Atributos), sd, False)
+    h = k32.CreateMutexW(ctypes.byref(attr), False, nome)
+    k32.LocalFree(sd)
+    assert h, f"o mutex de teste não foi criado: erro {ctypes.get_last_error()}"
+    return h
+
+
+@pytest.mark.skipif(not WINDOWS, reason="mutex nomeado é do Windows")
+def test_29117_o_mutex_alheio_que_nega_acesso_e_recusa_rc_10(tmp_path, monkeypatch, capsys):
+    """M1 da leitura do 29.117: o erro 5 no Global\\ é o mutex de outra rodada, não falta de privilégio. Recusa (rc 10),
+    sem recuar ao Local\\, que deixaria as duas rodadas correrem."""
+    h = _mutex_que_nega_tudo(f"Global\\{pg.NOME_DA_TRAVA}")
+    try:
+        assert pg.tentar_travar() is False
+        assert "existe e nega acesso (erro 5)" in pg.ESCOPO_DA_TRAVA[0]
+        lista = tmp_path / "lista.txt"
+        (tmp_path / "backend" / "tests").mkdir(parents=True)
+        (tmp_path / "backend" / "tests" / "test_0.py").write_text("")
+        lista.write_text("tests/test_0.py", encoding="utf-8")
+        monkeypatch.setattr(pg, "RAIZ", tmp_path)
+        monkeypatch.setattr(pg, "_executar", lambda cmd: pytest.fail(f"docker chamado: {cmd}"))
+        assert pg.main(["--lista", str(lista), "--partes", "1", "--saidas", str(tmp_path)]) == 10
+        assert "nega acesso (erro 5)" in capsys.readouterr().out
+    finally:
+        pg._fechar_handle(h)
+
+
+@pytest.mark.skipif(not WINDOWS, reason="mutex nomeado é do Windows")
+def test_29117_o_outro_erro_do_mutex_sobe(monkeypatch):
+    def falha(h, inicial, nome):
+        pg.ctypes.set_last_error(87)                                   # ERROR_INVALID_PARAMETER
+        return None
+    monkeypatch.setattr(pg._k32, "CreateMutexW", falha)
+    with pytest.raises(OSError, match="erro 87"):
+        pg.tentar_travar()
+
+
+def test_29117_o_teste_nunca_usa_a_trava_da_rodada_real():
+    """N3: o nome é o de teste em todo teste (a fixture), e a trava real segue livre para a rodada do funil."""
+    assert pg.NOME_DA_TRAVA != pg.NOME and pg.NOME_DA_TRAVA.startswith(f"{pg.NOME}-teste-")
+
+
+@pytest.mark.skipif(not WINDOWS, reason="o handle do job é do Windows")
+def test_29117_n1_o_job_terminado_tem_o_handle_fechado_na_hora(tmp_path):
+    """N1: aborto, interrupção e "já saiu" fecham o handle do job, sem esperar o script sair."""
+    abortado = _Pytest(voltas=50)
+    assert pg.matar_arvore(abortado, _Docker([100])) is None
+    assert _JOBS_TERMINADOS == ["job-4242"] and _JOBS_FECHADOS == ["job-4242"] and abortado.job is None
+    _JOBS_TERMINADOS.clear()
+    _JOBS_FECHADOS.clear()
+    saido = _Pytest(voltas=0)
+    assert pg.matar_arvore(saido, _Docker([100])) is None
+    assert _JOBS_FECHADOS == ["job-4242"] and saido.job is None
+    _JOBS_FECHADOS.clear()
+
+    class _JaSaiu(_Pytest):
+        def poll(self):
+            return 0 if self.voltas < 0 else super().poll()
+
+    class _CtrlC(_Docker):
+        def __call__(self, cmd):
+            if cmd[:2] == ["docker", "exec"] and "df -m" in " ".join(cmd):
+                proc.voltas = -1                                       # saiu, e o Ctrl-C chega em seguida
+                raise KeyboardInterrupt
+            return super().__call__(cmd)
+    proc = _JaSaiu(voltas=50)
+    with pytest.raises(KeyboardInterrupt):
+        pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", lambda ln: None, executar=_CtrlC([100]),
+                       lancar=lambda arq, s: proc, dormir=lambda s: None)
+    assert _JOBS_FECHADOS == ["job-4242"] and proc.job is None
+
+
+def test_29117_a_trava_que_nao_se_cria_nao_roda_calada(tmp_path, monkeypatch):
+    lista = tmp_path / "lista.txt"
+    (tmp_path / "backend" / "tests").mkdir(parents=True)
+    (tmp_path / "backend" / "tests" / "test_0.py").write_text("")
+    lista.write_text("tests/test_0.py", encoding="utf-8")
+    monkeypatch.setattr(pg, "RAIZ", tmp_path)
+
+    def nao_cria():
+        raise OSError("CreateMutex Local: erro 5 do Windows")
+    monkeypatch.setattr(pg, "tentar_travar", nao_cria)
+    monkeypatch.setattr(pg, "_executar", lambda cmd: pytest.fail(f"docker chamado: {cmd}"))
+    linhas: list[str] = []
+    monkeypatch.setattr("builtins.print", lambda *a, **k: linhas.append(" ".join(map(str, a))))
+    assert pg.main(["--lista", str(lista), "--partes", "1", "--saidas", str(tmp_path)]) == 12
+    assert any("a trava de uma rodada por vez não pôde ser criada" in ln for ln in linhas)
+
+
+
+def test_n4_o_stop_que_falha_no_finally_nao_troca_o_motivo(tmp_path, monkeypatch, capsys):
+    """N4 da leitura do 29.113: interrompido por um OSError do relato, o `parar` que também levanta não substitui a
+    exceção original; o aviso do stop vai ao stderr."""
+    lista, _ = _lista_de_dois(tmp_path, monkeypatch)
+
+    def rodar(*a, **k):
+        raise KeyboardInterrupt("o motivo de verdade")
+
+    def parar(executar, relatar):
+        raise OSError("disco do resumo cheio")
+    monkeypatch.setattr(pg, "rodar_parte", rodar)
+    monkeypatch.setattr(pg, "parar", parar)
+    with pytest.raises(KeyboardInterrupt, match="o motivo de verdade"):
+        pg.main(["--lista", str(lista), "--partes", "2", "--saidas", str(tmp_path)])
+    assert "o docker stop farm-pg-rapido não terminou (OSError: disco do resumo cheio)" in capsys.readouterr().err
+
+
+def test_parar_sem_conteiner_nao_da_alarme_falso():
+    linhas: list[str] = []
+    resposta = subprocess.CompletedProcess([], 1, "", "Error response from daemon: No such container: farm-pg-rapido")
+    assert pg.parar(lambda cmd: resposta, linhas.append) and linhas == []
