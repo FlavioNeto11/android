@@ -95,14 +95,18 @@ class SecretResolution:
 
 
 #: Colunas do perfil que viram variável, na ordem em que aparecem ao modelo: (nome, coluna, rótulo, tipo).
-#: Lista FECHADA: campo novo entra aqui de propósito, nunca "todas as colunas". A biografia da persona (onda A)
-#: entra pela mesma tabela quando as colunas existirem.
+#: Lista FECHADA: campo novo entra aqui de propósito, nunca "todas as colunas". Gênero e idioma entraram no 31.87 F2
+#: (decisão do dono de 05/10 15:13Z: os dados da persona entram no ensinado), sempre como texto simples. A biografia
+#: da persona NÃO entra: é um JSON de seis seções, e que seção vira marcador é pergunta ao dono (P-012). Senha, código
+#: e 2FA nunca são coluna do perfil: só pelo cofre (`type_secret`).
 PROFILE_FIELDS: tuple[tuple[str, str, str, DatumKind], ...] = (
     ("perfil_nome", "first_name", "nome", DatumKind.text),
     ("perfil_sobrenome", "last_name", "sobrenome", DatumKind.text),
     ("perfil_nome_exibicao", "display_name", "nome de exibição", DatumKind.text),
     ("perfil_nascimento", "birth_date", "data de nascimento", DatumKind.date),
     ("perfil_email", "email", "e-mail", DatumKind.text),
+    ("perfil_genero", "gender", "gênero", DatumKind.text),
+    ("perfil_idioma", "locale", "idioma e região", DatumKind.text),
 )
 
 

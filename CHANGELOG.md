@@ -20,6 +20,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-05 — 31.87 F2 (identidade): gênero e idioma do perfil viram variável da persona (branch feat/31-87-f2-gender-e-locale)
+
+- `PROFILE_FIELDS` ganha `perfil_genero` (coluna `gender`) e `perfil_idioma` (coluna `locale`), texto simples, só quando há
+  valor. Tudo o que deriva da lista segue sozinho: a lista de dados ao planejador, `profile_variables`, a varredura do
+  pré-voo do F1 (pergunta com rótulo, nunca valor) e as colunas lidas. Decisão do dono de 05/10 15:13Z (os dados da persona
+  entram no ensinado). A biografia por seção vem no passo seguinte deste item (P-012); senha, código e 2FA ficam só no cofre.
+- Prova `simulated`: `backend/tests/test_perfil_genero_e_idioma.py::*` (3 testes, valores sintéticos), com os 113 de
+  pré-voo e credenciais, catracas e arquitetura verdes. Real: `not_run`.
+
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
 - **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).
