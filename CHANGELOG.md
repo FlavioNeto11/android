@@ -234,6 +234,27 @@ Leitura do 29.116 pela Ferramentas do Claude.
   no código do 29.116. Prova simulated, em Idle:
   - `src/features/profiles` e `src/components` 226/226 sem atraso;
   - `src/features/profiles` 201/201 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99;
+
+## 2026-10-05 — 29.119: a catraca das esperas lê comentário, string e negação como o código (branch fix/29-119-catraca-k)
+
+Leitura do W1 e do 29.112 pelas revisoras.
+
+- `frontend/src/test/esperas.test.ts`:
+  - K2: o comentário sai com um varredor que copia as strings como estão, e o `//` de `'https://…'` deixa de esconder
+    o resto da linha. Cada caractere fica na mesma posição, então as linhas dos achados não mudam.
+  - K1: a negação da frente só poupa o corpo sem `&&`, `||`, `??` nem `?` de ternário no nível de fora
+    (`!carregando && c.querySelector(…)` devolve o elemento).
+  - K3: o `\/` escapado de um regex literal não abre comentário nem nível. A aspa sem escape dentro de um regex segue
+    como limite anotado.
+  - N1: os parênteses da busca são lidos balanceados (`:not(…)`, `:has(…)`), e o fim em `closest(…)` e `find(…)`
+    também conta. `undefined`, `0` e `''` seguem passando no `waitFor`; o limite está anotado no cabeçalho.
+- `GuiaImagens.test.tsx` afirma o selo "simulado" pelo elemento, não pela palavra, que também está no aviso do gerador.
+- `frontend/src/components/Disclosure.test.tsx` (novo): o bloco fechado à mão segue fechado com o `openWhen` parado em
+  verdadeiro e só reabre numa nova subida.
+- Prova simulated, em Idle:
+  - `src/test`, `src/components` e `GuiaImagens.test.tsx` 37/37; a catraca varre todos os testes sem achado novo;
+  - os casos novos falham na catraca anterior (o primeiro a cair é o K1);
+  - o GuiaImagens passa com `ATRASO_DO_FETCH_MS=40` na semente 88, onde caía;
   - typecheck limpo.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
