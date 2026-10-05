@@ -6202,3 +6202,14 @@ Sem migração. Aditivo no `data` do evento `step.updated` (`TaskRepository.emit
 - O painel não tipa o `data` desses eventos (`frontend/src/store/reducer.ts`, `obj<Step>(data, 'step')`): nada muda lá.
   Ausente = backend de antes do 29.90.
 - **Prova:** `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py::test_a_folha_que_nao_fecha_para_numa_pessoa_sem_mais_toque`).
+
+## Adendo v1.49 (05/10/2026; número da orquestradora; item 31.71) — `MotivoDaImagem` ganha `leitura_pendente`
+
+Sem migração: `ai_calls.image_reason` é `TEXT` sem `CHECK` (migração 080). Aditivo no vocabulário `MotivoDaImagem`
+(`planning/provider.py`), que aparece em `GET /api/usage` como chave de `image_reasons`.
+- `leitura_pendente`: a imagem foi porque a etapa entrega valor (`saidas`) e ainda falta saída declarada. Só existe com
+  `ai.imagem_enquanto_falta_saida` ligada (desligada por padrão). Vem depois de `sensivel`, `politica_*`, `pedida`,
+  `problema` e `primeira_*` na ordem da regra: a política e a tela sensível continuam mandando.
+- O painel rotula o valor novo ("saída ainda não lida", `frontend/src/features/usage/usage.ts`); um valor desconhecido
+  segue aparecendo pela chave crua. Ausente = backend de antes do 31.71 ou chave desligada.
+- **Prova:** `simulated` (`backend/tests/test_imagem_enquanto_falta_saida.py`).

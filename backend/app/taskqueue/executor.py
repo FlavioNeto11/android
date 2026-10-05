@@ -607,7 +607,7 @@ def _proxima_encadeada(fila: list[Decision], antes: UiTree | None, agora: UiTree
 
 
 _IMAGEM_VAI: frozenset[str] = frozenset({"politica_sempre", "pedida", "problema", "primeira_julgada",
-                                         "primeira_da_leitura", "arvore_pobre"})
+                                         "primeira_da_leitura", "leitura_pendente", "arvore_pobre"})
 #: Item 31.37: ferramentas que só LEEM a tela. Repeti-las não é ciclo sem progresso: na leitura do Outlook (d62546,
 #: e7df7c) `observe_screen` duas vezes contou como ciclo e escalou 2 ou 3 decisões para o Opus. A contagem segue
 #: valendo para toda ferramenta que age na tela.
@@ -1130,13 +1130,15 @@ class StepExecutor:
         return getattr(self.provider, "model", "") or ""
 
     def _want_image(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool, requested: bool,
-                    ai: AiCfg | None = None, le_valor: bool = False) -> bool:
+                    ai: AiCfg | None = None, le_valor: bool = False, falta_saida: bool = False) -> bool:
         """Política `ai.image_policy`: se a imagem vai junto. O porquê é `_motivo_da_imagem`, a única régua."""
         return self._motivo_da_imagem(tree, judged_step=judged_step, first=first, trouble=trouble,
-                                      requested=requested, ai=ai, le_valor=le_valor) in _IMAGEM_VAI
+                                      requested=requested, ai=ai, le_valor=le_valor,
+                                      falta_saida=falta_saida) in _IMAGEM_VAI
 
     def _motivo_da_imagem(self, tree: UiTree, *, judged_step: bool, first: bool, trouble: bool,
-                          requested: bool, ai: AiCfg | None = None, le_valor: bool = False) -> MotivoDaImagem:
+                          requested: bool, ai: AiCfg | None = None, le_valor: bool = False,
+                          falta_saida: bool = False) -> MotivoDaImagem:
         """Política `ai.image_policy`. A imagem custa ~1/3 dos tokens novos de cada chamada; a hierarquia quase sempre
         basta. Em `auto` a imagem vai quando a árvore é pobre (WebView/canvas), na 1ª decisão de etapa julgada por
         visão, depois de erro/ciclo, ou quando o próprio modelo pede (observe_screen.need_image).
@@ -1162,6 +1164,10 @@ class StepExecutor:
             # Item 31.37: a etapa que LÊ um valor (`saidas`) quase sempre precisa ver a tela; sem a imagem, a 1ª
             # decisão era um `observe_screen(need_image)` pago só para pedi-la (d62546, e7df7c).
             return "primeira_da_leitura"
+        if falta_saida and ai.imagem_enquanto_falta_saida:
+            # Item 31.71: enquanto faltar saída declarada, a imagem segue em toda decisão. Vem DEPOIS de tudo acima: a
+            # política e a tela sensível mandam, e o motivo que já se grava hoje não muda de nome.
+            return "leitura_pendente"
         informative = sum(1 for e in tree.elements if e.text or e.desc or e.clickable or e.editable)
         return "arvore_pobre" if informative < ai.rich_tree_min_elements else "arvore_rica"
 
@@ -2175,7 +2181,8 @@ class StepExecutor:
             # a imagem só vem se ela divergir e a IA precisar (`completar_imagem`, mais abaixo).
             receita_decide = rr.mode == "replay" and not rr.diverged and not fired and rr.replayer is not None
             pede = dict(judged_step=judged_step, first=decisions == 0, trouble=errors_in_row >= 1 or same_count >= 1,
-                        requested=image_requested, ai=ai_cfg, le_valor=bool(saidas_declaradas))
+                        requested=image_requested, ai=ai_cfg, le_valor=bool(saidas_declaradas),
+                        falta_saida=bool(faltam_saidas()))
             t_observacao = time.monotonic()
             try:
                 obs = last_obs = await reler_se_ocupada(
@@ -2499,7 +2506,8 @@ class StepExecutor:
                 arvore_ms, imagem_ms, completar_ms = obs.ms_arvore, obs.ms_imagem, 0
                 motivo_imagem = self._motivo_da_imagem(obs.tree, judged_step=judged_step, first=decisions == 0,
                                                        trouble=trouble, requested=image_requested, ai=ai_cfg,
-                                                       le_valor=bool(saidas_declaradas))
+                                                       le_valor=bool(saidas_declaradas),
+                                                       falta_saida=bool(faltam_saidas()))
                 quer_imagem = motivo_imagem in _IMAGEM_VAI
                 if quer_imagem and obs.jpeg is None and obs.image_omitted == "policy":
                     # A receita divergiu depois da observação só de árvore: a imagem vem agora, da mesma árvore,
@@ -2527,7 +2535,10 @@ class StepExecutor:
                     if teto_leitura and decisions >= teto_leitura:
                         return await dado_ausente(f"teto de {teto_leitura} decisões da leitura", obs)
                     decisions += 1
-                actor_history = compress_history(history, ai_cfg.actor_history_lines)
+                # 31.71: o lembrete vai só na cópia desta decisão, quando a imagem foi por `leitura_pendente`.
+                lembrete = (lembrete_da_leitura(faltam_saidas(), visual=ai_cfg.leitura_visual.enabled)
+                            if motivo_imagem == "leitura_pendente" and screen.jpeg else None)
+                actor_history = historico_do_ator(history, ai_cfg.actor_history_lines, lembrete)
                 rr.exerceu(StrategyKind.ai_actor)
                 if licoes is None:
                     licoes = self._licoes_da_tentativa(run, objective, step, attempt_id, app, rr)
@@ -4316,6 +4327,21 @@ def textos_do_cartao_ausentes(cartao: Sequence[str], tree: UiTree) -> list[str]:
     """Os textos da publicação alvo (`card_guard` resolvido) que NÃO estão na tela. Vazio quando não há legenda a
     exigir — o post por posição segue sem nenhuma exigência nova."""
     return [c for c in cartao if c and not any(tree.contains_text(v) for v in guard_variants(c))]
+
+
+def lembrete_da_leitura(faltam: list[str], *, visual: bool) -> str:
+    """Item 31.71: o lembrete das saídas que faltam, só com os NOMES (nunca valor lido). Sem a leitura visual ligada, não
+    oferece o `source='visual'`, que o executor recusaria."""
+    nomes = ", ".join(f"'{n}'" for n in faltam)
+    como = "read_value(source='visual')" if visual else "read_value"
+    return f"(executor) a imagem desta observação está anexada; para {nomes}, use {como} na linha que o mostra."
+
+
+def historico_do_ator(history: list[str], n: int, lembrete: str | None) -> list[str]:
+    """O histórico que vai NESTA decisão: o comprimido e, no fim, o lembrete do 31.71. O lembrete não entra no
+    `history` durável: o `compress_history` guarda toda linha `(executor)`, e ele se acumularia a cada decisão."""
+    copia = compress_history(history, n)
+    return [*copia, lembrete] if lembrete else copia
 
 
 def compress_history(history: list[str], n: int) -> list[str]:

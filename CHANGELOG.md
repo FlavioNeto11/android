@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.71: a imagem segue enquanto falta saída declarada, atrás de chave desligada (branch feat/31-71-imagem-enquanto-falta-saida)
+
+- Achado real (r-20261004232524-2e0775, ai_calls 4499 a 4510): na leitura do Outlook, 4 dos 8 decides não avançaram.
+  Sem imagem, o ator tentava concluir (recusa) ou pedia `observe_screen`.
+- `ai.imagem_enquanto_falta_saida` (desligada por padrão; vira padrão só com o A/B): com ela, o motivo novo
+  `leitura_pendente` manda a imagem em toda decisão enquanto faltar saída declarada. Vem depois de `sensivel`,
+  `politica_*`, `pedida`, `problema` e `primeira_*`: a política manda, e os motivos de hoje não mudam de nome. Lida a
+  última saída, o motivo some na decisão seguinte.
+- Com a imagem por `leitura_pendente`, a decisão leva um lembrete só com os NOMES do que falta
+  (`lembrete_da_leitura`). Ele vai na cópia da decisão (`historico_do_ator`), não no histórico durável, onde o
+  `compress_history` o guardaria a cada decisão.
+- Por que o ator, já com a imagem, também não leu (o 4501 e o 4502) segue UNKNOWN. A hipótese "o prompt não avisa" foi
+  refutada por leitura estática; o A/B mede a imagem e o lembrete juntos.
+- Adendo v1.49 (`MotivoDaImagem`), rótulo no painel, `docs/ia.md` e o exemplo de config.
+- Prova: `simulated` (`backend/tests/test_imagem_enquanto_falta_saida.py`, 8 testes). Real: `not_run`; o A/B é
+  janela da orquestradora (`.claude/handoffs/jev-roteiro-31-71-ab.md`).
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
