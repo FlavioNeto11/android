@@ -396,6 +396,20 @@ A pessoa faz a tarefa no aparelho, pelo Foco, e a IA generaliza a gravação em 
   `capability_required`) e grava via `FlowStore.learn_from_plan` + `flow_scope` (escopo por perfis/grupos —
   sem linha, vale para todos). Rotas: `GET /api/training`, `GET/POST /api/training/{session_id}` e
   `/stop`/`/propose`/`/save`/`/discard` (`backend/app/api.py:342-410`).
+- **Validação do `save` (item 31.83).** O `propose` normaliza a proposta; o `save` aceita a que o cliente manda, por
+  isso `validar_proposta_para_salvar` (`training/skills.py`) a confere ANTES de qualquer escrita (fluxo, escopo,
+  receita, status da sessão) e recusa com 400 e a mensagem do que corrigir. Códigos, além dos de sempre:
+  - `etapa_invalida`: etapa sem chave (ou com chave fora de `^[a-z][a-z0-9_]{1,40}$`), chave repetida, sem título e
+    objetivo, ou pós-condição de tipo inválido (antes era `KeyError`/500).
+  - `parametro_fora_do_comando`: declarado em `parameters` e ausente do comando; o fluxo nunca casaria.
+  - `parametro_nao_declarado`: `{x}` no comando sem parâmetro declarado (marcadores reservados não contam).
+  - `comando_generico`: menos de 2 palavras ou 10 letras fixas fora das chaves; casaria com pedidos alheios.
+  - `pos_condicao_vazia`: etapa com efeito externo sem `postcondition.value` nem `description` (e sem ação de
+    catálogo, que traz a sua). Sem efeito, o objetivo serve de critério e o `save` devolve o aviso em `warnings`.
+  - `entradas_sem_etapa`: entrada gravada que não está em nenhuma etapa nem em `discarded` (a lista `#n` vem na
+    mensagem); `proposta_invalida`: descarte sem `seq`.
+  - O `TRAINER_SYSTEM` pede cobertura total das entradas e manda para `discarded` as teclas de apagar que só limpam
+    o campo e o `back`/`home` que desfazem engano (a reprodução limpa o campo; tecla na etapa derruba a receita).
 
 Migração `038_modo_treinamento.sql`: `training_sessions` (`status`: `recording|recorded|proposed|saved|discarded`),
 `training_inputs` (`type`: `tap|long_press|swipe|text|key|open_app`), `flow_scope`, `flows.source` (`'run'` ou

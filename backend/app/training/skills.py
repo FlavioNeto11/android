@@ -16,15 +16,121 @@ que declaram a ação.
 from __future__ import annotations
 
 import re
-from typing import Any
+from collections.abc import Callable
+from typing import Any, get_args
 
 from ..db import dumps
 from ..models import Plan, PlannerInfo, PlanStep, Postcondition
-from ..planning.capabilities import CapabilityNode, load_catalog
+from ..planning.capabilities import CapabilityCatalog, CapabilityNode, load_catalog
 from ..planning.training import TrainingRequest
+from ..taskqueue.flows import PLACEHOLDER, RESERVED
 from ..taskqueue.recipes import distill_training, step_template_hash
 from ..util import now_iso
 from .recorder import TrainingError
+
+
+# ---------------------------------------------------------------------------- validação da proposta (item 31.83)
+#: Texto FIXO mínimo do comando, fora das `{chaves}`. O fluxo casa o pedido com `(?P<x>.+?)` e `fullmatch`: um comando
+#: feito só de parâmetros (`{mensagem}`) ou com quase nada fixo (`abra {app}`) casa com qualquer pedido alheio e
+#: sequestra a execução de outra pessoa. Duas palavras e dez letras/dígitos dão âncora para o texto de um pedido real.
+COMANDO_PALAVRAS_FIXAS_MIN = 2
+COMANDO_CARACTERES_FIXOS_MIN = 10
+_KINDS_DE_POSCONDICAO = frozenset(get_args(Postcondition.model_fields["kind"].annotation))
+Proposta = dict[str, Any]       # proposta e etapa: JSON livre vindo do cliente, validado à mão abaixo
+_CHAVE_DE_ETAPA = re.compile(PlanStep.model_fields["key"].metadata[0].pattern)
+
+
+def _erro(code: str, mensagem: str) -> TrainingError:
+    return TrainingError(code, mensagem, 400)
+
+
+def validar_proposta_para_salvar(p: Proposta, seqs_gravados: set[int],
+                                 etapa_do_catalogo: Callable[[Proposta], bool] = lambda _st: False,
+                                 ) -> tuple[Proposta, list[str]]:
+    """Confere a proposta que o cliente mandou ANTES de qualquer escrita: o `propose` normaliza, o `save` aceita o que
+    vier. Devolve a proposta com `inputs`/`discarded` já como inteiros e os AVISOS do que foi aceito com ressalva.
+
+    Recusa (400) com o que a pessoa deve corrigir: `etapa_invalida`, `parametro_fora_do_comando`,
+    `parametro_nao_declarado`, `comando_generico`, `pos_condicao_vazia` (etapa com efeito externo) e
+    `entradas_sem_etapa` (gravada e sem destino: sem isso a receita nasce sem o toque, errada e calada).
+    `etapa_do_catalogo(etapa)`: a etapa vira a ação do catálogo, que traz a própria pós-condição."""
+    comando = (p.get("command_template") or "").strip()
+    avisos: list[str] = []
+
+    etapas: list[Proposta] = []
+    chaves: set[str] = set()
+    for n, st in enumerate(p.get("steps") or [], 1):
+        if not isinstance(st, dict):
+            raise _erro("etapa_invalida", f"A etapa {n} não está no formato esperado.")
+        chave = str(st.get("key") or "").strip()
+        rotulo = f"A etapa {n}" + (f" (“{st.get('title')}”)" if st.get("title") else "")
+        if not chave:
+            raise _erro("etapa_invalida", f"{rotulo} está sem chave: dê a cada etapa uma chave própria (minúsculas, números e _).")
+        if not _CHAVE_DE_ETAPA.match(chave):
+            raise _erro("etapa_invalida", f"{rotulo} tem a chave “{chave}” inválida: use minúsculas, números e _, "
+                                          "começando por letra, com 2 a 41 caracteres.")
+        if chave in chaves:
+            raise _erro("etapa_invalida", f"A chave “{chave}” aparece em mais de uma etapa: cada etapa precisa de uma chave própria.")
+        chaves.add(chave)
+        if not (str(st.get("title") or "").strip() or str(st.get("goal") or "").strip()):
+            raise _erro("etapa_invalida", f"{rotulo} está sem título e sem objetivo: diga o que ela faz.")
+        post = st.get("postcondition") or {}
+        if not isinstance(post, dict) or (post.get("kind") and post["kind"] not in _KINDS_DE_POSCONDICAO):
+            raise _erro("etapa_invalida", f"{rotulo} tem uma pós-condição inválida: o tipo deve ser um de "
+                                          f"{', '.join(sorted(_KINDS_DE_POSCONDICAO))}.")
+        try:
+            entradas = sorted({int(i) for i in st.get("inputs") or []})
+        except (TypeError, ValueError):
+            raise _erro("etapa_invalida", f"{rotulo} lista entradas que não são números de entrada gravada.") from None
+        etapas.append({**st, "key": chave, "inputs": entradas})
+
+    declarados = {str(x["name"]) for x in p.get("parameters") or [] if isinstance(x, dict) and x.get("name")}
+    usados = {m.group(1) for m in PLACEHOLDER.finditer(comando)}
+    fora = sorted(n for n in declarados - usados if n not in RESERVED)
+    if fora:
+        raise _erro("parametro_fora_do_comando",
+                    "Parâmetro declarado mas ausente do comando: " + ", ".join("{" + n + "}" for n in fora)
+                    + ". Ponha cada um no comando (ex.: “… {" + fora[0] + "} …”) ou tire-o da lista: sem isso o fluxo "
+                    "nunca casa com um pedido.")
+    sem_declarar = sorted(n for n in usados - declarados if n not in RESERVED)
+    if sem_declarar:
+        raise _erro("parametro_nao_declarado",
+                    "O comando usa " + ", ".join("{" + n + "}" for n in sem_declarar) + " sem declarar o parâmetro: "
+                    "acrescente-o em `parameters` com um exemplo, ou troque por texto fixo.")
+
+    fixo = PLACEHOLDER.sub(" ", comando)
+    palavras = re.findall(r"[^\W_]+", fixo)
+    if len(palavras) < COMANDO_PALAVRAS_FIXAS_MIN or sum(len(w) for w in palavras) < COMANDO_CARACTERES_FIXOS_MIN:
+        raise _erro("comando_generico",
+                    f"O comando “{comando}” tem pouco texto fixo e casaria com pedidos alheios: escreva ao menos "
+                    f"{COMANDO_PALAVRAS_FIXAS_MIN} palavras (e {COMANDO_CARACTERES_FIXOS_MIN} letras) fora das chaves, "
+                    "como “responda a DM de {contato} com {mensagem}”.")
+
+    for st in etapas:
+        post = st.get("postcondition") or {}
+        if (post.get("value") or "").strip() or (post.get("description") or "").strip() or etapa_do_catalogo(st):
+            continue
+        nome = st.get("title") or st["key"]
+        if st.get("side_effect"):
+            raise _erro("pos_condicao_vazia",
+                        f"A etapa “{nome}” muda algo fora do aparelho e não diz como comprovar que deu certo: descreva "
+                        "a pós-condição (o que a tela mostra depois).")
+        avisos.append(f"A etapa “{nome}” não descreve a pós-condição: o objetivo dela serve de critério.")
+
+    descartadas: list[Proposta] = []
+    for d in p.get("discarded") or []:
+        try:
+            descartadas.append({**d, "seq": int(d["seq"])})
+        except (TypeError, ValueError, KeyError):
+            raise _erro("proposta_invalida", "Há uma entrada descartada sem o número da entrada (`seq`).") from None
+    cobertas = {i for st in etapas for i in st["inputs"]} | {d["seq"] for d in descartadas}
+    orfas = sorted(seqs_gravados - cobertas)
+    if orfas:
+        raise _erro("entradas_sem_etapa",
+                    "Entradas gravadas sem etapa e sem descarte: " + ", ".join(f"#{i}" for i in orfas)
+                    + ". Atribua cada uma a uma etapa ou descarte-a: do contrário a receita nasce sem esse toque e "
+                    "erra a reprodução.")
+    return {**p, "steps": etapas, "discarded": descartadas}, avisos
 
 
 class TrainingSkills:
@@ -105,6 +211,15 @@ class TrainingSkills:
         apps = self._apps()
         app_id = p.get("app_id") or self._app_da_sessao(sess, apps)
         pacote = apps[app_id]["package"] if app_id in apps else None
+
+        def _catalogo_da_etapa(st: Proposta) -> CapabilityCatalog | None:
+            pkg = apps[st.get("app_id") or app_id]["package"] if (st.get("app_id") or app_id) in apps else pacote
+            return load_catalog(pkg) if pkg else None
+
+        # 31.83: tudo que dá para recusar sai ANTES da primeira escrita (fluxo, escopo, receita, status da sessão).
+        p, avisos = validar_proposta_para_salvar(
+            p, {int(e["seq"]) for e in sess["inputs"]},
+            lambda st: bool(st.get("capability")) and (cat := _catalogo_da_etapa(st)) is not None and cat.has(st["capability"]))
         exemplos = {x["name"]: str(x.get("example") or "") for x in p.get("parameters") or [] if x.get("name")}
         passos: list[PlanStep] = []
         for st in p["steps"]:
@@ -143,7 +258,7 @@ class TrainingSkills:
                           (flow_id, dumps({**p, "app_id": app_id}), now_iso(), session_id))
         self.s.bus.emit("log", f"Habilidade “{plano.summary[:60]}” salva a partir do treinamento",
                         data={"training_session_id": session_id, "flow_id": flow_id})
-        return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio}
+        return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio, "warnings": avisos}
 
     async def _receitas(self, sess: dict[str, Any], p: dict[str, Any], passos: list[PlanStep], exemplos: dict[str, str],
                         apps: dict[str, dict[str, str]], app_id: str | None, session_id: str) -> list[dict[str, Any]]:

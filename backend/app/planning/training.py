@@ -30,7 +30,8 @@ Devolva:
 - `command_template`: o comando em português que alguém digitaria para pedir esta tarefa, com os valores que
   variam como `{nome}` (ex.: "responda a DM de {contato} com {mensagem}"). Nomes em minúsculas, sem acento. Entre dois
   parâmetros sempre há pelo menos uma palavra fixa (nunca "{a} {b}" colados: não daria para separar os valores).
-- `parameters`: cada `{nome}` do comando, com o valor usado nesta gravação em `example`.
+- `parameters`: cada `{nome}` do comando, com o valor usado nesta gravação em `example`. Todo `{nome}` do comando
+  consta aqui e todo parâmetro daqui aparece no comando; o comando tem também texto fixo (ao menos duas palavras).
 - `steps`: as etapas da tarefa, na ordem, cada uma com UM objetivo verificável. `inputs` lista os números das
   entradas que realizam a etapa. `postcondition` usa, sempre que possível, algo que a tela mostra:
   text_visible (um texto), element_present (um seletor como id=..., text==..., desc==...) ou app_foreground (o
@@ -42,6 +43,14 @@ Devolva:
 - `app_id`: o app da etapa, quando a tarefa atravessa apps (null = o app principal).
 - `discarded`: entradas que NÃO fazem parte da tarefa (toque errado, voltar logo em seguida, rolagem à toa,
   abrir algo por engano), com o motivo.
+  Regras de cobertura e de teclas (a pessoa só salva se elas valerem):
+  * TODA entrada gravada aparece em UMA etapa (`inputs`) ou em `discarded`, com o motivo; nenhuma fica de fora.
+  * Teclas de apagar (`delete`, `del`, backspace) usadas só para limpar um campo antes de digitar vão para
+    `discarded`: a reprodução limpa o campo sozinha. Nunca ponha dezenas de teclas na etapa do texto.
+  * `back` ou `home` que só desfazem um engano de quem ensinou vão para `discarded`. Tecla que faz parte da tarefa
+    (ex.: enter para enviar) fica na etapa.
+  * Toda etapa tem `postcondition` com `description` verificável (o que a tela mostra quando deu certo), mesmo
+    quando o tipo é model_judged.
 - `questions`: dúvidas que só a pessoa responde (ex.: "o texto 'Bom dia' é sempre esse ou muda?"). Não invente.
 
 Nunca trate como parâmetro algo que parece senha ou código; entrada com texto não gravado é sigilosa."""

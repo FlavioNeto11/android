@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.83: o `save` do modo treinamento valida a proposta antes de escrever (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `validar_proposta_para_salvar` (`training/skills.py`) roda antes de qualquer escrita e recusa com 400 e mensagem em
+  português: `etapa_invalida` (sem chave, chave repetida, sem título/objetivo; antes `KeyError`/500),
+  `parametro_fora_do_comando`, `parametro_nao_declarado`, `comando_generico` (menos de 2 palavras/10 letras fixas),
+  `pos_condicao_vazia` (etapa com efeito) e `entradas_sem_etapa` (gravada fora de etapa e de `discarded`).
+  Etapa sem efeito e sem pós-condição segue aceita; a resposta traz `warnings`.
+- `TRAINER_SYSTEM` manda toda entrada para uma etapa ou `discarded`, teclas de apagar de limpeza e `back`/`home` de
+  engano para `discarded`, e pós-condição sempre descrita. Esquema de saída igual.
+- Adendo v1.57 no contrato; doc em `docs/dominios/perfis-e-instagram.md`.
+- Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (13), com mutação por código; `real`: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

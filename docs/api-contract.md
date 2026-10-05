@@ -6334,3 +6334,22 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
 - O mesmo descarte sai numa linha de log do curador, com o id da revisão, a classe e os rótulos.
 - O painel pode ignorar a chave. Ausente também quer dizer backend de antes do 30.73.
 - **Prova:** `simulated` (`backend/tests/test_curador_classe_b.py`).
+
+## Adendo v1.57 (05/10/2026; número da orquestradora; item 31.83) — o `save` do treinamento recusa a proposta que nunca funcionaria
+
+`POST /api/training/{session_id}/save` confere a proposta ANTES de gravar (fluxo, escopo, receita, status da sessão).
+Novos 400, no formato de sempre (`detail: {code, message}`; a mensagem diz o que corrigir). Os códigos antigos
+(`no_proposal`, `invalid_command`, `ambiguous_command`, `unknown_profile`, `unknown_group`, `capability_required`) e o 409
+`duplicate_command` ficam como estavam:
+- `etapa_invalida`: etapa sem `key`, com `key` repetida ou fora de `^[a-z][a-z0-9_]{1,40}$`, sem `title` e `goal`, ou com
+  `postcondition.kind` inválido. Antes: 500.
+- `parametro_fora_do_comando`: parâmetro em `parameters` que o `command_template` não usa.
+- `parametro_nao_declarado`: `{x}` no comando sem parâmetro declarado (`instance_id`, `run_id` e `account_label` não contam).
+- `comando_generico`: menos de 2 palavras ou de 10 letras/dígitos fora das chaves.
+- `pos_condicao_vazia`: etapa com `side_effect` sem `postcondition.value` nem `description` (salvo ação de catálogo).
+- `entradas_sem_etapa`: entrada gravada fora de `steps[].inputs` e de `discarded`; a mensagem lista os `#seq`.
+- `proposta_invalida`: item de `discarded` sem `seq` numérico.
+
+Campo aditivo na resposta de sucesso: `warnings: string[]` (vazio quando não há), com as etapas sem efeito aceitas sem
+descrição de pós-condição (o objetivo serviu de critério). O painel pode ignorá-lo.
+- **Prova:** `simulated` (`backend/tests/test_treino_validacao_do_salvar.py`).
