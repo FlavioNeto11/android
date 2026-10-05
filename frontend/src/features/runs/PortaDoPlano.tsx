@@ -10,8 +10,10 @@ import { EmptyState } from '../../components/EmptyState';
 import { TextArea } from '../../components/Field';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import type { Tone } from '../../lib/status';
+import { plural } from '../../lib/format';
 import { formatClock, formatDateTime } from '../../lib/time';
 import { useAppStore } from '../../store/app';
+import { SeloRotuloIa } from '../profiles/SeloRotuloIa';
 import { toast, toastError } from '../../store/toasts';
 import styles from './Runs.module.css';
 
@@ -275,18 +277,18 @@ export function PortaDoPlano({ runId }: { runId: string }) {
   const aparelhos = new Set(itens.map((i) => i.aparelho)).size;
   const naExecucao = itens.filter((i) => i.selo === 'na_execucao');
   const partes = [
-    contagem('permitido') ? `${contagem('permitido')} liberada(s)` : '',
-    contagem('aprovacao') ? `${contagem('aprovacao')} pede(m) seu aval` : '',
-    contagem('adiado') ? `${contagem('adiado')} espera(m)` : '',
-    contagem('recusado') ? `${contagem('recusado')} não será(ão) feita(s)` : '',
-    naExecucao.length ? `${naExecucao.length} decide(m) na execução` : '',
+    contagem('permitido') ? plural(contagem('permitido'), 'liberada', 'liberadas') : '',
+    contagem('aprovacao') ? plural(contagem('aprovacao'), 'pede seu aval', 'pedem seu aval') : '',
+    contagem('adiado') ? plural(contagem('adiado'), 'espera', 'esperam') : '',
+    contagem('recusado') ? plural(contagem('recusado'), 'não será feita', 'não serão feitas') : '',
+    naExecucao.length ? plural(naExecucao.length, 'decide na execução', 'decidem na execução') : '',
   ].filter(Boolean);
 
   return (
     <section className={styles.stack} aria-label="Prévia da porta">
       <Banner tone="info" icon={Lock} title={itens.length === 0
         ? 'Nenhuma etapa com efeito neste plano'
-        : `${itens.length} ação(ões) em ${aparelhos} aparelho(s): ${partes.join(', ')}`} role="status">
+        : `${plural(itens.length, 'ação', 'ações')} em ${plural(aparelhos, 'aparelho', 'aparelhos')}: ${partes.join(', ')}`} role="status">
         É uma estimativa: a porta confere tudo de novo na hora de cada efeito. O que você aprovar aqui vale só para o item
         idêntico (mesma conta, alvo e texto) e até {formatDateTime(previa.validade_ate)}.
       </Banner>
@@ -324,8 +326,7 @@ export function PortaDoPlano({ runId }: { runId: string }) {
                     <span className={styles.draftWhat}>{oQue(item)}</span>
                     <Badge tone={selo.tone} icon={selo.icon}>{rotuloDoSelo(item)}</Badge>
                     {item.tem_imagem ? <Badge tone="neutral" icon={ImageIcon}>com imagem</Badge> : null}
-                    {item.rotulo_ia ? <Badge tone="neutral">com rótulo de IA</Badge> : null}
-                    {item.rotulo_ia === false ? <Badge tone="warning">sem rótulo de IA (imagem enviada por você)</Badge> : null}
+                    <SeloRotuloIa rotulo={item.rotulo_ia} motivo={item.rotulo_ia_motivo} profileId={item.profile_id} />
                     {tirada ? <Badge tone="warning">{porDependencia ? 'sai junto (depende de uma tirada)' : 'não será feita'}</Badge> : null}
                   </div>
                   {item.image_id && item.profile_id ? (

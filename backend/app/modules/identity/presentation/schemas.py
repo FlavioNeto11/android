@@ -219,3 +219,11 @@ class PersonaDeviceBody(BaseModel):
     instance_id: str = Field(min_length=1, max_length=60)
     app_id: str | None = Field(default=None, max_length=80)
     primary: bool = False
+
+
+class FeitaPorIaBody(BaseModel):
+    """29.81: `PUT /personas/{id}/images/{image_id}/feita-por-ia`. O campo é obrigatório; `null` volta a "não
+    informado". Nasce aqui (e não em `app.models`): corpo novo mora na apresentação do contexto."""
+
+    model_config = ConfigDict(extra="forbid")
+    feita_por_ia: bool | None

@@ -86,6 +86,10 @@ def argumentos_da_acao(cap: Capability, bindings: Mapping[str, object]) -> dict[
 
 #: 29.79: o argumento que diz se a publicação leva o rótulo de IA do Instagram ("true"/"false"), gravado pela central.
 ARGUMENTO_DO_ROTULO_IA = "rotulo_ia"
+#: 29.81: o PORQUÊ do rótulo ("ia", "foto_real", "nao_informado"), também gravado pela central. Como argumento da etapa,
+#: entra na chave: corrigir "não informado" para "foto real" (o mesmo "false") muda o que o dono lê no item, e o sim
+#: dado antes não o cobre mais.
+ARGUMENTO_DO_MOTIVO_DO_ROTULO = "rotulo_ia_motivo"
 
 
 def _id_da_imagem(bindings: Mapping[str, object]) -> str:
@@ -118,14 +122,33 @@ def imagem_de_outra_persona(db: Database, bindings: Mapping[str, object], perfil
     return dona is not None and str(dona) != perfil
 
 
+def motivo_do_rotulo_ia(db: Database, bindings: Mapping[str, object]) -> str | None:
+    """29.81: POR QUE a imagem da etapa sai com ou sem o rótulo de IA, para quem aprova ler os três estados: "ia"
+    (gerada, importada ou enviada e marcada como feita por IA), "foto_real" (enviada e marcada como foto real) ou
+    "nao_informado" (enviada sem resposta: sai sem rótulo, mas ninguém disse que é foto real). `None` sem imagem
+    legível ou inexistente."""
+    imagem = _id_da_imagem(bindings)
+    if not imagem or "{" in imagem:
+        return None
+    linha = db.one("SELECT source, feita_por_ia FROM persona_images WHERE id=?", (imagem,))
+    if linha is None:
+        return None
+    if str(linha["source"]) != "upload" or (linha["feita_por_ia"] is not None and bool(linha["feita_por_ia"])):
+        return "ia"
+    return "foto_real" if linha["feita_por_ia"] is not None else "nao_informado"
+
+
 def rotulo_ia_da_imagem(db: Database, image_id: str) -> str | None:
     """29.79: "true" se a imagem pede o rótulo de IA do Instagram, "false" se não; `None` se ela não existe. Só a
-    enviada pelo dono (`upload`) sai sem rótulo: a gerada é foto realista de IA (regra do dono, 03/10) e a importada
-    não tem origem conhecida, então leva o rótulo (o lado seguro)."""
-    origem = db.scalar("SELECT source FROM persona_images WHERE id=?", ((image_id or "").strip(),))
-    if origem is None:
+    enviada pelo dono (`upload`) pode sair sem rótulo: a gerada é foto realista de IA (regra do dono, 03/10) e a
+    importada não tem origem conhecida, então leva o rótulo (o lado seguro). 29.81: o upload que o dono marcou como
+    feito por IA também leva; o "não informado" sai sem, com o aviso."""
+    linha = db.one("SELECT source, feita_por_ia FROM persona_images WHERE id=?", ((image_id or "").strip(),))
+    if linha is None:
         return None
-    return "false" if str(origem) == "upload" else "true"
+    if str(linha["source"]) != "upload":
+        return "true"
+    return "true" if linha["feita_por_ia"] is not None and bool(linha["feita_por_ia"]) else "false"
 
 
 def rotulo_ia_exigido(db: Database, bindings: Mapping[str, object]) -> bool:

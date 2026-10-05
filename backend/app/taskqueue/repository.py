@@ -30,7 +30,8 @@ from ..planning.catalog import session_provider_of
 from ..planning.provider import Usage
 from ..security.enderecos import enderecos_limpos
 from ..security.redaction import redact
-from ..social.chave_da_aprovacao import ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_ROTULO_IA, rotulo_ia_da_imagem
+from ..social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_MOTIVO_DO_ROTULO, ARGUMENTO_DO_ROTULO_IA,
+                                         motivo_do_rotulo_ia, rotulo_ia_da_imagem)
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, parse_iso, to_iso, truncate
 from .latencia import TemposDaTentativa, motivo_da_espera
@@ -350,9 +351,33 @@ class Repository:
         imagem = (bindings.get(ARGUMENTO_DA_IMAGEM) or "").strip()
         if not imagem:
             return bindings
-        sem = {k: val for k, val in bindings.items() if k != ARGUMENTO_DO_ROTULO_IA}
+        sem = {k: val for k, val in bindings.items() if k not in (ARGUMENTO_DO_ROTULO_IA, ARGUMENTO_DO_MOTIVO_DO_ROTULO)}
         rotulo = rotulo_ia_da_imagem(self.db, imagem) if "{" not in imagem else None
-        return {**sem, ARGUMENTO_DO_ROTULO_IA: rotulo} if rotulo is not None else sem
+        if rotulo is None:
+            return sem
+        # 29.81: o porquê vai junto (e entra na chave com o rótulo): "foto real" e "não informado" saem os dois sem
+        # rótulo, mas o dono os lê diferente no item.
+        motivo = motivo_do_rotulo_ia(self.db, {ARGUMENTO_DA_IMAGEM: imagem})
+        return {**sem, ARGUMENTO_DO_ROTULO_IA: rotulo, **({ARGUMENTO_DO_MOTIVO_DO_ROTULO: motivo} if motivo else {})}
+
+    def ressincronizar_rotulo_ia(self, image_id: str) -> int:
+        """29.81: o dono corrigiu se o upload foi feito por IA. As etapas que ainda vão publicar essa imagem (abertas e
+        fora de execução) regravam `rotulo_ia`: a chave da aprovação muda com ele, então o sim dado antes não cobre mais
+        o item e a porta pergunta de novo. Devolve quantas etapas mudaram."""
+        mudaram = 0
+        abertas = (StepStatus.pending.value, StepStatus.ready.value, StepStatus.retry_wait.value,
+                   StepStatus.waiting_user.value)
+        marcadores = ",".join("?" for _ in abertas)
+        for linha in self.db.query(f"SELECT id, bindings FROM steps WHERE status IN ({marcadores})"  # noqa: S608
+                                   " AND bindings LIKE ?", (*abertas, f"%{image_id}%")):
+            antes = loads(linha["bindings"], {}) or {}
+            if not isinstance(antes, dict) or str(antes.get(ARGUMENTO_DA_IMAGEM) or "").strip() != image_id:
+                continue
+            depois = self._com_rotulo_ia({k: str(v) for k, v in antes.items()})
+            if depois != antes:
+                self.db.execute("UPDATE steps SET bindings=? WHERE id=?", (dumps(depois), linha["id"]))
+                mudaram += 1
+        return mudaram
 
     def _insert_steps(self, run_id: str, oid: str, iid: str, version: int, steps: list[PlanStep],
                       variables: dict[str, str], reason: str) -> None:

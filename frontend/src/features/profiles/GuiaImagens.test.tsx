@@ -181,3 +181,37 @@ it('a identidade visual salva só o bloco visual', async () => {
   expect(Object.keys(corpo)).toEqual(['visual']);
   expect(corpo.visual).toMatchObject({ appearance: 'cabelo cacheado, óculos redondos', palette: 'tons terrosos' });
 });
+
+it('29.81: a foto enviada leva a resposta "feita por IA?" no envio', async () => {
+  backend.on('GET', /\/personas\/ig-1\/images$/, () => json([]));
+  backend.on('POST', /\/personas\/ig-1\/images$/, () => json(imagem({ id: 'img-9', source: 'upload', feita_por_ia: true }), 201));
+  await abrirImagens();
+  await setValue(byRole('combobox', /Esta foto foi feita por IA/i) as HTMLSelectElement, 'true');
+  const campo = container.querySelector('input[type="file"]') as HTMLInputElement;
+  const arquivo = new File([new Uint8Array([0xff, 0xd8, 0xff])], 'foto.jpg', { type: 'image/jpeg' });
+  Object.defineProperty(campo, 'files', { value: [arquivo], configurable: true });
+  await act(async () => { campo.dispatchEvent(new Event('change', { bubbles: true })); });
+  await waitFor(() => backend.callsTo('POST', /\/personas\/ig-1\/images$/).length === 1);
+  expect(backend.callsTo('POST', /\/personas\/ig-1\/images$/)[0]?.query.get('feita_por_ia')).toBe('true');
+});
+
+it('29.81: o selo do rótulo de IA em cada foto, e a enviada se corrige na própria foto', async () => {
+  backend.on('GET', /\/personas\/ig-1\/images$/, () => json([
+    imagem(),
+    imagem({ id: 'img-2', is_primary: false, source: 'upload', provider: null, model: null, seed: null, feita_por_ia: null,
+             url: '/api/personas/ig-1/images/img-2' }),
+    imagem({ id: 'img-3', is_primary: false, source: 'upload', provider: null, model: null, seed: null, feita_por_ia: false,
+             url: '/api/personas/ig-1/images/img-3' }),
+  ]));
+  backend.on('PUT', /\/images\/img-2\/feita-por-ia$/, () => json(imagem({ id: 'img-2', source: 'upload', feita_por_ia: true })));
+  await abrirImagens();
+  await waitFor(() => text().includes('rótulo de IA não informado'));
+  const cartoes = Array.from(container.querySelectorAll('figure'));
+  expect(text(cartoes[0]!)).toContain('com rótulo de IA');                 // gerada: sempre com
+  expect(cartoes[0]!.querySelector('select')).toBeNull();                   // e não se marca
+  expect(text(cartoes[1]!)).toContain('rótulo de IA não informado');        // enviada sem resposta: ninguém disse
+  expect(text(cartoes[2]!)).toContain('sem rótulo de IA (foto real)');      // enviada e dita foto real
+  await setValue(cartoes[1]!.querySelector('select') as HTMLSelectElement, 'true');
+  await waitFor(() => backend.callsTo('PUT', /\/images\/img-2\/feita-por-ia$/).length === 1);
+  expect(backend.callsTo('PUT', /\/images\/img-2\/feita-por-ia$/)[0]?.body).toEqual({ feita_por_ia: true });
+});

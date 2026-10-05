@@ -24,7 +24,7 @@ from app.util import new_token, now_iso
 #: Colunas de `persona_images` na ordem do INSERT.
 _COLUNAS = ("id", "persona_id", "storage", "storage_key", "original_key", "spec", "prompt_sha256", "provider", "model",
             "seed", "provider_seed", "provider_request_id", "width", "height", "bytes_sha256", "cost_usd", "status",
-            "error", "source", "is_primary", "created_at")
+            "error", "source", "is_primary", "created_at", "feita_por_ia")
 
 
 class SqlPersonaImages:
@@ -38,7 +38,8 @@ class SqlPersonaImages:
                    record.spec_json, record.prompt_sha256, record.provider, record.model, int(record.seed),
                    record.provider_seed, record.provider_request_id, record.width, record.height,
                    record.bytes_sha256, float(record.cost_usd), record.status, record.error, record.source,
-                   int(record.is_primary), record.created_at)
+                   int(record.is_primary), record.created_at,
+                   None if record.feita_por_ia is None else int(record.feita_por_ia))
         marcadores = ",".join("?" for _ in _COLUNAS)
         self._db.execute(f"INSERT INTO persona_images({', '.join(_COLUNAS)}) VALUES ({marcadores})", valores)  # noqa: S608
 
@@ -65,6 +66,16 @@ class SqlPersonaImages:
             self._db.execute("UPDATE persona_images SET is_primary=0 WHERE persona_id=? AND is_primary=1", (persona_id,))
             self._db.execute("UPDATE persona_images SET is_primary=1 WHERE id=? AND persona_id=?", (image_id, persona_id))
 
+    def set_feita_por_ia(self, persona_id: str, image_id: str, valor: bool | None) -> bool:
+        # R1 da revisão do #351: "mudou" sai da escrita condicional (nulo comparado como -1, igual no SQLite e no
+        # PostgreSQL), não de uma leitura anterior: duas marcações concorrentes não ficam ambas "sem mudança". O CAST:
+        # o PG já recusou parâmetro nulo sem tipo num COALESCE (`contatos_sql.py`, 28.18).
+        novo = None if valor is None else int(valor)
+        cursor = self._db.execute("UPDATE persona_images SET feita_por_ia=? WHERE id=? AND persona_id=?"
+                                  " AND COALESCE(feita_por_ia, -1) <> COALESCE(CAST(? AS INTEGER), -1)",
+                                  (novo, image_id, persona_id, novo))
+        return bool(cursor.rowcount)
+
     def delete(self, persona_id: str, image_id: str) -> None:
         self._db.execute("DELETE FROM persona_images WHERE id=? AND persona_id=?", (image_id, persona_id))
 
@@ -86,7 +97,8 @@ def _registro(linha: Row) -> PersonaImageRecord:
         provider=_texto(linha["provider"]), model=_texto(linha["model"]), seed=_inteiro(linha["seed"]) or 0,
         provider_seed=_texto(linha["provider_seed"]), provider_request_id=_texto(linha["provider_request_id"]),
         width=_inteiro(linha["width"]), height=_inteiro(linha["height"]), bytes_sha256=_texto(linha["bytes_sha256"]),
-        cost_usd=float(linha["cost_usd"] or 0.0), error=_texto(linha["error"]), created_at=str(linha["created_at"]))
+        cost_usd=float(linha["cost_usd"] or 0.0), error=_texto(linha["error"]), created_at=str(linha["created_at"]),
+        feita_por_ia=None if linha["feita_por_ia"] is None else bool(linha["feita_por_ia"]))
 
 
 class StorageBlobs:
@@ -169,7 +181,8 @@ def imagens_dto(registros: list[PersonaImageRecord]) -> list[PersonaImageDTO]:
     return [PersonaImageDTO(
         id=r.id, persona_id=r.persona_id, status=r.status, source=r.source, is_primary=r.is_primary, width=r.width,
         height=r.height, provider=r.provider, model=r.model, seed=r.seed or None, aspect=r.aspect, cost_usd=r.cost_usd,
-        error=r.error, created_at=r.created_at, url=f"/api/personas/{r.persona_id}/images/{r.id}") for r in registros]
+        error=r.error, created_at=r.created_at, url=f"/api/personas/{r.persona_id}/images/{r.id}",
+        feita_por_ia=r.feita_por_ia) for r in registros]
 
 
 def identidade_para_foto(dto: PersonaDTO) -> PersonaIdentity:

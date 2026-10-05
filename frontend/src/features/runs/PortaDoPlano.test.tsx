@@ -80,11 +80,20 @@ describe('PortaDoPlano (30.61)', () => {
   it('resume os selos, mostra o recusado em cinza e o que fica para a execução', async () => {
     await montar();
     const t = text(container);
-    expect(t).toContain('4 ação(ões) em 1 aparelho(s): 1 liberada(s), 1 pede(m) seu aval, 1 não será(ão) feita(s), 1 decide(m) na execução');
+    expect(t).toContain('4 ações em 1 aparelho: 1 liberada, 1 pede seu aval, 1 não será feita, 1 decide na execução');
     expect(t).toContain('não será feita');
     expect(t).toContain('Ainda vão pedir você na execução');
     expect(t).toContain('Sempre com você: desafio, 2FA, CAPTCHA');
     expect(byRole('button', /Aprovar 1 e iniciar/)).toBeTruthy();
+  });
+
+  it('plural de verdade com 2: "2 ações em 2 aparelhos: 2 pedem seu aval"', async () => {
+    backend.on('GET', /\/runs\/run-p\/porta$/, () => json(previa([
+      item({ step_id: 'run-p:android-01:v1:dm' }),
+      item({ objective_id: 'run-p:android-02', step_id: 'run-p:android-02:v1:dm', aparelho: 'android-02' }),
+    ])));
+    await montar();
+    expect(text(container)).toContain('2 ações em 2 aparelhos: 2 pedem seu aval');
   });
 
   it('aprova com a chave vista, manda o texto editado e as tiradas', async () => {
@@ -248,13 +257,21 @@ describe('29.30 no cartão do plano', () => {
     expect(text(container)).toContain('com rótulo de IA');       // 29.79
   });
 
-  it('29.79: a imagem enviada pelo dono diz com todas as letras que sai sem o rótulo de IA', async () => {
+  it('29.81: sem rótulo por foto real (o dono disse) é neutro; sem rótulo porque ninguém disse é aviso, com o caminho', async () => {
     backend.on('GET', /\/runs\/run-p\/porta$/, () => json(previa([
-      item({ step_id: 'run-p:android-01:v1:pub', acao: 'CREATE_POST', alvo: null, tem_imagem: true, image_id: 'img-u',
-             imagem_sha256: 'c'.repeat(64), rotulo_ia: false }),
+      item({ step_id: 'run-p:android-01:v1:real', acao: 'CREATE_POST', alvo: null, tem_imagem: true, image_id: 'img-r',
+             imagem_sha256: 'c'.repeat(64), rotulo_ia: false, rotulo_ia_motivo: 'foto_real' }),
+      item({ step_id: 'run-p:android-01:v1:nada', acao: 'CREATE_POST', alvo: null, tem_imagem: true, image_id: 'img-n',
+             imagem_sha256: 'd'.repeat(64), rotulo_ia: false, rotulo_ia_motivo: 'nao_informado' }),
     ])));
     await montar();
-    expect(text(container)).toContain('sem rótulo de IA (imagem enviada por você)');
+    const itens = Array.from(container.querySelectorAll('li')).filter((li) => li.querySelector('img'));
+    expect(itens).toHaveLength(2);
+    expect(text(itens[0]!)).toContain('sem rótulo de IA (foto real, informado por você)');
+    expect(itens[0]!.querySelector('a[href*="imagens"]')).toBeNull();          // o dono já disse: nada a fazer
+    expect(text(itens[1]!)).toContain('sem rótulo de IA: ninguém informou se a foto é de IA');
+    const caminho = itens[1]!.querySelector('a[href*="imagens"]');
+    expect(caminho?.getAttribute('href')).toBe('#/personas/p-1/imagens');
     expect(text(container)).not.toContain('com rótulo de IA');
   });
 });

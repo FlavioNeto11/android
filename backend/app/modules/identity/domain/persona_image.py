@@ -201,6 +201,8 @@ class PersonaImageRecord:
     cost_usd: float = 0.0
     error: str | None = None
     created_at: str = ""
+    #: 29.81: o dono disse se o upload foi feito por IA (`None` = não informado). Só o upload usa.
+    feita_por_ia: bool | None = None
 
     @property
     def aspect(self) -> str | None:

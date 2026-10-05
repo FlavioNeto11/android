@@ -181,6 +181,10 @@ class PersonaImageRepository(Protocol):
 
     def set_primary(self, persona_id: str, image_id: str) -> None: ...
 
+    def set_feita_por_ia(self, persona_id: str, image_id: str, valor: bool | None) -> bool:
+        """Grava a resposta; `True` só quando ela MUDOU (decidido na própria escrita, não numa leitura antes)."""
+        ...
+
     def delete(self, persona_id: str, image_id: str) -> None: ...
 
 

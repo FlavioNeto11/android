@@ -616,6 +616,35 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
   no texto que a pessoa escreveu e que a conversa já mostrava.
 - `not_run`: PostgreSQL e a prova real (um aviso de cada nível, depois do deploy, com o dono avisado uma vez).
 
+## 2026-10-04 — 29.81: o dono diz se a foto que enviou foi feita por IA (branch feat/29-81-upload-feito-por-ia)
+
+- Migração 108: `persona_images.feita_por_ia` (nula). As linhas antigas ficam "não informado", e o rótulo de cada uma é o
+  de antes da migração (upload sem, gerada e importada com).
+- O rótulo de IA da publicação (29.79) segue a resposta. O upload marcado "feita por IA" sai com o rótulo; "foto real" e
+  "não informado" saem sem. A gerada e a importada saem sempre com o rótulo, e só o upload se marca (409 `nao_e_upload`).
+- Envio: `POST /personas/{id}/images?feita_por_ia=true|false` (sem o parâmetro: não informado; outro valor: 422).
+  Correção: `PUT /personas/{id}/images/{image_id}/feita-por-ia` `{feita_por_ia: true|false|null}`. As etapas abertas
+  que publicam a imagem regravam o `rotulo_ia`, a chave da aprovação muda, e o sim dado antes deixa de cobrir a
+  publicação.
+- Três estados, não dois: `rotulo_ia_motivo` (`ia`, `foto_real`, `nao_informado`) é argumento da etapa, gravado junto do
+  `rotulo_ia`, e entra na chave da aprovação. "Foto real" (o dono disse) e "não informado" (ninguém disse) saem iguais no
+  Instagram, mas são itens diferentes para quem aprova: responder depois muda a chave e pede o sim de novo.
+- Painel: na guia Imagens, "Esta foto foi feita por IA?" no envio, o selo de cada foto ("com rótulo de IA", "sem
+  rótulo de IA (foto real)" ou, em aviso, "rótulo de IA não informado") e a correção na própria foto enviada. No cartão
+  do plano, na aba Textos e na guia Aprovações: "sem rótulo de IA (foto real, informado por você)" ou, em aviso, "sem
+  rótulo de IA: ninguém informou se a foto é de IA", com o link para a guia Imagens da persona. Adendo v1.44.
+- Revisão da Ferramentas: a marca e a regravação das etapas abertas vão numa transação só (N2); remarcar com a mesma
+  resposta não regrava nem invalida o sim já dado (N3). A Prévia da porta passa a dizer o plural de verdade ("1 ação em
+  1 aparelho: 1 liberada", "4 ações…") em vez de "ação(ões)".
+- `GET /approvals` entrega o `rotulo_ia_motivo`. O `rotulo_ia`, achado faltando no percurso do painel deste item (o
+  selo da aba Textos e da guia Aprovações nunca aparecia), entrou como conserto na suíte 33 (`22f641b2`).
+- Prova: `simulated` (`backend/tests/test_upload_feito_por_ia.py`, `GuiaImagens.test.tsx`, `SeloRotuloIa.test.tsx`,
+  `PortaDoPlano.test.tsx`) e o percurso no navegador, em painel isolado (backend do worktree com a config do harness,
+  banco temporário, 05/10): os três selos da galeria, a correção na própria foto mudando o selo e a chave, os três
+  textos no cartão do plano, na aba Textos e na guia Aprovações e o link até a guia Imagens. As fotos do percurso
+  entraram pela API: `not_run` o envio pelo painel (o seletor "Esta foto foi feita por IA?" com o arquivo; só
+  `GuiaImagens.test.tsx`) e a publicação real.
+
 ## 2026-10-04 — 29.79: a foto realista de IA sai SEMPRE com o rótulo de IA do Instagram (branch feat/29-79-rotulo-ia)
 
 - A central grava `rotulo_ia` na etapa que publica imagem pela origem dela (gerada ou importada: "true"; enviada pelo

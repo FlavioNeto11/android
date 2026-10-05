@@ -66,7 +66,7 @@ from .modules.identity.adapters.pos_processamento import dimensoes
 from .modules.identity.domain.persona import MAIORIDADE
 from .modules.identity.domain.persona_image import OrcamentoEsgotado
 from .modules.identity.infrastructure.persona_images import imagens_dto
-from .modules.identity.presentation.schemas import (PersonaBatchBody, PersonaEnrichBody, PersonaGenerateBody,
+from .modules.identity.presentation.schemas import (FeitaPorIaBody, PersonaBatchBody, PersonaEnrichBody, PersonaGenerateBody,
                                                      PersonaImagesBody)
 from .modules.learning.domain.vocabulario import LivroKind
 from .modules.learning.infrastructure.segredo import TriagemDeCredencial
@@ -1446,7 +1446,11 @@ async def add_persona_images(request: Request, persona_id: str) -> Response:
             raise err(413, "image_too_large", "A imagem passa de 10 MB.")
         if dimensoes(corpo) is None:
             raise err(400, "invalid_image", "O corpo não é uma imagem JPEG/PNG legível.")
-        registro = await s.persona_images.registrar_upload(pessoa.id, corpo, tipo)
+        marca = (request.query_params.get("feita_por_ia") or "").strip().lower()
+        if marca not in ("", "true", "false"):
+            raise err(422, "invalid_body", "feita_por_ia é true, false ou ausente (não informado).")
+        registro = await s.persona_images.registrar_upload(pessoa.id, corpo, tipo,
+                                                           feita_por_ia=None if not marca else marca == "true")
         return JSONResponse(status_code=201, content=imagens_dto([registro])[0].model_dump())
     try:
         pedido = PersonaImagesBody.model_validate_json(corpo or b"{}")
@@ -1491,6 +1495,27 @@ async def set_primary_persona_image(request: Request, persona_id: str, image_id:
     except ValueError as exc:
         raise err(409, "image_not_ready", str(exc)) from None
     return s.social.get_persona(pessoa.id)
+
+
+@router.put("/personas/{persona_id}/images/{image_id}/feita-por-ia")
+async def set_persona_image_feita_por_ia(request: Request, persona_id: str, image_id: str,
+                                         body: FeitaPorIaBody) -> PersonaImageDTO:
+    """29.81: o dono diz (ou corrige) se a foto que enviou foi feita por IA. As etapas abertas que publicam a imagem
+    regravam o `rotulo_ia`, e o sim dado antes deixa de cobrir a publicação (a chave muda)."""
+    s = st(request)
+    pid = _pessoa(s, persona_id).id
+    # N2 da revisão: a marca e as etapas abertas mudam juntas; se a regravação falhar no meio, nenhuma das duas fica.
+    with s.db.tx():
+        try:
+            registro, mudou = s.persona_images.marcar_feita_por_ia(pid, image_id, body.feita_por_ia)
+        except KeyError:
+            raise err(404, "not_found", "Imagem não encontrada nesta persona.") from None
+        except ValueError as exc:
+            raise err(409, "nao_e_upload", str(exc)) from None
+        # N3/R1: só a resposta que MUDOU (decidido na escrita, dentro da transação) regrava as etapas abertas.
+        if mudou:
+            s.repo.ressincronizar_rotulo_ia(image_id)
+    return imagens_dto([registro])[0]
 
 
 @router.delete("/personas/{persona_id}/images/{image_id}", status_code=204)

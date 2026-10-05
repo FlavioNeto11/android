@@ -160,8 +160,10 @@ class PersonaImageService:
         return registro
 
     # ------------------------------------------------------------------ upload, principal, apagar, legado
-    async def registrar_upload(self, persona_id: str, data: bytes, mime: str) -> PersonaImageRecord:
-        """Foto enviada pela pessoa: guardada como veio (sem pós-processamento), principal se for a primeira."""
+    async def registrar_upload(self, persona_id: str, data: bytes, mime: str, *,
+                               feita_por_ia: bool | None = None) -> PersonaImageRecord:
+        """Foto enviada pela pessoa: guardada como veio (sem pós-processamento), principal se for a primeira. 29.81:
+        `feita_por_ia` é o que o dono respondeu no envio (`None` = não informado)."""
         image_id = self._new_id()
         extensao = "png" if mime.endswith("png") else "jpg"
         chave = f"personas/{persona_id}/{image_id}.{extensao}"
@@ -170,7 +172,7 @@ class PersonaImageService:
         registro = PersonaImageRecord(
             id=image_id, persona_id=persona_id, status="ready", source="upload", is_primary=False, storage_key=chave,
             provider="upload", width=medidas[0] if medidas else None, height=medidas[1] if medidas else None,
-            bytes_sha256=hashlib.sha256(data).hexdigest(), created_at=self._now())
+            bytes_sha256=hashlib.sha256(data).hexdigest(), created_at=self._now(), feita_por_ia=feita_por_ia)
         self.records.insert(registro)
         if self.principal(persona_id) is None:
             self.records.set_primary(persona_id, image_id)
@@ -190,6 +192,28 @@ class PersonaImageService:
         pronto = self.records.get(persona_id, image_id)
         assert pronto is not None
         return pronto
+
+    def marcar_feita_por_ia(self, persona_id: str, image_id: str,
+                            valor: bool | None) -> tuple[PersonaImageRecord, bool]:
+        """29.81: corrige o que o dono disse do upload. Só o upload: a gerada é sempre de IA (o rótulo não se discute) e
+        a importada leva o rótulo pelo lado seguro. `KeyError` se a imagem não é desta persona. Devolve o registro e
+        se a resposta MUDOU (N3/R1: a mesma resposta não é correção; quem chama não regrava nada)."""
+        registro = self.records.get(persona_id, image_id)
+        if registro is None:
+            raise KeyError(image_id)
+        if registro.source != "upload":
+            raise ValueError("só a imagem enviada por você se marca: a gerada é sempre feita por IA")
+        if not self.records.set_feita_por_ia(persona_id, image_id, valor):
+            # N3: a mesma resposta não é correção (nada grava nem anuncia). F1/F2: "nenhuma linha" também é a imagem
+            # apagada entre a leitura e a escrita; relida, ela é o estado de agora, não o lido antes.
+            relido = self.records.get(persona_id, image_id)
+            if relido is None:
+                raise KeyError(image_id)
+            return relido, False
+        self._anunciar(persona_id, image_id, registro.status)
+        atualizado = self.records.get(persona_id, image_id)
+        assert atualizado is not None
+        return atualizado, True
 
     def apagar(self, persona_id: str, image_id: str) -> None:
         """Apaga o registro e os arquivos (servido e original). A chave legada dos avatares não é apagada: é o
