@@ -128,9 +128,9 @@ it('"Depois" e "Pedir outra proposta" pedem confirmação quando há edição; s
 });
 
 // ---------------------------------------------------------------- fase F: ensino v2 atrás de `features.skills`
-function comHabilidades(ligado: boolean | undefined): void {
+function comHabilidades(ligado: boolean | undefined, ensinoV2: boolean | 'ausente' = ligado ?? 'ausente'): void {
   const health = makeSnapshot().health;
-  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado } } });
+  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado, ensino_v2: ensinoV2 === 'ausente' ? undefined : ensinoV2 } } });
 }
 
 const DOC = {
@@ -579,4 +579,25 @@ it('mais de 8 respostas: o pedido trava com o motivo em vez de cortar a 9ª', as
   expect(backend.callsTo('POST', /\/propose$/)).toHaveLength(antes);
   await setValue(byRole('textbox', /^Pergunta 9$/) as HTMLInputElement, '');
   expect(byRole('button', /^Pedir nova proposta com as respostas/).getAttribute('aria-disabled')).toBeNull();
+});
+
+// ---------------------------------------------------------------- 31.91 F1: a tela do ensino v2 tem chave própria
+it('31.91 F1: com skills ligado e a tela do ensino v2 desligada (padrão), o ensino antigo some, mas "Gerar habilidade" fica', async () => {
+  comHabilidades(true, false);
+  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
+  backend.on('GET', /\/teaching-sessions\/ens-1$/, () => json(ensino('asking', { current_candidate: candidata(1), open_questions: [] })));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('entradas'));
+  expect(text()).not.toContain('Habilidade versionada');
+  expect(text()).not.toContain('fica só para leitura');
+  // a revisão nem pergunta pelo ensino antigo: nenhuma chamada a /teaching-sessions
+  expect(backend.calls.filter((c) => /teaching-sessions/.test(c.path))).toHaveLength(0);
+});
+
+it('31.91 F1: o campo ausente (backend anterior) também esconde a tela do ensino v2', async () => {
+  comHabilidades(true, 'ausente');
+  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('entradas'));
+  expect(text()).not.toContain('Habilidade versionada');
 });

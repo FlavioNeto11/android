@@ -345,6 +345,7 @@ async def test_rotas_desligadas_respondem_404_explicito_e_o_treino_segue(harness
     assert st.cfg.file.skills.enabled is False                        # padrão da instalação (decisão P1)
     async with _cliente(harness) as c:
         assert (await c.get("/api/health")).json()["features"]["skills"] is False
+        assert (await c.get("/api/health")).json()["features"]["ensino_v2"] is False   # 31.91 F1: a tela, desligada
         for metodo, caminho in (("GET", "/api/skills"), ("POST", "/api/teaching-sessions"),
                                 ("GET", "/api/teaching-sessions/ens-x"), ("GET", "/api/skill-candidates/cand-x")):
             r = await c.request(metodo, caminho, json={} if metodo == "POST" else None)
