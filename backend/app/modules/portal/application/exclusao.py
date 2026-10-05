@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import Protocol
 
 from app.modules.portal.domain.exclusao import (DIGITOS_MAX, DIGITOS_MIN, IDS_MAX, PEDIDO_POR, chave_do_telefone, final,
-                                                mesmo_telefone)
+                                                mesmo_telefone, nome_do_operador)
 
 log = logging.getLogger("poc.portal")
 
@@ -118,17 +118,22 @@ def _espera(mais_antiga: float, agora_s: float) -> int:
 class ServicoDeExclusao:
     def __init__(self, repo: RepositorioDeExclusao, *, apagar_no_canal: Callable[[], ApagarNoCanal | None],
                  canal_presente: Callable[[], bool], buscas_por_hora: Callable[[], int],
-                 buscas_no_total: Callable[[], int]) -> None:
+                 buscas_no_total: Callable[[], int], donos: Callable[[], frozenset[str]] = frozenset) -> None:
         self.repo = repo
         self._apagar_no_canal = apagar_no_canal
         self._canal_presente = canal_presente
         self._buscas_por_hora = buscas_por_hora
         self._buscas_no_total = buscas_no_total
+        self._donos = donos
         # Instantes (relógio monotônico) das buscas da última hora: por operador e de todos somados. Em memória no
         # processo: reiniciar zera, e isso basta, porque a busca exige o número inteiro e é de quem já está logado
-        # (decisão da orquestradora). A chave por operador é o nome em `casefold`: o nome é declarado no login, e
-        # "Ana" e "ana" são a mesma pessoa. O teto SOMADO é o que de fato limita a varredura: um nome novo a cada
-        # login ganharia outro balde por operador, mas não outro balde geral (revisão do #342, E4).
+        # (decisão da orquestradora). A chave por operador é o nome normalizado (`nome_do_operador`): o nome é
+        # declarado no login, e "Ana" e "ana" são a mesma pessoa. O teto SOMADO é o que de fato limita a varredura: um
+        # nome novo a cada login ganharia outro balde por operador, mas não outro balde geral (revisão do #342, E4).
+        # O dono (`pedidos.operadores_do_dono`, já normalizados) fica FORA do teto somado, com a cota por operador
+        # dele: dois convidados que esgotam a hora não podem deixar o dono sem atender um titular (29.89). O nome do
+        # dono também é declarado no login; quem o usa ganha só a cota de um operador, e o total fica limitado à soma
+        # das duas cotas.
         self._buscas: dict[str, list[float]] = {}
         self._todas: list[float] = []
         # A rota chama `buscar` em threads do pool: sem a trava, duas buscas no limite passariam as duas, e a limpeza
@@ -136,19 +141,21 @@ class ServicoDeExclusao:
         self._trava = threading.Lock()
 
     def _contar_busca(self, operador: str, agora_s: float) -> None:
-        chave = operador.casefold()
+        chave = nome_do_operador(operador)
+        dono = chave in self._donos()
         with self._trava:
             todas = [t for t in self._todas if agora_s - t < JANELA_DAS_BUSCAS_S]
             recentes = [t for t in self._buscas.get(chave, []) if agora_s - t < JANELA_DAS_BUSCAS_S]
             self._todas = todas
             self._buscas[chave] = recentes
-            if len(todas) >= self._buscas_no_total():
+            if not dono and len(todas) >= self._buscas_no_total():
                 log.warning("portal: teto geral de buscas de exclusão (%s na hora), pedido de %s", len(todas), operador)
                 raise MuitasBuscas(_espera(todas[0], agora_s))
             if len(recentes) >= self._buscas_por_hora():
                 raise MuitasBuscas(_espera(recentes[0], agora_s))
             recentes.append(agora_s)
-            todas.append(agora_s)
+            if not dono:
+                todas.append(agora_s)
             for c in [c for c, ts in self._buscas.items() if not ts or agora_s - ts[-1] >= JANELA_DAS_BUSCAS_S]:
                 del self._buscas[c]                        # quem não busca há uma hora sai: o dicionário não cresce
 
