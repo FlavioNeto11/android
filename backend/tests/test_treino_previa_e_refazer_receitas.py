@@ -13,7 +13,7 @@ import pytest
 from app.models import InstanceState
 from app.taskqueue.recipes import step_template_hash
 from app.training.recorder import TrainingError
-from app.training.skills import JA_HAVIA_RECEITA
+from app.training.skills import JA_HAVIA_RECEITA, _aviso_sem_persona
 
 from .conftest import Harness
 from .test_modo_treinamento import SEGREDO, _entrada, _no_controle
@@ -21,6 +21,10 @@ from .test_perfil_bloqueado_e_capacidades import _cliente
 from .test_treino_validacao_do_salvar import CASOS, COMANDO, _etapa, _sessao_gravada
 
 PACOTE_DO_APP = "qa-messenger"          # id do app no harness; o pacote sai da tabela `apps`
+
+
+# 30.81: estes treinos são gravados sem persona no aparelho; a prévia e o salvar avisam do mesmo jeito.
+_SEM_PERSONA = _aviso_sem_persona({"profile_id": None})
 
 
 def _proposta() -> dict[str, Any]:
@@ -82,7 +86,7 @@ async def test_previa_diz_o_mesmo_que_o_save_e_nao_escreve_nada(harness: Harness
     assert _foto(st, sid) == antes                                  # nem fluxo, escopo, receita, status nem proposta
     assert not [m for m in emitidos if "Habilidade" in m]           # nem o evento de "habilidade salva"
 
-    assert set(previa) == {"steps", "warnings"} and previa["warnings"] == []
+    assert set(previa) == {"steps", "warnings"} and previa["warnings"] == _SEM_PERSONA   # 30.81: gravado sem persona
     for linha in previa["steps"]:
         assert set(linha) == {"key", "title", "recipe", "reason"}    # as ações da receita nunca saem
     dela = _por_chave(previa["steps"])
@@ -282,7 +286,7 @@ async def test_rotas_http_previa_e_refazer(harness: Harness) -> None:
         r = await c.post(f"/api/training/{sid}/preview", json={"proposal": _proposta()})
         assert r.status_code == 200, r.text
         corpo = r.json()
-        assert set(corpo) == {"steps", "warnings"} and corpo["warnings"] == []
+        assert set(corpo) == {"steps", "warnings"} and corpo["warnings"] == _SEM_PERSONA
         assert [s["key"] for s in corpo["steps"]] == ["abrir", "conversa", "escrever", "enviar"]
         assert all(set(s) == {"key", "title", "recipe", "reason"} and isinstance(s["recipe"], bool) for s in corpo["steps"])
         assert SEGREDO not in r.text
@@ -306,7 +310,7 @@ async def test_rotas_http_previa_e_refazer(harness: Harness) -> None:
         r = await c.post(f"/api/training/{sid}/recipes")
         assert r.status_code == 200, r.text
         corpo = r.json()
-        assert set(corpo) == {"session", "flow_id", "steps", "created"} and corpo["created"] >= 2
+        assert set(corpo) == {"session", "flow_id", "steps", "created", "ensinado_em_prova"} and corpo["created"] >= 2
         assert all(set(s) == {"key", "title", "recipe", "reason"} for s in corpo["steps"])
         r = await c.post(f"/api/training/{sid}/recipes")
         assert r.status_code == 200 and r.json()["created"] == 0

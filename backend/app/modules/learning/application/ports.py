@@ -19,7 +19,7 @@ from typing import Literal, Protocol
 from app.modules.learning.domain.ciclo import Desligamento, SkillState
 from app.modules.learning.domain.curador import Dossie
 from app.modules.learning.domain.efeito import Exposicao
-from app.modules.learning.domain.ensinado import AvisoDoEnsinado
+from app.modules.learning.domain.ensinado import AvisoDoEnsinado, DecisaoDoEnsinado, EsperaDoEnsinado
 from app.modules.learning.domain.espera import AvisoDeEspera, FatosDoCatalogo
 from app.modules.learning.domain.livro import EntradaDoLivro, ItemDeAprendizado, NovoItem, Transicao
 from app.modules.learning.domain.parecer import RevisaoGravada
@@ -235,6 +235,14 @@ class PortaDoEnsinado(Protocol):
 
     def ensinado_rebaixado(self, aviso: AvisoDoEnsinado) -> None: ...
 
+    def ensinado_espera_decisao(self, aviso: EsperaDoEnsinado) -> None:
+        """30.81: o fluxo ensinado que a prova automática não cobre espera a decisão de uma pessoa."""
+        ...
+
+    def ensinado_decidido(self, aviso: DecisaoDoEnsinado) -> None:
+        """30.81: uma pessoa decidiu o ensinado que esperava (um por nascimento)."""
+        ...
+
 
 class LeitorDoEnsinado(Protocol):
     """30.80 B: o que só a fonte nativa sabe do ensinado. Lê DENTRO da transação de quem mudou o status (a loja ou o
@@ -251,6 +259,17 @@ class LeitorDoEnsinado(Protocol):
 
     def instante_da_transicao(self, kind: LivroKind, ref: str) -> str | None:
         """O `decided_at` da última linha da trilha do item: o instante da transição que acabou de ser gravada."""
+        ...
+
+    def espera_da_pessoa(self, kind: LivroKind, ref: str) -> str | None:
+        """30.81: o fluxo ensinado, ativo, cuja prova automática passou à pessoa (o pedido `ensino:<sessão>` recusado
+        com um motivo de `MOTIVOS_QUE_ESPERAM_A_PESSOA`) e que nenhuma pessoa decidiu desde o nascimento: o `desde`
+        (o nascimento). `None` em todo o resto. Lido ANTES da decisão ser gravada."""
+        ...
+
+    def motivo_da_espera(self, kind: LivroKind, ref: str) -> str | None:
+        """30.81: o motivo literal do pedido recusado que passou o ensinado à pessoa (o Livro o mostra ao lado do
+        "Confirmar que fica"), nas mesmas condições de `espera_da_pessoa`."""
         ...
 
 

@@ -68,6 +68,66 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Consertos de junção: `estado_com_marca` lê a fábrica na chamada (29.131, `e6020a23`); `TrainingStopBody` nasce na apresentação do treino, e o teste da proposta descarta a gravação com o controle (`9f9e2b39`).
 - Plano-100: 9 IDs novos (28.52, 29.140 a 29.145, 31.101 e 31.102) e o resultado da suíte 39 aplicado pelo mecanismo: 548 de 645.
 
+## 2026-10-05 — 30.81: o fluxo ensinado só vale para a persona que ensinou até a prova (branch feat/30-81-prova-do-ensinado)
+
+- O fluxo salvo no modo treinamento segue nascendo ativo, mas o `match` com aparelhos só o usa quando TODOS os perfis
+  são a persona do ensino (`training_sessions.profile_id`). A prévia sem aparelhos casa como antes. A sessão sem persona
+  não casa em lugar nenhum, e o salvar e a prévia avisam numa linha de `warnings`.
+- A espera acaba com uma prova real a favor, não invalidada, de uma execução com `prova_fluxo_id` deste fluxo depois do
+  nascimento, ou com a decisão de uma pessoa depois do nascimento. Não contam o sistema, a régua da plataforma e outro
+  treino. O fluxo que não veio do treino não paga consulta a mais.
+- A volta da validação (`ServicoDeValidacao.uma_volta`) abre a prova com UMA consulta por volta: reprodução em outro
+  aparelho, o molde preenchido pelos `example` da proposta salva, o aparelho do treino de fora, `review_id`
+  `ensino:<sessão>`, um pedido vivo por vez.
+- O que a prova automática não cobre passa à pessoa: o pedido nasce `recusada` com o motivo e sai
+  `learning.ensinado_espera_decisao` (`warn`). Isso vale para a classe C, o item sem dossiê de agora, toda recusa ao
+  nascer (efeito em app real, sessão, credencial, sem exemplo, sem caminho) e as tentativas esgotadas. Motivos novos:
+  `classe_c` e `tentativas_esgotadas`, este depois de 3 pedidos sem veredito.
+- O veredito CONTRÁRIO de uma prova real leva o fluxo e as receitas ativas do mesmo treino ao `disabled` do Livro,
+  pelo sistema e com a execução na trilha (status nativo `disabled` no fluxo, `quarantined` na receita).
+- Leitura da Reload: a receita do treino em espera só é achada para a persona que ensinou (`RecipeStore.find(persona=)`,
+  rótulo `ensino_em_prova` em `receita.consulta`); só o "Confirmar que fica" explícito libera; a validação usa
+  `FlowStore.ativo_para`, sem o ensinado em espera. A receita só é liberada pelo "Confirmar que fica" ou por ter rodado
+  na prova real do fluxo com a etapa comprovada; a execução de prova do fluxo acha as receitas da sessão
+  (`RecipeStore.find(prova_fluxo=)`, `RecipeStore._restrita_ao_ensino`, `Executor` no `find`); o fluxo desligado por
+  uma pessoa não as solta, nem o fluxo apagado (N4: sem fluxo, falha fechada pela persona da sessão; N5: só a evidência dela numa execução de
+  prova a libera).
+- O id do fluxo não vai ao `backend.log` nos logs novos do 30.81 (`_no_log`; o pedido de prova do ensinado loga só o
+  número do pedido). O aviso do 30.80 B sai pelo caminho de sempre. A falha de
+  infraestrutura, a prova simulada e a divergência de forma não rebaixam.
+- "Confirmar que fica" (`POST /api/aprendizado/fluxo/{id}/confirmar`) passa a valer também para o ensinado que espera a
+  pessoa. Ele e desligar pelo Livro publicam `learning.ensinado_decidido` (`liberado`, `desligado` ou `outro`), um por
+  nascimento. A entrada de fluxo do Livro ganha `espera_a_pessoa` (o motivo literal, ou `null`) para o painel mostrar o
+  botão.
+- O campo `ensinado_em_prova: {persona, sessao}`, combinado com a Portal, vai em `POST /api/flows/match`,
+  `GET /api/flows/cobertura`, na resposta do salvar do treino e no topo da de `POST /api/training/{id}/recipes`. Fica
+  ausente quando não se aplica.
+- Funções tocadas (K-095):
+  - `taskqueue/flows.py`: `ensinado_em_prova` (nova), `FlowStore.match` (`sem_ensino_em_prova` no fim),
+    `FlowStore.ativo_para` e `FlowStore._restrito_ao_ensino` (novas);
+  - `taskqueue/recipes.py`: `RecipeStore.find` (`persona` no fim) e `_restrita_ao_ensino` (nova);
+    `taskqueue/executor.py`: a chamada do `find` passa a persona do objetivo; `state.py`: `fluxo_ativo_para` e
+    `plano_ativo_para` usam `ativo_para`;
+  - `social/capacidades.py`: `cobertura_do_fluxo` e `cobertura_dos_fluxos`, que agora seleciona `source` e
+    `created_at`;
+  - `training/skills.py`: `save`, `preview`, `refazer_receitas`, `_em_prova` (nova) e `_aviso_sem_persona` (nova);
+  - `application/nativos.py`: `SombraDosFluxos.__init__` (`ensinado` no fim), `_minerar_prova` e
+    `_rebaixar_o_ensinado` (nova);
+  - `application/validacao.py`: `ServicoDeValidacao.__init__` (`ensino` no fim), `uma_volta`,
+    `_abrir_provas_do_ensino` e `_abrir_prova_do_ensinado` (novas);
+  - `application/servico.py`: `_mover_nativo`, `confirmar_que_fica`, `espera_a_pessoa` e `avisar_espera_do_ensinado`
+    (novas as duas últimas);
+  - `application/ensinado.py`: `AvisadorDoEnsinado.espera_decisao`, `espera_da_pessoa`, `motivo_da_espera` e
+    `decidiu_sem_falhar` (novas);
+  - `presentation/livro.py`: `_entrada` e `_da_espera` (nova);
+  - `domain/validacao.py`: `comando_do_ensino` e `passo_do_ensino` (novas);
+  - `domain/ensinado.py`: `EsperaDoEnsinado`, `DecisaoDoEnsinado` e `decisao_da_pessoa` (novas);
+  - `infrastructure`: `LeituraSql.ensinado_a_esperar`, `LeitorDoEnsinadoSql.espera_da_pessoa`, `motivo_da_espera` e
+    `_espera`,
+    `EnsinoDaValidacaoSql`, os dois métodos novos de `EventosNoBarramento` e a ligação em `ligar_nativos.ligar` e
+    `ligar_validacao.ligar`.
+- Prova `simulated`: `backend/tests/test_ensinado_em_prova.py`. Real: `not_run` (o próximo treino salvo no central).
+
 ## 2026-10-05 — 30.80 parte B: o ensinado que o sistema tirou de uso avisa (branch feat/30-80b-aviso-do-ensinado)
 
 - Eventos novos `learning.ensinado_rebaixado` (`info`) e `learning.ensinado_sem_receita` (`warn`). Saem quando a receita

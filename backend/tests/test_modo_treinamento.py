@@ -86,9 +86,9 @@ def test_senha_e_codigo_digitados_nao_sao_gravados_mas_frase_sim() -> None:
         assert not parece_senha_ou_codigo(normal), normal
 
 
-async def _gravar_mensagem(st, rt, lease, fake) -> str:
+async def _gravar_mensagem(st, rt, lease, fake, persona: str | None = None) -> str:
     s = st.training.start("android-01", intent="Mandar mensagem no QA Messenger para", lease_id=lease,
-                          app_id="qa-messenger")
+                          app_id="qa-messenger", profile_id=persona)
     st.training.record(rt, {"type": "open_app", "app_id": "qa-messenger"}, None)
     fake.screen = "home"
     await _entrada(st, rt, lease, type="tap", x=100, y=200 + 3 * 120 + 30)      # QA-001
@@ -106,7 +106,7 @@ async def test_da_gravacao_a_habilidade_com_escopo_e_receitas(harness: Harness) 
     fake = harness.fakes["android-01"]
     pa = st.social.create_profile(ProfileCreate(username="aluno.um", instance_id="android-01")).id
     pb = st.social.create_profile(ProfileCreate(username="aluno.dois", instance_id="android-02")).id
-    sid = await _gravar_mensagem(st, rt, lease, fake)
+    sid = await _gravar_mensagem(st, rt, lease, fake, persona=pa)               # 30.81: o ensino é de `pa`
 
     prop = (await st.skills.propose(sid))["proposal"]
     assert st.training.get(sid)["status"] == "proposed"
@@ -131,7 +131,12 @@ async def test_da_gravacao_a_habilidade_com_escopo_e_receitas(harness: Harness) 
     fl = st.scheduler.flows
     assert fl.match(comando, [pa]) is not None and fl.match(comando, [pb]) is None and fl.match(comando) is not None
     st.social.update_policy_group(g.id, __import__("app.models", fromlist=["PolicyGroupPatch"]).PolicyGroupPatch(profile_ids=[pb]))
-    assert fl.match(comando, [pb]) is not None                                   # entrou no grupo → recebeu
+    assert fl.match(comando, [pb]) is None            # 30.81: até a prova, o ensinado só vale para quem ensinou
+    st.db.execute("INSERT INTO learning_transitions(item_ref, item_kind, scope_key, from_state, to_state, reason,"
+                  " decided_by, decided_at) VALUES (?,?,?,?,?,?,?,?)",
+                  (f"fluxo:{flow_id}", "fluxo", "", "published", "published", "confirmado que fica", "painel:dono",
+                   __import__("app.util", fromlist=["now_iso"]).now_iso()))
+    assert fl.match(comando, [pb]) is not None                                   # confirmado: entrou no grupo → recebeu
 
     # o mesmo comando, pelo aparelho do perfil treinado, reaproveita a habilidade (sem planejador)
     st.devices.release_control(rt, lease)

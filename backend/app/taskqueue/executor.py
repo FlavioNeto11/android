@@ -1415,7 +1415,10 @@ class StepExecutor:
                 rr.variant = await self.devices.variant_of(rt)
                 rr.row = self.recipes.find(app.package, rr.app_version, rr.step_hash,
                                            signature=rr.signature, variant=rr.variant,
-                                           step_hash_generico=rr.step_hash_generico)
+                                           step_hash_generico=rr.step_hash_generico,
+                                           # 30.81: a receita ensinada em espera de prova só vale para quem ensinou
+                                           persona=self.repo.persona_do_objetivo(objective["profile_id"], rt.id),
+                                           prova_fluxo=run["prova_fluxo_id"])
                 if rr.row is not None:
                     rr.replayer = self.recipes.replayer(rr.row, rr.variables)
                     if rr.row["status"] == "candidate":

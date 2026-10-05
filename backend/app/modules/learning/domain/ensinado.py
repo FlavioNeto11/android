@@ -75,5 +75,60 @@ class AvisoDoEnsinado:
         return "warn" if self.sem_receita_ativa else "info"
 
 
-__all__ = ["CAMPOS_DO_PAYLOAD", "TIPO_REBAIXADO", "TIPO_SEM_RECEITA", "AvisoDoEnsinado",
-           "rebaixado_pelo_sistema", "sessao_de_treino"]
+# ------------------------------------------------------------------ o ensinado que espera a pessoa (30.81, classe C)
+#: O fluxo ensinado que a prova automática não cobre (a classe C, a recusa ao nascer do pedido, as tentativas esgotadas)
+#: só vale para a persona que ensinou até uma pessoa decidir. A Canais transforma o evento em cartão na lista de
+#: perguntas do Trello (combinado em 05/10, 15:31Z); o cartão não decide (C-13).
+TIPO_ESPERA_DECISAO = "learning.ensinado_espera_decisao"
+TIPO_DECIDIDO = "learning.ensinado_decidido"
+CAMPOS_DA_ESPERA = ("kind", "ref", "app", "treino", "persona", "desde")
+CAMPOS_DA_DECISAO = ("kind", "ref", "desde", "decisao", "decidido_em")
+#: "liberado" = "Confirmar que fica" (30.24, estendido ao ensinado que espera); "desligado" = a pessoa desliga no Livro.
+DECISOES = ("liberado", "desligado", "outro")
+
+
+@dataclass(frozen=True, slots=True)
+class EsperaDoEnsinado:
+    kind: str                           # sempre "fluxo" hoje
+    ref: str
+    app: str
+    treino: str                         # o id inteiro da sessão de treino (`trn-…`)
+    persona: str | None                 # a persona que ensinou (`training_sessions.profile_id`), ou nenhuma
+    desde: str                          # ISO: o nascimento do fluxo (`flows.created_at`), o mesmo na decisão
+
+    def como_dados(self) -> dict[str, object]:
+        return {"kind": self.kind, "ref": self.ref, "app": self.app, "treino": self.treino, "persona": self.persona,
+                "desde": self.desde}
+
+    def mensagem(self) -> str:
+        """Nem persona nem o identificador do fluxo: a mensagem é persistida e transmitida (combinado com a Canais)."""
+        return ("Conhecimento ensinado espera a decisão de uma pessoa: a prova automática não o cobre"
+                + (f" ({self.app})" if self.app else ""))
+
+
+@dataclass(frozen=True, slots=True)
+class DecisaoDoEnsinado:
+    kind: str
+    ref: str
+    desde: str                          # o mesmo `desde` da espera
+    decisao: str                        # um de `DECISOES`
+    decidido_em: str                    # ISO: o `decided_at` da linha da pessoa na trilha
+
+    def como_dados(self) -> dict[str, object]:
+        return {"kind": self.kind, "ref": self.ref, "desde": self.desde, "decisao": self.decisao,
+                "decidido_em": self.decidido_em}
+
+    def mensagem(self) -> str:
+        return f"Conhecimento ensinado decidido por uma pessoa: {self.decisao}"
+
+
+def decisao_da_pessoa(para: SkillState | None, *, confirmou: bool) -> str:
+    """O vocabulário fechado da decisão: confirmar que fica libera; desligar desliga; o resto é `outro`."""
+    if confirmou:
+        return "liberado"
+    return "desligado" if para is SkillState.DISABLED else "outro"
+
+
+__all__ = ["CAMPOS_DA_DECISAO", "CAMPOS_DA_ESPERA", "CAMPOS_DO_PAYLOAD", "DECISOES", "TIPO_DECIDIDO",
+           "TIPO_ESPERA_DECISAO", "TIPO_REBAIXADO", "TIPO_SEM_RECEITA", "AvisoDoEnsinado", "DecisaoDoEnsinado",
+           "EsperaDoEnsinado", "decisao_da_pessoa", "rebaixado_pelo_sistema", "sessao_de_treino"]

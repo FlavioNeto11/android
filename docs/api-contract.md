@@ -1178,6 +1178,8 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `learning.needs_person` | sim | `modules/learning/application/espera.py::AvisadorDeEspera`, chamado por `LearningService` (`mudar_estado`, `propor`, `avisar_item`, `avisar_mudanca_nativa`) e pelos ouvintes das lojas de receita e fluxo (`infrastructure/ligar_nativos.py`) — um item do Livro de aprendizado entrou na espera do dono (faixa B ou C da política de risco) ou saiu dela; ver o adendo v0.49 |
 | `learning.ensinado_rebaixado` | sim | `modules/learning/application/ensinado.py::AvisadorDoEnsinado`, chamado por `LearningService` (`avisar_mudanca_nativa` e `_mover_nativo`) — a receita ou o fluxo ensinado no modo treinamento saiu de uso por decisão do SISTEMA (quarentena, substituição, obsolescência) e outro ativo segura o lugar; 30.80 B |
 | `learning.ensinado_sem_receita` | sim | o mesmo, quando nada ativo ficou no lugar (a etapa voltou para a IA); `warn`; 30.80 B; ver o adendo v1.61 |
+| `learning.ensinado_espera_decisao` | sim | `ServicoDeValidacao` (a volta da validação), via `LearningService.avisar_espera_do_ensinado`. O fluxo ensinado que a prova automática não cobre espera a decisão de uma pessoa; `warn`; 30.81; ver o adendo v1.65 |
+| `learning.ensinado_decidido` | sim | `LearningService` (`confirmar_que_fica`, `_mover_nativo`): uma pessoa decidiu o ensinado que esperava; `info`; 30.81; ver o adendo v1.65 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 
@@ -6575,3 +6577,42 @@ v0.20), interno ao backend: não aparece em DTO, evento nem evidência da API (c
   `redacted=1` ficam para a tela sensível: a da observação e a da captura tardia que devolve `None` (tela que é ou
   pode ser sensível, ou geração trocada).
 - **Prova:** `simulated` (`backend/tests/test_falha_so_da_imagem.py`).
+
+## Adendo v1.65 (05/10/2026; número da orquestradora; item 30.81) — o fluxo ensinado espera a prova
+
+Aditivo. O fluxo salvo no modo treinamento segue nascendo `active`, mas até a prova só vale para a persona que ensinou.
+- **`ensinado_em_prova`** (combinado com a Portal): `{"persona": string|null, "sessao": "trn-…"}`, AUSENTE quando não
+  se aplica. Vai em:
+  - `POST /api/flows/match` e cada item de `GET /api/flows/cobertura`;
+  - a resposta de `POST /api/training/{id}/save`;
+  - o topo da resposta de `POST /api/training/{id}/recipes`, ao lado de `flow_id`.
+
+  `persona: null` quer dizer que o treino não tinha persona, e o fluxo não casa em aparelho nenhum até a prova.
+- **`warnings`** do salvar e da prévia do treino ganham uma linha quando a sessão não tinha persona.
+- **Casar:** com aparelhos, o ensinado em prova só casa quando TODOS os perfis são a persona do ensino. A prévia sem
+  aparelhos casa como antes.
+- **A espera acaba** com uma prova real a favor (execução com `prova_fluxo_id`, depois do nascimento, sem `invalida`)
+  ou com o "Confirmar que fica" explícito de uma pessoa (adotar ou outra linha da pessoa não contam).
+- **Receita do treino:** enquanto o fluxo da mesma sessão espera, a receita `training:<sessão>` só é usada para a
+  persona que ensinou. Em `GET /api/desempenho`, `receita.consulta{resultado}` ganha `ensino_em_prova`. Ela passa a
+  valer para todos com o "Confirmar que fica" explícito no fluxo, ou quando ela mesma rodou na prova real do fluxo
+  com a etapa comprovada; a prova do fluxo sozinha não a libera, e o fluxo desligado por uma pessoa também não.
+- **Pedidos de validação** (`GET /api/aprendizado/validacoes`):
+  - o pedido da prova do ensinado tem `review_id` `ensino:<sessão>` e `run_origem: null`;
+  - `motivo` ganha `classe_c` (classe C, ou sem dossiê de agora) e `tentativas_esgotadas` (3 pedidos sem veredito);
+  - com eles, e com as recusas ao nascer (`efeito_real`, `sessao_ou_autenticacao`, `credencial`, `sem_origem`,
+    `sem_caminho`), o pedido `recusada` marca que o ensinado espera a pessoa.
+- **`POST /api/aprendizado/fluxo/{id}/confirmar`** aceita também o fluxo ensinado que espera a pessoa (antes, 409 fora
+  de "Revisar"). O ensinado que ainda está na prova automática segue com 409.
+- **Livro** (as entradas de `GET /api/aprendizado` e do detalhe): o fluxo ganha `espera_a_pessoa: string|null`, que
+  traz o motivo literal quando o ensinado espera a decisão de uma pessoa e o "Confirmar que fica" vale para ele, e
+  `null` em todo o resto. Fica ausente nos outros tipos. Combinado com a Portal (31.91).
+- **Rebaixamento:** o veredito contrário de uma prova real leva o fluxo e as receitas ativas do mesmo treino ao estado
+  `disabled` do Livro, pelo sistema (status nativo `disabled` no fluxo e `quarantined` na receita). Os eventos do 30.80 B (v1.61) saem como sempre.
+- **Eventos novos**, persistidos e sem aparelho:
+  - `learning.ensinado_espera_decisao` (`warn`), com `data` `{kind: "fluxo", ref, app, treino, persona, desde}`;
+  - `learning.ensinado_decidido` (`info`), com `data` `{kind, ref, desde, decisao: "liberado"|"desligado"|"outro",
+    decidido_em}`. É um por nascimento.
+
+  O `desde` é o nascimento do fluxo (ISO UTC), o mesmo nos dois. O `message` não leva persona nem o id do fluxo.
+- **Prova:** `simulated` (`backend/tests/test_ensinado_em_prova.py`).

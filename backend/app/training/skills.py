@@ -24,7 +24,7 @@ from ..db import Row, dumps
 from ..models import Plan, PlannerInfo, PlanStep, Postcondition
 from ..planning.capabilities import CapabilityCatalog, CapabilityNode, load_catalog
 from ..planning.training import TrainingRequest
-from ..taskqueue.flows import PLACEHOLDER, RESERVED, _norm  # noqa: PLC2701 - a MESMA normalização da `match_key`
+from ..taskqueue.flows import PLACEHOLDER, RESERVED, _norm, ensinado_em_prova  # noqa: PLC2701 - a MESMA normalização da `match_key`
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
 from ..util import now_iso
 from .recorder import TrainingError
@@ -228,6 +228,13 @@ JA_HAVIA_RECEITA = "já havia receita ativa para esta etapa"
 Acoes = list[dict[str, Any]]    # o que `distill_training` devolve: as ações da receita (nunca vão ao cliente)
 
 
+def _aviso_sem_persona(sess: Sessao) -> list[str]:
+    """30.81: o ensinado só vale para a persona que ensinou até a prova; sem persona no treino, não vale em lugar nenhum."""
+    if sess.get("profile_id"):
+        return []
+    return ["O treinamento não tinha persona no aparelho: a habilidade não vale em aparelho nenhum até ser provada."]
+
+
 @dataclass
 class _Preparo:
     """A proposta já conferida e o plano montado, ainda sem gravar nada: o miolo comum do `save`, da prévia e do
@@ -402,7 +409,8 @@ class TrainingSkills:
                           (flow_id, dumps(prep.p), now_iso(), session_id))
         self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento",
                         data={"training_session_id": session_id, "flow_id": flow_id})
-        return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio, "warnings": prep.avisos}
+        return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio,
+                "warnings": [*prep.avisos, *_aviso_sem_persona(sess)], **self._em_prova(flow_id)}
 
     async def preview(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],
                       group_ids: list[str]) -> dict[str, object]:
@@ -421,7 +429,7 @@ class TrainingSkills:
                                                      "Mude o comando ou desabilite a habilidade.", 409)
         relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
                                           prep, session_id, gravar=False)
-        return {"steps": relatorio, "warnings": prep.avisos}
+        return {"steps": relatorio, "warnings": [*prep.avisos, *_aviso_sem_persona(sess)]}
 
     async def refazer_receitas(self, session_id: str) -> dict[str, object]:
         """Repara uma sessão JÁ salva: destila de novo (com a proposta guardada) e grava a receita das etapas que ainda
@@ -450,7 +458,14 @@ class TrainingSkills:
             sess, _destilar(sess, prep.p, [por_chave[st["key"]] for st in etapas], exemplos, apps), prep, session_id,
             gravar=True, so_chave_virgem=True)
         return {"session": self.s.training.get(session_id), "flow_id": sess["flow_id"], "steps": relatorio,
-                "created": sum(1 for linha in relatorio if linha["recipe"])}
+                "created": sum(1 for linha in relatorio if linha["recipe"]), **self._em_prova(sess["flow_id"])}
+
+    def _em_prova(self, flow_id: str) -> dict[str, object]:
+        """30.81: `ensinado_em_prova` `{persona, sessao}` no topo da resposta enquanto a habilidade espera a prova (só
+        vale para a persona que ensinou); ausente quando não se aplica."""
+        row = self.s.db.one("SELECT * FROM flows WHERE id=?", (flow_id,))
+        espera = ensinado_em_prova(self.s.db, row) if row is not None else None
+        return {"ensinado_em_prova": espera} if espera is not None else {}
 
     async def _identidade(self, sess: Sessao, pacote: str) -> tuple[str, str, str] | str:
         """`(versão do app, variante de interface, assinatura)` que identificam a receita NESTE aparelho, ou o MOTIVO de
