@@ -221,8 +221,10 @@ runner **próprio** na máquina central, que não consome minutos da conta:
   Primeira tarefa (`real`, 05/10/2026 18:14Z, item 29.137, PR 449 em rascunho): o agente parou sem alterar nada, com
   `hook errored`. Os hooks de `.claude/settings.json` chamam o Python por um caminho do Windows, que não existe na
   máquina Linux do agente, e ele honra esses hooks. O conserto é o item 29.147 (ramo `fix/29-147-hooks-portateis`):
-  cada hook chama `.claude/hooks/python.sh <script>`, que usa o Python do dono se ele existir e, senão, o `python3` ou
-  o `python` do PATH, com o mesmo `-S -E` e o mesmo código de saída (2 bloqueia). Enquanto o conserto não estiver na
+  cada hook segue em exec-form (command + args, sem shell), com `command: "python"` resolvido pelo PATH (no Windows do
+  dono é o Python 3.13; no agente, o `setup-python` de `copilot-setup-steps.yml`), os mesmos `-S -E` e o mesmo código
+  de saída (2 bloqueia). O `.claude/hooks/python.sh`, que resolve o interpretador por plataforma, fica no repositório
+  como alternativa em forma de shell, sem uso nos hooks. Enquanto o conserto não estiver na
   `main`, o agente de nuvem não funciona neste repositório. Prova `simulated`:
   `scripts/tests/test_hooks_portateis.py` (10 testes, os hooks rodando pelo bash); `real` em Linux, com o agente do
   Copilot assumindo uma tarefa, fica `not_run`. A revisão de PR não é afetada.

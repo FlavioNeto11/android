@@ -22,7 +22,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-05 — 29.147: hooks do repositório portáteis para o agente de nuvem do Copilot
 
-- Os três hooks de `.claude/settings.json` chamavam `C:/Program Files/Python313/python.exe` e quebravam no Linux do agente ("hook errored"). Agora chamam `.claude/hooks/python.sh`, que resolve o interpretador por plataforma (o do dono, depois `python3` ou `python` que de fato executam) sem mudar o que o hook faz: mesmo `-S -E`, mesmo carregamento e o código de saída do Python passa direto. Script ausente continua liberando; sem Python, avisa e, só no Windows, sai 1.
+- Os três hooks de `.claude/settings.json` chamavam `C:/Program Files/Python313/python.exe` e quebravam no Linux do agente ("hook errored"). Variante final: exec-form com `command: "python"` pelo PATH (o Python do dono no Windows, o `setup-python` no agente), sem shell. A variante anterior, `.claude/hooks/python.sh`, fica no repositório sem uso: resolve o interpretador por plataforma (o do dono, depois `python3` ou `python` que de fato executam) sem mudar o que o hook faz: mesmo `-S -E`, mesmo carregamento e o código de saída do Python passa direto. Script ausente continua liberando; sem Python, avisa e, só no Windows, sai 1.
 - Prova `simulated`: `scripts/tests/test_hooks_portateis.py` (10 passed): guarda barra segredo, arquivo grande sem limit e migração commitada, libera leitura comum, e o caminho sem o Python do Windows cai no PATH; duas mutações reprovadas (sem o fallback; settings antigo). `not_run`: o agente do Copilot em Linux de verdade.
 
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
