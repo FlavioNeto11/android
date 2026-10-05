@@ -31,6 +31,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_segredo_na_gravacao.py` (4; sem o conserto os 4 falham) e
   `test_modo_treinamento.py` (7 passed). Real: `not_run`.
 
+## 2026-10-05 — 31.82, achados do revisor de segredos (branch fix/31-80-82-gravacao-do-treino)
+
+- Texto digitado só é guardado com campo editável, não senha, em foco na árvore (antes, só `tree is None` cobria).
+- `filhos` do alvo cujo `class_name` é de campo de texto perdem o `text` e os `unique` que dependiam dele.
+- `parece_codigo` entra no filtro de segredo da gravação (alvo, título, linhas): "123 456", "8845-12".
+- Em tela `sensitive` o alvo e os filhos perdem `text` e `desc` (ficam `resource_id`, classe, `unique` por id).
+- Limite conhecido em `docs/teaching.md`. Prova `simulated`: `test_treino_segredo_na_gravacao.py` (9; cada conserto tem
+  um teste que falha sem ele). Real: `not_run`.
+
 ## 2026-10-05 — 31.80, gravação do treinamento órfã depois do reinício (branch fix/31-80-82-gravacao-do-treino)
 
 - Medido no real (05/10): o reinício no meio de uma gravação deixava `training_sessions.status='recording'`, o aparelho

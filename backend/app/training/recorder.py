@@ -17,7 +17,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..db import dumps, loads
-from ..security.redaction import looks_secret, mentions_credential, parece_senha_ou_codigo
+from ..security.redaction import looks_secret, mentions_credential, parece_codigo, parece_senha_ou_codigo
 from ..social.observacao import linhas_de_conteudo
 from ..util import new_token, now_iso
 
@@ -27,8 +27,16 @@ TITULO_IDS = ("action_bar_title", "igds_action_bar_title", "header_title", "titl
 
 
 def _parece_segredo(texto: str | None) -> bool:
-    """Os três filtros de segredo da gravação, juntos: formato de credencial, fala de credencial e senha/código."""
-    return bool(texto) and (looks_secret(texto) or mentions_credential(texto) or parece_senha_ou_codigo(texto or ""))
+    """Os filtros de segredo da gravação, juntos: formato de credencial, fala de credencial, senha/código e código solto
+    de 4 a 8 dígitos (com espaço ou hífen: "123 456", "8845-12"; na dúvida, recusa)."""
+    return bool(texto) and (looks_secret(texto) or mentions_credential(texto) or parece_senha_ou_codigo(texto or "")
+                            or parece_codigo(texto))
+
+
+def _classe_de_campo_de_texto(class_name: str | None) -> bool:
+    """`EditText`, `AutoCompleteTextView`, `TextInputEditText` e variantes: o filho do alvo não traz a chave `editable`."""
+    c = class_name or ""
+    return "EditText" in c or "AutoCompleteTextView" in c
 
 
 #: Que campos do alvo cada seletor `unique` usa (o espelho de `recipes._combo`, sem o import tardio).
@@ -36,25 +44,27 @@ _CAMPOS_DO_SELETOR = {"rid+text": ("resource_id", "text"), "rid+desc": ("resourc
                       "desc": ("desc",), "text": ("text",)}
 
 
-def _alvo_sem_segredo(alvo: dict | None) -> dict | None:
+def _alvo_sem_segredo(alvo: dict | None, sensivel: bool = False) -> dict | None:
     """31.82 (b): o alvo gravado leva `text`/`desc` do elemento tocado. Num campo editável o `text` é o CONTEÚDO do campo
     (o que a pessoa já digitou), que não identifica o campo: sai (`resource_id`, `desc` de rótulo e classe ficam). Em
     qualquer alvo, `text`/`desc` que casem com os filtros de segredo saem. Os seletores `unique` que dependiam do campo
     removido saem junto (a destilação, em `_combo`, também os ignoraria). Campo editável NUNCA guarda `text`, tenha ou
     não outro identificador: o conteúdo é o que alguém digitou e não serve de seletor. Sem `resource_id` nem `desc`
-    o alvo fica sem seletor e a etapa não vira receita (a IA conduz)."""
+    o alvo fica sem seletor e a etapa não vira receita (a IA conduz). Os `filhos` seguem a mesma regra: um filho cuja
+    classe é de campo de texto também perde o `text`. Em tela `sensivel` (31.82 item 4) `text` e `desc` saem sempre, do
+    alvo e dos filhos, junto com os `unique` que dependiam deles: ficam `resource_id`, `class_name` e o estrutural."""
     if alvo is None:
         return None
     limpo = dict(alvo)
-    if limpo.get("editable"):
+    if limpo.get("editable") or _classe_de_campo_de_texto(limpo.get("class_name")):
         limpo["text"] = ""
     for campo in ("text", "desc"):
-        if _parece_segredo(limpo.get(campo)):
+        if sensivel or _parece_segredo(limpo.get(campo)):
             limpo[campo] = ""
     if "unique" in limpo:
         limpo["unique"] = [k for k in limpo["unique"] or [] if all(limpo.get(c) for c in _CAMPOS_DO_SELETOR.get(k, ("?",)))]
     if limpo.get("filhos"):
-        limpo["filhos"] = [f for f in (_alvo_sem_segredo(dict(f)) for f in limpo["filhos"]) if f and f.get("unique")]
+        limpo["filhos"] = [f for f in (_alvo_sem_segredo(dict(f), sensivel) for f in limpo["filhos"]) if f and f.get("unique")]
     return limpo
 
 
@@ -185,14 +195,17 @@ class TrainingRecorder:
         sensivel = bool(tree is not None and tree.sensitive)
         alvo = None
         if tree is not None and tipo in ("tap", "long_press") and entrada.get("x") is not None:
-            alvo = _alvo_sem_segredo(_safe_target(tree.at(int(entrada["x"]), int(entrada["y"])), tree))
+            alvo = _alvo_sem_segredo(_safe_target(tree.at(int(entrada["x"]), int(entrada["y"])), tree), sensivel)
         texto = entrada.get("text")
         tem_texto = bool(texto)
         if texto is not None:
             foco = next((e for e in (tree.elements if tree is not None else []) if e.focused), None)
-            # 31.82 (a): sem a árvore (leitura falhou ou estourou o prazo) não se sabe se o campo era de senha, e as
-            # heurísticas deixam passar senha curta ou só minúscula: não se grava (fica `has_text` e o tamanho).
-            if (tree is None or sensivel or (foco is not None and foco.password) or _parece_segredo(texto)):
+            # 31.82 (a): só se guarda o que foi digitado com um campo editável, que não é de senha, em foco na árvore.
+            # Sem árvore (leitura falhou ou estourou o prazo), sem foco (senha revelada, WebView, foco ainda não
+            # refletido) ou com foco em quem não é campo, não se sabe se era senha, e as heurísticas deixam passar senha
+            # curta ou só minúscula: fica só `has_text` e o tamanho.
+            if (tree is None or sensivel or foco is None or not foco.editable or foco.password
+                    or _parece_segredo(texto)):
                 texto = None                     # a pessoa digitou algo que não pode ser guardado
         seq = int(self.db.scalar("SELECT COALESCE(MAX(seq), 0) FROM training_inputs WHERE session_id=?", (sid,)) or 0) + 1
         pacote = next((p for p in (tree.packages if tree is not None else []) if p != "com.android.systemui"), None)

@@ -14,10 +14,12 @@ CONTEUDO = "rascunho que a pessoa ja digitou"     # conteúdo comum: o ponto é 
 
 
 def _el(i: str, *, text: str = "", desc: str = "", rid: str = "", bounds=(0, 0, 100, 100), editable: bool = False,
-        clickable: bool = False) -> UiElement:
-    return UiElement(id=i, text=text, desc=desc, resource_id=rid, class_name="android.widget.EditText" if editable
-                     else "android.widget.TextView", package="com.pocqa.messenger", bounds=bounds, clickable=clickable,
-                     enabled=True, focused=False, scrollable=False, editable=editable, checked=False, password=False)
+        clickable: bool = False, focused: bool = False, password: bool = False,
+        classe: str | None = None) -> UiElement:
+    return UiElement(id=i, text=text, desc=desc, resource_id=rid, class_name=classe or (
+        "android.widget.EditText" if editable else "android.widget.TextView"), package="com.pocqa.messenger",
+        bounds=bounds, clickable=clickable, enabled=True, focused=focused, scrollable=False, editable=editable,
+        checked=False, password=password)
 
 
 def _arvore(*elementos: UiElement) -> UiTree:
@@ -37,7 +39,8 @@ async def _gravando(harness: Harness):
 async def test_sem_arvore_o_texto_digitado_nao_e_gravado_mas_com_arvore_o_texto_comum_sim(harness: Harness) -> None:
     st, rt, sid = await _gravando(harness)
     st.training.record(rt, {"type": "text", "text": "abc"}, None)            # curto e minúsculo: nenhuma heurística pega
-    st.training.record(rt, {"type": "text", "text": "bom dia"}, _arvore(_el("e1", text="Conversa")))   # controle
+    campo = _el("e1", rid="com.pocqa.messenger:id/message_input", editable=True, focused=True)
+    st.training.record(rt, {"type": "text", "text": "bom dia"}, _arvore(_el("e0", text="Conversa"), campo))   # controle
     sem, com = st.training.get(sid)["inputs"]
     assert sem["text"] is None and sem["has_text"] is True and sem["text_len"] == 3
     assert com["text"] == "bom dia" and com["has_text"] is True
@@ -90,3 +93,64 @@ async def test_tela_com_codigo_de_verificacao_nao_vai_para_as_linhas_nem_para_o_
     assert entrada["screen_lines"] == ["QA-001"], entrada["screen_lines"]
     assert entrada["screen_title"] is None
     assert "123456" not in json.dumps(entrada, ensure_ascii=False)
+
+
+async def test_com_arvore_o_texto_so_e_guardado_com_campo_editavel_que_nao_e_senha_em_foco(harness: Harness) -> None:
+    st, rt, sid = await _gravando(harness)
+    casos = {
+        "sem foco": _arvore(_el("e1", editable=True)),                                    # foco ainda não refletido
+        "foco que não é campo": _arvore(_el("e1", text="Conversa", focused=True)),         # WebView, rótulo
+        "foco em senha": _arvore(_el("e1", editable=True, focused=True, password=True)),
+        "campo editável normal": _arvore(_el("e1", editable=True, focused=True)),
+    }
+    for tela in casos.values():
+        st.training.record(rt, {"type": "text", "text": "abc"}, tela)
+    por_caso = dict(zip(casos, st.training.get(sid)["inputs"], strict=True))
+    for nome in ("sem foco", "foco que não é campo", "foco em senha"):
+        assert por_caso[nome]["text"] is None and por_caso[nome]["has_text"] and por_caso[nome]["text_len"] == 3, nome
+    assert por_caso["campo editável normal"]["text"] == "abc"
+
+
+async def test_filho_de_campo_de_texto_perde_o_conteudo_e_os_seletores_que_dependiam_dele(harness: Harness) -> None:
+    st, rt, sid = await _gravando(harness)
+    linha = _el("e1", bounds=(0, 0, 600, 200), clickable=True, rid="")
+    filho = _el("e2", text=CONTEUDO, rid="com.pocqa.messenger:id/busca", bounds=(10, 10, 500, 100),
+                classe="androidx.appcompat.widget.AppCompatAutoCompleteTextView", editable=True)
+    st.training.record(rt, {"type": "tap", "x": 550, "y": 150}, _arvore(linha, filho))
+    entrada = st.training.get(sid)["inputs"][0]
+    filhos = entrada["target"].get("filhos") or []
+    assert filhos, entrada["target"]                       # o filho segue como identificador, por resource_id
+    assert filhos[0]["text"] == "" and "rid+text" not in filhos[0]["unique"] and "text" not in filhos[0]["unique"]
+    assert CONTEUDO not in json.dumps(entrada, ensure_ascii=False)
+
+
+async def test_codigo_com_espaco_ou_hifen_nao_e_gravado_na_linha_nem_no_alvo(harness: Harness) -> None:
+    st, rt, sid = await _gravando(harness)
+    tela = _arvore(
+        _el("e0", text="123 456", bounds=(0, 0, 600, 100)),
+        _el("e1", text="8845-12", rid="com.pocqa.messenger:id/chip", bounds=(0, 100, 600, 200), clickable=True),
+        _el("e2", text="QA-001", bounds=(0, 300, 600, 400)))
+    st.training.record(rt, {"type": "tap", "x": 50, "y": 150}, tela)
+    entrada = st.training.get(sid)["inputs"][0]
+    assert entrada["screen_lines"] == ["QA-001"], entrada["screen_lines"]
+    assert entrada["target"]["text"] == "" and entrada["target"]["resource_id"].endswith("chip")
+
+
+async def test_alvo_em_tela_sensivel_guarda_so_o_estrutural(harness: Harness) -> None:
+    st, rt, sid = await _gravando(harness)
+    linha = _el("e1", bounds=(0, 0, 600, 200), clickable=True)       # contêiner sem identidade: o alvo vai pelo filho
+    filho = _el("e2", text="Entrar", rid="com.pocqa.messenger:id/entrar", bounds=(10, 10, 500, 100))
+    botao = _el("e3", text="Continuar", desc="Continuar o cadastro", rid="com.pocqa.messenger:id/continuar",
+                bounds=(0, 300, 600, 400), clickable=True)
+    tela = UiTree(elements=[linha, filho, botao], packages=["com.pocqa.messenger"], sensitive=True)
+    st.training.record(rt, {"type": "tap", "x": 100, "y": 350}, tela)
+    st.training.record(rt, {"type": "tap", "x": 550, "y": 150}, tela)
+    por_id, por_filho = st.training.get(sid)["inputs"]
+    alvo = por_id["target"]
+    assert alvo["text"] == "" and alvo["desc"] == "" and alvo["resource_id"].endswith("continuar"), alvo
+    assert alvo["unique"] == ["rid"], alvo["unique"]
+    assert build_selectors(alvo, {}) == [{"kind": "rid", "rid": "com.pocqa.messenger:id/continuar"}]
+    assert por_id["sensitive"] is True and por_id["screen_lines"] == []
+    filhos = por_filho["target"].get("filhos") or []
+    assert filhos and filhos[0]["text"] == "" and filhos[0]["desc"] == "", por_filho["target"]
+    assert "Entrar" not in json.dumps(por_filho, ensure_ascii=False)

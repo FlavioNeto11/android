@@ -324,6 +324,14 @@ Prova: `test_ensino_v2.py::test_laco_de_perguntas_e_respostas_ate_o_rascunho` (v
   não se sabe se o campo era de senha; fica `has_text` e o tamanho); o conteúdo de um campo editável tocado (o alvo
   gravado leva `resource_id`, rótulo e classe, não o que estava escrito; a receita segue por `resource_id`); `text`/`desc`
   do alvo, linhas e título de tela que falem de código ou senha ("Seu código é 123456"). Um campo editável nunca guarda `text` no alvo, mesmo sem `resource_id` nem rótulo: sem identificador o alvo fica sem seletor e a etapa não vira receita (a IA conduz).
+  Também: o texto digitado só é guardado com um campo editável, que não é de senha, em foco na árvore (sem foco, senha
+  revelada e WebView ficam só com `has_text` e o tamanho); filho do alvo cuja classe é de campo de texto (`EditText`,
+  `AutoCompleteTextView` e variantes) perde o `text`; código de 4 a 8 dígitos com espaço ou hífen ("123 456", "8845-12")
+  sai do alvo, do título e das linhas; em tela sensível o alvo (e os filhos) guarda só `resource_id`, `class_name` e o
+  estrutural, sem `text` nem `desc`.
+- **Limite conhecido do filtro** (não se inventou regra nova): ainda escapam código de 4 a 5 dígitos sozinho no meio de
+  uma frase e palavra-chave longe do número ("código" numa linha, o número na outra); token com hífen, e-mail e senha
+  na mesma linha também passam.
 
 ## O generalizador e o custo
 
