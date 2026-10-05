@@ -377,7 +377,9 @@ avisos depois da faxina"), e a trava cai no TTL.
     - O lembrete de vencimento (`pendencia.vence_em`, 2 h antes) diz o que vence (aprovação, objetivo parado ou pergunta
       da execução), o aparelho, "em até 2 h" e a hora UTC, a etapa que espera (o nome do catálogo, ou a chave da capability; nunca texto livre) e o que acontece
       se vencer. A chave é a do produtor, uma por espera. O lembrete de execução do sistema (prova, validação, lote)
-      cala pela mesma regra do `run.updated`; o de aprovação de lote avisa. Responder a ele não vira pedido.
+      cala pela mesma regra do `run.updated`; o de aprovação de lote avisa. Responder a ele não vira pedido. O do
+      objetivo parado leva à própria execução (`#/execucoes/<id>`) com o gesto do item parado, como o aviso do 28.40;
+      a aprovação e a pergunta seguem com a caixa.
     - O objetivo parado (28.40, `objective.updated` que entra em `waiting_user`, tipo `objective.waiting_user`) avisa
       uma vez por espera, de qualquer origem, com a chave `objective:<id>:<entrada na espera>`. A aprovação fica de
       fora (já sai como `approval.pending`). O texto diz o aparelho, a etapa que espera (nome do catálogo ou chave), o

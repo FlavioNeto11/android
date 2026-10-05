@@ -28,7 +28,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   novamente ou Abandonar), com o link da própria execução: o objetivo parado não está na caixa de Pendências; nunca o
   detalhe, o `needs` nem o título da etapa. A conta em tela não reconhecida (`unknown`, 29.92) ganha a frase e as três
   linhas revisadas pela Aprendizado, e o link abre o Foco do aparelho, onde fica o "Assumir controle". Catraca: toda tela de link de aviso
-  existe nas rotas do painel.
+  existe nas rotas do painel. O lembrete do 31.50 do objetivo parado também leva à execução, com o mesmo gesto
+  (revisão do #372, L1).
 - `avisos/infrastructure/servico.py`: `objective.updated` entra nos eventos que avisam; o serviço põe a capability da
   etapa em `waiting_user` e o nome dela; o lote de frente cala pelo mesmo `_e_de_prova` do `run.updated`; o aviso de
   conta do mesmo aparelho, ativo e posterior à criação da execução, cala o objetivo só se for da mesma conta (ou, sem

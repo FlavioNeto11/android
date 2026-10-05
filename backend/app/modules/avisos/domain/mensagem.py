@@ -153,6 +153,8 @@ LINHAS_DA_CONTA_PADRAO = ["Nada é tentado na tela até alguém resolver.", "Esp
 #: Execuções); os botões do item parado são os de `frontend/src/features/runs/InstancesTab.tsx`.
 GESTO_DO_OBJETIVO = ("Espera você: abra a execução no painel e, no item parado, escolha Assumir controle, Tentar novamente "
                      "ou Abandonar.")
+#: O mesmo gesto no lembrete do 31.50, que tem prazo (revisão do #372, L1).
+GESTO_DO_OBJETIVO_ANTES = GESTO_DO_OBJETIVO.replace("Espera você: ", "Espera você: antes disso, ", 1)
 #: O que parou o objetivo, pelo `failure_kind` do `objective.updated` (29.90) ou, sem ele, pelo `blocked_kind`. Texto fixo:
 #: o `status_detail` e o `needs` nunca saem (podem trazer tela, conta ou texto do comando). Fora do mapa (o `ui_ocupada`
 #: do 29.87, nulo antes da classificação), a mensagem fica sem a linha do motivo.
@@ -509,7 +511,13 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
             f"Etapa que espera: {etapa}." if etapa else None,
             f"Se vencer: {acontece}.",
             "Espera você: decida na caixa de Pendências antes disso." if o_que == "aprovacao" else
+            GESTO_DO_OBJETIVO_ANTES if o_que == "objetivo" else
             "Espera você: responda na caixa de Pendências antes disso.") if x]
+        if o_que == "objetivo":
+            # O objetivo parado não está na caixa de Pendências (ADR-062, D1): o lembrete leva à própria execução, como o
+            # aviso de entrada na espera (revisão do #372, L1). A aprovação e a pergunta da execução seguem com a caixa.
+            run = _id_valido(ID_DE_EXECUCAO, d.get("run_id"))
+            link = link_da_tela(url_painel, f"#/execucoes/{run}" if run else "#/execucoes")
     elif kind == "learning.needs_person":
         # Só a ENTRADA na espera é notícia: a saída (`aguardando` falso) não manda nada, e uma saída sem a entrada
         # correspondente (reinício do processo do Livro) é no-op. `desde` é a hora da transição e se repete na
