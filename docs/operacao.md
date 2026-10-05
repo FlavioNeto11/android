@@ -457,6 +457,13 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
 
 **O que a página promete e onde isso vale** (aviso de privacidade, ADR-075):
 - sem cookie: a prova de fora reprova se a raiz devolver `Set-Cookie` (a borda da Cloudflare poderia pôr um);
+- sem rastreador (29.85): a prova de fora baixa a raiz COMO navegador e reprova qualquer `<script src>` de outra
+  origem. Motivo: a borda da Cloudflare injeta o beacon do Web Analytics (`static.cloudflareinsights.com`) só nesse
+  caso, e o `curl` puro não vê; medido em 05/10.
+  - A CSP do site bloqueia o beacon, mas sobra um erro de console em todo visitante.
+  - O conserto é desligar a injeção na zona: Web Analytics / Real User Measurements (RUM), no painel da Cloudflare,
+    feito pelo dono.
+  - Nunca afrouxar a CSP;
 - 180 dias no sistema: o laço apaga a linha inteira a cada hora, com o contato ligado ou não;
 - o descartado (teto diário, `campo_invalido`, `falhas_demais`) tem o conteúdo apagado sem chegar à equipe. O
   `pendente` (canal desligado) e o `retido` (excesso na hora) guardam o conteúdo até a entrega ou os 180 dias;
@@ -537,7 +544,7 @@ retenção de 180 dias continua rodando com o contato desligado.
 | `portal-gerar-senha.ps1` | P | **Rodado pelo dono**: gera o `API_TOKEN` e grava no `.env` sem mostrar na tela (`-Trocar` substitui). Sessão de IA não roda este script no `.env` de verdade |
 | `python scripts/portal-config.py conferir`, ou `ligar`/`recuar` com `--ensaio` | S | Só lê o `config.yaml`: diz se o bloco `server` está pronto para o portal ou o que mudaria |
 | `python scripts/portal-config.py ligar` / `recuar` | P | Declara ou tira o hostname público no `config.yaml` (sete linhas, com cópia em `data/backups/`); vale no próximo reinício do central |
-| `portal-prova-de-fora.sh antes` / `depois` | S | Só pedidos sem credencial ao endereço público; nunca tenta login. Sai com 2 se `/api/instances` der 200. Com `SITE=ligado` confere o site na raiz (CSP, `robots.txt`, 404 fora da lista fechada); com `CONTATO=ligado`, um `POST` com a isca (não grava nem avisa), o 415 e o 413. Testado contra um `curl` falso em `scripts/tests/test_portal_prova_de_fora.py` |
+| `portal-prova-de-fora.sh antes` / `depois` | S | Só pedidos sem credencial ao endereço público; nunca tenta login. Sai com 2 se `/api/instances` der 200. Com `SITE=ligado` confere o site na raiz (CSP, `robots.txt`, 404 fora da lista fechada, e nenhum `<script src>` de outra origem com a raiz pedida como navegador, 29.85); com `CONTATO=ligado`, um `POST` com a isca (não grava nem avisa), o 415 e o 413. Testado contra um `curl` falso em `scripts/tests/test_portal_prova_de_fora.py` |
 | `usage-report.ps1` | S | Só lê `ai_calls`, não chama provedor |
 | `demo-run.ps1` | D/T | Envia comando real ao backend (gasta IA se o provedor não for simulado) |
 | `aceites-remotos.ps1` (sem `-Yes`) | S | Só mostra o roteiro |

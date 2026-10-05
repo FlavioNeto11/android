@@ -20,7 +20,7 @@ SCRIPT = RAIZ / "scripts" / "portal-prova-de-fora.sh"
 
 #: O central visto de fora, com `portal.site_ligado` e `portal.contato_ligado`. `QUEBRA` liga um defeito por teste.
 CURL_FALSO = r'''#!/usr/bin/env bash
-metodo=GET; url=""; formato=""; dados=""; tipo=""; host=""; cabecalhos=0; corpo_fora=0; auth=0
+metodo=GET; url=""; formato=""; dados=""; tipo=""; host=""; cabecalhos=0; corpo_fora=0; auth=0; navegador=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -X) metodo="$2"; shift 2 ;;
@@ -30,6 +30,7 @@ while [[ $# -gt 0 ]]; do
           [Cc]ontent-[Tt]ype:*) tipo="${2#*: }" ;;
           [Hh]ost:*) host="${2#*: }" ;;
           [Aa]uthorization:*) auth=1 ;;
+          [Uu]ser-[Aa]gent:*Mozilla*) navegador=1 ;;
         esac; shift 2 ;;
     -I) metodo=HEAD; shift ;;
     -D) cabecalhos=1; shift 2 ;;
@@ -42,7 +43,7 @@ while [[ $# -gt 0 ]]; do
 done
 caminho="/${url#*://*/}"; [[ "$url" == *://*/* ]] || caminho="/"
 esquema="${url%%://*}"
-echo "$metodo $caminho tipo=$tipo bytes=${#dados} auth=$auth isca=$([[ "$dados" == *'"site":"isca"'* ]] && echo 1 || echo 0)" >> "$CURL_LOG"
+echo "$metodo $caminho tipo=$tipo bytes=${#dados} auth=$auth isca=$([[ "$dados" == *'"site":"isca"'* ]] && echo 1 || echo 0) nav=$navegador" >> "$CURL_LOG"
 codigo=404; corpo=""; destino=""; extra=""
 if [[ "$esquema" == http ]]; then codigo=301
 elif [[ -n "$host" ]]; then codigo=403
@@ -66,6 +67,15 @@ else
       elif [[ "$dados" == *'"site":"isca"'* ]]; then codigo=202
       else codigo=500; fi ;;
   esac
+fi
+# A raiz pedida COMO navegador (29.85): a borda da Cloudflare injeta o beacon só nesse caso; o curl puro não vê.
+if [[ "$caminho" == / && "$codigo" == 200 && "$navegador" == 1 ]]; then
+  corpo='<!doctype html><html><head><script src="/assets/site.js" defer></script></head><body><main></main>'
+  case "$QUEBRA" in
+    beacon) corpo="$corpo<script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{\"token\": \"x\"}'></script>" ;;
+    script_de_fora) corpo="$corpo<script src=\"https://cdn.exemplo.invalid/x.js\"></script>" ;;
+  esac
+  corpo="$corpo</body></html>"
 fi
 if [[ "$cabecalhos" == 1 ]]; then printf 'HTTP/2 %s\r\n%s\r\n\r\n' "$codigo" "$extra"; fi
 case "$formato" in
@@ -151,3 +161,24 @@ def test_robots_sem_barrar_a_api_reprova(tmp_path: Path) -> None:
     r, _ = _rodar(tmp_path, quebra="robots")
     assert r.returncode == 1
     assert "FALHOU /robots.txt (corpo)" in r.stdout
+
+
+# ------------------------------------------------------------------ 29.85: script de outra origem no HTML
+def test_a_raiz_e_pedida_como_navegador_e_o_script_proprio_passa(tmp_path: Path) -> None:
+    """A borda da Cloudflare só injeta o beacon quando o pedido parece de navegador: a prova baixa a raiz assim, e o
+    `<script src>` relativo do próprio site não reprova."""
+    r, pedidos = _rodar(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "ok     / (como navegador)" in r.stdout
+    assert [p for p in pedidos if p.startswith("GET / ") and p.endswith("nav=1")], pedidos
+
+
+@pytest.mark.parametrize(("quebra", "esperado"), [
+    ("beacon", "https://static.cloudflareinsights.com/beacon.min.js"),   # o achado de 05/10, aspas simples
+    ("script_de_fora", "https://cdn.exemplo.invalid/x.js"),
+])
+def test_script_de_outra_origem_no_html_reprova_e_diz_onde_desligar(tmp_path: Path, quebra: str, esperado: str) -> None:
+    r, _ = _rodar(tmp_path, quebra=quebra)
+    assert r.returncode == 1
+    assert "FALHOU / (como navegador)" in r.stdout and esperado in r.stdout
+    assert "Web Analytics" in r.stdout and "Nao afrouxe a CSP" in r.stdout

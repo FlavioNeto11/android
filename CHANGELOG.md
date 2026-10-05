@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.85: a prova de fora pede a raiz como navegador e reprova script de outra origem (branch feat/29-85-prova-sem-script-de-fora)
+
+- **Por quê:** com o site ligado (05/10 01:19Z), a borda da Cloudflare injeta `static.cloudflareinsights.com/beacon.min.js`
+  no HTML da raiz quando o pedido parece de navegador. Com o `curl` puro não aparece; por isso a prova passava. A CSP
+  do site bloqueia o script, mas fica um erro de console em todo visitante, e a página promete que não usa rastreadores.
+- **O que muda:** com `SITE=ligado`, `scripts/portal-prova-de-fora.sh` baixa a raiz com `Accept` e `User-Agent` de
+  navegador. Ela FALHA se achar `cloudflareinsights` ou qualquer `<script src>` de outra origem, e diz onde se desliga
+  (Web Analytics / RUM da zona). A CSP não muda.
+- **Prova:**
+  - `simulated`: `scripts/tests/test_portal_prova_de_fora.py`, 7 testes, com o `curl` falso injetando o beacon (aspas
+    simples, como a Cloudflare) e um script de outra origem.
+  - `real` (05/10 01:31Z, máquina do central, só GET): a raiz pedida como navegador traz `/assets/site.js` e o beacon;
+    pedida pelo `curl` puro, 0 ocorrências. A prova de fora vai reprovar até o dono desligar o recurso na zona.
+
 ## 2026-10-04 — 31.35: o A/B offline da poda medido em árvores reais (branch test/31-35-poda-ab-offline)
 
 - `scripts/tests/test_poda_ab_offline.py` confere `scripts/poda-ab-offline.py`: só a UI do Chrome sai, a `url_bar` fica,

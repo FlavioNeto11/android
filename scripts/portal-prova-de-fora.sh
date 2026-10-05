@@ -98,6 +98,30 @@ else
         else
             printf 'ok     %-28s      (nenhum Set-Cookie, como a pagina promete)\n' "/ (sem cookie)"
         fi
+        # 29.85: a borda da Cloudflare injeta o beacon do Web Analytics (static.cloudflareinsights.com) no HTML so
+        # quando o pedido parece de navegador; o curl puro nao ve (medido em 05/10). A CSP do site bloqueia e o script
+        # nao roda, mas sobra um erro de console em todo visitante, e a pagina promete "sem rastreadores". Por isso a
+        # raiz e baixada COMO navegador, e qualquer <script src> de outra origem reprova. A CSP nao muda: o conserto e
+        # desligar o recurso na zona.
+        ua='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36'
+        html="$(curl -s -m 20 -H 'Accept: text/html,application/xhtml+xml' -H "User-Agent: $ua" "https://$H/")"
+        de_fora=""
+        while IFS= read -r src; do
+            case "$src" in
+                "https://$H/"*|"//$H/"*) ;;
+                http://*|https://*|//*) de_fora="$de_fora $src" ;;
+            esac
+        done < <(grep -oiE "<script[^>]*[[:space:]]src=[\"']?[^\"' >]+" <<< "$html" | sed -E "s/.*[sS][rR][cC]=[\"']?//")
+        if [[ -z "$html" ]]; then
+            printf 'FALHOU %-28s      a raiz veio vazia pedida como navegador\n' "/ (como navegador)"; FALHAS=$((FALHAS + 1))
+        elif [[ -n "$de_fora" || "$html" == *cloudflareinsights* ]]; then
+            printf 'FALHOU %-28s      script de outra origem no HTML:%s\n' "/ (como navegador)" "${de_fora:- cloudflareinsights}"
+            echo '       -> desligue na Cloudflare, na zona do nome publico: Web Analytics / Real User Measurements (RUM),'
+            echo '          a injecao automatica do beacon. Nao afrouxe a CSP: a pagina promete que nao usa rastreadores.'
+            FALHAS=$((FALHAS + 1))
+        else
+            printf 'ok     %-28s      (nenhum script de outra origem no HTML)\n' "/ (como navegador)"
+        fi
     else
         confere /                   "301 302 307 308" "raiz: redireciona para o painel"
     fi
