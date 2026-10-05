@@ -499,11 +499,17 @@ def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *,
         tipo = e["type"]
         if tipo == "key":
             tecla = e.get("key_name")
-            # Apagar ANTES de um texto da mesma etapa é ruído: a receita digita com `clear_first=True`, que já limpa o
-            # campo (31.84; o painel digita sem limpar, e quem ensina apagava um caractere por vez). Depois do último
-            # texto, ou numa etapa sem texto, a tecla muda o resultado e segue recusando.
-            if tecla == "delete" and any(x["type"] == "text" for x in inputs[i + 1:]):
-                continue
+            # Apagar COLADO ao texto que vem depois é ruído: a receita digita com `clear_first=True`, que já limpa o
+            # campo (31.84; o painel digita sem limpar, e quem ensina apagava um caractere por vez). Só vale a
+            # sequência contígua de `delete` seguida DIRETAMENTE de um `text`: com toque, arraste ou outra tecla no
+            # meio, o apagar pode ter sido em outro campo, e a receita (que limpa só o do texto) divergiria do ensinado
+            # sem avisar. Nos demais casos a tecla muda o resultado e segue recusando (etapa sem receita).
+            if tecla == "delete":
+                j = i + 1
+                while j < len(inputs) and inputs[j]["type"] == "key" and inputs[j].get("key_name") == "delete":
+                    j += 1
+                if j < len(inputs) and inputs[j]["type"] == "text":
+                    continue
             # Enter colado ao texto que acabou de ser digitado é o "enviar" daquele campo: vira `press_enter` da própria
             # ação de digitar. Enter solto age sobre um campo que a receita não conhece e segue recusando.
             if tecla == "enter" and i > 0 and inputs[i - 1]["type"] == "text" and out and out[-1]["tool"] == "type_text":

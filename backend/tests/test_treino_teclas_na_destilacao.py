@@ -44,6 +44,22 @@ def test_enter_logo_apos_o_texto_vira_press_enter() -> None:
     assert acoes[1]["args"]["press_enter"] is True
 
 
+def test_apagar_so_e_ruido_quando_colado_ao_texto() -> None:
+    motivo_delete = "tecla delete depende do estado de quem ensinou"
+    # (a) o apagar foi no campo A e o texto é do campo B: a receita só limparia o B
+    acoes, motivo = _destila([_toque(), _tecla("delete"), _tecla("delete"), _tecla("delete"), _toque(), _texto()])
+    assert acoes is None and motivo == motivo_delete
+    # (b) colado ao texto segue valendo
+    acoes, motivo = _destila([_toque(), _tecla("delete"), _tecla("delete"), _tecla("delete"), _texto()])
+    assert motivo == "ok" and [a["tool"] for a in acoes] == ["tap", "type_text"]
+    # (c) outra tecla no meio: recusa (pelo próprio delete, que vem primeiro)
+    acoes, motivo = _destila([_tecla("delete"), _tecla("enter"), _texto()])
+    assert acoes is None and motivo == motivo_delete
+    # arraste no meio também separa
+    acoes, motivo = _destila([_toque(), _tecla("delete"), {"type": "swipe", "x": 1, "y": 9, "x2": 1, "y2": 1}, _texto()])
+    assert acoes is None and motivo == motivo_delete
+
+
 def test_apagar_depois_do_ultimo_texto_recusa() -> None:
     acoes, motivo = _destila([_toque(), _texto(), _tecla("delete")])
     assert acoes is None and motivo == "tecla delete depende do estado de quem ensinou"
