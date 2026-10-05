@@ -801,8 +801,8 @@ describe('grupos de acesso', () => {
   });
 
   // 29.106 (W2 da leitura do #392): o teste acima espera A aplicado antes de trocar, então não vê a corrida. Este
-  // força a ordem (A responde DEPOIS de B) e falha enquanto o defeito vive; o conserto do 29.106 o vira em `it`.
-  it.fails('29.106: escolher A e logo B, com A respondendo depois de B, parte de B', async () => {
+  // força a ordem (A responde DEPOIS de B): a resposta de A, aposentada pela escolha de B, não entra no rascunho.
+  it('29.106: escolher A e logo B, com A respondendo depois de B, parte de B', async () => {
     rotasBase([]);
     let soltarA: () => void = () => undefined;
     const aSegura = new Promise<void>((r) => { soltarA = r; });
@@ -834,6 +834,39 @@ describe('grupos de acesso', () => {
     await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
     expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
       .toEqual({});
+  });
+
+  it('29.106: com a leitura do "começar a partir de" em voo, o Criar grupo e o editor esperam', async () => {
+    rotasBase([]);
+    let soltar: () => void = () => undefined;
+    const segura = new Promise<void>((r) => { soltar = r; });
+    backend.on('GET', /\/instagram\/profiles\/ig-2\/policy$/, async () => {
+      await segura;
+      return json({ limits: {}, capabilities: {}, defaults: {}, loosened: [], own: { LIKE_POST: 'manual_only' },
+                    group: {}, own_limits: {}, group_limits: {} });
+    });
+    backend.on('POST', /\/instagram\/policy-groups$/,
+      (c) => json({ id: 'grp-9', ...(c.body as object), loosened: [], members: [], created_at: '', updated_at: '' }, 201));
+    await render();
+    await click(byRole('button', /Novo grupo/i));
+    await waitFor(() => expect(byRole('radiogroup', /Política de Curtir a publicação/i)).toBeTruthy());
+    await setValue(byRole('textbox', /Nome/i) as HTMLInputElement, 'Do Bruno');
+    await setValue(byRole('combobox', /Começar a partir de/i) as HTMLSelectElement, 'ig-2');
+    await waitFor(() => expect(backend.callsTo('GET', /ig-2\/policy$/)).toHaveLength(1));
+    const criar = byRole('button', /Criar grupo/i) as HTMLButtonElement;
+    expect(criar.disabled).toBe(true);                                    // antes: criava com o rascunho anterior
+    const soManual = byRole('radio', /Só manual/i, byRole('radiogroup', /Política de Curtir a publicação/i));
+    expect((soManual as HTMLInputElement).disabled).toBe(true);           // mexer agora seria apagado pela resposta
+    await click(criar);
+    expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(0);
+
+    await act(async () => { soltar(); });
+    await waitFor(() => marcada(/Só manual/i, /Política de Curtir a publicação/i));
+    expect(criar.disabled).toBe(false);
+    await click(criar);
+    await waitFor(() => expect(backend.callsTo('POST', /\/instagram\/policy-groups$/)).toHaveLength(1));
+    expect((backend.callsTo('POST', /\/instagram\/policy-groups$/)[0]!.body as { capabilities: unknown }).capabilities)
+      .toEqual({ LIKE_POST: 'manual_only' });
   });
 
   it('antes de o catálogo chegar, "começar a partir de" e salvar esperam: o grupo nasce com as escolhas do perfil', async () => {
