@@ -29,7 +29,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   fictício; os hashes de `PLANNER_CAPABILITY_SYSTEM`, `PLANNER_MULTIAPP_SYSTEM` e `PLANNER_MULTIAPP_SYSTEM_CURTO` em
   `tests/test_prompts_licoes.py` mudam de propósito (só o exemplo difere; conferido contra o texto antigo).
 - A recusa `sem_alvo` (`execution/application/alvos.py`) cita "com a persona Fulana" como exemplo; o texto esperado e os
-  dados do teste de varredura de nomes em `tests/test_telegram_entrada.py` usam nomes de exemplo. Fora, de propósito:
+  dados de `tests/test_telegram_entrada.py` usam nomes de exemplo (acentuado onde o teste é o corte sem acento). Fora, de propósito:
   a lista fictícia do `simulated_provider`, o nome de uma lista do Trello e uma variável homônima. Os @ de contas usados
   como dado nos outros testes são o 31.101.
 - Prova `simulated`: `not_run` (funil da suíte 39; os dirigidos rodam depois do "no ar"). Real: `not_run`.

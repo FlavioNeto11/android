@@ -945,27 +945,27 @@ async def test_quem_e_voce_segue_identidade(c: Cenario) -> None:
 
 async def test_nenhuma_resposta_do_canal_sai_com_nome_de_persona(c: Cenario) -> None:
     # Varre as recusas: o texto vem do serviço compartilhado com o painel e pode trazer o nome (o exemplo do extrator).
-    c.portas.personas = ["Beltrano", "beltrano.qa", "Ciclano Souza"]
+    c.portas.personas = ["René", "rene.qa", "Valdir Lima"]
     c.portas.recusar_criar = True
     c.portas.alvos = [{"instance_id": "android-09", "profile_id": None, "origem": "texto"}]
     c.portas.perguntas = []
-    await c.volta(msg(5, "/para android-09: comente oi com a persona Beltrano e @beltrano.qa"))
+    await c.volta(msg(5, "/para android-09: comente oi com a persona René e @rene.qa"))
     await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
-    c.portas.recusar_previa = "Recusado: Ciclano Souza e BELTRANO não podem agir aqui"
+    c.portas.recusar_previa = "Recusado: Valdir Lima e RENE não podem agir aqui"
     await c.volta(msg(7, "/para android-10: postar"))
     for texto in c.bot.textos():
         normal = texto.lower()
-        assert "beltrano" not in normal and "ciclano souza" not in normal, texto
+        assert "rené" not in normal and "rene" not in normal and "valdir lima" not in normal, texto
     assert any("<persona>" in t for t in c.bot.textos())
 
 
 async def test_sem_nome_de_persona_troca_palavra_inteira_sem_acento_e_poupa_a_ana() -> None:
     from app.modules.avisos.infrastructure.entrada import sem_nome_de_persona
-    nomes = ["André", "@andre.qa", "Ana", "Bruno Lima", "Li"]
-    assert sem_nome_de_persona('cite "com a persona ANDRE" ou @andre.qa', nomes) == 'cite "com a persona <persona>" ou <persona>'
-    assert sem_nome_de_persona("Bruno Lima respondeu; a ANA viu", nomes) == "<persona> respondeu; a ANA viu"
-    # Contraprova: pedaço de palavra não é nome ("Andressa", "Lista"), e nome curto demais (< 3) não entra.
-    assert sem_nome_de_persona("Andressa olhou a Lista", nomes) == "Andressa olhou a Lista"
+    nomes = ["René", "@rene.qa", "Ana", "Valdir Lima", "Li"]
+    assert sem_nome_de_persona('cite "com a persona RENE" ou @rene.qa', nomes) == 'cite "com a persona <persona>" ou <persona>'
+    assert sem_nome_de_persona("Valdir Lima respondeu; a ANA viu", nomes) == "<persona> respondeu; a ANA viu"
+    # Contraprova: pedaço de palavra não é nome ("Renegado", "Lista"), e nome curto demais (< 3) não entra.
+    assert sem_nome_de_persona("Renegado olhou a Lista", nomes) == "Renegado olhou a Lista"
 
 
 # ===================================================================== 28.27: a porta do plano pelo canal
@@ -1096,12 +1096,12 @@ async def test_cancelar_na_porta_cancela_a_execucao(c: Cenario) -> None:
 
 async def test_item_cujo_texto_os_filtros_mudariam_fica_fora_do_sim_pelo_canal(c: Cenario) -> None:
     """P1 (orquestradora, 04/10 21:58Z): o dono não aprova o que não pode ver por inteiro."""
-    c.portas.personas = ["Bruno Lima"]
-    c.portas.previa_da_porta = _porta(_item("s1", texto="oi, Bruno Lima"), _item("s2"))
+    c.portas.personas = ["Valdir Lima"]
+    c.portas.previa_da_porta = _porta(_item("s1", texto="oi, Valdir Lima"), _item("s2"))
     await _executar(c)
     assert json.loads(str(c.linha(5)["previa"]))["aprovar"] == [["s2", f"{'s2':0<64}"]]
     textos = "\n".join(c.bot.textos())
-    assert "bruno" not in textos.lower()
+    assert "valdir" not in textos.lower()
     assert "1 item não pode ser mostrado aqui por inteiro; ele pede você no painel ou na execução." in textos
 
 
@@ -1145,11 +1145,11 @@ async def test_imagem_de_item_fora_do_canal_nao_sai(c: Cenario, monkeypatch: pyt
         return "999"
 
     monkeypatch.setattr(c.servico.conversa, "enviar_conteudo", enviar)
-    c.portas.personas = ["Bruno Lima"]
+    c.portas.personas = ["Valdir Lima"]
     imagem = b"imagem do item fora"
     c.portas.imagens = {"s1": (imagem, "application/octet-stream")}
     c.portas.previa_da_porta = _porta(
-        _item("s1", texto="oi, Bruno Lima", tem_imagem=True, imagem_sha256=hashlib.sha256(imagem).hexdigest()),
+        _item("s1", texto="oi, Valdir Lima", tem_imagem=True, imagem_sha256=hashlib.sha256(imagem).hexdigest()),
         _item("s2"))
     await _executar(c)
     assert json.loads(str(c.linha(5)["previa"]))["aprovar"] == [["s2", f"{'s2':0<64}"]]
