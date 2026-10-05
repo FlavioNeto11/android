@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.42: o fim real da execução chega à conversa que a criou (branch canais/28-42-desfecho-rearmado)
+
+- O desfecho que sai com a execução em `awaiting_person` ("parou") deixa a marca `desfecho_parado` na linha. Quando
+  a execução sai da espera, a linha volta a esperar desfecho, e a conclusão, a falha, o cancelamento ou a nova parada
+  chegam à mesma conversa, uma vez. Antes, a retomada que concluía ficava muda.
+- O estado é lido antes do texto: a corrida entre as duas leituras pode no máximo repetir o fim, nunca calá-lo. A
+  anti-repetição do #358 conta os envios além dos rearmes (`desfechos_rearmados`).
+- `TERMINAIS` → `COM_DESFECHO` (o conjunto inclui `awaiting_person`, que não é terminal).
+- Prova: `simulated` (`backend/tests/test_telegram_entrada.py`: o fim depois do parou, a parada que segue parada, a
+  retomada que para de novo e a anti-repetição). Real: `not_run`.
+
 ## 2026-10-05 — 29.93: a execução que espera você não aparece como encerrada (branch fix/29-93-aguardando-pessoa)
 
 - `RunStatus.awaiting_person` (não terminal): o `recompute_run` leva a ele a execução sem trabalho automático com algum

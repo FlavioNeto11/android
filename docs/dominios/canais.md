@@ -600,6 +600,16 @@ avisos depois da faxina"), e a trava cai no TTL.
   - Só o botão Cancelar do dono cancela com gesto (o sinal `cancelou_execucao`). Os cancelamentos de consequência ou
     de faxina não gravam sinal (28.39).
   - O lote dos desfechos pendentes gira: linhas antigas de execução longa não seguram as novas (28.39).
+  - O "parou" (`awaiting_person`, 29.93) não é o fim (28.42). O desfecho que sai nesse estado deixa a marca
+    `desfecho_parado` no `previa` da linha.
+    - Quando a execução sai da espera (retomada, conclusão, falha, cancelamento ou purga), a linha volta a esperar
+      desfecho, e o fim real chega à mesma conversa, uma vez.
+    - Se a execução parar de novo, o novo "parou" também sai.
+    - O estado é lido ANTES do texto, para que a corrida entre as duas leituras possa no máximo repetir o fim, nunca
+      calá-lo.
+    - A anti-repetição do #358 conta os envios além dos rearmes (`desfechos_rearmados`).
+    - O conjunto de estados com desfecho se chama `COM_DESFECHO` (antes `TERMINAIS`, que enganava: `awaiting_person`
+      não é terminal).
   - A prévia que não sai inteira marca a linha como falha e avisa o dono uma vez. Uma linha com erro não cala as
     outras da volta do vigia; a linha que caiu no meio do "Executar (aprova N)" é recuperada depois de `PRESA_S`.
   - P1: item que o dono não veria por inteiro (texto com nome de persona, contato ou segredo, texto longo, bloco que não
