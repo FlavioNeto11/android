@@ -20,6 +20,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 "Documentação e processo".
 
 
+## 2026-10-05 — 31.96: a troca de valor em fluxos e receitas tem borda mais conservadora (branch fix/31-96-borda-da-troca-de-valor)
+
+- `_sub_values` (`backend/app/taskqueue/flows.py`): borda do DÍGITO agora exige, à esquerda, nenhum caractere de palavra e,
+  à direita, nenhum dígito nem `_`. Nomes de imagem e de botão terminados em número (`v10`, `btn10`, `img_10`) deixam de
+  trocar; a unidade colada à direita (`10min`) segue trocando. Borda de letra e de símbolo, como estava.
+- Fronteira entre pedaços já trocados: a borda se confere no texto ORIGINAL (uma lista de trechos ocupados), não no resto
+  entre dois marcadores. Antes, "10min" com "10" e "min" de exemplo virava `{n}{m}`.
+- `recipes.para_hash` usa o mesmo `_sub_values` em vez de `str.replace`: o hash da receita deixa de discordar do
+  fluxo-modelo ("nasal" não vira `{perfil}l`). Efeito: o hash de uma receita cujo texto tinha o valor DENTRO de outra
+  palavra muda na próxima gravação; o caso comum (valor como palavra inteira) não muda.
+- Fora do escopo, não tocado: `recipes.detemplate`, que troca os literais das ações da receita por `str.replace` com o
+  piso de 3 caracteres; a borda dele é decisão à parte (muda o que a receita aprende).
+- Prova `simulated`: `backend/tests/test_fluxo_casamento_especifico.py::*` (45; 4 testes novos e o de unidade ajustado,
+  duas mutações reprovadas: `para_hash` com `str.replace` e a borda antiga do dígito), mais 261 testes de fluxo, receita,
+  catracas e arquitetura verdes. Real: `not_run`.
+
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
 - **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).

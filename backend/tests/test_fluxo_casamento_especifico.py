@@ -193,15 +193,40 @@ def test_dois_valores_em_que_um_contem_o_outro() -> None:
 
 
 def test_numero_colado_a_unidade_e_trocado_mas_nao_o_numero_maior() -> None:
-    """Borda em DÍGITO exige só um não-dígito: letra vizinha pode. Mutação: com a borda de caractere de palavra também para dígito (a primeira versão do F6)
-    "esperar 10min" fica sem troca e o primeiro assert falha: o plano reaproveitado com 20 diria "10min" calado."""
+    """Borda em DÍGITO (31.96): a esquerda sem caractere de palavra, a direita sem dígito nem `_`. A letra colada à
+    DIREITA segue valendo (a unidade). Mutação: sem a borda à direita contra dígito, "100" perde o zero; com a borda
+    de palavra também à direita, "10min" fica sem troca e o plano reaproveitado com 20 diria "10min" calado."""
     v = {"n": "10"}
     assert _sub_values("esperar 10min", v) == "esperar {n}min"
     assert _sub_values("esperar 10 min", v) == "esperar {n} min"
     assert _sub_values("esperar 100", v) == "esperar 100"
     assert _sub_values("esperar 110", v) == "esperar 110"
-    assert _sub_values("versão v10", v) == "versão v{n}"
     assert _sub_values("10, 100 e 10", v) == "{n}, 100 e {n}"
+    assert _sub_values("faixa (10)", v) == "faixa ({n})"
+    assert _sub_values("de 5-10", v) == "de 5-{n}"                  # símbolo à esquerda já delimita
+
+
+@pytest.mark.parametrize("texto", ["versão v10", "botão btn10", "icone_10", "img_10.png", "ana10", "10_2", "a10b"])
+def test_nome_de_imagem_ou_botao_terminado_em_numero_nao_se_parte(texto: str) -> None:
+    """31.96: `v10`, `btn10` e `img_10` são nomes, não o valor 10; antes da borda nova a esquerda só pedia não-dígito
+    e eles viravam `v{n}`, `btn{n}` e `img_{n}`. Mutação: voltar a esquerda para só não-dígito quebra `v10`, `btn10`, `img_10.png` e `ana10`."""
+    assert _sub_values(texto, {"n": "10"}) == texto
+
+
+def test_fronteira_entre_pedacos_ja_trocados_olha_o_texto_original() -> None:
+    """31.96: "10min" com "10" e "min" de exemplo virava "{n}{m}": o "min" abria um pedaço novo, sem o "0" antes dele,
+    e passava na borda esquerda. A borda se confere no texto original."""
+    v = {"n": "10", "m": "min"}
+    assert _sub_values("esperar 10min", v) == "esperar {n}min"
+    assert _sub_values("esperar 10 min", v) == "esperar {n} {m}"
+    assert _sub_values("Ana2 e ana", {"a": "ana", "b": "2"}) == "Ana2 e {a}"
+
+
+def test_valor_que_cruza_um_ja_trocado_e_pulado_e_o_proximo_acha() -> None:
+    """O laço que pula uma ocorrência que cruza um valor já trocado não pode perder a que vem logo depois."""
+    assert _sub_values("Maria Clara Clara", {"longo": "Maria Clara", "curto": "Clara"}) == "{longo} {curto}"
+    # Símbolos não pedem borda: "--" é achado em 0, "-" cruza o já trocado em 0 e em 1 e só vale em 2.
+    assert _sub_values("---", {"x": "--", "y": "-"}) == "{x}{y}"
 
 
 @pytest.mark.parametrize(("texto", "valor"), [
@@ -249,3 +274,26 @@ def test_molde_com_reservado_perde_para_o_generico_de_menos_buracos(db: Database
     assert FlowStore._extract("abrir {p} {instance_id}", comando) == {"p": "fulano"}
     assert FlowStore._extract("abrir {x}", comando) == {"x": "fulano {instance_id}"}
     assert _vencedor(db, comando) == "f-generico"
+
+
+def test_hash_da_receita_troca_o_valor_como_o_fluxo_aprende() -> None:
+    """31.96: `para_hash` trocava por `str.replace`, sem borda, e discordava do `_sub_values` do fluxo-modelo: com
+    "nasa" de parâmetro, "nasal" virava "{perfil}l" na identidade da etapa. Agora é a MESMA troca. Mutação: voltar ao
+    `str.replace` quebra o primeiro assert."""
+    from app.models import PlanStep, Postcondition
+    from app.taskqueue.recipes import para_hash
+
+    def etapa(texto: str, guarda: str) -> PlanStep:
+        return PlanStep(key="open_profile", title="abrir", goal="abrir o perfil",
+                        postcondition=Postcondition(kind="model_judged", value=texto, description="x"),
+                        commit_guard=[guarda])
+
+    valores = {"perfil": "nasa", "run_id": "r-1"}
+    texto = "perfil de nasa aberto, sem nasal nem nasa2, com nasa."
+    trocado = para_hash(etapa(texto, texto), valores)
+    esperado = _sub_values(texto, {"perfil": "nasa"})
+    assert esperado == "perfil de {perfil} aberto, sem nasal nem nasa2, com {perfil}."
+    assert trocado.postcondition.value == esperado
+    assert trocado.commit_guard == [esperado]
+    # Os parâmetros de execução nunca entram, e o valor curto (menos de 3 caracteres) continua de fora.
+    assert para_hash(etapa("r-1 e ab", "r-1 e ab"), {"run_id": "r-1", "x": "ab"}).postcondition.value == "r-1 e ab"
