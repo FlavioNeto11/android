@@ -30,6 +30,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   escrito a substitui.
 - O motivo NÃO vai ao evento `step.updated` (gravado em `events` e transmitido a todo navegador): o painel
   mantém o do detalhe da execução; `null` limpa. Contrato: adendo v1.46.
+- Leitura do #364: a etapa replanejada (`Scheduler.herdar_textos`) herda o rascunho da anterior, mas não o motivo de
+  uma recusa passada (M3). Limitação aceita (M2): o motivo novo aparece no painel quando o detalhe recarrega, não
+  ao vivo (o evento não o carrega de propósito).
 - Prova: `simulated` (`backend/tests/test_protecao_de_frota.py`, teste da retomada novo, que falha com a marca antiga,
   e a ausência no evento gravado; `frontend/src/features/runs/CorrigirEtapa.test.tsx`, 2 testes novos;
   `frontend/src/store/reducer.test.ts`, 1 novo). Real: `not_run`.
