@@ -8160,14 +8160,14 @@
    "id": "29.79",
    "status": "partial",
    "proof": "real",
-   "evidence": "Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entraram o #334 (0d1232c9, merge bf8e5609: commit_switch, commit_switch_mark, StepResult.efeito_comprovado com 409 no retry, rotulo_ia na etapa e na chave, catálogo do CREATE_POST com Share por id=share_footer_button), o teste S3 cdb6b7cd (nenhuma nota, detail ou evento leva a URL com token do juiz) e o conserto 22f641b2 (Approval.to_dict passa a entregar o rotulo_ia; achado no percurso do painel do 29.81; a orquestradora conferiu GET /api/approvals?status=approved com o campo nas 32 linhas depois do deploy). Prova simulated: backend/tests/test_rotulo_ia.py, test_rotulo_ia_no_executor.py, test_rotulo_ia_na_aprovacao.py, frontend execution.test.tsx e PortaDoPlano.test.tsx. not_run: os seletores na tela da legenda do android-13 (leitura só depois do aviso 'portal ligado'; galeria vazia na leitura de 04/10 23:49Z) e a 1ª publicação real com o rótulo (29.30). REAL (leitura, 2026-10-05, central a0c9865e, android-13 pelo worker-lan-01): cópia única para a galeria 01:24:21Z–01:24:28Z por Adb.enviar_midia_para_galeria (1ª prova real do push remoto; /sdcard/Pictures/Central/img_img-OWR4FWBMRf32i42n.jpg); controle manual lease DGDGQPxXKHBuz9bT 01:24:35Z–01:30:47Z até a tela da legenda, sem Share e sem tocar no interruptor; capturas em data/diag-29-79-pos-33/b13-00..13. Árvore: 'Add AI label' TextView sem id, abaixo da dobra; interruptor android.view.View clickable/checkable, checked=false, [584,1011,688,1107], candidato único; estado_do_interruptor(tree,'text==Add AI label') sobre a árvore real = 'desligado'; share_footer_button e caption_input_text_view confirmados. Folha 'Sharing posts' fechada por toque fora (OK não tocado). Publicação: not_run.",
-   "blocker": "29.87 (rolar até 'Add AI label' e a folha 'Sharing posts' no conhecimento do app), suíte 34; a 1ª publicação real (29.30) só depois do deploy 34",
-   "grupo": "resultado-orquestradora-janela33b",
+   "evidence": "Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entraram o #334 (0d1232c9, merge bf8e5609: commit_switch, commit_switch_mark, StepResult.efeito_comprovado com 409 no retry, rotulo_ia na etapa e na chave, catálogo do CREATE_POST com Share por id=share_footer_button), o teste S3 cdb6b7cd (nenhuma nota, detail ou evento leva a URL com token do juiz) e o conserto 22f641b2 (Approval.to_dict passa a entregar o rotulo_ia; achado no percurso do painel do 29.81; a orquestradora conferiu GET /api/approvals?status=approved com o campo nas 32 linhas depois do deploy). Prova simulated: backend/tests/test_rotulo_ia.py, test_rotulo_ia_no_executor.py, test_rotulo_ia_na_aprovacao.py, frontend execution.test.tsx e PortaDoPlano.test.tsx. not_run: os seletores na tela da legenda do android-13 (leitura só depois do aviso 'portal ligado'; galeria vazia na leitura de 04/10 23:49Z) e a 1ª publicação real com o rótulo (29.30). REAL (leitura, 2026-10-05, central a0c9865e, android-13 pelo worker-lan-01): cópia única para a galeria 01:24:21Z–01:24:28Z por Adb.enviar_midia_para_galeria (1ª prova real do push remoto; /sdcard/Pictures/Central/img_img-OWR4FWBMRf32i42n.jpg); controle manual lease DGDGQPxXKHBuz9bT 01:24:35Z–01:30:47Z até a tela da legenda, sem Share e sem tocar no interruptor; capturas em data/diag-29-79-pos-33/b13-00..13. Árvore: 'Add AI label' TextView sem id, abaixo da dobra; interruptor android.view.View clickable/checkable, checked=false, [584,1011,688,1107], candidato único; estado_do_interruptor(tree,'text==Add AI label') sobre a árvore real = 'desligado'; share_footer_button e caption_input_text_view confirmados. Folha 'Sharing posts' fechada por toque fora (OK não tocado). Publicação: not_run. ATUALIZAÇÃO (05/10): o 29.87 (#355, ponta a6b1680b: rolar até 'Add AI label' e fechar a folha 'Sharing posts' pelo conhecimento do app) entrou na suíte 34 e está no ar desde o deploy 34 (central 584ac9c8, migração 109). O bloqueio que sobra é só a 1ª publicação real com o rótulo (29.30), que espera a ordem da orquestradora e o toque do dono na prévia. Publicação: not_run.",
+   "blocker": "29.30: a 1ª publicação real com o rótulo (uma execução, prévia ao dono, nada sai sem o toque dele)",
+   "grupo": "resultado-orquestradora-janela34d",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T02:07:45+00:00"
+   "quando": "2026-10-05T04:16:34+00:00"
   },
   "29.77": {
    "id": "29.77",
@@ -8415,6 +8415,45 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-05T03:46:54+00:00"
+  },
+  "30.67": {
+   "id": "30.67",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Commit 8a54d960 (fix(painel): 30.67 Button sem iconOnly), entrou pelo PR https://github.com/FlavioNeto11/android/pull/323 (ramo feat/30-61-painel, ponta fa6460ef, merge f801a7de) na suíte 33. No ar desde o deploy 33 (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z) e segue no deploy 34 (584ac9c8; git merge-base --is-ancestor confere os dois). O que mudou: frontend/src/components/Button.tsx — sem iconOnly, o `label` vira o nome acessível (aria-label) e o texto visível continua; com disabledReason, o nome leva o label e o motivo. frontend/src/features/runs/TextsTab.tsx: o 'Não enviar este' diz de qual aparelho é. Prova simulated: frontend/src/components/Button.test.tsx (2 testes '30.67: …') na suíte 33. Real not_run: leitor de tela no painel do central.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela34d",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T04:16:34+00:00"
+  },
+  "31.49": {
+   "id": "31.49",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #330 (ponta 1bbffb27), mesclado na suíte 33 (merge ed49da49 na origin/main) e no ar desde o deploy 33 (a0c9865e). O complemento G1b, o vista_em no sim do plano (31.68), é o #359 (a96fb8bd): suíte 34, merge 90e4f3cd, deploy 34 no ar em 584ac9c8 com a migração 109. Simulado: backend/tests/test_executor_honra_o_plano.py (8 testes), com test_porta_do_plano, test_chave_da_aprovacao, test_repetido_entre_execucoes e test_arquitetura (68 verdes no PR). Parte real: só a prévia; a janela do 31.68 (deploy 34, custo US$ 0,01967) mostrou o vista_em e o selo na prévia real. Real not_run: a execução que honra um sim dado no plano, porque nenhum sim de plano foi dado numa execução real.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela34d",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T04:16:34+00:00"
+  },
+  "31.51": {
+   "id": "31.51",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #308 (ponta 3927763e), mesclado na suíte 32 (merge 6f240e12 na origin/main) e no ar desde o deploy 32 (2c47b9fa, migração 106_pedidos_autor). O executor toca, antes do ator, o botão que fecha os diálogos do site em série (até 4), pela árvore, sem aceitar, permitir nem configurar. Sem saída que preserve a privacidade, falha com motivo literal (regra em learning/domain/falhas.py), nunca com sucesso. Simulado: backend/tests/test_dialogos_em_serie.py (22 testes, árvores remontadas do que a r-20261004190200-5b56e6 gravou, incluindo um de ponta a ponta no harness), 119 na regressão. Real not_run: o 28.12 não foi refeito depois do deploy 32.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-janela34d",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T04:16:34+00:00"
   }
  },
  "rodadas": [
@@ -10987,6 +11026,18 @@
    ],
    "grupos": [
     "resultado-orquestradora-janela34c"
+   ]
+  },
+  {
+   "quando": "2026-10-05T04:16:34+00:00",
+   "itens": [
+    "30.67",
+    "29.79",
+    "31.49",
+    "31.51"
+   ],
+   "grupos": [
+    "resultado-orquestradora-janela34d"
    ]
   }
  ]
