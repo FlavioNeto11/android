@@ -39,7 +39,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   infraestrutura, a prova simulada e a divergência de forma não rebaixam.
 - "Confirmar que fica" (`POST /api/aprendizado/fluxo/{id}/confirmar`) passa a valer também para o ensinado que espera a
   pessoa. Ele e desligar pelo Livro publicam `learning.ensinado_decidido` (`liberado`, `desligado` ou `outro`), um por
-  nascimento.
+  nascimento. A entrada de fluxo do Livro ganha `espera_a_pessoa` (o motivo literal, ou `null`) para o painel mostrar o
+  botão.
 - O campo `ensinado_em_prova: {persona, sessao}`, combinado com a Portal, vai em `POST /api/flows/match`,
   `GET /api/flows/cobertura`, na resposta do salvar do treino e no topo da de `POST /api/training/{id}/recipes`. Fica
   ausente quando não se aplica.
@@ -52,11 +53,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     `_rebaixar_o_ensinado` (nova);
   - `application/validacao.py`: `ServicoDeValidacao.__init__` (`ensino` no fim), `uma_volta`,
     `_abrir_provas_do_ensino` e `_abrir_prova_do_ensinado` (novas);
-  - `application/servico.py`: `_mover_nativo`, `confirmar_que_fica` e `avisar_espera_do_ensinado` (nova);
-  - `application/ensinado.py`: `AvisadorDoEnsinado.espera_decisao`, `espera_da_pessoa` e `decidiu_sem_falhar` (novas);
+  - `application/servico.py`: `_mover_nativo`, `confirmar_que_fica`, `espera_a_pessoa` e `avisar_espera_do_ensinado`
+    (novas as duas últimas);
+  - `application/ensinado.py`: `AvisadorDoEnsinado.espera_decisao`, `espera_da_pessoa`, `motivo_da_espera` e
+    `decidiu_sem_falhar` (novas);
+  - `presentation/livro.py`: `_entrada` e `_da_espera` (nova);
   - `domain/validacao.py`: `comando_do_ensino` e `passo_do_ensino` (novas);
   - `domain/ensinado.py`: `EsperaDoEnsinado`, `DecisaoDoEnsinado` e `decisao_da_pessoa` (novas);
-  - `infrastructure`: `LeituraSql.ensinado_a_esperar`, `LeitorDoEnsinadoSql.espera_da_pessoa`,
+  - `infrastructure`: `LeituraSql.ensinado_a_esperar`, `LeitorDoEnsinadoSql.espera_da_pessoa`, `motivo_da_espera` e
+    `_espera`,
     `EnsinoDaValidacaoSql`, os dois métodos novos de `EventosNoBarramento` e a ligação em `ligar_nativos.ligar` e
     `ligar_validacao.ligar`.
 - Prova `simulated`: `backend/tests/test_ensinado_em_prova.py`. Real: `not_run` (o próximo treino salvo no central).

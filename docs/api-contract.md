@@ -6508,6 +6508,9 @@ Aditivo. O fluxo salvo no modo treinamento segue nascendo `active`, mas até a p
     `sem_caminho`), o pedido `recusada` marca que o ensinado espera a pessoa.
 - **`POST /api/aprendizado/fluxo/{id}/confirmar`** aceita também o fluxo ensinado que espera a pessoa (antes, 409 fora
   de "Revisar"). O ensinado que ainda está na prova automática segue com 409.
+- **Livro** (as entradas de `GET /api/aprendizado` e do detalhe): o fluxo ganha `espera_a_pessoa: string|null`, que
+  traz o motivo literal quando o ensinado espera a decisão de uma pessoa e o "Confirmar que fica" vale para ele, e
+  `null` em todo o resto. Fica ausente nos outros tipos. Combinado com a Portal (31.91).
 - **Rebaixamento:** o veredito contrário de uma prova real leva o fluxo a `disabled` pelo sistema, e as receitas
   ativas do mesmo treino a `quarantined`. Os eventos do 30.80 B (v1.61) saem como sempre.
 - **Eventos novos**, persistidos e sem aparelho:

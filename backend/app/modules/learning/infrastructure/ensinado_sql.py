@@ -69,17 +69,29 @@ class LeitorDoEnsinadoSql:
         return linhas.texto_ou_nulo(row, "decided_at") if row is not None else None
 
     def espera_da_pessoa(self, kind: LivroKind, ref: str) -> str | None:
+        espera = self._espera(kind, ref)
+        return espera[0] if espera is not None else None
+
+    def motivo_da_espera(self, kind: LivroKind, ref: str) -> str | None:
+        espera = self._espera(kind, ref)
+        return espera[1] if espera is not None else None
+
+    def _espera(self, kind: LivroKind, ref: str) -> tuple[str, str] | None:
+        """`(desde, motivo)` do fluxo ensinado que espera a pessoa: o nascimento e o motivo do último pedido recusado
+        que o passou a ela."""
         if kind is not LivroKind.FLUXO:
             return None
         trilha = ref_da_trilha(kind, ref)
         row = self._db.one(
-            "SELECT f.created_at FROM flows f WHERE f.id=? AND f.status='active' AND f.source LIKE ?"
-            " AND EXISTS (SELECT 1 FROM learning_validations v WHERE v.item_ref=? AND v.review_id LIKE ?"
-            f"  AND v.estado='recusada' AND v.motivo IN ({_EM}))"
+            "SELECT f.created_at, v.motivo FROM flows f JOIN learning_validations v ON v.item_ref=?"
+            f" AND v.review_id LIKE ? AND v.estado='recusada' AND v.motivo IN ({_EM})"
+            " WHERE f.id=? AND f.status='active' AND f.source LIKE ?"
             " AND NOT EXISTS (SELECT 1 FROM learning_transitions t WHERE t.item_ref=? AND t.decided_at>=f.created_at"
-            f"  AND {_DE_PESSOA})",
-            (ref, f"{PREFIXO_DE_TREINO}%", trilha, f"{PREFIXO_DO_ENSINO}%", *_ESPERAM, trilha, *_NAO_PESSOAS))
-        return linhas.texto_ou_nulo(row, "created_at") if row is not None else None
+            f"  AND {_DE_PESSOA}) ORDER BY v.created_at DESC, v.id DESC LIMIT 1",
+            (trilha, f"{PREFIXO_DO_ENSINO}%", *_ESPERAM, ref, f"{PREFIXO_DE_TREINO}%", trilha, *_NAO_PESSOAS))
+        if row is None:
+            return None
+        return linhas.texto(row, "created_at"), linhas.texto(row, "motivo")
 
 
 def _exemplos(proposta: str | None) -> dict[str, str]:

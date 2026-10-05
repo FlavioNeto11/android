@@ -45,6 +45,7 @@ from app.modules.learning.infrastructure.fontes import FontesSql
 from app.modules.learning.infrastructure.segredo import TriagemDeCredencial
 from app.modules.learning.infrastructure.sql_repository import SqlLearningRepository
 from app.modules.learning.infrastructure.validacoes_sql import FontesDaValidacaoSql, RegistroDeValidacoesSql
+from app.modules.learning.presentation.livro import _entrada  # noqa: PLC2701 - a entrada como o Livro a devolve
 from app.social.capacidades import cobertura_do_fluxo
 from app.taskqueue.flows import FlowStore, ensinado_em_prova
 from app.taskqueue.recipes import RecipeStore
@@ -413,3 +414,20 @@ def test_confirmar_o_ensinado_que_ainda_esta_na_prova_automatica_e_recusado(mund
 def test_nenhum_evento_do_ensino_no_nascimento(mundo: Mundo) -> None:
     mundo.ensina()
     assert not [e for e in mundo.bus.eventos if e[0] in TIPOS_DO_ENSINO]
+
+
+def test_o_livro_diz_que_o_ensinado_espera_a_pessoa_e_por_que(mundo: Mundo) -> None:
+    def espera(fid: str) -> object:
+        return _entrada(mundo.servico.entrada(LivroKind.FLUXO, fid), mundo.servico)["espera_a_pessoa"]
+
+    na_prova = mundo.ensina()
+    mundo.volta()
+    assert espera(na_prova) is None                      # a prova automática ainda cobre: o botão não vale
+    mundo.risco = C
+    classe_c = mundo.ensina(sessao="trn-ensino-2", modelo="mostre o perfil de {username}")
+    mundo.volta()
+    assert espera(classe_c) == Motivo.CLASSE_C.value
+    mundo.servico.confirmar_que_fica(LivroKind.FLUXO, classe_c, by="painel:dono")
+    assert espera(classe_c) is None                      # decidido: acabou a espera
+    assert "espera_a_pessoa" not in _entrada(mundo.servico.entrada(LivroKind.RECEITA, str(mundo.receita_do_treino())),
+                                             mundo.servico)

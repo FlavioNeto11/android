@@ -267,6 +267,11 @@ class LeitorDoEnsinado(Protocol):
         (o nascimento). `None` em todo o resto. Lido ANTES da decisão ser gravada."""
         ...
 
+    def motivo_da_espera(self, kind: LivroKind, ref: str) -> str | None:
+        """30.81: o motivo literal do pedido recusado que passou o ensinado à pessoa (o Livro o mostra ao lado do
+        "Confirmar que fica"), nas mesmas condições de `espera_da_pessoa`."""
+        ...
+
 
 class CatalogoDeRisco(Protocol):
     """O que o catálogo de ações do app diz do risco, só em fatos (nada de texto de ação). Sem catálogo, `None`."""

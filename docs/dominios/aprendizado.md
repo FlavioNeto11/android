@@ -2054,6 +2054,8 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   - Desligar pelo Livro é `desligado`.
   - As duas publicam `learning.ensinado_decidido`, uma por nascimento: a espera é lida ANTES da linha da pessoa.
   - O ensinado que ainda está na prova automática não se confirma (409).
+  - O Livro diz quando o botão vale: `espera_a_pessoa` traz o motivo literal no fluxo que espera, e `null` no resto
+    (`presentation/livro.py::_da_espera`, para a Portal).
 - **Eventos**, combinados com a Canais às 15:31Z:
   - `learning.ensinado_espera_decisao`: `{kind, ref, app, treino, persona, desde}`;
   - `learning.ensinado_decidido`: `{kind, ref, desde, decisao, decidido_em}`.

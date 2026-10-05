@@ -66,6 +66,13 @@ class AvisadorDoEnsinado:
             log.exception("aprendizado: espera do ensinado %s", e.ref)
             return None
 
+    def motivo_da_espera(self, e: EntradaDoLivro) -> str | None:
+        """O motivo do ensinado que espera a pessoa, para o Livro; só lê no fluxo ensinado ativo."""
+        if (self._leitor is None or e.kind is not LivroKind.FLUXO or e.origin is not Origem.TREINO
+                or e.native_status != "active"):
+            return None
+        return self._leitor.motivo_da_espera(e.kind, e.ref)
+
     def decidiu_sem_falhar(self, e: EntradaDoLivro, desde: str, decisao: str) -> None:
         """Publica `learning.ensinado_decidido` depois da linha da pessoa na trilha; a decisão não cai pelo aviso."""
         if self._porta is None or self._leitor is None:

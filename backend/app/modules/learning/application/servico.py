@@ -710,6 +710,11 @@ class LearningService:
             self._ensinado.decidiu_sem_falhar(e, espera, decisao_da_pessoa(SkillState.PUBLISHED, confirmou=True))
         return self.entrada(kind, ref)
 
+    def espera_a_pessoa(self, e: EntradaDoLivro) -> str | None:
+        """30.81: o motivo literal (`classe_c`, `tentativas_esgotadas`, `efeito_real`...) quando o fluxo ensinado espera
+        a decisão de uma pessoa e o "Confirmar que fica" vale para ele; `None` em todo o resto."""
+        return self._ensinado.motivo_da_espera(e)
+
     def avisar_espera_do_ensinado(self, aviso: EsperaDoEnsinado) -> None:
         """30.81: `learning.ensinado_espera_decisao`, pela volta da validação, logo depois de gravar o pedido recusado
         que marca a espera. PROPAGA a falha da porta."""
