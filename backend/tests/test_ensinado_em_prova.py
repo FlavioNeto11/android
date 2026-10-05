@@ -156,7 +156,7 @@ class Mundo:
         return ensinado_em_prova(self.db, dict(row))
 
     # ---------------------------------------------------------------- a prova
-    def execucao_de_prova(self, fid: str, run_id: str) -> None:
+    def execucao_de_prova(self, fid: str | None, run_id: str) -> None:
         self.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids,"
                         " created_at, prova_fluxo_id) VALUES (?,?,?,?,?,?,?,?,?)",
                         (run_id, f"k-{run_id}", _comando("@bia"), "execute", "completed", 0,
@@ -501,3 +501,13 @@ def test_desligar_o_fluxo_sem_prova_nao_libera_as_receitas_dele(mundo: Mundo) ->
     mundo.receita_do_treino()
     mundo.servico.mudar_estado(LivroKind.FLUXO, fid, SkillState.DISABLED, by="painel:dono", reason="não serve")
     assert not _acha(mundo, BIA) and _acha(mundo, ANA)   # N2 da Reload
+
+
+def test_apagar_o_fluxo_nao_libera_as_receitas_dele(mundo: Mundo) -> None:
+    fid = mundo.ensina()
+    rid = mundo.receita_do_treino()
+    mundo.db.execute("DELETE FROM flows WHERE id=?", (fid,))      # N4 da Reload: o DELETE /api/flows/{id}
+    assert not _acha(mundo, BIA) and not _acha(mundo, None) and _acha(mundo, ANA)
+    mundo.execucao_de_prova(None, "r-ana")
+    _evidencia_da_receita(mundo, rid, "r-ana", stance="for")
+    assert _acha(mundo, BIA)                             # a evidência a favor dela numa execução real libera

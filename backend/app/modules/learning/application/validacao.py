@@ -422,7 +422,7 @@ class ServicoDeValidacao:
             expira_em=to_iso(agora + timedelta(hours=VALIDADE_DO_PEDIDO_H)), teto_usd=aj.teto_por_pedido_usd), agora)
         if pid is None:                                  # outro pedido vivo do item chegou antes
             return
-        log.info("aprendizado: prova do ensinado %s: pedido %s (%s%s)", e.trail_ref, pid, estado.value,
+        log.info("aprendizado: prova do ensinado: pedido %s (%s%s)", pid, estado.value,      # sem o id do fluxo (28.50)
                  f", {motivo.value}" if motivo is not None else "")
         if estado is EstadoDoPedido.RECUSADA:
             self._ensino.espera_decisao(EsperaDoEnsinado(kind=e.kind.value, ref=e.ref, app=e.app or x.app,

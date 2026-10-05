@@ -41,7 +41,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `FlowStore.ativo_para`, sem o ensinado em espera. A receita só é liberada pelo "Confirmar que fica" ou por ter rodado
   na prova real do fluxo com a etapa comprovada; a execução de prova do fluxo acha as receitas da sessão
   (`RecipeStore.find(prova_fluxo=)`, `RecipeStore._restrita_ao_ensino`, `Executor` no `find`); o fluxo desligado por
-  uma pessoa não as solta. O aviso do 30.80 B sai pelo caminho de sempre. A falha de
+  uma pessoa não as solta, nem o fluxo apagado (N4: sem fluxo, falha fechada pela persona da sessão).
+- O id do fluxo não vai ao `backend.log` nos logs novos do 30.81 (`_no_log`; o pedido de prova do ensinado loga só o
+  número do pedido). O aviso do 30.80 B sai pelo caminho de sempre. A falha de
   infraestrutura, a prova simulada e a divergência de forma não rebaixam.
 - "Confirmar que fica" (`POST /api/aprendizado/fluxo/{id}/confirmar`) passa a valer também para o ensinado que espera a
   pessoa. Ele e desligar pelo Livro publicam `learning.ensinado_decidido` (`liberado`, `desligado` ou `outro`), um por

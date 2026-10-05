@@ -798,25 +798,29 @@ class RecipeStore:
         explícito de uma pessoa no fluxo da sessão, ou uma evidência a favor DELA (etapa conduzida só pela receita e
         comprovada) numa execução real de prova desse fluxo (N1 da Reload, decisão da orquestradora: a prova só libera o
         que exercitou). A execução de prova do próprio fluxo a acha (`prova_fluxo`). O fluxo desligado sem isso não
-        solta as receitas (N2). Uma consulta, só na receita do treino."""
+        solta as receitas (N2). Sem o fluxo (apagado pela rota), falha fechada (N4): segue só para a persona da sessão,
+        e só a evidência a favor dela numa execução real a libera. Uma consulta, só na receita do treino."""
         origem = str(row["learned_from_step"] or "")
         if not origem.startswith(PREFIXO_DO_TREINO):
             return False
         fluxo = self.db.one("SELECT id, created_at FROM flows WHERE source=? ORDER BY created_at DESC, id DESC LIMIT 1",
                             (origem,))
-        if fluxo is None or (prova_fluxo is not None and prova_fluxo == fluxo["id"]):
+        if fluxo is not None and prova_fluxo is not None and prova_fluxo == fluxo["id"]:
             return False
-        ref_do_fluxo, ref_da_receita = f"fluxo:{fluxo['id']}", f"receita:{row['id']}"
-        r = self.db.one(
-            "SELECT (SELECT profile_id FROM training_sessions WHERE id=?) AS persona,"
-            " EXISTS (SELECT 1 FROM learning_transitions t WHERE t.item_ref=? AND t.decided_at>=? AND t.reason LIKE ?"
-            "  AND t.decided_by NOT IN (?,?) AND t.decided_by NOT LIKE ?) AS confirmado,"
-            " EXISTS (SELECT 1 FROM learning_evidence e JOIN runs ru ON ru.id = e.run_id WHERE e.item_ref=?"
-            "  AND e.stance='for' AND e.simulated=0 AND ru.prova_fluxo_id=? AND NOT EXISTS (SELECT 1 FROM"
-            "  learning_evidence i WHERE i.item_ref = e.item_ref AND i.origin_ref = e.origin_ref"
-            "  AND i.stance='invalida')) AS provada",
-            (origem[len(PREFIXO_DO_TREINO):], ref_do_fluxo, fluxo["created_at"], f"{CONFIRMADO_QUE_FICA}%", SISTEMA,
-             PLATAFORMA, f"{PREFIXO_DO_TREINO}%", ref_da_receita, fluxo["id"]))
+        provada = ("EXISTS (SELECT 1 FROM learning_evidence e JOIN runs ru ON ru.id = e.run_id WHERE e.item_ref=?"
+                   " AND e.stance='for' AND e.simulated=0" + (" AND ru.prova_fluxo_id=?" if fluxo is not None else "")
+                   + " AND NOT EXISTS (SELECT 1 FROM learning_evidence i WHERE i.item_ref = e.item_ref"
+                   " AND i.origin_ref = e.origin_ref AND i.stance='invalida')) AS provada")
+        if fluxo is None:
+            r = self.db.one("SELECT (SELECT profile_id FROM training_sessions WHERE id=?) AS persona, 0 AS confirmado, "
+                            + provada, (origem[len(PREFIXO_DO_TREINO):], f"receita:{row['id']}"))
+        else:
+            r = self.db.one(
+                "SELECT (SELECT profile_id FROM training_sessions WHERE id=?) AS persona,"
+                " EXISTS (SELECT 1 FROM learning_transitions t WHERE t.item_ref=? AND t.decided_at>=? AND t.reason LIKE ?"
+                "  AND t.decided_by NOT IN (?,?) AND t.decided_by NOT LIKE ?) AS confirmado, " + provada,
+                (origem[len(PREFIXO_DO_TREINO):], f"fluxo:{fluxo['id']}", fluxo["created_at"], f"{CONFIRMADO_QUE_FICA}%",
+                 SISTEMA, PLATAFORMA, f"{PREFIXO_DO_TREINO}%", f"receita:{row['id']}", fluxo["id"]))
         if r is None or bool(r["confirmado"]) or bool(r["provada"]):
             return False
         return r["persona"] is None or persona != r["persona"]

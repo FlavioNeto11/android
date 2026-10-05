@@ -2037,7 +2037,8 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   `invalida`) numa execução real de prova desse fluxo. A prova aprovada do fluxo sozinha não basta: a receita que não
   rodou na prova segue só para quem ensinou. A execução de prova do próprio fluxo (`prova_fluxo_id`, passado pelo
   executor como `prova_fluxo=`) acha as receitas da sessão, para provar o que vai liberar. O fluxo desligado por uma
-  pessoa não solta as receitas dele.
+  pessoa não solta as receitas dele. O fluxo APAGADO (`DELETE /api/flows/{id}`) também não (N4 da Reload): sem
+  fluxo, a receita segue só para a persona da sessão, e só a evidência a favor dela numa execução real a libera.
 - **Para a validação** (achado 4), o fluxo ativo do comando é `FlowStore.ativo_para`: o `match` sem aparelhos, sem o
   ensinado em espera (`state.py`, `fluxo_ativo_para` e `plano_ativo_para`).
 - **Quem abre a prova:** a volta da validação, e não o ouvinte do nascimento. O `save` grava a proposta final (com os
