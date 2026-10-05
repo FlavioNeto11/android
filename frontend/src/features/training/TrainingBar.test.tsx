@@ -31,6 +31,7 @@ beforeEach(() => {
   backend.install();
   backend.on('GET', /\/training$/, () => json([GRAVANDO]));
   backend.on('GET', /\/training\/trn-9$/, () => json(GRAVANDO));
+  backend.on('POST', /\/training\/trn-9\/stop$/, () => json({ ...GRAVANDO, status: 'recorded' }));
   backend.on('POST', /\/training\/trn-9\/discard$/, () => json({ ...GRAVANDO, status: 'discarded' }));
   container = document.createElement('div');
   document.body.append(container);
@@ -94,4 +95,48 @@ it('contador de entradas recusadas: aparece só enquanto grava e some quando a g
   await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine={false} />));
   await waitFor(() => expect(useTrainingStore.getState().recusadas['android-01']).toBeUndefined());
   expect(text()).not.toContain('recusada(s)');
+});
+
+// 31.80 + A1: a gravação órfã (ninguém com o controle) se distingue da viva de quem tem o controle em outra aba.
+it('órfã: com o controle em "none" também avisa e oferece Concluir e Descartar', async () => {
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('não está mais gravando'));
+  expect(allByRole('button', /^Concluir e revisar$/)).toHaveLength(1);
+});
+
+it('gravação viva de quem tem o controle em outra aba: aviso certo, sem Concluir nem Descartar', async () => {
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Há uma gravação em andamento neste aparelho por quem está com o controle.'));
+  expect(text()).not.toContain('não está mais gravando');
+  expect(text()).not.toContain('Gravando:');
+  expect(allByRole('button', /^Concluir e revisar$/)).toHaveLength(0);
+  expect(allByRole('button', /^Descartar$/)).toHaveLength(0);
+});
+
+it('Concluir e Descartar mandam o lease_id que a aba tem; sem lease, o corpo não vai', async () => {
+  await act(async () => root.render(<><TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine /><ConfirmHost /></>));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  await click(byRole('button', /^Concluir e revisar$/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/training\/trn-9\/stop$/)).toHaveLength(1));
+  expect(backend.callsTo('POST', /\/stop$/)[0]!.body).toEqual({ lease_id: 'lease-1' });
+
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await act(async () => root.render(<><TrainingBar instance={makeInstance(1, { state: 'online', control: 'ai' })} leaseId={null} mine={false} /><ConfirmHost /></>));
+  await waitFor(() => expect(text()).toContain('não está mais gravando'));
+  await click(byRole('button', /^Descartar$/));
+  await click(byRole('button', /^Descartar gravação$/, byRole('dialog', /Descartar a gravação/)));
+  await waitFor(() => expect(backend.callsTo('POST', /\/training\/trn-9\/discard$/)).toHaveLength(1));
+  expect(backend.callsTo('POST', /\/discard$/)[0]!.body).toBeUndefined();
+});
+
+it('A6: a região viva do contador nasce vazia com a gravação e o texto entra depois, no mesmo nó', async () => {
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  const viva = document.querySelector('section[aria-label="Modo treinamento"] [aria-live="polite"]') as HTMLElement;
+  expect(viva).toBeTruthy();
+  expect(viva.textContent).toBe('');
+  await act(async () => { useTrainingStore.getState().registrarRecusa('android-01'); });
+  expect(viva.isConnected).toBe(true);
+  expect(viva.textContent).toBe('1 entrada(s) recusada(s): refaça');
 });

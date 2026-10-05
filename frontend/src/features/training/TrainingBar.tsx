@@ -94,7 +94,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
     }
     setOcupado(descartar ? 'descartar' : 'concluir');
     try {
-      const s = descartar ? await api.discardTraining(ativa.id) : await api.stopTraining(ativa.id);
+      const s = descartar ? await api.discardTraining(ativa.id, leaseId) : await api.stopTraining(ativa.id, leaseId);
       setAtiva(null);
       setIntencao('');
       await carregar();
@@ -120,9 +120,13 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   return (
     <section className={styles.bar} aria-label="Modo treinamento">
       <h3 className={styles.title}><GraduationCap size={15} aria-hidden /> Modo treinamento</h3>
-      {ativa && !mine ? (
-        // 31.80: sessão `recording` sem o controle na mão é gravação órfã (ex.: o servidor reiniciou); nada mais é
-        // gravado, então a barra não diz "Gravando".
+      {ativa && !mine && instance.control === 'user' ? (
+        // Gravação viva de quem tem o controle em outra aba (ou depois de um F5: o lease vive só em memória) ou de
+        // outra pessoa: quem só olha não encerra nem descarta a gravação alheia.
+        <p className={styles.hint} role="status">Há uma gravação em andamento neste aparelho por quem está com o controle.</p>
+      ) : ativa && !mine ? (
+        // 31.80: sessão `recording` sem NINGUÉM com o controle é gravação órfã (ex.: o servidor reiniciou); nada mais
+        // é gravado, então a barra não diz "Gravando".
         <div className={styles.recording}>
           <p className={styles.hint} role="status">Há uma gravação aberta neste aparelho que não está mais gravando: <strong>{ativa.intent}</strong>.</p>
           {botoesDaGravacao()}
@@ -144,9 +148,8 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
               </li>
             ))}
           </ol>
-          {recusadas ? (
-            <p className={styles.hint} role="status">{recusadas} entrada(s) recusada(s): refaça</p>
-          ) : null}
+          {/* A região viva nasce vazia com a gravação: o texto que entra depois é anunciado, o que já nasce com ele não. */}
+          <p className={styles.hint} role="status" aria-live="polite">{recusadas ? `${recusadas} entrada(s) recusada(s): refaça` : ''}</p>
           <p className={styles.hint}>Para trocar um texto, marque Limpar o campo antes em vez de apertar Apagar.</p>
           {botoesDaGravacao()}
         </div>

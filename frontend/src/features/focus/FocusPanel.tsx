@@ -140,6 +140,9 @@ export function FocusPanel({ instanceId }: { instanceId: string }) {
             hint: 'O controle pode ter expirado ou voltado para a IA. Clique em “Assumir controle” para continuar.',
             key: `ctl-${instanceId}`,
           });
+        } else if (err.code === 'bad_input' && payload.clear_first) {
+          // Não desmarca sozinho: a pessoa decide se manda o texto sem limpar o campo.
+          toastError('A ação manual não foi aceita', err, { hint: 'Desmarque Limpar o campo antes e envie de novo.' });
         } else {
           toastError('A ação manual não foi aceita', err);
         }

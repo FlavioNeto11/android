@@ -7,6 +7,7 @@ import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { useControlStore } from '../../store/control';
 import { initialDataState } from '../../store/reducer';
+import { useToastStore } from '../../store/toasts';
 import { useTrainingStore } from '../training/trainingStore';
 import { useUiStore } from '../../store/ui';
 import { APPS, makeBinding, makeInstance, makePersona, makeSnapshot } from '../../test/fixtures';
@@ -641,7 +642,7 @@ describe('FocusPanel — painel do Modo treinamento (31.80, 31.84, 31.85, 31.86)
     await setValue(caixa(el), 'de novo');
     await click(byRole('button', /^Enviar$/, el));
     await waitFor(() => expect(backend.callsTo('POST', /\/input$/)).toHaveLength(2));
-    expect(backend.callsTo('POST', /\/input$/)[1]!.body).not.toHaveProperty('clear_first', true);
+    expect(backend.callsTo('POST', /\/input$/)[1]!.body).not.toHaveProperty('clear_first');
   });
 
   it('31.84: fora da gravação a opção começa desmarcada e o texto não pede limpeza', async () => {
@@ -652,7 +653,7 @@ describe('FocusPanel — painel do Modo treinamento (31.80, 31.84, 31.85, 31.86)
     await setValue(caixa(el), 'oi');
     await click(byRole('button', /^Enviar$/, el));
     await waitFor(() => expect(backend.callsTo('POST', /\/input$/)).toHaveLength(1));
-    expect(backend.callsTo('POST', /\/input$/)[0]!.body).not.toHaveProperty('clear_first', true);
+    expect(backend.callsTo('POST', /\/input$/)[0]!.body).not.toHaveProperty('clear_first');
   });
 
   it('31.85: 409 stale_frame durante a gravação vira "N entrada(s) recusada(s): refaça" na barra', async () => {
@@ -689,6 +690,36 @@ describe('FocusPanel — painel do Modo treinamento (31.80, 31.84, 31.85, 31.86)
     expect(text(el)).toContain('Aparelho fora do ar: dá para revisar e salvar o fluxo');
     expect(allByRole('button', /Iniciar treinamento/, el)).toHaveLength(0);
     expect(byRole('button', /Responder a DM/, el)).toBeTruthy();
+  });
+
+  it('A4: a escolha de "Limpar o campo antes" não atravessa gravações: ao começar ou terminar uma, volta ao padrão', async () => {
+    const el = await renderFocus(aparelho());
+    await aguardarQuadro(el);
+    expect(marcaLimpar(el).checked).toBe(false);
+    await click(marcaLimpar(el));
+    expect(marcaLimpar(el).checked).toBe(true);
+    await act(async () => useTrainingStore.getState().definirGravando('android-01', true));
+    expect(marcaLimpar(el).checked).toBe(true);
+    await click(marcaLimpar(el));
+    expect(marcaLimpar(el).checked).toBe(false);
+    await act(async () => useTrainingStore.getState().definirGravando('android-01', false));
+    expect(marcaLimpar(el).checked).toBe(false);
+    await act(async () => useTrainingStore.getState().definirGravando('android-01', true));
+    expect(marcaLimpar(el).checked).toBe(true);
+  });
+
+  it('A5: 400 bad_input de um envio com clear_first ganha a dica de desmarcar, sem desmarcar sozinho', async () => {
+    useToastStore.setState({ toasts: [] });
+    comGravacao();
+    backend.on('POST', /\/input$/, () => apiError(400, 'bad_input', 'Campo não aceita limpeza.'));
+    const el = await renderFocus(aparelho());
+    await aguardarQuadro(el);
+    await waitFor(() => expect(marcaLimpar(el).checked).toBe(true));
+    await setValue(caixa(el), 'oi');
+    await click(byRole('button', /^Enviar$/, el));
+    await waitFor(() => expect(useToastStore.getState().toasts.length).toBeGreaterThan(0));
+    expect(useToastStore.getState().toasts.some((t) => t.hint === 'Desmarque Limpar o campo antes e envie de novo.')).toBe(true);
+    expect(marcaLimpar(el).checked).toBe(true);
   });
 
   it('31.86: a loja continua sem o Modo treinamento, mesmo fora do ar', async () => {

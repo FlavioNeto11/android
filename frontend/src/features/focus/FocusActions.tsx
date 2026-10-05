@@ -9,7 +9,7 @@ import {
   CircleSlash, CornerDownLeft, Delete, HelpCircle, ListTree, PackageCheck, RefreshCw, ScanSearch, Send, Store,
   TriangleAlert, type LucideIcon,
 } from 'lucide-react';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { Command, Instance, InstanceAction } from '../../api/types';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
@@ -77,6 +77,8 @@ export function FocusActions({
   // null = a pessoa não mexeu: vale o padrão (marcada só enquanto grava). Depois de mexer, vale a escolha dela.
   const [limparEscolha, setLimparEscolha] = useState<boolean | null>(null);
   const limpar = limparEscolha ?? gravando;
+  // A escolha vale para esta gravação: ao começar ou terminar uma, volta ao padrão.
+  useEffect(() => setLimparEscolha(null), [gravando]);
   const { id } = instance;
   const loja = instance.kind === 'store';
 

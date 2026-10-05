@@ -30,7 +30,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - 31.86: aparelho fora do ar (e que não é a loja) mostra a barra em "só revisão": "Para revisar" e a revisão
   funcionam, sem o formulário de iniciar.
 - Estado compartilhado em `frontend/src/features/training/trainingStore.ts` (só memória).
-- Prova `simulated`: `FocusPanel.test.tsx` (6 novos, 35 passed) e `TrainingBar.test.tsx` (3 novos, 4 passed); cada
+- Correção da revisão do PR #428: o aviso de "não está mais gravando" e os botões só valem sem ninguém no controle
+  (`control !== 'user'`); com outra pessoa ou aba no controle o aviso é "gravação em andamento por quem está com o
+  controle", sem Concluir nem Descartar. `stop`/`discard` mandam o `lease_id` da aba quando há (as rotas de hoje não
+  declaram corpo, então o campo é ignorado; o 31.92 passa a exigi-lo). "Limpar o campo antes" volta ao padrão a cada
+  gravação; `bad_input` com `clear_first` ganha a dica de desmarcar; a região viva do contador nasce vazia.
+- Prova `simulated`: `FocusPanel.test.tsx` (8 novos, 37 passed) e `TrainingBar.test.tsx` (7 novos, 8 passed) e `trainingStore.test.ts` (1); cada
   teste novo falha sem a mudança (mutação conferida). `npm run typecheck` limpo. Real: `not_run` (depende do backend
   em paralelo, `clear_first`, e da implantação).
 
