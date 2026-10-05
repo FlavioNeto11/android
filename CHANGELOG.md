@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.78: a leitura julgada não gira mais relendo o mesmo valor até o teto (branch fix/31-78-leitura-sem-saida)
+
+- Achado real, 05/10: na prévia do 29.30 (`r-20261005074912-701173`), a `READ_POSTS_COUNT` leu o "0" da contagem 12
+  vezes, sem nenhum toque, e nunca chamou `step_done`. O teto de 12 decisões da leitura (31.38) a encerrou com
+  "procurei 'posts_antes' … e não encontrei", e veio o replano v2. A orquestradora cancelou a execução (US$ 0,249061 por
+  `costs.spent_usd`). É a única tentativa do banco com 3 ou mais releituras do mesmo nome. O "0" nunca foi descartado.
+  Por que o modelo relia não é provável pelo banco: `ai_calls` não guarda a resposta.
+- `taskqueue/executor.py`:
+  - releitura do mesmo nome com o MESMO valor e nada faltando:
+    - na 1ª, uma linha `(executor)` diz que é hora do `step_done`, sem o valor;
+    - na 2ª, a etapa vai à verificação, que julga a pós-condição como depois de um `step_done`.
+    - Valor diferente zera a conta: a tela pode ter mudado.
+  - O teto de decisões da leitura com tudo lido vai à verificação. Com algo faltando, segue `dado_ausente`.
+  - A linha do histórico do ator diz `lido e entregue: "<valor>"`. A hipótese de "lido: 0" soar como "nada lido" não
+    está provada.
+- Prova `simulated`: `test_releitura_do_mesmo_valor.py`, com 4 testes:
+  - "0" e "7" fecham em 3 decisões;
+  - valor diferente vai ao teto e à verificação;
+  - outra saída faltando segue em `dado_ausente`.
+  - Cada uma das 4 regras, revertida, reprova um teste.
+- Prova real `not_run`: é a nova prévia do 29.30, com o perfil ainda em 0 publicações.
+
 ## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)
 
 - Pedido do dono pelo Telegram (entrada 1790, 05/10 09:39:19Z): "o que significa ana? precisa colocar isso no portal
