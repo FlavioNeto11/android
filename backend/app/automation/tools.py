@@ -299,8 +299,11 @@ def validate_call(name: str, raw_args: Any) -> _Args:
     try:
         return model.model_validate(raw_args)
     except ValidationError as exc:
-        errs = "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors()[:4])
-        raise ToolValidationError(f"Argumentos inválidos para {name}: {errs}") from exc
+        errs = "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}"
+                         for e in exc.errors(include_input=False, include_url=False, include_context=False)[:4])
+    # 31.67 (V4 da revisão do 31.63): levantado FORA do `except`. A `ValidationError` em `__cause__`/`__context__` traz
+    # os ARGUMENTOS que o ator escolheu (o texto a digitar, por exemplo) como `input_value`.
+    raise ToolValidationError(f"Argumentos inválidos para {name}: {errs}")
 
 
 def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
