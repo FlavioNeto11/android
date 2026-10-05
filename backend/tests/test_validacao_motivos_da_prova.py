@@ -105,6 +105,51 @@ def test_a_causa_vem_dos_campos_e_nao_do_texto(tmp_path: Path) -> None:
     db.close()
 
 
+def _execucao(db: Database, run_id: str, *, prova: bool) -> None:
+    db.execute("INSERT INTO flows(id, name, match_key, command_template, plan, app_id, status, created_at)"
+               " VALUES ('f-x','f-x','k-f-x','cmd','{}',NULL,'candidate',?) ON CONFLICT DO NOTHING",
+               (to_iso(datetime.now(UTC)),))
+    db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at,"
+               " prova_fluxo_id) VALUES (?,?,'cmd','execute','cancelled',0,'[\"android-02\"]',?,?)",
+               (run_id, f"k-{run_id}", to_iso(datetime.now(UTC)), "f-x" if prova else None))
+
+
+def _tentativa(db: Database, run_id: str, n: int, *, erro: str | None, em: str) -> None:
+    sid = f"{run_id}:s{n}"
+    db.execute("INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
+               " postcondition, timeout_s, max_attempts, status) VALUES (?,?,?,?,1,?,?,'t','g','{}',60,3,'failed')",
+               (sid, run_id, f"{run_id}:o1", "android-02", n, f"e{n}"))
+    db.execute("INSERT INTO attempts(id, step_id, number, status, started_at, error_kind) VALUES (?,?,1,?,?,?)",
+               (f"{sid}:a1", sid, "failed" if erro else "interrupted", em, erro))
+
+
+def test_execucao_comum_nao_ganha_causa_de_prova(tmp_path: Path) -> None:
+    """C1 da leitura do #419: o estoque `sem_evidencia` de antes do 30.37 vem de execução COMUM. Um teto nela não é
+    "o teto da prova", e o pedido segue `sem_evidencia` (o caminho da reabertura do 30.37)."""
+    db = banco_migrado(tmp_path, "comum.sqlite3")
+    _execucao(db, "r-comum", prova=False)
+    _parada(db, "r-comum", orcamento=True, login=True)
+    assert _fontes(db).causa_sem_evidencia("r-comum") is None
+    db.close()
+
+
+@pytest.mark.parametrize(("ultima", "motivo"), [
+    (None, Motivo.APP_SEM_SESSAO),               # um teto que a execução sobreviveu, depois o login que a parou
+    ("budget", Motivo.ORCAMENTO_DA_PROVA),       # o teto encerrou a execução: vence o login
+])
+def test_o_teto_so_conta_quando_encerrou_a_prova(tmp_path: Path, ultima: str | None, motivo: Motivo) -> None:
+    """C2 da leitura do #419: `error_kind='budget'` é de todo teto de IA (o da leitura do 31.38, o de uma ação, o do
+    dia). Só o da ÚLTIMA tentativa da execução é a causa."""
+    db = banco_migrado(tmp_path, "teto.sqlite3")
+    _execucao(db, "r-p", prova=True)
+    db.execute("INSERT INTO objectives(id, run_id, instance_id, status, plan_version, blocked_kind, finished_at)"
+               " VALUES ('r-p:o1','r-p','android-02','cancelled',1,'auth',?)", (to_iso(datetime.now(UTC)),))
+    _tentativa(db, "r-p", 1, erro="budget", em="2026-10-05T07:36:00.000Z")
+    _tentativa(db, "r-p", 2, erro=ultima, em="2026-10-05T07:36:30.000Z")
+    assert _fontes(db).causa_sem_evidencia("r-p") is motivo
+    db.close()
+
+
 class _Parque:
     def candidatos_de(self, ids: Sequence[str]) -> list[Candidato]:
         return [Candidato(instance_id=i, servidor="central", ligado=True, acordavel=False, ocupado=False) for i in ids]

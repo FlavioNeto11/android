@@ -427,10 +427,17 @@ class FontesDaValidacaoSql:
         return r is not None and eh_ensaio_de_leitura(linhas.texto_ou_nulo(r, "idempotency_key"))
 
     def causa_sem_evidencia(self, run_id: str) -> Motivo | None:
-        """30.75: pelos campos estruturados, nunca pelo texto. O teto vence o login: o corte pelo orçamento é o que
-        gastou sem deixar evidência; a parada no login não gasta."""
-        if self._db.one("SELECT 1 FROM attempts a JOIN steps s ON s.id = a.step_id WHERE s.run_id=?"
-                        " AND a.error_kind='budget' LIMIT 1", (run_id,)) is not None:
+        """30.75: pelos campos estruturados, nunca pelo texto, e só numa execução de PROVA (`prova_fluxo_id`): o
+        estoque `sem_evidencia` de antes do 30.37 vem de execução comum, que segue no caminho da reabertura (C1 da
+        leitura do #419).
+
+        O teto conta só quando ENCERROU a execução: a última tentativa dela terminou `budget`. Um teto que a execução
+        sobreviveu (o da leitura do 31.38, o de uma ação) não é a causa (C2). Sem ele, a parada no login."""
+        if self._db.one("SELECT 1 FROM runs WHERE id=? AND prova_fluxo_id IS NOT NULL", (run_id,)) is None:
+            return None
+        ultima = self._db.one("SELECT a.error_kind FROM attempts a JOIN steps s ON s.id = a.step_id WHERE s.run_id=?"
+                              " ORDER BY COALESCE(a.started_at, '') DESC, a.id DESC LIMIT 1", (run_id,))
+        if ultima is not None and linhas.texto_ou_nulo(ultima, "error_kind") == "budget":
             return Motivo.ORCAMENTO_DA_PROVA
         if self._db.one("SELECT 1 FROM objectives WHERE run_id=? AND blocked_kind='auth' LIMIT 1",
                         (run_id,)) is not None:

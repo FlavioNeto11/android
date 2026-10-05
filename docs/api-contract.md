@@ -6356,11 +6356,13 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
 
 Valores aditivos de `motivo` nos pedidos de validação (`GET /api/aprendizado/validacoes`, `itens[].motivo`, e
 `contagem` por estado sem mudança):
-- `orcamento_da_prova`: a execução da prova foi cortada pelo teto do pedido (`teto_usd`) no meio. O gasto (`usd`) não
-  deixou evidência no fluxo.
+- `orcamento_da_prova`: um teto de IA (o do pedido, `teto_usd`, ou o do dia) encerrou a execução da prova no meio: a
+  última tentativa dela terminou pelo teto. O gasto (`usd`) não deixou evidência no fluxo.
 - `app_sem_sessao`: o app pediu login no aparelho escolhido, e a prova parou ali. O aparelho sai dos candidatos das
-  próximas provas daquele app até a verificação nova dele (a do app no aparelho, ou um objetivo concluído num fluxo do
-  mesmo app nele).
+  próximas provas daquele app até a próxima verificação do app nele (que confere a instalação, não a sessão: a de
+  rotina, ao ligar com mais de 24 h, também solta) ou até um objetivo concluído num fluxo do mesmo app nele.
+- Os dois valem só para execução de PROVA (`prova_fluxo_id`). O estoque `sem_evidencia` de execução comum (antes do
+  30.37) segue `sem_evidencia`.
 - Os dois saem do mesmo lugar que `sem_evidencia`: o pedido de fluxo que fecha sem evidência a favor nem contra.
   - O pedido já fechado `sem_evidencia` pode passar a um deles, uma vez, pelo passo da curadoria.
   - Nenhum dos dois é chegada do curador.

@@ -114,7 +114,7 @@ class Motivo(StrEnum):
     #: 30.75: duas causas de "sem evidência" que a execução de prova registra de forma estruturada. Nenhuma diz nada
     #: sobre o item (não é chegada do curador, não é contra, não se reabre sozinha): só deixam a medida dizer o que
     #: travou e quanto custou.
-    ORCAMENTO_DA_PROVA = "orcamento_da_prova"         # o teto do pedido cortou a execução no meio (`error_kind=budget`)
+    ORCAMENTO_DA_PROVA = "orcamento_da_prova"         # um teto de IA encerrou a prova (última tentativa `budget`)
     APP_SEM_SESSAO = "app_sem_sessao"                 # o app pediu login no aparelho (`objectives.blocked_kind=auth`)
     EVIDENCIA_CONTRA = "evidencia_contra"             # 30.36: deixou evidência CONTRA (o curador volta ao item)
     DIVERGENCIA_DE_FORMA = "divergencia_de_forma"     # 30.36: fez o caminho e só reescreveu a forma (nem a favor)
@@ -158,9 +158,11 @@ MOTIVO_HUMANO: Mapping[Motivo, str] = {
     Motivo.ORCAMENTO: "O orçamento de validação desta janela acabou.",
     Motivo.RITMO: "Já rodou o máximo de validações desta hora.",
     Motivo.SEM_EVIDENCIA: "A execução terminou sem deixar evidência no item.",
-    Motivo.ORCAMENTO_DA_PROVA: "O teto da prova cortou a execução no meio; o gasto não deixou evidência.",
+    Motivo.ORCAMENTO_DA_PROVA: ("Um teto de IA (o do pedido ou o do dia) encerrou a prova no meio; o gasto não deixou "
+                                "evidência."),
     Motivo.APP_SEM_SESSAO: ("O app pediu login no aparelho escolhido; a prova parou ali. O aparelho sai das próximas "
-                            "provas deste app até uma verificação nova."),
+                            "provas deste app até a próxima verificação do app nele (que confere a instalação, não a "
+                            "sessão) ou até um fluxo do mesmo app concluído nele."),
     Motivo.EVIDENCIA_CONTRA: "A execução deixou evidência contra o item; o curador volta a ele.",
     Motivo.DIVERGENCIA_DE_FORMA: "A execução fez o caminho, mas só reescreveu a forma; não conta a favor.",
     Motivo.EXECUCAO_FALHOU: "A execução de validação falhou.",

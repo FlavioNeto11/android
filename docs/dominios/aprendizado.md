@@ -2002,10 +2002,13 @@ Os três primeiros diziam só "sem evidência", e a medida não sabia o que trav
 
 - **Motivos novos do pedido** (`domain/validacao.Motivo`), escolhidos pelos campos estruturados, nunca pelo texto
   (`FontesDaValidacaoSql.causa_sem_evidencia`):
-  - `orcamento_da_prova`: alguma tentativa da execução terminou com `attempts.error_kind='budget'`. O teto vence o
-    login, porque é o que gastou;
+  - `orcamento_da_prova`: a ÚLTIMA tentativa da execução terminou com `attempts.error_kind='budget'`: um teto de IA
+    a encerrou. `budget` é o tipo de todo teto (o do pedido, o do dia, o de chamadas, o de uma ação); um teto que a
+    execução sobreviveu (o da leitura do 31.38) não é a causa. Quando o teto encerrou, ele vence o login;
   - `app_sem_sessao`: algum objetivo da execução tem `objectives.blocked_kind='auth'`;
-  - sem nenhum dos dois, `sem_evidencia`, como antes.
+  - sem nenhum dos dois, `sem_evidencia`, como antes;
+  - só em execução de PROVA (`runs.prova_fluxo_id`). O estoque `sem_evidencia` de execução comum (antes do 30.37)
+    segue `sem_evidencia` e no caminho da reabertura (C1 da leitura do #419).
 - **Onde valem:** no fechamento do pedido de FLUXO (`ServicoDeValidacao.minerar`) e no passo da curadoria que remotiva
   o estoque `sem_evidencia` (`executar`, só a partir de `sem_evidencia`).
   - Nenhum dos dois é chegada do curador nem se reabre: não dizem nada sobre o fluxo.
@@ -2019,6 +2022,11 @@ Os três primeiros diziam só "sem evidência", e a medida não sabia o que trav
   - um objetivo `succeeded` num fluxo do mesmo app (`runs.flow_id` ou `prova_fluxo_id`), no mesmo aparelho, terminou
     depois da parada. A execução comum que entrou no app prova que a sessão voltou.
   - Sem outro aparelho que sirva, o pedido espera (`sem_aparelho`), como sempre.
+  - Limites conhecidos (leitura do #419):
+    - a verificação confere a INSTALAÇÃO, não a sessão: a de rotina (ao ligar o aparelho com o `verified_at` de mais de
+      24 h) solta o aparelho ainda deslogado, e a próxima prova nele pode gastar a vaga de novo;
+    - a exclusão usa o app PRINCIPAL do fluxo: o login pedido por um app secundário exclui o app errado;
+    - com `verify_max_age_h=0`, só a verificação manual, a reinstalação ou um sucesso de fluxo soltam.
 - **O estoque de 05/10 não ganha a marca do login:** a parada foi gravada antes do campo. O passo da curadoria passa a
   `orcamento_da_prova` os dois cortes de 03/10, e o de 05/10 segue `sem_evidencia`.
 - **API:** os dois valores novos de `motivo` em `GET /api/aprendizado/validacoes` (adendo v1.54).
