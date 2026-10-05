@@ -99,7 +99,9 @@ export function LimitsSection() {
       >
         <div className={styles.limitGroups}>
           {LIMIT_GROUPS.map((g) => (
-            <fieldset key={g.title} className={styles.limitGroup}>
+            // Desabilitado enquanto salva: a resposta zera os rascunhos, e o que a pessoa mexesse com o PUT em voo sumia sem
+            // ser salvo nem avisado (29.115). O `fieldset` desabilita todos os campos do grupo de uma vez.
+            <fieldset key={g.title} className={styles.limitGroup} disabled={saving}>
               <legend>{g.title}</legend>
               <p className={cx(styles.fieldsetHint, styles.legendHint)}>{g.description}</p>
               {(g.toggles ?? []).map((t) => (

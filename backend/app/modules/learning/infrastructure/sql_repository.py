@@ -255,7 +255,9 @@ class SqlLearningRepository:
             if outra is not None:
                 raise ConflitoDeEstado(f"A receita {outra['id']} já está ativa nesta etapa: nunca duas ativas por "
                                        "chave. Desligue a outra antes.")
-        sql = "UPDATE recipes SET status=?" + (", consecutive_fail=0" if m.para_status == "active" else "")
+        # reativar zera as duas séries de falha (a de "não se aplicou" é do 30.80)
+        sql = "UPDATE recipes SET status=?" + (", consecutive_fail=0, nao_aplicavel_seguidas=0"
+                                               if m.para_status == "active" else "")
         cur = self._db.execute(sql + " WHERE id=? AND status=?", (m.para_status, recipe_id, m.de_status))
         if int(cur.rowcount or 0) != 1:
             raise ConflitoDeEstado(f"Receita {recipe_id} mudou de status durante a transição; releia e tente de novo.")

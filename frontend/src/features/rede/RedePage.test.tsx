@@ -531,6 +531,8 @@ it('o cadastro manda a saída esperada em params só quando preenchida (29.6)', 
   await click(await botaoPronto(/^Criar$/));
   await waitFor(() => backend.callsTo('POST', /\/network\/profiles$/).length === 1);
   expect('params' in (backend.callsTo('POST', /\/network\/profiles$/)[0]!.body as object)).toBe(false);
+  // Os campos ficam desabilitados enquanto o POST anterior não volta (29.115).
+  await waitFor(() => !byRole('textbox', /^Nome do perfil$/).matches(':disabled'));
   await setValue(byRole('textbox', /^Nome do perfil$/) as HTMLInputElement, 'Dedicada-02');
   await setValue(byRole('textbox', /^Host$/) as HTMLInputElement, 'vpn.provedor.example');
   await setValue(byRole('textbox', /Saída esperada/) as HTMLInputElement, ' 198.51.100.8 ');
@@ -714,4 +716,29 @@ it('a carga da Rede lê perfis e aparelhos uma vez só (deploy 10: eram 2× por 
   await flush();
   expect(backend.callsTo('GET', /\/network\/profiles/)).toHaveLength(1);
   expect(backend.callsTo('GET', /\/network\/devices/)).toHaveLength(1);
+});
+
+// 29.115: a resposta do POST esvazia o cadastro. Com os campos livres durante o envio, o que a pessoa digitava para o
+// próximo perfil sumia.
+it('enquanto cria o perfil, o cadastro fica desabilitado; com a resposta, volta vazio e livre', async () => {
+  let soltar: (() => void) | null = null;
+  backend.on('POST', /\/network\/profiles$/, (call) => new Promise<Response>((r) => {
+    const b = call.body as Record<string, unknown>;
+    soltar = () => r(json(perfil({ id: 'vpn-9', name: b.name as string })));
+  }));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('WireGuard escritório'));
+  const nome = () => byRole('textbox', /^Nome do perfil$/) as HTMLInputElement;
+  await setValue(nome(), 'Dedicada-01');
+  await setValue(byRole('textbox', /^Host$/) as HTMLInputElement, 'vpn.provedor.example');
+  await click(await botaoPronto(/^Criar$/));
+  await waitFor(() => soltar !== null);
+  for (const rotulo of [/^Nome do perfil$/, /^Host$/, /^Porta$/, /^Segredo/, /Saída esperada/]) {
+    expect(byRole('textbox', rotulo).matches(':disabled'), String(rotulo)).toBe(true);
+  }
+  await expect(setValue(nome(), 'Dedicada-02')).rejects.toThrow('está desabilitado');
+
+  await act(async () => { soltar!(); });
+  await waitFor(() => !nome().matches(':disabled'));
+  expect(nome().value).toBe('');
 });

@@ -267,8 +267,11 @@ parou.
 **Causa.** O `python.exe` dentro de `backend/.venv/Scripts/` no Windows é um launcher que reexecuta o interpretador
 real num processo filho — comum a ambientes virtuais no Windows, não específico deste projeto.
 
-**O que funcionou.** Tratar os dois PIDs como uma unidade (matar pelo supervisor, não por PID isolado);
-`supervisor._matar_filhos` mata `children(recursive=True)`.
+**O que funcionou.** Tratar os dois PIDs como uma unidade (matar pelo supervisor, não por PID isolado).
+**Corrigido em 05/10 (29.125):** o `supervisor._matar_filhos` (`children(recursive=True)`) nunca alcançava nada no
+Windows. O supervisor guarda o PID do lançador; depois do kill, `psutil.Process(pid)` dá `NoSuchProcess`, e o Appium e
+o sing-box do backend morto seguiam vivos com o pai morto (censo de 05/10). A varredura saiu: o supervisor só mata o
+backend, e o Appium que sobra é decidido pelo backend seguinte (`AppiumServer.start`, K-039).
 
 **Aplicabilidade.** Vigente — característica da plataforma, não do código do projeto.
 
