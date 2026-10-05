@@ -108,13 +108,17 @@ def linha_da_entrada(e: dict[str, Any]) -> str:
     if e.get("screen_title"):
         partes.append(f"tela=\"{e['screen_title']}\"")
     alvo = e.get("target") or {}
-    if alvo:
+    if e["type"] in ("tap", "long_press") and e.get("sensitive") and e.get("x") is None and not alvo:
+        # 31.94: tecla de PIN ou tela sensível: o gravador não guardou nem o elemento nem a coordenada
+        partes.append("toque em teclado ou tela sensível (não gravado)")
+    elif alvo:
         rid = (alvo.get("resource_id") or "").rsplit("/", 1)[-1]
         el = ", ".join(x for x in (f"id={rid}" if rid else "", f"texto=\"{alvo.get('text')}\"" if alvo.get("text") else "",
                                    f"desc=\"{alvo.get('desc')}\"" if alvo.get("desc") else "") if x)
         partes.append(f"elemento[{el or alvo.get('class_name', '?')}]")
     elif e["type"] in ("tap", "long_press"):
-        partes.append(f"ponto=({e.get('x')},{e.get('y')}) sem elemento identificado")
+        ponto = f"ponto=({e.get('x')},{e.get('y')}) " if e.get("x") is not None else ""
+        partes.append(f"{ponto}sem elemento identificado")
     if e["type"] == "swipe":
         dy = (e.get("y2") or 0) - (e.get("y") or 0)
         partes.append("rolou para baixo" if dy < 0 else "rolou para cima")

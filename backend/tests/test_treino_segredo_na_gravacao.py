@@ -265,3 +265,16 @@ async def test_a_destilacao_recusa_a_etapa_com_tecla_nao_gravada_sem_excecao(har
     entrada = await _toque_unico(harness, _tecla(text="4", rid="com.android.systemui:id/key4"))
     receita, motivo = distill_training([entrada], {}, side_effect=False)
     assert receita is None and "sem elemento identificado" in motivo, motivo
+
+
+async def test_a_linha_da_entrada_de_tecla_nao_gravada_nao_traz_none_coordenada_nem_id(harness: Harness) -> None:
+    from app.planning.training import linha_da_entrada
+    entrada = await _toque_unico(harness, _tecla(text="4", rid="com.android.systemui:id/key4"))
+    linha = linha_da_entrada(entrada)
+    assert "toque em teclado ou tela sensível (não gravado)" in linha, linha
+    assert "None" not in linha and "ponto" not in linha and "key4" not in linha and "elemento" not in linha, linha
+    # o toque comum sem alvo segue como antes, com a coordenada
+    comum = {"seq": 2, "type": "tap", "x": 10, "y": 20, "target": None, "sensitive": False}
+    assert linha_da_entrada(comum) == "#2 tap | ponto=(10,20) sem elemento identificado"
+    # sem x e sem a marca (entrada antiga): nunca "ponto=(None,None)"
+    assert "None" not in linha_da_entrada({"seq": 3, "type": "tap", "x": None, "y": None, "target": None})

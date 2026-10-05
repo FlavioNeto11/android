@@ -39,9 +39,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   x/y, com `sensitive=1` (a coluna que já existia; sem migração). `android:id/button1` com rótulo segue gravado.
 - Em tela sensível, o toque sem id estrutural (nem do alvo nem de filho) também sai sem x/y.
 - A destilação não muda: coordenada solta já não vira receita (teste com `distill_training`).
-- Fora do escopo (outro ramo): `linha_da_entrada` de `planning/training.py` imprime "ponto=(None,None) sem elemento
-  identificado" nesses toques; precisa dizer "toque em teclado ou tela sensível (não gravado)" quando `sensitive`.
-- Prova `simulated`: `test_treino_segredo_na_gravacao.py` (20). Real: `not_run`.
+- `linha_da_entrada` (`planning/training.py`, só esse trecho): toque com `sensitive` e sem x diz "toque em teclado ou tela sensível (não gravado)" e `ponto=(x,y)` só sai com x (nunca "ponto=(None,None)").
+- Prova `simulated`: `test_treino_segredo_na_gravacao.py` (21). Real: `not_run`.
 
 ## 2026-10-05 — 31.80/31.82, segunda leitura do PR #427 (branch fix/31-80-82-gravacao-do-treino)
 
