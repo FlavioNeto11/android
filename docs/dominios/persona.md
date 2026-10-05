@@ -202,13 +202,14 @@ Sem um segundo app com catálogo em produção (o Outlook, 23.8, ainda não tem 
 apps só está provado por `simulated` (catálogo falso nos testes).
 
 **Sessão por (conta, aparelho).** `account_sessions` tem chave `(account_id, instance_id)` e um só vocabulário
-(`models.SessionStatus`): `unknown`, `session_ready`, `auth_required` (o antigo `logged_out`), `auth_challenge`,
-`wrong_account`, `needs_person`. Quem grava: o provedor de sessão, em app com `SessionProvider`, na conta DAQUELE app
-(`set_account_session`, item 23.4: [abaixo](#sessão-por-conta-item-234)); a pessoa, em app sem provedor (`PATCH …/accounts/{aid}` com `session_status`: vale para o aparelho vinculado; sem vínculo, 409
-`no_binding`; em app com provedor, 409 `session_managed`; `logged_out` é 422). Leitura: `session_of_account` devolve
-a sessão no aparelho vinculado e, sem linha nele, a mais recente (é ela que diz "a sessão pronta é de outro
-aparelho"). `profile_accounts.session_status` (037) ficou na tabela e ninguém a lê; `apps_overview.py` conta prontas
-por `account_sessions`. Sessão é cache do observado, nunca a verdade.
+(`models.SessionStatus`): `unknown`, `session_ready`, `auth_required` (o antigo `logged_out`), `wrong_account`,
+`needs_person`. Quem grava: o provedor de sessão, em app com `SessionProvider`, na conta DAQUELE app
+(`set_account_session`, item 23.4: [abaixo](#sessão-por-conta-item-234)); a pessoa, em app sem provedor (`PATCH
+…/accounts/{aid}` com `session_status`: vale para o aparelho vinculado; sem vínculo, 409 `no_binding`; em app com
+provedor, 409 `session_managed`; `logged_out` é 422). Leitura: `session_of_account` devolve a sessão no aparelho
+vinculado e, sem linha nele, a mais recente (é ela que diz "a sessão pronta é de outro aparelho").
+`profile_accounts.session_status` (037) ficou na tabela e ninguém a lê; `apps_overview.py` conta prontas por
+`account_sessions`. Sessão é cache do observado, nunca a verdade.
 
 ### Sessão por conta (item 23.4)
 
@@ -234,18 +235,10 @@ Agora tudo é da **conta do app**:
   app inteiro (`conta_do_pacote`), e o "Conectar" dela recusa sem tocar no aparelho (`_resolver_conta`; na rota, 409
   `conta_de_site`) ([perfis e Instagram](perfis-e-instagram.md#instagram-classificador-login-determinístico-sessão)).
   No login em etapas, a senha só vai para a tela que mostra o `login_identifier` da conta (senão o `handle`).
-- **Escopo do desafio (23.5, decisão do dono P9 de 29/09)** (`session_rules.py::aplicar_desafio`, a regra única dos
-  dois chamadores, `SessaoDeclarada._save` e `AppState._sessao_desmentida`): no app âncora nada mudou (a conta travada
-  bloqueia a persona, ADR-029, e põe o aparelho em quarentena; código e verificação só pedem uma pessoa). Num app que
-  não é o âncora (o Outlook, 23.8), qualquer desafio — código, verificação ou conta travada — para SÓ a conta daquele
-  app: a sessão dela vai a `auth_challenge` e a credencial dela a `review` (`parar_conta_por_desafio`, evento `log`
-  com `reason=desafio_na_conta`), sem bloquear a persona nem tocar na conta âncora. A conta travada mantém a
-  quarentena do aparelho (ADR-055): `SocialRepository.marcar_conta_travada` grava o marcador com o `@` e o app da
-  conta e só bloqueia a persona pela conta âncora (`_trava_a_persona`); o marcador é idempotente e nasce mesmo com a
-  sessão já em `auth_challenge` por um código anterior. Soltar é o de sempre da `review`: guardar a senha de novo ou
-  um login que confirma a conta (Conectar). Limite, o mesmo do código na âncora: `review` para o login, não a sessão
-  já pronta da conta noutro aparelho. Sem rota, migração nem painel novos: a credencial em `review` já aparece em
-  `CredentialInfo` e a fila "Aguardando intervenção" já traz `account_id`.
+- Soltar é o de sempre da `review`: guardar a senha de novo ou um login que confirma a conta (Conectar). Limite, o mesmo
+  do código na âncora: `review` para o login, não a sessão já pronta da conta noutro aparelho. Sem rota, migração nem
+  painel novos: a credencial em `review` já aparece em `CredentialInfo` e a fila "Aguardando intervenção" já traz
+  `account_id`.
 - **Composição** (`state.py`): a porta de sessão (`_session_gate`) lê a sessão e a credencial da conta da persona no
   pacote do item e passa `account_id` ao provedor, também na releitura do teto (`_releitura_do_teto`, trava por
   conta) e na troca de localidade (`_porta_da_localidade`, que derruba a sessão de toda conta da persona naquele
@@ -440,12 +433,10 @@ migração `051_persona_n_aparelho.sql`; contrato no
 
 **N:N.** Uma persona tem N aparelhos (`devices[]`) e um **principal** (`instance_id`): o alvo padrão de conectar,
 verificar, sair e do contexto. Um aparelho tem N personas, **uma por app** (D2-a: duas contas do mesmo app no mesmo
-aparelho são recusadas com 409 `conta_do_app_ja_no_aparelho` enquanto a troca de conta no Instagram for manual). A
-sessão é da conta **naquele** aparelho (`account_sessions`); a mesma conta em N aparelhos é permitida (D3), e o
-ADR-029 bloqueia a persona se o Instagram pedir verificação. Vincular não toma o aparelho de ninguém.
-A D2-a também vale ao **ganhar a conta**: o vínculo sem app serve a todo app em que a persona tem conta, então
-cadastrar a conta (ou somar a de outro app) de quem está vinculado sem app a um aparelho já ocupado por outra persona
-naquele app é 409, conferido antes de criar qualquer linha (29.29).
+aparelho são recusadas com 409 `conta_do_app_ja_no_aparelho` enquanto a troca de conta no Instagram for manual).
+Vincular não toma o aparelho de ninguém. A D2-a também vale ao **ganhar a conta**: o vínculo sem app serve a todo app em
+que a persona tem conta, então cadastrar a conta (ou somar a de outro app) de quem está vinculado sem app a um aparelho
+já ocupado por outra persona naquele app é 409, conferido antes de criar qualquer linha (29.29).
 
 **Roteamento.** "Peça para o André …" resolve assim: `TargetExtractor` acha "o André" no texto (padrões fixos, sem
 IA) e o tira do comando; `resolver_alvos` escolhe o aparelho. Política `device_policy`: `one` (padrão), `primary`,
@@ -477,7 +468,7 @@ Testes (`simulated`): `backend/tests/test_vinculos_n_n.py`, `test_personas_apare
 | Grupo (retrato de produção em 27/09) | O que a 047 faz |
 |---|---|
 | (a) 3 perfis **com** `persona_id` | copiam `summary`, `traits` (só voz), `persona_prompt` da persona; `visual` recebe `appearance`/`visual_style`/`photo_scenario`; `biography` nasce com `schema_version`, `tastes.interests` e `approx_age` (os dois dígitos antes de " anos" no resumo, `(\d{2}) anos` no PostgreSQL); `generation = {source: legacy_persona, persona_id}` |
-| (b) 5 personas órfãs cujo nome bate (`lower(trim)`) com `display_name` ou `first_name || ' ' || last_name` de um perfil **sem** `persona_id` (os bloqueados do ADR-029) | o perfil ganha o `persona_id` e a mesma dobra de (a); empate de nome → menor id (`_dobra_persona`), nunca duas personas no mesmo perfil |
+| (b) 5 personas órfãs cujo nome bate (`lower(trim)`) com `display_name` ou `first_name || ' ' || — | o perfil ganha o `persona_id` e a mesma dobra de (a); empate de nome → menor id (`_dobra_persona`), nunca duas personas no mesmo perfil |
 | (c) as 6 órfãs restantes | viram pessoas novas `ig-<persona_id>` com `username = ''`, `display_name = name`, nome partido no primeiro espaço, `status = active`, `persona_id` apontando para a origem |
 
 `generation.source = 'legacy_persona'` é o predicado de idempotência (`WHERE p.generation = '{}'`): rodar as
@@ -536,7 +527,7 @@ do perfil. Códigos e corpos no [adendo v0.27](../api-contract.md#adendo-v027-27
 | `backend/tests/test_migracao_contas_unificadas.py` | 049: credencial copiada sem recifrar e só sessão com vínculo ativo; carga idempotente; banco novo = atualizado; unicidade por perfil, app e host; apagar a conta apaga a sessão; os dois dialetos; cópia entre bancos acha a ordem por FK |
 | `backend/tests/test_credenciais_da_conta.py` | a execução não aceita mais credencial (422); senha só com consentimento, também pelo apelido por perfil; consentir sem redigitar; segredo preservado enquanto a linha legada o referencia; dados disponíveis listam nomes e nunca valores; a lista do planejador é a comum aos aparelhos; `{perfil_email}` resolve por aparelho; tela de senha só pede pessoa sem senha da conta do app; `type_secret` só campo de senha, só pacote e host da conta, exige consentimento; Instagram fora do `type_secret`; `open_url` aceita o site da conta; pré-voo recusa aparelho sem a credencial exigida |
 | `backend/tests/test_contas_unificadas_api.py` | DTO da conta com credencial, consentimento e sessão; marcar sessão sem aparelho é 409; rotas por conta e apelidos por perfil |
-| `backend/tests/test_sessao_declarada.py` (23.4) | persona com a conta âncora e a do correio fictício: login, senha recusada, desafio e conta errada do correio não mudam uma linha da conta âncora, e o motor da âncora não muda a do correio; `account_id` de outro app ou de outra persona recusado sem tocar; persona sem conta no app não cai na âncora; conta lida confere pelo login da conta; teto diário por conta |
+| `backend/tests/test_sessao_declarada.py` (23.4) | persona com a conta âncora e a do correio fictício: login, senha recusada e conta errada do correio não mudam uma linha da conta âncora, e o motor da âncora não muda a do correio; `account_id` de outro app ou de outra persona recusado sem tocar; persona sem conta no app não cai na âncora; conta lida confere pelo login da conta; teto diário por conta |
 | `backend/tests/test_sessao_por_conta.py` (23.4) | na composição, com o correio registrado só por dado: a porta pede a conta do app do item; mexer no app invalida só as contas dele e o reset, todas; a tela que desmente corrige a conta do app da tela (dito ou da etapa em curso); a reobservação chama o provedor de cada conta; a rota de verificar e o canal de comandos passam o `account_id`; mover de máquina pede confirmação com a sessão do segundo app |
 | `backend/tests/test_persona_imagens.py` | semente e receita determinísticas; simulado pinta os mesmos pixels; OpenAI `generations`/`edits` e erros; gera, guarda, registra custo e define a principal; referência, teto, recusa e falha; upload, principal, apagar e avatar legado; custo declarado no gasto do dia; migração 048; rotas e avatar; importação na partida |
 

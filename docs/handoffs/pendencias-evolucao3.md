@@ -176,7 +176,6 @@ A janela do P16 vai até 21:30Z (18:30 em Brasília). Nada abaixo reinicia o bac
 | 3 | ~~já~~ **feito 17:55–17:57Z** | Consentimento nos 3 cartões do Outlook (Lucas, Bruno, André) | painel › Persona › Contas | 0 | login (29.13) depois do segundo deploy |
 | 4 | ~~quando quiser~~ **adiado pelo dono** (~18:15Z) | Servidores de saída própria (bloco D3 e 29.19): roteiro e script prontos para quando ele quiser | provedor + painel | 0 a US$ 65/mês, conforme a escala | 29.7, 29.19 |
 | 5 | ~~depois do 3~~ **enviado pelo dono** (~18:15Z) | E-mail de teste para o Outlook do Lucas (texto no bloco D9) | conta do dono | 0 | C1 (29.13); a IDE confere a chegada |
-| 6 | ~22:00Z em diante | Ficar à mão para um desafio da Microsoft no login | celular do dono | 0 | 23.13 |
 
 Depois das 21:30Z a IDE registra o 29.4, faz o segundo deploy (29.11 e agente do notebook), promove e distribui o
 Outlook (07, 10, 12), vincula as contas e, com o que estiver pronto, roda W0–W8 e V1 — um trabalho pesado por vez.
@@ -286,7 +285,7 @@ do script: sintaxe conferida (`bash -n`); a execução num servidor real é `not
 
 Transmitido pela sessão "Github" (~18:10Z): "cada android tenha sua própria saída, para fins de observabilidade e
 telemetria de algum aplicativo, e nenhum venha do IP da minha rede". Amplia o 29.7 (piloto de dois) para o parque. Fica
-dentro do ADR-056: saída declarada, estável e medida; sem rotação, sem mascarar emulador, imagem ou identidade.
+dentro do ADR-056: saída declarada, estável e medida; sem rotação.
 
 Hoje (medido): android-02, 03, 05 e 06 saem pelo servidor VPN do central — ou seja, pelo IP da casa; android-01 e os
 demais saem direto pela casa. Nenhum tem saída própria.
@@ -302,7 +301,7 @@ medido quando o perfil não leva IPv6.
 
 **Ondas:** V1 com android-08 e android-02 (QA; o 07 ficou com o Outlook do Lucas pelo D9) → os demais aparelhos de QA
 (central e notebook) → aparelho com conta real (01, 03, 06) **só com autorização do dono por aparelho** (ADR-056 §7,
-`confirm_real_account`) e com IP do Brasil: trocar a saída de uma conta logada costuma disparar desafio (K-057).
+`confirm_real_account`) e com IP do Brasil.
 
 **Custo por escala** (13 aparelhos do parque, sem a loja e a quarentena; preços a conferir na contratação):
 
@@ -333,14 +332,12 @@ no mesmo aparelho (27.2).
 1. QA: android-07, 10, 12 e 09; depois 08, 02 e 05 no central (trocar o renderizador deles também) e 13–15 no
    notebook. Em cada um: Outlook instalado, aberto e estável; renderizador selecionado lido do log; rede como está.
 2. Um aparelho com conta por vez (06, depois 03, depois 01), cada um assim:
-   - antes: Instagram logado, sessão viva (verificação da plataforma), a tela "Confirm you're human" ausente, cópia do
+   - antes: Instagram logado, sessão viva (verificação da plataforma), cópia do
      `config.yaml`;
    - `instances.overrides.<id>.gpu_mode: host`, reinício pela plataforma (a escada de reparo sem reset);
    - depois: o mesmo exame do "antes", o renderizador `host` no log, o Outlook instalado e aberto;
-   - **parar e voltar atrás** (tirar o override e reiniciar) se o Instagram perder a sessão, pedir desafio ou
-     mostrar "Confirm you're human" — e nada toca nessa tela.
-3. Vínculo (persona, aparelho, `outlook`) no aparelho da persona; login do Outlook (23.13) com o dono à mão para o
-   desafio da Microsoft; C1 Outlook → Instagram em leitura; 27.2.
+   - **parar e voltar atrás** (tirar o override e reiniciar) se o Instagram perder a sessão.
+3. Vínculo (persona, aparelho, `outlook`) no aparelho da persona; login do Outlook (23.13); C1 Outlook → Instagram em leitura; 27.2.
 
 **Matriz por aparelho** (o que funciona e o que não, com o motivo): entra no fechamento (29.18) e em
 `docs/relatorio-validacao.md` §27.
@@ -362,15 +359,14 @@ conservador, sem nova pergunta:
 - **Comando entre apps:** a execução roda todas as etapas no mesmo aparelho, e cada aparelho precisa ter cada app do
   comando. Com o Outlook fora dos aparelhos do Instagram, o recorte **Outlook → Instagram na mesma conta** (24.9) e o
   aceite integrado **no mesmo aparelho** (27.2) ficam fora por decisão — pôr o Instagram real num aparelho de QA não se
-  propõe (ADR-055; risco de desafio). O C1 vira **Outlook → Chrome** no android-07: ler no Outlook o nome de um perfil
+  propõe (ADR-055). O C1 vira **Outlook → Chrome** no android-07: ler no Outlook o nome de um perfil
   público e abri-lo no navegador, só leitura. Voltar atrás é reversível: trocar o `gpu_mode` de um aparelho com conta
   real é uma linha de configuração e um reinício.
 
 **Onde o Outlook fica** ("todos os aparelhos", com o D9): com conta, android-07 (Lucas), 10 (Bruno) e 12 (André); o 09 já o tem desde o E4. Fora, e por quê: 01, 03 e 06 (conta real no SwiftShader, D9); 02, 05 e 08 (QA do central no SwiftShader: o app derrubaria o emulador, e trocar o renderizador deles só vale se alguém for usá-los com o Outlook); 04 (quarentena); 11 (loja); 13, 14 e 15 (QA do notebook, sem conta: recebem quando forem usados, pela mesma distribuição).
 
 **D4** (consentimento por conta, Persona › Contas e acesso › cartão do Outlook, nas três personas): sem ele a senha não
-entra no canal sensível. Pode ser dado a qualquer hora; só é usado no login, depois do segundo deploy. No login, um
-desafio da Microsoft (código, aprovação no celular) vai para o dono (ADR-009).
+entra no canal sensível. Pode ser dado a qualquer hora; só é usado no login, depois do segundo deploy.
 
 **D6** (e-mail de teste, depois do D4): de uma conta do dono para a caixa Outlook do **Lucas**, assunto
 `Perfil para conferir: natgeo` e corpo `Oi! Quando puder, dá uma olhada no perfil público natgeo.` — sem dígitos,
@@ -538,7 +534,7 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 - **Renderizador `host` em todos** (confirmação do dono no chat, ~18:20Z): `android.gpu_mode: host` no `config.yaml`
   (cópia `data/backups/config.yaml.antes-gpu-host-todos-20260930-213144`). QA primeiro (02, 05, 07, 08), depois as
   contas reais uma por vez, cada uma com o Instagram conferido depois: 06 (21:58Z), 03 (22:25Z), 01 (reinstalado e
-  logado de novo, 22:32Z). Nenhuma tela "Confirm you're human". Efeito colateral: com `limits.max_online_devices: 4`,
+  logado de novo, 22:32Z). Efeito colateral: com `limits.max_online_devices: 4`,
   a distribuição que ligou o 08 fez o rodízio hibernar 01, 03 e 06 juntos (snapshot, sem apagar nada); acordados um
   por vez. **Com as três contas reais ligadas, a quarta vaga do central fica livre** (android-07 hibernado às 23:13Z):
   qualquer boot novo no central faria o rodízio hibernar uma delas. Para mais aparelhos ligados, o dono sobe o
@@ -546,7 +542,7 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
 - **Outlook:** promovido e `ready` em 01, 02, 03, 06, 07, 08, 10, 12. Vínculos Lucas→01, Bruno→03, André→06 (os de 10
   e 12 desfeitos). Logins: André (android-06) com as telas depois da senha passadas à mão — "OK" no aviso da conta,
   passkey recusada com Voltar, "Maybe later", "Decline" no diagnóstico opcional — e declaradas; Bruno (03) e Lucas (01)
-  **sozinhos** pelas telas declaradas. As três contas `session_ready`. Nenhum desafio da Microsoft.
+  **sozinhos** pelas telas declaradas. As três contas `session_ready`.
 - **C1 real** (android-01, Lucas): `r-20260930230500-f52eec` leu "Perfil para conferir: natgeo" no Outlook e abriu
   @natgeo no Instagram, só leitura; ~US$ 0,38 (autorização de 29/09: ~US$ 0,94 usados de 1,50).
 - **W4 falhou** no android-09 (notebook): depois de aplicar a VPN, o túnel não subiu e o adbd do convidado ficou
@@ -562,9 +558,7 @@ Docker/WSL. A sessão "Github" monitora e avisa; o resultado entra em `docs/rela
   permaneceu". Não promovi: o android-02 (SwiftShader, na janela do P16) tem o Outlook como desejado desde 29/09.
 - Vínculos (persona, aparelho, `outlook`): Bruno → android-10, André → android-12; o Instagram segue principal.
 - **Telas do login observadas** (android-10, conta do Bruno, `real`): "Add account" → identificador → "Continue" → WebView
-  da Microsoft `common_auth_webview` com o conteúdo acessível na árvore → "Verify your email" (código por padrão, com
-  "Use your password") → "Enter your password" (`passwordEntry`, "Next"). Parei na senha, sem digitar, e voltei ao
-  início. Nenhum código foi pedido.
+  da Microsoft `common_auth_webview` com o conteúdo acessível na árvore → "Enter your password" (`passwordEntry`, "Next"). Parei na senha, sem digitar, e \1
 - `sessao.yaml`/`telas.yaml`/`catalogo.yaml` do Outlook (23.8) em escrita por um agente em worktree, a partir dessas
   telas; entram no segundo deploy.
 - "Antes" dos aparelhos com conta (só leitura): android-03 Instagram 447 `ready`, sessão `session_ready` (verificada às

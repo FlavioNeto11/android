@@ -144,7 +144,7 @@ foi criado.** O que mudou:
 - `pendencias/store.ts` lê `api.listPersonas()` junto com as outras fontes, no mesmo `allSettled`. Uma falha só marca
   `falhou`.
 - `modelo.ts` ganha a origem **"Intervenção"** (`pendenciasDeSessoes`): uma linha por persona com conta e sessão em
-  `auth_challenge`, `wrong_account` ou `needs_person`. É o mesmo filtro da fila "Aguardando intervenção", que também
+  `wrong_account` ou `needs_person`. É o mesmo filtro da fila "Aguardando intervenção", que também
   exige `username`. A ação "Resolver" leva a `#/personas`, onde está "Assumir controle". A caixa não assume nada.
 - `PRECISA_DE_PESSOA` agora tem um lugar só (`pendencias/modelo.ts`), lido pela fila de Personas e pela caixa.
 - A releitura também dispara a cada `session.needs_person` (`needsPersonEpoch`), além do minuto de sempre.

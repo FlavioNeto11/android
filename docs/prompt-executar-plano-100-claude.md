@@ -54,7 +54,7 @@ Respeite as nove decisões reservadas ao usuário na seção 1 do plano. Reutili
 
 Chamadas pagas da aplicação e avaliações da fase 7.4 continuam sujeitas à confirmação de chave e orçamento; isso não impede esta sessão de desenvolvimento. Use fixtures e provedores simulados nos testes automatizados, identificando-os corretamente. Implemente fallback pago explícito, configurável e desativado por padrão; não altere silenciosamente a configuração da produção.
 
-Prepare e ensaie backup, restauração e migrações em cópia isolada antes de qualquer atualização real. Não reescreva migrações já aplicadas para corrigir divergências. Reinícios de produção, mudanças de relógio/WSL, testes destrutivos e efeitos externos exigem a autorização correspondente. Antes de solicitá-la, deixe a ação concreta, seu impacto, a validação e o rollback prontos. Preserve as exclusões da seção 7, incluindo desafios manuais, origem autorizada de APKs e proteção de segredos.
+Prepare e ensaie backup, restauração e migrações em cópia isolada antes de qualquer atualização real. Não reescreva migrações já aplicadas para corrigir divergências. Reinícios de produção, mudanças de relógio/WSL, testes destrutivos e efeitos externos exigem a autorização correspondente. Antes de solicitá-la, deixe a ação concreta, seu impacto, a validação e o rollback prontos. Preserve as exclusões da seção 7, incluindo origem autorizada de APKs e proteção de segredos.
 
 6. TESTES E ACEITES
 

@@ -399,7 +399,7 @@ independente.
 | Capacidades declaradas por worker (imagem, API, ABI, GMS…) | migração 019, `backend/app/devices/compatibilidade.py` | Simulada — `appium: local` real não ensaiado | plano-100 2.2 |
 | Saúde do convidado além de `boot_completed` | `backend/app/devices/adb.py` (`framework_alive`) | Real — mas limpeza de dado herdado em produção não executada | plano-100 3.1 |
 | Estado de app/sessão com identidade física (serial) | `backend/app/devices/manager.py` (`_esquecer_o_que_o_disco_tinha`) | Real | plano-100 3.2 |
-| Sessão com validade (desafio/login atualiza o perfil) | `backend/app/taskqueue/executor.py` (`_sessao_desmentida`) | Real | plano-100 3.3 |
+| Sessão com validade (login atualiza o perfil) | `backend/app/taskqueue/executor.py` (`_sessao_desmentida`) | Real | plano-100 3.3 |
 | Saúde ao vivo (`health.updated`) | `backend/app/state.py` (`_health_loop`) | Real parcial — readoção do Appium órfão em produção não confirmada ao vivo | plano-100 3.4 |
 | Túnel como componente monitorado | migração 021, `backend/app/state.py` (`_probe_*`) | Real parcial — queda real do `ssh.exe` de produção não exercitada nesta chamada | plano-100 3.5 |
 | Execução registra onde rodou (`worker_id`, serial, backend) | migração 022 | Real | plano-100 4.1 |

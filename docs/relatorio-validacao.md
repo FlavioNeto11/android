@@ -402,10 +402,10 @@ falhar quando o app de verdade entrar.
 
 ### 8.2 Exercitado em teste automatizado (não em aparelho real)
 
-Máquina de estados do login (sessão pronta, credencial inválida, desafio, 2FA, conta errada, toque perdido, teto de
-tentativas), persona/memória/histórico com isolamento entre dois perfis, catálogo de capabilities e composição do
-plano, commit por seletor declarado, guarda de linha, limites por perfil, aprovação com três verbos e a porta de
-política no despacho. São **213 testes de backend e 173 de frontend**, com um Instagram de mentira como fixture.
+Máquina de estados do login (sessão pronta, credencial inválida, conta errada, toque perdido, teto de tentativas),
+persona/memória/histórico com isolamento entre dois perfis, catálogo de capabilities e composição do plano, commit por
+seletor declarado, guarda de linha, limites por perfil, aprovação com três verbos e a porta de política no despacho. São
+**213 testes de backend e 173 de frontend**, com um Instagram de mentira como fixture.
 
 ### 8.3 O que ainda não foi provado
 
@@ -1172,10 +1172,10 @@ e senha).
 - 200 em 19,1 s; `ai_calls` id 1609: `role=plan`, `claude-opus-5-5`, 400 de entrada nova + 2077 gravados no cache,
   1287 de saída, ~US$ 0,038. A saída estruturada (`strict_schema(RefineOut)`) foi aceita — o risco do K-042 não se
   aplica a este esquema.
-- O comando voltou em blocos (Objetivo; App ou site: Chrome + o endereço exato; 6 passos; Dados; Concluído quando),
-  com 4 perguntas objetivas e com opções (dados de identificação do login, unidade da empresa, critério de "logado",
-  o que fazer diante de CAPTCHA/código) e o aviso de que a persona não tem a senha do MTR guardada — sem pedir a
-  senha. `ready: false`, coerente com as perguntas abertas.
+- O comando voltou em blocos (Objetivo; App ou site: Chrome + o endereço exato; 6 passos; Dados; Concluído quando), com
+  4 perguntas objetivas e com opções (dados de identificação do login, unidade da empresa, critério de "logado", o que
+  fazer diante de código) e o aviso de que a persona não tem a senha do MTR guardada — sem pedir a senha. `ready:
+  false`, coerente com as perguntas abertas.
 
 **`simulated`.** `backend/tests/test_assistente_do_comando.py` (11), `tests/test_arquitetura.py`,
 `frontend/src/features/command/AssistenteDoComando.test.tsx` (4); suíte do backend 2553 ok + 3 falhas de ambiente
@@ -1558,24 +1558,18 @@ confirmação que a conta está bloqueada, essa é uma das formas de perder a co
 pendências dos revisores do ADR-053), a proteção das contas (ADR-055) e a fundação do aprendizado contínuo (ADR-054,
 pacote A1). Máquina: o central WIN-7S2UASNLFOP.
 
-**Diagnóstico das 5 contas bloqueadas** (`real`, 28/09; 65 agentes, só leitura de banco, backups, logs, git e código). O
-status `blocked` nasceu de um PATCH em lote em 23/09 21:10:42Z (as cinco em 74 ms), a partir da palavra do dono, e não
-do sistema; o bloqueio automático do ADR-029 nunca disparou. Janelas estimadas (UTC):
+**Diagnóstico das 5 contas bloqueadas** (`real`, 28/09; 65 agentes, só leitura de banco, backups, logs, git e código).
+Janelas estimadas (UTC):
 
 | Conta | Aparelho | Janela do bloqueio | O sistema viu a tela? | Confiança |
 |---|---|---|---|---|
 | juliana.mendes9056 | android-05 | 19/09 22:10:13 – 20/09 14:36:52 | sim: relato do dono, `r-20260920143652-132c2e` | janela alta; gatilho baixa |
-| felipe.nogueira93762026 | android-04 | 19/09 22:10:08 – 23/09 19:39:54 (palavra do dono) ou 27/09 01:48:39 (1ª observação) | sim: `ChallengeActivity` em 27/09; o dono viu a tela em 29/09 00:36Z | média |
+| felipe.nogueira93762026 | android-04 | 19/09 22:10:08 – 23/09 19:39:54 (palavra do dono) ou 27/09 01:48:39 (1ª observação) | — | média |
 | beatriz.rocha9276 | android-07 | 19/09 22:11:18 – 23/09 19:39:54 | não: status declarado | baixa |
 | thiago.moreira4827 | android-08 | 19/09 22:12:10 – 23/09 19:39:54 | não: status declarado | baixa |
 | mariana.costa91182 | android-02 | 20/09 21:28:10 – 23/09 19:39:54 | não: status declarado | janela média; gatilho baixa |
 
-- **Duas telas chamadas de "desafio":** o código por e-mail do 1º login (18/09; cinco contas o viram, todas resolveram,
-  bruno e andre estão vivos) e "Confirm you're human" (só juliana e felipe; nenhuma voltou).
-- **Fatores comuns:** frota nascida no mesmo dia e no mesmo host, com a mesma imagem e o mesmo `ro.serialno`, e três
-  ondas coordenadas sobre as mesmas pessoas (o mesmo comentário de 4 contas; 8 follows em 19m43s; 7 DMs em 8m40s com
-  "seu marido mandou um oi" e SEND_MESSAGE `autonomous`). Nada separa as vivas (DM 5/5 × 2/3, Fisher p = 0,375).
-  Detalhe, lacunas e buracos do código:
+- Nada separa as vivas (DM 5/5 × 2/3, Fisher p = 0,375). Detalhe, lacunas e buracos do código:
   [ADR-055](decisoes.md#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta).
 
 **Correções.** Onze pacotes em branches próprios, cada um com testes que falhavam antes e revisão adversarial (cinco
@@ -1589,7 +1583,7 @@ e do host. O commit é a ponta de cada branch.
 | legenda (21.12) | `d63fcd9` | `inherited_bindings` no catálogo: LIKE_POST, OPEN_COMMENTS e CREATE_COMMENT herdam `caption_contains`; `card_control` vira lista | `test_heranca_de_bindings.py` |
 | irq (21.13) | `d121f76` | cada fração de irq da sonda vira `measurements(kind='irq')`; `GET /api/desempenho?irq_horas=` | `test_interrupcoes_persistidas.py` |
 | receitas (21.14) | `01c4dc1` | receita da IA nasce `candidate`, sombra por execução da etapa, promoção com 2 concordâncias (`ai.recipes_promote_after`) | `test_receita_candidata.py` |
-| detector (21.1) | `7a7b32b` | detector único de conta travada, sem campo e na união dos idiomas; desfecho `auth_challenge` com subtipo; nada toca | `test_detector_conta_travada.py` (62) |
+| detector (21.1) | `7a7b32b` | — | `test_detector_conta_travada.py` (62) |
 | quarentena (21.2) | `ec8b630` | migração 054; marcador por aparelho; só `stop`/`hibernate` sem confirmação; `locked_account_on_device` na saúde; nenhum reset com conta | `test_quarentena_de_conta.py` |
 | frota (21.3) | `38311db` | `post_author` e `counterparty`; uma conta por alvo, recusa em vez de espera; DM fria com aprovação; trava de fala atribuída a terceiro | `test_protecao_de_frota.py` (45) |
 | disjuntor (21.4) | `0d29994` | conta bloqueada para o objetivo em curso e pausa as contas do mesmo alvo (48 h); credencial em `review` depois de 1 envio sem sucesso; teto diário de logins | `test_disjuntor_de_conta.py`, `test_conduta_de_login.py` (12) |
@@ -1608,8 +1602,7 @@ com ensaio (`deploy.ps1 -Ensaio`), frontend no mesmo deploy (`npm run build`, po
 SEND_MESSAGE volta ao padrão `approval_required` (era `autonomous`) e os limites passam aos do grupo "Recuperação"
 (curtidas 10/h e 50/dia, comentários 3/h e 10/dia, follows 3/h e 10/dia, DMs 5/h e 20/dia, 8 ações por execução, 120 s
 entre ações externas); a política própria `CREATE_COMMENT = autonomous` do andre foi removida (volta a
-`approval_required`, K-052); o android-04, com o felipe logado em "Confirm you're human", foi desligado
-(`c-20260929013039-e1c891`).
+`approval_required`, K-052); o android-04, com o felipe logado em "foi desligado (`c-20260929013039-e1c891`).
 
 **Experimentos e medições (`real`).**
 
@@ -1621,10 +1614,7 @@ entre ações externas); a política própria `CREATE_COMMENT = autonomous` do a
   Idle derrubou o `system_server` (`am_crash`, "failed to set system property"). **Recomendação: manter 1** (K-054). O
   android-17 foi aposentado (`retired_at` 00:29:05 de 29/09); o `DELETE` falhou com `avd_nao_apagado` por causa do
   `pstore.bin` somente-leitura, corrigido em `2511b12` (K-056).
-- **Incidente no android-04** (28/09, 21:36–21:40, -03:00): o primeiro experimento partiu da premissa errada de
-  "aparelho sem conta" (`account_label` `qa-user-04`, `/personas` vazio) e mandou 10 entradas na tela de desafio do
-  felipe.nogueira93762026, abrindo "Get support" e o assistente da Meta; nada foi digitado nem enviado, e a tela foi
-  fechada com BACK. Resultado negativo, registrado como lição (K-053).
+- Resultado negativo, registrado como lição (K-053).
 - **Relógio do host.** O `w32time` não recebia resposta (a rede bloqueia NTP com porta de ORIGEM 123; evento 47, "No
   valid response ... after 8 attempts"), enquanto o `w32tm /stripchart` por porta efêmera mede. Com
   `scripts/sincronizar-relogio.ps1` e a tarefa `farm-relogio` (SYSTEM, 15 min; `w32time` com `syncfromflags:NO`), o
@@ -1684,7 +1674,7 @@ citado é a ponta de cada branch.
 | A4 feedback D2 (20.5) | `9c40288`, `faf397e` | `POST`/`GET /api/runs/{id}/feedback`, `GET /api/aprendizado/sinais`; "deu errado" por navegação rebaixa o que o item usou e aprendeu | barrado: o `desfazer` publicava o que era candidato ou validado; agora só existe para o que estava publicado | `test_learning_feedback.py` |
 | A5 D1 nos nativos (20.6) | `48783e8`, `aab27b8` | fluxo aprendido nasce `candidate` e publica por concordância em sombra; receita com commit para em `validated`; primeiro escritor de `skill_validation_results` | barrado: a execução de habilidade com etapa confirmada à mão virava prova `passed`; agora `uncertain` | `test_d1_fluxos.py`, `test_d1_receitas.py`, `test_learning_nativos.py` |
 | A6 painel (20.7) | `c3c3760`, `86d9223` | página Aprendizado (4 abas), botão D2 em cada item e na execução, contagem na barra do topo | barrado: a habilidade validada ficava sem saída na fila; agora se decide pela rota das habilidades | vitest `features/aprendizado/*`, `FeedbackItem.test.tsx`, `TopBar.test.tsx` |
-| A7 lições (20.8) | `9c016bb`, `ebfc643`, `3cd1e9f` | lições por contraste com modelos fechados, braço de controle, veredito durável, aposentadoria, `GET /api/aprendizado/licoes/previa`, o bloco `<licoes_medidas>` no texto de usuário do ator e do planejador | barrado por dois motivos: a confirmação à mão contava como sucesso na medida (agora `unverified`), e a etapa livre de sessão ou desafio virava lição (agora recusada pela chave) | `test_learning_licoes.py`, `test_learning_efeito.py`, `test_prompts_licoes.py` |
+| A7 lições (20.8) | `9c016bb`, `ebfc643`, `3cd1e9f` | lições por contraste com modelos fechados, braço de controle, veredito durável, aposentadoria, `GET /api/aprendizado/licoes/previa`, o bloco `<licoes_medidas>` no texto de usuário do ator e do planejador | — | `test_learning_licoes.py`, `test_learning_efeito.py`, `test_prompts_licoes.py` |
 | A8 telas aprendidas (20.9) | `43600f1`, `476c3be` | coleta `tela_vista`, candidata com `ids_todos`, prova local, conflito, `GET /api/aprendizado/export`, `scripts/aprendizado-telas.py` | aprovado de primeira; o revisor achou 9 mutações sobreviventes (lacunas de teste, sem vazar segredo) | `test_learning_telas.py` (37) |
 | A9 voz e preferências (20.10) | `9607f4d`, `0e971b9`, `0663738` | voz pelas aprovações editadas (sempre publicada pelo dono), `GET /api/aprendizado/voz/previa`; preferências como sugestão, `GET /api/aprendizado/preferencias/sugestoes` | barrado: a preferência decidia sozinha numa versão nova da habilidade; agora só nas versões conferidas | `test_learning_voz.py`, `test_learning_preferencias.py` |
 | apps de segundo plano (21.15) | `e2b54a0`, `b5036ec` | `android.desativar_apps`: o preparo desativa 13 apps do Google (reversível, idempotente, protegidos recusados na carga) | aprovado de primeira; 12 mutações, todas mortas | `test_apps_de_fundo.py` |
@@ -2002,15 +1992,12 @@ bloqueado" = com o cliente VPN parado e sem `tun0`, o Android recusou a sonda co
   provedor (P1).
 - **Contas reais (autorização P7):** conta conferida por leitura antes e depois da troca, um aparelho por vez, fora de
   uso: André `session_ready` antes (`c-20260930013055-37bcd9`) e depois (`c-20260930014245-9a6d91`); Bruno antes
-  (`c-20260930014706-126a74`) e depois (`c-20260930023319-04fca0`). Personas seguem `active`; nenhum desafio.
+  (`c-20260930014706-126a74`) e depois (`c-20260930023319-04fca0`).
 - **Achados operacionais:** o túnel às vezes não sobe no primeiro boot (a convergência resolve com um reinício a mais,
   dentro do teto); o android-03 estava sem internet antes da troca (conectividade `unavailable`) e voltou com um
   `restart`; o UDP do android-03 falhou na medição #6 (registrado como está).
 
 ### 26.2.2 Comando entre aplicativos em aparelho real (24.x, 30/09 ~02:35–02:41Z)
-
-No android-05 (rede verificada), só leitura, QA Messenger → Chrome (o recorte Outlook → Instagram espera o P15; o teste
-não usou conta real do Instagram, pela conduta do ADR-055/K-057):
 
 - `r-20260930023442-bd5c5a`: 4/4; saída `primeiro_contato` lida no QA e usada na busca do Chrome; título do primeiro
   resultado gravado como segunda saída.

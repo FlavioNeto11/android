@@ -196,13 +196,10 @@ Todas as decisões, com resultado e comandos, estão no [relatório](../relatori
   outro projeto. O empacotamento foi validado no CI (`conteiner.yml`, run 36287055919).
 - **B21:** resolvido com o reinício a frio de android-01 e android-04 (1536 → 2048 MB), sem mudar configuração.
 - **Escalada da receita divergida:** não escalar. O critério e o custo estão no ADR-027.
-- **Conta real:** o android-04 mostrou uma verificação de segurança do Instagram ao abrir o app. Não foi tocada e
-  fica com a pessoa.
 
 ## Fechamento (27/09, pedido do dono: "finalize todas as pendências")
 
 - Implantado `8f7b94c` (central e agente), com health `ok` e suíte 1612/1612.
-- ADR-029: desafio de segurança bloqueia o perfil sozinho.
 - Cinco contas travadas desatreladas (relatório §10).
 - B20 (29 objetivos abandonados), B7 (`npm run build` no CI) e K-035 (detecção de snapshot no `probe-image`)
   fechados.

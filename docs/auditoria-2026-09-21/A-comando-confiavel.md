@@ -240,18 +240,6 @@
 
 **O que o verificador corrigiu.** Evidência confere, mas o escopo estava largo e a severidade inflada: 'Buscar da loja' usa tom info, promote/quarantine são síncronos (verde honesto), os títulos não afirmam conclusão e o backend guarda a promoção por prova registrada. Rebaixei de alto para médio e restringi o defeito a canário, rollback e entrega imediata + ausência de atualização ao vivo + cargas engolidas.
 
-## #59 — Perfis: conectar/verificar/sair não relatam desfecho - recarga cega por 30 s (ou um único reload após 4 s), e desafio/recusa de login nunca viram aviso
-
-`médio` · defeito · esforço M · fase 6 · seção do pedido: 1 · verificação: parcial
-
-**O que é.** O job de sessão (abrir o app, reaproveitar ou autenticar, verificar a conta) roda com o aparelho já online e leva dezenas de segundos - mais pelo túnel/Appium central em aparelho remoto. Se passar de 30 s (ou de 4 s na aba Autenticação) o usuário nunca recebe 'sessão pronta', 'falhou' ou 'desafio - precisa de você'; o estado só aparece se ele recarregar. O texto não mente (tom info), mas o desfecho não é entregue, e a lista de perfis some em silêncio no painel quando a carga falha.
-
-**O que falta.** Dar identidade ao job de sessão (id + estado, idealmente como comando) ou emitir evento `profile.updated` com `session.status`; o frontend acompanha até estado terminal e dá toast de desfecho (pronta / falhou com motivo / aguardando intervenção humana com botão 'Abrir tela do aparelho'); tratar o 409 `device_starting` com acompanhamento do boot em vez de mandar o usuário tentar de novo; DeviceGrid mostrar erro de carga de perfis em vez de engolir.
-
-**Evidência.** ProfilesPage.tsx:133-138 `acompanhar()` recarrega em esperas fixas [2,3,5,8,12] s (30 s) e para; :140-149 toast info 'Conectando…' e nada depois. ProfileDetail.tsx:436-439: toast 'Pedido aceito' e `setTimeout(() => recarregar(), 4000)`. api.py:380-399 -> `_start_session_job` (:435-452) devolve `{accepted, profile_id, instance_id}` sem id acompanhável; o reducer não tem evento de perfil (cases em reducer.ts:330-395). Os desfechos relevantes saem como `log` de nível `warn` (integrations/instagram/authentication.py:239,256,264,283,303: desafio, credencial recusada, tentativas esgotadas) e live.ts:152 só dá toast para `error` - logo nunca chegam a quem clicou. DeviceGrid.tsx:38 engole a falha de `listProfiles()` (`.catch(() => undefined)`). Correção ao auditor: aparelho desligado NÃO entra nesse fluxo - api.py:444-446 pede o boot e responde 409 `device_starting` ('tente novamente em instantes'); o job só é aceito com o aparelho online.
-
-**O que o verificador corrigiu.** Evidências de frontend conferem. Corrigi a descrição: o cenário 'rodízio precisa ligar o aparelho (boot até 480 s)' não existe - nesse caso a API recusa com 409 device_starting e o job nem começa. Acrescentei a causa real da invisibilidade do desfecho (logs warn não viram toast). Severidade média mantida.
-
 ## #85 — Instalação interrompida por reinício fica presa em 'verifying' ('será relido do aparelho' sem ninguém que releia), e a reconciliação de releases não conhece dono
 
 `médio` · defeito · esforço M · fase 6 · seção do pedido: 4 e 9 (aceites 7 e 9) · verificação: confirmado

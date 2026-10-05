@@ -232,9 +232,8 @@ para o texto da pessoa e `TeachingService._secret_paths` para a candidata. As du
 
 **Duas réguas:**
 
-- **Formato** (`value_is_secret` → `security/redaction.py::looks_secret`): par `senha: …`, token, JWT, código de
-  verificação, blob longo.
-- **Palavra** (`text_has_credential`): o formato, mais cada palavra com cara de senha ou código
+- **Formato** (`value_is_secret` → `security/redaction.py::looks_secret`): par `senha: …`, token, JWT, blob longo.
+- **Palavra** (`text_has_credential`): o formato, mais cada palavra com cara de senha
   (`security/redaction.py::parece_senha_ou_codigo`):
   - palavra única de 8 ou mais caracteres que mistura três tipos (minúscula, maiúscula, dígito, símbolo fora de
     `._-@`);

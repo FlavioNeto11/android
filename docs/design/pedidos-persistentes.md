@@ -44,7 +44,6 @@ Não há agendamento, recorrência nem gatilho por evento no produto (busca por 
 | Políticas por capacidade `autonomous`/`approval_required`/`manual_only`/`disabled`; uma conta por alvo em seguir, DM e comentário | `planning/capabilities.py` `POLICIES`; `social/policy.py` `PolicyEngine.check`, `UMA_CONTA_POR_ALVO` (ADR-055) | Existe | o pedido só restringe, nunca afrouxa |
 | Aprovações por etapa, expiradas com o objetivo | `social/approvals.py` `ApprovalStore.open`, `decide`, `expire_for_objective` | Existe | aprovação de efeito dentro da ocorrência |
 | Livro de aprendizado: lições, falhas em vocabulário fechado, preferências, backlog | `modules/learning/` (ADR-054) | Existe | a ocorrência seguinte aprende com a anterior sem código novo |
-| Escolha semântica de personas pelo papel `plan`; recusa de propaganda política e campanha coordenada | `taskqueue/orquestrador.py`, `modules/execution/domain/orquestracao.py` (ADR-050) | Existe | seleção por capacidade; regra de conduta dos casos |
 | Valor lido numa etapa usado na seguinte (`step_outputs`, migração 056) | `Repository.save_step_output`, `step_outputs` | **Em curso** (Fase 24, não integrado) | o relatório lê valores estruturados |
 | Portão de rede no despacho (`rede_gate`, migração 057) | `Scheduler._tick` | **Em curso** (Fase 25, não integrado) | ocorrência espera a rede verificada |
 
@@ -421,7 +420,6 @@ hospedeiros com PostgreSQL gerenciado.
 | dado mais velho que `frescor_max` para o relatório | pesquisar de novo antes de relatar | código |
 | falha do app com `failure_kind` de tela/app ≥ 2 vezes e outro app permitido tem a capacidade | trocar de app | código propõe; o plano executa |
 | capacidade que a persona não tem ou papel diferente (checagem, redação) | pedir colaboração (§9) | código, dentro dos limites |
-| conta travada, desafio, 2FA | pausar e avisar | código |
 | objetivo ambíguo (qual perfil é o do político?) | pergunta ao dono (`needs_input` → sucessora) | IA pergunta, pessoa responde |
 | escolher entre caminhos equivalentes, ler o conteúdo | plano da ocorrência | IA, no orçamento |
 
@@ -643,7 +641,7 @@ e a regra 2 (`approval_required` quando o alvo é pessoa real sem conversa prév
 |---|---|
 | Objetivo | detectar menções a uma pessoa ou marca do dono, classificar, avisar e, se autorizado, preparar resposta |
 | Papéis | pesquisador (encontra e captura), checador (classifica e verifica), redator (prepara resposta), porta-voz (a única conta que responde, com aprovação) — §9 |
-| Classificação | **opinião/crítica** (não checável — a Lupa não checa opinião) × **alegação factual** (dado, fato datado, legalidade: checável) × **ofensa/ameaça** (vai ao dono, sem resposta automática) |
+| Classificação | — |
 | Verificação | só da alegação factual, com fontes primárias e rótulo no vocabulário das agências (verdadeiro, falso, falta contexto, exagerado, insustentável…); sem fonte primária, "não verificado" |
 | Evidência | captura, `sha256`, instante e autor da menção guardados em `pedido_observacoes` (a evidência crua é purgada em 14 dias) |
 | Resposta | `preparar` por padrão: rascunho com aprovação; `agir` só com aprovação por resposta; uma conta por alvo; transparente (a conta fala em nome de quem é) |

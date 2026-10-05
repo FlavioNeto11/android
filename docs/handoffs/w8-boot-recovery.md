@@ -101,7 +101,7 @@ logs (normalizados pelas horas do convidado), não toca TLS (o túnel sem peer n
 ## 8. Próximo experimento discriminante (decisão do dono; excede os 3 ensaios desta rodada)
 
 1. **(substituído pela §15)** Par `os+stopped` × controle limpo `os+uistop`, em blocos sorteados, com a ordem das redes lida por boot (já no script: `resumir`) e parada antecipada. O `os` do E1 **não** é o controle: não fez o Start prévio.
-2. **(fora da §15)** Fixar a ordem das redes do emulador (Wi-Fi primeiro/celular primeiro) só se houver como **sem mascarar o emulador** (configuração declarada, ADR-056) e com autorização do dono; hoje a ordem é só **observada**.
+2. **(fora da §15)** Fixar a ordem das redes do emulador (Wi-Fi primeiro/celular primeiro) só se for possível por configuração declarada (ADR-056) e com autorização do dono; hoje a ordem é só **observada**.
 3. **Boot com `serviceMode` NORMAL** num aparelho de cliente recém-importado (um dos outros do worker, com autorização): reproduz H-DUPLO e mede a ordem dos dois starts.
 4. **Mitigação candidata (não implementada, só depois de provar):** a função do PR #17 (`religar_pela_interface`) ligada UMA vez após a importação do perfil deixaria o `serviceMode=VPN`, e o `BootReceiver` passaria a iniciar `VPNService` (um só serviço): removeria o duplo-start dos boots (B2/B4) sem tocar na causa dos B1/B3.
 

@@ -158,14 +158,8 @@ Caminhos relativos a `backend/app/`.
 
 - **Telas** — `telas.yaml` (sinais por idioma en/pt, regras de tela em ordem de precedência, a extração
   `conta_no_cabecalho`, o estado conhecido `feed`/`profile`), lido por
-  `automation/conhecimento_de_telas.py::classificar`. O enum `Screen` não existe mais: os nomes de tela são os do
-  arquivo (`challenge`, `two_factor`, `save_login_prompt`, `account_switcher`, `login`, `loading`, `inbox`,
-  `profile`, `feed`, `thread`, `comments`, `post`, `search`; sem regra que case, `desconhecida`), e cada um tem um
-  tipo do vocabulário fechado do motor (`TIPOS`: `desafio`, `dois_fatores`, `intersticial`, `login`, `carregando`,
-  `autenticada`) — é pelo tipo que o núcleo decide. Estrutura primeiro, texto só desempata: ids do Instagram são
-  ofuscados e mudam de versão, então as regras usam prefixos do final do resource-id e o atributo `password`. A
-  primeira regra que casar vence, e o arquivo declara `challenge`/`two_factor` ANTES de `login`, de propósito:
-  confundir os dois faria o sistema digitar senha numa tela de código.
+  `automation/conhecimento_de_telas.py::classificar`. Estrutura primeiro, texto só desempata: ids do Instagram são
+  ofuscados e mudam de versão, então as regras usam prefixos do final do resource-id e o atributo `password`.
 - **Leitura para o rascunho** — a seção `leitura` do `app.yaml`, lida por
   `automation/leitura_de_tela.py::LeituraDeclarada` (`visible_content`, `comment_of`, `message_of`): fala só com o
   autor casado na mesma linha — vazio significa "escreva sem isto", nunca "invente"; tela sensível sempre devolve
@@ -173,45 +167,35 @@ Caminhos relativos a `backend/app/`.
 - **Login e sessão** — `sessao.yaml` (rótulo, ajustes padrão, formulário, dispensa, aba de perfil, a tabela
   `depois_do_envio` e os textos de ajuda), validado na carga por `integrations/app_declarado/conhecimento.py`
   (`do_app(pacote)`) e executado por `integrations/app_declarado/sessao.py::SessaoDeclarada`, o `SessionProvider`
-  genérico que substituiu o `InstagramAuthenticator`. `ensure_session()` é a entrada: reaproveita sessão existente,
-  dispensa intersticiais (só o botão de RECUSA declarado em `dispensa`, nunca aceitar/permitir; a geometria é de
-  `formulario.py`), volta ao estado conhecido e trata desafio/2FA ANTES de tentar qualquer login. `_login()` confere
-  o campo de usuário antes de prosseguir (até `FILL_TRIES` = 3 tentativas, e só envia com o valor conferido) e
-  preenche a senha pelo canal sensível; `_watch_after_submit` só observa, nunca reenvia por timeout, e
-  `classificar_depois_do_envio` aplica a tabela declarada. `_wrong_account()` é **sempre** intervenção humana —
-  comentário no código (achado #115) registra que a troca automática de conta nunca foi implementada de propósito
-  (a flag `auto_switch_account`, que sugeria o contrário, não existe mais na configuração; implementar a troca pelo
-  seletor de contas é decisão do dono, ainda aberta).
-  `_challenge()` grava `SessionStatus.auth_challenge` e devolve `Outcome.AUTH_CHALLENGE`. "Confirm you're human" (e variantes: "verify/prove you're
-  human", "confirme/comprove que você é humano/uma pessoa") é a conta travada (decisão do dono, 29/09): cai em
-  `challenge` nos dois idiomas e em `hierarchy._CONTA_TRAVADA`, sem toque nenhum — a prova é com hierarquia
-  SINTÉTICA (`tests/test_detector_conta_travada.py`), porque a tela real não existe (a conta foi perdida). Tela que
-  nenhum sinal reconhece não se reobserva para sempre. Item 29.92: na porta de sessão, aparelho com vínculo ativo
-  (conta real, `shared.vinculos.tem_vinculo_ativo`) para no PRIMEIRO `unknown` — a rodada seguinte podia cair no login
-  e digitar a senha guardada em cima de uma tela que ninguém reconheceu — e a parada sai uma vez em
-  `session.needs_person`. Como a porta só existe com vínculo, o `session_unknown_retry_cap` (3) deixou de agir nela e
-  só vale onde não há vínculo (hoje, nenhum caminho automático); segue como limite do contador
-  (`tests/test_porta_de_sessao_no_teto.py`). A prévia de recursos (`AppSessionProvider`) usa o mesmo teto por
-  aparelho e não planeja `session.verify` sobre a parada. A regra do teto mora num lugar só
-  (`shared.vinculos.teto_de_unknown`), para a porta, a prévia e o REST. Item 29.96: o `SessionInfo.unknown_at_cap` (adendo
-  v1.48) põe a parada nas filas "Aguardando intervenção" e Pendências, com o rótulo "Tela não reconhecida". Segue a
-  regra do aviso (`unknown_no_teto`, sem o desconto do teto velho), e o aviso leva ao Foco do aparelho. Item 29.100:
-  as duas filas mostram e ordenam pela hora em que o estado começou (`account_sessions.status_since`, migração 112;
-  `SessionInfo.status_since`, adendo v1.51), não pela última verificação, que na parada fica vazia ou velha. A hora é
-  a da mudança de estado e, no `unknown`, a da chegada ao teto: um `unknown` administrativo antigo que para hoje
-  mostra hoje. Regravar o mesmo estado fora disso mantém a hora.
-  Duas exceções, de propósito:
+  genérico que substituiu o `InstagramAuthenticator`. `_login()` confere o campo de usuário antes de prosseguir (até
+  `FILL_TRIES` = 3 tentativas, e só envia com o valor conferido) e preenche a senha pelo canal sensível;
+  `_watch_after_submit` só observa, nunca reenvia por timeout, e `classificar_depois_do_envio` aplica a tabela
+  declarada. `_wrong_account()` é **sempre** intervenção humana — comentário no código (achado #115) registra que a
+  troca automática de conta nunca foi implementada de propósito (a flag `auto_switch_account`, que sugeria o contrário,
+  não existe mais na configuração; implementar a troca pelo seletor de contas é decisão do dono, ainda aberta). Tela que
+  nenhum sinal reconhece não se reobserva para sempre. Item 29.92: na porta de sessão, aparelho com vínculo ativo (conta
+  real, `shared.vinculos.tem_vinculo_ativo`) para no PRIMEIRO `unknown` — a rodada seguinte podia cair no login e
+  digitar a senha guardada em cima de uma tela que ninguém reconheceu — e a parada sai uma vez em
+  `session.needs_person`. Como a porta só existe com vínculo, o `session_unknown_retry_cap` (3) deixou de agir nela e só
+  vale onde não há vínculo (hoje, nenhum caminho automático); segue como limite do contador
+  (`tests/test_porta_de_sessao_no_teto.py`). A prévia de recursos (`AppSessionProvider`) usa o mesmo teto por aparelho e
+  não planeja `session.verify` sobre a parada. A regra do teto mora num lugar só (`shared.vinculos.teto_de_unknown`),
+  para a porta, a prévia e o REST. Item 29.96: o `SessionInfo.unknown_at_cap` (adendo v1.48) põe a parada nas filas
+  "Aguardando intervenção" e Pendências, com o rótulo "Tela não reconhecida". Segue a regra do aviso (`unknown_no_teto`,
+  sem o desconto do teto velho), e o aviso leva ao Foco do aparelho. Item 29.100: as duas filas mostram e ordenam pela
+  hora em que o estado começou (`account_sessions.status_since`, migração 112; `SessionInfo.status_since`, adendo
+  v1.51), não pela última verificação, que na parada fica vazia ou velha. A hora é a da mudança de estado e, no
+  `unknown`, a da chegada ao teto: um `unknown` administrativo antigo que para hoje mostra hoje. Regravar o mesmo estado
+  fora disso mantém a hora. Duas exceções, de propósito:
   - o app fora do primeiro plano (`_fora_do_primeiro_plano` em `sessao.py`) grava `unknown` SEM somar, e a porta
     segue automática: abrir o app de novo não é rodada de sessão, porque a tela nem chegou a ser lida;
   - dentro da MESMA rodada, uma tela desconhecida seguida de voltar ou reabrir que cai numa tela de login
     reconhecida faz o login na hora (ADR-040, com consentimento); o teto 1 só impede a rodada seguinte.
 
-  `_needs_person(conta, instance_id)` impede o agendador de
-  sequer tentar de novo quando o estado já pede pessoa (lê a sessão da conta **deste app** neste aparelho, 23.4);
-  `_blocked_reason()` recusa entrar sem `consent_at` na credencial da conta (ADR-040). Tetos, cooldown e prazos são
-  os `ajustes` do `sessao.yaml` com a sobrescrita da instalação por cima (`contas.sessao.<pacote>.<ajuste>` no
-  `config.yaml`, entregue por `Config.ajustes_de_sessao`), lidos a cada uso. `Outcome` (StrEnum: `SESSION_READY, INVALID_CREDENTIAL, AUTH_CHALLENGE, WRONG_ACCOUNT, RETRYABLE,
-  UNCERTAIN`) mora no mesmo módulo; `Outcome.terminal` inclui `AUTH_CHALLENGE`.
+  `_needs_person(conta, instance_id)` impede o agendador de sequer tentar de novo quando o estado já pede pessoa (lê a
+  sessão da conta **deste app** neste aparelho, 23.4); `_blocked_reason()` recusa entrar sem `consent_at` na credencial
+  da conta (ADR-040). Tetos, cooldown e prazos são os `ajustes` do `sessao.yaml` com a sobrescrita da instalação por
+  cima (`contas.sessao.<pacote>.<ajuste>` no `config.yaml`, entregue por `Config.ajustes_de_sessao`), lidos a cada uso.
 - **Conta aberta** — `sessao.py::ler_conta` lê a conta SÓ na tela de perfil declarada (`conta.tela_de_perfil`),
   depois de tocar na aba de perfil declarada (`conta.aba`), nunca pelo feed (bug histórico de confundir autor de
   post com dono da conta, K-021). A conta lida é comparada ao `handle` e ao `login_identifier` da **conta do app**
@@ -219,19 +203,17 @@ Caminhos relativos a `backend/app/`.
   do perfil (item 23.4).
 - **Login em etapas, conta fora da barra e Custom Tab (item 23.6, ADR-057 decisão 3)** — três blocos opcionais do
   `sessao.yaml`, lidos pelo mesmo motor (quem não os declara segue igual, como o Instagram):
-  - `formulario.etapa_do_usuario: {tela, sinal_do_botao, recusas: [{sinal, detalhe}]}`: o identificador numa tela
-    (a `tela` do `telas.yaml` tem de ser do tipo `login` e não a do campo de senha) com um "avançar", a senha na
-    seguinte. A geometria (`formulario.py::identifier_form`) exige UM campo de texto, nenhum de senha e UM botão
-    abaixo que casa o sinal por inteiro. `SessaoDeclarada._etapa_do_usuario` preenche, confere, avança e espera a tela
-    da senha; o cabeçalho clicável com a conta, acima da senha, nunca é tomado por usuário (`LoginForm.usuario_editavel`).
-    **A senha só é digitada numa tela que mostra ESTE identificador**, como palavra inteira
-    (`formulario.py::mostra_o_identificador`): o app que lembrou outra conta e abriu direto na senha não recebe a
-    senha desta. Os desfechos antes da senha — desafio depois do "avançar", recusa declarada do identificador, tela
-    da senha sem a conta, tela da senha que não chegou, navegador fora do site — têm etapa própria na tentativa
-    (`ETAPA_*` em `sessao.py`), todas em `ETAPAS_ANTES_DO_ENVIO` (não gastam o teto diário). Recusa do identificador,
-    tela sem a conta e tela da senha que não chegou param o login em `review` (a credencial não vira `invalid`:
-    ninguém julgou a senha). O "avançar" já é efeito no servidor (o identificador saiu; o provedor pode mandar um
-    código ou um pedido de aprovação a cada vez): contar falha e esperar o intervalo repetiria esse toque sem fim.
+  - `formulario.etapa_do_usuario: {tela, sinal_do_botao, recusas: [{sinal, detalhe}]}`: o identificador numa tela (a
+    `tela` do `telas.yaml` tem de ser do tipo `login` e não a do campo de senha) com um "avançar", a senha na seguinte.
+    A geometria (`formulario.py::identifier_form`) exige UM campo de texto, nenhum de senha e UM botão abaixo que casa o
+    sinal por inteiro. `SessaoDeclarada._etapa_do_usuario` preenche, confere, avança e espera a tela da senha; o
+    cabeçalho clicável com a conta, acima da senha, nunca é tomado por usuário (`LoginForm.usuario_editavel`). **A senha
+    só é digitada numa tela que mostra ESTE identificador**, como palavra inteira
+    (`formulario.py::mostra_o_identificador`): o app que lembrou outra conta e abriu direto na senha não recebe a senha
+    desta. Recusa do identificador, tela sem a conta e tela da senha que não chegou param o login em `review` (a
+    credencial não vira `invalid`: ninguém julgou a senha). O "avançar" já é efeito no servidor (o identificador saiu; o
+    provedor pode mandar um código ou um pedido de aprovação a cada vez): contar falha e esperar o intervalo repetiria
+    esse toque sem fim.
   - `conta.acesso: {ids, rotulos}` no lugar de `conta.aba` (exatamente um dos dois): a conta é aberta por um elemento
     do app fora da barra inferior (avatar, menu), por prefixo de id ou rótulo, com **um candidato só**
     (`formulario.py::account_opener`); a leitura usa a extração declarada, no texto ou na descrição, e só vale com
@@ -241,70 +223,38 @@ Caminhos relativos a `backend/app/`.
     fechando — não gasta essa vez): sem isso, o login bem-sucedido de um app cuja tela inicial não mostra a conta
     terminaria incerto. `ler_conta` recebe o reconhecimento do provedor (`reconhecer=`), o mesmo da Custom Tab. `ConhecimentoDeSessao.aba_de_perfil` responde pelos dois (o aprendizado pergunta o
     mesmo).
-  - `navegador: {pacotes: {<pacote do navegador>: <sufixo do id da barra de endereço>}, hosts: [...]}`: a Custom Tab
-    do login. O navegador declarado só é tela do app (`SessaoDeclarada._reconhecer`) num site de login que o app
-    declara (os `hosts`, igual ou subdomínio). O `host` de uma conta não soma: conta com `host` é de portal, pelo
-    navegador, e não tem login gerenciado — `_resolver_conta` a recusa sem tocar no aparelho e a rota
-    `…/accounts/{aid}/session/{connect|verify}` responde 409 `conta_de_site` (a porta e o despacho só acham a conta
-    do app inteiro, `conta_do_pacote`). Fora do site, ou
-    sem a barra à vista, a pessoa assume (`_navegador_fora_da_conta`: sessão `auth_required` com o que fazer, login em
-    `review`; a leitura só registra) — sem "voltar", sem reabrir, sem digitar; o desafio dentro da Custom Tab é visto
-    mesmo assim (o `classificar` devolve "outro app" antes do detector), e nem a recusa se toca numa página alheia.
-    A barra de endereço nunca é campo do formulário (`formulario.py::Ignorados`: numa página de senha sem o cabeçalho
-    da conta, a geometria a tomaria por usuário). A senha é conferida no instante de digitar,
-    na MESMA árvore do campo (`_fill_password`: o `locate` do canal sensível só acha campo no pacote da conta ou no
-    navegador no site permitido); fora disso o canal recusa com a mensagem fixa dele.
+  - `navegador: {pacotes: {<pacote do navegador>: <sufixo do id da barra de endereço>}, hosts: [...]}`: a Custom Tab do
+    login. O navegador declarado só é tela do app (`SessaoDeclarada._reconhecer`) num site de login que o app declara
+    (os `hosts`, igual ou subdomínio). O `host` de uma conta não soma: conta com `host` é de portal, pelo navegador, e
+    não tem login gerenciado — `_resolver_conta` a recusa sem tocar no aparelho e a rota
+    `…/accounts/{aid}/session/{connect|verify}` responde 409 `conta_de_site` (a porta e o despacho só acham a conta do
+    app inteiro, `conta_do_pacote`). A barra de endereço nunca é campo do formulário (`formulario.py::Ignorados`: numa
+    página de senha sem o cabeçalho da conta, a geometria a tomaria por usuário). A senha é conferida no instante de
+    digitar, na MESMA árvore do campo (`_fill_password`: o `locate` do canal sensível só acha campo no pacote da conta
+    ou no navegador no site permitido); fora disso o canal recusa com a mensagem fixa dele.
 
-  Prova `simulated`: `backend/tests/test_sessao_em_etapas.py` (um correio fictício, só em dado: etapas, acesso pela
-  gaveta, Custom Tab no site do app e num subdomínio; conta de site recusada; site não declarado; fora do site;
-  desafio na Custom Tab; site trocado entre achar o campo e digitar; tela da senha que não chega para o login
-  automático; carga recusada) e `backend/tests/test_contas_unificadas_api.py::test_conta_de_site_nao_conecta_pelo_login_gerenciado`. O `type_secret` do executor
-  (`taskqueue/executor.py::_conferir_destino`) ainda recusa a Custom Tab (exige o pacote da conta em primeiro plano):
-  só o motor de sessão a aceita. O `telas.yaml`/`sessao.yaml` do Outlook veio no 23.8
+  O `type_secret` do executor (`taskqueue/executor.py::_conferir_destino`) ainda recusa a Custom Tab (exige o pacote da
+  conta em primeiro plano): só o motor de sessão a aceita. O `telas.yaml`/`sessao.yaml` do Outlook veio no 23.8
   ([abaixo](#o-outlook-como-dado-item-238)); aparelho real: `not_run`.
 - **Entrada e alternativa do login em etapas (item 23.8)** — mais dois blocos opcionais em
   `formulario.etapa_do_usuario`, para o que o Outlook mostrou e o motor ainda não sabia fazer:
   - `entrada: {tela, sinal_do_botao}`: a tela do app deslogado (tipo `login`, sem campo de senha, diferente da do
-    identificador) e o botão que abre a tela do identificador. `SessaoDeclarada._abrir_a_etapa_do_usuario` toca o
-    botão (um candidato só, `formulario.py::botao_unico`, sem casar a exclusão) e espera a tela do identificador até
-    `submit_wait_s`. É navegação: nenhuma tentativa começa, nada conta falha nem gasta o teto; desafio no caminho vai
-    para a pessoa; sem o botão único, ou sem a tela seguinte, incerto e nada digitado.
+    identificador) e o botão que abre a tela do identificador. `SessaoDeclarada._abrir_a_etapa_do_usuario` toca o botão
+    (um candidato só, `formulario.py::botao_unico`, sem casar a exclusão) e espera a tela do identificador até
+    `submit_wait_s`.
   - `alternativas: [{tela, sinal_do_botao}]`: telas entre o "avançar" e a senha em que o provedor propõe um código e
-    oferece a senha. No laço de `_etapa_do_usuario`, ANTES do desvio de desafio, com o botão declarado na tela (um só,
-    no destino permitido, nunca numa tela de conta travada — `ConhecimentoDeSessao.botao_da_alternativa`), escolhe-se
-    a senha uma vez por tela e o prazo recomeça; enquanto a mesma tela segue com o botão, espera-se a troca (o WebView
-    demora) sem julgá-la desafio nem tocar de novo. Sem o botão, a tela segue o tipo dela: a de código vai para a
-    pessoa (`challenge_before_password`). A carga recusa alternativa em tela de tipo `desafio` (ADR-055: nada se toca
-    em conta travada), na tela da senha, repetida ou na do identificador.
+    oferece a senha.
 
   Prova `simulated`: `backend/tests/test_outlook_declarado.py` (os dois blocos na pasta real do Outlook e a carga
   recusada); quem não os declara segue igual (`::test_quem_nao_declara_entrada_nem_alternativa_segue_como_antes`).
-- `emit_needs_person_change()` (`modules/identity/application/session_rules.py`, chamada por
-  `SessaoDeclarada._save`) dispara o evento `session.needs_person` (fila "Aguardando intervenção");
-  `PRECISA_DE_PESSOA = (auth_challenge, wrong_account)` ([abaixo](#sessionprovider-e-o-registro-por-pacote-fase-k1)).
 
-**Desafio bloqueia o perfil sozinho (ADR-029, 27/09).** Na entrada da sessão em `auth_challenge`, o perfil passa
-de `active` a `blocked` (`modules/identity/application/session_rules.py::bloquear_por_desafio`, chamado por
-`SessaoDeclarada._save` e por `AppState._sessao_desmentida`). A porta de sessão e a distribuição já recusam
-perfil fora de `active`. Pausa do dono (`disabled`) não é reescrita. Resolver a tela não reativa sozinho: quem
-reativa é a pessoa, na tela do perfil. **Só na conta âncora (item 23.5, decisão do dono P9 de 29/09):** o desafio
-num app que não é o âncora (o Outlook) para só a conta daquele app — credencial em `review`, sessão em
-`auth_challenge` — sem bloquear a persona nem o Instagram dela; a conta travada daquele app mantém a quarentena do
-aparelho, e o marcador (`marcar_conta_travada`) só bloqueia a persona pela conta âncora. A regra é uma só
-(`session_rules.py::aplicar_desafio`), para o motor de sessão e para a tela que desmente a sessão na execução; o
-detalhe está em [persona.md](persona.md).
-
-**Proteção de contas (ADR-055, 29/09; integrada em `c359f65`, a implantar).** A regra do dono: parar em "Confirm you're
-human" é sinal de conta perdida. O que muda no desafio e em volta dele:
+A porta de sessão e a distribuição já recusam perfil fora de `active`. Pausa do dono (`disabled`) não é reescrita.
+Resolver a tela não reativa sozinho: quem reativa é a pessoa, na tela do perfil.
 
 - **Conta travada = `blocked`.** Um detector único (`automation/hierarchy.py`,
   `conhecimento_de_telas.py::detectar_conta_travada`) casa na união dos idiomas, com o texto normalizado (apóstrofo
   tipográfico, acento), e roda depois de cada observação e na sessão, antes do ANR, da receita e do ator; sai sem tocar.
-  Subtipos do `auth_challenge`: `conta_travada` bloqueia o perfil sozinho; `codigo` (login por e-mail, 2FA) e
-  `verificacao` (o ator relatou com `step_blocked(kind="challenge")`) pedem pessoa SEM bloquear — o código de 18/09
-  teria bloqueado bruno e andre, que estão vivos. O bloqueio vale também com a sessão já em `auth_challenge`; reativar é
-  da pessoa. Todo status passa por `mudar_status` (`blocked_at`, `blocked_evidence`, `blocked_origin`, evento
-  `profile.status`).
+  Todo status passa por `mudar_status` (`blocked_at`, `blocked_evidence`, `blocked_origin`, evento `profile.status`).
 - **Quarentena do aparelho.** A conta travada logada vira marcador do APARELHO (`device_locked_accounts`, migração 054),
   que sobrevive ao desvínculo: sem confirmação explícita (`confirm_locked_account`), só parar e hibernar; nenhuma outra
   persona se vincula ali (409 `aparelho_em_quarentena`); nada de entrega, escada de reparo nem reinício por irq;
@@ -320,8 +270,7 @@ human" é sinal de conta perdida. O que muda no desafio e em volta dele:
   alvo, e a conta nossa continua fora da elegibilidade de "terceiro" (8.3).
 - **Uma conta por alvo.** Seguir, DM e comentário: no máximo uma conta por pessoa numa janela de 30 dias, com o
   excedente recusado; curtida e comentário ganham o alvo (`post_author`, herdado de OPEN_POST); um pedido igual a várias
-  contas na mesma execução segue numa conta só, com aprovação. Quando uma conta cai, o disjuntor pausa as que agiram
-  sobre os mesmos alvos nas 48 h anteriores (K-057).
+  contas na mesma execução segue numa conta só, com aprovação.
 - **DM fria com aprovação.** SEND_MESSAGE para quem nunca escreveu a esta conta é sempre `approval_required`, sem grupo
   nem perfil que afrouxe; a persona não atribui fala a terceiros (`social/conteudo.py`). "Sending…" é pendente, nunca
   enviada, e confirmar à mão uma etapa com efeito exige o print (`evidence_id`).
@@ -386,23 +335,23 @@ integrados em `f06e34a`, mais a correção `3fbe9df`. Caminhos relativos a `back
 - O 409 `no_session_provider` passou a ser alcançável na onda B: `POST …/accounts/{aid}/session/connect` numa conta
   de app sem provedor o devolve ([contrato v0.28](../api-contract.md#adendo-v028-27092026--conta-única-credencial-com-consentimento-e-sessão-por-conta-e-aparelho-adr-040)).
 
-**A sessão é da conta num aparelho (049), e o motor é por conta (23.4).** `account_sessions(account_id,
-instance_id)` substitui a sessão única por perfil. Desde o item 23.4 (ADR-057) o provedor recebe a conta
-(`ensure_session(rt, profile_id, account_id=…)`) e o motor genérico resolve, antes de tocar no aparelho, a
-`ContaDaSessao` da chamada (`SessaoDeclarada._resolver_conta`): tudo o que ele lê e grava é dela — credencial e
-consentimento (`account_credential_row`), marcação da credencial (`mark_account_credential`,
-`touch_account_credential`), tentativa (`start_auth_attempt(account_id=…)`), teto diário (`auth_attempts(account_id=…)`:
-os envios de um app não gastam o teto do outro), sessão no aparelho (`account_session_row`/`set_account_session`) e o
-marcador de conta travada (`registrar_conta_travada(handle=, app_id=)` com o `@` e o app da conta). O "verificado em"
-do cartão do perfil (`last_verified_at`) só muda com a conta âncora. O status do PERFIL (`blocked`/`disabled`) segue
-da persona, e só o desafio na conta âncora o muda (item 23.5, abaixo). `SocialRepository.session_row`/`set_session`/
-`credential_row` (por `profile_id`) ficam como leitura da conta âncora para o DTO do perfil e os chamadores antigos.
-Invalidação: `invalidate_sessions_of_instance(package=…)` só as contas daquele app; `todos_os_apps=True` (o gancho
-do aparelho, `AppState._invalidate_sessions` sem pacote: reset e troca de máquina) toda conta ali; sem nenhum dos
-dois, a âncora. A tela que desmente a sessão no meio da execução (`AppState._sessao_desmentida`) corrige a conta do
-app da tela: o `package=` de quem viu (o executor passa o pacote da tela em que viu a trava, `on_auth_needed`), senão
-o da etapa em curso no aparelho (`AppState._pacote_em_curso`), senão a âncora. Mover o aparelho ou a persona de máquina pede confirmação com a sessão pronta de QUALQUER conta dela ali
-(`api.py::_recusar_mudanca_de_servidor`, `SocialService._recusar_troca_de_servidor`). Consequências:
+**A sessão é da conta num aparelho (049), e o motor é por conta (23.4).** `account_sessions(account_id, instance_id)`
+substitui a sessão única por perfil. Desde o item 23.4 (ADR-057) o provedor recebe a conta (`ensure_session(rt,
+profile_id, account_id=…)`) e o motor genérico resolve, antes de tocar no aparelho, a `ContaDaSessao` da chamada
+(`SessaoDeclarada._resolver_conta`): tudo o que ele lê e grava é dela — credencial e consentimento
+(`account_credential_row`), marcação da credencial (`mark_account_credential`, `touch_account_credential`), tentativa
+(`start_auth_attempt(account_id=…)`), teto diário (`auth_attempts(account_id=…)`: os envios de um app não gastam o teto
+do outro), sessão no aparelho (`account_session_row`/`set_account_session`) e o marcador de conta travada
+(`registrar_conta_travada(handle=, app_id=)` com o `@` e o app da conta). O "verificado em" do cartão do perfil
+(`last_verified_at`) só muda com a conta âncora. `SocialRepository.session_row`/`set_session`/ `credential_row` (por
+`profile_id`) ficam como leitura da conta âncora para o DTO do perfil e os chamadores antigos. Invalidação:
+`invalidate_sessions_of_instance(package=…)` só as contas daquele app; `todos_os_apps=True` (o gancho do aparelho,
+`AppState._invalidate_sessions` sem pacote: reset e troca de máquina) toda conta ali; sem nenhum dos dois, a âncora. A
+tela que desmente a sessão no meio da execução (`AppState._sessao_desmentida`) corrige a conta do app da tela: o
+`package=` de quem viu (o executor passa o pacote da tela em que viu a trava, `on_auth_needed`), senão o da etapa em
+curso no aparelho (`AppState._pacote_em_curso`), senão a âncora. Mover o aparelho ou a persona de máquina pede
+confirmação com a sessão pronta de QUALQUER conta dela ali (`api.py::_recusar_mudanca_de_servidor`,
+`SocialService._recusar_troca_de_servidor`). Consequências:
 
 - desde a 047 a pessoa vinculada a um aparelho pode **não ter conta** no app do item: `AppState._session_gate` recusa
   com "não tem conta em <app>" sem tocar o aparelho nem autenticar (`state.py::AppState._tem_conta_no_app`: a verdade
@@ -420,29 +369,16 @@ o da etapa em curso no aparelho (`AppState._pacote_em_curso`), senão a âncora.
 
 **As regras de sessão do perfil.** `modules/identity/application/session_rules.py`:
 
-- `aplicar_desafio` (item 23.5: âncora → `bloquear_por_desafio` e quarentena; outro app → `parar_conta_por_desafio`
-  e, na trava, quarentena sem bloquear a persona) é a porta dos dois chamadores.
-- `bloquear_por_desafio` (ADR-029) e `emit_needs_person_change` (achado #106), com o corpo literal que morava no
-  autenticador do Instagram. São regras do perfil (design §6, raiz `Profile`), e o núcleo importava o autenticador
-  só para aplicá-las. Hoje os dois chamadores são o motor de sessão (`SessaoDeclarada._save`) e
-  `AppState._sessao_desmentida`;
-- o texto do motivo recebe o rótulo do app (`motivo_do_bloqueio_por_desafio(app_label)`): o motor passa o `rotulo`
-  do `sessao.yaml`, e `AppState._sessao_desmentida` passa o `label` do registro;
-- `PRECISA_DE_PESSOA` (`auth_challenge`, `wrong_account`) decide quando o evento da fila dispara;
+- São regras do perfil (design §6, raiz `Profile`), e o núcleo importava o autenticador só para aplicá-las. Hoje os dois
+  chamadores são o motor de sessão (`SessaoDeclarada._save`) e `AppState._sessao_desmentida`;
 - as portas que elas usam: `ports.py::ProfileStore` (`profile_row`, `update_profile`) e `ports.py::EventSink`
   (`emit`).
 
-**Desvio do desenho.** O classificador de tela da §7 ficou fora da porta: nenhum código do núcleo o consumiria sem
-mudar comportamento. Desde o ADR-052 ele é o motor genérico `automation/conhecimento_de_telas.py::classificar`, sobre
-o `telas.yaml` de cada app. A detecção genérica de desafio (`automation/hierarchy.py::_DESAFIO`) vale para qualquer
-app, de propósito.
+**Desvio do desenho.** O classificador de tela da §7 ficou fora da porta: nenhum código do núcleo o consumiria sem mudar
+comportamento. Desde o ADR-052 ele é o motor genérico `automation/conhecimento_de_telas.py::classificar`, sobre o
+`telas.yaml` de cada app.
 
-Provas (`simulated`): os testes de sessão, desafio e ADR-029 seguiram verdes sem mudar asserção
-(`backend/tests/test_instagram_auth.py` e vizinhos), também depois de o login virar dado (ADR-052); a porta por
-pacote com dois apps em
-`backend/tests/test_app_novo_pelo_manifesto.py::test_app_novo_entra_so_pelo_registro_com_provedor_e_catalogo`; a
-forma da porta em `backend/tests/test_dubles_cumprem_as_portas.py` (o `SessaoDeclarada` com o conhecimento do
-Instagram e o `SessaoDoQa`). Conta real e PostgreSQL: `not_run`.
+Conta real e PostgreSQL: `not_run`.
 
 ## Modo treinamento (itens 13.1–13.3)
 
@@ -547,8 +483,8 @@ julga). Por timeout nunca se toca em Share de novo: a reconciliação confere a 
 
 | Arquivo | O que declara |
 |---|---|
-| `app.yaml` | `provedor_de_sessao: microsoft`, perfil e internet obrigatórios, `ancora_do_perfil: false` (desafio para só a conta Outlook, item 23.5), `renderizador_recusado: [swiftshader]` (29.11) |
-| `telas.yaml` | sinais `en` e `pt`, boas-vindas, "Add account", espera do WebView, "Verify your email" (código, `dois_fatores`), senha, desafios da Microsoft, "Stay signed in?", as intermediárias do primeiro uso, gaveta e caixa; extração do e-mail da conta dentro do painel da gaveta |
+| `app.yaml` | — |
+| `telas.yaml` | sinais `en` e `pt`, boas-vindas, "Add account", espera do WebView, "Verify your email" (código), senha da Microsoft, "Stay signed in?", as intermediárias do primeiro uso, gaveta e caixa; extração do e-mail da conta dentro do painel da gaveta |
 | `sessao.yaml` | login em etapas com `entrada` e `alternativas`, recusa do identificador, dispensas (recusas globais, botão por tela e Voltar no diálogo do sistema), conta pela gaveta (`conta.acesso` + `ler_ao_entrar`), desfechos depois do "Next", textos |
 | `catalogo.yaml` | 3 ações só de leitura; `OPEN_MAIL_INBOX` e `SEARCH_MAIL` entregam `remetente` e `assunto` (12.3, ADR-065) |
 
@@ -564,9 +500,9 @@ LATER", nunca "ADD") → privacidade ("NEXT") → diagnóstico opcional ("Declin
 não sente (o Instagram segue igual):
 
 - `dispensa.por_tela: [{tela, sinal_do_botao}]`: o botão que fecha UMA tela `intersticial` (a carga recusa qualquer
-  outro tipo: desafio, código, login e casa nunca se dispensam), só nela, com um candidato só do próprio app
-  (`formulario.py::botao_unico`). É para o botão que não é recusa em lugar nenhum além daquela tela — "OK" e "NEXT"
-  como rótulos globais seriam tocados em qualquer tela.
+  outro tipo: código, login e casa nunca se dispensam), só nela, com um candidato só do próprio app
+  (`formulario.py::botao_unico`). É para o botão que não é recusa em lugar nenhum além daquela tela — "OK" e "NEXT" como
+  rótulos globais seriam tocados em qualquer tela.
 - `dispensa.voltar: [{pacote, sinal}]`: o diálogo de OUTRO pacote (o sistema oferecendo algo) sai pela tecla Voltar,
   sem tocar nele, só com o sinal declarado na tela e nenhuma verificação à vista. A carga recusa o próprio app.
 - `ConhecimentoDeSessao.dispensa_declarada` responde pelos dois, nunca numa tela com trava. O motor a aplica depois do
@@ -584,17 +520,11 @@ e a ordem que os testes usam ("OK" com dois toques; botões em MAIÚSCULAS; o "C
 descrição; o `account_button` sem descrição). Suposição, marcada linha a linha nos YAML:
 
 - o "Stay signed in?" ("No"/"Yes") e o diálogo de notificação do Android ("Don't allow"), que não apareceram;
-- os textos de desafio da Microsoft ("Help us protect your account", "Your account has been locked", "Enter code",
-  "Approve sign in request", "Verify your identity") e de recusa ("Your account or password is incorrect", "That
-  Microsoft account doesn't exist");
 - a tabela `pt` inteira (os aparelhos observados rodam em inglês).
 
-O que a suposição errar termina incerto, com o login automático parado até uma pessoa olhar — nunca sucesso. Os
-sinais de desafio e código são títulos de página ancorados na linha (`(?m)`), e o "Verify your email" exige também a
-linha "Send code" da mesma página: o detector roda sobre a caixa no meio da execução, e um assunto de e-mail solto não
-pode parar a etapa. Só "Help us protect your account" entrou no detector genérico
-(`automation/hierarchy.py::_CONTA_TRAVADA`, que omite a captura antes de ela sair): as outras frases, soltas ali,
-pegariam DM de golpe no Instagram ("your account has been locked").
+O que a suposição errar termina incerto, com o login automático parado até uma pessoa olhar — nunca sucesso. Só "Help us
+protect your account" entrou no detector genérico (`automation/hierarchy.py::_CONTA_TRAVADA`, que omite a captura antes
+de ela sair): as outras frases, soltas ali, pegariam DM de golpe no Instagram ("your account has been locked").
 
 Consequências do login gerenciado: a conta Outlook nasce com `automated_login` (a sessão deixa de ser marcada à mão;
 é Conectar/Verificar conta), a sessão pronta de um comando Outlook + Instagram exige as duas contas prontas no
@@ -608,23 +538,9 @@ nenhuma ação com efeito (T17 do ADR-057). Com ele o Outlook deixa de ser app d
 valor lido (`saidas`), como descrito em [apps-e-loja](apps-e-loja.md). Provas dos ids da caixa seguem `model_judged`
 até a observação real (29.12).
 
-Riscos conhecidos, para a próxima observação real: os sinais genéricos que já existiam ("verify your account",
-"security code", "verification code") também casam assunto de e-mail — ler a caixa com um desses assuntos à vista
-pode parar a etapa como desafio; e uma tela de carregamento no meio da leitura da conta (`ler_conta`) ainda encerra a
-leitura em vez de esperar — depois do envio isso não acontece, porque o "Authentication in progress" passa na
-observação do envio, antes da caixa.
-
-Prova `simulated`: `backend/tests/test_outlook_declarado.py` (a pasta real carrega; o login percorre a sequência
-inteira observada até a gaveta, com os ids, textos e a ordem dela; "ADD", "Accept", "Continue" do diálogo do sistema e
-"saiba mais" nunca são tocados; o app reaberto no meio do primeiro uso ou com o diálogo por cima segue pelas mesmas
-dispensas; a coluna de contas não é lida; código sem a oferta da senha, conta segurada e código depois da senha vão
-para a pessoa sem bloquear a persona; o `passwordEntry` só recebe a senha, pelo canal sensível; tela desconhecida não
-é sucesso; a caixa não é desafio nem mostra a conta; carga recusada) e
-`backend/tests/test_sensitive_input.py::test_pagina_da_microsoft_que_segura_a_conta_e_sensivel_mesmo_sem_campo`.
-Observação real (relato da sessão da IDE, android-06, 30/09 22:18–22:24Z, sem id de execução registrado aqui): a
-senha pelo canal sensível foi aceita, e o motor de então parou incerto no aviso da conta; a sequência seguinte foi
-atravessada à mão e é a que este dado declara. O login automático de ponta a ponta com este dado: `not_run` (29.12 e
-23.13).
+Observação real (relato da sessão da IDE, android-06, 30/09 22:18–22:24Z, sem id de execução registrado aqui): a senha
+pelo canal sensível foi aceita, e o motor de então parou incerto no aviso da conta; a sequência seguinte foi atravessada
+à mão e é a que este dado declara. O login automático de ponta a ponta com este dado: `not_run` (29.12 e 23.13).
 
 ## Extensão para outros apps (item 12.3 — pendente)
 
@@ -683,7 +599,7 @@ receber contas novas.
   `POST /api/instagram/profiles/{id}/accounts/{conta}/retire` (corpo opcional `{evidencia}`). Uma transação: credencial da
   conta, a legada e o ciphertext do cofre; sessões; vínculo de aparelho do app da conta (e o sem app); a linha da conta,
   mesmo âncora. Idempotente. O aparelho não é tocado e o marcador de quarentena fica.
-- **Gatilho:** ao fim de `marcar_conta_travada`, SÓ no Instagram (conta âncora) e SÓ com sinal forte: a `ChallengeActivity` em foco (lida por `DeviceManager.observe`) ou a declaração do dono. Só texto na tela, ou conta de outro app, fica `blocked`/marcada para a pessoa; a rota manual retira qualquer conta. Falha deixa a persona `blocked` e o erro no histórico; a rota refaz.
+- Só texto na tela, ou conta de outro app, fica `blocked`/marcada para a pessoa; a rota manual retira qualquer conta. Falha deixa a persona `blocked` e o erro no histórico; a rota refaz.
 - **Lápide:** `contas_retiradas` (071) guarda só o hash do @; `eh_conta_nossa()` (`social/contas_nossas.py`) é a consulta
   única de "é conta nossa?", usada pelo filtro de frota: conta RETIRADA nunca é alvo; conta nossa VIVA pode receber a interação de outra conta nossa, em ritmo baixo (emenda do ADR-050, 29.28, abaixo).
 - **Memória (29.32):** `memory_items` ficam, de TODAS as personas, com o @, o id e o e-mail da conta trocados por "[conta removida]"

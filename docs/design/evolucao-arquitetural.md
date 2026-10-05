@@ -170,13 +170,13 @@ escrito cru e depois do fato (`executor.py:545, 553`); `social/approvals.py:150-
 
 | Onde | O quê |
 |---|---|
-| `state.py:36-38`, `:259` | importa `InstagramAuthenticator`, `bloquear_por_desafio` e os extratores de tela; a composição cria `self.instagram` concreto |
+| `state.py:36-38`, `:259` | importa `InstagramAuthenticator` e os extratores de tela; a composição cria `self.instagram` concreto |
 | `state.py:624`, `:783`; `apps_overview.py:77` | `session_provider … != "instagram"` / `== "instagram"` decide a invalidação, a porta de sessão e o "login automático" |
 | `state.py:72-83` | `_TIPO_DE_TEXTO` e `_LEITURA_DE_CONVERSA` mapeiam chaves de capability do Instagram |
 | `taskqueue/executor.py:587` | `if package != self.cfg.file.instagram.package` antes de corrigir a sessão |
 | `models.py:392, 495, 395` | regex de usuário do Instagram no perfil genérico; `InstagramProfileDTO`; `SessionStatus` do Instagram usado como genérico |
 | `config.py:436-508` | `InstagramCfg`: tempos e pacote |
-| `automation/hierarchy.py:32-50`; `taskqueue/proofs.py:25` | regex de desafio copiada da navegação do Instagram; variantes de arroba na prova local genérica |
+| `taskqueue/proofs.py:25` | variantes de arroba na prova local genérica |
 | `social/capacidades.py:155`, `scheduler.py:676` e outros | SQL direto sobre `instagram_profiles`/`instagram_credentials` |
 
 O registro `planning/catalog` (`AppCapabilities.session_provider`, `catalog/__init__.py:27`) já é o ponto de extensão
@@ -195,7 +195,7 @@ commit base e fica como está. O que saiu:
   `self.sessoes` (`SessionProviders`), e `AppState.instagram` é propriedade de compatibilidade (o mesmo objeto);
 - `_TIPO_DE_TEXTO` e `_LEITURA_DE_CONVERSA`: foram para o manifesto (`AppDefinition.text_kinds` e
   `conversation_reads`, preenchidos por `integrations/instagram/manifesto.py`);
-- `bloquear_por_desafio` e `emit_needs_person_change`: foram para `modules/identity/application/session_rules.py`;
+- `emit_needs_person_change`: foi para `modules/identity/application/session_rules.py`;
 - a comparação com `"instagram"` e o `s.instagram` direto nos recursos da H
   (`modules/execution/infrastructure/providers.py` e `command_bus.py`), que a H2 trouxe em paralelo à K1: saíram na
   correção `3fbe9df`.
@@ -209,9 +209,7 @@ a lista de exceções vazia e `app/integrations/**`, `app/planning/catalog/**` e
 - os caminhos `/api/instagram/profiles/*` e os nomes de tabela (`instagram_profiles`, `instagram_sessions`,
   `instagram_credentials`): contrato e esquema. Renomear é migração e versão de contrato, fora da K1;
 - `config.py::InstagramCfg`: configuração do app, por instalação;
-- a regex de desafio (`automation/hierarchy.py::_DESAFIO`): genérica de propósito, vale para qualquer app, e
-  `test_sensitive_input` confere que ela concorda com `integrations/instagram/navigation.SIGNALS`. As variantes de
-  arroba da prova local (`taskqueue/proofs.py`) também ficam: são regra de texto, não decisão por app;
+- as variantes de arroba da prova local (`taskqueue/proofs.py`): são regra de texto, não decisão por app;
 - a linha de `models.py` (regex de usuário, `InstagramProfileDTO`, `SessionStatus`): não reconferida depois da K2;
   continua como na tabela.
 
@@ -406,7 +404,7 @@ vínculo com `social_interactions`.
 | `Device` | um objetivo ativo por aparelho; o dono em memória serializa o driver | `ai_begin`/`ai_end`; índice `idx_steps_um_ativo_por_aparelho` (018) | observado só em memória; sem `DEVICE_TRANSITIONS` |
 | `Release` | promover exige canário com prova de `install` e `launch`; assinatura divergente de signatário aprovado vira `invalid` | `ReleaseService.promote` (`releases/service.py:802-822`); `_signature_verdict` (`:225`) | canal sem tabela de transição |
 | `Installation` | instalação interrompida nunca é repetida às cegas | `InstalacaoIncerta` (`scheduler.py:324-330`); `releases/service.py:650-660` | cerca de 25 escritores; quatro conjuntos de "presente" |
-| `Profile` | um vínculo ativo por perfil e por aparelho; perfil fora de `active` não recebe tarefa; desafio → `blocked` sem reativação automática (ADR-029) | índices 008:72-73; `_session_gate` (`state.py:769`); `bloquear_por_desafio` (`integrations/instagram/authentication.py:59-92`) | dois vocabulários de sessão |
+| `Profile` | um vínculo ativo por perfil e por aparelho; perfil fora de `active` não recebe tarefa | índices 008:72-73; `_session_gate` (`state.py:769`) | dois vocabulários de sessão |
 | `SocialLedger` | só interação confirmada vira memória; segredo nunca é memorizado | `MemoryStore.learn_from` (`social/memory.py:170`), `remember` (`:109`) | `confirm_interaction` não é idempotente (`social/service.py:347`) |
 | `Approval` | decidida uma vez só | CAS em `ApprovalStore.decide` (`social/approvals.py:123-130`) | — |
 | `Objective` (raiz) + `Run` (leve) | uma etapa ativa por aparelho; posse antes de escrever; efeito disparado sem desfecho nunca vira sucesso nem reenvio; plano válido | 018 + CAS em `claim_step` (`repository.py:353`); cerca em `transition_step`/`finish_attempt`; `commit_state` (`:450`); validador do `Plan` (`models.py:184-218`) | Run e Objective sem tabela; o sucesso é gravado em dois lugares |
@@ -741,7 +739,7 @@ reconcile`.
 | `device.state` (`online`) | `DeviceRuntime.state`, `readiness_phase`, `instances.desired_state` (014) | pede ao rodízio, com a mesma demanda do `_tick` (`scheduler.py:194`), por `pedir_ciclo_de_vida` (`api.py:2282` → `commands/despacho.py`). Nunca liga "por fora" do rodízio | `online` + prontidão `ready` (`devices/prontidao.py`) | `commands/reconciler.py` |
 | `app.installation` (`release: promoted`) | `device_app_state` (`releases/repository.py`), `AppState.release_no_aparelho` (`state.py:860`), `fora_da_convergencia` (`:885`), `_app_preflight` (`:1051`) | `run_device_job` → `AppState._entregar`/`ReleaseService.install_on` (comando `app.*`) | `installed` + versão observada | `ReleaseService.reconcile_after_restart` (`releases/service.py:650`), `_reverificar_interrompidas` |
 | `account.binding` | `device_profile_bindings` (`social/repository.py:218`) | **nenhuma aplicação automática**: `on_missing: ask`, porque vincular é decisão de pessoa | vínculo ativo | — |
-| `app.session` | `SocialRepository.session_row`, status do perfil | job do `_session_gate` (`state.py:769`) → `InstagramAuthenticator.ensure_session`, só com credencial no cofre (ADR-025). Desafio e 2FA vão para `human` (ADR-009/029) | `session_ready` e perfil `active` | caminho de `_sessao_desmentida` |
+| `app.session` | `SocialRepository.session_row`, status do perfil | job do `_session_gate` (`state.py:769`) → `InstagramAuthenticator.ensure_session`, só com credencial no cofre (ADR-025) | `session_ready` e perfil `active` | caminho de `_sessao_desmentida` |
 
 **Como ficou na H2 (27/09):** o `reconcile` dos providers não chama `reconcile_after_restart` nem o caminho de
 `_sessao_desmentida`: ele relê o estado depois do comando e só fecha `succeeded` com leitura positiva, no backend
@@ -1605,7 +1603,7 @@ do commit.
 - Entregue:
   - registro de apps movido para `modules/applications/infrastructure/registry.py` (`0b7950e`, só mover; shim em
     `planning/catalog`);
-  - regras de sessão do perfil (ADR-029, achado #106) em `modules/identity/application/session_rules.py`
+  - regras de sessão do perfil (achado #106) em `modules/identity/application/session_rules.py`
     (`99d851b`);
   - `AppDefinition` (domínio), `AppManifest` com catálogo, `ScreenReader` e fábrica de sessão, o manifesto do
     Instagram, a porta `SessionProvider` e `SessionProviders` por pacote; o núcleo pergunta ao registro (`40def91`);
@@ -1613,7 +1611,7 @@ do commit.
   - o QA como segundo app, só em teste, e o processo cross-app (`15dfded`);
   - a nota do `import_module` (`88087d9`) e a correção dos recursos da H pelo registro (`3fbe9df`).
 - Testes: `backend/tests/test_app_novo_pelo_manifesto.py` (três), `test_apps_fora_do_nucleo.py` (dois, com autoteste)
-  e `test_dubles_cumprem_as_portas.py`; os de sessão, desafio e ADR-029 sem mudar asserção. Suíte SQLite 2279 no
+  e `test_dubles_cumprem_as_portas.py`; os de sessão sem mudar asserção. Suíte SQLite 2279 no
   branch da fase (`simulated`, relatado pelo coordenador). PostgreSQL, app real novo e conta real: `not_run`.
 - **Desvios do plano:**
   - `classify` fora da porta `SessionProvider`;
@@ -1721,8 +1719,7 @@ As decisões vêm do coordenador, com as alternativas que os relatórios propuse
 Cada um entra em [decisões](../decisoes.md) quando a fase correspondente é integrada, na ordem de integração:
 ADR-030 e ADR-031 entraram com as fases A e B (27/09); ADR-032, ADR-033 e ADR-034, com as fases C, D e E (27/09);
 ADR-035 e ADR-036, com as fases H (parte 1) e G (27/09), e o ADR-035 foi atualizado com a H parte 2 (27/09); o
-ADR-038 entrou com a K2 (27/09); o ADR-037 entrou com a J e o ADR-039, novo, com a K1 (27/09); o ADR-029 ganhou uma
-nota da K1 (as regras mudaram de casa). A referência do que as fases
+ADR-038 entrou com a K2 (27/09); o ADR-037 entrou com a J e o ADR-039, novo, com a K1 (27/09). A referência do que as fases
 entregaram, conferida no código, está em [capabilities](../dominios/capabilities.md), [skills](../dominios/skills.md),
 [execution](../dominios/execution.md), [DSL](../skill-dsl.md) e [runtime de skills](../skill-runtime.md).
 
@@ -1761,7 +1758,7 @@ entregaram, conferida no código, está em [capabilities](../dominios/capabiliti
 - **ADR-039 (vigente, 27/09; sessão por (perfil, app) proposta) — Manifesto de app e registro de SessionProvider.**
   `AppDefinition` no domínio, `AppManifest` (catálogo, leitura de tela, fábrica de sessão) na infraestrutura,
   `register_manifest` como única entrada; porta `SessionProvider` e `SessionProviders` por pacote em
-  `modules/identity`; regras do ADR-029 em `session_rules.py`; nenhuma comparação com `"instagram"` no núcleo,
+  `modules/identity`; nenhuma comparação com `"instagram"` no núcleo,
   travada por AST. O Instagram é a primeira implementação; o QA prova a extensão, só em teste.
 - **ADR-038 (vigente na fase "conferir e registrar", 27/09; impor proposto) — Máquinas de estado de execução formais:
   conferir antes de impor.** Tabelas de execução, objetivo, etapa e tentativa no domínio de execução, derivadas do
