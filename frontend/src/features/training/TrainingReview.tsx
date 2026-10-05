@@ -99,7 +99,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   const [acoes, setAcoes] = useState<Capability[]>([]);
   const [escolhidosP, setEscolhidosP] = useState<Set<string>>(new Set());
   const [escolhidosG, setEscolhidosG] = useState<Set<string>>(new Set());
-  // Edições da pessoa: na proposta (comando, etapas, ações do catálogo) e no escopo. Outra proposta substitui só a
+  // Edições da pessoa: na proposta (comando, etapas, destino das entradas, ações do catálogo) e no escopo. Outra proposta substitui só a
   // primeira; fechar perde as duas. Descartá-las sem perguntar é o que P2.6 proíbe.
   const [editado, setEditado] = useState(false);
   const [escopoMudou, setEscopoMudou] = useState(false);
@@ -170,7 +170,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         title: 'Pedir outra proposta?',
         confirmLabel: 'Pedir outra proposta',
         cancelLabel: 'Voltar',
-        body: 'A proposta atual e o que você mudou nela (comando, etapas, ações do catálogo) são substituídos pela nova. Quem recebe o fluxo continua marcado.',
+        body: 'A proposta atual e o que você mudou nela (comando, etapas, destino das entradas, ações do catálogo) são substituídos pela nova. Quem recebe o fluxo continua marcado.',
       });
       if (!confirmed) return;
     }
@@ -231,7 +231,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         danger: true,
         confirmLabel: 'Sair sem salvar',
         cancelLabel: 'Voltar',
-        body: 'O que você mudou na proposta (comando, etapas, quem recebe) se perde. A gravação continua na lista "Para revisar".',
+        body: 'O que você mudou na proposta (comando, etapas, destino das entradas, quem recebe) se perde. A gravação continua na lista "Para revisar".',
       });
       if (!confirmed) return;
     }
