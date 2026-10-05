@@ -101,6 +101,8 @@ describe('Aprendizado: a aba Métricas', () => {
   it('o filtro de app e a janela vão na consulta', async () => {
     await montar();
     await waitFor(() => expect(bloco('O livro agora')).toBeTruthy());
+    // A opção do app vem de outro fetch; escolher antes de ela existir não muda nada (29.104).
+    await waitFor(() => expect(container.querySelector('option[value="com.pocqa.messenger"]')).not.toBeNull());
     await setValue(byRole('combobox', /^Aplicativo/, container) as HTMLSelectElement, 'com.pocqa.messenger');
     await setValue(byRole('combobox', /^Janela/, container) as HTMLSelectElement, '7');
     await waitFor(() => {

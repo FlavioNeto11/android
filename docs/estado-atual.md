@@ -1,10 +1,27 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `e5f1b22b` (migração 113, deploy 36); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 05/10/2026: runtime do backend em `7d104faa` (migração 113, deploy 36 mais a subida a quente do 29.111); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Subida a quente do 29.111 (05/10/2026, 10:40Z, central `7d104faa`).** A pedido do dono, o site público diz o que o
+  nome ANA significa: **Agente Neural Avançada** (escolha dele, 05/10; registrada no ADR-075). A frase segue a regra da
+  página: a ANA rege, as personas dão voz. Sem a forma em inglês; título, descrição e imagem social não mudaram.
+  - `real` (central WIN-7S2UASNLFOP): #405 mesclado como `7d104faa` às 10:38Z; `scripts/deploy.ps1 -Ensaio` de 10:38:59Z
+    a 10:39:03Z (cópia `20261005-073900`); `scripts/deploy.ps1 -PularBackup -PularDependencias` de 10:39:10Z a 10:40:18Z;
+    prova de fora de 10:40:26Z a 10:40:35Z com `rc=0` e 46 linhas ok (`/api/instances` 401 e 403; `site.css` e
+    `site.js` com a mesma versão); página pública no navegador às 10:41Z com as duas frases novas, sem as antigas, 5
+    recursos e nenhum de fora, sem rolagem horizontal em 375 px.
+  - `simulated`: `backend/tests/test_portal_site.py` (22 passed) e `scripts/tests/test_portal_prova_de_fora.py` (26 passed).
+  - `not_run`: captura de tela da página (o navegador embutido não desenhou; a conferência foi pelo texto e pelo DOM).
+- **A/B do 31.71 medido (05/10/2026, 10:15Z a 10:26Z, central `e5f1b22b`).** A imagem enquanto falta saída
+  (`ai.imagem_enquanto_falta_saida`) rodou ligada e desligada no android-01, leitura no Outlook, 5 execuções por braço.
+  - `real`: desligada, 5 de 5 concluídas, média de 5,4 decisões e US$ 0,0662 por execução; ligada, 5 de 5, 4 decisões
+    e US$ 0,0509 (23 % a menos), com o motivo `leitura_pendente` presente. Custo total US$ 0,5856. A chave voltou a
+    desligada e o `config.yaml` ficou igual, byte a byte, à cópia de antes.
+  - A chave **não vira padrão ainda**: falta a segunda medida num fluxo longo, com a saída lida só na última etapa
+    (3 por braço, aparelho de teste, depois do deploy 37).
 - **Deploy 36 no ar (05/10/2026, 09:48Z, central `e5f1b22b`, migração `113_execucao_assentada_em`).** Dezesseis PRs:
   a execução que espera a pessoa e o assentamento uma vez só (29.93, 29.103; migrações 111 e 113), o vigia da borda e da
   API (29.97, 29.101), sessão e Pendências (29.96, 29.100; migração 112), avisos (28.41), aprendizado (30.69),

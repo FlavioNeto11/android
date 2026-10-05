@@ -108,9 +108,9 @@ def test_ligada_a_imagem_do_ator_e_do_juiz_sai_com_a_barra_tapada(monkeypatch: p
 # ================================================================== (3) o valor lido
 def test_o_valor_lido_que_e_url_vai_limpo_ao_historico_do_ator() -> None:
     linha = linha_do_valor_lido("link", "https://contas.exemplo/convite/Ab12Cd34Ef56Gh78?ref=x", ["assunto"])
-    assert linha == "read_value(link) → lido: https://contas.exemplo/convite/…?…; faltam: assunto"
+    assert linha == 'read_value(link) → lido e entregue: "https://contas.exemplo/convite/…?…"; faltam: assunto'
     assert linha_do_valor_lido("protocolo", "2026-0042", []) == (
-        "read_value(protocolo) → lido: 2026-0042; todos os valores da etapa lidos")
+        'read_value(protocolo) → lido e entregue: "2026-0042"; todos os valores da etapa lidos')
 
 
 def test_a_recusa_do_juiz_com_url_vai_limpa_ao_historico_do_ator() -> None:

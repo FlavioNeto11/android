@@ -300,6 +300,9 @@ describe('30.68: a prévia do texto editado antes do sim', () => {
     expect(backend.callsTo('POST', /porta\/item$/)[0]?.body).toEqual({ step_id: 'run-p:android-01:v1:dm', texto: 'oi de novo' });
     expect(text(container)).toContain('Conferindo este texto na porta');
     expect(travado()).toBe(true);
+    // O pedido registrado ainda não é o handler rodando (o fetch falso pode atrasar a resposta): o `soltar` só existe
+    // quando ele roda (29.104).
+    await waitFor(() => soltar !== null);
     await act(async () => soltar?.());
     await waitFor(() => expect(text(container)).toContain('Com este texto: pede seu aval — esta conta já mandou ESTA mensagem para @ana'));
     expect(travado()).toBe(false);
@@ -334,7 +337,9 @@ describe('30.68: a prévia do texto editado antes do sim', () => {
     await setValue(campo, 'segundo');
     await sair(campo);
     await waitFor(() => expect(pendentes).toHaveLength(2));
-    const [velho, novo] = pendentes;
+    // Pelo texto, não pela ordem: com o fetch falso atrasado, o handler do segundo pode rodar antes (29.104).
+    const velho = pendentes.find((p) => p.texto === 'primeiro');
+    const novo = pendentes.find((p) => p.texto === 'segundo');
     await act(async () => novo?.ok(json({ step_id: 'run-p:android-01:v1:dm', texto: 'segundo',
       item: item({ texto: 'segundo', chave: CHAVE_EDITADA }) })));
     await act(async () => velho?.ok(json({ step_id: 'run-p:android-01:v1:dm', texto: 'primeiro',

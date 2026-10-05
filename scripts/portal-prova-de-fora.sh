@@ -207,9 +207,11 @@ else
     # Para onde a raiz manda (ou /central, com o site no ar): caminho relativo ao proprio endereco, nunca 127.0.0.1.
     entrada="/"; [[ "${SITE:-}" == "ligado" ]] && entrada="/central"
     destino="$(curl -q -s -o /dev/null -m 20 -w '%{redirect_url}' "https://$H$entrada")"
+    # 29.107: o Location vem da borda; vai a linha pela mesma limpeza da regua (controle vira "?", so ASCII).
+    destino_na_linha="$(printf '%s' "$destino" | regua_crua linha)"
     case "$destino" in
-        "https://$H/central/"*) printf 'ok     %-28s -> %s\n' "$entrada (Location)" "$destino" ;;
-        *) printf 'FALHOU %-28s -> %s  esperado https://%s/central/\n' "$entrada (Location)" "$destino" "$H"; FALHAS=$((FALHAS + 1)) ;;
+        "https://$H/central/"*) printf 'ok     %-28s -> %s\n' "$entrada (Location)" "$destino_na_linha" ;;
+        *) printf 'FALHOU %-28s -> %s  esperado https://%s/central/\n' "$entrada (Location)" "$destino_na_linha" "$H"; FALHAS=$((FALHAS + 1)) ;;
     esac
     # Contato do site (29.77): a outra excecao sem credencial em /api/, so POST no caminho exato.
     confere /api/portal/contato "401" "contato do site: GET segue fechado"

@@ -22,6 +22,9 @@ qa-app/local.properties
 .claude/plano-100/pacotes/
 .claude/plano-100/*.tmp
 .claude/plano-100/resultado-*.json
+# O handoff da sessão é local de propósito (cada máquina gera o seu). Estava só no `.git/info/exclude`, que não vem num
+# clone: o docs-check do CI acusava o link do CLAUDE.md como quebrado toda noite (29.102).
+.claude/handoff-current.md
 
 
 # A configuracao operacional e de CADA instalacao (achado #177): o repositorio versiona so o ponto de
