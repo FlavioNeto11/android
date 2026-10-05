@@ -512,8 +512,8 @@ class AppState:
         # aprendizado (ADR-054) é encadeado aqui, numa thread: o fim da execução nunca espera nem cai por causa dele.
         self.scheduler.on_run_settled = self._execucao_assentada
         # 29.93: a parada esperando a pessoa solta o mesmo que a main soltava ao parar, sem o digest; e a execução que
-        # fecha na saída dessa espera (confirmação, abandono, vencimento, cancelamento) não tem worker para chamar o
-        # `_settle_run`: o repositório a assenta com o MESMO gancho.
+        # fecha sem worker (saída dessa espera, cancelamento órfão do 29.103) não tem quem chame o `_settle_run`: o
+        # repositório a assenta com o MESMO gancho, se ganhar a marca `assentada_em` (#382, migração 113).
         self.scheduler.on_run_parada = self._execucao_parada
         self.repo.ao_assentar_sem_worker = self._execucao_assentada
         self.scheduler.on_items_collected = self._registrar_leitura

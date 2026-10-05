@@ -6232,5 +6232,9 @@ e quem lê o contrato a davam por encerrada, e a retomada do item a "reabria".
   na ocorrência, se vier, é do 28.40.
 - **Migração de dados** (`111_execucao_aguardando_pessoa`): leva a `awaiting_person` as execuções já paradas em
   `completed_with_issues` com objetivo `waiting_user`. Idempotente; 0 linhas no banco do central em 05/10.
+- **Coluna interna `runs.assentada_em`** (`113_execucao_assentada_em`, itens 29.93 e 29.103): a marca de que a
+  execução já foi assentada (digest, trava, pedidos), gravada por compare-and-set. Não entra em nenhum DTO nem evento;
+  nada muda para o cliente. Efeito visível só no servidor: a execução cancelada sem worker vivo (29.103) passa a assentar,
+  e nenhuma assenta em dobro.
 - **Prova:** `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
   `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). `not_run`: o central.

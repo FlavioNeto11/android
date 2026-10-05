@@ -233,6 +233,8 @@ class Scheduler:
         # rascunho, pedidos), sem o digest, que sai na saída do estado (`Repository.ao_assentar_sem_worker`). NÃO é
         # "uma vez": roda no fim de cada worker que encontra a execução esperando; por isso só faz o que é idempotente.
         self.on_run_parada: Callable[[str], None] | None = None
+        # #382: a rede do assentamento (`Repository.set_run_status`) só assenta a execução sem worker vivo aqui.
+        self.repo.worker_da_execucao_vivo = self._tem_worker_da_execucao
         # Uma etapa de COLETA terminou: (objetivo, etapa, itens lidos). Quem sabe o que fazer com uma lista de
         # falas é o domínio social (gravar o que a contraparte disse), não a fila — daqui sai só o fato de que a
         # leitura aconteceu. Injetado pelo AppState.
@@ -1380,13 +1382,20 @@ class Scheduler:
             if rt.takeover_requested:
                 self._manual_since[rt.id] = time.monotonic()
             self.devices.ai_end(rt)
-            repo.recompute_run(run_id)
-            self._settle_run(run_id)
+            # #382: o estado final e a marca `assentada_em` na MESMA transação. A rede do `set_run_status` só roda
+            # depois do COMMIT e já encontra a marca: a execução comum é assentada aqui, pelo worker, em linha.
+            with repo.db.tx():
+                repo.recompute_run(run_id)
+                venceu = repo.marcar_assentada(run_id)
+            self._settle_run(run_id, venceu=venceu)
             self._learn_flow(run_id)
             self.wake()
 
-    def _settle_run(self, run_id: str) -> None:
+    def _settle_run(self, run_id: str, *, venceu: bool) -> None:
         """Execução terminou: solta o que era guardado só por causa dela.
+
+        `venceu`: este worker gravou a marca `assentada_em` (#382) junto com o estado final. Sem ela, outro já
+        assentou (a rede de quem fecha sem worker, ou outro worker da mesma execução): assentar de novo seria em dobro.
 
         `awaiting_person` (29.93) para sem assentar: solta o que a main soltava nessa hora, quando a parada era
         `completed_with_issues` (o explorador, a trava de rascunho, o acordar dos pedidos), mas nenhum digest
@@ -1398,12 +1407,23 @@ class Scheduler:
         if run is None or run["status"] not in (*terminais, RunStatus.awaiting_person.value):
             return
         self._pathfinders.pop(run_id, None)
+        if run["status"] in terminais and not venceu:
+            return
         gancho = self.on_run_settled if run["status"] in terminais else self.on_run_parada
         if gancho is not None:
             try:
                 gancho(run_id)
             except Exception:  # noqa: BLE001 - limpeza nunca derruba o fim da execução
                 log.exception("limpeza de fim de execução %s", run_id)
+
+    def _tem_worker_da_execucao(self, run_id: str) -> bool:
+        """Há worker DESTE backend num objetivo da execução? Pode ser chamado de uma thread (o vencimento): só lê."""
+        ids = list(self._objetivo_do_worker.values())
+        if not ids:
+            return False
+        marcas = ", ".join("?" for _ in ids)
+        return self.repo.db.scalar(f"SELECT 1 FROM objectives WHERE run_id=? AND id IN ({marcas}) LIMIT 1",
+                                   (run_id, *ids)) is not None
 
     def _learn_flow(self, run_id: str) -> None:
         """Execução terminou com TODOS comprovados → o comando vira um fluxo reaproveitável (plano congelado)."""

@@ -42,11 +42,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `finished_at` antes do `recompute_run`. É o assentamento inteiro, uma vez, agendado no laço por `call_soon_threadsafe` quando vem
   de uma thread (o vencimento roda em `to_thread`). A retomada limpa o `finished_at` e assenta pelo worker, como
   antes, sem dobrar. O que o digest conta durante e depois da espera é do 30.69 (Aprendizado), empilhado.
+- Assentamento exatamente uma vez (leitura 2 do #382), pela marca `runs.assentada_em` (migração 113): compare-and-set
+  em `Repository.marcar_assentada`. O worker grava o estado final e a marca na mesma transação e assenta em linha; a
+  rede do `set_run_status` (estado final vindo de estado de trabalho, depois do COMMIT, sem worker vivo) só assenta se
+  ganhar a marca. Isso fecha o D1 (cancelar a `completed_with_issues` já assentada assentava de novo) e entrega o
+  29.103 (a execução cancelada sem worker nunca assentava). O `set_run_status` zera a marca ao reabrir (não no
+  `cancelling`). A 113 marca toda execução já final na hora da migração.
 - A retenção de evidência por idade também poupa a execução aguardando.
 - Painel: rótulo "Aguardando você", grupo "Pede atenção"; Cancelar e o aviso "precisam de você" voltam a valer nela;
   `isRunSemTrabalho` para repetir, relatório, custo e recarga do detalhe.
-- Migração de dados `111_execucao_aguardando_pessoa`: 0 linhas no central em 05/10. Adendo v1.50 do contrato (números
-  da orquestradora).
+- Migração de dados `111_execucao_aguardando_pessoa`: 0 linhas no central em 05/10. Migração `113_execucao_assentada_em`
+  (coluna e preenchimento). Adendo v1.50 do contrato (números da orquestradora).
 - Prova: `simulated` (`backend/tests/test_aguardando_pessoa.py`, `backend/tests/test_learning_prova.py`,
   `frontend/src/lib/status.test.ts`, `frontend/src/features/pendencias/aguardandoPessoa.test.ts`). Real: `not_run`.
 
