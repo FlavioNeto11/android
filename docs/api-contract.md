@@ -1101,7 +1101,7 @@ campo.
 | `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
-| `POST /api/training/{session_id}/undo` | `TrainingUndoBody {lease_id, seq?}` | `TrainingSession` com `undone: {seq, type}`: tira a última entrada da gravação viva (31.90-D, adendo vADENDO3190D) |
+| `POST /api/training/{session_id}/undo` | `TrainingUndoBody {lease_id, seq?}` | `TrainingSession` com `undone: {seq, type}`: tira a última entrada da gravação viva (31.90-D, adendo v1.70) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
 [`../worker.md`](worker.md#limites-por-servidor-item-105) e [`../dominios/parque.md`](dominios/parque.md):
@@ -6660,7 +6660,7 @@ Muda o VALOR de `ref` nos eventos de fluxo e passa a aceitar a referência nova 
 - **Ainda não coberto** (próximas fatias do 30.83): as rotas `/api/flows/{id}`, os `href` das respostas do painel, os
   eventos `learning.ensinado_*` (30.80 B e 30.81, ainda em ramo) e os logs que levam `fluxo:<id>`.
 
-## Adendo vADENDO3190D (05/10/2026; número da orquestradora; item 31.90-D) — desfazer a última entrada da gravação viva
+## Adendo v1.70 (05/10/2026; número da orquestradora; item 31.90-D) — desfazer a última entrada da gravação viva
 
 Rota nova e aditiva no modo treinamento. Nada muda nas rotas que existem nem no `save`.
 - `POST /api/training/{session_id}/undo`, corpo `{"lease_id": "<lease do controle>", "seq": <número, opcional>}`

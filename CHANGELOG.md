@@ -24,7 +24,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Rota nova `POST /api/training/{session_id}/undo` (`TrainingRecorder.desfazer_a_ultima`): tira a última entrada da
   gravação viva sem descartar a sessão. Exige o lease do controle; `seq` opcional recusa se a última mudou
   (`entrada_mudou`). Gravação parada, órfã, vazia ou de outra réplica: 409 sem mudar nada. O aparelho não volta.
-- Evento novo `training.input.undone`. Adendo vADENDO3190D. O botão no painel fica com a Portal.
+- Evento novo `training.input.undone`. Adendo v1.70. O botão no painel fica com a Portal.
 - Funções tocadas (K-095): `TrainingRecorder.desfazer_a_ultima` (nova), `undo_training_input` (rota nova),
   `TrainingUndoBody` (novo). O `save` não muda.
 - Prova `simulated`: `backend/tests/test_treino_desfazer_a_ultima.py`. Real: `not_run`.
