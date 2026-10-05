@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.91 F1: a tela do ensino v2 tem chave própria, desligada por padrão (branch feat/31-91-f1-chave-do-ensino-v2)
+
+- Nova chave `skills.ensino_v2_na_tela` (padrão `false`, em `config.example.yaml`), exposta em `health.features.ensino_v2`. Com ela
+  desligada, o painel esconde a tela do ensino v2: a revisão só para leitura (`TeachingPanel`) e o "Corrigir etapa" (que abria
+  um ensino de habilidade). O painel exige `skills` E `ensino_v2` ligados; campo ausente (backend anterior) é desligado.
+- Não muda: a API `/api/teaching-sessions`, o resolvedor, a validação estática e o laço de perguntas (camada interna do Modo
+  treinamento, ADR-077), e a conversão de fluxo em habilidade ("Gerar habilidade deste fluxo"), que segue só com `skills`.
+  Nenhuma tabela, linha de `flows` ou `recipes` e nenhum ensino já gravado é tocado; reverter é ligar a chave.
+- Fora desta entrega, só desenho: fechar a sessão de ensino v2 parada (1 sessão `asking` no banco do central) mexe em dado e
+  não foi feito.
+- Prova `simulated`: `backend/tests/test_ensino_v2.py` (health), `TrainingReview.test.tsx` e `CorrigirEtapa.test.tsx` (3 testes
+  novos: chave desligada e campo ausente escondem, a conversão fica). Real: `not_run`.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
