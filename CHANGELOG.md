@@ -30,6 +30,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   das ações da tentativa com a regra antiga e a nova, **0** mudam de ação, com as variáveis do objetivo e no pior caso (união de
   todos os valores de texto do objetivo, da etapa e dos alvos). O reaprender com a regra antiga reproduz a ação gravada de
   173 delas; as outras 20 dependem de variáveis de inserção que o banco não guarda, e por isso o pior caso. Sem backfill.
+- Correção da leitura (F1): o valor DENTRO de palavra maior ("@ana_silva" com "@ana") deixou de contar como `used` e
+  o texto de outra pessoa caía no rótulo fixo de `_usable_text`; um corte antes dele devolve `None`, como era antes da
+  borda (teste novo, mutação reprovada; a medição segue em 0 de 193). Também o caso do marcador reescrito por valor curto
+  de 3 caracteres (F2).
 - A receita aprendida pelo Modo treinamento (`distill_training`) usa o mesmo `detemplate`, mas não tem linha de ação no
   banco para reaprender: medida só pelos testes.
 - Prova `simulated`: `backend/tests/test_recipes.py::test_detemplate_so_troca_o_valor_inteiro_como_o_fluxo_e_o_hash`.

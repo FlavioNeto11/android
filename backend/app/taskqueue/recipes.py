@@ -358,6 +358,11 @@ def _usable_text(text: str, variables: dict[str, str]) -> str | None:
     templ, used, covered = detemplate(text, variables)
     if used:
         return templ if covered else None
+    # 31.109: o valor DENTRO de palavra maior ("@ana_silva" com "@ana", "Mariana Silva" com "Maria") não é trocado
+    # (a borda), mas o texto é de outra pessoa: sem este corte ele cairia no rótulo fixo abaixo e viraria seletor
+    # literal, que o replay para outro alvo poderia tocar. Como era antes da borda: descartado.
+    if any(v and len(v) >= 3 and v in text for v in variables.values()):
+        return None
     # A tela mostra "ana" para o parâmetro "@ana" (linha da caixa de mensagens, cabeçalho da conversa). Sem isto o
     # seletor gravava "ana" LITERAL e, reproduzido para "@bia", tocava a conversa de outra pessoa — a verificação
     # recusava, mas a tentativa se perdia e a receita ia para a quarentena (achado da fase G, 27/09). Só o texto
