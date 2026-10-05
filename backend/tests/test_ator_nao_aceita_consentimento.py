@@ -122,3 +122,59 @@ async def test_fora_do_navegador_a_trava_nao_age(harness: Harness, monkeypatch: 
     """Escopo: no app (QA Messenger, como no Instagram) a trava não age; as folhas de app são do catálogo (29.87)."""
     final, toques, erros = await _pelo_laco(harness, monkeypatch, navegador=False)
     assert toques and not erros and final.status == "completed"
+
+
+# ------------------------------------------------------- o drag (leitura da orquestradora): o início e o fim do arrasto
+def _aceite_do_drag(harness: Harness, de: tuple[int, int], para: tuple[int, int]) -> str | None:
+    from app.automation.tools import Drag, ToolContext
+    anuncio = _no(13, "Raspberry Pi 5 8GB", 0, 200, 720, 400)
+    tree = parse_hierarchy(_arvore(_PAGINA, _COOKIES, _ACEITAR, anuncio))
+    ctx = ToolContext(io=None, call=None, tree=tree, width=720, height=1280, image_scale=1.0,  # type: ignore[arg-type]
+                      app_package="com.android.chrome", app_activity=None)
+    args = Drag(rationale="r", from_x=de[0], from_y=de[1], to_x=para[0], to_y=para[1])
+    executor = harness.state.scheduler.executor                          # type: ignore[union-attr]
+    return executor._aceite_do_toque(ctx, args, tree, AiCfg())
+
+
+def test_drag_curto_dentro_do_botao_e_recusado(harness: Harness) -> None:
+    assert _aceite_do_drag(harness, (200, 1180), (210, 1185)) == "Aceitar cookies"
+
+
+def test_drag_que_comeca_fora_e_termina_no_botao_e_recusado(harness: Harness) -> None:
+    assert _aceite_do_drag(harness, (360, 300), (200, 1180)) == "Aceitar cookies"
+
+
+def test_drag_que_comeca_no_botao_e_termina_fora_e_recusado(harness: Harness) -> None:
+    assert _aceite_do_drag(harness, (200, 1180), (360, 300)) == "Aceitar cookies"
+
+
+def test_drag_de_rolagem_longe_do_aviso_passa(harness: Harness) -> None:
+    assert _aceite_do_drag(harness, (360, 600), (360, 300)) is None
+
+
+async def test_pelo_laco_o_drag_de_aceite_nao_chega_ao_aparelho(harness: Harness, monkeypatch: Any) -> None:
+    """O ator roteirizado ARRASTA uma vez; com a trava, nenhum `swipe` chega ao aparelho falso."""
+    from app.planning.provider import Decision, Usage
+    from app.taskqueue import executor as modulo
+    harness.pular_o_tempo()
+    monkeypatch.setattr(modulo, "e_navegador", lambda pacote: True)
+    monkeypatch.setattr(modulo, "toque_que_aceita", lambda tree, alvo: "Aceitar cookies" if alvo is not None else None)
+    decide0, feito = harness.ai.inner.decide, {"n": 0}
+
+    async def decide(req: Any) -> Any:
+        if feito["n"] == 0:
+            feito["n"] = 1
+            return Decision(tool="drag", args={"rationale": "[simulado] arrasta no aviso", "from_x": 200,
+                                               "from_y": 600, "to_x": 210, "to_y": 605}), Usage()
+        return await decide0(req)
+
+    harness.ai.inner.decide = decide
+    fake = harness.fakes["android-01"]
+    antes = len(fake.calls)
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=("completed", "completed_with_issues", "failed", "waiting_user",
+                                             "needs_input", "uncertain"))
+    assert not [c for c in fake.calls[antes:] if c.startswith("swipe")]
+    assert harness.state.db.scalar(                                       # type: ignore[union-attr]
+        "SELECT COUNT(*) FROM actions a JOIN attempts t ON t.id=a.attempt_id JOIN steps s ON s.id=t.step_id "
+        "WHERE s.run_id=? AND a.tool='drag' AND a.status='rejected'", (run.id,)) == 1

@@ -27,7 +27,7 @@ from ..automation import tools as ferramentas
 from ..automation.driver import DriverBusy, DriverError, DriverTimeout, FalhaDeLeitura, sessao_perdida
 from ..automation.hierarchy import (MOTIVO_DESAFIO, MOTIVO_SENHA, SUBTIPO_CODIGO, SUBTIPO_CONTA_TRAVADA,
                                     SUBTIPO_VERIFICACAO, ContaTravada, UiElement, UiTree)
-from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, ReadValue, StepBlocked, StepDone,
+from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, Drag, ReadValue, StepBlocked, StepDone,
                                 TelaDeContaTravada, ToolContext, ToolValidationError, esperar_foco, execute_tool,
                                 looks_like_commit, resolve_point, urls_do_texto, validate_call)
 from ..config import AiCfg, Config, LimitsCfg
@@ -1168,20 +1168,26 @@ class StepExecutor:
 
     def _aceite_do_toque(self, tool_ctx: ToolContext, args: object, tree: UiTree, ai: AiCfg) -> str | None:
         """31.72: o rótulo do toque do ator que aceitaria um aviso de consentimento (`dialogos.toque_que_aceita`), pelo
-        elemento ou pela coordenada; `None` se o toque pode seguir. Um host em `ai.consentimento_aceito_em` (vazia por
-        padrão; preenchê-la é decisão do dono) libera o aceite ali."""
-        try:
-            alvo = resolve_point(tool_ctx, getattr(args, "element_id", None), getattr(args, "x", None),
-                                 getattr(args, "y", None))[2]
-        except DriverError:
-            return None                                # o toque falharia na execução, como antes
+        elemento ou pela coordenada; `None` se o toque pode seguir. No `drag`, o ponto de INÍCIO e o de FIM: um arrasto
+        curto dentro do botão é um toque nele. Um host em `ai.consentimento_aceito_em` (vazia por padrão; preenchê-la é
+        decisão do dono) libera o aceite ali."""
+        if isinstance(args, Drag):
+            pontos = [(None, args.from_x, args.from_y), (None, args.to_x, args.to_y)]
+        else:
+            pontos = [(getattr(args, "element_id", None), getattr(args, "x", None), getattr(args, "y", None))]
+        alvos = []
+        for element_id, x, y in pontos:
+            try:
+                alvos.append(resolve_point(tool_ctx, element_id, x, y)[2])
+            except DriverError:
+                pass                                   # o gesto falharia na execução, como antes
         if ai.consentimento_aceito_em:
             barras = set(BARRA_DE_ENDERECO.values())
             texto = next((e.text for e in tree.elements if e.resource_id in barras), "")
             host = _host(texto or "")
             if host and any(host == h or host.endswith("." + h) for h in map(str.casefold, ai.consentimento_aceito_em)):
                 return None
-        return toque_que_aceita(tree, alvo)
+        return next((r for alvo in alvos if (r := toque_que_aceita(tree, alvo)) is not None), None)
 
     def _image_scale(self, obs: Observation, ai: AiCfg | None = None) -> float:
         """Pixels do aparelho por pixel do espaço de coordenadas que o modelo enxerga."""
@@ -2994,7 +3000,7 @@ class StepExecutor:
                                        quick_tree, profile_id=profile_id, run_id=run_id, step_id=step.id),
                                    allowed_urls=urls_permitidas, allowed_hosts=hosts_das_contas, deadline=deadline,
                                    dormir=self.dormir)
-            if (decision.tool in ("tap", "long_press") and e_navegador(obs.package)
+            if (decision.tool in ("tap", "long_press", "drag") and e_navegador(obs.package)
                     and (aceite := self._aceite_do_toque(tool_ctx, args, obs.tree, ai_cfg)) is not None):
                 # ---------- 31.72: a regra do 31.51 vale para o ATOR. Na r-20261005071303-f24955 ele tocou "Aceitar
                 # cookies" duas vezes por conta própria. Recusado ANTES de o toque chegar ao aparelho, por coordenada
