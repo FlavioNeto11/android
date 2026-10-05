@@ -19,6 +19,14 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)
+
+- Pedido do dono pelo Telegram (entrada 1790, 05/10 09:39:19Z): "o que significa ana? precisa colocar isso no portal
+  tambem". Significado confirmado por ele: "Agente de Navegação e Automação".
+- `site/index.html`: uma frase, sem seção nova, em dois lugares. No 1º parágrafo de "Conheça a ANA": "ANA quer dizer
+  **Agente de Navegação e Automação**." Na resposta do FAQ "Quem é a ANA?": a mesma frase. O `<title>`, a descrição, o
+  `og:*` e a imagem social (`previa.png`, com o texto na imagem) ficam como estão.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,
