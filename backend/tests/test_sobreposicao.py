@@ -139,9 +139,20 @@ async def test_orcamento_da_acao_numa_leitura_e_dado_ausente(harness: Harness, m
 AVISO_QUE_COBRE = Node("android.view.View", (0, 300, 720, 1100), text="Aviso que cobre a lista", rid="aviso_que_cobre")
 
 
+def _mensagem_ja_entregue(harness: Harness) -> None:
+    """29.139: a mensagem do aparelho falso nasce em "Entregue ✓✓". Ela envelhece pelo relógio REAL somado ao virtual
+    (`FakeQaDevice.status_of`), e o juiz que conta chamadas responde "coberta" só na 1ª: com o PG folgado, a 1ª
+    verificação chegava antes de 0,4 s, gastava o "coberta" em "Enviada ✓" e o rejulgamento da tela mudada (legítimo,
+    `test_a_tela_que_muda_depois_do_coberta_e_julgada_de_novo`) dava "sim" — a limpeza que o teste prova nunca entrava."""
+    fake = harness.fakes["android-01"]
+    fake.sent_after_s = fake.delivered_after_s = 0.0
+
+
 def _juiz_com_ref(harness: Harness, chave: str, *, cobertas: int) -> dict[str, int]:
     """Como `_juiz`, citando em `cobre` o aviso que cobre (`AVISO_QUE_COBRE`, posto em toda tela do aparelho falso);
-    conta as chamadas de verificação por etapa."""
+    conta as chamadas de verificação por etapa. A mensagem já nasce entregue (`_mensagem_ja_entregue`): o "coberta"
+    cai na tela final, não numa que ainda vai mudar."""
+    _mensagem_ja_entregue(harness)
     fake = harness.fakes["android-01"]
     original = fake._build
     fake._build = lambda: [*original(), AVISO_QUE_COBRE]
@@ -307,3 +318,39 @@ async def test_o_teto_de_acoes_numa_limpeza_falha_a_limpeza_sem_juiz(harness: Ha
     assert re.search(r"Limite de \d+ ações por etapa", limpeza["status_detail"] or ""), limpeza["status_detail"]
     assert chamadas.get("limpar_antes_verify_sent", 0) == 0
     assert limpeza["status"] == "skipped"
+
+
+async def test_a_tela_que_muda_depois_do_coberta_e_julgada_de_novo(harness: Harness) -> None:
+    """29.139: o "coberta" sobre uma tela que AINDA muda não fixa o desfecho. A mensagem fica em "Enviada ✓" até o
+    relógio virtual avançar (feito dentro do 1º julgamento); a tela vira "Entregue ✓✓", a mesma verificação julga de
+    novo e aceita o "sim", sem limpeza nem replano. Não é "chamada a mais": era a corrida que o PG folgado expunha nos
+    testes da limpeza, que agora partem da mensagem já entregue (`_mensagem_ja_entregue`)."""
+    relogio = harness.pular_o_tempo()
+    harness.encurtar_verificacao(1.5)
+    fake = harness.fakes["android-01"]
+    fake.delivered_after_s = 3600.0                   # só o avanço do relógio virtual abaixo a entrega
+    fake._build = lambda original=fake._build: [*original(), AVISO_QUE_COBRE]
+    inner = harness.ai.inner
+    verify0 = inner.verify
+    vistos: list[list[str]] = []
+
+    async def verify(req: Any) -> Any:
+        if req.ctx.step_key != "verify_sent":
+            return await verify0(req)
+        vistos.append([e.text for e in req.screen.tree.elements if e.text in ("Enviada ✓", "Entregue ✓✓")])
+        if len(vistos) == 1:
+            relogio.avancar(fake.delivered_after_s)   # a entrega chega entre uma leitura e a outra
+            ref = next((e.id for e in req.screen.tree.elements if e.text == AVISO_QUE_COBRE.text), None)
+            return Verdict(satisfied="no", evidence="[simulado] um aviso cobre a lista", sobreposicao=True,
+                           cobre=ref), Usage()
+        return await verify0(req)
+
+    inner.verify = verify
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    assert vistos == [["Enviada ✓"], ["Entregue ✓✓"]]                   # dois julgamentos, um por tela
+    etapas = _etapas(harness, run.id, "verify_sent")
+    assert [(e["key"], e["status"], e["attempts"], e["plan_version"]) for e in etapas] == [
+        ("verify_sent", "succeeded", 1, 1)]                               # na mesma tentativa, sem limpeza
+    assert _revisoes(harness, run.id, "sobreposição") == 0
+    assert harness.state.repo.run_row(run.id)["status"] == "completed"                  # type: ignore[union-attr]
