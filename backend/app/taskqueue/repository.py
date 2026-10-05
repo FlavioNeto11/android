@@ -37,6 +37,7 @@ from ..social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_MOTIV
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, parse_iso, to_iso, truncate
 from .latencia import TemposDaTentativa, motivo_da_espera
+from .dado_da_persona import DadoDaPersonaAusente, exigir_resolvido, faltas_dos_passos
 from .recipes import para_hash, step_template_hash
 from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
 from .states import STEP_ACTIVE, STEP_OPEN, check_transition
@@ -381,6 +382,9 @@ class Repository:
                 variaveis = inst.get("variables")
                 if variaveis is None:
                     variaveis = self._variaveis_da_persona(inst.get("profile_id"))
+                # Defesa em profundidade (31.87): o pré-voo de `RunService._plan` já recusou; quem chegar aqui sem ele
+                # (outro chamador, plano reaproveitado) não grava `{perfil_x}` cru no texto que vai ao aparelho.
+                exigir_resolvido(plan, variaveis)
                 base = {"instance_id": iid, "run_id": run_id, "account_label": inst.get("account_label") or "",
                         **variaveis}
                 params = {k: resolve_templates(v, base) or "" for k, v in plan.parameters.items()}
@@ -1142,11 +1146,25 @@ class Repository:
         effects.append(f"{now_iso()} — {text}")
         self.db.execute("UPDATE objectives SET effects=? WHERE id=?", (dumps(effects), objective_id))
 
+    def faltas_do_replano(self, objective_id: str, steps: Sequence[PlanStep]) -> list[str]:
+        """31.87 (R1): os `{perfil_*}`/`{conta_*_usuario}` que `steps` cita e a persona do objetivo (hoje) não resolve.
+        Só nomes de variável. Quem revisa consulta ANTES, para recusar com motivo em vez de levantar."""
+        obj = self.objective_row(objective_id)
+        return faltas_dos_passos(steps, loads(obj["parameters"], {}) or {}, self._variaveis_da_persona(obj["profile_id"]))
+
     def revise_plan(self, objective_id: str, reason: str, steps: list[PlanStep]) -> int:
         """Nova versão do plano para o objetivo: etapas abertas da versão atual viram `skipped`, as já
         comprovadas permanecem no histórico e as novas nascem com ids estáveis da nova versão."""
         with self.db.tx():
             obj = self.objective_row(objective_id)
+            params = loads(obj["parameters"], {}) or {}
+            variaveis = self._variaveis_da_persona(obj["profile_id"])
+            # Rede de segurança (31.87, R1): os chamadores consultam `faltas_do_replano` e recusam com motivo; o replano
+            # que chegasse aqui com dado ausente nunca grava `{perfil_x}` cru. 31.99 (achado do #437): a conferência usa
+            # o MESMO retrato da persona que a inserção, lido dentro da transação e antes de qualquer escrita, como em
+            # `materialize`; lida fora, uma edição da persona no intervalo passava com o valor antigo.
+            if faltam := faltas_dos_passos(steps, params, variaveis):
+                raise DadoDaPersonaAusente(faltam)
             version = obj["plan_version"] + 1
             for r in self.db.query("SELECT id, status FROM steps WHERE objective_id=? AND plan_version=?",
                                    (objective_id, obj["plan_version"])):
@@ -1165,10 +1183,8 @@ class Repository:
                         " WHERE step_id=? AND status='pending'",
                         (now_iso(), f"plano revisado (v{version}): esta etapa não vai mais acontecer", r["id"]))
             self.db.execute("UPDATE objectives SET plan_version=? WHERE id=?", (version, objective_id))
-            params = loads(obj["parameters"], {})
             account = self.db.scalar("SELECT account_label FROM instances WHERE id=?", (obj["instance_id"],)) or ""
-            base = {"instance_id": obj["instance_id"], "run_id": obj["run_id"], "account_label": account,
-                    **self._variaveis_da_persona(obj["profile_id"])}
+            base = {"instance_id": obj["instance_id"], "run_id": obj["run_id"], "account_label": account, **variaveis}
             self._insert_steps(obj["run_id"], objective_id, obj["instance_id"], version, steps, {**params, **base}, reason)
         self.bus.emit("plan.revised", f"{obj['instance_id']}: plano revisado (v{version}) — {reason}", level="warn",
                       run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=objective_id,

@@ -33,6 +33,10 @@ log = logging.getLogger("poc.vigia")
 LIMITE_S = 10.0
 PARTIDA_S = 60.0
 REDESPEJO_S = 30.0
+#: 29.131: na partida (antes da primeira batida), os despejos saem a cada 120 s (aos 60, 180 e 300 s), e não a cada
+#: 30 s: com o prazo da partida do supervisor (240 s parada, 600 s de teto), três despejos em 2 min deixavam a pilha
+#: citada no kill velha, e três arquivos por partida lenta comiam a cota de `MANTER`.
+REDESPEJO_DA_PARTIDA_S = 120.0
 DESPEJOS_POR_EPISODIO = 3
 INTERVALO_S = 1.0
 MANTER = 20
@@ -82,7 +86,8 @@ class VigiaDoLaco:
             self._episodio_desde = self._ultima
         if self._despejos_no_episodio >= self.despejos_por_episodio:
             return None
-        if self._despejos_no_episodio and agora - self._ultimo_despejo < self.redespejo_s:
+        espaco = self.redespejo_s if self._bateu else max(self.redespejo_s, REDESPEJO_DA_PARTIDA_S)
+        if self._despejos_no_episodio and agora - self._ultimo_despejo < espaco:
             return None
         fase = "laço" if self._bateu else "partida (antes da primeira batida)"
         arquivo = self._despejar(atraso, fase)

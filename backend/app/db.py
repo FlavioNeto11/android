@@ -633,7 +633,9 @@ class Database:
         self._assinatura_das_migracoes, self._divergencias_em_cache = assinatura, mudaram
         return mudaram
 
-    def migrate(self) -> list[str]:
+    def migrate(self, ao_aplicar: Callable[[str], None] | None = None) -> list[str]:
+        """Aplica as migrações pendentes. `ao_aplicar(versao)` roda depois de cada uma (29.131: a marca da partida
+        anda a cada migração); um erro dele não desfaz nem interrompe nada."""
         applied: list[str] = []
         with self._lock, self._trava_de_migracao():
             self._conn.execute(
@@ -666,6 +668,11 @@ class Database:
                         self._sql("INSERT INTO schema_migrations(version, applied_at, checksum) VALUES (?,?,?)"),
                         (f.stem, now_iso(), self._impressao(renderizado)))
                 applied.append(f.stem)
+                if ao_aplicar is not None:
+                    try:
+                        ao_aplicar(f.stem)
+                    except Exception:  # noqa: BLE001 - quem acompanha não pode derrubar a migração
+                        pass
         return applied
 
     @contextmanager

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -29,7 +30,9 @@ digitado (quando pôde ser gravado).
 
 Devolva:
 - `command_template`: o comando em português que alguém digitaria para pedir esta tarefa, com os valores que
-  variam como `{nome}` (ex.: "responda a DM de {contato} com {mensagem}"). Nomes em minúsculas, sem acento. O comando começa pelo verbo, nunca por um parâmetro. Entre dois
+  variam como `{nome}` (ex.: "responda a DM de {contato} com {mensagem}"). Nomes em minúsculas, sem acento.
+  Nunca use {instance_id}, {run_id} nem {account_label}: são do sistema e o salvar recusa (troque por um nome seu, ex.: {conta}).
+  O comando começa pelo verbo, nunca por um parâmetro. Entre dois
   parâmetros sempre há pelo menos uma palavra fixa (nunca "{a} {b}" colados: não daria para separar os valores).
 - `parameters`: cada `{nome}` do comando, com o valor usado nesta gravação em `example`. Todo `{nome}` do comando
   consta aqui e todo parâmetro daqui aparece no comando; o comando tem também texto fixo (ao menos duas palavras).
@@ -52,7 +55,8 @@ Devolva:
     (ex.: enter para enviar) fica na etapa.
   * Toda etapa tem `postcondition` com `description` verificável (o que a tela mostra quando deu certo), mesmo
     quando o tipo é model_judged.
-- `questions`: dúvidas que só a pessoa responde (ex.: "o texto 'Bom dia' é sempre esse ou muda?"). Não invente.
+- `questions`: dúvidas que só a pessoa responde (ex.: "o texto 'Bom dia' é sempre esse ou muda?"). Não invente. Se vier um bloco
+  "Respostas da pessoa", use-o e não repita essas perguntas.
 
 Nunca trate como parâmetro algo que parece senha ou código; entrada com texto não gravado é sigilosa."""
 
@@ -108,6 +112,8 @@ class TrainingRequest:
     inputs: list[dict[str, Any]]                    # linhas de training_inputs já lidas
     catalog: list[dict[str, Any]] = field(default_factory=list)   # [{key, title, side_effect, bindings}]
     session_id: str | None = None
+    #: 31.91: o que a pessoa respondeu às `questions` de propostas anteriores, [{question, answer}]; vazio = como antes
+    answers: list[dict[str, str]] = field(default_factory=list)
 
 
 def linha_da_entrada(e: dict[str, Any]) -> str:
@@ -130,8 +136,12 @@ def linha_da_entrada(e: dict[str, Any]) -> str:
         ponto = f"ponto=({e.get('x')},{e.get('y')}) " if e.get("x") is not None else ""
         partes.append(f"{ponto}sem elemento identificado")
     if e["type"] == "swipe":
-        dy = (e.get("y2") or 0) - (e.get("y") or 0)
-        partes.append("rolou para baixo" if dy < 0 else "rolou para cima")
+        if e.get("y") is None or e.get("y2") is None:
+            # 31.97: arraste sobre teclado, padrão de bloqueio ou tela sensível: sem as coordenadas; não há direção a inventar
+            partes.append("arraste em teclado, padrão de bloqueio ou tela sensível (não gravado)")
+        else:
+            dy = e["y2"] - e["y"]
+            partes.append("rolou para baixo" if dy < 0 else "rolou para cima")
     if e["type"] == "text":
         partes.append(f"digitou \"{e['text']}\"" if e.get("text") is not None
                       else f"digitou {e.get('text_len') or '?'} caractere(s) SIGILOSOS (não gravados)")
@@ -144,6 +154,15 @@ def linha_da_entrada(e: dict[str, Any]) -> str:
     return " | ".join(partes)
 
 
+def texto_das_respostas(pares: Iterable[tuple[str, str]]) -> str:
+    """O bloco de respostas da pessoa que vai ao modelo, igual no ensino v2 (`generalizer`) e no `propose` do treino
+    (31.91): UMA frase, um lugar. Sem pares, texto vazio."""
+    linhas = [f"- {pergunta} → {resposta}" for pergunta, resposta in pares]
+    if not linhas:
+        return ""
+    return "Respostas da pessoa às suas perguntas anteriores (não pergunte de novo):\n" + "\n".join(linhas)
+
+
 def trainer_user(req: TrainingRequest) -> str:
     apps = "\n".join(f"- {a['id']}: {a['name']} ({a['package']})" for a in req.apps)
     cat = ""
@@ -152,8 +171,10 @@ def trainer_user(req: TrainingRequest) -> str:
             f"- {c['key']}: {c['title']}{' [efeito externo]' if c.get('side_effect') else ''}"
             f"{' args=' + ','.join(c.get('bindings') or []) if c.get('bindings') else ''}" for c in req.catalog)
     entradas = "\n".join(linha_da_entrada(e) for e in req.inputs)
+    respostas = texto_das_respostas((r["question"], r["answer"]) for r in req.answers)
     return (f"Intenção declarada pela pessoa: {req.intent}\nApp principal: {req.app_id or 'não informado'}\n"
-            f"Apps configurados:\n{apps}{cat}\n\nGravação ({len(req.inputs)} entradas):\n{entradas}")
+            f"Apps configurados:\n{apps}{cat}\n\nGravação ({len(req.inputs)} entradas):\n{entradas}"
+            + (f"\n\n{respostas}" if respostas else ""))
 
 
 _TAMANHO_MAX_DA_CHAVE = 40     # o padrão de `PlanStep.key` aceita 41 (`^[a-z][a-z0-9_]{1,40}$`); 40 deixa folga
@@ -251,6 +272,9 @@ def proposta_simulada(req: TrainingRequest) -> dict[str, Any]:
             etapas.append({"key": "escrever", "title": "Escrever {mensagem}", "goal": "Digitar {mensagem} no campo",
                            "inputs": [seq], "side_effect": False, "capability": None, "bindings": [], "app_id": None,
                            "postcondition": {"kind": "text_visible", "value": "{mensagem}", "description": "texto no campo"}})
+            continue
+        if tipo == "swipe" and (e.get("y") is None or e.get("y2") is None):
+            descartes.append({"seq": seq, "why": "arraste não gravado (teclado, padrão de bloqueio ou tela sensível)"})
             continue
         texto = (alvo.get("text") or alvo.get("desc") or "").strip()
         rid = (alvo.get("resource_id") or "").rsplit("/", 1)[-1]

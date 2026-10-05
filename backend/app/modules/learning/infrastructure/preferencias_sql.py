@@ -28,9 +28,11 @@ from app.modules.learning.infrastructure.sql_repository import SqlLearningReposi
 from app.modules.skills.application.intent_ports import PreferenceHint
 from app.modules.skills.domain.intent import SkillMatch
 from app.modules.skills.domain.refs import LEGACY_PREFIX
+from app.taskqueue.perguntas import CAMPOS_SEM_RESPOSTA_POR_TEXTO
 
 #: Perguntas de DESTINO não são respondidas por texto (ADR-047): nunca viram preferência nem sugestão.
-_CAMPOS_DE_DESTINO = frozenset({"profile_id", "instance_id"})
+#: 31.87: o dado da persona que falta também não (o conjunto é o de `taskqueue/perguntas.py`, uma fonte só).
+_CAMPOS_DE_DESTINO = CAMPOS_SEM_RESPOSTA_POR_TEXTO
 
 
 def _objeto(bruto: object) -> dict[str, object]:

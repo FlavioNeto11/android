@@ -1,10 +1,43 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `7d104faa` (migração 113, deploy 36 mais a subida a quente do 29.111); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 05/10/2026: runtime do backend em `86afe1b5` (migração 115, deploy 38); `main` em `f5d9a096`; site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 38 no ar (05/10/2026, 16:02Z, central `86afe1b5`, migração `115_receita_nao_aplicavel`).** Vinte e quatro
+  merges sobre `ebc316f9`. Itens: 29.113, 29.117, 29.120, 29.121, 29.123, 29.124, 29.125, 29.127, 29.115, 29.118,
+  29.119, 28.47, 28.48, 30.75, 30.80, 31.80, 31.82, 31.83, 31.84, 31.85, 31.94 e 31.95; em parte, 31.86 (B), 31.89
+  (F1 e F6) e 31.90 (A). O detalhe de cada um está no [CHANGELOG](../CHANGELOG.md) e no
+  [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): avanço direto de `ebc316f9` para `86afe1b5`, com push; ensaio com a cópia
+    `data\backups\20261005-125938` (192,7 MB, íntegra), que aplicou só a migração 115 numa cópia restaurada;
+    `scripts/deploy.ps1 -PularBackup` com `rc=0`; `GET /api/health` ok e sem problemas (o `appium_log_masking_off`
+    sumiu); prova de fora de 16:03:35Z a 16:03:43Z com `rc=0` e 46 linhas ok (`/api/instances` 401, e 403 com Host
+    forjado); agente do notebook em `0.1.0+86afe1b` às 16:09Z (procedimento A10 de [`worker.md`](worker.md)).
+  - `real`: android-01, android-03 e android-06, parados desde o incidente das 13:15Z, religados um por vez pela API
+    local de 16:06:49Z a 16:18:53Z; na leitura de 16:23:47Z os três estavam `online`, com automação `ready` e
+    internet `healthy`. A subida do 01 pegou a máquina a 92 % de CPU (testes das frentes ao mesmo tempo); os testes
+    pararam e a pausa de reparo cobriu os três durante a subida.
+  - `simulated` (suíte 38 sobre `86afe1b5`, em Idle): `scripts/tests` 669 passed; backend em SQLite com `-n 6`,
+    11689 passed, 13 skipped e 1 failed (a catraca do `Any` do #442, consertada no `97dbf664`; dirigidos depois, 71
+    passed); frontend com typecheck limpo, 1650 passed e build; catracas 88 + 6 passed; mypy 257, igual ao teto;
+    PostgreSQL dirigido (473 arquivos, `-n 8`) com 9824 passed e **5 failed conhecidas** em `test_sobreposicao*.py`
+    (8 com `-n 1`; 25 passed sem xdist, no PostgreSQL e no SQLite). **A etapa do PostgreSQL não passou inteira**; a
+    causa está aberta no item 29.139.
+  - `real` (volta no navegador pela frente do painel, ~16:20Z, só leitura e estado de tela): lote de Personas,
+    Limites, Rede e revisão do ensino funcionam; oito achados viraram trabalho (31.90-B, 29.141 e 29.142).
+  - `not_run`: os estados do ensino com o controle assumido (gravando, recusas, "Limpar o campo") no navegador; a
+    prova real do ensino num aparelho de teste, autorizada às 16:25Z e ainda sem resultado.
+- **GitHub Copilot no repositório (05/10/2026, item 29.134, `f5d9a096`).** Pedido do dono: usar o Copilot Pro+ para
+  aliviar a carga das sessões e desta máquina. Instruções do repositório e ambiente do agente de nuvem no lugar; a
+  revisão de PR é pedida PR a PR pela orquestradora. Como operar: [`operacao.md` § 5](operacao.md#5-ci).
+  - `real`: três revisões em 05/10 (PRs de 756 a 1.549 linhas), 566,87 créditos (US$ 5,67), de 4 a 6 minutos cada, em
+    runner hospedado; 10 achados, 9 confirmados pelas frentes. Por esse custo a revisão automática ficou desligada.
+  - `not_run`: o agente de nuvem (a primeira tarefa ainda não foi atribuída).
+- **Plano-100 em 636 itens, 535 implementados (05/10/2026, 16:25Z).** Entraram os 78 IDs das janelas 37 e 38, entre
+  eles a Fase 33 (integração com serviço externo de autorização, 8 itens). As linhas 3.3, 6.2, 6.4 e 8.3 deixaram de
+  citar quatro achados cujo texto saiu do apêndice no `ebc316f9`.
 - **Subida a quente do 29.111 (05/10/2026, 10:40Z, central `7d104faa`).** A pedido do dono, o site público diz o que o
   nome ANA significa: **Agente Neural Avançada** (escolha dele, 05/10; registrada no ADR-075). A frase segue a regra da
   página: a ANA rege, as personas dão voz. Sem a forma em inglês; título, descrição e imagem social não mudaram.

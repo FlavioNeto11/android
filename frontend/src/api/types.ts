@@ -2010,6 +2010,14 @@ export interface TrainingProposal {
   discarded: { seq: number; why: string }[];
   questions: string[];
   app_id?: string | null;
+  /** v1.63: respostas acumuladas da pessoa (a mesma pergunta substitui a anterior); backend anterior não manda. */
+  answers?: TrainingAnswer[];
+}
+
+/** Uma resposta da pessoa a uma pergunta da proposta (v1.63): pergunta 1–300 e resposta 1–500 caracteres. */
+export interface TrainingAnswer {
+  question: string;
+  answer: string;
 }
 
 export interface TrainingSession {
@@ -2029,12 +2037,34 @@ export interface TrainingSession {
   input_count?: number;
 }
 
+/** Uma etapa no relatório do salvar, da prévia e do refazer: `recipe` diz se roda (ou rodaria) sem IA, e `reason` por quê. */
+export interface TrainingStepReport {
+  key: string;
+  title: string;
+  recipe: boolean;
+  reason: string;
+}
+
 export interface TrainingSaveResult {
   session: TrainingSession;
   flow_id: string;
-  steps: { key: string; title: string; recipe: boolean; reason: string }[];
+  steps: TrainingStepReport[];
   /** 31.83 (adendo v1.57): o que o salvar aceitou mas vale avisar; backend anterior não manda. */
   warnings?: string[];
+}
+
+/** `POST /training/{id}/preview` (adendo v1.58): o que o salvar faria, sem gravar. */
+export interface TrainingPreview {
+  steps: TrainingStepReport[];
+  warnings: string[];
+}
+
+/** `POST /training/{id}/recipes` (adendo v1.58): `created` conta as receitas gravadas nesta chamada. */
+export interface TrainingRecipesResult {
+  session: TrainingSession;
+  flow_id: string;
+  steps: TrainingStepReport[];
+  created: number;
 }
 
 // ---------------------------------------------------------------- ensino v2 e habilidades (fase F, `features.skills`)

@@ -570,6 +570,8 @@ trello:                           # Trello do dono (item 32.2, ADR-072): espelho
   #   vetado: ""                  # mover o cartão para cá vale "não" do dono
   #   marcos: ""                  # onde nasce um cartão por deploy (commit e migração mudaram)
   #   custos: ""                  # onde vive o cartão de custo de IA do dia, atualizado no máximo de hora em hora
+  #   perguntas: ""               # 28.51: as perguntas ao dono; o comentário dele aqui é a resposta (sem confirmação
+  #   perguntas_respondidas: ""   #   no Telegram): vai à orquestradora com o número da pergunta
   # membro_dono: ""               # o idMember do dono: só ele comanda (o autor é lido pela API, nunca do texto)
   # espelho_s: 60                 # de quanto em quanto tempo o reconciliador do espelho roda
   # reconciliar_s: 60             # leitura das actions do quadro (a rede de segurança do webhook; 300 com ele ligado)

@@ -78,10 +78,15 @@ def imagem_da_etapa(db: Database, ler_imagem: Callable[[str], bytes | None] | No
 def sha_da_imagem_aprovada(db: Database, run_id: str, step_id: str) -> str | None:
     """O `midia_sha256` congelado no sim do plano desta etapa (28.48; `ApprovalService.aprovar_no_plano`): a imagem que o
     dono APROVOU. É a âncora mais forte que o recálculo de `sha_da_imagem_na_porta`; quem manda a foto confere as duas.
-    A decisão mais recente, com desempate pelo id; `None` sem sim com imagem para a etapa."""
-    valor = db.scalar("SELECT midia_sha256 FROM pending_approvals WHERE run_id=? AND step_id=? AND status='approved'"
-                      " AND midia_sha256 IS NOT NULL ORDER BY decided_at DESC, id DESC LIMIT 1", (run_id, step_id))
-    return str(valor) if valor else None
+    Vale a DECISÃO mais recente da etapa (desempate pelo id), e só se ela for o sim: um "não" depois do sim tira a
+    âncora, e a foto não sai rotulada "aprovado" (N1 da leitura do #431, 28.49). O sim vencido (`expired`) não é decisão
+    do dono e não conta. `None` sem sim com imagem como última decisão."""
+    linha = db.one("SELECT status, midia_sha256 FROM pending_approvals WHERE run_id=? AND step_id=?"
+                   " AND status IN ('approved','edited','rejected') ORDER BY decided_at DESC, id DESC LIMIT 1",
+                   (run_id, step_id))
+    if linha is None or linha["status"] != "approved" or not linha["midia_sha256"]:
+        return None
+    return str(linha["midia_sha256"])
 
 
 def sha_da_imagem_na_porta(db: Database, run_id: str, step_id: str) -> str | None:

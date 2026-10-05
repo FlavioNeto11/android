@@ -367,17 +367,6 @@ def test_a_primeira_batida_com_estado_de_verdade_religa_e_a_segunda_nao(
 
 
 # ---------------------------------------------------------------- os emuladores sobrevivem ao reinício
-class _FilhoFalso:
-    def __init__(self, nome: str) -> None:
-        self._nome, self.morto = nome, False
-
-    def name(self) -> str:
-        return self._nome
-
-    def kill(self) -> None:
-        self.morto = True
-
-
 def test_o_supervisor_nao_mata_nada_alem_do_processo_do_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     """29.125. Emulador, Appium, servidor de rede e adb ficam vivos no reinício: são do backend seguinte, que
     readota o emulador pelo PID e decide o Appium da porta (K-039). A varredura de filhos que existia aqui mataria o
@@ -394,14 +383,14 @@ def test_o_supervisor_nao_mata_nada_alem_do_processo_do_backend(monkeypatch: pyt
     for nome in ("Process", "process_iter", "pids"):
         monkeypatch.setattr(psutil, nome, proibido)
     monkeypatch.setattr(os, "kill", proibido)
-    filhos = [_FilhoFalso("node.exe"), _FilhoFalso("emulator.exe"), _FilhoFalso("sing-box.exe"), _FilhoFalso("adb.exe")]
     backend = ProcessoFalso(pid=4242)
-    supervisor.encerrar_processo(backend, prazo_s=0.01)
-    assert backend.encerrado and not any(f.morto for f in filhos)
+    supervisor.encerrar_processo(backend, prazo_s=0.01)                       # com psutil e os.kill proibidos
+    assert backend.encerrado
     arvore = ast.parse(Path(supervisor.__file__).read_text(encoding="utf-8"))
     importados = {a.name for n in ast.walk(arvore) if isinstance(n, ast.Import) for a in n.names}
     importados |= {n.module or "" for n in ast.walk(arvore) if isinstance(n, ast.ImportFrom)}
-    assert not importados & {"psutil", "signal"}, "o supervisor não procura nem sinaliza outro processo"
+    # `signal` fica livre: um CTRL_BREAK ao PRÓPRIO backend é encerramento dele, não de outro processo.
+    assert "psutil" not in importados, "o supervisor não procura outro processo"
     chamadas = {n.func.attr for n in ast.walk(arvore) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
     assert not chamadas & {"children", "process_iter", "killpg"}
 
@@ -425,7 +414,9 @@ for (const f of (process.env.APPIUM_FALSO_FILHOS || '').split(require('path').de
 http.createServer((req, res) => {
   res.setHeader('content-type', 'application/json');
   res.end(JSON.stringify({ value: { ready: true } }));
-}).listen(Number(opt('--port', '4723')), opt('--address', '127.0.0.1'));
+}).listen(Number(opt('--port', '4723')), opt('--address', '127.0.0.1'),
+  // A linha do Appium de verdade ao ligar a porta (`LISTENER_MARKER`, 29.132).
+  () => console.log('Appium REST http interface listener started on http://' + opt('--address', '127.0.0.1')));
 """
 
 
