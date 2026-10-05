@@ -213,9 +213,9 @@ it('aparelho com conta real pede confirmação POR APARELHO antes de aplicar (AD
         confirmado || b.dry_run === false
           ? { id, outcome: 'assigned', reason: 'ok', from: { vpn_profile_id: null, proxy_profile_id: null, policy: 'livre' },
               to: { vpn_profile_id: 'vpn-1', proxy_profile_id: null, policy: 'livre' }, reapply: true,
-              warnings: confirmado ? ['conta real vinculada (@mariana), confirmada pela pessoa neste pedido'] : [] }
+              warnings: confirmado ? ['conta real vinculada, confirmada pela pessoa neste pedido: @mariana'] : [] }
           : { id, outcome: 'refused', code: 'real_account_confirm_required',
-              reason: `${id} tem conta real vinculada (@mariana): mudar a saída pede confirmação`,
+              reason: `${id} tem conta real vinculada: @mariana. Mudar a saída pede confirmação`,
               from: { vpn_profile_id: null, proxy_profile_id: null, policy: 'livre' },
               to: { vpn_profile_id: 'vpn-1', proxy_profile_id: null, policy: 'livre' }, reapply: true, warnings: [] }
       )),

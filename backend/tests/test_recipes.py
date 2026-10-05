@@ -9,7 +9,8 @@ from __future__ import annotations
 from app.automation.hierarchy import parse_hierarchy
 from app.db import loads
 from app.taskqueue.flows import FlowStore
-from app.taskqueue.recipes import RecipeDiverged, Replayer, detemplate, distill, resolve_selectors, unique_selectors
+from app.taskqueue.recipes import (RecipeDiverged, Replayer, _usable_text, detemplate, distill, resolve_selectors,
+                                   unique_selectors)
 
 from .conftest import Harness
 
@@ -274,3 +275,31 @@ def test_seletor_com_username_sem_arroba_vira_parametro_e_reproduz_para_outra_pe
     mari = {**tree.elements[2].to_dict(), "unique": unique_selectors(tree, tree.elements[2])}
     assert all(s.get("text") != "{username}" for s in build_selectors(mari, variables))
 
+
+def test_detemplate_so_troca_o_valor_inteiro_como_o_fluxo_e_o_hash() -> None:
+    """31.109: a ação aprendida usa a MESMA borda do fluxo-modelo e do hash da receita. Mutação: voltar ao `str.replace`
+    quebra "nasal" e "v10" (viravam `{perfil}l` e `v{n}`) e o marcador reescrito por um valor curto."""
+    assert detemplate("perfil nasal", {"perfil": "nasa"}) == ("perfil nasal", False, False)
+    assert detemplate("abrir nasa", {"perfil": "nasa"}) == ("abrir {perfil}", True, False)
+    assert detemplate("nasa", {"perfil": "nasa"}) == ("{perfil}", True, True)
+    # número: a esquerda sem caractere de palavra, a direita sem dígito nem `_`; a unidade colada à direita troca.
+    assert detemplate("esperar 100", {"n": "100", "m": "10 "}) == ("esperar {n}", True, False)
+    assert detemplate("v100 e 1000", {"n": "100"}) == ("v100 e 1000", False, False)
+    assert detemplate("100min", {"n": "100"}) == ("{n}min", True, False)
+    # o marcador posto não é reescrito por um valor curto que é palavra inteira dentro dele
+    assert detemplate("Ana e nome", {"a": "Ana", "b": "nome"}) == ("{a} e {b}", True, False)
+    assert detemplate("Ana", {"a": "Ana", "b": "ana", "c": "n"}) == ("{a}", True, True)
+    # o valor curto que é palavra inteira DENTRO do marcador não o reescreve (o mesmo caso, com nome de 3 caracteres)
+    assert detemplate("Ana", {"perfil": "Ana", "p": "per"}) == ("{perfil}", True, True)
+    # o piso de 3 caracteres e o valor vazio continuam de fora
+    assert detemplate("ab", {"x": "ab", "y": ""}) == ("ab", False, False)
+
+
+def test_seletor_de_texto_com_o_valor_dentro_de_outra_palavra_e_descartado_como_antes() -> None:
+    """31.109 (F1 da leitura): a borda deixou de trocar o valor dentro de palavra maior, e o texto de OUTRA pessoa
+    caía no rótulo fixo e virava seletor literal. Mutação: tirar o corte de `_usable_text` quebra os dois primeiros."""
+    assert _usable_text("Mariana Silva", {"alvo": "Maria"}) is None
+    assert _usable_text("@ana_silva", {"p": "@ana"}) is None
+    assert _usable_text("Maria", {"alvo": "Maria"}) == "{alvo}"                  # inteiro: continua trocando
+    assert _usable_text("ana", {"p": "@ana"}) == "{p}"                          # a tela sem a arroba: continua
+    assert _usable_text("Enviar", {"alvo": "Maria"}) == "Enviar"                 # rótulo fixo curto: continua

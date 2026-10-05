@@ -15,6 +15,8 @@ import type {
   TrainingRecipesResult, TrainingSaveResult, TrainingSession, TrainingStep,
 } from '../../api/types';
 import { Badge } from '../../components/Badge';
+import { SeloEmProva } from '../../components/SeloEmProva';
+import { explicacaoEmProva, quemUsaEmProva } from '../../lib/emProva';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
@@ -190,7 +192,9 @@ export function RefazerReceitas({ sessionId, intent, onFeito }: {
       <span className={styles.muted} role="status">
         {!feito ? 'Etapa sem receita porque o aparelho estava fora do ar? Com ele de volta, refaça.'
           : `${feito.created ? `${plural(feito.created, 'receita gravada', 'receitas gravadas')} agora.` : 'Nenhuma receita nova.'}`
-            + (semReceita.length ? ` Sem receita: ${semReceita.map((x) => `${x.title} (${x.reason})`).join('; ')}.` : '')}
+            + (semReceita.length ? ` Sem receita: ${semReceita.map((x) => `${x.title} (${x.reason})`).join('; ')}.` : '')
+            // 30.81: a receita da gravação espera junto do fluxo; só a persona que ensinou a usa até a prova.
+            + (feito.ensinado_em_prova ? ` ${quemUsaEmProva(feito.ensinado_em_prova).receitas}` : '')}
       </span>
     </span>
   );
@@ -555,7 +559,14 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
         )
       ) : resultado ? (
         <div className={styles.result}>
-          <p>Fluxo <strong>{resultado.flow_id}</strong> salvo. Quem estiver no escopo pode pedir pelo comando:</p>
+          <p>
+            Fluxo <strong>{resultado.flow_id}</strong> salvo
+            {resultado.ensinado_em_prova ? <> <SeloEmProva ensinado={resultado.ensinado_em_prova} /></> : null}
+            . {resultado.ensinado_em_prova ? quemUsaEmProva(resultado.ensinado_em_prova).comando : 'Quem estiver no escopo pode pedir pelo comando:'}
+          </p>
+          {resultado.ensinado_em_prova ? (
+            <p className={styles.muted} role="status">{explicacaoEmProva(resultado.ensinado_em_prova)}</p>
+          ) : null}
           <code className={styles.command}>{proposta?.command_template}</code>
           <ul className={styles.stepReport}>
             {resultado.steps.map((s) => (
@@ -569,7 +580,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
             <ul className={styles.questions} aria-label="Avisos do salvar">{resultado.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
           ) : null}
           {semReceitaAoSalvar ? (
-            <RefazerReceitas sessionId={sessionId} onFeito={(r) => setResultado((x) => (x ? { ...x, steps: r.steps } : x))} />
+            <RefazerReceitas sessionId={sessionId} onFeito={(r) => setResultado((x) => (x ? { ...x, steps: r.steps, ensinado_em_prova: r.ensinado_em_prova } : x))} />
           ) : null}
           {ensinoV2 ? (
             conversao ? (
@@ -590,7 +601,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       ) : (
         <div className={styles.review}>
           <div className={styles.recordingCol}>
-            <h4 className={styles.sub}>O que você fez ({sessao.inputs?.length ?? 0} entradas)</h4>
+            <h4 className={styles.sub}>O que você fez ({plural(sessao.inputs?.length ?? 0, 'entrada', 'entradas')})</h4>
             <ol className={styles.inputList}>
               {agruparTeclas(sessao.inputs ?? [], descartadas).map((g) => {
                 const e = g[0]!;
@@ -691,7 +702,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                         <p className={styles.muted}>
                           <Badge size="sm" tone={previaPorEtapa.get(s.key)!.recipe ? 'success' : 'neutral'}>
                             {previaPorEtapa.get(s.key)!.recipe ? 'sem IA' : 'com IA'}
-                          </Badge> Ao salvar: {previaPorEtapa.get(s.key)!.reason}
+                          </Badge> Ao salvar: {previaPorEtapa.get(s.key)!.recipe
+                            // 29.146: o motivo literal da prévia (v1.58) já diz "ao salvar"; com receita, a frase é do painel.
+                            ? 'a receita desta etapa é gravada.'
+                            : previaPorEtapa.get(s.key)!.reason}
                         </p>
                       ) : null}
                       {acoes.length && (s.side_effect || s.capability) ? (

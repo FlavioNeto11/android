@@ -41,7 +41,7 @@ async def _comentario_aprovado(harness: Harness, *, verbo: str = "approve", text
     db = state.db
     db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
     db.execute("UPDATE instances SET app_id='ig' WHERE id='android-01'")
-    pid = state.social.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA,
+    pid = state.social.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA,
                                                     instance_id="android-01")).id
     persona = state.social.create_persona(PersonaCreate(name="lucas", traits=PersonaTraits(tone="Direto")))
     state.social.update_profile(pid, ProfilePatch(persona_id=persona.id))

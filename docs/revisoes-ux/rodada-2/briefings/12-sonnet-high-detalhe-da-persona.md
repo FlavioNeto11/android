@@ -12,7 +12,7 @@ forca_recomendada: high
 - **11 abas** na mesma faixa: Visão geral, Persona, Contas e acesso, Imagens, Aparelhos, Memória, Interações, Habilidades, Aprovações, Execuções, Configurações. A faixa rola, mas não há agrupamento nem prioridade.
 - O seletor de apps ("Todos / Instagram / Outlook / Conta em outro app") fica acima das abas sem explicar que filtra o conteúdo delas.
 - Campos sensíveis (religião, política) aparecem por padrão na Visão geral.
-- O identificador na URL é opaco (`#/personas/ig-CVG2z6c0Dv9dBrsY`).
+- O identificador na URL é opaco (`#/personas/ig-Ex4mpl0Pers0na12`).
 - O selo de estado no canto superior direito ("Conectado", "Não verificada") não explica o que fazer.
 
 ## O que fazer

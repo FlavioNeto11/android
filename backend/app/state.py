@@ -126,6 +126,7 @@ from .modules.pedidos.infrastructure.laco import LacoDePedidos
 from .modules.pedidos.infrastructure.saldo import motivo_de_adiamento
 from .modules.pedidos.infrastructure.servico import PedidosApi
 from .modules.portal.montagem import Portal
+from .taskqueue.flows import preencher_refs_publicas
 from .taskqueue.repository import Repository
 from .taskqueue.scheduler import Scheduler
 from .taskqueue.service import RunService
@@ -306,6 +307,8 @@ class AppState:
         pasta_da_marca = marca_de_partida.pasta_do_supervisor(cfg.data_dir)
         self.db.migrate(ao_aplicar=lambda _v: marca_de_partida.gravar(pasta_da_marca, marca_de_partida.MIGRANDO))
         marca_de_partida.gravar(pasta_da_marca, marca_de_partida.MIGRANDO)
+        # 30.83: a referência pública aleatória dos fluxos de antes da migração 116 (o SQL portátil não sorteia).
+        preencher_refs_publicas(self.db)
         # `origin`: quem publicou. É o que permite a OUTRA réplica saber o que não é dela e entregar aos
         # WebSockets ligados nela (item 5.6) — sem isso, o painel de uma réplica não via nada da outra.
         self.bus = EventBus(self.db, origin=cfg.owner_id)
@@ -528,6 +531,8 @@ class AppState:
         # Devolver o controle manual, num aparelho cujo perfil esperava uma pessoa, dispara a reobservação —
         # é o que o texto de desafio do app (`sessao.yaml`) promete e, sem isto, o código não fazia (achado #106).
         self.devices.on_control_released = self._controle_devolvido
+        # 29.143: a tomada explícita encerra a gravação de quem ensinava (sem salvar nem descartar) antes do lease novo.
+        self.devices.on_lease_taken = self._controle_tomado
         # Modo treinamento (item 13.1): cada entrada manual do Foco, com a tela de antes, vai para a gravação.
         from .training.recorder import TrainingRecorder  # noqa: PLC0415
         # A persona do treino é a que a pessoa escolheu; sem escolha, a ÚNICA do aparelho para o app (com duas, o
@@ -695,12 +700,13 @@ class AppState:
         # 30.31: a validação automática do "pedir evidência" do curador precisa da fila de execuções e do parque
         # (`off` de fábrica). O despachante só roda com o central saudável e sem execução em curso.
         ligar_validacao.ligar(self.learning, self.db, fila=self.runs, parque=self.scheduler,
-                              fluxo_ativo_para=lambda comando: self.scheduler.flows.match(comando) is not None,
+                              # 30.81: o ensinado que espera a prova não é o fluxo ativo do comando
+                              fluxo_ativo_para=lambda comando: self.scheduler.flows.ativo_para(comando) is not None,
                               saudavel=lambda: not self.health().problems,
                               config=lambda: self.cfg.file.aprendizado.validacao,
                               precos=lambda: self.cfg.file.ai.prices, relogio=now,
                               # 30.36: o plano do fluxo ativo, para a receita sem caminho não gastar uma execução
-                              plano_ativo_para=lambda comando: (m[1] if (m := self.scheduler.flows.match(comando))
+                              plano_ativo_para=lambda comando: (m[1] if (m := self.scheduler.flows.ativo_para(comando))
                                                                 else None))
         # Laço de pedidos persistentes (28.4). O objeto existe sempre (o gancho de fim de execução e a API do 28.9 o
         # chamam sem conferir); a TAREFA só sobe com `pedidos.enabled` e `roda_scheduler` (ver `start`).
@@ -1241,6 +1247,14 @@ class AppState:
         except Exception:  # noqa: BLE001 - a gravação nunca pode impedir a devolução do controle
             log.exception("%s: não foi possível encerrar o treinamento ao devolver o controle", rt.id)
         self._reobservar_apos_intervencao(rt)
+
+    def _controle_tomado(self, rt: DeviceRuntime, novo: str, antigo: str) -> None:
+        """29.143: uma gravação nunca passa de mão em mão. A de quem perdeu o controle termina aqui, marcada no log;
+        o aparelho segue com uma pessoa, então não há reobservação (diferente de `_controle_devolvido`)."""
+        try:
+            self.training.stop_for_instance(rt.id, motivo=f"interrompida pela tomada de {novo} (estava com {antigo})")
+        except Exception:  # noqa: BLE001 - a gravação nunca pode impedir a troca de controle
+            log.exception("%s: não foi possível encerrar o treinamento na tomada do controle", rt.id)
 
     def _reobservar_apos_intervencao(self, rt: DeviceRuntime) -> None:
         """O controle manual voltou para o aparelho (devolvido ou expirado). Se o perfil vinculado estava
@@ -2714,7 +2728,7 @@ class AppState:
                 log.info("Appium: %s (%s)", "ok" if ok else "indisponível", self.appium.detail)
             await self.devices.start()
             # O `account_label` de cada aparelho passa a ser o derivado (vínculo ou conta travada; ADR-055) — em 28/09
-            # os quinze diziam `qa-user-NN` da configuração, e o android-04 com o felipe logado enganou um experimento.
+            # os quinze diziam `qa-user-NN` da configuração, e o android-04 com o sicrano logado enganou um experimento.
             self.social_repo.sincronizar_rotulos()
             # Antes do scheduler e da reconciliação: a partir daqui o ciclo de vida local tem para quem ir, e um
             # comando despachado sem o worker local no ar seria recusado com "não está conectado".
@@ -3585,7 +3599,7 @@ class AppState:
         problema_capacidade = self._problema_de_capacidade_local()
         if problema_capacidade is not None:
             problems.append(problema_capacidade)
-        # ADR-055: conta travada logada em aparelho LIGADO. O android-04 passou horas no ar com o felipe no desafio
+        # ADR-055: conta travada logada em aparelho LIGADO. O android-04 passou horas no ar com a conta no desafio
         # e a saúde não dizia nada; um aparelho assim é um risco à conta enquanto estiver de pé.
         if (travadas := self._contas_travadas_no_ar()):
             problems.append(Problem(

@@ -316,6 +316,17 @@ avisos depois da faxina"), e a trava cai no TTL.
     resposta chega à orquestradora marcada "autoria não confirmada" e não registra decisão. Nome de cartão sem `P-NNN`
     no começo chega marcado "sem número: conferir o cartão antes de registrar decisão". Fora das listas de perguntas o
     segundo fator segue sendo a confirmação no Telegram (28.30).
+  - **A marca separa a API da tela, não o dono da IA (revisão do #447, R1):** uma sessão que dirigisse o navegador ou o
+    aplicativo do Trello com a conta dele escreveria sem `appCreator`. **Proibição (decisão da orquestradora, N1 da
+    revisão do 28.52):** nenhuma sessão comenta em cartão das listas de perguntas pelo conector do Trello nem pela tela,
+    com ou sem 🤖. Só a Canais cria o cartão da pergunta e comenta nele, pela API da Central e com 🤖 no comentário. Se o conector gravar como `digitado`, uma
+    escrita dele sem 🤖 contaria como resposta do dono. A única exceção é a sonda abaixo, com 🤖, num cartão de teste e
+    só com o sinal da orquestradora. Se aparecer "escrita por app" numa
+    resposta que ele digitou, é sinal de que o Trello passou a marcar os próprios aplicativos: avisar a orquestradora.
+  - **Medida (28.52):** nas listas de perguntas, o comentário com 🤖 continua sem valer nada (`outro`, `ignorada`), mas a
+    linha guarda a autoria em `responde_a` (`pergunta:P-NNN;autoria=app|digitado|nao_confirmada`). Um comentário com 🤖
+    pelo conector do Trello num cartão de teste dessas listas diz se o conector leva `appCreator`. Num cartão sem `P-NNN`
+    o campo sai `pergunta:;autoria=…` (número vazio), e a contagem da medida aceita isso. Resultado: `not_run`.
   - O recado que falha por erro interno responde com uma frase fixa, e o reply a ela segue à orquestradora (a entrada 1256
     de 04/10 ficou `falhou` sem resposta).
   - O login do painel recusa nome começado por `trello:` ou `telegram:`: esse é o operador dos canais. A sessão antiga
@@ -412,6 +423,17 @@ avisos depois da faxina"), e a trava cai no TTL.
       objetivo parado. A conta em tela não reconhecida (`unknown`, 29.92) tem frase e três linhas próprias, e o link abre o Foco
       do aparelho (`#/painel?foco=<id>`), onde fica o "Assumir controle". Toda tela de link de aviso está em `TELAS`
       de `frontend/src/lib/rotas.ts` (catraca em `test_avisos_objetivo_parado.py`).
+    - O que a pessoa ENSINOU e o sistema rebaixou (28.50; eventos da Aprendizado, 30.80 B): `learning.ensinado_sem_receita`
+      (nada ativo ficou para a etapa, que voltou para a IA) sai na hora; `learning.ensinado_rebaixado` (outra receita
+      ainda segura a etapa) vai à rotina. Um evento por transição da trilha, com a chave
+      `learning:ensinado:<kind>:<ref>:<desde>`. No texto, como no 28.14, nenhum identificador do item: "Uma receita (ou
+      um fluxo) que você ensinou" e a frase fixa do `para` (quarentena, obsoleto, substituído). O link é o detalhe na aba
+      Aprendizado (`#/aprendizado?aba=aprendido&item=receita:<id>`), porque o item não está na caixa. **O id de FLUXO não
+      sai para fora (orquestradora, leitura do 30.80 B):** é o slug do resumo do pedido e pode carregar identificador de
+      conta ou nome. Ele não vai ao texto nem ao link (que fica `#/aprendizado?aba=aprendido`), e na chave entra só um
+      resumo dele (`h` + 16 hexadecimais do sha256). O `message` do evento nunca é lido. Vale até o 30.83 tirar o pedido
+      do id; o número da receita, só dígitos, segue indo. O gesto: ensinar de novo no Modo treinamento, ou reativar pelo Aprendizado
+      se o app já foi consertado. `ref` ou `app` fora do formato do contrato: nada sai.
     - **2, algo falhou:** a pausa e o orçamento esgotado pararam algo do dono e saem na hora. A ocorrência perdida e
       os eventos perdidos não pararam nada e esperam a janela.
     - **3, rotina** (relatório, encerramento, 80% do orçamento, condição atendida, aprendizado): nunca sai sozinha. Vai

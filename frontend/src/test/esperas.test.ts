@@ -107,6 +107,12 @@ function operandosDoTopo(corpo: string): { texto: string; depois: string | null 
   return operandos;
 }
 
+/** O `?` em `i` abre um ternário, não um `?.`? `ok?.5:1` é `ok ? .5 : 1`: o `?.` seguido de dígito é ternário (29.136). */
+function eInterrogacaoDeTernario(corpo: string, i: number): boolean {
+  if (corpo.charAt(i) !== '?' || corpo.charAt(i + 1) === '?') return false;
+  return corpo.charAt(i + 1) !== '.' || /\d/.test(corpo.charAt(i + 2));
+}
+
 /** Há um `?` de ternário no nível de fora (nem `?.`, nem `??`)? Então um ramo que não é o último também decide. */
 function temTernarioNoTopo(corpo: string): boolean {
   let nivel = 0;
@@ -117,7 +123,7 @@ function temTernarioNoTopo(corpo: string): boolean {
     else if ('([{'.includes(c)) nivel++;
     else if (')]}'.includes(c)) nivel--;
     else if (c === '?' && corpo.charAt(i + 1) === '?') i++;
-    else if (nivel === 0 && c === '?' && corpo.charAt(i + 1) !== '.') return true;
+    else if (nivel === 0 && eInterrogacaoDeTernario(corpo, i)) return true;
   }
   return false;
 }
@@ -136,7 +142,7 @@ function temOperadorNoTopo(corpo: string): boolean {
     else if ('([{'.includes(c)) nivel++;
     else if (')]}'.includes(c)) nivel--;
     else if (nivel === 0 && (dois === '&&' || dois === '||' || dois === '??')) return true;
-    else if (nivel === 0 && c === '?' && corpo.charAt(i + 1) !== '.') return true;
+    else if (nivel === 0 && eInterrogacaoDeTernario(corpo, i)) return true;
   }
   return false;
 }
@@ -288,6 +294,8 @@ describe('catraca das esperas', () => {
       // 29.135: o operando entre parênteses antes do `&&` também é lido (G2): o `.find(…)` dentro dele dá `undefined`.
       "await waitFor(() => (itens().find((i) => i.id === 'x')) && !carregando);",
       "await waitFor(() => ((itens().find((i) => i.id === 'x'))) && !carregando);",
+      // 29.136: `?.` seguido de dígito é ternário (`ok ? .5 : …`), não encadeamento opcional.
+      "await waitFor(() => !a?.5:c.querySelector('x'));",
     ];
     const poupa = [
       "await waitFor(() => container.querySelector('h1')?.textContent === 'Mariana Costa');",
@@ -313,6 +321,10 @@ describe('catraca das esperas', () => {
       "await waitFor(() => (selected === itens.find((i) => i.id === 'x')) && pronto);",
       "await waitFor(() => selected === itens.find((i) => i.id === 'x') && pronto);",
       "await waitFor(() => (x instanceof Y) && pronto);",
+      // 29.136: com `?.5` o ternário está no topo e o `&&` é só a condição; lido como `?.`, virava falso positivo.
+      "await waitFor(() => itens().find((i) => i.id === 'x') && ok?.5:1);",
+      // O encadeamento opcional de verdade (`?.` e `?.[`, sem dígito) não é ternário.
+      "await waitFor(() => itens().find((i) => i.id === 'x') !== undefined && ok?.length);",
     ];
     for (const linha of pega) expect(esperasQuePassamSemAchar(linha), linha).toHaveLength(1);
     for (const linha of poupa) expect(esperasQuePassamSemAchar(linha), linha).toEqual([]);

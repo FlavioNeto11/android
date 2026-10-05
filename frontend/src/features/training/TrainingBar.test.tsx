@@ -48,6 +48,9 @@ afterEach(async () => {
 it('"Descartar" a gravação pede confirmação: cancelar não chama a rota; confirmar descarta', async () => {
   await act(async () => root.render(<><TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine /><ConfirmHost /></>));
   await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  // 29.146: plural certo no contador (antes "1 entrada(s)").
+  expect(text()).toContain('1 entrada');
+  expect(text()).not.toContain('entrada(s)');
 
   await click(byRole('button', /^Descartar$/));
   await waitFor(() => expect(text()).toContain('Descartar a gravação?'));
@@ -89,13 +92,13 @@ it('modo "só revisão" (aparelho fora do ar): lista "Para revisar" e a nota, se
 it('contador de entradas recusadas: aparece só enquanto grava e some quando a gravação termina', async () => {
   await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
   await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
-  expect(text()).not.toContain('recusada(s)');
+  expect(text()).not.toContain('recusada');
   await act(async () => { useTrainingStore.getState().registrarRecusa('android-01'); useTrainingStore.getState().registrarRecusa('android-01'); });
-  expect(text()).toContain('2 entrada(s) recusada(s): refaça');
+  expect(text()).toContain('2 entradas recusadas: refaça');
   backend.on('GET', /\/training$/, () => json([{ ...GRAVANDO, status: 'discarded' }]));
   await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine={false} />));
   await waitFor(() => expect(useTrainingStore.getState().recusadas['android-01']).toBeUndefined());
-  expect(text()).not.toContain('recusada(s)');
+  expect(text()).not.toContain('recusada');
 });
 
 // 31.80 + A1: a gravação órfã (ninguém com o controle) se distingue da viva de quem tem o controle em outra aba.
@@ -141,7 +144,22 @@ it('A6: a região viva do contador nasce vazia com a gravação e o texto entra 
   expect(viva.textContent).toBe('');
   await act(async () => { useTrainingStore.getState().registrarRecusa('android-01'); });
   expect(viva.isConnected).toBe(true);
-  expect(viva.textContent).toBe('1 entrada(s) recusada(s): refaça');
+  expect(viva.textContent).toBe('1 entrada recusada: refaça');
+});
+
+it('29.142: "Para revisar" corta o nome com reticências, leva o nome inteiro no rótulo e diz o estado de cada gravação', async () => {
+  const longo = 'Atualizar o cadastro do perfil no QA Messenger com o nome e a cidade';
+  backend.on('GET', /\/training$/, () => json([
+    { ...GRAVANDO, id: 'trn-a', intent: longo, status: 'recorded' },
+    { ...GRAVANDO, id: 'trn-b', intent: longo, status: 'proposed' },
+  ]));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Para revisar:'));
+  const gravada = byRole('button', /, só gravada$/);
+  const pronta = byRole('button', /, proposta pronta$/);
+  expect(gravada.getAttribute('aria-label')).toBe(`Revisar “${longo}”, só gravada`);
+  expect(gravada.textContent).toBe('Atualizar o cadastro do perfil no QA… · só gravada');
+  expect(pronta.textContent).toBe('Atualizar o cadastro do perfil no QA… · proposta pronta');
 });
 
 // 31.90-B (v1.58): a sessão salva sai de "Para revisar", mas a etapa sem receita ainda pode ganhá-la daqui.

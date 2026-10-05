@@ -18,7 +18,7 @@ import { DecididoPelaPlataforma } from './DecididoPelaPlataforma';
 import type { RelatorioDaAprovacao } from './aprovacaoAutomatica';
 import { ResumoParaDecidir } from './ResumoParaDecidir';
 import {
-  type AcaoDoItem, type EntradaDoLivro, ONDE_FICAM_AS_HABILIDADES, acaoDeAprovarNaFila, acoesNaFila, ordenarPendentes,
+  ACAO_CONFIRMAR_QUE_FICA, type AcaoDoItem, type EntradaDoLivro, ONDE_FICAM_AS_HABILIDADES, acaoDeAprovarNaFila, acoesNaFila, ordenarPendentes,
   porQueOSistemaNaoPublica, tituloDoItem, titulosDaLista,
 } from './model';
 import { type ModoDoCurador, efeitoDoAceite, textoDaRecusa } from './parecer';
@@ -29,9 +29,7 @@ import styles from './Aprendizado.module.css';
 const REBAIXAR: AcaoDoItem = { to: 'disabled', label: 'Desligar', confirmar: 'Confirmar desligamento', perigo: true };
 /** "Confirmar que fica" (30.24): a pessoa mantém o legado como está; ele sai de "Revisar" até chegar evidência
  *  contrária. Nada muda no item, e o motivo é opcional. */
-const CONFIRMAR: AcaoDoItem = {
-  to: 'published', label: 'Confirmar que fica', confirmar: 'Confirmar que fica', perigo: false, confirmaQueFica: true,
-};
+const CONFIRMAR = ACAO_CONFIRMAR_QUE_FICA;
 
 interface Leitura {
   itens: EntradaDoLivro[] | null;

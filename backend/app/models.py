@@ -1669,7 +1669,7 @@ class RunCreate(BaseModel):
     """Execução por APARELHO (como sempre), por PERSONA ou DISTRIBUÍDA. `profile_ids` escolhe o aparelho pelos
     vínculos (sessão pronta, principal, balanceamento) e, junto com `instance_ids`, vale a INTERSEÇÃO; `targets`
     são alvos explícitos (o eco da prévia); `distribute` deixa o balanceamento escolher N aparelhos do app.
-    Quem pensa em "responda as mensagens da Mariana" não deveria precisar saber em qual emulador ela está."""
+    Quem pensa em "responda as mensagens da Fulana" não deveria precisar saber em qual emulador ela está."""
 
     model_config = ConfigDict(extra="forbid")
     command: str = Field(min_length=3, max_length=4000)
@@ -1808,7 +1808,7 @@ class ResolveBody(BaseModel):
     note: str | None = Field(default=None, max_length=500)
     #: O print (evidência `screenshot` deste item) em que a pessoa se baseou para confirmar. Obrigatório no
     #: `confirm_done` de etapa com efeito externo (ADR-055): em 19/09 a DM confirmada só com nota livre não dizia QUE
-    #: tela a pessoa viu — e a da beatriz estava com "Sending…" congelado.
+    #: tela a pessoa viu — e a da ciclana estava com "Sending…" congelado.
     evidence_id: int | None = Field(default=None, ge=1)
 
 

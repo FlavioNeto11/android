@@ -33,11 +33,12 @@ from typing import Protocol
 from app.contracts.origem import PREFIXO_VALIDACAO
 from app.modules.learning.domain.ciclo import ConflitoDeEstado, ExigeODono, SkillState, TransicaoProibida
 from app.modules.learning.domain.curador import Decisao, Falta, Parecer
-from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item
+from app.modules.learning.domain.livro import EntradaDoLivro, apps_do_item, quem_no_log, ref_no_log
 from app.modules.learning.domain.politica_de_risco import ClasseDeRisco, Classificacao, Razao
-from app.modules.learning.domain.validacao import (VALIDADE_DO_PEDIDO_H, Ambiente, AparelhoCandidato, EstadoDoPedido,
-                                                   FatosDoParecer, Folego, Grupo, Motivo, ProvaAnterior,
-                                                   escolher_aparelho, excluidos_da_validacao,
+from app.modules.learning.domain.ensinado import EsperaDoEnsinado
+from app.modules.learning.domain.validacao import (PREFIXO_DO_ENSINO, VALIDADE_DO_PEDIDO_H, Ambiente, AparelhoCandidato,
+                                                   EstadoDoPedido, FatosDoParecer, Folego, Grupo, Motivo, ProvaAnterior,
+                                                   escolher_aparelho, excluidos_da_validacao, grupo_de, passo_do_ensino,
                                                    limite_de_provas_atingido, motivo_da_prova_invalida,
                                                    motivo_humano, pedido_do_parecer, pode_despachar,
                                                    sobra_aparelho_novo, teto_da_prova)
@@ -232,6 +233,31 @@ class DespachoDeValidacao(Protocol):
 PREFIXO_DO_PEDIDO_DA_PESSOA = "pedido:"
 
 
+@dataclass(frozen=True, slots=True)
+class EnsinadoAProvar:
+    """30.81: um fluxo ensinado no modo treinamento, ativo, da sessão salva, sem prova a favor e sem decisão de pessoa
+    desde o nascimento: o que a volta da validação precisa para abrir (ou não) o pedido da prova dele."""
+
+    fluxo_id: str
+    sessao: str
+    comando: str                    # o molde com o `example` de cada parâmetro (`""`: faltou exemplo)
+    aparelho: str | None            # o do treino: fica de fora da prova
+    persona: str | None
+    app: str
+    desde: str                      # o nascimento do fluxo
+    tentativas: int                 # os pedidos `ensino:<sessão>` já abertos para ele
+    vivo: bool                      # há pedido vivo do item (de qualquer origem)
+    esperando_pessoa: bool          # já há o pedido recusado que passou o ensinado à pessoa
+
+
+class EnsinoDaValidacao(Protocol):
+    """30.81: as fontes da prova do ensinado. `a_provar` é UMA consulta por volta."""
+
+    def a_provar(self) -> list[EnsinadoAProvar]: ...
+    def entrada(self, fluxo_id: str) -> EntradaDoLivro | None: ...
+    def espera_decisao(self, aviso: EsperaDoEnsinado) -> None: ...     # `learning.ensinado_espera_decisao`
+
+
 class PedidoRecusado(TransicaoProibida):
     """30.47: o pedido da pessoa não passa numa regra do pedido (a mesma do parecer). `motivo` é o código."""
 
@@ -246,7 +272,8 @@ class ServicoDeValidacao:
     def __init__(self, registro: RegistroDeValidacoes, fontes: FontesDaValidacao, despacho: DespachoDeValidacao,
                  *, triagem: Callable[[str], bool], ajustes: Callable[[], AjustesDaValidacao],
                  relogio: Callable[[], datetime],
-                 risco_do_item: Callable[[EntradaDoLivro], Classificacao | None] | None = None) -> None:
+                 risco_do_item: Callable[[EntradaDoLivro], Classificacao | None] | None = None,
+                 ensino: EnsinoDaValidacao | None = None) -> None:
         self._registro = registro
         self._fontes = fontes
         self._despacho = despacho
@@ -255,6 +282,8 @@ class ServicoDeValidacao:
         self._relogio = relogio
         # 30.47: a classe de risco de AGORA (o dossiê), para o pedido da pessoa; sem ela, o pedido é recusado (C).
         self._risco_do_item = risco_do_item
+        # 30.81: a prova do fluxo ensinado (`None`: o ensinado não é provado, o modo de antes)
+        self._ensino = ensino
 
     # ------------------------------------------------------------------ 1. o parecer vira pedido
     def ao_parecer(self, e: EntradaDoLivro, review_id: str, parecer: Parecer, risco: Classificacao) -> str | None:
@@ -313,8 +342,8 @@ class ServicoDeValidacao:
             raise TransicaoProibida("A validação automática está desligada (aprendizado.validacao.modo: off).")
         if e.kind is not LivroKind.FLUXO or e.state is not SkillState.CANDIDATE:
             estado = e.state.value if e.state is not None else e.native_status
-            raise TransicaoProibida(f"Pedir validação vale só para fluxo candidato; {e.kind.value} {e.ref} está em "
-                                    f"'{estado}'.")
+            raise TransicaoProibida("Pedir validação vale só para fluxo candidato; "
+                                    f"{quem_no_log(e.kind, e.ref)} está em '{estado}'.")
         risco = self._risco_do_item(e) if self._risco_do_item is not None else None
         if risco is None or risco.classe is ClasseDeRisco.C:
             raise ExigeODono("Fluxo de classe C segue item a item com o dono: a validação automática não o prova.")
@@ -335,9 +364,70 @@ class ServicoDeValidacao:
             estado=pedido.estado.value, motivo=None, expira_em=to_iso(agora + timedelta(hours=VALIDADE_DO_PEDIDO_H)),
             teto_usd=aj.teto_por_pedido_usd), agora)
         if pid is None:
-            raise ConflitoDeEstado(f"O fluxo {e.ref} já tem um pedido de validação vivo.")
-        log.info("aprendizado: %s pediu a validação de %s (pedido %s)", by, e.trail_ref, pid)
+            raise ConflitoDeEstado("O fluxo já tem um pedido de validação vivo.")
+        log.info("aprendizado: %s pediu a validação de %s (pedido %s)", by, ref_no_log(e.trail_ref), pid)
         return pid
+
+    # ------------------------------------------------------------------ 1d. a prova do ensinado (30.81)
+    def _abrir_provas_do_ensino(self, agora: datetime, aj: AjustesDaValidacao) -> None:
+        """O fluxo ensinado nasce ativo, mas só vale para a persona que ensinou até a prova (`flows.ensinado_em_prova`).
+        A cada volta, UMA consulta acha os que ainda esperam e abre o pedido da prova: reprodução em outro aparelho, com
+        o comando do molde preenchido pelos exemplos da proposta e o aparelho do treino de fora. Idempotente pelo
+        `review_id` `ensino:<sessão>` e pelo índice de um pedido vivo por item.
+
+        O que a prova automática não cobre passa à pessoa: a classe C (ou sem dossiê de agora), toda recusa ao nascer
+        do pedido (efeito em app real, sessão, credencial, sem origem, sem caminho) e as tentativas esgotadas sem
+        veredito. O pedido nasce `recusada` com o motivo e sai `learning.ensinado_espera_decisao`. Nunca levanta: a
+        volta segue para o despacho."""
+        if self._ensino is None:
+            return
+        try:
+            a_provar = self._ensino.a_provar()
+        except Exception:  # noqa: BLE001 - a prova do ensinado espera a volta seguinte; o despacho não para
+            log.exception("aprendizado: leitura dos ensinados a provar")
+            return
+        for x in a_provar:
+            passo = passo_do_ensino(tentativas=x.tentativas, vivo=x.vivo, esperando_pessoa=x.esperando_pessoa)
+            if passo is None:
+                continue
+            try:
+                self._abrir_prova_do_ensinado(x, passo, agora, aj)
+            except Exception:  # noqa: BLE001 - um ensinado não para os outros
+                log.exception("aprendizado: prova do ensinado")              # 30.83: sem o id do fluxo
+
+    def _abrir_prova_do_ensinado(self, x: EnsinadoAProvar, passo: str, agora: datetime,
+                                 aj: AjustesDaValidacao) -> None:
+        assert self._ensino is not None
+        e = self._ensino.entrada(x.fluxo_id)
+        if e is None:
+            return
+        falta = (Falta.REPRODUCAO_EM_OUTRO_APARELHO,)
+        grupo = grupo_de(efeito=e.side_effect, app_qa=self._todos_de_qa(e))
+        motivo: Motivo | None                            # o parecer pode não ter motivo (pedido aceito)
+        if passo == "esgotado":
+            estado, motivo = EstadoDoPedido.RECUSADA, Motivo.TENTATIVAS_ESGOTADAS
+        else:
+            risco = self._risco_do_item(e) if self._risco_do_item is not None else None
+            if risco is None or risco.classe is ClasseDeRisco.C:
+                estado, motivo = EstadoDoPedido.RECUSADA, Motivo.CLASSE_C
+            else:
+                pedido = pedido_do_parecer(self._fatos(e, Decisao.PEDIR_EVIDENCIA, falta, risco, x.comando or None))
+                if pedido is None:                       # inalcançável: a falta pedida é sempre automatizável
+                    return
+                estado, motivo, grupo = pedido.estado, pedido.motivo, pedido.grupo
+        pid = self._registro.criar(NovoPedido(
+            review_id=f"{PREFIXO_DO_ENSINO}{x.sessao}", item_ref=e.trail_ref, item_kind=e.kind.value,
+            scope_app=e.app or "", grupo=grupo.value, falta=tuple(f.value for f in falta), run_origem=None,
+            comando=x.comando, aparelho_excluido=x.aparelho, estado=estado.value,
+            motivo=motivo.value if motivo is not None else None,
+            expira_em=to_iso(agora + timedelta(hours=VALIDADE_DO_PEDIDO_H)), teto_usd=aj.teto_por_pedido_usd), agora)
+        if pid is None:                                  # outro pedido vivo do item chegou antes
+            return
+        log.info("aprendizado: prova do ensinado: pedido %s (%s%s)", pid, estado.value,      # sem o id do fluxo (28.50)
+                 f", {motivo.value}" if motivo is not None else "")
+        if estado is EstadoDoPedido.RECUSADA:
+            self._ensino.espera_decisao(EsperaDoEnsinado(kind=e.kind.value, ref=e.ref, app=e.app or x.app,
+                                                         treino=x.sessao, persona=x.persona, desde=x.desde))
 
     def _caminho(self, kind: str, item_ref: str, comando: str | None) -> bool:
         """30.36/30.37: a execução de validação chega ao item? Receita: o plano do fluxo ativo passa pela etapa dela;
@@ -370,6 +460,7 @@ class ServicoDeValidacao:
             return None
         agora = self._relogio()
         self._registro.expirar(agora)
+        self._abrir_provas_do_ensino(agora, aj)
         pendentes = self._sem_os_sem_caminho(self._registro.pendentes(), agora)
         if not pendentes:
             return None
@@ -400,7 +491,8 @@ class ServicoDeValidacao:
                             else None)
             if self._registro.comecar(p.id, run_id, aparelho, agora, teto_usd=aj.teto_por_pedido_usd,
                                       teto_da_prova=proporcional):
-                log.info("aprendizado: validação %s de %s em %s (execução %s)", p.id, p.item_ref, aparelho, run_id)
+                log.info("aprendizado: validação %s de %s em %s (execução %s)", p.id, ref_no_log(p.item_ref), aparelho,
+                         run_id)
                 return run_id
         log.info("aprendizado: validação espera (%s; %d pedido(s) pendente(s))", Motivo.SEM_APARELHO.value,
                  len(pendentes))
@@ -470,14 +562,14 @@ class ServicoDeValidacao:
             if p.item_kind in (LivroKind.RECEITA.value, LivroKind.FLUXO.value) and not self._caminho(
                     p.item_kind, p.item_ref, p.comando):
                 if self._registro.recusar(p.id, Motivo.SEM_CAMINHO, agora):
-                    log.info("aprendizado: validação %s de %s sem caminho (%s)", p.id, p.item_ref,
+                    log.info("aprendizado: validação %s de %s sem caminho (%s)", p.id, ref_no_log(p.item_ref),
                              "o fluxo ativo não chega à etapa" if p.item_kind == LivroKind.RECEITA.value
                              else "o comando de origem não cabe no molde do fluxo")
                 continue
             motivo = self._recusa_de_prova(p, agora)
             if motivo is not None:
                 if self._registro.recusar(p.id, motivo, agora):
-                    log.info("aprendizado: validação %s de %s recusada ao despachar (%s)", p.id, p.item_ref,
+                    log.info("aprendizado: validação %s de %s recusada ao despachar (%s)", p.id, ref_no_log(p.item_ref),
                              motivo.value)
                 continue
             vivos.append(p)
@@ -548,7 +640,8 @@ class ServicoDeValidacao:
             pid = self._registro.criar(novo, agora)
             if pid is not None:
                 n += 1
-                log.info("aprendizado: validação %s reaberta para %s com a execução de prova", pid, novo.item_ref)
+                log.info("aprendizado: validação %s reaberta para %s com a execução de prova", pid,
+                         ref_no_log(novo.item_ref))
         return n
 
     # ------------------------------------------------------------------ 4. o gatilho `evidencia_chegou` do curador

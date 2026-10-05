@@ -153,6 +153,17 @@ describe('ações da pessoa (as `acoes` do backend; o painel só põe o texto)',
       ['published', 'Reativar', false], ['candidate', 'Devolver à prova', false]]);
   });
 
+  it('30.81: o fluxo que espera a pessoa ganha "Confirmar que fica" na frente; sem o motivo, em outro tipo ou com `null`, nada muda', () => {
+    const desligar = [ACAO('disabled', 'desligar')];
+    const espera = entrada({ kind: 'fluxo', state: 'published', acoes: desligar, espera_a_pessoa: 'classe_c' });
+    expect(acoesDoItem(espera).map((a) => [a.to, a.label, a.confirmaQueFica ?? false])).toEqual([
+      ['published', 'Confirmar que fica', true], ['disabled', 'Desligar', false]]);
+    expect(acoesDoItem(entrada({ kind: 'fluxo', state: 'published', acoes: desligar, espera_a_pessoa: null })).map((a) => a.label)).toEqual(['Desligar']);
+    expect(acoesDoItem(entrada({ kind: 'fluxo', state: 'published', acoes: desligar })).map((a) => a.label)).toEqual(['Desligar']);
+    // a flag só existe no fluxo: em outro tipo o painel não a obedece
+    expect(acoesDoItem(entrada({ kind: 'receita', state: 'published', acoes: desligar, espera_a_pessoa: 'classe_c' })).map((a) => a.label)).toEqual(['Desligar']);
+  });
+
   it('chave que o painel não conhece (backend mais novo) aparece como veio, sem perigo', () => {
     const nova = { to: 'published', rotulo: 'promover', exige_motivo: true } as unknown as AcaoPermitida;
     expect(acoesDoItem(entrada({ acoes: [nova] }))).toEqual([{ to: 'published', label: 'promover', confirmar: 'Confirmar promover', perigo: false }]);

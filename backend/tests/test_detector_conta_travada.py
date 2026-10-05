@@ -53,7 +53,7 @@ CODIGO_EN = "Enter the 6-digit code we sent to f***@gmail.com"
 #: Uma verificação que nenhum sinal conhece: só o ator a reconhece, e relata com `step_blocked(kind="challenge")`.
 VERIFICACAO_DESCONHECIDA = "Precisamos confirmar algumas informações antes de continuar"
 IID = "android-01"
-USUARIO = "lucas.almeida9484"
+USUARIO = "tadeu.quintela4821"
 SENHA = "$a=B7ee1#<b-C?S-{"
 #: O que conta como tocar/teclar/reabrir no aparelho falso (a leitura da tela não aparece em `calls`).
 TOQUES = ("tap:", "key:", "swipe", "type:", "submit", "open_app", "force_stop")

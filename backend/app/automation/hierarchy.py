@@ -53,7 +53,7 @@ PROTECTED_TEXT_CAP = 400  # elemento que casa com um texto protegido (ex.: {cont
 #:   exigir o campo deixava a receita e o ator decidirem sobre ela. Por isso as frases são FRASES: palavra solta
 #:   ("suspeito", "unusual", "detectamos") aparece em DM e legenda, e o detector roda no meio da execução — uma
 #:   conversa com "achei suspeito" bloquearia uma das três contas vivas.
-#: - `_CODIGO`: código de login por e-mail/SMS e 2FA. Precisa de pessoa, mas NÃO é conta travada (bruno e andre
+#: - `_CODIGO`: código de login por e-mail/SMS e 2FA. Precisa de pessoa, mas NÃO é conta travada (duas contas reais
 #:   passaram por ele em 18/09 e seguem vivos). Continua exigindo onde digitar: a linha "Autenticação de dois fatores"
 #:   do MENU de configurações não é pedido de código.
 _CONTA_TRAVADA = re.compile(

@@ -18,6 +18,7 @@ from ..db import Database, loads
 from ..models import Plan
 from ..planning import costs
 from ..taskqueue.aproveitamento import aproveitamento
+from ..taskqueue.flows import ensinado_em_prova
 from ..taskqueue.recipes import hash_generico_da_etapa, para_hash, step_template_hash
 from ..util import now, to_iso
 
@@ -110,15 +111,20 @@ def cobertura_do_fluxo(s: Any, fluxo: Any, *, receitas: set[str] | None = None,
                    or hash_generico_da_etapa(e) in ativas)
     total = len(etapas)
     custo = "desconhecido" if total == 0 else "zero" if cobertas == total else "total" if cobertas == 0 else "parcial"
-    return {"flow_id": fluxo["id"], "package": package, "target_version": versao, "steps_total": total,
-            "steps_with_recipe": cobertas, "ai_cost": custo,
-            "estimated_usd": estimated_usd(s, steps_total=total, steps_with_recipe=cobertas, medianas=medianas)}
+    saida = {"flow_id": fluxo["id"], "package": package, "target_version": versao, "steps_total": total,
+             "steps_with_recipe": cobertas, "ai_cost": custo,
+             "estimated_usd": estimated_usd(s, steps_total=total, steps_with_recipe=cobertas, medianas=medianas)}
+    # 30.81: o ensinado que ainda espera a prova só vale para a persona que ensinou; ausente quando não se aplica.
+    espera = ensinado_em_prova(s.db, fluxo)
+    if espera is not None:
+        saida["ensinado_em_prova"] = espera
+    return saida
 
 
 def cobertura_dos_fluxos(s: Any) -> list[dict[str, Any]]:
     """Visão de parque: cada fluxo com a sua cobertura para a versão-alvo. É a resposta a "quais caminhos já estão
     mapeados" sem abrir perfil nenhum."""
-    fluxos = s.db.query("SELECT id, name, command_template, app_id, plan, status, uses FROM flows"
+    fluxos = s.db.query("SELECT id, name, command_template, app_id, plan, status, uses, source, created_at FROM flows"
                         " ORDER BY last_used_at DESC, created_at DESC")
     cache: dict[tuple[str | None, str | None], set[str]] = {}
     medianas = medianas_de_custo(s)

@@ -133,7 +133,7 @@ class Capability:
     # Textos que, ENQUANTO aparecem na tela, dizem que o efeito ainda está a caminho (ex.: "Sending…"). Não desmentem
     # o efeito, mas também nunca o comprovam: nem a prova local nem o "sim" do modelo fecham a etapa com um deles à
     # vista, e o modelo nem é perguntado — o executor segue olhando até o prazo da verificação. Motivo: em 19/09 a DM
-    # da beatriz foi dada por enviada com "Sending…" congelado debaixo da bolha (ADR-055).
+    # da ciclana foi dada por enviada com "Sending…" congelado debaixo da bolha (ADR-055).
     pending_marks: tuple[str, ...] = ()
     # Item 31.57: o MARCADOR de cada nível de entrega que o app mostra debaixo da mensagem, como `nivel=Texto`
     # (`delivered=Delivered`, `read=Seen`); níveis em `NIVEIS_DO_MARCADOR`. Casado na árvore logo abaixo da bolha

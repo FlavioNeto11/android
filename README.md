@@ -246,11 +246,11 @@ pwsh -File scripts\instagram.ps1 releases          # pacote, versão, splits e a
 # 2) cadastre o perfil no portal (aba Perfis → Novo perfil): usuário, senha e aparelho.
 #    A senha vai direto para o cofre cifrado e nunca volta — nem em resposta, nem em log, nem em evidência.
 pwsh -File scripts\instagram.ps1 perfis
-pwsh -File scripts\instagram.ps1 conectar -Perfil @mariana.costa91182
+pwsh -File scripts\instagram.ps1 conectar -Perfil @<usuario-do-perfil>
 
 # 3) o que o perfil sabe, o que ele fez e o que espera decisão
-pwsh -File scripts\instagram.ps1 memoria     -Perfil @mariana.costa91182
-pwsh -File scripts\instagram.ps1 interacoes  -Perfil @mariana.costa91182
+pwsh -File scripts\instagram.ps1 memoria     -Perfil @<usuario-do-perfil>
+pwsh -File scripts\instagram.ps1 interacoes  -Perfil @<usuario-do-perfil>
 pwsh -File scripts\instagram.ps1 aprovacoes
 pwsh -File scripts\instagram.ps1 aprovar     -Id apr-... -Nota "pode mandar"
 ```

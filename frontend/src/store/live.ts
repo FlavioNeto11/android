@@ -251,6 +251,10 @@ function handleEvent(ev: EventRecord): void {
     const id = ev.instance_id
       ?? (isRecord(ev.data) && typeof ev.data.instance_id === 'string' ? ev.data.instance_id : null)
       ?? (isRecord(ev.data) && isRecord(ev.data.instance) && typeof ev.data.instance.id === 'string' ? ev.data.instance.id : null);
+    // 29.143: na tomada o controle segue `user` (de outra pessoa), e o `reconcile` não veria a troca de dono.
+    if (ev.kind === 'control.changed' && id && isRecord(ev.data) && typeof ev.data.tomado_por === 'string') {
+      useControlStore.getState().tomado(id, ev.data.tomado_por);
+    }
     const inst = id ? useAppStore.getState().instances[id] : undefined;
     if (inst) useControlStore.getState().reconcile(inst);
   }

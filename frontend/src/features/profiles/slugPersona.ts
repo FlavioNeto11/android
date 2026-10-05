@@ -1,5 +1,5 @@
 /**
- * Nome legível na URL da persona (`#/personas/lucas-almeida`, em vez de `#/personas/ig-CVG2z6c0Dv9dBrsY`).
+ * Nome legível na URL da persona (`#/personas/lucas-almeida`, em vez de `#/personas/ig-Ex4mpl0Pers0na12`).
  *
  * Tudo sai do que a tela já carregou (`GET /personas`): não há endpoint de slug, e o id continua sendo a chave real
  * (cada link antigo com id segue abrindo a mesma pessoa).
@@ -37,7 +37,7 @@ export function slugBase(p: Pessoa): string {
   return slugify(nomeDe(p)) || 'persona';
 }
 
-/** O id em `a-z0-9` minúsculo (`ig-CVG2z6c0Dv9dBrsY` → `igcvg2z6c0dv9dbrsy`), de onde sai o sufixo. */
+/** O id em `a-z0-9` minúsculo (`ig-Ex4mpl0Pers0na12` → `igex4mpl0pers0na12`), de onde sai o sufixo. */
 function idLimpo(id: string): string {
   return id.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
@@ -91,7 +91,7 @@ export function slugDaPersona(p: Pessoa, todas: readonly Pessoa[]): string {
 
 /**
  * Quem o segmento do link nomeia: o id (links antigos), o slug de hoje, ou a forma com sufixo mesmo que o homônimo
- * já tenha saído (link compartilhado quando havia dois "Lucas Almeida"). `null` quando ninguém bate — ou quando o
+ * já tenha saído (link compartilhado quando havia dois "Tadeu Quintela"). `null` quando ninguém bate — ou quando o
  * nome-base é de vários e o link não diz qual.
  */
 export function resolverPersona<T extends Pessoa>(segmento: string | null | undefined, pessoas: readonly T[]): T | null {

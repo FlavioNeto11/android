@@ -66,6 +66,7 @@ it('mostra a gravação (texto sigiloso sem conteúdo), pede a proposta, e salva
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('QA-001'));
   expect(text()).toContain('(texto não gravado)');
+  expect(text()).toContain('O que você fez (2 entradas)');
   await click(byRole('button', /Pedir proposta à IA/i));
   await waitFor(() => expect(text()).toContain('O texto muda?'));
   expect(text()).toContain('{contato} = QA-001');
@@ -396,7 +397,8 @@ it('toque sem alvo nas palavras do backend (#440), o "Confere" em português e a
 
 // ---------------------------------------------------------------- 31.90-B: prévia do salvar (v1.58), recusas no campo e refazer receitas
 const PREVIA_OK = { steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita será gravada ao salvar' }], warnings: [] };
-const reasonDa = (reason: string) => ({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, reason }] });
+// Sem receita, para o motivo aparecer na tela (com receita, o painel mostra a frase dele: 29.146).
+const reasonDa = (reason: string) => ({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, recipe: false, reason }] });
 
 async function abrirEProporComPrevia() {
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
@@ -410,7 +412,7 @@ it('a prévia mostra o que cada etapa vira; a recusa do comando vai no campo e t
     return comando.startsWith('{') ? apiError(400, 'comando_generico', 'O comando precisa começar por palavra fixa.') : json(PREVIA_OK);
   });
   await abrirEProporComPrevia();
-  await waitFor(() => expect(text()).toContain('Ao salvar: receita será gravada ao salvar'));
+  await waitFor(() => expect(text()).toContain('Ao salvar: a receita desta etapa é gravada.'));
   const comando = () => byRole('textbox', /Comando/) as HTMLInputElement;
   const salvar = () => byRole('button', /^Salvar como fluxo/);
   expect(comando().getAttribute('aria-invalid')).toBeNull();
@@ -424,7 +426,7 @@ it('a prévia mostra o que cada etapa vira; a recusa do comando vai no campo e t
   expect(text()).not.toContain('Ao salvar:');                      // a prévia velha não fica ao lado da recusa
 
   await setValue(comando(), 'mande para {contato}');
-  await waitFor(() => expect(text()).toContain('Ao salvar: receita será gravada ao salvar'));
+  await waitFor(() => expect(text()).toContain('Ao salvar: a receita desta etapa é gravada.'));
   expect(comando().getAttribute('aria-invalid')).toBeNull();
   expect(salvar().getAttribute('aria-disabled')).toBeNull();
 });
@@ -481,12 +483,72 @@ it('etapa sem receita no salvar: "Refazer receitas" só com o clique, chama /rec
   await click(byRole('button', /^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   expect(text()).toContain('com IA');
+  expect(text()).not.toContain('em prova');                             // sem `ensinado_em_prova`, nenhum selo (30.81)
   expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(0);       // quem aciona é a pessoa
 
   await click(byRole('button', /^Refazer receitas$/));
   await waitFor(() => expect(text()).toContain('1 receita gravada agora.'));
   expect(text()).toContain('— receita gravada');                        // o relatório troca pelo do refazer
   expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(1);
+});
+
+// ---------------------------------------------------------------- 30.81 (v1.65): o fluxo ensinado espera a prova
+const SALVO_SEM_RECEITA = [{ key: 'abrir', title: 'Abrir a conversa', recipe: false, reason: 'aparelho fora do ar' }];
+
+it('30.81: o salvar com `ensinado_em_prova` mostra o selo e diz que só a persona que ensinou usa até a prova; o refazer mantém ou tira', async () => {
+  let refeitas = 0;
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', warnings: [], steps: SALVO_SEM_RECEITA,
+    ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' },
+  }));
+  backend.on('POST', /\/training\/trn-1\/recipes$/, () => {
+    refeitas += 1;
+    const base = { session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', created: 1,
+                   steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }] };
+    // 1ª: o fluxo ainda espera; 2ª: uma prova ou uma pessoa já o liberou (o campo some).
+    return json(refeitas === 1 ? { ...base, ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' } } : { ...base, created: 0 });
+  });
+  await abrirEProporComPrevia();
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  expect(text()).toContain('em prova');
+  expect(text()).toContain('Até a prova, só a persona que ensinou pode pedir pelo comando');
+  expect(text()).not.toContain('Quem estiver no escopo pode pedir');
+  expect(document.querySelector('[title^="Ensinado e ainda sem prova: só vale para a persona que ensinou"]')).not.toBeNull();
+  expect(text()).not.toContain('ig-1');                    // o id da persona não vai para a frase
+
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('Em prova: as receitas só valem para a persona que ensinou.'));
+  expect(text()).toContain('em prova');
+
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('Quem estiver no escopo pode pedir pelo comando'));
+  expect(text()).not.toContain('em prova');
+});
+
+it('30.81: a gravação sem persona diz que o fluxo não vale em aparelho nenhum até a prova', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', warnings: [], steps: SALVO_SEM_RECEITA,
+    ensinado_em_prova: { persona: null, sessao: 'trn-1' },
+  }));
+  await abrirEProporComPrevia();
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  expect(text()).toContain('a gravação não tinha persona: não vale em aparelho nenhum até uma prova real dar certo');
+  // a linha que apresenta o comando não diz que uma persona que ensinou pode pedir: não há nenhuma
+  expect(text()).toContain('Até a prova, o comando não vale em aparelho nenhum');
+  expect(text()).not.toContain('só a persona que ensinou pode pedir');
+
+  backend.on('POST', /\/training\/trn-1\/recipes$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', created: 1,
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
+    ensinado_em_prova: { persona: null, sessao: 'trn-1' },
+  }));
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('a gravação não tinha persona, então as receitas não valem em aparelho nenhum.'));
+  expect(text()).not.toContain('as receitas só valem para a persona que ensinou');
 });
 
 // ---------------------------------------------------------------- 31.91 F2 (v1.63): responder às perguntas da proposta

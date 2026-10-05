@@ -36,6 +36,7 @@ from app.contracts.origem import PREFIXO_LOTE, PREFIXO_VALIDACAO, eh_ensaio_de_l
 from app.modules.learning.application.evidencia_da_receita import (EvidenciaDaReceita, InvalidaDaReproducao,
                                                                    ReproducaoAConferir, RetrocargaDaReceita)
 from app.modules.learning.application.nativos import (AssinaturaDoPlano, ContraGravado, D1Nativo, Decidir,
+                                                      EnsinadoAEsperar,
                                                       ExecucaoAssentada, ExecucaoDeHabilidade, FluxoEmProva,
                                                       ForDeProva, InvalidaARevalidar, PassoAssinado, ProvaDaExecucao,
                                                       ReclassificacaoDaForma, ReclassificacaoDoEfeitoDuplicado,
@@ -58,7 +59,8 @@ from app.modules.learning.infrastructure.reproducao_sql import ReproducoesSql
 from app.modules.learning.infrastructure.validacao_de_skills import ValidacaoDeHabilidadesSql
 from app.modules.skills.domain.document import content_hash
 from app.modules.skills.infrastructure.sql_repository import SqlSkillRepository
-from app.taskqueue.flows import RESERVED, FlowStore, MudancaDoFluxo, NascimentoDoFluxo, confirmada_a_mao
+from app.taskqueue.flows import (PREFIXO_DO_TREINO, RESERVED, FlowStore, MudancaDoFluxo, NascimentoDoFluxo,
+                                 confirmada_a_mao, ensinado_em_prova)
 from app.taskqueue.recipes import MudancaDaReceita, ReceitaVista, RecipeStore, para_hash
 from app.util import now, now_iso, parse_iso
 
@@ -382,6 +384,19 @@ class LeituraSql:
                     " AND NOT EXISTS (SELECT 1 FROM learning_evidence f WHERE f.item_ref = e.item_ref"
                     " AND f.origin_ref = e.origin_ref AND f.stance = 'invalida') ORDER BY e.id")]
 
+    def ensinado_a_esperar(self, fluxo_id: str) -> EnsinadoAEsperar | None:
+        """30.81: o fluxo ensinado que ainda espera a prova (a regra é a do `match`, `flows.ensinado_em_prova`) e as
+        receitas ativas da mesma sessão."""
+        row = self._db.one("SELECT * FROM flows WHERE id=?", (fluxo_id,))
+        espera = ensinado_em_prova(self._db, row) if row is not None else None
+        if espera is None:
+            return None
+        sessao = str(espera["sessao"])
+        receitas = tuple(str(r["id"]) for r in self._db.query(
+            "SELECT id FROM recipes WHERE learned_from_step=? AND status='active' ORDER BY id",
+            (f"{PREFIXO_DO_TREINO}{sessao}",)))
+        return EnsinadoAEsperar(sessao=sessao, receitas=receitas)
+
     def fluxos_em_prova(self) -> list[FluxoEmProva]:
         saida: list[FluxoEmProva] = []
         for r in self._db.query("SELECT id, status, command_template, plan, source, source_run_id FROM flows"
@@ -496,7 +511,7 @@ class PoliticaD1DoFluxo:
                 if self._avisar is not None:      # 30.21: depois da trilha, no mesmo savepoint (a falha sobe até ele)
                     self._avisar(LivroKind.FLUXO, m.flow_id, m.de, m.para, by=m.por)
         except Exception:  # noqa: BLE001 - a trilha e o aviso informam; o fluxo aprendido não cai por causa deles
-            log.exception("aprendizado: trilha do fluxo %s", m.flow_id)
+            log.exception("aprendizado: trilha do fluxo (%s)", m.run_id or "sem execução")   # N1: o id não vai ao log
 
 
 
@@ -584,7 +599,7 @@ def ligar(servico: LearningService, repo: RepositorioDeAprendizado, db: Database
     d1 = D1Nativo(repo, com_prova=com_prova, relogio=relogio, execucao_real=leitura.execucao_real,
                   simulada_publica=simulada_publica)
     servico.registrar_minerador(SombraDosFluxos(servico, repo, leitura, concordancias=concordancias,
-                                                decidir=decidir))
+                                                decidir=decidir, ensinado=leitura.ensinado_a_esperar))
     servico.registrar_passo(ReclassificacaoDaForma(repo, leitura, decidir=decidir))   # 30.36
     servico.registrar_passo(ReclassificacaoDoEfeitoDuplicado(repo, leitura, decidir=decidir))   # 30.42
     servico.registrar_passo(RevalidacaoDaConferencia(repo, leitura, decidir=decidir))   # 30.53

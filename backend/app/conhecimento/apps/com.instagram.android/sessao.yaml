@@ -16,7 +16,7 @@ rotulo: Instagram
 ajustes:
   # Conduta do login (ADR-055, 29/09/2026). Estes dois valem só para falha ANTES do envio (campo de usuário que não
   # ficou, canal da senha que falhou, toque em Entrar que comprovadamente não chegou): a senha não saiu da máquina.
-  # Depois do envio, UM desfecho sem sucesso já para o login automático até uma pessoa olhar — a juliana recebeu seis
+  # Depois do envio, UM desfecho sem sucesso já para o login automático até uma pessoa olhar — uma conta real recebeu seis
   # envios em 4h25 em 18/09 com "3 falhas e 300 s de espera", que se repetia a cada intervalo vencido.
   max_auth_attempts: 3          # falhas antes do envio até exigir o intervalo
   auth_cooldown_s: 300          # intervalo mínimo entre tentativas do mesmo perfil
@@ -62,7 +62,7 @@ dispensa:
 # - no feed, o mesmo campo de cabeçalho (`action_bar_title`) vira o autor do reel em foco — no aparelho real lia
 #   @kpop_glam_cam e acusava "conta errada" na conta certa;
 # - o perfil de outra pessoa tem o mesmo cabeçalho: foi assim que @vinijr virou "conta errada" no aparelho de
-#   @felipe. O palpite antigo ("o clicável mais à direita lá embaixo") pegava um carrossel de mídia ou um perfil
+#   @sicrano. O palpite antigo ("o clicável mais à direita lá embaixo") pegava um carrossel de mídia ou um perfil
 #   sugerido na tela de onboarding, e o toque abria o perfil de OUTRA pessoa.
 conta:
   extracao: conta_no_cabecalho

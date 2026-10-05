@@ -36,6 +36,7 @@ from app.modules.learning.application.ports import NovaEvidencia, RepositorioDeA
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ErroDeAprendizado, SkillState, actor_of,
                                                motivo_do_veto)
+from app.modules.learning.domain.ensinado import MOTIVO_DA_PROVA_DO_ENSINADO
 from app.modules.learning.domain.evidencia_invalida import Renascimento, reaprendizado, run_invalidada
 from app.modules.learning.domain.livro import escopo_do_fluxo, ref_da_trilha
 from app.modules.learning.domain.prova import MotivoDaInvalida, detalhe_da_invalida
@@ -212,6 +213,15 @@ class ObservacaoDeHabilidade:
     detalhe: str
 
 
+@dataclass(frozen=True, slots=True)
+class EnsinadoAEsperar:
+    """30.81: o fluxo ensinado no modo treinamento, ativo e ainda sem prova a favor nem decisão de pessoa (a espera de
+    `flows.ensinado_em_prova`), e as receitas ativas da mesma sessão (`learned_from='training:<sessão>'`)."""
+
+    sessao: str
+    receitas: tuple[str, ...]
+
+
 # ------------------------------------------------------------------ portas
 @dataclass(frozen=True, slots=True)
 class ForDeProva:
@@ -362,12 +372,15 @@ class SombraDosFluxos:
     nome = "fluxos_d1"
 
     def __init__(self, servico: LearningService, repo: RepositorioDeAprendizado, leitura: LeituraNativa, *,
-                 concordancias: Callable[[], int], decidir: Decidir | None = None) -> None:
+                 concordancias: Callable[[], int], decidir: Decidir | None = None,
+                 ensinado: Callable[[str], EnsinadoAEsperar | None] | None = None) -> None:
         self._servico = servico
         self._repo = repo
         self._leitura = leitura
         self._concordancias = concordancias
         self._decidir = decidir
+        # 30.81: o ensinado que espera a prova (`None`: o ensinado não é rebaixado pela prova, o modo de antes)
+        self._ensinado = ensinado
 
     def minerar(self, run_id: str) -> int:
         execucao = self._leitura.execucao(run_id)
@@ -396,7 +409,7 @@ class SombraDosFluxos:
             try:
                 self._avaliar(fluxo, run_id)
             except ErroDeAprendizado as exc:            # veto, conflito, D1: um fluxo não para os outros
-                log.info("aprendizado: fluxo %s segue como está: %s", fluxo.id, exc)
+                log.info("aprendizado: fluxo segue como está (%s)", type(exc).__name__)   # 30.83: o texto pode ter o id
         return gravadas
 
     def _minerar_prova(self, execucao: ExecucaoAssentada, prova: ProvaDaExecucao) -> int:
@@ -413,13 +426,42 @@ class SombraDosFluxos:
             detail=f"{marca_do_conteudo(prova.content_hash)} {prova.detalhe}"))
         if not nova:
             return 0                                      # o digest desta execução já passou por aqui
+        if prova.posicao is Posicao.AGAINST and not execucao.simulada:
+            self._rebaixar_o_ensinado(prova, execucao.run_id)
         em_prova = next((f for f in self._leitura.fluxos_em_prova() if f.id == prova.fluxo_id), None)
         if em_prova is not None:
             try:
                 self._avaliar(em_prova, execucao.run_id)
             except ErroDeAprendizado as exc:            # veto, conflito, D1
-                log.info("aprendizado: fluxo %s segue como está: %s", prova.fluxo_id, exc)
+                log.info("aprendizado: fluxo segue como está (%s)", type(exc).__name__)   # 30.83: o texto pode ter o id
         return 1
+
+    def _rebaixar_o_ensinado(self, prova: ProvaDaExecucao, run_id: str) -> None:
+        """30.81: a prova real que falha desliga o fluxo ensinado que a esperava, e as receitas da mesma sessão com ele
+        (o rebaixamento é conjunto). Pelo sistema, pelo `mudar_estado` de sempre: a trilha diz a execução, e o aviso do
+        ensinado rebaixado (30.80 B) sai pelo caminho que já existe. O fluxo já provado, ou decidido por uma pessoa,
+        não passa por aqui (a espera acabou)."""
+        espera = self._ensinado(prova.fluxo_id) if self._ensinado is not None else None
+        if espera is None:
+            return
+        try:
+            self._servico.mudar_estado(
+                LivroKind.FLUXO, prova.fluxo_id, SkillState.DISABLED, by=SYSTEM_ACTOR, run_id=run_id,
+                reason=f"{MOTIVO_DA_PROVA_DO_ENSINADO} ({prova.detalhe})"[:300])
+        except ErroDeAprendizado as exc:                 # conflito de estado: outro caminho já o tirou
+            log.info("aprendizado: ensinado segue como está (execução %s, %s)", run_id,
+                     type(exc).__name__)                          # 30.83: o texto pode ter o id
+            return
+        for rid in espera.receitas:
+            try:
+                self._servico.mudar_estado(
+                    LivroKind.RECEITA, rid, SkillState.DISABLED, by=SYSTEM_ACTOR, run_id=run_id,
+                    reason=f"o fluxo ensinado {prova.fluxo_id} foi desligado pela prova que falhou")
+            except ErroDeAprendizado as exc:             # uma receita não para as outras
+                log.info("aprendizado: receita %s do ensinado segue como está: %s", rid, exc)
+        self._anunciar(run_id, f"Fluxo “{prova.fluxo_id}” ensinado no modo treinamento desligado pelo sistema: a prova "
+                               f"dele falhou nesta execução, e as {len(espera.receitas)} receita(s) do mesmo treino "
+                               "saíram com ele")
 
     def _minerar_uso(self, execucao: ExecucaoAssentada, uso: ProvaDaExecucao) -> int:
         """30.51: a execução comum que usou o fluxo ativo deixa UMA linha, de origem própria (`uso:<run_id>`), a favor

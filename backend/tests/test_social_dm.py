@@ -52,7 +52,7 @@ def build(tmp_path: Path) -> tuple[SocialService, SocialRepository]:
 
 
 def perfil(svc: SocialService) -> str:
-    return svc.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA, instance_id="android-01",
+    return svc.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA, instance_id="android-01",
                                             persona_id=svc.create_persona(PERSONA).id)).id
 
 
@@ -67,7 +67,7 @@ def tela(*elementos: UiElement, sensitive: bool = False) -> UiTree:
 
 
 def pedido(**over: object) -> SocialRequest:
-    base: dict[str, object] = {"profile_id": "p", "username": "lucas.almeida9484", "kind": "dm_initiate",
+    base: dict[str, object] = {"profile_id": "p", "username": "tadeu.quintela4821", "kind": "dm_initiate",
                                "context_text": "<persona>\nperfil: @lucas\n</persona>"}
     return SocialRequest(**{**base, **over})   # type: ignore[arg-type]
 
@@ -351,7 +351,7 @@ async def test_ler_a_conversa_e_depois_escrever_vira_RESPOSTA_e_ensina_o_perfil(
     from app.models import ProfileCreate as PC, ProfilePolicyPatch
 
     state = harness.state
-    pid = state.social.create_profile(PC(username="lucas.almeida9484", password=SENHA, instance_id="android-01",
+    pid = state.social.create_profile(PC(username="tadeu.quintela4821", password=SENHA, instance_id="android-01",
                                          persona_id=state.social.create_persona(PERSONA).id)).id
     state.social.set_policy(pid, ProfilePolicyPatch(capabilities={"SEND_MESSAGE": "autonomous"}))
     obj, srow, run = _prepara_run(state, pid)
@@ -411,7 +411,7 @@ async def test_levantar_a_caixa_de_entrada_nao_inventa_fala_de_ninguem(harness: 
     from app.models import ProfileCreate as PC
 
     state = harness.state
-    pid = state.social.create_profile(PC(username="lucas.almeida9484", password=SENHA,
+    pid = state.social.create_profile(PC(username="tadeu.quintela4821", password=SENHA,
                                          instance_id="android-01")).id
     obj, _srow, _run = _prepara_run(state, pid)
     state.db.execute("UPDATE steps SET capability='COLLECT_THREADS' WHERE id='o-dm:v1:r1'")
@@ -421,25 +421,58 @@ async def test_levantar_a_caixa_de_entrada_nao_inventa_fala_de_ninguem(harness: 
 
 
 # ---------------------------------------------------------------- 8.1 · a proposta de voz das oito personas
-def test_proposta_de_voz_cobre_os_oito_campos_e_usa_nomes_que_existem() -> None:
+def test_proposta_de_voz_cobre_os_oito_campos_no_formato_do_arquivo(tmp_path: Path) -> None:
     """O arquivo que o dono vai aplicar precisa valer ANTES de tocar no banco dele.
 
     Um nome de campo errado passaria em silêncio pelo `PATCH` (traits é um objeto), e a persona continuaria
-    vazia — com o portal dizendo que está completa. Aqui ele é validado contra o MESMO modelo da API.
+    vazia — com o portal dizendo que está completa. Aqui o FORMATO do arquivo é validado contra o MESMO modelo da
+    API. O arquivo de verdade traz dado de persona e saiu do Git (31.105, fica na pasta privada da instalação):
+    o teste usa uma proposta inventada, com o mesmo formato, lida pelo mesmo `ler_personas` do script.
     """
+    import importlib.util
     import json
 
     from app.models import PersonaTraits as PT
 
-    raiz = Path(__file__).resolve().parents[2]
-    dados = json.loads((raiz / "scripts" / "personas-voz.json").read_text(encoding="utf-8"))["personas"]
     faltando = ("slang", "dm_style", "comment_style", "with_known", "with_strangers", "common_phrases",
                 "forbidden_phrases", "examples")
-    assert len(dados) == 8, "o parque tem oito personas"
+    voz = {"slang": "opa, demais", "dm_style": "curta e direta", "comment_style": "uma frase", "with_known": "brinca",
+           "with_strangers": "educada", "common_phrases": ["bora"], "forbidden_phrases": ["prezado"],
+           "examples": ["opa, tudo certo?"]}
+    arquivo = tmp_path / "personas-voz.json"
+    arquivo.write_text(json.dumps({"personas": {"Exemplo Alfa": voz, "Exemplo Beta": {**voz, "examples": []}}},
+                                  ensure_ascii=False), encoding="utf-8")
+
+    raiz = Path(__file__).resolve().parents[2]
+    spec = importlib.util.spec_from_file_location("personas_completar", raiz / "scripts" / "personas_completar.py")
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    assert script.CAMPOS == faltando
+    dados = script.ler_personas(arquivo)
+    assert len(dados) == 2
     for nome, voz in dados.items():
         assert set(voz) == set(faltando), f"{nome}: campos fora do combinado ({sorted(set(voz) ^ set(faltando))})"
         PT.model_validate(voz)                       # extra="forbid": nome de campo errado estoura aqui
-        assert voice_gaps(PT.model_validate({**BASICO, **voz})) == [], nome
+    assert voice_gaps(PT.model_validate({**BASICO, **dados["Exemplo Alfa"]})) == []
+    # A lista vazia conta como lacuna: uma proposta assim não completaria a persona.
+    assert voice_gaps(PT.model_validate({**BASICO, **dados["Exemplo Beta"]})) == ["examples"]
+    # Um campo com nome errado é recusado pelo modelo, não passa em silêncio.
+    with pytest.raises(ValueError):
+        PT.model_validate({**voz, "girias": ["x"]})
+    # Sem o arquivo, o script para com uma mensagem, não com um traceback.
+    with pytest.raises(SystemExit, match="não encontrado"):
+        script.ler_personas(arquivo.with_name("ausente.json"))
+    # JSON quebrado ou sem a chave também param com mensagem, e a mensagem não repete o conteúdo do arquivo.
+    quebrado = arquivo.with_name("quebrado.json")
+    quebrado.write_text('{"personas": {"Exemplo Alfa": ', encoding="utf-8")
+    with pytest.raises(SystemExit, match="inválido") as erro:
+        script.ler_personas(quebrado)
+    assert "Exemplo Alfa" not in str(erro.value)
+    sem_chave = arquivo.with_name("sem-chave.json")
+    sem_chave.write_text('["Exemplo Alfa"]', encoding="utf-8")
+    with pytest.raises(SystemExit, match="sem a chave") as erro:
+        script.ler_personas(sem_chave)
+    assert "Exemplo Alfa" not in str(erro.value)
 
 
 #: Os sete traços que as oito personas do parque já têm preenchidos. Só serve para provar que a proposta

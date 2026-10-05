@@ -332,7 +332,7 @@ class RunService:
             raise RunError(exc.code, exc.message, exc.status) from exc
 
     def sem_destinos(self, command: str) -> str:
-        """O comando como a RESOLVE o vê na execução: sem os trechos de destino ("com a persona André"). As prévias
+        """O comando como a RESOLVE o vê na execução: sem os trechos de destino ("com a persona Beltrano"). As prévias
         de casamento (`/flows/match`, `/skills/resolve`) passam por aqui para não casarem diferente da execução."""
         return TargetExtractor(self._catalogo()).extrair(command).command_sem_destinos
 
@@ -1008,7 +1008,7 @@ class RunService:
         # C3 (ADR-069): sem os destinos ANTES do `redact` e da remoção de entidades. A foto já traz o comando sem destinos;
         # os outros caminhos de `_perfis_da_execucao` devolvem o cru, e reaplicar é idempotente.
         # O 4º item é o comando ORIGINAL (rodada E do 31.9): a C7 é conferida também nele, porque tirar o destino pode partir
-        # o par de usuário e senha. O 5º, os nomes do catálogo de destinos REAL (rodada F, F-B): "entre com o Lucas" é
+        # o par de usuário e senha. O 5º, os nomes do catálogo de destinos REAL (rodada F, F-B): "entre com o Fulano" é
         # destino, "entre com a girassol" não. Só a conferência os lê; nada deles vai ao pedido.
         catalogo = self._catalogo()
         nomes = tuple(dict.fromkeys([*(n for p in catalogo.personas for n in (*p.nomes, *p.handles)),
@@ -1852,7 +1852,7 @@ class RunService:
         """O print em que a pessoa se baseou para o "confirmar concluído"; `None` quando nenhum foi citado.
 
         ADR-055: em 19/09 o verificador de DM errou nos dois sentidos, e a saída de pessoa era uma nota livre que não
-        dizia QUE tela foi vista (a DM da beatriz estava com "Sending…" congelado). Etapa com efeito externo só se
+        dizia QUE tela foi vista (a DM da ciclana estava com "Sending…" congelado). Etapa com efeito externo só se
         confirma citando uma evidência `screenshot` com imagem, desta execução e deste aparelho — a nota continua
         valendo como comentário. Sem efeito externo (navegação parada), o print é opcional: nada saiu da máquina."""
         if evidence_id is None:
