@@ -326,6 +326,10 @@ SEM_CONFERIR = "sem_conferir"
 TIPO_DA_BORDA_API = "portal.borda_api"
 API_ABERTA = "api_aberta"
 ONDE_DA_API = "api"
+#: O "sem conferir" da API tem chave própria (`portal-borda:sem_conferir_api:<dia>`), separada da do site.
+SEM_CONFERIR_DA_API = "sem_conferir_api"
+#: O motivo que pede a frase a mais: a API respondeu com erro em vez de recusar antes da rota.
+API_COM_ERRO = "api-500"
 TITULO_DA_API = "🔓 Site: a API do central respondeu sem login pelo endereço público"
 CORPO_DA_API = (
     "Chegou: um pedido sem login a /api/instances, pelo nome público, foi atendido.",
@@ -404,6 +408,21 @@ def _achado(valor: object, separador: str, fim: str = "") -> str:
     return f"{separador}{valor.strip()}{fim}"
 
 
+def _api_sem_conferir(h: int, achado: object, agora: datetime) -> Aviso:
+    """29.101, leitura do #383 (orquestradora, 05/10 07:16Z): o vigia não conseguiu conferir a API (404, 302, 429, 500,
+    503 ou o desafio da borda). O site pode estar perfeito, então o texto é da API. Chave própria, para que o "sem
+    conferir" do site no mesmo dia não engula o da API. No `api-500`, a API respondeu com erro em vez de recusar o
+    pedido sem login antes da rota: vale olhar."""
+    causa = _achado(achado, " (código: ", ")") or ""
+    linhas = [f"Há {h} h o vigia não completa a conferência da API do central pelo nome público{causa}."]
+    if isinstance(achado, str) and achado.strip() == API_COM_ERRO:
+        linhas.append("A API devia recusar o pedido sem login antes de chegar à rota, e respondeu com erro: vale olhar.")
+    linhas.append("Não espera você: a conferência segue sozinha, e uma API aberta vem em aviso próprio.")
+    return Aviso(chave=chave_da_borda(SEM_CONFERIR_DA_API, agora), tipo=TIPO_DA_BORDA_SEM_CONFERIR,
+                 titulo=titulo_do_aviso(f"🌐 Site: não consigo conferir a API do central há {h} h"),
+                 corpo="\n".join(linhas), link=None, nivel=nivel_do_tipo(TIPO_DA_BORDA_SEM_CONFERIR))
+
+
 def aviso_da_borda(codigo: object, onde: object, agora: datetime, *, achado: object = None,
                    horas_sem_conferir: object = None) -> Aviso | None:
     """O aviso pronto para a fila, ou `None` quando o código ou o lugar não são do contrato, ou falta a contagem de
@@ -414,6 +433,8 @@ def aviso_da_borda(codigo: object, onde: object, agora: datetime, *, achado: obj
         if not _contagem(horas_sem_conferir, 1, HORAS_SEM_CONFERIR_MAX):
             return None
         h = int(horas_sem_conferir)  # type: ignore[call-overload]
+        if onde == ONDE_DA_API:
+            return _api_sem_conferir(h, achado, agora)
         # B3 da leitura do #381 (decisão da orquestradora): sem conferir não é defeito visto. Nada de "Crítico"; o
         # texto diz que a conferência não completou, há quanto tempo, que pode ser o caminho e não o site, e que não
         # espera o dono. O nível 2 fica.

@@ -77,3 +77,27 @@ def test_enfileira_uma_vez_por_dia_e_sai_na_hora(tmp_path: Path) -> None:
     _volta(servico)
     assert [t for t, _c, _l in canal.enviados] == ["ANA: " + p.TITULO_DA_API]
     assert servico.avisar_borda_do_portal(p.API_ABERTA, "raiz", AGORA_UTC) == p.ContatoAvisado(False, p.CAMPO_INVALIDO)
+
+
+# ===================================================================== 3. a API sem conferir (leitura do #383)
+@pytest.mark.parametrize(("achado", "olhar"), [("api-404", False), ("api-desafio", False), ("api-500", True),
+                                               (None, False), ("10.0.0.5", False)])
+def test_a_api_sem_conferir_fala_da_api_e_nao_espera(achado: object, olhar: bool) -> None:
+    """Orquestradora, 05/10 07:16Z: o vigia que não confere a API manda `sem_conferir` com `onde=api`; o texto é da API
+    (o site pode estar perfeito), diz há quantas horas e o motivo, não espera o dono, e no `api-500` pede um olhar."""
+    a = p.aviso_da_borda(p.SEM_CONFERIR, p.ONDE_DA_API, AGORA_UTC, achado=achado, horas_sem_conferir=2)
+    assert a is not None and a.tipo == p.TIPO_DA_BORDA_SEM_CONFERIR and a.link is None
+    assert a.titulo == "ANA: 🌐 Site: não consigo conferir a API do central há 2 h"
+    linhas = a.corpo.split("\n")
+    causa = f" (código: {achado})" if achado in ("api-404", "api-desafio", "api-500") else ""
+    assert linhas[0] == f"Há 2 h o vigia não completa a conferência da API do central pelo nome público{causa}."
+    assert ("vale olhar" in a.corpo) is olhar
+    assert linhas[-1].startswith("Não espera você:") and "Crítico" not in a.corpo and "10.0.0.5" not in a.corpo
+
+
+def test_a_api_sem_conferir_tem_chave_propria_no_dia() -> None:
+    """O "sem conferir" do site no mesmo dia não engole o da API, e vice-versa."""
+    site = p.aviso_da_borda(p.SEM_CONFERIR, "raiz", AGORA_UTC, horas_sem_conferir=1)
+    api = p.aviso_da_borda(p.SEM_CONFERIR, p.ONDE_DA_API, AGORA_UTC, horas_sem_conferir=1)
+    assert site is not None and api is not None
+    assert (site.chave, api.chave) == ("portal-borda:sem_conferir:2026-10-05", "portal-borda:sem_conferir_api:2026-10-05")
