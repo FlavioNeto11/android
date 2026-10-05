@@ -5493,7 +5493,9 @@ segunda exceção do portão em `/api/`, depois do webhook do Trello (ADR-072).
      - o CSS e o JS seguem com a borda;
      - o `index.html` do painel sai com `no-transform` e a CSP do painel (`CSP_DO_PAINEL` em `app/main.py`):
        `script-src 'self'`, `img-src 'self' blob: data:` (o quadro e os anexos) e `connect-src 'self'`, que cobre o
-       WebSocket da mesma origem. A chave `server.csp_do_painel` (`aplicar`, `so_relatar`, `desligada`) a desfaz sem
+       WebSocket da mesma origem na CSP 3. Para navegador só com CSP 2 (Safari e iOS antigos), o `connect-src` lista
+       também as origens `ws`/`wss` tiradas da configuração (`server.public_hosts` e `server.allowed_origins`), nunca
+       do `Host` do pedido. A chave `server.csp_do_painel` (`aplicar`, `so_relatar`, `desligada`) a desfaz sem
        deploy.
      - A CSP do painel foi conferida em 11 telas sem violação, e o WebSocket de outra origem é barrado.
    O nome público (`dev.nvit.com.br`, ADR-073) fica escrito no HTML estático no `canonical`, no `og:url` e no

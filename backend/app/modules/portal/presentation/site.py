@@ -148,7 +148,7 @@ class SitePublico:
         if caminho in ("/", "/index.html"):
             await _responder_html(scope, send, 200, self.index(scope), "no-store", metodo)
             return
-        arquivo = self.arquivos.get(caminho)
+        arquivo = None if caminho == "/404.html" else self.arquivos.get(caminho)   # só pelo caminho 404 (N5 do #366)
         if arquivo is None:
             # A página 404 do site (29.80), com o status 404; sem ela na pasta, o texto curto de sempre.
             pagina = self.arquivos.get("/404.html")

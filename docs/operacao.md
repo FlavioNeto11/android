@@ -475,7 +475,17 @@ por hora (acima, a linha fica `retido` e o laço `portal-contatos` manda quando 
   - a raiz, a 404 e o `index.html` do painel saem com `Cache-Control: … no-transform`;
   - o HTML do site sai comprimido em gzip pela origem;
   - o painel tem CSP própria; se ela quebrar uma tela, `server.csp_do_painel: so_relatar` (ou `desligada`) no
-    `config.yaml` e o reinício da `farm-central` a desfazem sem deploy.
+    `config.yaml` e o reinício da `farm-central` a desfazem sem deploy. Grafias exatas:
+    - a chave é `csp_do_painel`, dentro do bloco `server`; os valores são `aplicar`, `so_relatar` e `desligada`, sem
+      acento;
+    - uma chave com outro nome (`csp_painel`, `csp-do-painel`) é IGNORADA em silêncio, e a política fica em
+      `aplicar`. Confira o nome pelo cabeçalho: com `so_relatar`, `curl -s -D - -o /dev/null http://127.0.0.1:8000/central/`
+      mostra `content-security-policy-report-only`;
+    - um valor fora dos três recusa a subida, e a `farm-central` não sobe. `off` ou `no` sem aspas o YAML lê como
+      falso, que também recusa;
+    - em `so_relatar` as violações só aparecem no console do navegador; o servidor não recebe relatório;
+    - o `connect-src` lista também `wss://` de cada `server.public_hosts` e o `ws://`/`wss://` de cada
+      `server.allowed_origins`: o `'self'` não cobre WebSocket num navegador só com CSP 2 (Safari e iOS antigos).
   Com isso, um Web Analytics, um Rocket Loader ou uma ofuscação de e-mail religados por engano na zona não entram nas
   páginas. Para conferir de fora: `curl -s -D - -o /dev/null -H 'Accept-Encoding: gzip' https://<host>/` mostra
   `content-encoding: gzip` e `no-transform`;
