@@ -313,12 +313,10 @@ class ServicoDeAvisos:
         fila_de_eventos = self.bus.subscribe()
         ultimo = self.bus.last_id()
         # 29.78: a primeira faxina dos canais é já na subida, como a retenção e a expiração, e não depois do primeiro
-        # `intervalo_s` sem evento: o que venceu com o processo parado sai agora, e nada mais apaga por uma hora. Só
-        # com o aviso ligado: a faxina toma a trava `avisos`, que o backend com ele desligado não renova (28.4).
-        if self.ligado:
-            self._faxinar_canais_contando()
-        else:
-            self.voltas_da_faxina_dos_canais += 1
+        # `intervalo_s` sem evento: o que venceu com o processo parado sai agora, e nada mais apaga por uma hora. A
+        # mesma regra do laço (28.35): com os canais desligados ela roda e SOLTA a trava `avisos` logo depois, e com a
+        # trava de outro backend vivo não faz nada (o líder faz).
+        self._faxinar_canais_contando()
         while True:
             try:
                 if not self.bus.is_subscribed(fila_de_eventos):

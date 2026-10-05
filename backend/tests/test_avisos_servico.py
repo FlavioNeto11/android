@@ -301,6 +301,9 @@ async def _desligado(tmp_path: Path, *, trello: bool = False):  # type: ignore[n
     hh = Harness(tmp_path, 1)
     hh.cfg.file.avisos.enabled = False
     await hh.boot()
+    # A faxina da subida (29.78) já rodou e soltou a trava; o prazo de uma hora volta a zero para o teste chamar de novo.
+    assert _dono_da_trava(hh) is None
+    hh.state.avisos._faxina_canais_em = 0.0  # noqa: SLF001
     hh.cfg.file.trello.enabled = trello      # depois da subida: sem segredo, o espelho e o leitor não chamam nada
     return hh
 
