@@ -24,7 +24,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - Só teste (`frontend/src/test/esperas.test.ts`). A regra G2 (`X && …` devolve X quando ele é falso, e `X` terminando num `.find(…)` dá `undefined`) agora passa cada operando por `semParentesesDeFora` antes de decidir se ele é negado ou termina numa busca. `(itens().find(…)) && !carregando` deixa de escapar. A anotação do limite no comentário foi atualizada.
 - Casos novos: dois `pega` (um e dois níveis de parênteses) e um `poupa` (`(!lista.find(…)) && pronto`, a negação dentro dos parênteses segue booleana).
-- Prova `simulated`: `esperas.test.ts` 4/4; sem tirar os parênteses o primeiro caso falha. Typecheck verde, em 05/10 sobre `65452966`. Parênteses com operadores dentro (`(a && !x.find(…))`) seguem como antes: não são lidos operando a operando.
+- Prova `simulated`: `esperas.test.ts` 4/4; sem tirar os parênteses o primeiro caso falha. Typecheck verde, em 05/10 sobre `65452966`. Leitura do Codex no PR 455 (procedeu): o desembrulhar criava falso positivo para `(sel === itens.find(…)) && ok`, que é booleano; o operando só vale como busca quando não tem operador de valor (comparação, aritmética, vírgula, ternário, `in`, `instanceof`) no nível de fora, `temOperadorDeValorNoTopo`. Isso também poupa a forma sem parênteses `sel === itens.find(…) && ok`, que já era falso positivo. Casos novos no `poupa`; sem a guarda o caso com parênteses falha. Parênteses com operador dentro (`(a && !x.find(…))`) ficam poupados, como antes.
 
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 

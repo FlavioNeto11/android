@@ -141,6 +141,27 @@ function temOperadorNoTopo(corpo: string): boolean {
   return false;
 }
 
+/**
+ * Há um operador que muda o valor (comparação, aritmética, bit, vírgula, ternário, `in`/`instanceof`) no nível de fora?
+ * Então a expressão não é só a busca: `sel === itens.find(…)` é booleano (29.135). O `?.` e o `=>` (dentro dos
+ * parênteses da chamada) não contam; o `?.` seguido de dígito é ternário (29.136 trata o mesmo caso).
+ */
+function temOperadorDeValorNoTopo(corpo: string): boolean {
+  let nivel = 0;
+  for (let i = 0; i < corpo.length; i++) {
+    const c = corpo.charAt(i);
+    if (c === '\\') i++;
+    else if (ASPAS.has(c)) i = fimDaString(corpo, i);
+    else if ('([{'.includes(c)) nivel++;
+    else if (')]}'.includes(c)) nivel--;
+    else if (nivel === 0) {
+      if ('=<>+-*/%&|^,:'.includes(c)) return true;
+      if (c === '?' && (corpo.charAt(i + 1) !== '.' || /\d/.test(corpo.charAt(i + 2)))) return true;
+    }
+  }
+  return /\s(?:in|instanceof)\s/.test(corpo.replace(/\([^()]*\)/g, '()'));
+}
+
 // O valor devolvido é o de uma busca que pode não achar nada: `querySelector`/`closest` (null) e `find` (undefined,
 // que o `waitFor` não trata como "ainda não"). Os parênteses da chamada são lidos balanceados: o seletor com `:not(…)`
 // ou `:has(…)` não escapa (29.119, N1). Um `as Tipo` e a asserção de não nulo `!` no fim são ignorados: em execução o
@@ -204,10 +225,12 @@ function esperasQuePassamSemAchar(codigo: string): number[] {
       // hora, por mais que o último operando seja negado (29.129, G2).
       // O operando negado já é booleano, e com ternário no topo o `&&` é só a condição.
       const ternario = temTernarioNoTopo(corpo);
-      // O operando entre parênteses vale o de dentro: `(itens().find(…)) && ok` é o mesmo valor (29.135).
+      // O operando entre parênteses vale o de dentro: `(itens().find(…)) && ok` é o mesmo valor (29.135). Só vale como
+      // busca o operando que É a busca: com operador no nível de fora (`(sel === itens.find(…)) && ok`) o valor é o do
+      // operador, booleano, e termina no `.find(…)` só por acaso.
       const valeUmaBusca = (texto: string): boolean => {
         const dentro = semParentesesDeFora(texto);
-        return !dentro.startsWith('!') && terminaNumaBusca(dentro);
+        return !dentro.startsWith('!') && !temOperadorDeValorNoTopo(dentro) && terminaNumaBusca(dentro);
       };
       if (!ternario && operandos.some((o) => o.depois === '&&' && valeUmaBusca(o.texto))) return true;
       // Com `&&`, `||` ou `??` no topo, quem decide é o último operando: negado, é booleano. Com ternário no topo, não.
@@ -286,6 +309,10 @@ describe('catraca das esperas', () => {
       "await waitFor(() => itens().find((i) => i.id === 'x') && ok ? a : b);",
       // 29.135, sem falso positivo: entre parênteses, o `.find(…)` negado segue booleano.
       "await waitFor(() => (!lista.find((i) => i.id === 'x')) && pronto);",
+      // A comparação entre parênteses (ou sem eles) é booleana, mesmo terminando num `.find(…)` (achado do Codex no PR 455).
+      "await waitFor(() => (selected === itens.find((i) => i.id === 'x')) && pronto);",
+      "await waitFor(() => selected === itens.find((i) => i.id === 'x') && pronto);",
+      "await waitFor(() => (x instanceof Y) && pronto);",
     ];
     for (const linha of pega) expect(esperasQuePassamSemAchar(linha), linha).toHaveLength(1);
     for (const linha of poupa) expect(esperasQuePassamSemAchar(linha), linha).toEqual([]);
