@@ -313,6 +313,29 @@ Prova: `test_ensino_v2.py::test_laco_de_perguntas_e_respostas_ate_o_rascunho` (v
 - O generalizador é a mesma função do treino v1: `generalize` do provedor, com o `TrainingRequest` de
   `planning/training.py` (abaixo).
 
+## A gravação do treino v1: reinício e segredo
+
+- **Reinício do backend no meio de uma gravação** (31.80): ao subir, toda sessão `recording` vira `recorded` (as entradas
+  já gravadas valem) e sai um evento `log` por sessão dizendo que o reinício a encerrou. Quem ensinava precisa abrir
+  outra gravação e continuar dali; o gravador **não religa sozinho** (gravar sem a pessoa saber é pior que encerrar).
+- Um `start` que encontra uma gravação "viva" só no banco (o aparelho não a está gravando) encerra a antiga como
+  `recorded` e aceita a nova. `already_recording` continua só para a gravação que o aparelho realmente grava.
+- **O que a gravação não guarda** (31.82): texto digitado quando a árvore da tela não veio (aparelho lento: sem ver a tela
+  não se sabe se o campo era de senha; fica `has_text` e o tamanho); o conteúdo de um campo editável tocado (o alvo
+  gravado leva `resource_id`, rótulo e classe, não o que estava escrito; a receita segue por `resource_id`); `text`/`desc`
+  do alvo, linhas e título de tela que falem de código ou senha ("Seu código é 123456"). Um campo editável nunca guarda `text` no alvo, mesmo sem `resource_id` nem rótulo: sem identificador o alvo fica sem seletor e a etapa não vira receita (a IA conduz).
+  Também: o texto digitado só é guardado com um campo editável, que não é de senha, em foco na árvore (sem foco, senha
+  revelada e WebView ficam só com `has_text` e o tamanho); filho do alvo cuja classe é de campo de texto (`EditText`,
+  `AutoCompleteTextView` e variantes) perde o `text`; código de 4 a 8 dígitos com espaço ou hífen ("123 456", "8845-12")
+  sai do alvo, do título e das linhas; em tela sensível o alvo (e os filhos) guarda só `resource_id`, `class_name` e o
+  estrutural, sem `text` nem `desc`.
+- **Limite conhecido do filtro** (sem regra nova além de `parece_linha_com_codigo`, em `security/redaction.py`): ainda
+  escapam a palavra-chave longe do número (mais de 40 caracteres, ou o número em outra linha) e o token com hífen ou
+  letras; e-mail e senha na mesma linha também passam. Código de 4 a 8 dígitos sozinho, ou perto de "code", "código",
+  "verify", "senha", "pin", "otp", "token", não é gravado nas linhas, no título nem no alvo (por token também: "Recife
+  2024" cai, de propósito; na dúvida, recusa); dígito único de tecla de PIN desenhada sai do alvo em qualquer tela.
+  Reinício com duas réplicas: a reconciliação só fecha a gravação de aparelho que o próprio backend hospeda.
+
 ## O generalizador e o custo
 
 - **A porta** é `application/ports.py::SkillGeneralizer`: `async generalize(GeneralizationRequest) -> Generalization`.

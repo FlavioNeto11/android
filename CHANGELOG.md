@@ -287,6 +287,51 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - Prova: `simulated` (`.claude/canais/test_telegram_status.py` e
   `backend/tests/test_rotulo_ia.py::test_o_sha_aprovado_no_plano_e_a_ancora_da_foto`). Real: `not_run`.
 
+## 2026-10-05 — 31.82, segredo na gravação do treinamento (branch fix/31-80-82-gravacao-do-treino)
+
+- Achados da auditoria, conferidos no código: sem árvore (leitura falhou ou estourou o prazo) um texto digitado só
+  dependia das heurísticas; o alvo de um toque levava o conteúdo do campo editável; `screen_lines`/`screen_title`
+  não passavam por filtro.
+- `recorder.py`: sem árvore o texto não é gravado (`has_text` e `text_len` ficam); no alvo, campo editável perde o
+  `text` (e os `unique` que dependiam dele) e qualquer `text`/`desc` que case com `looks_secret`, `mentions_credential`
+  ou `parece_senha_ou_codigo` sai; linhas e título de tela com esses formatos saem. A receita segue por `resource_id`
+  (`build_selectors` dá o seletor `rid`). Campo editável nunca guarda `text`; sem `resource_id` e sem `desc` o alvo fica sem seletor e a etapa não vira receita.
+- Prova `simulated`: `backend/tests/test_treino_segredo_na_gravacao.py` (4; sem o conserto os 4 falham) e
+  `test_modo_treinamento.py` (7 passed). Real: `not_run`.
+
+## 2026-10-05 — 31.80/31.82, segunda leitura do PR #427 (branch fix/31-80-82-gravacao-do-treino)
+
+- C1 (31.80): `reconcile_after_restart` só fecha sessão de aparelho que NÃO é hospedado por outro dono
+  (`instances.hosted_by`, o padrão de `commands/store.py`); `TrainingRecorder` recebe `owner_id`. O log só sai se o
+  UPDATE mudou linha.
+- S1 (31.82): alvo e filhos com `text`/`desc` de um dígito só (PIN desenhado) perdem esse rótulo e os `unique` dele.
+- S2 (31.82): `parece_linha_com_codigo` (nova, só acréscimo em `redaction.py`) e `parece_codigo` por token valem para
+  linhas, título e alvo da tela.
+- N5 não feito: o motivo da omissão pede coluna nova em `training_inputs` (migração); fica para outro item.
+- Prova `simulated`: `test_treino_gravacao_orfa.py` (6), `test_treino_segredo_na_gravacao.py` (12),
+  `test_redaction_linha_com_codigo.py` (17), `test_modo_treinamento.py` (7). Real: `not_run`.
+
+## 2026-10-05 — 31.82, achados do revisor de segredos (branch fix/31-80-82-gravacao-do-treino)
+
+- Texto digitado só é guardado com campo editável, não senha, em foco na árvore (antes, só `tree is None` cobria).
+- `filhos` do alvo cujo `class_name` é de campo de texto perdem o `text` e os `unique` que dependiam dele.
+- `parece_codigo` entra no filtro de segredo da gravação (alvo, título, linhas): "123 456", "8845-12".
+- Em tela `sensitive` o alvo e os filhos perdem `text` e `desc` (ficam `resource_id`, classe, `unique` por id).
+- Limite conhecido em `docs/teaching.md`. Prova `simulated`: `test_treino_segredo_na_gravacao.py` (9; cada conserto tem
+  um teste que falha sem ele). Real: `not_run`.
+
+## 2026-10-05 — 31.80, gravação do treinamento órfã depois do reinício (branch fix/31-80-82-gravacao-do-treino)
+
+- Medido no real (05/10): o reinício no meio de uma gravação deixava `training_sessions.status='recording'`, o aparelho
+  nascia sem `training_session_id`, `record` saía calado, o painel seguia "Gravando" e `start` recusava com
+  `already_recording`.
+- `TrainingRecorder.reconcile_after_restart` (chamado na subida, junto das outras reconciliações): toda sessão
+  `recording` vira `recorded` (entradas valem), com `finished_at` e um evento `log` por sessão. Não religa gravação.
+- `start` com sessão ativa no banco mas sem gravador vivo no aparelho encerra a órfã como `recorded` e segue;
+  `already_recording` só vale para a gravação viva.
+- Prova `simulated`: `backend/tests/test_treino_gravacao_orfa.py` (3), e `test_modo_treinamento.py` (7 passed).
+  Real: `not_run` (reinício do central com gravação aberta).
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
