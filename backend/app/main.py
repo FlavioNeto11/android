@@ -31,7 +31,7 @@ import os
 import re
 import socket
 import sys
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from time import monotonic
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -207,6 +207,20 @@ def _tentativas_demais(espera: float) -> JSONResponse:
     return JSONResponse({"detail": {"code": "too_many_attempts", "retry_after_s": segundos,
                                     "message": f"Tentativas demais. Espere {segundos} s e tente de novo."}},
                         status_code=429, headers={"Retry-After": str(segundos)})
+
+
+def estado_com_marca(cfg: Config, fabrica: Callable[[Config], AppState] | None = None) -> AppState:
+    """O `AppState` entre as marcas da partida (29.124). A partida (migração, disco) pode passar da carência do
+    supervisor; a marca, com o id que ele passou, diz em que fase esta subida está. Sem `POC_PARTIDA_ID` (backend
+    subido à mão), nada é gravado.
+
+    Sem `fabrica`, o `AppState` deste módulo é lido NA CHAMADA, não na definição: quem troca `main.AppState` (o teste
+    do contêiner, suíte 39) tem de ser obedecido, ou o `main()` sobe o estado de verdade."""
+    pasta = marca_de_partida.pasta_do_supervisor(cfg.data_dir)
+    marca_de_partida.gravar(pasta, marca_de_partida.ANTES_DO_ESTADO)
+    estado = (fabrica or AppState)(cfg)
+    marca_de_partida.gravar(pasta, marca_de_partida.ESTADO_PRONTO)
+    return estado
 
 
 def create_app(cfg: Config | None = None, state: AppState | None = None,
@@ -599,11 +613,7 @@ def main() -> None:
     vigia = VigiaDoLaco(marca_de_partida.pasta_do_supervisor(cfg.logs_dir, "logs"))
     vigia.iniciar()
     # workers=1 e reload desligado: fork traria processos com o mesmo OWNER_ID disputando as mesmas etapas
-    # 29.124: a partida (migração, disco) pode passar da carência do supervisor; a marca, com o id que ele passou,
-    # diz em que fase esta subida está. Sem `POC_PARTIDA_ID` (backend subido à mão), nada é gravado.
-    marca_de_partida.gravar(marca_de_partida.pasta_do_supervisor(cfg.data_dir), marca_de_partida.ANTES_DO_ESTADO)
-    poc = AppState(cfg)
-    marca_de_partida.gravar(marca_de_partida.pasta_do_supervisor(cfg.data_dir), marca_de_partida.ESTADO_PRONTO)
+    poc = estado_com_marca(cfg)
     app = create_app(cfg, state=poc, vigia=vigia)
     sockets = [_socket_de(host, cfg.file.server.port)]
     porta_worker = int(cfg.file.server.worker_port or 0)

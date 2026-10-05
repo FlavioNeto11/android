@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import re
@@ -75,6 +76,7 @@ from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
+from .modules.skills.presentation.schemas import TrainingStopBody
 from .planning import conciliacao, costs, saldos
 from .porta_do_plano import (AprovarPlanoBody, PortaIndisponivel, PreviaDoItemBody, aprovar_plano, previa_da_porta,
                              previa_do_item, renovar_plano)
@@ -597,10 +599,10 @@ async def get_training(request: Request, session_id: str) -> Any:
 
 
 @router.post("/training/{session_id}/stop")
-async def stop_training(request: Request, session_id: str) -> Any:
+async def stop_training(request: Request, session_id: str, body: TrainingStopBody | None = None) -> Any:
     from .training.recorder import TrainingError  # noqa: PLC0415
     try:
-        return st(request).training.stop(session_id)
+        return st(request).training.stop(session_id, lease_id=body.lease_id if body else None)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 
@@ -608,11 +610,20 @@ async def stop_training(request: Request, session_id: str) -> Any:
 @router.post("/training/{session_id}/propose")
 async def propose_training(request: Request, session_id: str) -> Any:
     """A IA lê a gravação e propõe a habilidade (comando com parâmetros, etapas, descartes). Uma chamada do modelo
-    do planejador; a proposta fica guardada para a pessoa revisar."""
+    do planejador; a proposta fica guardada para a pessoa revisar. Corpo OPCIONAL `{"answers": [{question, answer}]}`
+    (31.91): as respostas da pessoa às perguntas da proposta anterior; lido à mão para o erro de forma ser 400
+    `invalid_answers` (e não o 422 do FastAPI)."""
     from .planning.provider import AIError  # noqa: PLC0415
     from .training.recorder import TrainingError  # noqa: PLC0415
+    cru = await request.body()
+    corpo: object = None
+    if cru.strip():
+        try:
+            corpo = json.loads(cru)
+        except ValueError:
+            raise err(400, "invalid_answers", "O corpo tem de ser um JSON {\"answers\": [...]}.") from None
     try:
-        return await st(request).skills.propose(session_id)
+        return await st(request).skills.propose(session_id, corpo)
     except TrainingError as exc:
         raise _training_error(exc) from exc
     except AIError as exc:
@@ -651,10 +662,10 @@ async def redo_training_recipes(request: Request, session_id: str) -> dict[str, 
 
 
 @router.post("/training/{session_id}/discard")
-async def discard_training(request: Request, session_id: str) -> Any:
+async def discard_training(request: Request, session_id: str, body: TrainingStopBody | None = None) -> Any:
     from .training.recorder import TrainingError  # noqa: PLC0415
     try:
-        return st(request).training.stop(session_id, discard=True)
+        return st(request).training.stop(session_id, discard=True, lease_id=body.lease_id if body else None)
     except TrainingError as exc:
         raise _training_error(exc) from exc
 

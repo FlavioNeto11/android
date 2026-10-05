@@ -6,7 +6,8 @@ import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { makeInstance } from '../../test/fixtures';
-import { FakeBackend, allByRole, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
+import { useToastStore } from '../../store/toasts';
+import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
 import { TrainingBar } from './TrainingBar';
 import { useTrainingStore } from './trainingStore';
 
@@ -107,6 +108,8 @@ it('órfã: com o controle em "none" também avisa e oferece Concluir e Descarta
 it('gravação viva de quem tem o controle em outra aba: aviso certo, sem Concluir nem Descartar', async () => {
   await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId={null} mine={false} />));
   await waitFor(() => expect(text()).toContain('Há uma gravação em andamento neste aparelho por quem está com o controle.'));
+  // B1 (#428): a quem recarregou a página, o aviso diz a saída.
+  expect(text()).toMatch(/Se a gravação é sua.*clique em Retomar controle/s);
   expect(text()).not.toContain('não está mais gravando');
   expect(text()).not.toContain('Gravando:');
   expect(allByRole('button', /^Concluir e revisar$/)).toHaveLength(0);
@@ -154,4 +157,65 @@ it('29.142: "Para revisar" corta o nome com reticências, leva o nome inteiro no
   expect(gravada.getAttribute('aria-label')).toBe(`Revisar “${longo}”, só gravada`);
   expect(gravada.textContent).toBe('Atualizar o cadastro do perfil no QA… · só gravada');
   expect(pronta.textContent).toBe('Atualizar o cadastro do perfil no QA… · proposta pronta');
+});
+
+// 31.90-B (v1.58): a sessão salva sai de "Para revisar", mas a etapa sem receita ainda pode ganhá-la daqui.
+it('sessão salva aparece em "Salvas" com "Refazer receitas", que só chama /recipes no clique', async () => {
+  const SALVA = { ...GRAVANDO, id: 'trn-7', intent: 'Abrir o perfil', status: 'saved', flow_id: 'abrir-perfil' };
+  backend.on('GET', /\/training$/, () => json([SALVA]));
+  backend.on('POST', /\/training\/trn-7\/recipes$/, () => json({
+    session: SALVA, flow_id: 'abrir-perfil', created: 0,
+    steps: [{ key: 'abrir', title: 'Abrir', recipe: false, reason: 'já havia receita ativa para esta etapa' }],
+  }));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Salvas (1)'));
+  expect(text()).not.toContain('Para revisar');
+  // A lista fica num Disclosure recolhido (<details>), que mantém o conteúdo no DOM.
+  expect(byRole('button', /^Refazer receitas de “Abrir o perfil”$/).closest('details')).not.toBeNull();
+  await click(byRole('button', /^Refazer receitas de “Abrir o perfil”$/));
+  await waitFor(() => expect(text()).toContain('Nenhuma receita nova.'));
+  expect(text()).toContain('Abrir (já havia receita ativa para esta etapa)');
+  expect(backend.callsTo('POST', /\/training\/trn-7\/recipes$/)).toHaveLength(1);
+});
+
+// 31.92 (v1.64): o controle mudou de mãos e o lease desta aba ficou velho; o backend recusa com 409 control_required
+// e não muda nada. A barra diz que a gravação continua (com a mensagem do backend) e se relê.
+it('Concluir recusado por control_required: a gravação continua na barra, com o motivo, e a lista se relê', async () => {
+  useToastStore.setState({ toasts: [] });
+  backend.on('POST', /\/training\/trn-9\/stop$/, () => apiError(409, 'control_required', 'Só quem está com o controle do aparelho encerra esta gravação.'));
+  await act(async () => root.render(<><TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-velho" mine /><ConfirmHost /></>));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  const leituras = backend.callsTo('GET', /\/training$/).length;
+  await click(byRole('button', /^Concluir e revisar$/));
+  await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'A gravação continua')).toBe(true));
+  const aviso = useToastStore.getState().toasts.find((t) => t.title === 'A gravação continua');
+  expect(aviso?.message).toContain('Só quem está com o controle do aparelho encerra esta gravação.');
+  expect(useToastStore.getState().toasts.some((t) => t.title === 'Não foi possível encerrar o treinamento')).toBe(false);
+  await waitFor(() => expect(backend.callsTo('GET', /\/training$/).length).toBeGreaterThan(leituras));
+  expect(text()).toContain('Gravando: Responder a DM');
+  expect(allByRole('dialog', /Treinamento:/)).toHaveLength(0);          // não abre a revisão
+});
+
+it('Descartar recusado por control_required: a gravação continua, sem perder nada, e a lista se relê', async () => {
+  useToastStore.setState({ toasts: [] });
+  backend.on('POST', /\/training\/trn-9\/discard$/, () => apiError(409, 'control_required', 'Só quem está com o controle do aparelho descarta esta gravação.'));
+  await act(async () => root.render(<><TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-velho" mine /><ConfirmHost /></>));
+  await waitFor(() => expect(text()).toContain('Gravando: Responder a DM'));
+  const leituras = backend.callsTo('GET', /\/training$/).length;
+  await click(byRole('button', /^Descartar$/));
+  await click(byRole('button', /^Descartar gravação$/, byRole('dialog', /Descartar a gravação/)));
+  await waitFor(() => expect(useToastStore.getState().toasts.find((t) => t.title === 'A gravação continua')?.message)
+    .toContain('Só quem está com o controle do aparelho descarta esta gravação.'));
+  await waitFor(() => expect(backend.callsTo('GET', /\/training$/).length).toBeGreaterThan(leituras));
+  expect(backend.callsTo('POST', /\/discard$/)[0]!.body).toEqual({ lease_id: 'lease-velho' });
+  expect(text()).toContain('Gravando: Responder a DM');
+});
+
+it('com mais de 5 sessões salvas, a lista diz que mostra só as 5 mais novas', async () => {
+  const salva = (n: number) => ({ ...GRAVANDO, id: `trn-s${n}`, intent: `Ensino ${n}`, status: 'saved', flow_id: `fluxo-${n}` });
+  backend.on('GET', /\/training$/, () => json([1, 2, 3, 4, 5, 6].map(salva)));
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
+  await waitFor(() => expect(text()).toContain('Salvas (as 5 mais novas de 6)'));
+  expect(allByRole('button', /^Refazer receitas de/)).toHaveLength(5);
+  expect(text()).not.toContain('Ensino 6');
 });

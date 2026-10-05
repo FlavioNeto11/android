@@ -1,10 +1,31 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `86afe1b5` (migração 115, deploy 38); `main` em `f5d9a096`; site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 05/10/2026: runtime do backend em `9f9e2b39` (migração 115, deploy 39); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 39 no ar (05/10/2026, 18:06Z, central `9f9e2b39`, migração `115_receita_nao_aplicavel`, sem migração
+  nova).** Dezessete pontas sobre `19e34b22`, mais dois consertos de junção. Itens: 29.128, 29.129, 29.130, 29.131,
+  29.132, 29.138, 29.141, 29.144, 28.49, 31.92, 31.97, 31.99 e 31.100; em parte, 28.51 (A), 31.87 (F1), 31.90 (B) e
+  31.91 (F0, F2 e painel). O detalhe de cada um está no [CHANGELOG](../CHANGELOG.md) e no
+  [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): avanço direto de `19e34b22` para `9f9e2b39`, com push; cópia
+    `data\backups\20261005-150236` (194,1 MB, íntegra; não havia migração a ensaiar); `GET /api/health` ok e sem
+    problemas; prova de fora às 18:07Z com tudo como esperado (`/api/instances` 403); agente do notebook em
+    `0.1.0+9f9e2b3`; mypy 257, igual ao teto, pelo `scripts/mypy-catraca.py` (29.144); os papéis `perguntas` e
+    `perguntas_respondidas` de `trello.listas` carregados na subida (28.51, parte A).
+  - `simulated` (suíte 39 sobre `9f9e2b39`): `scripts/tests` 672 passed; backend em SQLite 11840 passed, com 3
+    falhas consertadas antes do deploy e relidas (29.131 no `e6020a23`; a junção do 31.92 com o 31.91 no
+    `9f9e2b39`); frontend 1678 passed e build; catracas 88 e 6.
+  - Não passou inteiro: no PostgreSQL dirigido, 10182 passed e 2 failed conhecidas (item 29.139):
+    `test_dialogos_em_serie.py`, que falha igual na `main` anterior, e `test_sobreposicao_com_duas_causas.py`, como
+    na suíte 38.
+  - `not_run`: o percurso no navegador do que entrou; a resposta do dono num cartão de pergunta sem pedido no
+    Telegram, de ponta a ponta (28.51, parte A); a prova real do 31.91 e do 31.92 pelo painel.
+  - Os três aparelhos de conta real ficaram parados das 17:05Z até depois do deploy, por decisão da orquestradora e sem apagar nada; a religação, um por vez pela API local, começou às 18:07Z.
+  - Plano-100: 9 IDs novos (28.52, 29.140 a 29.145, 31.101 e 31.102) e o resultado da suíte 39 aplicado pelo
+    mecanismo: 548 de 645.
 - **Deploy 38 no ar (05/10/2026, 16:02Z, central `86afe1b5`, migração `115_receita_nao_aplicavel`).** Vinte e quatro
   merges sobre `ebc316f9`. Itens: 29.113, 29.117, 29.120, 29.121, 29.123, 29.124, 29.125, 29.127, 29.115, 29.118,
   29.119, 28.47, 28.48, 30.75, 30.80, 31.80, 31.82, 31.83, 31.84, 31.85, 31.94 e 31.95; em parte, 31.86 (B), 31.89

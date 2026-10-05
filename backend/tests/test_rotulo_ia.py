@@ -390,3 +390,51 @@ async def test_o_sha_aprovado_no_plano_e_a_ancora_da_foto(harness: Any, monkeypa
         ItemAprovado(step_id=str(minha["step_id"]), chave=str(minha["chave"]))]), por="flavio")
     assert sha_da_imagem_aprovada(state.db, "run-p", str(minha["step_id"])) == minha["imagem_sha256"]
     assert sha_da_imagem_aprovada(state.db, "run-p", str(outra["step_id"])) is None      # sem sim, sem âncora
+
+
+async def test_a_ancora_da_foto_segue_a_decisao_mais_recente(harness: Any, monkeypatch: Any) -> None:
+    """28.49 (N1 e testes da leitura do #431): vale a decisão mais recente da etapa, e só se for o sim. O sim vencido
+    (`expired`), mesmo mais novo e com outro sha, não é decisão; com dois sins vence o mais recente; um "não" depois do
+    sim tira a âncora; o sim sem mídia e o `edited` mais novos também (revisão do #445)."""
+    from app.modules.avisos.infrastructure.portas_da_central import sha_da_imagem_aprovada
+    from app.porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano
+    from app.util import now_iso
+
+    from .test_porta_do_plano import _sem_iniciar
+
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    pid = _plano(state, [{"key": "minha", "cap": "CREATE_POST",
+                          "bindings": {"image_id": "img-m", "content": "praia", "content_verbatim": "true"}}])
+    _imagem(state, "img-m", pid)
+    linha = state.db.scalar("SELECT bindings FROM steps WHERE key='minha'")
+    state.db.execute("UPDATE steps SET bindings=? WHERE key='minha'",
+                     (json.dumps(state.repo._com_rotulo_ia(json.loads(linha))),))  # noqa: SLF001
+    minha = _por_chave(previa_da_porta(state, "run-p"))["minha"]
+    sid, sha = str(minha["step_id"]), minha["imagem_sha256"]
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[
+        ItemAprovado(step_id=sid, chave=str(minha["chave"]))]), por="flavio")
+    sim = dict(state.db.one("SELECT * FROM pending_approvals WHERE run_id='run-p' AND step_id=? AND status='approved'",
+                            (sid,)))
+
+    def _decisao(ident: str, status: str, quando: str, midia: str | None) -> None:
+        nova = {**sim, "id": ident, "status": status, "decided_at": quando, "midia_sha256": midia}
+        state.db.execute(f"INSERT INTO pending_approvals ({','.join(nova)}) VALUES ({','.join('?' * len(nova))})",
+                         tuple(nova.values()))
+
+    assert sha_da_imagem_aprovada(state.db, "run-p", sid) == sha
+    _decisao("apr-vencido", "expired", "2999-01-01T00:00:00Z", "d" * 64)
+    assert sha_da_imagem_aprovada(state.db, "run-p", sid) == sha                # o vencido não é decisão do dono
+    _decisao("apr-outro-sim", "approved", "2999-01-02T00:00:00Z", "e" * 64)
+    assert sha_da_imagem_aprovada(state.db, "run-p", sid) == "e" * 64           # dois sins: vence o mais recente
+    _decisao("apr-nao", "rejected", "2999-01-03T00:00:00Z", None)
+    assert sha_da_imagem_aprovada(state.db, "run-p", sid) is None               # "não" depois do sim: sem âncora
+    # Revisão do #445 (N1): o sim dado na execução nasce sem mídia (approvals.py) e, sendo o último, falha fechado,
+    # mesmo logo depois de um sim COM mídia; o `edited` mais novo, mesmo com mídia, também não é o sim.
+    _decisao("apr-sim-de-novo", "approved", "2999-01-04T00:00:00Z", "a" * 64)
+    assert sha_da_imagem_aprovada(state.db, "run-p", sid) == "a" * 64
+    _decisao("apr-sim-sem-midia", "approved", "2999-01-05T00:00:00Z", None)
+    assert sha_da_imagem_aprovada(state.db, "run-p", sid) is None
+    _decisao("apr-sim-de-novo-2", "approved", "2999-01-06T00:00:00Z", "b" * 64)
+    _decisao("apr-editado", "edited", "2999-01-07T00:00:00Z", "f" * 64)
+    assert sha_da_imagem_aprovada(state.db, "run-p", sid) is None

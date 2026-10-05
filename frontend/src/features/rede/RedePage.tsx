@@ -87,17 +87,23 @@ export function RedePage() {
   const temDados = useRef(false);
   const [ocupadoPorId, setOcupadoPorId] = useState<Record<string, 'verify' | 'reapply' | undefined>>({});
 
+  // Só a leitura mais nova escreve: com o cadastro livre durante a releitura (29.130), dois perfis criados em seguida
+  // disparam duas, e a mais velha que respondesse por último apagaria o 2º da tela.
+  const leitura = useRef(0);
   const carregar = useCallback(async () => {
+    const minha = ++leitura.current;
     try {
       // Uma chamada só por lista: o backend (`rede.listar_perfis`/`listar_aparelhos`) já junta o legado, a
       // quarentena e a conta real. Nenhuma chamada de apoio que possa falhar em silêncio (achado do revisor).
       const [ps, ds] = await Promise.all([api.listNetworkProfiles(), api.listNetworkDevices()]);
+      if (minha !== leitura.current) return;
       setPerfis(ps.profiles);
       setAparelhos(ds.devices);
       setCentral(ds.central_egress ?? null);
       setErro(null);
       temDados.current = true;
     } catch (e) {
+      if (minha !== leitura.current) return;
       setErro(toLoadError(e));
       if (temDados.current) toastError('Não foi possível recarregar a rede', e, { key: 'rede-carregar' });
     }
@@ -477,6 +483,9 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
 
   async function criar() {
     setOcupado(true);
+    // A releitura da lista fica fora do try: ela não trava o cadastro, e a falha dela não vira "Não foi possível
+    // criar" sobre um perfil criado (29.130).
+    let criado = false;
     try {
       await api.createNetworkProfile({
         name: nome.trim(), kind, protocol, endpoint_host: host.trim(), endpoint_port: Number(porta),
@@ -485,12 +494,13 @@ function PerfisCard({ perfis, onCriado, onApagar }: {
       });
       toast({ tone: 'success', title: `Perfil ${nome.trim()} criado` });
       setNome(''); setHost(''); setSecret(''); setSaida('');
-      await onCriado();
+      criado = true;
     } catch (e) {
       toastError('Não foi possível criar o perfil', e);
     } finally {
       setOcupado(false);
     }
+    if (criado) await onCriado();
   }
 
   const faltando = !nome.trim() || !host.trim() || !Number(porta) ? 'Preencha nome, host e porta.' : null;

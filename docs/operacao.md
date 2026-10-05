@@ -122,9 +122,20 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
   254 no cron de 05/10 (257 na base do 29.102, depois da suíte 35); o job reprovava toda noite. Agora `scripts/mypy-catraca.py` reprova só se a contagem passa do teto em
   `backend/mypy-teto.txt`; quem baixa a contagem baixa o teto no mesmo commit. Sem o `pull_request`, o cron só a veria
   DEPOIS do merge e reprovaria para todos sem dizer quem subiu: por isso ela roda também no funil, junto das catracas,
-  e no dirigido de quem toca `backend/app` (`.claude/rules/testes.md`). Leva ~1 min e pede o mypy do
-  `requirements-dev.txt` no Python que a roda. O teto é do Windows, a plataforma do runner: o mypy avalia os ramos de
-  `sys.platform`, e em Linux a contagem pode ser outra.
+  e no dirigido de quem toca `backend/app` (`.claude/rules/testes.md`). Leva ~1 min. O teto é do Windows, a plataforma
+  do runner: o mypy avalia os ramos de `sys.platform`, e em Linux a contagem pode ser outra.
+- **O Python do mypy (29.144):** o mypy mora num Python à parte, num caminho fixo fora do Git, e não no venv do backend.
+  No central é `C:\farm\ferramentas\mypy`, um venv do Python 3.13 com só os pinos do mypy do `backend/requirements-dev.txt`
+  (mypy, mypy-extensions, librt, ast-serialize, pathspec, typing-extensions). Medido em 05/10: 257 = teto, em 34 s.
+  - Uso: `$env:MYPY_PYTHON='C:\farm\ferramentas\mypy\Scripts\python.exe'; python scripts\mypy-catraca.py` (ou
+    `--python <python.exe>`). O script passa `--python-executable` com o venv do backend e põe o site-packages dele no
+    `PYTHONPATH`, porque o plugin `pydantic.mypy` do `backend/mypy.ini` é importado pelo Python do mypy.
+  - Os dois Pythons precisam ter a mesma versão (3.13). Com versões diferentes, o import do plugin quebra e a catraca
+    reprova por contagem desconhecida.
+  - Recriar, quando o pino mudar: `python -m venv C:\farm\ferramentas\mypy` e
+    `C:\farm\ferramentas\mypy\Scripts\python.exe -m pip install mypy==<pino> ...`, com os mesmos pinos do
+    `requirements-dev.txt`.
+  - Sem a variável nem a opção, vale o caminho de antes: o mypy no Python que roda a catraca.
 - **docs-check em clone limpo:** `.claude/handoff-current.md` entrou no `.gitignore` versionado (estava só no
   `.git/info/exclude`, que não vem num clone).
 - **Testes que dependiam do host:** `test_pausa_de_reparo` compara a saúde antes e depois da pausa, não um valor
@@ -227,9 +238,11 @@ só envia o token de encerramento para a Farm identificada.
 **Partida lenta não é travamento** (29.124, `backend/app/marca_de_partida.py`). A cada subida, o supervisor sorteia um
 id e o passa em `POC_PARTIDA_ID`, junto da pasta dele (`POC_PASTA_DO_SUPERVISOR`, a `data/` ao lado do
 `supervisor.log`). O backend grava `data/backend-partida.json` (só `id`, `fase`, `ts`) antes do `AppState`, depois
-dele, antes do `poc.start()` e em `no_ar`. O silêncio de `/api/health` não conta como falha enquanto a marca é desta
-subida, a fase não é `no_ar`, a partida tem menos de 600 s e a última reescrita menos de 240 s; o `supervisor.log`
-diz a fase. Sem marca, com marca de outra subida, parada ou `no_ar`, vale a regra de sempre (90 s de carência e três
+dele, antes do `poc.start()` e em `no_ar`; dentro do `AppState`, também a cada migração aplicada e depois das
+migrações e dos aparelhos (29.131). O silêncio de `/api/health` não conta como falha enquanto a marca é desta subida,
+a fase não é `no_ar`, a partida tem menos de 600 s e a última reescrita menos de 240 s: os 240 s valem por passo
+(uma migração sozinha que passe deles conta como falha), e os 600 s pela partida inteira. O `supervisor.log` diz a
+fase, e a linha do kill diz há quanto tempo foi gravada a pilha do vigia que ela cita. Sem marca, com marca de outra subida, parada ou `no_ar`, vale a regra de sempre (90 s de carência e três
 falhas a cada 15 s). Depois de 4 reinícios seguidos sem uma conferência boa, a espera antes do próximo vira 300 s,
 dita no log; uma conferência boa zera a conta. O despejo do vigia do laço (29.121) também vai para a pasta do
 supervisor, onde ele o procura para citar no kill. Backend subido à mão não tem id e não grava marca.

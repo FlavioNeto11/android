@@ -15,12 +15,15 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..db import dumps, loads
 from ..security.redaction import looks_secret, mentions_credential, parece_codigo, parece_linha_com_codigo, parece_senha_ou_codigo
 from ..social.observacao import linhas_de_conteudo
 from ..util import new_token, now_iso
+
+if TYPE_CHECKING:
+    from ..automation.hierarchy import UiTree
 
 log = logging.getLogger(__name__)
 
@@ -68,20 +71,30 @@ def _parece_segredo_de_tela(texto: str | None) -> bool:
     return any(parece_codigo(t.strip(_ENFEITE_DE_TOKEN)) for t in texto.split())
 
 
-def _rotulo_de_tecla(texto: str | None) -> bool:
+#: 31.97: o dígito por extenso (pt e en) como rótulo de tecla. Só vale DENTRO de um contêiner de teclado: fora dele, um
+#: botão "Um" ou "One" é um botão comum.
+_DIGITO_POR_EXTENSO = frozenset({
+    "zero", "um", "uma", "dois", "duas", "três", "tres", "quatro", "cinco", "seis", "sete", "oito", "nove",
+    "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"})
+
+
+def _rotulo_de_tecla(texto: str | None, em_teclado: bool = False) -> bool:
     t = (texto or "").strip()
     if _UM_DIGITO.fullmatch(t):
+        return True
+    if em_teclado and t.casefold() in _DIGITO_POR_EXTENSO:
         return True
     m = _TECLA_TELEFONICA.fullmatch(t)
     return bool(m) and _LETRAS_DA_TECLA.get(m.group(1)) == m.group(2)
 
 
-def _e_tecla_de_teclado_numerico(alvo: dict | None) -> bool:
+def _e_tecla_de_teclado_numerico(alvo: dict | None, em_teclado: bool = False) -> bool:
     """31.94: o toque numa tecla de PIN desenhada na tela. Tirar o rótulo não basta: o `resource_id` (`key4`, `digit_4`,
     `btn4`) e o x/y de cada toque num teclado fixo SÃO o dígito. É tecla quando o elemento tocado (ou um filho rotulado
     dele) tem rótulo (`text` OU `desc`) de um dígito ou de tecla telefônica, ou quando NÃO tem rótulo e o `resource_id` termina
     em dígito, ou ainda quando o `resource_id`/classe nomeia um teclado desenhado num View só (`pin_pad`, `PinKeypadView`).
-    Dígito por extenso ("um", "one") não entra: limite conhecido.
+    Dígito por extenso ("um", "one") só entra com `em_teclado` (31.97: o ponto está dentro de um contêiner de teclado,
+    ver `_ponto_em_teclado`); fora dele é botão comum.
     `android:id/button1` (OK/Cancelar de todo diálogo) termina em dígito mas tem rótulo: não é tecla. Campo editável não
     entra pelo rótulo (o `text` dele é o conteúdo, não o nome)."""
     if not alvo:
@@ -90,7 +103,7 @@ def _e_tecla_de_teclado_numerico(alvo: dict | None) -> bool:
     for filho in alvo.get("filhos") or []:
         if not (filho.get("editable") or _classe_de_campo_de_texto(filho.get("class_name"))):
             rotulos += [filho.get("text"), filho.get("desc")]
-    if any(_rotulo_de_tecla(r) for r in rotulos):
+    if any(_rotulo_de_tecla(r, em_teclado) for r in rotulos):
         return True
     if any((r or "").strip() for r in rotulos):
         return False
@@ -99,6 +112,18 @@ def _e_tecla_de_teclado_numerico(alvo: dict | None) -> bool:
     if _nome_de_teclado(rid) or _nome_de_teclado((alvo.get("class_name") or "").rsplit(".", 1)[-1]):
         return True
     return not alvo.get("editable") and bool(_RID_TERMINA_EM_DIGITO.search(rid))
+
+
+def _ponto_em_teclado(tree: UiTree, x: int, y: int) -> bool:
+    """31.97: o ponto (x, y) cai dentro de um elemento cujo `resource_id` ou classe nomeia um teclado/padrão de bloqueio
+    (a mesma `_nome_de_teclado` do toque), seja ele o próprio alvo ou um ancestral por área. O padrão de bloqueio se
+    desenha ARRASTANDO: a origem do arraste sobre a vista do padrão (ou sobre o teclado) é o primeiro ponto do segredo."""
+    for e in tree.elements:
+        if e.bounds[0] <= x <= e.bounds[2] and e.bounds[1] <= y <= e.bounds[3]:
+            if _nome_de_teclado((e.resource_id or "").rsplit("/", 1)[-1]) or _nome_de_teclado(
+                    (e.class_name or "").rsplit(".", 1)[-1]):
+                return True
+    return False
 
 
 def _tem_id_estrutural(alvo: dict | None) -> bool:
@@ -221,8 +246,45 @@ class TrainingRecorder:
         return self.db.scalar("SELECT id FROM training_sessions WHERE instance_id=? AND status='recording'",
                               (instance_id,))
 
-    def stop(self, session_id: str, *, discard: bool = False) -> dict[str, Any]:
+    def _gravando_com_controle(self, instance_id: str, session_id: str) -> bool:
+        """31.92: a gravação é VIVA quando o aparelho a está gravando (`rt.training_session_id`) e há uma pessoa no
+        controle (lease de usuário). Sem gravador ativo, sem aparelho neste processo ou sem controle (devolvido,
+        expirado, reinício) ela é órfã: não há quem a esteja ensinando, e qualquer pessoa autenticada a encerra."""
+        rt = self.devices.devices.get(instance_id)
+        return bool(rt is not None and getattr(rt, "training_session_id", None) == session_id
+                    and str(getattr(rt.control, "value", rt.control)) == "user" and rt.lease_id)
+
+    def _exigir_o_controle(self, instance_id: str, lease_id: str | None, discard: bool) -> None:
+        """Mesma conferência do `start`: o lease é o ATUAL do controle de usuário do aparelho. Recusa sem tocar em nada
+        (a gravação segue). Alcance: cobre quem NÃO tem o lease. Quem clica "Assumir" com controle de usuário vigente
+        recebe hoje o mesmo lease (`request_control`) e passa por aqui; isso fica para o item 29.143."""
+        rt = self.devices.devices.get(instance_id)
+        if not lease_id or rt is None or rt.lease_id != lease_id:
+            acao = "descarta" if discard else "encerra"
+            raise TrainingError("control_required", f"Só quem está com o controle do aparelho {acao} esta gravação.", 409)
+
+    def _hospedada_em_outro_servidor(self, instance_id: str) -> bool:
+        """Duas réplicas: o aparelho tem dono (`instances.hosted_by`) e não é este processo. A gravação VIVA dele não é
+        órfã: o gravador está lá, e daqui não dá para conferir o lease. Sem dono carimbado, ou sem `owner_id` neste
+        processo, vale o tratamento de sempre."""
+        if not self.owner_id:
+            return False
+        dono = self.db.scalar("SELECT hosted_by FROM instances WHERE id=?", (instance_id,))
+        return bool(dono) and dono != self.owner_id
+
+    def stop(self, session_id: str, *, discard: bool = False, lease_id: str | None = None,
+             por_sistema: bool = False) -> dict[str, Any]:
+        """Falha fechado (31.92): por padrão a chamada é de uma PESSOA e, numa gravação VIVA, `lease_id` precisa ser o do
+        controle atual (senão 409 `control_required`). Aparelho hospedado por outra réplica: 409
+        `gravacao_em_outro_servidor`. Só o chamador do sistema (devolução do controle) diz `por_sistema=True` e dispensa a
+        conferência. A gravação órfã e o descarte de sessão que não está gravando nunca pedem controle."""
         s = self._row(session_id)
+        if not por_sistema and s["status"] == "recording":
+            if self._hospedada_em_outro_servidor(s["instance_id"]):
+                raise TrainingError("gravacao_em_outro_servidor",
+                                    "Esta gravação está em outro servidor; encerre por lá.", 409)
+            if self._gravando_com_controle(s["instance_id"], session_id):
+                self._exigir_o_controle(s["instance_id"], lease_id, discard)
         if s["status"] == "recording":
             status = "discarded" if discard else "recorded"
             agora = now_iso()
@@ -269,7 +331,7 @@ class TrainingRecorder:
         """Devolver o controle encerra a gravação: sem a pessoa no aparelho não há o que gravar."""
         sid = self.active_for(instance_id)
         if sid:
-            self.stop(sid)
+            self.stop(sid, por_sistema=True)     # o sistema encerra: sem conferência de controle
 
     # ------------------------------------------------------------------ entradas
     def record(self, rt: Any, entrada: dict[str, Any], tree: Any | None) -> None:
@@ -284,10 +346,14 @@ class TrainingRecorder:
         sensivel = bool(tree is not None and tree.sensitive)
         alvo = None
         x, y = entrada.get("x"), entrada.get("y")
-        marcada = sensivel                       # a coluna `sensitive`: tela sensível OU toque que não se guarda
+        x2, y2 = entrada.get("x2"), entrada.get("y2")
+        # A coluna `sensitive` quer dizer "tela sensível OU entrada que não se guarda" (31.94/31.97): uma só coluna para os
+        # dois sentidos até a migração futura do ensino separá-los.
+        marcada = sensivel
+        em_teclado = tree is not None and x is not None and _ponto_em_teclado(tree, int(x), int(y))
         if tree is not None and tipo in ("tap", "long_press") and x is not None:
             bruto = _safe_target(tree.at(int(x), int(y)), tree)
-            if _e_tecla_de_teclado_numerico(bruto) or (sensivel and not _tem_id_estrutural(bruto)):
+            if _e_tecla_de_teclado_numerico(bruto, em_teclado) or (sensivel and not _tem_id_estrutural(bruto)):
                 # 31.94: teclado de PIN desenhado, ou toque em tela sensível sem identificador estrutural: sem alvo e sem
                 # x/y (num teclado fixo, a coordenada é o dígito). A receita não nasce disso (coordenada solta).
                 x = y = None
@@ -298,6 +364,18 @@ class TrainingRecorder:
             # 31.94 (geral): sem seletor utilizável (alvo None, ou sem `unique` e sem filhos) a coordenada não vira receita e,
             # num teclado desenhado num View só (Flutter, SurfaceView), é o dígito. Não é segredo conhecido: sem `sensitive`.
             x = y = None
+        if tipo == "swipe" and x is not None:
+            # 31.97: o padrão de bloqueio se DESENHA arrastando: começo e fim do arraste são o segredo. Pela ORIGEM: origem
+            # dentro de contêiner de teclado ou de padrão de bloqueio, ou tela sensível, sai sem as quatro coordenadas e
+            # marcada. A regra de tecla isolada (rótulo de um dígito, id terminado em dígito) é só do toque: arraste não
+            # aperta tecla, e rolar a partir de um dia "5" ou de `item1` é rolagem comum. Sem árvore (leitura falhou) não
+            # se sabe onde começou: segue o toque, que também perde a coordenada sem árvore, e fica sem marca. A rolagem
+            # comum guarda tudo, tenha o ponto seletor ou não: rolar é a entrada mais comum e a coordenada não é segredo.
+            if tree is None:
+                x = y = x2 = y2 = None
+            elif sensivel or em_teclado:
+                x = y = x2 = y2 = None
+                marcada = True
         texto = entrada.get("text")
         tem_texto = bool(texto)
         if texto is not None:
@@ -319,7 +397,7 @@ class TrainingRecorder:
         self.db.execute(
             "INSERT INTO training_inputs(session_id, seq, ts, type, x, y, x2, y2, key_name, text, has_text, text_len,"
             " package, app_id, target, screen_title, screen_lines, sensitive) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-            (sid, seq, now_iso(), tipo, x, y, entrada.get("x2"), entrada.get("y2"),
+            (sid, seq, now_iso(), tipo, x, y, x2, y2,
              entrada.get("key"), texto, int(tem_texto), len(entrada.get("text") or "") if tem_texto else None,
              pacote, entrada.get("app_id"), dumps(alvo) if alvo else None,
              titulo, dumps(linhas) if linhas is not None else None,

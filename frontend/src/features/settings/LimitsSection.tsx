@@ -1,5 +1,5 @@
 import { Save, SlidersHorizontal, Undo2 } from 'lucide-react';
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import { api } from '../../api/client';
 import type { Health, Settings } from '../../api/types';
 import { Button } from '../../components/Button';
@@ -25,6 +25,7 @@ export function LimitsSection() {
   const [drafts, setDrafts] = useState<LimitDrafts>({});
   const [saving, setSaving] = useState(false);
   const [showAll, setShowAll] = useState(false);
+  const salvarRef = useRef<HTMLButtonElement>(null);
 
   const { errors, patch, dirtyCount } = useMemo(
     () => (settings ? buildSettingsPatch(settings, drafts) : EMPTY_FORM),
@@ -40,6 +41,9 @@ export function LimitsSection() {
   const save = async () => {
     setShowAll(true);
     if (errorCount > 0 || dirtyCount === 0) return;
+    // O Enter num campo envia, e o fieldset desabilitado tira o foco do campo: ele cairia no body. Vai para o Salvar,
+    // que segue focável (aria-disabled) enquanto envia (29.130).
+    if (document.activeElement instanceof HTMLElement && document.activeElement.closest('fieldset')) salvarRef.current?.focus();
     setSaving(true);
     try {
       const saved = await api.putSettings(patch);
@@ -86,6 +90,7 @@ export function LimitsSection() {
               Descartar alterações
             </Button>
             <Button
+              ref={salvarRef}
               type="submit"
               variant="primary"
               icon={Save}
