@@ -2136,6 +2136,8 @@ class StepExecutor:
         rolagens_ate_o_interruptor = 0
         releituras_antes_do_efeito = 0
         coberturas_antes_do_efeito = 0
+        #: N2 da leitura do #370: o texto da ÚLTIMA cobertura, para o motivo da parada não citar um alvo movido.
+        ultima_cobertura = ""
         # Um texto só para as duas saídas do teto: `falhas.py` o classifica como ciclo sem progresso.
         motivo_do_teto = f"Limite de {max_actions} ações por etapa atingido sem concluir."
         for volta in range(max_actions + 1 + (LIMITE_DE_DIALOGOS if limpeza else 0) + LIMITE_DE_FOLHAS
@@ -3097,6 +3099,8 @@ class StepExecutor:
                         tipo_da_mudanca, mudanca = mudou
                         releituras_antes_do_efeito += 1
                         coberturas_antes_do_efeito += tipo_da_mudanca == MUDANCA_POR_CIMA
+                        if tipo_da_mudanca == MUDANCA_POR_CIMA:
+                            ultima_cobertura = mudanca
                         metricas.contar("executor.tela_mudou_antes_do_efeito", motivo=tipo_da_mudanca,
                                         origem="receita" if from_recipe else "ator")
                         await evidence(obs, f"Toque de efeito segurado [{tipo_da_mudanca}]: {mudanca}")
@@ -3108,12 +3112,14 @@ class StepExecutor:
                             rr.diverged = f"tela mudou antes do toque: {mudanca}"
                         if releituras_antes_do_efeito >= LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO:
                             if coberturas_antes_do_efeito:
-                                # D5: um clicável NOVO por cima do botão de efeito é um aviso que o conhecimento do
-                                # app não declara; responder a ele é da pessoa (como a folha que não fecha). Sem
-                                # nova navegação: a etapa para e a pessoa olha a tela.
+                                # D5: um clicável NOVO por cima do botão de efeito que a regra do app não fechou
+                                # (não declarado, ou a folha declarada que reabriu a cada leitura); responder a ele é
+                                # da pessoa (como a folha que não fecha). Sem nova navegação: a etapa para e a pessoa
+                                # olha a tela. O texto cita a última COBERTURA, não a última mudança (que pode ser o
+                                # alvo movido: N2 da leitura do #370); D5-N1: nem sempre é aviso "não declarado".
                                 return StepOutcome(Outcome.waiting_user, (
-                                    "Um aviso cobre o botão de efeito e não é declarado no conhecimento do app: "
-                                    f"{mudanca}; nada foi tocado."),
+                                    "Um aviso cobre o botão de efeito e não fechou pela regra do conhecimento do "
+                                    f"app: {ultima_cobertura}; nada foi tocado."),
                                     needs="Veja o aviso na tela, feche-o sem aceitar nada se for o caso e retome o "
                                           "item; nada foi publicado.")
                             # Só o alvo se mexendo (ou a releitura falhando): tela instável, repetir é o certo.

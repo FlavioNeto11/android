@@ -28,6 +28,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `SocialRepository.parada_no_teto`, com a mesma regra do aviso (`unknown_no_teto`).
 - A regra do teto mora num lugar só, `shared.vinculos.teto_de_unknown`, chamado pela porta (via repositório), pela
   prévia de recursos e pelo campo (N1 da leitura do #371).
+- Notas de texto do #370 (29.90): o motivo do `waiting_user` do D5 cita a ÚLTIMA cobertura, não a última mudança
+  (N2), e não diz mais "não é declarado", porque a folha declarada que reabre também chega lá (D5-N1).
 - Painel: `precisaDePessoa(session)` nas duas filas; rótulo "Tela não reconhecida" (`SESSAO_PARADA_NO_TETO`,
   `metaDaSessao`); o selo da persona pede "Resolver".
 - Prova: `simulated` (`backend/tests/test_porta_de_sessao_no_teto.py`, `test_leitura_de_recursos.py` (T1: o teto de quem
