@@ -12,7 +12,7 @@ import type { NetworkDeviceRow, NetworkProfileListed, NetworkServerStatus } from
 import { ConfirmHost } from '../../components/Confirm';
 import { useAppStore } from '../../store/app';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, atrasoMaximoDoFetchMs, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { RedePage, nomeDoPacote } from './RedePage';
 
 function perfil(over: Partial<NetworkProfileListed> = {}): NetworkProfileListed {
@@ -794,7 +794,7 @@ it('duas releituras fora de ordem: vale a mais nova, e o 2º perfil criado não 
   await act(async () => { soltar[0]!(); });                              // a velha chega depois e não escreve
   // Afirmar a AUSÊNCIA de mudança só prova algo depois de a resposta velha passar por todo o caminho (fetch falso,
   // json, Promise.all com os aparelhos), inclusive com o atraso do modo ATRASO_DO_FETCH_MS.
-  await flush(Number(process.env.ATRASO_DO_FETCH_MS ?? 0) + 30);
+  await flush(atrasoMaximoDoFetchMs() + 30);
   await flush();
   expect(text()).toContain('Dedicada-02');
 });
