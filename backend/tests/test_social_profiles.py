@@ -254,6 +254,9 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                "update_persona", "delete_persona", "invalidate_sessions_of_instance", "db",
                # `localidade_da_instancia` lê `instances` — inventário do parque, não dado de perfil nenhum.
                "localidade_da_instancia",
+               # 29.92: `teto_de_unknown` lê o teto do APARELHO (vínculo ativo dá 1, `shared.vinculos`), não conteúdo de
+               # perfil; `unknown_no_teto` só confere a linha de sessão que quem chama já buscou com o `profile_id`.
+               "teto_de_unknown", "unknown_no_teto",
                # `app_e_acoes_do_pacote` lê `device_app_state` e `commands` — do aparelho — e recebe de quem chama as
                # linhas do perfil já buscadas com o `profile_id` (ADR-040: as ações de sessão são por conta).
                "app_e_acoes_do_pacote",
@@ -271,7 +274,10 @@ def test_todo_metodo_por_perfil_exige_profile_id() -> None:
                "rotulo_da_conta", "citacao_da_conta", "mascarar_contas_retiradas",
                # 29.27: a trava do `pm clear` pergunta se o APARELHO serve a outra conta e devolve só a pista
                # (`vinculo`, `sessao` ou `marcador`), nunca conteúdo de perfil.
-               "outra_conta_no_aparelho"}
+               "outra_conta_no_aparelho",
+               # 31.64: a marca de que a ETAPA passou pela porta (`steps.passou_a_porta`), gravada pelo id da etapa; não
+               # lê nem grava conteúdo de perfil.
+               "marcar_passou_a_porta"}
     # Categoria à parte, e não um nome a mais em `globais`: método que olha a FROTA INTEIRA de propósito. A regra
     # existe para conteúdo de um perfil não vazer para outro, e isto não devolve conteúdo — só agregado. Entrar
     # aqui custa duas condições, conferidas abaixo: precisa receber `exclude_profile_id` (a assinatura declara que

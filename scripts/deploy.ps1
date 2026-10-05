@@ -73,18 +73,23 @@ if ($antes) {
 # ------------------------------------------------------------------ 1. cópia, ANTES de qualquer coisa
 # Teto de 10 cópias de deploy (29.38): eram 161 cópias e 23 GB em 04/10, com dez deploys num dia.
 $tetoDeCopias = 10
+# >>> portão do -PularBackup (29.94: `scripts/tests/test_deploy_portao_do_ensaio.py` roda este trecho de verdade)
 $minutosDoEnsaio = 60
 if ($PularBackup -and -not $Ensaio) {
   # Subida sem cópia própria só logo depois de um `-Ensaio` da MESMA árvore: a cópia dele é a cópia desta subida.
   # Sem esse ensaio, recusa antes de parar qualquer coisa.
   . (Join-Path $PSScriptRoot 'lib\copias-de-backup.ps1')
-  $ensaio = Find-EnsaioRecente (Join-Path $root 'data\backups') $esperadoCommit $minutosDoEnsaio
-  if (-not $ensaio) {
+  # 29.94: NÃO `$ensaio`. Variável no PowerShell não diferencia caixa, e `$ensaio` é o próprio `[switch]$Ensaio`:
+  # a cópia (DirectoryInfo) não converte em switch, e o deploy 34 morreu aqui. Se convertesse, o `if ($Ensaio)`
+  # adiante trataria a subida de verdade como ensaio.
+  $copiaDoEnsaio = Find-EnsaioRecente (Join-Path $root 'data\backups') $esperadoCommit $minutosDoEnsaio
+  if (-not $copiaDoEnsaio) {
     throw ("-PularBackup só vale até $minutosDoEnsaio min depois de um 'deploy.ps1 -Ensaio' no commit " +
            "$esperadoCommit, e não há cópia de ensaio assim em data\backups. Rode o -Ensaio ou suba sem -PularBackup.")
   }
-  Write-Host "backup: a cópia do ensaio $($ensaio.Name) (mesmo commit, há menos de $minutosDoEnsaio min) vale para esta subida."
+  Write-Host "backup: a cópia do ensaio $($copiaDoEnsaio.Name) (mesmo commit, há menos de $minutosDoEnsaio min) vale para esta subida."
 }
+# <<< portão do -PularBackup
 if (-not $PularBackup) {
   Write-Host '--- backup (com o backend no ar; a API de backup do SQLite é consistente) ---'
   $origem = if ($Ensaio) { 'ensaio' } else { 'deploy' }

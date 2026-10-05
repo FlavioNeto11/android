@@ -252,17 +252,18 @@ if ($Reter -gt 0) {
 # Só depois da cópia nova conferida: o teto nunca deixa o destino com uma cópia a menos que o pedido.
 # EM ENSAIO por omissão: apagar cópias não tem volta, e a primeira poda no ambiente central leva ~150 cópias (22 GB).
 # Só apaga com `-Podar` ou com o arquivo `PODAR-LIGADO` no destino, que se cria depois do sim do dono; até lá, lista.
-$podar = $Podar -or (Test-Path (Join-Path $Destino 'PODAR-LIGADO'))
+# 29.94: outro nome, não `$podar`: sem diferenciar caixa, seria o próprio `[switch]$Podar`.
+$podarDeVerdade = $Podar -or (Test-Path (Join-Path $Destino 'PODAR-LIGADO'))
 $alem = @(Get-CopiasAlemDoTeto $Destino $Teto $pasta | Where-Object { Test-Path $_.FullName })  # a retenção pode ter levado
 foreach ($v in $alem) {
-  if ($podar) {
+  if ($podarDeVerdade) {
     Remove-Item $v.FullName -Recurse -Force -Confirm:$false
     Write-Host "removido (teto de $Teto cópias de deploy): $($v.Name)"
   } else {
     Write-Host "apagaria (teto de $Teto cópias de deploy, poda em ensaio): $($v.Name)"
   }
 }
-if ($alem.Count -and -not $podar) {
+if ($alem.Count -and -not $podarDeVerdade) {
   Write-Host ("teto: $($alem.Count) cópia(s) além de $Teto, NADA apagado (poda em ensaio). Para ligar: criar " +
               "$(Join-Path $Destino 'PODAR-LIGADO') ou passar -Podar.")
 }

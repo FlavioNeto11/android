@@ -540,6 +540,7 @@ const FALHA: Record<string, { label: string; camada: Camada }> = {
   defeito_do_plano: { label: 'Defeito do plano', camada: 'plano' },
   seletor_em_elementos_diferentes: { label: 'Seletor com as partes em elementos diferentes', camada: 'plano' },
   falta_informacao: { label: 'Falta informação de quem pediu', camada: 'pessoa' },
+  aviso_do_app: { label: 'Aviso do app que só a pessoa responde', camada: 'pessoa' },
   outro: { label: 'Outro (sem regra)', camada: 'indefinida' },
   // Categorias do backlog (A3), não tipos de tentativa: o sucesso mascarado e o fracasso que era sucesso.
   verificacao_falso_positivo: { label: 'Verificador aceitou o que deu errado', camada: 'verificacao' },

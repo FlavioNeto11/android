@@ -10,10 +10,12 @@ de IA, nenhum aparelho).
 from __future__ import annotations
 
 import io
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import yaml
 from PIL import Image
 
 from app.automation.hierarchy import parse_hierarchy
@@ -75,10 +77,18 @@ def test_sem_a_barra_na_arvore_nao_tapa_nada() -> None:
     assert imagem_com_barra_tapada(_branca(), parse_hierarchy(COM_BARRA), "com.outro.app", LARGURA, ALTURA) is None
 
 
-def test_a_chave_vem_desligada_e_a_imagem_vai_como_hoje() -> None:
-    assert AiCfg().tapar_barra_de_endereco is False
-    tela, _ = _executor()._screen(_obs(COM_BARRA), ai=AiCfg())  # noqa: SLF001
+def test_a_chave_vem_ligada_e_desligada_a_imagem_vai_como_esta() -> None:
+    """31.56: o A/B ao vivo deu LIGA, e o padrão é tapar. Com `false` explícito a imagem vai como antes."""
+    assert AiCfg().tapar_barra_de_endereco is True
+    tela, _ = _executor()._screen(_obs(COM_BARRA), ai=AiCfg(tapar_barra_de_endereco=False))  # noqa: SLF001
     assert tela.jpeg is not None and _pixel(tela.jpeg, tela.width // 2, 5) > 215
+
+
+def test_o_padrao_do_codigo_e_o_do_exemplo_nao_divergem() -> None:
+    """31.56: quem sobe sem `config.yaml` lê o exemplo; o padrão do código e o do exemplo têm de dizer o mesmo."""
+    exemplo = Path(__file__).resolve().parents[2] / "config" / "config.example.yaml"
+    bruto = yaml.safe_load(exemplo.read_text(encoding="utf-8"))
+    assert bruto["ai"]["tapar_barra_de_endereco"] is AiCfg().tapar_barra_de_endereco
 
 
 def test_ligada_a_imagem_do_ator_e_do_juiz_sai_com_a_barra_tapada(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -130,6 +130,29 @@ def test_retirada_apaga_credencial_conta_legada_e_o_ciphertext_e_a_persona_fica(
     assert ev[0]["data"]["account_id"] == conta                        # o id é a lápide, legível nas provas
 
 
+def test_retirada_fecha_o_item_da_fila_do_unknown_no_teto(tmp_path: Path) -> None:
+    """29.92 (U2 da leitura do #371): a sessão parada no teto do `unknown` (com vínculo, teto 1) abriu item na fila
+    "Aguardando intervenção". A retirada da conta o fecha com `active: false`, como fecha o do desafio; a sessão que
+    não estava na fila não gera evento."""
+    svc, repo, db, pid, outro = _montar(tmp_path)
+    conta = _ancora(repo, pid)
+    repo.set_account_session(pid, conta, "android-01", status=SessionStatus.unknown, reobserved=True)
+    assert repo.unknown_no_teto(repo.account_session_row(pid, conta, "android-01"), "android-01")
+    repo.mudar_status(pid, "blocked", origem="observado", autor="teste", evidencia="tela de verificação")
+
+    svc.retirar_conta_bloqueada(pid, conta, origem="declarado", autor="dono", evidencia="travada")
+
+    ev = [e["data"] for e in _eventos(db, "session.needs_person")]
+    assert [(e["instance_id"], e["active"], e["account_id"]) for e in ev] == [("android-01", False, conta)]
+
+    # Sem teto (o `unknown` administrativo, sem leitura de tela), não havia item e nada sai.
+    conta_outro = _ancora(repo, outro)
+    repo.set_account_session(outro, conta_outro, "android-02", status=SessionStatus.unknown)
+    repo.mudar_status(outro, "blocked", origem="observado", autor="teste", evidencia="tela de verificação")
+    svc.retirar_conta_bloqueada(outro, conta_outro, origem="declarado", autor="dono", evidencia="travada")
+    assert len(_eventos(db, "session.needs_person")) == 1
+
+
 def test_o_texto_do_arroba_nao_sobra_e_so_o_hash_fica_na_lapide(tmp_path: Path) -> None:
     svc, repo, db, pid, _ = _montar(tmp_path)
     conta = _ancora(repo, pid)

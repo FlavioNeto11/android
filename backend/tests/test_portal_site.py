@@ -6,6 +6,7 @@ Prova `simulated`: app ASGI com o harness de sempre, a pasta `site/` REAL do rep
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 from collections.abc import Iterator
@@ -19,8 +20,8 @@ from starlette.routing import Mount
 from app.config import TELEFONE_PUBLICO, ContatoPublicoCfg
 from app.main import create_app
 from app.modules.portal.domain.campos import TELEFONE
-from app.modules.portal.presentation.site import (CABECALHOS_DO_SITE, EXTENSOES_DO_SITE, SiteInvalido,
-                                                  bloco_de_contatos, ler_site)
+from app.modules.portal.presentation.site import (CABECALHOS_DO_SITE, DIGITOS_DA_VERSAO, EXTENSOES_DO_SITE, Arquivo,
+                                                  SiteInvalido, bloco_de_contatos, ler_site, versionar)
 
 from .conftest import Harness
 
@@ -69,7 +70,7 @@ async def test_ligado_a_raiz_e_do_site_e_o_painel_segue_em_central(harness: Harn
         pagina = await c.get("/")
         assert pagina.status_code == 200 and pagina.headers["content-type"].startswith("text/html")
         assert "ANA" in pagina.text and "/central/" in pagina.text
-        assert pagina.headers["cache-control"] == "no-store"
+        assert pagina.headers["cache-control"] == "no-store, no-transform"
         for nome, valor in CABECALHOS_DO_SITE.items():
             assert pagina.headers[nome] == valor
         assert pagina.headers["x-content-type-options"] == "nosniff"      # os de sempre, pelo `guarda`
@@ -220,6 +221,36 @@ async def test_pagina_404_propria_com_status_404_e_a_csp(harness: Harness) -> No
         assert r.headers["content-security-policy"] == CABECALHOS_DO_SITE["Content-Security-Policy"]
         assert (await c.post("/pagina-que-nao-existe", content=b"x")).status_code in (403, 405)
         assert (await c.head("/pagina-que-nao-existe")).status_code == 404
+        # Pedida pelo nome, a 404 é a mesma resposta: status 404 e `no-transform` (N5 da leitura do #366).
+        pelo_nome = await c.get("/404.html")
+        assert pelo_nome.status_code == 404 and "no-transform" in pelo_nome.headers["cache-control"]
+
+
+# ---------------------------------------------------------------- a borda não reescreve o HTML (29.91)
+@pytest.mark.parametrize("caminho", ["/", "/pagina-que-nao-existe"])
+async def test_html_do_site_sai_sem_transformar_e_comprimido_daqui(harness: Harness, caminho: str) -> None:
+    """`no-transform` impede a Cloudflare de reescrever o HTML (o beacon do 29.85); como ele também tira a compressão
+    da borda, a página sai comprimida daqui quando o cliente aceita gzip. O mesmo HTML nos dois jeitos."""
+    _preparar(harness, site=True)
+    async with _cliente(harness) as c:
+        cru = await c.get(caminho, headers={"Accept-Encoding": "identity"})
+        gz = await c.get(caminho, headers={"Accept-Encoding": "gzip, br"})
+        for r in (cru, gz):
+            assert "no-transform" in r.headers["cache-control"] and "accept-encoding" in r.headers["vary"].lower()
+        assert "content-encoding" not in cru.headers
+        assert gz.headers["content-encoding"] == "gzip"
+        assert int(gz.headers["content-length"]) < int(cru.headers["content-length"]) / 2      # medido: ~4x menor
+        assert gz.text == cru.text and gz.status_code == cru.status_code
+
+
+async def test_gzip_recusado_com_q0_e_o_estilo_fica_com_a_borda(harness: Harness) -> None:
+    _preparar(harness, site=True)
+    async with _cliente(harness) as c:
+        r = await c.get("/", headers={"Accept-Encoding": "gzip;q=0, identity"})
+        assert "content-encoding" not in r.headers and "<html" in r.text.lower()
+        # O CSS e o JS não levam `no-transform`: a borda segue comprimindo, e não injeta nada neles.
+        estilo = await c.get("/assets/site.css", headers={"Accept-Encoding": "gzip"})
+        assert "no-transform" not in estilo.headers["cache-control"] and "content-encoding" not in estilo.headers
 
 
 def _png(corpo: bytes) -> tuple[int, int]:
@@ -285,3 +316,83 @@ def test_rotulo_ilustracao_tem_contraste_aa_nos_fundos_reais() -> None:
         assert cor, seletor
         for fundo in fundos:
             assert _contraste(_hex(cor.group(1)), fundo) >= 4.5, (seletor, cor.group(1), fundo)
+
+
+# ---------------------------------------------------------------- 29.95: endereço novo a cada conteúdo novo
+async def test_paginas_apontam_para_a_versao_que_a_origem_serve(harness: Harness) -> None:
+    """A borda guarda CSS, JS e imagens por 4 h no navegador (troca o `no-cache` da origem por `max-age=14400`, medido
+    em 05/10). Com `?v=` igual ao começo do sha256 do que a origem serve, conteúdo novo é endereço novo."""
+    _preparar(harness, site=True)
+    async with _cliente(harness) as c:
+        for pagina in ("/", "/pagina-que-nao-existe"):
+            html = (await c.get(pagina)).text
+            versoes = dict(re.findall(r'\s(?:href|src)="(/[^"?#]+)\?v=([0-9a-f]+)"', html))
+            assert "/assets/site.css" in versoes, pagina
+            if pagina == "/":
+                assert {"/assets/site.js", "/assets/marca-ana.svg", "/favicon.svg"} <= set(versoes)
+            for caminho, versao in versoes.items():
+                r = await c.get(f"{caminho}?v={versao}")
+                assert r.status_code == 200, caminho
+                assert hashlib.sha256(r.content).hexdigest()[:DIGITOS_DA_VERSAO] == versao, caminho
+            # Nada da pasta fica sem versão, em forma nenhuma; painel, raiz e âncora não são arquivo do site.
+            assert _referencias_sem_versao(html, set(ARQUIVOS_DO_SITE)) == [], pagina
+        assert _referencias_sem_versao((await c.get("/assets/site.css")).text, set(ARQUIVOS_DO_SITE)) == []
+        assert 'href="/central/"' in (await c.get("/")).text
+
+
+#: Os arquivos da pasta do site que não são página: o que tem de ir com `?v=` quando uma página ou o CSS o cita.
+ARQUIVOS_DO_SITE = [p for p in ler_site(SITE) if not p.endswith(".html")]
+#: Toda forma de citar um arquivo (V1 da leitura do #369): `href`, `src`, `srcset` e `xlink:href` em qualquer caixa,
+#: com espaço em volta do `=`, aspas duplas, simples ou nenhuma; e `url(...)` no CSS.
+_ATRIBUTO = re.compile(r"""(?:\s|^)(?:xlink:href|href|srcset|src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+))""",
+                       re.IGNORECASE)
+_URL_DO_CSS = re.compile(r"""url\(\s*["']?([^"')\s]+)""", re.IGNORECASE)
+
+
+def _referencias_sem_versao(texto: str, arquivos: set[str]) -> list[str]:
+    """Cada citação a um arquivo de `arquivos` sem `?v=`, com caminho absoluto ou relativo à raiz."""
+    valores = [next(g for g in m.groups() if g is not None) for m in _ATRIBUTO.finditer(texto)]
+    valores += _URL_DO_CSS.findall(texto)
+    candidatos = []
+    for valor in valores:
+        candidatos += [parte.strip().split(" ")[0] for parte in valor.split(",")]   # srcset: "a.svg 1x, b.svg 2x"
+    sem_versao = []
+    for endereco in candidatos:
+        if "?v=" in endereco or "://" in endereco:
+            continue
+        caminho = "/" + endereco.split("#")[0].split("?")[0].lstrip("./")
+        if caminho in arquivos:
+            sem_versao.append(endereco)
+    return sem_versao
+
+
+def test_a_guarda_da_versao_acha_toda_forma_de_citar_um_arquivo() -> None:
+    """A guarda de cima só vale se acha: aspas simples, sem aspas, maiúscula, espaço no `=`, `srcset`, `use href` com
+    âncora, caminho relativo e `url()` no CSS, todos sem `?v=`, aparecem; com `?v=`, âncora pura e o painel, não."""
+    arquivos = {"/assets/site.css", "/assets/a.svg", "/assets/b.svg", "/favicon.svg"}
+    html = ("<link rel=stylesheet href='/assets/site.css'><img SRC = /assets/a.svg>"
+            '<img srcset="/assets/a.svg 1x, assets/b.svg 2x"><svg><use href="/assets/a.svg#i"></use></svg>'
+            '<link rel="icon" HREF="favicon.svg"><a href="#contato">c</a><a href="/central/">p</a>'
+            '<img src="/assets/a.svg?v=abc">')
+    assert _referencias_sem_versao(html, arquivos) == [
+        "/assets/site.css", "/assets/a.svg", "/assets/a.svg", "assets/b.svg", "/assets/a.svg#i", "favicon.svg"]
+    assert _referencias_sem_versao("a{background:url( '/assets/a.svg' )}b{background:url(x.png)}", arquivos) == [
+        "/assets/a.svg"]
+
+
+def test_versionar_muda_o_endereco_so_quando_o_conteudo_muda() -> None:
+    def site(css: bytes) -> dict[str, Arquivo]:
+        html = (b'<html><link rel="stylesheet" href="/assets/a.css"><a href="/outra.html">x</a>'
+                b'<img src="/assets/sumiu.svg"><a href="/#contato">c</a></html>')
+        return {"/index.html": Arquivo(html, "text/html; charset=utf-8", '"e"'),
+                "/outra.html": Arquivo(b"<html></html>", "text/html; charset=utf-8", '"o"'),
+                "/assets/a.css": Arquivo(css, "text/css; charset=utf-8", '"c"')}
+
+    um, outro, igual = (versionar(site(b"body{}"))["/index.html"], versionar(site(b"body{color:red}"))["/index.html"],
+                        versionar(site(b"body{}"))["/index.html"])
+    v = hashlib.sha256(b"body{}").hexdigest()[:DIGITOS_DA_VERSAO]
+    assert f'href="/assets/a.css?v={v}"'.encode() in um.corpo
+    assert um.corpo != outro.corpo and um.etag != outro.etag and um == igual
+    # Página para página, arquivo que não está na pasta e âncora ficam como estão.
+    for intacto in (b'href="/outra.html"', b'src="/assets/sumiu.svg"', b'href="/#contato"'):
+        assert intacto in um.corpo

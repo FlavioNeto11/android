@@ -49,7 +49,7 @@ dispensa:
   intersticiais_max: 4          # teto de dicas/onboarding dispensados por vez: fecha o caminho, sem virar laço
   rotulos:
     - '^\s*(?:(?:no|n[ãa]o)[,\s]+)?(?:skip|pular)\s*$'          # "Skip", "No, skip", "Não, pular"
-    - '^\s*(?:got it|entendi|ok)\s*$'
+    - '^\s*(?:got it|entendi)\s*$'
     - '^\s*(?:not now|agora n[ãa]o)\s*$'
     - '^\s*(?:maybe later|talvez mais tarde)\s*$'
   # Botão de RECUSA dos diálogos do Instagram. Vale como dispensa quando o rótulo não bate: é o lado que não concede.

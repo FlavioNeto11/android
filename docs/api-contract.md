@@ -334,8 +334,8 @@ interface ManualInput {
 | `metrics` | `{metrics: Metrics}` | não |
 | `health.updated` | `{health: Health}` | não |
 | `run.updated` | `{run: RunSummary}` | sim |
-| `objective.updated` | `{objective: Objective}` | sim |
-| `step.updated` | `{step: Step}` | sim |
+| `objective.updated` | `{objective: Objective, failure_kind?: string \| null}` (`failure_kind` na entrada em `waiting_user` pela etapa, desde a v1.47) | sim |
+| `step.updated` | `{step: Step, failure_kind?: string \| null}` (`failure_kind` desde a v1.47) | sim |
 | `attempt.updated` | `{attempt: Attempt}` (sem `actions`) | sim |
 | `action.logged` | `{action: Action, instance_id, step_id}` | sim |
 | `evidence.added` | `{evidence: Evidence}` | sim |
@@ -6072,8 +6072,10 @@ Bearer. Nenhuma entra na exceção do portão. Valem com o site e o contato liga
   - **422** `telefone_invalido`.
   - **429** `muitas_buscas` com `Retry-After`. Há dois tetos de buscas válidas na última hora, contados em memória no
     processo (reiniciar zera):
-    - `portal.limites.buscas_por_operador_hora` (30) por operador da sessão, com o nome em `casefold`;
-    - `portal.limites.buscas_total_hora` (60) somando todos os operadores.
+    - `portal.limites.buscas_por_operador_hora` (30) por operador da sessão, com o nome sem espaço sobrando (os de
+      dentro viram um só) e em `casefold`;
+    - `portal.limites.buscas_total_hora` (60) somando todos os operadores, menos o dono (`pedidos.operadores_do_dono`,
+      29.89): ele fica fora do teto somado e só tem a cota por operador.
   - O log de cada busca leva o operador e a contagem de achados, nunca o telefone.
 - `POST /api/portal/contatos/excluir`, corpo JSON `{ids: [1..50 inteiros], pedido_por: "formulario" | "telefone" |
   "outro"}`. **200** `{apagados: [id], mantidos: [{id, motivo}], inexistentes: [id], mensagens_apagadas: n,
@@ -6165,3 +6167,38 @@ repetição não muda a chave do item, então não dava `plano_mudou`.
 - **Prova:** `simulated` (`backend/tests/test_porta_do_plano.py`, `backend/tests/test_telegram_entrada.py`,
   `backend/tests/test_telegram_portas.py`, `backend/tests/test_executor_honra_o_plano.py`,
   `frontend/src/features/runs/PortaDoPlano.test.tsx`). `not_run`: o gesto no central (depois do deploy 34).
+
+## Adendo v1.46 (05/10/2026; número da orquestradora; item 31.65) — o motivo da recusa da persona fica só no detalhe da etapa
+
+V2 da revisão do 31.63: quando a persona recusava escrever o texto de uma etapa, a dica do bloqueio (`needs` do
+objetivo) era o motivo do modelo, que pode citar o pedido ou o nome de um terceiro. Essa dica viaja ao bloqueio do
+objetivo, às Pendências, ao aviso no Telegram e ao Trello.
+
+- **A dica é fixa:** "A persona se recusou a escrever este texto; o motivo dela está no detalhe da etapa. Reescreva a
+  intenção e retome o item." (`social.approvals.DICA_DA_RECUSA`). O `blocked_reason` segue "a persona se recusou a
+  escrever este texto".
+- **`StepDTO.motivo_da_persona`** (`string | null`, aditivo; `GET /runs/{id}`): o motivo da recusa, guardado na etapa
+  (`steps.draft_meta.motivo_da_recusa`, até 600 caracteres). `null` sem recusa; o texto escrito na retomada o apaga.
+- **Onde o motivo aparece:** só no detalhe da execução (`GET /runs/{id}`) e, no painel, como "Motivo da persona" no
+  detalhe da etapa (sessão logada do dono e dos operadores). NÃO vai ao evento `step.updated` (gravado em `events` e
+  transmitido a todo navegador): sem a chave no evento, o painel mantém o valor do detalhe; com `null`, limpa. Não vai
+  ao relatório da execução, à dica, às Pendências, ao aviso nem ao Trello.
+- **A chave não fecha a escrita:** a marca de rascunho (`draft_meta` preenchido) ignora `motivo_da_recusa`; a retomada
+  escreve de novo.
+- **Prova:** `simulated` (`backend/tests/test_protecao_de_frota.py`, `frontend/src/store/reducer.test.ts`,
+  `frontend/src/features/runs/CorrigirEtapa.test.tsx`). `not_run`: a recusa real no central.
+
+## Adendo v1.47 (05/10/2026; número da orquestradora; item 29.90) — `step.updated` e `objective.updated` levam o tipo de falha
+
+Sem migração. Aditivo no `data` do evento `step.updated` (`TaskRepository.emit_step`); o `StepDTO` não muda.
+- `failure_kind: string | null`: o tipo de falha classificado da etapa (`steps.failure_kind`, ADR-054; vocabulário em
+  `modules/learning/domain/falhas.py`). Nulo fora de um desfecho de falha. É o motivo estável para uma regra de aviso
+  consumir a parada que pede a pessoa sem ler o `status_detail` (texto livre). Os que pedem a pessoa numa etapa em
+  `waiting_user` incluem `aviso_do_app` (a folha de aviso que não fecha, ou um clicável novo por cima do botão de efeito,
+  29.90), `autenticacao`, `conta_errada` e `falta_informacao`.
+- `objective.updated`, na transição do objetivo para `waiting_user` pelo desfecho da etapa
+  (`Scheduler`, ramo `Outcome.waiting_user`): o mesmo `failure_kind` da etapa em `data.failure_kind`, para a regra de
+  aviso (28.40) escolher o texto sem cruzar com o `step.updated`. Nas outras transições, ausente.
+- O painel não tipa o `data` desses eventos (`frontend/src/store/reducer.ts`, `obj<Step>(data, 'step')`): nada muda lá.
+  Ausente = backend de antes do 29.90.
+- **Prova:** `simulated` (`backend/tests/test_legenda_rola_e_fecha_a_folha.py::test_a_folha_que_nao_fecha_para_numa_pessoa_sem_mais_toque`).

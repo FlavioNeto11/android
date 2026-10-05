@@ -190,8 +190,12 @@ desligados (o harness, um ensaio) ainda faz a faxina dos canais, inclusive a pri
 faxina e a solta no `finally`, mesmo com erro no meio. Se a trava já é de outro backend (o líder ligado), o desligado
 não a toma e não faxina. O resumo das decisões só sai com `avisos.enabled`.
 `avisos.enabled` e `trello.enabled` têm de ser iguais em todos os backends: numa frota misturada (um só com aviso,
-outro só com Trello), quem pega a trava primeiro fica com ela, e o canal do outro para de vez. Hoje nada avisa disso
-na saúde; o backend não sabe o que o líder liga. A falha ao soltar a trava sai no log à parte ("canais: soltar a trava
+outro só com Trello), quem pega a trava primeiro fica com ela, e o canal do outro para de vez. A saúde acusa isso
+(28.37): cada backend publica os canais que liga na tabela `settings`, chave `canais.config:<OWNER_ID>`, só com
+booleanos e a hora, quando muda ou a cada 120 s. O problema `canais_divergentes` aparece quando um canal ligado em
+algum backend com publicação fresca (menos de 240 s) não está ligado no líder. O texto não leva o nome de nenhum
+backend. A publicação sai no encerramento limpo, e a de backend sumido há mais de 1 h é varrida. A tela de
+Configuração não a mostra, e o `PUT /api/settings` não a aceita. Só publica e só se conta quem roda o scheduler: uma réplica só de API não acusa um canal que nunca roda nela. A varredura apaga pelo valor lido, e a publicação regravada no meio fica. O backup do banco inteiro leva essa linha, como leva toda a tabela `settings`. A falha ao soltar a trava sai no log à parte ("canais: soltar a trava
 avisos depois da faxina"), e a trava cai no TTL.
 
 ## 4. Pedidos, autorizações e decisões

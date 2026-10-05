@@ -41,6 +41,7 @@ from app.shared.convergence import (ReconcileOutcome, ResourceVerification, appl
                                     verify_resource)
 from app.shared.resources import (Drift, ObservedState, ResourceAction, ResourceKind, ResourceRef, ResourceSpec,
                                   Target, known)
+from app.shared.vinculos import tem_vinculo_ativo
 from app.util import now, to_iso
 
 #: `instagram_profiles.offline_policy` que autoriza reautenticar noutro servidor (`models.OfflinePolicy`).
@@ -210,8 +211,13 @@ class AppSessionProvider:
         verificada = _texto(s["verified_at"])
         vencida = (status is SessionStatus.session_ready and self._validade_s > 0
                    and (not verificada or verificada < to_iso(self._agora() - timedelta(seconds=self._validade_s))))
-        no_teto = (status is SessionStatus.unknown and int(s["unknown_streak"] or 0) >= self._teto
-                   and not self._teto_velho(_texto(s["updated_at"]), _texto(s["instance_id"]) or instance_id))
+        aparelho = _texto(s["instance_id"]) or instance_id
+        # 29.92: o mesmo teto da porta (`SocialRepository.teto_de_unknown`): aparelho com vínculo ativo (conta real)
+        # para no primeiro `unknown`. Com o teto global aqui, a prévia dizia "não verificada" e planejava
+        # `session.verify` enquanto a porta já pedia a pessoa.
+        teto = 1 if tem_vinculo_ativo(self._db, aparelho) else self._teto
+        no_teto = (status is SessionStatus.unknown and int(s["unknown_streak"] or 0) >= teto
+                   and not self._teto_velho(_texto(s["updated_at"]), aparelho))
         return ProviderSession(status, instance_id=_texto(s["instance_id"]),
                                observed_username=_texto(s["observed_handle"]), verified_at=verificada,
                                stale=vencida, unknown_capped=no_teto, credential=credencial)

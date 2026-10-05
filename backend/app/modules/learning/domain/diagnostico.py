@@ -231,7 +231,8 @@ def _pelo_tipo(chave: ChaveDoGrupo, erros_de_ia: Mapping[str, int]) -> tuple[Cau
         return CausaProvavel.APARELHO, (Fato("tipo", tipo), Fato("camada", camada_de(falha).value)), None
     if falha in (FailureKind.DEFEITO_DO_PLANO, FailureKind.SELETOR_EM_ELEMENTOS_DIFERENTES):
         return CausaProvavel.PLANO, (Fato("tipo", tipo),), None
-    if falha is FailureKind.FALTA_INFORMACAO:
+    # 29.90 (D4): o aviso do app que só a pessoa responde também depende dela, não do aparelho.
+    if falha in (FailureKind.FALTA_INFORMACAO, FailureKind.AVISO_DO_APP):
         return CausaProvavel.INFORMACAO_DA_PESSOA, (Fato("tipo", tipo),), None
     if falha is FailureKind.EFEITO_GUARDA_NAO_ATENDIDA:
         return (CausaProvavel.CATALOGO_RECUSOU, (Fato("tipo", tipo), Fato("acao", chave.capability)),

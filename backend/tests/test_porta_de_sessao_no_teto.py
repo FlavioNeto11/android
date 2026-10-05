@@ -357,3 +357,128 @@ async def test_verificar_conta_nao_soma_acima_do_teto(harness: Harness) -> None:
     # A mesma regra para quem grava direto no repositório.
     s.social_repo.set_session(pid, status=SessionStatus.unknown, instance_id=IID, detail="de novo", reobserved=True)
     assert int(s.social_repo.session_row(pid, IID)["unknown_streak"]) == teto
+
+
+
+# ---------------------------------------------------------------- 29.92: aparelho com conta real (vínculo ativo)
+class VerificacaoDeOutroApp(FakeInstagram):
+    """Outro pacote na frente mostrando uma verificação humana, e o app NÃO volta à frente ao ser aberto. Conta as
+    aberturas do app: a ressalva (b) do 29.92 é não reabrir por cima."""
+
+    aberturas: int = 0
+
+    def open_app(self, package: str, activity: str | None) -> None:
+        self.aberturas += 1
+
+    def _build(self) -> list[Node]:
+        return [Node("android.widget.TextView", (40, 100, 680, 200), text="Confirm you're human")]
+
+
+def _eventos_de_pessoa(s: AppState) -> list[dict[str, Any]]:
+    import json
+    return [json.loads(r["data"] or "{}") for r in
+            s.db.query("SELECT data FROM events WHERE kind='session.needs_person' ORDER BY id")]
+
+
+@pytest.mark.asyncio
+async def test_unknown_em_aparelho_com_conta_real_para_na_primeira_e_avisa_uma_vez(harness: Harness) -> None:
+    """29.92 (B): com vínculo ativo o teto é 1. O primeiro `unknown` de um `ensure_session` automático já para: a porta
+    não devolve outro trabalho (a rodada seguinte podia cair no login e digitar a senha guardada em cima de uma tela que
+    ninguém reconheceu). (A): o `session.needs_person` sai UMA vez, na entrada; reler a mesma tela não o repete."""
+    from app.shared.vinculos import tem_vinculo_ativo
+    s = _estado(harness)
+    s.appium.log_masking_active = True
+    assert s.settings.get().session_unknown_retry_cap == 3            # o teto global segue 3: o achado é ele não agir
+    pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+    assert tem_vinculo_ativo(s.db, IID)
+    app = RaizEstranha(account=USUARIO, screen="feed", stored_password=SENHA)
+    motor = _motor(s, app)
+    rt = FakeRt(app, IID)
+    r = await motor.ensure_session(rt, pid, automatic=True)
+    assert r.outcome is Outcome.UNCERTAIN
+    motivo, trabalho = s._session_gate(s.devices.get(IID))
+    assert trabalho is None and "assuma o controle" in motivo, motivo
+    entradas = [e for e in _eventos_de_pessoa(s) if e.get("status") == "unknown"]
+    assert len(entradas) == 1 and entradas[0]["active"] is True and entradas[0]["instance_id"] == IID
+    await motor.ensure_session(rt, pid, observe_only=True)            # "Verificar conta": a mesma tela de novo
+    assert len([e for e in _eventos_de_pessoa(s) if e.get("status") == "unknown"]) == 1
+    assert SENHA not in "".join(app.typed)                             # nada digitado
+
+
+@pytest.mark.asyncio
+async def test_login_direto_em_aparelho_com_conta_real_segue(harness: Harness) -> None:
+    """29.92 não estreita o login legítimo (ADR-040): tela classificada direto como login, com consentimento, entra."""
+    s = _estado(harness)
+    s.appium.log_masking_active = True
+    pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+    app = FakeInstagram(account=None, screen="login", stored_password=SENHA)
+    motor = _motor(s, app)
+    r = await motor.ensure_session(FakeRt(app, IID), pid, automatic=True)
+    assert r.outcome is Outcome.SESSION_READY, r.detail
+
+
+@pytest.mark.asyncio
+async def test_verificacao_de_outro_app_com_conta_real_nao_reabre_por_cima(harness: Harness) -> None:
+    """29.92 (ressalva b): outro pacote na frente casando com o detector, num aparelho com conta real: o app não é
+    reaberto por cima; a sessão fica `unknown` com motivo próprio (no teto 1: parada e aviso), sem marcar conta
+    travada nem tocar nada."""
+    s = _estado(harness)
+    s.appium.log_masking_active = True
+    pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+    app = VerificacaoDeOutroApp(account=USUARIO, screen="feed", stored_password=SENHA,
+                                pacote_forcado="com.exemplo.outro")
+    motor = _motor(s, app)
+    r = await motor.ensure_session(FakeRt(app, IID), pid, automatic=True)
+    assert r.outcome is Outcome.UNCERTAIN and "verificação humana" in r.detail, r.detail
+    assert app.aberturas == 1                                          # só a abertura inicial, nenhuma por cima
+    sessao = s.social_repo.session_row(pid, IID)
+    assert sessao is not None and sessao["status"] == SessionStatus.unknown.value
+    assert s.quarentena(IID) is None                                    # nada de conta travada
+    assert not any(c.startswith("tap") or c == "key:back" for c in app.calls), app.calls
+
+
+
+class TelaComumDeOutroApp(VerificacaoDeOutroApp):
+    """Outro pacote na frente, SEM verificação humana: o caminho de sempre (o app é reaberto por cima)."""
+
+    def _build(self) -> list[Node]:
+        return [Node("android.widget.TextView", (40, 100, 680, 200), text="Uma página qualquer")]
+
+
+@pytest.mark.asyncio
+async def test_outro_app_sem_verificacao_reabre_como_antes(harness: Harness) -> None:
+    """O outro lado da ressalva (b): tela de outro pacote que NÃO casa com o detector segue o caminho de antes."""
+    s = _estado(harness)
+    s.appium.log_masking_active = True
+    pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+    app = TelaComumDeOutroApp(account=USUARIO, screen="feed", stored_password=SENHA,
+                              pacote_forcado="com.exemplo.outro")
+    motor = _motor(s, app)
+    r = await motor.ensure_session(FakeRt(app, IID), pid, automatic=True)
+    assert "verificação humana" not in (r.detail or ""), r.detail
+    assert app.aberturas >= 2                                          # a abertura inicial e a reabertura por cima
+
+
+@pytest.mark.asyncio
+async def test_parada_resolvida_na_releitura_conta_pela_via(harness: Harness) -> None:
+    """29.92: a parada no teto que uma releitura tira para `session_ready` conta em `sessao.parada_resolvida{via}`, pela
+    origem da releitura (o motor não a sabe: as duas são `observe_only`). `releitura_sem_toque` responde se vale uma
+    rodada automática só de observar; `pessoa_devolveu` não conta como "sozinha"."""
+    from app.metricas import metricas
+    s = _estado(harness)
+    s.appium.log_masking_active = True
+    pid = s.social.create_profile(ProfileCreate(username=USUARIO, password=SENHA, instance_id=IID)).id
+    estranha = RaizEstranha(account=USUARIO, screen="feed", stored_password=SENHA)
+    await _motor(s, estranha).ensure_session(FakeRt(estranha, IID), pid, automatic=True)
+    metricas.limpar()
+    logado = FakeInstagram(account=USUARIO, screen="feed", stored_password=SENHA)
+    conta_id = str(s.social_repo.session_row(pid, IID)["account_id"])  # type: ignore[index]
+    await s._medindo_a_parada("releitura_sem_toque", IID, pid, conta_id,
+                              lambda: _motor(s, logado).ensure_session(FakeRt(logado, IID), pid, observe_only=True))
+    assert metricas.valor("sessao.parada_resolvida", instancia=IID, via="releitura_sem_toque") == 1
+    await s._medindo_a_parada("pessoa_devolveu", IID, pid, conta_id,                # já resolvida: não conta de novo
+                              lambda: _motor(s, logado).ensure_session(FakeRt(logado, IID), pid, observe_only=True))
+    assert metricas.valor("sessao.parada_resolvida", instancia=IID, via="pessoa_devolveu") == 0
+    assert metricas.valor("sessao.unknown_resolvida", instancia=IID, rodada_antes=1) == 1
+    saidas = [e for e in _eventos_de_pessoa(s) if e.get("active") is False]
+    assert len(saidas) == 1                                            # a saída da fila também sai uma vez
