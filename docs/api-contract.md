@@ -1101,6 +1101,7 @@ campo.
 | `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
+| `POST /api/training/{session_id}/undo` | `TrainingUndoBody {lease_id, seq?}` | `TrainingSession` com `undone: {seq, type}`: tira a última entrada da gravação viva (31.90-D, adendo vADENDO3190D) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
 [`../worker.md`](worker.md#limites-por-servidor-item-105) e [`../dominios/parque.md`](dominios/parque.md):
@@ -1181,6 +1182,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `learning.ensinado_espera_decisao` | sim | `ServicoDeValidacao` (a volta da validação), via `LearningService.avisar_espera_do_ensinado`. O fluxo ensinado que a prova automática não cobre espera a decisão de uma pessoa; `warn`; 30.81; ver o adendo v1.65 |
 | `learning.ensinado_decidido` | sim | `LearningService` (`confirmar_que_fica`, `_mover_nativo`): uma pessoa decidiu o ensinado que esperava; `info`; 30.81; ver o adendo v1.65 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
+| `training.input.undone` | sim | `training/recorder.py` (`desfazer_a_ultima`): a última entrada saiu da gravação viva; `data: {training_session_id, seq, type}`; 31.90-D |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 
 ### Mensagens do canal do worker ausentes do adendo v0.8
@@ -6657,3 +6659,27 @@ Muda o VALOR de `ref` nos eventos de fluxo e passa a aceitar a referência nova 
   (do slug para a referência pública). Até o deploy, a Canais segue sem transmitir o `ref` de fluxo nem o `message`.
 - **Ainda não coberto** (próximas fatias do 30.83): as rotas `/api/flows/{id}`, os `href` das respostas do painel, os
   eventos `learning.ensinado_*` (30.80 B e 30.81, ainda em ramo) e os logs que levam `fluxo:<id>`.
+
+## Adendo vADENDO3190D (05/10/2026; número da orquestradora; item 31.90-D) — desfazer a última entrada da gravação viva
+
+Rota nova e aditiva no modo treinamento. Nada muda nas rotas que existem nem no `save`.
+- `POST /api/training/{session_id}/undo`, corpo `{"lease_id": "<lease do controle>", "seq": <número, opcional>}`
+  (`extra=forbid`; sem `lease_id`, ou `seq` menor que 1: **422**).
+  - Tira a ÚLTIMA entrada da gravação VIVA (sessão em `recording`, o aparelho a está gravando e há controle de usuário) e
+    responde **200** com a sessão, igual a `GET /api/training/{session_id}`, mais `undone: {seq, type}`.
+  - O aparelho não volta: a entrada sai só da gravação. A próxima entrada gravada recebe o número seguinte ao que ficou.
+  - `seq`: o número da entrada que a pessoa viu como última. Se outra chegou antes do pedido: **409** `entrada_mudou`
+    ("A última entrada agora é a N, não a M; confira antes de desfazer."), sem apagar nada.
+  - Recusas, todas sem mudar nada:
+    - lease ausente do controle atual, ou gravação órfã (sem gravador ativo ou sem controle de usuário): **409**
+      `control_required` ("Só quem está com o controle do aparelho desfaz a última entrada.");
+    - sessão que não está em `recording`: **409** `nao_esta_gravando` (a gravação parada se corrige na revisão);
+    - sem entrada: **409** `sem_entrada`;
+    - aparelho hospedado por outra réplica: **409** `gravacao_em_outro_servidor` ("…desfaça por lá.");
+    - sessão inexistente: **404** `not_found`.
+- Evento novo `training.input.undone` (persistido), `data: {training_session_id, seq, type}`. A barra de gravação do
+  painel já recarrega com qualquer evento que traga `training_session_id`.
+- **O que o painel precisa mudar:** um botão "Desfazer a última" na barra de gravação, visível só para quem tem o
+  controle. Ele manda o `lease_id` e o `seq` da última entrada que a tela mostra. No 409 `entrada_mudou`, recarrega e mostra
+  a mensagem; no `control_required`, mostra a mensagem e mantém a barra.
+- **Prova:** `simulated` (`backend/tests/test_treino_desfazer_a_ultima.py`); `real`: `not_run`.

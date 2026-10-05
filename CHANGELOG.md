@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.90-D (backend): desfazer a última entrada da gravação viva (branch feat/31-90-d-desfazer-a-ultima-entrada)
+
+- Rota nova `POST /api/training/{session_id}/undo` (`TrainingRecorder.desfazer_a_ultima`): tira a última entrada da
+  gravação viva sem descartar a sessão. Exige o lease do controle; `seq` opcional recusa se a última mudou
+  (`entrada_mudou`). Gravação parada, órfã, vazia ou de outra réplica: 409 sem mudar nada. O aparelho não volta.
+- Evento novo `training.input.undone`. Adendo vADENDO3190D. O botão no painel fica com a Portal.
+- Funções tocadas (K-095): `TrainingRecorder.desfazer_a_ultima` (nova), `undo_training_input` (rota nova),
+  `TrainingUndoBody` (novo). O `save` não muda.
+- Prova `simulated`: `backend/tests/test_treino_desfazer_a_ultima.py`. Real: `not_run`.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
