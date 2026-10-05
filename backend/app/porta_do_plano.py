@@ -31,6 +31,7 @@ from .social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_ROTULO
                                         chave_da_aprovacao, imagem_de_outra_persona, midia_da_etapa, tem_variavel,
                                         texto_exato)
 from .taskqueue.repository import MOTIVO_REJEICAO
+from .taskqueue.service import RunError
 from .util import now, now_iso, to_iso
 
 if TYPE_CHECKING:
@@ -458,7 +459,6 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
             state.repo.transition_step(sid, StepStatus.cancelled, detail=MOTIVO_TIRADA)
         state.repo.decision(f"plano aprovado na prévia da porta por {por}: {len(gravadas)} item(ns) aprovado(s) até "
                             f"{validade}, {len(tirados)} etapa(s) tirada(s)", run_id=run_id)
-    from .taskqueue.service import RunError  # noqa: PLC0415 - o serviço importa o planejamento; aqui só a exceção
     try:
         resumo = state.runs.start(run_id, por=por)
     except RunError as exc:
