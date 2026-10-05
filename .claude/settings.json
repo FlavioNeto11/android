@@ -6,15 +6,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:/Program Files/Python313/python.exe",
+            "command": "python",
+            "timeout": 10,
             "args": [
               "-S",
               "-E",
               "-c",
               "import os,runpy,sys; p=sys.argv[1]; os.path.isfile(p) and runpy.run_path(p, run_name='__main__')",
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/guarda.py"
-            ],
-            "timeout": 10
+            ]
           }
         ]
       }
@@ -26,28 +26,28 @@
           {
             "type": "command",
             "if": "Edit(**/.claude/workflows/*.js)",
-            "command": "C:/Program Files/Python313/python.exe",
+            "command": "python",
+            "timeout": 10,
             "args": [
               "-S",
               "-E",
               "-c",
               "import os,runpy,sys; p=sys.argv[1]; os.path.isfile(p) and runpy.run_path(p, run_name='__main__')",
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-js.py"
-            ],
-            "timeout": 10
+            ]
           },
           {
             "type": "command",
             "if": "Write(**/.claude/workflows/*.js)",
-            "command": "C:/Program Files/Python313/python.exe",
+            "command": "python",
+            "timeout": 10,
             "args": [
               "-S",
               "-E",
               "-c",
               "import os,runpy,sys; p=sys.argv[1]; os.path.isfile(p) and runpy.run_path(p, run_name='__main__')",
               "${CLAUDE_PROJECT_DIR}/.claude/hooks/workflow-js.py"
-            ],
-            "timeout": 10
+            ]
           }
         ]
       }
