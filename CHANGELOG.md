@@ -32,7 +32,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   quando o aparelho não tem persona. A frase não promete mais "diga o valor no comando". O replano (`revise_plan`) não
   grava `{perfil_x}` cru: a recuperação automática é recusada com motivo, a retomada do item vira `RunError`, a
   expansão do `for_each` bloqueia o item. Limite conhecido: `PlanStep.variables` do `for_each` não é varrido.
-- Prova `simulated`: `tests/test_prevoo_dado_da_persona.py` (18 passed; era 14 no 796a26ac), `RunView.test.tsx` (7 passed); vizinhos e `test_arquitetura.py` verdes;
+- Segunda revisão (D1, D2): a expansão do `for_each` bloqueada pelo dado ausente agora faz o `_work` sair do laço
+  (antes a próxima etapa pronta refazia `running` e o objetivo ficava preso sem worker). `persona_data` entra no conjunto
+  único `CAMPOS_SEM_RESPOSTA_POR_TEXTO` (destino + dado da persona: refinar, perguntas pendentes, sinal
+  `respondeu_pergunta`, preferências e sugestões do livro); a sucessora recusa a resposta quando TODAS as perguntas são
+  `persona_data`. O rodapé do `RunView` junta os caminhos no caso misto.
+- Prova `simulated`: `tests/test_prevoo_dado_da_persona.py` (24 passed; 14 no 796a26ac, 18 no 3f502014), `RunView.test.tsx` (8 passed); vizinhos e `test_arquitetura.py` verdes;
   `pytest @tests/catracas.txt`, 88 passed. `mypy-catraca`: `not_run` (sem mypy no venv). Real: `not_run`.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)

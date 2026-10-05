@@ -160,3 +160,22 @@ it('dado da persona ausente: mostra a pergunta e o caminho, sem caixa de respost
   expect(t).not.toContain('Escolha no Comando');               // nem o rodapé de destino
   expect(t).not.toContain('Falta decidir quem faz e onde');
 });
+
+it('pergunta mista (destino + dado da persona): o rodapé leva os dois caminhos', async () => {
+  const dado = { code: 'dado_da_persona_ausente', field: 'persona_data', options: [], instance_id: 'android-12', profile_id: null,
+    question: 'A persona do android-12 não tem sobrenome cadastrado: cadastre o dado na persona e peça de novo.' };
+  const run = makeRun({ status: 'needs_input', status_detail: PERGUNTA.question });
+  useAppStore.setState({
+    runs: [run],
+    detail: {
+      runId: RUN_ID, status: 'ready', error: null, eventsStatus: 'ready',
+      data: makeRunDetail({ ...run, plan: null, objectives: [], steps: [], attempts: [], evidence: [], plan_versions: [], decisions: [] }),
+      events: [makeEvent(13, 'log', { questions: [PERGUNTA, dado] }, { run_id: RUN_ID, level: 'warn', message: 'mista' })],
+    },
+  });
+  await act(async () => { root.render(<RunView />); });
+  await waitFor(() => expect(text(container)).toContain('Cadastre o dado na persona e crie a execução de novo.'));
+  const t = text(container);
+  expect(t).toContain('Escolha no Comando');
+  expect(t).not.toContain('Responda aqui');
+});

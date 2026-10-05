@@ -65,11 +65,15 @@ def _nomes(parametros: Mapping[str, str], passos: Sequence[PlanStep]) -> list[st
     return list(achados)
 
 
+def _resolvidos_de(variaveis: Mapping[str, str] | None, parametros: Mapping[str, str]) -> set[str]:
+    return ({k for k, v in (variaveis or {}).items() if str(v).strip()}
+            | {k for k, v in parametros.items() if str(v).strip()})
+
+
 def _resolvidos(variaveis: Mapping[str, str] | None, plano: Plan) -> set[str]:
     """O que `materialize` resolve: as variáveis NÃO vazias da persona e os parâmetros do plano que se chamam assim
     (`{**params, **base}` em `_insert_steps`)."""
-    return ({k for k, v in (variaveis or {}).items() if str(v).strip()}
-            | {k for k, v in plano.parameters.items() if str(v).strip()})
+    return _resolvidos_de(variaveis, plano.parameters)
 
 
 def faltas_por_aparelho(plano: Plan, instancias: Sequence[Mapping[str, object]]) -> dict[str, list[str]]:
@@ -92,8 +96,7 @@ def faltas_dos_passos(passos: Sequence[PlanStep], parametros: Mapping[str, str],
                       variaveis: Mapping[str, str] | None) -> list[str]:
     """O mesmo pré-voo para etapas soltas (o replano de `Repository.revise_plan`): os nomes que `variaveis` e os
     parâmetros do objetivo não resolvem."""
-    resolvidos = ({k for k, v in (variaveis or {}).items() if str(v).strip()}
-                  | {k for k, v in parametros.items() if str(v).strip()})
+    resolvidos = _resolvidos_de(variaveis, parametros)
     return [n for n in _nomes(parametros, passos) if n not in resolvidos]
 
 

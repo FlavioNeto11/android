@@ -1352,6 +1352,11 @@ class Scheduler:
                         and self._pode_recuperar(objective_id, step.id, step.side_effect) else None)
                 da_tela_atual = self._apply(outcome, obj, step, attempt["id"], rt, app_vivo=vivo)
                 self._publish_current(rt, obj, step.id)
+                # 31.87 (D1): a expansão do `for_each` pode ter bloqueado o objetivo (dado da persona ausente). Seguir
+                # para a próxima etapa pronta refaria `running` e deixaria as etapas-modelo pending, sem worker.
+                if (outcome.outcome == Outcome.succeeded and outcome.items is not None
+                        and repo.objective_row(objective_id)["status"] != ObjectiveStatus.running.value):
+                    break
                 # Recuperação da tela atual segue NESTE worker: voltar ao despacho repassaria pela porta de sessão,
                 # que com a verificação vencida leva o app ao estado conhecido — a tela inicial — e desfaz a retomada.
                 if outcome.outcome != Outcome.succeeded and not da_tela_atual:

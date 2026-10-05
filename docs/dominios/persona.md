@@ -293,6 +293,8 @@ só sai para `cancelled`, e dizer o valor no comando não vira parâmetro do flu
 o aparelho não tem persona. `materialize` e `revise_plan` repetem a conferência e recusam com `DadoDaPersonaAusente`;
 nunca gravam a variável crua (recuperação: recusada com motivo; retomada: `RunError`; expansão do `for_each`: item
 bloqueado). Limite conhecido: as `variables` das etapas do `for_each` (item, item_index) não são varridas.
+`persona_data` não vai ao livro de aprendizado: o conjunto `CAMPOS_SEM_RESPOSTA_POR_TEXTO` (`taskqueue/perguntas.py`)
+junta destino e dado da persona, e a sucessora recusa a resposta por texto quando só há `persona_data`.
 
 **Rotas por conta** (`api.py`; as antigas por perfil são apelidos da conta âncora):
 

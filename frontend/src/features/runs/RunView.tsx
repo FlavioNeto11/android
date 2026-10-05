@@ -451,10 +451,11 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
                 <p>{loading ? 'Carregando as perguntas…' : run.status_detail || 'O backend não informou quais dados faltam.'}</p>
               )}
               <p style={{ marginTop: 6 }}>
-                {deDestino
-                  ? 'Escolha no Comando (modo “Por persona”, ou marcando os aparelhos) e envie de novo — esta execução não avança sozinha.'
-                  : daPersona
-                    ? 'Cadastre o dado na persona e crie a execução de novo.'
+                {deDestino || daPersona
+                  ? [
+                      deDestino ? 'Escolha no Comando (modo “Por persona”, ou marcando os aparelhos) e envie de novo — esta execução não avança sozinha.' : null,
+                      daPersona ? 'Cadastre o dado na persona e crie a execução de novo.' : null,
+                    ].filter(Boolean).join(' ')
                   : sensivel
                     ? 'Esta execução não avança sozinha: depois disso, edite o comando e peça de novo (ou cancele).'
                     : 'Esta execução não avança sozinha: responda acima (nasce outra, com o comando completo) ou edite o comando.'}

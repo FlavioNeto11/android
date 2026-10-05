@@ -21,6 +21,16 @@ from ..modules.learning.infrastructure.segredo import TriagemDeCredencial
 #: Perguntas que são escolha de alvo, não texto: o assistente não as responde (ver `taskqueue/assistente.py`).
 CAMPOS_DE_DESTINO = frozenset({"profile_id", "instance_id"})
 
+#: 31.87: a falta de dado da persona (`dado_da_persona.py`). Não se responde por texto: o dado se cadastra na persona.
+CAMPO_DADO_DA_PERSONA = "persona_data"
+
+#: O conjunto ÚNICO "não se responde por texto" (destino ∪ dado da persona): fora do refinar, das perguntas pendentes
+#: levadas ao modelo, do sinal `respondeu_pergunta` e das preferências/sugestões do livro de aprendizado.
+CAMPOS_SEM_RESPOSTA_POR_TEXTO = CAMPOS_DE_DESTINO | {CAMPO_DADO_DA_PERSONA}
+
+MENSAGEM_DADO_DA_PERSONA = ("Este dado se preenche na persona, não por resposta: cadastre o dado na persona e crie a "
+                            "execução de novo.")
+
 #: A fonte única da regra (29.52): pergunta sensível e resposta recusada.
 TRIAGEM = TriagemDeCredencial()
 
@@ -56,7 +66,7 @@ def tipo_sensivel(perguntas: Iterable[Mapping[str, object]]) -> str | None:
     de destino ficam fora: resolvem-se escolhendo alvos."""
     for q in perguntas:
         campo = str(q.get("field") or "")
-        if campo in CAMPOS_DE_DESTINO:
+        if campo in CAMPOS_SEM_RESPOSTA_POR_TEXTO:
             continue
         tipo = TRIAGEM.pergunta_sensivel(str(q.get("question") or ""), campo)
         if tipo is not None:

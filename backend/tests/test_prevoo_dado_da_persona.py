@@ -27,6 +27,7 @@ from app.taskqueue.dado_da_persona import (DadoDaPersonaAusente, exigir_resolvid
                                            perguntas, rotulo)
 
 from .conftest import Harness
+from .test_for_each import ALL
 
 # Valores SINTÉTICOS: nenhum deles pode aparecer na mensagem de falta.
 NOME = "Zelda"
@@ -316,3 +317,124 @@ def test_retomar_item_com_dado_ausente_vira_recusa_clara(harness: Harness) -> No
         harness.state.runs._requeue(obj, "teste")                               # type: ignore[union-attr]  # noqa: SLF001
     assert erro.value.code == "dado_da_persona_ausente" and "perfil_nome" in erro.value.message
     assert NOME not in erro.value.message
+
+
+# ------------------------------------------------------------ 6. D1: o bloqueio da expansão não se desfaz
+async def test_expansao_bloqueada_pelo_dado_da_persona_nao_deixa_o_objetivo_preso_em_running(harness: Harness) -> None:
+    """A persona tinha o sobrenome quando o plano foi materializado e o perdeu antes da coleta terminar: a expansão do
+    `for_each` relê `runs.plan`, vê `{perfil_sobrenome}` sem valor e BLOQUEIA o item. O worker não pode seguir para a
+    próxima etapa pronta (refaria `running` e deixaria as etapas-modelo pending, sem worker)."""
+    pid = _persona(harness, "android-01", "pessoa.completa", first_name=NOME, last_name=SOBRENOME, email=EMAIL)
+    plan0 = harness.ai.inner.plan
+
+    async def plan(req: Any) -> Any:
+        p, u = await plan0(req)
+        passos = [s.model_copy(update={"goal": s.goal + " {perfil_sobrenome}"}) if s.for_each else s for s in p.steps]
+        independente = PlanStep(key="verificar_depois", title="Verificar depois", goal="Conferir a tela.",
+                                depends_on=[passos[0].key],
+                                postcondition=Postcondition(kind="text_visible", value="ok", description="d"))
+        return p.model_copy(update={"steps": [*passos, independente]}), u
+
+    harness.ai.inner.plan = plan
+    run = harness.run(["android-01"], command=ALL, mode="plan")
+    await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed"))
+    assert harness.state.repo.run_row(run.id)["status"] == "planned"            # type: ignore[union-attr]
+    db = harness.state.db                                                       # type: ignore[union-attr]
+    db.execute("UPDATE instagram_profiles SET last_name=NULL WHERE id=?", (pid,))   # a persona perde o dado
+    harness.state.runs.start(run.id)                                            # type: ignore[union-attr]
+    oid = f"{run.id}:android-01"
+    await harness.wait(lambda: harness.state.repo.objective_row(oid)["status"] == "waiting_user",   # type: ignore[union-attr]
+                       timeout=60, what="objetivo bloqueado pela expansão")
+    await harness.ticks(3)                                                      # o laço olhou de novo e nada o desfez
+    obj = harness.state.repo.objective_row(oid)                                 # type: ignore[union-attr]
+    assert obj["status"] == "waiting_user" and "perfil_sobrenome" in str(obj["blocked_reason"])
+    assert SOBRENOME not in str(obj["blocked_reason"])
+    # Nada depois da coleta rodou: nem as etapas-modelo, nem a independente; nenhuma ficou presa em running.
+    linhas = db.query("SELECT id, key, status, postcondition FROM steps WHERE objective_id=? AND plan_version=1"
+                      " ORDER BY seq", (oid,))
+    depois = [r for i, c in enumerate(linhas) if "items_collected" in str(c["postcondition"]) for r in linhas[i + 1:]]
+    assert depois and "verificar_depois" in {r["key"] for r in depois}
+    assert all(r["status"] in ("pending", "ready") for r in depois), [(r["key"], r["status"]) for r in depois]
+    assert not db.query("SELECT 1 FROM steps WHERE objective_id=? AND status='running'", (oid,))
+    for r in depois:
+        assert db.scalar("SELECT COUNT(*) FROM attempts WHERE step_id=?", (r["id"],)) == 0
+    assert db.scalar("SELECT COUNT(*) FROM plan_versions WHERE objective_id=?", (oid,)) == 1   # a expansão não gravou v2
+
+
+# ------------------------------------------------------------ 7. D2: dado da persona não vai ao livro de aprendizado
+async def test_resposta_por_texto_so_com_persona_data_e_recusada_sem_sinal(harness: Harness) -> None:
+    from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
+    from app.taskqueue.service import RunError
+
+    _persona(harness, "android-01", USUARIO_SEM_SOBRENOME, first_name=NOME, email=EMAIL)
+    _plano(harness.ai.inner, "Digitar {perfil_sobrenome}.")
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=("needs_input", "failed", "completed"))
+    assert _campos_das_perguntas(harness, run.id) == ["persona_data"]
+    with pytest.raises(RunError) as erro:
+        ComandoAssistido(harness.state.runs).sucessora(                           # type: ignore[union-attr]
+            run.id, RunSuccessorBody(command=ALL + " O sobrenome é Qualquer.", mode="plan"))
+    assert erro.value.code == "dado_da_persona_ausente" and "cadastre o dado na persona" in erro.value.message
+    db = harness.state.db                                                       # type: ignore[union-attr]
+    assert harness.state.repo.run_row(run.id)["status"] == "needs_input"        # type: ignore[union-attr]   # nada cancelado
+    assert db.scalar("SELECT COUNT(*) FROM runs WHERE idempotency_key LIKE 'sucessora-%'") == 0
+    assert db.scalar("SELECT COUNT(*) FROM learning_signals WHERE kind='respondeu_pergunta'") == 0
+
+
+async def test_refinar_recusa_resposta_a_persona_data(harness: Harness) -> None:
+    from app.taskqueue.assistente import CommandRefineBody, ComandoAssistido
+    from app.taskqueue.service import RunError
+
+    body = CommandRefineBody(command=ALL, answers=[{"field": "persona_data", "question": "Qual o sobrenome?",
+                                                    "answer": "Qualquer"}])
+    with pytest.raises(RunError) as erro:
+        await ComandoAssistido(harness.state.runs).refinar(body)                  # type: ignore[union-attr]
+    assert erro.value.code == "dado_da_persona_ausente"
+
+
+async def test_execucao_mista_destino_mais_persona_data_mantem_o_comportamento_de_destino(harness: Harness) -> None:
+    """Só `persona_data` é recusada. Com uma pergunta de destino junto, a sucessora nasce como antes e o sinal
+    `respondeu_pergunta` não leva nenhum dos dois campos (nenhum é resposta de texto)."""
+    from app.taskqueue.assistente import ComandoAssistido, RunSuccessorBody
+
+    runs = harness.state.runs                                                   # type: ignore[union-attr]
+    row, _ = runs.repo.create_run(RunCreate(command=ALL, instance_ids=["android-01"], idempotency_key="k-mista-31-87"),
+                                  simulated=True)
+    runs._pedir_resposta(row["id"], [                                           # noqa: SLF001
+        {"code": "persona_no_aparelho", "question": "Qual persona?", "field": "profile_id", "options": [],
+         "instance_id": "android-01", "profile_id": None},
+        {"code": "dado_da_persona_ausente", "question": "Falta dado.", "field": "persona_data", "options": [],
+         "instance_id": "android-01", "profile_id": None}])
+    nova, criada = ComandoAssistido(runs).sucessora(row["id"], RunSuccessorBody(command=ALL, mode="plan"))
+    assert criada and nova.id != row["id"]
+    sinais = harness.state.db.query("SELECT data FROM learning_signals WHERE kind='respondeu_pergunta'")  # type: ignore[union-attr]
+    # Como sempre foi com destino: sem campo de texto, o sinal leva o campo vazio; nenhum dos dois nomes vai ao livro.
+    assert {json.loads(r["data"])["campo"] for r in sinais} == {""}
+
+
+def test_o_conjunto_unico_cobre_destino_e_dado_da_persona() -> None:
+    from app.taskqueue.perguntas import CAMPOS_DE_DESTINO, CAMPOS_SEM_RESPOSTA_POR_TEXTO
+
+    assert CAMPOS_SEM_RESPOSTA_POR_TEXTO == CAMPOS_DE_DESTINO | {"persona_data"}
+    assert CAMPOS_DE_DESTINO == {"profile_id", "instance_id"}                   # o destino segue como era
+
+
+def test_o_livro_nao_guarda_nem_sugere_dado_da_persona(tmp_path: Any) -> None:
+    """`respondeu_pergunta` com `persona_data` não vira observação de preferência; as perguntas abertas o omitem. O campo
+    de uma pergunta comum segue observado (contraprova)."""
+    from app.modules.learning.infrastructure.preferencias_sql import PreferenciasSql
+
+    from .fake_skills import banco
+    from .test_learning_preferencias import Mundo
+
+    m = Mundo(banco(tmp_path))
+    m.responder("persona_data")
+    m.responder("message")
+    campos = {o.campo for o in PreferenciasSql(m.db).respostas()}
+    assert campos == {"message"}
+    antiga, _ = m.responder("persona_data")
+    m.db.execute("UPDATE runs SET status='needs_input' WHERE id=?", (antiga,))
+    assert PreferenciasSql(m.db).perguntas_abertas(antiga).campos == ()         # type: ignore[union-attr]
+    mista, _ = m.responder("message")
+    m.db.execute("UPDATE runs SET status='needs_input' WHERE id=?", (mista,))
+    assert PreferenciasSql(m.db).perguntas_abertas(mista).campos == ("message",)  # type: ignore[union-attr]
