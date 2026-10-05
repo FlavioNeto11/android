@@ -206,6 +206,25 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     desligado na zona desde as 02:23Z);
   - `not_run`: o central depois do deploy 35 (o peso da raiz no gzip da origem, perto de 10,6 KB, e a prova de fora
     com as linhas novas). Não se religa o Web Analytics para provar.
+## 2026-10-05 — 31.70: o resto da varredura do 31.67, erro sobre a saída do modelo sem o texto dela (branch fix/31-70-causa-sem-texto-resto)
+
+- **O que muda:** os erros sobre a saída do modelo agora são levantados FORA do `except` e sem `from`. Antes, a exceção
+  original ficava em `__cause__`/`__context__` e ia junto a qualquer log com traceback, levando o texto do modelo (o
+  `.doc` do `JSONDecodeError`, o `input_value=` da `ValidationError` ou o rótulo do enum).
+- **Onde:**
+  - `openai_provider.decide`: os argumentos da ferramenta (G1).
+  - `command_refinement.refinement_from_json` e `orquestracao.orquestracao_from_json` (G1). Nestes dois a mensagem também
+    trazia o `input_value`. Usam a função nova `command_refinement.motivo_sem_valor`, que dá de cada erro só o `type`
+    e o lugar (nome de campo do esquema e índice; outra chave vira `?`), e linha e coluna para o JSON.
+  - `planning/curador.parecer_from_json`, mais `learning/domain/curador._parecer` e `_rotulo` (G2): o `from None` dentro
+    do `except` só escondia a causa na impressão; ela seguia em `__context__`.
+  - `skills/domain/document.parse_json_object` (G3).
+- **M5 avaliado, sem mudança:** o motivo `ai_refusal` carrega `str(AIError)`, mas o texto da recusa é fixo nos dois
+  provedores (`anthropic_provider._check_stop` e o `content_filter` do `openai_provider`). O `ai_error` de saída inválida
+  só leva linha e coluna depois do 31.67 e deste item.
+- **Prova:** `simulated`. `backend/tests/test_causa_sem_texto_resto.py` (8 casos) e
+  `test_openai_provider.py::test_argumentos_ilegiveis_da_ferramenta_viram_erro_sem_o_texto_na_causa`. O segredo vai num
+  valor que a mensagem antiga mostrava, e os testes conferem a mensagem, `__cause__` e `__context__`. Real: `not_run`.
 
 ## 2026-10-05 — 31.63: texto de rascunho fora de log, evento e motivo de recusa (branch fix/31-63-rascunho-fora-do-log)
 
