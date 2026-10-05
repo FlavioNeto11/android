@@ -63,8 +63,9 @@ async def test_arraste_com_origem_na_vista_do_padrao_de_bloqueio_sai_sem_coorden
 
 # ---- (b) teclado numérico ----------------------------------------------------------------------------------------------
 async def test_arraste_com_origem_em_tecla_ou_dentro_do_teclado_numerico_sai_sem_coordenadas(harness: Harness) -> None:
+    teclado = _el("kp", rid="com.android.systemui:id/keypad", bounds=(0, 900, 1000, 1900))
     tecla = _el("t4", text="4", rid="com.android.systemui:id/key4", bounds=(0, 1000, 300, 1200), clickable=True)
-    assert _nao_gravado(await _arrastar(harness, _tela(_el("raiz"), tecla), de=(100, 1100), para=(800, 1100)))
+    assert _nao_gravado(await _arrastar(harness, _tela(_el("raiz"), teclado, tecla), de=(100, 1100), para=(800, 1100)))
     # a tecla com rótulo comum, mas dentro do contêiner do teclado: a origem está no teclado
     pad = _el("pad", rid="com.pocqa.messenger:id/pin_pad", bounds=(0, 900, 1000, 1900))
     botao = _el("b", text="Entrar", rid="com.pocqa.messenger:id/entrar", bounds=(0, 1000, 300, 1200), clickable=True)
@@ -89,6 +90,18 @@ async def test_rolagem_comum_de_uma_lista_segue_com_as_quatro_coordenadas(harnes
     # nomes parecidos com teclado não derrubam a coordenada
     for rid in ("com.pocqa.messenger:id/pinned_posts", "com.pocqa.messenger:id/spinner_cidade"):
         assert _gravado(await _arrastar(harness, _tela(_el("l", rid=rid, scrollable=True)))), rid
+
+
+async def test_rolagem_a_partir_de_item_de_rotulo_de_um_digito_fora_de_teclado_guarda_tudo(harness: Harness) -> None:
+    dia = _el("dia", text="5", rid="com.pocqa.messenger:id/dia", bounds=(0, 1000, 300, 1200), clickable=True)
+    assert _gravado(await _arrastar(harness, _tela(_el("raiz"), dia), de=(100, 1100), para=(100, 300)), (100, 1100), (100, 300))
+
+
+async def test_rolagem_a_partir_de_alvo_sem_rotulo_e_id_terminado_em_digito_guarda_tudo(harness: Harness) -> None:
+    celula = _el("c", rid="com.pocqa.messenger:id/media_0", bounds=(0, 1000, 300, 1200), clickable=True)
+    assert _gravado(await _arrastar(harness, _tela(_el("raiz"), celula), de=(100, 1100), para=(100, 300)), (100, 1100), (100, 300))
+    item = _el("i", rid="com.pocqa.messenger:id/item1", bounds=(0, 1000, 300, 1200), clickable=True)
+    assert _gravado(await _arrastar(harness, _tela(_el("raiz"), item), de=(100, 1100), para=(100, 300)), (100, 1100), (100, 300))
 
 
 async def test_arraste_sem_arvore_segue_o_toque_e_perde_a_coordenada_sem_marca(harness: Harness) -> None:

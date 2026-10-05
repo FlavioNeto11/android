@@ -431,7 +431,7 @@ Migração `038_modo_treinamento.sql`: `training_sessions` (`status`: `recording
 
 **O que o gravador não guarda (31.94, 31.97).** `training_inputs.sensitive` quer dizer "tela sensível OU entrada que não
 se guarda" (uma coluna para os dois sentidos até a migração futura do ensino separá-los). Toque em tecla de teclado numérico
-ou em tela sensível sem id estrutural, e arraste (`swipe`) com a ORIGEM em teclado numérico, em contêiner de teclado ou
+ou em tela sensível sem id estrutural, e arraste (`swipe`) com a ORIGEM em contêiner de teclado ou
 padrão de bloqueio, ou em tela sensível, saem sem `x`/`y` (e `x2`/`y2`) e com `sensitive=1`: o padrão de bloqueio se desenha
 arrastando e a posição da tecla é o dígito. A rolagem comum guarda as quatro coordenadas. Sem árvore da tela, toque e
 arraste perdem as coordenadas. Os leitores (`linha_da_entrada`, `distill_training`, `proposta_simulada`) tratam o arraste sem

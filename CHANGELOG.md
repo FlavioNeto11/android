@@ -22,10 +22,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-05 — 31.97, arraste sem coordenada na gravação do treinamento (branch fix/31-97-arraste-sem-coordenada)
 
 - O padrão de bloqueio se desenha ARRASTANDO e o `swipe` não procurava o alvo: começo e fim do arraste ficavam no banco e
-  saíam pela API. Agora o `swipe` segue a regra do toque (31.94) pela ORIGEM: origem em tecla de teclado numérico, dentro de
-  um contêiner de teclado/padrão de bloqueio (`pin_pad`, `lockPatternView`, `PinKeypadView`...; vale o ancestral por área)
-  ou em tela sensível é gravado sem `x`, `y`, `x2`, `y2` e com `sensitive=1`. Sem árvore da tela, segue o toque: perde as
-  coordenadas e fica sem marca. A rolagem comum (origem em tela comum, com ou sem seletor) guarda as quatro coordenadas.
+  saíam pela API. Agora o `swipe` segue a regra do toque (31.94) pela ORIGEM: origem dentro de um contêiner de
+  teclado/padrão de bloqueio (`pin_pad`, `lockPatternView`, `PinKeypadView`...; vale o ancestral por área) ou em tela
+  sensível é gravado sem `x`, `y`, `x2`, `y2` e com `sensitive=1`. Sem árvore da tela, segue o toque: perde as
+  coordenadas e fica sem marca. A rolagem comum (origem em tela comum, com ou sem seletor, inclusive a partir de um item
+  de rótulo "5" ou de id `item1`: a regra de tecla isolada é só do toque) guarda as quatro coordenadas.
 - A coluna `sensitive` segue com os dois sentidos ("tela sensível" e "entrada que não se guarda"); separar fica para a
   migração futura do ensino. Sem migração e sem mudança na forma da resposta da API (só `x`/`y`/`x2`/`y2` nulos).
 - Leitores: `linha_da_entrada` diz "arraste em teclado, padrão de bloqueio ou tela sensível (não gravado)" (nada de "rolou");
@@ -33,8 +34,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `proposta_simulada` descarta o arraste com o motivo; `_entrada_legada` e `inputs()` carregam os nulos sem quebrar.
 - Dígito por extenso ("um" a "nove", "zero", "one" a "nine") passa a ser tecla SÓ com o ponto dentro de um contêiner de
   teclado (toque e arraste); fora dele, um botão "Um" segue comum.
-- Prova `simulated`: `backend/tests/test_treino_arraste_sem_coordenada.py`, 8 passed; mutação nos casos (a)/(b) e (d)
-  derruba os testes certos. `not_run`: aparelho real com padrão de bloqueio.
+- Prova `simulated`: `backend/tests/test_treino_arraste_sem_coordenada.py`, 10 passed; mutação nos casos (a)/(b), (d) e
+  nos dois de rolagem a partir de item de um dígito derruba os testes certos. `not_run`: aparelho real com padrão de bloqueio.
 
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 

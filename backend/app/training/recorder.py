@@ -328,14 +328,15 @@ class TrainingRecorder:
             # num teclado desenhado num View só (Flutter, SurfaceView), é o dígito. Não é segredo conhecido: sem `sensitive`.
             x = y = None
         if tipo == "swipe" and x is not None:
-            # 31.97: o padrão de bloqueio se DESENHA arrastando: começo e fim do arraste são o segredo. Pela ORIGEM, a mesma
-            # regra do toque: origem em teclado numérico ou em vista de padrão, ou tela sensível, sai sem as quatro
-            # coordenadas e marcada. Sem árvore (leitura falhou) não se sabe onde começou: segue o toque, que também perde
-            # a coordenada sem árvore, e fica sem marca. A rolagem comum (origem sem teclado, em tela comum) guarda tudo,
-            # tenha o ponto seletor ou não: rolar é a entrada mais comum e a coordenada dela não é segredo.
+            # 31.97: o padrão de bloqueio se DESENHA arrastando: começo e fim do arraste são o segredo. Pela ORIGEM: origem
+            # dentro de contêiner de teclado ou de padrão de bloqueio, ou tela sensível, sai sem as quatro coordenadas e
+            # marcada. A regra de tecla isolada (rótulo de um dígito, id terminado em dígito) é só do toque: arraste não
+            # aperta tecla, e rolar a partir de um dia "5" ou de `item1` é rolagem comum. Sem árvore (leitura falhou) não
+            # se sabe onde começou: segue o toque, que também perde a coordenada sem árvore, e fica sem marca. A rolagem
+            # comum guarda tudo, tenha o ponto seletor ou não: rolar é a entrada mais comum e a coordenada não é segredo.
             if tree is None:
                 x = y = x2 = y2 = None
-            elif sensivel or em_teclado or _e_tecla_de_teclado_numerico(_safe_target(tree.at(int(x), int(y)), tree)):
+            elif sensivel or em_teclado:
                 x = y = x2 = y2 = None
                 marcada = True
         texto = entrada.get("text")
