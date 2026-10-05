@@ -63,6 +63,12 @@ AMOSTRA_DA_EVIDENCIA = ("`amostra` \"N de M\": provado em amostra de N — a pro
 OUTRA_VERSAO_DA_EVIDENCIA = ("`de_versoes_anteriores`: evidências de uma versão ANTERIOR do conteúdo do item (o fluxo "
                              "mudou depois delas, por exemplo reaprendido); não contam a favor nem contra a versão atual, "
                              "e a reprodução em outro aparelho se lê só na `lista`")
+#: 30.73: só no dossiê de item de classe B. A classe B É o `commit` em app sem catálogo (`politica_de_risco`); pedir o voto
+#: ou a decisão da pessoa por "efeito sem catálogo" é pedir o que a classe já diz, e nenhuma execução o produz. A medida
+#: do 30.72 (05/10): 5 fluxos B com ≥ 2 execuções reais em ≥ 2 aparelhos pararam em `observar` por isso.
+CLASSE_B_DO_ITEM = ("classe B: o efeito em app sem catálogo é o que DEFINE a classe, não um defeito do item. Não peça "
+                    "voto nem decisão da pessoa por isso (não estão nas opções de `falta`): quem decide publicar um "
+                    "fluxo B é a regra da autopublicação, com os limiares dela; julgue pelas evidências")
 REVALIDADA_DA_EVIDENCIA = ("posicao `revalidada`: a regra de hoje desfez a `invalida` da mesma execução (30.53: a "
                            "conferência do QA contava uma mensagem por item do laço como repetição); não conta a favor "
                            "nem contra, e a linha que a `invalida` tirava volta a valer")
@@ -325,6 +331,12 @@ class Dossie:
         """Os itens que `substituir`/`fundir` podem apontar: só os relacionados, nunca o próprio item."""
         return frozenset(r.id_citavel for r in self.relacoes) - {self.item.id_citavel}
 
+    def _risco_como_dados(self) -> JsonObject:
+        risco: JsonObject = {**self.risco.como_dados(), "fatos": self.fatos_de_risco.como_dados()}
+        if self.classe is ClasseDeRisco.B:              # 30.73: só a B; a A e a C ficam como estavam
+            risco["classe_b_e"] = CLASSE_B_DO_ITEM
+        return risco
+
     def como_dados(self) -> JsonObject:
         i = self.item
         item: JsonObject = {"id": i.id_citavel, "kind": i.kind, "ref": i.ref, "app": i.app, "capability": i.capability,
@@ -367,7 +379,7 @@ class Dossie:
         return {
             "versao_do_dossie": VERSAO_DO_DOSSIE,
             "item": item,
-            "risco": {**self.risco.como_dados(), "fatos": self.fatos_de_risco.como_dados()},
+            "risco": self._risco_como_dados(),
             "conteudo": self.conteudo,
             "evidencias": evidencias,
             "trilha": [{"id": t.id_citavel, "de": t.de, "para": t.para, "por_pessoa": t.por_pessoa, "em": t.em,
@@ -558,11 +570,23 @@ def decisoes_do_item(item: IdentidadeDoItem) -> tuple[str, ...]:
     return OPCOES_FECHADAS["decisao"]
 
 
+#: 30.73: o que só a pessoa produz. Na classe B elas saem das opções de `falta` (ver `CLASSE_B_DO_ITEM`).
+FALTA_SO_DA_PESSOA = frozenset({Falta.VOTO_DA_PESSOA, Falta.DECISAO_DA_PESSOA})
+
+
+def faltas_do_item(classe: ClasseDeRisco) -> tuple[str, ...]:
+    """As opções de `falta` para um item desta classe. A e C: todas, como antes. B: sem o voto nem a decisão da pessoa
+    (30.73), porque o parecer B que as pedia nunca saía de `observar` e nenhuma prova as produz."""
+    if classe is ClasseDeRisco.B:
+        return tuple(f.value for f in Falta if f not in FALTA_SO_DA_PESSOA)
+    return OPCOES_FECHADAS["falta"]
+
+
 def opcoes_do_dossie(dossie: Dossie) -> dict[str, tuple[str, ...]]:
-    """As opções que dependem do item: as decisões que cabem a ele, os ids citáveis e os alvos possíveis, em ordem
-    estável."""
-    return {"decisao": decisoes_do_item(dossie.item), "evidencias_citadas": tuple(sorted(dossie.citaveis)),
-            "alvo": tuple(sorted(dossie.alvos_possiveis))}
+    """As opções que dependem do item: as decisões que cabem a ele, as faltas da classe dele (30.73), os ids citáveis e
+    os alvos possíveis, em ordem estável."""
+    return {"decisao": decisoes_do_item(dossie.item), "falta": faltas_do_item(dossie.classe),
+            "evidencias_citadas": tuple(sorted(dossie.citaveis)), "alvo": tuple(sorted(dossie.alvos_possiveis))}
 
 
 def confianca_da_probabilidade(probabilidade: float) -> Confianca:
@@ -702,7 +726,11 @@ def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: f
     causa = _rotulo(Causa, dados.get("causa"), MotivoDeInvalidade.ROTULO_FORA_DO_VOCABULARIO)
     riscos = _rotulos(RiscoApontado, dados.get("riscos"))
     inconsistencias = _rotulos(Inconsistencia, dados.get("inconsistencias"))
-    falta = _rotulos(Falta, dados.get("falta"))
+    # 30.73: o rótulo que não está nas faltas da classe (o voto e a decisão da pessoa num item B, de um provedor sem
+    # esquema estrito) sai do parecer em vez de invalidá-lo. Parecer já gravado não passa por aqui: o estoque se lê como
+    # foi gravado.
+    da_classe = faltas_do_item(dossie.classe)
+    falta = tuple(f for f in _rotulos(Falta, dados.get("falta")) if f.value in da_classe)
     rotulo = _rotulo(Confianca, dados.get("confianca"), MotivoDeInvalidade.CONFIANCA_INVALIDA)
     p = _probabilidade(probabilidade)
     confianca = confianca_da_probabilidade(p) if p is not None else rotulo
@@ -732,12 +760,12 @@ def _parecer(bruto: str | Mapping[str, object], dossie: Dossie, probabilidade: f
 
 
 __all__ = ["CAMPOS_DA_SAIDA", "CAMPOS_OBRIGATORIOS", "DECISOES_COM_ALVO", "LIMIARES_DE_CONFIANCA",
-           "CONTADORES_DA_RECEITA", "FORMA_DA_EVIDENCIA", "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "OUTRA_VERSAO_DA_EVIDENCIA", "PRINCIPAL_DO_ITEM",
+           "CLASSE_B_DO_ITEM", "CONTADORES_DA_RECEITA", "FALTA_SO_DA_PESSOA", "FORMA_DA_EVIDENCIA", "LIMITE_DA_CONCLUSAO", "MAX_EVIDENCIAS", "OPCOES_FECHADAS", "OUTRA_VERSAO_DA_EVIDENCIA", "PRINCIPAL_DO_ITEM",
            "REVALIDADA_DA_EVIDENCIA",
            "SECOES_CITAVEIS", "SEM_CAMINHO_DA_RECEITA",
            "SOMBRA_DA_RECEITA", "VERSAO_DO_DOSSIE", "AppDoItem", "Causa",
            "Confianca", "Decisao",
            "Dossie", "Evidencia", "Falta", "GrupoDeFalha", "IdentidadeDoItem", "Inconsistencia", "Intervencao",
            "MotivoDeInvalidade", "Parecer", "PassoDaTrilha", "Relacao", "RiscoApontado", "Validacao", "Voto",
-           "confianca_da_probabilidade", "conteudo_do_dossie", "decisoes_do_item", "montar_dossie", "opcoes_do_dossie",
+           "confianca_da_probabilidade", "conteudo_do_dossie", "decisoes_do_item", "faltas_do_item", "montar_dossie", "opcoes_do_dossie",
            "validar_saida"]

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from ..modules.skills.domain.document import JsonObject
 
 #: Versão do template. Muda quando o texto ou o esquema mudam; o aprendizado a grava ao lado da forma do dossiê.
-VERSAO_DO_TEMPLATE = "curador-v1"
+VERSAO_DO_TEMPLATE = "curador-v2"     # 30.73: a frase da classe B no `CURADOR_SYSTEM`
 MODELO_SIMULADO = "simulado-curador-hub-v1"
 LIMITE_DA_CONCLUSAO = 300
 #: As listas de rótulos do parecer; as demais opções são escolha única (ou nula).
@@ -59,6 +59,8 @@ CURADOR_SYSTEM = (
     "- `alvo` só para `substituir` ou `fundir`, e só um dos alvos possíveis; nas outras decisões, null.\n"
     "- Na dúvida, prefira `observar` ou `pedir_evidencia` a `aprovar`. Simulado nunca prova nada; evidência real e "
     "reprodução em outro aparelho pesam mais.\n"
+    "- Na classe B, o efeito em app sem catálogo é o que define a classe: não peça voto nem decisão da pessoa por "
+    "isso; julgue pelas evidências.\n"
     "- `conclusao`: uma frase curta em português (até 300 caracteres), sem dado pessoal, sem credencial e sem copiar "
     "texto do dossiê; ou null.\n"
     "- `confianca` é um rótulo (baixa, media, alta), nunca um número."

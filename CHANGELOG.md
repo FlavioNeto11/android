@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.73: o parecer da classe B não pede voto nem decisão da pessoa (branch feat/30-73-curador-na-classe-b)
+
+- Medida do 30.72: 5 fluxos B que já cumpriam os números da autopublicação paravam em `observar` porque o parecer pedia `voto_da_pessoa` e `decisao_da_pessoa` por "efeito sem catálogo", que é a definição da classe B.
+- Dossiê (`modules/learning/domain/curador.py`): o fato `risco.classe_b_e` no item B, e `faltas_do_item` sem as duas faltas da pessoa nas opções e no `validar_saida` do item B. A e C sem mudança; o estoque gravado se lê como foi gravado.
+- Hub (`backend/app/planning/curador.py`, da Jev): uma frase da classe B no `CURADOR_SYSTEM`, `VERSAO_DO_TEMPLATE` `curador-v2` e o hash do texto preso em teste.
+- A autopublicação segue em `shadow`. Prova `simulated`: `backend/tests/test_curador_classe_b.py`.
+
 ## 2026-10-05 — 29.94: o `deploy.ps1 -PularBackup` não reusa o nome do `[switch]$Ensaio` (branch fix/29-94-deploy-variavel-do-ensaio)
 
 - O defeito, real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): a subida com `-PularBackup` morreu no primeiro
