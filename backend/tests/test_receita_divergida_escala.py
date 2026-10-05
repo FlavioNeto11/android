@@ -56,3 +56,43 @@ async def test_retorno_a_ia_e_contado_uma_vez_por_etapa_com_motivo_fechado(harne
     assert metricas.total("receita.retorno_ia") == len(etapas_divergidas)      # uma vez por tentativa, não por decisão
     series = [c for c in metricas.snapshot()["contadores"] if c["nome"] == "receita.retorno_ia"]
     assert {c["rotulos"]["motivo"] for c in series} == {"alvo_ausente"}
+
+
+async def test_toque_de_efeito_da_receita_segurado_pela_releitura_devolve_a_etapa_a_ia(harness: Harness,
+                                                                                       monkeypatch: object) -> None:
+    """29.90 (D2-R1): a releitura antes do toque segura o toque de efeito que veio da RECEITA. O cursor dela já passou
+    dessa ação; sem marcar a divergência, a receita acabaria sem o toque e a etapa iria ao juiz como se a receita a
+    tivesse feito. Marcada, a IA assume e o envio sai uma vez."""
+    from app.taskqueue import executor as modulo
+    harness.pular_o_tempo()
+    harness.cfg.file.ai.recipes = "replay"
+    assert (await harness.wait_run(harness.run(["android-01"]).id)).status == "completed"
+    original = modulo.cobertura_nova_no_ponto
+    seguradas: list[str] = []
+
+    def uma_vez(antes, depois, ponto, alvo):  # type: ignore[no-untyped-def]
+        if not seguradas:
+            seguradas.append("x")
+            return modulo.MUDANCA_POR_CIMA, "apareceu por cima do alvo (simulado)"
+        return original(antes, depois, ponto, alvo)
+
+    monkeypatch.setattr(modulo, "cobertura_nova_no_ponto", uma_vez)  # type: ignore[attr-defined]
+    inner = harness.ai.inner
+    verify0 = inner.verify
+    enviadas_no_juiz: list[int] = []      # quantas mensagens o aparelho tinha em cada juízo do envio
+
+    async def verify(req):  # type: ignore[no-untyped-def]
+        if req.ctx.step_key == "send_message":
+            enviadas_no_juiz.append(len(harness.fakes["android-02"].messages))
+        return await verify0(req)
+
+    inner.verify = verify
+    metricas.limpar()
+    run = await harness.wait_run(harness.run(["android-02"]).id)
+    assert seguradas
+    assert enviadas_no_juiz and 0 not in enviadas_no_juiz, enviadas_no_juiz   # nenhum juízo antes do envio
+    assert run.status == "completed" and len(harness.fakes["android-02"].messages) == 1
+    db = harness.state.db                                                   # type: ignore[union-attr]
+    driven = {r["key"]: r["driven_by"] for r in db.query("SELECT key, driven_by FROM steps WHERE run_id=?", (run.id,))}
+    assert driven["send_message"] == "recipe+ai"
+    assert metricas.valor("receita.retorno_ia", motivo="tela_mudou") == 1

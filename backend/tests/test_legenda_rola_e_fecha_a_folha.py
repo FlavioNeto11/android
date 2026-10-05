@@ -18,9 +18,9 @@ from __future__ import annotations
 import json
 import re
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 import pytest
 import yaml
@@ -86,8 +86,9 @@ def test_a_folha_real_em_portugues_tambem_casa_pelos_ids_e_pelo_texto_de_hoje() 
 
 
 def test_a_sessao_nao_toca_no_ok_da_folha_nem_quando_ele_e_clicavel() -> None:
-    """D1 da revisão: o rótulo global de recusa da sessão tem "ok". Numa variante da folha real em que o "OK" é um botão
-    CLICÁVEL, a dispensa não o toca (a regra da tela declara `nunca`). Fora da folha, o mesmo "OK" segue dispensável."""
+    """D1 da revisão: numa variante da folha real em que o "OK" é um botão CLICÁVEL, a dispensa não o toca (a regra da
+    tela declara `nunca`). 29.90: "ok" saiu dos rótulos globais de recusa, então fora da folha ele também não é
+    dispensa (é aceite)."""
     from dataclasses import replace
     from app.integrations.app_declarado import conhecimento as app_declarado
     k = app_declarado.do_app(PKG)
@@ -98,13 +99,26 @@ def test_a_sessao_nao_toca_no_ok_da_folha_nem_quando_ele_e_clicavel() -> None:
     assert k.botao_de_dispensa(com_ok_clicavel) is None
     so_o_ok = UiTree(elements=[e for e in com_ok_clicavel.elements if e.text == "OK"], packages=folha.packages,
                      sensitive=False)
-    botao = k.botao_de_dispensa(so_o_ok)                 # sem a folha reconhecida: a regra global de antes vale
-    assert botao is not None and botao.text == "OK"
+    assert k.botao_de_dispensa(so_o_ok) is None          # sem a folha reconhecida: "ok" não é rótulo de recusa
+
+
+def test_o_nunca_vale_em_qualquer_idioma_declarado() -> None:
+    """29.90 (D1b): a folha em português só casa na tabela `pt`; quem pergunta sem idioma (a dispensa da sessão) cairia
+    na `en` e não a reconheceria. "Nunca tocar" vale em todas as tabelas."""
+    from dataclasses import replace
+    traducao = {"Sharing posts": "Compartilhamento de publicações", "Manage settings": "Gerenciar configurações"}
+    folha = _arvore("legenda_com_folha_sharing_posts")
+    em_pt = UiTree(elements=[replace(e, text=traducao.get(e.text, e.text)) for e in folha.elements],
+                   packages=folha.packages, sensitive=False)
+    assert telas.classificar(_conhecimento(), em_pt, package=PKG).tela != "aviso_de_compartilhar"   # só a `en`
+    gerenciar = next(e for e in em_pt.elements if e.text == "Gerenciar configurações")
+    assert telas.proibido_na_tela(_conhecimento(), em_pt, gerenciar)
+    assert not telas.proibido_na_tela(_conhecimento(), em_pt, next(e for e in em_pt.elements if e.text == "Share"))
 
 
 def test_a_sessao_nao_acharia_botao_para_dispensar_a_folha() -> None:
-    """A leitura da conta (`sessao.yaml`) dispensa telas com "ok" entre os rótulos globais: na folha real o "OK" é
-    um TextView NÃO clicável, então nada é escolhido — e assim tem de seguir."""
+    """A leitura da conta (`sessao.yaml`) dispensa telas pelos rótulos globais de recusa; na folha real nada é
+    escolhido (o "OK" é um TextView não clicável e, desde o 29.90, nem é rótulo de recusa) — e assim tem de seguir."""
     from app.integrations.app_declarado import conhecimento as app_declarado
     k = app_declarado.do_app(PKG)
     botao = k.botao_de_dispensa(_arvore("legenda_com_folha_sharing_posts"))
@@ -145,6 +159,21 @@ def _com_regra(extra: dict[str, object]) -> dict[str, object]:
 def test_a_carga_recusa_fechamento_mal_declarado(extra: dict[str, object], motivo: str) -> None:
     with pytest.raises(telas.ConhecimentoInvalido, match=motivo):
         telas.de_dados(_com_regra(extra))
+
+
+def test_telas_invalido_avisa_uma_vez_por_modificacao(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """29.90 (L2): o executor pergunta a cada volta; o `telas.yaml` inválido devolve `None` e avisa no log uma vez por
+    modificação do arquivo, não a cada volta. Arquivo novo (outra data) avisa de novo."""
+    import os
+    arquivo = tmp_path / "telas.yaml"
+    arquivo.write_text("telas: [", encoding="utf-8")
+    with caplog.at_level("WARNING", logger=telas.__name__):
+        assert [telas.da_pasta_por_data(tmp_path) for _ in range(3)] == [None, None, None]
+        assert len([r for r in caplog.records if "inválido" in r.getMessage()]) == 1
+        os.utime(arquivo, ns=(arquivo.stat().st_atime_ns, arquivo.stat().st_mtime_ns + 1_000_000_000))
+        assert telas.da_pasta_por_data(tmp_path) is None
+        assert len([r for r in caplog.records if "inválido" in r.getMessage()]) == 2
+    assert telas.da_pasta_por_data(tmp_path / "nenhuma") is None
 
 
 def test_fechar_so_em_tela_intermediaria() -> None:
@@ -248,10 +277,12 @@ class AtorQueLigaORotulo(AtorQueTocaNoShare):
 
 @asynccontextmanager
 async def _parque_com_dobra(tmp_path: Path, *, folha: bool, teimosa: bool = False,
-                            ator: AtorQueLigaORotulo) -> AsyncIterator[Harness]:
+                            ator: AtorQueLigaORotulo, classe: type[InstagramComDobra] | None = None,
+                            ) -> AsyncIterator[Harness]:
     """O `_parque` do 29.79, com a tela da legenda medida no android-13."""
-    h = Harness(tmp_path, 1, factory=lambda rt: InstagramComDobra(account="eu.teste", screen="legenda",
-                                                                  folha=folha, teimosa=teimosa))
+    fabrica = classe or InstagramComDobra
+    h = Harness(tmp_path, 1, factory=lambda rt: fabrica(account="eu.teste", screen="legenda",
+                                                        folha=folha, teimosa=teimosa))
     h.ai = CountingProvider(ator)
     h.encurtar_verificacao()
     await h.boot()
@@ -310,6 +341,16 @@ async def test_a_folha_que_nao_fecha_para_numa_pessoa_sem_mais_toque(tmp_path: P
         assert len(fake.toques_fora) == LIMITE_DE_FOLHAS and fake.toques_na_folha == []
         assert fake.shares == [] and not fake.rotulo_ligado
         assert h.ai.count("decide") == 0 and not ator.viu_a_folha
+        # 29.90: a parada sai num `step.updated` com o tipo de falha estável, para a regra de aviso consumir
+        import json
+        tipos = [json.loads(r["data"] or "{}").get("failure_kind")
+                 for r in _estado(h).db.query("SELECT data FROM events WHERE kind='step.updated' AND step_id=?",
+                                              (etapa["id"],))]
+        assert "aviso_do_app" in tipos, tipos
+        do_objetivo = [json.loads(r["data"] or "{}").get("failure_kind")
+                       for r in _estado(h).db.query("SELECT data FROM events WHERE kind='objective.updated' AND "
+                                                    "objective_id=?", (etapa["objective_id"],))]
+        assert "aviso_do_app" in do_objetivo, do_objetivo
 
 
 class AtorQueSoObserva(AtorQueLigaORotulo):
@@ -329,3 +370,123 @@ async def test_o_teto_de_acoes_do_ator_falha_a_etapa_sem_ir_a_verificacao(tmp_pa
         assert re.search(r"Limite de \d+ ações por etapa", etapa["status_detail"] or ""), etapa["status_detail"]
         assert h.ai.count("verify") == 0                         # nada de juiz para a etapa que não disse "pronto"
         assert _fake(h).shares == []
+
+
+class AtorQueVeAFolhaAbrirNoShare(AtorQueLigaORotulo):
+    """No 1º Share que decide, a folha "Sharing posts" abre no aparelho DEPOIS da leitura que a guarda confere: o
+    instante entre a conferência e o toque (29.90)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.fake: InstagramComDobra | None = None
+        self.abriu = False
+
+    async def decide(self, req: DecisionRequest) -> tuple[Decision, Usage]:
+        decisao, uso = await super().decide(req)
+        if decisao.args.get("is_commit_action") and not self.abriu and self.fake is not None:
+            self.abriu = True
+            self.fake.folha = True
+        return decisao, uso
+
+
+async def test_a_folha_que_abre_entre_a_guarda_e_o_share_nao_recebe_o_toque(tmp_path: Path) -> None:
+    """29.90: a releitura logo antes do toque de efeito vê a folha por cima do Share; o toque não sai, a regra fecha a
+    folha fora dela e o Share sai depois, uma vez. Sem a releitura, o toque nas coordenadas do Share cairia na folha."""
+    ator = AtorQueVeAFolhaAbrirNoShare()
+    async with _parque_com_dobra(tmp_path, folha=False, ator=ator) as h:
+        ator.fake = _fake(h)
+        etapa = await _publicar(h)
+        fake = _fake(h)
+        assert ator.abriu
+        assert fake.toques_na_folha == []                           # nada caiu na folha (nem no OK)
+        assert len(fake.toques_fora) == 1 and len(fake.shares) == 1 and fake.rotulo_ligado
+        recusadas = [a for a in _acoes(h, etapa["id"]) if a["status"] == "rejected"]
+        assert len(recusadas) == 1 and "tela mudou antes do toque [cobertura]" in (recusadas[0]["error"] or "")
+
+
+def test_cobertura_nova_no_ponto_e_pela_arvore_medida() -> None:
+    """A folha real por cima do Share: o acerto por área ainda acharia o texto "Share" embaixo; o critério é o
+    clicável que apareceu. A mesma árvore relida, sem nada novo, deixa tocar."""
+    from dataclasses import replace
+    from app.taskqueue.executor import MUDANCA_FORA_DO_LUGAR, MUDANCA_POR_CIMA, cobertura_nova_no_ponto
+    antes = _arvore("legenda_linha_visivel")
+    depois = _arvore("legenda_com_folha_sharing_posts")
+    share = next(e for e in antes.elements if e.resource_id.endswith("share_footer_button"))
+    assert cobertura_nova_no_ponto(antes, antes, share.center, share) is None
+    assert cobertura_nova_no_ponto(antes, depois, share.center, share)[0] == MUDANCA_POR_CIMA
+    # D2-B1: toque por x,y sem elemento no ponto: a cobertura nova ainda segura o toque
+    assert cobertura_nova_no_ponto(antes, depois, share.center, None)[0] == MUDANCA_POR_CIMA
+    assert cobertura_nova_no_ponto(antes, antes, share.center, None) is None
+    # o alvo que só mudou de lugar (1 px) tem motivo próprio, para a contagem da janela do deploy 35
+    x1, y1, x2, y2 = share.bounds
+    movido = UiTree(elements=[replace(e, bounds=(x1, y1 + 1, x2, y2 + 1)) if e is share else e
+                              for e in antes.elements], packages=antes.packages, sensitive=False)
+    assert cobertura_nova_no_ponto(antes, movido, share.center, share)[0] == MUDANCA_FORA_DO_LUGAR
+
+
+_EM_PORTUGUES = {"Sharing posts": "Compartilhamento de publicações", "Manage settings": "Gerenciar configurações"}
+
+
+@dataclass
+class InstagramComFolhaEmPortugues(InstagramComDobra):
+    """A mesma folha, com os textos em português: só a tabela `pt` do `telas.yaml` a reconhece."""
+
+    def _build(self) -> list[Node]:
+        return [replace(n, text=_EM_PORTUGUES.get(n.text, n.text)) for n in super()._build()]
+
+
+def test_a_regra_de_fechar_reconhece_a_folha_em_qualquer_idioma() -> None:
+    """D1c: quem fecha a folha não sabe o idioma da tela; a tabela padrão (`en`) não reconhece a folha em português."""
+    folha = _arvore("legenda_com_folha_sharing_posts")
+    em_pt = UiTree(elements=[replace(e, text=_EM_PORTUGUES.get(e.text, e.text)) for e in folha.elements],
+                   packages=folha.packages, sensitive=False)
+    regra = telas.regra_de_fechar(_conhecimento(), em_pt, package=PKG)
+    assert regra is not None and regra.tela == "aviso_de_compartilhar"
+    assert telas.regra_de_fechar(_conhecimento(), _arvore("legenda_linha_visivel"), package=PKG) is None
+
+
+async def test_a_folha_em_portugues_fecha_pela_regra_sem_o_ator_a_ver(tmp_path: Path) -> None:
+    """D1c no laço: a folha em português fecha com o toque fora dela, antes da receita e do ator."""
+    ator = AtorQueLigaORotulo()
+    async with _parque_com_dobra(tmp_path, folha=True, ator=ator, classe=InstagramComFolhaEmPortugues) as h:
+        await _publicar(h)
+        fake = _fake(h)
+        assert len(fake.toques_fora) == 1 and fake.toques_na_folha == []
+        assert fake.rotulo_ligado and len(fake.shares) == 1
+
+
+async def _tres_recusas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+                        tipo: str) -> tuple[Any, InstagramComDobra, list[str | None]]:
+    """A releitura antes do toque acha SEMPRE a mesma mudança (`tipo`): a 3ª recusa decide o desfecho (D5)."""
+    from app.taskqueue import executor as modulo
+    monkeypatch.setattr(modulo, "cobertura_nova_no_ponto", lambda antes, depois, ponto, alvo: (tipo, f"[simulado] {tipo}"))
+    ator = AtorQueLigaORotulo()
+    async with _parque_com_dobra(tmp_path, folha=False, ator=ator) as h:
+        etapa = await _publicar(h)
+        # de TODAS as versões da etapa: o `fail_or_retry` pode levar a uma revisão do plano, e `etapa` é a da última
+        recusas = [r["error"] for r in _estado(h).db.query(
+            "SELECT a.error FROM actions a JOIN attempts t ON t.id=a.attempt_id JOIN steps s ON s.id=t.step_id "
+            "WHERE s.run_id=? AND s.key='publicar' AND a.status='rejected' ORDER BY a.id", (etapa["run_id"],))]
+        return etapa, _fake(h), recusas
+
+
+async def test_tres_coberturas_novas_param_numa_pessoa_como_aviso_do_app(tmp_path: Path,
+                                                                        monkeypatch: pytest.MonkeyPatch) -> None:
+    """D5: um clicável NOVO por cima do botão de efeito, três vezes, é um aviso que o app não declara. A etapa para em
+    `waiting_user` sem nova navegação, com o tipo `aviso_do_app`; nada foi tocado."""
+    from app.taskqueue.executor import MUDANCA_POR_CIMA
+    etapa, fake, _ = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_POR_CIMA)
+    assert etapa["status"] == "waiting_user", (etapa["status"], etapa["status_detail"])
+    assert "Um aviso cobre o botão de efeito" in (etapa["status_detail"] or "")
+    assert fake.shares == []
+
+
+async def test_tres_alvos_movidos_falham_e_repetem(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """D5: só o alvo fora do lugar, três vezes, é tela se mexendo: `fail_or_retry`, como antes; nada foi tocado."""
+    from app.taskqueue.executor import LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO, MUDANCA_FORA_DO_LUGAR
+    etapa, fake, recusas = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_FORA_DO_LUGAR)
+    # a 3ª recusa sai pelo `fail_or_retry` (nova tentativa, que o roteiro do ator encerra por outro motivo): o que este
+    # teste guarda é o desfecho NÃO ser a pessoa, e as três recusas terem sido de alvo movido, sem toque
+    assert etapa["status"] != "waiting_user", (etapa["status"], etapa["status_detail"])
+    assert len([e for e in recusas if "[alvo_movido]" in (e or "")]) >= LIMITE_DE_RELEITURAS_ANTES_DO_EFEITO, recusas
+    assert fake.shares == []

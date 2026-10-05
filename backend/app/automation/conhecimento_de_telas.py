@@ -19,6 +19,7 @@ repositório: só ele declara tipo diferente de `autenticada`, sinal de texto, e
 from __future__ import annotations
 
 import copy
+import logging
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -30,6 +31,8 @@ import yaml
 
 from .hierarchy import (SUBTIPO_CODIGO, SUBTIPO_CONTA_TRAVADA, ContaTravada, UiElement, UiTree,
                         detectar_trava_generica, normalizar_texto_de_tela)
+
+log = logging.getLogger(__name__)
 
 #: Vocabulário dos motores. Quem trata cada tipo é o núcleo (sessão, executor), não o app.
 TIPOS = frozenset({"desafio", "dois_fatores", "intersticial", "login", "carregando", "autenticada"})
@@ -525,11 +528,27 @@ def _rotulo_normal(e: UiElement) -> str:
 
 
 def proibido_na_tela(k: ConhecimentoDeTelas, tree: UiTree, elemento: UiElement) -> bool:
-    """29.87 (D1 da revisão): o `elemento` leva um rótulo do `nunca` da regra que reconhece esta tela? Para quem toca
-    sem IA por rótulo genérico (a dispensa da sessão tem "ok" entre os de recusa) não tocar no que o app declarou
-    intocável ("OK" de um aviso numa conta real)."""
-    regra = k.regra(classificar(k, tree, package=None).tela)
-    return regra is not None and bool(regra.nunca) and _rotulo_normal(elemento) in {n.casefold() for n in regra.nunca}
+    """29.87 (D1 da revisão): o `elemento` leva um rótulo do `nunca` de uma regra que reconhece esta tela? Para quem
+    toca sem IA por rótulo genérico (a dispensa da sessão) não tocar no que o app declarou intocável ("OK" de um aviso
+    numa conta real). 29.90 (D1b): em TODOS os idiomas declarados, como o desafio (ADR-055): quem chama não sabe o
+    idioma da tela, e "nunca tocar" não pode depender de acertar a tabela."""
+    rotulo = _rotulo_normal(elemento)
+    for idioma in k.sinais:
+        regra = k.regra(classificar(k, tree, package=None, locale=idioma).tela)
+        if regra is not None and rotulo in {n.casefold() for n in regra.nunca}:
+            return True
+    return False
+
+
+def regra_de_fechar(k: ConhecimentoDeTelas, tree: UiTree, *, package: str | None) -> RegraDeTela | None:
+    """29.90 (D1c da revisão): a regra com `fechar` que reconhece esta tela em QUALQUER idioma declarado, ou `None`.
+    Quem fecha a folha não sabe o idioma da tela; só pela tabela padrão, a folha em português iria à receita ou ao
+    ator, onde o `nunca` não protege."""
+    for idioma in k.sinais:
+        regra = k.regra(classificar(k, tree, package=package, locale=idioma).tela)
+        if regra is not None and regra.fechar_fora is not None:
+            return regra
+    return None
 
 
 def toque_fora_da_folha(regra: RegraDeTela, tree: UiTree) -> tuple[int, int] | None:
@@ -737,13 +756,28 @@ def _da_pasta_com_data(caminho: str, mtime_ns: int) -> ConhecimentoDeTelas:
     return carregar(Path(caminho))
 
 
+@lru_cache(maxsize=32)
+def _da_pasta_ou_aviso(caminho: str, mtime_ns: int) -> ConhecimentoDeTelas | None:
+    # O inválido também fica no cache: o aviso sai uma vez por modificação do arquivo, não a cada volta (29.90, L2).
+    # Só o conteúdo inválido: um `OSError` passageiro sobe sem entrar no cache (a próxima volta lê de novo).
+    try:
+        return carregar(Path(caminho))
+    except (ConhecimentoInvalido, UnicodeDecodeError) as exc:
+        log.warning("conhecimento de telas inválido em %s; segue sem ele até o arquivo mudar: %s", caminho, exc)
+        return None
+
+
 def da_pasta_por_data(pasta: Path) -> ConhecimentoDeTelas | None:
     """`da_pasta` lido uma vez por modificação do arquivo: para quem consulta a cada volta do laço (29.87, E2 da
-    revisão). `None` sem `telas.yaml`; arquivo inválido levanta `ConhecimentoInvalido` (quem chama decide)."""
+    revisão). `None` sem `telas.yaml` ou com ele inválido; o inválido é avisado no log uma vez por modificação."""
     caminho = pasta / "telas.yaml"
-    if not caminho.is_file():
+    try:
+        if not caminho.is_file():
+            return None
+        return _da_pasta_ou_aviso(str(caminho), caminho.stat().st_mtime_ns)
+    except OSError as exc:                          # passageiro (o arquivo sumiu, travado): fora do cache
+        log.warning("conhecimento de telas ilegível em %s: %s", caminho, exc)
         return None
-    return _da_pasta_com_data(str(caminho), caminho.stat().st_mtime_ns)
 
 
 def dicas_da_tela(pasta: Path, tree: UiTree, *, package: str | None) -> list[str]:

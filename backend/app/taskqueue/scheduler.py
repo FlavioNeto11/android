@@ -1785,9 +1785,12 @@ class Scheduler:
             repo.transition_step(step.id, StepStatus.waiting_user, detail=detail, level="warn", error_kind=kind)
             # `blocked_kind='ai'` (achado #93, ponto 4): distingue, na tela, "a IA está travando este item"
             # (chave ausente, sem crédito, recusa por política) de política do perfil, limite ou aprovação.
+            # 29.90: o tipo de falha da etapa (ADR-054) vai no `objective.updated`, para a regra de aviso (28.40)
+            # escolher o texto sem cruzar com o `step.updated`.
             repo.set_objective(oid, ObjectiveStatus.waiting_user, detail=detail, blocked_reason=detail, needs=out.needs,
                                level="warn", message=f"{rt.id}: bloqueado — {detail}",
-                               blocked_kind="ai" if out.ai_blocked else None)
+                               blocked_kind="ai" if out.ai_blocked else None,
+                               dados={"failure_kind": repo.step_row(step.id)["failure_kind"]})
             rt.attention = f"Bloqueado: {detail}"
             return False
         if o == Outcome.uncertain:
