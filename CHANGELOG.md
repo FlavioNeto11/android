@@ -23,13 +23,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - `scripts/portal-prova-de-fora.sh`: o destino do redirecionamento de `/central` vem da borda e ia cru para a linha da
   prova, tanto no `ok` quanto no `FALHOU`. Um `\r\n` ou um ESC de terceiro partiria a linha em duas, a segunda com cara
-  de `ok`, ou apagaria a tela. Agora ele passa por `portal-regua-da-borda.py linha`: o mesmo `_ascii` das linhas
-  `FALHOU` (controle vira `?`, só ASCII), até 200 caracteres, sem quebra no fim, porque o `print` do Windows poria um
-  CR que o `$(...)` não tira. A decisão (`https://<host>/central/` no começo) continua sobre o valor cru.
-- `scripts/tests/test_portal_prova_de_fora.py`: dois casos pelo `curl` falso. Um destino de fora com CR, LF e ESC dá
-  `FALHOU` numa linha só; um destino certo com lixo atrás dá `ok` numa linha só, com `?`.
-- Prova `simulated` (central, 05/10, 09:48Z–09:52Z): `test_portal_prova_de_fora.py` 28 passed;
-  `test_portal_borda.py` 123 passed.
+  de `ok`, ou apagaria a tela. Agora ele passa por `portal-regua-da-borda.py linha`:
+  - todo caractere fora de 0x21–0x7E vira `?`, sem a dobra do NFKD (L1 da leitura do #396). Um `ｈttps` de largura
+    total ou uma ligadura apareceria igual ao esperado ao lado de um FALHOU;
+  - o corte em 200 caracteres diz o tamanho total;
+  - não há quebra no fim, porque o `print` do Windows poria um CR que o `$(...)` não tira.
+  A decisão (`https://<host>/central/` no começo) continua sobre o valor cru.
+- `scripts/tests/test_portal_prova_de_fora.py`, pelo `curl` falso:
+  - um destino de fora com CR, LF e ESC dá `FALHOU` numa linha só;
+  - um destino certo com lixo atrás dá `ok` numa linha só, com `?`;
+  - largura total, C1 (U+0085) e BiDi (U+202E) chegam como `?`;
+  - o destino longo diz o tamanho.
+  A régua com o NFKD reprova os quatro casos do L1.
+- Prova `simulated` (central, 05/10):
+  - de 09:48Z a 09:52Z: `test_portal_prova_de_fora.py` 28 passed e `test_portal_borda.py` 123 passed;
+  - com o L1, de 10:02Z a 10:06Z: `test_portal_prova_de_fora.py` 32 passed e `docs-check` 0.
 
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
