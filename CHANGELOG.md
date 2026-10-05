@@ -347,6 +347,41 @@ Leitura do W1 e do 29.112 pelas revisoras.
 - Prova `simulated`: `backend/tests/test_treino_gravacao_orfa.py` (3), e `test_modo_treinamento.py` (7 passed).
   Real: `not_run` (reinício do central com gravação aberta).
 
+## 2026-10-05 — 31.83 (2ª leitura): duplicadas, comando por posição, tipos errados e parâmetro inválido (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `entrada_duplicada` (400): entrada em duas etapas ou em etapa e `discarded` (o `_receitas` tirava o toque da etapa calado).
+- `comando_generico` passa a olhar a posição: o comando começa por palavra fixa e tem 2 palavras e 6 letras fixas (era 10).
+  Barra `{pedido} no instagram` e `{acao} para o cliente`; passa `envie {mensagem} para {contato}` e `ligue para {contato}`.
+  `TRAINER_SYSTEM`: o comando começa pelo verbo.
+- Tipo errado vira 400 (`etapa_invalida`/`proposta_invalida`) em vez de 500: `title`/`goal`/`value`, `bindings`,
+  `inputs` que não é lista de inteiros (`"12"` virava `[1, 2]` calado), `discarded`, `parameters`, `summary`, `app_id` e
+  comando que não é texto.
+- `parametro_invalido`: `{Contato}`/`{endereço}` no comando não casam o padrão e ficavam literais.
+- Adendo v1.57 e doc do domínio atualizados. Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (46),
+  com mutação (S1 3 falham, S2 3 + 2, N3 2). Real: `not_run`.
+
+## 2026-10-05 — 31.93: chave repetida de 40 caracteres não trava mais o `propose` (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `normalizar_proposta` repetia `f"{k}_2"[:40]` até a chave ser nova; com 40 caracteres o corte devolvia a mesma chave e o
+  laço nunca saía, congelando o laço de eventos do backend inteiro. `_chave_unica` usa `_2`, `_3`… cortando a base para o
+  sufixo caber (termina sempre).
+- `_chave`: título só com símbolos vira `etapa`, e a chave nunca passa de 40 caracteres (antes `etapa_<40>` dava 46 e
+  500 no `PlanStep`).
+- Prova `simulated`: `backend/tests/test_treino_chave_da_etapa.py` (7, com prazo de 2 s numa thread); com o código antigo
+  5 falham (4 por laço infinito). Real: `not_run`.
+
+## 2026-10-05 — 31.83: o `save` do modo treinamento valida a proposta antes de escrever (branch fix/31-83-validacao-do-salvar-do-treino)
+
+- `validar_proposta_para_salvar` (`training/skills.py`) roda antes de qualquer escrita e recusa com 400 e mensagem em
+  português: `etapa_invalida` (sem chave, chave repetida, sem título/objetivo; antes `KeyError`/500),
+  `parametro_fora_do_comando`, `parametro_nao_declarado`, `comando_generico` (menos de 2 palavras/10 letras fixas),
+  `pos_condicao_vazia` (etapa com efeito) e `entradas_sem_etapa` (gravada fora de etapa e de `discarded`).
+  Etapa sem efeito e sem pós-condição segue aceita; a resposta traz `warnings`.
+- `TRAINER_SYSTEM` manda toda entrada para uma etapa ou `discarded`, teclas de apagar de limpeza e `back`/`home` de
+  engano para `discarded`, e pós-condição sempre descrita. Esquema de saída igual.
+- Adendo v1.57 no contrato; doc em `docs/dominios/perfis-e-instagram.md`.
+- Prova `simulated`: `backend/tests/test_treino_validacao_do_salvar.py` (13), com mutação por código; `real`: `not_run`.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

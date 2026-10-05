@@ -6368,3 +6368,26 @@ Mudanças aditivas; o painel não muda.
 - A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
   que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
 - **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).
+
+## Adendo v1.57 (05/10/2026; número da orquestradora; item 31.83) — o `save` do treinamento recusa a proposta que nunca funcionaria
+
+`POST /api/training/{session_id}/save` confere a proposta ANTES de gravar (fluxo, escopo, receita, status da sessão).
+Novos 400, no formato de sempre (`detail: {code, message}`; a mensagem diz o que corrigir). Os códigos antigos
+(`no_proposal`, `invalid_command`, `ambiguous_command`, `unknown_profile`, `unknown_group`, `capability_required`) e o 409
+`duplicate_command` ficam como estavam:
+- `etapa_invalida`: etapa sem `key`, com `key` repetida ou fora de `^[a-z][a-z0-9_]{1,40}$`, sem `title` e `goal`, ou com
+  `postcondition.kind` inválido. Antes: 500.
+- `parametro_fora_do_comando`: parâmetro em `parameters` que o `command_template` não usa.
+- `parametro_nao_declarado`: `{x}` no comando sem parâmetro declarado (`instance_id`, `run_id` e `account_label` não contam).
+- `comando_generico`: o comando não começa por palavra fixa (ex.: `{pedido} no instagram`), ou tem menos de 2 palavras ou de 6 letras/dígitos fixos fora das chaves. `ligue para {contato}` passa; `siga {perfil}` não.
+- `parametro_invalido`: `{…}` no comando que não é nome válido (minúsculas, sem acento, números e `_`).
+- `entrada_duplicada`: entrada em duas etapas, ou em uma etapa e em `discarded`; a mensagem lista os `#seq`.
+- `pos_condicao_vazia`: etapa com `side_effect` sem `postcondition.value` nem `description` (salvo ação de catálogo).
+- `entradas_sem_etapa`: entrada gravada fora de `steps[].inputs` e de `discarded`; a mensagem lista os `#seq`.
+- `proposta_invalida`: tipo errado: `steps`/`parameters`/`discarded` que não é lista, item de `discarded` sem `seq` inteiro, `summary`/`app_id` que não é texto.
+- `etapa_invalida` cobre também `inputs` que não é lista de inteiros, `bindings` que não é lista de objetos e `title`/`goal`/`value`/`description` que não é texto.
+- Os códigos `entradas_sem_etapa`, `entrada_duplicada`, `parametro_fora_do_comando`, `parametro_nao_declarado`, `pos_condicao_vazia`, `etapa_invalida` e `proposta_invalida` terminam a mensagem com "Peça uma nova proposta à IA." (a tela ainda não edita etapas; 31.90).
+
+Campo aditivo na resposta de sucesso: `warnings: string[]` (vazio quando não há), com as etapas sem efeito aceitas sem
+descrição de pós-condição (o objetivo serviu de critério). O painel pode ignorá-lo.
+- **Prova:** `simulated` (`backend/tests/test_treino_validacao_do_salvar.py`).
