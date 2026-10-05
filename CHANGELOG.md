@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 29.118: com a lista velha, os lotes que decidem por ela ficam indisponíveis (branch fix/29-118-lote-lista-velha)
+
+Leitura do 29.116 pela Ferramentas do Claude.
+
+- B1: depois do aviso "a lista não se releu", nada barrava. Grupo, bloquear e reativar decidem pelo estado da lista na
+  tela ("já estava…", ok e sem PATCH), então um lote sobre a lista velha relatava sucesso sem mudar nada, o defeito do
+  29.114. Agora `ProfilesPage` passa `listaVelha` à barra, e os três ficam indisponíveis com o motivo "A lista não se
+  releu: use “Tentar de novo”." até a leitura dar certo. Apagar, fotos e completar seguem livres.
+- N: o `confirmar` espera a releitura até `PRAZO_DA_RELEITURA_MS` (45 s). Passado o prazo, conta como não relida: uma
+  rajada de releituras não prende o diálogo em "executando".
+- A1: o `aria-busy` sai do `<dialog>` inteiro, onde podia fazer o leitor de tela segurar o "Executando…/Relendo…" do
+  status, e fica só na lista "Resultado por persona".
+- Testes novos em `AcoesEmLote.test.tsx`: B1, o clique fora e o prazo. Prova `not_run`: escritos durante o congelamento
+  da suíte 37, rodam depois do "no ar".
+
 ## 2026-10-05 — 29.116: o lote diz quando a lista não se releu (branch fix/29-116-lote-releitura-falha)
 
 Leitura do 29.114 pela Ferramentas do Claude.

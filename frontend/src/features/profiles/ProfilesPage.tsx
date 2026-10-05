@@ -335,7 +335,7 @@ export function ProfilesPage() {
       )}
 
       <BarraDeLote selecionadas={pessoas.filter((p) => selecionadas.has(p.id))} grupos={grupos}
-                   onLimpar={() => setSelecionadas(new Set())} onConcluido={ler} />
+                   onLimpar={() => setSelecionadas(new Set())} onConcluido={ler} listaVelha={erro !== null} />
 
       {criando === 'prompt' ? (
         <NovaPersonaPorPrompt onClose={() => setCriando(null)} onCriada={criada} onLote={load}

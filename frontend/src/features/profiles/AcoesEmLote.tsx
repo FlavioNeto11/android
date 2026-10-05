@@ -38,13 +38,28 @@ const MAX_INSTRUCOES = 500;
 export const SEM_CONTA_NO_GRUPO = 'Sem conta de cadastro: o grupo de acesso governa o que a conta faz. '
   + 'Crie a conta na guia Contas e acesso antes de pôr a persona num grupo.';
 
-export function BarraDeLote({ selecionadas, grupos, onLimpar, onConcluido }: {
+/**
+ * Grupo, bloquear e reativar decidem pelo estado da lista na tela ("já estava…": ok e sem PATCH). Com a lista velha,
+ * relatariam sucesso sem mudar nada, o defeito do 29.114; apagar, fotos e completar não têm esse atalho (29.118).
+ */
+export const LISTA_VELHA = 'A lista não se releu: use “Tentar de novo”.';
+
+/** Quanto o lote espera a releitura antes de mostrar o resumo dizendo que a lista não se releu (29.118). */
+export const PRAZO_DA_RELEITURA_MS = 45_000;
+
+export function BarraDeLote({
+  selecionadas, grupos, onLimpar, onConcluido, listaVelha = false, prazoDaReleituraMs = PRAZO_DA_RELEITURA_MS,
+}: {
   selecionadas: PersonaDTO[];
   grupos: PolicyGroup[];
   onLimpar: () => void;
   /** Relê a lista depois de uma operação (apagadas saem, status e grupo mudam); `false` quando ela não se releu. */
   onConcluido: () => Promise<boolean>;
+  /** A última leitura da lista falhou: o que está na tela pode estar velho. */
+  listaVelha?: boolean;
+  prazoDaReleituraMs?: number;
 }) {
+  const decidePelaLista = listaVelha ? LISTA_VELHA : null;
   const [operacao, setOperacao] = useState<OperacaoDeLote | null>(null);
   const n = selecionadas.length;
   if (n === 0 && operacao === null) return null;
@@ -58,9 +73,9 @@ export function BarraDeLote({ selecionadas, grupos, onLimpar, onConcluido }: {
             </span>
             <Button size="sm" icon={ImagePlus} onClick={() => setOperacao('fotos')}>Gerar mais fotos</Button>
             <Button size="sm" icon={Sparkles} onClick={() => setOperacao('completar')}>Completar com IA</Button>
-            <Button size="sm" icon={ShieldCheck} onClick={() => setOperacao('grupo')}>Grupo de acesso</Button>
-            <Button size="sm" icon={Ban} onClick={() => setOperacao('bloquear')}>Bloquear</Button>
-            <Button size="sm" icon={RotateCcw} onClick={() => setOperacao('reativar')}>Reativar</Button>
+            <Button size="sm" icon={ShieldCheck} disabledReason={decidePelaLista} onClick={() => setOperacao('grupo')}>Grupo de acesso</Button>
+            <Button size="sm" icon={Ban} disabledReason={decidePelaLista} onClick={() => setOperacao('bloquear')}>Bloquear</Button>
+            <Button size="sm" icon={RotateCcw} disabledReason={decidePelaLista} onClick={() => setOperacao('reativar')}>Reativar</Button>
             <span className={styles.loteSep} aria-hidden />
             <Button size="sm" variant="dangerGhost" icon={Trash2} onClick={() => setOperacao('apagar')}>Apagar…</Button>
             <Button size="sm" variant="ghost" icon={X} iconOnly label="Limpar seleção" onClick={onLimpar} />
@@ -69,7 +84,7 @@ export function BarraDeLote({ selecionadas, grupos, onLimpar, onConcluido }: {
       ) : null}
       {operacao ? (
         <DialogoDeLote key={operacao} operacao={operacao} pessoas={selecionadas} grupos={grupos}
-                       onFechar={() => setOperacao(null)} onConcluido={onConcluido} />
+                       onFechar={() => setOperacao(null)} onConcluido={onConcluido} prazoDaReleituraMs={prazoDaReleituraMs} />
       ) : null}
     </>
   );
@@ -77,12 +92,13 @@ export function BarraDeLote({ selecionadas, grupos, onLimpar, onConcluido }: {
 
 type Fase = 'parametros' | 'executando' | 'resumo';
 
-function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConcluido }: {
+function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConcluido, prazoDaReleituraMs }: {
   operacao: OperacaoDeLote;
   pessoas: PersonaDTO[];
   grupos: PolicyGroup[];
   onFechar: () => void;
   onConcluido: () => Promise<boolean>;
+  prazoDaReleituraMs: number;
 }) {
   const { ai, falhou: aiFalhou } = useAiStatus();
   // A seleção é FOTOGRAFADA ao abrir: a lista se relê no fim (apagadas somem) e o resumo precisa continuar dizendo
@@ -151,11 +167,19 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
     // decidia pela lista velha ("já estava sem grupo", ok e sem PATCH, com a persona ainda no grupo) (29.114).
     // As ações já foram feitas: a releitura que falha ou rejeita não as desfaz nem prende o diálogo, mas o resumo diz
     // que a lista na tela ficou velha, para ninguém decidir o próximo lote por ela.
+    // O prazo cobre a rajada de releituras (cada uma mais nova espera a seguinte): o diálogo nunca fica preso em
+    // "executando"; passado o prazo, conta como não relida (29.118).
     let relida = false;
+    let prazo: ReturnType<typeof setTimeout> | undefined;
     try {
-      relida = await onConcluido();
+      relida = await Promise.race([
+        onConcluido(),
+        new Promise<boolean>((r) => { prazo = setTimeout(() => r(false), prazoDaReleituraMs); }),
+      ]);
     } catch {
       relida = false;
+    } finally {
+      clearTimeout(prazo);
     }
     setListaVelha(!relida);
     setFase('resumo');
@@ -346,7 +370,7 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
                 página antes da próxima ação em lote.
               </p>
             ) : null}
-            <ul className={styles.loteLista} aria-label="Resultado por persona">
+            <ul className={styles.loteLista} aria-label="Resultado por persona" aria-busy={fase === 'executando' || undefined}>
               {pessoas.map((p, i) => {
                 const r = resultados[i];
                 return (
