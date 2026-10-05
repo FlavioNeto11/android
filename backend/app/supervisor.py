@@ -15,9 +15,10 @@ Três decisões que este arquivo carrega:
    acabou de subir. O gatilho é ausência de resposta: conexão recusada, tempo esgotado, processo morto.
 2. **Espera crescente.** Backend que morre na subida (migração quebrada, porta ocupada) reiniciado em laço
    apertado enche o disco de log e esconde a causa. A espera dobra até um teto.
-3. **Encerramento com prazo antes do tiro.** `terminate` primeiro para o backend fechar o Appium e o banco; só
-   depois `kill`, e então os filhos que sobraram — senão um Appium órfão segura a 4723 e a instância nova sobe
-   sem automação.
+3. **Encerramento com prazo antes do tiro, e só do backend.** `terminate` primeiro para o backend fechar o banco;
+   só depois `kill`. Nada além do processo do backend morre aqui (29.125): o Appium, o servidor de rede e os
+   emuladores ficam vivos de propósito e são do backend seguinte, que readota o emulador pelo PID e decide o Appium
+   que achar na porta (`AppiumServer.start`, K-039: readota o que prova o mascaramento, troca o que não prova).
 
 Testável de propósito: quem inicia, quem confere saúde, quem encerra e quem dorme entram pelo construtor. O
 teste roda dezenas de ciclos em milissegundos sem subir processo nenhum.
@@ -118,7 +119,12 @@ def saude_responde(url: str, timeout: float = 5.0) -> bool:
 
 
 def encerrar_processo(proc: Processo, prazo_s: float = PRAZO_DE_SAIDA_S) -> None:
-    """Pede a saída, espera o prazo, mata, e então varre os filhos que sobraram (o Appium é um deles)."""
+    """Pede a saída, espera o prazo e mata. Só o processo do backend (ver o item 3 do docstring do módulo).
+
+    Até o 29.125 havia aqui uma varredura dos filhos (`psutil.Process(pid).children`), para o Appium não segurar a
+    4723. No Windows ela nunca rodava: o filho direto do supervisor é o lançador do `python.exe` do venv, e depois do
+    kill o `psutil.Process(pid)` dá `NoSuchProcess` (censo de 05/10: o Appium e o sing-box do backend do deploy 37
+    seguiram vivos, com o pai morto). Quem resolve o Appium que sobra é o backend seguinte, não o supervisor."""
     try:
         proc.terminate()
         proc.wait(timeout=prazo_s)
@@ -127,10 +133,9 @@ def encerrar_processo(proc: Processo, prazo_s: float = PRAZO_DE_SAIDA_S) -> None
             proc.kill()
         except Exception:  # noqa: BLE001 - morreu entre uma coisa e outra
             pass
-    _matar_filhos(proc.pid)
 
 
-#: Filhos do backend que NÃO se mata no reinício: os emuladores. Nome do processo em minúsculas.
+#: Processos que limpeza nenhuma encerra: os emuladores. Nome do processo em minúsculas.
 _POUPADOS = ("emulator", "qemu")
 
 
@@ -138,29 +143,6 @@ def e_emulador(nome: str) -> bool:
     """Também é o critério do `AppiumServer` ao trocar o Appium órfão: emulador não se encerra em limpeza nenhuma."""
     nome = nome.lower()
     return any(marca in nome for marca in _POUPADOS)
-
-
-def _matar_filhos(pid: int) -> None:
-    """O Appium é filho do backend e não morre com ele quando o backend é morto à força: sem isto, a 4723 fica
-    presa e a instância nova sobe sem automação.
-
-    Os emuladores também são filhos — e são poupados de propósito. `children(recursive=True)` os alcançava e a
-    docstring só falava do Appium: cada reinício por falha de saúde derrubava o parque local inteiro, quando o
-    backend que sobe em seguida READOTA emulador vivo pelo PID (`devices/manager.py`, "readotado após reinício do
-    backend"). Matar é perder boot e estado à toa; deixar é o que o próprio backend espera encontrar.
-    """
-    try:
-        import psutil  # noqa: PLC0415 - só necessário na limpeza, e o supervisor tem de subir sem ele também
-        pai = psutil.Process(pid)
-    except Exception:  # noqa: BLE001 - já não existe: nada a varrer
-        return
-    for filho in pai.children(recursive=True):
-        try:
-            if e_emulador(filho.name()):
-                continue
-            filho.kill()
-        except Exception:  # noqa: BLE001 - corrida normal com o processo terminando sozinho
-            pass
 
 
 def iniciar_backend(raiz_backend: Path, log_dir: Path, partida_id: str | None = None) -> Processo:
@@ -302,8 +284,8 @@ class Supervisor:
             return
         if self.proc.poll() is not None:
             # Morreu sozinho (crash, `stop.ps1`, Windows Update). Não há o que encerrar; só subir de novo. O Appium
-            # que ele subiu fica sem pai para `_matar_filhos` varrer: quem o troca, se não o provar mascarado, é o
-            # backend seguinte, em `AppiumServer.start` (K-039), que conhece as regras e o critério de "é nosso".
+            # que ele subiu fica na porta: quem o troca, se não o provar mascarado, é o backend seguinte, em
+            # `AppiumServer.start` (K-039), que conhece as regras e o critério de "é nosso".
             self.relatorio.reiniciou_por_morte += 1
             self.proc = None
             self._esperar_antes_de_subir()

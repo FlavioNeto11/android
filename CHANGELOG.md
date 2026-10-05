@@ -97,6 +97,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   de falha, veredito do snapshot, executor do worker, pacote do agente, log do emulador) e `@tests/catracas.txt` 88
   passed. `real`: `not_run` até o deploy (o Orquestrador religa 01, 03 e 06 por `start`).
 
+## 2026-10-05 — 29.125: o supervisor só mata o backend (branch fix/29-125-supervisor-so-o-backend)
+
+- Censo de 05/10: o Appium e o sing-box do backend do deploy 37 seguiam vivos com o pai morto. A varredura de filhos
+  do supervisor (`_matar_filhos`, `psutil.Process(pid).children(recursive=True)`) nunca alcançava nada no Windows:
+  o PID guardado é o do lançador do `python.exe` do venv, e depois do kill o `psutil.Process(pid)` dá
+  `NoSuchProcess`. Decisão do Orquestrador, opção (i): a varredura sai, e o texto passa a dizer o que vale. O
+  supervisor só mata o processo do backend; Appium, servidor de rede e emuladores ficam vivos de propósito e são do
+  backend seguinte (readoção do emulador pelo PID; o Appium da porta é readotado se provar o mascaramento e trocado
+  se não, `AppiumServer.start`, K-039). `e_emulador` fica: o `AppiumServer` usa.
+- O teste da varredura (`test_a_varredura_de_filhos_mata_o_appium_e_poupa_os_emuladores`), que exercia o código
+  removido, virou `test_o_supervisor_nao_mata_nada_alem_do_processo_do_backend`: o encerramento só toca o processo
+  recebido (com `psutil` e `os.kill` proibidos), e o `supervisor.py` não importa `psutil` nem `signal`, nem chama
+  `children`, `process_iter` ou `killpg`. Aprendizado da linha "matar pelo supervisor" corrigido.
+- Prova `simulated`: o teste novo passa e reprova com o `supervisor.py` anterior (056b14af). Vizinhos: 108 passed
+  (supervisão do central, partida, vigia, identidade do backend, ambiente dos filhos, arquitetura e os
+  `test_appium*`) e `@tests/catracas.txt` 88 passed. `not_run`: o mypy e a prova real (o próximo kill pelo
+  supervisor deixa o Appium para o backend seguinte, como já acontecia na prática).
+
 ## 2026-10-05 — 29.124: o supervisor espera a partida lenta e pausa depois de reinícios seguidos (branch fix/29-124-supervisor-partida)
 
 - No incidente de 05/10, com o disco saturado, a partida do backend passou dos 90 s de carência e mais três
