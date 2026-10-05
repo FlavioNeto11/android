@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-552 de 654 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+569 de 660 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -305,10 +305,11 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.47 | implemented | simulated | claude-opus-5-5 | — | #426, ponta afff08cd. Simulado: backend/tests/test_telegram_entrada.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n… | None |
 | 28.48 | implemented | simulated | claude-opus-5-5 | — | #431, ponta 5cb4f5af. Simulado: backend/tests/test_rotulo_ia.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 1168… | None |
 | 28.49 | implemented | simulated | claude-opus-5-5 | — | #445, ponta 9ef22d8e. Simulado: backend/tests/test_rotulo_ia.py::*, backend/tests/test_telegram_entrada.py::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 ×… | None |
-| 28.50 | pendente | — | — | — |  |  |
+| 28.50 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 2f523a4c (junto do 30.80 B). Simulado: backend/tests/test_avisos_ensinado.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Wi… | None |
 | 28.51 | partial | simulated | claude-opus-5-5 | — | #447, ponta 4015b06c (com o delta do segundo fator), só o A. Simulado: backend/tests/test_canais_respostas_as_perguntas.py::*, backend/tests/test_trello_leitor.py::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17… | None |
-| 28.52 | pendente | — | — | — |  |  |
+| 28.52 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 5279e4c2. Simulado: backend/tests/test_canais_respostas_as_perguntas.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows… | None |
 | 28.53 | pendente | — | — | — |  |  |
+| 28.54 | pendente | — | — | — |  |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -442,15 +443,18 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.136 | pendente | — | — | — |  |  |
 | 29.137 | pendente | — | — | — |  |  |
 | 29.138 | implemented | simulated | claude-opus-5-5 | — | #446, no mesmo ramo do 29.131, com o S1 da segunda leitura (9702119d). Simulado: backend/tests/test_achados_29_138.py::*, backend/tests/test_appium_start_pid_novo.py::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 +… | None |
-| 29.139 | pendente | — | — | — |  |  |
-| 29.140 | pendente | — | — | — |  |  |
+| 29.139 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 66a905c4 (só teste). Real como observação: as duas falhas conhecidas do PG sumiram nesta suíte. Simulado: backend/tests/test_sobreposicao.py::*, backend/tests/test_sobreposicao_com_duas_causas.py::*. Suíte 41 sobr… | None |
+| 29.140 | implemented | simulated | claude-sonnet-5-5 | — | Ponta e96efe5b (junção da Portal sobre 7d9c4acd). Simulado: frontend/src/features/profiles/ProfileDetail.test.tsx::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só… | None |
 | 29.141 | implemented | real | claude-opus-5-5 | — | REAL (percurso no navegador): 05/10/2026 ~18:09Z, WIN-7S2UASNLFOP, commit 9f9e2b39, Personas > lote > Grupo de acesso. Com duas personas sem conta, o 'Pôr no grupo Operação' fica com aria-disabled=true e o tooltip diz '… | None |
 | 29.142 | pendente | — | — | — |  |  |
-| 29.143 | pendente | — | — | — |  |  |
+| 29.143 | implemented | simulated | claude-sonnet-5-5 | — | Backend d64446e8 e painel c7e768dc, juntos. Simulado: backend/tests/test_controle_com_dono_29_143.py::*, frontend/src/store/live.test.ts::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na orde… | None |
 | 29.144 | implemented | real | claude-opus-5-5 | — | #448, ponta 1b94aa0d. Real: a etapa 5 desta suíte rodou pelo mypy-catraca.py com MYPY_PYTHON e deu 257 = teto. Simulado: scripts/tests/test_mypy_catraca.py::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas… | None |
 | 29.145 | pendente | — | — | — |  |  |
-| 29.146 | pendente | — | — | — |  |  |
+| 29.146 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 2cf2979e (com o 29.142). Simulado: backend/tests/test_rede_por_aparelho.py::*, frontend/src/features/training/TrainingBar.test.tsx::*, frontend/src/features/rede/RedePage.test.tsx::*. Suíte 41 sobre a integração a… | None |
 | 29.147 | pendente | — | — | — |  |  |
+| 29.148 | pendente | — | — | — |  |  |
+| 29.149 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 5c19f511: o teste usava data fixa como futuro e falhava em qualquer ramo desde 05/10 21:00Z. Simulado: frontend/src/features/runs/PortaDoPlano.test.tsx::*. Suíte 41 sobre a integração ac77742c (origin/main 6545296… | None |
+| 29.150 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -524,7 +528,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.68 | implemented | simulated | claude-fable-5-1 | — | Deploy 33 no ar (central a0c9865e, migração 107; /api/health status ok e problems [] lido às 2026-10-05T01:22:24Z; anúncio da orquestradora às 01:17:42Z). Entrou o #324 (7096baae, merge fa7a39aa): POST /runs/{id}/porta/… | None |
 | 30.69 | implemented | simulated | claude-fable-5-1 | — | PR #390 (ponta final e08b1e7d, o merge da 419ba865 do #382/29.93), na suíte 36, implantado no deploy 36 (e5f1b22b, subida 05/10/2026 09:42Z, migração 113); suíte 36: scripts/tests 631 passed; SQLite -n 6 11276 passed, 1… | None |
 | 30.70 | implemented | simulated | claude-fable-5-1 | — | Deploy 35 no ar (central d025b671, 05/10/2026 06:18Z; a orquestradora completa). PR https://github.com/FlavioNeto11/android/pull/374 (fix/30-70-espera-nao-e-veredito, ponta b50ab384, base 48d2e716), lido pela Ferramenta… | None |
-| 30.71 | pendente | — | — | — |  |  |
+| 30.71 | implemented | simulated | claude-fable-5-1 | — | Ponta 947806ed (com 095d4f6d e 10532f77), na main pelo merge 33f98019. Simulado: backend/tests/test_digest_na_saida_da_espera.py::* (suíte que integrou o commit; a lista exata de testes está no resultado dessa suíte). R… |  |
 | 30.72 | pendente | — | — | — |  |  |
 | 30.73 | pendente | — | — | — |  |  |
 | 30.74 | pendente | — | — | — |  |  |
@@ -533,10 +537,10 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 30.77 | pendente | — | — | — |  |  |
 | 30.78 | pendente | — | — | — |  |  |
 | 30.79 | pendente | — | — | — |  |  |
-| 30.80 | implemented | simulated | claude-opus-5-5 | — | #432, ponta 0229d457 (a 3e6fb016 é só ancestral dela); migração 115 aplicada no deploy 38 (real). Simulado: backend/tests/test_receita_nao_aplicavel.py::*, backend/tests/test_d1_receitas.py::*, backend/tests/test_receit… | None |
-| 30.81 | pendente | — | — | — |  |  |
+| 30.80 | partial | simulated | claude-sonnet-5-5 | — | PR 439 (ba75b9c9) e 30.80 B (f61aa2b9). Simulado: backend/tests/test_learning_ensinado_rebaixado.py::*, backend/tests/test_d1_receitas.py::*, backend/tests/test_treino_substitui_receita.py::*, backend/tests/test_treino_… | None |
+| 30.81 | implemented | simulated | claude-sonnet-5-5 | — | Ponta bd1046bd, com a anotação de tipo do mypy (f907c138). Simulado: backend/tests/test_ensinado_em_prova.py::*, backend/tests/test_learning_ensinado_rebaixado.py::*, backend/tests/test_revisao_receitas.py::*, backend/t… | None |
 | 30.82 | pendente | — | — | — |  |  |
-| 30.83 | pendente | — | — | — |  |  |
+| 30.83 | partial | simulated | claude-sonnet-5-5 | — | Ponta 62d7259e (traz a migração 116_ref_publico_do_fluxo). Simulado: backend/tests/test_ref_publico_do_fluxo.py::*, backend/tests/test_conversao_de_fluxo.py::*, backend/tests/test_avisos_ensinado.py::*. Suíte 41 sobre a… | None |
 | 30.84 | pendente | — | — | — |  |  |
 | 31.1 | implemented | simulated | sessao | — | Commit b5a40c98 (na main desde o PR #110, sessao jev, 02/10/2026): trava de 255 opcoes e opcao nenhuma no adaptador do Jev (choice). backend/tests/test_context_retrieval_semantic.py com provedor falso. Chamada real: not… |  |
 | 31.2 | implemented | simulated | sessao | — | PR #112 (merge b5baf3e5 na main, commits 89a92b03 + a6cfa0fd, sessao jev, 02/10/2026): migracao 073 (ai_calls.origem e ref, TEXT sem CHECK), Usage.origem, filtro por origem no gasto (costs.spent_usd). backend/tests/test… |  |
@@ -609,13 +613,13 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.69 | implemented | simulated | claude-fable-5-1 | — | #362, ponta b1af598f, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). VALOR_CURTO = 4: um valor curto só fecha a leitura sem step_done por `resource_id` único (`valor_segue_na_tela… | prova real pede uma leitura de valor curto numa execução real |
 | 31.70 | implemented | simulated | claude-fable-5-1 | — | Sobras da leitura do 31.70 (#373), no #376, ponta aebe6824, suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 8… | None |
 | 31.71 | implemented | real | claude-fable-5-1 | — | #379, ponta 777c07fb (com o teste de contador em `completar_imagem` e `rich_tree_min_elements=1` no laço, pedido da leitura), suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido… | a chave NÃO vira padrão ainda (decisão da orquestradora, 10:26Z): falta a 2ª medida num fluxo longo com saída declarada lida só no fim (mais de 8 decides), 3 p… |
-| 31.72 | pendente | — | — | — |  |  |
-| 31.73 | pendente | — | — | — |  |  |
+| 31.72 | implemented | simulated | claude-fable-5-1 | — | Ponta 152f8b54 (ramo feat/31-72-ator-nao-aceita-consentimento), na main pelo merge 1fea8d98 (#386 no 31.75) e 8d0d2d33. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::* (suíte que integrou o commit; a li… |  |
+| 31.73 | implemented | simulated | claude-fable-5-1 | — | Ponta b9e337c9, na main pelo merge 7255709c (suíte 37). Simulado: backend/tests/test_sobreposicao_com_duas_causas.py::* (suíte que integrou o commit; a lista exata de testes está no resultado dessa suíte). Real: not_run. |  |
 | 31.74 | implemented | simulated | claude-fable-5-1 | — | #389, ponta 3acf4707, suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos,… | prova real pede um wait_for numa tela lenta (Chrome) depois do deploy 36; sem janela marcada |
 | 31.75 | implemented | simulated | claude-opus-5-5 | — | Ponta 3ebbb3bb: a página com id do navegador não ganha a isenção; a WebView fica sempre na árvore. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/ma… | None |
-| 31.76 | pendente | — | — | — |  |  |
+| 31.76 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 287bc608. Simulado: backend/tests/test_falha_so_da_imagem.py::*, backend/tests/test_learning_falhas.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só confl… | None |
 | 31.77 | implemented | simulated | claude-opus-5-5 | — | Ponta 5e0aa9b7: uma fração só para página e janela, e a janela flutuante pela raiz do dump. Simulado: backend/tests/test_janela_pela_raiz.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/main 8ac140e0 + fix/31… | None |
-| 31.78 | pendente | — | — | — |  |  |
+| 31.78 | implemented | simulated | claude-fable-5-1 | — | Ponta cd36871d (com dfe626de e 13e6d342), na main pelo merge ff868859. Simulado: backend/tests/test_releitura_do_mesmo_valor.py::* (suíte que integrou o commit; a lista exata de testes está no resultado dessa suíte). Re… |  |
 | 31.79 | pendente | — | — | — |  |  |
 | 31.80 | implemented | simulated | claude-opus-5-5 | — | #427 (5a56f403) e #428 (05b44377). Simulado: backend/tests/test_treino_gravacao_orfa.py::*, frontend/src/features/training/trainingStore.test.ts::*, frontend/src/features/training/TrainingBar.test.tsx::*. Suíte 38 sobre… | None |
 | 31.81 | pendente | — | — | — |  |  |
@@ -630,20 +634,22 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.90 | partial | real | claude-opus-5-5 | — | REAL (parte B, percurso no navegador): Parte B, 05/10/2026 ~18:10Z-18:12Z, WIN-7S2UASNLFOP, commit 9f9e2b39, Foco do android-04 > Modo treinamento. 'Salvas (1)' lista a gravação salva com 'Refazer receitas' e a nota. A… | None |
 | 31.91 | partial | simulated | claude-opus-5-5 | — | NOT_RUN no caminho real das respostas: As respostas às perguntas da proposta não foram percorridas (not_run): a única proposta real pedida no percurso veio sem perguntas. Essa proposta foi pedida em 05/10/2026 às 18:12:… | None |
 | 31.92 | implemented | real | claude-opus-5-5 | — | REAL (backend, pelo painel; o aviso do painel segue simulado): 05/10/2026 ~18:10Z, WIN-7S2UASNLFOP, commit 9f9e2b39, gravação trn-osso9bYL3nq4N4ZJ no android-04: POST /api/training/{id}/stop com lease_id errado devolveu… | None |
-| 31.93 | pendente | — | — | — |  |  |
+| 31.93 | implemented | simulated | claude-fable-5-1 | — | Ponta 8ddcd021, na main pelo merge 94c84c70. Simulado: backend/tests/test_treino_chave_da_etapa.py::* (suíte que integrou o commit; a lista exata de testes está no resultado dessa suíte). Real: not_run. |  |
 | 31.94 | implemented | simulated | claude-opus-5-5 | — | #440, ponta 3400c5ee. Simulado: backend/tests/test_treino_segredo_na_gravacao.py::*, backend/tests/test_treino_gravacao_orfa.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UAS… | None |
 | 31.95 | implemented | simulated | claude-opus-5-5 | — | #442, ponta 98d111e0 + conserto da catraca do Any 97dbf664 (`dict[str, object]`). Simulado: backend/tests/test_treino_validacao_do_salvar.py::*, backend/tests/test_treino_chave_da_etapa.py::*. Suíte 38 sobre a integraçã… | None |
 | 31.96 | pendente | — | — | — |  |  |
 | 31.97 | implemented | simulated | claude-opus-5-5 | — | fix/31-97, ponta e797edde. Simulado: backend/tests/test_treino_arraste_sem_coordenada.py::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39;… | None |
-| 31.98 | pendente | — | — | — |  |  |
+| 31.98 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 27bf6a6c. Simulado: backend/tests/test_prompts_licoes.py::*, backend/tests/test_telegram_entrada.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflito… | None |
 | 31.99 | implemented | simulated | claude-opus-5-5 | — | PR 437, commits 995321b1 (os três achados da revisão) e 6f0427b7 (contagem no CHANGELOG: 27 passed). Simulado: backend/tests/test_prevoo_dado_da_persona.py::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas… | None |
 | 31.100 | implemented | simulated | claude-opus-5-5 | — | #444, ponta 7b065215. Simulado: backend/tests/test_treino_validacao_do_salvar.py::*. Suíte 39 sobre a integração 9f9e2b39 (19e34b22 + 17 pontas + o conserto do #446 e6020a23 + a junção 31.92 × 31.91-F2 9f9e2b39; Windows… | None |
-| 31.101 | pendente | — | — | — |  |  |
-| 31.102 | pendente | — | — | — |  |  |
+| 31.101 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 5054ec81. Simulado: backend/tests/test_alvos_no_texto.py::*, backend/tests/test_comentario_ensina.py::*, backend/tests/test_capabilities.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 ponta… | None |
+| 31.102 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 4b12641a (sem teste novo próprio; coberto pela suíte inteira). Simulado: . Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows,… | None |
 | 31.103 | implemented | simulated | claude-opus-5-5 | — | Ponta 2bce3b1e (com A1 e S1 da leitura): o aceite e o destino do segredo leem a barra de endereço de verdade. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::*, backend/tests/test_credenciais_da_conta.py:… | None |
 | 31.104 | implemented | simulated | claude-opus-5-5 | — | Ponta 5d571ccd (com N1 e N2 da leitura em 0d2ff45a): a tela do aviso pela maior medida. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::*. Suíte 40 mínima sobre a integração 61d431ce (origin/main 8ac140e0… | None |
 | 31.105 | pendente | — | — | — |  |  |
-| 31.106 | pendente | — | — | — |  |  |
+| 31.106 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 29dadce4 (sem teste novo próprio). Simulado: . Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Id… | None |
+| 31.107 | pendente | — | — | — |  |  |
+| 31.108 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -661,7 +667,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (102): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.42, 28.43, 28.44, 28.45, 28.46, 28.50, 28.51, 28.52, 28.53, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.83, 29.102, 29.104, 29.105, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.134, 29.135, 29.136, 29.137, 29.139, 29.140, 29.142, 29.143, 29.145, 29.146, 29.147, 30.34, 30.71, 30.72, 30.73, 30.74, 30.76, 30.77, 30.78, 30.79, 30.81, 30.82, 30.83, 30.84, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.55, 31.58, 31.72, 31.73, 31.76, 31.78, 31.79, 31.81, 31.86, 31.87, 31.88, 31.89, 31.90, 31.91, 31.93, 31.96, 31.98, 31.101, 31.102, 31.105, 31.106, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (91): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.42, 28.43, 28.44, 28.45, 28.46, 28.51, 28.53, 28.54, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.83, 29.102, 29.104, 29.105, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.134, 29.135, 29.136, 29.137, 29.142, 29.145, 29.147, 29.148, 29.150, 30.34, 30.72, 30.73, 30.74, 30.76, 30.77, 30.78, 30.79, 30.80, 30.82, 30.83, 30.84, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.55, 31.58, 31.79, 31.81, 31.86, 31.87, 31.88, 31.89, 31.90, 31.91, 31.96, 31.105, 31.107, 31.108, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

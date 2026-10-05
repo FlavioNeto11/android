@@ -161,7 +161,7 @@ def test_as_transicoes_da_loja_gravam_learning_transitions(mundo: Mundo) -> None
     # o treino é da pessoa: a trilha diz de qual demonstração veio
     v3 = mundo.salva("abrir", commit=False, candidate=False, learned_from="training:t1")
     assert v3 and mundo.trilha(v3) == [(None, "published", "training:t1")]
-    assert mundo.trilha(v2)[-1] == ("disabled", "deprecated", "sistema")
+    assert mundo.trilha(v2)[-1] == ("disabled", "deprecated", "training:t1")   # 30.79: a causa foi a demonstração
     # o hash e o escopo da trilha são os do livro: é por eles que o veto e o "Revisar" a encontram
     entrada = FontesSql(mundo.db).receita(str(v3))
     assert entrada is not None

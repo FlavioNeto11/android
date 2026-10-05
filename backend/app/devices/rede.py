@@ -439,12 +439,19 @@ def remover_perfil(st: AppState, profile_id: str) -> None:
 # ============================================================================ quem pode receber
 def _conta_real(st: AppState, instance_id: str) -> str | None:
     """As contas vinculadas ao aparelho (vínculo ativo), ou `None`. A mesma regra do reparo em escada do ADR-055
-    (`despacho.remediar_reiniciando`): conta vinculada é conta real logada, até prova em contrário."""
-    nomes = []
+    (`despacho.remediar_reiniciando`): conta vinculada é conta real logada, até prova em contrário.
+
+    Uma linha por persona, com os apps dos vínculos ao lado (29.142): desde a 051 o vínculo é por app, e a mesma
+    persona ligada para dois apps saía repetida ("@x, @x"). Vínculo sem app não acrescenta nada ao nome."""
+    contas: dict[str, list[str]] = {}
     for b in st.social_repo.profiles_of_instance(instance_id):
         perfil = st.social_repo.profile_row(str(b["profile_id"]))
-        nomes.append(f"@{perfil['username']}" if perfil is not None else str(b["profile_id"]))
-    return ", ".join(nomes) or None
+        apps = contas.setdefault(f"@{perfil['username']}" if perfil is not None else str(b["profile_id"]), [])
+        if b["app_id"]:
+            nome_do_app = str(st.db.scalar("SELECT name FROM apps WHERE id=?", (b["app_id"],)) or b["app_id"])
+            if nome_do_app not in apps:
+                apps.append(nome_do_app)
+    return ", ".join(f"{nome} ({', '.join(apps)})" if apps else nome for nome, apps in contas.items()) or None
 
 
 def apps_exigidos(st: AppState, instance_id: str) -> list[str]:
@@ -877,14 +884,15 @@ def _julgar(st: AppState, item: _Item, confirmados: set[str], dry_run: bool) -> 
         item.outcome, item.reason = "unchanged", "já é o pedido"
     elif item.reapply and conta and item.id not in confirmados:
         item.recusar("real_account_confirm_required",
-                     f"{item.id} tem conta real vinculada ({conta}): mudar a saída de uma conta logada pede a "
+                     # 29.142: a conta vem com os apps entre parênteses; o texto não a cerca de parênteses de novo.
+                     f"{item.id} tem conta real vinculada: {conta}. Mudar a saída de uma conta logada pede a "
                      "confirmação da pessoa para ESTE aparelho (confirm_real_account; ADR-056 §7)")
     else:
         item.outcome = "would_assign" if dry_run else "assigned"
         item.reason = ("configuração nova: volta a pendente até a aplicação e a medição no aparelho" if item.reapply
                        else "só a política muda; a configuração do aparelho fica")
         if conta:
-            item.warnings.append(f"conta real vinculada ({conta}), confirmada pela pessoa neste pedido")
+            item.warnings.append(f"conta real vinculada, confirmada pela pessoa neste pedido: {conta}")
     legado = _legado(st, item.id)
     if legado is not None and legado.proxy_id and legado.state == "applied":
         item.warnings.append(f"o proxy global legado {legado.name} ({legado.value}) está gravado no aparelho e "

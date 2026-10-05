@@ -239,7 +239,7 @@ async def test_devolver_controle_reobserva_perfil_preso_em_intervencao(harness: 
     manager (`on_control_released`), nada cumpria essa promessa — o perfil ficava em 'Ação necessária' até
     alguém lembrar de clicar 'Verificar conta'."""
     st = harness.state
-    pid = st.social.create_profile(ProfileCreate(username="mariana.costa91182", password="Segredo!123",
+    pid = st.social.create_profile(ProfileCreate(username="luciana.bastos73519", password="Segredo!123",
                                                   instance_id="android-01")).id
     st.social_repo.set_session(pid, status=SessionStatus.auth_challenge, instance_id="android-01",
                                detail="parado em auth_challenge")
@@ -264,7 +264,7 @@ async def test_devolver_controle_nao_reobserva_perfil_sem_pendencia(harness: Har
     """O mesmo gancho não dispara à toa: devolver o controle de um aparelho cujo perfil já está `session_ready`
     não deve gerar trabalho nenhum no aparelho."""
     st = harness.state
-    pid = st.social.create_profile(ProfileCreate(username="mariana.costa91182", password="Segredo!123",
+    pid = st.social.create_profile(ProfileCreate(username="luciana.bastos73519", password="Segredo!123",
                                                   instance_id="android-01")).id
     st.social_repo.set_session(pid, status=SessionStatus.session_ready, instance_id="android-01",
                                verified_at=now_iso())

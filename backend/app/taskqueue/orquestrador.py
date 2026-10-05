@@ -7,7 +7,7 @@ o mesmo caminho da prévia por persona (ADR-044).
 
 Caminhos, do mais barato ao pago:
 
-1. **o texto já diz quem ou onde** ("peça para o Lucas…", "no android-03"): a prévia de sempre, sem IA;
+1. **o texto já diz quem ou onde** ("peça para o Fulano…", "no android-03"): a prévia de sempre, sem IA;
 2. **nenhuma persona serve aos apps** (ex.: QA Messenger, que não usa conta): distribuição pela carga dos servidores
    (`balanceamento`), sem IA;
 3. **há personas candidatas**: uma chamada do papel `plan` escolhe quais e quantas pelo perfil (orquestração, no

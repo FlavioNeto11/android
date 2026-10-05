@@ -93,7 +93,7 @@ cases:
   # --- Instagram (achado #98): até aqui a bateria era 100% QA Messenger, enquanto o uso REAL dos modelos
   # baratos (troca de Opus por Sonnet/Haiku) é 100% Instagram — a lacuna que estes dois casos cobrem primeiro:
   # navegação SEM efeito externo (nada de seguir, curtir, comentar ou enviar mensagem). Decisão do dono (24/09):
-  # rodam em android-01 (@lucas.almeida9484), conta operada de verdade — por isso só navegação. Os comandos são
+  # rodam em android-01 (@«conta do android-01»), conta operada de verdade — por isso só navegação. Os comandos são
   # escritos com o que o CATÁLOGO do Instagram oferece (OPEN_PROFILE, OPEN_POST, OPEN_COMMENTS, OPEN_INBOX): as
   # versões antigas ("aba de busca", "conversa mais recente") não tinham ação no catálogo e viravam needs_input.
   - id: ig-abrir-perfil

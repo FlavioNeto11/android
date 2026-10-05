@@ -136,8 +136,8 @@ E_USE_FECHADO: list[str] = [
 NAO_ENTRA: list[str] = [
     'entre na conversa com girassol', 'entre no chat com girassol e curta',
     'lucas e girassol, curta a foto da marina', 'lucas, girassol, curta a foto da marina',
-    'lucas girassol curta a foto', '@lucas.almeida9484, girassol, curta a foto',
-    'lucas.almeida9484, girassol, curta a foto', 'marina, girassol, curta a foto',
+    'lucas girassol curta a foto', '@tadeu.quintela4821, girassol, curta a foto',
+    'tadeu.quintela4821, girassol, curta a foto', 'marina, girassol, curta a foto',
     '@zilda.prado, girassol, curta a foto', 'zilda.prado e girassol, curta a foto',
 ]
 #: O custo da A-média (31.20): os controles das rodadas E a I e da forma A que tinham verbo de entrar fora do objeto
@@ -146,7 +146,7 @@ NAO_ENTRA: list[str] = [
 CUSTO_DA_A_MEDIA: list[str] = [
     # forma A (31.18)
     "entre no insta", "entre no insta e curta as 3 fotos", "entre no insta e veja o post de 2024",
-    "entre no insta e use 1987", "entre pela Lucas e curta a foto da Marina", "entre como @lucas.almeida9484 e curta o post",
+    "entre no insta e use 1987", "entre pela Lucas e curta a foto da Marina", "entre como @tadeu.quintela4821 e curta o post",
     # rodada E
     "entre no perfil da Marina e curta", "acesse o perfil da Ana e curta a última foto", "entre pela Lucas e curta",
     "log in to the app and like the post", "inicie sessão no app", "pesquise por girassol e entre no primeiro perfil",

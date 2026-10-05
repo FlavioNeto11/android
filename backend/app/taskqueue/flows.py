@@ -16,12 +16,14 @@ from __future__ import annotations
 
 import json
 import re
+import secrets
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from ..db import Database, Row
-from ..modules.learning.domain.livro import apps_na_ordem_do_plano
+from ..modules.learning.domain.aprovacao_automatica import PLATAFORMA
+from ..modules.learning.domain.livro import CONFIRMADO_QUE_FICA, apps_na_ordem_do_plano
 from ..modules.skills.domain.document import JsonValue
 from ..modules.skills.domain.matching import specificity
 from ..models import Plan, PlannerInfo, StepResult
@@ -31,6 +33,8 @@ RESERVED = {"instance_id", "run_id", "account_label"}
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 #: Quem decide quando a própria loja muda o status (nascimento de execução, reaproveitamento). O treino leva a origem.
 SISTEMA = "sistema"
+#: 30.81: a origem do fluxo ensinado no modo treinamento (`flows.source = 'training:<sessão>'`).
+PREFIXO_DO_TREINO = "training:"
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +147,82 @@ def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
     return "".join(t for t, _ in pedacos)
 
 
+#: 30.83: a referência pública do fluxo, `f-` mais 12 hex ALEATÓRIOS. Nunca derivada do resumo, do comando nem do
+#: `match_key`: quem conhece o nome não confirma o palpite pelo valor que sai em evento, `href` e log.
+PREFIXO_DA_REF = "f-"
+
+
+def ref_aleatoria(db: Database) -> str:
+    """Uma referência nova, livre como id E como `ref_publico` (o fluxo novo usa a mesma nas duas colunas)."""
+    while True:
+        ref = f"{PREFIXO_DA_REF}{secrets.token_hex(6)}"
+        if db.one("SELECT id FROM flows WHERE id=? OR ref_publico=?", (ref, ref)) is None:
+            return ref
+
+
+def ref_publica_do_fluxo(db: Database, flow_id: str) -> str:
+    """A referência que sai do central (evento, `href`). Nunca cai no id (N2 da leitura da Ferramentas): sem a
+    `ref_publico` (uma réplica no código antigo criou o fluxo depois da subida), preenche NA HORA; sem a linha (fluxo
+    apagado), uma referência nova que não abre nada, em vez do id."""
+    linha = db.one("SELECT ref_publico FROM flows WHERE id=?", (flow_id,))
+    if linha is None:
+        return ref_aleatoria(db)
+    if linha["ref_publico"]:
+        return str(linha["ref_publico"])
+    db.execute("UPDATE flows SET ref_publico=? WHERE id=? AND ref_publico IS NULL", (ref_aleatoria(db), flow_id))
+    return str(db.scalar("SELECT ref_publico FROM flows WHERE id=?", (flow_id,)))
+
+
+def id_do_fluxo(db: Database, ref: str) -> str:
+    """O id interno a partir do que chega numa rota: o próprio id (fluxo novo, ou o painel antigo) ou a `ref_publico`
+    (o link de um aviso). Sem nenhum dos dois, devolve como veio: quem lê dá o 404 de sempre."""
+    if db.one("SELECT id FROM flows WHERE id=?", (ref,)) is not None:
+        return ref
+    linha = db.one("SELECT id FROM flows WHERE ref_publico=?", (ref,))
+    return str(linha["id"]) if linha is not None else ref
+
+
+def preencher_refs_publicas(db: Database) -> int:
+    """30.83: dá a referência aleatória a cada fluxo que ainda não tem (os de antes da migração 116). Roda na subida;
+    idempotente (só as linhas sem ela, e o UPDATE confere de novo, para duas réplicas subindo juntas). O id antigo
+    fica: as referências a ele não têm ON UPDATE CASCADE. Devolve quantas preencheu."""
+    feitas = 0
+    for linha in db.query("SELECT id FROM flows WHERE ref_publico IS NULL ORDER BY id"):
+        cur = db.execute("UPDATE flows SET ref_publico=? WHERE id=? AND ref_publico IS NULL",
+                         (ref_aleatoria(db), linha["id"]))
+        feitas += int(cur.rowcount or 0)
+    return feitas
+
+
+# ------------------------------------------------------------------ o ensinado ainda sem prova (30.81)
+def ensinado_em_prova(db: Database, row: Row) -> dict[str, str | None] | None:
+    """O fluxo ensinado no modo treinamento que ainda espera a prova: `{persona, sessao}` (a persona que ensinou,
+    `None` se a sessão não tinha), ou `None` quando não se aplica. Sai da espera com uma prova a favor, real e não
+    invalidada (execução com `prova_fluxo_id` deste fluxo, depois do nascimento) ou com o "Confirmar que fica"
+    explícito de uma PESSOA depois do nascimento (leitura da Reload, achado 3: adotar e desfazer, ou outra linha
+    qualquer, não liberam; nem o sistema, nem a régua da plataforma, nem um treino). Desligado, não está ativo. O fluxo que não veio do treino, ou que não está ativo, não
+    paga consulta."""
+    fonte = str(row.get("source") or "")
+    if not fonte.startswith(PREFIXO_DO_TREINO) or row.get("status", "active") != "active":
+        return None
+    sessao = fonte[len(PREFIXO_DO_TREINO):]
+    ref, nasceu = f"fluxo:{row['id']}", str(row["created_at"] or "")
+    r = db.one(
+        "SELECT (SELECT profile_id FROM training_sessions WHERE id=?) AS persona,"
+        " EXISTS (SELECT 1 FROM learning_evidence e JOIN runs ru ON ru.id = e.run_id"
+        "  WHERE e.item_ref=? AND e.stance='for' AND e.simulated=0 AND ru.prova_fluxo_id=? AND e.observed_at>=?"
+        "  AND NOT EXISTS (SELECT 1 FROM learning_evidence i WHERE i.item_ref = e.item_ref"
+        "  AND i.origin_ref = e.origin_ref AND i.stance='invalida')) AS provado,"
+        " EXISTS (SELECT 1 FROM learning_transitions t WHERE t.item_ref=? AND t.decided_at>=?"
+        "  AND t.reason LIKE ? AND t.decided_by NOT IN (?,?) AND t.decided_by NOT LIKE ?) AS decidido",
+        (sessao, ref, row["id"], nasceu, ref, nasceu, f"{CONFIRMADO_QUE_FICA}%", SISTEMA, PLATAFORMA,
+         f"{PREFIXO_DO_TREINO}%"))
+    if r is not None and (bool(r["provado"]) or bool(r["decidido"])):
+        return None
+    persona = r["persona"] if r is not None else None
+    return {"persona": str(persona) if persona else None, "sessao": sessao}
+
+
 class FlowStore:
     def __init__(self, db: Database, politica: PoliticaDoFluxo | None = None):
         self.db = db
@@ -219,15 +299,12 @@ class FlowStore:
                     return None
                 flow_id, de, motivo = reaproveita, "disabled", f"reaprendido da execução {run['id']} (mesma linha)"
             else:
-                base = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", plan.summary).encode("ascii", "ignore")
-                              .decode().lower()).strip("-")[:40] or "fluxo"
-                flow_id, n = base, 2
-                while self.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)):
-                    flow_id, n = f"{base}-{n}", n + 1
+                flow_id = ref_aleatoria(self.db)                 # 30.83: nada do resumo no id (ele sai em evento)
                 self.db.execute(
                     "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, status,"
-                    " created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (flow_id, plan.summary[:120], key, template, plano, plan.app_id, run["id"], status, now_iso()))
+                    " created_at, ref_publico) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (flow_id, plan.summary[:120], key, template, plano, plan.app_id, run["id"], status, now_iso(),
+                     flow_id))
                 motivo = f"aprendido da execução {run['id']}"
             self.set_required_apps(flow_id, apps)
             if self.politica is not None:
@@ -259,17 +336,13 @@ class FlowStore:
         if self.db.one("SELECT id FROM skill_versions WHERE state='published' AND match_key=?", (key,)):
             raise ValueError("Já existe uma habilidade versionada publicada para este comando. Mude o comando ou "
                              "desabilite a habilidade.")
-        base = re.sub(r"[^a-z0-9]+", "-", unicodedata.normalize("NFKD", plan.summary).encode("ascii", "ignore")
-                      .decode().lower()).strip("-")[:40] or "habilidade"
-        flow_id, n = base, 2
-        while self.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)):
-            flow_id, n = f"{base}-{n}", n + 1
+        flow_id = ref_aleatoria(self.db)                         # 30.83: o resumo do treino pode trazer o valor demonstrado
         with self.db.tx():
             self.db.execute(
                 "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, created_at,"
-                " source) VALUES (?,?,?,?,?,?,?,?,?)",
+                " source, ref_publico) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (flow_id, plan.summary[:120], key, template, plan.model_dump_json(), plan.app_id, None, now_iso(),
-                 source))
+                 source, flow_id))
             apps = [plan.app_id, *(s.app_id for s in plan.steps)]
             self.set_required_apps(flow_id, [a for a in apps if a])
             if self.politica is not None:
@@ -314,12 +387,16 @@ class FlowStore:
             "SELECT app_id FROM flow_required_apps WHERE flow_id=? ORDER BY app_id", (flow_id,))]
 
     # ------------------------------------------------------------------ casar
-    def match(self, command: str, profile_ids: list[str | None] | None = None) -> tuple[Row, Plan] | None:
+    def match(self, command: str, profile_ids: list[str | None] | None = None, *,
+              sem_ensino_em_prova: bool = False) -> tuple[Row, Plan] | None:
         """Comando novo × modelos conhecidos. Casa o texto inteiro; cada {nome} captura o valor novo.
 
         `profile_ids` (item 13.2): os perfis dos aparelhos da execução. Fluxo com escopo (habilidade treinada para
         perfis/grupos) só casa quando TODOS eles estão no escopo — um aparelho fora dele planejaria sozinho, e o
         plano é um só por execução. `None` = prévia sem aparelhos (custo, apps exigidos): qualquer fluxo serve.
+
+        30.81: o fluxo ensinado ainda sem prova (`ensinado_em_prova`) só casa quando TODOS os perfis são a persona que
+        ensinou; a sessão sem persona não casa em lugar nenhum até a prova. A prévia sem aparelhos casa como antes.
         """
         # F1 (31.89): entre moldes que casam o mesmo comando ganha o MAIS ESPECÍFICO (o critério do resolvedor v2,
         # `matching.specificity`: mais texto fixo, depois menos parâmetros), não o mais usado: "curtir o post de {p}"
@@ -333,11 +410,29 @@ class FlowStore:
             values = self._extract(row["command_template"], command)
             if values is None:
                 continue
+            if profile_ids is not None and self._restrito_ao_ensino(row, profile_ids):
+                continue
+            if sem_ensino_em_prova and ensinado_em_prova(self.db, row) is not None:
+                continue
             plan = self._plano_com_valores(row, values, provider="fluxo")
             if plan is None:
                 continue                              # faltou valor para algum parâmetro: não é este fluxo
             return row, plan
         return None
+
+    def ativo_para(self, command: str) -> tuple[Row, Plan] | None:
+        """30.81 (achado 4 da Reload): o fluxo ativo do comando para a VALIDAÇÃO (sem aparelhos), sem o ensinado que
+        ainda espera a prova: para ela, ele ainda não é o fluxo ativo de ninguém além de quem ensinou."""
+        return self.match(command, None, sem_ensino_em_prova=True)
+
+    # ------------------------------------------------------------------ o ensinado ainda sem prova (30.81)
+    def _restrito_ao_ensino(self, row: Row, profile_ids: list[str | None]) -> bool:
+        """O ensinado sem prova fica fora do `match` quando algum perfil da execução não é a persona que ensinou."""
+        espera = ensinado_em_prova(self.db, row)
+        if espera is None:
+            return False
+        persona = espera["persona"]
+        return persona is None or not profile_ids or any(p != persona for p in profile_ids)
 
     def plano_em_prova(self, flow_id: str, command: str) -> Plan | None:
         """30.37: o plano do PRÓPRIO fluxo para a execução de prova (a validação do fluxo pelo próprio fluxo), com os

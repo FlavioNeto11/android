@@ -9030,23 +9030,23 @@
   },
   "30.80": {
    "id": "30.80",
-   "status": "implemented",
+   "status": "partial",
    "proof": "simulated",
-   "evidence": "#432, ponta 0229d457 (a 3e6fb016 é só ancestral dela); migração 115 aplicada no deploy 38 (real). Simulado: backend/tests/test_receita_nao_aplicavel.py::*, backend/tests/test_d1_receitas.py::*, backend/tests/test_receita_divergida_escala.py::*, backend/tests/test_revisao_receitas.py::*. Suíte 38 sobre a integração 86afe1b5 (ebc316f9 + 24 merges; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests 669 passed; backend SQLite -n 6 11689 passed, 13 skipped, 1 failed (catraca do Any do #442, consertada no 97dbf664; dirigidos sobre 86afe1b5 71 passed); frontend typecheck limpo, 1650 passed, build ok; catracas 88 + 6 passed; mypy 257 = teto (real); PG dirigido 473 arquivos -n 8: 5556 + 4268 passed, 5 failed CONHECIDAS e medidas em test_sobreposicao*.py (8 com -n 1; 25 passed sem xdist; item 29.139), não passou. Deploy 38 em 05/10/2026 ~16:00Z: /api/health ok, commit 86afe1b5, migração 115_receita_nao_aplicavel, problems [] (backup data/backups/20261005-125938; ensaio da 115 numa cópia ok).",
+   "evidence": "PR 439 (ba75b9c9) e 30.80 B (f61aa2b9). Simulado: backend/tests/test_learning_ensinado_rebaixado.py::*, backend/tests/test_d1_receitas.py::*, backend/tests/test_treino_substitui_receita.py::*, backend/tests/test_treino_previa_e_refazer_receitas.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
    "blocker": null,
    "arquivos": [
-    "backend/tests/test_receita_nao_aplicavel.py",
+    "backend/tests/test_learning_ensinado_rebaixado.py",
     "backend/tests/test_d1_receitas.py",
-    "backend/tests/test_receita_divergida_escala.py",
-    "backend/tests/test_revisao_receitas.py"
+    "backend/tests/test_treino_substitui_receita.py",
+    "backend/tests/test_treino_previa_e_refazer_receitas.py"
    ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-38",
-   "modelo": "claude-opus-5-5",
+   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T16:25:16+00:00"
+   "quando": "2026-10-05T22:07:09+00:00"
   },
   "29.118": {
    "id": "29.118",
@@ -9673,6 +9673,313 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-05T20:37:39+00:00"
+  },
+  "31.98": {
+   "id": "31.98",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 27bf6a6c. Simulado: backend/tests/test_prompts_licoes.py::*, backend/tests/test_telegram_entrada.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_prompts_licoes.py",
+    "backend/tests/test_telegram_entrada.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "31.101": {
+   "id": "31.101",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 5054ec81. Simulado: backend/tests/test_alvos_no_texto.py::*, backend/tests/test_comentario_ensina.py::*, backend/tests/test_capabilities.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_alvos_no_texto.py",
+    "backend/tests/test_comentario_ensina.py",
+    "backend/tests/test_capabilities.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "31.102": {
+   "id": "31.102",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 4b12641a (sem teste novo próprio; coberto pela suíte inteira). Simulado: . Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "31.76": {
+   "id": "31.76",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 287bc608. Simulado: backend/tests/test_falha_so_da_imagem.py::*, backend/tests/test_learning_falhas.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_falha_so_da_imagem.py",
+    "backend/tests/test_learning_falhas.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "31.106": {
+   "id": "31.106",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 29dadce4 (sem teste novo próprio). Simulado: . Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "30.81": {
+   "id": "30.81",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta bd1046bd, com a anotação de tipo do mypy (f907c138). Simulado: backend/tests/test_ensinado_em_prova.py::*, backend/tests/test_learning_ensinado_rebaixado.py::*, backend/tests/test_revisao_receitas.py::*, backend/tests/test_treino_validacao_do_salvar.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_ensinado_em_prova.py",
+    "backend/tests/test_learning_ensinado_rebaixado.py",
+    "backend/tests/test_revisao_receitas.py",
+    "backend/tests/test_treino_validacao_do_salvar.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "28.50": {
+   "id": "28.50",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 2f523a4c (junto do 30.80 B). Simulado: backend/tests/test_avisos_ensinado.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_avisos_ensinado.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "30.83": {
+   "id": "30.83",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "Ponta 62d7259e (traz a migração 116_ref_publico_do_fluxo). Simulado: backend/tests/test_ref_publico_do_fluxo.py::*, backend/tests/test_conversao_de_fluxo.py::*, backend/tests/test_avisos_ensinado.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_ref_publico_do_fluxo.py",
+    "backend/tests/test_conversao_de_fluxo.py",
+    "backend/tests/test_avisos_ensinado.py"
+   ],
+   "nota": "o ramo cobre só uma parte do item (partial); a frente diz se fecha; a migração 116 entra no ensaio do deploy",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "29.146": {
+   "id": "29.146",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 2cf2979e (com o 29.142). Simulado: backend/tests/test_rede_por_aparelho.py::*, frontend/src/features/training/TrainingBar.test.tsx::*, frontend/src/features/rede/RedePage.test.tsx::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_rede_por_aparelho.py",
+    "frontend/src/features/training/TrainingBar.test.tsx",
+    "frontend/src/features/rede/RedePage.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "29.143": {
+   "id": "29.143",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Backend d64446e8 e painel c7e768dc, juntos. Simulado: backend/tests/test_controle_com_dono_29_143.py::*, frontend/src/store/live.test.ts::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_controle_com_dono_29_143.py",
+    "frontend/src/store/live.test.ts"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "28.52": {
+   "id": "28.52",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 5279e4c2. Simulado: backend/tests/test_canais_respostas_as_perguntas.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_canais_respostas_as_perguntas.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "29.139": {
+   "id": "29.139",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 66a905c4 (só teste). Real como observação: as duas falhas conhecidas do PG sumiram nesta suíte. Simulado: backend/tests/test_sobreposicao.py::*, backend/tests/test_sobreposicao_com_duas_causas.py::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_sobreposicao.py",
+    "backend/tests/test_sobreposicao_com_duas_causas.py"
+   ],
+   "nota": "fechamento pelo PG verde desta suíte; a frente confirma",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "29.140": {
+   "id": "29.140",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta e96efe5b (junção da Portal sobre 7d9c4acd). Simulado: frontend/src/features/profiles/ProfileDetail.test.tsx::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/profiles/ProfileDetail.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "29.149": {
+   "id": "29.149",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 5c19f511: o teste usava data fixa como futuro e falhava em qualquer ramo desde 05/10 21:00Z. Simulado: frontend/src/features/runs/PortaDoPlano.test.tsx::*. Suíte 41 sobre a integração ac77742c (origin/main 65452966 + 17 pontas na ordem da orquestradora, só conflitos de texto juntados; Windows, central WIN-7S2UASNLFOP, Idle): scripts/tests -n 4 672 passed (4 subtests); backend SQLite -n 6 11990 passed, 13 skipped, 0 falhas (sobre b96f9e1d); frontend typecheck limpo, 1686 passed, build ok; catracas backend 88 + scripts 6 passed; docs-check 0; mypy 257 = teto depois da anotação de tipo do 30.81 (f907c138; sobre b96f9e1d tinha dado 258 em validacao.py:416); PG dirigido 474 arquivos em 2 partes sobre b96f9e1d: 6058 passed, 8 skipped e 4340 passed, 5 skipped, 0 falhas (as duas falhas conhecidas do 29.139 sumiram); depois da anotação, os 51 arquivos afetados repetidos: SQLite -n 4 922 passed (97 s) e PG 922 passed (163 s), fim 22:00:21Z.",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/runs/PortaDoPlano.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-41",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:09+00:00"
+  },
+  "31.72": {
+   "id": "31.72",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 152f8b54 (ramo feat/31-72-ator-nao-aceita-consentimento), na main pelo merge 1fea8d98 (#386 no 31.75) e 8d0d2d33. Simulado: backend/tests/test_ator_nao_aceita_consentimento.py::* (suíte que integrou o commit; a lista exata de testes está no resultado dessa suíte). Real: not_run.",
+   "grupo": "estado-atrasado-jev-05-10",
+   "modelo": "claude-fable-5-1",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:10+00:00"
+  },
+  "31.73": {
+   "id": "31.73",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta b9e337c9, na main pelo merge 7255709c (suíte 37). Simulado: backend/tests/test_sobreposicao_com_duas_causas.py::* (suíte que integrou o commit; a lista exata de testes está no resultado dessa suíte). Real: not_run.",
+   "grupo": "estado-atrasado-jev-05-10",
+   "modelo": "claude-fable-5-1",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:10+00:00"
+  },
+  "31.78": {
+   "id": "31.78",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta cd36871d (com dfe626de e 13e6d342), na main pelo merge ff868859. Simulado: backend/tests/test_releitura_do_mesmo_valor.py::* (suíte que integrou o commit; a lista exata de testes está no resultado dessa suíte). Real: not_run.",
+   "grupo": "estado-atrasado-jev-05-10",
+   "modelo": "claude-fable-5-1",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:10+00:00"
+  },
+  "30.71": {
+   "id": "30.71",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 947806ed (com 095d4f6d e 10532f77), na main pelo merge 33f98019. Simulado: backend/tests/test_digest_na_saida_da_espera.py::* (suíte que integrou o commit; a lista exata de testes está no resultado dessa suíte). Real: not_run.",
+   "grupo": "estado-atrasado-jev-05-10",
+   "modelo": "claude-fable-5-1",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:10+00:00"
+  },
+  "31.93": {
+   "id": "31.93",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Ponta 8ddcd021, na main pelo merge 94c84c70. Simulado: backend/tests/test_treino_chave_da_etapa.py::* (suíte que integrou o commit; a lista exata de testes está no resultado dessa suíte). Real: not_run.",
+   "grupo": "estado-atrasado-jev-05-10",
+   "modelo": "claude-fable-5-1",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T22:07:10+00:00"
   }
  },
  "rodadas": [
@@ -12451,6 +12758,42 @@
    ],
    "grupos": [
     "android-suite-40"
+   ]
+  },
+  {
+   "quando": "2026-10-05T22:07:09+00:00",
+   "itens": [
+    "31.98",
+    "31.101",
+    "31.102",
+    "31.76",
+    "31.106",
+    "30.80",
+    "30.81",
+    "28.50",
+    "30.83",
+    "29.146",
+    "29.143",
+    "28.52",
+    "29.139",
+    "29.140",
+    "29.149"
+   ],
+   "grupos": [
+    "android-suite-41"
+   ]
+  },
+  {
+   "quando": "2026-10-05T22:07:10+00:00",
+   "itens": [
+    "31.72",
+    "31.73",
+    "31.78",
+    "30.71",
+    "31.93"
+   ],
+   "grupos": [
+    "estado-atrasado-jev-05-10"
    ]
   }
  ]

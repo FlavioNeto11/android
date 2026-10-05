@@ -52,7 +52,7 @@ def build(tmp_path: Path) -> tuple[SocialService, SocialRepository]:
 
 
 def perfil(svc: SocialService) -> str:
-    return svc.create_profile(ProfileCreate(username="lucas.almeida9484", password=SENHA, instance_id="android-01",
+    return svc.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA, instance_id="android-01",
                                             persona_id=svc.create_persona(PERSONA).id)).id
 
 
@@ -67,7 +67,7 @@ def tela(*elementos: UiElement, sensitive: bool = False) -> UiTree:
 
 
 def pedido(**over: object) -> SocialRequest:
-    base: dict[str, object] = {"profile_id": "p", "username": "lucas.almeida9484", "kind": "dm_initiate",
+    base: dict[str, object] = {"profile_id": "p", "username": "tadeu.quintela4821", "kind": "dm_initiate",
                                "context_text": "<persona>\nperfil: @lucas\n</persona>"}
     return SocialRequest(**{**base, **over})   # type: ignore[arg-type]
 
@@ -351,7 +351,7 @@ async def test_ler_a_conversa_e_depois_escrever_vira_RESPOSTA_e_ensina_o_perfil(
     from app.models import ProfileCreate as PC, ProfilePolicyPatch
 
     state = harness.state
-    pid = state.social.create_profile(PC(username="lucas.almeida9484", password=SENHA, instance_id="android-01",
+    pid = state.social.create_profile(PC(username="tadeu.quintela4821", password=SENHA, instance_id="android-01",
                                          persona_id=state.social.create_persona(PERSONA).id)).id
     state.social.set_policy(pid, ProfilePolicyPatch(capabilities={"SEND_MESSAGE": "autonomous"}))
     obj, srow, run = _prepara_run(state, pid)
@@ -411,7 +411,7 @@ async def test_levantar_a_caixa_de_entrada_nao_inventa_fala_de_ninguem(harness: 
     from app.models import ProfileCreate as PC
 
     state = harness.state
-    pid = state.social.create_profile(PC(username="lucas.almeida9484", password=SENHA,
+    pid = state.social.create_profile(PC(username="tadeu.quintela4821", password=SENHA,
                                          instance_id="android-01")).id
     obj, _srow, _run = _prepara_run(state, pid)
     state.db.execute("UPDATE steps SET capability='COLLECT_THREADS' WHERE id='o-dm:v1:r1'")

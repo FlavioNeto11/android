@@ -91,7 +91,7 @@ _ROTULO_DO_BALDE = {"follows": "seguir", "dms": "mensagem direta", "comments": "
                    "posts": "publicação"}
 
 #: Item 30.56: efeitos que ESTA conta faz uma vez só por pessoa na janela da frota (`fleet_target_window_days`). Fazer de
-#: novo é duplicata, não outro gesto: em 04/10 o dono aprovou uma segunda resposta do lucas ao mesmo comentário do bruno
+#: novo é duplicata, não outro gesto: em 04/10 o dono aprovou uma segunda resposta do fulano ao mesmo comentário do ciclano
 #: (a primeira era de 03/10) e só o ator, já na tela, recusou. A chave é (perfil, alvo, tipo, janela): a resposta não
 #: grava a publicação (`thread_key` e `target` ficam nulos), então outra resposta à mesma pessoa noutro post também
 #: espera a janela. Por AÇÃO, não por balde nem por tipo: `CREATE_COMMENT` grava o mesmo `comment_replied`, e comentar

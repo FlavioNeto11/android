@@ -181,37 +181,37 @@ def _cabecalho(conta: str, y: int, *, marca: bool = True, i: str = "a") -> list[
 def test_a_marca_de_ia_so_conta_colada_no_nome_da_nossa_conta() -> None:
     """29.79 (d): "AI info" logo abaixo do nome da conta da etapa prova o rótulo; a de OUTRO perfil do feed não prova, e
     sem a conta conhecida é dúvida."""
-    medida = UiTree(elements=_cabecalho("lucas.almeida9484", 395), packages=[IG], sensitive=False)
-    assert marca_junto_da_conta(medida, MARCA, "lucas.almeida9484")
-    assert marca_junto_da_conta(medida, MARCA, "@lucas.almeida9484")              # a arroba é notação nossa
+    medida = UiTree(elements=_cabecalho("tadeu.quintela4821", 395), packages=[IG], sensitive=False)
+    assert marca_junto_da_conta(medida, MARCA, "tadeu.quintela4821")
+    assert marca_junto_da_conta(medida, MARCA, "@tadeu.quintela4821")              # a arroba é notação nossa
     assert not marca_junto_da_conta(medida, MARCA, "outra.conta")
     assert not marca_junto_da_conta(medida, MARCA, None)
     # o nosso post sem rótulo e, mais abaixo no feed, o post de IA de outro perfil
-    feed = UiTree(elements=[*_cabecalho("lucas.almeida9484", 395, marca=False),
+    feed = UiTree(elements=[*_cabecalho("tadeu.quintela4821", 395, marca=False),
                             *_cabecalho("outra.conta", 1200, i="b")], packages=[IG], sensitive=False)
-    assert not marca_junto_da_conta(feed, MARCA, "lucas.almeida9484")
+    assert not marca_junto_da_conta(feed, MARCA, "tadeu.quintela4821")
     # "AI info" solto longe do nome (outro lugar da tela) não é a marca do nosso post
-    longe = UiTree(elements=[_cabecalho("lucas.almeida9484", 395, marca=False)[0],
+    longe = UiTree(elements=[_cabecalho("tadeu.quintela4821", 395, marca=False)[0],
                              _cabecalho("x", 900, i="c")[1]], packages=[IG], sensitive=False)
-    assert not marca_junto_da_conta(longe, MARCA, "lucas.almeida9484")
+    assert not marca_junto_da_conta(longe, MARCA, "tadeu.quintela4821")
     # Revisão D2: o post NOVO (no topo) sem marca e um ANTIGO nosso, mais abaixo, com marca: não confirma
-    antigo = UiTree(elements=[*_cabecalho("lucas.almeida9484", 395, marca=False),
-                              *_cabecalho("lucas.almeida9484", 1000, i="velho")], packages=[IG], sensitive=False)
-    assert not marca_junto_da_conta(antigo, MARCA, "lucas.almeida9484")
+    antigo = UiTree(elements=[*_cabecalho("tadeu.quintela4821", 395, marca=False),
+                              *_cabecalho("tadeu.quintela4821", 1000, i="velho")], packages=[IG], sensitive=False)
+    assert not marca_junto_da_conta(antigo, MARCA, "tadeu.quintela4821")
     # ... e mesmo com o cabeçalho do topo de outro tipo (sem o `resource_id` do antigo): o nome mais alto é que decide
-    sem_rid = [dataclasses.replace(e, resource_id="") for e in _cabecalho("lucas.almeida9484", 395, marca=False)]
-    antigo2 = UiTree(elements=[*sem_rid, *_cabecalho("lucas.almeida9484", 1000, i="velho")], packages=[IG],
+    sem_rid = [dataclasses.replace(e, resource_id="") for e in _cabecalho("tadeu.quintela4821", 395, marca=False)]
+    antigo2 = UiTree(elements=[*sem_rid, *_cabecalho("tadeu.quintela4821", 1000, i="velho")], packages=[IG],
                      sensitive=False)
-    assert not marca_junto_da_conta(antigo2, MARCA, "lucas.almeida9484")
+    assert not marca_junto_da_conta(antigo2, MARCA, "tadeu.quintela4821")
     # o cartão do topo é de outro perfil (o post novo não está onde devia) e o nosso, com marca, vem abaixo: dúvida
     outro_no_topo = UiTree(elements=[*_cabecalho("outra.conta", 395, marca=False, i="b"),
-                                     *_cabecalho("lucas.almeida9484", 1000)], packages=[IG], sensitive=False)
-    assert not marca_junto_da_conta(outro_no_topo, MARCA, "lucas.almeida9484")
+                                     *_cabecalho("tadeu.quintela4821", 1000)], packages=[IG], sensitive=False)
+    assert not marca_junto_da_conta(outro_no_topo, MARCA, "tadeu.quintela4821")
     # o texto "AI info" sem o `secondary_label` medido: dúvida, não conta
-    sem_id = UiTree(elements=[_cabecalho("lucas.almeida9484", 395, marca=False)[0],
-                              dataclasses.replace(_cabecalho("lucas.almeida9484", 395)[1], resource_id="")],
+    sem_id = UiTree(elements=[_cabecalho("tadeu.quintela4821", 395, marca=False)[0],
+                              dataclasses.replace(_cabecalho("tadeu.quintela4821", 395)[1], resource_id="")],
                     packages=[IG], sensitive=False)
-    assert not marca_junto_da_conta(sem_id, MARCA, "lucas.almeida9484")
+    assert not marca_junto_da_conta(sem_id, MARCA, "tadeu.quintela4821")
 
 
 def test_a_marca_so_e_exigida_com_o_argumento_true() -> None:

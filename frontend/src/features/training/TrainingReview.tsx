@@ -590,7 +590,7 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
       ) : (
         <div className={styles.review}>
           <div className={styles.recordingCol}>
-            <h4 className={styles.sub}>O que você fez ({sessao.inputs?.length ?? 0} entradas)</h4>
+            <h4 className={styles.sub}>O que você fez ({plural(sessao.inputs?.length ?? 0, 'entrada', 'entradas')})</h4>
             <ol className={styles.inputList}>
               {agruparTeclas(sessao.inputs ?? [], descartadas).map((g) => {
                 const e = g[0]!;
@@ -691,7 +691,10 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                         <p className={styles.muted}>
                           <Badge size="sm" tone={previaPorEtapa.get(s.key)!.recipe ? 'success' : 'neutral'}>
                             {previaPorEtapa.get(s.key)!.recipe ? 'sem IA' : 'com IA'}
-                          </Badge> Ao salvar: {previaPorEtapa.get(s.key)!.reason}
+                          </Badge> Ao salvar: {previaPorEtapa.get(s.key)!.recipe
+                            // 29.146: o motivo literal da prévia (v1.58) já diz "ao salvar"; com receita, a frase é do painel.
+                            ? 'a receita desta etapa é gravada.'
+                            : previaPorEtapa.get(s.key)!.reason}
                         </p>
                       ) : null}
                       {acoes.length && (s.side_effect || s.capability) ? (

@@ -620,7 +620,7 @@ function AtribuirCard({ perfis, aparelhos, onFeito }: {
       const { confirmed } = await confirm({
         title: `Mudar a saída de ${item.id}?`, danger: true, confirmLabel: 'Mudar mesmo assim',
         cancelLabel: 'Cancelar', icon: ShieldAlert,
-        body: `${item.id} tem conta real vinculada (${conta}). Trocar a saída de uma conta logada costuma disparar `
+        body: `${item.id} tem conta real vinculada: ${conta}. Trocar a saída de uma conta logada costuma disparar `
           + 'verificação e já custou contas antes (ADR-056 §7). Confirme só se o dono autorizou para ESTE aparelho.',
       });
       if (!confirmed) return;

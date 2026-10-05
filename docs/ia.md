@@ -246,6 +246,12 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
 - **Imagem sob demanda**: com `image_policy: auto`, a observação lê a árvore primeiro e só captura imagem quando
   a decisão, o julgamento, a evidência ou a divergência pedem (ADR-027). Antes, o screencap e a codificação
   aconteciam mesmo quando a imagem não ia ao modelo.
+  - **Falha só da imagem (31.76)**: no laço do ator, com a árvore já lida e o tamanho da tela conhecido sem a imagem, um
+    screencap que estoura o prazo ou falha pelo adb não derruba a observação (`observe(tolerar_falha_da_imagem=True)`):
+    ela volta com `image_omitted="capture_failed"` e o ator decide pela árvore, sem `_stuck`, sem erro seguido e sem
+    recriar a sessão. Se foi `DriverTimeout`, o executor espera o aparelho ficar livre (`drain`) e relê só a árvore. Se
+    o ator PEDIU a imagem e ela falha 2 vezes seguidas, vale o caminho de antes (`fail_or_retry`). Verificação e
+    evidência não toleram: `completar_imagem` refaz a captura. Captura que falhou nunca é prova.
 - **Provas locais** (item 7.5): `backend/app/taskqueue/proofs.py` — conferência determinística pela árvore local
   (`==` exato em `find_selector`) antes de chamar o modelo, no catálogo do Instagram. Medido: Instagram 2/3→3/3
   de sucesso comprovado, US$0,20→0,08 por caso.
@@ -1388,7 +1394,7 @@ Prova: `simulated` (`backend/tests/test_decisao_fechada_curador.py`). Chamada re
         - e-mail + separador + valor, ou e-mail + palavra com letra que fecha a oração.
     - **Leitura literal**: a sintaxe de destino conta mesmo cortada pelo extrator. É o que fecha a família 3 da H
       ("entre com a conta lucas hoje girassol"). "entre com a conta Lucas e curta" recusa; "entre pela Lucas e curta" e
-      "entre como @lucas.almeida9484 e curta o post" passam.
+      "entre como @«conta do android-01» e curta o post" passam.
     - Exceção única: objeto pessoa ou conversa (`_objeto_e_pessoa`). "entre no insta" sozinho passa. Os dígitos soltos
       seguem a regra dos anos, e as máscaras de forma continuam para o que passa.
     - Residual aceito:

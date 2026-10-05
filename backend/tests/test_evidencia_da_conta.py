@@ -40,7 +40,7 @@ def test_prova_por_seletor_com_o_rotulo_vira_conta_vista_na_tela() -> None:
 
 def test_prova_por_seletor_sem_o_rotulo_nao_e_observacao_de_conta() -> None:
     """android-06: a evidência de 02/10 era só o seletor (sem a conta) e o cartão dizia "conta diferente do rótulo"."""
-    assert evidencia_legivel("andre.carvalho9543", SELETOR) is None
+    assert evidencia_legivel("rene.sampaio381524", SELETOR) is None
     assert evidencia_legivel("qa-user-11", PROVA_QA) is None
     assert evidencia_legivel("qa-user-10", "seletor id=x|text=qa-user-10: 0 elemento(s)") is None
 
@@ -61,7 +61,7 @@ async def test_o_cartao_le_a_evidencia_antiga_ja_legivel(harness: Harness) -> No
     db.execute("UPDATE instances SET account_label=?, account_evidence=?, account_evidence_ts=? WHERE id=?",
                ("qa-user-10", PROVA_QA, "2026-10-03T11:00:00.000Z", "android-01"))
     db.execute("UPDATE instances SET account_label=?, account_evidence=?, account_evidence_ts=? WHERE id=?",
-               ("andre.carvalho9543", SELETOR, "2026-10-02T22:58:00.000Z", "android-02"))
+               ("rene.sampaio381524", SELETOR, "2026-10-02T22:58:00.000Z", "android-02"))
     d1 = st.devices.dto(st.devices.get("android-01"))
     d2 = st.devices.dto(st.devices.get("android-02"))
     assert (d1.account_evidence, d1.account_evidence_ts) == ("qa-user-10 visto na tela", "2026-10-03T11:00:00.000Z")

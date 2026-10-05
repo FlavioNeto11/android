@@ -1,0 +1,168 @@
+"""Troca, nos TESTES, identificadores e nomes de contas reais por valores de exemplo fixos (31.101).
+
+A tabela real → exemplo NUNCA entra no Git: este script a lê de um arquivo local fora do repositório versionado
+(`--tabela` ou a variável `TROCA_DE_NOMES_TABELA`, JSON com `handles`, `pedacos`, `fora` e `simulados`). Não há
+caminho padrão: um padrão dentro do repositório deixaria a tabela a um `git add` de um commit. A do parque fica em
+`C:/farm/privado/`, fora de qualquer checkout. Um script com os nomes como chave guardaria
+justamente o que o item tira.
+
+    python scripts/trocar-nomes-nos-testes.py --tabela <arquivo.json>             # ensaio: só contagens
+    python scripts/trocar-nomes-nos-testes.py --tabela <arquivo.json> --aplicar   # só os handles
+    python scripts/trocar-nomes-nos-testes.py --tabela <arquivo.json> --amplo --aplicar
+
+`--amplo` troca também os pedaços de nome; roda como ÚLTIMA junção no corte de uma suíte, sobre a ponta de integração,
+quando a orquestradora marcar (são ~120 arquivos de teste: como ramo paralelo, conflitaria com todos). Reprodutível:
+rodar de novo sobre a ponta nova resolve o conflito. Com `--banco`, confere contra o banco (modo só leitura) que nenhum
+valor de exemplo é pedaço de nome real e que nenhum pedaço real ficou sem troca. A saída só tem caminhos e contagens.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import sqlite3
+import subprocess
+from pathlib import Path
+
+RAIZ = Path(__file__).resolve().parents[1]
+#: Onde há dado de teste: os testes do backend e dos scripts, e os `*.test.ts(x)` do frontend.
+_ONDE = ("backend/tests", "scripts/tests", "frontend/src")
+_SUFIXOS = (".py", ".ts", ".tsx", ".json", ".yaml", ".yml", ".xml", ".txt", ".md")
+
+
+def arquivos(raiz: Path) -> list[Path]:
+    nomes = subprocess.run(["git", "-C", str(raiz), "ls-files", *_ONDE], capture_output=True, text=True,
+                           check=True).stdout.split()
+    return [raiz / f for f in nomes if re.search(r"(^|/)tests/|\.test\.tsx?$", f) and f.endswith(_SUFIXOS)]
+
+
+def _caixa_do_trecho(original: str, novo: str) -> str:
+    if original.isupper():
+        return novo.upper()
+    return novo[0].upper() + novo[1:] if original[0].isupper() else novo
+
+
+_TRECHO = re.compile(r"[^\W\d_]+")
+
+
+def _caixa(original: str, novo: str) -> str:
+    """A caixa do original, TRECHO a trecho de letras: num handle, "Nome.Sobrenome1234" e "NOME.sobrenome1234" seguem
+    assim (os testes de caixa provam com as duas partes). Com número de trechos diferente, vale a do primeiro."""
+    velhos, novos = _TRECHO.findall(original), list(_TRECHO.finditer(novo))
+    if len(velhos) != len(novos):
+        return _caixa_do_trecho(original, novo)
+    saida, fim = [], 0
+    for velho, m in zip(velhos, novos):
+        saida += [novo[fim:m.start()], _caixa_do_trecho(velho, m.group(0))]
+        fim = m.end()
+    return "".join(saida) + novo[fim:]
+
+
+def trocador(tabela: dict, amplo: bool):
+    """O handle inteiro primeiro (com o número trocado); com `amplo`, depois os `pares` (nome.sobrenome sem o número,
+    inclusive colado a um dígito, e o handle de exemplo que repetia o sufixo de uma conta real) e cada pedaço de nome
+    por palavra inteira."""
+    # 31.101: o handle também aparece com o ponto escapado, numa expressão regular do teste (`/nome\.sobrenome1234/`);
+    # essa forma se troca pela de exemplo com o ponto escapado do mesmo jeito.
+    def _com_escape(pares: dict) -> list[tuple[str, str]]:
+        return [*pares.items(), *((v.replace(".", "\\."), n.replace(".", "\\.")) for v, n in pares.items() if "." in v)]
+    handles = [(re.compile(re.escape(velho), re.IGNORECASE), novo) for velho, novo in _com_escape(tabela["handles"])]
+    if amplo:
+        # Fim do par: nem letra (o começo de um sobrenome mais longo não é ele), mas pode vir um dígito colado.
+        handles += [(re.compile(r"\b" + re.escape(velho) + r"(?![^\W\d_])", re.IGNORECASE), novo)
+                    for velho, novo in _com_escape(tabela.get("pares", {}))]
+    pedacos = tabela["pedacos"] if amplo else {}
+    pad = (re.compile(r"\b(" + "|".join(sorted(map(re.escape, pedacos), key=len, reverse=True)) + r")\b",
+                      re.IGNORECASE) if pedacos else None)
+
+    def trocar(texto: str) -> str:
+        for rx, novo in handles:
+            texto = rx.sub(lambda m, novo=novo: _caixa(m.group(0), novo), texto)
+        return pad.sub(lambda m: _caixa(m.group(0), pedacos[m.group(0).lower()]), texto) if pad else texto
+    return trocar
+
+
+def nomes_do_banco(banco: Path, fora: set[str]) -> set[str]:
+    db = sqlite3.connect(f"file:{banco.as_posix()}?mode=ro", uri=True)
+    db.execute("PRAGMA query_only=ON")
+    reais: set[str] = set()
+    for sql in ("SELECT username FROM instagram_profiles", "SELECT display_name FROM instagram_profiles",
+                "SELECT name FROM personas"):
+        for (v,) in db.execute(sql):
+            reais |= {p for p in re.split(r"[\s._\-0-9]+", (v or "").lower()) if len(p) >= 4}
+    db.close()
+    return reais - fora
+
+
+def _dentro_de_checkout(tabela: Path, raiz: Path) -> bool:
+    """Dentro deste repositório, do `--raiz` ou de QUALQUER árvore de trabalho do git (outro checkout, um worktree):
+    em todos, um `git add` descuidado a levaria a um commit. Quem responde por "qualquer árvore" é o próprio git, e a
+    conferência FALHA FECHADA: só "false" ou o "not a git repository" liberam. O 128 de "dubious ownership", por
+    exemplo, acontece justamente dentro de um checkout."""
+    pasta = tabela.resolve().parent
+    if not pasta.is_dir():
+        raise SystemExit("a pasta da tabela não existe")
+    if any(r.resolve() in (pasta, *pasta.parents) for r in (RAIZ, raiz)):
+        return True
+    try:
+        git = subprocess.run(["git", "-C", str(pasta), "rev-parse", "--is-inside-work-tree"], capture_output=True,
+                             text=True)
+    except OSError as exc:
+        raise SystemExit(f"não deu para perguntar ao git onde a tabela está: {type(exc).__name__}") from exc
+    if git.returncode == 0 and git.stdout.strip() == "false":
+        return False
+    return not (git.returncode == 128 and "not a git repository" in git.stderr)
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--tabela", type=Path, default=os.environ.get("TROCA_DE_NOMES_TABELA") or None)
+    ap.add_argument("--raiz", type=Path, default=RAIZ)
+    ap.add_argument("--banco", type=Path)
+    ap.add_argument("--amplo", action="store_true")
+    ap.add_argument("--aplicar", action="store_true")
+    args = ap.parse_args()
+    if args.tabela is None:
+        raise SystemExit("diga a tabela: --tabela <arquivo.json> ou TROCA_DE_NOMES_TABELA (fora do repositório)")
+    if _dentro_de_checkout(args.tabela, args.raiz):
+        raise SystemExit("a tabela não pode ficar dentro de um repositório (este, o --raiz ou outro checkout)")
+    tabela = json.loads(args.tabela.read_text(encoding="utf-8"))
+    trocar = trocador(tabela, args.amplo)
+    def pedacos_de(texto: str) -> set[str]:
+        return {p for p in re.split(r"[.\d]+", texto.lower()) if p}
+    novos = {p for v in [*tabela["pedacos"].values(), *tabela["handles"].values()] for p in pedacos_de(v)}
+    # Do par, só o pedaço que o par INTRODUZ conta como novo: o handle de exemplo que só troca o sufixo mantém os
+    # nomes de exemplo que já estavam nos testes.
+    novos |= {p for velho, novo in tabela.get("pares", {}).items() for p in pedacos_de(novo) - pedacos_de(velho)}
+    feitos = [*tabela["handles"].values(), *tabela.get("pares", {}).values()]
+    if novos & {s.lower() for s in tabela.get("simulados", [])}:
+        raise SystemExit("um valor de exemplo coincide com um nome do simulated_provider")
+    if args.banco:
+        reais = nomes_do_banco(args.banco, set(tabela.get("fora", [])))
+        if novos & reais:
+            raise SystemExit("um valor de exemplo é pedaço de nome real")
+        if args.amplo and reais - set(tabela["pedacos"]):
+            raise SystemExit(f"{len(reais - set(tabela['pedacos']))} pedaço(s) real(is) sem troca na tabela")
+    textos = {f: f.read_bytes().decode("utf-8") for f in arquivos(args.raiz)}
+    if args.amplo:
+        juntos = "\n".join(textos.values())
+        for feito in feitos:      # o handle ou par já trocado numa rodada anterior não conta
+            juntos = re.sub(re.escape(feito), " ", juntos, flags=re.IGNORECASE)
+        if any(re.search(r"\b" + re.escape(n) + r"\b", juntos, re.IGNORECASE) for n in novos):
+            raise SystemExit("um valor de exemplo já existe nos testes: troque-o na tabela")
+    mudados = linhas = 0
+    for f, bruto in textos.items():
+        novo = trocar(bruto)
+        if novo != bruto:
+            mudados += 1
+            linhas += sum(1 for a, b in zip(bruto.splitlines(), novo.splitlines()) if a != b)
+            if args.aplicar:
+                f.write_bytes(novo.encode("utf-8"))
+    print(f"arquivos: {mudados}, linhas: {linhas} ({'aplicado' if args.aplicar else 'ensaio'}"
+          f"{', amplo' if args.amplo else ', só handles'})")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

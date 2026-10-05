@@ -1415,7 +1415,10 @@ class StepExecutor:
                 rr.variant = await self.devices.variant_of(rt)
                 rr.row = self.recipes.find(app.package, rr.app_version, rr.step_hash,
                                            signature=rr.signature, variant=rr.variant,
-                                           step_hash_generico=rr.step_hash_generico)
+                                           step_hash_generico=rr.step_hash_generico,
+                                           # 30.81: a receita ensinada em espera de prova só vale para quem ensinou
+                                           persona=self.repo.persona_do_objetivo(objective["profile_id"], rt.id),
+                                           prova_fluxo=run["prova_fluxo_id"])
                 if rr.row is not None:
                     rr.replayer = self.recipes.replayer(rr.row, rr.variables)
                     if rr.row["status"] == "candidate":
@@ -1821,7 +1824,7 @@ class StepExecutor:
             return await falha("este aparelho não sabe receber mídia na galeria", tentar_de_novo=False)
         # 30.60 (achado 6): o perfil do objetivo precisa ter vínculo ATIVO com ESTE aparelho. Sem isso, a imagem de uma
         # persona iria para a galeria de outra (objetivo de A despachado num aparelho que só tem B). O vínculo secundário
-        # conta (android-13 é também do André): é pertencer ao aparelho, não ser o único dele.
+        # conta (android-13 é também do Beltrano): é pertencer ao aparelho, não ser o único dele.
         if persona_id and self.social is not None and self.social.repo.binding(persona_id, rt.id) is None:
             return await falha(f"a persona do objetivo não está vinculada a {rt.id}: a imagem dela não vai para a galeria "
                                "de outro perfil (nada foi enviado ao aparelho)", tentar_de_novo=False)
@@ -2035,9 +2038,11 @@ class StepExecutor:
                                               kind="text", note=note)
                 return
             data = obs.jpeg
-            if data is None and not obs.sensitive and obs.image_omitted == "policy":
-                # A observação saiu só com a árvore (a imagem não ia ao modelo). A evidência adquire a SUA, agora, com
-                # o próprio horário na nota — é só evidência, nunca fonte de coordenada (adendo v0.20, C1).
+            sensivel_tardia = False
+            if data is None and not obs.sensitive and obs.image_omitted in ("policy", "capture_failed"):
+                # A observação saiu só com a árvore (a imagem não ia ao modelo, ou a captura falhou e o 31.76 tolerou).
+                # A evidência adquire a SUA, agora, com o próprio horário na nota — é só evidência, nunca fonte de
+                # coordenada (adendo v0.20, C1).
                 try:
                     tardia = await self.devices.imagem_tardia(rt, timeout=call_timeout)
                 except DriverError as exc:
@@ -2048,9 +2053,18 @@ class StepExecutor:
                 if tardia is not None:
                     data, quando = tardia
                     note += f" (imagem adquirida depois da observação, às {quando})"
-            if obs.sensitive or data is None:
+                else:
+                    # `None` da tardia é a tela que é (ou pode ser) sensível, ou a geração trocada: segue "sensível".
+                    sensivel_tardia = True
+            if obs.sensitive or sensivel_tardia:
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
                                               kind=kind, note=note + " (tela sensível: captura omitida)", redacted=True)
+            elif data is None:
+                # Leitura do 31.76: imagem AUSENTE não é tela sensível. Dizer "sensível" com `redacted` afirmaria na
+                # trilha de auditoria um fato falso sobre a tela.
+                motivo = "captura da tela falhou" if obs.image_omitted == "capture_failed" else "imagem ausente"
+                await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
+                                              kind="text", note=note + f" ({motivo})")
             else:
                 await repo.add_evidence_async(run_id=run_id, instance_id=iid, step_id=step.id, attempt_id=attempt_id,
                                               kind=kind, note=note, data=data)
@@ -2126,6 +2140,7 @@ class StepExecutor:
         same_count = 0
         sigs: list[tuple[str, str, str]] = []                  # (tela exata, tela estrutural, ação)
         errors_in_row = 0
+        falhas_de_captura = 0              # 31.76: capturas seguidas que falharam com a árvore já lida (zera com imagem)
         declared: StepDone | None = None
         max_actions = int(s.max_actions_per_step)
         opcional = step.opcional and self.cfg.file.ai.limpeza_opcional
@@ -2339,8 +2354,43 @@ class StepExecutor:
             try:
                 obs = last_obs = await reler_se_ocupada(
                     lambda: self.devices.observe(rt, timeout=call_timeout, lado_max=ai_cfg.screenshot_max_side,
-                                                 imagem=lambda t: not receita_decide and self._want_image(t, **pede)),
+                                                 imagem=lambda t: not receita_decide and self._want_image(t, **pede),
+                                                 tolerar_falha_da_imagem=True),
                     prazo=deadline, quem=iid)
+                if obs.image_omitted == "capture_failed":
+                    # 31.76: a falha foi SÓ da imagem (a árvore saiu e o tamanho da tela se sabe): nada de `_stuck`,
+                    # de erro seguido nem de sessão recriada. A decisão segue pela árvore; a captura nunca vira prova.
+                    falhas_de_captura += 1
+                    log.info("%s: a captura da tela falhou (%s); a decisão segue pela árvore", iid, obs.captura_falha)
+                    if falhas_de_captura == 1:
+                        repo.decision(f"{iid} · {step.title}: a captura da tela falhou "
+                                      f"({(obs.captura_falha or '').split(':', 1)[0]}); a decisão segue só pela árvore",
+                                      run_id=run_id, instance_id=iid, step_id=step.id)
+                    if obs.captura_excedeu_prazo and not await rt.executor.drain(
+                            max_wait_s=max(0.0, min(180.0, deadline - time.monotonic()))):
+                        # O screencap segue preso no executor do aparelho: a próxima chamada entraria atrás dele.
+                        if time.monotonic() >= deadline:
+                            return await fail_or_retry(com_anr(f"Tempo da etapa esgotado ({step.timeout_s}s)."), obs)
+                        return await self._stuck(rt, step, fired, obs.captura_falha or "")
+                    if image_requested and falhas_de_captura >= 2:
+                        # O ator pediu a imagem e ela falhou de novo: a árvore sozinha não responde ao pedido.
+                        return await fail_or_retry(f"A captura da tela seguiu falhando: {obs.captura_falha}", obs)
+                    if image_requested:
+                        history.append("(executor) a captura da tela falhou nesta volta; decida pela lista de "
+                                       "elementos, sem a imagem.")
+                    if obs.captura_excedeu_prazo:
+                        # Com o executor livre de novo, a árvore da decisão é lida DEPOIS dele (e só ela).
+                        relida = await reler_se_ocupada(
+                            lambda: self.devices.observe(rt, timeout=call_timeout, imagem=False,
+                                                         lado_max=ai_cfg.screenshot_max_side,
+                                                         tolerar_falha_da_imagem=True),
+                            prazo=deadline, quem=iid)
+                        obs = last_obs = (dataclasses.replace(relida, image_omitted="capture_failed",
+                                                              captura_falha=obs.captura_falha,
+                                                              captura_excedeu_prazo=True)
+                                          if relida.image_omitted == "policy" else relida)
+                elif obs.jpeg is not None:
+                    falhas_de_captura = 0
                 observacao_ms = ms_desde(t_observacao)
             except DriverTimeout as exc:
                 return await self._stuck(rt, step, fired, str(exc))
@@ -3924,7 +3974,7 @@ class StepExecutor:
                                              "conta como prova") if t)
             pendentes = marcas_pendentes_na_tela(marcas_pendentes, obs.tree)
             if pendentes:
-                # ADR-055: "Sending…" na tela é efeito A CAMINHO, nunca feito. Em 19/09 a DM da beatriz foi dada por
+                # ADR-055: "Sending…" na tela é efeito A CAMINHO, nunca feito. Em 19/09 a DM da ciclana foi dada por
                 # enviada com "Sending…" congelado: a bolha e o campo limpo já estavam lá, e o modelo disse "sim". Nem
                 # a prova local nem o modelo são consultados; segue olhando até o fim do prazo desta verificação (o
                 # app costuma sair de "Sending…" em 1–2 s). Sem sair, o efeito disparado fica incerto.

@@ -75,6 +75,8 @@ AUTORIA_NAO_CONFIRMADA = "nao_confirmada"
 #: 28.54: o app que o dono reconheceu como ele (`trello.apps_do_dono`, por exemplo o aplicativo do Trello no celular dele).
 #: Só refina a autoria do PRÓPRIO membro do dono; nunca substitui a conferência do membro. Vale como digitado.
 AUTORIA_APP_DO_DONO = "app_do_dono"
+#: 28.52: só nos comentários de IA (com 🤖) das listas de perguntas, que guardam a autoria para medir: `appCreator` nulo.
+AUTORIA_DIGITADA = "digitado"
 _SEPARADOR_DA_AUTORIA = ";autoria="
 _NUMERO_DA_PERGUNTA = re.compile(r"^\s*(P-\d{3,})(?!\d)")
 #: Comentário que começa com isto é de uma IA (a Central ou uma sessão), nunca um pedido do dono, que não usa 🤖.
@@ -202,16 +204,25 @@ def recebida_da_action(action: Mapping[str, object], cfg: TrelloCfg, *,
         texto = str(dados.get("text") or "")
         lista = _texto((_mapa(dados.get("list")) or {}).get("id"))
         das_perguntas = {cfg.listas.get(p) for p in PAPEIS_DAS_PERGUNTAS} - {None, ""}
+        da_ia = texto.lstrip().startswith((PREFIXO_DA_IA, MARCA_DE_IA)) or (da_central is not None and da_central(ident))
         if fato is None and lista is not None and lista in das_perguntas:
             numero = _NUMERO_DA_PERGUNTA.match(str((_mapa(dados.get("card")) or {}).get("name") or ""))
             fato = f"{MARCA_DA_PERGUNTA}{numero.group(1) if numero else ''}"
             if "appCreator" not in action:
                 fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_NAO_CONFIRMADA}"
             elif action.get("appCreator") is not None:
-                fato += f"{_SEPARADOR_DA_AUTORIA}{_autoria_do_app(action.get('appCreator'), autor, cfg)}"
+                # 28.54: o app do dono só refina a autoria da resposta DELE; o comentário de IA guarda sempre "app" (28.52).
+                fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_DE_APP if da_ia else _autoria_do_app(action.get('appCreator'), autor, cfg)}"
+            elif da_ia:
+                fato += f"{_SEPARADOR_DA_AUTORIA}{AUTORIA_DIGITADA}"
+            if da_ia:
+                # 28.52: o comentário de IA numa lista de perguntas segue sem valer nada, mas a linha guarda a autoria
+                # da action. É a medida de que caminho de escrita das sessões leva `appCreator`.
+                return Recebida(id_externo=ident, ordem=None, tipo="outro", do_dono=False, texto="", ref_mensagem=ref,
+                                responde_a=fato, escrita_em=escrita)
         # Qualquer 🤖 no começo é de IA, não do dono: a Central, a sessão Canais, a orquestradora (`🤖 ORQ`) e os comentários
         # antigos (`🤖 HH:MMZ ·`) escrevem todos com o token dele. Regra C-07 de docs/dominios/canais.md.
-        if texto.lstrip().startswith((PREFIXO_DA_IA, MARCA_DE_IA)) or (da_central is not None and da_central(ident)):
+        if da_ia:
             return outro()                    # o que a própria Central escreveu volta como action do dono (o token é o dele)
         return Recebida(id_externo=ident, ordem=None, tipo="mensagem", do_dono=do_dono, texto=texto,
                         ref_mensagem=ref, responde_a=fato, escrita_em=escrita)

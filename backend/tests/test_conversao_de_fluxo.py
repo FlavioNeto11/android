@@ -37,7 +37,9 @@ from .test_habilidades_na_execucao import ABRIR, carregar
 
 PACKAGE = "com.instagram.android"
 DONO = "painel:flavio"
-SKILL = "instagram.abrir-a-conversa-com-ana"
+def _skill(flow_id: str) -> str:
+    """`<app>.<fluxo>`: o fluxo novo tem id aleatório (30.83), então a habilidade adotada também."""
+    return f"instagram.{flow_id}"
 
 
 class Mundo:
@@ -85,22 +87,23 @@ def literal(db: Database) -> str:
 def test_converter_adota_e_cria_o_rascunho_descompilado_numa_transacao(db: Database) -> None:
     m = Mundo(db)
     flow_id, _ = abrir_conversa(db)
+    sk = _skill(flow_id)
     fluxo = db.one("SELECT * FROM flows WHERE id=?", (flow_id,))
     assert fluxo is not None
-    assert m.conversor.skill_id_for(flow_id) == SKILL                     # `<app>.<fluxo>`, sempre o mesmo
+    assert m.conversor.skill_id_for(flow_id) == sk                     # `<app>.<fluxo>`, sempre o mesmo
 
     c = m.conversor.convert(flow_id, by=DONO)
     v1, v2 = c.published, c.draft
-    assert (str(v1.ref), v1.state, v1.schema_version) == (f"{SKILL}@1", SkillState.PUBLISHED, SCHEMA_LEGACY_PLAN)
+    assert (str(v1.ref), v1.state, v1.schema_version) == (f"{sk}@1", SkillState.PUBLISHED, SCHEMA_LEGACY_PLAN)
     assert v1.document() == legacy_content(fluxo, ["instagram"])           # a v1 É o plano do fluxo
     assert (str(v2.ref), v2.state, v2.schema_version, v2.parent_version) == (
-        f"{SKILL}@2", SkillState.DRAFT, SCHEMA_DSL_V1, 1)
+        f"{sk}@2", SkillState.DRAFT, SCHEMA_DSL_V1, 1)
     assert (v2.provenance.kind, v2.provenance.ref, dict(v2.provenance.notes)) == (
-        SourceKind.LEGACY_FLOW, flow_id, {"decompiled_from": f"{SKILL}@1"})
+        SourceKind.LEGACY_FLOW, flow_id, {"decompiled_from": f"{sk}@1"})
     assert v2.command_template == v1.command_template and v2.match_key == v1.match_key
     assert [n["id"] for n in v2.document()["spec"]["nodes"]] == ["abrir_inbox", "abrir_conversa"]
     assert db.scalar("SELECT status FROM flows WHERE id=?", (flow_id,)) == "disabled"
-    assert m.repo.definition(SKILL) is not None and m.repo.definition(SKILL).legacy_flow_id == flow_id  # type: ignore[union-attr]
+    assert m.repo.definition(sk) is not None and m.repo.definition(sk).legacy_flow_id == flow_id  # type: ignore[union-attr]
     # só avisos do compilador (sem exemplo, sem caso): o texto não derivou
     assert {w.code for w in c.warnings} == {"W_PARAMETER_NO_EXAMPLE", "W_NO_VALIDATION_CASE"}
     # o rascunho submete (compila sem erro): a v2 é editável e publicável pelo caminho de sempre
@@ -133,19 +136,20 @@ def test_converter_com_as_habilidades_desligadas_e_recusado(db: Database) -> Non
 def test_desfazer_devolve_o_fluxo_exatamente_como_era(db: Database) -> None:
     m = Mundo(db)
     flow_id, _ = abrir_conversa(db)
+    sk = _skill(flow_id)
     db.execute("INSERT INTO flow_scope(flow_id, profile_id) VALUES (?, 'p1')", (flow_id,))
     antes = fotografia(db, flow_id)
     m.conversor.convert(flow_id, by=DONO)
-    assert m.repo.scope(SKILL).profile_ids == ("p1",)                         # o escopo foi junto
+    assert m.repo.scope(sk).profile_ids == ("p1",)                         # o escopo foi junto
 
     desfeito = m.conversor.undo(flow_id, by=DONO, reason="voltar ao fluxo")
-    assert (desfeito.skill_id, [str(r) for r in desfeito.discarded_drafts]) == (SKILL, [f"{SKILL}@2"])
+    assert (desfeito.skill_id, [str(r) for r in desfeito.discarded_drafts]) == (sk, [f"{sk}@2"])
     assert fotografia(db, flow_id) == antes                                    # linha, escopo e apps, como eram
-    v1 = m.repo.get(SkillRef(SKILL, 1))
+    v1 = m.repo.get(SkillRef(sk, 1))
     assert v1.state is SkillState.DISABLED and v1.state_detail == "voltar ao fluxo"
     assert [(t.from_state, t.to_state) for t in m.repo.history(v1.ref)] == [
         (None, SkillState.PUBLISHED), (SkillState.PUBLISHED, SkillState.DISABLED)]
-    assert db.scalar("SELECT COUNT(*) FROM skill_versions WHERE skill_id=?", (SKILL,)) == 1   # o rascunho saiu
+    assert db.scalar("SELECT COUNT(*) FROM skill_versions WHERE skill_id=?", (sk,)) == 1   # o rascunho saiu
     # desfazer de novo: o fluxo já está ativo — recusa, sem mexer em nada
     with pytest.raises(StateConflict):
         m.conversor.undo(flow_id, by=DONO)
@@ -154,7 +158,7 @@ def test_desfazer_devolve_o_fluxo_exatamente_como_era(db: Database) -> None:
     # converter de novo: a mesma habilidade, versões novas (a v1 desabilitada não volta: `disabled` é terminal; o
     # número do rascunho apagado é reusado, como em todo `discard_draft` — rascunho nunca executou nem foi validado)
     c = m.conversor.convert(flow_id, by=DONO)
-    assert (str(c.published.ref), str(c.draft.ref), c.draft.parent_version) == (f"{SKILL}@2", f"{SKILL}@3", 2)
+    assert (str(c.published.ref), str(c.draft.ref), c.draft.parent_version) == (f"{sk}@2", f"{sk}@3", 2)
 
 
 def test_desfazer_mantem_o_rascunho_que_ja_saiu_de_draft(db: Database) -> None:
@@ -199,6 +203,7 @@ async def test_rotas_de_conversao_atras_do_interruptor_e_com_o_tratamento_de_err
         assert s is not None
         assert s.db.scalar("SELECT package FROM apps WHERE id='instagram'") == PACKAGE      # embutido no harness
         flow_id, _ = abrir_conversa(s.db)
+        sk = _skill(flow_id)
         async with cliente(h) as c:
             # desligado: 404 explícito, e nada muda
             h.cfg.file.skills.enabled = False
@@ -210,21 +215,21 @@ async def test_rotas_de_conversao_atras_do_interruptor_e_com_o_tratamento_de_err
             r = await c.post(f"/api/flows/{flow_id}/adopt", json={"reason": "converter"})
             assert r.status_code == 201, r.text
             corpo = r.json()
-            assert corpo["skill_id"] == SKILL and corpo["published"]["ref"] == f"{SKILL}@1"
+            assert corpo["skill_id"] == sk and corpo["published"]["ref"] == f"{sk}@1"
             assert corpo["draft"]["state"] == "draft" and corpo["draft"]["parent_version"] == 1
             assert corpo["draft"]["content"]["spec"]["nodes"][1]["capability"] == "OPEN_THREAD"
             assert {w["code"] for w in corpo["warnings"]} == {"W_PARAMETER_NO_EXAMPLE", "W_NO_VALIDATION_CASE"}
             assert all(set(w) == {"code", "message", "path", "severity", "origin"} for w in corpo["warnings"])
             lista = (await c.get("/api/skills")).json()
-            assert {(x["ref"], x["legacy_flow_id"]) for x in lista} == {(f"{SKILL}@1", flow_id),
-                                                                       (f"{SKILL}@2", flow_id)}
+            assert {(x["ref"], x["legacy_flow_id"]) for x in lista} == {(f"{sk}@1", flow_id),
+                                                                       (f"{sk}@2", flow_id)}
             # converter de novo o mesmo fluxo (já desligado): 409 do domínio
             r = await c.post(f"/api/flows/{flow_id}/adopt", json={})
             assert r.status_code == 409 and r.json()["detail"]["code"] == "state_conflict"
 
             r = await c.post(f"/api/flows/{flow_id}/release", json={"reason": "voltar"})
             assert r.status_code == 200, r.text
-            assert r.json()["discarded_drafts"] == [f"{SKILL}@2"] and r.json()["flow_status"] == "active"
+            assert r.json()["discarded_drafts"] == [f"{sk}@2"] and r.json()["flow_status"] == "active"
             assert [v["state"] for v in r.json()["versions"]] == ["disabled"]
             r = await c.post(f"/api/flows/{flow_id}/release", json={})
             assert r.status_code == 409 and r.json()["detail"]["code"] == "state_conflict"
@@ -245,20 +250,20 @@ async def test_rotas_de_conversao_atras_do_interruptor_e_com_o_tratamento_de_err
 
             # readotar (v3 publicada, v4 rascunho) e a v1 → v2 pela rota: um rascunho novo a partir da v3
             r = await c.post(f"/api/flows/{flow_id}/adopt", json={})
-            assert r.status_code == 201 and r.json()["published"]["ref"] == f"{SKILL}@2"
-            r = await c.post(f"/api/skills/{SKILL}/versions/2/decompile")
-            assert r.status_code == 201 and r.json()["draft"]["ref"] == f"{SKILL}@4"
+            assert r.status_code == 201 and r.json()["published"]["ref"] == f"{sk}@2"
+            r = await c.post(f"/api/skills/{sk}/versions/2/decompile")
+            assert r.status_code == 201 and r.json()["draft"]["ref"] == f"{sk}@4"
             assert r.json()["draft"]["parent_version"] == 2
-            r = await c.post(f"/api/skills/{SKILL}/versions/4/decompile")
+            r = await c.post(f"/api/skills/{sk}/versions/4/decompile")
             assert r.status_code == 422 and r.json()["detail"]["code"] == "invalid_document"
         # 22.4, pela composição do central: cada mudança de status do fluxo feita pela rota está na trilha do livro,
         # com quem decidiu (`_quem`: sem sessão, `panel`) e o motivo fixo. A adoção recusada não deixou linha.
         assert [(r["from_state"], r["to_state"], r["decided_by"], r["reason"]) for r in s.db.query(
             "SELECT from_state, to_state, decided_by, reason FROM learning_transitions WHERE item_ref=? ORDER BY id",
             (f"fluxo:{flow_id}",))] == [
-            ("published", "disabled", "panel", f"adotado pela habilidade {SKILL}"),
-            ("disabled", "published", "panel", f"devolvido pela habilidade {SKILL}"),
-            ("published", "disabled", "panel", f"adotado pela habilidade {SKILL}")]
+            ("published", "disabled", "panel", f"adotado pela habilidade {sk}"),
+            ("disabled", "published", "panel", f"devolvido pela habilidade {sk}"),
+            ("published", "disabled", "panel", f"adotado pela habilidade {sk}")]
     finally:
         await h.state.stop()                                                    # type: ignore[union-attr]
 

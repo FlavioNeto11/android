@@ -58,12 +58,14 @@ SISTEMAS = {
     # Item 29.57: os planejadores levam a regra de identidade (ANA, quando falam com a pessoa) — o hash muda de
     # propósito; o ator e o verificador não a levam e ficam iguais.
     "PLANNER_SYSTEM": "1065525d77b034b5ba13cfe48ccb71fb7058c07aed385e62c8f807b785f6dace",
-    "PLANNER_CAPABILITY_SYSTEM": "ff8bd07ef738da1e7d6fe965bb45b501669e4653aa6daca499b59af20fb6cc28",
+    # Item 31.98: o exemplo de nome de usuário com @ virou fictício (era o de uma conta) — o hash dos três que o
+    # trazem (capability e multiapp, inteiro e curto) muda de propósito.
+    "PLANNER_CAPABILITY_SYSTEM": "4d9ccea49ad80675cecee5e62215995ba0f16da2696ec5d8d6c0c882de8d0600",
     # 29.57 (leitura da orquestradora): o multiapp e as variantes curtas não tinham hash congelado; passam a ter, já
     # com a regra de identidade.
-    "PLANNER_MULTIAPP_SYSTEM": "7c89a0732daab3ffc48854d421648813601296d4b38f1cdc26d15b5a13bc0f7e",
+    "PLANNER_MULTIAPP_SYSTEM": "c7a7ac398020540eda3b495b1f63d8591b3cd5c7d6569aea684cea10d8718bde",
     "PLANNER_SYSTEM_CURTO": "697f5c68a8940b807ff878e1080af18c7d5ea9827b5121009d31dbbefe258111",
-    "PLANNER_MULTIAPP_SYSTEM_CURTO": "14fc6c1f7867f06ede5db34fedd97437ba8eedcbab048eddf40559476dec1a35",
+    "PLANNER_MULTIAPP_SYSTEM_CURTO": "06f4bab8bcc83a24ee6c6688340e57a9c8212769b986bc77ad3d5e1f13f0696e",
     # Item 29.58 (C): o verificador passa a contar as cópias do efeito desta execução (`copias`) — o hash muda de
     # propósito, não é enfraquecimento do teste.
     # Item 31.40: o verificador marca `sobreposicao` quando algo cobre o alvo — o hash muda de propósito.

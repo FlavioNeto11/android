@@ -142,7 +142,7 @@ _EUFEMISMO_C7: Final = re.compile("|".join((
     r"\b(?:embaixo|abaixo|debaixo|em baixo|logo abaixo|depois) d[oa]s? (?:campo (?:d[oa] )?)?(?:usuario|user|login"
     r"|e-?mail|nome de usuario)\b",
     # 31.20 (L4 e sondas da H na rodada I): a caixa do formulário e o primeiro campo ("na caixa de baixo x", "na segunda
-    # caixa x", "primeiro campo lucas, segundo x")
+    # caixa x", "primeiro campo fulano, segundo x")
     r"\bcaixa(?:inha)? de baixo\b", r"\bsegunda caixa(?:inha)?\b", r"\bprimeiro campo\b",
     # rodada F (F-E): a pergunta de segurança sem a palavra ("a palavra de sempre é", "aquela que só eu sei é", "o nome do
     # meu primeiro cachorro é"). O "é" sem acento é o "e" da conjunção: "o post de sempre e comente" também recusa.
@@ -170,7 +170,7 @@ _EUFEMISMO_C7: Final = re.compile("|".join((
     r"\blos (?:numeros|digitos|codigos) que (?:llegaron|vinieron|mandaron)\b", r"\bdebajo del (?:usuario|login)\b",
     # usuário e senha separados por barra: "entra com admin / admin1234", "log in with x / y"
     r"\b(?:entr\w*|log\s*in|login|sign\s*in)\s+(?:com|with|con)\s+\S+\s*/\s*\S+",
-    # o par com rótulo e sem verbo de entrar (rodada C): "login: lucas / girassol", "usuário lucas, acesso girassol"
+    # o par com rótulo e sem verbo de entrar (rodada C): "login: fulano / girassol", "usuário fulano, acesso girassol"
     r"\b(?:login|acesso|usuario|user|conta|username)\s*[:=]\s*\S+\s*/\s*\S+",
     r"\b(?:usuario|user|login|username)\s*:?\s*\S+\s*[,;]\s*(?:acesso|senha|pass|password)\s*:?\s*\S+",
 )))
@@ -184,7 +184,7 @@ _EUFEMISMO_EH: Final = re.compile("|".join((
     r"\b[ao]s? de (?:costume|praxe|habito) (?:eh|:|=)\s",
     # "o que eu digito (depois do nome) é", "o que eu coloco é"
     r"\bo que (?:eu )?(?:digito|coloco|ponho|uso|escrevo|preencho)\b(?: \S+){0,6}? (?:eh|:|=)\s",
-    # "o acesso é com girassol" (não "o acesso é com a conta do lucas")
+    # "o acesso é com girassol" (não "o acesso é com a conta do fulano")
     r"\bacesso eh com (?!(?:a|o|as|os) (?:conta|perfil|persona)\b)",
     # "pra confirmar que sou eu: girassol"
     r"\bque sou eu (?:eh|:|=)\s",
@@ -196,7 +196,7 @@ _EUFEMISMO_EH: Final = re.compile("|".join((
     # espanhol e inglês: "lo mismo de siempre es", "la misma de ayer es", "my usual (one) is", "same as always:"
     r"\bl[oa]s? mism[oa]s? de (?:siempre|ayer|antes|hoy|la semana pasada) (?:es|:|=)\s",
     r"\bmy usual(?: one)? (?:is|:|=)\s", r"\bsame (?:one )?as (?:always|usual|before|yesterday) (?:is |: |= )",
-    # 31.20 (L4 e sondas da H na rodada I): "o acesso (do insta) é x", "pra entrar (no insta) é x", "a do lucas é x", "a
+    # 31.20 (L4 e sondas da H na rodada I): "o acesso (do insta) é x", "pra entrar (no insta) é x", "a do fulano é x", "a
     # mesma do banco é x", "o lema é x", "as letras são …", e os espanhóis "la misma del banco es x", "lo que tecleo es x"
     r"\bo acesso (?:d[oa]s? \S+ )?(?:eh|:|=)\s",
     r"\b(?:pra|para) (?:entrar|logar|acessar)(?: (?:no|na|nos|nas|em) \S+)? eh\s",
@@ -207,8 +207,8 @@ _EUFEMISMO_EH: Final = re.compile("|".join((
 # ------------------------------------------------------------------ regra ESTRUTURAL de intenção de entrar (rodadas E e F)
 # Independe da lista: o verbo de entrar e um valor ligado a ele é a credencial, com ou sem a palavra. Desde a rodada F
 # (F-A), o verbo de entrar SEM objeto de navegação barra sozinho (`c7_intencao_de_entrar`), sem precisar achar o valor:
-# "entra e curte", "entre com a girassol", "lucas e girassol, entra". Roda sobre os tokens do texto sem acento (palavra,
-# número ou um sinal de pontuação por token; o handle "lucas.almeida9484" e "connecte-toi" são um token só).
+# "entra e curte", "entre com a girassol", "fulano e girassol, entra". Roda sobre os tokens do texto sem acento (palavra,
+# número ou um sinal de pontuação por token; o handle "fulano.tal1234" e "connecte-toi" são um token só).
 _TOKEN: Final = re.compile(r"[^\W_]+(?:['\-.][^\W_]+)*|[^\w\s]")
 _ENTRAR: Final[frozenset[str]] = frozenset((
     "entrar", "entre", "entra", "entrem", "entrando", "entro", "logar", "loga", "logue", "logando", "logue-se", "login",
@@ -224,7 +224,7 @@ _ENTRAR: Final[frozenset[str]] = frozenset((
     *(f"{r}{s}" for r in ("entr", "log", "acess") for s in ("arei", "ara", "aremos", "arao", "aria", "ariam", "ariamos")),
     "loguem", "identifique-se", "identifica-se", "identificar-se", "identifiquem-se", "identifica-te"))
 #: O verbo de entrar no passado e no particípio ("entrei com girassol", "loguei com x", "logado com"; rodada H, H-1 a). Só
-#: liga um VALOR (`_login_valor`): fora dele "o lucas já está logado" e "veja se ele entrou" são pergunta de estado, e a F-A
+#: liga um VALOR (`_login_valor`): fora dele "o fulano já está logado" e "veja se ele entrou" são pergunta de estado, e a F-A
 #: (verbo sem objeto de navegação) os recusaria.
 _ENTRAR_PASSADO: Final[frozenset[str]] = frozenset((
     "entrei", "entrou", "entramos", "entraram", "loguei", "logou", "logamos", "logaram", "logado", "logada", "logados",
@@ -268,14 +268,14 @@ def _ponta_da_faixa(toks: list[str], k: int) -> int:
 
 
 #: 31.20 (rodada I, HM3): a palavra que REGE a preposição "entre" ("escolha entre a foto e o vídeo", "a conversa entre a
-#: marina e o lucas", "a diferença entre os dois"). Lista de ISENÇÃO: a palavra que falta aqui deixa o "entre" verbo
+#: marina e o fulano", "a diferença entre os dois"). Lista de ISENÇÃO: a palavra que falta aqui deixa o "entre" verbo
 #: (custo de utilidade), não vaza.
 _REGE_ENTRE: Final[frozenset[str]] = frozenset((
     "escolha", "escolhe", "escolher", "escolham", "decida", "decide", "decidir", "sorteie", "sorteia", "sortear",
     "alterne", "alterna", "alternar", "divida", "divide", "dividir", "compare", "compara", "comparar", "conversa",
     "conversas", "chat", "chats", "mensagens", "diferenca", "diferencas", "comparacao", "relacao", "distancia", "meio",
     "troca", "dialogo", "briga", "amizade", "disputa", "partida", "votacao"))
-#: O determinante que abre cada ponta de "entre A e B" no começo da oração ("entre a marina e o bruno, siga o bruno").
+#: O determinante que abre cada ponta de "entre A e B" no começo da oração ("entre a marina e o ciclano, siga o ciclano").
 _DETERMINANTE_DA_PONTA: Final[frozenset[str]] = frozenset((
     "a", "o", "as", "os", "um", "uma", "uns", "umas", "meu", "minha", "meus", "minhas", "seu", "sua", "seus", "suas",
     "esse", "essa", "este", "esta", "aquele", "aquela", "the"))
@@ -285,10 +285,10 @@ def _e_preposicao(toks: list[str], i: int) -> bool:
     """"entre" preposição:
     - diante de faixa, em qualquer posição ("entre 8 e 12", "a entrega é com a marina, entre 8 e 12", "entre março e
       abril"); o número sai mascarado de qualquer jeito;
-    - depois de palavra que a rege (`_REGE_ENTRE`: "escolha entre a foto com a marina e a do bruno", "a conversa entre a
-      marina e o lucas"; 31.20, rodada I), salvo diante de lugar, conector ou separador ("escolha entre com girassol");
-    - no começo da oração, em "entre <det> A e <det> B" sem conector até três tokens depois ("entre a marina e o bruno,
-      siga o bruno"): a leitura de preposição só deixa o resto sem o verbo, como "a marina e o bruno, siga";
+    - depois de palavra que a rege (`_REGE_ENTRE`: "escolha entre a foto com a marina e a do ciclano", "a conversa entre a
+      marina e o fulano"; 31.20, rodada I), salvo diante de lugar, conector ou separador ("escolha entre com girassol");
+    - no começo da oração, em "entre <det> A e <det> B" sem conector até três tokens depois ("entre a marina e o ciclano,
+      siga o ciclano"): a leitura de preposição só deixa o resto sem o verbo, como "a marina e o ciclano, siga";
     - depois de palavra de conteúdo (o "é" verbo chega como "eh", `_tokens_de`), diante de "os"/"as" ("é entre os
       melhores").
     "no insta entre 4471 e curte", "no insta entre girassol e curta" e "entre a página com girassol e o post" seguem
@@ -359,7 +359,7 @@ _DENTRO_DA_LOCUCAO: Final[frozenset[str]] = frozenset((
 _ADVERBIOS: Final[frozenset[str]] = frozenset((
     "agora", "ja", "logo", "rapidinho", "rapido", "novamente", "entao", "ai", "por", "favor", "pf", "pfv", "pls",
     "please", "now", "again", "ahora", "so", "apenas", "tambem", "de", "novo", "depois", "then", "too",
-    # rodada H: o tempo e o reforço depois do destino ("entre com o lucas HOJE", "com o lucas MESMO"), que não são o valor
+    # rodada H: o tempo e o reforço depois do destino ("entre com o fulano HOJE", "com o fulano MESMO"), que não são o valor
     # colado ao nome (G-4)
     "hoje", "amanha", "ontem", "cedo", "tarde", "ainda", "today", "tomorrow", "hoy", "manana", "mesmo", "mesma",
     "primeiro", "antes"))
@@ -386,7 +386,7 @@ _LUGAR: Final[frozenset[str]] = frozenset((
     "no", "na", "nos", "nas", "em", "num", "numa", "ao", "aos", "in", "into", "on", "onto", "to", "at", "en", "nel",
     "nella", "sul", "dans", "im", "auf", "op", "sur", "bei", "w", "nessa", "nesse", "nesta", "neste", "naquela",
     "naquele", "nisso", "nele", "nela", "dentro", "aqui", "ali"))
-#: Artigo, possessivo e "de", pulados até a palavra que importa ("com A conta DO lucas", "acesse O app").
+#: Artigo, possessivo e "de", pulados até a palavra que importa ("com A conta DO fulano", "acesse O app").
 _ARTIGOS: Final[frozenset[str]] = frozenset((
     "a", "o", "as", "os", "um", "uma", "the", "an", "el", "la", "los", "las", "le", "les", "un", "una", "meu", "minha",
     "meus", "minhas", "seu", "sua", "seus", "suas", "my", "your", "his", "her", "mi", "tu", "su", "mon", "ma", "de",
@@ -438,7 +438,7 @@ _SUFIXO_INSTRUMENTAL: Final = re.compile(r"[^\W\d_]+-[^\W\d_]?[ae]l")
 #: Logo depois do verbo, o separador que liga o valor ("pra entrar: girassol", "entre - girassol", "entre, girassol").
 _SEPARADORES_DE_VALOR: Final[frozenset[str]] = frozenset((":", "/", "=", ",", "-"))
 #: Rodada H: o determinante da conta ("outra", "a mesma", "qualquer", "a certa"). Não é valor; no par, é o rótulo do
-#: segundo ("usuario lucas; a OUTRA: girassol"), pulado como o artigo.
+#: segundo ("usuario fulano; a OUTRA: girassol"), pulado como o artigo.
 _DETERMINANTES: Final[frozenset[str]] = frozenset((
     "outra", "outro", "outras", "outros", "qualquer", "alguma", "algum", "nenhuma", "nenhum", "certa", "certo", "errada",
     "errado", "correta", "correto", "nova", "novo", "antiga", "antigo", "principal", "another", "other"))
@@ -458,7 +458,7 @@ _NAO_VALOR: Final = _ComOsApps((
     # ("veja se está logado com OUTRA conta", "com a conta CERTA"); "entre com outra conta" continua pela F-A
     "sucesso", "exito", "success", "mais", "menos", "maior", "menor", "melhor", "pior", "muito", "pouco",
     *_DETERMINANTES))
-#: O verbo de ação que segue o destino ("com a conta Lucas e CURTA a foto"): não é o valor do par (F-C). Imperativo e
+#: O verbo de ação que segue o destino ("com a conta Fulano e CURTA a foto"): não é o valor do par (F-C). Imperativo e
 #: infinitivo dos comandos do parque, em português, inglês e espanhol.
 _VERBOS_DE_ACAO: Final[frozenset[str]] = frozenset((
     "curta", "curte", "curtir", "comente", "comenta", "comentar", "siga", "segue", "seguir", "abra", "abre", "abrir",
@@ -482,23 +482,23 @@ _FIM_DE_ORACAO: Final[frozenset[str]] = frozenset((".", ";", "!", "?", "\n"))
 #: Onde a busca do conector para: fim de oração, vírgula e conjunção ("entre e comente COM parabéns" é outro verbo).
 _PARA_A_BUSCA: Final[frozenset[str]] = _FIM_DE_ORACAO | frozenset((",", "e", "and", "y", "ou", "or", "depois", "entao",
                                                                    "then"))
-#: O campo de usuário ("usuário lucas e girassol", "conta lucas e girassol", "nome lucas e girassol"): o par de valores
+#: O campo de usuário ("usuário fulano e girassol", "conta fulano e girassol", "nome fulano e girassol"): o par de valores
 #: depois dele é usuário e senha (F-C: conta, persona, nome, perfil, login e user, desde a rodada F).
 _CAMPO_DE_USUARIO: Final[frozenset[str]] = frozenset((
     "usuario", "usuaria", "user", "username", "login", "conta", "contas", "persona", "nome", "perfil", "account",
     "profile", "cuenta", "usr"))
-#: O campo que forma o par mesmo SEM separador, no fim da oração ("conta André girassol").
+#: O campo que forma o par mesmo SEM separador, no fim da oração ("conta Beltrano girassol").
 _CAMPO_FORTE: Final[frozenset[str]] = frozenset(("usuario", "usuaria", "user", "username", "login", "conta", "account",
                                                  "cuenta", "usr"))
-#: O campo de usuário que forma o par com separador NÃO alfabético mesmo sem verbo de entrar ("usuário lucas, girassol.":
-#: rodada G, G-2; "usuario lucas; a outra: girassol", "user lucas | girassol", "usr lucas, girassol": rodada H, H-1 b). Sem
-#: "conta" e "perfil", que também são o lugar da navegação ("na conta lucas, comente"), nem "nome" e "persona", que listam
-#: várias contas ("persona lucas; persona bruno").
+#: O campo de usuário que forma o par com separador NÃO alfabético mesmo sem verbo de entrar ("usuário fulano, girassol.":
+#: rodada G, G-2; "usuario fulano; a outra: girassol", "user fulano | girassol", "usr fulano, girassol": rodada H, H-1 b). Sem
+#: "conta" e "perfil", que também são o lugar da navegação ("na conta fulano, comente"), nem "nome" e "persona", que listam
+#: várias contas ("persona fulano; persona ciclano").
 _CAMPO_DE_LOGIN: Final[frozenset[str]] = frozenset(("usuario", "usuaria", "user", "username", "login", "usr"))
 _SEPARADORES_DO_PAR: Final[frozenset[str]] = frozenset((
     "e", ",", "/", ";", "\n", "and", "y", "-", ":", "&", "+", "|", "·"))
 #: Os separadores do par que não são palavra: com eles e o campo de login, o par vale sem verbo de entrar (H-1 b).
-#: A quebra de linha vale como o ";" (piso do 31.9, depois da fase 2 da H): "usuario lucas" numa linha e o valor na outra.
+#: A quebra de linha vale como o ";" (piso do 31.9, depois da fase 2 da H): "usuario fulano" numa linha e o valor na outra.
 _SEPARADORES_NAO_ALFABETICOS: Final[frozenset[str]] = frozenset((",", ";", "\n", "|", ":", "/", "-", "&", "+", "·"))
 _ANTES_DE_PRA_ENTRAR: Final[frozenset[str]] = frozenset((
     "use", "usa", "usar", "digite", "digita", "coloque", "coloca", "bota", "poe", "ponha", "insira", "informe", "type",
@@ -572,7 +572,7 @@ def _tokens_de(normal: str) -> list[str]:
     contagem de tokens, fica o "e" (o lado seguro: mais recusa).
 
     A quebra de linha vira um token próprio entre as linhas (piso do 31.9, depois da fase 2 da H): antes o texto era
-    achatado e "usuario lucas" numa linha e o valor na outra virava uma frase só, sem separador."""
+    achatado e "usuario fulano" numa linha e o valor na outra virava uma frase só, sem separador."""
     saida: list[str] = []
     for linha in (x for x in normal.splitlines() if x.strip()):
         if saida:
@@ -673,21 +673,21 @@ _CONECTORES_DE_GATILHO: Final[frozenset[str]] = frozenset((
 #: o insta" é custo declarado.
 _DESTRAVAR: Final[frozenset[str]] = frozenset((
     "desbloqueie", "desbloqueia", "desbloquear", "desbloqueiem", "desbloqueando", "destrave", "destrava", "destravem"))
-#: 31.20 (L5): usar a conta do catálogo ("use o lucas com x", "o lucas usa x").
+#: 31.20 (L5): usar a conta do catálogo ("use o fulano com x", "o fulano usa x").
 _USAR: Final[frozenset[str]] = frozenset(("use", "usa", "usar", "usem", "utilize", "utiliza", "utilizar"))
-#: 31.20 (L5, estendida pela orquestradora depois do achado "sendo o lucas, girassol, curta"): a declaração de identidade
-#: diante do nome do catálogo ("como lucas, x", "sendo o lucas, x"). "Logado como" já é verbo de entrar (A-média), e "na
+#: 31.20 (L5, estendida pela orquestradora depois do achado "sendo o fulano, girassol, curta"): a declaração de identidade
+#: diante do nome do catálogo ("como fulano, x", "sendo o fulano, x"). "Logado como" já é verbo de entrar (A-média), e "na
 #: conta de" já é campo forte.
 _DECLARA_IDENTIDADE: Final[frozenset[str]] = frozenset(("como", "sendo"))
-#: 31.20 (B4 e L5): o que separa o destino do valor seguinte ("pelo lucas, x", "com o perfil lucas e x", "como lucas, x").
+#: 31.20 (B4 e L5): o que separa o destino do valor seguinte ("pelo fulano, x", "com o perfil fulano e x", "como fulano, x").
 _SEPARA_DO_DESTINO: Final[frozenset[str]] = _SEPARADORES_NAO_ALFABETICOS | {"e", "and", "y", ">", "="}
 
 
-#: O separador que não é palavra no par sem campo forte da forma A, sem a vírgula, que lista nomes ("siga o lucas, a
-#: marina"); com a seta e o igual ("instagram -> lucas -> girassol").
+#: O separador que não é palavra no par sem campo forte da forma A, sem a vírgula, que lista nomes ("siga o fulano, a
+#: marina"); com a seta e o igual ("instagram -> fulano -> girassol").
 _SEPARADORES_DO_PAR_A: Final[frozenset[str]] = (_SEPARADORES_NAO_ALFABETICOS - {","}) | {">", "="}
 #: O campo amplo (perfil, persona, nome…): sozinho é navegação ("abra o perfil da Marina"); com valor, separador e valor, é
-#: o par ("perfil lucas, girassol").
+#: o par ("perfil fulano, girassol").
 _CAMPO_AMPLO: Final[frozenset[str]] = _CAMPO_DE_USUARIO - _CAMPO_FORTE
 _EMAIL_DO_PAR: Final = re.compile(r"[^\W_][\w.+-]*@[\w-]+(?:\.[\w-]+)+")
 
@@ -700,13 +700,13 @@ def _valor_do_par(t: str) -> bool:
 def _par_sem_campo_forte(toks: list[str], d: _Destinos, normal: str) -> bool:
     """O par usuário e senha sem palavra de campo forte (forma A, a família 4 da fase 2 da H):
 
-    - campo amplo, valor, separador e valor ("persona lucas; girassol"; a vírgula só sem verbo: "perfil lucas, girassol");
-    - o nome do catálogo seguido de separador que não é palavra e de um valor ("no instagram, lucas: girassol", "instagram |
-      lucas | girassol", "instagram -> lucas -> girassol");
-    - o nome do catálogo, "e" e um valor num comando sem verbo nenhum ("no android-01, lucas e girassol");
-    - o e-mail seguido de separador e valor, ou de um valor que fecha a oração ("lucas@correio.net: girassol").
+    - campo amplo, valor, separador e valor ("persona fulano; girassol"; a vírgula só sem verbo: "perfil fulano, girassol");
+    - o nome do catálogo seguido de separador que não é palavra e de um valor ("no instagram, fulano: girassol", "instagram |
+      fulano | girassol", "instagram -> fulano -> girassol");
+    - o nome do catálogo, "e" e um valor num comando sem verbo nenhum ("no android-01, fulano e girassol");
+    - o e-mail seguido de separador e valor, ou de um valor que fecha a oração ("fulano@correio.net: girassol").
     O valor não é artigo, lugar, objeto de navegação nem campo; o nome do catálogo na posição de valor É valor (G-4): "instagram
-    | lucas | girassol" recusa também com uma persona "Girassol"."""
+    | fulano | girassol" recusa também com uma persona "Girassol"."""
     n = len(toks)
     sem_verbo = not _verbos_de_entrar(toks, passado=True) and not any(t in _VERBOS_DE_ACAO for t in toks)
     # a vírgula só forma o par sem verbo: "veja o perfil Marina, Zilda e Ana" é uma lista de perfis
@@ -725,8 +725,8 @@ def _par_sem_campo_forte(toks: list[str], d: _Destinos, normal: str) -> bool:
             k = _pula(toks, fim + 1, _ARTIGOS)
             if k < n and _valor_do_par(toks[k]):
                 return True
-        # 31.20 (B5): a vírgula no trio "<app>, <nome do catálogo>, <valor>" ("instagram, lucas, girassol"); a lista de
-        # nomes sem o app antes ("as fotos do lucas, bruno e andre") não é par
+        # 31.20 (B5): a vírgula no trio "<app>, <nome do catálogo>, <valor>" ("instagram, fulano, girassol"); a lista de
+        # nomes sem o app antes ("as fotos do fulano, ciclano e beltrano") não é par
         if (fim + 1 < n and toks[fim] == "," and ini >= 2 and toks[ini - 1] == "," and toks[ini - 2] in _ONDE_SE_ENTRA
                 and _valor_do_par(toks[fim + 1])):
             return True
@@ -739,7 +739,7 @@ def _par_sem_campo_forte(toks: list[str], d: _Destinos, normal: str) -> bool:
         elif (resto and _valor_do_par(resto[0]) and any(c.isalpha() for c in resto[0])
               and (len(resto) == 1 or resto[1] in _FIM_DE_ORACAO or resto[1] == ",")):
             return True                                  # o número já sai mascarado ("[email] [numero]")
-        # 31.20 (B5): a vírgula e um valor que fecha a oração ("lucas@correio.net, girassol"); "mande para x@y.com, a
+        # 31.20 (B5): a vírgula e um valor que fecha a oração ("fulano@correio.net, girassol"); "mande para x@y.com, a
         # Marina vai gostar" passa
         elif (len(resto) >= 2 and resto[0] == "," and _valor_do_par(resto[1]) and any(c.isalpha() for c in resto[1])
               and (len(resto) == 2 or resto[2] in _FIM_DE_ORACAO or resto[2] == ",")):
@@ -749,10 +749,10 @@ def _par_sem_campo_forte(toks: list[str], d: _Destinos, normal: str) -> bool:
 
 def _valor_depois(toks: list[str], k: int, d: _Destinos) -> bool:
     """Depois de um destino que termina em `k`: separador (`_SEPARA_DO_DESTINO`) e um valor; ou o valor colado que fecha a
-    oração ("pelo lucas girassol."). O nome do catálogo ali É valor (posição de valor, G-4): "pelo lucas, girassol"
-    recusa também com uma persona "Girassol", e "android-01, lucas, girassol" já no "lucas". Só o outro trecho cortado
-    pelo extrator é pulado ("pelo lucas e pela bruno"). O verbo de ação, o advérbio, o lugar e o artigo não são valor
-    ("pelo lucas, curta", "pelo android-01 hoje", "com o perfil lucas no feed")."""
+    oração ("pelo fulano girassol."). O nome do catálogo ali É valor (posição de valor, G-4): "pelo fulano, girassol"
+    recusa também com uma persona "Girassol", e "android-01, fulano, girassol" já no "fulano". Só o outro trecho cortado
+    pelo extrator é pulado ("pelo fulano e pela ciclano"). O verbo de ação, o advérbio, o lugar e o artigo não são valor
+    ("pelo fulano, curta", "pelo android-01 hoje", "com o perfil fulano no feed")."""
     n = len(toks)
     separou = False
     while k < n:
@@ -769,8 +769,8 @@ def _valor_depois(toks: list[str], k: int, d: _Destinos) -> bool:
 
 
 def _valor_depois_do_corte(toks: list[str], d: _Destinos) -> bool:
-    """31.20 (B4 da rodada I): o destino que o extrator CORTOU ("com o perfil lucas", "pelo lucas", "no android-01")
-    seguido de um valor ("curta a foto da marina com o perfil lucas, girassol"; "android-01, lucas, girassol, curta").
+    """31.20 (B4 da rodada I): o destino que o extrator CORTOU ("com o perfil fulano", "pelo fulano", "no android-01")
+    seguido de um valor ("curta a foto da marina com o perfil fulano, girassol"; "android-01, fulano, girassol, curta").
     Sem o destino, o valor ficava solto no texto que vai ao decisor."""
     inicios = [i for i in d.cortados if i - 1 not in d.cortados]
     return any(_valor_depois(toks, d.cortados[i], d) for i in inicios)
@@ -779,10 +779,10 @@ def _valor_depois_do_corte(toks: list[str], d: _Destinos) -> bool:
 def _usa_conta_do_catalogo(toks: list[str], d: _Destinos) -> bool:
     """31.20 (L5 da rodada I): a conta do catálogo tomada como identidade, com o valor ligado a ela:
     - "use (o) <nome do catálogo> com <valor>" (o conector até três tokens depois do nome);
-    - "<nome do catálogo> usa <valor>" ("o lucas usa girassol");
-    - "como (o) <nome do catálogo>, <valor>" ("como lucas, girassol, curta"), que o extrator não corta, e "sendo (o)
+    - "<nome do catálogo> usa <valor>" ("o fulano usa girassol");
+    - "como (o) <nome do catálogo>, <valor>" ("como fulano, girassol, curta"), que o extrator não corta, e "sendo (o)
       <nome do catálogo>, <valor>" (`_DECLARA_IDENTIDADE`).
-    "use o lucas pra curtir a foto da marina", "como lucas, curta" e "sendo o lucas, curta" passam."""
+    "use o fulano pra curtir a foto da marina", "como fulano, curta" e "sendo o fulano, curta" passam."""
     n = len(toks)
     for i, t in enumerate(toks):
         if t in _USAR or t in _DECLARA_IDENTIDADE:
@@ -805,13 +805,13 @@ def _usa_conta_do_catalogo(toks: list[str], d: _Destinos) -> bool:
 def _gatilho_de_credencial(toks: list[str], d: _Destinos, normal: str) -> bool:
     """Forma A (31.18; ADR-069 item 18, decisão do dono em 03/10): QUALQUER gatilho de credencial no comando recusa o pedido
     inteiro, sem localizar nem mascarar o valor. Vale no texto sem destinos E no original, onde a sintaxe de destino CONTA:
-    "entre com a conta lucas hoje girassol" vira "entre hoje girassol" sem destinos, e só o original mostra o gatilho (a
+    "entre com a conta fulano hoje girassol" vira "entre hoje girassol" sem destinos, e só o original mostra o gatilho (a
     família 3 da fase 2 da H). A palavra C7 e a corrida soletrada já recusaram antes (`c7_palavra`, `c7_ofuscado`); aqui:
 
     - o verbo de entrar, também no passado, com um conector de `_CONECTORES_DE_GATILHO` até três tokens depois. Exceção
       única: o objeto pessoa ou conversa ("entre na conversa com o contato", como a H-1 a), com o residual aceito de "entre
       na conversa com <senha>" passar em claro;
-    - o campo forte (`_CAMPO_FORTE`: usuário, login, conta…), também dentro do destino ("na conta Lucas");
+    - o campo forte (`_CAMPO_FORTE`: usuário, login, conta…), também dentro do destino ("na conta Fulano");
     - o verbo de digitar valor (`_DIGITAR_VALOR`);
     - o par sem campo forte (`_par_sem_campo_forte`).
     Até a A-média, "entre no insta" sozinho passava; o token só de dígitos segue a regra dos anos (`_valor_com_digito`).
@@ -895,14 +895,14 @@ def _e_valor(tok: str) -> bool:
 class _Destinos:
     """Onde o comando cita destino, por posição de token, com o fim (exclusivo) de cada menção (rodada G, G-4).
 
-    - `cortados`: o que o extrator tirou (`sem_destinos`), a SINTAXE de destino ("com a conta Lucas", "pela Lucas", "como
-      @lucas"). Vale como destino onde estiver.
+    - `cortados`: o que o extrator tirou (`sem_destinos`), a SINTAXE de destino ("com a conta Fulano", "pela Fulano", "como
+      @fulano"). Vale como destino onde estiver.
     - `catalogo`: o nome INTEIRO do catálogo real solto no texto (`nomes_de_destino`). Só é destino depois da palavra de
-      conta ou do "@" ("na conta Lucas", "com @lucas.almeida9484"); nunca na posição de VALOR (G-4). A H-3 (o nome sozinho
-      depois do conector do verbo de entrar, "entre com o lucas", como destino) foi REVERTIDA depois do NO-GO da fase 2 da
-      rodada H (03/10): preenchida a vaga do destino, a busca do valor relaxava e tudo depois passava ("entre com o lucas
-      hoje girassol"). "Entre com o lucas" volta a recusar, como na rodada G.
-    - O fim da menção faz do nome de duas palavras UMA menção ("Lucas Almeida") e de "André girassol", duas."""
+      conta ou do "@" ("na conta Fulano", "com @fulano.tal1234"); nunca na posição de VALOR (G-4). A H-3 (o nome sozinho
+      depois do conector do verbo de entrar, "entre com o fulano", como destino) foi REVERTIDA depois do NO-GO da fase 2 da
+      rodada H (03/10): preenchida a vaga do destino, a busca do valor relaxava e tudo depois passava ("entre com o fulano
+      hoje girassol"). "Entre com o fulano" volta a recusar, como na rodada G.
+    - O fim da menção faz do nome de duas palavras UMA menção ("Fulano Tal") e de "Beltrano girassol", duas."""
 
     cortados: Mapping[int, int] = field(default_factory=dict)
     catalogo: Mapping[int, int] = field(default_factory=dict)
@@ -919,7 +919,7 @@ _SEM_DESTINOS: Final = _Destinos()
 
 def _cortados(toks: list[str], sem_destinos: str) -> dict[int, int]:
     """As posições de `toks` (o ORIGINAL) que o `sem_destinos` tirou, cada uma com o fim do seu trecho: o destino que o
-    extrator casou com o catálogo REAL (personas, handles e aparelhos, inclusive aposentados). É assim que "com a conta Lucas"
+    extrator casou com o catálogo REAL (personas, handles e aparelhos, inclusive aposentados). É assim que "com a conta Fulano"
     vira destino e "com a conta girassol" não (F-B)."""
     outros = _tokens_de(normalizar(sem_destinos))
     tirados: dict[int, int] = {}
@@ -931,7 +931,7 @@ def _cortados(toks: list[str], sem_destinos: str) -> dict[int, int]:
 
 def nomes_de_destino(nomes: Iterable[str]) -> frozenset[str]:
     """Os nomes do catálogo de destinos REAL (personas, inclusive aposentadas e bloqueadas, handles e aparelhos), cada um
-    INTEIRO na forma dos tokens do filtro, separados por espaço ("lucas almeida", "lucas.almeida9484", "android-01"), sem o
+    INTEIRO na forma dos tokens do filtro, separados por espaço ("fulano tal", "fulano.tal1234", "android-01"), sem o
     "@". Desde a rodada G (G-4) a palavra solta de um nome de várias não conta: a persona "Sol Nascente" não faz de "sol" um
     destino. O nome de uma palavra só que é palavra de ligação ou verbo fica de fora."""
     saida: set[str] = set()
@@ -965,7 +965,7 @@ def _no_catalogo(toks: list[str], nomes: frozenset[str]) -> dict[int, int]:
 def _destino(toks: list[str], k: int, d: _Destinos) -> bool:
     """Em `k` (depois do conector, sem artigo) está QUAL conta usar, e não um valor: o destino que o extrator tirou, o "@"
     diante de handle do catálogo, o provedor de login ou o lugar onde se entra; ou a palavra de conta seguida do dono ("a
-    conta DO lucas"), de um nome do catálogo ou de "@". "A conta girassol", com um nome que o catálogo não conhece, é valor
+    conta DO fulano"), de um nome do catálogo ou de "@". "A conta girassol", com um nome que o catálogo não conhece, é valor
     (F-B). Desde a rodada G (G-1), o "@" solto não é destino: "com @zilda.prado e girassol" é o usuário de um par. O nome
     do catálogo sozinho depois do conector NÃO é destino (a H-3 foi revertida, 03/10)."""
     n = len(toks)
@@ -988,9 +988,9 @@ def _destino(toks: list[str], k: int, d: _Destinos) -> bool:
 def _navega(toks: list[str], fim: int, d: _Destinos, *, por_conector: bool = True) -> bool:
     """O verbo de entrar que termina em `fim` tem objeto de navegação (F-A)? Lugar ("no", "nessa", "into"), artigo
     diante de objeto ("acesse o app"), o objeto direto, o destino que o extrator tirou e, com `por_conector`, o conector
-    seguido de destino ("com a conta do lucas", "como @lucas", "com o Google"). O nome do catálogo sozinho não é destino,
+    seguido de destino ("com a conta do fulano", "como @fulano", "com o Google"). O nome do catálogo sozinho não é destino,
     nem como objeto direto nem depois do conector (G-4; a H-3 foi revertida): "acesse girassol e curta" e "entre com o
-    lucas e curta" recusam."""
+    fulano e curta" recusam."""
     n = len(toks)
     j = _pula(toks, fim + 1, _ADVERBIOS)
     if j >= n:
@@ -1001,7 +1001,7 @@ def _navega(toks: list[str], fim: int, d: _Destinos, *, por_conector: bool = Tru
     if t in _LUGAR or t in _OBJETO_DE_NAVEGACAO:
         return True
     if t in _ARTIGOS:
-        # o objeto pode vir depois de até dois nomes ("log into the lucas profile", "acesse o novo app")
+        # o objeto pode vir depois de até dois nomes ("log into the fulano profile", "acesse o novo app")
         k = _pula(toks, j, _ARTIGOS)
         for m in range(k, min(k + 3, n)):
             if toks[m] in _OBJETO_DE_NAVEGACAO or m in d.cortados:
@@ -1031,7 +1031,7 @@ def _login_valor(toks: list[str], d: _Destinos = _SEM_DESTINOS) -> bool:
     """O verbo de entrar ligado a um valor: "entre com girassol", "faça login usando x", "entra no insta com x" (até
     oito tokens entre o verbo e o conector), "pra entrar: girassol", "entre - girassol", "entre no insta: girassol" e
     "use girassol pra entrar". O artigo depois do conector não isenta ("com a girassol"); o destino sim ("com a conta
-    Lucas" quando o extrator a tirou, "com o Google"): F-B.
+    Fulano" quando o extrator a tirou, "com o Google"): F-B.
 
     Rodada H (H-1 a): o conector liga o valor com ou sem objeto de navegação, salvo depois de pessoa ou conversa ("entra
     AQUI com girassol", "entre no FEED com girassol", "entre no PERFIL com girassol" recusam; "entre na conversa com
@@ -1073,7 +1073,7 @@ def _login_valor(toks: list[str], d: _Destinos = _SEM_DESTINOS) -> bool:
 
 
 def _depois_do_email(toks: list[str], y: int) -> int:
-    """Depois do usuário, o resto do e-mail ("lucas.almeida9484 @ outlook.com"): o "@" e o domínio não quebram o par (G-1)."""
+    """Depois do usuário, o resto do e-mail ("fulano.tal1234 @ outlook.com"): o "@" e o domínio não quebram o par (G-1)."""
     if y + 1 < len(toks) and toks[y] == "@" and toks[y + 1][:1].isalnum():
         return y + 2
     return y
@@ -1093,9 +1093,9 @@ def _fim_do_usuario(toks: list[str], k: int, d: _Destinos) -> int | None:
 
 
 def _par_depois(toks: list[str], y0: int, d: _Destinos, *, com_entrar: bool, forte: bool) -> bool:
-    """Depois do primeiro valor do par (em `y0`): separador e segundo valor ("lucas E girassol", "lucas / girassol"); ou,
-    com `forte`, o segundo valor colado no fim da oração ("conta André girassol"). O segundo é a posição de VALOR: o nome do
-    catálogo não a isenta (G-4), só o trecho que o extrator tirou ("e pela Bruno")."""
+    """Depois do primeiro valor do par (em `y0`): separador e segundo valor ("fulano E girassol", "fulano / girassol"); ou,
+    com `forte`, o segundo valor colado no fim da oração ("conta Beltrano girassol"). O segundo é a posição de VALOR: o nome do
+    catálogo não a isenta (G-4), só o trecho que o extrator tirou ("e pela Ciclano")."""
     n = len(toks)
     if y0 >= n:
         return False
@@ -1110,7 +1110,7 @@ def _par_depois(toks: list[str], y0: int, d: _Destinos, *, com_entrar: bool, for
 
 
 def _colado(toks: list[str], u: int, d: _Destinos) -> bool:
-    """Depois do usuário dito pelo conector (nome do catálogo, @handle, e-mail), um valor colado: "entre com o lucas
+    """Depois do usuário dito pelo conector (nome do catálogo, @handle, e-mail), um valor colado: "entre com o fulano
     girassol" (rodada H; o que vem colado ao usuário é a posição de valor, G-4)."""
     return (u < len(toks) and u not in d.cortados and _e_valor(toks[u]) and toks[u] not in _LUGAR
             and toks[u] not in _CONECTORES and toks[u] not in _ARTIGOS and toks[u] not in _OBJETO_DE_NAVEGACAO
@@ -1119,19 +1119,19 @@ def _colado(toks: list[str], u: int, d: _Destinos) -> bool:
 
 def _par_credencial(toks: list[str], d: _Destinos = _SEM_DESTINOS) -> bool:
     """Usuário e senha juntos (F-C):
-    - a barra depois do verbo de entrar (até cinco tokens: "entre com a conta Lucas / girassol");
+    - a barra depois do verbo de entrar (até cinco tokens: "entre com a conta Fulano / girassol");
     - o usuário como @handle ou e-mail logo depois do conector, seguido de valor ("entre com @zilda.prado e girassol",
-      "acesse com lucas@outlook.com: x"; rodada G, G-1);
+      "acesse com fulano@outlook.com: x"; rodada G, G-1);
     - o campo de usuário (usuário, conta, persona, nome, perfil, login, user; "como @") com dois valores: com barra
       sempre, com "e", vírgula, hífen ou dois-pontos só com verbo de entrar na frase (ou, com vírgula, depois de "usuário",
-      "user" ou "login": G-2), e colados no fim da oração com o campo forte ("conta André girassol");
-    - o destino que o extrator tirou ou o nome do catálogo, seguido de um valor ("entre pela Lucas e girassol");
-    - no começo da oração: "lucas, girassol, entra", "lucas / girassol." e "girassol, entra com a conta Lucas".
-    O verbo de ação depois do destino não é valor: "com a conta Lucas e curta a foto" passa.
+      "user" ou "login": G-2), e colados no fim da oração com o campo forte ("conta Beltrano girassol");
+    - o destino que o extrator tirou ou o nome do catálogo, seguido de um valor ("entre pela Fulano e girassol");
+    - no começo da oração: "fulano, girassol, entra", "fulano / girassol." e "girassol, entra com a conta Fulano".
+    O verbo de ação depois do destino não é valor: "com a conta Fulano e curta a foto" passa.
 
-    Rodada H: o valor colado ao usuário do conector ("entre com o lucas girassol"), o verbo no passado nos pares do conector
-    ("entrei com o lucas e girassol") e, com o campo de login (usuário, user, login, usr), o par com qualquer separador que
-    não é palavra mesmo sem verbo de entrar ("usuario lucas; a outra: girassol", "user lucas | girassol": H-1 b)."""
+    Rodada H: o valor colado ao usuário do conector ("entre com o fulano girassol"), o verbo no passado nos pares do conector
+    ("entrei com o fulano e girassol") e, com o campo de login (usuário, user, login, usr), o par com qualquer separador que
+    não é palavra mesmo sem verbo de entrar ("usuario fulano; a outra: girassol", "user fulano | girassol": H-1 b)."""
     n = len(toks)
     verbos = _verbos_de_entrar(toks)
     com_entrar = bool(verbos)
@@ -1156,7 +1156,7 @@ def _par_credencial(toks: list[str], d: _Destinos = _SEM_DESTINOS) -> bool:
             x = _pula(toks, k + 1, (":", "=", "@", "do", "da", "de", "dos", "das", "o", "a"))
             # o primeiro do par também é valor: "qual conta ESTÁ conectada" não é par (1 dos 98 comandos reais, 03/10)
             if x < n and _e_valor(toks[x]):
-                y0 = _depois_do_email(toks, d.fim(x))          # o nome de duas palavras é UMA menção ("Lucas Almeida")
+                y0 = _depois_do_email(toks, d.fim(x))          # o nome de duas palavras é UMA menção ("Fulano Tal")
                 sem_verbo = tok in _CAMPO_DE_LOGIN and y0 < n and toks[y0] in _SEPARADORES_NAO_ALFABETICOS
                 if _par_depois(toks, y0, d, com_entrar=com_entrar or sem_verbo, forte=tok in _CAMPO_FORTE):
                     return True
@@ -1285,8 +1285,8 @@ def motivo_c7(comando: str, *, sem_destinos: str | None = None, intencao: bool =
       ("toque 4, depois 8, depois 2", "2580#");
     - `c7_login_valor` (rodada E): o verbo de entrar ligado a um valor, sem a palavra-chave ("entre com girassol", "pra
       entrar: girassol", "entre / girassol");
-    - `c7_par_credencial` (rodada E): usuário e senha juntos ("entre com a conta Lucas / girassol", "usuário lucas e
-      girassol, entra", "lucas, girassol, entra");
+    - `c7_par_credencial` (rodada E): usuário e senha juntos ("entre com a conta Fulano / girassol", "usuário fulano e
+      girassol, entra", "fulano, girassol, entra");
     - `c7_intencao_de_entrar` (rodada F, F-A): o verbo de entrar SEM objeto de navegação ("entra e curte", "entre com a
       girassol"), sem precisar achar o valor;
     - `c7_valor_com_digito` (o piso, depois da fase 2 da H): gatilho de credencial em qualquer lugar e um token com cara de
@@ -1296,8 +1296,8 @@ def motivo_c7(comando: str, *, sem_destinos: str | None = None, intencao: bool =
       Fica por último só para não trocar o rótulo das regras de antes: todas recusam, e a recusa vem antes da máscara.
 
     `sem_destinos`: o texto é o ORIGINAL e este é o mesmo comando sem os destinos (`RunService.sem_destinos`). O que o
-    extrator tirou é destino do catálogo real: "com a conta Lucas" vira destino, "com a conta girassol" não (F-B).
-    `intencao=False` desliga a F-A: no comando SEM destinos, "entre com a conta Lucas e curta" vira "entre e curta", e a
+    extrator tirou é destino do catálogo real: "com a conta Fulano" vira destino, "com a conta girassol" não (F-B).
+    `intencao=False` desliga a F-A: no comando SEM destinos, "entre com a conta Fulano e curta" vira "entre e curta", e a
     F-A só vale no original, que mostra o destino. `destinos` (`nomes_de_destino`): os nomes INTEIROS do catálogo real;
     desde a rodada G (G-4) só são destino depois da palavra de conta ou do "@", nunca na posição de valor (`_Destinos`).
     """
@@ -1393,7 +1393,7 @@ class ConsumidorDeIntencao:
         """O pedido de sombra, ou `None` se não há pergunta a fazer.
 
         `original` (rodada E do 31.9): o comando COM os destinos. A C7 é conferida nele também, porque o `sem_destinos`
-        pode partir o par ("entre com a conta Lucas e girassol" vira "entre e girassol"). Desde a rodada F, com a forma de
+        pode partir o par ("entre com a conta Fulano e girassol" vira "entre e girassol"). Desde a rodada F, com a forma de
         conector inteira e sabendo o que o extrator tirou (F-B); a intenção de entrar (F-A) só é conferida nele. Nada
         dele sai: o estado é montado só de `comando`. `destinos` (rodada F): os nomes do catálogo de destinos real
         (`RunService.dados_da_sombra`); nada deles sai.

@@ -27,7 +27,7 @@ POST_A = {"image_id": "img-1", "content": "Fim de tarde"}
 
 
 def _familia(tmp_path: Path) -> tuple[Any, PolicyEngine, Any, str, str]:
-    repo, policies, db, a = _conta(tmp_path)                       # a: lucas.almeida9484, android-01
+    repo, policies, db, a = _conta(tmp_path)                       # a: tadeu.quintela4821, android-01
     b = perfil(_SERVICOS[a], "bia.souza91182", "android-02")
     repo.update_profile(b, {"automation_policy": '{"limits": {"warmup_days": 0, '
                                                  '"cooldown_between_external_actions_s": 0}}'})
@@ -206,13 +206,13 @@ def test_texto_que_cita_outra_persona_do_pedido_pede_aprovacao_sem_o_arroba_no_m
     _repo, policies, _db, a, b = _familia(tmp_path)
     comentar = capability_of(IG, "CREATE_COMMENT")
     pedido = ContextoDoPedido(raiz="r-b", familia=frozenset({a, b}))
-    texto = "Concordo com o @Lucas.Almeida9484, que lugar lindo"
+    texto = "Concordo com o @Tadeu.Quintela4821, que lugar lindo"
     motivo = policies.cita_a_familia(b, comentar, {"content": texto}, pedido)
     assert motivo == MOTIVO_CITA_A_FAMILIA
     assert "@" not in motivo and "lucas" not in motivo.lower() and texto not in motivo
     # sem o @ também é citar; dentro de outro nome, não
-    assert policies.cita_a_familia(b, comentar, {"content": "foto do lucas.almeida9484 ontem"}, pedido) is not None
-    assert policies.cita_a_familia(b, comentar, {"content": "@lucas.almeida94845 e @xlucas.almeida9484"}, pedido) is None
+    assert policies.cita_a_familia(b, comentar, {"content": "foto do tadeu.quintela4821 ontem"}, pedido) is not None
+    assert policies.cita_a_familia(b, comentar, {"content": "@tadeu.quintela48215 e @xtadeu.quintela4821"}, pedido) is None
 
 
 def test_o_check_ja_pede_aprovacao_pelo_texto_literal_e_a_previa_ve_o_mesmo(tmp_path: Path) -> None:
@@ -220,7 +220,7 @@ def test_o_check_ja_pede_aprovacao_pelo_texto_literal_e_a_previa_ve_o_mesmo(tmp_
     mesmo selo da execução (31.53, revisão; a regra da aprovação no planejamento)."""
     _repo, policies, _db, a, b = _familia(tmp_path)
     comentar = capability_of(IG, "CREATE_COMMENT")
-    argumentos = {"post_author": "@fulana.real", "content": "Olha o que o @lucas.almeida9484 achou"}
+    argumentos = {"post_author": "@fulana.real", "content": "Olha o que o @tadeu.quintela4821 achou"}
     pedido = ContextoDoPedido(raiz="r-b", familia=frozenset({a, b}))
     com = policies.check(b, comentar, counterparty="@fulana.real", pedido=pedido, bindings=argumentos)
     assert MOTIVO_CITA_A_FAMILIA in com.reason and (com.needs_approval or not com.allowed)
@@ -231,7 +231,7 @@ def test_o_check_ja_pede_aprovacao_pelo_texto_literal_e_a_previa_ve_o_mesmo(tmp_
 def test_citar_a_si_mesma_quem_esta_fora_ou_sem_pedido_nao_pede(tmp_path: Path) -> None:
     _repo, policies, _db, a, b = _familia(tmp_path)
     comentar = capability_of(IG, "CREATE_COMMENT")
-    texto = {"content": "@bia.souza91182 e @lucas.almeida9484"}
+    texto = {"content": "@bia.souza91182 e @tadeu.quintela4821"}
     assert policies.cita_a_familia(b, comentar, texto, None) is None                       # sem pedido
     so_b = ContextoDoPedido(raiz="r-b", familia=frozenset({b}))
     assert policies.cita_a_familia(b, comentar, texto, so_b) is None                       # a própria e quem está fora

@@ -12,7 +12,7 @@ import { useTrainingStore } from '../training/trainingStore';
 import { useUiStore } from '../../store/ui';
 import { APPS, makeBinding, makeInstance, makePersona, makeSnapshot } from '../../test/fixtures';
 import {
-  FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor,
+  FakeBackend, allByRole, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor,
 } from '../../test/harness';
 import { FocusPanel } from './FocusPanel';
 
@@ -637,10 +637,13 @@ describe('FocusPanel — painel do Modo treinamento (31.80, 31.84, 31.85, 31.86)
     await waitFor(() => expect(backend.callsTo('POST', /\/input$/)).toHaveLength(1));
     expect(backend.callsTo('POST', /\/input$/)[0]!.body).toMatchObject({ type: 'text', text: 'olá', clear_first: true });
 
+    // 29.140: o 1º POST registrado ainda pode estar em voo (atraso do fetch). A resposta limpa a caixa: o texto
+    // digitado antes dela sumiria, e o "Enviar" ficaria sem texto. Espera o envio terminar antes do 2º.
+    await waitFor(() => expect(text(el)).not.toContain('Enviando ao aparelho…'));
     await click(marcaLimpar(el));
     expect(marcaLimpar(el).checked).toBe(false);
     await setValue(caixa(el), 'de novo');
-    await click(byRole('button', /^Enviar$/, el));
+    await click(await botaoPronto(/^Enviar$/, el));
     await waitFor(() => expect(backend.callsTo('POST', /\/input$/)).toHaveLength(2));
     expect(backend.callsTo('POST', /\/input$/)[1]!.body).not.toHaveProperty('clear_first');
   });
@@ -656,21 +659,22 @@ describe('FocusPanel — painel do Modo treinamento (31.80, 31.84, 31.85, 31.86)
     expect(backend.callsTo('POST', /\/input$/)[0]!.body).not.toHaveProperty('clear_first');
   });
 
-  it('31.85: 409 stale_frame durante a gravação vira "N entrada(s) recusada(s): refaça" na barra', async () => {
+  it('31.85: 409 stale_frame durante a gravação vira "N entradas recusadas: refaça" na barra', async () => {
     comGravacao();
     backend.on('POST', /\/input$/, () => apiError(409, 'stale_frame', 'A tela mudou.'));
     const el = await renderFocus(aparelho());
     await aguardarQuadro(el);
     await waitFor(() => expect(text(el)).toContain('Gravando: Responder a DM'));
-    expect(text(el)).not.toContain('recusada(s)');
+    expect(text(el)).not.toContain('recusada');
     await click(byRole('button', /^Enter$/, el));
-    await waitFor(() => expect(text(el)).toContain('1 entrada(s) recusada(s): refaça'));
+    await waitFor(() => expect(text(el)).toContain('1 entrada recusada: refaça'));
     await click(byRole('button', /^Enter$/, el));
-    await waitFor(() => expect(text(el)).toContain('2 entrada(s) recusada(s): refaça'));
+    await waitFor(() => expect(text(el)).toContain('2 entradas recusadas: refaça'));
   });
 
   it('31.85: enquanto a entrada está em voo, "Enviando ao aparelho…" aparece (aria-live) e some ao responder', async () => {
-    let liberar: (r: Response) => void = () => undefined;
+    // 29.140: com atraso no fetch, o handler só roda depois da espera; liberar antes disso não solta nada.
+    let liberar: ((r: Response) => void) | null = null;
     backend.on('POST', /\/input$/, () => new Promise<Response>((r) => { liberar = r; }));
     const el = await renderFocus(aparelho());
     await aguardarQuadro(el);
@@ -679,7 +683,8 @@ describe('FocusPanel — painel do Modo treinamento (31.80, 31.84, 31.85, 31.86)
     await waitFor(() => expect(text(el)).toContain('Enviando ao aparelho…'));
     const viva = Array.from(el.querySelectorAll('[aria-live="polite"]')).find((n) => n.textContent === 'Enviando ao aparelho…');
     expect(viva).toBeTruthy();
-    await act(async () => liberar(json({ ok: true })));
+    await waitFor(() => expect(liberar).not.toBeNull());
+    await act(async () => liberar!(json({ ok: true })));
     await waitFor(() => expect(text(el)).not.toContain('Enviando ao aparelho…'));
   });
 

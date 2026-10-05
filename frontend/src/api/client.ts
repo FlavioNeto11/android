@@ -625,7 +625,9 @@ export const api = {
     }
   },
 
-  takeControl: (id: string) => request<ControlTakeResponse>('POST', `/instances/${enc(id)}/control/take`),
+  /** 29.143 (adendo v1.67): `tomar` é a tomada explícita do controle de OUTRA pessoa; sem ele, o corpo não vai. */
+  takeControl: (id: string, tomar = false) =>
+    request<ControlTakeResponse>('POST', `/instances/${enc(id)}/control/take`, tomar ? { body: { tomar: true } } : {}),
   releaseControl: (id: string, leaseId: string) =>
     request<ControlReleaseResponse>('POST', `/instances/${enc(id)}/control/release`, { body: { lease_id: leaseId } }),
   sendInput: (id: string, input: ManualInput) =>

@@ -153,9 +153,9 @@ def test_cadastro_com_persona_id_adota_a_pessoa_sem_conta(tmp_path: Path) -> Non
     try:
         _com_instagram(db)
         pessoa = svc.create_persona(PersonaCreate(name="Lucas Almeida", summary="corredor", traits=PersonaTraits(tone="animado")))
-        conta = svc.create_profile(novo("lucas.almeida9484", SENHA, "android-01", persona_id=pessoa.id,
+        conta = svc.create_profile(novo("tadeu.quintela4821", SENHA, "android-01", persona_id=pessoa.id,
                                         email="lucas@exemplo.com"))
-        assert conta.id == pessoa.id and conta.username == "lucas.almeida9484" and conta.summary == "corredor"
+        assert conta.id == pessoa.id and conta.username == "tadeu.quintela4821" and conta.summary == "corredor"
         assert conta.first_name == "Lucas" and conta.email == "lucas@exemplo.com"   # nome já existia; e-mail entrou
         assert conta.credential.configured and conta.instance_id == "android-01" and conta.accounts_count == 1
         assert [p.id for p in svc.list_profiles()] == [pessoa.id] and len(svc.list_personas()) == 1
@@ -174,8 +174,8 @@ def test_cadastro_com_persona_id_adota_a_pessoa_sem_conta(tmp_path: Path) -> Non
 def test_patch_persona_id_absorve_a_persona_sem_conta_e_recusa_outra_pessoa(tmp_path: Path) -> None:
     svc, repo, _secrets, db = build(tmp_path)
     try:
-        lucas = svc.create_profile(novo("lucas.almeida9484", None, first_name="Lucas", last_name="Almeida"))
-        mariana = svc.create_profile(novo("mariana.costa91182", None, first_name="Mariana", last_name="Costa"))
+        lucas = svc.create_profile(novo("tadeu.quintela4821", None, first_name="Lucas", last_name="Almeida"))
+        mariana = svc.create_profile(novo("luciana.bastos73519", None, first_name="Mariana", last_name="Costa"))
         voz = svc.create_persona(PersonaCreate(name="Voz do Lucas", summary="corredor", persona_prompt="Curto.",
                                                traits={**VOZ, "appearance": "alto"}, gender="masculino"))
         dto = svc.update_profile(lucas.id, ProfilePatch(persona_id=voz.id))
@@ -270,7 +270,7 @@ async def test_porta_de_sessao_responde_sem_conta_para_a_pessoa_sem_conta_no_app
     assert recusa is not None and recusa[1] is None and "não tem conta em Instagram" in recusa[0]
     # Perfil antigo, sem linha em `profile_accounts` mas com usuário de cadastro: continua contando como conta.
     state.social.update_profile(pessoa.id, ProfilePatch(instance_id=None))
-    conta = state.social.create_profile(ProfileCreate(username="lucas.almeida9484", instance_id="android-01"))
+    conta = state.social.create_profile(ProfileCreate(username="tadeu.quintela4821", instance_id="android-01"))
     state.db.execute("DELETE FROM profile_accounts WHERE profile_id=?", (conta.id,))
     recusa = state._session_gate(rt, IG)
     assert recusa is None or "não tem conta" not in recusa[0]

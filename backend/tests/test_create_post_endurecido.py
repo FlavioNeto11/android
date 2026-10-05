@@ -33,7 +33,7 @@ from .test_create_post import _despachar, _executor, _Imagens
 
 PKG = "com.instagram.android"
 IID = "android-01"
-CONTA = "lucas.almeida9484"
+CONTA = "tadeu.quintela4821"
 CONTAGEM = "id=profile_header_familiar_post_count_value"
 
 
