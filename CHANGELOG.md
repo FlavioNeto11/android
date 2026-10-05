@@ -27,12 +27,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   trocar; a unidade colada à direita (`10min`) segue trocando. Borda de letra e de símbolo, como estava.
 - Fronteira entre pedaços já trocados: a borda se confere no texto ORIGINAL (uma lista de trechos ocupados), não no resto
   entre dois marcadores. Antes, "10min" com "10" e "min" de exemplo virava `{n}{m}`.
-- `recipes.para_hash` usa o mesmo `_sub_values` em vez de `str.replace`: o hash da receita deixa de discordar do
-  fluxo-modelo ("nasal" não vira `{perfil}l`). Efeito: o hash de uma receita cujo texto tinha o valor DENTRO de outra
-  palavra muda na próxima gravação; o caso comum (valor como palavra inteira) não muda.
+- `recipes.para_hash` usa o mesmo `_sub_values` (agora com o nome público `trocar_valores_por_nomes`) em vez de
+  `str.replace`: o hash da receita deixa de discordar do fluxo-modelo ("nasal" não vira `{perfil}l`). Efeito possível:
+  o hash de uma etapa cujo texto tem o valor DENTRO de outra palavra muda NA GRAVAÇÃO E NA CONSULTA (repositório,
+  capacidades, validação de aprendizado), e a receita já gravada com o hash antigo deixaria de casar.
+- Medido, só leitura, no banco do central em 05/10 (script em `.claude/handoffs/jev/`, saída só com números): das 199
+  receitas gravadas (93 ativas, 46 candidatas, 16 em quarentena, 44 substituídas), **0** mudam de hash. Conferido em
+  3286 etapas com hash, 2111 delas ligadas a receita, também no pior caso (união de todos os valores de texto do
+  objetivo, da etapa e dos alvos): 0 diferem. Sem backfill. Nota: o hash antigo recomposto a partir das linhas
+  reproduz só 1369 das 2111 etapas ligadas (as demais dependem de variáveis de inserção que o banco não guarda); por
+  isso o pior caso acima, que não depende da reprodução.
+- Número colado a letra à esquerda não troca mais ("10h30" vira `{n}h30`): é o preço de não partir `v10`; fixado em
+  teste.
 - Fora do escopo, não tocado: `recipes.detemplate`, que troca os literais das ações da receita por `str.replace` com o
   piso de 3 caracteres; a borda dele é decisão à parte (muda o que a receita aprende).
-- Prova `simulated`: `backend/tests/test_fluxo_casamento_especifico.py::*` (45; 4 testes novos e o de unidade ajustado,
+- Prova `simulated`: `backend/tests/test_fluxo_casamento_especifico.py::*` (46; 5 testes novos e o de unidade ajustado,
   duas mutações reprovadas: `para_hash` com `str.replace` e a borda antiga do dígito), mais 261 testes de fluxo, receita,
   catracas e arquitetura verdes. Real: `not_run`.
 

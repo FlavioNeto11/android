@@ -118,8 +118,9 @@ def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
     F6 (31.89): o valor só é trocado INTEIRO, e a borda se confere por CLASSE de caractere (`_borda`). Com "Ana" de
     exemplo, "Banana", "Ana2" e "a_Ana" ficam como estão, e "posts", "ana_silva" e "fulano123" não perdem um pedaço
     para "post", "ana" e "fulano". Com "10", "esperar 10min" vira "esperar {n}min", mas "100", "110", "v10" e "10_2"
-    ficam (31.96: a esquerda sem caractere de palavra, a direita sem dígito nem `_`). Borda que é símbolo ou espaço
-    ("@fulano", "R$ 10") não exige nada: o símbolo já delimita.
+    ficam (31.96: a esquerda sem caractere de palavra, a direita sem dígito nem `_`). Contrapartida: número colado a
+    letra à ESQUERDA não troca ("10h30" vira "{n}h30", o "30" fica; "10x10" e "nº10" idem), o preço de não partir
+    "v10". Borda que é símbolo ou espaço ("@fulano", "R$ 10") não exige nada: o símbolo já delimita.
 
     31.96, a fronteira entre pedaços já trocados: a borda se confere no texto ORIGINAL, não no resto que sobrou
     entre dois marcadores. Antes, "10min" com "10" e "min" de exemplo virava "{n}{m}": o "min" começava um pedaço novo,
@@ -147,6 +148,10 @@ def _sub_values(text: str | None, values: dict[str, str]) -> str | None:
         saida += [text[fim:ini], marcador]
         fim = f
     return "".join(saida) + text[fim:]
+
+
+#: O nome público da troca, para quem a usa fora deste módulo (a identidade da etapa em `recipes.para_hash`).
+trocar_valores_por_nomes = _sub_values
 
 
 class FlowStore:

@@ -18,7 +18,9 @@ from app.db import Database
 from app.modules.skills.domain.lifecycle import SkillState
 from app.modules.skills.domain.matching import PLACEHOLDER, specificity
 from app.modules.skills.domain.versions import Provenance, SourceKind
-from app.taskqueue.flows import FlowStore, _sub_values
+from app.models import PlanStep, Postcondition
+from app.taskqueue.flows import FlowStore, _sub_values, trocar_valores_por_nomes
+from app.taskqueue.recipes import para_hash
 
 from .fake_skills import banco, documento, fluxo, perfil, repositorio
 
@@ -206,6 +208,14 @@ def test_numero_colado_a_unidade_e_trocado_mas_nao_o_numero_maior() -> None:
     assert _sub_values("de 5-10", v) == "de 5-{n}"                  # símbolo à esquerda já delimita
 
 
+def test_numero_colado_a_letra_a_esquerda_nao_troca_e_isso_e_o_preco_da_borda() -> None:
+    """31.96 (F2 da leitura): a contrapartida de não partir `v10`. Fixa o que o docstring de `_sub_values` diz."""
+    assert _sub_values("às 10h30", {"n": "10"}) == "às {n}h30"
+    assert _sub_values("às 10h30", {"n": "30"}) == "às 10h30"
+    assert _sub_values("10x10", {"n": "10"}) == "{n}x10"
+    assert _sub_values("nº10", {"n": "10"}) == "nº10"
+
+
 @pytest.mark.parametrize("texto", ["versão v10", "botão btn10", "icone_10", "img_10.png", "ana10", "10_2", "a10b"])
 def test_nome_de_imagem_ou_botao_terminado_em_numero_nao_se_parte(texto: str) -> None:
     """31.96: `v10`, `btn10` e `img_10` são nomes, não o valor 10; antes da borda nova a esquerda só pedia não-dígito
@@ -280,9 +290,6 @@ def test_hash_da_receita_troca_o_valor_como_o_fluxo_aprende() -> None:
     """31.96: `para_hash` trocava por `str.replace`, sem borda, e discordava do `_sub_values` do fluxo-modelo: com
     "nasa" de parâmetro, "nasal" virava "{perfil}l" na identidade da etapa. Agora é a MESMA troca. Mutação: voltar ao
     `str.replace` quebra o primeiro assert."""
-    from app.models import PlanStep, Postcondition
-    from app.taskqueue.recipes import para_hash
-
     def etapa(texto: str, guarda: str) -> PlanStep:
         return PlanStep(key="open_profile", title="abrir", goal="abrir o perfil",
                         postcondition=Postcondition(kind="model_judged", value=texto, description="x"),
@@ -295,5 +302,6 @@ def test_hash_da_receita_troca_o_valor_como_o_fluxo_aprende() -> None:
     assert esperado == "perfil de {perfil} aberto, sem nasal nem nasa2, com {perfil}."
     assert trocado.postcondition.value == esperado
     assert trocado.commit_guard == [esperado]
+    assert trocar_valores_por_nomes is _sub_values
     # Os parâmetros de execução nunca entram, e o valor curto (menos de 3 caracteres) continua de fora.
     assert para_hash(etapa("r-1 e ab", "r-1 e ab"), {"run_id": "r-1", "x": "ab"}).postcondition.value == "r-1 e ab"
