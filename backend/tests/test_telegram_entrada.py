@@ -1682,6 +1682,15 @@ async def test_a_ordem_do_message_id_e_numerica(tmp_path: Path, pergunta: int, r
     assert (c.linha(5)["alvo"] == f"escolha:{pergunta}") is casa
 
 
+@pytest.mark.parametrize(("ref", "numero"), [("100", 100), ("²", None), ("resultado:7", None), ("", None), (None, None)])
+async def test_o_numero_do_message_id_so_aceita_digito_decimal(ref: object, numero: int | None) -> None:
+    """28.49 (N2 da leitura do #426): o caso que o `isdecimal` corrige. "²" passa no `isdigit` e quebrava o `int`; o
+    99 contra 100 acima já passava no código antigo."""
+    from app.modules.avisos.infrastructure.entrada_sql import _numero
+
+    assert _numero(ref) == numero
+
+
 async def test_a_pergunta_gravada_um_pouco_depois_do_recado_ainda_casa(tmp_path: Path) -> None:
     """A ANA manda a pergunta (294) e o dono responde "1" (295) no mesmo segundo; o script grava a pergunta cerca de 1 s
     DEPOIS de o laço gravar o "1". A ordem do chat diz que a pergunta veio antes: casa. O teto `enviada_em <=

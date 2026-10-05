@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.49: as sobras das leituras do #426 (28.47) e do #431 (28.48) (branch canais/28-49-sobras-das-leituras)
+
+- `sha_da_imagem_aprovada`: vale a decisão mais recente da etapa (`approved`, `edited` ou `rejected`, desempate pelo
+  id), e só se ela for o sim. Um "não" depois do sim tira a âncora, e a foto não sai rotulada "aprovado". O sim
+  vencido (`expired`) não é decisão do dono e não conta.
+- `canais.md`: a ordem por `message_id` supõe um chat só, e a pergunta de escolha vai sempre ao privado do dono; o
+  `--foto` pede o deploy antes do uso de toda função nova que importa.
+- Testes: o `_numero` com "²" (o caso que o `isdecimal` corrige; o 99 contra 100 já passava antes); a âncora com o sim
+  vencido mais novo, dois sins e o "não" depois do sim.
+- Prova: `simulated` (`backend/tests/test_rotulo_ia.py::test_a_ancora_da_foto_segue_a_decisao_mais_recente` e
+  `backend/tests/test_telegram_entrada.py::test_o_numero_do_message_id_so_aceita_digito_decimal`). Real: `not_run`.
+
 ## 2026-10-05 — 28.48: a foto do item já decidido conferida pela âncora do sim (branch canais/28-48-foto-pela-aprovacao)
 
 - `telegram_status.py --foto`: com o item já aprovado na prévia da porta, o `midia_sha256` gravado no sim
