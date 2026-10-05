@@ -676,7 +676,18 @@ avisos depois da faxina"), e a trava cai no TTL.
       - o "parou" já registrado e sem a marca (o banco caiu entre o envio e a marca), com a execução concluindo
         antes da volta seguinte, marca sem mandar o fim (raro);
       - as linhas que pararam antes do deploy do 28.42 não têm a marca e nunca ganham o fim;
-      - uma espera mais longa que `retencao_dias` perde a linha na faxina, e o fim fica mudo.
+      - uma espera mais longa que `retencao_dias` perde a linha na faxina, e o fim fica mudo;
+      - com líderes sobrepostos e um ciclo inteiro dentro da sobreposição (parar, rearmar, parar de novo), o "parou"
+        pode sair em dobro (N3 da leitura do #400). O erro é para o lado de avisar, não de calar.
+    - O `marcar_desfecho(parado=True)` faz ler, mudar e gravar o `previa` sem troca condicional. Entre a leitura e a
+      gravação, outra escrita no `previa` da mesma linha se perderia. Só o líder da trava escreve ali depois que a linha
+      fica `feita` (como no `vista_em_planned`), e a sobreposição de líderes é o caso do N3.
+    - Achado (leitura do #400, ressalva 2): o aviso `approval.pending` da execução se decide por reply "sim" ou "não".
+      O caminho é `_rotear_resposta`, depois `_decidir`, `portas.decidir` e `ApprovalService.decide`, e exige
+      `do_dono=1`, o reply ao aviso e a aprovação ainda pendente. Ele não tem a trava "fora do canal" da prévia da porta
+      (`FORA_DO_CANAL`, 28.27), e o texto do aviso não leva a imagem. Uma aprovação com imagem ou texto longo se decide
+      pelo Telegram sem que o dono a veja inteira ali. Até haver trava, quem pede o aval manda a imagem em reply ao
+      aviso (28.45).
     - O conjunto de estados com desfecho se chama `COM_DESFECHO` (antes `TERMINAIS`, que enganava: `awaiting_person`
       não é terminal).
   - A prévia que não sai inteira marca a linha como falha e avisa o dono uma vez. Uma linha com erro não cala as
