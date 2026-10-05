@@ -97,3 +97,66 @@ def test_motivo_sem_valor_nao_ecoa_validador_nem_chave_do_modelo() -> None:
     assert SEGREDO not in motivo
     assert "itens.0.nome: value_error" in motivo and "itens.0.?: extra_forbidden" in motivo
     assert "contagem.?: int_parsing" in motivo
+
+
+# ---------------------------------------------------------------- sobras da leitura do 31.70: a função irmã do 31.63
+def _esquema_que_ecoa() -> type:
+    from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator
+
+    class Item(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        nome: str
+        rotulo: str = Field(alias="label")
+        nota: int = Field(0, validation_alias=AliasChoices("nota", "score"))
+
+        @field_validator("nome")
+        @classmethod
+        def _ecoa(cls, v: str) -> str:
+            raise ValueError(f"nome recusado: {v}")
+
+    class Saida(BaseModel):
+        itens: list[Item]
+        contagem: dict[str, int]
+
+    return Saida
+
+
+def _bruto() -> dict[str, object]:
+    return {"itens": [{"nome": SEGREDO, "label": 7, "score": "x", SEGREDO + "-chave": 1}],
+            "contagem": {SEGREDO + "-dict": "x"}}
+
+
+def test_a_irma_do_31_63_tambem_nao_ecoa_chave_do_modelo() -> None:
+    """Antes, `erro_de_validacao_sem_entrada` deixava a chave de `dict` e a do `extra_forbidden` no `loc`."""
+    from pydantic import ValidationError
+
+    from app.planning.provider import erro_de_validacao_sem_entrada
+    saida = _esquema_que_ecoa()
+    with pytest.raises(ValidationError) as erro:
+        saida.model_validate(_bruto())
+    assert SEGREDO in str(erro.value)                      # o pydantic sozinho ecoa: o teste discrimina
+    motivo = erro_de_validacao_sem_entrada(erro.value, saida)
+    assert SEGREDO not in motivo
+    assert "itens.0.nome: value_error" in motivo and "itens.0.?: extra_forbidden" in motivo
+    assert "contagem.?: int_parsing" in motivo
+
+
+def test_alias_e_validation_alias_contam_como_nome_de_campo() -> None:
+    from pydantic import ValidationError
+
+    from app.modules.execution.domain.command_refinement import motivo_sem_valor
+    from app.planning.provider import erro_de_validacao_sem_entrada
+    from app.shared.validacao import nomes_de_campo
+    saida = _esquema_que_ecoa()
+    assert {"label", "rotulo", "nota", "score"} <= nomes_de_campo(saida)
+    with pytest.raises(ValidationError) as erro:
+        saida.model_validate(_bruto())
+    for motivo in (erro_de_validacao_sem_entrada(erro.value, saida), motivo_sem_valor(erro.value, saida)):
+        assert "itens.0.label: string_type" in motivo and "itens.0.score: int_parsing" in motivo
+
+
+def test_validar_saida_levanta_sem_o_texto_e_sem_a_causa() -> None:
+    from app.planning.provider import AIError, validar_saida
+    with pytest.raises(AIError) as erro:
+        validar_saida(_esquema_que_ecoa(), _bruto(), "Saída inválida")
+    _sem_o_texto(erro.value)
