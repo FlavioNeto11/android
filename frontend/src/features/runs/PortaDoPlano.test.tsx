@@ -153,12 +153,15 @@ describe('ValidadeDoPlano (30.61, Renovar)', () => {
   });
 
   it('mostra a validade dos sins do plano e renova pela rota', async () => {
+    // Relativa ao relógio: com a data fixa (2026-10-05T21:00Z) o sim "valia" só até aquele instante, e o teste passou a
+    // dizer "venceu" a partir dele (a suíte 42 do dia 05/10 caiu aqui).
+    const venceEmSeisHoras = new Date(Date.now() + 6 * 3600e3).toISOString();
     backend.on('GET', /\/approvals/, () => json([
-      { id: 'apr-1', origem: 'plano', interaction_id: null, expires_at: '2026-10-05T21:00:00.000Z', status: 'approved' },
+      { id: 'apr-1', origem: 'plano', interaction_id: null, expires_at: venceEmSeisHoras, status: 'approved' },
       { id: 'apr-2', origem: 'execucao', interaction_id: null, expires_at: null, status: 'approved' },
     ]));
     backend.on('POST', /\/runs\/run-r\/porta\/renovar$/, () => json({ run_id: 'run-r', renovadas: 1, vencidas: 0,
-      validade_ate: '2026-10-06T21:00:00.000Z' }));
+      validade_ate: new Date(Date.now() + 30 * 3600e3).toISOString() }));
     await act(async () => root.render(<ValidadeDoPlano runId="run-r" />));
     await waitFor(() => expect(text(container)).toContain('1 sim(ns) dado(s) na prévia valem até'));
     await click(byRole('button', /Renovar/));

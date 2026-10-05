@@ -43,6 +43,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - o prefixo `training:` fica no reparo, porque os leitores dele (a origem no painel, `Origem.TREINO`, as genéricas,
     o aviso do 30.80 B) seguem tratando a receita refeita como ensinada.
 
+## 2026-10-05 — o teste da validade do sim do plano não depende da data de hoje (branch fix/porta-do-plano-validade-relativa)
+
+- `PortaDoPlano.test.tsx` "mostra a validade dos sins do plano…" usava `2026-10-05T21:00Z` como instante futuro; às 21:00Z de hoje o sim passou a "vencido" e o teste falhou (determinístico, também em ramos que passavam antes). A validade agora é relativa ao relógio (6 h à frente; a renovação, 30 h).
+- Prova `simulated`: o arquivo sozinho, 22/22 em duas rodadas, em 05/10 depois das 21:00Z. Outras datas fixas próximas em testes (a conferir, sem mudança aqui): `ValidacaoTab.test.tsx` (`expira_em` em 06/10), `NovoPedido.test.tsx` (prazo em 09/10), `MetricasTab.test.tsx` (17/10).
+
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
 - **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).
