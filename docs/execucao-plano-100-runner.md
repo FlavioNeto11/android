@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-512 de 558 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+513 de 558 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -404,7 +404,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.108 | pendente | — | — | — |  |  |
 | 29.109 | pendente | — | — | — |  |  |
 | 29.110 | implemented | real | claude-fable-5-1 | — | Real, 05/10/2026, WIN-7S2UASNLFOP. Ordem do dono em chat (sessão do Portal, entre 08:29Z e 08:35Z): 'tire o trecho abaixo agora do portal' (seção 'O que a ANA não faz'). PR #394 (ponta cb71b523): sai o <aside class="lim… | None |
-| 29.111 | pendente | — | — | — |  |  |
+| 29.111 | implemented | real | claude-fable-5-1 | — | Real, 05/10/2026, WIN-7S2UASNLFOP. Pedido do dono pelo Telegram, repassado pela orquestradora: o site diz o que ANA significa. Texto final 'Agente Neural Avançada', com a frase 'rege as personas que dão voz' (ADR-075: a… | None |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -552,7 +552,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.68 | implemented | simulated | claude-fable-5-1 | — | #359 (a96fb8bd) na main; deploy 34 no ar (commit 584ac9c8, migração 109, lido às 03:42:19Z de 05/10/2026). Prévia da porta e do item com vista_em; aprovar sem vista_em legível com item a aprovar dá 409 plano_mudou; DM i… | recusa sem vista_em e aprovação com vista_em em real saem do uso: a primeira publicação (29.30) é approval_required e passa pela porta com item de aval, com o… |
 | 31.69 | implemented | simulated | claude-fable-5-1 | — | #362, ponta b1af598f, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). VALOR_CURTO = 4: um valor curto só fecha a leitura sem step_done por `resource_id` único (`valor_segue_na_tela… | prova real pede uma leitura de valor curto numa execução real |
 | 31.70 | implemented | simulated | claude-fable-5-1 | — | Sobras da leitura do 31.70 (#373), no #376, ponta aebe6824, suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 8… | None |
-| 31.71 | implemented | simulated | claude-fable-5-1 | — | #379, ponta 777c07fb (com o teste de contador em `completar_imagem` e `rich_tree_min_elements=1` no laço, pedido da leitura), suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido… | A/B do roteiro .claude/handoffs/jev-roteiro-31-71-ab.md (android-01, Outlook só leitura, 5 por braço, reinício da farm-central entre os braços), na janela da o… |
+| 31.71 | implemented | real | claude-fable-5-1 | — | #379, ponta 777c07fb (com o teste de contador em `completar_imagem` e `rich_tree_min_elements=1` no laço, pedido da leitura), suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido… | a chave NÃO vira padrão ainda (decisão da orquestradora, 10:26Z): falta a 2ª medida num fluxo longo com saída declarada lida só no fim (mais de 8 decides), 3 p… |
 | 31.72 | pendente | — | — | — |  |  |
 | 31.73 | pendente | — | — | — |  |  |
 | 31.74 | implemented | simulated | claude-fable-5-1 | — | #389, ponta 3acf4707, suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos,… | prova real pede um wait_for numa tela lenta (Chrome) depois do deploy 36; sem janela marcada |
@@ -565,7 +565,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (46): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.42, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.83, 29.102, 29.104, 29.105, 29.107, 29.108, 29.109, 29.111, 30.34, 30.71, 30.72, 30.73, 30.74, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.55, 31.58, 31.72, 31.73, T.2
+Pendentes (45): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.42, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.83, 29.102, 29.104, 29.105, 29.107, 29.108, 29.109, 30.34, 30.71, 30.72, 30.73, 30.74, 31.11, 31.12, 31.13, 31.26, 31.40, 31.45, 31.55, 31.58, 31.72, 31.73, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

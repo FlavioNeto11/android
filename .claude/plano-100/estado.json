@@ -8802,15 +8802,15 @@
   "31.71": {
    "id": "31.71",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "#379, ponta 777c07fb (com o teste de contador em `completar_imagem` e `rich_tree_min_elements=1` no laço, pedido da leitura), suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b); deploy 36 em e5f1b22b às 05/10/2026 09:42Z, sem migração própria (`image_reason` é TEXT sem CHECK, 080). `AiCfg.imagem_enquanto_falta_saida` DESLIGADA por padrão; motivo novo `leitura_pendente` em `MotivoDaImagem` (adendo v1.49), depois de sensivel, politica_nunca, politica_sempre, pedida, problema e primeira_*: a política continua mandando. Lembrete só com NOMES das saídas faltantes, só na cópia da decisão (`historico_do_ator`), nunca no history durável. Simulado: test_imagem_enquanto_falta_saida.py; a mutação 2185 (a imagem não segue) agora reprova pelo contador. Real not_run: a chave nasce desligada e vira padrão só pelo A/B.",
-   "blocker": "A/B do roteiro .claude/handoffs/jev-roteiro-31-71-ab.md (android-01, Outlook só leitura, 5 por braço, reinício da farm-central entre os braços), na janela da orquestradora; o android-01 tem conta real",
-   "grupo": "resultado-orquestradora-suite36",
+   "proof": "real",
+   "evidence": "#379, ponta 777c07fb (com o teste de contador em `completar_imagem` e `rich_tree_min_elements=1` no laço, pedido da leitura), suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b); deploy 36 em e5f1b22b às 05/10/2026 09:42Z, sem migração própria (`image_reason` é TEXT sem CHECK, 080). `AiCfg.imagem_enquanto_falta_saida` DESLIGADA por padrão; motivo novo `leitura_pendente` em `MotivoDaImagem` (adendo v1.49), depois de sensivel, politica_nunca, politica_sempre, pedida, problema e primeira_*: a política continua mandando. Lembrete só com NOMES das saídas faltantes, só na cópia da decisão (`historico_do_ator`), nunca no history durável. Simulado: test_imagem_enquanto_falta_saida.py; a mutação 2185 (a imagem não segue) agora reprova pelo contador. REAL (A/B, 05/10, central, deploy 36 e5f1b22b, android-01, Outlook só leitura, pedido da referência r-20261004232524-2e0775, janela quieta medida pela orquestradora, custo por costs.spent_usd): braço desligado 10:14:34Z a 10:18:27Z, r-20261005101434-909808, r-20261005101529-f4315d, r-20261005101602-963966, r-20261005101725-11c501, r-20261005101755-f9041e: 5/5 completed, decides 5/5/8/4/5 (média 5,4), com imagem média 3,2, US$ 0,0662 por execução, parede média 32,5 s. Chave ligada no config do central pela orquestradora e farm-central reiniciada (10:18:50Z a 10:20:13Z); braço ligado 10:20:30Z a 10:23:22Z, r-20261005102030-413ce8, r-20261005102114-f8ad81, r-20261005102153-c6a5f9, r-20261005102222-1a9be6, r-20261005102252-e3137d: 5/5 completed, decides 4 em todas (-26 %), com imagem 3,0, US$ 0,0509 por execução (-23 %), parede média 28,0 s; motivo leitura_pendente presente nas 5. latencia-por-etapa: tent_ia p50 18,8 -> 15,9 s e p95 26,2 -> 17,2 s; tent_resto p95 19,3 -> 10,2 s; ator 27 -> 20 chamadas. Total do A/B US$ 0,5856 (teto 1,20); 0 aviso ao dono; nenhum toque (só read_value, observe_screen, step_done, find_element).",
+   "blocker": "a chave NÃO vira padrão ainda (decisão da orquestradora, 10:26Z): falta a 2ª medida num fluxo longo com saída declarada lida só no fim (mais de 8 decides), 3 por braço, em aparelho de teste sem conta real; se ganhar ou empatar, o padrão vira true por PR com os dois resultados",
+   "grupo": "resultado-orquestradora-29-111",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T09:50:24+00:00"
+   "quando": "2026-10-05T10:49:51+00:00"
   },
   "31.74": {
    "id": "31.74",
@@ -8863,6 +8863,19 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "29.111": {
+   "id": "29.111",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP. Pedido do dono pelo Telegram, repassado pela orquestradora: o site diz o que ANA significa. Texto final 'Agente Neural Avançada', com a frase 'rege as personas que dão voz' (ADR-075: a ANA rege, as personas dão voz; a orquestradora avisou o dono da diferença para a frase de exemplo). PR #405 (ponta 2684129c): site/index.html, linha 146 (parágrafo com <b>A</b>gente <b>N</b>eural <b>A</b>vançada) e linha 399 (FAQ, 'de onde vem o nome'); linha no ADR-075; CHANGELOG. Real, prova de fora e navegador pela orquestradora: #405 mesclado como 7d104faa às 10:38Z; deploy.ps1 -Ensaio de 10:38:59Z a 10:39:03Z (cópia data/backups/20261005-073900); deploy.ps1 -PularBackup -PularDependencias de 10:39:10Z a 10:40:18Z, rc 0, saúde ok no 7d104faa, migração 113; prova de fora de 10:40:26Z a 10:40:35Z, rc 0, 46 linhas ok, /api/instances 401 e 403, site.css ?v=149d71b74593 e site.js ?v=4d658e12ade1 iguais; página pública no navegador às 10:41:17Z: o parágrafo com a sigla, o FAQ com 'de onde vem o nome', sem as duas frases antigas, sem a forma em inglês, 5 recursos e nenhum de fora da origem, sem rolagem horizontal em 375 px. Segunda leitura (Ferramentas do Claude, C:/claude-ferramentas/revisao-29-111.md): 'entra'. Sugestão N1 guardada para a próxima rodada de texto, sem mudar agora: o lide (linha 102) diz que a ANA 'dá voz, identidade e direção a cada persona'; proposta 'dá identidade e direção a cada persona'.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-29-111",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T10:49:51+00:00"
   }
  },
  "rodadas": [
@@ -11540,6 +11553,16 @@
    ],
    "grupos": [
     "resultado-orquestradora-29-17"
+   ]
+  },
+  {
+   "quando": "2026-10-05T10:49:51+00:00",
+   "itens": [
+    "29.111",
+    "31.71"
+   ],
+   "grupos": [
+    "resultado-orquestradora-29-111"
    ]
   }
  ]
