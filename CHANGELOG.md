@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.71: as sobras da leitura do #390 (branch feat/30-71-sobras-do-digest, sobre o #390)
+
+- `execucoes_a_preencher` deixa de escolher a execução `awaiting_person`, que tem `finished_at` mas cuja exposição não fecha enquanto espera: antes ela entrava em toda passada sem preencher nada e, com `LIMIT 200` por `run_id`, podia tirar a vez de quem fecha.
+- O teste da idempotência do digest compara também os `SUM` de `evidence_for`, `evidence_against` e `distinct_runs` de `learning_items`, além das linhas.
+- Doc (`aprendizado.md`): no estoque migrado, as exposições congeladas com `waiting_user` antes do 30.69 ficam assim; o relatório de condução, recalculado, mostra `esperando_pessoa` também nas antigas.
+- Prova `simulated`: `backend/tests/test_digest_na_saida_da_espera.py` (6 passed; o novo `test_a_curadoria_nao_escolhe_a_execucao_que_espera_e_escolhe_quando_ela_sai` confere também que a saída da espera preenche a exposição).
+
 ## 2026-10-05 — 30.69: o que o digest do aprendizado conta durante e depois da espera pela pessoa (branch feat/30-69-digest-na-saida-da-espera, sobre o 29.93)
 
 - Com o 29.93, a execução que espera a pessoa fica em `awaiting_person` e só assenta na saída. O gancho da saída é do

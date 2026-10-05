@@ -1483,6 +1483,11 @@ A lacuna ("a receita não tem evidência datada") tinha um custo medido em 03/10
   No relatório de condução, a etapa que espera sem `driven_by` aparece como `esperando_pessoa`, não como "sem
   condução", e fica fora da porcentagem por receita. O digest re-rodado na saída não duplica linha em nenhum
   dos 10 mineradores (nota de desenho do 30.69).
+  - Desde o 30.71, a curadoria (`execucoes_a_preencher`) também deixa de ESCOLHER a execução `awaiting_person`. Antes
+    ela entrava em toda passada sem preencher nada e, com o `LIMIT 200` por `run_id`, podia tirar a vez de quem fecha.
+  - No estoque migrado (a 111 levou as `completed_with_issues` com objetivo esperando para `awaiting_person`), as
+    exposições que o primeiro digest congelou com `waiting_user`, antes do 30.69, ficam assim: nada as reabre.
+  - O relatório de condução, que é recalculado a cada leitura, passa a mostrar `esperando_pessoa` também nas antigas.
 - **Não decide nada.** Só grava evidência; o D1, a quarentena e os contadores seguem donos do estado da receita.
 - **Retrocarga** `RetrocargaDaReceita`, passo da curadoria (e não função única na montagem): a cada volta completa as
   reproduções de execuções já terminadas que ainda não têm linha (as de antes do 30.39, um digest que falhou), datadas

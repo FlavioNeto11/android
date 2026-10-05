@@ -45,6 +45,31 @@ async def test_a_exposicao_da_etapa_que_espera_nao_fecha_e_a_cancelada_fecha(har
     assert desfecho is not None and desfecho.outcome == "cancelled"
 
 
+async def test_a_curadoria_nao_escolhe_a_execucao_que_espera_e_escolhe_quando_ela_sai(harness: Harness) -> None:
+    """30.71 (sobra da leitura do #390): `execucoes_a_preencher` escolhe pelo `finished_at`, que a espera já grava. Sem
+    o filtro de status, a execução `awaiting_person` entrava em toda passada sem preencher nada, e o `LIMIT 200` por
+    `run_id` podia tirar a vez de quem fecha. Quando ela sai da espera (aqui, cancelada), volta a ser escolhida."""
+    st = _estado(harness)
+    run_id = await _esperando_login(harness)
+    etapa = st.db.one("SELECT id FROM steps WHERE run_id=? AND status='waiting_user' ORDER BY seq LIMIT 1", (run_id,))
+    assert etapa is not None
+    st.db.execute("UPDATE runs SET simulated=0 WHERE id=?", (run_id,))     # a curadoria só olha execução real
+    st.db.execute("INSERT INTO learning_exposures(item_id, unit_id, role, arm, run_id, created_at)"
+                  " VALUES ('item-30-71', ?, 'ator', 'with', ?, ?)", (f"step:{etapa['id']}", run_id, to_iso(now())))
+    licoes = SqlLicoesRepository(st.db, precos=dict)
+    desde = to_iso(now() - timedelta(days=1))
+    assert st.repo.run_row(run_id)["status"] == "awaiting_person"
+    assert run_id not in licoes.execucoes_a_preencher(desde)
+    st.runs.cancel(run_id)
+    await harness.wait(lambda: st.repo.run_row(run_id)["status"] == "cancelled", what="execução cancelada")
+    # o assentamento da saída (#382) já preencheu a exposição pelo digest; desfeito o preenchimento, a curadoria a
+    # escolhe de novo, porque a execução não espera mais
+    await harness.wait(lambda: st.db.scalar("SELECT filled_at FROM learning_exposures WHERE run_id=?", (run_id,))
+                       is not None, what="exposição preenchida na saída da espera")
+    st.db.execute("UPDATE learning_exposures SET filled_at=NULL, outcome=NULL WHERE run_id=?", (run_id,))
+    assert run_id in licoes.execucoes_a_preencher(desde)
+
+
 async def test_cancelar_e_repetir_nao_tocam_etapa_que_ja_teve_veredito(harness: Harness) -> None:
     """D1-N2 da leitura do #374 (a catraca da premissa do 30.70): `cancel_open_steps` e `revise_plan` só pegam etapa
     ABERTA. Se passassem a tocar `failed` ou `uncertain`, o filtro `NOT IN ('waiting_user','cancelled','skipped')` de
@@ -82,8 +107,16 @@ _TABELAS_DO_DIGEST = ("learning_items", "learning_evidence", "learning_exposures
                       "skill_validation_results", "learning_transitions")
 
 
+#: 30.71: além das linhas, os contadores em cache de `learning_items`. Um minerador que somasse de novo no mesmo item
+#: (sem linha nova) passaria pela contagem de linhas.
+_SOMAS_DOS_ITENS = ("evidence_for", "evidence_against", "distinct_runs")
+
+
 def _contagens(st: AppState) -> dict[str, int]:
-    return {t: int(st.db.scalar(f"SELECT COUNT(*) FROM {t}") or 0) for t in _TABELAS_DO_DIGEST}
+    contagens = {t: int(st.db.scalar(f"SELECT COUNT(*) FROM {t}") or 0) for t in _TABELAS_DO_DIGEST}
+    for coluna in _SOMAS_DOS_ITENS:
+        contagens[f"SUM(learning_items.{coluna})"] = int(st.db.scalar(f"SELECT SUM({coluna}) FROM learning_items") or 0)
+    return contagens
 
 
 async def _execucao(h: Harness, caso: str) -> str:
