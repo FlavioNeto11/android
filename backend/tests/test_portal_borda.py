@@ -349,6 +349,9 @@ def test_versao_e_a_primeira_apontada_e_o_item_tem_teto() -> None:
     ("https://10.0.0.5/x.js", "ip/x.js"),
     ("https://[2001:db8::1]:8443/x.js", "ip/x.js"),
     ("a/b:c.js", "a/b"),
+    ("https://usuario;sessao@cdn.exemplo.invalid/a.js", "cdn.exemplo.invalid/a.js"),     # R1
+    ("ht tps://usuario:senha@cdn.exemplo.invalid/a.js", "relativo"),                     # R2
+    ("https://%31%30.0.0.5/a.js", "ip/a.js"),                                            # R3
 ])
 def test_o_achado_da_canais_e_so_host_e_caminho_no_alfabeto_dela(src: str, item: str) -> None:
     """Contrato com a Canais (leitura do #381): o filtro dela não acha segredo em segmento de caminho; o vigia manda só
@@ -358,7 +361,7 @@ def test_o_achado_da_canais_e_so_host_e_caminho_no_alfabeto_dela(src: str, item:
 
 #: Cada marcador é um pedaço que NUNCA pode sair no item nem no detalhe (leitura do #378, Q1 a Q4). A porta só não
 #: pode sair no item: o detalhe da saúde e da prova mostra esquema, host, porta e caminho.
-_MARCAS = ("USUARIO", "SENHA", "QUERY", "FRAG", "SESSAO", "10.0.0.5", "2001", "db8", "c0a8")
+_MARCAS = ("USUARIO", "SENHA", "QUERY", "FRAG", "SESSAO", "1234", "10.0.0.5", "%31%30", "2001", "db8", "c0a8")
 _PORTA = "8443"
 _CDN = "cdn.exemplo.invalid"
 _SRCS_ADVERSARIOS = [
@@ -384,6 +387,11 @@ _SRCS_ADVERSARIOS = [
     "https://[2001:db8::1]:8443/a.js",
     "https://[::ffff:c0a8:1]/a.js",
     "USUARIO:SENHA@evil.invalid/a.js",
+    f"https://USUARIO;SESSAO@{_CDN}/a.js",                    # R1: o `;` é do userinfo, o host é o cdn
+    f"https://USUARIO:1234;SESSAO@{_CDN}/a.js",
+    f"ht tps://USUARIO:SENHA@{_CDN}/a.js",                    # R2: relativo para o navegador
+    "1USUARIO:SENHA@evil.invalid/a.js",
+    "https://%31%30.0.0.5/a.js",                              # R3: IP codificado
     "\x01 https://USUARIO:SENHA@evil.invalid/a.js",
 ]
 
@@ -400,3 +408,9 @@ def test_nenhum_pedaco_de_credencial_porta_query_ou_ip_sai_no_item_nem_no_detalh
     assert re.fullmatch(r"[A-Za-z0-9._/-]{0,120}", item)
     [achado] = borda.conferir_html("/", 200, f'<script src="{src}"></script>', host=HOST).achados
     assert (achado.item, achado.detalhe) == (item, detalhe)
+
+
+def test_relativo_com_dois_pontos_no_1o_segmento_nao_mostra_nada_dele() -> None:
+    """R2: para o navegador são caminho relativo, e a saúde mostrava o original inteiro."""
+    for src in ("ht tps://usuario:senha@cdn.exemplo.invalid/a.js", "1usuario:senha@evil.invalid/a.js"):
+        assert borda.endereco_do_script(src) == ("relativo", '(relativo com ":")')
