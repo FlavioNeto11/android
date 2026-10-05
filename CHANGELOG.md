@@ -39,6 +39,15 @@ Leitura do 29.116 pela Ferramentas do Claude.
   - `src/features/profiles` 201/201 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99;
   - typecheck limpo.
 
+## 2026-10-05 — 29.128, o lote "Completar com IA" não diz "completada" sem o modelo chamado (branch fix/29-128-lote-completar-frase)
+
+- A frase comparava o `updated_at` da resposta com o da persona na lista da tela. Com a lista velha, ou com a persona
+  editada noutra aba, ela dizia "completada" quando o servidor devolveu a persona sem chamar o modelo. Agora a
+  persona é relida antes do pedido e a comparação é com ela. Se essa leitura falha, o pedido vai assim mesmo e a
+  frase diz que não dá para saber.
+- Nota P da leitura do #423: a barra conta as releituras pendentes. Com duas, a primeira que assenta não solta a trava.
+- Prova simulated (`AcoesEmLote.test.tsx`, 2 casos novos): três mutações, todas pegas; frontend inteiro 1630/1630.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).
