@@ -320,7 +320,9 @@ function AprendidoPorCapability({ itens, onMudou }: { itens: DetalheDoApp['apren
               <Disclosure
                 key={g.chave}
                 className={styles.grupo}
-                defaultOpen={atencao > 0 || grupos.length === 1}
+                // A atenção vem da saúde do Livro, que pode chegar depois do detalhe: o bloco abre quando ela aparece,
+                // não só se já estava lá na montagem (29.112).
+                openWhen={atencao > 0 || grupos.length === 1}
                 summary={(
                   <span className={g.ehCapability ? styles.mono : undefined} title={g.codigo ?? undefined}
                     data-capability={g.codigo ?? undefined}>{g.titulo}</span>

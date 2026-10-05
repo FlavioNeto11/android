@@ -123,6 +123,20 @@ Leitura do 29.114 pela Ferramentas do Claude.
   - `src/features/profiles` 190/190 sem atraso;
   - com `ATRASO_DO_FETCH_MS=40`, o AcoesEmLote passa nas sementes 7, 11, 22, 44, 88 e 99.
 
+## 2026-10-05 — 29.112: o bloco que pede atenção abre quando a saúde chega (branch fix/29-112-atencao-aberta)
+
+- `frontend/src/components/Disclosure.tsx`: nova prop `openWhen`. O bloco abre quando ela passa de falso a verdadeiro,
+  também depois de montado, e nunca fecha. Funciona como o `defaultOpen` para o que depende de uma leitura que chega
+  depois do bloco.
+- `frontend/src/features/aprendizado/AplicativosTab.tsx`: o Aprendido por capability decidia abrir na montagem
+  (`defaultOpen`). Com o detalhe do app antes do Livro, a atenção era 0 naquela hora, e o bloco que pede atenção ficava
+  recolhido. Achado do 29.104. Agora abre quando a saúde chega, sem mexer no que a pessoa abriu.
+- Teste: `SaudeDoApp.test.tsx` segura o Livro, abre o Fluxo à mão e solta: a Receita abre e o Fluxo segue aberto.
+  Falha no código anterior. Prova simulated:
+  - frontend inteiro 1615/1615 sem atraso;
+  - `src/features/aprendizado` 199/199 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99, inclusive os
+    dois testes que eram a prova.
+
 ## 2026-10-05 — 29.111: o portal diz o que significa ANA (branch feat/29-111-significado-da-ana)
 
 - Pedido do dono pelo Telegram (entrada 1790, 05/10 09:39:19Z): "o que significa ana? precisa colocar isso no portal
