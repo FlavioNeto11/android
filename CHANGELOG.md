@@ -27,7 +27,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `recorder.py`: sem árvore o texto não é gravado (`has_text` e `text_len` ficam); no alvo, campo editável perde o
   `text` (e os `unique` que dependiam dele) e qualquer `text`/`desc` que case com `looks_secret`, `mentions_credential`
   ou `parece_senha_ou_codigo` sai; linhas e título de tela com esses formatos saem. A receita segue por `resource_id`
-  (`build_selectors` dá o seletor `rid`). Editável sem `resource_id` e sem `desc` fica como era.
+  (`build_selectors` dá o seletor `rid`). Campo editável nunca guarda `text`; sem `resource_id` e sem `desc` o alvo fica sem seletor e a etapa não vira receita.
 - Prova `simulated`: `backend/tests/test_treino_segredo_na_gravacao.py` (4; sem o conserto os 4 falham) e
   `test_modo_treinamento.py` (7 passed). Real: `not_run`.
 

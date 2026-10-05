@@ -57,6 +57,18 @@ async def test_toque_em_campo_editavel_nao_grava_o_conteudo_e_a_receita_segue_po
     assert build_selectors(alvo, {}) == [{"kind": "rid", "rid": "com.pocqa.messenger:id/message_input"}]
 
 
+async def test_editavel_so_com_texto_fica_sem_texto_e_sem_seletor(harness: Harness) -> None:
+    st, rt, sid = await _gravando(harness)
+    campo = _el("e1", text=CONTEUDO, bounds=(0, 1100, 600, 1300), editable=True, clickable=True)   # sem id nem rótulo
+    st.training.record(rt, {"type": "tap", "x": 100, "y": 1200}, _arvore(campo))
+    entrada = st.training.get(sid)["inputs"][0]
+    alvo = entrada["target"]
+    assert alvo["text"] == "", alvo
+    assert alvo["unique"] == [], alvo
+    assert CONTEUDO not in json.dumps(entrada, ensure_ascii=False)
+    assert build_selectors(alvo, {}) == []
+
+
 async def test_alvo_com_texto_que_parece_segredo_perde_o_texto(harness: Harness) -> None:
     st, rt, sid = await _gravando(harness)
     botao = _el("e1", text="Seu código é 123456", rid="com.pocqa.messenger:id/aviso", bounds=(0, 0, 600, 200),

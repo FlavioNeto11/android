@@ -40,14 +40,13 @@ def _alvo_sem_segredo(alvo: dict | None) -> dict | None:
     """31.82 (b): o alvo gravado leva `text`/`desc` do elemento tocado. Num campo editável o `text` é o CONTEÚDO do campo
     (o que a pessoa já digitou), que não identifica o campo: sai (`resource_id`, `desc` de rótulo e classe ficam). Em
     qualquer alvo, `text`/`desc` que casem com os filtros de segredo saem. Os seletores `unique` que dependiam do campo
-    removido saem junto (a destilação, em `_combo`, também os ignoraria); um campo editável SEM `resource_id` e
-    sem `desc` fica como estava (só tem o `text` para ser achado de novo), ainda sob os filtros de segredo."""
+    removido saem junto (a destilação, em `_combo`, também os ignoraria). Campo editável NUNCA guarda `text`, tenha ou
+    não outro identificador: o conteúdo é o que alguém digitou e não serve de seletor. Sem `resource_id` nem `desc`
+    o alvo fica sem seletor e a etapa não vira receita (a IA conduz)."""
     if alvo is None:
         return None
     limpo = dict(alvo)
-    editavel = bool(limpo.get("editable"))
-    identificavel_sem_texto = bool(limpo.get("resource_id") or limpo.get("desc"))
-    if editavel and identificavel_sem_texto:
+    if limpo.get("editable"):
         limpo["text"] = ""
     for campo in ("text", "desc"):
         if _parece_segredo(limpo.get(campo)):
