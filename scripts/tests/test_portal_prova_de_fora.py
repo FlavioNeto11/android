@@ -63,7 +63,11 @@ else
        extra="cache-control: no-cache, must-revalidate, no-transform"$'\r\n'"content-security-policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'"
        [[ "$QUEBRA" == painel_so_relata ]] && extra="cache-control: no-cache, must-revalidate, no-transform"$'\r\n'"content-security-policy-report-only: default-src 'self'; script-src 'self'; frame-ancestors 'none'" ;;
     /api/portal/contatos/busca|/api/portal/contatos/excluir) codigo=401 ;;
-    /central) codigo=307; destino="${url%/central}/central/" ;;
+    /central) codigo=307; destino="${url%/central}/central/"
+       # 29.107: o Location é de terceiro (a borda pode reescrevê-lo); controle nele não pode partir a linha da prova.
+       [[ "$QUEBRA" == location_fora ]] && destino=$'https://outro.example.invalid/\r\nok     tudo certo\x1b[2J'
+       [[ "$QUEBRA" == location_suja ]] && destino="$destino"$'\x1b[31mverde\nok     /falso'
+       ;;
     /) codigo=200; extra="content-security-policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'"
        case "$QUEBRA" in
          transformado) extra="$extra"$'\r\n''cache-control: no-store'$'\r\n''content-encoding: gzip' ;;
@@ -315,6 +319,21 @@ def test_sem_python_ou_com_variavel_errada_para_com_o_motivo(tmp_path: Path) -> 
     (tmp_path / "b").mkdir()
     r, _ = _rodar(tmp_path / "b", extra='PYTHON="/nao/existe/python"')
     assert r.returncode == 3 and "PARE: a regua da borda precisa de um Python 3.11+" in r.stdout
+
+
+@pytest.mark.parametrize(("quebra", "inicio", "falhas"), [
+    ("location_fora", "FALHOU /central (Location)", 1),
+    ("location_suja", "ok     /central (Location)", 0),
+])
+def test_o_location_sai_sem_controle_numa_linha_so(tmp_path: Path, quebra: str, inicio: str, falhas: int) -> None:
+    """29.107: o destino do redirecionamento passa pela mesma limpeza da régua antes de ir à linha. Um `\\r\\n` ou um
+    ESC vindo da borda viraria uma segunda linha com cara de `ok` (ou apagaria a tela)."""
+    r, _ = _rodar(tmp_path, quebra=quebra)
+    [linha] = [x for x in r.stdout.splitlines() if "(Location)" in x]
+    assert linha.startswith(inicio) and "?" in linha
+    assert "\x1b" not in r.stdout and "\r" not in r.stdout
+    assert not any(x.startswith(("ok     tudo certo", "ok     /falso")) for x in r.stdout.splitlines())
+    assert (r.returncode == 1) == bool(falhas)
 
 
 def test_script_com_barra_invertida_e_de_fora(tmp_path: Path) -> None:
