@@ -9,6 +9,11 @@ O arquivo é texto em HTML do Telegram (<b>, <i>, <code>, <a href>); "<", ">" e 
 nunca se perder.
 
 Uso: backend/.venv/Scripts/python.exe .claude/canais/telegram_status.py <arquivo> [--reply-to <message_id>]
+
+28.45, a imagem de uma etapa (só ao dono): `--foto <step_id> --previa <porta.json>`. Os bytes vêm pela MESMA regra da
+porta (`PortasReais.imagem_da_etapa`: o `image_id` dos argumentos da etapa, lido do armazém dos avatares) e só saem se
+o sha256 bater com o `imagem_sha256` daquela etapa na prévia gravada. O `<arquivo>` vira a legenda (texto puro, sem
+HTML). Nada de caminho livre: a foto é sempre a da etapa.
 """
 from __future__ import annotations
 
@@ -120,6 +125,83 @@ def _gravar_enviada(mid: object, abrir=None) -> None:  # noqa: ANN001
         print(f"aviso: a mensagem saiu, mas não foi registrada em canal_enviadas ({type(exc).__name__})")
 
 
+class FotoRecusada(Exception):
+    """A imagem da etapa não pode sair: o motivo, sem segredo nem nome."""
+
+
+def sha_da_previa(previa: dict[str, object], step_id: str) -> str:
+    """O `imagem_sha256` da etapa na prévia da porta gravada (`itens[].step_id`)."""
+    for item in previa.get("itens") or []:
+        if isinstance(item, dict) and item.get("step_id") == step_id:
+            sha = item.get("imagem_sha256")
+            if isinstance(sha, str) and len(sha) == 64:
+                return sha
+            raise FotoRecusada("a etapa está na prévia, mas sem imagem_sha256")
+    raise FotoRecusada("a etapa não está na prévia")
+
+
+def imagem_conferida(step_id: str, sha_esperado: str, ler) -> tuple[bytes, str]:  # noqa: ANN001 - (run, step) → bytes
+    """Os bytes da imagem da etapa e o mime pela assinatura, só se o sha256 bate com o da prévia (28.45)."""
+    import hashlib
+
+    from app.modules.avisos.domain.anexos import detectar_mime
+    run_id = step_id.split(":", 1)[0]
+    lida = ler(run_id, step_id)
+    if lida is None:
+        raise FotoRecusada("a etapa não tem imagem pronta no armazém")
+    conteudo = lida[0]
+    if hashlib.sha256(conteudo).hexdigest() != sha_esperado:
+        raise FotoRecusada("o sha256 da imagem não bate com o da prévia")
+    mime = detectar_mime(conteudo)
+    if not (mime or "").startswith("image/"):
+        raise FotoRecusada("o conteúdo não é uma imagem conhecida")
+    return conteudo, str(mime)
+
+
+def _ler_pela_porta():  # noqa: ANN202 - a leitura de `PortasReais.imagem_da_etapa`, com o armazém dos avatares
+    from types import SimpleNamespace
+
+    from app.config import load_config
+    from app.db import Database
+    from app.modules.avisos.infrastructure.portas_da_central import PortasReais
+    from app.storage import DISK, DiskStorage, build_storage
+    cfg = load_config()
+    env = cfg.env
+    storage = build_storage(env.evidence_storage, evidence_dir=cfg.evidence_dir, bucket=env.s3_bucket,
+                            endpoint_url=env.s3_endpoint_url, region=env.s3_region,
+                            access_key=_segredo(env.s3_access_key_id) or None,
+                            secret_key=_segredo(env.s3_secret_access_key) or None)
+    avatares = DiskStorage(cfg.data_dir) if storage.name == DISK else storage
+    porta = SimpleNamespace(db=Database(cfg.db_dsn), _ler_imagem=avatares.get)
+    return lambda run_id, step_id: PortasReais.imagem_da_etapa(porta, run_id, step_id)  # type: ignore[arg-type]
+
+
+async def _enviar_foto(legenda: str, reply_to: int | None, step_id: str, previa: Path) -> int:
+    try:
+        sha = sha_da_previa(json.loads(previa.read_text(encoding="utf-8")), step_id)
+        conteudo, mime = imagem_conferida(step_id, sha, _ler_pela_porta())
+    except FotoRecusada as exc:
+        print(f"recusado, nada enviado: {exc}")
+        return 2
+    except (OSError, ValueError) as exc:
+        print(f"recusado, nada enviado: a prévia não foi lida ({type(exc).__name__})")
+        return 2
+    env = EnvSettings()
+    try:
+        canal = CanalTelegram(_segredo(env.telegram_bot_token), _segredo(env.telegram_chat_id))
+    except TokenAusente as exc:
+        print(str(exc))
+        return 2
+    try:
+        mid = await canal.enviar_anexo(conteudo, mime, _sem_tags(legenda), responde_a=reply_to)
+    except FalhaDeEnvio as exc:
+        print(f"Falhou: {exc.motivo}")
+        return 1
+    print(f"enviada a foto ({mime}, sha256 {sha[:8]}…, {len(conteudo)} bytes) message_id={mid}")
+    _gravar_enviada(mid)
+    return 0
+
+
 async def _enviar(texto: str, reply_to: int | None, chat: str | None = None) -> int:
     env = EnvSettings()
     token = _segredo(env.telegram_bot_token)
@@ -177,6 +259,8 @@ def main() -> int:
     ap.add_argument("--reply-to", type=int, default=None)
     ap.add_argument("--chat", default=None, help="convidado registrado (membros-trello.json); sem isto, vai ao dono")
     ap.add_argument("--titulo", default=None, help="compatibilidade: vira a 1ª linha em negrito")
+    ap.add_argument("--foto", default=None, metavar="STEP_ID", help="28.45: manda a imagem desta etapa (só ao dono)")
+    ap.add_argument("--previa", default=None, help="28.45: a prévia da porta gravada (JSON), com o imagem_sha256")
     args = ap.parse_args()
     texto = Path(args.arquivo).read_text(encoding="utf-8").strip()
     if not texto:
@@ -184,6 +268,11 @@ def main() -> int:
         return 2
     if args.titulo:
         texto = f"<b>{html.escape(args.titulo)}</b>\n{texto}"
+    if args.foto:
+        if args.chat or not args.previa:
+            print("--foto vai só ao dono e pede --previa; nada enviado")
+            return 2
+        return asyncio.run(_enviar_foto(texto, args.reply_to, args.foto, Path(args.previa)))
     return asyncio.run(_enviar(texto, args.reply_to, args.chat))
 
 
