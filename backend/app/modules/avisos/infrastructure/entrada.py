@@ -1578,7 +1578,13 @@ class ConversaDoCanal:
             texto = self.portas.desfecho(run_id)
             if texto is None:
                 if self.repo.idade_s(linha) > PLANO_ESQUECIDO_S:
-                    self._cancelar_plano(run_id)     # só se ainda `planned`; o desfecho sai na volta seguinte
+                    # Como no `_reparar_presas`: o Executar foi do dono, e o operador do canal vale aqui (sem ele, a
+                    # porta atribuiria o gesto ao painel). Só se ainda `planned`; o desfecho sai na volta seguinte.
+                    token = OPERADOR.set(self.operador)
+                    try:
+                        self._cancelar_plano(run_id)
+                    finally:
+                        OPERADOR.reset(token)
                 continue
             try:
                 await self._responder(saida, linha, self._texto_do_desfecho(texto), origem="resultado", exigir=True)

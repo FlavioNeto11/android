@@ -561,7 +561,7 @@ async def test_plano_esquecido_com_a_linha_feita_e_cancelado(c: Cenario) -> None
     velha = to_iso(c.repo.relogio() - timedelta(seconds=PLANO_ESQUECIDO_S + 60))
     c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
     await c.volta()
-    assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and c.portas.estados[RUN] == "cancelled"
+    assert c.portas.chamadas[-1] == ("cancelar", (RUN,), OPERADOR_DO_TELEGRAM) and c.portas.estados[RUN] == "cancelled"
     c.portas.desfechos[RUN] = "Execução abc123: cancelada."
     await c.volta()
     assert c.bot.textos()[-1] == "Execução abc123: cancelada." and c.linha(5)["resultado_em"] is not None
