@@ -121,6 +121,23 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
 - Prova simulated (`src/test/esperas.test.ts`): 10 casos novos e cinco mutações, todas pegas. A varredura de todos os
   testes não dá achado novo.
 
+## 2026-10-05 — 29.130, sobras da leitura do 29.115 (branch fix/29-130-sobras-da-leitura-29-115)
+
+- N1: o `click` do harness recusa controle `:disabled`, também dentro de `fieldset` desabilitado, como o `setValue`.
+  O `aria-disabled` do `Button` segue clicável. O teste do 29.106 que clicava no "Criar grupo" desabilitado passa a
+  afirmar a recusa.
+- N2: nos Limites, o Enter num campo envia e o foco vai para o "Salvar limites", que segue focável enquanto envia.
+  Antes, o fieldset desabilitado mandava o foco para o body.
+- N3: a mensagem do harness usa `||`: um `id` vazio não vale como nome, e a mensagem cai na tag.
+- N4: no cadastro de rede, a releitura da lista sai do `try` do criar. Ela não trava mais os campos, e a falha dela
+  não diria "Não foi possível criar" sobre um perfil criado. Só a leitura mais nova escreve (S1 da leitura): com dois
+  perfis criados em seguida, a releitura velha que respondesse por último apagaria o 2º da tela.
+- O `click` também recusa o ícone dentro de um botão desabilitado (o controle desabilitado mais próximo); um link num
+  fieldset desabilitado segue clicável.
+- Prova simulated: `src/test/harness.test.ts` (novo), 1 caso novo em `LimitsSection.test.tsx` e 1 em
+  `RedePage.test.tsx`. Quatro mutações, todas pegas. Frontend inteiro: 1631/1631. Settings, rede e `src/test` com
+  `ATRASO_DO_FETCH_MS=40` nas sementes 7 e 88: 156/156.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.
