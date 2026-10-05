@@ -41,6 +41,17 @@ Leitura do W1 e do 29.112 pelas revisoras.
   - o GuiaImagens passa com `ATRASO_DO_FETCH_MS=40` na semente 88, onde caía;
   - typecheck limpo.
 
+## 2026-10-05 — 29.129, catraca das esperas, rodada 2 (branch fix/29-129-catraca-k-rodada-2)
+
+- F1: com `&&`, `||` ou `??` no nível de fora, quem decide o valor é o último operando. Negado, ele é booleano, e
+  `!a || !c.querySelector('x')` e `ok && !c.querySelector('x')` deixam de ser falso positivo. Com ternário no topo,
+  a negação da frente é só a condição, e `!a ? b : c.querySelector('x')` segue acusado.
+- F2: o `!` de asserção de não nulo no fim é ignorado, como o `as Tipo`, porque em execução o valor é o mesmo `null`.
+- F3: o corpo entre parênteses e o `async () =>` passam a ser lidos. O corpo em bloco segue fora, anotado.
+- F4: o apóstrofo em texto de JSX fica anotado junto do limite K3; ele só pode esconder um achado.
+- Prova simulated (`src/test/esperas.test.ts`): 10 casos novos e cinco mutações, todas pegas. A varredura de todos os
+  testes não dá achado novo.
+
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
 - X1: `_executar` com prazo de 30 s; estourou, rc 124 sem levantar (a amostra falha e o laço segue).

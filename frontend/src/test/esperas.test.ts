@@ -28,7 +28,9 @@ function fimDaString(codigo: string, i: number): number {
  * O código sem comentários, com cada caractere na mesma posição: o comentário vira espaço e a quebra de linha fica, e
  * as linhas dos achados continuam certas. As strings são copiadas como estão: o `//` de `'https://…'` não é comentário
  * (29.119, K2). Limite conhecido (K3): um regex literal não é lido como tal. O `\/` escapado dentro dele é pulado e não
- * abre comentário, mas uma aspa sem escape dentro de um regex abriria uma string.
+ * abre comentário, mas uma aspa sem escape dentro de um regex abriria uma string. O mesmo vale para o apóstrofo em
+ * TEXTO de JSX (`<p>d'água</p>`): a string vai até a próxima aspa igual e o que há no meio não é limpo (29.129, F4).
+ * Os dois só podem esconder um achado, nunca inventar um.
  */
 function semComentarios(codigo: string): string {
   let saida = '';
@@ -81,6 +83,43 @@ function primeirosArgumentos(codigo: string): { indice: number; argumento: strin
 }
 
 /**
+ * O último operando do nível de fora, depois do último `&&`, `||` ou `??`: é ele que decide o valor quando os da frente
+ * passam. `ok && !c.querySelector('x')` devolve o booleano da negação (29.129, F1).
+ */
+function ultimoOperando(corpo: string): string {
+  let nivel = 0;
+  let inicio = 0;
+  for (let i = 0; i < corpo.length; i++) {
+    const c = corpo.charAt(i);
+    const dois = corpo.slice(i, i + 2);
+    if (c === '\\') i++;
+    else if (ASPAS.has(c)) i = fimDaString(corpo, i);
+    else if ('([{'.includes(c)) nivel++;
+    else if (')]}'.includes(c)) nivel--;
+    else if (nivel === 0 && (dois === '&&' || dois === '||' || dois === '??')) {
+      inicio = i + 2;
+      i++;
+    }
+  }
+  return corpo.slice(inicio).trim();
+}
+
+/** Há um `?` de ternário no nível de fora (nem `?.`, nem `??`)? Então um ramo que não é o último também decide. */
+function temTernarioNoTopo(corpo: string): boolean {
+  let nivel = 0;
+  for (let i = 0; i < corpo.length; i++) {
+    const c = corpo.charAt(i);
+    if (c === '\\') i++;
+    else if (ASPAS.has(c)) i = fimDaString(corpo, i);
+    else if ('([{'.includes(c)) nivel++;
+    else if (')]}'.includes(c)) nivel--;
+    else if (c === '?' && corpo.charAt(i + 1) === '?') i++;
+    else if (nivel === 0 && c === '?' && corpo.charAt(i + 1) !== '.') return true;
+  }
+  return false;
+}
+
+/**
  * Há `&&`, `||`, `??` ou um `?` de ternário no nível de fora? Então o valor final da expressão não é o da negação da
  * frente: `!carregando && c.querySelector('li img')` devolve o elemento, que pode ser `null` (29.119, K1).
  */
@@ -101,11 +140,12 @@ function temOperadorNoTopo(corpo: string): boolean {
 
 // O valor devolvido é o de uma busca que pode não achar nada: `querySelector`/`closest` (null) e `find` (undefined,
 // que o `waitFor` não trata como "ainda não"). Os parênteses da chamada são lidos balanceados: o seletor com `:not(…)`
-// ou `:has(…)` não escapa (29.119, N1). Um `as Tipo` no fim é ignorado.
+// ou `:has(…)` não escapa (29.119, N1). Um `as Tipo` e a asserção de não nulo `!` no fim são ignorados: em execução o
+// valor é o mesmo `null` (29.129, F2).
 const BUSCA_QUE_PODE_FALHAR = /(?:querySelector|closest|\.find)$/;
 
 function terminaNumaBusca(corpo: string): boolean {
-  const semTipo = corpo.replace(/\s+as\s+[\w.<>|[\]\s]+$/, '').trimEnd();
+  const semTipo = corpo.replace(/\s+as\s+[\w.<>|[\]\s]+$/, '').trimEnd().replace(/!+$/, '').trimEnd();
   if (!semTipo.endsWith(')')) return false;
   // Onde abre o `(` que fecha no fim: a pilha de aberturas, pulando strings.
   const pilha: number[] = [];
@@ -120,13 +160,39 @@ function terminaNumaBusca(corpo: string): boolean {
   return abre > 0 && BUSCA_QUE_PODE_FALHAR.test(semTipo.slice(0, abre));
 }
 
+/** O corpo sem os parênteses que o envolvem inteiro: `() => (c.querySelector('x'))` é o mesmo valor (29.129, F3). */
+function semParentesesDeFora(corpo: string): string {
+  let atual = corpo;
+  while (atual.startsWith('(') && atual.endsWith(')')) {
+    let nivel = 0;
+    let fechaNoFim = false;
+    for (let i = 0; i < atual.length; i++) {
+      const c = atual.charAt(i);
+      if (c === '\\') i++;
+      else if (ASPAS.has(c)) i = fimDaString(atual, i);
+      else if (c === '(') nivel++;
+      else if (c === ')' && --nivel === 0) {
+        fechaNoFim = i === atual.length - 1;
+        break;
+      }
+    }
+    if (!fechaNoFim) break;
+    atual = atual.slice(1, -1).trim();
+  }
+  return atual;
+}
+
+// O corpo em bloco (`() => { … }`) segue fora: o `return` pode estar em qualquer ponto dele (29.129, F3, anotado).
 function esperasQuePassamSemAchar(codigo: string): number[] {
   return primeirosArgumentos(semComentarios(codigo))
     .filter(({ argumento }) => {
-      const corpo = /^\(\)\s*=>\s*([\s\S]*)$/.exec(argumento)?.[1]?.trim();
-      if (corpo == null || corpo.startsWith('{')) return false;
+      const bruto = /^(?:async\s*)?\(\)\s*=>\s*([\s\S]*)$/.exec(argumento)?.[1]?.trim();
+      if (bruto == null || bruto.startsWith('{')) return false;
+      const corpo = semParentesesDeFora(bruto);
       // `!x.querySelector(…)` e `!!x.querySelector(…)` já devolvem booleano, desde que nada no nível de fora mude o valor.
       if (corpo.startsWith('!') && !temOperadorNoTopo(corpo)) return false;
+      // Com `&&`, `||` ou `??` no topo, quem decide é o último operando: negado, é booleano. Com ternário no topo, não.
+      if (!temTernarioNoTopo(corpo) && ultimoOperando(corpo).startsWith('!')) return false;
       return terminaNumaBusca(corpo);
     })
     .map(({ indice }) => indice);
@@ -160,6 +226,17 @@ describe('catraca das esperas', () => {
       "await waitFor(() => container.querySelector('li:not(.velho) img'));",
       "await waitFor(() => itens().find((i) => i.id === 'x'));",
       "await waitFor(() => botao.closest('li'));",
+      // 29.129, F2: a asserção de não nulo no fim não muda o valor em execução.
+      "await waitFor(() => container.querySelector('li')!);",
+      "await waitFor(() => container.querySelector('li')! as HTMLElement);",
+      // F3: o corpo entre parênteses e o `async`.
+      "await waitFor(() => (container.querySelector('li')));",
+      "await waitFor(async () => container.querySelector('li'));",
+      // F1, o outro lado: o último operando não negado decide.
+      "await waitFor(() => !a || c.querySelector('x'));",
+      "await waitFor(() => ok ? !a : c.querySelector('x'));",
+      // Com ternário no topo a negação da frente é só a condição: o ramo que sobra pode ser null.
+      "await waitFor(() => !a ? b : c.querySelector('x'));",
     ];
     const poupa = [
       "await waitFor(() => container.querySelector('h1')?.textContent === 'Mariana Costa');",
@@ -172,6 +249,10 @@ describe('catraca das esperas', () => {
       "await waitFor(() => !!container.querySelector('li img'));",
       "await waitFor(() => !(carregando && container.querySelector('li img')));",
       "await waitFor(() => itens().find((i) => i.id === 'x') !== undefined);",
+      // 29.129, F1: a negação no ÚLTIMO operando do topo devolve booleano.
+      "await waitFor(() => !a || !c.querySelector('x'));",
+      "await waitFor(() => ok && !c.querySelector('x'));",
+      "await waitFor(() => (ok && !c.querySelector('x')));",
     ];
     for (const linha of pega) expect(esperasQuePassamSemAchar(linha), linha).toHaveLength(1);
     for (const linha of poupa) expect(esperasQuePassamSemAchar(linha), linha).toEqual([]);
