@@ -73,9 +73,9 @@ from .midia_galeria import INTERNAS_POR_CODIGO, MidiaRecusada, colocar_midia_na_
 from .recipes import (READ_ONLY, RecipeDiverged, RecipeStore, Replayer, contar_retorno_ia, distill, eh_generica,
                       filhos_rotulados, hash_generico_da_linha, unique_selectors)
 from .repository import Repository
-from .dialogos import (LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE, MOTIVO_ACEITE_RECUSADO, MOTIVO_SEM_SAIDA,
-                       REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha, dialogo_sem_saida, e_navegador,
-                       rotulo_para_o_ator, tipo_do_elemento, toque_que_aceita)
+from .dialogos import (FRACAO_QUE_COBRE, LIMITE_DE_DIALOGOS, LIMITE_DE_RECUSAS_DE_ACEITE, MOTIVO_ACEITE_RECUSADO,
+                       MOTIVO_SEM_SAIDA, REJEICAO_TYPE_TEXT_FORA_DE_CAMPO, botao_que_fecha, dialogo_sem_saida,
+                       e_navegador, rotulo_para_o_ator, tipo_do_elemento, toque_que_aceita)
 from .relacao import e_nome_de_papel, pergunta_de_papel, relacao_do_valor
 from .saidas import (RECUSAS_DETERMINISTICAS, ChaveDeTentativa, LeituraInvalida, LeituraSemTexto,
                      LeituraVisualRecusada, args_da_chamada_invalida, args_sem_valor, como_texto, ler_valor,
@@ -386,6 +386,72 @@ def cobertura_na_arvore(tree: UiTree, ref: str | None) -> Cobertura | None:
         if _PISTAS_DE_COBERTURA.search(e.class_name or "") or _PISTAS_DE_COBERTURA.search(e.resource_id or ""):
             return Cobertura.do_elemento(e)
     return None
+
+
+#: 31.73: a fração mínima da tela que o que cobre ocupa para a recusa do juiz valer como sobreposição. É UMA constante,
+#: a do 31.51 (`dialogos.FRACAO_QUE_COBRE`), medida nas duas árvores reais do banner "Abra o app e ganhe frete grátis" do
+#: Mercado Livre (720 x 1280): 11,6 % como faixa no topo (r-20261005071303-f24955, o juiz disse que a causa era o
+#: conteúdo; a captura de 05/10 08:06Z confirmou os bounds) e 83,8 % como modal (r-20261004190200-5b56e6, cobria).
+FRACAO_DA_SOBREPOSICAO = FRACAO_QUE_COBRE
+
+
+def _area_de(b: tuple[int, int, int, int]) -> int:
+    return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
+
+
+def _contem(fora: tuple[int, int, int, int], dentro: tuple[int, int, int, int]) -> bool:
+    return fora[0] <= dentro[0] and fora[1] <= dentro[1] and dentro[2] <= fora[2] and dentro[3] <= fora[3]
+
+
+def _cruza(a: tuple[int, int, int, int], b: tuple[int, int, int, int]) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def sobreposicao_vale(tree: UiTree, ref: str | None, largura: int, altura: int) -> bool:
+    """31.73: a recusa do juiz por `sobreposicao` vale? Só se julga o elemento que o juiz CITOU e que está na árvore
+    (J2 da leitura: a heurística de `cobertura_na_arvore` não decide; sem citado, vale como antes). Sem o tamanho da
+    tela, vale (como antes; o `dialogos._cobre_a_tela` responde "não" ali porque lá a pergunta é outra: se há diálogo
+    a fechar, e na dúvida a limpeza não falha).
+
+    Vale quando: o citado cobre `FRACAO_DA_SOBREPOSICAO` da tela; ou (J1) o menor elemento com pista de diálogo que o
+    CONTÉM cobre (o juiz pode citar o "X" de um modal); ou (J3) outra folha com texto, que não é ancestral nem
+    descendente, cruza a área (a faixa fixa sobre o conteúdo, como o aviso de cookies no rodapé sobre a última
+    mensagem). Senão é uma faixa no fluxo da página, que não esconde o alvo: na árvore real da f24955, nada da página
+    cruza o banner do topo (só os ancestrais, os filhos e 2 px da barra do Chrome, sem texto)."""
+    citado = tree.by_id(ref) if ref else None
+    if citado is None or largura <= 0 or altura <= 0:
+        return True
+    tela = largura * altura
+    if _area_de(citado.bounds) >= FRACAO_DA_SOBREPOSICAO * tela:
+        return True
+    caixas = [e for e in tree.elements if e is not citado and _contem(e.bounds, citado.bounds)
+              and (_PISTAS_DE_COBERTURA.search(e.class_name or "") or _PISTAS_DE_COBERTURA.search(e.resource_id or ""))]
+    caixa = min(caixas, key=lambda e: _area_de(e.bounds)) if caixas else None
+    if caixa is not None and _area_de(caixa.bounds) >= FRACAO_DA_SOBREPOSICAO * tela:
+        return True
+    base = caixa or citado
+    area = base.bounds
+    # Os descendentes da base, sem a relação de pai na árvore: na ordem do documento (a do uiautomator, em
+    # profundidade), eles vêm em sequência logo depois dela, todos contidos na área. Uma folha contida na área FORA dessa
+    # sequência é a página por baixo de um aviso fixo (gov.br, 05/10: a folha de cookies de 49 % vem no fim do documento,
+    # e "Trabalho…" e "Viagens…" vêm antes dela, inteiras dentro da área).
+    ordem = tree.elements
+    i = next(k for k, e in enumerate(ordem) if e is base)
+    descendentes: set[int] = set()
+    for e in ordem[i + 1:]:
+        if not _contem(area, e.bounds):
+            break
+        descendentes.add(id(e))
+    for e in ordem:
+        if e is citado or e is caixa or id(e) in descendentes or not (e.text or e.desc):
+            continue
+        if _contem(e.bounds, area):
+            continue                                   # ancestral: a página ou a tela
+        if any(o is not e and _contem(e.bounds, o.bounds) for o in tree.elements):
+            continue                                   # não é folha: um contêiner da página
+        if _cruza(e.bounds, area):
+            return True
+    return False
 
 
 def ainda_cobre(c: Cobertura, tree: UiTree) -> bool:
@@ -3946,9 +4012,17 @@ class StepExecutor:
                     if copias_vistas is not None and verdict.copias is not None:
                         copias_vistas.append(verdict.copias)
                     if sobreposicoes is not None and verdict.satisfied in ("no", "uncertain"):
-                        sobreposicoes.append(bool(verdict.sobreposicao))
-                        if (coberturas is not None and verdict.sobreposicao
-                                and (achada := cobertura_na_arvore(obs.tree, verdict.cobre)) is not None):
+                        achada = cobertura_na_arvore(obs.tree, verdict.cobre) if verdict.sobreposicao else None
+                        pequena = bool(verdict.sobreposicao) and not sobreposicao_vale(obs.tree, verdict.cobre,
+                                                                                       obs.width, obs.height)
+                        if pequena:
+                            # 31.73: o juiz marcou sobreposição citando uma faixa que não esconde o alvo (o banner "Abra
+                            # o app" do topo, na f24955: 11,6 %, no fluxo da página), e a causa principal era o conteúdo
+                            # errado. A limpeza seria inserida à toa e o desfecho esconderia a causa: vale como "não"
+                            # comum. A `Cobertura` da limpeza, quando vale, segue sendo o citado (o "X", se for ele).
+                            metricas.contar("juiz.sobreposicao_descartada", motivo="cobertura_pequena")
+                        sobreposicoes.append(bool(verdict.sobreposicao) and not pequena)
+                        if coberturas is not None and achada is not None and not pequena:
                             coberturas.append(achada)
                     ok = verdict.satisfied == "yes"
                     if ok and need and DELIVERY_ORDER[level or DeliveryLevel.none] < DELIVERY_ORDER[need]:

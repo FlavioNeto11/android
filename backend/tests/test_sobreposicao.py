@@ -19,6 +19,7 @@ from typing import Any
 from app.planning.provider import Verdict, Usage
 
 from .conftest import Harness
+from .fake_device import Node
 
 TERMINAIS = ("completed", "completed_with_issues", "failed", "waiting_user", "needs_input", "uncertain")
 
@@ -133,15 +134,25 @@ async def test_orcamento_da_acao_numa_leitura_e_dado_ausente(harness: Harness, m
 # tinha a prova local (sem juiz), então nunca se comprovava. Agora: (i) com o elemento que cobria conhecido, a árvore
 # decide sem IA; sem ele, UM julgamento por limpeza; (ii) o ator recebe o elemento; (iii) step_done sem toque não vale.
 
-def _juiz_com_ref(inner: Any, chave: str, *, cobertas: int) -> dict[str, int]:
-    """Como `_juiz`, citando em `cobre` o 1º elemento da tela; conta as chamadas de verificação por etapa."""
+#: 31.73: o elemento citado precisa cobrir ao menos 15 % da tela para a recusa valer como sobreposição. O app de teste
+#: não tem nada desse tamanho (o maior nó tem 4,7 %), então o aviso que cobre vai para a tela do aparelho falso: 62,5 %.
+AVISO_QUE_COBRE = Node("android.view.View", (0, 300, 720, 1100), text="Aviso que cobre a lista", rid="aviso_que_cobre")
+
+
+def _juiz_com_ref(harness: Harness, chave: str, *, cobertas: int) -> dict[str, int]:
+    """Como `_juiz`, citando em `cobre` o aviso que cobre (`AVISO_QUE_COBRE`, posto em toda tela do aparelho falso);
+    conta as chamadas de verificação por etapa."""
+    fake = harness.fakes["android-01"]
+    original = fake._build
+    fake._build = lambda: [*original(), AVISO_QUE_COBRE]
+    inner = harness.ai.inner
     verify0 = inner.verify
     chamadas: dict[str, int] = {}
 
     async def verify(req: Any) -> Any:
         chamadas[req.ctx.step_key] = chamadas.get(req.ctx.step_key, 0) + 1
         if req.ctx.step_key == chave and chamadas[chave] <= cobertas:
-            ref = req.screen.tree.elements[0].id if req.screen.tree is not None and req.screen.tree.elements else None
+            ref = next((e.id for e in req.screen.tree.elements if e.text == AVISO_QUE_COBRE.text), None)
             return Verdict(satisfied="no", evidence="[simulado] um aviso cobre a lista", sobreposicao=True,
                            cobre=ref), Usage()
         return await verify0(req)
@@ -178,7 +189,7 @@ async def test_o_elemento_que_cobre_vai_a_limpeza_e_a_arvore_decide_sem_juiz(har
     import json
     harness.pular_o_tempo()
     harness.encurtar_verificacao(1.5)
-    chamadas = _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    chamadas = _juiz_com_ref(harness, "verify_sent", cobertas=1)
     run = harness.run(["android-01"])
     await harness.wait_run(run.id, statuses=TERMINAIS)
     limpeza = _limpeza(harness, run.id)
@@ -197,7 +208,7 @@ async def test_elemento_que_saiu_da_arvore_comprova_a_limpeza_sem_ia(harness: Ha
     harness.pular_o_tempo()
     harness.encurtar_verificacao(1.5)
     monkeypatch.setattr(modulo, "ainda_cobre", lambda c, tree: False)                # o diálogo fechou
-    chamadas = _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    chamadas = _juiz_com_ref(harness, "verify_sent", cobertas=1)
     _ator_que_fecha(harness.ai.inner)
     run = harness.run(["android-01"])
     await harness.wait_run(run.id, statuses=TERMINAIS)
@@ -212,7 +223,7 @@ async def test_sem_o_elemento_a_limpeza_tem_no_maximo_um_juiz(harness: Harness, 
     harness.pular_o_tempo()
     harness.encurtar_verificacao(1.5)
     monkeypatch.setattr(modulo, "cobertura_na_arvore", lambda tree, ref: None)       # nem id do juiz nem pista
-    chamadas = _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    chamadas = _juiz_com_ref(harness, "verify_sent", cobertas=1)
     run = harness.run(["android-01"])
     await harness.wait_run(run.id, statuses=TERMINAIS)
     limpeza = _limpeza(harness, run.id)
@@ -224,7 +235,7 @@ async def test_step_done_sem_toque_na_limpeza_e_recusado(harness: Harness, monke
     from app.taskqueue import executor as modulo
     harness.pular_o_tempo()
     harness.encurtar_verificacao(1.5)
-    _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    _juiz_com_ref(harness, "verify_sent", cobertas=1)
     inner = harness.ai.inner
     decide0 = inner.decide
 
@@ -280,7 +291,7 @@ async def test_o_teto_de_acoes_numa_limpeza_falha_a_limpeza_sem_juiz(harness: Ha
     from app.planning.provider import Decision
     harness.pular_o_tempo()
     harness.encurtar_verificacao(1.5)
-    chamadas = _juiz_com_ref(harness.ai.inner, "verify_sent", cobertas=1)
+    chamadas = _juiz_com_ref(harness, "verify_sent", cobertas=1)
     inner = harness.ai.inner
     decide0 = inner.decide
 
