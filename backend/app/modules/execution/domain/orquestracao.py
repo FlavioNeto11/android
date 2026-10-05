@@ -164,7 +164,7 @@ def orquestracao_from_json(raw: str) -> OrquestracaoOut:
     try:
         return OrquestracaoOut.model_validate(json.loads(texto))
     except Exception as exc:  # noqa: BLE001 - JSON ou esquema: os dois são saída inválida do modelo
-        falha = motivo_sem_valor(exc)
+        falha = motivo_sem_valor(exc, OrquestracaoOut)
     # 31.70: FORA do `except` e sem `from` (ver `motivo_sem_valor`).
     raise OrquestracaoInvalida(f"Orquestração em formato inválido: {falha}")
 

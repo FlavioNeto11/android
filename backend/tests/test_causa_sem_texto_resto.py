@@ -68,3 +68,32 @@ def test_documento_de_habilidade_ilegivel_sem_o_texto() -> None:
     with pytest.raises(NotJson) as erro:
         parse_json_object('{"passo": "' + SEGREDO + '" ')
     _sem_o_texto(erro.value)
+
+def test_motivo_sem_valor_nao_ecoa_validador_nem_chave_do_modelo() -> None:
+    """H1 da leitura do #373: o `msg` de um validador que ecoa o valor e a chave de `dict` ou de `extra_forbidden` (texto
+    do modelo) não entram no motivo; ficam o `type` e o nome de campo do esquema."""
+    from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+
+    from app.modules.execution.domain.command_refinement import motivo_sem_valor
+
+    class Item(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        nome: str
+
+        @field_validator("nome")
+        @classmethod
+        def _ecoa(cls, v: str) -> str:
+            raise ValueError(f"nome recusado: {v}")
+
+    class Saida(BaseModel):
+        itens: list[Item]
+        contagem: dict[str, int]
+
+    bruto = {"itens": [{"nome": SEGREDO, SEGREDO + "-chave": 1}], "contagem": {SEGREDO + "-dict": "x"}}
+    with pytest.raises(ValidationError) as erro:
+        Saida.model_validate(bruto)
+    assert SEGREDO in str(erro.value)                      # o pydantic sozinho ecoa: o teste discrimina
+    motivo = motivo_sem_valor(erro.value, Saida)
+    assert SEGREDO not in motivo
+    assert "itens.0.nome: value_error" in motivo and "itens.0.?: extra_forbidden" in motivo
+    assert "contagem.?: int_parsing" in motivo

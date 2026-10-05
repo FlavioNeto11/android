@@ -27,8 +27,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Onde:**
   - `openai_provider.decide`: os argumentos da ferramenta (G1).
   - `command_refinement.refinement_from_json` e `orquestracao.orquestracao_from_json` (G1). Nestes dois a mensagem também
-    trazia o `input_value`. Usam a função nova `command_refinement.motivo_sem_valor`, que dá lugar e mensagem de cada erro
-    com `include_input=False`, e linha e coluna para o JSON.
+    trazia o `input_value`. Usam a função nova `command_refinement.motivo_sem_valor`, que dá de cada erro só o `type`
+    e o lugar (nome de campo do esquema e índice; outra chave vira `?`), e linha e coluna para o JSON.
   - `planning/curador.parecer_from_json`, mais `learning/domain/curador._parecer` e `_rotulo` (G2): o `from None` dentro
     do `except` só escondia a causa na impressão; ela seguia em `__context__`.
   - `skills/domain/document.parse_json_object` (G3).
