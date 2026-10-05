@@ -105,6 +105,8 @@ def dialogo_sem_saida(tree: UiTree, area: tuple[int, int, int, int] | None = Non
 
 
 def _cobre_a_tela(e: UiElement, tree: UiTree) -> bool:
+    # Leitura do 31.104: aqui a medida pelas folhas (menor ou igual à tela) é o lado que ENDURECE: mais elementos
+    # "cobrem" e mais etapas falham fechado. A medida maior (janela, tela) afrouxaria; por isso fica a das folhas.
     largura = max((x.bounds[2] for x in tree.elements), default=0)
     altura = max((x.bounds[3] for x in tree.elements), default=0)
     x1, y1, x2, y2 = e.bounds
@@ -212,8 +214,8 @@ def _fecha_ou_recusa(e: UiElement) -> bool:
     return _normal(rotulo) in _ROTULOS_QUE_FECHAM or (not rotulo and bool(_ID_QUE_FECHA.search(e.resource_id or "")))
 
 
-def toque_que_aceita(tree: UiTree, alvo: UiElement | None,
-                     ponto: tuple[int, int] | None = None) -> UiElement | None:
+def toque_que_aceita(tree: UiTree, alvo: UiElement | None, ponto: tuple[int, int] | None = None,
+                     tela: tuple[int, int] | None = None) -> UiElement | None:
     """O elemento cujo toque ACEITARIA um aviso de consentimento do site; `None` quando o toque pode seguir.
 
     Com qualquer marca de consentimento na tela, o rótulo que diz aceitar (`_NUNCA`: "ACEITAR TODOS", "Allow all",
@@ -225,12 +227,14 @@ def toque_que_aceita(tree: UiTree, alvo: UiElement | None,
     silêncio."""
     if alvo is None:
         return None
-    # 31.104: a tela é a MAIOR extensão, a das folhas ou a da janela do dump (31.77). Pela das folhas só, numa página
-    # esparsa o texto do aviso passava de 60 % dela, deixava de ser marca, e o "Aceitar todos" passava. Aqui o lado que
-    # trava é a página maior (e a faixa, que é fração da altura, também cresce).
+    # 31.104: a tela é a MAIOR medida, entre a extensão das folhas, a janela do dump (31.77) e o tamanho da tela que o
+    # executor conhece (`tela`, do `ToolContext`; vale mesmo sem janela). Pela das folhas só, numa página esparsa o
+    # texto do aviso passava de 60 % dela, deixava de ser marca, e o "Aceitar todos" passava. Aqui o lado que trava é a
+    # página maior (e a faixa, que é fração da altura, também cresce). Monótona: nada que travava passa a dispensar.
     janela = tree.janela or (0, 0, 0, 0)
-    largura = max(max((e.bounds[2] for e in tree.elements), default=0), janela[2])
-    altura = max(max((e.bounds[3] for e in tree.elements), default=0), janela[3])
+    tela_l, tela_a = tela or (0, 0)
+    largura = max(max((e.bounds[2] for e in tree.elements), default=0), janela[2], tela_l)
+    altura = max(max((e.bounds[3] for e in tree.elements), default=0), janela[3], tela_a)
     pagina = FRACAO_DA_PAGINA * largura * altura
     # K2: só a marca que tem cara de aviso (abaixo de 60 % da tela; a interface do navegador já saiu em
     # `_de_consentimento`) liga a trava.
@@ -278,6 +282,8 @@ def _caixa_da_marca(tree: UiTree, marca: UiElement, pagina: float) -> UiElement 
     100 px abaixo passaria."""
     caixas = [e for e in tree.elements if e is not marca and _contem(e.bounds, marca.bounds) and _area(e.bounds) < pagina
               and (_de_consentimento(e) or _PISTAS.search(e.class_name or "") or _PISTAS.search(e.resource_id or ""))]
+    # Com a página maior (31.104), a maior caixa pode ser outra, não aninhada com a de antes; só acontece com dois
+    # contêineres não aninhados que contêm a marca, e a zona continua sendo a de um contêiner que a contém.
     caixa = max(caixas, key=lambda e: _area(e.bounds), default=None)
     if caixa is not None and any(e is not caixa and _contem(caixa.bounds, e.bounds) for e in tree.elements):
         return caixa

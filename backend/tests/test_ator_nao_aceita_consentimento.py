@@ -9,6 +9,7 @@ não é o Chrome). Nível de prova: `simulated`.
 """
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 import pytest
@@ -544,3 +545,14 @@ def test_31_104_pagina_esparsa_mede_a_tela_pela_janela_e_o_aviso_segue_marca() -
     assert tree.janela == (0, 0, 720, 1280)
     assert max(e.bounds[2] for e in tree.elements) == 400 and max(e.bounds[3] for e in tree.elements) == 300
     assert _recusa(tree, "Aceitar todos") == "Aceitar todos"
+
+def test_31_104_sem_janela_o_tamanho_da_tela_do_executor_trava() -> None:
+    """N1 da leitura do 31.104: árvore sem janela (montada fora do leitor), folhas esparsas. Só pela extensão, o aviso
+    não é marca e o aceite passa (o comportamento de antes); com o tamanho da tela que o executor conhece, trava."""
+    aviso = _no(1, _COOKIES_TEXTO, 0, 40, 400, 240, rid="cookie-consent-banner", classe="android.view.View",
+                clicavel=False)
+    tree = dataclasses.replace(parse_hierarchy(_arvore(aviso, _no(2, "Aceitar todos", 40, 250, 300, 300))), janela=None)
+    alvo = _alvo(tree, "Aceitar todos")
+    assert toque_que_aceita(tree, alvo) is None
+    recusado = toque_que_aceita(tree, alvo, None, (720, 1280))
+    assert recusado is not None and recusado.text == "Aceitar todos"

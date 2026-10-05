@@ -1858,8 +1858,9 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
     (0,6), a mesma da marca que é a página no 31.72 (K2 da leitura do #391). Prova `simulated`
     (`backend/tests/test_janela_pela_raiz.py`); o real fica `not_run` até um dump BRUTO de diálogo nativo e de
     página esparsa (a rota `/hierarchy` devolve só as folhas).
-  - **31.104:** a TELA da marca também é a maior das duas medidas, a janela do dump e a extensão das folhas
-    (`toque_que_aceita`). Pela extensão só, numa página esparsa o texto do aviso passava de 60 % da "página", deixava
+  - **31.104:** a TELA da marca também é a maior das medidas: a extensão das folhas, a janela do dump e o tamanho da
+    tela do `ToolContext` (`toque_que_aceita`, parâmetro `tela`). Em `_cobre_a_tela` fica a extensão das folhas, que
+    lá é o lado que endurece. Pela extensão só, numa página esparsa o texto do aviso passava de 60 % da "página", deixava
     de ser marca, e o "Aceitar todos" passava. Aqui o lado que trava é a página maior; a faixa (12 % da altura) cresce
     junto. Prova `simulated` (`backend/tests/test_ator_nao_aceita_consentimento.py`, teste `test_31_104_…`, que
     reprova o código anterior); o real fica `not_run`.

@@ -21,12 +21,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-05 — 31.104: a tela do aviso pela maior medida (branch fix/31-104-pagina-pela-janela, sobre o 31.77)
 
-- `taskqueue/dialogos.py`: `toque_que_aceita` mede a tela pela maior das duas medidas, a janela do dump (`UiTree.janela`,
-  31.77) e a extensão das folhas, em largura e altura. Antes era só a extensão: numa página esparsa, o texto do aviso
+- `taskqueue/dialogos.py`: `toque_que_aceita` mede a tela pela maior das medidas, em largura e altura: a extensão das
+  folhas, a janela do dump (`UiTree.janela`, 31.77) e o tamanho da tela que o executor conhece (parâmetro `tela`, do
+  `ToolContext`, passado por `_aceite_do_toque`; vale também sem janela, N1 da leitura). Antes era só a extensão: numa página esparsa, o texto do aviso
   passava de 60 % dela, deixava de ser marca, e o "Aceitar todos" passava (achado S1, que vem do 31.72). A faixa em volta
-  da marca, fração da altura, cresce junto. Sem janela (árvore montada fora do leitor), vale a extensão, como antes.
-- Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py::test_31_104_pagina_esparsa_mede_a_tela_pela_janela_e_o_aviso_segue_marca`
-  (reprova o código anterior, conferido por mutação). `real`: `not_run`.
+  da marca, fração da altura, cresce junto. A mudança é monótona: nada que travava passa a dispensar.
+- `_cobre_a_tela` fica pela extensão das folhas: ali a medida menor é o lado que endurece (mais etapas falham fechado);
+  a maior afrouxaria.
+- Prova `simulated`: `backend/tests/test_ator_nao_aceita_consentimento.py`, `test_31_104_pagina_esparsa_…` (reprova o
+  código anterior, conferido por mutação) e `test_31_104_sem_janela_o_tamanho_da_tela_do_executor_trava`. `real`: `not_run`.
 
 ## 2026-10-05 — 31.77: uma fração só e a janela flutuante pela raiz do dump (branch feat/31-77-fracao-unica-e-janela-pela-raiz)
 

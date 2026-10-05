@@ -1277,7 +1277,8 @@ class StepExecutor:
             host = _host(texto or "")
             if host and any(host == h or host.endswith("." + h) for h in map(str.casefold, ai.consentimento_aceito_em)):
                 return None
-        return next((r for el, ponto in alvos if (r := toque_que_aceita(tree, el, ponto)) is not None), None)
+        tela = (tool_ctx.width, tool_ctx.height)        # 31.104: a terceira medida da tela, vale mesmo sem janela
+        return next((r for el, ponto in alvos if (r := toque_que_aceita(tree, el, ponto, tela)) is not None), None)
 
     def _image_scale(self, obs: Observation, ai: AiCfg | None = None) -> float:
         """Pixels do aparelho por pixel do espaço de coordenadas que o modelo enxerga."""
