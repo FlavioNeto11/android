@@ -322,7 +322,7 @@ curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fon
   - **Parque:** apps do Google desativados no preparo (21.15, K-059; `MemAvailable` de 670–960 para 974–1054 MB) e o
     reparo que espera a máquina aliviar (21.16, `9348e9c`, K-058).
   - **Incidente (29/09, 02:05–02:15Z):** com a máquina saturada pela IDE, a escada de reparo do central (ainda em
-    `7a02491`) deu `restart` e `reset` no android-01 e apagou o Instagram e a sessão do lucas.almeida9484
+    `7a02491`) deu `restart` e `reset` no android-01 e apagou o Instagram e a sessão da «conta do android-01»
     (`c-20260929021534-6d15cd`). A conta não foi tocada desde então; o android-01 está sem o app. Conduta: um trabalho
     pesado por vez no central, testes em prioridade ociosa, Docker e WSL desligados depois dos testes em PostgreSQL.
   - **Decisões do dono pendentes:**
@@ -689,8 +689,8 @@ por decisão do dono.
 
 1. Rode a skill `retomar` para conferir que o git e este arquivo estão de acordo.
 1a. **Evolução de desempenho: implantada e provada em 27/09.**
-    - **Contas do Instagram (27/09, pedido do dono):** só `lucas.almeida9484` (android-01), `bruno.ferreira9267`
-      (android-03) e `andre.carvalho9543` (android-06) funcionam.
+    - **Contas do Instagram (27/09, pedido do dono):** só `«conta do android-01»` (android-01), `«conta do android-03»`
+      (android-03) e `«conta do android-06»` (android-06) funcionam.
       - As outras cinco foram desatreladas: `blocked`, sem persona e sem aparelho. A tabela está
         em [`relatorio-desempenho.md`](relatorio-desempenho.md) §10.
       O `open_app` foi disparado como a prova de abertura do B21, supondo que o app do aparelho fosse o de QA. O `app_id` do android-04 é `instagram`, então foi um toque em conta real além do que o B21 pedia.
