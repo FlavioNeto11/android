@@ -1850,7 +1850,9 @@ a prévia do caminho do ADB) são item da Android, com os números do "depois" n
     o TextView filho igual); a linha da página por baixo de uma faixa pequena segue folha para o J3.
   - **L2:** abaixo de 60 % da tela, a JANELA do dump é uma janela flutuante (o dump de um diálogo nativo, cujo painel
     `android:id/parentPanel` sem texto o leitor corta): a recusa vale. Prova `simulated`; o real fica `not_run` até a
-    captura de um AlertDialog. Limite: com a página no MESMO dump, a janela não acusa o diálogo.
+    captura de um AlertDialog. Limite: com a página no MESMO dump, a janela não acusa o diálogo; e o diálogo cuja
+    janela ocupa a tela inteira (60 % ou mais, como a folha de tela cheia) fica fora da regra da janela flutuante: o L2
+    não decide, e a recusa do juiz sobre ele só vale pelas outras regras (caixa, cruzamento).
   - **L2-a (31.77):** a janela é a dos nós de topo do dump (`UiTree.janela`, lida em `parse_hierarchy` antes de o leitor
     descartar o contêiner sem texto; a barra do sistema como janela própria fica de fora), não a extensão das folhas
     que sobraram: a página esparsa sem ids (Compose, Flutter) tem folhas abaixo de 60 % e passaria por janela. Sem a

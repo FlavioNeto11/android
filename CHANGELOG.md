@@ -26,7 +26,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - `taskqueue/dialogos.py`: `_FRACAO_DA_PAGINA` vira `FRACAO_DA_PAGINA`, pública e única (K2 da leitura do #391).
 - `taskqueue/executor.py`: `_FRACAO_DA_JANELA` sai. O L2 de `sobreposicao_vale` passa a usar `tree.janela` contra
   `FRACAO_DA_PAGINA`, e não mais a extensão das folhas (L2-a). Sem janela, o L2 não decide.
-- Prova `simulated`: `backend/tests/test_janela_pela_raiz.py` (7 testes; a página esparsa com folhas em 15 % da tela
+- Leitura da revisão: o diálogo com janela de tela inteira fica fora da regra da janela flutuante (limite escrito em
+  `docs/ia.md`, L2); o nó de topo com bounds zerados ao lado de um válido não entra na união (teste novo). A marcação
+  pelo ancestral não foi feita nem é prometida por este ramo.
+- Prova `simulated`: `backend/tests/test_janela_pela_raiz.py` (8 testes; a página esparsa com folhas em 15 % da tela
   não passa por janela). Os testes do 31.73, com dump plano, não mudam: a união dos nós de topo é a extensão das
   folhas. `real`: `not_run`, à espera de um dump bruto de um diálogo nativo e de uma página esparsa.
 
