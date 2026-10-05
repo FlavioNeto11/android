@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
+
+- O fluxo ensinado que a prova real desligou (30.81) renasce na mesma linha quando a pessoa ensina o mesmo comando de
+  novo: mesmo id e referência pública, plano, sessão e nascimento novos, ativo e de novo em espera de prova. A trilha
+  diz que renasceu e por que tinha sido desligado.
+- O desligado por pessoa, o mexido por ela depois da prova, o adotado e o ativo seguem com o 409 `duplicate_command`;
+  a prévia do treino usa a mesma regra (`FlowStore.recusa_do_treino`).
+- Contrato: o `save` e a prévia do treino deixam de dar 409 nesse caso, e o `save` devolve o `flow_id` que já
+  existia (adendo v1.68).
+- Funções tocadas (K-095): `FlowStore.learn_from_plan`, `recusa_do_treino` e `_desligado_pela_prova` (novas),
+  `TrainingSkills.preview`, `SombraDosFluxos._rebaixar_o_ensinado` (o motivo vira a constante
+  `MOTIVO_DA_PROVA_DO_ENSINADO`).
+- Prova `simulated`: `backend/tests/test_reensinar_o_desligado_pela_prova.py` (7). Real: `not_run`.
+
 ## 2026-10-05 — 30.79: a demonstração no modo treinamento substitui a receita que segurava a etapa (branch feat/30-79-treino-substitui-receita)
 
 - `RecipeStore.save`: a gravação do treino (`learned_from='training:<id>'`, sem herança) com caminho DIFERENTE vira a
@@ -202,9 +216,25 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `esperando_a_pessoa`, `AvisoDeEspera.mensagem`, `LearningService.__init__` (`id_do_fluxo`, último) e
   `ref_interna` (nova), `montar_aprendizado`, as rotas de `presentation/livro.py` e `validacoes.py::pedir_validacao`,
   `ref_publica_do_fluxo` e `id_do_fluxo` (novas).
-- Próximas fatias: `/api/flows/{id}`, os `href` das respostas do painel, os eventos `learning.ensinado_*` (depois do
-  30.80 B e do 30.81) e os logs que levam `fluxo:<id>`.
-- Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (7). Real: `not_run`.
+- N2 da leitura: `ref_publica_do_fluxo` nunca cai no id (preenche na hora; sem a linha, sorteia).
+- Junção da suíte 41 (30.80 B e 30.81): a porta única leva a `ref_publica_do_fluxo`; o teste do 30.79 confere a
+  chave pela `viva()` e a busca pela persona que ensinou, porque a busca comum fica fechada até a prova (30.81).
+- Fatia 3: os eventos `learning.ensinado_*` de fluxo saem com a referência pública; `PUT`/`DELETE /api/flows/{id}`,
+  adopt e release aceitam a referência; o `href` de desfazer do voto a leva; os logs da validação, da espera, da
+  trilha, dos nativos, do ensinado e da autopublicação não citam o fluxo (`quem_no_log`, `ref_no_log`). Funções
+  tocadas (K-095): `ref_publica_do_fluxo`, `EventosNoBarramento` (`_publico`, nova, e os três `ensinado_*`),
+  `update_flow`, `delete_flow`, `adopt_flow`, `release_flow`, `_id_do_fluxo` (nova, skills), `_efeito` e
+  `_ref_do_href` (nova), `quem_no_log` e `ref_no_log` (novas), os logs de `ServicoDeValidacao`, `AvisadorDeEspera`,
+  `PoliticaD1DoFluxo.mudou`, `SombraDosFluxos`, `EnsinoDaValidacaoSql.entrada` e `ServicoDeAutopublicacao`.
+- Fatia 4 (S1 da leitura da fatia 3): o texto das exceções de fluxo de `LearningService`, `ServicoDeValidacao` e
+  `SqlLearningRepository` diz só "fluxo" (`quem_no_log`), e os três logs de `SombraDosFluxos` dizem só o tipo da
+  exceção. O adendo v1.66 lista tudo que fica com o id interno e avisa a Canais da chave do aviso do ensinado.
+- Correção C1 da leitura da fatia 4: mais seis logs (autopublicação, aprovação automática, obsolescência, curador e
+  pareceres) e três exceções (dossiê do parecer e receita sem id numérico) sem a referência crua; a varredura
+  `test_ref_do_fluxo_fora_do_log.py` impede a volta.
+- Prova `simulated`: `backend/tests/test_ref_publico_do_fluxo.py` (15), `test_ensinado_em_prova.py` (36),
+  `test_treino_substitui_receita.py` e
+  `test_learning_autopublicacao_sombra.py`. Real: `not_run`.
 
 ## 2026-10-05 — 29.148: o prazo do `waitFor` não conta o tempo em que o processo ficou parado (branch fix/29-148-runspage-intermitente)
 

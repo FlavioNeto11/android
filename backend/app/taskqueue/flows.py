@@ -23,6 +23,7 @@ from typing import Any, Protocol
 
 from ..db import Database, Row
 from ..modules.learning.domain.aprovacao_automatica import PLATAFORMA
+from ..modules.learning.domain.ensinado import MOTIVO_DA_PROVA_DO_ENSINADO
 from ..modules.learning.domain.livro import CONFIRMADO_QUE_FICA, apps_na_ordem_do_plano
 from ..modules.skills.domain.document import JsonValue
 from ..modules.skills.domain.matching import specificity
@@ -174,14 +175,17 @@ def ref_aleatoria(db: Database) -> str:
 def ref_publica_do_fluxo(db: Database, flow_id: str) -> str:
     """A referência que sai do central (evento, `href`). Nunca cai no id (N2 da leitura da Ferramentas): sem a
     `ref_publico` (uma réplica no código antigo criou o fluxo depois da subida), preenche NA HORA; sem a linha (fluxo
-    apagado), uma referência nova que não abre nada, em vez do id."""
+    apagado), uma referência nova que não abre nada, em vez do id. Nesse caso cada chamada sorteia outra: a entrada e
+    a saída de espera de um fluxo apagado não casam (a Canais só avisa a entrada; nota b da leitura)."""
     linha = db.one("SELECT ref_publico FROM flows WHERE id=?", (flow_id,))
     if linha is None:
         return ref_aleatoria(db)
     if linha["ref_publico"]:
         return str(linha["ref_publico"])
-    db.execute("UPDATE flows SET ref_publico=? WHERE id=? AND ref_publico IS NULL", (ref_aleatoria(db), flow_id))
-    return str(db.scalar("SELECT ref_publico FROM flows WHERE id=?", (flow_id,)))
+    sorteada = ref_aleatoria(db)
+    db.execute("UPDATE flows SET ref_publico=? WHERE id=? AND ref_publico IS NULL", (sorteada, flow_id))
+    gravada = db.scalar("SELECT ref_publico FROM flows WHERE id=?", (flow_id,))
+    return str(gravada) if gravada else sorteada     # a linha sumiu entre os dois: a sorteada, nunca "None" (nota a)
 
 
 def id_do_fluxo(db: Database, ref: str) -> str:
@@ -335,31 +339,79 @@ class FlowStore:
         return confirmada_a_mao(self.db, run_id)
 
     # ------------------------------------------------------------------ habilidade treinada (item 13.2)
+    def recusa_do_treino(self, command_template: str) -> str | None:
+        """Por que o treino não pode gravar este comando (o 409 `duplicate_command` do `save` e da prévia, 31.86), ou
+        `None`. Um fluxo da mesma `match_key` recusa, exceto o ensinado que a prova real desligou (30.84): esse renasce
+        na mesma linha. Fase J: o mesmo comando nunca fica vivo como fluxo ativo E habilidade publicada (design
+        §15.2); aqui só se LÊ a tabela de habilidades, como em `learn_from_run`."""
+        key = _norm(command_template.strip())
+        linha = self.db.one("SELECT id, status, source FROM flows WHERE match_key=?", (key,))
+        if linha is not None and self._desligado_pela_prova(linha) is None:
+            return "Já existe uma habilidade para este comando. Mude o comando ou desative a outra."
+        if self.db.one("SELECT id FROM skill_versions WHERE state='published' AND match_key=?", (key,)):
+            return ("Já existe uma habilidade versionada publicada para este comando. Mude o comando ou desabilite a "
+                    "habilidade.")
+        return None
+
+    def _desligado_pela_prova(self, linha: Row) -> str | None:
+        """30.84: o motivo com que a prova real desligou este fluxo ensinado, se esse desligamento ainda é a ÚLTIMA
+        linha da trilha dele; senão `None`. O que uma pessoa desligou (ou mexeu depois da prova) segue bloqueando o
+        reensino, e o adotado por uma habilidade também (é o caminho de volta da adoção)."""
+        if linha["status"] != "disabled" or not str(linha["source"] or "").startswith(PREFIXO_DO_TREINO):
+            return None
+        if self.db.one("SELECT id FROM skill_definitions WHERE legacy_flow_id=?", (linha["id"],)) is not None:
+            return None
+        ultima = self.db.one("SELECT to_state, reason, decided_by FROM learning_transitions WHERE item_ref=?"
+                             " ORDER BY id DESC LIMIT 1", (f"fluxo:{linha['id']}",))
+        if (ultima is None or ultima["to_state"] != "disabled" or ultima["decided_by"] != SISTEMA
+                or not str(ultima["reason"] or "").startswith(MOTIVO_DA_PROVA_DO_ENSINADO)):
+            return None
+        return str(ultima["reason"])
+
     def learn_from_plan(self, plan: Plan, command_template: str, *, source: str) -> str:
         """Fluxo a partir de um plano JÁ em forma de modelo (`{nome}` nos textos e nos parâmetros) — o que o modo
-        treinamento produz. Mesmo formato do fluxo aprendido de execução: `match` não distingue a origem."""
+        treinamento produz. Mesmo formato do fluxo aprendido de execução: `match` não distingue a origem.
+
+        30.84: o comando cujo fluxo ensinado a prova real desligou pode ser ensinado de novo. Renasce a MESMA linha
+        (mesmo id e referência pública): plano, sessão e nascimento novos, ativo e de novo em espera de prova (o
+        regime do 30.81 conta a prova e o Confirmar a partir do `created_at`, e as tentativas por sessão). A trilha
+        diz que renasceu e por que tinha sido desligado."""
         template = command_template.strip()
         key = _norm(template)
-        if self.db.one("SELECT id FROM flows WHERE match_key=?", (key,)):
-            raise ValueError("Já existe uma habilidade para este comando. Mude o comando ou desative a outra.")
-        # Fase J: o mesmo comando nunca fica vivo como fluxo ativo E habilidade publicada (design §15.2). Aqui só se
-        # LÊ a tabela de habilidades, como em `learn_from_run`.
-        if self.db.one("SELECT id FROM skill_versions WHERE state='published' AND match_key=?", (key,)):
-            raise ValueError("Já existe uma habilidade versionada publicada para este comando. Mude o comando ou "
-                             "desabilite a habilidade.")
-        flow_id = ref_aleatoria(self.db)                         # 30.83: o resumo do treino pode trazer o valor demonstrado
+        apps = [plan.app_id, *(s.app_id for s in plan.steps)]
+        de: str | None = None
         with self.db.tx():
-            self.db.execute(
-                "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, created_at,"
-                " source, ref_publico) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (flow_id, plan.summary[:120], key, template, plan.model_dump_json(), plan.app_id, None, now_iso(),
-                 source, flow_id))
-            apps = [plan.app_id, *(s.app_id for s in plan.steps)]
+            # A recusa e a trilha lidas DENTRO da transação (N1 da leitura): uma pessoa que mexa no fluxo entre a
+            # leitura e a escrita faz a linha não renascer; o CAS abaixo confere só o status.
+            recusa = self.recusa_do_treino(template)
+            if recusa is not None:
+                raise ValueError(recusa)
+            existente = self.db.one("SELECT id, status, source FROM flows WHERE match_key=?", (key,))
+            antes = self._desligado_pela_prova(existente) if existente is not None else None
+            if existente is not None and antes is not None:
+                # CAS no status, como em `learn_from_run`: só renasce se ninguém a religou no meio.
+                cur = self.db.execute(
+                    "UPDATE flows SET name=?, command_template=?, plan=?, app_id=?, source_run_id=NULL,"
+                    " status='active', uses=0, created_at=?, last_used_at=NULL, source=? WHERE id=? AND"
+                    " status='disabled'",
+                    (plan.summary[:120], template, plan.model_dump_json(), plan.app_id, now_iso(), source,
+                     existente["id"]))
+                if int(cur.rowcount or 0) != 1:
+                    raise ValueError("Já existe uma habilidade para este comando. Mude o comando ou desative a outra.")
+                flow_id, de = str(existente["id"]), "disabled"
+                motivo = f"reensinado no modo treinamento (mesma linha); desligado antes: {antes}"[:300]
+            else:
+                flow_id = ref_aleatoria(self.db)         # 30.83: o resumo do treino pode trazer o valor demonstrado
+                motivo = "ensinado no modo treinamento"
+                self.db.execute(
+                    "INSERT INTO flows(id, name, match_key, command_template, plan, app_id, source_run_id, created_at,"
+                    " source, ref_publico) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                    (flow_id, plan.summary[:120], key, template, plan.model_dump_json(), plan.app_id, None,
+                     now_iso(), source, flow_id))
             self.set_required_apps(flow_id, [a for a in apps if a])
             if self.politica is not None:
                 # Treino é decisão de pessoa (D1): publica na hora, e a trilha diz de qual demonstração veio.
-                self.politica.mudou(MudancaDoFluxo(flow_id=flow_id, de=None, para="active",
-                                                   motivo="ensinado no modo treinamento", por=source))
+                self.politica.mudou(MudancaDoFluxo(flow_id=flow_id, de=de, para="active", motivo=motivo, por=source))
         return flow_id
 
     def set_scope(self, flow_id: str, *, profile_ids: list[str], group_ids: list[str]) -> None:

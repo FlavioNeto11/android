@@ -24,6 +24,7 @@ from typing import Literal, TypeVar
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.db import Database
 from app.modules.skills.application.teaching import CandidateDetail, TeachingService, TeachingView
 from app.modules.skills.domain.document import JsonObject, JsonValue
 from app.modules.skills.domain.lifecycle import (InvalidDocument, SkillError, SkillNotFound, SkillState,
@@ -38,6 +39,7 @@ from app.modules.skills.infrastructure.flow_conversion import FlowConverter
 from app.modules.skills.infrastructure.run_planning import SkillRunPlanner
 from app.modules.skills.infrastructure.sql_repository import SecretInParameters, SqlSkillRepository
 from app.shared.costuras import autor_do_gesto
+from app.taskqueue.flows import id_do_fluxo
 
 T = TypeVar("T")
 
@@ -61,6 +63,12 @@ def _habilidades(request: Request) -> SqlSkillRepository:
     if not isinstance(repo, SqlSkillRepository):
         raise HTTPException(503, detail={"code": "not_ready", "message": "O repositório de habilidades não subiu."})
     return repo
+
+
+def _id_do_fluxo(request: Request, ref: str) -> str:
+    """30.83: a rota aceita o id do fluxo e a referência pública dele; sem o banco (não subiu), segue como veio."""
+    db = _poc_attr(request, "db")
+    return id_do_fluxo(db, ref) if isinstance(db, Database) else ref
 
 
 def _conversor(request: Request) -> FlowConverter:
@@ -250,6 +258,7 @@ async def adopt_flow(request: Request, flow_id: str, body: AdoptBody | None = No
     idênticas), v2 em rascunho com o documento descompilado, fluxo desligado. O que a ida e volta pelo compilador não
     reproduz recusa tudo (422, `errors`); os avisos voltam na resposta."""
     repo, conversor = _habilidades(request), _conversor(request)
+    flow_id = _id_do_fluxo(request, flow_id)
     corpo = body or AdoptBody()
     c = _chamar(lambda: conversor.convert(flow_id, by=_quem(request), skill_id=corpo.skill_id, reason=corpo.reason))
     return {"flow_id": flow_id, "skill_id": c.published.ref.skill_id,
@@ -262,6 +271,7 @@ async def release_flow(request: Request, flow_id: str, body: ReleaseBody | None 
     """Desfaz a conversão: a versão publicada desabilitada, o fluxo religado como era, os rascunhos da conversão
     apagados — uma transação."""
     repo, conversor = _habilidades(request), _conversor(request)
+    flow_id = _id_do_fluxo(request, flow_id)
     motivo = body.reason if body is not None else ""
     d = _chamar(lambda: conversor.undo(flow_id, by=_quem(request), reason=motivo))
     return {"flow_id": flow_id, "skill_id": d.skill_id, "flow_status": "active",
