@@ -1,5 +1,5 @@
 import { act } from 'react';
-import { expect, onTestFailed, vi } from 'vitest';
+import { afterEach, expect, onTestFailed, vi } from 'vitest';
 import { esquecerLeituraDosPendentes } from '../features/aprendizado/api';
 
 /** Backend falso: responde às rotas do contrato e registra tudo o que o frontend pediu. */
@@ -30,6 +30,37 @@ const ATRASO_MAXIMO_MS = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
 // Cada `install()` abre uma geração. Com o atraso, a resposta de uma geração já substituída nunca chega: o teste que
 // acabou com pedido em voo não escreve na store global do teste seguinte, como uma página fechada (29.104).
 let geracaoDoBackend = 0;
+
+// Pedidos atrasados que ainda não chegaram ao handler. Sem o atraso, o handler roda na hora do fetch e nada fica em
+// voo no fim do teste; com ele, o pedido que sobra escreveria na store do teste seguinte ou deixaria presa uma leitura
+// dividida de módulo (o `emVoo` de `usePersonas`). O `afterEach` abaixo espera cada um chegar ao handler (não à
+// resposta: um `soltar` segurado pelo teste não trava a drenagem), e o teste acaba como acabaria sem o atraso (29.104).
+const ateOHandler = new Set<Promise<void>>();
+
+function marcarAteOHandler(): () => void {
+  let chegou = (): void => undefined;
+  const marca = new Promise<void>((r) => { chegou = r; });
+  ateOHandler.add(marca);
+  return () => {
+    ateOHandler.delete(marca);
+    chegou();
+  };
+}
+
+async function drenarPedidosAtrasados(): Promise<void> {
+  // O teto de voltas é só a rede de segurança para uma tela ainda montada que pede de novo a cada resposta.
+  for (let volta = 0; ateOHandler.size > 0 && volta < 20; volta++) {
+    await Promise.allSettled([...ateOHandler]);
+    // A resposta ainda passa pelo corpo do Response e pelas microtarefas de quem a pediu: uma volta do relógio.
+    await new Promise((r) => setTimeout(r, 0));
+  }
+}
+
+afterEach(async () => {
+  if (ateOHandler.size === 0) return;
+  await act(async () => { await drenarPedidosAtrasados(); });
+});
+
 const SEMENTE_DO_ATRASO = process.env.SEMENTE_DO_ATRASO ?? String(Date.now());
 
 function sorteioDoAtraso(): (() => number) | null {
@@ -86,14 +117,23 @@ export class FakeBackend {
       }
       const call: RecordedCall = { method, path: url.pathname, query: url.searchParams, body };
       this.calls.push(call);
+      // A rota é escolhida na chegada do pedido, como sem o atraso: o teste que troca a resposta depois de ver o
+      // pedido registrado não muda a do pedido que já estava em voo (29.104).
+      const match = this.handlers.find((h) => h.method === method && h.pattern.test(url.pathname));
+      const responder = (): Response | Promise<Response> => {
+        if (!match) return apiError(404, 'not_found', `Rota não simulada: ${method} ${url.pathname}`);
+        return match.handler(call);
+      };
       const ms = atraso?.();
-      if (ms) {
+      if (!ms) return responder();
+      const chegou = marcarAteOHandler();
+      try {
         await new Promise((r) => setTimeout(r, ms));
         if (geracao !== geracaoDoBackend) return new Promise<Response>(() => undefined);
+        return responder();
+      } finally {
+        chegou();
       }
-      const match = this.handlers.find((h) => h.method === method && h.pattern.test(url.pathname));
-      if (!match) return apiError(404, 'not_found', `Rota não simulada: ${method} ${url.pathname}`);
-      return match.handler(call);
     };
     vi.stubGlobal('fetch', vi.fn(fetchImpl));
   }
@@ -236,6 +276,20 @@ function nameOf(el: Element): string {
     if (forLabel) return forLabel.textContent ?? '';
   }
   return (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * O botão pronto para o clique: existe, não está bloqueado (`disabled`, `aria-disabled`) nem em `loading` (`aria-busy`).
+ * O pedido registrado não é a resposta: o clique logo depois de um `callsTo` cai num botão que ainda espera (29.104).
+ */
+export async function botaoPronto(name: RegExp | string, root: ParentNode = document): Promise<HTMLElement> {
+  return waitFor(() => {
+    const b = byRole('button', name, root);
+    if ((b as HTMLButtonElement).disabled || b.getAttribute('aria-disabled') === 'true' || b.getAttribute('aria-busy') === 'true') {
+      throw new Error(`o botão ${String(name)} ainda está bloqueado`);
+    }
+    return b;
+  });
 }
 
 export function allByRole(role: string, name: RegExp | string, root: ParentNode = document): HTMLElement[] {
