@@ -1881,7 +1881,9 @@ class SocialService:
         # pessoa "seu marido mandou um oi" — recado que ninguém mandou. A regra está no papel do sistema; esta é a
         # trava em código: uma reescrita, e se ainda atribuir fala a alguém, recusa (espera uma pessoa).
         if not draft.refused and (trecho := fala_atribuida_a_terceiro(draft.content)):
-            log.info("perfil %s: o texto atribuía fala a terceiro (%r); gerando de novo", profile_id, trecho)
+            # 31.63: o trecho é texto do rascunho: no log vai só o tamanho.
+            log.info("perfil %s: o texto atribuía fala a terceiro (trecho de %d caracteres); gerando de novo", profile_id,
+                     len(trecho))
             corrigido, _usage3 = await self._generate(replace(pedido, attribution_retry=True), runner=runner)
             resto = None if corrigido.refused else fala_atribuida_a_terceiro(corrigido.content)
             if corrigido.refused or (resto is None and (corrigido.content or "").strip()):
@@ -1889,8 +1891,9 @@ class SocialService:
             else:
                 draft = SocialDraftDTO(
                     refused=True, rationale=draft.rationale,
-                    refusal_reason=(f"o texto atribuía fala, intenção ou recado a um terceiro (“{resto or trecho}”); "
-                                    "a persona fala só por si (ADR-055)"))
+                    # 31.63: o motivo vai ao `hint` da espera, ao aviso e ao resumo: sem o trecho do rascunho.
+                    refusal_reason=("o texto atribuía fala, intenção ou recado a um terceiro; a persona fala só por si "
+                                    "(ADR-055)"))
         # A regra de que só `<conteudo_recebido>` gera memória está escrita no papel do sistema — e regra de prompt
         # é pedido, não garantia. Sem fala dirigida a esta conta, os candidatos são descartados AQUI, em código:
         # senão uma legenda de terceiro ("fulano deve R$5.000 a beltrano") viraria fato permanente do perfil,

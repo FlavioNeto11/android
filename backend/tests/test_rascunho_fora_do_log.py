@@ -1,0 +1,52 @@
+"""31.63: texto de rascunho não vai a log, evento nem motivo de recusa; só tamanho, ids e resultado.
+
+Antes: o evento "texto escrito na voz do perfil — <60 caracteres do rascunho>" (painel, aviso, resumo), o log da
+reescrita com o trecho que atribuía fala a terceiro (`%r`) e o motivo da recusa com o trecho entre aspas (vai ao `hint`
+da espera). O texto continua onde quem decide o vê: na etapa e no pedido de aprovação.
+
+Nível de prova: `simulated` (harness e serviço social com provedor falso). Nada real.
+"""
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
+
+import pytest
+
+from .test_capabilities import build, perfil
+from .test_porta_do_plano import DM, _gate, _plano, _sem_iniciar
+from .test_protecao_de_frota import ALVO, _ProvedorQueAtribui
+
+ESCRITO = "Oi! Passando pra desejar uma ótima semana r3163"
+
+
+async def test_o_evento_do_rascunho_leva_o_tamanho_e_nao_o_texto(harness: Any, monkeypatch: Any) -> None:
+    state = harness.state
+    _sem_iniciar(state, monkeypatch)
+    _plano(state, [{"key": "dm", "cap": "SEND_MESSAGE", "bindings": {"username": DM["username"],
+                                                                     "content": "cumprimente a pessoa"}}])
+
+    async def draft_response(*_a: Any, **_k: Any) -> Any:
+        return SimpleNamespace(content=ESCRITO, refused=False, refusal_reason=None, rationale="r",
+                               memory_candidates=[]), None
+
+    monkeypatch.setattr(state.social, "draft_response", draft_response)
+    await _gate(state, "dm")
+    mensagens = [r["message"] or "" for r in state.db.query("SELECT message FROM events")]
+    assert any(f"texto escrito na voz do perfil ({len(ESCRITO)} caracteres)" in m for m in mensagens)
+    assert not [m for m in mensagens if ESCRITO[:20] in m]
+
+
+async def test_a_reescrita_e_a_recusa_por_fala_de_terceiro_nao_levam_o_trecho(tmp_path: Path,
+                                                                              caplog: pytest.LogCaptureFixture) -> None:
+    svc, _repo, _pol, _db = build(tmp_path)
+    svc.provider = _ProvedorQueAtribui(corrige=False)
+    pid = perfil(svc)
+    with caplog.at_level(logging.INFO):
+        draft, _i = await svc.draft_response(pid, kind="dm_initiate", brief="dizer que o marido dela mandou um oi",
+                                             counterparty=ALVO, persist=False)
+    assert draft.refused and "terceiro" in (draft.refusal_reason or "")
+    assert "marido" not in (draft.refusal_reason or "")
+    assert "trecho de" in caplog.text and "marido" not in caplog.text
