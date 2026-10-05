@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.69: valor curto sem identificador não fecha a leitura pela prova local (branch feat/31-69-valor-curto-sem-id)
+
+- L3 da leitura do 31.61: sem `resource_id` (Compose, WebView), um valor curto inteiro ("1", "Sim") de OUTRO elemento
+  ainda fechava a leitura; com o id repetido (linhas de lista), outra linha com o mesmo valor curto também.
+- Agora o valor com menos de 4 caracteres normalizados (`VALOR_CURTO`) só fecha vindo de um elemento com id ÚNICO na
+  tela relida; senão a etapa volta ao ator (uma volta a mais, nunca um valor velho).
+- Prova: `simulated` (`backend/tests/test_leitura_sem_step_done.py`, 3 testes novos; os dois negativos falham no código
+  anterior). Real: `not_run`.
+
 ## 2026-10-05 — 31.61 (A): leitura julgada com prova local de tela fecha sem `step_done` (branch feat/31-61-leitura-sem-step-done)
 
 - **Etapa:** a de leitura (tem saídas, sem efeito, sem `commit_guard`, sem `commit_selector`), julgada, com prova local
