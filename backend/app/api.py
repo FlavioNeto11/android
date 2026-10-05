@@ -3407,7 +3407,9 @@ def _limites_dos_servidores(s: Any) -> list[ServerLimitsDTO]:
                 max_slots=lim.max_online_devices if lim.max_online_devices != base.max_online_devices else None,
                 boot_parallelism=lim.boot_parallelism if lim.boot_parallelism != base.boot_parallelism else None,
                 max_working=decidido.get("max_working"), max_devices=decidido.get("max_devices"))
-            efetivo = ServerLimitValues(max_slots=lim.max_online_devices, boot_parallelism=lim.boot_parallelism,
+            # 29.84: as vagas que valem vêm da regra única (`vagas_que_valem`, pelo `capacidade`), a do agendador.
+            efetivo = ServerLimitValues(max_slots=cap.max_slots if cap is not None else lim.max_online_devices,
+                                        boot_parallelism=lim.boot_parallelism,
                                         max_working=decidido.get("max_working"),
                                         min_free_ram_mb=declarado.min_free_ram_mb,
                                         max_devices=decidido.get("max_devices"))
@@ -3419,7 +3421,7 @@ def _limites_dos_servidores(s: Any) -> list[ServerLimitsDTO]:
             declarado = ServerLimitValues(**d)
             decisao = ServerLimitValues(**decidido)
             efetivo = ServerLimitValues(
-                max_slots=decidido.get("max_slots") or d.get("max_slots"),
+                max_slots=cap.max_slots if cap is not None else (decidido.get("max_slots") or d.get("max_slots")),
                 boot_parallelism=decidido.get("boot_parallelism") or d.get("boot_parallelism"),
                 max_working=decidido.get("max_working"),
                 min_free_ram_mb=decidido.get("min_free_ram_mb", d.get("min_free_ram_mb")),
