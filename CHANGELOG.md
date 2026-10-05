@@ -42,7 +42,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   Antes, o fieldset desabilitado mandava o foco para o body.
 - N3: a mensagem do harness usa `||`: um `id` vazio não vale como nome, e a mensagem cai na tag.
 - N4: no cadastro de rede, a releitura da lista sai do `try` do criar. Ela não trava mais os campos, e a falha dela
-  não diria "Não foi possível criar" sobre um perfil criado.
+  não diria "Não foi possível criar" sobre um perfil criado. Só a leitura mais nova escreve (S1 da leitura): com dois
+  perfis criados em seguida, a releitura velha que respondesse por último apagaria o 2º da tela.
+- O `click` também recusa o ícone dentro de um botão desabilitado (o controle desabilitado mais próximo); um link num
+  fieldset desabilitado segue clicável.
 - Prova simulated: `src/test/harness.test.ts` (novo), 1 caso novo em `LimitsSection.test.tsx` e 1 em
   `RedePage.test.tsx`. Quatro mutações, todas pegas. Frontend inteiro: 1631/1631. Settings, rede e `src/test` com
   `ATRASO_DO_FETCH_MS=40` nas sementes 7 e 88: 156/156.

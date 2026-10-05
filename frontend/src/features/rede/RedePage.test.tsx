@@ -764,3 +764,34 @@ it('criado o perfil, o cadastro volta livre já com a releitura da lista em voo'
   await act(async () => { soltarLista!(); });
   expect(nome().value).toBe('Dedicada-02');
 });
+
+// 29.130 (S1 da leitura): com o cadastro livre, dois perfis criados em seguida disparam duas releituras; a mais velha
+// que responde por último não apaga o 2º da tela.
+it('duas releituras fora de ordem: vale a mais nova, e o 2º perfil criado não some da lista', async () => {
+  let n = 0;
+  backend.on('POST', /\/network\/profiles$/, (call) => json(perfil({ id: `vpn-${++n}`, name: (call.body as { name: string }).name })));
+  await render(<RedePage />);
+  await waitFor(() => text().includes('WireGuard escritório'));
+  const soltar: (() => void)[] = [];
+  const respostas = [
+    { profiles: [perfil({ id: 'vpn-1', name: 'Dedicada-01' })] },
+    { profiles: [perfil({ id: 'vpn-1', name: 'Dedicada-01' }), perfil({ id: 'vpn-2', name: 'Dedicada-02' })] },
+  ];
+  backend.on('GET', /\/network\/profiles$/, () => {
+    const corpo = respostas[soltar.length]!;
+    return new Promise<Response>((r) => { soltar.push(() => r(json(corpo))); });
+  });
+  const nome = () => byRole('textbox', /^Nome do perfil$/) as HTMLInputElement;
+  for (const n2 of ['Dedicada-01', 'Dedicada-02']) {
+    await waitFor(() => !nome().matches(':disabled'));
+    await setValue(nome(), n2);
+    await setValue(byRole('textbox', /^Host$/) as HTMLInputElement, 'vpn.provedor.example');
+    await click(await botaoPronto(/^Criar$/));
+    await waitFor(() => soltar.length === (n2 === 'Dedicada-01' ? 1 : 2));
+  }
+  await act(async () => { soltar[1]!(); });                              // a mais nova chega primeiro
+  await waitFor(() => text().includes('Dedicada-02'));
+  await act(async () => { soltar[0]!(); });                              // a velha chega depois e não escreve
+  await act(async () => { await Promise.resolve(); });
+  expect(text()).toContain('Dedicada-02');
+});

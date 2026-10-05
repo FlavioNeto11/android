@@ -87,17 +87,23 @@ export function RedePage() {
   const temDados = useRef(false);
   const [ocupadoPorId, setOcupadoPorId] = useState<Record<string, 'verify' | 'reapply' | undefined>>({});
 
+  // Só a leitura mais nova escreve: com o cadastro livre durante a releitura (29.130), dois perfis criados em seguida
+  // disparam duas, e a mais velha que respondesse por último apagaria o 2º da tela.
+  const leitura = useRef(0);
   const carregar = useCallback(async () => {
+    const minha = ++leitura.current;
     try {
       // Uma chamada só por lista: o backend (`rede.listar_perfis`/`listar_aparelhos`) já junta o legado, a
       // quarentena e a conta real. Nenhuma chamada de apoio que possa falhar em silêncio (achado do revisor).
       const [ps, ds] = await Promise.all([api.listNetworkProfiles(), api.listNetworkDevices()]);
+      if (minha !== leitura.current) return;
       setPerfis(ps.profiles);
       setAparelhos(ds.devices);
       setCentral(ds.central_egress ?? null);
       setErro(null);
       temDados.current = true;
     } catch (e) {
+      if (minha !== leitura.current) return;
       setErro(toLoadError(e));
       if (temDados.current) toastError('Não foi possível recarregar a rede', e, { key: 'rede-carregar' });
     }

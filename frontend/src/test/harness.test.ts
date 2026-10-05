@@ -20,6 +20,18 @@ it('click recusa controle desabilitado, também dentro de fieldset desabilitado;
   expect(cliques).toBe(1);
 });
 
+it('o clique no ícone de um botão desabilitado também é recusado; um link dentro de fieldset desabilitado, não', async () => {
+  document.body.innerHTML = `
+    <button aria-label="Criar" disabled><svg></svg></button>
+    <fieldset disabled><a href="#ajuda">ajuda</a></fieldset>`;
+  await expect(click(document.querySelector('svg')!)).rejects.toThrow('click: Criar está desabilitado');
+  let cliques = 0;
+  const link = document.querySelector('a')!;
+  link.addEventListener('click', (e) => { e.preventDefault(); cliques += 1; });
+  await click(link);
+  expect(cliques).toBe(1);
+});
+
 it('sem aria-label nem id, a mensagem nomeia a tag (id vazio não vale como nome)', async () => {
   document.body.innerHTML = '<input disabled><button disabled>x</button>';
   await expect(setValue(document.querySelector('input')!, 'a')).rejects.toThrow('o campo INPUT está desabilitado');
