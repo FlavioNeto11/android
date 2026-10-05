@@ -136,6 +136,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Gravidade (orquestradora, 23:21Z):** piorar fura o piso sempre. A saúde se compara por gravidade (🟢 < 🟡 < 🔴):
   a que SOBE, ou volta ao 🟢, sai na volta; a que desce sem chegar ao 🟢 espera o piso. Texto sem marca conta como o
   pior. Prova `simulated`: 52 passed (sobe entre ruins, desce entre ruins, volta ao verde, texto sem marca).
+## 2026-10-04 — 29.82: as vagas do notebook são as decididas no painel, não as do `worker.yaml` (branch fix/29-82-vagas-decididas)
+
+- O topo e a Infraestrutura diziam "Notebook da LAN: 9 aparelhos ligados para 6 vagas" com 9 vagas decididas:
+  comparavam com o `max_slots` declarado no `hello`. O `WorkerDTO` ganha `effective_max_slots` (o decidido em
+  `worker_limits`, senão o declarado; neste servidor, o `max_online_devices` vivo; uma função só,
+  `WorkerRegistry.vagas_que_valem`, usada pelo agendador e pelo DTO), o `PUT /api/servers/{id}/limits` de worker
+  remoto emite `worker.updated`, e `ocupacaoDoServidor` usa `effective_max_slots ?? max_slots`. O subtítulo do cartão
+  do central lê as mesmas vagas da ocupação. Para este servidor, mudar `max_online_devices` (limites do host ou
+  `PUT /api/settings`) emite `worker.updated` com as vagas vivas.
+- Prova `simulated`: `backend/tests/test_limites_por_servidor.py::test_api_lista_e_muda_limites_do_host_e_do_worker`
+  e `frontend/src/store/metricas.test.ts` (9 ligados, 9 decididas, 6 declaradas: sem "acima"; backend antigo segue o
+  declarado). A mutação para a regra antiga derruba o caso novo. `not_run`: a leitura no painel do central depois do deploy.
 
 ## 2026-10-04 — 28.31 F3: o resumo de hora abre com "Precisa de você" e só diz o que mudou (branch canais/28-31-f3-resumo)
 

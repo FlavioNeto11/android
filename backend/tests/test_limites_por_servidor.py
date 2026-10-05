@@ -13,6 +13,7 @@ O que estes testes travam:
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -205,6 +206,10 @@ async def _cliente(h: Any) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 
+async def _vagas_do_dto(c: httpx.AsyncClient, worker_id: str) -> dict[str, Any]:
+    return next(w for w in (await c.get("/api/workers")).json() if w["id"] == worker_id)
+
+
 async def test_api_lista_e_muda_limites_do_host_e_do_worker(tmp_path: Path) -> None:
     h, reg, agente = await _com_worker(tmp_path, remotos=["android-03", "android-04"], count=4)
     try:
@@ -222,14 +227,36 @@ async def test_api_lista_e_muda_limites_do_host_e_do_worker(tmp_path: Path) -> N
             assert r.json()["effective"]["max_slots"] == 8 and r.json()["effective"]["max_working"] == 2
             assert any(m["type"] == "limits" and m["max_slots"] == 8 for m in agente.enviados)
 
+            # 29.82: o WorkerDTO traz as vagas que valem (o decidido) ao lado do declarado, e a mudança vira evento.
+            dto = await _vagas_do_dto(c, WORKER)
+            assert (dto["max_slots"], dto["effective_max_slots"]) == (6, 8)
+            assert dto["effective_max_slots"] == reg.capacidade(WORKER).max_slots      # uma regra só (W1)
+            do_worker = [d["worker"] for d in (json.loads(r["data"]) for r in h.state.db.query(
+                "SELECT data FROM events WHERE kind='worker.updated' ORDER BY id")) if d["worker"]["id"] == WORKER]
+            assert do_worker and do_worker[-1]["effective_max_slots"] == 8
+
             r = await c.put(f"/api/servers/{WORKER}/limits", json={"max_slots": None})
             assert r.json()["effective"]["max_slots"] == 6 and r.json()["decided"]["max_slots"] is None
+            dto = await _vagas_do_dto(c, WORKER)
+            assert (dto["max_slots"], dto["effective_max_slots"]) == (6, 6)
+            assert dto["effective_max_slots"] == reg.capacidade(WORKER).max_slots
+            central = await _vagas_do_dto(c, host)
+            assert central["effective_max_slots"] == h.state._worker_capacity(host).max_slots  # noqa: SLF001
 
             r = await c.put(f"/api/servers/{host}/limits", json={"max_slots": 5, "boot_parallelism": 3,
                                                                   "max_working": 4})
             assert r.status_code == 200, r.text
             assert h.state.settings.get().max_online_devices == 5
             assert h.state.settings.get().boot_parallelism == 3
+            # 29.82: o DTO deste servidor acompanha o valor vivo, sem esperar o próximo reinício, e vira evento.
+            central = await _vagas_do_dto(c, host)
+            assert central["effective_max_slots"] == 5 == h.state._worker_capacity(host).max_slots  # noqa: SLF001
+            assert (await c.put("/api/settings", json={"max_online_devices": 7})).status_code == 200
+            central = await _vagas_do_dto(c, host)
+            assert central["effective_max_slots"] == 7 == h.state._worker_capacity(host).max_slots  # noqa: SLF001
+            do_host = [d["worker"] for d in (json.loads(r["data"]) for r in h.state.db.query(
+                "SELECT data FROM events WHERE kind='worker.updated' ORDER BY id")) if d["worker"]["id"] == host]
+            assert do_host and do_host[-1]["effective_max_slots"] == 7
             assert r.json()["effective"]["max_working"] == 4
             travado = await c.put(f"/api/servers/{host}/limits", json={"min_free_ram_mb": 1000})
             assert travado.status_code == 400 and travado.json()["detail"]["code"] == "locked_limit"

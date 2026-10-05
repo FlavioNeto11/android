@@ -210,7 +210,7 @@ function CartaoCentral({ instancias, metrics, health, worker, now, conectado, da
       <CardHeader
         title="Este servidor (central)"
         subtitle={worker
-          ? `Painel, banco, IA e catálogo de aplicativos — ${plural(worker.max_slots, 'vaga', 'vagas')}`
+          ? `Painel, banco, IA e catálogo de aplicativos — ${plural(vagas.vagas, 'vaga', 'vagas')}`
           : 'Painel, banco, IA e catálogo de aplicativos'}
         actions={(
           <div className={styles.acoes}>

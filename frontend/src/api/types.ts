@@ -1455,7 +1455,11 @@ export interface Worker {
   accel?: string | null;
   appium_mode: 'local' | 'central';
   appium_url?: string | null;
+  /** O que a máquina declarou no `hello` (o `worker.yaml` dela). */
   max_slots: number;
+  /** 29.82: as vagas que valem — o decidido no painel, ou o declarado sem decisão (o teto do agendador). Ausente =
+   *  backend de antes do 29.82. */
+  effective_max_slots?: number | null;
   verbs: string[];
   state: 'online' | 'offline' | 'degraded' | 'maintenance';
   observed_state: string;

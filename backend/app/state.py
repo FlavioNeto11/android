@@ -374,6 +374,9 @@ class AppState:
         # agente remoto (`workers/local.py`).
         self.local_worker = LocalWorker(self)
         self.workers.local_worker_id = self.cfg.owner_id
+        # As vagas deste servidor são a configuração viva: o rodízio obedece no mesmo tick, e o painel lê o mesmo
+        # número (29.82).
+        self.workers.vagas_do_host = lambda: int(self.settings.get().max_online_devices or 1)
         # Release de APK como artefato: importar/inspecionar/validar/catalogar, e instalar com estado observado.
         # `owner_id`: a operação de app aberta AQUI fica marcada como nossa. Sem isso, com dois
         # backends no mesmo banco, o que sobe marcava como interrompidas as instalações vivas do outro.
@@ -1015,11 +1018,9 @@ class AppState:
     def _worker_capacity(self, worker_id: str) -> Any:
         """Vagas e recursos daquela máquina. Para ESTE servidor, quem manda nas vagas é a configuração viva
         (`max_online_devices`), e não o `max_slots` que o worker local gravou quando subiu: o operador muda o
-        limite em tempo de execução, e o rodízio tem de obedecer no mesmo tick."""
-        cap = self.workers.capacidade(worker_id)
-        if cap is not None and worker_id == self.cfg.owner_id:
-            cap.max_slots = max(1, int(self.settings.get().max_online_devices or 1))
-        return cap
+        limite em tempo de execução, e o rodízio tem de obedecer no mesmo tick. A regra mora em
+        `WorkerRegistry.vagas_que_valem` (gancho `vagas_do_host`), a mesma do painel."""
+        return self.workers.capacidade(worker_id)
 
     def _pedir_ciclo_de_vida(self, instance_id: str, verb: str, motivo: str) -> str | None:
         """O rodízio pede `start`/`wake`/`stop`/`hibernate` num aparelho de outra máquina. A decisão mora aqui; o
