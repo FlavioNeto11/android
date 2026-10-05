@@ -175,7 +175,7 @@ async def test_falha_na_entrega_nao_se_repete_sozinha_e_fica_nomeada(parque: Har
 
     # A tarefa começa: NENHUMA outra instalação é disparada — o item para com o motivo e espera uma pessoa.
     parque.state.runs.start(run.id)                                  # type: ignore[union-attr]
-    detail = await parque.wait_run(run.id, statuses=("completed_with_issues", "failed", "completed"), timeout=60)
+    detail = await parque.wait_run(run.id, statuses=("completed_with_issues", "failed", "awaiting_person", "completed"), timeout=60)
     obj = detail.objectives[0]
     assert obj.status == "waiting_user"
     assert "não é repetida sozinha" in (obj.blocked_reason or "")

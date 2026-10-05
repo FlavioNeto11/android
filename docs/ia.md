@@ -331,7 +331,7 @@ achado não se confirmam nos dados.
   - `verdict` (o desfecho): `yes`/`no`/`uncertain`/`unprovable` no `verify`; o nome da ferramenta no `decide` (fora
     da lista de ferramentas, `desconhecida`); `plano` ou `pergunta` no `plan`; nulo na leitura e na linha de erro.
   - `image_reason` (por que a imagem foi junto, ou não), na ordem de `_motivo_da_imagem`. Sem imagem: `sensivel`,
-    `politica_nunca`, `arvore_rica`. Com imagem: `politica_sempre`, `pedida`, `problema`, `primeira_julgada`, `primeira_da_leitura` (31.37: 1ª decisão de etapa que lê valor),
+    `politica_nunca`, `arvore_rica`. Com imagem: `politica_sempre`, `pedida`, `problema`, `primeira_julgada`, `primeira_da_leitura` (31.37: 1ª decisão de etapa que lê valor), `leitura_pendente` (31.71: enquanto faltar saída declarada, só com `ai.imagem_enquanto_falta_saida`, desligada por padrão),
     `arvore_pobre`. `with_image` continua dizendo se ela de fato foi.
 
   A linha de erro e a de orçamento recusado passam a ter `provider` e modelo da função que a chamada usaria (a de

@@ -398,8 +398,11 @@ class Harness:
         alvo = sched.ticks + n
         await self.wait(lambda: sched.ticks >= alvo, timeout, f"{n} volta(s) do laço de despacho")
 
-    async def wait_run(self, run_id: str, statuses: tuple[str, ...] = ("completed", "completed_with_issues", "cancelled", "failed"),
+    async def wait_run(self, run_id: str, statuses: tuple[str, ...] = ("completed", "completed_with_issues", "cancelled", "failed",
+                                                                       "awaiting_person"),
                        timeout: float = 30.0) -> Any:
+        """Espera a execução ficar sem trabalho automático: terminada ou `awaiting_person` (29.93, o objetivo esperando
+        a pessoa, que antes assentava como `completed_with_issues`)."""
         assert self.state is not None
         repo = self.state.repo
         await self.wait(lambda: repo.run_row(run_id)["status"] in statuses, timeout, f"execução {run_id} em {statuses}")

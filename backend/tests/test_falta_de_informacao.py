@@ -14,7 +14,7 @@ from app.taskqueue.scheduler import MOTIVO_FALTA_DE_INFORMACAO
 
 from .conftest import Harness
 
-TERMINAIS = ("completed", "completed_with_issues", "failed", "waiting_user")
+TERMINAIS = ("completed", "completed_with_issues", "failed", "waiting_user", "awaiting_person")
 
 
 def _bloqueia_uma_vez(harness: Harness, razao: str) -> list[str]:

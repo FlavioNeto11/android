@@ -191,8 +191,10 @@ class EventBus:
         """Apaga os eventos anteriores a `iso_ts`, menos os de execução ainda aberta, em lotes de `lote` linhas.
 
         `kinds` restringe a purga a esses tipos (a classe de telemetria do RA-11); `so_sem_execucao` poupa todo evento
-        com `run_id`, aberto ou fechado."""
-        filtro = "ts < ? AND (run_id IS NULL OR run_id NOT IN (SELECT id FROM runs WHERE finished_at IS NULL))"
+        com `run_id`, aberto ou fechado. A execução em `awaiting_person` (29.93) tem `finished_at` (o fim do trabalho
+        automático) e continua aberta, esperando a pessoa: a linha do tempo dela fica."""
+        filtro = ("ts < ? AND (run_id IS NULL OR run_id NOT IN (SELECT id FROM runs WHERE finished_at IS NULL"
+                  " OR status = 'awaiting_person'))")
         args: list[object] = [iso_ts]
         if kinds:
             filtro += f" AND kind IN ({','.join('?' for _ in kinds)})"

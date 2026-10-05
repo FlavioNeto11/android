@@ -456,10 +456,17 @@ async def test_a_folha_em_portugues_fecha_pela_regra_sem_o_ator_a_ver(tmp_path: 
 
 
 async def _tres_recusas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-                        tipo: str) -> tuple[Any, InstagramComDobra, list[str | None]]:
-    """A releitura antes do toque acha SEMPRE a mesma mudança (`tipo`): a 3ª recusa decide o desfecho (D5)."""
+                        tipo: str | list[str]) -> tuple[Any, InstagramComDobra, list[str | None]]:
+    """A releitura antes do toque acha a mudança `tipo` (ou, numa lista, uma por releitura, e depois a última de novo):
+    a 3ª recusa decide o desfecho (D5)."""
     from app.taskqueue import executor as modulo
-    monkeypatch.setattr(modulo, "cobertura_nova_no_ponto", lambda antes, depois, ponto, alvo: (tipo, f"[simulado] {tipo}"))
+    fila = list(tipo) if isinstance(tipo, list) else [tipo]
+
+    def mudanca(antes: object, depois: object, ponto: object, alvo: object) -> tuple[str, str]:
+        atual = fila.pop(0) if len(fila) > 1 else fila[0]
+        return atual, f"[simulado] {atual}"
+
+    monkeypatch.setattr(modulo, "cobertura_nova_no_ponto", mudanca)
     ator = AtorQueLigaORotulo()
     async with _parque_com_dobra(tmp_path, folha=False, ator=ator) as h:
         etapa = await _publicar(h)
@@ -478,6 +485,21 @@ async def test_tres_coberturas_novas_param_numa_pessoa_como_aviso_do_app(tmp_pat
     etapa, fake, _ = await _tres_recusas(tmp_path, monkeypatch, MUDANCA_POR_CIMA)
     assert etapa["status"] == "waiting_user", (etapa["status"], etapa["status_detail"])
     assert "Um aviso cobre o botão de efeito" in (etapa["status_detail"] or "")
+    assert fake.shares == []
+
+
+async def test_o_motivo_da_parada_cita_a_ultima_cobertura_e_nao_o_alvo_movido(tmp_path: Path,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """N2 da leitura do #370: uma cobertura e depois dois alvos movidos param na pessoa (basta uma cobertura), e o texto
+    cita a COBERTURA, não a última mudança (o alvo movido), que contradiria o "um aviso cobre o botão"."""
+    from app.taskqueue.executor import MUDANCA_FORA_DO_LUGAR, MUDANCA_POR_CIMA
+    etapa, fake, _ = await _tres_recusas(tmp_path, monkeypatch,
+                                         [MUDANCA_POR_CIMA, MUDANCA_FORA_DO_LUGAR, MUDANCA_FORA_DO_LUGAR])
+    assert etapa["status"] == "waiting_user", (etapa["status"], etapa["status_detail"])
+    detalhe = etapa["status_detail"] or ""
+    assert "Um aviso cobre o botão de efeito" in detalhe and f"[simulado] {MUDANCA_POR_CIMA}" in detalhe, detalhe
+    assert MUDANCA_FORA_DO_LUGAR not in detalhe, detalhe
+    assert "não é declarado" not in detalhe, detalhe                    # D5-N1: a folha declarada também chega aqui
     assert fake.shares == []
 
 
