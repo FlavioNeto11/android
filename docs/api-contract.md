@@ -1411,7 +1411,7 @@ cliente ou agente antigo mantém o comportamento de antes.
 **C1. Observação** (`devices/manager.py::Observation`). Os campos de hoje ficam (`frame_id`, `ts`, `width`,
 `height`, `jpeg`, `tree`, `package`, `sensitive`). Entram, opcionais:
 - `tree_at` e `image_at`: horário ISO da hierarquia e do screencap (`image_at: null` = sem imagem);
-- `image_omitted`: `sensitive` ou `policy` quando `jpeg` é `null`. Omitir a imagem **não** é falha de captura;
+- `image_omitted`: `sensitive`, `policy` ou `capture_failed` (adendo v1.55) quando `jpeg` é `null`. Omitir a imagem **não** é falha de captura (`capture_failed` é, e quem chamou a aceitou);
 - `source` (`central_adb`, ou `worker_local` quando a imagem veio da captura na origem, `observe_local`) e
   `runtime_gen` (geração do runtime do aparelho).
 
@@ -6529,3 +6529,22 @@ Mudança de comportamento em duas rotas do modo treinamento; o corpo novo é adi
   `control_required`, mostrar a mensagem do erro e manter a barra de gravação (a gravação segue viva; nada foi encerrado),
   em vez de tratá-la como sessão encerrada. Quem não tem o controle vê a gravação, mas não a encerra.
 - **Prova:** `simulated` (`backend/tests/test_treino_parar_exige_controle.py`); `real`: `not_run`.
+
+## Adendo v1.55 (05/10/2026; número da coordenação; item 31.76) — `image_omitted` ganha `capture_failed`
+
+Sem migração e sem rota nova. `image_omitted` é um campo de `Observation` (`devices/manager.py`, contrato C1 do adendo
+v0.20), interno ao backend: não aparece em DTO, evento nem evidência da API (conferido por `grep` em `backend/app`,
+`frontend/src` e `docs`; as únicas ocorrências são o dataclass, o `observe` e o executor).
+- `capture_failed`: a aquisição da imagem FALHOU (`DriverTimeout` ou `FalhaDeLeitura`), a árvore já estava lida, o
+  tamanho da tela se sabia sem a imagem e quem chamou aceitou seguir só pela árvore (`observe(tolerar_falha_da_imagem=
+  True)`, desligado por padrão). Nunca é prova nem sucesso de nada.
+- Só o laço do ator do executor liga o parâmetro. Verificação, evidência, prévia do painel e controle manual não: neles a
+  exceção sobe como antes, e `completar_imagem` refaz a captura de uma observação `capture_failed`.
+- Campos junto, também internos: `captura_falha` ("Tipo: mensagem", sem texto de tela) e `captura_excedeu_prazo`.
+- A métrica `captura.total` conta `origem=observacao, resultado=falha`; a série da prévia (`capture_failures`) não é tocada.
+- **Evidência da API:** o campo não vai a ela, mas a evidência da etapa muda com ele. A observação `capture_failed` tenta
+  a captura tardia (como a `policy`); sem imagem, a evidência é `kind="text"`, `redacted=0`, com o motivo na nota
+  ("(captura da tela falhou)", "(imagem ausente)" ou "(imagem não adquirida: <Tipo>)"). "Tela sensível" e
+  `redacted=1` ficam para a tela sensível: a da observação e a da captura tardia que devolve `None` (tela que é ou
+  pode ser sensível, ou geração trocada).
+- **Prova:** `simulated` (`backend/tests/test_falha_so_da_imagem.py`).

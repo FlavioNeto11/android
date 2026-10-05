@@ -413,6 +413,38 @@ Ramo sobre o #443 (29.132), com o #441 (29.127) mesclado.
   não passa por janela). Os testes do 31.73, com dump plano, não mudam: a união dos nós de topo é a extensão das
   folhas. `real`: `not_run`, à espera de um dump bruto de um diálogo nativo e de uma página esparsa.
 
+## 2026-10-05 — 31.76: falha só da imagem não derruba a observação do ator (branch fix/31-76-falha-so-da-imagem)
+
+- Medida real (05/10, aparelho com load 18 a 20): "DriverTimeout: screencap (na origem) excedeu 25s" com a árvore saindo
+  (47 elementos). Antes, o timeout da imagem ia a `_stuck` (dreno de até 180 s) e a `FalhaDeLeitura` contava erro seguido
+  até "A leitura da tela seguiu falhando".
+- `devices/manager.py`: `observe(tolerar_falha_da_imagem=False)`. Ligado, com a árvore lida e o tamanho da tela lembrado
+  (`_dimensoes_lembradas`, sem tocar o executor), a falha da imagem (`DriverTimeout` ou `FalhaDeLeitura`) volta como
+  `jpeg=None`, `image_omitted="capture_failed"`, `captura_falha` e `captura_excedeu_prazo`, e conta `captura.total`
+  `resultado=falha` (a série da prévia, `capture_failures`, não é tocada). Sem dimensões, ou desligado, a exceção sobe
+  como antes. `completar_imagem` refaz a captura de uma observação `capture_failed` (verificador e evidência não
+  aceitam a falha tolerada).
+- `taskqueue/executor.py`: só o laço do ator liga o parâmetro. Em `capture_failed`: sem `_stuck`, sem `errors_in_row`, sem
+  recriar sessão; segue pela árvore. No timeout, espera o executor do aparelho ficar livre (`drain`, limitado pelo prazo
+  da etapa) e relê só a árvore. Se o ator PEDIU a imagem e a captura falha 2 vezes seguidas, vale o caminho de antes
+  (`fail_or_retry`, "A captura da tela seguiu falhando").
+- Leitura da revisão (delta depois do 820ac0d5):
+  - **Evidência:** imagem AUSENTE não é tela sensível. A observação `capture_failed` tenta a captura tardia da evidência
+    (como a `policy`). Sem imagem, a evidência é texto, sem `redacted`, com o motivo na nota: "(captura da tela
+    falhou)", "(imagem ausente)" ou "(imagem não adquirida: <Tipo>)", e não mais "(tela sensível: captura omitida)".
+    A tardia que devolve `None` (tela que é ou pode ser sensível, ou geração trocada) segue "tela sensível" com
+    `redacted`, em `policy` e em `capture_failed` (leitura do delta; teste com `policy` e tardia `None`).
+  - **Contagem mais estrita, mantida:** a falha tolerada com a imagem PEDIDA pelo ator conta seguida até 2; sem a imagem
+    pedida, não conta. Quem pede a imagem e não a recebe não decide às cegas.
+  - **O caminho de antes mudou:** com a imagem pedida e a captura falhando, a etapa ia a `_stuck` depois de 3 erros
+    seguidos de leitura; agora vai a `fail_or_retry` com limite de 2 ("A captura da tela seguiu falhando").
+  - **Classificador:** o motivo novo "A captura da tela seguiu falhando" ganha regra em `modules/learning/domain/falhas.py`
+    (`ui_ocupada`, a família da leitura que segue falhando); sem ela a catraca do motivo literal reprovava.
+- Prova `simulated`: `backend/tests/test_falha_so_da_imagem.py` (15 testes, aparelho falso; conferidos por mutação: o da
+  captura que falhou reprova o 820ac0d5, e o da tardia `None` reprova o e76778ed). `real`: `not_run`.
+  Contrato: adendo v1.55 em `docs/api-contract.md` (`image_omitted` ganha `capture_failed`; campo interno, fora de DTO,
+  evento e evidência da API). Parágrafo em `docs/ia.md` ("Imagem sob demanda").
+
 ## 2026-10-05 — 30.75: a prova de fluxo sem evidência diz a causa (branch feat/30-75-motivos-da-prova)
 
 - Leitura de 05/10: 5 pedidos `sem_evidencia`. Dois foram o teto do pedido cortando a prova no meio (US$ 0,157 e 0,159) e um, o QA Messenger deslogado no android-02.

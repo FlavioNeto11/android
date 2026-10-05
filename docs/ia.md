@@ -246,6 +246,12 @@ Ver [docs/produto.md §2](produto.md) para os conceitos. Mecanismo de custo, res
 - **Imagem sob demanda**: com `image_policy: auto`, a observação lê a árvore primeiro e só captura imagem quando
   a decisão, o julgamento, a evidência ou a divergência pedem (ADR-027). Antes, o screencap e a codificação
   aconteciam mesmo quando a imagem não ia ao modelo.
+  - **Falha só da imagem (31.76)**: no laço do ator, com a árvore já lida e o tamanho da tela conhecido sem a imagem, um
+    screencap que estoura o prazo ou falha pelo adb não derruba a observação (`observe(tolerar_falha_da_imagem=True)`):
+    ela volta com `image_omitted="capture_failed"` e o ator decide pela árvore, sem `_stuck`, sem erro seguido e sem
+    recriar a sessão. Se foi `DriverTimeout`, o executor espera o aparelho ficar livre (`drain`) e relê só a árvore. Se
+    o ator PEDIU a imagem e ela falha 2 vezes seguidas, vale o caminho de antes (`fail_or_retry`). Verificação e
+    evidência não toleram: `completar_imagem` refaz a captura. Captura que falhou nunca é prova.
 - **Provas locais** (item 7.5): `backend/app/taskqueue/proofs.py` — conferência determinística pela árvore local
   (`==` exato em `find_selector`) antes de chamar o modelo, no catálogo do Instagram. Medido: Instagram 2/3→3/3
   de sucesso comprovado, US$0,20→0,08 por caso.
