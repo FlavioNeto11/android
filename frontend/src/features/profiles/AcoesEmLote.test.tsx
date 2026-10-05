@@ -16,7 +16,7 @@ import { makeSnapshot } from '../../test/fixtures';
 import {
   FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor,
 } from '../../test/harness';
-import { BarraDeLote, SEM_CONTA_NO_GRUPO } from './AcoesEmLote';
+import { BarraDeLote, LISTA_RELENDO, LISTA_VELHA, SEM_CONTA_NO_GRUPO } from './AcoesEmLote';
 import { ProfilesPage } from './ProfilesPage';
 
 function pessoa(over: Partial<PersonaDTO> = {}): PersonaDTO {
@@ -333,6 +333,96 @@ describe('ações em lote', () => {
     expect(allByRole('dialog', /Grupo de acesso de/)).toHaveLength(1);
     await act(async () => { soltar!(); });
     await waitFor(() => text(dialogo).includes('Terminado: 1 ok'));
+  });
+
+  // 29.118 (B1): depois do aviso "a lista não se releu", nada barrava um lote de grupo sobre a lista velha, e ele
+  // relatava "já estava…" com ok e sem PATCH. Os três que decidem pela lista ficam indisponíveis até a lista voltar.
+  it('com a lista sem se reler, grupo, bloquear e reativar ficam indisponíveis com o motivo até o "Tentar de novo"', async () => {
+    let leituras = 0;
+    let cair = true;
+    rotas([MARIANA, LUCAS]);
+    backend.on('GET', /^\/api\/personas$/, () => {
+      leituras += 1;
+      return leituras > 1 && cair ? apiError(503, 'unavailable', 'banco fora do ar') : json([MARIANA, LUCAS]);
+    });
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
+    await render();
+    await waitFor(() => text().includes('Lucas Almeida'));
+    await selecionar('Mariana Costa', 'Lucas Almeida');
+    await click(byRole('button', /Grupo de acesso/, barra()));
+    const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
+    await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
+    await waitFor(() => text(dialogo).includes('A lista de personas não se releu'));
+    await click(byRole('button', /^Fechar$/, dialogo.querySelector('footer')!));
+
+    for (const nome of [/^Grupo de acesso/, /^Bloquear/, /^Reativar/]) {
+      const b = byRole('button', nome, barra());
+      expect(b.getAttribute('aria-disabled'), String(nome)).toBe('true');
+    }
+    expect(text(barra())).toContain(LISTA_VELHA);
+    // Apagar, fotos e completar não decidem pela lista: seguem livres.
+    for (const nome of [/^Apagar/, /^Gerar mais fotos/, /^Completar com IA/]) {
+      expect(byRole('button', nome, barra()).getAttribute('aria-disabled'), String(nome)).toBeNull();
+    }
+    await click(byRole('button', /^Grupo de acesso/, barra()));
+    expect(allByRole('dialog', /Grupo de acesso de/)).toHaveLength(0);
+
+    cair = false;
+    await click(byRole('button', /^Tentar de novo/));
+    await waitFor(() => byRole('button', /^Grupo de acesso/, barra()).getAttribute('aria-disabled') === null);
+  });
+
+  // 29.118: o clique fora (backdrop) também não fecha enquanto executa.
+  it('enquanto executa, o clique fora não fecha', async () => {
+    let soltar: (() => void) | null = null;
+    rotas([MARIANA, LUCAS]);
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => new Promise<Response>((r) => {
+      soltar = () => r(json({ ...MARIANA, ...(c.body as object) }));
+    }));
+    await render();
+    await waitFor(() => text().includes('Lucas Almeida'));
+    await selecionar('Mariana Costa');
+    await click(byRole('button', /Grupo de acesso/, barra()));
+    const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
+    await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
+    await waitFor(() => soltar !== null);
+    await act(async () => { dialogo.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); });
+    expect(allByRole('dialog', /Grupo de acesso de/)).toHaveLength(1);
+    // A1: o `aria-busy` fica na lista do resultado, não no diálogo inteiro (o status de dentro segue sendo lido).
+    expect(dialogo.getAttribute('aria-busy')).toBeNull();
+    expect(dialogo.querySelector('ul[aria-label="Resultado por persona"]')?.getAttribute('aria-busy')).toBe('true');
+    await act(async () => { soltar!(); });
+    await waitFor(() => text(dialogo).includes('Terminado: 1 ok'));
+  });
+
+  // 29.118 (N): uma rajada de releituras não prende o diálogo em "executando": passado o prazo, o resumo sai dizendo que
+  // a lista não se releu.
+  // C1: passado o prazo a releitura segue em voo e o erro da página ainda é nulo; a barra trava o que decide pela lista
+  // até ela assentar, senão o resumo avisava e os três ficavam livres sobre a lista velha.
+  it('a releitura que não volta no prazo: o resumo sai com o aviso, e a barra trava até ela assentar', async () => {
+    let soltar: ((relida: boolean) => void) | null = null;
+    rotas([MARIANA, LUCAS]);
+    backend.on('PATCH', /\/instagram\/profiles\//, (c) => json({ ...MARIANA, ...(c.body as object) }));
+    await act(async () => {
+      root.render(<><BarraDeLote selecionadas={[MARIANA, LUCAS]} grupos={[GRUPO]} onLimpar={() => {}}
+                                 onConcluido={() => new Promise<boolean>((r) => { soltar = r; })} prazoDaReleituraMs={50} />
+        <ConfirmHost /></>);
+    });
+    await click(byRole('button', /Grupo de acesso/, barra()));
+    const dialogo = await waitFor(() => byRole('dialog', /Grupo de acesso de/));
+    await click(byRole('button', /Pôr no grupo Cautelosos/, dialogo));
+    await waitFor(() => text(dialogo).includes('Terminado: 2 ok'));
+    expect(text(dialogo)).toContain('A lista de personas não se releu');
+    await click(byRole('button', /^Fechar$/, dialogo.querySelector('footer')!));
+
+    for (const nome of [/^Grupo de acesso/, /^Bloquear/, /^Reativar/]) {
+      expect(byRole('button', nome, barra()).getAttribute('aria-disabled'), String(nome)).toBe('true');
+    }
+    expect(text(barra())).toContain(LISTA_RELENDO);
+    expect(byRole('button', /^Apagar/, barra()).getAttribute('aria-disabled')).toBeNull();
+
+    await act(async () => { soltar!(true); });
+    await waitFor(() => byRole('button', /^Grupo de acesso/, barra()).getAttribute('aria-disabled') === null);
   });
 
   it('bloquear e reativar: PATCH status por persona; quem já está no status não é chamado', async () => {

@@ -231,7 +231,12 @@ async def test_log_que_contradiz_o_uptime_avisa_sem_mudar_o_aparelho(harness: Ha
 async def test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura(harness: Harness,
                                                                            monkeypatch: pytest.MonkeyPatch) -> None:
     """29.76 (d), revisão do #303: o log é bufferizado e a recusa pode chegar depois da medição. Sem a linha na hora, a
-    medição sai sem `log_contradiz`, e a segunda leitura (`LOG_CONTRADIZ_RELEITURA_S` depois) avisa."""
+    medição sai sem `log_contradiz`, e a segunda leitura (`LOG_CONTRADIZ_RELEITURA_S` depois) avisa.
+
+    29.120: a releitura agendada é capturada e disparada à mão depois que a recusa chega. Antes, o teste punha a
+    releitura em 10 ms, e ela disparava em qualquer `await` que o `_wait_boot` ainda fizesse depois de agendá-la,
+    antes de o teste ligar a recusa: com a máquina cheia (o PG dirigido da suíte 37), essas esperas passaram de 10 ms,
+    a releitura leu o veredito ainda `None`, e o aviso não saiu. Com o prazo em 0 s, o teste antigo reprova sempre."""
     relogio = _RelogioInjetavel()
     rt, _ = _preparar(harness, monkeypatch, relogio, carregado_em=None, boot_ok_em=relogio.agora + 120,
                       ui=lambda _agora: True, uptime=3728.0)
@@ -239,13 +244,24 @@ async def test_log_que_contradiz_depois_da_medicao_avisa_na_segunda_leitura(harn
     assert s is not None
     chegou = {"recusa": False}
     monkeypatch.setattr(s.devices, "_snapshot_verdict", lambda _rt: False if chegou["recusa"] else None)
-    monkeypatch.setattr(manager_mod, "LOG_CONTRADIZ_RELEITURA_S", 0.01)
     avisos: list[str] = []
     monkeypatch.setattr(s.devices, "_avisar_log_contradiz", lambda _rt: avisos.append(_rt.id))
+    laco = asyncio.get_running_loop()
+    agendar = laco.call_later
+    releituras: list[tuple[float, object]] = []
+
+    def capturar(atraso, callback, *args, **kw):
+        # Só a releitura do log; o resto (o `asyncio.sleep` inclusive) segue no laço de verdade.
+        if getattr(callback, "__qualname__", "").endswith("_reler_log_do_snapshot_depois.<locals>.reler"):
+            releituras.append((atraso, callback))
+            return None
+        return agendar(atraso, callback, *args, **kw)
+    monkeypatch.setattr(laco, "call_later", capturar)
     assert await s.devices._wait_boot(rt, relogio.monotonic(), warm=True) is True      # noqa: SLF001
     dados = json.loads(s.db.query("SELECT data FROM measurements WHERE kind='boot'")[-1]["data"])
     assert dados["snapshot_por"] == "uptime" and "log_contradiz" not in dados and avisos == []
+    assert [a for a, _ in releituras] == [manager_mod.LOG_CONTRADIZ_RELEITURA_S]
     chegou["recusa"] = True                  # a linha bufferizada chega ao arquivo depois do boot
-    await asyncio.sleep(0.1)
+    releituras[0][1]()                       # passa o prazo da segunda leitura
     assert avisos == ["android-01"]
 

@@ -9,12 +9,12 @@ import {
   CircleSlash, CornerDownLeft, Delete, HelpCircle, ListTree, PackageCheck, RefreshCw, ScanSearch, Send, Store,
   TriangleAlert, type LucideIcon,
 } from 'lucide-react';
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { Command, Instance, InstanceAction } from '../../api/types';
 import { Button } from '../../components/Button';
 import { confirm } from '../../components/Confirm';
 import { Disclosure } from '../../components/Disclosure';
-import { TextInput } from '../../components/Field';
+import { Checkbox, TextInput } from '../../components/Field';
 import { Tooltip } from '../../components/Tooltip';
 import { ACTION_META, cancelarComando, runInstanceAction } from '../devices/actions';
 import { MOTIVO_SERVIDOR_SEM_RESPOSTA, type FocusActionGroups, type FocusItem, type FocusVerb } from '../devices/deviceState';
@@ -50,7 +50,7 @@ function Grupo({ title, className, children }: { title: string; className?: stri
 }
 
 export function FocusActions({
-  instance, groups, openCmd, busyAction, mine, pending, sending, defaultApp, desconhecido = false, contextLoading,
+  instance, groups, openCmd, busyAction, mine, pending, sending, gravando = false, defaultApp, desconhecido = false, contextLoading,
   onKey, onText, onRefreshFrame, onReloadContext, onShowHierarchy,
 }: {
   instance: Instance;
@@ -60,18 +60,25 @@ export function FocusActions({
   mine: boolean;
   pending: boolean;
   sending: boolean;
+  /** Há gravação do Modo treinamento em andamento: "Limpar o campo antes" já vem marcada (31.84). */
+  gravando?: boolean;
   /** O app padrão do aparelho: é o que "Verificar app" relê (a lista em Apps verifica cada um). */
   defaultApp: { name: string; package: string } | null;
   /** Servidor do aparelho fora do ar ou sem canal (RF-40): o motivo de controle manual não sai do estado guardado. */
   desconhecido?: boolean;
   contextLoading: boolean;
   onKey: (key: ManualKey) => void;
-  onText: (text: string) => Promise<boolean>;
+  onText: (text: string, clearFirst: boolean) => Promise<boolean>;
   onRefreshFrame: () => void;
   onReloadContext: () => void;
   onShowHierarchy: () => void;
 }) {
   const [text, setText] = useState('');
+  // null = a pessoa não mexeu: vale o padrão (marcada só enquanto grava). Depois de mexer, vale a escolha dela.
+  const [limparEscolha, setLimparEscolha] = useState<boolean | null>(null);
+  const limpar = limparEscolha ?? gravando;
+  // A escolha vale para esta gravação: ao começar ou terminar uma, volta ao padrão.
+  useEffect(() => setLimparEscolha(null), [gravando]);
   const { id } = instance;
   const loja = instance.kind === 'store';
 
@@ -117,7 +124,7 @@ export function FocusActions({
   const submeter = async (e: FormEvent) => {
     e.preventDefault();
     if (!text) return;
-    if (await onText(text)) setText('');
+    if (await onText(text, limpar)) setText('');
   };
 
   const travaManual = groups.manual[0]?.disabledReason ?? null;
@@ -180,6 +187,9 @@ export function FocusActions({
                   </button>
                 </Tooltip>
               </div>
+              {/* 31.85: um clique durante o envio é ignorado; a faixa diz por que, para a pessoa esperar. A região
+                  existe sempre para o leitor de tela anunciar quando o texto entra. */}
+              <p className={styles.groupHint} role="status" aria-live="polite">{sending ? 'Enviando ao aparelho…' : ''}</p>
               <div className={styles.keys} role="group" aria-label="Botões do Android">
                 {groups.manual.map((item) => (
                   <Button key={item.action} icon={iconeDe(item.action)} disabled={sending}
@@ -209,6 +219,8 @@ export function FocusActions({
                   Enviar
                 </Button>
               </form>
+              <Checkbox label="Limpar o campo antes" checked={limpar} disabled={!!travaManual}
+                        onChange={(e) => setLimparEscolha(e.target.checked)} />
             </>
           ) : (
             <p className={styles.groupHint}>{motivoSemControle}</p>

@@ -202,6 +202,16 @@ Supervisor, `deploy.ps1`, `start.ps1`, `stop.ps1`, `restore.ps1` e `loja-janela.
 responde (`Health.service`, ver `backend/app/identidade.py` e `scripts/lib/farm-health.ps1`); o `stop.ps1` também
 só envia o token de encerramento para a Farm identificada.
 
+**Partida lenta não é travamento** (29.124, `backend/app/marca_de_partida.py`). A cada subida, o supervisor sorteia um
+id e o passa em `POC_PARTIDA_ID`, junto da pasta dele (`POC_PASTA_DO_SUPERVISOR`, a `data/` ao lado do
+`supervisor.log`). O backend grava `data/backend-partida.json` (só `id`, `fase`, `ts`) antes do `AppState`, depois
+dele, antes do `poc.start()` e em `no_ar`. O silêncio de `/api/health` não conta como falha enquanto a marca é desta
+subida, a fase não é `no_ar`, a partida tem menos de 600 s e a última reescrita menos de 240 s; o `supervisor.log`
+diz a fase. Sem marca, com marca de outra subida, parada ou `no_ar`, vale a regra de sempre (90 s de carência e três
+falhas a cada 15 s). Depois de 4 reinícios seguidos sem uma conferência boa, a espera antes do próximo vira 300 s,
+dita no log; uma conferência boa zera a conta. O despejo do vigia do laço (29.121) também vai para a pasta do
+supervisor, onde ele o procura para citar no kill. Backend subido à mão não tem id e não grava marca.
+
 **O Appium do backend anterior não fica para o próximo** (K-039, 28/09/2026). Três deploys seguidos deixaram o
 `node` do Appium na 4723 depois do `stop.ps1`; o backend novo o readotava e subia `degraded`
 (`appium_log_masking_off`, com o preenchimento de credencial bloqueado, ou `appium_down`). Agora o `stop.ps1`, depois
@@ -283,6 +293,11 @@ isso). Pontos que já causaram incidente:
   leitura e concilia na hora; ADR-051). Nenhuma das duas chama modelo de IA.
 - `GET /api/diagnostics` (`backend/app/api.py:243`) — o mesmo relatório do `diagnose.ps1` mais o que só o
   backend sabe (capacidade medida, ferramentas).
+- `data/logs/laco-travado-<UTC>-<n>.txt` (29.121, `backend/app/vigia_do_laco.py`) — a pilha de TODAS as threads do
+  backend quando o laço de eventos fica mais de 10 s sem bater (60 s na partida, antes da primeira batida), gravada
+  por uma thread fora do laço antes de o supervisor matar o processo. No máximo 3 por episódio, a cada 30 s; ficam os
+  20 mais novos. A linha `encerrando o backend` do `supervisor.log` cita o despejo dos últimos 5 min, e o
+  `backend.log` diz quando o laço voltou e quanto ficou parado.
 - **Relógio do host** — a tarefa `farm-relogio` (SYSTEM, a cada 15 min) roda `scripts/sincronizar-relogio.ps1`: mede o
   desvio pelo NTP.br com `w32tm /stripchart` e ajusta acima de 0,2 s; o `w32time` fica sem sincronização própria
   (`syncfromflags:NO`), porque a rede bloqueia NTP com porta de origem 123 (K-055). Cada rodada vai para

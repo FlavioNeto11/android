@@ -1670,3 +1670,43 @@ async def test_comando_solto_nao_casa(tmp_path: Path) -> None:
     _pergunta(c, agora, 294)
     await c.volta(_dono(5, "/status", 295))
     assert c.linha(5)["intencao"] == "status"
+
+
+# ------------------------------------------------------------------ 28.47: as sobras da leitura do #412
+@pytest.mark.parametrize(("pergunta", "resposta", "casa"), [(99, 100, True), (100, 99, False), (9, 10, True)])
+async def test_a_ordem_do_message_id_e_numerica(tmp_path: Path, pergunta: int, resposta: int, casa: bool) -> None:
+    """Cruza a casa dos dígitos: como texto, "99" < "100" é falso, e a resposta 100 não casaria com a pergunta 99."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, pergunta)
+    await c.volta(_dono(5, "1", resposta))
+    assert (c.linha(5)["alvo"] == f"escolha:{pergunta}") is casa
+
+
+async def test_a_pergunta_gravada_um_pouco_depois_do_recado_ainda_casa(tmp_path: Path) -> None:
+    """A ANA manda a pergunta (294) e o dono responde "1" (295) no mesmo segundo; o script grava a pergunta cerca de 1 s
+    DEPOIS de o laço gravar o "1". A ordem do chat diz que a pergunta veio antes: casa. O teto `enviada_em <=
+    recebida_em` cortava esse caso."""
+    c, agora = _escolha(tmp_path)
+    t0 = agora[0]
+    agora[0] = t0 + timedelta(seconds=1)
+    c.repo.registrar_enviada("294", "ana", fato="escolha:294:1-2-3")
+    agora[0] = t0
+    await c.volta(_dono(5, "1", 295))
+    assert c.linha(5)["alvo"] == "escolha:294"
+
+
+@pytest.mark.parametrize("campo", [{"forward_origin": {"type": "user", "date": 1}}, {"forward_date": 1}])
+async def test_a_mensagem_encaminhada_nao_casa_com_a_escolha(tmp_path: Path, campo: dict[str, object]) -> None:
+    """O dono encaminha um "1" que outra pessoa escreveu: não é a resposta dele. A marca vem da tradução
+    (`forward_origin`, ou o `forward_date` da API antiga) e fica gravada com a linha."""
+    c, agora = _escolha(tmp_path)
+    _pergunta(c, agora, 294)
+    u = _dono(5, "1", 295)
+    u["message"].update(campo)  # type: ignore[union-attr]
+    await c.volta(u)
+    linha = c.linha(5)
+    assert linha["alvo"] != "escolha:294"
+    assert (linha["estado"], linha["erro"]) == ("recusada", ERRO_CURTO_DEMAIS)
+    # a pergunta segue aberta: o "1" do próprio dono, logo depois, casa
+    await c.volta(_dono(6, "1", 296))
+    assert c.linha(6)["alvo"] == "escolha:294"

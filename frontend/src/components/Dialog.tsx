@@ -55,7 +55,6 @@ export function Dialog({ open, onClose, title, icon: Icon, tone, size = 'sm', fo
       ref={ref}
       className={cx(styles.dialog, size === 'md' && styles.dialogMd, size === 'lg' && styles.dialogLg, tone && toneClass(tone))}
       aria-labelledby={titleId}
-      aria-busy={closeBlockedReason ? true : undefined}
       onCancel={(e) => {
         e.preventDefault();
         fechar();

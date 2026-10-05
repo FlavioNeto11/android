@@ -42,6 +42,9 @@ UNSAFE_TO_REPLAY = {"press_back", "press_home", "drag"}        # dependem do est
 UNSAFE_TO_REPLAY |= {"type_secret", "open_url"}
 SELECTOR_RANK = ("rid+text", "rid+desc", "rid", "desc", "text")
 QUARANTINE_AFTER = 3
+#: 30.80: a receita que "não se aplicou" (tela de partida diferente na ação 1, etapa comprovada pela IA) não conta como
+#: falha; a N-ésima SEGUIDA conta, para um 1º seletor quebrado (atualização do app) não ficar isento para sempre.
+NAO_APLICAVEL_CONTA_APOS = 3
 MAX_ACTIONS = 8
 TEMPLATE_RE = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
 
@@ -50,6 +53,11 @@ log = logging.getLogger("poc.receitas")
 
 class RecipeDiverged(Exception):
     pass
+
+
+class AlvoAusente(RecipeDiverged):
+    """30.80: o alvo da ação não está nesta tela. Na AÇÃO 1, antes de a receita agir, é a tela de partida que é outra
+    (a r-20261005133833-122345 partiu de dentro de uma conversa), não a receita que errou: o executor decide se conta."""
 
 
 # ------------------------------------------------------------------ funil medido (adendo v0.20, C5)
@@ -412,6 +420,16 @@ def resolve_selectors(tree: UiTree, selectors: list[dict[str, str]], variables: 
     return None
 
 
+def _alvo_ambiguo(tree: UiTree, selectors: list[dict[str, str]], variables: dict[str, str]) -> bool:
+    """30.80: algum seletor casou MAIS de um elemento habilitado (o que `resolve_selectors` recusou por ambíguo)."""
+    for sel in selectors:
+        text = retemplate(sel["text"], variables) if "text" in sel else None
+        desc = retemplate(sel["desc"], variables) if "desc" in sel else None
+        if len([e for e in _match(tree, sel.get("rid"), text, desc) if e.enabled]) > 1:
+            return True
+    return False
+
+
 # ------------------------------------------------------------------ destilação
 def distill(action_rows: list[Row], variables: dict[str, str]) -> tuple[list[dict[str, Any]] | None, str]:
     """Ações executadas pela IA numa tentativa limpa → receita. Devolve (ações | None, motivo)."""
@@ -498,7 +516,28 @@ def distill_training(inputs: list[dict[str, Any]], variables: dict[str, str], *,
     for i, e in enumerate(inputs):
         tipo = e["type"]
         if tipo == "key":
-            return None, f"tecla {e.get('key_name')} depende do estado de quem ensinou"
+            tecla = e.get("key_name")
+            # Apagar COLADO ao texto que vem depois é ruído: a receita digita com `clear_first=True`, que já limpa o
+            # campo (31.84; o painel digita sem limpar, e quem ensina apagava um caractere por vez). Só vale a
+            # sequência contígua de `delete` seguida DIRETAMENTE de um `text`: com toque, arraste ou outra tecla no
+            # meio, o apagar pode ter sido em outro campo, e a receita (que limpa só o do texto) divergiria do ensinado
+            # sem avisar. Nos demais casos a tecla muda o resultado e segue recusando (etapa sem receita).
+            if tecla == "delete":
+                j = i + 1
+                while j < len(inputs) and inputs[j]["type"] == "key" and inputs[j].get("key_name") == "delete":
+                    j += 1
+                # ...e só quando AQUELE texto foi enviado limpando o campo (`key_name == "clear_first"`, ver o gravador):
+                # aí os apagar de antes não mudam o resultado. Sem isso o apagar foi parcial ("Olá Maria" → apaga 5 →
+                # nome) e a receita, que limpa tudo, divergiria do ensinado: depende do conteúdo anterior.
+                if j < len(inputs) and inputs[j]["type"] == "text" and inputs[j].get("key_name") == "clear_first":
+                    continue
+            # Enter colado ao texto que acabou de ser digitado é o "enviar" daquele campo: vira `press_enter` da própria
+            # ação de digitar. Enter solto age sobre um campo que a receita não conhece e segue recusando.
+            if tecla == "enter" and i > 0 and inputs[i - 1]["type"] == "text" and out and out[-1]["tool"] == "type_text":
+                out[-1]["args"]["press_enter"] = True
+                continue
+            # back, home, recents (e o resto) dependem do estado de quem ensinou.
+            return None, f"tecla {tecla} depende do estado de quem ensinou"
         if tipo == "swipe":
             dy = (e.get("y2") or 0) - (e.get("y") or 0)
             pending_scrolls.append("down" if dy < 0 else "up")          # dedo sobe = conteúdo rola para baixo
@@ -585,7 +624,10 @@ class Replayer:
                     return Decision(tool="scroll", args={"rationale": f"{tag} (rolando até o alvo aparecer)",
                                                          "direction": hint["direction"], "element_id": None,
                                                          "expect_done": False})
-                raise RecipeDiverged(f"ação {self.idx + 1} ({act['tool']}): alvo ausente ou ambíguo nesta tela")
+                # 30.80: só o alvo AUSENTE pode ser a tela de partida errada; o seletor que casa mais de um elemento
+                # deixou de ser único, e isso é defeito da receita (a mesma mensagem, para o motivo casar igual).
+                erro = RecipeDiverged if _alvo_ambiguo(tree, act["selectors"], self.variables) else AlvoAusente
+                raise erro(f"ação {self.idx + 1} ({act['tool']}): alvo ausente ou ambíguo nesta tela")
             filho = next((s for s in act["selectors"] if s.get("via") == "filho"), None)
             if filho is not None and not toque_no_filho_cai_no_conteiner(tree, el, filho.get("conteiner")):
                 raise RecipeDiverged(f"ação {self.idx + 1} ({act['tool']}): o toque no rótulo não cairia no contêiner "
@@ -783,6 +825,28 @@ class RecipeStore:
                            " AND variant=? AND step_hash=? AND status=? ORDER BY version DESC LIMIT 1",
                            (package, app_version, signature, variant, step_hash, status))
 
+    def chave_ocupada(self, package: str, app_version: str, step_hash: str, *, signature: str = "",
+                      variant: str = "") -> bool:
+        """A chave já tem receita ATIVA ou `validated` (o que o `save` nunca substitui)? Só lê: a prévia do treino
+        (31.86) usa isto para dizer "já havia receita" sem gravar, e o `save` usa a MESMA conta — uma regra só."""
+        return (self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None
+                or self._com_status("validated", package, app_version, step_hash, signature=signature,
+                                    variant=variant) is not None)
+
+    def caminho_vetado(self, receita: ReceitaVista) -> bool:
+        """Uma PESSOA desligou este caminho e o sistema não o traz de volta (`ouvinte.vetada`)? Só lê; sem ouvinte,
+        nunca. É a conta que o `save` aplica a quem não é treino, e que o reparo do treino (31.86) aplica também."""
+        return self.ouvinte is not None and self.ouvinte.vetada(receita)
+
+    def status_da_chave(self, package: str, app_version: str, step_hash: str, *, signature: str = "",
+                        variant: str = "") -> str | None:
+        """O status da versão mais nova que a chave já teve, de QUALQUER status (`None`: chave virgem). Só lê. O
+        reparo do treino (31.86) só grava em chave virgem: o `save` do treino pula o veto e põe uma ativa nova no lugar
+        da quarentena, o que ressuscitaria o caminho que o aprendizado rebaixou ou que uma pessoa desligou."""
+        return self.db.scalar("SELECT status FROM recipes WHERE app_package=? AND app_version=? AND app_signature=?"
+                              " AND variant=? AND step_hash=? ORDER BY version DESC, id DESC LIMIT 1",
+                              (package, app_version, signature, variant, step_hash))
+
     def save(self, *, package: str, app_version: str, step_hash: str, step_key: str, actions: list[dict[str, Any]],
              learned_from: str, signature: str = "", variant: str = "", candidate: bool = False,
              replaces: int | None = None, heranca: str | None = None) -> int | None:
@@ -817,10 +881,7 @@ class RecipeStore:
                     self._avisar(replaces, "candidate", "superseded",
                                  "divergiu; o caminho da IA serve a qualquer valor e vai para a chave genérica")
                     replaces = None
-            if self._ativa(package, app_version, step_hash, signature=signature, variant=variant) is not None:
-                return None
-            if self._com_status("validated", package, app_version, step_hash, signature=signature,
-                                variant=variant) is not None:
+            if self.chave_ocupada(package, app_version, step_hash, signature=signature, variant=variant):
                 return None
             em_prova = self._candidata(package, app_version, step_hash, signature=signature, variant=variant)
             if candidate and em_prova is not None and em_prova["id"] != replaces:
@@ -832,7 +893,7 @@ class RecipeStore:
                 # execução. Fica a candidata, com a prova já recomeçada pela divergência.
                 return None
             gravadas = dumps(actions)
-            if self.ouvinte is not None and not treino and self.ouvinte.vetada(ReceitaVista(
+            if not treino and self.caminho_vetado(ReceitaVista(
                     package=package, app_version=app_version, signature=signature, variant=variant,
                     step_hash=step_hash, actions=gravadas, learned_from=learned_from)):
                 return None
@@ -871,12 +932,18 @@ class RecipeStore:
         """
         metricas.contar("receita.reproducao", resultado="ok" if ok else "divergiu")
         if ok:
-            self.db.execute("UPDATE recipes SET replay_ok=replay_ok+1, consecutive_fail=0, last_used_at=? WHERE id=?",
-                            (now_iso(), recipe_id))
-            return False
-        with self.db.tx():
-            self.db.execute("UPDATE recipes SET replay_fail=replay_fail+1, consecutive_fail=consecutive_fail+1,"
+            self.db.execute("UPDATE recipes SET replay_ok=replay_ok+1, consecutive_fail=0, nao_aplicavel_seguidas=0,"
                             " last_used_at=? WHERE id=?", (now_iso(), recipe_id))
+            return False
+        return self._falhou(recipe_id, zera_serie=True)
+
+    def _falhou(self, recipe_id: int, *, zera_serie: bool) -> bool:
+        """A falha comum: `replay_fail`, `consecutive_fail` e a quarentena. `zera_serie=False` só na falha que VEM da
+        série de "não se aplicou" (30.80): zerá-la ali faria a série recomeçar e a quarentena chegar só na 9ª."""
+        serie = ", nao_aplicavel_seguidas=0" if zera_serie else ""
+        with self.db.tx():
+            self.db.execute("UPDATE recipes SET replay_fail=replay_fail+1, consecutive_fail=consecutive_fail+1"
+                            f"{serie}, last_used_at=? WHERE id=?", (now_iso(), recipe_id))
             row = self.db.one("SELECT consecutive_fail, status FROM recipes WHERE id=?", (recipe_id,))
             if row and row["consecutive_fail"] >= QUARANTINE_AFTER:
                 self.db.execute("UPDATE recipes SET status='quarantined' WHERE id=?", (recipe_id,))
@@ -885,6 +952,24 @@ class RecipeStore:
                                  f"{QUARANTINE_AFTER} falhas seguidas ao reproduzir")
                 return True
         return False
+
+    def nao_aplicavel(self, recipe_id: int) -> tuple[bool, bool]:
+        """30.80: a receita divergiu na AÇÃO 1 por alvo ausente (a tela de partida era outra) e a etapa terminou
+        comprovada pela IA. Não é veredito sobre ela: nem `replay_ok` nem `replay_fail`, e `consecutive_fail` fica como
+        está. A partir da `NAO_APLICAVEL_CONTA_APOS`-ésima seguida, CADA uma conta como falha comum (`replay_fail`,
+        `consecutive_fail`, quarentena), sem zerar a série: um 1º seletor quebrado de vez chega à quarentena na 5ª
+        (3ª, 4ª e 5ª contam). Só o ok e a falha comum zeram a série.
+
+        Devolve `(contou_como_falha, entrou_em_quarentena)`."""
+        with self.db.tx():
+            self.db.execute("UPDATE recipes SET nao_aplicavel_seguidas=nao_aplicavel_seguidas+1, last_used_at=?"
+                            " WHERE id=?", (now_iso(), recipe_id))
+            seguidas = int(self.db.scalar("SELECT nao_aplicavel_seguidas FROM recipes WHERE id=?", (recipe_id,)) or 0)
+        if seguidas < NAO_APLICAVEL_CONTA_APOS:
+            metricas.contar("receita.reproducao", resultado="nao_aplicavel")
+            return False, False
+        metricas.contar("receita.reproducao", resultado="divergiu")
+        return True, self._falhou(recipe_id, zera_serie=False)
 
     def shadow(self, recipe_id: int, agreed: bool, *, promote_after: int, simulada: bool = False) -> bool:
         """Veredito da sombra de UMA execução da etapa. Devolve True se a candidata foi promovida a ativa agora.

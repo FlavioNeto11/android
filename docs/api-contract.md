@@ -1098,6 +1098,8 @@ campo.
 | `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
 | `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[]}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo) |
+| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
+| `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
@@ -6337,6 +6339,126 @@ Chave aditiva no objeto `parecer` de cada revisão do curador, que é a `learnin
 - O painel pode ignorar a chave. Ausente também quer dizer backend de antes do 30.73.
 - **Prova:** `simulated` (`backend/tests/test_curador_classe_b.py`).
 
+## Adendo v1.54 (05/10/2026; número da orquestradora; item 30.75) — a prova sem evidência diz a causa
+
+Valores aditivos de `motivo` nos pedidos de validação (`GET /api/aprendizado/validacoes`, `itens[].motivo`, e
+`contagem` por estado sem mudança):
+- `orcamento_da_prova`: um teto de IA (o do pedido, `teto_usd`, ou o do dia) encerrou a execução da prova no meio: a
+  última tentativa dela terminou pelo teto. O gasto (`usd`) não deixou evidência no fluxo.
+- `app_sem_sessao`: o app pediu login no aparelho escolhido, e a prova parou ali. O aparelho sai dos candidatos das
+  próximas provas daquele app até a próxima verificação do app nele (que confere a instalação, não a sessão: a de
+  rotina, ao ligar com mais de 24 h, também solta) ou até um objetivo concluído num fluxo do mesmo app nele.
+- Os dois valem só para execução de PROVA (`prova_fluxo_id`). O estoque `sem_evidencia` de execução comum (antes do
+  30.37) segue `sem_evidencia`.
+- Os dois saem do mesmo lugar que `sem_evidencia`: o pedido de fluxo que fecha sem evidência a favor nem contra.
+  - O pedido já fechado `sem_evidencia` pode passar a um deles, uma vez, pelo passo da curadoria.
+  - Nenhum dos dois é chegada do curador.
+- O texto para a pessoa vem do servidor (`MOTIVO_HUMANO`), como os demais. O painel não precisa de mudança.
+- **Prova:** `simulated` (`backend/tests/test_validacao_motivos_da_prova.py`).
+
+## Adendo v1.56 (05/10/2026; número da orquestradora; item 31.84) — `clear_first` na entrada manual de texto
+
+`POST /api/instances/{id}/input` (`ManualInput`), campo aditivo:
+- `clear_first: boolean` (padrão `false`), só para `type:'text'`; nos outros tipos é ignorado. Com `true`, o campo em
+  foco é limpo antes de digitar (o mesmo `type_text(clear_first=True)` da reprodução da receita; o `type_text` da sessão
+  de automação engole a falha do `clear()` e acaba acrescentando, e quem pega isso é a pós-condição da etapa). Com
+  `clear_first:true` e `type` diferente de `text`: `422` (validação do corpo). Com `false` ou
+  ausente, o comportamento é o de antes: o texto acrescenta ao que já está no campo.
+- Sem a sessão de automação do aparelho conectada (caminho do ADB `input text`, que só acrescenta), `clear_first:true`
+  responde `400 {code:'bad_input'}` em vez de digitar sem limpar. A recusa da senha na loja continua antes de tudo.
+- Na leitura das sessões de treino (`GET /api/training/{id}`, `inputs[]`), numa entrada de tipo `text` o campo `key_name`
+  com o valor `clear_first` é a marca de que o texto foi enviado limpando o campo; vai para coluna própria numa migração
+  futura.
+- O que o modo treinamento grava não muda: uma entrada `text` comum. A destilação passou a tratar `delete` antes de
+  `text` como ruído e `enter` logo após o `text` como `press_enter` (ver "Teclas ao ensinar" em
+  `docs/dominios/perfis-e-instagram.md`).
+- O painel pode ignorar o campo. Ausente também quer dizer backend de antes do 31.84.
+- Item 31.85, sem campo novo: ENQUANTO HÁ GRAVAÇÃO do treinamento, o quadro informado que é o MAIS RECENTE do backend
+  é aceito mesmo acima da idade máxima (cada entrada gravada lê a hierarquia antes de agir e deixa o aparelho lento; na
+  medida de 05/10 as 15 teclas seguintes a um toque de 24 s voltaram `stale_frame`). Continuam em `409 stale_frame` (ou
+  `capture_failing`): quadro velho quando já existe um mais novo (a pessoa clicou numa imagem antiga), a captura com falha
+  registrada, quadro com mais de 60 s (captura travada) e TODO quadro velho fora da gravação. `frame_mismatch` e quadro
+  desconhecido não mudaram.
+  - A folga NÃO vale às cegas para o que age no campo em foco: com o quadro aceito só por ela, `type:'text'` e as teclas
+    `enter`/`delete` voltam `409 stale_frame` se a hierarquia lida antes da ação faltar, for de tela sensível ou tiver
+    campo de senha em foco (a pessoa vê o quadro novo e repete). Se chegou quadro novo enquanto essa hierarquia era lida,
+    qualquer entrada sob a folga volta `409 stale_frame`.
+  - Toque, toque longo e arraste sob a folga só passam se o quadro informado foi capturado DEPOIS da última entrada
+    manual com efeito (o quadro só é o "mais recente" porque a captura ainda não rodou depois dela; o segundo toque sobre
+    ele cairia na tela nova com a coordenada da velha): senão `409 stale_frame`, e a pessoa espera a imagem nova. O
+    carimbo da entrada vale também quando a ação levanta (o toque que estoura o prazo segue rodando no aparelho) e numa
+    recusa anterior ao despacho: custa uma recusa a mais sob a folga, o lado seguro.
+- **Prova:** `simulated` (`backend/tests/test_treino_teclas_na_destilacao.py`, `backend/tests/test_treino_quadro_velho.py`).
+  `real`: `not_run`.
+
+## Adendo v1.57 (05/10/2026; número da orquestradora; item 31.83) — o `save` do treinamento recusa a proposta que nunca funcionaria
+
+`POST /api/training/{session_id}/save` confere a proposta ANTES de gravar (fluxo, escopo, receita, status da sessão).
+Novos 400, no formato de sempre (`detail: {code, message}`; a mensagem diz o que corrigir). Os códigos antigos
+(`no_proposal`, `invalid_command`, `ambiguous_command`, `unknown_profile`, `unknown_group`, `capability_required`) e o 409
+`duplicate_command` ficam como estavam:
+- `etapa_invalida`: etapa sem `key`, com `key` repetida ou fora de `^[a-z][a-z0-9_]{1,40}$`, sem `title` e `goal`, ou com
+  `postcondition.kind` inválido. Antes: 500.
+- `parametro_fora_do_comando`: parâmetro em `parameters` que o `command_template` não usa.
+- `parametro_nao_declarado`: `{x}` no comando sem parâmetro declarado (`instance_id`, `run_id` e `account_label` não contam).
+- `comando_generico`: o comando não começa por palavra fixa (ex.: `{pedido} no instagram`), ou tem menos de 2 palavras ou de 6 letras/dígitos fixos fora das chaves. `ligue para {contato}` passa; `siga {perfil}` não.
+- `parametro_invalido`: `{…}` no comando que não é nome válido (minúsculas, sem acento, números e `_`), ou `{`/`}` sem par (`abra {contato`).
+- `entrada_duplicada`: entrada em duas etapas, ou em uma etapa e em `discarded`; a mensagem lista os `#seq`. Repetida só dentro de `discarded` não recusa: fica a primeira.
+- `entrada_inexistente`: `seq` numa etapa ou em `discarded` que não está entre as entradas gravadas (31.95); a mensagem lista os `#seq`.
+- `pos_condicao_vazia`: etapa com `side_effect` sem `postcondition.value` nem `description` (salvo ação de catálogo).
+- `entradas_sem_etapa`: entrada gravada fora de `steps[].inputs` e de `discarded`; a mensagem lista os `#seq`.
+- `proposta_invalida`: tipo errado: `steps`/`parameters`/`discarded` que não é lista, item de `discarded` sem `seq` inteiro, `summary`/`app_id` que não é texto.
+- `etapa_invalida` cobre também `side_effect` que não é booleano (o texto "false" contaria como verdadeiro), `inputs` que não é lista de inteiros, `bindings` que não é lista de objetos e `title`/`goal`/`value`/`description` que não é texto.
+- Os códigos `entradas_sem_etapa`, `entrada_duplicada`, `entrada_inexistente`, `parametro_fora_do_comando`, `parametro_nao_declarado`, `pos_condicao_vazia`, `etapa_invalida` e `proposta_invalida` terminam a mensagem com "Peça uma nova proposta à IA." (a tela ainda não edita etapas; 31.90).
+
+Campo aditivo na resposta de sucesso: `warnings: string[]` (vazio quando não há), com as etapas sem efeito aceitas sem
+descrição de pós-condição (o objetivo serviu de critério). O painel pode ignorá-lo.
+- **Prova:** `simulated` (`backend/tests/test_treino_validacao_do_salvar.py`).
+
+## Adendo v1.58 (05/10/2026; número da orquestradora; item 31.86 B) — prévia do salvar e refazer as receitas do treino
+
+Duas rotas novas e uma regra de gravação; nada muda nas existentes além do `reason` das etapas fora do ar.
+- `POST /api/training/{session_id}/preview`, corpo igual ao do `save` (`TrainingSaveBody`, `extra="forbid"`).
+  - Roda a mesma conferência e a mesma destilação do `save`, e NÃO escreve nada: nem fluxo, escopo, receita, status da
+    sessão nem evento de log. Mesmos erros do `save`: os 400 do adendo v1.57 e os de sempre, o 409 `closed` (já salva) e
+    o 409 `duplicate_command` (comando de fluxo ou habilidade publicada), todos antes de gravar.
+  - 200: `{steps: [{key, title, recipe, reason}], warnings: string[]}`. `recipe: true` quer dizer "seria gravada"
+    (`reason` "receita será gravada ao salvar"); `false` traz o motivo literal da destilação (ex.: tecla que depende
+    do estado de quem ensinou, texto sigiloso, alvo sem seletor estável), ou "já havia receita ativa para esta etapa",
+    ou o que falta do aparelho (abaixo). Nunca leva as ações da receita nem texto digitado.
+  - Com o aparelho no ar, a primeira prévia pode levar o tempo de uma leitura do aparelho (versão do app e variante);
+    as seguintes usam o cache.
+- `POST /api/training/{session_id}/recipes`, sem corpo: refaz a destilação de uma sessão JÁ salva e grava a receita das
+  etapas que ainda não têm (origem `training:<id>`, as mesmas regras e o mesmo veto de receita ativa do `save`).
+  - 200: `{session, flow_id, steps: [{key, title, recipe, reason}], created: int}`; `created` conta as receitas
+    gravadas nesta chamada. Idempotente: a segunda chamada devolve `created: 0` ("já havia receita ativa").
+  - Só grava em chave VIRGEM (nenhuma receita da chave, de qualquer status): onde a chave já teve receita em
+    quarentena, desligada ou substituída, a etapa sai com `recipe: false` e `reason` "a chave já teve receita (status X)",
+    porque o `recipes.save` do treino trocaria a quarentena por uma ativa nova e ressuscitaria o caminho que o
+    aprendizado rebaixou. O `save` normal não muda de política.
+  - 409 `sessao_nao_salva` (sem `flow_id`), 409 `fluxo_inexistente` (a habilidade foi apagada), 409 `fluxo_desligado`
+    (a habilidade está desligada), 404 `not_found`.
+- Aparelho fora do ar no `save`/prévia/reparo: a identidade da receita (versão do app, idioma e densidade) vem do que a
+  última leitura deixou; se faltar, a etapa fica sem receita com o `reason` "aparelho do treinamento fora do ar e <o que
+  falta> ainda não foi lido… Refaça as receitas quando ele voltar". O painel chama `/recipes` nesse caso.
+- **Prova:** `simulated` (`backend/tests/test_treino_previa_e_refazer_receitas.py`); `real`: `not_run`.
+
+## Adendo v1.60 (05/10/2026; número da orquestradora; item 30.80) — a receita que não se aplicou não conta como falha dela
+
+Mudanças aditivas; o painel não muda.
+- `GET /api/recipes` (e toda leitura que devolve a linha da receita) ganha `nao_aplicavel_seguidas: integer`
+  (migração 115, padrão `0`).
+  - Conta as vezes seguidas em que a receita "não se aplicou": divergiu na AÇÃO 1, antes de agir, por alvo ausente
+    na tela (não ambíguo), e a etapa terminou comprovada pela IA. Nesses casos nem `replay_ok` nem `replay_fail` mudam.
+  - Da 3ª seguida em diante, cada uma conta como falha comum (`replay_fail`, `consecutive_fail` e a quarentena de
+    sempre), sem zerar a série.
+  - O ok, a falha comum, o `PUT /api/recipes/{id}` e a reativação pelo livro zeram.
+- O evento `decision` desse caso diz "tela de partida diferente" e leva no `data`, além de `text`:
+  `kind: "receita_nao_aplicavel"`, `recipe_id`, `step_id` e `contou_como_falha: boolean` (`true` da 3ª seguida em diante).
+- A etapa fica com `driven_by: "ai"` quando não contou (nenhuma ação da receita rodou), e `"recipe+ai"` quando contou.
+- A métrica `receita.reproducao{resultado}` (em `GET /api/desempenho`) ganha o valor `nao_aplicavel`, um por tentativa
+  que não contou; a que contou sai como `divergiu`. Continua um veredito por tentativa.
+- **Prova:** `simulated` (`backend/tests/test_receita_nao_aplicavel.py`).
 ## Adendo v1.61 (05/10/2026; número da orquestradora; item 30.80 B) — o ensinado que o sistema tirou de uso avisa
 
 Dois tipos novos de evento, persistidos e sem aparelho. São aditivos: o painel não muda, e quem os traduz para o dono é a
