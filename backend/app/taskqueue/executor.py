@@ -18,9 +18,8 @@ import time
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Awaitable, Callable, Protocol, Sequence, TypeVar
-from urllib.parse import unquote
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from pydantic import BaseModel
 
 from ..automation import conhecimento_de_telas as telas_do_app
@@ -32,6 +31,7 @@ from ..automation.tools import (CONTROL_TOOLS, EFFECT_CAPABLE, TOOLS, ReadValue,
                                 TelaDeContaTravada, ToolContext, ToolValidationError, esperar_foco, execute_tool,
                                 looks_like_commit, resolve_point, urls_do_texto, validate_call)
 from ..config import AiCfg, Config, LimitsCfg
+from ..security.enderecos import endereco_para_o_prompt, enderecos_limpos
 from ..shared.vinculos import tem_vinculo_ativo
 from ..devices.adb import AVISO_DE_ANR, MorteDoApp, motivo_de_anr
 from ..devices.conta_observada import evidencia_legivel
@@ -182,62 +182,42 @@ def _host(url_ou_texto: str) -> str:
     return t.split("/", 1)[0].split("#", 1)[0].split("?", 1)[0].rsplit("@", 1)[-1].split(":", 1)[0]
 
 
-#: 31.52: o que torna o 1º pedaço do caminho opaco (link de redefinição, convite, sessão): UUID, JWT, ou 16+ caracteres
-#: de token (letras, dígitos e `_-=.`) com pelo menos um dígito. Um slug sem dígito ("como-fazer-bolo") fica.
-_UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
-_JWT = re.compile(r"[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+")
-_TRECHO_DE_TOKEN = re.compile(r"[A-Za-z0-9_\-=.]{16,}")
-#: `usuario@` ou `usuario:senha@` antes do host. A senha pode ter `/`, `?`, `#` e `@`; o `@` que fecha o usuário é o
-#: que deixa depois dele um host sem `@` até o primeiro `/`, `?`, `#` ou o fim. `:dígitos` seguido de `/`, `?`, `#` ou
-#: do fim é a porta, não senha (revisão 15c: sem isso, `site:8080/perfil/pessoa@exemplo` virava o host `exemplo`).
-_USUARIO_NA_URL = re.compile(r"^[^/@:?#\s]+(?::(?!\d+(?:[/?#]|$))\S*?)?@(?=[^/?#@\s]+(?:[/?#]|$))")
-#: Teto do texto que a limpeza lê: as regex abaixo são lineares nesse tamanho, e o histórico não precisa de mais.
-_TETO_DO_TEXTO = 2000
+def imagem_com_barra_tapada(jpeg: bytes, tree: UiTree, pacote: str | None, largura: int,
+                            altura: int) -> bytes | None:
+    """31.54: a imagem (já no tamanho do modelo) com a barra de endereço do navegador tapada por um retângulo opaco,
+    pelos bounds da `url_bar` na árvore (coordenadas do aparelho, `largura` x `altura`). `None` quando não há o que
+    tapar com segurança: pacote sem barra conhecida, barra fora da árvore ou sem área. Quem chama manda a imagem como
+    está e registra o motivo."""
+    barra = BARRA_DE_ENDERECO.get(pacote or "")
+    alvo = next((e for e in tree.elements if barra is not None and e.resource_id == barra), None)
+    if alvo is None or largura <= 0 or altura <= 0:
+        return None
+    x1, y1, x2, y2 = alvo.bounds
+    if x2 <= x1 or y2 <= y1:
+        return None
+    with Image.open(io.BytesIO(jpeg)) as img:
+        img = img.convert("RGB")
+        fx, fy = img.width / largura, img.height / altura
+        ImageDraw.Draw(img).rectangle((int(x1 * fx), int(y1 * fy), int(x2 * fx + 0.999), int(y2 * fy + 0.999)),
+                                      fill=(0, 0, 0))
+        buf = io.BytesIO()
+        img.save(buf, "JPEG", quality=72)
+    return buf.getvalue()
 
 
-def _pedaco_opaco(pedaco: str) -> bool:
-    if len(pedaco) > 200:              # longo assim é opaco, e as regex abaixo crescem com o quadrado do tamanho
-        return True
-    p = unquote(pedaco)
-    return ("@" in p or bool(_UUID.search(p)) or bool(_JWT.search(p))
-            or any(any(ch.isdigit() for ch in m.group(0)) for m in _TRECHO_DE_TOKEN.finditer(p)))
+def linha_da_recusa_do_juiz(onde: str, texto: str) -> str:
+    """31.54 (U1 da revisão): a linha do histórico do ator quando o juiz conferiu a tela e recusou. Com a barra sem
+    tapar (o padrão), o juiz pode transcrever a URL da imagem; ela vai limpa (`enderecos_limpos`) ao histórico, que
+    volta ao ator e chega ao `attempts.error` pelo `fail_or_retry`."""
+    return (f"(executor) {onde}: o verificador conferiu a tela e a pós-condição NÃO está comprovada: "
+            f"{enderecos_limpos(texto)[:300]}. Continue a partir da tela atual.")
 
 
-def endereco_para_o_prompt(texto: str) -> str:
-    """31.52: um endereço como ele vai à IA (árvore, histórico do ator) e ao diagnóstico: o host e o 1º pedaço do
-    caminho; o resto do caminho vira `/…`, a query `?…` e o fragmento `#…`.
-
-    O redator pega segredo no formato que conhece (`senha=…`), não dado pessoal nem `?code=`, `token=`, e-mail em
-    `%40`, UUID, JWT ou base64url no caminho de um link de redefinição ou convite (revisão da orquestradora, 04/10:
-    uma lista de formatos sempre deixa um passar). O 1º pedaço também vira `…` se, decodificado, tiver `@` ou casar
-    `_pedaco_opaco`. Usuário e senha antes do host somem. É o que o ator precisa para saber em que site e seção está."""
-    t = (texto or "").strip()[:_TETO_DO_TEXTO]
-    esquema = ""
-    if "://" in t:
-        esquema, t = t.split("://", 1)
-        esquema += "://"
-    t = _USUARIO_NA_URL.sub("", t, count=1)
-    cauda = ""
-    for marca in ("?", "#"):
-        if marca in t:
-            t, _ = t.split(marca, 1)
-            cauda = cauda or f"{marca}…"
-    host, barra, caminho = t.partition("/")
-    if not barra:
-        return esquema + host + cauda
-    primeiro, _, resto = caminho.partition("/")
-    primeiro = "…" if primeiro and _pedaco_opaco(primeiro) else primeiro
-    return esquema + host + "/" + primeiro + ("/…" if resto else ("/" if caminho.endswith("/") else "")) + cauda
-
-
-#: Um endereço no meio de um texto (erro do driver, resultado de ação): com esquema, `www.`, ou host com `/` ou `?`.
-_URL_NO_TEXTO = re.compile(r"(?:https?://|\bwww\.)[^\s'\"<>]+|\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?=[/?])[^\s'\"<>]*", re.I)
-
-
-def enderecos_limpos(texto: str) -> str:
-    """31.52: o texto com cada endereço passado por `endereco_para_o_prompt` (histórico do ator). Cortado em
-    `_TETO_DO_TEXTO` antes da regex: um erro do driver com um blob de 100 mil caracteres travava o laço por minutos."""
-    return _URL_NO_TEXTO.sub(lambda m: endereco_para_o_prompt(m.group(0)), (texto or "")[:_TETO_DO_TEXTO])
+def linha_do_valor_lido(nome: str, valor: str, faltam: Sequence[str]) -> str:
+    """A linha do histórico do ator depois de um `read_value` lido da árvore. 31.54: o valor que é URL vai limpo
+    (`enderecos_limpos`); a saída da etapa guarda o valor como foi lido, que é o que a pessoa pediu."""
+    return (f"read_value({nome}) → lido: {enderecos_limpos(valor)[:120]}"
+            + (f"; faltam: {', '.join(faltam)}" if faltam else "; todos os valores da etapa lidos"))
 
 
 def _arvore_com_endereco_limpo(tree: UiTree, pacote: str | None) -> UiTree:
@@ -1170,6 +1150,15 @@ class StepExecutor:
                 buf = io.BytesIO()
                 Image.open(io.BytesIO(jpeg)).resize((w, h)).save(buf, "JPEG", quality=72)
                 jpeg = buf.getvalue()
+        if jpeg and (ai or self.cfg.file.ai).tapar_barra_de_endereco and (obs.package or "") in BARRA_DE_ENDERECO:
+            # 31.54: a barra do Chrome mostra a URL inteira; tapada na imagem, o ator lê o endereço pela árvore limpa
+            tapada = imagem_com_barra_tapada(jpeg, obs.tree, obs.package, obs.width, obs.height)
+            if tapada is None:
+                metricas.contar("executor.barra_tapada", resultado="sem_bounds")
+                log.info("31.54: a barra de endereço não tem bounds na árvore; a imagem vai como está")
+            else:
+                metricas.contar("executor.barra_tapada", resultado="tapada")
+                jpeg = tapada
         ocultar = (UI_DO_NAVEGADOR.get(obs.package or "", frozenset())
                    if (ai or self.cfg.file.ai).podar_ui_do_navegador else frozenset())
         podados = sum(1 for e in obs.tree.elements if e.resource_id in ocultar) if ocultar else 0
@@ -2053,8 +2042,7 @@ class StepExecutor:
                 # seguem no veredito guardado.
                 veredito_antecipado = v
                 return True
-            history.append(f"(executor) {onde}: o verificador conferiu a tela e a pós-condição NÃO está comprovada: "
-                           f"{texto_v[:300]}. Continue a partir da tela atual.")
+            history.append(linha_da_recusa_do_juiz(onde, texto_v))
             repo.decision(f"{iid} · {step.title}: o verificador não comprovou a pós-condição {onde}; o ator segue "
                           "nesta mesma tentativa", run_id=run_id, instance_id=iid, step_id=step.id)
             return False
@@ -2683,8 +2671,7 @@ class StepExecutor:
                                                "origem": "arvore"},
                                        target=_safe_target(alvo, obs.tree))
                     faltam = faltam_saidas()
-                    history.append(f"read_value({args.name}) → lido: {como_texto(valor, args.value_kind)[:120]}"
-                                   + (f"; faltam: {', '.join(faltam)}" if faltam else "; todos os valores da etapa lidos"))
+                    history.append(linha_do_valor_lido(args.name, como_texto(valor, args.value_kind), faltam))
                     repo.decision(f"{iid} · {step.title}: valor '{args.name}' lido da tela ({args.value_kind}, "
                                   f"{len(valor)} caractere(s))", run_id=run_id, instance_id=iid, step_id=step.id)
                 faltam = faltam_saidas()
@@ -3149,6 +3136,11 @@ class StepExecutor:
             return dataclasses.replace(desfecho, ai_error_kind=exc.kind)
         except DriverError as exc:
             return await fail_or_retry(f"Verificação não pôde ser feita: {exc}", last_obs)
+        # 31.54 (U1b da revisão): com a barra sem tapar, o juiz pode transcrever a URL da imagem. Limpa UMA vez aqui, na
+        # fonte: o mesmo `text` vira a nota da evidência, o `detail` do desfecho (status da etapa e do objetivo,
+        # `blocked_reason`, evento, atenção, `settle_effect`) e, no sucesso, o `evidence_text`. `evidencia_da_conta` e
+        # `PARTES_EM_ELEMENTOS_DIFERENTES` casam frase e rótulo, não URL, e a limpeza guarda o host e o 1º pedaço.
+        text = enderecos_limpos(text) if text else text
         # o nível de entrega declarado pela IA em step_done não vale como prova; só o observado na verificação
         note = f"Pós-condição {'comprovada' if ok else 'NÃO comprovada'}: {text}"
         await evidence(obs, note, kind="verifier" if obs is None else "screenshot")

@@ -173,6 +173,10 @@ def test_31_52_o_historico_do_ator_leva_a_url_limpa() -> None:
     assert enderecos_limpos("sem endereço aqui") == "sem endereço aqui"
 
 
+async def _sem_espera(_s: float) -> None:
+    """O `open_url` real espera 2 s pela página; aqui não há página."""
+
+
 async def test_31_52_o_opened_url_do_open_url_real_vai_limpo_ao_historico(harness: Harness) -> None:
     """Revisão 15c: o `open_url` devolve `opened_url`, não `url`; o teste passa pelo `ToolOutcome` da ferramenta real."""
     from app.automation.tools import OpenUrl, ToolContext, execute_tool
@@ -184,7 +188,7 @@ async def test_31_52_o_opened_url_do_open_url_real_vai_limpo_ao_historico(harnes
     url = "https://contas.exemplo.test/reset/tok?token=abc123"
     ctx = ToolContext(io=rt.io, call=lambda fn, *a: rt.executor.run(fn, *a, timeout=10),
                       tree=parse_hierarchy("<hierarchy/>"), width=1, height=1, image_scale=1.0, app_package=None,
-                      app_activity=None, allowed_urls={url})
+                      app_activity=None, allowed_urls={url}, dormir=_sem_espera)
     saida = await execute_tool(ctx, "open_url", OpenUrl(url=url, rationale="teste"))
     assert saida.result == {"opened_url": url}                          # a ferramenta segue devolvendo a URL inteira
     assert _brief_result(saida.result) == "opened_url=https://contas.exemplo.test/reset/…?…"
@@ -198,6 +202,15 @@ def test_31_52_o_host_nao_e_trocado_por_porta_ou_arroba_depois_dele() -> None:
     assert limpa("site.exemplo:8080") == "site.exemplo:8080"
     assert limpa("usuario:p@ss@site.exemplo/a") == "site.exemplo/a"             # senha com `@` sai inteira
     assert limpa("usuario@site.exemplo/painel") == "site.exemplo/painel"
+    # Limite aceito (raro; o Chrome não mostra usuário e senha na barra): senha que começa com dígitos e `/` é lida
+    # como porta, o usuário fica e o host some no caminho mascarado. Nada do resto da senha nem do host passa.
+    assert limpa("https://usuario:2024/senha@site.exemplo/painel") == "https://usuario:2024/…/…"
+
+
+def test_31_54_o_corte_do_texto_longo_nao_e_silencioso() -> None:
+    from app.taskqueue.executor import enderecos_limpos
+    assert enderecos_limpos("x" * 2500) == "x" * 2000 + "…"
+    assert enderecos_limpos("curto") == "curto"
 
 
 def test_31_52_a_limpeza_e_linear_em_texto_enorme() -> None:

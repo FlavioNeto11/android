@@ -492,6 +492,21 @@ propósito: o aviso era só o TIPO do fato e o link. Desenho da sessão Ferramen
 - Fica com o ator: os 19 casos em que o app já estava na frente, dentro de uma conversa. Voltar por regra pede uma
   árvore real para medir.
 - Teste: `tests/test_caminho_rapido_2.py`, com os dois modelos e o aviso, `simulated`. `real`: not_run.
+## 2026-10-04 — 31.54: URL fora do prompt — imagem, observed_result e read_value (branch feat/31-54-url-fora-do-prompt)
+
+- O `observed_result` grava cada endereço já limpo, e o valor lido que é URL vai limpo ao histórico do ator.
+- `ai.tapar_barra_de_endereco` (desligada por padrão) põe um retângulo opaco sobre a barra do Chrome na imagem do
+  ator e do juiz; sem os bounds da barra, a imagem vai como está e a métrica diz `sem_bounds`. Liga só pelo A/B ao
+  vivo do 31.56 (sucesso igual e não mais de 20 % de decisões a mais).
+- Revisão U1: a recusa do juiz vai limpa ao histórico do ator (`linha_da_recusa_do_juiz`) e ao `attempts.error`
+  (`finish_attempt`, `note_attempt`). Os resíduos conhecidos (saída do `read_value`, recorte visual, omnibox e abas,
+  evidência) estão escritos em `docs/ia.md`.
+- Revisão U1b: o veredito final do juiz é limpo na fonte (`executor.py`, antes da nota da evidência), e com ele a nota,
+  `steps.status_detail`, `objectives.status_detail` e `blocked_reason`, o evento e o `evidence_text` do sucesso.
+  Teste da execução inteira no harness com o juiz recusando com `?token=`; falha sem o conserto.
+- A limpeza de endereços mudou para `app/security/enderecos.py`. Prova `simulated`:
+  `backend/tests/test_url_fora_do_prompt.py`.
+
 ## 2026-10-04 — 31.52: a árvore do Chrome antes da poda, por diagnóstico; a barra de endereço fica no prompt (branch feat/31-52-arvore-antes-da-poda)
 
 - `ai.diagnostico_arvore_aparelhos` vem vazia por padrão, e assim nada é gravado. Nos aparelhos de teste listados, a

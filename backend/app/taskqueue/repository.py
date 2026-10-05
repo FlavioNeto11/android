@@ -28,6 +28,7 @@ from ..modules.learning.domain.falhas import classificar_falha
 from ..modules.pedidos.domain.orcamento import teto_da_execucao
 from ..planning.catalog import session_provider_of
 from ..planning.provider import Usage
+from ..security.enderecos import enderecos_limpos
 from ..security.redaction import redact
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, parse_iso, to_iso, truncate
@@ -732,8 +733,10 @@ class Repository:
 
     def note_attempt(self, attempt_id: str, *, error: str | None = None, recovery: str | None = None) -> None:
         """Anota erro original/recuperação numa tentativa ainda em andamento."""
+        # 31.54 (U1): o erro anotado pode trazer o texto do juiz com a URL que ele leu na imagem; grava limpo.
         self.db.execute("UPDATE attempts SET error=COALESCE(?, error), recovery=COALESCE(?, recovery) WHERE id=?",
-                        (truncate(error, 800), truncate(recovery, 800), attempt_id))
+                        (truncate(enderecos_limpos(error) if error else error, 800), truncate(recovery, 800),
+                         attempt_id))
 
     def refund_attempt(self, step_id: str) -> None:
         """Interrupção sem culpa da etapa (pausa, controle manual, reinício): não consome tentativa."""
@@ -750,10 +753,15 @@ class Repository:
         nome do vocabulário declarado, nunca texto da tela.
 
         `error_kind` (RA-22): o `AIError.kind` que encerrou a tentativa (`StepOutcome.ai_error_kind`). Vai para
-        `attempts.error_kind` e decide o tipo antes do texto; sem ele (nenhum erro de IA), a coluna fica nula."""
+        `attempts.error_kind` e decide o tipo antes do texto; sem ele (nenhum erro de IA), a coluna fica nula.
+
+        `observed` (31.54): cada endereço passa por `enderecos_limpos` antes de gravar. O resultado observado é escrito
+        pela IA a partir da tela e volta no DTO e no painel; uma URL com `?code=` ou token no caminho não fica no banco."""
         atual = self.db.one("SELECT status, error, recovery FROM attempts WHERE id=?", (attempt_id,))
         anterior = atual["status"] if atual else None
-        erro = truncate(error, 800)
+        # 31.54 (U1): o `error` da recusa leva o texto do juiz (o `fail_or_retry`), que pode transcrever a URL da imagem.
+        # Volta no histórico da tentativa seguinte, no painel e no aviso: grava limpo, e o tipo é do texto gravado.
+        erro = truncate(enderecos_limpos(error) if error else error, 800)
         # A falha classificada (ADR-054): o tipo do erro FINAL, o mesmo que o COALESCE abaixo deixa gravado — o texto
         # novo ou, sem ele, o que `note_attempt` já anotou nesta tentativa. Mesmo classificador puro da leitura do
         # legado: o gravado e o retroativo nunca discordam. O `recovery` separa a interrompida que esperou a pessoa
@@ -768,7 +776,8 @@ class Repository:
             " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=?, error_kind=? WHERE id=?"
             " AND EXISTS (SELECT 1 FROM steps s WHERE s.id=attempts.step_id AND (s.claimed_by IS NULL OR"
             " s.claimed_by=?))",
-            (status.value, now_iso(), erro, truncate(recovery, 800), truncate(observed, 800),
+            (status.value, now_iso(), erro, truncate(recovery, 800),
+             truncate(enderecos_limpos(observed) if observed else observed, 800),
              tipo.value if tipo is not None else None, tela, truncate(error_kind, 40), attempt_id, self.owner_id))
         if (cur.rowcount or 0) != 1:
             linha = self.db.one("SELECT s.id, s.claimed_by FROM steps s JOIN attempts a ON a.step_id=s.id"
