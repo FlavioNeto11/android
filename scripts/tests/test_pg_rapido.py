@@ -56,6 +56,7 @@ class _Pytest:
 
 
 def test_o_conteiner_sobe_com_wal_minimo_tmpfs_de_4g_e_so_no_loopback():
+    assert "--pull=never" in pg.comando_docker_run()                  # imagem faltando é erro, não download
     cmd = pg.comando_docker_run()
     texto = " ".join(cmd)
     for c in ("wal_level=minimal", "max_wal_senders=0", "max_wal_size=256MB", "fsync=off", "full_page_writes=off",
@@ -93,6 +94,27 @@ def test_amostra_sem_conteiner_ou_saida_estranha_e_none():
     assert pg.amostrar(lambda cmd: _ok("lixo")) is None
 
 
+def test_o_rc_do_du_nao_apaga_a_amostra_e_o_aborto_ainda_dispara():
+    """A1 da leitura do #385: o `du` sai com 1 quando um arquivo some no meio; o `df` decide."""
+    def du_tropeca(cmd):
+        if "sh" in cmd:
+            return _ok(_disco(3600), rc=1)
+        return _ok("3 12 40 9\n") if "psql" in cmd else _ok()
+    a = pg.amostrar(du_tropeca)
+    assert a is not None and a.usado_mb == 3600 and pg.deve_abortar(a)
+    assert "2>/dev/null; exit 0" in [c for c in pg_comandos(du_tropeca) if "df -m" in c][0]
+    so_df = _disco(3600).splitlines()[0] + "\n105\t/var/lib/postgresql/data/pg_wal\n"   # o du da base não veio
+    b = pg.amostrar(lambda cmd: _ok(so_df) if "sh" in cmd else _ok())
+    assert b is not None and (b.wal_mb, b.base_mb) == (105, None) and pg.deve_abortar(b)
+    assert "base=?" in b.linha()
+
+
+def pg_comandos(executar):
+    vistos: list[str] = []
+    pg.amostrar(lambda cmd: (vistos.append(" ".join(cmd)), executar(cmd))[1])
+    return vistos
+
+
 def test_parte_verde_relata_aceite_contagem_pico_e_fim(tmp_path):
     saida = tmp_path / "p1.txt"
     saida.write_text("....\n5524 passed, 8 skipped in 884.68s (0:14:44)\n", encoding="utf-8")
@@ -114,9 +136,58 @@ def test_disco_acima_do_limite_mata_a_arvore_e_para_com_uma_linha(tmp_path):
     rc = pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=docker,
                         lancar=lambda arq, s: proc, dormir=lambda s: None)
     assert rc == 3
-    if pg.os.name == "nt":
-        assert ["taskkill", "/T", "/F", "/PID", "4242"] in docker.chamadas   # a árvore, não só o pai (K-099)
+    arvore = (["taskkill", "/T", "/F", "/PID", "4242"] if pg.os.name == "nt" else ["kill", "-KILL", "--", "-4242"])
+    assert arvore in docker.chamadas                                   # a árvore, não só o pai (K-099)
     assert linhas[-1].startswith("pg parte 1/1 ABORTADA pelo disco:") and "tmpfs 3600 de 4096 MB (88%)" in linhas[-1]
+    assert "ATENÇÃO" not in linhas[-1]
+
+
+def test_o_kill_que_falha_aparece_na_linha_do_aborto(tmp_path):
+    class _KillFalha(_Docker):
+        def __call__(self, cmd):
+            if cmd and cmd[0] in ("taskkill", "kill"):
+                self.chamadas.append(list(cmd))
+                return _ok(rc=128)
+            return super().__call__(cmd)
+    linhas: list[str] = []
+    rc = pg.rodar_parte("pg parte 1/1", ["a"], tmp_path / "p.txt", linhas.append, executar=_KillFalha([3600]),
+                        lancar=lambda arq, s: _Pytest(voltas=50), dormir=lambda s: None)
+    assert rc == 3 and "ATENÇÃO: o kill da árvore saiu com rc=128" in linhas[-1]
+
+
+def test_matar_arvore_de_verdade_mata_o_neto(tmp_path):
+    """Prova barata do K-099: uma árvore real de dois níveis (pai → filho dormindo) e o `matar_arvore` real."""
+    marca = tmp_path / "filho.pid"
+    filho = f"import os,time; open(r'{marca}','w').write(str(os.getpid())); time.sleep(120)"
+    pai = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{filho!r}]); time.sleep(120)"
+    proc = subprocess.Popen([sys.executable, "-c", pai], start_new_session=pg.os.name != "nt")
+    try:
+        for _ in range(100):
+            if marca.exists() and marca.read_text().strip():
+                break
+            pg.time.sleep(0.1)
+        pid_filho = int(marca.read_text())
+        assert pg.matar_arvore(proc, pg._executar) is None
+        assert proc.poll() is not None
+        for _ in range(50):                                            # o sistema leva um instante para recolher
+            if not _vivo(pid_filho):
+                break
+            pg.time.sleep(0.1)
+        assert not _vivo(pid_filho), "o filho do pytest ficou órfão (K-099)"
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+
+def _vivo(pid: int) -> bool:
+    if pg.os.name == "nt":
+        r = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/NH"], capture_output=True, text=True, check=False)
+        return str(pid) in r.stdout
+    try:
+        pg.os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
 
 
 def test_conteiner_que_nao_aceita_conexao_nao_roda_o_pytest(tmp_path, monkeypatch):

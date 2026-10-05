@@ -70,7 +70,8 @@ def agora() -> str:
 
 
 def comando_docker_run() -> list[str]:
-    cmd = ["docker", "run", "-d", "--name", NOME, "-e", "POSTGRES_PASSWORD=teste", "-e", "POSTGRES_DB=farm",
+    # `--pull=never`: imagem faltando é erro na hora, não um download no meio da vez do PG.
+    cmd = ["docker", "run", "-d", "--pull=never", "--name", NOME, "-e", "POSTGRES_PASSWORD=teste", "-e", "POSTGRES_DB=farm",
            "-p", f"127.0.0.1:{PORTA}:5432", "--tmpfs", f"{DADOS}:rw,size={TMPFS_MB // 1024}g", IMAGEM]
     for c in CONFIG:
         cmd += ["-c", c]
@@ -90,8 +91,8 @@ class Amostra:
     hora: str
     usado_mb: int
     total_mb: int
-    wal_mb: int
-    base_mb: int
+    wal_mb: int | None
+    base_mb: int | None
     esquemas: int | None = None
     pg_class_mb: int | None = None
     pg_attribute_mb: int | None = None
@@ -105,14 +106,26 @@ class Amostra:
         cat = ("" if self.esquemas is None else f" esquemas={self.esquemas} pg_class={self.pg_class_mb}"
                f" pg_attribute={self.pg_attribute_mb} pg_depend={self.pg_depend_mb}")
         return (f"{self.hora} tmpfs {self.usado_mb} de {self.total_mb} MB ({self.fracao:.0%})"
-                f" wal={self.wal_mb} base={self.base_mb}{cat}")
+                f" wal={_mb(self.wal_mb)} base={_mb(self.base_mb)}{cat}")
 
 
-def ler_disco(saida: str) -> tuple[int, int, int, int]:
-    """Saída de `df -m DADOS | tail -1; du -sm DADOS/pg_wal DADOS/base` → (usado, total, wal, base) em MB."""
+def _mb(v: int | None) -> str:
+    return "?" if v is None else str(v)
+
+
+def ler_disco(saida: str) -> tuple[int, int, int | None, int | None]:
+    """Saída de `df -m DADOS | tail -1; du -sm DADOS/pg_wal DADOS/base` → (usado, total, wal, base) em MB.
+
+    O `df` decide (é dele o tamanho do tmpfs e o aborto); sem a linha dele, `ValueError`. As do `du` são lidas pelo
+    caminho e podem faltar (`None`): o `du` tropeça em arquivo que some no meio da contagem, o comum com esquemas
+    sendo criados e apagados, e isso não pode apagar a amostra."""
     linhas = [ln.split() for ln in saida.strip().splitlines() if ln.strip()]
-    df, wal, base = linhas[0], linhas[1], linhas[2]
-    return int(df[2]), int(df[1]), int(wal[0]), int(base[0])
+    df = next((ln for ln in linhas if len(ln) >= 6 and ln[-1] == DADOS), None)
+    if df is None:
+        raise ValueError("sem a linha do df")
+    wal = next((int(ln[0]) for ln in linhas if len(ln) == 2 and ln[1].endswith("/pg_wal") and ln[0].isdigit()), None)
+    base = next((int(ln[0]) for ln in linhas if len(ln) == 2 and ln[1].endswith("/base") and ln[0].isdigit()), None)
+    return int(df[2]), int(df[1]), wal, base
 
 
 def ler_catalogo(saida: str) -> tuple[int, int, int, int] | None:
@@ -121,11 +134,13 @@ def ler_catalogo(saida: str) -> tuple[int, int, int, int] | None:
 
 
 def amostrar(executar: Executar, hora: Callable[[], str] = agora) -> Amostra | None:
-    """Uma amostra do contêiner de pé; `None` se ele não respondeu (a amostra falha, a fase não)."""
+    """Uma amostra do contêiner de pé; `None` se a linha do `df` não veio (a amostra falha, a fase não).
+
+    O rc NÃO decide (leitura do #385, A1): ele seria o do `du`, que sai com 1 quando um arquivo some no meio; com a base
+    mexendo muito (a hipótese do estouro da 35), quase toda amostra viraria `None` e o aborto não dispararia. O erro
+    do `du` vai para o `/dev/null` e o `exit 0` fecha; quem decide é a leitura do `df`."""
     disco = executar(["docker", "exec", NOME, "sh", "-c",
-                      f"df -m {DADOS} | tail -1; du -sm {DADOS}/pg_wal {DADOS}/base"])
-    if disco.returncode != 0:
-        return None
+                      f"df -m {DADOS} | tail -1; du -sm {DADOS}/pg_wal {DADOS}/base 2>/dev/null; exit 0"])
     try:
         usado, total, wal, base = ler_disco(disco.stdout)
     except (IndexError, ValueError):
@@ -163,27 +178,36 @@ def _executar(cmd: Sequence[str]) -> "subprocess.CompletedProcess[str]":
     return subprocess.run(list(cmd), capture_output=True, text=True, env=env, check=False)
 
 
-def _lancar_pytest(arquivos: Sequence[str], saida: Path) -> Processo:
+def python_do_pytest() -> Path:
     python = RAIZ / "backend" / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-    if not python.exists():
-        python = Path(sys.executable)           # worktree sem venv próprio: o mesmo Python que roda o script
+    return python if python.exists() else Path(sys.executable)   # worktree sem venv: o Python que roda o script
+
+
+def _lancar_pytest(arquivos: Sequence[str], saida: Path) -> Processo:
     flags = getattr(subprocess, "IDLE_PRIORITY_CLASS", 0)
     arq = saida.open("w", encoding="utf-8")
-    return subprocess.Popen([str(python), "-m", "pytest", "-q", "-n", "8", "-p", "no:cacheprovider", *arquivos],
+    # Fora do Windows, grupo de processos próprio: é o que o `matar_arvore` mata inteiro (o K-099 na outra plataforma).
+    return subprocess.Popen([str(python_do_pytest()), "-m", "pytest", "-q", "-n", "8", "-p", "no:cacheprovider",
+                             *arquivos],
                             cwd=RAIZ / "backend", env={**os.environ, "TEST_DATABASE_URL": DSN},
-                            stdout=arq, stderr=subprocess.STDOUT, creationflags=flags)
+                            stdout=arq, stderr=subprocess.STDOUT, creationflags=flags,
+                            start_new_session=os.name != "nt")
 
 
-def matar_arvore(proc: Processo, executar: Executar) -> None:
-    """O pytest com `-n 8` tem filhos: matar só o pai deixa os workers vivos e órfãos (lição do K-099)."""
+def matar_arvore(proc: Processo, executar: Executar) -> str | None:
+    """O pytest com `-n 8` tem filhos: matar só o pai deixa os workers vivos e órfãos (lição do K-099). No Windows,
+    `taskkill /T`; fora dele, o grupo inteiro (o `_lancar_pytest` abre o pytest num grupo próprio). Devolve `None`
+    quando a árvore morreu, ou a frase do que falhou, para a linha do aborto dizer."""
     if os.name == "nt":
-        executar(["taskkill", "/T", "/F", "/PID", str(proc.pid)])
+        r = executar(["taskkill", "/T", "/F", "/PID", str(proc.pid)])
     else:
-        os.kill(proc.pid, 9)
+        r = executar(["kill", "-KILL", "--", f"-{proc.pid}"])
+    problema = None if r.returncode == 0 else f"o kill da árvore saiu com rc={r.returncode}"
     try:
         proc.wait(timeout=30)
-    except Exception:
-        pass
+    except subprocess.TimeoutExpired:
+        problema = (problema + "; " if problema else "") + "o pytest não saiu em 30 s"
+    return problema
 
 
 def recriar(executar: Executar, dormir: Callable[[float], None], prazo_s: float = 240) -> float | None:
@@ -220,7 +244,7 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
     if subida is None:
         relatar(f"{rotulo} o contêiner não aceitou conexão {agora()}")
         return 8
-    relatar(f"{rotulo} aceitou em {subida} s; inicio {agora()} arquivos={len(arquivos)}")
+    relatar(f"{rotulo} aceitou em {subida} s; inicio {agora()} arquivos={len(arquivos)} python={python_do_pytest()}")
     proc = lancar(arquivos, saida)
     pico: Amostra | None = None
     while proc.poll() is None:
@@ -229,8 +253,9 @@ def rodar_parte(rotulo: str, arquivos: Sequence[str], saida: Path, relatar: Call
         if a is not None and (pico is None or a.usado_mb > pico.usado_mb):
             pico = a
         if deve_abortar(a, limite):
-            matar_arvore(proc, executar)
-            relatar(f"{rotulo} ABORTADA pelo disco: {a.linha() if a else ''}")
+            problema = matar_arvore(proc, executar)
+            relatar(f"{rotulo} ABORTADA pelo disco: {a.linha() if a else ''}"
+                    + (f" | ATENÇÃO: {problema}" if problema else ""))
             return 3
     rc = proc.wait()
     relatar(f"{rotulo} rc={rc} fim {agora()} | {ultima_contagem(saida)}")
