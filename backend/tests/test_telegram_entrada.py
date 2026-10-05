@@ -12,6 +12,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
@@ -1021,6 +1022,40 @@ async def test_erro_depois_do_inicio_nao_diz_que_nao_iniciou(c: Cenario, monkeyp
     assert c.bot.textos()[-1] == ("A execução abc123 está em andamento; houve um erro interno logo depois do início "
                                   "(está no log da Central). Conto aqui quando terminar.")
     assert not any(t.startswith("Não iniciei") for t in c.bot.textos())
+
+
+async def test_recusa_com_a_execucao_ja_terminal_deixa_so_o_desfecho(c: Cenario) -> None:
+    """28.36, caso (c) da revisão do #346: a recusa chega com a execução já TERMINAL (cancelada por outro gesto). A linha
+    fica feita, e o dono lê UMA linha só: a do desfecho de sempre, sem o código cru do estado."""
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    c.portas.recusar_aprovar = "Esta execução foi cancelada."
+    c.portas.estados[RUN] = "cancelled"
+    c.portas.desfechos[RUN] = "Execução abc123: cancelada."
+    n = len(c.bot.textos())
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    await c.volta()
+    assert c.linha(5)["estado"] == "feita" and "cancelar" not in c.portas.nomes()
+    novas = c.bot.textos()[n:]
+    assert novas == ["Execução abc123: cancelada."], novas
+    assert not any("'cancelled'" in t or "Não iniciei" in t for t in novas)
+
+
+async def test_erro_ao_avisar_que_seguiu_nao_sobe(c: Cenario, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Revisão do #346, E1: o envio do "está em andamento" que falha não sobe (no vigia, calaria as linhas seguintes)."""
+    from app.modules.avisos.infrastructure.entrada import ConversaDoCanal
+
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    c.portas.recusar_aprovar = "O plano desta execução já foi aprovado ou iniciado."
+    c.portas.estados[RUN] = "running"
+
+    async def responder_quebra(self: Any, *a: Any, **kw: Any) -> None:
+        raise RuntimeError("banco fora ao registrar a enviada")
+
+    monkeypatch.setattr(ConversaDoCanal, "_responder", responder_quebra)
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    assert c.linha(5)["estado"] == "feita" and "cancelar" not in c.portas.nomes()
 
 
 @pytest.mark.parametrize("caminho", ["sem_sim", "sem_porta"])

@@ -48,7 +48,7 @@ from pathlib import Path
 from typing import Protocol
 
 from app.config import Config
-from app.models import Problem
+from app.models import RUN_TERMINAL, Problem
 from app.modules.avisos.adapters.telegram import CanalTelegram, ConflitoDeConsumidor
 from app.modules.avisos.application.entrada import (
     AJUDA,
@@ -89,6 +89,8 @@ log = logging.getLogger("poc.avisos.entrada")
 OPERADOR_DO_TELEGRAM = "telegram:dono"
 #: Estados de uma execução que já iniciou e ainda não acabou: a mensagem ao dono nunca diz "não iniciei" (28.36).
 EM_ANDAMENTO = ("running", "paused")
+#: Estados finais: o desfecho de sempre (`portas.desfecho`) é a linha ao dono, e nenhuma outra (28.36).
+TERMINAIS = frozenset(s.value for s in RUN_TERMINAL)
 #: O que o dono ouve quando a mensagem vai à orquestradora (28.28), pelo motivo do repasse. Nunca o texto do extrator do
 #: painel: "Diga onde ou por quem" não responde a uma pergunta.
 RESPOSTA_DO_REPASSE = {
@@ -1447,8 +1449,7 @@ class ConversaDoCanal:
         texto = (f"A execução {curta} já estava em andamento: {motivo}" if estado in EM_ANDAMENTO
                  else f"Não iniciei a execução {curta}: {motivo}")
         if estado not in ("planned", None):
-            self.repo.marcar(self._id(linha), "feita", run_id=run_id, de=de)
-            await self._responder(saida, linha, texto)
+            await self._seguiu(saida, linha, de, run_id, estado, texto)
             return
         await self._abandonar_porta(saida, {**linha, "run_id": run_id}, de, "recusada pela Central", texto)
 
@@ -1464,13 +1465,24 @@ class ConversaDoCanal:
         if estado not in ("planned", None):
             texto = (f"A execução {curta} está em andamento; houve um erro interno logo depois do início (está no log "
                      "da Central). Conto aqui quando terminar." if estado in EM_ANDAMENTO
-                     else f"A execução {curta} está em '{estado}' depois de um erro interno ao iniciar (está no log da "
-                          "Central).")
-            if self.repo.marcar(self._id(linha), "feita", run_id=run_id, de=de):
-                await self._responder(saida, linha, texto)
+                     else f"A execução {curta} ainda não começou, depois de um erro interno ao iniciar (está no log da "
+                          "Central). Conto aqui o desfecho.")
+            await self._seguiu(saida, linha, de, run_id, estado, texto)
             return
         await self._abandonar_porta(saida, {**linha, "run_id": run_id} if run_id else linha, de, erro,
                                     "Não iniciei a execução: erro interno (está no log da Central).")
+
+    async def _seguiu(self, saida: SaidaDaConversa, linha: Linha, de: tuple[str, ...], run_id: str, estado: str,
+                      texto: str) -> None:
+        """A execução saiu de `planned` por outro caminho: a linha fica feita, e o desfecho de sempre a conta. Já
+        TERMINAL, o desfecho é a única linha ao dono (sem isto ele leria duas: esta e a do desfecho, na volta seguinte).
+        O envio não sobe: no vigia, um erro aqui calaria as linhas seguintes da volta (revisão do #346, E1)."""
+        if not self.repo.marcar(self._id(linha), "feita", run_id=run_id, de=de) or estado in TERMINAIS:
+            return
+        try:
+            await self._responder(saida, linha, texto)
+        except Exception:  # noqa: BLE001 - a linha já diz `feita`; o desfecho ainda conta o fim
+            log.exception("telegram: aviso da execução que seguiu, mensagem %s", linha.get("id"))
 
     async def _executar_aprovando(self, saida: SaidaDaConversa, original: Linha, i: Intencao,
                                   previa: Mapping[str, object]) -> None:
