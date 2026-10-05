@@ -52,7 +52,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
     só da própria origem, e imagem também de `blob:` e `data:`;
   - o CSS e o JS do site seguem comprimidos pela borda;
   - `server.csp_do_painel` (`aplicar` de fábrica, `so_relatar` ou `desligada`) desfaz a CSP sem deploy, só com o
-    reinício da `farm-central`, se uma tela quebrar no central.
+    reinício da `farm-central`, se uma tela quebrar no central;
+  - leitura do #366: o `connect-src` lista também o `wss://` de cada `server.public_hosts` e o `ws://`/`wss://` de
+    cada `server.allowed_origins` (Safari e iOS antigos, só com CSP 2, não cobrem WebSocket pelo `'self'`); o modo é
+    tipado com o mesmo `Literal` da configuração; `/404.html` pedido pelo nome sai como a 404 (status 404 e
+    `no-transform`); o arquivo de teste da prova de fora volta a LF.
 - **Estilos:** nenhum componente escreve `style=""` no HTML nem injeta `<style>`. No `src`, nada de `innerHTML`,
   `setAttribute('style')`, `cssText` nem `<style>`. No bundle, os três `innerHTML` são internos do react-dom (o caminho
   do `dangerouslySetInnerHTML`, que o código não usa). O `style={...}` do React vai pelo CSSOM, que a CSP não barra.

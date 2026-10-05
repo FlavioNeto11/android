@@ -81,14 +81,16 @@ async def test_o_html_do_painel_barra_script_de_fora_e_a_borda_nao_o_reescreve(h
     """29.91: em 05/10 a Cloudflare injetava o beacon do Web Analytics no `/central/` e, sem CSP, ele rodava. O
     `index.html` sai com a CSP do painel (só scripts do próprio painel) e `no-transform` (a borda não reescreve o
     HTML). O bundle com hash não precisa de CSP, porque não é documento."""
-    from app.main import CSP_DO_PAINEL
+    from app.main import CSP_DO_PAINEL, origens_de_websocket, politica_do_painel
 
     assert "script-src 'self';" in CSP_DO_PAINEL and "unsafe-inline" not in CSP_DO_PAINEL
     assert "img-src 'self' blob: data:;" in CSP_DO_PAINEL            # o quadro do aparelho e os anexos são blob:
+    servidor = harness.cfg.file.server
+    esperada = politica_do_painel(origens_de_websocket(servidor.public_hosts, servidor.allowed_origins))
     async with _cliente(harness) as c:
         for caminho in ("/central/", "/central/index.html"):
             pagina = await c.get(caminho)
-            assert pagina.headers["content-security-policy"] == CSP_DO_PAINEL, caminho
+            assert pagina.headers["content-security-policy"] == esperada, caminho
             assert "no-transform" in pagina.headers["cache-control"], caminho
             assert "no-cache" in pagina.headers["cache-control"], caminho      # e segue revalidando
         bundle = await c.get("/central/assets/index-abc123.js")
@@ -104,14 +106,18 @@ async def test_csp_do_painel_se_desfaz_pelo_config_sem_deploy(harness: Harness, 
                                                              ausente: str) -> None:
     """`server.csp_do_painel`: se a CSP quebrar uma tela no central, `so_relatar` (só relata, no console do navegador)
     ou `desligada` e o reinício da `farm-central` desfazem sem deploy. O `no-transform` fica nos três."""
-    from app.main import CSP_DO_PAINEL
-
     harness.cfg.file.server.csp_do_painel = modo  # type: ignore[assignment]
+    harness.cfg.file.server.public_hosts = ["painel.exemplo.invalid"]
+    harness.cfg.file.server.allowed_origins = ["http://127.0.0.1:8000"]
     async with _cliente(harness) as c:
         pagina = await c.get("/central/")
         assert pagina.status_code == 200
         if presente:
-            assert pagina.headers[presente] == CSP_DO_PAINEL
+            # O `wss` do nome público e o `ws` do acesso local, explícitos: a CSP 2 (Safari e iOS antigos) não os
+            # cobre pelo `'self'`, e o dono usa o painel no celular.
+            assert ("connect-src 'self' wss://painel.exemplo.invalid ws://127.0.0.1:8000;"
+                    in pagina.headers[presente]), pagina.headers[presente]
+            assert "script-src 'self';" in pagina.headers[presente]
         assert ausente not in pagina.headers
         if modo == "desligada":
             assert "content-security-policy-report-only" not in pagina.headers
@@ -156,3 +162,17 @@ async def test_sem_dist_a_raiz_continua_sem_rota(harness: Harness) -> None:
                                  base_url="http://127.0.0.1") as c:
         assert (await c.get("/")).status_code == 404
         assert (await c.get("/central/")).status_code == 404
+
+
+def test_origens_de_websocket_vem_da_configuracao_e_nao_injetam_diretiva() -> None:
+    """Só nome ou IP com porta entra; `;`, espaço, esquema estranho ou caminho ficam fora, e a ordem não repete."""
+    from app.main import origens_de_websocket, politica_do_painel
+
+    origens = origens_de_websocket(
+        ["Painel.Exemplo.invalid", "mal.invalid; script-src *", "x.invalid/caminho", "[::1]:8000"],
+        ["http://127.0.0.1:8000", "https://painel.exemplo.invalid", "ftp://a.invalid", "http://a.invalid 'unsafe-eval'",
+         "http://127.0.0.1:8000"])
+    assert origens == ["wss://painel.exemplo.invalid", "wss://[::1]:8000", "ws://127.0.0.1:8000"]
+    politica = politica_do_painel(origens)
+    assert "connect-src 'self' wss://painel.exemplo.invalid wss://[::1]:8000 ws://127.0.0.1:8000;" in politica
+    assert politica.count(";") == politica_do_painel(()).count(";") and "unsafe" not in politica

@@ -59,31 +59,15 @@ else
     /assets/site.css) codigo=200; corpo='body{}'; [[ "$QUEBRA" == versao_velha ]] && corpo='body{color:red}' ;;
     /assets/site.js) codigo=200; corpo='console.log(1)' ;;
     /central/) codigo=200
-       extra="cache-control: no-cache, must-revalidate, no-transform"$'
-
-'"content-security-policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'"
-       [[ "$QUEBRA" == painel_so_relata ]] && extra="cache-control: no-cache, must-revalidate, no-transform"$'
-
-'"content-security-policy-report-only: default-src 'self'; script-src 'self'; frame-ancestors 'none'" ;;
+       extra="cache-control: no-cache, must-revalidate, no-transform"$'\r\n'"content-security-policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'"
+       [[ "$QUEBRA" == painel_so_relata ]] && extra="cache-control: no-cache, must-revalidate, no-transform"$'\r\n'"content-security-policy-report-only: default-src 'self'; script-src 'self'; frame-ancestors 'none'" ;;
     /api/portal/contatos/busca|/api/portal/contatos/excluir) codigo=401 ;;
     /central) codigo=307; destino="${url%/central}/central/" ;;
     /) codigo=200; extra="content-security-policy: default-src 'self'; script-src 'self'; frame-ancestors 'none'"
        case "$QUEBRA" in
-         transformado) extra="$extra"$'
-
-''cache-control: no-store'$'
-
-''content-encoding: gzip' ;;
-         recomprimido) extra="$extra"$'
-
-''cache-control: no-store, no-transform'$'
-
-''Content-Encoding: br' ;;
-         *) extra="$extra"$'
-
-''cache-control: no-store, no-transform'$'
-
-''Content-Encoding: gzip' ;;
+         transformado) extra="$extra"$'\r\n''cache-control: no-store'$'\r\n''content-encoding: gzip' ;;
+         recomprimido) extra="$extra"$'\r\n''cache-control: no-store, no-transform'$'\r\n''Content-Encoding: br' ;;
+         *) extra="$extra"$'\r\n''cache-control: no-store, no-transform'$'\r\n''Content-Encoding: gzip' ;;
        esac
        [[ "$QUEBRA" == cookie ]] && extra="$extra"$'\r\n''set-cookie: __cf_bm=x; Path=/; Secure; HttpOnly' ;;
     /robots.txt) codigo=200; corpo=$'User-agent: *\nAllow: /\nDisallow: /central/\nDisallow: /api/'

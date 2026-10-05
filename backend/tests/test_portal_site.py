@@ -221,6 +221,9 @@ async def test_pagina_404_propria_com_status_404_e_a_csp(harness: Harness) -> No
         assert r.headers["content-security-policy"] == CABECALHOS_DO_SITE["Content-Security-Policy"]
         assert (await c.post("/pagina-que-nao-existe", content=b"x")).status_code in (403, 405)
         assert (await c.head("/pagina-que-nao-existe")).status_code == 404
+        # Pedida pelo nome, a 404 é a mesma resposta: status 404 e `no-transform` (N5 da leitura do #366).
+        pelo_nome = await c.get("/404.html")
+        assert pelo_nome.status_code == 404 and "no-transform" in pelo_nome.headers["cache-control"]
 
 
 # ---------------------------------------------------------------- a borda não reescreve o HTML (29.91)
