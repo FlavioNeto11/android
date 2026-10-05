@@ -149,6 +149,15 @@ class EnvSettings(BaseSettings):
 ModoDaCspDoPainel = Literal["aplicar", "so_relatar", "desligada"]
 
 
+#: 31.72, releitura do #386: sufixos públicos que `ai.consentimento_aceito_em` recusa (um host vale para os
+#: subdomínios). Lista fechada e curta, sem rede: os do Brasil e os genéricos mais comuns.
+_SUFIXOS_PUBLICOS = frozenset({
+    "com.br", "net.br", "org.br", "gov.br", "edu.br", "jus.br", "leg.br", "mil.br", "art.br", "blog.br", "app.br",
+    "co.uk", "org.uk", "gov.uk", "ac.uk", "com.au", "com.ar", "com.mx", "com.pt", "co.jp", "github.io",
+    "herokuapp.com", "vercel.app", "netlify.app", "pages.dev", "web.app", "firebaseapp.com", "blogspot.com",
+})
+
+
 class ServerCfg(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8000
@@ -663,6 +672,27 @@ class AiCfg(BaseModel):
     #: Item 31.40: a recusa do juiz por SOBREPOSIÇÃO (diálogo, banner, cookies cobrindo o alvo) numa etapa sem efeito
     #: não repete a etapa: a recuperação insere uma limpeza opcional (31.36) antes dela, uma vez por objetivo.
     limpeza_apos_sobreposicao: bool = True
+    #: Item 31.72: hosts em que o ATOR pode aceitar um aviso de consentimento (cookies, privacidade). Vazia, nenhum: o
+    #: toque de aceite é recusado antes de chegar ao aparelho. Preencher é decisão do dono, não de frente.
+    consentimento_aceito_em: list[str] = Field(default_factory=list)
+
+    @field_validator("consentimento_aceito_em")
+    @classmethod
+    def _so_hosts(cls, hosts: list[str]) -> list[str]:
+        """31.72 (N6 da leitura): `*.loja.com`, `https://loja.com` e `loja.com/x` nunca casariam com o host da barra, em
+        silêncio. Recusa na carga, com o nome da chave; um host já vale para os subdomínios."""
+        limpos = [h.strip().casefold() for h in hosts]
+        ruins = [h for h in limpos if not re.fullmatch(r"[a-z0-9-]+(\.[a-z0-9-]+)+", h)]
+        if ruins:
+            raise ValueError(f"ai.consentimento_aceito_em aceita só host (loja.com.br), sem esquema, caminho nem "
+                             f"curinga; os subdomínios já valem: {ruins}")
+        # Releitura do #386: como os subdomínios valem, um sufixo público ("com.br", "gov.br") liberaria o aceite em
+        # todos os sites dele. Lista curta e fechada (sem baixar a Public Suffix List): o que esta instalação usa.
+        sufixos = [h for h in limpos if h in _SUFIXOS_PUBLICOS]
+        if sufixos:
+            raise ValueError(f"ai.consentimento_aceito_em não aceita sufixo público, só o host de um site: {sufixos}")
+        return limpos
+
     #: Item 31.41: o valor lido só é gravado com evidência de RELAÇÃO com o nome pedido (seletor do catálogo, rótulo
     #: vizinho ou forma fechada; da imagem, um "sim" do verificador). Dúvida recusa a leitura (`leitura.sem_relacao`).
     relacao_do_valor: bool = True

@@ -203,6 +203,32 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - N2, decidido: as reclassificações (`forma`, `invalida`, `revalidada`) seguem sem versão; não são reprodução. Se um dia precisar, copiar a da original.
 - Prova `simulated`: `backend/tests/test_versao_na_evidencia_do_fluxo.py`.
 
+## 2026-10-05 — 31.72: o ator não aceita consentimento do site (branch feat/31-72-ator-nao-aceita-consentimento)
+
+- Achado real na janela do 31.40 (r-20261005071303-f24955, android-09): o ator tocou "Aceitar cookies" duas vezes; a
+  regra do 31.51 só trancava a limpeza.
+- `taskqueue/dialogos.py`: `toque_que_aceita` (nova). `taskqueue/executor.py`: `_aceite_do_toque` (novo) e a trava no
+  `_run_step`, antes de o toque chegar ao aparelho. `AiCfg.consentimento_aceito_em` (vazia), regra em `falhas.py`,
+  uma linha no prompt do ator (hash em `test_prompts_licoes` atualizado de propósito). `docs/ia.md` § 20.
+- Leitura do #386 (Ferramentas do Claude): o `drag` (início e fim), o `type_text` com `element_id` (B1), o aceite
+  fora da faixa, o ponto tocado (N2), as recusas somadas na execução (N8), o rótulo fora do `error` (S1) e os hosts
+  validados na carga (N6).
+- Releitura do #386, calibrada em capturas reais (05/10, android-09, só rolagem): K1 (o rótulo exato de fechar
+  vence a palavra de aceite no rótulo, nunca no id), K2 (a interface do Chrome não vira marca; fronteira de palavra
+  no rótulo; o botão do Chrome só pelo rótulo e dentro da zona), a regra da caixa (zona = a caixa do aviso), "Rejeitar
+  cookies" na lista de fechar, K3 (recusas por etapa, com o B1 no mesmo limite), K4 (o B1 da receita diverge), sufixo
+  público recusado na carga e Cc/Cf fora do rótulo do ator.
+- 2ª leitura do #386: Z1 (só contêiner distinto da marca é caixa), K1b (`botao_que_fecha` com o mesmo
+  `_diz_aceitar`, sem soltar o caso do #308) e K2b (aceite recusado em qualquer lugar só com marca de cara de aviso).
+- Delta da 2ª leitura, assumido pela frente Android: Z1c (em `_na_zona`, a caixa SOMA à faixa; um invólucro só do
+  texto com id de `_PISTAS`, como `banner-content` ou `modal-body`, não libera mais os botões do irmão de baixo) e K2c
+  (em `_cara_de_aviso`, a marca não clicável, como o título "Sua privacidade" ou a pergunta "Aceitar cookies?",
+  tem cara de aviso; o link do rodapé é clicável e segue fora).
+- Prova `simulated`: `tests/test_ator_nao_aceita_consentimento.py` (40), com 13 mutações conferidas e mais as duas
+  do delta (desfazer o Z1c ou o K2c reprova os testes novos); com `test_dialogos_em_serie.py`, 63 passed; catracas
+  88; `test_arquitetura` 9. As árvores reais de `data/diag-31-72/` dão o mesmo antes e depois do delta (NTP, ml, g1
+  e uol com 0 recusado; gov-3 com 12, nenhum do Chrome). `real`: `not_run`.
+
 ## 2026-10-05 — 31.70, sobras da leitura: uma regra só para o lugar do erro de validação (branch fix/31-70-sobras)
 
 - `app/shared/validacao.py` (novo, no kernel): `erros_sem_valor`, `lugar_sem_valor` e `nomes_de_campo`. De cada erro,
