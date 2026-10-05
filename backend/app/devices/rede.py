@@ -892,7 +892,7 @@ def _julgar(st: AppState, item: _Item, confirmados: set[str], dry_run: bool) -> 
         item.reason = ("configuração nova: volta a pendente até a aplicação e a medição no aparelho" if item.reapply
                        else "só a política muda; a configuração do aparelho fica")
         if conta:
-            item.warnings.append(f"conta real vinculada ({conta}), confirmada pela pessoa neste pedido")
+            item.warnings.append(f"conta real vinculada, confirmada pela pessoa neste pedido: {conta}")
     legado = _legado(st, item.id)
     if legado is not None and legado.proxy_id and legado.state == "applied":
         item.warnings.append(f"o proxy global legado {legado.name} ({legado.value}) está gravado no aparelho e "
