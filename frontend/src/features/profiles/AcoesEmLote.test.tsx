@@ -388,6 +388,9 @@ describe('ações em lote', () => {
     await waitFor(() => soltar !== null);
     await act(async () => { dialogo.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); });
     expect(allByRole('dialog', /Grupo de acesso de/)).toHaveLength(1);
+    // A1: o `aria-busy` fica na lista do resultado, não no diálogo inteiro (o status de dentro segue sendo lido).
+    expect(dialogo.getAttribute('aria-busy')).toBeNull();
+    expect(dialogo.querySelector('ul[aria-label="Resultado por persona"]')?.getAttribute('aria-busy')).toBe('true');
     await act(async () => { soltar!(); });
     await waitFor(() => text(dialogo).includes('Terminado: 1 ok'));
   });

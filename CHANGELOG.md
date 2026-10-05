@@ -31,8 +31,11 @@ Leitura do 29.116 pela Ferramentas do Claude.
   rajada de releituras não prende o diálogo em "executando".
 - A1: o `aria-busy` sai do `<dialog>` inteiro, onde podia fazer o leitor de tela segurar o "Executando…/Relendo…" do
   status, e fica só na lista "Resultado por persona".
-- Testes novos em `AcoesEmLote.test.tsx`: B1, o clique fora e o prazo. Prova `not_run`: escritos durante o congelamento
-  da suíte 37, rodam depois do "no ar".
+- Testes novos em `AcoesEmLote.test.tsx`: B1, o clique fora com o `aria-busy` só na lista, e o prazo. Os três falham
+  no código do 29.116. Prova simulated, em Idle:
+  - `src/features/profiles` e `src/components` 226/226 sem atraso;
+  - `src/features/profiles` 201/201 com `ATRASO_DO_FETCH_MS=40` nas sementes 7, 11, 22, 44, 88 e 99;
+  - typecheck limpo.
 
 ## 2026-10-05 — 29.99, sobras da leitura do #385: o `pg-rapido.py` não fica cego nem calado (branch fix/29-99-sobras)
 
