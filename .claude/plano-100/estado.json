@@ -1785,23 +1785,14 @@
    "id": "T.2",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "PR #239 (perf/t2-relogio-virtual-jev). 6 arquivos medidos em série e em Idle: de 182,4 s para 49,8 s, com 62 testes verdes nos dois lados. test_plan_report_na_execucao não teve ganho e voltou ao da main.",
-   "blocker": "T.2 é de várias frentes: esta é a parte da Jev; restam testes lentos da Aprendizado e os de rede da Android.",
-   "arquivos": [],
-   "testes": [
-    "backend/tests/test_dm_verificador.py",
-    "backend/tests/test_caminho_rapido_executor.py",
-    "backend/tests/test_cascata_ator_barato.py",
-    "backend/tests/test_verificador_escalado.py",
-    "backend/tests/test_leitura_transitoria.py",
-    "backend/tests/test_saidas_obrigatorias.py"
-   ],
-   "grupo": "jev-t2",
-   "modelo": "claude-opus-5-5",
-   "esforco": "medium",
+   "evidence": "Fatia do Portal: a hora num lugar só. PR #387, ponta FINAL d4df1ffc (123fa398 mais o merge do #383 em 61ee8743), branch feat/t2-relogio-do-portal, sobre o #383. RelogioDoPortal (agora, epoch_s, monotonico_s) em portal/montagem.py; RelogioReal com os mesmos now(), time.time() e time.monotonic() de antes. Passam a ler a hora dele: as rotas do contato e da exclusão, o token da página, a saúde, o laço do contato (volta_do_laco com EstadoDoLaco) e o do vigia, e o prazo total do adaptador da borda. Em produção, nenhuma mudança de comportamento. Os testes do token, do resumo da hora, da retenção, do teto por hora da exclusão e do prazo da borda deixaram o relógio real; o RelogioReal segue provado (R1): UTC, epoch_s igual a agora, monotônico que não volta, e a rota do contato aceita o token da própria página sem trocar o relógio (mutação reprova). Simulated: 123fa398 com 306 passed (pytest -n 4 @tests/catracas.txt tests/test_portal*.py); d4df1ffc com 184 passed (test_portal_borda, test_portal_contato, test_portal_exclusao). Real: na suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b); deploy 36 em e5f1b22b. O T.2 segue parcial: ciclo de vida do emulador e relógio de outros módulos fora desta fatia.",
+   "blocker": "T.2 fora do Portal: ciclo de vida real do emulador e relógio dos outros módulos",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T12:27:16+00:00"
+   "quando": "2026-10-05T09:50:24+00:00"
   },
   "T.1": {
    "id": "T.1",
@@ -6221,14 +6212,14 @@
    "id": "30.34",
    "status": "partial",
    "proof": "real",
-   "evidence": "Fatia A real, 04/10: o laço da sombra está no ar (modo shadow, intervalo de 3600 s). A última volta lida foi às 14:15:50Z, com 1 avaliado; as métricas (curador.autopublicacao) estão no painel. O 1º candidato real, o fluxo enviar-a-mensagem-leitura-31-27-n1-08233, não publicaria: o parecer lr-1cfb91a981c5f21f decidiu pedir_evidencia com confiança média. Ainda não houve nenhum caso marcado 'autopublicaria'.",
-   "blocker": "Fatia B (on): exige ≥ 30 casos fechados e ≥ 90 % sem regressão em 7 dias na sombra. Hoje são 0 casos marcados, então depende de fluxos B com aprovar/alta e ≥ 2 execuções reais em ≥ 2 aparelhos.",
-   "grupo": "aprendizado-validacao-0410",
-   "modelo": "claude-opus-5-5",
-   "esforco": "medio",
+   "evidence": "Fatia A no ar desde o deploy 11 (sombra); o código da fatia B existe. Medida do 30.72, real e só leitura: banco do central em mode=ro + query_only, 05/10 ~08:40Z, código da main d025b671 (deploy 35); nenhuma chamada de IA. Zero casos `autopublicaria` na sombra. 27 revisões reais do curador em fluxos B, sobre 22 fluxos: 17 pedir_evidencia, 9 observar, 1 rebaixar, 0 aprovar. Nenhum dos 22 tem hoje caminho para `aprovar`: 9 param em `efeito_real` (app real, proteção por desenho, fora da calibragem); 2 desligados por pessoa; 1 com evidência real contra; 5 do app de prova na 2ª reprodução (teto de custo, efeito repetido, aparelho novo); 5 do app de prova já com >= 2 execuções reais em >= 2 aparelhos param no PARECER (`observar`) porque o curador pede voto e decisão da pessoa e a versão viva do app. Detalhe em .claude/handoffs/aprendizado-medida-30-72.md. Saídas: 30.73 (o curador na classe B) e 30.74 (app_version na evidência do fluxo), em ramo, e a calibragem aprovada (teto 0,15 -> 0,25, extra_usd renovado) para depois do deploy 36.",
+   "blocker": "Falta dado: >= 30 casos fechados e >= 90 % sem regressão em 7 dias na sombra antes do `on` da fatia B. Depende do 30.73, do 30.74 e da calibragem para haver casos.",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T15:11:53+00:00"
+   "quando": "2026-10-05T09:50:24+00:00"
   },
   "30.35": {
    "id": "30.35",
@@ -7493,16 +7484,16 @@
   },
   "30.52": {
    "id": "30.52",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "04/10, central, deploy 28: pedido de teste lv-5b34159b9b816a59 (fluxo abrir-o-qa-messenger-e-contar-as-convers) criado 201 e recusado por POST /validacoes/{id}/recusar -> 200, estado recusada, motivo recusada_pela_pessoa, US$ 0. Antes: 404 pedido_desconhecido e 409 pedido_nao_pendente reais.",
-   "blocker": "falta ler a primeira revisao do curador depois do deploy com de_versoes_anteriores no dossie",
-   "grupo": "aprendizado-deploy28-provas",
-   "modelo": "opus",
-   "esforco": "high",
+   "evidence": "Leitura só do banco do central (mode=ro + query_only), 05/10 ~08:35Z, código da main d025b671 (deploy 35; o filtro do dossiê do 30.52 está no ar desde o deploy 28). Das 26 revisões reais do curador desde 2026-10-04T16:00Z, UMA tinha evidência de versão anterior: lr-2add53a17142793d (2026-10-04T18:45:33Z, fluxo:enviar-a-mensagem-leitura-31-27-n1-08233, o mesmo item do achado lr-1cfb91a981c5f21f das 13:07Z). No dossiê, as evidências da versão atual (ev:274 for android-07, ev:256 invalida android-04, ev:253 for android-12) estão em `lista`, e as da versão anterior (ev:233 e ev:226 against, ev:225 for, todas android-12) vão à parte em `de_versoes_anteriores`, com o rótulo `versoes_anteriores_e`. O parecer citou só a versão atual (ev:253, ev:274, ev:256, saude, risco, tr:206), reconheceu 'duas evidências reais a favor (dois aparelhos)' e decidiu observar (confiança média, causa evidencia_contraditoria pela saúde, faixa B). Não pediu reprodução que já existia, e nenhum pedido de validação novo foi aberto para o item depois do conserto: em learning_validations, o último é lv-26679df914e1b809 das 13:07Z, o do achado, recusado por limite_de_provas. US$ 0,0128 na revisão.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T16:25:13+00:00"
+   "quando": "2026-10-05T09:50:24+00:00"
   },
   "30.54": {
    "id": "30.54",
@@ -8032,14 +8023,14 @@
    "id": "31.58",
    "status": "partial",
    "proof": "real",
-   "evidence": "Bateria real em 05/10/2026, central WIN-7S2UASNLFOP, deploy 35 (d025b671), android-12 (QA Messenger, conta de QA), lote:jev:31.58-1 a -10, de 06:58:03Z a 07:03:29Z: 10 de 10 completed, US$ 0,4157 por costs.spent_usd (base de 04/10: 0,3818; teto 0,60), 0 avisos ao dono, 0 aprovações (conferido pela orquestradora no banco, só leitura). Parede das normais p50 13,3 s para 15,7 s e p95 87,2 s para 75,0 s; ator por chamada p50 2.027 para 2.582 ms; na soma, tent_resto 73 para 121 s e tent_aparelho 8 para 21 s. MEDIDA CONTAMINADA: o runner do CI no central rodou pytest serial de um PR das 06:58:38Z em diante (execuções 2 a 10), e os jobs ocupavam o runner desde 06:33Z; os dois CIs foram cancelados às 07:06Z. Análise só de leitura (.claude/handoffs/jev-analise-31-58-2026-10-05.md): não é regressão do código; a releitura antes do toque de efeito (29.90) custa cerca de 2 s nos dois envios; o resto é carga do host (inferido: type_text 6,66 s contra 1,53 s, preparo da observação 2,3 a 3,0 s contra 0,4 a 0,6 s) e comportamento do ator em duas execuções. Relatório: .claude/handoffs/jev-latencia-31-58-2026-10-05.md.",
-   "blocker": "Falta a segunda bateria, limpa (lote:jev:31.58b, teto US$ 0,60), com a fila do CI vazia e o runner sem job; aprovada, espera a vez.",
-   "grupo": "resultado-orquestradora-janela35c",
+   "evidence": "05/10, máquina central, só leitura do banco (mode=ro) e `scripts/latencia-por-etapa.py` via analise_3158.py. Três janelas de 10 execuções no QA Messenger do android-12, todas completed. Base 04/10 (linha-base-31, 00:42Z a 00:48Z): p50 14,2 s, p95 69,6 s, soma 232,7 s; fora da IA 73,0 s, aparelho 8,3 s. Contaminada 05/10 (lote:jev:31.58-1..10, 06:58Z a 07:04Z, com o CI do runner central rodando, K-101): p50 21,6 s, p95 69,9 s, soma 293,9 s; fora da IA 121,1 s, aparelho 20,8 s. 31.58b (lote:jev:31.58b-1..10, 08:34:29Z a 08:41:38Z, host conferido pela orquestradora às 08:33:57Z: zero teste, zero contêiner, CI vazio; r-20261005083429-cd989a, 083459-7243fe, 083620-711d28, 083630-a0b94b, 083706-07f22f, 083932-91cefe, 083957-ae0fcc, 084027-fb1dec, 084038-102720, 084048-6f91a0): p50 24,6 s, p95 113,6 s, soma 395,6 s; fora da IA 215,3 s, aparelho 29,2 s; US$ 0,3758 por costs.spent_usd (teto 0,60); 0 aviso ao dono. De onde veio: a execução 5 (141 s) teve o check_account em 3 tentativas (juiz recusando, 15 a 17 s de verificação cada); prep_observacao e prep_arvore de 1 a 3 s contra 0,1 a 0,3 s na base. Achado (events): o android-12 roda no NOTEBOOK DA LAN (worker-lan-01, túnel ADB 127.0.0.1:15559), e às 08:16:17Z a escada pediu reinício a frio automático por 'Convidado com interrupções acumuladas: 29% da CPU em interrupção com o aparelho ocioso (3 sondas seguidas)'; online às 08:19:02Z; a bateria rodou de 15 a 22 min depois do boot. Leitura às 08:43Z (adb -s, sem tomar controle): uptime 26 min, /proc/loadavg 26,83 / 8,06 / 6,87 em 2 CPUs, 41 % sys, MemAvailable 1,8 de 3,0 GB. Antes da base de 04/10 ele também acabara de voltar online (00:36Z) e a base foi rápida: o boot recente sozinho não explica.",
+   "blocker": "a janela limpa não ficou limpa: o convidado do android-12 estava degradado (interrupções e carga) e a carga do notebook da LAN não foi medida; o painel aberto no Chrome do dono (prévia que puxa ADB) não foi excluído. Próxima medida pede o android-12 estável (ou um aparelho do central), a carga do notebook lida na janela e o painel fechado",
+   "grupo": "resultado-orquestradora-suite36",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T07:25:21+00:00"
+   "quando": "2026-10-05T09:50:24+00:00"
   },
   "31.60": {
    "id": "31.60",
@@ -8565,14 +8556,14 @@
    "id": "31.70",
    "status": "implemented",
    "proof": "simulated",
-   "evidence": "#373, ponta f3db9ee5, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). Erro sobre a saída do modelo sem o texto dela: openai_provider.decide, command_refinement.refinement_from_json, orquestracao.orquestracao_from_json (com motivo_sem_valor: só o `type` e o nome de campo), planning/curador.parecer_from_json, learning/domain/curador._parecer e _rotulo, skills/domain/document.parse_json_object. M5 avaliado, sem mudança. Simulado: test_causa_sem_texto_resto.py (9 casos) e 1 teste em test_openai_provider.py; 67 dirigidos e 652 dos módulos tocados passaram. Real não se aplica (só o caminho de erro). O H2 (o `from exc` restante) vai para a 36.",
+   "evidence": "Sobras da leitura do 31.70 (#373), no #376, ponta aebe6824, suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b); deploy 36 em e5f1b22b às 05/10/2026 09:42Z, sem migração própria (o deploy leva 113). Uma regra só para o lugar do erro de validação: `app/shared/validacao.py` (novo, no kernel: `erros_sem_valor`, `lugar_sem_valor`, `nomes_de_campo`; só o `type` do pydantic, nunca o `msg`; do `loc` ficam o índice e o nome de campo do esquema, inclusive alias; chave de dict, a do extra_forbidden e o id de membro de união viram `?`). `planning/provider.erro_de_validacao_sem_entrada(exc, modelo, limite=6)` e `command_refinement.motivo_sem_valor` usam a mesma regra. H2 já fechado no #365 (31.67). Simulado, em Idle, sobre d025b671: testes novos em test_causa_sem_texto_resto.py (cada um confere que o pydantic sozinho ecoaria o segredo); dirigidos dos chamadores 178 passed; catracas 87 + 6 passed; docs-check 0 erros. Real: não se aplica (só o caminho de erro).",
    "blocker": null,
-   "grupo": "resultado-orquestradora-suite35",
+   "grupo": "resultado-orquestradora-suite36",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T06:32:50+00:00"
+   "quando": "2026-10-05T09:50:24+00:00"
   },
   "29.98": {
    "id": "29.98",
@@ -8681,15 +8672,197 @@
   "29.94": {
    "id": "29.94",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "PR #363 (fix/29-94-deploy-variavel-do-ensaio, ponta final 4213f201), na suíte 35, implantada em d025b671 (deploy 35, subida 05/10 06:18:46Z; no ar declarado pela orquestradora às 06:28Z). O defeito foi real, no deploy 34 (05/10, 03:19:01Z, na 584ac9c8): `deploy.ps1 -PularBackup` morreu com 'Cannot convert value System.IO.DirectoryInfo to type SwitchParameter', porque a variável `$ensaio` era o próprio `[switch]$Ensaio` (o PowerShell não diferencia maiúsculas de minúsculas em nome de variável). Nada foi parado, e a subida foi sem -PularBackup. Conserto: `$copiaDoEnsaio` em `deploy.ps1` e `$podarDeVerdade` em `backup.ps1`, a mesma classe de erro contra `[switch]$Podar`, achada pela varredura. Prova simulated: `scripts/tests/test_deploy_portao_do_ensaio.py`. Os casos: (1) roda o trecho do portão recortado do deploy, debaixo da linha de param real, com cópia de ensaio de mentira; (2) varre por AST todo `.ps1` com param e acusa reatribuição de parâmetro switch em qualquer caixa, com variável de foreach contando como atribuição; (3) a mutação reproduz a mensagem exata do deploy 34; (4) os minutos da janela do ensaio são lidos do próprio script. `scripts/testes-afetados.py` liga `scripts/**/*.ps1` a esse teste. No ensaio da 35 (`ensaio/suite-35b`), os testes de scripts passaram (31 passed com o `test_testes_afetados`). Suíte 35 na d025b671: scripts/tests 616 passed; SQLite 10925 passed, 13 skipped; PG dirigido em duas metades (467 arquivos) 9671 passed, 13 skipped; front 1601; docs-check e typecheck ok; catracas 86+6. No deploy 35, `deploy.ps1 -Ensaio` (rc=0, cópia 20261005-031703) e depois `deploy.ps1 -PularDependencias` SEM -PularBackup (rc=0 em 84 s).",
-   "blocker": "Prova real (`not_run`): só no primeiro deploy que rodar `-Ensaio` e depois `-PularBackup` com a cópia do mesmo commit dentro de 60 min.",
-   "grupo": "resultado-orquestradora-suite35",
+   "proof": "real",
+   "evidence": "Real, deploy 36 (05/10/2026, central WIN-7S2UASNLFOP, commit e5f1b22b), primeiro uso de deploy.ps1 -PularBackup numa subida de verdade, pela sessão Android: deploy.ps1 -Ensaio de 09:39:43Z a 09:39:46Z, rc=0, cópia data/backups/20261005-063944 (186,4 MB, integridade ok, migração 110); deploy.ps1 -PularBackup -PularDependencias no mesmo commit de 09:40:43Z a 09:42:34Z, rc=0, sem recusa do portão; depois da subida, status ok, commit e5f1b22b, migração 113_execucao_assentada_em. Conferido pela orquestradora às 09:48:08Z: a cópia mais nova em data/backups segue sendo a do ensaio (nenhuma cópia nova na subida). A linha impressa pelo portão não foi capturada (a captura guardou só as últimas 40 linhas); o texto dela é o de scripts/deploy.ps1. Antes, no deploy 35, o item tinha ficado simulated (scripts/tests/test_deploy_portao_do_ensaio.py).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-29-94",
    "modelo": "claude-fable-5-1",
    "esforco": "sessao orquestradora",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-05T06:32:50+00:00"
+   "quando": "2026-10-05T09:51:25+00:00"
+  },
+  "29.93": {
+   "id": "29.93",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #382 (fix/29-93-aguardando-pessoa, ponta final 419ba865), na suíte 36, implantada em e5f1b22b (deploy 36, 05/10/2026 09:42Z, migração 113). RunStatus.awaiting_person (não terminal): o recompute_run leva a ele a execução sem trabalho automático com objetivo waiting_user; antes ela ia a completed_with_issues, terminal. RUN_SEM_TRABALHO grava finished_at e é o que a retomada reabre e o vencimento do 31.50 lê. Tabela de transições, snapshot por 7 dias, purga de eventos e retenção de evidência a poupam; Telegram diz 'parou'; pedidos fecham como antes; painel 'Aguardando você'. Migração de dados 111. Assentamento exatamente uma vez pela marca runs.assentada_em (migração 113, compare-and-set em Repository.marcar_assentada): o worker grava o estado final e a marca na mesma tx e assenta em linha; a rede do set_run_status (estado final vindo de estado de trabalho, depois do COMMIT por Database.depois_do_commit, sem worker vivo deste backend) só assenta quem ganha a marca; o set_run_status zera a marca ao ir a estado não final, menos cancelling (o D1). A 113 marca toda execução já final com COALESCE(finished_at, started_at, created_at). Adendo v1.50. Prova simulated: backend/tests/test_aguardando_pessoa.py (35 passed na ponta, 05/10 08:02Z), test_learning_prova.py, frontend/src/lib/status.test.ts, frontend/src/features/pendencias/aguardandoPessoa.test.ts. Validação do PR: scripts/tests 616 passed; rodada larga de 242 arquivos 5134 passed, 3 skipped. Leitura da Reload plugins: FINAL. Suíte 36 na e5f1b22b: scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b.",
+   "blocker": "Prova real (`not_run`): uma execução real que pare esperando a pessoa e saia da espera no central depois do deploy 36, com o digest uma vez. K1 operacional do deploy: conferir `SELECT id, status FROM runs WHERE status='cancelling'` depois do -Ensaio e antes da subida (uma completed_with_issues em cancelling na hora da 113 fica com a marca nula). K2 (quem perde o compare-and-set solta a trava de rascunho pelo on_run_parada) e a docstring do depois_do_commit são o 29.108, suíte 37.",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "29.103": {
+   "id": "29.103",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Entregue pelo PR #382 (ponta 419ba865), na suíte 36, implantada em e5f1b22b (05/10/2026 09:42Z, migração 113). A execução running/paused cancelada sem worker vivo (fechada pelo Scheduler._finish_cancel) nunca assentava: nenhum digest, trava de rascunho presa, pedidos sem acordar. Com a marca runs.assentada_em (migração 113), a rede do Repository.set_run_status assenta quem fecha sem worker, uma vez, mesmo com dois backends (compare-and-set). Prova simulated: backend/tests/test_aguardando_pessoa.py::test_d2_a_execucao_cancelada_sem_worker_assenta_uma_vez (reaberta e pausada, item pendente, nenhum worker, cancelada: assenta uma vez pela rede, com a marca zerada pela reabertura) e ::test_d1_cancelar_a_execucao_incerta_ja_assentada_nao_assenta_de_novo; ::test_a_execucao_comum_assenta_em_linha_pelo_worker_uma_vez. Suíte 36 na e5f1b22b: scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b.",
+   "blocker": "Prova real (`not_run`): um cancelamento de execução sem worker vivo no central depois do deploy 36.",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "29.99": {
+   "id": "29.99",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "05/10/2026, central (C:\\git\\android), integ/suite-36 em e5f1b22b (com o PR #385, ponta final 2cb8c662, scripts/pg-rapido.py). O PG dirigido da suíte 36 rodou INTEIRO numa parte só pelo pg-rapido.py: contêiner farm-pg-rapido com tmpfs de 4 GB, durabilidade desligada e WAL mínimo (wal_level=minimal, max_wal_senders=0, max_wal_size=256MB, checkpoint_timeout=1min), só no loopback 127.0.0.1:55434; 472 arquivos, pytest -n 8 em Idle; '9998 passed, 13 skipped in 1805.25s (0:30:05)', rc=0, das 09:06:33Z às 09:36:56Z. Disco amostrado a cada 30 s (a amostra decide pelo df; o rc do du não conta, A1 da leitura): pico 413 de 4096 MB (10 %) às 09:25:37Z, com WAL 256 e base 156 MB (pg_class 22, pg_attribute 36, pg_depend 15); no fim 364 MB; o aborto em 85 % não chegou perto; contêiner parado às 09:37:01Z. Vigia só de leitura (SQLite do central em mode=ro, a cada 15 s) na r-20261005074912-701173: planned do começo ao fim. Antes, a metade 1 da suíte 35 (234 arquivos) com o WAL mínimo: '5524 passed, 8 skipped in 1409.34s', pico 388 MB contra 1057 MB sem ele (05/10 07:37–08:01Z, contêiner farm-pg-wal na 55435, 46 amostras válidas). Na suíte 35, os 467 juntos tinham enchido os 4 GB (181 failed, 823 errors, DiskFull; WAL perto de 1 GB e a base passando de ~3 GB). Simulated: scripts/tests/test_pg_rapido.py (com a árvore real pai → filho morta pelo matar_arvore real, K-099), 45 passed com os vizinhos. Implantado em e5f1b22b (05/10/2026 09:42Z).",
+   "blocker": "A causa exata do crescimento da base na suíte 35 não foi provada: com o WAL mínimo ela não se reproduz (base máxima 156 MB nos 472 juntos). Sobras da leitura para um PR depois do corte: timeout de 30 s no docker exec (X1), linha 'SEM AMOSTRA do df' no terceiro None seguido (X2), poll antes do taskkill, o pid_filho no finally do teste da árvore real, stderr do docker run com a imagem ausente.",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "29.97": {
+   "id": "29.97",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Parte do Portal (o aviso pela camada de avisos é da Canais). PR #378, ponta FINAL 9d4921e0, branch feat/29-97-vigia-da-borda. O laço do central (tarefa portal-borda, no líder da trava avisos, de hora em hora, em UTC) repete pela borda, só com GET e sem credencial, as conferências que não escrevem: script injetado na raiz e no painel, sem transformação, gzip da origem, CSP, versão do CSS e do JS, cookie. A régua é a mesma da prova de fora (backend/app/modules/portal/domain/borda.py, só stdlib, lida pelo scripts/portal-regua-da-borda.py sem venv). Resultado na saúde (portal_borda_defeito, portal_borda_sem_conferir), com a linha sem controle (faixa do Latin-1 aceita na releitura do V1); a conferência que não rodou não é defeito nem sucesso. Simulated: em 05/10 às 06:33Z na 20c51c90, backend pytest -n 4 @tests/catracas.txt tests/test_portal*.py 209 passed e scripts 32 passed; na ponta final 9d4921e0, 278 do backend e 32 dos scripts; docs-check 0. Leituras: Ferramentas do Claude, até o V1 (fecha). Real: na suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b); deploy 36 em e5f1b22b, às 05/10/2026 09:42Z, migração 113. Real, deploy 36 (05/10/2026, central WIN-7S2UASNLFOP, commit e5f1b22b, subida de 09:40:43Z a 09:42:34Z), pela orquestradora: a 1ª volta do vigia no ar saiu às 09:47:31Z em data/logs/backend.log (poc.portal, 'portal: vigia da borda ok'), 300 s depois da subida, com a API e o site conferidos na mesma volta; /api/health às 09:47:41Z com status ok e problems vazio. A prova de fora (scripts/portal-prova-de-fora.sh depois, 09:42:44Z a 09:42:51Z) deu rc=0 com 46 ok. not_run: defeito de borda de verdade, que não se provoca. Parte da Canais (a do Portal, a orquestradora junta): avisos/domain/portal.py e mensagem.py, aviso da borda do portal por código e por dia UTC (script_injetado, html_transformado, csp_ausente, cookie, versao_divergente, pagina_fora, sem_conferir), nível 2, sem link e fora do Trello; o achado passa por filtro (sem IP, sem decimal longo, sem hexadecimal; recusado, sai só o host); o sem_conferir não diz Crítico e não espera o dono e mostra o código do vigia. Simulated: backend/tests/test_avisos_portal_borda.py. Ensaio do vigia nas pontas finais (com #378 9d4921e0 e #383 0c66e104): borda dos dois lados 194 passed, rede 1266 passed, catracas 86; os 17 códigos do vigia novo saem intactos nos dois lados. PR #381, ponta a9284c92.",
+   "blocker": "Real not_run (parte da Canais): nenhum defeito de borda nem falta de conferência desde o deploy 36 gerou aviso ao dono. Prova real quando o vigia achar um, sem provocar.",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "29.101": {
+   "id": "29.101",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Parte do Portal (o código api-*, o tipo portal.borda_api e o aviso são da Canais, #388). PR #383, ponta FINAL 61ee8743, branch feat/29-101-vigia-da-api, sobre o #378. Um quinto pedido, o 1º da volta: GET /api/instances sem credencial e sem ler o corpo. 401 ou 403 dá ok; 403 com cf-mitigated: challenge é sem_conferir ('api desafio'), não recusa; 2xx é api_aberta, aviso crítico na hora; outro status só avisa depois de N voltas seguidas, num contador próprio da API. A falha de rede conta pelo site, salvo se o site foi conferido na mesma volta (E1, mesma_queda). Saúde: portal_api_aberta e portal_api_sem_conferir. ADR-075 emendado. Simulated: 0c66e104 com 300 passed (pytest -n 4 @tests/catracas.txt tests/test_portal*.py); 61ee8743, só teste (as tarefas do laço canceladas e esperadas, a 1ª volta que levanta e a 2ª acontece, o nome do Set-Cookie com U+0085 e U+009B na saúde como '?'): tests/test_portal_borda.py 122 passed, e mutação sem o filtro e sem o except reprova. Leituras: Reload plugins (E1 e o laço fecham) e Ferramentas do Claude. Real: na suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b); deploy 36 em e5f1b22b, às 05/10/2026 09:42Z, migração 113. Real, deploy 36 (05/10/2026, central WIN-7S2UASNLFOP, commit e5f1b22b, subida de 09:40:43Z a 09:42:34Z), pela orquestradora: a 1ª volta do vigia (09:47:31Z, data/logs/backend.log, 'portal: vigia da borda ok') conferiu a API fechada e o site na mesma volta; /api/health às 09:47:41Z sem portal_api_aberta nem portal_api_sem_conferir (problems vazio); a prova de fora das 09:42Z deu /api/instances 401 sem credencial e 403 com Host forjado. not_run: a API aberta de verdade, que não se provoca. Parte da Canais (a do Portal, a orquestradora junta): o oitavo código do vigia, api_aberta (onde=api), no tipo portal.borda_api de nível 1, que sai na hora, sem agrupar, sem link e fora do Trello, com a chave portal-borda:api_aberta:<dia UTC>; o achado não entra no texto. O sem_conferir com onde=api fala da API, com chave própria (portal-borda:sem_conferir_api:<dia>), e no api-500 acrescenta 'vale olhar'. Simulated: backend/tests/test_avisos_portal_borda_api.py e test_avisos_portal_borda.py. Ensaio do vigia: o mesmo do 29.97. PR #388, ponta 4e01126c (empilhado sobre o #381).",
+   "blocker": "Real not_run (parte da Canais): a API não respondeu sem login pelo endereço público, nem ficou sem conferir, depois do deploy 36. Prova real quando acontecer, sem provocar.",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "29.104": {
+   "id": "29.104",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "PR #392, ponta FINAL 6b34f013, branch fix/29-104-espera-de-elemento. Só teste e harness; o produto não muda. Causa da fuga do cron do frontend: o waitFor só trata false e exceção como 'ainda não', e waitFor(() => raiz.querySelector(...)) passava na hora com null. Entrou: esperarElemento(seletor, raiz) no harness; ATRASO_DO_FETCH_MS, desligado por padrão, semeado por SEMENTE_DO_ATRASO e pelo nome do teste (FNV-1a e mulberry32), com o teste que falha imprimindo a semente; a catraca src/test/esperas.test.ts, com parênteses balanceados. Consertados: AnexosTab, 7 esperas e a prévia esperada antes do dispatchEvent; ProfilesPage, 1 espera e 5 testes que afirmavam antes da resposta. Correção da contagem: 8 esperas, não 15. W2: it.fails do 29.106 (A responde depois de B). Simulated (05/10, Node 24.19.0): contraprova, o AnexosTab da main com o atraso cai nos 76:68 e 248:46 do cron e no 157:20; AnexosTab e ProfilesPage com o atraso, 67/67 em 8 sementes a 30 ms e numa a 60 ms; suíte do frontend inteira 1603/1603, e na 6b34f013 ProfilesPage 49 passed mais 1 expected fail. Leitura: Ferramentas do Claude (entra; W2 feito). Real: na suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b). Parcial: o 2º PR (as 53 falhas em 22 arquivos com o atraso ligado, semente 7, separando teste que afirma cedo de corrida do produto; W1, waitFor recusando null; a âncora da catraca; a mensagem e a raiz undefined do esperarElemento) ainda não foi feito. Sem conferir: o Node 22 do CI.",
+   "blocker": "2º PR do 29.104 (corridas restantes, W1 e as notas da leitura)",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "29.106": {
+   "id": "29.106",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #393, ponta FINAL 23ef490a, branch fix/29-106-partir-de, sobre o #392. Mudança de produto: no editor de grupo novo, o 'começar a partir de' não descartava a resposta velha (A respondendo depois de B deixava o rascunho com A), e o 'Criar grupo' seguia livre com a leitura em voo. PolicyGroups.tsx: um número por chamada (useRef), e só a última aplica a resposta, o erro e o fim da espera; com a leitura em voo (lendoPerfil), o Criar/Salvar e os editores de ações e de limites ficam travados. Testes: o it.fails do W2 virou it; caso novo do botão e do editor travados com a leitura segura. Simulated (05/10 às 08:27Z, Node 24.19.0): sem o conserto, os dois casos caem nas asserções da corrida (796 e 822); com ele, ProfilesPage com o atraso nas sementes 11/44/88, 49/49 cada, e suíte do frontend inteira 1605/1605; typecheck limpo; docs-check 0. Leitura: Ferramentas do Claude (entra; notas viraram o 29.109). Real: na suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b); deploy 36 em e5f1b22b, às 05/10/2026 09:42Z. Caminhada real parcial, deploy 36 (05/10/2026, commit e5f1b22b), pela orquestradora no Chrome do dono, com a sessão dele aberta, pelo nome público, de 09:45Z a 09:46Z, sem criar nada: o editor Novo grupo de acesso abre; cada escolha em Começar a partir de lê a política do perfil (GET da política 200, de 32 a 49 ms); escolhendo duas opções em seguida, a última fica selecionada e o Criar grupo fica livre depois da leitura; nenhum erro de página e nenhuma violação de CSP; fechado por Cancelar. not_run no real: 'só vale a última' (os três perfis de origem do central rendem o mesmo rascunho, então A e B não se distinguem) e a trava durante a leitura (leitura de cerca de 40 ms, com a aba em segundo plano e o temporizador limitado).",
+   "blocker": "Prova real not_run de 'só vale a última' e da trava durante a leitura: os perfis do central rendem o mesmo rascunho.",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "28.41": {
+   "id": "28.41",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Suíte 36 inteira verde (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b), deploy 36 no ar às 05/10/2026 09:42Z (central em e5f1b22b, migração 113); números da orquestradora. Simulated: backend/tests/test_avisos_objetivo_parado.py, test_avisos_rajada.py e test_trello_leitor.py. A resposta ao aviso de objetivo parado, de conta e ao agrupado só informa. Regra de fundo: a resposta a um fato sem ramo, no texto sem barra, nunca vira comando nem prévia (o texto livre e o `para` só informam; a pergunta vai à orquestradora; a captura e a identidade seguem; o anexo é a exceção). No Trello, o espelho responde o comando livre desligado e a pergunta chega à orquestradora de ponta a ponta. O gesto do desfecho segue o blocked_kind; o /status conta os parados. Catraca nova: toda chave de Aviso(...) tem <família>:<identidade>. Ensaio conjunto com o #382 419ba865: 1285 passed + catracas 88. PR #380, ponta 1c7ca9f8.",
+   "blocker": "Real not_run: depende de o dono responder, depois do deploy 36, a um aviso de objetivo parado, de conta, agrupado ou de fato sem ramo, pelo Telegram ou pelo Trello. Prova real quando acontecer, sem provocar.",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "29.110": {
+   "id": "29.110",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 05/10/2026, WIN-7S2UASNLFOP. Ordem do dono em chat (sessão do Portal, entre 08:29Z e 08:35Z): 'tire o trecho abaixo agora do portal' (seção 'O que a ANA não faz'). PR #394 (ponta cb71b523): sai o <aside class=\"limites\"> de site/index.html e o .limites de site/assets/site.css; ADR-076 (emenda ao ADR-075: só o texto público sai, os limites de comportamento seguem valendo no produto); CHANGELOG. Simulated antes da mescla, de 08:43:00Z a 08:45:06Z, em Idle: backend/tests/test_portal_site.py 22 passed; scripts/tests/test_portal_prova_de_fora.py 22 passed; docs-check 0 erros e 0 avisos. Real, pela orquestradora: #394 mesclado na main às 08:45Z (9f00c122); deploy.ps1 -Ensaio limpo (08:45:50Z); deploy.ps1 -PularDependencias de 08:45:54Z a 08:47:31Z ('status ok | commit 9f00c122 | migração 110'); /api/health local ok, com os 12 aparelhos na pausa de reparo; prova de fora (SITE, CONTATO e WEBHOOK_DO_TRELLO ligados, de 08:47:39Z a 08:47:46Z): rc=0, 46 linhas ok, /api/instances 401 e 403, CSS com ?v=149d71b74593 (antes 59dafa9abf76); página pública no navegador às 08:48Z: sem aside.limites nem #titulo-limites, texto sem o trecho, 9 seções, sem rolagem lateral, 5 recursos e nenhum de fora da origem.",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "31.71": {
+   "id": "31.71",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#379, ponta 777c07fb (com o teste de contador em `completar_imagem` e `rich_tree_min_elements=1` no laço, pedido da leitura), suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b); deploy 36 em e5f1b22b às 05/10/2026 09:42Z, sem migração própria (`image_reason` é TEXT sem CHECK, 080). `AiCfg.imagem_enquanto_falta_saida` DESLIGADA por padrão; motivo novo `leitura_pendente` em `MotivoDaImagem` (adendo v1.49), depois de sensivel, politica_nunca, politica_sempre, pedida, problema e primeira_*: a política continua mandando. Lembrete só com NOMES das saídas faltantes, só na cópia da decisão (`historico_do_ator`), nunca no history durável. Simulado: test_imagem_enquanto_falta_saida.py; a mutação 2185 (a imagem não segue) agora reprova pelo contador. Real not_run: a chave nasce desligada e vira padrão só pelo A/B.",
+   "blocker": "A/B do roteiro .claude/handoffs/jev-roteiro-31-71-ab.md (android-01, Outlook só leitura, 5 por braço, reinício da farm-central entre os braços), na janela da orquestradora; o android-01 tem conta real",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "31.74": {
+   "id": "31.74",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "#389, ponta 3acf4707, suíte 36 (scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b); deploy 36 em e5f1b22b às 05/10/2026 09:42Z, sem migração própria. Achado real da f24955 (05/10): `wait_for(\"R$\", 8)` durou 15,6 s e 40,9 s com `waited_s` 8,0. Agora o prazo soma o sono pedido e a leitura medida por `tools._relogio` (= time.monotonic, injetável), pausas de min(1 s, restante) e uma última leitura; `waited_s` relata a parede. Simulado, em Idle, sobre 0c264685: test_wait_for_pelo_relogio.py 4 passed (leitura de 1 s e de 4 s: parede ≤ 8 + 1 e ≤ 8 + 4, antes 16 e 40); mutação com o laço antigo: os 4 reprovam; os 21 arquivos que usam wait_for + test_arquitetura + catracas: 455 passed; docs-check 0 erros. Real not_run.",
+   "blocker": "prova real pede um wait_for numa tela lenta (Chrome) depois do deploy 36; sem janela marcada",
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "29.96": {
+   "id": "29.96",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #377 (feat(sessao): 29.96, ponta final 741084f5), na suíte 36, implantado no deploy 36 (e5f1b22b, subida 05/10/2026 09:42Z, migração 113); suíte 36: scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b. A sessão `unknown` parada no teto (a que abre `session.needs_person`, 29.92) passa a aparecer em Pendências e em 'Aguardando intervenção': campo `SessionInfo.unknown_at_cap` (adendo v1.48, padrão false) nos três montadores (SocialRepository.profile_dto, SocialRepository.sessao_no_aparelho, SocialService._account_dto), calculado por SocialRepository.parada_no_teto pela MESMA regra do aviso (sem o desconto do teto velho da prévia). N1 do #371: a regra do teto num lugar só (shared.vinculos.teto_de_unknown). Junto: T1 do #371 e N2/D5-N1 do #370. Prova simulated, Idle, sobre a d025b671: dirigidos (-n 2) 376 passed em 15 arquivos; catracas 86 passed; frontend typecheck limpo e vitest 550 passed; docs-check 0. Testes novos: test_parada_no_teto_aparece_no_rest_pela_regra_do_aviso, test_unknown_administrativo_nao_e_parada, test_o_motivo_da_parada_cita_a_ultima_cobertura_e_nao_o_alvo_movido, test_app_session_sem_vinculo_no_aparelho_da_sessao_usa_o_teto_de_quem_compoe; PendenciasPage, ProfilesPage, estadoSessao. Real: not_run (percurso das duas filas no painel do central e aparelho real parado no teto, depois do deploy 36).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "29.100": {
+   "id": "29.100",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #384 (feat(sessao): 29.100, ponta final 09bdcde1, empilhado no #377), na suíte 36, implantado no deploy 36 (e5f1b22b, subida 05/10/2026 09:42Z, migração 113); suíte 36: scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b. Migração 112_sessao_status_since (número da orquestradora): `account_sessions.status_since`, a hora em que o estado ATUAL começou, com o UPDATE de preenchimento a partir de updated_at fora de session_ready; adendo v1.51 (campo aditivo `SessionInfo.status_since`). A troca é decidida por CASE dentro do upsert de set_account_session: muda o estado, ou, no `unknown`, quando a série CHEGA ao teto do aparelho (teto_de_unknown); senão mantém. Frontend: `desdeDaSessao` em pendencias/modelo.ts, usado em Pendências e na InterventionQueue. Prova simulated, Idle: scripts/tests 615 passed, 1 skipped (na 9e1c8acb, PR com migração); dirigidos SQLite 141; catracas 86; PG 22 passed (288da9c8), inclusive o UPDATE da 112 rodado duas vezes e o teste do P2 da leitura velha (conferido por mutação); frontend 372 passed; docs-check 0. Testes novos em test_sessao_status_since.py (6). Real: not_run (percurso no painel depois do deploy 36).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
+  },
+  "30.69": {
+   "id": "30.69",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "PR #390 (ponta final e08b1e7d, o merge da 419ba865 do #382/29.93), na suíte 36, implantado no deploy 36 (e5f1b22b, subida 05/10/2026 09:42Z, migração 113); suíte 36: scripts/tests 631 passed; SQLite -n 6 11276 passed, 13 skipped; PostgreSQL dirigido inteiro 9998 passed, 13 skipped; frontend 1612 passed; catracas 88 e 6; docs-check e typecheck limpos, na e5f1b22b. O gancho que assenta a execução na saída de `awaiting_person` (runs.assentada_em, migração 113) é do #382; aqui: licoes_sql._ETAPA_FINAL sem `waiting_user` (a exposição da etapa que espera não congela; fica pendente até a retomada ou o `cancelled`); domain/backlog.ESPERANDO_A_PESSOA no relatório de condução (fora da porcentagem por receita); catraca D1-N2 (cancel_open_steps e revise_plan não tocam etapa failed/uncertain); o digest rodado de novo na mesma execução não soma linha em learning_items, learning_evidence, learning_exposures, learning_reviews, skill_validation_results e learning_transitions. Prova simulated, Idle, só SQLite: dirigidos 318 passed; catracas e arquitetura 86 passed. Testes novos em test_digest_na_saida_da_espera.py (concluida e cancelada_na_espera). Real: not_run (execução real que espera a pessoa e sai da espera depois do deploy 36).",
+   "blocker": null,
+   "grupo": "resultado-orquestradora-suite36",
+   "modelo": "claude-fable-5-1",
+   "esforco": "sessao orquestradora",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-05T09:50:24+00:00"
   }
  },
  "rodadas": [
@@ -11321,6 +11494,43 @@
    ],
    "grupos": [
     "resultado-orquestradora-janela35c"
+   ]
+  },
+  {
+   "quando": "2026-10-05T09:50:24+00:00",
+   "itens": [
+    "29.93",
+    "29.103",
+    "29.99",
+    "29.97",
+    "29.101",
+    "T.2",
+    "29.104",
+    "29.106",
+    "28.41",
+    "29.110",
+    "31.70",
+    "31.71",
+    "31.74",
+    "31.58",
+    "29.96",
+    "29.100",
+    "30.69",
+    "30.52",
+    "30.34",
+    "29.94"
+   ],
+   "grupos": [
+    "resultado-orquestradora-suite36"
+   ]
+  },
+  {
+   "quando": "2026-10-05T09:51:25+00:00",
+   "itens": [
+    "29.94"
+   ],
+   "grupos": [
+    "resultado-orquestradora-29-94"
    ]
   }
  ]
