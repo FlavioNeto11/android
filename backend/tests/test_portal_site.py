@@ -6,6 +6,7 @@ Prova `simulated`: app ASGI com o harness de sempre, a pasta `site/` REAL do rep
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 from collections.abc import Iterator
@@ -19,8 +20,8 @@ from starlette.routing import Mount
 from app.config import TELEFONE_PUBLICO, ContatoPublicoCfg
 from app.main import create_app
 from app.modules.portal.domain.campos import TELEFONE
-from app.modules.portal.presentation.site import (CABECALHOS_DO_SITE, EXTENSOES_DO_SITE, SiteInvalido,
-                                                  bloco_de_contatos, ler_site)
+from app.modules.portal.presentation.site import (CABECALHOS_DO_SITE, DIGITOS_DA_VERSAO, EXTENSOES_DO_SITE, Arquivo,
+                                                  SiteInvalido, bloco_de_contatos, ler_site, versionar)
 
 from .conftest import Harness
 
@@ -312,3 +313,42 @@ def test_rotulo_ilustracao_tem_contraste_aa_nos_fundos_reais() -> None:
         assert cor, seletor
         for fundo in fundos:
             assert _contraste(_hex(cor.group(1)), fundo) >= 4.5, (seletor, cor.group(1), fundo)
+
+
+# ---------------------------------------------------------------- 29.95: endereço novo a cada conteúdo novo
+async def test_paginas_apontam_para_a_versao_que_a_origem_serve(harness: Harness) -> None:
+    """A borda guarda CSS, JS e imagens por 4 h no navegador (troca o `no-cache` da origem por `max-age=14400`, medido
+    em 05/10). Com `?v=` igual ao começo do sha256 do que a origem serve, conteúdo novo é endereço novo."""
+    _preparar(harness, site=True)
+    async with _cliente(harness) as c:
+        for pagina in ("/", "/pagina-que-nao-existe"):
+            html = (await c.get(pagina)).text
+            versoes = dict(re.findall(r'\s(?:href|src)="(/[^"?#]+)\?v=([0-9a-f]+)"', html))
+            assert "/assets/site.css" in versoes, pagina
+            if pagina == "/":
+                assert {"/assets/site.js", "/assets/marca-ana.svg", "/favicon.svg"} <= set(versoes)
+            for caminho, versao in versoes.items():
+                r = await c.get(f"{caminho}?v={versao}")
+                assert r.status_code == 200, caminho
+                assert hashlib.sha256(r.content).hexdigest()[:DIGITOS_DA_VERSAO] == versao, caminho
+            # Nada da pasta fica sem versão; o que não é arquivo do site (painel, raiz, âncora) fica como está.
+            assert not re.search(r'\s(?:href|src)="/(?:assets/|favicon)[^"?]*"', html), pagina
+        assert 'href="/central/"' in (await c.get("/")).text
+
+
+def test_versionar_muda_o_endereco_so_quando_o_conteudo_muda() -> None:
+    def site(css: bytes) -> dict[str, Arquivo]:
+        html = (b'<html><link rel="stylesheet" href="/assets/a.css"><a href="/outra.html">x</a>'
+                b'<img src="/assets/sumiu.svg"><a href="/#contato">c</a></html>')
+        return {"/index.html": Arquivo(html, "text/html; charset=utf-8", '"e"'),
+                "/outra.html": Arquivo(b"<html></html>", "text/html; charset=utf-8", '"o"'),
+                "/assets/a.css": Arquivo(css, "text/css; charset=utf-8", '"c"')}
+
+    um, outro, igual = (versionar(site(b"body{}"))["/index.html"], versionar(site(b"body{color:red}"))["/index.html"],
+                        versionar(site(b"body{}"))["/index.html"])
+    v = hashlib.sha256(b"body{}").hexdigest()[:DIGITOS_DA_VERSAO]
+    assert f'href="/assets/a.css?v={v}"'.encode() in um.corpo
+    assert um.corpo != outro.corpo and um.etag != outro.etag and um == igual
+    # Página para página, arquivo que não está na pasta e âncora ficam como estão.
+    for intacto in (b'href="/outra.html"', b'src="/assets/sumiu.svg"', b'href="/#contato"'):
+        assert intacto in um.corpo
