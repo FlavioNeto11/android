@@ -172,6 +172,11 @@ class Fato:
         return self.tipo == "convidado"
 
     @property
+    def resumo_do_portal(self) -> bool:
+        """O resumo dos contatos do site acima dos tetos (28.32): `portal-resumo:<hora>`. Só informa."""
+        return self.tipo == "portal-resumo"
+
+    @property
     def portal(self) -> bool:
         """A mensagem de um visitante do site (28.32): `portal:<contato_id>`. Só informa."""
         return self.tipo == "portal"
@@ -276,6 +281,10 @@ def _rotear_resposta(t: str, f: Fato) -> Intencao | None:
         return Intencao("desconhecida", motivo="Esta mensagem é de um visitante do site e só informa: nada foi executado, "
                                                "e a sua resposta não vai a ele. Para falar com ele, use o contato que "
                                                "ele deixou.")
+    if f.resumo_do_portal:
+        # Só contagens: sem este ramo, um "sim" a ele cairia no texto livre e viraria pedido.
+        return Intencao("desconhecida", motivo="Este aviso só informa: nada foi executado, e a resposta a ele não liga "
+                                               "nem desliga o formulário de contato do site.")
     if f.teto_de_comentarios:
         # Revisão da #314: o aviso do teto só informa. Sem este ramo, um "sim" a ele cairia no texto livre e viraria
         # pedido.

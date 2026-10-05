@@ -5945,13 +5945,21 @@ Sem rota HTTP nova. É o contrato interno que a rota de contato do Portal (29.77
 - O aviso, na fila `avisos_entregas`: tipo `portal.contato`, nível 1, sai na hora, um a um (`SEM_AGRUPAR`), sem link,
   nunca no espelho do Trello. Título fixo "ANA: 🌐 Mensagem de visitante do site (não verificada)". O corpo tem as linhas
   rotuladas, os campos de uma linha, a mensagem citada com `│ ` e os links, IPs, `/comandos` e `@menções` desarmados.
-  Antes, NFKC, sem a categoria Cf, e todo branco Unicode (Zs, braille em branco, preenchedores do hangul) vira espaço
-  ASCII, que se junta: nada empurra o texto do visitante ao começo de uma linha da tela.
+  Antes, NFKC (menos os ordinais `º` e `ª`), sem a categoria Cf, no máximo 2 marcas combinantes (Mn, Me) por
+  caractere, e todo branco Unicode (Zs, braille em branco, preenchedores do hangul) vira espaço ASCII, que se junta:
+  nada empurra o texto do visitante ao começo de uma linha da tela.
   Não passa por `texto_seguro` nem pelo redator (ADR-075).
 - O corpo das linhas `portal.%` é apagado no estado final (`enviado`, `falhou`, `incerto`, `descartado`), e o
   `pendente` vence (`validade_h`) mesmo com o canal desligado. O adaptador corta o texto em 4000 unidades UTF-16, que é
   como o Telegram conta. A resposta do
   dono à mensagem (fato `portal:<id>`) cai em `desconhecida` e só informa.
+- `state.avisos.avisar_resumo_do_portal(retidos: int, descartados: int, janela_h: int) -> ContatoAvisado`: os contatos
+  acima dos tetos da rota numa mensagem só de contagens. Não pede o dono: acima do limiar, tipo `portal.resumo`,
+  nível 2, sai na hora; abaixo, `portal.resumo_rotina`, nível 3, na janela da rotina, com as contagens no título. Chave
+  `portal-resumo:<AAAA-MM-DDTHH>Z` (uma por hora UTC; a segunda chamada na hora volta `enfileirado=True` sem duplicar).
+  Inteiros de 0 a 1 000 000, a janela de 1 a 24 h e ao menos um contato; senão, `campo_invalido`. Nunca "Espera
+  você": com algum descartado ou com 20 ou mais retidos, o crítico é o possível abuso e a última linha diz que o
+  formulário se protege sozinho; abaixo disso, "Crítico: nada." e "Nada a fazer". A resposta do dono a ele só informa.
 - **Prova:** `simulated`. Arquivos `backend/tests/test_avisos_portal_contato.py` (domínio) e
   `backend/tests/test_avisos_portal_servico.py` (fila, entrega, corpo apagado, Trello e resposta). `not_run`: envio real
   ao Telegram e a rota do Portal.

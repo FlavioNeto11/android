@@ -157,3 +157,67 @@ def test_resposta_do_dono_so_informa(texto: str) -> None:
     intencao = rotear(texto, fato="portal:7")
     assert intencao.tipo == "desconhecida"
     assert "visitante do site" in (intencao.motivo or "")
+
+
+def test_resumo_uma_vez_por_hora(tmp_path: Path) -> None:
+    relogio = Relogio()
+    canal = CanalFalso()
+    servico, db, _ = _backend(_cfg(tmp_path), "a", relogio, canal=canal)
+    assert servico.avisar_resumo_do_portal(25, 0, 1) == p.ContatoAvisado(True, None)
+    assert servico.avisar_resumo_do_portal(9, 2, 1) == p.ContatoAvisado(True, None)   # mesma hora: a mesma chave
+    linhas = _linhas(db)
+    assert len(linhas) == 1 and linhas[0]["tipo"] == "portal.resumo"
+    assert linhas[0]["chave"].startswith("portal-resumo:")
+    for _ in range(3):
+        _volta(servico)
+    assert [t for t, _, _ in canal.enviados] == [p.TITULO_DO_RESUMO]
+    relogio.avancar(3600)
+    assert servico.avisar_resumo_do_portal(1, 0, 1).enfileirado
+    assert len(_linhas(db)) == 2
+
+
+def test_resumo_recusas_sem_gravar(tmp_path: Path) -> None:
+    servico, db, _ = _backend(_cfg(tmp_path), "a", Relogio(), canal=CanalFalso())
+    assert servico.avisar_resumo_do_portal(0, 0, 1) == p.ContatoAvisado(False, p.CAMPO_INVALIDO)
+    assert servico.avisar_resumo_do_portal(-1, 3, 1) == p.ContatoAvisado(False, p.CAMPO_INVALIDO)
+    desligado, db2, _ = _backend(_cfg(tmp_path / "b", ligado=False), "a", Relogio())
+    assert desligado.avisar_resumo_do_portal(3, 0, 1) == p.ContatoAvisado(False, p.CANAL_DESLIGADO)
+    assert _linhas(db) == [] and _linhas(db2) == []
+
+
+def test_resumo_falha_interna(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    servico, db, _ = _backend(_cfg(tmp_path), "a", Relogio(), canal=CanalFalso())
+
+    def quebra(aviso: object) -> bool:
+        raise RuntimeError("banco fora")
+
+    monkeypatch.setattr(servico.fila, "enfileirar", quebra)
+    assert servico.avisar_resumo_do_portal(3, 0, 1) == p.ContatoAvisado(False, p.FALHA_INTERNA)
+
+
+def test_resumo_nivel_e_fora_do_trello() -> None:
+    """Revisão do #335: o resumo não pede o dono. Acima do limiar, nível 2 que sai na hora; abaixo, a rotina."""
+    assert nivel_do_tipo(p.TIPO_DO_RESUMO) == 2 and entrega_do_tipo(p.TIPO_DO_RESUMO) == AGORA
+    assert p.TIPO_DO_RESUMO not in TIPOS_DA_JANELA
+    assert nivel_do_tipo(p.TIPO_DO_RESUMO_ROTINA) == 3 and p.TIPO_DO_RESUMO_ROTINA in TIPOS_DA_JANELA
+    assert p.TIPO_DO_RESUMO not in ROTULOS and p.TIPO_DO_RESUMO_ROTINA not in ROTULOS
+
+
+def test_resumo_abaixo_do_limiar_vai_com_a_rotina(tmp_path: Path) -> None:
+    relogio = Relogio()
+    canal = CanalFalso()
+    servico, db, _ = _backend(_cfg(tmp_path), "a", relogio, canal=canal)
+    assert servico.avisar_resumo_do_portal(3, 0, 1).enfileirado
+    _volta(servico)
+    assert canal.enviados == []                                   # espera a janela da rotina
+    relogio.avancar(3601)
+    _volta(servico)
+    assert [t for t, _, _ in canal.enviados] == ["ANA: 🌐 Contatos do site acima do limite: 3 guardados, 0 descartados"]
+
+
+@pytest.mark.parametrize("texto", ["sim", "não", "desliga o formulário", "ok"])
+def test_resposta_ao_resumo_so_informa(texto: str) -> None:
+    intencao = rotear(texto, fato="portal-resumo:2026-10-04T22Z")
+    assert intencao.tipo == "desconhecida"
+    assert "formulário de contato do site" in (intencao.motivo or "")
+    assert "visitante" not in (intencao.motivo or "")
