@@ -94,6 +94,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - Cada uma das 7 regras, revertida, reprova um teste. A frase nova tem caso em `test_learning_falhas.py`.
 - Prova real `not_run`: é a nova prévia do 29.30, com o perfil ainda em 0 publicações.
 
+## 2026-10-05 — 29.116: o lote diz quando a lista não se releu (branch fix/29-116-lote-releitura-falha)
+
+Leitura do 29.114 pela Ferramentas do Claude.
+
+- S1: a releitura que falhava resolvia como a boa. O resumo dizia "Terminado" sobre a lista velha, e reabrir o lote
+  voltava ao defeito do 29.114. Agora `ProfilesPage` tem a leitura `ler()`, que devolve se as personas se releram, e o
+  lote recebe `onConcluido: () => Promise<boolean>`. No resumo, a falha ou a rejeição vira o aviso "A lista de personas
+  não se releu…", que pede "Tentar de novo" antes da próxima ação. A rejeição não prende o diálogo nem some no
+  `void confirmar()`.
+- N2: uma releitura começada depois da do lote (reconexão, fila da pessoa) fazia a do lote voltar pela ficha, sem
+  gravar. Agora quem perde a corrida espera a resposta da mais nova.
+- N: `Dialog` ganha `closeBlockedReason`. Com ele, o X fica indisponível COM o motivo e o Esc e o clique fora não
+  fecham; antes eram ignorados sem dizer por quê. Na troca para o resumo, o foco vai para o Fechar, não para o corpo.
+- Testes: quatro novos em `AcoesEmLote.test.tsx` (falha, rejeição, releitura mais nova, X e Esc), todos falhando no
+  código do 29.114. Prova simulated:
+  - frontend inteiro 1617/1617 sem atraso;
+  - `src/features/profiles` 194/194 com atraso nas sementes 7, 11, 22, 44, 88 e 99.
+
 ## 2026-10-05 — 29.114: o lote só diz "Terminado" depois de a lista se reler (branch fix/29-114-lote-espera-releitura)
 
 - `frontend/src/features/profiles/AcoesEmLote.tsx`: o resumo do lote aparecia antes de a lista de personas se reler.

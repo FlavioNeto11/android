@@ -9,7 +9,7 @@
  * só as repete. Nenhuma operação paga sai sem a pessoa ver o custo ou o aviso e confirmar.
  */
 import { Ban, CheckCheck, ImagePlus, Layers, RotateCcw, ShieldCheck, Sparkles, Trash2, TriangleAlert, X } from 'lucide-react';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api } from '../../api/client';
 import type { PersonaDTO, PolicyGroup } from '../../api/types';
 import { Badge } from '../../components/Badge';
@@ -42,8 +42,8 @@ export function BarraDeLote({ selecionadas, grupos, onLimpar, onConcluido }: {
   selecionadas: PersonaDTO[];
   grupos: PolicyGroup[];
   onLimpar: () => void;
-  /** Relê a lista depois de uma operação (apagadas saem, status e grupo mudam). */
-  onConcluido: () => Promise<void>;
+  /** Relê a lista depois de uma operação (apagadas saem, status e grupo mudam); `false` quando ela não se releu. */
+  onConcluido: () => Promise<boolean>;
 }) {
   const [operacao, setOperacao] = useState<OperacaoDeLote | null>(null);
   const n = selecionadas.length;
@@ -82,13 +82,19 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
   pessoas: PersonaDTO[];
   grupos: PolicyGroup[];
   onFechar: () => void;
-  onConcluido: () => Promise<void>;
+  onConcluido: () => Promise<boolean>;
 }) {
   const { ai, falhou: aiFalhou } = useAiStatus();
   // A seleção é FOTOGRAFADA ao abrir: a lista se relê no fim (apagadas somem) e o resumo precisa continuar dizendo
   // quem era quem.
   const [pessoas] = useState(selecao);
   const [fase, setFase] = useState<Fase>('parametros');
+  const [listaVelha, setListaVelha] = useState(false);
+  // Na troca para o resumo, os botões que tinham o foco somem: ele vai para o Fechar, não para o corpo da página.
+  const fecharRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (fase === 'resumo') fecharRef.current?.focus();
+  }, [fase]);
   const [resultados, setResultados] = useState<(ResultadoDoItem | undefined)[]>([]);
   const [fotos, setFotos] = useState('1');
   const [instrucoes, setInstrucoes] = useState('');
@@ -143,11 +149,16 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
     });
     // O resumo só depois de a lista se reler: com ele na tela a pessoa fecha e reabre o lote, e a operação seguinte
     // decidia pela lista velha ("já estava sem grupo", ok e sem PATCH, com a persona ainda no grupo) (29.114).
+    // As ações já foram feitas: a releitura que falha ou rejeita não as desfaz nem prende o diálogo, mas o resumo diz
+    // que a lista na tela ficou velha, para ninguém decidir o próximo lote por ela.
+    let relida = false;
     try {
-      await onConcluido();
-    } finally {
-      setFase('resumo');
+      relida = await onConcluido();
+    } catch {
+      relida = false;
     }
+    setListaVelha(!relida);
+    setFase('resumo');
   }
 
   // ------------------------------------------------ custo, aviso e confirmação por operação
@@ -292,13 +303,14 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
   return (
     <Dialog
       open
-      onClose={() => { if (fase !== 'executando') onFechar(); }}
+      onClose={onFechar}
+      closeBlockedReason={fase === 'executando' ? 'Aguarde terminar.' : null}
       title={titulo}
       icon={icone}
       tone={perigoso ? 'danger' : undefined}
       size="md"
       footer={fase === 'resumo' ? (
-        <Button variant="primary" onClick={onFechar}>Fechar</Button>
+        <Button ref={fecharRef} variant="primary" onClick={onFechar}>Fechar</Button>
       ) : (
         <>
           <Button variant="secondary" onClick={onFechar} disabledReason={fase === 'executando' ? 'Aguarde terminar.' : null}>
@@ -328,6 +340,12 @@ function DialogoDeLote({ operacao, pessoas: selecao, grupos, onFechar, onConclui
               {fase === 'resumo' ? `Terminado: ${oks} ok · ${falhas} ${falhas === 1 ? 'falhou' : 'falharam'}.`
                 : feitos === n ? 'Relendo a lista de personas…' : `Executando, ${CONCORRENCIA_DO_LOTE} por vez…`}
             </p>
+            {fase === 'resumo' && listaVelha ? (
+              <p className={styles.detail} role="alert">
+                A lista de personas não se releu: a que está na tela pode estar desatualizada. Use “Tentar de novo” na
+                página antes da próxima ação em lote.
+              </p>
+            ) : null}
             <ul className={styles.loteLista} aria-label="Resultado por persona">
               {pessoas.map((p, i) => {
                 const r = resultados[i];
