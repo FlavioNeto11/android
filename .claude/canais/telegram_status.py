@@ -185,12 +185,12 @@ def imagem_conferida(step_id: str, sha_esperado: str, ler) -> tuple[bytes, str]:
     return conteudo, str(mime)
 
 
-def _ler_pela_porta():  # noqa: ANN202 - a leitura de `PortasReais.imagem_da_etapa`, com o armazém dos avatares
-    from types import SimpleNamespace
-
+def _da_central():  # noqa: ANN202 - (ler a imagem da etapa, ler o sha256 da prévia da porta), pelo banco e pelo armazém
+    """As duas leituras da Central (28.46): a imagem da etapa, do armazém dos avatares, e o `imagem_sha256` que a prévia
+    da porta mostra, pela mesma conta dela. Separado para o teste trocar por um falso."""
     from app.config import load_config
     from app.db import Database
-    from app.modules.avisos.infrastructure.portas_da_central import PortasReais
+    from app.modules.avisos.infrastructure.portas_da_central import imagem_da_etapa, sha_da_imagem_na_porta
     from app.storage import DISK, DiskStorage, build_storage
     cfg = load_config()
     env = cfg.env
@@ -199,30 +199,71 @@ def _ler_pela_porta():  # noqa: ANN202 - a leitura de `PortasReais.imagem_da_eta
                             access_key=_segredo(env.s3_access_key_id) or None,
                             secret_key=_segredo(env.s3_secret_access_key) or None)
     avatares = DiskStorage(cfg.data_dir) if storage.name == DISK else storage
-    porta = SimpleNamespace(db=Database(cfg.db_dsn), _ler_imagem=avatares.get)
-    return lambda run_id, step_id: PortasReais.imagem_da_etapa(porta, run_id, step_id)  # type: ignore[arg-type]
+    db = Database(cfg.db_dsn)
+    return (lambda run_id, step_id: imagem_da_etapa(db, avatares.get, run_id, step_id),
+            lambda run_id, step_id: sha_da_imagem_na_porta(db, run_id, step_id))
 
 
-async def _enviar_foto(legenda: str, reply_to: int | None, step_id: str, previa: Path) -> int:
+def _canal_do_dono():  # noqa: ANN202 - o CanalTelegram do chat do dono, ou o motivo de não haver
+    env = EnvSettings()
+    chat = _segredo(env.telegram_chat_id)
+    if not chat:
+        return None, "TELEGRAM_CHAT_ID vazio no .env do central"
     try:
-        sha = sha_da_previa(json.loads(previa.read_text(encoding="utf-8")), step_id)
-        conteudo, mime = imagem_conferida(step_id, sha, _ler_pela_porta())
+        return CanalTelegram(_segredo(env.telegram_bot_token), chat), None
+    except TokenAusente as exc:
+        return None, str(exc)
+
+
+async def _enviar_foto(legenda: str, reply_to: int | None, step_id: str, previa: Path | None, *,
+                       central=None, canal=None) -> int:  # noqa: ANN001 - os falsos do teste
+    """28.45/28.46: a foto da etapa ao dono, só se o sha256 da imagem bate com o que a prévia da porta mostra, lido da
+    PRÓPRIA Central. `previa` (o JSON gravado) é opcional: com ele, o arquivo também tem de bater com a Central."""
+    run_id = step_id.split(":", 1)[0]
+    try:
+        ler, sha_na_porta = (central or _da_central)()
+        sha = sha_na_porta(run_id, step_id)
+    except Exception as exc:  # noqa: BLE001 - sem ler a Central, nada sai; o tipo basta (sem texto do banco)
+        print(f"recusado, nada enviado: a Central não foi lida ({type(exc).__name__})")
+        return 2
+    if not sha:
+        print("recusado, nada enviado: a prévia da porta não tem imagem_sha256 para esta etapa")
+        return 2
+    if previa is not None:
+        try:
+            sha_do_arquivo = sha_da_previa(json.loads(previa.read_text(encoding="utf-8")), step_id)
+        except FotoRecusada as exc:
+            print(f"recusado, nada enviado: {exc}")
+            return 2
+        except (OSError, ValueError) as exc:
+            print(f"recusado, nada enviado: o arquivo da prévia não foi lido ({type(exc).__name__})")
+            return 2
+        if sha_do_arquivo != sha:
+            print("recusado, nada enviado: o arquivo da prévia não é o que a Central mostra (sha256 diferente)")
+            return 2
+    try:
+        conteudo, mime = imagem_conferida(step_id, sha, ler)
     except FotoRecusada as exc:
         print(f"recusado, nada enviado: {exc}")
         return 2
-    except (OSError, ValueError) as exc:
-        print(f"recusado, nada enviado: a prévia não foi lida ({type(exc).__name__})")
+    except OSError as exc:
+        print(f"recusado, nada enviado: a imagem não foi lida do armazém ({type(exc).__name__})")
         return 2
-    env = EnvSettings()
-    try:
-        canal = CanalTelegram(_segredo(env.telegram_bot_token), _segredo(env.telegram_chat_id))
-    except TokenAusente as exc:
-        print(str(exc))
+    except Exception as exc:  # noqa: BLE001 - sem a imagem conferida, nada sai
+        print(f"recusado, nada enviado: a imagem não foi conferida ({type(exc).__name__})")
         return 2
+    if canal is None:
+        canal, motivo = _canal_do_dono()
+        if canal is None:
+            print(f"{motivo}; nada enviado")
+            return 2
     try:
         mid = await canal.enviar_anexo(conteudo, mime, _sem_tags(legenda), responde_a=reply_to)
     except FalhaDeEnvio as exc:
-        print(f"Falhou: {exc.motivo}")
+        # Sem resposta do Telegram (tempo esgotado, conexão caída) ou com 5xx, a foto pode ter saído: repetir às cegas
+        # manda duas. Recusa clara (4xx, definitiva) não saiu.
+        incerta = not exc.definitiva and (exc.status is None or exc.status >= 500)
+        print(f"Falhou: {exc.motivo}" + (". A foto pode ter saído: confira o chat antes de repetir." if incerta else ""))
         return 1
     print(f"enviada a foto ({mime}, sha256 {sha[:8]}…, {len(conteudo)} bytes) message_id={mid}")
     _gravar_enviada(mid)
@@ -292,7 +333,7 @@ def main() -> int:
     ap.add_argument("--chat", default=None, help="convidado registrado (membros-trello.json); sem isto, vai ao dono")
     ap.add_argument("--titulo", default=None, help="compatibilidade: vira a 1ª linha em negrito")
     ap.add_argument("--foto", default=None, metavar="STEP_ID", help="28.45: manda a imagem desta etapa (só ao dono)")
-    ap.add_argument("--previa", default=None, help="28.45: a prévia da porta gravada (JSON), com o imagem_sha256")
+    ap.add_argument("--previa", default=None, help="opcional (28.46): a prévia da porta gravada (JSON); se vier, tem de bater com a da Central")
     ap.add_argument("--escolha", default=None, metavar="OPÇÕES",
                     help="28.44: a mensagem pede uma escolha (ex.: 1,2,3); a resposta solta do dono casa com ela")
     ap.add_argument("--substitui", type=int, default=None, metavar="MESSAGE_ID",
@@ -315,10 +356,10 @@ def main() -> int:
     if args.titulo:
         texto = f"<b>{html.escape(args.titulo)}</b>\n{texto}"
     if args.foto:
-        if args.chat or not args.previa:
-            print("--foto vai só ao dono e pede --previa; nada enviado")
+        if args.chat:
+            print("--foto vai só ao dono; nada enviado")
             return 2
-        return asyncio.run(_enviar_foto(texto, args.reply_to, args.foto, Path(args.previa)))
+        return asyncio.run(_enviar_foto(texto, args.reply_to, args.foto, Path(args.previa) if args.previa else None))
     return asyncio.run(_enviar(texto, args.reply_to, args.chat, escolha=escolha, substitui=args.substitui))
 
 
