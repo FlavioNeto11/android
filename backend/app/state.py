@@ -40,6 +40,7 @@ from .devices.sdk import SdkTools
 from .events import TELEMETRIA_KINDS, TELEMETRIA_RETENCAO_H, EventBus
 from .metricas import metricas
 from .modules.applications.infrastructure.app_repository import AppRepository
+from .modules.avisos.infrastructure.canais_frota import CanaisDaFrota
 from .modules.avisos.infrastructure.contatos_sql import ContatosDoCanal
 from .modules.avisos.infrastructure.convidados import ConvidadosDoTelegram
 from .modules.avisos.infrastructure.entrada import ServicoDeEntrada, parece_codigo
@@ -342,6 +343,8 @@ class AppState:
         # Trava de líder dos laços de fundo (item 28.1): com dois backends com scheduler no mesmo banco, só um roda
         # saldos, curadoria e retenção; os outros pulam a volta sem erro.
         self.lideranca = Lideranca(self.db, dono=cfg.owner_id)
+        # Quais canais cada backend liga (28.37): a saúde acusa quando o líder da trava `avisos` não liga um deles.
+        self.canais_da_frota = CanaisDaFrota(self.db, cfg, dono=cfg.owner_id)
         # Os anexos dos canais (28.24): o arquivo em `data/anexos/` (fora do Git), pelo sha256; a faxina do 28.16 os apaga.
         self.anexos_canal = ArmazemDeAnexos(self.db, cfg.data_dir / "anexos")
         # Aviso fora do painel (28.11): espelho da caixa de Pendências no Telegram. Desligado de fábrica.
@@ -2799,6 +2802,7 @@ class AppState:
             try:
                 # Saída limpa devolve as travas de líder na hora: o outro backend assume sem esperar o prazo.
                 self.lideranca.soltar_todas()
+                self.canais_da_frota.retirar()   # e a publicação dos canais sai junto (28.37)
             except Exception:  # noqa: BLE001 - devolver a trava nunca impede fechar o banco; ela vence sozinha
                 log.exception("encerramento: falha ao soltar as travas de líder")
             self.db.close()
@@ -2894,6 +2898,10 @@ class AppState:
             self.lideranca.manter([n for n in TRAVAS_DOS_LACOS if n not in desligadas])
         except Exception:  # noqa: BLE001 - banco fora do ar: os laços pulam a volta, e a próxima tentativa refaz
             log.exception("travas de líder: renovação")
+        try:
+            self.canais_da_frota.publicar()   # só escreve quando mudou ou a cada 120 s (28.37)
+        except Exception:  # noqa: BLE001 - a publicação é para a saúde; nunca atrapalha a renovação
+            log.exception("canais da frota: publicação")
 
     async def _laco_das_travas(self) -> None:
         """Renova o mandato do líder e deixa o seguidor assumir a trava vencida. Os laços dormem de 10 min a 6 h; o
@@ -3509,6 +3517,7 @@ class AppState:
                                          "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
         problems.extend(self._problemas_de_saldo())
         problems.extend(self.avisos.problemas())
+        problems.extend(self.canais_da_frota.problemas())
         problems.extend(self.telegram_entrada.problemas())
         achados_do_espelho = self.trello_espelho.problemas()
         problems.extend(achados_do_espelho)
