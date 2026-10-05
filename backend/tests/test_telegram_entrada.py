@@ -57,6 +57,7 @@ class BotFalso:
         self.conflito = False
         self.apagar_falha = False
         self.falha: tuple[int, dict[str, object]] | None = None     # a resposta de erro do getUpdates (401, 429...)
+        self.envio_falha: list[int] = []        # o status de erro dos próximos sendMessage, um por envio (28.38)
 
     def handler(self, req: httpx.Request) -> httpx.Response:
         metodo = req.url.path.rsplit("/", 1)[-1]
@@ -74,6 +75,8 @@ class BotFalso:
             self.guardadas = [u for u in self.guardadas if int(str(u["update_id"])) >= offset]
             return httpx.Response(200, json={"ok": True, "result": self.guardadas[:50]})
         if metodo == "sendMessage":
+            if self.envio_falha:
+                return httpx.Response(self.envio_falha.pop(0), json={"ok": False, "description": "falha de teste"})
             self.mid += 1
             return httpx.Response(200, json={"ok": True, "result": {"message_id": self.mid}})
         if metodo == "deleteMessage" and self.apagar_falha:
@@ -514,6 +517,67 @@ async def test_desfecho_na_thread_uma_vez(c: Cenario) -> None:
     finais = [m for m in c.bot.mensagens() if str(m["text"]).startswith("Execução abc123: concluída.")]
     assert len(finais) == 1 and finais[0]["reply_parameters"]["message_id"] == 50  # type: ignore[index]
     assert c.linha(5)["resultado_em"] is not None
+
+
+async def test_desfecho_que_nao_saiu_tenta_de_novo_na_volta_seguinte(c: Cenario) -> None:
+    """28.38: na execução terminal o desfecho pode ser a única linha ao dono (28.36). A falha passageira do envio não o
+    marca: a volta seguinte manda de novo. A definitiva marca (repetir não adianta) e não repete."""
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.desfechos[RUN] = "Execução abc123: concluída."
+    c.bot.envio_falha = [502]
+    await c.volta()
+    assert c.linha(5)["resultado_em"] is None
+    await c.volta()
+    assert c.linha(5)["resultado_em"] is not None
+    await c.volta()
+    assert c.bot.textos().count("Execução abc123: concluída.") == 2      # a tentativa que falhou e a que saiu
+
+
+async def test_desfecho_com_falha_definitiva_marca_e_nao_repete(c: Cenario) -> None:
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    c.portas.desfechos[RUN] = "Execução abc123: concluída."
+    c.bot.envio_falha = [403]
+    await c.volta()
+    assert c.linha(5)["resultado_em"] is not None
+    n = c.bot.chamou("sendMessage")
+    await c.volta()
+    assert c.bot.chamou("sendMessage") == n
+
+
+async def test_plano_esquecido_com_a_linha_feita_e_cancelado(c: Cenario) -> None:
+    """28.38: a linha ficou feita e a execução voltou a `planned` (o `planning` de uma prévia termina ali) sem ninguém
+    iniciar nem cancelar. Antes de `PLANO_ESQUECIDO_S`, nada; depois, é cancelada, e o desfecho fecha a linha."""
+    from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
+    from app.util import to_iso
+
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    assert c.linha(5)["estado"] == "feita"
+    c.portas.estados[RUN] = "planned"
+    await c.volta()
+    assert "cancelar" not in c.portas.nomes()
+    velha = to_iso(c.repo.relogio() - timedelta(seconds=PLANO_ESQUECIDO_S + 60))
+    c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
+    await c.volta()
+    assert c.portas.chamadas[-1][:2] == ("cancelar", (RUN,)) and c.portas.estados[RUN] == "cancelled"
+    c.portas.desfechos[RUN] = "Execução abc123: cancelada."
+    await c.volta()
+    assert c.bot.textos()[-1] == "Execução abc123: cancelada." and c.linha(5)["resultado_em"] is not None
+
+
+async def test_execucao_em_andamento_que_nao_tem_desfecho_nao_e_cancelada(c: Cenario) -> None:
+    """Só a `planned` esquecida: a que roda há horas segue (o `_cancelar_plano` confere o estado)."""
+    from app.modules.avisos.infrastructure.entrada import PLANO_ESQUECIDO_S
+    from app.util import to_iso
+
+    await c.volta(msg(5, "abra o Chrome no android-09"))
+    await c.volta(botao(6, f"x:{c.linha(5)['id']}", mid=c.bot.mid))
+    velha = to_iso(c.repo.relogio() - timedelta(seconds=PLANO_ESQUECIDO_S + 60))
+    c.db.execute("UPDATE canal_entradas SET tratada_em=? WHERE id=?", (velha, c.linha(5)["id"]))
+    await c.volta()
+    assert "cancelar" not in c.portas.nomes() and c.portas.estados[RUN] == "running"
 
 
 async def test_sem_lideranca_ou_desligada_nao_le_o_bot(tmp_path: Path) -> None:
@@ -1002,6 +1066,42 @@ async def test_recusa_de_plano_ja_iniciado_nao_cancela(c: Cenario) -> None:
     # 28.36: nunca "não iniciei" quando a execução está em andamento.
     assert c.bot.textos()[-1] == ("A execução abc123 já estava em andamento: O plano desta execução já foi aprovado ou "
                                   "iniciado.")
+
+
+@pytest.mark.parametrize(("estado", "esperado"), [
+    ("cancelling", "A execução abc123 está sendo cancelada: Recusa de teste."),
+    ("needs_input", "A execução abc123 espera uma resposta sua: responda no painel para ela seguir (Recusa de teste.)."),
+])
+async def test_recusa_em_cancelamento_ou_pergunta_diz_o_estado_certo(c: Cenario, estado: str, esperado: str) -> None:
+    """28.38: em `cancelling` ela podia estar rodando ("não iniciei" seria falso); em `needs_input` só o painel a destrava."""
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+    c.portas.recusar_aprovar = "Recusa de teste."
+    c.portas.estados[RUN] = estado
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    assert "cancelar" not in c.portas.nomes() and c.linha(5)["estado"] == "feita"
+    assert c.bot.textos()[-1] == esperado
+
+
+@pytest.mark.parametrize(("estado", "comeco"), [
+    ("cancelling", "A execução abc123 está sendo cancelada; houve um erro interno ao iniciar"),
+    ("needs_input", "A execução abc123 espera uma resposta sua: responda no painel para ela seguir; houve um erro"),
+    ("planning", "A execução abc123 ainda não começou, depois de um erro interno ao iniciar"),
+])
+async def test_erro_ao_iniciar_diz_o_estado_certo(c: Cenario, monkeypatch: pytest.MonkeyPatch, estado: str,
+                                                  comeco: str) -> None:
+    c.portas.previa_da_porta = _porta(_item("s1"))
+    ident = await _executar(c)
+
+    def quebra(run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
+        c.portas.estados[run_id] = estado
+        raise RuntimeError("erro de teste")
+
+    monkeypatch.setattr(c.portas, "aprovar_plano", quebra)
+    await c.volta(botao(7, _p(c, ident), mid=c.bot.mid))
+    assert "cancelar" not in c.portas.nomes() and c.linha(5)["estado"] == "feita"
+    assert c.bot.textos()[-1].startswith(comeco), c.bot.textos()[-1]
+    assert not any(t.startswith("Não iniciei") for t in c.bot.textos())
 
 
 async def test_erro_depois_do_inicio_nao_diz_que_nao_iniciou(c: Cenario, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -91,6 +91,34 @@ OPERADOR_DO_TELEGRAM = "telegram:dono"
 EM_ANDAMENTO = ("running", "paused")
 #: Estados finais: o desfecho de sempre (`portas.desfecho`) é a linha ao dono, e nenhuma outra (28.36).
 TERMINAIS = frozenset(s.value for s in RUN_TERMINAL)
+#: Em `needs_input` a execução para até alguém responder; pelo Telegram não se responde, então o texto aponta o painel.
+RESPONDA_NO_PAINEL = "espera uma resposta sua: responda no painel para ela seguir"
+
+
+def _texto_da_recusa(curta: str, estado: str | None, motivo: str) -> str:
+    """O que o dono lê quando a Central recusou iniciar, pelo estado lido depois (28.36, 28.38)."""
+    if estado in EM_ANDAMENTO:
+        return f"A execução {curta} já estava em andamento: {motivo}"
+    if estado == "cancelling":       # podia estar rodando: "não iniciei" seria falso
+        return f"A execução {curta} está sendo cancelada: {motivo}"
+    if estado == "needs_input":
+        return f"A execução {curta} {RESPONDA_NO_PAINEL} ({motivo})."
+    return f"Não iniciei a execução {curta}: {motivo}"
+
+
+def _texto_do_erro(curta: str, estado: str | None) -> str:
+    """O que o dono lê quando um erro interno veio num caminho de início e a execução já saiu de `planned` (28.36,
+    28.38). Em `planning` ela de fato ainda não começou."""
+    erro = "houve um erro interno ao iniciar (está no log da Central)"
+    if estado in EM_ANDAMENTO:
+        return (f"A execução {curta} está em andamento; houve um erro interno logo depois do início (está no log da "
+                "Central). Conto aqui quando terminar.")
+    if estado == "cancelling":
+        return f"A execução {curta} está sendo cancelada; {erro}. Conto aqui o desfecho."
+    if estado == "needs_input":
+        return f"A execução {curta} {RESPONDA_NO_PAINEL}; {erro}. Conto aqui o desfecho."
+    return (f"A execução {curta} ainda não começou, depois de um erro interno ao iniciar (está no log da Central). "
+            "Conto aqui o desfecho.")
 #: O que o dono ouve quando a mensagem vai à orquestradora (28.28), pelo motivo do repasse. Nunca o texto do extrator do
 #: painel: "Diga onde ou por quem" não responde a uma pergunta.
 RESPOSTA_DO_REPASSE = {
@@ -190,6 +218,11 @@ _CAUSA_DA_RECUSA = {
 OCIOSO_S = 15.0
 #: Quanto tempo uma linha pode ficar em `executando` sem execução criada antes de ser dada como interrompida.
 PRESA_S = 300.0
+#: A linha ficou `feita` e a execução voltou (ou ficou) em `planned` sem ninguém iniciar nem cancelar: o `planning` de uma
+#: prévia termina em `planned`. Ninguém mais a inicia pelo canal (a linha já não tem botão), e esquecida ela trava o
+#: despacho do aprendizado. Depois disto (bem acima do `ttl_previa_s`, para o dono poder iniciá-la no painel), é
+#: cancelada, e o desfecho "cancelada" fecha a linha (28.38).
+PLANO_ESQUECIDO_S = 3600.0
 #: As fases da linha do Executar (28.27), na `previa`: o plano sendo feito (o vigia espera `planned`) e a prévia da
 #: porta mostrada (o "Executar (aprova N)" manda os pares do retrato).
 FASE_PLANEJANDO = "planejando"
@@ -1446,8 +1479,7 @@ class ConversaDoCanal:
         except Exception:  # noqa: BLE001 - na dúvida, abandona; o cancelamento confere o estado de novo
             estado = None
         motivo = self._redigir(str(recusa))[:300]
-        texto = (f"A execução {curta} já estava em andamento: {motivo}" if estado in EM_ANDAMENTO
-                 else f"Não iniciei a execução {curta}: {motivo}")
+        texto = _texto_da_recusa(curta, estado, motivo)
         if estado not in ("planned", None):
             await self._seguiu(saida, linha, de, run_id, estado, texto)
             return
@@ -1463,11 +1495,7 @@ class ConversaDoCanal:
         except Exception:  # noqa: BLE001 - na dúvida, abandona; o cancelamento confere o estado de novo
             estado = None
         if estado not in ("planned", None):
-            texto = (f"A execução {curta} está em andamento; houve um erro interno logo depois do início (está no log "
-                     "da Central). Conto aqui quando terminar." if estado in EM_ANDAMENTO
-                     else f"A execução {curta} ainda não começou, depois de um erro interno ao iniciar (está no log da "
-                          "Central). Conto aqui o desfecho.")
-            await self._seguiu(saida, linha, de, run_id, estado, texto)
+            await self._seguiu(saida, linha, de, run_id, estado, _texto_do_erro(curta, estado))
             return
         await self._abandonar_porta(saida, {**linha, "run_id": run_id} if run_id else linha, de, erro,
                                     "Não iniciei a execução: erro interno (está no log da Central).")
@@ -1542,12 +1570,26 @@ class ConversaDoCanal:
 
     # ------------------------------------------------------------------ desfecho na thread
     async def _contar_desfechos(self, saida: SaidaDaConversa) -> None:
+        """O desfecho só fica marcado quando saiu, ou quando tentar de novo não adianta (`FalhaDeEnvio.definitiva`): na
+        execução terminal ele é a ÚNICA linha ao dono (28.36), e marcado sem sair o dono não saberia do fim (28.38). A
+        falha passageira para a volta (o canal está fora) e a linha tenta de novo na seguinte."""
         for linha in self.repo.esperando_desfecho():
-            texto = self.portas.desfecho(str(linha["run_id"]))
+            run_id = str(linha["run_id"])
+            texto = self.portas.desfecho(run_id)
             if texto is None:
+                if self.repo.idade_s(linha) > PLANO_ESQUECIDO_S:
+                    self._cancelar_plano(run_id)     # só se ainda `planned`; o desfecho sai na volta seguinte
                 continue
-            await self._responder(saida, linha, self._redigir(texto), origem="resultado")
+            try:
+                await self._responder(saida, linha, self._texto_do_desfecho(texto), origem="resultado", exigir=True)
+            except FalhaDeEnvio as falha:
+                if not falha.definitiva:
+                    return
+                log.warning("telegram: desfecho da mensagem %s não sai nunca (%s)", linha.get("id"), falha.motivo)
             self.repo.marcar_desfecho(self._id(linha))
+
+    def _texto_do_desfecho(self, texto: str) -> str:
+        return self._redigir(texto)
 
     # ------------------------------------------------------------------ saída
     async def _responder(self, saida: SaidaDaConversa, linha: Mapping[str, object], texto: str, *,

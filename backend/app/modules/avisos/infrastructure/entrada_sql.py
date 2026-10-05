@@ -248,7 +248,8 @@ class EntradasDoCanal:
     # ------------------------------------------------------------------ desfecho na conversa
     def esperando_desfecho(self, limite: int = 20) -> list[dict[str, object]]:
         return [dict(r) for r in self.db.query(
-            "SELECT id, ref_mensagem, run_id FROM canal_entradas WHERE canal=? AND run_id IS NOT NULL"
+            "SELECT id, ref_mensagem, run_id, tratada_em, recebida_em FROM canal_entradas WHERE canal=?"
+            " AND run_id IS NOT NULL"
             " AND resultado_em IS NULL AND estado='feita' ORDER BY id LIMIT ?", (self.canal, limite))]
 
     def marcar_desfecho(self, ident: int) -> None:

@@ -19,6 +19,23 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 28.38: o canal diz o estado certo e não perde o desfecho (branch canais/28-38-estado-certo)
+
+- A recusa e o erro interno num caminho de início dizem o estado relido. Em `cancelling`, o texto é "está sendo
+  cancelada" (ela podia estar rodando, e "ainda não começou" seria falso). Em `needs_input`, o texto diz que é preciso
+  responder no painel, porque pelo canal não se responde.
+- O desfecho só marca `resultado_em` quando sai, ou quando a falha é `definitiva` (repetir não adianta). Antes, ele era
+  marcado mesmo quando o envio falhava calado, e na execução terminal ele é a única linha ao dono (28.36). Na falha
+  passageira, a volta para e a linha tenta de novo na volta seguinte. O laço é um só: o Trello troca só o texto
+  (`_texto_do_desfecho`, sem a "Evidência").
+- Uma linha `feita` cuja execução está em `planned` (o `planning` de uma prévia termina ali) não tinha faxina: ficava
+  sem desfecho para sempre e travava o despacho do aprendizado. Depois de `PLANO_ESQUECIDO_S` (1 h, bem acima do
+  `ttl_previa_s`, para dar tempo de iniciar no painel), ela é cancelada pelo `_cancelar_plano`, que só cancela em
+  `planned`. O desfecho "cancelada" fecha a linha. Em `esperando_desfecho`, o `SELECT` passa a ler `tratada_em` e
+  `recebida_em`.
+- Prova: `simulated`, com 9 testes novos em `tests/test_telegram_entrada.py` e 1 em `tests/test_trello_leitor.py`
+  (Telegram e Trello falsos). No ambiente real: `not_run`.
+
 ## 2026-10-05 — 28.36: a aprovação no plano trava a linha da execução (branch canais/28-36-trava-na-aprovacao)
 
 - `aprovar_plano` conferia a execução com um `SELECT`. Com dois backends no PostgreSQL (read committed), o cancelamento
