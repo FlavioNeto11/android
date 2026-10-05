@@ -2624,6 +2624,8 @@ arquivo editado. Quem acrescenta um método a um repositório num PR sobre outra
 - Catraca nova entra no arquivo de identificadores no mesmo PR; `tests/test_catracas.py` reprova identificador que não
   existe. O arquivo não aceita comentário nem linha em branco: qualquer um dos dois zera a coleta.
 - Catraca que percorre uma lista junta todos os ofensores antes de falhar, para uma falha não esconder a outra.
+- Rodada dirigida vale pela contagem, não pela cor: um caminho de arquivo que não existe na linha de comando do
+  `pytest` zera a coleta inteira ("no tests ran", saída 4), como o comentário no arquivo de identificadores.
 - O "final" de um PR diz que as catracas rodaram na ponta final, e o leitor independente cobra essa linha.
 
 **Aplicabilidade.** Vigente. O inventário por gatilho está em `.claude/rules/testes.md`.
