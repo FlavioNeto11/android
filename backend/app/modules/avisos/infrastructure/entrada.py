@@ -271,8 +271,10 @@ class PortasDaCentral(Protocol):
     def porta(self, run_id: str) -> dict[str, object]:
         """A prévia da porta (30.61, `porta_do_plano.previa_da_porta`): a recusa sobe como `RecusaDaCentral`."""
         ...
-    def aprovar_plano(self, run_id: str, aprovar: list[tuple[str, str]]) -> dict[str, object]:
-        """"Aprovar N e iniciar" (30.61, `porta_do_plano.aprovar_plano`), com os pares `(step_id, chave)` que o dono VIU.
+    def aprovar_plano(self, run_id: str, aprovar: list[tuple[str, str]], *,
+                      vista_em: str | None = None) -> dict[str, object]:
+        """"Aprovar N e iniciar" (30.61, `porta_do_plano.aprovar_plano`), com os pares `(step_id, chave)` que o dono VIU
+        e o `vista_em` da prévia mostrada (G1b: sem ele, com par a aprovar, a Central recusa como `plano_mudou`).
         O 409 `plano_mudou` sobe como `PlanoMudou`, com a prévia nova; o resto, como `RecusaDaCentral`."""
         ...
     def iniciar(self, run_id: str) -> None:
@@ -1403,6 +1405,7 @@ class ConversaDoCanal:
         retrato = {**_json(linha.get("previa")), "fase": FASE_PORTA, "run_id": run_id, "curta": curta,
                    "hash_do_plano": previa_da_porta.get("hash_do_plano"),
                    "validade_ate": previa_da_porta.get("validade_ate"), "aprovar": pares,
+                   "vista_em": previa_da_porta.get("vista_em"),          # G1b: o instante da prévia que o dono viu
                    "marca": marca_do_retrato(previa_da_porta.get("hash_do_plano"), pares)}
         if not self.repo.marcar(oid, "pergunta", run_id=run_id, previa=retrato, de=de):
             return
@@ -1504,7 +1507,8 @@ class ConversaDoCanal:
         aprovar = [(str(p[0]), str(p[1])) for p in bruto if isinstance(p, list) and len(p) == 2] \
             if isinstance(bruto, list) else []
         try:
-            resposta = self.portas.aprovar_plano(run_id, aprovar)
+            resposta = self.portas.aprovar_plano(run_id, aprovar,
+                                                 vista_em=str(previa.get("vista_em") or "") or None)
         except PlanoMudou as mudou:
             # Plano novo sem sim pendente (N = 0) inicia como todo N = 0, numa linha que diz que mudou (decisão da
             # orquestradora, 04/10 22:59Z); com sim pendente, sai a prévia nova, com o botão da marca nova.

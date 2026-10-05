@@ -24,7 +24,7 @@ from typing import Any
 
 from app.porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano, previa_da_porta
 
-from app.util import now, to_iso
+from app.util import now, now_iso, to_iso
 
 from .test_porta_do_plano import ALVO, DM, _gate, _plano, _por_chave, _sem_iniciar
 
@@ -33,7 +33,7 @@ def _aprovado_no_plano(state: Any, bindings: dict[str, Any]) -> dict[str, Any]:
     _plano(state, [{"key": "dm", "cap": "SEND_MESSAGE", "bindings": bindings}])
     item = _por_chave(previa_da_porta(state, "run-p"))["dm"]
     assert item["selo"] == "aprovacao" and item["chave"]
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
                   por="flavio")
     return item
 
@@ -137,7 +137,7 @@ async def test_pendente_de_outra_execucao_aprovado_depois_do_sim_faz_perguntar_d
                      (to_iso(now() - timedelta(minutes=5)), outro.id))
     item = _por_chave(previa_da_porta(state, "run-p"))["dm"]
     assert item["selo"] == "aprovacao" and "repetição" not in item["motivo"]     # o pendente não aparece na prévia
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
                   por="flavio")
     state.db.execute("UPDATE pending_approvals SET status='approved', decided_at=? WHERE id=?",
                      (to_iso(now() + timedelta(seconds=1)), outro.id))
@@ -183,7 +183,7 @@ async def test_a_mesma_dm_mandada_antes_do_sim_segue_coberta_por_ele(harness: An
                                          run_id="r-antiga", occurred_at=to_iso(now() - timedelta(days=1)))
     item = _por_chave(previa_da_porta(state, "run-p"))["dm"]
     assert item["selo"] == "aprovacao" and "repetição passa por confirmação" in item["motivo"]
-    aprovar_plano(state, "run-p", AprovarPlanoBody(aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
+    aprovar_plano(state, "run-p", AprovarPlanoBody(vista_em=now_iso(), aprovar=[ItemAprovado(step_id=item["step_id"], chave=item["chave"])]),
                   por="flavio")
     assert await _gate(state, "dm") is None
     assert [r["origem"] for r in state.db.query("SELECT origem FROM pending_approvals")] == ["plano"]

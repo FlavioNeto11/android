@@ -35,7 +35,8 @@ async function sair(el: HTMLElement): Promise<void> {
 
 function previa(itens: ItemDaPorta[], over: Partial<PreviaDaPorta> = {}): PreviaDaPorta {
   return {
-    run_id: 'run-p', hash_do_plano: 'h', validade_ate: '2026-10-05T21:00:00.000Z', custo_rascunhos_usd: 0,
+    run_id: 'run-p', hash_do_plano: 'h', vista_em: '2026-10-05T01:00:00.000Z', validade_ate: '2026-10-05T21:00:00.000Z',
+    custo_rascunhos_usd: 0,
     estimativa: true, parcial: false, total: false, itens,
     na_execucao: { textos_da_tela: 0, itens_for_each: 0, sempre: ['desafio', '2FA', 'CAPTCHA'] }, ...over,
   };
@@ -107,7 +108,10 @@ describe('PortaDoPlano (30.61)', () => {
     await waitFor(() => expect(travado()).toBe(false));
     await click(byRole('button', /Aprovar 1 e iniciar/));
     await waitFor(() => expect(backend.callsTo('POST', /aprovar-plano$/)).toHaveLength(1));
-    const corpo = backend.callsTo('POST', /aprovar-plano$/)[0]?.body as { aprovar: unknown[]; tirar: string[] };
+    const corpo = backend.callsTo('POST', /aprovar-plano$/)[0]?.body as {
+      aprovar: unknown[]; tirar: string[]; vista_em: string | null;
+    };
+    expect(corpo.vista_em).toBe('2026-10-05T01:00:00.000Z');      // G1b: o instante da prévia vista volta no gesto
     expect(corpo.aprovar).toEqual([{ step_id: 'run-p:android-01:v1:dm', chave: CHAVE_EDITADA, texto: 'oi! tudo certo?' }]);
     expect(corpo.tirar).toEqual(['run-p:android-01:v1:like']);
   });

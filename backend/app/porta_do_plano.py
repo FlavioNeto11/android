@@ -18,7 +18,7 @@ import hashlib
 import json
 import logging
 from collections.abc import Mapping
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
@@ -32,7 +32,7 @@ from .social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_MOTIVO
                                         texto_exato)
 from .taskqueue.repository import MOTIVO_REJEICAO
 from .taskqueue.service import RunError
-from .util import now, now_iso, to_iso
+from .util import now, now_iso, parse_iso, to_iso
 
 if TYPE_CHECKING:
     from .state import AppState, PortaDaEtapa
@@ -81,6 +81,10 @@ class AprovarPlanoBody(BaseModel):
 
     aprovar: list[ItemAprovado] = Field(default_factory=list, max_length=500)
     tirar: list[str] = Field(default_factory=list, max_length=500)
+    #: G1b: o `vista_em` da prévia que o dono VIU (`previa_da_porta`). A DM igual mandada ou aprovada depois dele não
+    #: estava no motivo lido e não fica coberta pelo sim. Sem ele (ou ilegível, ou no futuro), com item a aprovar, a
+    #: aprovação é recusada: incerteza não conta como sim, e o cliente antigo é só uma aba a recarregar.
+    vista_em: str | None = Field(None, max_length=40)
 
 
 def validade_h(state: AppState) -> int:
@@ -252,7 +256,7 @@ def previa_do_item(state: AppState, run_id: str, corpo: PreviaDoItemBody) -> dic
     propostos, _modelos = _itens_do_plano(state, run, objetivos, etapas, dependentes, rotulos,
                                           {corpo.step_id: _com_texto(etapa, texto)})
     proposto = next((i for i in propostos if str(i["step_id"]) == corpo.step_id), None)
-    return {"step_id": corpo.step_id, "texto": texto, "item": proposto}
+    return {"step_id": corpo.step_id, "texto": texto, "item": proposto, "vista_em": now_iso()}
 
 
 def previa_da_porta(state: AppState, run_id: str) -> dict[str, object]:
@@ -261,7 +265,7 @@ def previa_da_porta(state: AppState, run_id: str) -> dict[str, object]:
 
     falhas = sum(1 for i in itens if i.get("falhou"))
     return {
-        "run_id": run_id, "hash_do_plano": hash_do_plano(run, etapas),
+        "run_id": run_id, "hash_do_plano": hash_do_plano(run, etapas), "vista_em": now_iso(),   # G1b
         "validade_ate": to_iso(now() + timedelta(hours=validade_h(state))), "custo_rascunhos_usd": 0.0,
         "estimativa": True, "parcial": 0 < falhas < len(itens), "total": bool(itens) and falhas == len(itens),
         "itens": itens,
@@ -366,6 +370,30 @@ MOTIVO_TIRADA = f"{MOTIVO_REJEICAO}: tirada na prévia da porta (30.61), o dono 
 INICIADA_POR_OUTRO_GESTO = ("Outro gesto já tinha iniciado esta execução; os sins que você aprovou foram gravados e "
                             "valem nela.")
 
+#: G1b: o motivo de cada item quando o gesto não diz quando a prévia foi vista.
+MOTIVO_SEM_VISTA = "a prévia não diz quando foi vista: recarregue-a e aprove de novo"
+
+
+def _vista_em(valor: str | None) -> datetime | None:
+    """G1b: o instante legível da prévia vista; `None` sem ele, ilegível ou no FUTURO (um `vista_em` adiante tiraria do
+    motivo a repetição já acontecida: o sim cobriria o que o dono não leu)."""
+    try:
+        quando = parse_iso((valor or "").strip() or None)
+    except ValueError:
+        return None
+    return quando if quando is not None and quando <= now() else None
+
+
+def _repetida_desde(state: AppState, run: Row, obj: Row, e: Row, bindings: Mapping[str, object],
+                    desde: datetime) -> str | None:
+    """G1b: a DM deste item repete uma mensagem mandada ou aprovada DEPOIS da prévia vista? O motivo, ou `None`. A
+    mesma conta da porta (`mensagem_repetida`, com o `desde` do 31.49), só leitura."""
+    porta = state.vereditos_da_porta(obj, e, run)
+    if porta.cap is None or not porta.profile_id:
+        return None
+    return state.policies.mensagem_repetida(str(porta.profile_id), porta.cap, bindings, app_id=porta.app_id,
+                                            step_id=str(e["id"]), desde=desde)
+
 
 def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por: str) -> dict[str, object]:
     """30.61: o gesto "Aprovar N e iniciar". Recalcula a prévia AGORA (a mesma conta do `GET`) e compara item a item com
@@ -383,6 +411,12 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
         raise PortaIndisponivel("invalid_body", "A mesma etapa veio com duas chaves.", 422)
     if set(corpo.tirar) & {sid for sid, _c in pedidos}:
         raise PortaIndisponivel("invalid_body", "A mesma etapa veio para aprovar e para tirar.", 422)
+    vista = _vista_em(corpo.vista_em)
+    if pedidos and vista is None:
+        # G1b: falha fechado. `plano_mudou` leva a prévia nova (com `vista_em`): o painel e o Telegram já a mostram.
+        raise PortaIndisponivel("plano_mudou", "A prévia não diz quando foi vista; nada foi gravado.", previa=previa,
+                                mudaram=[{"step_id": sid, "selo": None, "motivo": MOTIVO_SEM_VISTA}
+                                         for sid, _c in pedidos])
     mudaram: list[dict[str, object]] = []
     etapa_por_id = {str(e["id"]): e for e in etapas}
     # 30.68: o texto editado de verdade (diferente do da prévia) se confere pela prévia DESSE texto, a que o dono viu.
@@ -416,6 +450,19 @@ def aprovar_plano(state: AppState, run_id: str, corpo: AprovarPlanoBody, *, por:
             mudaram.append({"step_id": sid, "selo": item["selo"] if item else None,
                             "motivo": (item["motivo"] if item else "a etapa não está mais no plano")
                             or "a chave mudou: o item não é mais o que você viu"})
+    # G1b: a repetição não muda o selo nem a chave; a DM igual surgida DEPOIS da prévia vista entra em `mudaram` aqui,
+    # com o texto que vai (o editado, se houver). A anterior já estava no motivo que o dono leu.
+    ja_mudaram = {str(m["step_id"]) for m in mudaram}
+    for sid, _chave in pedidos:
+        e = etapa_por_id.get(sid)
+        if vista is None or sid in ja_mudaram or e is None:
+            continue
+        linha = _com_texto(e, editados[sid]) if sid in editados else e
+        motivo = _repetida_desde(state, _run, objetivos[str(e["objective_id"])], e, loads(linha["bindings"], {}) or {},
+                                 vista)
+        if motivo:
+            mudaram.append({"step_id": sid, "selo": itens[sid]["selo"] if sid in itens else None,
+                            "motivo": f"depois da prévia que você viu: {motivo}"})
     mudaram += [{"step_id": sid, "selo": None, "motivo": "a etapa não está mais no plano"}
                 for sid in corpo.tirar if sid not in do_plano]
     if mudaram:

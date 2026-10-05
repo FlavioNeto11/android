@@ -2925,6 +2925,8 @@ export interface ItemDaPorta {
 export interface PreviaDaPorta {
   run_id: string;
   hash_do_plano: string;
+  /** G1b: quando a prévia foi montada; volta no gesto (sem ele, com item a aprovar, o servidor responde 409 `plano_mudou`). */
+  vista_em?: string;
   validade_ate: string;
   custo_rascunhos_usd: number;
   estimativa: boolean;

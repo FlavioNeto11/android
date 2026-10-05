@@ -212,7 +212,8 @@ export function PortaDoPlano({ runId }: { runId: string }) {
         : { step_id: i.step_id, chave: i.chave as string };
     });
     try {
-      const r = await api.aprovarPlano(runId, aprovar, [...tiradas]);
+      // G1b: o instante da prévia que está na tela; a DM igual surgida depois dele não fica coberta pelo sim.
+      const r = await api.aprovarPlano(runId, aprovar, [...tiradas], previa.vista_em);
       setMudaram([]);
       toast({
         tone: 'success',

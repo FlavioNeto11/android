@@ -938,8 +938,10 @@ export const api = {
   /** 30.61: a prévia da porta numa execução `planned` (só leitura; não chama IA). 409 `invalid_state` fora de `planned`. */
   portaDoPlano: (id: string, signal?: AbortSignal) => request<PreviaDaPorta>('GET', `/runs/${enc(id)}/porta`, { signal }),
   /** 30.61: "Aprovar N e iniciar". 409 `plano_mudou` traz `mudaram` e a `previa` nova no `detail`; nada é gravado. */
-  aprovarPlano: (id: string, aprovar: AprovarPlanoItem[], tirar: string[]) =>
-    request<AprovarPlanoResultado>('POST', `/runs/${enc(id)}/aprovar-plano`, { body: { aprovar, tirar } }),
+  aprovarPlano: (id: string, aprovar: AprovarPlanoItem[], tirar: string[], vistaEm?: string) =>
+    request<AprovarPlanoResultado>('POST', `/runs/${enc(id)}/aprovar-plano`, {
+      body: { aprovar, tirar, vista_em: vistaEm ?? null },
+    }),
   /** 30.61 "Renovar": só o sim ainda válido; o vencido volta para rever (409 `sim_vencido` quando nada renovou). */
   renovarPorta: (id: string) => request<RenovarPlanoResultado>('POST', `/runs/${enc(id)}/porta/renovar`),
   /** 30.68: o selo, o motivo e a chave do item com o texto editado no cartão. Só leitura (não grava, não chama IA). */
