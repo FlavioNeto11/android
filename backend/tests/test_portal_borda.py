@@ -56,6 +56,10 @@ def _borda(quebra: str = "") -> httpx.MockTransport:
                 return httpx.Response(404)
             if quebra == "api_500":
                 return httpx.Response(500)
+            if quebra == "api_522":                                   # E1: só a API sem alcançar a origem
+                return httpx.Response(522)
+            if quebra == "api_tempo":
+                raise httpx.ReadTimeout("tempo", request=pedido)
             if quebra == "api_desafio":
                 # O desafio da borda em /api/*: 403, mas não é a recusa do central (C1 da leitura do #383).
                 return httpx.Response(403, headers={"cf-mitigated": "challenge", "set-cookie": "__cf_bm=segredo-cf"},
@@ -557,6 +561,53 @@ def test_tunel_fora_avisa_uma_vez_pelo_site_e_nao_pela_api() -> None:
     assert canais.chamadas == [("sem_conferir", "raiz", "borda-522", 1)]
     assert vigia.seguidas_sem_conferir_api == 0
 
+
+@pytest.mark.parametrize(("quebra", "codigo"), [("api_522", "borda-522"), ("api_tempo", "tempo-esgotado")])
+def test_api_sem_resposta_com_o_site_conferido_conta_para_a_api(quebra: str, codigo: str) -> None:
+    """E1 da leitura do #383: a API que demora ou não alcança a origem com o site 200 na mesma volta (rota lenta,
+    regra da zona só em /api/*) é contada e avisada como da API, e nunca some."""
+    canais = CanaisFalsa()
+    vigia = _vigia(lambda: quebra, canais, n=3)
+    for h in range(2):
+        vigia.volta(AGORA + timedelta(hours=h))
+    assert canais.chamadas == [] and vigia.seguidas_sem_conferir == 0 and vigia.seguidas_sem_conferir_api == 2
+    vigia.volta(AGORA + timedelta(hours=2))
+    assert canais.chamadas == [("sem_conferir", "api", codigo, 3)]
+    assert [p[0] for p in vigia.problemas()] == ["portal_api_sem_conferir"]
+
+
+async def test_o_laco_do_vigia_sobe_com_o_backend_e_da_a_volta_na_hora_utc(harness: Harness,
+                                                                         monkeypatch: pytest.MonkeyPatch) -> None:
+    """Quem liga o vigia é a subida do backend (`state.py`, tarefa `portal-borda`), no líder da trava `avisos`; a volta
+    recebe a hora do projeto em UTC, a mesma em que o vigia e a Canais contam o dia do aviso."""
+    import asyncio
+
+    from app.modules.portal import montagem
+
+    assert harness.state is not None
+    assert "portal-borda" in {t.get_name() for t in harness.state._bg}
+    portal = harness.state.portal
+    voltas: list[datetime] = []
+    monkeypatch.setattr(montagem, "PRIMEIRA_VOLTA_DO_VIGIA_S", 0)
+    monkeypatch.setattr(portal, "nome_do_vigia", lambda: HOST)
+    monkeypatch.setattr(portal.vigia, "volta", voltas.append)
+    tarefa = asyncio.create_task(portal.laco_da_borda(lambda: 1))
+    try:
+        for _ in range(200):
+            if voltas:
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        tarefa.cancel()
+    [agora] = voltas
+    assert agora.tzinfo is not None and agora.utcoffset() == timedelta(0)
+    assert abs((agora - datetime.now(timezone.utc)).total_seconds()) < 60
+    sem_lider: list[datetime] = []
+    monkeypatch.setattr(portal.vigia, "volta", sem_lider.append)
+    tarefa = asyncio.create_task(portal.laco_da_borda(lambda: None))      # sem a trava: nenhuma volta
+    await asyncio.sleep(0.1)
+    tarefa.cancel()
+    assert sem_lider == []
 
 
 @pytest.mark.parametrize("perigoso", _UNICODE_PERIGOSO)

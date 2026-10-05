@@ -163,7 +163,7 @@ class Vigia:
         self.ultima_da_api: Desfecho | None = None
         self.quando: datetime | None = None
         self.seguidas_sem_conferir = 0              # o site (painel, raiz, arquivos), ou o túnel inteiro
-        self.seguidas_sem_conferir_api = 0          # só a API respondendo outra coisa (404, 302, 500, desafio): C3
+        self.seguidas_sem_conferir_api = 0          # a API sem recusar nem abrir, com o site conferido: C3 e E1
         self._avisado_em: dict[str, date] = {}
 
     def volta(self, agora: datetime) -> Desfecho | None:
@@ -174,10 +174,16 @@ class Vigia:
         api, site = uma_volta_em_partes(self._buscar, host=host, site_ligado=self._site_ligado(),
                                         csp_do_painel=self._csp_do_painel())
         desfecho = borda.juntar((api, site))
-        self.ultima, self.ultima_do_site, self.ultima_da_api, self.quando = desfecho, site, api, agora
+        self.ultima, self.ultima_do_site, self.quando = desfecho, site, agora
         self.seguidas_sem_conferir = self._sem_conferir(site, self.seguidas_sem_conferir, "raiz", _CHAVE_DO_SITE, agora)
-        # Rede, túnel e tempo esgotado na API também derrubam o painel: quem conta é o site, sem aviso dobrado.
-        if not (api.estado == borda.SEM_CONFERIR and not api.motivo.startswith("api ")):
+        # A API sem resposta (rede, túnel, tempo esgotado) com o site TAMBÉM sem conferir é a mesma queda: quem conta é
+        # o site, sem aviso dobrado. Com o site conferido na mesma volta, a falha é só da API (rota lenta, regra da zona
+        # só em /api/*, origem que derruba só ali) e conta para ela (E1 da leitura do #383). A volta pulada não mexe no
+        # contador da API nem no motivo que a saúde mostra.
+        mesma_queda = (api.estado == borda.SEM_CONFERIR and not api.motivo.startswith("api ")
+                       and site.estado == borda.SEM_CONFERIR)
+        if not mesma_queda:
+            self.ultima_da_api = api
             self.seguidas_sem_conferir_api = self._sem_conferir(api, self.seguidas_sem_conferir_api, "api",
                                                                 _CHAVE_DA_API, agora)
         if desfecho.estado == borda.OK:
