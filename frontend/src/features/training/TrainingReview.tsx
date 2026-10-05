@@ -226,11 +226,11 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
   // v1.63: as respostas da pessoa às perguntas da proposta, por pergunta, e a recusa de resposta com cara de segredo.
   const [respostas, setRespostas] = useState<Record<string, string>>({});
   const [erroResposta, setErroResposta] = useState<{ message: string; question: string | null } | null>(null);
-  // O que está respondido nas perguntas da proposta atual, no limite do contrato (até 8 por chamada).
+  // O que está respondido nas perguntas da proposta atual. Acima do limite do contrato (8 por chamada) o botão trava
+  // com o motivo, em vez de cortar: o sucesso limpa os campos, e a 9ª resposta sumiria sem ir.
   const respondidas: TrainingAnswer[] = (proposta?.questions ?? [])
     .map((q) => ({ question: q, answer: (respostas[q] ?? '').trim() }))
-    .filter((a) => a.answer)
-    .slice(0, MAX_RESPOSTAS_POR_PEDIDO);
+    .filter((a) => a.answer);
   // "Gerar habilidade deste fluxo" (a conversão da fase J) depois de salvar, com `features.skills`.
   const [conversao, setConversao] = useState<FlowConversion | null>(null);
   const [convertendo, setConvertendo] = useState(false);
@@ -364,9 +364,20 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
     } catch (e) {
       // v1.63: resposta com cara de senha ou código fica no campo dela, sem toast (o texto não pode ir adiante).
       const err = toApiError(e);
+      // O backend não diz qual resposta (o corpo é só code e message): marca todas as que foram nesta chamada.
       if (err.code === 'resposta_sensivel') {
-        const pergunta = typeof err.detail?.question === 'string' ? err.detail.question : null;
-        setErroResposta({ message: err.message, question: pergunta });
+        setErroResposta({ message: err.message, question: null });
+      } else if (err.code === 'proposta_concorrente') {
+        // Outro pedido de proposta desta gravação terminou antes: a tela relê a sessão para mostrar a que valeu.
+        toastError('A proposta mudou enquanto você pedia', e);
+        try {
+          const s = await api.getTraining(sessionId);
+          setSessao(s);
+          setProposta(s.proposal);
+          setOriginal(s.proposal);
+        } catch {
+          /* a releitura falhou: a tela fica com a proposta que tinha, e o próximo pedido confere de novo */
+        }
       } else toastError('A IA não conseguiu propor o fluxo', e);
     } finally {
       setPensando(false);
@@ -740,6 +751,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                 </fieldset>
                 <span className={styles.actions}>
                   <Button size="sm" variant={respondidas.length ? 'outline' : 'ghost'} icon={WandSparkles} loading={pensando}
+                          disabledReason={respondidas.length > MAX_RESPOSTAS_POR_PEDIDO
+                            ? `Mande até ${MAX_RESPOSTAS_POR_PEDIDO} respostas por vez: deixe as outras em branco e responda na próxima proposta.` : null}
                           onClick={() => void pedirProposta(respondidas)}>
                     {respondidas.length ? 'Pedir nova proposta com as respostas' : 'Pedir outra proposta'}
                   </Button>

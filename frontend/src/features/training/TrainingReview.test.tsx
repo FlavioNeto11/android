@@ -543,3 +543,38 @@ it('com entrada sem destino a prévia não é pedida (a tela já diz o motivo); 
   await click(byRole('button', /^Descartar a entrada #3$/, regiao('Sem destino')));
   await waitFor(() => expect(backend.callsTo('POST', /\/preview$/)).toHaveLength(1));
 });
+
+it('proposta_concorrente: mostra o motivo e relê a sessão, ficando com a proposta que valeu', async () => {
+  useToastStore.setState({ toasts: [] });
+  let pedidas = 0;
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => {
+    pedidas += 1;
+    return pedidas === 1 ? json({ ...SESSAO, status: 'proposed', proposal: PROPOSTA })
+      : apiError(409, 'proposta_concorrente', 'Outra proposta desta gravação terminou antes; peça de novo.');
+  });
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('O texto muda?'));
+  backend.on('GET', /\/training\/trn-1$/, () => json({ ...SESSAO, status: 'proposed', proposal: { ...PROPOSTA, command_template: 'mande a {contato}' } }));
+  await click(byRole('button', /^Pedir outra proposta$/));
+  await waitFor(() => expect((byRole('textbox', /Comando/) as HTMLInputElement).value).toBe('mande a {contato}'));
+  expect(useToastStore.getState().toasts.find((t) => t.title === 'A proposta mudou enquanto você pedia')?.message)
+    .toContain('Outra proposta desta gravação terminou antes');
+});
+
+it('mais de 8 respostas: o pedido trava com o motivo em vez de cortar a 9ª', async () => {
+  const perguntas = Array.from({ length: 9 }, (_, i) => `Pergunta ${i + 1}`);
+  backend.on('POST', /\/training\/trn-1\/propose$/, () => json({ ...SESSAO, status: 'proposed', proposal: { ...PROPOSTA, questions: perguntas } }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await click(await waitFor(() => byRole('button', /Pedir proposta à IA/i)));
+  await waitFor(() => expect(text()).toContain('Pergunta 9'));
+  for (const p of perguntas) await setValue(byRole('textbox', new RegExp(`^${p}$`)) as HTMLInputElement, 'sim');
+  const pedir = byRole('button', /^Pedir nova proposta com as respostas/);
+  expect(pedir.getAttribute('aria-disabled')).toBe('true');
+  expect(pedir.getAttribute('aria-label') ?? pedir.textContent).toContain('Mande até 8 respostas por vez');
+  const antes = backend.callsTo('POST', /\/propose$/).length;
+  await click(pedir);
+  expect(backend.callsTo('POST', /\/propose$/)).toHaveLength(antes);
+  await setValue(byRole('textbox', /^Pergunta 9$/) as HTMLInputElement, '');
+  expect(byRole('button', /^Pedir nova proposta com as respostas/).getAttribute('aria-disabled')).toBeNull();
+});
