@@ -147,6 +147,20 @@ def test_ram_livre_insuficiente_para_o_alvo_gera_aviso_de_capacidade(harness: Ha
     assert saude.status == "degraded"
 
 
+def test_aviso_de_capacidade_compara_com_as_vagas_pela_regra_unica(harness: Harness, monkeypatch: Any) -> None:
+    """29.86 (R2): o alvo do aviso é o mesmo número do agendador e do painel (`vagas_que_valem`), não a leitura
+    direta de `max_online_devices`. O setting diz 1 (os aparelhos já ligados do harness cobrem, sem aviso); a regra,
+    pelo gancho, diz 40, que a RAM livre não sustenta: o aviso aparece e cita 40."""
+    state = harness.state
+    assert state is not None
+    state.settings.update({"max_online_devices": 1})
+    monkeypatch.setattr("app.state.psutil.virtual_memory", lambda: _MemoriaFalsa(4_000))
+    _host_pronto(state)
+    state.workers.vagas_do_host = lambda: 40
+    problema = next((p for p in state.health().problems if p.code == "capacity_local"), None)
+    assert problema is not None and "alvo configurado (40" in problema.message
+
+
 # ---------------------------------------------------------------- canal do worker na porta principal
 def _worker_remoto(state: Any) -> None:
     import json

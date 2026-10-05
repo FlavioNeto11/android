@@ -829,7 +829,8 @@ class Scheduler:
         return f"aguardando vaga de trabalho em “{nome}” ({em_uso} de {teto} aparelhos trabalhando)"
 
     def servidores(self) -> dict[str, Servidor]:
-        """A foto de cada máquina para o balanceamento e para a tela Limites: capacidade, carga e vagas."""
+        """A foto de cada máquina para o balanceamento: capacidade, carga e vagas. A rota de limites usa só as chaves
+        dela (quais máquinas existem); os números de lá vêm do `capacidade`."""
         s = self.get_settings()
         devs = self.devices
         ids = {self.cfg.owner_id} | {self.servidor_de(rt) for rt in devs.devices.values()}
@@ -838,8 +839,9 @@ class Scheduler:
         for sid in sorted(ids):
             cap = self._capacidade(sid)
             host = sid == self.cfg.owner_id
-            vagas_max = (cap.max_slots if cap is not None else int(s.max_online_devices)) if not host \
-                else self._vagas_do_host(s)
+            # 29.86 (R1): remoto não inscrito não tem vaga nenhuma. Antes a foto mostrava as vagas do CENTRAL
+            # (`max_online_devices`) como livres numa máquina que nem existe no registro.
+            vagas_max = (cap.max_slots if cap is not None else 0) if not host else self._vagas_do_host(s)
             usadas = devs.slots_used() if host else devs.slots_used_of(sid)
             motivo: str | None = None
             if cap is None and not host:

@@ -289,6 +289,21 @@ async def test_agendador_e_rota_de_limites_leem_as_vagas_pela_regra_unica(tmp_pa
         await h.crash()
 
 
+async def test_remoto_nao_inscrito_nao_mostra_vaga_livre_na_foto(tmp_path: Path) -> None:
+    """29.86 (R1): a foto de um worker que não está no registro tinha `vagas_livres` calculadas com o
+    `max_online_devices` do CENTRAL. Sem inscrição não há vaga: 0, indisponível e o motivo."""
+    h, _reg, _agente = await _com_worker(tmp_path, remotos=["android-03"])
+    try:
+        assert h.state is not None
+        _rodizio(h, max_online_devices=4)
+        h.state.devices.get("android-03").worker_id = "worker-fantasma"
+        foto = h.state.scheduler.servidores()["worker-fantasma"]
+        assert foto.vagas_livres == 0 and not foto.disponivel
+        assert foto.motivo_indisponivel == "worker “worker-fantasma” não está inscrito"
+    finally:
+        await h.crash()
+
+
 async def test_reserva_do_central_no_rodizio_usa_as_vagas_pela_regra_unica(tmp_path: Path) -> None:
     """29.84 (R3 da revisão): o `livres[None]` do rodízio, que decide quantos aparelhos DESTA máquina ligam, vem
     da regra única. O setting diz 1 e a regra diz 2: os dois aparelhos do central com tarefa na fila ligam."""
