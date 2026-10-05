@@ -104,7 +104,7 @@ class ComandoAssistido:
             profile_ids = profile_ids or list(pedido.get("profile_ids") or [])
             pendentes = [q for q in perguntas_da_execucao(runs, run) if q.get("field") not in CAMPOS_DE_DESTINO]
             # O destino desta execução já está na foto (alvos ecoados): o texto que vai à IA é o SEM destinos, senão
-            # o refinado carregaria "peça para o Lucas…" e a sucessora o leria de novo como destino do texto.
+            # o refinado carregaria "peça para o Fulano…" e a sucessora o leria de novo como destino do texto.
             comando = runs.sem_destinos(comando) or comando
         status = runs.provider.status()
         if not status.configured:

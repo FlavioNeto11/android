@@ -374,7 +374,7 @@ acoes:
         tentar novamente]
     # Critério objetivo da DM (ADR-055), conferido pela árvore ANTES do modelo. Em 19/09 o verificador por modelo errou
     # nos dois sentidos: 5 DMs com a bolha enviada no print dadas por não enviadas (numa, "apenas parte do texto" com o
-    # texto inteiro) e a DM da beatriz dada por ENVIADA com "Sending…" congelado. Pendente nunca é enviada: com uma
+    # texto inteiro) e a DM da ciclana dada por ENVIADA com "Sending…" congelado. Pendente nunca é enviada: com uma
     # destas marcas na tela nem a prova local nem o modelo fecham a etapa (as duas grafias da reticência, porque a
     # comparação é por texto). Com o texto na bolha e o campo de escrita da conversa na tela sem ele, é enviada, sem
     # modelo. O id do campo foi lido das telas reais julgadas em 24–25/09 (o mesmo da prova de OPEN_THREAD).

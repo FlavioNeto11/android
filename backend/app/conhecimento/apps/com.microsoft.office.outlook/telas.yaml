@@ -3,7 +3,7 @@
 #
 # O que é OBSERVADO e o que é SUPOSIÇÃO vem marcado em cada linha. Observado = árvore da plataforma (UiAutomator2) em
 # 30/09/2026, Outlook 5.2635.3: no android-10, boas-vindas, "Add account", a espera do WebView de autenticação, "Verify
-# your email" e "Enter your password"; no android-06 (login real do André, 22:18–22:24Z), tudo o que veio depois do
+# your email" e "Enter your password"; no android-06 (login real do Beltrano, 22:18–22:24Z), tudo o que veio depois do
 # "Next": o aviso da conta Microsoft, o diálogo de chave de acesso do sistema, "Authentication in progress", "Add
 # another account", os três informativos do primeiro uso, a caixa e a gaveta com o e-mail. O "Stay signed in?" e as
 # telas de desafio da Microsoft seguem suposição conservadora: se não casarem, a tela fica desconhecida e o motor para

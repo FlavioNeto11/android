@@ -2691,7 +2691,7 @@ async def instance_context(request: Request, instance_id: str) -> Any:
 
 @router.get("/instagram/profiles/{profile_id}/operational-context")
 async def profile_context(request: Request, profile_id: str, instance_id: str | None = None) -> Any:
-    """O MESMO contexto, chegando pelo perfil: do André Carvalho ao aparelho dele sem trocar de tela. O aparelho é
+    """O MESMO contexto, chegando pelo perfil: do Beltrano Souza ao aparelho dele sem trocar de tela. O aparelho é
     o principal da persona, ou o dito em `?instance_id=` (precisa estar vinculado a ela)."""
     s = st(request)
     rt, _perfil = _profile_device(s, profile_id, instance_id)

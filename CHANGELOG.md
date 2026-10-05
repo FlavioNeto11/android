@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — 31.98: nomes de conta fora dos comentários e docstrings do backend (branch chore/31-98-nomes-fora-dos-comentarios)
+
+- Comentários e docstrings de `backend/app` (27 arquivos, 100 trechos) não citam mais nome nem @ de conta ou persona: as
+  narrativas de incidente dizem "uma conta real" e os exemplos usam nomes de exemplo fixos (fulano, beltrano, ciclano,
+  sicrano), o mesmo para a mesma pessoa, para as referências cruzadas continuarem casando. Comportamento igual: o ast
+  de cada arquivo, com as docstrings zeradas, é idêntico antes e depois.
+- Única mudança em texto que vai à IA: o exemplo de nome de usuário com @ de `PLANNER_CAPABILITY_SYSTEM` virou
+  fictício; os hashes de `PLANNER_CAPABILITY_SYSTEM`, `PLANNER_MULTIAPP_SYSTEM` e `PLANNER_MULTIAPP_SYSTEM_CURTO` em
+  `tests/test_prompts_licoes.py` mudam de propósito (só o exemplo difere; conferido contra o texto antigo).
+- Fora, de propósito: a lista fictícia do `simulated_provider`, o nome de uma lista do Trello e uma variável homônima,
+  e um exemplo numa mensagem de erro ao usuário (texto de código, não comentário). Os testes também usam @ de contas
+  como dado de exemplo: não é escopo deste item.
+- Prova `simulated`: `not_run` (funil da suíte 39; os dirigidos rodam depois do "no ar"). Real: `not_run`.
+
 ## 2026-10-05 — Deploy 38 e rodada do plano-100 (636 itens)
 
 - **Implantado** às 16:02Z: central em `86afe1b5`, migração `115_receita_nao_aplicavel`, 24 merges sobre `ebc316f9`.

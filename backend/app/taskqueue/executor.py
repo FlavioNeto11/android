@@ -1823,7 +1823,7 @@ class StepExecutor:
             return await falha("este aparelho não sabe receber mídia na galeria", tentar_de_novo=False)
         # 30.60 (achado 6): o perfil do objetivo precisa ter vínculo ATIVO com ESTE aparelho. Sem isso, a imagem de uma
         # persona iria para a galeria de outra (objetivo de A despachado num aparelho que só tem B). O vínculo secundário
-        # conta (android-13 é também do André): é pertencer ao aparelho, não ser o único dele.
+        # conta (android-13 é também do Beltrano): é pertencer ao aparelho, não ser o único dele.
         if persona_id and self.social is not None and self.social.repo.binding(persona_id, rt.id) is None:
             return await falha(f"a persona do objetivo não está vinculada a {rt.id}: a imagem dela não vai para a galeria "
                                "de outro perfil (nada foi enviado ao aparelho)", tentar_de_novo=False)
@@ -3926,7 +3926,7 @@ class StepExecutor:
                                              "conta como prova") if t)
             pendentes = marcas_pendentes_na_tela(marcas_pendentes, obs.tree)
             if pendentes:
-                # ADR-055: "Sending…" na tela é efeito A CAMINHO, nunca feito. Em 19/09 a DM da beatriz foi dada por
+                # ADR-055: "Sending…" na tela é efeito A CAMINHO, nunca feito. Em 19/09 a DM da ciclana foi dada por
                 # enviada com "Sending…" congelado: a bolha e o campo limpo já estavam lá, e o modelo disse "sim". Nem
                 # a prova local nem o modelo são consultados; segue olhando até o fim do prazo desta verificação (o
                 # app costuma sair de "Sending…" em 1–2 s). Sem sair, o efeito disparado fica incerto.

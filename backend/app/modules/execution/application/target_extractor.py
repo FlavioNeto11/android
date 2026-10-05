@@ -1,14 +1,14 @@
 """`TargetExtractor`: os destinos que o TEXTO do comando cita (onda C; design persona-e-parque §7.5).
 
-"Peça para o André curtir a última foto da @nasa", "responda as DMs como @lucas.almeida", "abra o Chrome no
+"Peça para o Beltrano curtir a última foto da @nasa", "responda as DMs como @fulano.tal", "abra o Chrome no
 android-03" — quem e onde estão no texto. Esta etapa acha esses trechos, casa com o catálogo (nomes e @ das personas,
 ids dos aparelhos) e devolve as DICAS e o comando SEM os destinos (`command_sem_destinos`), que é o que vai ao
-casamento de habilidade e ao planejador: sem isto, um `{nome}` de fluxo capturaria "André" como parâmetro.
+casamento de habilidade e ao planejador: sem isto, um `{nome}` de fluxo capturaria "Beltrano" como parâmetro.
 
 Determinística e sem IA de propósito: o nome da persona não é instrução, e extração por modelo não é repetível. Só
 padrões explícitos contam — "com a persona X", "como @user", "pelo/pela X", "peça para o/a X", "no(s) aparelho(s)
-Y e Z", `android-NN` —, e só o que casa com o catálogo vira dica. "Mande mensagem para o André" NÃO é destino (o
-André ali é o destinatário), e um nome que não casa com ninguém deixa o texto inteiro. Dica nunca executa sozinha:
+Y e Z", `android-NN` —, e só o que casa com o catálogo vira dica. "Mande mensagem para o Beltrano" NÃO é destino (o
+Beltrano ali é o destinatário), e um nome que não casa com ninguém deixa o texto inteiro. Dica nunca executa sozinha:
 a origem `texto` obriga a prévia (§7.6, risco R13).
 
 Roda ANTES do `TemplateStage` da RESOLVE: `RunService` a chama e passa `command_sem_destinos` adiante;
@@ -46,7 +46,7 @@ class DestinosNoTexto:
 
 
 def _normal(texto: str) -> str:
-    """Minúsculas e sem acento: "André" e "andre" são a mesma citação."""
+    """Minúsculas e sem acento: "Beltrano" e "beltrano" são a mesma citação."""
     return "".join(c for c in unicodedata.normalize("NFD", texto.casefold()) if unicodedata.category(c) != "Mn")
 
 
@@ -81,7 +81,7 @@ class TargetExtractor:
     """Acha os destinos citados no texto e os tira dele. Uma instância por catálogo (o serviço monta a cada pedido)."""
 
     def __init__(self, catalogo: CatalogoDeDestinos) -> None:
-        # (forma normalizada, é @?, profile_id): mais longa primeiro, para "André Carvalho" ganhar de "André".
+        # (forma normalizada, é @?, profile_id): mais longa primeiro, para "Beltrano Souza" ganhar de "Beltrano".
         formas: list[tuple[str, bool, str]] = []
         for p in catalogo.personas:
             formas += [(_normal(n.strip()), False, p.profile_id) for n in p.nomes if n and n.strip()]
@@ -93,8 +93,8 @@ class TargetExtractor:
     # ------------------------------------------------------------------ casar no ponto
     def _persona_em(self, normal: str, inicio: int, so_handle: bool) -> tuple[int, tuple[str, ...]] | None:
         """A citação de persona que começa em `inicio`: a forma MAIS LONGA que casa, com os ids de TODAS as formas
-        desse comprimento (dois "André" = dois ids = pergunta). O "@" é opcional antes do usuário ("pela
-        lucas.almeida" também é o @)."""
+        desse comprimento (dois "Beltrano" = dois ids = pergunta). O "@" é opcional antes do usuário ("pela
+        fulano.tal" também é o @)."""
         melhor = 0
         ids: list[str] = []
         for forma, e_handle, pid in self._formas:
@@ -188,8 +188,8 @@ def _palavra(c: str) -> bool:
 
 
 def _termina(texto: str, fim: int) -> bool:
-    """A citação acaba em `fim`? Fronteira de palavra — e o ponto final da frase ("com a persona Lucas.") também
-    é fronteira, embora "." seja letra de @ ("lucas.almeida")."""
+    """A citação acaba em `fim`? Fronteira de palavra — e o ponto final da frase ("com a persona Fulano.") também
+    é fronteira, embora "." seja letra de @ ("fulano.tal")."""
     if fim >= len(texto) or not _palavra(texto[fim]):
         return True
     return texto[fim] == "." and (fim + 1 == len(texto) or not _palavra(texto[fim + 1]))

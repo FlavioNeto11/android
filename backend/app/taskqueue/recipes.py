@@ -209,7 +209,7 @@ def eh_generica(actions: Sequence[Mapping[str, object]], post_value: str | None,
     específica: errar para cá só adia o ganho. "Message", "Options" e "Send message" (`open_thread`) são genéricos.
 
     `titulo`: o título RESOLVIDO da etapa entra junto da pós-condição (revisão da Android no #145). O planejador às vezes
-    escreve o alvo só no título ("Abrir a conversa com Lucas"), sem parâmetro; sem isso, o toque em "Lucas" passaria
+    escreve o alvo só no título ("Abrir a conversa com Fulano"), sem parâmetro; sem isso, o toque em "Fulano" passaria
     como genérico e só a sombra com outro valor o pegaria.
     """
     post = _normal(f"{post_value or ''} {titulo or ''}")
@@ -359,7 +359,7 @@ def _usable_text(text: str, variables: dict[str, str]) -> str | None:
     # A tela mostra "ana" para o parâmetro "@ana" (linha da caixa de mensagens, cabeçalho da conversa). Sem isto o
     # seletor gravava "ana" LITERAL e, reproduzido para "@bia", tocava a conversa de outra pessoa — a verificação
     # recusava, mas a tentativa se perdia e a receita ia para a quarentena (achado da fase G, 27/09). Só o texto
-    # INTEIRO igual ao valor sem arroba vira parâmetro: um pedaço ("Mariana" para "@ana") nunca.
+    # INTEIRO igual ao valor sem arroba vira parâmetro: um pedaço ("Fabiana" para "@ana") nunca.
     for name, value in sorted(variables.items(), key=lambda kv: -len(kv[1] or "")):
         puro = _sem_arroba(value or "")
         if puro and len(puro) >= 3 and norm_text(text) == norm_text(puro):
@@ -401,7 +401,7 @@ def build_selectors(target: dict[str, Any], variables: dict[str, str]) -> list[d
 
 def _rotulo_estavel(sel: dict[str, str]) -> bool:
     """O literal do seletor do filho (sem os `{parâmetros}`) não muda com o estado nem traz um @ de pessoa: o nome de
-    pessoa só vale templatizado. Qualquer @ literal recusa ("por @lucas", "Foto de @lucas"; revisão da Android)."""
+    pessoa só vale templatizado. Qualquer @ literal recusa ("por @fulano", "Foto de @fulano"; revisão da Android)."""
     for chave in ("text", "desc"):
         literal = re.sub(r"\{[^}]*\}", "", sel.get(chave) or "").strip()
         if literal and ("@" in literal or _ROTULO_DE_ESTADO.search(literal)):

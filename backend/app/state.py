@@ -2708,7 +2708,7 @@ class AppState:
                 log.info("Appium: %s (%s)", "ok" if ok else "indisponível", self.appium.detail)
             await self.devices.start()
             # O `account_label` de cada aparelho passa a ser o derivado (vínculo ou conta travada; ADR-055) — em 28/09
-            # os quinze diziam `qa-user-NN` da configuração, e o android-04 com o felipe logado enganou um experimento.
+            # os quinze diziam `qa-user-NN` da configuração, e o android-04 com o sicrano logado enganou um experimento.
             self.social_repo.sincronizar_rotulos()
             # Antes do scheduler e da reconciliação: a partir daqui o ciclo de vida local tem para quem ir, e um
             # comando despachado sem o worker local no ar seria recusado com "não está conectado".
@@ -3579,7 +3579,7 @@ class AppState:
         problema_capacidade = self._problema_de_capacidade_local()
         if problema_capacidade is not None:
             problems.append(problema_capacidade)
-        # ADR-055: conta travada logada em aparelho LIGADO. O android-04 passou horas no ar com o felipe no desafio
+        # ADR-055: conta travada logada em aparelho LIGADO. O android-04 passou horas no ar com a conta no desafio
         # e a saúde não dizia nada; um aparelho assim é um risco à conta enquanto estiver de pé.
         if (travadas := self._contas_travadas_no_ar()):
             problems.append(Problem(
