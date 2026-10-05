@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)
+
+- Une o painel do 31.89 já sobre a junção do corte 43 (`feat/31-89-painel-corte-44`, 5cb96676) e a tela do 30.85 (`feat/30-85-selo-no-livro`, b083e683, sobre a
+  main 07b803d5). Conflitos só de CHANGELOG e do fim de `DetalheRico.test.tsx` (31.88 F2 e 30.85 acrescentaram blocos ao fim): ficaram os dois.
+- Prova `simulated`: frontend inteiro, typecheck e build com os números do commit de junção. `not_run`: percurso real (depende dos backends 30.85 e 31.89).
+
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e
@@ -101,6 +107,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `TrainingReview.test.tsx::31.88 F2` (4 testes) e `DetalheRico.test.tsx::a quem o fluxo ensinado vale` (4 testes); sem o
   `sort` das listas e com lista junto de `quem_ensinou` os testes falham. Frontend inteiro 1694/1694 e typecheck limpos (4 workers, Idle); com
   atraso do fetch só falham os dois testes que o 29.104 conserta noutro ramo. `not_run`: o percurso real (depois do deploy com o backend).
+
+## 2026-10-05 — 30.85 (painel): o Livro mostra o selo "em prova" no fluxo ensinado (branch feat/30-85-selo-no-livro)
+
+- Só frontend, contra o adendo v1.73 (backend `feat/30-85-selo-em-prova-no-livro`, ainda sem merge): a entrada e o detalhe do fluxo no Livro passam a
+  trazer `ensinado_em_prova {persona, sessao}` enquanto ele espera a prova (ausente quando provado, confirmado, desligado ou sem treino; o `state`
+  segue `published`). Achado do percurso do deploy 42: o fluxo salvo com a gravação sem persona aparecia só como "Publicado".
+- `ItemDoLivro`: o mesmo `SeloEmProva` do 30.81 ao lado do estado, e, sem `espera_a_pessoa`, a nota curta de quem pode usar até a prova (com a persona
+  ou sem ela); com `espera_a_pessoa` vale a nota de "Confirmar que fica" e a explicação não se repete. `DetalheRico`: o selo no fato "Estado".
+  Sem o campo (backend anterior), nada muda na tela.
+- Prova `simulated`: `AprendizadoPage.test.tsx::30.85` (2 testes) e `DetalheRico.test.tsx::o selo em prova do fluxo ensinado` (1); tirar o selo do item
+  ou do detalhe reprova os três. Frontend inteiro 1701/1701, typecheck e build ok (4 workers, Idle). `not_run`: o percurso real (depende do backend).
 
 ## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
 
@@ -191,6 +208,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - `PortaDoPlano.test.tsx` "mostra a validade dos sins do plano…" usava `2026-10-05T21:00Z` como instante futuro; às 21:00Z de hoje o sim passou a "vencido" e o teste falhou (determinístico, também em ramos que passavam antes). A validade agora é relativa ao relógio (6 h à frente; a renovação, 30 h).
 - Prova `simulated`: o arquivo sozinho, 22/22 em duas rodadas, em 05/10 depois das 21:00Z. Outras datas fixas próximas em testes (a conferir, sem mudança aqui): `ValidacaoTab.test.tsx` (`expira_em` em 06/10), `NovoPedido.test.tsx` (prazo em 09/10), `MetricasTab.test.tsx` (17/10).
+
+## 2026-10-05 — Deploy 42 (suíte 42: privacidade de nomes, hooks na nuvem, catracas e ensino)
+
+- **Implantado** às 23:33Z: central em `cb6742d4`, sem migração nova (segue a `116_ref_publico_do_fluxo`), 12 pontas sobre `095a43b6`. Itens: 31.105, 31.107, 28.54 (com o 28.52), 29.147 (hooks em forma exec `python`), 29.148, 30.81 (painel), 29.150, 29.136, 29.135, 31.96, 31.109 e 30.84 com a fatia 4 do 30.83.
+- Prova `real`: ensaio `deploy.ps1 -Ensaio` com a cópia `dataackups61005-202809` (nada a migrar); `GET /api/health` ok, problemas `[]`; prova de fora como esperado (46 verificações; `/api/instances` 401 de fora e 403 com Host forjado); agente do notebook em `0.1.0+cb6742d`; aparelhos 01, 03 e 06 online com automação pronta depois da readoção, sem reinício a frio; hooks do Claude na primeira sessão após o deploy sem "hook errored" e a guarda barrando como antes (29.147); `trello.apps_do_dono` carregado sem aviso e a primeira resposta do dono pelo app reconhecido aceita sem reenvio (28.54, entrada 2368 às 23:32Z).
+- Prova `simulated` (suíte 42 sobre `cb6742d4`): `scripts/tests` 683 passed; backend em SQLite 12020 passed e 13 skipped; frontend 1698 passed, typecheck e build; catracas 88 e 6; mypy 257 igual ao teto; PostgreSQL dirigido nos 404 arquivos afetados, em duas partes, 5367 e 3914 passed (8 skipped) e 0 falhas; repetição em SQLite dos 308 arquivos afetados pelo 28.54, 7839 passed e 0 falhas.
+- `not_run`: percurso no navegador (frente Portal, depois das pontas do corte 43); piloto do agente de nuvem do Copilot (29.137 e 30.82).
+- Leituras sem código novo, pelo mecanismo: 31.26 (dispensa do 1º juiz já no ar desde o deploy 33; `partial` por falta de caso real), 31.58 (latência por etapa: a dispensa não disparou em real; maior bloco é o resto da tentativa) e 29.75 (nenhum limite atrapalha em 268 execuções reais; releitura em 11/10). Decisão do dono P-013 (23:32Z): a sombra de apps candidatos (R5) fica liberada no próximo deploy.
 
 ## 2026-10-05 — Deploy 41 (suíte 41: ensino, privacidade e consertos)
 
