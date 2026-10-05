@@ -1326,14 +1326,6 @@ class TrainingStartBody(BaseModel):
     profile_id: str | None = Field(default=None, max_length=120)
 
 
-class TrainingStopBody(BaseModel):
-    """Encerrar ou descartar o treinamento (31.92). Numa gravação VIVA exige o controle do aparelho: `lease_id` é o do
-    controle atual. Gravação órfã ou já gravada dispensa."""
-
-    model_config = ConfigDict(extra="forbid")
-    lease_id: str | None = Field(default=None, min_length=1, max_length=120)
-
-
 class TrainingSaveBody(BaseModel):
     """Salvar um treinamento como habilidade (item 13.2). `proposal` é a proposta REVISADA pela pessoa (omitida = a
     da IA como veio); `profile_ids`/`group_ids` = quem recebe (vazio = todos os perfis)."""

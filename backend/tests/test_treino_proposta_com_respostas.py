@@ -235,7 +235,7 @@ async def test_guardas_de_estado_continuam(harness: Harness, quando: str, codigo
     st, rt, lease = await _no_controle(harness)
     s = st.training.start("android-01", intent="x", lease_id=lease)
     if quando == "descartada":
-        st.training.stop(s["id"], discard=True)
+        st.training.stop(s["id"], discard=True, lease_id=lease)
     async with _cliente(harness) as c:
         r = await c.post(f"/api/training/{s['id']}/propose", json={"answers": [_resp("p", "r")]})
     assert r.status_code == status and r.json()["detail"]["code"] == codigo
