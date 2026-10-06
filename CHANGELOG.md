@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F4, corte 4 (F4d): as 7 rotas de releases saem de `api.py` (branch feat/15-15-f4d-router-releases)
+
+- `/api/releases*` (listar, importar, ícone, alvos, upload, aprovar assinatura, ciclo de vida) agora moram em
+  `backend/app/modules/applications/presentation/releases.py`, montado em `main.py` no mesmo lugar do `api.router`. `device()` e a recusa da loja como
+  alvo (`recusa_loja_como_alvo`), que `api.py` também usa, foram para `presentation/comum.py` do mesmo módulo (o módulo de rotas não importa `app.api`).
+  Mesmo caminho, método, corpo e resposta; `Any` das rotas virou `object` (teto de `Any` de `app.api` 122 → 113).
+- Prova do OpenAPI contra a `main` (4294b534): 270 método+caminho idênticos; os schemas só diferem no título automático de resposta
+  (`response_model=None`, como nos cortes anteriores). A ordem entre rotas não muda o casamento (`test_ordem_das_rotas.py`, mais um caso com as 7 rotas).
+  O teste de `test_sempre_na_promovida.py` que troca `convergir_o_parque` passou a trocá-lo no módulo novo (a rota o busca ali).
+- Prova `simulated`; `real`: `not_run` até o deploy (as rotas de releases respondem como antes). Sem migração e sem adendo.
+
 ## 2026-10-06 — K-104: a caracterização da saúde não fotografa o dialeto do banco (branch fix/saude-caracterizacao-dialeto)
 
 - Na suíte 47 o PG dirigido reprovou os 31 cenários de `test_saude_caracterizacao.py`: o dourado foi gerado em SQLite e a fotografia levava `database.dialect`
