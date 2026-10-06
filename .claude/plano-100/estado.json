@@ -9526,20 +9526,16 @@
   "31.91": {
    "id": "31.91",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "T1 completo: painel sem ensino v2 (Portal 8a040bea: TeachingPanel, CorrigirEtapa, flag e métodos do cliente v2 fora; 'Ensinar a corrigir' também em waiting_user) sobre o contador do ensino v2 do corte 46. Simulado: frontend/src/features/runs/EnsinarACorrigir.test.tsx::*, frontend/src/features/training/TrainingReview.test.tsx::*. Suíte 47 sobre a integração d2d346cd (main dd134ec8 dentro; Jev F7 6c5a8c96, routers 7a708220 (8e30a011, 6bf397a0), A1 c9236810, F2 9b8b52c3 e a correção do dialeto d2d346cd; Portal 31.91 T1 8a040bea; Aprendizado 31.113 F3 7969c74b; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); SQLite -n 6 dos 372 arquivos afetados desde a main dd134ec8 7108 passed, 1 skipped, 0 falhas (sobre 7ea713c8); frontend typecheck limpo, 1718 passed (131 arquivos), build ok (sobre b1db06ce, sem mudança de frontend depois); catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 372 arquivos em 2 partes sobre 7ea713c8: 3566 passed, 9 skipped e 3500 passed, 3 skipped, 31 falhas só no golden da saúde (dialeto do banco, defeito do teste); correção d2d346cd (a fotografia troca o dialeto por um marcador): test_saude_caracterizacao e test_saude_ao_vivo no PG 44 passed, 0 falhas (06:44:23Z) e a catraca + caracterização no SQLite 121 passed.",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 06:59Z, central d2d346cd (deploy 47), navegador embutido, execução r-20261006053318-c04149 (android-04): Por aparelho > Versões anteriores do plano > Plano v1 > etapa 'Confirmar item na tela' (Falhou) mostra só 'Ensinar a corrigir'; a busca no texto da página por 'Corrigir etapa', 'Habilidade versionada' e 'Ensinar uma habilidade' não achou nada nas rotas Execuções e nas 7 abas do Aprendizado; as etapas do plano v2 (Concluída e Cancelada) não oferecem botão de ensino; console e janela sem erro.",
    "blocker": null,
-   "arquivos": [
-    "frontend/src/features/runs/EnsinarACorrigir.test.tsx",
-    "frontend/src/features/training/TrainingReview.test.tsx"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
-   "grupo": "android-suite-47",
+   "nota": "Escopo da prova real: os botões do ensino por habilidade (CorrigirEtapa) e o painel do ensino na revisão (TeachingPanel) saíram do painel. Não abri a tela de revisão de uma sessão do treino com ensino antigo (as 5 salvas já estão salvas): nela a ausência do TeachingPanel está só em teste simulado (TrainingReview.test.tsx).",
+   "grupo": "portal-percurso-47",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T06:49:50+00:00"
+   "quando": "2026-10-06T07:01:53+00:00"
   },
   "31.97": {
    "id": "31.97",
@@ -10576,6 +10572,34 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T06:49:51+00:00"
+  },
+  "29.109": {
+   "id": "29.109",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/profiles/ProfilesPage.test.tsx (4 casos: leitura que falha solta a trava e avisa; troca para o padrão no meio destrava e a resposta velha não entra; erro de leitura aposentada não vira toast; voltar ao padrão depois de A cria o grupo com {}) e PolicyGroups.tsx (dica da leitura após 300 ms, padrão do catálogo substitui o rascunho); commits 1046729a e 2d51026e na main; 413/413 reexecutados em 06/10 sobre dd134ec8 com atraso semeado 7/11/22/44/88/99.",
+   "blocker": null,
+   "nota": "Prova real na tela não feita.",
+   "grupo": "portal-29-109-29-116-ja-na-main",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T07:02:59+00:00"
+  },
+  "29.116": {
+   "id": "29.116",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/profiles/AcoesEmLote.test.tsx (releitura que falha ou é rejeitada vira o aviso 'A lista de personas não se releu', releitura mais nova é esperada, X e Esc travados com o motivo via Dialog closeBlockedReason); commit 700687f6 na main; 413/413 reexecutados em 06/10 sobre dd134ec8 com atraso semeado 7/11/22/44/88/99.",
+   "blocker": null,
+   "nota": "Prova real na tela não feita.",
+   "grupo": "portal-29-109-29-116-ja-na-main",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T07:02:59+00:00"
   }
  },
  "rodadas": [
@@ -13735,6 +13759,25 @@
    ],
    "grupos": [
     "portal-29-112-29-114-atraso-semeado"
+   ]
+  },
+  {
+   "quando": "2026-10-06T07:01:53+00:00",
+   "itens": [
+    "31.91"
+   ],
+   "grupos": [
+    "portal-percurso-47"
+   ]
+  },
+  {
+   "quando": "2026-10-06T07:02:59+00:00",
+   "itens": [
+    "29.109",
+    "29.116"
+   ],
+   "grupos": [
+    "portal-29-109-29-116-ja-na-main"
    ]
   }
  ]
