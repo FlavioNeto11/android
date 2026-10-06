@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.178: a evidência da receita sai no fechamento da etapa (branch feat/31-178-evidencia-no-fechamento)
+
+- Na onda 1 da prova (06/10), a execução parou em `awaiting_person` e as 10 perguntas do 31.163 deram 0: a evidência
+  das receitas só era gravada quando a execução assentava (digest e retrocarga só liam execução terminal).
+- Agora a retrocarga da curadoria (`ReproducoesSql.faltantes`) também lê a execução ABERTA, mas só o "a favor": a etapa
+  `succeeded` que a receita conduziu sozinha. É o único estado final da etapa. `failed` e `uncertain` voltam a `ready`
+  no "tentar de novo", então o "contra" espera a execução assentar, como antes. A etapa em `waiting_user` segue de fora.
+- Não há duplicata: a chave única do Livro é item, origem e posição, e o digest posterior não repete a linha. O
+  detalhe da linha gravada cedo conta as etapas que já tinham comprovado naquela hora.
+- Prova `simulated`: `backend/tests/test_learning_evidencia_receita.py::test_a_execucao_parada_ja_da_o_a_favor_e_o_contra_espera_ela_assentar`,
+  que reprova no código anterior; o teste da retrocarga passa a fixar que o "contra" da execução aberta fica de fora.
+  Aprendizado, receitas, evidência e arquitetura: 3223 passaram. `real`: a onda 2 de 07/10 (a pergunta
+  `plataforma_aprendeu` com a execução ainda aberta).
+
 ## 2026-10-06 — 31.177: rendimento do ensino por sessão (branch feat/31-177-rendimento-do-ensino)
 
 - Medido em 06/10: 8 de 275 execuções foram planejadas por fluxo ensinado, todas lote de prova; 0 uso real. O número
