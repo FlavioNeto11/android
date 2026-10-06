@@ -271,3 +271,46 @@ async def test_credencial_no_assunto_ou_na_fonte_e_recusada_e_o_motivo_sai_redig
             s.criar(_pedido([AlvoPedido(pid)], chave=f"teste-op-cred-{len(kw)}{list(kw)[0]}", **kw))
         assert exc.value.code == "credencial_no_comando"
     assert "segredo123" not in (_motivo("a tela pediu Senha: segredo123 de novo") or "")
+
+
+async def test_custo_por_alvo_e_o_da_execucao_dele(harness: Harness, monkeypatch: pytest.MonkeyPatch) -> None:
+    """`custo_usd` do alvo = `spent_usd` da execução dele (nulo sem execução); com texto, vem também em `resultado`."""
+    st = harness.state
+    assert st is not None
+    com = _persona(harness, "Gabi", "android-01")
+    _conta(harness, com, "qa-user-05", sessao_em="android-01")
+    sem = _persona(harness, "Hugo")
+    servico = _servico(harness)
+    op = servico.criar(_pedido([AlvoPedido(com), AlvoPedido(sem)], chave="teste-op-custo-alvo"))
+    run_id = _alvo(op, com)["run_id"]
+    modelo = next(iter(st.cfg.file.ai.prices))
+    st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, input_tokens, output_tokens, ok) VALUES (?,?,?,?,?,?,?)",
+                  (now_iso(), run_id, "plan", modelo, 10_000, 1_000, 1))
+    monkeypatch.setattr(ServicoDeOperacoes, "_resultado", lambda self, a, efeito, marcas: {"texto": "rascunho"})
+    lido = servico.ler(op["id"])
+    alvo_com, alvo_sem = _alvo(lido, com), _alvo(lido, sem)
+    from app.planning import costs
+    esperado = round(costs.spent_usd(st.db, st.cfg.file.ai.prices, run_id=run_id), 4)
+    assert esperado > 0 and alvo_com["custo_usd"] == esperado and alvo_com["resultado"]["custo_usd"] == esperado
+    assert alvo_sem["custo_usd"] is None
+    assert lido["custo"]["total_usd"] == esperado                       # a soma dos alvos é o total da operação
+
+
+async def test_conta_com_sessao_em_dois_aparelhos_executa_so_no_vinculo_principal(harness: Harness) -> None:
+    """Sem `instance_id`, a conta com sessão em dois aparelhos vai ao vínculo PRINCIPAL da persona, não à sessão mais
+    recente; sem sessão no principal, para com o motivo. Com `instance_id`, vale o pedido (ramo de sempre)."""
+    st = harness.state
+    assert st is not None
+    repo = st.social_repo
+    no_principal = _persona(harness, "Ivo", "android-02")              # principal: android-02
+    conta = _conta(harness, no_principal, "qa-user-06", sessao_em="android-02")
+    repo.set_account_session(no_principal, conta, "android-01", status=SessionStatus.session_ready,
+                             verified_at=now_iso())                      # a mais recente é a do android-01
+    fora = _persona(harness, "Juca", "android-03")                      # principal: android-03, sem sessão lá
+    conta_fora = _conta(harness, fora, "qa-user-07", sessao_em="android-01")
+    repo.set_account_session(fora, conta_fora, "android-02", status=SessionStatus.session_ready, verified_at=now_iso())
+    op = _servico(harness).criar(_pedido([AlvoPedido(no_principal), AlvoPedido(fora)], chave="teste-op-principal"))
+    a, b = _alvo(op, no_principal), _alvo(op, fora)
+    assert a["instance_id"] == "android-02" and a["run_id"]
+    assert (b["estado"], b["motivo"], b["parou_em"], b["run_id"]) == (
+        "bloqueado", "sessão fora do aparelho principal", "sessao", None)

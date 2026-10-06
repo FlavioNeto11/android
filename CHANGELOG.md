@@ -19,6 +19,15 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.154: custo por alvo e o vínculo principal na operação (branch feat/31-154-custo-por-alvo)
+
+- `GET /api/operacoes/{id}`: cada alvo ganha `custo_usd` (o `spent_usd` da execução dele; `null` sem execução), repetido em
+  `resultado.custo_usd`. A Portal mostrava `null`.
+- Alvo sem `instance_id` cuja conta tem sessão pronta em mais de um aparelho vai ao vínculo **principal** da persona, não à
+  sessão mais recente (uma conta com sessão no central e no notebook). Sem sessão no principal: parado em `sessao`, motivo
+  `sessão fora do aparelho principal`. Com `instance_id`, vale o pedido.
+- Prova `simulated`: `backend/tests/test_operacoes.py` (2 testes novos). Adendo v1.94 atualizado. `not_run`: prova real.
+
 ## 2026-10-06 — 31.154 e 31.156: a operação com N agentes e os tetos da seleção (prova de 07/10; branch feat/prova30-j1-j2-candidata)
 
 - **31.156 (J1)**: a sugestão de alvos escolhia no máximo 10 personas entre 20 candidatas (constantes do domínio); um pedido

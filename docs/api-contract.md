@@ -7135,7 +7135,9 @@ com o motivo.
     (`POST /api/runs/targets/suggest`, que agora vai até `LimitsCfg.orquestracao_max_escolhidas`), e o painel passa a
     escolha aqui.
   - `account_id` ausente = a conta ativa da persona no app (a mesma regra da etapa que confere a conta).
-  - `instance_id` ausente = o aparelho onde essa conta tem sessão pronta.
+  - `instance_id` ausente = o aparelho onde essa conta tem sessão pronta. Com sessão pronta em mais de um aparelho, é o
+    do vínculo **principal** da persona (31.154, 06/10); sem sessão no principal, o alvo nasce parado em `sessao` com
+    `sessão fora do aparelho principal`.
   - `acao_final`: `preparar` (padrão) para cada alvo em `acao_preparada`, com o texto gerado e a interface pronta, sem
     enviar. Toda execução de alvo nasce com o teto de autonomia `preparar` (28.23): o efeito para depois do rascunho,
     com o pedido de aprovação que carrega o texto. `executar` diz que a operação vai além disso, mas só pelo `liberar`
@@ -7169,7 +7171,8 @@ com o motivo.
 `concluida_com_bloqueios` (todos pararam, ao menos um bloqueado) ou `cancelada`.
 
 **`AlvoDaOperacao`** = `{profile_id, persona_nome, app_id, account_id, conta (o @ da conta, ou null), instance_id, run_id,
-estagio, estado, motivo, parou_em, estagios: [{estagio, em}], resultado}`. Os estágios seguem o vocabulário do dono, nesta ordem fixa:
+estagio, estado, motivo, parou_em, estagios: [{estagio, em}], resultado, custo_usd}`. `custo_usd` = o gasto da
+execução do alvo (`planning.costs.spent_usd` pelo `run_id`, com a pesquisa externa se ela rodou ali), `null` sem execução. Os estágios seguem o vocabulário do dono, nesta ordem fixa:
 
 `persona` → `conta` → `sessao` → `aparelho` → `instagram_aberto` → `target_localizado` → `post_localizado` →
 `conteudo_lido` → `conhecimento_recuperado` → `resposta_gerada` → `interface_de_comentario_alcancada` → `acao_preparada` →
@@ -7189,10 +7192,11 @@ estagio, estado, motivo, parou_em, estagios: [{estagio, em}], resultado}`. Os es
 - `estado`: `pendente` (sem execução ainda na fila do aparelho), `em_curso`, `concluido`, `bloqueado` (com `motivo`) ou
   `cancelado`.
 - `motivo` é uma frase curta e estável, a mesma que entra na contagem de `capacidade.motivos`: `sem conta`, `sem sessão`,
-  `conta <status>`, `aparelho indisponível` (com a recusa da execução depois de dois-pontos), `teto de custo`,
+  `conta <status>`, `sessão fora do aparelho principal`, `aparelho indisponível` (com a recusa da execução depois de
+  dois-pontos), `teto de custo`,
   `aguarda liberação`, `limite de ações executadas`, ou o motivo do objetivo (uma linha, até 120 caracteres).
-- `resultado` = `{texto, conhecimento_ids, evidencia_id, acao_final: {tipo, verificada, evidencia_id}}` (`null` antes de
-  haver texto).
+- `resultado` = `{texto, conhecimento_ids, evidencia_id, acao_final: {tipo, verificada, evidencia_id}, custo_usd}` (`null`
+  antes de haver texto). `custo_usd` repete o do alvo.
   - `texto` é o rascunho fechado do alvo, na voz da persona.
   - `conhecimento_ids` vem da frente de Aprendizado (fatos da operação usados no texto) e é lista vazia sem eles.
   - `evidencia_id` é a captura mais recente da execução fora da etapa de efeito (a tela lida até o texto).

@@ -43,6 +43,8 @@ if TYPE_CHECKING:
 SEM_PERSONA = "persona inexistente"
 SEM_CONTA = "sem conta"
 SEM_SESSAO = "sem sessão"
+#: A conta tem sessão em mais de um aparelho e nenhuma no vínculo principal da persona: qual age não se adivinha.
+FORA_DO_PRINCIPAL = "sessão fora do aparelho principal"
 SEM_APARELHO = "aparelho indisponível"
 TETO_DE_CUSTO = "teto de custo"
 LIMITE_DE_ACOES = "limite de ações executadas"
@@ -165,13 +167,25 @@ class ServicoDeOperacoes:
         if conta["status"] != "active":
             return "conta", _motivo(f"conta {conta['status']}"), str(conta["id"]), None
         sessoes = self._sessoes_prontas(str(conta["id"]))
-        aparelho = alvo.instance_id or (sessoes[0] if sessoes else None)
+        if alvo.instance_id is None and len(sessoes) > 1:
+            # A conta com sessão em dois aparelhos (a mesma conta lida no notebook e logada no central) executa só no
+            # vínculo PRINCIPAL da persona: a sessão mais recente podia ser a do aparelho que só lê.
+            aparelho = self._principal_com_sessao(alvo.profile_id, sessoes)
+            if aparelho is None:
+                return "sessao", FORA_DO_PRINCIPAL, str(conta["id"]), None
+        else:
+            aparelho = alvo.instance_id or (sessoes[0] if sessoes else None)
         if aparelho is None or aparelho not in sessoes:
             return "sessao", SEM_SESSAO, str(conta["id"]), alvo.instance_id
         rt = self.runs.devices.devices.get(aparelho)
         if rt is None or rt.store:
             return "aparelho", SEM_APARELHO, str(conta["id"]), aparelho
         return None, None, str(conta["id"]), aparelho
+
+    def _principal_com_sessao(self, profile_id: str, sessoes: list[str]) -> str | None:
+        principal = self.social.binding_principal(profile_id)
+        iid = str(principal["instance_id"]) if principal is not None else None
+        return iid if iid in sessoes else None
 
     def _sessoes_prontas(self, account_id: str) -> list[str]:
         return [str(r["instance_id"]) for r in self.db.query(
@@ -219,12 +233,17 @@ class ServicoDeOperacoes:
                 estado, motivo, parou = ("bloqueado", LIMITE_DE_ACOES if executadas >= limite else AGUARDA_LIBERACAO,
                                          "acao_executada")
             self._anotar(op_id, a, lt.estagio, estado, motivo)
+            # O custo do alvo é o da execução DELE (com a pesquisa externa, se ela rodou ali); sem execução, nulo.
+            custo = round(costs.spent_usd(self.db, self.precos, run_id=str(a["run_id"])), 4) if a["run_id"] else None
+            if resultado is not None:
+                resultado = {**resultado, "custo_usd": custo}
             saida.append({"profile_id": a["profile_id"], "persona_nome": self._nome(str(a["profile_id"])),
                           "app_id": op["app_id"], "account_id": a["account_id"], "conta": self._handle(a),
                           "instance_id": a["instance_id"], "run_id": a["run_id"], "estagio": lt.estagio,
                           "estado": estado, "motivo": motivo,
                           "parou_em": parou if estado in ("bloqueado", "cancelado") else None,
-                          "estagios": [{"estagio": e, "em": em} for e, em in lt.estagios], "resultado": resultado})
+                          "estagios": [{"estagio": e, "em": em} for e, em in lt.estagios], "resultado": resultado,
+                          "custo_usd": custo})
         capacidade = self._capacidade(saida)
         status = self._status(op, saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
