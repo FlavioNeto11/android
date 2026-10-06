@@ -88,7 +88,7 @@ function FaixaDeCapacidade({ op }: { op: Operacao }) {
  * há: o intervalo entre duas horas iguais (hoje, as da liberação) ou fora de ordem fica de fora da mediana, e a tela diz quantos.
  */
 function Latencia({ op }: { op: Operacao }) {
-  const l = latenciaDaOperacao(op.alvos);
+  const l = latenciaDaOperacao(op.alvos, op.latencia_por_estagio);
   if (l.agentes === 0) return null;
   return (
     <section aria-labelledby="operacao-latencia" data-latencia>
@@ -104,13 +104,14 @@ function Latencia({ op }: { op: Operacao }) {
           {l.porEstagio.length ? (
             <div className={styles.rolagem}>
               <table className={styles.tabela}>
-                <caption className="sr-only">Tempo até cada estágio, desde o estágio anterior com hora: mediana, maior e quantos agentes entram na conta.</caption>
-                <thead><tr><th scope="col">Estágio</th><th scope="col">Mediana</th><th scope="col">Maior</th><th scope="col">Agentes</th></tr></thead>
+                <caption className="sr-only">{l.fonte === 'central' ? 'Tempo de cada estágio desde o evento anterior, calculado pelo central: mediana, p95, maior e quantos agentes entram na conta.' : 'Tempo até cada estágio, desde o estágio anterior com hora: mediana, maior e quantos agentes entram na conta.'}</caption>
+                <thead><tr><th scope="col">Estágio</th><th scope="col">Mediana</th>{l.fonte === 'central' ? <th scope="col">p95</th> : null}<th scope="col">Maior</th><th scope="col">Agentes</th></tr></thead>
                 <tbody>
                   {l.porEstagio.map((e) => (
                     <tr key={e.estagio} data-estagio={e.estagio}>
                       <th scope="row" className={styles.persona}>{rotuloDoEstagio(e.estagio)}</th>
                       <td className={styles.numero}>{formatSpan(e.medianaMs)}</td>
+                      {l.fonte === 'central' ? <td className={styles.numero} data-p95>{e.p95Ms == null ? '—' : formatSpan(e.p95Ms)}</td> : null}
                       <td className={styles.numero}>{formatSpan(e.maiorMs)}</td>
                       <td className={styles.numero}>{formatInt(e.agentes)}</td>
                     </tr>
@@ -121,7 +122,7 @@ function Latencia({ op }: { op: Operacao }) {
           ) : null}
         </>
       )}
-      {l.mesmaHora + l.foraDeOrdem > 0 ? (
+      {l.fonte === 'local' && l.mesmaHora + l.foraDeOrdem > 0 ? (
         <p className={styles.mudo} role="status" data-fora-da-conta>
           Ficaram de fora da conta {l.mesmaHora > 0 ? `${plural(l.mesmaHora, 'intervalo com a mesma hora do anterior', 'intervalos com a mesma hora do anterior')}` : ''}
           {l.mesmaHora > 0 && l.foraDeOrdem > 0 ? ' e ' : ''}
@@ -201,13 +202,14 @@ function DetalheDoAlvo({ alvo }: { alvo: Alvo }) {
               return (
                 <li key={e.estagio}>{rotuloDoEstagio(e.estagio)}{e.em ? <span className={styles.mudo}> · {formatClock(e.em)}</span> : null}
                   {passo?.situacao === 'ok' ? <span className={styles.mudo} data-passo="ok"> · +{formatSpan(passo.ms!)}</span> : null}
-                  {passo?.situacao === 'mesma_hora' ? <span className={styles.mudo} data-passo="mesma_hora"> · mesma hora que “{rotuloDoEstagio(passo.deEstagio)}”</span> : null}
+                  {passo?.situacao === 'mesma_hora' ? <span className={styles.mudo} data-passo="mesma_hora"> · mesma hora {passo.deEstagio ? <>que “{rotuloDoEstagio(passo.deEstagio)}”</> : 'do evento anterior'}</span> : null}
                   {passo?.situacao === 'fora_de_ordem' ? <span className={styles.mudo} data-passo="fora_de_ordem"> · hora anterior à de “{rotuloDoEstagio(passo.deEstagio)}”: fora de ordem</span> : null}
                 </li>
               );
             })}
           </ol>
         ) : <p className={styles.mudo}>O backend não informou a hora de cada estágio.</p>}
+        {latencia.esperaDoLiberarMs !== null ? <p className={styles.mudo} data-espera-do-liberar>Esperou a aprovação {formatSpan(latencia.esperaDoLiberarMs)} (da ação preparada ao liberar; não entra no tempo da ação executada).</p> : null}
       </div>
     </div>
   );

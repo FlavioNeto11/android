@@ -74,7 +74,9 @@ export interface Alvo {
   /** O último estágio alcançado; `null` = ainda nenhum (ou o backend não disse). */
   estagio: EstagioId | null;
   /** Os estágios alcançados, com a hora; vazio quando o backend não os manda. */
-  estagios: { estagio: EstagioId; em: string | null }[];
+  estagios: { estagio: EstagioId; em: string | null; /** v1.108: ms desde o evento anterior NO TEMPO (0 = mesma hora; `null` = hora ilegível); ausente = o central não manda. */ etapa_ms?: number | null }[];
+  /** v1.108: a duração do alvo (da criação da operação ao último estágio) e a espera pela aprovação (da ação preparada ao liberar); ausente = o central não manda. */
+  latencia?: { duracao_ms: number | null; espera_do_liberar_ms: number | null } | null;
   estado: EstadoDoAlvo | null;
   /** O estágio em que o alvo parou (só em `bloqueado`/`cancelado`); o backend manda, o painel não calcula o seguinte. */
   parou_em: EstagioId | null;
@@ -121,6 +123,8 @@ export interface Operacao extends ResumoDaOperacao {
   assunto: string | null;
   /** As fontes públicas que o operador indicou. */
   fontes: string[];
+  /** v1.108: a latência por estágio entre os alvos (`n`, `p50_ms`, `p95_ms`, `max_ms`), só com etapa medida; ausente = o central não manda. */
+  latencia_por_estagio?: Partial<Record<EstagioId, { n: number; p50_ms: number; p95_ms: number | null; max_ms: number }>> | null;
   /** Os dados vêm do exemplo fixo (a rota ainda não existe no backend), não do parque. */
   exemplo: boolean;
 }
@@ -152,13 +156,14 @@ export function lerAlvo(v: unknown, posicao: number): Alvo | null {
   const estagios = (Array.isArray(o.estagios) ? o.estagios : []).flatMap((e) => {
     const r = registro(e);
     const est = r ? lerEstagio(r.estagio) : null;
-    return r && est ? [{ estagio: est, em: texto(r.em) }] : [];
+    return r && est ? [{ estagio: est, em: texto(r.em), ...('etapa_ms' in r ? { etapa_ms: inteiro(r.etapa_ms) } : {}) }] : [];
   });
+  const lat = registro(o.latencia);
   return {
     id: texto(o.run_id) ?? texto(o.profile_id) ?? `alvo-${posicao + 1}`,
     profile_id: texto(o.profile_id), persona: texto(o.persona_nome), app_id: texto(o.app_id), account_id: texto(o.account_id),
     conta: texto(o.conta), instance_id: texto(o.instance_id), run_id: texto(o.run_id),
-    estagio: lerEstagio(o.estagio), estagios, estado: isEstadoDoAlvo(o.estado) ? o.estado : null, parou_em: lerEstagio(o.parou_em), motivo: texto(o.motivo),
+    estagio: lerEstagio(o.estagio), estagios, ...(lat ? { latencia: { duracao_ms: inteiro(lat.duracao_ms), espera_do_liberar_ms: inteiro(lat.espera_do_liberar_ms) } } : {}), estado: isEstadoDoAlvo(o.estado) ? o.estado : null, parou_em: lerEstagio(o.parou_em), motivo: texto(o.motivo),
     // `custo_usd` do alvo é o dado (existe mesmo antes do texto); o do `resultado` é só a reserva (resultado é null antes do texto).
     custo_usd: usdOuNulo(o.custo_usd) ?? usdOuNulo(registro(o.resultado)?.custo_usd), resultado: lerResultado(o.resultado),
   };
@@ -230,8 +235,17 @@ export function lerOperacao(v: unknown, exemplo = false): Operacao | null {
   const usd = usdOuNulo;
   const partes = c ? { pesquisa_usd: usd(c.pesquisa_usd), alvos_usd: usd(c.alvos_usd), total_usd: usd(c.total_usd) } : null;
   const custo = partes && Object.values(partes).some((x) => x !== null) ? partes : null;
+  const porEstagio = Object.entries(registro(o.latencia_por_estagio) ?? {}).flatMap(([k, x]) => {
+    const e = lerEstagio(k);
+    const r = registro(x);
+    const n = r ? inteiro(r.n) : null;
+    const p50 = r ? inteiro(r.p50_ms) : null;
+    const max = r ? inteiro(r.max_ms) : null;
+    return e && r && n !== null && n > 0 && p50 !== null && max !== null ? [[e, { n, p50_ms: p50, p95_ms: inteiro(r.p95_ms), max_ms: max }] as const] : [];
+  });
   return {
     ...resumo, alvos, custo, max_usd: usd(o.max_usd), assunto: texto(o.assunto),
+    ...(registro(o.latencia_por_estagio) ? { latencia_por_estagio: Object.fromEntries(porEstagio) } : {}),
     fontes: (Array.isArray(o.fontes) ? o.fontes : []).filter((f): f is string => typeof f === 'string' && f.trim() !== ''), exemplo,
   };
 }
