@@ -68,6 +68,10 @@ class FatosDoAlvo:
     criado_em: str = ""
     #: `objectives.blocked_kind`: `policy` = uma porta (frota, conduta, teto) RECUSOU a etapa, antes de ela rodar.
     objetivo_bloqueio: str | None = None
+    #: A execução terminou SEM objetivo (recusada no planejamento: parâmetro em conflito, teto observar, fora do
+    #: catálogo): o motivo e a hora do fim. Sem isto o alvo ficava `pendente` para sempre e a operação não fechava.
+    recusa_no_plano: str | None = None
+    recusa_em: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +100,11 @@ def derivar(f: FatosDoAlvo) -> Leitura:
                        parou_em=f.parada_na_criacao)
     for conferido in ("conta", "sessao"):
         alcancados[conferido] = f.criado_em
+    if f.objetivo_status is None and f.recusa_no_plano:
+        # Nada rodou no aparelho: a ação final foi barrada antes de existir etapa.
+        alcancados["acao_bloqueada"] = f.recusa_em or f.criado_em
+        return Leitura(estagio="acao_bloqueada", estado="bloqueado", motivo=f.recusa_no_plano,
+                       estagios=_em_ordem(alcancados, f.abertura), parou_em="acao_bloqueada")
     if f.objetivo_status is None:
         return Leitura(estagio=_ultimo(alcancados, f.abertura), estado="pendente", motivo=None,
                        estagios=_em_ordem(alcancados, f.abertura))
