@@ -1,0 +1,51 @@
+name: Limpeza das branches de revisão
+
+# 29.155 (C18): as frentes abrem PRs só de revisão a partir de branches `revisao/*` e provas descartáveis em `teste/*`; depois do
+# corte elas apontam para commits que já estão na main. Este workflow apaga, uma vez por dia, só as que JÁ ESTÃO na main, sem PR
+# aberto e com a ponta de mais de 6 horas. Nada fora desses dois prefixos é tocado, nem a main. O código e as condições estão em
+# `scripts/limpar_branches_revisao.py` (teste: `scripts/tests/test_limpar_branches_revisao.py`).
+#
+# Onde roda: SEMPRE em runner hospedado (`ubuntu-latest`). NUNCA copie `fromJSON(vars.CI_RUNS_ON ...)`: o runner `central` é a máquina
+# do dono. O disparo manual (`gh workflow run limpa-branches-revisao.yml`, só depois de o arquivo estar na `main`) é ENSAIO por
+# padrão: só apaga com `aplicar=true`. O agendado apaga.
+# Permissão: `contents: write` só para apagar as refs desses prefixos; sem segredo novo (token do próprio workflow).
+
+on:
+  workflow_dispatch:
+    inputs:
+      aplicar:
+        description: 'Apagar de verdade (true) ou só mostrar o que apagaria (false)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+  schedule:
+    - cron: "11 8 * * *"
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: limpa-branches-revisao
+  cancel-in-progress: false
+
+jobs:
+  limpar:
+    name: limpar · revisao/* e teste/* já na main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: apaga as já mescladas (ensaio no disparo manual sem aplicar=true)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APLICAR: ${{ github.event_name == 'schedule' && 'true' || inputs.aplicar }}
+        run: |
+          if [ "$APLICAR" = "true" ]; then
+            python3 scripts/limpar_branches_revisao.py --repo "$GITHUB_REPOSITORY" --aplicar
+          else
+            python3 scripts/limpar_branches_revisao.py --repo "$GITHUB_REPOSITORY"
+          fi

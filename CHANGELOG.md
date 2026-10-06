@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.155 (C18): limpeza diária das branches de revisão já mescladas (branch ci/29-155-c18-limpeza)
+
+- `.github/workflows/limpa-branches-revisao.yml` (`ubuntu-latest`, diário 08:11Z, disparo manual em ensaio) e `scripts/limpar_branches_revisao.py`: apaga só `revisao/*` e `teste/*` que já estão na main (comparação do GitHub), sem PR aberto e com a ponta de mais de 6 h; erro de API deixa a branch. Motivo: hoje as frentes abriram mais de dez branches `revisao/*` só para a revisão automática. Prova `simulated`: `scripts/tests/test_limpar_branches_revisao.py` (11 testes). Prova `real` em parte: ensaio contra o repositório real em 06/10 (somente leitura): 10 branches `revisao/*`, 0 a apagar (6 recentes demais, 4 ainda não na main), 0 erros. Apagar de verdade: `not_run` até o primeiro run agendado depois da mescla.
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.
