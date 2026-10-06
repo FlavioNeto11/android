@@ -630,7 +630,9 @@ class TrainingSkills:
         identidades: dict[str, tuple[str, str, str] | str] = {}      # 31.110: uma leitura por app, não uma por etapa
         for d in destiladas:
             passo = d.passo
-            linha: dict[str, object] = {"key": passo.key, "title": passo.title, "recipe": False, "reason": d.motivo}
+            # 31.140 (v1.89): os pacotes vizinhos em que a etapa conclui (31.123), por etapa, e não só a linha de `warnings`
+            linha: dict[str, object] = {"key": passo.key, "title": passo.title, "recipe": False, "reason": d.motivo,
+                                        "pacotes_aceitos": list(passo.pacotes_aceitos)}
             relatorio.append(linha)
             if not d.acoes:
                 continue

@@ -1098,7 +1098,7 @@ campo.
 | `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
 | `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[], scope_on_proof?}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo); 400 `pos_condicao_ja_vale` quando a `text_visible` ou a `element_present` de uma etapa já vale na tela em que ela começa (31.122, adendos v1.83 e v1.86, com `pos_condicoes_ja_valem`); etapa da proposta aceita `independente: bool` (31.127, adendo v1.85) |
-| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings, pos_condicoes_ja_valem}`, sem gravar nada (v1.58, v1.86) |
+| `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason, pacotes_aceitos}], warnings, pos_condicoes_ja_valem}`, sem gravar nada (v1.58, v1.86, v1.89) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
 | `POST /api/training/from-run` | `TrainingDeFalhaBody {run_id, step_id, lease_id, intent?, app_id?, profile_id?}` | `TrainingSession` (201) com `origin {run_id, step_id, step_key, attempt_id, motivo}`: abre o ensino a partir de uma etapa que falhou (31.111 F1 e F2, adendo v1.75); 404 `step_not_found`, 409 `step_not_failed` e as recusas de `POST /instances/{id}/training` |
@@ -6991,7 +6991,8 @@ fluxo ensinado a partir de uma falha (adendo v1.75), que `GET /api/flows[].origi
 
 ## Adendo v1.84 (06/10/2026; número da orquestradora; item 31.123, migração 120) — a etapa que conclui num pacote vizinho
 
-- **Etapa do plano** (o `plan` de `GET /api/flows` e as etapas de `GET /api/runs/{id}`): campo opcional
+- **Etapa do plano** (o plano salvo do fluxo e as etapas de `GET /api/runs/{id}`; corrigido no v1.89: a lista de
+  `GET /api/flows` devolve `plan` nulo): campo opcional
   `pacotes_aceitos: string[]`, OMITIDO quando vazio. São os pacotes, além do app da etapa, em que a tela comprova a
   conclusão (a busca do Configurações é de outro pacote). Quem preenche é o ensino, com os pacotes vistos na
   demonstração da etapa, sem o próprio app, o systemui, o lançador e os apps cadastrados. O executor aceita esses
@@ -7076,3 +7077,14 @@ fluxo ensinado a partir de uma falha (adendo v1.75), que `GET /api/flows[].origi
   migração: tudo já está na sessão de treino. Nada de nome de persona entra.
 - **Prova:** `simulated` (`backend/tests/test_fluxo_nascido_de_prova.py::test_todo_fluxo_ensinado_traz_a_sessao_o_aparelho_quem_ensinou_e_quando`,
   `backend/tests/test_treino_a_partir_da_falha.py`, `backend/tests/test_learning_conteudo.py`); `real`: `not_run`.
+
+## Adendo v1.89 (06/10/2026; número da orquestradora; item 31.140) — `pacotes_aceitos` por etapa na prévia e no Livro
+
+- **`POST /api/training/{session_id}/preview`, `/save` e `/recipes`**: cada linha de `steps[]` ganha
+  `pacotes_aceitos: string[]` (sempre presente; vazia = só o app da etapa). São os pacotes vizinhos em que a etapa conclui
+  (31.123). Antes, só a linha de `warnings` dizia isso.
+- **Conteúdo do fluxo no Livro** (`GET /api/aprendizado/fluxo/{ref}`, `conteudo.etapas[]`): `pacotes_aceitos: string[]`
+  (sempre presente; vazia quando o plano não o tem).
+- **Correção do v1.84:** o campo não sai "no `plan` de `GET /api/flows`", porque a lista devolve `plan` nulo. Ele fica
+  no plano salvo e aparece nas etapas de `GET /api/runs/{id}`, e agora também na prévia e no Livro, por este adendo.
+- **Prova:** `simulated` (`backend/tests/test_pacotes_aceitos_na_previa_e_no_livro.py`); `real`: `not_run`.

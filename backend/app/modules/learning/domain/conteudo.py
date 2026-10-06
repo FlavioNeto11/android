@@ -252,8 +252,11 @@ def etapa_de_fluxo(indice: int, passo: JsonValue) -> JsonObject:
     `{param}` ou texto do plano e não saem)."""
     if not isinstance(passo, dict):
         return {"indice": indice, "chave": None, "app": None, "capability": None, "alvo": None, "efeito": False,
-                "pos_condicao": None, "parametros": [], "segredo": False}
+                "pos_condicao": None, "parametros": [], "segredo": False, "pacotes_aceitos": []}
     pos = passo.get("postcondition")
+    # 31.140 (v1.89): os pacotes vizinhos em que a etapa conclui (31.123); lista vazia = só o app da etapa
+    brutos = passo.get("pacotes_aceitos")
+    aceitos: list[JsonValue] = [p for p in brutos if isinstance(p, str)] if isinstance(brutos, list) else []
     bindings = passo.get("bindings")
     chaves = [k for k in bindings if isinstance(k, str)] if isinstance(bindings, dict) else []
     return {
@@ -262,7 +265,8 @@ def etapa_de_fluxo(indice: int, passo: JsonValue) -> JsonObject:
         "alvo": _texto(passo.get("commit_selector")), "efeito": passo.get("side_effect") is True,
         "pos_condicao": ({"tipo": _texto(pos.get("kind")), "descricao": _texto(pos.get("description"))}
                          if isinstance(pos, dict) else None),
-        "parametros": [k for k in chaves if not _sigiloso(k)], "segredo": any(_sigiloso(k) for k in chaves)}
+        "parametros": [k for k in chaves if not _sigiloso(k)], "segredo": any(_sigiloso(k) for k in chaves),
+        "pacotes_aceitos": aceitos}
 
 
 def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: str | None,

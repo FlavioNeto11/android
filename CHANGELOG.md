@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.140: os pacotes aceitos por etapa na prévia e no Livro (branch feat/31-130-fluxo-de-prova)
+
+- Achado da Portal (06/10): `pacotes_aceitos` (31.123) não aparecia em nenhuma proposta das 16 sessões do android-04; existia só no plano salvo e nas etapas da execução.
+- Adendo v1.89: cada linha de `steps[]` da prévia, do `save` e do reparo das receitas traz `pacotes_aceitos`, e a etapa do fluxo no Livro (`conteudo.etapas[]`) também. O texto do v1.84 foi corrigido (a lista de `GET /api/flows` devolve `plan` nulo).
+- Prova `simulated`: `tests/test_pacotes_aceitos_na_previa_e_no_livro.py` (2) e o ajuste de `tests/test_treino_previa_e_refazer_receitas.py`. Real: `not_run`.
+
 ## 2026-10-06 — 31.138: a abertura do app nas receitas ensinadas antes do 31.121 (branch feat/31-130-fluxo-de-prova)
 
 - Achado da leitura dos fluxos ensinados (06/10): a 1ª receita do único fluxo ensinado ativo (194) e de três desligados (200, 201, 205) é só o toque; "alvo ausente ou ambíguo" em 6 de 7 divergências, todas na 1ª ou 2ª etapa.

@@ -499,6 +499,10 @@ delas: o único fluxo ensinado ativo e três desligados seguiam com a 1ª receit
 troca a receita viva da etapa que agora abre o app, como a demonstração troca (30.79), na mesma chave e com a trilha
 no livro. Ensaio por padrão; a Android aplica como operadora.
 
+**Os pacotes aceitos à vista (31.140, adendo v1.89).** `pacotes_aceitos` existia só no plano salvo e nas etapas da
+execução. Agora cada etapa da prévia, do `save` e do reparo das receitas o traz, e a etapa do fluxo no Livro
+(`etapa_de_fluxo`) também. A tela usa isso no 31.141.
+
 **A origem do fluxo ensinado (31.135, adendo v1.88).** O fluxo só dizia "Demonstrado no treino". Agora a `origin` de
 `GET /api/flows` e a `origem` do conteúdo no Livro trazem, de todo fluxo ensinado, a sessão (`session_id`), o
 aparelho, quem ensinou (`operator`) e quando (`ensinado_em`), no molde do v1.81. Os ids da falha seguem `null` quando
