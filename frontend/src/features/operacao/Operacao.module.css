@@ -215,3 +215,20 @@
   flex-direction: column;
   gap: var(--sp-3);
 }
+
+.formulario {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 920px;
+}
+
+/* Campos lado a lado crescem para usar a linha; em tela estreita cada um ocupa a linha inteira (nada de campo de 170 px solto). */
+.formulario .filtros > * {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.formulario section > ul {
+  margin-top: var(--sp-3);
+}

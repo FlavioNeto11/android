@@ -6,6 +6,7 @@
 import { ApiError, apiRequest, toApiError } from '../../api/client';
 import { lerLiberacao, lerLista, lerOperacao, type Operacao, type ResultadoDaLiberacao, type ResumoDaOperacao } from './modelo';
 import { lerAprendizado, type LeituraDoAprendizado } from './aprendizadoDaOperacao';
+import type { CorpoDaOperacao } from './criar';
 import { OPERACAO_DE_EXEMPLO } from './operacaoDeExemplo';
 
 const enc = encodeURIComponent;
@@ -67,6 +68,12 @@ export const apiOperacoes = {
       }
       return { situacao: 'indisponivel', motivo: `Não foi possível ler o aprendizado: ${err.message}` };
     }
+  },
+  /** Cria a operação (adendo v1.94): 201 com o detalhe. A mesma `idempotency_key` com o mesmo corpo devolve a mesma operação. */
+  async criar(corpo: CorpoDaOperacao, idempotencyKey: string): Promise<Operacao> {
+    const op = lerOperacao(await apiRequest<unknown>('POST', '/operacoes', { body: { ...corpo, idempotency_key: idempotencyKey } }));
+    if (!op) throw new ApiError(502, 'resposta_invalida', 'A resposta da criação não é uma operação.');
+    return op;
   },
   async cancelar(id: string): Promise<Operacao> {
     const op = lerOperacao(await apiRequest<unknown>('POST', `/operacoes/${enc(id)}/cancelar`, { body: {} }));
