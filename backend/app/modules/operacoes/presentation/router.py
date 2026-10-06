@@ -90,12 +90,16 @@ def _erro(exc: OperacaoError) -> HTTPException:
 @router.post("/operacoes", status_code=201, response_model=None)
 async def criar_operacao(request: Request, body: OperacaoCreate) -> object:
     try:
-        return _servico(request).criar(PedidoDeOperacao(
+        criada = _servico(request).criar(PedidoDeOperacao(
             command=body.command, app_id=body.app_id, acao_final=body.acao_final, idempotency_key=body.idempotency_key,
             max_usd=body.max_usd, assunto=body.assunto, fontes=tuple(body.fontes),
             alvos=tuple(AlvoPedido(a.profile_id, a.account_id, a.instance_id) for a in body.alvos)), quem=quem(request))
     except OperacaoError as exc:
         raise _erro(exc) from exc
+    # 31.169 (frente de aprendizado): a pesquisa externa roda uma vez aqui, antes de qualquer alvo; a repetição
+    # idempotente encontra a lacuna coberta e não pesquisa de novo.
+    _st(request).portoes.agendar_pesquisa_da_operacao(str(criada["id"]))
+    return criada
 
 
 @router.get("/operacoes", response_model=None)

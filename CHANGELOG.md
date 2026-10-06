@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.169: a pesquisa externa roda na criação da operação (branch feat/31-169-pesquisa-na-criacao)
+
+- Antes, a pesquisa rodava na porta de escrita do 1º alvo que chegasse ao texto, no meio da execução dele. Agora
+  `POST /api/operacoes` a agenda uma vez, antes de qualquer alvo, sob a trava da operação. Os alvos só reusam.
+- Custo na execução do 1º alvo (`custo.pesquisa_usd`), com o teto por operação. Sem lacuna, ou na repetição
+  idempotente, não pesquisa. A consulta leva só o assunto e as fontes: a leitura do alvo ainda não existe nessa hora.
+- Toca a rota da Jev (`modules/operacoes/presentation/router.py`) em uma linha, depois do `criar`.
+- Prova `simulated`: `backend/tests/test_pesquisa_da_operacao.py` (3 testes; o dos alvos que só reusam reprova no código
+  anterior). Operação, conhecimento, pesquisa, aprendizado e arquitetura: 180 passaram. `real`: a operação de 07/10.
+
 ## 2026-10-06 — 31.149 (P-014 b): a correção ensinada volta ao comando que falhou (branch feat/31-149-correcao-volta-ao-comando)
 
 - Medido em 06/10: das 6 sessões de correção, 2 viraram fluxo, os dois desligados e com 0 usos, e o molde salvo era

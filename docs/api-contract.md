@@ -7373,3 +7373,25 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
 - **Prova:** `simulated` (`backend/tests/test_correcao_volta_ao_comando.py`, 2 testes, que reprovam no código anterior).
   `real`: `not_run`. As 2 sessões reais salvas não teriam receita: uma sem app, outra em Configurações, sem versão
   conhecida no catálogo.
+
+## Adendo (06/10/2026; número pela orquestradora; item 31.169) — a pesquisa externa na criação da operação
+
+- **`POST /api/operacoes`** agenda a pesquisa externa da operação (31.158). Ela roda UMA vez, logo depois da criação e
+  antes de qualquer alvo: a tarefa pega a trava da operação, a mesma da porta de escrita. A resposta da rota não muda e
+  não espera a pesquisa.
+- **Os alvos não pesquisam mais:** a porta de escrita só reusa a memória da operação. Sem a pesquisa da criação (por
+  exemplo, desligada naquela hora), o texto sai sem os fatos da pesquisa.
+- **Custo:**
+  - paga na execução do 1º alvo com execução (`operacao_alvos` por `seq`), pelo caminho de IA dela (tetos e vaga);
+  - aparece em `custo.pesquisa_usd` da operação;
+  - o teto por operação (`ai.pesquisa.teto_usd_por_operacao`) segue valendo;
+  - sem alvo com execução, não pesquisa.
+- **Sem lacuna** (o assunto já tem fato de pesquisa válido), ou na repetição idempotente: não pesquisa.
+- **Consulta:** leva só o assunto e as fontes indicadas. A leitura do alvo, que antes ia de contexto, ainda não existe
+  na criação.
+- **Prova:** `simulated`, em `backend/tests/test_pesquisa_da_operacao.py`:
+  - `::test_criar_a_operacao_pela_rota_pesquisa_uma_vez_antes_dos_alvos`;
+  - `::test_os_alvos_nao_pesquisam_so_reusam`, que reprova no código anterior;
+  - `::test_duas_execucoes_uma_pesquisa_e_os_fatos_chegam_ao_texto`.
+
+  `real`: a operação de 07/10.

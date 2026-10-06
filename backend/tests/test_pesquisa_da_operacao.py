@@ -207,12 +207,20 @@ async def test_duas_execucoes_uma_pesquisa_e_os_fatos_chegam_ao_texto(harness: A
     monkeypatch.setitem(sys.modules, "app.modules.operacoes.infrastructure.estagios",
                         SimpleNamespace(registrar_estagio=lambda *_a: None))
     cap = capability_of(IG, "CREATE_COMMENT")
+    # 31.169: a pesquisa roda na criação da operação, antes de qualquer alvo; os alvos só reusam
+    tarefa = state.portoes.agendar_pesquisa_da_operacao("op-1")
+    assert tarefa is not None
+    await tarefa
+    assert state.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE model='web_search'") == 1
+    assert state.db.scalar("SELECT run_id FROM ai_calls WHERE model='web_search'") == "run-a"     # o 1º alvo paga
     for run, aparelho in (("run-a", "android-01"), ("run-b", "android-02")):
         obj = state.db.one("SELECT * FROM objectives WHERE run_id=?", (run,))
         etapa = state.db.one("SELECT * FROM steps WHERE id=?", (f"{run}:{aparelho}:v1:comentar",))
         assert await state.portoes._draft_gate(obj, etapa, cap, obj["profile_id"], pacote=IG) is None  # noqa: SLF001
 
     assert state.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE model='web_search'") == 1   # UMA pesquisa
+    await state.portoes.agendar_pesquisa_da_operacao("op-1")                  # a repetição: sem lacuna, não pesquisa
+    assert state.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE model='web_search'") == 1
     for kw in pedidos:
         assert "[fato] pesquisa." in kw["fatos_da_operacao"]
         assert "[hipótese, não confirmada]" in kw["fatos_da_operacao"] and "[fonte] fonte." in kw["fatos_da_operacao"]
@@ -221,3 +229,68 @@ async def test_duas_execucoes_uma_pesquisa_e_os_fatos_chegam_ao_texto(harness: A
     meta = json.loads(state.db.scalar("SELECT draft_meta FROM steps WHERE id='run-a:android-01:v1:comentar'"))
     assert meta["fatos_da_operacao"]["assunto"] is True
     assert state.db.scalar("SELECT COUNT(*) FROM memory_items") == 0
+
+
+async def test_os_alvos_nao_pesquisam_so_reusam(harness: Any, monkeypatch: Any) -> None:
+    """31.169: sem a pesquisa da criação (desligada naquela hora, por exemplo), a porta de escrita não pesquisa: o texto sai
+    sem os fatos da pesquisa, e nenhuma chamada paga acontece no meio dos alvos."""
+    state = harness.state
+    briefing = {"content": "comente o lançamento", "caption_contains": "outono", "post_author": "@loja.nossa"}
+    _plano(state, [{"key": "comentar", "cap": "CREATE_COMMENT", "bindings": briefing}], run_id="run-a")
+    _com_operacao(state.db, "run-a")
+    _operacoes(state.db)
+    monkeypatch.setattr(state.cfg.file.ai, "pesquisa", PesquisaCfg(enabled=True))
+    monkeypatch.setattr(state.provider, "pesquisar", state.provider.inner.pesquisar, raising=False)
+    monkeypatch.setattr(gates_mod, "screen_reader_of",
+                        lambda _p: SimpleNamespace(visible_content=lambda arvore: arvore.texto))
+
+    async def ler_tela(_rt: Any, _pacote: Any) -> Any:
+        return SimpleNamespace(sensitive=False, texto=LEGENDA, packages={IG})
+
+    async def draft_response(_pid: str, **kw: Any) -> Any:
+        return SimpleNamespace(content="texto", refused=False, refusal_reason=None, rationale="r",
+                               memory_candidates=[]), None
+
+    monkeypatch.setattr(state.portoes, "_ler_tela", ler_tela)
+    monkeypatch.setattr(state.social, "draft_response", draft_response)
+    monkeypatch.setitem(sys.modules, "app.modules.operacoes.infrastructure.estagios",
+                        SimpleNamespace(registrar_estagio=lambda *_a: None))
+    obj = state.db.one("SELECT * FROM objectives WHERE run_id='run-a'")
+    etapa = state.db.one("SELECT * FROM steps WHERE id='run-a:android-01:v1:comentar'")
+    assert await state.portoes._draft_gate(obj, etapa, capability_of(IG, "CREATE_COMMENT"), obj["profile_id"],  # noqa: SLF001
+                                           pacote=IG) is None
+    assert state.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE model='web_search'") == 0
+
+
+async def test_criar_a_operacao_pela_rota_pesquisa_uma_vez_antes_dos_alvos(harness: Any, monkeypatch: Any) -> None:
+    """31.169: `POST /api/operacoes` agenda a pesquisa; ela roda uma vez, paga na execução do 1º alvo (é o que o
+    `custo.pesquisa_usd` da operação soma), e a repetição idempotente não pesquisa de novo."""
+    import asyncio
+
+    import httpx
+
+    from app.main import create_app
+
+    from .conftest import COMMAND
+    from .test_operacoes import APP, _conta, _persona
+    st = harness.state
+    monkeypatch.setattr(st.cfg.file.ai, "pesquisa", PesquisaCfg(enabled=True))
+    monkeypatch.setattr(st.provider, "pesquisar", st.provider.inner.pesquisar, raising=False)
+    pid = _persona(harness, "Iara", "android-01")
+    _conta(harness, pid, "qa-user-21", sessao_em="android-01")
+    app = create_app(harness.cfg, state=st)
+    app.state.poc = st
+    corpo = {"command": COMMAND, "app_id": APP, "alvos": [{"profile_id": pid}], "idempotency_key": "teste-op-pesq1",
+             "max_usd": 0.5, "assunto": "o lançamento da coleção"}
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.post("/api/operacoes", json=corpo)
+        assert r.status_code == 201, r.text
+        op = r.json()
+        await asyncio.gather(*st.portoes._tarefas_da_pesquisa)                         # noqa: SLF001
+        run_do_alvo = op["alvos"][0]["run_id"]
+        assert [x["run_id"] for x in st.db.query("SELECT run_id FROM ai_calls WHERE model='web_search'")] == [run_do_alvo]
+        assert st.db.scalar("SELECT COUNT(*) FROM pedido_memoria WHERE operacao_id=? AND chave LIKE 'pesquisa.%'",
+                            (op["id"],)) > 0
+        assert (await c.post("/api/operacoes", json=corpo)).status_code == 201         # a mesma chave: a mesma operação
+        await asyncio.gather(*st.portoes._tarefas_da_pesquisa)                         # noqa: SLF001
+        assert st.db.scalar("SELECT COUNT(*) FROM ai_calls WHERE model='web_search'") == 1
