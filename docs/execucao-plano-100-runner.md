@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-645 de 706 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+645 de 707 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -467,6 +467,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.158 | pendente | — | — | — |  |  |
 | 29.159 | pendente | — | — | — |  |  |
 | 29.160 | pendente | — | — | — |  |  |
+| 29.161 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
 | 29.43 | implemented | simulated | opus (sessão Android) + worker-impl | — | feat/caminho-rapido-1 @60e7962e: LT-1 (atalho de entrada sem o ator, ATALHO_ANTES_DO_ATOR, nunca em etapa com efeito, driven_by='sem_ator'), LT-2 (expect_done em etapa julgada → _verify(uma_rodada=True), nunca em etapa… |  |
@@ -713,7 +714,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (61): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.152, 29.154, 29.155, 29.156, 29.157, 29.158, 29.159, 29.160, 31.11, 31.12, 31.26, 31.81, 31.115, 31.130, 31.131, 31.132, 31.133, 31.134, 31.135, 31.136, 31.137, 31.138, 31.139, 31.140, 31.141, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (62): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.152, 29.154, 29.155, 29.156, 29.157, 29.158, 29.159, 29.160, 29.161, 31.11, 31.12, 31.26, 31.81, 31.115, 31.130, 31.131, 31.132, 31.133, 31.134, 31.135, 31.136, 31.137, 31.138, 31.139, 31.140, 31.141, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
