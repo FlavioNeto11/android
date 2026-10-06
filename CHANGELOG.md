@@ -63,6 +63,21 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   na dica, o "Voltar" sempre visível, Enter que não envia, quebra de linha mantida, o "Voltar" que não devolve a sugestão, a indeterminada decidida pelo rótulo, a causa nula com rótulo, a linha sem causa nem rótulo). Prova `real`: `not_run`; depende
   da rota no ar (deploy 48) e de uma falha real para ver a sugestão na tela.
 
+## 2026-10-06 — 31.116: a sugestão do ensino diz a causa e pergunta pelo estado da etapa (branch feat/31-116-ensino-sugerido-causa)
+
+- `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` ganha `causa` (o código do diagnóstico, ao lado do rótulo). A
+  `pergunta` passa a depender do estado da etapa: em `waiting_user` a etapa parou esperando a pessoa, sem falhar, e a
+  pergunta é `PERGUNTA_ESPERANDO` (o que ensinar para ela seguir), mesmo com o diagnóstico em erro. Nos outros estados
+  segue a pergunta do diagnóstico. Pedido da leitura de UX da Portal. Adendo v1.82.
+- A sessão aberta pelo `POST /api/training/from-run` diz a mesma coisa: `origin.diagnostico.pergunta` também é a do
+  estado da etapa (`TrainingRecorder.get`), e em `waiting_user` coincide com a do `ensino-sugerido`.
+- Funções tocadas (K-095): `ensino_sugerido` (`modules/learning/presentation/treino.py`), `pergunta_da_etapa` e
+  `PERGUNTA_ESPERANDO` (novas, `modules/learning/domain/ensino_da_falha.py`), `origem_da_falha` e `OrigemDaFalha.status`
+  (`training/origem.py`), `TrainingRecorder.get` (`training/recorder.py`).
+- Prova `simulated`: `backend/tests/test_ensino_sugerido.py` (7: os 4 com `causa` e 3 novos, sobre a parada esperando a
+  pessoa com e sem diagnóstico e a função pura) e `backend/tests/test_treino_diagnostico_da_falha.py` (1 novo: a sessão e
+  a sugestão com a mesma pergunta em `waiting_user`). Real: `not_run`.
+
 ## 2026-10-06 — 31.116 (parte 2): a sugestão do ensino antes da sessão (branch feat/31-116-ensino-sugerido)
 
 - `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}`. Usa o mesmo diagnóstico do
@@ -816,6 +831,13 @@ Da leitura do 31.78.
 - `.claude/trello/reconciliar.py`: o item classificado na mesma rodada do registro do deploy deixou de ser dado como "no ar desde o deploy N" pela hora; vale o primeiro commit que
   pôs o cabeçalho dele no CHANGELOG e o menor deploy cujo commit do central o contém (no primeiro deploy conhecido: "o deploy 38 ou um anterior"), e a linha do concluído é refeita quando o deploy muda.
   Regra no C-28. Prova `simulated`: `.claude/trello/test_reconciliar.py` (30 passed). Prova `real` (06/10): ensaio contra os três quadros, 37 linhas de concluído com deploy corrigido.
+
+## 2026-10-06 — Deploy 48 (suíte 48: ensino sugerido a partir da falha, diagnóstico no treino, observar B gera prova, origem do fluxo no Livro, reconciliação pelo git)
+
+- **Implantado** às 07:24Z: central em `16858086`, sem migração nova (mais alta 119), 5 pontas sobre `61a9722b` (mains até `4294b534` dentro). Itens: 31.116 (parte 1, painel: diagnóstico da falha no treino, Portal `0079c83f`; parte 2, `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}`, adendo v1.80, Aprendizado `278d44b6`), 30.34 (`observar` da classe B com falta automatizável gera o pedido de prova só no app de prova; contador `features.validacao_pelo_observar_b`; Aprendizado `bb37e590`), 31.117 (`conteudo.origem` do fluxo no Livro traz session/run/step/attempt e `source_run_id` cai para o run da falha; adendo v1.81; Jev `3d3a9072`), C-28 (a reconciliação do Trello decide o deploy de cada item pelo primeiro commit do cabeçalho no CHANGELOG e o menor deploy que o contém; Canais `b6020ebe`). 15.15 F7+F4+F2 já estavam no deploy 47 e ganharam prova real (397f548f); 31.87 e 31.113 ganharam prova real sobre o deploy 47 (execução r-20261006070730-277418, US$ 0,0647).
+- Prova `real`: deploy `deploy.ps1` (ensaio forçado pela trava de 60 min do mesmo commit); `GET /api/health` ok, migração mais alta 119, `problems` e `features` (agora com `validacao_pelo_observar_b`) conferidos; prova de fora como esperado; agente do notebook em `0.1.0+16858086`; 01, 03, 06 e 13 em automation ready às 07:28Z, android-02 on-line mas automation em error (Appium Settings não subiu em 5 s; executa comandos; escada a observar); hooks ok; `GET /api/aprendizado/fluxo/{ref}` e `GET /api/flows` do mesmo fluxo com a mesma origem (prova real do 31.117, lida pela Android em 3 fluxos); prova real do 31.113 F1-F3 e do 31.87 já registrada sobre o deploy 47 (execução r-20261006070730-277418 no android-04, persona de teste, 0 ocorrências em claro no registro, US$ 0,0647, Aprendizado).
+- Prova `simulated` (suíte 48 sobre `16858086`): `scripts/tests` 684 passed; backend em SQLite 1705 passed nos 110 afetados desde `61a9722b`; frontend 1721 passed e build; catracas 88 (backend) e 6 (scripts); docs-check 0; mypy 257 igual ao teto; PostgreSQL dirigido em 2 partes, 897 e 803 passed (fim 07:21Z); 0 falhas na ponta final `16858086`.
+- `not_run`: percurso 48 no navegador (Portal, a seguir); formulário do 31.116 no painel (Portal, corte 49).
 
 ## 2026-10-06 — Deploy 47 (suíte 47: máquinas de estado impostas, routers por contexto, saúde em módulo, bindings com marcador, prévia da porta, telas v2 fora)
 

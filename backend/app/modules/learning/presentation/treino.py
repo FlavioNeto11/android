@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.models import TrainingSaveBody, TrainingStartBody
-from app.modules.learning.domain.ensino_da_falha import intencao_sugerida
+from app.modules.learning.domain.ensino_da_falha import intencao_sugerida, pergunta_da_etapa
 from app.modules.skills.presentation.schemas import TrainingDeFalhaBody, TrainingStopBody, TrainingUndoBody
 from app.planning.provider import AIError
 from app.training.recorder import TrainingError
@@ -95,9 +95,11 @@ async def ensino_sugerido(request: Request, run_id: str, step_id: str) -> dict[s
         return None
     diagnostico = (s.training.diagnostico_da_falha(origem.attempt_id)
                    if s.training.diagnostico_da_falha is not None else None)
+    # v1.82: `causa` é o código do diagnóstico (o painel escolhe ícone e texto por ele); a pergunta é a do ESTADO da etapa
     return {"intent": intencao_sugerida(origem.titulo, diagnostico),
-            "pergunta": diagnostico.get("pergunta") if diagnostico else None,
-            "rotulo": diagnostico.get("rotulo") if diagnostico else None}
+            "pergunta": pergunta_da_etapa(origem.status, diagnostico),
+            "rotulo": diagnostico.get("rotulo") if diagnostico else None,
+            "causa": diagnostico.get("causa") if diagnostico else None}
 
 
 @router.get("/training", response_model=None)
