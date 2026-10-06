@@ -452,7 +452,8 @@ class ServicoDeOperacoes:
                            " NULL", (status, agora, agora, op["id"])) == 0:
             return None
         self.bus.emit("operacao.encerrada", f"Operação {op['id']} encerrada: {status}.",
-                      data={"operacao_id": op["id"], "status": status, "capacidade": capacidade})
+                      data={"operacao_id": op["id"], "status": status, "capacidade": capacidade,
+                            "custo": self._custo(str(op["id"]))})
         return agora
 
     # ------------------------------------------------------------------ cancelar e liberar

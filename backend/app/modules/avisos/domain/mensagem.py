@@ -84,6 +84,8 @@ NIVEL_POR_TIPO: dict[str, int] = {
     "pedido.encerramento": ROTINA,
     "pedido.condicao_atendida": ROTINA,
     "learning.needs_person": ROTINA,
+    # 28.62: o fim de uma operação com N agentes (concluída, com bloqueios ou cancelada): notícia, nunca pede o dono.
+    "operacao.encerrada": ROTINA,
     # 28.50 (30.80 B): o que a pessoa ENSINOU e o sistema tirou de ativo. Com outra receita segurando a etapa é rotina;
     # sem nenhuma, a etapa voltou para a IA e quem ensinou precisa saber já.
     "learning.ensinado_rebaixado": ROTINA,
@@ -137,6 +139,7 @@ ROTULOS: dict[str, str] = {
     "pedido.pergunta": "Um pedido tem uma pergunta para você",
     "pedido.ocorrencia_incerta": "Uma ocorrência de pedido terminou incerta",
     "learning.needs_person": "Um conhecimento aprendido espera a sua revisão",
+    "operacao.encerrada": "Uma operação foi encerrada",
     "learning.ensinado_rebaixado": "Algo que você ensinou foi rebaixado",
     "learning.ensinado_sem_receita": "Algo que você ensinou caiu, e a etapa ficou sem receita",
 }
@@ -206,6 +209,12 @@ MOTIVO_DO_ENCERRAMENTO: dict[str, str] = {
     "pai": "o pedido principal foi encerrado",
 }
 
+#: 28.62: quantos motivos de parada o aviso do fim da operação diz em palavras; o resto vira "outros".
+MOTIVOS_NA_OPERACAO = 3
+#: O assunto do fim da operação, pelo `status` do evento (`concluida`, `concluida_com_bloqueios`, `cancelada`).
+VERBO_DA_OPERACAO: dict[str, str] = {"cancelada": "🛑 Operação cancelada"}
+GESTO_DA_OPERACAO = "Nada a fazer."
+
 Redigir = Callable[[str], str]
 
 
@@ -259,6 +268,8 @@ def link_da_caixa(url_painel: str | None) -> str | None:
 #: INTEIRO com o formato; senão o link abre só a tela.
 ID_DE_EXECUCAO = re.compile(r"r-\d{14}-[0-9a-f]{6}")
 ID_DE_APARELHO = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,62}")
+#: A operação com N agentes (`op-<data><hora>-<6 hex>`, 31.154): só esse formato vira chave de aviso.
+ID_DE_OPERACAO = re.compile(r"op-\d{14}-[0-9a-f]{6}")
 
 
 def link_da_tela(url_painel: str | None, caminho: str) -> str | None:
@@ -408,6 +419,55 @@ def _do_pedido(sub: str, aviso: Mapping[str, object], nomes: Iterable[str],
     if sub == "condicao_atendida":
         return f"🔔 {nome}: a condição acompanhada foi atendida", [NADA_A_FAZER]
     return f"{nome} tem novidade", ["Veja no painel."]
+
+
+def _inteiro(valor: object) -> int:
+    n = _numero(valor)
+    return int(n) if n is not None and n > 0 else 0
+
+
+def _dolar(valor: float) -> str:
+    return f"US$ {valor:.2f}" if valor >= 0.01 else "menos de US$ 0.01"
+
+
+def _motivos_da_operacao(motivos: Mapping[str, object], nomes: Iterable[str], redigir: Redigir | None) -> str | None:
+    """"2 por teto de custo; 1 por sem conta; 1 por outros motivos": os mais comuns primeiro, até `MOTIVOS_NA_OPERACAO`,
+    cada um só se o filtro de texto o deixa passar como está. O que não passa, ou não cabe, soma em "outros"."""
+    contados = sorted(((_inteiro(n), str(m)) for m, n in motivos.items() if _inteiro(n) > 0), key=lambda x: (-x[0], x[1]))
+    ditos: list[str] = []
+    outros = 0
+    for n, motivo in contados:
+        texto = texto_seguro(motivo, nomes, redigir) if len(ditos) < MOTIVOS_NA_OPERACAO else None
+        if texto is None:
+            outros += n
+        else:
+            ditos.append(f"{n} por {_cortar(texto, 60)}")
+    if outros:
+        ditos.append(f"{outros} por outros motivos" if ditos else f"{outros} sem motivo dito (veja o painel)")
+    return "; ".join(ditos) if ditos else None
+
+
+def _da_operacao(status: str, capacidade: Mapping[str, object], custo: Mapping[str, object], nomes: Iterable[str],
+                 redigir: Redigir | None) -> tuple[str, list[str]]:
+    """O assunto e as linhas do fim de uma operação (28.62), só com o que o evento `operacao.encerrada` traz."""
+    pedidos, feitos = _inteiro(capacidade.get("solicitados")), _inteiro(capacidade.get("concluidas"))
+    parados, em_curso = _inteiro(capacidade.get("bloqueadas")), _inteiro(capacidade.get("em_curso"))
+    placar = f"{feitos} de {pedidos} agentes concluídos"
+    verbo = VERBO_DA_OPERACAO.get(status) or ("✅ Operação encerrada" if status == "concluida" and not parados
+                                              else "⚠️ Operação encerrada")
+    linhas = [f"Solicitados: {pedidos}; concluídos: {feitos}; bloqueados: {parados}; em curso: {em_curso}."]
+    paradas = _motivos_da_operacao(_filho(capacidade, "motivos"), nomes, redigir) if parados else None
+    if paradas:
+        linhas.append(f"Paradas: {paradas}.")
+    total = _numero(custo.get("total_usd"))
+    if total is not None and total >= 0:
+        pesquisa, agentes = _numero(custo.get("pesquisa_usd")), _numero(custo.get("alvos_usd"))
+        quebra = (f" (pesquisa externa {_dolar(pesquisa)}; agentes {_dolar(agentes)})"
+                  if pesquisa is not None and agentes is not None else "")
+        linhas.append(f"Custo: {_dolar(total)}{quebra}.")
+    linhas.append(f"Crítico: {parados} alvos bloqueados; veja a tela Operação." if parados else "Crítico: nada.")
+    linhas.append(GESTO_DA_OPERACAO)
+    return f"{verbo}: {placar}", linhas
 
 
 def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: int | None,
@@ -589,6 +649,18 @@ def aviso_de_evento(kind: str, dados: Mapping[str, object] | None, evento_id: in
             linhas += ["Outra receita ainda segura a etapa.", NADA_A_FAZER]
         caminho = f"#/aprendizado?aba=aprendido&item=receita:{ref}" if item == "receita" else "#/aprendizado?aba=aprendido"
         link = link_da_tela(url_painel, caminho)
+    elif kind == "operacao.encerrada":
+        # 28.62: um aviso por operação (a chave é o id dela, o mesmo nas duas réplicas e na reabertura que fecha outra
+        # vez). Só contagens e dinheiro: nem o comando, nem o nome de persona, nem handle. Os motivos de parada vêm da
+        # contagem da capacidade e só saem se o filtro de texto não mudar nada neles; o resto vira "outros".
+        d = dados or {}
+        ident = _id_valido(ID_DE_OPERACAO, d.get("operacao_id"))
+        if ident is None:
+            return None
+        tipo, chave = "operacao.encerrada", chave_do_fato("operacao", ident)
+        assunto, linhas = _da_operacao(_texto(d.get("status")) or "", _filho(d, "capacidade"), _filho(d, "custo"),
+                                       nomes, redigir)
+        link = link_da_tela(url_painel, "#/operacoes")
     else:
         return None
     return Aviso(chave=chave, tipo=tipo, titulo=titulo_do_aviso(assunto), corpo="\n".join(linhas), link=link,
@@ -610,6 +682,7 @@ ROTULOS_AGRUPADOS: dict[str, str] = {
     "session.needs_person": "{n} contas pedem intervenção humana",
     "objective.waiting_user": "{n} objetivos pararam esperando você",
     "learning.needs_person": "{n} conhecimentos aprendidos esperam a sua revisão",
+    "operacao.encerrada": "{n} operações foram encerradas",
     "learning.ensinado_rebaixado": "{n} coisas que você ensinou foram rebaixadas",
     "learning.ensinado_sem_receita": "{n} coisas que você ensinou caíram, e as etapas ficaram sem receita",
     "pendencia.vence_em": "{n} pendências vencem nas próximas 2 h",
