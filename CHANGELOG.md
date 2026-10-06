@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.101, o `--amplo` real: pedaços de nome de conta trocados por valores de exemplo nos testes (branch chore/trocar-nomes-amplo)
+
+- `scripts/trocar-nomes-nos-testes.py --amplo --aplicar` sobre a ponta da suíte 44: 119 arquivos e 1438 linhas, todos de teste
+  (91 de backend, 8 de `scripts/tests`, 20 de frontend). Nenhum arquivo de produção mudou.
+- Palavras que são nome de conta E também código ou domínio ficam na lista `fora` da tabela privada (que continua fora do
+  Git) e não são trocadas: trocá-las quebrava a coleta de 36 testes (um módulo importado) e o papel de lista "marcos" do
+  Trello. A tabela ganhou 5 palavras assim neste corte.
+- Oito expectativas que dependiam de iniciais, ordem alfabética ou subtexto do nome foram ajustadas à mão.
+- Limite conhecido: o script troca por palavra inteira (``); um pedaço colado a `_` ou a `%40` (ids e URLs) não casa e
+  fica (cerca de 100 ocorrências em testes). Não foi mexido; fica para uma rodada própria se o dono quiser.
+- Prova: `simulated` (91 arquivos de backend, 3551 testes; `scripts/tests`, 684; frontend, 486; mypy 257; docs-check 0/0).
+
 ## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)
 
 - Une o painel do 31.89 já sobre a junção do corte 43 (`feat/31-89-painel-corte-44`, 5cb96676) e a tela do 30.85 (`feat/30-85-selo-no-livro`, b083e683, sobre a
