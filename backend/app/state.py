@@ -82,6 +82,7 @@ from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.infrastructure.validacoes_sql import RegistroDeValidacoesSql
 from .modules.skills.application.registry import CompositeSkillRegistry
 from .modules.skills.application.teaching import TeachingService
+from .modules.skills.infrastructure.contador_do_ensino_v2 import ContadorDoEnsinoV2
 from .modules.skills.infrastructure.document_validator import DslDocumentValidator, LockedVersions
 from .modules.skills.infrastructure.legacy_flows import LegacyFlowAdapter
 from .modules.skills.infrastructure.run_planning import SkillRunPlanner
@@ -3751,6 +3752,9 @@ class AppState:
                                 "skills": self.cfg.file.skills.enabled,
                                 # 31.91 F1: a TELA do ensino v2 (o painel exige `skills` também). Desligada por padrão.
                                 "ensino_v2": self.cfg.file.skills.ensino_v2_na_tela,
+                                # 31.91 T1 (ADR-078): chamadas às rotas OBSOLETAS do ensino v2, desde o início da medição.
+                                # É a régua do T2: 14 dias com `total` parado em zero autorizam tirar o código.
+                                "ensino_v2_chamadas": ContadorDoEnsinoV2(self.db).resumo(),
                                 # Aparelhos com o reparo automático PAUSADO (experimento/manutenção): `{id: {until, reason, by,
                                 # remaining_s}}`; vazio = nenhum. Informativo: não é problema de saúde.
                                 "repair_pause": {rt.id: dto.model_dump(mode="json") for rt in self.devices.devices.values()

@@ -365,6 +365,7 @@ A pergunta na execução (`needs_input`, `runs.plan` nulo, evento estruturado) e
   para leitura e "Corrigir etapa") pede também `Health.features.ensino_v2` (`skills.ensino_v2_na_tela`, 31.91 F1, padrão
   `false`; a lista de habilidades e a conversão de fluxo seguem só com `skills`). As rotas `/api/skills`,
   `/api/teaching-sessions` e `/api/skill-candidates` respondem 404 `skills_disabled` com ele desligado.
+- **Obsoleto e contado (31.91 T1, [ADR-078](../decisoes.md#adr-078--o-ensino-v2-sai-em-dois-tempos-obsoleto-e-contado-agora-apagado-depois-de-14-dias-sem-uso)):** as 12 rotas `/api/teaching-sessions*` e `/api/skill-candidates*` saem `deprecated` no OpenAPI e cada chamada soma em `Health.features.ensino_v2_chamadas`; 14 dias com `total` em zero autorizam o T2 (31.115, apagar o código).
 
 ## Adoção de fluxo
 
