@@ -10699,6 +10699,18 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T08:58:09+00:00"
+  },
+  "33.1": {
+   "id": "33.1",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 09:32Z: os cinco levantamentos (aprendizagem e replay; painel; worker, persistência, migrações e deploy; executor, ações, aprovações e máquinas de estado; canais e avisos) escritos e commitados no repositório do projeto externo (commit ccb5060, pasta inventario/), sobre a main 9fff0fc2 do Android, sem nenhuma edição neste repositório; cada um com arquivo e função dos pontos, o que não é ponto e as dúvidas para o contrato. Nada habilitado.",
+   "grupo": "orquestradora-33-1",
+   "modelo": "fable",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T09:32:58+00:00"
   }
  },
  "rodadas": [
@@ -13989,6 +14001,15 @@
    ],
    "grupos": [
     "portal-percurso-49-formulario-e-descartar"
+   ]
+  },
+  {
+   "quando": "2026-10-06T09:32:58+00:00",
+   "itens": [
+    "33.1"
+   ],
+   "grupos": [
+    "orquestradora-33-1"
    ]
   }
  ]
