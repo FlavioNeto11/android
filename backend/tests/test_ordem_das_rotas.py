@@ -85,6 +85,18 @@ def test_as_dez_rotas_de_workers_e_limites_seguem_no_app_e_cada_uma_uma_vez() ->
     assert not _casa("/api/workers/{worker_id}", "/api/workers/devices/unbound")        # 1 segmento x 3: sem sobreposição
 
 
+def test_as_dez_rotas_de_rede_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4f: `/api/network/*` saiu de `api.py` para `modules/fleet/presentation/rede.py`; o conjunto (método e modelo) é o de
+    antes, sem repetição nem rota perdida."""
+    rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/network")]
+    assert sorted(rotas) == sorted([
+        ("GET", "/api/network/profiles"), ("POST", "/api/network/profiles"), ("DELETE", "/api/network/profiles/{profile_id}"),
+        ("GET", "/api/network/devices"), ("POST", "/api/network/assign"),
+        ("POST", "/api/network/devices/{instance_id}/verify"), ("POST", "/api/network/devices/{instance_id}/reapply"),
+        ("POST", "/api/network/devices/{instance_id}/apply"), ("GET", "/api/network/server"),
+        ("POST", "/api/network/server/firewall-check")])
+
+
 def test_modulos_de_apresentacao_nao_importam_app_api() -> None:
     """Ciclo: `app.api` importa os módulos; um módulo que importa `app.api` de volta só funciona por acidente de ordem."""
     raiz = Path(__file__).resolve().parent.parent / "app" / "modules"

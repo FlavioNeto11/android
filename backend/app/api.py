@@ -41,9 +41,9 @@ from .devices.adb import AdbError
 from .devices.avd import AvdError
 from .devices import conectividade
 from .devices.manager import ControlError, DeviceRuntime
+from .modules.fleet.presentation.comum import quem
 from .modules.applications.presentation.comum import device, recusa_loja_como_alvo
 from .devices.proxy import ProxyApplyBody, ProxyInput  # modelos da loja de apps fora de models.py (menos conflito)
-from .devices import rede  # rede por aparelho (ADR-056, 25.2): corpos e regras moram no módulo, como os do proxy
 from .integrations.app_declarado.prova import prova_do_pacote
 from .devices.verbs import PRAZO_POR_VERBO, prazo_de, verbos_suportados  # noqa: F401 - os testes ajustam o prazo por aqui
 from .models import (RUN_TERMINAL, RunStatus, DistributeSpec, Plan, ApprovalBatchBody, ApprovalDecision, AppInput, AppPatch, BulkBody,
@@ -79,7 +79,7 @@ from .porta_do_plano import (AprovarPlanoBody, PortaIndisponivel, PreviaDoItemBo
 from .security import access as acesso           # o módulo, não os nomes: `LOOPBACK_DE_TESTE` é injetado em tempo
 from .security import local_secret               # de execução e um `from ... import` congelaria o valor antigo
 from .security.access import avaliar, publicos_de
-from .security.sessions import COOKIE, VALIDADE_S, NomeInvalido, normalizar_nome, operador_atual
+from .security.sessions import COOKIE, VALIDADE_S, NomeInvalido, normalizar_nome
 from .shared.costuras import PAINEL, ResolucaoDeComando, autor_do_gesto, avisar
 from .state import AppState
 from .workers.captura import ErroDeMidia
@@ -131,21 +131,6 @@ async def recusa_do_despacho(request: Request, exc: DespachoRecusado) -> Respons
     que é quem respondia quando a exceção era HTTP — mesmo status, mesmo corpo `{"detail": {...}}`.
     """
     return await http_exception_handler(request, HTTPException(status_code=exc.status, detail=exc.detail))
-
-
-def quem(request: Request | None = None, informado: str | None = None) -> str:
-    """Quem está pedindo, na ordem em que uma trilha de auditoria precisa que seja.
-
-    **A sessão vence o que o cliente diz.** `requested_by` sempre foi um campo do CORPO: qualquer chamador
-    escrevia ali o nome que quisesse, e era o único "quem" que o banco guardava. Com sessão, o nome vem do
-    cookie — que o JavaScript da página não lê e o navegador não deixa forjar — e o campo do corpo vira o que
-    sempre deveria ter sido: um rótulo de quem chama a API sem sessão (script, ferramenta, worker).
-
-    `panel` continua existindo como último recurso, e agora quer dizer o que parecia querer: "veio do painel, e
-    ninguém se identificou".
-    """
-    da_sessao = getattr(request.state, "operador", None) if request is not None else None
-    return da_sessao or operador_atual() or (informado or "").strip() or PAINEL
 
 
 #: A triagem de credencial do voto do D2 (`registrar_sinal(recusar_nota=True)`), para a nota livre que uma pessoa
@@ -1783,111 +1768,6 @@ async def apply_proxy(request: Request, body: ProxyApplyBody) -> Any:
     except ProxyError as exc:
         raise _proxy_error(exc) from exc
     return {"accepted": not body.dry_run, "dry_run": body.dry_run, "devices": devices}
-
-
-# ---------------------------------------------------------------------- rede por aparelho (ADR-056, item 25.2)
-def _rede_error(exc: rede.RedeError) -> HTTPException:
-    return err(exc.status, exc.code, exc.message, **exc.extra)
-
-
-@router.get("/network/profiles")
-async def list_network_profiles(request: Request) -> dict[str, list[dict[str, object]]]:
-    return rede.listar_perfis(st(request))
-
-
-@router.post("/network/profiles", status_code=201)
-async def create_network_profile(request: Request) -> rede.NetworkProfileDTO:
-    """Perfil de VPN ou de proxy. O segredo chega aqui UMA vez, vai ao cofre e nunca volta: a resposta diz só
-    `has_secret`. O corpo é lido à mão (`rede.ler_cadastro`) para o segredo sair antes da validação — o 422 padrão
-    devolveria o corpo inteiro como `input` num campo faltando. Os erros saem sem `input` nem `ctx`."""
-    try:
-        corpo = await request.json()
-    except ValueError:
-        raise err(422, "invalid_body", "O corpo precisa ser JSON.") from None
-    try:
-        body = rede.ler_cadastro(corpo)
-    except ValidationError as exc:
-        erros = [{"type": e["type"], "loc": ["body", *e["loc"]], "msg": e["msg"]} for e in exc.errors()]
-        raise HTTPException(status_code=422, detail=erros) from None
-    except ValueError as exc:
-        raise err(422, "invalid_secret" if "segredo" in str(exc) else "invalid_body", str(exc)) from None
-    try:
-        return rede.criar_perfil(st(request), body, quem(request))
-    except rede.RedeError as exc:
-        raise _rede_error(exc) from exc
-
-
-@router.delete("/network/profiles/{profile_id}", status_code=204)
-async def delete_network_profile(request: Request, profile_id: str) -> Response:
-    """409 `network_profile_in_use` com os aparelhos que o usam: troque ou tire o perfil deles antes."""
-    try:
-        rede.remover_perfil(st(request), profile_id)
-    except rede.RedeError as exc:
-        raise _rede_error(exc) from exc
-    return Response(status_code=204)
-
-
-@router.get("/network/devices")
-async def list_network_devices(request: Request) -> dict[str, object]:
-    """Desejado × observado por aparelho, com o proxy legado da 041 rebaixado a `configurado` no máximo, `egress_home`
-    por aparelho e a saída medida do central (`central_egress`, item 29.20)."""
-    return rede.listar_aparelhos(st(request))
-
-
-@router.post("/network/assign")
-async def assign_network(request: Request, body: rede.NetworkAssignBody) -> dict[str, object]:
-    """Atribui em lote (ou a um aparelho). `dry_run` = prévia, nada gravado; sem ele, tudo ou nada (409 com a prévia)."""
-    try:
-        return rede.atribuir(st(request), body, quem(request))
-    except rede.RedeError as exc:
-        raise _rede_error(exc) from exc
-
-
-@router.post("/network/devices/{instance_id}/verify", status_code=202)
-async def verify_network(request: Request, instance_id: str) -> dict[str, object]:
-    """Registra o pedido de medir de novo (202, `executed: false`): a sonda de saída (25.5) mede de dentro do
-    aparelho no próximo ponto seguro dele (varredura, porta da tarefa) ou já, por `POST …/apply`."""
-    try:
-        return st(request).rede_convergencia.pedir_verificacao(instance_id, quem(request))
-    except rede.RedeError as exc:
-        raise _rede_error(exc) from exc
-
-
-@router.post("/network/devices/{instance_id}/reapply", status_code=202)
-async def reapply_network(request: Request, instance_id: str) -> dict[str, object]:
-    """Registra a reaplicação como revisão nova (202). Quem aplica é a convergência (25.4), no próximo ponto seguro;
-    para aplicar já, `POST …/apply`."""
-    try:
-        return rede.pedir_reaplicacao(st(request), instance_id, quem(request))
-    except rede.RedeError as exc:
-        raise _rede_error(exc) from exc
-
-
-@router.post("/network/devices/{instance_id}/apply", status_code=202)
-async def apply_network(request: Request, instance_id: str) -> dict[str, object]:
-    """O passo que falta à rede deste aparelho (aplicar, reiniciar e conectar, medir, conferir ou desfazer), JÁ, pela fila
-    do aparelho e como comando `device.network` (25.4). Fora do ar: aplica quando ligar. Ocupado: 409 `device_busy`."""
-    try:
-        return st(request).rede_convergencia.aplicar_agora(instance_id, quem(request))
-    except rede.RedeError as exc:
-        raise _rede_error(exc) from exc
-
-
-@router.get("/network/server")
-async def network_server(request: Request) -> dict[str, object]:
-    """O servidor sing-box do central (25.4): se roda, os pares (aparelho, endereço no túnel, chave PÚBLICA, última
-    conexão no log) e os usuários do proxy. Sem segredo nenhum: nem chave privada, nem senha, nem a configuração."""
-    return st(request).rede_servidor.status()
-
-
-@router.post("/network/server/firewall-check")
-async def network_server_firewall_check(request: Request) -> dict[str, object]:
-    """Relê JÁ o Firewall do Windows do central para os aparelhos de outra máquina (25.7) e devolve o
-    `remote_access`: endpoint da LAN, aparelhos remotos, estado e o comando que o DONO roda. Só leitura — a plataforma
-    nunca cria, muda ou desliga regra."""
-    servidor = st(request).rede_servidor
-    await servidor.conferir_acesso_remoto(forcar=True)
-    return servidor.acesso_remoto()
 
 
 @router.get("/app-state")

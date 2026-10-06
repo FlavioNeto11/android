@@ -19,6 +19,16 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F4, corte 6 (F4f): as 10 rotas de rede por aparelho saem de `api.py` (branch feat/15-15-f4f-router-network)
+
+- `/api/network/*` (perfis de VPN e de proxy, atribuição, aplicar, reaplicar, verificar, o servidor e a conferência do Firewall) agora moram em
+  `backend/app/modules/fleet/presentation/rede.py`, montado em `main.py` no mesmo lugar do `api.router`. `quem()` (quem está pedindo), que `api.py` também
+  usa em 22 lugares, foi para `modules/fleet/presentation/comum.py` e `api.py` o importa de lá (`from app.api import quem` segue valendo). Mesmo caminho, método,
+  corpo e resposta; o segredo de um perfil continua entrando uma vez pelo corpo lido à mão, indo ao cofre e não voltando.
+- Prova do OpenAPI contra a ponta do F4e (2142b2a2): 271 método+caminho idênticos e NENHUMA diferença de schema (as rotas já tinham o tipo de retorno).
+  `test_ordem_das_rotas.py` ganhou o caso das 10 rotas. Sem `Any` movido (a base não muda).
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
 ## 2026-10-06 — 15.15 F4, corte 5 (F4e): as 10 rotas de workers e de limites por servidor saem de `api.py` (branch feat/15-15-f4e-router-workers)
 
 - `/api/workers*` (8 rotas: listar, ler, aparelhos sem dono, adotar, cadastrar, manutenção, remover, girar a credencial) e `/api/servers/limits` e
