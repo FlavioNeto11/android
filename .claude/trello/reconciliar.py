@@ -77,7 +77,7 @@ def inicio_da_semana(agora: datetime) -> str:
 
 
 def id_do_item(nome: str) -> str | None:
-    m = re.match(r"^(?:\[A\]\s*)?(?:🙋\s*)?(?:#\d+\s*·\s*)?(\d+\.\d+)(?![\d.])", nome)
+    m = re.match(r"^(?:\[A\]\s*)?(?:🙋\s*)?(?:#\d+\s*·\s*)?(\d+\.\d+|T\.\d+)(?![\d.])", nome)
     return m.group(1) if m else None
 
 

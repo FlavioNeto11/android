@@ -55,6 +55,10 @@ def test_nome_e_lista():
     assert id_do_item("29.1 · algo") == "29.1"
     assert id_do_item("[A] 🙋 31.90 · algo") == "31.90"
     assert id_do_item("#162 · 31.21 · algo") == "31.21"
+    assert id_do_item("T.2 · Testes: relógio injetável") == "T.2"
+    assert id_do_item("[A] T.14 · algo") == "T.14"
+    assert id_do_item("T.2.1 · algo") is None
+    assert id_do_item("Tabela 1.2") is None
     assert id_do_item("P-001. Pergunta") is None
     assert id_do_item("Suíte 16 → deploy 16") is None
     assert papel_da_lista("✅ Concluído nesta semana") == "concluido"
