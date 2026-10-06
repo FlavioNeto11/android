@@ -191,6 +191,8 @@ interface PlanStep {
   /** Contrato C2 (ADR-058): os nomes dos valores que a etapa lê e deixa para as seguintes (`{{saida:<nome>}}`).
    *  Ausente quando a etapa não produz nada. */
   saidas?: string[];
+  /** 31.129 (adendo v1.84): os pacotes, além do app da etapa, em que a tela também comprova a conclusão. Omitido quando vazio. */
+  pacotes_aceitos?: string[];
 }
 
 interface StepOrigin {
@@ -283,6 +285,8 @@ interface Step {
   /** Item 31.65: o motivo da recusa da persona ao escrever o texto desta etapa (texto do modelo). Só no detalhe da
    *  etapa: a dica do bloqueio, que viaja para Pendências, aviso e Trello, é fixa. Ausente sem recusa. */
   motivo_da_persona?: string | null;
+  /** 31.129 (adendo v1.84): os pacotes, além do app da etapa, em que a tela também comprova a conclusão. Omitido quando vazio. */
+  pacotes_aceitos?: string[];
 }
 
 interface Action {
@@ -2029,6 +2033,8 @@ export interface TrainingStep {
   bindings: { name: string; value: string }[];
   app_id: string | null;
   postcondition: { kind: 'text_visible' | 'app_foreground' | 'element_present' | 'model_judged'; value: string; description: string };
+  /** 31.129 (adendo v1.84): preenchido pelo ensino ao salvar, com os pacotes vistos na demonstração; a proposta da IA não o traz. */
+  pacotes_aceitos?: string[];
 }
 
 export interface TrainingProposal {
@@ -2161,9 +2167,22 @@ export interface TrainingSaveResult {
 }
 
 /** `POST /training/{id}/preview` (adendo v1.58): o que o salvar faria, sem gravar. */
+/** 31.128 (adendo v1.86): a etapa cuja pós-condição `text_visible` já aparece na tela de partida, com até 3 textos da tela seguinte. */
+export interface PosCondicaoQueJaVale {
+  /** A `key` da etapa na proposta. */
+  etapa: string;
+  /** O texto da pós-condição que já vale. */
+  valor: string;
+  sugestoes: string[];
+  /** A mesma frase da linha de `warnings` (e da recusa). */
+  message: string;
+}
+
 export interface TrainingPreview {
   steps: TrainingStepReport[];
   warnings: string[];
+  /** 31.128 (adendo v1.86): ao lado de `warnings`; vazia sem ocorrência; backend anterior não manda. */
+  pos_condicoes_ja_valem?: PosCondicaoQueJaVale[];
   /** Adendo v1.71; backend anterior não manda. */
   scope?: TrainingScope;
 }

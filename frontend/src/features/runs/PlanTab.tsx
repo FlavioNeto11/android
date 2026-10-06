@@ -5,6 +5,7 @@ import { Badge } from '../../components/Badge';
 import { Disclosure } from '../../components/Disclosure';
 import { EmptyState } from '../../components/EmptyState';
 import { KvList, KvRow } from '../../components/JsonTree';
+import { PacotesAceitos } from '../../components/PacotesAceitos';
 import ui from '../../components/ui.module.css';
 import { cx } from '../../lib/format';
 import { POSTCONDITION_KIND } from '../../lib/status';
@@ -47,6 +48,7 @@ export function PlanStepList({ steps, planAppId = null, apps = [] }: {
             <div>
               <p className={styles.planStepTitle}><span className="sr-only">Etapa {i + 1}: </span>{s.title}</p>
               <p className={styles.planStepGoal}>{s.goal}</p>
+              <PacotesAceitos pacotes={s.pacotes_aceitos} />
               {s.depends_on.length > 0 || s.side_effect || outroApp ? (
                 <div className={styles.chips}>
                   {s.depends_on.length > 0 ? <span className={styles.muted}>depende de:</span> : null}

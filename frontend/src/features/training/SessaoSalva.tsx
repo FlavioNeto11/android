@@ -13,6 +13,7 @@ import { Badge } from '../../components/Badge';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { EmptyState } from '../../components/EmptyState';
+import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { plural } from '../../lib/format';
 import { OrigemDoTreino } from './OrigemDoTreino';
@@ -121,6 +122,7 @@ export function SessaoSalva({ sessionId, onClose }: { sessionId: string; onClose
                       {s.side_effect ? ' · com efeito fora do sistema' : ''}
                       {s.postcondition?.description ? ` · confere: ${s.postcondition.description}` : ''}
                     </span>
+                    <PacotesAceitos pacotes={s.pacotes_aceitos} />
                   </li>
                 ))}
               </ol>

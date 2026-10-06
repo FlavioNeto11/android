@@ -82,3 +82,18 @@
 /* Fase L: listas dentro de um Banner (riscos, erros do compilador) — sem fundo próprio, o Banner já dá o tom. */
 .bannerList { margin: 4px 0 0; padding-left: 18px; overflow-wrap: anywhere; }
 .bannerList li + li { margin-top: 2px; }
+
+/* 31.128: o aviso de que a conferência já vale na tela de partida, dentro da etapa, com as sugestões como botões. */
+.posJaVale {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--warning-border);
+  border-radius: var(--radius-md);
+  background: var(--warning-soft);
+  font-size: var(--fs-sm);
+}
+.posJaVale p { margin: 0; color: var(--text-1); }
+.posJaValeSugestoes { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
