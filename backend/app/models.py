@@ -2019,7 +2019,13 @@ class DecisionDTO(BaseModel):
     text: str
 
 
+class CustosExecucao(BaseModel):
+    spent_usd: float = 0.0
+    calls: int = 0
+
+
 class RunDetail(RunSummary):
+    costs: CustosExecucao = Field(default_factory=CustosExecucao)
     plan: Plan | None = None
     objectives: list[ObjectiveDTO] = []
     steps: list[StepDTO] = []

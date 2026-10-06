@@ -34,6 +34,7 @@ from app.modules.skills.domain.teaching import (CredentialInText, Demonstration,
                                                 TeachingInputInvalid, TeachingNotFound, TeachingSession,
                                                 TeachingStatus, TeachingTurn)
 from app.modules.skills.domain.versions import DocumentFacts, SkillSummary, SkillVersion, TransitionRecord
+from app.modules.skills.infrastructure.contador_do_ensino_v2 import ContadorDoEnsinoV2
 from app.modules.skills.infrastructure.decompiler import DecompileIssue, PlanDecompiler
 from app.modules.skills.infrastructure.flow_conversion import FlowConverter
 from app.modules.skills.infrastructure.run_planning import SkillRunPlanner
@@ -78,6 +79,20 @@ def _conversor(request: Request) -> FlowConverter:
     if not isinstance(planejador, SkillRunPlanner):
         raise HTTPException(503, detail={"code": "not_ready", "message": "O planejador de habilidades não subiu."})
     return FlowConverter(_habilidades(request), PlanDecompiler(planejador.compiler))
+
+
+def _conta_ensino_v2(request: Request) -> None:
+    """31.91 T1 (ADR-078): conta a chamada a uma rota OBSOLETA do ensino v2 (o caminho único é o Modo treinamento).
+    Só o método e o molde da rota; falhar aqui nunca derruba a chamada (o contador engole o erro)."""
+    db = _poc_attr(request, "db")
+    rota = request.scope.get("route")
+    molde = getattr(rota, "path", None)
+    if isinstance(db, Database) and isinstance(molde, str):
+        ContadorDoEnsinoV2(db).registrar(request.method, molde)
+
+
+#: As rotas do ensino v2 levam `deprecated=True` (OpenAPI) e passam por este contador. Saem juntas no T2 (31.115).
+ENSINO_V2_CONTADO = [Depends(_conta_ensino_v2)]
 
 
 def _exige_habilidades(request: Request) -> None:
@@ -289,7 +304,7 @@ async def decompile_skill_version(request: Request, skill_id: str, version: int)
 
 
 # ================================================================== /api/teaching-sessions
-@router.post("/teaching-sessions", status_code=201, response_model=None)
+@router.post("/teaching-sessions", status_code=201, response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def start_teaching(request: Request, body: TeachingStartBody) -> JsonObject:
     servico = _ensino(request)
     return _visao(_chamar(lambda: servico.start(body.instruction, skill_id=body.skill_id,
@@ -297,7 +312,7 @@ async def start_teaching(request: Request, body: TeachingStartBody) -> JsonObjec
                                                 profile_id=body.profile_id, operator=_quem(request))))
 
 
-@router.get("/teaching-sessions", response_model=None)
+@router.get("/teaching-sessions", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def list_teaching(request: Request, status: TeachingStatus | None = None,
                         limit: int = Query(50, ge=1, le=200),
                         training_session_id: str | None = Query(None, max_length=80)) -> list[JsonObject]:
@@ -306,13 +321,13 @@ async def list_teaching(request: Request, status: TeachingStatus | None = None,
         status=status, limit=limit, training_session_id=training_session_id)]
 
 
-@router.get("/teaching-sessions/{teaching_id}", response_model=None)
+@router.get("/teaching-sessions/{teaching_id}", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def get_teaching(request: Request, teaching_id: str) -> JsonObject:
     servico = _ensino(request)
     return _visao(_chamar(lambda: servico.get(teaching_id)))
 
 
-@router.post("/teaching-sessions/{teaching_id}/demonstrations", response_model=None)
+@router.post("/teaching-sessions/{teaching_id}/demonstrations", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def attach_demonstration(request: Request, teaching_id: str, body: DemonstrationBody) -> JsonObject:
     servico = _ensino(request)
     if (body.training_session_id is None) == (body.run_id is None):
@@ -327,7 +342,7 @@ async def attach_demonstration(request: Request, teaching_id: str, body: Demonst
     return _visao(_chamar(lambda: servico.attach_run(teaching_id, execucao, note=body.note, by=_quem(request))))
 
 
-@router.post("/teaching-sessions/{teaching_id}/corrections", response_model=None)
+@router.post("/teaching-sessions/{teaching_id}/corrections", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def add_correction(request: Request, teaching_id: str, body: CorrectionBody) -> JsonObject:
     servico = _ensino(request)
     dados: JsonObject = {k: v for k, v in body.payload.items()}
@@ -335,7 +350,7 @@ async def add_correction(request: Request, teaching_id: str, body: CorrectionBod
                                                          step_id=body.step_id, payload=dados, by=_quem(request))))
 
 
-@router.post("/teaching-sessions/{teaching_id}/candidates", response_model=None)
+@router.post("/teaching-sessions/{teaching_id}/candidates", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def propose_candidate(request: Request, teaching_id: str, body: ProposeBody | None = None) -> JsonObject:
     """Pede a candidata ao generalizador. Com IA real é UMA chamada paga do planejador; no simulado, zero."""
     servico = _ensino(request)
@@ -347,39 +362,39 @@ async def propose_candidate(request: Request, teaching_id: str, body: ProposeBod
     return _visao(visao)
 
 
-@router.post("/teaching-sessions/{teaching_id}/answers", response_model=None)
+@router.post("/teaching-sessions/{teaching_id}/answers", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def answer_question(request: Request, teaching_id: str, body: AnswerBody) -> JsonObject:
     servico = _ensino(request)
     return _visao(_chamar(lambda: servico.answer(teaching_id, body.question_id, body.body, by=_quem(request))))
 
 
-@router.post("/teaching-sessions/{teaching_id}/discard", response_model=None)
+@router.post("/teaching-sessions/{teaching_id}/discard", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def discard_teaching(request: Request, teaching_id: str) -> JsonObject:
     servico = _ensino(request)
     return _visao(_chamar(lambda: servico.discard(teaching_id, by=_quem(request))))
 
 
 # ================================================================== /api/skill-candidates
-@router.get("/skill-candidates/{candidate_id}", response_model=None)
+@router.get("/skill-candidates/{candidate_id}", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def get_candidate(request: Request, candidate_id: str) -> JsonObject:
     servico = _ensino(request)
     return _detalhe(_chamar(lambda: servico.candidate(candidate_id)))
 
 
-@router.post("/skill-candidates/{candidate_id}/compile", response_model=None)
+@router.post("/skill-candidates/{candidate_id}/compile", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def compile_candidate(request: Request, candidate_id: str) -> JsonObject:
     servico = _ensino(request)
     return _fatos(_chamar(lambda: servico.compile(candidate_id)))
 
 
-@router.post("/skill-candidates/{candidate_id}/validate", response_model=None)
+@router.post("/skill-candidates/{candidate_id}/validate", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def validate_candidate(request: Request, candidate_id: str, body: ValidateBody | None = None) -> JsonObject:
     servico = _ensino(request)
     modo = body.mode if body is not None else "static"
     return _visao(_chamar(lambda: servico.validate(candidate_id, mode=modo, by=_quem(request))))
 
 
-@router.post("/skill-candidates/{candidate_id}/publish", response_model=None)
+@router.post("/skill-candidates/{candidate_id}/publish", response_model=None, deprecated=True, dependencies=ENSINO_V2_CONTADO)
 async def publish_candidate(request: Request, candidate_id: str, body: PublishBody | None = None) -> JsonObject:
     """A candidata validada vira `skill_versions` em DRAFT. Repetir devolve a mesma versão (idempotente pela
     própria candidata). Publicar a habilidade é outra decisão, em `/api/skills/.../status`."""
