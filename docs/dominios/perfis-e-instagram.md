@@ -479,6 +479,14 @@ v1.86; achados da prova conjunta r-20261006102728-1157c6).**
   `independente: true` na etapa da proposta. O executor já esperava a dependência; antes, a 2ª etapa rodava com a 1ª em
   `retry_wait`, e o objetivo fechou `completed` na tela inicial.
 
+**A sugestão pronta e a prévia com o comando repetido (31.142, adendo v1.91; achados da prova F2,
+trn-YjYU8iobj_V42xXx).** A única sugestão ("Back") era a descrição do botão voltar. Com `element_present`, trocar só o
+valor deixaria o seletor puro, que só olha o texto, e a etapa nunca passaria. Cada entrada de `pos_condicoes_ja_valem`
+traz `sugestoes_prontas` (`partida.pronta`): `text_visible` fica `text_visible`; `element_present` vira `text==` ou
+`desc==` pelo campo em que o texto está na tela seguinte, e o botão aplica `kind` e `value` juntos. A prévia não para
+mais no 409 `duplicate_command`: devolve `code` e `message` num 200, com a frase na 1ª linha de `warnings`, junto das
+pós-condições e dos avisos. O `save` segue recusando com o 409.
+
 **O fluxo nascido de uma prova (31.130, migração 122, adendo v1.87).** Os fluxos ensinados em provas de sessão
 ficavam, no Livro e em Salvas, iguais a um fluxo real desligado por uma pessoa. A sessão aberta com
 `nascido_de_prova: true` leva a marca (`training_sessions.nascido_de_prova`), e o `save` a passa ao fluxo

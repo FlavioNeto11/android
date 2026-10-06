@@ -158,7 +158,8 @@ async def save_training(request: Request, session_id: str, body: TrainingSaveBod
 @router.post("/training/{session_id}/preview")
 async def preview_training(request: Request, session_id: str, body: TrainingSaveBody) -> dict[str, object]:
     """O que o `save` faria com esta proposta, sem gravar nada (31.86): os mesmos erros e, por etapa, se vira receita e
-    por que não. A pessoa corrige a proposta ANTES de salvar, em vez de descobrir o motivo depois."""
+    por que não. A pessoa corrige a proposta ANTES de salvar, em vez de descobrir o motivo depois. O comando repetido
+    vem no corpo (`code: duplicate_command`, 31.142, adendo v1.91), junto do resto; o 409 dele é só do `save`."""
     try:
         return await _st(request).skills.preview(session_id, proposal=body.proposal, profile_ids=body.profile_ids,
                                                 group_ids=body.group_ids, scope_on_proof=body.scope_on_proof)
