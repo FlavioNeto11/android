@@ -80,3 +80,18 @@ async def test_sem_tentativa_ou_com_o_diagnostico_em_erro_a_sessao_abre_sem_ele(
 
     monkeypatch.setattr(falhas, "diagnostico_da_tentativa", quebra)
     assert falhas.diagnostico_para_o_ensino("qualquer") is None             # nunca derruba a sessão
+
+
+async def test_parada_esperando_a_pessoa_pergunta_igual_ao_ensino_sugerido(harness: Harness) -> None:
+    """31.116 (v1.82): em `waiting_user` a sessão e o `ensino-sugerido` dizem a mesma pergunta, a do estado da etapa; a
+    causa e o rótulo seguem os do diagnóstico."""
+    st, _rt, lease = await _com_controle(harness)
+    run, step = _execucao(st, "waiting_user", tentativas=1)
+    _tipo(st, step, "ia_orcamento")
+    async with _cliente(harness) as c:
+        sugerido = (await c.get(f"/api/runs/{run}/steps/{step}/ensino-sugerido")).json()
+        r = await c.post("/api/training/from-run", json={"run_id": run, "step_id": step, "lease_id": lease})
+    assert r.status_code == 201, r.text
+    d = r.json()["origin"]["diagnostico"]
+    assert d["pergunta"] == sugerido["pergunta"] == ef.PERGUNTA_ESPERANDO
+    assert d["causa"] == sugerido["causa"] == CausaProvavel.TETO_DE_IA.value and d["rotulo"] == sugerido["rotulo"]

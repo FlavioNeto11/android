@@ -948,7 +948,8 @@ Antes da sessão existir, `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerid
 sugestão (`{intent, pergunta, rotulo, causa}`) para o painel pré-preencher o formulário: só leitura, sem IA, `null` sem
 tentativa. `causa` é o código do diagnóstico (adendo v1.82). A pergunta é a do estado da etapa: a etapa em
 `waiting_user` parou esperando a pessoa, não falhou, e recebe a pergunta própria (`PERGUNTA_ESPERANDO`: o que ensinar a
-partir daquela tela para ela seguir). Nos outros estados, a pergunta é a do diagnóstico.
+partir daquela tela para ela seguir). Nos outros estados, a pergunta é a do diagnóstico. O `origin.diagnostico` da
+sessão aberta pelo `from-run` segue a mesma regra, então os dois dizem a mesma pergunta.
 
 ## Evidência inválida e o reaprendido (30.23)
 

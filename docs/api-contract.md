@@ -6955,5 +6955,9 @@ O formato das rotas não muda; muda o que o pedido GUARDA e o que a tela recebe.
   pergunta é a própria desse estado: o que ensinar, a partir daquela tela, para ela seguir. Isso vale mesmo com o
   diagnóstico em erro, caso em que a pergunta deixa de ser `null`. Em `failed` e `uncertain` segue a pergunta do
   diagnóstico, como no v1.80. `intent`, `rotulo`, o `null` sem tentativa e as recusas não mudam.
+- **`GET /api/training/{id}` (e a resposta do `POST /api/training/from-run`)**: `origin.diagnostico.pergunta` segue a
+  mesma regra, então em `waiting_user` diz o mesmo que o `ensino-sugerido`. Sem diagnóstico, `origin.diagnostico`
+  continua `null`.
 - Compatível: só um campo a mais e um texto diferente num estado. Pedido da leitura de UX da Portal, que consome os dois.
-  **Prova:** `simulated` (`backend/tests/test_ensino_sugerido.py`, 7); `real`: `not_run`.
+  **Prova:** `simulated` (`backend/tests/test_ensino_sugerido.py`, 7; `backend/tests/test_treino_diagnostico_da_falha.py`,
+  1 novo); `real`: `not_run`.
