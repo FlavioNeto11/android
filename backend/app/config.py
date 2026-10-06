@@ -379,6 +379,12 @@ class LimitsCfg(BaseModel):
     # não virar um padrão regular por si só) entre a curtida de uma conta e a de outra sobre o MESMO alvo, abaixo do
     # teto. `fleet_target_window_s` ficou sem uso (substituído pela janela em dias); continua aqui só porque o tipo
     # `Settings` do painel e o valor gravado no banco o citam — sai quando o painel mudar.
+    # Prova de 07/10 (J1): a sugestão de alvos (`POST /api/runs/targets/suggest`) escolhe até `orquestracao_max_escolhidas`
+    # personas, entre as `orquestracao_max_candidatas` mais disponíveis que vão ao modelo. Eram as constantes 10 e 20 do
+    # domínio, e um pedido de 30 voltava com 10. Lidos a cada sugestão (sem reiniciar). Cada candidata é um cartão no prompt:
+    # subir a segunda sobe o custo da chamada.
+    orquestracao_max_escolhidas: int = Field(30, ge=1, le=64)
+    orquestracao_max_candidatas: int = Field(60, ge=1, le=120)
     fleet_max_accounts_per_target: int = Field(3, ge=1, le=50)
     fleet_target_window_days: int = Field(30, ge=1, le=365)
     fleet_target_window_s: int = Field(3600, ge=60, le=86400)
