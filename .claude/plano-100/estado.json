@@ -7964,16 +7964,16 @@
   },
   "31.55": {
    "id": "31.55",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "04/10 21:45Z, banco central só leitura: sombra do curador 41 linhas, 38 abaixo do limiar; topo revisar 39/41; contra 30 rótulos do dono: 2/39 iguais (tabela .claude/handoffs/jev/tabela-31-55.md). 21:51Z, braço offline v2 (jev-braco-offline.py --estado v2 --enviar --teto 0.05), chave lote:jev:31.55-v2: 65 chamadas ok, US$ 0,002198 (custo.chamadas do JSON; fora do livro-caixa do ADR-051), 57339 tokens; topo=rótulo 9/63 (recorte da sombra 7/39, v1 2/39); acima de 0,85: 1 de 11 igual ao dono; rebaixar 4/4. | 21:55:50Z pré-registro de P1/P2 (.claude/handoffs/jev/preregistro-31-55.md, código ca14e5bb). 21:56Z P1 (lote:jev:31.55-p1): 67 chamadas, US$ 0,002548; acima de 0,85: 0 de 48 iguais ao dono. P2 (lote:jev:31.55-p2): 67 chamadas, US$ 0,002202; acima de 0,85: 2 de 6. Total do item US$ 0,006948 (teto 0,15), fora do livro-caixa. Perfil v2: degradando/falhas_seguidas em 4/4 rebaixados e 0/60 mantidos.",
-   "blocker": "Nenhuma pergunta bateu 70% a 0,85 (v2 9%, P1 0% dentro da amostra, P2 33%); runtime sem mudança e nenhuma rodada nova (decisão da orquestradora, 21:59Z). Ressalva: Os 30 rótulos \"do dono\" são confirmação EM BLOCO dos rótulos que o curador já tinha proposto (a pergunta a ele foi confirmar os 28 rótulos do curador e rebaixar a 10 e a 42). Então \"a regra determinística explica 64 de 65\" é em boa parte circular: mede a regra contra ela mesma, com o carimbo do dono por cima. A medida que separa o julgamento dele da regra só existe com rótulo item a item, e essa taxa está SEM AMOSTRA. Conclusão: o Jev com a entrada v1, v2, P1 e P2 não reproduz a política de manter até degradar; se a R1 em receita precisa do Jev, só se decide com rótulos item a item dados depois de hoje.",
-   "grupo": "orquestrador-resultado-suite32-a",
-   "modelo": "claude-fable-5-1",
-   "esforco": "sessao orquestradora",
+   "evidence": "O que o item pede está entregue e provado em real, só leitura mais o braço offline barato: 04/10, banco central (mode=ro), sombra do curador 41 linhas, 38 abaixo do limiar, topo revisar 39/41; o braço offline v2 (lote:jev:31.55-v2, 65 chamadas, US$ 0,002198) e as variantes P1 e P2 (lote:jev:31.55-p1/p2, 67 chamadas cada, US$ 0,002548 e 0,002202), total US$ 0,006948 contra teto de 0,15, fora do livro-caixa; perfil v2 degradando/falhas_seguidas em 4/4 rebaixados e 0/60 mantidos. O item termina com o critério NÃO fechado e 'nada muda em runtime', que é o resultado entregue: nenhuma pergunta bateu 70 % a 0,85 (v2 9 %, P1 0 %, P2 33 %). O que falta (uma linha) não é do item: rótulos do dono item a item (os 30 que existem são confirmação em bloco dos próprios rótulos do curador, então a medida é circular); só com rótulos dados depois de 04/10 a decisão sobre a R1 em receita se destrava, e isso é decisão do dono, sem gasto.",
+   "blocker": null,
+   "grupo": "jev",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-04T23:43:27+00:00"
+   "quando": "2026-10-06T03:58:16+00:00"
   },
   "31.48": {
    "id": "31.48",
@@ -13449,6 +13449,15 @@
     "30.84",
     "31.40",
     "31.58"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:58:16+00:00",
+   "itens": [
+    "31.55"
    ],
    "grupos": [
     "jev"

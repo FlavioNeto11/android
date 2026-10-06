@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-609 de 671 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+610 de 671 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -602,7 +602,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.52 | implemented | real | claude-fable-5-1 | — | 04/10/2026, central WIN-7S2UASNLFOP, deploy 32 no ar (2c47b9fa, migração 106_pedidos_autor): com ai.diagnostico_arvore_aparelhos=[android-09], a r-20261004231719-fd3d52 gravou 5 evidências hierarchy com a nota '31.52:',… |  |
 | 31.53 | implemented | simulated | claude-fable-5-1 | — | #344 (9da01945) na main; deploy 34 no ar: GET /api/health do central WIN-7S2UASNLFOP responde commit 584ac9c8, migração 109_portal_exclusoes, status ok (lido às 03:42:19Z de 05/10/2026; o 'no ar' às 03:27Z é da Orquestr… | prova real pede execução com duas personas do mesmo pedido e o mesmo objeto; sem janela marcada |
 | 31.54 | implemented | simulated | claude-fable-5-1 | — | #325 na main (9cfee99b, 339f2d45, 697fad6e U1, f912af47 U1b), deploy 33 no ar: GET /api/health no central WIN-7S2UASNLFOP responde commit a0c9865e, migração 107_portal_contatos (lido às 01:21Z de 05/10/2026; o 'no ar' à… | prova real espera a janela 'portal ligado' (31.56 A/B) |
-| 31.55 | partial | real | claude-fable-5-1 | — | 04/10 21:45Z, banco central só leitura: sombra do curador 41 linhas, 38 abaixo do limiar; topo revisar 39/41; contra 30 rótulos do dono: 2/39 iguais (tabela .claude/handoffs/jev/tabela-31-55.md). 21:51Z, braço offline v… | Nenhuma pergunta bateu 70% a 0,85 (v2 9%, P1 0% dentro da amostra, P2 33%); runtime sem mudança e nenhuma rodada nova (decisão da orquestradora, 21:59Z). Ressa… |
+| 31.55 | implemented | real | claude-sonnet-5-5 | — | O que o item pede está entregue e provado em real, só leitura mais o braço offline barato: 04/10, banco central (mode=ro), sombra do curador 41 linhas, 38 abaixo do limiar, topo revisar 39/41; o braço offline v2 (lote:j… | None |
 | 31.56 | implemented | real | claude-fable-5-1 | — | #360, ponta fba4fd86, suíte 35; deploy 35 no ar em d025b671 às 05/10/2026 06:18Z (a orquestradora completa). `tapar_barra_de_endereco` passa a ser True por padrão em config.py e no config.example.yaml. Real (do item 31.… | None |
 | 31.57 | implemented | simulated | claude-fable-5-1 | — | 65dd6595 na main, deploy 33 no ar: GET /api/health no central WIN-7S2UASNLFOP responde commit a0c9865e, migração 107_portal_contatos (lido às 01:21Z de 05/10/2026; o 'no ar' às 01:17:42Z é da Orquestradora). Marcador de… | sem marcador observável no Direct real; prova real do marcador not_run |
 | 31.58 | implemented | real | claude-sonnet-5-5 | — | O que o item pede (comparar a latência por etapa depois do deploy 32 com a linha de base de 04/10, só leitura e sem IA) está feito sobre execuções reais (mode=ro, scripts/latencia-por-etapa.py, simulated=0, classe norma… | None |
@@ -678,7 +678,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (62): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.56, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.145, 29.151, 29.152, 29.153, 30.34, 30.72, 30.73, 30.74, 30.83, 31.11, 31.12, 31.26, 31.55, 31.79, 31.81, 31.87, 31.91, 31.111, 31.113, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (61): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.56, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.109, 29.112, 29.114, 29.116, 29.122, 29.126, 29.145, 29.151, 29.152, 29.153, 30.34, 30.72, 30.73, 30.74, 30.83, 31.11, 31.12, 31.26, 31.79, 31.81, 31.87, 31.91, 31.111, 31.113, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
