@@ -7323,7 +7323,7 @@ depois de `<intencao>`, com o pedido de relacionar o texto ao assunto só quando
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.
 
-## Adendo (06/10/2026; número pela orquestradora; item 31.150, K-106) — o fluxo de prova religado para uso real
+## Adendo v1.97 (06/10/2026; número da orquestradora; item 31.150, K-106) — o fluxo de prova religado para uso real
 
 Todo fluxo de prova (`nascido_de_prova`, 31.130) termina desligado. A volta era o `PUT /api/flows/{id}` genérico, com o
 motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esquecido ligado".
