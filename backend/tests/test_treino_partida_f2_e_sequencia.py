@@ -106,7 +106,8 @@ def test_a_lista_estruturada_leva_a_marca_da_persona() -> None:
               "sugestoes": ["Ana respondeu", "Nova mensagem"]}
     (item,) = partida.estruturados([achado], {"perfil_nome": "Ana"})
     assert item == {"etapa": "abrir", "valor": "conversa com {perfil_nome}",
-                    "sugestoes": ["{perfil_nome} respondeu", "Nova mensagem"], "message": item["message"]}
+                    "sugestoes": ["{perfil_nome} respondeu", "Nova mensagem"], "sugestoes_prontas": [],
+                    "message": item["message"]}
     assert "Ana" not in json.dumps(item, ensure_ascii=False) and item["message"].startswith("Etapa “abrir”")
     assert partida.estruturados([]) == []
 

@@ -138,7 +138,8 @@ def ja_valem(passos: Sequence[Mapping[str, object]], entradas: Sequence[Mapping[
         depois = next((s for s in ordem if s > seqs[-1]), None)
         e_seguinte = por_seq[depois] if depois is not None else None
         sugestoes: list[str] = []
-        for linha in _textos(tela_de_partida(e_seguinte), e_seguinte):
+        tela_seguinte = tela_de_partida(e_seguinte)
+        for linha in _textos(tela_seguinte, e_seguinte):
             n = norm_text(linha)
             if len(n) < MINIMO or "{" in linha or partida.contains_text(linha) or any(p in n for p in proibidos):
                 continue
@@ -147,8 +148,25 @@ def ja_valem(passos: Sequence[Mapping[str, object]], entradas: Sequence[Mapping[
             if len(sugestoes) == SUGESTOES:
                 break
         saida.append({"key": st.get("key"), "titulo": st.get("title") or st.get("key"), "kind": kind, "valor": valor,
-                      "sugestoes": sugestoes})
+                      "sugestoes": sugestoes,
+                      "sugestoes_prontas": [pronta(str(kind), s, tela_seguinte) for s in sugestoes]})
     return saida
+
+
+def pronta(kind: str, texto: str, tela: UiTree | None) -> dict[str, str]:
+    """31.142: a pós-condição inteira que a sugestão vira, para o botão da revisão aplicar sem decidir nada.
+
+    Achado da prova F2 (06/10): a única sugestão era "Back", a DESCRIÇÃO do botão voltar (texto vazio). Trocar só o
+    valor de um `element_present` deixa o seletor puro "Back", que só olha o texto (`UiTree.find_selector`): a etapa
+    nunca passaria. `text_visible` continua `text_visible` (`contains_text` lê texto e descrição). `element_present`
+    vira `text==X` ou `desc==X`, pelo campo em que X está na tela seguinte. Sem achar o elemento (a linha veio só das
+    `screen_lines`) ou com `|` no texto (o separador do seletor), `text_visible`, que casa do mesmo jeito."""
+    if kind == "element_present" and tela is not None and "|" not in texto:
+        n = norm_text(texto)
+        for campo in ("text", "desc"):
+            if any(norm_text(getattr(e, campo)) == n for e in tela.elements if getattr(e, campo)):
+                return {"kind": "element_present", "value": f"{campo}=={texto}", "texto": texto}
+    return {"kind": "text_visible", "value": texto, "texto": texto}
 
 
 #: 31.123: telas que nunca comprovam a conclusão de uma etapa, mesmo vistas na demonstração (a barra do sistema e o
@@ -196,11 +214,14 @@ def estruturados(achados: Sequence[Mapping[str, object]], persona: Mapping[str, 
     """31.122, adendo v1.86 (`pos_condicoes_ja_valem`): cada achado como objeto, para a tela pôr o alerta dentro da
     etapa com um botão por sugestão (31.128): `{etapa, valor, sugestoes, message}`. `etapa` é a key; `valor`, a
     pós-condição que já vale; `sugestoes`, até `SUGESTOES`; `message`, a mesma linha de `aviso`. Com `persona`, o dado
-    dela vira o marcador no valor e nas sugestões."""
+    dela vira o marcador no valor e nas sugestões. 31.142 (adendo v1.91): `sugestoes_prontas`, na mesma ordem de
+    `sugestoes`, cada uma como `{kind, value, texto}` (`pronta`): o botão aplica `kind` e `value` juntos."""
     def marca(texto: str) -> str:
         return dado_da_persona.com_marcador(texto, persona) if persona else texto
     return [{"etapa": a.get("key"), "valor": marca(str(a.get("valor") or "")),
              "sugestoes": [marca(str(s)) for s in a.get("sugestoes") or []],  # type: ignore[attr-defined]
+             "sugestoes_prontas": [{"kind": str(x["kind"]), "value": marca(str(x["value"])), "texto": marca(str(x["texto"]))}
+                                   for x in a.get("sugestoes_prontas") or []],  # type: ignore[attr-defined]
              "message": linha} for a, linha in zip(achados, aviso(achados, persona), strict=True)]
 
 
@@ -219,4 +240,4 @@ def aviso(achados: Sequence[Mapping[str, object]], persona: Mapping[str, str] | 
 
 
 __all__ = ["CARACTERES", "CONFERIDAS", "ELEMENTOS", "FORA_DOS_ACEITOS", "MINIMO", "SUGESTOES", "aviso", "aviso_dos_vizinhos", "com_abertura", "elementos_compactos", "entrada_seguinte", "estruturados", "ja_valem",
-           "pacotes_vizinhos", "tela_de_partida"]
+           "pacotes_vizinhos", "pronta", "tela_de_partida"]
