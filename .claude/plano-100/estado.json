@@ -10496,14 +10496,19 @@
    "id": "15.15",
    "status": "partial",
    "proof": "real",
-   "evidence": "Leitura real no central WIN-7S2UASNLFOP (só leitura), deploy 49 = 1b86bd6b às 08:56Z, migração 119, 06/10/2026 08:58Z. F7 (máquinas de estado impostas, deploy 47) e o evento do 409 (deploy 49): 0 eventos warn '409 invalid_transition' desde 08:55Z e 0 em todo o histórico (portanto, por modelo de rota: nenhum); 0 eventos '(recusada)' (execução, objetivo e tentativa) desde 08:55Z, por tipo: nenhum; GET /api/health com 0 problemas, commit 1b86bd6b. F2 (saúde em app/saude.py, deploy 47): /api/health com problems [] e features iguais aos de antes (leitura anterior da orquestradora). F4d (as 7 rotas de /api/releases* em modules/applications/presentation/releases.py, deploy 49): GET /api/releases 200 com a lista (6 releases); GET /api/releases/{id}/targets 200 application/json; GET /api/releases/{id}/icon 404 sem_icone (release sem ícone) e o mesmo código para release inexistente, como o desenho original. F4a, F4b e F4c (routers de fluxos, treino e execuções) no ar desde o deploy 47. Prova real: o central responde pelas rotas movidas; os 409 reais ainda não ocorreram para serem contados. Entregues e ainda sem deploy (corte 50): F4e workers/limites (2142b2a2, 10 rotas), F4f rede (32ccfb08, 10 rotas) e F4g aparelhos (807ac237, 18 rotas), com prova simulated. Faltam: routers de instagram (41 rotas), personas (19), proxies (4), commands (5), apps (6) e o resto de api.py; cluster de apps e portões de state.py; bootstrap; adapters ai e android; identidade de receita por capability (medir antes); ligar o apply no ciclo (decisão do dono); conversão dos fluxos reais (a recomendação é tirar do 15.15, ADR-078).",
-   "blocker": "Faltam os routers restantes e os itens listados na evidência; o corte 50 leva F4e, F4f e F4g e a prova real deles vem depois do deploy 50.",
-   "grupo": "jev",
+   "evidence": "Leitura real no central WIN-7S2UASNLFOP (só leitura), deploy 49 = 1b86bd6b às 08:56Z, migração 119, 06/10/2026 08:58Z. F7 (máquinas de estado impostas, deploy 47) e o evento do 409 (deploy 49): 0 eventos warn '409 invalid_transition' desde 08:55Z e 0 em todo o histórico (portanto, por modelo de rota: nenhum); 0 eventos '(recusada)' (execução, objetivo e tentativa) desde 08:55Z, por tipo: nenhum; GET /api/health com 0 problemas, commit 1b86bd6b. F2 (saúde em app/saude.py, deploy 47): /api/health com problems [] e features iguais aos de antes (leitura anterior da orquestradora). F4d (as 7 rotas de /api/releases* em modules/applications/presentation/releases.py, deploy 49): GET /api/releases 200 com a lista (6 releases); GET /api/releases/{id}/targets 200 application/json; GET /api/releases/{id}/icon 404 sem_icone (release sem ícone) e o mesmo código para release inexistente, como o desenho original. F4a, F4b e F4c (routers de fluxos, treino e execuções) no ar desde o deploy 47. Prova real: o central responde pelas rotas movidas; os 409 reais ainda não ocorreram para serem contados. Entregues e ainda sem deploy (corte 50): F4e workers/limites (2142b2a2, 10 rotas), F4f rede (32ccfb08, 10 rotas) e F4g aparelhos (807ac237, 18 rotas), com prova simulated. Faltam: routers de instagram (41 rotas), personas (19), proxies (4), commands (5), apps (6) e o resto de api.py; cluster de apps e portões de state.py; bootstrap; adapters ai e android; identidade de receita por capability (medir antes); ligar o apply no ciclo (decisão do dono); conversão dos fluxos reais (a recomendação é tirar do 15.15, ADR-078). Suíte 50 (simulado, Android): F4e workers (10 rotas), F4f network (10) e F4g instances (18) em modules/fleet/presentation (Jev 70e15685; OpenAPI idêntico). Simulado: backend/tests/test_ordem_das_rotas.py::*, backend/tests/test_arquitetura.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) Real, 06/10/2026 10:17Z, central bec1621c (deploy 50): GET /api/workers (2), GET /api/network/profiles (1) e GET /api/instances (15) respondendo como antes (F4e-F4g); 0 eventos warn do 409 desde 10:15Z.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_ordem_das_rotas.py",
+    "backend/tests/test_arquitetura.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; faltam as demais fatias do 15.15",
+   "grupo": "android-suite-50",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T08:59:40+00:00"
+   "quando": "2026-10-06T10:18:29+00:00"
   },
   "30.72": {
    "id": "30.72",
@@ -10675,13 +10680,18 @@
    "id": "31.118",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real, 06/10/2026, máquina central, deploy 49 (1b86bd6b, no ar às 08:56Z). O reparo único scripts/gravacao-com-marcador.py foi aplicado pela sessão Android às 08:59:20Z, com o backup data/backups/20261006-055448: o ensaio deu 4 sessões lidas, 2 com marca e 2 entradas; o aplicar deu rc 0 com as mesmas contagens; o novo ensaio deu 0 e 0 (idempotente). Conferência só leitura da sessão Aprendizado às 09:01Z, por GET /api/training/{id} e com a persona lida do SQLite em mode=ro, sem imprimir valor: trn-1nuBzRHaAkM09f6K tem a entrada de texto seq 2 com text = {perfil_nome_exibicao}, has_text true e text_len 15; trn-o5UL-qvehFesjTuB tem a entrada seq 4 com text = {perfil_nome}, has_text true e text_len 5. O texto gravado em claro saiu das duas. O save novo marca na hora (código do 31.118 no ar). Prova do código: simulated em backend/tests/test_treino_gravacao_com_marcador.py (9). ACHADO, fora do escopo do item: na trn-1nuBzRHaAkM09f6K o valor ainda aparece em inputs[2].screen_lines[1], a linha da tela gravada depois da digitação (o campo de busca mostra o que foi digitado). A trn-o5UL-qvehFesjTuB não tem o valor em screen_lines. Proposta: estender a mesma troca, por palavra, aos screen_lines no save e no reparo. Falta (F2): em trn-1nuBzRHaAkM09f6K o valor ainda aparece em inputs[2].screen_lines[1] (a tela gravada depois da digitação) e GET /api/training/{id} o devolve; o save e o reparo passam a trocar o dado pela marca também em screen_lines (branch do 31.121/122, Aprendizado), e o reparo roda de novo depois do deploy que o levar.",
-   "grupo": "orquestradora-31-118-residual",
-   "modelo": "fable",
+   "evidence": "Real, 06/10/2026, máquina central, deploy 49 (1b86bd6b, no ar às 08:56Z). O reparo único scripts/gravacao-com-marcador.py foi aplicado pela sessão Android às 08:59:20Z, com o backup data/backups/20261006-055448: o ensaio deu 4 sessões lidas, 2 com marca e 2 entradas; o aplicar deu rc 0 com as mesmas contagens; o novo ensaio deu 0 e 0 (idempotente). Conferência só leitura da sessão Aprendizado às 09:01Z, por GET /api/training/{id} e com a persona lida do SQLite em mode=ro, sem imprimir valor: trn-1nuBzRHaAkM09f6K tem a entrada de texto seq 2 com text = {perfil_nome_exibicao}, has_text true e text_len 15; trn-o5UL-qvehFesjTuB tem a entrada seq 4 com text = {perfil_nome}, has_text true e text_len 5. O texto gravado em claro saiu das duas. O save novo marca na hora (código do 31.118 no ar). Prova do código: simulated em backend/tests/test_treino_gravacao_com_marcador.py (9). ACHADO, fora do escopo do item: na trn-1nuBzRHaAkM09f6K o valor ainda aparece em inputs[2].screen_lines[1], a linha da tela gravada depois da digitação (o campo de busca mostra o que foi digitado). A trn-o5UL-qvehFesjTuB não tem o valor em screen_lines. Proposta: estender a mesma troca, por palavra, aos screen_lines no save e no reparo. Falta (F2): em trn-1nuBzRHaAkM09f6K o valor ainda aparece em inputs[2].screen_lines[1] (a tela gravada depois da digitação) e GET /api/training/{id} o devolve; o save e o reparo passam a trocar o dado pela marca também em screen_lines (branch do 31.121/122, Aprendizado), e o reparo roda de novo depois do deploy que o levar. Suíte 50 (simulado, Android): F2: screen_lines no save e no reparo da gravação (Aprendizado e52705e9). O reparo (--aplicar) roda de novo depois do deploy 50, com o backup daquele deploy e o vai da orquestradora. Simulado: backend/tests/test_treino_gravacao_com_marcador.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele)",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_gravacao_com_marcador.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; falta a prova real do reparo",
+   "grupo": "android-suite-50",
+   "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T09:02:31+00:00"
+   "quando": "2026-10-06T10:18:29+00:00"
   },
   "29.151": {
    "id": "29.151",
@@ -10723,6 +10733,128 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T09:39:27+00:00"
+  },
+  "31.120": {
+   "id": "31.120",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Sessão salva em modo leitura (Portal 9bdf193a). Simulado: frontend/src/features/training/SessaoSalva.test.tsx::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/training/SessaoSalva.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-50",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T10:18:29+00:00"
+  },
+  "31.121": {
+   "id": "31.121",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "open_app na primeira etapa do treino (Aprendizado e52705e9). Simulado: backend/tests/test_treino_partida_e_pos_condicao.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_partida_e_pos_condicao.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-50",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T10:18:29+00:00"
+  },
+  "31.122": {
+   "id": "31.122",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Pós-condição que já vale na tela de partida, com o 400 novo do save (adendo v1.83; Aprendizado e52705e9). Simulado: backend/tests/test_treino_partida_e_pos_condicao.py::*, backend/tests/test_pergunta_vence.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_partida_e_pos_condicao.py",
+    "backend/tests/test_pergunta_vence.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-50",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T10:18:29+00:00"
+  },
+  "31.123": {
+   "id": "31.123",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Pacotes aceitos na etapa (adendo v1.84) com a migração 120_pacotes_aceitos_da_etapa.sql (só ADD COLUMN steps.pacotes_aceitos TEXT); o ensaio de migração é do deploy 50. Simulado: backend/tests/test_etapa_pacotes_aceitos.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z). Migração 120 ensaiada numa cópia do backup 20261006-071428 e aplicada no deploy: coluna steps.pacotes_aceitos presente, 0 linhas preenchidas (leitura real da Android, 10:17Z).",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_etapa_pacotes_aceitos.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-50",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T10:18:29+00:00"
+  },
+  "31.124": {
+   "id": "31.124",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Etapa já ensinada na execução (Portal 9bdf193a). Simulado: frontend/src/features/runs/EnsinoJaFeito.test.tsx::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/runs/EnsinoJaFeito.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-50",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T10:18:29+00:00"
+  },
+  "31.125": {
+   "id": "31.125",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Atalho no cartão da execução que falhou (Portal 9bdf193a); o mapeamento a teste é aproximado. Simulado: frontend/src/features/runs/EnsinoJaFeito.test.tsx::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/runs/EnsinoJaFeito.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-50",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T10:18:29+00:00"
+  },
+  "31.126": {
+   "id": "31.126",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "App não identificado no Livro (Portal 9bdf193a). Simulado: frontend/src/features/aprendizado/AppNaoIdentificado.test.tsx::*, frontend/src/features/aprendizado/AplicativosTab.test.tsx::*, frontend/src/features/aprendizado/DetalheRico.test.tsx::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
+   "blocker": null,
+   "arquivos": [
+    "frontend/src/features/aprendizado/AppNaoIdentificado.test.tsx",
+    "frontend/src/features/aprendizado/AplicativosTab.test.tsx",
+    "frontend/src/features/aprendizado/DetalheRico.test.tsx"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; frontend: falta o percurso no navegador",
+   "grupo": "android-suite-50",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T10:18:29+00:00"
   }
  },
  "rodadas": [
@@ -14031,6 +14163,23 @@
    ],
    "grupos": [
     "orquestradora-33-2"
+   ]
+  },
+  {
+   "quando": "2026-10-06T10:18:29+00:00",
+   "itens": [
+    "31.120",
+    "31.121",
+    "31.122",
+    "31.123",
+    "31.124",
+    "31.125",
+    "31.126",
+    "31.118",
+    "15.15"
+   ],
+   "grupos": [
+    "android-suite-50"
    ]
   }
  ]

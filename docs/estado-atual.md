@@ -1,10 +1,18 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `1b86bd6b` (migração 119, deploy 49); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `bec1621c` (migração 120, deploy 50); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 50 no ar (06/10/2026, 10:16Z, central `bec1621c`, migração 120).** 3 pontas: ensino (31.121, 31.122, 31.123,
+  31.118 F2), painel do ensino (31.120, 31.124, 31.125, 31.126), routers de fleet (15.15 F4e-F4g).
+  - `real` (central WIN-7S2UASNLFOP): deploy com ensaio; saúde ok, migração 120; prova de fora; agente `0.1.0+bec1621c`;
+    A10 ok (12 aparelhos ready); rotas de fleet iguais; reparo do 31.118 com telas pendente (backup `20261006-071450`).
+  - `simulated` (suíte 50): números do CHANGELOG.
+  - `not_run`: percurso 50; prova real do ensino (31.121/122/123).
+  - Plano-100: resultado da suíte 50 aplicado. Corte 51: F5a portões e F4h personas (Jev); 33.2 protocolo (orquestradora)
+    depois dos 5 levantamentos; 31.115 em 20/10, 29.75 em 11/10, 30.72 em 12/10, 29.152 medida em 07/10.
 - **Deploy 49 no ar (06/10/2026, 08:56Z, central `1b86bd6b`, sem migração nova).** 8 pontas: 31.116 fechado (formulário com causa e
   pergunta, v1.82), 31.119 (Descartar), 31.118 (gravação com a marca), 15.15 F7 evento do 409 e F4d releases, 29.151
   (readoção pelo aparelho), 29.152 (evento de pressão nomeia quem pesa), C-28 (corte adiado e deploy pelo Git), UX da lista Para revisar.
