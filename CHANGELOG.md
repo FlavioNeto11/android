@@ -19,6 +19,21 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F2, passo 2: a saúde sai de `AppState` para `app/saude.py` (branch feat/15-15-f2-saude)
+
+- Novo `backend/app/saude.py` com `SaudeDoSistema`: `health()`, `ai_status()`, `ultima_migracao()` e o que eles usam (`_saude_do_banco`,
+  `_banco_sem_segredo`, `_problema_de_capacidade_local`, `_ia_em_fallback`, `_problema_de_exposicao_publica`, `_problemas_de_saldo`) e o
+  `checar()` (era `_check_health`, com o `_last_health`, que emite `health.updated` só quando o resultado muda). O corpo é o mesmo, com
+  `self.X` lido por `self._e.X`. `AppState` guarda `self.saude = SaudeDoSistema(self)` e expõe `health()`, `ai_status()` e `ultima_migracao()`
+  como delegações de uma linha; o laço de saúde chama `saude.checar`. `diagnostics()` e `_diag_cache`, `_clock_skew_s` e `saldos_de_ia`
+  continuam em `AppState` (a saúde só lê). `AppState` entra em `saude.py` só em `TYPE_CHECKING`; portas estreitas no lugar da referência
+  ficam para outro corte.
+- O arquivo dourado `tests/golden/saude_caracterizacao.json` e `test_saude_caracterizacao.py` NÃO mudaram: os 31 cenários dão o mesmo
+  `problems` (código, mensagem, dica e ordem) antes e depois. Em `test_saude_ao_vivo.py` só mudou onde o teste alcança o método movido
+  (`state.saude.checar()`, `state.saude._problema_de_capacidade_local` e o alvo do patch de `psutil`, agora `psutil.virtual_memory`).
+  Catraca `app.state` de `Any` baixou de 50 para 48 (o `_ia_em_fallback` saiu tipado sem `Any`); mypy 257.
+- Prova `simulated` (caracterização + `test_saude_ao_vivo` + 61 arquivos que chamam a saúde); `real`: `not_run` até o deploy, onde se compara
+  `GET /api/health` (`problems` e `features`) antes e depois. Sem migração e sem adendo.
 ## 2026-10-06 — 15.15 F2, passo 1: teste de caracterização da saúde (`GET /api/health`), antes de mover o código (branch feat/15-15-f2-saude)
 
 - Novo `backend/tests/test_saude_caracterizacao.py` com o arquivo dourado `backend/tests/golden/saude_caracterizacao.json`: 31 cenários
