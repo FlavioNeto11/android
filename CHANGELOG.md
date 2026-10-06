@@ -71,7 +71,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - as lições que a sessão gerou;
   - os vizinhos (31.152) e as etapas de planos livres que os aceitaram (`steps.pacotes_aceitos`);
   - um resumo com `usado_de_verdade`.
-- Não há "US$ evitado": seria contrafactual. O número do adendo do contrato vem da orquestradora (pedido).
+- Não há "US$ evitado": seria contrafactual. Adendo v1.101 do contrato.
 - Prova `simulated`: `backend/tests/test_rendimento_do_ensino.py` (2 testes, um pela rota). `real`: `not_run` (o
   `GET` nas sessões salvas do central, depois do deploy que levar isto).
 

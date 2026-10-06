@@ -7418,3 +7418,26 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
 - **Evento `log` do salvar:** ganha `licao_id`, que é `null` sem lição.
 - **Prova:** `simulated`, em `backend/tests/test_correcao_vira_licao_do_planejador.py` (3 testes; a lição publicada
   cabe no bloco do planejador do app). `real`: `not_run`.
+
+## Adendo v1.101 (06/10/2026; número da orquestradora; item 31.177) — o rendimento de uma sessão de ensino
+
+- **`GET /api/training/{id}/rendimento`** (nova, só leitura, nenhuma IA): o que a sessão de ensino gerou e quanto
+  disso foi usado. Sessão desconhecida: 404 `not_found`.
+- **Corpo:** `{sessao, resumo, fluxo, execucoes_do_fluxo, receitas, licoes, vizinhos}`.
+  - `resumo`: `{receitas, receitas_liberadas, etapas_sem_ia, execucoes_do_fluxo, licoes, vizinhos, usado_de_verdade}`.
+  - `fluxo`: `{id, status, uses, nascido_de_prova, em_uso_real_desde}` ou `null`.
+  - `receitas[]`: `{id, step_key, app, status, liberada, sem_ia, caiu_na_ia, outras, usd_da_ia_na_retencao}`.
+  - `licoes[]`: `{id, estado, papel, texto}`.
+  - `vizinhos[]`: `{app, pacote, etapas_em_planos_livres}`.
+- **Contagens por uso** (`{real, prova, simulada}`), com a régua da medida de 06/10:
+  - `simulada`: a execução simulada;
+  - `prova`: a prova de fluxo (`prova_fluxo_id`) ou a chave `lote:`;
+  - `real`: o resto.
+- **Por receita:**
+  - `sem_ia`: a tentativa só `recipe` que comprovou;
+  - `caiu_na_ia`: a cadeia `recipe>…`;
+  - `outras`: o resto;
+  - `usd_da_ia_na_retencao`: o US$ das chamadas ainda em `ai_calls`, pela regra de preço de `spent_usd`;
+  - `liberada`: vale fora da persona que ensinou (30.81).
+- **Vizinhos:** contam as etapas de planos LIVRES (sem fluxo e sem prova de fluxo) que aceitaram o pacote.
+- **Prova:** `simulated` (`backend/tests/test_rendimento_do_ensino.py`, 2 testes). `real`: `not_run`.
