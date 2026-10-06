@@ -109,6 +109,11 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   O teste de `test_sempre_na_promovida.py` que troca `convergir_o_parque` passou a trocá-lo no módulo novo (a rota o busca ali).
 - Prova `simulated`; `real`: `not_run` até o deploy (as rotas de releases respondem como antes). Sem migração e sem adendo.
 
+- Reparo único das sessões salvas antes do 31.118: `scripts/gravacao-com-marcador.py` sobre
+  `training/reparo_da_gravacao.py::marcar_gravacoes_salvas` (nova). Ensaio numa cópia por padrão; `--aplicar --backup`
+  confere a migração. Imprime só os ids das sessões e as contagens. A execução real fica para depois do deploy do 31.118.
+- Prova `simulated`: `backend/tests/test_treino_gravacao_com_marcador.py` (9; o do `save` e o do reparo falham sem a
+  mudança, e 3 cobrem o reparo único e o script). Real: `not_run`.
 ## 2026-10-06 — 31.116 (parte 2): a sugestão do ensino antes da sessão (branch feat/31-116-ensino-sugerido)
 
 - `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}`. Usa o mesmo diagnóstico do

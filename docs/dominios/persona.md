@@ -328,7 +328,9 @@ guardar o marcador (`dado_da_persona.marcas_das_entradas`, `TrainingRecorder.mar
 depois o lê da persona, em memória: o reparo das receitas (`refazer_receitas`), a máscara das perguntas e o
 reconhecimento do dado demonstrado (`dado_da_persona.com_valores`). Outro texto, dado dentro de frase, dado que a
 habilidade não usa e treino sem persona ficam como estavam. Sem migração: a coluna é a mesma. As sessões salvas antes
-do 31.118 seguem com o texto em claro.
+do 31.118 recebem a mesma regra por um reparo único (`scripts/gravacao-com-marcador.py`, `training/reparo_da_gravacao.py`).
+Ele ensaia numa cópia por padrão, e `--aplicar` exige o backup e a mesma migração do código. É idempotente e só imprime
+os ids das sessões e as contagens.
 
 **O registro da execução guarda o marcador, não o valor (31.113, F1; achado da prova real do 31.87).** A tela segue
 com o valor: o executor digita e confere com o que tem em memória. O que FICA troca valor → marcador na fronteira de
