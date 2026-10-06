@@ -38,7 +38,7 @@ jobs:
       run:
         working-directory: deploy
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: segredos de teste (nunca os de produção)
         # Chaves geradas NESTA corrida, só para o contêiner de validação subir: o iniciar.py recusa subir sem

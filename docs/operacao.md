@@ -145,6 +145,7 @@ três vezes no mesmo dia. Os PRs são cobertos pelo funil da suíte. O que resto
   `deploy/**`, `.dockerignore`, `backend/requirements.txt`, `backend/app/main.py` ou `frontend/package*.json`, no disparo manual e no cron
   de segunda. Push de branch de frente não dispara mais (segundo a leitura da Frente DevOps em 06/10, 7 das 8 últimas corridas eram de branches e gastavam a cota hospedada). Ele é
   hospedado e não ocupa o central.
+- **Actions fixadas por SHA e Dependabot (29.157):** `actions/checkout`, `setup-python`, `setup-node` e `cache` (nos workflows e nas ações compostas de `.github/actions`) apontam para o SHA do commit, com a versão no comentário (`# v4.4.0`), para que uma tag movida não mude o que roda no CI. `.github/dependabot.yml` olha só `github-actions`, uma vez por mês, num PR único; o PR dele é ACHADO (a frente GitHub confere, ninguém mescla sozinho). Não cobre pip nem npm. Para atualizar à mão: `gh api repos/actions/<nome>/commits/<tag> --jq .sha` e trocar SHA e comentário juntos.
 - **Aviso quando o cron falha (29.155, C2):** `.github/workflows/ci-aviso-de-falha.yml`, em runner hospedado, abre UMA issue por
   noite quando o `schedule` do CI termina em `failure`, `cancelled`, `timed_out` ou `startup_failure`. Título "CI noturno
   AAAA-MM-DD: <jobs>", rótulo `ci` (criado na primeira vez), corpo com o run, o commit e, por job, os destaques e as últimas
