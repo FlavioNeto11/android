@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-07 — 31.182: o ensino avisa quando a etapa mira a conta da própria persona (branch feat/31-182-aviso-propria-conta)
+
+- Medido em 06/10, no 31.160: a pessoa ensinou a abrir o perfil da persona que ensinava. O 31.87 trocou o @ por
+  `{conta_instagram_usuario}`, e a receita 221 virou "abrir o PRÓPRIO perfil", que não serve ao alvo de uma operação.
+  Nada avisou.
+- A prévia e o salvar dizem, por etapa, quando o título, o objetivo, a digitação, a pré-condição ou a conferência citam
+  o marcador da conta da persona (`conta_<app>[_<host>]_usuario`, `training/conta_propria.py`): "a
+  receita dela abre a conta de quem roda, em cada aparelho". O aviso traz a etapa e o marcador, sem valor. É só aviso:
+  o salvar não recusa.
+- Prova `simulated`: `backend/tests/test_aviso_da_propria_conta.py` (2 testes) e `test_treino_dado_da_persona.py`.
+  `real`: `not_run`, pede o deploy (a prévia de um ensino com o próprio perfil).
+
 ## 2026-10-07 — 31.181: quem pode usar o quê num app, por persona (branch feat/31-181-alcance-por-persona)
 
 - Medido em 06/10, na leitura da onda 2, sobre as 19 receitas ativas do Instagram:
