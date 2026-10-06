@@ -71,6 +71,20 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
   para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
 
+## 2026-10-06 — 15.15 F4, corte 9 (F4i): as 41 rotas de perfis do Instagram (`/api/instagram/*`) saem de `api.py` (branch feat/15-15-f4i-router-instagram)
+
+- Perfis (cadastro, edição, sessão: iniciar, encerrar, verificar; conta âncora e contas por perfil; credencial; memória; grupos de política; política por perfil;
+  avatar) e o que só elas usam (os jobs de logout e de início de sessão, a recusa pelo portão, a exigência de internet no aparelho, os corpos
+  `SocialContextBody` e `RetirarContaBody`) moram agora em `backend/app/modules/identity/presentation/instagram.py`, montado em `main.py` no mesmo lugar do
+  `api.router`, depois do das personas. Mesmo caminho, método, corpo e resposta. Ficam em `api.py` as rotas que dividiam o bloco mas não são do Instagram
+  (a loja, os proxies, as exceções de política, as aprovações, o catálogo de apps e as capacidades). `quem()` ficou repetido em `identity/presentation/comum.py`
+  porque `identity` importar `fleet` fecharia um ciclo de contextos. Os 4 auxiliares que levavam `Any` ganharam o tipo (`AppState`, `DeviceRuntime`, os DTOs) e os 2 imports
+  tardios do `api.py` viraram imports do topo; teto de `Any` de `app.api` 78 → 45 e de imports tardios de `app.api` 9 → 7.
+- Prova do OpenAPI contra a main f86bafd8: 271 método+caminho idênticos; os schemas só diferem no título automático das respostas das rotas que devolviam
+  `Any` (`response_model=None`). Corpo das 51 funções e classes idêntico ao original por script, salvo os 4 tipos e os 2 imports (6 diferenças, todas
+  intencionais). `test_ordem_das_rotas.py` ganhou o caso das 41 rotas.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
 ## 2026-10-06 — 15.15 F4, corte 8 (F4h): as 20 rotas de personas saem de `api.py` (branch feat/15-15-f4h-router-personas)
 
 - `/api/personas*` (cadastro, geração e lote por IA, enriquecimento, prévia, vínculo e aparelho primário, as imagens: listar, enviar, servir, principal,
