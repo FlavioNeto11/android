@@ -1220,7 +1220,7 @@ Contexto: design §2.4; decisão: [ADR-038](../decisoes.md#adr-038--máquinas-de
   objetivo `failed`. Liberar `pode(x, x)` em geral esconderia o erro que a tabela existe para mostrar.
 - **Imposição (15.15 F7):** `Repository._conferir` levanta `InvalidTransition` antes de gravar em `set_run_status` (com
   `so_se`, só quando a troca vale), `set_objective` e `finish_attempt` (a cerca `PosseDaEtapaPerdida` vem primeiro). Um handler
-  em `main.py` devolve 409 `invalid_transition` ao gesto que chegou depois de o estado mudar. A aresta `completed_with_issues
+  em `main.py` devolve 409 `invalid_transition` ao gesto que chegou depois de o estado mudar (e grava um evento `log` `warn` com o método e o modelo da rota, sem o id: o backend não tem log de acesso). A aresta `completed_with_issues
   → cancelled` está declarada: é o vencimento do 31.50 fechando a execução com cancelamento pedido.
 - **`awaiting_person` (29.93):** o trabalho automático acabou e um objetivo espera um gesto da pessoa (`waiting_user`).
   Não é terminal, mas está em `RUN_SEM_TRABALHO` (`app/models.py`): grava `finished_at`, é de onde o vencimento do 31.50

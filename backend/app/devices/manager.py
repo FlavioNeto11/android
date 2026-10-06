@@ -84,6 +84,25 @@ INTERVALO_DA_SONDA_S = 30
 #: Quanto esperar, depois do boot e do preparo, pela PRIMEIRA resposta positiva do framework antes de declarar o
 #: aparelho no ar. Um Android saudável responde na primeira sonda; o congelado de 25/09/2026 nunca respondeu.
 RESPOSTA_POS_BOOT_S = 60.0
+#: 29.151: o aparelho READOTADO depois de um reinício do backend disputa CPU com os outros que o backend religa ao mesmo
+#: tempo, e a resposta do framework levou 65 e 75 s (deploy 40) contra os 60 s fixos, que o marcavam `error` com a escada
+#: presa pela pausa de reparo. O teto da espera vira o da MEDIDA do próprio aparelho (`boot_seconds`), entre estes dois
+#: fatores do teto de um boot recém-feito (`RESPOSTA_POS_BOOT_S`): o piso (2x) cobre o aparelho sem medida e o limite (5x)
+#: impede que um boot lento de uma vez só vire prazo sem fim. Boot normal (não readoção) segue com o teto de sempre.
+FATOR_PISO_DA_READOCAO = 2.0
+FATOR_LIMITE_DA_READOCAO = 5.0
+
+
+def teto_da_resposta_s(adotado: bool, boot_seconds: float | None) -> float:
+    """O teto da espera pela primeira resposta do framework (29.151). Boot novo: `RESPOSTA_POS_BOOT_S`. Readoção: a medida
+    do próprio aparelho, entre `FATOR_PISO_DA_READOCAO` e `FATOR_LIMITE_DA_READOCAO` vezes aquele teto."""
+    if not adotado:
+        return RESPOSTA_POS_BOOT_S
+    piso = RESPOSTA_POS_BOOT_S * FATOR_PISO_DA_READOCAO
+    limite = RESPOSTA_POS_BOOT_S * FATOR_LIMITE_DA_READOCAO
+    return min(limite, max(piso, boot_seconds or 0.0))
+
+
 #: Piso do orçamento de prontidão quando o boot/wake já gastou quase todo o prazo: sem ele, um boot lento que chega à
 #: interface no limite teria uma única sonda de 1 s. Um Android saudável responde os três degraus em < 2 s (medido).
 #: É UMA RODADA INTEIRA: com 20 s fixos e o display a 20 s (`prontidao.PRAZO_S`), um display lento mas vivo teria só
@@ -846,7 +865,8 @@ class DeviceManager:
     def list_dtos(self) -> list[InstanceDTO]:
         return [self.dto(rt) for rt in self.devices.values()]
 
-    def publish(self, rt: DeviceRuntime, message: str | None = None, level: str = "info") -> None:
+    def publish(self, rt: DeviceRuntime, message: str | None = None, level: str = "info",
+                dados_extra: dict[str, object] | None = None) -> None:
         # 14.13: fato vai ao log (`instance.updated`); telemetria e troca de controle já anunciada vão ao painel como
         # `instance.progress`, efêmero. A regra e a medida estão em `devices/publicacao.py`.
         dto = self.dto(rt).model_dump(mode="json")
@@ -862,6 +882,8 @@ class DeviceManager:
         dados: dict[str, object] = {"instance": dto}
         if rt.worker_id and rt.worker_verbs is None:
             dados["janela_do_seed"] = True
+        if dados_extra:
+            dados.update(dados_extra)
         self.bus.emit("instance.updated" if persistir else "instance.progress", message or f"{rt.id}: {rt.state.value}",
                       level=level, instance_id=rt.id, data=dados)
         if persistir:
@@ -1159,11 +1181,24 @@ class DeviceManager:
             texto = (f"{PRESSAO_PREFIXO} de {recurso}: {numeros}. Tarefas vão demorar; se a sessão falhar, o reparo "
                      f"automático entra. {remedio}")
             if rt.attention != texto:
+                # 29.152: o PRIMEIRO aviso do episódio (a atenção ainda não era de pressão) leva quem pesa no convidado,
+                # uma leitura só; os avisos seguintes do mesmo episódio só trocam os números.
+                culpados = None if nosso else await self._culpados_da_pressao(rt)
                 rt.attention = texto
-                self.publish(rt, f"{rt.id}: {texto}", level="warn")
+                self.publish(rt, f"{rt.id}: {texto}", level="warn",
+                             dados_extra={"pressao": culpados} if culpados else None)
         elif not pressionado and nosso:
             rt.attention = None
             self.publish(rt, f"{rt.id}: convidado voltou ao normal")
+
+    async def _culpados_da_pressao(self, rt: DeviceRuntime) -> dict[str, object] | None:
+        """29.152: os 3 processos mais pesados do convidado e o pacote em primeiro plano, para o aviso de pressão dizer
+        QUEM pesa (hoje diz só "load X"). Leitura por adb no executor da sonda; sem a leitura, o aviso sai igual."""
+        try:
+            c = await rt.sonda.run(rt.io.guest_culprits, timeout=15, label="quem pesa no convidado")
+        except (DriverError, AdbError, AttributeError, TypeError):
+            return None
+        return dict(c) if c else None
 
     def _conferir_interrupcoes(self, rt: DeviceRuntime, p: dict[str, float]) -> None:
         """Fração de CPU em interrupção entre duas sondas; sustentada acima do teto com o aparelho OCIOSO, pede um
@@ -2890,7 +2925,8 @@ class DeviceManager:
         else:
             self._registrar_apps_de_fundo(rt, ajuste)
         # Calculado DEPOIS do preparo: o que ele (e a espera pelo zumbi) gastou sai do orçamento da escada.
-        orcamento = max(RESPOSTA_MIN_S, min(RESPOSTA_POS_BOOT_S, timeout - (time.monotonic() - inicio_prazo)))
+        orcamento = max(RESPOSTA_MIN_S, min(teto_da_resposta_s(adopted, rt.boot_seconds),
+                                              timeout - (time.monotonic() - inicio_prazo)))
         if p is None:
             p = await self._esperar_prontidao(rt, orcamento)
         # O relógio NÃO entra aqui (K-031). O `cmd alarm set-time` leva um instante absoluto: estourado, cai atrasado

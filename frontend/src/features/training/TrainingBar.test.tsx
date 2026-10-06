@@ -156,11 +156,16 @@ it('29.142: "Para revisar" corta o nome com reticências, leva o nome inteiro no
   ]));
   await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
   await waitFor(() => expect(text()).toContain('Para revisar:'));
-  const gravada = byRole('button', /, só gravada$/);
+  // 31.119: "só gravada" virou "sem proposta ainda" e o estado saiu do botão para a linha ao lado dele (uma linha por sessão).
+  const gravada = byRole('button', /, sem proposta ainda$/);
   const pronta = byRole('button', /, proposta pronta$/);
-  expect(gravada.getAttribute('aria-label')).toBe(`Revisar “${longo}”, só gravada`);
-  expect(gravada.textContent).toBe('Atualizar o cadastro do perfil no QA… · só gravada');
-  expect(pronta.textContent).toBe('Atualizar o cadastro do perfil no QA… · proposta pronta');
+  expect(gravada.getAttribute('aria-label')).toBe(`Revisar “${longo}”, sem proposta ainda`);
+  expect(gravada.textContent).toBe('Atualizar o cadastro do perfil no QA…');
+  expect(pronta.textContent).toBe('Atualizar o cadastro do perfil no QA…');
+  const linhas = [...document.querySelectorAll<HTMLElement>('ul > li')].filter((li) => li.textContent!.includes('Atualizar o cadastro'));
+  expect(linhas).toHaveLength(2);
+  expect(linhas[0]!.textContent).toContain('sem proposta ainda');
+  expect(linhas[1]!.textContent).toContain('proposta pronta');
 });
 
 // 31.90-B (v1.58): a sessão salva sai de "Para revisar", mas a etapa sem receita ainda pode ganhá-la daqui.
@@ -397,11 +402,13 @@ it('31.111: "Para revisar" leva o selo na sessão que nasceu de uma falha e só 
   ]));
   await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'none' })} leaseId={null} mine={false} />));
   await waitFor(() => expect(text()).toContain('Para revisar:'));
-  const botoes = allByRole('button', /Revisar “/);
-  expect(botoes).toHaveLength(2);
-  const marcados = botoes.filter((b) => (b.getAttribute('aria-label') ?? '').endsWith(', corrige uma falha') && b.textContent!.includes('corrige uma falha'));
-  expect(marcados).toHaveLength(1);
-  expect(marcados[0]!.textContent).toContain('Corrigir a etapa');
+  expect(allByRole('button', /Revisar “/)).toHaveLength(2);
+  // 31.119: o selo é um link para a execução de origem, fora do botão "Revisar"; só a sessão que nasceu de uma falha o tem.
+  const selos = allByRole('link', /corrige uma falha/);
+  expect(selos).toHaveLength(1);
+  expect(selos[0]!.getAttribute('href')).toBe('#/execucoes/run-0001');
+  expect(selos[0]!.closest('li')!.textContent).toContain('Corrigir a etapa');
+  expect(allByRole('button', /Revisar “/).some((b) => b.textContent!.includes('corrige uma falha'))).toBe(false);
 });
 
 // 31.90-D (adendo v1.70): "Desfazer a última" tira só a última entrada da gravação viva. Manda o lease_id e o seq que a

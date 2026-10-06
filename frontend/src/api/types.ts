@@ -2107,6 +2107,19 @@ export interface TrainingOriginContext {
 }
 
 /** Corpo de `POST /api/training/from-run` (adendo v1.75): o aparelho é o da etapa; o controle é o da pessoa. */
+/**
+ * 31.116 parte 2 (adendo v1.80): o que "Ensinar a corrigir" pré-preenche antes de existir a sessão, pelo diagnóstico do F4.
+ * A resposta é `null` quando a etapa não tem tentativa; `rotulo` e `causa` vêm nulos quando o diagnóstico falhou.
+ * Adendo v1.82: `causa` é o código do diagnóstico (`indeterminada` = "não deu para saber") e a `pergunta` é a do estado
+ * da etapa (em `waiting_user`, a própria dela, mesmo com o diagnóstico em erro). Ausente = backend anterior ao v1.82.
+ */
+export interface EnsinoSugerido {
+  intent: string;
+  pergunta: string | null;
+  rotulo: string | null;
+  causa?: string | null;
+}
+
 export interface TrainingFromRunBody {
   run_id: string;
   step_id: string;

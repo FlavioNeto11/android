@@ -1,10 +1,19 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `d2d346cd` (migração 119, deploy 47); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `16858086` (migração 119, deploy 48); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 48 no ar (06/10/2026, 07:24Z, central `16858086`, sem migração nova).** 5 pontas: 31.116 (diagnóstico no treino e
+  ensino sugerido, v1.80), 30.34 (observar B gera prova), 31.117 (origem do fluxo no Livro, v1.81), C-28 (deploy pelo git na
+  reconciliação do Trello); 15.15 F7+F4+F2 com prova real.
+  - `real` (central WIN-7S2UASNLFOP): deploy; saúde ok, migração 119, features com `validacao_pelo_observar_b`; prova de
+    fora como esperado; agente `0.1.0+16858086`; 01, 03, 06 e 13 ready, android-02 automation em error (escada); 31.117 Livro = /api/flows; 31.113 e 31.87 reais (r-20261006070730-277418).
+  - `simulated` (suíte 48): números do CHANGELOG.
+  - `not_run`: percurso 48; formulário do 31.116.
+  - Plano-100: resultado da suíte 48 aplicado. Corte 49 (pontas prontas): Portal 3b5837d6 (formulário do 31.116 com v1.82), Aprendizado 818ad357 (v1.82) e 31.118,
+    Jev 272b2d3a (evento do 409) e F4d releases, Canais 029037e2; 31.115 em 20/10, 29.75 em 11/10, 30.72 medida em 12/10.
 - **Deploy 47 no ar (06/10/2026, 06:47Z, central `d2d346cd`, sem migração nova).** 6 pontas: 15.15 F7+F4+F2 (máquinas impostas,
   routers por contexto, saúde em módulo), 31.113 F3 (bindings com marcador, v1.79), A1 (prévia da porta), 31.91 T1 na tela,
   31.116 e 31.117 no corte 48.

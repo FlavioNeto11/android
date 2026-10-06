@@ -40,6 +40,9 @@ class OrigemDaFalha:
     instance_id: str
     titulo: str
     motivo: str
+    #: O estado da etapa (um de `STATUS_ENSINAVEIS`): a sugestão do ensino pergunta diferente quando ela só parou esperando
+    #: a pessoa (31.116, adendo v1.82).
+    status: str = ""
 
 
 def _limpo(texto: object, limite: int = MAXIMO_DO_MOTIVO) -> str | None:
@@ -60,7 +63,7 @@ def origem_da_falha(db: Database, run_id: str, step_id: str) -> OrigemDaFalha:
     motivo = _limpo(etapa["status_detail"] or (tentativa["error"] if tentativa else "")) or ""
     return OrigemDaFalha(run_id=run_id, step_id=step_id, step_key=str(etapa["key"]),
                          attempt_id=str(tentativa["id"]) if tentativa else None, instance_id=str(etapa["instance_id"]),
-                         titulo=str(etapa["title"]), motivo=motivo)
+                         titulo=str(etapa["title"]), motivo=motivo, status=str(etapa["status"]))
 
 
 def origin_da_linha(db: Database, linha: dict[str, object]) -> dict[str, object] | None:

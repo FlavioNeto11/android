@@ -320,6 +320,18 @@ Vale também ao mostrar: `TrainingRecorder.get` e `list` mascaram a proposta gra
 dado digitado inteiro. A resposta da pessoa (`answer`) fica como ela escreveu. A pergunta devolvida com o valor (cliente
 aberto antes) casa com a guardada, e a IA passa a receber o marcador na pergunta respondida.
 
+**A gravação salva guarda o marcador (31.118; achado da prova real do 31.87, 06/10).** Enquanto a sessão grava ou espera
+a proposta, `training_inputs.text` fica com o que a pessoa digitou, porque a proposta precisa do valor. No `save`, a
+entrada de texto cujo campo INTEIRO é um dado da persona que a habilidade usa (o marcador está no plano salvo) passa a
+guardar o marcador (`dado_da_persona.marcas_das_entradas`, `TrainingRecorder.marcar_entradas`). `has_text` e
+`text_len` ficam. `GET /api/training/{id}` devolve o marcador, sem mudar a forma da resposta. Quem precisa do valor
+depois o lê da persona, em memória: o reparo das receitas (`refazer_receitas`), a máscara das perguntas e o
+reconhecimento do dado demonstrado (`dado_da_persona.com_valores`). Outro texto, dado dentro de frase, dado que a
+habilidade não usa e treino sem persona ficam como estavam. Sem migração: a coluna é a mesma. As sessões salvas antes
+do 31.118 recebem a mesma regra por um reparo único (`scripts/gravacao-com-marcador.py`, `training/reparo_da_gravacao.py`).
+Ele ensaia numa cópia por padrão, e `--aplicar` exige o backup e a mesma migração do código. É idempotente e só imprime
+os ids das sessões e as contagens.
+
 **O registro da execução guarda o marcador, não o valor (31.113, F1; achado da prova real do 31.87).** A tela segue
 com o valor: o executor digita e confere com o que tem em memória. O que FICA troca valor → marcador na fronteira de
 escrita (`security/mascara_da_persona.py`, camada irmã de `redact` e de `enderecos_limpos`):
