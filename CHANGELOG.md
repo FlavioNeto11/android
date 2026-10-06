@@ -164,6 +164,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_decisao_fechada_apps.py` (25). `real`: `not_run` (o Jev real só roda com o YAML
   ligado no central). O GO/NO-GO do 31.10 é refeito com a amostra que a sombra juntar, em alguns dias.
 
+## 2026-10-05 — 31.110: "Refazer receitas" com o aparelho que não responde diz a causa e não "sem receita" (branch fix/31-110-refazer-com-aparelho-que-nao-responde)
+
+- Achado do percurso do deploy 42 (sessão de treino do android-04): o salvar gravou a receita (a receita 200, ativa, às
+  23:40:25Z), e minutos depois "Refazer receitas" respondeu "sem receita, versão do app excedeu 25 s". O aparelho estava
+  `online` no estado, mas ligando e sem responder ao ADB: a leitura da versão estoura em 25 s, e o reparo lia a versão UMA VEZ
+  POR ETAPA (3 etapas, até 75 s) e mostrava o erro cru no lugar do motivo.
+- Agora: uma leitura por app em cada relatório; a etapa que já tem receita ativa ou validada (em qualquer versão) diz
+  "já havia receita ativa… o aparelho não respondeu agora à leitura da versão do app"; a que não tem diz "o aparelho do
+  treinamento não respondeu ao ler a versão do app (…): ele está ligando, parado ou sem ADB. Refaça as receitas quando ele
+  estiver no ar". Nada é chutado: sem a versão, nenhuma receita nova é gravada.
+- Prova `simulated`: `backend/tests/test_treino_refazer_aparelho_sem_resposta.py` (2). `real`: `not_run`.
+
 ## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
 
 - O fluxo ensinado que a prova real desligou (30.81) renasce na mesma linha quando a pessoa ensina o mesmo comando de
