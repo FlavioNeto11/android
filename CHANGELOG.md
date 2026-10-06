@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.151: a readoção espera o tempo que o aparelho leva (branch feat/29-151-readocao-espera-o-aparelho)
+
+- Depois do reinício do backend, o aparelho readotado esperava 60 s fixos pela primeira resposta do framework e ficava
+  `error` quem levava mais (65 e 75 s no deploy 40, com a escada presa pela pausa de reparo). O teto da espera da
+  readoção (`_wait_boot(adopted=True)`) passa a ser a medida do próprio aparelho (`boot_seconds`), entre 2 e 5 vezes o
+  teto de um boot novo (120 a 300 s); aparelho sem medida usa o piso de 120 s. Boot novo (não readoção) fica com os 60 s.
+  O prazo total de boot (`boot_timeout_s`) continua limitando. Sem migração e sem mudança de API.
+- Funções tocadas (K-095): `devices/manager.teto_da_resposta_s` (nova) e `DeviceManager._wait_boot` (o cálculo do `orcamento`).
+- Prova `simulated`: `backend/tests/test_readocao_espera_o_aparelho.py` (8) e os 204 testes de prontidão, readoção, boot e
+  arquitetura. Real: `not_run` até o deploy seguinte, onde o A10 (readoção dos aparelhos) mede quanto cada um leva.
+
 ## 2026-10-06 — 31.116 (parte 2): a sugestão do ensino antes da sessão (branch feat/31-116-ensino-sugerido)
 
 - `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}`. Usa o mesmo diagnóstico do
