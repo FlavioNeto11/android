@@ -235,9 +235,9 @@ describe('detalhe rico: relações e seções ausentes', () => {
   it('sem conteúdo, saúde, versão e relações: só Identidade, Evidência e Histórico (e Validações, na receita)', async () => {
     await mostrar({ item: entrada({ kind: 'licao', ref: 'li-1', saude: null }), evidencias: [], trilha: [], exposicoes: [] });
     expect(secoes()).toEqual(['Identidade', 'Evidência registrada', 'Histórico']);
-    // A receita ganha a seção Validações (30.43), mesmo sem conteúdo; a lição não.
+    // A receita ganha as seções Rendimento (31.196) e Validações (30.43), mesmo sem conteúdo; a lição não.
     await mostrar(detalhe({ conteudo: null, versao: undefined, item: { saude: null }, relacoes: [] }));
-    expect(secoes()).toEqual(['Identidade', 'Evidência registrada', 'Validações', 'Histórico']);
+    expect(secoes()).toEqual(['Identidade', 'Evidência registrada', 'Rendimento', 'Validações', 'Histórico']);
   });
 
   it('histórico e evidência com link para a execução; ids dos títulos não se repetem entre dois detalhes', async () => {
@@ -532,7 +532,7 @@ describe('no catálogo Aprendido', () => {
     expect(backend.callsTo('GET', /^\/api\/aprendizado\/receita\/12$/)).toHaveLength(0);
     await openDetails(/Detalhes, evidência e trilha/, linha);
     await waitFor(() => expect(linha.querySelector('h4')).not.toBeNull());
-    expect(secoes()).toEqual(['Identidade', 'Conteúdo', 'Saúde', 'Versão do app', 'Evidência registrada', 'Validações', 'Histórico']);
+    expect(secoes()).toEqual(['Identidade', 'Conteúdo', 'Saúde', 'Versão do app', 'Evidência registrada', 'Rendimento', 'Validações', 'Histórico']);
   });
 
   it('?item=kind:ref abre o item do link no topo, já com o detalhe', async () => {

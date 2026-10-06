@@ -32,6 +32,7 @@ import {
   rotuloDoKind, motivoDaInvalida, nomeDaEtapa, textoDaEvidencia,
 } from './model';
 import { motivoEmPalavras } from './aprovacaoAutomatica';
+import { RendimentoDaReceitaSecao } from './RendimentoDaReceita';
 import { formatUsd } from './metricas';
 import styles from './Aprendizado.module.css';
 import { useCarga } from './useCarga';
@@ -704,6 +705,7 @@ export function DetalheRico({ detalhe, onMudou }: { detalhe: DetalheDoLivro; onM
         {saude ? <Saude s={saude} comVersao={!!versao} /> : null}
         {versao ? <Versao v={versao} appNome={versao.app === item.app ? item.app_nome ?? null : null} /> : null}
         <Evidencia evid={evid} />
+        {item.kind === 'receita' ? <Secao slug="rendimento" titulo="Rendimento"><RendimentoDaReceitaSecao receitaRef={item.ref} /></Secao> : null}
         {item.kind === 'receita' || item.kind === 'fluxo' ? <ValidacoesDoItem item={item} /> : null}
         <Historico trilha={trilha} />
         {relacoes.length > 0 ? <Relacoes relacoes={relacoes} /> : null}
