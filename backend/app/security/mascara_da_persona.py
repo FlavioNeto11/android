@@ -59,6 +59,27 @@ def no_texto(texto: str | None, trocas: Mapping[str, str]) -> str | None:
     return texto
 
 
+def na_mesma_caixa(texto: str | None, trocas: Mapping[str, str]) -> str | None:
+    """31.113 F3: a troca do texto que VOLTA a sair (o rascunho, a edição do dono, o alvo e o texto do pedido de
+    aprovação): palavra inteira e a MESMA caixa, para a volta (marcador → valor) dar o texto exato. Quem grava confere a
+    volta (`Repository.texto_reversivel`) e, se ela não for exata, grava o texto literal."""
+    if not texto or not trocas:
+        return texto
+    for valor, marcador in sorted(trocas.items(), key=lambda kv: -len(kv[0])):
+        texto = re.sub(r"(?<![\w@.])" + re.escape(valor) + r"(?![\w@])", lambda _m, m=marcador: m, texto)
+    return texto
+
+
+def no_alvo(alvo: str | None, trocas: Mapping[str, str]) -> str | None:
+    """31.113 F3: o alvo normalizado da ação (`@pessoa`, sem caixa) que É um dado da persona vira o marcador. A borda da
+    palavra (`_palavra`) não o pega depois do `@`, de propósito (um @ de terceiro não é o nome da persona); aqui o valor
+    inteiro tem de ser o dado. Fora disso, a troca de sempre."""
+    if not alvo or not trocas:
+        return alvo
+    inteiro = alvo.strip().lstrip("@").casefold()
+    return next((m for v, m in trocas.items() if v.casefold() == inteiro), None) or no_texto(alvo, trocas)
+
+
 def no_objeto(obj: object, trocas: Mapping[str, str]) -> object:
     """O mesmo em toda string de um JSON (dict, lista); as chaves ficam."""
     if not trocas:
@@ -72,4 +93,4 @@ def no_objeto(obj: object, trocas: Mapping[str, str]) -> object:
     return obj
 
 
-__all__ = ["IDENTIFICAM", "MINIMO", "digitado", "mapa", "no_objeto", "no_texto"]
+__all__ = ["IDENTIFICAM", "MINIMO", "digitado", "mapa", "na_mesma_caixa", "no_alvo", "no_objeto", "no_texto"]

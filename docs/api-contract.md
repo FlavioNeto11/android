@@ -6921,3 +6921,17 @@ Aditivo, sem migração e sem IA. Preenche o campo que o v1.75 reservou ao F4.
 - **Tabela:** a única aresta que a produção usou fora dela, `completed_with_issues → cancelled` (o vencimento do 31.50 fechando a
   execução com cancelamento pedido), foi declarada.
 - **Prova:** `simulated` (`backend/tests/test_maquinas_de_estado.py`, `backend/tests/test_maquinas_de_estado_http.py`); `real`: `not_run`.
+
+## Adendo v1.79 (06/10/2026; número da orquestradora; item 31.113 F3) — o pedido de aprovação guarda o marcador da persona
+
+O formato das rotas não muda; muda o que o pedido GUARDA e o que a tela recebe. Sem migração.
+- **`pending_approvals`** (`target`, `generated_content`, `approved_content`, `summary`) guarda o marcador da persona
+  (`{perfil_nome}`…) no lugar do valor. Alvo e texto só levam o marcador quando a volta dá o texto EXATO (mesma caixa);
+  senão, ficam literais. O mesmo vale para os `bindings` da etapa (rascunho e edição incluídos).
+- **`GET /api/approvals`, `POST /api/approvals/decide` e `POST /api/approvals/{id}/decide`** devolvem esses campos
+  (e `content`) com o valor da persona resolvido AO VIVO, sem gravar. `GET /api/runs/{id}/porta` (a prévia) devolve
+  `texto` e `alvo` com o valor de agora, e a `chave` é calculada sobre ele.
+- **O evento `approval.pending` e o canal (Telegram) levam o marcador**: a prévia que o canal mostra passa por
+  `porta_do_plano.previa_para_o_canal` (também o `objeto_alvo`).
+- A persona trocada depois do sim muda a `chave`, e a porta pergunta de novo na execução.
+- **Prova:** `simulated` (`backend/tests/test_bindings_com_marcador_da_persona.py`); `real`: `not_run`.

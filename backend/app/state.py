@@ -55,7 +55,8 @@ from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais, nomes_e_dados_da_persona
-from .porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano, previa_da_porta
+from .porta_do_plano import (AprovarPlanoBody, ItemAprovado, aprovar_pelo_canal, previa_da_porta,
+                             previa_para_o_canal)
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos, trava_de_avisos_em_uso
 from .decisoes_inversas import inversas_das_filas
 from .modules.decisoes.application.desfazer import DesfazerDecisoes
@@ -229,6 +230,10 @@ class RelogioDivergente(RuntimeError):
     o MESMO aparelho que o dono legítimo — exatamente o que o lease existe para impedir. Enquanto existe um
     backend só, isso não faz diferença e o desvio é apenas avisado; a partir do segundo, subir é pior que não subir.
     """
+
+
+def _texto_ou_nada(valor: object) -> str | None:
+    return None if valor is None else str(valor)
 
 
 def _col_app(row: Any) -> str | None:
@@ -415,6 +420,7 @@ class AppState:
         self.secrets = SecretStore(self.db, build_key_provider(
             data_dir=cfg.data_dir, env_material=cfg.env.credentials_master_key))
         self.social_repo = SocialRepository(self.db)
+        self.social_repo.variaveis_da_persona = self.repo.variaveis_da_persona     # 31.113 F3
         # Validade do "Conectado": o repositório monta o DTO do perfil e é ele que marca a sessão como dado velho.
         self.social_repo.session_max_age_s = cfg.file.contas.session_max_age_s
         # Teto do `unknown_streak` na GRAVAÇÃO (o mesmo que a porta de sessão lê): nenhuma releitura soma acima dele.
@@ -648,8 +654,9 @@ class AppState:
                                                         if str(d.state) == "online" and d.kind != "store"],
                                         capturar=lambda alvo: capturar_para_o_dono(self.devices, alvo),
                                         leitor_de_anexos=self.leitor_de_anexos,
-                                        previa_da_porta=lambda rid: previa_da_porta(self, rid),
-                                        aprovar_plano=lambda rid, pares, por, vista_em=None: aprovar_plano(
+                                        # 31.113 F3: o canal recebe a prévia com o marcador da persona.
+                                        previa_da_porta=lambda rid: previa_para_o_canal(self, previa_da_porta(self, rid)),
+                                        aprovar_plano=lambda rid, pares, por, vista_em=None: aprovar_pelo_canal(
                                             self, rid, AprovarPlanoBody(aprovar=[ItemAprovado(step_id=s, chave=c)
                                                                                  for s, c in pares],
                                                                         vista_em=vista_em), por=por),
@@ -2200,13 +2207,13 @@ class AppState:
         srow = self.repo.step_row(srow["id"]) or srow          # relê: o texto pode ter acabado de entrar
         # 30.64 (revisão da fila, item 5): o `check` rodou antes do rascunho; a DM de texto gerado só agora tem o que
         # comparar. Repetir a mesma mensagem ao mesmo alvo passa por confirmação, mesmo com o perfil autônomo.
-        repetida = self.policies.mensagem_repetida(profile_id, cap, loads(srow["bindings"], {}) or {},
+        repetida = self.policies.mensagem_repetida(profile_id, cap, self.repo.bindings_da_etapa(srow, profile_id),
                                                    app_id=app_da_etapa_id, step_id=srow["id"])
         # 31.53: com o texto escrito, a conta nossa que cita OUTRA conta do mesmo pedido entre personas passa por
         # aprovação. O texto literal o `check` já pegou (e o motivo está no `reason`); aqui é o texto gerado. Sem pedido,
         # `None` e nada muda.
         familia = contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None
-        argumentos = loads(srow["bindings"], {}) or {}
+        argumentos = self.repo.bindings_da_etapa(srow, profile_id)
         citada = self.policies.cita_a_familia(profile_id, cap, argumentos, familia)
         citada = citada if citada and citada not in (veredito.reason or "") else None
         # 31.53 (F2): a regra do objeto na família de novo, agora que o rascunho acabou. Daqui até o pedido gravado no
@@ -2283,7 +2290,7 @@ class AppState:
             # parecer: como o texto deixou de ser congelado no plano, a etapa chega ao ator SEM `content` e SEM a
             # guarda que dependia dele — o modelo inventaria a frase e publicaria, sem aval de ninguém. Antes
             # desta série o texto literal segurava esse caso; hoje quem segura é esta porta.
-            if cap.needs_draft and texto_a_gerar(loads(srow["bindings"], {}) or {}) is not None:
+            if cap.needs_draft and texto_a_gerar(self.repo.bindings_da_etapa(srow)) is not None:
                 return PortaDaEtapa.fim(Verdict(
                     allowed=False, policy=cap.default_policy,
                     reason="este aparelho não tem perfil vinculado: não há voz para escrever o texto desta etapa nem "
@@ -2294,7 +2301,7 @@ class AppState:
         # Alvo desta etapa, para a coordenação de frota (achado #114, ADR-055): o argumento que a AÇÃO declara no
         # catálogo (`Capability.counterparty`), normalizado. Antes era `username` cru — curtir e comentar não o têm,
         # e a porta de frota recebia `None` e liberava tudo; `@Ana` e `@ana` eram duas pessoas.
-        bindings = (loads(srow["bindings"], {}) or {}) if "bindings" in srow.keys() else {}
+        bindings = self.repo.bindings_da_etapa(srow, profile_id)
         alvo = contraparte(cap, bindings)
         # O mesmo pedido, nesta execução, a outras contas sobre o mesmo alvo (o caso de 19/09: uma execução, sete
         # contas, uma pessoa). A porta de frota conta o que JÁ aconteceu; os objetivos irmãos chegam aqui juntos,
@@ -2325,7 +2332,7 @@ class AppState:
                                        app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
                                        step_id=srow["id"],
                                        pedido=contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None,
-                                       bindings=loads(srow["bindings"], {}) or {})
+                                       bindings=self.repo.bindings_da_etapa(srow, profile_id))
         return PortaDaEtapa(veredito=veredito, final=False, cap=cap, profile_id=profile_id, rt=rt, pacote=pacote,
                             app_id=app_da_etapa.id if app_da_etapa else None, confirmacao=confirmacao,
                             registrar_confirmacao=registrar_confirmacao, teto=teto)
@@ -2348,7 +2355,8 @@ class AppState:
         achados: dict[str, tuple[str, str]] = {}
         for r in linhas:
             dono = r["profile_id"] or self.social_repo.perfil_unico_da_instancia(r["instance_id"])
-            if dono and dono != profile_id and contraparte(cap, loads(r["bindings"], {}) or {}) == alvo:
+            # 31.113 F3: cada irmã com a persona do SEU objetivo; o mesmo marcador em duas personas não é o mesmo alvo.
+            if dono and dono != profile_id and contraparte(cap, self.repo.bindings_da_etapa(r, str(dono))) == alvo:
                 achados[str(r["objetivo"])] = (str(r["instance_id"]), str(dono))
         return sorted((o, a, d) for o, (a, d) in achados.items())
 
@@ -2412,9 +2420,9 @@ class AppState:
         if proprio:
             return str(proprio)
         for chave in (getattr(step, "depends_on", None) or []):
-            row = self.db.one("SELECT bindings FROM steps WHERE objective_id=? AND key=? ORDER BY plan_version DESC"
-                              " LIMIT 1", (obj["id"], chave))
-            alvo = (loads(row["bindings"], {}) or {}).get("username") if row else None
+            row = self.db.one("SELECT objective_id, bindings FROM steps WHERE objective_id=? AND key=? ORDER BY"
+                              " plan_version DESC LIMIT 1", (obj["id"], chave))
+            alvo = self.repo.bindings_da_etapa(row).get("username") if row else None
             if alvo:
                 return str(alvo)
         return None
@@ -2429,7 +2437,7 @@ class AppState:
         """
         if not cap.needs_draft:
             return None
-        bindings = loads(srow["bindings"], {}) or {}
+        bindings = self.repo.bindings_da_etapa(srow, profile_id)
         briefing = texto_a_gerar(bindings)
         if briefing is None:                                   # texto exato pedido no comando
             return None
@@ -2517,7 +2525,8 @@ class AppState:
             # Texto e marca na MESMA transação: um crash entre os dois deixaria a etapa com texto novo e sem
             # marca, e a retomada geraria outro por cima — pago, e por cima do que já estava escrito.
             with self.db.tx():
-                definir_texto(self.db, srow["id"], draft.content)
+                # 31.113 F3: o nome da persona no rascunho vira marcador só se a volta for exata (mesma caixa).
+                definir_texto(self.db, srow["id"], self.repo.texto_reversivel(draft.content, obj["id"]) or draft.content)
                 # O que o rascunho percebeu não cabe em `bindings` (que é prompt do ator) e morreria aqui.
                 # Guardado na etapa, sobrevive à espera por aprovação e a um reinício, e o commit o anexa à
                 # interação — é assim que `learn_from` finalmente tem o que aprender.
@@ -2603,15 +2612,19 @@ class AppState:
                                    f"{descarte}; a porta pergunta de novo.", run_id=obj["run_id"],
                                    instance_id=obj["instance_id"], step_id=srow["id"])
                 pedido = None
-        bindings = loads(srow["bindings"], {}) or {}
+        bindings = self.repo.bindings_da_etapa(srow, profile_id)
         # O alvo normalizado é a chave da reserva de frota (`SocialRepository.fleet_targeting`).
         alvo = contraparte(cap, bindings) or alvo_da_acao(cap, bindings)
+        # 31.113 F3: o pedido GUARDA o marcador (alvo e texto pela máscara reversível, resumo pela do registro); a
+        # porta decide com o valor. A tela do painel resolve ao vivo (`texto_ao_vivo`); canal e evento levam o marcador.
+        alvo_gravado = self.repo.texto_reversivel(alvo, obj["id"])
+        texto_gravado = self.repo.texto_reversivel(_texto_ou_nada(bindings.get("content")), obj["id"])
         if pedido is None and excecao is None:
             # Etapa revisada (recuperação automática, “Tentar novamente”) tem id novo: sem isto, o que a pessoa já
             # aprovou na versão anterior virava pedido novo e o objetivo voltava a esperá-la. Só vale a decisão
             # sobre a mesma etapa, com o mesmo alvo e o mesmo texto, cujo efeito ainda não saiu.
             pedido = self.approvals.acompanhar_revisao(
-                srow["id"], profile_id=profile_id, acao=cap, target=alvo, content=bindings.get("content"),
+                srow["id"], profile_id=profile_id, acao=cap, target=alvo_gravado, content=texto_gravado,
                 disparou=lambda etapa: self.repo.commit_state(etapa)[0])
             if pedido is not None:
                 self.repo.decision(
@@ -2626,8 +2639,9 @@ class AppState:
                                if m)
             pedido = self.approvals.open(
                 profile_id=profile_id, capability=cap.key,
-                summary=f"{srow['title']} — {motivo}" if motivo else srow["title"],
-                target=alvo, content=bindings.get("content"),
+                summary=self.repo.texto_mascarado(f"{srow['title']} — {motivo}" if motivo else srow["title"],
+                                                  obj["id"]) or srow["title"],
+                target=alvo_gravado, content=texto_gravado,
                 run_id=obj["run_id"], objective_id=obj["id"], step_id=srow["id"])
             self.bus.emit("approval.pending", f"{obj['instance_id']}: {srow['title']} aguarda aprovação",
                           level="warn", run_id=obj["run_id"], instance_id=obj["instance_id"],
@@ -2654,7 +2668,7 @@ class AppState:
             return "venceu"
         if pedido.interaction_id is not None:
             return "já foi gasto num efeito"
-        bindings = loads(srow["bindings"], {}) or {}
+        bindings = self.repo.bindings_da_etapa(srow, profile_id)
         tem_imagem, sha = midia_da_etapa(self.db, bindings, perfil=profile_id)   # 29.79: só a imagem DESTA persona
         chave = chave_da_aprovacao(bindings, cap, perfil=profile_id, aparelho=str(obj["instance_id"]), pacote=pacote,
                                    run_id=str(obj["run_id"]), objective_id=str(obj["id"]), tem_imagem=tem_imagem,
@@ -2666,7 +2680,9 @@ class AppState:
         # que ele leu).
         if cap.needs_draft:
             fechado, texto = texto_exato(cap, bindings)
-            if not fechado or texto is None or (pedido.content or "").strip() != texto.strip():
+            # 31.113 F3: o pedido guarda o marcador; a comparação é valor com valor, pela mesma troca da chave.
+            visto = self.repo.texto_ao_vivo(pedido.content, str(obj["id"])) or ""
+            if not fechado or texto is None or visto.strip() != texto.strip():
                 return "o sim do plano não traz o texto que vai sair"
         # 31.49 (F1 da revisão): a chave não leva estado de fora do item. A mensagem repetida que SURGIU depois do sim
         # (outra execução mandou, ou teve aprovada, o mesmo texto ao mesmo alvo) é estado mudado: o dono não a viu na
