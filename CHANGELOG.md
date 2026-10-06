@@ -71,6 +71,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
   para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
 
+## 2026-10-06 — 15.15 K, F5b: o cluster de apps de `state.py` (a entrega do aplicativo ao parque) vai para `app/convergencia.py` (branch feat/15-15-f5b-convergencia)
+
+- 18 métodos do `AppState` (`release_no_aparelho`, `fora_da_convergencia`, `aplicar_versao_promovida`, `adotar_promovidas`, `_entregar`, `_rebaixa_do_parque`,
+  `_rollout_pending`, `distribute`, o preflight e o resolvedor do app da tarefa, `_pacote_do_app_id`, `_pacote_do_aparelho`, `tem_o_app` e os auxiliares) e
+  `RETENTATIVA_DE_ENTREGA_S` passam para a classe `Convergencia` em `backend/app/convergencia.py`. O `AppState` guarda métodos finos com os mesmos nomes e
+  assinaturas que delegam (`self.convergencia`), então scheduler, vitrine, despacho, rotas e testes não mudam; as constantes `_ENTREGA_FALHOU`,
+  `_ENTREGA_AUTOMATICA` e `_CANAIS_ABANDONADOS` seguem no `AppState` (a vitrine as lê de lá). `vitrine.py` fica como está. Corpo idêntico ao original a menos de
+  `self.` → `self._st.` (conferido por script, 18 métodos, 0 diferenças). Catracas: `Any` de `app.state` 28 → 13 e `app.convergencia` 15; imports tardios de
+  `app.state` 5 → 3 e `app.convergencia` 2.
+- Prova `simulated`: arquitetura e ordem das rotas, os 19 arquivos de teste que citam o cluster (404 passed e 1 falha por import que faltava no módulo novo, corrigido e verde isolado, 35 passed no arquivo), mypy 257 (no teto), docs-check 0. A bateria larga fica
+  para depois do funil da Android. `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
 ## 2026-10-06 — 15.15 F4, corte 8 (F4h): as 20 rotas de personas saem de `api.py` (branch feat/15-15-f4h-router-personas)
 
 - `/api/personas*` (cadastro, geração e lote por IA, enriquecimento, prévia, vínculo e aparelho primário, as imagens: listar, enviar, servir, principal,
