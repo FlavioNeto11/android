@@ -27,7 +27,7 @@ def conferir(banco: Path, backend: Path | None, migrar: bool) -> dict:
         try:
             out["integridade"] = con.execute("PRAGMA integrity_check").fetchone()[0]
             out["tabelas"] = con.execute(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone()[0]
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table'").fetchone()[0]
             linha = con.execute("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").fetchone()
             out["migracao_da_copia"] = linha[0] if linha else None
         finally:
