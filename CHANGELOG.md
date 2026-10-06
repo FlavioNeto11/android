@@ -19,6 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.116 parte 2 (painel): "Ensinar a corrigir" abre com a intenção que o diagnóstico sugere (branch feat/31-116-formulario-sugerido)
+
+- Contra o adendo v1.80 (Aprendizado, `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}` ou `null`): ao abrir
+  o formulário da etapa, o painel lê a sugestão (só leitura, sem IA, sem tomar o controle) e preenche "O que você vai ensinar?" com a `intent`. A causa
+  provável e o que mostrar entram como dica do campo (ligada por `aria-describedby`). A intenção da pessoa vence: `intent` só vai no
+  `POST /api/training/from-run` quando o texto difere da sugestão (o backend usa a mesma sugestão quando falta). Quem já escreveu antes de a resposta chegar
+  não tem o texto trocado. Sem tentativa (`null`), com a rota recusando (404/409) ou com a rede falhando, fica o texto padrão de antes, sem dica e sem erro
+  na tela; com `pergunta` e `rotulo` nulos (diagnóstico falhou) o campo vem com a intenção e sem dica. Fechar e abrir de novo lê outra vez e volta à sugestão.
+- `api.ensinoSugerido` e `EnsinoSugerido` em `client.ts` e `types.ts`.
+- Prova `simulated`: `EnsinarACorrigir.test.tsx` (6 novos, fixture de resposta) com cinco mutações que derrubam o teste (sobrescrever o que a pessoa escreveu,
+  comparar com o padrão em vez da sugestão, mandar `intent` sempre, não zerar ao reabrir, tirar o `aria-describedby`). Prova `real`: `not_run`; depende
+  da rota no ar (deploy 48) e de uma falha real para ver a sugestão na tela.
+
 ## 2026-10-06 — K-104: a caracterização da saúde não fotografa o dialeto do banco (branch fix/saude-caracterizacao-dialeto)
 
 - Na suíte 47 o PG dirigido reprovou os 31 cenários de `test_saude_caracterizacao.py`: o dourado foi gerado em SQLite e a fotografia levava `database.dialect`

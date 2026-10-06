@@ -9,7 +9,7 @@ import { initialDataState } from '../../store/reducer';
 import { useToastStore } from '../../store/toasts';
 import { useUiStore } from '../../store/ui';
 import { RUN_ID, makeInstance, makeRunDetail } from '../../test/fixtures';
-import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 import { EnsinarACorrigir, intencaoDaCorrecao } from './EnsinarACorrigir';
 
 /**
@@ -17,6 +17,7 @@ import { EnsinarACorrigir, intencaoDaCorrecao } from './EnsinarACorrigir';
  * escolha da pessoa, abre o treino ligado a ela (`POST /api/training/from-run`) e leva ao Foco. Prova `simulated`.
  */
 
+const ATRASO_MAXIMO = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
 let backend: FakeBackend;
 let root: Root;
 let container: HTMLDivElement;
@@ -192,5 +193,112 @@ describe('31.111 F5: Ensinar a corrigir', () => {
     await waitFor(() => expect(allByRole('button', /^Assumir o controle e abrir o treino$/)).toHaveLength(0));
     expect(backend.callsTo('POST', /\/from-run$/)).toHaveLength(0);
     expect(document.activeElement).toBe(byRole('button', /^Ensinar a corrigir$/));
+  });
+});
+
+describe('31.116 parte 2 (adendo v1.80): a intenção sugerida pelo diagnóstico', () => {
+  const SUGESTAO = {
+    intent: 'Corrigir a etapa «Abrir o app»: o app mudou de versão',
+    pergunta: 'Mostre o caminho nesta versão do app.',
+    rotulo: 'o app mudou de versão',
+  };
+  const campo = () => byRole('textbox', /O que você vai ensinar/) as HTMLInputElement;
+  const enviar = async () => {
+    await click(await botaoPronto(/^Assumir o controle e abrir o treino$/));
+    await waitFor(() => expect(backend.callsTo('POST', /\/from-run$/)).toHaveLength(1));
+    await waitFor(() => expect(useUiStore.getState().focusInstanceId).toBe('android-01'));  // a resposta chega depois do pedido registrado: o teste não termina antes dela
+  };
+
+  it('pré-preenche o campo, mostra a causa e o que mostrar, lê a etapa certa e, sem mexer, não manda intent', async () => {
+    comControleNaAba();
+    backend.on('GET', /\/runs\/[^/]+\/steps\/[^/]+\/ensino-sugerido$/, () => json(SUGESTAO));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(campo().value).toBe(SUGESTAO.intent));
+    expect(text()).toContain('Causa provável: o app mudou de versão.');
+    expect(text()).toContain('O que mostrar: Mostre o caminho nesta versão do app.');
+    expect(campo().getAttribute('aria-describedby')).toBeTruthy();                       // a dica é lida junto do campo
+    expect(backend.callsTo('GET', /ensino-sugerido$/)).toHaveLength(1);
+    expect(backend.callsTo('GET', /ensino-sugerido$/)[0]!.path).toContain(`/runs/${RUN_ID}/steps/${encodeURIComponent(ETAPA_ID)}/ensino-sugerido`);
+    expect(backend.callsTo('POST', /control\/take$/)).toHaveLength(0);                    // ler a sugestão não toma o controle
+    await enviar();
+    expect(backend.callsTo('POST', /\/from-run$/)[0]!.body).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1' });   // a sugestão vale sozinha: sem intent
+  });
+
+  it('a intenção da pessoa vence: o texto reescrito vai como intent mesmo havendo sugestão', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json(SUGESTAO));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(campo().value).toBe(SUGESTAO.intent));
+    await setValue(campo(), 'Abrir o app pela gaveta, na versão nova');
+    await enviar();
+    expect(backend.callsTo('POST', /\/from-run$/)[0]!.body).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1', intent: 'Abrir o app pela gaveta, na versão nova' });
+  });
+
+  it('quem já escreveu antes de a sugestão chegar não tem o texto trocado; o que escreveu vai como intent', async () => {
+    comControleNaAba();
+    let soltar: (r: Response) => void = () => {};
+    let pedida = false;                                  // com o fetch atrasado, o pedido só chega ao handler depois
+    backend.on('GET', /ensino-sugerido$/, () => new Promise<Response>((ok) => { soltar = ok; pedida = true; }));
+    await montar();
+    await abrirFormulario();
+    await setValue(campo(), 'Ensinar a abrir o app');
+    await waitFor(() => expect(pedida).toBe(true));
+    await act(async () => soltar(json(SUGESTAO)));
+    await waitFor(() => expect(text()).toContain('Causa provável: o app mudou de versão.'));   // a dica chega...
+    expect(campo().value).toBe('Ensinar a abrir o app');                                      // ...e o campo segue da pessoa
+    await enviar();
+    expect(backend.callsTo('POST', /\/from-run$/)[0]!.body).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1', intent: 'Ensinar a abrir o app' });
+  });
+
+  it('sem tentativa (resposta null) ou com a rota recusando: fica o texto padrão, sem dica e sem intent', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json(null));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(backend.callsTo('GET', /ensino-sugerido$/)).toHaveLength(1));
+    await flush(ATRASO_MAXIMO + 30);
+    expect(campo().value).toBe(intencaoDaCorrecao('Abrir o app'));
+    expect(text()).not.toContain('Causa provável');
+    expect(text()).not.toContain('O texto é uma sugestão');
+    await act(async () => root.unmount());
+    root = createRoot(container);
+
+    backend.on('GET', /ensino-sugerido$/, () => apiError(409, 'step_not_failed', 'Esta etapa não falhou.'));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(backend.callsTo('GET', /ensino-sugerido$/)).toHaveLength(2));
+    await flush(ATRASO_MAXIMO + 30);
+    expect(campo().value).toBe(intencaoDaCorrecao('Abrir o app'));
+    expect(text()).not.toContain('Causa provável');
+    expect(allByRole('alert', /Esta etapa não falhou/)).toHaveLength(0);                       // a leitura que falha não vira erro na tela
+    await enviar();
+    expect(backend.callsTo('POST', /\/from-run$/)[0]!.body).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1' });
+  });
+
+  it('diagnóstico que falhou (pergunta e rótulo nulos): o campo vem com a intenção, sem dica', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json({ intent: 'Corrigir a etapa «Abrir o app»', pergunta: null, rotulo: null }));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(campo().value).toBe('Corrigir a etapa «Abrir o app»'));
+    expect(text()).not.toContain('Causa provável');
+    expect(text()).not.toContain('O texto é uma sugestão');
+    await enviar();
+    expect(backend.callsTo('POST', /\/from-run$/)[0]!.body).toEqual({ run_id: RUN_ID, step_id: ETAPA_ID, lease_id: 'lease-1' });
+  });
+
+  it('fechar e abrir de novo lê a sugestão outra vez e volta ao texto dela, não ao que a pessoa tinha escrito', async () => {
+    comControleNaAba();
+    backend.on('GET', /ensino-sugerido$/, () => json(SUGESTAO));
+    await montar();
+    await abrirFormulario();
+    await waitFor(() => expect(campo().value).toBe(SUGESTAO.intent));
+    await setValue(campo(), 'outro texto');
+    await click(byRole('button', /^Cancelar$/));
+    await abrirFormulario();
+    await waitFor(() => expect(backend.callsTo('GET', /ensino-sugerido$/)).toHaveLength(2));
+    await waitFor(() => expect(campo().value).toBe(SUGESTAO.intent));
   });
 });

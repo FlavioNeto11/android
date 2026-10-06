@@ -2091,6 +2091,16 @@ export interface TrainingOriginContext {
 }
 
 /** Corpo de `POST /api/training/from-run` (adendo v1.75): o aparelho é o da etapa; o controle é o da pessoa. */
+/**
+ * 31.116 parte 2 (adendo v1.80): o que "Ensinar a corrigir" pré-preenche antes de existir a sessão, pelo diagnóstico do F4.
+ * A resposta é `null` quando a etapa não tem tentativa; `pergunta` e `rotulo` vêm nulos quando o diagnóstico falhou.
+ */
+export interface EnsinoSugerido {
+  intent: string;
+  pergunta: string | null;
+  rotulo: string | null;
+}
+
 export interface TrainingFromRunBody {
   run_id: string;
   step_id: string;

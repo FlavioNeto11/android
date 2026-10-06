@@ -4,11 +4,15 @@
  * revisão. Nada é automático: o botão pede o controle do aparelho (a IA fica em espera nele) só depois da escolha da
  * pessoa, e o treino abre no Foco. É o ÚNICO caminho de ensino na etapa (31.91 T1, ADR-078): o ensino por habilidade (v2)
  * saiu da tela.
+ *
+ * 31.116 parte 2 (adendo v1.80): ao abrir, o campo vem preenchido com a intenção que o diagnóstico da falha sugere
+ * (`GET .../ensino-sugerido`), e a causa provável e o que mostrar aparecem como dica. A intenção da pessoa vence: só
+ * se manda `intent` quando o texto difere da sugestão (o backend usa a mesma sugestão quando o `intent` falta).
  */
 import { Wrench } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { api, toApiError } from '../../api/client';
-import type { PersonaOnDevice, RunDetail, Step, StepStatus } from '../../api/types';
+import type { EnsinoSugerido, PersonaOnDevice, RunDetail, Step, StepStatus } from '../../api/types';
 import { Button } from '../../components/Button';
 import { Field, Select, TextInput } from '../../components/Field';
 import { useAppStore } from '../../store/app';
@@ -33,6 +37,8 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
   const [aberto, setAberto] = useState(false);
   const padrao = intencaoDaCorrecao(step.title);
   const [texto, setTexto] = useState(padrao);
+  const [sugestao, setSugestao] = useState<EnsinoSugerido | null>(null);
+  const editou = useRef(false);                                  // a pessoa mexeu no campo: a sugestão que chega depois não o sobrescreve
   const [personas, setPersonas] = useState<PersonaOnDevice[] | null>(null);
   const [quem, setQuem] = useState('');
   const [enviando, setEnviando] = useState(false);
@@ -52,12 +58,30 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
     return () => { vivo = false; };
   }, [aberto, aparelho]);
 
+  // A sugestão é só leitura e não toma controle: se não vem (404, 409, falha de rede), vale o texto padrão, que o backend também usaria.
+  useEffect(() => {
+    if (!aberto) return;
+    let vivo = true;
+    editou.current = false;
+    setSugestao(null);
+    setTexto(padrao);
+    api.ensinoSugerido(detail.id, step.id)
+      .then((s) => {
+        if (!vivo || !s) return;
+        setSugestao(s);
+        if (!editou.current) setTexto(s.intent);
+      })
+      .catch(() => {});
+    return () => { vivo = false; };
+  }, [aberto, detail.id, step.id, padrao]);
+
   if (!ETAPA_CORRIGIVEL.has(step.status)) return null;
 
   const candidatas = personasDoEnsino(personas ?? [], step.app_id ?? '');
   const precisaEscolher = candidatas.length > 1;
   const escolhaValida = candidatas.some((p) => p.profile_id === quem);
   const lendo = aberto && personas === null;
+  const base = sugestao?.intent ?? padrao;                       // o que o backend usaria sozinho: só o que difere disto vai como `intent`
 
   const fechar = () => {
     setAberto(false);
@@ -84,7 +108,7 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
       const intencao = texto.trim();
       await api.startTrainingFromRun({
         run_id: detail.id, step_id: step.id, lease_id: lease.leaseId,
-        ...(intencao && intencao !== padrao ? { intent: intencao } : {}),
+        ...(intencao && intencao !== base ? { intent: intencao } : {}),
         ...(precisaEscolher && escolhaValida ? { profile_id: quem } : {}),
       });
       toast({ tone: 'success', title: 'Treino aberto a partir da falha', message: `Ensine a tarefa em ${aparelho}; a gravação segue a etapa «${step.title}».` });
@@ -97,6 +121,14 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
       setEnviando(false);
     }
   };
+
+  const dica = sugestao && (sugestao.rotulo || sugestao.pergunta) ? (
+    <>
+      {sugestao.rotulo ? <>Causa provável: {sugestao.rotulo}. </> : null}
+      {sugestao.pergunta ? <>O que mostrar: {sugestao.pergunta} </> : null}
+      O texto é uma sugestão da plataforma; o que você escrever vale no lugar.
+    </>
+  ) : null;
 
   return (
     <div className={styles.corrigir}>
@@ -113,8 +145,8 @@ export function EnsinarACorrigir({ detail, step }: { detail: Pick<RunDetail, 'id
             Isto assume o controle de <strong>{aparelho}</strong> (a IA fica em espera nele até você devolver) e abre o treino no Foco.
             Nada roda sozinho.
           </p>
-          <Field label="O que você vai ensinar?">
-            {({ id }) => <TextInput id={id} value={texto} maxLength={400} onChange={(e) => setTexto(e.target.value)} />}
+          <Field label="O que você vai ensinar?" hint={dica}>
+            {({ id, describedBy }) => <TextInput id={id} aria-describedby={describedBy} value={texto} maxLength={400} onChange={(e) => { editou.current = true; setTexto(e.target.value); }} />}
           </Field>
           {precisaEscolher ? (
             <Field label="De quem é o ensino?">
