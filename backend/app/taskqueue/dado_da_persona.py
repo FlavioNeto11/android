@@ -15,11 +15,11 @@ import re
 from collections.abc import Iterator, Mapping, Sequence
 
 from ..models import Plan, PlanStep
-from ..modules.identity.domain.available_data import PROFILE_FIELDS, SUFIXO_USUARIO
+from ..modules.identity.domain.available_data import ROTULOS_DO_PERFIL, SUFIXO_USUARIO
 
-#: Só os campos que a persona de fato expõe (lista FECHADA em `PROFILE_FIELDS`) e o usuário da conta. Não é
-#: `perfil_\w+`: um parâmetro de fluxo como `{perfil_alvo}` é do comando, não da persona.
-_PERFIL = {nome: rotulo for nome, _coluna, rotulo, _tipo in PROFILE_FIELDS}
+#: Só os campos que a persona de fato expõe (listas FECHADAS `PROFILE_FIELDS` e `BIOGRAPHY_FIELDS`) e o usuário da
+#: conta. Não é `perfil_\w+`: um parâmetro de fluxo como `{perfil_alvo}` é do comando, não da persona.
+_PERFIL = dict(ROTULOS_DO_PERFIL)
 _CITACAO = re.compile(r"\{(" + "|".join(sorted(_PERFIL)) + r"|conta_[a-z0-9_]+?_" + SUFIXO_USUARIO + r"(?:_\d+)?)\}")
 
 

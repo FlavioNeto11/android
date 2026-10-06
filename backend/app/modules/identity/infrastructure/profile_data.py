@@ -12,7 +12,8 @@ from collections.abc import Callable, Mapping, Sequence
 from app.db import Database
 from app.modules.identity.domain.available_data import PROFILE_FIELDS, AccountRecord
 
-_COLUNAS_DO_PERFIL = ", ".join(sorted({coluna for _n, coluna, _r, _t in PROFILE_FIELDS} | {"username"}))
+# `biography` é o JSON de onde saem os marcadores de `BIOGRAPHY_FIELDS` (31.87 F2); quem o abre é o domínio.
+_COLUNAS_DO_PERFIL = ", ".join(sorted({coluna for _n, coluna, _r, _t in PROFILE_FIELDS} | {"username", "biography"}))
 
 
 def _texto(valor: object) -> str | None:

@@ -272,6 +272,34 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Medido em 05/10 (200 comentários do quadro, só estrutura): o conector do Trello não deixa sinal (sem `appCreator`, `agenticIdentity` nulo), então "sem app = digitado" fica como fraqueza conhecida em `docs/dominios/canais.md`, com o 28.53 (membro próprio da ANA) como conserto definitivo.
 - Prova `simulated`: `test_canais_respostas_as_perguntas.py` 27 passed (9 novos, valores fictícios), `test_trello_leitor.py` 43, `test_trello_config.py` 16, catracas 88, mypy 257 igual ao teto, docs-check 0 erros. `not_run`: o id do app do celular no config do central (entra só depois do deploy, com o sim dele no P-011, entrada 2226 conferida no banco em 05/10 20:48Z).
 
+## 2026-10-05 — 31.87 F2 (identidade): gênero, idioma e a biografia por seção viram variável da persona (branch feat/31-87-f2-gender-e-locale)
+
+- `PROFILE_FIELDS` ganha `perfil_genero` (coluna `gender`) e `perfil_idioma` (coluna `locale`), texto simples, só quando há
+  valor (decisão do dono de 05/10 15:13Z: os dados da persona entram no ensinado).
+- Biografia por seção (P-012: o dono disse SIM às seis seções, inclusive crenças): tabela fechada `BIOGRAPHY_FIELDS` de 20
+  marcadores ESCALARES lidos do JSON da coluna `biography`, em qualquer versão conhecida (`normalizar_biografia`): origem
+  (`perfil_cidade_natal`, `perfil_cidade_de_criacao`, `perfil_nacionalidade`), casa (`perfil_cidade`, `perfil_estado`, `perfil_pais`,
+  `perfil_residencia`), trabalho (`perfil_profissao`, `perfil_empregador`, `perfil_formacao`), vida (`perfil_estado_civil`,
+  `perfil_filhos`), crenças (`perfil_religiao`, `perfil_pratica_religiosa`, `perfil_orientacao_politica`,
+  `perfil_engajamento_politico`) e gostos (`perfil_interesses`, `perfil_hobbies`, `perfil_preferencias`, `perfil_aversoes`;
+  lista curta vira itens separados por vírgula). Ficam FORA, de propósito, as frases longas e as listas de fatos: histórico,
+  como aparece na fala, valores, pautas e resumos das crenças. Vazio ou forma estranha não vira marcador; zero filhos é valor.
+- Tudo o que deriva da lista segue sozinho: a lista de dados ao planejador (nome e rótulo, nunca valor), `profile_variables`,
+  a varredura do pré-voo do F1 (a pergunta leva rótulo) e a coluna lida pelo adaptador (`biography` entrou no SELECT).
+  Contrato para o ensino (Aprendizado): `identity.application.available_data.profile_variables(store, profile_id)`; só a
+  forma do dicionário ganhou chaves. Senha, código e 2FA seguem só pelo cofre.
+- C1 da leitura (Ferramentas), no desenho da orquestradora (22:26Z): o valor resolvido vai aonde o texto da etapa vai,
+  inclusive o aviso e a pergunta do Telegram. Os valores de TEXTO LIVRE da biografia, um por item
+  (`textos_da_biografia_para_filtro`, no domínio da identidade), entram no filtro SÓ do caminho de EVENTO (título de etapa em
+  `approval.pending`, `run.needs_input` e afins) por `nomes_e_dados_da_persona`, como `DadoDaPersona`, que sai como
+  `<dado da persona>` (não `<persona>`). A resposta composta pela ANA, o eco de comentário do Trello e a prévia continuam com
+  `nomes_de_persona`, só nomes: "São Paulo" ou "música" passam. Ficam fora da lista as enumerações curtas, o número de filhos,
+  o país e a sigla de estado; se um texto é nome e dado ao mesmo tempo, o nome vence. Teste com a função real sobre o banco,
+  dos dois lados (o evento mascara, a conversa passa), e da ligação em `state.py`; sem os dados no filtro, o mesmo título
+  vaza, e o teste confere isso. N1: a profissão inventada do teste deixou de coincidir com um pedaço de nome real.
+- Prova `simulated`: `backend/tests/test_perfil_variaveis_da_persona.py::*` (12 testes, valores sintéticos, mutação do SELECT
+  reprovada), mais 1360 de avisos, canais, Telegram, Trello, pré-voo, credenciais, catracas e arquitetura verdes. Real: `not_run`.
+
 ## 2026-10-05 — Deploy 40 (suíte mínima do conserto da senha pela web)
 
 - **Implantado** às 20:37Z: central em `61d431ce`, migração `115_receita_nao_aplicavel` (sem migração nova), uma junção (`2bce3b1e`) sobre `8ac140e0`. Itens: 31.75, 31.77, 31.104 e 31.103 (a conferência do site antes de digitar a senha pela web deixa de aceitar o primeiro nó com o identificador da barra de endereço).

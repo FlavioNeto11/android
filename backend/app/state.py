@@ -54,7 +54,7 @@ from .modules.avisos.infrastructure.anexos import ArmazemDeAnexos
 from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
-from .modules.avisos.infrastructure.portas_da_central import PortasReais, nomes_de_persona
+from .modules.avisos.infrastructure.portas_da_central import PortasReais, nomes_e_dados_da_persona
 from .porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano, previa_da_porta
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos, trava_de_avisos_em_uso
 from .decisoes_inversas import inversas_das_filas
@@ -362,7 +362,7 @@ class AppState:
         self.avisos = ServicoDeAvisos(cfg, self.bus, FilaDeAvisos(self.db), self.lideranca, lider=self._lider,
                                       redigir=TriagemDeCredencial().redigir,
                                       faxina_canais=FaxinaDosCanais(self.db, pasta_anexos=self.anexos_canal.pasta),
-                                      nomes_de_persona=lambda: nomes_de_persona(self.db))
+                                      nomes_de_persona=lambda: nomes_e_dados_da_persona(self.db))
         # O contato do site institucional (29.77, ADR-075): grava antes de avisar e entrega pela Canais. Desligado de fábrica.
         self.portal = Portal(cfg, self.db, self.avisos)
         # O que a plataforma decide sozinha (28.25): o registro único, o adaptador que recolhe os produtores e o resumo

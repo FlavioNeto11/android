@@ -12,10 +12,13 @@ Regra D2: função pura sobre dataclasses; quem lê o banco é a porta de aplica
 """
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+
+from .persona import normalizar_biografia
 
 #: O mesmo alfabeto de `TEMPLATE_RE` e de `PARAMETER_NAME`.
 NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
@@ -95,15 +98,118 @@ class SecretResolution:
 
 
 #: Colunas do perfil que viram variável, na ordem em que aparecem ao modelo: (nome, coluna, rótulo, tipo).
-#: Lista FECHADA: campo novo entra aqui de propósito, nunca "todas as colunas". A biografia da persona (onda A)
-#: entra pela mesma tabela quando as colunas existirem.
+#: Lista FECHADA: campo novo entra aqui de propósito, nunca "todas as colunas". Gênero e idioma entraram no 31.87 F2
+#: (decisão do dono de 05/10 15:13Z: os dados da persona entram no ensinado), sempre como texto simples. A biografia
+#: da persona entra por `BIOGRAPHY_FIELDS`, logo abaixo. Senha, código e 2FA nunca são coluna do perfil: só pelo cofre
+#: (`type_secret`).
 PROFILE_FIELDS: tuple[tuple[str, str, str, DatumKind], ...] = (
     ("perfil_nome", "first_name", "nome", DatumKind.text),
     ("perfil_sobrenome", "last_name", "sobrenome", DatumKind.text),
     ("perfil_nome_exibicao", "display_name", "nome de exibição", DatumKind.text),
     ("perfil_nascimento", "birth_date", "data de nascimento", DatumKind.date),
     ("perfil_email", "email", "e-mail", DatumKind.text),
+    ("perfil_genero", "gender", "gênero", DatumKind.text),
+    ("perfil_idioma", "locale", "idioma e região", DatumKind.text),
 )
+
+
+#: A biografia da persona por seção (31.87 F2; o dono disse SIM às seis seções no P-012, inclusive crenças): (nome, caminho
+#: no JSON da coluna `biography`, rótulo). Lista FECHADA e só de campo ESCALAR (ou lista curta de itens simples, que vira
+#: texto separado por vírgula): o resto (histórico, prática, valores e pautas, que são frases longas) não vira marcador.
+#: Cidade é `home.city` (`perfil_cidade`).
+BIOGRAPHY_FIELDS: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    ("perfil_cidade_natal", ("origin", "birthplace"), "cidade natal"),
+    ("perfil_cidade_de_criacao", ("origin", "hometown"), "cidade onde cresceu"),
+    ("perfil_nacionalidade", ("origin", "nationality"), "nacionalidade"),
+    ("perfil_cidade", ("home", "city"), "cidade"),
+    ("perfil_estado", ("home", "state"), "estado"),
+    ("perfil_pais", ("home", "country"), "país"),
+    ("perfil_residencia", ("home", "residence"), "moradia"),
+    ("perfil_profissao", ("work", "profession"), "profissão"),
+    ("perfil_empregador", ("work", "employer"), "empregador"),
+    ("perfil_formacao", ("work", "education"), "formação"),
+    ("perfil_estado_civil", ("life", "marital_status"), "estado civil"),
+    ("perfil_filhos", ("life", "children"), "número de filhos"),
+    ("perfil_religiao", ("beliefs", "religion", "affiliation"), "religião"),
+    ("perfil_pratica_religiosa", ("beliefs", "religion", "practice"), "prática religiosa"),
+    ("perfil_orientacao_politica", ("beliefs", "politics", "orientation"), "orientação política"),
+    ("perfil_engajamento_politico", ("beliefs", "politics", "engagement"), "envolvimento com política"),
+    ("perfil_interesses", ("tastes", "interests"), "interesses"),
+    ("perfil_hobbies", ("tastes", "hobbies"), "hobbies"),
+    ("perfil_preferencias", ("tastes", "preferences"), "preferências"),
+    ("perfil_aversoes", ("tastes", "dislikes"), "o que não gosta"),
+)
+
+#: Todo marcador de perfil que o plano pode citar, com o rótulo em linguagem de gente: as colunas e a biografia.
+ROTULOS_DO_PERFIL: dict[str, str] = {**{n: r for n, _c, r, _t in PROFILE_FIELDS},
+                                     **{n: r for n, _caminho, r in BIOGRAPHY_FIELDS}}
+
+
+def _valor_da_biografia(bio: Mapping[str, object], caminho: tuple[str, ...]) -> str | None:
+    """O valor escalar no caminho, como texto. Lista vira itens separados por vírgula; vazio (ou ausente, ou forma que
+    não é a esperada) é `None`: o modelo não recebe nome de variável vazia. `children` 0 é valor (`"0"`)."""
+    atual: object = bio
+    for chave in caminho:
+        if not isinstance(atual, Mapping):
+            return None
+        atual = atual.get(chave)
+    if isinstance(atual, bool):
+        return None
+    if isinstance(atual, int):
+        return str(atual) if caminho[-1] == "children" else None    # só o número de filhos é inteiro
+    if isinstance(atual, list):
+        itens = [t for t in (_texto(x) for x in atual if isinstance(x, str)) if t]
+        return ", ".join(itens) or None
+    return _texto(atual) if isinstance(atual, str) else None
+
+
+def _biografia(fields: Mapping[str, object] | None) -> dict[str, str]:
+    """`{marcador: valor}` da coluna `biography` (JSON em texto, ou já um dicionário), em qualquer versão conhecida."""
+    bruto = None if fields is None else fields.get("biography")
+    if isinstance(bruto, str):
+        try:
+            bruto = json.loads(bruto)
+        except ValueError:
+            return {}
+    if not isinstance(bruto, Mapping):
+        return {}
+    bio = normalizar_biografia(bruto)
+    return {nome: v for nome, caminho, _r in BIOGRAPHY_FIELDS if (v := _valor_da_biografia(bio, caminho))}
+
+
+#: Marcadores da biografia que NÃO entram no filtro dos canais: enumerações curtas e genéricas ("centro", "baixo") e o
+#: número de filhos. Todo o resto é texto livre da pessoa (cidade, empregador, profissão, religião, gostos…).
+_FORA_DO_FILTRO_DOS_CANAIS = frozenset({"perfil_pratica_religiosa", "perfil_orientacao_politica",
+                                        "perfil_engajamento_politico", "perfil_filhos", "perfil_pais"})
+#: A sigla de estado ("SP") é curta e genérica demais para o filtro de texto; o nome por extenso ("São Paulo") entra.
+_SIGLA_MAX = 3
+
+
+def textos_da_biografia_para_filtro(fields: Mapping[str, object] | None) -> list[str]:
+    """Os valores de texto livre da biografia, UM POR ITEM (uma lista de gostos vira vários), para o filtro dos canais
+    (31.87 F2, C1 da leitura): o valor de um marcador vai aonde o texto da etapa vai, e isso inclui o aviso e a
+    pergunta que saem pelo Telegram. Só o caminho de EVENTO os usa (`nomes_e_dados_da_persona`, da Canais); a conversa da
+    ANA e o eco do Trello ficam só com nomes. Fora: enumerações curtas, o número de filhos, o país e a sigla de estado."""
+    bruto = None if fields is None else fields.get("biography")
+    if isinstance(bruto, str):
+        try:
+            bruto = json.loads(bruto)
+        except ValueError:
+            return []
+    if not isinstance(bruto, Mapping):
+        return []
+    bio = normalizar_biografia(bruto)
+    saida: list[str] = []
+    for nome, caminho, _rotulo in BIOGRAPHY_FIELDS:
+        if nome in _FORA_DO_FILTRO_DOS_CANAIS:
+            continue
+        atual: object = bio
+        for chave in caminho:
+            atual = atual.get(chave) if isinstance(atual, Mapping) else None
+        itens = atual if isinstance(atual, list) else [atual]
+        saida.extend(t for x in itens if isinstance(x, str) and (t := _texto(x))
+                     and not (nome == "perfil_estado" and len(t) <= _SIGLA_MAX))
+    return saida
 
 
 def slug(texto: str, limite: int = SLUG_MAX) -> str:
@@ -139,8 +245,11 @@ def profile_data(fields: Mapping[str, object] | None) -> tuple[AvailableDatum, .
     """Os dados não sigilosos do perfil QUE TÊM VALOR: o modelo não recebe nome de variável vazia."""
     if fields is None:
         return ()
-    return tuple(AvailableDatum(name=nome, label=rotulo, kind=tipo, sensitive=False)
-                 for nome, coluna, rotulo, tipo in PROFILE_FIELDS if _texto(fields.get(coluna)))
+    colunas = tuple(AvailableDatum(name=nome, label=rotulo, kind=tipo, sensitive=False)
+                    for nome, coluna, rotulo, tipo in PROFILE_FIELDS if _texto(fields.get(coluna)))
+    da_biografia = _biografia(fields)
+    return colunas + tuple(AvailableDatum(name=nome, label=rotulo, kind=DatumKind.text, sensitive=False)
+                           for nome, _caminho, rotulo in BIOGRAPHY_FIELDS if nome in da_biografia)
 
 
 def _usuario_da_conta(c: AccountRecord) -> str | None:
@@ -191,6 +300,7 @@ def profile_variables(fields: Mapping[str, object] | None, accounts: Sequence[Ac
             v = _texto(fields.get(coluna))
             if v:
                 valores[nome] = v
+        valores.update(_biografia(fields))
     por_conta = {d.account_id: d for d in account_data(accounts) if not d.sensitive and d.account_id}
     for c in accounts:
         d = por_conta.get(c.account_id)
