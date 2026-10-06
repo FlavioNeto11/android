@@ -6,7 +6,7 @@ import type { AppConfigInput, Settings } from '../../api/types';
 /** Chaves numéricas de `Settings` (todas, menos os interruptores e as escolhas). */
 export type NumericSettingKey = { [K in keyof Settings]-?: Settings[K] extends number ? K : never }[keyof Settings];
 /** Chaves booleanas de `Settings` (v0.2: `auto_start_devices`). */
-export type BooleanSettingKey = { [K in keyof Settings]-?: Settings[K] extends boolean ? K : never }[keyof Settings];
+export type BooleanSettingKey = { [K in keyof Settings]-?: NonNullable<Settings[K]> extends boolean ? K : never }[keyof Settings];
 /** Escolhas entre valores nomeados (v0.20: `preview_mode`). */
 export type ChoiceSettingKey = 'preview_mode';
 
@@ -38,7 +38,7 @@ export interface ChoiceField {
 export interface LimitGroup {
   /** Identifica grupos que ganham conteúdo extra na tela (ex.: a linha de recursos do backend no rodízio). */
   id?: 'rotation' | 'capture';
-  /** O grupo só mostra os campos que o servidor manda (backend anterior à mudança que os criou não manda). */
+  /** O grupo só mostra os campos e os interruptores que o servidor manda (backend anterior à mudança que os criou não manda). */
   soSeOServidorManda?: boolean;
   title: string;
   description: string;
@@ -152,15 +152,29 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     ],
   },
   {
+    soSeOServidorManda: true,
+    title: 'Regra da frota sobre o mesmo alvo',
+    description: 'Quantas contas nossas podem agir sobre o mesmo perfil e por quantos dias a regra lembra disso (ADR-055 e ADR-081). Vale na hora, sem reiniciar.',
+    toggles: [
+      {
+        key: 'fleet_one_account_rule_for_own_accounts',
+        label: 'Uma conta por alvo também vale para post de conta nossa',
+        hint: 'Ligado (padrão): o post de uma conta nossa entra na regra de uma conta por alvo, como o de qualquer pessoa. Desligado: o post de conta nossa viva fica fora dessa regra; pessoa real nunca sai da regra.',
+      },
+    ],
+    fields: [
+      int('fleet_max_accounts_per_target', 'Contas da frota por alvo', 'contas',
+         'Quantas contas diferentes da frota podem agir sobre o mesmo perfil dentro da janela; passando disso, a próxima conta é recusada, não adiada. Vale para todas as ações. Padrão 3; vai de 1 a 50.', 1, 50),
+      int('fleet_target_window_days', 'Janela da regra da frota', 'dias',
+         'Por quantos dias a ação de outra conta sobre o mesmo perfil conta para a regra (o "nos últimos 30 dias" do motivo de parada). Padrão 30; vai de 1 a 365.', 1, 365),
+    ],
+  },
+  {
     title: 'Sinais e limites do Instagram',
     description: 'Quando parar de insistir sozinho e como a frota se coordena sobre o mesmo alvo (item 8.3).',
     fields: [
       int('session_unknown_retry_cap', 'Reobservações antes de pedir uma pessoa', 'tentativas',
          'Tela não reconhecida repetidas vezes seguidas vira "precisa de pessoa" em vez de insistir a cada tick.', 1, 20),
-      int('fleet_max_accounts_per_target', 'Contas da frota que podem curtir o mesmo alvo', 'contas',
-         'Só vale para curtidas: acima disso, a próxima conta que quiser curtir o mesmo perfil é recusada. Seguir, comentar e mandar mensagem são de uma conta por alvo, regra fixa. Padrão 3; vai de 1 a 50.', 1, 50),
-      int('fleet_target_window_days', 'Janela da regra da frota', 'dias',
-         'Por quantos dias a ação de outra conta sobre o mesmo perfil conta para a regra de contas por alvo (o "nos últimos 30 dias" do motivo de parada). Padrão 30; vai de 1 a 365.', 1, 365),
       int('fleet_min_spacing_between_accounts_s', 'Espaçamento mínimo entre contas no mesmo alvo', 'segundos', '', 0, 3600),
       int('fleet_spacing_jitter_s', 'Variação aleatória do espaçamento', 'segundos',
          'Soma ao espaçamento mínimo, para não virar um padrão regular.', 0, 3600),

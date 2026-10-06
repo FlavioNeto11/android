@@ -24,7 +24,7 @@ describe('limites', () => {
       'max_attempts_per_step', 'max_steps_per_objective', 'min_online_dwell_s', 'no_progress_limit',
       'objective_timeout_s', 'operacao_max_acoes_executadas', 'orquestracao_max_candidatas', 'orquestracao_max_escolhidas', 'retry_backoff_s', 'session_unknown_retry_cap', 'step_timeout_s',
     ]);
-    expect(ALL_TOGGLE_FIELDS.map((t) => t.key)).toEqual(['auto_start_devices']);
+    expect(ALL_TOGGLE_FIELDS.map((t) => t.key)).toEqual(['auto_start_devices', 'fleet_one_account_rule_for_own_accounts']);
     expect(ALL_CHOICE_FIELDS.map((c) => c.key)).toEqual(['preview_mode']);
     // nada de Settings fica de fora: vagas e boots DESTE servidor são editados no cartão dele (Por servidor),
     // porque não valem para o notebook — ficavam no formulário do parque como se valessem.

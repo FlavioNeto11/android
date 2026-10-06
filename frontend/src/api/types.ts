@@ -372,6 +372,8 @@ interface Settings {
   fleet_max_accounts_per_target: number;
   /** A janela, em dias, em que a ação de outra conta sobre o mesmo alvo conta para a regra (ADR-055; substitui a `fleet_target_window_s`, sem uso). */
   fleet_target_window_days: number;
+  /** ADR-081: ligado (padrão), o post de conta nossa também entra na regra de uma conta por alvo; desligado, fica fora (pessoa real nunca sai). Backend anterior não manda. */
+  fleet_one_account_rule_for_own_accounts?: boolean;
   fleet_min_spacing_between_accounts_s: number; fleet_spacing_jitter_s: number;
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;
   // item 17.12 — o teto de chamadas cresce por item do for_each (base + por_item × (itens − 1)), até o absoluto
