@@ -267,9 +267,24 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
     app.add_exception_handler(DespachoRecusado, recusa_do_despacho)  # type: ignore[arg-type]
 
     @app.exception_handler(InvalidTransition)
-    async def transicao_recusada(_request: Request, exc: InvalidTransition) -> JSONResponse:
+    async def transicao_recusada(request: Request, exc: InvalidTransition) -> JSONResponse:
         """15.15 F7: a tabela de estados é imposta, e um gesto que chega depois de o estado ter mudado (cancelar uma
-        execução que acabou de fechar, por exemplo) não escreve nada. Para quem chamou é 409, como `invalid_state`."""
+        execução que acabou de fechar, por exemplo) não escreve nada. Para quem chamou é 409, como `invalid_state`.
+
+        Deixa um evento `log` de nível `warn` (o backend não tem log de acesso, então sem ele o 409 não aparece em lugar
+        nenhum): método, o MODELO da rota (`/api/runs/{run_id}/cancel`, nunca o caminho com o id) e o texto da recusa, que só
+        tem os nomes dos estados. É a contagem de 409 que a leitura real do deploy 47 não achou; a recusa de execução,
+        objetivo e tentativa já deixa o seu próprio evento em `Repository._conferir`, e este cobre também a da etapa."""
+        estado = getattr(request.app.state, "poc", None)
+        rota = getattr(request.scope.get("route"), "path", None)
+        if estado is not None:
+            try:
+                estado.bus.emit("log", f"Pedido recusado por transição inválida (409 invalid_transition): {request.method} "
+                                       f"{rota or 'rota desconhecida'}", level="warn",
+                                data={"code": "invalid_transition", "method": request.method, "route": rota,
+                                      "detail": str(exc)})
+            except Exception:  # noqa: BLE001 - registrar a recusa nunca pode virar um 500 no lugar do 409
+                logging.getLogger("poc").exception("evento do 409 invalid_transition")
         return JSONResponse(status_code=409, content={"detail": {"code": "invalid_transition", "message": str(exc)}})
     app.add_middleware(CORSMiddleware, allow_origins=cfg.file.server.allowed_origins, allow_methods=["*"],
                        allow_headers=["*"], expose_headers=["X-Frame-Id", "X-Frame-Ts", "X-Frame-Width",

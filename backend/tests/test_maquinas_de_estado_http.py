@@ -6,6 +6,8 @@ Nível de prova: `simulated` (harness, aparelho falso, porta 5640 do harness de 
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.main import create_app
@@ -46,3 +48,11 @@ async def test_transicao_recusada_na_corrida_vira_409_e_nao_500(harness: Harness
         r = await c.post(f"/api/runs/{run.id}/start")
     assert r.status_code == 409, r.text
     assert r.json()["detail"]["code"] == "invalid_transition"
+    # O 409 deixa um evento `warn` com o MODELO da rota (nunca o id), para a recusa aparecer sem log de acesso.
+    ev = harness.state.db.one("SELECT level, message, data FROM events WHERE kind='log' AND message LIKE ? ORDER BY id DESC LIMIT 1",
+                              ("%409 invalid_transition%",))
+    assert ev is not None and ev["level"] == "warn"
+    dados = json.loads(ev["data"])
+    assert dados == {"code": "invalid_transition", "method": "POST", "route": "/api/runs/{run_id}/{op}",
+                     "detail": "transição inválida de run: completed → cancelling"}
+    assert run.id not in ev["message"] and run.id not in ev["data"]
