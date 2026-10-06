@@ -20,7 +20,7 @@ from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_
                       PersonaGeneration, PersonaImageDTO, PersonaTraits, PersonaVisual, ProfileLocality,
                       SessionActions, SessionInfo, SessionStatus)
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
-from ..planning.catalog import pacote_ancora
+from ..planning.catalog import capabilities_of, pacote_ancora
 from ..metricas import metricas
 from ..shared.vinculos import teto_de_unknown
 from ..taskqueue.dado_da_persona import resolver_argumentos, resolver_texto
@@ -54,6 +54,13 @@ def sessao_vencida(session: Row | None, max_age_s: int) -> bool:
         return False
     verificada = session["verified_at"]
     return not verificada or verificada < to_iso(now() - timedelta(seconds=max_age_s))
+
+
+def _troca_declarada(db: Database, app_id: str) -> bool:
+    """31.155 (ADR-080): o app declara a troca de conta (`troca` no `sessao.yaml`), e o motor de sessão tira a conta
+    aberta e entra na esperada. Só nele duas personas do mesmo app convivem no aparelho; nos outros, D2-a vale."""
+    pacote = db.scalar("SELECT package FROM apps WHERE id=?", (app_id,)) or app_id
+    return capabilities_of(str(pacote)).account_switch
 
 
 class BindingConflict(RuntimeError):
@@ -618,12 +625,12 @@ class SocialRepository:
         """Vincula a persona ao aparelho PARA um app (`None` = apps sem conta gerenciada). Não desvincula a própria
         persona de outro aparelho nem toma o aparelho de outra (era o 1:1); o par já vinculado é idempotente.
 
-        Recusa com `BindingConflict` quando OUTRA persona já serve ao mesmo app naquele aparelho (D2-a): a troca de
-        conta no Instagram é manual (achado #115), e duas contas no mesmo app do mesmo aparelho seriam uma tarefa
-        entrando na conta errada. A conferência é a MESMA de `profiles_of_instance(iid, app_id)`, mais estrita que o
-        índice `ux_binding_conta_do_app_no_aparelho`: o índice não enxerga o vínculo sem `app_id` (o de antes da
-        051, ou "apps sem conta gerenciada") de uma persona que TEM conta no app — o repositório enxerga. O índice
-        é o piso, para quem escreve por fora; o `IntegrityError` dele também vira `BindingConflict`.
+        Recusa com `BindingConflict` quando OUTRA persona já serve ao mesmo app naquele aparelho (D2-a): no app sem
+        troca de conta declarada (achado #115), duas contas no mesmo app do mesmo aparelho seriam uma tarefa entrando
+        na conta errada. A conferência é a MESMA de `profiles_of_instance(iid, app_id)`, e enxerga também o vínculo
+        sem `app_id` de uma persona que TEM conta no app. O app que declara a troca (31.155, ADR-080) não tem a
+        recusa: o motor de sessão troca a conta. O índice único da 051 que servia de piso saiu na 126 (ele não lê o
+        `sessao.yaml`); o `IntegrityError` dos índices que ficam ainda vira `BindingConflict`.
 
         `primary`: torna este o aparelho principal (tirando a marca do anterior). A primeira vinculação da persona é
         principal por definição, para ela nunca ficar sem um. O histórico fica: linhas inativas são a auditoria.
@@ -673,6 +680,8 @@ class SocialRepository:
         apps = [app_id] if app_id is not None else (
             [str(c["app_id"]) for c in self.list_accounts(profile_id)] if profile_id is not None else [])
         for app in apps:
+            if _troca_declarada(self.db, app):
+                continue
             for v in self.profiles_of_instance(instance_id, app):
                 if v["profile_id"] != profile_id:
                     return app, str(v["profile_id"])

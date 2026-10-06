@@ -27,6 +27,24 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - Achado do percurso real de 06/10 (central no deploy 54, cartão do worker aberto, só leitura): o motivo "desligado no config do central" aparecia com crases cruas (`comando_remoto.ativo`), a etiqueta "não negociado" era jargão e o cartão não dizia o que a seção não faz. Agora: cada interruptor desligado diz o que falta e o que fazer (sem crase), as etiquetas viram "canal pronto / canal não pronto" (com a explicação no `title`), cada fim ruim (falhou, passou do prazo, cancelado, recusado) traz o passo seguinte, e uma linha avisa que a seção não é um terminal (uma linha por vez, sem resposta durante a execução, sem saída ao vivo, não repete comando incerto, não mexe em aparelho Android). Prova: real só do achado (leitura do cartão); a correção é simulada (`TerminalDoWorker.test.tsx`, 3 casos novos, 4 mutações mortas) e o percurso pós-correção fica `not_run` até o deploy.
 
+## 2026-10-06 — 31.155: troca de conta declarada pelo app (ADR-080, proposto) (branch feat/31-155-troca-de-conta)
+
+- Seção opcional `troca: {sair: [{tela, sinal_do_botao}]}` no `sessao.yaml` (`TrocaDeConta`, recusada na carga se mal
+  declarada). O motor de sessão troca de conta só no app que a declara. Antes de tocar, confere se a conta esperada pode
+  entrar (senha com consentimento, teto diário, parada, canal sensível), se a aberta é conta nossa com senha guardada
+  e se o aparelho não está em quarentena. Depois toca a saída, um candidato por passo;
+  tela de verificação vira o desafio de sempre, sem toque. O `revisor-segredos` teve 6 achados: 4 corrigidos com teste e 2 registrados como risco no ADR. Por fim, invalida as sessões do app no aparelho e entra pelo `_login` de sempre: a
+  senha vem do cofre, só pelo canal sensível. Desvio vira `wrong_account` com o motivo, sem laço. O "Verificar conta"
+  nunca troca.
+- `AppDefinition.account_switch`, derivado do `sessao.yaml` na descoberta. `quem_ja_serve` (D2-a) só aceita outra
+  persona do mesmo app no aparelho para quem declara. **Migração 126** (`126_troca_de_conta`): sai o índice único
+  `ux_binding_conta_do_app_no_aparelho` da 051, sem mudar linha; a regra fica no repositório. Corte 56.
+- Nenhum app do parque declara a troca (o Instagram não declara nesta prova). O QA Messenger não ganhou sessão
+  declarada: isso mudaria a porta de sessão de todo objetivo de QA.
+- Prova `simulated`: `backend/tests/test_troca_de_conta.py` (com o correio de exemplo declarado só no teste e duas
+  personas) e `backend/tests/test_migracao_126.py` (atualização, idempotência, banco novo = atualizado).
+- `not_run`: prova real (exige declarar a troca num app, com os sinais lidos num aparelho de conta de teste).
+
 ## 2026-10-06 — 28.57: arquivo de texto com o nome original no envio e repasse do `.txt` do dono sem legenda (branch canais/anexos-28-57)
 
 - Achado de 06/10 ao mandar os arquivos do 29.161: `enviar_anexo` renomeava tudo para `anexo-<sha>.<ext>` e não aceitava `.ps1`/`.md`, o que quebraria o comando `-File .\script.ps1`; e o `.txt` que o dono mandou sem legenda ficava `ignorada`. A premissa de que o canal não recebia o anexo estava errada: a recepção do 28.24 já guardava os 4 `.txt` (`canal_anexos` 1 a 4), só faltava o repasse (K-105).

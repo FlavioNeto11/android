@@ -16,6 +16,7 @@ sem conta, conta sem login declarado) seria pior que nenhum, porque o núcleo pa
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import yaml
@@ -248,8 +249,11 @@ def manifesto_da_pasta(pasta: Path, *, raiz: Path | None = None) -> AppManifest:
         raise PacoteInvalido(f"{pasta / 'app.yaml'}: {exc}") from exc
     catalogo = _catalogo(pasta, pacote, padrao)
     _conferir_regioes_visuais(pasta, catalogo)
+    sessao = _sessao(pasta, pacote, padrao) if tem_sessao else None
+    if sessao is not None and sessao.troca is not None:
+        definicao = replace(definicao, account_switch=True)          # 31.155: só quem declara a saída troca de conta
     return AppManifest(definition=definicao, catalog=catalogo, screen=tela,
-                       session=fabrica_de_sessao(_sessao(pasta, pacote, padrao)) if tem_sessao else None)
+                       session=fabrica_de_sessao(sessao) if sessao is not None else None)
 
 
 def descobrir(raiz: Path | None = None) -> tuple[AppManifest, ...]:
