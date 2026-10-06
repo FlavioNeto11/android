@@ -173,13 +173,14 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
         <td>
           {verificacao === 'sem_acao' ? <span className={styles.mudo}>—</span> : <Badge tone={ver.tom} icon={ver.icone} size="sm">{ROTULO_DA_VERIFICACAO[verificacao]}</Badge>}
         </td>
+        <td className={styles.numero}>{alvo.custo_usd === null ? <span className={styles.mudo}>—</span> : formatUsd4(alvo.custo_usd)}</td>
         <td>
           <Button size="sm" variant="ghost" aria-expanded={aberta} onClick={onAlternar} label={`${aberta ? 'Fechar' : 'Abrir'} o detalhe de ${rotuloDaLinha}`}>
             {aberta ? 'Fechar' : 'Detalhe'}
           </Button>
         </td>
       </tr>
-      {aberta ? <tr className={styles.linhaDoDetalhe}><td colSpan={8}><DetalheDoAlvo alvo={alvo} /></td></tr> : null}
+      {aberta ? <tr className={styles.linhaDoDetalhe}><td colSpan={9}><DetalheDoAlvo alvo={alvo} /></td></tr> : null}
     </Fragment>
   );
 }
@@ -335,7 +336,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
               <thead>
                 <tr>
                   <th scope="col">Persona</th><th scope="col">Conta</th><th scope="col">Aparelho</th><th scope="col">Pipeline</th>
-                  <th scope="col">Estado</th><th scope="col">Ação final ou motivo</th><th scope="col">Resultado</th><th scope="col"><span className="sr-only">Detalhe</span></th>
+                  <th scope="col">Estado</th><th scope="col">Ação final ou motivo</th><th scope="col">Resultado</th><th scope="col">Custo de IA</th><th scope="col"><span className="sr-only">Detalhe</span></th>
                 </tr>
               </thead>
               <tbody>

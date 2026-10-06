@@ -246,6 +246,16 @@ describe('com a rota no central', () => {
     expect(text(faixa)).toContain('https://u:p@exemplo.com.br/c');
   });
 
+  it('a tabela mostra o custo de IA de cada agente (do alvo; do resultado só como reserva) e "—" sem execução', async () => {
+    const alvos = [{ ...OPERACAO.alvos[0], custo_usd: 0.0123 }, { ...OPERACAO.alvos[1], custo_usd: undefined, resultado: { texto: 'x', custo_usd: 0.5 } }, { ...OPERACAO.alvos[1], profile_id: 'p3', run_id: 'r3' }];
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, alvos }));
+    await ir(['op-1']);
+    await waitFor(() => expect(linhas()).toHaveLength(3));
+    expect(container.querySelector('thead')!.textContent).toContain('Custo de IA');
+    const celulas = linhas().map((l) => Array.from(l.querySelectorAll('td'))[6]!.textContent);
+    expect(celulas).toEqual(['US$ 0,0123', 'US$ 0,5000', '—']);
+  });
+
   it('sem custo, teto, assunto nem fontes a faixa não aparece', async () => {
     backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, custo: undefined, max_usd: undefined, assunto: undefined, fontes: undefined }));
     await ir(['op-1']);

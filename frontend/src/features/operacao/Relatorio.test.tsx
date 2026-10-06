@@ -22,7 +22,10 @@ const base = (n: number) => ({
 });
 const concluido = (n: number, texto: string, verificada: boolean | null, estagios: number) => ({
   ...base(n), estagio: estagios === 14 ? 'resultado_verificado' : 'acao_executada', estagios: ate(estagios), estado: 'concluido', motivo: null, parou_em: null,
-  resultado: { texto, conhecimento_ids: [`fluxo:f${n}`, 'licao:voz'], evidencia_id: 100 + n, acao_final: { tipo: 'CREATE_COMMENT', verificada, evidencia_id: verificada ? 200 + n : null } },
+  // o alvo 3 só traz o custo dentro do resultado (a reserva); os outros, no próprio alvo
+  ...(n === 3 ? {} : { custo_usd: 0.1 * n }),
+  resultado: { texto, conhecimento_ids: [`fluxo:f${n}`, 'licao:voz'], evidencia_id: 100 + n, acao_final: { tipo: 'CREATE_COMMENT', verificada, evidencia_id: verificada ? 200 + n : null },
+               ...(n === 3 ? { custo_usd: 0.05 } : {}) },
 });
 const semConta = (n: number) => ({
   ...base(n), account_id: null, conta: null, instance_id: null, run_id: null, estagio: 'persona', estagios: ate(1), estado: 'bloqueado', motivo: 'sem conta', parou_em: 'conta', resultado: null,
@@ -77,9 +80,13 @@ describe('montarRelatorio', () => {
     expect(tudo).toContain('Persona 01');
   });
 
-  it('o custo por agente não é inventado: o relatório diz que o contrato só traz o da operação', () => {
-    expect(r.agentes.every((a) => a.custo_usd === null)).toBe(true);
-    expect(r.limites.join(' ')).toContain('Custo por agente');
+  it('o custo por agente vem do próprio alvo, do resultado só como reserva, e é nulo (não zero) sem execução', () => {
+    expect(r.agentes.map((a) => a.custo_usd)).toEqual([0.1, 0.2, 0.05, null, null]);
+    expect(r.limites.join(' ')).toContain('Custo por agente "não informado"');
+    expect(OP.alvos.map((a) => a.custo_usd)).toEqual([0.1, 0.2, 0.05, null, null]);
+    // o do alvo vale mais que o do resultado quando os dois vêm
+    expect(lerOperacao({ id: 'o', alvos: [{ custo_usd: 0.3, resultado: { texto: 'x', custo_usd: 0.9 } }] })!.alvos[0]!.custo_usd).toBe(0.3);
+    expect(lerOperacao({ id: 'o', alvos: [{ custo_usd: -1, resultado: { texto: 'x', custo_usd: 'caro' } }] })!.alvos[0]!.custo_usd).toBeNull();
   });
 
   it('sem custo nem teto no backend, os campos ficam nulos, nunca zero', () => {
@@ -106,6 +113,8 @@ describe('relatorioEmMarkdown', () => {
     expect(md).toContain('**Total:** US$ 0.9700 (teto da operação: US$ 4.5000)');
     expect(md).toContain('- sem conta (parou em Conta): 2 agentes');
     expect(md).toContain('verificada: não conferida');
+    expect(md).toContain('- **Custo de IA:** US$ 0.1000');
+    expect(md).toContain('- **Custo de IA:** não informado');
     expect(md).toContain(`| ${ESTAGIOS[13]!.rotulo} | ${hora(13)} |`);
     expect(md).toContain(`| ${ESTAGIOS[13]!.rotulo} | não alcançado |`);
   });

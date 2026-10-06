@@ -32,8 +32,8 @@ export interface AgenteDoRelatorio {
   texto: string | null;
   evidencia_id: number | null;
   acao_final: { tipo: string | null; verificada: Conferencia; evidencia_id: number | null } | null;
-  /** O contrato v1.94 só traz o custo da operação inteira; por agente não há número, e o relatório não inventa. */
-  custo_usd: null;
+  /** O que a execução do agente gastou em IA; `null` sem execução (ou backend anterior), nunca zero inventado. */
+  custo_usd: number | null;
 }
 
 export interface FalhaPorMotivo { motivo: string; parou_em: string | null; agentes: number }
@@ -58,7 +58,7 @@ export interface RelatorioDaOperacao {
 }
 
 const LIMITES = [
-  'Custo por agente: o contrato da operação traz só o custo da operação inteira (pesquisa, agentes e total).',
+  'Custo por agente "não informado": o alvo ainda não tinha execução (ou o central é anterior ao custo por alvo).',
   'O relatório vem do estado da operação no momento em que foi gerado; uma operação em curso muda depois.',
 ];
 
@@ -83,7 +83,7 @@ function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
     texto: a.resultado?.texto ?? null,
     evidencia_id: a.resultado?.evidencia_id ?? null,
     acao_final: acao ? { tipo: acao.tipo, verificada: conferenciaDaAcao(a), evidencia_id: acao.evidencia_id } : null,
-    custo_usd: null,
+    custo_usd: a.custo_usd,
   };
 }
 
@@ -169,7 +169,7 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
     linhas.push(a.acao_final
       ? `- **Ação final:** ${rotuloDaAcao(a.acao_final.tipo)} · verificada: ${ROTULO_DA_CONFERENCIA[a.acao_final.verificada]} · evidência: ${a.acao_final.evidencia_id ?? 'nenhuma'}`
       : '- **Ação final:** sem ação final');
-    linhas.push(`- **Evidência da tela lida:** ${a.evidencia_id ?? 'nenhuma'}`, `- **Custo:** ${usd(a.custo_usd)} (o contrato traz só o total da operação)`);
+    linhas.push(`- **Evidência da tela lida:** ${a.evidencia_id ?? 'nenhuma'}`, `- **Custo de IA:** ${usd(a.custo_usd)}`);
     linhas.push('', '| estágio | hora |', '|---|---|');
     for (const e of a.estagios) linhas.push(`| ${e.rotulo} | ${e.em ?? (e.alcancado ? 'alcançado, sem hora' : 'não alcançado')} |`);
     if (a.texto) linhas.push('', 'Texto gerado:', '', citacao(a.texto));
