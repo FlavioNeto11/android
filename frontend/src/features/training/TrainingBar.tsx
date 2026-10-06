@@ -46,6 +46,15 @@ function encurtar(nome: string): string {
   return `${(espaco > ROTULO_DA_GRAVACAO / 2 ? corte.slice(0, espaco) : corte).trimEnd()}…`;
 }
 
+/** O começo do id da sessão ("trn-o5UL"): o bastante para distinguir duas linhas com o mesmo texto; o id inteiro vai no `title`. */
+const idCurto = (id: string): string => id.slice(0, 8);
+
+/** Há quanto tempo a sessão foi salva ("há 3 h"); a atualização mais recente vale, e sem data nenhuma a linha não inventa uma. */
+function quandoDaSalva(s: TrainingSession, agora: number): string {
+  const quando = s.updated_at || s.finished_at || s.created_at;
+  return quando ? tempoRelativo(quando, agora) : 'sem data';
+}
+
 /** Quantas sessões salvas a barra lista para refazer receitas: as mais novas (a lista vem do backend da mais nova para a mais velha). */
 const SALVAS_NA_BARRA = 5;
 
@@ -87,6 +96,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   const [ocupado, setOcupado] = useState<'iniciar' | 'concluir' | 'descartar' | 'desfazer' | null>(null);
   const [revisando, setRevisando] = useState<string | null>(null);
   const [vendo, setVendo] = useState<string | null>(null);   // 31.120: a sessão salva aberta em leitura
+  const [verTodasAsSalvas, setVerTodasAsSalvas] = useState(false);
   const recusadas = useTrainingStore((s) => s.recusadas[instance.id] ?? 0);
   const definirGravando = useTrainingStore((s) => s.definirGravando);
   // Só é "gravando" para o Foco (padrão de "Limpar o campo antes", contador de recusas) quando a gravação é desta pessoa.
@@ -229,7 +239,8 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   // v1.58: a sessão salva some de "Para revisar", mas a etapa que ficou sem receita (aparelho fora do ar no salvar)
   // ainda pode ganhá-la; daqui a pessoa refaz quando o aparelho voltar, sem reabrir a revisão.
   const todasSalvas = sessoes.filter((s) => s.status === 'saved');
-  const salvas = todasSalvas.slice(0, SALVAS_NA_BARRA);
+  // 31.133: as 5 mais novas por padrão; "Ver todas" abre o resto (antes as mais antigas ficavam sem acesso na tela).
+  const salvas = verTodasAsSalvas ? todasSalvas : todasSalvas.slice(0, SALVAS_NA_BARRA);
 
   return (
     <section className={styles.bar} aria-label="Modo treinamento">
@@ -346,13 +357,21 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             {salvas.map((s) => (
               <li key={s.id}>
                 <span>{s.intent}</span>
+                <span className={styles.muted} title={`sessão ${s.id}${s.flow_id ? ` · fluxo ${s.flow_id}` : ''}`}>
+                  {quandoDaSalva(s, agora)} · <span className="mono">{idCurto(s.id)}</span>
+                </span>
                 <SeloNascidoDeProva nascido={s.nascido_de_prova} />
                 {s.origin ? <SeloDeOrigem origin={s.origin} /> : null}
                 <Button size="sm" variant="ghost" onClick={() => setVendo(s.id)} label={`Ver o treinamento salvo “${s.intent}”`}>Ver</Button>
-                <RefazerReceitas sessionId={s.id} intent={s.intent} />
+                <RefazerReceitas sessionId={s.id} intent={s.intent} dica />
               </li>
             ))}
           </ul>
+          {todasSalvas.length > SALVAS_NA_BARRA ? (
+            <Button size="sm" variant="ghost" onClick={() => setVerTodasAsSalvas((v) => !v)}>
+              {verTodasAsSalvas ? `Ver só as ${SALVAS_NA_BARRA} mais novas` : `Ver todas as ${todasSalvas.length}`}
+            </Button>
+          ) : null}
         </Disclosure>
       ) : null}
       {vendo ? <SessaoSalva sessionId={vendo} onClose={() => setVendo(null)} /> : null}

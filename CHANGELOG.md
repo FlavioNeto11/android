@@ -34,6 +34,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **31.127** (adendo v1.85): cada etapa ensinada espera a anterior (`depends_on`), salvo `independente: true` na proposta; tipo errado dá 400 `etapa_invalida`.
 - Revisão de segredos (agente, só leitura): nem uma palavra do dado da persona vira sugestão; a entrada marcada (teclado de PIN, padrão) não guarda os elementos.
 - Prova `simulated`: `tests/test_treino_partida_f2_e_sequencia.py` (13) e os ajustes de `tests/test_etapa_pacotes_aceitos.py` (a 1ª etapa agora também aceita o vizinho) e de `tests/test_treino_previa_e_refazer_receitas.py` (a chave nova da prévia). Dirigidos: 124 arquivos um por vez, com 1944 aprovados e as 3 falhas corrigidas e rodadas de novo; `scripts/tests`: 683. Real: `not_run` até o corte 51.
+## 2026-10-06 — 31.133: "Salvas" legível, com data, id curto, "Ver todas" e sem o aviso repetido em toda linha (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (candidatos 3 e 4): "Salvas (as 5 mais novas de 8)" deixava as 3 mais antigas sem acesso na tela, duas linhas com o mesmo texto não se distinguiam e a frase "Etapa sem receita porque o aparelho estava fora do ar? Com ele de volta, refaça." aparecia em todas as linhas, com o aparelho online.
+- Cada linha ganha **há quanto tempo foi salva** e o **começo do id da sessão** (o id inteiro e o fluxo vão no `title`); **"Ver todas as N"** abre o resto e **"Ver só as 5 mais novas"** volta; sem mais de 5 salvas, o botão não existe.
+- O aviso fixo some da lista e vira **dica do botão "Refazer receitas"** (a lista não traz se a sessão ficou com etapa sem receita; quando o backend trouxer, o aviso pode voltar só para quem precisa). Depois de clicar, o resultado do refazer continua dizendo o que houve; no resultado do salvar o aviso segue visível, porque ali ele vale.
+- Só frontend e CHANGELOG. Prova `simulated`: `SalvasLegiveis.test.tsx` (4); oito mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy do corte 52.
+
 ## 2026-10-06 — 31.132: depois de salvar, a pessoa chega ao fluxo e vê o estado dele (branch feat/31-132-ensino-leitura)
 
 - Achado da leitura do caminho de ensino (`.claude/handoffs/portal-leitura-ensino.md`, candidatos 1, 2 e 12): o resultado do salvar e o diálogo "Treinamento salvo" mostravam "Fluxo f-… salvo" com o id cru, sem link, sem o estado do fluxo e sem o próximo passo; a sessão aparecia como "salvo" enquanto o Livro mostrava o mesmo fluxo como Desligado.

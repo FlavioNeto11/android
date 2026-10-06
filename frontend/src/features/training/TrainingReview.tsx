@@ -196,10 +196,14 @@ interface Escopo {
  * "Refazer receitas" (v1.58): a etapa que ficou sem receita porque o aparelho estava fora do ar ganha a receita quando
  * ele volta. Quem decide a hora é a pessoa; a chamada só grava em etapa sem receita e é idempotente (`created: 0`).
  */
-export function RefazerReceitas({ sessionId, intent, onFeito }: {
+const DICA_DE_REFAZER_RECEITAS = 'Grava a receita das etapas que ficaram sem ela porque o aparelho estava fora do ar. Se nenhuma ficou sem receita, nada muda.';
+
+export function RefazerReceitas({ sessionId, intent, dica = false, onFeito }: {
   sessionId: string;
   /** Na lista de sessões salvas, o nome no rótulo distingue um botão do outro. */
   intent?: string;
+  /** 31.133: na lista o aviso fixo ("Etapa sem receita porque…") vira dica do botão, porque a lista não sabe se a sessão ficou com etapa sem receita. */
+  dica?: boolean;
   onFeito?: (r: TrainingRecipesResult) => void;
 }) {
   const [refazendo, setRefazendo] = useState(false);
@@ -222,9 +226,10 @@ export function RefazerReceitas({ sessionId, intent, onFeito }: {
   return (
     <span className={styles.actions}>
       <Button size="sm" variant="outline" icon={RefreshCw} loading={refazendo}
-              label={intent ? `Refazer receitas de “${intent}”` : undefined} onClick={() => void refazer()}>Refazer receitas</Button>
+              label={intent ? `Refazer receitas de “${intent}”` : undefined} title={dica ? DICA_DE_REFAZER_RECEITAS : undefined}
+              onClick={() => void refazer()}>Refazer receitas</Button>
       <span className={styles.muted} role="status">
-        {!feito ? 'Etapa sem receita porque o aparelho estava fora do ar? Com ele de volta, refaça.'
+        {!feito ? (dica ? '' : 'Etapa sem receita porque o aparelho estava fora do ar? Com ele de volta, refaça.')
           : `${feito.created ? `${plural(feito.created, 'receita gravada', 'receitas gravadas')} agora.` : 'Nenhuma receita nova.'}`
             + (semReceita.length ? ` Sem receita: ${semReceita.map((x) => `${x.title} (${x.reason})`).join('; ')}.` : '')
             // 30.81: a receita da gravação espera junto do fluxo; só a persona que ensinou a usa até a prova.
