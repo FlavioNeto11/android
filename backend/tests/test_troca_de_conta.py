@@ -70,6 +70,8 @@ class CorreioComSaida(FakeCorreio):
     botoes_sair: int = 1
 
     def _montar(self) -> list[_No]:
+        if self.tela == "limbo":                     # tela do app que nenhuma regra reconhece (nem é de login)
+            return [_No("android.widget.TextView", (40, 400, 680, 460), text="Carregando sua experiência")]
         if self.tela == "confirmar_saida":
             return [_No("android.widget.TextView", (40, 400, 680, 460), text="Deseja sair da conta?"),
                     _No("android.widget.Button", (40, 600, 340, 670), text="Cancelar", clickable=True, acao="cancelar"),
@@ -186,13 +188,15 @@ async def test_verificar_conta_so_le_e_nunca_troca(parque: Any) -> None:
     assert app.conta == CONTA_A and app.typed == [] and "sair" not in app.calls
 
 
-async def test_saida_que_nao_chega_ao_login_para_sem_digitar_e_nao_vira_laco(parque: Any) -> None:
-    """O "Sair" leva a uma tela que não é a de login: nada é digitado, a sessão vai a `wrong_account` com o motivo, e
-    o tick seguinte do agendador nem toca no aparelho."""
-    app = _novo_app(confirmar=False, sair_abre="desconhecida")
+async def test_app_que_pula_a_confirmacao_declarada_para_sem_digitar_e_nao_vira_laco(parque: Any) -> None:
+    """Os passos declarados são obrigatórios e em ordem: o app que pula a confirmação (versão nova sem o diálogo) para a
+    troca no passo 2, mesmo com o login na frente. Nada é digitado, a sessão vai a `wrong_account` com o motivo, e o
+    tick seguinte do agendador nem toca no aparelho."""
+    app = _novo_app(confirmar=False)
     p = parque(app)
     r = await p.motor.ensure_session(FakeRt(app, IID), p.b[0], account_id=p.b[1], automatic=True)
     assert r.outcome is Outcome.WRONG_ACCOUNT and "troca de conta declarada pelo app não terminou" in r.detail
+    assert "passo 2 da saída esperava" in r.detail
     assert app.typed == [] and "enviar" not in app.calls
     assert _status(p, p.b) == SessionStatus.wrong_account.value
     assert _status(p, p.a) == SessionStatus.unknown.value                  # houve toque de saída: não vale mais
@@ -331,3 +335,13 @@ async def test_a_invalidacao_poupa_desafio_e_conta_errada_de_outra_persona(parqu
     r = await p.motor.ensure_session(FakeRt(app, IID), p.b[0], account_id=p.b[1], automatic=True)
     assert r.outcome is Outcome.SESSION_READY, r.detail
     assert p.repo.account_session_row(terceira, conta3, IID)["status"] == SessionStatus.auth_challenge.value
+
+
+async def test_saida_que_termina_fora_do_login_espera_e_para_sem_digitar(parque: Any) -> None:
+    """Todos os passos deram e a tela não é a de login: espera até o prazo da verificação, e para sem digitar."""
+    app = _novo_app(confirmar=False, sair_abre="limbo")
+    p = parque(app, troca={"sair": [TROCA["sair"][0]]})
+    r = await p.motor.ensure_session(FakeRt(app, IID), p.b[0], account_id=p.b[1], automatic=True)
+    assert r.outcome is Outcome.WRONG_ACCOUNT and "depois da saída a tela não é a de login" in r.detail
+    assert app.typed == [] and "enviar" not in app.calls
+    assert _status(p, p.b) == SessionStatus.wrong_account.value and _status(p, p.a) == SessionStatus.unknown.value

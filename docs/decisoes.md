@@ -5696,6 +5696,9 @@ em 4 aparelhos. Passar de 4 para 30 contas sem um aparelho por conta exige tirar
 - **Depois do primeiro toque de saída não há volta automática.** Se o `_login` da esperada falhar (formulário não
   identificado, usuário que não ficou, senha recusada, canal que caiu entre o pré-cheque e o uso), o aparelho fica na
   tela de login, sem conta, e a sessão que saiu fica `unknown`. Nenhuma senha vai a tela errada; a pessoa assume.
+- **Os passos declarados são obrigatórios e em ordem.** O app que pula um passo (uma versão nova sem o diálogo de
+  confirmação) para a troca em `wrong_account`, mesmo com o login na frente. É conservador; quem declarar um app
+  confere os passos a cada versão (um passo a mais no YAML é uma troca que nunca termina).
 - **`wrong_account` gravado antes** (pelo executor durante uma execução, ou antes de o app declarar a troca) não se
   cura sozinho: a pessoa usa "Conectar", que troca.
 - **Ligar é editar o YAML.** Não há chave por instalação: declarar `troca` num app com conta real liga a troca no tick
