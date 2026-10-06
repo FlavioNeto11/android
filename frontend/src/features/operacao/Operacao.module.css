@@ -191,3 +191,27 @@
   flex-wrap: wrap;
   gap: var(--sp-2);
 }
+
+.numero {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.refMono {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  overflow-wrap: anywhere;
+}
+
+.etiquetas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.blocoDoAprendizado {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}

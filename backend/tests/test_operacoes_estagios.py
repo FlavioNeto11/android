@@ -124,3 +124,33 @@ def test_o_app_declara_os_seus_estagios_e_o_instagram_traz_o_caminho_do_comentar
         definicao_de_dados({**base, "operacao": {"estagios": {"ABRIR": "resultado_verificado"}}})
     with pytest.raises(PacoteInvalido):
         definicao_de_dados({**base, "operacao": {"abertura": "Instagram"}})
+
+
+def test_acao_recusada_pela_porta_e_acao_bloqueada_e_nao_preparada() -> None:
+    """Achado do percurso da Portal (op-20261006193306-7e8b5f): a regra da frota recusou `comment_1` antes de ela rodar
+    (`blocked_kind='policy'`, objetivo em `waiting_user`, etapa `ready`, sem texto). O alvo mostrava "parou em Ação
+    preparada"; recusada não é preparada."""
+    from dataclasses import replace
+
+    etapas = [_etapa("OPEN_PROFILE", "succeeded", h="01"), _etapa("OPEN_POST", "succeeded", h="02"),
+              _etapa("OPEN_COMMENTS", "succeeded", h="03"), _etapa("CREATE_COMMENT", "ready", efeito=True)]
+    fatos = replace(_fatos(etapas, status="waiting_user", motivo="1 outra(s) conta(s) da frota já mexeram com o perfil alvo"),
+                    objetivo_bloqueio="policy")
+    lt = derivar(fatos)
+    assert (lt.estagio, lt.estado, lt.parou_em) == ("acao_bloqueada", "bloqueado", "acao_bloqueada")
+    assert "acao_preparada" not in _nomes(lt) and lt.motivo is not None and "frota" in lt.motivo
+    # o pedido de aprovação (a espera do liberar) NÃO é recusa: segue na ação preparada
+    preparada = [*etapas[:3], _etapa("CREATE_COMMENT", "ready", efeito=True, texto=True, pedido="pending")]
+    lt2 = derivar(replace(_fatos(preparada, status="waiting_user"), objetivo_bloqueio="approval"))
+    assert (lt2.estagio, lt2.estado) == ("acao_preparada", "concluido")
+
+
+def test_a_hora_do_rascunho_que_espera_o_liberar_e_a_do_pedido() -> None:
+    """A etapa com efeito que espera o liberar não começou: a hora de `resposta_gerada`/`acao_preparada` é a do pedido de
+    aprovação, não a do início do objetivo (que caía antes de `post_localizado`)."""
+    from dataclasses import replace
+
+    efeito = replace(_etapa("CREATE_COMMENT", "ready", efeito=True, texto=True, pedido="pending"),
+                     pedido_em="2026-10-07T10:05:00.000Z", comecou_em=None)   # `ready`: não começou
+    lt = derivar(_fatos([_etapa("OPEN_PROFILE", "succeeded", h="01"), efeito], status="waiting_user"))
+    assert dict(lt.estagios)["acao_preparada"] == dict(lt.estagios)["resposta_gerada"] == "2026-10-07T10:05:00.000Z"

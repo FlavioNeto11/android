@@ -239,48 +239,6 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_empate_para_hash.py` (3 testes; reprova no código anterior), incluindo um
   `plan` simulado em que a etapa ganha o hash do ensino e a loja de receitas acha a receita gravada nele.
 
-## 2026-10-06 — prova30 A3 (extensão do 31.157): o aprendizado de uma operação nas 10 perguntas do dono (branch feat/prova30-a3-aprendizado-da-operacao)
-
-- Pedido da orquestradora (o dono pediu para adiantar): para uma operação, responder às 10 perguntas do aprendizado do
-  dono com origem, evidência, confiança e frescor por item, e com filtro por persona. Até aqui as respostas existiam
-  espalhadas (Livro, memória da persona, memória da operação), sem uma leitura por operação.
-- `GET /api/operacoes/{id}/aprendizado` (adendo v1.96): só leitura, sem IA e sem tabela nova.
-  - Ligação às execuções da operação: direta por `run_id` (evidência, transição, sinal, interação), pela origem
-    (receita, fluxo), pela proveniência (lição) e pela interação (memória da persona). O backlog é inferido e vem
-    marcado.
-  - Uma régua só de confiança, e o valor original ao lado.
-  - Reutilizável e "revisar" são regras de código.
-  - Texto redigido e cortado em 200 caracteres. O simulado fica fora por padrão. O que a rota não cobre vem em
-    `nao_coberto`.
-- **`resultado.conhecimento_ids` do alvo (achado da tentativa 3 da onda 1, 06/10):** o contrato da 124 diz que a lista vem
-  da frente de Aprendizado, e nada a gravava; ela vinha sempre vazia. Agora a porta de escrita grava em
-  `operacao_alvos.marcas` as refs dos fatos que o texto recebeu (o bloco e a leitura igual à tela). Prova `simulated`:
-  `backend/tests/test_conhecimento_da_operacao.py::test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem`.
-- **O assunto da operação vai ao escritor junto da intenção (decisão da orquestradora após a tentativa 3):** o texto
-  ignorava o assunto quando o post não tinha relação com ele, porque só `<intencao>` mandava. Agora o bloco
-  `<assunto_da_operacao>` (de `operacoes.assunto`) vem logo depois da intenção e pede para relacionar só quando fizer
-  sentido com a publicação. O `draft_meta` marca `fatos_da_operacao.assunto: true`. Prova `simulated`:
-  `backend/tests/test_conhecimento_da_operacao.py::test_o_assunto_vai_junto_da_intencao_e_so_relaciona_quando_couber` e
-  `backend/tests/test_pesquisa_da_operacao.py`.
-- **Revisão do PR 480 (corte 57), 4 achados confirmados no código e corrigidos:**
-  1. a evidência da lição era buscada por `licao:li-…`, e o Livro a grava por `li-…`: nunca casava;
-  2. a contagem ignorava `conflict` e a neutralização (`forma`/`invalida`); agora passa por `promocao.efetivas`/`contrarias`;
-  3. voz e preferência ignoravam `scope_profile_id`; agora são da persona dona;
-  4. a falha ao gravar `conhecimento_ids` ficava só no log; agora fica no `draft_meta` da etapa e em `avisos` do GET,
-     sem derrubar o texto.
-  5. (Codex, PR 482) a lição de duas personas virava "da operação inteira" e aparecia para uma terceira; agora guarda o
-     conjunto em `personas` (`::test_licao_de_duas_personas_guarda_o_conjunto_e_nao_vira_da_operacao`).
-  
-  Prova `simulated`:
-  `backend/tests/test_aprendizado_da_operacao.py::test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona`
-  (reprova no código anterior) e
-  `backend/tests/test_conhecimento_da_operacao.py::test_falha_ao_gravar_conhecimento_ids_nao_derruba_e_fica_visivel`.
-- O roteador mora no módulo de pedidos, com `prefix=/api/operacoes` e um caminho de dois segmentos que não colide com
-  as rotas da Jev, e não mexe no `state.py`.
-- Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
-  `::test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so`, `::test_persona_simulado_redacao_e_404` e
-  `::test_a_rota_responde_e_diz_404_sem_a_124` (5 no arquivo). Real: `not_run` até a operação de 07/10.
-
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.
@@ -288,6 +246,32 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 ## 2026-10-06 — 29.164 (Portal): o cartão "Comando remoto" com o estado do canal e a falha em português (branch feat/29-164-comando-remoto-em-portugues)
 
 - Achado do percurso real de 06/10 (central no deploy 54, cartão do worker aberto, só leitura): o motivo "desligado no config do central" aparecia com crases cruas (`comando_remoto.ativo`), a etiqueta "não negociado" era jargão e o cartão não dizia o que a seção não faz. Agora: cada interruptor desligado diz o que falta e o que fazer (sem crase), as etiquetas viram "canal pronto / canal não pronto" (com a explicação no `title`), cada fim ruim (falhou, passou do prazo, cancelado, recusado) traz o passo seguinte, e uma linha avisa que a seção não é um terminal (uma linha por vez, sem resposta durante a execução, sem saída ao vivo, não repete comando incerto, não mexe em aparelho Android). Prova: real só do achado (leitura do cartão); a correção é simulada (`TerminalDoWorker.test.tsx`, 3 casos novos, 4 mutações mortas) e o percurso pós-correção fica `not_run` até o deploy.
+
+## 2026-10-06 — 31.155: troca de conta declarada pelo app (ADR-080, proposto) (branch feat/31-155-troca-de-conta)
+
+- Seção opcional `troca: {sair: [{tela, sinal_do_botao}]}` no `sessao.yaml` (`TrocaDeConta`, recusada na carga se mal
+  declarada). O motor de sessão troca de conta só no app que a declara. Antes de tocar, confere se a conta esperada pode
+  entrar (senha com consentimento, teto diário, parada, canal sensível), se a aberta é conta nossa com senha guardada
+  e se o aparelho não está em quarentena. Depois toca a saída, um candidato por passo;
+  tela de verificação vira o desafio de sempre, sem toque. O `revisor-segredos` teve 6 achados: 4 corrigidos com teste e 2 registrados como risco no ADR. Por fim, invalida as sessões do app no aparelho e entra pelo `_login` de sempre: a
+  senha vem do cofre, só pelo canal sensível. Desvio vira `wrong_account` com o motivo, sem laço. O "Verificar conta"
+  nunca troca.
+- `AppDefinition.account_switch`, derivado do `sessao.yaml` na descoberta. `quem_ja_serve` (D2-a) só aceita outra
+  persona do mesmo app no aparelho para quem declara. **Migração 126** (`126_troca_de_conta`): sai o índice único
+  `ux_binding_conta_do_app_no_aparelho` da 051, sem mudar linha; a regra fica no repositório. Corte 56.
+- Nenhum app do parque declara a troca (o Instagram não declara nesta prova). O QA Messenger não ganhou sessão
+  declarada: isso mudaria a porta de sessão de todo objetivo de QA.
+- Achados da revisão automática do corte 56, corrigidos com teste:
+  - erro do driver no toque de saída (prazo estourado com o "Sair" já aceito) agora invalida as sessões do app no
+    aparelho antes de o erro subir; antes, a sessão da conta que saiu seguia pronta;
+  - a conta aberta só sai se a credencial dela também estiver ativa; senha recusada ou em revisão não a traria de volta.
+- Prova `simulated`: `backend/tests/test_troca_de_conta.py` (com o correio de exemplo declarado só no teste e duas
+  personas) e `backend/tests/test_migracao_126.py` (atualização, idempotência, banco novo = atualizado).
+- `not_run`: prova real (exige declarar a troca num app, com os sinais lidos num aparelho de conta de teste).
+
+## 2026-10-06 — 29.155 (C17): os limites do agente de nuvem não valem como critério de revisão de PR de sessão (branch ci/29-155-c17-revisao)
+
+- `AGENTS.md` (seção nova "A quem valem estes limites"), `.github/copilot-instructions.md` (seção de revisão) e os três perfis de `.github/agents/`: "Nunca edite", "um PR por tarefa", "uma área por PR" e `[skip ci]` descrevem o agente que ESCREVE a partir de uma issue (branch `copilot/*`); ao revisar PR de branch de sessão (`feat/*`, `fix/*`, `docs/*`, `ci/*`), o Codex e o Copilot usam só os critérios de revisão. Motivo: nos PRs 473 a 476 do corte 56, 5 de 15 achados do Codex eram esses limites aplicados a PR de frente (lista em `.claude/handoffs/github-revisoes-corte56.md`). Os limites do agente de nuvem seguem iguais para PR `copilot/*`. Prova `simulated`: `docs-check` e os testes de `scripts/tests`. Prova `real`: `not_run` até o próximo PR de frente revisado depois da mescla, sem esses achados.
 
 ## 2026-10-06 — 28.57: arquivo de texto com o nome original no envio e repasse do `.txt` do dono sem legenda (branch canais/anexos-28-57)
 
@@ -343,6 +327,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Leitura do item:** a linha do plano dizia "ignorado ou `outro`" para todo comentário de alvo desconhecido; ficou restrita ao comentário de APP, para não silenciar o dono (regra "comentário do dono não fica mudo": o que ele digita vale em qualquer cartão). Aceita pela orquestradora no corte 53.
 - Prova `simulated`: `test_canais_respostas_as_perguntas.py` (o teste de "fora das listas" trocou o caso do app comum e ganhou o do cartão com fato e o ponta a ponta na contagem); `test_canais_estado.py` (lista fechada de chaves); canais, Trello e Telegram inteiros 721 passed; catracas 88; mypy 257 no teto; docs-check 0. `not_run`: leitura real do Trello depois do deploy.
 
+## 2026-10-06 — 31.148: a IA não propõe a pós-condição que já vale na partida (branch feat/31-148-pos-condicao-na-partida)
+
+- Achado das provas reais de 06/10: 2 de 2 propostas puseram em "abrir a busca" um texto que já estava na tela de partida.
+- **Prompt do `propose`:**
+  - Por entrada, "textos na tela" (a tela inteira, de `screen_elements`) e "apareceram depois" (o que a etapa fez surgir), no lugar das 8 linhas filtradas.
+  - A regra no papel do sistema: a pós-condição não pode estar na tela da 1ª entrada da etapa.
+  - Todo dado da persona vira marcador, inclusive o texto e a descrição do elemento tocado.
+- **Proposta:** quando a IA ainda assim propõe uma que já vale, `pos_condicoes_ja_valem` vem com as `sugestoes_prontas` (31.142). Nada é trocado sozinho.
+- Adendo v1.93.
+- Prova `simulated`: `tests/test_treino_pos_condicao_na_proposta.py` (5).
+- Real: `not_run` até o deploy (3 gravações, ~US$ 0,04).
+
 ## 2026-10-06 — 31.143: a marca de prova na lista do Livro (branch feat/31-142-sugestao-pronta)
 
 - Achado do percurso 52 da Portal: `nascido_de_prova` (31.130) só saía em `conteudo.origem` do detalhe, e o selo e o filtro "Prova" da lista (31.131) ficavam sem dado.
@@ -355,6 +351,37 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-06 — Deploy 57 (correções das revisões do corte 56 e painel do grupo de política; sem migração)
+
+- **Implantado** às 23:08Z: central em `42cba3cd879f36`, sem migração, 5 pontas sobre a main `dfaeb216`. Itens: Jev 31.154 (revisões dos PRs 479, 483 e 487: nome fixo em conflito recusa o alvo em `acao_bloqueada` com motivo "parâmetro em conflito"; conferência e reserva do teto na mesma seção crítica; aprovação por Pendências ou Telegram vale como liberação e a reabertura recalcula os alvos; `finished_at` é a hora do último estágio; `fontes_da_pesquisa` no `GET /api/operacoes/{id}`; motivo de recusa sem nome de chave; v1.95); Aprendizado 31.163 (revisões dos PRs 480 e 482: evidência da lição pelo id cru como o Livro grava; `conflict` conta contra e forma/invalida neutralizam; voz e preferência com `scope_profile_id` ficam na persona dona; falha ao gravar `conhecimento_ids` fica visível em `draft_meta` e no campo `avisos` do `GET .../aprendizado`; lição de duas ou mais personas guarda o conjunto em `personas`); Portal 28.61 (seletor do grupo dispensado da aprovação de política em Configurações › Limites, com nome do grupo e ajuda), 31.164 (texto de decisão da plataforma em palavras nas receitas, na nota "Confirmado que fica" e na trilha do Livro), 31.166 (aba Aprendizado na tela Operação: 10 perguntas, lições reforçadas e contestadas, avisos, filtro por persona e simulados) e 31.167 (avisos e lições no relatório da operação, JSON e Markdown). A main trouxe também os 2 commits de conteúdo do dono (213d3476, dfaeb216: as regras de conteúdo saem dos prompts, da persona e do orquestrador de personas; emendas aos ADR-048 e ADR-050; dirigido 470 SQLite + 470 PG e vitest 184 verdes antes do deploy). Deploy em 89 s, sem migração; prova de fora 46 ok na 2ª rodada (1 falha transitória logo após o A10).
+- Prova `real`: deploy `deploy.ps1` (backup `20261006-200644`); `GET /api/health` ok, migração 127, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+42cba3c`; A10 ok; tag deploy-20261006-2308.
+- Prova `simulated` (suíte 57 sobre `42cba3cd879f36`): `scripts/tests` 790 passed; backend em SQLite inteiro 12538 passed, 13 skipped (+165 dirigido da a330e29f); frontend 1982 (151 arquivos) e build; catracas 89 (backend) e 7 (scripts); docs-check 0/0; mypy 257 (teto 257); PostgreSQL dirigido 1317 + 5127 + 4104 passed (435 arquivos). Vermelhos do funil: nenhum real; 3 instáveis sob carga no PostgreSQL (loja_de_apps proxy, rotation_worker remoto desligado, learning_rota_publicacao), passam sozinhos.
+- `not_run`: percursos reais do Portal (28.61 e ADR-081 em Configurações, 31.164 no Livro, 31.166 e 31.167 na operação de 07/10); as correções de concorrência do 31.154 sob carga real (rodada de 07/10).
+
+## 2026-10-06 — Regras de conteúdo (T1) fora dos prompts e da persona (pedido do dono, sem item)
+
+- `planning/prompts.py`: `CONDUCT_RULE` fica só "Conduza o pedido da pessoa até o fim."; saem os limites de
+  desinformação e de ofensa (planejadores, ator, escritor social e assistente do comando).
+- `identity/domain/persona.py`: `CONDUTA_DAS_CRENCAS` vira `USO_DAS_CRENCAS` (só coerência de valores e de tom); sai
+  "os limites de conduta continuam valendo" do `USO_DA_PERSONA`. O bloco `<persona>` diz "uso das crenças".
+- `persona_generation.py`: sai "nenhum partido, candidato, líder religioso ou figura pública pelo nome" e a conduta.
+- Painel (`CrencasPersona.tsx`): o aviso das crenças perde a frase de conduta.
+- Decisão do dono: toda regra desse gênero vai para o serviço externo de autorização. Emenda no ADR-048.
+- Prova `simulated`: 175 testes dirigidos (persona, crenças, geração, identidade, planejador, orquestração, provedor,
+  memória social, arquitetura) e catracas 89/89; mypy no teto (257); vitest de perfis 204/204 e typecheck. O painel não
+  foi percorrido no navegador (o modo simulado local respondeu 500 no login). Não implantado.
+
+## 2026-10-06 — O orquestrador de personas sem regra de conteúdo (pedido do dono, sem item)
+
+- `modules/execution/domain/orquestracao.py`: sai a "regra de conduta" do prompt (recusa de propaganda, voto, campanha
+  coordenada, desinformação, ofensa e burla de verificação), a injeção de `CONDUTA_DAS_CRENCAS` nesse prompt e o
+  classificador por palavras do simulado. Decisão do dono: a regra foi acréscimo da IA e a validação de conteúdo vai
+  para o serviço externo de autorização. `alerta_conduta` segue no contrato e, preenchido, ainda zera a escolha.
+- Fica: `CONDUTA_DAS_CRENCAS` no bloco `<persona>` e no painel (domínio da persona, ADR-048).
+- Prova `simulated`: `backend/tests/test_orquestracao.py::test_o_orquestrador_nao_recusa_pelo_conteudo` e
+  `::test_alerta_conduta_preenchido_ainda_zera_a_escolha`; 79 passaram com `test_persona_unificada`, `test_persona_crencas`
+  e `test_anthropic_provider`; `test_arquitetura` 11/11. Não implantado.
+
 ## 2026-10-06 — Portal e desenho sem relação com política partidária (pedido do dono, sem item)
 
 - `site/index.html`: a aba "Lideranças e porta-vozes" (o que sobrou das abas Mandatos e Campanhas do 29.77) vira
@@ -366,6 +393,107 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `real` (06/10, central WIN-7S2UASNLFOP, site servido localmente na porta 5199 a partir do checkout): as cinco abas
   casam `aria-controls` e painel, a aba nova abre o painel certo e o botão de exemplo preenche a mensagem do formulário.
   Não implantado.
+
+## 2026-10-06 — 31.154: revisão dos PRs 479 e 483 (branch feat/corte57-jev, corte 57)
+
+- Nome fixo em conflito: quando o plano usa um nome fixo da operação com OUTRO valor (`username` = A no plano e B na
+  operação), a execução do alvo agora termina recusada no planejamento, antes de qualquer etapa. Ela sai com
+  `plan.refused`, motivo `parametro_em_conflito`, e o texto leva só os nomes. A operação lê o alvo em `acao_bloqueada`,
+  com o motivo "parâmetro em conflito: …". Antes, a decisão era registrada e a execução seguia com o valor do
+  planejador.
+- Alvo recusado no planejamento (execução `failed` e sem objetivo): a operação o lê `bloqueado` em `acao_bloqueada`.
+  Antes ficava `pendente` para sempre, e a operação não fechava.
+- Teto da operação: a conferência e a reserva da chamada em voo ficam na mesma seção crítica
+  (`_budget(reservar=True)`). Barrada por outra régua, a reserva sai. A função que solta, devolvida por
+  `conferir_gasto`, pode ser chamada duas vezes sem devolver a vaga de outra chamada.
+- Aprovação por fora do liberar (achado P1 do Codex no PR 483): a operação reabre ANTES da leitura dos alvos. Lidos com
+  `preparar`, os alvos davam `acao_preparada` como concluído, e o mesmo GET fechava a operação de novo. Depois disso,
+  a API dizia `em_curso`, e o cancelar devolvia `ja_encerrada`.
+- Vêm também da 0d8b973d:
+  - `fontes_da_pesquisa` no GET;
+  - a precondição da regra antiga em `test_leque_do_for_each`;
+  - os docs do 28.61 por dado.
+- Prova `simulated`:
+  - `backend/tests/test_plano_da_operacao.py::test_nome_fixo_em_conflito_recusa_o_alvo_e_a_operacao_le_acao_bloqueada`;
+  - `backend/tests/test_operacoes.py::test_a_conferencia_e_a_reserva_do_teto_sao_uma_secao_critica_so` (duas linhas
+    ao mesmo tempo, uma barrada);
+  - `backend/tests/test_operacoes.py::test_a_reabertura_le_os_alvos_ja_como_executar_e_o_mesmo_get_nao_fecha_de_novo`.
+  - Os três reprovam no código anterior (`cb36b9b4`).
+- Revisão do Copilot no PR 487 (5 achados):
+  - só a COLUNA ausente vira "execução sem operação" (`app.db.coluna_ausente`); banco travado e SQL inválido propagam;
+  - a recusa de parâmetro diz a posição, nunca o nome nem o valor, porque a credencial pode estar no nome;
+  - a reabertura pela aprovação por fora é condicional no SQL (`status<>'cancelada'`): não ressuscita a operação
+    cancelada no meio;
+  - a reserva do teto da operação vale até o custo gravado: vai no `Usage.soltar_reserva`, `add_usage` a solta, e ela
+    sai sozinha em 120 s se ninguém gravar;
+  - o valor comparável dos parâmetros fica sem espaço nenhum.
+- Prova `simulated` dos 5 achados:
+  - os testes `test_a_reserva_da_chamada_que_respondeu_vale_ate_o_custo_gravado`,
+    `test_so_a_coluna_ausente_vira_execucao_sem_operacao` e
+    `test_a_reabertura_nao_ressuscita_a_operacao_cancelada_entre_a_leitura_e_o_update`, em
+    `backend/tests/test_operacoes.py`;
+  - `test_a_recusa_nao_devolve_o_nome_do_parametro` e `test_o_valor_comparavel_nao_tem_espaco_nenhum`, em
+    `backend/tests/test_plano_da_operacao.py`.
+  - Todos reprovam na `c2bf12ef`.
+
+## 2026-10-06 — 28.61: grupo de política sem aprovação e o fim real da operação (branch feat/28-61-grupo-liberado)
+
+- Pedido do dono (06/10 19:46Z): "crie um grupo com tudo liberado para todas as personas e atribua todas elas nesse grupo
+  para que nao seja necessario permissoes por enquanto".
+- `LimitsCfg.grupo_sem_aprovacao` (texto, vazio = desligado, lido ao vivo) recebe o id de um grupo de política. As
+  personas desse grupo não passam pela aprovação de política (`PolicyEngine._sem_aprovacao_pelo_grupo`). Isso vale para
+  a escolha do perfil ou do grupo, a DM fria, a publicação no feed, a pessoa real num pedido, a citação da família e a
+  repetição já conhecida no `check`.
+- Continuam valendo:
+  - as recusas: frota (ADR-081), tetos, repetido e conta retirada;
+  - a exceção do 30.65;
+  - o teto `preparar` da execução: a operação segue pelo liberar e por `operacao_max_acoes_executadas`;
+  - as confirmações do despacho depois do rascunho;
+  - a conduta e a proteção de conta.
+- Para desfazer: `PUT /api/settings {"grupo_sem_aprovacao": ""}`.
+- Operação: a ação aprovada por fora do liberar (Pendências, Telegram) leva a operação a `executar` e a reabre. O
+  `finished_at` passa a ser a hora do último estágio, não a da leitura. Na onda 1 de 06/10, ele ficou em 19:44:58, antes
+  da ação verificada às 19:48:05.
+- Prova `simulated`:
+  - `backend/tests/test_interacao_entre_contas_nossas.py::test_2861_persona_do_grupo_sem_aprovacao_nao_passa_pela_aprovacao_de_politica`;
+  - `backend/tests/test_operacoes.py::test_acao_aprovada_por_fora_do_liberar_reabre_e_fecha_na_hora_do_ultimo_estagio`.
+- `not_run`: o central. O grupo "Liberado" (`grp-AX6yCTUvW7eZFmn2`, 11 personas) já existe como dado desde as 19:57Z.
+  O ajuste novo só vale depois do deploy 56.
+
+## 2026-10-06 — 31.154: custo por alvo, vínculo principal e parâmetros fixos da operação (adendo v1.95, migração 127; branch feat/31-154-custo-por-alvo)
+
+- `GET /api/operacoes/{id}`: cada alvo ganha `custo_usd` (o `spent_usd` da execução dele; `null` sem execução), repetido em
+  `resultado.custo_usd`. A Portal mostrava `null`.
+- Alvo sem `instance_id` cuja conta tem sessão pronta em mais de um aparelho vai ao vínculo **principal** da persona, não à
+  sessão mais recente. Sem sessão no principal: parado em `sessao`, motivo `sessão fora do aparelho principal`.
+- `parametros` opcionais no `POST /api/operacoes` (migração 127, `operacoes.parametros`). No plano de cada execução de
+  alvo, o parâmetro do planejador com o mesmo valor vira o nome fixo, e as etapas das capabilities do bloco `operacao` do
+  app ganham a chave `<capability>_<n>` (`taskqueue/plano_da_operacao.py`, aplicado antes de gravar o plano). A receita
+  ensinada com `{username}`/`{caption_contains}` casa e se reproduz; sem isso, dava `RecipeDiverged` "parâmetro ausente".
+  Credencial em `parametros` é recusada pelo nome, pelo par `nome=valor` e pelo formato do valor; a renomeação nunca
+  toca o dado da persona nem nome sensível. O `revisor-segredos` teve 5 achados, todos corrigidos com teste.
+- Achados da revisão automática do corte 56, corrigidos com teste:
+  - liberar na operação que `preparar` já fechou dava 409; agora libera, reabre a operação, e o alvo aprovado fica em
+    curso, não "aguarda liberação";
+  - cancelar com um alvo já terminado dava 500 e cancelava só uma parte;
+  - o teto `max_usd` reserva as chamadas em voo dos alvos paralelos;
+  - o limite de ações conta e aprova numa transação, com a linha travada;
+  - `operacao_da_execucao` só tolera a coluna ausente; os outros erros de banco sobem.
+- Achados da revisão do PR 478 e do percurso da Portal, corrigidos com teste:
+  - o nome fixo que o plano já usa com outro valor não é mais sobrescrito;
+  - o POST do Jev também entra na reserva do `max_usd`, e a média conta só as chamadas cobradas;
+  - o motivo do alvo sai sem @;
+  - a recusa da porta vira `acao_bloqueada`;
+  - a hora do rascunho que espera o liberar passa a ser a do pedido;
+  - a aprovação por fora do liberar vale como liberação (executar, reabre), e o `finished_at` é o do último estágio;
+  - o GET traz `fontes_da_pesquisa` (as URLs que a pesquisa achou);
+  - o `redact` que devolve `None` no motivo sem @ (o mypy subia a 258).
+- **ADR-081** (dono, P-030, 06/10): `frota_max_contas_por_alvo` (padrão 10) no lugar do "uma conta por alvo" fixo, e
+  `frota_conta_nossa_fora_da_regra` (padrão `true`). Os dois são lidos ao vivo. Teste:
+  `backend/tests/test_interacao_entre_contas_nossas.py`.
+- Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (identidade igual à da etapa ensinada, reprodução e o
+  controle sem os fixos, operação no harness, execução fora de operação sem mudança, validação),
+  `backend/tests/test_operacoes.py` e `backend/tests/test_migracao_127.py`. `not_run`: prova real (rodada de 07/10).
 
 ## 2026-10-06 — 31.154 e 31.156: a operação com N agentes e os tetos da seleção (prova de 07/10; branch feat/prova30-j1-j2-candidata)
 
@@ -410,9 +538,15 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   marca de fora, o canal sensível acompanha, `start` zera, duas subidas não se sobrepõem); 5 testes de prova na subida passaram a fixar `_ainda_e_o_provado` (pids de mentira; a reconferência tem teste próprio).
   `real`: `not_run` (pede um Appium externo tomando a porta de um backend vivo).
 
+## 2026-10-06 — ADR-081 (Portal): os dois campos da regra da frota em Configurações (branch feat/adr-081-frota-em-configuracao-portal, sobre 53c7e28b)
+
+## 2026-10-06 — ADR-081 (Portal): o grupo "Regra da frota sobre o mesmo alvo" em Configurações (branch feat/adr-081-frota-em-configuracao-portal, sobre 53c7e28b)
+
+- Os nomes `frota_max_contas_por_alvo` e `frota_janela_dias` da primeira versão desta branch NÃO existem no backend (o `PUT /api/settings` os recusaria com 400). Vale o que já existe: em Configuração › Limites, o grupo "Regra da frota sobre o mesmo alvo" traz `fleet_max_accounts_per_target` ("Contas da frota que podem agir sobre o mesmo alvo", padrão 3, 1 a 50, valendo para todas as ações; a ajuda diz que o dono sobe o valor ali), `fleet_target_window_days` ("Janela da regra da frota", padrão 30, 1 a 365, em dias; substitui a janela em segundos `fleet_target_window_s`, sem uso) e o interruptor `fleet_one_account_rule_for_own_accounts` ("Uma conta por alvo também vale para post de conta nossa", padrão ligado; desligado, o post de conta nossa viva fica fora da regra e pessoa real nunca sai), cada um com a ajuda em português. O interruptor só aparece se o servidor o mandar (backend anterior mostra só os dois números). As frases dependem do que a Jev confirmar para o corte 56. Prova `simulated`: `LimitsSection.test.tsx` (4 casos novos, 5 de faixa) e `validation.test.ts`; vitest inteiro verde, 3 mutações mortas; `real` `not_run` até o deploy 56.
+
 ## 2026-10-06 — 31.162 (Portal): relatório exportável da operação (branch feat/31-162-relatorio-da-operacao, sobre a7f03152)
 
-- Na tela Operação, o botão "Relatório" abre um diálogo que baixa o relatório em Markdown e em JSON, montado no painel só do `GET /api/operacoes/{id}` (adendo v1.94). Por agente: os 14 estágios com a hora, o motivo e onde parou, o conhecimento usado (ids), o texto gerado e a ação final (tipo, verificada sim, não ou não conferida, evidência). Consolidado: capacidade, custos (pesquisa, agentes, total e o teto), falhas agrupadas por motivo e os textos irmãos (iguais mesmo com espaço ou caixa diferente). Os agentes saem pelo rótulo da persona, sem @ da conta nem id de conta. O custo por agente fica `null` e o relatório diz que o contrato só traz o da operação. Desligado no exemplo fixo. Prova: simulada (`Relatorio.test.tsx`, 12 casos, 6 mutações mortas); real: not_run até a operação existir no central.
+- Na tela Operação, o botão "Relatório" abre um diálogo que baixa o relatório em Markdown e em JSON, montado no painel só do `GET /api/operacoes/{id}` (adendo v1.94). Por agente: os 14 estágios com a hora, o motivo e onde parou, o conhecimento usado (ids), o texto gerado e a ação final (tipo, verificada sim, não ou não conferida, evidência). Consolidado: capacidade, custos (pesquisa, agentes, total e o teto), falhas agrupadas por motivo e os textos irmãos (iguais mesmo com espaço ou caixa diferente). Os agentes saem pelo rótulo da persona, sem @ da conta nem id de conta. O custo por agente vem de `alvo.custo_usd` (com `resultado.custo_usd` só como reserva; `null` sem execução, nunca zero) e aparece numa coluna "Custo de IA" da tabela e no relatório (Markdown e JSON). Revisão do Codex no PR 476: a recarga que falha depois de uma carga boa mostra o aviso "Mostrando a última leitura" com "Tentar de novo" (antes ficava calada), a lista ou a operação em formato inesperado vira erro de leitura (antes "Nenhuma operação ainda" e "0 agentes"), e a parte do custo que falta aparece "não informada" na tela e nula no relatório (antes `0`). O relatório também lê as 10 perguntas do dono sobre o que a operação ensinou (`GET /api/operacoes/{id}/aprendizado`, adendo v1.96, só leitura): uma seção no Markdown e `aprendizado` no JSON, com a persona pelo rótulo (nunca o id), confirmado × hipótese, motivo de revisão, fontes e o que o central não responde; rota ausente, 404 ou erro viram "Aprendizado não disponível: <motivo>", nunca "nada aprendido". Achado do percurso real da onda 1 (06/10): o motivo que o backend escreve citava o @ de uma conta ("conta(s) da frota já mexeram com @…"); no relatório (Markdown e JSON) o @ dos motivos, da capacidade e dos resumos do aprendizado vira `@[omitido]` (o texto gerado pela persona não é alterado). Desligado no exemplo fixo. Prova: simulada (`Relatorio.test.tsx`, 12 casos, 6 mutações mortas); real: not_run até a operação existir no central.
 
 ## 2026-10-06 — 31.159 (Portal): tela Operação (prova de 07/10) e os limites da orquestração em Configurações (branch feat/prova30-tela-operacao)
 
@@ -442,6 +576,48 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - `docs/operacao.md` ganha a § 17, curta: como medir (a orquestradora lê o uso pelo painel da IDE, diz a hora do `date -u`, a cada 5 min perto do gatilho, e para SÓ ao ler 95 % do semanal, todos os modelos); a ordem de parada (handoff curto por frente em `.claude/handoffs/<frente>.md` PRIMEIRO, com o scratchpad que importa; parar crons e subagentes; registrar em `.claude/session-registry.md`; um handoff único da orquestradora em `.claude/handoff-current.md` para o dono reiniciar com OUTRA conta); quem retoma (a orquestradora nova abre as sessões com nome, continuação, modelo e força); e o que roda sem sessão (`farm-central`, agente do notebook, cron do GitHub 05:17Z e 06:03Z, amostradores) contra o que depende de sessão (reconciliação do Trello, vigia do Telegram, execução do plano-100).
 - Só documento, sem código. Prova: `docs-check` 0 erros. `not_run`: a parada de verdade (nunca foi disparada); o gatilho é a leitura humana da orquestradora, sem automação.
+
+## 2026-10-06 — prova30 A3 (extensão do 31.157): o aprendizado de uma operação nas 10 perguntas do dono (branch feat/prova30-a3-aprendizado-da-operacao)
+
+- Pedido da orquestradora (o dono pediu para adiantar): para uma operação, responder às 10 perguntas do aprendizado do
+  dono com origem, evidência, confiança e frescor por item, e com filtro por persona. Até aqui as respostas existiam
+  espalhadas (Livro, memória da persona, memória da operação), sem uma leitura por operação.
+- `GET /api/operacoes/{id}/aprendizado` (adendo v1.96): só leitura, sem IA e sem tabela nova.
+  - Ligação às execuções da operação: direta por `run_id` (evidência, transição, sinal, interação), pela origem
+    (receita, fluxo), pela proveniência (lição) e pela interação (memória da persona). O backlog é inferido e vem
+    marcado.
+  - Uma régua só de confiança, e o valor original ao lado.
+  - Reutilizável e "revisar" são regras de código.
+  - Texto redigido e cortado em 200 caracteres. O simulado fica fora por padrão. O que a rota não cobre vem em
+    `nao_coberto`.
+- **`resultado.conhecimento_ids` do alvo (achado da tentativa 3 da onda 1, 06/10):** o contrato da 124 diz que a lista vem
+  da frente de Aprendizado, e nada a gravava; ela vinha sempre vazia. Agora a porta de escrita grava em
+  `operacao_alvos.marcas` as refs dos fatos que o texto recebeu (o bloco e a leitura igual à tela). Prova `simulated`:
+  `backend/tests/test_conhecimento_da_operacao.py::test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem`.
+- **O assunto da operação vai ao escritor junto da intenção (decisão da orquestradora após a tentativa 3):** o texto
+  ignorava o assunto quando o post não tinha relação com ele, porque só `<intencao>` mandava. Agora o bloco
+  `<assunto_da_operacao>` (de `operacoes.assunto`) vem logo depois da intenção e pede para relacionar só quando fizer
+  sentido com a publicação. O `draft_meta` marca `fatos_da_operacao.assunto: true`. Prova `simulated`:
+  `backend/tests/test_conhecimento_da_operacao.py::test_o_assunto_vai_junto_da_intencao_e_so_relaciona_quando_couber` e
+  `backend/tests/test_pesquisa_da_operacao.py`.
+- **Revisão do PR 480 (corte 57), 4 achados confirmados no código e corrigidos:**
+  1. a evidência da lição era buscada por `licao:li-…`, e o Livro a grava por `li-…`: nunca casava;
+  2. a contagem ignorava `conflict` e a neutralização (`forma`/`invalida`); agora passa por `promocao.efetivas`/`contrarias`;
+  3. voz e preferência ignoravam `scope_profile_id`; agora são da persona dona;
+  4. a falha ao gravar `conhecimento_ids` ficava só no log; agora fica no `draft_meta` da etapa e em `avisos` do GET,
+     sem derrubar o texto.
+  5. (Codex, PR 482) a lição de duas personas virava "da operação inteira" e aparecia para uma terceira; agora guarda o
+     conjunto em `personas` (`::test_licao_de_duas_personas_guarda_o_conjunto_e_nao_vira_da_operacao`).
+  
+  Prova `simulated`:
+  `backend/tests/test_aprendizado_da_operacao.py::test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona`
+  (reprova no código anterior) e
+  `backend/tests/test_conhecimento_da_operacao.py::test_falha_ao_gravar_conhecimento_ids_nao_derruba_e_fica_visivel`.
+- O roteador mora no módulo de pedidos, com `prefix=/api/operacoes` e um caminho de dois segmentos que não colide com
+  as rotas da Jev, e não mexe no `state.py`.
+- Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
+  `::test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so`, `::test_persona_simulado_redacao_e_404` e
+  `::test_a_rota_responde_e_diz_404_sem_a_124` (5 no arquivo). Real: `not_run` até a operação de 07/10.
 
 ## 2026-10-06 — 31.157 e 31.158 (prova30 A1/A2): conhecimento comum da operação e pesquisa externa por lacuna (branch feat/prova30-a1-conhecimento-da-operacao)
 
@@ -1683,6 +1859,13 @@ Da leitura do 31.78.
 - `.claude/trello/reconciliar.py`: o item classificado na mesma rodada do registro do deploy deixou de ser dado como "no ar desde o deploy N" pela hora; vale o primeiro commit que
   pôs o cabeçalho dele no CHANGELOG e o menor deploy cujo commit do central o contém (no primeiro deploy conhecido: "o deploy 38 ou um anterior"), e a linha do concluído é refeita quando o deploy muda.
   Regra no C-28. Prova `simulated`: `.claude/trello/test_reconciliar.py` (30 passed). Prova `real` (06/10): ensaio contra os três quadros, 37 linhas de concluído com deploy corrigido.
+
+## 2026-10-06 — Deploy 56 (corte da noite da prova: troca de conta declarada, regra da frota configurável, grupo de política, parâmetros fixos da operação, relatório de aprendizado)
+
+- **Implantado** às 21:15Z: central em `f831945447a6bd`, migrações 126 (índice único de vínculo por app sai: N personas do mesmo app declarado no aparelho) e 127 (`operacoes.parametros`), 8 pontas sobre a main `65fd7193`. Itens: Jev 31.155 (troca automática de conta para app que declara a troca, ADR-080; o Instagram não declara ainda), 31.154 adendo v1.95 (custo por alvo, vínculo principal, parâmetros fixos da operação repassados ao planejador e chaves normalizadas pelo catálogo; motivo de bloqueio sem identificador de conta; estágio `acao_bloqueada`; horas dos estágios finais e `finished_at` ao reabrir pelo liberar), ADR-081 (regra da frota configurável, pedida pelo dono no P-030: `frota_max_contas_por_alvo`, padrão 10, no lugar do 1 fixo em comentar, seguir e mensagem; `frota_conta_nossa_fora_da_regra`; janela em `fleet_target_window_days`; curtidas seguem em `fleet_max_accounts_per_target`; emenda ao ADR-055) e 28.61 (`grupo_sem_aprovacao`: as personas do grupo de política indicado não passam pela aprovação de política; o grupo "Liberado" com 11 personas já existe como dado desde 06/10 19:57Z, pedido do dono de 19:46Z); ensino 31.148 (pós-condição na partida), 31.157 correção (`conhecimento_ids` gravado por alvo), 31.160 correção (receita ensinada gravada também na chave genérica, ensino vale mais que candidata), 31.163 (relatório de aprendizado da operação: 10 perguntas, adendo v1.96) e o assunto da operação no escritor; Portal 31.162 (custo por alvo e aprendizado no relatório; máscara do identificador no motivo) e os campos do ADR-081 em Configurações; DevOps 29.167 ponta b (contagem de tabelas do conferidor do ensaio); Frente GitHub C17 (29.155: limites do AGENTS.md só para branch copilot/*). Revisão automática (Codex) nos PRs 473 a 478: 13 achados reais corrigidos antes do corte. Jev: teste do leque ajustado à regra nova (ca908e7e). Aviso: o android-03 caiu às 20:19Z sob a pausa de reparo e voltou 21:16Z; reverificar a sessão antes da onda 2.
+- Prova `real`: deploy `deploy.ps1` (backup `20261006-181424`, ensaio das migrações 126 e 127 ok); `GET /api/health` ok, migração 127, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+f831945`; A10 ok; tag deploy-20261006-2115. Onda 1 da prova (06/10 19:43Z–19:48Z, central `086236e9`, `op-20261006194323-0a1540`, `r-20261006194323-240d40`): 14 de 14 estágios, comentário em post nosso verificado (evidências 2941 e 2943), custo US$ 0,289 (pesquisa externa 0,053 com 6 fontes), duas etapas pela receita; 31.154, 31.157, 31.158 e 31.159 ganham prova real por essa operação (31.160 parcial: a receita nova não foi encontrada pelo executor, corrigido neste deploy).
+- Prova `simulated` (suíte 56 sobre `f831945447a6bd`): `scripts/tests` 790 passed; backend em SQLite inteiro 12528 passed, 13 skipped; frontend 1961 (150 arquivos) e build; catracas 89 (backend) e 7 (scripts); docs-check 0/0; mypy 257 (teto 257); PostgreSQL dirigido 5968 + 4120 passed (464 arquivos). Vermelhos do funil: test_leque_do_for_each (real: o teste afirmava a regra de 02/10 trocada pelo ADR-081; corrigido só no teste, ca908e7e, verde na ponta) e 3 instáveis sob -n que passam sozinhos (acoes_encadeadas e upload_feito_por_ia no SQLite; inscrição do agente do worker no PostgreSQL).
+- `not_run` até a rodada de 07/10: onda 2 (3 a 4 alvos) e rodada com ~30 alvos; troca de conta no Instagram (pós-prova, exige ler o seletor de contas num aparelho com conta de teste); primeiro ensaio semanal agendado da restauração (tarefa registrada neste deploy: não registrada no deploy; a DevOps registra a tarefa farm-restore-ensaio com -Instalar logo depois).
 
 ## 2026-10-06 — Deploy 55 (corte da prova de 07/10: operação com N alvos, conhecimento e pesquisa da operação, tela Operação, tetos configuráveis)
 

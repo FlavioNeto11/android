@@ -341,10 +341,11 @@ class PolicyEngine:
     # ------------------------------------------------------------------ coordenação de frota (achado #114, ADR-055)
     @staticmethod
     def teto_de_contas(cap: Capability, settings: object) -> int:
-        """Quantas contas da frota podem mexer com a mesma pessoa nesta ação: 1 em seguir, mensagem e comentário
-        (regra do dono, ADR-055); o teto configurado nas curtidas."""
+        """Quantas contas da frota podem mexer com a mesma pessoa nesta ação: em seguir, mensagem e comentário,
+        `frota_max_contas_por_alvo` (ADR-081, emenda ao ADR-055; era 1 fixo, e 1 continua sendo o valor quando a
+        configuração não o traz); nas curtidas, `fleet_max_accounts_per_target`."""
         if cap.limit_bucket in UMA_CONTA_POR_ALVO:
-            return 1
+            return max(1, int(getattr(settings, "frota_max_contas_por_alvo", 1) or 1))
         return max(1, int(getattr(settings, "fleet_max_accounts_per_target", 1) or 1))
 
     def _fleet_gate(self, profile_id: str, cap: Capability, counterparty: str | None,
@@ -392,11 +393,14 @@ class PolicyEngine:
         # 30.65: a exceção de uso único, criada por pessoa, tira só ESTA recusa; quem a usa (`excecoes_usadas`) passa
         # a etapa por aprovação. O espaçamento abaixo e as demais regras do `check` continuam valendo. Só entre contas
         # nossas vivas: a rota já recusa outro alvo, e a porta não confia só nisso.
+        # ADR-081: com `frota_conta_nossa_fora_da_regra`, o alvo que é conta nossa VIVA não entra na contagem de contas
+        # por alvo (e então não precisa de exceção). Pessoa real sempre entra. Sem a configuração, a regra vale (ADR-055).
+        fora_da_regra = nossa_viva and bool(getattr(s, "frota_conta_nossa_fora_da_regra", False))
         excecao = (ExcecoesDePolitica(self.repo.db).ativa_para(profile_id, alvo, cap.key, step_id)
-                   if outras >= teto and excecoes_usadas is not None and nossa_viva else None)
+                   if outras >= teto and excecoes_usadas is not None and nossa_viva and not fora_da_regra else None)
         if excecao is not None and excecoes_usadas is not None:
             excecoes_usadas.append(excecao)
-        elif outras >= teto:
+        elif outras >= teto and not fora_da_regra:
             regra = ("uma conta por alvo" if teto == 1 else f"no máximo {teto} contas por alvo")
             return (f"{outras} outra(s) conta(s) da frota já mexeram com {alvo} nos últimos {dias} dias ou têm pedido "
                     f"em aberto para ele; em {_ROTULO_DO_BALDE.get(cap.limit_bucket, cap.limit_bucket)} vale {regra} "
@@ -429,6 +433,19 @@ class PolicyEngine:
         return (f"o alvo é uma conta nossa: ritmo baixo entre contas da frota, no mínimo {espera}s desde o último gesto com "
                 "efeito desta conta (ADR-050, emenda de 02/10)", to_iso(livre),
                 "Espere o horário indicado: uma interação por vez entre contas nossas, nada em lote nem em laço.")
+
+    def _sem_aprovacao_pelo_grupo(self, profile_id: str, politica: str, nota: str) -> tuple[str, str]:
+        """28.61: a persona do grupo de `LimitsCfg.grupo_sem_aprovacao` não passa pela aprovação de POLÍTICA. Só troca
+        `approval_required` por `autonomous`: recusa nenhuma passa (quem chama já devolveu as recusas), e a exceção do
+        30.65 fica de fora (ela é aprovação por desenho). O porquê da troca fica no `reason`, que vai à execução."""
+        if politica != "approval_required" or self._settings is None:
+            return politica, nota
+        grupo = str(getattr(self._settings(), "grupo_sem_aprovacao", "") or "").strip()
+        linha = self.repo.profile_row(profile_id) if grupo else None
+        if linha is None or linha["policy_group_id"] != grupo:
+            return politica, nota
+        dispensa = "aprovação dispensada: a persona está no grupo de política sem aprovação (28.61)"
+        return "autonomous", "; ".join(t for t in (nota, dispensa) if t)
 
     def tem_conversa(self, profile_id: str, counterparty: str | None, app_id: str | None = None) -> bool:
         """A pessoa já escreveu a ESTA conta por mensagem direta? É o que separa responder de puxar conversa (DM fria).
@@ -730,6 +747,7 @@ class PolicyEngine:
                 politica = "approval_required"
             nota = "; ".join(t for t in (nota, citada) if t)
         if not cap.side_effect or not cap.limit_bucket:
+            politica, nota = self._sem_aprovacao_pelo_grupo(profile_id, politica, nota)
             return Verdict(policy=politica, needs_approval=politica == "approval_required", reason=nota)
 
         agora = now()
@@ -814,6 +832,8 @@ class PolicyEngine:
             if livre > agora:
                 return Verdict(allowed=False, policy=politica, counts=contagem, retry_at=to_iso(livre),
                                reason=f"intervalo mínimo de {espera}s entre ações com efeito ainda não passou")
+        if excecao is None:
+            politica, nota = self._sem_aprovacao_pelo_grupo(profile_id, politica, nota)
         # `reason` num veredito que LIBERA é o porquê da aprovação exigida (a DM fria): quem abre o pedido o mostra.
         return Verdict(policy=politica, needs_approval=politica == "approval_required", counts=contagem,
                        reason=nota, excecao=excecao.id if excecao is not None else None)

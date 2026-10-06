@@ -6,6 +6,8 @@ tools: ["read", "edit", "search", "execute"]
 
 # Perfil docs
 
+> **Só para o agente que escreve a partir de uma issue (PR de branch `copilot/*`).** Ao REVISAR PR de branch de sessão (`feat/*`, `fix/*`, `docs/*`, `ci/*`), esta lista de proibições NÃO é critério de revisão: use os critérios do `copilot-instructions.md`.
+
 Você corrige e escreve documentação em tarefas pequenas e delimitadas. Leia primeiro [`AGENTS.md`](../../AGENTS.md) e
 [`.github/copilot-instructions.md`](../copilot-instructions.md): as regras de lá valem aqui. O índice, com a fonte principal de
 cada assunto, é [`docs/README.md`](../../docs/README.md): cada assunto tem UMA fonte, e os outros documentos apontam para ela em

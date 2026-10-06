@@ -46,6 +46,8 @@ class EtapaLida:
     tem_texto: bool                 # o rascunho fechou (`bindings.content`)
     verificada: bool                # `result.verified`
     pedido_de_aprovacao: str | None  # status do pedido (`pending`, `approved`…), quando há
+    #: Quando o pedido de aprovação nasceu: é a hora do rascunho da etapa que ainda não começou (espera o liberar).
+    pedido_em: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +66,12 @@ class FatosDoAlvo:
     estagio_por_capability: Mapping[str, str] = field(default_factory=dict)
     acao_final: str = "preparar"
     criado_em: str = ""
+    #: `objectives.blocked_kind`: `policy` = uma porta (frota, conduta, teto) RECUSOU a etapa, antes de ela rodar.
+    objetivo_bloqueio: str | None = None
+    #: A execução terminou SEM objetivo (recusada no planejamento: parâmetro em conflito, teto observar, fora do
+    #: catálogo): o motivo e a hora do fim. Sem isto o alvo ficava `pendente` para sempre e a operação não fechava.
+    recusa_no_plano: str | None = None
+    recusa_em: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,6 +100,11 @@ def derivar(f: FatosDoAlvo) -> Leitura:
                        parou_em=f.parada_na_criacao)
     for conferido in ("conta", "sessao"):
         alcancados[conferido] = f.criado_em
+    if f.objetivo_status is None and f.recusa_no_plano:
+        # Nada rodou no aparelho: a ação final foi barrada antes de existir etapa.
+        alcancados["acao_bloqueada"] = f.recusa_em or f.criado_em
+        return Leitura(estagio="acao_bloqueada", estado="bloqueado", motivo=f.recusa_no_plano,
+                       estagios=_em_ordem(alcancados, f.abertura), parou_em="acao_bloqueada")
     if f.objetivo_status is None:
         return Leitura(estagio=_ultimo(alcancados, f.abertura), estado="pendente", motivo=None,
                        estagios=_em_ordem(alcancados, f.abertura))
@@ -108,7 +121,7 @@ def derivar(f: FatosDoAlvo) -> Leitura:
             alcancados[estagio] = e.terminou_em
         if not e.side_effect:
             continue
-        hora = e.terminou_em or e.comecou_em or f.objetivo_comecou_em or f.criado_em
+        hora = e.terminou_em or e.comecou_em or e.pedido_em or f.objetivo_comecou_em or f.criado_em
         if e.tem_texto:
             alcancados["resposta_gerada"] = hora
         if e.tem_texto and (e.pedido_de_aprovacao is not None or e.status in ("running", "succeeded", "failed")):
@@ -122,6 +135,11 @@ def derivar(f: FatosDoAlvo) -> Leitura:
     for estagio, hora in f.marcas.items():
         if estagio in ESTAGIOS_MARCAVEIS:
             alcancados.setdefault(estagio, hora)
+    if (efeito_bloqueado is None and f.objetivo_bloqueio == "policy" and "acao_executada" not in alcancados
+            and any(e.side_effect and e.status not in ("succeeded", "running") for e in f.etapas)):
+        # A porta recusou a ação final antes de ela rodar (a regra da frota, por exemplo): recusada não é preparada.
+        # Sem isto o alvo ficava no último estágio de navegação, com "parou em acao_preparada".
+        efeito_bloqueado = "recusada pela política"
     if efeito_bloqueado is not None:
         alcancados.pop("acao_executada", None)
         alcancados["acao_bloqueada"] = max(alcancados.values())

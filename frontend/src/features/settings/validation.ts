@@ -4,9 +4,11 @@ import type { AppConfigInput, Settings } from '../../api/types';
 
 // `-?`: sem ele, uma chave opcional de `Settings` (v0.20: `preview_mode`) poria `undefined` na união de chaves.
 /** Chaves numéricas de `Settings` (todas, menos os interruptores e as escolhas). */
-export type NumericSettingKey = { [K in keyof Settings]-?: Settings[K] extends number ? K : never }[keyof Settings];
+export type NumericSettingKey = { [K in keyof Settings]-?: NonNullable<Settings[K]> extends number ? K : never }[keyof Settings];
 /** Chaves booleanas de `Settings` (v0.2: `auto_start_devices`). */
-export type BooleanSettingKey = { [K in keyof Settings]-?: Settings[K] extends boolean ? K : never }[keyof Settings];
+export type BooleanSettingKey = { [K in keyof Settings]-?: NonNullable<Settings[K]> extends boolean ? K : never }[keyof Settings];
+/** Escolha de um grupo de política pelo id (28.61: `grupo_sem_aprovacao`; texto no backend, id vazio = desligado). */
+export type GroupSettingKey = 'grupo_sem_aprovacao';
 /** Escolhas entre valores nomeados (v0.20: `preview_mode`). */
 export type ChoiceSettingKey = 'preview_mode';
 
@@ -27,6 +29,13 @@ export interface ToggleField {
   hint: string;
 }
 
+/** Escolha de um grupo de política: a tela lista os grupos pelo nome, mas o que vai ao servidor é o id. */
+export interface GroupPickField {
+  key: GroupSettingKey;
+  label: string;
+  hint: string;
+}
+
 /** Escolha entre poucos valores nomeados, com o padrão dito no rótulo da opção. */
 export interface ChoiceField {
   key: ChoiceSettingKey;
@@ -38,12 +47,13 @@ export interface ChoiceField {
 export interface LimitGroup {
   /** Identifica grupos que ganham conteúdo extra na tela (ex.: a linha de recursos do backend no rodízio). */
   id?: 'rotation' | 'capture';
-  /** O grupo só mostra os campos que o servidor manda (backend anterior à mudança que os criou não manda). */
+  /** O grupo só mostra os campos e os interruptores que o servidor manda (backend anterior à mudança que os criou não manda). */
   soSeOServidorManda?: boolean;
   title: string;
   description: string;
   toggles?: ToggleField[];
   choices?: ChoiceField[];
+  grupos?: GroupPickField[];
   fields: LimitField[];
 }
 
@@ -152,14 +162,44 @@ export const LIMIT_GROUPS: LimitGroup[] = [
     ],
   },
   {
+    soSeOServidorManda: true,
+    title: 'Regra da frota sobre o mesmo alvo',
+    description: 'Quantas contas nossas podem agir sobre o mesmo perfil e por quantos dias a regra lembra disso (ADR-055 e ADR-081). Vale na hora, sem reiniciar.',
+    toggles: [
+      {
+        key: 'frota_conta_nossa_fora_da_regra',
+        label: 'Alvo que é conta nossa fica fora da regra',
+        hint: 'Ligado (padrão): quando o alvo é uma conta nossa ativa, ela não entra na contagem de contas (várias contas nossas podem comentar no mesmo post nosso). Desligado: conta nossa conta como qualquer perfil. Pessoa real sempre entra.',
+      },
+    ],
+    fields: [
+      int('frota_max_contas_por_alvo', 'Contas da frota que podem agir sobre o mesmo alvo', 'contas',
+         'Quantas contas diferentes da frota podem seguir, mandar mensagem ou comentar para a mesma pessoa ou perfil dentro da janela; passando disso, a próxima é recusada. Era 1. As curtidas têm teto próprio, logo abaixo. Padrão 10; vai de 1 a 64.', 1, 64),
+      int('fleet_max_accounts_per_target', 'Contas da frota que podem curtir o mesmo alvo', 'contas',
+         'Só para curtidas: acima disso, a próxima conta que quiser curtir o mesmo perfil é recusada. Padrão 3; vai de 1 a 50.', 1, 50),
+      int('fleet_target_window_days', 'Janela da regra da frota', 'dias',
+         'Por quantos dias a ação de outra conta sobre o mesmo perfil conta para a regra (o "nos últimos 30 dias" do motivo de parada). Padrão 30; vai de 1 a 365.', 1, 365),
+    ],
+  },
+  {
+    soSeOServidorManda: true,
+    title: 'Aprovação de política',
+    description: 'Por padrão, a ação de uma persona que a política deixa sob aprovação espera o dono. Aqui um grupo de política fica dispensado dessa espera (28.61); vale na hora, sem reiniciar.',
+    grupos: [
+      {
+        key: 'grupo_sem_aprovacao',
+        label: 'Grupo dispensado da aprovação de política',
+        hint: 'As personas desse grupo não passam pela aprovação de política; recusas, conduta, proteção de conta e tetos continuam. Em “Nenhum” a regra fica desligada.',
+      },
+    ],
+    fields: [],
+  },
+  {
     title: 'Sinais e limites do Instagram',
     description: 'Quando parar de insistir sozinho e como a frota se coordena sobre o mesmo alvo (item 8.3).',
     fields: [
       int('session_unknown_retry_cap', 'Reobservações antes de pedir uma pessoa', 'tentativas',
          'Tela não reconhecida repetidas vezes seguidas vira "precisa de pessoa" em vez de insistir a cada tick.', 1, 20),
-      int('fleet_max_accounts_per_target', 'Contas da frota sobre o mesmo alvo', 'contas',
-         'Acima disso, a próxima conta que tentar mexer com o mesmo @usuário espera.', 1, 50),
-      int('fleet_target_window_s', 'Janela da coordenação de frota', 'segundos', '', 60, 86_400),
       int('fleet_min_spacing_between_accounts_s', 'Espaçamento mínimo entre contas no mesmo alvo', 'segundos', '', 0, 3600),
       int('fleet_spacing_jitter_s', 'Variação aleatória do espaçamento', 'segundos',
          'Soma ao espaçamento mínimo, para não virar um padrão regular.', 0, 3600),
@@ -170,6 +210,7 @@ export const LIMIT_GROUPS: LimitGroup[] = [
 export const ALL_LIMIT_FIELDS: LimitField[] = LIMIT_GROUPS.flatMap((g) => g.fields);
 export const ALL_TOGGLE_FIELDS: ToggleField[] = LIMIT_GROUPS.flatMap((g) => g.toggles ?? []);
 export const ALL_CHOICE_FIELDS: ChoiceField[] = LIMIT_GROUPS.flatMap((g) => g.choices ?? []);
+export const ALL_GROUP_FIELDS: GroupPickField[] = LIMIT_GROUPS.flatMap((g) => g.grupos ?? []);
 
 /** Aceita vírgula decimal ("0,5"). Devolve NaN se não for número. */
 export function parseNumber(text: string): number {
@@ -209,7 +250,7 @@ export function crossValidate(values: Partial<Record<NumericSettingKey, number>>
 
 /** Rascunho do formulário: texto para os números (como digitado), booleano para os interruptores e o valor da escolha. */
 export type LimitDrafts = Partial<Record<NumericSettingKey, string>> & Partial<Record<BooleanSettingKey, boolean>>
-  & Partial<{ [K in ChoiceSettingKey]: NonNullable<Settings[K]> }>;
+  & Partial<{ [K in ChoiceSettingKey]: NonNullable<Settings[K]> }> & Partial<Record<GroupSettingKey, string>>;
 
 export interface LimitsFormState {
   errors: Partial<Record<NumericSettingKey, string>>;
@@ -261,6 +302,13 @@ export function buildSettingsPatch(settings: Settings, drafts: LimitDrafts): Lim
     if (draft === undefined || draft === settings[c.key] || !c.options.some((o) => o.value === draft)) continue;
     dirtyCount += 1;
     patch[c.key] = draft;
+  }
+
+  for (const g of ALL_GROUP_FIELDS) {
+    const draft = drafts[g.key];
+    if (draft === undefined || draft === (settings[g.key] ?? '')) continue;
+    dirtyCount += 1;
+    patch[g.key] = draft;
   }
 
   // Erros do próprio campo têm prioridade sobre os cruzados.

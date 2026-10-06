@@ -70,6 +70,10 @@ class AppDefinition:
     #: vazio = o alvo deste app só tem os estágios que não dependem do app (o nome do app nunca fica no código).
     operation_opening: str = "app_aberto"
     operation_stages: tuple[tuple[str, str], ...] = ()
+    #: O app declara como sair da conta aberta (`troca` no `sessao.yaml`, 31.155/ADR-080): o motor de sessão troca de
+    #: conta sozinho, e mais de uma persona pode servir a este app no mesmo aparelho. Derivado do `sessao.yaml` na
+    #: descoberta, nunca escrito no `app.yaml`; falso = conta errada é caso de pessoa (achado #115).
+    account_switch: bool = False
 
     def __post_init__(self) -> None:
         if not self.label:

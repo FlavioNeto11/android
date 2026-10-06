@@ -85,6 +85,9 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-077](#adr-077--um-caminho-só-de-ensino-o-modo-treinamento) | Um caminho só de ensino: o Modo treinamento (item 31.91) | aceito (dono, 05/10; F2 e a tela do F1 implementados) | 05/10 |
 | [ADR-078](#adr-078--o-ensino-v2-sai-em-dois-tempos-obsoleto-e-contado-agora-apagado-depois-de-14-dias-sem-uso) | O ensino v2 sai em dois tempos: obsoleto e contado agora, apagado depois de 14 dias sem uso (item 31.91, T1 e T2) | aceito (orquestradora, 06/10; T1 implementado) | 06/10 |
 | [ADR-079](#adr-079--comando-remoto-nos-notebooks-da-rede-um-módulo-de-controle-desligado-de-fábrica) | Comando remoto nos notebooks da rede: um módulo de controle, desligado de fábrica (item 29.154) | aceito (dono, 06/10; fatia 1 implementada, desligada) | 06/10 |
+| [ADR-080](#adr-080--troca-de-conta-declarada-pelo-app-o-motor-sai-da-conta-aberta-e-entra-na-esperada-pelo-cofre) | Troca de conta declarada pelo app: o motor sai da conta aberta e entra na esperada pelo cofre (item 31.155) | proposto (Jev, 06/10; mecanismo implementado, nenhum app do parque o declara) | 06/10 |
+
+| [ADR-081](#adr-081--regra-da-frota-configurável-até-n-contas-por-alvo-e-conta-nossa-viva-fora-da-contagem) | Regra da frota configurável: até N contas por alvo e conta nossa viva fora da contagem; emenda ao ADR-055 (P-030) | aceito (dono, 06/10) | 06/10 |
 
 ---
 
@@ -2239,6 +2242,10 @@ da saída estruturada: este esquema é pequeno e sem união).
 
 ## ADR-048 — Crenças ricas da persona vão ao modelo, com regra de conduta (biografia v2)
 
+**Emenda (06/10/2026, decisão do dono):** a regra de conduta das crenças (`CONDUTA_DAS_CRENCAS`) e a regra de geração
+"sem partido, candidato nem figura pública pelo nome" saem; fica `USO_DAS_CRENCAS` (coerência de valores e de tom). A
+regra de conteúdo vai para o serviço externo de autorização.
+
 **Data:** 28/09/2026 · **Estado:** vigente na `main` · **Decisão do dono** (28/09): "sobre a religião e política eles
 devem ir para o modelo sim e de forma rica, não apenas uma flag simples, tanto a política quanto a religião, e mostrar
 isso visualmente de forma rica também, e isso deve inferir no contexto também". Substitui em parte o ADR-041. Código:
@@ -2381,6 +2388,10 @@ barato, o plano no Opus vira o maior custo (63% do braço).
 decisão 7 do plano-100 (base × configuração antes de adotar alavanca de custo).
 
 ## ADR-050 — Modo Automático: a IA escolhe quem faz, o código escolhe onde; crença é coerência, não alvo de persuasão
+
+**Emenda (06/10/2026, decisão do dono):** a regra de conduta do orquestrador (recusa por conteúdo do pedido com
+`alerta_conduta`) foi um acréscimo da IA, não requisito; sai do prompt e do simulado. A validação de conteúdo vai para o
+serviço externo de autorização; `alerta_conduta` fica no contrato como ponto de recusa.
 
 **Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`b0f2c07`) · **Decisão técnica** pedida pelo dono ("essa decisão sobre
 quais aparelhos, personas e em qual servidor vai ser orquestrado depende do pedido do usuário, da disponibilidade das
@@ -5641,3 +5652,134 @@ disparável por injeção de prompt seria execução no notebook. É decisão da
 `backend/app/worker/comando.py`, `backend/app/workers/comando_remoto.py`, `backend/app/contracts/worker/protocol.py`
 (`FEATURE_COMANDO_REMOTO`), `backend/app/modules/fleet/presentation/workers.py`, `backend/migrations/123_comando_remoto.sql`;
 testes `backend/tests/test_comando_remoto_agente.py` e `backend/tests/test_comando_remoto_central.py`.
+
+## ADR-080 — Troca de conta declarada pelo app: o motor sai da conta aberta e entra na esperada pelo cofre
+
+**Data:** 06/10/2026 · **Estado:** proposto (Jev, 06/10/2026; item 31.155, pedido da orquestradora às 17:27Z). Mecanismo
+implementado e provado `simulated`; **nenhum app do parque declara a troca**, então nada muda no ambiente central.
+
+**Contexto.** O dono vai cadastrar contas novas e quer todas usadas (prova de capacidade de 07/10). Hoje vale uma conta
+por app em cada aparelho (D2-a, migração 051), e conta errada na tela é caso de pessoa (achado #115): são 4 contas reais
+em 4 aparelhos. Passar de 4 para 30 contas sem um aparelho por conta exige tirar a conta aberta e entrar na esperada.
+
+**Decisão** (desenho da Jev, não é fala do dono):
+
+1. **A troca é dado do app.** O `sessao.yaml` ganha a seção opcional `troca: {sair: [{tela, sinal_do_botao}, …]}`. O
+   primeiro passo é numa tela autenticada (a de onde a conta foi lida); os seguintes, numa autenticada ou intersticial
+   (a confirmação); nunca na tela do campo de senha; o sinal existe em todo idioma. App sem a seção segue como hoje.
+2. **Só no motor de sessão** (`SessaoDeclarada._garantir`), quando a conta lida não é a esperada, e nunca no "Verificar
+   conta" (`observe_only`). A ordem:
+   - a conta esperada pode entrar? Conferido sem tocar no aparelho: senha guardada com consentimento (ADR-040), teto
+     diário, conta parada ou login em revisão, canal sensível. Recusado aqui, a conta aberta continua logada;
+   - a conta aberta pode sair? Só se for uma conta nossa deste app, ativa, com senha guardada e consentimento (a
+     automação consegue trazê-la de volta), e o aparelho não estiver em quarentena (ADR-055). Uma conta que alguém
+     abriu à mão não é deslogada;
+   - os toques de saída, com um candidato só em cada um. Tela de verificação no meio é o desafio de sempre
+     (`_challenge`: nada é tocado, quarentena e conta travada pela regra do ADR-055), atribuído à conta esperada como
+     no caminho da leitura da conta;
+   - a tela tem de ser a de login (espera até o prazo de verificação do app), e só então o `_login` de sempre digita a
+     senha da conta esperada, do cofre, pelo canal sensível.
+
+   Qualquer desvio vira `wrong_account` com o motivo. É caso de pessoa e não entra em laço: a porta de sessão e
+   `_needs_person` não reentram.
+3. **Depois de um toque de saída, as sessões `session_ready` e `auth_required` daquele app naquele aparelho viram
+   `unknown`**, não só a da conta que saiu. Desafio e conta errada ficam como estão: são o que a pessoa precisa ver.
+4. **D2-a relaxa só no app que declara a troca.** `AppDefinition.account_switch` é derivado do `sessao.yaml` na
+   descoberta, e `quem_ja_serve` não vê conflito nesse app. O índice único `ux_binding_conta_do_app_no_aparelho` (051)
+   sai na migração 126 (número da orquestradora, corte 56): ele não lê o `sessao.yaml`. A regra fica no repositório,
+   que já era a única porta de escrita de vínculo; quem escrever por fora dele perde o piso do banco.
+5. **É mecanismo do despacho, não ação do planejador.** O `LOGOUT` do catálogo do Instagram segue `manual_only`, e o
+   Instagram **não** declara a troca nesta prova.
+6. **QA Messenger sem sessão declarada.** Declarar provedor de sessão no QA mudaria a porta de sessão de todo objetivo
+   de QA, da suíte e do uso: os aparelhos do harness rodam sem persona. A prova usa o correio de exemplo, declarado só
+   no teste; a regressão do QA é a bateria dirigida dele, sem mudança.
+
+**Custo e riscos aceitos.**
+
+- **Cada troca é um login.** Com `acao_final: preparar` (31.154), o alvo estaciona na aprovação, o aparelho fica livre, a
+  próxima conta entra e o `liberar` faz a primeira voltar. Com 30 contas em 9 aparelhos, são 1 a 2 logins por conta por
+  rodada, contra `max_logins_per_day: 3`, cujo texto diz que entrar mais que isso é sinal de sessão perdida. O teto se
+  ajusta por app em `contas.sessao.<pacote>` no `config.yaml`. Preferir no despacho o objetivo da conta já logada fica
+  para depois da prova.
+- **Login repetido numa conta real pode chamar verificação da plataforma.** A verificação para tudo (ADR-055) e a
+  pessoa assume.
+- **Depois do primeiro toque de saída não há volta automática.** Se o `_login` da esperada falhar (formulário não
+  identificado, usuário que não ficou, senha recusada, canal que caiu entre o pré-cheque e o uso), o aparelho fica na
+  tela de login, sem conta, e a sessão que saiu fica `unknown`. Nenhuma senha vai a tela errada; a pessoa assume.
+- **Os passos declarados são obrigatórios e em ordem.** O app que pula um passo (uma versão nova sem o diálogo de
+  confirmação) para a troca em `wrong_account`, mesmo com o login na frente. É conservador; quem declarar um app
+  confere os passos a cada versão (um passo a mais no YAML é uma troca que nunca termina).
+- **`wrong_account` gravado antes** (pelo executor durante uma execução, ou antes de o app declarar a troca) não se
+  cura sozinho: a pessoa usa "Conectar", que troca.
+- **Ligar é editar o YAML.** Não há chave por instalação: declarar `troca` num app com conta real liga a troca no tick
+  seguinte do agendador. A catraca `test_nenhum_app_do_parque_declara_a_troca` (em `tests/catracas.txt`) trava isso, e
+  mudá-la é a autorização registrada.
+- **App que lembra contas pode abrir a tela de login com a conta anterior.** O `_login` só digita a senha com o usuário
+  preenchido e conferido (formulário de uma tela) ou numa tela que mostra este identificador (login em etapas), como
+  sempre.
+
+**O Instagram ainda não cabe no passo declarado.** Os dois caminhos de saída dele pedem algo que o passo (um toque por
+sinal de rótulo) não faz:
+
+- Configurações → "Sair": o botão fica no fim da lista, e o passo não rola;
+- o seletor de contas (`account_switcher`, já reconhecido no `telas.yaml`): abre tocando o @ no cabeçalho do perfil,
+  um rótulo dinâmico que o sinal não acha. Exige passo por id.
+
+O seletor é o caminho nativo e **não desloga** a conta anterior. Depois do primeiro "Adicionar conta", voltar seria um
+toque no @ dentro do seletor, sem senha, o que zera o custo de login apontado acima. Os sinais e ids de qualquer dos
+dois têm de ser lidos na hierarquia de um aparelho com conta de teste. Sem essa leitura, um YAML seria palpite.
+
+**Falta para usar em conta real (depois da prova):**
+
+- **pré-requisito do Instagram:** ler a hierarquia do seletor de contas num aparelho com conta de teste, com
+  autorização do dono. O caminho escolhido é o seletor (orquestradora, 06/10 18:05Z), e ele fica para **depois da
+  prova** mesmo com o sim do dono ao P-026;
+- o passo por id (e, para o seletor, "tocar a conta esperada se ela já estiver no seletor");
+- declarar `troca` no `sessao.yaml` do app, com os sinais e ids dessa leitura;
+- a preferência no despacho;
+- a prova `real`.
+
+**Relação.** [ADR-040](#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial); ADR-052;
+ADR-055; achado #115; D2-a (051); 31.154. Código:
+- `backend/app/integrations/app_declarado/conhecimento.py` (`TrocaDeConta`, `_troca`, `botao_da_troca`);
+- `backend/app/integrations/app_declarado/sessao.py` (`_trocar_de_conta`, `_antes_de_sair`);
+- `backend/app/integrations/app_declarado/pacote.py`;
+- `backend/app/modules/applications/domain/definition.py` (`account_switch`);
+- `backend/app/social/repository.py` (`_troca_declarada`); `backend/migrations/126_troca_de_conta.sql`.
+
+Testes: `backend/tests/test_troca_de_conta.py` e `backend/tests/test_migracao_126.py`.
+
+## ADR-081 — Regra da frota configurável: até N contas por alvo e conta nossa viva fora da contagem
+
+**Data:** 06/10/2026 · **Estado:** aceito. A resposta do dono à P-030 veio pelo cartão 3573 do Trello, confirmada no
+Telegram e repassada pela orquestradora às 19:45Z: "vamos mudar essa regra e deixar ela mais maleavel permitindo muito
+mais vezes". É uma emenda ao [ADR-055](#adr-055--proteção-de-contas-a-conta-travada-para-sem-ser-tocada-o-aparelho-entra-em-quarentena-uma-conta-por-alvo-e-nenhum-reset-com-conta)
+e à emenda 29.28 do [ADR-050](#adr-050--modo-automático-a-ia-escolhe-quem-faz-o-código-escolhe-onde-crença-é-coerência-não-alvo-de-persuasão).
+
+**Contexto.** A onda 1 da prova de 07/10 (`op-20261006193306-7e8b5f` e `op-20261006193344-2f4bf1`) parou na regra de uma
+conta por alvo. O post era da própria persona, e outra conta nossa já tinha mexido com o perfil dela em 30 dias. Desde
+02/10 a regra valia também entre contas nossas, e as contas com sessão já tinham interagido entre si. Resultado: qualquer
+post nosso era recusado, e a rodada de 07/10 (três contas no mesmo post nosso) não tinha como acontecer.
+
+**Decisão.**
+- `LimitsCfg.frota_max_contas_por_alvo` (padrão 10, de 1 a 64): quantas contas diferentes da frota podem seguir, mandar
+  mensagem ou comentar para o mesmo alvo dentro da janela `fleet_target_window_days` (padrão 30, de 1 a 365). Antes era
+  1, fixo no código. As curtidas seguem com `fleet_max_accounts_per_target`.
+- `LimitsCfg.frota_conta_nossa_fora_da_regra` (padrão `true`): o alvo que é conta nossa VIVA não entra nessa contagem.
+  Pessoa real sempre entra.
+- Os dois campos são lidos ao vivo (`PUT /api/settings`) e aparecem em Configurações › Limites.
+- Continua valendo:
+  - a conta retirada, recusada;
+  - o espaçamento entre contas sobre o mesmo alvo;
+  - o ritmo baixo entre contas nossas (`fleet_min_spacing_to_own_account_s`);
+  - os tetos por hora e por dia, a política do perfil e a aprovação;
+  - a regra de uma conta por alvo DENTRO de uma mesma execução (`gates.py`, o caso de 19/09). A operação usa uma
+    execução por alvo e não passa por ela.
+- A exceção de uso único do 30.65 continua existindo. Ela só tem efeito quando a instalação volta à regra antiga
+  (`frota_conta_nossa_fora_da_regra: false` e `frota_max_contas_por_alvo: 1`).
+- A janela não ganhou um campo novo, porque `fleet_target_window_days` já é ela e já é lida ao vivo.
+
+**Consequências.** O motivo da recusa diz "no máximo N contas por alvo" quando N > 1. Na operação, o motivo sai sem o @ do
+alvo ("o perfil alvo"), e a recusa da porta vira o estágio `acao_bloqueada` (adendo v1.95, item 5). Prova `simulated`:
+`backend/tests/test_interacao_entre_contas_nossas.py` (`test_adr081_*`) e `backend/tests/test_excecao_de_politica.py`,
+com a regra antiga como precondição. `not_run`: o central, até o deploy 56.

@@ -7,16 +7,18 @@ import { confirm } from '../../components/Confirm';
 import { EmptyState } from '../../components/EmptyState';
 import { Field, Select } from '../../components/Field';
 import { Page } from '../../components/Page';
+import { TabPanel, Tabs, type TabDef } from '../../components/Tabs';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { cx, formatInt, formatUsd4 } from '../../lib/format';
 import { hashDe } from '../../lib/rotas';
-import { type LoadError, LoadErrorState, toLoadError } from '../../lib/loadError';
+import { type LoadError, LoadErrorBanner, LoadErrorState, toLoadError } from '../../lib/loadError';
 import type { Tone } from '../../lib/status';
 import { formatClock } from '../../lib/time';
 import { toast, toastError } from '../../store/toasts';
 import { useAppStore } from '../../store/app';
 import { useUiStore } from '../../store/ui';
 import { apiOperacoes, type ListaDeOperacoes } from './api';
+import { AprendizadoDaOperacaoTab } from './AprendizadoDaOperacaoTab';
 import { LiberarAcoes } from './LiberarAcoes';
 import { RelatorioDaOperacao } from './RelatorioDaOperacao';
 import styles from './Operacao.module.css';
@@ -40,6 +42,9 @@ const TOM_DO_STATUS: Record<StatusDaOperacao, Tone> = { em_curso: 'info', conclu
 const VERIFICACAO: Record<Verificacao, { icone: LucideIcon; tom: Tone }> = {
   verificada: { icone: ShieldCheck, tom: 'success' }, nao_verificada: { icone: ShieldQuestion, tom: 'warning' }, sem_acao: { icone: ShieldQuestion, tom: 'muted' },
 };
+
+type AbaDaOperacao = 'agentes' | 'aprendizado';
+const ABAS: readonly TabDef<AbaDaOperacao>[] = [{ id: 'agentes', label: 'Agentes' }, { id: 'aprendizado', label: 'Aprendizado' }];
 
 const numero = (n: number | null): string => (n === null ? 'não informado' : formatInt(n));
 
@@ -173,13 +178,14 @@ function LinhaDoAlvo({ alvo, aberta, onAlternar }: { alvo: Alvo; aberta: boolean
         <td>
           {verificacao === 'sem_acao' ? <span className={styles.mudo}>—</span> : <Badge tone={ver.tom} icon={ver.icone} size="sm">{ROTULO_DA_VERIFICACAO[verificacao]}</Badge>}
         </td>
+        <td className={styles.numero}>{alvo.custo_usd === null ? <span className={styles.mudo}>—</span> : formatUsd4(alvo.custo_usd)}</td>
         <td>
           <Button size="sm" variant="ghost" aria-expanded={aberta} onClick={onAlternar} label={`${aberta ? 'Fechar' : 'Abrir'} o detalhe de ${rotuloDaLinha}`}>
             {aberta ? 'Fechar' : 'Detalhe'}
           </Button>
         </td>
       </tr>
-      {aberta ? <tr className={styles.linhaDoDetalhe}><td colSpan={8}><DetalheDoAlvo alvo={alvo} /></td></tr> : null}
+      {aberta ? <tr className={styles.linhaDoDetalhe}><td colSpan={9}><DetalheDoAlvo alvo={alvo} /></td></tr> : null}
     </Fragment>
   );
 }
@@ -215,8 +221,8 @@ function CustoEAssunto({ op }: { op: Operacao }) {
     <section aria-label="Custo e assunto" className={styles.faixa}>
       {custo || teto !== null ? (
         <p className={styles.objetivo}>
-          {custo ? <>Custo de IA <strong>{formatUsd4(custo.total_usd)}</strong>{teto !== null ? <> de um teto de {formatUsd4(teto)}</> : null}
-            {' '}<span className={styles.mudo}>(pesquisa {formatUsd4(custo.pesquisa_usd)} · agentes {formatUsd4(custo.alvos_usd)})</span></>
+          {custo ? <>Custo de IA <strong>{custo.total_usd === null ? 'total não informado' : formatUsd4(custo.total_usd)}</strong>{teto !== null ? <> de um teto de {formatUsd4(teto)}</> : null}
+            {' '}<span className={styles.mudo}>(pesquisa {custo.pesquisa_usd === null ? 'não informada' : formatUsd4(custo.pesquisa_usd)} · agentes {custo.alvos_usd === null ? 'não informado' : formatUsd4(custo.alvos_usd)})</span></>
             : <>Teto de custo de IA {formatUsd4(teto ?? 0)}</>}
         </p>
       ) : null}
@@ -247,6 +253,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
   const [cancelando, setCancelando] = useState(false);
   const [abrirLiberar, setAbrirLiberar] = useState(false);
   const [abrirRelatorio, setAbrirRelatorio] = useState(false);
+  const [aba, setAba] = useState<AbaDaOperacao>('agentes');
   const limiteDeAcoes = useAppStore((s) => s.settings?.operacao_max_acoes_executadas);
   const contagem = useMemo(() => contarPorEstado(op?.alvos ?? []), [op]);
 
@@ -292,6 +299,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
               <Button size="sm" variant="danger" loading={cancelando} disabledReason={motivoSemCancelar} onClick={() => void cancelar()}>Cancelar a operação</Button>
             </>
           )}>
+      {erro ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {op.exemplo ? AVISO_DE_EXEMPLO : null}
       {abrirRelatorio ? <RelatorioDaOperacao op={op} onFechar={() => setAbrirRelatorio(false)} /> : null}
       {abrirLiberar ? (
@@ -306,6 +314,9 @@ function DetalheDaOperacao({ id }: { id: string }) {
       <CustoEAssunto op={op} />
       <FaixaDeCapacidade op={op} />
       <PorApp op={op} />
+      <Tabs tabs={ABAS} active={aba} onChange={setAba} idBase="operacao" label="Detalhe da operação" />
+      <TabPanel idBase="operacao" id={aba}>
+      {aba === 'aprendizado' ? <AprendizadoDaOperacaoTab op={op} /> : (
       <section aria-labelledby="operacao-agentes">
         <h2 id="operacao-agentes" className={styles.subtitulo}>Agentes ({formatInt(alvos.length)} de {formatInt(op.alvos.length)})</h2>
         <div className={styles.filtros}>
@@ -335,7 +346,7 @@ function DetalheDaOperacao({ id }: { id: string }) {
               <thead>
                 <tr>
                   <th scope="col">Persona</th><th scope="col">Conta</th><th scope="col">Aparelho</th><th scope="col">Pipeline</th>
-                  <th scope="col">Estado</th><th scope="col">Ação final ou motivo</th><th scope="col">Resultado</th><th scope="col"><span className="sr-only">Detalhe</span></th>
+                  <th scope="col">Estado</th><th scope="col">Ação final ou motivo</th><th scope="col">Resultado</th><th scope="col">Custo de IA</th><th scope="col"><span className="sr-only">Detalhe</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -348,6 +359,8 @@ function DetalheDaOperacao({ id }: { id: string }) {
           </div>
         )}
       </section>
+      )}
+      </TabPanel>
     </Page>
   );
 }
@@ -359,6 +372,7 @@ function ListaDeOperacoes() {
   const itens: ResumoDaOperacao[] = dado?.itens ?? [];
   return (
     <Page title="Operação" lead="Um objetivo entregue a vários agentes: cada um com persona, conta e aparelho, acompanhado do início ao fim.">
+      {erro && dado ? <LoadErrorBanner error={erro} onRetry={recarregar} /> : null}
       {dado?.exemplo ? AVISO_DE_EXEMPLO : null}
       {itens.length === 0 ? (
         <EmptyState icon={Workflow} title="Nenhuma operação ainda" hint="Quando uma operação for criada, ela aparece aqui, da mais nova para a mais antiga." />

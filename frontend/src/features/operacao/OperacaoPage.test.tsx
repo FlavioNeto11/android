@@ -246,6 +246,62 @@ describe('com a rota no central', () => {
     expect(text(faixa)).toContain('https://u:p@exemplo.com.br/c');
   });
 
+  it('a tabela mostra o custo de IA de cada agente (do alvo; do resultado só como reserva) e "—" sem execução', async () => {
+    const alvos = [{ ...OPERACAO.alvos[0], custo_usd: 0.0123 }, { ...OPERACAO.alvos[1], custo_usd: undefined, resultado: { texto: 'x', custo_usd: 0.5 } }, { ...OPERACAO.alvos[1], profile_id: 'p3', run_id: 'r3' }];
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, alvos }));
+    await ir(['op-1']);
+    await waitFor(() => expect(linhas()).toHaveLength(3));
+    expect(container.querySelector('thead')!.textContent).toContain('Custo de IA');
+    const celulas = linhas().map((l) => Array.from(l.querySelectorAll('td'))[6]!.textContent);
+    expect(celulas).toEqual(['US$ 0,0123', 'US$ 0,5000', '—']);
+  });
+
+  it('uma recarga que falha depois de uma carga boa mantém a operação, MOSTRA o erro e deixa tentar de novo', async () => {
+    let falhar = false;
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => (falhar ? apiError(500, 'erro_interno', 'quebrou') : json(OPERACAO)));
+    backend.on('POST', /^\/api\/operacoes\/op-1\/cancelar$/, () => { falhar = true; return json({ ...OPERACAO, status: 'cancelada' }); });
+    await ir(['op-1']);
+    await waitFor(() => expect(linhas()).toHaveLength(2));
+    expect(text(container)).not.toContain('Mostrando a última leitura');
+    await click(byRole('button', /^Cancelar a operação/, container));
+    const d = await waitFor(() => byRole('dialog', /Cancelar a operação\?/));
+    await click(byRole('button', /^Cancelar a operação$/, d));
+    await waitFor(() => expect(text(container)).toContain('Mostrando a última leitura'));
+    expect(linhas()).toHaveLength(2);                                  // a leitura anterior segue na tela, avisada como velha
+    expect(text(container).split('Mostrando a última leitura')).toHaveLength(2);   // um aviso só, não dois
+    falhar = false;
+    await click(byRole('button', /Tentar de novo/, container));
+    await waitFor(() => expect(text(container)).not.toContain('Mostrando a última leitura'));
+  });
+
+  it('a lista sem `items` (formato inesperado) é erro de leitura, não "Nenhuma operação ainda"', async () => {
+    backend.on('GET', /^\/api\/operacoes$/, () => json({ itens: [] }));
+    await ir([]);
+    await waitFor(() => expect(text(container)).toContain('Não foi possível'));
+    expect(text(container)).not.toContain('Nenhuma operação ainda');
+  });
+
+  it('a operação sem a lista de alvos é erro de leitura, não "0 agentes"', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, alvos: undefined }));
+    await ir(['op-1']);
+    await waitFor(() => expect(text(container)).toContain('Não foi possível'));
+    expect(linhas()).toHaveLength(0);
+    expect(allByRole('button', /^Relatório$/, container)).toHaveLength(0);
+  });
+
+  it('custo parcial: a parte que falta aparece como "não informada", nunca como US$ 0,0000', async () => {
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, custo: { total_usd: 0.03 } }));
+    await ir(['op-1']);
+    const faixa = await waitFor(() => {
+      const e = container.querySelector('section[aria-label="Custo e assunto"]');
+      if (!e) throw new Error('a faixa de custo ainda não apareceu');
+      return e as HTMLElement;
+    });
+    expect(text(faixa)).toContain('US$ 0,0300');
+    expect(text(faixa)).toContain('pesquisa não informada · agentes não informado');
+    expect(text(faixa)).not.toContain('0,0000');
+  });
+
   it('sem custo, teto, assunto nem fontes a faixa não aparece', async () => {
     backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json({ ...OPERACAO, custo: undefined, max_usd: undefined, assunto: undefined, fontes: undefined }));
     await ir(['op-1']);
@@ -287,6 +343,35 @@ describe('com a rota no central', () => {
     const aviso = useToastStore.getState().toasts.find((x) => x.title === 'Nada foi liberado');
     expect(aviso?.message).toContain('o texto mudou depois que você o leu');
     expect(container.querySelector('dialog[open]')).toBeNull();
+  });
+
+  it('liberar numa operação que o "preparar" já fechou a REABRE: a tela e o relatório seguem o estado de agora (idempotente, sem eventos)', async () => {
+    const fechada = { ...OPERACAO, status: 'concluida', finished_at: '2026-10-06T17:30:00Z', alvos: [OPERACAO.alvos[0], PREPARADO('p2', 'Bia', 'Texto da Bia.')] };
+    const reaberta = { ...fechada, status: 'em_curso', finished_at: null, acao_final: 'executar' };
+    let liberou = false;
+    backend.on('GET', /^\/api\/operacoes\/op-1$/, () => json(liberou ? reaberta : fechada));
+    backend.on('POST', /^\/api\/operacoes\/op-1\/liberar$/, () => { liberou = true; return json({ liberados: ['p2'], recusados: [], operacao: reaberta }); });
+    backend.on('GET', /^\/api\/operacoes\/op-1\/aprendizado$/, () => apiError(404, 'not_found', 'sem rota'));
+    await ir(['op-1']);
+    await waitFor(() => expect(linhas()).toHaveLength(2));
+    // fechada: o Liberar segue ligado (há texto esperando) e o Cancelar fica desligado
+    expect(text(container)).toContain('Concluída');
+    expect(byRole('button', /^Cancelar a operação — indisponível: A operação já terminou/, container).getAttribute('aria-disabled')).toBe('true');
+    await click(byRole('button', /^Liberar$/, container));
+    const d = await waitFor(() => byRole('dialog', /Liberar as ações paradas\?/));
+    await click(allByRole('checkbox', /./, d)[0]!);
+    await click(byRole('button', /^Liberar 1$/, d));
+    // reaberta: o cabeçalho passa a "Em andamento", o Cancelar liga, e há UM selo de estado (nada duplicado)
+    await waitFor(() => expect(byRole('button', /^Cancelar a operação$/, container).getAttribute('aria-disabled')).not.toBe('true'));
+    expect(text(container)).toContain('Em andamento');
+    expect(text(container)).not.toContain('Concluída');
+    expect(text(container).split('Ação final: Preparar e executar')).toHaveLength(2);
+    expect(backend.callsTo('POST', /liberar$/)).toHaveLength(1);
+    // o relatório da operação reaberta: "em aberto", sem encerramento
+    const { montarRelatorio, relatorioEmMarkdown } = await import('./relatorio');
+    const r = montarRelatorio(lerOperacao(reaberta)!);
+    expect(r.operacao.encerrada_em).toBeNull();
+    expect(relatorioEmMarkdown(r)).toContain('**Encerrada em:** em aberto');
   });
 
   it('"Liberar" sem ninguém esperando fica desligado, com o motivo', async () => {

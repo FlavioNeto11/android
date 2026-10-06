@@ -697,7 +697,8 @@ class AppState:
         conferir = getattr(self.provider, "conferir_gasto", None)
         return DecisorJev(JevSemanticProvider(),
                           conferir_gasto=None if conferir is None else (
-                              lambda pedido: conferir(run_id=pedido.run_id, origem=ORIGEM_NO_GASTO, conta="typesafe")),
+                              lambda pedido: conferir(run_id=pedido.run_id, origem=ORIGEM_NO_GASTO, conta="typesafe",
+                                                      reservar=True)),
                           registrar=self.decisao_sombra.registrar_chamada)
 
     def _publish_worker(self, worker_id: str) -> None:

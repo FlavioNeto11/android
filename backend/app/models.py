@@ -779,8 +779,7 @@ class BioIssue(BaseModel):
 
 class BioPolitics(BaseModel):
     """O jeito político da pessoa (ADR-048): orientação no espectro, quanto se envolve, pautas com posição e como
-    fala do assunto. Vai ao modelo para dar coerência — a regra de conduta (`CONDUTA_DAS_CRENCAS`) proíbe
-    propaganda, pedido de voto, desinformação e ataque a quem pensa diferente."""
+    fala do assunto. Vai ao modelo para dar coerência (`USO_DAS_CRENCAS`)."""
 
     model_config = ConfigDict(extra="forbid")
     orientation: OrientacaoPolitica | None = Field(default=None, description=(

@@ -41,6 +41,9 @@ Devolva:
   entradas que realizam a etapa. `postcondition` usa, sempre que possível, algo que a tela mostra:
   text_visible (um texto), element_present (um seletor como id=..., text==..., desc==...) ou app_foreground (o
   pacote); model_judged só quando nada disso serve. Use `{nome}` nos textos que dependem de parâmetro.
+  A entrada pode trazer "textos na tela" (a tela em que ela aconteceu) e "apareceram depois" (o que surgiu na tela
+  seguinte). O texto de text_visible ou element_present NÃO pode estar na tela da 1ª entrada da etapa: com ele, a
+  etapa passaria sem agir. Prefira um dos que apareceram depois da última entrada da etapa.
 - `side_effect`: true quando a etapa muda algo fora do aparelho (enviar, publicar, curtir, seguir, comentar,
   salvar). Se for fornecido um CATÁLOGO de ações do app, toda etapa com efeito DEVE indicar em `capability` a ação
   do catálogo que ela realiza, e `bindings` com os argumentos (ex.: username={contato}, content={mensagem});
@@ -174,7 +177,13 @@ def linha_da_entrada(e: dict[str, Any], tela: tuple[int, int] | None = None) -> 
         partes.append(f"tecla {e.get('key_name')}")
     if e["type"] == "open_app":
         partes.append(f"abriu o app {e.get('app_id')}")
-    if e.get("screen_lines"):
+    textos = e.get("textos_da_tela")
+    if isinstance(textos, dict):
+        # 31.148: a tela inteira (com o marcador da persona) no lugar das 6 linhas filtradas, e o que apareceu depois
+        partes.append("textos na tela: " + " · ".join(textos.get("partida") or []))
+        if "depois" in textos:
+            partes.append("apareceram depois: " + (" · ".join(textos["depois"]) or "nada novo"))
+    elif e.get("screen_lines"):
         partes.append("tela mostrava: " + " · ".join(e["screen_lines"][:6]))
     return " | ".join(partes)
 

@@ -32,6 +32,9 @@ class _Ritmo(_Frota):
     def __init__(self, **over: Any):
         super().__init__(**over)
         self.fleet_min_spacing_to_own_account_s = over.get("nossa_s", 600)
+        self.frota_max_contas_por_alvo = over.get("max_contas", 1)
+        self.frota_conta_nossa_fora_da_regra = over.get("fora", False)
+        self.grupo_sem_aprovacao = over.get("grupo", "")
 
 
 def _tres(tmp_path: Path, **over: Any) -> tuple[Any, Any, PolicyEngine, dict[str, str]]:
@@ -121,6 +124,75 @@ def test_uma_conta_por_alvo_continua_valendo_entre_contas_nossas(tmp_path: Path)
         assert not veredito.allowed and veredito.retry_at is None and "uma conta por alvo" in veredito.reason
     # a própria Ana segue sendo a conta daquele alvo (e o ritmo baixo já passou: 5000 s)
     assert policies.check(c["ana"], capability_of(IG, "FOLLOW"), counterparty=f"@{CLO}").allowed
+
+
+def test_adr081_o_teto_de_contas_por_alvo_vem_da_configuracao(tmp_path: Path) -> None:
+    """ADR-081 (dono, P-030): seguir, mandar mensagem e comentar deixam de ser 1 fixo; vale `frota_max_contas_por_alvo`."""
+    svc, _db, policies, c = _tres(tmp_path, max_contas=2)
+    comentar = capability_of(IG, "CREATE_COMMENT")
+    _fez(svc, c["ana"], "@pessoa.real", segundos_atras=5000)
+    assert policies.check(c["bia"], comentar, counterparty="@pessoa.real").allowed        # 1 outra < 2
+    _fez(svc, c["bia"], "@pessoa.real", segundos_atras=5000)
+    veredito = policies.check(c["clo"], comentar, counterparty="@pessoa.real")             # 2 outras = teto
+    assert not veredito.allowed and veredito.retry_at is None and "no máximo 2 contas por alvo" in veredito.reason
+
+
+def test_adr081_conta_nossa_viva_fora_da_contagem_e_pessoa_real_dentro(tmp_path: Path) -> None:
+    """ADR-081: o alvo que é conta nossa viva não entra na contagem; o espaçamento, a conta retirada e a pessoa real
+    continuam como estavam."""
+    svc, _db, policies, c = _tres(tmp_path, fora=True, espaco_s=120)
+    comentar = capability_of(IG, "CREATE_COMMENT")
+    _fez(svc, c["ana"], f"@{CLO}", segundos_atras=5000)
+    assert policies.check(c["bia"], comentar, counterparty=f"@{CLO}").allowed
+    _fez(svc, c["ana"], f"@{CLO}", segundos_atras=1)                                          # espaçamento continua
+    veredito = policies.check(c["bia"], comentar, counterparty=f"@{CLO}")
+    assert not veredito.allowed and veredito.retry_at is not None
+    _fez(svc, c["ana"], "@pessoa.real", segundos_atras=5000)                                  # pessoa real conta
+    veredito = policies.check(c["bia"], comentar, counterparty="@pessoa.real")
+    assert not veredito.allowed and veredito.retry_at is None and "uma conta por alvo" in veredito.reason
+    svc.retirar_conta_bloqueada(c["clo"], str(svc.repo.conta_ancora(c["clo"])["id"]))         # retirada continua recusada
+    veredito = policies.check(c["bia"], comentar, counterparty=f"@{CLO}")
+    assert not veredito.allowed and "retirada" in veredito.reason
+
+
+def test_adr081_padroes_de_fabrica_e_exemplo() -> None:
+    cfg = LimitsCfg()
+    assert (cfg.frota_max_contas_por_alvo, cfg.frota_conta_nossa_fora_da_regra, cfg.fleet_target_window_days) == (10, True, 30)
+    exemplo = (Path(__file__).resolve().parents[2] / "config" / "config.example.yaml").read_text(encoding="utf-8")
+    assert "frota_max_contas_por_alvo: 10" in exemplo and "frota_conta_nossa_fora_da_regra: true" in exemplo
+
+
+def _no_grupo(svc: Any, *pids: str) -> str:
+    gid = svc.repo.create_policy_group(name="Liberado", description="", capabilities="{}", limits="{}")
+    svc.repo.set_policy_group_members(gid, list(pids))
+    return str(gid)
+
+
+def test_2861_persona_do_grupo_sem_aprovacao_nao_passa_pela_aprovacao_de_politica(tmp_path: Path) -> None:
+    """28.61 (dono, 06/10 19:46Z): com `grupo_sem_aprovacao`, a persona do grupo não passa pela aprovação de política (a do
+    catálogo e a DM fria); quem está fora do grupo, ou com o ajuste vazio, passa como antes. Recusas continuam."""
+    svc, db, _pol, c = _tres(tmp_path)
+    gid = _no_grupo(svc, c["ana"])
+    comentar, dm = capability_of(IG, "CREATE_COMMENT"), capability_of(IG, "SEND_MESSAGE")
+    ligado = PolicyEngine(svc.repo, lambda: _Ritmo(grupo=gid))
+    veredito = ligado.check(c["ana"], comentar, counterparty="@pessoa.real")
+    assert veredito.allowed and not veredito.needs_approval and veredito.policy == "autonomous"
+    assert "28.61" in veredito.reason
+    fria = ligado.check(c["ana"], dm, counterparty="@pessoa.nova")                # a DM fria também
+    assert fria.allowed and not fria.needs_approval
+    assert ligado.check(c["bia"], comentar, counterparty="@pessoa.real").needs_approval      # fora do grupo
+    desligado = PolicyEngine(svc.repo, lambda: _Ritmo(grupo=""))
+    assert desligado.check(c["ana"], comentar, counterparty="@pessoa.real").needs_approval   # ajuste vazio
+    # recusa continua recusa: a Bia já comentou para a pessoa real (uma conta por alvo, sem exceção)
+    _fez(svc, c["bia"], "@outra.real", segundos_atras=5000)
+    recusa = ligado.check(c["ana"], comentar, counterparty="@outra.real")
+    assert not recusa.allowed and recusa.retry_at is None
+    # política desligada no perfil continua desligada (o grupo só troca aprovação por autônomo)
+    svc.repo.update_profile(c["ana"], {"automation_policy": '{"capabilities": {"CREATE_COMMENT": "disabled"}}'})
+    assert not ligado.check(c["ana"], comentar, counterparty="@pessoa.real").allowed
+    assert LimitsCfg().grupo_sem_aprovacao == ""
+    exemplo = (Path(__file__).resolve().parents[2] / "config" / "config.example.yaml").read_text(encoding="utf-8")
+    assert 'grupo_sem_aprovacao: ""' in exemplo
 
 
 def test_o_valor_vem_de_configuracao_com_padrao_de_600s() -> None:

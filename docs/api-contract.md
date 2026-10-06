@@ -2252,7 +2252,7 @@ Pedido do dono de 28/09: o "gerar por prompt" também completa o que falta numa 
   falta, siga estas instruções… sem reescrever o que já está preenchido"), passando por `sem_marcacao`.
 - A regra não muda: completa **só o vazio** (`preencher_vazios`); sem lacuna, devolve a persona sem chamar o modelo.
 - Instrução com formato de credencial → **422 `instructions_with_secret`**, antes de qualquer chamada (o texto iria
-  ao provedor e à proveniência). A regra de conduta do ADR-048 vale para o que a instrução pedir.
+  ao provedor e à proveniência).
 - Painel: cartão "Completar com IA" no topo da guia Persona, com uma linha de instrução opcional e o aviso de chamada
   paga; `api.enrichPersona(id, instructions?)`.
 
@@ -2272,7 +2272,8 @@ Corpos em `backend/app/taskqueue/orquestrador.py`.
   - `modo=texto`: o comando cita destinos; é a prévia de `/runs/targets/resolve`, sem IA.
   - `modo=distribuir`: app sem conta; aparelhos pela carga (`N aparelhos` no texto, senão 1), sem IA.
   - `modo=ia`: uma chamada do papel `plan` (`ai_calls.role = "plan"`, sem `run_id`); com `alerta_conduta`,
-    `targets` e `escolhidas` vêm vazios.
+    `targets` e `escolhidas` vêm vazios. Desde 06/10 o orquestrador não preenche `alerta_conduta` (a regra de
+    conteúdo do pedido vai para o serviço externo de autorização); o campo fica como ponto de recusa.
   - `modo=nenhuma`: sem app identificado e sem persona disponível, ou app com conta sem persona vinculada livre.
   - 409 `credencial_no_comando` (nada vai à IA); 503 `ai_not_configured`; 503 `ai_error`; 422 corpo inválido.
   - Declarada antes de `/runs/{run_id}/{op}`.
@@ -7254,6 +7255,117 @@ Eventos novos:
 - `operacao.alvo` com `{operacao_id, profile_id, estagio, estado, motivo}`, a cada mudança de estágio ou de estado;
 - `operacao.encerrada` com `{operacao_id, status, capacidade}`.
 
+## Adendo v1.95 (06/10/2026; número da orquestradora; item 31.154, migração 127) — custo por alvo, vínculo principal e parâmetros fixos da operação
+
+Cinco mudanças na operação do adendo v1.94, para a rodada de 07/10. Nada do v1.94 deixa de valer, exceto o `409 ja_encerrada` do liberar na operação encerrada e não cancelada (item 4).
+
+**1. Custo por alvo.** `AlvoDaOperacao` ganha `custo_usd`: o gasto da execução do alvo (`planning.costs.spent_usd` pelo
+`run_id`, com a pesquisa externa se ela rodou ali), `null` sem execução. Quando há `resultado`, ele traz o mesmo valor em
+`resultado.custo_usd`. Antes do texto o `resultado` é `null`, então o painel lê o custo do alvo em `custo_usd`.
+
+**2. Vínculo principal.** No `POST /api/operacoes`, o alvo sem `instance_id` cuja conta tem sessão pronta em MAIS de um
+aparelho vai ao aparelho do vínculo **principal** da persona, não à sessão mais recente. Sem sessão no principal, o alvo
+nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal` (entra em `capacidade.motivos`). Com
+`instance_id`, ou com sessão num aparelho só, nada muda.
+
+**3. Parâmetros fixos.** `POST /api/operacoes` aceita `parametros?: {nome: valor}`, por exemplo
+`{"username": "<perfil>", "caption_contains": "<trecho da legenda>"}`.
+- Validação (`422 pedido_invalido`):
+  - até 10 pares;
+  - nome `^[a-z][a-z0-9_]{0,39}$`, fora de `instance_id`, `run_id`, `account_label`, `item` e `item_index` e sem os
+    prefixos `perfil_` e `conta_` (os dados da persona), que a materialização poria por cima;
+  - valor de 1 a 300 caracteres, sem `{` nem `}`;
+  - dois parâmetros com o mesmo valor (sem `@`, sem espaços, sem caixa).
+- Credencial nunca (ADR-040): `409 credencial_no_comando` quando o NOME diz segredo (`senha`, `codigo`, `token`, `otp`,
+  `pin`…), quando o par `nome=valor` tem formato de credencial, ou quando o VALOR sozinho tem cara de senha ou de código
+  (palavra única que mistura três tipos de caractere, ou de 6 a 8 dígitos). Nada é gravado.
+- Os `parametros` entram na identidade do corpo: a mesma `idempotency_key` com outros parâmetros dá `409 chave_em_uso`.
+- O `OperacaoDetalhe` devolve `parametros` (`null` quando ausentes).
+- No plano de cada execução de alvo, o planejador não renomeia:
+  - o parâmetro do plano com o MESMO valor de um fixo (comparado sem `@`, sem espaços e sem caixa) é renomeado para o
+    nome fixo em `parameters` e em toda ocorrência `{antigo}` no texto das etapas; o valor fixo vale (o `@` do
+    planejador sai junto). `{{saida:…}}` não muda. Nunca são renomeados o dado da persona (`perfil_email`,
+    `conta_<app>_usuario`…) nem o parâmetro de nome sensível (o mesmo conjunto que a receita nunca grava);
+  - as etapas cuja `capability` o app declara no bloco `operacao` do `app.yaml` ganham a chave `<capability>_<n>`
+    (`open_profile_1`, `open_post_1`, `open_comments_1`), com `depends_on` e `for_each` remapeados. Se a chave nova já
+    for de outra etapa, ou sair do formato de chave, nenhuma chave muda e a execução registra o motivo numa decisão.
+- Vale para todo plano de execução com `operacao_id` (do planejador, de skill ou de fluxo), antes de gravar o plano. Fora
+  de operação, nada muda.
+- Para que serve: a receita ensinada é achada pela chave da etapa e pela pós-condição com os nomes dos parâmetros, e se
+  reproduz com `objective.parameters`. Com os nomes e as chaves fixos, ela casa; com os do planejador, dava
+  `RecipeDiverged` "parâmetro ausente".
+
+**4. Liberar, cancelar e os tetos (achados da revisão automática do corte 56).**
+- `POST .../liberar` aceita a operação já encerrada que não foi cancelada. Em `preparar`, com todos os alvos na ação
+  preparada, a operação fecha antes de a pessoa ler os textos, e o liberar dava `409 ja_encerrada`. Só a `cancelada`
+  dá 409. Quando libera algum alvo, a operação volta a `em_curso` (`finished_at: null`) e fecha de novo quando nenhum
+  alvo estiver em curso (o evento `operacao.encerrada` sai outra vez). O alvo com a ação já aprovada segue o estado da
+  execução dele; só o alvo sem a ação aprovada fica `bloqueado`, motivo `aguarda liberação`.
+- A contagem do limite `operacao_max_acoes_executadas` e as aprovações rodam numa transação, com a linha da operação
+  travada antes de contar. Duas liberações se enfileiram, também em dois processos sobre o mesmo PostgreSQL.
+- `POST .../cancelar` pula a execução já terminada (`completed`, `cancelled`, `failed`) e segue quando uma termina entre
+  a leitura e o pedido. Antes, o primeiro alvo terminado dava 500, e uma parte dos alvos ficava rodando.
+- Teto `max_usd`: cada chamada paga em voo de um alvo da operação conta pelo custo médio das chamadas já gravadas da
+  operação. Antes, N alvos em paralelo liam o mesmo gasto abaixo do teto e o estouravam juntos. A reserva fica na
+  memória do processo (o deploy é um processo só). Antes da primeira resposta não há média, então o estouro possível
+  fica em uma chamada por vaga de IA. A mensagem da recusa diz quantas chamadas estavam em voo.
+
+**5. Regra da frota configurável, motivo sem @ e recusa da porta (ADR-081 e o percurso da Portal, 06/10).**
+- `GET/PUT /api/settings` ganham dois limites, lidos ao vivo:
+  - `frota_max_contas_por_alvo` (int, padrão 10, de 1 a 64): quantas contas diferentes da frota podem seguir, mandar
+    mensagem ou comentar para o mesmo alvo dentro de `fleet_target_window_days` (int, padrão 30, de 1 a 365, que já
+    existia). Antes era 1, fixo no código;
+  - `frota_conta_nossa_fora_da_regra` (bool, padrão `true`): o alvo que é conta nossa viva não entra nessa contagem.
+    Pessoa real sempre entra.
+- O `motivo` do alvo da operação sai sem @ de conta: o @ vira "o perfil alvo". Vale para o GET, o evento
+  `operacao.alvo`, a contagem por motivo e o relatório.
+- A ação final recusada por uma porta antes de rodar (objetivo com `blocked_kind=policy`: regra da frota, conduta, teto)
+  passa ao estágio `acao_bloqueada`, com o estado `bloqueado`, `parou_em: acao_bloqueada` e o motivo. Antes, o alvo
+  ficava no último estágio de navegação com `parou_em: acao_preparada`. O pedido de aprovação que espera o liberar NÃO
+  é recusa: continua em `acao_preparada`.
+- A hora de `resposta_gerada` e de `acao_preparada` da etapa que espera o liberar é a do pedido de aprovação. Antes era
+  a do início do objetivo.
+- O plano da operação não fixa o nome que o plano JÁ usa com outro valor. A execução registra uma decisão com o
+  motivo, e o nome fica o do planejador.
+- O teto `max_usd` também reserva o POST do Jev (`conferir_gasto(reservar=True)`, segurado até a linha de custo). A
+  média da reserva conta só as chamadas cobradas.
+- A ação final aprovada POR FORA do liberar (Pendências, Telegram) vale como liberação: a operação passa a `executar`
+  e reabre. Em todo fechamento, o `finished_at` é a hora do último estágio alcançado, não a da leitura. Na onda 1 de
+  06/10, ele ficava em 19:44:58, antes da ação verificada às 19:48:05.
+- A reabertura pela aprovação por fora vem antes da leitura dos alvos. O mesmo GET não fecha a operação de novo. Ela
+  é condicional (`status<>'cancelada'`): o cancelar concorrente vence.
+- A recusa de `parametros` (`credencial_no_comando`, `pedido_invalido`) diz a POSIÇÃO do parâmetro ("o 2º
+  parâmetro"), nunca o nome nem o valor.
+- Alvo cuja execução foi recusada no planejamento (sem objetivo): `estado=bloqueado`, `estagio=parou_em=acao_bloqueada`,
+  com o motivo da recusa. Inclui o nome fixo em conflito: o plano usa um nome de `parametros` com outro valor, o
+  `plan.refused` sai com `{"motivo": "parametro_em_conflito", "parametros": [<nomes>]}`, e o motivo do alvo começa por
+  "parâmetro em conflito:". Os valores não entram.
+- `OperacaoDetalhe.fontes_da_pesquisa: string[]`: as URLs que a pesquisa externa achou (`pedido_observacoes`,
+  `tipo='url'`, sem repetição, na ordem da captura). `fontes` continua sendo só a entrada do pedido.
+
+Migração `127_operacoes_parametros` (`operacoes.parametros`, só `ADD COLUMN`). Código: `backend/app/taskqueue/plano_da_operacao.py`,
+`RunService._plano_da_operacao`, `backend/app/modules/operacoes/`. Testes: `backend/tests/test_plano_da_operacao.py`,
+`backend/tests/test_operacoes.py`, `backend/tests/test_migracao_127.py`.
+
+## Adendo v1.93 (06/10/2026; número da orquestradora; item 31.148) — a proposta já avisa a pós-condição que vale na partida
+
+Achado das provas reais de 06/10: 2 de 2 propostas (ai_calls 4939 e 4942) puseram em "abrir a busca" um texto que já
+estava na tela de partida. O 31.122 e o 31.142 só pegavam o erro depois, no `preview` e no `save`.
+
+- **`POST /api/training/{session_id}/propose`:** o prompt da IA passa a levar, por entrada, os textos da tela inteira
+  (de `screen_elements`, texto e descrição, até 20, cada um até 60 caracteres) e os que apareceram DEPOIS dela (os da
+  tela da entrada seguinte que não estavam nesta, até 12). A instrução: a pós-condição de uma etapa não pode estar na
+  tela da 1ª entrada dela.
+  - Todo dado da persona vira o marcador (`{perfil_nome}`…), como nas `screen_lines`. Isso vale também para o texto e
+    a descrição do elemento tocado (`target`), que antes iam crus.
+  - Sem `screen_elements` (gravação anterior ao 31.122 F2), o prompt fica como antes.
+- **A proposta (`proposal`)** ganha `pos_condicoes_ja_valem` quando, mesmo assim, a IA propôs uma que já vale. O
+  formato é o do `preview` (v1.86 e v1.91, com `sugestoes` e `sugestoes_prontas`). Nada é trocado sozinho: quem decide
+  é a pessoa. Sem caso, a chave não vem.
+- **Prova:**
+  - `simulated`: `backend/tests/test_treino_pos_condicao_na_proposta.py`;
+  - `real`: `not_run` até o deploy. São 3 gravações do Configurações (~US$ 0,04), e uma sessão fica em `proposed`
+    para a Portal.
 
 ## Adendo v1.96 (06/10/2026; prova30 A3, extensão do 31.157) — o aprendizado de uma operação nas 10 perguntas do dono
 

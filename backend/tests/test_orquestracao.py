@@ -2,7 +2,8 @@
 Nível de prova: `simulated` (orquestrador simulado contado pelo `CountingProvider`; aparelhos falsos na porta 5640).
 
 O que se prova:
-- pedido de propaganda, voto ou campanha volta com `alerta_conduta` e ninguém é escolhido;
+- o orquestrador não recusa pedido pelo conteúdo (a regra de conteúdo vai para o serviço externo, 06/10): uma
+  palavra como "campanha" não barra mais o pedido; `alerta_conduta` preenchido ainda zera a escolha;
 - persona cujas crenças contradizem o pedido nunca é escolhida (vai para as descartadas, com motivo);
 - persona sem crenças mínimas num pedido que depende delas vai para `nao_avaliaveis`, sem adivinhar;
 - entre duas igualmente adequadas, a livre vence a que tem tarefa na fila; fila é execução em andamento ou
@@ -63,13 +64,21 @@ def _chamadas(h: Harness) -> int:
     return sum(1 for c in h.ai.calls if c.get("kind") == "orquestracao")
 
 
-async def test_propaganda_ou_voto_nao_e_roteado(harness: Harness) -> None:
+async def test_o_orquestrador_nao_recusa_pelo_conteudo(harness: Harness) -> None:
     _persona(harness, "Marina", "android-01", CATOLICA)
     _persona(harness, "Nelson", "android-02", ATEIA)
-    s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="comente nos posts pedindo voto no candidato X"))
-    assert s.modo == "ia" and s.alerta_conduta
-    assert s.targets == [] and s.escolhidas == []
+    s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="divulgue a campanha de lançamento da loja"))
+    assert s.modo == "ia" and not s.alerta_conduta
+    assert len(s.escolhidas) == 1 and s.targets
     assert _chamadas(harness) == 1
+
+
+async def test_alerta_conduta_preenchido_ainda_zera_a_escolha() -> None:
+    req = PedidoDeOrquestracao(command="x", cartoes=[CartaoDePersona("a", "A")], max_personas=1)
+    out = normalizar(OrquestracaoOut(
+        quantidade=1, escolhidas=[EscolhaOut(profile_id="a", motivo="ok", aderencia="alta")],
+        descartadas=[], nao_avaliaveis=[], alerta_conduta="recusado", perguntas=[], resumo=""), req)
+    assert out.escolhidas == [] and out.quantidade == 0 and out.alerta_conduta == "recusado"
 
 
 async def test_quem_contradiz_o_pedido_nunca_e_escolhida(harness: Harness) -> None:

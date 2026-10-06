@@ -1226,6 +1226,8 @@ class Repository:
         tentativa que a receita resolveu ficava indistinguível da que a IA pagou.
         """
         if not usage.calls and not usage.input_tokens:
+            if usage.soltar_reserva is not None:
+                usage.soltar_reserva()
             return None
         chamada: int | None = None
         if usage.role:        # uma linha por chamada: função, modelo e cache — base do relatório de custo
@@ -1276,6 +1278,8 @@ class Repository:
                 "UPDATE objectives SET ai_calls=ai_calls+?, ai_input_tokens=ai_input_tokens+?,"
                 " ai_output_tokens=ai_output_tokens+? WHERE id=?",
                 (usage.calls, usage.input_tokens, usage.output_tokens, objective_id))
+        if usage.soltar_reserva is not None:    # o gasto já está no banco: a reserva do teto da operação sai (31.154)
+            usage.soltar_reserva()
         return int(chamada) if chamada is not None else None
 
     def decision(self, text: str, *, run_id: str, instance_id: str | None = None, step_id: str | None = None) -> None:
