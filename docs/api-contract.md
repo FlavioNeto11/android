@@ -7374,7 +7374,7 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
   `real`: `not_run`. As 2 sessões reais salvas não teriam receita: uma sem app, outra em Configurações, sem versão
   conhecida no catálogo.
 
-## Adendo (06/10/2026; número pela orquestradora; item 31.169) — a pesquisa externa na criação da operação
+## Adendo v1.99 (06/10/2026; número da orquestradora; item 31.169) — a pesquisa externa na criação da operação
 
 - **`POST /api/operacoes`** agenda a pesquisa externa da operação (31.158). Ela roda UMA vez, logo depois da criação e
   antes de qualquer alvo: a tarefa pega a trava da operação, a mesma da porta de escrita. A resposta da rota não muda e
