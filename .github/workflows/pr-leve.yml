@@ -1,0 +1,70 @@
+name: CI leve do PR
+
+# 29.175: um check HOSPEDADO e leve a cada PR, para o PR ter um verde ou um vermelho sem esperar a suíte do funil. Cobre só o que é
+# barato e não depende da máquina do dono: docs-check, os testes de `scripts/tests`, typecheck + vitest + build do frontend.
+# NÃO roda a suíte do backend (SQLite nem PostgreSQL): essa continua sendo do funil dos cortes e do cron das 05:17Z do ci.yml.
+#
+# Onde roda: SEMPRE em runner hospedado (`ubuntu-latest`). NUNCA copie `fromJSON(vars.CI_RUNS_ON ...)`: o runner `central` é a
+# máquina do dono (suítes e medidas de latência) e este workflow nunca o toca nem o carrega. O ci.yml continua SEM `pull_request`
+# (29.102); este arquivo é outro workflow, com outro nome de check.
+#
+# Atenção ao `[skip ci]`: o GitHub não dispara workflows de `pull_request` se a ponta do PR tem `[skip ci]` no assunto. Os commits das
+# sessões levam essa marca de propósito (o CI do central não roda por push), então o check LEVE só aparece num PR cuja ponta não a
+# tem, ou no disparo manual abaixo (hospedado, nunca no central). Quem quiser o verde de um PR de sessão dispara à mão.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Um push novo no mesmo PR cancela o check anterior: só o último importa e cada minuto hospedado conta.
+  group: pr-leve-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22.12.0"
+
+jobs:
+  docs-e-scripts:
+    name: docs-check + scripts/tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/python-isolado
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt pytest
+      - run: python scripts/docs-check.py
+      - run: python -m pytest -q scripts/tests
+
+  frontend:
+    name: frontend · typecheck + vitest + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      # AnexosTab.test.tsx falha só em Linux/Node 22 (5 testes esperando <img> da miniatura; passa no Windows do central): fora do check
+      # leve até a Canais corrigir o teste (achado 29.175); o resto do vitest roda inteiro.
+      - run: npm test -- --maxWorkers=2 --exclude src/features/canais/AnexosTab.test.tsx
+      - run: npm run build
