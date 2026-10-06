@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { abrirApp } from './apps';
+import { abrirApp, dicaDoApp, nomeDoApp } from './apps';
 import styles from './Aprendizado.module.css';
 
 /** Os apps de um fluxo que atravessa apps, ou nada no item de um app só (30.33-C). */
@@ -29,8 +29,8 @@ export function AppsDoItem({ apps, nomes, principal }: {
         <Fragment key={p}>
           {i > 0 ? <span aria-hidden="true"> → </span> : null}
           <button type="button" className={styles.linkBtn} onClick={() => abrirApp(p)}
-                  title={`Abrir este aplicativo (${p})${p === principal ? ': o principal, onde rodam as etapas sem app próprio' : ''}`}>
-            {nomes?.[i] || p}
+                  title={`${dicaDoApp(p)}${p === principal ? ': o principal, onde rodam as etapas sem app próprio' : ''}`}>
+            {nomeDoApp(p, nomes?.[i])}
           </button>
         </Fragment>
       ))}

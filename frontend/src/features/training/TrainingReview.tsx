@@ -138,7 +138,7 @@ export function textoDoConfere(pc: TrainingStep['postcondition']): string {
  * Teclas iguais e seguidas viram uma linha só na coluna da gravação (apagar um campo grava uma "tecla delete" por
  * letra). Só na exibição: nas etapas cada entrada segue com o seu Descartar.
  */
-function agruparTeclas(entradas: TrainingInput[], descartadas: Set<number>): TrainingInput[][] {
+export function agruparTeclas(entradas: TrainingInput[], descartadas: Set<number>): TrainingInput[][] {
   const grupos: TrainingInput[][] = [];
   for (const e of entradas) {
     const ultimo = grupos[grupos.length - 1];
@@ -151,7 +151,7 @@ function agruparTeclas(entradas: TrainingInput[], descartadas: Set<number>): Tra
 }
 
 /** O que a entrada foi. Texto não gravado (tela sensível, senha, cara de segredo) nunca tem valor na tela. */
-function DescricaoEntrada({ e }: { e: TrainingInput }) {
+export function DescricaoEntrada({ e }: { e: TrainingInput }) {
   const semAlvo = toqueSemAlvo(e);
   const alvo = alvoReconhecido(e);
   return (
@@ -172,7 +172,7 @@ interface Falha {
   hint: string;
 }
 
-function falhaDe(e: unknown): Falha {
+export function falhaDe(e: unknown): Falha {
   const err = toApiError(e);
   return { message: err.message, hint: hintForError(err) };
 }

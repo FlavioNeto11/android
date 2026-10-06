@@ -34,6 +34,7 @@ import { PlanTab } from './PlanTab';
 import { PortaDoPlano, ValidadeDoPlano } from './PortaDoPlano';
 import { ReportTab } from './ReportTab';
 import { RespostaSensivel } from './RespostaSensivel';
+import { AtalhoParaEnsinar, primeiraEtapaAEnsinarDaExecucao } from './EnsinarACorrigir';
 import { ResumoDaExecucao } from './ResumoDaExecucao';
 import { abaPadraoDaExecucao, efeitosRepetidos, type AbaDaExecucao } from './resumo';
 import { AssistenteDoComando } from '../command/AssistenteDoComando';
@@ -227,6 +228,8 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
   const approvals = useRunApprovals(run.id, `${counts.waiting_user}:${run.status}`);
   const pendentes = approvals.itens?.length ?? 0;
   const terminal = isRunTerminal(run.status);
+  // 31.125: o atalho de ensinar leva à primeira etapa (do plano atual) que falhou, ficou sem prova ou espera uma pessoa.
+  const etapaAEnsinar = data ? primeiraEtapaAEnsinarDaExecucao(data) : null;
 
   const act = async (name: string, fn: () => Promise<unknown>) => {
     if (busy) return;
@@ -359,6 +362,12 @@ function RunBody({ run, data, loading, picker }: RunBodyProps) {
           textosParaAprovar={pendentes}
           terminal={terminal}
           irParaAba={setTab}
+          ensinar={etapaAEnsinar && data ? (
+            <>
+              <span className={styles.muted}>«{etapaAEnsinar.title}» em {etapaAEnsinar.instance_id}</span>
+              <AtalhoParaEnsinar detail={data} step={etapaAEnsinar} />
+            </>
+          ) : null}
         />
 
         <div className={styles.progressRow}>

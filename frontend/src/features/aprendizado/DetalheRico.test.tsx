@@ -705,4 +705,22 @@ describe('detalhe rico: o selo em prova do fluxo ensinado (30.85)', () => {
     expect(Array.from(depois.querySelectorAll('span')).some((x) => x.textContent === 'em prova')).toBe(false);
     expect(t).toContain('Publicado');
   });
+
+  it('31.120 (v1.81): o fluxo ensinado a partir de uma falha mostra etapa, tentativa e sessão de origem, só ids; com os campos nulos ou ausentes nada disso aparece', async () => {
+    const fluxo = (origem: object) => detalhe({ conteudo: { tipo: 'fluxo', nome: 'Abrir', comando_modelo: 'abra', origem: origem as never, apps: [], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } });
+    let t = await mostrar(fluxo({ tipo: 'treino', fonte: 'training:trn-4lukXbyHNxGubAK0', source_run_id: 'r-20261006053318-c04149', session_id: 'trn-4lukXbyHNxGubAK0',
+      run_id: 'r-20261006053318-c04149', step_id: 'r-20261006053318-c04149:android-04:v1:check_item', attempt_id: 'r-20261006053318-c04149:android-04:v1:check_item:a2' }));
+    expect(t).toContain('Etapa de origem');
+    expect(t).toContain('r-20261006053318-c04149:android-04:v1:check_item');
+    expect(t).toContain('Tentativa de origem');
+    expect(t).toContain('r-20261006053318-c04149:android-04:v1:check_item:a2');
+    expect(t).toContain('Sessão do treino');
+    expect(t).toContain('trn-4lukXbyHNxGubAK0');
+    t = await mostrar(fluxo({ tipo: 'treino', fonte: 't', source_run_id: null, session_id: null, run_id: null, step_id: null, attempt_id: null }));
+    expect(t).not.toContain('Etapa de origem');
+    expect(t).not.toContain('Tentativa de origem');
+    expect(t).not.toContain('Sessão do treino');
+    t = await mostrar(fluxo({ tipo: 'treino', fonte: 't', source_run_id: null }));                  // backend anterior ao v1.81
+    expect(t).not.toContain('Etapa de origem');
+  });
 });

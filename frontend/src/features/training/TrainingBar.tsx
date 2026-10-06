@@ -19,6 +19,7 @@ import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
 import { descartarSessaoConcluida } from './descartarSessao';
 import { OrigemDoTreino, SeloDeOrigem } from './OrigemDoTreino';
+import { SessaoSalva } from './SessaoSalva';
 import { RefazerReceitas, TrainingReview, toqueSemAlvo } from './TrainingReview';
 import { useTrainingStore } from './trainingStore';
 import styles from './Training.module.css';
@@ -84,6 +85,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   // Uma ação em voo por vez; cada botão gira só pela sua e o outro explica por que espera.
   const [ocupado, setOcupado] = useState<'iniciar' | 'concluir' | 'descartar' | 'desfazer' | null>(null);
   const [revisando, setRevisando] = useState<string | null>(null);
+  const [vendo, setVendo] = useState<string | null>(null);   // 31.120: a sessão salva aberta em leitura
   const recusadas = useTrainingStore((s) => s.recusadas[instance.id] ?? 0);
   const definirGravando = useTrainingStore((s) => s.definirGravando);
   // Só é "gravando" para o Foco (padrão de "Limpar o campo antes", contador de recusas) quando a gravação é desta pessoa.
@@ -343,12 +345,15 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
             {salvas.map((s) => (
               <li key={s.id}>
                 <span>{s.intent}</span>
+                {s.origin ? <SeloDeOrigem origin={s.origin} /> : null}
+                <Button size="sm" variant="ghost" onClick={() => setVendo(s.id)} label={`Ver o treinamento salvo “${s.intent}”`}>Ver</Button>
                 <RefazerReceitas sessionId={s.id} intent={s.intent} />
               </li>
             ))}
           </ul>
         </Disclosure>
       ) : null}
+      {vendo ? <SessaoSalva sessionId={vendo} onClose={() => setVendo(null)} /> : null}
       {revisando ? (
         <TrainingReview sessionId={revisando} onClose={() => { setRevisando(null); void carregar(); }} />
       ) : null}

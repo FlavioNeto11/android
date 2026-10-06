@@ -22,7 +22,7 @@ import { ServerBadge } from '../devices/ServerBadge';
 import { useUiStore } from '../../store/ui';
 import { useSessionStore } from '../../store/session';
 import { type Voto, votoDoItem } from '../aprendizado/model';
-import { EnsinarACorrigir } from './EnsinarACorrigir';
+import { AtalhoParaEnsinar, EnsinarACorrigir, primeiraEtapaAEnsinar } from './EnsinarACorrigir';
 import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
 import {
   appLabel, attemptsByStep, currentSteps, etapaAConfirmar, headlineStep, isBlocked, previousVersionSteps,
@@ -120,6 +120,7 @@ interface ObjectiveRowProps {
 function ObjectiveRow({ detail, objective: o, attempts, voto, open, onToggle }: ObjectiveRowProps) {
   const steps = useMemo(() => currentSteps(detail, o), [detail, o]);
   const headline = headlineStep(steps);
+  const aEnsinar = primeiraEtapaAEnsinar(steps);                 // 31.125: o atalho fica na faixa do aparelho, sem descer até a etapa
   const meta = metaOf(OBJECTIVE_STATUS, o.status);
   const bodyId = `obj-body-${o.id}`;
   const blocked = isBlocked(o);
@@ -173,6 +174,13 @@ function ObjectiveRow({ detail, objective: o, attempts, voto, open, onToggle }: 
         <ProgressBar value={ratio(o.steps_done, o.steps_total)} label={`Etapas concluídas em ${o.instance_id}`} text={`${o.steps_done}/${o.steps_total}`} />
         <span className={styles.objTime}>{o.started_at ? <Duration start={o.started_at} end={o.finished_at} /> : '—'}</span>
       </button>
+
+      {aEnsinar ? (
+        <div className={styles.objAtalho}>
+          <span className={styles.muted}>«{aEnsinar.title}» · {metaOf(STEP_STATUS, aEnsinar.status).label}</span>
+          <AtalhoParaEnsinar detail={detail} step={aEnsinar} />
+        </div>
+      ) : null}
 
       {open ? (
         <div id={bodyId} className={styles.objBody}>

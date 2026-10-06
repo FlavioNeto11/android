@@ -116,7 +116,7 @@ describe('Aprendizado por aplicativo', () => {
     expect(cheio).toContain('medido, não usado');          // shadow e observe: mede e não usa
     expect(cheio).toContain('login gerenciado');
 
-    expect(text(cartao('nao_resolvido'))).toContain('App não resolvido');
+    expect(text(cartao('nao_resolvido'))).toContain('App não identificado');
     const fora = text(cartao('fora_do_eixo'));
     expect(fora).toContain('12 lembranças');
     expect(fora).toContain('2 candidatos');
@@ -220,7 +220,7 @@ describe('Aprendizado por aplicativo', () => {
     });
     const rotulos = Array.from(select.options).map((o) => o.textContent);
     expect(rotulos).toContain('Exemplo Cheio (com.exemplo.cheio)');
-    expect(rotulos).toContain('App não resolvido (nao_resolvido)');
+    expect(rotulos).toContain('App não identificado');
     expect(backend.callsTo('GET', /^\/api\/aprendizado$/)[0]?.query.get('app')).toBeNull();
 
     await act(async () => {

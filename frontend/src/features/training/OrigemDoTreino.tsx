@@ -69,6 +69,11 @@ export function OrigemDoTreino({ origin, aoAbrirExecucao }: { origin: TrainingOr
         <SeloDeOrigem origin={origin} aoAbrir={aoAbrirExecucao} />
         <span>Etapa <span className="mono">{origin.step_key}</span> da execução <span className="mono">{origin.run_id}</span></span>
       </p>
+      {/* 31.120: só ids (execução, etapa, tentativa), para achar a falha no resto do painel e na API. */}
+      <p className={styles.hint}>
+        Etapa <span className="mono">{origin.step_id}</span>
+        {origin.attempt_id ? <> · tentativa <span className="mono">{origin.attempt_id}</span></> : null}
+      </p>
       {origin.motivo
         ? <p className={styles.hint}>Motivo: {origin.motivo}</p>
         : <p className={styles.hint}>A etapa já não existe (a limpeza de execuções antigas a apagou): só os ids ficaram como rótulo.</p>}

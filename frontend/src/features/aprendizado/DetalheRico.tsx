@@ -11,7 +11,7 @@ import { hashDe } from '../../lib/rotas';
 import { formatDateTime, formatQuando } from '../../lib/time';
 import { useAppStore } from '../../store/app';
 import { apiAprendizado } from './api';
-import { abrirApp } from './apps';
+import { abrirApp, dicaDoApp, nomeDoApp } from './apps';
 import { AppsDoItem, eMultiApp } from './AppsDoItem';
 import { EscopoDoFluxo } from './EscopoDoFluxo';
 import { SecaoDoParecer } from './ParecerDaIA';
@@ -91,8 +91,8 @@ function Identidade({ item, conteudo }: { item: EntradaDoLivro; conteudo: Conteu
           <Fato rotulo="Aplicativos"><AppsDoItem apps={item.apps} nomes={item.apps_nomes} principal={item.app} /></Fato>
         ) : item.app ? (
           <Fato rotulo="Aplicativo">
-            <button type="button" className={styles.linkBtn} title={`Abrir este aplicativo (${item.app})`} onClick={() => abrirApp(item.app as string)}>
-              {item.app_nome && item.app_nome !== item.app ? item.app_nome : <span className={styles.mono}>{item.app}</span>}
+            <button type="button" className={styles.linkBtn} title={dicaDoApp(item.app)} onClick={() => abrirApp(item.app as string)}>
+              {nomeDoApp(item.app, item.app_nome) !== item.app ? nomeDoApp(item.app, item.app_nome) : <span className={styles.mono}>{item.app}</span>}
             </button>
           </Fato>
         ) : null}
@@ -253,6 +253,10 @@ function ConteudoFluxo({ c, appsNaIdentidade }: { c: ConteudoDoFluxo; appsNaIden
           {c.origem.tipo === 'treino' ? 'Demonstrado no treino' : c.origem.source_run_id ? 'Aprendido na' : 'Aprendido de execução'}
           {c.origem.source_run_id ? <>{c.origem.tipo === 'treino' ? ' · ' : ' '}<a className={styles.linkAlvo} href={hrefDaExecucao(c.origem.source_run_id)} title={c.origem.source_run_id}>{rotuloDaExecucao(c.origem.source_run_id)}</a></> : null}
         </Fato>
+        {/* 31.120 (v1.81): o fluxo ensinado a partir de uma falha diz de onde veio, só ids. */}
+        {c.origem.step_id ? <Fato rotulo="Etapa de origem"><span className="mono">{c.origem.step_id}</span></Fato> : null}
+        {c.origem.attempt_id ? <Fato rotulo="Tentativa de origem"><span className="mono">{c.origem.attempt_id}</span></Fato> : null}
+        {c.origem.session_id ? <Fato rotulo="Sessão do treino"><span className="mono">{c.origem.session_id}</span></Fato> : null}
         <Fato rotulo="Efeito">{c.efeito.externo ? 'tem efeito fora do sistema' : 'sem efeito fora do sistema'}</Fato>
       </dl>
       <ol className={styles.passos} aria-label="Etapas do fluxo">
@@ -381,7 +385,7 @@ function Versao({ v, appNome }: { v: VersaoDoItem; appNome: string | null }) {
       <dl className={styles.fatos}>
         {v.app ? (
           <Fato rotulo="Aplicativo">
-            {appNome && appNome !== v.app ? <span title={v.app}>{appNome}</span> : <Mono>{v.app}</Mono>}
+            {nomeDoApp(v.app, appNome) !== v.app ? <span title={dicaDoApp(v.app)}>{nomeDoApp(v.app, appNome)}</span> : <Mono>{v.app}</Mono>}
             {v.app_version ? ` · versão ${v.app_version}` : ''}
           </Fato>
         ) : null}

@@ -9,7 +9,7 @@ import { useUiStore } from '../../store/ui';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
 import { apiAprendizado, type FiltroDoLivro } from './api';
 import { hashDe } from '../../lib/rotas';
-import type { VisaoDeApps } from './apps';
+import { NOME_DO_APP_NAO_IDENTIFICADO, PACOTE_NAO_RESOLVIDO, type VisaoDeApps } from './apps';
 import { AvisoDaHabilidade, ItemDoLivro, chaveDoItem } from './ItemDoLivro';
 import {
   ESTADOS_DO_LIVRO, LIVRO_KINDS, ORIGENS, ORIGEM_LABEL, ROTULOS, ROTULO_DICA, ROTULO_LABEL, type EntradaDoLivro, type ListaDoLivro,
@@ -137,7 +137,7 @@ export function AprendidoTab() {
   }, []);
   const opcoesDeApp = useMemo(() => {
     const o = (visao?.apps ?? []).map((a) => ({ pacote: a.pacote, nome: a.nome }));
-    if (visao?.nao_resolvido && visao.nao_resolvido.aprendido.total > 0) o.push({ pacote: visao.nao_resolvido.pacote || 'nao_resolvido', nome: 'App não resolvido' });
+    if (visao?.nao_resolvido && visao.nao_resolvido.aprendido.total > 0) o.push({ pacote: visao.nao_resolvido.pacote || PACOTE_NAO_RESOLVIDO, nome: NOME_DO_APP_NAO_IDENTIFICADO });
     if (app && !o.some((x) => x.pacote === app)) o.push({ pacote: app, nome: app });
     return o;
   }, [visao, app]);
@@ -172,7 +172,11 @@ export function AprendidoTab() {
           {({ id }) => (
             <Select id={id} small value={app ?? ''} onChange={(e) => trocarQuery({ app: e.target.value || undefined })}>
               <option value="">Todos</option>
-              {opcoesDeApp.map((a) => <option key={a.pacote} value={a.pacote}>{a.nome === a.pacote ? a.pacote : `${a.nome} (${a.pacote})`}</option>)}
+              {opcoesDeApp.map((a) => (
+                <option key={a.pacote} value={a.pacote}>
+                  {a.pacote === PACOTE_NAO_RESOLVIDO ? NOME_DO_APP_NAO_IDENTIFICADO : a.nome === a.pacote ? a.pacote : `${a.nome} (${a.pacote})`}
+                </option>
+              ))}
             </Select>
           )}
         </Field>

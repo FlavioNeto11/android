@@ -17,7 +17,7 @@ import { apiAprendizado } from './api';
 import { DecisaoInline } from './DecisaoInline';
 import { DetalheRico } from './DetalheRico';
 import { metaDeSaude } from './detalhe';
-import { abrirApp } from './apps';
+import { abrirApp, dicaDoApp, nomeDoApp } from './apps';
 import { AppsDoItem, eMultiApp } from './AppsDoItem';
 import {
   type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, ONDE_FICAM_AS_HABILIDADES,
@@ -174,8 +174,8 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
           <span>Apps: <AppsDoItem apps={e.apps} nomes={e.apps_nomes} principal={e.app} /></span>
         ) : e.app && !ocultarApp ? (
           <span>App:{' '}
-            <button type="button" className={styles.linkBtn} title={`Abrir este aplicativo (${e.app})`} onClick={() => abrirApp(e.app as string)}>
-              {e.app_nome && e.app_nome !== e.app ? e.app_nome : <span className={styles.mono}>{e.app}</span>}
+            <button type="button" className={styles.linkBtn} title={dicaDoApp(e.app)} onClick={() => abrirApp(e.app as string)}>
+              {nomeDoApp(e.app, e.app_nome) !== e.app ? nomeDoApp(e.app, e.app_nome) : <span className={styles.mono}>{e.app}</span>}
             </button>
           </span>
         ) : null}
