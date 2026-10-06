@@ -17,7 +17,7 @@ const op = (id: string, command: string, status: string | null, over: Record<str
   finished_at: null, capacidade: { solicitados: 2, concluidas: 1, bloqueadas: 0 }, ...over,
 });
 const LISTA = [
-  op('op-a', 'Comentar no post da loja', 'em_curso'),
+  op('op-a', 'Comentar no post da loja', 'em_curso', { custo: { total_usd: 0.2894 } }),
   op('op-b', 'Ler a publicação NOVIDADES de hoje', 'concluida', { acao_final: 'executar' }),
   op('op-c', 'Comentar na publicação antiga', 'concluida_com_bloqueios', { app_id: null, created_at: null }),
   op('op-d', 'Seguir o perfil da marca', 'cancelada'),
@@ -40,6 +40,7 @@ describe('o modelo da lista', () => {
   it('descricaoDaOperacao: hora, app e ação em palavras; o que falta diz que falta', () => {
     expect(descricaoDaOperacao({ created_at: '2026-10-07T10:00:00Z', app_id: 'instagram', acao_final: 'executar' }, (i) => `às ${i.slice(11, 16)}`))
       .toBe('Criada às 10:00 · instagram · Preparar e executar');
+    expect(descricaoDaOperacao({ created_at: null, app_id: 'a', acao_final: 'preparar', custo_usd: 0.05 })).toContain('· US$ 0,0500');
     expect(descricaoDaOperacao({ created_at: null, app_id: null, acao_final: null })).toBe('Criada em data não informada · app não informado · não informada');
   });
 });
@@ -77,8 +78,9 @@ describe('a lista na tela', () => {
   it('cada linha traz quando foi criada, o app e a ação, além do estado e das contagens', async () => {
     await abrir();
     const [a, b, c] = linhas();
-    expect(text(a!.querySelector('[data-meta]')!)).toMatch(/^Criada hoje, \d\d:\d\d · instagram · Só preparar$/);
+    expect(text(a!.querySelector('[data-meta]')!)).toMatch(/^Criada hoje, \d\d:\d\d · instagram · Só preparar · US\$ 0,2894$/);
     expect(text(b!.querySelector('[data-meta]')!)).toContain('Preparar e executar');
+    expect(text(b!.querySelector('[data-meta]')!)).not.toContain('US$');                    // sem custo no resumo, nada de zero inventado
     expect(text(c!.querySelector('[data-meta]')!)).toBe('Criada em data não informada · app não informado · Só preparar');
     expect(text(a!)).toContain('Em andamento · 2 solicitados, 1 concluídas, 0 bloqueadas');
     expect(text(container)).toContain('4 de 4 operações');

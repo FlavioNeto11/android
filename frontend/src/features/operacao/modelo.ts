@@ -6,6 +6,8 @@
  * entrada NÃO têm campo aqui, de propósito: a conta é só o rótulo (`conta`, o @).
  */
 
+import { formatUsd4 } from '../../lib/format';
+
 /** Os estágios do pipeline, na ordem fixa do dono e do adendo. `acao_executada` e `acao_bloqueada` ocupam a mesma posição. */
 export const ESTAGIOS = [
   { id: 'persona', rotulo: 'Persona' },
@@ -108,6 +110,8 @@ export interface ResumoDaOperacao {
   created_at: string | null;
   finished_at: string | null;
   capacidade: Capacidade;
+  /** O gasto total de IA, quando o resumo o traz (o detalhe sempre traz); `null` = não informado, nunca zero. */
+  custo_usd: number | null;
 }
 
 /** Cada parte que o backend não mandou fica `null` ("não informado"), nunca zero. */
@@ -220,6 +224,7 @@ export function lerResumo(v: unknown): ResumoDaOperacao | null {
     id, command: texto(o.command) ?? '', app_id: texto(o.app_id), acao_final: texto(o.acao_final),
     status: typeof o.status === 'string' && STATUS.includes(o.status) ? (o.status as StatusDaOperacao) : null,
     created_at: texto(o.created_at), finished_at: texto(o.finished_at), capacidade: lerCapacidade(o.capacidade),
+    custo_usd: usdOuNulo(registro(o.custo)?.total_usd),
   };
 }
 
@@ -300,8 +305,11 @@ export function contarPorStatus(itens: readonly Pick<ResumoDaOperacao, 'status'>
 }
 
 /** "Criada hoje, 19:43 · instagram · Preparar e executar": o que distingue uma operação da outra quando o objetivo é parecido. */
-export function descricaoDaOperacao(o: Pick<ResumoDaOperacao, 'created_at' | 'app_id' | 'acao_final'>, quando: (iso: string) => string = (i) => i): string {
-  return [o.created_at ? `Criada ${quando(o.created_at)}` : 'Criada em data não informada', o.app_id ?? 'app não informado', rotuloDaAcao(o.acao_final)].join(' · ');
+export function descricaoDaOperacao(o: Pick<ResumoDaOperacao, 'created_at' | 'app_id' | 'acao_final'> & { custo_usd?: number | null }, quando: (iso: string) => string = (i) => i): string {
+  return [
+    o.created_at ? `Criada ${quando(o.created_at)}` : 'Criada em data não informada', o.app_id ?? 'app não informado', rotuloDaAcao(o.acao_final),
+    ...(typeof o.custo_usd === 'number' ? [formatUsd4(o.custo_usd)] : []),
+  ].join(' · ');
 }
 
 export type Verificacao = 'verificada' | 'nao_verificada' | 'sem_acao';
