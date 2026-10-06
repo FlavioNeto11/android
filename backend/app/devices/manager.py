@@ -84,6 +84,25 @@ INTERVALO_DA_SONDA_S = 30
 #: Quanto esperar, depois do boot e do preparo, pela PRIMEIRA resposta positiva do framework antes de declarar o
 #: aparelho no ar. Um Android saudável responde na primeira sonda; o congelado de 25/09/2026 nunca respondeu.
 RESPOSTA_POS_BOOT_S = 60.0
+#: 29.151: o aparelho READOTADO depois de um reinício do backend disputa CPU com os outros que o backend religa ao mesmo
+#: tempo, e a resposta do framework levou 65 e 75 s (deploy 40) contra os 60 s fixos, que o marcavam `error` com a escada
+#: presa pela pausa de reparo. O teto da espera vira o da MEDIDA do próprio aparelho (`boot_seconds`), entre estes dois
+#: fatores do teto de um boot recém-feito (`RESPOSTA_POS_BOOT_S`): o piso (2x) cobre o aparelho sem medida e o limite (5x)
+#: impede que um boot lento de uma vez só vire prazo sem fim. Boot normal (não readoção) segue com o teto de sempre.
+FATOR_PISO_DA_READOCAO = 2.0
+FATOR_LIMITE_DA_READOCAO = 5.0
+
+
+def teto_da_resposta_s(adotado: bool, boot_seconds: float | None) -> float:
+    """O teto da espera pela primeira resposta do framework (29.151). Boot novo: `RESPOSTA_POS_BOOT_S`. Readoção: a medida
+    do próprio aparelho, entre `FATOR_PISO_DA_READOCAO` e `FATOR_LIMITE_DA_READOCAO` vezes aquele teto."""
+    if not adotado:
+        return RESPOSTA_POS_BOOT_S
+    piso = RESPOSTA_POS_BOOT_S * FATOR_PISO_DA_READOCAO
+    limite = RESPOSTA_POS_BOOT_S * FATOR_LIMITE_DA_READOCAO
+    return min(limite, max(piso, boot_seconds or 0.0))
+
+
 #: Piso do orçamento de prontidão quando o boot/wake já gastou quase todo o prazo: sem ele, um boot lento que chega à
 #: interface no limite teria uma única sonda de 1 s. Um Android saudável responde os três degraus em < 2 s (medido).
 #: É UMA RODADA INTEIRA: com 20 s fixos e o display a 20 s (`prontidao.PRAZO_S`), um display lento mas vivo teria só
@@ -2890,7 +2909,8 @@ class DeviceManager:
         else:
             self._registrar_apps_de_fundo(rt, ajuste)
         # Calculado DEPOIS do preparo: o que ele (e a espera pelo zumbi) gastou sai do orçamento da escada.
-        orcamento = max(RESPOSTA_MIN_S, min(RESPOSTA_POS_BOOT_S, timeout - (time.monotonic() - inicio_prazo)))
+        orcamento = max(RESPOSTA_MIN_S, min(teto_da_resposta_s(adopted, rt.boot_seconds),
+                                              timeout - (time.monotonic() - inicio_prazo)))
         if p is None:
             p = await self._esperar_prontidao(rt, orcamento)
         # O relógio NÃO entra aqui (K-031). O `cmd alarm set-time` leva um instante absoluto: estourado, cai atrasado
