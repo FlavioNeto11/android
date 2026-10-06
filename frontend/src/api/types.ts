@@ -371,7 +371,11 @@ interface Settings {
   retry_backoff_s: number; no_progress_limit: number;
   session_unknown_retry_cap: number;
   // v0.4 — coordenação de frota sobre o mesmo alvo (item 8.3/achado #114)
-  fleet_max_accounts_per_target: number; fleet_target_window_s: number;
+  fleet_max_accounts_per_target: number;
+  /** A janela, em dias, em que a ação de outra conta sobre o mesmo alvo conta para a regra (ADR-055; substitui a `fleet_target_window_s`, sem uso). */
+  fleet_target_window_days: number;
+  /** ADR-081: ligado (padrão), o post de conta nossa também entra na regra de uma conta por alvo; desligado, fica fora (pessoa real nunca sai). Backend anterior não manda. */
+  fleet_one_account_rule_for_own_accounts?: boolean;
   fleet_min_spacing_between_accounts_s: number; fleet_spacing_jitter_s: number;
   ai_max_calls_per_objective: number; ai_max_tokens_per_run: number;
   // item 17.12 — o teto de chamadas cresce por item do for_each (base + por_item × (itens − 1)), até o absoluto
@@ -394,9 +398,6 @@ interface Settings {
   orquestracao_max_candidatas: number;
   /** Quantas contas executam a ação final no post nosso numa operação (as demais ficam paradas até serem liberadas). */
   operacao_max_acoes_executadas: number;
-  /** ADR-081: quantas contas da frota podem ter mexido com o mesmo alvo dentro da janela, e quantos dias ela olha para trás. Backend anterior não manda. */
-  frota_max_contas_por_alvo: number;
-  frota_janela_dias: number;
 }
 
 /** v0.20 (C2): `on_demand` só captura prévia de aparelho que alguém olha; `always` é o laço antigo. */

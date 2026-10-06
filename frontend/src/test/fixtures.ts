@@ -10,7 +10,7 @@ export const SETTINGS: Settings = {
   step_timeout_s: 120, objective_timeout_s: 900, driver_call_timeout_s: 30,
   retry_backoff_s: 5, no_progress_limit: 6,
   session_unknown_retry_cap: 3,
-  fleet_max_accounts_per_target: 3, fleet_target_window_s: 3600,
+  fleet_max_accounts_per_target: 3, fleet_target_window_days: 30, fleet_one_account_rule_for_own_accounts: true,
   fleet_min_spacing_between_accounts_s: 120, fleet_spacing_jitter_s: 180,
   ai_max_calls_per_objective: 60, ai_max_calls_per_item: 12, ai_max_calls_absolute: 300, ai_max_tokens_per_run: 2_000_000,
   ai_max_usd_per_run: 15, ai_max_usd_per_day: 0,
@@ -19,7 +19,6 @@ export const SETTINGS: Settings = {
   auto_start_devices: false, max_online_devices: 3, min_online_dwell_s: 60, idle_stop_s: 0,
   preview_mode: 'on_demand',
   orquestracao_max_escolhidas: 30, orquestracao_max_candidatas: 60, operacao_max_acoes_executadas: 3,
-  frota_max_contas_por_alvo: 10, frota_janela_dias: 30,
 };
 
 export const APPS: AppConfig[] = [

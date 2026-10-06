@@ -103,8 +103,10 @@ export function LimitsSection() {
         )}
       >
         <div className={styles.limitGroups}>
-          {LIMIT_GROUPS.map((g) => (g.soSeOServidorManda ? { ...g, fields: g.fields.filter((f) => typeof settings[f.key] === 'number') } : g))
-            .filter((g) => g.fields.length > 0).map((g) => (
+          {LIMIT_GROUPS.map((g) => (g.soSeOServidorManda
+            ? { ...g, fields: g.fields.filter((f) => typeof settings[f.key] === 'number'), toggles: g.toggles?.filter((t) => typeof settings[t.key] === 'boolean') }
+            : g))
+            .filter((g) => g.fields.length > 0 || (g.toggles?.length ?? 0) > 0).map((g) => (
             // Desabilitado enquanto salva: a resposta zera os rascunhos, e o que a pessoa mexesse com o PUT em voo sumia sem
             // ser salvo nem avisado (29.115). O `fieldset` desabilita todos os campos do grupo de uma vez.
             <fieldset key={g.title} className={styles.limitGroup} disabled={saving}>

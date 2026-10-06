@@ -133,24 +133,32 @@ it('J1: cada limite explica o que é, o padrão e o teto, e a recusa do backend 
   expect(campo('Personas escolhidas por operação').value).toBe('50');
 });
 
-// ADR-081: a regra da frota sobre o mesmo alvo (dois campos novos, lidos ao vivo pelo servidor).
-it('ADR-081: o grupo "Regra da frota sobre o mesmo alvo" mostra os dois campos com a ajuda em português e salva só o que mudou', async () => {
+// ADR-081: a regra da frota sobre o mesmo alvo (fleet_max_accounts_per_target, fleet_target_window_days e o interruptor das contas nossas).
+const TETO = 'Contas da frota por alvo';
+const JANELA = 'Janela da regra da frota';
+const INTERRUPTOR = /Uma conta por alvo também vale para post de conta nossa/;
+const interruptor = () => Array.from(container.querySelectorAll('label')).find((l) => INTERRUPTOR.test(l.textContent ?? ''))?.querySelector('input') as HTMLInputElement;
+
+it('ADR-081: o grupo da regra da frota mostra os dois números e o interruptor, com o que valem, o padrão e a faixa, e salva só o que mudou', async () => {
   backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...useAppStore.getState().settings!, ...(c.body as Partial<Settings>) }));
   await act(async () => { root.render(<LimitsSection />); });
   expect(container.textContent).toContain('Regra da frota sobre o mesmo alvo');
-  expect(campo('Contas da frota por alvo').value).toBe('10');
-  expect(campo('Janela da regra da frota').value).toBe('30');
-  expect(container.textContent).toMatch(/Janela da regra da frota\s*dias/);                 // a unidade ao lado do rótulo
-  expect(container.textContent).toMatch(/Contas da frota por alvo\s*contas/);
-  expect(container.textContent).toContain('Padrão 10; vai de 1 a 64.');
+  expect(campo(TETO).value).toBe('3');
+  expect(campo(JANELA).value).toBe('30');
+  expect(interruptor().checked).toBe(true);          // padrão: ligado
+  expect(container.textContent).toMatch(/Janela da regra da frota\s*dias/);                  // a unidade ao lado do rótulo
+  expect(container.textContent).toContain('Vale para todas as ações. Padrão 3; vai de 1 a 50.');
   expect(container.textContent).toContain('Padrão 30; vai de 1 a 365.');
-  await setValue(campo('Contas da frota por alvo'), '15');
+  expect(container.textContent).toContain('pessoa real nunca sai da regra');
+  expect(container.textContent).not.toContain('Janela da coordenação de frota');            // a janela em segundos não tem mais uso
+  await setValue(campo(JANELA), '45');
+  await click(interruptor());
   await click(await botaoPronto(/^Salvar limites/));
   await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
-  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ frota_max_contas_por_alvo: 15 });
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ fleet_target_window_days: 45, fleet_one_account_rule_for_own_accounts: false });
 });
 
-it.each([['Contas da frota por alvo', '0'], ['Contas da frota por alvo', '65'], ['Janela da regra da frota', '0'], ['Janela da regra da frota', '366'], ['Janela da regra da frota', '3,5']])(
+it.each([[TETO, '0'], [TETO, '51'], [JANELA, '0'], [JANELA, '366'], [JANELA, '3,5']])(
   'ADR-081: %s = %s não salva e o erro cai no próprio campo', async (rotulo, valor) => {
     await act(async () => { root.render(<LimitsSection />); });
     await setValue(campo(rotulo), valor);
@@ -160,22 +168,21 @@ it.each([['Contas da frota por alvo', '0'], ['Contas da frota por alvo', '65'], 
   },
 );
 
-it('ADR-081: backend anterior (sem os dois campos) não mostra o grupo, e a recusa do backend aparece sem perder o valor', async () => {
-  backend.on('PUT', /^\/api\/settings$/, () => apiError(422, 'validation_error', 'frota_janela_dias: deve ser menor ou igual a 365'));
-  await act(async () => { root.render(<LimitsSection />); });
-  await setValue(campo('Janela da regra da frota'), '300');
-  await click(await botaoPronto(/^Salvar limites/));
-  await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'Não foi possível salvar os limites' && String(t.message).includes('frota_janela_dias'))).toBe(true));
-  expect(campo('Janela da regra da frota').value).toBe('300');
-  await act(async () => root.unmount());
-  container.remove();
-  container = document.createElement('div');
-  document.body.append(container);
-  root = createRoot(container);
+it('ADR-081: backend que ainda não manda o interruptor mostra só os dois números, sem caixa vazia', async () => {
   const sem = { ...useAppStore.getState().settings! } as Partial<Settings>;
-  delete sem.frota_max_contas_por_alvo;
-  delete sem.frota_janela_dias;
+  delete sem.fleet_one_account_rule_for_own_accounts;
   useAppStore.setState({ settings: sem as Settings });
   await act(async () => { root.render(<LimitsSection />); });
-  expect(container.textContent).not.toContain('Regra da frota sobre o mesmo alvo');
+  expect(container.textContent).toContain('Regra da frota sobre o mesmo alvo');
+  expect(campo(TETO).value).toBe('3');
+  expect(container.textContent).not.toContain('Uma conta por alvo também vale');
+});
+
+it('ADR-081: a recusa do backend ao salvar a janela aparece sem perder o valor digitado', async () => {
+  backend.on('PUT', /^\/api\/settings$/, () => apiError(422, 'validation_error', 'fleet_target_window_days: deve ser menor ou igual a 365'));
+  await act(async () => { root.render(<LimitsSection />); });
+  await setValue(campo(JANELA), '300');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'Não foi possível salvar os limites' && String(t.message).includes('fleet_target_window_days'))).toBe(true));
+  expect(campo(JANELA).value).toBe('300');
 });
