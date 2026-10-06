@@ -63,6 +63,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   sem o motivo no Concluir); frontend inteiro, typecheck e build com os números do commit. `real`: `not_run` (o percurso do deploy 43
   provou a revisão, mas o desfazer da gravação viva ainda não foi exercitado no aparelho; depende de deploy com este painel).
 
+## 2026-10-06 — 31.112: a pergunta da IA guardada na proposta leva o marcador da persona (branch fix/31-112-pergunta-mascarada)
+
+- Achado da prova real do 31.87: `training_sessions.proposal` tinha o nome da persona em claro em `answers[].question`,
+  porque a troca do F2 não cobria `questions[]` nem `answers[].question` (31.91).
+- `dado_da_persona.nas_perguntas` (nova) troca o dado por palavra na pergunta e deixa a resposta da pessoa como está.
+  Roda ao guardar (`TrainingSkills.propose`, no corpo e na proposta nova, e `_preparar` do `save` e da prévia) e ao
+  mostrar (`TrainingRecorder.get` e `list`, por `variaveis_da_persona`, ligada em `state.py`). A forma das respostas
+  da API não muda.
+- Funções tocadas (K-095): `TrainingSkills.propose`, `TrainingSkills._preparar`, `TrainingRecorder.__init__`,
+  `TrainingRecorder.get`, `TrainingRecorder.list`, `TrainingRecorder._proposta_mascarada` (nova),
+  `dado_da_persona.nas_perguntas` (nova).
+- Prova `simulated`: `backend/tests/test_treino_pergunta_mascarada.py` (6; 5 reprovam sem a mudança). Real: `not_run`.
+
 ## 2026-10-05 — Junção do Portal no corte 43 (branch junta/portal-corte-43)
 
 - Une, sobre a main 095a43b6, os cinco ramos do Portal: 31.90-C (a6096bc1), 31.90-E (08fa6ac7), 31.90-F (b1dcd41b), 29.104 2º PR (d31b042c) e

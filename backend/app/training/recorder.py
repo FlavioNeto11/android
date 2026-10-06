@@ -21,6 +21,7 @@ from ..db import dumps, loads
 from ..security.redaction import looks_secret, mentions_credential, parece_codigo, parece_linha_com_codigo, parece_senha_ou_codigo
 from ..social.observacao import linhas_de_conteudo
 from ..util import new_token, now_iso
+from . import dado_da_persona
 
 if TYPE_CHECKING:
     from ..automation.hierarchy import UiTree
@@ -184,7 +185,8 @@ def titulo_da_tela(tree: Any) -> str | None:
 
 class TrainingRecorder:
     def __init__(self, db: Any, bus: Any, devices: Any,
-                 personas_do_aparelho: Callable[[str, str | None], list[str]], owner_id: str | None = None):
+                 personas_do_aparelho: Callable[[str, str | None], list[str]], owner_id: str | None = None,
+                 variaveis_da_persona: Callable[[str | None], dict[str, str]] | None = None):
         self.db = db
         self.bus = bus
         self.devices = devices
@@ -193,6 +195,8 @@ class TrainingRecorder:
         self.owner_id = owner_id
         #: `(aparelho, app) -> personas vinculadas` (N:N, migração 051). Com `app`, só as que servem àquele app.
         self._personas_do_aparelho = personas_do_aparelho
+        #: 31.112: `persona -> {perfil_…: valor}` (só o não sigiloso), para mascarar as perguntas da proposta na leitura.
+        self._variaveis_da_persona = variaveis_da_persona
 
     # ------------------------------------------------------------------ sessão
     def start(self, instance_id: str, *, intent: str, lease_id: str | None, app_id: str | None = None,
@@ -477,9 +481,19 @@ class TrainingRecorder:
 
     def get(self, session_id: str) -> dict[str, Any]:
         s = dict(self._row(session_id))
-        s["proposal"] = loads(s["proposal"])
         s["inputs"] = self.inputs(session_id)
+        s["proposal"] = self._proposta_mascarada(loads(s["proposal"]), s.get("profile_id"), s["inputs"])
         return s
+
+    def _proposta_mascarada(self, proposta: object, profile_id: str | None,
+                            entradas: list[dict[str, object]]) -> object:
+        """31.112: a pergunta da IA guardada (de antes do 31.112, ou de um caminho que não passou pela troca) sai com o
+        marcador também na LEITURA, pela mesma regra do 31.87 F2 (o dado que a pessoa digitou inteiro)."""
+        if not isinstance(proposta, dict) or self._variaveis_da_persona is None or not (
+                proposta.get("questions") or proposta.get("answers")):
+            return proposta
+        persona = dado_da_persona.demonstrados(self._variaveis_da_persona(profile_id), entradas)
+        return dado_da_persona.nas_perguntas(proposta, persona)
 
     def list(self, *, instance_id: str | None = None, limit: int = 30) -> list[dict[str, Any]]:
         sql, args = "SELECT * FROM training_sessions", []
@@ -492,6 +506,8 @@ class TrainingRecorder:
         for r in self.db.query(sql, tuple(args)):
             d = dict(r)
             d["proposal"] = loads(d["proposal"])
+            if isinstance(d["proposal"], dict) and (d["proposal"].get("questions") or d["proposal"].get("answers")):
+                d["proposal"] = self._proposta_mascarada(d["proposal"], d.get("profile_id"), self.inputs(r["id"]))
             d["input_count"] = int(self.db.scalar("SELECT COUNT(*) FROM training_inputs WHERE session_id=?", (r["id"],)) or 0)
             saida.append(d)
         return saida
