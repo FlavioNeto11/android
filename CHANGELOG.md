@@ -33,6 +33,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `ux_binding_conta_do_app_no_aparelho` da 051, sem mudar linha; a regra fica no repositório. Corte 56.
 - Nenhum app do parque declara a troca (o Instagram não declara nesta prova). O QA Messenger não ganhou sessão
   declarada: isso mudaria a porta de sessão de todo objetivo de QA.
+- Achados da revisão automática do corte 56, corrigidos com teste:
+  - erro do driver no toque de saída (prazo estourado com o "Sair" já aceito) agora invalida as sessões do app no
+    aparelho antes de o erro subir; antes, a sessão da conta que saiu seguia pronta;
+  - a conta aberta só sai se a credencial dela também estiver ativa; senha recusada ou em revisão não a traria de volta.
 - Prova `simulated`: `backend/tests/test_troca_de_conta.py` (com o correio de exemplo declarado só no teste e duas
   personas) e `backend/tests/test_migracao_126.py` (atualização, idempotência, banco novo = atualizado).
 - `not_run`: prova real (exige declarar a troca num app, com os sinais lidos num aparelho de conta de teste).

@@ -24,6 +24,7 @@ from app.integrations.app_declarado import conhecimento
 from app.integrations.app_declarado.conhecimento import SessaoInvalida
 from app.integrations.app_declarado.sessao import Outcome, SessaoDeclarada
 from app.models import ProfileAccountCreate, SessionStatus
+from app.modules.identity.application.session_rules import CREDENCIAL_EM_REVISAO
 from app.security.secret_store import MemoryKeyProvider, SecretStore
 from app.security.sensitive_input import SensitiveInputChannel
 from app.social.repository import SocialRepository
@@ -317,6 +318,44 @@ async def test_conta_aberta_que_nao_e_nossa_nao_e_deslogada(parque: Any) -> None
     r = await p.motor.ensure_session(FakeRt(app, IID), p.b[0], account_id=p.b[1], automatic=True)
     assert r.outcome is Outcome.WRONG_ACCOUNT and "não é deslogada" in r.detail
     assert app.conta == "alguem.de.fora" and "sair" not in app.calls and app.typed == []
+
+
+@pytest.mark.parametrize("status", ["invalid", CREDENCIAL_EM_REVISAO])
+async def test_conta_aberta_com_a_senha_recusada_nao_e_deslogada(parque: Any, status: str) -> None:
+    """Achado do Codex (corte 56): a conta aberta é nossa e tem consentimento, mas a senha guardada já foi recusada
+    (`invalid`) ou está em revisão: a automação não a traria de volta, então nada é tocado."""
+    app = _novo_app()
+    p = parque(app)
+    p.db.execute("UPDATE account_credentials SET status=? WHERE account_id=?", (status, p.a[1]))
+    r = await p.motor.ensure_session(FakeRt(app, IID), p.b[0], account_id=p.b[1], automatic=True)
+    assert r.outcome is Outcome.WRONG_ACCOUNT and "não é deslogada" in r.detail
+    assert app.conta == CONTA_A and "sair" not in app.calls and app.typed == []
+    assert _status(p, p.a) == SessionStatus.session_ready.value
+
+
+async def test_toque_de_saida_com_erro_do_driver_depois_do_efeito_invalida_o_app(parque: Any) -> None:
+    """Achado do Codex (corte 56): o driver dá erro DEPOIS de o "Sair" chegar (prazo estourado). A conta saiu, e a
+    sessão dela não pode seguir pronta: o desfecho é incerto, as sessões do app caem para `unknown` e o erro sobe."""
+    from app.automation.driver import DriverError
+
+    @dataclass
+    class _CaiNaConfirmacao(CorreioComSaida):
+        def tap(self, x: int, y: int) -> None:
+            confirmar = self.tela == "confirmar_saida"
+            super().tap(x, y)
+            if confirmar:
+                raise DriverError("prazo do toque estourado")
+
+    app = _CaiNaConfirmacao(conta=CONTA_A, tela="caixa", senhas={CONTA_A: SENHA_A, CONTA_B: SENHA_B})
+    p = parque(app)
+    try:
+        r = await p.motor.ensure_session(FakeRt(app, IID), p.b[0], account_id=p.b[1], automatic=True)
+    except DriverError:
+        r = None
+    assert r is None or r.outcome is not Outcome.SESSION_READY
+    assert app.conta is None and app.typed == []                       # saiu, e nada foi digitado
+    sessao_a = p.repo.account_session_row(p.a[0], p.a[1], IID)
+    assert sessao_a["status"] == SessionStatus.unknown.value and "troca de conta" in sessao_a["detail"]
 
 
 async def test_aparelho_em_quarentena_nao_troca(parque: Any) -> None:
