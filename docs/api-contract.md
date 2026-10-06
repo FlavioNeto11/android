@@ -5269,8 +5269,9 @@ problemas da saúde sai só o `code`.
   `orquestradora`, `pergunta`, `executando`, `feita`, `cancelada`, `falhou`, `aviso`; um estado desconhecido soma em
   `outro`), `problemas` (só `telegram_entrada_*`).
 - `trello`: `ligado`, `webhook_ligado`, `cadastro_automatico`, `ultima_reconciliacao_em` (o `atualizado_em` mais recente
-  do cursor), `cartoes` (`ativo`, `arquivado`, `criando`), `entradas` (como acima, `canal='trello'`), `problemas` (só
-  `trello_*`, sem repetir).
+  do cursor), `cartoes` (`ativo`, `arquivado`, `criando`), `entradas` (como acima, `canal='trello'`),
+  `comentarios_de_app_em_alvo_desconhecido` (28.55: quantos comentários escritos por app, num cartão fora das listas de
+  perguntas e sem fato, foram tratados como `outro`; só o número), `problemas` (só `trello_*`, sem repetir).
 
 Prova:
 - `simulated`: `backend/tests/test_canais_estado.py` (conjunto de chaves travado; nenhum valor carrega o texto semeado nas

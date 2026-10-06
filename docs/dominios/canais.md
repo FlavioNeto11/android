@@ -338,6 +338,11 @@ avisos depois da faxina"), e a trava cai no TTL.
     máquina segue pedindo a confirmação no Telegram (28.30), com ou sem app reconhecido. Dentro das listas de perguntas
     nenhum código pede o 28.30: a resposta vai à orquestradora sem Telegram, e quem barra o efeito externo é ela, ao ler
     a resposta (comentário nunca autoriza efeito em conta real).
+  - **Alvo desconhecido (28.55):** o comentário num cartão FORA das listas de perguntas e sem fato (um cartão que a Central
+    não conhece) escrito por um app que o dono não reconheceu (o app da Central, um script, uma sessão) deixa de valer como
+    digitado: vira `outro`, sem texto, e a linha leva `responde_a = alvo_desconhecido;autoria=app`. O comentário sem
+    `appCreator` (o que ele digita) e o do app em `trello.apps_do_dono` seguem como sempre, com o sim no Telegram (28.30). A
+    contagem sai em `GET /api/canais/estado` (`trello.comentarios_de_app_em_alvo_desconhecido`, só o número).
   - **O id do app é público, o valor é a igualdade com o membro:** o id do aplicativo do Trello no celular é o mesmo para
     qualquer usuário do cliente do Trello; ele não prova quem escreveu. O que lhe dá valor é o autor ser igual a
     `trello.membro_dono` (conferido na tradução, `recebida_da_action`, e de novo no consumo). O teste do membro errado
