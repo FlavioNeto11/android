@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — K-pendente do 31.160: a gravação crua do ensino sai mascarada na leitura (branch feat/31-160-gravacao-mascarada)
+
+- Medido em 06/10 (ensino do 31.160, alvo = o perfil da própria persona): o fluxo, a receita e o Livro saíram limpos,
+  mas o `GET /api/training/{id}` devolvia o @ e o nome dela no `target.text`, no `target.desc` e nas linhas da tela.
+- `TrainingRecorder.get` mascara as entradas por padrão (`dado_da_persona.na_gravacao`): todo dado da persona (3+
+  caracteres) vira o marcador no texto do alvo tocado (`text`, `desc`, `content_desc`, `hint`, `label`), nas linhas e no
+  título da tela, nos `filhos` do alvo e no texto digitado, por palavra, sem diferença de caixa, também logo depois
+  de um @ e com qualquer espaço entre as partes do valor. Limite: casa o valor inteiro (o primeiro nome sozinho fica). Vale para o GET
+  da sessão e para as respostas que a devolvem (iniciar, gravar, desfazer, proposta, salvar, reproduzir). As quatro
+  leituras internas do ensino (proposta, salvar, prévia e reproduzir) usam `get(..., crua=True)`: a destilação segue
+  igual. O formato da resposta não muda.
+- A proposta guardada (títulos e resumo) não é mascarada além do que já era: o painel a devolve na prévia e no salvar,
+  e o marcador no título faria a etapa mirar a persona de cada aparelho em vez do alvo visto.
+- A prévia e o salvar avisam quando um parâmetro do comando sai porque o exemplo é o dado da própria persona que
+  ensinou: "{param} saiu do comando: … a etapa vai usar {marcador} de cada aparelho".
+- Prova `simulated`: `backend/tests/test_treino_gravacao_mascarada.py` (3 testes). Ensino, receitas, personas e
+  arquitetura: 925 passaram (antes da correção da revisão) e 699 do ensino, personas e arquitetura depois dela; mypy 257, docs-check 0. `real`: `not_run` (um GET de sessão de ensino gravada com o perfil da própria persona, após o
+  deploy).
+
 ## 2026-10-06 — 31.153: as etapas ensinadas como ações conhecidas do app no plano livre (branch feat/31-153-etapas-ensinadas)
 
 - Medido em 06/10: a receita ensinada só era achada pela chave da etapa (o `template_hash`). O plano livre gerava outro

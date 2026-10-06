@@ -332,7 +332,7 @@ class TrainingSkills:
         """`body`: o corpo opcional `{"answers": [...]}` já lido do JSON (31.91); sem ele, o comportamento de sempre.
         Sem corpo (ou com `answers` vazio) as respostas JÁ guardadas na proposta anterior são mantidas e reenviadas ao
         provedor. O UPDATE final só vale se a sessão não mudou desde a leitura (`proposta_concorrente`, 409)."""
-        sess = self.s.training.get(session_id)
+        sess = self.s.training.get(session_id, crua=True)
         if sess["status"] == "recording":
             raise TrainingError("still_recording", "Conclua a gravação antes de pedir a proposta.", 409)
         if sess["status"] in ("saved", "discarded"):
@@ -399,6 +399,7 @@ class TrainingSkills:
             raise TrainingError("no_proposal", "Peça a proposta da IA (ou monte as etapas) antes de salvar.", 400)
         # 31.87 F2: a mesma troca da proposta, para a que a pessoa editou à mão; antes de conferir o comando.
         persona = self._persona_demonstrada(sess)
+        sumidos = dado_da_persona.parametros_da_persona(p, persona)       # K-pendente do 31.160: avisa, não muda
         p, marcadores = dado_da_persona.na_proposta(p, persona)
         p = dado_da_persona.nas_perguntas(p, persona)   # 31.112: a proposta editada pelo cliente pode trazer a pergunta
         if not isinstance(p.get("command_template"), (str, type(None))):
@@ -483,13 +484,14 @@ class TrainingSkills:
         # A destilação troca o valor digitado pelo nome: os parâmetros da pessoa primeiro, a persona no que sobrar.
         variaveis = {**exemplos, **{k: v for k, v in persona.items() if k not in exemplos}}
         return _Preparo({**p, "app_id": app_id},
-                        [*avisos, *dado_da_persona.aviso(marcadores), *partida.aviso(ja_valem, dados),
+                        [*avisos, *dado_da_persona.aviso_dos_parametros(sumidos), *dado_da_persona.aviso(marcadores),
+                         *partida.aviso(ja_valem, dados),
                          *(dado_da_persona.com_marcador(linha, dados) for linha in partida.aviso_dos_vizinhos(vizinhos))],
                         comando, plano, variaveis, apps, app_id, profile_ids, group_ids, ja_valem, dados)
 
     async def save(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],
                    group_ids: list[str], scope_on_proof: str = ESCOPO_TODOS) -> dict[str, object]:
-        sess = self.s.training.get(session_id)
+        sess = self.s.training.get(session_id, crua=True)
         prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids, scope_on_proof)
         if prep.ja_valem:                     # 31.122: pede outra pós-condição ANTES da primeira escrita
             raise TrainingError("pos_condicao_ja_vale", " ".join(partida.aviso(prep.ja_valem, prep.persona)), 400,
@@ -628,7 +630,7 @@ class TrainingSkills:
         """O que o `save` faria com esta proposta, SEM escrever (31.86): a mesma conferência (mesmos códigos), a mesma
         destilação e o mesmo relatório por etapa. É para a pessoa ver por que uma etapa ficaria sem receita enquanto
         ainda dá para corrigir a proposta. Nada vai ao banco: nem fluxo, escopo, receita, status ou evento."""
-        sess = self.s.training.get(session_id)
+        sess = self.s.training.get(session_id, crua=True)
         prep = self._preparar(sess, session_id, proposal, profile_ids, group_ids, scope_on_proof)
         # A única recusa do `save` que só aparece ao gravar (`learn_from_plan`): o comando repetido. Lida sem escrever,
         # pela MESMA regra do `save` (30.84: o ensinado que a prova desligou pode ser ensinado de novo). 31.142: vem no
@@ -648,7 +650,7 @@ class TrainingSkills:
         """Repara uma sessão JÁ salva: destila de novo (com a proposta guardada) e grava a receita das etapas que ainda
         não têm (31.86). Serve ao fluxo salvo com o aparelho fora do ar, ou antes de uma regra de destilação mudar.
         Idempotente: onde já há receita ativa o `recipes.save` não grava outra (a política é a de sempre)."""
-        sess = self.s.training.get(session_id)
+        sess = self.s.training.get(session_id, crua=True)
         # 31.118: a gravação salva guarda o marcador; a destilação precisa do que foi digitado (o valor, em memória)
         sess = {**sess, "inputs": dado_da_persona.com_valores(
             sess["inputs"], self.s.repo.variaveis_da_persona(sess.get("profile_id")))}
