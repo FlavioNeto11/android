@@ -438,6 +438,17 @@ avisos depois da faxina"), e a trava cai no TTL.
   leitura nova troca o prefixo `**Leitura de ...**` da antiga. M8 e M9 só mudam quando o deploy é o mais recente do
   CHANGELOG. Sem `--aplicar` só imprime (a rede do ensaio é só leitura); `--offline` não usa rede. Testes:
   `.claude/trello/test_marco.py` (simulated, trechos fictícios no formato do CHANGELOG).
+- **Como fechar um deploy (28.67):** um comando só, no lugar dos scripts soltos: a Canais prepara a raiz
+  (`git fetch -q origin` e `git -C <raiz> checkout --detach origin/main`, porque o checkout central pode estar atrás) e roda
+  `python .claude/trello/espelho_do_deploy.py --raiz <raiz> [--deploy NN] [--aplicar]` (sem `--aplicar` só relata). Ele
+  confere que a raiz é o `origin/main` mais recente (se não for, para sem tentar trocar de ramo), cria em Próximas o cartão
+  de cada ID do plano sem cartão aberto nos 3 quadros (texto pela `redacao.redigir`, com `android-NN`, `emulator-NN` e
+  `worker-NN` trocados por "aparelho"), faz a reconciliação TOTAL (a decisão é a do `reconciliar.py`), cria ou atualiza o
+  marco e as leituras M8 e M9 (`marco.py`) e imprime UMA linha de contagens (plano, cartões, sem cartão, nasceram, para
+  Concluído, para Em validação, só linha, marco, M8, M9, falhas). Cada passo para no primeiro erro de rede e diz qual foi;
+  os três são idempotentes, então repetir o comando depois de uma queda só faz o que faltou. Testes:
+  `.claude/trello/test_espelho_do_deploy.py` (simulated, dados fictícios). Prova `real`: o fechamento do primeiro deploy
+  com este comando (`not_run` até lá).
 - **Hoje:** `.claude/trello/reconciliar.py` (testes em `.claude/trello/test_reconciliar.py`), a rotina da skill `trello` e o
   aviso no fim do `aplicar` do plano. As exceções acima (sem estado, "Espera você") ficam num relato para o dono ver.
 - **No produto:** nada ainda. A Central só tem o espelho dos avisos; levar a reconciliação para dentro dela é decisão a
