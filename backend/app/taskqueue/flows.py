@@ -25,6 +25,7 @@ from ..db import Database, Row
 from ..modules.learning.domain.aprovacao_automatica import PLATAFORMA
 from ..modules.learning.domain.ensinado import MOTIVO_DA_PROVA_DO_ENSINADO
 from ..modules.learning.domain.livro import CONFIRMADO_QUE_FICA, apps_na_ordem_do_plano
+from ..modules.learning.domain.uso_real import em_uso_real_desde
 from ..modules.skills.domain.document import JsonValue
 from ..modules.skills.domain.matching import specificity
 from ..models import Plan, PlannerInfo, StepResult
@@ -620,6 +621,26 @@ class FlowStore:
             linha["origin"] = ({"session_id": sessao, "run_id": run, "step_id": etapa, "attempt_id": tentativa,
                                 "instance_id": aparelho, "operator": quem, "ensinado_em": quando} if sessao else None)
             saida.append(linha | {"plan": None})
+        # 31.150: o selo "em uso real desde" do fluxo de prova religado por uma pessoa; `null` nos outros.
+        selos = self.em_uso_real_desde([f["id"] for f in saida if f["nascido_de_prova"] and f["status"] == "active"])
+        for f in saida:
+            f["em_uso_real_desde"] = selos.get(f["id"])
+        return saida
+
+    def em_uso_real_desde(self, flow_ids: list[str]) -> dict[str, str]:
+        """31.150: de cada fluxo, a data do religamento para uso real, se ele ainda for a última linha da trilha."""
+        if not flow_ids:
+            return {}
+        refs = [f"fluxo:{i}" for i in flow_ids]
+        por_ref: dict[str, list[tuple[str | None, str | None, str | None]]] = {}
+        for r in self.db.query("SELECT item_ref, to_state, reason, decided_at FROM learning_transitions WHERE item_ref IN"
+                               f" ({','.join('?' * len(refs))}) ORDER BY decided_at, id", tuple(refs)):
+            por_ref.setdefault(str(r["item_ref"]), []).append((r["to_state"], r["reason"], r["decided_at"]))
+        saida: dict[str, str] = {}
+        for i in flow_ids:
+            desde = em_uso_real_desde(por_ref.get(f"fluxo:{i}", []))
+            if desde:
+                saida[i] = desde
         return saida
 
 

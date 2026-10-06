@@ -25,6 +25,7 @@ from app.modules.learning.domain.livro import (EntradaDoLivro, apps_na_ordem_do_
 from app.modules.learning.domain.relacoes import Sucessora
 from app.modules.learning.domain.versao import (ReceitaDaChave, VersaoViva, agrupar_vivas, quadro_da_receita,
                                                 versao_canonica)
+from app.modules.learning.domain.uso_real import em_uso_real_desde
 from app.modules.learning.domain.vocabulario import APP_NAO_RESOLVIDO, LivroKind, Origem
 from app.modules.learning.infrastructure import linhas
 from app.modules.skills.domain.document import JsonObject, JsonValue, content_hash
@@ -305,7 +306,16 @@ class FontesSql:
                              comando_modelo=linhas.texto(row, "command_template"),
                              fonte=linhas.texto_ou_nulo(row, "source"),
                              source_run_id=linhas.texto_ou_nulo(row, "source_run_id"), apps=exigidos.get(ref, []),
-                             nascido_de_prova=bool(linhas.inteiro_ou_nulo(row, "nascido_de_prova")))
+                             nascido_de_prova=bool(linhas.inteiro_ou_nulo(row, "nascido_de_prova")),
+                             em_uso_real_desde=self._em_uso_real_desde(ref) if linhas.inteiro_ou_nulo(
+                                 row, "nascido_de_prova") and linhas.texto(row, "status") == "active" else None)
+
+    def _em_uso_real_desde(self, ref: str) -> str | None:
+        """31.150: a data do religamento para uso real, se ele ainda for a última linha da trilha do fluxo."""
+        return em_uso_real_desde((linhas.texto_ou_nulo(r, "to_state"), linhas.texto_ou_nulo(r, "reason"),
+                                  linhas.texto_ou_nulo(r, "decided_at"))
+                                 for r in self._db.query("SELECT to_state, reason, decided_at FROM learning_transitions"
+                                                         " WHERE item_ref=? ORDER BY decided_at, id", (f"fluxo:{ref}",)))
 
     def _conteudo_da_habilidade(self, ref: str) -> JsonObject | None:
         row = self._db.one("SELECT skill_id, version, state, schema_version, content, content_hash, command_template,"
