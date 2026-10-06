@@ -6,7 +6,9 @@ O que cada bloco prova:
   principal do plano, o rótulo da R5), a C3 só em `shadow`, e o estado é subconjunto estrito do da intenção, com o MESMO
   comando (a mesma C7 e o mesmo filtro).
 - **Perguntas:** id opaco por app, nome (C2) só na instrução e nos critérios, mascarado e sem C7; teto de apps.
-- **Travado:** com `R5_LIBERADA` falso nada se monta nem se lê, qualquer que seja o YAML; a transparência não anuncia a R5.
+- **Travado** (a chave voltada a falso): nada se monta nem se lê, qualquer que seja o YAML; a transparência não anuncia a R5.
+- **Liberada de fábrica** (05/10, sim do dono ao P-013): a sombra só grava candidatos e probabilidades com id opaco, não
+  age nem pergunta, e fora do YAML ligado ou fora do `shadow` não faz nada.
 - **Ligação:** o controle é a leitura de apps citados sobre o comando ORIGINAL; a sombra grava uma linha por app e casa
   `sim`/`nao`; abaixo do limiar é sem resposta.
 
@@ -14,6 +16,7 @@ Prova `simulated`: decisor falso, banco de teste e o harness com o provedor simu
 """
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -69,7 +72,7 @@ def _noul(p: float) -> RespostaDeDecisao:
 def test_lista_exata_da_origem_apps_e_c3_so_em_shadow() -> None:
     assert privacidade.CAMPOS_POR_ORIGEM["apps"] == frozenset({"comando"})
     assert "apps" in privacidade.C3_ORIGENS and privacidade.C3_MODOS == frozenset({"shadow"})
-    assert privacidade.R5_LIBERADA is False                       # travada de fábrica até o GO do 31.10
+    assert privacidade.R5_LIBERADA is True                        # liberada em 05/10 (P-013): só a sombra, YAML decide
     pedido = pedido_dos_apps(run_id="r1", perguntas=perguntas_dos_apps([OUTLOOK]), comando="leia o meu e-mail")
     assert dict(pedido.estado) == {"comando": "leia o meu e-mail"} and pedido.origem == "apps" and pedido.classe == "C3"
     assert privacidade.validar(pedido).permitido
@@ -132,6 +135,7 @@ def test_decisao_real_e_sim_para_o_citado_e_nao_para_os_demais() -> None:
 
 # ================================================================== travado
 def test_travada_no_codigo_nao_monta_nada_mesmo_com_o_yaml_ligado(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(privacidade, "R5_LIBERADA", False)                  # a chave voltada a falso fecha de novo
     monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", True)
     decisor = DecisorFalso()
     db = banco(tmp_path, "r5.sqlite3")
@@ -159,6 +163,7 @@ def test_destravada_vale_o_mesmo_que_a_intencao(monkeypatch: pytest.MonkeyPatch,
 
 
 def test_transparencia_nao_anuncia_a_r5_travada(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(privacidade, "R5_LIBERADA", False)
     assert transparencia.consumidores_ativos(CFG_APPS) == {}
     assert transparencia.status(CFG_APPS, chave_configurada=True) is None
     monkeypatch.setattr(privacidade, "R5_LIBERADA", True)
@@ -221,6 +226,7 @@ def test_31_13_na_sombra_0_6_ja_e_sim_e_a_probabilidade_fica_gravada(tmp_path: P
 
 
 def test_ligada_e_travada_a_sombra_nao_le_o_cadastro(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(privacidade, "R5_LIBERADA", False)
     monkeypatch.setattr(privacidade, "JEV_RUNTIME_SEND_APPROVED", True)
     db = banco(tmp_path, "r5.sqlite3")
     porta = Porta(DecisorFalso(), cfg=CFG_APPS)
@@ -269,7 +275,8 @@ def test_apps_de_le_so_id_nome_e_pacote() -> None:
 
 
 # ================================================================== composição
-async def test_composicao_liga_a_r5_travada_e_o_plano_de_fabrica_nao_chama_ninguem(harness: Harness) -> None:
+async def test_composicao_liga_a_r5_e_o_plano_de_fabrica_nao_chama_ninguem(harness: Harness) -> None:
+    """Liberada no código, mas com a porta desligada de fábrica (`enabled: false`): o consumidor existe e não está ativo."""
     st = harness.state
     assert st is not None
     sombra = st.runs.sombra_intencao
@@ -296,3 +303,71 @@ async def test_destravada_no_harness_a_sombra_dos_apps_grava_depois_do_plano(
     assert linhas[id_da_pergunta("qa-messenger")]["escolha"] == SIM
     assert linhas[id_da_pergunta("instagram")]["fallback_reason"] == "abaixo_do_limiar"
     assert PERGUNTA_CATALOGO not in linhas                                     # a intenção segue desligada
+
+
+# ================================================================== liberada de fábrica (P-013, 05/10): só observa
+async def test_liberada_de_fabrica_a_sombra_registra_candidatos_sem_agir_nem_perguntar(harness: Harness) -> None:
+    """A chave de código está aberta (sem o fixture `r5_liberada`): com o YAML em `shadow`, a sombra grava um candidato por
+    app com id opaco e a probabilidade, e o plano da execução, o que ela pergunta e o que ela dispara ficam como sem a
+    sombra. Compara a mesma execução com o decisor nulo (sem Jev) e com o decisor que acha o app."""
+    assert privacidade.R5_LIBERADA is True and privacidade.JEV_RUNTIME_SEND_APPROVED is True
+    st = harness.state
+    assert st is not None and st.runs.sombra_intencao is not None
+
+    async def planejar(decisor: DecisorFalso | None) -> tuple[Any, list[str]]:
+        st.decisao_fechada.decisor = decisor if decisor is not None else st.decisao_fechada.decisor
+        st.decisao_fechada.cfg = CFG_APPS if decisor is not None else DecisaoFechadaCfg(enabled=False)
+        run = harness.run(["android-01"], command="abra o aplicativo de configuracoes", mode="plan")
+        pronta = await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed"), timeout=20.0)
+        await st.runs.sombra_intencao.aguardar()
+        st.decisao_fechada.aguardar_sombras()
+        eventos = [r["kind"] for r in st.db.query("SELECT kind FROM events WHERE run_id=? ORDER BY id", (run.id,))]
+        return pronta, eventos
+
+    sem, eventos_sem = await planejar(None)
+    assert st.db.scalar("SELECT COUNT(*) FROM decisao_fechada_sombra") == 0              # desligada: nada gravado
+    decisor = DecisorFalso({id_da_pergunta("qa-messenger"): _noul(0.9), id_da_pergunta("instagram"): _noul(0.2)})
+    com, eventos_com = await planejar(decisor)
+
+    # 1. registra: uma linha por app, id opaco, probabilidade gravada, só o comando saiu
+    linhas = {r["pergunta_id"]: dict(r) for r in st.db.query("SELECT * FROM decisao_fechada_sombra")}
+    assert set(linhas) == {id_da_pergunta("qa-messenger"), id_da_pergunta("instagram")}
+    assert all(p.startswith("app:") and len(p) == 16 for p in linhas)
+    assert "qa-messenger" not in " ".join(linhas) and all(r["origem"] == "apps" for r in linhas.values())
+    [pedido] = decisor.chamadas
+    assert set(pedido.estado) == {"comando"} and pedido.modo == "shadow"
+    # 2. não age: o resultado da execução e os apps exigidos são os mesmos sem a sombra
+    assert com.status == sem.status
+    planos = [json.loads(st.db.scalar("SELECT plan FROM runs WHERE id=?", (r.id,)) or "{}") for r in (sem, com)]
+    assert planos[0] and planos[0].get("required_apps") == planos[1].get("required_apps")
+    assert [x["key"] for x in planos[0]["steps"]] == [x["key"] for x in planos[1]["steps"]]
+    # 3. não pergunta nem dispara nada na hora: os eventos da execução são os mesmos, sem pergunta nem aprovação
+    assert eventos_com == eventos_sem
+    assert not [k for k in eventos_com if k.startswith("approval") or "needs_input" in k]
+
+
+async def test_liberada_mas_sem_o_yaml_em_shadow_nao_faz_nada_e_on_nao_passa_de_shadow(harness: Harness) -> None:
+    """Fora da sombra a R5 segue sem efeito: porta desligada ou outro consumidor ligado. O decisor nunca é chamado.
+    E a R5 não tem `on`: o consumidor sempre pede `shadow`, então `apps: on` no YAML é cortado para `shadow` (o menor dos
+    dois), nunca age."""
+    st = harness.state
+    assert st is not None
+    for cfg in (DecisaoFechadaCfg(enabled=False),
+                DecisaoFechadaCfg(enabled=True, consumidores={"intencao": "shadow"})):           # type: ignore[arg-type]
+        decisor = DecisorFalso()
+        st.decisao_fechada.decisor = decisor
+        st.decisao_fechada.cfg = cfg
+        run = harness.run(["android-01"], command="abra o aplicativo de configuracoes", mode="plan")
+        await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed"), timeout=20.0)
+        await st.runs.sombra_intencao.aguardar()
+        st.decisao_fechada.aguardar_sombras()
+        assert not [c for c in decisor.chamadas if getattr(c, "origem", None) == "apps"], cfg
+    assert st.db.scalar("SELECT COUNT(*) FROM decisao_fechada_sombra WHERE origem='apps'") == 0
+    decisor = DecisorFalso()
+    st.decisao_fechada.decisor = decisor
+    st.decisao_fechada.cfg = DecisaoFechadaCfg(enabled=True, consumidores={"apps": "on"})        # type: ignore[arg-type]
+    run = harness.run(["android-01"], command="abra o aplicativo de configuracoes", mode="plan")
+    await harness.wait_run(run.id, statuses=("planned", "needs_input", "failed"), timeout=20.0)
+    await st.runs.sombra_intencao.aguardar()
+    st.decisao_fechada.aguardar_sombras()
+    assert decisor.chamadas and {c.modo for c in decisor.chamadas} == {"shadow"}                # nunca `on`

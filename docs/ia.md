@@ -844,8 +844,10 @@ continua `False` até o 31.10 (sem troca de chave: emenda do ADR-069, item 9). D
     - O estado é só o `comando` da intenção, sem o `app`: depois do `_plan`, o app da execução é o principal do plano,
       que é o rótulo.
     - A decisão real casada na sombra é a regex do caminho atual (`apps_citados`) sobre o comando original.
-    - Liga pelo mesmo gancho da intenção (`SombraDaIntencao.ligar_apps`). Fica travada no código
-      (`privacidade.R5_LIBERADA = False`) até o GO do 31.10: travada, não lê o cadastro e `/api/ai` não a anuncia.
+    - Liga pelo mesmo gancho da intenção (`SombraDaIntencao.ligar_apps`). A trava de código `privacidade.R5_LIBERADA` virou
+      `True` em 05/10/2026, pelo sim do dono ao P-013 (Trello, entrada 2368 às 23:32Z): só em sombra. Liberar não liga nada:
+      o YAML (`enabled: true` e `consumidores.apps: shadow`) segue sendo o que liga, e a R5 não age nem pergunta (grava
+      candidatos e probabilidades na sombra). Com a chave de volta a `False`, a R5 não lê o cadastro e `/api/ai` não a anuncia.
     - O lote offline a mede nos mesmos casos com `--r5`. Rótulo, limiar e métricas: golden set §9.
 - **Cliente único.** `backend/tests/test_decisao_fechada.py::test_cliente_unico_so_o_adaptador_de_retrieval_conhece_o_host_da_typesafe`
   varre `backend/app` e prova que só `modules/context_retrieval/adapters/jev.py` contém o host.

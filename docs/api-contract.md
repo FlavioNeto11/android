@@ -4985,7 +4985,9 @@ no `notice`.
   - Ela já estava no vocabulário (`contrato.Origem` e `ai.decisao_fechada.consumidores`), sem consumidor.
   - Agora entra também na lista das origens que podem mandar C3 (`privacidade.C3_ORIGENS`).
 - **`transparencia.consumidores_ativos` omite `apps` enquanto a trava de código `privacidade.R5_LIBERADA` é falsa.**
-  Ela é falsa de fábrica, até o GO do 31.10, e omite mesmo com `consumidores.apps: shadow` no YAML.
+  Ela foi falsa de fábrica até 05/10/2026 e virou `True` com o sim do dono ao P-013 (31.13, só sombra): agora `apps`
+  aparece quando o YAML o põe em `shadow`. O texto abaixo descreve o comportamento com a trava fechada, que continua valendo
+  se a chave voltar a `False`.
   - Por quê: travada, a R5 não lê o cadastro nem monta pedido, e nada dela sai.
   - Anunciar o consumidor prometeria uma exposição que não acontece. É a regra do 31.17: verdade antes de conforto.
 - **Consequências, com a R5 travada:**

@@ -152,6 +152,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `TrainingUndoBody` (novo). O `save` não muda.
 - Prova `simulated`: `backend/tests/test_treino_desfazer_a_ultima.py`. Real: `not_run`.
 
+## 2026-10-05 — 31.13: a sombra dos apps do comando (R5) liberada no código, pelo sim do dono ao P-013 (branch feat/31-13-r5-sombra)
+
+- `privacidade.R5_LIBERADA` passa a `True`. Decisão do dono: o sim ao P-013 no Trello (entrada 2368, 05/10 às 23:32Z,
+  conferida no banco do central), sob a recomendação "só sombra".
+- Liberar não liga nada: o YAML (`enabled: true` e `consumidores.apps: shadow`) segue sendo o que liga. A R5 não tem `on`
+  (o consumidor sempre pede `shadow`, então `apps: on` é cortado para `shadow`), grava um candidato por app com id opaco e a
+  probabilidade, e não age nem pergunta: o plano, os eventos e o `Plan.required_apps` da execução ficam como sem ela.
+- Os testes que supunham a trava de fábrica agora fecham a chave por conta própria. Novos: a sombra liberada registra e não
+  age (mesma execução com e sem Jev: mesmo status, plano e eventos), e fora do YAML em `shadow` não faz nada.
+- Prova `simulated`: `backend/tests/test_decisao_fechada_apps.py` (25). `real`: `not_run` (o Jev real só roda com o YAML
+  ligado no central). O GO/NO-GO do 31.10 é refeito com a amostra que a sombra juntar, em alguns dias.
+
 ## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
 
 - O fluxo ensinado que a prova real desligou (30.81) renasce na mesma linha quando a pessoa ensina o mesmo comando de
