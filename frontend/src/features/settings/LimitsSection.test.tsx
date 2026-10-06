@@ -6,7 +6,8 @@ import type { Settings } from '../../api/types';
 import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { makeSnapshot } from '../../test/fixtures';
-import { FakeBackend, botaoPronto, byRole, click, installBrowserStubs, json, setValue, waitFor } from '../../test/harness';
+import { FakeBackend, apiError, botaoPronto, byRole, click, installBrowserStubs, json, setValue, waitFor } from '../../test/harness';
+import { useToastStore } from '../../store/toasts';
 import { LimitsSection } from './LimitsSection';
 
 // 29.115: a resposta do PUT zera os rascunhos. Com os campos livres durante o envio, o que a pessoa mexesse com o
@@ -82,4 +83,52 @@ it('Enter num campo envia e o foco vai para o Salvar, que segue focável enquant
   expect(salvar.getAttribute('aria-busy')).toBe('true');
   await act(async () => { soltar!(); });
   await waitFor(() => !previa.matches(':disabled'));
+});
+
+// Prova de 07/10 (J1): os dois limites da sugestão de alvos. O grupo só existe se o servidor os manda.
+const campo = (rotulo: string) => byRole('textbox', new RegExp(`^${rotulo}`)) as HTMLInputElement;
+
+it('J1: o grupo "Orquestração de operações" mostra os dois limites e salva só o que mudou', async () => {
+  backend.on('PUT', /^\/api\/settings$/, (c) => json({ ...useAppStore.getState().settings!, ...(c.body as Partial<Settings>) }));
+  await act(async () => { root.render(<LimitsSection />); });
+  expect(container.textContent).toContain('Orquestração de operações');
+  expect(campo('Personas escolhidas por operação').value).toBe('30');
+  expect(campo('Candidatas avaliadas pela IA').value).toBe('60');
+  expect(campo('Contas que executam a ação final').value).toBe('3');
+  await setValue(campo('Personas escolhidas por operação'), '40');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)[0]!.body).toEqual({ orquestracao_max_escolhidas: 40 });
+});
+
+it('J1: candidatas menores que as escolhidas não salvam, e o erro cai no campo das candidatas', async () => {
+  await act(async () => { root.render(<LimitsSection />); });
+  await setValue(campo('Candidatas avaliadas pela IA'), '10');
+  await click(byRole('button', /^Salvar limites/));
+  await waitFor(() => expect(container.textContent).toContain('Deve ser maior ou igual às personas escolhidas.'));
+  expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(0);
+});
+
+it('J1: backend anterior (sem os campos) não mostra o grupo nem campo vazio', async () => {
+  const sem = { ...useAppStore.getState().settings! } as Partial<Settings>;
+  delete sem.orquestracao_max_escolhidas;
+  delete sem.orquestracao_max_candidatas;
+  delete sem.operacao_max_acoes_executadas;
+  useAppStore.setState({ settings: sem as Settings });
+  await act(async () => { root.render(<LimitsSection />); });
+  expect(container.textContent).not.toContain('Orquestração de operações');
+  expect(container.textContent).toContain('Limites por objetivo');
+});
+
+it('J1: cada limite explica o que é, o padrão e o teto, e a recusa do backend aparece e não perde o que foi digitado', async () => {
+  backend.on('PUT', /^\/api\/settings$/, () => apiError(422, 'validation_error', 'orquestracao_max_escolhidas: deve ser menor ou igual a 64'));
+  await act(async () => { root.render(<LimitsSection />); });
+  expect(container.textContent).toContain('Padrão 30; vai de 1 a 64.');
+  expect(container.textContent).toContain('Padrão 60; vai de 1 a 120.');
+  expect(container.textContent).toContain('Padrão 3; vai de 1 a 64.');
+  await setValue(campo('Personas escolhidas por operação'), '50');
+  await click(await botaoPronto(/^Salvar limites/));
+  await waitFor(() => expect(backend.callsTo('PUT', /^\/api\/settings$/)).toHaveLength(1));
+  await waitFor(() => expect(useToastStore.getState().toasts.some((t) => t.title === 'Não foi possível salvar os limites' && String(t.message).includes('deve ser menor ou igual a 64'))).toBe(true));
+  expect(campo('Personas escolhidas por operação').value).toBe('50');
 });

@@ -7,6 +7,7 @@ import { ConfirmHost } from './components/Confirm';
 import { Toasts } from './components/Toasts';
 import { AprendizadoPage } from './features/aprendizado/AprendizadoPage';
 import { CanaisPage } from './features/canais/CanaisPage';
+import { OperacaoPage } from './features/operacao/OperacaoPage';
 import { DiagnosticsPage } from './features/diagnostics/DiagnosticsPage';
 import { seletorDoAparelho } from './features/focus/Drawer';
 import { FocusPanel } from './features/focus/FocusPanel';
@@ -127,7 +128,7 @@ export function App() {
     if (mainRef.current) mainRef.current.scrollTop = 0;
     const names = { painel: 'Painel', personas: 'Personas', aplicativos: 'Aplicativos', execucoes: 'Execuções',
                     pedidos: 'Pedidos', pendencias: 'Pendências', aprendizado: 'Aprendizado', infraestrutura: 'Infraestrutura', configuracao: 'Configuração',
-                    diagnostico: 'Diagnóstico', canais: 'Canais' } as const;
+                    diagnostico: 'Diagnóstico', canais: 'Canais', operacoes: 'Operação' } as const;
     document.title = `${names[view]} · Central de Aparelhos`;
   }, [view]);
 
@@ -157,6 +158,7 @@ export function App() {
             {view === 'configuracao' ? <SettingsPage /> : null}
             {view === 'diagnostico' ? <DiagnosticsPage /> : null}
             {view === 'canais' ? <CanaisPage /> : null}
+            {view === 'operacoes' ? <OperacaoPage /> : null}
           </div>
         </main>
         {focusId ? <FocusPanel key={focusId} instanceId={focusId} /> : null}
