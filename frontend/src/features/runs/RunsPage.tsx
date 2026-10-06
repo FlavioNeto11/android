@@ -10,6 +10,7 @@ import { EmptyState } from '../../components/EmptyState';
 import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { StatusBadge } from '../../components/StatusBadge';
 import { TruncatedText } from '../../components/TruncatedText';
+import { formatUsd4, plural } from '../../lib/format';
 import { conteudoAoTopo } from '../../lib/scroll';
 import { RUN_STATUS, metaOf } from '../../lib/status';
 import { tempoRelativo, formatDateTime, useNow } from '../../lib/time';
@@ -262,6 +263,8 @@ function RunItem({ run, current, onSelect }: { run: RunSummary; current: boolean
           </>
         ) : null}
         {run.simulated ? <span className={styles.miniWarn}><FlaskConical size={11} aria-hidden /> simulado</span> : null}
+        {/* 29.153: a lista não traz o custo (v1.74); mostra o último lido no detalhe desta execução, se já foi aberto. */}
+        {run.costs ? <span title={`${plural(run.costs.calls, 'chamada', 'chamadas')} de IA`}>{formatUsd4(run.costs.spent_usd)}</span> : null}
       </span>
     </button>
   );

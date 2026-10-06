@@ -243,7 +243,13 @@ interface RunSummary {
    *  ausente no pedido de pessoa pelo painel. `origem_ref`: o fluxo, o pedido de validação ou o id externo do canal. */
   origem?: OrigemDaExecucao | null;
   origem_ref?: string | null;
+  /** v1.74 (29.153): o custo de IA da execução, só no detalhe (`GET /runs/{id}`); a lista não o traz. Ausente em backend
+   *  de antes do 29.153: o painel mostra "custo não lido", nunca erro. */
+  costs?: RunCosts | null;
 }
+
+/** v1.74: `spent_usd` é a estimativa em US$ de `planning/costs.py` (sem limite de dia); `calls`, as linhas de `ai_calls`. */
+export interface RunCosts { spent_usd: number; calls: number }
 
 /** O vocabulário fechado de `app/contracts/origem.py` (`ORIGENS_DA_EXECUCAO`), o mesmo do backend. */
 export type OrigemDaExecucao = 'prova_fluxo' | 'validacao_qa' | 'telegram' | 'trello';
