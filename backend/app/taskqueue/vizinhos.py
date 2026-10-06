@@ -15,18 +15,22 @@ Nunca entram: o systemui, o lançador (pacote com "launcher") e os apps cadastra
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 
 from ..models import Plan
+from ..modules.learning.domain.licoes import ACAO_DE_SESSAO
 
 #: Os pacotes que nunca valem como vizinho (o lançador sai pelo nome: "launcher").
 FORA_DOS_ACEITOS = ("com.android.systemui",)
+#: O formato de um pacote Android: o que não casa não vai ao plano nem à trilha.
+_PACOTE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 
 
 def vizinho_valido(pacote: object, fora: Iterable[str] = ()) -> bool:
-    return (isinstance(pacote, str) and bool(pacote) and pacote not in FORA_DOS_ACEITOS and "launcher" not in pacote
-            and pacote not in set(fora))
+    return (isinstance(pacote, str) and bool(_PACOTE.match(pacote)) and pacote not in FORA_DOS_ACEITOS
+            and "launcher" not in pacote and pacote not in set(fora))
 
 
 @dataclass
@@ -80,7 +84,8 @@ def aplicar(plan: Plan, conhecidos: Mapping[str, Mapping[str, Vizinho]], cadastr
     for s in plan.steps:
         app = s.app_id or plan.app_id
         vizinhos = [v for v in (conhecidos.get(app) or {}).values() if vizinho_valido(v.pacote, fora)] if app else []
-        if s.pacotes_aceitos or s.side_effect or s.commit_guard or not vizinhos:
+        # a etapa de sessão, login ou desafio fica como veio: lá a tela fora do app não se aceita por semelhança
+        if s.pacotes_aceitos or s.side_effect or s.commit_guard or not vizinhos or ACAO_DE_SESSAO.search(s.key):
             passos.append(s)
             continue
         passos.append(s.model_copy(update={"pacotes_aceitos": [v.pacote for v in vizinhos]}))

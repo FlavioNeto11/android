@@ -42,6 +42,7 @@ def test_o_par_vem_so_do_ensino_com_contagem_e_origem() -> None:
         ("run", QA, _plano_json(QA, {"key": "e", "pacotes_aceitos": ["com.de.execucao"]})),  # não é ensino
         ("training:s3", QA, _plano_json(QA, {"key": "f", "app_id": "outro", "pacotes_aceitos": ["com.do.outro"]})),
         ("training:s4", QA, "{quebrado"),
+        ("training:s5", QA, _plano_json(QA, {"key": "g", "pacotes_aceitos": ["nao e pacote", "{x}"]})),
     ]
     pares = pares_dos_fluxos(linhas)
     assert set(pares) == {QA, "outro"}
@@ -55,11 +56,12 @@ def test_so_a_etapa_sem_efeito_e_sem_lista_propria_ganha_o_vizinho() -> None:
         PlanStep(key="buscar", title="Buscar", goal="g", postcondition=POST),
         PlanStep(key="enviar", title="Enviar", goal="g", postcondition=POST, side_effect=True),
         PlanStep(key="propria", title="P", goal="g", postcondition=POST, pacotes_aceitos=["com.dela"]),
-        PlanStep(key="outro_app", title="O", goal="g", postcondition=POST, app_id="sem-ensino")])
+        PlanStep(key="outro_app", title="O", goal="g", postcondition=POST, app_id="sem-ensino"),
+        PlanStep(key="fazer_login", title="L", goal="g", postcondition=POST)])
     conhecidos = {QA: {BUSCA: Vizinho(BUSCA, ["training:s1"]), "com.cadastrado": Vizinho("com.cadastrado", ["training:s1"])}}
     novo, mudou = aplicar(plano, conhecidos, ["com.cadastrado"])
     por = {s.key: s.pacotes_aceitos for s in novo.steps}
-    assert por == {"buscar": [BUSCA], "enviar": [], "propria": ["com.dela"], "outro_app": []}
+    assert por == {"buscar": [BUSCA], "enviar": [], "propria": ["com.dela"], "outro_app": [], "fazer_login": []}
     assert [(k, [v.pacote for v in vs]) for k, vs in mudou] == [("buscar", [BUSCA])]
     assert plano.steps[0].pacotes_aceitos == []                                  # o plano de entrada não muda
     assert aplicar(plano, {}, [])[0] is plano

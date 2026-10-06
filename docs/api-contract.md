@@ -7368,8 +7368,7 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
 - **Parâmetros:** os da proposta são renomeados para os do objetivo que falhou pelo valor (sem o @ e sem caixa).
 - **Receita:** segue o 30.81 (vale para quem ensinou até o "Confirmar que fica") e a regra de uma viva por chave (30.79).
 - **Evento `log` do salvar:** ganha `correcao_ligada` e `recipe_id`.
-- **Não feito:** a "lição do planejador" como caminho alternativo quando a receita não liga. Os motivos acima dizem por
-  quê.
+- **Não feito aqui:** a "lição do planejador" como caminho alternativo quando a receita não liga; veio no adendo v1.100.
 - **Prova:** `simulated` (`backend/tests/test_correcao_volta_ao_comando.py`, 2 testes, que reprovam no código anterior).
   `real`: `not_run`. As 2 sessões reais salvas não teriam receita: uma sem app, outra em Configurações, sem versão
   conhecida no catálogo.
@@ -7395,3 +7394,27 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
   - `::test_duas_execucoes_uma_pesquisa_e_os_fatos_chegam_ao_texto`.
 
   `real`: a operação de 07/10.
+
+## Adendo v1.100 (06/10/2026; número da orquestradora; item 31.149, caminho alternativo) — a correção não ligada ensina o planejador
+
+- **`POST /api/training/{id}/save` de uma sessão de correção:** quando `correcao.ligada` é `false` (adendo v1.98),
+  `correcao` ganha `licao`.
+  - Lição proposta: `{id, estado, texto}`, com `estado` = `candidate`. `texto` = "Em <pacote>: quando a etapa <chave>
+    falhar, o caminho que uma pessoa ensinou foi <chave> → <chave>."
+  - Lição não proposta: `{id: null, motivo}`. Os motivos:
+    - a etapa que falhou foi apagada;
+    - a lição foi recusada, com o motivo do vocabulário das lições (`simulada`, `app_invalido`, `acao_invalida`,
+      `acao_de_sessao`, `valor_de_parametro`, `longa`);
+    - o Livro não a aceitou (veto ou cara de credencial).
+  - Correção ligada: sem `licao`.
+- **No Livro:** item `licao` no escopo do planejador do app (`scope_role = planner`), com `source_kind` =
+  `teaching_correction`.
+  - É de origem humana: só o dono a publica.
+  - Só publicada, e com `aprendizado.licoes.modo: on` (global ou `por_app`), ela vai ao prompt do planejador.
+  - `provenance.sessao` = `training:<sessão>`.
+- **O que entra no texto:** só chaves de etapa que passam pela régua da chave livre. Título, comando e valor nunca
+  entram. A chave que contém um valor do objetivo, do exemplo ou da persona é recusada, seja o valor inteiro ou
+  qualquer palavra dele de 3 letras ou mais.
+- **Evento `log` do salvar:** ganha `licao_id`, que é `null` sem lição.
+- **Prova:** `simulated`, em `backend/tests/test_correcao_vira_licao_do_planejador.py` (3 testes; a lição publicada
+  cabe no bloco do planejador do app). `real`: `not_run`.

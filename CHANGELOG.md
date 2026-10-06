@@ -25,10 +25,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   propõe ao Livro uma lição do PLANEJADOR do app: "Em <pacote>: quando a etapa X falhar, o caminho que uma pessoa
   ensinou foi A → B" (`licao_da_correcao`, `SourceKind.CORRECAO_ENSINADA` = `teaching_correction`).
 - Só chaves de etapa entram, pela régua da chave livre: nem título, nem comando, nem valor do objetivo, do exemplo ou
-  da persona. Chave com valor, etapa de sessão e execução simulada são recusadas, com o motivo.
-- Nasce candidata e de origem humana: só o dono a publica, e só publicada vai ao prompt do planejador (ADR-054). Não
-  depende do 31.151. A resposta do `save` ganha `correcao.licao` ({id, estado, texto} ou {id: null, motivo}) e o
-  evento ganha `licao_id`. O número do adendo do contrato vem da orquestradora.
+  da persona. Chave com valor (inteiro, ou qualquer palavra dele de 3 letras ou mais), etapa de sessão e execução
+  simulada são recusadas, com o motivo. Revisor de segredos: sem achado alto. O médio era o nome que entrava em parte
+  e foi corrigido. Do baixo: o vizinho do 31.152 passa a exigir formato de pacote, e a etapa de sessão não ganha
+  vizinho.
+- Nasce candidata e de origem humana: só o dono a publica, e só publicada E com `aprendizado.licoes.modo: on` (global
+  ou `por_app`; de fábrica é `shadow`) vai ao prompt do planejador (ADR-054). Não depende do 31.151. A resposta do `save` ganha `correcao.licao` ({id, estado, texto} ou {id: null, motivo}) e o
+  evento ganha `licao_id` (adendo v1.100 do contrato).
 - Prova `simulated`: `backend/tests/test_correcao_vira_licao_do_planejador.py` (3 testes; a publicada cabe no bloco do
   planejador do app). Aprendizado, treino, correção, costuras e arquitetura: 3458 passaram. mypy 257 (no teto).
   `real`: `not_run` (correção de uma falha real no QA Messenger, como a do 31.149).

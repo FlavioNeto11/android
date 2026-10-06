@@ -435,8 +435,11 @@ def licao_da_correcao(c: CorrecaoSemReceita) -> NovoItem | Recusa:
         return Recusa(MotivoDeRecusa.ACAO_INVALIDA)
     if any(ACAO_DE_SESSAO.search(k) for k in chaves):
         return Recusa(MotivoDeRecusa.ACAO_DE_SESSAO)
+    # O valor inteiro dentro da chave, ou qualquer palavra dele (≥ 3 letras) como palavra da chave: "Ana Souza" recusa
+    # `falar_com_ana` (revisor-segredos, 06/10: o valor inteiro sozinho deixava passar o primeiro nome)
     valores = [v for v in (_normal((v or "").lstrip("@")) for v in c.valores) if len(v) >= 3]
-    if any(v in _normal(k.replace("_", " ")) for k in chaves for v in valores):
+    palavras = {p for v in valores for p in re.split(r"[^a-z0-9]+", v) if len(p) >= 3}
+    if any(v in _normal(k.replace("_", " ")) or palavras & set(k.split("_")) for k in chaves for v in valores):
         return Recusa(MotivoDeRecusa.VALOR_DE_PARAMETRO)
     caminho = list(c.caminho[:CAMINHO_MAX])
     texto = MODELO_DA_CORRECAO.format(app=c.app, chave=c.chave, caminho=" → ".join(caminho))

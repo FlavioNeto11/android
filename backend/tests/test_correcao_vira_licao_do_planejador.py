@@ -44,6 +44,8 @@ def test_so_chaves_entram_e_o_que_nao_pode_e_recusado() -> None:
     assert novo.content == {"modelo": "correcao", "acao": "abrir_conversa", "caminho": ["tocar_busca", "digitar_nome"]}
     assert licao_da_correcao(_c(caminho=("tocar_busca", "digitar_ana"), valores=("Ana",))) == Recusa(
         MotivoDeRecusa.VALOR_DE_PARAMETRO)
+    assert licao_da_correcao(_c(caminho=("falar_com_ana",), valores=("Ana Souza",))) == Recusa(   # uma palavra basta
+        MotivoDeRecusa.VALOR_DE_PARAMETRO)
     assert licao_da_correcao(_c(caminho=("fazer_login",))) == Recusa(MotivoDeRecusa.ACAO_DE_SESSAO)
     assert licao_da_correcao(_c(caminho=("Digitar QA-001",))) == Recusa(MotivoDeRecusa.ACAO_INVALIDA)
     assert licao_da_correcao(_c(caminho=())) == Recusa(MotivoDeRecusa.ACAO_INVALIDA)
