@@ -217,4 +217,7 @@ async def test_duas_execucoes_uma_pesquisa_e_os_fatos_chegam_ao_texto(harness: A
         assert "[fato] pesquisa." in kw["fatos_da_operacao"]
         assert "[hipótese, não confirmada]" in kw["fatos_da_operacao"] and "[fonte] fonte." in kw["fatos_da_operacao"]
         assert LEGENDA not in kw["fatos_da_operacao"]                  # a leitura já vai na tela de quem a viu
+        assert kw["assunto_da_operacao"] == "coleção de outono da loja"   # o assunto vai junto da intenção
+    meta = json.loads(state.db.scalar("SELECT draft_meta FROM steps WHERE id='run-a:android-01:v1:comentar'"))
+    assert meta["fatos_da_operacao"]["assunto"] is True
     assert state.db.scalar("SELECT COUNT(*) FROM memory_items") == 0

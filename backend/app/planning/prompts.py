@@ -412,6 +412,14 @@ def social_user_text(req: SocialRequest) -> str:
         partes.append(f"<intencao>\n{sem_marcacao(req.brief)}\n</intencao>\n"
                       "Escreva do seu jeito, na sua voz. Não repita a intenção literalmente nem soe como as outras "
                       "contas que receberam a mesma instrução.")
+    if req.assunto_da_operacao.strip():
+        # Onda 1 (06/10): com o post sem relação ao assunto e só `<intencao>` mandando, o texto ignorou o assunto. Ele
+        # vem do comando de quem criou a operação e vai junto da intenção; relacionar é pedido só quando fizer sentido,
+        # para não forçar o assunto num post que fala de outra coisa.
+        partes.append(f"<assunto_da_operacao>\n{sem_marcacao(req.assunto_da_operacao, limite=300)}\n"
+                      "</assunto_da_operacao>\n"
+                      "Relacione o texto a este assunto quando fizer sentido com o que a publicação mostra; se não "
+                      "fizer, fale do que a publicação mostra, sem forçar o assunto.")
     if req.incoming.strip():
         partes.append(f"<conteudo_recebido>\n{sem_marcacao(req.incoming)}\n</conteudo_recebido>")
     if req.avoid:

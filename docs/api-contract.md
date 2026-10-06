@@ -7165,5 +7165,9 @@ em `operacao_alvos.marcas.conhecimento_ids` as refs no mesmo formato desta rota 
 `registro:<chave>`). São o que o texto do agente RECEBEU da operação: as linhas do `<fatos_da_operacao>` e a leitura da
 operação (`fato:alvo.conteudo`), quando ela é igual à tela do agente. Quais delas o modelo usou de fato ele não diz.
 
+**O assunto da operação no texto.** Com `operacoes.assunto`, o escritor recebe o bloco `<assunto_da_operacao>` logo
+depois de `<intencao>`, com o pedido de relacionar o texto ao assunto só quando fizer sentido com a publicação. O
+`draft_meta.fatos_da_operacao` da etapa ganha `assunto: true`. Sem assunto, nada muda.
+
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.

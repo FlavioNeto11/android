@@ -35,6 +35,7 @@ class Fatos:
     texto: str
     quantos: int                                  # o que o texto recebeu da operação: o bloco e a leitura igual na tela
     refs: tuple[str, ...] = ()                    # o mesmo, como referência (`fato:<chave>`, 31.163): conhecimento_ids
+    assunto: str = ""                             # `operacoes.assunto` (124): vai ao escritor junto da intenção
 
 
 class ConhecimentoDaOperacao:
@@ -124,7 +125,13 @@ class ConhecimentoDaOperacao:
         if leitura in (dominio.PRIMEIRA, dominio.IGUAL):
             # a leitura da operação está na `<tela>` deste agente: também é conhecimento da operação usado no texto
             refs[:0] = [dominio.ref(e) for e in entradas if e.chave == dominio.CHAVE_DO_CONTEUDO and e.vale(agora)]
-        return Fatos(dominio.bloco(no_bloco, agora=agora), len(refs), tuple(refs))
+        return Fatos(dominio.bloco(no_bloco, agora=agora), len(refs), tuple(refs), self._assunto(operacao_id))
+
+    def _assunto(self, operacao_id: str) -> str:
+        """`operacoes.assunto` (124), em uma linha. Sem a tabela, sem a coluna ou sem assunto: vazio."""
+        if "operacoes" not in self.db.tables() or "assunto" not in self.db.columns("operacoes"):
+            return ""
+        return " ".join(str(self.db.scalar("SELECT assunto FROM operacoes WHERE id=?", (operacao_id,)) or "").split())
 
     def marcar_conhecimento_usado(self, run_id: str, refs: tuple[str, ...]) -> bool:
         """`resultado.conhecimento_ids` do alvo (contrato da operação, 124: "vem da frente de Aprendizado"): os fatos da

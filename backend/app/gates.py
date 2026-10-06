@@ -482,7 +482,8 @@ class Portoes:
                     avoid=textos_irmaos(self._st.db, obj["run_id"], srow["id"], operacao_id=operacao_id),
                     # O que a operação sabe em comum (a leitura do alvo e o que se consolidou): DADO citado, separado
                     # do contexto da persona. Vazio fora de operação.
-                    fatos_da_operacao=fatos.texto if fatos is not None else "")
+                    fatos_da_operacao=fatos.texto if fatos is not None else "",
+                    assunto_da_operacao=fatos.assunto if fatos is not None else "")
             except SocialError as exc:
                 # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing
                 # continua lá e uma nova tentativa pode gerar.
@@ -520,7 +521,8 @@ class Portoes:
                     "incoming": recebido,
                     # Auditoria do conhecimento comum: quantos fatos entraram e como a leitura deste agente bateu com a
                     # da operação. Só contagem e palavra fixa: o texto dos fatos mora na memória da operação.
-                    **({"fatos_da_operacao": {"quantos": fatos.quantos, "leitura": leitura}}
+                    **({"fatos_da_operacao": {"quantos": fatos.quantos, "leitura": leitura,
+                                              **({"assunto": True} if fatos.assunto else {})}}
                        if fatos is not None else {}),
                 })
         # 31.63: o evento diz SÓ que o texto foi escrito e o tamanho. O texto mora na etapa e no pedido de aprovação, onde
