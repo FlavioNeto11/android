@@ -5,6 +5,7 @@
  * custo. Consolidado: a faixa de capacidade, os custos (pesquisa, agentes, total e o teto), as falhas agrupadas por motivo e os
  * textos irmãos. O agente aparece pelo RÓTULO da persona: nunca o @ da conta, o id da conta nem login ou e-mail.
  */
+import { formatClock, formatDateTime } from '../../lib/time';
 import { type ItemAprendido, type LeituraDoAprendizado } from './aprendizadoDaOperacao';
 import {
   ESTAGIOS, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, estagioDeParada, rotuloDaAcao, rotuloDoEstagio,
@@ -164,6 +165,15 @@ export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendiz
   };
 }
 
+/**
+ * A hora do arquivo é ISO em UTC; a tela mostra a hora local do painel (UTC-3 aqui). Quem confere o relatório com a gaveta via 3 h de
+ * diferença, então o Markdown traz as duas. O JSON segue só em UTC (é dado, não leitura).
+ */
+const comHoraDoPainel = (iso: string, formato: (iso: string) => string = formatClock): string => {
+  const local = formato(iso);
+  return local === '—' ? iso : `${iso} (${local} no painel)`;
+};
+
 const usd = (n: number | null): string => (n === null ? 'não informado' : `US$ ${n.toFixed(4)}`);
 const num = (n: number | null): string => (n === null ? 'não informado' : String(n));
 /** O texto numa citação, linha a linha, para uma quebra de linha do texto não virar título do Markdown. */
@@ -202,11 +212,12 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
     `# Relatório da operação ${o.id}`,
     '',
     `Gerado em ${r.gerado_em}. Estado da operação: ${o.status ?? 'não informado'}.`,
+    'As horas estão em UTC (ISO); entre parênteses, o horário que o painel mostra (o fuso deste navegador).',
     '',
     `- **Comando:** ${o.comando}`,
     `- **App:** ${o.app_id ?? 'não informado'}`,
     `- **Ação final:** ${rotuloDaAcao(o.acao_final)}`,
-    `- **Criada em:** ${o.criada_em ?? 'não informado'} · **Encerrada em:** ${o.encerrada_em ?? 'em aberto'}`,
+    `- **Criada em:** ${o.criada_em ? comHoraDoPainel(o.criada_em, formatDateTime) : 'não informado'} · **Encerrada em:** ${o.encerrada_em ? comHoraDoPainel(o.encerrada_em, formatDateTime) : 'em aberto'}`,
   ];
   if (o.assunto) linhas.push(`- **Assunto:** ${o.assunto}`);
   if (o.fontes.length) linhas.push(`- **Fontes indicadas:** ${o.fontes.join(', ')}`);
@@ -239,7 +250,7 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
       : '- **Ação final:** sem ação final');
     linhas.push(`- **Evidência da tela lida:** ${a.evidencia_id ?? 'nenhuma'}`, `- **Custo de IA:** ${usd(a.custo_usd)}`);
     linhas.push('', '| estágio | hora |', '|---|---|');
-    for (const e of a.estagios) linhas.push(`| ${e.rotulo} | ${e.em ?? (e.alcancado ? 'alcançado, sem hora' : 'não alcançado')} |`);
+    for (const e of a.estagios) linhas.push(`| ${e.rotulo} | ${e.em ? comHoraDoPainel(e.em) : e.alcancado ? 'alcançado, sem hora' : 'não alcançado'} |`);
     if (a.texto) linhas.push('', 'Texto gerado:', '', citacao(a.texto));
   }
   linhas.push('', '## O que este relatório não tem', '', ...r.limites.map((l) => `- ${l}`), '');
