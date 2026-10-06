@@ -49,6 +49,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 ## 2026-10-06 — 31.111 F1 e F2: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
 
+## 2026-10-06 — 31.111 A: o bloqueio que espera uma pessoa também é ponto de partida do ensino (branch feat/31-111-a-bloqueio-aguardando-pessoa)
+
+- `POST /api/training/from-run` passa a aceitar a etapa em `waiting_user` (a IA concluiu que não dá e o executor rejeitou:
+  a execução fica em `awaiting_person`), além de `failed` e `uncertain`. Motivo: na prova real do F1-F3 (06/10), a execução
+  que pedia um item inexistente caiu aí e não em `failed`. O `motivo` e a trilha mostram o texto do bloqueio como nos
+  outros casos. Sem migração nem campo novo; 409 `step_not_failed` só para as outras (sucesso, cancelada, pendente…).
+- Prova: `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run` (o bloqueio real da f6-2 é o caso de origem).
+
 ## 2026-10-06 — 31.111 F1, F2 e F3: ensinar a partir de uma etapa que falhou (branch feat/31-111-f1-ensinar-a-partir-da-falha)
 
 - `POST /api/training/from-run` `{run_id, step_id, lease_id, intent?, app_id?, profile_id?}` abre uma sessão de ensino ligada à
