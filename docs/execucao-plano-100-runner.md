@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-641 de 684 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+640 de 685 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -665,15 +665,16 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.115 | pendente | — | — | — |  |  |
 | 31.116 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 09:07Z, central 1b86bd6b, android-04. GET /api/runs/r-20261006012340-d92795/steps/<etapa v2 abrir_notificacoes>/ensino-sugerido devolve intent 'Corrigir a etapa «Abrir Notificações»: a IA gastou o orçam… | None |
 | 31.117 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 07:35Z, central 16858086: GET /api/aprendizado/fluxo/f-455f91437856 devolve conteudo.origem com tipo treino, fonte training:trn-4lukXbyHNxGubAK0, source_run_id e run_id r-20261006053318-c04149, session_… | None |
-| 31.118 | partial | real | claude-sonnet-5-5 | — | Real, 06/10/2026, máquina central, deploy 49 (1b86bd6b, no ar às 08:56Z). O reparo único scripts/gravacao-com-marcador.py foi aplicado pela sessão Android às 08:59:20Z, com o backup data/backups/20261006-055448: o ensai… | None |
+| 31.118 | implemented | real | claude-opus-5-5 | — | 06/10 10:27Z, central bec1621c (deploy 50, F2), depois do reparo aplicado pela Android às 10:18:57Z (backup 20261006-071450; 1 sessão com marca, 0 entradas, 1 tela). Lido só o GET /api/training/{id} INTEIRO de trn-1nuBz… |  |
 | 31.119 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 09:07Z, central 1b86bd6b, android-04. (a) Gravação sem nada: com 0 entradas a barra diz 'Nada gravado ainda' e 'Concluir e revisar' fica indisponível com o motivo no nome ('Nada gravado: faça a tarefa n… | None |
 | 31.120 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 10:20Z, central bec1621c. (a) Leitura da sessão salva: pelo botão 'Abrir o treino salvo' do aviso do 31.124 abre o diálogo 'Treinamento salvo: Corrigir a etapa «Abrir Notificações»' (sessão trn-jrE1zcBo… | None |
-| 31.121 | implemented | simulated | claude-sonnet-5-5 | — | open_app na primeira etapa do treino (Aprendizado e52705e9). Simulado: backend/tests/test_treino_partida_e_pos_condicao.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9,… | None |
-| 31.122 | implemented | simulated | claude-sonnet-5-5 | — | Pós-condição que já vale na tela de partida, com o 400 novo do save (adendo v1.83; Aprendizado e52705e9). Simulado: backend/tests/test_treino_partida_e_pos_condicao.py::*, backend/tests/test_pergunta_vence.py::*. Suíte… | None |
-| 31.123 | implemented | simulated | claude-sonnet-5-5 | — | Pacotes aceitos na etapa (adendo v1.84) com a migração 120_pacotes_aceitos_da_etapa.sql (só ADD COLUMN steps.pacotes_aceitos TEXT); o ensaio de migração é do deploy 50. Simulado: backend/tests/test_etapa_pacotes_aceitos… | None |
+| 31.121 | implemented | real | claude-opus-5-5 | — | 06/10, central bec1621c (deploy 50, migração 120), android-04 com controle none conferido por /api/instances às 10:19Z, persona de teste, só no Configurações, texto wifi. Sessão trn-RoLaCmIlqDt8HLjD (e trn-CnnIJGVXEUQgf… |  |
+| 31.122 | partial | real | claude-opus-5-5 | — | 06/10, central bec1621c (deploy 50, migração 120), android-04 com controle none conferido por /api/instances às 10:19Z, persona de teste, só no Configurações, texto wifi. Recusa FORÇADA por edição da proposta (pedido da… | (a) ja_valem compara só com screen_lines, mas linhas_de_conteudo (social/observacao.py) descarta ids que casam com _ID_DE_INTERFACE (search_action_bar_title ca… |
+| 31.123 | partial | real | claude-opus-5-5 | — | 06/10, central bec1621c (deploy 50, migração 120), android-04 com controle none conferido por /api/instances às 10:19Z, persona de teste, só no Configurações, texto wifi. O plano de f-75b038ead0c8 leva pacotes_aceitos [… | A etapa abrir_busca TERMINA no pacote vizinho (o tap no app abre a busca de outro pacote), mas pacotes_vizinhos só olha o pacote das entradas DA etapa, todas e… |
 | 31.124 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 10:20Z, central bec1621c. Na execução r-20261006012340-d92795 o atalho do cartão de resultado abre 'Ensinar a corrigir: Abrir Notificações'; antes do campo aparece o aviso 'Esta etapa já foi ensinada. S… | None |
 | 31.125 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 10:20Z, central bec1621c, execução r-20261006012340-d92795. No cartão de resultado ('Concluída com problemas…') há o botão 'Ensinar a corrigir' com o nome acessível 'Ensinar a corrigir a etapa «Abrir No… | None |
 | 31.126 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 10:20Z, central bec1621c, fluxo f-6d07590e1db6 aberto no Livro. A linha do item mostra 'App: App não identificado'; em Identidade, 'Aplicativo' mostra 'App não identificado'; nos dois o botão tem a dica… | None |
+| 31.127 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -691,7 +692,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (43): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.152, 31.11, 31.12, 31.26, 31.81, 31.115, 31.118, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (45): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.152, 31.11, 31.12, 31.26, 31.81, 31.115, 31.122, 31.123, 31.127, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

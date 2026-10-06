@@ -10673,20 +10673,16 @@
   },
   "31.118": {
    "id": "31.118",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, 06/10/2026, máquina central, deploy 49 (1b86bd6b, no ar às 08:56Z). O reparo único scripts/gravacao-com-marcador.py foi aplicado pela sessão Android às 08:59:20Z, com o backup data/backups/20261006-055448: o ensaio deu 4 sessões lidas, 2 com marca e 2 entradas; o aplicar deu rc 0 com as mesmas contagens; o novo ensaio deu 0 e 0 (idempotente). Conferência só leitura da sessão Aprendizado às 09:01Z, por GET /api/training/{id} e com a persona lida do SQLite em mode=ro, sem imprimir valor: trn-1nuBzRHaAkM09f6K tem a entrada de texto seq 2 com text = {perfil_nome_exibicao}, has_text true e text_len 15; trn-o5UL-qvehFesjTuB tem a entrada seq 4 com text = {perfil_nome}, has_text true e text_len 5. O texto gravado em claro saiu das duas. O save novo marca na hora (código do 31.118 no ar). Prova do código: simulated em backend/tests/test_treino_gravacao_com_marcador.py (9). ACHADO, fora do escopo do item: na trn-1nuBzRHaAkM09f6K o valor ainda aparece em inputs[2].screen_lines[1], a linha da tela gravada depois da digitação (o campo de busca mostra o que foi digitado). A trn-o5UL-qvehFesjTuB não tem o valor em screen_lines. Proposta: estender a mesma troca, por palavra, aos screen_lines no save e no reparo. Falta (F2): em trn-1nuBzRHaAkM09f6K o valor ainda aparece em inputs[2].screen_lines[1] (a tela gravada depois da digitação) e GET /api/training/{id} o devolve; o save e o reparo passam a trocar o dado pela marca também em screen_lines (branch do 31.121/122, Aprendizado), e o reparo roda de novo depois do deploy que o levar. Suíte 50 (simulado, Android): F2: screen_lines no save e no reparo da gravação (Aprendizado e52705e9). O reparo (--aplicar) roda de novo depois do deploy 50, com o backup daquele deploy e o vai da orquestradora. Simulado: backend/tests/test_treino_gravacao_com_marcador.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele)",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_treino_gravacao_com_marcador.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; falta a prova real do reparo",
-   "grupo": "android-suite-50",
-   "modelo": "claude-sonnet-5-5",
+   "evidence": "06/10 10:27Z, central bec1621c (deploy 50, F2), depois do reparo aplicado pela Android às 10:18:57Z (backup 20261006-071450; 1 sessão com marca, 0 entradas, 1 tela). Lido só o GET /api/training/{id} INTEIRO de trn-1nuBzRHaAkM09f6K (6 entradas) e trn-o5UL-qvehFesjTuB (5 entradas). Varredura pelos valores de profile_variables da persona (4 chaves, todos com 3 caracteres ou mais) e pelos campos do perfil: 0 ocorrências na resposta inteira, 0 em screen_lines, 0 em screen_title; marcadores {perfil_*} presentes (5 e 3). As 2 sessões novas da prova (trn-CnnIJGVXEUQgfjMv, trn-RoLaCmIlqDt8HLjD) também com 0. Só contagens: nenhum valor foi impresso.",
+   "blocker": "",
+   "grupo": "aprendizado-31-118-gravacao-com-marcador",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:18:29+00:00"
+   "quando": "2026-10-06T10:31:54+00:00"
   },
   "29.151": {
    "id": "29.151",
@@ -10746,54 +10742,41 @@
   "31.121": {
    "id": "31.121",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "open_app na primeira etapa do treino (Aprendizado e52705e9). Simulado: backend/tests/test_treino_partida_e_pos_condicao.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_treino_partida_e_pos_condicao.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-50",
-   "modelo": "claude-sonnet-5-5",
+   "proof": "real",
+   "evidence": "06/10, central bec1621c (deploy 50, migração 120), android-04 com controle none conferido por /api/instances às 10:19Z, persona de teste, só no Configurações, texto wifi. Sessão trn-RoLaCmIlqDt8HLjD (e trn-CnnIJGVXEUQgfjMv) gravada DENTRO do app, sem open_app (entrada 1 = tap em com.android.settings). A receita 210 da etapa abrir_busca nasceu [open_app com.android.settings, tap]. Reprodução r-20261006102728-1157c6, começando no lançador: plano do fluxo f-75b038ead0c8 sem planejador; tentativa 1 de abrir_busca fez open_app e tap pela receita, com 0 decisão de IA (10:27:31Z a 10:27:40Z). Não houve 'tela de partida diferente'.",
+   "blocker": "",
+   "grupo": "aprendizado-31-121-123-prova-conjunta",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:18:29+00:00"
+   "quando": "2026-10-06T10:31:54+00:00"
   },
   "31.122": {
    "id": "31.122",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Pós-condição que já vale na tela de partida, com o 400 novo do save (adendo v1.83; Aprendizado e52705e9). Simulado: backend/tests/test_treino_partida_e_pos_condicao.py::*, backend/tests/test_pergunta_vence.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_treino_partida_e_pos_condicao.py",
-    "backend/tests/test_pergunta_vence.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-50",
-   "modelo": "claude-sonnet-5-5",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "06/10, central bec1621c (deploy 50, migração 120), android-04 com controle none conferido por /api/instances às 10:19Z, persona de teste, só no Configurações, texto wifi. Recusa FORÇADA por edição da proposta (pedido da orquestradora): pós-condição da etapa 1 trocada para text_visible 'Network & internet'. A prévia avisou, com a sugestão 'Search settings', e o save deu 400 pos_condicao_ja_vale; flows ficou em 73 antes e 73 depois, sem fluxo da sessão. O save com a sugestão gerou f-75b038ead0c8. Na reprodução r-20261006102728-1157c6, a tentativa 2 de abrir_busca passou na tela INICIAL do Configurações: a IA deu press_back e 'Search settings' estava visível na barra de busca. É a falsa conclusão que o item quer evitar.",
+   "blocker": "(a) ja_valem compara só com screen_lines, mas linhas_de_conteudo (social/observacao.py) descarta ids que casam com _ID_DE_INTERFACE (search_action_bar_title cai em search[a-z_]*) e o recorder corta em 8 linhas; o verificador lê a árvore toda. Resultado: a sugestão 'Search settings' já valia na partida, e um 1º save forçado com ela deu 200 (fluxo f-bf935e7c8dee, desligado às 10:25Z; ver nota). Correção sugerida: gravar e comparar todo texto visível da tela de partida, não só as linhas de conteúdo. (b) A IA propôs element_present 'text==Search settings', que já vale na partida e não é coberta: só text_visible é conferida.",
+   "grupo": "aprendizado-31-121-123-prova-conjunta",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:18:29+00:00"
+   "quando": "2026-10-06T10:31:54+00:00"
   },
   "31.123": {
    "id": "31.123",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "Pacotes aceitos na etapa (adendo v1.84) com a migração 120_pacotes_aceitos_da_etapa.sql (só ADD COLUMN steps.pacotes_aceitos TEXT); o ensaio de migração é do deploy 50. Simulado: backend/tests/test_etapa_pacotes_aceitos.py::*. Suíte 50 sobre a integração bec1621c (base 1b86bd6b; Portal 9bdf193a, Aprendizado e52705e9, Jev 70e15685; main de estado 1b2165fe dentro, com 33.2; só conflitos de CHANGELOG juntados; Windows, central WIN-7S2UASNLFOP, Idle; COM migração nova 120_pacotes_aceitos_da_etapa.sql, só ADD COLUMN steps.pacotes_aceitos TEXT): scripts/tests -n 4 684 passed (4 subtests); backend SQLite -n 6 INTEIRO 12299 passed, 13 skipped, 0 falhas; frontend typecheck limpo, 1768 passed (136 arquivos), build ok; catracas backend 88 + scripts 6; docs-check 0 erros; mypy 257 = teto; PG dirigido em 2 partes, 454 arquivos: parte 1 4017 passed 8 skipped, parte 2 3943 passed 6 skipped, 0 falhas (o merge da main 1b2165fe, só documentação, entrou depois das etapas 1 e 2; docs-check rodado depois dele) No ar desde o deploy 50 (bec1621c, 06/10 10:16Z). Migração 120 ensaiada numa cópia do backup 20261006-071428 e aplicada no deploy: coluna steps.pacotes_aceitos presente, 0 linhas preenchidas (leitura real da Android, 10:17Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_etapa_pacotes_aceitos.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-50",
-   "modelo": "claude-sonnet-5-5",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "06/10, central bec1621c (deploy 50, migração 120), android-04 com controle none conferido por /api/instances às 10:19Z, persona de teste, só no Configurações, texto wifi. O plano de f-75b038ead0c8 leva pacotes_aceitos [com.google.android.settings.intelligence] na etapa digitar_termo, com aviso na prévia e no save. Na reprodução r-20261006102728-1157c6, digitar_termo concluiu PELA RECEITA 211 na tela do pacote vizinho, com 0 decisão de IA ('receita v1 reproduzida (0 decisões de IA)', 10:28:12Z). Antes, essa tela era recusada como fora do app.",
+   "blocker": "A etapa abrir_busca TERMINA no pacote vizinho (o tap no app abre a busca de outro pacote), mas pacotes_vizinhos só olha o pacote das entradas DA etapa, todas em com.android.settings. A tentativa 1 foi recusada ('a tela é do app com.google.android.settings.intelligence'); a tentativa 2 divergiu e a IA assumiu, com 2 decide (ai_calls 4936 e 4937, US$ 0,0393). Correção sugerida: incluir o pacote da tela em que a etapa termina, ou seja, o da 1ª entrada seguinte. Achado vizinho: 7 de 9 fluxos ensinados não têm depends_on entre as etapas, e digitar_termo começou com abrir_busca em retry_wait. O objetivo terminou 'completed' com a tela final no início do Configurações, não nos resultados da busca.",
+   "grupo": "aprendizado-31-121-123-prova-conjunta",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T10:18:29+00:00"
+   "quando": "2026-10-06T10:31:54+00:00"
   },
   "31.124": {
    "id": "31.124",
@@ -14182,6 +14165,19 @@
    ],
    "grupos": [
     "portal-percurso-50-ensino-aviso-atalho-livro"
+   ]
+  },
+  {
+   "quando": "2026-10-06T10:31:54+00:00",
+   "itens": [
+    "31.121",
+    "31.122",
+    "31.123",
+    "31.118"
+   ],
+   "grupos": [
+    "aprendizado-31-118-gravacao-com-marcador",
+    "aprendizado-31-121-123-prova-conjunta"
    ]
   }
  ]
