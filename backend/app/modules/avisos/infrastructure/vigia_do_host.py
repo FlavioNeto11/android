@@ -62,7 +62,7 @@ def _modo_de_fundo() -> Iterator[None]:
         try:
             import ctypes
 
-            k = ctypes.windll.kernel32  # type: ignore[attr-defined]
+            k = ctypes.windll.kernel32
             k.GetCurrentThread.restype = ctypes.c_void_p
             k.SetThreadPriority.argtypes = [ctypes.c_void_p, ctypes.c_int]
             iniciou = bool(k.SetThreadPriority(k.GetCurrentThread(), _THREAD_MODE_BACKGROUND_BEGIN))
@@ -75,7 +75,7 @@ def _modo_de_fundo() -> Iterator[None]:
             try:
                 import ctypes
 
-                k = ctypes.windll.kernel32  # type: ignore[attr-defined]
+                k = ctypes.windll.kernel32
                 k.SetThreadPriority(k.GetCurrentThread(), _THREAD_MODE_BACKGROUND_END)
             except Exception:  # noqa: BLE001
                 pass
