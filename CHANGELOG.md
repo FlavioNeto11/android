@@ -236,6 +236,12 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   945f5043 + coletor da Frente GitHub 3a298541): 117 achados lidos, 82 com arquivo, 7 em PR aberto, 7 cartões criados; a segunda execução leu 7 cartões
   existentes e fez 0 ações. `not_run`: o fechamento por PR mesclado em dado real (o PR 487 ainda está aberto) e o coletor ainda não está na `main`.
 
+## 2026-10-06 — 28.62 (Canais): aviso do fim da operação com custo e motivos de parada (branch canais/aviso-operacao)
+
+- Novo tipo de aviso de rotina `operacao.encerrada` (nível 3, na janela, sem cartão no Trello): um aviso por operação com N agentes (chave `operacao:<id>`), com o placar, as contagens, os motivos de parada em palavras (até 3), o custo em US$ com a quebra pesquisa externa x agentes, o que é crítico e "Nada a fazer.". A operação cancelada também avisa. Sem comando, handle nem nome de persona.
+- Mudança mínima no módulo de operações (de outra frente): `_fechar` passa a levar o `custo` (`_custo`) no `data` de `operacao.encerrada`; `docs/api-contract.md` anota o campo. Notas em `docs/dominios/canais.md`.
+- Prova `simulated`: `backend/tests/test_aviso_operacao_encerrada.py` (23 testes). `real`: `not_run` (rodada de 07/10).
+
 ## 2026-10-06 — 28.60 e 28.58 (Canais): avisos de rotina do host, ensaio de restauração e disco baixo (branch canais/28-60-e-28-58)
 
 - Dois tipos de aviso de rotina (nível 3, na janela junto dos demais, sem cartão no Trello): `host.restore_ensaio` e `host.disco_baixo`, lidos por um vigia do backend (`VigiaDoHost`, no líder da trava `avisos`) sem rota nova.

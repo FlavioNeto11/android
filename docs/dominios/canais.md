@@ -780,6 +780,20 @@ avisos depois da faxina"), e a trava cai no TTL.
 - **Prova:** `simulated` em `backend/tests/test_aviso_restore_ensaio.py` e `test_aviso_disco_baixo.py`. `real`: `not_run` (forçar
   uma falha numa cópia de teste e a primeira leitura do disco no central, pela orquestradora).
 
+**Aviso do fim da operação (28.62)** (sem número de contrato: a definir pela orquestradora).
+- Um tipo de rotina (nível 3, na janela junto dos demais, sem cartão no Trello): `operacao.encerrada`, montado por
+  `aviso_de_evento` a partir do evento do mesmo nome que a operação com N agentes emite ao fechar (`operacoes/infrastructure/
+  servico.py::_fechar`, que passou a levar o `custo` no `data`). Chave por FATO: `operacao:<operacao_id>` (o id só entra se tiver
+  o formato `op-<data><hora>-<6 hex>`), então nem as duas réplicas nem a reabertura que fecha de novo repetem a mensagem. A
+  operação cancelada pelo dono também avisa, com o assunto de cancelamento.
+- Texto: assunto com o placar ("N de M agentes concluídos"), contagens (solicitados, concluídos, bloqueados, em curso), os
+  motivos de parada em palavras (até 3, os mais comuns; o que o filtro de texto mudaria, ou o que não cabe, vira "outros"; sem
+  redator nenhum motivo sai), o custo em US$ com a quebra pesquisa externa x agentes (sem a linha quando o dado não traz o custo),
+  "Crítico: nada." ou o número de alvos bloqueados com a tela Operação, e "Nada a fazer.". Não sai comando, handle, nome de
+  persona nem o id da operação. Link: a tela Operações, quando há base pública.
+- **Prova:** `simulated` em `backend/tests/test_aviso_operacao_encerrada.py`. `real`: `not_run` (a orquestradora confere na
+  rodada de 07/10, com o fim de uma operação de verdade).
+
 **C-26 · O Executar do Telegram mostra as travas do plano antes de começar (28.27).**
 - **Origem:** dono (linha do 28.27: a prévia do comando no canal mostra o selo de cada item e o Executar vale como
   aprovação do plano); desenho e decisões P1, P2 e P3 da orquestradora, 04/10 21:58Z. Usa a porta do plano (30.61,
