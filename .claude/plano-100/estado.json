@@ -10865,15 +10865,14 @@
    "id": "31.131",
    "status": "partial",
    "proof": "real",
-   "evidence": "Central cdee6620, 06/10 ~15:16Z: filtro Prova presente; com os 4 fluxos marcados o filtro 'Só os nascidos de uma prova' responde 'Nada aprendido com este filtro' e 0 selos na tela. Causa medida: o Livro nao traz nascido_de_prova no item (so conteudo.origem.nascido_de_prova no detalhe: true em f-760f95b8e930).\nNo ar desde o deploy 52 (cdee6620, 15:08Z).",
-   "nota": "NAO fechado no real: selo e filtro nao funcionam no central. Correcao possivel: (a) backend poe nascido_de_prova no item do Livro e aceita o filtro, ou (b) Portal le conteudo.origem.nascido_de_prova no detalhe (selo so ao abrir o item; o filtro por lista fica sem dado). Aguardo escolha.",
-   "blocker": " Selo e filtro Prova sem dado no item do Livro: espera o 31.143 (corte 53).",
-   "grupo": "portal",
-   "modelo": "misto",
-   "esforco": "misto",
+   "evidence": "2026-10-06, central 2193a8b5: tela Aprendizado > Aprendido (selo e filtro Prova); GET /api/aprendizado?nascido_de_prova=true&kind=fluxo (5), GET /api/flows?nascido_de_prova=true (5), GET /api/training?nascido_de_prova=true (6 sessoes, 5 salvas, todas android-04).",
+   "nota": "Livro: real. Salvas: marca confirmada no API, selo na tela ainda nao visto (not_run).",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "alto",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T15:20:12+00:00"
+   "quando": "2026-10-06T19:14:10+00:00"
   },
   "31.132": {
    "id": "31.132",
@@ -11134,14 +11133,22 @@
    "id": "29.126",
    "status": "partial",
    "proof": "simulated",
-   "evidence": "Readoção do Appium coberta por 29.132/29.138 (dono da porta antes do PID gravado, órfão nosso sem máscara trocado, externo se um dono alheio escuta). ACHADO do revisor-segredos em 06/10 (Jev): `log_masking_active` só é zerado em stop(), no ramo externo de _reuse_running e numa linha de _subir; start()/_subir não zeram ao entrar nem ao falhar, e ensure_automation só chama start() quando is_up() é falso: se o Appium provado morrer e um externo assumir a porta, a flag fica True e SensitiveInputChannel.fill digita num Appium sem prova de máscara (médio, não bloqueante hoje: exige a troca na porta; tema do ADR-040). Correção em curso: fix/29-126-mascaramento-revalidado (flag revalidada a cada leitura, zerada ao entrar em start()/_subir, trava em start(), testes).",
-   "blocker": "Ponta da correção com revisor-segredos; prova real da readoção sob carga pede reinício com carga (Android).",
-   "grupo": "jev",
-   "modelo": "sonnet-5.5",
-   "esforco": "medium",
+   "evidence": "A prova do mascaramento de log vale para o processo provado e é reconferida; start() com trava (Jev c03f0451). Simulado: backend/tests/test_achados_29_138.py::*, backend/tests/test_appium_start_pid_novo.py::*, backend/tests/test_mascaramento_revalidado.py::*, backend/tests/test_saude_do_appium.py::*, backend/tests/test_sobras_29_131.py::*. Corte 55 (integ/suite-55, ponta 409a3604e16c9d = 16 pontas sobre a main b7dd8019; Windows, central WIN-7S2UASNLFOP, 06/10/2026 18:00Z-19:05Z, Idle): scripts/tests 790 passed na rerodada com a máquina livre (a 1ª rodada, 18:00Z, teve 5 falhas: 1 determinística corrigida em test_restore_ensaio.py e 4 por carga, verdes isoladas); backend SQLite inteiro 12455 passed, 13 skipped, 3 failed em test_pesquisa_da_operacao.py (integração com a 124 real: corrigido e 6 passed isolado); frontend typecheck ok, 1932 testes em 149 arquivos passed, build ok; catracas backend 88 + scripts 7 passed; docs-check 0/0; mypy 257 = teto; PostgreSQL dirigido (516 arquivos, 2 partes): parte 1 com 5862 passed, 8 skipped; parte 2 com 4619 passed, 6 skipped e 4 failed (3 em test_pesquisa_da_operacao.py, que rodou com o arquivo anterior à correção, e 1 em test_treino_escopo_ao_provar.py::test_quem_ensinou_recusa_sem_persona_e_com_lista_junto_sem_escrever[com-lista2-scope_ambiguous-400]); os dois arquivos rerodados: 13 passed no SQLite e 13 passed no PostgreSQL (pg-rapido, 19:02Z). Migrações novas 124 e 125: o deploy 55 exige o -Ensaio.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_achados_29_138.py",
+    "backend/tests/test_appium_start_pid_novo.py",
+    "backend/tests/test_mascaramento_revalidado.py",
+    "backend/tests/test_saude_do_appium.py",
+    "backend/tests/test_sobras_29_131.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; a prova real do fix é da Jev no android-04",
+   "grupo": "android-suite-55",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T16:08:07+00:00"
+   "quando": "2026-10-06T19:14:10+00:00"
   },
   "29.122": {
    "id": "29.122",
@@ -11179,19 +11186,15 @@
   "31.143": {
    "id": "31.143",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "nascido_de_prova na lista do Livro, com filtro (Aprendizado 1c1e738b). Simulado: backend/tests/test_livro_nascido_de_prova.py::*. Corte 53 (integ/suite-53, ponta 2579893c, base main c0d2fd5f; Windows, central WIN-7S2UASNLFOP, 06/10/2026 16:07Z-16:55Z, Idle): scripts/tests 767 passed; backend SQLite inteiro 12414 passed, 13 skipped (17 min 32 s); frontend typecheck ok e 1870 testes em 145 arquivos passed, build ok; catracas backend 88 passed + scripts 7 passed; docs-check 0 erros, 0 avisos; mypy 257 = teto; PostgreSQL dirigido, 298 arquivos em 2 partes: parte 1 com 3129 passed, 5 skipped; parte 2 com 2799 passed, 1 skipped e 1 falha de tempo esgotado (test_sempre_na_promovida.py::test_quarentena_para_de_espalhar_mas_nao_rebaixa_quem_esta_na_versao, 'android-02 ligado', sob a carga da parte 2) que passa isolada: 17 passed no SQLite e 17 passed no PostgreSQL (pg-rapido, 16:55Z).",
-   "blocker": null,
-   "arquivos": [
-    "backend/tests/test_livro_nascido_de_prova.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
-   "grupo": "android-suite-53",
+   "proof": "real",
+   "evidence": "2026-10-06 até 17:23Z, central, commit 2193a8b5: GET /api/aprendizado?nascido_de_prova=true&kind=fluxo (5), =false&rotulo=produto (111 itens, 31 fluxos), GET /api/flows?nascido_de_prova=true (5); tela do Livro com o filtro Prova.",
+   "nota": "Fecha o que o percurso 52 deixou aberto no 31.131: selo e filtro agora funcionam no central.",
+   "grupo": "Portal",
    "modelo": "claude-sonnet-5-5",
-   "esforco": "high",
+   "esforco": "alto",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T17:22:53+00:00"
+   "quando": "2026-10-06T19:14:10+00:00"
   },
   "28.55": {
    "id": "28.55",
@@ -11266,6 +11269,193 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T17:22:53+00:00"
+  },
+  "31.154": {
+   "id": "31.154",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "9ff07d73 + 530d5af0 (mesma branch). Migração 124 (operacoes com assunto/fontes; operacao_alvos; runs.operacao_id). Adendo v1.94: POST/GET /api/operacoes, GET /{id}, POST /{id}/cancelar e /{id}/liberar; GET /api/runs?operacao_id; RunSummary.operacao_id. Cada alvo = persona + conta + aparelho numa execução própria (chave op:<operacao>:<hash da persona>, execução do sistema; a aprovação dela avisa o dono como a de lote), com teto_de_autonomia=preparar: o efeito para depois do rascunho, com o pedido de aprovação, e esse é o acao_preparada. A parada na criação vai por persona → conta → sessão → aparelho, com motivo e sem trocar de app. Estágios derivados na leitura, no vocabulário e na ordem do dono (app/modules/operacoes/domain/estagios.py): os do app vêm do app.yaml (bloco operacao; Instagram: instagram_aberto, OPEN_PROFILE→target_localizado, OPEN_POST→post_localizado, OPEN_COMMENTS→interface_de_comentario_alcancada), e conteudo_lido/conhecimento_recuperado vêm de registrar_estagio (Aprendizado, 31.157/31.158). parou_em diz onde o alvo parou. A capacidade traz solicitados/contas_existentes/sessoes_validas/contas_disponiveis/concluidas/bloqueadas/em_curso/motivos. O custo vem como {pesquisa_usd, alvos_usd, total_usd} (combinado com a Aprendizado). max_usd é obrigatório e tem régua no roteamento (AIError budget, motivo operacao). liberar só aprova com o eco do texto lido e até LimitsCfg.operacao_max_acoes_executadas (padrão 3), contando as já aprovadas. O revisor-segredos teve 6 achados (limite contornável, credencial em assunto/fontes, motivo sem redação, aprovação de operação muda no aviso, acao_final antes de validar, chave cortada), todos corrigidos e testados. Simulated: tests/test_operacoes.py (9) e tests/test_operacoes_estagios.py (9; 30 alvos com 1 falha sem derrubar os outros). Dirigidos: 5418 passed, 1 skipped (247 arquivos), avisos 514 passed, catracas + rotas + contrato 103 passed, scripts/tests 760 passed, mypy 257 (no teto), docs-check 0. O typecheck do frontend é not_run (o worktree não tem node_modules; só entrou o campo opcional operacao_id em RunSummary). Limite honesto: o estágio e o evento operacao.alvo saem quando alguém LÊ a operação (painel ou GET), não no instante da mudança.",
+   "blocker": "Prova real: not_run até o deploy 55 e a onda de 07/10 (Instagram, contas reais já logadas, uma por aparelho, liberar com o texto lido).",
+   "grupo": "jev",
+   "modelo": "opus-5.5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "31.157": {
+   "id": "31.157",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "d0d46c033f50cc (feat/prova30-a1-conhecimento-da-operacao, de 8d948c0b), migração 125. Mudanças: pedido_memoria e pedido_observacoes de um pedido OU de uma operação (operacao_id sem FK, CHECK de exatamente um; índices únicos parciais por operação); memória com origem, confianca (confirmado/hipotese), evidencia e frescor_ate; leitura do alvo gravada UMA vez por operação, identificada por post_author + caption_contains da etapa (a lista de comentários aberta não conta), com só a linha da publicação guardada; as outras execuções conferem o sha256, e a leitura diferente fica como observação incerto do agente; SocialRequest.fatos_da_operacao em <fatos_da_operacao> como dado, separado do contexto da persona e fora da memória dela; textos_irmaos e a trava de escrita por operacao_id or run_id (só texto já escrito, até 40); estágios conteudo_lido e conhecimento_recuperado por registrar_estagio da Jev (import tardio). Validação: backend/tests/test_conhecimento_da_operacao.py::test_a_linha_e_de_um_pedido_ou_de_uma_operacao_e_a_antiga_nasce_confirmada, ::test_a_leitura_do_alvo_e_gravada_uma_vez_e_as_outras_conferem, ::test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem (7 no arquivo). Bateria dirigida de 117 arquivos, Idle, -n 2, SQLite: 2241 passed, 3 skipped, 2 failed (catracas de test_arquitetura, corrigidas em d0d46c03 e repassadas). PG pelo pg-rapido, -n 8: 2240 passed, 3 skipped, 3 failed (as 2 catracas e 1 relógio de segundo em test_pedidos_colaboracao_consolidacao, sem relação). Reexecução dos 5 afetados: 62 passed em SQLite e 62 passed em PG. mypy 257 (no teto). docs-check 0. Real: not_run até o deploy com a 124 da Jev.",
+   "blocker": "",
+   "grupo": "aprendizado-prova30-conhecimento-e-pesquisa-da-operacao",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "31.158": {
+   "id": "31.158",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "d0d46c033f50cc (mesma branch). Mudanças: lacuna = operacoes.assunto sem fato de pesquisa válido (código, sem IA); pesquisa UMA por operação sob a trava da operação, pela ferramenta web_search_20250305 da Anthropic (AnthropicProvider.pesquisar, AIRouter.pesquisar com origem='pesquisa' e ref=operação; OpenAI recusa com not_configured; simulado sem rede); consulta só com assunto, fontes indicadas e a linha da publicação; confiança por código (duas fontes de domínios diferentes = confirmado, uma = hipotese, URL que a busca não trouxe = descartada); fontes como pedido_observacoes tipo url e entradas fonte, fatos como descoberta com origem pesquisa, evidência e frescor; falha ou zero fatos deixam pesquisa.estado por 1 h; teto ai.pesquisa.teto_usd_por_operacao (0,25) sobre tokens + buscas; buscas em linha própria de ai_calls (model='web_search', usd declarado); 'pesquisa' em ORIGENS_DE_IA; ai.pesquisa desligada de fábrica (config.example). Validação: backend/tests/test_pesquisa_da_operacao.py::test_so_conta_a_url_que_a_busca_trouxe_e_a_confianca_e_do_codigo, ::test_pesquisa_uma_vez_com_fonte_confianca_e_frescor, ::test_desligada_sem_assunto_teto_e_falha_nao_repetem, ::test_as_buscas_viram_linha_propria_de_custo, ::test_o_provedor_manda_a_ferramenta_e_le_resultados_citacoes_e_buscas, ::test_duas_execucoes_uma_pesquisa_e_os_fatos_chegam_ao_texto; mesma bateria, PG e mypy do 31.157. Lacunas declaradas: stop_reason pause_turn não é retomado (vira zero fatos e espera de 1 h); a pesquisa é paga no run do 1º agente (o ai_max_usd_per_run precisa caber). Real: not_run (1 operação pequena depois do deploy, chamada paga dentro do gasto autorizado).",
+   "blocker": "",
+   "grupo": "aprendizado-prova30-conhecimento-e-pesquisa-da-operacao",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "31.159": {
+   "id": "31.159",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/operacao/OperacaoPage.test.tsx (21 casos: leitor tolerante, estagios, verificacao, agregado, exemplo, capacidade, linhas por alvo, detalhe, filtros, com a rota real, cancelar e liberar com confirmacao, varredura de credencial e codigo cru), settings/LimitsSection.test.tsx e validation.test.ts (os tres limites)",
+   "nota": "Real: percurso no navegador quando a rota existir no central.",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "alto",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "31.162": {
+   "id": "31.162",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/operacao/Relatorio.test.tsx (montarRelatorio, relatorioEmMarkdown, botao e download) e relatorio.ts, RelatorioDaOperacao.tsx.",
+   "nota": "Le as 10 perguntas do aprendizado (GET /api/operacoes/{id}/aprendizado, v1.96, branch da Aprendizado 2f948179): rota ausente/404 = 'nao disponivel'. Nao cobre ainda os 16 criterios do cenario 8 (nao vem do GET da operacao). Real: not_run ate o corte 56.",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "alto",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "29.164": {
+   "id": "29.164",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/infra/TerminalDoWorker.test.tsx (describe 29.164: estados do canal, estados finais, recusas do central) + percurso real do achado em 06/10 no central 2193a8b5.",
+   "nota": "Real do achado: sim. Real da correcao: percurso do cartao depois do deploy.",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "alto",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "31.144": {
+   "id": "31.144",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/aprendizado/FiltrosNoEndereco.test.tsx (6 casos: leitor e escritor da query, escolha escreve tipo/estado/origem/prova/visao e a consulta leva os parametros, query na entrada marca os seletores, valor desconhecido ignorado, link que troca de app larga a visao) e AprendizadoPage.test.tsx (RA-19 preservado).",
+   "nota": "Nomes da query: tipo, estado, origem, prova, visao (app e item como antes). Real: aplicar um filtro, copiar o hash, recarregar e ver o mesmo filtro.",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "31.145": {
+   "id": "31.145",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/aprendizado/model.test.ts (nomeDaChave, textoDaDecisao, porQuemDecidiu, vetado), AprendizadoPage.test.tsx (confirmacao 'pelo painel' e receita 'Abrir busca (v1)' com a chave no title) e DecididoPelaPlataforma.test.tsx.",
+   "nota": "Efeito colateral: chave em ingles sem nome vira 'Send message i1 (v1)'. Real: varredura de texto do Livro sem snake_case nem '(panel)'.",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "medio",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "31.146": {
+   "id": "31.146",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/aprendizado/NascidoDeProva.test.tsx (describe 31.146: contagem, clique aplica e tira o filtro, some sem marca/sem rota, numero vem do servidor)",
+   "nota": "Real: percurso com a contagem batendo com /api/flows?nascido_de_prova=true.",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "alto",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "31.147": {
+   "id": "31.147",
+   "status": "partial",
+   "proof": "simulated",
+   "evidence": "frontend/src/features/training/SemCodigoCru.test.tsx (varredura contra codigo cru na barra, na revisao e no resultado do salvar) e training/TrainingReview.tsx (seletor em palavras).",
+   "nota": "Real: not_run ate o deploy 54 e o sinal da Aprendizado para ler a sessao em proposed no android-04.",
+   "grupo": "Portal",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "alto",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "29.166": {
+   "id": "29.166",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Branch ci/29-166a-docs-check, ponta 631ce8c4, [skip ci]: o job docs do ci.yml passa a rodar pip install -c backend/requirements.txt pytest pyyaml pydantic pydantic-settings (versões travadas do backend). REAL em 06/10/2026 17:25Z, ubuntu-latest (NÃO no central): run 37503444575 de uma branch descartável (teste/29-166a-prova, já apagada) com os MESMOS passos do job docs: instalou pyyaml 6.0.3, pydantic 2.13.5, pydantic-core 2.46.5, pydantic-settings 2.15.0 (iguais ao backend/requirements.txt), docs-check: 0 erros, 0 avisos, e 133 testes de scripts/tests passaram; run success em 19 s. A execução é dos passos, não do job no runner central (o job usa o runner do dono e não foi disparado lá). SIMULATED: yaml.safe_load do ci.yml e instalação das quatro versões num venv limpo local.",
+   "blocker": "NOT_RUN: (1) 'sem o aviso formato NÃO conferido' e (2) 'exemplo ruim derruba o job numa branch descartável' dependem do 29.160 (esquema do config.example.yaml no docs-check), que NÃO está no scripts/docs-check.py da main b7dd8019 (grep sem pydantic nem esquema); hoje o docs-check não emite esse aviso nem valida o esquema. Provar (1) e (2) depois do 29.160 na main; o job completo no central na próxima corrida do CI. Ponta (b) do 29.166 é do Android.",
+   "grupo": "github-29-166a",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "29.167": {
+   "id": "29.167",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "real 06/10/2026 18:50:43Z-18:50:45Z, central, branch devops/29-167b-contagem-de-tabelas commit 47edd991 (worktree C:\\git\\android-wt-29-167b, em cima do 30084b47), a mao, em prioridade Idle, sem registrar a tarefa: restore-ensaio.ps1 sobre a copia mais nova C:\\git\\android\\data\\backups\\20261006-140601 (origem deploy, commit 2193a8b5, 203.902.976 bytes, 1,7 h) -> resultado ok em 1,5 s: integrity_check ok, migracao 123_comando_remoto igual a do manifesto e a do codigo (nenhuma migracao a aplicar na copia), 115 tabelas = 115 do manifesto, pasta de trabalho apagada (0 sobras), data\\poc.sqlite3 do central nao tocado. Veredito: C:\\git\\android-wt-29-167b\\data\\restore-ensaio\\ultimo.json (e historico.jsonl). A 1a tentativa real, 18:47:36Z no commit 30084b47, FALHOU por defeito do proprio script: contava 113 tabelas sem as internas sqlite_sequence e sqlite_stat1, e o manifesto (scripts/sqlite-copia.py) conta as 115; corrigido em 47edd991, com o teste agora gerando copia e manifesto pela ferramenta do backup de verdade (4 testes caem se a contagem antiga voltar). simulated: scripts/tests/test_restore_ensaio.py, 17 testes passam. Revisor-segredos: sem segredo; 3 medios e 3 baixos corrigidos antes do commit 30084b47.",
+   "blocker": "(1) tarefa farm-restore-ensaio NAO registrada: -Instalar so no deploy 56 (amanha), com o aval da orquestradora. (2) 47edd991 esta numa branch NOVA, em cima de 30084b47 (que ja entra no corte 55): precisa entrar junto ou logo depois, senao a main fica com a contagem errada. (3) aviso pelo canal fica no 28.60 (backend); hoje a falha so aparece em ultimo.json e no codigo de saida. (4) o ensaio roda com o pwsh da tarefa; PostgreSQL (parque.dump) nao e ensaiado.",
+   "grupo": "devops-29.167",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "sessao executora (Frente DevOps)",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "31.156": {
+   "id": "31.156",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "a9e73add (branch feat/prova30-j1-j2-candidata, de 8d948c0b). LimitsCfg.orquestracao_max_escolhidas=30 e orquestracao_max_candidatas=60, lidos a cada POST /api/runs/targets/suggest; max_personas do corpo até 64. Simulated: tests/test_orquestracao.py (14 passed, com o teto da instalação vencendo o do corpo e um pedido de 30 que cabe). O campo no formulário de Configurações é da Portal; hoje edita-se por PUT /api/settings.",
+   "blocker": null,
+   "grupo": "jev",
+   "modelo": "opus-5.5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "29.145": {
+   "id": "29.145",
+   "status": "implemented",
+   "proof": "not_run",
+   "evidence": "docs/operacao.md § 17 (branch canais/29-145-runbook-95, base 72adb06a): medir (a orquestradora lê o uso pelo painel da IDE, get_usage, diz a hora do date -u, a cada 5 min perto do gatilho; para SÓ ao ler 95 % do semanal, todos os modelos); ordem de parada (handoff curto por frente em .claude/handoffs/<frente>.md primeiro, com o scratchpad que importa; parar crons e subagentes; registrar em .claude/session-registry.md; handoff único da orquestradora em .claude/handoff-current.md para o dono reiniciar com OUTRA conta); quem retoma (a orquestradora nova abre as sessões com nome, continuação, modelo e força); o que roda sem sessão (farm-central, agente do notebook, cron do GitHub 05:17Z e 06:03Z, amostradores). docs-check 0 erros.",
+   "blocker": "A parada de verdade nunca foi disparada (not_run): o gatilho é a leitura humana da orquestradora, sem automação.",
+   "arquivos": [
+    "docs/operacao.md",
+    "CHANGELOG.md"
+   ],
+   "nota": "Sem código.",
+   "grupo": "canais-29-145",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T19:14:10+00:00"
   }
  },
  "rodadas": [
@@ -14781,6 +14971,37 @@
    "grupos": [
     "android-suite-53",
     "canais-29-75"
+   ]
+  },
+  {
+   "quando": "2026-10-06T19:14:10+00:00",
+   "itens": [
+    "31.154",
+    "31.157",
+    "31.158",
+    "31.159",
+    "31.162",
+    "29.164",
+    "31.144",
+    "31.145",
+    "31.146",
+    "31.147",
+    "29.126",
+    "29.166",
+    "29.167",
+    "31.156",
+    "31.143",
+    "31.131",
+    "29.145"
+   ],
+   "grupos": [
+    "Portal",
+    "android-suite-55",
+    "aprendizado-prova30-conhecimento-e-pesquisa-da-operacao",
+    "canais-29-145",
+    "devops-29.167",
+    "github-29-166a",
+    "jev"
    ]
   }
  ]
