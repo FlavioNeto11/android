@@ -7461,3 +7461,22 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
 - **O plano gravado não muda de forma:** a escolha não é gravada nele.
 - **Prova:** `simulated` (`backend/tests/test_fluxo_por_semelhanca.py`, 5 testes). `real`: `not_run` (pede o deploy
   que leve o 31.151).
+
+## Adendo v1.106 (06/10/2026; número da orquestradora; item 31.157) — as personas e o valor no resumo do fluxo
+
+Este adendo estende o `GET /api/operacoes/{operacao_id}/aprendizado` do adendo v1.96. Ele corrige dois achados do
+percurso real da Portal no 57.
+
+- **`personas`:** campo novo no topo da resposta, com a lista dos `profile_id` das execuções da operação, ordenados e
+  sem repetição. É o filtro `persona` do painel. Sem execução, a lista vem vazia.
+- **O resumo do item `fluxo:<id>`:** passa a trazer o valor do parâmetro quando a operação tem UM valor só para ele em
+  todos os objetivos. Fica como marcador `{nome}` o parâmetro que:
+  - varia por alvo;
+  - a operação não tem;
+  - é da execução (`instance_id`, `run_id`, `account_label`).
+
+  O resumo continua redigido e com até 200 caracteres.
+- Nada mais muda na forma da resposta.
+- **Prova:** `simulated` (`backend/tests/test_aprendizado_da_operacao.py`). `real`: `not_run`, pede o deploy do corte
+  59.
+

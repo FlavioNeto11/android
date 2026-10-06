@@ -26,7 +26,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - O resumo do fluxo leva o valor do parâmetro quando a operação tem UM valor só para ele em todos os objetivos. O que
   varia por alvo, ou que a operação não tem, segue como marcador. `instance_id`, `run_id` e `account_label` ficam fora,
   e o resumo continua redigido.
-- A resposta ganha `personas`: os `profile_id` das execuções da operação, ordenados, para o filtro do painel.
+- A resposta ganha `personas`: os `profile_id` das execuções da operação, ordenados, para o filtro do painel (adendo v1.106).
 - Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py` (8 testes, 1 novo); operação, pedidos e
   arquitetura: 722 passaram; mypy 257. `real`: `not_run` (a aba da Portal após o deploy).
 
