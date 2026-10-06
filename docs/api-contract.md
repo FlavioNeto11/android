@@ -7135,9 +7135,7 @@ com o motivo.
     (`POST /api/runs/targets/suggest`, que agora vai até `LimitsCfg.orquestracao_max_escolhidas`), e o painel passa a
     escolha aqui.
   - `account_id` ausente = a conta ativa da persona no app (a mesma regra da etapa que confere a conta).
-  - `instance_id` ausente = o aparelho onde essa conta tem sessão pronta. Com sessão pronta em mais de um aparelho, é o
-    do vínculo **principal** da persona (31.154, 06/10); sem sessão no principal, o alvo nasce parado em `sessao` com
-    `sessão fora do aparelho principal`.
+  - `instance_id` ausente = o aparelho onde essa conta tem sessão pronta.
   - `acao_final`: `preparar` (padrão) para cada alvo em `acao_preparada`, com o texto gerado e a interface pronta, sem
     enviar. Toda execução de alvo nasce com o teto de autonomia `preparar` (28.23): o efeito para depois do rascunho,
     com o pedido de aprovação que carrega o texto. `executar` diz que a operação vai além disso, mas só pelo `liberar`
@@ -7171,8 +7169,7 @@ com o motivo.
 `concluida_com_bloqueios` (todos pararam, ao menos um bloqueado) ou `cancelada`.
 
 **`AlvoDaOperacao`** = `{profile_id, persona_nome, app_id, account_id, conta (o @ da conta, ou null), instance_id, run_id,
-estagio, estado, motivo, parou_em, estagios: [{estagio, em}], resultado, custo_usd}`. `custo_usd` = o gasto da
-execução do alvo (`planning.costs.spent_usd` pelo `run_id`, com a pesquisa externa se ela rodou ali), `null` sem execução. Os estágios seguem o vocabulário do dono, nesta ordem fixa:
+estagio, estado, motivo, parou_em, estagios: [{estagio, em}], resultado}`. Os estágios seguem o vocabulário do dono, nesta ordem fixa:
 
 `persona` → `conta` → `sessao` → `aparelho` → `instagram_aberto` → `target_localizado` → `post_localizado` →
 `conteudo_lido` → `conhecimento_recuperado` → `resposta_gerada` → `interface_de_comentario_alcancada` → `acao_preparada` →
@@ -7192,11 +7189,10 @@ execução do alvo (`planning.costs.spent_usd` pelo `run_id`, com a pesquisa ext
 - `estado`: `pendente` (sem execução ainda na fila do aparelho), `em_curso`, `concluido`, `bloqueado` (com `motivo`) ou
   `cancelado`.
 - `motivo` é uma frase curta e estável, a mesma que entra na contagem de `capacidade.motivos`: `sem conta`, `sem sessão`,
-  `conta <status>`, `sessão fora do aparelho principal`, `aparelho indisponível` (com a recusa da execução depois de
-  dois-pontos), `teto de custo`,
+  `conta <status>`, `aparelho indisponível` (com a recusa da execução depois de dois-pontos), `teto de custo`,
   `aguarda liberação`, `limite de ações executadas`, ou o motivo do objetivo (uma linha, até 120 caracteres).
-- `resultado` = `{texto, conhecimento_ids, evidencia_id, acao_final: {tipo, verificada, evidencia_id}, custo_usd}` (`null`
-  antes de haver texto). `custo_usd` repete o do alvo.
+- `resultado` = `{texto, conhecimento_ids, evidencia_id, acao_final: {tipo, verificada, evidencia_id}}` (`null` antes de
+  haver texto).
   - `texto` é o rascunho fechado do alvo, na voz da persona.
   - `conhecimento_ids` vem da frente de Aprendizado (fatos da operação usados no texto) e é lista vazia sem eles.
   - `evidencia_id` é a captura mais recente da execução fora da etapa de efeito (a tela lida até o texto).
@@ -7215,3 +7211,43 @@ Eventos novos:
 - `operacao.criada` com `{operacao_id, solicitados}`;
 - `operacao.alvo` com `{operacao_id, profile_id, estagio, estado, motivo}`, a cada mudança de estágio ou de estado;
 - `operacao.encerrada` com `{operacao_id, status, capacidade}`.
+
+## Adendo v1.95 (06/10/2026; número da orquestradora; item 31.154, migração 127) — custo por alvo, vínculo principal e parâmetros fixos da operação
+
+Três mudanças na operação do adendo v1.94, para a rodada de 07/10. Nada do v1.94 deixa de valer.
+
+**1. Custo por alvo.** `AlvoDaOperacao` ganha `custo_usd`: o gasto da execução do alvo (`planning.costs.spent_usd` pelo
+`run_id`, com a pesquisa externa se ela rodou ali), `null` sem execução. Quando há `resultado`, ele traz o mesmo valor em
+`resultado.custo_usd`. Antes do texto o `resultado` é `null`, então o painel lê o custo do alvo em `custo_usd`.
+
+**2. Vínculo principal.** No `POST /api/operacoes`, o alvo sem `instance_id` cuja conta tem sessão pronta em MAIS de um
+aparelho vai ao aparelho do vínculo **principal** da persona, não à sessão mais recente. Sem sessão no principal, o alvo
+nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal` (entra em `capacidade.motivos`). Com
+`instance_id`, ou com sessão num aparelho só, nada muda.
+
+**3. Parâmetros fixos.** `POST /api/operacoes` aceita `parametros?: {nome: valor}`, por exemplo
+`{"username": "<perfil>", "caption_contains": "<trecho da legenda>"}`.
+- Validação (`422 pedido_invalido`):
+  - até 10 pares;
+  - nome `^[a-z][a-z0-9_]{0,39}$`, fora de `instance_id`, `run_id`, `account_label`, `item` e `item_index` e sem os
+    prefixos `perfil_` e `conta_` (os dados da persona), que a materialização poria por cima;
+  - valor de 1 a 300 caracteres, sem `{` nem `}`.
+- Valor com cara de credencial: `409 credencial_no_comando`, a mesma recusa do comando.
+- Os `parametros` entram na identidade do corpo: a mesma `idempotency_key` com outros parâmetros dá `409 chave_em_uso`.
+- O `OperacaoDetalhe` devolve `parametros` (`null` quando ausentes).
+- No plano de cada execução de alvo, o planejador não renomeia:
+  - o parâmetro do plano com o MESMO valor de um fixo (comparado sem `@`, sem espaços e sem caixa) é renomeado para o
+    nome fixo em `parameters` e em toda ocorrência `{antigo}` no texto das etapas; o valor fixo vale. `{{saida:…}}` não
+    muda;
+  - as etapas cuja `capability` o app declara no bloco `operacao` do `app.yaml` ganham a chave `<capability>_<n>`
+    (`open_profile_1`, `open_post_1`, `open_comments_1`), com `depends_on` e `for_each` remapeados. Se a chave nova já
+    for de outra etapa, nenhuma chave muda e a execução registra o motivo numa decisão.
+- Vale para todo plano de execução com `operacao_id` (do planejador, de skill ou de fluxo), antes de gravar o plano. Fora
+  de operação, nada muda.
+- Para que serve: a receita ensinada é achada pela chave da etapa e pela pós-condição com os nomes dos parâmetros, e se
+  reproduz com `objective.parameters`. Com os nomes e as chaves fixos, ela casa; com os do planejador, dava
+  `RecipeDiverged` "parâmetro ausente".
+
+Migração `127_operacoes_parametros` (`operacoes.parametros`, só `ADD COLUMN`). Código: `backend/app/taskqueue/plano_da_operacao.py`,
+`RunService._plano_da_operacao`, `backend/app/modules/operacoes/`. Testes: `backend/tests/test_plano_da_operacao.py`,
+`backend/tests/test_operacoes.py`, `backend/tests/test_migracao_127.py`.

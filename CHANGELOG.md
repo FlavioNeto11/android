@@ -19,14 +19,19 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-10-06 — 31.154: custo por alvo e o vínculo principal na operação (branch feat/31-154-custo-por-alvo)
+## 2026-10-06 — 31.154: custo por alvo, vínculo principal e parâmetros fixos da operação (adendo v1.95, migração 127; branch feat/31-154-custo-por-alvo)
 
 - `GET /api/operacoes/{id}`: cada alvo ganha `custo_usd` (o `spent_usd` da execução dele; `null` sem execução), repetido em
   `resultado.custo_usd`. A Portal mostrava `null`.
 - Alvo sem `instance_id` cuja conta tem sessão pronta em mais de um aparelho vai ao vínculo **principal** da persona, não à
-  sessão mais recente (uma conta com sessão no central e no notebook). Sem sessão no principal: parado em `sessao`, motivo
-  `sessão fora do aparelho principal`. Com `instance_id`, vale o pedido.
-- Prova `simulated`: `backend/tests/test_operacoes.py` (2 testes novos). Adendo v1.94 atualizado. `not_run`: prova real.
+  sessão mais recente. Sem sessão no principal: parado em `sessao`, motivo `sessão fora do aparelho principal`.
+- `parametros` opcionais no `POST /api/operacoes` (migração 127, `operacoes.parametros`). No plano de cada execução de
+  alvo, o parâmetro do planejador com o mesmo valor vira o nome fixo, e as etapas das capabilities do bloco `operacao` do
+  app ganham a chave `<capability>_<n>` (`taskqueue/plano_da_operacao.py`, aplicado antes de gravar o plano). A receita
+  ensinada com `{username}`/`{caption_contains}` casa e se reproduz; sem isso, dava `RecipeDiverged` "parâmetro ausente".
+- Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (identidade igual à da etapa ensinada, reprodução e o
+  controle sem os fixos, operação no harness, execução fora de operação sem mudança, validação),
+  `backend/tests/test_operacoes.py` e `backend/tests/test_migracao_127.py`. `not_run`: prova real (rodada de 07/10).
 
 ## 2026-10-06 — 31.154 e 31.156: a operação com N agentes e os tetos da seleção (prova de 07/10; branch feat/prova30-j1-j2-candidata)
 
