@@ -1,0 +1,12 @@
+# gitleaks (29.158): regras padrão + as exclusões do projeto. Falso positivo entra AQUI por caminho ou por regra, NUNCA pelo
+# valor do segredo (o valor não pode aparecer em lugar nenhum). Cada exclusão leva o motivo.
+title = "Central de Aparelhos"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "arquivos de trava de dependência: hashes de integridade parecem chaves e não são segredo"
+paths = [
+  '''(^|/)package-lock\.json$''',
+]

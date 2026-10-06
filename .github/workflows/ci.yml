@@ -324,4 +324,4 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
       - run: pip install pytest
       - run: python scripts/docs-check.py
-      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py scripts/tests/test_github_rotulos.py scripts/tests/test_github_rotina.py scripts/tests/test_workflows_pins.py
+      - run: python -m pytest -q scripts/tests/test_docs_check.py scripts/tests/test_claude_plan_100.py scripts/tests/test_ci_issue_falha.py scripts/tests/test_github_rotulos.py scripts/tests/test_github_rotina.py scripts/tests/test_workflows_pins.py scripts/tests/test_secret_scan_resumo.py
