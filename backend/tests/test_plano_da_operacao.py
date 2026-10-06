@@ -139,7 +139,7 @@ async def test_execucao_fora_de_operacao_nao_muda(harness: Harness) -> None:
 @pytest.mark.parametrize(("parametros", "trecho"), [
     ({"run_id": "x"}, "não aceito"), ({"perfil_email": "x"}, "não aceito"), ({"Username": "x"}, "não aceito"),
     ({"username": "{run_id}"}, "sem chaves"), ({"username": ""}, "de 1 a 300"),
-    ({f"p{i}": "x" for i in range(11)}, "No máximo 10"),
+    ({f"p{i}": f"x{i}" for i in range(11)}, "No máximo 10"), ({"username": "a.b", "perfil": "@A.B"}, "mesmo valor"),
 ])
 async def test_parametros_invalidos_sao_recusados(harness: Harness, parametros: dict[str, str], trecho: str) -> None:
     with pytest.raises(OperacaoError, match=trecho) as exc:
@@ -154,3 +154,32 @@ async def test_mesma_chave_com_outros_parametros_e_outro_corpo(harness: Harness)
     with pytest.raises(OperacaoError) as exc:
         s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-param-chave", parametros={"username": "d.e.f"}))
     assert exc.value.code == "chave_em_uso"
+
+
+@pytest.mark.parametrize("parametros", [
+    {"senha": "qualquer.coisa"}, {"codigo_de_acesso": "abc.def"}, {"token": "abc.def"},
+    {"username": "senha=Hunter2xy"}, {"username": "483920"}, {"username": "Hunter2!xy"},
+])
+async def test_credencial_em_parametro_e_recusada_pelo_nome_ou_pelo_formato(harness: Harness,
+                                                                            parametros: dict[str, str]) -> None:
+    """Credencial nunca vai a parâmetro (ADR-040): nem pelo nome, nem pelo par `nome=valor`, nem pelo formato sozinho."""
+    st = harness.state
+    assert st is not None
+    with pytest.raises(OperacaoError) as exc:
+        _servico(harness).criar(_pedido([AlvoPedido("p-x")], chave="teste-op-param-cred", parametros=parametros))
+    assert exc.value.code == "credencial_no_comando"
+    assert st.db.scalar("SELECT COUNT(*) FROM operacoes WHERE idempotency_key='teste-op-param-cred'") == 0
+
+
+def test_dado_da_persona_e_nome_sensivel_do_plano_nao_sao_renomeados() -> None:
+    plano = Plan(summary="x", planner=PLANEJADOR, parameters={"perfil_email": LOJA, "codigo": "Coleção de primavera"},
+                 steps=[_etapa("ab", None, "perfil {perfil_email} e {codigo}")])
+    p = pdo.fixar_parametros(plano, FIXOS)
+    assert {"perfil_email", "codigo"} <= set(p.parameters)
+    assert p.steps[0].postcondition.value == "perfil {perfil_email} e {codigo}"
+
+
+def test_chave_normalizada_fora_do_formato_nao_renomeia_nada() -> None:
+    plano = Plan(summary="x", planner=PLANEJADOR, steps=[_etapa("abrir", "ABRIR_" + "X" * 40, "p")])
+    p, motivo = pdo.normalizar_chaves(plano, ["ABRIR_" + "X" * 40])
+    assert p == plano and motivo is not None and "fora do formato" in motivo

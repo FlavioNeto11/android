@@ -27,10 +27,11 @@ from app.db import Database, Row, dumps, loads
 from app.models import InstanceState, RunCreate, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
-from app.security.redaction import redact
+from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
 from app.planning import costs
 from app.social.service import SocialError
-from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS
+from app.taskqueue.plano_da_operacao import NOMES_RESERVADOS, normal
+from app.taskqueue.recipes import SENSITIVE_PARAM
 from app.taskqueue.service import RunError
 from app.util import now_iso
 
@@ -93,7 +94,15 @@ _NOME_DE_PARAMETRO = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 
 
 def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
+    """Nome e valor de cada parâmetro fixo. Credencial nunca: a execução não carrega credencial (ADR-040), e um parâmetro
+    vai ao plano, ao objetivo, ao prompt e ao texto digitado pelo canal comum. A recusa olha o NOME (`senha`, `codigo`,
+    `token`), o par `nome=valor` e o FORMATO do valor sozinho (senha ou código sem rótulo)."""
     for nome, valor in (parametros or {}).items():
+        texto = str(valor)
+        if (chave_sensivel(nome) or SENSITIVE_PARAM.search(nome) or redact(f"{nome}={texto}") != f"{nome}={texto}"
+                or looks_secret(texto) or parece_senha_ou_codigo(texto)):
+            raise OperacaoError("credencial_no_comando", f"O parâmetro {nome!r} parece credencial; a operação não "
+                                "leva credencial (a senha só sai do cofre, pelo canal sensível).", 409)
         if (not _NOME_DE_PARAMETRO.match(nome) or nome in NOMES_RESERVADOS
                 or nome.startswith(("perfil_", "conta_"))):
             raise OperacaoError("pedido_invalido", f"Nome de parâmetro não aceito: {nome!r}.", 422)
@@ -102,6 +111,10 @@ def _conferir_parametros(parametros: Mapping[str, str] | None) -> None:
                                 422)
     if len(parametros or {}) > 10:
         raise OperacaoError("pedido_invalido", "No máximo 10 parâmetros.", 422)
+    valores = [normal(str(v)) for v in (parametros or {}).values()]
+    if len(set(valores)) != len(valores):
+        # Dois nomes para o mesmo valor deixariam a identidade da etapa dependente da ordem da troca.
+        raise OperacaoError("pedido_invalido", "Dois parâmetros com o mesmo valor.", 422)
 
 
 def _sha(pedido: PedidoDeOperacao) -> str:

@@ -7231,17 +7231,21 @@ nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal`
   - até 10 pares;
   - nome `^[a-z][a-z0-9_]{0,39}$`, fora de `instance_id`, `run_id`, `account_label`, `item` e `item_index` e sem os
     prefixos `perfil_` e `conta_` (os dados da persona), que a materialização poria por cima;
-  - valor de 1 a 300 caracteres, sem `{` nem `}`.
-- Valor com cara de credencial: `409 credencial_no_comando`, a mesma recusa do comando.
+  - valor de 1 a 300 caracteres, sem `{` nem `}`;
+  - dois parâmetros com o mesmo valor (sem `@`, sem espaços, sem caixa).
+- Credencial nunca (ADR-040): `409 credencial_no_comando` quando o NOME diz segredo (`senha`, `codigo`, `token`, `otp`,
+  `pin`…), quando o par `nome=valor` tem formato de credencial, ou quando o VALOR sozinho tem cara de senha ou de código
+  (palavra única que mistura três tipos de caractere, ou de 6 a 8 dígitos). Nada é gravado.
 - Os `parametros` entram na identidade do corpo: a mesma `idempotency_key` com outros parâmetros dá `409 chave_em_uso`.
 - O `OperacaoDetalhe` devolve `parametros` (`null` quando ausentes).
 - No plano de cada execução de alvo, o planejador não renomeia:
   - o parâmetro do plano com o MESMO valor de um fixo (comparado sem `@`, sem espaços e sem caixa) é renomeado para o
-    nome fixo em `parameters` e em toda ocorrência `{antigo}` no texto das etapas; o valor fixo vale. `{{saida:…}}` não
-    muda;
+    nome fixo em `parameters` e em toda ocorrência `{antigo}` no texto das etapas; o valor fixo vale (o `@` do
+    planejador sai junto). `{{saida:…}}` não muda. Nunca são renomeados o dado da persona (`perfil_email`,
+    `conta_<app>_usuario`…) nem o parâmetro de nome sensível (o mesmo conjunto que a receita nunca grava);
   - as etapas cuja `capability` o app declara no bloco `operacao` do `app.yaml` ganham a chave `<capability>_<n>`
     (`open_profile_1`, `open_post_1`, `open_comments_1`), com `depends_on` e `for_each` remapeados. Se a chave nova já
-    for de outra etapa, nenhuma chave muda e a execução registra o motivo numa decisão.
+    for de outra etapa, ou sair do formato de chave, nenhuma chave muda e a execução registra o motivo numa decisão.
 - Vale para todo plano de execução com `operacao_id` (do planejador, de skill ou de fluxo), antes de gravar o plano. Fora
   de operação, nada muda.
 - Para que serve: a receita ensinada é achada pela chave da etapa e pela pós-condição com os nomes dos parâmetros, e se
