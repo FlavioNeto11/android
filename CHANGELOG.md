@@ -19,6 +19,25 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — prova30 A3 (extensão do 31.157): o aprendizado de uma operação nas 10 perguntas do dono (branch feat/prova30-a3-aprendizado-da-operacao)
+
+- Pedido da orquestradora (o dono pediu para adiantar): para uma operação, responder às 10 perguntas do aprendizado do
+  dono com origem, evidência, confiança e frescor por item, e com filtro por persona. Até aqui as respostas existiam
+  espalhadas (Livro, memória da persona, memória da operação), sem uma leitura por operação.
+- `GET /api/operacoes/{id}/aprendizado` (adendo v1.96): só leitura, sem IA e sem tabela nova.
+  - Ligação às execuções da operação: direta por `run_id` (evidência, transição, sinal, interação), pela origem
+    (receita, fluxo), pela proveniência (lição) e pela interação (memória da persona). O backlog é inferido e vem
+    marcado.
+  - Uma régua só de confiança, e o valor original ao lado.
+  - Reutilizável e "revisar" são regras de código.
+  - Texto redigido e cortado em 200 caracteres. O simulado fica fora por padrão. O que a rota não cobre vem em
+    `nao_coberto`.
+- O roteador mora no módulo de pedidos, com `prefix=/api/operacoes` e um caminho de dois segmentos que não colide com
+  as rotas da Jev, e não mexe no `state.py`.
+- Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py::test_as_10_perguntas_saem_das_execucoes_da_operacao_e_so_delas`,
+  `::test_reutilizavel_e_revisar_sao_regras_de_codigo_com_uma_regua_so`, `::test_persona_simulado_redacao_e_404` e
+  `::test_a_rota_responde_e_diz_404_sem_a_124` (5 no arquivo). Real: `not_run` até a operação de 07/10.
+
 ## 2026-10-06 — 31.157 e 31.158 (prova30 A1/A2): conhecimento comum da operação e pesquisa externa por lacuna (branch feat/prova30-a1-conhecimento-da-operacao)
 
 - Pedido do dono de 06/10 (prova de capacidade, FULL INSTAGRAM): N agentes de uma operação precisam de conhecimento COMUM, separado do de cada persona, sem segundo sistema de conhecimento e sem repetir a mesma frase.
