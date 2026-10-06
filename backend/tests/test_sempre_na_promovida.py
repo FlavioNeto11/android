@@ -510,7 +510,7 @@ async def test_abrir_app_com_outro_app_na_frente_volta_a_tela_inicial_antes(parq
 async def test_promocao_que_valeu_nao_vira_500_se_a_convergencia_imediata_falhar(parque: Harness, monkeypatch) -> None:
     """A promoção já foi gravada quando a convergência roda. Um 500 aqui faria quem chamou repetir e levar 409 ("só
     promove quem está em canário"); a varredura e a entrada no ar entregam do mesmo jeito."""
-    import app.api as api_mod                   # a rota busca `convergir_o_parque` no módulo dela
+    import app.modules.applications.presentation.releases as api_mod   # a rota busca `convergir_o_parque` no módulo dela
 
     falsificar(parque)
     v4 = versao(parque, OUTLOOK, 4, promovida=False)
