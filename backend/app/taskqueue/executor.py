@@ -3811,8 +3811,11 @@ class StepExecutor:
         `app_foreground`, que já diz qual pacote quer à frente."""
         if not pacote or step.postcondition.kind == "app_foreground":
             return None
-        if obs.package == pacote or (obs.package is None and pacote in obs.tree.packages):
-            return None
+        # 31.123: os pacotes vizinhos que a etapa declara (a busca do Configurações) comprovam como o do app; pacote
+        # desconhecido continua não comprovando
+        for aceito in (pacote, *step.pacotes_aceitos):
+            if obs.package == aceito or (obs.package is None and aceito in obs.tree.packages):
+                return None
         return obs.package or "desconhecido"
 
     def _postcondition_holds(self, step: StepDTO, obs: Observation, cartao: tuple[str, ...] = (), *,

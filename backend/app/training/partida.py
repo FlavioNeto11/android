@@ -87,6 +87,33 @@ def ja_valem(passos: Sequence[Mapping[str, object]], entradas: Sequence[Mapping[
     return saida
 
 
+#: 31.123: telas que nunca comprovam a conclusão de uma etapa, mesmo vistas na demonstração (a barra do sistema e o
+#: lançador, onde a pessoa passa sem que a etapa termine ali).
+FORA_DOS_ACEITOS = ("com.android.systemui",)
+
+
+def pacotes_vizinhos(entradas: Sequence[Mapping[str, object]], pacote_da_etapa: str | None,
+                     cadastrados: Iterable[str]) -> list[str]:
+    """31.123: os pacotes em que a demonstração da etapa aconteceu além do app dela, na ordem em que apareceram. Ficam
+    de fora o próprio app, o systemui, o lançador (pacote com "launcher") e os apps cadastrados (esses já são o app de
+    uma etapa, `step.app_id`, e não um vizinho). Sem o pacote da etapa, nada (não há com o que comparar)."""
+    if not pacote_da_etapa:
+        return []
+    fora = {pacote_da_etapa, *FORA_DOS_ACEITOS, *cadastrados}
+    saida: list[str] = []
+    for e in entradas:
+        pkg = e.get("package")
+        if isinstance(pkg, str) and pkg and pkg not in fora and "launcher" not in pkg and pkg not in saida:
+            saida.append(pkg)
+    return saida
+
+
+def aviso_dos_vizinhos(passos: Sequence[tuple[str, Sequence[str]]]) -> list[str]:
+    """A linha da prévia e do `save` para cada etapa que passou a aceitar um pacote vizinho."""
+    return [f"Etapa “{titulo}”: a demonstração terminou fora do app, em {', '.join(pacotes)}; a etapa passa a aceitar "
+            "a conclusão nessa tela." for titulo, pacotes in passos if pacotes]
+
+
 def aviso(achados: Sequence[Mapping[str, object]], persona: Mapping[str, str] | None = None) -> list[str]:
     """Uma linha por etapa, para a prévia e para a recusa do `save`. Com `persona`, o dado dela que sobrar no título ou
     no valor vira o marcador (31.87 F2): a mensagem nunca leva o dado em claro."""
@@ -99,4 +126,5 @@ def aviso(achados: Sequence[Mapping[str, object]], persona: Mapping[str, str] | 
     return [dado_da_persona.com_marcador(linha, persona) for linha in linhas] if persona else linhas
 
 
-__all__ = ["MINIMO", "SUGESTOES", "aviso", "com_abertura", "ja_valem"]
+__all__ = ["FORA_DOS_ACEITOS", "MINIMO", "SUGESTOES", "aviso", "aviso_dos_vizinhos", "com_abertura", "ja_valem",
+           "pacotes_vizinhos"]

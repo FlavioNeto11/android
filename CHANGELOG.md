@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.123: a etapa conclui no pacote vizinho que a demonstração mostrou (branch feat/31-123-pacote-vizinho)
+
+- Migração 120: `steps.pacotes_aceitos` (lista JSON, nula). `PlanStep`/`StepDTO.pacotes_aceitos` é omitido quando vazio,
+  e o hash da etapa e da receita não muda. `StepExecutor._tela_fora_do_app` aceita esses pacotes como o do app; pacote
+  desconhecido continua não comprovando. O ensino preenche a lista com os pacotes das entradas da etapa (sem o próprio
+  app, o systemui, o lançador e os apps cadastrados), e a prévia e o `save` avisam. Adendo v1.84. Achado da execução
+  r-20261006012340-d92795 (33 chamadas de IA, US$ 0,331, na busca do Configurações).
+- Funções tocadas (K-095): `PlanStep`, `StepDTO` (`models.py`), `Repository._insert_steps` e `step_dto`,
+  `StepExecutor._tela_fora_do_app`, `partida.pacotes_vizinhos` e `aviso_dos_vizinhos` (novas), `TrainingSkills._preparar`.
+- Prova `simulated`: `backend/tests/test_etapa_pacotes_aceitos.py` (5). Real: `not_run`.
+
 ## 2026-10-06 — 31.121 e 31.122: a etapa ensinada começa onde a reprodução começa e só passa quando agiu (branch feat/31-121-122-partida-e-pos-condicao)
 
 - 31.121: a receita da etapa da 1ª entrada ganha `open_app` do app da sessão quando a gravação começou dentro dele sem

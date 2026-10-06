@@ -455,6 +455,14 @@ já está na tela de partida, a etapa passaria sem agir: a prévia avisa e o `sa
 adendo v1.83), com até três textos da tela seguinte como sugestão. O dado da persona não é sugerido e sai com o
 marcador.
 
+**A etapa que conclui num pacote vizinho (31.123, migração 120, adendo v1.84).** A busca do Configurações é de outro
+pacote, e o executor recusava concluir fora do app da etapa (`_tela_fora_do_app`). A execução r-20261006012340-d92795
+gastou 33 chamadas por isso. A etapa ganhou `pacotes_aceitos` (coluna `steps.pacotes_aceitos`): os pacotes, além do app
+dela, em que a tela comprova a conclusão. O ensino a preenche com os pacotes das entradas da etapa
+(`partida.pacotes_vizinhos`), sem o próprio app, o systemui, o lançador e os apps cadastrados (esses já são o app de
+uma etapa). A prévia e o `save` avisam. Pacote desconhecido continua não comprovando. A lista vazia é omitida do
+plano, e o hash das etapas não muda.
+
 **Teclas ao ensinar (31.84).** O texto digitado pelo painel acrescenta ao campo (`clear_first=false`), e quem ensina
 apagava um caractere por vez com "Apagar". Como a receita digita com `clear_first=True`, que já limpa o campo,
 `distill_training` trata assim as teclas gravadas na etapa:

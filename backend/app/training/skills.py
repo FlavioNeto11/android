@@ -425,9 +425,17 @@ class TrainingSkills:
             lambda st: bool(st.get("capability")) and (cat := _catalogo_da_etapa(st)) is not None and cat.has(st["capability"]))
         exemplos = {x["name"]: str(x.get("example") or "") for x in p.get("parameters") or [] if x.get("name")}
         passos: list[PlanStep] = []
+        # 31.123: os pacotes vizinhos em que a demonstração de cada etapa terminou (a busca do Configurações)
+        por_seq = {int(e["seq"]): e for e in sess["inputs"]}
+        fora = set(_inteiros([d.get("seq") for d in p.get("discarded") or [] if isinstance(d, dict)]))
+        cadastrados = [a["package"] for a in apps.values()]
+        vizinhos: list[tuple[str, list[str]]] = []
         for st in p["steps"]:
             app_da_etapa = st.get("app_id") or app_id
             pkg = apps[app_da_etapa]["package"] if app_da_etapa in apps else pacote
+            aceitos = partida.pacotes_vizinhos([por_seq[i] for i in _inteiros(st.get("inputs")) if i in por_seq
+                                                and i not in fora], pkg, cadastrados)
+            vizinhos.append((str(st.get("title") or st["key"]), aceitos))
             cat = load_catalog(pkg) if pkg else None
             cap = st.get("capability")
             if cat is not None and st.get("side_effect") and not (cap and cat.has(cap)):
@@ -440,12 +448,13 @@ class TrainingSkills:
             if cat is not None and cap and cat.has(cap):
                 vinculos = {b["name"]: b["value"] for b in st.get("bindings") or [] if b.get("name")}
                 passo = cat.build_step(CapabilityNode(key=st["key"], capability=cap, bindings=vinculos))
-                passos.append(passo.model_copy(update={"key": st["key"], "app_id": outro_app}))
+                passos.append(passo.model_copy(update={"key": st["key"], "app_id": outro_app, "pacotes_aceitos": aceitos}))
             else:
                 post = st.get("postcondition") or {}
                 passos.append(PlanStep(
                     key=st["key"], title=st.get("title") or st["key"], goal=st.get("goal") or st.get("title") or st["key"],
                     side_effect=bool(st.get("side_effect")), app_id=outro_app, max_attempts=1 if st.get("side_effect") else 3,
+                    pacotes_aceitos=aceitos,
                     postcondition=Postcondition(kind=post.get("kind") or "model_judged", value=post.get("value") or "",
                                                 description=post.get("description") or st.get("goal") or "")))
         avisos = [*avisos, *self.s.scheduler.flows.colisoes(comando, exemplos)]            # 31.89 F4: só avisa
@@ -461,7 +470,8 @@ class TrainingSkills:
         # A destilação troca o valor digitado pelo nome: os parâmetros da pessoa primeiro, a persona no que sobrar.
         variaveis = {**exemplos, **{k: v for k, v in persona.items() if k not in exemplos}}
         return _Preparo({**p, "app_id": app_id},
-                        [*avisos, *dado_da_persona.aviso(marcadores), *partida.aviso(ja_valem, dados)],
+                        [*avisos, *dado_da_persona.aviso(marcadores), *partida.aviso(ja_valem, dados),
+                         *(dado_da_persona.com_marcador(linha, dados) for linha in partida.aviso_dos_vizinhos(vizinhos))],
                         comando, plano, variaveis, apps, app_id, profile_ids, group_ids, ja_valem, dados)
 
     async def save(self, session_id: str, *, proposal: Proposta | None, profile_ids: list[str],

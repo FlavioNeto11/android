@@ -6972,3 +6972,15 @@ fluxo ensinado a partir de uma falha (adendo v1.75), que `GET /api/flows[].origi
 - O dado da persona nunca vai às sugestões, e o que sobrar dele no título ou no valor sai com o marcador (31.87 F2).
   A etapa sem tela gravada, o valor curto (menos de 3 caracteres) e o valor com marcador não são conferidos.
 - **Prova:** `simulated` (`backend/tests/test_treino_partida_e_pos_condicao.py`); `real`: `not_run`.
+
+## Adendo v1.84 (06/10/2026; número da orquestradora; item 31.123, migração 120) — a etapa que conclui num pacote vizinho
+
+- **Etapa do plano** (o `plan` de `GET /api/flows` e as etapas de `GET /api/runs/{id}`): campo opcional
+  `pacotes_aceitos: string[]`, OMITIDO quando vazio. São os pacotes, além do app da etapa, em que a tela comprova a
+  conclusão (a busca do Configurações é de outro pacote). Quem preenche é o ensino, com os pacotes vistos na
+  demonstração da etapa, sem o próprio app, o systemui, o lançador e os apps cadastrados. O executor aceita esses
+  pacotes como o do app; pacote desconhecido continua não comprovando.
+- **`POST /api/training/{session_id}/preview` e `/save`**: uma linha em `warnings` por etapa que passou a aceitar um
+  pacote vizinho. A forma da resposta não muda.
+- Compatível: as etapas e os fluxos anteriores não têm o campo, e o hash da receita e da etapa não muda.
+  **Prova:** `simulated` (`backend/tests/test_etapa_pacotes_aceitos.py`); `real`: `not_run`.
