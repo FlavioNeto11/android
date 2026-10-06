@@ -106,6 +106,15 @@ async def listar_operacoes(request: Request, limite: int = Query(50, ge=1, le=20
     return _servico(request).listar(limite)
 
 
+@router.get("/operacoes/elegiveis", response_model=None)
+async def elegiveis_da_operacao(request: Request, app_id: str = Query(..., min_length=1, max_length=80)) -> object:
+    """31.174: o pool elegível para uma operação neste app (só leitura). Vem antes de `/operacoes/{operacao_id}`."""
+    try:
+        return _servico(request).elegiveis(app_id)
+    except OperacaoError as exc:
+        raise _erro(exc) from exc
+
+
 @router.get("/operacoes/{operacao_id}", response_model=None)
 async def ler_operacao(request: Request, operacao_id: str) -> object:
     try:

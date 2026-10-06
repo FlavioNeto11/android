@@ -167,6 +167,58 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   casam `aria-controls` e painel, a aba nova abre o painel certo e o botão de exemplo preenche a mensagem do formulário.
   Não implantado.
 
+## 2026-10-06 — 31.180: as amostras do host pela API (branch feat/31-180-amostras-do-host, corte 59)
+
+- `GET /api/host/amostras?horas=` (só leitura, adendo v1.102) lê o CSV diário do amostrador do host (29.156) e devolve
+  as amostras das últimas N horas: CPU, VM do WSL, qemu, RAM, disco, os 3 processos do topo e os avisos de pressão por
+  aparelho.
+- Sem CSV, dá 404 `sem_amostras`. A resposta não leva nome de máquina nem caminho.
+- A tela é do Portal.
+- Prova `simulated`: `backend/tests/test_amostras_do_host.py`, com o CSV falso, a janela na virada do dia, a linha de
+  falha e a rota com 200, 404 e 422.
+
+## 2026-10-06 — 31.174: pool elegível para operação, adendo v1.105 (branch feat/31-174-pool-elegivel, corte 58, sobre o 31.173)
+
+- `GET /api/operacoes/elegiveis?app_id=` mostra quem pode ser alvo agora. É só leitura: nada é criado nem despachado.
+- Os critérios são a mesma conferência da criação (persona → conta → sessão → aparelho, na ordem do dono) mais o
+  aparelho apto: online, fora da loja e sem conta travada.
+- Cada item traz `elegivel`, `parou_em`, `motivo`, `sessao_verificada_em` e `sessao_vencida`. A sessão vencida continua
+  elegível, porque a porta relê a tela antes da tarefa, e vem marcada para a reverificação antes da onda.
+- A contagem traz personas, elegíveis, elegíveis com sessão vencida e motivos.
+- A rota vem antes de `/operacoes/{operacao_id}`.
+- Prova `simulated`:
+  - `backend/tests/test_operacoes.py::test_o_pool_elegivel_e_a_conferencia_da_criacao_sem_criar_nada`;
+  - `backend/tests/test_operacoes.py::test_rota_do_pool_elegivel_vem_antes_do_id_da_operacao`.
+
+## 2026-10-06 — 31.173: a sessão na operação, adendo v1.104 (branch feat/31-173-sessao-na-operacao, corte 58, sobre o F5c B)
+
+- O alvo que espera antes do aparelho (a porta de sessão relendo a tela, a vaga) leva o MOTIVO da espera, e não só
+  `pendente`.
+- O GET traz `sessao_verificada_em` por alvo: a última vez que a sessão da conta naquele aparelho foi vista na tela.
+- A porta de sessão ganha um teto de releituras falhas seguidas da sessão vencida, por conta e aparelho
+  (`TETO_DE_RELEITURAS_DA_SESSAO` = 3).
+  - No teto, o objetivo para com o motivo, e a contagem zera para a retomada. Uma releitura boa também zera.
+  - Antes, a releitura que falhava sempre voltava a cada volta do despacho. Foi o caso do android-03 em 06/10, às 21:22Z
+    e às 21:32Z: o UiAutomator ficou sem a árvore da janela.
+- Prova `simulated`:
+  - `backend/tests/test_operacoes_estagios.py::test_o_alvo_que_espera_a_porta_de_sessao_diz_por_que`;
+  - `backend/tests/test_operacoes.py::test_o_get_traz_a_hora_da_ultima_verificacao_da_sessao_do_alvo`;
+  - `backend/tests/test_operacoes.py::test_a_releitura_da_sessao_que_falha_sempre_para_no_teto_com_o_motivo`.
+
+## 2026-10-06 — 15.15 F5c B: o resto do `AppState.__init__` vai para `bootstrap.montar` (branch feat/15-15-f5c-b, corte 58)
+
+- O corpo do `AppState.__init__` passa a ser `app/bootstrap.py::montar(self, cfg, …)`, e os atributos ficam declarados
+  na classe. Conferido por script contra o `__init__` da a330e29f:
+  - as linhas de código são as mesmas, sem comentários nem linhas vazias;
+  - só as anotações de atributo subiram para a classe.
+- `SettingsStore` e `_FontesDoEspelhoDoTrello` passam a morar em `app.bootstrap`, os dois imports tardios do treino
+  (`TrainingRecorder`, `TrainingSkills`) vão junto, e `bootstrap` não importa `app.state` em tempo de execução.
+- Catracas com as bases baixadas: imports tardios de `app.state` 3→1 (com `app.bootstrap` 2) e `Any` de `app.state`
+  13→10 (`app.bootstrap` 0).
+- Destrava a janela de `state.py` e `bootstrap.py` para o 31.151 a 31.153 (Aprendizado).
+- Prova `simulated`: dirigidos de 175 arquivos (o padrão `bootstrap|AppState|create_app|state.<peça>`), mais
+  `test_revisao_previa`, `test_trello_espelho`, `test_desligamento_sombras` e as catracas. mypy 257; docs-check 0.
+
 ## 2026-10-06 — 31.154: revisão dos PRs 479 e 483 (branch feat/corte57-jev, corte 57)
 
 - Nome fixo em conflito: quando o plano usa um nome fixo da operação com OUTRO valor (`username` = A no plano e B na

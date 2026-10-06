@@ -7434,3 +7434,61 @@ depois de `<intencao>`, com o pedido de relacionar o texto ao assunto só quando
 
 Código: `modules/pedidos/{domain,infrastructure,presentation}/aprendizado_da_operacao.py`. Prova `simulated`:
 `backend/tests/test_aprendizado_da_operacao.py`.
+
+## Adendo v1.102 (06/10/2026; número da orquestradora; item 31.180) — as amostras do host
+
+`GET /api/host/amostras?horas=N` (só leitura, atrás do login; `N` de 1 a 168, padrão 24). Ela lê o CSV diário do
+amostrador permanente do host (29.156, `scripts/amostrador-host.ps1`, um arquivo por dia UTC em
+`<data_dir>/observabilidade/host/AAAAMMDD.csv`) e devolve as amostras das últimas `N` horas, da mais antiga à mais nova. O formato é o contrato do painel do Portal
+(`frontend/src/features/host/contratoDoHost.ts`):
+
+```json
+{"items": [{"ts_utc": "2026-10-06T22:39:00Z", "cpu_host_pct": 41.5, "vm_convidado_nucleos": 2.25, "vmmem_ws_mb": 5120,
+            "qemu_host_pct": 30.2, "ram_livre_mb": 8192, "disco_livre_gb": 120.5,
+            "processos_top": [{"nome": "python", "pct": 12.3}],
+            "avisos_pressao": [{"instance_id": "android-05", "n": 3}]},
+           {"ts_utc": "2026-10-06T22:40:00Z", "erro": "IOException"}]}
+```
+
+- Uma medida vazia no CSV vira `null`. Um par malformado em `processos_top` ou em `avisos_pressao` fica de fora.
+- A linha de falha do amostrador (`ts,erro,<tipo>`) vira `{ts_utc, erro}`, com o tipo da exceção.
+- Sem CSV dos dias da janela: 404 `{"code": "sem_amostras"}`. Com o arquivo e sem linha na janela: 200 com
+  `items: []`.
+- A resposta não leva nome de máquina nem caminho. Os nomes de processo são só o nome, como o amostrador os grava.
+
+Código: `backend/app/modules/fleet/infrastructure/amostras_do_host.py`,
+`backend/app/modules/fleet/presentation/host.py`. Teste: `backend/tests/test_amostras_do_host.py`. A tela é do Portal.
+
+## Adendo v1.104 (06/10/2026; número da orquestradora; item 31.173) — a sessão na operação
+
+- `AlvoDaOperacao.sessao_verificada_em` (string ou `null`): a última verificação, na tela, da sessão da conta do alvo
+  naquele aparelho (`account_sessions.verified_at`).
+- O alvo `pendente` (objetivo esperando antes do aparelho) leva no `motivo` o porquê da espera, por exemplo a porta de
+  sessão relendo a sessão vencida. Antes ele vinha sem motivo.
+- A porta de sessão do despacho para no teto de 3 releituras seguidas da sessão vencida que falham, por conta e
+  aparelho (`TETO_DE_RELEITURAS_DA_SESSAO`). O objetivo fica bloqueado com o motivo "a sessão não pôde ser relida em N
+  tentativas seguidas em <aparelho>", e retomar tenta de novo. Uma releitura boa zera a contagem.
+
+Código: `backend/app/modules/operacoes/` e `backend/app/state.py::_releitura_da_sessao`. Testes:
+`backend/tests/test_operacoes.py` e `backend/tests/test_operacoes_estagios.py`.
+
+## Adendo v1.105 (06/10/2026; número da orquestradora; item 31.174) — o pool elegível para operação
+
+`GET /api/operacoes/elegiveis?app_id=<app>` (só leitura, atrás do login; vem antes de `/operacoes/{operacao_id}`):
+
+```json
+{"app_id": "instagram",
+ "itens": [{"profile_id": "ig-…", "persona_nome": "…", "account_id": "acc-…", "instance_id": "android-01",
+            "elegivel": true, "parou_em": null, "motivo": null,
+            "sessao_verificada_em": "2026-10-06T19:31:59.290Z", "sessao_vencida": false}],
+ "contagem": {"personas": 16, "elegiveis": 3, "com_sessao_vencida": 1, "motivos": {"sem conta": 11}}}
+```
+
+- A conferência é a mesma da criação (persona → conta → sessão → aparelho, com os motivos do v1.94) mais o aparelho
+  apto (online, fora da loja, sem conta travada). O motivo do aparelho inapto é "aparelho fora do ar ou com conta
+  travada".
+- A sessão vencida continua elegível, porque a porta relê a tela antes da tarefa, e vem com `sessao_vencida: true`.
+- Um app inexistente dá 404 `app_inexistente`, e um pedido sem `app_id` dá 422.
+
+Código: `ServicoDeOperacoes.elegiveis` e `backend/app/modules/operacoes/presentation/router.py`. Testes:
+`backend/tests/test_operacoes.py`.
