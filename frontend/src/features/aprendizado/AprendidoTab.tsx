@@ -19,7 +19,7 @@ import {
 import styles from './Aprendizado.module.css';
 
 /** Quantos itens por tipo e estado (a memória conta lembranças, não linhas). */
-function Contagem({ contagem }: { contagem: NonNullable<ListaDoLivro['contagem']> }) {
+function Contagem({ contagem, deProva }: { contagem: NonNullable<ListaDoLivro['contagem']>; deProva: { n: number; ativo: boolean; alternar: () => void } }) {
   const tipos = Object.entries(contagem).filter(([, porEstado]) => Object.keys(porEstado).length > 0);
   if (tipos.length === 0) return null;
   return (
@@ -33,6 +33,12 @@ function Contagem({ contagem }: { contagem: NonNullable<ListaDoLivro['contagem']
               : `${rotuloDoEstado(isEstadoDoLivro(estado) ? estado : null).toLowerCase()}${n === 1 ? '' : 's'}`;
             return <span key={estado}>{formatInt(n)} {rotulo}</span>;
           })}
+          {kind === 'fluxo' && deProva.n > 0 ? (
+            <button type="button" className={styles.resumoBotao} aria-pressed={deProva.ativo} onClick={deProva.alternar}
+                    title={deProva.ativo ? 'Tirar o filtro "Só os nascidos de uma prova".' : 'Mostrar só os fluxos que nasceram de uma prova.'}>
+              {formatInt(deProva.n)} de prova
+            </button>
+          ) : null}
         </span>
       ))}
     </div>
@@ -131,6 +137,18 @@ export function AprendidoTab() {
   useEffect(() => {
     void carregar(filtro);
   }, [carregar, filtro]);
+
+  // 31.146: quantos fluxos nasceram de prova (os de `GET /api/flows?nascido_de_prova=true`, sem os filtros da lista), relido a
+  // cada carga do Livro. Sem a marca nos fluxos (backend anterior) ou sem a rota, a conta dá 0 e a contagem some.
+  const [quantosDeProva, setQuantosDeProva] = useState(0);
+  useEffect(() => {
+    if (!lista) return;
+    const ctl = new AbortController();
+    apiAprendizado.fluxosDeProva(ctl.signal)
+      .then(setQuantosDeProva)
+      .catch(() => { if (!ctl.signal.aborted) setQuantosDeProva(0); });
+    return () => ctl.abort();
+  }, [lista]);
 
   // As opções do filtro de app vêm da lista de /apps (nenhum pacote fica escrito aqui); se ela falhar, o filtro só
   // mostra o app do link e o resto do catálogo continua funcionando.
@@ -233,7 +251,11 @@ export function AprendidoTab() {
         )
       ) : (
         <>
-          {lista.contagem ? <Contagem contagem={lista.contagem} /> : null}
+          {lista.contagem ? (
+            <Contagem contagem={lista.contagem}
+                      deProva={{ n: quantosDeProva, ativo: filtro.prova === 'so_prova',
+                                 alternar: () => setFiltro((f) => ({ ...f, prova: f.prova === 'so_prova' ? undefined : 'so_prova' })) }} />
+          ) : null}
           {lista.itens.length === 0 ? (
             <EmptyState icon={BookOpen} compact title="Nada aprendido com este filtro"
                         hint={ocultos ? `Há ${ocultos} pelo filtro de apps: escolha "Todos" para vê-los.` : undefined} />
