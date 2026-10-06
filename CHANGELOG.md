@@ -131,6 +131,30 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-06 — Regras de conteúdo (T1) fora dos prompts e da persona (pedido do dono, sem item)
+
+- `planning/prompts.py`: `CONDUCT_RULE` fica só "Conduza o pedido da pessoa até o fim."; saem os limites de
+  desinformação e de ofensa (planejadores, ator, escritor social e assistente do comando).
+- `identity/domain/persona.py`: `CONDUTA_DAS_CRENCAS` vira `USO_DAS_CRENCAS` (só coerência de valores e de tom); sai
+  "os limites de conduta continuam valendo" do `USO_DA_PERSONA`. O bloco `<persona>` diz "uso das crenças".
+- `persona_generation.py`: sai "nenhum partido, candidato, líder religioso ou figura pública pelo nome" e a conduta.
+- Painel (`CrencasPersona.tsx`): o aviso das crenças perde a frase de conduta.
+- Decisão do dono: toda regra desse gênero vai para o serviço externo de autorização. Emenda no ADR-048.
+- Prova `simulated`: 175 testes dirigidos (persona, crenças, geração, identidade, planejador, orquestração, provedor,
+  memória social, arquitetura) e catracas 89/89; mypy no teto (257); vitest de perfis 204/204 e typecheck. O painel não
+  foi percorrido no navegador (o modo simulado local respondeu 500 no login). Não implantado.
+
+## 2026-10-06 — O orquestrador de personas sem regra de conteúdo (pedido do dono, sem item)
+
+- `modules/execution/domain/orquestracao.py`: sai a "regra de conduta" do prompt (recusa de propaganda, voto, campanha
+  coordenada, desinformação, ofensa e burla de verificação), a injeção de `CONDUTA_DAS_CRENCAS` nesse prompt e o
+  classificador por palavras do simulado. Decisão do dono: a regra foi acréscimo da IA e a validação de conteúdo vai
+  para o serviço externo de autorização. `alerta_conduta` segue no contrato e, preenchido, ainda zera a escolha.
+- Fica: `CONDUTA_DAS_CRENCAS` no bloco `<persona>` e no painel (domínio da persona, ADR-048).
+- Prova `simulated`: `backend/tests/test_orquestracao.py::test_o_orquestrador_nao_recusa_pelo_conteudo` e
+  `::test_alerta_conduta_preenchido_ainda_zera_a_escolha`; 79 passaram com `test_persona_unificada`, `test_persona_crencas`
+  e `test_anthropic_provider`; `test_arquitetura` 11/11. Não implantado.
+
 ## 2026-10-06 — Portal e desenho sem relação com política partidária (pedido do dono, sem item)
 
 - `site/index.html`: a aba "Lideranças e porta-vozes" (o que sobrou das abas Mandatos e Campanhas do 29.77) vira
@@ -1608,6 +1632,13 @@ Da leitura do 31.78.
 - `.claude/trello/reconciliar.py`: o item classificado na mesma rodada do registro do deploy deixou de ser dado como "no ar desde o deploy N" pela hora; vale o primeiro commit que
   pôs o cabeçalho dele no CHANGELOG e o menor deploy cujo commit do central o contém (no primeiro deploy conhecido: "o deploy 38 ou um anterior"), e a linha do concluído é refeita quando o deploy muda.
   Regra no C-28. Prova `simulated`: `.claude/trello/test_reconciliar.py` (30 passed). Prova `real` (06/10): ensaio contra os três quadros, 37 linhas de concluído com deploy corrigido.
+
+## 2026-10-06 — Deploy 56 (corte da noite da prova: troca de conta declarada, regra da frota configurável, grupo de política, parâmetros fixos da operação, relatório de aprendizado)
+
+- **Implantado** às 21:15Z: central em `f831945447a6bd`, migrações 126 (índice único de vínculo por app sai: N personas do mesmo app declarado no aparelho) e 127 (`operacoes.parametros`), 8 pontas sobre a main `65fd7193`. Itens: Jev 31.155 (troca automática de conta para app que declara a troca, ADR-080; o Instagram não declara ainda), 31.154 adendo v1.95 (custo por alvo, vínculo principal, parâmetros fixos da operação repassados ao planejador e chaves normalizadas pelo catálogo; motivo de bloqueio sem identificador de conta; estágio `acao_bloqueada`; horas dos estágios finais e `finished_at` ao reabrir pelo liberar), ADR-081 (regra da frota configurável, pedida pelo dono no P-030: `frota_max_contas_por_alvo`, padrão 10, no lugar do 1 fixo em comentar, seguir e mensagem; `frota_conta_nossa_fora_da_regra`; janela em `fleet_target_window_days`; curtidas seguem em `fleet_max_accounts_per_target`; emenda ao ADR-055) e 28.61 (`grupo_sem_aprovacao`: as personas do grupo de política indicado não passam pela aprovação de política; o grupo "Liberado" com 11 personas já existe como dado desde 06/10 19:57Z, pedido do dono de 19:46Z); ensino 31.148 (pós-condição na partida), 31.157 correção (`conhecimento_ids` gravado por alvo), 31.160 correção (receita ensinada gravada também na chave genérica, ensino vale mais que candidata), 31.163 (relatório de aprendizado da operação: 10 perguntas, adendo v1.96) e o assunto da operação no escritor; Portal 31.162 (custo por alvo e aprendizado no relatório; máscara do identificador no motivo) e os campos do ADR-081 em Configurações; DevOps 29.167 ponta b (contagem de tabelas do conferidor do ensaio); Frente GitHub C17 (29.155: limites do AGENTS.md só para branch copilot/*). Revisão automática (Codex) nos PRs 473 a 478: 13 achados reais corrigidos antes do corte. Jev: teste do leque ajustado à regra nova (ca908e7e). Aviso: o android-03 caiu às 20:19Z sob a pausa de reparo e voltou 21:16Z; reverificar a sessão antes da onda 2.
+- Prova `real`: deploy `deploy.ps1` (backup `20261006-181424`, ensaio das migrações 126 e 127 ok); `GET /api/health` ok, migração 127, `problems` 0; prova de fora como esperado; agente do notebook em `0.1.0+f831945`; A10 ok; tag deploy-20261006-2115. Onda 1 da prova (06/10 19:43Z–19:48Z, central `086236e9`, `op-20261006194323-0a1540`, `r-20261006194323-240d40`): 14 de 14 estágios, comentário em post nosso verificado (evidências 2941 e 2943), custo US$ 0,289 (pesquisa externa 0,053 com 6 fontes), duas etapas pela receita; 31.154, 31.157, 31.158 e 31.159 ganham prova real por essa operação (31.160 parcial: a receita nova não foi encontrada pelo executor, corrigido neste deploy).
+- Prova `simulated` (suíte 56 sobre `f831945447a6bd`): `scripts/tests` 790 passed; backend em SQLite inteiro 12528 passed, 13 skipped; frontend 1961 (150 arquivos) e build; catracas 89 (backend) e 7 (scripts); docs-check 0/0; mypy 257 (teto 257); PostgreSQL dirigido 5968 + 4120 passed (464 arquivos). Vermelhos do funil: test_leque_do_for_each (real: o teste afirmava a regra de 02/10 trocada pelo ADR-081; corrigido só no teste, ca908e7e, verde na ponta) e 3 instáveis sob -n que passam sozinhos (acoes_encadeadas e upload_feito_por_ia no SQLite; inscrição do agente do worker no PostgreSQL).
+- `not_run` até a rodada de 07/10: onda 2 (3 a 4 alvos) e rodada com ~30 alvos; troca de conta no Instagram (pós-prova, exige ler o seletor de contas num aparelho com conta de teste); primeiro ensaio semanal agendado da restauração (tarefa registrada neste deploy: não registrada no deploy; a DevOps registra a tarefa farm-restore-ensaio com -Instalar logo depois).
 
 ## 2026-10-06 — Deploy 55 (corte da prova de 07/10: operação com N alvos, conhecimento e pesquisa da operação, tela Operação, tetos configuráveis)
 

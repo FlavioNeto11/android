@@ -2252,7 +2252,7 @@ Pedido do dono de 28/09: o "gerar por prompt" também completa o que falta numa 
   falta, siga estas instruções… sem reescrever o que já está preenchido"), passando por `sem_marcacao`.
 - A regra não muda: completa **só o vazio** (`preencher_vazios`); sem lacuna, devolve a persona sem chamar o modelo.
 - Instrução com formato de credencial → **422 `instructions_with_secret`**, antes de qualquer chamada (o texto iria
-  ao provedor e à proveniência). A regra de conduta do ADR-048 vale para o que a instrução pedir.
+  ao provedor e à proveniência).
 - Painel: cartão "Completar com IA" no topo da guia Persona, com uma linha de instrução opcional e o aviso de chamada
   paga; `api.enrichPersona(id, instructions?)`.
 
@@ -2272,7 +2272,8 @@ Corpos em `backend/app/taskqueue/orquestrador.py`.
   - `modo=texto`: o comando cita destinos; é a prévia de `/runs/targets/resolve`, sem IA.
   - `modo=distribuir`: app sem conta; aparelhos pela carga (`N aparelhos` no texto, senão 1), sem IA.
   - `modo=ia`: uma chamada do papel `plan` (`ai_calls.role = "plan"`, sem `run_id`); com `alerta_conduta`,
-    `targets` e `escolhidas` vêm vazios.
+    `targets` e `escolhidas` vêm vazios. Desde 06/10 o orquestrador não preenche `alerta_conduta` (a regra de
+    conteúdo do pedido vai para o serviço externo de autorização); o campo fica como ponto de recusa.
   - `modo=nenhuma`: sem app identificado e sem persona disponível, ou app com conta sem persona vinculada livre.
   - 409 `credencial_no_comando` (nada vai à IA); 503 `ai_not_configured`; 503 `ai_error`; 422 corpo inválido.
   - Declarada antes de `/runs/{run_id}/{op}`.

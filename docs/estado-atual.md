@@ -1,10 +1,18 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `086236e9df30a8` (migração 125, deploy 55); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `f831945447a6bd` (migração 127, deploy 56); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 56 no ar (06/10/2026, 21:15Z, central `f831945447a6bd`, migrações 126 e 127; corte da noite da prova).** 8 pontas: Jev 31.155 (ADR-080),
+  31.154 v1.95, ADR-081 (regra da frota configurável) e 28.61 (grupo "Liberado"); ensino 31.148, 31.163 e correções do 31.157/31.160; Portal
+  31.162 e campos do ADR-081; DevOps 29.167 b; GitHub C17. Jev: teste do leque ajustado à regra nova (ca908e7e). Aviso: o android-03 caiu às 20:19Z sob a pausa de reparo e voltou 21:16Z; reverificar a sessão antes da onda 2.
+  - `real` (central WIN-7S2UASNLFOP): deploy com backup `20261006-181424` e ensaio das migrações; saúde ok, migração 127; prova de fora; agente `0.1.0+f831945`; A10 ok.
+    Onda 1 da prova em 06/10 19:48Z: 14 de 14 estágios, comentário verificado em post nosso, US$ 0,289.
+  - `simulated` (suíte 56): números do CHANGELOG.
+  - `not_run`: onda 2 e rodada de 07/10; troca de conta no Instagram.
+  - Próxima ação: 07/10 ~10:00Z onda 2 (3 alvos) e 13:00Z rodada (~30 alvos; 27 param em "conta"), cenário em `.claude/handoffs/prova30/cenario.md`.
 - **Deploy 55 no ar (06/10/2026, 19:11Z, central `086236e9df30a8`, migrações 124 e 125; corte da prova de 07/10).** 16 pontas: Jev 31.154,
   31.156 e fix 29.126; ensino 31.157 e 31.158; Portal 31.159, 31.144, 31.145, 31.146 e 31.147; canais 28.59 e 29.145; DevOps 29.166 b e
   29.167. Também: Portal 29.164 (seção Comando remoto em português) e 31.162 (relatório da operação em Markdown e JSON); Frente GitHub 29.166 ponta a (job docs do CI com o docs-check completo); dois testes de outras frentes corrigidos na integ (409a3604).
