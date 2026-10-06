@@ -73,6 +73,12 @@ _ESQUEMA_DA_TRAVA = "hashtext(COALESCE(current_schema(), ''))"
 INTEGRITY_ERRORS: tuple[type[BaseException], ...] = (sqlite3.IntegrityError,)
 #: Erro de sintaxe/objeto ausente. Usado onde o código já tolerava a ausência de um recurso do banco.
 OPERATIONAL_ERRORS: tuple[type[BaseException], ...] = (sqlite3.OperationalError,)
+def coluna_ausente(exc: BaseException) -> bool:
+    """O erro é de COLUNA ausente (banco sem a migração que a cria), e só isso. `OPERATIONAL_ERRORS` também pega banco
+    travado e SQL inválido (`ProgrammingError`); quem tolera só o banco antigo confere aqui antes de engolir."""
+    return "no such column" in str(exc).lower() or getattr(exc, "sqlstate", None) == "42703"   # 42703 = undefined_column
+
+
 #: A conexão MORREU (banco reiniciado, rede piscou, sessão derrubada pelo administrador) — e só isso.
 #:
 #: Por que uma tupla separada de `OPERATIONAL_ERRORS`: aquela existe para o código tolerar um RECURSO ausente e
