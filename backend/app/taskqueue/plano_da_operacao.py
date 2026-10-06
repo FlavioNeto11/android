@@ -8,7 +8,8 @@ e a etapa vira `abrir_perfil` ou `open_profile`. Cada variação é uma identida
 
 - `parametros` da operação: o parâmetro do plano com o MESMO valor (sem `@`, sem espaços, sem caixa) é renomeado para o
   nome fixo, em `plan.parameters` e em toda ocorrência `{antigo}` do texto das etapas; depois, o fixo vale. Dois nomes
-  para o mesmo valor deixariam a identidade dependente da ordem da troca.
+  para o mesmo valor deixariam a identidade dependente da ordem da troca. Se o plano já usa o nome fixo com OUTRO
+  valor, esse nome não é fixado (`colisoes`): sobrescrever mandaria a referência do planejador para o alvo do fixo.
 - chaves: a etapa cuja `capability` é uma das que o app declara no bloco `operacao` (`AppDefinition.operation_stages`)
   passa a se chamar `<capability minúscula>_<n>` (`open_profile_1`), com `depends_on` e `for_each` remapeados. Se a
   chave nova já for de outra etapa, nada é renomeado (duas etapas com a mesma chave quebrariam o id da etapa).
@@ -64,10 +65,21 @@ def _renomear_na_etapa(s: PlanStep, antigo: str, novo: str) -> PlanStep:
         "bindings": {k: t(v) or "" for k, v in s.bindings.items()}})
 
 
+def colisoes(plan: Plan, fixos: Mapping[str, str]) -> list[str]:
+    """Os nomes fixos que o plano JÁ usa com OUTRO valor (achado da revisão do PR 478). Fixá-los sobrescreveria o valor
+    do planejador, e as duas referências (a dele e a renomeada) apontariam para o mesmo alvo: com `username`, a ação
+    iria para a conta errada. Esses nomes não são fixados; o plano fica como o planejador o escreveu."""
+    return sorted(nome for nome, valor in fixos.items()
+                  if nome in plan.parameters and normal(str(plan.parameters[nome])) != normal(valor))
+
+
 def fixar_parametros(plan: Plan, fixos: Mapping[str, str]) -> Plan:
     params = dict(plan.parameters)
     steps = list(plan.steps)
+    pulados = set(colisoes(plan, fixos))
     for nome, valor in fixos.items():
+        if nome in pulados:
+            continue
         alvo = normal(valor)
         for antigo in [k for k, v in params.items()
                        if k != nome and k not in fixos and not _nao_renomeia(k) and normal(str(v)) == alvo]:
@@ -106,4 +118,10 @@ def normalizar_chaves(plan: Plan, capabilities: Iterable[str]) -> tuple[Plan, st
 
 
 def ajustar(plan: Plan, fixos: Mapping[str, str], capabilities: Iterable[str]) -> tuple[Plan, str | None]:
-    return normalizar_chaves(fixar_parametros(plan, fixos), capabilities)
+    pulados = colisoes(plan, fixos)
+    ajustado, motivo = normalizar_chaves(fixar_parametros(plan, fixos), capabilities)
+    if pulados:
+        colisao = (f"parâmetro {', '.join(pulados)} já existe no plano com outro valor; ficou o do planejador e a receita "
+                   "ensinada com o nome fixo não casa nesta execução")
+        motivo = f"{colisao}; {motivo}" if motivo else colisao
+    return ajustado, motivo
