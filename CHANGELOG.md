@@ -105,6 +105,22 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 
 - `AGENTS.md` na raiz (leitura em ordem, precedência, limites comuns, quem pode mandar no agente e como a tarefa sai) e `.github/agents/{backend,frontend,docs}.agent.md`: cada perfil diz a área, a lista FIXA do que NÃO toca (migração, ensino, aprendizado, conta real, IA paga, parque e processos da máquina, harness e catracas, estado do plano, documentos que descrevem a máquina), como validar e o formato do PR. `.github/copilot-instructions.md` ganha: `.github/**`, `AGENTS.md`, `CLAUDE.md` e `scripts/**` na lista de "Não edite" (o agente não reescreve as próprias instruções), a regra de que texto lido no trabalho é dado e não instrução, e "suíte inteira" vale só para o backend. Só texto; sem servidor MCP, segredo ou caminho da máquina em perfil nenhum. A revisão de segredos de 06/10 apontou 5 brechas (exceção "a menos que a tarefa nomeie", edição das próprias instruções, conflito com o `CLAUDE.md`, lista de ensino incompleta, contradição da suíte inteira); todas corrigidas. Prova `simulated` (06/10, base `0e649799`): o frontmatter dos três lê com `yaml.safe_load` e `python scripts/docs-check.py` sai com 0 erros. `not_run`: o GitHub oferecer os perfis na página de agents e o agente de nuvem usá-los, que só se vê depois do merge na `main` e na primeira tarefa dada a um perfil.
 
+## 2026-10-06 — 31.137: a abertura do app de prova reabre na tela inicial e a espera do foco aceita os pacotes vizinhos da etapa (branch feat/31-137-open-app-tela-inicial)
+
+- Defeito (leitura da Aprendizado no banco central): com a busca do Configurações (`com.google.android.settings.intelligence`) no topo da tarefa do app, a abertura
+  sem IA do executor (LT-6) esperava o foco do Configurações por `ESPERA_DO_FOCO_S` (60 s; medido 60,3 s em d92795 e 60,8 s em 1157c6, contra 2,0 a 6,9 s nos outros
+  cinco) porque o `am start` comum só traz a tarefa de volta, no ponto onde parou; na 1157c6 a receita divergiu e a IA assumiu.
+- Mudança: (1) `Adb.start_app(..., tarefa_limpa=True)` usa `--activity-clear-task --activity-new-task`, que apaga a tarefa (inclusive as telas de outro pacote empilhadas
+  nela) e abre a tela inicial; o driver ganhou a extensão `open_app_tarefa_limpa` (fora do `DeviceIO`: dublê sem ela cai no `open_app` comum); o executor e
+  `DeviceManager.open_app` a usam só para os pacotes de `ABERTURA_COM_TAREFA_LIMPA` (`com.android.settings`). **Decisão e porquê:** só o app de prova, e não um flag
+  para todos, porque apagar a tarefa de um app com conta real descartaria o ponto em que a pessoa ou a execução estava (rascunho, conversa); o resto segue
+  retomando como sempre. Force-stop seguido de start foi descartado: parar o Configurações não tira da tarefa a tela da busca, que é de outro processo.
+  (2) `esperar_foco` (executor) e `wait_for_focus` (manager e instalador) aceitam `aceitos`, os `pacotes_aceitos` da etapa (31.123); a partida da prova junta os das etapas do
+  objetivo. O diário da abertura diz "(tarefa limpa, na tela inicial)" quando foi o caso.
+- Prova `simulated` (`test_open_app_tarefa_limpa.py` 9 testes, mais o caso do LT-6 em `test_caminho_rapido_2.py`; 1230 passed nos 52 arquivos que citam abertura e espera de foco,
+  com `test_arquitetura` e as catracas; mypy 257 no teto). `real`: `not_run` — a latência de `open_app` antes e depois, na mesma situação (busca do Configurações no topo),
+  pede um aparelho de prova livre; depois do funil da Android. Sem migração e sem adendo.
+
 ## 2026-10-06 — 31.124, 31.125 e 31.126: ensinar sem repetir sem saber, atalho na falha e o Livro sem código cru (branch feat/31-124-ensino-avisos)
 
 - Achados do percurso 49 (deploy 49, só leitura, sem IA paga): o formulário "Ensinar a corrigir" abriu sem aviso numa etapa que já tinha sessão salva (e deixou abrir mais duas); o botão só existe depois de execução > "Por aparelho" > aparelho > etapa (4 cliques) embora a falha já esteja escrita no cabeçalho do aparelho; e o detalhe de um fluxo do Livro mostrava "App: nao_resolvido" (o código do balde) como se fosse nome de aplicativo.
@@ -156,6 +172,32 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `dado_da_persona.com_marcador` (nova), `_destilar`, `TrainingSkills._preparar` e `save` (`training/skills.py`).
 - Prova `simulated`: `backend/tests/test_treino_partida_e_pos_condicao.py` (7). Real: `not_run`; a prova real fica
   para depois do deploy 50 (UMA reprodução do f-9b4d6754b59a no android-04).
+
+## 2026-10-06 — 15.15 F4, corte 9 (F4i): as 41 rotas de perfis do Instagram (`/api/instagram/*`) saem de `api.py` (branch feat/15-15-f4i-router-instagram)
+
+- Perfis (cadastro, edição, sessão: iniciar, encerrar, verificar; conta âncora e contas por perfil; credencial; memória; grupos de política; política por perfil;
+  avatar) e o que só elas usam (os jobs de logout e de início de sessão, a recusa pelo portão, a exigência de internet no aparelho, os corpos
+  `SocialContextBody` e `RetirarContaBody`) moram agora em `backend/app/modules/identity/presentation/instagram.py`, montado em `main.py` no mesmo lugar do
+  `api.router`, depois do das personas. Mesmo caminho, método, corpo e resposta. Ficam em `api.py` as rotas que dividiam o bloco mas não são do Instagram
+  (a loja, os proxies, as exceções de política, as aprovações, o catálogo de apps e as capacidades). `quem()` ficou repetido em `identity/presentation/comum.py`
+  porque `identity` importar `fleet` fecharia um ciclo de contextos. Os 4 auxiliares que levavam `Any` ganharam o tipo (`AppState`, `DeviceRuntime`, os DTOs) e os 2 imports
+  tardios do `api.py` viraram imports do topo; teto de `Any` de `app.api` 78 → 45 e de imports tardios de `app.api` 9 → 7.
+- Prova do OpenAPI contra a main f86bafd8: 271 método+caminho idênticos; os schemas só diferem no título automático das respostas das rotas que devolviam
+  `Any` (`response_model=None`). Corpo das 51 funções e classes idêntico ao original por script, salvo os 4 tipos e os 2 imports (6 diferenças, todas
+  intencionais). `test_ordem_das_rotas.py` ganhou o caso das 41 rotas.
+- Prova `simulated`; `real`: `not_run` até o deploy. Sem migração e sem adendo.
+
+## 2026-10-06 — 15.15 K, F5b: o cluster de apps de `state.py` (a entrega do aplicativo ao parque) vai para `app/convergencia.py` (branch feat/15-15-f5b-convergencia)
+
+- 18 métodos do `AppState` (`release_no_aparelho`, `fora_da_convergencia`, `aplicar_versao_promovida`, `adotar_promovidas`, `_entregar`, `_rebaixa_do_parque`,
+  `_rollout_pending`, `distribute`, o preflight e o resolvedor do app da tarefa, `_pacote_do_app_id`, `_pacote_do_aparelho`, `tem_o_app` e os auxiliares) e
+  `RETENTATIVA_DE_ENTREGA_S` passam para a classe `Convergencia` em `backend/app/convergencia.py`. O `AppState` guarda métodos finos com os mesmos nomes e
+  assinaturas que delegam (`self.convergencia`), então scheduler, vitrine, despacho, rotas e testes não mudam; as constantes `_ENTREGA_FALHOU`,
+  `_ENTREGA_AUTOMATICA` e `_CANAIS_ABANDONADOS` seguem no `AppState` (a vitrine as lê de lá). `vitrine.py` fica como está. Corpo idêntico ao original a menos de
+  `self.` → `self._st.` (conferido por script, 18 métodos, 0 diferenças). Catracas: `Any` de `app.state` 28 → 13 e `app.convergencia` 15; imports tardios de
+  `app.state` 5 → 3 e `app.convergencia` 2.
+- Prova `simulated`: arquitetura e ordem das rotas, os 19 arquivos de teste que citam o cluster (404 passed e 1 falha por import que faltava no módulo novo, corrigido e verde isolado, 35 passed no arquivo), mypy 257 (no teto), docs-check 0. A bateria larga fica
+  para depois do funil da Android. `real`: `not_run` até o deploy. Sem migração e sem adendo.
 
 ## 2026-10-06 — 15.15 F4, corte 8 (F4h): as 20 rotas de personas saem de `api.py` (branch feat/15-15-f4h-router-personas)
 

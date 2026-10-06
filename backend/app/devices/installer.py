@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -402,8 +403,11 @@ class AppInstaller:
         await rt.executor.run(rt.adb.force_stop, package, timeout=30, label="parar o app conferido")
 
 
-async def wait_for_focus(rt: Any, package: str, *, deadline_s: float, poll_s: float = LAUNCH_POLL_S) -> bool:
-    """Espera o app ter janela em foco, até o prazo. Não julga nada: quem chama decide o que fazer com a tela."""
+async def wait_for_focus(rt: Any, package: str, *, deadline_s: float, poll_s: float = LAUNCH_POLL_S,
+                         aceitos: Collection[str] = ()) -> bool:
+    """Espera o app ter janela em foco, até o prazo. Não julga nada: quem chama decide o que fazer com a tela.
+
+    `aceitos` (31.137): pacotes vizinhos que a etapa declara (`pacotes_aceitos`, 31.123) e que valem como o app na frente."""
     relogio = asyncio.get_running_loop().time
     limite = relogio() + deadline_s
     while True:
@@ -411,7 +415,7 @@ async def wait_for_focus(rt: Any, package: str, *, deadline_s: float, poll_s: fl
             dono, _ = await rt.executor.run(rt.adb.current_focus, timeout=30, label="janela em foco")
         except AdbError:
             dono = None
-        if dono == package:
+        if dono == package or (dono is not None and dono in aceitos):
             return True
         agora = relogio()
         if agora >= limite:

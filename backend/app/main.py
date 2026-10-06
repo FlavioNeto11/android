@@ -67,6 +67,7 @@ from .modules.fleet.presentation.workers import router as workers_router
 from .modules.fleet.presentation.rede import router as rede_router
 from .modules.fleet.presentation.instancias import router as instancias_router
 from .modules.identity.presentation.personas import router as personas_router
+from .modules.identity.presentation.instagram import router as instagram_router
 from .modules.learning.presentation.router import router as learning_router
 from .modules.pedidos.presentation.router import router as pedidos_router
 from .modules.portal.presentation.contato import METODOS_DO_CONTATO, ROTA_DO_CONTATO
@@ -395,6 +396,7 @@ def create_app(cfg: Config | None = None, state: AppState | None = None,
         app.include_router(rede_router)          # `/api/network/*` (15.15 F4f): saíram de `api.py`, no mesmo lugar do `router`
         app.include_router(instancias_router)    # `/api/instances*` (15.15 F4g): saíram de `api.py`, no mesmo lugar do `router`
         app.include_router(personas_router)      # `/api/personas*` (15.15 F4h): saíram de `api.py`, no mesmo lugar do `router`
+        app.include_router(instagram_router)     # `/api/instagram/*` (15.15 F4i): saíram de `api.py`, no mesmo lugar do `router`
         # Depois do `router`: `/api/skills/resolve` (fase I) mora lá e precisa casar antes de `/api/skills/{id}`.
         app.include_router(skills_router)
         app.include_router(context_retrieval_router)   # só leitura (ADR-063)

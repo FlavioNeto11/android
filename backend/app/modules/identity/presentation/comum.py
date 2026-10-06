@@ -6,10 +6,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 
 from app.devices.manager import DeviceRuntime
+from app.security.sessions import operador_atual
+from app.shared.costuras import PAINEL
 from app.social.service import SocialError
 from app.storage import Storage, StorageError
 
@@ -30,6 +32,13 @@ def device(state: AppState, instance_id: str) -> DeviceRuntime:
         return state.devices.get(instance_id)
     except KeyError:
         raise _err(404, "not_found", f"Instância {instance_id} não existe.") from None
+
+
+def quem(request: Request | None = None, informado: str | None = None) -> str:
+    """Quem está pedindo: a sessão vence o que o cliente diz (a regra de `fleet.presentation.comum.quem`, repetida aqui porque `identity`
+    importar `fleet` fecharia um ciclo de contextos). `panel` é o último recurso: "veio do painel, e ninguém se identificou"."""
+    da_sessao = getattr(request.state, "operador", None) if request is not None else None
+    return da_sessao or operador_atual() or (informado or "").strip() or PAINEL
 
 
 def social_error(exc: SocialError) -> HTTPException:

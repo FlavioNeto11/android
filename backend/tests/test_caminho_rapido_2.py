@@ -204,6 +204,29 @@ async def test_lt6_etapa_app_foreground_abre_o_app_sem_decide(harness: Harness) 
     assert len(harness.fakes["android-01"].messages) == 1               # o resto do plano seguiu normalmente
 
 
+async def test_lt6_app_de_prova_abre_com_a_tarefa_limpa_pela_extensao_do_driver(harness: Harness,
+                                                                              monkeypatch: pytest.MonkeyPatch) -> None:
+    """31.137: o app em `ABERTURA_COM_TAREFA_LIMPA` abre pela extensão `open_app_tarefa_limpa` do driver, não pelo `open_app` comum, e o
+    diário diz que foi na tela inicial; a etapa segue sem IA como no caso comum."""
+    monkeypatch.setattr(executor_mod, "ABERTURA_COM_TAREFA_LIMPA", frozenset({PKG}))
+    aparelho = harness.fakes["android-01"]
+    limpas: list[str] = []
+
+    def limpa(package: str, activity: str | None) -> None:
+        limpas.append(package)
+        aparelho.open_app(package, activity)
+
+    aparelho.open_app_tarefa_limpa = limpa  # type: ignore[attr-defined]
+    harness.cfg.file.ai.recipes = "replay"
+    run = harness.run(["android-01"])
+    await harness.wait_run(run.id, statuses=TERMINAIS)
+    assert limpas == [PKG]
+    assert harness.ai.count("decide", step="open_app") == 0
+    linha = harness.state.db.one("SELECT COUNT(*) AS n FROM events WHERE run_id=? AND message LIKE ?",  # type: ignore[union-attr]
+                                 (run.id, "%aberto pelo executor, sem IA (tarefa limpa, na tela inicial) — em primeiro plano%"))
+    assert linha["n"] == 1
+
+
 async def test_lt6_pedido_de_abertura_que_falha_cai_no_ator_na_mesma_tentativa(harness: Harness) -> None:
     falhas = {"n": 0}
     # O aparelho falso nasce no boot do harness: o defeito entra nele antes da execução, sem corrida com o executor.

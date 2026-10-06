@@ -135,6 +135,54 @@ def test_as_vinte_rotas_de_personas_seguem_no_app_e_cada_uma_uma_vez() -> None:
         ("DELETE", "/api/personas/{persona_id}/images/{image_id}")])
 
 
+def test_as_quarenta_e_uma_rotas_do_instagram_seguem_no_app_e_cada_uma_uma_vez() -> None:
+    """15.15 F4i: `/api/instagram/*` saiu de `api.py` para `modules/identity/presentation/instagram.py`; o conjunto (método e modelo) é o de
+    antes, sem repetição nem rota perdida."""
+    rotas = [r for r in _rotas_na_ordem() if r[1].startswith("/api/instagram")]
+    assert sorted(rotas) == sorted([
+        ("GET", "/api/instagram/profiles"),
+        ("POST", "/api/instagram/profiles"),
+        ("GET", "/api/instagram/profiles/{profile_id}"),
+        ("PATCH", "/api/instagram/profiles/{profile_id}"),
+        ("DELETE", "/api/instagram/profiles/{profile_id}"),
+        ("GET", "/api/instagram/profiles/{profile_id}/avatar"),
+        ("PUT", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/credential"),
+        ("DELETE", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/credential"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/credential/clone"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/credential/consent"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/session/connect"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/session/verify"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/session/logout"),
+        ("GET", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/auth-attempts"),
+        ("PUT", "/api/instagram/profiles/{profile_id}/credential"),
+        ("DELETE", "/api/instagram/profiles/{profile_id}/credential"),
+        ("POST", "/api/instagram/profiles/{profile_id}/connect"),
+        ("POST", "/api/instagram/profiles/{profile_id}/verify"),
+        ("POST", "/api/instagram/profiles/{profile_id}/logout"),
+        ("GET", "/api/instagram/profiles/{profile_id}/memory"),
+        ("POST", "/api/instagram/profiles/{profile_id}/memory"),
+        ("DELETE", "/api/instagram/profiles/{profile_id}/memory/{memory_id}"),
+        ("GET", "/api/instagram/profiles/{profile_id}/capacidades"),
+        ("GET", "/api/instagram/profiles/{profile_id}/interactions"),
+        ("POST", "/api/instagram/profiles/{profile_id}/context"),
+        ("GET", "/api/instagram/profiles/{profile_id}/policy"),
+        ("PUT", "/api/instagram/profiles/{profile_id}/policy"),
+        ("GET", "/api/instagram/profiles/{profile_id}/accounts"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts"),
+        ("PATCH", "/api/instagram/profiles/{profile_id}/accounts/{account_id}"),
+        ("POST", "/api/instagram/profiles/{profile_id}/accounts/{account_id}/retire"),
+        ("DELETE", "/api/instagram/profiles/{profile_id}/accounts/{account_id}"),
+        ("GET", "/api/instagram/policy-groups"),
+        ("GET", "/api/instagram/policy-defaults"),
+        ("POST", "/api/instagram/policy-groups"),
+        ("GET", "/api/instagram/policy-groups/{group_id}"),
+        ("PUT", "/api/instagram/policy-groups/{group_id}"),
+        ("DELETE", "/api/instagram/policy-groups/{group_id}"),
+        ("GET", "/api/instagram/profiles/{profile_id}/auth-attempts"),
+        ("GET", "/api/instagram/profiles/{profile_id}/runs"),
+        ("GET", "/api/instagram/profiles/{profile_id}/operational-context")])
+
+
 def test_modulos_de_apresentacao_nao_importam_app_api() -> None:
     """Ciclo: `app.api` importa os módulos; um módulo que importa `app.api` de volta só funciona por acidente de ordem."""
     raiz = Path(__file__).resolve().parent.parent / "app" / "modules"
