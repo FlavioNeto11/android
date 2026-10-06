@@ -2071,6 +2071,9 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   libera (N5: a execução comum de quem ensinou não conta).
 - **Para a validação** (achado 4), o fluxo ativo do comando é `FlowStore.ativo_para`: o `match` sem aparelhos, sem o
   ensinado em espera (`state.py`, `fluxo_ativo_para` e `plano_ativo_para`).
+- **Escolha de escopo (31.88 F2):** o salvar e a prévia aceitam `scope_on_proof` (`todos` ou `quem_ensinou`); este grava a
+  persona do treino na `flow_scope`, e o escopo fica depois da prova. A pessoa muda depois por `PUT /api/flows/{id}/scope`,
+  com o antes e o depois no evento `log` (fora de `learning_transitions`). Adendo v1.71.
 - **Quem abre a prova:** a volta da validação, e não o ouvinte do nascimento. O `save` grava a proposta final (com os
   `example`) DEPOIS de `learn_from_plan`, e o ouvinte leria a proposta velha.
   - `EnsinoDaValidacaoSql.a_provar` é uma consulta só por volta.

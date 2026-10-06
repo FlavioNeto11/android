@@ -102,6 +102,43 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `sort` das listas e com lista junto de `quem_ensinou` os testes falham. Frontend inteiro 1694/1694 e typecheck limpos (4 workers, Idle); com
   atraso do fetch só falham os dois testes que o 29.104 conserta noutro ramo. `not_run`: o percurso real (depois do deploy com o backend).
 
+## 2026-10-05 — 31.87 F2 (ensino): o fluxo ensinado usa os dados da persona (branch feat/31-87-f2-ensino-com-dado-da-persona)
+
+- Decisão do dono (05/10 15:13Z): todos os campos de perfil viram variável no ensinado; senha, código e 2FA só pelo
+  cofre. A identidade (chaves novas) é da Jev; aqui, o ensino.
+- O dado da persona digitado como entrada inteira vira `{perfil_x}` na proposta (o parâmetro do comando com esse
+  exemplo sai do comando, com a palavra de ligação) e na receita destilada. No que a etapa digita ou confere, só o campo
+  inteiro troca (C1 da leitura da Ferramentas); a reprodução recebe os dados da persona do objetivo. O `save` e a
+  prévia avisam o que vem do perfil.
+- Contrato: a proposta guardada pode perder um parâmetro e ganhar marcadores nas etapas, e os `warnings` do `save` e
+  da prévia ganham uma linha (adendo v1.69).
+- Funções tocadas (K-095): `TrainingSkills.propose`, `_preparar`, `refazer_receitas` e `_persona_demonstrada` (nova),
+  `Repository.variaveis_da_persona` (nova), o despacho da receita no executor (`Replayer` com os dados da persona),
+  `training/dado_da_persona.py` (novo).
+- Prova `simulated`: `backend/tests/test_treino_dado_da_persona.py`. A ligação no executor está coberta só no nível do
+  `Replayer`. Real: `not_run`.
+
+## 2026-10-05 — 31.88 F2: a escolha de escopo do ensinado (branch feat/31-88-escopo-ao-provar)
+
+- O salvar e a prévia do modo treinamento aceitam `scope_on_proof`: `todos` (padrão, a lista do corpo; vazio é todos) ou
+  `quem_ensinou` (o escopo permanente é a persona do treino). `quem_ensinou` sem persona na sessão: 409
+  `no_teacher_persona`; junto de uma lista explícita: 400 `scope_ambiguous`. Nada é gravado na recusa.
+- A resposta do salvar e da prévia traz `scope`. O `match` já respeitava a `flow_scope`: o fluxo `quem_ensinou` não casa
+  para outra persona nem depois da prova.
+- `PUT /api/flows/{id}/scope`: a pessoa amplia ou restringe depois, com o antes e o depois no evento `log` (não no
+  Livro, para não tirar o fluxo legado da fila "Revisar"). Sem migração. Adendo v1.71.
+- Prova: `simulated` (`backend/tests/test_treino_escopo_ao_provar.py`); `real`: `not_run`.
+
+## 2026-10-05 — 31.90-D (backend): desfazer a última entrada da gravação viva (branch feat/31-90-d-desfazer-a-ultima-entrada)
+
+- Rota nova `POST /api/training/{session_id}/undo` (`TrainingRecorder.desfazer_a_ultima`): tira a última entrada da
+  gravação viva sem descartar a sessão. Exige o lease do controle; `seq` opcional recusa se a última mudou
+  (`entrada_mudou`). Gravação parada, órfã, vazia ou de outra réplica: 409 sem mudar nada. O aparelho não volta.
+- Evento novo `training.input.undone`. Adendo v1.70. O botão no painel fica com a Portal.
+- Funções tocadas (K-095): `TrainingRecorder.desfazer_a_ultima` (nova), `undo_training_input` (rota nova),
+  `TrainingUndoBody` (novo). O `save` não muda.
+- Prova `simulated`: `backend/tests/test_treino_desfazer_a_ultima.py`. Real: `not_run`.
+
 ## 2026-10-05 — 30.84: reensinar o comando que a prova desligou (branch feat/30-84-reensinar-o-desligado-pela-prova)
 
 - O fluxo ensinado que a prova real desligou (30.81) renasce na mesma linha quando a pessoa ensina o mesmo comando de

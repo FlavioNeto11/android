@@ -1097,10 +1097,11 @@ campo.
 | `GET /api/training/{session_id}` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/stop` | – | `TrainingSession` |
 | `POST /api/training/{session_id}/propose` | – | proposta gerada pela IA (uma chamada de modelo; `502 ai_error` se falhar) |
-| `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[]}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo) |
+| `POST /api/training/{session_id}/save` | `TrainingSaveBody {proposal?, profile_ids[], group_ids[], scope_on_proof?}` | fluxo salvo (`FlowStore.learn_from_plan` + escopo) |
 | `POST /api/training/{session_id}/preview` | `TrainingSaveBody` | `{steps: [{key, title, recipe, reason}], warnings}`, sem gravar nada (v1.58) |
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
+| `POST /api/training/{session_id}/undo` | `TrainingUndoBody {lease_id, seq?}` | `TrainingSession` com `undone: {seq, type}`: tira a última entrada da gravação viva (31.90-D, adendo v1.70) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
 [`../worker.md`](worker.md#limites-por-servidor-item-105) e [`../dominios/parque.md`](dominios/parque.md):
@@ -1181,6 +1182,7 @@ A tabela de eventos deste documento (seção "Eventos") não lista os seguintes,
 | `learning.ensinado_espera_decisao` | sim | `ServicoDeValidacao` (a volta da validação), via `LearningService.avisar_espera_do_ensinado`. O fluxo ensinado que a prova automática não cobre espera a decisão de uma pessoa; `warn`; 30.81; ver o adendo v1.65 |
 | `learning.ensinado_decidido` | sim | `LearningService` (`confirmar_que_fica`, `_mover_nativo`): uma pessoa decidiu o ensinado que esperava; `info`; 30.81; ver o adendo v1.65 |
 | `training.input` | sim | `training/recorder.py` — cada entrada gravada numa sessão de treinamento |
+| `training.input.undone` | sim | `training/recorder.py` (`desfazer_a_ultima`): a última entrada saiu da gravação viva; `data: {training_session_id, seq, type}`; 31.90-D |
 | `instance.remediation` | sim | `commands/despacho.py::remediar` — cada degrau do reparo automático (ver [`dominios/parque.md`](dominios/parque.md#reparo-automático)) |
 
 ### Mensagens do canal do worker ausentes do adendo v0.8
@@ -6692,3 +6694,72 @@ Nenhum campo novo, sem migração. Muda quando `POST /api/training/{session_id}/
 - **Quem consome:** o painel do treino (`TrainingReview`) mostra o `flow_id` devolvido e oferece a adoção dele; o
   mesmo id de antes não muda nada ali.
 - **Prova:** `simulated` (`backend/tests/test_reensinar_o_desligado_pela_prova.py`).
+
+## Adendo v1.69 (05/10/2026; número da orquestradora; item 31.87 F2) — o ensino usa os dados da persona
+
+Nenhuma rota nova e nenhum campo novo; muda o CONTEÚDO de três respostas do modo treinamento quando a sessão tem
+persona e a pessoa digitou, como uma entrada inteira, um dado não sigiloso dela (`profile_variables`, genérico por chave).
+- `POST /api/training/{session_id}/propose`: o parâmetro do comando cujo exemplo é esse dado sai de `parameters` e de
+  `command_template`, com a palavra de ligação antes dele (lista fechada: "com", "para", "de"…). Nas etapas, `{param}`
+  vira o marcador `{perfil_x}` em todo campo de texto. O valor literal vira o marcador por palavra em `title`, `goal`,
+  `precondition` e `postcondition.description`, e em `bindings[].value` e `postcondition.value` só quando é o campo
+  inteiro (casefold): dentro de uma frase, fica literal.
+- `POST /api/training/{session_id}/save` e `/preview`: a mesma troca na proposta enviada (a editada à mão também), e
+  `warnings` ganha uma linha "{perfil_x}: vem do perfil da persona de cada aparelho (o aparelho sem esse dado não roda o
+  fluxo)." A proposta guardada na sessão é a trocada.
+- O marcador não entra em `plan.parameters` do fluxo salvo; a receita destilada digita `{perfil_x}`, e a reprodução usa o
+  dado da persona do aparelho (os parâmetros do objetivo vencem).
+- Não troca: valor com menos de 3 caracteres, valor só dentro de outro texto, valor não digitado, sessão sem persona.
+- **O que o painel precisa mudar:** nada obrigatório. A revisão mostra `{perfil_x}` como texto e o aviso entra na lista
+  de `warnings` que ela já exibe.
+- **Prova:** `simulated` (`backend/tests/test_treino_dado_da_persona.py`); `real`: `not_run`.
+
+## Adendo v1.71 (05/10/2026; número da orquestradora; item 31.88 F2) — a escolha de escopo do ensinado
+
+Campos novos e uma rota nova; sem migração (o escopo mora na `flow_scope`, que já existia).
+- **`scope_on_proof`** em `POST /api/training/{session_id}/save` e `/preview` (`TrainingSaveBody`): `"todos"` (padrão) ou
+  `"quem_ensinou"`. Valor fora disso: 422. Com `todos`, vale o de sempre: `profile_ids`/`group_ids` do corpo, e vazio é
+  todos. Com `quem_ensinou`, o escopo gravado é a persona do treino (`training_sessions.profile_id`) e continua valendo
+  depois da prova, porque o 30.81 só prende o fluxo à persona ATÉ a prova e este escopo não sai com ela.
+- **Recusas novas** (antes de qualquer escrita, na prévia e no salvar, com o mesmo código): 409 `no_teacher_persona`
+  (o treino não tinha persona: não há "quem ensinou"; sem isso o escopo viraria "todos" em silêncio) e 400
+  `scope_ambiguous` (`quem_ensinou` junto de `profile_ids` ou `group_ids`).
+- **Resposta do salvar e da prévia** ganha `scope: {on_proof, profile_ids, group_ids}`: o que foi (ou será) gravado.
+- **`PUT /api/flows/{id}/scope`**, corpo `{profile_ids[], group_ids[]}` (`EscopoDoFluxoBody`, vazio nos dois = todos): amplia
+  ou restringe a quem o fluxo vale, depois de salvo. Resposta `{flow_id, profile_ids, group_ids}`; 404 `not_found`,
+  400 `unknown_profile` / `unknown_group`. É gesto de PESSOA (o operador do dono), não da IA. Não muda status nem passa
+  pelo Livro. A trilha é o evento `log` "Escopo da habilidade mudou", com `flow_id`, `por`, `antes` e `depois`; ela NÃO
+  entra em `learning_transitions`, porque toda linha de pessoa ali tira o fluxo legado da fila "Revisar".
+- **Nota de tela (Portal):** na revisão do salvar, um seletor "Vale para: todos (depois de provado) / só quem ensinou /
+  escolher perfis e grupos" que manda `scope_on_proof` ou as listas. Desabilitar "só quem ensinou" com a dica do
+  `warnings` quando o treino não tinha persona (a API recusa com 409). Mostrar `scope` da resposta da prévia. No Livro,
+  o fluxo ensinado ganha "Mudar a quem vale", que chama o `PUT`.
+- **Prova:** `simulated` (`backend/tests/test_treino_escopo_ao_provar.py`); `real`: `not_run`.
+
+## Adendo v1.70 (05/10/2026; número da orquestradora; item 31.90-D) — desfazer a última entrada da gravação viva
+
+Rota nova e aditiva no modo treinamento. Nada muda nas rotas que existem nem no `save`.
+- `POST /api/training/{session_id}/undo`, corpo `{"lease_id": "<lease do controle>", "seq": <número, opcional>}`
+  (`extra=forbid`; sem `lease_id`, ou `seq` menor que 1: **422**).
+  - Tira a ÚLTIMA entrada da gravação VIVA (sessão em `recording`, o aparelho a está gravando e há controle de usuário) e
+    responde **200** com a sessão, igual a `GET /api/training/{session_id}`, mais `undone: {seq, type}`.
+  - O aparelho não volta: a entrada sai só da gravação. A próxima entrada gravada recebe o número seguinte ao que ficou,
+    ou seja, o `seq` desfeito é REAPROVEITADO: o painel verá `training.input` N, `training.input.undone` N e
+    `training.input` N de novo, e tem de casar a entrada pelo que o `GET` devolve, não guardar o `seq` como identidade.
+  - O status `recording` se confere de novo dentro da transação, por um UPDATE condicional na sessão: um `stop` que chegue
+    no meio espera ou vence, e a gravação parada nunca perde entrada (409 `nao_esta_gravando`).
+  - `seq`: o número da entrada que a pessoa viu como última. Se outra chegou antes do pedido: **409** `entrada_mudou`
+    ("A última entrada agora é a N, não a M; confira antes de desfazer."), sem apagar nada.
+  - Recusas, todas sem mudar nada:
+    - lease ausente do controle atual, ou gravação órfã (sem gravador ativo ou sem controle de usuário): **409**
+      `control_required` ("Só quem está com o controle do aparelho desfaz a última entrada.");
+    - sessão que não está em `recording`: **409** `nao_esta_gravando` (a gravação parada se corrige na revisão);
+    - sem entrada: **409** `sem_entrada`;
+    - aparelho hospedado por outra réplica: **409** `gravacao_em_outro_servidor` ("…desfaça por lá.");
+    - sessão inexistente: **404** `not_found`.
+- Evento novo `training.input.undone` (persistido), `data: {training_session_id, seq, type}`. A barra de gravação do
+  painel já recarrega com qualquer evento que traga `training_session_id`.
+- **O que o painel precisa mudar:** um botão "Desfazer a última" na barra de gravação, visível só para quem tem o
+  controle. Ele manda o `lease_id` e o `seq` da última entrada que a tela mostra. No 409 `entrada_mudou`, recarrega e mostra
+  a mensagem; no `control_required`, mostra a mensagem e mantém a barra.
+- **Prova:** `simulated` (`backend/tests/test_treino_desfazer_a_ultima.py`); `real`: `not_run`.
