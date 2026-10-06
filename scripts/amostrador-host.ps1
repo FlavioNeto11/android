@@ -40,6 +40,9 @@
   Dias de arquivos mantidos (padrão 7).
 .PARAMETER Banco
   `poc.sqlite3` de onde sai `avisos_pressao` (padrão `data\poc.sqlite3`).
+.PARAMETER NomeDoMutex
+  Nome do mutex de instância única (padrão `Global\farm-amostrador-host`, um por host). Só os testes o trocam, para nunca disputar
+  com o amostrador real que estiver rodando.
 .PARAMETER Instalar
   Registra a tarefa `farm-amostrador-host` (ao ligar o host e todo dia 00:05; uma instância; prioridade ociosa; reinicia se
   cair) e sai. Não inicia o amostrador.
@@ -50,7 +53,7 @@
 #>
 [CmdletBinding()]
 param([string]$Saida = '', [int]$Amostras = 0, [int]$IntervaloS = 60, [int]$JanelaS = 5, [int]$RetencaoDias = 7,
-      [string]$Banco = '', [string]$Python = '', [switch]$Instalar)
+      [string]$Banco = '', [string]$Python = '', [string]$NomeDoMutex = 'Global\farm-amostrador-host', [switch]$Instalar)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if (-not $Saida) { $Saida = Join-Path $root 'data\observabilidade\host' }
@@ -78,7 +81,7 @@ if ($Instalar) {
 }
 
 try { (Get-Process -Id $PID).PriorityClass = 'Idle' } catch { }
-$mutex = New-Object Threading.Mutex($false, 'Global\farm-amostrador-host')   # um por host, qualquer que seja o checkout
+$mutex = New-Object Threading.Mutex($false, $NomeDoMutex)   # um por host, qualquer que seja o checkout; o padrão é o global, só teste troca
 $achou = $false
 try { $achou = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $achou = $true }   # o dono anterior morreu: a posse é nossa
 if (-not $achou) { Write-Host 'amostrador-host: ja ha um em execucao; saindo.'; exit 3 }

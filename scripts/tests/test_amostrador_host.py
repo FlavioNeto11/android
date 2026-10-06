@@ -11,6 +11,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -26,9 +27,21 @@ CABECALHO = ("ts_utc,cpu_host_pct,vm_convidado_nucleos,vmmem_ws_mb,qemu_host_pct
 precisa_pwsh = pytest.mark.skipif(PWSH is None or sys.platform != "win32", reason="precisa de pwsh no Windows")
 
 
+_mutex_do_teste = ""
+
+
+@pytest.fixture(autouse=True)
+def _mutex_proprio():
+    """Nome de mutex só deste teste: o amostrador real do host (`Global\\farm-amostrador-host`) nunca pode fazer um teste sair com 3."""
+    global _mutex_do_teste
+    _mutex_do_teste = f"Local\\farm-amostrador-teste-{uuid.uuid4().hex}"
+    yield
+    _mutex_do_teste = ""
+
+
 def _rodar(saida: Path, *extra: str, amostras: int = 2, timeout: int = 120) -> subprocess.CompletedProcess:
     return subprocess.run([PWSH, "-NoProfile", "-File", str(AMOSTRADOR), "-Saida", str(saida), "-Amostras", str(amostras),
-                           "-IntervaloS", "3", "-JanelaS", "1", "-Python", sys.executable, *extra],
+                           "-IntervaloS", "3", "-JanelaS", "1", "-Python", sys.executable, "-NomeDoMutex", _mutex_do_teste, *extra],
                           capture_output=True, text=True, timeout=timeout)
 
 
@@ -132,7 +145,7 @@ class TestAmostrador:
 
     def test_so_uma_instancia_por_host(self, tmp_path):
         primeiro = subprocess.Popen([PWSH, "-NoProfile", "-File", str(AMOSTRADOR), "-Saida", str(tmp_path / "a"), "-Amostras", "3",
-                                     "-IntervaloS", "4", "-JanelaS", "1", "-Python", sys.executable],
+                                     "-IntervaloS", "4", "-JanelaS", "1", "-Python", sys.executable, "-NomeDoMutex", _mutex_do_teste],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             time.sleep(4)  # o pwsh do primeiro já pegou o mutex
@@ -147,6 +160,11 @@ class TestAmostrador:
     def test_nome_de_processo_e_sanitizado_antes_de_ir_ao_csv(self):
         texto = AMOSTRADOR.read_text(encoding="utf-8")
         assert "-replace '[^A-Za-z0-9._-]', '_'" in texto and "-replace '^[=+@-]+', '_'" in texto
+
+    def test_o_mutex_padrao_continua_global_e_so_o_parametro_o_troca(self):
+        texto = AMOSTRADOR.read_text(encoding="utf-8")
+        assert "[string]$NomeDoMutex = 'Global\\farm-amostrador-host'" in texto
+        assert "New-Object Threading.Mutex($false, $NomeDoMutex)" in texto
 
     def test_o_script_baixa_a_propria_prioridade(self):
         texto = AMOSTRADOR.read_text(encoding="utf-8")
