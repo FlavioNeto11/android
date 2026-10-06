@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-658 de 710 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+660 de 710 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -410,13 +410,13 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.99 | implemented | real | claude-fable-5-1 | — | 05/10/2026, central (C:\git\android), integ/suite-36 em e5f1b22b (com o PR #385, ponta final 2cb8c662, scripts/pg-rapido.py). O PG dirigido da suíte 36 rodou INTEIRO numa parte só pelo pg-rapido.py: contêiner farm-pg-ra… | A causa exata do crescimento da base na suíte 35 não foi provada: com o WAL mínimo ela não se reproduz (base máxima 156 MB nos 472 juntos). Sobras da leitura p… |
 | 29.100 | implemented | simulated | claude-fable-5-1 | — | PR #384 (feat(sessao): 29.100, ponta final 09bdcde1, empilhado no #377), na suíte 36, implantado no deploy 36 (e5f1b22b, subida 05/10/2026 09:42Z, migração 113); suíte 36: scripts/tests 631 passed; SQLite -n 6 11276 pas… | None |
 | 29.101 | implemented | real | claude-fable-5-1 | — | Parte do Portal (o código api-*, o tipo portal.borda_api e o aviso são da Canais, #388). PR #383, ponta FINAL 61ee8743, branch feat/29-101-vigia-da-api, sobre o #378. Um quinto pedido, o 1º da volta: GET /api/instances… | Real not_run (parte da Canais): a API não respondeu sem login pelo endereço público, nem ficou sem conferir, depois do deploy 36. Prova real quando acontecer,… |
-| 29.102 | pendente | — | — | — |  |  |
+| 29.102 | implemented | simulated | sonnet-5.5 | — | Branch fix/29-102-ci-rede, ancestral da main c0d2fd5f (CHANGELOG 2026-10-05 — 29.102): ci.yml sem pull_request (corrida diária e disparo manual), job porta pula os jobs do central com pytest vivo, scripts/mypy-catraca.p… |  |
 | 29.103 | implemented | simulated | claude-fable-5-1 | — | Entregue pelo PR #382 (ponta 419ba865), na suíte 36, implantada em e5f1b22b (05/10/2026 09:42Z, migração 113). A execução running/paused cancelada sem worker vivo (fechada pelo Scheduler._finish_cancel) nunca assentava:… | Prova real (`not_run`): um cancelamento de execução sem worker vivo no central depois do deploy 36. |
 | 29.104 | implemented | simulated | claude-sonnet-5-5 | — | 29.104: frontend: arquivo::teste na suíte (vitest 1732 passados em 94404535), não é um item de navegador; sem percurso real. |  |
 | 29.105 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 ~03:26Z a ~03:30Z, central 7154d7cf (contém f7153ddf do 29.105), android-04 sem conta real. No Foco, com o controle: Abrir app > Chrome (rodou Abrir app, concluído) e, no menu do Chrome, 'New Incognito… | None |
 | 29.106 | implemented | simulated | claude-fable-5-1 | — | PR #393, ponta FINAL 23ef490a, branch fix/29-106-partir-de, sobre o #392. Mudança de produto: no editor de grupo novo, o 'começar a partir de' não descartava a resposta velha (A respondendo depois de B deixava o rascunh… | Prova real not_run de 'só vale a última' e da trava durante a leitura: os perfis do central rendem o mesmo rascunho. |
 | 29.107 | implemented | simulated | sonnet | — | Já estava na main desde 52fe35c2 (05/10, ancestral de 16858086): scripts/portal-prova-de-fora.sh passa o Location pela regua_crua linha por linha; scripts/tests/test_portal_prova_de_fora.py cobre location_fora, location… |  |
-| 29.108 | pendente | — | — | — |  |  |
+| 29.108 | implemented | simulated | sonnet-5.5 | — | Branch fix/29-108-assentamento-perdedor, ancestral da main c0d2fd5f (CHANGELOG 2026-10-05 — 29.108): o worker que perde a marca runs.assentada_em chama on_run_parada e solta a trava de rascunho; Database.depois_do_commi… |  |
 | 29.109 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/profiles/ProfilesPage.test.tsx (4 casos: leitura que falha solta a trava e avisa; troca para o padrão no meio destrava e a resposta velha não entra; erro de leitura aposentada não vira toast; volta… | None |
 | 29.110 | implemented | real | claude-fable-5-1 | — | Real, 05/10/2026, WIN-7S2UASNLFOP. Ordem do dono em chat (sessão do Portal, entre 08:29Z e 08:35Z): 'tire o trecho abaixo agora do portal' (seção 'O que a ANA não faz'). PR #394 (ponta cb71b523): sai o <aside class="lim… | None |
 | 29.111 | implemented | real | claude-fable-5-1 | — | Real, 05/10/2026, WIN-7S2UASNLFOP. Pedido do dono pelo Telegram, repassado pela orquestradora: o site diz o que ANA significa. Texto final 'Agente Neural Avançada', com a frase 'rege as personas que dão voz' (ADR-075: a… | None |
@@ -717,7 +717,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (52): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.57, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.152, 29.154, 29.155, 29.156, 29.159, 29.160, 29.161, 29.162, 29.163, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (50): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 28.57, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.145, 29.152, 29.154, 29.155, 29.156, 29.159, 29.160, 29.161, 29.162, 29.163, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).

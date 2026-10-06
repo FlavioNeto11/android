@@ -11099,6 +11099,32 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T15:12:25+00:00"
+  },
+  "29.108": {
+   "id": "29.108",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch fix/29-108-assentamento-perdedor, ancestral da main c0d2fd5f (CHANGELOG 2026-10-05 — 29.108): o worker que perde a marca runs.assentada_em chama on_run_parada e solta a trava de rascunho; Database.depois_do_commit respeita savepoint desfeito. Simulated: backend/tests/test_aguardando_pessoa.py e backend/tests/test_db.py (suítes 45 a 52 verdes com o código dentro). Real: not_run (não houve caso de dois processos disputando a marca observado em produção).",
+   "blocker": "",
+   "grupo": "jev",
+   "modelo": "sonnet-5.5",
+   "esforco": "medium",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T16:03:24+00:00"
+  },
+  "29.102": {
+   "id": "29.102",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch fix/29-102-ci-rede, ancestral da main c0d2fd5f (CHANGELOG 2026-10-05 — 29.102): ci.yml sem pull_request (corrida diária e disparo manual), job porta pula os jobs do central com pytest vivo, scripts/mypy-catraca.py com teto em backend/mypy-teto.txt (257). Simulated: catracas e docs-check nas suítes 45 a 52. Real: a corrida diária e o job porta ficam com a Frente GitHub (rotina 06:03Z de 07/10).",
+   "blocker": "",
+   "grupo": "jev",
+   "modelo": "sonnet-5.5",
+   "esforco": "medium",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T16:03:24+00:00"
   }
  },
  "rodadas": [
@@ -14557,6 +14583,16 @@
    "quando": "2026-10-06T15:53:38+00:00",
    "itens": [
     "31.137"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T16:03:24+00:00",
+   "itens": [
+    "29.108",
+    "29.102"
    ],
    "grupos": [
     "jev"
