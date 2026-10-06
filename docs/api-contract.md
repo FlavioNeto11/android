@@ -7143,3 +7143,17 @@ avisos até a pessoa trocar o comando.
   `save` segue com o 409 `duplicate_command`.
 - **Prova:** `simulated` (`backend/tests/test_sugestao_pronta_e_previa_com_recusa.py`); `real`: `not_run` (o botão é da
   Portal, no 31.128, corte 53).
+
+## Adendo v1.92 (06/10/2026; número da orquestradora; item 31.143) — `nascido_de_prova` na lista do Livro
+
+Achado do percurso 52 da Portal: a marca do 31.130 só saía em `conteudo.origem` do detalhe do fluxo. O selo e o filtro
+"Prova" da lista (31.131) ficavam sem dado.
+
+- **`Entrada` do livro** (cada elemento de `itens[]` em `GET /api/aprendizado`, `/pendentes` e `/revisar`, e o `item` de
+  `GET /api/aprendizado/{kind}/{ref}`): ganha `nascido_de_prova: bool`, sempre presente. Só o fluxo tem a marca
+  (`flows.nascido_de_prova`, migração 122); os outros tipos vêm `false`.
+- **`GET /api/aprendizado?nascido_de_prova=true|false`**: com `true`, só os itens com a marca; com `false`, o resto, os
+  outros tipos inclusive. Sem o parâmetro, tudo. Soma com os outros filtros (`kind`, `state`, `app`, `origem`,
+  `rotulo`) e entra antes da contagem: `total` e `contagem` já vêm filtrados. Valor inválido dá 422, como nos outros
+  filtros.
+- **Prova:** `simulated` (`backend/tests/test_livro_nascido_de_prova.py`); `real`: `not_run`.

@@ -493,7 +493,9 @@ ficavam, no Livro e em Salvas, iguais a um fluxo real desligado por uma pessoa. 
 (`flows.nascido_de_prova`). Ela sai no GET e na listagem das sessões, em `GET /api/flows` e na `origem` do conteúdo
 do fluxo no Livro, com o filtro `nascido_de_prova=true|false` nas duas listagens. As provas das frentes abrem a sessão
 com a marca e, ao desligar o fluxo de prova, mandam `motivo` no `PUT /api/flows/{id}` dizendo que é prova (vai à
-trilha do livro). Os de antes se marcam pelo id com `scripts/marcar-fluxo-de-prova.py`.
+trilha do livro). Os de antes se marcam pelo id com `scripts/marcar-fluxo-de-prova.py`. Desde o 31.143 (adendo v1.92),
+a lista do Livro (`GET /api/aprendizado`) traz `nascido_de_prova` em cada item e aceita o mesmo filtro; antes, a marca
+só saía no detalhe, e o selo e o filtro "Prova" da lista (31.131) ficavam sem dado.
 
 **A abertura pelo lançador (31.139).** 2 de 9 fluxos ensinados começavam na tela inicial do aparelho (abrir a gaveta,
 tocar no ícone), e a receita guardava o toque no layout do lançador daquele aparelho (a 198 nunca reproduziu). Na

@@ -218,14 +218,17 @@ class LearningService:
 
     # ================================================================== leitura única
     def livro(self, *, kind: LivroKind | None = None, state: SkillState | None = None, app: str | None = None,
-              origem: Origem | None = None, rotulo: Rotulo | None = None) -> Livro:
+              origem: Origem | None = None, rotulo: Rotulo | None = None,
+              nascido_de_prova: bool | None = None) -> Livro:
         """`rotulo` `None` é o livro inteiro (a visão por app, a contagem da barra e a saúde leem assim); a lista
-        padrão da rota passa `PRODUTO`."""
+        padrão da rota passa `PRODUTO`. `nascido_de_prova` (31.143): `True` só os fluxos nascidos de uma prova, `False`
+        o resto (os outros tipos inclusive), `None` tudo; entra antes da contagem, como os outros filtros."""
         todas = self._todas(kind)
         # 30.33-C: o fluxo multi-app entra no filtro de cada app dele (`apps_do_item`); o rótulo QA/PRODUTO, abaixo,
         # continua pelo principal: ele decide a etiqueta da linha, não a quem ela pertence.
         filtradas = tuple(e for e in todas if (state is None or e.state is state)
-                          and (app is None or app in apps_do_item(e)) and (origem is None or e.origin is origem))
+                          and (app is None or app in apps_do_item(e)) and (origem is None or e.origin is origem)
+                          and (nascido_de_prova is None or e.nascido_de_prova is nascido_de_prova))
         mostradas = filtradas
         if rotulo in (Rotulo.PRODUTO, Rotulo.QA):
             teste = self._fontes.pacotes_de_teste()

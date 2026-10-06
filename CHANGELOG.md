@@ -73,6 +73,18 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **Leitura do item:** a linha do plano dizia "ignorado ou `outro`" para todo comentário de alvo desconhecido; ficou restrita ao comentário de APP, para não silenciar o dono (regra "comentário do dono não fica mudo": o que ele digita vale em qualquer cartão). Aceita pela orquestradora no corte 53.
 - Prova `simulated`: `test_canais_respostas_as_perguntas.py` (o teste de "fora das listas" trocou o caso do app comum e ganhou o do cartão com fato e o ponta a ponta na contagem); `test_canais_estado.py` (lista fechada de chaves); canais, Trello e Telegram inteiros 721 passed; catracas 88; mypy 257 no teto; docs-check 0. `not_run`: leitura real do Trello depois do deploy.
 
+## 2026-10-06 — 31.143: a marca de prova na lista do Livro (branch feat/31-142-sugestao-pronta)
+
+- Achado do percurso 52 da Portal: `nascido_de_prova` (31.130) só saía em `conteudo.origem` do detalhe, e o selo e o filtro "Prova" da lista (31.131) ficavam sem dado.
+- Adendo v1.92: cada `Entrada` do livro (lista, `/pendentes`, `/revisar` e o `item` do detalhe) traz `nascido_de_prova` (só o fluxo tem a marca; os outros tipos vêm `false`), e `GET /api/aprendizado?nascido_de_prova=true|false` filtra antes da contagem, somando com os outros filtros.
+- Prova `simulated`: `tests/test_livro_nascido_de_prova.py` (1, a rota nos dois valores). Real: `not_run`.
+
+## 2026-10-06 — 31.142: a sugestão de pós-condição sai pronta e a prévia mostra o comando repetido (branch feat/31-142-sugestao-pronta)
+
+- Achados da prova F2 (06/10, deploy 51). A única sugestão ("Back") era a descrição do botão voltar: com `element_present`, trocar só o valor deixaria um seletor que só olha o texto. E a prévia parava no 409 `duplicate_command`, escondendo as pós-condições que já valem.
+- Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
+- Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
@@ -104,6 +116,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Achados da prova F2 (06/10, deploy 51). A única sugestão ("Back") era a descrição do botão voltar: com `element_present`, trocar só o valor deixaria um seletor que só olha o texto. E a prévia parava no 409 `duplicate_command`, escondendo as pós-condições que já valem.
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
+
 
 ## 2026-10-06 — 31.140: os pacotes aceitos por etapa na prévia e no Livro (branch feat/31-130-fluxo-de-prova)
 
