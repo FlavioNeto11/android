@@ -303,8 +303,8 @@ def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[i
         elif st == "implemented":
             n = deploy_do_item(it.get("quando"), suite_de(pid) or (citados or {}).get(pid), horas)
             sem_fonte_forte = not suite_de(pid) and pid not in (citados or {})
-            if deploy_git and sem_fonte_forte and (n is None or n == max(horas, default=0)):
-                n = deploy_git(pid) or n          # a hora do registro engana quando o item entra na mesma rodada dele
+            if deploy_git and sem_fonte_forte:
+                n = deploy_git(pid) or n          # a hora de classificação engana (rodada do registro, resultado segurado)
             if n is None and it.get("proof") == "real":
                 n = deploy_pela_evidencia(it, por_commit or {}, max(horas, default=0))
             if n is None:
