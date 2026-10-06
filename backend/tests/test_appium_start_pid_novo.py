@@ -61,6 +61,7 @@ def test_quem_responde_na_porta_nao_e_o_novo_ate_o_log_dele_dizer(tmp_path: Path
                                                                    monkeypatch: pytest.MonkeyPatch) -> None:
     """Outro servidor responde desde o começo; o novo só conta quando escreve `listener started` (e as regras)."""
     server = _server(tmp_path)
+    monkeypatch.setattr(server, "_ainda_e_o_provado", lambda _pid: True)    # pid de mentira: a reconferência tem teste próprio (29.126)
     _com_appium_instalado(server, tmp_path, monkeypatch)
     monkeypatch.setattr(server, "_reuse_running", lambda: False)        # o que responde foi trocado: sobe outro
     _subir_com(monkeypatch, server, roteiro=["Welcome to Appium\n", "Loaded 3 filtering rules\n",
@@ -156,6 +157,7 @@ def test_o_13056_readotado_pelo_dono_da_porta_prova_a_mascara(tmp_path: Path,
                                                               monkeypatch: pytest.MonkeyPatch) -> None:
     """Fim a fim no `_reuse_running`: o órfão achado pela porta passa pela mesma prova (linha de comando + regras)."""
     server = _server(tmp_path)
+    monkeypatch.setattr(server, "_ainda_e_o_provado", lambda _pid: True)    # pid de mentira: a reconferência tem teste próprio (29.126)
     cmd = _com_appium_instalado(server, tmp_path, monkeypatch)
     regras = _write_rules(server.cfg)
     server._pid_file.parent.mkdir(parents=True, exist_ok=True)

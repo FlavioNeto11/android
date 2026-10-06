@@ -8,6 +8,7 @@ import logging
 import os
 import shutil
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -67,7 +68,52 @@ class AppiumServer:
         self.detail: str | None = None
         # Só vira True quando ESTE backend subiu o servidor com as regras e viu a confirmação no log.
         # Servidor reutilizado de fora conta como não comprovado: o canal sensível se recusa a operar.
-        self.log_masking_active: bool = False
+        self._masking_flag = False
+        #: O processo em que o mascaramento foi provado. `log_masking_active` só vale enquanto ele segue vivo e dono da porta
+        #: (29.126: a prova era de um instante; se o nosso Appium morresse e um externo assumisse a porta, a marca ficava).
+        self._pid_provado: int | None = None
+        self._conferido: tuple[float, bool] | None = None
+        self._trava_de_subida = threading.Lock()
+
+    @property
+    def log_masking_active(self) -> bool:
+        """Mascaramento de log COMPROVADO e ainda válido. Marcada de fora (harness, testes) vale como está; marcada pela prova
+        de um processo (`_provar`), é reconferida a cada leitura (com o resultado guardado por 2 s): o processo provado precisa
+        estar vivo e ser dono da porta."""
+        if not self._masking_flag:
+            return False
+        pid = self._pid_provado
+        if pid is None:
+            return True
+        agora = time.monotonic()
+        if self._conferido is not None and agora - self._conferido[0] < 2.0:
+            return self._conferido[1]
+        valido = self._ainda_e_o_provado(pid)
+        if not valido:
+            log.warning("o Appium provado (pid %s) não é mais o dono da porta: mascaramento de log deixa de valer", pid)
+        self._conferido = (agora, valido)
+        return valido
+
+    @log_masking_active.setter
+    def log_masking_active(self, valor: bool) -> None:
+        self._masking_flag = bool(valor)
+        self._pid_provado = None
+        self._conferido = None
+
+    def _provar(self, pid: int) -> None:
+        self._masking_flag, self._pid_provado, self._conferido = True, pid, None
+
+    def _ainda_e_o_provado(self, pid: int) -> bool:
+        try:
+            proc = psutil.Process(pid)
+            if not proc.is_running() or not self._is_ours(proc):
+                return False
+            donos = self._donos_da_porta()
+            if not donos:
+                return True            # o sistema não diz quem escuta: vale o processo nosso e vivo (o mesmo critério da readoção)
+            return pid in donos and all(self._is_ours(psutil.Process(d)) for d in donos)
+        except psutil.Error:
+            return False
 
     @property
     def url(self) -> str:
@@ -140,6 +186,12 @@ class AppiumServer:
 
         29.132: se o novo morre sem ligar a porta e alguém responde nela, quem responde é o anterior; a decisão
         volta ao `_reuse_running` (uma vez) em vez de o novo ser dado como "subiu"."""
+        with self._trava_de_subida:
+            return self._start(wait_s)
+
+    def _start(self, wait_s: float) -> bool:
+        # 29.126: a prova de uma subida anterior não vale para esta; só uma prova nova liga a marca.
+        self.log_masking_active = False
         for _ in range(2):
             # 29.131 (N1 e S1 da leitura do #443): alguém escutando na porta conta como "responde" mesmo se o `is_up`
             # de 2 s falhar com a máquina saturada; sem isto, sobe-se um processo a mais que só morre na porta.
@@ -193,7 +245,10 @@ class AppiumServer:
             ligou = set(donos) == {proc.pid} if donos else LISTENER_MARKER in texto
             if ligou and self.is_up():
                 self._pid_file.write_text(str(proc.pid), encoding="ascii")
-                self.log_masking_active = LOADED_RULES_MARKER in texto
+                if LOADED_RULES_MARKER in texto:
+                    self._provar(proc.pid)
+                else:
+                    self.log_masking_active = False
                 self.detail = f"iniciado por este projeto (pid {self.pid})"
                 if not self.log_masking_active:
                     self.detail += " — ATENÇÃO: mascaramento de log não confirmado"
@@ -233,7 +288,7 @@ class AppiumServer:
             return True
         if self._prove_masking(orphan):
             self.pid = orphan
-            self.log_masking_active = True
+            self._provar(orphan)
             self.detail = (f"readotado: iniciado por este projeto (pid {orphan}) — mascaramento comprovado pela "
                            "linha de comando e pelas regras em disco")
             return True

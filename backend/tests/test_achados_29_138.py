@@ -81,6 +81,7 @@ def test_a_porta_do_novo_prova_mesmo_depois_de_outro_escutar(tmp_path: Path,
 def test_sem_ver_os_donos_a_frase_do_log_ainda_prova(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """O sistema não deixa ver quem escuta (`_donos_da_porta` vazio): vale a frase, como antes."""
     server = _server(tmp_path)
+    monkeypatch.setattr(server, "_ainda_e_o_provado", lambda _pid: True)    # pid de mentira: a reconferência tem teste próprio (29.126)
     _com_appium_instalado(server, tmp_path, monkeypatch)
     _subir_com(monkeypatch, server, roteiro=["Loaded 3 filtering rules\n", _FRASE], morre=False, responde=[True])
     assert server._subir(wait_s=5) is True
