@@ -19,6 +19,28 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.179: a hipótese da pesquisa promovida pela leitura do alvo (branch feat/31-179-hipotese-pela-leitura)
+
+- Na onda 1 (06/10), a pesquisa da operação deixou 6 de 8 fatos como `hipotese` (uma fonte só), e nada os
+  reavaliava. A leitura do alvo é fonte independente da web.
+- Quando a leitura da OPERAÇÃO traz todas as âncoras de uma hipótese `pesquisa.*`, ela passa a `confirmado`
+  (`domain/hipoteses.py`, `ConhecimentoDaOperacao.confirmar_hipoteses`):
+  - as âncoras são números inteiros como aparecem, `#tag`, `@perfil` e nomes próprios fora do começo da frase;
+  - o fato precisa de 2 ou mais âncoras, ao menos uma forte (número de 4 ou mais caracteres, `#` ou `@`);
+  - a evidência ganha a observação da leitura e a versão sobe;
+  - origem e frescor ficam os da pesquisa.
+- Roda na primeira leitura do alvo, que no 31.169 vem depois da pesquisa, e no fim da pesquisa, para a refeita
+  depois da leitura. A leitura divergente de um agente (`incerto`) não promove. A hipótese vencida não é tocada.
+- No 31.163, a hipótese da pesquisa diz por quê ("uma fonte só, e a leitura do alvo não a confirmou"), e a leitura
+  que sustenta um fato aparece como `fato:alvo.conteudo`.
+- Limites conhecidos:
+  - âncora não lê negação: "fecha dia 12/10" e um post com "12/10, inauguração" têm as mesmas âncoras. Por isso o
+    mínimo de duas, com uma forte;
+  - `confianca` só tem dois valores (CHECK da 125), então não há estado intermediário sem migração nova.
+- Prova `simulated`: `backend/tests/test_hipotese_pela_leitura.py` (5 testes). Pedidos, operação, pesquisa,
+  conhecimento, memória, aprendizado e arquitetura: 806 passaram, mais o teste do 31.163 com o motivo novo. `real`: a
+  onda 2 de 07/10, se a pesquisa trouxer hipótese com âncoras do post.
+
 ## 2026-10-06 — 31.178: a evidência da receita sai no fechamento da etapa (branch feat/31-178-evidencia-no-fechamento)
 
 - Na onda 1 da prova (06/10), a execução parou em `awaiting_person` e as 10 perguntas do 31.163 deram 0: a evidência
