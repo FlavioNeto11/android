@@ -423,6 +423,10 @@ class SocialRequest:
     # Textos que NÃO podem se repetir: o que este perfil já escreveu e o que os irmãos escreveram nesta execução.
     # Sem isso, personas diferentes convergem para a mesma frase óbvia — voz própria não é só tom, é não repetir.
     avoid: tuple[str, ...] = ()
+    # O que a OPERAÇÃO sabe em comum (prova30 A1): a leitura do alvo e os fatos consolidados, com a confiança de cada um.
+    # É do objetivo, não da persona: vai a todas as contas da operação e não vira memória de nenhuma. Vazio fora de
+    # operação.
+    fatos_da_operacao: str = ""
     retry: bool = False                       # segunda tentativa: a primeira saiu igual a um texto que já existe
     # Segunda tentativa porque a primeira atribuía fala, intenção ou recado a um terceiro ("seu marido mandou um oi",
     # r-20260919220216-7cfa59) — ADR-055. O prompt diz o que corrigir; a trava é `social/conteudo.py`.

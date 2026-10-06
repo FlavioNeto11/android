@@ -10,14 +10,14 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from app.db import Database, Row
+from app.db import Database, Row, dumps, loads
 from app.modules.pedidos.domain.memoria import Entrada
 from app.modules.pedidos.infrastructure.repositorio import novo_id
 
 
 @dataclass(frozen=True)
 class NovaObservacao:
-    pedido_id: str
+    pedido_id: str | None
     pedido_versao: int
     ocorrencia_id: str
     run_id: str | None
@@ -31,11 +31,21 @@ class NovaObservacao:
     trecho: str | None
     sha256: str | None
     capturado_em: str
+    #: 125: a observação de uma OPERAÇÃO tem `operacao_id` e `pedido_id` nulo (o CHECK exige exatamente um).
+    operacao_id: str | None = None
 
 
 def _entrada(r: Row) -> Entrada:
+    provas = loads(r["evidencia"], []) if r["evidencia"] else []
     return Entrada(chave=r["chave"], tipo=r["tipo"], valor=r["valor"], versao=int(r["versao"]),
-                   atualizada_em=r["atualizada_em"], ocorrencia_id=r["ocorrencia_id"], resolvida=bool(r["resolvida"]))
+                   atualizada_em=r["atualizada_em"], ocorrencia_id=r["ocorrencia_id"], resolvida=bool(r["resolvida"]),
+                   origem=r["origem"], confianca=r["confianca"],
+                   evidencia=tuple(str(x) for x in provas) if isinstance(provas, list) else (),
+                   frescor_ate=r["frescor_ate"])
+
+
+#: De quem é a linha (125): de um pedido OU de uma operação. Só estes dois nomes chegam ao SQL.
+_DONOS = ("pedido_id", "operacao_id")
 
 
 class RepositorioDeMemoria:
@@ -59,19 +69,45 @@ class RepositorioDeMemoria:
     def gravar_entrada(self, pedido_id: str, antes: Entrada | None, nova: Entrada) -> bool:
         """Grava a entrada que `domain.memoria.escrever` decidiu. CAS pela versão lida: se outro escritor mudou a chave
         entre a leitura e aqui, devolve `False` e quem chama relê (o valor dele vale; o nosso se reescreve por cima)."""
+        return self._gravar("pedido_id", pedido_id, antes, nova)
+
+    def _gravar(self, dono: str, dono_id: str, antes: Entrada | None, nova: Entrada) -> bool:
+        assert dono in _DONOS
+        provas = dumps(list(nova.evidencia)) if nova.evidencia else None
         if antes is None:
             cur = self.db.execute(
-                "INSERT INTO pedido_memoria(id, pedido_id, chave, tipo, valor, versao, ocorrencia_id, resolvida,"
-                " atualizada_em) VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
-                (novo_id("mem"), pedido_id, nova.chave, nova.tipo, nova.valor, nova.versao, nova.ocorrencia_id,
-                 1 if nova.resolvida else 0, nova.atualizada_em))
+                f"INSERT INTO pedido_memoria(id, {dono}, chave, tipo, valor, versao, ocorrencia_id, resolvida,"
+                " atualizada_em, origem, confianca, evidencia, frescor_ate) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT DO NOTHING",
+                (novo_id("mem"), dono_id, nova.chave, nova.tipo, nova.valor, nova.versao, nova.ocorrencia_id,
+                 1 if nova.resolvida else 0, nova.atualizada_em, nova.origem, nova.confianca, provas, nova.frescor_ate))
         else:
             cur = self.db.execute(
-                "UPDATE pedido_memoria SET valor=?, versao=?, ocorrencia_id=?, resolvida=?, atualizada_em=?"
-                " WHERE pedido_id=? AND chave=? AND versao=?",
+                "UPDATE pedido_memoria SET valor=?, versao=?, ocorrencia_id=?, resolvida=?, atualizada_em=?, origem=?,"
+                f" confianca=?, evidencia=?, frescor_ate=? WHERE {dono}=? AND chave=? AND versao=?",
                 (nova.valor, nova.versao, nova.ocorrencia_id, 1 if nova.resolvida else 0, nova.atualizada_em,
-                 pedido_id, nova.chave, antes.versao))
+                 nova.origem, nova.confianca, provas, nova.frescor_ate, dono_id, nova.chave, antes.versao))
         return (cur.rowcount or 0) == 1
+
+    # ------------------------------------------------------------------ memória da OPERAÇÃO (125)
+    def entrada_da_operacao(self, operacao_id: str, chave: str) -> Entrada | None:
+        r = self.db.one("SELECT * FROM pedido_memoria WHERE operacao_id=? AND chave=?", (operacao_id, chave))
+        return _entrada(r) if r is not None else None
+
+    def entradas_da_operacao(self, operacao_id: str) -> list[Entrada]:
+        return [_entrada(r) for r in self.db.query(
+            "SELECT * FROM pedido_memoria WHERE operacao_id=? ORDER BY tipo, chave", (operacao_id,))]
+
+    def gravar_entrada_da_operacao(self, operacao_id: str, antes: Entrada | None, nova: Entrada) -> bool:
+        return self._gravar("operacao_id", operacao_id, antes, nova)
+
+    def observacao_da_operacao(self, operacao_id: str, nome: str, *, alvo: str = "") -> Row | None:
+        return self.db.one("SELECT * FROM pedido_observacoes WHERE operacao_id=? AND alvo=? AND nome=?",
+                           (operacao_id, alvo, nome))
+
+    def observacoes_da_operacao(self, operacao_id: str) -> list[Row]:
+        return self.db.query("SELECT * FROM pedido_observacoes WHERE operacao_id=? ORDER BY capturado_em, id",
+                             (operacao_id,))
 
     # ------------------------------------------------------------------ observações
     def saidas_da_execucao(self, run_id: str) -> list[Row]:
@@ -88,11 +124,11 @@ class RepositorioDeMemoria:
         gravadas = 0
         for x in observacoes:
             cur = self.db.execute(
-                "INSERT INTO pedido_observacoes(id, pedido_id, pedido_versao, ocorrencia_id, run_id, step_id, alvo,"
-                " nome, tipo, situacao, valor, fonte, trecho, sha256, capturado_em)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
-                (novo_id("obs"), x.pedido_id, x.pedido_versao, x.ocorrencia_id, x.run_id, x.step_id, x.alvo, x.nome,
-                 x.tipo, x.situacao, x.valor, x.fonte, x.trecho, x.sha256, x.capturado_em))
+                "INSERT INTO pedido_observacoes(id, pedido_id, operacao_id, pedido_versao, ocorrencia_id, run_id, step_id,"
+                " alvo, nome, tipo, situacao, valor, fonte, trecho, sha256, capturado_em)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+                (novo_id("obs"), x.pedido_id, x.operacao_id, x.pedido_versao, x.ocorrencia_id, x.run_id, x.step_id,
+                 x.alvo, x.nome, x.tipo, x.situacao, x.valor, x.fonte, x.trecho, x.sha256, x.capturado_em))
             gravadas += cur.rowcount or 0
         return gravadas
 

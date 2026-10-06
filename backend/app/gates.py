@@ -15,6 +15,7 @@ O `AppState` guarda métodos finos com os mesmos nomes e assinaturas que delegam
 from __future__ import annotations
 
 import asyncio
+import importlib
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from .db import Row, loads
 from .devices.manager import DeviceRuntime
+from .modules.pedidos.infrastructure.conhecimento_da_operacao import ConhecimentoDaOperacao, Fatos
 from .modules.pedidos.infrastructure.contexto import contexto_do_pedido
 from .planning.capabilities import (
     Capability,
@@ -56,6 +58,19 @@ log = logging.getLogger("poc")
 # Teto para ler a tela antes de escrever. Curto porque é contexto opcional: a etapa seguinte observa a tela de
 # qualquer jeito, e segurar o aparelho esperando uma sessão que está subindo custaria muito mais do que vale.
 _TELA_TIMEOUT_S = 15.0
+
+
+def _registrar_estagio(db: Any, run_id: str, estagio: str) -> None:
+    """O estágio do agente na operação (`operacao_alvos.estagio`, 124, da Jev). Import tardio: a função é da camada de
+    operações, e até ela chegar ao banco (ou fora de operação) não faz nada. Nunca derruba a escrita."""
+    try:
+        estagios = importlib.import_module("app.modules.operacoes.infrastructure.estagios")
+    except ImportError:
+        return
+    try:
+        estagios.registrar_estagio(db, run_id, estagio)
+    except Exception:  # noqa: BLE001 - estágio é acompanhamento, não porta
+        log.exception("o estágio %s da execução %s não foi registrado", estagio, run_id)
 
 
 def _texto_ou_nada(valor: object) -> str | None:
@@ -101,6 +116,15 @@ class Portoes:
 
     def __init__(self, state: AppState):
         self._st = state
+        self._conhecimento_cache: ConhecimentoDaOperacao | None = None
+
+    @property
+    def _conhecimento(self) -> ConhecimentoDaOperacao:
+        """prova30 A1: o conhecimento comum da operação. Fica aqui (e não no `AppState`) porque só a porta de escrita o
+        usa; o banco é o mesmo do estado. Criado no primeiro uso."""
+        if self._conhecimento_cache is None:
+            self._conhecimento_cache = ConhecimentoDaOperacao(self._st.db)
+        return self._conhecimento_cache
 
     async def _policy_gate(self, obj: Any, srow: Any, run: Any) -> Any:
         """Quarta porta, e a única que depende da ETAPA: política e limite da capability para este perfil.
@@ -379,8 +403,10 @@ class Portoes:
             return None
         # Uma escrita por vez dentro desta execução: a lista de "não repita" é lida do que os irmãos JÁ
         # escreveram, e com todos gerando ao mesmo tempo todos leriam a lista vazia. O lock é por execução, então
-        # aparelhos de execuções diferentes continuam escrevendo em paralelo.
-        async with self._st._draft_locks.setdefault(obj["run_id"], asyncio.Lock()):
+        # aparelhos de execuções diferentes continuam escrevendo em paralelo — exceto numa operação (prova30 A1),
+        # onde cada alvo é uma execução própria: ali a trava e a lista são da OPERAÇÃO.
+        operacao_id = self._operacao_da_execucao(str(obj["run_id"]))
+        async with self._st._draft_locks.setdefault(operacao_id or obj["run_id"], asyncio.Lock()):
             # Esta porta é atravessada de novo toda vez que o objetivo é retomado — e é exatamente o que acontece
             # depois de alguém aprovar. Sem esta marca, o gate reescrevia o texto: a pessoa lia e aprovava uma
             # frase, e o aparelho digitava outra, gerada depois. Rascunho guardado é rascunho fechado.
@@ -404,6 +430,7 @@ class Portoes:
             alvo = alvo_da_acao(cap, bindings)
             arvore = await self._ler_tela(rt, pacote)
             tela = leitor.visible_content(arvore) if leitor is not None and arvore is not None else ""
+            fatos, leitura = self._conhecimento_da_operacao(operacao_id, obj, srow, cap, arvore, tela, pacote)
             # Responder é diferente de comentar: aqui existe uma fala DIRIGIDA a esta conta, e é ela que fundamenta
             # tanto a resposta quanto o que o perfil passa a saber sobre a pessoa. Só deste bloco sai memória.
             recebido = (leitor.comment_of(arvore, alvo or "")
@@ -437,7 +464,10 @@ class Portoes:
                     # lançado no objetivo certo.
                     runner=lambda f: self._st.scheduler.executor._ai(  # noqa: SLF001
                         obj["run_id"], obj["id"], f, step_id=srow["id"], role="social"),
-                    avoid=textos_irmaos(self._st.db, obj["run_id"], srow["id"]))
+                    avoid=textos_irmaos(self._st.db, obj["run_id"], srow["id"], operacao_id=operacao_id),
+                    # O que a operação sabe em comum (a leitura do alvo e o que se consolidou): DADO citado, separado
+                    # do contexto da persona. Vazio fora de operação.
+                    fatos_da_operacao=fatos.texto if fatos is not None else "")
             except SocialError as exc:
                 # Sem texto não se digita nada. Isso é espera por uma pessoa, não falha da etapa: o briefing
                 # continua lá e uma nova tentativa pode gerar.
@@ -473,12 +503,48 @@ class Portoes:
                     # numa auditoria. Não vai para o histórico como fala de ninguém: é tela, não é conversa.
                     "screen_seen": tela[:400],
                     "incoming": recebido,
+                    # Auditoria do conhecimento comum: quantos fatos entraram e como a leitura deste agente bateu com a
+                    # da operação. Só contagem e palavra fixa: o texto dos fatos mora na memória da operação.
+                    **({"fatos_da_operacao": {"quantos": fatos.quantos, "leitura": leitura}}
+                       if fatos is not None else {}),
                 })
         # 31.63: o evento diz SÓ que o texto foi escrito e o tamanho. O texto mora na etapa e no pedido de aprovação, onde
         # quem decide o vê; evento vai a painel, aviso e resumo, e rascunho não é dado de log.
         self._st.bus.emit("log", f"{obj['instance_id']}: texto escrito na voz do perfil ({len(draft.content)} caracteres)",
                       run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=obj["id"])
         return None
+
+    def _operacao_da_execucao(self, run_id: str) -> str | None:
+        try:
+            return self._conhecimento.operacao_da_execucao(run_id)
+        except Exception:  # noqa: BLE001 - sem saber a operação, escreve como execução avulsa (o caminho de antes)
+            log.exception("não deu para ler a operação da execução %s", run_id)
+            return None
+
+    def _conhecimento_da_operacao(self, operacao_id: str | None, obj: Any, srow: Any, cap: Any, arvore: Any,
+                                  tela: str, pacote: str | None) -> tuple[Fatos | None, str | None]:
+        """A leitura do alvo entra na memória da operação (uma vez; as outras conferem) e os fatos voltam para o texto.
+
+        Conhecimento é contexto: qualquer falha aqui vira log e o texto sai como sairia sem operação. Tela sensível
+        (campo de senha à vista) não é gravada como leitura."""
+        if not operacao_id:
+            return None, None
+        run_id = str(obj["run_id"])
+        leitura = None
+        try:
+            if tela and arvore is not None and not getattr(arvore, "sensitive", False):
+                leitura = self._conhecimento.registrar_leitura(
+                    operacao_id, run_id=run_id, step_id=str(srow["id"]), agente=str(obj["id"]),
+                    fonte=f"{pacote or 'app'} · {cap.key}", texto=tela)
+                if leitura is not None:
+                    _registrar_estagio(self._st.db, run_id, "conteudo_lido")
+            fatos = self._conhecimento.fatos(operacao_id, leitura=leitura)
+        except Exception:  # noqa: BLE001 - ver acima
+            log.exception("operação %s: o conhecimento comum não entrou no texto da execução %s", operacao_id, run_id)
+            return None, leitura
+        if fatos.quantos:
+            _registrar_estagio(self._st.db, run_id, "conhecimento_recuperado")
+        return fatos, leitura
 
     async def _ler_tela(self, rt: Any, pacote: str | None) -> Any:
         """O que está escrito na tela do aparelho agora — para o texto falar do que está ali.

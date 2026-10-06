@@ -2283,3 +2283,25 @@ etapa, e a receita saiu com `replay_fail=1`. A falha era da tela de partida, nã
   - a etapa que a IA assumiu e que falhou ou ficou incerta.
 - **Prova:** `simulated`, em `tests/test_receita_nao_aplicavel.py`, que parte de dentro de outra conversa como o caso
   real.
+
+## Conhecimento da operação (prova30 A1, 06/10)
+
+Uma operação (`operacoes`, 124) junta N agentes, cada um com persona, conta e execução próprias, sobre um objetivo.
+O que eles sabem em COMUM não ganha armazenamento novo. Mora na memória e nas observações do pedido (070), que a 125
+deixa ser de um pedido OU de uma operação:
+
+| O quê | Onde | Quem escreve |
+|---|---|---|
+| a leitura do alvo (o post) | `pedido_observacoes` (`operacao_id`, `nome='leitura_do_alvo'`, sha256, fonte, instante) | o 1º agente que lê; os outros só conferem o sha256 |
+| o fato consolidado | `pedido_memoria` (`origem`, `confianca`, `evidencia`, `frescor_ate`) | a leitura (`alvo.conteudo`); a pesquisa externa (A2); o operador |
+| a leitura que não bate | `pedido_observacoes` `incerto`, `alvo` = o objetivo do agente | o agente que viu outra coisa |
+
+Ao texto de cada persona vão três blocos com donos diferentes:
+- o `context_text` da persona: identidade, conta no app, memória, histórico e voz;
+- o `<fatos_da_operacao>`: fato, hipótese marcada e fonte, como dado citado;
+- a `<intencao>`.
+
+O fato comum nunca vira memória da persona. Ela lembra do que FEZ (o efeito confirmado), não do que leu em comum.
+Numa operação, a lista "não repita" e a trava de escrita são da operação inteira, não da execução. Código:
+`modules/pedidos/{domain,infrastructure}/conhecimento_da_operacao.py` e `gates.py` (`_conhecimento_da_operacao`).
+O que seria um segundo sistema, e por que não se fez assim: `.claude/handoffs/prova30/aprendizado.md`.
