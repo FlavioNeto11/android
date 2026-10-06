@@ -17,6 +17,7 @@ from app.models import TrainingSaveBody, TrainingStartBody
 from app.modules.learning.domain.ensino_da_falha import intencao_sugerida, pergunta_da_etapa
 from app.modules.skills.presentation.schemas import TrainingDeFalhaBody, TrainingStopBody, TrainingUndoBody
 from app.planning.provider import AIError
+from app.training import exibicao
 from app.training.recorder import TrainingError
 
 if TYPE_CHECKING:
@@ -112,9 +113,13 @@ async def list_training(request: Request, instance_id: str | None = None, limit:
 @router.get("/training/{session_id}", response_model=None)
 async def get_training(request: Request, session_id: str) -> object:
     try:
-        return _st(request).training.get(session_id)
+        sessao = _st(request).training.get(session_id)
     except TrainingError as exc:
         raise _training_error(exc) from exc
+    # 31.183: a cópia da proposta só para exibir, com o dado da persona mascarado; a `proposal` (que o painel devolve
+    # na prévia e no salvar) não muda.
+    persona = _st(request).repo.variaveis_da_persona(sessao.get("profile_id"))
+    return {**sessao, "proposal_exibicao": exibicao.proposta(sessao.get("proposal"), persona)}
 
 
 @router.post("/training/{session_id}/stop", response_model=None)
