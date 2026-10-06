@@ -11028,15 +11028,15 @@
   "29.155": {
    "id": "29.155",
    "status": "partial",
-   "proof": "real",
-   "evidence": "REAL (06/10/2026, ubuntu-latest, run 37463062580 disparado de 87c334d7 na branch ci/29-155-c2-c3): o job backend-postgres terminou success em 68 min 29 s e o run em 68 min 34 s (12:24:50Z a 13:33:24Z), acima dos 60 min do teto antigo, o que prova o teto de 90 min do C3; o job porta foi pulado em somente_postgres e o runner central não foi tocado. REAL também: C2 (issue do cron aberta e comentada pelo workflow ci-aviso-de-falha.yml, runs 37464389350 e 37464474627 success em 06/10), formulários de issue provados (issues 467 e 468), T1 do agente de nuvem (issue 469, PR 470, run 37466036446, 6 min 53 s, aceita pela Portal, entrou por 98606087). SIMULATED: scripts/tests/test_ci_issue_falha.py::* (32), test_github_rotulos.py::* (9), test_github_rotina.py::* (13). NÃO FEITO: créditos da T1 (a página de uso mostrou +2, provável atraso; releitura em 07/10 06:03Z), T2 com code review desligado, C6 ligar a automação (criada desligada), C8 apagar branches (lista em .claude/handoffs/github-branches-mescladas.md; zero mescladas há mais de 14 dias até 14/10), C9 (de outras frentes).\nNo ar desde o deploy 52 (cdee6620, 15:08Z).",
-   "blocker": "T2 e créditos da T1 dependem de 07/10; automação C6 continua desligada até a orquestradora mandar; C8 só com o sim do dono.",
-   "grupo": "github",
-   "modelo": "misto",
-   "esforco": "misto",
+   "proof": "simulated",
+   "evidence": "C17 (06/10/2026 18:55Z): branch ci/29-155-c17-revisao, ponta 35acd7e4 sobre a main d8ff73f7, PR 477 (só revisão, não mesclar), entra no corte 56. AGENTS.md (seção 'A quem valem estes limites'), .github/copilot-instructions.md (seção de revisão) e os três perfis de .github/agents/ dizem que 'Nunca edite', 'um PR por tarefa', 'uma área por PR' e [skip ci] valem só para o agente que escreve a partir de uma issue (branch copilot/*), e que PR de sessão (feat/*, fix/*, docs/*, ci/*) se revisa só pelos critérios de revisão; os limites do agente de nuvem seguem iguais. Motivo medido: nos PRs 473 a 476 do corte 56, 5 de 15 achados do Codex eram esses limites aplicados a PR de frente (.claude/handoffs/github-revisoes-corte56.md). SIMULATED: docs-check 0 erros e scripts/tests (34 passaram: test_docs_check e test_workflows_pins); revisão automática do PR 477 pelo Codex: completo em 1 min 50 s, 0 achados.",
+   "blocker": "NOT_RUN (prova real da C17): só depois da mescla, um PR de branch de frente revisado pelo Codex sem os achados de artefato; nos PRs 479 a 482 (abertos antes da mescla) ainda aparecem, o que é esperado. O 29.155 segue partial: faltam os créditos da T1 (releitura em 07/10 06:03Z), T2 com code review desligado, ligar a automação de triagem C6 (criada desligada) e C8 (apagar branches só com o sim do dono, a partir de 14/10); 29.147 (hooks no agente de nuvem) está parado por ordem da coordenação.",
+   "grupo": "github-c17",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T15:12:25+00:00"
+   "quando": "2026-10-06T21:18:22+00:00"
   },
   "29.157": {
    "id": "29.157",
@@ -11273,67 +11273,66 @@
   "31.154": {
    "id": "31.154",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "9ff07d73 + 530d5af0 (mesma branch). Migração 124 (operacoes com assunto/fontes; operacao_alvos; runs.operacao_id). Adendo v1.94: POST/GET /api/operacoes, GET /{id}, POST /{id}/cancelar e /{id}/liberar; GET /api/runs?operacao_id; RunSummary.operacao_id. Cada alvo = persona + conta + aparelho numa execução própria (chave op:<operacao>:<hash da persona>, execução do sistema; a aprovação dela avisa o dono como a de lote), com teto_de_autonomia=preparar: o efeito para depois do rascunho, com o pedido de aprovação, e esse é o acao_preparada. A parada na criação vai por persona → conta → sessão → aparelho, com motivo e sem trocar de app. Estágios derivados na leitura, no vocabulário e na ordem do dono (app/modules/operacoes/domain/estagios.py): os do app vêm do app.yaml (bloco operacao; Instagram: instagram_aberto, OPEN_PROFILE→target_localizado, OPEN_POST→post_localizado, OPEN_COMMENTS→interface_de_comentario_alcancada), e conteudo_lido/conhecimento_recuperado vêm de registrar_estagio (Aprendizado, 31.157/31.158). parou_em diz onde o alvo parou. A capacidade traz solicitados/contas_existentes/sessoes_validas/contas_disponiveis/concluidas/bloqueadas/em_curso/motivos. O custo vem como {pesquisa_usd, alvos_usd, total_usd} (combinado com a Aprendizado). max_usd é obrigatório e tem régua no roteamento (AIError budget, motivo operacao). liberar só aprova com o eco do texto lido e até LimitsCfg.operacao_max_acoes_executadas (padrão 3), contando as já aprovadas. O revisor-segredos teve 6 achados (limite contornável, credencial em assunto/fontes, motivo sem redação, aprovação de operação muda no aviso, acao_final antes de validar, chave cortada), todos corrigidos e testados. Simulated: tests/test_operacoes.py (9) e tests/test_operacoes_estagios.py (9; 30 alvos com 1 falha sem derrubar os outros). Dirigidos: 5418 passed, 1 skipped (247 arquivos), avisos 514 passed, catracas + rotas + contrato 103 passed, scripts/tests 760 passed, mypy 257 (no teto), docs-check 0. O typecheck do frontend é not_run (o worktree não tem node_modules; só entrou o campo opcional operacao_id em RunSummary). Limite honesto: o estágio e o evento operacao.alvo saem quando alguém LÊ a operação (painel ou GET), não no instante da mudança.",
-   "blocker": "Prova real: not_run até o deploy 55 e a onda de 07/10 (Instagram, contas reais já logadas, uma por aparelho, liberar com o texto lido).",
+   "proof": "real",
+   "evidence": "Onda 1, em 06/10/2026, no central (deploy 55, commit 086236e9). Operação op-20261006194323-0a1540, execução r-20261006194323-240d40, com alvo único, instance_id explícito, acao_final=preparar e max_usd 0,75. A exceção de uso único do 30.65 (exc-drzlj8cc7vZ6vLUJ) foi criada após o sim do dono à P-030. Os estágios saíram na ordem do dono, e o rascunho saiu 95 s depois do POST. O dono aprovou pelo Telegram: comment_1 começou às 19:47:01.552Z e terminou às 19:48:05.915Z com verified=true (evidências 2941 e 2943). A execução terminou completed, com custo de US$ 0,2894 (pesquisa US$ 0,0526). A medida está em .claude/handoffs/prova30/medida-onda-1.md. O código que chega no corte 56 (ponta 441abaac) corrige as divergências medidas, com prova simulated: a aprovação por fora do liberar reabre a operação como executar, o finished_at fica na hora do último estágio, a hora do rascunho é a do pedido, a reserva do teto vale do POST do Jev até a linha de custo e o nome fixo com colisão não é sobrescrito. Testes: test_operacoes, test_operacoes_estagios, test_plano_da_operacao e test_decisao_fechada_jev. Pendente para o corte 57 (feat/corte57-jev): GET com fontes_da_pesquisa, alvo bloqueado por parâmetro em conflito, reserva conferida e incrementada na mesma seção crítica e alvos recalculados depois de reabrir (achado P1 do PR 483).",
    "grupo": "jev",
    "modelo": "opus-5.5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T19:14:10+00:00"
+   "quando": "2026-10-06T21:18:22+00:00"
   },
   "31.157": {
    "id": "31.157",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "d0d46c033f50cc (feat/prova30-a1-conhecimento-da-operacao, de 8d948c0b), migração 125. Mudanças: pedido_memoria e pedido_observacoes de um pedido OU de uma operação (operacao_id sem FK, CHECK de exatamente um; índices únicos parciais por operação); memória com origem, confianca (confirmado/hipotese), evidencia e frescor_ate; leitura do alvo gravada UMA vez por operação, identificada por post_author + caption_contains da etapa (a lista de comentários aberta não conta), com só a linha da publicação guardada; as outras execuções conferem o sha256, e a leitura diferente fica como observação incerto do agente; SocialRequest.fatos_da_operacao em <fatos_da_operacao> como dado, separado do contexto da persona e fora da memória dela; textos_irmaos e a trava de escrita por operacao_id or run_id (só texto já escrito, até 40); estágios conteudo_lido e conhecimento_recuperado por registrar_estagio da Jev (import tardio). Validação: backend/tests/test_conhecimento_da_operacao.py::test_a_linha_e_de_um_pedido_ou_de_uma_operacao_e_a_antiga_nasce_confirmada, ::test_a_leitura_do_alvo_e_gravada_uma_vez_e_as_outras_conferem, ::test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem (7 no arquivo). Bateria dirigida de 117 arquivos, Idle, -n 2, SQLite: 2241 passed, 3 skipped, 2 failed (catracas de test_arquitetura, corrigidas em d0d46c03 e repassadas). PG pelo pg-rapido, -n 8: 2240 passed, 3 skipped, 3 failed (as 2 catracas e 1 relógio de segundo em test_pedidos_colaboracao_consolidacao, sem relação). Reexecução dos 5 afetados: 62 passed em SQLite e 62 passed em PG. mypy 257 (no teto). docs-check 0. Real: not_run até o deploy com a 124 da Jev.",
-   "blocker": "",
-   "grupo": "aprendizado-prova30-conhecimento-e-pesquisa-da-operacao",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "06/10 19:43Z-19:46Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8, migrações 124 e 125, ai.pesquisa.enabled ligada). Onda 1, tentativa 3: operação op-20261006194323-0a1540, execução r-20261006194323-240d40 (1 alvo, android-01), lida só em leitura às 19:46Z. Observação única: uma leitura_do_alvo da operação em pedido_observacoes (situacao observado, 19:44:33Z) e o fato alvo.conteudo (origem leitura, confirmado, 1 evidência, frescor 6 h). fatos_da_operacao no texto: o draft_meta da etapa comment_1 tem fatos_da_operacao {quantos: 15, leitura: primeira}. Estágios conteudo_lido 19:44:33Z e conhecimento_recuperado 19:44:42Z em operacao_alvos.marcas; alvo concluido em resultado_verificado. Defeito achado no real: resultado.conhecimento_ids vazio (só os estágios eram gravados). Corrigido no corte 56 (e60a983eb50a66: a porta de escrita grava as refs em operacao_alvos.marcas.conhecimento_ids; simulated em backend/tests/test_conhecimento_da_operacao.py::test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem). Também no corte 56 (4b2bc92c463628, decisão da orquestradora): o assunto da operação vai ao escritor junto da intenção, simulated em ::test_o_assunto_vai_junto_da_intencao_e_so_relaciona_quando_couber.",
+   "blocker": "Falta: conhecimento_ids preenchido e o assunto no texto numa execução real depois do deploy 56; a conferência de uma 2ª execução da mesma operação (a onda 1 teve 1 alvo).",
+   "grupo": "aprendizado-corte56-estado-apos-onda-1",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T19:14:10+00:00"
+   "quando": "2026-10-06T21:18:22+00:00"
   },
   "31.158": {
    "id": "31.158",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "d0d46c033f50cc (mesma branch). Mudanças: lacuna = operacoes.assunto sem fato de pesquisa válido (código, sem IA); pesquisa UMA por operação sob a trava da operação, pela ferramenta web_search_20250305 da Anthropic (AnthropicProvider.pesquisar, AIRouter.pesquisar com origem='pesquisa' e ref=operação; OpenAI recusa com not_configured; simulado sem rede); consulta só com assunto, fontes indicadas e a linha da publicação; confiança por código (duas fontes de domínios diferentes = confirmado, uma = hipotese, URL que a busca não trouxe = descartada); fontes como pedido_observacoes tipo url e entradas fonte, fatos como descoberta com origem pesquisa, evidência e frescor; falha ou zero fatos deixam pesquisa.estado por 1 h; teto ai.pesquisa.teto_usd_por_operacao (0,25) sobre tokens + buscas; buscas em linha própria de ai_calls (model='web_search', usd declarado); 'pesquisa' em ORIGENS_DE_IA; ai.pesquisa desligada de fábrica (config.example). Validação: backend/tests/test_pesquisa_da_operacao.py::test_so_conta_a_url_que_a_busca_trouxe_e_a_confianca_e_do_codigo, ::test_pesquisa_uma_vez_com_fonte_confianca_e_frescor, ::test_desligada_sem_assunto_teto_e_falha_nao_repetem, ::test_as_buscas_viram_linha_propria_de_custo, ::test_o_provedor_manda_a_ferramenta_e_le_resultados_citacoes_e_buscas, ::test_duas_execucoes_uma_pesquisa_e_os_fatos_chegam_ao_texto; mesma bateria, PG e mypy do 31.157. Lacunas declaradas: stop_reason pause_turn não é retomado (vira zero fatos e espera de 1 h); a pesquisa é paga no run do 1º agente (o ai_max_usd_per_run precisa caber). Real: not_run (1 operação pequena depois do deploy, chamada paga dentro do gasto autorizado).",
+   "proof": "real",
+   "evidence": "06/10 19:43Z-19:46Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8, migrações 124 e 125, ai.pesquisa.enabled ligada). Operação op-20261006194323-0a1540 (com assunto e fontes vazias): UMA pesquisa, no run r-20261006194323-240d40. ai_calls 4963 (claude-sonnet-5-5, origem pesquisa, 15.484 tokens de entrada e 1.162 de saída) e 4964 (web_search, US$ 0,01). Custo pela conta tokens × ai.prices = US$ 0,0526, igual a custo.pesquisa_usd do GET da operação. pedido_memoria da operação: 8 fatos pesquisa.* (2 confirmado por duas fontes de domínios diferentes, 6 hipotese), 6 fontes fonte.* e pesquisa.estado, todos com frescor de 24 h. 6 observações tipo url em pedido_observacoes. Os fatos chegaram ao rascunho (15 entradas no bloco, ver 31.157).",
    "blocker": "",
-   "grupo": "aprendizado-prova30-conhecimento-e-pesquisa-da-operacao",
+   "grupo": "aprendizado-corte56-estado-apos-onda-1",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T19:14:10+00:00"
+   "quando": "2026-10-06T21:18:22+00:00"
   },
   "31.159": {
    "id": "31.159",
    "status": "implemented",
-   "proof": "simulated",
-   "evidence": "frontend/src/features/operacao/OperacaoPage.test.tsx (21 casos: leitor tolerante, estagios, verificacao, agregado, exemplo, capacidade, linhas por alvo, detalhe, filtros, com a rota real, cancelar e liberar com confirmacao, varredura de credencial e codigo cru), settings/LimitsSection.test.tsx e validation.test.ts (os tres limites)",
-   "nota": "Real: percurso no navegador quando a rota existir no central.",
+   "proof": "real",
+   "evidence": "2026-10-06, central 086236e9, operacao op-20261006194323-0a1540: tela #/operacoes/<id> (gaveta com 14 estagios com hora, acao final verificada sim, evidencias 2941 e 2943, custo, assunto) e GET /api/operacoes/<id> (custo total 0,2894, estagio resultado_verificado, 14 estagios).",
+   "nota": "Real de ponta a ponta para uma operacao concluida com comentario verificado. Fontes da pesquisa e conhecimento usado: 0 itens reais, so simulado. Custo por alvo: not_run (null no 55).",
    "grupo": "Portal",
    "modelo": "claude-sonnet-5-5",
    "esforco": "alto",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T19:14:10+00:00"
+   "quando": "2026-10-06T21:18:22+00:00"
   },
   "31.162": {
    "id": "31.162",
-   "status": "implemented",
-   "proof": "simulated",
-   "evidence": "frontend/src/features/operacao/Relatorio.test.tsx (montarRelatorio, relatorioEmMarkdown, botao e download) e relatorio.ts, RelatorioDaOperacao.tsx.",
-   "nota": "Le as 10 perguntas do aprendizado (GET /api/operacoes/{id}/aprendizado, v1.96, branch da Aprendizado 2f948179): rota ausente/404 = 'nao disponivel'. Nao cobre ainda os 16 criterios do cenario 8 (nao vem do GET da operacao). Real: not_run ate o corte 56.",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "2026-10-06, central 086236e9, operacao op-20261006193306-7e8b5f: dialogo do Relatorio aberto na tela e relatorio gerado do GET real (reports/operacao-op-20261006193306-7e8b5f.md/.json).",
+   "nota": "Dialogo real; arquivos baixados pelo botao: not_run (precisa da permissao do dono para baixar). Gerador sobre dado real: ok, achado do @ corrigido no corte 56.",
    "grupo": "Portal",
    "modelo": "claude-sonnet-5-5",
    "esforco": "alto",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T19:14:10+00:00"
+   "quando": "2026-10-06T21:18:22+00:00"
   },
   "29.164": {
    "id": "29.164",
@@ -11415,16 +11414,16 @@
   },
   "29.167": {
    "id": "29.167",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "real 06/10/2026 18:50:43Z-18:50:45Z, central, branch devops/29-167b-contagem-de-tabelas commit 47edd991 (worktree C:\\git\\android-wt-29-167b, em cima do 30084b47), a mao, em prioridade Idle, sem registrar a tarefa: restore-ensaio.ps1 sobre a copia mais nova C:\\git\\android\\data\\backups\\20261006-140601 (origem deploy, commit 2193a8b5, 203.902.976 bytes, 1,7 h) -> resultado ok em 1,5 s: integrity_check ok, migracao 123_comando_remoto igual a do manifesto e a do codigo (nenhuma migracao a aplicar na copia), 115 tabelas = 115 do manifesto, pasta de trabalho apagada (0 sobras), data\\poc.sqlite3 do central nao tocado. Veredito: C:\\git\\android-wt-29-167b\\data\\restore-ensaio\\ultimo.json (e historico.jsonl). A 1a tentativa real, 18:47:36Z no commit 30084b47, FALHOU por defeito do proprio script: contava 113 tabelas sem as internas sqlite_sequence e sqlite_stat1, e o manifesto (scripts/sqlite-copia.py) conta as 115; corrigido em 47edd991, com o teste agora gerando copia e manifesto pela ferramenta do backup de verdade (4 testes caem se a contagem antiga voltar). simulated: scripts/tests/test_restore_ensaio.py, 17 testes passam. Revisor-segredos: sem segredo; 3 medios e 3 baixos corrigidos antes do commit 30084b47.",
-   "blocker": "(1) tarefa farm-restore-ensaio NAO registrada: -Instalar so no deploy 56 (amanha), com o aval da orquestradora. (2) 47edd991 esta numa branch NOVA, em cima de 30084b47 (que ja entra no corte 55): precisa entrar junto ou logo depois, senao a main fica com a contagem errada. (3) aviso pelo canal fica no 28.60 (backend); hoje a falha so aparece em ultimo.json e no codigo de saida. (4) o ensaio roda com o pwsh da tarefa; PostgreSQL (parque.dump) nao e ensaiado.",
+   "evidence": "real 06/10/2026 18:50:43Z-18:50:45Z, central, commit 47edd991 (branch devops/29-167b-contagem-de-tabelas, entra no corte 56; em cima do 30084b47 do corte 55), ensaio id 2026-10-06T18:50:43Z (ts_utc de ultimo.json) a mao, em prioridade Idle, sem registrar a tarefa: restore-ensaio.ps1 sobre a copia mais nova C:\\git\\android\\data\\backups\\20261006-140601 (origem deploy, commit 2193a8b5, 203.902.976 bytes, 1,7 h) -> resultado ok em 1,5 s: integrity_check ok, migracao 123_comando_remoto igual a do manifesto e a do codigo (nenhuma migracao a aplicar na copia), 115 tabelas = 115 do manifesto, pasta de trabalho apagada (0 sobras), data\\poc.sqlite3 do central nao tocado. Veredito em C:\\git\\android-wt-29-167b\\data\\restore-ensaio\\ultimo.json e historico.jsonl. A 1a tentativa real (18:47:36Z, commit 30084b47) FALHOU por defeito do proprio script (contava 113 tabelas sem sqlite_sequence e sqlite_stat1; o manifesto de scripts/sqlite-copia.py conta 115), corrigido em 47edd991 com teste que gera copia e manifesto pela ferramenta do backup de verdade. simulated: scripts/tests/test_restore_ensaio.py, 17 testes passam. Revisor-segredos: sem segredo; 3 medios e 3 baixos corrigidos antes do 30084b47.",
+   "blocker": "Falta so o -Instalar (tarefa semanal farm-restore-ensaio, domingo 04:30, Idle): rodo apos o '56 no ar', do checkout central C:\\git\\android\\scripts, e informo o nome e o proximo horario. Fora deste item: aviso pelo canal e o 28.60 (backend); PostgreSQL (parque.dump) nao e ensaiado.",
    "grupo": "devops-29.167",
    "modelo": "claude-sonnet-5-5",
    "esforco": "sessao executora (Frente DevOps)",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T19:14:10+00:00"
+   "quando": "2026-10-06T21:18:22+00:00"
   },
   "31.156": {
    "id": "31.156",
@@ -11456,6 +11455,73 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T19:14:10+00:00"
+  },
+  "31.148": {
+   "id": "31.148",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "O propose recebe a tela inteira e o que apareceu depois, e a proposta já avisa a pós-condição da partida (Aprendizado). Simulado: backend/tests/test_treino_pos_condicao_na_proposta.py::*. Corte 56 (integ/suite-56, ponta 5ec0fc7b79d4ff = main do deploy 55 + 7 pontas finais; Windows, central WIN-7S2UASNLFOP, 06/10/2026 20:07Z-21:13Z, Idle): scripts/tests 790 passed; backend SQLite inteiro 12528 passed, 13 skipped, 3 failed (na ponta 89569548: test_leque_do_for_each, real, corrigido pela Jev em ca908e7e e agora 2 passed; test_acoes_encadeadas e test_upload_feito_por_ia passam sozinhos, instáveis sob -n); frontend typecheck ok, 1961 testes em 150 arquivos passed, build ok; catracas backend 89 + scripts 7 passed; docs-check 0/0; mypy 257 = teto; PostgreSQL dirigido, 464 arquivos em 2 partes: parte 1 com 5968 passed, 8 skipped; parte 2 com 4120 passed, 5 skipped e 1 falha de tempo esgotado (test_worker_agent.py::test_inscricao_grava_a_credencial_e_a_reconexao_usa_ela) que passa isolada: 23 passed no SQLite e 23 no PostgreSQL (21:12Z). Migrações novas 126 e 127: o deploy 56 exige o -Ensaio.",
+   "blocker": null,
+   "arquivos": [
+    "backend/tests/test_treino_pos_condicao_na_proposta.py"
+   ],
+   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real",
+   "grupo": "android-suite-56",
+   "modelo": "claude-sonnet-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T21:18:22+00:00"
+  },
+  "31.155": {
+   "id": "31.155",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Branch feat/31-155-troca-de-conta @ d0b94a5e (PR 473). Toque de saída incerto: tocou=True antes do tap, e _invalidar_o_app no except. _sem_volta exige credencial ativa. Testes: backend/tests::test_toque_de_saida_com_erro_do_driver_depois_do_efeito_invalida_o_app e test_conta_aberta_com_a_senha_recusada_nao_e_deslogada (parametrizado). Dirigidos: 5595 passed. Sem aparelho real (not_run no real).",
+   "grupo": "jev",
+   "modelo": "opus-5.5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T21:18:22+00:00"
+  },
+  "28.61": {
+   "id": "28.61",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, como dado: em 06/10/2026, às 19:57:15Z, no central (deploy 55, 086236e9), o POST /api/instagram/policy-groups criou o grupo 'Liberado' (grp-AX6yCTUvW7eZFmn2), em resposta ao pedido do dono no Telegram às 19:46:43Z. Tudo autonomous, exceto LOGOUT (manual_only). Limites do grupo Operação. São 11 de 16 personas; as 5 do grupo Recuperação ficaram fora (proteção de conta). Conferido pelo GET /api/instagram/profiles/{id}/policy. Desfazer: grupo_liberado.py desfazer, com o backup gravado antes. Simulated, como código (ponta 441abaac, corte 56): o setting LimitsCfg.grupo_sem_aprovacao (vazio = desligado), por PolicyEngine._sem_aprovacao_pelo_grupo, troca approval_required por autonomous só para os membros do grupo. A exceção do 30.65, as recusas (frota, tetos, retirada), a conduta, a proteção de conta e o liberar e o teto da operação continuam. Teste: backend/tests/test_interacao_entre_contas_nossas.py::test_2861_persona_do_grupo_sem_aprovacao_nao_passa_pela_aprovacao_de_politica. O PUT grupo_sem_aprovacao no central fica com a orquestradora, depois do deploy 56 (not_run até lá). Este registro substitui o resultado-28-61-jev.json, que dizia que o código não entrava.",
+   "grupo": "jev",
+   "modelo": "opus-5.5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T21:18:22+00:00"
+  },
+  "31.160": {
+   "id": "31.160",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Ensino: 06/10 19:20Z-19:31Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8), android-01 (conta real, sem adb, só navegação). Sessão trn-M60OrpiMBqLWHyJ7 salva; fluxo f-63f2d6289cd7 e receita 221 (open_profile_1 pela busca); custo US$ 0,033. Na onda 1, tentativa 3 (execução r-20261006194323-240d40): open_post_1 e open_comments_1 conduzidos pelas receitas 111 e 91 (de antes do ensino), com 0 decisão de IA; open_profile_1 pela IA. A receita 221 não foi consultada: a identidade dela é 'perfil de {conta_instagram_usuario} aberto' (8a9a214a…), e a da etapa planejada é 'perfil de {perfil} aberto' (a25a2299…). No empate de valores, para_hash fica com o parâmetro do objetivo; reproduzido com _identidade. Decisão da orquestradora: a 221 vale só para o perfil da própria conta, e o alinhamento da identidade vira o 31.165 (pós-prova). Registro: .claude/handoffs/prova30/medida-onda-1-conhecimento.md.",
+   "blocker": "Falta: a receita ensinada conduzir open_profile_1 numa execução real (depende do 31.165) e a prova do fluxo f-63f2d6289cd7.",
+   "grupo": "aprendizado-corte56-estado-apos-onda-1",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T21:18:22+00:00"
+  },
+  "31.163": {
+   "id": "31.163",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "GET /api/operacoes/{id}/aprendizado (as 10 perguntas, adendo v1.96 de docs/api-contract.md), na branch do corte 56, ponta 4b2bc92c463628. Validação: backend/tests/test_aprendizado_da_operacao.py (5 testes) e PG 694 passaram antes. Lido do worktree contra o banco real (só leitura) na onda 1. A revisão do PR 480 achou 4 defeitos (evidência da lição pelo id cru, contagem efetiva, voz da persona dona, aviso de conhecimento_ids não gravados), corrigidos no corte 57: feat/corte57-aprendizado, ea31d3914302d6, ::test_evidencia_do_item_pelo_id_cru_regra_efetiva_e_voz_da_persona e test_conhecimento_da_operacao.py::test_falha_ao_gravar_conhecimento_ids_nao_derruba_e_fica_visivel.",
+   "blocker": "Falta: o GET real numa operação depois do deploy 56 e as correções do corte 57 no deploy.",
+   "grupo": "aprendizado-corte56-estado-apos-onda-1",
+   "modelo": "claude-opus-5-5",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T21:18:22+00:00"
   }
  },
  "rodadas": [
@@ -15001,6 +15067,31 @@
     "canais-29-145",
     "devops-29.167",
     "github-29-166a",
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T21:18:22+00:00",
+   "itens": [
+    "31.148",
+    "31.154",
+    "31.155",
+    "28.61",
+    "31.157",
+    "31.158",
+    "31.160",
+    "31.163",
+    "31.159",
+    "31.162",
+    "29.167",
+    "29.155"
+   ],
+   "grupos": [
+    "Portal",
+    "android-suite-56",
+    "aprendizado-corte56-estado-apos-onda-1",
+    "devops-29.167",
+    "github-c17",
     "jev"
    ]
   }

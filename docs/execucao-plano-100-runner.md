@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-677 de 742 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+680 de 747 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -316,7 +316,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 28.58 | pendente | — | — | — |  |  |
 | 28.59 | pendente | — | — | — |  |  |
 | 28.60 | pendente | — | — | — |  |  |
-| 28.61 | pendente | — | — | — |  |  |
+| 28.61 | implemented | real | opus-5.5 | — | Real, como dado: em 06/10/2026, às 19:57:15Z, no central (deploy 55, 086236e9), o POST /api/instagram/policy-groups criou o grupo 'Liberado' (grp-AX6yCTUvW7eZFmn2), em resposta ao pedido do dono no Telegram às 19:46:43Z… |  |
 | 29.1 | implemented | real | opus | — | Real, 30/09/2026, central (runner `central`), commit 9428a6a: run 36713946044 do CI verde às 13:03Z, com o job `dependências` (2m14s) passando pelo `npm audit --audit-level=high` do Appium, pelo `npm ci` (o postinstall… |  |
 | 29.2 | implemented | simulated | opus | — | Migração backend/migrations/063_prova_de_vazamento.sql (leak_rev, leak_client, leak_result, leak_at, leak_detail, leak_pending em device_network; só colunas). backend/app/devices/rede.py (ProvaDeVazamento, bloqueio_prov… |  |
 | 29.3 | implemented | simulated | opus | — | Medição real, 30/09 12:28–13:17Z, android-05 (QA), central 6997091, 7 reinícios pela API: o always-on tenta uma vez por boot e falhou em 5 de 7 (ANR de início do serviço com o convidado sem CPU em 3; serviço que sobe e… |  |
@@ -466,7 +466,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.152 | partial | real | claude-sonnet-5-5 | — | Real, 06/10/2026 07:47Z, notebook da LAN (worker-lan-01), só medida, nada alterado: CPU do host 33, 19, 29, 22, 38, 24 % (era 66 % com o Discord aberto; 15 a 32 % depois do fechamento, P-015); RAM livre 46999 de 65273 M… | None |
 | 29.153 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 ~05:27Z, deploy 46 (325a04fb, backend do PR 465 no ar). GET /api/runs/{id} trouxe costs em todas as execuções do android-04 (ex.: r-20261006012340-d92795: spent_usd 0.33082, calls 33; r-20261005222326-9… | None |
 | 29.154 | partial | simulated | claude-sonnet-5-5 | — | Fatia 1 do comando remoto (ADR-079) na branch feat/29-154-comando-remoto-f1, ponta cdcb5eba (base main 4aa46764): agente (worker/comando.py, feature remote_exec), central (workers/comando_remoto.py), seis rotas em /api/… | Falta: fatia 2 (terminal com histórico na tela de Infraestrutura), fatia 3 (cliente para sessões nomeadas), fatia 4 (procedimento e prova real) e LIGAR só com… |
-| 29.155 | partial | real | misto | — | REAL (06/10/2026, ubuntu-latest, run 37463062580 disparado de 87c334d7 na branch ci/29-155-c2-c3): o job backend-postgres terminou success em 68 min 29 s e o run em 68 min 34 s (12:24:50Z a 13:33:24Z), acima dos 60 min… | T2 e créditos da T1 dependem de 07/10; automação C6 continua desligada até a orquestradora mandar; C8 só com o sim do dono. |
+| 29.155 | partial | simulated | claude-sonnet-5-5 | — | C17 (06/10/2026 18:55Z): branch ci/29-155-c17-revisao, ponta 35acd7e4 sobre a main d8ff73f7, PR 477 (só revisão, não mesclar), entra no corte 56. AGENTS.md (seção 'A quem valem estes limites'), .github/copilot-instructi… | NOT_RUN (prova real da C17): só depois da mescla, um PR de branch de frente revisado pelo Codex sem os achados de artefato; nos PRs 479 a 482 (abertos antes da… |
 | 29.156 | partial | real | misto | — | Fases 1-3 feitas em 06/10 (sessão Frente DevOps, central, só leitura): medida do host (.claude/handoffs/devops-medida-host.md: VM do WSL 0,45 núcleo, 6,4 GB; 91 % dos 1344 avisos de pressão são do notebook; disco 141 GB… | Falta: série de 24 h e o cruzamento com os avisos dos aparelhos locais; fatias 29.157-29.160 em andamento. |
 | 29.157 | implemented | real | misto | — | REAL em 06/10/2026, ubuntu-latest, main com os pins e o conteiner.yml novo. (1) Contêiner só em push da main: branch descartável teste/29-157-sem-corrida (commit d3881165, base main cdee6620+, SEM [skip ci] de propósito… | NOT_RUN: o pin de actions/cache@0057852b (v4.3.0) só roda no job backend-tipos do ci.yml, que é do runner central e não foi disparado (sem dispatch no central)… |
 | 29.158 | implemented | real | misto | — | REAL em 06/10/2026, ubuntu-latest, main cdee6620+: run 37485579333 do secret-scan.yml (workflow_dispatch na main), 15:13:12Z a 15:14:20Z = 68 s, success; checkout completo (4044 commits no histórico varrido, não raso);… | Nenhum bloqueio do item. Daqui em diante, achado novo abre issue nova e só entra na allowlist com conferência da coordenação; falso positivo por caminho ou reg… |
@@ -478,7 +478,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.164 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/infra/TerminalDoWorker.test.tsx (describe 29.164: estados do canal, estados finais, recusas do central) + percurso real do achado em 06/10 no central 2193a8b5. |  |
 | 29.165 | pendente | — | — | — |  |  |
 | 29.166 | partial | real | claude-sonnet-5-5 | — | Branch ci/29-166a-docs-check, ponta 631ce8c4, [skip ci]: o job docs do ci.yml passa a rodar pip install -c backend/requirements.txt pytest pyyaml pydantic pydantic-settings (versões travadas do backend). REAL em 06/10/2… | NOT_RUN: (1) 'sem o aviso formato NÃO conferido' e (2) 'exemplo ruim derruba o job numa branch descartável' dependem do 29.160 (esquema do config.example.yaml… |
-| 29.167 | partial | real | claude-sonnet-5-5 | — | real 06/10/2026 18:50:43Z-18:50:45Z, central, branch devops/29-167b-contagem-de-tabelas commit 47edd991 (worktree C:\git\android-wt-29-167b, em cima do 30084b47), a mao, em prioridade Idle, sem registrar a tarefa: resto… | (1) tarefa farm-restore-ensaio NAO registrada: -Instalar so no deploy 56 (amanha), com o aval da orquestradora. (2) 47edd991 esta numa branch NOVA, em cima de… |
+| 29.167 | implemented | real | claude-sonnet-5-5 | — | real 06/10/2026 18:50:43Z-18:50:45Z, central, commit 47edd991 (branch devops/29-167b-contagem-de-tabelas, entra no corte 56; em cima do 30084b47 do corte 55), ensaio id 2026-10-06T18:50:43Z (ts_utc de ultimo.json) a mao… | Falta so o -Instalar (tarefa semanal farm-restore-ensaio, domingo 04:30, Idle): rodo apos o '56 no ar', do checkout central C:\git\android\scripts, e informo o… |
 | 29.168 | pendente | — | — | — |  |  |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
@@ -715,23 +715,28 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 31.145 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/aprendizado/model.test.ts (nomeDaChave, textoDaDecisao, porQuemDecidiu, vetado), AprendizadoPage.test.tsx (confirmacao 'pelo painel' e receita 'Abrir busca (v1)' com a chave no title) e DecididoPel… |  |
 | 31.146 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/aprendizado/NascidoDeProva.test.tsx (describe 31.146: contagem, clique aplica e tira o filtro, some sem marca/sem rota, numero vem do servidor) |  |
 | 31.147 | partial | simulated | claude-sonnet-5-5 | — | frontend/src/features/training/SemCodigoCru.test.tsx (varredura contra codigo cru na barra, na revisao e no resultado do salvar) e training/TrainingReview.tsx (seletor em palavras). |  |
-| 31.148 | pendente | — | — | — |  |  |
+| 31.148 | implemented | simulated | claude-sonnet-5-5 | — | O propose recebe a tela inteira e o que apareceu depois, e a proposta já avisa a pós-condição da partida (Aprendizado). Simulado: backend/tests/test_treino_pos_condicao_na_proposta.py::*. Corte 56 (integ/suite-56, ponta… | None |
 | 31.149 | pendente | — | — | — |  |  |
 | 31.150 | pendente | — | — | — |  |  |
 | 31.151 | pendente | — | — | — |  |  |
 | 31.152 | pendente | — | — | — |  |  |
 | 31.153 | pendente | — | — | — |  |  |
-| 31.154 | implemented | simulated | opus-5.5 | — | 9ff07d73 + 530d5af0 (mesma branch). Migração 124 (operacoes com assunto/fontes; operacao_alvos; runs.operacao_id). Adendo v1.94: POST/GET /api/operacoes, GET /{id}, POST /{id}/cancelar e /{id}/liberar; GET /api/runs?ope… | Prova real: not_run até o deploy 55 e a onda de 07/10 (Instagram, contas reais já logadas, uma por aparelho, liberar com o texto lido). |
-| 31.155 | pendente | — | — | — |  |  |
+| 31.154 | implemented | real | opus-5.5 | — | Onda 1, em 06/10/2026, no central (deploy 55, commit 086236e9). Operação op-20261006194323-0a1540, execução r-20261006194323-240d40, com alvo único, instance_id explícito, acao_final=preparar e max_usd 0,75. A exceção d… |  |
+| 31.155 | implemented | simulated | opus-5.5 | — | Branch feat/31-155-troca-de-conta @ d0b94a5e (PR 473). Toque de saída incerto: tocou=True antes do tap, e _invalidar_o_app no except. _sem_volta exige credencial ativa. Testes: backend/tests::test_toque_de_saida_com_err… |  |
 | 31.156 | implemented | simulated | opus-5.5 | — | a9e73add (branch feat/prova30-j1-j2-candidata, de 8d948c0b). LimitsCfg.orquestracao_max_escolhidas=30 e orquestracao_max_candidatas=60, lidos a cada POST /api/runs/targets/suggest; max_personas do corpo até 64. Simulate… | None |
-| 31.157 | implemented | simulated | claude-opus-5-5 | — | d0d46c033f50cc (feat/prova30-a1-conhecimento-da-operacao, de 8d948c0b), migração 125. Mudanças: pedido_memoria e pedido_observacoes de um pedido OU de uma operação (operacao_id sem FK, CHECK de exatamente um; índices ún… |  |
-| 31.158 | implemented | simulated | claude-opus-5-5 | — | d0d46c033f50cc (mesma branch). Mudanças: lacuna = operacoes.assunto sem fato de pesquisa válido (código, sem IA); pesquisa UMA por operação sob a trava da operação, pela ferramenta web_search_20250305 da Anthropic (Anth… |  |
-| 31.159 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/operacao/OperacaoPage.test.tsx (21 casos: leitor tolerante, estagios, verificacao, agregado, exemplo, capacidade, linhas por alvo, detalhe, filtros, com a rota real, cancelar e liberar com confirma… |  |
-| 31.160 | pendente | — | — | — |  |  |
+| 31.157 | partial | real | claude-opus-5-5 | — | 06/10 19:43Z-19:46Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8, migrações 124 e 125, ai.pesquisa.enabled ligada). Onda 1, tentativa 3: operação op-20261006194323-0a1540, execução r-20261006194323-240d40 (1 al… | Falta: conhecimento_ids preenchido e o assunto no texto numa execução real depois do deploy 56; a conferência de uma 2ª execução da mesma operação (a onda 1 te… |
+| 31.158 | implemented | real | claude-opus-5-5 | — | 06/10 19:43Z-19:46Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8, migrações 124 e 125, ai.pesquisa.enabled ligada). Operação op-20261006194323-0a1540 (com assunto e fontes vazias): UMA pesquisa, no run r-202610… |  |
+| 31.159 | implemented | real | claude-sonnet-5-5 | — | 2026-10-06, central 086236e9, operacao op-20261006194323-0a1540: tela #/operacoes/<id> (gaveta com 14 estagios com hora, acao final verificada sim, evidencias 2941 e 2943, custo, assunto) e GET /api/operacoes/<id> (cust… |  |
+| 31.160 | partial | real | claude-opus-5-5 | — | Ensino: 06/10 19:20Z-19:31Z, central WIN-7S2UASNLFOP no deploy 55 (086236e9df30a8), android-01 (conta real, sem adb, só navegação). Sessão trn-M60OrpiMBqLWHyJ7 salva; fluxo f-63f2d6289cd7 e receita 221 (open_profile_1 p… | Falta: a receita ensinada conduzir open_profile_1 numa execução real (depende do 31.165) e a prova do fluxo f-63f2d6289cd7. |
 | 31.161 | pendente | — | — | — |  |  |
-| 31.162 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/operacao/Relatorio.test.tsx (montarRelatorio, relatorioEmMarkdown, botao e download) e relatorio.ts, RelatorioDaOperacao.tsx. |  |
-| 31.163 | pendente | — | — | — |  |  |
+| 31.162 | partial | real | claude-sonnet-5-5 | — | 2026-10-06, central 086236e9, operacao op-20261006193306-7e8b5f: dialogo do Relatorio aberto na tela e relatorio gerado do GET real (reports/operacao-op-20261006193306-7e8b5f.md/.json). |  |
+| 31.163 | implemented | simulated | claude-opus-5-5 | — | GET /api/operacoes/{id}/aprendizado (as 10 perguntas, adendo v1.96 de docs/api-contract.md), na branch do corte 56, ponta 4b2bc92c463628. Validação: backend/tests/test_aprendizado_da_operacao.py (5 testes) e PG 694 pass… | Falta: o GET real numa operação depois do deploy 56 e as correções do corte 57 no deploy. |
 | 31.164 | pendente | — | — | — |  |  |
+| 31.165 | pendente | — | — | — |  |  |
+| 31.166 | pendente | — | — | — |  |  |
+| 31.167 | pendente | — | — | — |  |  |
+| 31.168 | pendente | — | — | — |  |  |
+| 31.169 | pendente | — | — | — |  |  |
 | 32.1 | implemented | not_run | opus (sessão jev, executora da orquestradora) | — | Estudo (só documento, sem código) em docs/design/trello-integracao.md: docs/32-1-estudo-trello @43e1a2f0, PR #164, na main pelo merge da6c44b4. Cobre os 6 blocos pedidos: acesso (TRELLO_API_KEY/TRELLO_TOKEN só no .env,… |  |
 | 32.2 | implemented | real | opus | — | 04/10, central (WIN-7S2UASNLFOP). Etapa 0: dono sim (Telegram msg 134, 00:05Z), TRELLO_API_KEY/TOKEN/API_SECRET presentes (EnvSettings, só presença). Etapa 1 (só leitura, 8c6fbd5f): /status do dono action 6ac19fd56ade9f… | None |
 | 32.4 | implemented | real | claude-fable-5-1 | — | PR #196 (cdad8422), na main pela suíte 19 (c683ab0e), no ar desde o deploy 19 (04/10/2026 03:05Z, WIN-7S2UASNLFOP). real, informado pela frente Canais (dona do espelho) em 04/10 08:14Z: depois do deploy 19 o espelho ree… |  |
@@ -749,7 +754,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (65): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.58, 28.59, 28.60, 28.61, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.154, 29.155, 29.156, 29.160, 29.161, 29.162, 29.165, 29.166, 29.167, 29.168, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 31.147, 31.148, 31.149, 31.150, 31.151, 31.152, 31.153, 31.155, 31.160, 31.161, 31.163, 31.164, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (67): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.58, 28.59, 28.60, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.122, 29.126, 29.152, 29.154, 29.155, 29.156, 29.160, 29.161, 29.162, 29.165, 29.166, 29.168, 31.11, 31.12, 31.26, 31.81, 31.115, 31.131, 31.147, 31.149, 31.150, 31.151, 31.152, 31.153, 31.157, 31.160, 31.161, 31.162, 31.164, 31.165, 31.166, 31.167, 31.168, 31.169, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
