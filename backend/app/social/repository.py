@@ -20,7 +20,7 @@ from ..models import (AppOnDevice, CredentialInfo, InstagramProfileDTO, OFFLINE_
                       PersonaGeneration, PersonaImageDTO, PersonaTraits, PersonaVisual, ProfileLocality,
                       SessionActions, SessionInfo, SessionStatus)
 from ..modules.identity.domain.persona import idade_em, nome_exibido, separar_visual_legado
-from ..planning.catalog import pacote_ancora
+from ..planning.catalog import capabilities_of, pacote_ancora
 from ..metricas import metricas
 from ..shared.vinculos import teto_de_unknown
 from ..taskqueue.dado_da_persona import resolver_argumentos, resolver_texto
@@ -54,6 +54,13 @@ def sessao_vencida(session: Row | None, max_age_s: int) -> bool:
         return False
     verificada = session["verified_at"]
     return not verificada or verificada < to_iso(now() - timedelta(seconds=max_age_s))
+
+
+def _troca_declarada(db: Database, app_id: str) -> bool:
+    """31.155 (ADR-080): o app declara a troca de conta (`troca` no `sessao.yaml`), e o motor de sessão tira a conta
+    aberta e entra na esperada. Só nele duas personas do mesmo app convivem no aparelho; nos outros, D2-a vale."""
+    pacote = db.scalar("SELECT package FROM apps WHERE id=?", (app_id,)) or app_id
+    return capabilities_of(str(pacote)).account_switch
 
 
 class BindingConflict(RuntimeError):
@@ -673,6 +680,8 @@ class SocialRepository:
         apps = [app_id] if app_id is not None else (
             [str(c["app_id"]) for c in self.list_accounts(profile_id)] if profile_id is not None else [])
         for app in apps:
+            if _troca_declarada(self.db, app):
+                continue
             for v in self.profiles_of_instance(instance_id, app):
                 if v["profile_id"] != profile_id:
                     return app, str(v["profile_id"])

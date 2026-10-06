@@ -65,6 +65,10 @@ class AppDefinition:
     #: Como o dono chama o app num comando, além do nome e do rótulo ("insta"; `apelidos` no `app.yaml`). É o que o filtro
     #: da sombra da intenção (31.9) reconhece como o app, sem lista de app em Python (ADR-052).
     aliases: tuple[str, ...] = ()
+    #: O app declara como sair da conta aberta (`troca` no `sessao.yaml`, 31.155/ADR-080): o motor de sessão troca de
+    #: conta sozinho, e mais de uma persona pode servir a este app no mesmo aparelho. Derivado do `sessao.yaml` na
+    #: descoberta, nunca escrito no `app.yaml`; falso = conta errada é caso de pessoa (achado #115).
+    account_switch: bool = False
 
     def __post_init__(self) -> None:
         if not self.label:

@@ -258,3 +258,31 @@ def test_nenhum_app_do_parque_declara_a_troca() -> None:
     declarados = sorted(p.parent.name for p in PASTA_DOS_APPS.glob("*/sessao.yaml")
                         if "troca" in (yaml.safe_load(p.read_text(encoding="utf-8")) or {}))
     assert PKG not in declarados and declarados == []
+
+
+def test_a_descoberta_marca_quem_declara_a_troca_e_o_d2a_relaxa_so_nele(parque: Any, tmp_path: Path) -> None:
+    """`account_switch` vem do `sessao.yaml` (não do `app.yaml`); com ele, outra persona do mesmo app no aparelho deixa
+    de ser conflito de vínculo (D2-a). Sem ele, o conflito é o de sempre. O índice único da 051 continua no banco: o
+    vínculo POR APP de duas personas ainda é recusado lá (a migração que o troca é pós-prova, ADR-080)."""
+    from app.integrations.app_declarado.pacote import manifesto_da_pasta
+    from app.modules.applications.infrastructure import registry
+
+    from .test_pacote_declarado import _gravar as gravar_pacote
+
+    sem = manifesto_da_pasta(gravar_pacote(tmp_path / "sem" / CORREIO))
+    pasta = gravar_pacote(tmp_path / "com" / CORREIO)
+    sessao = copy.deepcopy(SESSAO_DO_CORREIO)
+    sessao["troca"] = TROCA
+    (pasta / "telas.yaml").write_text(yaml.safe_dump(TELAS_COM_SAIDA, allow_unicode=True), encoding="utf-8")
+    (pasta / "sessao.yaml").write_text(yaml.safe_dump(sessao, allow_unicode=True), encoding="utf-8")
+    com = manifesto_da_pasta(pasta)
+    assert com.definition.account_switch and not sem.definition.account_switch
+
+    p = parque(_novo_app())
+    p.repo.bind(p.a[0], IID, app_id="correio")
+    for manifesto, esperado in ((sem, ("correio", p.a[0])), (com, None)):
+        registry.register_manifest(manifesto)
+        try:
+            assert p.repo.quem_ja_serve(p.b[0], IID, "correio") == esperado
+        finally:
+            registry.unregister(CORREIO)
