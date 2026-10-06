@@ -573,6 +573,10 @@ class Portoes:
             return None, leitura
         if fatos.quantos:
             _registrar_estagio(self._st.db, run_id, "conhecimento_recuperado")
+            try:                     # `resultado.conhecimento_ids` do alvo (contrato da 124); nunca derruba a etapa
+                self._conhecimento.marcar_conhecimento_usado(run_id, fatos.refs)
+            except Exception:  # noqa: BLE001 - ver acima
+                log.exception("operação %s: conhecimento_ids não gravados na execução %s", operacao_id, run_id)
         return fatos, leitura
 
     async def _pesquisar_se_preciso(self, operacao_id: str, obj: Row, srow: Row, contexto: str) -> None:

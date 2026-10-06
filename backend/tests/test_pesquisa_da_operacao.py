@@ -46,9 +46,8 @@ PRECOS = {"claude-sonnet-5": [2.0, 0.2, 2.5, 10.0]}
 
 def _operacoes(db: Database, *, assunto: str | None = "coleção de outono da loja", fontes: str = "[]") -> None:
     """O que a 124 da Jev põe no banco e esta parte lê: `operacoes.assunto` e `operacoes.fontes`."""
-    if "operacoes" not in db.tables():
-        db.execute("CREATE TABLE operacoes (id TEXT PRIMARY KEY, assunto TEXT, fontes TEXT NOT NULL DEFAULT '[]')")
-    db.execute("INSERT INTO operacoes(id, assunto, fontes) VALUES ('op-1', ?, ?)", (assunto, fontes))
+    _com_operacao(db)                                # a operação (124, ou a imitação dela) sem execução ainda
+    db.execute("UPDATE operacoes SET assunto=?, fontes=? WHERE id='op-1'", (assunto, fontes))
 
 
 def _bruta(*fatos: tuple[str, list[str]], buscas: int = 2) -> PesquisaBruta:

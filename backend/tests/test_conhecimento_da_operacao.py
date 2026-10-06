@@ -45,11 +45,25 @@ T0 = "2026-10-06T17:00:00.000Z"
 
 
 def _com_operacao(db: Database, *runs: str, operacao: str = "op-1") -> None:
-    """O que a 124 da Jev põe no banco e esta parte lê: `runs.operacao_id`."""
+    """O que a 124 da Jev põe no banco e esta parte lê ou escreve: `runs.operacao_id` e `operacao_alvos.marcas`."""
     if "operacao_id" not in db.columns("runs"):
         db.execute("ALTER TABLE runs ADD COLUMN operacao_id TEXT")
-    for r in runs:
+    if not db.columns("operacoes"):                  # a 124 fora do banco: imita as colunas obrigatórias dela
+        db.execute("CREATE TABLE operacoes (id TEXT PRIMARY KEY, command TEXT NOT NULL, app_id TEXT NOT NULL,"
+                   " acao_final TEXT NOT NULL, max_usd REAL NOT NULL, assunto TEXT, fontes TEXT NOT NULL DEFAULT '[]',"
+                   " status TEXT NOT NULL, idempotency_key TEXT NOT NULL, corpo_sha256 TEXT NOT NULL,"
+                   " created_at TEXT NOT NULL, updated_at TEXT NOT NULL)")
+        db.execute("CREATE TABLE operacao_alvos (operacao_id TEXT NOT NULL, seq INTEGER NOT NULL, profile_id TEXT NOT NULL,"
+                   " run_id TEXT, estagio TEXT NOT NULL, estado TEXT NOT NULL, marcas TEXT NOT NULL DEFAULT '{}',"
+                   " updated_at TEXT NOT NULL, PRIMARY KEY (operacao_id, profile_id))")
+    if db.one("SELECT id FROM operacoes WHERE id=?", (operacao,)) is None:
+        db.execute("INSERT INTO operacoes(id, command, app_id, acao_final, max_usd, status, idempotency_key, corpo_sha256,"
+                   " created_at, updated_at) VALUES (?, 'comente', 'instagram', 'preparar', 1, 'em_curso', ?, 'x', ?, ?)",
+                   (operacao, f"lote:teste:{operacao}", T0, T0))
+    for i, r in enumerate(runs):
         db.execute("UPDATE runs SET operacao_id=? WHERE id=?", (operacao, r))
+        db.execute("INSERT INTO operacao_alvos(operacao_id, seq, profile_id, run_id, estagio, estado, marcas, updated_at)"
+                   " VALUES (?, ?, ?, ?, 'aparelho', 'em_curso', '{}', ?)", (operacao, i, f"p-{r}", r, T0))
 
 
 @pytest.fixture
@@ -122,9 +136,10 @@ def test_a_leitura_do_alvo_e_gravada_uma_vez_e_as_outras_conferem(banco: Databas
     assert fato is not None and fato.valor == LEGENDA and fato.origem == "leitura" and fato.confianca == "confirmado"
     assert fato.evidencia == (str(obs[("", "observado")]["id"]),) and fato.frescor_ate and fato.frescor_ate > T0
     # Quem leu a mesma tela não recebe a leitura de novo no bloco; quem não tem tela (ou viu outra) recebe.
-    assert k.fatos("op-1", leitura=dominio.IGUAL).texto == ""
+    igual = k.fatos("op-1", leitura=dominio.IGUAL)
+    assert igual.texto == "" and igual.refs == ("fato:alvo.conteudo",)       # a leitura veio pela tela dele
     sem_tela = k.fatos("op-1")
-    assert LEGENDA in sem_tela.texto and sem_tela.quantos == 1
+    assert LEGENDA in sem_tela.texto and sem_tela.quantos == 1 and sem_tela.refs == ("fato:alvo.conteudo",)
     # Nada de pedido foi tocado: a linha é da operação.
     assert banco.scalar("SELECT COUNT(*) FROM pedido_observacoes WHERE pedido_id IS NOT NULL") == 0
 
@@ -220,5 +235,8 @@ async def test_duas_execucoes_da_mesma_operacao_leem_uma_vez_e_nao_repetem(harne
     assert ("run-a", "conteudo_lido") in estagios and ("run-b", "conhecimento_recuperado") in estagios
     meta = json.loads(state.db.scalar("SELECT draft_meta FROM steps WHERE id='run-b:android-02:v1:comentar'"))
     assert meta["fatos_da_operacao"] == {"quantos": 1, "leitura": "igual"}
+    # `resultado.conhecimento_ids` do alvo (contrato da 124): o que o texto de cada agente recebeu da operação
+    marcas = {r["run_id"]: json.loads(r["marcas"]) for r in state.db.query("SELECT run_id, marcas FROM operacao_alvos")}
+    assert marcas["run-a"]["conhecimento_ids"] == ["fato:alvo.conteudo"] == marcas["run-b"]["conhecimento_ids"]
     # Nenhum texto da persona nem dos fatos foi para a memória da persona.
     assert state.db.scalar("SELECT COUNT(*) FROM memory_items") == 0
