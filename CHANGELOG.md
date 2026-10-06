@@ -19,6 +19,17 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.157: dois achados da Portal no aprendizado da operação (branch feat/31-160-gravacao-mascarada)
+
+- Medido no percurso real da Portal no 57 (06/10 23:20Z): o resumo do fluxo na aba Aprendizado da operação mostrava o
+  marcador cru (`{caption_contains}`), e o `GET /api/operacoes/{id}/aprendizado` não dizia as personas da operação.
+- O resumo do fluxo leva o valor do parâmetro quando a operação tem UM valor só para ele em todos os objetivos. O que
+  varia por alvo, ou que a operação não tem, segue como marcador. `instance_id`, `run_id` e `account_label` ficam fora,
+  e o resumo continua redigido.
+- A resposta ganha `personas`: os `profile_id` das execuções da operação, ordenados, para o filtro do painel.
+- Prova `simulated`: `backend/tests/test_aprendizado_da_operacao.py` (8 testes, 1 novo); operação, pedidos e
+  arquitetura: 722 passaram; mypy 257. `real`: `not_run` (a aba da Portal após o deploy).
+
 ## 2026-10-06 — K-107 (do 31.160): a gravação crua do ensino sai mascarada na leitura (branch feat/31-160-gravacao-mascarada)
 
 - Medido em 06/10 (ensino do 31.160, alvo = o perfil da própria persona): o fluxo, a receita e o Livro saíram limpos,
