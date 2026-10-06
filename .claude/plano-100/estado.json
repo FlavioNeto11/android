@@ -10604,15 +10604,15 @@
    "id": "31.116",
    "status": "partial",
    "proof": "real",
-   "evidence": "Real, 06/10/2026 07:35Z, central 16858086: GET /api/training/{id} das sessões do android-04 criadas pelo 'Ensinar a corrigir' traz origin.diagnostico com causa, rotulo, pergunta, fatos[{codigo,valor}], proposta e amostra: trn-4lukXbyHNxGubAK0 (causa indeterminada, 'a causa não ficou clara', pergunta 'O que a etapa devia ter feito nesta tela?', 1 fato), trn-jrE1zcBoKSoHFqX5 e trn-cUIEX-M2QCTokWeA (causa teto_de_ia, 'a IA gastou o orçamento da etapa', pergunta 'Mostre o caminho curto, toque a toque...', 2 fatos). GET /api/runs/r-20261006053318-c04149/steps/{step_id}/ensino-sugerido da etapa check_item (plano v1, failed) responde 200 com {intent 'Corrigir a etapa «Confirmar item na tela»', pergunta 'O que a etapa devia ter feito nesta tela?', rotulo 'a causa não ficou clara'} (v1.80; sem o campo causa, que é o v1.82 do deploy 49). Bundle do painel no ar contém 'Diagnóstico da falha' e não contém 'ensino-sugerido'. Falta: o formulário de 'Ensinar a corrigir' mostrando a pergunta sugerida e a causa (parte painel, Portal 87c08b32, corte 49).",
-   "blocker": "Falta ver o diagnóstico na tela do treino (barra e revisão): exige uma sessão nova a partir de uma etapa (escrita no android-04, não feita por ser só leitura) e o formulário com a sugestão só existe no corte 49.",
-   "nota": "Parte 1: dados reais ok, tela não vista. Parte 2: rota real ok, painel ainda não a chama.",
-   "grupo": "portal-percurso-48",
+   "evidence": "Real, 06/10/2026 07:42Z, central 16858086 (deploy 48), android-04, sessão trn-2hGmYRzUYaZaI5Xk. Na barra do treino (Foco, gravando 'Corrigir a etapa «Confirmar item na tela»') a seção Origem do treino mostra o selo 'corrige uma falha', a etapa check_item e a execução r-20261006053318-c04149, o motivo literal, 'Causa: não deu para saber', 'O que mostrar: O que a etapa devia ter feito nesta tela?' e o recolhível 'Por que a plataforma acha isso' com o fato 'sem regra para o texto: o classificador devolveu `outro`'. Na revisão ('Concluir e revisar') a mesma origem aparece com o mesmo diagnóstico (captura vista), e o título da sessão segue 'Corrigir a etapa «Confirmar item na tela»': a intenção não foi alterada. A causa indeterminada não ganhou o rótulo 'provável', como esperado. GET /api/training/trn-2hGmYRzUYaZaI5Xk confirma origin.diagnostico.causa indeterminada. Falta: o formulário de 'Ensinar a corrigir' mostrando a pergunta sugerida e a causa (parte painel, Portal 87c08b32, corte 49).",
+   "blocker": null,
+   "nota": "Falta: o formulário 'Ensinar a corrigir' com a sugestão (87c08b32, corte 49). O formulário no ar (deploy 48) ainda é de uma linha com o texto padrão e sem chamar ensino-sugerido.",
+   "grupo": "portal-percurso-48b-diagnostico-na-tela",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T07:38:01+00:00"
+   "quando": "2026-10-06T07:42:57+00:00"
   },
   "31.117": {
    "id": "31.117",
@@ -13846,6 +13846,15 @@
    ],
    "grupos": [
     "portal-percurso-48"
+   ]
+  },
+  {
+   "quando": "2026-10-06T07:42:57+00:00",
+   "itens": [
+    "31.116"
+   ],
+   "grupos": [
+    "portal-percurso-48b-diagnostico-na-tela"
    ]
   }
  ]
