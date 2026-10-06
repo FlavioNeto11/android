@@ -300,7 +300,8 @@ class FontesSql:
                              correcao=self._correcao_do_fluxo(linhas.texto_ou_nulo(row, "source")),
                              comando_modelo=linhas.texto(row, "command_template"),
                              fonte=linhas.texto_ou_nulo(row, "source"),
-                             source_run_id=linhas.texto_ou_nulo(row, "source_run_id"), apps=exigidos.get(ref, []))
+                             source_run_id=linhas.texto_ou_nulo(row, "source_run_id"), apps=exigidos.get(ref, []),
+                             nascido_de_prova=bool(linhas.inteiro_ou_nulo(row, "nascido_de_prova")))
 
     def _conteudo_da_habilidade(self, ref: str) -> JsonObject | None:
         row = self._db.one("SELECT skill_id, version, state, schema_version, content, content_hash, command_template,"

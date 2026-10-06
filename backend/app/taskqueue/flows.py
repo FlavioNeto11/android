@@ -604,10 +604,11 @@ class FlowStore:
         # origem com os três ids; o LEFT JOIN mantém as duas consultas (e traz `null` para quem não veio de uma falha).
         for r in self.db.query(
                 "SELECT f.id, f.name, f.command_template, f.app_id, f.source_run_id, f.status, f.uses, f.created_at,"
-                " f.last_used_at, f.plan, ts.id AS session_id, ts.origin_run_id, ts.origin_step_id, ts.origin_attempt_id"
+                " f.last_used_at, f.plan, f.nascido_de_prova, ts.id AS session_id, ts.origin_run_id, ts.origin_step_id, ts.origin_attempt_id"
                 " FROM flows f LEFT JOIN training_sessions ts ON f.source = ? || ts.id AND ts.origin_run_id IS NOT NULL"
                 " ORDER BY f.last_used_at DESC, f.created_at DESC", (PREFIXO_DO_TREINO,)):
             linha = dict(r)
+            linha["nascido_de_prova"] = bool(linha["nascido_de_prova"])          # 31.130: nulo = uso real
             plano = linha.pop("plan")
             sessao, run, etapa, tentativa = (linha.pop(k) for k in
                                              ("session_id", "origin_run_id", "origin_step_id", "origin_attempt_id"))

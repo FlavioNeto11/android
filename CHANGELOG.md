@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.130: o fluxo nascido de uma prova leva a marca de origem (branch feat/31-130-fluxo-de-prova)
+
+- Achado da Portal (06/10): em Salvas e no Livro, os três fluxos de prova de sessão do dia pareciam fluxos reais desligados por uma pessoa.
+- Migração 122 e adendo v1.87: `POST /api/instances/{id}/training` aceita `nascido_de_prova: true`; a marca fica na sessão (`training_sessions.nascido_de_prova`) e o `save` a leva ao fluxo (`flows.nascido_de_prova`). Sai no GET e na listagem das sessões, em `GET /api/flows` e em `conteudo.origem` do fluxo no Livro, com o filtro `nascido_de_prova=true|false` nas listagens. `PUT /api/flows/{id}` aceita `motivo` (1 a 300 caracteres), que vai à trilha do livro.
+- `scripts/marcar-fluxo-de-prova.py`: marca pelo id os fluxos de prova anteriores e a sessão de origem; ensaio por padrão, `--aplicar --backup`, idempotente.
+- Prova `simulated`: `tests/test_fluxo_nascido_de_prova.py` (2) e `scripts/tests/test_marcar_fluxo_de_prova.py` (3). Real: `not_run` até o deploy e o script rodado pela Android nos três ids.
+
 ## 2026-10-06 — 31.124, 31.125 e 31.126: ensinar sem repetir sem saber, atalho na falha e o Livro sem código cru (branch feat/31-124-ensino-avisos)
 
 - Achados do percurso 49 (deploy 49, só leitura, sem IA paga): o formulário "Ensinar a corrigir" abriu sem aviso numa etapa que já tinha sessão salva (e deixou abrir mais duas); o botão só existe depois de execução > "Por aparelho" > aparelho > etapa (4 cliques) embora a falha já esteja escrita no cabeçalho do aparelho; e o detalhe de um fluxo do Livro mostrava "App: nao_resolvido" (o código do balde) como se fosse nome de aplicativo.

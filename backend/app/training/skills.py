@@ -486,6 +486,8 @@ class TrainingSkills:
         except ValueError as exc:
             raise TrainingError("duplicate_command", str(exc), 409) from None
         self.s.scheduler.flows.set_scope(flow_id, profile_ids=prep.profile_ids, group_ids=prep.group_ids)
+        if sess.get("nascido_de_prova"):        # 31.130: o fluxo de uma sessão de prova leva a marca
+            self.s.db.execute("UPDATE flows SET nascido_de_prova=1 WHERE id=?", (flow_id,))
         relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
                                           prep, session_id, gravar=True)
         self.s.db.execute("UPDATE training_sessions SET status='saved', flow_id=?, proposal=?, updated_at=? WHERE id=?",

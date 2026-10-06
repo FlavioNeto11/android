@@ -142,7 +142,8 @@ def test_fluxo_legivel_mostra_etapas_efeito_e_so_nomes_de_argumento() -> None:
          "postcondition": {"kind": "text_visible", "value": "Enviado", "description": "a mensagem aparece"}}]}
     c = dominio.fluxo_legivel(plano, nome="n", comando_modelo="mande {contato}", fonte="training:t1",
                               source_run_id=None)
-    assert c["origem"] == {"tipo": "treino", "fonte": "training:t1", "source_run_id": None, "session_id": None, "run_id": None, "step_id": None, "attempt_id": None}
+    assert c["origem"] == {"tipo": "treino", "fonte": "training:t1", "source_run_id": None, "session_id": None, "run_id": None, "step_id": None, "attempt_id": None,
+                           "nascido_de_prova": False}
     assert c["efeito"] == {"externo": True, "etapas_com_efeito": [1]}
     enviar = c["etapas"][1]
     assert enviar["capability"] == "SEND_MESSAGE" and enviar["alvo"] == "desc=Enviar"
@@ -169,7 +170,7 @@ def test_fluxo_sem_correcao_leva_os_ids_de_origem_nulos_e_com_correcao_o_run_da_
     plano = {"app_id": "instagram", "steps": []}
     sem = dominio.fluxo_legivel(plano, nome="n", comando_modelo="c", fonte="training:t1", source_run_id=None)["origem"]
     assert sem == {"tipo": "treino", "fonte": "training:t1", "source_run_id": None, "session_id": None, "run_id": None,
-                   "step_id": None, "attempt_id": None}
+                   "step_id": None, "attempt_id": None, "nascido_de_prova": False}
     com = dominio.fluxo_legivel(plano, nome="n", comando_modelo="c", fonte="training:t1", source_run_id=None,
                                 correcao={"session_id": "t1", "run_id": "r9", "step_id": "s3", "attempt_id": "s3:a2"})["origem"]
     assert (com["source_run_id"], com["run_id"], com["session_id"], com["step_id"], com["attempt_id"]) == (
@@ -371,7 +372,8 @@ def test_fluxo_com_efeito_e_origem_de_treino(mundo: Mundo) -> None:
                       "active", TS, "run"))
     c = mundo.conteudo(LivroKind.FLUXO, "f1")
     assert c["tipo"] == "fluxo" and c["comando_modelo"] == "mande {contato}"
-    assert c["origem"] == {"tipo": "execucao", "fonte": "run", "source_run_id": "run-9", "session_id": None, "run_id": None, "step_id": None, "attempt_id": None}
+    assert c["origem"] == {"tipo": "execucao", "fonte": "run", "source_run_id": "run-9", "session_id": None, "run_id": None, "step_id": None, "attempt_id": None,
+                           "nascido_de_prova": False}
     assert c["efeito"] == {"externo": True, "etapas_com_efeito": [1]}
     assert [e["chave"] for e in c["etapas"]] == ["abrir", "enviar"]                     # type: ignore[attr-defined]
     assert c["etapas"][1]["capability"] == "SEND_MESSAGE" and c["etapas"][1]["parametros"] == ["contato"]  # type: ignore[index]

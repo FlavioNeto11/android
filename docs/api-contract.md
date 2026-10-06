@@ -394,8 +394,8 @@ interface Recipe { id: number; app_package: string; app_version: string; step_ke
 | Rota | Corpo | Resposta |
 |---|---|---|
 | `GET /api/usage?run_id=` ou `?days=7` | – | `UsageReport` |
-| `GET /api/flows` | – | `Flow[]` |
-| `PUT /api/flows/{id}` | `{status:'active'|'disabled'}` | `Flow` |
+| `GET /api/flows` | `?nascido_de_prova=true|false` (31.130, v1.87) | `Flow[]` |
+| `PUT /api/flows/{id}` | `{status:'active'|'disabled', motivo?}` (`motivo` 31.130, v1.87) | `Flow` |
 | `DELETE /api/flows/{id}` | – | 204 |
 | `GET /api/recipes` | – | `Recipe[]` |
 | `PUT /api/recipes/{id}` | `{status:'active'|'quarantined'}` | `{id,status}` |
@@ -7000,3 +7000,22 @@ fluxo ensinado a partir de uma falha (adendo v1.75), que `GET /api/flows[].origi
   pacote vizinho. A forma da resposta não muda.
 - Compatível: as etapas e os fluxos anteriores não têm o campo, e o hash da receita e da etapa não muda.
   **Prova:** `simulated` (`backend/tests/test_etapa_pacotes_aceitos.py`); `real`: `not_run`.
+
+## Adendo v1.87 (06/10/2026; número da orquestradora; item 31.130, migração 122) — o fluxo nascido de uma prova
+
+- **`POST /api/instances/{instance_id}/training`** (`TrainingStartBody`): campo opcional `nascido_de_prova: boolean`
+  (padrão `false`). Com `true`, a sessão é de uma PROVA (de uma frente, de um item do plano), não de uso real. Tipo
+  errado dá 422 (o corpo é `extra="forbid"`, como antes). As provas das frentes passam a abrir a sessão com a marca.
+- **Sessão** (`GET /api/training/{id}` e `GET /api/training`): campo `nascido_de_prova: boolean` (sempre presente;
+  `false` nas anteriores). `GET /api/training` aceita o filtro `?nascido_de_prova=true|false`.
+- **Fluxo**: o `save` de uma sessão de prova leva a marca ao fluxo. `GET /api/flows` traz `nascido_de_prova: boolean`
+  (sempre presente) e aceita `?nascido_de_prova=true|false`. O conteúdo do fluxo no Livro
+  (`GET /api/aprendizado/fluxo/{ref}`, `conteudo.origem`) traz `nascido_de_prova: boolean`.
+- **`PUT /api/flows/{id}`**: campo opcional `motivo` (texto de 1 a 300 caracteres), que vai à trilha do livro como o
+  motivo da transição. Quem desliga um fluxo de prova escreve que é isso ("fluxo de prova do 31.130, desligado de
+  propósito"). Sem `motivo`, o texto de sempre ("desligado na lista de fluxos do painel"). Motivo vazio, que não é
+  texto ou longo demais: 400 `invalid`.
+- Os fluxos de prova anteriores se marcam pelo id com `scripts/marcar-fluxo-de-prova.py` (ensaio por padrão;
+  `--aplicar --backup`), que marca também a sessão de origem. Nenhum status, plano ou trilha muda por ele.
+- **Prova:** `simulated` (`backend/tests/test_fluxo_nascido_de_prova.py`, `scripts/tests/test_marcar_fluxo_de_prova.py`);
+  `real`: `not_run`.

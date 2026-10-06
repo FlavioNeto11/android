@@ -1328,6 +1328,9 @@ class TrainingStartBody(BaseModel):
     #: De quem é a demonstração (vínculo N:N): a persona escolhida entre as vinculadas ao aparelho. Sem ela, a única
     #: do aparelho; com duas e nenhuma escolhida, o treino fica sem perfil.
     profile_id: str | None = Field(default=None, max_length=120)
+    #: 31.130 (adendo v1.87): a sessão é de uma PROVA (de uma frente, de um item do plano), não de uso real. A marca vai
+    #: ao fluxo salvo, e o Livro e Salvas a mostram.
+    nascido_de_prova: bool = False
 
 
 class TrainingSaveBody(BaseModel):

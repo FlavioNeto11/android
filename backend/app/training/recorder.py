@@ -207,7 +207,7 @@ class TrainingRecorder:
     # ------------------------------------------------------------------ sessão
     def start(self, instance_id: str, *, intent: str, lease_id: str | None, app_id: str | None = None,
               operator: str | None = None, profile_id: str | None = None,
-              origem: OrigemDaFalha | None = None) -> dict[str, Any]:
+              origem: OrigemDaFalha | None = None, nascido_de_prova: bool = False) -> dict[str, Any]:
         """`profile_id`: a persona escolhida pela pessoa; sem ela, a que o aparelho tem sozinho (ou nenhuma). `origem`
         (31.111 F1): a etapa que falhou e deu origem ao ensino; só rotula a sessão, não muda nenhuma trava."""
         rt = self.devices.get(instance_id)
@@ -231,11 +231,11 @@ class TrainingRecorder:
         sid = f"trn-{new_token()}"
         agora = now_iso()
         self.db.execute("INSERT INTO training_sessions(id, instance_id, profile_id, app_id, intent, status, operator,"
-                        " created_at, updated_at, origin_run_id, origin_step_id, origin_attempt_id)"
-                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                        " created_at, updated_at, origin_run_id, origin_step_id, origin_attempt_id, nascido_de_prova)"
+                        " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
                         (sid, instance_id, profile_id, app_id, intent[:400], "recording", operator, agora, agora,
                          origem.run_id if origem else None, origem.step_id if origem else None,
-                         origem.attempt_id if origem else None))
+                         origem.attempt_id if origem else None, 1 if nascido_de_prova else None))
         rt.training_session_id = sid
         self.bus.emit("log", f"{instance_id}: treinamento iniciado — {intent[:80]}", instance_id=instance_id,
                       data={"training_session_id": sid})
@@ -509,6 +509,7 @@ class TrainingRecorder:
 
     def get(self, session_id: str) -> dict[str, Any]:
         s = dict(self._row(session_id))
+        s["nascido_de_prova"] = bool(s.get("nascido_de_prova"))          # 31.130: nulo = uso real
         s["origin"] = origin_da_linha(self.db, s)
         if s["origin"]:                       # 31.111 F2: o contexto só na leitura de UMA sessão (a lista fica leve)
             s["origin"]["context"] = contexto_da_falha(self.db, s["origin"]["run_id"], s["origin"]["step_id"],
@@ -537,16 +538,23 @@ class TrainingRecorder:
         persona = dado_da_persona.demonstrados(self._variaveis_da_persona(profile_id), entradas)
         return dado_da_persona.nas_perguntas(proposta, persona)
 
-    def list(self, *, instance_id: str | None = None, limit: int = 30) -> list[dict[str, Any]]:
-        sql, args = "SELECT * FROM training_sessions", []
+    def list(self, *, instance_id: str | None = None, limit: int = 30,
+             nascido_de_prova: bool | None = None) -> list[dict[str, Any]]:
+        """`nascido_de_prova` (31.130): `True` só as sessões de prova; `False` só as de uso real; `None` todas."""
+        sql, filtros, args = "SELECT * FROM training_sessions", [], []
         if instance_id:
-            sql += " WHERE instance_id=?"
+            filtros.append("instance_id=?")
             args.append(instance_id)
+        if nascido_de_prova is not None:
+            filtros.append("nascido_de_prova=1" if nascido_de_prova else "nascido_de_prova IS NOT 1")
+        if filtros:
+            sql += " WHERE " + " AND ".join(filtros)
         sql += " ORDER BY created_at DESC LIMIT ?"
         args.append(limit)
         saida = []
         for r in self.db.query(sql, tuple(args)):
             d = dict(r)
+            d["nascido_de_prova"] = bool(d.get("nascido_de_prova"))
             d["origin"] = origin_da_linha(self.db, d)
             d["proposal"] = loads(d["proposal"])
             if isinstance(d["proposal"], dict) and (d["proposal"].get("questions") or d["proposal"].get("answers")):

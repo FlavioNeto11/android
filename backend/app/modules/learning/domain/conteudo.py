@@ -267,14 +267,15 @@ def etapa_de_fluxo(indice: int, passo: JsonValue) -> JsonObject:
 
 def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: str | None,
                   source_run_id: str | None, apps: Iterable[str] = (),
-                  correcao: Mapping[str, str | None] | None = None) -> JsonObject:
+                  correcao: Mapping[str, str | None] | None = None, nascido_de_prova: bool = False) -> JsonObject:
     """`app`: o principal do plano, onde rodam as etapas sem app próprio; `apps`: os exigidos (`flow_required_apps`),
     na ordem em que o plano os usa (29.42: ler no Outlook e depois procurar no Instagram → Outlook, Instagram).
     Um comando que atravessa apps (12.1: ler no Outlook, procurar no Instagram) tem o principal e os dois exigidos.
 
     `correcao` (31.117): a execução que falhou e deu origem à correção ensinada (`{session_id, run_id, step_id, attempt_id}`, a
     mesma forma de `flows[].origin`); `None` quando o fluxo não veio de uma falha. Os quatro ids vão em `origem` (null sem
-    correção) e `source_run_id` cai para o run da falha quando a coluna do fluxo é null (o treino não a preenche)."""
+    correção) e `source_run_id` cai para o run da falha quando a coluna do fluxo é null (o treino não a preenche).
+    `nascido_de_prova` (31.130): o fluxo nasceu de uma prova (da sessão aberta com a marca), não de uso real."""
     origem_da_falha = correcao or {}
     passos = plano.get("steps") if isinstance(plano, dict) else None
     etapas = [etapa_de_fluxo(i, p) for i, p in enumerate(passos if isinstance(passos, list) else [])]
@@ -286,7 +287,8 @@ def fluxo_legivel(plano: JsonValue, *, nome: str, comando_modelo: str, fonte: st
         "origem": {"tipo": "treino" if treino else "execucao", "fonte": fonte,
                    "source_run_id": source_run_id or origem_da_falha.get("run_id"),
                    "session_id": origem_da_falha.get("session_id"), "run_id": origem_da_falha.get("run_id"),
-                   "step_id": origem_da_falha.get("step_id"), "attempt_id": origem_da_falha.get("attempt_id")},
+                   "step_id": origem_da_falha.get("step_id"), "attempt_id": origem_da_falha.get("attempt_id"),
+                   "nascido_de_prova": nascido_de_prova},
         "etapas": etapas,
         "efeito": {"externo": fluxo_tem_efeito(plano),
                    "etapas_com_efeito": [e["indice"] for e in etapas if e["efeito"] is True]}}

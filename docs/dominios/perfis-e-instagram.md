@@ -463,6 +463,14 @@ dela, em que a tela comprova a conclusão. O ensino a preenche com os pacotes da
 uma etapa). A prévia e o `save` avisam. Pacote desconhecido continua não comprovando. A lista vazia é omitida do
 plano, e o hash das etapas não muda.
 
+**O fluxo nascido de uma prova (31.130, migração 122, adendo v1.87).** Os fluxos ensinados em provas de sessão
+ficavam, no Livro e em Salvas, iguais a um fluxo real desligado por uma pessoa. A sessão aberta com
+`nascido_de_prova: true` leva a marca (`training_sessions.nascido_de_prova`), e o `save` a passa ao fluxo
+(`flows.nascido_de_prova`). Ela sai no GET e na listagem das sessões, em `GET /api/flows` e na `origem` do conteúdo
+do fluxo no Livro, com o filtro `nascido_de_prova=true|false` nas duas listagens. As provas das frentes abrem a sessão
+com a marca e, ao desligar o fluxo de prova, mandam `motivo` no `PUT /api/flows/{id}` dizendo que é prova (vai à
+trilha do livro). Os de antes se marcam pelo id com `scripts/marcar-fluxo-de-prova.py`.
+
 **Teclas ao ensinar (31.84).** O texto digitado pelo painel acrescenta ao campo (`clear_first=false`), e quem ensina
 apagava um caractere por vez com "Apagar". Como a receita digita com `clear_first=True`, que já limpa o campo,
 `distill_training` trata assim as teclas gravadas na etapa:
