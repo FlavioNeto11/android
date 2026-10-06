@@ -1127,3 +1127,38 @@ comentado em `config/config.example.yaml`.
   Trello, `scripts\trello-webhook.py --desligar`.
 
 `simulated`: `backend/tests/test_trello_*.py`. `not_run`: tudo o que fala com o Trello de verdade.
+
+## 17. Parada por limite semanal (95 %), item 29.145
+
+Pedido do dono (05/10): quando o uso semanal da conta de Claude chega a 95 %, tudo para de forma ordenada e ele reinicia
+o processo com OUTRA conta. É um procedimento de sessões, não de código: nada aqui toca o parque, o banco ou o Git além do
+que o handoff já faz.
+
+**Medir.** A orquestradora lê o uso pelo painel da IDE (`get_usage`, "todos os modelos" do semanal), e diz a HORA da leitura
+(só do `date -u` lido no mesmo comando). Longe do gatilho basta a leitura de cada rodada; perto dele, a cada 5 minutos. Para
+SÓ ao ler 95 % (os 5 % acima são a gordura para terminar direito: não antecipar nem ficar ocioso antes). A medida do
+semanal vale para a conta inteira, não por sessão.
+
+**Ordem de parada** (ao ler 95 %):
+
+1. **Handoff curto por frente, PRIMEIRO.** Cada sessão grava o seu em `.claude/handoffs/<frente>.md` (o que fez, o que falta,
+   branches e commits, ids de processo ou tarefa em curso, o que NÃO repetir). O scratchpad que importa (script, medida,
+   rascunho) vai para `.claude/handoffs/` junto, porque o scratchpad some com a sessão.
+2. **Parar crons e subagentes** que a sessão disparou (os da IDE e os agendados), e deixar as suítes em segundo plano
+   terminarem ou anotar no handoff que ficaram a meio.
+3. **Registrar** a parada em `.claude/session-registry.md` (sessão, hora lida do `date -u`, motivo: 95 % do semanal).
+4. **Um handoff único da orquestradora** em `.claude/handoff-current.md`, escrito por último: estado do plano, do deploy,
+   das frentes (apontando para os `<frente>.md`), pendências do dono e a primeira ação de quem retomar. Com ele o dono
+   reinicia com OUTRA conta.
+
+**Quem retoma.** A orquestradora nova (a conta nova) abre as sessões com nome, continuação (o handoff da frente), modelo e
+força (Sonnet por padrão; Opus só onde a leitora não cobre), mede o custo e ajusta depois. Não reabre as sessões da conta
+antiga.
+
+**O que roda sem sessão e continua** durante e depois da parada: a tarefa `farm-central` (o servidor), o agente do notebook
+da LAN, o cron do GitHub (secret-scan semanal, rotinas das 05:17Z e 06:03Z) e os amostradores de medida. O que não continua:
+qualquer coisa que dependa de sessão viva, como a reconciliação do Trello, o vigia do Telegram e a execução de itens do
+plano-100. Por isso o handoff da Canais diz o último id lido do vigia e o que a reconciliação ainda deve.
+
+`not_run`: a parada de verdade (nunca foi disparada); este texto é o runbook, e o gatilho é a leitura humana da
+orquestradora, sem automação.

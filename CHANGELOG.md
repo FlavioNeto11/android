@@ -19,6 +19,11 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.145: runbook da parada em 95 % do uso semanal (docs, branch canais/29-145-runbook-95)
+
+- `docs/operacao.md` ganha a § 17, curta: como medir (a orquestradora lê o uso pelo painel da IDE, diz a hora do `date -u`, a cada 5 min perto do gatilho, e para SÓ ao ler 95 % do semanal, todos os modelos); a ordem de parada (handoff curto por frente em `.claude/handoffs/<frente>.md` PRIMEIRO, com o scratchpad que importa; parar crons e subagentes; registrar em `.claude/session-registry.md`; um handoff único da orquestradora em `.claude/handoff-current.md` para o dono reiniciar com OUTRA conta); quem retoma (a orquestradora nova abre as sessões com nome, continuação, modelo e força); e o que roda sem sessão (`farm-central`, agente do notebook, cron do GitHub 05:17Z e 06:03Z, amostradores) contra o que depende de sessão (reconciliação do Trello, vigia do Telegram, execução do plano-100).
+- Só documento, sem código. Prova: `docs-check` 0 erros. `not_run`: a parada de verdade (nunca foi disparada); o gatilho é a leitura humana da orquestradora, sem automação.
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
