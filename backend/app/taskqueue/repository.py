@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import timedelta
 from pathlib import Path
 from typing import Any, TypeVar
@@ -160,6 +160,7 @@ _LIMITE_DO_CACHE = 2048
 
 
 _V = TypeVar("_V")
+_Passo = TypeVar("_Passo", StepDTO, PlanStep)
 
 
 def _guardar(cache: dict[str, _V], chave: str, valor: _V) -> None:
@@ -422,7 +423,8 @@ class Repository:
                      # aparelho falava. Re-fotografado no despacho por `stamp_location`.
                      inst.get("worker_id"), inst.get("hosted_by"), inst.get("device_serial"),
                      inst.get("physical_id")))
-                self._insert_steps(run_id, oid, iid, 1, plan.steps, {**params, **base}, "Plano inicial")
+                self._insert_steps(run_id, oid, iid, 1, plan.steps, {**params, **base}, "Plano inicial",
+                                   molde=variaveis)
 
     def stamp_location(self, objective_id: str, *, worker_id: str | None, hosted_by: str | None,
                        device_serial: str | None, physical_id: str | None) -> None:
@@ -476,7 +478,11 @@ class Repository:
         return mudaram
 
     def _insert_steps(self, run_id: str, oid: str, iid: str, version: int, steps: list[PlanStep],
-                      variables: dict[str, str], reason: str) -> None:
+                      variables: dict[str, str], reason: str, *, molde: Mapping[str, str] | None = None) -> None:
+        """`molde` (31.113 F2): as variáveis da persona, que ficam como MARCADOR no texto que descreve e confere a etapa
+        (título, objetivo, pré e pós-condição, guardas); o executor as resolve em memória (`resolver_persona`). Os
+        `bindings` saem resolvidos: a porta e a chave da aprovação os leem da linha, e argumento com `{` não fecha.
+        A identidade (`template_hash`) é calculada antes, com todas as variáveis, como sempre."""
         resolved: list[PlanStep] = []
         # Identidade da etapa ANTES de resolver variáveis — e com os valores que o planejador escreveu por extenso
         # devolvidos ao nome do parâmetro, senão a receita de "@nasa" nunca serve para "@outro". A referência a uma
@@ -503,14 +509,15 @@ class Repository:
                     v["account_label"] = contas[s.app_id]          # type: ignore[assignment]
                 else:
                     v.pop("account_label", None)
+            vt = {k: x for k, x in v.items() if k not in (molde or {})}   # o texto guarda o marcador da persona
             post = s.postcondition.model_copy(update={
-                "value": resolve_templates(s.postcondition.value, v),
-                "description": resolve_templates(s.postcondition.description, v)})
+                "value": resolve_templates(s.postcondition.value, vt),
+                "description": resolve_templates(s.postcondition.description, vt)})
             resolved.append(s.model_copy(update={
-                "title": resolve_templates(s.title, v), "goal": resolve_templates(s.goal, v),
-                "precondition": resolve_templates(s.precondition, v), "postcondition": post,
-                "commit_guard": [resolve_templates(g, v) or "" for g in s.commit_guard],
-                "band_guard": [resolve_templates(g, v) or "" for g in s.band_guard],
+                "title": resolve_templates(s.title, vt), "goal": resolve_templates(s.goal, vt),
+                "precondition": resolve_templates(s.precondition, vt), "postcondition": post,
+                "commit_guard": [resolve_templates(g, vt) or "" for g in s.commit_guard],
+                "band_guard": [resolve_templates(g, vt) or "" for g in s.band_guard],
                 "bindings": self._com_rotulo_ia({k: resolve_templates(val, v) or "" for k, val in s.bindings.items()})}))
         self.db.execute("INSERT INTO plan_versions(objective_id, version, reason, steps, created_at) VALUES (?,?,?,?,?)",
                         (oid, version, reason, dumps([s.model_dump(mode="json") for s in resolved]), now_iso()))
@@ -730,7 +737,10 @@ class Repository:
             params: list[Any] = [target.value, truncate(detail, 600), next_retry_at]
             if result is not None:
                 fields.append("result=?")
-                params.append(result.model_dump_json())
+                # 31.113 F2: a evidência do resultado é texto do ator; leva o marcador da persona
+                trocas = self.mascara_do_registro(None, None, step_id, None)
+                mascarado = mascara.no_objeto(result.model_dump(mode="json"), trocas) if trocas else None
+                params.append(dumps(mascarado) if isinstance(mascarado, dict) else result.model_dump_json())
             if target in (StepStatus.succeeded, StepStatus.failed, StepStatus.cancelled, StepStatus.skipped,
                           StepStatus.uncertain, StepStatus.waiting_user):
                 fields.append("finished_at=?")
@@ -1003,6 +1013,17 @@ class Repository:
             if novo is not None:
                 trocas.setdefault(*novo)
         return trocas
+
+    def _sem_dado_nos_argumentos(self, passo: _Passo, objective_id: str | None) -> _Passo:
+        """31.113 F2: os `bindings` ficam com o VALOR na linha até a F3 (a porta e a chave da aprovação os leem dali);
+        o que SAI (detalhe da execução, relatório, `plan_versions` na resposta, evento `step.updated`) leva o marcador."""
+        trocas = self.mascara_do_registro(None, objective_id, None, None) if objective_id and passo.bindings else {}
+        if not trocas:
+            return passo
+        return passo.model_copy(update={"bindings": {k: mascara.no_texto(v, trocas) or "" for k, v in passo.bindings.items()}})
+
+    def _etapa_para_fora(self, r: Row) -> StepDTO:
+        return self._sem_dado_nos_argumentos(self.step_dto(r), r["objective_id"])
 
     def _tentativa_da_acao(self, action_id: int) -> str | None:
         r = self.db.one("SELECT attempt_id FROM actions WHERE id=?", (action_id,))
@@ -1298,7 +1319,8 @@ class Repository:
             self.db.execute("UPDATE objectives SET plan_version=? WHERE id=?", (version, objective_id))
             account = self.db.scalar("SELECT account_label FROM instances WHERE id=?", (obj["instance_id"],)) or ""
             base = {"instance_id": obj["instance_id"], "run_id": obj["run_id"], "account_label": account, **variaveis}
-            self._insert_steps(obj["run_id"], objective_id, obj["instance_id"], version, steps, {**params, **base}, reason)
+            self._insert_steps(obj["run_id"], objective_id, obj["instance_id"], version, steps, {**params, **base}, reason,
+                               molde=variaveis)
         self.bus.emit("plan.revised", f"{obj['instance_id']}: plano revisado (v{version}) — {reason}", level="warn",
                       run_id=obj["run_id"], instance_id=obj["instance_id"], objective_id=objective_id,
                       data={"objective_id": objective_id, "version": version, "reason": reason})
@@ -1735,13 +1757,15 @@ class Repository:
         summary = self.run_summary(row)
         objectives = [self.objective_dto(o) for o in
                       self.db.query("SELECT * FROM objectives WHERE run_id=? ORDER BY instance_id", (run_id,))]
-        steps = [self.step_dto(s) for s in
+        steps = [self._etapa_para_fora(s) for s in
                  self.db.query("SELECT * FROM steps WHERE run_id=? ORDER BY instance_id, plan_version, seq", (run_id,))]
         attempts = [self.attempt_dto(a) for a in self.db.query(
             "SELECT a.* FROM attempts a JOIN steps s ON s.id=a.step_id WHERE s.run_id=? ORDER BY a.started_at", (run_id,))]
         evidence = [self.evidence_dto(e) for e in self.db.query("SELECT * FROM evidence WHERE run_id=? ORDER BY id", (run_id,))]
         versions = [PlanVersionDTO(objective_id=v["objective_id"], version=v["version"], reason=v["reason"],
-                                   created_at=v["created_at"], steps=[PlanStep.model_validate(s) for s in loads(v["steps"], [])])
+                                   created_at=v["created_at"],
+                                   steps=[self._sem_dado_nos_argumentos(PlanStep.model_validate(s), v["objective_id"])
+                                          for s in loads(v["steps"], [])])
                     for v in self.db.query(
                         "SELECT v.* FROM plan_versions v JOIN objectives o ON o.id=v.objective_id WHERE o.run_id=?"
                         " ORDER BY v.objective_id, v.version", (run_id,))]
@@ -1762,7 +1786,7 @@ class Repository:
 
     def emit_step(self, step_id: str, message: str, *, level: str = "info") -> None:
         r = self.step_row(step_id)
-        etapa = self.step_dto(r).model_dump(mode="json")
+        etapa = self._etapa_para_fora(r).model_dump(mode="json")
         if etapa.get("motivo_da_persona"):
             # 31.65: o motivo da recusa é texto do modelo e pode citar um terceiro. O evento é gravado em `events` e
             # transmitido a todo navegador conectado: ele não vai. O painel o lê do detalhe da execução

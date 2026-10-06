@@ -47,6 +47,42 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   resumo, 2 casas no lugar de 4, ausente sem texto, valor não finito) e as sementes de atraso 7, 88, 1, 2, 3 e 4 verdes. `not_run`: o detalhe real com `costs` (o
   backend do PR 465 não está no deploy).
 
+## 2026-10-06 — 31.113 F2: a etapa guarda o marcador da persona, e o executor resolve num ponto só (branch feat/31-113-f2-etapa-com-marcador)
+
+- A materialização e a revisão do plano deixam `{perfil_*}`/`{conta_*_usuario}` como marcador no título, no objetivo,
+  na pré e na pós-condição e nas guardas da etapa (`_insert_steps(molde=…)`). Linha, `plan_versions` e `step.updated`
+  com o marcador. `StepExecutor.run_step` resolve em memória com a persona do objetivo (`resolver_persona`); o ator,
+  a receita, a `text_visible` e o juiz recebem o valor. O dado que sumiu da persona depois da materialização faz a
+  etapa esperar a pessoa (só o nome do campo), sem digitar o molde.
+- Os `bindings` ficam com o valor na linha até a F3: a porta e a chave da aprovação os leem dali, e argumento com `{`
+  não fecha a chave. O valor não sai: detalhe da execução, relatório, versões do plano na resposta e `step.updated`
+  levam o marcador nos `bindings` (`_etapa_para_fora`), e o `steps.result` é gravado com o marcador. O
+  `template_hash` não muda.
+- Testes antigos que liam o valor na linha (`test_prevoo_dado_da_persona.py`: caminho feliz e 31.99) passam a
+  conferir o marcador na linha e o valor pelo `resolver_persona`.
+- Funções tocadas (K-095): `Repository.materialize`, `Repository.revise_plan`, `Repository._insert_steps`,
+  `Repository.transition_step`, `Repository.run_detail`, `Repository.emit_step`,
+  `Repository._sem_dado_nos_argumentos` (nova), `Repository._etapa_para_fora` (nova), `StepExecutor.run_step`,
+  `dado_da_persona.resolver_persona` (nova), `dado_da_persona.sem_valor_na_etapa` (nova).
+- Prova `simulated`: `backend/tests/test_etapa_com_marcador_da_persona.py` (5: o ator recebe o valor de cada
+  persona e a tela é conferida com ele; linha, `plan_versions` e `step.updated` com o marcador; duas personas no mesmo
+  plano; o dado que sumiu não vai cru; os `bindings` ficam na linha e não saem). Real: `not_run`.
+
+## 2026-10-06 — 31.113 F1: o registro da execução guarda o marcador da persona (branch feat/31-113-f1-registro-mascarado)
+
+- Achado da prova real do 31.87 (r-20261006012340-d92795): o nome da persona ficou em claro em `events`, `actions`,
+  `attempts.error`, `evidence.note` e `steps`. A F1 troca valor → marcador na fronteira de escrita
+  (`security/mascara_da_persona.py`): diário de ações, erro e resultado observado da tentativa, nota da evidência,
+  detalhe da etapa e todo evento com contexto de execução (máscara do `Repository` ligada no `EventBus`). A tela e o
+  executor seguem com o valor. `actions.target` fica (seletor da receita e da lição). O texto das etapas é a F2.
+- Execuções anteriores não são reescritas; o registro nasce mascarado a partir do deploy 46.
+- Funções tocadas (K-095): `EventBus.__init__`, `EventBus.emit`, `Repository.__init__`, `Repository.log_intent`,
+  `Repository.finish_action`, `Repository.note_attempt`, `Repository.finish_attempt`,
+  `Repository._registrar_evidencia`, `Repository.transition_step`, `Repository.mascara_do_registro` (nova),
+  `Repository._objetivo_do_registro` (nova), `Repository._mascara_do_objetivo` (nova), `Repository._trocas_da_acao`
+  (nova), `Repository._tentativa_da_acao` (nova), `security.mascara_da_persona` (módulo novo).
+- Prova `simulated`: `backend/tests/test_registro_mascarado_da_persona.py` (8). Real: `not_run`.
+
 ## 2026-10-06 — 31.101, o `--amplo` real: pedaços de nome de conta trocados por valores de exemplo nos testes (branch chore/trocar-nomes-amplo)
 
 - `scripts/trocar-nomes-nos-testes.py --amplo --aplicar` sobre a ponta da suíte 44: 119 arquivos e 1438 linhas, todos de teste
@@ -121,6 +157,7 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   `Repository._objetivo_do_registro` (nova), `Repository._mascara_do_objetivo` (nova), `Repository._trocas_da_acao`
   (nova), `Repository._tentativa_da_acao` (nova), `security.mascara_da_persona` (módulo novo).
 - Prova `simulated`: `backend/tests/test_registro_mascarado_da_persona.py` (8). Real: `not_run`.
+
 
 ## 2026-10-05 — Junção do Portal no corte 44 (branch junta/portal-corte-44)
 
