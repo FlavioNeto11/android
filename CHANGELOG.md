@@ -70,6 +70,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   (nova), `LeitorDoEnsinadoSql.em_prova` (nova), `LeitorDoEnsinado` (método novo na porta).
 - Prova `simulated`: `backend/tests/test_livro_selo_em_prova.py` (7). Real: `not_run`.
 
+## 2026-10-06 — A reconciliação do Trello refaz a linha de prova e a do parcial (28.56, branch canais/reconciliacao-parciais)
+
+- `.claude/trello/reconciliar.py`: o cartão concluído troca a linha "prova simulada" quando o plano ganha prova real; a linha do parcial passa a ser
+  o nível da prova mais a frase do que falta (a oração "Falta" da evidência, ou a que o cartão já tem); o item classificado depois do registro do
+  deploy vale como implantado quando a evidência real cita o commit do central. Regra no C-28. Prova `simulated`: `.claude/trello/test_reconciliar.py`
+  (26 passed, dados fictícios). Prova `real` (06/10): ensaio contra os três quadros, 26 linhas de parcial a refazer e 29.83 e 29.105 para Concluído.
+
 ## 2026-10-06 — Reconciliação total dos quadros do Trello e a dinâmica dos cartões (branch canais/reconciliacao-trello)
 
 - Pedido do dono (06/10, ~01:22Z): "98 cartões em validação, nada sai de lá" e "rever o status de todos os cards nos 3 quadros e a
