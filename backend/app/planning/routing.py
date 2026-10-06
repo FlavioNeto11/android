@@ -27,7 +27,9 @@ worker segue fixado em provedor simulado (`worker/settings.py`), de propósito: 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
+from collections.abc import Iterator
 from typing import Any, Callable
 
 from ..automation.conhecimento_de_telas import declaram_leitura_visual
@@ -108,6 +110,8 @@ class RoutingProvider:
             self.roles_por_perfil[nome] = roles
         #: run_id → perfil. O perfil da execução é gravado na criação e não muda depois: lê-se uma vez.
         self._perfil_por_execucao: dict[str, str | None] = {}
+        #: operação → chamadas pagas em voo dos alvos dela (31.154): a reserva do teto `max_usd`, ver `_budget`.
+        self._em_voo_da_operacao: dict[str, int] = {}
         # Item 12.5: `leitura` só existe quando escrita em `ai.roles`. Entra em `roles` DEPOIS de montar `providers` de
         # propósito: o leitor ausente ou sem chave não derruba `configured` do hub inteiro (só a leitura visual recusa),
         # e a instância dele sai de `_instance`, sob demanda.
@@ -226,16 +230,18 @@ class RoutingProvider:
             "spend_limit_run_usd": getattr(s, "ai_max_usd_per_run", None)})
 
     # ------------------------------------------------------------------ orçamento em US$
-    def _budget(self, run_id: str | None, origem: str | None = None) -> None:
+    def _budget(self, run_id: str | None, origem: str | None = None) -> str | None:
         """Teto em DINHEIRO, por execução e por dia (achado #95). Barrar aqui cobre TODO caminho de IA.
 
         Rubrica única (31.6): toda recusa sai com `AIError(kind="budget", motivo=...)` e quem decide o que fazer lê o
         MOTIVO, nunca a frase. Ordem das réguas, a primeira que estourar vence: orçamento do pedido (`pedido`), teto da
         execução (`execucao`), teto do dia (`dia`) e, por último, a FATIA da origem dentro do dia (`fatia_curador`,
         `fatia_jev`). A fatia vem depois do dia porque é parte dele: passar no dia é pré-requisito, e uma fatia
-        estourada não barra outra origem. O saldo da conta (ADR-051) segue em `_saldo`, fora desta função."""
+        estourada não barra outra origem. O saldo da conta (ADR-051) segue em `_saldo`, fora desta função.
+
+        Devolve a operação da execução (31.154), para `_call` reservar a chamada em voo; `None` fora de operação."""
         if self.repo is None or self.get_settings is None:
-            return
+            return None
         s = self.get_settings()
         prices = self.cfg.file.ai.prices
         # Orçamento do PEDIDO (28.6): o que o pedido ainda pode gastar nesta ocorrência. `None` (a execução comum, ou o
@@ -253,9 +259,18 @@ class RoutingProvider:
         if operacao is not None:
             gasto = sum(costs.spent_usd(self.repo.db, prices, run_id=str(r["id"]))
                         for r in self.repo.db.query("SELECT id FROM runs WHERE operacao_id=?", (operacao["id"],)))
-            if gasto >= float(operacao["max_usd"]):
-                raise AIError(f"Teto de custo da operação atingido: US$ {gasto:.2f} de US$ {float(operacao['max_usd']):.2f}.",
-                              kind="budget", motivo="operacao")
+            # Reserva das chamadas EM VOO (achado do Codex, corte 56): os alvos rodam em paralelo e o custo só é gravado
+            # depois da resposta, então N alvos liam o mesmo gasto abaixo do teto e o estouravam juntos. Cada chamada
+            # em voo conta pelo custo MÉDIO das já gravadas da operação; antes da primeira resposta não há média e a
+            # reserva é zero (o estouro possível fica em uma chamada por vaga de IA). A chamada conta desde aqui, também
+            # enquanto espera a vaga da função, então a reserva pode sobrar um pouco (no máximo as vagas de IA). Um
+            # processo só: a reserva é da instância do roteador, e o deploy é um processo.
+            em_voo = self._em_voo_da_operacao.get(str(operacao["id"]), 0)
+            reservado = em_voo * self._custo_medio_da_chamada(str(operacao["id"]), gasto) if em_voo else 0.0
+            if gasto + reservado >= float(operacao["max_usd"]):
+                emvoo = f" (com {em_voo} chamada(s) em voo, reserva de US$ {reservado:.2f})" if reservado else ""
+                raise AIError(f"Teto de custo da operação atingido: US$ {gasto:.2f} de US$ {float(operacao['max_usd']):.2f}"
+                              f"{emvoo}.", kind="budget", motivo="operacao")
         teto_dia = float(getattr(s, "ai_max_usd_per_day", 0) or 0)
         for rotulo, limite, gasto_fn, chave, motivo in (
                 ("desta execução", float(getattr(s, "ai_max_usd_per_run", 0) or 0),
@@ -273,6 +288,14 @@ class RoutingProvider:
                 self._avisados.add(chave)
                 self.repo.bus.emit("log", f"Gasto de IA {rotulo} em US$ {gasto:.2f} de US$ {limite:.2f} "
                                           f"({gasto / limite:.0%} do teto).", level="warn", run_id=run_id)
+        return str(operacao["id"]) if operacao is not None else None
+
+    def _custo_medio_da_chamada(self, operacao_id: str, gasto: float) -> float:
+        assert self.repo is not None
+        chamadas = int(self.repo.db.scalar(
+            "SELECT COUNT(*) FROM ai_calls a JOIN runs r ON r.id=a.run_id WHERE r.operacao_id=?"
+            " AND COALESCE(a.provider,'') <> 'simulated'", (operacao_id,)) or 0)
+        return gasto / chamadas if chamadas else 0.0
 
     def conferir_gasto(self, *, run_id: str | None, origem: str, conta: str) -> None:
         """A MESMA rubrica de `_budget` (pedido, execução, dia, fatia da origem) e o bloqueio de saldo de uma CONTA, para
@@ -366,45 +389,64 @@ class RoutingProvider:
         fora de execução passam a sua. O `Usage` devolvido leva os dois e `add_usage` grava em `ai_calls`."""
         origem = origem or ("execucao" if run_id else None)
         r, perfil = self._funcao(papel, run_id)
+        operacao = None
         if r.kind != "simulated":
             # Modo simulado não gasta dinheiro nenhum: conferir teto ali seria uma consulta por chamada para
             # sempre dar zero — e, com teto apertado, dava para BLOQUEAR uma execução que não custa nada.
-            self._budget(run_id, origem)
-        try:
-            self._saldo(r)
+            operacao = self._budget(run_id, origem)
+        # A chamada fica reservada no teto da operação até voltar; quem a pediu grava o custo logo depois, sem `await`
+        # no meio (`Executor`), então a reserva sai e o gasto gravado entra na mesma volta do laço.
+        with self._reserva(operacao):
             try:
-                resultado, usage = await self._one(papel, r, fn)
+                self._saldo(r)
+                try:
+                    resultado, usage = await self._one(papel, r, fn)
+                except AIError as exc:
+                    self._esgotou(r, exc)
+                    raise
+                if usage.fallback == "refusal":
+                    # A troca por recusa vira linha DA EXECUÇÃO, que é o que o pedido exige e não existia: até aqui
+                    # ela só aparecia como um modelo diferente no `model` de uma linha de custo.
+                    self._anota(run_id, f"Recusa de {usage.requested_model} em {papel}; respondeu {usage.model} "
+                                        f"(cobrado na tarifa de {usage.model}).")
+                usage.origem, usage.ref = origem, ref
+                return resultado, usage
             except AIError as exc:
-                self._esgotou(r, exc)
-                raise
-            if usage.fallback == "refusal":
-                # A troca por recusa vira linha DA EXECUÇÃO, que é o que o pedido exige e não existia: até aqui
-                # ela só aparecia como um modelo diferente no `model` de uma linha de custo.
-                self._anota(run_id, f"Recusa de {usage.requested_model} em {papel}; respondeu {usage.model} "
-                                    f"(cobrado na tarifa de {usage.model}).")
-            usage.origem, usage.ref = origem, ref
-            return resultado, usage
-        except AIError as exc:
-            alvo = r.fallback_provider
-            if not alvo or exc.kind in ("budget", "refusal"):
-                raise
-            # Cair só acontece porque ALGUÉM ESCREVEU que pode cair. É isto que separa "fallback explícito por
-            # função" de "fallback pago silencioso": sem a linha no YAML, o erro do endpoint local sobe.
-            alternativo = _com_provedor(self.cfg, papel, alvo, perfil)
-            self._saldo(alternativo)
-            log.warning("Função %s: provedor %s falhou (%s); caindo para %s/%s (declarado em ai.roles.%s).",
-                        papel, r.provider, exc, alvo, alternativo.model, papel)
-            try:
-                resultado, usage = await self._one(papel, alternativo, fn)
-            except AIError as exc2:
-                self._esgotou(alternativo, exc2)
-                raise
-            usage.fallback = alvo
-            usage.requested_model = r.model
-            self._anota(run_id, f"Provedor “{r.provider}” falhou em {papel} ({exc}); respondeu "
-                                f"“{alvo}” com {usage.model} (cobrado na tarifa de {usage.model}).")
-            usage.origem, usage.ref = origem, ref
-            return resultado, usage
+                alvo = r.fallback_provider
+                if not alvo or exc.kind in ("budget", "refusal"):
+                    raise
+                # Cair só acontece porque ALGUÉM ESCREVEU que pode cair. É isto que separa "fallback explícito por
+                # função" de "fallback pago silencioso": sem a linha no YAML, o erro do endpoint local sobe.
+                alternativo = _com_provedor(self.cfg, papel, alvo, perfil)
+                self._saldo(alternativo)
+                log.warning("Função %s: provedor %s falhou (%s); caindo para %s/%s (declarado em ai.roles.%s).",
+                            papel, r.provider, exc, alvo, alternativo.model, papel)
+                try:
+                    resultado, usage = await self._one(papel, alternativo, fn)
+                except AIError as exc2:
+                    self._esgotou(alternativo, exc2)
+                    raise
+                usage.fallback = alvo
+                usage.requested_model = r.model
+                self._anota(run_id, f"Provedor “{r.provider}” falhou em {papel} ({exc}); respondeu "
+                                    f"“{alvo}” com {usage.model} (cobrado na tarifa de {usage.model}).")
+                usage.origem, usage.ref = origem, ref
+                return resultado, usage
+
+    @contextlib.contextmanager
+    def _reserva(self, operacao: str | None) -> Iterator[None]:
+        """Conta a chamada em voo da operação (31.154, ver `_budget`) enquanto ela dura, também quando falha."""
+        if operacao is None:
+            yield
+            return
+        self._em_voo_da_operacao[operacao] = self._em_voo_da_operacao.get(operacao, 0) + 1
+        try:
+            yield
+        finally:
+            if (restam := self._em_voo_da_operacao.get(operacao, 1) - 1) > 0:
+                self._em_voo_da_operacao[operacao] = restam
+            else:
+                self._em_voo_da_operacao.pop(operacao, None)
 
     def _instance(self, papel: str, r: ResolvedRole) -> AIProvider:
         chave = _chave_da_instancia(r)

@@ -22,11 +22,13 @@ import pytest
 
 from app.main import create_app
 from app.models import ProfileCreate, SessionStatus
+from app.modules.operacoes.domain.estagios import Leitura
 from app.modules.operacoes.infrastructure.estagios import registrar_estagio
 from app.modules.operacoes.infrastructure.servico import (AlvoPedido, OperacaoError, PedidoDeOperacao,
                                                           ServicoDeOperacoes, _motivo)
 from app.planning.provider import AIError
 from app.planning.routing import RoutingProvider
+from app.taskqueue.service import RunError
 from app.util import now_iso
 
 from .conftest import COMMAND, Harness
@@ -134,6 +136,55 @@ async def test_o_teto_de_custo_da_operacao_barra_a_ia_de_qualquer_alvo(harness: 
     assert exc.value.kind == "budget" and exc.value.motivo == "operacao"
 
 
+async def test_o_teto_da_operacao_reserva_as_chamadas_em_voo_dos_alvos_paralelos(harness: Harness) -> None:
+    """Achado do Codex (corte 56): o custo só é gravado depois da resposta, e N alvos em paralelo liam o mesmo gasto
+    abaixo do teto. Cada chamada em voo conta pelo custo médio das gravadas; `_call` reserva e devolve a vaga."""
+    import types
+
+    from app.planning import costs
+
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Gabi", "android-03")
+    _conta(harness, pid, "qa-user-06", sessao_em="android-03")
+    op = _servico(harness).criar(_pedido([AlvoPedido(pid)], chave="teste-op-teto-voo", max_usd=100.0))
+    run_id = _alvo(op, pid)["run_id"]
+    modelo = next(iter(st.cfg.file.ai.prices))
+    st.db.execute("INSERT INTO ai_calls(ts, run_id, role, model, input_tokens, output_tokens, ok) VALUES (?,?,?,?,?,?,?)",
+                  (now_iso(), run_id, "decide", modelo, 10_000, 1_000, 1))
+    uma = costs.spent_usd(st.db, st.cfg.file.ai.prices, run_id=run_id)
+    assert uma > 0
+    st.db.execute("UPDATE operacoes SET max_usd=? WHERE id=?", (uma * 2.5, op["id"]))
+    roteador = RoutingProvider(harness.cfg)
+    roteador.attach(repo=st.repo, settings_getter=st.settings.get)
+    assert roteador._budget(run_id) == op["id"]                               # gasto 1x, nada em voo  # noqa: SLF001
+    roteador._em_voo_da_operacao[op["id"]] = 1                                # 1x + 1x em voo < 2,5x  # noqa: SLF001
+    assert roteador._budget(run_id) == op["id"]  # noqa: SLF001
+    roteador._em_voo_da_operacao[op["id"]] = 2                                # 1x + 2x em voo >= 2,5x  # noqa: SLF001
+    with pytest.raises(AIError) as exc:
+        roteador._budget(run_id)  # noqa: SLF001
+    assert exc.value.kind == "budget" and exc.value.motivo == "operacao" and "em voo" in str(exc.value)
+    # `_call` reserva a vaga durante a chamada e a devolve na volta, também quando a chamada falha.
+    roteador._em_voo_da_operacao.clear()  # noqa: SLF001
+    vistos: list[int] = []
+
+    uso = types.SimpleNamespace(fallback=None)
+
+    async def _one(*_: Any) -> Any:
+        vistos.append(roteador._em_voo_da_operacao.get(op["id"], 0))  # noqa: SLF001
+        if len(vistos) == 2:
+            raise AIError("falhou", kind="transient")
+        return "ok", uso
+
+    roteador._funcao = lambda papel, rid: (types.SimpleNamespace(kind="anthropic", fallback_provider=None), None)  # type: ignore[method-assign,assignment,return-value]
+    roteador._saldo = lambda r: None  # type: ignore[method-assign,assignment]
+    roteador._one = _one  # type: ignore[method-assign,assignment]
+    assert await roteador._call("decide", run_id, lambda p: None) == ("ok", uso)  # noqa: SLF001
+    with pytest.raises(AIError):
+        await roteador._call("decide", run_id, lambda p: None)  # noqa: SLF001
+    assert vistos == [1, 1] and roteador._em_voo_da_operacao == {}  # noqa: SLF001
+
+
 async def test_registrar_estagio_marca_uma_vez_e_fora_de_operacao_nao_faz_nada(harness: Harness) -> None:
     st = harness.state
     assert st is not None
@@ -146,6 +197,25 @@ async def test_registrar_estagio_marca_uma_vez_e_fora_de_operacao_nao_faz_nada(h
     assert registrar_estagio(st.db, run_id, "resultado_verificado") is False       # não é marcável de fora
     avulsa = harness.run(["android-02"])
     assert registrar_estagio(st.db, avulsa.id, "conteudo_lido") is False
+
+
+async def test_so_a_coluna_ausente_vira_sem_operacao_e_o_resto_propaga() -> None:
+    """Achado do Codex (corte 56): o `except Exception` engolia qualquer erro e apagava a marca em silêncio."""
+    import sqlite3
+
+    from app.db import TransacaoAbortada
+    from app.modules.operacoes.infrastructure.estagios import operacao_da_execucao
+
+    class _Banco:
+        def __init__(self, erro: BaseException) -> None:
+            self.erro = erro
+
+        def one(self, *_: Any) -> Any:
+            raise self.erro
+
+    assert operacao_da_execucao(_Banco(sqlite3.OperationalError("no such column: operacao_id")), "r") is None  # type: ignore[arg-type]
+    with pytest.raises(TransacaoAbortada):
+        operacao_da_execucao(_Banco(TransacaoAbortada("abortada")), "r")  # type: ignore[arg-type]
 
 
 # ------------------------------------------------------------------ liberar (aprovações falsas)
@@ -202,6 +272,83 @@ async def test_liberar_exige_o_texto_lido_e_respeita_o_limite_de_acoes_executada
     assert {r["motivo"] for r in out["recusados"]} == {"texto_divergente", "limite de ações executadas"}
     assert out["operacao"]["acao_final"] == "executar"
     assert aprovacoes.decididos == ["apr-1"]  # type: ignore[attr-defined]
+
+
+async def test_liberar_na_operacao_que_preparar_ja_fechou_reabre_e_o_liberado_fica_em_curso(harness: Harness) -> None:
+    """Achado do Codex (corte 56): em `preparar`, todos os alvos na ação preparada fecham a operação ANTES da leitura dos
+    textos, e `liberar` dava 409. Agora a fechada (não cancelada) libera e reabre; e o alvo cuja ação já foi aprovada
+    não aparece mais "aguarda liberação" (o que a fecharia de novo antes da execução)."""
+    st = harness.state
+    assert st is not None
+    st.settings.update({"operacao_max_acoes_executadas": 5})
+    pids = []
+    for i, iid in enumerate(("android-01", "android-02")):
+        pid = _persona(harness, f"Lia{i}", iid)
+        _conta(harness, pid, f"qa-user-4{i}", sessao_em=iid)
+        pids.append(pid)
+    op = _servico(harness).criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-liberar-fechada"))
+    st.db.execute("UPDATE operacoes SET status='concluida', finished_at=? WHERE id=?", (now_iso(), op["id"]))
+
+    class _GravaAprovado(_Aprovacoes):
+        """Grava a aprovação como o serviço de aprovações de sempre (`pending_approvals.status='approved'`)."""
+        def decide(self, approval_id: str, verb: str, **kw: Any) -> dict[str, object]:
+            # Contar e aprovar na mesma transação, com a linha da operação travada (dois backends no mesmo PG).
+            assert st.db._tx_depth > 0  # noqa: SLF001
+            st.db.execute("INSERT INTO pending_approvals(id, profile_id, run_id, capability, status, created_at)"
+                          " VALUES (?,?,?,?,?,?)", (approval_id, pids[0], _alvo(op, pids[0])["run_id"],
+                                                    "CREATE_COMMENT", "approved", now_iso()))
+            return super().decide(approval_id, verb, **kw)
+
+    s = ServicoDeOperacoes(st.db, st.runs, st.social_repo, _GravaAprovado({}), st.settings.get, st.bus,  # type: ignore[arg-type]
+                           st.cfg.file.ai.prices)
+    s._pedido_pendente = lambda alvo: (_Pedido(id="apr-l", texto="t")  # type: ignore[method-assign]
+                                       if alvo and alvo["profile_id"] == pids[0] else None)
+    # Os dois alvos na ação preparada, com a execução retomada (o que `ApprovalService.decide` faz ao aprovar).
+    s._ler_alvo = lambda op_, a, d: (Leitura("acao_preparada", "em_curso", None, ()), None)  # type: ignore[method-assign]
+    out = s.liberar(op["id"], [(pids[0], "t")])
+    assert out["liberados"] == [pids[0]]
+    lida = out["operacao"]
+    estados = {a["profile_id"]: (a["estado"], a["motivo"]) for a in lida["alvos"]}  # type: ignore[attr-defined]
+    assert estados == {pids[0]: ("em_curso", None), pids[1]: ("bloqueado", "aguarda liberação")}
+    assert (lida["status"], lida["finished_at"], lida["acao_final"]) == ("em_curso", None, "executar")
+    # A cancelada continua recusada.
+    st.db.execute("UPDATE operacoes SET status='cancelada' WHERE id=?", (op["id"],))
+    with pytest.raises(OperacaoError) as exc:
+        s.liberar(op["id"], [(pids[0], "t")])
+    assert exc.value.code == "ja_encerrada"
+
+
+async def test_cancelar_pula_a_execucao_terminada_e_segue_quando_uma_termina_no_meio(harness: Harness) -> None:
+    """Achado do Codex (corte 56): o laço chamava `RunService.cancel` em toda execução; a já terminada dá `RunError`, e
+    a operação ficava em curso com parte dos alvos cancelada (e a rota dava 500)."""
+    st = harness.state
+    assert st is not None
+    pids = []
+    for i, iid in enumerate(("android-01", "android-02", "android-03")):
+        pid = _persona(harness, f"Mel{i}", iid)
+        _conta(harness, pid, f"qa-user-5{i}", sessao_em=iid)
+        pids.append(pid)
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(p) for p in pids], chave="teste-op-cancelar-parcial"))
+    runs = [_alvo(op, p)["run_id"] for p in pids]
+    st.db.execute("UPDATE runs SET status='completed' WHERE id=?", (runs[0],))
+
+    class _TerminaNoMeio:
+        """A execução do 2º alvo termina entre a leitura e o pedido: o `cancel` de verdade recusa com `RunError`."""
+        def __getattr__(self, nome: str) -> Any:
+            return getattr(st.runs, nome)
+
+        def cancel(self, run_id: str, **kw: Any) -> Any:
+            if run_id == runs[1]:
+                raise RunError("invalid_state", "A execução já terminou.")
+            return st.runs.cancel(run_id, **kw)
+
+    s.runs = _TerminaNoMeio()  # type: ignore[assignment]
+    depois = s.cancelar(op["id"])
+    assert depois["status"] == "cancelada"
+    assert st.db.scalar("SELECT status FROM runs WHERE id=?", (runs[0],)) == "completed"
+    r = st.db.one("SELECT status, cancel_requested FROM runs WHERE id=?", (runs[2],))
+    assert r["cancel_requested"] == 1 or r["status"] == "cancelled"
 
 
 # ------------------------------------------------------------------ a rota

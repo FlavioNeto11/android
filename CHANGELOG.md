@@ -151,6 +151,13 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   ensinada com `{username}`/`{caption_contains}` casa e se reproduz; sem isso, dava `RecipeDiverged` "parâmetro ausente".
   Credencial em `parametros` é recusada pelo nome, pelo par `nome=valor` e pelo formato do valor; a renomeação nunca
   toca o dado da persona nem nome sensível. O `revisor-segredos` teve 5 achados, todos corrigidos com teste.
+- Achados da revisão automática do corte 56, corrigidos com teste:
+  - liberar na operação que `preparar` já fechou dava 409; agora libera, reabre a operação, e o alvo aprovado fica em
+    curso, não "aguarda liberação";
+  - cancelar com um alvo já terminado dava 500 e cancelava só uma parte;
+  - o teto `max_usd` reserva as chamadas em voo dos alvos paralelos;
+  - o limite de ações conta e aprova numa transação, com a linha travada;
+  - `operacao_da_execucao` só tolera a coluna ausente; os outros erros de banco sobem.
 - Prova `simulated`: `backend/tests/test_plano_da_operacao.py` (identidade igual à da etapa ensinada, reprodução e o
   controle sem os fixos, operação no harness, execução fora de operação sem mudança, validação),
   `backend/tests/test_operacoes.py` e `backend/tests/test_migracao_127.py`. `not_run`: prova real (rodada de 07/10).

@@ -7256,7 +7256,7 @@ Eventos novos:
 
 ## Adendo v1.95 (06/10/2026; número da orquestradora; item 31.154, migração 127) — custo por alvo, vínculo principal e parâmetros fixos da operação
 
-Três mudanças na operação do adendo v1.94, para a rodada de 07/10. Nada do v1.94 deixa de valer.
+Quatro mudanças na operação do adendo v1.94, para a rodada de 07/10. Nada do v1.94 deixa de valer, exceto o `409 ja_encerrada` do liberar na operação encerrada e não cancelada (item 4).
 
 **1. Custo por alvo.** `AlvoDaOperacao` ganha `custo_usd`: o gasto da execução do alvo (`planning.costs.spent_usd` pelo
 `run_id`, com a pesquisa externa se ela rodou ali), `null` sem execução. Quando há `resultado`, ele traz o mesmo valor em
@@ -7293,6 +7293,21 @@ nasce parado em `sessao`, com o motivo novo `sessão fora do aparelho principal`
 - Para que serve: a receita ensinada é achada pela chave da etapa e pela pós-condição com os nomes dos parâmetros, e se
   reproduz com `objective.parameters`. Com os nomes e as chaves fixos, ela casa; com os do planejador, dava
   `RecipeDiverged` "parâmetro ausente".
+
+**4. Liberar, cancelar e os tetos (achados da revisão automática do corte 56).**
+- `POST .../liberar` aceita a operação já encerrada que não foi cancelada. Em `preparar`, com todos os alvos na ação
+  preparada, a operação fecha antes de a pessoa ler os textos, e o liberar dava `409 ja_encerrada`. Só a `cancelada`
+  dá 409. Quando libera algum alvo, a operação volta a `em_curso` (`finished_at: null`) e fecha de novo quando nenhum
+  alvo estiver em curso (o evento `operacao.encerrada` sai outra vez). O alvo com a ação já aprovada segue o estado da
+  execução dele; só o alvo sem a ação aprovada fica `bloqueado`, motivo `aguarda liberação`.
+- A contagem do limite `operacao_max_acoes_executadas` e as aprovações rodam numa transação, com a linha da operação
+  travada antes de contar. Duas liberações se enfileiram, também em dois processos sobre o mesmo PostgreSQL.
+- `POST .../cancelar` pula a execução já terminada (`completed`, `cancelled`, `failed`) e segue quando uma termina entre
+  a leitura e o pedido. Antes, o primeiro alvo terminado dava 500, e uma parte dos alvos ficava rodando.
+- Teto `max_usd`: cada chamada paga em voo de um alvo da operação conta pelo custo médio das chamadas já gravadas da
+  operação. Antes, N alvos em paralelo liam o mesmo gasto abaixo do teto e o estouravam juntos. A reserva fica na
+  memória do processo (o deploy é um processo só). Antes da primeira resposta não há média, então o estouro possível
+  fica em uma chamada por vaga de IA. A mensagem da recusa diz quantas chamadas estavam em voo.
 
 Migração `127_operacoes_parametros` (`operacoes.parametros`, só `ADD COLUMN`). Código: `backend/app/taskqueue/plano_da_operacao.py`,
 `RunService._plano_da_operacao`, `backend/app/modules/operacoes/`. Testes: `backend/tests/test_plano_da_operacao.py`,

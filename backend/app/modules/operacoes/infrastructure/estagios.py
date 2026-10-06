@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 
-from app.db import Database
+from app.db import OPERATIONAL_ERRORS, Database
 from app.modules.operacoes.domain.estagios import ESTAGIOS_MARCAVEIS
 from app.util import now_iso
 
@@ -20,7 +20,10 @@ def operacao_da_execucao(db: Database, run_id: str) -> str | None:
     """A operação desta execução, ou `None` (execução avulsa, ou banco sem a migração 124)."""
     try:
         row = db.one("SELECT operacao_id FROM runs WHERE id=?", (run_id,))
-    except Exception:  # noqa: BLE001 - coluna ausente num banco antigo é "sem operação", nunca um erro do despacho
+    except OPERATIONAL_ERRORS:
+        # Só o erro de recurso ausente (`OPERATIONAL_ERRORS`, o mesmo de `app.db`: a coluna de um banco antigo) vira
+        # "sem operação". O resto (transação abortada, integridade) propaga: engoli-lo apagaria em silêncio a marca de
+        # estágio de um alvo que É de operação.
         return None
     return str(row["operacao_id"]) if row is not None and row["operacao_id"] else None
 

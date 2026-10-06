@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 
 from app.contracts.origem import PREFIXO_OPERACAO
 from app.db import Database, Row, dumps, loads
-from app.models import InstanceState, RunCreate, RunTarget, SessionStatus
+from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
 from app.security.redaction import chave_sensivel, looks_secret, parece_senha_ou_codigo, redact
@@ -266,10 +266,14 @@ class ServicoDeOperacoes:
             leituras.append((a, leitura))
             alvos.append((a, leitura, resultado))
         executadas = self._acoes_comprometidas(op_id)
+        aprovados = self._runs_com_acao_aprovada(op_id)
         saida = []
         for a, lt, resultado in alvos:
             estado, motivo, parou = lt.estado, lt.motivo, lt.parou_em
-            if lt.estagio == "acao_preparada" and op["acao_final"] == "executar" and estado != "concluido":
+            # Só o alvo SEM a ação aprovada aguarda liberação; o liberado segue o estado da execução dele (em curso
+            # enquanto executa, bloqueado se falhar). Marcá-lo bloqueado fecharia a operação antes da execução.
+            if (lt.estagio == "acao_preparada" and op["acao_final"] == "executar" and estado != "concluido"
+                    and a["run_id"] not in aprovados):
                 estado, motivo, parou = ("bloqueado", LIMITE_DE_ACOES if executadas >= limite else AGUARDA_LIBERACAO,
                                          "acao_executada")
             self._anotar(op_id, a, lt.estagio, estado, motivo)
@@ -413,9 +417,16 @@ class ServicoDeOperacoes:
             raise OperacaoError("operacao_inexistente", "Operação não encontrada.", 404)
         if op["finished_at"]:
             raise OperacaoError("ja_encerrada", f"A operação já terminou ({op['status']}).", 409)
-        for r in self.db.query("SELECT run_id FROM operacao_alvos WHERE operacao_id=? AND run_id IS NOT NULL"
-                               " ORDER BY seq", (op_id,)):
-            self.runs.cancel(str(r["run_id"]), por=quem)
+        # A execução que já terminou (o alvo concluído, ou o que falhou) não se cancela: `RunService.cancel` recusaria com
+        # `RunError`, e o laço pararia no meio, com uma parte dos alvos cancelada e a operação em curso. A que terminar
+        # entre a leitura e o pedido cai no mesmo `RunError`, e o laço segue para os outros alvos.
+        for r in self.db.query("SELECT a.run_id FROM operacao_alvos a JOIN runs r ON r.id=a.run_id WHERE a.operacao_id=?"
+                               " AND r.status NOT IN (?,?,?) ORDER BY a.seq",
+                               (op_id, RunStatus.completed.value, RunStatus.cancelled.value, RunStatus.failed.value)):
+            try:
+                self.runs.cancel(str(r["run_id"]), por=quem)
+            except RunError:
+                continue
         self.db.execute("UPDATE operacoes SET status='cancelada', updated_at=? WHERE id=?", (now_iso(), op_id))
         return self.ler(op_id)
 
@@ -423,37 +434,49 @@ class ServicoDeOperacoes:
         """Aprova, pelo serviço de aprovações de sempre, a ação preparada de cada alvo pedido, com o eco do texto que a
         pessoa leu, até o limite de ações executadas (contando as já executadas)."""
         atual = self.ler(op_id)
-        if atual["finished_at"]:
+        # Em `preparar`, o alvo na ação preparada está concluído: com todos ali, a operação fecha (`_fechar`) ANTES de a
+        # pessoa ler os textos. Recusar a operação fechada tornaria a liberação impossível justamente quando ela cabe;
+        # só a cancelada é recusada. O alvo sem pedido pendente sai em `recusados` como sempre.
+        if atual["status"] == "cancelada":
             raise OperacaoError("ja_encerrada", f"A operação já terminou ({atual['status']}).", 409)
         alvos = {str(a["profile_id"]): a for a in atual["alvos"]}  # type: ignore[attr-defined]
         limite = int(self.limites().operacao_max_acoes_executadas)
-        # Sem `await` daqui ao fim: duas chamadas de `liberar` não se intercalam no laço do servidor, e a contagem
-        # das já comprometidas (aprovadas, executando ou executadas) vale para a segunda.
-        feitas = self._acoes_comprometidas(op_id)
+        # Contar e aprovar na MESMA transação, com a linha da operação travada antes de contar: duas liberações (no
+        # mesmo processo, ou em dois backends sobre o mesmo PostgreSQL) se enfileiram, e a contagem das já comprometidas
+        # (aprovadas, executando ou executadas) da segunda vê o que a primeira aprovou. A `tx()` é reentrante: a do
+        # serviço de aprovações entra nesta.
         liberados: list[str] = []
         recusados: list[dict[str, str]] = []
-        for profile_id, texto in itens:
-            a = alvos.get(profile_id)
-            pedido = self._pedido_pendente(a)
-            if a is None or pedido is None:
-                recusados.append({"profile_id": profile_id, "motivo": "sem ação preparada"})
-                continue
-            visto = str(self.aprovacoes.na_tela(pedido.to_dict()).get("generated_content") or "")
-            if visto.strip() != texto.strip():
-                recusados.append({"profile_id": profile_id, "motivo": "texto_divergente"})
-                continue
-            if feitas + len(liberados) >= limite:
-                recusados.append({"profile_id": profile_id, "motivo": LIMITE_DE_ACOES})
-                continue
-            try:
-                self.aprovacoes.decide(pedido.id, "approve", note=f"liberado na operação {op_id}"
-                                                                   + (f" por {quem}" if quem else ""))
-            except SocialError as exc:
-                recusados.append({"profile_id": profile_id, "motivo": _motivo(str(exc)) or "recusado"})
-                continue
-            liberados.append(profile_id)
-        if liberados:
-            self.db.execute("UPDATE operacoes SET acao_final='executar', updated_at=? WHERE id=?", (now_iso(), op_id))
+        with self.db.tx():
+            self.db.execute("UPDATE operacoes SET updated_at=? WHERE id=?", (now_iso(), op_id))
+            if self.db.scalar("SELECT status FROM operacoes WHERE id=?", (op_id,)) == "cancelada":
+                raise OperacaoError("ja_encerrada", "A operação já terminou (cancelada).", 409)
+            feitas = self._acoes_comprometidas(op_id)
+            for profile_id, texto in itens:
+                a = alvos.get(profile_id)
+                pedido = self._pedido_pendente(a)
+                if a is None or pedido is None:
+                    recusados.append({"profile_id": profile_id, "motivo": "sem ação preparada"})
+                    continue
+                visto = str(self.aprovacoes.na_tela(pedido.to_dict()).get("generated_content") or "")
+                if visto.strip() != texto.strip():
+                    recusados.append({"profile_id": profile_id, "motivo": "texto_divergente"})
+                    continue
+                if feitas + len(liberados) >= limite:
+                    recusados.append({"profile_id": profile_id, "motivo": LIMITE_DE_ACOES})
+                    continue
+                try:
+                    self.aprovacoes.decide(pedido.id, "approve", note=f"liberado na operação {op_id}"
+                                                                       + (f" por {quem}" if quem else ""))
+                except SocialError as exc:
+                    recusados.append({"profile_id": profile_id, "motivo": _motivo(str(exc)) or "recusado"})
+                    continue
+                liberados.append(profile_id)
+            if liberados:
+                # A operação volta a correr: a ação liberada ainda vai ser executada e verificada, e é a leitura seguinte
+                # que a fecha de novo quando nenhum alvo estiver em curso.
+                self.db.execute("UPDATE operacoes SET acao_final='executar', status='em_curso', finished_at=NULL,"
+                                " updated_at=? WHERE id=? AND status<>'cancelada'", (now_iso(), op_id))
         return {"liberados": liberados, "recusados": recusados, "operacao": self.ler(op_id)}
 
     def _acoes_comprometidas(self, op_id: str) -> int:
@@ -462,6 +485,11 @@ class ServicoDeOperacoes:
         return int(self.db.scalar(
             "SELECT COUNT(DISTINCT a.run_id) FROM pending_approvals a JOIN runs r ON r.id=a.run_id"
             " WHERE r.operacao_id=? AND a.status IN ('approved','edited')", (op_id,)) or 0)
+
+    def _runs_com_acao_aprovada(self, op_id: str) -> set[object]:
+        return {r["run_id"] for r in self.db.query(
+            "SELECT DISTINCT a.run_id FROM pending_approvals a JOIN runs r ON r.id=a.run_id"
+            " WHERE r.operacao_id=? AND a.status IN ('approved','edited')", (op_id,))}
 
     def _pedido_pendente(self, alvo: dict[str, object] | None):  # type: ignore[no-untyped-def]
         if alvo is None or not alvo.get("run_id"):
