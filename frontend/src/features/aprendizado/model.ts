@@ -486,7 +486,33 @@ function tituloComNomes(
     const m = RE_VERSAO.exec(t);
     return m ? `${e.etapa} (v${m[2]})` : e.etapa;
   }
+  if (e.kind === 'receita') return nomeDaChave(t);
   return e.kind === 'licao' ? nomearCapabilityNoTexto(t, e.capability, e.capability_nome) : t;
+}
+
+const RE_CHAVE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$/;
+
+/**
+ * 31.145: a receita ensinada no treino não tem capability nem título de etapa, e a lista mostrava a chave crua
+ * ("abrir_adicionar_rede (v1)"). A chave em minúsculas com sublinhado vira texto ("Abrir adicionar rede (v1)"); qualquer outro
+ * título (já com espaços, maiúsculas, acentos) fica como veio. A chave crua continua no `title` da linha.
+ */
+export function nomeDaChave(titulo: string): string {
+  const m = RE_VERSAO.exec(titulo);
+  const base = m ? (m[1] ?? '') : titulo;
+  if (!RE_CHAVE.test(base)) return titulo;
+  const texto = base.replace(/_/g, ' ');
+  return `${texto.charAt(0).toUpperCase()}${texto.slice(1)}${m ? ` (v${m[2]})` : ''}`;
+}
+
+/** 31.145: o `panel` que o backend escreve na origem de uma decisão ("desligado por uma pessoa (panel)") lido como "painel". */
+export function textoDaDecisao(texto: string): string {
+  return texto.replace(/\(panel\)/g, '(painel)');
+}
+
+/** 31.145: "por panel" é "pelo painel"; qualquer outra origem segue como veio ("por flavio"). */
+export function porQuemDecidiu(por: string): string {
+  return por === 'panel' || por === 'painel' ? 'pelo painel' : `por ${por}`;
 }
 
 function repetidos(titulos: Iterable<string>): Set<string> {
@@ -595,7 +621,7 @@ export function porQueOSistemaNaoPublica(e: Pick<EntradaDoLivro, 'por_que_nao_pu
     case 'efeito_externo': return 'tem efeito externo';
     case 'texto_de_pessoa': return 'tem texto de pessoa';
     case 'reaprendido': return textoDoReaprendido(m.detalhe);
-    case 'vetado': return m.detalhe ?? 'vetado pelo sistema';
+    case 'vetado': return m.detalhe ? textoDaDecisao(m.detalhe) : 'vetado pelo sistema';
     case 'modo_desligado': return 'o modo deste tipo não está ligado';
     default: return m.codigo;
   }

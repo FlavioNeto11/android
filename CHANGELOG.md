@@ -19,6 +19,12 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.145 (Portal): receita e "(panel)" legíveis no Livro (branch feat/31-145-receita-e-painel-legiveis)
+
+- A receita ensinada no treino, sem capability nem título de etapa, mostrava a chave (`abrir_adicionar_rede (v1)`): a chave em minúsculas com sublinhado vira texto (`Abrir adicionar rede (v1)`) e a crua fica no `title`; título com espaço, maiúscula ou acento não muda. O `(panel)` do motivo de desligamento lê-se `(painel)` e "Confirmado que fica por panel" lê-se "pelo painel".
+- Os testes que fixavam a chave crua (`model.test.ts`, `DecididoPelaPlataforma.test.tsx`) passaram a esperar o texto, de propósito.
+- Prova `simulated`: `model.test.ts`, `AprendizadoPage.test.tsx`, `DecididoPelaPlataforma.test.tsx`; vitest inteiro 144 arquivos / 1857 testes, tsc limpo, 4 mutações mortas; `real` `not_run` até o deploy.
+
 ## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
 
 - Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).

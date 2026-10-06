@@ -145,7 +145,7 @@ describe('Decidido pela plataforma', () => {
     await waitFor(() => secao() !== null);
     expect(text(secao()!)).toContain('Em observação');
     expect(text(secao()!)).toContain('decidiria 1 de 40 itens');
-    expect(text(secao()!.querySelector('[aria-label="O que a plataforma decidiria"]')!)).toContain('back_to_list (v1)');
+    expect(text(secao()!.querySelector('[aria-label="O que a plataforma decidiria"]')!)).toContain('Back to list (v1)');
   });
 
   it('em shadow com a lista vazia diz que nada foi decidido; com decisões, que são de quando ela decidia sozinha', async () => {
@@ -166,14 +166,14 @@ describe('Decidido pela plataforma', () => {
   it('em off sem decisão a seção some e as filas seguem', async () => {
     relatorio = { modo: 'off', ultima_volta: null, casos_na_sombra: 0, decididos_pela_plataforma: [] };
     await montar();
-    await waitFor(() => expect(text(container)).toContain('back_to_list (v1)'));
+    await waitFor(() => expect(text(container)).toContain('Back to list (v1)'));
     expect(secao()).toBeNull();
   });
 
   it('sem a rota no backend (antes do 30.55) a seção some e as filas seguem', async () => {
     backend.on('GET', /^\/api\/aprendizado\/aprovacao-automatica$/, () => json({ detail: { code: 'not_found' } }, 404));
     await montar();
-    await waitFor(() => expect(text(container)).toContain('back_to_list (v1)'));
+    await waitFor(() => expect(text(container)).toContain('Back to list (v1)'));
     expect(secao()).toBeNull();
   });
 
@@ -184,7 +184,7 @@ describe('Decidido pela plataforma', () => {
     await waitFor(() => expect(secao()).not.toBeNull());
     expect(text(secao()!)).toContain('Decidido pela plataforma');
     expect(secao()!.querySelector('[role="alert"], button')).not.toBeNull();
-    expect(text(container)).toContain('back_to_list (v1)');                   // as filas seguem
+    expect(text(container)).toContain('Back to list (v1)');                   // as filas seguem
   });
 
   it('30.63 (d): em shadow com decisões antigas não diz que nada foi decidido', async () => {

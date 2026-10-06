@@ -22,7 +22,7 @@ import { abrirApp, dicaDoApp, nomeDoApp } from './apps';
 import { AppsDoItem, eMultiApp } from './AppsDoItem';
 import {
   type AcaoDoItem, type DetalheDoLivro, type EntradaDoLivro, ESTADO_META, ONDE_FICAM_AS_HABILIDADES,
-  ORIGEM_LABEL, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind, tituloDoItem,
+  ORIGEM_LABEL, porQuemDecidiu, porQueOSistemaNaoPublica, refDaHabilidade, rotuloDoDetalhe, rotuloDoKind, tituloDoItem,
 } from './model';
 import { ParecerNaLinha } from './ParecerDaIA';
 import styles from './Aprendizado.module.css';
@@ -211,14 +211,14 @@ export function ItemDoLivro({ entrada: e, acoes, selecionado, onSelecionar, onMu
       ) : null}
       {e.confirmado ? (
         <p className={styles.notaDoItem}>
-          Confirmado que fica por {e.confirmado.por},{' '}
+          Confirmado que fica {porQuemDecidiu(e.confirmado.por)},{' '}
           <span title={formatDateTime(e.confirmado.em)}>{formatQuando(e.confirmado.em)}</span>
           {e.confirmado.motivo ? `: ${e.confirmado.motivo}` : ''}. Volta para Revisar se aparecer evidência contrária.
         </p>
       ) : null}
       {e.confirmacao_contestada && e.em_revisar ? (
         <p className={styles.notaDoItem}>
-          Voltou para revisar: confirmado que fica por {e.confirmacao_contestada.por},{' '}
+          Voltou para revisar: confirmado que fica {porQuemDecidiu(e.confirmacao_contestada.por)},{' '}
           <span title={formatDateTime(e.confirmacao_contestada.em)}>{formatQuando(e.confirmacao_contestada.em)}</span>,
           e depois chegou evidência contrária (veja em Detalhes, evidência e trilha).
         </p>
