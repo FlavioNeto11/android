@@ -614,6 +614,16 @@ avisos depois da faxina"), e a trava cai no TTL.
     resposta nova ao dono (ele já recebeu o "guardei"). O conteúdo se lê pelo armazém
     (`GET /api/canais/anexos/{id}/conteudo`) e se risca antes de repassar. Foto e PDF sem legenda seguem como sempre (o
     `/ler` em reply). O filtro de credencial do texto colado não mudou: continua apagando saída de script como texto.
+  - **28.63, um cartão por achado de revisão automática:** `.claude/trello/achados.py` (host, fora do backend, só leitura do
+    GitHub) consome a lista JSON do coletor 29.170 da Frente GitHub (`scripts/coletar_achados_revisao.py --json`; campos
+    `id`, `pr`, `revisor`, `gravidade`, `arquivo`, `linha`, `frase`, `artefato`, `url`, `pr_estado`) e cria UM cartão por `id`
+    em Próximas (PR aberto e achado com arquivo; o resumo geral da revisão não vira cartão), com PR, gravidade, onde, a frase
+    mascarada (de novo por `redacao.redigir`), o link do comentário (só `https://github.com/`) e a linha `Chave do achado: <id>`
+    na descrição, que o torna idempotente. `artefato=true` (regra de conduta de agente) e gravidade P3 ou ausente vão para o fim
+    da lista, com "(baixa prioridade)" no nome. Quando o PR sai de `open`, o cartão vai a Concluído com a nota. O nome não
+    começa com ID do plano, então a reconciliação o ignora. Achado é "a conferir", nunca ordem; nada escreve no GitHub.
+    Prova `simulated`: `.claude/trello/test_achados.py`; `real` em 06/10 com o coletor da Frente GitHub (117 achados, 82 com
+    arquivo, 7 em PR aberto, 7 cartões criados; a 2ª execução fez 0 ações).
 - **Hoje:** nada na operação provisória.
 - **No produto:** item 28.24 (`modules/avisos/`: `domain/anexos.py`, `infrastructure/anexos.py`, `anexos_trello.py`, o
   adaptador do Telegram, `GET /api/canais/anexos/{id}`, `POST /api/canais/anexos/{id}/trello`, `devices/captura_pontual.py`,
