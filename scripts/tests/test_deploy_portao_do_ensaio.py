@@ -260,6 +260,7 @@ def test_docs_check_so_com_aviso_nao_recusa(tmp_path: Path) -> None:
     r = _rodar_docs(_arvore_do_docs_check(tmp_path), 0, aviso + "\ndocs-check: 0 erros, 1 avisos")
     assert r.returncode == 0, r.stderr
     assert "formato NAO conferido" in r.stdout and "SEGUIU" in r.stdout
+    assert "NÃO conferiu" in _junta(r), "o deploy destaca com WARNING que parte do formato ficou sem prova"
 
 
 @precisa_pwsh

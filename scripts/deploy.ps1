@@ -167,9 +167,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ------------------------------------------------------------------ 1c. docs-check (29.166)
-# O formato de `config/config.example.yaml` e de `.claude/plano-100.json` é cobrado aqui, com o Python do venv do backend
-# (que tem PyYAML e pydantic: sem eles o docs-check só AVISA que não conferiu), no ensaio e na subida de verdade, antes de
-# parar qualquer coisa. ERRO recusa; AVISO não. O `config.yaml` da instalação nunca é aberto por ele.
+# O docs-check (links, IDs, mapa e, quando o 29.160 entrar, o formato de `config/config.example.yaml` e de
+# `.claude/plano-100.json`) roda aqui, com o Python do venv do backend (que tem PyYAML e pydantic: sem eles o docs-check só
+# AVISA que não conferiu), no ensaio e na subida de verdade, antes de parar qualquer coisa. ERRO recusa; AVISO não. O `config.yaml` da instalação nunca é aberto por ele.
 $pythonDoBackend = Join-Path $root 'backend\.venv\Scripts\python.exe'
 # >>> docs-check (29.166)
 Write-Host '--- docs-check (29.166) ---'
@@ -179,6 +179,9 @@ if ($PularDocsCheck) {
   $saidaDocs = & $pythonDoBackend (Join-Path $root 'scripts\docs-check.py') --raiz $root 2>&1
   $codigoDocs = $LASTEXITCODE
   $saidaDocs | ForEach-Object { Write-Host "    $_" }
+  if (($saidaDocs -join "`n") -match 'NAO conferido|NÃO conferido') {
+    Write-Warning 'o docs-check avisou que NÃO conferiu parte do formato (falta pacote no venv?): a subida segue, mas essa parte está sem prova.'
+  }
   if ($codigoDocs -ne 0) {
     throw ('o docs-check reprovou (acima): corrija antes de parar qualquer coisa. Se o erro é só de documentação e a ' +
            'subida não pode esperar, -PularDocsCheck.')
