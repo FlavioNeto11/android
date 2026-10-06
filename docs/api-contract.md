@@ -2272,7 +2272,8 @@ Corpos em `backend/app/taskqueue/orquestrador.py`.
   - `modo=texto`: o comando cita destinos; é a prévia de `/runs/targets/resolve`, sem IA.
   - `modo=distribuir`: app sem conta; aparelhos pela carga (`N aparelhos` no texto, senão 1), sem IA.
   - `modo=ia`: uma chamada do papel `plan` (`ai_calls.role = "plan"`, sem `run_id`); com `alerta_conduta`,
-    `targets` e `escolhidas` vêm vazios.
+    `targets` e `escolhidas` vêm vazios. Desde 06/10 o orquestrador não preenche `alerta_conduta` (a regra de
+    conteúdo do pedido vai para o serviço externo de autorização); o campo fica como ponto de recusa.
   - `modo=nenhuma`: sem app identificado e sem persona disponível, ou app com conta sem persona vinculada livre.
   - 409 `credencial_no_comando` (nada vai à IA); 503 `ai_not_configured`; 503 `ai_error`; 422 corpo inválido.
   - Declarada antes de `/runs/{run_id}/{op}`.

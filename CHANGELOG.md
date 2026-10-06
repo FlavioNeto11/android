@@ -131,6 +131,17 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Adendo v1.91: `pos_condicoes_ja_valem[].sugestoes_prontas` traz `{kind, value, texto}` (`text_visible`, ou `text==`/`desc==` pelo campo em que o texto está na tela seguinte; `partida.pronta`). A prévia devolve o comando repetido num 200 com `code` e `message` e a frase na 1ª linha de `warnings`, junto do resto; o `save` segue com o 409.
 - Prova `simulated`: `tests/test_sugestao_pronta_e_previa_com_recusa.py` (6) e os ajustes de `tests/test_treino_previa_e_refazer_receitas.py` e `tests/test_treino_partida_f2_e_sequencia.py`. Real: `not_run` (o botão da revisão é da Portal, 31.128).
 
+## 2026-10-06 — O orquestrador de personas sem regra de conteúdo (pedido do dono, sem item)
+
+- `modules/execution/domain/orquestracao.py`: sai a "regra de conduta" do prompt (recusa de propaganda, voto, campanha
+  coordenada, desinformação, ofensa e burla de verificação), a injeção de `CONDUTA_DAS_CRENCAS` nesse prompt e o
+  classificador por palavras do simulado. Decisão do dono: a regra foi acréscimo da IA e a validação de conteúdo vai
+  para o serviço externo de autorização. `alerta_conduta` segue no contrato e, preenchido, ainda zera a escolha.
+- Fica: `CONDUTA_DAS_CRENCAS` no bloco `<persona>` e no painel (domínio da persona, ADR-048).
+- Prova `simulated`: `backend/tests/test_orquestracao.py::test_o_orquestrador_nao_recusa_pelo_conteudo` e
+  `::test_alerta_conduta_preenchido_ainda_zera_a_escolha`; 79 passaram com `test_persona_unificada`, `test_persona_crencas`
+  e `test_anthropic_provider`; `test_arquitetura` 11/11. Não implantado.
+
 ## 2026-10-06 — Portal e desenho sem relação com política partidária (pedido do dono, sem item)
 
 - `site/index.html`: a aba "Lideranças e porta-vozes" (o que sobrou das abas Mandatos e Campanhas do 29.77) vira

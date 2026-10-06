@@ -70,8 +70,8 @@ Quatro compromissos guiam o design, e aparecem espalhados pelo código com o mes
   É o padrão do Comando: a pessoa escreve o pedido e o sistema decide quem faz e onde. A IA escolhe quais e quantas
   personas combinam com o pedido (perfil, voz, crenças como coerência, disponibilidade); o aparelho e o servidor
   saem da sessão pronta, do vínculo e da carga. Antes de criar, "Quem faz e onde" mostra cada persona com o motivo,
-  o aparelho e o servidor, as descartadas e as que faltam dados (com link para completar na persona). Pedido de
-  propaganda ou de voto não é roteado (ADR-048). Os modos manuais ficam no lado "Manual" do controle
+  o aparelho e o servidor, as descartadas e as que faltam dados (com link para completar na persona). A regra de
+  conteúdo do pedido não fica no orquestrador (06/10: vai para o serviço externo de autorização). Os modos manuais ficam no lado "Manual" do controle
   segmentado **Automático | Manual** (sempre há um dos dois marcado). Refinar com IA, Planejar e Executar são etapas
   em sequência, numeradas; quando uma está indisponível, o motivo aparece no próprio botão (ao passar o mouse ou focar).
 - **Seleção em massa e Foco (revisão de UX, 30/09).** Com aparelhos marcados, uma barra fica presa ao topo da grade

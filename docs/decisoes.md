@@ -2385,6 +2385,10 @@ decisão 7 do plano-100 (base × configuração antes de adotar alavanca de cust
 
 ## ADR-050 — Modo Automático: a IA escolhe quem faz, o código escolhe onde; crença é coerência, não alvo de persuasão
 
+**Emenda (06/10/2026, decisão do dono):** a regra de conduta do orquestrador (recusa por conteúdo do pedido com
+`alerta_conduta`) foi um acréscimo da IA, não requisito; sai do prompt e do simulado. A validação de conteúdo vai para o
+serviço externo de autorização; `alerta_conduta` fica no contrato como ponto de recusa.
+
 **Data:** 28/09/2026 · **Estado:** vigente, implantado em 28/09 (`b0f2c07`) · **Decisão técnica** pedida pelo dono ("essa decisão sobre
 quais aparelhos, personas e em qual servidor vai ser orquestrado depende do pedido do usuário, da disponibilidade das
 personas e dos aparelhos em relação à fila… e até qual persona utilizar no que faz sentido com o que foi pedido").
