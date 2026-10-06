@@ -889,6 +889,8 @@ it('31.129: a etapa da proposta que aceita um pacote vizinho diz em qual; a que 
   await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [PROPOSTA.steps[0]!, vizinha] });
   expect(text()).toContain('Também aceita concluir em: com.google.android.googlequicksearchbox');
   expect(text().match(/Também aceita concluir em/g)).toHaveLength(1);
+});
+
 // 31.132: depois de salvar, o resultado lê o estado do fluxo no Livro, diz o próximo passo e leva ao item.
 it('31.132: o resultado do salvar mostra o estado do fluxo no Livro, o próximo passo e o link para o item', async () => {
   backend.on('GET', /\/aprendizado\/fluxo\/mandar-mensagem$/, () => json({

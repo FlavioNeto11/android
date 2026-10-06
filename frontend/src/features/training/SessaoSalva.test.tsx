@@ -143,6 +143,8 @@ it('31.129: sem o campo (etapa antiga) ou com a lista vazia, nenhuma linha', asy
   const d = await abrirSalva();
   await waitFor(() => expect(d.textContent).toContain('Rolar a lista para ver o item'));
   expect(d.textContent).not.toContain('Também aceita concluir em');
+});
+
 // 31.132: o diálogo da sessão salva diz o estado de hoje do fluxo (o Livro manda) e leva ao item.
 it('31.132: o fluxo da sessão salva mostra o estado no Livro (Desligado) e o link para o item', async () => {
   backend.on('GET', /\/aprendizado\/fluxo\/f-455f91437856$/, () => json({
