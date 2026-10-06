@@ -10351,15 +10351,14 @@
    "id": "31.111",
    "status": "partial",
    "proof": "real",
-   "evidence": "06/10/2026 ~03:19Z, deploy 45. O backend F1-F3 está no ar: GET /api/training devolve a chave origin em todas as sessões (null em todas as que li, nenhuma nasceu de uma falha) e a gravação comum do percurso nasceu com origin null. A tela do deploy 45 não lê origin (o bundle servido não tem 'corrige uma falha' nem chama /training/from-run): botão e selo são a F5 (feat/31-111-f5-ensinar-a-corrigir, 732e6c30), que entra no corte 46.",
-   "blocker": "painel F5 só no corte 46; POST /api/training/from-run não foi chamado (exige controle do aparelho e uma etapa failed/uncertain de uma execução real, e não criei execução para isso)",
-   "nota": "Não há execução com origin no detalhe: nenhuma sessão tem origin preenchido, então 'execução com origin no detalhe' não tem o que mostrar hoje.",
-   "grupo": "portal-percurso-deploy-45",
+   "evidence": "06/10/2026 03:19Z a 03:35Z, central no deploy 45 (commit 7154d7cf, migração 119), android-04, sem conta real, nenhuma execução nova do parque na parte B. F1-F3 provados no ar: (1) POST /api/training/from-run sobre a falha REAL r-20261006012340-d92795 (etapa abrir_notificacoes, tentativa a1, status failed, 'passou do orçamento de 10 chamadas de IA') abriu a sessão trn-jrE1zcBoKSoHFqX5 com origin {run_id, step_id, step_key, attempt_id, motivo} (201); (2) uma gravação (1 swipe, controle pela API, liberado ao fim); a proposta da IA fez 2 perguntas (a gravação sem árvore perdeu as coordenadas do arraste) e foi respondida pela API (caminho 31.86), propose 2 com 'answers' fechou sem perguntas; (2b) GET /api/training/{id} trouxe origin.context real: trilha de 4 etapas da execução no aparelho com a de origem marcada falhou, esperado {kind, value, description}, tentativa failed com failure_kind ia_orcamento; (3) save com scope_on_proof=quem_ensinou criou o fluxo f-6d07590e1db6 com escopo [persona do treino] e ensinado_em_prova (30.81); GET /api/flows traz origin {session_id, run_id, step_id, attempt_id} para ele; (4) FlowStore.match lido só leitura no banco do central: casa para a persona que ensinou (f-6d07590e1db6) e dá None para a outra persona do android-04, para execução sem persona e para as duas juntas. Custo: execuções f6-1 r-20261006031948-60fd9b (US$ 0,0000, needs_input por duas personas) e f6-2 r-20261006032040-eb32fe (US$ 0,2027, spent_usd) + parte B, duas chamadas 'ensino' de proposta (US$ 0,0153 lido por spent_usd desde 03:30Z; antes 0, depois 0,0153): total da F6 US$ 0,2180, abaixo do teto de 0,35 e de 0,10 na parte B. Bloqueio da f6-2 (por que existe o item A): a IA concluiu que o item pedido não existe nas Configurações e emitiu step_blocked; o executor o rejeitou e a execução parou em awaiting_person com a etapa em waiting_user, sem etapa failed; cancelada por mim (a etapa terminou cancelled). Ressalvas: o fluxo salvo nasce com status active mas só vale para quem ensinou até a prova (30.81), não 'candidate'; a etapa de só um arraste não gerou receita ('rolagem sem ação-alvo depois dela'), então a prova de receita da correção não foi feita; a tentativa de origem não tinha evidência (nenhuma imagem), então `evidencias` veio vazio.",
+   "blocker": "F4 (diagnóstico, Aprendizado) e F5 (tela, Portal) ainda não entregues; A (STATUS_ENSINAVEIS aceitar waiting_user) em ponta própria para o corte 46.",
+   "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T03:24:36+00:00"
+   "quando": "2026-10-06T03:33:09+00:00"
   },
   "31.112": {
    "id": "31.112",
@@ -13412,6 +13411,15 @@
    ],
    "grupos": [
     "portal-percurso-deploy-45"
+   ]
+  },
+  {
+   "quando": "2026-10-06T03:33:09+00:00",
+   "itens": [
+    "31.111"
+   ],
+   "grupos": [
+    "jev"
    ]
   }
  ]
