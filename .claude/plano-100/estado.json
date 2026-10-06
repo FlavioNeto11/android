@@ -10627,6 +10627,30 @@
    "conferido": null,
    "conferencia": "",
    "quando": "2026-10-06T07:38:01+00:00"
+  },
+  "29.107": {
+   "id": "29.107",
+   "status": "implemented",
+   "proof": "simulated",
+   "evidence": "Já estava na main desde 52fe35c2 (05/10, ancestral de 16858086): scripts/portal-prova-de-fora.sh passa o Location pela regua_crua linha por linha; scripts/tests/test_portal_prova_de_fora.py cobre location_fora, location_suja, location_largura, location_c1, location_bidi e location_longa. Simulado: scripts/tests/test_portal_prova_de_fora.py (arquivo inteiro, 32 passed, 06/10 07:4xZ, Android). No ar desde o deploy seguinte a 52fe35c2.",
+   "grupo": "android-fila-49",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T07:49:32+00:00"
+  },
+  "29.152": {
+   "id": "29.152",
+   "status": "partial",
+   "proof": "real",
+   "evidence": "Real, 06/10/2026 07:47Z, notebook da LAN (worker-lan-01), só medida, nada alterado: CPU do host 33, 19, 29, 22, 38, 24 % (era 66 % com o Discord aberto; 15 a 32 % depois do fechamento, P-015); RAM livre 46999 de 65273 MB; 9 qemu em BelowNormal; Defender em tempo real sem exclusão das pastas dos AVDs e do SDK; eventos do central hoje (00:00Z a 07:48Z): 480 avisos de pressão de CPU (android-02 375, 05 40, 10 28, 13 19, 12 5), 6 quedas do system_server (android-10 e 13, 01:06Z a 01:08Z), android-02 com a automação em error de 07:28Z a 07:39Z (Appium Settings não subiu em 5 s). Relato: .claude/handoffs/android/notebook-29-152-medida47.md. Falta: diagnóstico do android-02 (375 dos 480 avisos), as alterações de desempenho autorizadas (uma por vez, fora de suíte, com medida antes e depois) e a decisão do dono sobre exclusões do Defender e prioridade do qemu (cartão pela Canais).",
+   "grupo": "android-fila-49",
+   "modelo": "sonnet",
+   "esforco": "high",
+   "conferido": null,
+   "conferencia": "",
+   "quando": "2026-10-06T07:49:32+00:00"
   }
  },
  "rodadas": [
@@ -13855,6 +13879,16 @@
    ],
    "grupos": [
     "portal-percurso-48b-diagnostico-na-tela"
+   ]
+  },
+  {
+   "quando": "2026-10-06T07:49:32+00:00",
+   "itens": [
+    "29.107",
+    "29.152"
+   ],
+   "grupos": [
+    "android-fila-49"
    ]
   }
  ]

@@ -1,6 +1,6 @@
 # Execução do plano-100
 
-628 de 677 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
+629 de 677 itens implementados. Gerado por `scripts/claude-plan-100.py` a partir do que
 o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 **Implementado não quer dizer aceite provado** — a coluna Prova é que diz isso.
 
@@ -414,7 +414,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.104 | implemented | simulated | claude-sonnet-5-5 | — | 29.104: frontend: arquivo::teste na suíte (vitest 1732 passados em 94404535), não é um item de navegador; sem percurso real. |  |
 | 29.105 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 ~03:26Z a ~03:30Z, central 7154d7cf (contém f7153ddf do 29.105), android-04 sem conta real. No Foco, com o controle: Abrir app > Chrome (rodou Abrir app, concluído) e, no menu do Chrome, 'New Incognito… | None |
 | 29.106 | implemented | simulated | claude-fable-5-1 | — | PR #393, ponta FINAL 23ef490a, branch fix/29-106-partir-de, sobre o #392. Mudança de produto: no editor de grupo novo, o 'começar a partir de' não descartava a resposta velha (A respondendo depois de B deixava o rascunh… | Prova real not_run de 'só vale a última' e da trava durante a leitura: os perfis do central rendem o mesmo rascunho. |
-| 29.107 | pendente | — | — | — |  |  |
+| 29.107 | implemented | simulated | sonnet | — | Já estava na main desde 52fe35c2 (05/10, ancestral de 16858086): scripts/portal-prova-de-fora.sh passa o Location pela regua_crua linha por linha; scripts/tests/test_portal_prova_de_fora.py cobre location_fora, location… |  |
 | 29.108 | pendente | — | — | — |  |  |
 | 29.109 | implemented | simulated | claude-sonnet-5-5 | — | frontend/src/features/profiles/ProfilesPage.test.tsx (4 casos: leitura que falha solta a trava e avisa; troca para o padrão no meio destrava e a resposta velha não entra; erro de leitura aposentada não vira toast; volta… | None |
 | 29.110 | implemented | real | claude-fable-5-1 | — | Real, 05/10/2026, WIN-7S2UASNLFOP. Ordem do dono em chat (sessão do Portal, entre 08:29Z e 08:35Z): 'tire o trecho abaixo agora do portal' (seção 'O que a ANA não faz'). PR #394 (ponta cb71b523): sai o <aside class="lim… | None |
@@ -458,7 +458,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | 29.149 | implemented | simulated | claude-sonnet-5-5 | — | Ponta 5c19f511: o teste usava data fixa como futuro e falhava em qualquer ramo desde 05/10 21:00Z. Simulado: frontend/src/features/runs/PortaDoPlano.test.tsx::*. Suíte 41 sobre a integração ac77742c (origin/main 6545296… | None |
 | 29.150 | implemented | real | claude-sonnet-5-5 | — | Mesma conferência do 29.148: a tela de execuções (datas relativas: "há 1 h", "há 6 h") renderiza sem erro no deploy 42. | None |
 | 29.151 | pendente | — | — | — |  |  |
-| 29.152 | pendente | — | — | — |  |  |
+| 29.152 | partial | real | sonnet | — | Real, 06/10/2026 07:47Z, notebook da LAN (worker-lan-01), só medida, nada alterado: CPU do host 33, 19, 29, 22, 38, 24 % (era 66 % com o Discord aberto; 15 a 32 % depois do fechamento, P-015); RAM livre 46999 de 65273 M… |  |
 | 29.153 | implemented | real | claude-sonnet-5-5 | — | Real, 06/10/2026 ~05:27Z, deploy 46 (325a04fb, backend do PR 465 no ar). GET /api/runs/{id} trouxe costs em todas as execuções do android-04 (ex.: r-20261006012340-d92795: spent_usd 0.33082, calls 33; r-20261005222326-9… | None |
 | 29.44 | implemented | real | opus (sessão Android) | — | feat/29-44-sem-trafego @1cdacd0f (f54eb0c8 código: per_app sem_trafego em sonda_rede.Cobertura, rede._falta_para_verificar/apps_sem_prova/registrar_medicao com a ressalva, rede_convergencia._verificar não dispensa a med… |  |
 | 29.45 | implemented | simulated | opus (sessão Android) | — | feat/lt-5-6-12-caminho-rapido-2 @9402a9ed (LT-5 82376793: _verify com 'não' em tela parada encerra em SONDAGENS_DA_TELA_PARADA=3 sondagens na mesma assinatura, exceto patient com pending_marks declaradas e nível de entr… |  |
@@ -684,7 +684,7 @@ o workflow devolveu; a prova dos aceites continua em `relatorio-validacao.md`.
 | T.3 | implemented | simulated | opus | ok | config/config.example.yaml (novo): ponto de partida neutro — 4 emuladores locais, sem external, sem store, sem override de imagem, worker_port 0; cada bloco opcional comentado com o que ele exige. config/config.yaml sai… |  |
 | T.4 | implemented | real | sessao | — | CI do GitHub verde em 25/09/2026 00:5x UTC, run 36078946300 sobre 9e12baf (backend-sqlite, frontend, dependencias, worker-agent-smoke e docs = success; backend-postgres so roda agendado). Antes: vermelho desde pelo meno… |  |
 
-Pendentes (49): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.107, 29.108, 29.122, 29.126, 29.145, 29.151, 29.152, 31.11, 31.12, 31.26, 31.81, 31.115, 31.116, 31.118, 31.119, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
+Pendentes (48): 15.15, 17.6, 17.9, 18.9, 23.11, 25.9, 27.2, 27.4, 28.10, 28.12, 28.24, 28.27, 28.31, 28.32, 28.51, 28.53, 28.55, 29.7, 29.9, 29.13, 29.19, 29.30, 29.75, 29.79, 29.102, 29.108, 29.122, 29.126, 29.145, 29.151, 29.152, 31.11, 31.12, 31.26, 31.81, 31.115, 31.116, 31.118, 31.119, 33.1, 33.2, 33.3, 33.4, 33.5, 33.6, 33.7, 33.8, T.2
 
 A evidência aparece resumida acima; o texto integral de cada item, com os testes que foram de fato
 executados, está em `.claude/plano-100/estado.json` (versionado; só `aplicar` escreve nele).
