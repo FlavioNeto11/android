@@ -20,6 +20,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from ..automation.gestos import borda_de_saida
 from ..taskqueue.flows import PLACEHOLDER
 from .provider import AIError, validar_saida
 
@@ -114,9 +115,34 @@ class TrainingRequest:
     session_id: str | None = None
     #: 31.91: o que a pessoa respondeu às `questions` de propostas anteriores, [{question, answer}]; vazio = como antes
     answers: list[dict[str, str]] = field(default_factory=list)
+    #: 31.114 F1: (largura, altura) da tela do aparelho na hora da proposta, ou `None` se ele não respondeu. Só serve para
+    #: dizer de onde o arraste saiu (a borda); sem ela o texto diz "borda desconhecida" em vez de chutar.
+    tela: tuple[int, int] | None = None
 
 
-def linha_da_entrada(e: dict[str, Any]) -> str:
+def descrever_arraste(x: int, y: int, x2: int, y2: int, tela: tuple[int, int] | None = None) -> str:
+    """31.114 F1: o gesto do DEDO, em palavras que não se confundem com "rolar" (que é o movimento do conteúdo, o contrário):
+    de onde saiu, para onde foi e quanto percorreu. A medição real (06/10) mostrou a IA lendo "rolou para cima" como o dedo
+    subindo, quando o dedo tinha descido a partir da borda superior. Com a tela, diz a borda e a distância em %; sem ela
+    (aparelho fora do ar, ou coordenadas que não cabem nela), diz a direção e "borda desconhecida"."""
+    dx, dy = x2 - x, y2 - y
+    vertical = abs(dy) >= abs(dx)
+    if vertical:
+        sentido = "de cima para baixo" if dy > 0 else "de baixo para cima"
+    else:
+        sentido = "da esquerda para a direita" if dx > 0 else "da direita para a esquerda"
+    if tela is not None and not (0 <= x <= tela[0] and 0 <= x2 <= tela[0] and 0 <= y <= tela[1] and 0 <= y2 <= tela[1]):
+        tela = None                                   # a tela lida não é a da gravação (rotação, outro tamanho): não chuta
+    if tela is None:
+        return f"arrastou o dedo {sentido} (borda de origem desconhecida)"
+    largura, altura = tela
+    borda = borda_de_saida(x, y, largura, altura)
+    percorreu = round(100 * (abs(dy) / altura if vertical else abs(dx) / largura))
+    saiu = f"saindo da borda {borda}" if borda else "saindo do meio da tela, sem tocar a borda"
+    return f"arrastou o dedo {sentido}, {saiu}, por {percorreu} % da {'altura' if vertical else 'largura'}"
+
+
+def linha_da_entrada(e: dict[str, Any], tela: tuple[int, int] | None = None) -> str:
     """Uma linha por entrada, compacta: é o que o modelo lê."""
     partes = [f"#{e['seq']} {e['type']}"]
     if e.get("package"):
@@ -140,8 +166,7 @@ def linha_da_entrada(e: dict[str, Any]) -> str:
             # 31.97: arraste sobre teclado, padrão de bloqueio ou tela sensível: sem as coordenadas; não há direção a inventar
             partes.append("arraste em teclado, padrão de bloqueio ou tela sensível (não gravado)")
         else:
-            dy = e["y2"] - e["y"]
-            partes.append("rolou para baixo" if dy < 0 else "rolou para cima")
+            partes.append(descrever_arraste(e["x"], e["y"], e["x2"], e["y2"], tela))
     if e["type"] == "text":
         partes.append(f"digitou \"{e['text']}\"" if e.get("text") is not None
                       else f"digitou {e.get('text_len') or '?'} caractere(s) SIGILOSOS (não gravados)")
@@ -170,7 +195,7 @@ def trainer_user(req: TrainingRequest) -> str:
         cat = "\n\nCATÁLOGO de ações do app (use a chave em `capability`):\n" + "\n".join(
             f"- {c['key']}: {c['title']}{' [efeito externo]' if c.get('side_effect') else ''}"
             f"{' args=' + ','.join(c.get('bindings') or []) if c.get('bindings') else ''}" for c in req.catalog)
-    entradas = "\n".join(linha_da_entrada(e) for e in req.inputs)
+    entradas = "\n".join(linha_da_entrada(e, req.tela) for e in req.inputs)
     respostas = texto_das_respostas((r["question"], r["answer"]) for r in req.answers)
     return (f"Intenção declarada pela pessoa: {req.intent}\nApp principal: {req.app_id or 'não informado'}\n"
             f"Apps configurados:\n{apps}{cat}\n\nGravação ({len(req.inputs)} entradas):\n{entradas}"

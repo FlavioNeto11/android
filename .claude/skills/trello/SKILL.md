@@ -30,8 +30,11 @@ laranja custo pago · vermelho bloqueado/urgente. ARIs por quadro no JSON.
   `mark_done`; comentar `add_comment`; checklist `trelloWriteChecklist create/add_item/update_item`; ler
   `trelloReadCard list_by_list|get`.
 - **Sem chave no repositório.** A Central terá credencial própria no `.env` (32.2); a sessão usa o MCP.
-- `mapa.json` (`.claude/trello/mapa.json`): `id do plano → {card, url, lista}`. Atualize ao criar/mover. Leia e grave
-  sempre no checkout central (`C:/git/android`), nunca na cópia de um worktree.
+- `mapa.json` (`.claude/trello/mapa.json`): `id do plano → {card, url, lista}`. **Estado por instalação, fora do Git**
+  (28.56, `.gitignore`, como o `config/config.yaml`): arquivo versionado regravado por script no central trava o
+  fast-forward do deploy. Leia e grave sempre no checkout central (`C:/git/android`), nunca na cópia de um worktree.
+  A reconciliação (`reconciliar.py`) não depende dele: lê o nome dos cartões no Trello. A fonte durável é a tabela
+  `trello_cartoes` (migração 087); numa instalação nova o arquivo nasce vazio (`mapa.py`).
 
 ## Modelo de cartão
 

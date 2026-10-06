@@ -37,3 +37,8 @@ config/config.yaml
 # `git add` descuidado.
 scripts/personas-voz.json
 scripts/personas-novas.json
+
+# O mapa de cartoes do Trello (id do plano -> cartao) e estado de CADA instalacao (28.56): regravado por
+# script a cada espelho de deploy, e arquivo versionado mexido no central trava o fast-forward do deploy.
+# A fonte duravel e a tabela trello_cartoes (migracao 087).
+.claude/trello/mapa.json

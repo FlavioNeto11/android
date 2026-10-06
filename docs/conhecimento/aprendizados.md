@@ -2710,3 +2710,24 @@ nem `capture_failing` disparam: o backend confere a idade e o tamanho do quadro,
 
 **Aplicabilidade.** Toda operação manual por API e todo script de medida. O `capture_failing` cobre o quadro parado; o
 quadro novo não lido só a disciplina cobre.
+
+---
+
+### K-103 — Arquivo versionado regravado por script no central trava o fast-forward do deploy
+
+**Data:** 06/10/2026 · **Área:** operação (Trello, deploy)
+
+**Sintoma.** O checkout central ficou com `.claude/trello/mapa.json` modificado e não commitado (cerca de 1.900 linhas de diferença) fora de qualquer
+ramo; um arquivo versionado sujo no central impede o fast-forward do deploy.
+
+**Causa.** O arquivo guardava o mapa de cartões do Trello desta instalação e era regravado por script a cada espelho de deploy, cartão de pergunta
+e limpeza de lista; ninguém o commitava porque ele muda a cada hora e vale só para esta instalação.
+
+**O que funcionou.** Tratá-lo como o `config/config.yaml`: estado por instalação, no `.gitignore` e fora do índice (28.56), com a tabela
+`trello_cartoes` (migração 087) como fonte durável. No deploy que remove o arquivo do índice, o central o tem modificado; a Android guarda e
+repõe o arquivo em volta do fast-forward.
+
+**O que não funcionou.** Commitar o arquivo de tempos em tempos: a diferença volta no próximo espelho e o central volta a ficar sujo.
+
+**Aplicabilidade.** Vigente. Vale para todo arquivo que um script regrava no checkout central: ou é estado por instalação (fora do Git), ou é
+gerado no deploy; nunca um arquivo versionado que um script mexe sem commitar.

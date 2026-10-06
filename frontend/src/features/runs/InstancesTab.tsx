@@ -23,6 +23,7 @@ import { useUiStore } from '../../store/ui';
 import { useSessionStore } from '../../store/session';
 import { type Voto, votoDoItem } from '../aprendizado/model';
 import { CorrigirEtapa, MarcaCorrigivel } from './CorrigirEtapa';
+import { EnsinarACorrigir } from './EnsinarACorrigir';
 import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
 import {
   appLabel, attemptsByStep, currentSteps, etapaAConfirmar, headlineStep, isBlocked, previousVersionSteps,
@@ -437,6 +438,8 @@ function StepDetail({ detail, step: s, attempts }: { detail: RunDetail; step: St
 
       {/* Plano 22.7: a etapa que a habilidade errou (falhou ou ficou sem prova) se corrige aqui, no ensino dela. */}
       <CorrigirEtapa detail={detail} step={s} />
+      {/* 31.111 F5: ensinar a corrigir a partir da falha, no aparelho da etapa (o treino nasce ligado a ela). */}
+      <EnsinarACorrigir detail={detail} step={s} />
 
       {attempts.length === 0 ? (
         <p className={styles.muted}>Nenhuma tentativa registrada ainda.</p>

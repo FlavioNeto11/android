@@ -1,10 +1,21 @@
 # Estado atual — handoff
 
-**Revisado em 06/10/2026: runtime do backend em `7154d7cf` (migração 119, deploy 45); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `325a04fb` (migração 119, deploy 46); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 46 no ar (06/10/2026, 05:21Z, central `325a04fb`, sem migração nova).** 13 pontas: 31.113 F1+F2 (registro mascarado;
+  bindings até a F3), 31.111 F4+F5+A (diagnóstico, tela "Ensinar a corrigir", bloqueio ensinável), 29.153 (custo no detalhe,
+  backend e painel), 28.56 (mapa do Trello fora do Git, reconciliação dos parciais), 31.114 (arraste, v1.76), 31.91 T1 (ADR-078,
+  rotas v2 obsoletas com contador; T2 em 14 dias = 31.115).
+  - `real` (central WIN-7S2UASNLFOP): ensaio exigido pela trava de 60 min (cópia `dataackups61006-021934`) e deploy `-PularBackup`; saúde ok,
+    migração 119, `problems []`; prova de fora como esperado; agente `0.1.0+325a04f`; aparelhos 01, 03, 06 e 13 `ready`;
+    mapa.json reposto e ignorado.
+  - `simulated` (suíte 46): números do CHANGELOG.
+  - `not_run`: percurso no navegador; prova real do 31.113 F2; 31.79.
+  - Plano-100: resultado da suíte 46 aplicado; IDs 31.114 e 31.115 (janela 47). Corte 47: 31.91 T1 na tela (Portal),
+    31.113 F3, 31.79 (Portal, pago com teto).
 - **Deploy 45 no ar (06/10/2026, 03:13Z, central `7154d7cf`, migração 119, nova).** 7 pontas sobre `6c03214f`: ensino 31.111 F1+F2+F3
   (escolha do dono na P-014), 31.112 (pergunta da IA com marcador), 31.90-D painel; canais 28.56/C-28 (Trello reconciliado nos
   três quadros); piloto do Copilot 29.137 e 30.82; 31.101 (troca ampla de nomes nos testes).
