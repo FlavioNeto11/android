@@ -45,6 +45,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   personas) e `backend/tests/test_migracao_126.py` (atualização, idempotência, banco novo = atualizado).
 - `not_run`: prova real (exige declarar a troca num app, com os sinais lidos num aparelho de conta de teste).
 
+## 2026-10-06 — 29.155 (C17): os limites do agente de nuvem não valem como critério de revisão de PR de sessão (branch ci/29-155-c17-revisao)
+
+- `AGENTS.md` (seção nova "A quem valem estes limites"), `.github/copilot-instructions.md` (seção de revisão) e os três perfis de `.github/agents/`: "Nunca edite", "um PR por tarefa", "uma área por PR" e `[skip ci]` descrevem o agente que ESCREVE a partir de uma issue (branch `copilot/*`); ao revisar PR de branch de sessão (`feat/*`, `fix/*`, `docs/*`, `ci/*`), o Codex e o Copilot usam só os critérios de revisão. Motivo: nos PRs 473 a 476 do corte 56, 5 de 15 achados do Codex eram esses limites aplicados a PR de frente (lista em `.claude/handoffs/github-revisoes-corte56.md`). Os limites do agente de nuvem seguem iguais para PR `copilot/*`. Prova `simulated`: `docs-check` e os testes de `scripts/tests`. Prova `real`: `not_run` até o próximo PR de frente revisado depois da mescla, sem esses achados.
+
 ## 2026-10-06 — 28.57: arquivo de texto com o nome original no envio e repasse do `.txt` do dono sem legenda (branch canais/anexos-28-57)
 
 - Achado de 06/10 ao mandar os arquivos do 29.161: `enviar_anexo` renomeava tudo para `anexo-<sha>.<ext>` e não aceitava `.ps1`/`.md`, o que quebraria o comando `-File .\script.ps1`; e o `.txt` que o dono mandou sem legenda ficava `ignorada`. A premissa de que o canal não recebia o anexo estava errada: a recepção do 28.24 já guardava os 4 `.txt` (`canal_anexos` 1 a 4), só faltava o repasse (K-105).
