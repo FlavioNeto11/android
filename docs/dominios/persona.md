@@ -313,6 +313,27 @@ materialização, e o pré-voo do F1 recusa o aparelho sem o dado. O `save` e a 
 perfil. O consumo é genérico por chave (`profile_variables`, da identidade): as chaves novas entram sem mudar o
 ensino. Valor com menos de 3 caracteres, ou só dentro de outro texto, não é trocado. Sem persona no treino, nada muda.
 
+**O registro da execução guarda o marcador, não o valor (31.113, F1; achado da prova real do 31.87).** A tela segue
+com o valor: o executor digita e confere com o que tem em memória. O que FICA troca valor → marcador na fronteira de
+escrita (`security/mascara_da_persona.py`, camada irmã de `redact` e de `enderecos_limpos`):
+- `Repository.log_intent` (`args`, `rationale`), `finish_action` (`result`, `error`), `note_attempt` e
+  `finish_attempt` (`error`, `observed_result`; o tipo da falha é classificado antes, pelo texto), a nota da evidência
+  e o `status_detail` da etapa;
+- todo evento com execução, objetivo, etapa ou tentativa, pela máscara que o `Repository` liga no `EventBus`.
+
+O mapa é por objetivo: os dados que identificam a persona (nome, sobrenome, nome de exibição, e-mail, nascimento)
+sempre, os outros só quando o plano os cita (senão "Brasil" sumiria de todo texto). Entra também o dado que o ator
+digitou INTEIRO, de qualquer chave. Regras do ensino: o valor mais longo primeiro, no mínimo 3 caracteres, palavra
+inteira, sem diferença de maiúscula. O valor que está num parâmetro do comando fica, porque o parâmetro vence (regra do
+F2) e a receita aprendida da execução continua guardando `{param}`. O `actions.target` fica com o valor: é o seletor da
+receita e da lição (o elemento da tela), e o evento não o leva.
+
+A F1 não cobre o texto das etapas (`steps.postcondition`/`goal`/`title` e `plan_versions.steps`): a materialização ainda
+grava o valor resolvido. Isso é a F2 (o molde na linha e a resolução em memória no executor, combinada com a Android).
+A aprovação e a porta de política guardam e mostram o marcador; a tela de aprovação resolve o valor ao vivo pela
+persona (F2). As execuções anteriores ficam como estão: o registro nasce mascarado a partir do deploy que levar o
+commit da F1 (ramo `feat/31-113-f1-registro-mascarado`).
+
 **Rotas por conta** (`api.py`; as antigas por perfil são apelidos da conta âncora):
 
 | Rota | Faz |
