@@ -462,7 +462,8 @@ com o banco aberto só para leitura.
 
 - **Correção de ensino na execução (22.7).** Na aba "Por aparelho", a etapa `failed` ou `uncertain` que veio de uma
   habilidade ganha "Corrigir esta etapa" no detalhe, e a linha recolhida leva a marca "corrigível". A regra é a mesma
-  da rota: habilidades ligadas (`features.skills`), status em `CORRECTABLE_STEP` e a origem do passo (`origin`, lida
+  da rota: habilidades ligadas (`features.skills`) e a tela do ensino v2 ligada (`features.ensino_v2`, 31.91 F1, padrão
+  `false`), status em `CORRECTABLE_STEP` e a origem do passo (`origin`, lida
   em `plan_versions` pela mesma versão do mesmo objetivo). O envio acha um ensino aberto da mesma habilidade e versão
   que já corrige esta execução (ou um vazio aberto por esta ação), ou abre um com instrução fixa ("Corrigir a
   habilidade <id> (versão N)."), e posta a correção com `step_id` = `steps.id`, não a key. O ensino que fica aberto e
@@ -2070,6 +2071,9 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
   libera (N5: a execução comum de quem ensinou não conta).
 - **Para a validação** (achado 4), o fluxo ativo do comando é `FlowStore.ativo_para`: o `match` sem aparelhos, sem o
   ensinado em espera (`state.py`, `fluxo_ativo_para` e `plano_ativo_para`).
+- **Escolha de escopo (31.88 F2):** o salvar e a prévia aceitam `scope_on_proof` (`todos` ou `quem_ensinou`); este grava a
+  persona do treino na `flow_scope`, e o escopo fica depois da prova. A pessoa muda depois por `PUT /api/flows/{id}/scope`,
+  com o antes e o depois no evento `log` (fora de `learning_transitions`). Adendo v1.71.
 - **Quem abre a prova:** a volta da validação, e não o ouvinte do nascimento. O `save` grava a proposta final (com os
   `example`) DEPOIS de `learn_from_plan`, e o ouvinte leria a proposta velha.
   - `EnsinoDaValidacaoSql.a_provar` é uma consulta só por volta.

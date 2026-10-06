@@ -1,10 +1,21 @@
 # Estado atual — handoff
 
-**Revisado em 05/10/2026: runtime do backend em `cb6742d4` (migração 116, deploy 42); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
+**Revisado em 06/10/2026: runtime do backend em `f15ef2e1` (migração 116, deploy 43); site institucional ligado na raiz pública. Os blocos de 02/10 seguem abaixo como histórico.** Atualize este arquivo ao fechar cada tarefa (skill `fechar-tarefa`). Mantenha-o
 curto: o que muda de sessão para sessão fica aqui, e o resto aponta para a fonte principal ([índice](README.md)).
 
 ## Onde estamos
 
+- **Deploy 43 no ar (06/10/2026, 00:50Z, central `f15ef2e1`, sem migração nova; segue a 116).** Sete pontas sobre
+  `2e41f18b`, todas do ensino: 31.87 F2 (identidade e ensino com dados da persona), 31.88 F2 (escopo ao provar), 31.90-C/D/E/F
+  (revisão do ensino: perguntas da IA, correção do gravado, undo), 31.91 F1, 31.108 e 29.104; mais o teste do 28.54.
+  Detalhe no [CHANGELOG](../CHANGELOG.md) e no [livro do plano](execucao-plano-100-runner.md).
+  - `real` (central WIN-7S2UASNLFOP): ensaio com a cópia `dataackups61005-214529`; deploy com `-PularBackup`; saúde
+    ok; prova de fora como esperado; agente `0.1.0+f15ef2e`; aparelhos 01, 03 e 06 online; hooks sem erro.
+  - `simulated` (suíte 43): números do CHANGELOG.
+  - `not_run`: percurso no navegador (Portal, a seguir), com a prova real do 31.90-C numa segunda persona de teste.
+  - Plano-100: resultado da suíte 43 e o percurso real do deploy 42 (31.86, 30.81, 29.148, 29.150, 29.146, 29.142)
+    aplicados; ADR-069 anotado com a P-013 (R5 em sombra). Corte 44 em montagem: 30.76 (migração 117), 30.77 (118), 30.78,
+    31.89 (+ painel), 31.13 (R5 em sombra; config central já em `apps: shadow`), 31.110, 30.85 e o script de nomes.
 - **Deploy 42 no ar (05/10/2026, 23:33Z, central `cb6742d4`, sem migração nova; segue a 116).** Doze pontas sobre
   `095a43b6`: privacidade de nomes 31.105, 31.107, 31.96 e 31.109; canais 28.54; hooks no agente de nuvem 29.147; suíte do
   frontend 29.148 e 29.150; catraca de esperas 29.136 e 29.135; ensino 30.81 (painel) e 30.84 com a fatia 4 do 30.83.

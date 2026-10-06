@@ -597,6 +597,8 @@
 .valoresDoModo ul { margin: 2px 0 0; padding-left: var(--sp-4); }
 
 /* 30.23: a confirmação da evidência inválida abre no lugar do botão (nunca modal), com o que acontece com o item. */
+.escopoLista { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--sp-1) var(--sp-3); font-size: var(--fs-sm); }
+.escopoLista label { display: flex; align-items: center; gap: var(--sp-2); overflow-wrap: anywhere; }
 .confirmacao {
   display: flex;
   flex-direction: column;

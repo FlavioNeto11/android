@@ -47,7 +47,7 @@ function comConta(pessoas: PersonaDTO[]): InstagramProfile[] {
 
 /**
  * Personas (`#/personas`, com `#/personas/<persona>/<guia>` para uma pessoa, onde `<persona>` é o nome legível
- * (`lucas-almeida`) ou o id antigo; `#/perfis` antigo redireciona): as PESSOAS, com e sem conta (`GET /personas`). Cada uma tem identidade,
+ * (`tadeu-quintela`) ou o id antigo; `#/perfis` antigo redireciona): as PESSOAS, com e sem conta (`GET /personas`). Cada uma tem identidade,
  * voz, biografia, fotos e as contas dela em cada app; conta, senha e aparelho se ajustam DENTRO da persona.
  */
 export function ProfilesPage() {

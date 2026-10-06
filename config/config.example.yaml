@@ -498,6 +498,7 @@ contas:                           # contas gerenciadas de qualquer app com login
 
 skills:                           # habilidades versionadas (docs/design/evolucao-arquitetural.md, decisão P1)
   enabled: false                  # (false) habilidade PUBLICADA casa o comando antes do fluxo legado (ai.flows)
+  ensino_v2_na_tela: false        # (false) a tela do ensino v2 (revisão só para leitura e "Corrigir etapa"); o caminho de ensino é o Modo treinamento (ADR-077). Reversível: nada se apaga
 
 context_retrieval:                # retrieval de contexto de código: léxico + BM25 locais e provedor semântico plugável (ADR-063)
   enabled: false                  # (false) desligado = nada muda; ligar também exige escolher `mode`

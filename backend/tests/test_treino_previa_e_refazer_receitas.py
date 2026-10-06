@@ -86,7 +86,7 @@ async def test_previa_diz_o_mesmo_que_o_save_e_nao_escreve_nada(harness: Harness
     assert _foto(st, sid) == antes                                  # nem fluxo, escopo, receita, status nem proposta
     assert not [m for m in emitidos if "Habilidade" in m]           # nem o evento de "habilidade salva"
 
-    assert set(previa) == {"steps", "warnings"} and previa["warnings"] == _SEM_PERSONA   # 30.81: gravado sem persona
+    assert set(previa) == {"steps", "warnings", "scope"} and previa["warnings"] == _SEM_PERSONA   # 30.81: gravado sem persona
     for linha in previa["steps"]:
         assert set(linha) == {"key", "title", "recipe", "reason"}    # as ações da receita nunca saem
     dela = _por_chave(previa["steps"])
@@ -286,7 +286,7 @@ async def test_rotas_http_previa_e_refazer(harness: Harness) -> None:
         r = await c.post(f"/api/training/{sid}/preview", json={"proposal": _proposta()})
         assert r.status_code == 200, r.text
         corpo = r.json()
-        assert set(corpo) == {"steps", "warnings"} and corpo["warnings"] == _SEM_PERSONA
+        assert set(corpo) == {"steps", "warnings", "scope"} and corpo["warnings"] == _SEM_PERSONA
         assert [s["key"] for s in corpo["steps"]] == ["abrir", "conversa", "escrever", "enviar"]
         assert all(set(s) == {"key", "title", "recipe", "reason"} and isinstance(s["recipe"], bool) for s in corpo["steps"])
         assert SEGREDO not in r.text
