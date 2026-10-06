@@ -16,16 +16,18 @@ _CAMPOS = ("title", "goal", "bindings", "postcondition", "precondition")
 
 
 def aviso(p: Mapping[str, object]) -> list[str]:
-    """Uma linha por etapa da proposta que cita o marcador da conta da persona; sem valor, só a etapa e o marcador."""
+    """Uma linha por etapa da proposta que cita o marcador da conta da persona; sem valor, só a posição da etapa
+    e o marcador."""
     passos = p.get("steps")
     saida: list[str] = []
-    for st in passos if isinstance(passos, list) else []:
+    for n, st in enumerate(passos if isinstance(passos, list) else [], start=1):
         if not isinstance(st, dict):
             continue
         achados = sorted(set(_DA_PROPRIA_CONTA.findall(repr({k: st.get(k) for k in _CAMPOS}))))
         if achados:
             marcadores = ", ".join("{" + m + "}" for m in achados)
-            saida.append(f"A etapa “{st.get('key')}” mira a conta da própria persona ({marcadores}): a receita dela "
+            # Pela posição, não pela `key`: a IA escolhe a chave a partir da tela, e ela pode trazer o nome.
+            saida.append(f"A etapa {n} mira a conta da própria persona ({marcadores}): a receita dela "
                          "abre a conta de quem roda, em cada aparelho. Para um alvo da operação, ensine com um perfil "
                          "que não seja o da persona.")
     return saida

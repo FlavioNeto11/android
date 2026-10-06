@@ -2,8 +2,8 @@
 
 Medido em 06/10 (leitura da onda 2): das 19 receitas ativas do Instagram, 18 nasceram de execução e valem para as três
 personas com conta; a do ensino (30.81) vale só para quem ensinou, e o fluxo ensinado tem escopo de uma persona. O Livro
-e a Portal não diziam isso: adivinhavam pelo rótulo dos alvos. Agora a resposta é por item e por persona, com o motivo do
-"não" num vocabulário fechado. A regra de cada "não" é a do código que decide na execução (`RecipeStore` e
+e a Portal não diziam isso: adivinhavam pelo rótulo dos alvos. Agora a resposta é por item e por persona, com o motivo
+do "não" num vocabulário fechado. A regra de cada "não" é a do código que decide na execução (`RecipeStore` e
 `FlowStore`), recebida por quem monta: aqui só se junta.
 """
 from __future__ import annotations
@@ -31,8 +31,8 @@ class Veredito:
 @dataclass(frozen=True, slots=True)
 class ItemDoAlcance:
     tipo: str                                       # "receita" ou "fluxo"
-    id: str
-    chave: str                                      # a etapa da receita; o `ref_publico` (ou id) do fluxo
+    id: str                                         # o id da receita; a `ref_publico` do fluxo, nunca o id interno
+    chave: str                                      # a etapa da receita; vazio no fluxo (o `id` já é a ref pública)
     origem: str                                     # "ensino" ou "execucao"
     estado: str
     detalhe: Mapping[str, object]                   # reproduções da receita; usos e marca de prova do fluxo

@@ -7445,7 +7445,9 @@ motivo do não.
   itens: [...]}`.
 - O item é `{tipo, id, chave, origem, estado, ..., por_persona: {profile_id: {pode, motivo}}}`:
   - `tipo` é `receita` ou `fluxo`;
-  - `chave` é a etapa da receita, ou o `ref_publico` do fluxo;
+  - `id` é o id da receita, ou a `ref_publico` do fluxo: o id interno do fluxo nunca sai (30.83), e a ref que faltar
+    é preenchida na hora;
+  - `chave` é a etapa da receita (vazia no fluxo);
   - `origem` é `ensino` ou `execucao`;
   - na receita, também `reproducoes_ok` e `reproducoes_falha`;
   - no fluxo, também `usos` e `nascido_de_prova`.
@@ -7463,12 +7465,13 @@ motivo do não.
 
 - todo dado da persona vira o marcador `{nome}`, sem diferença de caixa, também depois do @ e com qualquer espaço;
 - vale em título, objetivo, resumo, comando, perguntas e conferência;
-- os identificadores ficam como estão: `key`, `capability`, `app_id`, `kind`, `name`, `inputs`, `seq` e as marcas de
-  etapa;
+- os identificadores ficam como estão: `capability`, `app_id`, `kind`, `name`, `inputs`, `seq` e as marcas de etapa;
 - sem proposta, ou sem persona, a cópia é igual à `proposal`.
 
-A `proposal` não muda: é ela que o painel devolve na prévia e no salvar. Limite: o valor só é trocado inteiro. As outras
-respostas que trazem a sessão não levam o campo. O painel passa a exibir a cópia no 31.189 (Portal).
+Toda resposta do treino que traz a sessão leva o campo: a lista, o GET, parar, descartar, desfazer, a proposta e,
+dentro de `session`, salvar e refazer receitas. Na cópia, a `key` da etapa também é mascarada: o `_` conta como
+separador. A `proposal` não muda, porque é ela que o painel devolve na prévia e no salvar. Limite: o valor só é trocado
+inteiro. O painel passa a exibir a cópia no 31.189 (Portal).
 
 **Prova:** `simulated` (`backend/tests/test_proposta_para_exibir.py`). `real`: `not_run`, pede o deploy.
 

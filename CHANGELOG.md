@@ -28,7 +28,9 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   persona trocado pelo marcador:
   - sem diferença de caixa, também depois do @ e com qualquer espaço;
   - em título, objetivo, resumo, comando, perguntas e conferência;
-  - os identificadores (`key`, `capability`, `app_id`) ficam.
+  - os identificadores (`capability`, `app_id`) ficam; a `key` da etapa é mascarada também, com o `_` como separador;
+  - vale em toda resposta do treino que traz a sessão (lista, GET, parar, descartar, desfazer, proposta, salvar e
+    refazer receitas), achado médio da revisão de segredos.
 - A `proposal` não muda: o painel a devolve na prévia e no salvar. Limite: casa o valor inteiro. O painel passa a
   exibir a cópia no 31.189 (Portal). Adendo v1.109.
 - Prova `simulated`: `backend/tests/test_proposta_para_exibir.py` (2 testes). Ensino, personas, alcance, arquitetura e
@@ -41,7 +43,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   Nada avisou.
 - A prévia e o salvar dizem, por etapa, quando o título, o objetivo, a digitação, a pré-condição ou a conferência citam
   o marcador da conta da persona (`conta_<app>[_<host>]_usuario`, `training/conta_propria.py`): "a
-  receita dela abre a conta de quem roda, em cada aparelho". O aviso traz a etapa e o marcador, sem valor. É só aviso:
+  receita dela abre a conta de quem roda, em cada aparelho". O aviso traz a posição da etapa e o marcador, sem valor
+  nem a `key` (que a IA escolhe e pode ter o nome; revisão de segredos). É só aviso:
   o salvar não recusa.
 - Prova `simulated`: `backend/tests/test_aviso_da_propria_conta.py` (2 testes) e `test_treino_dado_da_persona.py`.
   `real`: `not_run`, pede o deploy (a prévia de um ensino com o próprio perfil).
@@ -55,7 +58,8 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   O Livro e a Portal não diziam isso.
 - `GET /api/aprendizado/alcance?app=<app_id>` (adendo v1.107) responde por persona vinculada ao app. Para cada receita
   ativa e cada fluxo (ligado ou candidato), diz `pode` e o motivo do não: `presa_a_quem_ensinou`, `fora_do_escopo` ou
-  `fluxo_nao_ligado`. Traz também o resumo por persona.
+  `fluxo_nao_ligado`. Traz também o resumo por persona. O fluxo sai pela `ref_publico`, nunca pelo id interno (30.83;
+  achado médio da revisão de segredos).
 - As regras são as do executor, injetadas (`RecipeStore._restrita_ao_ensino`, `FlowStore._no_escopo`): domínio puro em
   `learning/domain/alcance.py` e leitura em `learning/infrastructure/alcance_sql.py`.
 - Prova `simulated`: `backend/tests/test_alcance_por_persona.py` (2 testes; o "Confirmar que fica" solta a receita

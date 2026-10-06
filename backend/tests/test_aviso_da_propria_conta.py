@@ -31,7 +31,7 @@ def _com_conta(p: dict[str, Any]) -> dict[str, Any]:
 
 def test_so_a_etapa_com_a_conta_da_persona_avisa() -> None:
     (linha,) = conta_propria.aviso(_com_conta(_proposta()))
-    assert "“abrir_perfil”" in linha and "{conta_instagram_usuario}" in linha and EMAIL not in linha
+    assert linha.startswith("A etapa 1 mira") and "abrir_perfil" not in linha and "{conta_instagram_usuario}" in linha and EMAIL not in linha
     assert conta_propria.aviso(_proposta()) == []                     # {email}, parâmetro do comando: não
     p = _proposta()
     p["steps"][0]["goal"] = "digitar {perfil_email}"

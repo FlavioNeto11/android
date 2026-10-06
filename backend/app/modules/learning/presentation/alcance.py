@@ -8,6 +8,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.db import Database
 from app.modules.learning.infrastructure.alcance_sql import LeitorDoAlcance
+from app.taskqueue.flows import ref_publica_do_fluxo
 
 router = APIRouter(prefix="/api/aprendizado")
 
@@ -22,7 +23,8 @@ def _leitor(request: Request) -> tuple[LeitorDoAlcance, object]:
         raise HTTPException(503, detail={"code": "not_ready", "message": "O aprendizado ainda não foi composto."})
     # As regras de quem decide na execução: a do 30.81 (receita do ensino) e a do escopo do fluxo.
     return LeitorDoAlcance(db, receita_presa=lambda linha, persona: bool(receitas._restrita_ao_ensino(linha, persona)),
-                           fluxo_no_escopo=lambda fluxo, persona: bool(fluxos._no_escopo(fluxo, [persona]))), poc
+                           fluxo_no_escopo=lambda fluxo, persona: bool(fluxos._no_escopo(fluxo, [persona])),
+                           ref_do_fluxo=lambda fluxo: ref_publica_do_fluxo(db, fluxo)), poc
 
 
 @router.get("/alcance", response_model=None)

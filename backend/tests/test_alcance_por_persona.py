@@ -63,6 +63,7 @@ async def test_o_alcance_por_persona_segue_a_regra_da_execucao(harness: Harness)
     ensinada = _receita(db, "abrir_busca", f"training:{sid}")
     de_execucao = _receita(db, "abrir_conversa", "r-1:android-01:v1:abrir_conversa")
     _fluxo(db, "f-ensinado", "active", f"training:{sid}")
+    db.execute("UPDATE flows SET ref_publico=NULL WHERE id='f-ensinado'")      # réplica antiga: a ref nasce na hora
     db.execute("INSERT INTO flow_scope(flow_id, profile_id) VALUES (?,?)", ("f-ensinado", "p-ana"))
     _fluxo(db, "f-candidato", "candidate", "run")
     async with _cliente(harness) as c:
@@ -73,7 +74,9 @@ async def test_o_alcance_por_persona_segue_a_regra_da_execucao(harness: Harness)
     assert corpo["pacote"] == PACOTE
     assert corpo["personas"] == [{"profile_id": "p-ana", "aparelhos": ["android-01"]},
                                  {"profile_id": "p-bia", "aparelhos": ["android-02"]}]
-    por_id = {(i["tipo"], i["id"]): i["por_persona"] for i in corpo["itens"]}
+    ref = str(db.scalar("SELECT ref_publico FROM flows WHERE id='f-ensinado'"))
+    assert ref and ref != "f-ensinado" and "f-ensinado" not in r.text          # o id interno do fluxo nunca sai
+    por_id = {(i["tipo"], "f-ensinado" if i["id"] == ref else i["id"]): i["por_persona"] for i in corpo["itens"]}
     assert por_id[("receita", str(de_execucao))] == {"p-ana": {"pode": True, "motivo": None},
                                                      "p-bia": {"pode": True, "motivo": None}}
     assert por_id[("receita", str(ensinada))] == {"p-ana": {"pode": True, "motivo": None},

@@ -37,7 +37,8 @@ def test_a_copia_mascara_o_texto_e_deixa_os_identificadores() -> None:
     assert c["command_template"] == "abra o perfil de {perfil_nome}"
     assert c["questions"] == ["A {perfil_nome} é o alvo?"]
     (st,) = c["steps"]
-    assert st["key"] == "ana_lopes_x" and st["title"] == "Abrir {conta_instagram_usuario}"
+    assert st["key"] in ("{conta_instagram_usuario}_x", "{perfil_nome}_x") and st["app_id"] == "instagram"
+    assert st["title"] == "Abrir {conta_instagram_usuario}"
     assert st["postcondition"] == {"kind": "text_visible", "value": "{conta_instagram_usuario}",
                                    "description": "perfil de {perfil_nome}"}
     assert p["summary"] == "abrir o perfil de @Ana_Lopes"                     # a original não muda
@@ -55,3 +56,7 @@ async def test_o_get_da_sessao_traz_a_copia_e_a_proposta_igual(harness: Harness)
     assert corpo["proposal"]["summary"] == "falar com Lopes"
     assert corpo["proposal_exibicao"]["summary"] == "falar com {perfil_sobrenome}"
     assert corpo["proposal_exibicao"]["steps"][0]["title"] == "abrir a conversa de {perfil_sobrenome}"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
+        lista = (await c.get("/api/training")).json()
+    (da_lista,) = [x for x in lista if x["id"] == sid]                       # a lista também leva a cópia
+    assert da_lista["proposal_exibicao"]["summary"] == "falar com {perfil_sobrenome}"

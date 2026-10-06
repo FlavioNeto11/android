@@ -17,10 +17,13 @@ _DO_ENSINO = "training:"
 
 class LeitorDoAlcance:
     def __init__(self, db: Database, *, receita_presa: Callable[[Row, str], bool],
-                 fluxo_no_escopo: Callable[[str, str], bool]) -> None:
+                 fluxo_no_escopo: Callable[[str, str], bool], ref_do_fluxo: Callable[[str], str]) -> None:
         self.db = db
         self._receita_presa = receita_presa
         self._fluxo_no_escopo = fluxo_no_escopo
+        #: `taskqueue.flows.ref_publica_do_fluxo` (30.83): o id interno do fluxo nunca sai (o legado é o slug do
+        #: comando e pode ter nome de pessoa); sem `ref_publico`, ela preenche na hora.
+        self._ref_do_fluxo = ref_do_fluxo
 
     def personas(self, app_id: str) -> dict[str, list[str]]:
         """`{profile_id: [aparelhos]}` das personas vinculadas (ativas) ao app."""
@@ -40,14 +43,15 @@ class LeitorDoAlcance:
                     tipo="receita", id=str(r["id"]), chave=str(r["step_key"]),
                     origem="ensino" if str(r["learned_from_step"] or "").startswith(_DO_ENSINO) else "execucao",
                     estado=str(r["status"]),
-                    detalhe={"reproducoes_ok": int(r["replay_ok"] or 0), "reproducoes_falha": int(r["replay_fail"] or 0)},
+                    detalhe={"reproducoes_ok": int(r["replay_ok"] or 0),
+                             "reproducoes_falha": int(r["replay_fail"] or 0)},
                     por_persona={p: veredito_da_receita(self._receita_presa(r, p)) for p in personas}))
-        for f in self.db.query("SELECT id, ref_publico, status, source, nascido_de_prova, uses FROM flows"
+        for f in self.db.query("SELECT id, status, source, nascido_de_prova, uses FROM flows"
                                " WHERE app_id=? AND status IN ('active','candidate') ORDER BY status, created_at, id",
                                (app_id,)):
             estado = str(f["status"])
             itens.append(ItemDoAlcance(
-                tipo="fluxo", id=str(f["id"]), chave=str(f["ref_publico"] or f["id"]),
+                tipo="fluxo", id=self._ref_do_fluxo(str(f["id"])), chave="",
                 origem="ensino" if str(f["source"] or "").startswith(_DO_ENSINO) else "execucao", estado=estado,
                 detalhe={"usos": int(f["uses"] or 0), "nascido_de_prova": bool(f["nascido_de_prova"])},
                 por_persona={p: veredito_do_fluxo(estado, self._fluxo_no_escopo(str(f["id"]), p)) for p in personas}))
