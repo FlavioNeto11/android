@@ -477,11 +477,11 @@ def _schemas_do_teste_somem_ao_fim_dele() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _transicoes_dentro_da_tabela() -> Iterator[None]:
-    """Máquinas de estado da execução, fase "só conferir" (design §16; `modules/execution/domain/states.py`).
+    """Máquinas de estado da execução (design §16; `modules/execution/domain/states.py`).
 
-    Em produção, uma transição de execução, objetivo ou tentativa fora da tabela só AVISA (evento `log` `warn`) e é
-    contada em `repository.TRANSICOES_FORA_DA_TABELA`. Aqui ela reprova o teste que a produziu: é a suíte inteira
-    provando que a tabela descreve o que o código faz — a condição para o próximo passo, impor a tabela. Um teste que
+    Desde o 15.15 F7 a tabela é IMPOSTA: uma transição de execução, objetivo ou tentativa fora dela levanta
+    `InvalidTransition` e é contada em `repository.TRANSICOES_FORA_DA_TABELA`. Este fixture continua reprovando o teste
+    que a produziu MESMO que ele engula a exceção (um `except` largo no código sob teste a esconderia). Um teste que
     force uma transição fora de propósito devolve a contagem ao que era antes (ver `test_maquinas_de_estado.py`).
     """
     from app.taskqueue.repository import TRANSICOES_FORA_DA_TABELA

@@ -226,3 +226,19 @@ def test_o_servico_de_avisos_real_leva_os_dados_e_a_conversa_leva_so_os_nomes(ha
     assert "Cidadela" in do_servico and "zelda.teste" in do_servico
     da_conversa = PortasReais.nomes_de_persona.__get__(type("P", (), {"db": s.db})())()
     assert "Cidadela" not in da_conversa and "zelda.teste" in da_conversa
+
+
+def test_a_porta_da_previa_leva_os_dados_e_a_da_conversa_so_os_nomes(harness: Harness) -> None:
+    """A1 (06/10): `PortasReais.nomes_e_dados_de_persona` (só a prévia da porta pelo canal) leva a biografia como
+    `DadoDaPersona`; `nomes_de_persona` (a resposta da ANA e o eco do Trello) segue só com nomes."""
+    from app.modules.avisos.domain.privacidade import DadoDaPersona
+    from app.modules.avisos.infrastructure.portas_da_central import PortasReais
+
+    s = harness.state
+    _persona_com_biografia(s)
+    eu = type("P", (), {"db": s.db})()
+    da_previa = PortasReais.nomes_e_dados_de_persona.__get__(eu)()
+    da_conversa = PortasReais.nomes_de_persona.__get__(eu)()
+    assert any(isinstance(n, DadoDaPersona) and n == "Cidadela" for n in da_previa)
+    assert "zelda.teste" in da_previa and "zelda.teste" in da_conversa
+    assert "Cidadela" not in da_conversa

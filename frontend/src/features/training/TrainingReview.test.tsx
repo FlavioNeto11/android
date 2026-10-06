@@ -131,33 +131,10 @@ it('"Depois" e "Pedir outra proposta" pedem confirmação quando há edição; s
   await waitFor(() => expect(fechado).toBe(1));
 });
 
-// ---------------------------------------------------------------- fase F: ensino v2 atrás de `features.skills`
-function comHabilidades(ligado: boolean | undefined, ensinoV2: boolean | 'ausente' = ligado ?? 'ausente'): void {
+// ---------------------------------------------------------------- fase F: "Gerar habilidade" atrás de `features.skills`
+function comHabilidades(ligado: boolean | undefined): void {
   const health = makeSnapshot().health;
-  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado, ensino_v2: ensinoV2 === 'ausente' ? undefined : ensinoV2 } } });
-}
-
-const DOC = {
-  apiVersion: 'automation/v1alpha1', kind: 'Skill',
-  metadata: { id: 'qa-messenger.mandar_mensagem', name: 'Mandar mensagem', app: 'qa-messenger' },
-  spec: { invocation: { command_template: 'Mandar mensagem — contato: {contato}' },
-          nodes: [{ id: 'abrir', goal: { title: 'Abrir a conversa', goal: 'abrir' } },
-                  { id: 'enviar', goal: { title: 'Enviar', goal: 'enviar' }, side_effect: true }] },
-};
-const ANOT = {
-  evidence: {}, discarded: [], assumptions: [], preconditions: [], postconditions: [], suggested_proofs: [],
-  parameters: [{ name: 'contato', type: 'string', examples: ['QA-001'], description: '', required: true }],
-  effects: [{ node: 'enviar', capability: null, description: 'Enviar' }], risks: ['Etapa conferida pelo modelo.'],
-};
-function candidata(seq: number, status = 'proposed') {
-  return { id: `cand-${seq}`, teaching_id: 'ens-1', seq, status, validation_status: 'none', generated_by: 'ai:simulado',
-           content_hash: 'h', version_id: null, document: DOC, annotations: ANOT, created_at: '', updated_at: '' };
-}
-function ensino(status: string, extra: Record<string, unknown> = {}) {
-  return { id: 'ens-1', instruction: 'Mandar mensagem', skill_id: null, base_version: null, app_id: 'qa-messenger',
-           profile_id: null, status, validation_status: 'none', result_version_id: null, operator: null,
-           created_at: '', updated_at: '', closed_at: null, source: 'hybrid', demonstrations: [], turns: [],
-           candidates: [], current_candidate: null, open_questions: [], errors: [], ...extra };
+  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado } } });
 }
 
 it('com features.skills desligado (padrão), a revisão é a de sempre: sem ensino v2 e sem chamada nova', async () => {
@@ -171,16 +148,15 @@ it('com features.skills desligado (padrão), a revisão é a de sempre: sem ensi
 });
 
 // 31.91: caminho único de ensino. Com `features.skills`, a revisão não gera candidata: o fluxo salvo vira habilidade
-// pela conversão da fase J, e o ensino v2 que a gravação já tinha aparece só para leitura.
-it('com features.skills ligado e sem ensino: nada de candidata; depois de salvar, "Gerar habilidade deste fluxo" converte o fluxo', async () => {
+// pela conversão da fase J. O ensino v2 saiu da tela (31.91 T1, ADR-078).
+it('com features.skills ligado: nada de candidata; depois de salvar, "Gerar habilidade deste fluxo" converte o fluxo', async () => {
   comHabilidades(true);
-  backend.on('GET', /\/teaching-sessions$/, () => json([]));
   backend.on('POST', /\/flows\/mandar-mensagem\/adopt$/, () => json({
     flow_id: 'mandar-mensagem', skill_id: 'qa-messenger.mandar_mensagem', warnings: [],
     published: { ref: 'qa-messenger.mandar_mensagem@1' }, draft: { ref: 'qa-messenger.mandar_mensagem@2' },
   }));
   await act(async () => root.render(<><TrainingReview sessionId="trn-1" onClose={() => {}} /><ConfirmHost /></>));
-  await waitFor(() => expect(backend.callsTo('GET', /teaching-sessions$/)).toHaveLength(1));
+  await waitFor(() => expect(text()).toContain('QA-001'));
   await flush(ATRASO_MAXIMO + 30);
   expect(text()).not.toContain('Habilidade versionada');
   expect(allByRole('button', /Gerar candidata de habilidade/i)).toHaveLength(0);
@@ -197,22 +173,6 @@ it('com features.skills ligado e sem ensino: nada de candidata; depois de salvar
   await waitFor(() => expect(text()).toContain('qa-messenger.mandar_mensagem@2 em rascunho'));
   expect(backend.callsTo('POST', /\/adopt$/)).toHaveLength(1);
   expect(backend.callsTo('POST', /\/teaching-sessions$/)).toHaveLength(0);
-});
-
-it('com features.skills ligado e ensino antigo na gravação: o ensino aparece só para leitura, sem responder, gerar nem descartar', async () => {
-  comHabilidades(true);
-  const pergunta = { id: 7, kind: 'effect_confirmation', key: 'efeito:enviar', origin: 'ai',
-                     text: 'A etapa “Enviar” muda algo fora do aparelho?', target: null, candidate_id: 'cand-1' };
-  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
-  backend.on('GET', /\/teaching-sessions\/ens-1$/, () => json(ensino('asking', { current_candidate: candidata(1), open_questions: [pergunta] })));
-  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
-  await waitFor(() => expect(text()).toContain('Habilidade versionada'));
-  expect(text()).toContain('muda algo fora do aparelho');
-  expect(text()).toContain('fica só para leitura');
-  expect(allByRole('textbox', /Resposta à pergunta/)).toHaveLength(0);
-  for (const nome of [/^Responder$/, /Gerar de novo/, /Pedir outra candidata/, /Salvar como rascunho/, /^Descartar$/]) {
-    expect(allByRole('button', nome)).toHaveLength(0);
-  }
 });
 
 // ---------------------------------------------------------------- 31.90-A: quem ensinou corrige as entradas
@@ -785,25 +745,17 @@ it('31.88 F2: treino sem persona: "Só quem ensinou" fica desabilitado com o mot
   expect((byRole('radio', /Todos, depois de provado/) as HTMLInputElement).checked).toBe(true);
 });
 
-// ---------------------------------------------------------------- 31.91 F1: a tela do ensino v2 tem chave própria
-it('31.91 F1: com skills ligado e a tela do ensino v2 desligada (padrão), o ensino antigo some, mas "Gerar habilidade" fica', async () => {
-  comHabilidades(true, false);
-  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
-  backend.on('GET', /\/teaching-sessions\/ens-1$/, () => json(ensino('asking', { current_candidate: candidata(1), open_questions: [] })));
+// ---------------------------------------------------------------- 31.91 T1 (ADR-078): o ensino v2 saiu da tela
+it('31.91 T1: mesmo com skills ligado e um ensino antigo na gravação, a revisão não o mostra nem o consulta', async () => {
+  comHabilidades(true);
+  backend.on('GET', /\/teaching-sessions/, () => json([{ id: 'ens-1' }]));
+  backend.on('GET', /\/teaching-sessions\/ens-1$/, () => json({ id: 'ens-1', status: 'asking', open_questions: [] }));
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('entradas'));
+  await flush(ATRASO_MAXIMO + 30);
   expect(text()).not.toContain('Habilidade versionada');
   expect(text()).not.toContain('fica só para leitura');
-  // a revisão nem pergunta pelo ensino antigo: nenhuma chamada a /teaching-sessions
   expect(backend.calls.filter((c) => /teaching-sessions/.test(c.path))).toHaveLength(0);
-});
-
-it('31.91 F1: o campo ausente (backend anterior) também esconde a tela do ensino v2', async () => {
-  comHabilidades(true, 'ausente');
-  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
-  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
-  await waitFor(() => expect(text()).toContain('entradas'));
-  expect(text()).not.toContain('Habilidade versionada');
 });
 
 it('junção 30.81 + 31.88 F2: no resultado o selo "em prova" vem primeiro e a linha "Vale para" logo abaixo, sem repetir a frase da prova', async () => {

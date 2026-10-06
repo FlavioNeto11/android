@@ -2731,3 +2731,24 @@ repõe o arquivo em volta do fast-forward.
 
 **Aplicabilidade.** Vigente. Vale para todo arquivo que um script regrava no checkout central: ou é estado por instalação (fora do Git), ou é
 gerado no deploy; nunca um arquivo versionado que um script mexe sem commitar.
+
+---
+
+### K-104 — Golden de caracterização não fotografa campo que depende do ambiente
+
+**Data:** 06/10/2026 · **Área:** testes (saúde, PostgreSQL)
+
+**Sintoma.** Na suíte 47, o PG dirigido (parte 2) reprovou 31 testes, todos `tests/test_saude_caracterizacao.py::test_a_saude_faz_hoje_o_que_o_arquivo_dourado_diz[*]`
+(os 31 cenários). No SQLite os 7108 testes afetados passavam. O diff do pytest mostrava só `database`: `{"dialect": "postgres", ...}` contra o dourado.
+
+**Causa.** A fotografia da saúde incluía `database.dialect` e `database.target`, e o dourado (`tests/golden/saude_caracterizacao.json`) foi gerado em SQLite.
+O mesmo valor entra no texto do problema `database_down` ("O banco (<dialeto>) não respondeu."). O teste só rodava verde no dialeto em que o arquivo nasceu.
+
+**O que funcionou.** Normalizar em vez de apagar o campo: o teste troca o dialeto e o endereço do banco pelo marcador `<dialeto>` (também no texto de
+`database_down`) antes de comparar; `problems` segue inteiro e o resto da fotografia, campo a campo. Regerar o dourado (`GERAR_GOLDEN_SAUDE=1`) mudou só
+essas linhas.
+
+**O que não funcionou.** Gerar o dourado em um ambiente e supor que vale em todos.
+
+**Aplicabilidade.** Vigente. Todo golden ou teste de caracterização: o que depende do ambiente (dialeto do banco, versão, hora, caminho da máquina) entra
+como marcador, não como valor; e um golden novo roda também no PG dirigido antes de entrar.

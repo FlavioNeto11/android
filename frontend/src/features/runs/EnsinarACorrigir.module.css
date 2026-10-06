@@ -1,0 +1,30 @@
+.corrigir {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  margin: var(--sp-2) 0;
+}
+
+.linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.rotulo { color: var(--text-3); font-size: var(--fs-sm); }
+
+/* Flex que quebra, não grade: o detalhe da etapa tem a largura do objetivo aberto, não a da página. */
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px dashed var(--border-2);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+}
+
+.erro { color: var(--danger-text); font-size: var(--fs-sm); flex: 1 1 100%; }

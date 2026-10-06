@@ -1,8 +1,8 @@
 """Persistência da fila: execuções, objetivos por dispositivo, etapas, tentativas, ações e evidências.
 
 Tudo o que o scheduler decide é gravado ANTES de ser executado; as transições de etapa passam por
-`states.check_transition` (imposta) e as de execução, objetivo e tentativa são conferidas contra as tabelas de
-`modules/execution/domain/states.py` (fase "só conferir": fora da tabela avisa, não bloqueia — `_conferir`). As
+`states.check_transition` e as de execução, objetivo e tentativa são conferidas contra as tabelas de
+`modules/execution/domain/states.py` ANTES de gravar (`_conferir`, imposta desde o 15.15 F7: fora da tabela recusa). As
 operações críticas (assumir etapa + registrar tentativa) são uma única transação.
 """
 from __future__ import annotations
@@ -38,11 +38,12 @@ from ..social.chave_da_aprovacao import (ARGUMENTO_DA_IMAGEM, ARGUMENTO_DO_MOTIV
 from ..storage import DiskStorage, Storage, put_async
 from ..util import new_run_id, now_iso, parse_iso, to_iso, truncate
 from .latencia import TemposDaTentativa, motivo_da_espera
-from .dado_da_persona import DadoDaPersonaAusente, exigir_resolvido, faltas_dos_passos
+from .dado_da_persona import (DadoDaPersonaAusente, exigir_resolvido, faltas_dos_passos, resolver_argumentos,
+                              resolver_texto)
 from .dado_da_persona import nomes_citados as citados_da_persona
 from .recipes import para_hash, step_template_hash
 from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
-from .states import STEP_ACTIVE, STEP_OPEN, check_transition
+from .states import STEP_ACTIVE, STEP_OPEN, InvalidTransition, check_transition
 
 log = logging.getLogger("poc.repository")
 
@@ -73,8 +74,8 @@ class Sentinel:
 _SEM_RESTAURO = Sentinel()
 
 #: Transições de execução, objetivo, tentativa (e as escritas diretas de etapa) que caíram FORA da tabela do domínio
-#: (`modules/execution/domain/states.py`), por (máquina, de, para), neste processo. É a métrica da fase "só conferir"
-#: do design §16: a transição acontece do mesmo jeito, e o evento `log` de nível `warn` avisa quem olha. Contagem por
+#: (`modules/execution/domain/states.py`), por (máquina, de, para), neste processo. Desde o 15.15 F7 a tabela é IMPOSTA
+#: (`InvalidTransition`, sem escrita); a contagem e o evento `log` de nível `warn` seguem, para quem olha. Contagem por
 #: par de estados, e não lista de ocorrências, para não crescer sem limite num processo de dias. A suíte de testes
 #: reprova o teste que a fizer subir (`tests/conftest.py::_transicoes_dentro_da_tabela`).
 TRANSICOES_FORA_DA_TABELA: Counter[tuple[str, str, str]] = Counter()
@@ -198,9 +199,10 @@ class Repository:
         #: binding, no título e no objetivo da etapa, embora a lista do planejador (`service.dados`) já desse o @.
         self._dados = SqlProfileDataStore(db, tem_provedor_de_sessao=lambda pacote: session_provider_of(pacote)
                                           is not None)
-        #: 31.113 F1: o mapa valor → marcador da persona por objetivo (com as variáveis e os parâmetros dele), e o
-        #: objetivo de cada tentativa, etapa e execução. Caches limitados; o dado da persona não muda no meio da execução.
-        self._mascaras: dict[str, tuple[dict[str, str], dict[str, str], dict[str, object]]] = {}
+        #: 31.113 F1: por objetivo, o que não muda (perfil, nomes que o plano cita, parâmetros) e o dado que o ator
+        #: digitou inteiro; e o objetivo de cada tentativa, etapa e execução. Caches limitados. F3: o VALOR da persona
+        #: não entra no cache; ele é lido a cada uso, senão o nome trocado no perfil sairia em claro no registro.
+        self._mascaras: dict[str, tuple[str | None, list[str], dict[str, object], dict[str, str]]] = {}
         self._objetivo_de: dict[str, str] = {}
         self._objetivos_da_execucao: dict[str, list[str]] = {}
         bus.mascara = self.mascara_do_registro
@@ -292,23 +294,20 @@ class Repository:
 
     # ------------------------------------------------------------------ máquinas de estado (design §16)
     def _conferir(self, maquina: MaquinaDeEstados, de: str | None, para: str, *, entidade: str,
-                  run_id: str | None = None, instance_id: str | None = None) -> bool:
-        """Fase "só conferir": a transição `de → para` está na tabela? Fora dela, registra e AVISA — não bloqueia.
+                  run_id: str | None = None, instance_id: str | None = None) -> None:
+        """Impõe a tabela (15.15 F7, §16): a transição `de → para` está nela? Fora dela, registra (contagem e evento
+        `warn`) e levanta `InvalidTransition`, como `transition_step` já faz com a etapa.
 
-        `de` nulo é linha que não existe (ou sumiu): não há transição a conferir. Devolve se estava na tabela.
-
-        Próximo passo, "impor" (§16): com a suíte e a produção sem aviso por um ciclo, `set_run_status`,
-        `set_objective` e `finish_attempt` trocam o aviso por `InvalidTransition`, como `transition_step` já faz com
-        a etapa — e a reabertura de execução terminal em `recompute_run` passa a ser uma aresta decidida, não um
-        efeito colateral.
+        Chame ANTES da escrita: a transição recusada não grava nada. `de` nulo é linha que não existe (ou sumiu): não há
+        transição a conferir.
         """
         if de is None or maquina.pode(de, para):
-            return True
+            return
         TRANSICOES_FORA_DA_TABELA[(maquina.nome, str(de), str(para))] += 1
-        self.bus.emit("log", f"Transição de {maquina.nome} fora da tabela: {entidade} {de} → {para} "
-                             "(registrada, não bloqueada)", level="warn", run_id=run_id, instance_id=instance_id,
+        self.bus.emit("log", f"Transição de {maquina.nome} fora da tabela: {entidade} {de} → {para} (recusada)",
+                      level="warn", run_id=run_id, instance_id=instance_id,
                       data={"state_machine": maquina.nome, "entity_id": entidade, "from": str(de), "to": str(para)})
-        return False
+        raise InvalidTransition(f"transição inválida de {maquina.nome}: {de} → {para}")
 
     def set_run_status(self, run_id: str, status: RunStatus, detail: str | None = None, *, message: str | None = None,
                        level: str = "info", dados: dict[str, object] | None = None,
@@ -320,6 +319,9 @@ class Repository:
         cancelamento condicionado do canal (28.27), que marca `cancel_requested` antes de fechar a execução."""
         linha = self.db.one("SELECT status FROM runs WHERE id=?", (run_id,))
         anterior = linha["status"] if linha is not None else None
+        # Com `so_se` a troca pode não valer (compare-and-set) e então nada muda: só confere quando ela vale.
+        if not so_se or anterior in {s.value for s in so_se}:
+            self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
         fields, params = ["status=?", "status_detail=?"], [status.value, detail]
         if status not in RUN_TERMINAL and status != RunStatus.cancelling:
             # #382: a execução volta a ter trabalho (retomada), ou volta a esperar a pessoa: assenta de novo quando
@@ -341,7 +343,6 @@ class Repository:
                 return False
         else:
             self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
-        self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
         self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level, dados=dados)
         # 29.93/#382: a REDE do assentamento. Toda execução que chega a um estado final vindo de um estado de trabalho
         # (não do planejamento: a que falha ou é cancelada antes de iniciar segue fechada pela varredura dos pedidos)
@@ -509,7 +510,9 @@ class Repository:
                     v["account_label"] = contas[s.app_id]          # type: ignore[assignment]
                 else:
                     v.pop("account_label", None)
-            vt = {k: x for k, x in v.items() if k not in (molde or {})}   # o texto guarda o marcador da persona
+            # 31.113 F2/F3: o texto e os argumentos guardam o marcador da persona; o valor entra só em memória (executor e
+            # `bindings_da_etapa`).
+            vt = {k: x for k, x in v.items() if k not in (molde or {})}
             post = s.postcondition.model_copy(update={
                 "value": resolve_templates(s.postcondition.value, vt),
                 "description": resolve_templates(s.postcondition.description, vt)})
@@ -518,7 +521,7 @@ class Repository:
                 "precondition": resolve_templates(s.precondition, vt), "postcondition": post,
                 "commit_guard": [resolve_templates(g, vt) or "" for g in s.commit_guard],
                 "band_guard": [resolve_templates(g, vt) or "" for g in s.band_guard],
-                "bindings": self._com_rotulo_ia({k: resolve_templates(val, v) or "" for k, val in s.bindings.items()})}))
+                "bindings": self._com_rotulo_ia({k: resolve_templates(val, vt) or "" for k, val in s.bindings.items()})}))
         self.db.execute("INSERT INTO plan_versions(objective_id, version, reason, steps, created_at) VALUES (?,?,?,?,?)",
                         (oid, version, reason, dumps([s.model_dump(mode="json") for s in resolved]), now_iso()))
         for seq, s in enumerate(resolved, start=1):
@@ -930,6 +933,15 @@ class Repository:
         # A tela só acompanha um tipo de falha: tentativa comprovada ou cancelada não tem "onde falhou", e a tela
         # sem tipo seria um grupo do backlog sem falha nenhuma.
         tela = (screen or None) if tipo is not None else None
+        if anterior is not None and not ATTEMPT.pode(anterior, status):
+            # Quem perdeu a posse não grava e não conta: isso segue `PosseDaEtapaPerdida`; só o dono da posse com uma
+            # transição fora da tabela é recusado por ela.
+            dono = self.db.one("SELECT s.id, s.claimed_by, s.run_id, s.instance_id FROM steps s JOIN attempts a"
+                               " ON a.step_id=s.id WHERE a.id=?", (attempt_id,))
+            if dono is not None and dono["claimed_by"] not in (None, self.owner_id):
+                raise PosseDaEtapaPerdida(dono["id"], dono["claimed_by"], self.owner_id)
+            self._conferir(ATTEMPT, anterior, status, entidade=attempt_id,
+                           run_id=dono["run_id"] if dono else None, instance_id=dono["instance_id"] if dono else None)
         # 31.113 F1: o tipo sai do texto; o que fica gravado leva o marcador da persona.
         if erro or observed:
             trocas = self.mascara_do_registro(None, None, None, attempt_id)
@@ -948,9 +960,6 @@ class Repository:
             if linha is not None:
                 raise PosseDaEtapaPerdida(linha["id"], linha["claimed_by"], self.owner_id)
         step = self.db.one("SELECT s.* FROM steps s JOIN attempts a ON a.step_id=s.id WHERE a.id=?", (attempt_id,))
-        # Depois da cerca: o dono que perdeu a posse não gravou nada, então não houve transição a conferir.
-        self._conferir(ATTEMPT, anterior, status, entidade=attempt_id, run_id=step["run_id"] if step else None,
-                       instance_id=step["instance_id"] if step else None)
         self.emit_attempt(attempt_id, step)
 
     # ================================================================== 31.113 F1: o registro leva o marcador
@@ -992,14 +1001,15 @@ class Repository:
                             " WHERE o.id=?", (oid,))
             if r is None:
                 return {}, {}, {}
-            variaveis = self._variaveis_da_persona(r["profile_id"]) if r["profile_id"] else {}
             params: dict[str, object] = loads(r["parameters"], {}) or {}
             try:
                 citados = citados_da_persona(Plan.model_validate_json(r["plan"])) if r["plan"] else []
             except ValueError:
                 citados = []
-            _guardar(self._mascaras, oid, (mascara.mapa(variaveis, citados, params), variaveis, params))
-        return self._mascaras[oid]
+            _guardar(self._mascaras, oid, (str(r["profile_id"]) if r["profile_id"] else None, citados, params, {}))
+        perfil, citados, params, digitados = self._mascaras[oid]
+        variaveis = self._variaveis_da_persona(perfil) if perfil else {}
+        return {**digitados, **mascara.mapa(variaveis, citados, params)}, variaveis, params
 
     def _trocas_da_acao(self, attempt_id: str, tool: str, args: dict[str, object]) -> dict[str, str]:
         """O mapa do objetivo, mais o dado da persona que o ator digitou INTEIRO (de qualquer chave): dali em diante o
@@ -1011,12 +1021,54 @@ class Repository:
         if tool == "type_text" and variaveis:
             novo = mascara.digitado(args.get("text"), variaveis, params)
             if novo is not None:
+                self._mascaras[oid][3].setdefault(*novo)
                 trocas.setdefault(*novo)
         return trocas
 
+    # ------------------------------------------------------------------ 31.113 F3: `bindings` com o marcador
+    def perfil_do_objetivo(self, objective_id: str | None) -> str | None:
+        """A persona do objetivo, com o fallback do aparelho de persona única (`persona_do_objetivo`)."""
+        r = self.db.one("SELECT profile_id, instance_id FROM objectives WHERE id=?", (objective_id,))             if objective_id else None
+        return self.persona_do_objetivo(r["profile_id"], str(r["instance_id"])) if r is not None else None
+
+    def bindings_da_etapa(self, row: Row, perfil: str | None = None) -> dict[str, object]:
+        """O leitor ÚNICO dos `bindings` da linha para a porta, a política e a chave da aprovação: o marcador da persona
+        trocado pelo valor, lido NA HORA (o nome trocado depois do sim muda a chave, e a porta pergunta de novo) e nunca
+        gravado. `perfil` é o da porta; sem ele, o do objetivo da etapa. Sem marcador, a linha como está."""
+        bindings: dict[str, object] = (loads(row["bindings"], {}) or {}) if "bindings" in row.keys() else {}
+        if not any(isinstance(v, str) and "{" in v for v in bindings.values()):
+            return bindings
+        if perfil is None:
+            perfil = self.perfil_do_objetivo(row["objective_id"] if "objective_id" in row.keys() else None)
+        return resolver_argumentos(bindings, self._variaveis_da_persona(perfil)) if perfil else bindings
+
+    def texto_ao_vivo(self, texto: str | None, objective_id: str | None) -> str | None:
+        """O texto gravado com o marcador (pedido de aprovação, prévia) com o valor de AGORA, para a tela do painel;
+        nunca gravado nem enviado a canal."""
+        if not texto or "{" not in texto:
+            return texto
+        perfil = self.perfil_do_objetivo(objective_id)
+        return resolver_texto(texto, self._variaveis_da_persona(perfil)) if perfil else texto
+
+    def texto_reversivel(self, texto: str | None, objective_id: str | None) -> str | None:
+        """O texto que VOLTA a sair (rascunho, edição do dono, alvo e texto do pedido) com o marcador no lugar do dado
+        da persona, só se a volta der o texto EXATO (mesma caixa); senão, literal. Nada de aproximação."""
+        if not texto or not objective_id:
+            return texto
+        trocas, variaveis, _ = self._mascara_do_objetivo(objective_id)
+        mascarado = mascara.na_mesma_caixa(texto, trocas)
+        if mascarado == texto or resolver_texto(mascarado, variaveis) != texto:
+            return texto
+        return mascarado
+
+    def texto_mascarado(self, texto: str | None, objective_id: str | None) -> str | None:
+        """A prosa que só se lê (o resumo do pedido de aprovação): a máscara do registro (F1), sem caixa."""
+        return mascara.no_texto(texto, self.mascara_do_registro(None, objective_id)) if objective_id else texto
+
     def _sem_dado_nos_argumentos(self, passo: _Passo, objective_id: str | None) -> _Passo:
-        """31.113 F2: os `bindings` ficam com o VALOR na linha até a F3 (a porta e a chave da aprovação os leem dali);
-        o que SAI (detalhe da execução, relatório, `plan_versions` na resposta, evento `step.updated`) leva o marcador."""
+        """31.113 F2: o que SAI (detalhe da execução, relatório, `plan_versions` na resposta, evento `step.updated`)
+        leva o marcador. Desde a F3 a linha nova já o tem; isto cobre a linha anterior à F3 e o texto que não voltou
+        exato pela máscara reversível (`texto_reversivel`)."""
         trocas = self.mascara_do_registro(None, objective_id, None, None) if objective_id and passo.bindings else {}
         if not trocas:
             return passo
@@ -1236,8 +1288,12 @@ class Repository:
         # scheduler e o `_ai` escrevem via `note_waiting`/coluna direta, sempre termina numa destas transições.
         # `waiting_user` continua sem escrever nada aqui: o motivo "pessoa" é DERIVADO do próprio status no
         # frontend, não precisa de coluna.
-        antes = self.db.one("SELECT status, wait_reason FROM objectives WHERE id=?", (objective_id,))
+        antes = self.db.one("SELECT status, wait_reason, run_id, instance_id FROM objectives WHERE id=?",
+                            (objective_id,))
         anterior = antes["status"] if antes else None
+        if antes is not None:
+            self._conferir(OBJECTIVE, anterior, status, entidade=objective_id, run_id=antes["run_id"],
+                           instance_id=antes["instance_id"])
         fields = ["status=?", "status_detail=?", "blocked_reason=?", "needs=?", "wait_reason=NULL"]
         params: list[Any] = [status.value, truncate(detail, 600), truncate(blocked_reason, 600), truncate(needs, 600)]
         if blocked_kind is not None:
@@ -1259,8 +1315,6 @@ class Repository:
         if antes is not None:
             self._trocar_espera(objective_id, row["run_id"], motivo_da_espera(anterior, antes["wait_reason"]),
                                 motivo_da_espera(status.value, None))
-        self._conferir(OBJECTIVE, anterior, status, entidade=objective_id, run_id=row["run_id"],
-                       instance_id=row["instance_id"])
         self.bus.emit("objective.updated", message or f"{row['instance_id']}: objetivo {status.value}"
                       + (f" — {detail}" if detail else ""), level=level, run_id=row["run_id"],
                       instance_id=row["instance_id"], objective_id=objective_id,

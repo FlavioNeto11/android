@@ -22,7 +22,6 @@ import { ServerBadge } from '../devices/ServerBadge';
 import { useUiStore } from '../../store/ui';
 import { useSessionStore } from '../../store/session';
 import { type Voto, votoDoItem } from '../aprendizado/model';
-import { CorrigirEtapa, MarcaCorrigivel } from './CorrigirEtapa';
 import { EnsinarACorrigir } from './EnsinarACorrigir';
 import { FeedbackItem, useFeedbackDaExecucao } from './FeedbackItem';
 import {
@@ -370,7 +369,6 @@ function StepTable({ detail, steps, attempts }: { detail: RunDetail; steps: Step
                 <DrivenByBadge drivenBy={s.driven_by} />
                 {outroApp ? <Badge size="sm" tone="info" title="Esta etapa roda em outro app, não no app do plano.">app: {outroApp}</Badge> : null}
                 {s.side_effect ? <SideEffectFlag /> : null}
-                <MarcaCorrigivel detail={detail} step={s} />
               </span>
               <StatusBadge meta={meta} size="sm" plain />
               <span className={styles.stepCell} title="Tentativas usadas / máximo">{s.attempts}/{s.max_attempts} tent.</span>
@@ -437,7 +435,6 @@ function StepDetail({ detail, step: s, attempts }: { detail: RunDetail; step: St
       </dl>
 
       {/* Plano 22.7: a etapa que a habilidade errou (falhou ou ficou sem prova) se corrige aqui, no ensino dela. */}
-      <CorrigirEtapa detail={detail} step={s} />
       {/* 31.111 F5: ensinar a corrigir a partir da falha, no aparelho da etapa (o treino nasce ligado a ela). */}
       <EnsinarACorrigir detail={detail} step={s} />
 

@@ -49,7 +49,7 @@ na máquina do dono — não são clonáveis por quem só tem o Git. Ver `docs/c
 | [ADR-035](#adr-035--resourcespec-declarativo) | `ResourceSpec` declarativo | vigente; `apply`/`verify`/`reconcile` implementados e não ligados ao `_tick` | 27/09 |
 | [ADR-036](#adr-036--receitas-como-estratégia-de-execução) | Receitas como estratégia de execução | vigente (trilha e regras); `RecipeExecutionStrategy` proposta | 27/09 |
 | [ADR-037](#adr-037--compatibilidade-com-o-flow-legado) | Compatibilidade com o `Flow` legado | vigente; conversão em lote dos fluxos de produção proposta | 27/09 |
-| [ADR-038](#adr-038--máquinas-de-estado-de-execução-formais-conferir-antes-de-impor) | Máquinas de estado de execução formais: conferir antes de impor | vigente (conferir e registrar); impor proposto | 27/09 |
+| [ADR-038](#adr-038--máquinas-de-estado-de-execução-formais-conferir-antes-de-impor) | Máquinas de estado de execução formais: conferir antes de impor | vigente (impostas desde o 15.15 F7, 06/10) | 27/09 |
 | [ADR-039](#adr-039--manifesto-de-app-e-registro-de-sessionprovider) | Manifesto de app e registro de `SessionProvider` | vigente; a sessão por (perfil, app) é `account_sessions` (ADR-040) | 27/09 |
 | [ADR-040](#adr-040--a-credencial-pertence-à-conta-da-persona-e-a-execução-não-carrega-credencial) | A credencial pertence à conta da persona e a execução não carrega credencial | vigente, implantado em 28/09; substitui em parte o ADR-025 | 27/09 |
 | [ADR-041](#adr-041--a-persona-é-a-pessoa-instagram_profiles-como-raiz-personas-dobrada-username-opcional-por-string-vazia-e-reconstrução-com-foreign_keys-off) | A persona é a pessoa: `instagram_profiles` como raiz, `personas` dobrada, `username` opcional por `''` e reconstrução com `@foreign_keys:off` | vigente, implantado em 28/09; crenças substituídas em parte pelo ADR-048 | 27/09 |
@@ -1540,7 +1540,7 @@ dentro do pedido de evolução arquitetural (27/09), design §15. Código da fas
 
 ## ADR-038 — Máquinas de estado de execução formais: conferir antes de impor
 
-**Data:** 27/09/2026 · **Estado:** vigente (fase "conferir e registrar"); impor proposto · **Decisão técnica** dentro
+**Data:** 27/09/2026 · **Estado:** vigente; conferir e registrar desde 27/09, **impostas desde o 15.15 F7 (06/10)** · **Decisão técnica** dentro
 do pedido de evolução arquitetural (27/09), linha `set_run_status`/`set_objective` da §16 do design. Código: `48e76ae`
 (fase K2), integrado em `b56e06c`.
 
@@ -1573,8 +1573,12 @@ do pedido de evolução arquitetural (27/09), linha `set_run_status`/`set_object
   contagem em `repository.py::TRANSICOES_FORA_DA_TABELA`. **A transição acontece do mesmo jeito.**
 - **A suíte prova a tabela.** O fixture automático `tests/conftest.py::_transicoes_dentro_da_tabela` reprova qualquer
   teste cuja execução produza transição fora da tabela; teste que a force de propósito devolve a contagem.
-- **Proposto:** impor. Depois de um ciclo sem aviso na suíte e na produção, `set_run_status`, `set_objective` e
-  `finish_attempt` trocam o aviso por `InvalidTransition`, como a etapa já faz, e cada aresta de reabertura é decidida.
+- **Imposto (15.15 F7, 06/10).** Medido no central (eventos `log` `warn`, 27/09 a 06/10, ~8,6 dias): 1 aviso em ~20 mil
+  transições, `completed_with_issues → cancelled` (o vencimento de 24 h do 31.50 encerrou o último objetivo parado de uma
+  execução com cancelamento pedido, e `recompute_run` a fechou `cancelled` sem passar por `cancelling`). A aresta foi
+  declarada na tabela, e `set_run_status`, `set_objective` e `finish_attempt` passaram a levantar `InvalidTransition`
+  ANTES de gravar (a cerca da posse da tentativa continua primeiro). O gesto que chega depois de o estado mudar vira 409
+  `invalid_transition`. O evento `warn` e a contagem seguem. Sem migração.
 
 **Consequências.**
 

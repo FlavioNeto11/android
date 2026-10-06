@@ -249,7 +249,7 @@ CICLOS_LEGADOS: tuple[frozenset[str], ...] = (
 )
 #: Comandos `import` internos DENTRO de função, por pacote (quase todos contornam ciclo). Catraca: só desce.
 IMPORTS_TARDIOS: dict[str, int] = {
-    "app.api": 18, "app.automation": 1, "app.commands": 1, "app.config": 1, "app.devices": 3, "app.planning": 8,
+    "app.api": 9, "app.automation": 1, "app.commands": 1, "app.config": 1, "app.devices": 3, "app.planning": 8,
     "app.releases": 15, "app.social": 5, "app.state": 5, "app.supervisor": 1, "app.training": 1,
     "app.vitrine": 1, "app.workers": 1,
 }
@@ -259,7 +259,7 @@ IMPORTS_TARDIOS: dict[str, int] = {
 #: `app.integrations` saiu (27 → 0) na fatia 3 do ADR-052: o login do Instagram virou o motor genérico
 #: `integrations/app_declarado/`, tipado sem `Any`, e o conhecimento do app virou dado.
 ANY_LEGADO: dict[str, int] = {
-    "app.api": 142, "app.taskqueue": 120, "app.social": 91, "app.devices": 91, "app.planning": 70, "app.state": 50,
+    "app.api": 122, "app.taskqueue": 120, "app.social": 91, "app.devices": 91, "app.planning": 70, "app.state": 48,
     "app.worker": 45, "app.releases": 32, "app.desempenho": 26, "app.vitrine": 23,
     "app.commands": 26, "app.training": 16, "app.workers": 14, "app.automation": 16, "app.db": 12,
     "app.apps_overview": 9, "app.metricas": 9, "app.main": 8, "app.security": 8, "app.config": 6, "app.models": 5,

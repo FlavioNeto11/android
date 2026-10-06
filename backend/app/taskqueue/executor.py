@@ -1384,7 +1384,9 @@ class StepExecutor:
         """Etapa com receitas: procura a receita, executa, e depois contabiliza o replay ou aprende com a IA."""
         # 31.113 F2: o ponto ÚNICO onde o dado da persona entra na etapa. A linha guarda o marcador; daqui em diante
         # (ator, receita, conferência da tela, juiz) a etapa da tentativa tem o valor, só em memória.
-        persona = self.repo.variaveis_da_persona(objective["profile_id"])
+        # F3: a mesma persona da porta (com o fallback do aparelho de persona única), também para os `bindings`.
+        persona = self.repo.variaveis_da_persona(self.repo.persona_do_objetivo(objective["profile_id"],
+                                                                               str(objective["instance_id"])))
         step = resolver_persona(step, persona)
         if faltam := sem_valor_na_etapa(step):
             # O pré-voo conferiu na materialização; o dado sumiu da persona depois. O molde não vai ao aparelho.

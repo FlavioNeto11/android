@@ -12,8 +12,6 @@ from pathlib import Path
 from collections.abc import Awaitable, Mapping, Sequence
 from typing import Any, Callable
 
-import psutil
-
 from . import marca_de_partida
 from .automation.appium_server import AppiumServer
 from .automation.driver import DeviceIO
@@ -55,7 +53,8 @@ from .modules.avisos.infrastructure.anexos_leitura import LeitorDeAnexo
 from .modules.avisos.infrastructure.faxina_sql import FaxinaDosCanais
 from .modules.avisos.infrastructure.fila_sql import FilaDeAvisos
 from .modules.avisos.infrastructure.portas_da_central import PortasReais, nomes_e_dados_da_persona
-from .porta_do_plano import AprovarPlanoBody, ItemAprovado, aprovar_plano, previa_da_porta
+from .porta_do_plano import (AprovarPlanoBody, ItemAprovado, aprovar_pelo_canal, previa_da_porta,
+                             previa_para_o_canal)
 from .modules.avisos.infrastructure.servico import ServicoDeAvisos, trava_de_avisos_em_uso
 from .decisoes_inversas import inversas_das_filas
 from .modules.decisoes.application.desfazer import DesfazerDecisoes
@@ -66,7 +65,6 @@ from .modules.decisoes.infrastructure.resumo_sql import ResumoDasDecisoes
 from .modules.decisoes.infrastructure.servico import ServicoDeDecisoes
 from .modules.avisos.infrastructure.trello_leitor import ComentariosDoTrello, LeitorDoTrello
 from .modules.avisos.infrastructure.trello_webhook import CadastroDoWebhook, PortaDoWebhook
-from .modules.avisos.infrastructure.trello_saude import problemas_do_trello
 from .modules.context_retrieval.adapters.jev import JevSemanticProvider
 from .modules.identity.application.ports import SessionProvider
 from .modules.identity.application.session_rules import (CREDENCIAL_EM_REVISAO, aplicar_desafio, conta_para_conferir,
@@ -83,15 +81,14 @@ from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.infrastructure.validacoes_sql import RegistroDeValidacoesSql
 from .modules.skills.application.registry import CompositeSkillRegistry
 from .modules.skills.application.teaching import TeachingService
-from .modules.skills.infrastructure.contador_do_ensino_v2 import ContadorDoEnsinoV2
 from .modules.skills.infrastructure.document_validator import DslDocumentValidator, LockedVersions
 from .modules.skills.infrastructure.legacy_flows import LegacyFlowAdapter
 from .modules.skills.infrastructure.run_planning import SkillRunPlanner
 from .modules.skills.infrastructure.secret_screen import RedactionSecretScreen
 from .modules.skills.infrastructure.sql_repository import SqlSkillRepository
 from .modules.skills.infrastructure.sql_teaching_repository import SqlTeachingRepository
-from .models import (AiStatus, AppiumStatus, DatabaseStatus, Health, InstalledAppState, InstanceState,
-                     OFFLINE_POLICY_PADRAO, PersonaCreate, PersonaDTO, Problem, SdkStatus, SessionStatus)
+from .models import (AiStatus, Health, InstalledAppState, InstanceState,
+                     OFFLINE_POLICY_PADRAO, PersonaCreate, PersonaDTO, SessionStatus)
 from .devices.installer import AppInstaller
 from .planning import conciliacao, costs, saldos
 from .planning.decisao_fechada import (DecisorJev, RepositorioDeSombra, construir_porta, observador_de_sombra,
@@ -104,15 +101,14 @@ from .planning.capabilities import (Capability, alvo_da_acao, capability_of, con
 from .planning.catalog import capabilities_of, pacote_ancora, screen_reader_of, session_factory_of
 from .planning.anthropic_provider import AnthropicProvider
 from .planning.provider import AIProvider, build_provider
-from .planning.routing import perfis_para_o_painel
 from .modules.identity.infrastructure.persona_images import (compor_servico_de_imagens, identidade_para_foto,
-                                                              imagens_dto, status_de_imagem)
+                                                              imagens_dto)
 from .releases.catalog import ReleaseValidationError
 from .releases.inspector import ApkInspector
 from .security import local_secret
-from .security.access import publicos_de
 from .security.secret_store import SecretStore, build_key_provider
 from .security.sessions import PanelSessions, PortaoDeLogin
+from .saude import SaudeDoSistema
 from .releases.repository import ReleaseRepository
 from .releases.service import InstalacaoIncerta, ReleaseService
 from .security.sensitive_input import SensitiveInputChannel
@@ -229,6 +225,10 @@ class RelogioDivergente(RuntimeError):
     o MESMO aparelho que o dono legítimo — exatamente o que o lease existe para impedir. Enquanto existe um
     backend só, isso não faz diferença e o desvio é apenas avisado; a partir do segundo, subir é pior que não subir.
     """
+
+
+def _texto_ou_nada(valor: object) -> str | None:
+    return None if valor is None else str(valor)
 
 
 def _col_app(row: Any) -> str | None:
@@ -415,6 +415,7 @@ class AppState:
         self.secrets = SecretStore(self.db, build_key_provider(
             data_dir=cfg.data_dir, env_material=cfg.env.credentials_master_key))
         self.social_repo = SocialRepository(self.db)
+        self.social_repo.variaveis_da_persona = self.repo.variaveis_da_persona     # 31.113 F3
         # Validade do "Conectado": o repositório monta o DTO do perfil e é ele que marca a sessão como dado velho.
         self.social_repo.session_max_age_s = cfg.file.contas.session_max_age_s
         # Teto do `unknown_streak` na GRAVAÇÃO (o mesmo que a porta de sessão lê): nenhuma releitura soma acima dele.
@@ -648,8 +649,9 @@ class AppState:
                                                         if str(d.state) == "online" and d.kind != "store"],
                                         capturar=lambda alvo: capturar_para_o_dono(self.devices, alvo),
                                         leitor_de_anexos=self.leitor_de_anexos,
-                                        previa_da_porta=lambda rid: previa_da_porta(self, rid),
-                                        aprovar_plano=lambda rid, pares, por, vista_em=None: aprovar_plano(
+                                        # 31.113 F3: o canal recebe a prévia com o marcador da persona.
+                                        previa_da_porta=lambda rid: previa_para_o_canal(self, previa_da_porta(self, rid)),
+                                        aprovar_plano=lambda rid, pares, por, vista_em=None: aprovar_pelo_canal(
                                             self, rid, AprovarPlanoBody(aprovar=[ItemAprovado(step_id=s, chave=c)
                                                                                  for s, c in pares],
                                                                         vista_em=vista_em), por=por),
@@ -751,7 +753,7 @@ class AppState:
         #: 29.78: voltas completas dos laços de faxina (rodando ou não, conforme a trava). A primeira é na subida;
         #: o harness dos testes só entrega o backend depois dela, senão a faxina apagava o que o teste acabou de gravar.
         self.voltas_de_faxina: dict[str, int] = {"retencao": 0, "expiracao": 0}
-        self._last_health: dict[str, Any] | None = None
+        self.saude = SaudeDoSistema(self)
         #: Última leitura da sonda do túnel por worker (achado #179): worker_id -> 'up' | 'down'.
         self._transport_cache: dict[str, str] = {}
         self.devices.transport_state_of = self._transport_state_of
@@ -2200,13 +2202,13 @@ class AppState:
         srow = self.repo.step_row(srow["id"]) or srow          # relê: o texto pode ter acabado de entrar
         # 30.64 (revisão da fila, item 5): o `check` rodou antes do rascunho; a DM de texto gerado só agora tem o que
         # comparar. Repetir a mesma mensagem ao mesmo alvo passa por confirmação, mesmo com o perfil autônomo.
-        repetida = self.policies.mensagem_repetida(profile_id, cap, loads(srow["bindings"], {}) or {},
+        repetida = self.policies.mensagem_repetida(profile_id, cap, self.repo.bindings_da_etapa(srow, profile_id),
                                                    app_id=app_da_etapa_id, step_id=srow["id"])
         # 31.53: com o texto escrito, a conta nossa que cita OUTRA conta do mesmo pedido entre personas passa por
         # aprovação. O texto literal o `check` já pegou (e o motivo está no `reason`); aqui é o texto gerado. Sem pedido,
         # `None` e nada muda.
         familia = contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None
-        argumentos = loads(srow["bindings"], {}) or {}
+        argumentos = self.repo.bindings_da_etapa(srow, profile_id)
         citada = self.policies.cita_a_familia(profile_id, cap, argumentos, familia)
         citada = citada if citada and citada not in (veredito.reason or "") else None
         # 31.53 (F2): a regra do objeto na família de novo, agora que o rascunho acabou. Daqui até o pedido gravado no
@@ -2283,7 +2285,7 @@ class AppState:
             # parecer: como o texto deixou de ser congelado no plano, a etapa chega ao ator SEM `content` e SEM a
             # guarda que dependia dele — o modelo inventaria a frase e publicaria, sem aval de ninguém. Antes
             # desta série o texto literal segurava esse caso; hoje quem segura é esta porta.
-            if cap.needs_draft and texto_a_gerar(loads(srow["bindings"], {}) or {}) is not None:
+            if cap.needs_draft and texto_a_gerar(self.repo.bindings_da_etapa(srow)) is not None:
                 return PortaDaEtapa.fim(Verdict(
                     allowed=False, policy=cap.default_policy,
                     reason="este aparelho não tem perfil vinculado: não há voz para escrever o texto desta etapa nem "
@@ -2294,7 +2296,7 @@ class AppState:
         # Alvo desta etapa, para a coordenação de frota (achado #114, ADR-055): o argumento que a AÇÃO declara no
         # catálogo (`Capability.counterparty`), normalizado. Antes era `username` cru — curtir e comentar não o têm,
         # e a porta de frota recebia `None` e liberava tudo; `@Ana` e `@ana` eram duas pessoas.
-        bindings = (loads(srow["bindings"], {}) or {}) if "bindings" in srow.keys() else {}
+        bindings = self.repo.bindings_da_etapa(srow, profile_id)
         alvo = contraparte(cap, bindings)
         # O mesmo pedido, nesta execução, a outras contas sobre o mesmo alvo (o caso de 19/09: uma execução, sete
         # contas, uma pessoa). A porta de frota conta o que JÁ aconteceu; os objetivos irmãos chegam aqui juntos,
@@ -2325,7 +2327,7 @@ class AppState:
                                        app_id=app_da_etapa.id if app_da_etapa else None, package=pacote,
                                        step_id=srow["id"],
                                        pedido=contexto_do_pedido(self.db, obj["run_id"]) if cap.side_effect else None,
-                                       bindings=loads(srow["bindings"], {}) or {})
+                                       bindings=self.repo.bindings_da_etapa(srow, profile_id))
         return PortaDaEtapa(veredito=veredito, final=False, cap=cap, profile_id=profile_id, rt=rt, pacote=pacote,
                             app_id=app_da_etapa.id if app_da_etapa else None, confirmacao=confirmacao,
                             registrar_confirmacao=registrar_confirmacao, teto=teto)
@@ -2348,7 +2350,8 @@ class AppState:
         achados: dict[str, tuple[str, str]] = {}
         for r in linhas:
             dono = r["profile_id"] or self.social_repo.perfil_unico_da_instancia(r["instance_id"])
-            if dono and dono != profile_id and contraparte(cap, loads(r["bindings"], {}) or {}) == alvo:
+            # 31.113 F3: cada irmã com a persona do SEU objetivo; o mesmo marcador em duas personas não é o mesmo alvo.
+            if dono and dono != profile_id and contraparte(cap, self.repo.bindings_da_etapa(r, str(dono))) == alvo:
                 achados[str(r["objetivo"])] = (str(r["instance_id"]), str(dono))
         return sorted((o, a, d) for o, (a, d) in achados.items())
 
@@ -2412,9 +2415,9 @@ class AppState:
         if proprio:
             return str(proprio)
         for chave in (getattr(step, "depends_on", None) or []):
-            row = self.db.one("SELECT bindings FROM steps WHERE objective_id=? AND key=? ORDER BY plan_version DESC"
-                              " LIMIT 1", (obj["id"], chave))
-            alvo = (loads(row["bindings"], {}) or {}).get("username") if row else None
+            row = self.db.one("SELECT objective_id, bindings FROM steps WHERE objective_id=? AND key=? ORDER BY"
+                              " plan_version DESC LIMIT 1", (obj["id"], chave))
+            alvo = self.repo.bindings_da_etapa(row).get("username") if row else None
             if alvo:
                 return str(alvo)
         return None
@@ -2429,7 +2432,7 @@ class AppState:
         """
         if not cap.needs_draft:
             return None
-        bindings = loads(srow["bindings"], {}) or {}
+        bindings = self.repo.bindings_da_etapa(srow, profile_id)
         briefing = texto_a_gerar(bindings)
         if briefing is None:                                   # texto exato pedido no comando
             return None
@@ -2517,7 +2520,8 @@ class AppState:
             # Texto e marca na MESMA transação: um crash entre os dois deixaria a etapa com texto novo e sem
             # marca, e a retomada geraria outro por cima — pago, e por cima do que já estava escrito.
             with self.db.tx():
-                definir_texto(self.db, srow["id"], draft.content)
+                # 31.113 F3: o nome da persona no rascunho vira marcador só se a volta for exata (mesma caixa).
+                definir_texto(self.db, srow["id"], self.repo.texto_reversivel(draft.content, obj["id"]) or draft.content)
                 # O que o rascunho percebeu não cabe em `bindings` (que é prompt do ator) e morreria aqui.
                 # Guardado na etapa, sobrevive à espera por aprovação e a um reinício, e o commit o anexa à
                 # interação — é assim que `learn_from` finalmente tem o que aprender.
@@ -2603,15 +2607,19 @@ class AppState:
                                    f"{descarte}; a porta pergunta de novo.", run_id=obj["run_id"],
                                    instance_id=obj["instance_id"], step_id=srow["id"])
                 pedido = None
-        bindings = loads(srow["bindings"], {}) or {}
+        bindings = self.repo.bindings_da_etapa(srow, profile_id)
         # O alvo normalizado é a chave da reserva de frota (`SocialRepository.fleet_targeting`).
         alvo = contraparte(cap, bindings) or alvo_da_acao(cap, bindings)
+        # 31.113 F3: o pedido GUARDA o marcador (alvo e texto pela máscara reversível, resumo pela do registro); a
+        # porta decide com o valor. A tela do painel resolve ao vivo (`texto_ao_vivo`); canal e evento levam o marcador.
+        alvo_gravado = self.repo.texto_reversivel(alvo, obj["id"])
+        texto_gravado = self.repo.texto_reversivel(_texto_ou_nada(bindings.get("content")), obj["id"])
         if pedido is None and excecao is None:
             # Etapa revisada (recuperação automática, “Tentar novamente”) tem id novo: sem isto, o que a pessoa já
             # aprovou na versão anterior virava pedido novo e o objetivo voltava a esperá-la. Só vale a decisão
             # sobre a mesma etapa, com o mesmo alvo e o mesmo texto, cujo efeito ainda não saiu.
             pedido = self.approvals.acompanhar_revisao(
-                srow["id"], profile_id=profile_id, acao=cap, target=alvo, content=bindings.get("content"),
+                srow["id"], profile_id=profile_id, acao=cap, target=alvo_gravado, content=texto_gravado,
                 disparou=lambda etapa: self.repo.commit_state(etapa)[0])
             if pedido is not None:
                 self.repo.decision(
@@ -2626,8 +2634,9 @@ class AppState:
                                if m)
             pedido = self.approvals.open(
                 profile_id=profile_id, capability=cap.key,
-                summary=f"{srow['title']} — {motivo}" if motivo else srow["title"],
-                target=alvo, content=bindings.get("content"),
+                summary=self.repo.texto_mascarado(f"{srow['title']} — {motivo}" if motivo else srow["title"],
+                                                  obj["id"]) or srow["title"],
+                target=alvo_gravado, content=texto_gravado,
                 run_id=obj["run_id"], objective_id=obj["id"], step_id=srow["id"])
             self.bus.emit("approval.pending", f"{obj['instance_id']}: {srow['title']} aguarda aprovação",
                           level="warn", run_id=obj["run_id"], instance_id=obj["instance_id"],
@@ -2654,7 +2663,7 @@ class AppState:
             return "venceu"
         if pedido.interaction_id is not None:
             return "já foi gasto num efeito"
-        bindings = loads(srow["bindings"], {}) or {}
+        bindings = self.repo.bindings_da_etapa(srow, profile_id)
         tem_imagem, sha = midia_da_etapa(self.db, bindings, perfil=profile_id)   # 29.79: só a imagem DESTA persona
         chave = chave_da_aprovacao(bindings, cap, perfil=profile_id, aparelho=str(obj["instance_id"]), pacote=pacote,
                                    run_id=str(obj["run_id"]), objective_id=str(obj["id"]), tem_imagem=tem_imagem,
@@ -2666,7 +2675,9 @@ class AppState:
         # que ele leu).
         if cap.needs_draft:
             fechado, texto = texto_exato(cap, bindings)
-            if not fechado or texto is None or (pedido.content or "").strip() != texto.strip():
+            # 31.113 F3: o pedido guarda o marcador; a comparação é valor com valor, pela mesma troca da chave.
+            visto = self.repo.texto_ao_vivo(pedido.content, str(obj["id"])) or ""
+            if not fechado or texto is None or visto.strip() != texto.strip():
                 return "o sim do plano não traz o texto que vai sair"
         # 31.49 (F1 da revisão): a chave não leva estado de fora do item. A mensagem repetida que SURGIU depois do sim
         # (outra execução mandou, ou teve aprovada, o mesmo texto ao mesmo alvo) é estado mudado: o dono não a viu na
@@ -2967,23 +2978,13 @@ class AppState:
         self.decisao_fechada.encerrar()                 # nada novo a partir daqui; o que escapou entre os passos roda e é esperado
         await asyncio.to_thread(self.decisao_fechada.aguardar_sombras, restante())
 
-    def _check_health(self) -> None:
-        """Recalcula `health()` e emite `health.updated` só quando o resultado mudou desde a última checagem
-        (achado #65). Método separado do laço para ser testável sem `asyncio.sleep`."""
-        h = self.health()
-        dump = h.model_dump(mode="json")
-        if dump != self._last_health:
-            self._last_health = dump
-            self.bus.emit("health.updated", f"ambiente: {h.status}", level="warn" if h.status != "ok" else "info",
-                          data={"health": dump})
-
     async def _health_loop(self) -> None:
         """`health()` faz um GET síncrono ao Appium (`is_up`, timeout de 1 s) — roda em thread para não travar
         o laço de eventos do resto do backend enquanto o Appium não responde."""
         while True:
             await asyncio.sleep(HEALTH_POLL_S)
             try:
-                await asyncio.to_thread(self._check_health)
+                await asyncio.to_thread(self.saude.checar)
             except Exception:  # noqa: BLE001 - a saúde nunca pode derrubar o backend
                 log.exception("laço de saúde")
 
@@ -3390,388 +3391,15 @@ class AppState:
         with self.lideranca.cercada(SALDOS, token):
             return saldos.fechar_dia(self.db, self.cfg)
 
-    def _problemas_de_saldo(self) -> list[Problem]:
-        """Só conta EM USO vira problema: uma conta sem função nem imagem apontada para ela não para nada."""
-        try:
-            contas = self.saldos_de_ia()
-        except Exception:  # noqa: BLE001 - a saúde nunca cai por causa do relatório de saldo
-            log.exception("não foi possível calcular os saldos de IA")
-            return []
-        out: list[Problem] = []
-        for c in contas:
-            if not c.em_uso:
-                continue
-            usa = ", ".join(c.roles + (["imagem"] if c.image else []))
-            if c.state in ("blocked", "exhausted"):
-                out.append(Problem(code="ai_balance_blocked", message=f"{c.label}: {c.message}",
-                                   hint=f"Usada por: {usa}. Recarregue no console ({c.console}) e registre a recarga "
-                                        "em Configuração › IA (ou POST /api/ai/balances/<conta>/recharge)."))
-            elif c.state == "low":
-                out.append(Problem(code="ai_balance_low", message=f"{c.label}: {c.message}",
-                                   hint=f"Usada por: {usa}. Recarregue antes de chegar ao limite de bloqueio."))
-            elif c.state == "unknown":
-                out.append(Problem(code="ai_balance_unknown", message=f"{c.label}: sem leitura de saldo registrada.",
-                                   hint=f"Usada por: {usa}. Registre o saldo do console em Configuração › IA."))
-            elif c.stale:
-                out.append(Problem(code="ai_balance_stale", message=f"{c.label}: {c.message}",
-                                   hint="O relatório oficial de uso do provedor não respondeu nos últimos "
-                                        f"{saldos.CONCILIACAO_VELHA_MIN} min: o gasto de fora da plataforma não está "
-                                        "entrando. Confira a chave de administrador no .env."))
-        return out
-
     # ------------------------------------------------------------------ saúde
     def ai_status(self) -> AiStatus:
-        """`provider.status()` só sabe da chave; o disjuntor de conta (crédito/credencial recusados em tempo de
-        execução) vive no executor — combina os dois para health(), /api/ai e a aba IA lerem uma fonte só."""
-        status = self.provider.status()
-        breaker = self.scheduler.executor.ai_breaker
-        if breaker is not None:
-            status = status.model_copy(update={"account_blocked": True, "account_blocked_reason": breaker.message})
-        try:
-            contas = [c.as_dict() for c in self.saldos_de_ia()]
-        except Exception:  # noqa: BLE001 - o status da IA nunca cai por causa do relatório de saldo
-            log.exception("não foi possível calcular os saldos de IA")
-            contas = []
-        # O gerador de imagem não é papel do hub: entra aqui, ao lado, para a aba IA dizer quem é e se está pronto.
-        # Transparência do Jev (ADR-069 item 8): só a PRESENÇA da chave entra; o valor nunca é lido para este fim.
-        jev = self.cfg.file.ai.decisao_fechada
-        chave = self.cfg.env.typesafe_api_key is not None
-        aviso_jev = transparencia.aviso(jev, chave_configurada=chave)
-        extra: dict[str, object] = {"image": status_de_imagem(self.persona_images, self.cfg), "balances": contas}
-        # Adendo v0.87 (I2 da validação do deploy 7): o formato do plano e os perfis vêm da configuração, não do provedor,
-        # para valerem também no modo simulado. O perfil que some da configuração não derruba a aba.
-        extra["esquema_do_plano"] = self.cfg.file.ai.esquema_do_plano
-        extra["leitura_visual"] = self.cfg.file.ai.leitura_visual.enabled
-        try:
-            extra["profiles"] = perfis_para_o_painel(self.cfg)
-        except Exception:  # noqa: BLE001 - o status da IA nunca cai por causa da lista de perfis
-            log.exception("não foi possível montar os perfis de IA para o painel")
-        if aviso_jev is not None:
-            extra["notice"] = f"{status.notice} {aviso_jev}"
-            extra["decisao_fechada"] = transparencia.status(jev, chave_configurada=chave)
-        return status.model_copy(update=extra)
-
-    def _saude_do_banco(self) -> tuple[DatabaseStatus, list[Problem]]:
-        """O banco responde? E o esquema dele ainda é o que estes arquivos de migração geram?
-
-        Achado #33: `health()` não fazia nenhuma consulta. Com o PostgreSQL fora do ar — reinício, rede que
-        piscou, sessão derrubada — o processo respondia `degraded/ok` alegremente enquanto toda operação falhava,
-        e `migration` aparecia como `null` porque `ultima_migracao()` engole exceção. Aqui a pergunta é explícita
-        e o silêncio vira `database_down`.
-
-        Achado #169: e, já que a conexão está de pé, é o momento de conferir que nenhuma migração já aplicada foi
-        editada no lugar — foi exatamente o que aconteceu com a 008 e ninguém viu por um mês.
-        """
-        problemas: list[Problem] = []
-        alcancavel = self.db.alcancavel()
-        if not alcancavel:
-            problemas.append(Problem(
-                code="database_down",
-                message=f"O banco ({self.db.dialect}) não respondeu.",
-                hint="Confira se o serviço do banco está no ar e alcançável desta máquina. A conexão é reaberta "
-                     "sozinha na próxima consulta que der certo — não é preciso reiniciar o backend."))
-        elif (mudaram := self.db.divergencias()):
-            problemas.append(Problem(
-                code="migration_changed",
-                message="Migração já aplicada foi alterada no arquivo: " + ", ".join(sorted(mudaram)) + ".",
-                hint="O esquema DESTE banco é o que a versão antiga do arquivo gerava, e um banco novo nasceria "
-                     "diferente. Migração aplicada não se edita: crie a próxima migração com a diferença. Se a "
-                     "mudança foi só de comentário, o alarme some quando o arquivo voltar ao que era."))
-        return DatabaseStatus(dialect=self.db.dialect, reachable=alcancavel, target=self._banco_sem_segredo()), problemas
-
-    def _banco_sem_segredo(self) -> str:
-        """`postgres://host:porta/base` — o DSN sem usuário nem senha. A saúde é lida pelo painel e vai para
-        relatório; o endereço ajuda a saber em que banco o processo está, a credencial não pode viajar junto."""
-        if self.db.dialect != "postgres":
-            return "sqlite"
-        try:
-            from urllib.parse import urlsplit
-
-            partes = urlsplit(self.db.dsn)
-            return f"postgres://{partes.hostname or '?'}:{partes.port or 5432}{partes.path}"
-        except Exception:               # noqa: BLE001 - endereço é enfeite; nunca derruba a saúde
-            return "postgres"
-
-    def _problema_de_capacidade_local(self) -> Problem | None:
-        """Quanto cabe AGORA (RAM livre) contra o alvo decidido (as vagas do central pela regra única) — mesma
-        conta do portão de boot real, para o aviso e a recusa nunca discordarem (achado #146, item 10.3)."""
-        try:
-            # 29.86 (R2): o alvo é o mesmo número do agendador e do painel (`vagas_que_valem` pelo `capacidade`);
-            # sem a linha do central no registro (a janela da subida), o setting vivo.
-            cap = self.workers.capacidade(self.cfg.owner_id)
-            alvo = int(cap.max_slots if cap is not None
-                       else getattr(self.settings.get(), "max_online_devices", 0) or 0)
-            if alvo <= 0:
-                return None
-            a = self.cfg.file.android
-            est_mb = a.est_ram_host_mb()
-            online = sum(1 for d in self.devices.devices.values() if d.state == InstanceState.online)
-            # Arredondado ANTES de decidir: RAM livre "verdadeira" oscila alguns MB de uma leitura para a outra
-            # só por causa de cache de página do SO, e o achado #65 já corrigiu `/health` para só emitir quando
-            # o resultado muda de verdade — um número bruto aqui faria a mesma checagem "mudar" a cada 30 s sem
-            # nada de fato ter mudado. 100 MB é grosso o bastante para nunca balançar sozinho.
-            free_mb = round(psutil.virtual_memory().available / 2**20 / 100) * 100
-            fit_more = max(0, int((free_mb - a.min_free_ram_mb_after_boot) // est_mb))
-            estimated_max = online + fit_more
-            if estimated_max >= alvo:
-                return None
-            return Problem(
-                code="capacity_local",
-                message=f"RAM livre agora só sustenta ≈{estimated_max} aparelho(s) local(is) simultâneo(s), "
-                        f"abaixo do alvo configurado ({alvo}, vagas do central pela regra única): ≈{free_mb:.0f} MB "
-                        f"livres, ≈{est_mb} MB por instância, {a.min_free_ram_mb_after_boot} MB de folga exigida.",
-                hint="Outro processo está usando a RAM do host (confira o WSL — `.wslconfig` — e outros "
-                     "contêineres/VMs) ou o alvo local está otimista para esta máquina. O rodízio vai recusar "
-                     "boot antes de estourar; isto só antecipa o aviso.")
-        except Exception:  # noqa: BLE001 - aviso de capacidade nunca pode derrubar a saúde
-            log.exception("cálculo de capacidade local")
-            return None
-
-    def _ia_em_fallback(self, janela_min: int = 30) -> list[dict[str, Any]]:
-        """Chamadas recentes que o provedor principal da função não atendeu (`ai_calls.fallback`), por função."""
-        desde = to_iso(now() - timedelta(minutes=janela_min))
-        try:
-            return self.db.query(
-                "SELECT role, requested_model, fallback, count(*) AS n FROM ai_calls "
-                "WHERE ts >= ? AND fallback IS NOT NULL AND fallback <> '' "
-                "GROUP BY role, requested_model, fallback ORDER BY n DESC", (desde,))
-        except Exception:  # noqa: BLE001 - a saúde nunca cai por causa de um relatório
-            log.exception("não foi possível ler os fallbacks recentes de IA")
-            return []
-
-    def _problema_de_exposicao_publica(self) -> Problem | None:
-        """29.54 / ADR-073: com um nome em `server.public_hosts`, a exposição só está de pé inteira com TRÊS coisas —
-        `API_TOKEN` (sem ele ninguém entra pelo endereço público), TLS declarado (`tls_behind_proxy`: o cookie de
-        sessão só ganha `Secure` assim) e a origem `https://<host>` em `allowed_origins` (sem ela o POST do login
-        leva 403 `forbidden_origin`). Faltando qualquer uma o portão continua fechando, mas o dono veria um login
-        que não entra sem saber por quê. Só nomes de configuração e o fato de faltar; nenhum valor de segredo."""
-        server = self.cfg.file.server
-        publicos = sorted(publicos_de(self.cfg))
-        if not publicos:
-            return None
-        origens = {o.strip().lower().rstrip("/") for o in server.allowed_origins}
-        faltas: list[str] = []
-        if not self.cfg.api_token:
-            faltas.append("API_TOKEN no .env")
-        if not self.cfg.tls_ativo:
-            faltas.append("server.tls_behind_proxy: true")
-        sem_origem = [h for h in publicos if f"https://{h}" not in origens]
-        if sem_origem:
-            faltas.append("server.allowed_origins com " + ", ".join(f"https://{h}" for h in sem_origem))
-        if not faltas:
-            return None
-        return Problem(
-            code="exposicao_publica_incompleta",
-            message=("Há host público declarado (server.public_hosts: " + ", ".join(publicos) + ") e falta: "
-                     + "; ".join(faltas) + "."),
-            hint="Complete em config/config.yaml e .env e reinicie o central; sem isso o login pelo endereço público "
-                 "não entra. Para recuar, tire o nome de server.public_hosts (tudo de fora volta a 403). "
-                 "Procedimento em docs/operacao.md, \"Portal público pelo túnel da Cloudflare\".")
+        return self.saude.ai_status()
 
     def health(self) -> Health:
-        problems: list[Problem] = []
-        banco, problemas_do_banco = self._saude_do_banco()
-        problems.extend(problemas_do_banco)
-        sdk_ok = self.tools.found()
-        if not sdk_ok:
-            problems.append(Problem(code="sdk_missing", message=f"Android SDK não encontrado em {self.cfg.sdk_root}.",
-                                    hint="Rode scripts/install-prereqs.ps1 ou ajuste android.sdk_root / ANDROID_SDK_ROOT."))
-        # A conferência da imagem só olhava a PADRÃO. Uma imagem de override ausente (a da loja, com Play Store) só
-        # aparecia como erro no primeiro boot daquele aparelho — nunca aqui, onde dá tempo de resolver antes.
-        for iid, imagem in (self.cfg.override_images().items() if sdk_ok else ()):
-            if not self.tools.system_image_dir(imagem).exists():
-                problems.append(Problem(
-                    code="system_image_missing",
-                    message=f"A imagem de sistema de {iid} não está instalada: {imagem}.",
-                    hint=f'Instale com: sdkmanager "{imagem}" (ou scripts/install-prereqs.ps1 -ImageTags …). '
-                         "Os demais aparelhos seguem funcionando."))
-        # Aparelho no ar e INÚTIL (Android morto por dentro, sessão que nunca abre) entra na saúde do sistema.
-        # Antes, três dos quatro aparelhos remotos ligados estavam assim e `/api/health` só listava o Appium.
-        degradados = [rt.id for rt in self.devices.devices.values()
-                      if rt.state == InstanceState.error and rt.attention]
-        if degradados:
-            problems.append(Problem(
-                code="devices_degraded",
-                message=f"{len(degradados)} aparelho(s) respondem ao ADB mas não estão utilizáveis: "
-                        + ", ".join(sorted(degradados)) + ".",
-                hint="Veja o motivo no cartão de cada um (Infraestrutura). Reinicie o aparelho — de preferência a "
-                     "frio — e confira se a sessão de automação abre."))
-        # Item 10.3 (achado #146): o alvo local já está decidido e escrito (`limits.max_online_devices`) — o que
-        # faltava era o central AVISAR quando a RAM livre agora não cobre esse alvo, em vez de deixar o rodízio
-        # descobrir aos trancos (recusando boot por boot). Mesma conta do portão real de boot
-        # (`devices/manager.py::_boot`): `est_instance_ram_mb` por instância e `min_free_ram_mb_after_boot` de
-        # folga — para o número bater com o que de fato recusa ou aceita um boot, não uma estimativa à parte.
-        problema_capacidade = self._problema_de_capacidade_local()
-        if problema_capacidade is not None:
-            problems.append(problema_capacidade)
-        # ADR-055: conta travada logada em aparelho LIGADO. O android-04 passou horas no ar com a conta no desafio
-        # e a saúde não dizia nada; um aparelho assim é um risco à conta enquanto estiver de pé.
-        if (travadas := self._contas_travadas_no_ar()):
-            problems.append(Problem(
-                code="locked_account_on_device",
-                message=f"{len(travadas)} aparelho(s) ligado(s) com conta travada logada: " + ", ".join(travadas)
-                        + ".",
-                hint="O aparelho está em quarentena: nada o toca além de parar ou hibernar. O desafio é com a pessoa "
-                     "(ADR-009); decida o destino do aparelho — reset ou religar só com a confirmação explícita "
-                     "(confirm_locked_account)."))
-        # Achado #179: o túnel SSH é o único transporte do ADB remoto e do canal do agente. Sem este problema
-        # dedicado, a queda dele só aparecia como sintomas espalhados (aparelhos "sem ADB", worker "sem batida"),
-        # sem nada apontando a causa comum.
-        tuneis_fora = [w for w in self.workers.dtos() if w.transport_state == "down"]
-        if tuneis_fora:
-            problems.append(Problem(
-                code="tunnel_down",
-                message=(f"{len(tuneis_fora)} túnel(is) fora: " + ", ".join(w.name for w in tuneis_fora) + "."),
-                hint="A porta LOCAL do túnel está recusando conexão — o worker remoto pode estar de pé; é o "
-                     "transporte que caiu. Veja data/logs/tunel-*.log; a tarefa agendada "
-                     "farm-tunel-<worker> (scripts/worker-tunnel.ps1) reconecta sozinha."))
-        # Medido: `config/config.yaml` recriado do exemplo trouxe `worker_port: 0` e o backend subiu com o canal do
-        # worker atendendo na porta principal — onde um `-R` do túnel expõe a API inteira à máquina do worker. O
-        # padrão `0` é o certo para parque numa máquina só; com worker REMOTO inscrito ele vira problema de saúde.
-        remotos = [w for w in self.workers.dtos() if not w.local]
-        if remotos and not int(self.cfg.file.server.worker_port or 0):
-            problems.append(Problem(
-                code="worker_channel_shared",
-                message=(f"{len(remotos)} worker(s) remoto(s) inscrito(s) e o listener dedicado do canal do worker "
-                         "está desligado (server.worker_port: 0)."),
-                hint="Ligue server.worker_port (ex.: 8010) em config/config.yaml e reinicie; aponte o -R do túnel "
-                     "para ela. Com o canal na porta principal, o túnel deixa a API REST ao alcance do worker."))
-        problema_exposicao = self._problema_de_exposicao_publica()
-        if problema_exposicao is not None:
-            problems.append(problema_exposicao)
-        problems.extend(Problem(code=codigo, message=mensagem, hint=dica)
-                        for codigo, mensagem, dica in self.portal.problemas())     # 29.77: só nomes e contagens
-        appium_up = self.appium.is_up(timeout=1.0)
-        if not appium_up:
-            problems.append(Problem(code="appium_down", message=self.appium.detail or "Servidor Appium não está respondendo.",
-                                    hint="Verifique tools/appium (npm ci) e data/logs/appium.log; o controle manual segue funcionando."))
-        elif not self.appium.log_masking_active:
-            # Sem mascaramento comprovado, o Appium gravaria em claro tudo o que for digitado — inclusive senha.
-            problems.append(Problem(code="appium_log_masking_off",
-                                    message="Mascaramento de log do Appium não comprovado nesta sessão.",
-                                    hint="Reinicie pelo scripts/stop.ps1 + start.ps1 para o backend subir o Appium com as "
-                                         "regras de mascaramento. Preenchimento de credencial fica bloqueado até lá."))
-        if self._clock_skew_s > self.cfg.max_clock_skew_s:
-            problems.append(Problem(
-                code="clock_skew",
-                message=f"O relógio desta máquina está {self._clock_skew_s:.1f}s longe do relógio do banco.",
-                hint="A posse de etapa entre backends depende deste relógio: um backend adiantado adota etapa em "
-                     "plena execução de outro. Sincronize por NTP. Com outro backend hospedando aparelhos neste "
-                     "banco, este processo teria recusado subir."))
-        ai = self.ai_status()
-        if not ai.configured:
-            problems.append(Problem(code="ai_not_configured", message="Provedor de IA sem chave.",
-                                    hint="Defina ANTHROPIC_API_KEY no .env e reinicie o backend. Gerenciamento e controle manual continuam disponíveis."))
-        # Teto de gasto em US$ (item 7.2): o aviso sai em 80 % e o bloqueio em 100 %, com o número na frente —
-        # até aqui o custo só existia num relatório que ninguém abre antes de a conta zerar.
-        limite_dia = float(getattr(self.settings.get(), "ai_max_usd_per_day", 0) or 0)
-        if limite_dia > 0 and ai.spend_today_usd is not None:
-            gasto = ai.spend_today_usd
-            if gasto >= limite_dia:
-                problems.append(Problem(
-                    code="ai_budget_day", message=f"Teto de gasto de IA do dia atingido: "
-                                                  f"US$ {gasto:.2f} de US$ {limite_dia:.2f}.",
-                    hint="Nenhuma chamada nova de IA será feita hoje. Aumente ai_max_usd_per_day em "
-                         "Configuração › Limites para liberar."))
-            elif gasto >= limite_dia * 0.8:
-                problems.append(Problem(
-                    code="ai_budget_day_warning",
-                    message=f"Gasto de IA do dia em US$ {gasto:.2f} de US$ {limite_dia:.2f} "
-                            f"({gasto / limite_dia:.0%} do teto).",
-                    hint="Em 100 % as chamadas de IA passam a ser recusadas até o dia virar (UTC) ou o teto subir."))
-        breaker = self.scheduler.executor.ai_breaker
-        if breaker is not None:
-            code = {"billing": "ai_billing", "balance": "ai_balance_blocked"}.get(breaker.kind, "ai_auth_failed")
-            problems.append(Problem(code=code, message=f"{breaker.message} (execução {breaker.run_id}, {breaker.at}).",
-                                    hint="Disjuntor de conta de IA acionado: a execução foi pausada automaticamente e "
-                                         "nenhuma tentativa foi gasta. Corrija e retome a execução para soltar."))
-        problems.extend(self._problemas_de_saldo())
-        problems.extend(self.avisos.problemas())
-        problems.extend(self.canais_da_frota.problemas())
-        problems.extend(self.telegram_entrada.problemas())
-        achados_do_espelho = self.trello_espelho.problemas()
-        problems.extend(achados_do_espelho)
-        # A recusa do Trello é uma só para o espelho e o leitor (o mesmo token): não aparece duas vezes.
-        ja_ditos = {a.code for a in achados_do_espelho}
-        problems.extend(p for p in self.trello_leitor.problemas() if p.code not in ja_ditos)
-        problems.extend(self.trello_webhook.problemas())
-        problems.extend(self.trello_cadastro.problemas())
-        problems.extend(problemas_do_trello(self.cfg))
-        # Backlog B15 (bateria de 25/09): o Ollama estava fora do ar, as 89 decisões foram para o fallback — e a saúde
-        # dizia `ok`. O fallback continua sendo o comportamento certo; o que faltava era ele aparecer.
-        for linha in self._ia_em_fallback():
-            problems.append(Problem(
-                code="ai_fallback_em_uso",
-                message=(f"IA em fallback: {linha['n']} chamada(s) de '{linha['role']}' nos últimos 30 min não foram "
-                         f"atendidas por {linha['requested_model']} e caíram em {linha['fallback']}."),
-                hint="O provedor principal dessa função não respondeu (modelo local fora do ar, por exemplo: o Ollama "
-                     "sobe no login do usuário, não no boot). A execução segue pelo fallback declarado, com o custo e "
-                     "a qualidade dele. Suba o provedor principal ou declare o fallback como principal em ai.roles."))
-        vault = self.secrets.status()
-        if vault == "locked":
-            problems.append(Problem(code="secret_store_locked",
-                                    message="O cofre de credenciais está travado nesta máquina/usuário.",
-                                    hint="As credenciais cifradas foram preservadas. Recadastre a senha de cada perfil "
-                                         "pelo portal para voltar a usar autenticação automática."))
-        elif vault == "unavailable":
-            problems.append(Problem(code="secret_store_unavailable",
-                                    message="Sem chave mestra para proteger credenciais.",
-                                    hint="Defina CREDENTIALS_MASTER_KEY no .env (o nome antigo, "
-                                         "INSTAGRAM_CREDENTIALS_MASTER_KEY, continua valendo). Gerenciamento e "
-                                         "controle manual seguem funcionando."))
-        # Achado #126: dizer `ready` era metade da verdade. O cofre abre — mas abre com a chave DESTE backend, e o
-        # que está guardado no banco pode ter sido cifrado por outro. Sem este problema, o sintoma era login
-        # automático falhando de forma intermitente, sem nada na saúde apontando a causa.
-        elif (estranhas := self.secrets.chaves_estranhas()):
-            problems.append(Problem(
-                code="secret_store_foreign_key",
-                message=("Há credenciais no banco cifradas com outra chave mestra: "
-                         + ", ".join(estranhas) + f" (a deste backend é {self.secrets.provider.key_id})."),
-                hint="Outro backend gravou credencial neste banco com a chave mestra dele — este aqui não abre "
-                     "essas senhas, e recadastrá-las por aqui faria o outro parar de abrir. Use a MESMA "
-                     "CREDENTIALS_MASTER_KEY nos dois backends, ou rode `python -m app.security.rekey` para "
-                     "recifrar o cofre inteiro para uma chave só."))
-        if ai.simulated:
-            problems.append(Problem(code="ai_simulated", message="MODO SIMULADO ativo: nenhuma IA é consultada.",
-                                    hint="Use AI_PROVIDER=anthropic no .env para o provedor real."))
-        diag = self._diag_cache
-        accel = diag["acceleration"]["detail"] if diag else None
-        if diag and not diag["acceleration"]["usable"]:
-            problems.append(Problem(code="no_acceleration", message="Aceleração de virtualização indisponível.",
-                                    hint="No Windows, habilite 'Windows Hypervisor Platform' (WHPX) e reinicie."))
-        # `database_down` é duro: sem banco não há fila, nem posse de etapa, nem histórico — nada do que este
-        # processo faz sobrevive, e chamar isso de "degradado" seria o mesmo engano do achado #33.
-        hard = {"sdk_missing", "no_acceleration", "database_down"}
-        status = "error" if any(p.code in hard for p in problems) else ("degraded" if problems else "ok")
-        emu_version = next((t["version"] for t in (diag or {}).get("tools", []) if t["name"] == "Android Emulator"), None)
-        return Health(status=status, version=VERSION, commit=commit_em_execucao(self.cfg.root),
-                      migration=self.ultima_migracao(), database=banco, ai=ai,
-                      appium=AppiumStatus(running=appium_up, port=self.cfg.file.appium.port, detail=self.appium.detail),
-                      sdk=SdkStatus(found=sdk_ok, root=str(self.cfg.sdk_root), emulator_version=emu_version, accel=accel),
-                      problems=problems,
-                      features={"hibernation": self.cfg.file.android.hibernation, "recipes": self.cfg.file.ai.recipes,
-                                "flows": self.cfg.file.ai.flows, "image_policy": self.cfg.file.ai.image_policy,
-                                "system_image": self.cfg.file.android.system_image,
-                                # Fase F: o painel só oferece o ensino v2 e a lista de habilidades com isto ligado.
-                                "skills": self.cfg.file.skills.enabled,
-                                # 31.91 F1: a TELA do ensino v2 (o painel exige `skills` também). Desligada por padrão.
-                                "ensino_v2": self.cfg.file.skills.ensino_v2_na_tela,
-                                # 31.91 T1 (ADR-078): chamadas às rotas OBSOLETAS do ensino v2, desde o início da medição.
-                                # É a régua do T2: 14 dias com `total` parado em zero autorizam tirar o código.
-                                "ensino_v2_chamadas": ContadorDoEnsinoV2(self.db).resumo(),
-                                # Aparelhos com o reparo automático PAUSADO (experimento/manutenção): `{id: {until, reason, by,
-                                # remaining_s}}`; vazio = nenhum. Informativo: não é problema de saúde.
-                                "repair_pause": {rt.id: dto.model_dump(mode="json") for rt in self.devices.devices.values()
-                                                 if (dto := self.devices.pausa_dto(rt)) is not None}})
+        return self.saude.health()
 
     def ultima_migracao(self) -> str | None:
-        """A migração mais recente aplicada NESTE banco. Lido a cada chamada: é uma linha e responde "o esquema que
-        este processo está usando é o que o código espera?" — a pergunta do deploy, e a única prova de que a
-        subida migrou de verdade."""
-        try:
-            return self.db.scalar("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1")
-        except Exception:  # noqa: BLE001 - saúde nunca falha por causa de um enfeite dela
-            return None
+        return self.saude.ultima_migracao()
 
     async def diagnostics(self, refresh: bool = False) -> dict[str, Any]:
         from .devices import diagnostics

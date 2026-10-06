@@ -350,17 +350,39 @@ o juiz recebem o valor, só em memória. A mesma leitura da persona serve ao `Re
 sumiu da persona depois da materialização, a etapa espera a pessoa ("Dado ausente: …", só o nome do campo) e nada é
 digitado. A identidade da etapa (`template_hash`) não muda: é calculada antes, com todas as variáveis.
 
-**Os `bindings` ficam com o valor na linha até a F3.** Eles saem RESOLVIDOS da materialização, de propósito. A porta de política e a chave da aprovação os leem da linha
-antes do executor, e argumento com `{` não fecha a chave (`argumentos_da_acao`, nota da Ferramentas de 04/10). Com o
-marcador ali, todo item aprovável que cita a persona passaria a "decidir na execução". O título da etapa, que a
-aprovação mostra, vai com o marcador. O valor não SAI da linha: o detalhe da execução (`GET /runs/{id}`), o relatório,
-as versões do plano na resposta e o evento `step.updated` levam o marcador nos `bindings`
-(`Repository._etapa_para_fora`), e o `steps.result` é gravado com o marcador. A F3 (depois do 31.111 F4) põe o
-marcador também nos `bindings` da linha: a porta calcula a chave com a persona resolvida em memória pelo mesmo
-`resolver_persona`, e `argumentos_da_acao` passa a aceitar `{perfil_*}` (combinado com a Ferramentas).
+**F3: os `bindings` também guardam o marcador, e a porta resolve o valor de agora.** A materialização deixa o marcador
+nos argumentos da etapa, como no texto. A porta de política, a frota, a repetição e a chave da aprovação leem os
+argumentos por um leitor ÚNICO, `Repository.bindings_da_etapa`. Ele resolve com a persona lida NA HORA, sem cache, e
+nunca grava. Uma varredura em teste acusa a leitura crua fora dele
+(`test_bindings_com_marcador_da_persona.py::test_a_porta_le_os_bindings_so_pelo_leitor_unico`).
+- **A chave é calculada sobre o valor, igual na prévia e na execução.** A persona trocada depois do sim muda a chave, e
+  a porta pergunta de novo.
+- **`argumentos_da_acao` e `tem_variavel` não mudaram** (parecer da Ferramentas de 06/10, com `VERSAO_DA_CHAVE` igual).
+  O dado ausente ou VAZIO deixa o marcador, nunca "" (`resolver_texto`), e a chave falha fechado.
+- **A frota (`_mesmo_pedido_noutras_contas`) resolve cada irmã com a persona do objetivo dela.** O mesmo marcador em
+  duas personas não é o mesmo alvo.
+- **O histórico da repetição (`SocialRepository`) resolve as linhas antigas com a persona do perfil.** Assim, a
+  repetição se acha com o marcador novo e com o valor antigo.
+- **O pedido de aprovação guarda o marcador.** Alvo e texto passam pela máscara reversível
+  (`Repository.texto_reversivel`: palavra inteira, a MESMA caixa, e só se a volta der o texto exato; senão, literal).
+  O resumo passa pela máscara do registro. O rascunho da IA e a edição do dono (no painel, na prévia ou no cartão)
+  seguem a mesma regra reversível. O 31.49 compara valor com valor.
+- **A tela do painel recebe o valor de agora, sem gravar:** `GET /api/approvals`, a resposta da decisão e a prévia
+  da porta.
+- **O canal leva o marcador:** a prévia do Telegram (`porta_do_plano.previa_para_o_canal`), o evento
+  `approval.pending` e as pendências.
+
+O cache da máscara do registro (F1) guarda só o que não muda (perfil, nomes citados, parâmetros, dado digitado); o
+valor da persona é lido a cada uso, e o nome trocado no perfil não sai em claro.
+
+Ficam com o valor, de propósito:
+- `social_interactions.outgoing_content`: é o texto que SAIU, a prova do efeito, e é com ele que a repetição compara;
+- `remember_screen`: a tela comprovada vira memória da PRÓPRIA persona (origem `observation`, 30 dias), lida pela
+  voz dela; o valor ali é o que a tela mostrou, e a memória é dela.
 
 As execuções anteriores ficam como estão. O registro nasce mascarado a partir do deploy 46, que leva a F1
-(`feat/31-113-f1-registro-mascarado`) e a F2 (`feat/31-113-f2-etapa-com-marcador`).
+(`feat/31-113-f1-registro-mascarado`) e a F2 (`feat/31-113-f2-etapa-com-marcador`); os `bindings` com o marcador, a
+partir do corte 47 (F3, `feat/31-113-f3-bindings-com-marcador`).
 
 **A pergunta da IA também leva o marcador (31.112; achado da prova real do 31.87).** `questions[]` e
 `answers[].question` (31.91) trocam o dado por palavra, como o título (`dado_da_persona.nas_perguntas`). A troca vale
