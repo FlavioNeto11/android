@@ -19,7 +19,7 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
-## 2026-10-06 — K-pendente do 31.160: a gravação crua do ensino sai mascarada na leitura (branch feat/31-160-gravacao-mascarada)
+## 2026-10-06 — K-107 (do 31.160): a gravação crua do ensino sai mascarada na leitura (branch feat/31-160-gravacao-mascarada)
 
 - Medido em 06/10 (ensino do 31.160, alvo = o perfil da própria persona): o fluxo, a receita e o Livro saíram limpos,
   mas o `GET /api/training/{id}` devolvia o @ e o nome dela no `target.text`, no `target.desc` e nas linhas da tela.

@@ -2800,7 +2800,7 @@ um teste guarda as opções usadas.
 **Aplicabilidade.** Vigente. Medida de latência de uma etapa: por controle manual ou fluxo religado com motivo, nunca por um run que depende de um fluxo desligado.
 Comando `adb`/`am` novo: ler o `help` do aparelho e travar as opções num teste.
 
-### K-pendente (número pela orquestradora; pós-prova) — A gravação crua do ensino guarda o texto tocado, inclusive dado da persona
+### K-107 — A gravação crua do ensino guarda o texto tocado, inclusive dado da persona
 
 **Contexto.** Ensino do 31.160 (06/10, android-01, conta real), com o alvo = o perfil da própria persona que ensinava.
 
@@ -2820,7 +2820,16 @@ alvo.
 sessão (o painel não precisa do valor). E avisar na prévia quando um parâmetro do comando some porque o exemplo é o
 dado da própria persona: quem ensina pode querer o alvo genérico.
 
-**Aplicabilidade.** Vigente até a correção. Para ensinar navegação até um perfil, use um alvo que não seja a persona que
-ensina. A identidade da etapa foi alinhada pelo 31.165 (`para_hash` prefere o marcador da persona no empate): com ele,
-a receita ensinada para o próprio perfil casa com a execução que mira o próprio perfil. O mascaramento da gravação crua
-segue pendente.
+**O que foi feito.** A leitura da sessão mascara o dado da persona pelo marcador (`dado_da_persona.na_gravacao`, no
+`TrainingRecorder.get`). Isso vale para o alvo tocado e os `filhos` dele, para o título e as linhas da tela e para o
+texto digitado. A máscara não diferencia caixa, pega o valor também depois do @ e aceita qualquer espaço entre as
+partes. O banco continua com o valor, porque o seletor da receita precisa dele. As leituras internas do ensino usam
+`crua=True`. A prévia e o salvar avisam quando um parâmetro do comando sai por ser o dado da própria persona. A
+proposta guardada não é mascarada além do que já era: o painel a devolve no salvar, e o marcador no título faria a
+etapa mirar a persona de cada aparelho.
+
+**Aplicabilidade.** Vigente. O mascaramento é só da leitura. Ele casa o valor inteiro, então o primeiro nome sozinho
+fica, e o telefone em outro formato também. Para ensinar navegação até um perfil, use um alvo que não seja a persona
+que ensina. Quem ensina com o próprio perfil é avisado na prévia. A identidade da etapa foi alinhada pelo 31.165
+(`para_hash` prefere o marcador da persona no empate): com ele, a receita ensinada para o próprio perfil casa com a
+execução que mira o próprio perfil.
