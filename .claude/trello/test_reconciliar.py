@@ -289,3 +289,14 @@ def test_deploy_pelo_commit_do_central_citado_na_evidencia():
     com = decidir(c, estado(**{"29.5": item}), agora=AGORA, horas=HORAS, suite_de=lambda p: None,
                   listas_do_historico=HIST, por_commit=pc).acoes[0]
     assert (com.para, "deploy 45" in com.linha) == ("concluido", True)
+
+
+def test_deploy_pelo_numero_citado_na_evidencia_so_vale_ate_o_ultimo_deploy():
+    item = {"evidence": "04/10/2026, deploy 32 (2c47b9fa), r-20261004232524-2e0775"}
+    assert deploy_pela_evidencia(item, {}, 45) == 32
+    assert deploy_pela_evidencia({"evidence": "vai no deploy 46"}, {}, 45) is None
+    assert deploy_pela_evidencia({"evidence": "deploy 44 e depois o deploy 45"}, {}, 45) == 44
+    real = {"status": "implemented", "proof": "real", "quando": "2026-10-06T03:41:14+00:00", "evidence": "provado no deploy 32 (2c47b9fa)"}
+    c = [cartao("c1", "29.6 · algo", "🧪 Em validação")]
+    a = decidir(c, estado(**{"29.6": real}), agora=AGORA, horas=HORAS, suite_de=lambda p: None, listas_do_historico=HIST).acoes[0]
+    assert (a.para, "deploy 32" in a.linha) == ("concluido", True)
