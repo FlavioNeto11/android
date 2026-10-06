@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.171: modelo de PR e rótulo pelo prefixo da branch (branch ci/29-171-modelo-pr)
+
+- `.github/pull_request_template.md` (prova real/simulated/not_run, um PR por tarefa, sem segredo, `[skip ci]`) e `.github/workflows/rotula-pr.yml` (`pull_request_target` opened/reopened, `ubuntu-latest`, `pull-requests: write`, checkout só da `main`, nome da branch só por variável de ambiente) com `scripts/rotulo_do_pr.py`: `ci/…` recebe `frente:github` e `copilot/…` recebe `agente`; outro prefixo não ganha rótulo, o rótulo não é criado se faltar e nunca se tira nem se comenta; erro do `gh` deixa o PR como está. Motivo: o `[skip ci]` das sessões desliga os workflows de `pull_request`, então o rótulo precisa do outro evento. Prova `simulated`: `scripts/tests/test_rotulo_do_pr.py` (9 testes). Prova `not_run`: o workflow só roda depois de estar na `main`; a prova real é o rótulo `frente:github` aparecer no próximo PR `ci/…` (run verde sozinho não prova: o script sai com 0 em erro do `gh`).
+
 ## 2026-10-06 — 31.146 (Portal): contagem "N de prova" na faixa do Livro (branch feat/31-146-contagem-de-prova)
 
 - Na faixa de contagem do Livro, ao lado de "Fluxo", aparece "N de prova" (os fluxos de `GET /api/flows?nascido_de_prova=true`, 31.130): clicar aplica o filtro Prova ("Só os nascidos de uma prova"), clicar de novo tira, e a contagem some quando N é 0, quando os fluxos não trazem a marca (backend anterior) ou quando a rota não responde. Relida a cada carga do Livro. Prova: simulada (`NascidoDeProva.test.tsx`, 3 casos novos, 3 mutações mortas; 1873 testes do frontend verdes); real: not_run, no percurso a contagem deve bater com `/api/flows?nascido_de_prova=true` depois do deploy 54.
