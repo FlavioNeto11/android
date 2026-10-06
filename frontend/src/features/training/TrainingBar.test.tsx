@@ -334,6 +334,62 @@ it('31.111: a gravação aberta a partir de uma falha mostra a origem na barra; 
   expect(origem.textContent).toContain('Motivo: A tela esperada não apareceu.');
 });
 
+// ---------------------------------------------------------------- 31.116: o diagnóstico da falha na origem
+const DIAGNOSTICO = {
+  causa: 'versao_nova', rotulo: 'o app mudou de versão', pergunta: 'Mostre o caminho nesta versão do app.',
+  fatos: [{ codigo: 'receita_incompativel', valor: 'abrir_dm na versão 9.1 do app' }, { codigo: 'anterior_comprovada', valor: 'havia receita comprovada em versão anterior' }],
+  proposta: null, amostra: 1,
+};
+
+it('31.116: a barra mostra a causa provável, o que mostrar e os fatos; a intenção da sessão fica como veio', async () => {
+  const el = makeInstance(1, { state: 'online', control: 'user' });
+  const comDiagnostico = { ...GRAVANDO, origin: { ...ORIGEM, diagnostico: DIAGNOSTICO } };
+  backend.on('GET', /\/training$/, () => json([comDiagnostico]));
+  backend.on('GET', /\/training\/trn-9$/, () => json(comDiagnostico));
+  await act(async () => root.render(<TrainingBar instance={el} leaseId="lease-1" mine />));
+  const d = await waitFor(() => {
+    const x = document.querySelector<HTMLElement>('[aria-label="Diagnóstico da falha"]');
+    expect(x).not.toBeNull();
+    return x!;
+  });
+  expect(d.textContent).toContain('Causa provável: o app mudou de versão');
+  expect(d.textContent).toContain('O que mostrar: Mostre o caminho nesta versão do app.');
+  expect(d.textContent).toContain('receita incompativel');                 // o código sem o sublinhado, o valor como veio
+  expect(d.textContent).toContain('abrir_dm na versão 9.1 do app');
+  expect(text()).toContain('Gravando: Responder a DM');                    // a intenção da sessão não foi tocada
+  expect(text()).not.toContain('o app mudou de versão: ');
+});
+
+it('31.116: causa indeterminada diz "não deu para saber"; sem diagnóstico (ou null) a origem não mostra nada dele', async () => {
+  const el = makeInstance(1, { state: 'online', control: 'user' });
+  const indeterminada = { ...GRAVANDO, origin: { ...ORIGEM, diagnostico: { causa: 'indeterminada', rotulo: 'a causa não ficou clara', pergunta: 'O que a etapa devia ter feito nesta tela?', fatos: [], proposta: null, amostra: 0 } } };
+  backend.on('GET', /\/training$/, () => json([indeterminada]));
+  backend.on('GET', /\/training\/trn-9$/, () => json(indeterminada));
+  await act(async () => root.render(<TrainingBar instance={el} leaseId="lease-1" mine />));
+  const d = await waitFor(() => {
+    const x = document.querySelector<HTMLElement>('[aria-label="Diagnóstico da falha"]');
+    expect(x).not.toBeNull();
+    return x!;
+  });
+  expect(d.textContent).toContain('Causa: não deu para saber');
+  expect(d.textContent).not.toContain('Causa provável');
+  expect(d.textContent).toContain('O que mostrar: O que a etapa devia ter feito nesta tela?');
+  expect(d.textContent).not.toContain('Por que a plataforma acha isso');   // sem fatos, sem o recolhível
+  await act(async () => root.unmount());
+  root = createRoot(container);
+
+  for (const origin of [{ ...ORIGEM }, { ...ORIGEM, diagnostico: null }]) {
+    const sem = { ...GRAVANDO, origin };
+    backend.on('GET', /\/training$/, () => json([sem]));
+    backend.on('GET', /\/training\/trn-9$/, () => json(sem));
+    await act(async () => root.render(<TrainingBar instance={el} leaseId="lease-1" mine />));
+    await waitFor(() => expect(document.querySelector('section[aria-label="Origem do treino"]')).not.toBeNull());
+    expect(document.querySelector('[aria-label="Diagnóstico da falha"]')).toBeNull();
+    await act(async () => root.unmount());
+    root = createRoot(container);
+  }
+});
+
 it('31.111: "Para revisar" leva o selo na sessão que nasceu de uma falha e só nela', async () => {
   backend.on('GET', /\/training$/, () => json([
     { ...GRAVANDO, id: 'trn-a', intent: 'Corrigir a etapa', status: 'recorded', origin: ORIGEM },

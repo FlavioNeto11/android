@@ -132,6 +132,26 @@ def deploy_pela_evidencia(item: dict, por_commit: dict[str, int], ultimo: int = 
     return min(ns) if ns else None
 
 
+def deploy_pelo_git(pid: str, por_commit: dict[str, int], raiz: Path | None = None) -> int | None:
+    """O primeiro commit que pôs o cabeçalho do item no CHANGELOG decide: vale o menor deploy cujo commit do central o
+    contém. É a fonte para o item classificado na mesma rodada do registro do deploy, quando a hora engana."""
+    raiz = raiz or RAIZ
+    cabecalho = "^## [0-9-]*[0-9] — " + re.escape(pid) + "[^0-9.]"
+    r = subprocess.run(["git", "-C", str(raiz), "log", "origin/main", "--reverse", "--format=%H", "-G" + cabecalho, "--",
+                        "CHANGELOG.md"], capture_output=True, text=True, encoding="utf-8", check=False).stdout.split()
+    if not r:
+        return None
+    ordem = sorted(por_commit.items(), key=lambda kv: kv[1])
+    for sha, n in ordem:
+        ok = subprocess.run(["git", "-C", str(raiz), "merge-base", "--is-ancestor", r[0], sha], check=False,
+                            capture_output=True).returncode == 0
+        if ok:
+            # no primeiro deploy com commit conhecido não dá para separar "entrou nele" de "já estava antes": o sinal
+            # negativo diz "neste deploy ou num anterior"
+            return -n if n == ordem[0][1] else n
+    return None
+
+
 def _provas(item: dict) -> list[str]:
     ev = str(item.get("evidence") or "") + " " + " ".join(str(x) for x in (item.get("testes") or []))
     achados = re.findall(r"[\w./-]*(?:test|spec)[\w./-]*\.(?:py|tsx?|ps1)(?:::[\w*\[\]-]+)?", ev)
@@ -157,7 +177,8 @@ def _limpa(texto: str, redigir: Callable[[str], str]) -> str:
 
 
 def linha_de_prova(pid: str, item: dict, deploy: int, primeiro: int) -> str:
-    rotulo = f"um deploy anterior ao {primeiro}" if deploy == 0 else f"o deploy {deploy}"
+    rotulo = (f"um deploy anterior ao {primeiro}" if deploy == 0 else f"o deploy {-deploy} ou um anterior" if deploy < 0
+              else f"o deploy {deploy}")
     if item.get("proof") == "real":
         data, ids = _real(item)
         return (f"prova real ({data}" + (f", {', '.join(ids)}" if ids else "")
@@ -215,6 +236,14 @@ def _tem_linha(c: dict) -> bool:
     return str(c.get("desc", "")).startswith(MARCA)
 
 
+def _deploy_mudou(c: dict, linha: str) -> bool:
+    """A linha do cartão concluído diz "no ar desde" um deploy diferente do que o script calcula agora."""
+    primeira = str(c.get("desc", "")).split(SEPARADOR, 1)[0]
+    pat = r"no ar desde (o deploy \d+(?: ou um anterior)?|um deploy anterior ao \d+)"
+    antes, agora = re.search(pat, primeira), re.search(pat, linha)
+    return bool(primeira.startswith(MARCA) and antes and agora and antes.group(1) != agora.group(1))
+
+
 def _prova_subiu(c: dict, linha: str) -> bool:
     """A linha do cartão diz "prova simulada" e o plano agora tem prova real: a linha de prova tem de ser refeita."""
     primeira = str(c.get("desc", "")).split(SEPARADOR, 1)[0]
@@ -233,7 +262,8 @@ def _lista_da_fase(pid: str, listas: dict[str, str]) -> str | None:
 def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[int, str],
             suite_de: Callable[[str], int | None], listas_do_historico: dict[str, str],
             redigir: Callable[[str], str] = lambda t: t, citados: dict[str, int] | None = None,
-            por_commit: dict[str, int] | None = None) -> Relatorio:
+            por_commit: dict[str, int] | None = None,
+            deploy_git: Callable[[str], int | None] | None = None) -> Relatorio:
     """Compara cada cartão do quadro Execução com o estado do plano e devolve o que mudar.
 
     `cartoes`: [{"id", "nome", "lista" (nome da lista), "desc"}]. `listas_do_historico`: nome da lista de fase → id.
@@ -272,6 +302,9 @@ def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[i
                 rel.acoes.append(Acao(c["id"], nome, "marcar", atual, None, linha, motivo))
         elif st == "implemented":
             n = deploy_do_item(it.get("quando"), suite_de(pid) or (citados or {}).get(pid), horas)
+            sem_fonte_forte = not suite_de(pid) and pid not in (citados or {})
+            if deploy_git and sem_fonte_forte and (n is None or n == max(horas, default=0)):
+                n = deploy_git(pid) or n          # a hora do registro engana quando o item entra na mesma rodada dele
             if n is None and it.get("proof") == "real":
                 n = deploy_pela_evidencia(it, por_commit or {}, max(horas, default=0))
             if n is None:
@@ -286,8 +319,9 @@ def decidir(cartoes: list[dict], estado: dict, *, agora: datetime, horas: dict[i
                 rel.acoes.append(Acao(c["id"], nome, "mover", atual, "historico", linha, "feito em semana anterior", fase))
             elif atual != "concluido":
                 rel.acoes.append(Acao(c["id"], nome, "mover", atual, "concluido", linha, "implementado e implantado"))
-            elif not _tem_linha(c) or _prova_subiu(c, linha):
-                motivo = "concluído sem a linha de prova" if not _tem_linha(c) else "o plano ganhou prova real"
+            elif not _tem_linha(c) or _prova_subiu(c, linha) or _deploy_mudou(c, linha):
+                motivo = ("concluído sem a linha de prova" if not _tem_linha(c)
+                          else "o plano ganhou prova real" if _prova_subiu(c, linha) else "o deploy do item mudou")
                 rel.acoes.append(Acao(c["id"], nome, "marcar", atual, None, linha, motivo))
     return rel
 
@@ -410,7 +444,8 @@ async def _principal(aplicar: bool) -> int:
     changelog = (RAIZ / "CHANGELOG.md").read_text(encoding="utf-8")
     rel = decidir(cartoes, estado, agora=agora, horas=horas_dos_deploys(), suite_de=suite_do_commit,
                   listas_do_historico=hist, redigir=redigir, citados=ids_citados_por_deploy(changelog),
-                  por_commit=deploys_por_commit(changelog))
+                  por_commit=deploys_por_commit(changelog),
+                  deploy_git=lambda pid: deploy_pelo_git(pid, deploys_por_commit(changelog)))
     outros = auditar_historico_e_programa(await _cartoes(cl, ident["historico"]), await _cartoes(cl, ident["programa"]),
                                           estado, agora=agora)
     print("Execução:", len(cartoes), "cartões; ações:", rel.contagem() or "nenhuma")

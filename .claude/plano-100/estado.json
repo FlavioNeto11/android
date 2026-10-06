@@ -9368,16 +9368,16 @@
   },
   "31.87": {
    "id": "31.87",
-   "status": "partial",
+   "status": "implemented",
    "proof": "real",
-   "evidence": "Real, só leitura e sem IA (06/10 01:21Z, máquina central, backend no ar no commit f15ef2e1, migração 116; leitura do SQLite central em mode=ro pelo script .claude/handoffs/aprendizado/prova3187_mascara.py, que nunca imprime valor da persona, só o nome da coluna e contagens). Sessão de treino trn-1nuBzRHaAkM09f6K (android-04, persona de teste, status saved, 06/10 01:03Z) e fluxo f-fe11676e54e3 (source training:trn-1nuBzRHaAkM09f6K, criado 01:09Z). Valores da persona procurados: display_name, first_name, last_name e birth_date (os que têm 3 ou mais caracteres). PROVADO: (a) eventos sem o dado em claro em nenhuma das três buscas: os 18 eventos que citam a sessão, os 34 eventos do android-04 desde o início do treino e o evento que cita o fluxo (log de 01:09:14Z). Nenhum deles traz o marcador '<dado da persona>' nem '{perfil_', ou seja, nenhum evento carregou o dado; (b) fluxo salvo (name, command_template, match_key, plan) sem o dado em claro. A persona aparece só como {perfil_nome_exibicao}, em steps[1].postcondition.value e .description (etapa pesquisar_persona, post text_visible). O comando não tem parâmetro, e plan.parameters está vazio: o marcador não virou parâmetro; (c) as 4 receitas do treino (201 a 204) são só tap, sem texto. NÃO PROVADO: a reprodução. Nenhuma execução tem flow_id ou prova_fluxo_id deste fluxo, e nenhuma execução no android-04 depois da criação. A Portal desligou o fluxo no percurso do deploy 43 (trilha: published por training:trn-1nuBzRHaAkM09f6K, depois disabled por 'Portal (sessão Claude)'). ACHADOS: (1) a proposta guardada em training_sessions.proposal tem o nome da persona em claro em um único lugar, answers[1].question, o texto da pergunta da IA a quem ensinou (31.91). Não é evento nem reprodução, mas fica no banco; o na_proposta do F2 não troca questions nem answers; (2) a entrada digitada (seq 2, texto de 15 caracteres, guardada em training_inputs por desenho, 31.82) não virou binding nem receita na etapa pesquisar_persona. O dado entrou só na pós-condição, então a reprodução dessa etapa depende da IA ler a etapa sem o valor a digitar. Vale conferir na próxima prova real com reprodução. || REPRODUÇÃO REAL (06/10 01:23:40–01:27:18Z, máquina central, backend no ar em f15ef2e1; sim da orquestradora 01:21Z): fluxo f-fe11676e54e3 religado, execução r-20261006012340-d92795 no android-04 com a persona de teste (sem conta real; chave lote:aprendizado:31.87-rep; runs.flow_id = o fluxo), e o fluxo desligado de novo (PUT 200, flows.status=disabled conferido no banco às 01:35Z). Varredura só leitura: .claude/handoffs/aprendizado/prova3187_rep.py e prova3187_onde.py, que só imprimem nomes de coluna e contagens. PROVADO: o dado vai à tela pela reprodução. runs.plan leva só o marcador {perfil_ (2), e o executor o resolveu: 4 ações type_text com o nome de exibição da persona no campo de busca do Configurações, e a tela mostrou o resultado para o termo. NÃO PROVADO, e o registro REFUTA: o dado NÃO fica só mascarado. Aparece em claro em steps.postcondition (2 linhas: as duas tentativas de pesquisar_persona), em actions.args (type_text 4, step_done 3, step_blocked 1), em actions.rationale (2) e em actions.target (1), em attempts.error (1), e em 36 textos de eventos (action.logged 20, step.updated 9, evidence.added 4, decision 2, attempt.updated 1). Nenhum marcador '<dado da persona>' no registro. O F2 mascara o ENSINO (proposta, fluxo salvo, eventos do treino), não o registro da EXECUÇÃO. A etapa pesquisar_persona falhou em ia_orcamento (10 chamadas): a busca do Configurações roda em com.google.android.settings.intelligence, e a pós-condição exige com.android.settings (step_blocked app_incompatible), defeito do fluxo ensinado e não da máscara. CUSTO: US$ 0,331 (tokens × ai.prices: sonnet-5 31 chamadas 0,266; opus-5-5 1 chamada 0,065; jev 0,00007), ACIMA do teto de US$ 0,10. O corte do script não disparou porque GET /api/runs/{id} não traz planning.costs (o campo veio nulo). Falha minha no corte, registrada.",
-   "blocker": "Duas decisões para a orquestradora. (1) Escopo: o 31.87 pede o mascaramento também no registro da execução (etapas, ações e eventos)? Hoje o executor grava o valor resolvido. Mascarar ali é item novo de executor e de eventos, fora do F2, e precisa decidir se a pós-condição e a evidência da tela guardam o marcador. (2) O fluxo ensinado f-fe11676e54e3 não se reproduz (pacote da busca do Configurações), então a prova completa pede outro ensino ou o ajuste da pós-condição. Nova execução real pede novo sim; o teto exige corte por ai_calls, não pela API do run.",
-   "grupo": "31-87-aprendizado-prova-da-mascara",
+   "evidence": "Real, 06/10/2026 07:05Z a 07:08Z, máquina central WIN-7S2UASNLFOP, backend no ar no commit d2d346cd (deploy 47), android-04 do worker-lan-01 (decisão (a) da orquestradora 07:01Z), persona de teste, só dentro de com.android.settings, sem conta real. Ensino novo pela API do controle manual: sessão trn-o5UL-qvehFesjTuB com 5 entradas (Network & internet → Internet → Add network → o primeiro nome da persona digitado em Network name → Cancel). Proposta da IA (1 chamada plan, US$ 0,01642) com 5 etapas e o marcador {perfil_nome} na pós-condição da etapa digitar_nome_rede; revisada só na pós-condição de cancelar (model_judged → text_visible 'AndroidWifi', determinística); prévia: 5/5 viram receita; salvo como fluxo f-9b4d6754b59a (escopo quem_ensinou, ensinado em prova) com receitas 205 a 209; a 208 digita {perfil_nome}, e nenhuma tem o dado em claro. UMA reprodução: execução r-20261006070730-277418 (chave lote:aprendizado:31.87-rep2), completed em 51 s (07:07:31Z a 07:08:22Z), 5/5 etapas succeeded. abrir_adicionar_rede, digitar_nome_rede e cancelar por receita pura; abrir_rede_internet e abrir_internet por recipe>ai_actor (4 chamadas decide). A etapa digitar_nome_rede digitou 5 caracteres (o valor, não o marcador de 13) e verificou 'texto \"{perfil_nome}\" visível na tela' com verified=true. Custo por planning/costs.py::spent_usd(run_id) lido a cada 15 s: reprodução US$ 0,04828; total com a proposta US$ 0,0647 (teto 0,35). Sem needs_input. Fluxo f-9b4d6754b59a desligado no fim (status disabled), sessão mantida (saved); controle do aparelho devolvido, android-04 na tela inicial, nenhuma rede salva. Scripts: .claude/handoffs/aprendizado/drv3187b.py e rep3187b.py.",
+   "blocker": null,
+   "grupo": "aprendizado-prova-real-31-87-31-113",
    "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T02:15:59+00:00"
+   "quando": "2026-10-06T07:11:15+00:00"
   },
   "31.100": {
    "id": "31.100",
@@ -10429,22 +10429,16 @@
   },
   "31.113": {
    "id": "31.113",
-   "status": "partial",
-   "proof": "simulated",
-   "evidence": "F3 7969c74b (bindings com marcador, leitor único, chave da aprovação sobre o valor, approvals ao vivo, evento com marcador; adendo v1.79). Simulado: backend/tests/test_bindings_com_marcador_da_persona.py::*, backend/tests/test_etapa_com_marcador_da_persona.py::*, backend/tests/test_perfil_variaveis_da_persona.py::*. Suíte 47 sobre a integração d2d346cd (main dd134ec8 dentro; Jev F7 6c5a8c96, routers 7a708220 (8e30a011, 6bf397a0), A1 c9236810, F2 9b8b52c3 e a correção do dialeto d2d346cd; Portal 31.91 T1 8a040bea; Aprendizado 31.113 F3 7969c74b; só conflitos de CHANGELOG e api-contract juntados; Windows, central WIN-7S2UASNLFOP, Idle; sem migração nova): scripts/tests -n 4 684 passed (4 subtests); SQLite -n 6 dos 372 arquivos afetados desde a main dd134ec8 7108 passed, 1 skipped, 0 falhas (sobre 7ea713c8); frontend typecheck limpo, 1718 passed (131 arquivos), build ok (sobre b1db06ce, sem mudança de frontend depois); catracas backend 88 + scripts 6; docs-check 0; mypy 257 = teto; PG dirigido, 372 arquivos em 2 partes sobre 7ea713c8: 3566 passed, 9 skipped e 3500 passed, 3 skipped, 31 falhas só no golden da saúde (dialeto do banco, defeito do teste); correção d2d346cd (a fotografia troca o dialeto por um marcador): test_saude_caracterizacao e test_saude_ao_vivo no PG 44 passed, 0 falhas (06:44:23Z) e a catraca + caracterização no SQLite 121 passed.",
+   "status": "implemented",
+   "proof": "real",
+   "evidence": "Real, mesma execução r-20261006070730-277418 (06/10/2026 07:07Z, deploy 47 d2d346cd). Varredura só leitura do SQLite central (mode=ro), contando o valor da persona sem imprimi-lo: em claro 0 em runs (command, plan, status_detail; 2 marcadores), steps (25 textos, 4 marcadores; a pós-condição de digitar_nome_rede guarda {perfil_nome}), plan_versions (1 linha do objetivo r-20261006070730-277418:android-04, 2 marcadores), events da execução (98 eventos, 16 marcadores, em action.logged, attempt.updated, evidence.added e step.updated), events que citam a sessão ou o fluxo (18 textos, 0 e 0), actions (10 ações; o type_text da etapa r-20261006070730-277418:android-04:v1:digitar_nome_rede guarda text={perfil_nome} e o resultado typed_chars=5) e attempts (1 marcador). O valor só foi para a tela (typed_chars igual ao tamanho do dado; pós-condição verificada). A parte da APROVAÇÃO e da prévia do Telegram não ocorre neste fluxo: Configurações não gera aprovação social (pending_approvals da execução = 0). Essa parte segue simulated em backend/tests/test_bindings_com_marcador_da_persona.py (15 testes). bindings da etapa vazias (o dado entra pela receita), então o leitor bindings_da_etapa não foi exercido com bindings neste caso. Achado fora do escopo do 31.113, por desenho (docs/dominios/perfis-e-instagram.md, 31.94/31.97): a gravação training_inputs.text da sessão trn-o5UL-qvehFesjTuB guarda o texto digitado em claro (é o que a destilação troca pelo marcador), e GET /api/training/{id} o devolve.",
    "blocker": null,
-   "arquivos": [
-    "backend/tests/test_bindings_com_marcador_da_persona.py",
-    "backend/tests/test_etapa_com_marcador_da_persona.py",
-    "backend/tests/test_perfil_variaveis_da_persona.py"
-   ],
-   "nota": "classificado pela executora android só pelo que passou na suíte; a frente confirma ou completa a prova real; falta a prova real",
-   "grupo": "android-suite-47",
-   "modelo": "claude-sonnet-5-5",
+   "grupo": "aprendizado-prova-real-31-87-31-113",
+   "modelo": "claude-opus-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T06:49:50+00:00"
+   "quando": "2026-10-06T07:11:15+00:00"
   },
   "29.153": {
    "id": "29.153",
@@ -10496,15 +10490,15 @@
   "15.15": {
    "id": "15.15",
    "status": "partial",
-   "proof": "simulated",
-   "evidence": "Parcial, três dos seis tópicos, todos mergeados com 8721158e e empurrados. F7 (impor as máquinas de estado), feat/15-15-f7-impor-maquinas 6c5a8c96: Repository._conferir recusa a transição fora das tabelas de execution/domain/states.py com InvalidTransition ANTES de escrever (set_run_status, set_objective, finish_attempt), main.py devolve 409 invalid_transition, aresta completed_with_issues->cancelled declarada, ADR-038, adendo v1.78; 1765 testes dirigidos verdes (76 arquivos). F4 (routers por contexto, 3 cortes sem mudar caminho, método, corpo nem resposta): fluxos 7 rotas (f4a 8e30a011), treino 11 rotas (f4b 6bf397a0), execuções 16 rotas mais a escondida (f4c 7a708220, ponta); main.py monta os três routers no lugar do api.router; OpenAPI contra a main: 270 método+caminho idênticos, schemas só diferem em 16 títulos automáticos de resposta 200, ordem protegida por tests/test_ordem_das_rotas.py (3 testes); 2230 testes dirigidos verdes (119 arquivos). F2 (saúde fora de state.py), feat/15-15-f2-saude f1d0b60b: app/saude.py com SaudeDoSistema (health, ai_status, ultima_migracao, checar e os 6 auxiliares), AppState só delega em uma linha; o teste de caracterização (31 cenários, golden) não mudou e passa igual antes e depois; 132 testes (caracterização, saude_ao_vivo, arquitetura, catracas) e 61 arquivos que chamam a saúde verdes; catraca Any de app.state 50->48. Em todas: catracas 88, mypy 257 no teto, docs-check 0/0, sem migração. Faltam do 15.15: cluster de apps e portões, bootstrap, adapters ai|android, identidade de receita por capability, ligar o apply no ciclo e a conversão dos fluxos reais (recomendação em avaliacao-15-15.md: tirar do 15.15). Prova real = not_run: depois do deploy, comparar GET /api/health (problems e features) antes e depois, e o 409 invalid_transition num pedido recusado.",
+   "proof": "real",
+   "evidence": "Parcial, três dos seis tópicos, todos mergeados com 8721158e e empurrados. F7 (impor as máquinas de estado), feat/15-15-f7-impor-maquinas 6c5a8c96: Repository._conferir recusa a transição fora das tabelas de execution/domain/states.py com InvalidTransition ANTES de escrever (set_run_status, set_objective, finish_attempt), main.py devolve 409 invalid_transition, aresta completed_with_issues->cancelled declarada, ADR-038, adendo v1.78; 1765 testes dirigidos verdes (76 arquivos). F4 (routers por contexto, 3 cortes sem mudar caminho, método, corpo nem resposta): fluxos 7 rotas (f4a 8e30a011), treino 11 rotas (f4b 6bf397a0), execuções 16 rotas mais a escondida (f4c 7a708220, ponta); main.py monta os três routers no lugar do api.router; OpenAPI contra a main: 270 método+caminho idênticos, schemas só diferem em 16 títulos automáticos de resposta 200, ordem protegida por tests/test_ordem_das_rotas.py (3 testes); 2230 testes dirigidos verdes (119 arquivos). F2 (saúde fora de state.py), feat/15-15-f2-saude f1d0b60b: app/saude.py com SaudeDoSistema (health, ai_status, ultima_migracao, checar e os 6 auxiliares), AppState só delega em uma linha; o teste de caracterização (31 cenários, golden) não mudou e passa igual antes e depois; 132 testes (caracterização, saude_ao_vivo, arquitetura, catracas) e 61 arquivos que chamam a saúde verdes; catraca Any de app.state 50->48. Em todas: catracas 88, mypy 257 no teto, docs-check 0/0, sem migração. Faltam do 15.15: cluster de apps e portões, bootstrap, adapters ai|android, identidade de receita por capability, ligar o apply no ciclo e a conversão dos fluxos reais (recomendação em avaliacao-15-15.md: tirar do 15.15). Prova real = not_run: depois do deploy, comparar GET /api/health (problems e features) antes e depois, e o 409 invalid_transition num pedido recusado. PROVA REAL (06/10/2026, central WIN-7S2UASNLFOP, deploy 47 = d2d346cd, migração 119, só leitura): GET /api/health com problems [] e features idênticos aos de antes do deploy (F2, registrado pela orquestradora); eventos '(recusada)' = 0 desde 06:30Z e 0 warns de transição fora da tabela em todo o histórico (F7). A contagem de 409 invalid_transition não é observável (sem access log e o handler não grava evento): fica 'nenhum caso visível', não 'zero 409'. F4: rotas movidas respondem no central em d2d346cd com o mesmo conjunto de 270 rotas (prova simulada do OpenAPI). Falha achada e corrigida depois: test_ref_do_fluxo_fora_do_log reprovava 2 _err(409) de presentation/fluxos.py (ajuste no commit do 31.117, 3d3a9072).",
    "blocker": null,
    "grupo": "jev",
    "modelo": "claude-sonnet-5-5",
    "esforco": "high",
    "conferido": null,
    "conferencia": "",
-   "quando": "2026-10-06T06:49:50+00:00"
+   "quando": "2026-10-06T07:03:58+00:00"
   },
   "30.72": {
    "id": "30.72",
@@ -13778,6 +13772,25 @@
    ],
    "grupos": [
     "portal-29-109-29-116-ja-na-main"
+   ]
+  },
+  {
+   "quando": "2026-10-06T07:03:58+00:00",
+   "itens": [
+    "15.15"
+   ],
+   "grupos": [
+    "jev"
+   ]
+  },
+  {
+   "quando": "2026-10-06T07:11:15+00:00",
+   "itens": [
+    "31.87",
+    "31.113"
+   ],
+   "grupos": [
+    "aprendizado-prova-real-31-87-31-113"
    ]
   }
  ]

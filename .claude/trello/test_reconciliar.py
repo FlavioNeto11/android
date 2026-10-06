@@ -300,3 +300,35 @@ def test_deploy_pelo_numero_citado_na_evidencia_so_vale_ate_o_ultimo_deploy():
     c = [cartao("c1", "29.6 · algo", "🧪 Em validação")]
     a = decidir(c, estado(**{"29.6": real}), agora=AGORA, horas=HORAS, suite_de=lambda p: None, listas_do_historico=HIST).acoes[0]
     assert (a.para, "deploy 32" in a.linha) == ("concluido", True)
+
+
+def test_item_classificado_junto_do_registro_do_deploy_vale_o_deploy_do_git():
+    item = {"status": "implemented", "proof": "real", "quando": "2026-10-05T17:00:00+00:00",
+            "evidence": "provado em 06/10 no deploy 43"}
+    c = [cartao("c1", "29.7 · algo", "🧭 Próximas")]
+    # a hora diz 39 e não é o último deploy: o git nem é consultado
+    a = decidir(c, estado(**{"29.7": item}), agora=AGORA, horas=HORAS, suite_de=lambda p: None,
+                listas_do_historico=HIST, deploy_git=lambda p: 38).acoes[0]
+    assert "no ar desde o deploy 39" in a.linha
+    mesmo_da_ultima = {**item, "quando": "2026-10-06T00:55:00+00:00"}  # depois do 43: ambíguo
+    a = decidir(c, estado(**{"29.7": mesmo_da_ultima}), agora=AGORA, horas=HORAS, suite_de=lambda p: None,
+                listas_do_historico=HIST, deploy_git=lambda p: 39).acoes[0]
+    assert "no ar desde o deploy 39" in a.linha
+
+
+def test_linha_do_concluido_com_deploy_errado_e_refeita():
+    item = {"status": "implemented", "proof": "simulated", "quando": "2026-10-06T00:55:00+00:00", "evidence": "a.py::t"}
+    errada = Acao("c1", "n", "mover", "proximas", "concluido", "prova simulada (a.py::t), no ar desde o deploy 43", "m")
+    c = cartao("c1", "29.7 · algo", "✅ Concluído nesta semana", desc=com_linha("corpo", topo_da_linha(errada, "06/10/2026 02:00Z")))
+    a = decidir([c], estado(**{"29.7": item}), agora=AGORA, horas=HORAS, suite_de=lambda p: None,
+                listas_do_historico=HIST, deploy_git=lambda p: 39).acoes
+    assert [(x.tipo, x.motivo) for x in a] == [("marcar", "o deploy do item mudou")]
+    assert "no ar desde o deploy 39" in a[0].linha
+
+
+def test_deploy_do_git_no_primeiro_deploy_conhecido_diz_neste_ou_num_anterior():
+    item = {"status": "implemented", "proof": "simulated", "quando": "2026-10-06T00:55:00+00:00", "evidence": "a.py::t"}
+    c = [cartao("c1", "29.7 · algo", "🧭 Próximas")]
+    a = decidir(c, estado(**{"29.7": item}), agora=AGORA, horas=HORAS, suite_de=lambda p: None,
+                listas_do_historico=HIST, deploy_git=lambda p: -38).acoes[0]
+    assert "no ar desde o deploy 38 ou um anterior" in a.linha
