@@ -2081,6 +2081,22 @@ export interface TrainingOrigin {
   /** O motivo literal do executor lido AGORA; `null` se a limpeza de execuções velhas apagou a etapa. */
   motivo: string | null;
   context?: TrainingOriginContext;
+  /** 31.116 (F4): o diagnóstico determinístico da falha. Ausente ou `null` em backend anterior e na sessão sem tentativa lida. */
+  diagnostico?: TrainingDiagnostico | null;
+}
+
+/** `origin.diagnostico` (learning/domain/ensino_da_falha.py): a causa provável dita em palavras, o que mostrar e os fatos. */
+export interface TrainingDiagnostico {
+  /** O código fechado da causa (`indeterminada` = "não deu para saber"). */
+  causa: string;
+  /** Em poucas palavras: "o app mudou de versão". */
+  rotulo: string;
+  /** O que a pessoa mostra ou responde ao corrigir. */
+  pergunta: string;
+  fatos: { codigo: string; valor: string }[];
+  proposta?: { tipo: string; alvo: string } | null;
+  /** 1 = a própria tentativa; 0 = só o tipo da falha decidiu. */
+  amostra?: number;
 }
 
 export interface TrainingOriginContext {

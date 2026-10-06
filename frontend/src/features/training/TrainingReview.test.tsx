@@ -881,6 +881,28 @@ it('31.111: a sessão com origem mostra o selo, o motivo, o que a execução fez
   expect(document.querySelector('[aria-current="step"]')!.textContent).toContain('Abrir o app');
 });
 
+it('31.116: a revisão mostra a causa provável, o que mostrar e os fatos do diagnóstico; sem ele, nada', async () => {
+  const diagnostico = {
+    causa: 'verificador', rotulo: 'a comprovação não bateu com a tela', pergunta: 'O que na tela mostra que a etapa deu certo?',
+    fatos: [{ codigo: 'tipo', valor: 'postcondition' }], proposta: null, amostra: 1,
+  };
+  backend.on('GET', /\/training\/trn-1$/, () => json({ ...SESSAO, origin: { ...ORIGEM, diagnostico } }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  const origem = await waitFor(() => regiao('Origem do treino'));
+  const d = origem.querySelector<HTMLElement>('[aria-label="Diagnóstico da falha"]')!;
+  expect(d.textContent).toContain('Causa provável: a comprovação não bateu com a tela');
+  expect(d.textContent).toContain('O que mostrar: O que na tela mostra que a etapa deu certo?');
+  expect(d.textContent).toContain('postcondition');
+  expect(text()).not.toContain('Corrigir a etapa');                           // a intenção da sessão (SESSAO.intent) não ganhou o rótulo
+  await act(async () => root.unmount());
+  root = createRoot(container);
+
+  backend.on('GET', /\/training\/trn-1$/, () => json({ ...SESSAO, origin: ORIGEM }));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => regiao('Origem do treino'));
+  expect(document.querySelector('[aria-label="Diagnóstico da falha"]')).toBeNull();
+});
+
 it('31.111: sem origem (gravação comum) nada de selo; etapa apagada diz que já não existe; contexto indisponível diz isso', async () => {
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('QA-001'));
