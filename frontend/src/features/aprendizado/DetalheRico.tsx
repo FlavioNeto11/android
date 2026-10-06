@@ -15,6 +15,7 @@ import { useAppStore } from '../../store/app';
 import { apiAprendizado } from './api';
 import { abrirApp, dicaDoApp, nomeDoApp } from './apps';
 import { AppsDoItem, eMultiApp } from './AppsDoItem';
+import { lerOrigemDoTreino, linkDaSessaoDeTreino, type OrigemDoTreino } from './origemDoTreino';
 import { EscopoDoFluxo } from './EscopoDoFluxo';
 import { SecaoDoParecer } from './ParecerDaIA';
 import {
@@ -241,11 +242,26 @@ function ConteudoReceita({ c, nomeDe }: { c: ConteudoDaReceita; nomeDe: NomeDaCa
   );
 }
 
+/** 31.136: onde, quando e por quem o fluxo foi demonstrado, com o link para a sessão salva no Foco do aparelho. Só o que o backend disse. */
+function EnsinadoNoTreino({ o }: { o: OrigemDoTreino }) {
+  const link = linkDaSessaoDeTreino(o);
+  const partes = [o.aparelho ? <>no aparelho <span className="mono">{o.aparelho}</span></> : null,
+                  o.quando ? <span title={formatDateTime(o.quando)}>{formatQuando(o.quando)}</span> : null,
+                  o.pessoa ? <>por {o.pessoa}</> : null].filter((p) => p !== null);
+  return (
+    <>
+      {partes.map((p, i) => <span key={i}>{i ? ' · ' : ''}{p}</span>)}
+      {link ? <>{partes.length ? ' · ' : ''}<a className={styles.linkAlvo} href={link} title={`Abre o treinamento salvo (${o.sessao}) no aparelho`}>Ver o treinamento salvo</a></> : null}
+    </>
+  );
+}
+
 function ConteudoFluxo({ c, appsNaIdentidade }: { c: ConteudoDoFluxo; appsNaIdentidade?: boolean }) {
   const apps = useAppStore((s) => s.apps);
   // Os apps exigidos na ordem em que o plano os usa (29.42): "QA Messenger → Chrome". No fluxo que atravessa apps a
   // Identidade já os mostra, com link para cada um (30.33-C); repetir aqui, com o nome do registro, só confundia.
   const exigidos = appsNaIdentidade ? '' : textoDosApps(c.apps, apps);
+  const ensinado = lerOrigemDoTreino(c.origem);
   return (
     <>
       <dl className={styles.fatos}>
@@ -260,6 +276,7 @@ function ConteudoFluxo({ c, appsNaIdentidade }: { c: ConteudoDoFluxo; appsNaIden
         {c.origem.step_id ? <Fato rotulo="Etapa de origem"><span className="mono">{c.origem.step_id}</span></Fato> : null}
         {c.origem.attempt_id ? <Fato rotulo="Tentativa de origem"><span className="mono">{c.origem.attempt_id}</span></Fato> : null}
         {c.origem.session_id ? <Fato rotulo="Sessão do treino"><span className="mono">{c.origem.session_id}</span></Fato> : null}
+        {ensinado && (ensinado.aparelho || ensinado.quando || ensinado.pessoa) ? <Fato rotulo="Ensinado"><EnsinadoNoTreino o={ensinado} /></Fato> : null}
         <Fato rotulo="Efeito">{c.efeito.externo ? 'tem efeito fora do sistema' : 'sem efeito fora do sistema'}</Fato>
       </dl>
       <ol className={styles.passos} aria-label="Etapas do fluxo">

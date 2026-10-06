@@ -326,6 +326,8 @@ export interface ConteudoDoFluxo {
     tipo: 'execucao' | 'treino'; fonte: string | null; source_run_id: string | null;
     /** 31.120 (adendo v1.81): a falha de onde o fluxo ensinado nasceu; `null` quando não veio de uma falha, ausente em backend anterior. */
     session_id?: string | null; run_id?: string | null; step_id?: string | null; attempt_id?: string | null;
+    /** 31.136 (adendo v1.88): em todo fluxo cuja fonte é uma sessão de treino, o aparelho, quem ensinou e a data ISO do salvar; `null` fora do treino, ausentes em backend anterior. */
+    instance_id?: string | null; operator?: string | null; ensinado_em?: string | null;
   };
   etapas: EtapaDoFluxo[];
   efeito: { externo: boolean; etapas_com_efeito: number[] };

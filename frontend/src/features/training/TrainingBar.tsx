@@ -16,6 +16,7 @@ import { Field, Select, TextInput } from '../../components/Field';
 import { isRecord, plural } from '../../lib/format';
 import { tempoRelativo, useNow } from '../../lib/time';
 import { useAppStore } from '../../store/app';
+import { PARAM_TREINO, useUiStore } from '../../store/ui';
 import { onLiveEvent } from '../../store/live';
 import { toast, toastError } from '../../store/toasts';
 import { descartarSessaoConcluida } from './descartarSessao';
@@ -100,6 +101,10 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   const [revisando, setRevisando] = useState<string | null>(null);
   const [vendo, setVendo] = useState<string | null>(null);   // 31.120: a sessão salva aberta em leitura
   const [verTodasAsSalvas, setVerTodasAsSalvas] = useState(false);
+  // 31.136: o Livro leva à sessão salva por `?foco=<aparelho>&treino=<sessão>`; o Foco a abre em leitura uma vez e limpa o parâmetro.
+  const treinoDoLink = useUiStore((s) => s.rota.query[PARAM_TREINO]) || null;
+  const trocarQuery = useUiStore((s) => s.trocarQuery);
+  const [listaLida, setListaLida] = useState(false);
   const recusadas = useTrainingStore((s) => s.recusadas[instance.id] ?? 0);
   const definirGravando = useTrainingStore((s) => s.definirGravando);
   // Só é "gravando" para o Foco (padrão de "Limpar o campo antes", contador de recusas) quando a gravação é desta pessoa.
@@ -113,6 +118,7 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
     try {
       const lista = await api.listTraining(instance.id);
       setSessoes(lista);
+      setListaLida(true);
       const gravando = lista.find((s) => s.status === 'recording');
       setAtiva(gravando ? await api.getTraining(gravando.id) : null);
     } catch {
@@ -123,6 +129,13 @@ export function TrainingBar({ instance, leaseId, mine, somenteRevisao = false }:
   useEffect(() => {
     void carregar();
   }, [carregar, mine]);
+
+  useEffect(() => {
+    if (!treinoDoLink || !listaLida) return;
+    trocarQuery({ [PARAM_TREINO]: undefined });
+    if (sessoes.some((s) => s.id === treinoDoLink)) setVendo(treinoDoLink);
+    else toast({ tone: 'info', title: 'Treinamento não encontrado', message: `A sessão ${treinoDoLink} não está na lista de ${instance.id}.` });
+  }, [treinoDoLink, listaLida, sessoes, trocarQuery, instance.id]);
 
   // As personas vinculadas a este aparelho: só se leem quando o formulário de iniciar está à vista.
   const formularioAberto = mine && !ativa && !somenteRevisao;

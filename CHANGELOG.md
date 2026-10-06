@@ -34,6 +34,14 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - **31.127** (adendo v1.85): cada etapa ensinada espera a anterior (`depends_on`), salvo `independente: true` na proposta; tipo errado dá 400 `etapa_invalida`.
 - Revisão de segredos (agente, só leitura): nem uma palavra do dado da persona vira sugestão; a entrada marcada (teclado de PIN, padrão) não guarda os elementos.
 - Prova `simulated`: `tests/test_treino_partida_f2_e_sequencia.py` (13) e os ajustes de `tests/test_etapa_pacotes_aceitos.py` (a 1ª etapa agora também aceita o vizinho) e de `tests/test_treino_previa_e_refazer_receitas.py` (a chave nova da prévia). Dirigidos: 124 arquivos um por vez, com 1944 aprovados e as 3 falhas corrigidas e rodadas de novo; `scripts/tests`: 683. Real: `not_run` até o corte 51.
+## 2026-10-06 — 31.136: o Livro leva à sessão de treino e ao aparelho de origem do fluxo (branch feat/31-132-ensino-leitura)
+
+- Achado da leitura do caminho de ensino (candidato 11): o item do fluxo "Demonstrado no treino" não dizia sessão, aparelho, quem ensinou nem quando, e não levava à sessão salva.
+- Adendo v1.88 (item 31.135, backend): em `conteudo.origem` do fluxo, `session_id` passa a vir em todo fluxo cuja fonte é sessão de treino, e entram `instance_id` (aparelho), `operator` (quem ensinou) e `ensinado_em` (data ISO do salvar), todos opcionais, `null` fora do treino. O painel tipa os campos como **opcionais** (`ConteudoDoFluxo.origem`) e a leitura fica isolada em `origemDoTreino.ts`: backend anterior (só `session_id` quando veio de falha, v1.81) segue como antes, sem a linha nova.
+- **Detalhe do fluxo no Livro:** a linha **Ensinado** ("no aparelho android-04 · há 3 h · por <pessoa>", com a data completa no `title`) e o link **Ver o treinamento salvo**, que abre o Foco do aparelho com a sessão salva em leitura (`?aba=aprendido&foco=<aparelho>&treino=<sessão>`). Sem aparelho não há link; sem nenhum dos três campos a linha não aparece; fluxo de execução não ganha a linha.
+- **Foco (`TrainingBar`):** o parâmetro `treino` abre a sessão salva em leitura uma vez e é limpo da rota; se a sessão não é deste aparelho, avisa "Treinamento não encontrado" em vez de ficar mudo.
+- Só frontend e CHANGELOG. Prova `simulated`: `origemDoTreino.test.ts` (2), dois casos em `DetalheRico.test.tsx`, três em `TrainingBar.test.tsx`; doze mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy do corte 52, com o 31.135.
+
 ## 2026-10-06 — 31.134: varredura de texto do caminho de ensino e o efeito de cada botão do Livro (branch feat/31-132-ensino-leitura)
 
 - Achado da leitura do caminho de ensino (candidatos 5, 7, 8, 9 e 10; o 6 foi conferido e não é defeito, ver abaixo).

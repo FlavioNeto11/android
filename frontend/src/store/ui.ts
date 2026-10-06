@@ -33,6 +33,9 @@ export function hashForView(view: View): string {
 /** Parâmetro global do aparelho aberto no Foco (ver `lib/rotas.ts`). */
 export const PARAM_FOCO = 'foco';
 
+/** 31.136: a sessão de treino que o Foco abre em leitura ao chegar por um link do Livro; o `TrainingBar` a consome (e a limpa). */
+export const PARAM_TREINO = 'treino';
+
 export type ModoHistorico = 'push' | 'replace';
 
 /** O que gravamos em `history.state` ao empilhar: de onde viemos, para saber se "voltar" é seguro. */

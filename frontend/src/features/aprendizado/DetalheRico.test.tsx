@@ -753,3 +753,24 @@ describe('detalhe rico: texto do fluxo para uma pessoa (31.134)', () => {
     expect(t).not.toContain('digitar_nome_rede');
   });
 });
+
+describe('detalhe rico: o fluxo demonstrado no treino diz de onde veio (31.136)', () => {
+  const fluxo = (origem: object) => detalhe({ conteudo: { tipo: 'fluxo', nome: 'Abrir', comando_modelo: 'abra', origem: origem as never, apps: [], etapas: [], efeito: { externo: false, etapas_com_efeito: [] } }, item: { kind: 'fluxo' } });
+  const ensinado = () => Array.from(container.querySelectorAll('dt')).find((d) => d.textContent === 'Ensinado')?.nextElementSibling as HTMLElement | undefined;
+
+  it('mostra aparelho, quem ensinou e quando, com o link para o treinamento salvo no Foco do aparelho', async () => {
+    await mostrar(fluxo({ tipo: 'treino', fonte: 'training:trn-9', source_run_id: null, session_id: 'trn-9', instance_id: 'android-04', operator: 'Flavio', ensinado_em: '2026-10-06T10:00:00Z' }));
+    expect(text(ensinado()!)).toContain('no aparelho android-04');
+    expect(text(ensinado()!)).toContain('por Flavio');
+    const link = ensinado()!.querySelector('a')!;
+    expect(link.textContent).toBe('Ver o treinamento salvo');
+    expect(link.getAttribute('href')).toBe('#/aprendizado?aba=aprendido&foco=android-04&treino=trn-9');
+  });
+
+  it('só com a sessão (v1.81) ou fora do treino, a linha "Ensinado" não aparece', async () => {
+    await mostrar(fluxo({ tipo: 'treino', fonte: 't', source_run_id: null, session_id: 'trn-9' }));
+    expect(ensinado()).toBeUndefined();
+    await mostrar(fluxo({ tipo: 'execucao', fonte: null, source_run_id: 'r-1', session_id: 'trn-9', instance_id: 'android-04' }));
+    expect(ensinado()).toBeUndefined();
+  });
+});
