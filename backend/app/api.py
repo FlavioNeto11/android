@@ -821,61 +821,6 @@ async def usage(request: Request, run_id: str | None = None, days: int = Query(7
                                      desde=None if run_id else iso_in(-days * 86400))}
 
 
-@router.get("/flows")
-async def list_flows(request: Request) -> Any:
-    return st(request).scheduler.flows.list()
-
-
-@router.get("/flows/cobertura")
-async def flows_coverage(request: Request) -> Any:
-    """Cada fluxo com quantas etapas já têm receita ativa para a versão promovida do app: os "caminhos mapeados"
-    do parque, e o custo de IA esperado ao repetir cada um (zero / parcial / total). Só leitura."""
-    from .social.capacidades import cobertura_dos_fluxos  # noqa: PLC0415
-
-    return cobertura_dos_fluxos(st(request))
-
-
-class FlowMatchBody(BaseModel):
-    """Corpo de `POST /flows/match` (29.25): o rascunho do comando, que pode trazer e-mail e nunca deve ir para a URL
-    (query string vira linha de log de acesso). O teto é o do comando de uma execução e de `/skills/resolve`."""
-    model_config = ConfigDict(extra="forbid")
-    command: str = Field(min_length=1, max_length=4000)
-
-
-@router.post("/flows/match")
-async def flows_match(request: Request, body: FlowMatchBody) -> Any:
-    """Item 7.7 ("quanto vai custar?" do Osintgram): o comando digitado casa com uma habilidade ou um fluxo
-    conhecido? Devolve a cobertura e a estimativa em US$ do plano, ou `null` — sem nada casado não há o que estimar.
-
-    Fase G (decisão P2): a MESMA resolução que o planejamento usa (`skill_planner`: habilidade publicada atrás de
-    `skills.enabled`, depois fluxo ativo atrás de `ai.flows`), então a estimativa é do plano que REALMENTE rodaria.
-    Mudança visível: antes a rota ignorava `ai.flows` e estimava um fluxo que a execução nunca usaria. Para
-    habilidade, `flow_id` traz a versão (`ig.abrir_conversa@1`) e `skill_ref` diz que não é fluxo."""
-    from .social.capacidades import cobertura_do_fluxo  # noqa: PLC0415
-
-    s = st(request)
-    casado = s.skill_planner.for_command(s.runs.sem_destinos(body.command), None)   # como a execução o vê (onda C)
-    if casado is None or casado.plan is None:
-        return None
-    if casado.legacy_flow_id is not None:
-        row = s.db.one("SELECT * FROM flows WHERE id=?", (casado.legacy_flow_id,))
-        return cobertura_do_fluxo(s, row) if row is not None else None
-    modelo = {"id": str(casado.ref), "app_id": casado.plan.app_id, "plan": casado.plan.model_dump_json()}
-    return {**cobertura_do_fluxo(s, modelo), "skill_ref": str(casado.ref)}
-
-
-@router.post("/flows/similar")
-async def flows_similar(request: Request, body: FlowMatchBody) -> dict[str, object]:
-    """31.89 F5: "este comando parece com o fluxo tal". Só pergunta: devolve até 3 fluxos ativos cujo texto fixo o
-    comando contém (sem acento, caixa, artigo, com pequenas variações), com a referência pública, o molde e a nota. Se
-    um fluxo já casa o comando por inteiro, a lista vem vazia e `matches` é verdadeiro. Não cria execução e não usa IA;
-    o `/flows/match` (cobertura e custo) segue como era."""
-    s = st(request)
-    comando = s.runs.sem_destinos(body.command)
-    return {"matches": s.scheduler.flows.match(comando) is not None,
-            "suggestions": s.scheduler.flows.parecidos(comando)}
-
-
 @router.post("/skills/resolve", response_model=None)
 async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObject:
     """Fase I: a RESOLVE sozinha — que habilidade a frase pede, com que valores tipados, ou que pergunta falta.
@@ -908,77 +853,6 @@ async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObj
         # "resolveu outra coisa em silêncio" (a execução recusa do mesmo jeito, em `needs_input`).
         raise err(409, exc.code, str(exc), gated_by_config=portas) from exc
     return {**resolvido.as_dict(), "gated_by_config": portas}
-
-
-@router.put("/flows/{flow_id}")
-async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> Any:
-    s = st(request)
-    flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: o id ou a referência pública (o `href` dos avisos)
-    if s.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)) is None:
-        raise err(404, "not_found", "Fluxo não encontrado.")
-    if patch.get("status") not in ("active", "disabled"):
-        raise err(400, "invalid", "status deve ser 'active' ou 'disabled'.")
-    # Fase G (guarda apontada pela fase D): fluxo ADOTADO por uma habilidade publicada não se religa por aqui — o
-    # mesmo comando ficaria vivo nos dois backends. Voltar ao fluxo é desfazer a adoção, que desabilita a versão
-    # na mesma transação.
-    # Fase J: nem por outra habilidade publicada com o MESMO comando (critério da fase: nenhum fluxo ativo e skill
-    # publicada com o mesmo comando). A conferência e a escrita numa transação: no SQLite, a publicação concorrente
-    # espera (BEGIN IMMEDIATE).
-    with s.db.tx():
-        if patch["status"] == "active" and (adotante := s.skill_repo.published_adopter(flow_id)) is not None:
-            raise err(409, "flow_adopted", f"O fluxo foi adotado pela habilidade {adotante.ref}, que está publicada: "
-                                           "religá-lo deixaria o mesmo comando vivo nos dois lugares. Desfaça a adoção "
-                                           "para voltar ao fluxo.")
-        chave = s.db.scalar("SELECT match_key FROM flows WHERE id=?", (flow_id,))
-        if patch["status"] == "active" and (outra := s.skill_repo.published_with_command(chave)) is not None:
-            raise err(409, "command_published", f"A habilidade {outra.ref} está publicada com o mesmo comando: "
-                                                "religar o fluxo deixaria o comando vivo nos dois lugares. Desabilite "
-                                                "a habilidade antes.")
-        # ADR-054 (D1): pelo livro, na MESMA transação das guardas — status e trilha com a pessoa que decidiu, ou
-        # nenhum dos dois. Sem a trilha, o fluxo que ela desligou aqui podia renascer do próximo plano (a última
-        # linha da trilha seguia sendo a refutação do sistema) e o conteúdo não ficava vetado.
-        mudar_status_legado(request, LivroKind.FLUXO, flow_id, patch["status"],
-                            reason="ligado na lista de fluxos do painel" if patch["status"] == "active"
-                            else "desligado na lista de fluxos do painel")
-    return next(f for f in s.scheduler.flows.list() if f["id"] == flow_id)
-
-
-@router.put("/flows/{flow_id}/scope")
-async def set_flow_scope(request: Request, flow_id: str, body: EscopoDoFluxoBody) -> dict[str, object]:
-    """31.88 F2: a pessoa amplia ou restringe a quem o fluxo vale (vazio = todos). O escopo é distribuição, não
-    conteúdo: não muda o status nem passa pelo livro (a decisão da prova é outra). A trilha é o evento `log` com o
-    antes e o depois e quem decidiu."""
-    s = st(request)
-    if s.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)) is None:
-        raise err(404, "not_found", "Fluxo não encontrado.")
-    for pid in body.profile_ids:
-        if s.social_repo.profile_row(pid) is None:
-            raise err(400, "unknown_profile", f"Perfil inexistente: {pid}.")
-    for gid in body.group_ids:
-        if s.social_repo.policy_group_row(gid) is None:
-            raise err(400, "unknown_group", f"Grupo de acesso inexistente: {gid}.")
-    antes = s.scheduler.flows.scope(flow_id)
-    s.scheduler.flows.set_scope(flow_id, profile_ids=body.profile_ids, group_ids=body.group_ids)
-    depois = s.scheduler.flows.scope(flow_id)
-    quem = autor_do_gesto(getattr(request.state, "operador", None))
-    s.bus.emit("log", "Escopo da habilidade mudou", data={
-        "flow_id": flow_id, "por": quem,
-        "antes": {"profile_ids": antes["profile_ids"], "group_ids": antes["group_ids"]},
-        "depois": {"profile_ids": depois["profile_ids"], "group_ids": depois["group_ids"]}})
-    return {"flow_id": flow_id, **depois}
-
-
-@router.delete("/flows/{flow_id}", status_code=204)
-async def delete_flow(request: Request, flow_id: str) -> Response:
-    s = st(request)
-    flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: antes da guarda da adoção, que lê pelo id
-    # Fluxo adotado por uma habilidade é o caminho de volta da adoção (`release_flow` o religa): apagá-lo deixaria
-    # a habilidade sem ter para onde desfazer. Desligar continua possível; apagar, só depois de desfazer.
-    if (dona := s.skill_repo.adopter_id(flow_id)) is not None:
-        raise err(409, "flow_adopted", f"O fluxo foi adotado pela habilidade {dona}: apagá-lo tiraria o caminho de "
-                                       "volta da adoção. Desfaça a adoção antes de apagar.")
-    s.db.execute("DELETE FROM flows WHERE id=?", (flow_id,))
-    return Response(status_code=204)
 
 
 @router.get("/recipes")

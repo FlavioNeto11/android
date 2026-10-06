@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 15.15 F4, corte 1: as 7 rotas de fluxos saem de `api.py` (branch feat/15-15-f4a-router-fluxos)
+
+- `GET /api/flows`, `/flows/cobertura`, `POST /flows/match`, `/flows/similar`, `PUT /flows/{id}`, `/flows/{id}/scope` e `DELETE /flows/{id}`
+  passam de `backend/app/api.py` para `backend/app/modules/learning/presentation/fluxos.py`, montado em `main.py` logo depois do
+  `router`. Nenhum caminho, método, corpo ou resposta muda: o conjunto método+caminho do OpenAPI é idêntico antes e depois (270
+  operações) e só o título automático do schema de 4 respostas (`Response List Flows…`) sai, ficando `{}`, que é o mesmo "qualquer
+  valor" (a catraca de `Any` impede `-> Any` em módulo novo). Nenhuma delas se sobrepõe a outra rota, então a ordem não muda nada.
+- O módulo não importa `app.api`: estado por `request.app.state.poc` (tipado por `AppState` só em `TYPE_CHECKING`) e erro com o mesmo
+  `{code, message}` do `api.err`. Dois imports tardios e 5 `Any` a menos em `api.py` (bases da catraca baixadas: 18→16 e 143→138).
+- Novo `tests/test_ordem_das_rotas.py`: nenhuma rota-modelo vem antes de uma literal que ela também casa (método a método), o voto
+  `POST /runs/{id}/feedback` vem antes do coringa `POST /runs/{run_id}/{op}`, e nenhum módulo de apresentação importa `app.api`.
+- Prova `simulated`: 395 testes (os de fluxos, contrato HTTP, cobertura de rotas, arquitetura, os 3 novos e as catracas); mypy 257.
+  `real`: `not_run`. Sem migração e sem adendo de contrato.
+
 ## 2026-10-06 — 31.101, o `--amplo` real: pedaços de nome de conta trocados por valores de exemplo nos testes (branch chore/trocar-nomes-amplo)
 
 - `scripts/trocar-nomes-nos-testes.py --amplo --aplicar` sobre a ponta da suíte 44: 119 arquivos e 1438 linhas, todos de teste
