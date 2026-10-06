@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — A1: a prévia da porta pelo Telegram mascara o dado da persona (decisão da orquestradora, 04:22Z)
+
+- **A1 da leitura do 31.113 F3 (06/10):** a prévia da porta pelo Telegram (`_mostrar_porta`) passa a filtrar o título e o texto da etapa com os nomes E os dados da biografia (o `Alvo:` segue só redigido, ADR-071 (d)) (`PortasReais.nomes_e_dados_de_persona`), que saem como `<dado da persona>`; o item cujo texto traz um dado vai ao painel. A resposta da ANA e o eco do Trello seguem só com nomes. Sem migração. Prova `simulated`: `test_telegram_entrada.py` (2) e `test_perfil_variaveis_da_persona.py` (1). Real: `not_run`.
+
 ## 2026-10-06 — 31.101, o `--amplo` real: pedaços de nome de conta trocados por valores de exemplo nos testes (branch chore/trocar-nomes-amplo)
 
 - `scripts/trocar-nomes-nos-testes.py --amplo --aplicar` sobre a ponta da suíte 44: 119 arquivos e 1438 linhas, todos de teste
