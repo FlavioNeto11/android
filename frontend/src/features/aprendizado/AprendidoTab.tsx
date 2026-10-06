@@ -7,7 +7,7 @@ import { LoadingRegion, Skeleton } from '../../components/Skeleton';
 import { cx, formatInt } from '../../lib/format';
 import { useUiStore } from '../../store/ui';
 import { LoadErrorBanner, LoadErrorState, toLoadError, type LoadError } from '../../lib/loadError';
-import { apiAprendizado, type FiltroDoLivro } from './api';
+import { apiAprendizado, PROVAS_DO_LIVRO, PROVA_LABEL, type FiltroDoLivro } from './api';
 import { hashDe } from '../../lib/rotas';
 import { NOME_DO_APP_NAO_IDENTIFICADO, PACOTE_NAO_RESOLVIDO, type VisaoDeApps } from './apps';
 import { AvisoDaHabilidade, ItemDoLivro, chaveDoItem } from './ItemDoLivro';
@@ -114,7 +114,11 @@ export function AprendidoTab() {
     try {
       const res = await apiAprendizado.livro(f);
       if (minha !== vez.current) return;
-      setLista({ itens: Array.isArray(res?.itens) ? res.itens : [], total: res?.total ?? 0, contagem: res?.contagem,
+      // 31.131: o servidor filtra pela marca; a guarda aqui cobre o backend que ainda ignora o parâmetro (a marca vem em cada linha).
+      const todos = Array.isArray(res?.itens) ? res.itens : [];
+      const itens = f.prova === 'so_prova' ? todos.filter((i) => i.nascido_de_prova === true)
+        : f.prova === 'sem_prova' ? todos.filter((i) => i.nascido_de_prova !== true) : todos;
+      setLista({ itens, total: res?.total ?? 0, contagem: res?.contagem,
                  rotulo: res?.rotulo, ocultos: res?.ocultos });
       setErro(null);
     } catch (e) {
@@ -186,6 +190,15 @@ export function AprendidoTab() {
                     onChange={(e) => setFiltro((f) => ({ ...f, origem: ORIGENS.find((o) => o === e.target.value) }))}>
               <option value="">Todas</option>
               {ORIGENS.map((o) => <option key={o} value={o}>{ORIGEM_LABEL[o]}</option>)}
+            </Select>
+          )}
+        </Field>
+        <Field label="Prova" className={styles.filtro}>
+          {({ id }) => (
+            <Select id={id} small value={filtro.prova ?? ''}
+                    onChange={(e) => setFiltro((f) => ({ ...f, prova: PROVAS_DO_LIVRO.find((p) => p === e.target.value) }))}>
+              <option value="">Todos</option>
+              {PROVAS_DO_LIVRO.map((p) => <option key={p} value={p}>{PROVA_LABEL[p]}</option>)}
             </Select>
           )}
         </Field>

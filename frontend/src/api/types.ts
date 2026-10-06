@@ -2066,6 +2066,8 @@ export interface TrainingSession {
   input_count?: number;
   /** 31.111 (adendo v1.75): `null` na gravação comum; na sessão aberta a partir de uma etapa que falhou, de onde ela veio. */
   origin?: TrainingOrigin | null;
+  /** 31.131 (adendo v1.87): a sessão foi aberta como prova (não é uso real); o fluxo que ela salva leva a mesma marca. Ausente em backend anterior. */
+  nascido_de_prova?: boolean;
 }
 
 /** A etapa que falhou e deu origem ao treino (adendo v1.75). `context` só vem no `GET /training/{id}`. */

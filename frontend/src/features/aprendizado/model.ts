@@ -124,6 +124,8 @@ export interface EntradaDoLivro {
   /** 30.85 (adendo v1.73), só no fluxo ensinado: presente enquanto ele espera a prova (o mesmo `{persona, sessao}` do
    *  30.81) e AUSENTE quando foi provado, confirmado por uma pessoa, desligado ou não veio do treino. `state` segue `published`. */
   ensinado_em_prova?: EnsinadoEmProva | null;
+  /** 31.131 (adendo v1.87), só no fluxo: nasceu de uma prova (sessão de treino aberta como prova), não de uso real. Ausente em backend anterior. */
+  nascido_de_prova?: boolean;
 }
 
 /** 30.23: a execução do sucesso falso e o item que ela ensinou (no fluxo, a própria linha, que renasce nela). */
