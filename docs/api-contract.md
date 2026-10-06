@@ -6832,8 +6832,7 @@ Uma rota nova e um campo novo na sessão de treino; migração 119 (três coluna
   `GET /api/flows` ganha `origin`, `null` ou `{session_id, run_id, step_id, attempt_id}` (o fluxo cuja sessão de treino
   veio de uma falha); e o evento `log` do salvar leva `data.origin {run_id, step_id, attempt_id}` quando há origem.
   O `session` da resposta do `save` já traz o `origin` da sessão.
-- **Reservado ao F4 (Aprendizado):** `origin.diagnostico {causa, fatos, proposta}`, que pré-preenche o `intent` e a pergunta.
-  Este adendo não o devolve.
+- **F4 (Aprendizado):** `origin.diagnostico`, ver o adendo v1.77.
 - **O que o painel precisa mudar (F5):** um botão "Ensinar a corrigir" na etapa que falhou, que pede o controle do aparelho
   e chama `POST /api/training/from-run`; o Foco abre com `origin.context` (a trilha, o esperado e as imagens).
 - **Prova:** `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
@@ -6881,3 +6880,29 @@ seguem como eram.
   além disso. O relatório por etapa já traz o motivo.
 - **Prova:** `simulated` (`backend/tests/test_treino_descricao_do_arraste.py`, `test_treino_arraste_vira_receita.py`); `real`:
   `not_run`.
+
+## Adendo v1.77 (06/10/2026; número da orquestradora; item 31.111 F4) — a causa provável abre o ensino da correção
+
+Aditivo, sem migração e sem IA. Preenche o campo que o v1.75 reservou ao F4.
+- **`origin.diagnostico`** SÓ em `GET /api/training/{id}` e na resposta do `POST /api/training/from-run` (a lista
+  `GET /api/training` não o leva, como o `context`). É `null` quando a sessão tem `origin` sem tentativa
+  (`attempt_id: null`), quando a tentativa não tem tipo de falha, ou quando o diagnóstico não pôde ser lido; a sessão
+  abre igual. Fora disso, `{causa, rotulo, pergunta, fatos, proposta, amostra}`:
+  - `causa`: o valor de `CausaProvavel` do 30.13 (`teto_de_ia`, `provedor_de_ia`, `sessao_ou_autenticacao`, `aparelho`,
+    `plano`, `informacao_da_pessoa`, `catalogo_recusou`, `verificador`, `receita_divergiu`, `versao_nova`,
+    `licao_atrapalha`, `tela_desconhecida`, `falta_conhecimento`, `indeterminada`). Nunca `null`.
+  - `rotulo`: a causa em poucas palavras, para a pessoa. Nunca `null`.
+  - `pergunta`: o que a pessoa mostra ou responde ao corrigir. Nunca `null`; na `indeterminada`, a genérica "O que a
+    etapa devia ter feito nesta tela?".
+  - `fatos`: `[{codigo, valor}]`, os fatos que sustentam a causa (os mesmos do relatório de falhas). Lista, pode ser
+    vazia.
+  - `proposta`: `{tipo, alvo}` (o `TipoDeProposta` do 30.13 e o alvo, ex. `grupo:<id>`, `receita:<id>`), ou `null`
+    quando a causa não traz proposta.
+  - `amostra`: `1` quando o contexto da tentativa foi lido, `0` quando só o tipo da falha decidiu.
+- A regra é a do relatório de falhas para UMA tentativa: o tipo relido pelo texto quando não gravado, o app pela etapa ou
+  pela execução, e os tipos de erro do provedor nas chamadas dela.
+- **`POST /api/training/from-run` sem `intent`:** o texto sugerido passa a ser "Corrigir a etapa «<título>»: <rotulo>"
+  quando a causa é conhecida. Na `indeterminada`, ou sem diagnóstico, continua "Corrigir a etapa «<título>»". **A
+  intenção escrita pela pessoa vence** sempre.
+- **O que o painel precisa mudar (F5):** mostrar `rotulo` e `pergunta` ao abrir o Foco do ensino que veio da falha.
+- **Prova:** `simulated` (`backend/tests/test_treino_diagnostico_da_falha.py`); `real`: `not_run`.

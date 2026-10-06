@@ -54,10 +54,11 @@ async def test_abre_a_sessao_ligada_a_etapa_e_a_ultima_tentativa(harness: Harnes
         esperado = {"run_id": run, "step_id": step, "step_key": "enviar", "attempt_id": f"{step}:a2", "motivo": MOTIVO}
         contexto = sessao["origin"].pop("context")                            # o F2 (detalhe) acrescenta o contexto
         assert contexto["disponivel"] is True
+        sessao["origin"].pop("diagnostico")                                   # o F4 acrescenta a causa provável
         assert sessao["origin"] == esperado
         assert not any(k.startswith("origin_") for k in sessao)             # as colunas não vazam, só `origin`
         lido = (await c.get(f"/api/training/{sessao['id']}")).json()
-        assert {k: v for k, v in lido["origin"].items() if k != "context"} == esperado
+        assert {k: v for k, v in lido["origin"].items() if k not in ("context", "diagnostico")} == esperado
         lista = (await c.get("/api/training", params={"instance_id": "android-01"})).json()
         assert [x["origin"] for x in lista] == [esperado]
     assert rt.training_session_id == sessao["id"]

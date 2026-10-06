@@ -33,6 +33,7 @@ from app.modules.learning.domain.falhas import classificar_pelo_tipo_da_ia, tipo
 from app.modules.learning.domain.vocabulario import (SINAIS_DE_INTERVENCAO, CategoriaDoBacklog, EstadoDoBacklog,
                                                      SignalKind)
 from app.modules.learning.domain.diagnostico import ContextoDaTentativa, EstatisticaDaLicao
+from app.modules.learning.application.falhas import ChaveDaTentativa
 from app.modules.learning.infrastructure import linhas
 from app.modules.learning.infrastructure.contexto_sql import ContextoDeFalhaSql
 from app.modules.skills.domain.document import JsonObject, NotJson, canonical_json, parse_json_object
@@ -97,6 +98,27 @@ class FontesDeFalhaSql:
 
     def licoes(self, refs: Sequence[str]) -> dict[str, EstatisticaDaLicao]:
         return self._contexto.licoes(refs)
+
+    # ================================================================== a chave de uma tentativa (31.111 F4)
+    def chave_da_tentativa(self, attempt_id: str) -> ChaveDaTentativa | None:
+        """A chave do grupo da tentativa pela MESMA regra do relatório (o tipo relido pelo texto quando não gravado, o
+        app pela etapa ou pela execução) e os tipos de erro do provedor nas chamadas dela. `None` sem tipo de falha."""
+        t = self._db.one(
+            "SELECT a.id, a.status, a.error, a.failure_kind, a.failure_screen, a.error_kind, a.recovery, s.capability,"
+            " s.app_id, r.app_ids FROM attempts a JOIN steps s ON s.id = a.step_id JOIN runs r ON r.id = s.run_id"
+            " WHERE a.id = ?", (attempt_id,))
+        if t is None:
+            return None
+        tipo = tipo_da_tentativa(linhas.texto_ou_nulo(t, "failure_kind"), linhas.texto_ou_nulo(t, "error"),
+                                 linhas.texto_ou_nulo(t, "status"), linhas.texto_ou_nulo(t, "error_kind"),
+                                 linhas.texto_ou_nulo(t, "recovery"))
+        if not tipo:
+            return None
+        erros = Counter(linhas.texto(c, "error_kind") for c in self._db.query(
+            "SELECT error_kind FROM ai_calls WHERE attempt_id = ? AND error_kind IS NOT NULL", (attempt_id,)))
+        chave = chave_do_grupo(self._app(self._pacotes(), t), linhas.texto_ou_nulo(t, "capability"), str(tipo),
+                               linhas.texto_ou_nulo(t, "failure_screen"))
+        return ChaveDaTentativa(chave, dict(erros))
 
     # ================================================================== apoio
     def _pacotes(self) -> dict[str, str]:

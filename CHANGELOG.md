@@ -95,6 +95,19 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
 - Prova `simulated`: `backend/tests/test_ensino_v2_obsoleto.py` (5 testes) e `test_ensino_v2.py`. Em ambiente real: `not_run`
   até o deploy; depois dele, a prova é a leitura de `features.ensino_v2_chamadas` no `/api/health` central.
 
+## 2026-10-06 — 31.111 F4: a causa provável da tentativa abre o ensino da correção (branch feat/31-111-f4-diagnostico-na-falha)
+
+- `origin.diagnostico {causa, rotulo, pergunta, fatos, proposta, amostra}` em `GET /api/training/{id}` e na resposta do
+  `from-run` (adendo v1.77, que substitui a reserva do v1.75). É o diagnóstico do 30.13 para UMA tentativa:
+  `ServicoDeFalhas.diagnostico_da_tentativa`, com a porta `FontesDaTentativa.chave_da_tentativa`, e a tradução em
+  `domain/ensino_da_falha.py`. A intenção sugerida leva a causa quando ela é conhecida, e a da pessoa vence. Sem IA.
+- `test_treino_a_partir_da_falha.py` (da Jev) passa a ignorar a chave nova na comparação exata do `origin`.
+- Funções tocadas (K-095): `ServicoDeFalhas.diagnostico_da_tentativa` (nova), `ServicoDeFalhas.diagnostico_para_o_ensino`
+  (nova), `FontesDeFalhaSql.chave_da_tentativa` (nova), `TrainingRecorder.__init__`, `TrainingRecorder.get`,
+  `start_training_from_run` (api), `AppState.__init__`, `ensino_da_falha.para_o_ensino` (nova),
+  `ensino_da_falha.intencao_sugerida` (nova).
+- Prova `simulated`: `backend/tests/test_treino_diagnostico_da_falha.py` (4). Real: `not_run`.
+
 ## 2026-10-06 — 31.101, o `--amplo` real: pedaços de nome de conta trocados por valores de exemplo nos testes (branch chore/trocar-nomes-amplo)
 
 - `scripts/trocar-nomes-nos-testes.py --amplo --aplicar` sobre a ponta da suíte 44: 119 arquivos e 1438 linhas, todos de teste
