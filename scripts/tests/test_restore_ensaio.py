@@ -89,11 +89,19 @@ def _arvore(tmp_path: Path, banco: Path, *, idade_h: float = 1.0, tabelas_do_man
     carimbo = (datetime.now() - timedelta(hours=idade_h)).strftime("%Y%m%d-%H%M%S")
     pasta = raiz / "data" / "backups" / carimbo
     pasta.mkdir(parents=True)
-    shutil.copy(banco, pasta / "poc.sqlite3")
-    con = sqlite3.connect(banco)
-    migracao = con.execute("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1").fetchone()[0]
-    tabelas = con.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone()[0]
+    # A cópia e o número do manifesto vêm da MESMA ferramenta que o backup de verdade usa (sqlite-copia.py), não de uma
+    # contagem do próprio teste: o manifesto conta também as tabelas internas (sqlite_sequence, sqlite_stat1).
+    fonte = tmp_path / "fonte.sqlite3"
+    shutil.copy(banco, fonte)
+    con = sqlite3.connect(fonte)
+    con.execute("ANALYZE")  # cria sqlite_stat1, como no banco real
+    con.commit()
     con.close()
+    r = subprocess.run([sys.executable, str(SCRIPTS / "sqlite-copia.py"), str(fonte), str(pasta / "poc.sqlite3")],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stderr
+    info = json.loads(r.stdout.splitlines()[-1])
+    migracao, tabelas = info["migration"], info["tables"]
     manifesto = {"ts": (datetime.now(timezone.utc) - timedelta(hours=idade_h)).isoformat(), "origem": "diario",
                  "commit": commit, "banco": "sqlite", "arquivo": "poc.sqlite3",
                  "bytes": (pasta / "poc.sqlite3").stat().st_size,
