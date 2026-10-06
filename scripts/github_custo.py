@@ -94,7 +94,7 @@ def coletar(repo: str, desde: datetime, gh: Gh) -> tuple[dict[str, dict[str, int
     return {k: dict(v) for k, v in por.items()}, len(runs)
 
 
-_RESUMO = re.compile(r"\*\*(?P<job>[^*]+)\*\*: .*soma das etapas (?P<soma>\d+) s(?P<resto>.*)")
+_RESUMO = re.compile(r"\*\*(?P<job>[^*]{1,60})\*\*: .*soma das etapas (?P<soma>\d+) s(?P<resto>.*)")
 _COBRADOS = re.compile(r"~?(\d+) min cobrados")
 _TESTES = re.compile(r"(pytest|vitest) (\d+) passed")
 WORKFLOWS_COM_RESUMO = ("CI leve do PR", "CI")

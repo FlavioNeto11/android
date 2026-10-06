@@ -73,10 +73,30 @@ class Resumo(unittest.TestCase):
         _, texto = rodar(gh_com(JOB), "--pytest", arquivo("1 failed, 779 passed, 10 skipped in 5s\n"))
         self.assertIn("pytest 1 failed, 779 passed, 10 skipped", texto)
 
-    def test_acha_o_job_pelo_runner_e_cai_para_o_nome(self) -> None:
+    def test_acha_o_job_pelo_nome_mesmo_com_runner_diferente(self) -> None:
         sem_runner = dict(JOB, runner_name="outro")
         _, texto = rodar(gh_com(OUTRO, sem_runner))
         self.assertIn("instalar dependências 30 s", texto)
+
+    def test_dois_jobs_no_mesmo_runner_escolhe_pelo_nome(self) -> None:
+        """No runner próprio todos os jobs do run têm o mesmo runner_name: o nome decide, não a ordem da lista."""
+        porta = {"name": "porta", "status": "completed", "runner_name": "RUNNER-1", "labels": ["self-hosted"], "started_at": "2026-10-06T21:00:00Z",
+                 "steps": [passo("conferir", "2026-10-06T21:00:00Z", "2026-10-06T21:00:05Z")]}
+        _, texto = rodar(gh_com(porta, JOB))
+        self.assertIn("pytest scripts/tests 120 s", texto)
+        self.assertNotIn("conferir", texto)
+
+    def test_nome_mutilado_pelo_shell_ainda_acha_o_job(self) -> None:
+        # o shell do Windows pode comer o ponto médio do argumento; o nome da API o traz
+        job = dict(JOB, name="backend · pytest (SQLite)")
+        self.assertIs(mod.escolher_job([job], "backend  pytest (SQLite)", "r"), job)
+        self.assertIsNone(mod.escolher_job([job], "outro job", "r"))
+
+    def test_reserva_por_runner_so_se_for_o_unico_em_andamento(self) -> None:
+        a = dict(JOB, name="x", status="in_progress")
+        b = dict(JOB, name="y", status="completed")
+        self.assertIs(mod.escolher_job([a, b], "nome que nao existe", "RUNNER-1"), a)
+        self.assertIsNone(mod.escolher_job([a, dict(b, status="in_progress")], "nome que nao existe", "RUNNER-1"))
 
     def test_minutos_cobrados_no_hospedado_arredondam_para_cima(self) -> None:
         self.assertEqual(mod.cobrado(JOB), "~3 min cobrados")  # 22:00:00 a 22:02:40 = 160 s

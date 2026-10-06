@@ -50,6 +50,12 @@ on:
 # no PATH (medido em 28/09), e o WSL não é lugar de CI. Cada job de Python tem venv próprio
 # (.github/actions/python-isolado), porque no runner próprio o Python do toolcache é compartilhado.
 
+# 29.184: o padrão do repositório é só leitura de conteúdo; o passo `Resumo do job` lê a API de jobs do próprio run e precisa de
+# `actions: read`. Nenhum passo deste arquivo escreve pelo token.
+permissions:
+  contents: read
+  actions: read
+
 concurrency:
   # Um push novo no mesmo ref cancela o CI anterior (o runner próprio é um só: a fila crescia a cada push das
   # sessões). O evento entra na chave para a corrida agendada não ser cancelada por um push.

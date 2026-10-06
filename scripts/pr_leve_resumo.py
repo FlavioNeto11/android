@@ -81,6 +81,21 @@ def cobrado(job: dict[str, object]) -> str:
     return f"~{max(1, math.ceil(s / 60))} min cobrados" if s is not None else ""
 
 
+def _ascii(texto: str) -> str:
+    return texto.encode("ascii", "ignore").decode().strip().lower()
+
+
+def escolher_job(jobs: list[dict[str, object]], nome: str, runner: str) -> dict[str, object] | None:
+    """O job deste passo. Pelo NOME primeiro (no runner próprio todos os jobs do run usam o mesmo runner); sem acento nem pontuação
+    fora do ASCII (o argumento pode chegar mutilado pelo shell do Windows); só então pelo runner, e só se for o ÚNICO job em andamento."""
+    for chave in (lambda x: x, _ascii):
+        achados = [j for j in jobs if chave(str(j.get("name") or "")) == chave(nome)]
+        if len(achados) == 1:
+            return achados[0]
+    em_andamento = [j for j in jobs if j.get("runner_name") == runner and j.get("status") == "in_progress"]
+    return em_andamento[0] if len(em_andamento) == 1 else None
+
+
 def linha(nome: str, passos: list[tuple[str, int]], pytest: str, vitest: str, cobrados: str = "") -> str:
     partes = [f"{n} {s} s" for n, s in passos]
     total = sum(s for _, s in passos)
@@ -111,8 +126,8 @@ def main(argv: list[str] | None = None, gh: Gh | None = None) -> int:
     try:
         jobs = [json.loads(x) for x in (gh or gh_real)(
             "api", f"repos/{a.repo}/actions/runs/{a.run}/attempts/{a.tentativa}/jobs?per_page=100",
-            "--jq", ".jobs[] | {name, runner_name, labels, started_at, steps}").splitlines() if x.strip()]
-        meu = next((j for j in jobs if j.get("runner_name") == a.runner), None) or next((j for j in jobs if j.get("name") == a.nome), None)
+            "--jq", ".jobs[] | {name, status, runner_name, labels, started_at, steps}").splitlines() if x.strip()]
+        meu = escolher_job(jobs, a.nome, a.runner)
         if meu is None:
             raise ValueError("job não encontrado")
         print(linha(a.nome, etapas(meu.get("steps") or []), _ler(a.pytest), _ler(a.vitest), cobrado(meu)))
