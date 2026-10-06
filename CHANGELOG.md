@@ -67,7 +67,10 @@ Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mu
   - o POST do Jev também entra na reserva do `max_usd`, e a média conta só as chamadas cobradas;
   - o motivo do alvo sai sem @;
   - a recusa da porta vira `acao_bloqueada`;
-  - a hora do rascunho que espera o liberar passa a ser a do pedido.
+  - a hora do rascunho que espera o liberar passa a ser a do pedido;
+  - a aprovação por fora do liberar vale como liberação (executar, reabre), e o `finished_at` é o do último estágio;
+  - o GET traz `fontes_da_pesquisa` (as URLs que a pesquisa achou);
+  - o `redact` que devolve `None` no motivo sem @ (o mypy subia a 258).
 - **ADR-081** (dono, P-030, 06/10): `frota_max_contas_por_alvo` (padrão 10) no lugar do "uma conta por alvo" fixo, e
   `frota_conta_nossa_fora_da_regra` (padrão `true`). Os dois são lidos ao vivo. Teste:
   `backend/tests/test_interacao_entre_contas_nossas.py`.

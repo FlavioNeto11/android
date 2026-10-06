@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from app.contracts.origem import PREFIXO_OPERACAO
-from app.db import Database, Row, dumps, loads
+from app.db import OPERATIONAL_ERRORS, Database, Row, dumps, loads
 from app.models import InstanceState, RunCreate, RunStatus, RunTarget, SessionStatus
 from app.modules.applications.infrastructure.registry import definition_of
 from app.modules.operacoes.domain.estagios import EtapaLida, FatosDoAlvo, Leitura, derivar, motivo_curto
@@ -303,10 +303,24 @@ class ServicoDeOperacoes:
         status = self._status(op, saida)
         return {"id": op["id"], "command": op["command"], "app_id": op["app_id"], "acao_final": op["acao_final"],
                 "max_usd": op["max_usd"], "assunto": op["assunto"], "fontes": loads(op["fontes"], []),
-                "parametros": loads(op["parametros"], None),
+                "parametros": loads(op["parametros"], None), "fontes_da_pesquisa": self._fontes_da_pesquisa(op_id),
                 "status": status, "created_at": op["created_at"],
                 "finished_at": self._fechar(op, status, capacidade, fim=self._fim_real(saida)),
                 "capacidade": capacidade, "alvos": saida, "custo": self._custo(op_id)}
+
+    def _fontes_da_pesquisa(self, op_id: str) -> list[str]:
+        """As URLs que a pesquisa externa da operação ACHOU (frente de aprendizado, migração 125: `pedido_observacoes` com
+        `tipo='url'`). `fontes` é o que o pedido trouxe de entrada; sem isto, o GET mostrava 0 fontes com pesquisa paga."""
+        vistas: list[str] = []
+        try:
+            linhas = self.db.query("SELECT valor FROM pedido_observacoes WHERE operacao_id=? AND tipo='url' AND valor IS"
+                                   " NOT NULL ORDER BY capturado_em, id", (op_id,))
+        except OPERATIONAL_ERRORS:          # banco sem a migração 125 (a coluna `operacao_id`): a pesquisa não gravou nada
+            return vistas
+        for r in linhas:
+            if str(r["valor"]) not in vistas:
+                vistas.append(str(r["valor"]))
+        return vistas
 
     def _definicao(self, app_id: str) -> tuple[str, dict[str, str]]:
         row = self.db.one("SELECT package FROM apps WHERE id=?", (app_id,))

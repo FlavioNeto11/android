@@ -387,6 +387,28 @@ async def test_acao_aprovada_por_fora_do_liberar_reabre_e_fecha_na_hora_do_ultim
     assert (lida["status"], lida["finished_at"]) == ("concluida", ultimo)
 
 
+async def test_o_get_traz_as_fontes_que_a_pesquisa_achou(harness: Harness) -> None:
+    """Achado do percurso da Portal (onda 1, 06/10): `pesquisa_usd` 0,0526 e 0 fontes no GET. A pesquisa grava as URLs em
+    `pedido_observacoes` (`tipo='url'`, migração 125); `fontes` é só a entrada do pedido."""
+    st = harness.state
+    assert st is not None
+    pid = _persona(harness, "Olivia", "android-02")
+    _conta(harness, pid, "qa-user-62", sessao_em="android-02")
+    s = _servico(harness)
+    op = s.criar(_pedido([AlvoPedido(pid)], chave="teste-op-fontes-da-pesquisa"))
+    assert s.ler(op["id"])["fontes_da_pesquisa"] == []
+    colunas = {r["name"] for r in st.db.query("PRAGMA table_info(pedido_observacoes)")} if st.db.dialect == "sqlite" else {"operacao_id"}
+    if "operacao_id" not in colunas:
+        pytest.skip("a migração 125 (pedido_observacoes.operacao_id) vem da main; roda na integração do corte")
+    for i, url in enumerate(("https://exemplo.com.br/a", "https://exemplo.com.br/b", "https://exemplo.com.br/a")):
+        st.db.execute("INSERT INTO pedido_observacoes(id, operacao_id, ocorrencia_id, alvo, nome, tipo, situacao, valor,"
+                      " capturado_em) VALUES (?,?,?,?,?,?,?,?,?)",
+                      (f"obs-{i}", op["id"], f"oc-{i}", "", f"fonte.{i}", "url", "observado", url, f"2026-10-06T19:44:0{i}Z"))
+    lida = s.ler(op["id"])
+    assert lida["fontes_da_pesquisa"] == ["https://exemplo.com.br/a", "https://exemplo.com.br/b"]
+    assert lida["fontes"] == []
+
+
 # ------------------------------------------------------------------ a rota
 async def test_rota_http_criar_ler_listar_filtrar_cancelar_liberar(harness: Harness) -> None:
     st = harness.state
