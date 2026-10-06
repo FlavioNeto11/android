@@ -26,8 +26,9 @@ Caminhos relativos a `backend/app/`, salvo indicação.
   **leitura**: `POST /api/runs` com `mode=plan` devolve o `plan_report`, e o `_plan` grava `objectives.resource_plan`.
   **`apply` e `reconcile` não são chamados por nada** fora dos testes: nem o `_tick`, nem uma rota. As portas do
   `_tick` continuam sendo o "apply" desses recursos.
-- **Máquinas de estado na fase "conferir e registrar" (K2).** Execução, objetivo e tentativa têm tabela no domínio.
-  Fora dela, o `Repository` avisa e conta, **sem bloquear**. A etapa continua imposta, como antes.
+- **Máquinas de estado (K2; impostas no 15.15 F7).** Execução, objetivo e tentativa têm tabela no domínio. Fora dela, o
+  `Repository` registra (evento `warn` e contagem) e **recusa** (`InvalidTransition`, antes de gravar); a etapa já era
+  imposta. Em K2 só avisava; ver [Máquinas de estado](#máquinas-de-estado-fase-k2).
 - **A RESOLVE da I está ligada.** O `_plan` resolve pelo `IntentResolver`: com `skills.enabled`, parâmetro vazio,
   valor que não serve ao tipo e empate entre skills viram pergunta (`needs_input`, sem plano). As etapas por IA
   (semântica e desempate) são portas com o provedor nulo: `not_run`.
@@ -1217,6 +1218,10 @@ Contexto: design §2.4; decisão: [ADR-038](../decisoes.md#adr-038--máquinas-de
 
 - **Reafirmação (`x → x`) só onde o código a faz:** execução em `cancelling`, `awaiting_person`, `completed_with_issues` e `cancelled`;
   objetivo `failed`. Liberar `pode(x, x)` em geral esconderia o erro que a tabela existe para mostrar.
+- **Imposição (15.15 F7):** `Repository._conferir` levanta `InvalidTransition` antes de gravar em `set_run_status` (com
+  `so_se`, só quando a troca vale), `set_objective` e `finish_attempt` (a cerca `PosseDaEtapaPerdida` vem primeiro). Um handler
+  em `main.py` devolve 409 `invalid_transition` ao gesto que chegou depois de o estado mudar. A aresta `completed_with_issues
+  → cancelled` está declarada: é o vencimento do 31.50 fechando a execução com cancelamento pedido.
 - **`awaiting_person` (29.93):** o trabalho automático acabou e um objetivo espera um gesto da pessoa (`waiting_user`).
   Não é terminal, mas está em `RUN_SEM_TRABALHO` (`app/models.py`): grava `finished_at`, é de onde o vencimento do 31.50
   conta e é o que a retomada reabre. Só `waiting_user` leva a ele; execução só com `uncertain` segue

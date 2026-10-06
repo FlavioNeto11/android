@@ -1,8 +1,8 @@
 """Persistência da fila: execuções, objetivos por dispositivo, etapas, tentativas, ações e evidências.
 
 Tudo o que o scheduler decide é gravado ANTES de ser executado; as transições de etapa passam por
-`states.check_transition` (imposta) e as de execução, objetivo e tentativa são conferidas contra as tabelas de
-`modules/execution/domain/states.py` (fase "só conferir": fora da tabela avisa, não bloqueia — `_conferir`). As
+`states.check_transition` e as de execução, objetivo e tentativa são conferidas contra as tabelas de
+`modules/execution/domain/states.py` ANTES de gravar (`_conferir`, imposta desde o 15.15 F7: fora da tabela recusa). As
 operações críticas (assumir etapa + registrar tentativa) são uma única transação.
 """
 from __future__ import annotations
@@ -40,7 +40,7 @@ from .latencia import TemposDaTentativa, motivo_da_espera
 from .dado_da_persona import DadoDaPersonaAusente, exigir_resolvido, faltas_dos_passos
 from .recipes import para_hash, step_template_hash
 from .saidas import como_texto, nomes_citados, referencias, resolver, sem_sufixo_de_item
-from .states import STEP_ACTIVE, STEP_OPEN, check_transition
+from .states import STEP_ACTIVE, STEP_OPEN, InvalidTransition, check_transition
 
 log = logging.getLogger("poc.repository")
 
@@ -71,8 +71,8 @@ class Sentinel:
 _SEM_RESTAURO = Sentinel()
 
 #: Transições de execução, objetivo, tentativa (e as escritas diretas de etapa) que caíram FORA da tabela do domínio
-#: (`modules/execution/domain/states.py`), por (máquina, de, para), neste processo. É a métrica da fase "só conferir"
-#: do design §16: a transição acontece do mesmo jeito, e o evento `log` de nível `warn` avisa quem olha. Contagem por
+#: (`modules/execution/domain/states.py`), por (máquina, de, para), neste processo. Desde o 15.15 F7 a tabela é IMPOSTA
+#: (`InvalidTransition`, sem escrita); a contagem e o evento `log` de nível `warn` seguem, para quem olha. Contagem por
 #: par de estados, e não lista de ocorrências, para não crescer sem limite num processo de dias. A suíte de testes
 #: reprova o teste que a fizer subir (`tests/conftest.py::_transicoes_dentro_da_tabela`).
 TRANSICOES_FORA_DA_TABELA: Counter[tuple[str, str, str]] = Counter()
@@ -270,23 +270,20 @@ class Repository:
 
     # ------------------------------------------------------------------ máquinas de estado (design §16)
     def _conferir(self, maquina: MaquinaDeEstados, de: str | None, para: str, *, entidade: str,
-                  run_id: str | None = None, instance_id: str | None = None) -> bool:
-        """Fase "só conferir": a transição `de → para` está na tabela? Fora dela, registra e AVISA — não bloqueia.
+                  run_id: str | None = None, instance_id: str | None = None) -> None:
+        """Impõe a tabela (15.15 F7, §16): a transição `de → para` está nela? Fora dela, registra (contagem e evento
+        `warn`) e levanta `InvalidTransition`, como `transition_step` já faz com a etapa.
 
-        `de` nulo é linha que não existe (ou sumiu): não há transição a conferir. Devolve se estava na tabela.
-
-        Próximo passo, "impor" (§16): com a suíte e a produção sem aviso por um ciclo, `set_run_status`,
-        `set_objective` e `finish_attempt` trocam o aviso por `InvalidTransition`, como `transition_step` já faz com
-        a etapa — e a reabertura de execução terminal em `recompute_run` passa a ser uma aresta decidida, não um
-        efeito colateral.
+        Chame ANTES da escrita: a transição recusada não grava nada. `de` nulo é linha que não existe (ou sumiu): não há
+        transição a conferir.
         """
         if de is None or maquina.pode(de, para):
-            return True
+            return
         TRANSICOES_FORA_DA_TABELA[(maquina.nome, str(de), str(para))] += 1
-        self.bus.emit("log", f"Transição de {maquina.nome} fora da tabela: {entidade} {de} → {para} "
-                             "(registrada, não bloqueada)", level="warn", run_id=run_id, instance_id=instance_id,
+        self.bus.emit("log", f"Transição de {maquina.nome} fora da tabela: {entidade} {de} → {para} (recusada)",
+                      level="warn", run_id=run_id, instance_id=instance_id,
                       data={"state_machine": maquina.nome, "entity_id": entidade, "from": str(de), "to": str(para)})
-        return False
+        raise InvalidTransition(f"transição inválida de {maquina.nome}: {de} → {para}")
 
     def set_run_status(self, run_id: str, status: RunStatus, detail: str | None = None, *, message: str | None = None,
                        level: str = "info", dados: dict[str, object] | None = None,
@@ -298,6 +295,9 @@ class Repository:
         cancelamento condicionado do canal (28.27), que marca `cancel_requested` antes de fechar a execução."""
         linha = self.db.one("SELECT status FROM runs WHERE id=?", (run_id,))
         anterior = linha["status"] if linha is not None else None
+        # Com `so_se` a troca pode não valer (compare-and-set) e então nada muda: só confere quando ela vale.
+        if not so_se or anterior in {s.value for s in so_se}:
+            self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
         fields, params = ["status=?", "status_detail=?"], [status.value, detail]
         if status not in RUN_TERMINAL and status != RunStatus.cancelling:
             # #382: a execução volta a ter trabalho (retomada), ou volta a esperar a pessoa: assenta de novo quando
@@ -319,7 +319,6 @@ class Repository:
                 return False
         else:
             self.db.execute(f"UPDATE runs SET {', '.join(fields)} WHERE id=?", (*params, run_id))
-        self._conferir(RUN, anterior, status, entidade=run_id, run_id=run_id)
         self.emit_run(run_id, message or f"Execução {run_id}: {status.value}", level=level, dados=dados)
         # 29.93/#382: a REDE do assentamento. Toda execução que chega a um estado final vindo de um estado de trabalho
         # (não do planejamento: a que falha ou é cancelada antes de iniciar segue fechada pela varredura dos pedidos)
@@ -896,6 +895,15 @@ class Repository:
         # A tela só acompanha um tipo de falha: tentativa comprovada ou cancelada não tem "onde falhou", e a tela
         # sem tipo seria um grupo do backlog sem falha nenhuma.
         tela = (screen or None) if tipo is not None else None
+        if anterior is not None and not ATTEMPT.pode(anterior, status):
+            # Quem perdeu a posse não grava e não conta: isso segue `PosseDaEtapaPerdida`; só o dono da posse com uma
+            # transição fora da tabela é recusado por ela.
+            dono = self.db.one("SELECT s.id, s.claimed_by, s.run_id, s.instance_id FROM steps s JOIN attempts a"
+                               " ON a.step_id=s.id WHERE a.id=?", (attempt_id,))
+            if dono is not None and dono["claimed_by"] not in (None, self.owner_id):
+                raise PosseDaEtapaPerdida(dono["id"], dono["claimed_by"], self.owner_id)
+            self._conferir(ATTEMPT, anterior, status, entidade=attempt_id,
+                           run_id=dono["run_id"] if dono else None, instance_id=dono["instance_id"] if dono else None)
         cur = self.db.execute(
             "UPDATE attempts SET status=?, finished_at=?, error=COALESCE(?, error), recovery=COALESCE(?, recovery),"
             " observed_result=COALESCE(?, observed_result), failure_kind=?, failure_screen=?, error_kind=? WHERE id=?"
@@ -910,9 +918,6 @@ class Repository:
             if linha is not None:
                 raise PosseDaEtapaPerdida(linha["id"], linha["claimed_by"], self.owner_id)
         step = self.db.one("SELECT s.* FROM steps s JOIN attempts a ON a.step_id=s.id WHERE a.id=?", (attempt_id,))
-        # Depois da cerca: o dono que perdeu a posse não gravou nada, então não houve transição a conferir.
-        self._conferir(ATTEMPT, anterior, status, entidade=attempt_id, run_id=step["run_id"] if step else None,
-                       instance_id=step["instance_id"] if step else None)
         self.emit_attempt(attempt_id, step)
 
     # ================================================================== ações (diário intenção → resultado)
@@ -1106,8 +1111,12 @@ class Repository:
         # scheduler e o `_ai` escrevem via `note_waiting`/coluna direta, sempre termina numa destas transições.
         # `waiting_user` continua sem escrever nada aqui: o motivo "pessoa" é DERIVADO do próprio status no
         # frontend, não precisa de coluna.
-        antes = self.db.one("SELECT status, wait_reason FROM objectives WHERE id=?", (objective_id,))
+        antes = self.db.one("SELECT status, wait_reason, run_id, instance_id FROM objectives WHERE id=?",
+                            (objective_id,))
         anterior = antes["status"] if antes else None
+        if antes is not None:
+            self._conferir(OBJECTIVE, anterior, status, entidade=objective_id, run_id=antes["run_id"],
+                           instance_id=antes["instance_id"])
         fields = ["status=?", "status_detail=?", "blocked_reason=?", "needs=?", "wait_reason=NULL"]
         params: list[Any] = [status.value, truncate(detail, 600), truncate(blocked_reason, 600), truncate(needs, 600)]
         if blocked_kind is not None:
@@ -1129,8 +1138,6 @@ class Repository:
         if antes is not None:
             self._trocar_espera(objective_id, row["run_id"], motivo_da_espera(anterior, antes["wait_reason"]),
                                 motivo_da_espera(status.value, None))
-        self._conferir(OBJECTIVE, anterior, status, entidade=objective_id, run_id=row["run_id"],
-                       instance_id=row["instance_id"])
         self.bus.emit("objective.updated", message or f"{row['instance_id']}: objetivo {status.value}"
                       + (f" — {detail}" if detail else ""), level=level, run_id=row["run_id"],
                       instance_id=row["instance_id"], objective_id=objective_id,

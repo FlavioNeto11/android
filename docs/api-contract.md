@@ -6836,3 +6836,19 @@ Uma rota nova e um campo novo na sessão de treino; migração 119 (três coluna
 - **O que o painel precisa mudar (F5):** um botão "Ensinar a corrigir" na etapa que falhou, que pede o controle do aparelho
   e chama `POST /api/training/from-run`; o Foco abre com `origin.context` (a trilha, o esperado e as imagens).
 - **Prova:** `simulated` (`backend/tests/test_treino_a_partir_da_falha.py`); `real`: `not_run`.
+
+## Adendo v1.78 (06/10/2026; número da orquestradora; item 15.15 F7) — a tabela de estados imposta: 409 `invalid_transition`
+
+- **O que muda:** as tabelas de estado de execução, objetivo e tentativa passam a ser impostas pelo repositório (a etapa já era).
+  Uma escrita que cairia fora da tabela não grava nada. Nenhum campo, rota ou corpo muda; só nasce um código de erro.
+- **Quando ocorre:** o gesto chega depois de o estado ter mudado. Exemplo: o painel manda cancelar ou retomar uma execução
+  que acabou de fechar pela rotina, na janela entre a leitura do estado e a escrita. A recusa pelo estado lido ANTES (cancelar
+  execução que já terminou, iniciar a que não está planejada) segue sendo `invalid_state`.
+- **Corpo do erro:** `409 {"detail": {"code": "invalid_transition", "message": "transição inválida de <run|objective|attempt|etapa>: <de> → <para>"}}`.
+  Os estados são os valores do banco; a mensagem não leva id nem texto da pessoa.
+- **Diferença para `invalid_state`:** `invalid_state` é a recusa da regra de negócio, lida antes (o estado já não servia); `invalid_transition`
+  é a rede de baixo, a tabela de estados recusando uma escrita que a regra deixou passar por causa da corrida. Para quem chama
+  é a mesma conduta: reler a execução e decidir de novo; não repetir às cegas.
+- **Tabela:** a única aresta que a produção usou fora dela, `completed_with_issues → cancelled` (o vencimento do 31.50 fechando a
+  execução com cancelamento pedido), foi declarada.
+- **Prova:** `simulated` (`backend/tests/test_maquinas_de_estado.py`, `backend/tests/test_maquinas_de_estado_http.py`); `real`: `not_run`.
