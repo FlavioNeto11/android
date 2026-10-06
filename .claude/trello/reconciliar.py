@@ -251,6 +251,8 @@ def _prova_subiu(c: dict, linha: str) -> bool:
 
 
 def _lista_da_fase(pid: str, listas: dict[str, str]) -> str | None:
+    if not pid.split(".")[0].isdigit():
+        return None        # os T.N (transversais) não têm lista de fase no Histórico: ficam em Concluído
     n = int(pid.split(".")[0])
     for nome, lid in listas.items():
         m = re.search(r"Fases?\s+(\d+)(?:\s*[–-]\s*(\d+))?", nome)

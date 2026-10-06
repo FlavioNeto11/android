@@ -139,6 +139,12 @@ def test_semana_anterior_vai_para_a_lista_da_fase_no_historico():
     assert "um deploy anterior ao 38" in a.linha
 
 
+def test_item_transversal_de_semana_anterior_fica_em_concluido_sem_lista_de_fase():
+    est = estado(**{"T.3": {"status": "implemented", "proof": "simulated", "quando": "2026-10-02T10:00:00+00:00"}})
+    a = roda([cartao("c1", "T.3 · algo", "🧭 Próximas")], est).acoes[0]
+    assert (a.tipo, a.para, a.lista_do_historico) == ("mover", "concluido", None)
+
+
 def test_espera_voce_e_sem_estado_so_sao_listados():
     est = estado(**{"29.1": {"status": "implemented", "proof": "simulated", "quando": "2026-10-05T17:00:00+00:00"}})
     rel = roda([cartao("c1", "29.1 · algo", "🙋 Espera você"),
