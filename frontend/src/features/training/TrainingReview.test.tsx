@@ -7,8 +7,9 @@ import { initialDataState } from '../../store/reducer';
 import { makeSnapshot } from '../../test/fixtures';
 import { ConfirmHost } from '../../components/Confirm';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, allByRole, apiError, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
-import { ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
+import { alvoReconhecido, ESPERA_DA_PREVIA_MS, TrainingReview } from './TrainingReview';
+import type { TrainingInput } from '../../api/types';
+import { FakeBackend, allByRole, apiError, botaoPronto, byRole, click, flush, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
 
 /** O atraso máximo do fetch falso (modo ATRASO_DO_FETCH_MS): a resposta que o teste solta depois ainda pode estar a caminho. */
 const ATRASO_MAXIMO = Number(process.env.ATRASO_DO_FETCH_MS ?? 0);
@@ -70,13 +71,15 @@ it('mostra a gravação (texto sigiloso sem conteúdo), pede a proposta, e salva
   await click(byRole('button', /Pedir proposta à IA/i));
   await waitFor(() => expect(text()).toContain('O texto muda?'));
   expect(text()).toContain('{contato} = QA-001');
+  await click(byRole('radio', /Escolher perfis e grupos/));
   await click(byRole('checkbox', /@aluno.dois/i));
   // P2.1: o rodapé salva um FLUXO e diz isso; "habilidade" fica para a versionada (ensino v2).
   expect(allByRole('button', /Salvar habilidade/i)).toHaveLength(0);
-  await click(byRole('button', /Salvar como fluxo/i));
+  await click(await botaoPronto(/Salvar como fluxo/i));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
-  const corpo = backend.callsTo('POST', /\/save$/)[0]!.body as { profile_ids: string[] };
+  const corpo = backend.callsTo('POST', /\/save$/)[0]!.body as { profile_ids: string[]; scope_on_proof: string };
   expect(corpo.profile_ids.sort()).toEqual(['ig-1', 'ig-2']);           // o perfil do aparelho já vem marcado
+  expect(corpo.scope_on_proof).toBe('todos');                             // "escolher" manda as listas e `todos` (adendo v1.71)
   expect(text()).toContain('sem IA');
 });
 
@@ -86,6 +89,7 @@ it('se a lista de perfis falha, o escopo mostra o erro com "Tentar de novo" e o 
   await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
   await waitFor(() => expect(text()).toContain('QA-001'));
   await click(byRole('button', /Pedir proposta à IA/i));
+  await click(await waitFor(() => byRole('radio', /Escolher perfis e grupos/)));       // a lista só importa em "Escolher"
   await waitFor(() => expect(text()).toContain('A lista de perfis e grupos não carregou'));
   expect(text()).toContain('banco indisponível');
   expect(text()).not.toContain('Nada marcado = todos os perfis');
@@ -100,7 +104,7 @@ it('se a lista de perfis falha, o escopo mostra o erro com "Tentar de novo" e o 
   await click(byRole('button', /Tentar de novo/));
   await waitFor(() => expect(allByRole('checkbox', /@aluno.um/)).toHaveLength(1));
   expect(text()).toContain('Nada marcado = todos os perfis');
-  expect(byRole('button', /^Salvar como fluxo/).getAttribute('aria-disabled')).toBeNull();
+  await waitFor(() => expect(byRole('button', /^Salvar como fluxo/).getAttribute('aria-disabled')).toBeNull());
 });
 
 // ---------------------------------------------------------------- fase L: P2.6 — edição não se perde sem perguntar
@@ -128,9 +132,9 @@ it('"Depois" e "Pedir outra proposta" pedem confirmação quando há edição; s
 });
 
 // ---------------------------------------------------------------- fase F: ensino v2 atrás de `features.skills`
-function comHabilidades(ligado: boolean | undefined): void {
+function comHabilidades(ligado: boolean | undefined, ensinoV2: boolean | 'ausente' = ligado ?? 'ausente'): void {
   const health = makeSnapshot().health;
-  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado } } });
+  useAppStore.setState({ health: { ...health, features: { ...health.features, skills: ligado, ensino_v2: ensinoV2 === 'ausente' ? undefined : ensinoV2 } } });
 }
 
 const DOC = {
@@ -185,7 +189,7 @@ it('com features.skills ligado e sem ensino: nada de candidata; depois de salvar
   await waitFor(() => expect(text()).toContain('O texto muda?'));
   expect(byRole('button', /^Salvar como fluxo/).className).toMatch(/btnPrimary/);
 
-  await click(byRole('button', /^Salvar como fluxo/));
+  await click(await botaoPronto(/^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   expect(text()).toContain('Parâmetros com tipo, riscos e versões só existem na habilidade.');
   await click(byRole('button', /^Gerar habilidade deste fluxo$/));
@@ -267,8 +271,7 @@ it('entrada sem etapa e sem descarte: bloco "Sem destino" no topo, Salvar travad
   await click(byRole('button', /^Devolver a entrada #3$/, regiao('Sem destino')));
   await waitFor(() => expect(rotulados('section', 'Sem destino')).toHaveLength(0));
   expect(regiao('Entradas da etapa 1', 'ul').textContent).toContain('Enviar');
-  expect(salvar().getAttribute('aria-disabled')).toBeNull();
-  await click(salvar());
+  await click(await botaoPronto(/^Salvar como fluxo/));          // pronto: a prévia que a devolução pediu já respondeu
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   const corpo = backend.callsTo('POST', /\/save$/)[0]!.body as { proposal: { steps: { inputs: number[] }[]; discarded: unknown[] } };
   expect(corpo.proposal.steps[0]!.inputs).toEqual([1, 3]);
@@ -290,7 +293,7 @@ it('Descartar tira da etapa e Devolver tira do descarte: a entrada nunca fica em
   // Descartar o #2 da etapa 1: sai da etapa e fica uma vez só no descarte, com o motivo da IA.
   await click(byRole('button', /^Descartar a entrada #2$/, regiao('Entradas da etapa 1', 'ul')));
   await waitFor(() => expect(regiao('Entradas da etapa 1', 'ul').textContent).not.toContain('#2'));
-  expect(salvar().getAttribute('aria-disabled')).toBeNull();
+  await waitFor(() => expect(salvar().getAttribute('aria-disabled')).toBeNull());
 
   // Descartar o #1 da etapa 1 e devolvê-lo à etapa 2; devolver o #4 (descartado pela IA) à etapa 2.
   await click(byRole('button', /^Descartar a entrada #1$/, regiao('Entradas da etapa 1', 'ul')));
@@ -328,7 +331,7 @@ it('texto não gravado nunca aparece, nem marcado como sensível com valor; os a
     steps: [{ key: 'abrir', title: 'Abrir', recipe: true, reason: 'receita gravada' }],
     warnings: ['A etapa "Abrir" não confere o efeito no servidor.'],
   }));
-  await click(byRole('button', /^Salvar como fluxo/));
+  await click(await botaoPronto(/^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   const sucesso = useToastStore.getState().toasts.find((t) => t.tone === 'success');
   expect(sucesso?.message).toContain('A etapa "Abrir" não confere o efeito no servidor.');
@@ -376,7 +379,7 @@ it('descarte repetido conta uma vez (#442); a entrada na etapa e no descarte sai
   await click(byRole('button', /^Manter a entrada #3 só em Descartadas$/, regiao('Descartadas')));
   await waitFor(() => expect(regiao('Entradas da etapa 1', 'ul').textContent).not.toContain('#3'));
   // O descarte segue com as duas linhas da IA, e isso não trava o salvar.
-  expect(salvar().getAttribute('aria-disabled')).toBeNull();
+  await waitFor(() => expect(salvar().getAttribute('aria-disabled')).toBeNull());
   expect(allByRole('button', /^Manter a entrada #3/)).toHaveLength(0);
 });
 
@@ -417,7 +420,7 @@ it('a prévia mostra o que cada etapa vira; a recusa do comando vai no campo e t
   const salvar = () => byRole('button', /^Salvar como fluxo/);
   expect(comando().getAttribute('aria-invalid')).toBeNull();
   // O corpo da prévia é o do salvar (v1.58: `extra="forbid"`).
-  expect(Object.keys(backend.callsTo('POST', /\/preview$/)[0]!.body as object).sort()).toEqual(['group_ids', 'profile_ids', 'proposal']);
+  expect(Object.keys(backend.callsTo('POST', /\/preview$/)[0]!.body as object).sort()).toEqual(['group_ids', 'profile_ids', 'proposal', 'scope_on_proof']);
 
   await setValue(comando(), '{contato} mande');
   await waitFor(() => expect(comando().getAttribute('aria-invalid')).toBe('true'));
@@ -437,7 +440,7 @@ it('salvar recusado por parâmetro reservado (v1.62) fica no campo e sem toast; 
   backend.on('POST', /\/training\/trn-1\/save$/, () => apiError(400, 'parametro_reservado', 'O nome {run_id} é reservado: escolha outro.'));
   await abrirEProporComPrevia();
   await waitFor(() => expect(text()).toContain('Ao salvar:'));
-  await click(byRole('button', /^Salvar como fluxo/));
+  await click(await botaoPronto(/^Salvar como fluxo/));
   await waitFor(() => expect(byRole('textbox', /Comando/).getAttribute('aria-invalid')).toBe('true'));
   expect(text()).toContain('O nome {run_id} é reservado: escolha outro.');
   expect(useToastStore.getState().toasts.filter((t) => t.title === 'Não foi possível salvar o fluxo')).toHaveLength(0);
@@ -480,15 +483,75 @@ it('etapa sem receita no salvar: "Refazer receitas" só com o clique, chama /rec
     steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
   }));
   await abrirEProporComPrevia();
-  await click(byRole('button', /^Salvar como fluxo/));
+  await click(await botaoPronto(/^Salvar como fluxo/));
   await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
   expect(text()).toContain('com IA');
+  expect(text()).not.toContain('em prova');                             // sem `ensinado_em_prova`, nenhum selo (30.81)
   expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(0);       // quem aciona é a pessoa
 
   await click(byRole('button', /^Refazer receitas$/));
   await waitFor(() => expect(text()).toContain('1 receita gravada agora.'));
   expect(text()).toContain('— receita gravada');                        // o relatório troca pelo do refazer
   expect(backend.callsTo('POST', /\/recipes$/)).toHaveLength(1);
+});
+
+// ---------------------------------------------------------------- 30.81 (v1.65): o fluxo ensinado espera a prova
+const SALVO_SEM_RECEITA = [{ key: 'abrir', title: 'Abrir a conversa', recipe: false, reason: 'aparelho fora do ar' }];
+
+it('30.81: o salvar com `ensinado_em_prova` mostra o selo e diz que só a persona que ensinou usa até a prova; o refazer mantém ou tira', async () => {
+  let refeitas = 0;
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', warnings: [], steps: SALVO_SEM_RECEITA,
+    ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' },
+  }));
+  backend.on('POST', /\/training\/trn-1\/recipes$/, () => {
+    refeitas += 1;
+    const base = { session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', created: 1,
+                   steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }] };
+    // 1ª: o fluxo ainda espera; 2ª: uma prova ou uma pessoa já o liberou (o campo some).
+    return json(refeitas === 1 ? { ...base, ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' } } : { ...base, created: 0 });
+  });
+  await abrirEProporComPrevia();
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  expect(text()).toContain('em prova');
+  expect(text()).toContain('Até a prova, só a persona que ensinou pode pedir pelo comando');
+  expect(text()).not.toContain('Quem estiver no escopo pode pedir');
+  expect(document.querySelector('[title^="Ensinado e ainda sem prova: só vale para a persona que ensinou"]')).not.toBeNull();
+  expect(text()).not.toContain('ig-1');                    // o id da persona não vai para a frase
+
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('Em prova: as receitas só valem para a persona que ensinou.'));
+  expect(text()).toContain('em prova');
+
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('Quem estiver no escopo pode pedir pelo comando'));
+  expect(text()).not.toContain('em prova');
+});
+
+it('30.81: a gravação sem persona diz que o fluxo não vale em aparelho nenhum até a prova', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', warnings: [], steps: SALVO_SEM_RECEITA,
+    ensinado_em_prova: { persona: null, sessao: 'trn-1' },
+  }));
+  await abrirEProporComPrevia();
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Fluxo mandar-mensagem salvo'));
+  expect(text()).toContain('a gravação não tinha persona: não vale em aparelho nenhum até uma prova real dar certo');
+  // a linha que apresenta o comando não diz que uma persona que ensinou pode pedir: não há nenhuma
+  expect(text()).toContain('Até a prova, o comando não vale em aparelho nenhum');
+  expect(text()).not.toContain('só a persona que ensinou pode pedir');
+
+  backend.on('POST', /\/training\/trn-1\/recipes$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'mandar-mensagem', created: 1,
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
+    ensinado_em_prova: { persona: null, sessao: 'trn-1' },
+  }));
+  await click(byRole('button', /^Refazer receitas$/));
+  await waitFor(() => expect(text()).toContain('a gravação não tinha persona, então as receitas não valem em aparelho nenhum.'));
+  expect(text()).not.toContain('as receitas só valem para a persona que ensinou');
 });
 
 // ---------------------------------------------------------------- 31.91 F2 (v1.63): responder às perguntas da proposta
@@ -580,3 +643,183 @@ it('mais de 8 respostas: o pedido trava com o motivo em vez de cortar a 9ª', as
   await setValue(byRole('textbox', /^Pergunta 9$/) as HTMLInputElement, '');
   expect(byRole('button', /^Pedir nova proposta com as respostas/).getAttribute('aria-disabled')).toBeNull();
 });
+
+// ---------------------------------------------------------------- 31.90-E: corrigir o que a etapa confere e os parâmetros
+const abrirResumo = async (nome: RegExp) => {
+  const resumo = Array.from(document.querySelectorAll('summary')).find((s) => nome.test(s.textContent ?? ''));
+  expect(resumo, `resumo ${nome}`).toBeTruthy();
+  await click(resumo!);
+};
+const corpoDoSave = () => backend.callsTo('POST', /\/save$/)[0]!.body as { proposal: { parameters: { name: string; example: string; description: string }[];
+  steps: { postcondition: { kind: string; value: string; description: string } }[] } };
+
+it('31.90-E: o que a etapa confere se edita (tipo, valor, descrição) e o save leva a proposta editada', async () => {
+  await abrirComProposta(SESSAO, PROPOSTA);
+  await abrirResumo(/Editar o que a etapa confere/);
+  const tipo = byRole('combobox', /Tipo de conferência da etapa 1/) as HTMLSelectElement;
+  expect(tipo.value).toBe('text_visible');
+  await setValue(byRole('textbox', /Texto que aparece \(etapa 1\)/) as HTMLInputElement, 'Mensagem enviada');
+  await setValue(byRole('textbox', /O que a tela mostra depois \(etapa 1\)/) as HTMLInputElement, 'a bolha aparece');
+  await setValue(tipo, 'element_present');
+  expect(byRole('textbox', /Elemento \(id ou texto\) \(etapa 1\)/)).toBeTruthy();   // o rótulo do valor acompanha o tipo
+  await setValue(tipo, 'model_judged');
+  expect(allByRole('textbox', /\(etapa 1\)$/).map((e) => e.getAttribute('aria-label'))).toEqual(['O que a tela mostra depois (etapa 1)']); // a IA julga: só a descrição
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/save$/)).toHaveLength(1));
+  expect(corpoDoSave().proposal.steps[0]!.postcondition).toEqual({ kind: 'model_judged', value: 'Mensagem enviada', description: 'a bolha aparece' });
+});
+
+it('31.90-E: o exemplo do parâmetro se edita (a descrição não: o salvar a jogaria fora) e o save o leva', async () => {
+  await abrirComProposta(SESSAO, PROPOSTA);
+  await abrirResumo(/Editar os exemplos dos parâmetros/);
+  expect(allByRole('textbox', /Nome de \{contato\}/)).toHaveLength(0);
+  expect(allByRole('textbox', /Descrição de \{contato\}/)).toHaveLength(0);
+  await setValue(byRole('textbox', /Exemplo de \{contato\}/) as HTMLInputElement, 'QA-002');
+  await waitFor(() => expect(text()).toContain('{contato} = QA-002'));
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/save$/)).toHaveLength(1));
+  expect(corpoDoSave().proposal.parameters).toEqual([{ name: 'contato', example: 'QA-002', description: '' }]);
+});
+
+it('31.90-E: a etapa com efeito e sem comprovação já abre o editor; a que comprova, não', async () => {
+  const comEfeito = { ...PROPOSTA.steps[0]!, side_effect: true, postcondition: { kind: 'model_judged', value: '', description: '' } };
+  await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [comEfeito] });
+  const editor = () => Array.from(document.querySelectorAll('details')).find((d) => /Editar o que a etapa confere/.test(d.textContent ?? ''))!;
+  expect(editor().open).toBe(true);
+  await setValue(byRole('textbox', /O que a tela mostra depois \(etapa 1\)/) as HTMLInputElement, 'a bolha aparece');
+  expect(editor().open).toBe(true);                                                    // preencher não fecha o que está sendo digitado
+});
+
+it('31.90-E: a etapa que já comprova (ou sem efeito) deixa o editor fechado', async () => {
+  await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, side_effect: true }] });
+  const editor = Array.from(document.querySelectorAll('details')).find((d) => /Editar o que a etapa confere/.test(d.textContent ?? ''))!;
+  expect(editor.open).toBe(false);
+});
+
+it('31.90-E: a recusa do servidor (pos_condicao_vazia) aparece no Salvar, como as outras', async () => {
+  backend.on('POST', /\/training\/trn-1\/save$/, () => apiError(400, 'pos_condicao_vazia', 'A etapa com efeito precisa dizer como comprovar.'));
+  await abrirComProposta(SESSAO, PROPOSTA);
+  await click(byRole('button', /^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('A etapa com efeito precisa dizer como comprovar.'));
+});
+
+it('31.90-E: etapa com ação do catálogo não tem editor da conferência (o salvar a refaz pelo catálogo) e diz de onde ela vem', async () => {
+  const doCatalogo = { ...PROPOSTA.steps[0]!, side_effect: true, capability: 'SEND_MESSAGE', postcondition: { kind: 'model_judged', value: '', description: '' } };
+  await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [doCatalogo] });
+  expect(text()).toContain('O que esta etapa confere vem da ação do catálogo “SEND_MESSAGE” e não muda por aqui.');
+  expect(allByRole('combobox', /Tipo de conferência da etapa 1/)).toHaveLength(0);
+  expect(Array.from(document.querySelectorAll('summary')).some((x) => /Editar o que a etapa confere/.test(x.textContent ?? ''))).toBe(false);
+});
+
+// ---------------------------------------------------------------- 31.90-F: como a gravação reconhece o elemento tocado
+it('31.90-F: a coluna da gravação diz por que a gravação reconhece o elemento (seletor e id, sem o pacote)', async () => {
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('QA-001'));
+  expect(text()).toContain('(reconhecido por id e texto, id conversation_name)');
+  expect(text()).not.toContain('x:id/conversation_name');
+});
+
+it('31.90-F: alvoReconhecido cobre cada seletor, o alvo sem identificador e o que não é toque', () => {
+  const entrada = (parcial: Partial<TrainingInput>) => ({ ...SESSAO.inputs[0], ...parcial }) as unknown as TrainingInput;
+  expect(alvoReconhecido(entrada({ target: { desc: 'Enviar', unique: ['desc'] } }))).toBe('reconhecido por descrição');
+  expect(alvoReconhecido(entrada({ target: { resource_id: 'a:id/ok', unique: ['rid', 'text'], text: 'OK' } }))).toBe('reconhecido por id (ou texto), id ok');
+  expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [] } }))).toBe('sem identificador único: este toque não vira receita');
+  expect(alvoReconhecido(entrada({ target: { class_name: 'android.view.View', unique: [], filhos: [{}] } }))).toBe('reconhecido pelo que o elemento contém');
+  // O contêiner sem identidade: a pessoa vê o filho rotulado (e o id) pelo qual a receita o acha, até três.
+  expect(alvoReconhecido(entrada({ target: { unique: [], filhos: [
+    { text: 'Fulano', resource_id: 'a:id/row_name', unique: ['text'] }, { desc: 'Foto', unique: ['desc'] }, { resource_id: 'a:id/so_id' }, { text: 'quarto' }] } })))
+    .toBe('reconhecido pelo que o elemento contém: “Fulano”, id row_name; “Foto”; id so_id');
+  expect(alvoReconhecido(entrada({ target: null }))).toBeNull();                      // sem alvo: a frase é de toqueSemAlvo
+  expect(alvoReconhecido(entrada({ type: 'text', target: { unique: ['text'], text: 'x' } }))).toBeNull();
+});
+
+// ---------------------------------------------------------------- 31.88 F2 (adendo v1.71): "Vale para"
+const SALVO = { session: { ...SESSAO, status: 'saved' }, flow_id: 'f-0a1b2c3d4e5f', steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }] };
+const corpoDe = (rota: RegExp) => backend.callsTo('POST', rota)[0]!.body as Record<string, unknown>;
+
+it('31.88 F2: o padrão é "Todos, depois de provado": o corpo leva scope_on_proof todos e listas vazias, e a lista que falhou não trava o Salvar', async () => {
+  backend.on('GET', /\/instagram\/profiles$/, () => apiError(500, 'internal', 'banco indisponível'));
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, scope: { on_proof: 'todos', profile_ids: [], group_ids: [] } }));
+  await abrirComProposta(SESSAO, PROPOSTA);
+  expect((byRole('radio', /Todos, depois de provado/) as HTMLInputElement).checked).toBe(true);
+  await waitFor(() => expect(text()).toContain('Ao salvar vale para todos os perfis, depois de provado.'));
+  expect(text()).toContain('Até a prova passar, só a persona que ensinou usa o fluxo');
+  expect(allByRole('checkbox', /@aluno/)).toHaveLength(0);                    // as listas só aparecem em "Escolher"
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(backend.callsTo('POST', /\/save$/)).toHaveLength(1));
+  expect(corpoDe(/\/save$/)).toMatchObject({ scope_on_proof: 'todos', profile_ids: [], group_ids: [] });
+  expect(corpoDe(/\/preview$/)).toMatchObject({ scope_on_proof: 'todos', profile_ids: [], group_ids: [] });
+});
+
+it('31.88 F2: "Só quem ensinou" manda scope_on_proof sem listas, e a prévia e o resultado mostram o escopo que o servidor devolveu', async () => {
+  const escopo = { on_proof: 'quem_ensinou' as const, profile_ids: [] as string[], group_ids: [] as string[] };
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, scope: escopo }));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({ ...SALVO, scope: escopo }));
+  await abrirComProposta(SESSAO, PROPOSTA);
+  await click(byRole('radio', /Só quem ensinou/));
+  await waitFor(() => expect(text()).toContain('Ao salvar vale para só a persona que ensinou, também depois da prova.'));
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Vale para só a persona que ensinou, também depois da prova.'));
+  const corpo = corpoDe(/\/save$/);
+  expect(corpo.scope_on_proof).toBe('quem_ensinou');
+  expect(corpo).not.toHaveProperty('profile_ids');                             // com lista junto, a API recusa (scope_ambiguous)
+  expect(corpo).not.toHaveProperty('group_ids');
+});
+
+it('31.88 F2: "Escolher perfis e grupos" manda as listas com scope_on_proof todos e o resultado diz quem foi escolhido', async () => {
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({ ...SALVO, scope: { on_proof: 'todos', profile_ids: ['ig-2'], group_ids: [] } }));
+  await abrirComProposta(SESSAO, PROPOSTA);
+  await click(byRole('radio', /Escolher perfis e grupos/));
+  await click(await waitFor(() => byRole('checkbox', /@aluno.um/)));              // o perfil do aparelho vinha marcado: sai
+  await click(byRole('checkbox', /@aluno.dois/));
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Vale para @aluno.dois.'));
+  expect(corpoDe(/\/save$/)).toMatchObject({ scope_on_proof: 'todos', profile_ids: ['ig-2'], group_ids: [] });
+});
+
+it('31.88 F2: treino sem persona: "Só quem ensinou" fica desabilitado com o motivo, antes de a API recusar (no_teacher_persona)', async () => {
+  await abrirComProposta({ ...SESSAO, profile_id: null }, PROPOSTA);
+  const so = byRole('radio', /Só quem ensinou/) as HTMLInputElement;
+  expect(so.disabled).toBe(true);
+  expect(text()).toContain('Este treino não teve persona: não há “quem ensinou”.');
+  expect((byRole('radio', /Todos, depois de provado/) as HTMLInputElement).checked).toBe(true);
+});
+
+// ---------------------------------------------------------------- 31.91 F1: a tela do ensino v2 tem chave própria
+it('31.91 F1: com skills ligado e a tela do ensino v2 desligada (padrão), o ensino antigo some, mas "Gerar habilidade" fica', async () => {
+  comHabilidades(true, false);
+  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
+  backend.on('GET', /\/teaching-sessions\/ens-1$/, () => json(ensino('asking', { current_candidate: candidata(1), open_questions: [] })));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('entradas'));
+  expect(text()).not.toContain('Habilidade versionada');
+  expect(text()).not.toContain('fica só para leitura');
+  // a revisão nem pergunta pelo ensino antigo: nenhuma chamada a /teaching-sessions
+  expect(backend.calls.filter((c) => /teaching-sessions/.test(c.path))).toHaveLength(0);
+});
+
+it('31.91 F1: o campo ausente (backend anterior) também esconde a tela do ensino v2', async () => {
+  comHabilidades(true, 'ausente');
+  backend.on('GET', /\/teaching-sessions$/, () => json([{ id: 'ens-1' }]));
+  await act(async () => root.render(<TrainingReview sessionId="trn-1" onClose={() => {}} />));
+  await waitFor(() => expect(text()).toContain('entradas'));
+  expect(text()).not.toContain('Habilidade versionada');
+});
+
+it('junção 30.81 + 31.88 F2: no resultado o selo "em prova" vem primeiro e a linha "Vale para" logo abaixo, sem repetir a frase da prova', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json(PREVIA_OK));
+  backend.on('POST', /\/training\/trn-1\/save$/, () => json({
+    session: { ...SESSAO, status: 'saved' }, flow_id: 'f-0a1b2c3d4e5f', warnings: [],
+    steps: [{ key: 'abrir', title: 'Abrir a conversa', recipe: true, reason: 'receita gravada' }],
+    ensinado_em_prova: { persona: 'ig-1', sessao: 'trn-1' }, scope: { on_proof: 'todos', profile_ids: [], group_ids: [] },
+  }));
+  await abrirEProporComPrevia();
+  await click(await botaoPronto(/^Salvar como fluxo/));
+  await waitFor(() => expect(text()).toContain('Vale para todos os perfis, depois de provado.'));
+  const t = text();
+  expect(t.indexOf('em prova')).toBeGreaterThan(-1);
+  expect(t.indexOf('em prova')).toBeLessThan(t.indexOf('Vale para todos os perfis'));          // selo primeiro, escopo logo abaixo
+  expect(t.split('Até a prova').length - 1).toBeLessThanOrEqual(1);                             // a frase da prova não aparece duas vezes
+  expect(t).not.toContain('Até a prova passar, só a persona que ensinou usa o fluxo');         // a do 30.81 já diz isso
+});
+

@@ -204,9 +204,23 @@ export async function flush(ms = 0): Promise<void> {
   });
 }
 
-/** Repete a verificação até passar (ou estourar o tempo), deixando o React e as promises andarem. */
+// Quanto o timer do `flush` pode chegar atrasado antes de o atraso valer como "o processo não rodou" (29.148).
+const FOLGA_DO_TIMER_MS = 200;
+// Teto do crédito: um laço síncrono de verdade (a tela travada) não estende o prazo para sempre.
+const CREDITO_MAXIMO_MS = 60_000;
+
+/**
+ * Repete a verificação até passar (ou estourar o tempo), deixando o React e as promises andarem.
+ *
+ * O prazo é de relógio, mas NÃO conta o tempo em que o processo ficou sem rodar (29.148): num host carregado (a
+ * suíte do backend ao lado, o worker em prioridade Idle) o vitest fica parado por segundos, e uma espera de 4 s
+ * estourava sem que a tela tivesse tido tempo de responder. Esse parado aparece como o timer do `flush` chegando
+ * muito depois do que pediu; o excesso volta para o prazo. Uma condição que NUNCA vale continua estourando: o timer
+ * dela chega em dia, e nada é creditado.
+ */
 export async function waitFor<T>(check: () => T, timeoutMs = 4000): Promise<T> {
   const start = Date.now();
+  let credito = 0;
   let lastError: unknown;
   for (;;) {
     try {
@@ -218,8 +232,11 @@ export async function waitFor<T>(check: () => T, timeoutMs = 4000): Promise<T> {
     } catch (e) {
       lastError = e;
     }
-    if (Date.now() - start > timeoutMs) throw lastError;
+    if (Date.now() - start - credito > timeoutMs) throw lastError;
+    const antes = Date.now();
     await flush(15);
+    const demora = Date.now() - antes - 15;
+    if (demora > FOLGA_DO_TIMER_MS) credito = Math.min(CREDITO_MAXIMO_MS, credito + demora);
   }
 }
 
@@ -277,7 +294,7 @@ function roleOf(el: Element): string | null {
   const tag = el.tagName.toLowerCase();
   if (tag === 'input') {
     const type = (el as HTMLInputElement).type;
-    return type === 'checkbox' ? 'checkbox' : 'textbox';
+    return type === 'checkbox' ? 'checkbox' : type === 'radio' ? 'radio' : 'textbox';
   }
   return IMPLICIT[tag] ?? null;
 }

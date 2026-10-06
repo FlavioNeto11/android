@@ -35,7 +35,7 @@ from app.modules.learning.domain.ciclo import ErroDeAprendizado, SkillState
 from app.modules.learning.domain.curador import (OPCOES_FECHADAS, VERSAO_DO_DOSSIE, Dossie, Parecer, opcoes_do_dossie,
                                                  validar_saida)
 from app.modules.learning.domain.espera import Faixa
-from app.modules.learning.domain.livro import EntradaDoLivro
+from app.modules.learning.domain.livro import EntradaDoLivro, ref_no_log
 from app.modules.learning.domain.orcamento_do_curador import (Gatilho, Janela, MotivoDoCorte, ParametrosDoOrcamento,
                                                               Pretendente, custo_maximo, estimar_custo, mais_forte,
                                                               prioridade, repartir)
@@ -220,7 +220,7 @@ class CuradorPorIA:
                                 len(partilha.aprovados) - i)
                     break
                 cortados[ref] = MotivoDoCorte.ERRO_DO_PROVEDOR
-                log.warning("aprendizado: curador sem resposta do provedor para %s (%s)", ref, e.kind)
+                log.warning("aprendizado: curador sem resposta do provedor para %s (%s)", ref_no_log(ref), e.kind)
                 continue
             validacao = validar_saida(resposta.bruto, x.dossie, probabilidade=resposta.probabilidade)
             saida = None
@@ -401,7 +401,7 @@ class CuradorPorIA:
                 self.validacao.revisado(pedido, review_id)
             self.validacao.ao_parecer(x.entrada, review_id, parecer, x.dossie.risco)
         except Exception:                           # noqa: BLE001 — o laço da validação é acessório da volta
-            log.exception("aprendizado: pedido de validação de %s não foi gravado", x.entrada.trail_ref)
+            log.exception("aprendizado: pedido de validação de %s não foi gravado", ref_no_log(x.entrada.trail_ref))
 
 
 __all__ = ["EVIDENCIAS_NO_CORTE", "JANELA_DO_PEDIDO_DIAS", "KINDS_REVISADOS", "RECUSADA_POR_CUSTO",

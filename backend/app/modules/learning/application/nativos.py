@@ -36,6 +36,7 @@ from app.modules.learning.application.ports import NovaEvidencia, RepositorioDeA
 from app.modules.learning.application.servico import LearningService
 from app.modules.learning.domain.ciclo import (SYSTEM_ACTOR, Actor, ErroDeAprendizado, SkillState, actor_of,
                                                motivo_do_veto)
+from app.modules.learning.domain.ensinado import MOTIVO_DA_PROVA_DO_ENSINADO
 from app.modules.learning.domain.evidencia_invalida import Renascimento, reaprendizado, run_invalidada
 from app.modules.learning.domain.livro import escopo_do_fluxo, ref_da_trilha
 from app.modules.learning.domain.prova import MotivoDaInvalida, detalhe_da_invalida
@@ -408,7 +409,7 @@ class SombraDosFluxos:
             try:
                 self._avaliar(fluxo, run_id)
             except ErroDeAprendizado as exc:            # veto, conflito, D1: um fluxo não para os outros
-                log.info("aprendizado: fluxo %s segue como está: %s", fluxo.id, exc)
+                log.info("aprendizado: fluxo segue como está (%s)", type(exc).__name__)   # 30.83: o texto pode ter o id
         return gravadas
 
     def _minerar_prova(self, execucao: ExecucaoAssentada, prova: ProvaDaExecucao) -> int:
@@ -432,7 +433,7 @@ class SombraDosFluxos:
             try:
                 self._avaliar(em_prova, execucao.run_id)
             except ErroDeAprendizado as exc:            # veto, conflito, D1
-                log.info("aprendizado: fluxo %s segue como está: %s", prova.fluxo_id, exc)
+                log.info("aprendizado: fluxo segue como está (%s)", type(exc).__name__)   # 30.83: o texto pode ter o id
         return 1
 
     def _rebaixar_o_ensinado(self, prova: ProvaDaExecucao, run_id: str) -> None:
@@ -446,9 +447,10 @@ class SombraDosFluxos:
         try:
             self._servico.mudar_estado(
                 LivroKind.FLUXO, prova.fluxo_id, SkillState.DISABLED, by=SYSTEM_ACTOR, run_id=run_id,
-                reason=f"a prova do fluxo ensinado falhou ({prova.detalhe})"[:300])
+                reason=f"{MOTIVO_DA_PROVA_DO_ENSINADO} ({prova.detalhe})"[:300])
         except ErroDeAprendizado as exc:                 # conflito de estado: outro caminho já o tirou
-            log.info("aprendizado: ensinado %s segue como está: %s", prova.fluxo_id, exc)
+            log.info("aprendizado: ensinado segue como está (execução %s, %s)", run_id,
+                     type(exc).__name__)                          # 30.83: o texto pode ter o id
             return
         for rid in espera.receitas:
             try:

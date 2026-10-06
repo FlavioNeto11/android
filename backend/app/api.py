@@ -77,7 +77,7 @@ from .modules.learning.infrastructure.segredo import TriagemDeCredencial
 from .modules.learning.presentation.livro import mudar_status_legado
 from .modules.skills.domain.document import JsonObject
 from .modules.skills.domain.lifecycle import ContentTampered
-from .modules.skills.presentation.schemas import EscopoDoFluxoBody, TrainingStopBody
+from .modules.skills.presentation.schemas import EscopoDoFluxoBody, TrainingStopBody, TrainingUndoBody
 from .planning import conciliacao, costs, saldos
 from .porta_do_plano import (AprovarPlanoBody, PortaIndisponivel, PreviaDoItemBody, aprovar_plano, previa_da_porta,
                              previa_do_item, renovar_plano)
@@ -99,6 +99,7 @@ from .social.persona_batch import PersonaBatchAccepted, PersonaBatchDTO
 from .social.excecoes import ExcecaoEmUso, ExcecaoInvalida
 from .social.service import SocialError
 from .taskqueue import observabilidade
+from .taskqueue.flows import id_do_fluxo
 from .taskqueue.repository import CONTENT_TYPES
 from .models import RunSummary
 from .modules.execution.domain.command_refinement import CommandRefinement
@@ -671,6 +672,16 @@ async def discard_training(request: Request, session_id: str, body: TrainingStop
         raise _training_error(exc) from exc
 
 
+@router.post("/training/{session_id}/undo")
+async def undo_training_input(request: Request, session_id: str, body: TrainingUndoBody) -> dict[str, object]:
+    """31.90-D: tira a ÚLTIMA entrada da gravação VIVA (o toque errado) sem descartar a sessão. Exige o controle do
+    aparelho (`lease_id`); `seq` opcional confere que a última ainda é a que a pessoa viu. O aparelho não volta."""
+    try:
+        return st(request).training.desfazer_a_ultima(session_id, lease_id=body.lease_id, seq=body.seq)
+    except TrainingError as exc:
+        raise _training_error(exc) from exc
+
+
 @router.get("/desempenho")
 async def desempenho(request: Request, janelas: int = Query(24, ge=0, le=672),
                      dias: int = Query(0, ge=0, le=90), irq_horas: int = Query(0, ge=0, le=336),
@@ -880,6 +891,7 @@ async def skills_resolve(request: Request, body: SkillResolveRequest) -> JsonObj
 @router.put("/flows/{flow_id}")
 async def update_flow(request: Request, flow_id: str, patch: dict[str, Any]) -> Any:
     s = st(request)
+    flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: o id ou a referência pública (o `href` dos avisos)
     if s.db.one("SELECT id FROM flows WHERE id=?", (flow_id,)) is None:
         raise err(404, "not_found", "Fluxo não encontrado.")
     if patch.get("status") not in ("active", "disabled"):
@@ -937,6 +949,7 @@ async def set_flow_scope(request: Request, flow_id: str, body: EscopoDoFluxoBody
 @router.delete("/flows/{flow_id}", status_code=204)
 async def delete_flow(request: Request, flow_id: str) -> Response:
     s = st(request)
+    flow_id = id_do_fluxo(s.db, flow_id)        # 30.83: antes da guarda da adoção, que lê pelo id
     # Fluxo adotado por uma habilidade é o caminho de volta da adoção (`release_flow` o religa): apagá-lo deixaria
     # a habilidade sem ter para onde desfazer. Desligar continua possível; apagar, só depois de desfazer.
     if (dona := s.skill_repo.adopter_id(flow_id)) is not None:

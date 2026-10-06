@@ -6,6 +6,15 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class TrainingUndoBody(BaseModel):
+    """Desfazer a última entrada da gravação VIVA (31.90-D). `lease_id` é o do controle atual; `seq`, opcional, é o
+    número da entrada que a pessoa viu como última (outra chegou antes do pedido: 409 `entrada_mudou`)."""
+
+    model_config = ConfigDict(extra="forbid")
+    lease_id: str = Field(min_length=1, max_length=120)
+    seq: int | None = Field(default=None, ge=1)
+
+
 class TrainingStopBody(BaseModel):
     """Encerrar ou descartar o treinamento (31.92). Numa gravação VIVA exige o controle do aparelho: `lease_id` é o do
     controle atual. Gravação órfã ou já gravada dispensa."""

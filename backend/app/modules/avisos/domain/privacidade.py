@@ -21,6 +21,17 @@ from collections.abc import Callable, Iterable
 #: No lugar de um nome de persona em texto que sai pelo canal (28.28; regra C-02: nome de persona não vai ao canal).
 PERSONA_OCULTA = "<persona>"
 CONTATO_OCULTO = "<contato>"
+#: No lugar de um DADO da persona (cidade, empregador, profissão…: o valor de um marcador `{perfil_*}` da biografia) num
+#: texto de EVENTO que sai pelo canal (31.87 F2). Marcador próprio: não é nome, e a conversa nunca o usa.
+DADO_OCULTO = "<dado da persona>"
+
+
+class DadoDaPersona(str):
+    """Um valor de dado da persona na lista de `nomes` do filtro: é trocado por `DADO_OCULTO`, e não por `PERSONA_OCULTA`.
+    Só o caminho de EVENTO (aviso e pergunta que o Telegram carrega) o recebe; a resposta composta pela ANA e o eco do
+    Trello usam só nomes, porque o dado da persona é texto comum ("São Paulo", "música") e encheria a conversa."""
+
+    __slots__ = ()
 
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _ARROBA = re.compile(r"(?<![\w@])@[\w.]{2,}")
@@ -54,13 +65,21 @@ def _alvos(nomes: Iterable[str], minimo: int, poupar_ana: bool) -> list[str]:
                    and not (poupar_ana and _sem_acento_minusculo(n) == "ana")}, key=len, reverse=True)
 
 
-def _trocas(texto: str, alvos: list[str]) -> list[tuple[int, int]]:
+def _dados(nomes: Iterable[str]) -> frozenset[str]:
+    """Os alvos (já limpos, como `_alvos` os deixa) que são DADO da persona e não nome. Se o mesmo texto também é um nome,
+    o nome vence: sai como `PERSONA_OCULTA`."""
+    limpos = [(n.strip().lstrip("@"), isinstance(n, DadoDaPersona)) for n in nomes if n]
+    nomes_puros = {t for t, dado in limpos if not dado}
+    return frozenset(t for t, dado in limpos if dado and t not in nomes_puros)
+
+
+def _trocas(texto: str, alvos: list[str]) -> list[tuple[int, int, str]]:
     base = _sem_acento_minusculo(texto)
-    trocas: list[tuple[int, int]] = []
+    trocas: list[tuple[int, int, str]] = []
     for nome in alvos:
         for m in re.finditer(rf"(?<![\w@])@?{re.escape(_sem_acento_minusculo(nome))}(?!\w)", base):
-            if not any(a < m.end() and m.start() < b for a, b in trocas):
-                trocas.append((m.start(), m.end()))
+            if not any(a < m.end() and m.start() < b for a, b, _n in trocas):
+                trocas.append((m.start(), m.end(), nome))
     return trocas
 
 
@@ -69,11 +88,13 @@ def sem_nome_de_persona(texto: str, nomes: Iterable[str], *, minimo: int = 3, po
     maiúscula ou acento. O padrão é o da conversa (28.28): a partir de 3 letras, e "ANA" poupada, porque é o nome da IA
     da Central (decisão do dono, 03/10) e uma persona chamada Ana não apaga a ANA das respostas. O aviso usa
     `minimo=2, poupar_ana=False`: o texto dele é do fato, não da IA."""
+    nomes = list(nomes)
     alvos = _alvos(nomes, minimo, poupar_ana)
     if not alvos:
         return texto
-    for a, b in sorted(_trocas(texto, alvos), reverse=True):
-        texto = texto[:a] + PERSONA_OCULTA + texto[b:]
+    dados = _dados(nomes)
+    for a, b, alvo in sorted(_trocas(texto, alvos), reverse=True):
+        texto = texto[:a] + (DADO_OCULTO if alvo in dados else PERSONA_OCULTA) + texto[b:]
     return texto
 
 

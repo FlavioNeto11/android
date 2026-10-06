@@ -7,8 +7,9 @@ import { useAppStore } from '../../store/app';
 import { initialDataState } from '../../store/reducer';
 import { makeInstance } from '../../test/fixtures';
 import { useToastStore } from '../../store/toasts';
-import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, text, waitFor } from '../../test/harness';
-import { TrainingBar } from './TrainingBar';
+import { FakeBackend, allByRole, apiError, byRole, click, installBrowserStubs, json, setValue, text, waitFor } from '../../test/harness';
+import type { PersonaOnDevice } from '../../api/types';
+import { TrainingBar, personasDoEnsino } from './TrainingBar';
 import { useTrainingStore } from './trainingStore';
 
 // Fase L (P2.6): descartar a gravação em andamento é irreversível e passa a pedir confirmação, como toda ação
@@ -221,4 +222,91 @@ it('com mais de 5 sessões salvas, a lista diz que mostra só as 5 mais novas', 
   await waitFor(() => expect(text()).toContain('Salvas (as 5 mais novas de 6)'));
   expect(allByRole('button', /^Refazer receitas de/)).toHaveLength(5);
   expect(text()).not.toContain('Ensino 6');
+});
+
+// ---------------------------------------------------------------- 31.90-C: de quem é o ensino
+const persona = (profile_id: string, name: string, app_id: string | null = null): PersonaOnDevice => ({
+  profile_id, username: null, display_name: name, name, status: 'active', app_id, is_primary: false, bound_at: null, session: null,
+});
+
+/** O aparelho sem gravação viva, com as personas dadas, e a rota de iniciar que guarda o corpo. */
+async function abrirParaIniciar(personas: PersonaOnDevice[] | 'falha') {
+  const corpos: unknown[] = [];
+  backend.on('GET', /\/training$/, () => json([]));
+  backend.on('GET', /\/instances\/android-01\/personas$/, () => (personas === 'falha' ? json({ detail: 'x' }, 500) : json(personas)));
+  backend.on('POST', /\/instances\/android-01\/training$/, (c) => { corpos.push(c.body); return json(GRAVANDO); });
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
+  await setValue(await waitFor(() => byRole('textbox', /O que você vai ensinar/)) as HTMLInputElement, 'Responder a DM');
+  return corpos;
+}
+
+it('31.90-C: com duas personas o painel pede de quem é o ensino, trava o início sem escolha e manda profile_id', async () => {
+  const corpos = await abrirParaIniciar([persona('p-a', 'Ana Exemplo'), persona('p-b', 'Beto Exemplo')]);
+  const escolha = await waitFor(() => byRole('combobox', /De quem é o ensino/)) as HTMLSelectElement;
+  expect([...escolha.options].map((o) => o.value)).toEqual(['', 'p-a', 'p-b']);
+  expect(byRole('button', /Iniciar treinamento/).getAttribute('aria-disabled')).toBe('true');
+  await click(byRole('button', /Iniciar treinamento/));
+  expect(corpos).toHaveLength(0);                                       // sem escolha, nada vai ao backend (que recusaria com 409)
+
+  await setValue(escolha, 'p-b');
+  expect(byRole('button', /Iniciar treinamento/).getAttribute('aria-disabled')).not.toBe('true');
+  await click(byRole('button', /Iniciar treinamento/));
+  await waitFor(() => expect(corpos).toHaveLength(1));
+  expect(corpos[0]).toEqual({ intent: 'Responder a DM', lease_id: 'lease-1', app_id: null, profile_id: 'p-b' });
+});
+
+it('31.90-C: com uma só persona não há seletor, o texto diz de quem é e o corpo não leva profile_id', async () => {
+  const corpos = await abrirParaIniciar([persona('p-a', 'Ana Exemplo')]);
+  await waitFor(() => expect(text()).toContain('O ensino fica com Ana Exemplo'));
+  expect(allByRole('combobox', /De quem é o ensino/)).toHaveLength(0);
+  await click(byRole('button', /Iniciar treinamento/));
+  await waitFor(() => expect(corpos).toHaveLength(1));
+  expect(corpos[0]).toEqual({ intent: 'Responder a DM', lease_id: 'lease-1', app_id: null });
+});
+
+it('31.90-C: sem persona vinculada o painel avisa que o fluxo não vale em aparelho nenhum, e o início segue', async () => {
+  const corpos = await abrirParaIniciar([]);
+  await waitFor(() => expect(text()).toContain('Nenhuma persona está vinculada a este aparelho'));
+  expect(text()).toContain('não vale em aparelho nenhum');
+  await click(byRole('button', /Iniciar treinamento/));
+  await waitFor(() => expect(corpos).toHaveLength(1));
+});
+
+it('31.90-C: a leitura das personas que falha não trava o início: sem seletor e sem aviso, o backend decide', async () => {
+  const corpos = await abrirParaIniciar('falha');
+  await waitFor(() => expect(byRole('button', /Iniciar treinamento/).getAttribute('aria-disabled')).not.toBe('true'));
+  await click(byRole('button', /Iniciar treinamento/));
+  await waitFor(() => expect(corpos).toHaveLength(1));
+  expect(allByRole('combobox', /De quem é o ensino/)).toHaveLength(0);
+  expect(text()).not.toContain('Nenhuma persona está vinculada');
+});
+
+it('31.90-C: enquanto a leitura das personas corre o Iniciar fica travado com o motivo; ao chegar, o seletor aparece', async () => {
+  let soltar: (r: Response) => void = () => {};
+  let pedida = false;                                  // com o fetch atrasado, o pedido só chega ao handler depois
+  const corpos: unknown[] = [];
+  backend.on('GET', /\/training$/, () => json([]));
+  backend.on('GET', /\/instances\/android-01\/personas$/, () => new Promise<Response>((ok) => { soltar = ok; pedida = true; }));
+  backend.on('POST', /\/instances\/android-01\/training$/, (c) => { corpos.push(c.body); return json(GRAVANDO); });
+  await act(async () => root.render(<TrainingBar instance={makeInstance(1, { state: 'online', control: 'user' })} leaseId="lease-1" mine />));
+  await setValue(await waitFor(() => byRole('textbox', /O que você vai ensinar/)) as HTMLInputElement, 'Responder a DM');
+  const iniciar = () => byRole('button', /Iniciar treinamento/);
+  expect(iniciar().getAttribute('aria-disabled')).toBe('true');
+  expect(iniciar().textContent).toContain('Lendo as personas deste aparelho.');
+  await click(iniciar());
+  expect(corpos).toHaveLength(0);                                       // sem a lista não se manda o início sem dono
+
+  await waitFor(() => expect(pedida).toBe(true));
+  await act(async () => soltar(json([persona('p-a', 'Ana Exemplo'), persona('p-b', 'Beto Exemplo')])));
+  await waitFor(() => expect(byRole('combobox', /De quem é o ensino/)).toBeTruthy());
+  expect(iniciar().textContent).toContain('Escolha de qual persona é o ensino.');   // o motivo muda quando a lista chega
+  expect(corpos).toHaveLength(0);
+});
+
+it('31.90-C: personasDoEnsino conta uma por pessoa e respeita o app escolhido, como o backend', () => {
+  const lista = [persona('p-a', 'A', 'com.x'), persona('p-a', 'A', 'com.y'), persona('p-b', 'B', 'com.y'), persona('p-c', 'C', null)];
+  expect(personasDoEnsino(lista, '').map((p) => p.profile_id)).toEqual(['p-a', 'p-b', 'p-c']);   // sem app: todas, uma vez cada
+  expect(personasDoEnsino(lista, 'com.y').map((p) => p.profile_id)).toEqual(['p-a', 'p-b', 'p-c']);
+  expect(personasDoEnsino(lista, 'com.x').map((p) => p.profile_id)).toEqual(['p-a', 'p-c']);      // o vínculo sem app serve a qualquer um
+  expect(personasDoEnsino(lista, 'com.z').map((p) => p.profile_id)).toEqual(['p-c']);
 });

@@ -462,7 +462,8 @@ com o banco aberto só para leitura.
 
 - **Correção de ensino na execução (22.7).** Na aba "Por aparelho", a etapa `failed` ou `uncertain` que veio de uma
   habilidade ganha "Corrigir esta etapa" no detalhe, e a linha recolhida leva a marca "corrigível". A regra é a mesma
-  da rota: habilidades ligadas (`features.skills`), status em `CORRECTABLE_STEP` e a origem do passo (`origin`, lida
+  da rota: habilidades ligadas (`features.skills`) e a tela do ensino v2 ligada (`features.ensino_v2`, 31.91 F1, padrão
+  `false`), status em `CORRECTABLE_STEP` e a origem do passo (`origin`, lida
   em `plan_versions` pela mesma versão do mesmo objetivo). O envio acha um ensino aberto da mesma habilidade e versão
   que já corrige esta execução (ou um vazio aberto por esta ação), ou abre um com instrução fixa ("Corrigir a
   habilidade <id> (versão N)."), e posta a correção com `step_id` = `steps.id`, não a key. O ensino que fica aberto e
@@ -2121,6 +2122,25 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
     etapa vai para a IA mesmo quando uma receita genérica serviria.
 - **Prova:** `simulated`, em `backend/tests/test_ensinado_em_prova.py`. `real`: `not_run`.
 
+## Reensinar o comando que a prova desligou (30.84)
+
+- Antes, o fluxo ensinado que a prova real desligava (30.81) seguia na linha, e a `match_key` única fazia o `save` do
+  treino e a prévia responderem `duplicate_command`: a pessoa não conseguia corrigir a demonstração.
+- Agora (desenho da orquestradora, 05/10) esse fluxo renasce na MESMA linha (`FlowStore.learn_from_plan`): mesmo id e
+  referência pública, plano, sessão (`source`) e nascimento (`created_at`) novos, `uses` zerado, ativo.
+  - Volta à espera de prova do 30.81: a prova e o Confirmar contam a partir do `created_at`, e as tentativas por
+    sessão. A prova antiga não libera o renascido.
+  - A trilha diz que renasceu e por que tinha sido desligado ("reensinado no modo treinamento (mesma linha);
+    desligado antes: …"), assinada pela sessão nova (o treino nunca tira da espera).
+  - As receitas rebaixadas com o fluxo ficam como estão; as da sessão nova seguem a substituição do 30.79.
+- Só renasce o desligado PELA PROVA (`MOTIVO_DA_PROVA_DO_ENSINADO`, pelo sistema) quando esse desligamento ainda é
+  a última linha da trilha. Seguem recusando: o desligado por uma pessoa, o que uma pessoa mexeu depois da prova, o
+  adotado por uma habilidade, o ativo e o comando com habilidade publicada.
+- A prévia do treino (31.86) recusa pela mesma regra (`FlowStore.recusa_do_treino`).
+- A recusa e a trilha são lidas dentro da transação do renascimento. A sessão antiga e a nova ficam com o mesmo
+  `training_sessions.flow_id`; hoje nada lê o fluxo por ali (o ensinado acha a sessão pelo `flows.source`).
+- **Prova:** `simulated`, em `backend/tests/test_reensinar_o_desligado_pela_prova.py`. `real`: `not_run`.
+
 ## A referência pública do fluxo é aleatória (30.83)
 
 - O id do fluxo era o slug do `plan.summary` literal (podia trazer nome ou @) e saía em evento, `href` e log (achado S1
@@ -2131,8 +2151,16 @@ orquestradora em 05/10 (opção B, 15:19Z; restrição por persona, 15:21Z; ajus
 - Sai a pública: `learning.needs_person` de fluxo (`ref` e `href`), sem a referência no `message`. Entra qualquer uma:
   as rotas do Livro com `{ref}` e o pedido de validação traduzem por `LearningService.ref_interna` (adendo v1.66).
 - A habilidade adotada de um fluxo novo herda o id opaco (`<app>.f-…`); o nome legível segue em `flows.name`.
-- **Limites (próximas fatias):** `/api/flows/{id}`, os `href` das respostas do painel, os eventos `learning.ensinado_*`
-  (30.80 B e 30.81, em ramo) e os logs com `fluxo:<id>` ainda usam o id interno.
+- Fatia 3: os eventos do ensinado (30.80 B e 30.81) saem pela pública na mesma porta (`EventosNoBarramento._publico`);
+  as rotas antigas de fluxo (`PUT`/`DELETE /api/flows/{id}`, adopt e release) e o `href` de desfazer do voto aceitam
+  ou levam a pública. Os logs não citam o fluxo: `quem_no_log` e `ref_no_log` (sem banco, porque os `log.exception`
+  rodam dentro da transação que falhou) dizem só o tipo; a autopublicação loga só as contagens.
+- `ref_publica_do_fluxo` nunca devolve o id: sem a `ref_publico`, preenche na hora; sem a linha, sorteia uma que não
+  abre nada (cada chamada outra; a Canais só avisa a entrada).
+- Fatia 4: o texto das exceções de fluxo (Livro, pedido de validação, loja) diz só "fluxo" (`quem_no_log`), e os logs
+  da sombra dos fluxos dizem só o tipo da exceção.
+- **Limites:** o id interno segue em `item.ref` do Livro, no `ref` do efeito do voto, em `GET /api/flows`, na resposta
+  do `PUT /api/flows/{id}`, no `flow_id` de adopt e release e no id da habilidade adotada de um fluxo legado.
 - **Prova:** `simulated`, em `backend/tests/test_ref_publico_do_fluxo.py`. `real`: `not_run`.
 
 ## A prova sem evidência diz a causa (30.75)

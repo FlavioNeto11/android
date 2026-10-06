@@ -38,5 +38,8 @@ export default defineConfig(({ mode }) => ({
     environment: 'node',
     include: ['src/**/*.test.{ts,tsx}'],
     restoreMocks: true,
+    // 29.150: `DESLOCAMENTO_DIAS=40 npm test` roda a suíte com o relógio 40 dias à frente (acha o teste com data fixa que
+    // vence); sem a variável, nada muda. Ver src/test/relogioDeslocado.ts.
+    setupFiles: process.env.DESLOCAMENTO_DIAS ? ['./src/test/relogioDeslocado.ts'] : [],
   },
 }));

@@ -900,12 +900,12 @@ provado por teste e o que continua dependendo de uma decisão ou de um gasto do 
 
 **Não feito, por decisão/gasto do dono:**
 
-1. **Preencher as oito personas.** A proposta de voz está em `scripts/personas-voz.json` (os oito campos vazios
+1. **Preencher as oito personas.** A proposta de voz está em `personas-voz.json`, na pasta privada da instalação (fora do Git desde o 31.105; os oito campos vazios
    em todas: gírias, estilo em DM, estilo em comentário, com conhecidos, com desconhecidos, expressões comuns,
    expressões proibidas e exemplos), e `scripts/personas_completar.py` aplica **só o que estiver vazio**, casando
    pelo nome da persona. Sem `--aplicar` ele não escreve nada. O conteúdo é proposta: quem aprova a voz de cada
-   conta é o dono. O arquivo é validado contra o modelo da API por teste
-   (`tests/test_social_dm.py::test_proposta_de_voz_cobre_os_oito_campos_e_usa_nomes_que_existem`).
+   conta é o dono. O formato do arquivo é validado contra o modelo da API por teste, com dados fictícios
+   (`tests/test_social_dm.py::test_proposta_de_voz_cobre_os_oito_campos_no_formato_do_arquivo`).
 2. **A prova antes/depois com a mesma intenção nos 8 perfis.**
    `python scripts/personas_completar.py --prova "dar boa tarde"` roda a mesma intenção em todas as personas pela
    rota de prévia (não publica, não grava interação, não toca aparelho) e imprime a tabela pronta para colar

@@ -32,6 +32,7 @@ from ..modules.learning.domain.aprovacao_automatica import PLATAFORMA
 from ..modules.learning.domain.causa_do_ausente import ChaveDaReceita, ReceitaVizinha, causa_do_ausente, doadora
 from ..modules.learning.domain.livro import CONFIRMADO_QUE_FICA, receita_tem_efeito
 from ..planning.provider import Decision
+from .flows import trocar_valores_por_nomes
 from ..util import norm_text, now_iso
 from .flows import PREFIXO_DO_TREINO, SISTEMA
 
@@ -103,7 +104,7 @@ def para_hash(step: PlanStep, variables: dict[str, str] | None) -> PlanStep:
     Medido em 23/09/2026: o planejador às vezes escreve o valor literal na pós-condição ("perfil de @nasa aberto")
     em vez de `{perfil}`. A receita era gravada com o hash desse literal e nunca casava com o mesmo caminho para
     outro alvo — 15 receitas ativas do Instagram e cobertura zero em todos os fluxos. O fluxo-modelo já faz esta
-    troca ao aprender (`flows._sub_values`); aqui ela passa a valer também na identidade da etapa, dos dois lados.
+    troca ao aprender (`flows.trocar_valores_por_nomes`); aqui ela passa a valer também na identidade da etapa, dos dois lados.
     """
     valores = {k: v for k, v in (variables or {}).items()
                if k not in _NAO_TEMPLATIZA and isinstance(v, str) and len(v) >= 3 and "{" not in v}
@@ -113,9 +114,9 @@ def para_hash(step: PlanStep, variables: dict[str, str] | None) -> PlanStep:
     def troca(texto: str | None) -> str | None:
         if not texto:
             return texto
-        for nome, valor in sorted(valores.items(), key=lambda kv: -len(kv[1])):
-            texto = texto.replace(valor, "{" + nome + "}")
-        return texto
+        # A mesma troca, com a mesma borda, de quando o fluxo aprende (31.96): `str.replace` partia "nasal" por "nasa"
+        # e dava ao hash da receita uma identidade que o fluxo-modelo não tem.
+        return trocar_valores_por_nomes(texto, valores)
 
     return step.model_copy(update={
         "postcondition": step.postcondition.model_copy(update={"value": troca(step.postcondition.value) or ""}),
@@ -227,12 +228,13 @@ def eh_generica(actions: Sequence[Mapping[str, object]], post_value: str | None,
 
 # ------------------------------------------------------------------ des-templatização
 def detemplate(text: str, variables: dict[str, str]) -> tuple[str, bool, bool]:
-    """Troca valores conhecidos por {nome} (o mais longo primeiro).
+    """Troca valores conhecidos por {nome} (o mais longo primeiro), com a MESMA borda do fluxo-modelo e do hash da
+    receita (31.109, `flows._sub_values`): o valor só vale inteiro, então "nasal" não vira `{perfil}l` e "v10" não vira
+    `v{n}`. Antes era `str.replace` sem borda, e a ação aprendida divergia da identidade da etapa.
     Devolve (texto, usou_alguma_variável, ficou_100%_coberto_por_variáveis)."""
-    out, used = text, False
-    for name, value in sorted(variables.items(), key=lambda kv: -len(kv[1] or "")):
-        if value and len(value) >= 3 and value in out:
-            out, used = out.replace(value, "{" + name + "}"), True
+    valores = {n: v for n, v in variables.items() if v and len(v) >= 3}
+    out = trocar_valores_por_nomes(text, valores) or text
+    used = out != text
     covered = used and not TEMPLATE_RE.sub("", out).strip(" \t\r\n.,;:!?-—()[]\"'“”")
     return out, used, covered
 
@@ -358,6 +360,11 @@ def _usable_text(text: str, variables: dict[str, str]) -> str | None:
     templ, used, covered = detemplate(text, variables)
     if used:
         return templ if covered else None
+    # 31.109: o valor DENTRO de palavra maior ("@ana_silva" com "@ana", "Mariana Silva" com "Maria") não é trocado
+    # (a borda), mas o texto é de outra pessoa: sem este corte ele cairia no rótulo fixo abaixo e viraria seletor
+    # literal, que o replay para outro alvo poderia tocar. Como era antes da borda: descartado.
+    if any(v and len(v) >= 3 and v in text for v in variables.values()):
+        return None
     # A tela mostra "ana" para o parâmetro "@ana" (linha da caixa de mensagens, cabeçalho da conversa). Sem isto o
     # seletor gravava "ana" LITERAL e, reproduzido para "@bia", tocava a conversa de outra pessoa — a verificação
     # recusava, mas a tentativa se perdia e a receita ia para a quarentena (achado da fase G, 27/09). Só o texto
