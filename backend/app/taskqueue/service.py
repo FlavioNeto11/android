@@ -50,7 +50,7 @@ from .repository import Repository
 from .scheduler import WAKEABLE, Scheduler
 from .sombra_intencao import SombraDaIntencao
 from .vizinhos import aplicar as aplicar_vizinhos, linha_da_trilha as linha_vizinhos
-from ..planning import habilidades
+from ..planning import etapas_ensinadas, habilidades
 
 log = logging.getLogger("poc.runs")
 
@@ -1126,6 +1126,10 @@ class RunService:
                 catalog, catalogos, ofertados, alvo = self._catalogos(comando, apps, instances)
                 # 31.151: os fluxos que o comando parece vão ao planejador como habilidades conhecidas
                 conhecidas = self._habilidades_parecidas(comando, [i.get("profile_id") for i in instances])
+                # 31.153: as etapas ensinadas com receita estável dos apps que o plano pode usar
+                ensinadas = self._etapas_ensinadas(
+                    [str(x) for x in dict.fromkeys([*(i.get("app_id") for i in instances),
+                                                    *(a.id for a in apps_citados(comando, apps))]) if x])
                 # Lições medidas do planejador (ADR-054): só quando o planejador é de fato chamado (skill ou fluxo
                 # casados não pedem), uma vez por planejamento. Falha = nenhuma lição.
                 licoes = pedir_licoes(self.costuras, PedidoDeLicoes(
@@ -1142,12 +1146,14 @@ class RunService:
                         command=comando, run_id=run_id, instances=instances, apps=ofertados, catalog=catalog,
                         catalogs=catalogos,
                         available_data=list(common_data(self.dados, [i["profile_id"] for i in instances])),
-                        lessons=list(licoes), habilidades=list(conhecidas.values()))),
+                        lessons=list(licoes), habilidades=list(conhecidas.values()),
+                        etapas_ensinadas=ensinadas)),
                     role="plan", marca=MarcaDaChamada(motivo="plano"))
                 # R6: todo plano do planejador declara os apps em que roda — os parsers já preenchem; isto cobre o
                 # provedor que não preenche (um dublê, um provedor novo). Plano de skill traz os dele do compilador.
                 if not plan.required_apps:
                     plan.required_apps = apps_do_plano(plan, instances)
+                plan = self._trocar_por_ensinadas(run_id, plan, ensinadas)
                 # 31.151: a habilidade escolhida por semelhança, conferida aqui, troca o plano pelo do fluxo
                 plan = self._escolha_por_semelhanca(run_id, plan, comando, conhecidas,
                                                     [i.get("profile_id") for i in instances])
@@ -1255,6 +1261,30 @@ class RunService:
                                             "capability": passo.capability, "motivo": motivo}
                     break
         return list(recusadas.values())
+
+    def _etapas_ensinadas(self, apps: list[str]) -> list[etapas_ensinadas.EtapaEnsinada]:
+        """31.153: as etapas ensinadas oferecíveis dos `apps` do plano. Falha ao ler = nenhuma (o plano segue livre)."""
+        try:
+            return etapas_ensinadas.escolher(self.flows.etapas_ensinadas(), apps)
+        except Exception as exc:  # noqa: BLE001
+            log.info("etapas ensinadas não lidas (%s): o plano segue sem elas", exc)
+            return []
+
+    def _trocar_por_ensinadas(self, run_id: str, plan: Plan,
+                              ensinadas: list[etapas_ensinadas.EtapaEnsinada]) -> Plan:
+        """31.153: a etapa do plano livre com o nome de uma etapa ensinada vira a etapa-molde do ensino (o hash da
+        receita), e a trilha diz qual. Só ids, nomes e a receita: nenhum valor."""
+        if not ensinadas or not plan.steps:
+            return plan
+        passos, trocadas, recusas = etapas_ensinadas.trocar(plan.steps, plan.app_id, ensinadas, plan.parameters)
+        if trocadas:
+            plan = plan.model_copy(update={"steps": passos})
+            self.repo.decision("Etapas ensinadas no plano livre (31.153): " + "; ".join(
+                f"{k} pela etapa ensinada em {e.origem} (receita {e.receita}, {e.reproducoes} reprodução(ões) boa(s))"
+                for k, e in trocadas) + ".", run_id=run_id)
+        if recusas:
+            self.repo.decision("Etapa ensinada não usada (31.153): " + "; ".join(recusas) + ".", run_id=run_id)
+        return plan
 
     def _habilidades_parecidas(self, comando: str,
                                perfis: list[str | None]) -> dict[str, habilidades.HabilidadeConhecida]:

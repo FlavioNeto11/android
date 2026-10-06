@@ -19,6 +19,26 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.153: as etapas ensinadas como ações conhecidas do app no plano livre (branch feat/31-153-etapas-ensinadas)
+
+- Medido em 06/10: a receita ensinada só era achada pela chave da etapa (o `template_hash`). O plano livre gerava outro
+  texto e outro hash, e as 27 receitas ensinadas só serviam aos próprios fluxos, quase todos desligados.
+- Cada etapa de fluxo ensinado (ligado ou não) que tem receita do ensino ativa, com 1 ou mais reproduções boas, vira
+  oferta ao planejador livre (`planning/etapas_ensinadas.py`, `FlowStore.etapas_ensinadas`). Ficam de fora a etapa com
+  efeito, a com `commit_guard`, a do catálogo e o nome fora do formato.
+  - As ofertas são dos apps do aparelho e dos citados no comando: uma por (app, nome), a mais reproduzida, até 12.
+  - O bloco `<etapas_ensinadas>` vai no texto de usuário com nome, app e nomes dos parâmetros. O título fica de fora,
+    porque pode trazer o valor demonstrado.
+- Quando o plano livre tem uma etapa com esse nome no mesmo app e declara os parâmetros dela, o código a troca pela
+  etapa-molde do ensino, mantendo as dependências. A etapa materializada ganha o MESMO `template_hash` da receita, e o
+  executor a roda sem IA, caindo na IA se divergir. A trilha diz qual receita. Faltando parâmetro, fica a etapa do
+  plano, com o motivo.
+- O esquema de saída do plano não muda. O escopo da receita segue o 30.81; a decisão do dono (a ação ensinada serve a
+  todas as personas ou só ao escopo de quem ensinou) fica pendente.
+- Prova `simulated`: `backend/tests/test_etapas_ensinadas_no_plano_livre.py` (2 testes; a etapa materializada tem o
+  hash da receita). Planejamento, receitas, fluxos e arquitetura: 4801 passaram; mypy 257 (no teto). `real`: `not_run` (um comando livre do
+  Configurações em que a etapa de busca roda pela receita ensinada com 0 decisões de IA).
+
 ## 2026-10-06 — 31.151: o pedido parecido chega ao fluxo pelo planejador (branch feat/31-151-fluxo-por-semelhanca)
 
 - Medido em 06/10: 8 de 275 execuções foram planejadas por fluxo ensinado, todas lote de prova; 0 uso real. `match` só

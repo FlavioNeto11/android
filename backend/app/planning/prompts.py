@@ -6,6 +6,7 @@ from ..contracts.identidade import REGRA_DE_IDENTIDADE
 from ..modules.identity.domain.available_data import AvailableDatum
 from ..modules.learning.domain.licoes import bloco_de_licoes
 from ..util import sem_marcacao
+from . import etapas_ensinadas
 from . import habilidades as habilidades_conhecidas
 from .provider import AppContext, DecisionRequest, PlanRequest, SocialRequest, StepContext
 
@@ -476,6 +477,7 @@ def planner_user(req: PlanRequest, max_steps: int) -> str:
             f"run_id desta execução: {req.run_id}\n\nApps configurados:\n{apps}\n\n"
             f"{licoes_block(req.lessons)}"
             f"{habilidades_conhecidas.bloco(req.habilidades)}"
+            f"{etapas_ensinadas.bloco(req.etapas_ensinadas)}"
             f"{dados_block(req.available_data)}\n\n"
             f"Aparelhos selecionados ({len(req.instances)}):\n{insts}\n\n"
             f"Limite de etapas: {max_steps}. Produza o plano.")
@@ -490,6 +492,7 @@ def planner_capability_user(req: PlanRequest, max_steps: int) -> str:
             f"Ações disponíveis:\n{req.catalog.prompt_block()}\n\n"
             f"{licoes_block(req.lessons)}"
             f"{habilidades_conhecidas.bloco(req.habilidades)}"
+            f"{etapas_ensinadas.bloco(req.etapas_ensinadas)}"
             f"{dados_block(req.available_data)}\n\n"
             f"Aparelhos selecionados ({len(req.instances)}):\n{insts}\n\n"
             f"Limite de etapas: {max_steps}. Produza o plano usando só estas ações.")
@@ -514,6 +517,7 @@ def planner_multiapp_user(req: PlanRequest, max_steps: int) -> str:
             f"Apps SEM catálogo (etapa livre):\n{livres}\n\n"
             f"{licoes_block(req.lessons)}"
             f"{habilidades_conhecidas.bloco(req.habilidades)}"
+            f"{etapas_ensinadas.bloco(req.etapas_ensinadas)}"
             f"{dados_block(req.available_data)}\n\n"
             f"Aparelhos selecionados ({len(req.instances)}; app = o da conta do aparelho):\n{insts}\n\n"
             f"Limite de etapas: {max_steps}. Produza o plano: cada etapa no app dela.")

@@ -20,6 +20,7 @@ from ..shared.validacao import erros_sem_valor
 if TYPE_CHECKING:
     from ..config import ResolvedRole
     from .capabilities import CapabilityCatalog
+    from .etapas_ensinadas import EtapaEnsinada
     from .habilidades import HabilidadeConhecida
 
 
@@ -243,6 +244,9 @@ class PlanRequest:
     #: 31.151: os fluxos ativos e no escopo que o comando PARECE (`habilidades.HabilidadeConhecida`): referência, molde,
     #: nomes dos parâmetros e apps, nunca o valor demonstrado. Vazio = o pedido de antes.
     habilidades: list[HabilidadeConhecida] = field(default_factory=list)
+    #: 31.153: as etapas ensinadas com receita estável dos apps do plano (`etapas_ensinadas.EtapaEnsinada`): nome,
+    #: app, o que faz e os nomes dos parâmetros. Vazio = o pedido de antes.
+    etapas_ensinadas: list[EtapaEnsinada] = field(default_factory=list)
 
 
 @dataclass(slots=True)

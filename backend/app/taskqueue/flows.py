@@ -32,6 +32,7 @@ from ..models import Plan, PlannerInfo, StepResult
 from ..util import now_iso
 from .parecidos import parecidos as parecidos_do_texto
 from .vizinhos import Vizinho, pares_dos_fluxos
+from ..planning.etapas_ensinadas import EtapaEnsinada, oferecivel
 
 RESERVED = {"instance_id", "run_id", "account_label"}
 PLACEHOLDER = re.compile(r"\{([a-z_][a-z0-9_]*)\}")
@@ -643,6 +644,32 @@ class FlowStore:
         selos = self.em_uso_real_desde([f["id"] for f in saida if f["nascido_de_prova"] and f["status"] == "active"])
         for f in saida:
             f["em_uso_real_desde"] = selos.get(f["id"])
+        return saida
+
+    def etapas_ensinadas(self) -> list[EtapaEnsinada]:
+        """31.153: as etapas dos fluxos ENSINADOS (ligados ou não: o saber é do app) que têm receita estável do ensino:
+        ativa, com 1 ou mais reproduções boas, sem efeito externo (`etapas_ensinadas.oferecivel`). Uma consulta para os
+        fluxos e uma para as receitas."""
+        receitas: dict[tuple[str, str], tuple[int, int]] = {}
+        for r in self.db.query("SELECT id, learned_from_step, step_key, replay_ok FROM recipes WHERE status='active'"
+                               " AND replay_ok >= 1 AND learned_from_step LIKE ?", (PREFIXO_DO_TREINO + "%",)):
+            chave = (str(r["learned_from_step"]), str(r["step_key"]))
+            if chave not in receitas or int(r["replay_ok"]) > receitas[chave][1]:
+                receitas[chave] = (int(r["id"]), int(r["replay_ok"]))
+        saida: list[EtapaEnsinada] = []
+        for f in self.db.query("SELECT source, app_id, plan FROM flows WHERE source LIKE ? ORDER BY created_at, id",
+                               (PREFIXO_DO_TREINO + "%",)):
+            try:
+                plano = Plan.model_validate_json(f["plan"])
+            except ValueError:
+                continue
+            for passo in plano.steps:
+                achada = receitas.get((str(f["source"]), passo.key))
+                app = passo.app_id or plano.app_id or f["app_id"]
+                if achada is None or not app or not oferecivel(passo):
+                    continue
+                saida.append(EtapaEnsinada(nome=passo.key, app_id=str(app), passo=passo, receita=achada[0],
+                                           reproducoes=achada[1], origem=str(f["source"])))
         return saida
 
     def vizinhos_conhecidos(self) -> dict[str, dict[str, Vizinho]]:
