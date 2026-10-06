@@ -312,6 +312,8 @@ export interface EtapaDoFluxo {
   alvo: string | null;
   efeito: boolean;
   pos_condicao: { tipo: string | null; descricao: string | null } | null;
+  /** 31.141 (31.140 no backend): os pacotes vizinhos em que a etapa também conclui; ausente em backend anterior. */
+  pacotes_aceitos?: string[];
   parametros: string[];
   segredo: boolean;
 }

@@ -2,6 +2,7 @@ import { Zap } from 'lucide-react';
 import { createContext, useContext, useId, useState, type ReactNode } from 'react';
 import { hintForError, toApiError } from '../../api/client';
 import { Badge } from '../../components/Badge';
+import { PacotesAceitos } from '../../components/PacotesAceitos';
 import { SeloEmProva } from '../../components/SeloEmProva';
 import { SeloNascidoDeProva } from '../../components/SeloNascidoDeProva';
 import { Button } from '../../components/Button';
@@ -289,6 +290,7 @@ function ConteudoFluxo({ c, appsNaIdentidade }: { c: ConteudoDoFluxo; appsNaIden
             {e.capability ? <span className={styles.passoLinha}>Capacidade <Mono>{e.capability}</Mono></span> : null}
             {e.alvo ? <span className={styles.passoLinha}>Alvo: <Mono>{e.alvo}</Mono></span> : null}
             {e.pos_condicao ? <span className={styles.passoLinha}>Confere: {e.pos_condicao.descricao ? textoComMarcadores(e.pos_condicao.descricao) : e.pos_condicao.tipo ?? SEM_DADO}</span> : null}
+            <PacotesAceitos pacotes={e.pacotes_aceitos} className={styles.passoLinha} />
             {e.segredo ? <span className={styles.passoLinha}>Usa um dado sigiloso (nunca mostrado)</span> : null}
             {e.parametros.length > 0 ? <span className={styles.passoLinha}>Parâmetros {nomesDeParametro(e.parametros)}</span> : null}
           </li>

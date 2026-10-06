@@ -2148,6 +2148,8 @@ export interface TrainingStepReport {
   title: string;
   recipe: boolean;
   reason: string;
+  /** 31.141 (31.140 no backend): os pacotes vizinhos que a etapa também aceita, como a prévia os calcula; ausente em backend anterior. */
+  pacotes_aceitos?: string[];
 }
 
 /** 31.88 F2 (adendo v1.71): o escopo que o salvar gravou (ou a prévia gravaria). `on_proof` é a escolha "Vale para". */

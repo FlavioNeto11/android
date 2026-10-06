@@ -796,7 +796,8 @@ export function TrainingReview({ sessionId, onClose }: { sessionId: string; onCl
                       ) : null}
                       <p className={styles.muted}>Confere: {textoDoConfere(s.postcondition)}
                         {s.inputs.map((n) => porSeq.get(n)).filter(Boolean).length ? '' : ' · sem entradas: a IA conduz esta etapa'}</p>
-                      <PacotesAceitos pacotes={s.pacotes_aceitos} />
+                      {/* 31.141: o que a IA propôs vale; sem isso, o que a prévia calcula para a etapa. */}
+                      <PacotesAceitos pacotes={s.pacotes_aceitos?.length ? s.pacotes_aceitos : previaPorEtapa.get(s.key)?.pacotes_aceitos} />
                       {jaValem.filter((j) => j.etapa === s.key).map((j) => (
                         <AvisoDaPosCondicao key={j.valor} item={j}
                                             onUsar={(texto) => mudarEtapa(i, { postcondition: { ...s.postcondition, kind: 'text_visible', value: texto } })} />

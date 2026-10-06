@@ -19,6 +19,13 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.141: a etapa do fluxo no Livro e a da prévia na revisão dizem os pacotes que também aceita (branch feat/31-132-ensino-leitura)
+
+- Achado do percurso 51 (31.129): o plano e o detalhe da etapa da execução mostram "Também aceita concluir em: <pacote>", mas a etapa do fluxo no Livro e a etapa da proposta na revisão do treino não, porque o backend não mandava o campo ali (31.140, Aprendizado: `pacotes_aceitos` por etapa na prévia e nas etapas do conteúdo do fluxo).
+- **Livro:** cada etapa do fluxo (`conteudo.etapas[].pacotes_aceitos`, opcional) ganha a linha "Também aceita concluir em: <pacote>". **Revisão do treino:** a etapa da proposta mostra a lista da prévia (`TrainingStepReport.pacotes_aceitos`, opcional) quando a IA não pôs uma na etapa; a lista da etapa vale antes, e a linha aparece uma vez só.
+- Campo opcional tipado até o backend chegar; sem o campo, ou com a lista vazia, nenhuma linha (backend anterior fica como está).
+- Só frontend e CHANGELOG. Prova `simulated`: dois casos novos e um ajustado em `TrainingReview.test.tsx` e um em `DetalheRico.test.tsx`; cinco mutações mortas; sementes 1 a 8 e 88 do fetch atrasado. Real: `not_run` até o deploy com o 31.140.
+
 ## 2026-10-06 — 31.128 e 31.129: a conferência que já vale vira aviso na etapa, e os pacotes que a etapa aceita aparecem (branch feat/31-128-pos-condicao-na-etapa)
 
 - Achados da conferência do painel contra os adendos v1.83 e v1.84 (deploy 50): as linhas novas de `warnings` e a recusa 400 `pos_condicao_ja_vale` chegavam como frase solta (lista de avisos da prévia, dica do "Salvar", toast), sem dizer onde mexer, e o campo `pacotes_aceitos` não aparecia em tela nenhuma.

@@ -774,3 +774,15 @@ describe('detalhe rico: o fluxo demonstrado no treino diz de onde veio (31.136)'
     expect(ensinado()).toBeUndefined();
   });
 });
+
+describe('detalhe rico: a etapa do fluxo diz os pacotes que também aceita (31.141)', () => {
+  const etapa = (indice: number, chave: string, extra: object = {}) => ({ indice, chave, capability: null, alvo: null, efeito: false, pos_condicao: null, parametros: [], segredo: false, ...extra });
+  const fluxo = (etapas: object[]) => detalhe({ conteudo: { tipo: 'fluxo', nome: 'Pesquisar', comando_modelo: 'pesquise', origem: { tipo: 'treino', fonte: 't', source_run_id: null }, apps: [], efeito: { externo: false, etapas_com_efeito: [] }, etapas: etapas as never }, item: { kind: 'fluxo' } });
+
+  it('a etapa com `pacotes_aceitos` mostra "Também aceita concluir em: <pacote>"; a sem o campo e a de lista vazia, nada', async () => {
+    await mostrar(fluxo([etapa(0, 'abrir_busca'), etapa(1, 'digitar_termo', { pacotes_aceitos: ['com.google.android.settings.intelligence'] }), etapa(2, 'conferir', { pacotes_aceitos: [] })]));
+    const itens = Array.from(container.querySelectorAll('ol[aria-label="Etapas do fluxo"] > li'));
+    expect(itens.map((li) => li.textContent?.includes('Também aceita concluir em'))).toEqual([false, true, false]);
+    expect(text(itens[1] as HTMLElement)).toContain('Também aceita concluir em: com.google.android.settings.intelligence');
+  });
+});

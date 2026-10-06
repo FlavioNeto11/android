@@ -933,3 +933,28 @@ it('31.134: o "Confere" da etapa proposta também troca o marcador da persona po
   await waitFor(() => expect(text()).toContain('Confere: aparece o texto “[nome da persona]” (campo com [sobrenome da persona])'));
   expect(text()).not.toContain('{perfil_');
 });
+
+// 31.141: a prévia calcula os pacotes vizinhos da etapa (31.140 no backend); a etapa da proposta mostra a linha com eles.
+it('31.141: a etapa mostra "Também aceita concluir em" com os pacotes da prévia; o que a IA propôs na etapa vale antes', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, pacotes_aceitos: ['com.google.android.settings.intelligence'] }] }));
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(text()).toContain('Também aceita concluir em: com.google.android.settings.intelligence'), { timeout: 4000 });
+  expect(text().match(/Também aceita concluir em/g)).toHaveLength(1);
+});
+
+it('31.141: com a lista vazia na prévia (ou sem o campo, backend anterior), nenhuma linha', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, pacotes_aceitos: [] }] }));
+  await abrirEProporComPrevia();
+  await waitFor(() => expect(backend.callsTo('POST', /\/preview$/).length).toBeGreaterThan(0));
+  await waitFor(() => expect(text()).toContain('Ao salvar:'), { timeout: 4000 });
+  expect(text()).not.toContain('Também aceita concluir em');
+});
+
+it('31.141: a lista que a IA pôs na etapa vale antes da prévia, e a linha aparece uma vez só', async () => {
+  backend.on('POST', /\/training\/trn-1\/preview$/, () => json({ ...PREVIA_OK, steps: [{ ...PREVIA_OK.steps[0]!, pacotes_aceitos: ['com.da.previa'] }] }));
+  await abrirComProposta(SESSAO, { ...PROPOSTA, steps: [{ ...PROPOSTA.steps[0]!, pacotes_aceitos: ['com.da.proposta'] }] });
+  await waitFor(() => expect(text()).toContain('Ao salvar:'), { timeout: 4000 });
+  expect(text()).toContain('Também aceita concluir em: com.da.proposta');
+  expect(text()).not.toContain('com.da.previa');
+  expect(text().match(/Também aceita concluir em/g)).toHaveLength(1);
+});
