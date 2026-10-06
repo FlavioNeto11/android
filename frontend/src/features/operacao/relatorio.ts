@@ -5,6 +5,7 @@
  * custo. Consolidado: a faixa de capacidade, os custos (pesquisa, agentes, total e o teto), as falhas agrupadas por motivo e os
  * textos irmãos. O agente aparece pelo RÓTULO da persona: nunca o @ da conta, o id da conta nem login ou e-mail.
  */
+import { type ItemAprendido, type LeituraDoAprendizado } from './aprendizadoDaOperacao';
 import {
   ESTAGIOS, ROTULO_DO_ESTADO, ROTULO_DO_STATUS, estagioDeParada, rotuloDaAcao, rotuloDoEstagio,
   type Alvo, type EstagioId, type Operacao,
@@ -39,6 +40,17 @@ export interface AgenteDoRelatorio {
 export interface FalhaPorMotivo { motivo: string; parou_em: string | null; agentes: number }
 export interface GrupoDeTextos { texto: string; agentes: string[] }
 
+/** O item aprendido no relatório: a persona vai pelo RÓTULO (nunca o id), e `null` é a operação inteira. */
+export type ItemDoRelatorio = Omit<ItemAprendido, 'persona'> & { persona: string | null };
+export interface AprendizadoNoRelatorio {
+  disponivel: boolean;
+  /** Por que não há aprendizado, quando `disponivel` é falso; nunca vira "nada aprendido". */
+  motivo: string | null;
+  gerado_em: string | null;
+  perguntas: { chave: string; titulo: string; veio: boolean; itens: ItemDoRelatorio[] }[];
+  nao_coberto: { chave: string; motivo: string }[];
+}
+
 export interface RelatorioDaOperacao {
   gerado_em: string;
   operacao: {
@@ -53,6 +65,8 @@ export interface RelatorioDaOperacao {
   falhas_por_motivo: FalhaPorMotivo[];
   textos: { total: number; distintos: number; repetidos: GrupoDeTextos[]; lista: { agente: string; texto: string }[] };
   agentes: AgenteDoRelatorio[];
+  /** As 10 perguntas do dono sobre o que a operação ensinou (adendo v1.96). */
+  aprendizado: AprendizadoNoRelatorio;
   /** O que o relatório NÃO tem, para ninguém tomar a ausência por zero. */
   limites: string[];
 }
@@ -87,7 +101,23 @@ function agenteDe(a: Alvo, posicao: number): AgenteDoRelatorio {
   };
 }
 
-export function montarRelatorio(op: Operacao, agora: Date = new Date()): RelatorioDaOperacao {
+const SEM_LEITURA: LeituraDoAprendizado = { situacao: 'indisponivel', motivo: 'O aprendizado da operação não foi lido para este relatório.' };
+
+function aprendizadoDoRelatorio(op: Operacao, leitura: LeituraDoAprendizado): AprendizadoNoRelatorio {
+  if (leitura.situacao === 'indisponivel') return { disponivel: false, motivo: leitura.motivo, gerado_em: null, perguntas: [], nao_coberto: [] };
+  const rotulos = new Map(op.alvos.flatMap((a) => (a.profile_id && a.persona ? [[a.profile_id, a.persona] as const] : [])));
+  const a = leitura.aprendizado;
+  return {
+    disponivel: true, motivo: null, gerado_em: a.gerado_em, nao_coberto: a.nao_coberto,
+    perguntas: a.perguntas.map((p) => ({
+      chave: p.chave, titulo: p.titulo, veio: p.veio,
+      // Persona sem rótulo conhecido na operação vira "uma persona", nunca o id.
+      itens: p.itens.map((i) => ({ ...i, persona: i.persona === null ? null : rotulos.get(i.persona) ?? 'uma persona' })),
+    })),
+  };
+}
+
+export function montarRelatorio(op: Operacao, agora: Date = new Date(), aprendizado: LeituraDoAprendizado = SEM_LEITURA): RelatorioDaOperacao {
   const agentes = op.alvos.map(agenteDe);
   const falhas = new Map<string, FalhaPorMotivo>();
   for (const a of agentes) {
@@ -119,6 +149,7 @@ export function montarRelatorio(op: Operacao, agora: Date = new Date()): Relator
     falhas_por_motivo: [...falhas.values()].sort((x, y) => y.agentes - x.agentes || x.motivo.localeCompare(y.motivo)),
     textos: { total: comTexto.length, distintos: grupos.size, repetidos: [...grupos.values()].filter((g) => g.agentes.length > 1), lista: comTexto },
     agentes,
+    aprendizado: aprendizadoDoRelatorio(op, aprendizado),
     limites: LIMITES,
   };
 }
@@ -127,6 +158,32 @@ const usd = (n: number | null): string => (n === null ? 'não informado' : `US$ 
 const num = (n: number | null): string => (n === null ? 'não informado' : String(n));
 /** O texto numa citação, linha a linha, para uma quebra de linha do texto não virar título do Markdown. */
 const citacao = (t: string): string => t.split(/\r?\n/).map((l) => `> ${l}`).join('\n');
+
+function itemEmMarkdown(i: ItemDoRelatorio): string {
+  const marca = i.confianca === 'confirmado' ? 'confirmado' : i.confianca === 'hipotese' ? 'hipótese' : 'confiança não informada';
+  const onde = [i.tipo, i.escopo, i.persona ?? 'operação inteira'].filter(Boolean).join(', ');
+  const extra = [i.inferida ? 'inferida' : null, i.evidencias ? `${i.evidencias} ${i.evidencias === 1 ? 'evidência' : 'evidências'}` : null, i.motivo ? `motivo: ${i.motivo}` : null]
+    .filter(Boolean).join('; ');
+  const fontes = i.fontes.length ? ` Fontes: ${i.fontes.map((f) => f.resumo ?? f.ref).join(' | ')}.` : '';
+  return `- [${marca}] ${i.resumo ?? i.ref} (${onde}${extra ? `; ${extra}` : ''}).${fontes}`;
+}
+
+/** As 10 perguntas do dono: cada uma com os itens ou o "nada nesta operação"; o que não está disponível diz o motivo. */
+function aprendizadoEmMarkdown(a: AprendizadoNoRelatorio): string[] {
+  const linhas = ['', '## O que a operação ensinou (as 10 perguntas)', ''];
+  if (!a.disponivel) return [...linhas, `Não disponível: ${a.motivo ?? 'motivo não informado'}`];
+  for (const p of a.perguntas) {
+    linhas.push(`### ${p.titulo}`, '');
+    if (!p.veio) linhas.push('Esta pergunta não veio na resposta do central.');
+    else if (p.itens.length === 0) linhas.push('Nada registrado nesta operação.');
+    else linhas.push(...p.itens.map(itemEmMarkdown));
+    linhas.push('');
+  }
+  if (a.nao_coberto.length) {
+    linhas.push('### O que o central não responde', '', ...a.nao_coberto.map((n) => `- ${n.chave}: ${n.motivo}`));
+  }
+  return linhas;
+}
 
 export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
   const o = r.operacao;
@@ -161,6 +218,7 @@ export function relatorioEmMarkdown(r: RelatorioDaOperacao): string {
     for (const g of r.textos.repetidos) linhas.push('', citacao(g.texto), '', `Agentes: ${g.agentes.join(', ')}.`);
   }
   for (const t of r.textos.lista) linhas.push('', `**${t.agente}**`, '', citacao(t.texto));
+  linhas.push(...aprendizadoEmMarkdown(r.aprendizado));
   linhas.push('', '## Agentes');
   for (const a of r.agentes) {
     linhas.push('', `### ${a.agente}`, '', `- **Estado:** ${a.estado}${a.parou_em ? `, parou em ${a.parou_em}` : ''}${a.motivo ? ` (${a.motivo})` : ''}`);
