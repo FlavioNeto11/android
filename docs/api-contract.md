@@ -1102,7 +1102,7 @@ campo.
 | `POST /api/training/{session_id}/recipes` | – | `{session, flow_id, steps, created}`: refaz as receitas de uma sessão salva (v1.58) |
 | `POST /api/training/{session_id}/discard` | – | `TrainingSession` (mesmo que `stop`, com `discard=true`) |
 | `POST /api/training/from-run` | `TrainingDeFalhaBody {run_id, step_id, lease_id, intent?, app_id?, profile_id?}` | `TrainingSession` (201) com `origin {run_id, step_id, step_key, attempt_id, motivo}`: abre o ensino a partir de uma etapa que falhou (31.111 F1 e F2, adendo v1.75); 404 `step_not_found`, 409 `step_not_failed` e as recusas de `POST /instances/{id}/training` |
-| `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` | — | `{intent, pergunta, rotulo}` ou `null` (sem tentativa): o que "Ensinar a corrigir" pré-preenche antes da sessão, pelo diagnóstico do 31.111 F4; só leitura, sem IA (31.116, adendo v1.80); 404 `step_not_found`, 409 `step_not_failed` |
+| `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` | — | `{intent, pergunta, rotulo, causa}` ou `null` (sem tentativa): o que "Ensinar a corrigir" pré-preenche antes da sessão, pelo diagnóstico do 31.111 F4; só leitura, sem IA (31.116, adendos v1.80 e v1.82: `causa` e a pergunta pelo estado da etapa); 404 `step_not_found`, 409 `step_not_failed` |
 | `POST /api/training/{session_id}/undo` | `TrainingUndoBody {lease_id, seq?}` | `TrainingSession` com `undone: {seq, type}`: tira a última entrada da gravação viva (31.90-D, adendo v1.70) |
 
 **Limites por servidor (item 10.5)** — `backend/app/api.py:2696-2736`, ver também
@@ -6945,3 +6945,15 @@ O formato das rotas não muda; muda o que o pedido GUARDA e o que a tela recebe.
   `from-run` (404 `step_not_found`, 409 `step_not_failed`).
 - O painel pré-preenche o formulário de "Ensinar a corrigir"; a intenção que a pessoa escrever vence (vai no
   `POST /api/training/from-run`). **Prova:** `simulated` (`backend/tests/test_ensino_sugerido.py`); `real`: `not_run`.
+
+## Adendo v1.82 (06/10/2026; número da orquestradora; item 31.116) — a sugestão do ensino diz a causa e pergunta pelo estado
+
+- **`GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido`** → `{intent, pergunta, rotulo, causa}`. Campo novo:
+  `causa` é o código do diagnóstico (`CausaProvavel`, por exemplo `teto_de_ia` ou `indeterminada`), ao lado do `rotulo`,
+  e fica `null` quando o diagnóstico falha. O painel escolhe ícone e texto pelo código, sem depender da frase.
+- **A `pergunta` passa a ser a do estado da etapa.** Em `waiting_user` a etapa parou esperando a pessoa, sem falhar, e a
+  pergunta é a própria desse estado: o que ensinar, a partir daquela tela, para ela seguir. Isso vale mesmo com o
+  diagnóstico em erro, caso em que a pergunta deixa de ser `null`. Em `failed` e `uncertain` segue a pergunta do
+  diagnóstico, como no v1.80. `intent`, `rotulo`, o `null` sem tentativa e as recusas não mudam.
+- Compatível: só um campo a mais e um texto diferente num estado. Pedido da leitura de UX da Portal, que consome os dois.
+  **Prova:** `simulated` (`backend/tests/test_ensino_sugerido.py`, 7); `real`: `not_run`.

@@ -945,8 +945,10 @@ do provedor nas chamadas dela. `domain/ensino_da_falha.py` traduz a causa em ró
 Nenhuma IA: a única chamada continua sendo a proposta do próprio ensino. Sem tentativa, sem tipo ou com erro na leitura,
 `diagnostico` é `null` e a sessão abre igual. Quem liga é o `AppState` (`TrainingRecorder.diagnostico_da_falha`).
 Antes da sessão existir, `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` (31.116, parte 2) devolve a mesma
-sugestão (`{intent, pergunta, rotulo}`) para o painel pré-preencher o formulário: só leitura, sem IA, `null` sem
-tentativa.
+sugestão (`{intent, pergunta, rotulo, causa}`) para o painel pré-preencher o formulário: só leitura, sem IA, `null` sem
+tentativa. `causa` é o código do diagnóstico (adendo v1.82). A pergunta é a do estado da etapa: a etapa em
+`waiting_user` parou esperando a pessoa, não falhou, e recebe a pergunta própria (`PERGUNTA_ESPERANDO`: o que ensinar a
+partir daquela tela para ela seguir). Nos outros estados, a pergunta é a do diagnóstico.
 
 ## Evidência inválida e o reaprendido (30.23)
 

@@ -19,6 +19,18 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.116: a sugestão do ensino diz a causa e pergunta pelo estado da etapa (branch feat/31-116-ensino-sugerido-causa)
+
+- `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` ganha `causa` (o código do diagnóstico, ao lado do rótulo). A
+  `pergunta` passa a depender do estado da etapa: em `waiting_user` a etapa parou esperando a pessoa, sem falhar, e a
+  pergunta é `PERGUNTA_ESPERANDO` (o que ensinar para ela seguir), mesmo com o diagnóstico em erro. Nos outros estados
+  segue a pergunta do diagnóstico. Pedido da leitura de UX da Portal. Adendo v1.82.
+- Funções tocadas (K-095): `ensino_sugerido` (`modules/learning/presentation/treino.py`), `pergunta_da_etapa` e
+  `PERGUNTA_ESPERANDO` (novas, `modules/learning/domain/ensino_da_falha.py`), `origem_da_falha` e `OrigemDaFalha.status`
+  (`training/origem.py`).
+- Prova `simulated`: `backend/tests/test_ensino_sugerido.py` (7: os 4 com `causa` e 3 novos, sobre a parada esperando a
+  pessoa com e sem diagnóstico e a função pura). Real: `not_run`.
+
 ## 2026-10-06 — 31.116 (parte 2): a sugestão do ensino antes da sessão (branch feat/31-116-ensino-sugerido)
 
 - `GET /api/runs/{run_id}/steps/{step_id}/ensino-sugerido` → `{intent, pergunta, rotulo}`. Usa o mesmo diagnóstico do
