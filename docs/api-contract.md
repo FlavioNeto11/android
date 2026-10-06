@@ -7157,3 +7157,99 @@ Achado do percurso 52 da Portal: a marca do 31.130 só saía em `conteudo.origem
   `rotulo`) e entra antes da contagem: `total` e `contagem` já vêm filtrados. Valor inválido dá 422, como nos outros
   filtros.
 - **Prova:** `simulated` (`backend/tests/test_livro_nascido_de_prova.py`); `real`: `not_run`.
+
+## Adendo v1.94 (06/10/2026; número da orquestradora; item 31.154, migração 124) — a operação com N agentes
+
+Uma **operação** é um objetivo único entregue a N **alvos**. Cada alvo é persona + conta (dela, no app da operação) +
+aparelho e roda numa **execução própria**: `objectives` tem um objetivo por aparelho em cada execução, e 30 contas não cabem
+em 9 aparelhos de uma vez. A fila por aparelho já serializa as execuções do mesmo aparelho. A operação agrega as execuções:
+estado de cada alvo, resultado, capacidade e cancelamento. Nada troca de app: o alvo que não pode avançar PARA no estágio,
+com o motivo.
+
+- **`POST /api/operacoes`** `{command, app_id, alvos: [{profile_id, account_id?, instance_id?}], acao_final?, idempotency_key,
+  max_usd, assunto?, fontes?}`, com campos extras recusados.
+  - `max_usd` (obrigatório, até 100): o teto em US$ da operação inteira, somado em todas as execuções dos alvos. Atingido, a
+    IA de qualquer alvo é recusada (`AIError` `budget`, motivo `operacao`), e o alvo ainda não criado nasce parado com
+    `teto de custo`.
+  - `assunto` (3 a 500 caracteres) e `fontes` (até 10 URLs `https://`): o que precisa ser compreendido e as fontes públicas
+    que o operador indica. São a única origem da pesquisa externa da operação (frente de aprendizado).
+  - `alvos`: de 1 a 64, sem `profile_id` repetido. Quem escolhe as personas pela IA é a sugestão de sempre
+    (`POST /api/runs/targets/suggest`, que agora vai até `LimitsCfg.orquestracao_max_escolhidas`), e o painel passa a
+    escolha aqui.
+  - `account_id` ausente = a conta ativa da persona no app (a mesma regra da etapa que confere a conta).
+  - `instance_id` ausente = o aparelho onde essa conta tem sessão pronta.
+  - `acao_final`: `preparar` (padrão) para cada alvo em `acao_preparada`, com o texto gerado e a interface pronta, sem
+    enviar. Toda execução de alvo nasce com o teto de autonomia `preparar` (28.23): o efeito para depois do rascunho,
+    com o pedido de aprovação que carrega o texto. `executar` diz que a operação vai além disso, mas só pelo `liberar`
+    (abaixo): nenhuma ação final sai sem o texto lido por uma pessoa.
+  - Resposta `201` com o `OperacaoDetalhe` (abaixo). A mesma `idempotency_key` devolve a mesma operação.
+  - Cria uma execução por alvo apto, com `runs.operacao_id`. O alvo sem conta ou sem sessão NÃO ganha execução: nasce
+    parado em `conta` ou `sessao`, com o motivo.
+  - Erros: `422 pedido_invalido`, `404 app_inexistente`, `409 credencial_no_comando`, `409 chave_em_uso` (a mesma chave
+    com outro corpo).
+- **`GET /api/operacoes?limite=50`** → `{items: [OperacaoResumo]}`, da mais nova à mais velha. `OperacaoResumo` =
+  `{id, command, app_id, acao_final, status, created_at, finished_at, capacidade}`.
+- **`GET /api/operacoes/{id}`** → `OperacaoDetalhe` = `OperacaoResumo` + `{max_usd, assunto, fontes, alvos: [AlvoDaOperacao],
+  custo: {pesquisa_usd, alvos_usd, total_usd}}`. A pesquisa externa da operação roda dentro da execução de um alvo; `alvos_usd`
+  já vem sem ela, e `total_usd` é o que o teto `max_usd` compara.
+  `404 operacao_inexistente`.
+- **`POST /api/operacoes/{id}/cancelar`** → `OperacaoDetalhe`. Cancela as execuções ainda abertas, pelo mesmo caminho do
+  cancelamento de uma execução; o alvo já encerrado não muda. `409 ja_encerrada`.
+- **`POST /api/operacoes/{id}/liberar`** `{itens: [{profile_id, texto}]}` (1 a 64) →
+  `{liberados: [profile_id], recusados: [{profile_id, motivo}], operacao: OperacaoDetalhe}`.
+  - Aprova, pelo serviço de aprovações de sempre, a ação preparada de cada alvo, decidindo item a item como o lote de
+    aprovações (sem 409 geral).
+  - `texto` é o eco do texto que a pessoa leu (31.49). Diferente do pedido de aprovação, o item é recusado com
+    `texto_divergente`.
+  - Só até `LimitsCfg.operacao_max_acoes_executadas` (padrão 3, lido a cada chamada), contando as ações já executadas. O
+    excedente é recusado com `limite de ações executadas`; sem pedido pendente, com `sem ação preparada`.
+  - A operação passa a `acao_final: executar`. Erros gerais: `404 operacao_inexistente` e `409 ja_encerrada`.
+- **`GET /api/runs?operacao_id=…`**: o filtro novo na lista de execuções. Cada `RunSummary` ganha `operacao_id`
+  (`null` fora de operação).
+
+`status` da operação: `em_curso`, `concluida` (todos os alvos chegaram ao último estágio que a `acao_final` pede),
+`concluida_com_bloqueios` (todos pararam, ao menos um bloqueado) ou `cancelada`.
+
+**`AlvoDaOperacao`** = `{profile_id, persona_nome, app_id, account_id, conta (o @ da conta, ou null), instance_id, run_id,
+estagio, estado, motivo, parou_em, estagios: [{estagio, em}], resultado}`. Os estágios seguem o vocabulário do dono, nesta ordem fixa:
+
+`persona` → `conta` → `sessao` → `aparelho` → `instagram_aberto` → `target_localizado` → `post_localizado` →
+`conteudo_lido` → `conhecimento_recuperado` → `resposta_gerada` → `interface_de_comentario_alcancada` → `acao_preparada` →
+`acao_executada` | `acao_bloqueada` → `resultado_verificado`.
+
+- `estagio` = o último alcançado, e `estagios` = os alcançados com prova, com a hora. Pode haver lacuna:
+  `conteudo_lido` e `conhecimento_recuperado` só existem se a frente de aprendizado os marcar, e nenhum estágio é inferido
+  por um posterior.
+- `parou_em` = o estágio em que o alvo parou, só em `bloqueado`/`cancelado`, e `null` nos demais. Exemplos:
+  - o alvo sem conta vem `estagio: "persona"`, `estagios: [persona]`, `motivo: "sem conta"`, `parou_em: "conta"`;
+  - o alvo em `acao_preparada` numa operação `executar` vem `bloqueado`, com `parou_em: "acao_executada"` e motivo
+    `aguarda liberação` ou `limite de ações executadas`.
+- `acao_bloqueada` ocupa o lugar de `acao_executada`.
+- O estágio de app (`instagram_aberto` … `interface_de_comentario_alcancada`) vem da ação do catálogo que o declara
+  (`estagio_da_operacao` no `catalogo.yaml` do app). Nenhum nome de app fica no código: o mesmo modelo serve a qualquer app
+  declarado, e `instagram_aberto` é o rótulo que o app do Instagram dá à sua abertura (`app_aberto` nos demais).
+- `estado`: `pendente` (sem execução ainda na fila do aparelho), `em_curso`, `concluido`, `bloqueado` (com `motivo`) ou
+  `cancelado`.
+- `motivo` é uma frase curta e estável, a mesma que entra na contagem de `capacidade.motivos`: `sem conta`, `sem sessão`,
+  `conta <status>`, `aparelho indisponível` (com a recusa da execução depois de dois-pontos), `teto de custo`,
+  `aguarda liberação`, `limite de ações executadas`, ou o motivo do objetivo (uma linha, até 120 caracteres).
+- `resultado` = `{texto, conhecimento_ids, evidencia_id, acao_final: {tipo, verificada, evidencia_id}}` (`null` antes de
+  haver texto).
+  - `texto` é o rascunho fechado do alvo, na voz da persona.
+  - `conhecimento_ids` vem da frente de Aprendizado (fatos da operação usados no texto) e é lista vazia sem eles.
+  - `evidencia_id` é a captura mais recente da execução fora da etapa de efeito (a tela lida até o texto).
+  - `acao_final.tipo` é a chave da ação de efeito (ex.: `CREATE_COMMENT`), `verificada` é `true` só com a pós-condição
+    comprovada, e `acao_final.evidencia_id` é a prova dela.
+
+**`capacidade`** = `{solicitados, contas_existentes, sessoes_validas, contas_disponiveis, concluidas, bloqueadas,
+em_curso, motivos: {<motivo>: n}}`. Conta só os alvos desta operação:
+- `contas_existentes`: a persona tem conta ativa no app;
+- `sessoes_validas`: e essa conta tem sessão pronta em algum aparelho;
+- `contas_disponiveis`: e o aparelho está apto agora (ligado, sem quarentena, sem conta travada).
+
+O déficit aparece aqui, não é escondido.
+
+Eventos novos:
+- `operacao.criada` com `{operacao_id, solicitados}`;
+- `operacao.alvo` com `{operacao_id, profile_id, estagio, estado, motivo}`, a cada mudança de estágio ou de estado;
+- `operacao.encerrada` com `{operacao_id, status, capacidade}`.

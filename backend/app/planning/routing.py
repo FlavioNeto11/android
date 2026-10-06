@@ -245,6 +245,16 @@ class RoutingProvider:
             if gasto >= teto_pedido:
                 raise AIError(f"Orçamento do pedido atingido nesta ocorrência: US$ {gasto:.2f} de US$ {teto_pedido:.2f}. "
                               "Ajuste o orçamento do pedido para continuar.", kind="budget", motivo="pedido")
+        # Teto da OPERAÇÃO (31.154): o `max_usd` vale para a soma das execuções de todos os alvos dela. Execução avulsa
+        # (sem `operacao_id`) não muda nada.
+        operacao = self.repo.db.one("SELECT o.id, o.max_usd FROM runs r JOIN operacoes o ON o.id=r.operacao_id"
+                                    " WHERE r.id=?", (run_id,)) if run_id else None
+        if operacao is not None:
+            gasto = sum(costs.spent_usd(self.repo.db, prices, run_id=str(r["id"]))
+                        for r in self.repo.db.query("SELECT id FROM runs WHERE operacao_id=?", (operacao["id"],)))
+            if gasto >= float(operacao["max_usd"]):
+                raise AIError(f"Teto de custo da operação atingido: US$ {gasto:.2f} de US$ {float(operacao['max_usd']):.2f}.",
+                              kind="budget", motivo="operacao")
         teto_dia = float(getattr(s, "ai_max_usd_per_day", 0) or 0)
         for rotulo, limite, gasto_fn, chave, motivo in (
                 ("desta execução", float(getattr(s, "ai_max_usd_per_run", 0) or 0),

@@ -1866,6 +1866,8 @@ class RunSummary(BaseModel):
     #: fluxo provado, o pedido de validação ou o id externo do canal.
     origem: OrigemDaExecucao | None = None
     origem_ref: str | None = None
+    #: 31.154: a operação com N agentes de que esta execução é um alvo (`GET /api/operacoes/{id}`); `None` fora dela.
+    operacao_id: str | None = None
     #: 31.50: quando a pergunta (`needs_input`) vence pelo sistema, ISO; nulo fora de `needs_input` ou desligado.
     vence_em: str | None = None
 

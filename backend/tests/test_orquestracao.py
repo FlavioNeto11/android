@@ -213,3 +213,27 @@ async def test_rota_http(harness: Harness) -> None:
         assert corpo["modo"] == "ia" and corpo["escolhidas"][0]["nome"]
         r = await c.post("/api/runs/targets/suggest", json={"command": "ab"})
         assert r.status_code == 422
+
+
+async def test_os_tetos_da_selecao_sao_os_da_instalacao_lidos_a_cada_pedido(harness: Harness) -> None:
+    """Prova de 07/10 (J1): o teto de escolhidas e o de candidatas vêm de `LimitsCfg`, lidos a cada sugestão; antes eram
+    as constantes 10 e 20 do domínio, e um pedido de 30 voltava com 10."""
+    st = harness.state
+    assert st is not None
+    for nome, iid in (("Ana", "android-01"), ("Bia", "android-02"), ("Cris", "android-03")):
+        _persona(harness, nome, iid, CATOLICA)
+    st.settings.update({"orquestracao_max_escolhidas": 1})
+    s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="3 pessoas mandam bom dia", max_personas=3))
+    assert len(s.escolhidas) == 1
+    st.settings.update({"orquestracao_max_escolhidas": 30, "orquestracao_max_candidatas": 2})
+    s = await _orq(harness).sugerir(RunTargetsSuggestBody(command="3 pessoas mandam bom dia", max_personas=3))
+    assert len(s.escolhidas) <= 2
+
+
+async def test_o_pedido_de_30_cabe_no_formato_e_no_padrao() -> None:
+    assert RunTargetsSuggestBody(command="trinta pessoas comentam", max_personas=30).max_personas == 30
+    req = PedidoDeOrquestracao(command="x", cartoes=[CartaoDePersona(f"p{i}", f"P{i}") for i in range(40)], max_personas=30)
+    out = normalizar(OrquestracaoOut(
+        quantidade=30, escolhidas=[EscolhaOut(profile_id=f"p{i}", motivo="ok", aderencia="alta") for i in range(35)],
+        descartadas=[], nao_avaliaveis=[], alerta_conduta="", perguntas=[], resumo=""), req)
+    assert len(out.escolhidas) == 30
