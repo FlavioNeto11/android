@@ -14,8 +14,8 @@ orquestradora, `.claude/handoffs/reverificacao-31-9g.md`).
   punt nl").
 - H-2: o domínio de topo separado do e-mail ("zilda@correio. net" saía "[email]. net").
 - H-3 (REVERTIDA em 03/10, depois do NO-GO da fase 2): fazia do nome do catálogo sozinho depois do verbo de entrar um
-  DESTINO ("entre com o lucas"); preenchida a vaga, a busca do valor relaxava ("entre com o lucas hoje girassol" passava,
-  1758/4779 sintéticas). Volta a postura da G: "entre com o lucas" recusa, nos dois catálogos.
+  DESTINO ("entre com o tadeu"); preenchida a vaga, a busca do valor relaxava ("entre com o tadeu hoje girassol" passava,
+  1758/4779 sintéticas). Volta a postura da G: "entre com o tadeu" recusa, nos dois catálogos.
 - H-5: "a padaria do bairro" não é endereço (só logradouro, número e CEP) e "o e-mail da newsletter no outlook" é a mensagem.
 
 O portão da fase 2 foi o catálogo SEM a persona "Girassol" (as três contas vivas e android-01..08); sem a H-3, os casos
@@ -70,13 +70,13 @@ VAZAMENTOS_DA_RODADA_G = [
     ("o que eu digito depois do nome é girassol, curta o post da Marina", "C7"),
     ("o acesso é com girassol, curta o post da Marina", "C7"),
     ("lo mismo de siempre es girassol, dale like al post de Marina", "C7"),
-    ("usuario lucas; a outra: girassol. curta o post da Marina", "C7"),
-    ("user lucas | girassol, curta o post da Marina", "C7"),
+    ("usuario tadeu; a outra: girassol. curta o post da Marina", "C7"),
+    ("user tadeu | girassol, curta o post da Marina", "C7"),
     ("digite g+i+r+a+s+s+o+l e curta o post da Marina", "C7"),
     ("digite g · i · r · a · s · s · o · l e curta o post da Marina", "C7"),
     ("digite ge i erre a esse esse o ele e curta o post da Marina", "C7"),
     # C7, lacuna em português (4)
-    ("a de costume é girassol, curta o post da Marina", "C7"), ("usr lucas, girassol. curta o post da Marina", "C7"),
+    ("a de costume é girassol, curta o post da Marina", "C7"), ("usr tadeu, girassol. curta o post da Marina", "C7"),
     ("a cidade onde nasci é girassol, curta o post da Marina", "C7"),
     ("pra confirmar que sou eu: girassol, curta o post da Marina", "C7"),
     # e-mail (8)
@@ -156,7 +156,7 @@ def test_a_forma_conhecida_do_dominio_de_topo(comando: str, saida: str) -> None:
 @pytest.mark.parametrize("comando", [
     # (com "conta" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py; com o verbo de entrar, desde a
     # A-média, 31.20: `CUSTO_DA_A_MEDIA` em test_decisao_fechada_reverificacao_i.py)
-    "like the post on the lucas profile",
+    "like the post on the tadeu profile",
 ])
 def test_a_sintaxe_de_destino_continua_isenta(comando: str) -> None:
     for girassol in (False, True):
@@ -164,16 +164,16 @@ def test_a_sintaxe_de_destino_continua_isenta(comando: str) -> None:
 
 
 @pytest.mark.parametrize("comando", [
-    "entre com o lucas e curta a foto da marina", "entre como lucas", "entre com o lucas",
-    "entre no perfil com Lucas e curta a foto", "abra o insta e entre com o lucas", "entre com o lucas hoje e curta",
-    "entre com o lucas no perfil da Marina e curta", "entre com o lucas mesmo",
+    "entre com o tadeu e curta a foto da marina", "entre como tadeu", "entre com o tadeu",
+    "entre no perfil com Tadeu e curta a foto", "abra o insta e entre com o tadeu", "entre com o tadeu hoje e curta",
+    "entre com o tadeu no perfil da Marina e curta", "entre com o tadeu mesmo",
     # a família 1 da fase 2 da H: com a H-3, tudo depois do nome passava
-    "entre com o lucas hoje girassol", "entre com o lucas (girassol)", "entre com o lucas do girassol",
-    "entre como lucas hoje girassol", "log in with lucas today girassol", "entra con lucas hoy girassol",
+    "entre com o tadeu hoje girassol", "entre com o tadeu (girassol)", "entre com o tadeu do girassol",
+    "entre como tadeu hoje girassol", "log in with tadeu today girassol", "entra con tadeu hoy girassol",
 ])
 def test_sem_a_h3_o_nome_solto_depois_do_verbo_de_entrar_recusa(comando: str) -> None:
     """A H-3 foi revertida (NO-GO da fase 2 da rodada H, 03/10): o nome do catálogo sozinho depois do conector volta a ser a
-    posição de valor, como na G. Recusa nos dois catálogos; o custo é a sombra não ver "entre com o lucas"."""
+    posição de valor, como na G. Recusa nos dois catálogos; o custo é a sombra não ver "entre com o tadeu"."""
     for girassol in (False, True):
         motivo = _motivo(comando, girassol=girassol)
         assert motivo is not None and motivo.startswith("c7_"), (girassol, motivo)
@@ -181,9 +181,9 @@ def test_sem_a_h3_o_nome_solto_depois_do_verbo_de_entrar_recusa(comando: str) ->
 
 @pytest.mark.parametrize("comando", [
     # G-4: o nome do catálogo na posição de valor do par, colado ao usuário ou depois de outro destino
-    "entre com a conta Lucas e girassol", "entre com lucas e girassol", "entre com o lucas, senha girassol",
-    "acesse como lucas com girassol", "entre com o lucas girassol e curta", "entrei com o lucas e girassol",
-    "entre com a conta Lucas / girassol",
+    "entre com a conta Tadeu e girassol", "entre com tadeu e girassol", "entre com o tadeu, senha girassol",
+    "acesse como tadeu com girassol", "entre com o tadeu girassol e curta", "entrei com o tadeu e girassol",
+    "entre com a conta Tadeu / girassol",
 ])
 def test_o_valor_continua_recusando_nos_dois_catalogos(comando: str) -> None:
     for girassol in (False, True):
@@ -196,7 +196,7 @@ def test_o_valor_continua_recusando_nos_dois_catalogos(comando: str) -> None:
     ("entre no perfil com girassol e curta", "c7_login_valor"), ("entre no feed com a conta girassol", "c7_login_valor"),
     # a palavra de conta com nome que o catálogo não conhece é valor (F-B); até a H o "conta" de `_ONDE_SE_ENTRA` a isentava
     ("entre com a conta girassol", "c7_login_valor"), ("entre no app com a conta girassol e curta", "c7_login_valor"),
-    ("usuario lucas - girassol", "c7_par_credencial"), ("login lucas: girassol", "c7_par_credencial"),
+    ("usuario tadeu - girassol", "c7_par_credencial"), ("login tadeu: girassol", "c7_par_credencial"),
     ("digite x · y e envie", "c7_ofuscado"), ("use g/i e curta", "c7_ofuscado"),
     ("o nome da minha mãe é girassol, curta", "c7_eufemismo"), ("o que eu coloco é girassol", "c7_eufemismo"),
 ])
@@ -230,7 +230,7 @@ def test_o_piso_continua_recusando(comando: str, motivo: str) -> None:
     # as letras que são palavra e o nome de letra que é palavra comum
     "use a e o como exemplo", "coloque o filtro e poste",
     # o eufemismo só com o verbo "é" (a conjunção "e" não conta) e o e-mail sem domínio
-    "poste a foto da cidade onde nasci e marque a Marina", "o nome do meu perfil é lucas, curta a foto",
+    "poste a foto da cidade onde nasci e marque a Marina", "o nome do meu perfil é tadeu, curta a foto",
     "o e-mail do provedor caiu, avise a Marina", "mande para zilda em casa com carinho",
     "ligue para a mãe e diga que estou bem",
     # o link e o que parece domínio (casos 99, 540 e 541)
@@ -257,8 +257,8 @@ def test_as_saidas_dos_controles(comando: str, saida: str) -> None:
 @pytest.mark.parametrize("comando", [
     # (a) o C7 com dígito recusava mascarado ("[termo]"); agora recusa o pedido inteiro
     "entre no insta tulipa42", "entre no insta tulipa42 e curta o post da Marina", "digite 4821 e curta o post",
-    "entre no insta e digite tulipa42, depois curta", "na conta lucas, curta a foto tulipa42", "user zilda tulipa42",
-    "entrei com tulipa42", "entre com o lucas hoje 4821",
+    "entre no insta e digite tulipa42, depois curta", "na conta tadeu, curta a foto tulipa42", "user zilda tulipa42",
+    "entrei com tulipa42", "entre com o tadeu hoje 4821",
     # o token só de dígitos perto do campo ou depois do conector do verbo de entrar (o refinamento dos anos, 03/10)
     "entre com 1987", "entre com o meu 1987", "digite 2024 e curta o post", "usuario 4821 e curta a foto",
     "entre no insta, login 1987", "entrei usando 4821",
@@ -271,7 +271,7 @@ def test_o_valor_com_digito_recusa_em_vez_de_mascarar(comando: str) -> None:
 
 @pytest.mark.parametrize("comando", [
     # (com "entre no insta" recusam desde a A-média, 31.20: o verbo de entrar recusa sozinho)
-    "abra o insta e curta as 3 fotos", "abra o insta e mande 50 reais pro bruno", "curta o post qa-001",
+    "abra o insta e curta as 3 fotos", "abra o insta e mande 50 reais pro quillon", "curta o post qa-001",
     "entre na conversa com qa-001 e mande oi", "entre no chat com qa-002", "abra o insta e curta 3 fotos do perfil 2",
     # o ano: o token só de dígitos longe do campo e do conector não recusa (refinamento, 03/10)
     "abra o insta e veja o post de 2024", "abra o insta e curta o post de 2023 da Marina",
@@ -285,8 +285,8 @@ def test_numero_comum_e_contato_com_digito_passam(comando: str) -> None:
 
 
 @pytest.mark.parametrize("comando", [
-    "usuario lucas\ngirassol\ncurta o post da Marina", "usuario lucas\r\ngirassol",
-    "entre com a conta do lucas\ngirassol\ncurta a foto", "user lucas\ntulipa e curta",
+    "usuario tadeu\ngirassol\ncurta o post da Marina", "usuario tadeu\r\ngirassol",
+    "entre com a conta do tadeu\ngirassol\ncurta a foto", "user tadeu\ntulipa e curta",
 ])
 def test_a_quebra_de_linha_separa_o_par(comando: str) -> None:
     """(b) A quebra de linha vira token e vale como o ";" (antes o texto era achatado e o par passava inteiro)."""

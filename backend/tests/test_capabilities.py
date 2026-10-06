@@ -198,7 +198,7 @@ async def test_planejador_simulado_usa_o_catalogo_quando_o_app_tem_um() -> None:
 def _lista_de_pedidos() -> Any:
     """Duas linhas, cada uma com seu botão: é exatamente onde um commit no elemento errado acerta outra pessoa."""
     linhas = ""
-    for i, nome in enumerate(("@ana", "@bruno")):
+    for i, nome in enumerate(("@ana", "@quillon")):
         y = 200 + i * 200
         linhas += (f'<node class="android.widget.TextView" text="{nome}" resource-id="app:id/username" '
                    f'bounds="[20,{y}][400,{y + 80}]"/>'
@@ -223,7 +223,7 @@ def test_guarda_aceita_o_usuario_escrito_sem_arroba() -> None:
     esperando uma pessoa (r-20260918214743-54d31a). A arroba é notação nossa, não o que está na tela."""
     tela = parse_hierarchy(
         '<hierarchy>'
-        '<node class="android.widget.TextView" text="Thiago Menezes" resource-id="app:id/header_title"'
+        '<node class="android.widget.TextView" text="Osvaldo Menezes" resource-id="app:id/header_title"'
         ' bounds="[20,20][400,80]"/>'
         '<node class="android.widget.TextView" text="thi.mnz" resource-id="app:id/header_subtitle"'
         ' bounds="[20,80][400,130]"/>'
@@ -329,14 +329,14 @@ def test_limite_por_execucao_conta_so_o_que_saiu_desta_execucao(tmp_path: Path) 
 
 def test_limites_de_um_perfil_nao_afetam_o_outro(tmp_path: Path) -> None:
     svc, repo, policies, _ = build(tmp_path)
-    lucas = perfil(svc, "tadeu.quintela4821", "android-01")
-    mariana = perfil(svc)
-    for pid in (lucas, mariana):
+    tadeu = perfil(svc, "tadeu.quintela4821", "android-01")
+    luciana = perfil(svc)
+    for pid in (tadeu, luciana):
         repo.update_profile(pid, {"automation_policy": '{"limits": {"likes_per_hour": 2, '
                                                        '"cooldown_between_external_actions_s": 0}}'})
-    _curtidas(svc, lucas, 2)
-    assert not policies.check(lucas, capability_of(IG, "LIKE_POST")).allowed
-    assert policies.check(mariana, capability_of(IG, "LIKE_POST")).allowed
+    _curtidas(svc, tadeu, 2)
+    assert not policies.check(tadeu, capability_of(IG, "LIKE_POST")).allowed
+    assert policies.check(luciana, capability_of(IG, "LIKE_POST")).allowed
 
 
 def test_limite_padrao_existe_mesmo_sem_configuracao(tmp_path: Path) -> None:
@@ -388,35 +388,35 @@ class _FleetSettings:
 
 def test_frota_bloqueia_a_conta_seguinte_apos_o_teto_de_contas_no_mesmo_alvo(tmp_path: Path) -> None:
     svc, repo, _, db = build(tmp_path)
-    lucas = perfil(svc, "tadeu.quintela4821", "android-01")
-    mariana = perfil(svc)
-    for pid in (lucas, mariana):
+    tadeu = perfil(svc, "tadeu.quintela4821", "android-01")
+    luciana = perfil(svc)
+    for pid in (tadeu, luciana):
         repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0}}'})
     policies = PolicyEngine(repo, lambda: _FleetSettings(max_contas=1))
-    svc.record_interaction(lucas, type=InteractionType.followed.value, direction="outbound",
+    svc.record_interaction(tadeu, type=InteractionType.followed.value, direction="outbound",
                            status=InteractionStatus.confirmed.value, counterparty="@alvo.comum", run_id="run-1")
-    # lucas seguiu @alvo.comum: mariana (outra conta) tentando o MESMO alvo esbarra no teto de frota (1 conta).
+    # tadeu seguiu @alvo.comum: luciana (outra conta) tentando o MESMO alvo esbarra no teto de frota (1 conta).
     # Desde o ADR-055 o excedente é RECUSADO, não adiado: esperar a janela e seguir depois era o mesmo padrão.
-    veredito = policies.check(mariana, capability_of(IG, "FOLLOW"), run_id="run-2", counterparty="@alvo.comum")
+    veredito = policies.check(luciana, capability_of(IG, "FOLLOW"), run_id="run-2", counterparty="@alvo.comum")
     assert not veredito.allowed and veredito.retry_at is None and not veredito.is_wait
     assert "outra(s) conta(s) da frota" in veredito.reason
     # um alvo DIFERENTE não é afetado pelo que aconteceu com @alvo.comum
-    assert policies.check(mariana, capability_of(IG, "FOLLOW"), run_id="run-2", counterparty="@outra.pessoa").allowed
+    assert policies.check(luciana, capability_of(IG, "FOLLOW"), run_id="run-2", counterparty="@outra.pessoa").allowed
 
 
 def test_frota_espaca_acoes_de_contas_diferentes_sobre_o_mesmo_alvo(tmp_path: Path) -> None:
     svc, repo, _, db = build(tmp_path)
-    lucas = perfil(svc, "tadeu.quintela4821", "android-01")
-    mariana = perfil(svc)
-    for pid in (lucas, mariana):
+    tadeu = perfil(svc, "tadeu.quintela4821", "android-01")
+    luciana = perfil(svc)
+    for pid in (tadeu, luciana):
         repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0}}'})
     # teto de contas alto (5): o que bloqueia aqui é só o espaçamento, sem jitter (determinístico). Curtida, porque
     # desde o ADR-055 seguir, mensagem e comentário são de uma conta por alvo — lá a segunda conta é recusada, e o
     # espaçamento só existe onde cabe mais de uma conta.
     policies = PolicyEngine(repo, lambda: _FleetSettings(max_contas=5, espaco_s=600, jitter_s=0))
-    svc.record_interaction(lucas, type=InteractionType.post_liked.value, direction="outbound",
+    svc.record_interaction(tadeu, type=InteractionType.post_liked.value, direction="outbound",
                            status=InteractionStatus.confirmed.value, counterparty="@alvo.comum", run_id="run-1")
-    veredito = policies.check(mariana, capability_of(IG, "LIKE_POST"), run_id="run-2", counterparty="@alvo.comum")
+    veredito = policies.check(luciana, capability_of(IG, "LIKE_POST"), run_id="run-2", counterparty="@alvo.comum")
     assert veredito.is_wait and veredito.retry_at
     assert "espaçando ações" in veredito.reason
 
@@ -479,9 +479,9 @@ def test_execucao_junta_os_textos_e_decide_em_lote(tmp_path: Path) -> None:
     p1 = social.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA)).id
     p2 = social.create_profile(ProfileCreate(username="luciana.bastos73519", password=SENHA)).id
     a1 = store.open(profile_id=p1, capability="CREATE_COMMENT", summary="Comentar", target="@ana",
-                    content="texto do lucas", run_id="run-1")
+                    content="texto do tadeu", run_id="run-1")
     a2 = store.open(profile_id=p2, capability="CREATE_COMMENT", summary="Comentar", target="@ana",
-                    content="texto da mariana", run_id="run-1", objective_id="run-1:android-02",
+                    content="texto da luciana", run_id="run-1", objective_id="run-1:android-02",
                     step_id="run-1:android-02:v1:send_1")
     store.open(profile_id=p1, capability="CREATE_COMMENT", summary="Comentar", content="de outra execução",
                run_id="run-9")
@@ -491,14 +491,14 @@ def test_execucao_junta_os_textos_e_decide_em_lote(tmp_path: Path) -> None:
 
     saida = svc.decide_many([
         ApprovalDecisionItem(id=a1.id, verb="approve"),
-        ApprovalDecisionItem(id=a2.id, verb="edit", content="na voz da mariana"),
+        ApprovalDecisionItem(id=a2.id, verb="edit", content="na voz da luciana"),
         ApprovalDecisionItem(id=a1.id, verb="approve")])                # repetida: já decidida
     assert [d["status"] for d in saida["decided"]] == ["approved", "edited"]
     assert [r["id"] for r in saida["refused"]] == [a1.id]               # a repetida não derrubou o lote
     assert svc.list(run_id="run-1") == []                               # nada mais pendente nesta execução
     # A edição vale no que vai ser digitado, não só no registro da aprovação.
     assert json.loads(db.one("SELECT bindings FROM steps WHERE id=?",
-                             ("run-1:android-02:v1:send_1",))["bindings"])["content"] == "na voz da mariana"
+                             ("run-1:android-02:v1:send_1",))["bindings"])["content"] == "na voz da luciana"
 
 
 def test_aprovar_libera_a_etapa_sem_marcar_como_concluida(tmp_path: Path) -> None:
@@ -540,13 +540,13 @@ def test_texto_com_quebra_de_linha_nao_deixa_duas_guardas_contraditorias(tmp_pat
     step_id = "run-1:android-02:v1:send_1"
 
     definir_texto(db, step_id, "Que post lindo!\n")
-    definir_texto(db, step_id, "Na voz da mariana, com carinho.")
+    definir_texto(db, step_id, "Na voz da luciana, com carinho.")
 
     guardas = json.loads(db.one("SELECT commit_guard FROM steps WHERE id=?", (step_id,))["commit_guard"])
     assert "Que post lindo!" not in guardas and "Que post lindo!\n" not in guardas
-    assert guardas.count("Na voz da mariana, com carinho.") == 1
+    assert guardas.count("Na voz da luciana, com carinho.") == 1
     assert json.loads(db.one("SELECT bindings FROM steps WHERE id=?",
-                             (step_id,))["bindings"])["content"] == "Na voz da mariana, com carinho."
+                             (step_id,))["bindings"])["content"] == "Na voz da luciana, com carinho."
 
 
 def test_editar_troca_o_texto_que_vai_ser_digitado_e_guarda_o_original(tmp_path: Path) -> None:
@@ -573,8 +573,8 @@ def test_rejeitar_cancela_so_as_etapas_daquele_alvo(tmp_path: Path) -> None:
         "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal, depends_on,"
         " side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, capability, variables)"
         " VALUES ('run-1:android-02:v1:send_2','run-1','run-1:android-02','android-02',1,2,'send_2','Enviar para "
-        "@bruno','enviar','[]',1,'[]','{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,"
-        "'pending','SEND_MESSAGE','{\"item\": \"@bruno\"}')")
+        "@quillon','enviar','[]',1,'[]','{\"kind\":\"model_judged\",\"value\":\"x\",\"description\":\"y\"}',180,1,"
+        "'pending','SEND_MESSAGE','{\"item\": \"@quillon\"}')")
     pedido = store.open(profile_id=None, capability="SEND_MESSAGE", summary="Enviar para @ana", target="@ana",
                         content="bom dia", run_id="run-1", objective_id="run-1:android-02",
                         step_id="run-1:android-02:v1:send_1")
@@ -610,7 +610,7 @@ async def test_recusa_sobrevive_a_recuperacao_mas_item_que_falhou_ainda_volta(ha
     for seq, (key, detalhe) in enumerate(
             (("abrir", None),
              ("send_i1", "rejeitado por quem aprova: não faz sentido responder isso"),
-             ("send_i2", "item “@bruno” falhou antes desta etapa")), start=1):
+             ("send_i2", "item “@quillon” falhou antes desta etapa")), start=1):
         db.execute(
             "INSERT INTO steps(id, run_id, objective_id, instance_id, plan_version, seq, key, title, goal,"
             " depends_on, side_effect, commit_guard, postcondition, timeout_s, max_attempts, status, status_detail)"
@@ -1074,7 +1074,7 @@ async def test_o_texto_aprovado_e_o_texto_que_vai_ser_digitado(harness: Any) -> 
     db.execute("UPDATE instances SET app_id='ig' WHERE id='android-01'")
     pid = state.social.create_profile(ProfileCreate(username="tadeu.quintela4821", password=SENHA,
                                                     instance_id="android-01")).id
-    persona = state.social.create_persona(PersonaCreate(name="lucas", traits=PersonaTraits(tone="Direto")))
+    persona = state.social.create_persona(PersonaCreate(name="tadeu", traits=PersonaTraits(tone="Direto")))
     state.social.update_profile(pid, ProfilePatch(persona_id=persona.id))
     db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, simulated, instance_ids, created_at)"
                " VALUES ('run-a','ka','comentar','execute','running',1,'[\"android-01\"]','2026-09-17T10:00:00Z')")

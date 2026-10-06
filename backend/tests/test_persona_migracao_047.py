@@ -45,15 +45,15 @@ VOZ = {"personality": "direto", "tone": "calmo", "formality": "informal", "typic
 VISUAL = {"appearance": "alto, cabelo curto", "visual_style": "esportivo", "photo_scenario": "parque"}
 
 #: (id da persona, nome) — 3 vinculadas, 5 casadas por nome, 6 órfãs. Nomes fictícios do parque (ADR-029).
-VINCULADAS = [("persona-l1", "Lucas Almeida"), ("persona-b1", "Bruno Ferreira"), ("persona-a1", "André Carvalho")]
+VINCULADAS = [("persona-l1", "Tadeu Quintela"), ("persona-b1", "Quillon Teixeira"), ("persona-a1", "Ravenna Sampaio")]
 #: `name` da persona × (display_name, first_name, last_name) do perfil bloqueado. Caixa e espaços variam de propósito.
-CASADAS = [("persona-c1", "Beatriz Rocha", ("Beatriz Rocha", "Beatriz", "Rocha")),
-           ("persona-c2", "Felipe Nogueira", (None, "Felipe", "Nogueira")),
-           ("persona-c3", "Juliana Mendes", ("Juliana Mendes", "Juliana", "Mendes")),
-           ("persona-c4", "  mariana costa ", ("Mariana Costa", "Mariana", "Costa")),
-           ("persona-c5", "Thiago Moreira", ("Thiago Moreira", "Thiago", "Moreira"))]
-ORFAS = [("persona-o1", "Camila Duarte"), ("persona-o2", "Rafael Pinto"), ("persona-o3", "Larissa Melo"),
-         ("persona-o4", "Diego Santana"), ("persona-o5", "Renata Vieira Lima"), ("persona-o6", "Otávio")]
+CASADAS = [("persona-c1", "Sueli Barreto", ("Sueli Barreto", "Sueli", "Barreto")),
+           ("persona-c2", "Gilberto Vasconcelos", (None, "Gilberto", "Vasconcelos")),
+           ("persona-c3", "Fabiana Cardoso", ("Fabiana Cardoso", "Fabiana", "Cardoso")),
+           ("persona-c4", "  luciana bastos ", ("Luciana Bastos", "Luciana", "Bastos")),
+           ("persona-c5", "Osvaldo Guedes", ("Osvaldo Guedes", "Osvaldo", "Guedes"))]
+ORFAS = [("persona-o1", "Denise Linhares"), ("persona-o2", "Nelson Pinto"), ("persona-o3", "Rosana Melo"),
+         ("persona-o4", "Wagner Santana"), ("persona-o5", "Renata Vieira Lima"), ("persona-o6", "Otávio")]
 
 
 def _assinatura(db: Database, tabela: str) -> str:
@@ -162,15 +162,15 @@ def test_a_047_dobra_os_tres_grupos_e_preserva_as_filhas(atualizado: Database) -
         assert db.scalar("SELECT COUNT(*) FROM instagram_profiles WHERE generation = '{}'") == 0
 
         # (a) vinculada: voz, resumo e prompt na linha do perfil; o visual saiu de `traits`.
-        lucas = db.one("SELECT * FROM instagram_profiles WHERE id='ig-1'")
-        assert lucas is not None and lucas["persona_id"] == "persona-l1" and lucas["status"] == "active"
-        assert lucas["summary"].startswith("Pessoa de 31 anos") and lucas["persona_prompt"] == "Responda curto."
-        assert json.loads(lucas["traits"]) == VOZ
-        assert json.loads(lucas["visual"]) == VISUAL
-        assert json.loads(lucas["biography"]) == {"schema_version": 1, "tastes": {"interests": ["corrida", "trilha"]},
+        tadeu = db.one("SELECT * FROM instagram_profiles WHERE id='ig-1'")
+        assert tadeu is not None and tadeu["persona_id"] == "persona-l1" and tadeu["status"] == "active"
+        assert tadeu["summary"].startswith("Pessoa de 31 anos") and tadeu["persona_prompt"] == "Responda curto."
+        assert json.loads(tadeu["traits"]) == VOZ
+        assert json.loads(tadeu["visual"]) == VISUAL
+        assert json.loads(tadeu["biography"]) == {"schema_version": 1, "tastes": {"interests": ["corrida", "trilha"]},
                                                   "approx_age": 31}
-        assert json.loads(lucas["generation"]) == {"source": "legacy_persona", "persona_id": "persona-l1"}
-        assert lucas["policy_group_id"] == "grp-1" and lucas["email"] == "lucas.almeida1@exemplo.com"
+        assert json.loads(tadeu["generation"]) == {"source": "legacy_persona", "persona_id": "persona-l1"}
+        assert tadeu["policy_group_id"] == "grp-1" and tadeu["email"] == "tadeu.quintela1@exemplo.com"
 
         # (b) casada por nome: display_name, nome+sobrenome sem display_name, e caixa/espaços diferentes.
         for n, (per, _nome, nomes) in enumerate(CASADAS, start=4):
@@ -243,7 +243,7 @@ def test_username_opcional_mas_unico_quando_existe(atualizado: Database) -> None
         db.execute("INSERT INTO instagram_profiles(id, created_at, updated_at) VALUES ('ig-outra', ?, ?)", (TS, TS))
         with pytest.raises(INTEGRITY_ERRORS):
             db.execute("INSERT INTO instagram_profiles(id, username, created_at, updated_at)"
-                       " VALUES ('ig-dup', 'LUCAS.ALMEIDA1', ?, ?)", (TS, TS))
+                       " VALUES ('ig-dup', 'TADEU.QUINTELA1', ?, ?)", (TS, TS))
         with pytest.raises(INTEGRITY_ERRORS):
             db.execute("INSERT INTO instagram_profiles(id, username, created_at, updated_at)"
                        " VALUES ('ig-nula', NULL, ?, ?)", (TS, TS))                      # a coluna segue NOT NULL
@@ -283,7 +283,7 @@ def test_a_047_sobre_o_esquema_real_da_producao_aceita_pessoas_sem_conta(tmp_pat
             assert db.scalar(f"SELECT COUNT(*) FROM {tabela}") == 8, tabela                 # noqa: S608
         with pytest.raises(INTEGRITY_ERRORS):
             db.execute("INSERT INTO instagram_profiles(id, username, created_at, updated_at)"
-                       " VALUES ('ig-dup', 'Lucas.Almeida1', ?, ?)", (TS, TS))
+                       " VALUES ('ig-dup', 'Tadeu.Quintela1', ?, ?)", (TS, TS))
     finally:
         db.close()
 

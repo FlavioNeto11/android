@@ -40,7 +40,7 @@ def _grupo(gid: str, camada: str, ocorrencias: int, custo: float, **extra: objec
         "intervencoes": 1, "custo_total": custo, "estado": "open", "plan_item": None,
         "onde_alterar": {"arquivos": ["backend/app/taskqueue/scheduler.py"], "prova": "reinício com execução"},
         "exemplos": [{"run_id": f"r-{gid}-{i}", "attempt_id": f"r-{gid}-{i}:a1", "quando": "2026-10-04T08:00:00Z",
-                      "erro": "o app pede autenticação de lucas@exemplo.test"} for i in range(5)]}
+                      "erro": "o app pede autenticação de tadeu@exemplo.test"} for i in range(5)]}
     g.update(extra)
     return g
 

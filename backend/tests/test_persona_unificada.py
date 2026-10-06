@@ -95,8 +95,8 @@ def test_cria_uma_pessoa_sem_conta_com_visual_separado_da_voz(tmp_path: Path) ->
 def test_id_legado_da_tabela_personas_continua_resolvendo(tmp_path: Path) -> None:
     svc, repo, _secrets, db = build(tmp_path)
     try:
-        dto = svc.create_persona(PersonaCreate(name="Bruno Ferreira"))
-        db.execute("INSERT INTO personas(id, name, created_at, updated_at) VALUES ('persona-b1','Bruno',?,?)",
+        dto = svc.create_persona(PersonaCreate(name="Quillon Teixeira"))
+        db.execute("INSERT INTO personas(id, name, created_at, updated_at) VALUES ('persona-b1','Quillon',?,?)",
                    (dto.created_at, dto.updated_at))
         repo.update_profile(dto.id, {"persona_id": "persona-b1"})
         assert svc.get_persona("persona-b1").id == dto.id
@@ -152,11 +152,11 @@ def test_cadastro_com_persona_id_adota_a_pessoa_sem_conta(tmp_path: Path) -> Non
     svc, repo, _secrets, db = build(tmp_path)
     try:
         _com_instagram(db)
-        pessoa = svc.create_persona(PersonaCreate(name="Lucas Almeida", summary="corredor", traits=PersonaTraits(tone="animado")))
+        pessoa = svc.create_persona(PersonaCreate(name="Tadeu Quintela", summary="corredor", traits=PersonaTraits(tone="animado")))
         conta = svc.create_profile(novo("tadeu.quintela4821", SENHA, "android-01", persona_id=pessoa.id,
-                                        email="lucas@exemplo.com"))
+                                        email="tadeu@exemplo.com"))
         assert conta.id == pessoa.id and conta.username == "tadeu.quintela4821" and conta.summary == "corredor"
-        assert conta.first_name == "Lucas" and conta.email == "lucas@exemplo.com"   # nome já existia; e-mail entrou
+        assert conta.first_name == "Tadeu" and conta.email == "tadeu@exemplo.com"   # nome já existia; e-mail entrou
         assert conta.credential.configured and conta.instance_id == "android-01" and conta.accounts_count == 1
         assert [p.id for p in svc.list_profiles()] == [pessoa.id] and len(svc.list_personas()) == 1
         # A mesma pessoa não ganha segunda conta de cadastro; outra pessoa com conta também não é adotável.
@@ -174,21 +174,21 @@ def test_cadastro_com_persona_id_adota_a_pessoa_sem_conta(tmp_path: Path) -> Non
 def test_patch_persona_id_absorve_a_persona_sem_conta_e_recusa_outra_pessoa(tmp_path: Path) -> None:
     svc, repo, _secrets, db = build(tmp_path)
     try:
-        lucas = svc.create_profile(novo("tadeu.quintela4821", None, first_name="Lucas", last_name="Almeida"))
-        mariana = svc.create_profile(novo("luciana.bastos73519", None, first_name="Mariana", last_name="Costa"))
-        voz = svc.create_persona(PersonaCreate(name="Voz do Lucas", summary="corredor", persona_prompt="Curto.",
+        tadeu = svc.create_profile(novo("tadeu.quintela4821", None, first_name="Tadeu", last_name="Quintela"))
+        luciana = svc.create_profile(novo("luciana.bastos73519", None, first_name="Luciana", last_name="Bastos"))
+        voz = svc.create_persona(PersonaCreate(name="Voz do Tadeu", summary="corredor", persona_prompt="Curto.",
                                                traits={**VOZ, "appearance": "alto"}, gender="masculino"))
-        dto = svc.update_profile(lucas.id, ProfilePatch(persona_id=voz.id))
-        assert dto.id == lucas.id and dto.summary == "corredor" and dto.persona_prompt == "Curto."
+        dto = svc.update_profile(tadeu.id, ProfilePatch(persona_id=voz.id))
+        assert dto.id == tadeu.id and dto.summary == "corredor" and dto.persona_prompt == "Curto."
         assert dto.voice_gaps == [] and dto.visual.appearance == "alto" and dto.gender == "masculino"
-        assert dto.name == "Lucas Almeida"                                  # o nome do perfil manda
+        assert dto.name == "Tadeu Quintela"                                  # o nome do perfil manda
         assert repo.profile_row(voz.id) is None and len(svc.list_personas()) == 2
         # A persona de outra pessoa com conta não se "vincula": é outra pessoa.
         with pytest.raises(SocialError) as exc:
-            svc.update_profile(mariana.id, ProfilePatch(persona_id=lucas.id))
+            svc.update_profile(luciana.id, ProfilePatch(persona_id=tadeu.id))
         assert exc.value.code == "persona_in_use"
-        assert svc.get_profile(mariana.id).summary is None
-        svc.update_profile(mariana.id, ProfilePatch(persona_id=mariana.id))          # a própria: sem efeito
+        assert svc.get_profile(luciana.id).summary is None
+        svc.update_profile(luciana.id, ProfilePatch(persona_id=luciana.id))          # a própria: sem efeito
     finally:
         db.close()
 

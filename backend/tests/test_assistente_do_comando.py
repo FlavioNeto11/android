@@ -165,22 +165,22 @@ async def test_rotas_http(harness: Harness) -> None:
 
 
 async def test_comando_que_cita_a_persona_nao_trava_a_sucessora(harness: Harness) -> None:
-    """O texto guardado na execução é o INTEIRO ("peça para o Lucas…"); o destino dela está na foto (alvo ecoado).
+    """O texto guardado na execução é o INTEIRO ("peça para o Tadeu…"); o destino dela está na foto (alvo ecoado).
     Refinar parte do texto sem destinos, e a sucessora não cai em `alvos_nao_confirmados` nem perde a persona."""
     st = harness.state
     assert st is not None
-    lucas = st.social.create_profile(ProfileCreate(username=f"lucas.{pysecrets.token_hex(3)}",
-                                                   instance_id="android-02", first_name="Lucas",
+    tadeu = st.social.create_profile(ProfileCreate(username=f"tadeu.{pysecrets.token_hex(3)}",
+                                                   instance_id="android-02", first_name="Tadeu",
                                                    last_name="Teste")).id
-    comando = "peça para o Lucas abrir o QA Messenger e enviar uma mensagem"
+    comando = "peça para o Tadeu abrir o QA Messenger e enviar uma mensagem"
     run = st.runs.create(RunCreate(command=comando, mode="plan", idempotency_key=f"t-{pysecrets.token_hex(6)}",
-                                   targets=[RunTarget(profile_id=lucas, instance_ids=["android-02"])]))
+                                   targets=[RunTarget(profile_id=tadeu, instance_ids=["android-02"])]))
     await harness.wait_run(run.id, ("needs_input",))
     a = _assistente(harness)
     r = await a.refinar(CommandRefineBody(command=st.repo.run_row(run.id)["command"], run_id=run.id))
-    assert "Lucas" not in r.command
+    assert "Tadeu" not in r.command
     # Mesmo que a pessoa mande o texto com o destino, a sucessora nasce com o alvo da foto.
     nova, criada = a.sucessora(run.id, RunSuccessorBody(command=comando + " dizendo \"oi\" para QA-001"))
     assert criada and nova.instance_ids == ["android-02"]
     foto = loads(st.repo.run_row(nova.id)["targets"])
-    assert [(x["profile_id"], x["instance_id"]) for x in foto["alvos"]] == [(lucas, "android-02")]
+    assert [(x["profile_id"], x["instance_id"]) for x in foto["alvos"]] == [(tadeu, "android-02")]

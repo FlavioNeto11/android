@@ -166,10 +166,10 @@ _NOMES_PASSAM = [
     "mande para Łukasz",
     "envie para jOANA",
     "comente ❤ no post da joana silva",
-    "distribua: curta o post com a persona lucas",
+    "distribua: curta o post com a persona tadeu",
     "send a message to Uma",
     "mande para Do Van Minh",
-    "mande o arquivo para Bruno Dias",
+    "mande o arquivo para Quillon Dias",
     "mande para Ⓙⓞⓐⓝⓐ",
     "mande para ｊｏａｎａ",
     "curta o post da a​na",
@@ -194,7 +194,7 @@ def test_sem_lista_de_permissao_nem_recusa_por_proporcao() -> None:
     assert remover_entidades("joana pedro marcos ana") == "joana pedro marcos ana"
     assert remover_entidades("abra o Outlook e leia o e-mail mais recente") == "abra o Outlook e leia o e-mail mais recente"
     assert remover_entidades("ABRA O APP E CURTA O POST DA JOANA") == "ABRA O APP E CURTA O POST DA JOANA"
-    longo = "abra o app e mande para joana pedro marcos ana bruno carla diego elisa fabio gina"
+    longo = "abra o app e mande para joana pedro marcos ana quillon carla wagner elisa fabio gina"
     assert remover_entidades(longo) == longo
     # rodada C do 31.9 (decisão da orquestradora, 03/10): numeral solto vira `[numero]`; só a SEQUÊNCIA recusa
     assert remover_entidades("curta dois posts e comente três") == "curta [numero] posts e comente [numero]"
@@ -532,9 +532,9 @@ def test_a_c3_nao_depende_do_catalogo(tmp_path: Path) -> None:
     w = Mundo2(tmp_path, DecisorFalso())
     extra = [EntradaDeCatalogo("flow:x", "Enviar mensagem para Joana Silva no QA Messenger"),
              EntradaDeCatalogo("flow:y", "Abrir o perfil de @flavio.neto.11 e seguir"),
-             EntradaDeCatalogo("flow:z", "Curtir o post da persona Lucas", "lucas fornalhaskate")]
+             EntradaDeCatalogo("flow:z", "Curtir o post da persona Tadeu", "tadeu fornalhaskate")]
     cadeia = CadeiaObservada(sem_casamento=True)
-    for comando in ("curta o post da joana silva", "fale com @flavio.neto.11 sobre o post", "curta o post do lucas"):
+    for comando in ("curta o post da joana silva", "fale com @flavio.neto.11 sobre o post", "curta o post do tadeu"):
         com, sem = (w.consumidor.pedido(run_id="r", comando=comando, app="com.pocqa.messenger", catalogo=cat,
                                         cadeia=cadeia) for cat in ([*w.catalogo(), *extra], w.catalogo()))
         assert com is not None and sem is not None

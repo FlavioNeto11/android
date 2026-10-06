@@ -22,8 +22,8 @@ import { ProfilesPage } from './ProfilesPage';
 
 function pessoa(over: Partial<PersonaDTO> = {}): PersonaDTO {
   return {
-    id: 'ig-1', name: 'Mariana Costa', summary: null, username: 'luciana.bastos73519', display_name: 'Mariana Costa',
-    first_name: 'Mariana', last_name: 'Costa', birth_date: null, email: null, persona_id: 'ig-1', persona_name: 'Mariana Costa',
+    id: 'ig-1', name: 'Luciana Bastos', summary: null, username: 'luciana.bastos73519', display_name: 'Luciana Bastos',
+    first_name: 'Luciana', last_name: 'Bastos', birth_date: null, email: null, persona_id: 'ig-1', persona_name: 'Luciana Bastos',
     status: 'active', instance_id: null, locality: null, offline_policy: 'wait',
     credential: { configured: false, login_identifier: null, status: null, failed_attempts: 0, blocked_until: null,
                   updated_at: null, last_used_at: null },
@@ -110,7 +110,7 @@ describe('nova persona em lote', () => {
   it('quantidade 1 (padrão) é o fluxo de sempre: rascunho único, sem opções de lote nem a rota de lote', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([]));
     backend.on('GET', /^\/api\/ai$/, () => json(IA_PAGA));
-    backend.on('POST', /^\/api\/personas\/generate$/, () => json(RASCUNHO('Helena Prado')));
+    backend.on('POST', /^\/api\/personas\/generate$/, () => json(RASCUNHO('Elaine Prado')));
     await render();
     await click(byRole('button', /Nova persona a partir de uma descrição/i));
     await waitFor(() => text().includes('É uma chamada paga de IA'));

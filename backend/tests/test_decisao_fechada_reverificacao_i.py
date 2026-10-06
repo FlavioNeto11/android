@@ -5,13 +5,13 @@ por lista de BLOQUEIO, sem lista de permissão, as que a orquestradora mandou fe
 
 - B3/L3: a locução de entrar com determinante no meio e os verbos de credencial ("inicie a sessão com", "faça seu acesso
   com", "abra a sessão com", "efetue o acesso com", "identifique-se", "desbloqueie o app com");
-- B4: o valor depois do destino cortado pelo extrator ("… com o perfil lucas, girassol", "pelo lucas, girassol");
-- B5: o par com vírgula no trio "<app>, <nome do catálogo>, <valor>" e no e-mail ("lucas@correio.net, girassol");
+- B4: o valor depois do destino cortado pelo extrator ("… com o perfil tadeu, girassol", "pelo tadeu, girassol");
+- B5: o par com vírgula no trio "<app>, <nome do catálogo>, <valor>" e no e-mail ("tadeu@correio.net, girassol");
 - B7: o conector colado por hífen ("com-girassol");
 - L1: o verbo de pôr valor num comando com verbo de entrar ("informe", "cole", "bote", "preencha"; "digitando");
 - L2: o futuro, o plural e o particípio ("entrarei", "loguem", "já tinha entrado");
-- L4/L5: os eufemismos ("o acesso é", "pra entrar no insta é", "na segunda caixa", "a do lucas é") e a conta do
-  catálogo como identidade ("use o lucas com x", "o lucas usa x", "como lucas, x");
+- L4/L5: os eufemismos ("o acesso é", "pra entrar no insta é", "na segunda caixa", "a do tadeu é") e a conta do
+  catálogo como identidade ("use o tadeu com x", "o tadeu usa x", "como tadeu, x");
 - E1/E2 e o provedor: o domínio de topo solto depois do e-mail ("zilda@correio, net"), o e-mail sem provedor conhecido
   ("para zilda exemplo net") e o fragmento de provedor ou domínio de topo ao lado de `[email]`, `[usuario]` ou handle com
   ponto (mascarado; sem âncora, passa);
@@ -49,19 +49,19 @@ FECHADAS_C7: list[tuple[str, str]] = [
     ('entra a instagram amb girassol i fes like', 'catalao'),
     ('o acesso do insta é girassol, curta a foto da marina', 'L4'), ('o acesso é girassol', 'L4'),
     ('pra entrar no insta é girassol', 'L4'), ('entre no insta e na caixa de baixo girassol', 'L4'),
-    ('entre no insta e na segunda caixa girassol', 'L4'), ('a do lucas é girassol, curta a foto', 'L4'),
+    ('entre no insta e na segunda caixa girassol', 'L4'), ('a do tadeu é girassol, curta a foto', 'L4'),
     ('inicie a sessão com girassol', 'B3'), ('inicie sua sessão com girassol', 'B3'),
     ('inicia a sessão com girassol', 'B3'), ('faça acesso com girassol', 'B3'), ('faça seu acesso com girassol', 'B3'),
-    ('no instagram use lucas com girassol', 'L5'), ('use lucas com girassol e curta', 'L5'),
-    ('no instagram use o lucas com girassol', 'L5'), ('como lucas, girassol, curta a foto da marina', 'L5'),
-    ('o lucas usa girassol, curta a foto da marina', 'L5'), ('instagram, lucas, girassol', 'B5'),
-    ('instagram, lucas, girassol, curtir', 'B5'), ('lucas@correio.net, girassol', 'B5'),
-    ('mande para lucas@correio.net, girassol', 'B5'), ('curta a foto da marina com o perfil lucas, girassol', 'B4'),
-    ('curta a foto da marina com o perfil lucas e girassol', 'B4'),
-    ('curta a foto da marina com a persona lucas, girassol', 'B4'),
-    ('curta a foto da marina pelo lucas, girassol', 'B4'), ('pelo lucas, girassol, curta a foto da marina', 'B4'),
-    ('android-01, lucas, girassol, curta a foto da marina', 'B4'),
-    ('no android-01, lucas, girassol, curta a foto da marina', 'B4'),
+    ('no instagram use tadeu com girassol', 'L5'), ('use tadeu com girassol e curta', 'L5'),
+    ('no instagram use o tadeu com girassol', 'L5'), ('como tadeu, girassol, curta a foto da marina', 'L5'),
+    ('o tadeu usa girassol, curta a foto da marina', 'L5'), ('instagram, tadeu, girassol', 'B5'),
+    ('instagram, tadeu, girassol, curtir', 'B5'), ('tadeu@correio.net, girassol', 'B5'),
+    ('mande para tadeu@correio.net, girassol', 'B5'), ('curta a foto da marina com o perfil tadeu, girassol', 'B4'),
+    ('curta a foto da marina com o perfil tadeu e girassol', 'B4'),
+    ('curta a foto da marina com a persona tadeu, girassol', 'B4'),
+    ('curta a foto da marina pelo tadeu, girassol', 'B4'), ('pelo tadeu, girassol, curta a foto da marina', 'B4'),
+    ('android-01, tadeu, girassol, curta a foto da marina', 'B4'),
+    ('no android-01, tadeu, girassol, curta a foto da marina', 'B4'),
 ]
 #: As 37 formas das famílias B1, B2, B6, B8 e L6: fechadas pela A-média (31.20, decisão do dono).
 A_MEDIA: list[tuple[str, str]] = [
@@ -111,9 +111,9 @@ SONDAS_H_RECUSAM: list[str] = [
     'identifique-se com girassol e curta o post da Marina', 'logg dich mit girassol ein und like Marinas Beitrag',
     'la misma del banco es girassol, dale like al post de Marina',
     'a mesma do banco é girassol, curta o post da Marina', 'lo que tecleo es girassol, dale like al post de Marina',
-    'o lema é girassol, curta o post da Marina', 'primeiro campo lucas, segundo girassol, curta o post da Marina',
-    'usuário: lucas e girassol. curta o post da Marina', 'usuário lucas e girassol, curta o post da Marina',
-    'usuario lucas\ngirassol\ncurta o post da Marina', 'digite gi ra ss ol e curta o post da Marina',
+    'o lema é girassol, curta o post da Marina', 'primeiro campo tadeu, segundo girassol, curta o post da Marina',
+    'usuário: tadeu e girassol. curta o post da Marina', 'usuário tadeu e girassol, curta o post da Marina',
+    'usuario tadeu\ngirassol\ncurta o post da Marina', 'digite gi ra ss ol e curta o post da Marina',
     'digite gir ass ol e curta o post da Marina',
     'as letras são ge, i, erre, a; depois esse, esse, o, ele. curta o post', 'mande a foto para zilda no g mail',
     'mande a foto para zilda no g-mail', 'mande a foto para zilda, hot mail', 'mande a foto para zilda, provedor gmail',
@@ -135,8 +135,8 @@ E_USE_FECHADO: list[str] = [
 #: Residual aceito pelo dono ou por desenho (rodada I): sem gatilho e conversa/chat.
 NAO_ENTRA: list[str] = [
     'entre na conversa com girassol', 'entre no chat com girassol e curta',
-    'lucas e girassol, curta a foto da marina', 'lucas, girassol, curta a foto da marina',
-    'lucas girassol curta a foto', '@tadeu.quintela4821, girassol, curta a foto',
+    'tadeu e girassol, curta a foto da marina', 'tadeu, girassol, curta a foto da marina',
+    'tadeu girassol curta a foto', '@tadeu.quintela4821, girassol, curta a foto',
     'tadeu.quintela4821, girassol, curta a foto', 'marina, girassol, curta a foto',
     '@zilda.prado, girassol, curta a foto', 'zilda.prado e girassol, curta a foto',
 ]
@@ -146,18 +146,18 @@ NAO_ENTRA: list[str] = [
 CUSTO_DA_A_MEDIA: list[str] = [
     # forma A (31.18)
     "entre no insta", "entre no insta e curta as 3 fotos", "entre no insta e veja o post de 2024",
-    "entre no insta e use 1987", "entre pela Lucas e curta a foto da Marina", "entre como @tadeu.quintela4821 e curta o post",
+    "entre no insta e use 1987", "entre pela Tadeu e curta a foto da Marina", "entre como @tadeu.quintela4821 e curta o post",
     # rodada E
-    "entre no perfil da Marina e curta", "acesse o perfil da Ana e curta a última foto", "entre pela Lucas e curta",
+    "entre no perfil da Marina e curta", "acesse o perfil da Ana e curta a última foto", "entre pela Tadeu e curta",
     "log in to the app and like the post", "inicie sessão no app", "pesquise por girassol e entre no primeiro perfil",
     "entra no outlook e lê o e-mail",
     # rodada F e H (o destino isento com o verbo de entrar)
-    "log into the lucas profile and like",
+    "log into the tadeu profile and like",
     # rodada G
     "entre pela Girassol e curta", "entre como @girassol.oficial e curta",
     # rodada H (o estado de entrar, a navegação e o número comum com o verbo)
-    "verifique se o lucas está logado", "o lucas entrou? curta a foto", "acesse o perfil da Marina usando o navegador",
-    "entre no app e curta a foto da Marina", "acesse o perfil da Marina e curta", "entre no insta e mande 50 reais pro bruno",
+    "verifique se o tadeu está logado", "o tadeu entrou? curta a foto", "acesse o perfil da Marina usando o navegador",
+    "entre no app e curta a foto da Marina", "acesse o perfil da Marina e curta", "entre no insta e mande 50 reais pro quillon",
     "entre no insta e curta o post de 2023 da Marina", "entre no insta\ne curta 3 fotos",
     # 31.20 (rodada I): o destino cortado com o verbo e o destravar sem conector
     "no android-01, entre no instagram e curta", "entre no instagram pelo android-01 e curta",
@@ -211,8 +211,8 @@ def test_o_custo_da_a_media(comando: str, girassol: bool) -> None:
 
 @pytest.mark.parametrize(("comando", "motivo"), [
     # dentro da exceção do objeto pessoa ou conversa, os outros gatilhos seguem valendo
-    ("entre na conversa com a marina e digite oi", "c7_gatilho"), ("entre no chat do bruno, usuario lucas", "c7_gatilho"),
-    ("entre na conversa com a marina", None), ("entre no chat do bruno e responda", None),
+    ("entre na conversa com a marina e digite oi", "c7_gatilho"), ("entre no chat do quillon, usuario tadeu", "c7_gatilho"),
+    ("entre na conversa com a marina", None), ("entre no chat do quillon e responda", None),
     ("entre em contato com a Ana e mande oi", None), ("desbloqueie o contato da marina", None),
     # o verbo no futuro, no passado e nas locuções, em qualquer posição
     ("curta a foto e depois entre no feed", "c7_gatilho"), ("já entrei no insta, curta a foto", "c7_gatilho"),
@@ -226,8 +226,8 @@ def test_a_regra_da_a_media(comando: str, motivo: str | None) -> None:
 
 @pytest.mark.parametrize("comando", [
     # L5 estendida (orquestradora, depois do 31.20 de lista): a declaração de identidade "sendo <nome do catálogo>,"
-    "sendo o lucas, girassol, curta a foto da marina", "sendo o lucas, 4242, curta a foto da marina",
-    "sendo o lucas, tulipa42, curta a foto da marina", "sendo lucas, girassol, curta",
+    "sendo o tadeu, girassol, curta a foto da marina", "sendo o tadeu, 4242, curta a foto da marina",
+    "sendo o tadeu, tulipa42, curta a foto da marina", "sendo tadeu, girassol, curta",
 ])
 def test_sendo_o_nome_do_catalogo_com_valor_recusa(comando: str) -> None:
     for girassol in (False, True):
@@ -261,7 +261,7 @@ def test_o_com_so_e_dominio_depois_do_endereco_sem_ponto(comando: str, saida: st
     ("a Zilda Prado está no gmail", "a Zilda Prado está no gmail"),
     ("ela usa gmail, me lembra de responder", "ela usa gmail, me lembra de responder"),
     # o provedor que também é app fica ao lado do @handle ("a live do Instagram") e longe do e-mail
-    ("comente na live do @lucas", "comente na live do [usuario]"),
+    ("comente na live do @tadeu", "comente na live do [usuario]"),
     ("leia o último e-mail do outlook e me diga o assunto", "leia o último e-mail do outlook e me diga o assunto"),
     ("siga maria.clara no instagram", "siga maria.clara no instagram"),
 ])
@@ -303,7 +303,7 @@ def test_o_residual_declarado_continua_passando(comando: str, girassol: bool) ->
 
 @pytest.mark.parametrize("comando", [
     # o valor depois do destino cortado: o nome do catálogo ali é valor (G-4)
-    "pelo lucas, girassol, curta a foto da marina", "pelo lucas, bruno, curta a foto da marina",
+    "pelo tadeu, girassol, curta a foto da marina", "pelo tadeu, quillon, curta a foto da marina",
 ])
 def test_o_nome_do_catalogo_depois_do_corte_e_valor(comando: str) -> None:
     for girassol in (False, True):
@@ -313,19 +313,19 @@ def test_o_nome_do_catalogo_depois_do_corte_e_valor(comando: str) -> None:
 @pytest.mark.parametrize("comando", [
     # o destino cortado seguido de verbo, advérbio ou lugar; a conta do catálogo sem valor (com o verbo de entrar
     # recusam desde a A-média: `CUSTO_DA_A_MEDIA`)
-    "curta a foto da Marina pela Lucas", "curta a foto da marina com o perfil lucas",
+    "curta a foto da Marina pela Tadeu", "curta a foto da marina com o perfil tadeu",
     "no android-01, abra o instagram e curta", "abra o instagram pelo android-01 e curta",
-    "use o lucas pra curtir a foto da marina", "como lucas, curta a foto da marina", "curta as fotos do lucas, bruno e andre",
-    "sendo o lucas, curta a foto da marina",
+    "use o tadeu pra curtir a foto da marina", "como tadeu, curta a foto da marina", "curta as fotos do tadeu, quillon e ottilie",
+    "sendo o tadeu, curta a foto da marina",
     # o verbo de pôr valor sem verbo de entrar
     "preencha a legenda e poste", "abra o insta e cole o link no direct",
     # "entre" preposição (controles da rodada I)
-    'escolha entre a foto com a marina e a do bruno, e curta a escolhida',
+    'escolha entre a foto com a marina e a do quillon, e curta a escolhida',
     'entre as fotos da marina, curta a mais recente',
-    'escolha entre o post do bruno e o da marina e comente o que preferir',
+    'escolha entre o post do quillon e o da marina e comente o que preferir',
     'entre os seguidores novos, siga os três primeiros',
-    "escolha entre a Marina e a Ana", "a entrega é com a marina, entre 8 e 12", "entre a marina e o bruno, siga o bruno",
-    "abra a conversa entre a marina e o lucas e leia",
+    "escolha entre a Marina e a Ana", "a entrega é com a marina, entre 8 e 12", "entre a marina e o quillon, siga o quillon",
+    "abra a conversa entre a marina e o tadeu e leia",
 ])
 def test_os_controles_do_31_20_passam(comando: str) -> None:
     for girassol in (False, True):

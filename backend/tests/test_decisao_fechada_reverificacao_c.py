@@ -58,8 +58,8 @@ VAZAMENTOS_DA_RODADA_C = [
     ("pa55word girassol", "c7_ofuscado"),
     ("53nh4 girassol", "c7_ofuscado"),
     # bloqueante 4: o par sem verbo de entrar
-    ("login: lucas / girassol", "c7_eufemismo"),
-    ("usuário lucas, acesso girassol, entra", "c7_eufemismo"),
+    ("login: tadeu / girassol", "c7_eufemismo"),
+    ("usuário tadeu, acesso girassol, entra", "c7_eufemismo"),
     # bloqueante 5: e-mail soletrado
     ("manda para zilda at correio net hoje", "email_ofuscado"),
     ("ZILDA AT CORREIO NET", "email_ofuscado"),
@@ -107,7 +107,7 @@ def test_os_27_nao_chegam_ao_decisor_e_a_linha_grava_o_motivo(tmp_path: Path, po
     # verbo de tocar com um ou dois números, lista numerada, hashtag, prefixo de chave que é palavra
     "toque no botão de curtir 2 vezes", "aperte o 3 e depois volte", "curta os posts 1, 2 e 3", "poste com #2024 e #tbt",
     "siga o perfil asiatico de culinária", "poste à meia-noite",
-    # rótulo sem o par ("faça login", "user lucas", "conta: lucas" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
+    # rótulo sem o par ("faça login", "user tadeu", "conta: tadeu" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
     "passe para o próximo post",
 ])
 def test_controles_passam(comando: str) -> None:
@@ -163,11 +163,11 @@ def test_escrita_nao_latina_e_email_soletrado(comando: str, motivo: str) -> None
 def test_sem_destinos_recorta_do_original_e_nao_normaliza() -> None:
     """Bloqueante 1: com "ﬁ", "ß" ou acento decomposto, o `_normal` muda o comprimento, e o extractor devolvia o texto
     normalizado (minúsculas, sem acento): a chave e o endereço em inglês perdiam a caixa e passavam pelo filtro."""
-    x = TargetExtractor(CatalogoDeDestinos(personas=(PersonaNomeavel("p-lucas", ("Lucas",), ()),),
+    x = TargetExtractor(CatalogoDeDestinos(personas=(PersonaNomeavel("p-tadeu", ("Tadeu",), ()),),
                                            aparelhos=("android-01",)))
-    assert x.extrair(f"com a persona Lucas, conﬁrme com {CHAVE} no app").command_sem_destinos == (
+    assert x.extrair(f"com a persona Tadeu, conﬁrme com {CHAVE} no app").command_sem_destinos == (
         f"conﬁrme com {CHAVE} no app")
-    assert x.extrair("com a persona Lucas, curta o post da José no android-01").command_sem_destinos == (
+    assert x.extrair("com a persona Tadeu, curta o post da José no android-01").command_sem_destinos == (
         "curta o post da José")
     assert _sem_destinos("Straße: 742 Evergreen Terrace, manda flores") == "Straße: 742 Evergreen Terrace, manda flores"
     assert _sem_destinos(f"conﬁrme com {CHAVE} no app") == f"conﬁrme com {CHAVE} no app"

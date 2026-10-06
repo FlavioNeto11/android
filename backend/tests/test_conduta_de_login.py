@@ -1,7 +1,7 @@
 """Conduta do login automático (ADR-055, 29/09/2026): um envio sem sucesso para tudo até uma pessoa olhar, teto
 diário por conta, e conta bloqueada nunca recebe a senha.
 
-O caso real: a juliana recebeu seis envios de senha em 4h25 em 18/09. O freio de antes (3 falhas, 300 s de espera)
+O caso real: a fabiana recebeu seis envios de senha em 4h25 em 18/09. O freio de antes (3 falhas, 300 s de espera)
 se repetia sem fim: a cada intervalo vencido, mais três envios reais. E o motor de sessão não olhava o status do
 PERFIL — só a credencial —, então nada impedia digitar a senha de uma conta que o próprio sistema já tinha dado por
 bloqueada.
@@ -273,8 +273,8 @@ def test_leitura_da_sessao_reconhece_o_login_parado(banco: Database) -> None:
     """A leitura do banco (`AppSessionProvider`) tem de entregar o estado: antes, `review` caía em "utilizável" (não
     é `invalid` e tem consentimento) e o recurso convergia para um login automático que o motor recusaria."""
     _identidades(banco)
-    banco.execute("UPDATE account_credentials SET status=? WHERE account_id='acc-p-lucas'", (CREDENCIAL_EM_REVISAO,))
-    banco.execute("UPDATE account_sessions SET status='auth_required' WHERE account_id='acc-p-lucas'"
+    banco.execute("UPDATE account_credentials SET status=? WHERE account_id='acc-p-tadeu'", (CREDENCIAL_EM_REVISAO,))
+    banco.execute("UPDATE account_sessions SET status='auth_required' WHERE account_id='acc-p-tadeu'"
                   " AND instance_id='android-01'")
     p = _sessoes(banco)
     lido = p.read_current_state(SESSAO_LIDA.ref, Target("android-01"))

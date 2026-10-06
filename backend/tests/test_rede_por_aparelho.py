@@ -184,8 +184,8 @@ async def test_atribuicao_em_lote_previa_tudo_ou_nada_e_confirmacao_por_aparelho
     st = parque.state
     assert st is not None
     # android-01 tem conta real vinculada; android-02 está em quarentena (conta travada logada).
-    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01"))
-    st.social_repo.marcar_conta_travada("android-02", "felipe.teste", "tela de desafio", "declarado",
+    st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id="android-01"))
+    st.social_repo.marcar_conta_travada("android-02", "gilberto.teste", "tela de desafio", "declarado",
                                         visto_por="dono")
     async with _cliente(parque) as c:
         vpn = await _perfil(c, "Casa")
@@ -197,7 +197,7 @@ async def test_atribuicao_em_lote_previa_tudo_ou_nada_e_confirmacao_por_aparelho
         previa = {d["id"]: d for d in r.json()["devices"]}
         assert r.json()["accepted"] is False
         assert previa["android-01"]["code"] == "real_account_confirm_required"
-        assert "@lucas.teste" in previa["android-01"]["reason"]
+        assert "@tadeu.teste" in previa["android-01"]["reason"]
         assert previa["android-02"]["code"] == "aparelho_em_quarentena"
         assert previa["android-03"]["outcome"] == "would_assign" and previa["android-03"]["reapply"] is True
         assert previa[LOJA]["code"] == "store_instance"
@@ -369,7 +369,7 @@ async def test_medicao_so_verifica_com_os_apps_das_contas_do_aparelho(parque: Ha
     """O navegador sozinho não prova o Instagram: com conta vinculada, cada app dela tem de estar medido `ok`."""
     st = parque.state
     assert st is not None
-    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01"))
+    st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id="android-01"))
     exigidos = rede.apps_exigidos(st, "android-01")
     assert "com.instagram.android" in exigidos and rede.apps_exigidos(st, "android-02") == []
     async with _cliente(parque) as c:
@@ -629,7 +629,7 @@ async def test_politica_livre_com_saida_diferente_mostra_o_estado_e_nao_segura_t
 async def test_previa_avisa_saida_dedicada_compartilhada_e_troca_por_compartilhada(parque: Harness) -> None:
     st = parque.state
     assert st is not None
-    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-03"))
+    st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id="android-03"))
     async with _cliente(parque) as c:
         dedicada = await _perfil(c, "Dedicada-01", params={"egress_esperado": DEDICADA})
         comum = await _perfil(c, "Central")
@@ -699,7 +699,7 @@ async def test_previa_avisa_saida_dedicada_compartilhada_e_troca_por_compartilha
 async def test_verify_e_reapply_registram_o_pedido_sem_fingir_aplicacao(parque: Harness) -> None:
     st = parque.state
     assert st is not None
-    st.social_repo.marcar_conta_travada("android-02", "felipe.teste", "tela de desafio", "declarado",
+    st.social_repo.marcar_conta_travada("android-02", "gilberto.teste", "tela de desafio", "declarado",
                                         visto_por="dono")
     async with _cliente(parque) as c:
         vpn = await _perfil(c, "Casa")
@@ -743,8 +743,8 @@ async def test_verify_e_reapply_registram_o_pedido_sem_fingir_aplicacao(parque: 
 async def test_visao_por_aparelho_com_legado_rebaixado_e_pendencias(parque: Harness) -> None:
     st = parque.state
     assert st is not None
-    st.social.create_profile(ProfileCreate(username="lucas.teste", instance_id="android-01"))
-    st.social_repo.marcar_conta_travada("android-02", "felipe.teste", "tela de desafio", "declarado",
+    st.social.create_profile(ProfileCreate(username="tadeu.teste", instance_id="android-01"))
+    st.social_repo.marcar_conta_travada("android-02", "gilberto.teste", "tela de desafio", "declarado",
                                         visto_por="dono")
     agora = now_iso()
     st.db.execute("INSERT INTO proxy_profiles(id, name, host, port, created_at) VALUES ('px','Lab','10.0.0.5',3128,?)",
@@ -769,7 +769,7 @@ async def test_visao_por_aparelho_com_legado_rebaixado_e_pendencias(parque: Harn
     assert a3["legacy_proxy"]["value"] == "10.0.0.5:3128" and a3["pending"] is None
     assert aparelhos["android-02"]["effective_state"] == "pendente"
     assert aparelhos["android-02"]["restriction"] and "quarentena" in aparelhos["android-02"]["restriction"]
-    assert aparelhos["android-01"]["real_account"] == "@lucas.teste (Instagram)"      # 29.142: o app ao lado
+    assert aparelhos["android-01"]["real_account"] == "@tadeu.teste (Instagram)"      # 29.142: o app ao lado
     assert aparelhos["android-01"]["effective_state"] is None and aparelhos["android-01"]["last_measurement"] is None
 
     # Com rede pedida, a linha nova manda, e a última medição aparece (a pendência some da quarentena).

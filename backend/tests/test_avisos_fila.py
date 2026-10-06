@@ -83,14 +83,14 @@ def test_pedido_aviso_vale_para_todo_tipo_e_so_o_que_pede_pessoa_leva_link() -> 
 
 def test_a_mensagem_nao_leva_dado_de_persona_conta_nem_conteudo() -> None:
     dados = {"approval": {"id": "ap1", "summary": "Responder à Maria sobre o pedido 4455", "target": "@maria.souza",
-                          "content": "oi, tudo bem? me passa o seu CPF", "profile_id": "persona-lucas"},
-             "profile_id": "persona-lucas", "instance_id": "android-01", "detail": "conta lucas.real"}
+                          "content": "oi, tudo bem? me passa o seu CPF", "profile_id": "persona-tadeu"},
+             "profile_id": "persona-tadeu", "instance_id": "android-01", "detail": "conta tadeu.real"}
     for kind in ("approval.pending", "session.needs_person"):
         aviso = aviso_de_evento(kind, {**dados, "active": True}, 5, PAINEL)
         assert aviso is not None
         texto = texto_da_mensagem(aviso.titulo, aviso.corpo, aviso.link)
         # O aparelho pode sair (28.31): "android-01" não é pessoa, conta nem contato.
-        for proibido in ("Maria", "4455", "maria.souza", "CPF", "persona-lucas", "lucas"):
+        for proibido in ("Maria", "4455", "maria.souza", "CPF", "persona-tadeu", "tadeu"):
             assert proibido not in texto, (kind, proibido)
     aviso = aviso_de_evento("run.updated", {"run": {"id": "r1", "status": "needs_input", "command": "mande oi ao Pedro",
                                                     "status_detail": "qual é o telefone do Pedro?"}}, 6, PAINEL)

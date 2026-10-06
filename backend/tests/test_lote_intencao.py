@@ -52,7 +52,7 @@ def _resposta(escolha: str, p: float) -> RespostaDeDecisao:
 
 
 class Mundo3:
-    """Duas habilidades que empatam, uma persona (Lucas), um aparelho e a sombra "do runtime" gravando no mesmo banco."""
+    """Duas habilidades que empatam, uma persona (Tadeu), um aparelho e a sombra "do runtime" gravando no mesmo banco."""
 
     def __init__(self, tmp: Path, *, respostas: bool = True, postado: bool | None = True) -> None:
         self.db = banco(tmp, "lote.sqlite3")
@@ -62,7 +62,7 @@ class Mundo3:
         self.db.execute("INSERT INTO instances(id, idx, avd_name, console_port, system_port, mjpeg_port,"
                         " chromedriver_port) VALUES ('android-01', 1, 'a1', 19001, 19101, 19201, 19301)")
         self.db.execute("INSERT INTO instagram_profiles(id, username, first_name, created_at, updated_at)"
-                        " VALUES ('p-lucas', 'lucas.teste', 'Lucas', ?, ?)", (ANTES, ANTES))
+                        " VALUES ('p-tadeu', 'tadeu.teste', 'Tadeu', ?, ?)", (ANTES, ANTES))
         EventBus(self.db).emit("log", "início do teste")              # o horizonte dos eventos fica antes das linhas
         decisor = DecisorFalso({PERGUNTA_CATALOGO: _resposta(IDS["ig.abrir_conversa"], 0.95),
                                 PERGUNTA_DESEMPATE: _resposta(IDS["ig.abrir_numero"], 0.9)} if respostas else {},
@@ -73,7 +73,7 @@ class Mundo3:
 
     def viva(self, run_id: str, comando: str) -> None:
         """A execução com a foto (051) e a sombra da intenção do runtime observando-a, como depois do `_plan`."""
-        foto = {"alvos": [{"instance_id": "android-01", "profile_id": "p-lucas"}],
+        foto = {"alvos": [{"instance_id": "android-01", "profile_id": "p-tadeu"}],
                 "command_sem_destinos": self.lote.runs.sem_destinos(comando)}
         self.db.execute("INSERT INTO runs(id, idempotency_key, command, mode, status, instance_ids, created_at, targets,"
                         " app_ids) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -134,11 +134,11 @@ def test_o_que_saiu_volta_igual_pelo_hash_com_as_duas_perguntas(w: Mundo3) -> No
 
 
 def test_destino_e_numero_saem_como_a_sombra_mandou(w: Mundo3) -> None:
-    """O destino ("com a persona Lucas") sai pela foto e pelo catálogo de destinos do runtime; o número vira marcador."""
-    w.viva("run-2", "abra a conversa com 3 no instagram com a persona Lucas")
+    """O destino ("com a persona Tadeu") sai pela foto e pelo catálogo de destinos do runtime; o número vira marcador."""
+    w.viva("run-2", "abra a conversa com 3 no instagram com a persona Tadeu")
     [caso] = w.ler().casos
     assert caso.salvaguarda == "c"
-    assert "Lucas" not in caso.pedido.estado["comando"] and "3" not in caso.pedido.estado["comando"]
+    assert "Tadeu" not in caso.pedido.estado["comando"] and "3" not in caso.pedido.estado["comando"]
 
 
 def test_hash_diferente_fica_fora(w: Mundo3) -> None:
@@ -176,13 +176,13 @@ def test_remocao_depois_da_linha_exclui_a_b_mas_nao_o_hash(w: Mundo3, remover: s
         w.db.execute("UPDATE instances SET retired_at=? WHERE id='android-01'", (depois,))
     elif remover == "lapide":
         w.db.execute("INSERT INTO contas_retiradas(app_id, handle_sha256, retirada_em, profile_id) VALUES (?,?,?,?)",
-                     ("instagram", "a" * 64, depois, "p-lucas"))
+                     ("instagram", "a" * 64, depois, "p-tadeu"))
     elif remover == "persona":
         EventBus(w.db).emit("log", MENSAGEM_PERFIL_REMOVIDO + ", com a credencial apagada do cofre")
     elif remover == "conta":
         EventBus(w.db).emit("log", MENSAGEM_CONTA_REMOVIDA)
     else:
-        w.db.execute("UPDATE instagram_profiles SET updated_at=? WHERE id='p-lucas'", (depois,))
+        w.db.execute("UPDATE instagram_profiles SET updated_at=? WHERE id='p-tadeu'", (depois,))
     assert ultima_remocao(w.db, DESDE) is not None
     assert [c.salvaguarda for c in w.ler().casos] == ["c"]                 # o hash prova: a remoção não importa
     _sem_hash(w)

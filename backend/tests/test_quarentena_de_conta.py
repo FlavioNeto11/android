@@ -1,18 +1,18 @@
 """Quarentena do aparelho com conta travada, sem reset automático, rastro de status e aviso na saúde (ADR-055).
 
 O dono, 28/09/2026: "toda vez que para na tela de confirmar se você é humano é uma confirmação que a conta está
-bloqueada; essa é uma das formas de perder a conta". Cinco das oito contas do Instagram estão bloqueadas (beatriz,
-felipe, juliana, mariana, thiago). A investigação achou buracos que deixavam a regra dele sem efeito, e cada bloco
+bloqueada; essa é uma das formas de perder a conta". Cinco das oito contas do Instagram estão bloqueadas (sueli,
+gilberto, fabiana, luciana, osvaldo). A investigação achou buracos que deixavam a regra dele sem efeito, e cada bloco
 daqui reproduz um:
 
 1. a plataforma não sabia, POR APARELHO, que ali estava logada uma conta travada: o android-04 ficou no ar com o
-   felipe no desafio e sem vínculo, e aceitaria outra persona (vínculo, troca de aparelho, cadastro);
+   gilberto no desafio e sem vínculo, e aceitaria outra persona (vínculo, troca de aparelho, cadastro);
 2. os comandos do painel (open_app, home, back, restart, reset, app.distribute), as entregas ao ligar e o reinício
-   por interrupção não conferiam nada — em 27/09 01:47Z um `open_app` no android-04 com o felipe já bloqueado;
-3. o 3º degrau da escada de reparo era `reset` sem olhar a conta logada (apagou a sessão do andre em 24/09);
+   por interrupção não conferiam nada — em 27/09 01:47Z um `open_app` no android-04 com o gilberto já bloqueado;
+3. o 3º degrau da escada de reparo era `reset` sem olhar a conta logada (apagou a sessão do ottilie em 24/09);
 4. mudar o status do perfil não deixava evento, nem quando, nem por quê, nem de onde;
 5. `/api/health` não acusava conta travada logada em aparelho ligado;
-6. `instances.account_label` desatualizado (qa-user-04 no android-04, que tem o felipe) enganou um experimento.
+6. `instances.account_label` desatualizado (qa-user-04 no android-04, que tem o gilberto) enganou um experimento.
 
 Prova: `simulated` (harness com aparelho falso). A migração roda em SQLite de verdade; no PostgreSQL só quando
 `TEST_DATABASE_URL` existe — sem ela, do PostgreSQL só a renderização do dialeto é conferida.
@@ -48,7 +48,7 @@ from .test_loja_de_apps import estado, falsificar, ligar, versao
 NOVA = "054_protecao_de_contas"
 ORIGEM = Path(db_mod.__file__).resolve().parents[1] / "migrations"
 TS = "2026-09-28T12:00:00.000Z"
-FELIPE = "gilberto.vasconcelos517"
+GILBERTO = "gilberto.vasconcelos517"
 #: 31.101: a 054 é migração aplicada (não se edita) e traz a conta do android-04 como literal. O teste da carga lê a
 #: conta da própria migração, para o nome real não voltar a este arquivo.
 HANDLE_DA_054 = re.search(r"SELECT 'android-04', '([^']+)'",
@@ -64,16 +64,16 @@ def _anterior() -> str:
 
 # ============================================================ 0) a migração 054, nos dois bancos
 def _semear_central(db: Database, handle: str) -> None:
-    """O retrato do ambiente central antes da 054: o android-04 no parque, o felipe bloqueado e sem vínculo."""
+    """O retrato do ambiente central antes da 054: o android-04 no parque, o gilberto bloqueado e sem vínculo."""
     db.execute("INSERT INTO apps(id, name, package, builtin)"
                " VALUES ('instagram','Instagram','com.instagram.android',1)")
     db.execute("INSERT INTO instances(id, idx, avd_name, console_port, system_port, mjpeg_port, chromedriver_port,"
                " app_id, account_label) VALUES (?,?,?,?,?,?,?,?,?)",
                ("android-04", 4, "android-04", 5560, 8203, 9203, 9518, "instagram", "qa-user-04"))
     db.execute("INSERT INTO instagram_profiles(id, username, status, created_at, updated_at) VALUES (?,?,?,?,?)",
-               ("ig-felipe", handle, "blocked", TS, TS))
+               ("ig-gilberto", handle, "blocked", TS, TS))
     db.execute("INSERT INTO profile_accounts(id, profile_id, app_id, handle, status, created_at, updated_at)"
-               " VALUES (?,?,?,?,?,?,?)", ("c-felipe", "ig-felipe", "instagram", handle, "active", TS, TS))
+               " VALUES (?,?,?,?,?,?,?)", ("c-gilberto", "ig-gilberto", "instagram", handle, "active", TS, TS))
 
 
 def test_atualizacao_para_054_registra_o_marcador_do_android_04(tmp_path: Path,
@@ -94,11 +94,11 @@ def test_atualizacao_para_054_registra_o_marcador_do_android_04(tmp_path: Path,
         assert len(marcadores) == 1
         m = marcadores[0]
         assert (m["instance_id"], m["handle"], m["profile_id"], m["app_id"]) == ("android-04", HANDLE_DA_054,
-                                                                                 "ig-felipe", "instagram")
+                                                                                 "ig-gilberto", "instagram")
         assert (m["origin"], m["seen_by"], m["since"]) == ("declarado", "dono", VISTO_PELO_DONO)
         assert m["resolved_at"] is None and "Confirm you are human" in (m["evidence"] or "")
         # O perfil já bloqueado NÃO ganha data inventada: quando o bloqueio aconteceu ninguém registrou.
-        perfil = db.one("SELECT status, blocked_at, blocked_origin FROM instagram_profiles WHERE id='ig-felipe'")
+        perfil = db.one("SELECT status, blocked_at, blocked_origin FROM instagram_profiles WHERE id='ig-gilberto'")
         assert perfil == {"status": "blocked", "blocked_at": None, "blocked_origin": None}
         assert db.migrate() == []                                    # nada se repete
     finally:
@@ -118,7 +118,7 @@ def test_banco_novo_nasce_sem_marcador_e_com_o_mesmo_esquema(tmp_path: Path, mon
         for tabela in ("device_locked_accounts", "instagram_profiles", "instances"):
             assert sorted(novo.columns(tabela)) == sorted(atualizado.columns(tabela)), tabela
         assert _tem_indice(novo, "ux_locked_account_aberto") and _tem_indice(atualizado, "ux_locked_account_aberto")
-        # Sem o android-04 e o felipe, a carga não inventa marcador: banco novo e de teste nascem vazios.
+        # Sem o android-04 e o gilberto, a carga não inventa marcador: banco novo e de teste nascem vazios.
         assert novo.scalar("SELECT COUNT(*) FROM device_locked_accounts") == 0
         assert atualizado.scalar("SELECT COUNT(*) FROM device_locked_accounts") == 0
     finally:
@@ -134,13 +134,13 @@ def test_um_marcador_aberto_por_aparelho_e_conta(tmp_path: Path) -> None:
     try:
         sql = ("INSERT INTO device_locked_accounts(instance_id, handle, origin, since, created_at, resolved_at)"
                " VALUES (?,?,?,?,?,?)")
-        db.execute(sql, ("android-04", FELIPE, "declarado", TS, TS, None))
+        db.execute(sql, ("android-04", GILBERTO, "declarado", TS, TS, None))
         with pytest.raises(INTEGRITY_ERRORS):
-            db.execute(sql, ("android-04", FELIPE, "observado", TS, TS, None))
+            db.execute(sql, ("android-04", GILBERTO, "observado", TS, TS, None))
         with pytest.raises(INTEGRITY_ERRORS):                        # origem fora do vocabulário
-            db.execute(sql, ("android-05", FELIPE, "achismo", TS, TS, None))
+            db.execute(sql, ("android-05", GILBERTO, "achismo", TS, TS, None))
         db.execute("UPDATE device_locked_accounts SET resolved_at=? WHERE instance_id='android-04'", (TS,))
-        db.execute(sql, ("android-04", FELIPE, "observado", TS, TS, None))
+        db.execute(sql, ("android-04", GILBERTO, "observado", TS, TS, None))
         assert db.scalar("SELECT COUNT(*) FROM device_locked_accounts WHERE instance_id='android-04'") == 2
     finally:
         db.close()
@@ -175,7 +175,7 @@ async def _cliente(h: Harness) -> httpx.AsyncClient:
     return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
 
 
-def _marcar(h: Harness, iid: str = "android-02", handle: str = FELIPE, origem: str = "declarado") -> bool:
+def _marcar(h: Harness, iid: str = "android-02", handle: str = GILBERTO, origem: str = "declarado") -> bool:
     assert h.state is not None
     return h.state.social_repo.marcar_conta_travada(iid, handle, "tela 'Confirm you are human' do Instagram",
                                                     origem, visto_por="dono")
@@ -192,15 +192,15 @@ async def test_aparelho_com_marcador_recusa_vinculo_troca_e_cadastro(h: Harness)
     s = h.state
     assert s is not None
     assert _marcar(h, handle="@Gilberto.Vasconcelos517") is True
-    assert s.social_repo.conta_travada_no_aparelho("android-02")["handle"] == FELIPE   # normalizado
-    lucas = s.social.create_profile(ProfileCreate(username="tadeu.quintela4821")).id
+    assert s.social_repo.conta_travada_no_aparelho("android-02")["handle"] == GILBERTO   # normalizado
+    tadeu = s.social.create_profile(ProfileCreate(username="tadeu.quintela4821")).id
 
     with pytest.raises(SocialError) as e:
-        s.social.bind_device(lucas, PersonaDeviceBody(instance_id="android-02", app_id="instagram"))
+        s.social.bind_device(tadeu, PersonaDeviceBody(instance_id="android-02", app_id="instagram"))
     assert (e.value.code, e.value.status) == ("aparelho_em_quarentena", 409)
-    assert FELIPE in e.value.message
+    assert GILBERTO in e.value.message
     with pytest.raises(SocialError) as e:
-        s.social.update_profile(lucas, ProfilePatch(instance_id="android-02"))
+        s.social.update_profile(tadeu, ProfilePatch(instance_id="android-02"))
     assert e.value.code == "aparelho_em_quarentena"
     # Cadastro com o aparelho: recusado ANTES de qualquer linha — nada nasce pela metade.
     with pytest.raises(SocialError) as e:
@@ -209,30 +209,30 @@ async def test_aparelho_com_marcador_recusa_vinculo_troca_e_cadastro(h: Harness)
     assert s.social_repo.profile_by_username("valdir.teixeira6352") is None
     # E o repositório recusa por conta própria, para quem vincula por fora do serviço.
     with pytest.raises(AparelhoEmQuarentena):
-        s.social_repo.bind(lucas, "android-02", app_id="instagram")
+        s.social_repo.bind(tadeu, "android-02", app_id="instagram")
     assert s.social_repo.profiles_of_instance("android-02") == []
     # Outro aparelho segue normal.
-    s.social.bind_device(lucas, PersonaDeviceBody(instance_id="android-01", app_id="instagram"))
-    assert s.social.instances_of(lucas) == ["android-01"]
+    s.social.bind_device(tadeu, PersonaDeviceBody(instance_id="android-01", app_id="instagram"))
+    assert s.social.instances_of(tadeu) == ["android-01"]
 
 
 async def test_marcador_sobrevive_ao_desvinculo_e_bloqueia_o_perfil_com_rastro(h: Harness) -> None:
     s = h.state
     assert s is not None
-    felipe = s.social.create_profile(ProfileCreate(username=FELIPE, instance_id="android-02")).id
+    gilberto = s.social.create_profile(ProfileCreate(username=GILBERTO, instance_id="android-02")).id
     assert _marcar(h, origem="observado") is True
     assert _marcar(h, origem="observado") is False                  # idempotente: um marcador aberto por conta
-    perfil = s.social_repo.profile_row(felipe)
+    perfil = s.social_repo.profile_row(gilberto)
     assert perfil["status"] == "blocked" and perfil["blocked_origin"] == "observado"
     assert perfil["blocked_at"] and "Confirm you are human" in perfil["blocked_evidence"]
     assert [(e["status"], e["origem"], e["autor"]) for e in _eventos(h, "profile.status")] == [
         ("blocked", "observado", "dono")]
     assert [e["instance_id"] for e in _eventos(h, "device.locked_account")] == ["android-02"]
 
-    s.social.update_profile(felipe, ProfilePatch(instance_id=None))  # desvincula
-    assert s.social.instances_of(felipe) == []
+    s.social.update_profile(gilberto, ProfilePatch(instance_id=None))  # desvincula
+    assert s.social.instances_of(gilberto) == []
     marcador = s.social_repo.conta_travada_no_aparelho("android-02")
-    assert marcador is not None and marcador["handle"] == FELIPE and marcador["profile_id"] == felipe
+    assert marcador is not None and marcador["handle"] == GILBERTO and marcador["profile_id"] == gilberto
 
     # Só uma pessoa resolve; o marcador resolvido fica como história.
     assert s.social_repo.resolver_conta_travada("android-02", por="dono", nota="conta recuperada") == 1
@@ -242,7 +242,7 @@ async def test_marcador_sobrevive_ao_desvinculo_e_bloqueia_o_perfil_com_rastro(h
 
 # ============================================================ 2) verbos, entregas e reinícios no aparelho com marcador
 async def test_aparelho_com_marcador_recusa_os_verbos_e_aceita_parar(h: Harness) -> None:
-    """27/09 01:47Z: um `open_app` no android-04 com o felipe já bloqueado. Na quarentena, só parar e hibernar."""
+    """27/09 01:47Z: um `open_app` no android-04 com o gilberto já bloqueado. Na quarentena, só parar e hibernar."""
     s = h.state
     assert s is not None
     _marcar(h)
@@ -255,7 +255,7 @@ async def test_aparelho_com_marcador_recusa_os_verbos_e_aceita_parar(h: Harness)
             assert r.status_code == 409, (verbo, r.text)
             detalhe = r.json()["detail"]
             assert detalhe["code"] == "locked_account", (verbo, detalhe)
-            assert FELIPE in detalhe["message"]
+            assert GILBERTO in detalhe["message"]
             assert s.commands.get(detalhe["command_id"])["state"] == "rejected"
         r = await c.post("/api/instances/android-02/actions/stop", json={"idempotency_key": "quarentena-stop-1"})
         assert r.status_code == 202, r.text
@@ -283,7 +283,7 @@ async def test_confirmacao_explicita_da_pessoa_passa_pela_quarentena(h: Harness)
     assert despacho.pedir_ciclo_de_vida(s, "android-02", "restart", "teste", requested_by="saude") is None
     ultimo = s.db.one("SELECT verb, state, reason FROM commands WHERE instance_id='android-02'"
                       " ORDER BY created_at DESC, id DESC LIMIT 1")
-    assert ultimo["verb"] == "restart" and ultimo["state"] == "rejected" and FELIPE in ultimo["reason"]
+    assert ultimo["verb"] == "restart" and ultimo["state"] == "rejected" and GILBERTO in ultimo["reason"]
 
 
 async def test_verbos_de_app_e_sessao_recusados_no_aparelho_com_marcador(h: Harness) -> None:
@@ -298,7 +298,7 @@ async def test_verbos_de_app_e_sessao_recusados_no_aparelho_com_marcador(h: Harn
 
     r = despacho.pedir_trabalho_de_app(s, rt, "app.distribute", fabrica, label="entrega", params={},
                                        idempotency_key="quarentena-app-0001", requested_by="teste")
-    assert r["accepted"] is False and FELIPE in str(r["reason"])
+    assert r["accepted"] is False and GILBERTO in str(r["reason"])
     assert s.commands.get(str(r["command_id"]))["state"] == "rejected"
     for verbo in ("app.install", "app.canary", "app.rollback", "session.connect", "session.verify",
                   "session.logout"):
@@ -320,15 +320,15 @@ async def test_portas_do_despacho_bloqueiam_o_aparelho_com_marcador_mesmo_sem_vi
     assert s._session_gate(rt, None, None) is None                  # sem marcador e sem vínculo: sem porta
     _marcar(h)
     porta = s._session_gate(rt, None, None)
-    assert porta is not None and porta[1] is None and FELIPE in porta[0]
+    assert porta is not None and porta[1] is None and GILBERTO in porta[0]
     porta = s._session_gate(rt, "com.pocqa.messenger", None)
     assert porta is not None and porta[1] is None
     porta = s._app_resolver(rt, "com.instagram.android", {"status": "pending"})
-    assert porta is not None and porta[1] is None and FELIPE in porta[0]
+    assert porta is not None and porta[1] is None and GILBERTO in porta[0]
 
 
 async def test_remediar_com_vinculo_ativo_nunca_devolve_reset(h: Harness) -> None:
-    """24/09: o 3º degrau (`reset`) apagou a sessão do andre. Com conta vinculada, o 3º degrau é o dono."""
+    """24/09: o 3º degrau (`reset`) apagou a sessão do ottilie. Com conta vinculada, o 3º degrau é o dono."""
     s = h.state
     assert s is not None
     s.social.create_profile(ProfileCreate(username="rene.sampaio381524", instance_id="android-01"))
@@ -347,7 +347,7 @@ async def test_remediar_com_marcador_nao_reinicia_e_so_para(h: Harness) -> None:
     rt = s.devices.get("android-01")
     s.devices.set_desired_state(rt, InstanceState.online.value)
     assert await _escada(h, "android-01", 3) == ["stop", None, None]
-    assert rt.attention and "Precisa do dono" in rt.attention and FELIPE in rt.attention
+    assert rt.attention and "Precisa do dono" in rt.attention and GILBERTO in rt.attention
 
 
 async def _escada(h: Harness, iid: str, vezes: int) -> list[str | None]:
@@ -389,7 +389,7 @@ async def test_reinicio_por_interrupcao_nao_toca_aparelho_com_marcador(h: Harnes
         await d.conferir_saude(rt)
         total, irq = total + 1000, irq + 400                         # 40% em interrupção, ocioso
     assert pedidos == []
-    assert rt.attention and FELIPE in rt.attention
+    assert rt.attention and GILBERTO in rt.attention
 
 
 async def test_devolver_o_controle_nao_reabre_a_conta_travada(h: Harness) -> None:
@@ -397,7 +397,7 @@ async def test_devolver_o_controle_nao_reabre_a_conta_travada(h: Harness) -> Non
     (achado #106) abriria o app da conta travada sem passar por porta nenhuma."""
     s = h.state
     assert s is not None
-    s.social.create_profile(ProfileCreate(username=FELIPE, instance_id="android-01"))   # sessão `unknown`
+    s.social.create_profile(ProfileCreate(username=GILBERTO, instance_id="android-01"))   # sessão `unknown`
     rt = s.devices.get("android-01")
     trabalhos: list[str] = []
     original = s.scheduler.run_device_job
@@ -427,7 +427,7 @@ async def test_rodizio_nao_liga_sozinho_o_aparelho_com_marcador(h: Harness) -> N
     _marcar(h, "android-01")
     assert s.devices.request_start(rt, "tarefa pendente") is False
     assert rt.state == InstanceState.stopped
-    assert rt.attention and "quarentena" in rt.attention and FELIPE in rt.attention
+    assert rt.attention and "quarentena" in rt.attention and GILBERTO in rt.attention
     # O aparelho sem marcador liga como sempre.
     outro = s.devices.get("android-02")
     await s.devices.stop_instance(outro)
@@ -444,7 +444,7 @@ async def test_distribuir_e_entregar_ao_ligar_pulam_o_aparelho_com_marcador(tmp_
         rid = versao(parque)
         _marcar(parque, "android-02")
         saida = {d["id"]: d for d in s.distribute(rid, instance_ids=["android-02", "android-03"])}
-        assert saida["android-02"]["outcome"] == "kept" and FELIPE in saida["android-02"]["reason"]
+        assert saida["android-02"]["outcome"] == "kept" and GILBERTO in saida["android-02"]["reason"]
         assert saida["android-03"]["outcome"] == "started"
         assert estado(parque, "android-02") is None                  # nem a versão desejada é gravada
         assert falsos["android-02"].calls == []
@@ -504,7 +504,7 @@ async def test_saude_acusa_conta_travada_logada_em_aparelho_ligado(h: Harness) -
     assert not [p for p in s.health().problems if p.code == "locked_account_on_device"]
     _marcar(h, "android-01")
     problemas = [p for p in s.health().problems if p.code == "locked_account_on_device"]
-    assert len(problemas) == 1 and "android-01" in problemas[0].message and FELIPE in problemas[0].message
+    assert len(problemas) == 1 and "android-01" in problemas[0].message and GILBERTO in problemas[0].message
     await s.devices.stop_instance(s.devices.get("android-01"))
     assert not [p for p in s.health().problems if p.code == "locked_account_on_device"]
 
@@ -520,15 +520,15 @@ async def test_account_label_segue_o_vinculo_e_o_marcador(h: Harness) -> None:
         return linha["account_label"], linha["account_label_origin"]
 
     assert rotulo("android-02") == ("qa-user-02", None)              # o da configuração, como sempre
-    lucas = s.social.create_profile(ProfileCreate(username="tadeu.quintela4821", instance_id="android-02")).id
+    tadeu = s.social.create_profile(ProfileCreate(username="tadeu.quintela4821", instance_id="android-02")).id
     assert rotulo("android-02") == ("tadeu.quintela4821", "vinculo")
     assert s.devices.dto(s.devices.get("android-02")).account_label == "tadeu.quintela4821"
-    s.social.update_profile(lucas, ProfilePatch(instance_id=None))
+    s.social.update_profile(tadeu, ProfilePatch(instance_id=None))
     assert rotulo("android-02") == (None, None)                      # o derivado sai com o vínculo
     _marcar(h, "android-02")
-    assert rotulo("android-02") == (FELIPE, "marcador")
+    assert rotulo("android-02") == (GILBERTO, "marcador")
     dto = s.devices.dto(s.devices.get("android-02"))
-    assert dto.account_label == FELIPE and dto.locked_account == FELIPE
+    assert dto.account_label == GILBERTO and dto.locked_account == GILBERTO
     s.social_repo.resolver_conta_travada("android-02", por="dono")
     assert rotulo("android-02") == (None, None)
     # O aparelho de QA, sem vínculo nem marcador, fica com o rótulo da configuração: não é derivado.
@@ -545,7 +545,7 @@ async def test_account_label_velho_e_corrigido_na_subida(h: Harness) -> None:
     await h.crash()
     s = await h.boot()
     assert s.db.one("SELECT account_label, account_label_origin FROM instances WHERE id='android-02'") == {
-        "account_label": FELIPE, "account_label_origin": "marcador"}
+        "account_label": GILBERTO, "account_label_origin": "marcador"}
 
 
 async def test_apagar_os_dados_do_aparelho_resolve_o_marcador(h: Harness) -> None:
@@ -559,7 +559,7 @@ async def test_apagar_os_dados_do_aparelho_resolve_o_marcador(h: Harness) -> Non
     assert s is not None
     rt = s.devices.get("android-02")
     await h.wait(lambda: rt.state == InstanceState.online, what="android-02 no ar")
-    felipe = s.social.create_profile(ProfileCreate(username=FELIPE)).id
+    gilberto = s.social.create_profile(ProfileCreate(username=GILBERTO)).id
     _marcar(h, "android-02")
 
     await s.devices.restart_instance(rt)                            # boot sem apagar: a conta segue logada
@@ -575,7 +575,7 @@ async def test_apagar_os_dados_do_aparelho_resolve_o_marcador(h: Harness) -> Non
     assert [e["acao"] for e in _eventos(h, "device.locked_account")] == ["marcado", "resolvido"]
     # O marcador foi `declarado` pelo dono: declaração é sinal forte e retirou a conta (29.23, ADR-068), devolvendo a
     # persona a `active`; o wipe do aparelho não mexe nela.
-    assert s.social_repo.profile_row(felipe)["status"] == "active"
+    assert s.social_repo.profile_row(gilberto)["status"] == "active"
 
 
 async def test_reset_concluido_pelo_agente_resolve_o_marcador_e_o_incerto_nao(h: Harness) -> None:
@@ -608,12 +608,12 @@ async def test_troca_de_identidade_do_aparelho_nao_resolve_o_marcador(h: Harness
     assert s.devices.conferir_identidade(rt, "host-b|ro.boot.qemu.avd_name=android-02") is True
 
     marcador = s.social_repo.conta_travada_no_aparelho("android-02")
-    assert marcador is not None and marcador["handle"] == FELIPE
+    assert marcador is not None and marcador["handle"] == GILBERTO
     assert s.db.scalar("SELECT COUNT(*) FROM device_locked_accounts WHERE resolved_at IS NOT NULL") == 0
     assert s.quarentena("android-02") is not None
     assert [e["acao"] for e in _eventos(h, "device.locked_account")] == ["marcado"]
     # O cartão diz o que aconteceu (e o que NÃO aconteceu): o disco não foi apagado, e quem decide é o dono.
-    assert rt.attention is not None and FELIPE in rt.attention and "não foi apagado" in rt.attention
+    assert rt.attention is not None and GILBERTO in rt.attention and "não foi apagado" in rt.attention
     # E a porta segue fechada para o app da conta travada.
     porta = s._app_resolver(rt, "com.instagram.android", {"status": "pending"})
-    assert porta is not None and porta[1] is None and FELIPE in porta[0]
+    assert porta is not None and porta[1] is None and GILBERTO in porta[0]

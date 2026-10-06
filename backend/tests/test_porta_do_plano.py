@@ -44,7 +44,7 @@ def _plano(state: Any, etapas: list[dict[str, Any]], *, aparelho: str = "android
     if not db.scalar("SELECT 1 FROM apps WHERE id='ig'"):
         db.execute("INSERT INTO apps(id, name, package, activity, builtin) VALUES ('ig','Instagram',?,NULL,0)", (IG,))
     db.execute("UPDATE instances SET app_id='ig' WHERE id=?", (aparelho,))
-    pid = state.social.create_profile(ProfileCreate(username=f"lucas.{aparelho.replace('-', '')}", password=SENHA,
+    pid = state.social.create_profile(ProfileCreate(username=f"tadeu.{aparelho.replace('-', '')}", password=SENHA,
                                                     instance_id=aparelho)).id
     state.social_repo.update_profile(pid, {"automation_policy": '{"limits": {"warmup_days": 0, '
                                                                 '"cooldown_between_external_actions_s": 0}}'})

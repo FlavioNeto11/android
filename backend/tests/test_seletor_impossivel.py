@@ -40,7 +40,7 @@ def test_o_diagnostico_exige_cada_parte_na_tela_e_nenhum_elemento_com_todas() ->
     tela = _conversa()
     assert tela.partes_em_elementos_diferentes("id=message_input|text=Suporte QA")      # o caso da 2f21e2
     assert not tela.partes_em_elementos_diferentes("id=chat_title|text=Suporte QA")     # válido: mesmo elemento
-    assert not tela.partes_em_elementos_diferentes("id=message_input|text=Bruno")       # uma parte não está na tela
+    assert not tela.partes_em_elementos_diferentes("id=message_input|text=Quillon")       # uma parte não está na tela
     assert not tela.partes_em_elementos_diferentes("id=message_input")                  # uma parte só
     assert not tela.partes_em_elementos_diferentes("text=Suporte QA")
 
@@ -74,7 +74,7 @@ async def test_conferencia_de_uma_rodada_e_seletor_ausente_nao_viram_defeito(tmp
     ok, _texto, impossivel = await _verificar(tmp_path, "id=message_input|text=Suporte QA", uma_rodada=True)
     assert (ok, impossivel) == (False, False)
     # Uma parte que não está na tela é a falha de sempre (a tela certa pode não ter chegado).
-    ok, texto, impossivel = await _verificar(tmp_path, "id=message_input|text=Bruno")
+    ok, texto, impossivel = await _verificar(tmp_path, "id=message_input|text=Quillon")
     assert (ok, impossivel) == (False, False) and PARTES_EM_ELEMENTOS_DIFERENTES not in texto
     # O composto válido segue comprovando.
     ok, _texto, impossivel = await _verificar(tmp_path, "id=chat_title|text=Suporte QA")

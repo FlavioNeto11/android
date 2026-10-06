@@ -28,13 +28,13 @@ const vinculo = (instance_id: string, app_id: string) => ({
 });
 
 const BASE: PersonaDTO[] = [
-  p('Vinícius', { instance_id: 'android-01', devices: [vinculo('android-01', 'instagram')], policy_group_id: 'g-op',
+  p('Sérgio', { instance_id: 'android-01', devices: [vinculo('android-01', 'instagram')], policy_group_id: 'g-op',
                    session_actions: fase('app_missing'), last_activity_at: '2026-09-29T10:00:00Z' }),
-  p('Beatriz', { status: 'blocked', policy_group_id: 'g-rec' }),
-  p('Camila', { username: null }),
-  p('André', { instance_id: 'android-06', devices: [vinculo('android-06', 'instagram'), vinculo('android-12', 'outlook')],
+  p('Sueli', { status: 'blocked', policy_group_id: 'g-rec' }),
+  p('Denise', { username: null }),
+  p('Ravenna', { instance_id: 'android-06', devices: [vinculo('android-06', 'instagram'), vinculo('android-12', 'outlook')],
                policy_group_id: 'g-op', session_actions: fase('authenticated'), last_activity_at: '2026-09-30T10:00:00Z' }),
-  p('Diego', { status: 'disabled' }),
+  p('Wagner', { status: 'disabled' }),
 ];
 
 const ids = (l: PersonaDTO[]) => l.map((x) => x.id);
@@ -58,7 +58,7 @@ describe('situação da persona', () => {
 describe('filtros de personas', () => {
   it('lê a URL: `situacao=bloqueada` (o link da saúde do ambiente) filtra as bloqueadas pela plataforma', () => {
     const f = lerFiltroPersonas({ situacao: 'bloqueada' });
-    expect(ids(filtrarPersonas(BASE, f))).toEqual(['Beatriz']);
+    expect(ids(filtrarPersonas(BASE, f))).toEqual(['Sueli']);
     expect(filtroAtivo(f)).toBe(true);
     // Valor desconhecido não esvazia a lista.
     expect(lerFiltroPersonas({ situacao: 'xyz', ordem: 'abc', visao: 'grade' }))
@@ -74,29 +74,29 @@ describe('filtros de personas', () => {
   });
 
   it('busca pelo @ (com ou sem "@") e pelo nome sem acento', () => {
-    expect(ids(filtrarPersonas(BASE, lerFiltroPersonas({ q: '@andré.9' })))).toEqual(['André']);
-    expect(ids(filtrarPersonas(BASE, lerFiltroPersonas({ q: 'vinicius' })))).toEqual(['Vinícius']);
-    expect(ids(filtrarPersonas(BASE, lerFiltroPersonas({ q: 'BEATRIZ.9000' })))).toEqual(['Beatriz']);
+    expect(ids(filtrarPersonas(BASE, lerFiltroPersonas({ q: '@ravenna.9' })))).toEqual(['Ravenna']);
+    expect(ids(filtrarPersonas(BASE, lerFiltroPersonas({ q: 'sergio' })))).toEqual(['Sérgio']);
+    expect(ids(filtrarPersonas(BASE, lerFiltroPersonas({ q: 'SUELI.9000' })))).toEqual(['Sueli']);
   });
 
   it('filtros combinados ("e"): situação, vínculo, grupo e app', () => {
     const f = (q: Record<string, string>) => ids(filtrarPersonas(BASE, lerFiltroPersonas(q)));
-    expect(f({ situacao: 'ativa' })).toEqual(['Vinícius', 'André']);     // "ativa" inclui quem pede atenção
-    expect(f({ situacao: 'atencao' })).toEqual(['Vinícius']);
-    expect(f({ situacao: 'sem-conta' })).toEqual(['Camila']);
-    expect(f({ vinculo: 'sem' })).toEqual(['Beatriz', 'Camila', 'Diego']);
-    expect(f({ vinculo: 'com', app: 'outlook' })).toEqual(['André']);
-    expect(f({ grupo: 'g-op', situacao: 'ativa', q: 'and' })).toEqual(['André']);
-    expect(f({ grupo: 'nenhum' })).toEqual(['Camila', 'Diego']);
+    expect(f({ situacao: 'ativa' })).toEqual(['Sérgio', 'Ravenna']);     // "ativa" inclui quem pede atenção
+    expect(f({ situacao: 'atencao' })).toEqual(['Sérgio']);
+    expect(f({ situacao: 'sem-conta' })).toEqual(['Denise']);
+    expect(f({ vinculo: 'sem' })).toEqual(['Sueli', 'Denise', 'Wagner']);
+    expect(f({ vinculo: 'com', app: 'outlook' })).toEqual(['Ravenna']);
+    expect(f({ grupo: 'g-op', situacao: 'ativa', q: 'rav' })).toEqual(['Ravenna']);
+    expect(f({ grupo: 'nenhum' })).toEqual(['Denise', 'Wagner']);
     expect(f({ situacao: 'bloqueada', vinculo: 'com' })).toEqual([]);
   });
 
   it('ordena por nome (pt-BR), por situação (o que pede alguém primeiro) e por última atividade', () => {
-    expect(ids(ordenarPersonas(BASE, 'nome'))).toEqual(['André', 'Beatriz', 'Camila', 'Diego', 'Vinícius']);
-    expect(ids(ordenarPersonas(BASE, 'situacao'))).toEqual(['Beatriz', 'Vinícius', 'Camila', 'Diego', 'André']);
-    expect(ids(ordenarPersonas(BASE, 'atividade')).slice(0, 2)).toEqual(['André', 'Vinícius']);
+    expect(ids(ordenarPersonas(BASE, 'nome'))).toEqual(['Denise', 'Ravenna', 'Sérgio', 'Sueli', 'Wagner']);
+    expect(ids(ordenarPersonas(BASE, 'situacao'))).toEqual(['Sueli', 'Sérgio', 'Denise', 'Wagner', 'Ravenna']);
+    expect(ids(ordenarPersonas(BASE, 'atividade')).slice(0, 2)).toEqual(['Ravenna', 'Sérgio']);
     // Não muda a lista original.
-    expect(ids(BASE)[0]).toBe('Vinícius');
+    expect(ids(BASE)[0]).toBe('Sérgio');
   });
 
   it('contagem dos chips com os outros filtros aplicados', () => {

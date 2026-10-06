@@ -193,7 +193,7 @@ def test_o_teto_por_dia_vale_mesmo_passada_a_hora(tmp_path: Path) -> None:
 def test_post_de_outra_conta_nao_gasta_o_teto_desta(tmp_path: Path) -> None:
     """Sem alvo, não há "uma conta por alvo": o teto é por perfil."""
     svc, repo, policies, _db = build(tmp_path)
-    a, b = perfil(svc, "ana.silva91182"), perfil(svc, "bia.souza91182", "android-01")
+    a, b = perfil(svc, "ana.silva40517"), perfil(svc, "bia.souza40517", "android-01")
     for p in (a, b):
         repo.update_profile(p, {"automation_policy": '{"limits": {"cooldown_between_external_actions_s": 0}}'})
     _publicou(svc, a)

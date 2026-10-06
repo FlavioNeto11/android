@@ -215,7 +215,7 @@ def _pessoa_com(svc: SocialService, nome: str, crencas: dict[str, object], **ext
 def test_bloco_da_persona_leva_as_crencas_ricas_e_a_linha_de_conduta(tmp_path: Path) -> None:
     svc, _repo, _secrets, db = build(tmp_path)
     try:
-        pid = _pessoa_com(svc, "Ana Duarte", {"religion": RELIGIAO_RICA, "politics": POLITICA_RICA},
+        pid = _pessoa_com(svc, "Ana Linhares", {"religion": RELIGIAO_RICA, "politics": POLITICA_RICA},
                           summary="Barista em Recife.", traits={"tone": "leve"})
         texto = svc.context(pid).rendered
         esperado = "\n".join([

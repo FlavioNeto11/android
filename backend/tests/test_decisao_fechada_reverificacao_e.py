@@ -28,9 +28,9 @@ from .test_decisao_fechada_intencao import Mundo2, porta_aberta  # noqa: F401 - 
 
 #: O catálogo de destinos do harness da orquestradora (as três contas vivas).
 DESTINOS = CatalogoDeDestinos((
-    PersonaNomeavel("p-lucas", ("Lucas", "Lucas Almeida", "Lucas Almeida"), ("tadeu.quintela4821",)),
-    PersonaNomeavel("p-bruno", ("Bruno", "Bruno Ferreira", "Bruno Ferreira"), ("valdir.teixeira6352",)),
-    PersonaNomeavel("p-andre", ("André", "André Carvalho", "André Carvalho"), ("rene.sampaio381524",)),
+    PersonaNomeavel("p-tadeu", ("Tadeu", "Tadeu Quintela", "Tadeu Quintela"), ("tadeu.quintela4821",)),
+    PersonaNomeavel("p-quillon", ("Quillon", "Quillon Teixeira", "Quillon Teixeira"), ("valdir.teixeira6352",)),
+    PersonaNomeavel("p-ottilie", ("Ravenna", "Ravenna Sampaio", "Ravenna Sampaio"), ("rene.sampaio381524",)),
 ), tuple(f"android-{i:02d}" for i in range(1, 9)))
 EXTRATOR = TargetExtractor(DESTINOS)
 #: Os nomes do catálogo como chegam ao filtro (rodada F): o que `RunService.dados_da_sombra` passa no 5º item.
@@ -74,10 +74,10 @@ VAZAMENTOS_DA_RODADA_D = [
     ("entre usando girassol e curta a foto da Marina", "c7_login_valor"),
     ("faca login com girassol e depois curta", "c7_login_valor"),
     ("entre com girassol e curta a foto", "c7_login_valor"),
-    ("usuario lucas e girassol, entra", "c7_par_credencial"),
-    ("lucas, girassol, entra e curte", "c7_par_credencial"),
+    ("usuario tadeu e girassol, entra", "c7_par_credencial"),
+    ("tadeu, girassol, entra e curte", "c7_par_credencial"),
     ("digita girassol embaixo do usuario", "c7_eufemismo"),
-    ("entre com a conta Lucas / girassol", "c7_par_credencial"),    # sem destinos: "entre / girassol"
+    ("entre com a conta Tadeu / girassol", "c7_par_credencial"),    # sem destinos: "entre / girassol"
     ("entre com a conta admin / girassol", "c7_par_credencial"),
     # e-mail ditado em peças em português
     ("usuario zilda no gmail, manda a foto pra ela", "c7_gatilho"),     # forma A (31.18): o campo forte recusa antes
@@ -100,10 +100,10 @@ def test_os_vazamentos_da_rodada_d_recusam(comando: str, motivo: str) -> None:
 
 
 def test_o_par_partido_pelo_sem_destinos_e_visto_no_original() -> None:
-    """E-A(4): "entre com a conta Lucas / girassol" vira "entre / girassol" sem destinos; os dois recusam."""
-    assert _sem_destinos("entre com a conta Lucas / girassol") == "entre / girassol"
+    """E-A(4): "entre com a conta Tadeu / girassol" vira "entre / girassol" sem destinos; os dois recusam."""
+    assert _sem_destinos("entre com a conta Tadeu / girassol") == "entre / girassol"
     assert motivo_c7("entre / girassol") == "c7_par_credencial"
-    assert motivo_c7("entre com a conta Lucas / girassol", sem_destinos="entre / girassol") == "c7_par_credencial"
+    assert motivo_c7("entre com a conta Tadeu / girassol", sem_destinos="entre / girassol") == "c7_par_credencial"
 
 
 def test_o_consumidor_confere_o_original_e_nao_o_envia(tmp_path: Path, porta_aberta: None) -> None:
@@ -111,15 +111,15 @@ def test_o_consumidor_confere_o_original_e_nao_o_envia(tmp_path: Path, porta_abe
     decisor = DecisorFalso()
     w = Mundo2(tmp_path, decisor)
     cadeia = CadeiaObservada(sem_casamento=True)
-    # o par atravessando o destino: tirar "com a conta Lucas" deixa "entre e girassol"; até o 31.20 só o original mostrava
+    # o par atravessando o destino: tirar "com a conta Tadeu" deixa "entre e girassol"; até o 31.20 só o original mostrava
     # o par, e desde a A-média (31.20) o verbo de entrar já recusa no texto sem destinos (`c7_gatilho`)
-    par = "entre com a conta Lucas e girassol, curta a foto da Marina"
+    par = "entre com a conta Tadeu e girassol, curta a foto da Marina"
     assert _sem_destinos(par) == "entre e girassol, curta a foto da Marina"
     w.consumidor.observar(run_id="r-par", comando=_sem_destinos(par), app=None, catalogo=w.catalogo(), cadeia=cadeia,
                           original=par, destinos=sorted(NOMES))
-    # o original com o destino não recusa, e o que vai ao decisor é o texto sem destinos, nunca o original ("pela Lucas":
-    # "com a conta Lucas" recusa desde a forma A, 31.18, e o verbo de entrar desde a A-média, 31.20)
-    destino = "curta a foto da Marina pela Lucas"
+    # o original com o destino não recusa, e o que vai ao decisor é o texto sem destinos, nunca o original ("pela Tadeu":
+    # "com a conta Tadeu" recusa desde a forma A, 31.18, e o verbo de entrar desde a A-média, 31.20)
+    destino = "curta a foto da Marina pela Tadeu"
     w.consumidor.observar(run_id="r-destino", comando=_sem_destinos(destino), app=None, catalogo=w.catalogo(),
                           cadeia=cadeia, original=destino, destinos=sorted(NOMES))
     w.porta.aguardar_sombras()
@@ -134,8 +134,8 @@ def test_o_consumidor_confere_o_original_e_nao_o_envia(tmp_path: Path, porta_abe
     # verbo de entrar com "com" que é a pessoa (a conta, o login e o verbo de entrar com "com" recusam desde a forma A,
     # 31.18: test_decisao_fechada_forma_a.py; o verbo de entrar com objeto de navegação, desde a A-média, 31.20:
     # `CUSTO_DA_A_MEDIA` em test_decisao_fechada_reverificacao_i.py)
-    "entre na conversa com qa-001 e mande oi", "entre no chat com a Marina", "curta a foto pela Lucas",
-    "use o lucas pra curtir a foto da marina", "curta as fotos postadas entre 10/05 e 12/05",
+    "entre na conversa com qa-001 e mande oi", "entre no chat com a Marina", "curta a foto pela Tadeu",
+    "use o tadeu pra curtir a foto da marina", "curta as fotos postadas entre 10/05 e 12/05",
     # eufemismo que só é C7 com verbo de entrar sem navegação
     "a combinação de cores ficou boa", "passe para o próximo post",
     # provedor de e-mail que também é app, live do Instagram ou palavra comum
@@ -149,17 +149,17 @@ def test_controles_passam(comando: str) -> None:
 
 def test_o_nome_do_catalogo_desfaz_o_com() -> None:
     """Rodada F (F-B): o filtro recebe os nomes do catálogo real. Desde a rodada G (G-4), o nome solto depois do conector é
-    a posição de VALOR e não é isento: "entre com lucas" tem a forma de "entre com girassol", e uma persona "Girassol"
-    isentaria a senha. O destino continua isento na sintaxe de destino ("com a conta Lucas", "pela Lucas", "a conta do
-    lucas"). Custo medido: nos 122 comandos reais de 7 dias (03/10), a isenção pelo catálogo não mudou nenhuma decisão. A
+    a posição de VALOR e não é isento: "entre com tadeu" tem a forma de "entre com girassol", e uma persona "Girassol"
+    isentaria a senha. O destino continua isento na sintaxe de destino ("com a conta Tadeu", "pela Tadeu", "a conta do
+    tadeu"). Custo medido: nos 122 comandos reais de 7 dias (03/10), a isenção pelo catálogo não mudou nenhuma decisão. A
     rodada H (H-3) chegou a fazer do nome solto um destino; foi revertida depois do NO-GO da fase 2 (03/10)."""
-    assert _motivo("entre com lucas e curta") == "c7_login_valor"
+    assert _motivo("entre com tadeu e curta") == "c7_login_valor"
     assert _motivo("entre com girassol e curta") == "c7_login_valor"
-    assert _motivo("curta a foto pela Lucas") is None
+    assert _motivo("curta a foto pela Tadeu") is None
     # A-média (31.20): o verbo de entrar recusa sozinho, também com o destino
-    assert _motivo("entre pela Lucas e curta") == "c7_gatilho"
+    assert _motivo("entre pela Tadeu e curta") == "c7_gatilho"
     # forma A (31.18): a conta recusa mesmo como destino (fecha a família 3 da fase 2 da H)
-    assert _motivo("entre com a conta Lucas e curta") == "c7_gatilho"
+    assert _motivo("entre com a conta Tadeu e curta") == "c7_gatilho"
 
 
 @pytest.mark.parametrize("comando", ["abre o insta, entra e curte", "entre e comente com parabéns"])
@@ -180,7 +180,7 @@ def test_entrar_sem_objeto_de_navegacao_pula_a_sombra(comando: str) -> None:
     # E-A(3): a regra estrutural
     ("entra no insta com girassol", "c7_login_valor"), ("acesse o app usando tulipa", "c7_login_valor"),
     ("use girassol pra entrar", "c7_login_valor"), ("sign in with tulipa and open the feed", "c7_login_valor"),
-    ("usuario: lucas / girassol", "c7_eufemismo"), ("user lucas, girassol, log in", "c7_par_credencial"),
+    ("usuario: tadeu / girassol", "c7_eufemismo"), ("user tadeu, girassol, log in", "c7_par_credencial"),
 ])
 def test_formas_novas_da_c7(comando: str, motivo: str) -> None:
     assert _motivo(comando) == motivo

@@ -207,27 +207,27 @@ describe('InfraPage — o central e as abas por servidor', () => {
   // de GET /personas (uma leitura só), cada uma com o app do vínculo, a sessão AQUI e o atalho para abri-la.
   it('cada aparelho do servidor mostra as personas vinculadas, e o clique abre a persona', async () => {
     backend.on('GET', /^\/api\/personas$/, () => json([
-      makePersona('ig-1', 'Marina Costa', { username: 'marina.fotografa', devices: [
+      makePersona('ig-1', 'Marina Bastos', { username: 'marina.fotografa', devices: [
         makeBinding('android-13', { is_primary: true, session: makeSession('session_ready', 'android-13') }),
         makeBinding('android-01'),
       ] }),
-      makePersona('ig-2', 'Rafael Lima', { devices: [makeBinding('android-13', { app_id: 'chrome', session: null })] }),
+      makePersona('ig-2', 'Nelson Lima', { devices: [makeBinding('android-13', { app_id: 'chrome', session: null })] }),
     ]));
     await comEstado({ apps: [{ ...APPS[0]!, id: 'instagram', name: 'Instagram' }, { ...APPS[0]!, id: 'chrome', name: 'Chrome' }] });
     const aqui = await waitFor(() => byRole('list', 'Personas em android-13'));
     const t = text(aqui);
-    expect(t).toContain('Marina Costa');
+    expect(t).toContain('Marina Bastos');
     expect(t).toContain('@marina.fotografa');
     expect(t).toContain('Instagram');
     expect(t).toContain('Conectado');
-    expect(t).toContain('Rafael Lima');
+    expect(t).toContain('Nelson Lima');
     expect(t).toContain('Chrome');
     expect(allByRole('button', /^Abrir a persona/, aqui)).toHaveLength(2);
-    await click(byRole('button', 'Abrir a persona Rafael Lima (Chrome)', aqui));
+    await click(byRole('button', 'Abrir a persona Nelson Lima (Chrome)', aqui));
     expect(useUiStore.getState().rota.segmentos[0]).toBe('ig-2');
     // A aba do servidor lista as mesmas personas por aparelho.
     await click(byRole('tab', /^Personas e apps/, byRole('tablist', /Detalhes de worker-lan-01/)));
-    expect(text()).toContain('@marina.fotografa (Conectado) · Rafael Lima');
+    expect(text()).toContain('@marina.fotografa (Conectado) · Nelson Lima');
   });
 });
 

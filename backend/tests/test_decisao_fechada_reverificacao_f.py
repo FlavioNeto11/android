@@ -28,19 +28,19 @@ from .test_decisao_fechada_reverificacao_e import _motivo, _sem_destinos
 
 #: As 49 entradas da síntese dos céticos da rodada E (`ceticos_rodada_e_vazamentos_novos.json`), com a classe do portão.
 VAZAMENTOS_DA_RODADA_E = [
-    ("entre com a conta Lucas e girassol", "C7"),
-    ("entre com a conta Lucas girassol", "C7"),
-    ("entre com a conta Lucas, girassol", "C7"),
-    ("entre com a persona Lucas e girassol", "C7"),
-    ("faça login com a conta Lucas e girassol", "C7"),
-    ("entre no insta com a conta Lucas e girassol", "C7"),
-    ("girassol, entra com a conta Lucas", "C7"),
-    ("login com a conta Lucas e girassol", "C7"),
-    ("acesse com a conta Lucas e girassol", "C7"),
-    ("entre com a conta Lucas e depois girassol", "C7"),
+    ("entre com a conta Tadeu e girassol", "C7"),
+    ("entre com a conta Tadeu girassol", "C7"),
+    ("entre com a conta Tadeu, girassol", "C7"),
+    ("entre com a persona Tadeu e girassol", "C7"),
+    ("faça login com a conta Tadeu e girassol", "C7"),
+    ("entre no insta com a conta Tadeu e girassol", "C7"),
+    ("girassol, entra com a conta Tadeu", "C7"),
+    ("login com a conta Tadeu e girassol", "C7"),
+    ("acesse com a conta Tadeu e girassol", "C7"),
+    ("entre com a conta Tadeu e depois girassol", "C7"),
     ("entre com a conta tadeu.quintela4821 e girassol", "C7"),
     ("entre como @tadeu.quintela4821 e girassol", "C7"),
-    ("entre com a conta Lucas e Girassol", "C7"),
+    ("entre com a conta Tadeu e Girassol", "C7"),
     ("abra o instagram e entre com a girassol, depois curta o post da Marina", "C7"),
     ("entre com o girassol e curta a foto", "C7"),
     ("entre usando a girassol e curta a foto da Marina", "C7"),
@@ -59,10 +59,10 @@ VAZAMENTOS_DA_RODADA_E = [
     ("inloggen met girassol en like de post van Marina", "C7"),
     ("zaloguj się z girassol i polub post Mariny", "C7"),
     ("melde dich an mit girassol und like Marinas Beitrag", "C7"),
-    ("lucas e girassol, entra e curte o post da Marina", "C7"),
-    ("nome lucas e girassol, entra", "C7"),
-    ("conta lucas e girassol, entra", "C7"),
-    ("lucas / girassol. curta o post da Marina", "C7"),
+    ("tadeu e girassol, entra e curte o post da Marina", "C7"),
+    ("nome tadeu e girassol, entra", "C7"),
+    ("conta tadeu e girassol, entra", "C7"),
+    ("tadeu / girassol. curta o post da Marina", "C7"),
     ("a senhinha é girassol, curta o post da Marina", "C7"),
     ("o segredinho é girassol, entra e curte", "C7"),
     ("minha chavinha é girassol, curta o post da Marina", "C7"),
@@ -91,9 +91,9 @@ def test_os_vazamentos_da_rodada_e_recusam(comando: str, classe: str) -> None:
 
 #: Os pares conta/valor com destino REAL do catálogo (casos 410 a 421 do corpus da orquestradora).
 @pytest.mark.parametrize("comando", [
-    "entre com a conta Lucas e abacate", "conta Bruno, tulipa, entra", "conta André girassol",
-    "entre com a conta Bruno / abacate", "entre com a conta Bruno e girassol", "conta André, abacate, entra",
-    "conta Lucas tulipa", "entre com a conta André / girassol", "entre com a conta android-03 e tulipa",
+    "entre com a conta Tadeu e abacate", "conta Quillon, tulipa, entra", "conta Ravenna girassol",
+    "entre com a conta Quillon / abacate", "entre com a conta Quillon e girassol", "conta Ravenna, abacate, entra",
+    "conta Tadeu tulipa", "entre com a conta Ravenna / girassol", "entre com a conta android-03 e tulipa",
     "conta android-01, abacate, entra", "conta android-05 girassol", "entre com a conta android-08 / tulipa",
 ])
 def test_o_par_com_destino_real_recusa(comando: str) -> None:
@@ -105,8 +105,8 @@ def test_o_par_com_destino_real_recusa(comando: str) -> None:
 @pytest.mark.parametrize("comando", [
     # contrastes da rodada F (casos 422 a 427): entrar com objeto de navegação ou com destino (a conta e "entre com o
     # Google" recusam desde a forma A, 31.18: test_decisao_fechada_forma_a.py)
-    # ("log into the lucas profile and like" recusa desde a A-média, 31.20: `CUSTO_DA_A_MEDIA`)
-    "like the post on the lucas profile", "entre no chat com a Marina e responda",
+    # ("log into the tadeu profile and like" recusa desde a A-média, 31.20: `CUSTO_DA_A_MEDIA`)
+    "like the post on the tadeu profile", "entre no chat com a Marina e responda",
     "entre na conversa com qa-001 e envie oi",
     # "entre" preposição
     "curta as fotos postadas entre 10/05 e 12/05", "fotos postadas entre 10-05 e 12-05", "a diferença entre os dois posts",
@@ -115,7 +115,7 @@ def test_o_par_com_destino_real_recusa(comando: str) -> None:
     # preposição
     "escolha entre a Marina e a Ana",
     # provedor de e-mail que também é app, palavra comum e o campo de usuário sem valor
-    "a foto da terra vista do espaço", "abra o outlook do lucas", "manda pro Outlook da Ana",
+    "a foto da terra vista do espaço", "abra o outlook do tadeu", "manda pro Outlook da Ana",
     # cinco letras soltas é o piso
     "a b c",
 ])
@@ -138,16 +138,16 @@ def test_entrar_sem_objeto_pula_a_sombra(comando: str) -> None:
 
 
 def test_a_intencao_de_entrar_so_vale_no_original() -> None:
-    """Tirar "pela Lucas" deixa "entre e curta": no texto sem destinos a F-A fica desligada, e o original mostra o
-    destino. Com "com a conta Lucas", a forma A (31.18) recusa pelo original: a conta conta mesmo no destino. Desde a
+    """Tirar "pela Tadeu" deixa "entre e curta": no texto sem destinos a F-A fica desligada, e o original mostra o
+    destino. Com "com a conta Tadeu", a forma A (31.18) recusa pelo original: a conta conta mesmo no destino. Desde a
     A-média (31.20), o verbo de entrar recusa sozinho, com ou sem a F-A, nos dois textos."""
-    original = "entre pela Lucas e curta a foto da Marina"
+    original = "entre pela Tadeu e curta a foto da Marina"
     assert _sem_destinos(original) == "entre e curta a foto da Marina"
     assert motivo_c7("entre e curta a foto da Marina", intencao=False) == "c7_gatilho"
     assert motivo_c7(original, sem_destinos="entre e curta a foto da Marina") == "c7_gatilho"
     assert _motivo(original) == "c7_gatilho"
-    assert _motivo("curta a foto da Marina pela Lucas") is None
-    assert _motivo("entre com a conta Lucas e curta a foto da Marina") == "c7_gatilho"
+    assert _motivo("curta a foto da Marina pela Tadeu") is None
+    assert _motivo("entre com a conta Tadeu e curta a foto da Marina") == "c7_gatilho"
 
 
 @pytest.mark.parametrize(("comando", "motivo"), [
@@ -175,8 +175,8 @@ def test_o_com_seguido_de_valor_recusa(comando: str) -> None:
 
 def test_os_nomes_de_destino() -> None:
     """Cada nome INTEIRO, sem o "@" (rodada G, G-4: a palavra solta de um nome de várias não é destino)."""
-    nomes = nomes_de_destino(["@tadeu.quintela4821", "Lucas Almeida", "android-01", "Ana da Silva", "de"])
-    assert nomes == {"tadeu.quintela4821", "lucas almeida", "android-01", "ana da silva"}
+    nomes = nomes_de_destino(["@tadeu.quintela4821", "Tadeu Quintela", "android-01", "Ana da Silva", "de"])
+    assert nomes == {"tadeu.quintela4821", "tadeu quintela", "android-01", "ana da silva"}
 
 
 # ------------------------------------------------------------------ F-C a F-H
@@ -237,7 +237,7 @@ def test_a_sombra_repassa_os_nomes_ao_consumidor() -> None:
     sombra = SombraDaIntencao(Espiao(),  # type: ignore[arg-type]
                               resolver=lambda c, p: IntentResolution(status=ResolutionStatus.NO_MATCH),
                               catalogo=lambda: ())
-    sombra._observar("r-1", lambda: ("entre e curta", [None], None, "entre com o Lucas e curta", ("Lucas",)))  # noqa: SLF001
+    sombra._observar("r-1", lambda: ("entre e curta", [None], None, "entre com o Tadeu e curta", ("Tadeu",)))  # noqa: SLF001
     sombra._observar("r-2", lambda: ("abrir o app", [None], None))                                          # noqa: SLF001
     assert [(r["run_id"], r["original"], r["destinos"]) for r in recebidos] == [
-        ("r-1", "entre com o Lucas e curta", ("Lucas",)), ("r-2", None, ())]
+        ("r-1", "entre com o Tadeu e curta", ("Tadeu",)), ("r-2", None, ())]

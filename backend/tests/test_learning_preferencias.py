@@ -60,7 +60,7 @@ from app.util import to_iso
 from .fake_skills import banco, perfil
 from .test_intencao_dominio import HANDLE, IG, Fonte, habilidade
 
-ANDRE, BIA = "p-andre", "p-bia"
+OTTILIE, BIA = "p-ottilie", "p-bia"
 DONO = "flavio"
 PERGUNTA = "mande a mensagem de bom dia para o grupo"
 RESPOSTA = "mande a mensagem 'bom dia, família!' para o grupo da família"
@@ -81,7 +81,7 @@ class Mundo:
     relogio: list[datetime] = field(default_factory=lambda: [AGORA])
 
     def __post_init__(self) -> None:
-        perfil(self.db, ANDRE)
+        perfil(self.db, OTTILIE)
         perfil(self.db, BIA)
         self.repo = SqlLearningRepository(self.db, precos=dict, clock=lambda: to_iso(self.relogio[0]))
         self.servico = LearningService(self.repo, FontesSql(self.db), TriagemDeCredencial(),
@@ -100,7 +100,7 @@ class Mundo:
         self.relogio[0] += timedelta(seconds=segundos)
 
     # ---------------------------------------------------------------- execuções
-    def execucao(self, comando: str, *, status: str, perfis: Sequence[str] = (ANDRE,), plano: object = None,
+    def execucao(self, comando: str, *, status: str, perfis: Sequence[str] = (OTTILIE,), plano: object = None,
                  skill_id: str | None = None, versao: int = 1, simulado: bool = False) -> str:
         self.n += 1
         run = f"r-{self.n:03d}"
@@ -113,7 +113,7 @@ class Mundo:
                          versao if skill_id else None))
         return run
 
-    def responder(self, campo: str, resposta: str = RESPOSTA, *, perfis: Sequence[str] = (ANDRE,),
+    def responder(self, campo: str, resposta: str = RESPOSTA, *, perfis: Sequence[str] = (OTTILIE,),
                   efeito: bool = True, comando: str = PERGUNTA, simulado: bool = False) -> tuple[str, str]:
         """A pessoa respondeu a pergunta `campo` de uma execução em `needs_input`: nasce a sucessora e o sinal
         `respondeu_pergunta` do A2 (com o sha256 do comando respondido, nunca o valor)."""
@@ -126,7 +126,7 @@ class Mundo:
             resposta_sha256=hashlib.sha256(resposta.encode()).hexdigest()))
         return antiga, nova
 
-    def escolher(self, escolhida: str, *, efeito: bool = False, perfis: Sequence[str] = (ANDRE,),
+    def escolher(self, escolhida: str, *, efeito: bool = False, perfis: Sequence[str] = (OTTILIE,),
                  candidatas: Sequence[str] = ("ig.a@1", "ig.b@1"), versao: int = 1) -> tuple[str, str]:
         """A pessoa respondeu o empate entre habilidades reescrevendo o comando: a sucessora resolveu `escolhida`, na
         versão `versao` (`runs.skill_version`)."""
@@ -170,7 +170,7 @@ def test_tres_respostas_iguais_viram_candidata_de_pessoa(mundo: Mundo) -> None:
     assert p.state is SkillState.CANDIDATE and p.source_kind is SourceKind.ANSWER
     assert p.human_origin and p.requires_owner and p.side_effect       # texto de pessoa que alimenta efeito
     assert p.content["valor"] == RESPOSTA and p.content["campo"] == "mensagem"
-    assert (p.escopo.profile_id, p.escopo.capability) == (ANDRE, "mensagem")
+    assert (p.escopo.profile_id, p.escopo.capability) == (OTTILIE, "mensagem")
     assert (p.evidence_for, p.distinct_runs) == (3, 3)
     # Idempotente, e o sistema não valida texto de pessoa: ela fica na fila do dono.
     mundo.modo(Modo.ON)
@@ -263,7 +263,7 @@ async def test_so_pre_preenche(mundo: Mundo, cliente: httpx.AsyncClient) -> None
     assert mundo.prefs.sugestoes(espera) == ()
     mundo.modo(Modo.ON)
     # Outro perfil não herda a preferência; o modo shadow não sugere.
-    de_outra = mundo.execucao(PERGUNTA, status="needs_input", plano=pergunta, perfis=(ANDRE, BIA))
+    de_outra = mundo.execucao(PERGUNTA, status="needs_input", plano=pergunta, perfis=(OTTILIE, BIA))
     assert mundo.prefs.sugestoes(de_outra) == ()
     mundo.modo(Modo.SHADOW)
     assert mundo.prefs.sugestoes(espera) == ()
@@ -298,13 +298,13 @@ def _empate(fonte: Preferida | PreferenciasDoLivro | None, *, versao_b: int = 1)
 
 
 def test_preference_stage_decide_sozinho_so_sem_efeito() -> None:
-    pedido = IntentRequest(AMBIGUO, (ANDRE,))
+    pedido = IntentRequest(AMBIGUO, (OTTILIE,))
     sem_efeito = Preferida(PreferenceHint("ig.b", decide=True, versions=(1,)))
     r = _empate(sem_efeito).resolve(pedido)
     assert r.status is ResolutionStatus.RESOLVED and r.intent is not None
     assert str(r.intent.ref) == "ig.b@1" and r.intent.method is ResolutionMethod.PREFERENCE
     assert ("preference", StageOutcome.MATCHED) in [(t.stage, t.outcome) for t in r.trace]
-    assert sem_efeito.pedidos == [(AMBIGUO, ("ig.a@1", "ig.b@1"), (ANDRE,))]
+    assert sem_efeito.pedidos == [(AMBIGUO, ("ig.a@1", "ig.b@1"), (OTTILIE,))]
     # Com efeito: a pergunta continua, com a opção pré-selecionada.
     com_efeito = _empate(Preferida(PreferenceHint("ig.b", decide=False, versions=(1,)))).resolve(pedido)
     assert com_efeito.status is ResolutionStatus.NEEDS_INPUT and com_efeito.intent is None
@@ -333,7 +333,7 @@ def test_preference_stage_nao_mexe_no_que_ja_decidiu() -> None:
     a = habilidade("ig.a", "abra {u}", {"u": "@ana"}, [HANDLE])
     fonte = Preferida(PreferenceHint("ig.a", decide=True, versions=(1,)))
     r = IntentResolver.standard(Fonte(SkillMatch(a)), ParameterExtractor(lambda app_id: IG),
-                                preferences=fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
+                                preferences=fonte).resolve(IntentRequest(AMBIGUO, (OTTILIE,)))
     assert r.intent is not None and r.intent.method is ResolutionMethod.TEMPLATE and fonte.pedidos == []
 
 
@@ -348,7 +348,7 @@ def test_escolha_repetida_sem_efeito_decide_sozinha(mundo: Mundo) -> None:
     assert p.source_kind is SourceKind.DISAMBIGUATION and not p.human_origin and not p.side_effect
     assert p.state is SkillState.VALIDATED                              # modo shadow: valida, não publica
     fonte = PreferenciasDoLivro(mundo.prefs)
-    assert _empate(fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,))).status is ResolutionStatus.NEEDS_INPUT
+    assert _empate(fonte).resolve(IntentRequest(AMBIGUO, (OTTILIE,))).status is ResolutionStatus.NEEDS_INPUT
     mundo.modo(Modo.ON)
     mundo.prefs.minerar(AGORA)
     [p] = mundo.preferencias()
@@ -356,13 +356,13 @@ def test_escolha_repetida_sem_efeito_decide_sozinha(mundo: Mundo) -> None:
     assert p.provenance["versoes"] == [1]                                   # a versão cujo plano foi conferido
     assert {json.loads(s["data"])["versao"] for s in mundo.db.query(
         "SELECT data FROM learning_signals WHERE kind=?", (SignalKind.ESCOLHEU_HABILIDADE.value,))} == {1}
-    r = _empate(fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
+    r = _empate(fonte).resolve(IntentRequest(AMBIGUO, (OTTILIE,)))
     assert r.intent is not None and str(r.intent.ref) == "ig.b@1" and r.intent.method is ResolutionMethod.PREFERENCE
     mundo.ajustes[0] = Ajustes(enabled=False, modo_preferencias=Modo.ON)     # `enabled: false` desliga o consumo
-    assert _empate(fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,))).status is ResolutionStatus.NEEDS_INPUT
+    assert _empate(fonte).resolve(IntentRequest(AMBIGUO, (OTTILIE,))).status is ResolutionStatus.NEEDS_INPUT
     mundo.modo(Modo.ON)
     # Perfil sem a preferência (ou prévia sem aparelho): ninguém decide por ele.
-    for perfis in ((ANDRE, BIA), (BIA,), None, ()):
+    for perfis in ((OTTILIE, BIA), (BIA,), None, ()):
         assert _empate(fonte).resolve(IntentRequest(AMBIGUO, perfis)).status is ResolutionStatus.NEEDS_INPUT
 
 
@@ -376,8 +376,8 @@ def test_versao_nova_da_habilidade_escolhida_so_pre_seleciona(mundo: Mundo) -> N
     [p] = mundo.preferencias()
     assert p.state is SkillState.PUBLISHED and not p.side_effect
     fonte = PreferenciasDoLivro(mundo.prefs)
-    assert _empate(fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,))).intent is not None
-    nova = _empate(fonte, versao_b=2).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
+    assert _empate(fonte).resolve(IntentRequest(AMBIGUO, (OTTILIE,))).intent is not None
+    nova = _empate(fonte, versao_b=2).resolve(IntentRequest(AMBIGUO, (OTTILIE,)))
     assert nova.status is ResolutionStatus.NEEDS_INPUT and nova.intent is None
     [q] = nova.questions
     assert q.suggested == "ig.b@2" and q.as_dict()["suggested"] == "ig.b@2"
@@ -389,7 +389,7 @@ def test_versao_nova_da_habilidade_escolhida_so_pre_seleciona(mundo: Mundo) -> N
     mundo.prefs.minerar(AGORA)
     [p] = mundo.preferencias()
     assert p.state is SkillState.PUBLISHED and p.provenance["versoes"] == [1] and p.evidence_for == 6
-    assert _empate(fonte, versao_b=2).resolve(IntentRequest(AMBIGUO, (ANDRE,))).intent is None
+    assert _empate(fonte, versao_b=2).resolve(IntentRequest(AMBIGUO, (OTTILIE,))).intent is None
 
 
 def test_escolhas_em_versoes_diferentes_conferem_as_duas(mundo: Mundo) -> None:
@@ -404,9 +404,9 @@ def test_escolhas_em_versoes_diferentes_conferem_as_duas(mundo: Mundo) -> None:
     assert p.state is SkillState.PUBLISHED and p.provenance["versoes"] == [1, 2]
     fonte = PreferenciasDoLivro(mundo.prefs)
     for versao in (1, 2):
-        r = _empate(fonte, versao_b=versao).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
+        r = _empate(fonte, versao_b=versao).resolve(IntentRequest(AMBIGUO, (OTTILIE,)))
         assert r.intent is not None and str(r.intent.ref) == f"ig.b@{versao}"
-    r = _empate(fonte, versao_b=3).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
+    r = _empate(fonte, versao_b=3).resolve(IntentRequest(AMBIGUO, (OTTILIE,)))
     assert r.intent is None and r.questions[0].suggested == "ig.b@3"
 
 
@@ -436,9 +436,9 @@ def test_escolha_com_efeito_espera_o_dono_e_so_pre_seleciona(mundo: Mundo) -> No
     assert p.side_effect and p.state is SkillState.VALIDATED            # o sistema não publica o que tem efeito
     assert [e.ref for e in mundo.servico.pendentes() if e.kind is LivroKind.PREFERENCIA] == [p.id]
     fonte = PreferenciasDoLivro(mundo.prefs)
-    assert _empate(fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,))).questions[0].suggested is None
+    assert _empate(fonte).resolve(IntentRequest(AMBIGUO, (OTTILIE,))).questions[0].suggested is None
     mundo.publicar(p)
-    r = _empate(fonte).resolve(IntentRequest(AMBIGUO, (ANDRE,)))
+    r = _empate(fonte).resolve(IntentRequest(AMBIGUO, (OTTILIE,)))
     assert r.status is ResolutionStatus.NEEDS_INPUT and r.questions[0].suggested == "ig.b@1"
 
 
@@ -452,7 +452,7 @@ def test_escolha_diferente_contradiz(mundo: Mundo) -> None:
     [p] = mundo.preferencias()
     assert p.state is SkillState.DISABLED
     assert _empate(PreferenciasDoLivro(mundo.prefs)).resolve(
-        IntentRequest(AMBIGUO, (ANDRE,))).status is ResolutionStatus.NEEDS_INPUT
+        IntentRequest(AMBIGUO, (OTTILIE,))).status is ResolutionStatus.NEEDS_INPUT
 
 
 # ================================================================== a execução na trilha e no bloco do D2
@@ -571,7 +571,7 @@ def test_so_a_evidencia_desde_a_ultima_mudanca_de_estado() -> None:
 
 def test_execucao_que_fechou_nao_inventa() -> None:
     def obs(run: str) -> Observacao:
-        return Observacao(origem=f"signal:{run}", run_id=run, perfil=ANDRE, campo="skill", modelo="emp-x",
+        return Observacao(origem=f"signal:{run}", run_id=run, perfil=OTTILIE, campo="skill", modelo="emp-x",
                           valor="ig.b", app_package="com.instagram.android", run_sucessora=None, simulated=False)
 
     assert execucao_que_fechou([obs("r1"), obs("r1"), obs("r2")]) is None          # 2 execuções não fecham
@@ -614,7 +614,7 @@ def test_escolha_sem_execucao_nao_conta_para_o_nascimento(mundo: Mundo) -> None:
     runs = [mundo.execucao(AMBIGUO, status="cancelled") for _ in range(3)]
 
     def obs(run: str, n: int) -> Observacao:
-        return Observacao(origem=f"signal:{n}", run_id=run, perfil=ANDRE, campo="skill", modelo="emp-x",
+        return Observacao(origem=f"signal:{n}", run_id=run, perfil=OTTILIE, campo="skill", modelo="emp-x",
                           valor="ig.b", app_package="com.instagram.android", run_sucessora=None, simulated=False,
                           opcoes=("ig.a", "ig.b"), versao=1)
 

@@ -221,12 +221,12 @@ async def test_perfil_desconhecido_e_recusado_antes_de_criar(harness: Harness) -
     app.state.poc = harness.state
     antes = harness.state.db.scalar("SELECT COUNT(*) FROM runs")         # type: ignore[union-attr]
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as c:
-        r = await c.post("/api/runs", json={"command": "Envie oi para Bruno", "instance_ids": ["android-01"],
+        r = await c.post("/api/runs", json={"command": "Envie oi para Quillon", "instance_ids": ["android-01"],
                                             "idempotency_key": "perfil-desconhecido-1", "ai_profile": "fantasma"})
         assert r.status_code == 422
         detalhe = r.json()["detail"]
         assert detalhe["code"] == "ai_profile_desconhecido" and "cand" in detalhe["message"]
-        invalido = await c.post("/api/runs", json={"command": "Envie oi para Bruno", "instance_ids": ["android-01"],
+        invalido = await c.post("/api/runs", json={"command": "Envie oi para Quillon", "instance_ids": ["android-01"],
                                                    "idempotency_key": "perfil-desconhecido-2", "ai_profile": "a b"})
         assert invalido.status_code == 422
     assert harness.state.db.scalar("SELECT COUNT(*) FROM runs") == antes  # type: ignore[union-attr]

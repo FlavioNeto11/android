@@ -64,7 +64,7 @@ VAZAMENTOS_DA_RODADA_F = [
     ("entre com @zilda.prado e a girassol", "C7", "bug"),
     ("entre com tadeu.quintela4821@outlook.com e girassol", "C7", "bug"),
     ("entre com tadeu.quintela4821@gmail.com, girassol", "C7", "bug"),
-    ("entre com lucas@outlook.com e girassol", "C7", "bug"),
+    ("entre com tadeu@outlook.com e girassol", "C7", "bug"),
     ("entre com a conta zilda@correio.net e girassol", "C7", "bug"),
     # G-3: "at" com hífen (cético de método)
     ("mande para zilda-at-correio-net a foto", "email", "bug"),
@@ -85,7 +85,7 @@ VAZAMENTOS_DA_RODADA_F = [
     ("a de todo dia é girassol, curta o post da Marina", "C7", "lacuna-pt"),
     ("acesso: girassol, curta o post da Marina", "C7", "bug"),
     ("para acesso use girassol e curta o post da Marina", "C7", "lacuna-pt"),
-    ("usuário lucas, girassol. curta o post da Marina", "C7", "bug"),
+    ("usuário tadeu, girassol. curta o post da Marina", "C7", "bug"),
     # G-3: e-mail em peças com outros separadores e provedor novo (cético de resultado)
     ("mande um oi para zilda - hotmail", "email", "bug"),
     ("mande um oi para zilda (hotmail)", "email", "bug"),
@@ -120,7 +120,7 @@ def test_os_vazamentos_da_rodada_f_recusam(comando: str, classe: str, tipo: str)
 #: Os 12 pares da orquestradora (casos 465 a 476 do corpus).
 @pytest.mark.parametrize("comando", [
     "entre com @zilda.prado e girassol e curta", "entre com tadeu.quintela4821@outlook.com e girassol",
-    "acesse com @zilda.prado e Girassol2024", "faça login com @bruno e tulipa42", "entre com @bruno: abacate",
+    "acesse com @zilda.prado e Girassol2024", "faça login com @quillon e tulipa42", "entre com @quillon: abacate",
     "entre com @zilda.prado / tulipa", "acesse com @tadeu.quintela4821, abacate",
     "entre com valdir.teixeira6352@outlook.com e tulipa42", "faça login com zilda@correio.net: abacate",
     "entre com zilda@correio.net / girassol", "login com @rene.sampaio381524, tulipa",
@@ -132,7 +132,7 @@ def test_o_par_com_handle_ou_email_recusa(comando: str) -> None:
 
 
 @pytest.mark.parametrize("comando", [
-    "acesse com @zilda.prado e Girassol2024", "entre com @zilda.prado e girassol", "entre com lucas@outlook.com e girassol",
+    "acesse com @zilda.prado e Girassol2024", "entre com @zilda.prado e girassol", "entre com tadeu@outlook.com e girassol",
     "entre com tadeu.quintela4821@gmail.com, girassol",
 ])
 def test_o_par_com_handle_e_par_e_nao_mascara(comando: str) -> None:
@@ -183,17 +183,17 @@ def test_controles_do_email_passam(comando: str) -> None:
 #: comparação da orquestradora e os 5 que mudaram de motivo).
 @pytest.mark.parametrize("comando", [
     "entre usando girassol e curta a foto da Marina", "faca login com girassol e depois curta",
-    "entre com girassol e curta a foto", "entre com a conta Lucas e girassol", "entre com a conta Lucas girassol",
-    "entre com a conta Lucas, girassol", "entre com a persona Lucas e girassol", "faça login com a conta Lucas e girassol",
-    "entre no insta com a conta Lucas e girassol", "login com a conta Lucas e girassol", "acesse com a conta Lucas e girassol",
-    "entre com a conta Lucas e depois girassol", "entre com a conta tadeu.quintela4821 e girassol",
-    "entre como @tadeu.quintela4821 e girassol", "entre com a conta Lucas e Girassol",
+    "entre com girassol e curta a foto", "entre com a conta Tadeu e girassol", "entre com a conta Tadeu girassol",
+    "entre com a conta Tadeu, girassol", "entre com a persona Tadeu e girassol", "faça login com a conta Tadeu e girassol",
+    "entre no insta com a conta Tadeu e girassol", "login com a conta Tadeu e girassol", "acesse com a conta Tadeu e girassol",
+    "entre com a conta Tadeu e depois girassol", "entre com a conta tadeu.quintela4821 e girassol",
+    "entre como @tadeu.quintela4821 e girassol", "entre com a conta Tadeu e Girassol",
     "abra o instagram e entre com a girassol, depois curta o post da Marina", "entre com o girassol e curta a foto",
     "entre usando a girassol e curta a foto da Marina", "entre no app do insta agora com girassol e curta o post",
     "log into the app with girassol and like Marina's post", "faça o acesso com girassol e curta o post da Marina",
     "connecte-toi avec girassol et aime la photo de Marina", "inloggen met girassol en like de post van Marina",
     "zaloguj się z girassol i polub post Mariny", "melde dich an mit girassol und like Marinas Beitrag",
-    "lucas / girassol. curta o post da Marina", "conta André girassol", "entre com a conta Bruno e girassol",
+    "tadeu / girassol. curta o post da Marina", "conta Ravenna girassol", "entre com a conta Quillon e girassol",
     "conta android-05 girassol",
     "e pra entrar: girassol", "entre, girassol, e curta o post da Marina", "e pra entrar, girassol",
     "e pra entrar - girassol", "digita girassol e entra, depois curte o post da Marina",
@@ -204,15 +204,15 @@ def test_o_nome_do_catalogo_nao_isenta_o_valor(comando: str) -> None:
 
 
 def test_a_persona_girassol_e_o_par() -> None:
-    """O teste pedido na G-4: a persona "Girassol" existe, e "entre com a conta Lucas e girassol" recusa como par. Desde a
+    """O teste pedido na G-4: a persona "Girassol" existe, e "entre com a conta Tadeu e girassol" recusa como par. Desde a
     A-média (31.20), o verbo de entrar recusa já no texto sem destinos ("entre e girassol"), antes do par no original."""
-    assert _motivo("entre com a conta Lucas e girassol") == "c7_gatilho"
+    assert _motivo("entre com a conta Tadeu e girassol") == "c7_gatilho"
 
 
 def test_o_nome_inteiro_e_nao_a_palavra() -> None:
     """A persona "Sol Nascente" não faz de "sol" um destino: só o nome inteiro conta (o "flip" do cético de método)."""
     nomes = nomes_de_destino(["Sol Nascente"])
-    assert motivo_c7("entre com a conta do lucas e sol", destinos=nomes) is not None
+    assert motivo_c7("entre com a conta do tadeu e sol", destinos=nomes) is not None
     assert motivo_c7("entre e sol", destinos=nomes) is not None
     assert motivo_c7("siga a Sol Nascente e curta", destinos=nomes) is None
     # forma A (31.18): a conta recusa mesmo com o nome inteiro do catálogo
@@ -276,7 +276,7 @@ def test_entre_sem_faixa_e_verbo(comando: str, motivo: str) -> None:
     ("log-into the app and like", "c7_gatilho"),                    # A-média (31.20): o verbo recusa sozinho
     ("lo de siempre es girassol", "c7_eufemismo"), ("a palavrinha mágica é girassol", "c7_eufemismo"),
     ("acesso = girassol", "c7_eufemismo"), ("para acesso digite girassol", "c7_eufemismo"),
-    ("user lucas, girassol", "c7_par_credencial"), ("login zilda, tulipa e curta", "c7_par_credencial"),
+    ("user tadeu, girassol", "c7_par_credencial"), ("login zilda, tulipa e curta", "c7_par_credencial"),
 ])
 def test_as_regras_da_rodada_g(comando: str, motivo: str | None) -> None:
     assert _motivo(comando) == motivo
@@ -284,7 +284,7 @@ def test_as_regras_da_rodada_g(comando: str, motivo: str | None) -> None:
 
 @pytest.mark.parametrize("comando", [
     # o campo de usuário com vírgula, sem verbo de entrar, só recusa com o valor (não com o verbo de ação)
-    "veja o perfil Marina, Zilda e Ana",    # "usuário lucas, …" e "na conta lucas, …" recusam (forma A: test_decisao_fechada_forma_a.py)
+    "veja o perfil Marina, Zilda e Ana",    # "usuário tadeu, …" e "na conta tadeu, …" recusam (forma A: test_decisao_fechada_forma_a.py)
     # "para acesso use" diante de artigo é instrução de navegação
     "para acesso use o menu de cima", "mande uma palavrinha de carinho para a Marina",
     # a lista de letras curta e o nome de letra sem separador

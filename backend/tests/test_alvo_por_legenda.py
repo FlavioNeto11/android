@@ -227,7 +227,7 @@ def test_a_guarda_de_linha_de_hoje_continua_igual_na_funcao_extraida() -> None:
         f'<node class="android.widget.TextView" text="{nome}" resource-id="app:id/username" '
         f'bounds="[20,{200 + i * 200}][400,{280 + i * 200}]"/>'
         f'<node class="android.widget.Button" text="Confirm" resource-id="app:id/confirm" clickable="true" '
-        f'bounds="[420,{200 + i * 200}][700,{280 + i * 200}]"/>' for i, nome in enumerate(("ana", "bruno")))
+        f'bounds="[420,{200 + i * 200}][700,{280 + i * 200}]"/>' for i, nome in enumerate(("ana", "quillon")))
     tree = parse_hierarchy(f"<hierarchy>{linhas}</hierarchy>")
     da_ana, do_bruno = tree.find_selector("text=Confirm")
     assert rejeicao_do_commit(["@ana"], ["@ana"], (), tree, da_ana) is None
