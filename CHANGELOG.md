@@ -19,6 +19,10 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 29.164 (Portal): o cartão "Comando remoto" com o estado do canal e a falha em português (branch feat/29-164-comando-remoto-em-portugues)
+
+- Achado do percurso real de 06/10 (central no deploy 54, cartão do worker aberto, só leitura): o motivo "desligado no config do central" aparecia com crases cruas (`comando_remoto.ativo`), a etiqueta "não negociado" era jargão e o cartão não dizia o que a seção não faz. Agora: cada interruptor desligado diz o que falta e o que fazer (sem crase), as etiquetas viram "canal pronto / canal não pronto" (com a explicação no `title`), cada fim ruim (falhou, passou do prazo, cancelado, recusado) traz o passo seguinte, e uma linha avisa que a seção não é um terminal (uma linha por vez, sem resposta durante a execução, sem saída ao vivo, não repete comando incerto, não mexe em aparelho Android). Prova: real só do achado (leitura do cartão); a correção é simulada (`TerminalDoWorker.test.tsx`, 3 casos novos, 4 mutações mortas) e o percurso pós-correção fica `not_run` até o deploy.
+
 ## 2026-10-06 — 28.57: arquivo de texto com o nome original no envio e repasse do `.txt` do dono sem legenda (branch canais/anexos-28-57)
 
 - Achado de 06/10 ao mandar os arquivos do 29.161: `enviar_anexo` renomeava tudo para `anexo-<sha>.<ext>` e não aceitava `.ps1`/`.md`, o que quebraria o comando `-File .\script.ps1`; e o `.txt` que o dono mandou sem legenda ficava `ignorada`. A premissa de que o canal não recebia o anexo estava errada: a recepção do 28.24 já guardava os 4 `.txt` (`canal_anexos` 1 a 4), só faltava o repasse (K-105).

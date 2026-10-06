@@ -37,15 +37,16 @@ const ESTADO: Record<EstadoDoComando, { label: string; tone: Tone }> = {
 /** Por que o botão Executar está parado: o primeiro dos três interruptores que está desligado. */
 export function motivoDeNaoExecutar(i: ComandoRemotoInterruptor): string | null {
   if (i.negociado) return null;
-  if (i.e_o_central) return 'O central não aceita comando remoto: é a máquina do dono.';
+  if (i.e_o_central) return 'O central não aceita comando remoto: é a máquina do dono. Use o cartão de um worker.';
   if (!i.central_ativo) {
-    return 'Desligado no config do central (`comando_remoto.ativo`); só muda com o reinício da tarefa farm-central.';
+    return 'O comando remoto está desligado no central. Para ligar, quem administra muda comando_remoto.ativo no config.yaml do central '
+      + 'e reinicia a tarefa farm-central; o painel não faz isso.';
   }
-  if (!i.worker_ligado) return 'O interruptor deste worker está desligado: ligue acima.';
+  if (!i.worker_ligado) return 'O interruptor deste worker está desligado: use "Ligar neste worker", acima.';
   if (!i.agente_anuncia) {
-    return 'O agente desta máquina não anuncia o comando remoto: `comando_remoto: true` no worker.yaml e reinício do agente.';
+    return 'O agente desta máquina não oferece o comando remoto: ponha comando_remoto: true no worker.yaml e reinicie o agente.';
   }
-  return 'O agente ainda não negociou o comando remoto nesta conexão; aguarde alguns segundos.';
+  return 'O canal com o agente ainda não ficou pronto nesta conexão; aguarde alguns segundos e, se continuar, reinicie o agente.';
 }
 
 /** A mensagem de cada recusa do central, no lugar do texto cru do backend. */
@@ -71,6 +72,18 @@ export function textoDoErro(e: unknown): string {
         ? 'O comando remoto não existe neste endereço.' : err.message;
   }
 }
+
+/** O que fazer depois de cada fim ruim (o `uncertain` tem o texto próprio, na saída). O que roda bem não precisa de passo. */
+const PROXIMO_PASSO: Partial<Record<EstadoDoComando, string>> = {
+  failed: 'O comando terminou com erro: leia o que está em "Erro", corrija a linha e execute de novo.',
+  timed_out: 'O comando passou do prazo e foi interrompido: aumente o prazo (até 600 s) ou divida a linha em comandos menores.',
+  cancelled: 'O comando foi cancelado antes de terminar; parte dele pode ter rodado na máquina. Confira lá se isso importa.',
+  rejected: 'O central recusou o comando e nada rodou na máquina. Leia o motivo e peça de novo.',
+};
+
+/** O que a seção NÃO faz, dito de antemão para ninguém esperar um terminal de verdade. */
+const O_QUE_A_SECAO_NAO_FAZ = 'Não é um terminal: roda uma linha por vez, sem aceitar resposta durante a execução, não mostra a saída ao vivo '
+  + '(ela aparece conforme a consulta de 2 em 2 segundos), não repete sozinha um comando que ficou incerto e não mexe em aparelho Android.';
 
 function chaveDoPedido(): string {
   return `painel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -239,7 +252,10 @@ function TerminalAberto({ workerId, nome }: { workerId: string; nome: string }) 
           <Badge tone={interruptor.central_ativo ? 'success' : 'muted'}>central {interruptor.central_ativo ? 'ligado' : 'desligado'}</Badge>
           <Badge tone={interruptor.worker_ligado ? 'success' : 'muted'}>worker {interruptor.worker_ligado ? 'ligado' : 'desligado'}</Badge>
           <Badge tone={interruptor.agente_anuncia ? 'success' : 'muted'}>agente {interruptor.agente_anuncia ? 'anuncia' : 'não anuncia'}</Badge>
-          <Badge tone={interruptor.negociado ? 'success' : 'warning'}>{interruptor.negociado ? 'negociado' : 'não negociado'}</Badge>
+          <Badge tone={interruptor.negociado ? 'success' : 'warning'}
+                 title="O canal fica pronto quando os três itens anteriores estão certos e o agente confirmou nesta conexão.">
+            {interruptor.negociado ? 'canal pronto' : 'canal não pronto'}
+          </Badge>
           <Button size="sm" variant="outline" icon={Power} loading={ligando}
                   disabledReason={interruptor.e_o_central ? 'O central não aceita comando remoto.' : null}
                   onClick={() => void alternar()}>
@@ -271,6 +287,7 @@ function TerminalAberto({ workerId, nome }: { workerId: string; nome: string }) 
           ) : null}
         </div>
         {motivo && interruptor ? <p className={cx(styles.dim, styles.alerta)}>{motivo}</p> : null}
+        <p className={styles.dim}>{O_QUE_A_SECAO_NAO_FAZ}</p>
       </div>
       {atual ? <SaidaDoComando comando={atual} /> : null}
       <div>
@@ -310,6 +327,7 @@ function SaidaDoComando({ comando: c }: { comando: ComandoRemoto }) {
         {c.duration_ms != null ? <span className={styles.dim}>{duracao(c.duration_ms)}</span> : null}
       </div>
       {c.reason ? <p className={cx(styles.dim, styles.alerta)}>{c.reason}</p> : null}
+      {PROXIMO_PASSO[c.state] ? <p className={cx(styles.dim, styles.alerta)}>{PROXIMO_PASSO[c.state]}</p> : null}
       {c.state === 'uncertain' ? (
         <p className={cx(styles.dim, styles.alerta)}>
           Não se sabe se rodou: a conexão caiu no meio. O central não repete o comando; confira na máquina.

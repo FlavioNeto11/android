@@ -60,7 +60,7 @@ async function abrir(estado: ComandoRemotoInterruptor, historico: ComandoRemoto[
     root.render(<><TerminalDoWorker worker={WORKER} /><ConfirmHost /></>);
   });
   await openDetails(/Comando remoto/);
-  await waitFor(() => text().includes('negociado'));
+  await waitFor(() => text().includes('canal '));
 }
 
 describe('o que impede o comando', () => {
@@ -186,5 +186,63 @@ describe('o terminal do worker', () => {
     await abrir(interruptor(), [comando({ id: 'exec-0003', state: 'uncertain', exit_code: null })]);
     await click(byRole('button', /Abrir o comando Get-Date/));
     await waitFor(() => text().includes('não repete'));
+  });
+});
+
+// 29.164: o estado do canal, a recusa e o que fazer a seguir, em português; nada de código nem de marcação crua na tela.
+describe('29.164: o cartão em português', () => {
+  const CRUS = /(timed_out|succeeded|dispatched|uncertain|rejected|cancelled|worker_sem_remote_exec|comando_remoto_desligado|fila_cheia|negociado|`)/;
+
+  it('cada estado do canal diz em palavras o que está certo, o que falta e o que fazer, sem crase nem código', async () => {
+    const casos: [Partial<ComandoRemotoInterruptor>, RegExp][] = [
+      [{ negociado: true }, /canal pronto/],
+      [{ negociado: false, central_ativo: false, worker_ligado: false, agente_anuncia: false }, /desligado no central[\s\S]*reinicia a tarefa farm-central/],
+      [{ negociado: false, worker_ligado: false }, /use "Ligar neste worker"/],
+      [{ negociado: false, agente_anuncia: false }, /não oferece o comando remoto[\s\S]*reinicie o agente/],
+      [{ negociado: false }, /canal com o agente ainda não ficou pronto/],
+    ];
+    for (const [estado, esperado] of casos) {
+      await act(async () => root.unmount());
+      container.remove();
+      backend = new FakeBackend();
+      backend.install();
+      container = document.createElement('div');
+      document.body.append(container);
+      root = createRoot(container);
+      await abrir(interruptor(estado));
+      const visivel = text();
+      if (estado.negociado) expect(visivel).toMatch(esperado);
+      else expect(`${visivel} ${motivoDeNaoExecutar(interruptor(estado))}`).toMatch(esperado);
+      expect(visivel).not.toMatch(CRUS);
+      expect(visivel).toContain('Não é um terminal');
+    }
+  });
+
+  it.each([
+    ['failed', /terminou com erro[\s\S]*execute de novo/, /^falhou$/],
+    ['timed_out', /passou do prazo[\s\S]*aumente o prazo/, /estourou o prazo/],
+    ['cancelled', /cancelado antes de terminar[\s\S]*Confira lá/, /cancelado/],
+    ['rejected', /recusou o comando e nada rodou[\s\S]*peça de novo/, /recusado/],
+  ] as const)('o estado %s mostra o rótulo em português e o que fazer, sem o código', async (estado, passo, rotulo) => {
+    const c = comando({ id: 'exec-9', state: estado, exit_code: null, reason: estado === 'rejected' ? 'o central reiniciou antes de despachar' : null });
+    backend.on('GET', /\/comandos\/exec-9$/, () => json(c));
+    await abrir(interruptor(), [c]);
+    await click(byRole('button', /Abrir o comando Get-Date/));
+    await waitFor(() => passo.test(text()));
+    expect(text()).not.toContain(estado);
+    expect(Array.from(container.querySelectorAll('span,div')).some((e) => !e.children.length && rotulo.test(e.textContent ?? ''))).toBe(true);
+    if (estado === 'rejected') expect(text()).toContain('o central reiniciou antes de despachar');
+  });
+
+  it('o que roda bem não ganha passo a seguir, e as recusas do central falam em português', async () => {
+    const c = comando({ id: 'exec-1' });
+    backend.on('GET', /\/comandos\/exec-1$/, () => json(c));
+    await abrir(interruptor(), [c]);
+    await click(byRole('button', /Abrir o comando Get-Date/));
+    await waitFor(() => text().includes('código de saída 0'));
+    expect(text()).not.toContain('corrija a linha');
+    for (const codigo of ['sem_operador', 'linha_com_credencial', 'comando_remoto_desligado', 'worker_sem_remote_exec', 'limite_por_minuto', 'fila_cheia', 'central_fora']) {
+      expect(textoDoErro(new ApiError(409, codigo, 'texto cru do backend'))).not.toMatch(/texto cru|_/);
+    }
   });
 });
