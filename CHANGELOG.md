@@ -19,6 +19,20 @@ Implantado em 25/09/2026 ~14:19 UTC (conferido no `/api/health` do central): `81
 Ao fechar uma tarefa, acrescente a linha no dia dela (skill `fechar-tarefa`). Mudança só de documentação entra em
 "Documentação e processo".
 
+## 2026-10-06 — 31.149 (P-014 b): a correção ensinada volta ao comando que falhou (branch feat/31-149-correcao-volta-ao-comando)
+
+- Medido em 06/10: das 6 sessões de correção, 2 viraram fluxo, os dois desligados e com 0 usos, e o molde salvo era
+  diferente do comando que falhou. A receita morava na chave da etapa da proposta, que o plano do comando não tem.
+- O `save` de uma sessão de correção também grava a demonstração na chave da etapa que falhou (`template_hash` e
+  chave), com os parâmetros renomeados para os do objetivo que falhou pelo valor. A resposta traz `correcao` com
+  "esta correção vale para o comando <molde>", ou o motivo de não ligar (efeito, nome ausente, outro app, sem
+  identidade). Regras em `backend/app/training/correcao.py`.
+- A lição do planejador como caminho alternativo fica para depois (depende do lado do planejador, 31.151).
+- Prova `simulated`: `backend/tests/test_correcao_volta_ao_comando.py` (reprova no código anterior). Bateria do ensino,
+  receitas, fluxos e arquitetura: 779 passaram e 1 falhou, a catraca de `Any` em `app.training`, que já está corrigida.
+  `real`: `not_run`. As 2 sessões reais salvas não gerariam receita: uma sem app, outra em Configurações, sem versão
+  conhecida.
+
 ## 2026-10-06 — 31.150 (K-106): o fluxo de prova religado para uso real, com motivo e escopo (branch feat/31-150-fluxo-religado)
 
 - Todo fluxo de prova termina desligado, e a volta era o `PUT /api/flows/{id}` genérico, com o motivo opcional. O Livro

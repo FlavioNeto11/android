@@ -7344,3 +7344,29 @@ motivo opcional, e o Livro não distinguia "fluxo de prova em uso real" de "esqu
   (`backend/tests/test_fluxo_nascido_de_prova.py::test_religar_fluxo_de_prova_exige_motivo_troca_o_escopo_e_sela_o_uso_real`,
   que reprova no código anterior). `real`: `not_run` (religar um fluxo de prova para uma persona real só com o sim do
   dono).
+
+## Adendo (06/10/2026; número pela orquestradora; item 31.149, P-014 b) — a correção ensinada volta ao comando que falhou
+
+- **`POST /api/training/{id}/save` de uma sessão de correção** (`origin`, 31.111) ganha `correcao`. Além das receitas de
+  sempre, a demonstração é gravada na chave da etapa que FALHOU (`steps.template_hash` e a chave dela). Assim, a próxima
+  execução do mesmo comando a acha nessa etapa.
+  - Ligada: `{ligada: true, step_key, recipe_id, reason, comando, texto}`. `texto` = "esta correção vale para o comando
+    “<molde>”", e o molde é o comando da execução que falhou com os valores trocados pelos nomes (parâmetros e dados
+    da persona).
+  - Não ligada: `{ligada: false, step_key?, motivo}`. Os motivos:
+    - a etapa que falhou foi apagada, ou não tem identidade de receita;
+    - há efeito (na etapa que falhou ou numa ensinada);
+    - uma etapa ensinada não virou ação;
+    - a correção é de outro app;
+    - a receita usaria `{nome}` que a execução não tem (só o nome vai na resposta);
+    - a versão do app é desconhecida no aparelho.
+  - Sessão sem `origin`: sem `correcao`.
+- **Quais etapas ensinadas são a correção:** a de mesma chave da que falhou; senão, todas, em sequência.
+- **Parâmetros:** os da proposta são renomeados para os do objetivo que falhou pelo valor (sem o @ e sem caixa).
+- **Receita:** segue o 30.81 (vale para quem ensinou até o "Confirmar que fica") e a regra de uma viva por chave (30.79).
+- **Evento `log` do salvar:** ganha `correcao_ligada` e `recipe_id`.
+- **Não feito:** a "lição do planejador" como caminho alternativo quando a receita não liga. Os motivos acima dizem por
+  quê.
+- **Prova:** `simulated` (`backend/tests/test_correcao_volta_ao_comando.py`, 2 testes, que reprovam no código anterior).
+  `real`: `not_run`. As 2 sessões reais salvas não teriam receita: uma sem app, outra em Configurações, sem versão
+  conhecida no catálogo.

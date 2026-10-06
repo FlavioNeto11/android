@@ -20,14 +20,15 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, NamedTuple, get_args
 
-from ..db import Row, dumps
+from ..db import Row, dumps, loads
 from ..models import Plan, PlannerInfo, PlanStep, Postcondition
 from ..planning.capabilities import CapabilityCatalog, CapabilityNode, load_catalog
 from ..planning.training import TrainingRequest
 from ..taskqueue.flows import PLACEHOLDER, RESERVED, ensinado_em_prova
 from ..taskqueue.recipes import ReceitaVista, distill_training, step_template_hash
+from ..security.redaction import redact
 from ..util import now_iso
-from . import dado_da_persona, lancador, partida
+from . import correcao, dado_da_persona, lancador, partida
 from .reparo_da_gravacao import marcar_telas
 from .recorder import TrainingError
 from .arraste import arrastes_finais, confirmou, pode_ser_receita
@@ -498,8 +499,10 @@ class TrainingSkills:
         self.s.scheduler.flows.set_scope(flow_id, profile_ids=prep.profile_ids, group_ids=prep.group_ids)
         if sess.get("nascido_de_prova"):        # 31.130: o fluxo de uma sessão de prova leva a marca
             self.s.db.execute("UPDATE flows SET nascido_de_prova=1 WHERE id=?", (flow_id,))
-        relatorio = await self._relatorio(sess, _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps),
-                                          prep, session_id, gravar=True)
+        destiladas = _destilar(sess, prep.p, prep.plano.steps, prep.exemplos, prep.apps)
+        relatorio = await self._relatorio(sess, destiladas, prep, session_id, gravar=True)
+        # 31.149: a sessão de correção também grava a demonstração na chave da etapa que FALHOU
+        ligacao = await self._ligar_a_falha(sess, destiladas, prep, session_id) if sess.get("origin") else None
         self.s.db.execute("UPDATE training_sessions SET status='saved', flow_id=?, proposal=?, updated_at=? WHERE id=?",
                           (flow_id, dumps(prep.p), now_iso(), session_id))
         # 31.118: o dado da persona que a habilidade usa sai da gravação salva; fica o marcador (quem precisa do valor
@@ -514,10 +517,65 @@ class TrainingSkills:
         self.s.bus.emit("log", f"Habilidade “{prep.plano.summary[:60]}” salva a partir do treinamento"
                                f"{' (correção de uma execução que falhou)' if origem else ''}",
                         data={"training_session_id": session_id, "flow_id": flow_id,
-                              **({"origin": origem} if origem else {})})       # 31.111 F3: a trilha do ensino liga à execução
+                              **({"origin": origem} if origem else {}),        # 31.111 F3: a trilha do ensino liga à execução
+                              **({"correcao_ligada": bool(ligacao["ligada"]), "recipe_id": ligacao.get("recipe_id")}
+                                 if ligacao is not None else {})})
         return {"session": self.s.training.get(session_id), "flow_id": flow_id, "steps": relatorio,
                 "warnings": [*prep.avisos, *_aviso_sem_persona(sess)], "scope": _escopo_da_resposta(prep, scope_on_proof),
-                **self._em_prova(flow_id)}
+                **({"correcao": ligacao} if ligacao is not None else {}), **self._em_prova(flow_id)}
+
+    async def _ligar_a_falha(self, sess: Sessao, destiladas: list[_Destilada], prep: _Preparo,
+                             session_id: str) -> dict[str, object]:
+        """31.149: grava a correção na chave da etapa que falhou (`steps.template_hash` e a chave dela), para a próxima
+        execução do MESMO comando a achar ali. Regras em `correcao.py`; aqui só o banco, o aparelho e a loja. A resposta
+        diz se ligou e, se não, o porquê; a revisão diz "esta correção vale para o comando <molde>"."""
+        origem = sess.get("origin") or {}
+        etapa = self.s.db.one("SELECT s.key, s.template_hash, s.side_effect, s.app_id, o.parameters, o.profile_id,"
+                              " r.command FROM steps s JOIN objectives o ON o.id = s.objective_id"
+                              " JOIN runs r ON r.id = s.run_id WHERE s.id=?", (origem.get("step_id"),))
+        if etapa is None:
+            return {"ligada": False, "motivo": "a etapa que falhou não existe mais: a limpeza das execuções a apagou"}
+        chave = str(etapa["key"])
+        base: dict[str, object] = {"ligada": False, "step_key": chave}
+        if not etapa["template_hash"]:
+            return {**base, "motivo": "a etapa que falhou não tem identidade de receita: as receitas estavam desligadas "
+                                      "quando ela foi planejada"}
+        indices = correcao.escolhidas([d.passo.key for d in destiladas], chave)
+        if not indices:
+            return {**base, "motivo": "a proposta não tem etapa ensinada"}
+        if etapa["side_effect"] or any(destiladas[i].passo.side_effect for i in indices):
+            return {**base, "motivo": "a etapa tem efeito: a pós-condição confere o caminho, não o commit, e a correção "
+                                      "não é ligada à etapa que falhou"}
+        sem_acao = [destiladas[i].passo.key for i in indices if not destiladas[i].acoes]
+        if sem_acao:
+            return {**base, "motivo": f"a etapa ensinada {sem_acao[0]} não virou ação reproduzível"}
+        pacotes = {a["id"]: a["package"] for a in prep.apps.values()}
+        ensinados = {pacotes.get(destiladas[i].passo.app_id or prep.app_id or "") or "" for i in indices}
+        da_falha = self.s.db.scalar("SELECT package FROM apps WHERE id=?", (etapa["app_id"],)) if etapa["app_id"] else None
+        if len(ensinados) != 1 or "" in ensinados or (da_falha and da_falha not in ensinados):
+            return {**base, "motivo": "a correção não é do app da etapa que falhou (ou passa por mais de um app)"}
+        pacote = ensinados.pop()
+        parametros = {k: v for k, v in (loads(etapa["parameters"], {}) or {}).items() if isinstance(v, str)}
+        persona = self.s.repo.variaveis_da_persona(etapa["profile_id"])
+        acoes = correcao.renomear([a for i in indices for a in (destiladas[i].acoes or [])], prep.exemplos, parametros)
+        falta = correcao.faltam(acoes, set(parametros) | set(persona))
+        if falta:
+            return {**base, "motivo": "a receita usaria " + ", ".join("{" + n + "}" for n in falta)
+                                      + ", que a execução que falhou não tem"}
+        identidade = await self._identidade(sess, pacote)
+        if isinstance(identidade, str):
+            return {**base, "motivo": identidade}
+        versao, variante, assinatura = identidade
+        loja = self.s.scheduler.executor.recipes
+        hash_da_falha = str(etapa["template_hash"])
+        efeito, viva = loja.previa_do_treino(pacote, versao, hash_da_falha, acoes, signature=assinatura, variant=variante)
+        rid = loja.save(package=pacote, app_version=versao, step_hash=hash_da_falha, step_key=chave, actions=acoes,
+                        learned_from=f"training:{session_id}", signature=assinatura, variant=variante)
+        linha = _linha_da_receita(efeito, viva, gravada=rid if rid else 0)
+        molde = redact(correcao.molde_do_comando(str(etapa["command"] or ""), {**parametros, **persona})) or ""
+        return {"ligada": bool(linha["recipe"]) or linha["reason"] == JA_HAVIA_RECEITA, "step_key": chave,
+                "recipe_id": rid or (int(viva["id"]) if viva is not None else None), "reason": linha["reason"],
+                "comando": molde, "texto": f"esta correção vale para o comando “{molde}”"}
 
     async def _tela_do_treino(self, sess: Sessao) -> tuple[int, int] | None:
         """31.114 F1: o tamanho da tela, lido SÓ se há arraste com coordenada na gravação (é o único uso). O aparelho fora do
